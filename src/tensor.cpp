@@ -6,7 +6,7 @@
 #include <glog/logging.h>
 #include <random>
 
-namespace atp {
+namespace aethermind {
 
 namespace {
 void check_type(const Tensor& t, DLDataTypeCode type_code, int8_t type_bits, int16_t type_lanes) {
@@ -173,4 +173,4 @@ Tensor Tensor::randint(int64_t low, int64_t high, const std::vector<int64_t>& sh
     return t;
 }
 
-}// namespace atp
+}// namespace aethermind

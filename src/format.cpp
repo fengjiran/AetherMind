@@ -14,7 +14,7 @@
 #include <string>
 #include <tuple>
 
-namespace atp {
+namespace aethermind {
 
 std::ostream& operator<<(std::ostream& out, const Scalar& s) {
     if (s.isFloatingPoint()) {

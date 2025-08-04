@@ -2,15 +2,15 @@
 // Created by 赵丹 on 25-7-29.
 //
 
-#ifndef ERROR_H
-#define ERROR_H
+#ifndef AETHERMIND_ERROR_H
+#define AETHERMIND_ERROR_H
 
 #include <exception>
-#include <sstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 
-namespace atp {
+namespace aethermind {
 
 class Error : public std::exception {
 public:
@@ -52,6 +52,6 @@ private:
 
 #define ATP_THROW(ErrorKind) ErrorBuilder(#ErrorKind, true).stream()
 
-}// namespace atp
+}// namespace aethermind
 
-#endif//ERROR_H
+#endif//AETHERMIND_ERROR_H

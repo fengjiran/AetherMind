@@ -2,11 +2,11 @@
 // Created by 赵丹 on 25-6-24.
 //
 
-#ifndef TENSOR_UTILS_H
-#define TENSOR_UTILS_H
+#ifndef AETHERMIND_TENSOR_UTILS_H
+#define AETHERMIND_TENSOR_UTILS_H
 
-#include "macros.h"
 #include "error.h"
+#include "macros.h"
 
 #include <cstdint>
 #include <cxxabi.h>
@@ -15,7 +15,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace atp {
+namespace aethermind {
 
 enum class DeviceType : uint8_t {
     kCPU = 0,
@@ -93,6 +93,6 @@ inline std::string demangle(const char* name) {
     return name;
 }
 
-}// namespace atp
+}// namespace aethermind
 
-#endif//TENSOR_UTILS_H
+#endif//AETHERMIND_TENSOR_UTILS_H

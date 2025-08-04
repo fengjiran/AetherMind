@@ -4,7 +4,7 @@
 
 #include "data_type.h"
 
-namespace atp {
+namespace aethermind {
 
 #define DEFINE_MAKE(code, bits, lanes, name, T) \
     template<>                                  \
@@ -14,4 +14,4 @@ namespace atp {
 SCALAR_TYPE_TO_NAME_AND_CPP_TYPE(DEFINE_MAKE);
 #undef DEFINE_MAKE
 
-}// namespace atp
+}// namespace aethermind

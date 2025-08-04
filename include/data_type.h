@@ -2,8 +2,8 @@
 // Created by richard on 6/30/25.
 //
 
-#ifndef DATA_TYPE_H
-#define DATA_TYPE_H
+#ifndef AETHERMIND_DATA_TYPE_H
+#define AETHERMIND_DATA_TYPE_H
 
 #include "tensor_utils.h"
 
@@ -11,7 +11,7 @@
 #include <glog/logging.h>
 #include <string>
 
-namespace atp {
+namespace aethermind {
 
 enum class DLDataTypeCode : uint8_t {
     kInt = 0,
@@ -239,4 +239,4 @@ private:
 
 }// namespace atp
 
-#endif//DATA_TYPE_H
+#endif//AETHERMIND_DATA_TYPE_H

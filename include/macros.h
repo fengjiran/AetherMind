@@ -2,8 +2,8 @@
 // Created by 赵丹 on 25-7-16.
 //
 
-#ifndef MACROS_H
-#define MACROS_H
+#ifndef AETHERMIND_MACROS_H
+#define AETHERMIND_MACROS_H
 
 #ifdef __has_cpp_attribute
 #if __has_cpp_attribute(nodiscard)
@@ -42,4 +42,4 @@
 
 #define REG_VAR_DEF static ATTRIBUTE_UNUSED uint32_t _make_unique_tid_
 
-#endif//MACROS_H
+#endif//AETHERMIND_MACROS_H

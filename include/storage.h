@@ -2,14 +2,14 @@
 // Created by 赵丹 on 25-6-27.
 //
 
-#ifndef STORAGE_H
-#define STORAGE_H
+#ifndef AETHERMIND_STORAGE_H
+#define AETHERMIND_STORAGE_H
 
 #include "storage_impl.h"
 
 #define MAX_INLINE_SIZE 5
 
-namespace atp {
+namespace aethermind {
 
 class Storage {
 public:
@@ -363,6 +363,6 @@ private:
     };
 };
 
-}// namespace atp
+}// namespace aethermind
 
-#endif//STORAGE_H
+#endif//AETHERMIND_STORAGE_H

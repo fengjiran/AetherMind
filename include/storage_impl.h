@@ -53,6 +53,6 @@ private:
     const std::unique_ptr<Allocator>& alloc_;
 };
 
-}// namespace atp
+}// namespace aethermind
 
 #endif//AETHERMIND_STORAGE_IMPL_H

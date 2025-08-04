@@ -10,7 +10,7 @@
 #include <mutex>
 #include <shared_mutex>
 
-namespace atp {
+namespace aethermind {
 
 static std::shared_mutex& get_env_mutex() {
     static std::shared_mutex env_mutex;
@@ -52,4 +52,4 @@ std::optional<bool> check_env(const char* name) {
 
 static auto& env = RegisterEnvs::Global().SetEnv("THP_MEM_ALLOC_ENABLE", "1", false);
 
-}// namespace atp
+}// namespace aethermind

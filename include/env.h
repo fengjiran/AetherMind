@@ -2,14 +2,14 @@
 // Created by richard on 6/25/25.
 //
 
-#ifndef ENV_H
-#define ENV_H
+#ifndef AETHERMIND_ENV_H
+#define AETHERMIND_ENV_H
 
-#include <vector>
-#include <string>
 #include <optional>
+#include <string>
+#include <vector>
 
-namespace atp {
+namespace aethermind {
 
 void set_env(const char* name, const char* value, bool overwrite);
 
@@ -38,6 +38,6 @@ private:
     std::vector<std::string> names_;
 };
 
-}
+}// namespace aethermind
 
-#endif //ENV_H
+#endif//AETHERMIND_ENV_H

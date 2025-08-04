@@ -11,7 +11,7 @@
 #include <torch/torch.h>
 #endif
 
-using namespace atp;
+using namespace aethermind;
 
 TEST(Tensor, format) {
     GTEST_SKIP();

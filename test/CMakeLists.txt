@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(ATL_test)
+project(AetherMindTest)
 set(CMAKE_CXX_STANDARD 20)
 
 option(BUILD_WITH_TORCH "build target with torch" ON)
@@ -20,7 +20,7 @@ if (BUILD_WITH_TORCH)
 endif ()
 
 target_link_libraries(${PROJECT_NAME}
-        AtypicalLibrary
+        AetherMind
         GTest::gtest_main
         glog::glog
 )

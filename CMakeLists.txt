@@ -34,3 +34,4 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 add_subdirectory(3rdparty/fmt)
+add_subdirectory(test)

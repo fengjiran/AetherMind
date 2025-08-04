@@ -2,14 +2,14 @@
 // Created by 赵丹 on 25-7-19.
 //
 
-#ifndef FUNCTION_TRAITS_H
-#define FUNCTION_TRAITS_H
+#ifndef AETHERMIND_FUNCTION_TRAITS_H
+#define AETHERMIND_FUNCTION_TRAITS_H
 
+#include <functional>
 #include <tuple>
 #include <type_traits>
-#include <functional>
 
-namespace atp {
+namespace aethermind {
 
 template<typename T>
 struct is_tuple : std::false_type {};
@@ -94,6 +94,6 @@ struct make_offset_index_sequence_impl : make_offset_index_sequence_impl<start, 
     static_assert(static_cast<int>(N) >= 0);
 };
 
-}// namespace atp
+}// namespace aethermind
 
-#endif//FUNCTION_TRAITS_H
+#endif//AETHERMIND_FUNCTION_TRAITS_H

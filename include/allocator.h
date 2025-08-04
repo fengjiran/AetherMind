@@ -2,8 +2,8 @@
 // Created by 赵丹 on 25-1-23.
 //
 
-#ifndef ALLOCATOR_H
-#define ALLOCATOR_H
+#ifndef AETHERMIND_ALLOCATOR_H
+#define AETHERMIND_ALLOCATOR_H
 
 #include "env.h"
 #include "tensor_utils.h"
@@ -12,7 +12,7 @@
 #include <glog/logging.h>
 #include <unordered_map>
 
-namespace atp {
+namespace aethermind {
 
 // A DataPtr is a unique pointer (with an attached deleter and some
 // context for the deleter) to some memory, which also records what
@@ -189,6 +189,6 @@ public:
     }
 };
 
-}// namespace atp
+}// namespace aethermind
 
-#endif//ALLOCATOR_H
+#endif//AETHERMIND_ALLOCATOR_H

@@ -2,12 +2,12 @@
 // Created by 赵丹 on 25-6-24.
 //
 
-#ifndef UNIQUE_VOID_PTR_H
-#define UNIQUE_VOID_PTR_H
+#ifndef AETHERMIND_UNIQUE_VOID_PTR_H
+#define AETHERMIND_UNIQUE_VOID_PTR_H
 
 #include <memory>
 
-namespace atp {
+namespace aethermind {
 
 using deleter_type = void (*)(void*);
 
@@ -149,6 +149,6 @@ inline bool operator!=(std::nullptr_t, const UniqueVoidPtr& sp) noexcept {
     return sp;
 }
 
-}// namespace atp
+}// namespace aethermind
 
-#endif//UNIQUE_VOID_PTR_H
+#endif//AETHERMIND_UNIQUE_VOID_PTR_H

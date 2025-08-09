@@ -22,6 +22,10 @@ TEST(Tensor, format) {
 TEST(Tensor, envs) {
     EXPECT_TRUE(has_env("THP_MEM_ALLOC_ENABLE"));
     EXPECT_TRUE(check_env("THP_MEM_ALLOC_ENABLE"));
+
+    EXPECT_TRUE(has_env("TRACEBACK_LIMIT"));
+    auto trackback_limit = std::stoi(get_env("TRACEBACK_LIMIT").value());
+    EXPECT_EQ(trackback_limit, 512);
     // std::cout << sysconf(_SC_PAGESIZE);
 }
 

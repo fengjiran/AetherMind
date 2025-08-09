@@ -15,7 +15,7 @@
 using namespace aethermind;
 
 TEST(Tensor, format) {
-    GTEST_SKIP();
+    // GTEST_SKIP();
     fmt::print("hello world\n");
     std::string s1 = fmt::format("The answer is {}.", 42);
 }
@@ -116,9 +116,9 @@ TEST(Tensor, init) {
                 try {
                     UNUSED(t2.data_ptr());
                 } catch (const Error& e) {
-                    std::cout << e.what() << std::endl;
-                    // ATP_THROW(RuntimeError) << "runtime error.";
-                    throw;
+                    // std::cout << e.what() << std::endl;
+                    // throw;
+                    AETHERMIND_THROW(RuntimeError) << "runtime error.";
                 }
             },
             Error);

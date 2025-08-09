@@ -11,9 +11,18 @@ if(USE_KALLOC_ALIGNMENT)
     add_definitions(-DKALLOC_ALIGNMENT=${USE_KALLOC_ALIGNMENT})
 endif(USE_KALLOC_ALIGNMENT)
 
+option(BUILD_TESTS "Adding test targets." ON)
+option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
+option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
+
+if (USE_LIBBACKTRACE)
+    include(cmake/AddLibbacktrace.cmake)
+endif ()
+
 find_package(glog REQUIRED)
 
 set(FMT_PATH "3rdparty/fmt/include")
+set(BACKTRACE_PATH "3rdparty/libbacktrace")
 
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp
         ${PROJECT_SOURCE_DIR}/src/*.cc
@@ -25,13 +34,20 @@ add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 include_directories(
         ${PROJECT_SOURCE_DIR}/include
         ${FMT_PATH}
+        ${BACKTRACE_PATH}
 )
 
 target_link_libraries(${PROJECT_NAME}
         glog::glog
         pthread
         fmt::fmt
+        libbacktrace
 )
 
 add_subdirectory(3rdparty/fmt)
-add_subdirectory(test)
+
+########## Adding tests ##########
+if (BUILD_TESTS)
+    message(STATUS "Enable Testing")
+    add_subdirectory(test)
+endif ()

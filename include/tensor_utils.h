@@ -6,7 +6,6 @@
 #define AETHERMIND_TENSOR_UTILS_H
 
 #include "error.h"
-#include "macros.h"
 
 #include <cstdint>
 #include <cxxabi.h>

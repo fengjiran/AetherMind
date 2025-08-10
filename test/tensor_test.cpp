@@ -81,7 +81,7 @@ TEST(Tensor, base1) {
 }
 
 TEST(Tensor, init) {
-#ifdef USE_TORCH
+#ifdef BUILD_WITH_TORCH
     torch::Tensor t1;
     EXPECT_FALSE(t1.defined());
     EXPECT_EQ(t1.numel(), 0);
@@ -117,8 +117,8 @@ TEST(Tensor, init) {
                     UNUSED(t2.data_ptr());
                 } catch (const Error& e) {
                     // std::cout << e.what() << std::endl;
-                    // throw;
-                    AETHERMIND_THROW(RuntimeError) << "runtime error.";
+                    throw;
+                    // AETHERMIND_THROW(RuntimeError) << "runtime error.";
                 }
             },
             Error);
@@ -135,7 +135,7 @@ TEST(Tensor, random) {
         numel *= x;
     }
 
-#ifdef USE_TORCH
+#ifdef BUILD_WITH_TORCH
     auto t1 = torch::rand(shape);
 #endif
 

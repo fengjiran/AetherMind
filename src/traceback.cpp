@@ -44,6 +44,40 @@ std::string DemangleName(std::string name) {
     return name;
 }
 
+/*!
+ * \brief List frame patterns that should be excluded as they contain less information
+ */
+bool ExcludeFrame(const char* filename, const char* symbol) {
+    if (filename) {
+        if (strstr(filename, "src/traceback.cpp")) {
+            return true;
+        }
+
+        // C++ stdlib frames
+        if (strstr(filename, "include/c++/")) {
+            return true;
+        }
+    }
+
+    if (symbol) {
+        // C++ stdlib frames
+        if (strstr(symbol, "__libc_")) {
+            return true;
+        }
+
+        // google test frames
+        if (strstr(symbol, "testing")) {
+            return true;
+        }
+
+        if (strstr(symbol, "RUN_ALL_TESTS")) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void BacktraceErrorCallback(void*, const char*, int) {
     // do nothing
 }
@@ -72,6 +106,10 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
 
     if (trace_stk->ExceedTracebackLimit()) {
         return 1;
+    }
+
+    if (ExcludeFrame(filename, symbol)) {
+        return 0;
     }
 
     trace_stk->Append(filename, symbol, lineno);

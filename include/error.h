@@ -46,7 +46,7 @@ public:
     ~ErrorBuilder() noexcept(false) {
         Error error(kind_, stream_.str(), traceback_);
         if (log_before_throw_) {
-            std::cerr << error.what() << std::endl;
+            std::cerr << error.what() << "\n\n";
         }
         throw error;
     }

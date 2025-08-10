@@ -8,7 +8,7 @@
 #include <fmt/format.h>
 #include <gtest/gtest.h>
 
-#ifdef BUILD_WITH_TORCH
+#if BUILD_WITH_TORCH
 #include <torch/torch.h>
 #endif
 
@@ -81,7 +81,7 @@ TEST(Tensor, base1) {
 }
 
 TEST(Tensor, init) {
-#ifdef BUILD_WITH_TORCH
+#if BUILD_WITH_TORCH
     torch::Tensor t1;
     EXPECT_FALSE(t1.defined());
     EXPECT_EQ(t1.numel(), 0);
@@ -135,7 +135,7 @@ TEST(Tensor, random) {
         numel *= x;
     }
 
-#ifdef BUILD_WITH_TORCH
+#if BUILD_WITH_TORCH
     auto t1 = torch::rand(shape);
 #endif
 

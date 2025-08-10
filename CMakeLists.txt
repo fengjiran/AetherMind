@@ -34,18 +34,18 @@ add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 include_directories(
         ${PROJECT_SOURCE_DIR}/include
         ${FMT_PATH}
-        ${BACKTRACE_PATH}
 )
 
 target_link_libraries(${PROJECT_NAME}
         glog::glog
         pthread
         fmt::fmt
-        libbacktrace
 )
 
 if (USE_LIBBACKTRACE)
     message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 1")
+    include_directories(${BACKTRACE_PATH})
+    target_link_libraries(${PROJECT_NAME} libbacktrace)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_LIBBACKTRACE=1)
 else ()
     message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 0")
@@ -61,7 +61,6 @@ else ()
 endif (BACKTRACE_ON_SEGFAULT)
 
 add_subdirectory(3rdparty/fmt)
-
 ########## Adding tests ##########
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")

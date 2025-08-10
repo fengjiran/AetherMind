@@ -5,7 +5,6 @@
 #ifndef AETHERMIND_ERROR_H
 #define AETHERMIND_ERROR_H
 
-#include "macros.h"
 #include "traceback.h"
 
 #include <exception>

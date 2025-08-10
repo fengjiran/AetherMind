@@ -5,7 +5,7 @@
 #include "traceback.h"
 #include "error.h"
 
-#ifdef USE_LIBBACKTRACE
+#if USE_LIBBACKTRACE
 
 #include <backtrace.h>
 #include <cxxabi.h>
@@ -15,11 +15,15 @@
 #include <iostream>
 #include <mutex>
 
-#ifdef BACKTRACE_ON_SEGFAULT
+#endif
+
+
+#if BACKTRACE_ON_SEGFAULT
 #include <csignal>
 #endif
 
 namespace aethermind {
+#if USE_LIBBACKTRACE
 
 void BacktraceCreateErrorCallback(void*, const char* msg, int) {
     std::cerr << "Could not initialize backtrace state: " << msg << std::endl;
@@ -131,7 +135,7 @@ std::string Traceback() {
     return traceback.GetTraceback();
 }
 
-#ifdef BACKTRACE_ON_SEGFAULT
+#if BACKTRACE_ON_SEGFAULT
 void backtrace_handler(int sig) {
     // Technically we shouldn't do any allocation in a signal handler, but
     // Backtrace may allocate. What's the worst it could do? We're already
@@ -157,6 +161,16 @@ const char* AetherMindTraceback(const char*, int, const char*) {
     return traceback_str.c_str();
 }
 
-}// namespace aethermind
+#else
+
+const char* AetherMindTraceback(const char* filename, int lineno, const char* func) {
+    thread_local std::string traceback_str;
+    std::ostringstream traceback_stream;
+    traceback_stream << "  File \"" << filename << "\", line " << lineno << ", in " << func << '\n';
+    traceback_str = traceback_stream.str();
+    return traceback_str.c_str();
+}
 
 #endif
+
+}// namespace aethermind

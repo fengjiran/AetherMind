@@ -8,7 +8,7 @@
 #include <fmt/format.h>
 #include <gtest/gtest.h>
 
-#ifdef USE_TORCH
+#ifdef BUILD_WITH_TORCH
 #include <torch/torch.h>
 #endif
 
@@ -122,7 +122,6 @@ TEST(Tensor, init) {
                 }
             },
             Error);
-
 
     // EXPECT_TRUE(t2.data_ptr() == nullptr);
     // EXPECT_TRUE(t2.const_data_ptr() == nullptr);

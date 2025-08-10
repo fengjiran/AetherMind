@@ -42,4 +42,13 @@
 
 #define REG_VAR_DEF static ATTRIBUTE_UNUSED uint32_t _make_unique_tid_
 
+#if defined(__GNUC__) || defined(__clang__)
+#define FUNC_SIG __PRETTY_FUNCTION__
+#elif defined(_MSC_VER)
+#define FUNC_SIG __FUNCSIG__
+#else
+#define FUNC_SIG __func__
+#endif
+
+
 #endif//AETHERMIND_MACROS_H

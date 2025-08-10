@@ -66,6 +66,8 @@ private:
     size_t max_frame_size;
 };
 
+const char* AetherMindTraceback(const char* filename, int lineno, const char* func);
+
 }// namespace aethermind
 
 #endif//AETHERMIND_TRACEBACK_H

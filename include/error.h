@@ -6,6 +6,7 @@
 #define AETHERMIND_ERROR_H
 
 #include "macros.h"
+#include "traceback.h"
 
 #include <exception>
 #include <iostream>
@@ -17,30 +18,33 @@ namespace aethermind {
 
 class Error : public std::exception {
 public:
-    Error(std::string kind, std::string message)
-        : kind_(std::move(kind)), message_(std::move(message)) {}
+    Error(std::string kind, std::string message, std::string traceback)
+        : kind_(std::move(kind)), message_(std::move(message)), traceback_(std::move(traceback)) {}
 
     NODISCARD const char* what() const noexcept override {
         thread_local std::string what_str = kind_ + ": " + message_;
+        what_str = std::string("Traceback (most recent call last):\n") +
+                   traceback_ + kind_ + ": " + message_;
         return what_str.c_str();
     }
 
 private:
     std::string kind_;
     std::string message_;
+    std::string traceback_;
 };
 
 class ErrorBuilder {
 public:
-    ErrorBuilder(std::string kind, bool log_before_throw)
-        : kind_(std::move(kind)), log_before_throw_(log_before_throw) {}
+    ErrorBuilder(std::string kind, std::string traceback, bool log_before_throw)
+        : kind_(std::move(kind)), traceback_(std::move(traceback)), log_before_throw_(log_before_throw) {}
 
     std::ostringstream& stream() {
         return stream_;
     }
 
     ~ErrorBuilder() noexcept(false) {
-        Error error(kind_, stream_.str());
+        Error error(kind_, stream_.str(), traceback_);
         if (log_before_throw_) {
             std::cerr << error.what() << std::endl;
         }
@@ -50,10 +54,14 @@ public:
 private:
     std::string kind_;
     std::ostringstream stream_;
+    std::string traceback_;
     bool log_before_throw_;
 };
 
-#define AETHERMIND_THROW(ErrorKind) ErrorBuilder(#ErrorKind, true).stream()
+// define traceback here as call into traceback function
+#define TRACEBACK_HERE AetherMindTraceback(__FILE__, __LINE__, FUNC_SIG)
+
+#define AETHERMIND_THROW(ErrorKind) ErrorBuilder(#ErrorKind, TRACEBACK_HERE, true).stream()
 
 }// namespace aethermind
 

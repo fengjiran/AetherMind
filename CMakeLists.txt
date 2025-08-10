@@ -6,10 +6,10 @@ set(CMAKE_CXX_STANDARD 20)
 # Set custom Alloc Alignment for device allocated memory ndarray points to
 set(USE_KALLOC_ALIGNMENT 64)
 
-if(USE_KALLOC_ALIGNMENT)
+if (USE_KALLOC_ALIGNMENT)
     message(STATUS "Build Alloc alignment set to ${USE_KALLOC_ALIGNMENT}")
     add_definitions(-DKALLOC_ALIGNMENT=${USE_KALLOC_ALIGNMENT})
-endif(USE_KALLOC_ALIGNMENT)
+endif (USE_KALLOC_ALIGNMENT)
 
 option(BUILD_TESTS "Adding test targets." ON)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
@@ -43,6 +43,22 @@ target_link_libraries(${PROJECT_NAME}
         fmt::fmt
         libbacktrace
 )
+
+if (USE_LIBBACKTRACE)
+    message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 1")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_LIBBACKTRACE=1)
+else ()
+    message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 0")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_LIBBACKTRACE=0)
+endif (USE_LIBBACKTRACE)
+
+if (BACKTRACE_ON_SEGFAULT)
+    message(STATUS "Setting C++ macro BACKTRACE_ON_SEGFAULT - 1")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE BACKTRACE_ON_SEGFAULT=1)
+else ()
+    message(STATUS "Setting C++ macro BACKTRACE_ON_SEGFAULT - 0")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE BACKTRACE_ON_SEGFAULT=0)
+endif (BACKTRACE_ON_SEGFAULT)
 
 add_subdirectory(3rdparty/fmt)
 

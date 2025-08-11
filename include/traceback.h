@@ -27,7 +27,7 @@ class TraceBackStorage {
 public:
     TraceBackStorage() : max_frame_size(GetTracebackLimit()) {}
 
-    void Append(const char* filename, const char* func, int lineno) {
+    void Append(const char* filename, int lineno, const char* func) {
         // skip frames with empty filename
         if (filename == nullptr) {
             if (func != nullptr) {

@@ -17,7 +17,6 @@
 
 #endif
 
-
 #if BACKTRACE_ON_SEGFAULT
 #include <csignal>
 #endif
@@ -116,7 +115,7 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
         return 0;
     }
 
-    trace_stk->Append(filename, symbol, lineno);
+    trace_stk->Append(filename, lineno, symbol);
     return 0;
 }
 
@@ -156,7 +155,7 @@ __attribute__((constructor)) void install_signal_handler() {
 }
 #endif
 
-const char* AetherMindTraceback(const char*, int, const char*) {
+const char* AetherMindTraceback(MAYBE_UNUSED const char* filename, MAYBE_UNUSED int lineno, MAYBE_UNUSED const char* func) {
     thread_local std::string traceback_str = Traceback();
     return traceback_str.c_str();
 }

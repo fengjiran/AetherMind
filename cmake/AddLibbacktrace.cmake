@@ -30,7 +30,7 @@ function(_libbacktrace_compile)
         set(_cmake_c_compiler "${CMAKE_C_COMPILER}")
     endif ()
 
-    message(STATUS CMAKC_C_COMPILER="${CMAKE_C_COMPILER}")
+    message(STATUS CMAKE_C_COMPILER="${CMAKE_C_COMPILER}")
 
     file(MAKE_DIRECTORY ${_libbacktrace_prefix}/include)
     file(MAKE_DIRECTORY ${_libbacktrace_prefix}/lib)

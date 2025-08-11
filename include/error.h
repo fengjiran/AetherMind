@@ -42,7 +42,7 @@ public:
         return stream_;
     }
 
-    ~ErrorBuilder() noexcept(false) {
+    ~ErrorBuilder() AETHERMIND_THROW_EXCEPTION {
         Error error(kind_, stream_.str(), traceback_);
         if (log_before_throw_) {
             std::cerr << error.what() << "\n\n";

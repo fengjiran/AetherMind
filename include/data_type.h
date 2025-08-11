@@ -126,7 +126,7 @@ inline std::string TypeCode2Str(const DLDataType& dtype) {
         }
 
         default: {
-            throw std::runtime_error("Unsupported data type");
+            AETHERMIND_THROW(runtime_error) << "Unsupported data type";
         }
     }
 }

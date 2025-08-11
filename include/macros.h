@@ -19,6 +19,8 @@
 #endif
 #endif
 
+#define AETHERMIND_THROW_EXCEPTION noexcept(false)
+
 #if defined(__clang__)
 #define __ubsan_ignore_pointer_overflow__ __attribute__((no_sanitize("pointer-overflow")))
 #else

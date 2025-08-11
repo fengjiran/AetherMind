@@ -36,7 +36,14 @@ enum class BackendComponent : uint8_t {
 
 enum class DispatchKey : uint16_t {
     Undefined = 0,
-    EndOfFunctionalityKeys
+    CatchAll = Undefined,
+    Dense,
+    Quantized,
+    Sparse,
+    SparseCsr,
+    NestedTensor,
+    EndOfFunctionalityKeys,
+
 };
 
 static_assert(

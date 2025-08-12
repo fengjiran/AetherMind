@@ -183,10 +183,10 @@ public:
     }
 
     NODISCARD bool operator==(const DataType& other) const {
-        if (this->code() == DLDataTypeCode::Undefined || other.code() == DLDataTypeCode::Undefined) {
-            return this->code() == other.code();
+        if (code() == DLDataTypeCode::Undefined || other.code() == DLDataTypeCode::Undefined) {
+            return code() == other.code();
         }
-        return this->code() == other.code() && this->bits() == other.bits() && this->lanes() == other.lanes();
+        return code() == other.code() && bits() == other.bits() && lanes() == other.lanes();
     }
 
     NODISCARD bool operator!=(const DataType& other) const {

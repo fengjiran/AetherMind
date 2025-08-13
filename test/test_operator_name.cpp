@@ -10,14 +10,17 @@ using namespace aethermind;
 namespace {
 
 TEST(OpName, init) {
-    OperatorName opname("aethermind::add", "");
-    EXPECT_EQ(opname.name(), "aethermind::add");
-    EXPECT_EQ(opname.overload_name(), "");
-    EXPECT_EQ(opname.GetNamespace(), "aethermind");
-    EXPECT_EQ(toString(opname), "aethermind::add");
-    std::cout << opname << std::endl;
+    OperatorName opname1("aethermind::add", "Tensor");
+    OperatorName opname2("aethermind::add", "Scalar");
 
-    EXPECT_TRUE(opname == OperatorName("aethermind::add", ""));
+    EXPECT_EQ(opname1.name(), "aethermind::add");
+    EXPECT_EQ(opname1.overload_name(), "Tensor");
+    EXPECT_EQ(opname1.GetNamespace(), "aethermind");
+    EXPECT_EQ(toString(opname1), "aethermind::add.Tensor");
+    // std::cout << opname1 << std::endl;
+
+    EXPECT_TRUE(opname1 == OperatorName("aethermind::add", "Tensor"));
+    EXPECT_TRUE(opname1 != opname2);
 }
 
 }

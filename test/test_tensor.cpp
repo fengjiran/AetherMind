@@ -92,6 +92,10 @@ TEST(Tensor, init) {
     EXPECT_FALSE(t1.has_storage());
     std::cout << t1;
 
+    torch::Tensor t11 = torch::ones({3, 10});
+    torch::Tensor t12 = torch::ones({3, 10});
+    auto t13 = torch::add(t11, t12);
+
     // UNUSED(t3.size(4));
     // auto t3 = torch::empty({10, 3, 32, 32});
     EXPECT_ANY_THROW(UNUSED(t1.itemsize()););

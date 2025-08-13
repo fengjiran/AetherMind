@@ -49,8 +49,7 @@ public:
         name_.resize(ns_len + 2 + old_name_len);
 
         // Shift current value of name to the end of the new space.
-        name_.replace(
-                name_.size() - old_name_len, old_name_len, name_, 0, old_name_len);
+        name_.replace(name_.size() - old_name_len, old_name_len, name_, 0, old_name_len);
         name_.replace(0, ns_len, ns, ns_len);
         name_[ns_len] = ':';
         name_[ns_len + 1] = ':';

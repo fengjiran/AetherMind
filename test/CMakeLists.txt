@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(AetherMindTest)
 set(CMAKE_CXX_STANDARD 20)
 
-option(BUILD_WITH_TORCH "build target with torch" OFF)
+option(BUILD_WITH_TORCH "build target with torch" ON)
 
 find_package(GTest REQUIRED)
 find_package(glog REQUIRED)

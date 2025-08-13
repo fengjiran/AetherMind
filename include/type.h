@@ -57,6 +57,14 @@ namespace aethermind {
     _(UnionType)        \
     _(DynamicType)
 
+enum class TypeKind {
+#define DEFINE_TYPE(T) T,
+    FORALL_TYPES(DEFINE_TYPE)
+#undef DEFINE_TYPE
+};
+
+const char* TypeKindToString(TypeKind kind);
+
 }// namespace aethermind
 
 #endif//AETHERMIND_TYPE_H

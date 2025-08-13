@@ -6,6 +6,17 @@
 
 namespace aethermind {
 
+const char* TypeKindToString(TypeKind kind) {
+#define CASE(T)       \
+    case TypeKind::T: \
+        return #T;
 
-
+    switch (kind) {
+        FORALL_TYPES(CASE)
+    }
+#undef CASE
+    return "";
 }
+
+
+}// namespace aethermind

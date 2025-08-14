@@ -92,6 +92,24 @@ public:
         return false;
     }
 
+    // list of types this type contains, e.g. for a List then element type of
+    // list for a tuple, the types of the tuple elements
+    virtual std::vector<Type*> containedTypes() const {
+        return {};
+    }
+
+    virtual Type* containedType(size_t i) const {
+        return containedTypes().at(i);
+    }
+
+    virtual size_t containedTypeSize() const {
+        return containedTypes().size();
+    }
+
+    virtual bool hasFreeVars() const {
+        return false;
+    }
+
     std::string annotation_str(const TypePrinter& printer) const {
         if (printer) {
             if (auto renamed = printer(*this)) {
@@ -123,9 +141,9 @@ private:
 template<typename T>
 class Singleton : public Type {
 public:
-    static T& GetInst() {
+    static T* GetTypePtr() {
         static T inst;
-        return inst;
+        return &inst;
     }
 
 protected:
@@ -159,12 +177,13 @@ public:
 
 protected:
     NumberType(TypeKind kind = TypeKind::NumberType) : Singleton(kind) {}
-    friend class Singleton;
 
 private:
     std::string annotation_str_impl(const TypePrinter&) const override {
         return "number";
     }
+
+    friend class Singleton;
 };
 
 class IntType : public NumberType {
@@ -177,9 +196,9 @@ public:
         return kind() == rhs.kind();
     }
 
-    static IntType& GetInst() {
+    static IntType* GetTypePtr() {
         static IntType inst;
-        return inst;
+        return &inst;
     }
 
     static constexpr auto Kind = TypeKind::IntType;
@@ -201,9 +220,9 @@ public:
         return rhs.kind() == kind();
     }
 
-    static FloatType& GetInst() {
+    static FloatType* GetTypePtr() {
         static FloatType inst;
-        return inst;
+        return &inst;
     }
 
     static constexpr auto Kind = TypeKind::FloatType;
@@ -213,6 +232,51 @@ private:
     std::string annotation_str_impl(const TypePrinter&) const override {
         return "float";
     }
+};
+
+class ComplexType : public NumberType {
+public:
+    std::string str() const override {
+        return "complex";
+    }
+
+    bool equals(const Type& rhs) const override {
+        return rhs.kind() == kind();
+    }
+
+    static ComplexType* GetTypePtr() {
+        static ComplexType inst;
+        return &inst;
+    }
+
+    static constexpr auto Kind = TypeKind::ComplexType;
+
+private:
+    ComplexType() : NumberType(TypeKind::ComplexType) {}
+    std::string annotation_str_impl(const TypePrinter&) const override {
+        return "complex";
+    }
+};
+
+class UnionType : public Singleton<UnionType> {
+public:
+    bool isUnionType() const override {
+        return true;
+    }
+
+    std::vector<Type*> containedTypes() const override {
+        return types_;
+    }
+
+    bool hasFreeVars() const override {
+        return has_free_vars_;
+    }
+
+    static constexpr auto Kind = TypeKind::UnionType;
+protected:
+    std::vector<Type*> types_;
+    bool has_free_vars_;
+    friend class Singleton;
 };
 
 inline std::string toString(const Type& t) {

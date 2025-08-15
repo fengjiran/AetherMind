@@ -47,7 +47,7 @@ public:
         return impl_->data_ptr();
     }
 
-    NODISCARD DeviceType device() const {
+    NODISCARD Device device() const {
         CHECK(impl_ != nullptr) << "Storage is not initialized";
         return impl_->device();
     }

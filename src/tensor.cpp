@@ -40,7 +40,7 @@ SCALAR_TYPE_TO_NAME_AND_CPP_TYPE(DEFINE_DATA_PTR);
 
 Tensor::Tensor() : impl_(new UndefinedTensorImpl) {}
 
-Tensor::Tensor(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, DeviceType device)
+Tensor::Tensor(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device)
     : impl_(std::make_shared<TensorImpl>(shape, storage_offset, dtype, device)) {}
 
 Tensor::Tensor(std::shared_ptr<TensorImpl> impl) : impl_(std::move(impl)) {
@@ -90,7 +90,7 @@ DataType Tensor::dtype() const {
     return impl_->dtype();
 }
 
-DeviceType Tensor::device() const {
+Device Tensor::device() const {
     return impl_->device();
 }
 
@@ -161,7 +161,7 @@ Tensor Tensor::randn(const std::vector<int64_t>& shape) {
 }
 
 Tensor Tensor::randint(int64_t low, int64_t high, const std::vector<int64_t>& shape) {
-    Tensor t(shape, 0, {DLDataTypeCode::kInt, 64, 1}, DeviceType::kCPU);
+    Tensor t(shape, 0, {DLDataTypeCode::kInt, 64, 1}, Device(kCPU));
     CHECK(t.numel() > 0);
     std::random_device rd;
     std::mt19937 gen(rd());

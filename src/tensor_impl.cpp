@@ -7,10 +7,10 @@
 
 namespace aethermind {
 
-TensorImpl::TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, DeviceType device)
+TensorImpl::TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device)
     : storage_offset_(storage_offset), numel_(0), dtype_(dtype), device_opt_(device) {
     CHECK(dtype_initialized()) << "dtype should be initialized.";
-    CHECK(device != DeviceType::kUndefined) << "device should be initialized.";
+    CHECK(device.type() != DeviceType::kUndefined) << "device should be initialized.";
 
     init_bitfield();
     auto ndim = shape.size();
@@ -18,15 +18,15 @@ TensorImpl::TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset
     set_shape_and_strides(shape, strides);
 
     int64_t nbytes = numel() * this->dtype().nbytes();
-    storage_ = Storage(nbytes, AllocatorTable::Global().get_allocator(device));
+    storage_ = Storage(nbytes, AllocatorTable::Global().get_allocator(device.type()));
 }
 
-TensorImpl::TensorImpl(Storage&& storage, DataType dtype, std::optional<DeviceType> device_opt)
+TensorImpl::TensorImpl(Storage&& storage, DataType dtype, std::optional<Device> device_opt)
     : storage_(std::move(storage)), numel_(0), dtype_(dtype), device_opt_(device_opt) {
     init_bitfield();
 }
 
-TensorImpl::TensorImpl(DataType dtype, std::optional<DeviceType> device_opt)
+TensorImpl::TensorImpl(DataType dtype, std::optional<Device> device_opt)
     : TensorImpl({}, dtype, device_opt) {}
 
 TensorImpl::TensorImpl(Storage&& storage, DataType dtype)
@@ -92,17 +92,17 @@ int64_t TensorImpl::storage_offset() const {
     return storage_offset_;
 }
 
-DeviceType TensorImpl::device() const {
+Device TensorImpl::device() const {
     CHECK(device_opt_.has_value()) << "tensor does not have a device.";
     return *device_opt_;
 }
 
 bool TensorImpl::is_cpu() const {
-    return device_opt_.has_value() && device_opt_.value() == DeviceType::kCPU;
+    return device_opt_.has_value() && device_opt_->type() == DeviceType::kCPU;
 }
 
 bool TensorImpl::is_cuda() const {
-    return device_opt_.has_value() && device_opt_.value() == DeviceType::kCUDA;
+    return device_opt_.has_value() && device_opt_->type() == DeviceType::kCUDA;
 }
 
 int64_t TensorImpl::get_real_dim(int64_t dim) const {

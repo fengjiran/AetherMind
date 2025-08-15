@@ -16,7 +16,7 @@ public:
     explicit Tensor(const std::vector<int64_t>& shape,
                     int64_t storage_offset = 0,
                     DataType dtype = DataType::Float32(),
-                    DeviceType device = DeviceType::kCPU);
+                    Device device = Device(kCPU));
 
     explicit Tensor(std::shared_ptr<TensorImpl> impl);
 
@@ -45,7 +45,7 @@ public:
 
     NODISCARD DataType dtype() const;
 
-    NODISCARD DeviceType device() const;
+    NODISCARD Device device() const;
 
     NODISCARD int32_t ndim() const;
 

@@ -37,8 +37,12 @@ public:
         return data_ptr_.get();
     }
 
-    NODISCARD DeviceType device() const {
+    NODISCARD Device device() const {
         return data_ptr_.device();
+    }
+
+    NODISCARD DeviceType device_type() const {
+        return data_ptr_.device().type();
     }
 
     StorageImpl() = delete;

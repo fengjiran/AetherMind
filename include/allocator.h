@@ -24,14 +24,14 @@ namespace aethermind {
 //
 class DataPtr {
 public:
-    DataPtr() : device_(DeviceType::kCPU) {}
+    DataPtr() : device_(kCPU) {}
 
-    DataPtr(void* data, DeviceType device) : ptr_(data), device_(device) {}
+    DataPtr(void* data, Device device) : ptr_(data), device_(device) {}
 
-    DataPtr(void* data, void* ctx, deleter_type deleter, DeviceType device)
+    DataPtr(void* data, void* ctx, deleter_type deleter, Device device)
         : ptr_(data, ctx, deleter), device_(device) {}
 
-    NODISCARD DeviceType device() const {
+    NODISCARD Device device() const {
         return device_;
     }
 
@@ -80,13 +80,14 @@ public:
         return ptr_.unsafe_reset_data_and_ctx(new_data_and_ctx);
     }
 
-    void unsafe_set_device(DeviceType device) {
+    void unsafe_set_device(Device device) {
         device_ = device;
     }
 
 private:
     UniqueVoidPtr ptr_;
-    DeviceType device_;
+    // DeviceType device_;
+    Device device_;
 };
 
 inline bool operator==(const DataPtr& dp, std::nullptr_t) noexcept {

@@ -166,7 +166,7 @@ TEST(Tensor, random) {
     EXPECT_TRUE(t2.is_contiguous());
     EXPECT_TRUE(t2.unique());
     EXPECT_TRUE(t2.dtype() == DataType::Make<float>());
-    EXPECT_TRUE(t2.device() == DeviceType::kCPU);
+    EXPECT_TRUE(t2.device().type() == DeviceType::kCPU);
     EXPECT_FLOAT_EQ(t2.const_data_ptr<float>()[0], static_cast<const float*>(t2.const_data_ptr())[0]);
 }
 

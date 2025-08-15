@@ -41,15 +41,35 @@ std::ostream& operator<<(std::ostream& os, DeviceType device_type);
 /// represents a specific, concrete device,
 /// 2. When the device type is CPU, the device index must be zero.
 struct Device {
-    explicit Device(DeviceType type, uint8_t index = -1) : type_(type), index_(index) {}
+    explicit Device(DeviceType type, int8_t index = -1) : type_(type), index_(index) {
+        validate();
+    }
 
     DeviceType type() const noexcept {
         return type_;
     }
 
-    uint8_t index() const noexcept {
+    int8_t index() const noexcept {
         return index_;
     }
+
+    bool has_index() const noexcept {
+        return index_ != -1;
+    }
+
+    bool is_cpu() const noexcept {
+        return type_ == kCPU;
+    }
+
+    bool is_cuda() const noexcept {
+        return type_ == kCUDA;
+    }
+
+    bool is_cann() const noexcept {
+        return type_ == kCANN;
+    }
+
+    std::string str() const;
 
     bool operator==(const Device& other) const {
         return type_ == other.type_ && index_ == other.index_;
@@ -61,8 +81,12 @@ struct Device {
 
 private:
     DeviceType type_;
-    uint8_t index_;
+    int8_t index_ = -1;
+
+    void validate() const;
 };
+
+std::ostream& operator<<(std::ostream& os, const Device& device);
 
 }// namespace aethermind
 

@@ -191,14 +191,14 @@ public:
     TensorImpl& operator=(const TensorImpl&) = delete;
     TensorImpl& operator=(TensorImpl&&) noexcept = delete;
 
-    TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, DeviceType device);
+    TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device);
 
-    TensorImpl(Storage&& storage, DataType dtype, std::optional<DeviceType> device_opt);
+    TensorImpl(Storage&& storage, DataType dtype, std::optional<Device> device_opt);
 
     TensorImpl(Storage&& storage, DataType dtype);
 
     // Construct a 1-dim 0 size tensor that doesn't have a storage.
-    TensorImpl(DataType dtype, std::optional<DeviceType> device_opt);
+    TensorImpl(DataType dtype, std::optional<Device> device_opt);
 
     virtual ~TensorImpl() = default;
 
@@ -252,7 +252,7 @@ public:
      **/
     NODISCARD int64_t storage_offset() const;
 
-    NODISCARD DeviceType device() const;
+    NODISCARD Device device() const;
 
     NODISCARD DataType dtype() const;
 
@@ -374,7 +374,7 @@ private:
 
     // device_opt_ is only nullopt for undefined tensors which do not have a device.
     // When storage is not-null, this device must agree with the type meta in storage.
-    std::optional<DeviceType> device_opt_;
+    std::optional<Device> device_opt_;
 
     bool is_contiguous_ : 1;
 

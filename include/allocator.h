@@ -86,7 +86,6 @@ public:
 
 private:
     UniqueVoidPtr ptr_;
-    // DeviceType device_;
     Device device_;
 };
 

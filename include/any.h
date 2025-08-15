@@ -6,19 +6,23 @@
 #define AETHERMIND_ANY_H
 
 #include "device.h"
+#include "tensor.h"
 
 namespace aethermind {
 
 class Any {
-    public:
+public:
 private:
     union data {
         int64_t v_int;
         double v_float;
         bool v_bool;
+        Device v_device;
+        Tensor v_tensor;
+        void* v_handle;
     } data_;
 };
 
-}
+}// namespace aethermind
 
 #endif//AETHERMIND_ANY_H

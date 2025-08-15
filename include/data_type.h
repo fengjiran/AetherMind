@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_DATA_TYPE_H
 #define AETHERMIND_DATA_TYPE_H
 
+#include "macros.h"
+#include "error.h"
 #include "tensor_utils.h"
 
 #include <cstdint>
@@ -127,6 +129,7 @@ inline std::string TypeCode2Str(const DLDataType& dtype) {
 
         default: {
             AETHERMIND_THROW(runtime_error) << "Unsupported data type";
+            AETHERMIND_UNREACHABLE();
         }
     }
 }

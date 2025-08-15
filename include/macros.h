@@ -52,5 +52,7 @@
 #define FUNC_SIG __func__
 #endif
 
+#define AETHERMIND_UNREACHABLE() __builtin_unreachable()
+
 
 #endif//AETHERMIND_MACROS_H

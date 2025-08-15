@@ -7,6 +7,7 @@
 
 #include "cpu_allocator.h"
 #include "data_type.h"
+#include "device.h"
 #include "storage.h"
 #include "tensor_utils.h"
 

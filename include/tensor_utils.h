@@ -5,43 +5,12 @@
 #ifndef AETHERMIND_TENSOR_UTILS_H
 #define AETHERMIND_TENSOR_UTILS_H
 
-#include "error.h"
-
-#include <cstdint>
 #include <cxxabi.h>
 #include <functional>
 #include <memory>
-#include <stdexcept>
 #include <string>
 
 namespace aethermind {
-
-enum class DeviceType : uint8_t {
-    kCPU = 0,
-    kCUDA = 1,
-    kUndefined
-};
-
-struct Device {
-    DeviceType device_type;
-    uint8_t device_id;
-};
-
-inline std::string DeviceType2Str(const DeviceType& device_type) {
-    switch (device_type) {
-        case DeviceType::kCPU: {
-            return "CPU";
-        }
-
-        case DeviceType::kCUDA: {
-            return "CUDA";
-        }
-
-        default: {
-            throw std::runtime_error("Unsupported device type");
-        }
-    }
-}
 
 inline bool mul_overflow(int64_t a, int64_t b, int64_t* out) {
     return __builtin_mul_overflow(a, b, out);

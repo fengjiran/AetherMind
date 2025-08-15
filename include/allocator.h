@@ -6,6 +6,7 @@
 #define AETHERMIND_ALLOCATOR_H
 
 #include "env.h"
+#include "device.h"
 #include "tensor_utils.h"
 #include "unique_void_ptr.h"
 

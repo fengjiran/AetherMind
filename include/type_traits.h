@@ -128,11 +128,11 @@ struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> {
     }
 
     static T CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return src->payload_.u.v_int;
+        return static_cast<T>(src->payload_.u.v_int);
     }
 
     static T MoveFromAnyAfterCheck(AetherMindAny* src) {
-        return src->payload_.u.v_int;
+        return static_cast<T>(src->payload_.u.v_int);
     }
 
     static std::optional<T> TryCastFromAny(const AetherMindAny* src) {
@@ -148,6 +148,60 @@ struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> {
 
     static std::string TypeStr() {
         return "int";
+    }
+};
+
+// POD Float type
+template<typename T>
+struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+    static void CopyToAny(const T& src, AetherMindAny* dst) {
+        dst->tag_ = Tag::Double;
+        dst->payload_.u.v_double = static_cast<double>(src);
+    }
+
+    static void MoveToAny(T src, AetherMindAny* dst) {
+        CopyToAny(src, dst);
+    }
+
+    static T CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return static_cast<T>(src->payload_.u.v_double);
+    }
+
+    static T MoveFromAnyAfterCheck(AetherMindAny* src) {
+        return static_cast<T>(src->payload_.u.v_double);
+    }
+
+    static std::optional<T> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return static_cast<T>(src->payload_.u.v_double);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == Tag::Double;
+    }
+
+    static std::string TypeStr() {
+        return "double";
+    }
+};
+
+// const char* type
+template<>
+struct TypeTraits<const char*> {
+    static void CopyToAny(const char* src, AetherMindAny* dst) {
+        CHECK(src != nullptr);
+        dst->tag_ = Tag::String;
+        dst->payload_.u.v_str = src;
+    }
+
+    static void MoveToAny(const char* src, AetherMindAny* dst) {
+        //
+    }
+
+    static std::string TypeStr() {
+        return "const char*";
     }
 };
 

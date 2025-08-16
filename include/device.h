@@ -41,35 +41,37 @@ std::ostream& operator<<(std::ostream& os, DeviceType device_type);
 /// represents a specific, concrete device,
 /// 2. When the device type is CPU, the device index must be zero.
 struct Device {
+    Device() :Device(kCPU) {}
+
     explicit Device(DeviceType type, int8_t index = -1) : type_(type), index_(index) {
         validate();
     }
 
-    DeviceType type() const noexcept {
+    NODISCARD DeviceType type() const noexcept {
         return type_;
     }
 
-    int8_t index() const noexcept {
+    NODISCARD int8_t index() const noexcept {
         return index_;
     }
 
-    bool has_index() const noexcept {
+    NODISCARD bool has_index() const noexcept {
         return index_ != -1;
     }
 
-    bool is_cpu() const noexcept {
+    NODISCARD bool is_cpu() const noexcept {
         return type_ == kCPU;
     }
 
-    bool is_cuda() const noexcept {
+    NODISCARD bool is_cuda() const noexcept {
         return type_ == kCUDA;
     }
 
-    bool is_cann() const noexcept {
+    NODISCARD bool is_cann() const noexcept {
         return type_ == kCANN;
     }
 
-    std::string str() const;
+    NODISCARD std::string str() const;
 
     bool operator==(const Device& other) const {
         return type_ == other.type_ && index_ == other.index_;

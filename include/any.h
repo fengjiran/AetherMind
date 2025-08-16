@@ -7,6 +7,7 @@
 
 #include "device.h"
 #include "tensor.h"
+#include "type_traits.h"
 
 namespace aethermind {
 
@@ -45,25 +46,42 @@ enum class Tag : uint32_t {
 #undef DEFINE_TAG
 };
 
+union Payload {
+    union data {
+        int64_t v_int;
+        double v_double;
+        bool v_bool;
+        const char* v_str;
+        void* v_handle;
+        Device v_device;
+
+        data() : v_int(0) {}
+    } u;
+
+    Tensor v_tensor;
+
+    static_assert(std::is_trivially_copyable_v<data>);
+    Payload() : u() {}
+    Payload(const Payload&) = delete;
+    Payload(Payload&&) = delete;
+    Payload& operator=(const Payload&) = delete;
+    Payload& operator=(Payload&&) = delete;
+
+    ~Payload() {}
+};
 
 
 class Any {
 public:
-
+    Any() = default;
 
 private:
-    union data {
-        int64_t v_int{};
-        double v_double;
-        bool v_bool;
-        Device v_device;
-        Tensor v_tensor;
-        void* v_handle;
-
-        data() : v_int(0) {}
-    } data_;
-
+    Payload payload_;
     Tag tag_;
+
+#define COUNT_TAG(x) 1 +
+    static constexpr auto kNumTags = AETHERMIND_FORALL_TAGS(COUNT_TAG) 0;
+#undef COUNT_TAG
 };
 
 }// namespace aethermind

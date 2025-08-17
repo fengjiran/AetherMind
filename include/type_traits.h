@@ -232,6 +232,12 @@ struct TypeTraits<std::string> {
         dst->payload_.u.v_str = src.c_str();
     }
 
+    static void MoveToAny(std::string src, AetherMindAny* dst) {
+        dst->tag_ = Tag::String;
+        dst->payload_.u.v_str = src.c_str();
+        src.clear();
+    }
+
     static std::string TypeStr() {
         return "std::string";
     }

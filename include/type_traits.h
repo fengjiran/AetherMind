@@ -14,6 +14,7 @@ namespace aethermind {
 
 #define AETHERMIND_FORALL_TAGS(_) \
     _(None)                       \
+    _(OpaquePtr)                  \
     _(Tensor)                     \
     _(Storage)                    \
     _(Double)                     \
@@ -47,7 +48,7 @@ enum class Tag : uint32_t {
 #undef DEFINE_TAG
 };
 
-struct tany {
+struct AetherMindAny {
     using Payload = std::variant<int64_t,
                                  double,
                                  bool,
@@ -59,35 +60,35 @@ struct tany {
     Tag tag_{Tag::None};
 };
 
-struct AetherMindAny {
-    union Payload {
-        union data {
-            int64_t v_int;
-            double v_double;
-            bool v_bool;
-            const char* v_str;
-            void* v_handle;
-            Device v_device;
-
-            data() : v_int(0) {}
-        };
-
-        data u;
-        Tensor v_tensor;
-
-        static_assert(std::is_trivially_copyable_v<data>);
-        Payload() : u() {}
-        Payload(const Payload&) = delete;
-        Payload(Payload&&) = delete;
-        Payload& operator=(const Payload&) = delete;
-        Payload& operator=(Payload&&) = delete;
-
-        ~Payload() {}
-    };
-
-    Payload payload_;
-    Tag tag_{Tag::None};
-};
+// struct AetherMindAny {
+//     union Payload {
+//         union data {
+//             int64_t v_int;
+//             double v_double;
+//             bool v_bool;
+//             const char* v_str;
+//             void* v_handle;
+//             Device v_device;
+//
+//             data() : v_int(0) {}
+//         };
+//
+//         data u;
+//         Tensor v_tensor;
+//
+//         static_assert(std::is_trivially_copyable_v<data>);
+//         Payload() : u() {}
+//         Payload(const Payload&) = delete;
+//         Payload(Payload&&) = delete;
+//         Payload& operator=(const Payload&) = delete;
+//         Payload& operator=(Payload&&) = delete;
+//
+//         ~Payload() {}
+//     };
+//
+//     Payload payload_;
+//     Tag tag_{Tag::None};
+// };
 
 
 template<typename, typename = void>
@@ -95,31 +96,31 @@ struct TypeTraits;
 
 template<>
 struct TypeTraits<bool> {
-    static void CopyToAny(const bool& src, tany* dst) {
+    static void CopyToAny(const bool& src, AetherMindAny* dst) {
         dst->tag_ = Tag::Bool;
         dst->payload_ = src;
     }
 
-    static void MoveToAny(bool src, tany* dst) {
+    static void MoveToAny(bool src, AetherMindAny* dst) {
         CopyToAny(src, dst);
     }
 
-    static bool CopyFromAnyAfterCheck(const tany* src) {
+    static bool CopyFromAnyAfterCheck(const AetherMindAny* src) {
         return std::get<bool>(src->payload_);
     }
 
-    static bool MoveFromAnyAfterCheck(tany* src) {
+    static bool MoveFromAnyAfterCheck(AetherMindAny* src) {
         return std::get<bool>(src->payload_);
     }
 
-    static std::optional<bool> TryCastFromAny(const tany* src) {
+    static std::optional<bool> TryCastFromAny(const AetherMindAny* src) {
         if (check(src)) {
             return std::get<bool>(src->payload_);
         }
         return std::nullopt;
     }
 
-    static bool check(const tany* src) {
+    static bool check(const AetherMindAny* src) {
         return src->tag_ == Tag::Bool;
     }
 
@@ -133,7 +134,7 @@ template<typename T>
 struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> {
     static void CopyToAny(const T& src, AetherMindAny* dst) {
         dst->tag_ = Tag::Int;
-        dst->payload_.u.v_int = static_cast<int64_t>(src);
+        dst->payload_ = static_cast<int64_t>(src);
     }
 
     static void MoveToAny(T src, AetherMindAny* dst) {
@@ -141,16 +142,16 @@ struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> {
     }
 
     static T CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return static_cast<T>(src->payload_.u.v_int);
+        return static_cast<T>(std::get<int64_t>(src->payload_));
     }
 
     static T MoveFromAnyAfterCheck(AetherMindAny* src) {
-        return static_cast<T>(src->payload_.u.v_int);
+        return static_cast<T>(std::get<int64_t>(src->payload_));
     }
 
     static std::optional<T> TryCastFromAny(const AetherMindAny* src) {
         if (check(src)) {
-            return static_cast<T>(src->payload_.u.v_int);
+            return static_cast<T>(std::get<int64_t>(src->payload_));
         }
         return std::nullopt;
     }
@@ -169,7 +170,7 @@ template<typename T>
 struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     static void CopyToAny(const T& src, AetherMindAny* dst) {
         dst->tag_ = Tag::Double;
-        dst->payload_.u.v_double = static_cast<double>(src);
+        dst->payload_ = static_cast<double>(src);
     }
 
     static void MoveToAny(T src, AetherMindAny* dst) {
@@ -177,16 +178,16 @@ struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     }
 
     static T CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return static_cast<T>(src->payload_.u.v_double);
+        return static_cast<T>(std::get<double>(src->payload_));
     }
 
     static T MoveFromAnyAfterCheck(AetherMindAny* src) {
-        return static_cast<T>(src->payload_.u.v_double);
+        return static_cast<T>(std::get<double>(src->payload_));
     }
 
     static std::optional<T> TryCastFromAny(const AetherMindAny* src) {
         if (check(src)) {
-            return static_cast<T>(src->payload_.u.v_double);
+            return static_cast<T>(std::get<double>(src->payload_));
         }
         return std::nullopt;
     }
@@ -200,22 +201,33 @@ struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     }
 };
 
-// const char* type
+// string type
 template<>
-struct TypeTraits<const char*> {
-    static void CopyToAny(const char* src, AetherMindAny* dst) {
-        CHECK(src != nullptr);
+struct TypeTraits<std::string> {
+    static void CopyToAny(const std::string& src, AetherMindAny* dst) {
         dst->tag_ = Tag::String;
-        dst->payload_.u.v_str = src;
+        dst->payload_ = src;
     }
 
-    static void MoveToAny(const char* src, AetherMindAny* dst) {
-        CopyToAny(src, dst);
+    static void MoveToAny(std::string src, AetherMindAny* dst) {
+        dst->tag_ = Tag::String;
+        dst->payload_ = std::move(src);
     }
 
-    static std::optional<const char*> TryCastFromAny(const AetherMindAny* src) {
+    static std::string CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return std::get<std::string>(src->payload_);
+    }
+
+    static std::string MoveFromAnyAfterCheck(AetherMindAny* src) {
+        std::string str = std::get<std::string>(std::move(src->payload_));
+        src->payload_ = 0;
+        src->tag_ = Tag::None;
+        return str;
+    }
+
+    static std::optional<std::string> TryCastFromAny(const AetherMindAny* src) {
         if (check(src)) {
-            return src->payload_.u.v_str;
+            return std::get<std::string>(src->payload_);
         }
         return std::nullopt;
     }
@@ -225,25 +237,18 @@ struct TypeTraits<const char*> {
     }
 
     static std::string TypeStr() {
-        return "const char*";
+        return "std::string";
     }
 };
 
-// string type
 template<>
-struct TypeTraits<std::string> {
-    static void CopyToAny(const std::string& src, AetherMindAny* dst) {
-        dst->tag_ = Tag::String;
-        dst->payload_.u.v_str = src.c_str();
-    }
-
-    static void MoveToAny(std::string src, AetherMindAny* dst) {
-        dst->tag_ = Tag::String;
-        dst->payload_.u.v_str = src.c_str();
+struct TypeTraits<void*> {
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == Tag::OpaquePtr;
     }
 
     static std::string TypeStr() {
-        return "std::string";
+        return "void*";
     }
 };
 

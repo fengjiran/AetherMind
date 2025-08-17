@@ -8,6 +8,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 namespace aethermind {
 
@@ -46,6 +47,18 @@ enum class Tag : uint32_t {
 #undef DEFINE_TAG
 };
 
+struct tany {
+    using Payload = std::variant<int64_t,
+                                 double,
+                                 bool,
+                                 void*,
+                                 std::string,
+                                 Device,
+                                 Tensor>;
+    Payload payload_;
+    Tag tag_{Tag::None};
+};
+
 struct AetherMindAny {
     union Payload {
         union data {
@@ -82,31 +95,31 @@ struct TypeTraits;
 
 template<>
 struct TypeTraits<bool> {
-    static void CopyToAny(const bool& src, AetherMindAny* dst) {
+    static void CopyToAny(const bool& src, tany* dst) {
         dst->tag_ = Tag::Bool;
-        dst->payload_.u.v_bool = src;
+        dst->payload_ = src;
     }
 
-    static void MoveToAny(bool src, AetherMindAny* dst) {
+    static void MoveToAny(bool src, tany* dst) {
         CopyToAny(src, dst);
     }
 
-    static bool CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return src->payload_.u.v_bool;
+    static bool CopyFromAnyAfterCheck(const tany* src) {
+        return std::get<bool>(src->payload_);
     }
 
-    static bool MoveFromAnyAfterCheck(AetherMindAny* src) {
-        return src->payload_.u.v_bool;
+    static bool MoveFromAnyAfterCheck(tany* src) {
+        return std::get<bool>(src->payload_);
     }
 
-    static std::optional<bool> TryCastFromAny(const AetherMindAny* src) {
+    static std::optional<bool> TryCastFromAny(const tany* src) {
         if (check(src)) {
-            return src->payload_.u.v_bool;
+            return std::get<bool>(src->payload_);
         }
         return std::nullopt;
     }
 
-    static bool check(const AetherMindAny* src) {
+    static bool check(const tany* src) {
         return src->tag_ == Tag::Bool;
     }
 

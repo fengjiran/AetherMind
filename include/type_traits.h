@@ -200,14 +200,6 @@ struct TypeTraits<const char*> {
         CopyToAny(src, dst);
     }
 
-    static std::string CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return src->payload_.u.v_str;
-    }
-
-    static std::string MoveFromAnyAfterCheck(AetherMindAny* src) {
-        return src->payload_.u.v_str;
-    }
-
     static std::optional<const char*> TryCastFromAny(const AetherMindAny* src) {
         if (check(src)) {
             return src->payload_.u.v_str;
@@ -235,7 +227,6 @@ struct TypeTraits<std::string> {
     static void MoveToAny(std::string src, AetherMindAny* dst) {
         dst->tag_ = Tag::String;
         dst->payload_.u.v_str = src.c_str();
-        src.clear();
     }
 
     static std::string TypeStr() {

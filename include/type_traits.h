@@ -73,7 +73,7 @@ struct AetherMindAny {
     };
 
     Payload payload_;
-    Tag tag_ {Tag::None};
+    Tag tag_{Tag::None};
 };
 
 
@@ -197,11 +197,43 @@ struct TypeTraits<const char*> {
     }
 
     static void MoveToAny(const char* src, AetherMindAny* dst) {
-        //
+        CopyToAny(src, dst);
+    }
+
+    static std::string CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return src->payload_.u.v_str;
+    }
+
+    static std::string MoveFromAnyAfterCheck(AetherMindAny* src) {
+        return src->payload_.u.v_str;
+    }
+
+    static std::optional<const char*> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return src->payload_.u.v_str;
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == Tag::String;
     }
 
     static std::string TypeStr() {
         return "const char*";
+    }
+};
+
+// string type
+template<>
+struct TypeTraits<std::string> {
+    static void CopyToAny(const std::string& src, AetherMindAny* dst) {
+        dst->tag_ = Tag::String;
+        dst->payload_.u.v_str = src.c_str();
+    }
+
+    static std::string TypeStr() {
+        return "std::string";
     }
 };
 

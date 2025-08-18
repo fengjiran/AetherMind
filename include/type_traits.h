@@ -100,6 +100,43 @@ template<typename, typename = void>
 struct TypeTraits;
 
 template<>
+struct TypeTraits<std::nullptr_t> {
+
+    static void CopyToAny(const std::nullptr_t&, AetherMindAny* dst) {
+        dst->tag_ = Tag::None;
+        dst->payload_ = 0;
+    }
+
+    static void MoveToAny(const std::nullptr_t&, AetherMindAny* dst) {
+        dst->tag_ = Tag::None;
+        dst->payload_ = 0;
+    }
+
+    static std::nullptr_t CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return nullptr;
+    }
+
+    static std::nullptr_t MoveFromAnyAfterCheck(const AetherMindAny* src) {
+        return nullptr;
+    }
+
+    static std::optional<std::nullptr_t> TryCastFromAny(const AetherMindAny* src) {
+        if (src->tag_ == Tag::None) {
+            return nullptr;
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == Tag::None;
+    }
+
+    static std::string TypeStr() {
+        return "none";
+    }
+};
+
+template<>
 struct TypeTraits<bool> {
     static void CopyToAny(const bool& src, AetherMindAny* dst) {
         dst->tag_ = Tag::Bool;
@@ -119,9 +156,14 @@ struct TypeTraits<bool> {
     }
 
     static std::optional<bool> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
+        if (src->tag_ == Tag::Bool) {
             return std::get<bool>(src->payload_);
         }
+
+        if (src->tag_ == Tag::Int) {
+            return static_cast<bool>(std::get<int64_t>(src->payload_));
+        }
+
         return std::nullopt;
     }
 
@@ -155,9 +197,14 @@ struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> {
     }
 
     static std::optional<T> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
+        if (src->tag_ == Tag::Int) {
             return static_cast<T>(std::get<int64_t>(src->payload_));
         }
+
+        if (src->tag_ == Tag::Bool) {
+            return static_cast<T>(std::get<bool>(src->payload_));
+        }
+
         return std::nullopt;
     }
 
@@ -191,8 +238,16 @@ struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     }
 
     static std::optional<T> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
+        if (src->tag_ == Tag::Double) {
             return static_cast<T>(std::get<double>(src->payload_));
+        }
+
+        if (src->tag_ == Tag::Int) {
+            return static_cast<T>(std::get<int64_t>(src->payload_));
+        }
+
+        if (src->tag_ == Tag::Bool) {
+            return static_cast<T>(std::get<bool>(src->payload_));
         }
         return std::nullopt;
     }
@@ -290,7 +345,7 @@ struct TypeTraits<Device> {
 
     static void MoveToAny(Device src, AetherMindAny* dst) {
         dst->tag_ = Tag::Device;
-        dst->payload_ = std::move(src);
+        dst->payload_ = src;
     }
 
     static Device CopyFromAnyAfterCheck(const AetherMindAny* src) {

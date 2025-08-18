@@ -12,6 +12,23 @@ TEST(Any, bool) {
     Any x0;
     auto opt0 = x0.as<bool>();
     EXPECT_TRUE(!opt0.has_value());
+
+    EXPECT_THROW(
+            {
+                try {
+                    MAYBE_UNUSED auto v0 = x0.cast<bool>();
+                } catch (const Error&) {
+                    throw;
+                }
+            },
+            Error);
+
+    Any x1 = true;
+    EXPECT_TRUE(x1.cast<bool>());
+    auto v1 = x1.cast<int>();
+    EXPECT_EQ(v1, 1);
+    x1 = false;
+    EXPECT_TRUE(!x1.cast<bool>());
 }
 
 TEST(Any, int) {
@@ -35,7 +52,7 @@ TEST(Any, int) {
     EXPECT_TRUE(x1.tag() == Tag::Int);
     EXPECT_EQ(x1.cast<int>(), 1);
 
-    int64_t v1 =10;
+    int64_t v1 = 10;
     x1 = v1;
     EXPECT_EQ(x1.cast<int>(), 10);
 }

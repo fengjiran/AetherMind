@@ -51,6 +51,8 @@ enum class Tag : uint32_t {
 #undef DEFINE_TAG
 };
 
+std::string TagToString(Tag t);
+
 struct AetherMindAny {
     using Payload = std::variant<int64_t,
                                  double,
@@ -253,6 +255,14 @@ struct TypeTraits<void*> {
 
     static void MoveToAny(void* src, AetherMindAny* dst) {
         CopyToAny(src, dst);
+    }
+
+    static void* CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return std::get<void*>(src->payload_);
+    }
+
+    static void* MoveFromAnyAfterCheck(AetherMindAny* src) {
+        return std::get<void*>(src->payload_);
     }
 
     static std::optional<void*> TryCastFromAny(const AetherMindAny* src) {

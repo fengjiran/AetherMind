@@ -8,7 +8,39 @@ using namespace aethermind;
 
 namespace {
 
+TEST(Any, bool) {
+    Any x0;
+    auto opt0 = x0.as<bool>();
+    EXPECT_TRUE(!opt0.has_value());
+}
+
 TEST(Any, int) {
+    Any x0;
+    EXPECT_TRUE(x0.tag() == Tag::None);
+
+    auto opt0 = x0.as<int64_t>();
+    EXPECT_TRUE(!opt0.has_value());
+
+    EXPECT_THROW(
+            {
+                try {
+                    MAYBE_UNUSED auto v0 = x0.cast<float>();
+                } catch (const Error&) {
+                    throw;
+                }
+            },
+            Error);
+
+    Any x1 = 1;
+    EXPECT_TRUE(x1.tag() == Tag::Int);
+    EXPECT_EQ(x1.cast<int>(), 1);
+
+    int64_t v1 =10;
+    x1 = v1;
+    EXPECT_EQ(x1.cast<int>(), 10);
+}
+
+TEST(Any, tensor) {
     Tensor t({3, 10});
     AetherMindAny a;
     TypeTraits<Tensor>::MoveToAny(std::move(t), &a);
@@ -17,4 +49,4 @@ TEST(Any, int) {
     EXPECT_EQ(t2.use_count(), 1);
 }
 
-}
+}// namespace

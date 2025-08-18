@@ -31,6 +31,24 @@ TEST(Any, bool) {
     EXPECT_TRUE(!x1.cast<bool>());
 }
 
+TEST(Any, null) {
+    Any x0;
+    EXPECT_TRUE(x0 == nullptr);
+    EXPECT_FALSE(x0 != nullptr);
+
+    x0 = 1;
+    EXPECT_TRUE(x0 != nullptr);
+    EXPECT_FALSE(x0 == nullptr);
+
+    Any x1 = x0;
+    EXPECT_TRUE(x1 != nullptr);
+    EXPECT_FALSE(x1 == nullptr);
+
+    x1 = nullptr;
+    EXPECT_TRUE(x1 == nullptr);
+    EXPECT_FALSE(x1 != nullptr);
+}
+
 TEST(Any, int) {
     Any x0;
     EXPECT_TRUE(x0.tag() == Tag::None);
@@ -55,6 +73,28 @@ TEST(Any, int) {
     int64_t v1 = 10;
     x1 = v1;
     EXPECT_EQ(x1.cast<int>(), 10);
+}
+
+TEST(Any, float) {
+    Any x0;
+    auto opt0 = x0.as<double>();
+    EXPECT_TRUE(!opt0.has_value());
+
+    x0 = 1;
+    auto v1 = x0.cast<float>();
+    EXPECT_EQ(v1, 1);
+
+    x0 = 2.2;
+    auto v2 = x0.cast<float>();
+    EXPECT_FLOAT_EQ(v2, 2.2);
+}
+
+TEST(Any, device) {
+    Any x = Device(kCUDA, 1);
+    auto dev = x.cast<Device>();
+    EXPECT_TRUE(x.tag() == Tag::Device);
+    EXPECT_EQ(dev.type(), kCUDA);
+    EXPECT_EQ(dev.index(), 1);
 }
 
 TEST(Any, tensor) {

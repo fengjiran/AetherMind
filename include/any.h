@@ -127,6 +127,14 @@ public:
         data_.tag_ = Tag::None;
     }
 
+    bool operator==(std::nullptr_t) const noexcept {
+        return data_.tag_ == Tag::None;
+    }
+
+    bool operator!=(std::nullptr_t) const noexcept {
+        return data_.tag_ != Tag::None;
+    }
+
 private:
     AetherMindAny data_;
 

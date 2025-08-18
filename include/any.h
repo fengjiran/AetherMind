@@ -5,8 +5,6 @@
 #ifndef AETHERMIND_ANY_H
 #define AETHERMIND_ANY_H
 
-#include "device.h"
-#include "tensor.h"
 #include "type_traits.h"
 
 namespace aethermind {

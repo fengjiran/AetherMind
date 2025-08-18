@@ -5,6 +5,9 @@
 #ifndef AETHERMIND_TYPE_TRAITS_H
 #define AETHERMIND_TYPE_TRAITS_H
 
+#include "device.h"
+#include "tensor.h"
+
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -219,7 +222,7 @@ struct TypeTraits<std::string> {
     }
 
     static std::string MoveFromAnyAfterCheck(AetherMindAny* src) {
-        std::string str = std::get<std::string>(std::move(src->payload_));
+        auto str = std::get<std::string>(std::move(src->payload_));
         src->payload_ = 0;
         src->tag_ = Tag::None;
         return str;
@@ -243,12 +246,106 @@ struct TypeTraits<std::string> {
 
 template<>
 struct TypeTraits<void*> {
+    static void CopyToAny(void* src, AetherMindAny* dst) {
+        dst->tag_ = Tag::OpaquePtr;
+        dst->payload_ = src;
+    }
+
+    static void MoveToAny(void* src, AetherMindAny* dst) {
+        CopyToAny(src, dst);
+    }
+
+    static std::optional<void*> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return std::get<void*>(src->payload_);
+        }
+        return std::nullopt;
+    }
+
     static bool check(const AetherMindAny* src) {
         return src->tag_ == Tag::OpaquePtr;
     }
 
     static std::string TypeStr() {
         return "void*";
+    }
+};
+
+template<>
+struct TypeTraits<Device> {
+    static void CopyToAny(const Device& src, AetherMindAny* dst) {
+        dst->tag_ = Tag::Device;
+        dst->payload_ = src;
+    }
+
+    static void MoveToAny(Device src, AetherMindAny* dst) {
+        dst->tag_ = Tag::Device;
+        dst->payload_ = std::move(src);
+    }
+
+    static Device CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return std::get<Device>(src->payload_);
+    }
+
+    static Device MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto dev = std::get<Device>(std::move(src->payload_));
+        src->payload_ = 0;
+        src->tag_ = Tag::None;
+        return dev;
+    }
+
+    static std::optional<Device> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return std::get<Device>(src->payload_);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == Tag::Device;
+    }
+
+    static std::string TypeStr() {
+        return "device";
+    }
+};
+
+template<>
+struct TypeTraits<Tensor> {
+    static void CopyToAny(const Tensor& src, AetherMindAny* dst) {
+        dst->tag_ = Tag::Tensor;
+        dst->payload_ = src;
+    }
+
+    static void MoveToAny(Tensor src, AetherMindAny* dst) {
+        dst->tag_ = Tag::Tensor;
+        dst->payload_ = std::move(src);
+    }
+
+    static Tensor CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return std::get<Tensor>(src->payload_);
+    }
+
+    static Tensor MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto t = std::get<Tensor>(std::move(src->payload_));
+        src->payload_ = 0;
+        src->tag_ = Tag::None;
+        return t;
+    }
+
+    static std::optional<Tensor> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return std::get<Tensor>(src->payload_);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == Tag::Tensor;
+    }
+
+    static std::string TypeStr() {
+        return "tensor";
     }
 };
 

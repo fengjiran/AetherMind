@@ -101,7 +101,6 @@ struct TypeTraits;
 
 template<>
 struct TypeTraits<std::nullptr_t> {
-
     static void CopyToAny(const std::nullptr_t&, AetherMindAny* dst) {
         dst->tag_ = Tag::None;
         dst->payload_ = 0;
@@ -298,6 +297,18 @@ struct TypeTraits<std::string> {
 
     static std::string TypeStr() {
         return "std::string";
+    }
+};
+
+template<>
+struct TypeTraits<const char*> : TypeTraits<std::string> {
+    static void CopyToAny(const char* src, AetherMindAny* dst) {
+        dst->tag_ = Tag::String;
+        dst->payload_ = std::string(src);
+    }
+
+    static void MoveToAny(const char* src, AetherMindAny* dst) {
+        CopyToAny(src, dst);
     }
 };
 

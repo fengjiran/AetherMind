@@ -89,6 +89,50 @@ TEST(Any, float) {
     EXPECT_FLOAT_EQ(v2, 2.2);
 }
 
+TEST(Any, string) {
+    Any x0 = "hello";
+    EXPECT_TRUE(x0.tag() == Tag::String);
+    EXPECT_TRUE(x0.as<std::string>().has_value());
+    EXPECT_EQ(x0.cast<std::string>(), "hello");
+
+    x0 = std::string("world");
+    EXPECT_TRUE(x0.tag() == Tag::String);
+    EXPECT_EQ(x0.cast<std::string>(), "world");
+}
+
+TEST(Any, cast_vs_as) {
+    Any x0 = 1;
+    auto opt_v0 = x0.as<int64_t>();
+    EXPECT_TRUE(opt_v0.has_value());
+    EXPECT_EQ(*opt_v0, 1);
+
+    auto opt_v1 = x0.as<bool>();
+    EXPECT_TRUE(!opt_v1.has_value());
+
+    auto opt_v2 = x0.as<float>();
+    EXPECT_TRUE(!opt_v2.has_value());
+
+    auto opt_v3 = x0.try_cast<bool>();
+    EXPECT_TRUE(opt_v3.has_value());
+    EXPECT_TRUE(*opt_v3);
+
+    auto opt_v4 = x0.try_cast<double>();
+    EXPECT_TRUE(opt_v4.has_value());
+    EXPECT_EQ(opt_v4.value(), 1);
+
+    Any x1 = true;
+    auto opt_v5 = x1.as<bool>();
+    EXPECT_TRUE(opt_v5.has_value());
+    EXPECT_EQ(opt_v5.value(), 1);
+
+    auto opt_v6 = x1.try_cast<int>();
+    EXPECT_TRUE(opt_v6.has_value());
+    EXPECT_EQ(opt_v6.value(), 1);
+
+    auto opt_v7 = x1.try_cast<double>();
+    EXPECT_TRUE(opt_v7.has_value());
+}
+
 TEST(Any, device) {
     Any x = Device(kCUDA, 1);
     auto dev = x.cast<Device>();

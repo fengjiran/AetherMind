@@ -59,7 +59,7 @@ public:
             if (TypeTraits<T>::check(&data_)) {
                 return TypeTraits<T>::CopyFromAnyAfterCheck(&data_);
             }
-            return std::optional<T>(std::nullopt);
+            return std::nullopt;
         }
     }
 
@@ -71,7 +71,7 @@ public:
             if (TypeTraits<T>::check(&data_)) {
                 return TypeTraits<T>::MoveFromAnyAfterCheck(&data_);
             }
-            return std::optional<T>(std::nullopt);
+            return std::nullopt;
         }
     }
 

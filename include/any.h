@@ -26,6 +26,10 @@ public:
         TypeTraits<T>::MoveToAny(std::move(other), &data_);
     }
 
+    ~Any() {
+        reset();
+    }
+
     template<typename T>
     Any& operator=(T other) {
         Any(std::move(other)).swap(*this);
@@ -109,14 +113,33 @@ public:
         return *std::move(opt);
     }
 
-    ~Any() {
-        reset();
+    bool is_bool() const noexcept {
+        return tag() == Tag::Bool;
+    }
+
+    bool is_int() const noexcept {
+        return tag() == Tag::Int;
+    }
+
+    bool is_double() const noexcept {
+        return tag() == Tag::Double;
+    }
+
+    bool is_string() const noexcept {
+        return tag() == Tag::String;
+    }
+
+    bool is_device() const noexcept {
+        return tag() == Tag::Device;
+    }
+
+    bool is_tensor() const noexcept {
+        return tag() == Tag::Tensor;
     }
 
     Tag tag() const noexcept {
         return data_.tag_;
     }
-
 
     void swap(Any& other) noexcept {
         std::swap(data_, other.data_);

@@ -1,8 +1,6 @@
 //
 // Created by 赵丹 on 25-6-17.
 //
-#include "object.h"
-#include "memory.h"
 #include "error.h"
 #include "function_traits.h"
 #include "tensor.h"

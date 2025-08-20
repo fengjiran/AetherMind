@@ -22,17 +22,11 @@ struct DefaultNullType final {
 
 struct DoNotIncRefCountTag final {};
 
-// template<typename Base, typename BaseNullType, typename DerivedNullptr>
-// Base* assign_ptr(Base* ptr) {
-//     if (ptr == DerivedNullptr::singleton()) {
-//         return BaseNullType::singleton();
-//     }
-//     return ptr;
-// }
-
 class Object {
 public:
-    Object() : ref_count_(0), deleter(nullptr) {}
+    using FDeleter = void (*)(Object*);
+
+    Object() : ref_count_(0), deleter_(nullptr) {}
 
     NODISCARD uint32_t use_count() const {
         return __atomic_load_n(&ref_count_, __ATOMIC_RELAXED);
@@ -40,6 +34,10 @@ public:
 
     NODISCARD bool unique() const {
         return use_count() == 1;
+    }
+
+    void SetDeleter(FDeleter deleter) {
+        deleter_ = deleter;
     }
 
 private:
@@ -52,8 +50,8 @@ private:
             // only acquire when we need to call deleter
             // in this case we need to ensure all previous writes are visible
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
-            if (deleter != nullptr) {
-                deleter(this);
+            if (deleter_ != nullptr) {
+                deleter_(this);
             }
         }
     }
@@ -62,7 +60,7 @@ private:
     uint32_t ref_count_;
 
     /*! \brief Deleter to be invoked when reference counter goes to zero. */
-    void (*deleter)(Object* self);
+    FDeleter deleter_;
 
     template<typename T, typename NullType>
     friend class ObjectPtr;
@@ -76,6 +74,7 @@ class ObjectPtr final {
                   "NullType::singleton() must return a element_type* pointer");
 
 public:
+    using element_type = T;
     ObjectPtr() noexcept : ObjectPtr(NullType::singleton(), DoNotIncRefCountTag()) {}
 
     ObjectPtr(std::nullptr_t) noexcept// NOLINT
@@ -135,6 +134,13 @@ public:
         reset();
     }
 
+    void reset() {
+        if (defined()) {
+            ptr_->DecRef();
+        }
+        ptr_ = NullType::singleton();
+    }
+
     void swap(ObjectPtr& other) noexcept {
         std::swap(ptr_, other.ptr_);
     }
@@ -159,18 +165,28 @@ public:
         return defined();
     }
 
+    NODISCARD uint32_t use_count() const noexcept {
+        return defined() ? ptr_->use_count() : 0;
+    }
+
+    NODISCARD bool unique() const noexcept {
+        return use_count() == 1;
+    }
+
+    bool operator==(const ObjectPtr& rhs) const noexcept {
+        return ptr_ == rhs.ptr_;
+    }
+
+    bool operator!=(const ObjectPtr& rhs) const noexcept {
+        return ptr_ != rhs.ptr_;
+    }
+
 private:
     void retain() {
         if (ptr_ != NullType::singleton()) {
             CHECK(ptr_->use_count() > 0)
                     << "ObjectPtr must be copy constructed with an object with ref_count_ > 0";
             ptr_->IncRef();
-        }
-    }
-
-    void reset() {
-        if (defined()) {
-            ptr_->DecRef();
         }
     }
 
@@ -183,8 +199,112 @@ private:
     }
 
     T* ptr_;
+
+    template<typename Derived>
+    friend class ObjectAllocatorBase;
+
+    template<typename T2, typename NullType2>
+    friend class ObjectPtr;
 };
 
+template<typename T, typename NullType>
+void swap(ObjectPtr<T, NullType>& lhs, ObjectPtr<T, NullType>& rhs) noexcept {
+    lhs.swap(rhs);
+}
+
+// To allow ObjectPtr inside std::map or std::set, we need operator<
+template<typename T1, typename NullType1, typename T2, typename NullType2>
+bool operator<(const ObjectPtr<T1, NullType1>& lhs, const ObjectPtr<T2, NullType2>& rhs) noexcept {
+    return lhs.get() < rhs.get();
+}
+
+template<typename T1, typename NullType1, typename T2, typename NullType2>
+bool operator==(const ObjectPtr<T1, NullType1>& lhs, const ObjectPtr<T2, NullType2>& rhs) noexcept {
+    return lhs.get() == rhs.get();
+}
+
+template<typename T, typename NullType>
+bool operator==(const ObjectPtr<T, NullType>& lhs, std::nullptr_t) noexcept {
+    return lhs.get() == nullptr;
+}
+
+template<typename T, typename NullType>
+bool operator==(std::nullptr_t, const ObjectPtr<T, NullType>& rhs) noexcept {
+    return nullptr == rhs.get();
+}
+
+template<typename T1, typename NullType1, typename T2, typename NullType2>
+bool operator!=(const ObjectPtr<T1, NullType1>& lhs, const ObjectPtr<T2, NullType2>& rhs) noexcept {
+    return lhs.get() != rhs.get();
+}
+
+template<typename T, typename NullType>
+bool operator!=(const ObjectPtr<T, NullType>& lhs, std::nullptr_t) noexcept {
+    return lhs.get() != nullptr;
+}
+
+template<typename T, typename NullType>
+bool operator!=(std::nullptr_t, const ObjectPtr<T, NullType>& rhs) noexcept {
+    return nullptr != rhs.get();
+}
+
+// allocate object
+template<typename Derived>
+class ObjectAllocatorBase {
+public:
+    template<typename T,
+             typename NullType = DefaultNullType<T>,
+             typename... Args>
+    ObjectPtr<T, NullType> make_object(Args&&... args) {
+        static_assert(std::is_base_of_v<Object, T>, "make can only be used to create Object");
+        using Handler = Derived::template Handler<T>;
+        T* ptr = Handler::allocate(std::forward<Args>(args)...);
+        ptr->SetDeleter(Handler::deleter);
+        return ObjectPtr<T, NullType>(ptr);
+    }
+};
+
+class ObjectAllocator : public ObjectAllocatorBase<ObjectAllocator> {
+public:
+    template<typename T>
+    struct Handler {
+        struct alignas(T) StorageType {
+            char data[sizeof(T)];
+        };
+
+        template<typename... Args>
+        static T* allocate(Args&&... args) {
+            auto* data = new StorageType();
+            new (data) T(std::forward<Args>(args)...);
+            return reinterpret_cast<T*>(data);
+        }
+
+        static void deleter(Object* ptr) {
+            T* p = static_cast<T*>(ptr);
+            p->T::~T();
+            delete reinterpret_cast<StorageType*>(p);
+            LOG(INFO) << "deleter called" << std::endl;
+        }
+    };
+};
+
+template<typename T,
+         typename NullType = DefaultNullType<T>,
+         typename... Args>
+ObjectPtr<T, NullType> make_object(Args&&... args) {
+    return ObjectAllocator().make_object<T, NullType>(std::forward<Args>(args)...);
+}
+
 }// namespace aethermind
+
+namespace std {
+template<typename T, typename NullType>
+struct hash<aethermind::ObjectPtr<T, NullType>> {
+    size_t operator()(const aethermind::ObjectPtr<T, NullType>& ptr) const {
+        return std::hash<T*>()(ptr.get());
+    }
+};
+
+}// namespace std
 
 #endif//AETHERMIND_OBJECT_H

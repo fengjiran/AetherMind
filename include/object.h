@@ -7,6 +7,8 @@
 
 #include "macros.h"
 
+#include <glog/logging.h>
+#include <memory>
 #include <type_traits>
 
 namespace aethermind {
@@ -19,6 +21,14 @@ struct DefaultNullType final {
 };
 
 struct DoNotIncRefCountTag final {};
+
+// template<typename Base, typename BaseNullType, typename DerivedNullptr>
+// Base* assign_ptr(Base* ptr) {
+//     if (ptr == DerivedNullptr::singleton()) {
+//         return BaseNullType::singleton();
+//     }
+//     return ptr;
+// }
 
 class Object {
 public:
@@ -66,9 +76,112 @@ class ObjectPtr final {
                   "NullType::singleton() must return a element_type* pointer");
 
 public:
-    ObjectPtr(T* ptr, DoNotIncRefCountTag) : ptr_(ptr) {}
+    ObjectPtr() noexcept : ObjectPtr(NullType::singleton(), DoNotIncRefCountTag()) {}
+
+    ObjectPtr(std::nullptr_t) noexcept// NOLINT
+        : ObjectPtr(NullType::singleton(), DoNotIncRefCountTag()) {}
+
+    explicit ObjectPtr(std::unique_ptr<T> other) noexcept : ObjectPtr(other.release()) {}
+
+    ObjectPtr(T* ptr, DoNotIncRefCountTag) noexcept : ptr_(ptr) {}
+
+    ObjectPtr(const ObjectPtr& other) : ptr_(other.ptr_) {
+        retain();
+    }
+
+    ObjectPtr(ObjectPtr&& other) noexcept : ptr_(other.ptr_) {
+        other.ptr_ = NullType::singleton();
+    }
+
+    template<typename Derived, typename DerivedNullType>
+    ObjectPtr(const ObjectPtr<Derived, DerivedNullType>& other)// NOLINT
+        : ptr_(other.ptr_ == DerivedNullType::singleton() ? NullType::singleton() : other.ptr_) {
+        static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
+        retain();
+    }
+
+    template<typename Derived, typename DerivedNullType>
+    ObjectPtr(ObjectPtr<Derived, DerivedNullType>&& other) noexcept// NOLINT
+        : ptr_(other.ptr_ == DerivedNullType::singleton() ? NullType::singleton() : other.ptr_) {
+        static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
+        other.ptr_ = DerivedNullType::singleton();
+    }
+
+    template<typename Derived, typename DerivedNullType>
+    ObjectPtr& operator=(const ObjectPtr<Derived, DerivedNullType>& rhs) & {
+        static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
+        ObjectPtr(rhs).swap(*this);
+        return *this;
+    }
+
+    template<typename Derived, typename DerivedNullType>
+    ObjectPtr& operator=(ObjectPtr<Derived, DerivedNullType>&& rhs) & noexcept {
+        static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
+        ObjectPtr(std::move(rhs)).swap(*this);
+        return *this;
+    }
+
+    ObjectPtr& operator=(const ObjectPtr& rhs) & {
+        ObjectPtr(rhs).swap(*this);
+        return *this;
+    }
+
+    ObjectPtr& operator=(ObjectPtr&& rhs) & noexcept {
+        ObjectPtr(std::move(rhs)).swap(*this);
+        return *this;
+    }
+
+    ~ObjectPtr() noexcept {
+        reset();
+    }
+
+    void swap(ObjectPtr& other) noexcept {
+        std::swap(ptr_, other.ptr_);
+    }
+
+    NODISCARD bool defined() const {
+        return ptr_ != NullType::singleton();
+    }
+
+    T* get() const noexcept {
+        return ptr_;
+    }
+
+    T& operator*() const noexcept {
+        return *ptr_;
+    }
+
+    T* operator->() const noexcept {
+        return ptr_;
+    }
+
+    operator bool() const noexcept {
+        return defined();
+    }
 
 private:
+    void retain() {
+        if (ptr_ != NullType::singleton()) {
+            CHECK(ptr_->use_count() > 0)
+                    << "ObjectPtr must be copy constructed with an object with ref_count_ > 0";
+            ptr_->IncRef();
+        }
+    }
+
+    void reset() {
+        if (defined()) {
+            ptr_->DecRef();
+        }
+    }
+
+    explicit ObjectPtr(T* ptr) : ObjectPtr(ptr, DoNotIncRefCountTag()) {
+        if (ptr_ != NullType::singleton()) {
+            CHECK(ptr_->use_count() == 0)
+                    << "ObjectPtr must be constructed with a NullType or an object with ref_count_ == 0";
+            ptr_->IncRef();
+        }
+    }
+
     T* ptr_;
 };
 

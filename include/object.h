@@ -20,6 +20,14 @@ struct DefaultNullType final {
     }
 };
 
+template<typename T>
+struct GetNullType {
+    using type = DefaultNullType<T>;
+};
+
+template<typename T>
+using null_type_t = GetNullType<T>::type;
+
 struct DoNotIncRefCountTag final {};
 
 class Object {
@@ -66,7 +74,7 @@ private:
     friend class ObjectPtr;
 };
 
-template<typename T, typename NullType = DefaultNullType<T>>
+template<typename T, typename NullType = null_type_t<T>>
 class ObjectPtr final {
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
     static_assert(NullType::singleton() == NullType::singleton(), "NullType must have a constexpr singleton() method");
@@ -75,6 +83,8 @@ class ObjectPtr final {
 
 public:
     using element_type = T;
+    using null_type = NullType;
+
     ObjectPtr() noexcept : ObjectPtr(NullType::singleton(), DoNotIncRefCountTag()) {}
 
     ObjectPtr(std::nullptr_t) noexcept// NOLINT
@@ -207,44 +217,44 @@ private:
     friend class ObjectPtr;
 };
 
-template<typename T, typename NullType>
-void swap(ObjectPtr<T, NullType>& lhs, ObjectPtr<T, NullType>& rhs) noexcept {
+template<typename T>
+void swap(ObjectPtr<T>& lhs, ObjectPtr<T>& rhs) noexcept {
     lhs.swap(rhs);
 }
 
 // To allow ObjectPtr inside std::map or std::set, we need operator<
-template<typename T1, typename NullType1, typename T2, typename NullType2>
-bool operator<(const ObjectPtr<T1, NullType1>& lhs, const ObjectPtr<T2, NullType2>& rhs) noexcept {
+template<typename T1, typename T2>
+bool operator<(const ObjectPtr<T1>& lhs, const ObjectPtr<T2>& rhs) noexcept {
     return lhs.get() < rhs.get();
 }
 
-template<typename T1, typename NullType1, typename T2, typename NullType2>
-bool operator==(const ObjectPtr<T1, NullType1>& lhs, const ObjectPtr<T2, NullType2>& rhs) noexcept {
+template<typename T1, typename T2>
+bool operator==(const ObjectPtr<T1>& lhs, const ObjectPtr<T2>& rhs) noexcept {
     return lhs.get() == rhs.get();
 }
 
-template<typename T, typename NullType>
-bool operator==(const ObjectPtr<T, NullType>& lhs, std::nullptr_t) noexcept {
+template<typename T>
+bool operator==(const ObjectPtr<T>& lhs, std::nullptr_t) noexcept {
     return lhs.get() == nullptr;
 }
 
-template<typename T, typename NullType>
-bool operator==(std::nullptr_t, const ObjectPtr<T, NullType>& rhs) noexcept {
+template<typename T>
+bool operator==(std::nullptr_t, const ObjectPtr<T>& rhs) noexcept {
     return nullptr == rhs.get();
 }
 
-template<typename T1, typename NullType1, typename T2, typename NullType2>
-bool operator!=(const ObjectPtr<T1, NullType1>& lhs, const ObjectPtr<T2, NullType2>& rhs) noexcept {
+template<typename T1, typename T2>
+bool operator!=(const ObjectPtr<T1>& lhs, const ObjectPtr<T2>& rhs) noexcept {
     return lhs.get() != rhs.get();
 }
 
-template<typename T, typename NullType>
-bool operator!=(const ObjectPtr<T, NullType>& lhs, std::nullptr_t) noexcept {
+template<typename T>
+bool operator!=(const ObjectPtr<T>& lhs, std::nullptr_t) noexcept {
     return lhs.get() != nullptr;
 }
 
-template<typename T, typename NullType>
-bool operator!=(std::nullptr_t, const ObjectPtr<T, NullType>& rhs) noexcept {
+template<typename T>
+bool operator!=(std::nullptr_t, const ObjectPtr<T>& rhs) noexcept {
     return nullptr != rhs.get();
 }
 
@@ -253,14 +263,13 @@ template<typename Derived>
 class ObjectAllocatorBase {
 public:
     template<typename T,
-             typename NullType = DefaultNullType<T>,
              typename... Args>
-    ObjectPtr<T, NullType> make_object(Args&&... args) {
+    ObjectPtr<T> make_object(Args&&... args) {
         static_assert(std::is_base_of_v<Object, T>, "make can only be used to create Object");
         using Handler = Derived::template Handler<T>;
         T* ptr = Handler::allocate(std::forward<Args>(args)...);
         ptr->SetDeleter(Handler::deleter);
-        return ObjectPtr<T, NullType>(ptr);
+        return ObjectPtr<T>(ptr);
     }
 };
 
@@ -283,24 +292,23 @@ public:
             T* p = static_cast<T*>(ptr);
             p->T::~T();
             delete reinterpret_cast<StorageType*>(p);
-            LOG(INFO) << "deleter called" << std::endl;
+            // LOG(INFO) << "deleter called" << std::endl;
         }
     };
 };
 
 template<typename T,
-         typename NullType = DefaultNullType<T>,
          typename... Args>
-ObjectPtr<T, NullType> make_object(Args&&... args) {
-    return ObjectAllocator().make_object<T, NullType>(std::forward<Args>(args)...);
+ObjectPtr<T> make_object(Args&&... args) {
+    return ObjectAllocator().make_object<T>(std::forward<Args>(args)...);
 }
 
 }// namespace aethermind
 
 namespace std {
-template<typename T, typename NullType>
-struct hash<aethermind::ObjectPtr<T, NullType>> {
-    size_t operator()(const aethermind::ObjectPtr<T, NullType>& ptr) const {
+template<typename T>
+struct hash<aethermind::ObjectPtr<T>> {
+    size_t operator()(const aethermind::ObjectPtr<T>& ptr) const {
         return std::hash<T*>()(ptr.get());
     }
 };

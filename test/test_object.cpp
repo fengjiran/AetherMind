@@ -180,6 +180,274 @@ TEST(object, move_assign_to_self_then_stay_invalid) {
     EXPECT_TRUE(!obj1.defined());
 }
 
+TEST(object, move_assign_then_new_inst_is_valid) {
+    auto obj1 = make_object<SomeClass>();
+    ObjectPtr<SomeClass> obj2;
+    obj2 = std::move(obj1);
+    EXPECT_TRUE(!obj1.defined());
+    EXPECT_TRUE(obj2.defined());
+}
 
+TEST(object, move_assign_then_point_to_same_obj) {
+    auto obj1 = make_object<SomeClass>();
+    ObjectPtr<SomeClass> obj2;
+    auto p1 = obj1.get();
+    obj2 = std::move(obj1);
+    EXPECT_EQ(obj2.get(), p1);
+}
+
+TEST(object, move_assign_from_invalid_ptr_then_new_obj_is_invalid) {
+    ObjectPtr<SomeClass> obj1;
+    ObjectPtr<SomeClass> obj2 = make_object<SomeClass>();
+    EXPECT_TRUE(obj2.defined());
+    obj2 = std::move(obj1);
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, move_assign_to_base_class_then_point_to_same_obj) {
+    ObjectPtr<SomeChildClass> obj1 = make_object<SomeChildClass>(1);
+    ObjectPtr<SomeBaseClass> obj2 = make_object<SomeBaseClass>(2);
+    SomeBaseClass* obj1ptr = obj1.get();
+    obj2 = std::move(obj1);
+    EXPECT_EQ(obj1ptr, obj2.get());
+    EXPECT_EQ(1, obj2->val_);
+}
+
+TEST(object, move_assign_to_base_class_then_old_inst_invalid) {
+    ObjectPtr<SomeChildClass> obj1 = make_object<SomeChildClass>(1);
+    ObjectPtr<SomeBaseClass> obj2 = make_object<SomeBaseClass>(2);
+    obj2 = std::move(obj1);
+    // NOLINTNEXTLINE(bugprone-use-after-move)
+    EXPECT_FALSE(obj1.defined());
+}
+
+TEST(object, move_assign_to_base_class_then_new_inst_valid) {
+    ObjectPtr<SomeChildClass> obj1 = make_object<SomeChildClass>(5);
+    ObjectPtr<SomeBaseClass> obj2;
+    obj2 = std::move(obj1);
+    EXPECT_TRUE(obj2.defined());
+}
+
+TEST(object, given_invalid_ptr_move_assign_to_base_class_then_point_to_same_obj) {
+    ObjectPtr<SomeChildClass> obj1 = make_object<SomeChildClass>(5);
+    ObjectPtr<SomeBaseClass> obj2;
+    SomeBaseClass* obj1ptr = obj1.get();
+    obj2 = std::move(obj1);
+    EXPECT_EQ(obj1ptr, obj2.get());
+    EXPECT_EQ(5, obj2->val_);
+}
+
+TEST(object, given_invalid_ptr_move_assign_invalid_ptr_to_base_class_then_new_inst_valid) {
+    ObjectPtr<SomeChildClass> obj1;
+    ObjectPtr<SomeBaseClass> obj2 = make_object<SomeBaseClass>(2);
+    EXPECT_TRUE(obj2.defined());
+    obj2 = std::move(obj1);
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, given_nulltype_move_assign_to_diff_nulltype_then_has_new_nulltype) {
+    ObjectPtr<SomeClass, NullType1> obj1;
+    ObjectPtr<SomeClass, NullType2> obj2;
+    obj2 = std::move(obj1);
+    EXPECT_NE(NullType1::singleton(), NullType2::singleton());
+    // NOLINTNEXTLINE(bugprone-use-after-move)
+    EXPECT_EQ(NullType1::singleton(), obj1.get());
+    EXPECT_EQ(NullType2::singleton(), obj2.get());
+    EXPECT_FALSE(obj1.defined());
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, givenValidPtr_whenCopyAssigning_thenPointsToSameObject) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    ObjectPtr<SomeClass> obj2 = make_object<SomeClass>();
+    SomeClass* obj1ptr = obj1.get();
+    obj2 = obj1;
+    EXPECT_EQ(obj1ptr, obj2.get());
+}
+
+TEST(object, givenValidPtr_whenCopyAssigning_thenOldInstanceValid) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    ObjectPtr<SomeClass> obj2 = make_object<SomeClass>();
+    obj2 = obj1;
+    EXPECT_TRUE(obj1.defined());
+}
+
+TEST(object, givenValidPtr_whenCopyAssigningToSelf_thenPointsToSameObject) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    SomeClass* obj1ptr = obj1.get();
+    obj1 = obj1;
+    EXPECT_EQ(obj1ptr, obj1.get());
+}
+
+TEST(object, givenValidPtr_whenCopyAssigningToSelf_thenStaysValid) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    obj1 = obj1;
+    EXPECT_TRUE(obj1.defined());
+}
+
+TEST(object, givenInvalidPtr_whenCopyAssigningToSelf_thenStaysInvalid) {
+    ObjectPtr<SomeClass> obj1;
+    // NOLINTNEXTLINE(clang-diagnostic-self-assign-overloaded)
+    obj1 = obj1;
+    EXPECT_FALSE(obj1.defined());
+}
+
+TEST(object, givenInvalidPtr_whenCopyAssigning_thenNewInstanceIsValid) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    ObjectPtr<SomeClass> obj2;
+    obj2 = obj1;
+    EXPECT_TRUE(obj2.defined());
+}
+
+TEST(object, givenValidPtr_whenCopyAssigningToBaseClass_thenPointsToSameObject) {
+    ObjectPtr<SomeChildClass> child = make_object<SomeChildClass>(3);
+    ObjectPtr<SomeBaseClass> base = make_object<SomeBaseClass>(10);
+    base = child;
+    EXPECT_EQ(3, base->val_);
+}
+
+TEST(object, givenValidPtr_whenCopyAssigningToBaseClass_thenOldInstanceInvalid) {
+    ObjectPtr<SomeChildClass> obj1 = make_object<SomeChildClass>(3);
+    ObjectPtr<SomeBaseClass> obj2 = make_object<SomeBaseClass>(10);
+    obj2 = obj1;
+    EXPECT_TRUE(obj1.defined());
+}
+
+TEST(object, givenInvalidPtr_whenCopyAssigningToBaseClass_thenNewInstanceIsValid) {
+    ObjectPtr<SomeChildClass> obj1 = make_object<SomeChildClass>(5);
+    ObjectPtr<SomeBaseClass> obj2;
+    obj2 = obj1;
+    EXPECT_TRUE(obj2.defined());
+}
+
+TEST(object, givenInvalidPtr_whenCopyAssigningToBaseClass_thenPointsToSameObject) {
+    ObjectPtr<SomeChildClass> obj1 = make_object<SomeChildClass>(5);
+    ObjectPtr<SomeBaseClass> obj2;
+    SomeBaseClass* obj1ptr = obj1.get();
+    obj2 = obj1;
+    EXPECT_EQ(obj1ptr, obj2.get());
+    EXPECT_EQ(5, obj2->val_);
+}
+
+TEST(object, givenPtr_whenCopyAssigningInvalidPtrToBaseClass_thenNewInstanceIsInvalid) {
+    ObjectPtr<SomeChildClass> obj1;
+    ObjectPtr<SomeBaseClass> obj2 = make_object<SomeBaseClass>(2);
+    EXPECT_TRUE(obj2.defined());
+    obj2 = obj1;
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, givenNullPtr_whenCopyAssigningToDifferentNullptr_thenHasNewNullptr) {
+    ObjectPtr<SomeClass, NullType1> obj1;
+    ObjectPtr<SomeClass, NullType2> obj2;
+    obj2 = obj1;
+    EXPECT_NE(NullType1::singleton(), NullType2::singleton());
+    EXPECT_EQ(NullType1::singleton(), obj1.get());
+    EXPECT_EQ(NullType2::singleton(), obj2.get());
+    EXPECT_FALSE(obj1.defined());
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, givenPtr_whenMoveConstructing_thenPointsToSameObject) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    SomeClass* obj1ptr = obj1.get();
+    ObjectPtr<SomeClass> obj2 = std::move(obj1);
+    EXPECT_EQ(obj1ptr, obj2.get());
+}
+
+TEST(object, givenPtr_whenMoveConstructing_thenOldInstanceInvalid) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    ObjectPtr<SomeClass> obj2 = std::move(obj1);
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.Move,bugprone-use-after-move)
+    EXPECT_FALSE(obj1.defined());
+}
+
+TEST(object, givenPtr_whenMoveConstructing_thenNewInstanceValid) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    ObjectPtr<SomeClass> obj2 = std::move(obj1);
+    EXPECT_TRUE(obj2.defined());
+}
+
+TEST(object, givenPtr_whenMoveConstructingFromInvalidPtr_thenNewInstanceInvalid) {
+    ObjectPtr<SomeClass> obj1;
+    ObjectPtr<SomeClass> obj2 = std::move(obj1);
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, givenPtr_whenMoveConstructingToBaseClass_thenPointsToSameObject) {
+    ObjectPtr<SomeChildClass> child = make_object<SomeChildClass>(3);
+    SomeBaseClass* objptr = child.get();
+    ObjectPtr<SomeBaseClass> base = std::move(child);
+    EXPECT_EQ(3, base->val_);
+    EXPECT_EQ(objptr, base.get());
+}
+
+TEST(object, givenPtr_whenMoveConstructingToBaseClass_thenOldInstanceInvalid) {
+    ObjectPtr<SomeChildClass> child = make_object<SomeChildClass>(3);
+    ObjectPtr<SomeBaseClass> base = std::move(child);
+    // NOLINTNEXTLINE(bugprone-use-after-move)
+    EXPECT_FALSE(child.defined());
+}
+
+TEST(object, givenPtr_whenMoveConstructingToBaseClass_thenNewInstanceValid) {
+    ObjectPtr<SomeChildClass> obj1 = make_object<SomeChildClass>(2);
+    ObjectPtr<SomeBaseClass> obj2 = std::move(obj1);
+    EXPECT_TRUE(obj2.defined());
+}
+
+TEST(object, givenPtr_whenMoveConstructingToBaseClassFromInvalidPtr_thenNewInstanceInvalid) {
+    ObjectPtr<SomeChildClass> obj1;
+    ObjectPtr<SomeBaseClass> obj2 = std::move(obj1);
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, givenNullPtr_whenMoveConstructingToDifferentNullptr_thenHasNewNullptr) {
+    ObjectPtr<SomeClass, NullType1> obj1;
+    ObjectPtr<SomeClass, NullType2> obj2 = std::move(obj1);
+    EXPECT_NE(NullType1::singleton(), NullType2::singleton());
+    // NOLINTNEXTLINE(bugprone-use-after-move)
+    EXPECT_EQ(NullType1::singleton(), obj1.get());
+    EXPECT_EQ(NullType2::singleton(), obj2.get());
+    EXPECT_FALSE(obj1.defined());
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, givenPtr_whenCopyConstructing_thenPointsToSameObject) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    SomeClass* obj1ptr = obj1.get();
+    // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
+    ObjectPtr<SomeClass> obj2 = obj1;
+    EXPECT_EQ(obj1ptr, obj2.get());
+    EXPECT_TRUE(obj1.defined());
+}
+
+TEST(object, givenPtr_whenCopyConstructing_thenOldInstanceValid) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
+    ObjectPtr<SomeClass> obj2 = obj1;
+    EXPECT_TRUE(obj1.defined());
+}
+
+TEST(object, givenPtr_whenCopyConstructing_thenNewInstanceValid) {
+    ObjectPtr<SomeClass> obj1 = make_object<SomeClass>();
+    // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
+    ObjectPtr<SomeClass> obj2 = obj1;
+    EXPECT_TRUE(obj2.defined());
+}
+
+TEST(object, givenPtr_whenCopyConstructingFromInvalidPtr_thenNewInstanceInvalid) {
+    ObjectPtr<SomeClass> obj1;
+    // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
+    ObjectPtr<SomeClass> obj2 = obj1;
+    EXPECT_FALSE(obj2.defined());
+}
+
+TEST(object, givenPtr_whenCopyConstructingToBaseClass_thenPointsToSameObject) {
+    ObjectPtr<SomeChildClass> child = make_object<SomeChildClass>(3);
+    SomeBaseClass* objptr = child.get();
+    ObjectPtr<SomeBaseClass> base = child;
+    EXPECT_EQ(3, base->val_);
+    EXPECT_EQ(objptr, base.get());
+}
 
 }// namespace

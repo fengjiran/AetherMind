@@ -26,7 +26,7 @@ struct GetNullType {
 };
 
 template<typename T>
-using null_type_t = GetNullType<T>::type;
+using null_type = GetNullType<T>::type;
 
 struct DoNotIncRefCountTag final {};
 
@@ -74,7 +74,7 @@ private:
     friend class ObjectPtr;
 };
 
-template<typename T, typename NullType = null_type_t<T>>
+template<typename T, typename NullType = null_type<T>>
 class ObjectPtr final {
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
     static_assert(NullType::singleton() == NullType::singleton(), "NullType must have a constexpr singleton() method");

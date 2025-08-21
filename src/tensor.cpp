@@ -38,27 +38,26 @@ void check_type(const Tensor& t, DLDataTypeCode type_code, int8_t type_bits, int
 SCALAR_TYPE_TO_NAME_AND_CPP_TYPE(DEFINE_DATA_PTR);
 #undef DEFINE_DATA_PTR
 
-Tensor::Tensor() : impl_(new UndefinedTensorImpl) {}
-
 Tensor::Tensor(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device)
-    : impl_(std::make_shared<TensorImpl>(shape, storage_offset, dtype, device)) {}
+    : impl_(make_object<TensorImpl>(shape, storage_offset, dtype, device)) {}
 
-Tensor::Tensor(std::shared_ptr<TensorImpl> impl) : impl_(std::move(impl)) {
+Tensor::Tensor(ObjectPtr<TensorImpl> impl) : impl_(std::move(impl)) {
     if (impl_ == nullptr) {
         AETHERMIND_THROW(runtime_error) << "TensorImpl with nullptr is not supported";
     }
 }
 
 bool Tensor::defined() const {
-    return impl_->storage_initialized();
+    // return impl_->storage_initialized();
+    return impl_;
 }
 
-int32_t Tensor::use_count() const {
-    return dynamic_cast<UndefinedTensorImpl*>(impl_.get()) == nullptr ? static_cast<int32_t>(impl_.use_count()) : 0;
+uint32_t Tensor::use_count() const {
+    return impl_.use_count();
 }
 
 bool Tensor::unique() const {
-    return use_count() == 1;
+    return impl_.unique();
 }
 
 void* Tensor::data_ptr() const {
@@ -112,7 +111,6 @@ size_t Tensor::nbytes() const {
 bool Tensor::has_storage() const {
     return impl_->has_storage();
 }
-
 
 int64_t Tensor::storage_offset() const {
     return impl_->storage_offset();

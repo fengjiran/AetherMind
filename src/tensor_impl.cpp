@@ -7,6 +7,8 @@
 
 namespace aethermind {
 
+TensorImplNullType TensorImplNullType::singleton_;
+
 TensorImpl::TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device)
     : storage_offset_(storage_offset), numel_(0), dtype_(dtype), device_opt_(device) {
     CHECK(dtype_initialized()) << "dtype should be initialized.";
@@ -98,11 +100,11 @@ Device TensorImpl::device() const {
 }
 
 bool TensorImpl::is_cpu() const {
-    return device_opt_.has_value() && device_opt_->type() == DeviceType::kCPU;
+    return device_opt_.has_value() && device_opt_->is_cpu();
 }
 
 bool TensorImpl::is_cuda() const {
-    return device_opt_.has_value() && device_opt_->type() == DeviceType::kCUDA;
+    return device_opt_.has_value() && device_opt_->is_cuda();
 }
 
 int64_t TensorImpl::get_real_dim(int64_t dim) const {

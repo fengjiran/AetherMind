@@ -11,14 +11,14 @@ namespace aethermind {
 
 class Tensor {
 public:
-    Tensor();
+    Tensor() = default;
 
     explicit Tensor(const std::vector<int64_t>& shape,
                     int64_t storage_offset = 0,
                     DataType dtype = DataType::Float32(),
                     Device device = Device(kCPU));
 
-    explicit Tensor(std::shared_ptr<TensorImpl> impl);
+    explicit Tensor(ObjectPtr<TensorImpl> impl);
 
     Tensor(const Tensor&) = default;
     Tensor(Tensor&&) = default;
@@ -31,7 +31,7 @@ public:
 
     NODISCARD bool defined() const;
 
-    NODISCARD int32_t use_count() const;
+    NODISCARD uint32_t use_count() const;
 
     NODISCARD bool unique() const;
 
@@ -93,7 +93,7 @@ public:
     static Tensor randint(int64_t low, int64_t high, const std::vector<int64_t>& shape);
 
 private:
-    std::shared_ptr<TensorImpl> impl_;
+    ObjectPtr<TensorImpl> impl_;
 };
 
 std::ostream& operator<<(std::ostream& os, const Tensor& t);

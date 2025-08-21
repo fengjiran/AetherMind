@@ -8,6 +8,7 @@
 #include "cpu_allocator.h"
 #include "data_type.h"
 #include "device.h"
+#include "object.h"
 #include "storage.h"
 #include "tensor_utils.h"
 
@@ -183,7 +184,7 @@ std::string toString(const Scalar& s);
  *
  *
  **/
-class TensorImpl {
+class TensorImpl : public Object {
 public:
     TensorImpl() = delete;
     TensorImpl(const TensorImpl&) = delete;
@@ -385,11 +386,23 @@ private:
     // bool is_channels_last_ : 1;
 };
 
-class UndefinedTensorImpl final : public TensorImpl {
+class TensorImplNullType final : public TensorImpl {
+    static TensorImplNullType singleton_;
+    TensorImplNullType() : TensorImpl(DataType(), std::nullopt) {}
+
 public:
-    UndefinedTensorImpl(): TensorImpl(DataType(), std::nullopt) {}
+    static constexpr TensorImpl* singleton() noexcept {
+        return &singleton_;
+    }
 };
 
-}// namespace atp
+template<>
+struct GetNullType<TensorImpl> {
+    using type = TensorImplNullType;
+};
+
+static_assert(std::is_same_v<null_type<TensorImpl>, TensorImplNullType>);
+
+}// namespace aethermind
 
 #endif//AETHERMIND_TENSOR_IMPL_H

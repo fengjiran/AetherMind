@@ -16,7 +16,7 @@ public:
 
     Any(const Any&) = default;
 
-    Any(Any&& other) noexcept : data_(other.data_) {
+    Any(Any&& other) noexcept : data_(std::move(other.data_)) {
         other.reset();
     }
 
@@ -113,31 +113,35 @@ public:
         return *std::move(opt);
     }
 
-    bool is_bool() const noexcept {
+    NODISCARD bool is_bool() const noexcept {
         return tag() == Tag::Bool;
     }
 
-    bool is_int() const noexcept {
+    NODISCARD bool is_int() const noexcept {
         return tag() == Tag::Int;
     }
 
-    bool is_double() const noexcept {
+    NODISCARD bool is_double() const noexcept {
         return tag() == Tag::Double;
     }
 
-    bool is_string() const noexcept {
+    NODISCARD bool is_string() const noexcept {
         return tag() == Tag::String;
     }
 
-    bool is_device() const noexcept {
+    NODISCARD bool is_device() const noexcept {
         return tag() == Tag::Device;
     }
 
-    bool is_tensor() const noexcept {
+    NODISCARD bool is_tensor() const noexcept {
         return tag() == Tag::Tensor;
     }
 
-    Tag tag() const noexcept {
+    NODISCARD bool is_object_ptr() const {
+        return IsObjectPtr(tag());
+    }
+
+    NODISCARD Tag tag() const noexcept {
         return data_.tag_;
     }
 

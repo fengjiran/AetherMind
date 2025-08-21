@@ -6,6 +6,7 @@
 #define AETHERMIND_TYPE_TRAITS_H
 
 #include "device.h"
+#include "object.h"
 #include "tensor.h"
 
 #include <string>
@@ -51,6 +52,63 @@ enum class Tag : uint32_t {
 #undef DEFINE_TAG
 };
 
+constexpr bool IsObjectPtr(Tag tag) {
+    switch (tag) {
+        case Tag::None:
+        case Tag::OpaquePtr:
+        case Tag::Tensor:
+            return false;
+
+        case Tag::Storage:
+        case Tag::Generator:
+            return true;
+
+        case Tag::Double:
+            return false;
+
+        case Tag::ComplexDouble:
+            return true;
+
+        case Tag::Int:
+            return false;
+
+        case Tag::SymInt:
+        case Tag::SymFloat:
+        case Tag::SymBool:
+            return true;
+
+        case Tag::Bool:
+            return false;
+
+        case Tag::Tuple:
+        case Tag::String:
+        case Tag::Blob:
+        case Tag::GenericList:
+        case Tag::GenericDict:
+        case Tag::Future:
+        case Tag::Await:
+            return true;
+
+        case Tag::Device:
+            return false;
+
+        case Tag::Stream:
+        case Tag::Object:
+        case Tag::PyObject:
+            return true;
+
+        case Tag::Uninitialized:
+            return false;
+
+        case Tag::Capsule:
+        case Tag::RRef:
+        case Tag::Quantizer:
+        case Tag::Enum:
+            return true;
+    }
+    return false;
+}
+
 std::string TagToString(Tag t);
 
 struct AetherMindAny {
@@ -58,6 +116,7 @@ struct AetherMindAny {
                                  double,
                                  bool,
                                  void*,
+                                 Object*,
                                  std::string,
                                  Device,
                                  Tensor>;

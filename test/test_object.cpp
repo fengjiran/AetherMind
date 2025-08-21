@@ -449,5 +449,5 @@ TEST(object, givenPtr_whenCopyConstructingToBaseClass_thenPointsToSameObject) {
     EXPECT_EQ(3, base->val_);
     EXPECT_EQ(objptr, base.get());
 }
-
+//546
 }// namespace

@@ -148,6 +148,14 @@ TEST(Any, tensor) {
     EXPECT_TRUE(a.tag_ == Tag::Tensor);
     auto t2 = TypeTraits<Tensor>::MoveFromAnyAfterCheck(&a);
     EXPECT_EQ(t2.use_count(), 1);
+
+    {
+        Any x = t2;
+        EXPECT_TRUE(x.is_tensor());
+        EXPECT_EQ(t2.use_count(), 2);
+    }
+
+    EXPECT_EQ(t2.use_count(), 1);
 }
 
 }// namespace

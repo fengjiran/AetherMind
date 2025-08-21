@@ -484,6 +484,44 @@ struct TypeTraits<Tensor> {
     }
 };
 
+template<typename T>
+struct TypeTraits<ObjectPtr<T>> {
+
+};
+
+class TestObj: public Object {
+    public:
+        TestObj() = default;
+        virtual ~TestObj() = default;
+};
+
+template<>
+struct TypeTraits<ObjectPtr<TestObj>> {
+    static void MoveToAny(ObjectPtr<TestObj> src, AetherMindAny* dst) {
+        dst->tag_ = Tag::Object;
+        dst->payload_ = static_cast<Object*>(src.release());
+    }
+
+    static std::optional<ObjectPtr<TestObj>> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            Object* ptr = std::get<Object*>(src->payload_);
+            if (ptr == ObjectPtr<TestObj>::null_type::singleton()) {
+                return ObjectPtr<TestObj>();
+            }
+            return ObjectPtr<TestObj>(static_cast<TestObj*>(ptr));
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == Tag::Object;
+    }
+
+    static std::string TypeStr() {
+        return "object";
+    }
+};
+
 }// namespace aethermind
 
 #endif//AETHERMIND_TYPE_TRAITS_H

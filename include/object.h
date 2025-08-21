@@ -183,6 +183,24 @@ public:
         return use_count() == 1;
     }
 
+    /**
+   * Returns an owning (!) pointer to the underlying object and makes the
+   * ObjectPtr instance invalid. That means the refcount is not decreased.
+   * Must put the returned pointer back into an ObjectPtr using
+   * ObjectPtr::reclaim(ptr) to properly destruct it.
+   *
+   * @return The underlying pointer.
+   */
+    T* release() noexcept {
+        T* tmp = ptr_;
+        ptr_ = NullType::singleton();
+        return tmp;
+    }
+
+    static ObjectPtr reclaim(T* ptr) {
+        return ObjectPtr(ptr, DoNotIncRefCountTag());
+    }
+
     bool operator==(const ObjectPtr& rhs) const noexcept {
         return ptr_ == rhs.ptr_;
     }
@@ -215,6 +233,9 @@ private:
 
     template<typename T2, typename NullType2>
     friend class ObjectPtr;
+
+    template<typename T3, typename T4>
+    friend struct TypeTraits;
 };
 
 template<typename T>

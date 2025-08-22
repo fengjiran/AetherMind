@@ -5,4 +5,8 @@
 #ifndef AETHERMIND_STRING_H
 #define AETHERMIND_STRING_H
 
+namespace aethermind {
+
+}
+
 #endif//AETHERMIND_STRING_H

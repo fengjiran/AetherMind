@@ -283,12 +283,20 @@ bool operator!=(std::nullptr_t, const ObjectPtr<T>& rhs) noexcept {
 template<typename Derived>
 class ObjectAllocatorBase {
 public:
-    template<typename T,
-             typename... Args>
+    template<typename T, typename... Args>
     ObjectPtr<T> make_object(Args&&... args) {
         static_assert(std::is_base_of_v<Object, T>, "make can only be used to create Object");
         using Handler = Derived::template Handler<T>;
         T* ptr = Handler::allocate(std::forward<Args>(args)...);
+        ptr->SetDeleter(Handler::deleter);
+        return ObjectPtr<T>(ptr);
+    }
+
+    template<typename T, typename ElemType, typename... Args>
+    ObjectPtr<T> make_array(size_t num_elems, Args&&... args) {
+        static_assert(std::is_base_of_v<Object, T>, "make can only be used to create Object");
+        using Handler = Derived::template ArrayHandler<T, ElemType>;
+        T* ptr = Handler::allocate(num_elems, std::forward<Args>(args)...);
         ptr->SetDeleter(Handler::deleter);
         return ObjectPtr<T>(ptr);
     }
@@ -327,15 +335,29 @@ public:
         template<typename... Args>
         static ObjType* allocate(size_t num_elems, Args&&... args) {
             size_t storage_size = sizeof(StorageType);
-            //
+            size_t required_size = sizeof(ObjType) + num_elems * sizeof(ElemType);
+            size_t num_storage_slots = (required_size + storage_size - 1) / storage_size;
+            auto* data = new StorageType[num_storage_slots];
+            new (data) ObjType(std::forward<Args>(args)...);
+            return reinterpret_cast<ObjType*>(data);
+        }
+
+        static void deleter(Object* ptr) {
+            auto* p = static_cast<ObjType*>(ptr);
+            p->ObjType::~ObjType();
+            delete[] reinterpret_cast<StorageType*>(p);
         }
     };
 };
 
-template<typename T,
-         typename... Args>
+template<typename T, typename... Args>
 ObjectPtr<T> make_object(Args&&... args) {
     return ObjectAllocator().make_object<T>(std::forward<Args>(args)...);
+}
+
+template<typename T, typename ElemType, typename... Args>
+ObjectPtr<T> make_array(size_t num_elems, Args&&... args) {
+    return ObjectAllocator().make_array<T, ElemType>(num_elems, std::forward<Args>(args)...);
 }
 
 }// namespace aethermind

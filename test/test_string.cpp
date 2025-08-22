@@ -9,13 +9,11 @@ using namespace aethermind;
 
 namespace {
 
-struct t1 {
-    int a;
-    char b;
-};
-
-using storage_type = std::aligned_storage_t<sizeof(t1), alignof(t1)>;
-
-static_assert(sizeof(storage_type) == 8);
-
+TEST(String, empty) {
+    std::string s = "";
+    String s2 = s;
+    EXPECT_TRUE(s2.defined());
+    EXPECT_TRUE(s2.empty());
 }
+
+}// namespace

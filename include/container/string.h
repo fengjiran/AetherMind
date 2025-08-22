@@ -11,14 +11,33 @@ namespace aethermind {
 
 class StringImpl : public Object {
 public:
-    StringImpl() : data_(nullptr), size_(0) {}
+    StringImpl();
 
-    StringImpl(const char* data, size_t size);
+    NODISCARD size_t size() const;
 
 private:
     const char* data_;
     size_t size_;
+
+    friend class String;
 };
+
+class StringImplNullType final : public StringImpl {
+    static StringImplNullType singleton_;
+    StringImplNullType() = default;
+
+public:
+    static constexpr StringImpl* singleton() noexcept {
+        return &singleton_;
+    }
+};
+
+template<>
+struct GetNullType<StringImpl> {
+    using type = StringImplNullType;
+};
+
+static_assert(std::is_same_v<null_type<StringImpl>, StringImplNullType>);
 
 class String {
 public:
@@ -33,6 +52,21 @@ public:
      */
     String(const char* other, size_t size);
 
+    /*!
+     * \brief constructor from raw string
+     *
+     * \param other a char array.
+     * \note This constructor is marked as explicit to avoid implicit conversion
+     *       of nullptr value here to string, which then was used in comparison
+     */
+    explicit String(const char* other);
+
+    /*!
+     * \brief Construct a new string object
+     * \param other The std::string object to be copied
+     */
+    String(const std::string& other);
+
     String(const String&) = default;
     String(String&&) noexcept = default;
     String& operator=(const String&) & = default;
@@ -44,12 +78,14 @@ public:
         std::swap(impl_, other.impl_);
     }
 
+    NODISCARD bool defined() const noexcept;
 
+    NODISCARD size_t size() const noexcept;
+
+    NODISCARD bool empty() const noexcept;
 
 private:
     ObjectPtr<StringImpl> impl_;
-
-
 };
 
 }// namespace aethermind

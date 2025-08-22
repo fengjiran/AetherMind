@@ -293,7 +293,7 @@ public:
     }
 
     template<typename T, typename ElemType, typename... Args>
-    ObjectPtr<T> make_array(size_t num_elems, Args&&... args) {
+    ObjectPtr<T> make_array_object(size_t num_elems, Args&&... args) {
         static_assert(std::is_base_of_v<Object, T>, "make can only be used to create Object");
         using Handler = Derived::template ArrayHandler<T, ElemType>;
         T* ptr = Handler::allocate(num_elems, std::forward<Args>(args)...);
@@ -356,8 +356,8 @@ ObjectPtr<T> make_object(Args&&... args) {
 }
 
 template<typename T, typename ElemType, typename... Args>
-ObjectPtr<T> make_array(size_t num_elems, Args&&... args) {
-    return ObjectAllocator().make_array<T, ElemType>(num_elems, std::forward<Args>(args)...);
+ObjectPtr<T> make_array_object(size_t num_elems, Args&&... args) {
+    return ObjectAllocator().make_array_object<T, ElemType>(num_elems, std::forward<Args>(args)...);
 }
 
 }// namespace aethermind

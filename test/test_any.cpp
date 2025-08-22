@@ -2,6 +2,7 @@
 // Created by 赵丹 on 2025/8/15.
 //
 #include "any.h"
+#include "testing_object.h"
 #include <gtest/gtest.h>
 
 using namespace aethermind;
@@ -51,7 +52,7 @@ TEST(Any, null) {
 
 TEST(Any, int) {
     Any x0;
-    EXPECT_TRUE(x0.tag() == Tag::None);
+    EXPECT_TRUE(x0.tag() == AnyTag::None);
 
     auto opt0 = x0.as<int64_t>();
     EXPECT_TRUE(!opt0.has_value());
@@ -67,7 +68,7 @@ TEST(Any, int) {
             Error);
 
     Any x1 = 1;
-    EXPECT_TRUE(x1.tag() == Tag::Int);
+    EXPECT_TRUE(x1.tag() == AnyTag::Int);
     EXPECT_EQ(x1.cast<int>(), 1);
 
     int64_t v1 = 10;
@@ -91,12 +92,12 @@ TEST(Any, float) {
 
 TEST(Any, string) {
     Any x0 = "hello";
-    EXPECT_TRUE(x0.tag() == Tag::String);
+    EXPECT_TRUE(x0.tag() == AnyTag::String);
     EXPECT_TRUE(x0.as<std::string>().has_value());
     EXPECT_EQ(x0.cast<std::string>(), "hello");
 
     x0 = std::string("world");
-    EXPECT_TRUE(x0.tag() == Tag::String);
+    EXPECT_TRUE(x0.tag() == AnyTag::String);
     EXPECT_EQ(x0.cast<std::string>(), "world");
 }
 
@@ -136,7 +137,7 @@ TEST(Any, cast_vs_as) {
 TEST(Any, device) {
     Any x = Device(kCUDA, 1);
     auto dev = x.cast<Device>();
-    EXPECT_TRUE(x.tag() == Tag::Device);
+    EXPECT_TRUE(x.tag() == AnyTag::Device);
     EXPECT_EQ(dev.type(), kCUDA);
     EXPECT_EQ(dev.index(), 1);
 }
@@ -145,7 +146,7 @@ TEST(Any, tensor) {
     Tensor t({3, 10});
     AetherMindAny a;
     TypeTraits<Tensor>::MoveToAny(std::move(t), &a);
-    EXPECT_TRUE(a.tag_ == Tag::Tensor);
+    EXPECT_TRUE(a.tag_ == AnyTag::Tensor);
     auto t2 = TypeTraits<Tensor>::MoveFromAnyAfterCheck(&a);
     EXPECT_EQ(t2.use_count(), 1);
 

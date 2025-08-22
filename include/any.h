@@ -93,7 +93,7 @@ public:
         auto opt = TypeTraits<T>::TryCastFromAny(&data_);
         if (!opt.has_value()) {
             AETHERMIND_THROW(TypeError) << "Cannot convert from type `"
-                                        << TagToString(data_.tag_) << "` to `"
+                                        << AnyTagToString(data_.tag_) << "` to `"
                                         << TypeTraits<T>::TypeStr() << "`.";
         }
         return opt.value();
@@ -107,41 +107,41 @@ public:
         auto opt = TypeTraits<T>::TryCastFromAny(&data_);
         if (!opt.has_value()) {
             AETHERMIND_THROW(TypeError) << "Cannot convert from type `"
-                                        << TagToString(data_.tag_) << "` to `"
+                                        << AnyTagToString(data_.tag_) << "` to `"
                                         << TypeTraits<T>::TypeStr() << "`.";
         }
         return *std::move(opt);
     }
 
     NODISCARD bool is_bool() const noexcept {
-        return tag() == Tag::Bool;
+        return tag() == AnyTag::Bool;
     }
 
     NODISCARD bool is_int() const noexcept {
-        return tag() == Tag::Int;
+        return tag() == AnyTag::Int;
     }
 
     NODISCARD bool is_double() const noexcept {
-        return tag() == Tag::Double;
+        return tag() == AnyTag::Double;
     }
 
     NODISCARD bool is_string() const noexcept {
-        return tag() == Tag::String;
+        return tag() == AnyTag::String;
     }
 
     NODISCARD bool is_device() const noexcept {
-        return tag() == Tag::Device;
+        return tag() == AnyTag::Device;
     }
 
     NODISCARD bool is_tensor() const noexcept {
-        return tag() == Tag::Tensor;
+        return tag() == AnyTag::Tensor;
     }
 
     NODISCARD bool is_object_ptr() const {
         return IsObjectPtr(tag());
     }
 
-    NODISCARD Tag tag() const noexcept {
+    NODISCARD AnyTag tag() const noexcept {
         return data_.tag_;
     }
 
@@ -151,22 +151,22 @@ public:
 
     void reset() {
         data_.payload_ = 0;
-        data_.tag_ = Tag::None;
+        data_.tag_ = AnyTag::None;
     }
 
     bool operator==(std::nullptr_t) const noexcept {
-        return data_.tag_ == Tag::None;
+        return data_.tag_ == AnyTag::None;
     }
 
     bool operator!=(std::nullptr_t) const noexcept {
-        return data_.tag_ != Tag::None;
+        return data_.tag_ != AnyTag::None;
     }
 
 private:
     AetherMindAny data_;
 
-#define COUNT_TAG(x) 1 +
-    static constexpr auto kNumTags = AETHERMIND_FORALL_TAGS(COUNT_TAG) 0;
+#define COUNT_TAG(x, _) 1 +
+    static constexpr auto kNumTags = AETHERMIND_FORALL_ANY_TAGS(COUNT_TAG) 0;
 #undef COUNT_TAG
 };
 

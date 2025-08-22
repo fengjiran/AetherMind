@@ -316,6 +316,20 @@ public:
             // LOG(INFO) << "deleter called" << std::endl;
         }
     };
+
+    template<typename ObjType, typename ElemType>
+    struct ArrayHandler {
+        using StorageType = std::aligned_storage_t<sizeof(ObjType), alignof(ObjType)>;
+        // for now only support elements that aligns with array header.
+        static_assert(alignof(ObjType) % alignof(ElemType) == 0 && sizeof(ObjType) % alignof(ElemType) == 0,
+                      "element alignment constraint");
+
+        template<typename... Args>
+        static ObjType* allocate(size_t num_elems, Args&&... args) {
+            size_t storage_size = sizeof(StorageType);
+            //
+        }
+    };
 };
 
 template<typename T,

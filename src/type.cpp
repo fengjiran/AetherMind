@@ -19,17 +19,4 @@ const char* TypeKindToString(TypeKind kind) {
     return "";
 }
 
-std::string TagToString(Tag t) {
-#define CASE(T)  \
-    case Tag::T: \
-        return #T;
-
-    switch (t) {
-        AETHERMIND_FORALL_TAGS(CASE)
-    }
-#undef CASE
-    return "";
-}
-
-
 }// namespace aethermind

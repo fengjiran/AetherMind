@@ -124,4 +124,108 @@ TEST(String, null_byte_handling) {
     EXPECT_GT(v4.compare(v5), 0);
 }
 
+TEST(String, compare_same_memory_region_different_size) {
+    std::string source = "a string";
+    String str_source{source};
+    char* memory = const_cast<char*>(str_source.data());
+    EXPECT_EQ(str_source.compare(memory), 0);
+    // This changes the string size
+    memory[2] = '\0';
+    // memory is logically shorter now
+    EXPECT_GT(str_source.compare(memory), 0);
+}
+
+TEST(String, compare) {
+    using namespace std;
+    constexpr auto mismatch1_cstr = "a string but longer";
+    string source = "a string";
+    string mismatch1 = mismatch1_cstr;
+    string mismatch2 = "a strin";
+    string mismatch3 = "a b";
+    string mismatch4 = "a t";
+    String str_source{source};
+    String str_mismatch1{mismatch1_cstr};
+    String str_mismatch2{mismatch2};
+    String str_mismatch3{mismatch3};
+    String str_mismatch4{mismatch4};
+
+    // compare with string
+    EXPECT_EQ(str_source.compare(source), 0);
+    EXPECT_TRUE(str_source == source);
+    EXPECT_TRUE(source == str_source);
+    EXPECT_TRUE(str_source <= source);
+    EXPECT_TRUE(source <= str_source);
+    EXPECT_TRUE(str_source >= source);
+    EXPECT_TRUE(source >= str_source);
+    EXPECT_LT(str_source.compare(mismatch1), 0);
+    EXPECT_TRUE(str_source < mismatch1);
+    EXPECT_TRUE(mismatch1 != str_source);
+    EXPECT_GT(str_source.compare(mismatch2), 0);
+    EXPECT_TRUE(str_source > mismatch2);
+    EXPECT_TRUE(mismatch2 < str_source);
+    EXPECT_GT(str_source.compare(mismatch3), 0);
+    EXPECT_TRUE(str_source > mismatch3);
+    EXPECT_LT(str_source.compare(mismatch4), 0);
+    EXPECT_TRUE(str_source < mismatch4);
+    EXPECT_TRUE(mismatch4 > str_source);
+
+    // compare with char*
+    EXPECT_EQ(str_source.compare(source.data()), 0);
+    EXPECT_TRUE(str_source == source.data());
+    EXPECT_TRUE(source.data() == str_source);
+    EXPECT_TRUE(str_source <= source.data());
+    EXPECT_TRUE(source <= str_source.data());
+    EXPECT_TRUE(str_source >= source.data());
+    EXPECT_TRUE(source >= str_source.data());
+    EXPECT_LT(str_source.compare(mismatch1.data()), 0);
+    EXPECT_TRUE(str_source < mismatch1.data());
+    EXPECT_TRUE(str_source != mismatch1.data());
+    EXPECT_TRUE(mismatch1.data() != str_source);
+    EXPECT_GT(str_source.compare(mismatch2.data()), 0);
+    EXPECT_TRUE(str_source > mismatch2.data());
+    EXPECT_TRUE(mismatch2.data() < str_source);
+    EXPECT_GT(str_source.compare(mismatch3.data()), 0);
+    EXPECT_TRUE(str_source > mismatch3.data());
+    EXPECT_LT(str_source.compare(mismatch4.data()), 0);
+    EXPECT_TRUE(str_source < mismatch4.data());
+    EXPECT_TRUE(mismatch4.data() > str_source);
+
+    // compare with String
+    EXPECT_LT(str_source.compare(str_mismatch1), 0);
+    EXPECT_TRUE(str_source < str_mismatch1);
+    EXPECT_GT(str_source.compare(str_mismatch2), 0);
+    EXPECT_TRUE(str_source > str_mismatch2);
+    EXPECT_GT(str_source.compare(str_mismatch3), 0);
+    EXPECT_TRUE(str_source > str_mismatch3);
+    EXPECT_LT(str_source.compare(str_mismatch4), 0);
+    EXPECT_TRUE(str_source < str_mismatch4);
+}
+
+TEST(String, c_str) {
+    using namespace std;
+    string source = "this is a string";
+    string mismatch = "mismatch";
+    String s{source};
+
+    EXPECT_EQ(std::strcmp(s.c_str(), source.data()), 0);
+    EXPECT_NE(std::strcmp(s.c_str(), mismatch.data()), 0);
+}
+
+TEST(String, hash) {
+    using namespace std;
+    string source = "this is a string";
+    String s{source};
+
+    std::unordered_map<String, std::string> map;
+    String k1{string{"k1"}};
+    string v1{"v1"};
+    String k2{string{"k2"}};
+    string v2{"v2"};
+    map[k1] = v1;
+    map[k2] = v2;
+
+    EXPECT_EQ(map[k1], v1);
+    EXPECT_EQ(map[k2], v2);
+}
+
 }// namespace

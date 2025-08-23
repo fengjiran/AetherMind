@@ -69,23 +69,18 @@ public:
      */
     String(const std::string& other);// NOLINT
 
+    String(ObjectPtr<StringImpl>);
 
     String(const String&) = default;
     String(String&&) noexcept = default;
-    // String& operator=(const String&) & = default;
-    String& operator=(String&&) & noexcept = default;
-    // String& operator=(const String&) && = default;
-    String& operator=(String&&) && noexcept = default;
 
-    String& operator=(const String& other) & {
-        String(other).swap(*this);
-        return *this;
-    }
+    String& operator=(const String& other);
 
-    String& operator=(const String& other) && {
-        String(other).swap(*this);
-        return *this;
-    }
+    String& operator=(String&&) noexcept;
+
+    String& operator=(const std::string&);
+
+    String& operator=(const char*);
 
     void swap(String& other) noexcept;
 
@@ -99,8 +94,85 @@ public:
 
     NODISCARD bool empty() const noexcept;
 
+    NODISCARD char at(size_t i) const;
+
+    operator std::string() const;
+
+    /*!
+     * \brief Compares this String object to other
+     *
+     * \param other The String to compare with.
+     *
+     * \return zero if both char sequences compare equal. negative if this appears
+     * before other, positive otherwise.
+     */
+    NODISCARD int compare(const String& other) const;
+
+    /*!
+     * \brief Compares this String object to other
+     *
+     * \param other The string to compare with.
+     *
+     * \return zero if both char sequences compare equal. negative if this appears
+     * before other, positive otherwise.
+     */
+    NODISCARD int compare(const std::string& other) const;
+
+    /*!
+     * \brief Compares this to other
+     *
+     * \param other The character array to compare with.
+     *
+     * \return zero if both char sequences compare equal. negative if this appears
+     * before other, positive otherwise.
+     */
+    NODISCARD int compare(const char* other) const;
+
+    /*!
+     * \brief Compare two char sequence
+     *
+     * \param lhs Pointers to the char array to compare
+     * \param lhs_cnt Length of the char array to compare
+     * \param rhs Pointers to the char array to compare
+     * \param rhs_cnt Length of the char array to compare
+     * \return int zero if both char sequences compare equal. negative if this
+     * appears before other, positive otherwise.
+     */
+    static int memncmp(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt);
+
+    /*!
+     * \brief Compare two char sequence for equality
+     *
+     * \param lhs Pointers to the char array to compare
+     * \param rhs Pointers to the char array to compare
+     * \param lhs_cnt Length of the char array to compare
+     * \param rhs_cnt Length of the char array to compare
+     *
+     * \return true if the two char sequences are equal, false otherwise.
+     */
+    static bool memequal(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt);
+
 private:
     ObjectPtr<StringImpl> impl_;
+
+    /*!
+     * \brief Concatenate two char sequences
+     *
+     * \param lhs Pointers to the lhs char array
+     * \param lhs_cnt The size of the lhs char array
+     * \param rhs Pointers to the rhs char array
+     * \param rhs_cnt The size of the rhs char array
+     *
+     * \return The concatenated char sequence
+     */
+    static String concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt);
+
+    // Overload + operator
+    friend String operator+(const String& lhs, const String& rhs);
+    friend String operator+(const String& lhs, const std::string& rhs);
+    friend String operator+(const std::string& lhs, const String& rhs);
+    friend String operator+(const String& lhs, const char* rhs);
+    friend String operator+(const char* lhs, const String& rhs);
 };
 
 }// namespace aethermind

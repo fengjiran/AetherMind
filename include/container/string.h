@@ -69,7 +69,7 @@ public:
      */
     String(const std::string& other);// NOLINT
 
-    String(ObjectPtr<StringImpl>);
+    explicit String(ObjectPtr<StringImpl>);
 
     String(const String&) = default;
     String(String&&) noexcept = default;
@@ -95,6 +95,10 @@ public:
     NODISCARD bool empty() const noexcept;
 
     NODISCARD char at(size_t i) const;
+
+    NODISCARD uint32_t use_count() const noexcept;
+
+    NODISCARD bool unique() const noexcept;
 
     operator std::string() const;
 
@@ -175,6 +179,75 @@ private:
     friend String operator+(const char* lhs, const String& rhs);
 };
 
+// Overload < operator
+bool operator<(std::nullptr_t, const String& rhs) = delete;
+bool operator<(const String& lhs, std::nullptr_t) = delete;
+inline bool operator<(const String& lhs, const std::string& rhs) { return lhs.compare(rhs) < 0; }
+inline bool operator<(const std::string& lhs, const String& rhs) { return rhs.compare(lhs) > 0; }
+inline bool operator<(const String& lhs, const String& rhs) { return lhs.compare(rhs) < 0; }
+inline bool operator<(const String& lhs, const char* rhs) { return lhs.compare(rhs) < 0; }
+inline bool operator<(const char* lhs, const String& rhs) { return rhs.compare(lhs) > 0; }
+
+// Overload > operator
+bool operator>(std::nullptr_t, const String& rhs) = delete;
+bool operator>(const String& lhs, std::nullptr_t) = delete;
+inline bool operator>(const String& lhs, const std::string& rhs) { return lhs.compare(rhs) > 0; }
+inline bool operator>(const std::string& lhs, const String& rhs) { return rhs.compare(lhs) < 0; }
+inline bool operator>(const String& lhs, const String& rhs) { return lhs.compare(rhs) > 0; }
+inline bool operator>(const String& lhs, const char* rhs) { return lhs.compare(rhs) > 0; }
+inline bool operator>(const char* lhs, const String& rhs) { return rhs.compare(lhs) < 0; }
+
+// Overload <= operator
+bool operator<=(std::nullptr_t, const String& rhs) = delete;
+bool operator<=(const String& lhs, std::nullptr_t) = delete;
+inline bool operator<=(const String& lhs, const std::string& rhs) { return lhs.compare(rhs) <= 0; }
+inline bool operator<=(const std::string& lhs, const String& rhs) { return rhs.compare(lhs) >= 0; }
+inline bool operator<=(const String& lhs, const String& rhs) { return lhs.compare(rhs) <= 0; }
+inline bool operator<=(const String& lhs, const char* rhs) { return lhs.compare(rhs) <= 0; }
+inline bool operator<=(const char* lhs, const String& rhs) { return rhs.compare(lhs) >= 0; }
+
+// Overload >= operator
+bool operator>=(std::nullptr_t, const String& rhs) = delete;
+bool operator>=(const String& lhs, std::nullptr_t) = delete;
+inline bool operator>=(const String& lhs, const std::string& rhs) { return lhs.compare(rhs) >= 0; }
+inline bool operator>=(const std::string& lhs, const String& rhs) { return rhs.compare(lhs) <= 0; }
+inline bool operator>=(const String& lhs, const String& rhs) { return lhs.compare(rhs) >= 0; }
+inline bool operator>=(const String& lhs, const char* rhs) { return lhs.compare(rhs) >= 0; }
+inline bool operator>=(const char* lhs, const String& rhs) { return rhs.compare(lhs) <= 0; }
+
+// Overload == operator
+bool operator==(std::nullptr_t, const String& rhs) = delete;
+bool operator==(const String& lhs, std::nullptr_t) = delete;
+inline bool operator==(const String& lhs, const std::string& rhs) {
+    return String::memequal(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+inline bool operator==(const std::string& lhs, const String& rhs) {
+    return String::memequal(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+inline bool operator==(const String& lhs, const String& rhs) {
+    return String::memequal(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+inline bool operator==(const String& lhs, const char* rhs) { return lhs.compare(rhs) == 0; }
+inline bool operator==(const char* lhs, const String& rhs) { return rhs.compare(lhs) == 0; }
+
+// Overload != operator
+bool operator!=(const String& lhs, std::nullptr_t) = delete;
+bool operator!=(std::nullptr_t, const String& rhs) = delete;
+inline bool operator!=(const String& lhs, const std::string& rhs) { return lhs.compare(rhs) != 0; }
+inline bool operator!=(const std::string& lhs, const String& rhs) { return rhs.compare(lhs) != 0; }
+inline bool operator!=(const String& lhs, const String& rhs) { return lhs.compare(rhs) != 0; }
+inline bool operator!=(const String& lhs, const char* rhs) { return lhs.compare(rhs) != 0; }
+inline bool operator!=(const char* lhs, const String& rhs) { return rhs.compare(lhs) != 0; }
+
 }// namespace aethermind
+
+namespace std {
+template<>
+struct hash<aethermind::String> {
+    std::size_t operator()(const aethermind::String& str) const noexcept {
+        return std::hash<std::string_view>()(std::string_view(str.data(), str.size()));
+    }
+};
+}// namespace std
 
 #endif//AETHERMIND_STRING_H

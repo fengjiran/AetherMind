@@ -87,10 +87,17 @@ char String::at(size_t i) const {
     AETHERMIND_UNREACHABLE();
 }
 
+uint32_t String::use_count() const noexcept {
+    return impl_.use_count();
+}
+
+bool String::unique() const noexcept {
+    return impl_.unique();
+}
+
 String::operator std::string() const {
     return {data(), size()};
 }
-
 
 int String::compare(const String& other) const {
     return memncmp(data(), size(), other.data(), other.size());
@@ -141,7 +148,7 @@ String String::concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t r
     std::memcpy(dst, lhs, lhs_cnt);
     std::memcpy(dst + lhs_cnt, rhs, rhs_cnt);
     dst[lhs_cnt + rhs_cnt] = '\0';
-    return {std::move(impl)};
+    return String(std::move(impl));
 }
 
 String operator+(const String& lhs, const String& rhs) {

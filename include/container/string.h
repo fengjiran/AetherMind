@@ -100,6 +100,8 @@ public:
 
     NODISCARD bool unique() const noexcept;
 
+    NODISCARD Object* get() const noexcept;
+
     operator std::string() const;
 
     /*!

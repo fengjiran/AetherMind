@@ -5,9 +5,9 @@
 #ifndef AETHERMIND_TYPE_TRAITS_H
 #define AETHERMIND_TYPE_TRAITS_H
 
+#include "container/string.h"
 #include "object.h"
 #include "tensor.h"
-#include "container/string.h"
 
 #include <string>
 #include <type_traits>
@@ -426,7 +426,44 @@ template<>
 struct TypeTraits<String> {
     static void CopyToAny(const String& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::String;
-        // dst->payload_ =
+        Object* obj = src.get();
+        dst->payload_ = obj;
+        if (obj != null_type<StringImpl>::singleton()) {
+            ObjectUnsafe::IncRef(obj);
+        }
+    }
+
+    static void MoveToAny(String&& src, AetherMindAny* dst) {
+        CopyToAny(src, dst);
+        // dst->tag_ = AnyTag::String;
+        // Object* obj = src.get();
+        // dst->payload_ = obj;
+        // if (obj != null_type<StringImpl>::singleton()) {
+        //     ObjectUnsafe::IncRef(obj);
+        // }
+    }
+
+    static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        if (obj != null_type<StringImpl>::singleton()) {
+            ObjectUnsafe::IncRef(obj);
+            return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
+        }
+        return {};
+    }
+
+    static String MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        src->payload_ = 0;
+        src->tag_ = AnyTag::None;
+        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
+    }
+
+    static std::optional<String> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
     }
 
     static bool check(const AetherMindAny* src) {

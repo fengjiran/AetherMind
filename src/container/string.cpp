@@ -96,6 +96,10 @@ bool String::unique() const noexcept {
     return impl_.unique();
 }
 
+Object* String::get() const noexcept {
+    return impl_.get();
+}
+
 String::operator std::string() const {
     return {data(), size()};
 }

@@ -13,7 +13,9 @@ class StringImpl : public Object {
 public:
     StringImpl();
 
-    NODISCARD size_t size() const;
+    NODISCARD size_t size() const noexcept;
+
+    NODISCARD const char* data() const noexcept;
 
 private:
     const char* data_;
@@ -65,18 +67,31 @@ public:
      * \brief Construct a new string object
      * \param other The std::string object to be copied
      */
-    String(const std::string& other);
+    String(const std::string& other);// NOLINT
+
 
     String(const String&) = default;
     String(String&&) noexcept = default;
-    String& operator=(const String&) & = default;
+    // String& operator=(const String&) & = default;
     String& operator=(String&&) & noexcept = default;
-    String& operator=(const String&) && = default;
+    // String& operator=(const String&) && = default;
     String& operator=(String&&) && noexcept = default;
 
-    void swap(String& other) noexcept {
-        std::swap(impl_, other.impl_);
+    String& operator=(const String& other) & {
+        String(other).swap(*this);
+        return *this;
     }
+
+    String& operator=(const String& other) && {
+        String(other).swap(*this);
+        return *this;
+    }
+
+    void swap(String& other) noexcept;
+
+    NODISCARD const char* data() const noexcept;
+
+    NODISCARD const char* c_str() const noexcept;
 
     NODISCARD bool defined() const noexcept;
 

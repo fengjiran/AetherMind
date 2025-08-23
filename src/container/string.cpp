@@ -11,8 +11,16 @@ StringImplNullType StringImplNullType::singleton_;
 
 StringImpl::StringImpl() : data_(nullptr), size_(0) {}
 
-size_t StringImpl::size() const {
+size_t StringImpl::size() const noexcept {
     return size_;
+}
+
+const char* StringImpl::data() const noexcept {
+    return data_;
+}
+
+const char* String::c_str() const noexcept {
+    return data();
 }
 
 String::String(const char* other, size_t size)
@@ -27,6 +35,15 @@ String::String(const char* other, size_t size)
 String::String(const char* other) : String(other, strlen(other)) {}
 
 String::String(const std::string& other) : String(other.data(), other.size()) {}
+
+void String::swap(String& other) noexcept {
+    std::swap(impl_, other.impl_);
+}
+
+
+const char* String::data() const noexcept {
+    return impl_->data();
+}
 
 bool String::defined() const noexcept {
     return impl_;

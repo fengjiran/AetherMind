@@ -228,4 +228,31 @@ TEST(String, hash) {
     EXPECT_EQ(map[k2], v2);
 }
 
+TEST(String, Concat) {
+    String s1("hello");
+    String s2("world");
+    std::string s3("world");
+    String res1 = s1 + s2;
+    String res2 = s1 + s3;
+    String res3 = s3 + s1;
+    String res4 = s1 + "world";
+    String res5 = "world" + s1;
+
+    EXPECT_EQ(res1.compare("helloworld"), 0);
+    EXPECT_EQ(res2.compare("helloworld"), 0);
+    EXPECT_EQ(res3.compare("worldhello"), 0);
+    EXPECT_EQ(res4.compare("helloworld"), 0);
+    EXPECT_EQ(res5.compare("worldhello"), 0);
+
+    String storage_scope;
+    String res = "The input storage scope \"" + storage_scope + "\" is invalid.";
+    EXPECT_EQ(res.compare("The input storage scope \"\" is invalid."), 0);
+}
+
+TEST(String, StdHash) {
+    String s1 = "a";
+    String s2(std::string("a"));
+    EXPECT_EQ(std::hash<String>()(s1), std::hash<String>()(s2));
+}
+
 }// namespace

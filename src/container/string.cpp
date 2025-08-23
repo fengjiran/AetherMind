@@ -5,6 +5,7 @@
 #include "error.h"
 
 #include <cstring>
+#include <utility>
 
 namespace aethermind {
 
@@ -143,12 +144,14 @@ bool String::memequal(const char* lhs, size_t lhs_cnt, const char* rhs, size_t r
 }
 
 String String::concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
-    auto impl = make_array_object<StringImpl, char>(lhs_cnt + rhs_cnt + 1);
-    char* dst = reinterpret_cast<char*>(impl.get()) + sizeof(StringImpl);
+    auto ptr = make_array_object<StringImpl, char>(lhs_cnt + rhs_cnt + 1);
+    char* dst = reinterpret_cast<char*>(ptr.get()) + sizeof(StringImpl);
+    ptr->data_ = dst;
+    ptr->size_ = lhs_cnt + rhs_cnt;
     std::memcpy(dst, lhs, lhs_cnt);
     std::memcpy(dst + lhs_cnt, rhs, rhs_cnt);
     dst[lhs_cnt + rhs_cnt] = '\0';
-    return String(std::move(impl));
+    return String(std::move(ptr));
 }
 
 String operator+(const String& lhs, const String& rhs) {
@@ -169,6 +172,11 @@ String operator+(const String& lhs, const char* rhs) {
 
 String operator+(const char* lhs, const String& rhs) {
     return String::concat(lhs, std::strlen(lhs), rhs.data(), rhs.size());
+}
+
+std::ostream& operator<<(std::ostream& os, const String& str) {
+    os.write(str.data(), str.size());
+    return os;
 }
 
 

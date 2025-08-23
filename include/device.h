@@ -6,7 +6,6 @@
 #define AETHERMIND_DEVICE_H
 
 #include "error.h"
-
 #include <cstdint>
 #include <string>
 

@@ -72,6 +72,8 @@ private:
 
     template<typename T, typename NullType>
     friend class ObjectPtr;
+
+    friend struct ObjectUnsafe;
 };
 
 template<typename T, typename NullType = null_type<T>>
@@ -234,8 +236,22 @@ private:
     template<typename T2, typename NullType2>
     friend class ObjectPtr;
 
-    template<typename T3, typename T4>
-    friend struct TypeTraits;
+    // template<typename T3, typename T4>
+    // friend struct TypeTraits;
+};
+
+struct ObjectUnsafe {
+    static void IncRef(Object* ptr) {
+        if (ptr) {
+            ptr->IncRef();
+        }
+    }
+
+    static void DecRef(Object* ptr) {
+        if (ptr) {
+            ptr->DecRef();
+        }
+    }
 };
 
 template<typename T>

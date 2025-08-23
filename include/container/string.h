@@ -61,7 +61,7 @@ public:
      * \note This constructor is marked as explicit to avoid implicit conversion
      *       of nullptr value here to string, which then was used in comparison
      */
-    explicit String(const char* other);
+    String(const char* other);// NOLINT
 
     /*!
      * \brief Construct a new string object
@@ -238,6 +238,8 @@ inline bool operator!=(const std::string& lhs, const String& rhs) { return rhs.c
 inline bool operator!=(const String& lhs, const String& rhs) { return lhs.compare(rhs) != 0; }
 inline bool operator!=(const String& lhs, const char* rhs) { return lhs.compare(rhs) != 0; }
 inline bool operator!=(const char* lhs, const String& rhs) { return rhs.compare(lhs) != 0; }
+
+std::ostream& operator<<(std::ostream& os, const String&);
 
 }// namespace aethermind
 

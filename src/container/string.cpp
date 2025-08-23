@@ -29,7 +29,7 @@ String::String(const char* other, size_t size)
     dst[size] = '\0';
 }
 
-String::String(const char* other) : String(other, strlen(other)) {}
+String::String(const char* other) : String(other, std::strlen(other)) {}
 
 String::String(const std::string& other) : String(other.data(), other.size()) {}
 
@@ -101,7 +101,7 @@ int String::compare(const std::string& other) const {
 }
 
 int String::compare(const char* other) const {
-    return memncmp(data(), size(), other, strlen(other));
+    return memncmp(data(), size(), other, std::strlen(other));
 }
 
 int String::memncmp(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
@@ -143,5 +143,26 @@ String String::concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t r
     dst[lhs_cnt + rhs_cnt] = '\0';
     return {std::move(impl)};
 }
+
+String operator+(const String& lhs, const String& rhs) {
+    return String::concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+
+String operator+(const String& lhs, const std::string& rhs) {
+    return String::concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+
+String operator+(const std::string& lhs, const String& rhs) {
+    return String::concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+
+String operator+(const String& lhs, const char* rhs) {
+    return String::concat(lhs.data(), lhs.size(), rhs, std::strlen(rhs));
+}
+
+String operator+(const char* lhs, const String& rhs) {
+    return String::concat(lhs, std::strlen(lhs), rhs.data(), rhs.size());
+}
+
 
 }// namespace aethermind

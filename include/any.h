@@ -150,11 +150,11 @@ public:
     }
 
     void reset() {
-        if (is_object_ptr()) {
-            auto* obj = std::get<Object*>(data_.payload_);
-            ObjectPtr<Object>::reclaim(obj);
-            // TODO
-        }
+        // if (is_object_ptr()) {
+        //     auto* obj = std::get<Object*>(data_.payload_);
+        //     ObjectPtr<Object>::reclaim(obj);
+        //     // TODO
+        // }
         data_.payload_ = 0;
         data_.tag_ = AnyTag::None;
     }

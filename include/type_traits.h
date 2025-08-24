@@ -426,30 +426,24 @@ template<>
 struct TypeTraits<String> {
     static void CopyToAny(const String& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::String;
-        Object* obj = src.get();
+        Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
         if (obj != null_type<StringImpl>::singleton()) {
             ObjectUnsafe::IncRef(obj);
         }
     }
 
-    static void MoveToAny(String&& src, AetherMindAny* dst) {
-        CopyToAny(src, dst);
-        // dst->tag_ = AnyTag::String;
-        // Object* obj = src.get();
-        // dst->payload_ = obj;
-        // if (obj != null_type<StringImpl>::singleton()) {
-        //     ObjectUnsafe::IncRef(obj);
-        // }
+    static void MoveToAny(String src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::String;
+        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
     }
 
     static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
         if (obj != null_type<StringImpl>::singleton()) {
             ObjectUnsafe::IncRef(obj);
-            return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
         }
-        return {};
+        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
     }
 
     static String MoveFromAnyAfterCheck(AetherMindAny* src) {

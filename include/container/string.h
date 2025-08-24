@@ -100,7 +100,11 @@ public:
 
     NODISCARD bool unique() const noexcept;
 
-    NODISCARD Object* get() const noexcept;
+    NODISCARD StringImpl* get_impl_ptr_unsafe() const noexcept;
+
+    NODISCARD StringImpl* release_impl_unsafe();
+
+    NODISCARD const ObjectPtr<StringImpl>& get_object_ptr() const;
 
     operator std::string() const;
 

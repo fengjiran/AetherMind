@@ -2,7 +2,7 @@
 // Created by 赵丹 on 2025/8/22.
 //
 #include "container/string.h"
-
+#include "type_traits.h"
 #include <gtest/gtest.h>
 
 using namespace aethermind;
@@ -253,6 +253,30 @@ TEST(String, StdHash) {
     String s1 = "a";
     String s2(std::string("a"));
     EXPECT_EQ(std::hash<String>()(s1), std::hash<String>()(s2));
+}
+
+TEST(String, Any) {
+    AetherMindAny x1;
+    String s1 = "hello";
+    TypeTraits<String>::CopyToAny(s1, &x1);
+    EXPECT_EQ(s1.use_count(), 2);
+    auto s2 = TypeTraits<String>::TryCastFromAny(&x1);
+    EXPECT_TRUE(s2.has_value());
+    EXPECT_EQ(s1.use_count(), 3);
+    EXPECT_TRUE(s2.value() == s1);
+
+    AetherMindAny x2;
+    TypeTraits<String>::MoveToAny(std::move(s1), &x2);
+    EXPECT_EQ(s2.value().use_count(), 3);
+
+    auto s3 = TypeTraits<String>::CopyFromAnyAfterCheck(&x1);
+    EXPECT_EQ(s3.use_count(), 4);
+
+    String s4;
+    AetherMindAny x3;
+    TypeTraits<String>::CopyToAny(s4, &x3);
+    EXPECT_TRUE(!s4.defined());
+    EXPECT_EQ(s4.use_count(), 0);
 }
 
 }// namespace

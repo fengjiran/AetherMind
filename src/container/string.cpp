@@ -96,8 +96,16 @@ bool String::unique() const noexcept {
     return impl_.unique();
 }
 
-Object* String::get() const noexcept {
+StringImpl* String::get_impl_ptr_unsafe() const noexcept {
     return impl_.get();
+}
+
+const ObjectPtr<StringImpl>& String::get_object_ptr() const {
+    return impl_;
+}
+
+StringImpl* String::release_impl_unsafe() {
+    return impl_.release();
 }
 
 String::operator std::string() const {

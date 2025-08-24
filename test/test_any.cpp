@@ -11,6 +11,7 @@ namespace {
 
 TEST(Any, bool) {
     Any x0;
+    EXPECT_EQ(x0.use_count(), 0);
     auto opt0 = x0.as<bool>();
     EXPECT_TRUE(!opt0.has_value());
 

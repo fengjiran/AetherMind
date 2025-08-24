@@ -14,18 +14,9 @@ class Any {
 public:
     Any() = default;
 
-    Any(const Any& other) : data_(other.data_) {
-        if (is_object_ptr()) {
-            auto* obj = std::get<Object*>(data_.payload_);
-            if (!IsNullTypePtr(obj)) {
-                ObjectUnsafe::IncRef(obj);
-            }
-        }
-    }
+    Any(const Any& other);
 
-    Any(Any&& other) noexcept : data_(std::move(other.data_)) {
-        other.reset();
-    }
+    Any(Any&& other) noexcept;
 
     // constructor from general types
     template<typename T>
@@ -38,18 +29,18 @@ public:
     }
 
     template<typename T>
-    Any& operator=(T other) {
+    Any& operator=(T other) & {
         Any(std::move(other)).swap(*this);
         return *this;
     }
 
-    Any& operator=(const Any& other) {
+    Any& operator=(const Any& other) & {
         // copy and swap idiom
         Any(other).swap(*this);
         return *this;
     }
 
-    Any& operator=(Any&& other) noexcept {
+    Any& operator=(Any&& other) & noexcept {
         // copy and swap idiom
         Any(std::move(other)).swap(*this);
         return *this;
@@ -100,7 +91,7 @@ public:
         auto opt = TypeTraits<T>::TryCastFromAny(&data_);
         if (!opt.has_value()) {
             AETHERMIND_THROW(TypeError) << "Cannot convert from type `"
-                                        << AnyTagToString(data_.tag_) << "` to `"
+                                        << AnyTagToString(tag()) << "` to `"
                                         << TypeTraits<T>::TypeStr() << "`.";
         }
         return opt.value();
@@ -114,24 +105,31 @@ public:
         auto opt = TypeTraits<T>::TryCastFromAny(&data_);
         if (!opt.has_value()) {
             AETHERMIND_THROW(TypeError) << "Cannot convert from type `"
-                                        << AnyTagToString(data_.tag_) << "` to `"
+                                        << AnyTagToString(tag()) << "` to `"
                                         << TypeTraits<T>::TypeStr() << "`.";
         }
         return *std::move(opt);
     }
 
-    NODISCARD uint32_t use_count() const noexcept {
-        if (is_tensor()) {
-            auto t = std::get<Tensor>(data_.payload_);
-            return t.defined() ? t.use_count() - 1 : 0;
-        }
+    NODISCARD uint32_t use_count() const noexcept;
 
-        if (is_object_ptr()) {
-            auto* obj = std::get<Object*>(data_.payload_);
-            return IsNullTypePtr(obj) ? 0 : obj->use_count();
-        }
-        return 1;
-    }
+    NODISCARD int64_t to_int() const;
+
+    NODISCARD double to_double() const;
+
+    NODISCARD bool to_bool() const;
+
+    NODISCARD void* to_void_ptr() const;
+
+    NODISCARD Device to_device() const;
+
+    NODISCARD String to_string() const&;
+
+    NODISCARD String to_string() &&;
+
+    NODISCARD Tensor to_tensor() const&;
+
+    NODISCARD Tensor to_tensor() &&;
 
     NODISCARD bool is_unique() const noexcept {
         return use_count() == 1;
@@ -147,6 +145,10 @@ public:
 
     NODISCARD bool is_double() const noexcept {
         return tag() == AnyTag::Double;
+    }
+
+    NODISCARD bool is_void_ptr() const noexcept {
+        return tag() == AnyTag::OpaquePtr;
     }
 
     NODISCARD bool is_string() const noexcept {
@@ -173,16 +175,7 @@ public:
         std::swap(data_, other.data_);
     }
 
-    void reset() {
-        if (is_object_ptr()) {
-            auto* obj = std::get<Object*>(data_.payload_);
-            if (!IsNullTypePtr(obj)) {
-                ObjectPtr<Object>::reclaim(obj);
-            }
-        }
-        data_.payload_ = 0;
-        data_.tag_ = AnyTag::None;
-    }
+    void reset();
 
     bool operator==(std::nullptr_t) const noexcept {
         return data_.tag_ == AnyTag::None;

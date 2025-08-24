@@ -16,7 +16,7 @@ public:
         : nbytes_(nbytes), data_ptr_(std::move(data_ptr)), alloc_(alloc) {}
 
     StorageImpl(size_t nbytes, const std::unique_ptr<Allocator>& alloc)
-        : nbytes_(nbytes), data_ptr_(alloc->allocate(nbytes)), alloc_(alloc) {}
+        : StorageImpl(nbytes, alloc->allocate(nbytes), alloc) {}
 
     NODISCARD size_t nbytes() const {
         return nbytes_;

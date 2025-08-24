@@ -14,15 +14,20 @@ namespace aethermind {
 class Storage {
 public:
     Storage() = default;
-    Storage(ObjectPtr<StorageImpl> ptr) : impl_(std::move(ptr)) {}
-
-    // Allocates memory buffer using the given allocator and creates a storage with it
-    Storage(size_t nbytes, const std::unique_ptr<Allocator>& alloc)
-        : impl_(make_object<StorageImpl>(nbytes, alloc)) {}
 
     // Creates storage with pre-allocated memory buffer.
     Storage(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<Allocator>& alloc)
         : impl_(make_object<StorageImpl>(nbytes, std::move(data_ptr), alloc)) {}
+
+    // Allocates memory buffer using the given allocator and creates a storage with it
+    Storage(size_t nbytes, const std::unique_ptr<Allocator>& alloc)
+        : Storage(nbytes, alloc->allocate(nbytes), alloc) {}
+
+    explicit Storage(ObjectPtr<StorageImpl> ptr) : impl_(std::move(ptr)) {}
+
+    NODISCARD bool defined() const {
+        return impl_;
+    }
 
     NODISCARD size_t nbytes() const {
         return impl_->nbytes();
@@ -55,7 +60,7 @@ public:
         return impl_;
     }
 
-    NODISCARD size_t use_count() const {
+    NODISCARD uint32_t use_count() const {
         return impl_.use_count();
     }
 
@@ -64,7 +69,6 @@ public:
     }
 
 private:
-    // std::shared_ptr<StorageImpl> impl_;
     ObjectPtr<StorageImpl> impl_;
 };
 

@@ -14,46 +14,45 @@ namespace aethermind {
 class Storage {
 public:
     Storage() = default;
-
-    Storage(std::shared_ptr<StorageImpl> ptr) : impl_(std::move(ptr)) {}
+    Storage(ObjectPtr<StorageImpl> ptr) : impl_(std::move(ptr)) {}
 
     // Allocates memory buffer using the given allocator and creates a storage with it
     Storage(size_t nbytes, const std::unique_ptr<Allocator>& alloc)
-        : impl_(std::make_shared<StorageImpl>(nbytes, alloc)) {}
+        : impl_(make_object<StorageImpl>(nbytes, alloc)) {}
 
     // Creates storage with pre-allocated memory buffer.
     Storage(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<Allocator>& alloc)
-        : impl_(std::make_shared<StorageImpl>(nbytes, std::move(data_ptr), alloc)) {}
+        : impl_(make_object<StorageImpl>(nbytes, std::move(data_ptr), alloc)) {}
 
     NODISCARD size_t nbytes() const {
-        return impl_ ? impl_->nbytes() : 0;
+        return impl_->nbytes();
     }
 
     NODISCARD void* data() const {
-        return impl_ ? impl_->get() : nullptr;
+        return impl_->get();
     }
 
     NODISCARD const void* const_data() const {
-        return impl_ ? impl_->get() : nullptr;
+        return impl_->const_get();
     }
 
     NODISCARD DataPtr& data_ptr() const {
-        CHECK(impl_ != nullptr) << "Storage is not initialized";
+        // CHECK(impl_ != nullptr) << "Storage is not initialized";
         return impl_->data_ptr();
     }
 
     NODISCARD const DataPtr& const_data_ptr() const {
-        CHECK(impl_ != nullptr) << "Storage is not initialized";
+        // CHECK(impl_ != nullptr) << "Storage is not initialized";
         return impl_->data_ptr();
     }
 
     NODISCARD Device device() const {
-        CHECK(impl_ != nullptr) << "Storage is not initialized";
+        // CHECK(impl_ != nullptr) << "Storage is not initialized";
         return impl_->device();
     }
 
     operator bool() const {
-        return impl_ != nullptr;
+        return impl_;
     }
 
     NODISCARD size_t use_count() const {
@@ -61,11 +60,12 @@ public:
     }
 
     NODISCARD bool unique() const {
-        return impl_.use_count() == 1;
+        return use_count() == 1;
     }
 
 private:
-    std::shared_ptr<StorageImpl> impl_;
+    // std::shared_ptr<StorageImpl> impl_;
+    ObjectPtr<StorageImpl> impl_;
 };
 
 // Packed container for TensorImpl shape and strides.

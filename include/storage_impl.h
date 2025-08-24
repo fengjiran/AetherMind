@@ -6,10 +6,11 @@
 #define AETHERMIND_STORAGE_IMPL_H
 
 #include "allocator.h"
+#include "object.h"
 
 namespace aethermind {
 
-class StorageImpl {
+class StorageImpl : public Object {
 public:
     StorageImpl(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<Allocator>& alloc)
         : nbytes_(nbytes), data_ptr_(std::move(data_ptr)), alloc_(alloc) {}
@@ -56,6 +57,23 @@ private:
     DataPtr data_ptr_;
     const std::unique_ptr<Allocator>& alloc_;
 };
+
+class StorageImplNullType final : public StorageImpl {
+    static StorageImplNullType singleton_;
+    StorageImplNullType() : StorageImpl(0, AllocatorTable::Global().get_allocator(kUndefined)) {}
+
+public:
+    static constexpr StorageImpl* singleton() noexcept {
+        return &singleton_;
+    }
+};
+
+template<>
+struct GetNullType<StorageImpl> {
+    using type = StorageImplNullType;
+};
+
+static_assert(std::is_same_v<null_type<StorageImpl>, StorageImplNullType>);
 
 }// namespace aethermind
 

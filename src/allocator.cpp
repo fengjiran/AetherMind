@@ -4,3 +4,8 @@
 
 #include "allocator.h"
 
+namespace aethermind {
+
+REGISTER_ALLOCATOR(DeviceType::kUndefined, UndefinedAllocator);
+
+}

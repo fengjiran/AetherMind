@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_ALLOCATOR_H
 #define AETHERMIND_ALLOCATOR_H
 
-#include "env.h"
 #include "device.h"
+#include "env.h"
 #include "tensor_utils.h"
 #include "unique_void_ptr.h"
 
@@ -24,7 +24,7 @@ namespace aethermind {
 //
 class DataPtr {
 public:
-    DataPtr() : device_(kCPU) {}
+    DataPtr() : device_(kUndefined) {}
 
     DataPtr(void* data, Device device) : ptr_(data), device_(device) {}
 
@@ -137,8 +137,6 @@ public:
     Allocator() = default;
     virtual ~Allocator() = default;
 
-    // NODISCARD virtual void* allocate(size_t nbytes) const = 0;
-
     NODISCARD virtual DataPtr allocate(size_t nbytes) const = 0;
 
     virtual void deallocate(void* p) const = 0;
@@ -165,14 +163,18 @@ private:
     std::unordered_map<DeviceType, std::unique_ptr<Allocator>> table_;
 };
 
-#define REGISTER_ALLOCATOR(device, allocator)                                          \
-    STR_CONCAT(REG_VAR_DEF, __COUNTER__) = [] {                                        \
-        AllocatorTable::Global().set_allocator(device, std::make_unique<allocator>()); \
-        return 0;                                                                      \
-    }()
+class UndefinedAllocator final : public Allocator {
+public:
+    UndefinedAllocator() = default;
 
+    DataPtr allocate(size_t nbytes) const override {
+        return {};
+    }
 
-class CUDAAllocator : public Allocator {
+    void deallocate(void* p) const override {}
+};
+
+class CUDAAllocator final : public Allocator {
 public:
     CUDAAllocator() = default;
     // NODISCARD void* allocate(size_t n) const override {
@@ -189,6 +191,12 @@ public:
         // CHECK_CUDA(cudaFree(p));
     }
 };
+
+#define REGISTER_ALLOCATOR(device, allocator)                                          \
+    STR_CONCAT(REG_VAR_DEF, __COUNTER__) = [] {                                        \
+        AllocatorTable::Global().set_allocator(device, std::make_unique<allocator>()); \
+        return 0;                                                                      \
+    }()
 
 }// namespace aethermind
 

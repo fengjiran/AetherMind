@@ -94,14 +94,14 @@ TEST(Any, float) {
 TEST(Any, string) {
     Any x0 = "hello";
     EXPECT_EQ(x0.use_count(), 1);
-    EXPECT_TRUE(x0.tag() == AnyTag::String);
-    EXPECT_TRUE(x0.as<std::string>().has_value());
-    EXPECT_EQ(x0.cast<std::string>(), "hello");
+    EXPECT_TRUE(x0.is_string());
+    EXPECT_TRUE(x0.as<String>().has_value());
+    EXPECT_EQ(x0.to_string(), "hello");
 
     x0 = std::string("world");
     EXPECT_EQ(x0.use_count(), 1);
-    EXPECT_TRUE(x0.tag() == AnyTag::String);
-    EXPECT_EQ(x0.cast<std::string>(), "world");
+    EXPECT_TRUE(x0.is_string());
+    EXPECT_EQ(x0.to_string(), "world");
 }
 
 TEST(Any, cast_vs_as) {
@@ -139,28 +139,29 @@ TEST(Any, cast_vs_as) {
 
 TEST(Any, device) {
     Any x = Device(kCUDA, 1);
-    auto dev = x.cast<Device>();
-    EXPECT_TRUE(x.tag() == AnyTag::Device);
+    auto dev = x.to_device();
+    EXPECT_TRUE(x.is_device());
     EXPECT_EQ(dev.type(), kCUDA);
     EXPECT_EQ(dev.index(), 1);
 }
 
 TEST(Any, tensor) {
     Tensor t({3, 10});
-    AetherMindAny a;
-    TypeTraits<Tensor>::MoveToAny(std::move(t), &a);
-    EXPECT_TRUE(a.tag_ == AnyTag::Tensor);
-    auto t2 = TypeTraits<Tensor>::MoveFromAnyAfterCheck(&a);
-    EXPECT_EQ(t2.use_count(), 1);
-
+    Any x = t;
+    EXPECT_TRUE(x.is_tensor());
+    EXPECT_EQ(t.use_count(), 2);
+    EXPECT_EQ(x.use_count(), 2);
+    auto t2 = x.to_tensor();
     {
-        Any x = t2;
-        EXPECT_TRUE(x.is_tensor());
-        EXPECT_EQ(t2.use_count(), 2);
-        EXPECT_EQ(x.use_count(), 2);
+        Any y = t2;
+        EXPECT_TRUE(y.is_tensor());
+        EXPECT_EQ(t2.use_count(), 4);
+        EXPECT_EQ(y.use_count(), 4);
     }
 
-    EXPECT_EQ(t2.use_count(), 1);
+    EXPECT_EQ(t2.use_count(), 3);
+    auto t3 = Any(t2).to_tensor();
+    EXPECT_EQ(t3.use_count(), 4);
 }
 
 }// namespace

@@ -84,12 +84,22 @@ struct AetherMindAny {
                                  bool,
                                  void*,
                                  Object*,
-                                 std::string,
                                  Device,
                                  Tensor>;
     Payload payload_;
     AnyTag tag_{AnyTag::None};
 };
+
+inline bool IsNullTypePtr(const Object* ptr) {
+    if (ptr == nullptr) {
+        return true;
+    }
+
+    if (ptr == null_type<StringImpl>::singleton()) {
+        return true;
+    }
+    return false;
+}
 
 template<typename, typename = void>
 struct TypeTraits;
@@ -372,57 +382,6 @@ struct TypeTraits<Tensor> {
 
 // string type
 template<>
-struct TypeTraits<std::string> {
-    static void CopyToAny(const std::string& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
-        dst->payload_ = src;
-    }
-
-    static void MoveToAny(std::string src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
-        dst->payload_ = std::move(src);
-    }
-
-    static std::string CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return std::get<std::string>(src->payload_);
-    }
-
-    static std::string MoveFromAnyAfterCheck(AetherMindAny* src) {
-        auto str = std::get<std::string>(std::move(src->payload_));
-        src->payload_ = 0;
-        src->tag_ = AnyTag::None;
-        return str;
-    }
-
-    static std::optional<std::string> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
-            return std::get<std::string>(src->payload_);
-        }
-        return std::nullopt;
-    }
-
-    static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::String;
-    }
-
-    static std::string TypeStr() {
-        return AnyTagToString(AnyTag::String);
-    }
-};
-
-template<>
-struct TypeTraits<const char*> : TypeTraits<std::string> {
-    static void CopyToAny(const char* src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
-        dst->payload_ = std::string(src);
-    }
-
-    static void MoveToAny(const char* src, AetherMindAny* dst) {
-        CopyToAny(src, dst);
-    }
-};
-
-template<>
 struct TypeTraits<String> {
     static void CopyToAny(const String& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::String;
@@ -469,39 +428,18 @@ struct TypeTraits<String> {
     }
 };
 
-
-class TestObj : public Object {
-public:
-    TestObj() = default;
-    virtual ~TestObj() = default;
-};
+template<>
+struct TypeTraits<const char*> : TypeTraits<String> {};
 
 template<>
-struct TypeTraits<ObjectPtr<TestObj>> {
-    static void MoveToAny(ObjectPtr<TestObj> src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Object;
-        dst->payload_ = static_cast<Object*>(src.release());
-    }
-
-    static std::optional<ObjectPtr<TestObj>> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
-            Object* ptr = std::get<Object*>(src->payload_);
-            if (ptr == ObjectPtr<TestObj>::null_type::singleton()) {
-                return ObjectPtr<TestObj>();
-            }
-            ObjectUnsafe::IncRef(ptr);
-            return ObjectPtr<TestObj>::reclaim(static_cast<TestObj*>(ptr));
-        }
-        return std::nullopt;
-    }
-
-    static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Object;
-    }
-
-    static std::string TypeStr() {
-        return AnyTagToString(AnyTag::Object);
-    }
+struct TypeTraits<std::string>: TypeTraits<String> {
+    // static void CopyToAny(const std::string& src, AetherMindAny* dst) {
+    //     TypeTraits<String>::CopyToAny(String(src), dst);
+    // }
+    //
+    // static void MoveToAny(std::string src, AetherMindAny* dst) {
+    //     TypeTraits<String>::MoveToAny(std::move(src), dst);
+    // }
 };
 
 }// namespace aethermind

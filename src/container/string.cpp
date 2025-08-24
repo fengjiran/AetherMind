@@ -34,6 +34,10 @@ String::String(const char* other) : String(other, std::strlen(other)) {}
 
 String::String(const std::string& other) : String(other.data(), other.size()) {}
 
+String::String(std::string&& other) : String(other.data(), other.size()) {
+    other.clear();
+}
+
 String::String(ObjectPtr<StringImpl> impl) : impl_(std::move(impl)) {}
 
 void String::swap(String& other) noexcept {

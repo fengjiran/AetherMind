@@ -92,11 +92,13 @@ TEST(Any, float) {
 
 TEST(Any, string) {
     Any x0 = "hello";
+    EXPECT_EQ(x0.use_count(), 1);
     EXPECT_TRUE(x0.tag() == AnyTag::String);
     EXPECT_TRUE(x0.as<std::string>().has_value());
     EXPECT_EQ(x0.cast<std::string>(), "hello");
 
     x0 = std::string("world");
+    EXPECT_EQ(x0.use_count(), 1);
     EXPECT_TRUE(x0.tag() == AnyTag::String);
     EXPECT_EQ(x0.cast<std::string>(), "world");
 }
@@ -154,6 +156,7 @@ TEST(Any, tensor) {
         Any x = t2;
         EXPECT_TRUE(x.is_tensor());
         EXPECT_EQ(t2.use_count(), 2);
+        EXPECT_EQ(x.use_count(), 2);
     }
 
     EXPECT_EQ(t2.use_count(), 1);

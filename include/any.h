@@ -14,7 +14,14 @@ class Any {
 public:
     Any() = default;
 
-    Any(const Any&) = default;
+    Any(const Any& other) : data_(other.data_) {
+        if (is_object_ptr()) {
+            auto* obj = std::get<Object*>(data_.payload_);
+            if (!IsNullTypePtr(obj)) {
+                ObjectUnsafe::IncRef(obj);
+            }
+        }
+    }
 
     Any(Any&& other) noexcept : data_(std::move(other.data_)) {
         other.reset();
@@ -113,6 +120,23 @@ public:
         return *std::move(opt);
     }
 
+    NODISCARD uint32_t use_count() const noexcept {
+        if (is_tensor()) {
+            auto t = std::get<Tensor>(data_.payload_);
+            return t.defined() ? t.use_count() - 1 : 0;
+        }
+
+        if (is_object_ptr()) {
+            auto* obj = std::get<Object*>(data_.payload_);
+            return IsNullTypePtr(obj) ? 0 : obj->use_count();
+        }
+        return 1;
+    }
+
+    NODISCARD bool is_unique() const noexcept {
+        return use_count() == 1;
+    }
+
     NODISCARD bool is_bool() const noexcept {
         return tag() == AnyTag::Bool;
     }
@@ -137,7 +161,7 @@ public:
         return tag() == AnyTag::Tensor;
     }
 
-    NODISCARD bool is_object_ptr() const {
+    NODISCARD bool is_object_ptr() const noexcept {
         return IsObjectPtr(tag());
     }
 
@@ -150,11 +174,12 @@ public:
     }
 
     void reset() {
-        // if (is_object_ptr()) {
-        //     auto* obj = std::get<Object*>(data_.payload_);
-        //     ObjectPtr<Object>::reclaim(obj);
-        //     // TODO
-        // }
+        if (is_object_ptr()) {
+            auto* obj = std::get<Object*>(data_.payload_);
+            if (!IsNullTypePtr(obj)) {
+                ObjectPtr<Object>::reclaim(obj);
+            }
+        }
         data_.payload_ = 0;
         data_.tag_ = AnyTag::None;
     }

@@ -3,6 +3,7 @@
 //
 #include "container/string.h"
 #include "type_traits.h"
+#include "any.h"
 #include <gtest/gtest.h>
 
 using namespace aethermind;
@@ -255,7 +256,7 @@ TEST(String, StdHash) {
     EXPECT_EQ(std::hash<String>()(s1), std::hash<String>()(s2));
 }
 
-TEST(String, Any) {
+TEST(String, Any1) {
     AetherMindAny x1;
     String s1 = "hello";
     TypeTraits<String>::CopyToAny(s1, &x1);
@@ -273,10 +274,32 @@ TEST(String, Any) {
     EXPECT_EQ(s3.use_count(), 4);
 
     String s4;
-    AetherMindAny x3;
-    TypeTraits<String>::CopyToAny(s4, &x3);
+    AetherMindAny x4;
+    TypeTraits<String>::CopyToAny(s4, &x4);
     EXPECT_TRUE(!s4.defined());
     EXPECT_EQ(s4.use_count(), 0);
+}
+
+TEST(String, Any2) {
+    Any b = "hello";
+    EXPECT_TRUE(b.is_string());
+    EXPECT_TRUE(b.as<String>().has_value());
+    EXPECT_EQ(b.as<String>().value(), "hello");
+    EXPECT_EQ(b.try_cast<std::string>().value(), "hello");
+    EXPECT_EQ(b.use_count(), 1);
+
+    std::string s_world = "world";
+    b = s_world;
+    EXPECT_EQ(b.try_cast<std::string>().value(), "world");
+
+    String s{"hello"};
+    Any a = s;
+    EXPECT_EQ(a.as<String>().value(), "hello");
+    EXPECT_EQ(a.try_cast<std::string>().value(), "hello");
+
+    Any c = "long string very long";
+    EXPECT_EQ(c.as<String>().value(), "long string very long");
+    EXPECT_EQ(c.try_cast<std::string>().value(), "long string very long");
 }
 
 }// namespace

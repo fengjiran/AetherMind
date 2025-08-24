@@ -69,6 +69,8 @@ public:
      */
     String(const std::string& other);// NOLINT
 
+    String(std::string&& other);// NOLINT
+
     explicit String(ObjectPtr<StringImpl>);
 
     String(const String&) = default;

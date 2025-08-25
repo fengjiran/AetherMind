@@ -14,52 +14,52 @@
 
 namespace aethermind {
 
-#define FORALL_TYPES(_) \
-    _(AnyType)          \
-    _(EnumType)         \
-    _(AnyEnumType)      \
-    _(TensorType)       \
-    _(StorageType)      \
-    _(TupleType)        \
-    _(ListType)         \
-    _(DictType)         \
-    _(NumberType)       \
-    _(FloatType)        \
-    _(ComplexType)      \
-    _(FutureType)       \
-    _(AwaitType)        \
-    _(RRefType)         \
-    _(IntType)          \
-    _(NoneType)         \
-    _(StringType)       \
-    _(GeneratorType)    \
-    _(QuantizerType)    \
-    _(BoolType)         \
-    _(OptionalType)     \
-    _(VarType)          \
-    _(DeviceObjType)    \
-    _(StreamObjType)    \
-    _(FunctionType)     \
-    _(ClassType)        \
-    _(PyObjectType)     \
-    _(CapsuleType)      \
-    _(InterfaceType)    \
-    _(QSchemeType)      \
-    _(ScalarTypeType)   \
-    _(LayoutType)       \
-    _(MemoryFormatType) \
-    _(AnyListType)      \
-    _(AnyTupleType)     \
-    _(AnyClassType)     \
-    _(SymIntType)       \
-    _(SymFloatType)     \
-    _(SymBoolType)      \
-    _(UnionType)        \
+#define AETHERMIND_FORALL_TYPES(_) \
+    _(AnyType)                     \
+    _(EnumType)                    \
+    _(AnyEnumType)                 \
+    _(TensorType)                  \
+    _(StorageType)                 \
+    _(TupleType)                   \
+    _(ListType)                    \
+    _(DictType)                    \
+    _(NumberType)                  \
+    _(FloatType)                   \
+    _(ComplexType)                 \
+    _(FutureType)                  \
+    _(AwaitType)                   \
+    _(RRefType)                    \
+    _(IntType)                     \
+    _(NoneType)                    \
+    _(StringType)                  \
+    _(GeneratorType)               \
+    _(QuantizerType)               \
+    _(BoolType)                    \
+    _(OptionalType)                \
+    _(VarType)                     \
+    _(DeviceObjType)               \
+    _(StreamObjType)               \
+    _(FunctionType)                \
+    _(ClassType)                   \
+    _(PyObjectType)                \
+    _(CapsuleType)                 \
+    _(InterfaceType)               \
+    _(QSchemeType)                 \
+    _(ScalarTypeType)              \
+    _(LayoutType)                  \
+    _(MemoryFormatType)            \
+    _(AnyListType)                 \
+    _(AnyTupleType)                \
+    _(AnyClassType)                \
+    _(SymIntType)                  \
+    _(SymFloatType)                \
+    _(SymBoolType)                 \
+    _(UnionType)                   \
     _(DynamicType)
 
 enum class TypeKind {
 #define DEFINE_TYPE(T) T,
-    FORALL_TYPES(DEFINE_TYPE)
+    AETHERMIND_FORALL_TYPES(DEFINE_TYPE)
 #undef DEFINE_TYPE
 };
 
@@ -273,6 +273,7 @@ public:
     }
 
     static constexpr auto Kind = TypeKind::UnionType;
+
 protected:
     std::vector<Type*> types_;
     bool has_free_vars_;

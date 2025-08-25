@@ -13,7 +13,7 @@ const char* TypeKindToString(TypeKind kind) {
         return #T;
 
     switch (kind) {
-        FORALL_TYPES(CASE)
+        AETHERMIND_FORALL_TYPES(CASE)
     }
 #undef CASE
     return "";

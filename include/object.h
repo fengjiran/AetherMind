@@ -87,23 +87,45 @@ public:
     using element_type = T;
     using null_type = NullType;
 
+    /*!
+     * \brief Default constructor.
+     */
     ObjectPtr() noexcept : ObjectPtr(NullType::singleton(), DoNotIncRefCountTag()) {}
 
+    /*!
+     * \brief Constructor from nullptr.
+     */
     ObjectPtr(std::nullptr_t) noexcept// NOLINT
         : ObjectPtr(NullType::singleton(), DoNotIncRefCountTag()) {}
 
+    /*!
+     * \brief Constructor from unique_ptr.
+     */
     explicit ObjectPtr(std::unique_ptr<T> other) noexcept : ObjectPtr(other.release()) {}
 
+    /*!
+     * \brief Constructor from raw pointer, do not increment reference count.
+     */
     ObjectPtr(T* ptr, DoNotIncRefCountTag) noexcept : ptr_(ptr) {}
 
+    /*!
+     * \brief Copy constructor.
+     */
     ObjectPtr(const ObjectPtr& other) : ptr_(other.ptr_) {
         retain();
     }
-
+    /*!
+     * \brief Move constructor.
+     */
     ObjectPtr(ObjectPtr&& other) noexcept : ptr_(other.ptr_) {
         other.ptr_ = NullType::singleton();
     }
 
+    /*!
+     * \brief Copy constructor.
+     *
+     * \param other The other ObjectPtr.
+     */
     template<typename Derived, typename DerivedNullType>
     ObjectPtr(const ObjectPtr<Derived, DerivedNullType>& other)// NOLINT
         : ptr_(other.ptr_ == DerivedNullType::singleton() ? NullType::singleton() : other.ptr_) {
@@ -111,6 +133,9 @@ public:
         retain();
     }
 
+    /*!
+     * \brief Move constructor.
+     */
     template<typename Derived, typename DerivedNullType>
     ObjectPtr(ObjectPtr<Derived, DerivedNullType>&& other) noexcept// NOLINT
         : ptr_(other.ptr_ == DerivedNullType::singleton() ? NullType::singleton() : other.ptr_) {
@@ -118,6 +143,9 @@ public:
         other.ptr_ = DerivedNullType::singleton();
     }
 
+    /*!
+     * \brief Copy assignment operator.
+     */
     template<typename Derived, typename DerivedNullType>
     ObjectPtr& operator=(const ObjectPtr<Derived, DerivedNullType>& rhs) & {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
@@ -125,6 +153,9 @@ public:
         return *this;
     }
 
+    /*!
+     * \brief Move assignment operator.
+     */
     template<typename Derived, typename DerivedNullType>
     ObjectPtr& operator=(ObjectPtr<Derived, DerivedNullType>&& rhs) & noexcept {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");

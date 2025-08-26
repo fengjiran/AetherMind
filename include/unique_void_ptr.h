@@ -60,7 +60,7 @@ class UniqueVoidPtr {
 public:
     UniqueVoidPtr() : UniqueVoidPtr(nullptr, nullptr, delete_nothing) {}
 
-    explicit UniqueVoidPtr(void* ptr) : UniqueVoidPtr(ptr, nullptr, delete_nothing) {}
+    // explicit UniqueVoidPtr(void* ptr) : UniqueVoidPtr(ptr, nullptr, delete_nothing) {}
 
     UniqueVoidPtr(void* ptr, void* ctx, deleter_type deleter)
         : data_(ptr), ctx_(ctx, deleter ? deleter : delete_nothing) {}

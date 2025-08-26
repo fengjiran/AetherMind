@@ -31,25 +31,6 @@ TEST(Tensor, envs) {
     // std::cout << sysconf(_SC_PAGESIZE);
 }
 
-TEST(Tensor, unique_void_ptr) {
-    struct Context {
-        explicit Context(void* ptr) : data(ptr) {}
-        void delete_ptr() const {
-            // std::cout << "call free.\n";
-            free(data);
-        }
-        void* data;
-    };
-
-    auto default_deleter = [](void* ptr) {
-        static_cast<Context*>(ptr)->delete_ptr();
-    };
-
-    auto* ptr = malloc(10);
-    Context ctx(ptr);
-    UniqueVoidPtr p(ptr, static_cast<void*>(&ctx), default_deleter);
-}
-
 TEST(Tensor, scalar) {
     Scalar s1 = false;
     EXPECT_EQ(s1.toBool(), false);

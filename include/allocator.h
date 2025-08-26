@@ -26,7 +26,7 @@ class DataPtr {
 public:
     DataPtr() : device_(kUndefined) {}
 
-    DataPtr(void* data, Device device) : ptr_(data), device_(device) {}
+    // DataPtr(void* data, Device device) : ptr_(data), device_(device) {}
 
     DataPtr(void* data, void* ctx, deleter_type deleter, Device device)
         : ptr_(data, ctx, deleter), device_(device) {}
@@ -104,6 +104,45 @@ inline bool operator!=(const DataPtr& dp, std::nullptr_t) noexcept {
 inline bool operator!=(std::nullptr_t, const DataPtr& dp) noexcept {
     return dp;
 }
+
+// This context is used to generate DataPtr which have arbitrary
+// deleters associated with them. In some user facing functions,
+// we give a (user-friendly) interface for constructing
+// tensors from external data which take an arbitrary deleter.
+// Grep for GeneralDataPtrContext to find these
+// occurrences.
+struct GeneralDataPtrContext {
+    void* ptr_;
+    deleter_type deleter_;
+
+    GeneralDataPtrContext(void* ptr, deleter_type deleter) : ptr_(ptr), deleter_(deleter) {}
+    GeneralDataPtrContext(const GeneralDataPtrContext&) = delete;
+    GeneralDataPtrContext& operator=(const GeneralDataPtrContext&) = delete;
+
+    GeneralDataPtrContext(GeneralDataPtrContext&& other) noexcept
+        : ptr_(other.ptr_), deleter_(other.deleter_) {
+        other.ptr_ = nullptr;
+        other.deleter_ = nullptr;
+    }
+
+    GeneralDataPtrContext& operator=(GeneralDataPtrContext&& other) noexcept {
+        GeneralDataPtrContext(std::move(other)).swap(*this);
+        return *this;
+    }
+
+    void swap(GeneralDataPtrContext& other) noexcept {
+        std::swap(ptr_, other.ptr_);
+        std::swap(deleter_, other.deleter_);
+    }
+
+    static DataPtr make_data_ptr(void* ptr, deleter_type deleter, Device device);
+
+    ~GeneralDataPtrContext() {
+        if (deleter_ != nullptr) {
+            deleter_(ptr_);
+        }
+    }
+};
 
 // template<typename Rollback>
 // class ExceptionGuard {

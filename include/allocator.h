@@ -111,33 +111,33 @@ inline bool operator!=(std::nullptr_t, const DataPtr& dp) noexcept {
 // tensors from external data which take an arbitrary deleter.
 // Grep for GeneralDataPtrContext to find these
 // occurrences.
-struct GeneralDataPtrContext {
+struct DataPtrContext {
     void* ptr_;
     deleter_type deleter_;
 
-    GeneralDataPtrContext(void* ptr, deleter_type deleter) : ptr_(ptr), deleter_(deleter) {}
-    GeneralDataPtrContext(const GeneralDataPtrContext&) = delete;
-    GeneralDataPtrContext& operator=(const GeneralDataPtrContext&) = delete;
+    DataPtrContext(void* ptr, deleter_type deleter) : ptr_(ptr), deleter_(deleter) {}
+    DataPtrContext(const DataPtrContext&) = delete;
+    DataPtrContext& operator=(const DataPtrContext&) = delete;
 
-    GeneralDataPtrContext(GeneralDataPtrContext&& other) noexcept
+    DataPtrContext(DataPtrContext&& other) noexcept
         : ptr_(other.ptr_), deleter_(other.deleter_) {
         other.ptr_ = nullptr;
         other.deleter_ = nullptr;
     }
 
-    GeneralDataPtrContext& operator=(GeneralDataPtrContext&& other) noexcept {
-        GeneralDataPtrContext(std::move(other)).swap(*this);
+    DataPtrContext& operator=(DataPtrContext&& other) noexcept {
+        DataPtrContext(std::move(other)).swap(*this);
         return *this;
     }
 
-    void swap(GeneralDataPtrContext& other) noexcept {
+    void swap(DataPtrContext& other) noexcept {
         std::swap(ptr_, other.ptr_);
         std::swap(deleter_, other.deleter_);
     }
 
     static DataPtr make_data_ptr(void* ptr, deleter_type deleter, Device device);
 
-    ~GeneralDataPtrContext() {
+    ~DataPtrContext() {
         if (deleter_ != nullptr) {
             deleter_(ptr_);
         }

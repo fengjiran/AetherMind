@@ -43,7 +43,7 @@ TEST(Storage, general_data_ptr_context) {
     };
 
     auto* ptr = malloc(10);
-    auto data_ptr = GeneralDataPtrContext::make_data_ptr(ptr, deleter, Device(kCPU));
+    auto data_ptr = DataPtrContext::make_data_ptr(ptr, deleter, Device(kCPU));
 }
 
 }

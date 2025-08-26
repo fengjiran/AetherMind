@@ -11,6 +11,7 @@
 #include "object.h"
 #include "storage.h"
 #include "tensor_utils.h"
+#include "shape_and_stride.h"
 
 #include <fmt/format.h>
 #include <glog/logging.h>

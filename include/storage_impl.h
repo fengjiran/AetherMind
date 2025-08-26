@@ -10,6 +10,11 @@
 
 namespace aethermind {
 
+/*!
+ * \brief A storage represents the underlying backing data buffer for a tensor.
+ *
+ * \note
+ */
 class StorageImpl : public Object {
 public:
     StorageImpl(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<Allocator>& alloc)

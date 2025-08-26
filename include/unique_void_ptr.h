@@ -58,9 +58,9 @@ inline void delete_nothing(void* ptr) {
 // itself.
 class UniqueVoidPtr {
 public:
-    UniqueVoidPtr() : data_(nullptr), ctx_(nullptr, delete_nothing) {}
+    UniqueVoidPtr() : UniqueVoidPtr(nullptr, nullptr, delete_nothing) {}
 
-    explicit UniqueVoidPtr(void* ptr) : data_(ptr), ctx_(nullptr, delete_nothing) {}
+    explicit UniqueVoidPtr(void* ptr) : UniqueVoidPtr(ptr, nullptr, delete_nothing) {}
 
     UniqueVoidPtr(void* ptr, void* ctx, deleter_type deleter)
         : data_(ptr), ctx_(ctx, deleter ? deleter : delete_nothing) {}

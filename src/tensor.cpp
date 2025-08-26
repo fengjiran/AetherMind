@@ -68,11 +68,11 @@ const void* Tensor::const_data_ptr() const {
     return impl_->const_data();
 }
 
-std::vector<int64_t> Tensor::shape() const {
+IntArrayView Tensor::shape() const {
     return impl_->shape();
 }
 
-std::vector<int64_t> Tensor::strides() const {
+IntArrayView Tensor::strides() const {
     return impl_->strides();
 }
 

@@ -47,7 +47,7 @@ int64_t TensorImpl::ndim() const {
     return shape_and_stride_.size();
 }
 
-std::vector<int64_t> TensorImpl::shape() const {
+IntArrayView TensorImpl::shape() const {
     return shape_and_stride_.get_shape();
 }
 
@@ -56,7 +56,7 @@ int64_t TensorImpl::shape(int64_t dim) const {
     return shape_and_stride_.shape_at_uncheck(dim);
 }
 
-std::vector<int64_t> TensorImpl::strides() const {
+IntArrayView TensorImpl::strides() const {
     return shape_and_stride_.get_strides();
 }
 
@@ -125,7 +125,7 @@ bool TensorImpl::is_contiguous() const {
     return is_contiguous_;
 }
 
-void TensorImpl::set_shape_and_strides(const std::vector<int64_t>& shape, const std::vector<int64_t>& strides, std::optional<int64_t> storage_offset) {
+void TensorImpl::set_shape_and_strides(IntArrayView shape, IntArrayView strides, std::optional<int64_t> storage_offset) {
     CHECK(shape.size() == strides.size()) << "dimensionality of shape must match dimensionality of strides.";
     auto ndim = shape.size();
     shape_and_stride_.set_shape(shape);
@@ -160,7 +160,7 @@ void TensorImpl::set_shape_and_strides(const std::vector<int64_t>& shape, const 
     }
 }
 
-void TensorImpl::set_shape_contiguous(const std::vector<int64_t>& shape) {
+void TensorImpl::set_shape_contiguous(IntArrayView shape) {
     shape_and_stride_.set_shape(shape);
     refresh_numel();
     refresh_contiguous();

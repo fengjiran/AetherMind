@@ -41,7 +41,8 @@ inline int64_t GetTensorSize(const TensorInfo& t) {
     return (numel * t.dtype.bits * t.dtype.lanes + 7) / 8;
 }
 
-inline bool _compute_contiguous(const std::vector<int64_t>& shape, const std::vector<int64_t>& strides) {
+template<typename T>
+bool _compute_contiguous(ArrayView<T> shape, ArrayView<T> strides) {
     if (strides.empty()) {
         return true;
     }
@@ -50,7 +51,7 @@ inline bool _compute_contiguous(const std::vector<int64_t>& shape, const std::ve
         return false;
     }
 
-    int64_t expected_stride = 1;
+    T expected_stride = 1;
     for (int i = shape.size() - 1; i >= 0; --i) {
         if (shape[i] == 1) {
             continue;
@@ -219,14 +220,14 @@ public:
     /**
      * Return the shape of this tensor.
      **/
-    NODISCARD std::vector<int64_t> shape() const;
+    NODISCARD IntArrayView shape() const;
 
     NODISCARD int64_t shape(int64_t dim) const;
 
     /**
      * Return the strides of this tensor.
      **/
-    NODISCARD std::vector<int64_t> strides() const;
+    NODISCARD IntArrayView strides() const;
 
     NODISCARD int64_t strides(int64_t dim) const;
 
@@ -285,11 +286,11 @@ public:
 
     NODISCARD const void* const_data() const;
 
-    void set_shape_and_strides(const std::vector<int64_t>& shape,
-                               const std::vector<int64_t>& strides,
+    void set_shape_and_strides(IntArrayView shape,
+                               IntArrayView strides,
                                std::optional<int64_t> storage_offset = std::nullopt);
 
-    void set_shape_contiguous(const std::vector<int64_t>& shape);
+    void set_shape_contiguous(IntArrayView shape);
 
     /**
      * Compute the number of elements based on the sizes of a

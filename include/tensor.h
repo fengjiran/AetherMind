@@ -35,9 +35,9 @@ public:
 
     NODISCARD bool unique() const;
 
-    NODISCARD std::vector<int64_t> shape() const;
+    NODISCARD IntArrayView shape() const;
 
-    NODISCARD std::vector<int64_t> strides() const;
+    NODISCARD IntArrayView strides() const;
 
     NODISCARD int64_t shape(int64_t dim) const;
 

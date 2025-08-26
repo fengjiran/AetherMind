@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_STORAGE_H
 #define AETHERMIND_STORAGE_H
 
+#include "container/array_view.h"
 #include "storage_impl.h"
 
 #define MAX_INLINE_SIZE 5
@@ -250,21 +251,21 @@ public:
         return stride_data()[idx];
     }
 
-    void set_shape(const std::vector<int64_t>& shape) {
+    void set_shape(IntArrayView shape) {
         resize(shape.size());
         std::copy(shape.begin(), shape.end(), shape_begin());
     }
 
-    void set_strides(const std::vector<int64_t>& strides) {
+    void set_strides(IntArrayView strides) {
         CHECK(strides.size() == size());
         std::copy(strides.begin(), strides.end(), stride_begin());
     }
 
-    NODISCARD std::vector<int64_t> get_shape() const {
+    NODISCARD IntArrayView get_shape() const {
         return {shape_begin(), shape_end()};
     }
 
-    NODISCARD std::vector<int64_t> get_strides() const {
+    NODISCARD IntArrayView get_strides() const {
         return {stride_begin(), stride_end()};
     }
 

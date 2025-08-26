@@ -95,7 +95,7 @@ inline bool IsNullTypePtr(const Object* ptr) {
         return true;
     }
 
-    if (ptr == null_type<StringImpl>::singleton()) {
+    if (static_cast<const void*>(ptr) == static_cast<void*>(null_type<StringImpl>::singleton())) {
         return true;
     }
     return false;
@@ -432,7 +432,7 @@ template<>
 struct TypeTraits<const char*> : TypeTraits<String> {};
 
 template<>
-struct TypeTraits<std::string>: TypeTraits<String> {
+struct TypeTraits<std::string> : TypeTraits<String> {
     // static void CopyToAny(const std::string& src, AetherMindAny* dst) {
     //     TypeTraits<String>::CopyToAny(String(src), dst);
     // }
@@ -440,6 +440,11 @@ struct TypeTraits<std::string>: TypeTraits<String> {
     // static void MoveToAny(std::string src, AetherMindAny* dst) {
     //     TypeTraits<String>::MoveToAny(std::move(src), dst);
     // }
+};
+
+template<>
+struct TypeTraits<StorageImpl> {
+
 };
 
 }// namespace aethermind

@@ -50,6 +50,26 @@ std::shared_ptr<DebugInfoBase> ThreadLocalDebugInfo::_peek(DebugInfoKind kind) {
     return debug_info->info_;
 }
 
+DebugInfoGuard::DebugInfoGuard(DebugInfoKind kind, std::shared_ptr<DebugInfoBase> info) {
+    if (info) {
+        prev_info_ = debug_info;
+        ThreadLocalDebugInfo::_push(kind, std::move(info));
+        active_ = true;
+    }
+}
 
+DebugInfoGuard::DebugInfoGuard(std::shared_ptr<ThreadLocalDebugInfo> info) {
+    if (info) {
+        prev_info_ = std::move(debug_info);
+        debug_info = std::move(info);
+        active_ = true;
+    }
+}
+
+DebugInfoGuard::~DebugInfoGuard() {
+    if (active_) {
+        debug_info = prev_info_;
+    }
+}
 
 }// namespace aethermind

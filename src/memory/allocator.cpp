@@ -8,4 +8,11 @@ namespace aethermind {
 
 REGISTER_ALLOCATOR(DeviceType::kUndefined, UndefinedAllocator);
 
+bool memoryProfilingEnabled() {
+    auto* reporter_ptr = static_cast<MemoryReportingInfoBase*>(
+            ThreadLocalDebugInfo::get(DebugInfoKind::PROFILER_STATE));
+    return reporter_ptr && reporter_ptr->memoryProfilingEnabled();
+}
+
+
 }// namespace aethermind

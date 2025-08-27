@@ -5,10 +5,11 @@
 #ifndef AETHERMIND_ALLOCATOR_H
 #define AETHERMIND_ALLOCATOR_H
 
+#include "data_ptr.h"
 #include "device.h"
 #include "env.h"
 #include "tensor_utils.h"
-#include "data_ptr.h"
+#include "utils/thread_local_debug_info.h"
 
 #include <glog/logging.h>
 #include <unordered_map>
@@ -107,6 +108,37 @@ public:
         AllocatorTable::Global().set_allocator(device, std::make_unique<allocator>()); \
         return 0;                                                                      \
     }()
+
+// An interface for reporting thread local memory usage per device
+class MemoryReportingInfoBase : public DebugInfoBase {
+public:
+    /**
+     * \brief Reports memory usage.
+     * \param ptr The pointer to the memory block.
+     *
+     * \param alloc_size The size of the memory block.
+     *
+     * \param total_allocated The total allocated memory.
+     *
+     * \param total_reserved The total reserved memory.
+     *
+     * \param device The device type.
+     */
+    virtual void reportMemoryUsage(void* ptr,
+                                   int64_t alloc_size,
+                                   size_t total_allocated,
+                                   size_t total_reserved,
+                                   Device device) = 0;
+
+    virtual void reportOutOfMemory(int64_t alloc_size,
+                                   size_t total_allocated,
+                                   size_t total_reserved,
+                                   Device device);
+
+    virtual bool memoryProfilingEnabled() const = 0;
+};
+
+bool memoryProfilingEnabled();
 
 }// namespace aethermind
 

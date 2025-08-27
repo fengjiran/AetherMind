@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_UNIQUE_VOID_PTR_H
 #define AETHERMIND_UNIQUE_VOID_PTR_H
 
+#include "macros.h"
+#include "device.h"
 #include <memory>
 
 namespace aethermind {

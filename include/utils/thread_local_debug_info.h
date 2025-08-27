@@ -30,6 +30,23 @@ class ThreadLocalDebugInfo {
 public:
     static DebugInfoBase* get(DebugInfoKind kind);
 
+    // Get current ThreadLocalDebugInfo
+    static std::shared_ptr<ThreadLocalDebugInfo> current();
+
+    // Internal, use DebugInfoGuard/ThreadLocalStateGuard
+    static void _forceCurrentDebugInfo(std::shared_ptr<ThreadLocalDebugInfo> info);
+
+    // Push debug info struct of a given kind
+    static void _push(DebugInfoKind kind, std::shared_ptr<DebugInfoBase> info);
+
+    // Pop debug info, throws in case the last pushed
+    // debug info is not of a given kind
+    static std::shared_ptr<DebugInfoBase> _pop(DebugInfoKind kind);
+
+    // Peek debug info, throws in case the last pushed debug info is not of the
+    // given kind
+    static std::shared_ptr<DebugInfoBase> _peek(DebugInfoKind kind);
+
 private:
     DebugInfoKind kind_;
     std::shared_ptr<DebugInfoBase> info_;

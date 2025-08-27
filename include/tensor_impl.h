@@ -5,13 +5,13 @@
 #ifndef AETHERMIND_TENSOR_IMPL_H
 #define AETHERMIND_TENSOR_IMPL_H
 
-#include "cpu_allocator.h"
 #include "data_type.h"
 #include "device.h"
+#include "memory/cpu_allocator.h"
+#include "memory/storage.h"
 #include "object.h"
-#include "storage.h"
-#include "tensor_utils.h"
 #include "shape_and_stride.h"
+#include "tensor_utils.h"
 
 #include <fmt/format.h>
 #include <glog/logging.h>

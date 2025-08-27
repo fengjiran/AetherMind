@@ -19,7 +19,7 @@ public:
 
     NODISCARD DataPtr allocate(size_t nbytes) const override {
         void* data = alloc_cpu(nbytes);
-        return {data, data, deleter, Device(kCPU)};
+        return {data, deleter, Device(kCPU)};
     }
 
     static void deleter(void* ptr) {

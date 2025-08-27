@@ -8,7 +8,7 @@
 #include "device.h"
 #include "env.h"
 #include "tensor_utils.h"
-#include "unique_void_ptr.h"
+#include "data_ptr.h"
 
 #include <glog/logging.h>
 #include <unordered_map>

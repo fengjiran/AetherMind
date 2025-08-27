@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_STORAGE_IMPL_H
 #define AETHERMIND_STORAGE_IMPL_H
 
-#include "allocator.h"
 #include "object.h"
+#include "memory/allocator.h"
 
 namespace aethermind {
 

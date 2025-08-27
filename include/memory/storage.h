@@ -6,7 +6,7 @@
 #define AETHERMIND_STORAGE_H
 
 #include "container/array_view.h"
-#include "storage_impl.h"
+#include "memory/storage_impl.h"
 
 namespace aethermind {
 

@@ -16,11 +16,6 @@ void free_cpu(void* data);
 class CPUAllocator final : public Allocator {
 public:
     CPUAllocator() = default;
-    //
-    // NODISCARD void* allocate(size_t nbytes) const override {
-    //     // return malloc(n);
-    //     return alloc_cpu(nbytes);
-    // }
 
     NODISCARD DataPtr allocate(size_t nbytes) const override {
         void* data = alloc_cpu(nbytes);
@@ -35,7 +30,6 @@ public:
     }
 
     void deallocate(void* p) const override {
-        // free(p);
         free_cpu(p);
     }
 };

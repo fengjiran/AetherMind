@@ -15,135 +15,6 @@
 
 namespace aethermind {
 
-// A DataPtr is a unique pointer (with an attached deleter and some
-// context for the deleter) to some memory, which also records what
-// device is for its data.
-//
-// nullptr DataPtrs can still have a nontrivial device; this allows
-// us to treat zero-size allocations uniformly with non-zero allocations.
-//
-class DataPtr {
-public:
-    DataPtr() : device_(kUndefined) {}
-
-    // DataPtr(void* data, Device device) : ptr_(data), device_(device) {}
-
-    DataPtr(void* data, void* ctx, deleter_type deleter, Device device)
-        : ptr_(data, ctx, deleter), device_(device) {}
-
-    NODISCARD Device device() const {
-        return device_;
-    }
-
-    void clear() {
-        ptr_.clear();
-    }
-
-    NODISCARD void* get() const {
-        return ptr_.get();
-    }
-
-    NODISCARD void* get_context() const {
-        return ptr_.get_context();
-    }
-
-    NODISCARD deleter_type get_deleter() const {
-        return ptr_.get_deleter();
-    }
-
-    void* release_context() {
-        return ptr_.release_context();
-    }
-
-    std::unique_ptr<void, deleter_type>&& move_context() {
-        return ptr_.move_context();
-    }
-
-    operator bool() const {
-        return ptr_;
-    }
-
-    void* operator->() const {
-        return ptr_.get();
-    }
-
-    bool compare_exchange_deleter(deleter_type expected_deleter, deleter_type new_deleter) {
-        return ptr_.compare_exchange_deleter(expected_deleter, new_deleter);
-    }
-
-    template<typename T>
-    T* cast_context(deleter_type expected_deleter) const {
-        return ptr_.cast_context<T>(expected_deleter);
-    }
-
-    bool unsafe_reset_data_and_ctx(void* new_data_and_ctx) {
-        return ptr_.unsafe_reset_data_and_ctx(new_data_and_ctx);
-    }
-
-    void unsafe_set_device(Device device) {
-        device_ = device;
-    }
-
-private:
-    UniqueVoidPtr ptr_;
-    Device device_;
-};
-
-inline bool operator==(const DataPtr& dp, std::nullptr_t) noexcept {
-    return !dp;
-}
-
-inline bool operator==(std::nullptr_t, const DataPtr& dp) noexcept {
-    return !dp;
-}
-
-inline bool operator!=(const DataPtr& dp, std::nullptr_t) noexcept {
-    return dp;
-}
-
-inline bool operator!=(std::nullptr_t, const DataPtr& dp) noexcept {
-    return dp;
-}
-
-// This context is used to generate DataPtr which have arbitrary
-// deleters associated with them. In some user facing functions,
-// we give a (user-friendly) interface for constructing
-// tensors from external data which take an arbitrary deleter.
-// Grep for GeneralDataPtrContext to find these
-// occurrences.
-struct DataPtrContext {
-    void* ptr_;
-    deleter_type deleter_;
-
-    DataPtrContext(void* ptr, deleter_type deleter) : ptr_(ptr), deleter_(deleter) {}
-    DataPtrContext(const DataPtrContext&) = delete;
-    DataPtrContext& operator=(const DataPtrContext&) = delete;
-
-    DataPtrContext(DataPtrContext&& other) noexcept
-        : ptr_(other.ptr_), deleter_(other.deleter_) {
-        other.ptr_ = nullptr;
-        other.deleter_ = nullptr;
-    }
-
-    DataPtrContext& operator=(DataPtrContext&& other) noexcept {
-        DataPtrContext(std::move(other)).swap(*this);
-        return *this;
-    }
-
-    void swap(DataPtrContext& other) noexcept {
-        std::swap(ptr_, other.ptr_);
-        std::swap(deleter_, other.deleter_);
-    }
-
-    static DataPtr make_data_ptr(void* ptr, deleter_type deleter, Device device);
-
-    ~DataPtrContext() {
-        if (deleter_ != nullptr) {
-            deleter_(ptr_);
-        }
-    }
-};
-
 // template<typename Rollback>
 // class ExceptionGuard {
 // public:
@@ -206,7 +77,7 @@ class UndefinedAllocator final : public Allocator {
 public:
     UndefinedAllocator() = default;
 
-    DataPtr allocate(size_t nbytes) const override {
+    NODISCARD DataPtr allocate(size_t nbytes) const override {
         return {};
     }
 

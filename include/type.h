@@ -8,6 +8,7 @@
 #include "macros.h"
 
 #include <functional>
+#include <glog/logging.h>
 #include <memory>
 #include <optional>
 #include <string>
@@ -63,6 +64,46 @@ enum class TypeKind {
 #undef DEFINE_TYPE
 };
 
+// The wrapper for singleton type pointer, as the tag of singleton type.
+template<typename T>
+class SingletonTypePtr {
+public:
+    using element_type = std::remove_extent_t<T>;
+
+    SingletonTypePtr(T* ptr) : ptr_(ptr) {}// NOLINT
+
+    explicit SingletonTypePtr(std::shared_ptr<T>) = delete;
+
+    T* get() const {
+        return ptr_;
+    }
+
+    T& operator*() const {
+        return *ptr_;
+    }
+
+    T* operator->() const {
+        return get();
+    }
+
+    operator bool() const {
+        return get() != nullptr;
+    }
+
+private:
+    T* ptr_{nullptr};
+};
+
+template<typename T, typename U>
+bool operator==(const SingletonTypePtr<T>& lhs, const SingletonTypePtr<U>& rhs) {
+    return static_cast<void*>(lhs.get()) == static_cast<void*>(rhs.get());
+}
+
+template<typename T, typename U>
+bool operator!=(const SingletonTypePtr<T>& lhs, const SingletonTypePtr<U>& rhs) {
+    return !(lhs == rhs);
+}
+
 const char* TypeKindToString(TypeKind kind);
 
 class Type;
@@ -71,6 +112,54 @@ class Type;
 // std::nullopt is returned, `annotation_str()` falls through to its default
 // implementation.
 using TypePrinter = std::function<std::optional<std::string>(const Type&)>;
+
+template<typename T>
+struct IsSingletonType : std::false_type {};
+
+template<typename T>
+using is_singleton_type_v = IsSingletonType<T>::value;
+
+#define DECLARE_SINGLETON_TYPE(Type) \
+    template<>                       \
+    struct IsSingletonType<Type> : std::true_type {};
+
+template<typename T>
+class SingletonOrSharedTypePtr {
+public:
+private:
+    struct SharedPtrWrapper {
+        std::shared_ptr<T> ptr_;
+
+        SharedPtrWrapper(std::shared_ptr<T>&& ptr) : ptr_(std::move(ptr)) {}
+    };
+
+    struct SingletonRepr {
+        T* singleton_;
+        void* unused_{nullptr};
+
+        explicit SingletonRepr(T* singleton) : singleton_(singleton) {}
+    };
+
+    struct RawRepr {
+        void* first_;
+        void* null_if_singleton_;
+    };
+
+    union Repr {
+        Repr() : Repr(nullptr) {}
+
+        explicit Repr(std::nullptr_t) : singleton_repr_(nullptr) {}
+
+        explicit Repr(std::shared_ptr<T> ptr) : shared_repr_(std::move(ptr)) {}
+
+        explicit Repr(SingletonTypePtr<T> ptr) : singleton_repr_(ptr.get()) {}
+
+        SharedPtrWrapper shared_repr_;
+        SingletonRepr singleton_repr_;
+    };
+
+    Repr repr_;
+};
 
 class Type {
 public:
@@ -146,8 +235,13 @@ public:
         return &inst;
     }
 
+    Singleton(const Singleton&) = delete;
+    Singleton(Singleton&&) noexcept = delete;
+    Singleton& operator=(const Singleton&) = delete;
+    Singleton& operator=(Singleton&&) noexcept = delete;
+
 protected:
-    Singleton(TypeKind kind) : Type(kind) {}
+    explicit Singleton(TypeKind kind) : Type(kind) {}
 };
 
 class AnyType : public Singleton<AnyType> {
@@ -258,27 +352,6 @@ private:
     }
 };
 
-class UnionType : public Singleton<UnionType> {
-public:
-    bool isUnionType() const override {
-        return true;
-    }
-
-    std::vector<Type*> containedTypes() const override {
-        return types_;
-    }
-
-    bool hasFreeVars() const override {
-        return has_free_vars_;
-    }
-
-    static constexpr auto Kind = TypeKind::UnionType;
-
-protected:
-    std::vector<Type*> types_;
-    bool has_free_vars_;
-    friend class Singleton;
-};
 
 inline std::string toString(const Type& t) {
     return t.str();
@@ -291,6 +364,11 @@ inline bool operator==(const Type& lhs, const Type& rhs) {
 inline bool operator!=(const Type& lhs, const Type& rhs) {
     return !(lhs == rhs);
 }
+
+DECLARE_SINGLETON_TYPE(AnyType);
+DECLARE_SINGLETON_TYPE(NumberType);
+DECLARE_SINGLETON_TYPE(IntType);
+DECLARE_SINGLETON_TYPE(FloatType);
 
 }// namespace aethermind
 

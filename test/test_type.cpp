@@ -9,7 +9,7 @@ namespace {
 using namespace aethermind;
 
 TEST(Type, init) {
-    const Type* t1 = AnyType::GetTypePtr();
+    const Type* t1 = AnyType::Global().get();
     EXPECT_EQ(t1->kind(), TypeKind::AnyType);
     EXPECT_EQ(t1->str(), "Any");
     EXPECT_EQ(t1->annotation_str(), "Any");

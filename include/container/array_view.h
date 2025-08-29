@@ -39,7 +39,7 @@ public:
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-    ArrayView() : ArrayView(nullptr, 0) {}
+    ArrayView() : data_(nullptr), size_(0) {}
 
     ArrayView(const T& e) : ArrayView(&e, 1) {}// NOLINT
 

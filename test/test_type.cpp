@@ -13,6 +13,9 @@ TEST(Type, init) {
     EXPECT_EQ(t1->kind(), TypeKind::AnyType);
     EXPECT_EQ(t1->str(), "Any");
     EXPECT_EQ(t1->annotation_str(), "Any");
+    EXPECT_TRUE(t1->cast_to_raw_type<AnyType>() == t1);
+    EXPECT_TRUE(t1->cast<AnyType>().get() == t1);
+
     auto printer = [](const Type& t) -> std::optional<std::string> {
         return t.str() + "_test";
     };
@@ -20,10 +23,15 @@ TEST(Type, init) {
 
     // const Type& t2 = NumberType::GetInst();
 
-    const Type* t3 = IntType::GetTypePtr();
+    TypePtr t3 = IntType::Global();
     EXPECT_EQ(t3->kind(), TypeKind::IntType);
     EXPECT_EQ(t3->str(), "int");
     EXPECT_EQ(t3->annotation_str(), "int");
+
+    const auto& t4 = *t3;
+    EXPECT_EQ(t4.kind(), TypeKind::IntType);
+    EXPECT_EQ(t4.str(), "int");
+    EXPECT_EQ(t4.annotation_str(), "int");
 }
 
-}
+}// namespace

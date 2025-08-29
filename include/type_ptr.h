@@ -54,6 +54,7 @@ template<typename T>
 class SingletonOrSharedTypePtr {
 public:
     using element_type = std::remove_extent_t<T>;
+
     SingletonOrSharedTypePtr() = default;
 
     SingletonOrSharedTypePtr(std::nullptr_t) : repr_(nullptr) {}

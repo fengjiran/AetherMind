@@ -5,9 +5,9 @@
 #ifndef AETHERMIND_TYPE_H
 #define AETHERMIND_TYPE_H
 
+#include "container/array_view.h"
 #include "macros.h"
 #include "type_ptr.h"
-#include "container/array_view.h"
 
 #include <functional>
 #include <glog/logging.h>
@@ -131,9 +131,11 @@ struct as_shared_type<const T*> {
     }
 
 DECLARE_SINGLETON_TYPE(AnyType);
+DECLARE_SINGLETON_TYPE(NoneType);
 DECLARE_SINGLETON_TYPE(NumberType);
 DECLARE_SINGLETON_TYPE(IntType);
 DECLARE_SINGLETON_TYPE(FloatType);
+DECLARE_SINGLETON_TYPE(ComplexType);
 
 using TypePtr = SingletonOrSharedTypePtr<Type>;
 
@@ -160,7 +162,7 @@ public:
     // list of types this type contains, e.g. for a List then element type of
     // list for a tuple, the types of the tuple elements
     virtual ArrayView<TypePtr> containedTypes() const {
-        return ArrayView<TypePtr>();
+        return {};
     }
 
     virtual TypePtr containedType(size_t i) const {
@@ -197,7 +199,15 @@ public:
         return annotation_str();
     }
 
+    // TODO: isSubtypeOfExt
+    virtual bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const;
+
     bool is_subtype_of(const Type& other) const {
+        return isSubtypeOfExt(other, nullptr);
+    }
+
+    virtual bool is_module() const {
+        return false;
     }
 
     // Dynamically cast this object to the subclass indicated by the
@@ -206,7 +216,7 @@ public:
              typename = std::enable_if_t<!detail::is_singleton_type_v<T>>,
              typename RetType = detail::CastReturnType_t<T>>
     RetType cast() {
-        if (T::kind == kind()) {
+        if (T::Kind == kind()) {
             return std::static_pointer_cast<T>(static_cast<T*>(this)->shared_from_this());
         }
         return nullptr;
@@ -218,7 +228,7 @@ public:
              typename = std::enable_if_t<detail::is_singleton_type_v<T>>,
              typename RetType = detail::CastReturnType_t<T>>
     RetType cast() {
-        if (T::kind == kind()) {
+        if (T::Kind == kind()) {
             CHECK(this == T::Global().get());
             return static_cast<T*>(this);
         }
@@ -229,7 +239,7 @@ public:
              typename = std::enable_if_t<!detail::is_singleton_type_v<T>>,
              typename RetType = detail::CastConstReturnType_t<T>>
     RetType cast() const {
-        if (T::kind == kind()) {
+        if (T::Kind == kind()) {
             return std::static_pointer_cast<const T>(static_cast<const T*>(this)->shared_from_this());
         }
         return nullptr;
@@ -240,7 +250,7 @@ public:
              typename = std::enable_if_t<detail::is_singleton_type_v<T>>,
              typename RetType = detail::CastConstReturnType_t<T>>
     RetType cast() const {
-        if (T::kind == kind()) {
+        if (T::Kind == kind()) {
             CHECK(this == T::Global().get());
             return static_cast<const T*>(this);
         }
@@ -249,7 +259,7 @@ public:
 
     template<typename T>
     T* cast_to_raw_type() {
-        if (T::kind == kind()) {
+        if (T::Kind == kind()) {
             return static_cast<T*>(this);
         }
         return nullptr;
@@ -257,14 +267,14 @@ public:
 
     template<typename T>
     const T* cast_to_raw_type() const {
-        if (T::kind == kind()) {
+        if (T::Kind == kind()) {
             return static_cast<const T*>(this);
         }
         return nullptr;
     }
 
 protected:
-    Type() : kind_(TypeKind::AnyType) {}
+    // Type() = default;
     explicit Type(TypeKind kind) : kind_(kind) {}
     virtual ~Type() = default;
 
@@ -275,7 +285,6 @@ protected:
 private:
     TypeKind kind_;
 };
-
 
 
 // Base class for Types that are guaranteed to be owned by std::shared_ptr.
@@ -315,20 +324,41 @@ public:
     static constexpr auto Kind = TypeKind::AnyType;
 
 private:
-    AnyType() : Singleton(TypeKind::AnyType) {}
+    AnyType() : Singleton(Kind) {}
     friend class Singleton;
 };
 
+using NoneTypePtr = SingletonTypePtr<NoneType>;
+class NoneType : public Singleton<NoneType> {
+public:
+    bool equals(const Type& rhs) const override {
+        return rhs.kind() == kind();
+    }
+
+    std::string str() const override {
+        return "NoneType";
+    }
+
+    static constexpr auto Kind = TypeKind::NoneType;
+
+private:
+    NoneType() : Singleton(Kind) {}
+    friend class Singleton;
+};
+
+using NumberTypePtr = SingletonTypePtr<NumberType>;
 class NumberType : public Singleton<NumberType> {
 public:
     std::string str() const override {
         return "Scalar";
     }
 
+    bool equals(const Type& other) const override;
+
     static constexpr auto Kind = TypeKind::NumberType;
 
 protected:
-    NumberType(TypeKind kind = TypeKind::NumberType) : Singleton(kind) {}
+    NumberType(TypeKind kind = Kind) : Singleton(kind) {}
 
 private:
     std::string annotation_str_impl(const TypePrinter&) const override {
@@ -338,6 +368,7 @@ private:
     friend class Singleton;
 };
 
+using IntTypePtr = SingletonTypePtr<IntType>;
 class IntType : public NumberType {
 public:
     std::string str() const override {
@@ -348,7 +379,7 @@ public:
         return kind() == rhs.kind();
     }
 
-    static IntType* GetTypePtr() {
+    static IntTypePtr Global() {
         static IntType inst;
         return &inst;
     }
@@ -356,12 +387,13 @@ public:
     static constexpr auto Kind = TypeKind::IntType;
 
 private:
-    IntType() : NumberType(TypeKind::IntType) {}
+    IntType() : NumberType(Kind) {}
     std::string annotation_str_impl(const TypePrinter&) const override {
         return "int";
     }
 };
 
+using FloatTypePtr = SingletonTypePtr<FloatType>;
 class FloatType : public NumberType {
 public:
     std::string str() const override {
@@ -372,7 +404,7 @@ public:
         return rhs.kind() == kind();
     }
 
-    static FloatType* GetTypePtr() {
+    static FloatTypePtr Global() {
         static FloatType inst;
         return &inst;
     }
@@ -380,12 +412,13 @@ public:
     static constexpr auto Kind = TypeKind::FloatType;
 
 private:
-    FloatType() : NumberType(TypeKind::FloatType) {}
+    FloatType() : NumberType(Kind) {}
     std::string annotation_str_impl(const TypePrinter&) const override {
         return "float";
     }
 };
 
+using ComplexTypePtr = SingletonTypePtr<ComplexType>;
 class ComplexType : public NumberType {
 public:
     std::string str() const override {
@@ -396,7 +429,7 @@ public:
         return rhs.kind() == kind();
     }
 
-    static ComplexType* GetTypePtr() {
+    static ComplexTypePtr Global() {
         static ComplexType inst;
         return &inst;
     }
@@ -404,7 +437,7 @@ public:
     static constexpr auto Kind = TypeKind::ComplexType;
 
 private:
-    ComplexType() : NumberType(TypeKind::ComplexType) {}
+    ComplexType() : NumberType(Kind) {}
     std::string annotation_str_impl(const TypePrinter&) const override {
         return "complex";
     }
@@ -414,18 +447,36 @@ class UnionType;
 using UnionTypePtr = std::shared_ptr<UnionType>;
 class UnionType : public SharedType {
 public:
-
     bool isUnionType() const override {
         return true;
     }
 
+    ArrayView<TypePtr> containedTypes() const override {
+        return types_;
+    }
+
+    // just for test
+    ArrayView<TypePtr> getTypes() const {
+        return types_;
+    }
+
+    // TODO: pure virtual function
+    bool canHoldType(const Type& type) const { return false; }
+
     static constexpr auto Kind = TypeKind::UnionType;
 
 protected:
+    // TODO: UnionType constructor
+    explicit UnionType(std::vector<TypePtr> types, TypeKind kind = TypeKind::UnionType);
+
     std::vector<TypePtr> types_;
     bool can_hold_none_;
+
+    friend class Type;
 };
 
+class OptionalType;
+using OptionalTypePtr = std::shared_ptr<OptionalType>;
 class OptionalType : public UnionType {
 public:
     bool isUnionType() const override {
@@ -436,14 +487,24 @@ public:
         return get_element_type()->str() + "?";
     }
 
+    // TODO: pure virtual function
+    bool equals(const Type& rhs) const override { return false; }
+
     const TypePtr& get_element_type() const {
         return containe_type_;
     }
 
+    static OptionalTypePtr create(const TypePtr& contained);
+
     static constexpr auto Kind = TypeKind::OptionalType;
 
 private:
+    // TODO: OptionalType constructor
+    explicit OptionalType(const TypePtr& contained);
+
     TypePtr containe_type_;
+
+    friend class Type;
 };
 
 

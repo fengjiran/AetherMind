@@ -287,6 +287,20 @@ public:
         return r;
     }
 
+    template<typename T>
+    T& expectRef() {
+        auto* r = cast_to_raw_type<T>();
+        CHECK(r);
+        return *r;
+    }
+
+    template<typename T>
+    const T& expectRef() const {
+        auto* r = cast_to_raw_type<const T>();
+        CHECK(r);
+        return *r;
+    }
+
 protected:
     // Type() = default;
     explicit Type(TypeKind kind) : kind_(kind) {}
@@ -465,7 +479,6 @@ public:
         return true;
     }
 
-    // TODO: not complete
     bool equals(const Type& rhs) const override;
 
     ArrayView<TypePtr> containedTypes() const override {
@@ -483,8 +496,7 @@ public:
 
     std::optional<TypePtr> to_optional() const;
 
-    // TODO: pure virtual function
-    bool canHoldType(const Type& type) const { return false; }
+    bool canHoldType(const Type& type) const;
 
     static UnionTypePtr create(std::vector<TypePtr> ref);
 

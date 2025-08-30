@@ -275,4 +275,13 @@ bool operator!=(const SingletonTypePtr<T>& lhs, const SingletonOrSharedTypePtr<U
 
 }// namespace aethermind
 
+namespace std {
+template<typename T>
+struct hash<aethermind::SingletonOrSharedTypePtr<T>> {
+    size_t operator()(const aethermind::SingletonOrSharedTypePtr<T>& x) const {
+        return std::hash<T*>()(x.get());
+    }
+};
+}// namespace std
+
 #endif//AETHERMIND_TYPE_PTR_H

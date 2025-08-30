@@ -31,9 +31,57 @@ void flattenUnion(const TypePtr& type, std::vector<TypePtr>& need_to_fill) {
 UnionType::UnionType(std::vector<TypePtr> types, TypeKind kind) : SharedType(kind) {
 }
 
-// TODO: not complete
+bool UnionType::canHoldType(const Type& type) const {
+    if (type.cast<NumberType>()) {
+        return canHoldType(*IntType::Global()) &&
+               canHoldType(*FloatType::Global()) &&
+               canHoldType(*ComplexType::Global());
+    }
+    return std::any_of(this->containedTypes().begin(), this->containedTypes().end(),
+                       [&](const TypePtr& inner) {
+                           return type.is_subtype_of(*inner);
+                       });
+}
+
+
 UnionTypePtr UnionType::create(std::vector<TypePtr> ref) {
     UnionTypePtr union_type(new UnionType(std::move(ref)));
+    bool int_found = false;
+    bool float_found = false;
+    bool complex_found = false;
+    bool nonetype_found = false;
+
+    auto f = [&](const TypePtr& t) {
+        if (t == IntType::Global()) {
+            int_found = true;
+        } else if (t == FloatType::Global()) {
+            float_found = true;
+        } else if (t == ComplexType::Global()) {
+            complex_found = true;
+        } else if (t == NoneType::Global()) {
+            nonetype_found = true;
+        }
+    };
+
+    for (const auto& t: union_type->containedTypes()) {
+        f(t);
+    }
+
+    bool numbertype_found = int_found && float_found && complex_found;
+    if (nonetype_found) {
+        if (union_type->containedTypeSize() == 4 && numbertype_found) {
+            return OptionalType::create(NumberType::Global());
+        }
+
+        if (union_type->containedTypeSize() == 2) {
+            auto not_none = union_type->containedTypes()[0] != NoneType::Global()
+                                    ? union_type->containedTypes()[0]
+                                    : union_type->containedTypes()[1];
+            return OptionalType::create(not_none);
+        }
+    }
+
+    return union_type;
 }
 
 std::optional<TypePtr> UnionType::to_optional() const {
@@ -70,11 +118,17 @@ bool UnionType::equals(const Type& rhs) const {
 
     if (auto optional_rhs = rhs.cast<OptionalType>()) {
         if (optional_rhs->get_element_type() == NumberType::Global()) {
-            return this->containedTypes().size() == 4 && this->can_hold_none_ && this->canHoldType(*NumberType::Global());
+            return this->containedTypeSize() == 4 && this->can_hold_none_ && this->canHoldType(*NumberType::Global());
         }
         auto optional_lhs = this->to_optional();
         return optional_lhs && *optional_rhs == *optional_lhs.value()->expect<OptionalType>();
     }
+
+    if (rhs.kind() == NumberType::Kind) {
+        return this->containedTypeSize() == 3 && canHoldType(*NumberType::Global());
+    }
+
+    return false;
 }
 
 std::string UnionType::union_str(const TypePrinter& printer, bool is_annotation_str) const {

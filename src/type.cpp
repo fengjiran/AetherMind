@@ -19,7 +19,6 @@ const char* TypeKindToString(TypeKind kind) {
     return "";
 }
 
-// TODO: isSubtypeOfExt
 bool Type::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
     if (rhs.kind() == TypeKind::AnyType || *this == rhs) {
         return true;

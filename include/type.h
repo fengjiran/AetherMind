@@ -201,7 +201,6 @@ public:
         return annotation_str();
     }
 
-    // TODO: isSubtypeOfExt
     virtual bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const;
 
     NODISCARD bool is_subtype_of(const Type& other) const {
@@ -209,6 +208,10 @@ public:
     }
 
     NODISCARD virtual bool is_module() const {
+        return false;
+    }
+
+    virtual bool hasFreeVariables() const {
         return false;
     }
 
@@ -519,8 +522,14 @@ public:
 
     bool equals(const Type& rhs) const override;
 
+    bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
+
     ArrayView<TypePtr> containedTypes() const override {
         return types_;
+    }
+
+    bool hasFreeVariables() const override {
+        return has_free_variables_;
     }
 
     // just for test
@@ -564,8 +573,7 @@ public:
         return get_element_type()->str() + "?";
     }
 
-    // TODO: pure virtual function
-    bool equals(const Type& rhs) const override { return false; }
+    bool equals(const Type& rhs) const override;
 
     const TypePtr& get_element_type() const {
         return containe_type_;
@@ -576,7 +584,6 @@ public:
     static constexpr auto Kind = TypeKind::OptionalType;
 
 private:
-    // TODO: OptionalType constructor
     explicit OptionalType(const TypePtr& contained);
 
     TypePtr containe_type_;

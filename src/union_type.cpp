@@ -5,6 +5,34 @@
 
 namespace aethermind {
 
+std::optional<TypePtr> subtractTypeSetFrom(std::vector<TypePtr>& to_subtract, ArrayView<TypePtr> from) {
+    std::vector<TypePtr> types;
+
+    // Given a TypePtr `lhs`, this function says whether or not `lhs` (or
+    // one of its parent types) is in the `to_subtract` vector
+    auto should_subtract = [&](const TypePtr& lhs) -> bool {
+        return std::any_of(to_subtract.begin(), to_subtract.end(),
+                           [&](const TypePtr& rhs) {
+                               return lhs->is_subtype_of(*rhs);
+                           });
+    };
+
+    // Copy all the elements that should NOT be subtracted to the `types`
+    // vector
+    std::copy_if(from.begin(), from.end(), std::back_inserter(types),
+                 [&](const TypePtr& t) {
+                     return !should_subtract(t);
+                 });
+
+    if (types.empty()) {
+        return std::nullopt;
+    }
+    if (types.size() == 1) {
+        return types[0];
+    }
+    return UnionType::create(std::move(types));
+}
+
 // Remove nested Optionals/Unions during the instantiation of a Union or
 // an Optional. This populates `types` with all the types found during
 // flattening. At the end of `flattenUnion`, `types` may have
@@ -146,6 +174,41 @@ bool UnionType::canHoldType(const Type& type) const {
                        });
 }
 
+bool UnionType::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
+    std::vector<const Type*> rhs_types;
+    if (const auto union_rhs = rhs.cast<UnionType>()) {
+        // Fast path
+        if (this->containedTypes() == rhs.containedTypes()) {
+            return true;
+        }
+        for (const auto& typePtr: rhs.containedTypes()) {
+            rhs_types.push_back(typePtr.get());
+        }
+    } else if (const auto optional_rhs = rhs.cast<OptionalType>()) {
+        rhs_types.push_back(NoneType::Global().get());
+        if (optional_rhs->get_element_type() == NumberType::Global()) {
+            std::array<const Type*, 3> number_types{IntType::Global().get(), FloatType::Global().get(), ComplexType::Global().get()};
+            rhs_types.insert(rhs_types.end(), number_types.begin(), number_types.end());
+        } else {
+            rhs_types.push_back(optional_rhs->get_element_type().get());
+        }
+    } else if (const auto number_rhs = rhs.cast<NumberType>()) {
+        std::array<const Type*, 3> number_types{IntType::Global().get(), FloatType::Global().get(), ComplexType::Global().get()};
+        rhs_types.insert(rhs_types.end(), number_types.begin(), number_types.end());
+    } else {
+        rhs_types.push_back(&rhs);
+    }
+
+    return std::all_of(this->containedTypes().begin(), this->containedTypes().end(),
+                       [&](const TypePtr& lhs_type) -> bool {
+                           return std::any_of(rhs_types.begin(),
+                                              rhs_types.end(),
+                                              [&](const Type* rhs_type) -> bool {
+                                                  return lhs_type->isSubtypeOfExt(*rhs_type, why_not);
+                                              });
+                       });
+}
+
 
 UnionTypePtr UnionType::create(std::vector<TypePtr> ref) {
     UnionTypePtr union_type(new UnionType(std::move(ref)));
@@ -282,7 +345,41 @@ std::string UnionType::union_str(const TypePrinter& printer, bool is_annotation_
 
 OptionalType::OptionalType(const TypePtr& contained)
     : UnionType({contained, NoneType::Global()}, TypeKind::OptionalType) {
+    bool is_numbertype = false;
+    if (auto as_union = contained->cast<UnionType>()) {
+        is_numbertype = as_union->containedTypeSize() == 3 && as_union->canHoldType(*NumberType::Global());
+    }
+
+    if (UnionType::containedTypeSize() == 2) {
+        containe_type_ = UnionType::containedTypes()[0]->kind() != NoneType::Kind
+                                 ? UnionType::containedTypes()[0]
+                                 : UnionType::containedTypes()[1];
+    } else if (contained == NumberType::Global() || is_numbertype) {
+        containe_type_ = NumberType::Global();
+        types_.clear();
+        types_.emplace_back(NumberType::Global());
+        types_.emplace_back(NoneType::Global());
+    } else {
+        std::vector<TypePtr> to_subtract{NoneType::Global()};
+        auto without_none = subtractTypeSetFrom(to_subtract, types_);
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        containe_type_ = UnionType::create({std::move(without_none.value())});
+    }
+    has_free_variables_ = containe_type_->hasFreeVariables();
 }
+
+bool OptionalType::equals(const Type& rhs) const {
+    if (auto union_rhs = rhs.cast<UnionType>()) {
+        auto optional_rhs = union_rhs->to_optional();
+        return optional_rhs && *this == **optional_rhs;
+    }
+
+    if (auto optional_rhs = rhs.cast<OptionalType>()) {
+        return *this->get_element_type() == *optional_rhs->get_element_type();
+    }
+    return false;
+}
+
 
 OptionalTypePtr OptionalType::create(const TypePtr& contained) {
     return OptionalTypePtr(new OptionalType(contained));

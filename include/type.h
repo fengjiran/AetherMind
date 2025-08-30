@@ -6,7 +6,9 @@
 #define AETHERMIND_TYPE_H
 
 #include "container/array_view.h"
+#include "error.h"
 #include "macros.h"
+#include "type.h"
 #include "type_ptr.h"
 
 #include <functional>
@@ -141,43 +143,43 @@ using TypePtr = SingletonOrSharedTypePtr<Type>;
 
 class Type {
 public:
-    TypeKind kind() const {
+    NODISCARD TypeKind kind() const {
         return kind_;
     }
 
-    virtual std::string str() const = 0;
+    NODISCARD virtual std::string str() const = 0;
 
     // a == b
-    virtual bool equals(const Type& rhs) const = 0;
+    NODISCARD virtual bool equals(const Type& rhs) const = 0;
 
     // a == b <=> b == a
-    virtual bool symmetric() const {
+    NODISCARD virtual bool symmetric() const {
         return true;
     }
 
-    virtual bool isUnionType() const {
+    NODISCARD virtual bool isUnionType() const {
         return false;
     }
 
     // list of types this type contains, e.g. for a List then element type of
     // list for a tuple, the types of the tuple elements
-    virtual ArrayView<TypePtr> containedTypes() const {
+    NODISCARD virtual ArrayView<TypePtr> containedTypes() const {
         return {};
     }
 
-    virtual TypePtr containedType(size_t i) const {
+    NODISCARD virtual TypePtr containedType(size_t i) const {
         return containedTypes().at(i);
     }
 
-    virtual size_t containedTypeSize() const {
+    NODISCARD virtual size_t containedTypeSize() const {
         return containedTypes().size();
     }
 
-    virtual bool hasFreeVars() const {
+    NODISCARD virtual bool hasFreeVars() const {
         return false;
     }
 
-    std::string annotation_str(const TypePrinter& printer) const {
+    NODISCARD std::string annotation_str(const TypePrinter& printer) const {
         if (printer) {
             if (auto renamed = printer(*this)) {
                 return *renamed;
@@ -186,7 +188,7 @@ public:
         return this->annotation_str_impl(printer);
     }
 
-    std::string annotation_str() const {
+    NODISCARD std::string annotation_str() const {
         // Overload instead of define a default value for `printer` to help
         // debuggers out.
         return annotation_str(nullptr);
@@ -195,18 +197,18 @@ public:
     // Returns a human-readable string that includes additional information like
     // "type is inferred rather than explicitly defined" to help construct more
     // user-friendly messages.
-    virtual std::string repr_str() const {
+    NODISCARD virtual std::string repr_str() const {
         return annotation_str();
     }
 
     // TODO: isSubtypeOfExt
     virtual bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const;
 
-    bool is_subtype_of(const Type& other) const {
+    NODISCARD bool is_subtype_of(const Type& other) const {
         return isSubtypeOfExt(other, nullptr);
     }
 
-    virtual bool is_module() const {
+    NODISCARD virtual bool is_module() const {
         return false;
     }
 
@@ -305,7 +307,7 @@ protected:
     explicit Type(TypeKind kind) : kind_(kind) {}
     virtual ~Type() = default;
 
-    virtual std::string annotation_str_impl(const TypePrinter&) const {
+    NODISCARD virtual std::string annotation_str_impl(const TypePrinter&) const {
         return this->str();
     }
 
@@ -318,6 +320,43 @@ private:
 class SharedType : public Type, public std::enable_shared_from_this<SharedType> {
 public:
     using Type::Type;
+};
+
+// common base for all types that have a single sub element
+// e.g. Future[T], Optional[T], List[T]
+template<typename T, TypeKind K>
+class SingleElementType : public SharedType {
+public:
+    const TypePtr& get_element_type() const {
+        return elem_;
+    }
+
+    NODISCARD bool hasFreeVars() const override {
+        return get_element_type()->hasFreeVars();
+    }
+
+    ArrayView<TypePtr> containedTypes() const override {
+        return elem_;
+    }
+
+    bool equals(const Type& rhs) const override {
+        if (auto cast_rhs = rhs.cast<T>()) {
+            return *get_element_type() == *cast_rhs->get_element_type();
+        }
+        return false;
+    }
+
+    static constexpr auto Kind = K;
+
+protected:
+    explicit SingleElementType(TypePtr elem) : SharedType(Kind), elem_(std::move(elem)) {
+        if (!elem_) {
+            AETHERMIND_THROW(runtime_error) << "Cannot create " << TypeKindToString(Kind) << " with none type.";
+        }
+    }
+
+private:
+    TypePtr elem_;
 };
 
 template<typename T>
@@ -340,11 +379,11 @@ protected:
 using AnyTypePtr = SingletonTypePtr<AnyType>;
 class AnyType : public Singleton<AnyType> {
 public:
-    std::string str() const override {
+    NODISCARD std::string str() const override {
         return "Any";
     }
 
-    bool equals(const Type& rhs) const override {
+    NODISCARD bool equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
@@ -358,11 +397,11 @@ private:
 using NoneTypePtr = SingletonTypePtr<NoneType>;
 class NoneType : public Singleton<NoneType> {
 public:
-    bool equals(const Type& rhs) const override {
+    NODISCARD bool equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
-    std::string str() const override {
+    NODISCARD std::string str() const override {
         return "NoneType";
     }
 
@@ -376,19 +415,19 @@ private:
 using NumberTypePtr = SingletonTypePtr<NumberType>;
 class NumberType : public Singleton<NumberType> {
 public:
-    std::string str() const override {
+    NODISCARD std::string str() const override {
         return "Scalar";
     }
 
-    bool equals(const Type& other) const override;
+    NODISCARD bool equals(const Type& other) const override;
 
     static constexpr auto Kind = TypeKind::NumberType;
 
 protected:
-    NumberType(TypeKind kind = Kind) : Singleton(kind) {}
+    explicit NumberType(TypeKind kind = Kind) : Singleton(kind) {}
 
 private:
-    std::string annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
         return "number";
     }
 
@@ -398,11 +437,11 @@ private:
 using IntTypePtr = SingletonTypePtr<IntType>;
 class IntType : public NumberType {
 public:
-    std::string str() const override {
+    NODISCARD std::string str() const override {
         return "int";
     }
 
-    bool equals(const Type& rhs) const override {
+    NODISCARD bool equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
@@ -415,7 +454,7 @@ public:
 
 private:
     IntType() : NumberType(Kind) {}
-    std::string annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
         return "int";
     }
 };
@@ -423,11 +462,11 @@ private:
 using FloatTypePtr = SingletonTypePtr<FloatType>;
 class FloatType : public NumberType {
 public:
-    std::string str() const override {
+    NODISCARD std::string str() const override {
         return "float";
     }
 
-    bool equals(const Type& rhs) const override {
+    NODISCARD bool equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
@@ -440,7 +479,7 @@ public:
 
 private:
     FloatType() : NumberType(Kind) {}
-    std::string annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
         return "float";
     }
 };
@@ -448,11 +487,11 @@ private:
 using ComplexTypePtr = SingletonTypePtr<ComplexType>;
 class ComplexType : public NumberType {
 public:
-    std::string str() const override {
+    NODISCARD std::string str() const override {
         return "complex";
     }
 
-    bool equals(const Type& rhs) const override {
+    NODISCARD bool equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
@@ -465,7 +504,7 @@ public:
 
 private:
     ComplexType() : NumberType(Kind) {}
-    std::string annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
         return "complex";
     }
 };
@@ -557,6 +596,26 @@ inline bool operator==(const Type& lhs, const Type& rhs) {
 inline bool operator!=(const Type& lhs, const Type& rhs) {
     return !(lhs == rhs);
 }
+
+
+// Attempt to find the correct supertype of the two types `t1` and `t2`.
+// If no supertype is found, then nullopt will be returned if
+// `default_to_union` is false, and `Union[t1, t2]` will be returned
+// if it is true. If `t1 == t2`, or `t1` is a type refinement of `t2`,
+// then `t2` will be returned (and vice versa).
+//
+// Two different tensortypes will return dynamic.
+//
+// Currently, we chose not to support returning a NumberType for
+// two types from the set of {FloatType, IntType, ComplexType}, because
+// there is a lack of operator support for NumberType.
+//
+// If `type_hint` is an `InterfaceType`, then we can use that as a
+// potential supertype for `ClassType`s in the list. Otherwise, we have
+// no way to find and use some common interface type
+std::optional<TypePtr> unify_types(const TypePtr& t1, const TypePtr& t2,
+                                   bool default_to_union = false,
+                                   const TypePtr& type_hint = nullptr);
 
 
 }// namespace aethermind

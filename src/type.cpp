@@ -53,5 +53,20 @@ bool NumberType::equals(const Type& other) const {
     return kind() == other.kind();
 }
 
+// TODO: unify types impl
+static std::optional<TypePtr> unify_types_impl(const TypePtr& t1, const TypePtr& t2,
+                                               bool default_to_union = false,
+                                               const TypePtr& type_hint = nullptr) {
+    return std::nullopt;
+}
+
+std::optional<TypePtr> unify_types(const TypePtr& t1, const TypePtr& t2, bool default_to_union, const TypePtr& type_hint) {
+    auto unified = unify_types_impl(t1, t2, default_to_union, type_hint);
+    if (default_to_union && !unified) {
+        return UnionType::create({t1, t2});
+    }
+    return unified;
+}
+
 
 }// namespace aethermind

@@ -27,9 +27,58 @@ void flattenUnion(const TypePtr& type, std::vector<TypePtr>& need_to_fill) {
     }
 }
 
+// TODO: filter duplicate subtypes
+// Helper function for `standardizeUnion`
+//
+// NB: If we have types `T1`, `T2`, `T3`, and `PARENT_T` such that `T1`,
+// `T2`, and `T2` are children of `PARENT_T`, then `unifyTypes(T1, T2)`
+// will return `PARENT_T`. This could be a problem if we didn't want our
+// Union to also be able to take `T3 `. In our current type hierarchy,
+// this isn't an issue--most types SHOULD be unified even if the parent
+// type wasn't in the original vector. However, later additions to the
+// type system might necessitate reworking `get_supertype`
+void filterDuplicateSubtypes(std::vector<TypePtr>& types) {
+    if (types.empty()) {
+        return;
+    }
+
+    auto get_supertype = [](const TypePtr& t1, const TypePtr& t2) -> std::optional<TypePtr> {
+        if ((t1->is_subtype_of(*NoneType::Global()) && !t2->is_subtype_of(*NoneType::Global())) ||
+            (!t1->is_subtype_of(*NoneType::Global()) && t2->is_subtype_of(*NoneType::Global()))) {
+            return std::nullopt;
+        }
+        return unify_types(t1, t2, false);
+    };
+
+    // Coalesce types and delete all duplicates. Moving from right to left
+    // through the vector, we try to unify the current element (`i`) with
+    // each element (`j`) before the "new" end of the vector (`end`).
+    // If we're able to unify the types at `types[i]` and `types[j]`, we
+    // decrement `end`, swap `types[j]` with the unified type, and
+    // break. Otherwise, we keep `end` where it is to signify that the
+    // new end of the vector hasn't shifted
+    auto end_idx = types.size() - 1;
+    for (size_t i = types.size() - 1; i > 0; --i) {
+        size_t j = std::min(i - 1, end_idx);
+        while (true) {
+            std::optional<TypePtr> unified = get_supertype(types[i], types[j]);
+            if (unified) {
+                types[j] = unified.value();
+                types[i] = types[end_idx];
+                --end_idx;
+                break;
+            }
+            if (j == 0) {
+                break;
+            }
+        }
+    }
+    // Cut off the vector's tail so that `end` is the real last element
+    types.erase(types.begin() + static_cast<std::ptrdiff_t>(end_idx) + 1, types.end());
+}
+
 // TODO: UnionType constructor
 UnionType::UnionType(std::vector<TypePtr> types, TypeKind kind) : SharedType(kind) {
-
 }
 
 bool UnionType::canHoldType(const Type& type) const {

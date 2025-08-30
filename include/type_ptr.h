@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_TYPE_PTR_H
 #define AETHERMIND_TYPE_PTR_H
 
+#include "macros.h"
+
 #include <glog/logging.h>
 #include <memory>
 
@@ -57,17 +59,17 @@ public:
 
     SingletonOrSharedTypePtr() = default;
 
-    SingletonOrSharedTypePtr(std::nullptr_t) : repr_(nullptr) {}
+    SingletonOrSharedTypePtr(std::nullptr_t) : repr_(nullptr) {}// NOLINT
 
-    SingletonOrSharedTypePtr(std::shared_ptr<T> ptr) : repr_(std::move(ptr)) {}
-
-    template<typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
-    SingletonOrSharedTypePtr(std::shared_ptr<U> ptr) : repr_(std::move(ptr)) {}
-
-    SingletonOrSharedTypePtr(SingletonTypePtr<T> ptr) : repr_(ptr) {}
+    SingletonOrSharedTypePtr(std::shared_ptr<T> ptr) : repr_(std::move(ptr)) {}// NOLINT
 
     template<typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
-    SingletonOrSharedTypePtr(SingletonTypePtr<U> ptr) : repr_(SingletonTypePtr<T>(ptr.get())) {}
+    SingletonOrSharedTypePtr(std::shared_ptr<U> ptr) : repr_(std::move(ptr)) {}// NOLINT
+
+    SingletonOrSharedTypePtr(SingletonTypePtr<T> ptr) : repr_(ptr) {}// NOLINT
+
+    template<typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+    SingletonOrSharedTypePtr(SingletonTypePtr<U> ptr) : repr_(SingletonTypePtr<T>(ptr.get())) {}// NOLINT
 
     SingletonOrSharedTypePtr(const SingletonOrSharedTypePtr&) = default;
     SingletonOrSharedTypePtr(SingletonOrSharedTypePtr&&) noexcept = default;
@@ -199,13 +201,13 @@ private:
             return repr;
         }
 
-        bool is_not_null() const {
+        NODISCARD bool is_not_null() const {
             auto repr = get_raw_repr();
             CHECK(repr.null_if_singleton_ == nullptr || repr.first_ != nullptr);
             return repr.first_ != nullptr;
         }
 
-        bool is_shared_and_not_null() const {
+        NODISCARD bool is_shared_and_not_null() const {
             return get_raw_repr().null_if_singleton_ != nullptr;
         }
 

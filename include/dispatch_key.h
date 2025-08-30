@@ -7,6 +7,7 @@
 
 #include <ostream>
 #include <string>
+#include <cstdint>
 
 namespace aethermind {
 

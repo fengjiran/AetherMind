@@ -29,6 +29,7 @@ void flattenUnion(const TypePtr& type, std::vector<TypePtr>& need_to_fill) {
 
 // TODO: UnionType constructor
 UnionType::UnionType(std::vector<TypePtr> types, TypeKind kind) : SharedType(kind) {
+
 }
 
 bool UnionType::canHoldType(const Type& type) const {
@@ -90,12 +91,11 @@ std::optional<TypePtr> UnionType::to_optional() const {
     }
 
     std::vector<TypePtr> copied_types = this->containedTypes().vec();
-    auto maybe_opt = UnionType::create(std::move(copied_types));
-    if (maybe_opt->kind() == UnionType::Kind) {
+    auto maybe_opt = create(std::move(copied_types));
+    if (maybe_opt->kind() == Kind) {
         return std::nullopt;
-    } else {
-        return maybe_opt;
     }
+    return maybe_opt;
 }
 
 

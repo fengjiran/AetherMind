@@ -302,7 +302,6 @@ public:
     }
 
 protected:
-    // Type() = default;
     explicit Type(TypeKind kind) : kind_(kind) {}
     virtual ~Type() = default;
 

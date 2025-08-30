@@ -451,6 +451,9 @@ public:
         return true;
     }
 
+    // TODO: not complete
+    bool equals(const Type& rhs) const override;
+
     ArrayView<TypePtr> containedTypes() const override {
         return types_;
     }
@@ -460,14 +463,22 @@ public:
         return types_;
     }
 
+    std::string str() const override {
+        return union_str(nullptr, false);
+    }
+
     // TODO: pure virtual function
     bool canHoldType(const Type& type) const { return false; }
+
+    static UnionTypePtr create(std::vector<TypePtr> ref);
 
     static constexpr auto Kind = TypeKind::UnionType;
 
 protected:
     // TODO: UnionType constructor
     explicit UnionType(std::vector<TypePtr> types, TypeKind kind = TypeKind::UnionType);
+
+    std::string union_str(const TypePrinter& printer = nullptr, bool is_annotation_str = false) const;
 
     std::vector<TypePtr> types_;
     bool can_hold_none_;

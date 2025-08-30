@@ -36,6 +36,21 @@ UnionTypePtr UnionType::create(std::vector<TypePtr> ref) {
     UnionTypePtr union_type(new UnionType(std::move(ref)));
 }
 
+std::optional<TypePtr> UnionType::to_optional() const {
+    if (!canHoldType(*NoneType::Global())) {
+        return std::nullopt;
+    }
+
+    std::vector<TypePtr> copied_types = this->containedTypes().vec();
+    auto maybe_opt = UnionType::create(std::move(copied_types));
+    if (maybe_opt->kind() == UnionType::Kind) {
+        return std::nullopt;
+    } else {
+        return maybe_opt;
+    }
+}
+
+
 bool UnionType::equals(const Type& rhs) const {
     if (auto union_rhs = rhs.cast<UnionType>()) {
         if (this->containedTypeSize() != rhs.containedTypeSize()) {
@@ -51,6 +66,14 @@ bool UnionType::equals(const Type& rhs) const {
                                                       return *lhs_type == *rhs_type;
                                                   });
                            });
+    }
+
+    if (auto optional_rhs = rhs.cast<OptionalType>()) {
+        if (optional_rhs->get_element_type() == NumberType::Global()) {
+            return this->containedTypes().size() == 4 && this->can_hold_none_ && this->canHoldType(*NumberType::Global());
+        }
+        auto optional_lhs = this->to_optional();
+        return optional_lhs && *optional_rhs == *optional_lhs.value()->expect<OptionalType>();
     }
 }
 

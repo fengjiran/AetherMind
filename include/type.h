@@ -273,6 +273,20 @@ public:
         return nullptr;
     }
 
+    template<typename T>
+    auto expect() {
+        auto r = cast<T>();
+        CHECK(r);
+        return r;
+    }
+
+    template<typename T>
+    auto expect() const {
+        auto r = cast<const T>();
+        CHECK(r);
+        return r;
+    }
+
 protected:
     // Type() = default;
     explicit Type(TypeKind kind) : kind_(kind) {}
@@ -466,6 +480,8 @@ public:
     std::string str() const override {
         return union_str(nullptr, false);
     }
+
+    std::optional<TypePtr> to_optional() const;
 
     // TODO: pure virtual function
     bool canHoldType(const Type& type) const { return false; }

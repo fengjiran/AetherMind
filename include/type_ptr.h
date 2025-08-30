@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_TYPE_PTR_H
 #define AETHERMIND_TYPE_PTR_H
 
-#include <memory>
 #include <glog/logging.h>
+#include <memory>
 
 namespace aethermind {
 
@@ -223,6 +223,55 @@ private:
     Repr repr_;
 };
 
+template<typename T, typename U>
+bool operator==(const SingletonOrSharedTypePtr<T>& lhs, const SingletonOrSharedTypePtr<U>& rhs) {
+    return lhs.get() == rhs.get();
+}
+
+template<typename T, typename U>
+bool operator==(const SingletonOrSharedTypePtr<T>& lhs, const std::shared_ptr<U>& rhs) {
+    return lhs.get() == rhs.get();
+}
+
+template<typename T, typename U>
+bool operator==(const std::shared_ptr<T>& lhs, const SingletonOrSharedTypePtr<U>& rhs) {
+    return lhs.get() == rhs.get();
+}
+
+template<typename T, typename U>
+bool operator==(const SingletonOrSharedTypePtr<T>& lhs, const SingletonTypePtr<U>& rhs) {
+    return lhs.get() == rhs.get();
+}
+
+template<typename T, typename U>
+bool operator==(const SingletonTypePtr<T>& lhs, const SingletonOrSharedTypePtr<U>& rhs) {
+    return lhs.get() == rhs.get();
+}
+
+template<typename T, typename U>
+bool operator!=(const SingletonOrSharedTypePtr<T>& lhs, const SingletonOrSharedTypePtr<U>& rhs) {
+    return !(lhs == rhs);
+}
+
+template<typename T, typename U>
+bool operator!=(const SingletonOrSharedTypePtr<T>& lhs, const std::shared_ptr<U>& rhs) {
+    return !(lhs == rhs);
+}
+
+template<typename T, typename U>
+bool operator!=(const std::shared_ptr<T>& lhs, const SingletonOrSharedTypePtr<U>& rhs) {
+    return !(lhs == rhs);
+}
+
+template<typename T, typename U>
+bool operator!=(const SingletonOrSharedTypePtr<T>& lhs, const SingletonTypePtr<U>& rhs) {
+    return !(lhs == rhs);
+}
+
+template<typename T, typename U>
+bool operator!=(const SingletonTypePtr<T>& lhs, const SingletonOrSharedTypePtr<U>& rhs) {
+    return !(lhs == rhs);
+}
 
 }// namespace aethermind
 

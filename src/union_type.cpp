@@ -61,8 +61,7 @@ void filterDuplicateSubtypes(std::vector<TypePtr>& types) {
     for (size_t i = types.size() - 1; i > 0; --i) {
         size_t j = std::min(i - 1, end_idx);
         while (true) {
-            std::optional<TypePtr> unified = get_supertype(types[i], types[j]);
-            if (unified) {
+            if (std::optional<TypePtr> unified = get_supertype(types[i], types[j])) {
                 types[j] = unified.value();
                 types[i] = types[end_idx];
                 --end_idx;

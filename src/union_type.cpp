@@ -27,7 +27,6 @@ void flattenUnion(const TypePtr& type, std::vector<TypePtr>& need_to_fill) {
     }
 }
 
-// TODO: filter duplicate subtypes
 // Helper function for `standardizeUnion`
 //
 // NB: If we have types `T1`, `T2`, `T3`, and `PARENT_T` such that `T1`,
@@ -61,7 +60,7 @@ void filterDuplicateSubtypes(std::vector<TypePtr>& types) {
     for (size_t i = types.size() - 1; i > 0; --i) {
         size_t j = std::min(i - 1, end_idx);
         while (true) {
-            if (std::optional<TypePtr> unified = get_supertype(types[i], types[j])) {
+            if (auto unified = get_supertype(types[i], types[j])) {
                 types[j] = unified.value();
                 types[i] = types[end_idx];
                 --end_idx;
@@ -70,14 +69,69 @@ void filterDuplicateSubtypes(std::vector<TypePtr>& types) {
             if (j == 0) {
                 break;
             }
+            --j;
         }
     }
     // Cut off the vector's tail so that `end` is the real last element
     types.erase(types.begin() + static_cast<std::ptrdiff_t>(end_idx) + 1, types.end());
 }
 
-// TODO: UnionType constructor
+static void sortUnion(std::vector<TypePtr>& types) {
+    // We want the elements to be sorted so we can easily compare two
+    // UnionType objects for equality in the future. Note that this order
+    // is guaranteed to be stable since we've already coalesced any
+    // possible types
+    auto cmp = [](const TypePtr& a, const TypePtr& b) {
+        return a->kind() != b->kind() ? a->kind() < b->kind() : a->str() < b->str();
+    };
+    std::sort(types.begin(), types.end(), cmp);
+}
+
+void standardizeVectorForUnion(const std::vector<TypePtr>& ref, std::vector<TypePtr>& need_to_fill) {
+    for (const auto& type: ref) {
+        flattenUnion(type, need_to_fill);
+    }
+    filterDuplicateSubtypes(need_to_fill);
+    sortUnion(need_to_fill);
+}
+
+void standardizeVectorForUnion(std::vector<TypePtr>& to_flatten) {
+    std::vector<TypePtr> need_to_fill;
+    standardizeVectorForUnion(to_flatten, need_to_fill);
+    to_flatten = std::move(need_to_fill);
+}
+
 UnionType::UnionType(std::vector<TypePtr> types, TypeKind kind) : SharedType(kind) {
+    CHECK(!types.empty()) << "Can not create an empty Union type.";
+    standardizeVectorForUnion(types, types_);
+
+    if (types_.size() == 1) {
+        std::stringstream msg;
+        msg << "After type unification was performed, the Union with the "
+            << "original types {";
+        for (size_t i = 0; i < types.size(); ++i) {
+            msg << types[i]->repr_str();
+            if (i > 0) {
+                msg << ",";
+            }
+            msg << " ";
+        }
+        msg << "} has the single type " << types_[0]->repr_str()
+            << ". Use the common supertype instead of creating a Union"
+            << "type";
+        CHECK(false) << msg.str();
+    }
+
+    can_hold_none_ = false;
+    has_free_variables_ = false;
+    for (const auto& t: types_) {
+        if (t->kind() == NoneType::Kind) {
+            can_hold_none_ = true;
+        }
+        if (t->hasFreeVars()) {
+            has_free_variables_ = true;
+        }
+    }
 }
 
 bool UnionType::canHoldType(const Type& type) const {

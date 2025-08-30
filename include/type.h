@@ -541,13 +541,13 @@ public:
     static constexpr auto Kind = TypeKind::UnionType;
 
 protected:
-    // TODO: UnionType constructor
     explicit UnionType(std::vector<TypePtr> types, TypeKind kind = TypeKind::UnionType);
 
     std::string union_str(const TypePrinter& printer = nullptr, bool is_annotation_str = false) const;
 
     std::vector<TypePtr> types_;
     bool can_hold_none_;
+    bool has_free_variables_;
 
     friend class Type;
 };
@@ -617,7 +617,8 @@ std::optional<TypePtr> unify_types(const TypePtr& t1, const TypePtr& t2,
                                    bool default_to_union = false,
                                    const TypePtr& type_hint = nullptr);
 
-
+void standardizeVectorForUnion(const std::vector<TypePtr>& ref, std::vector<TypePtr>& need_to_fill);
+void standardizeVectorForUnion(std::vector<TypePtr>& to_flatten);
 }// namespace aethermind
 
 #endif//AETHERMIND_TYPE_H

@@ -138,6 +138,8 @@ DECLARE_SINGLETON_TYPE(NumberType);
 DECLARE_SINGLETON_TYPE(IntType);
 DECLARE_SINGLETON_TYPE(FloatType);
 DECLARE_SINGLETON_TYPE(ComplexType);
+DECLARE_SINGLETON_TYPE(StringType);
+DECLARE_SINGLETON_TYPE(DeviceObjType);
 
 using TypePtr = SingletonOrSharedTypePtr<Type>;
 
@@ -201,17 +203,47 @@ public:
         return annotation_str();
     }
 
-    virtual bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const;
+    virtual bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const;
+
+    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    bool isSubTypeOfExt(const SingletonOrSharedTypePtr<T>& other, std::ostream* why_not) const {
+        return isSubtypeOfExt(*other, why_not);
+    }
+
+    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    bool isSubTypeOfExt(const std::shared_ptr<T>& other, std::ostream* why_not) const {
+        return isSubtypeOfExt(*other, why_not);
+    }
+
+    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    bool isSubTypeOfExt(const SingletonTypePtr<T>& other, std::ostream* why_not) const {
+        return isSubtypeOfExt(*other, why_not);
+    }
 
     NODISCARD bool is_subtype_of(const Type& other) const {
         return isSubtypeOfExt(other, nullptr);
+    }
+
+    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    bool is_subtype_of(const SingletonOrSharedTypePtr<T>& other) const {
+        return is_subtype_of(*other);
+    }
+
+    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    bool is_subtype_of(const std::shared_ptr<T>& other) const {
+        return is_subtype_of(*other);
+    }
+
+    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    bool is_subtype_of(const SingletonTypePtr<T>& other) const {
+        return is_subtype_of(*other);
     }
 
     NODISCARD virtual bool is_module() const {
         return false;
     }
 
-    virtual bool hasFreeVariables() const {
+    NODISCARD virtual bool hasFreeVariables() const {
         return false;
     }
 
@@ -318,7 +350,6 @@ private:
     TypeKind kind_;
 };
 
-
 // Base class for Types that are guaranteed to be owned by std::shared_ptr.
 class SharedType : public Type, public std::enable_shared_from_this<SharedType> {
 public:
@@ -405,7 +436,7 @@ public:
     }
 
     NODISCARD std::string str() const override {
-        return "NoneType";
+        return "None";
     }
 
     static constexpr auto Kind = TypeKind::NoneType;
@@ -423,6 +454,8 @@ public:
     }
 
     NODISCARD bool equals(const Type& other) const override;
+
+    NODISCARD bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
 
     static constexpr auto Kind = TypeKind::NumberType;
 
@@ -446,6 +479,10 @@ public:
 
     NODISCARD bool equals(const Type& rhs) const override {
         return kind() == rhs.kind();
+    }
+
+    NODISCARD bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override {
+        return other.kind() == NumberType::Kind || NumberType::isSubtypeOfExt(other, why_not);
     }
 
     static IntTypePtr Global() {
@@ -473,6 +510,10 @@ public:
         return rhs.kind() == kind();
     }
 
+    NODISCARD bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override {
+        return other.kind() == NumberType::Kind || NumberType::isSubtypeOfExt(other, why_not);
+    }
+
     static FloatTypePtr Global() {
         static FloatType inst;
         return &inst;
@@ -498,6 +539,10 @@ public:
         return rhs.kind() == kind();
     }
 
+    NODISCARD bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override {
+        return other.kind() == NumberType::Kind || NumberType::isSubtypeOfExt(other, why_not);
+    }
+
     static ComplexTypePtr Global() {
         static ComplexType inst;
         return &inst;
@@ -507,10 +552,47 @@ public:
 
 private:
     ComplexType() : NumberType(Kind) {}
-    NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
-        return "complex";
-    }
+    // NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
+    //     return "complex";
+    // }
 };
+
+using StringTypePtr = SingletonOrSharedTypePtr<StringType>;
+class StringType : public Singleton<StringType> {
+public:
+    NODISCARD bool equals(const Type& rhs) const override {
+        return kind() == rhs.kind();
+    }
+
+    NODISCARD std::string str() const override {
+        return "str";
+    }
+
+    static constexpr auto Kind = TypeKind::StringType;
+
+private:
+    explicit StringType() : Singleton(Kind) {}
+    friend class Singleton;
+};
+
+using DeviceObjTypePtr = SingletonOrSharedTypePtr<DeviceObjType>;
+class DeviceObjType : public Singleton<DeviceObjType> {
+public:
+    NODISCARD bool equals(const Type& rhs) const override {
+        return kind() == rhs.kind();
+    }
+
+    NODISCARD std::string str() const override {
+        return "Device";
+    }
+
+    static constexpr auto Kind = TypeKind::DeviceObjType;
+
+private:
+    explicit DeviceObjType() : Singleton(Kind) {}
+    friend class Singleton;
+};
+
 
 class UnionType;
 using UnionTypePtr = std::shared_ptr<UnionType>;
@@ -545,12 +627,12 @@ public:
 
     bool canHoldType(const Type& type) const;
 
-    static UnionTypePtr create(std::vector<TypePtr> ref);
+    static UnionTypePtr create(const std::vector<TypePtr>& ref);
 
     static constexpr auto Kind = TypeKind::UnionType;
 
 protected:
-    explicit UnionType(std::vector<TypePtr> types, TypeKind kind = TypeKind::UnionType);
+    explicit UnionType(const std::vector<TypePtr>& types, TypeKind kind = TypeKind::UnionType);
 
     std::string union_str(const TypePrinter& printer = nullptr, bool is_annotation_str = false) const;
 
@@ -558,7 +640,7 @@ protected:
     bool can_hold_none_;
     bool has_free_variables_;
 
-    friend class Type;
+    // friend class Type;
 };
 
 class OptionalType;
@@ -575,6 +657,8 @@ public:
 
     bool equals(const Type& rhs) const override;
 
+    bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
+
     const TypePtr& get_element_type() const {
         return containe_type_;
     }
@@ -588,7 +672,7 @@ private:
 
     TypePtr containe_type_;
 
-    friend class Type;
+    // friend class Type;
 };
 
 
@@ -624,8 +708,8 @@ std::optional<TypePtr> unify_types(const TypePtr& t1, const TypePtr& t2,
                                    bool default_to_union = false,
                                    const TypePtr& type_hint = nullptr);
 
-void standardizeVectorForUnion(const std::vector<TypePtr>& ref, std::vector<TypePtr>& need_to_fill);
-void standardizeVectorForUnion(std::vector<TypePtr>& to_flatten);
+void StandardizeVectorForUnion(const std::vector<TypePtr>& ref, std::vector<TypePtr>& need_to_fill);
+void StandardizeVectorForUnion(std::vector<TypePtr>& to_flatten);
 }// namespace aethermind
 
 #endif//AETHERMIND_TYPE_H

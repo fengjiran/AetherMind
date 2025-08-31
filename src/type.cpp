@@ -19,17 +19,17 @@ const char* TypeKindToString(TypeKind kind) {
     return "";
 }
 
-bool Type::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
-    if (rhs.kind() == TypeKind::AnyType || *this == rhs) {
+bool Type::isSubtypeOfExt(const Type& other, std::ostream* why_not) const {
+    if (other.kind() == TypeKind::AnyType || *this == other) {
         return true;
     }
 
-    if (auto opt_rhs = rhs.cast<OptionalType>()) {
+    if (auto opt_rhs = other.cast<OptionalType>()) {
         return isSubtypeOfExt(*opt_rhs->get_element_type(), why_not);
     }
 
     // Check if `this` is a subtype of the types within the Union
-    if (auto union_type = rhs.cast<UnionType>()) {
+    if (auto union_type = other.cast<UnionType>()) {
         return std::any_of(union_type->containedTypes().begin(), union_type->containedTypes().end(),
                            [&](const TypePtr& inner) {
                                return isSubtypeOfExt(*inner, why_not);
@@ -52,10 +52,27 @@ bool NumberType::equals(const Type& other) const {
     return kind() == other.kind();
 }
 
+bool NumberType::isSubtypeOfExt(const Type& other, std::ostream* why_not) const {
+    if (auto union_type = other.cast<UnionType>()) {
+        return union_type->canHoldType(*Global());
+    }
+    return Type::isSubtypeOfExt(other, why_not);
+}
+
+
 // TODO: unify types impl
 static std::optional<TypePtr> unify_types_impl(const TypePtr& t1, const TypePtr& t2,
                                                bool default_to_union = false,
                                                const TypePtr& type_hint = nullptr) {
+    // check direct subtyping relation
+    if (t1->is_subtype_of(*t2)) {
+        return t2;
+    }
+
+    if (t2->is_subtype_of(*t1)) {
+        return t1;
+    }
+
     return std::nullopt;
 }
 

@@ -42,6 +42,41 @@ TEST(SingletonOrSharedTypePtr, Comparison) {
     EXPECT_NE(p, p2);
 }
 
+TEST(SingletonOrSharedTypePtr, SingletonComparison) {
+    EXPECT_NE(StringType::Global(), NoneType::Global());
+    EXPECT_NE(StringType::Global(), DeviceObjType::Global());
+    EXPECT_NE(NoneType::Global(), DeviceObjType::Global());
+
+    TypePtr type = NoneType::Global();
+    EXPECT_NE(type, StringType::Global());
+    EXPECT_NE(type, DeviceObjType::Global());
+
+    TypePtr t1 = AnyType::Global();
+    TypePtr t2 = NoneType::Global();
+    TypePtr t3 = NumberType::Global();
+    TypePtr t4 = IntType::Global();
+
+    EXPECT_EQ(t1->str(), "Any");
+    EXPECT_EQ(t2->str(), "None");
+    EXPECT_EQ(t3->str(), "Scalar");
+    EXPECT_EQ(t4->str(), "int");
+
+    EXPECT_TRUE(*t1 == *AnyType::Global());
+    EXPECT_TRUE(*t2 == *NoneType::Global());
+    EXPECT_TRUE(*t3 == *NumberType::Global());
+    EXPECT_TRUE(*t4 == *IntType::Global());
+
+    EXPECT_TRUE(t1 == AnyType::Global());
+    EXPECT_TRUE(t2 == NoneType::Global());
+    EXPECT_TRUE(t3 == NumberType::Global());
+    EXPECT_TRUE(t4 == IntType::Global());
+
+    EXPECT_TRUE(t1.get() == AnyType::Global().get());
+    EXPECT_TRUE(t2.get() == NoneType::Global().get());
+    EXPECT_TRUE(t3.get() == NumberType::Global().get());
+    EXPECT_TRUE(t4.get() == IntType::Global().get());
+}
+
 TEST(Type, init) {
     const Type* t1 = AnyType::Global().get();
     EXPECT_EQ(t1->kind(), TypeKind::AnyType);
@@ -55,8 +90,6 @@ TEST(Type, init) {
     };
     EXPECT_EQ(t1->annotation_str(printer), "Any_test");
 
-    // const Type& t2 = NumberType::GetInst();
-
     TypePtr t3 = IntType::Global();
     EXPECT_EQ(t3->kind(), TypeKind::IntType);
     EXPECT_EQ(t3->str(), "int");
@@ -66,6 +99,23 @@ TEST(Type, init) {
     EXPECT_EQ(t4.kind(), TypeKind::IntType);
     EXPECT_EQ(t4.str(), "int");
     EXPECT_EQ(t4.annotation_str(), "int");
+}
+
+TEST(Type, Union) {
+    TypePtr t1 = AnyType::Global();
+    TypePtr t2 = NoneType::Global();
+    TypePtr t3 = NumberType::Global();
+    TypePtr t4 = IntType::Global();
+    TypePtr t5 = FloatType::Global();
+    TypePtr t6 = ComplexType::Global();
+    TypePtr t7 = StringType::Global();
+    TypePtr t8 = DeviceObjType::Global();
+
+    EXPECT_TRUE(t4->is_subtype_of(t3));
+
+    TypePtr union_type_1 = UnionType::create({t1, t2, t4, t5, t5});
+    EXPECT_EQ(union_type_1->kind(), TypeKind::OptionalType);
+    // EXPECT_EQ(union_type_1->containedTypeSize(), 4);
 }
 
 }// namespace

@@ -2,8 +2,8 @@
 // Created by 赵丹 on 2025/8/27.
 //
 
-#ifndef AETHERMIND_THREAD_LOCAL_H
-#define AETHERMIND_THREAD_LOCAL_H
+#ifndef AETHERMIND_UTILS_THREAD_LOCAL_H
+#define AETHERMIND_UTILS_THREAD_LOCAL_H
 
 namespace aethermind {
 
@@ -54,4 +54,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_THREAD_LOCAL_H
+#endif//AETHERMIND_UTILS_THREAD_LOCAL_H

@@ -7,7 +7,7 @@
 
 #include "macros.h"
 #include "error.h"
-#include "tensor_utils.h"
+#include "utils/bits.h"
 
 #include <cstdint>
 #include <glog/logging.h>

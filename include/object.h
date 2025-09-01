@@ -375,7 +375,7 @@ public:
     template<typename ObjType, typename ElemType>
     struct ArrayHandler {
         using StorageType = std::aligned_storage_t<sizeof(ObjType), alignof(ObjType)>;
-        // for now only support elements that aligns with array header.
+        // for now, only support elements that aligns with array header.
         static_assert(alignof(ObjType) % alignof(ElemType) == 0 && sizeof(ObjType) % alignof(ElemType) == 0,
                       "element alignment constraint");
 

@@ -193,6 +193,9 @@ private:
 #undef COUNT_TAG
 };
 
+template<typename T>
+constexpr bool compatible_with_any_v = std::is_same_v<T, Any> || TypeTraits<T>::storage_enabled;
+
 }// namespace aethermind
 
 #endif//AETHERMIND_ANY_H

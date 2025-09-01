@@ -102,10 +102,18 @@ inline bool IsNullTypePtr(const Object* ptr) {
 }
 
 template<typename, typename = void>
-struct TypeTraits;
+struct TypeTraits {
+    /*! \brief Whether the type can appear as a storage type in Container */
+    static constexpr bool storage_enabled = false;
+};
+
+struct TypeTraitsBase {
+    static constexpr bool storage_enabled = true;
+};
+
 
 template<>
-struct TypeTraits<std::nullptr_t> {
+struct TypeTraits<std::nullptr_t> : TypeTraitsBase {
     static void CopyToAny(const std::nullptr_t&, AetherMindAny* dst) {
         dst->tag_ = AnyTag::None;
         dst->payload_ = 0;
@@ -141,7 +149,7 @@ struct TypeTraits<std::nullptr_t> {
 };
 
 template<>
-struct TypeTraits<bool> {
+struct TypeTraits<bool> : TypeTraitsBase {
     static void CopyToAny(const bool& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::Bool;
         dst->payload_ = src;
@@ -182,7 +190,7 @@ struct TypeTraits<bool> {
 
 // POD Int type
 template<typename T>
-struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> {
+struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> : TypeTraitsBase {
     static void CopyToAny(const T& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::Int;
         dst->payload_ = static_cast<int64_t>(src);
@@ -223,7 +231,7 @@ struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> {
 
 // POD Float type
 template<typename T>
-struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> : TypeTraitsBase {
     static void CopyToAny(const T& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::Double;
         dst->payload_ = static_cast<double>(src);
@@ -266,7 +274,7 @@ struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> {
 };
 
 template<>
-struct TypeTraits<void*> {
+struct TypeTraits<void*> : TypeTraitsBase {
     static void CopyToAny(void* src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::OpaquePtr;
         dst->payload_ = src;
@@ -302,7 +310,7 @@ struct TypeTraits<void*> {
 
 // Device type
 template<>
-struct TypeTraits<Device> {
+struct TypeTraits<Device> : TypeTraitsBase {
     static void CopyToAny(const Device& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::Device;
         dst->payload_ = src;
@@ -342,7 +350,7 @@ struct TypeTraits<Device> {
 
 // Tensor type
 template<>
-struct TypeTraits<Tensor> {
+struct TypeTraits<Tensor> : TypeTraitsBase {
     static void CopyToAny(const Tensor& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::Tensor;
         dst->payload_ = src;
@@ -382,7 +390,7 @@ struct TypeTraits<Tensor> {
 
 // string type
 template<>
-struct TypeTraits<String> {
+struct TypeTraits<String> : TypeTraitsBase {
     static void CopyToAny(const String& src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::String;
         Object* obj = src.get_impl_ptr_unsafe();
@@ -442,8 +450,9 @@ struct TypeTraits<std::string> : TypeTraits<String> {
     // }
 };
 
+// TODO: 实现StorageImpl的类型 traits
 template<>
-struct TypeTraits<StorageImpl> {
+struct TypeTraits<StorageImpl> : TypeTraitsBase {
 };
 
 }// namespace aethermind

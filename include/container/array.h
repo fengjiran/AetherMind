@@ -105,6 +105,15 @@ struct GetNullType<ArrayImpl> {
 template<typename T>
 class Array {
 public:
+    static_assert(compatible_with_any_v<T>, "T must be compatible with Any");
+
+    Array() = default;
+
+    explicit Array(size_t n, Any value = Any());
+
+    NODISCARD bool defined() const noexcept {
+        return impl_;
+    }
 
 private:
     ObjectPtr<ArrayImpl> impl_;

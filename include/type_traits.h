@@ -444,7 +444,6 @@ struct TypeTraits<std::string> : TypeTraits<String> {
 
 template<>
 struct TypeTraits<StorageImpl> {
-
 };
 
 }// namespace aethermind

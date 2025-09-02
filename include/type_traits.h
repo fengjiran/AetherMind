@@ -78,6 +78,11 @@ inline std::string AnyTagToString(AnyTag t) {
     return "";
 }
 
+inline std::ostream& operator<<(std::ostream& os, AnyTag t) {
+    os << AnyTagToString(t);
+    return os;
+}
+
 struct AetherMindAny {
     using Payload = std::variant<int64_t,
                                  double,

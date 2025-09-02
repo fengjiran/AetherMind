@@ -6,8 +6,8 @@
 #define AETHERMIND_CONTAINER_ARRAY_IMPL_H
 
 #include "any.h"
-#include "object.h"
 #include "container/container_utils.h"
+#include "object.h"
 
 namespace aethermind {
 
@@ -111,7 +111,7 @@ struct GetNullType<ArrayImpl> {
 template<typename T>
 class Array {
 public:
-    static_assert(compatible_with_any_v<T>, "T must be compatible with Any");
+    static_assert(details::compatible_with_any_v<T>, "T must be compatible with Any");
 
     struct Converter {
         using RetType = T;
@@ -131,7 +131,7 @@ public:
 
     Array() = default;
 
-    explicit Array(size_t n, Any value = Any());
+    explicit Array(size_t n, const Any& value = Any());
 
     NODISCARD bool defined() const noexcept {
         return impl_;
@@ -200,7 +200,7 @@ public:
         if (empty()) {
             AETHERMIND_THROW(index_error) << "Cannot index an empty array.";
         }
-        return *rbegin();
+        return *(end() - 1);
     }
 
     template<typename Iter>
@@ -211,14 +211,14 @@ private:
 };
 
 template<typename T>
-Array<T>::Array(size_t n, Any value) : impl_(make_array_object<ArrayImpl, Any>(n)) {
+Array<T>::Array(size_t n, const Any& value) : impl_(make_array_object<ArrayImpl, Any>(n)) {
     impl_->start_ = reinterpret_cast<char*>(impl_.get()) + sizeof(ArrayImpl);
     impl_->size_ = n;
     impl_->capacity_ = n;
 
     auto* p = impl_->begin();
     for (size_t i = 0; i < n; ++i) {
-        new (p + i) Any(std::move(value));
+        new (p + i) Any(value);
     }
 }
 

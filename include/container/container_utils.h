@@ -5,10 +5,14 @@
 #ifndef AETHERMIND_CONTAINER_UTILS_H
 #define AETHERMIND_CONTAINER_UTILS_H
 
+#include "any.h"
 #include <iterator>
 
 namespace aethermind {
 namespace details {
+
+template<typename T>
+constexpr bool compatible_with_any_v = std::is_same_v<T, Any> || TypeTraits<T>::storage_enabled;
 
 // IteratorAdapter is a wrapper around an iterator that converts the value
 // type of the iterator to another type.
@@ -153,6 +157,8 @@ public:
 private:
     Iter iter_;
 };
+
+
 
 }// namespace details
 }// namespace aethermind

@@ -8,15 +8,19 @@ namespace aethermind {
 
 ArrayImplNullType ArrayImplNullType::singleton_;
 
-template<typename T>
-Array<T>::Array(size_t n, Any value) : impl_(make_array_object<ArrayImpl, Any>(n)) {
-    impl_->start_ = reinterpret_cast<char*>(impl_.get()) + sizeof(ArrayImpl);
-    impl_->size_ = 0;
-    impl_->capacity_ = n;
+ArrayImpl::~ArrayImpl() {
+    auto* p = begin();
+    for (size_t i = 0; i < size(); ++i) {
+        (p + i)->~Any();
+    }
+}
 
-    auto* p = static_cast<Any*>(impl_->start_);
-    for (size_t i = 0; i < n; ++i) {
-        new (p + i) Any(std::move(value));
+void ArrayImpl::ShrinkBy(int64_t delta) {
+    auto* p = end();
+    while (delta > 0) {
+        (--p)->~Any();
+        --size_;
+        --delta;
     }
 }
 

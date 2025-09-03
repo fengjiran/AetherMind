@@ -31,13 +31,6 @@ struct is_valid_iterator<Iter, Any> : std::true_type {};
 template<typename Iter, typename T>
 inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;
 
-template<typename Iter, typename T>
-using is_valid_iterator_t = std::enable_if_t<std::is_convertible_v<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag> &&
-                                  (std::is_same_v<T, std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iter>())>>> ||
-                                   std::is_base_of_v<T, std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iter>())>>>)>;
-
-template<typename Iter, typename T>
-using is_valid_iterator_tt = std::enable_if_t<is_valid_iterator_v<Iter, T>>;
 
 // IteratorAdapter is a wrapper around an iterator that converts the value
 // type of the iterator to another type.

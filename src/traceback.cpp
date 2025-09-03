@@ -156,7 +156,8 @@ __attribute__((constructor)) void install_signal_handler() {
 #endif
 
 const char* AetherMindTraceback(MAYBE_UNUSED const char* filename, MAYBE_UNUSED int lineno, MAYBE_UNUSED const char* func) {
-    thread_local std::string traceback_str = Traceback();
+    thread_local std::string traceback_str;
+    traceback_str = Traceback();
     return traceback_str.c_str();
 }
 

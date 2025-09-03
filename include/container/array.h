@@ -135,15 +135,16 @@ public:
     Array() = default;
 
     explicit Array(size_t n, const Any& value = Any());
-
-    Array(const std::vector<T>&);// NOLINT
-
+    Array(const std::vector<T>&);   // NOLINT
     Array(std::initializer_list<T>);// NOLINT
-
-    template<typename Iter, details::is_valid_iterator_t<Iter, T>* = nullptr>
-    Array(Iter first, Iter last);
-
     explicit Array(ObjectPtr<ArrayImpl> pimpl) : pimpl_(std::move(pimpl)) {}
+
+    Array(const Array&) = default;
+    Array(Array&&) noexcept = default;
+
+    Array& operator=(const Array& other);
+    Array& operator=(Array&& other) noexcept;
+
 
     NODISCARD bool defined() const noexcept {
         return pimpl_;
@@ -215,6 +216,12 @@ public:
         return *(end() - 1);
     }
 
+    const T operator[](int64_t i) const;
+
+    void swap(Array& other) noexcept {
+        std::swap(pimpl_, other.pimpl_);
+    }
+
     template<typename Iter>
     void assign();
 
@@ -223,7 +230,7 @@ private:
 
     void InitWithSize(size_t n, const Any& value);
 
-    template<typename Iter, typename = details::is_valid_iterator_t<Iter, T>>
+    template<typename Iter, typename = std::enable_if_t<details::is_valid_iterator_v<Iter, T>>>
     void InitWithRange(Iter first, Iter last);
 };
 
@@ -243,11 +250,29 @@ Array<T>::Array(std::initializer_list<T> other) {
 }
 
 template<typename T>
-template<typename Iter, details::is_valid_iterator_t<Iter, T>*>
-Array<T>::Array(Iter first, Iter last) {
-    InitWithRange(first, last);
+Array<T>& Array<T>::operator=(const Array& other) {
+    Array(other).swap(*this);
+    return *this;
 }
 
+template<typename T>
+Array<T>& Array<T>::operator=(Array&& other) noexcept {
+    Array(std::move(other)).swap(*this);
+    return *this;
+}
+
+template<typename T>
+const T Array<T>::operator[](int64_t i) const {
+    if (empty()) {
+        AETHERMIND_THROW(index_error) << "Cannot index an empty array.";
+    }
+
+    if (i < 0 || i >= size()) {
+        AETHERMIND_THROW(index_error) << "the index out of range.";
+    }
+
+    return *(begin() + i);
+}
 
 template<typename T>
 void Array<T>::InitWithSize(size_t n, const Any& value) {

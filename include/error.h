@@ -52,8 +52,8 @@ public:
 
 private:
     std::string kind_;
-    std::ostringstream stream_;
     std::string traceback_;
+    std::ostringstream stream_;
     bool log_before_throw_;
 };
 

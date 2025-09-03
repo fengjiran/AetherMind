@@ -9,6 +9,9 @@
 #include "container/container_utils.h"
 #include "object.h"
 
+#include <initializer_list>
+#include <vector>
+
 namespace aethermind {
 
 class ArrayImpl : public Object {
@@ -133,12 +136,21 @@ public:
 
     explicit Array(size_t n, const Any& value = Any());
 
+    Array(const std::vector<T>&);// NOLINT
+
+    Array(std::initializer_list<T>);// NOLINT
+
+    template<typename Iter, details::is_valid_iterator_t<Iter, T>* = nullptr>
+    Array(Iter first, Iter last);
+
+    explicit Array(ObjectPtr<ArrayImpl> pimpl) : pimpl_(std::move(pimpl)) {}
+
     NODISCARD bool defined() const noexcept {
-        return impl_;
+        return pimpl_;
     }
 
     NODISCARD uint32_t use_count() const noexcept {
-        return impl_.use_count();
+        return pimpl_.use_count();
     }
 
     NODISCARD bool unique() const noexcept {
@@ -146,11 +158,11 @@ public:
     }
 
     NODISCARD size_t size() const noexcept {
-        return impl_->size();
+        return pimpl_->size();
     }
 
     NODISCARD size_t capacity() const noexcept {
-        return impl_->capacity();
+        return pimpl_->capacity();
     }
 
     NODISCARD bool empty() const noexcept {
@@ -158,35 +170,35 @@ public:
     }
 
     iterator begin() noexcept {
-        return iterator(impl_->begin());
+        return iterator(pimpl_->begin());
     }
 
     const_iterator begin() const noexcept {
-        return const_iterator(impl_->begin());
+        return const_iterator(pimpl_->begin());
     }
 
     iterator end() noexcept {
-        return iterator(impl_->end());
+        return iterator(pimpl_->end());
     }
 
     const_iterator end() const noexcept {
-        return const_iterator(impl_->end());
+        return const_iterator(pimpl_->end());
     }
 
     reverse_iterator rbegin() noexcept {
-        return reverse_iterator(impl_->end() - 1);
+        return reverse_iterator(pimpl_->end() - 1);
     }
 
     const_reverse_iterator rbegin() const noexcept {
-        return const_reverse_iterator(impl_->end() - 1);
+        return const_reverse_iterator(pimpl_->end() - 1);
     }
 
     reverse_iterator rend() noexcept {
-        return reverse_iterator(impl_->begin() - 1);
+        return reverse_iterator(pimpl_->begin() - 1);
     }
 
     const_reverse_iterator rend() const noexcept {
-        return const_reverse_iterator(impl_->begin() - 1);
+        return const_reverse_iterator(pimpl_->begin() - 1);
     }
 
     const T front() const {
@@ -207,20 +219,64 @@ public:
     void assign();
 
 private:
-    ObjectPtr<ArrayImpl> impl_;
+    ObjectPtr<ArrayImpl> pimpl_;
+
+    void InitWithSize(size_t n, const Any& value);
+
+    template<typename Iter, typename = details::is_valid_iterator_t<Iter, T>>
+    void InitWithRange(Iter first, Iter last);
 };
 
 template<typename T>
-Array<T>::Array(size_t n, const Any& value) : impl_(make_array_object<ArrayImpl, Any>(n)) {
-    impl_->start_ = reinterpret_cast<char*>(impl_.get()) + sizeof(ArrayImpl);
-    impl_->size_ = n;
-    impl_->capacity_ = n;
+Array<T>::Array(size_t n, const Any& value) {
+    InitWithSize(n, value);
+}
 
-    auto* p = impl_->begin();
+template<typename T>
+Array<T>::Array(const std::vector<T>& other) {
+    InitWithRange(other.begin(), other.end());
+}
+
+template<typename T>
+Array<T>::Array(std::initializer_list<T> other) {
+    InitWithRange(other.begin(), other.end());
+}
+
+template<typename T>
+template<typename Iter, details::is_valid_iterator_t<Iter, T>*>
+Array<T>::Array(Iter first, Iter last) {
+    InitWithRange(first, last);
+}
+
+
+template<typename T>
+void Array<T>::InitWithSize(size_t n, const Any& value) {
+    pimpl_ = make_array_object<ArrayImpl, Any>(n);
+    pimpl_->start_ = reinterpret_cast<char*>(pimpl_.get()) + sizeof(ArrayImpl);
+    pimpl_->size_ = n;
+    pimpl_->capacity_ = n;
+
+    auto* p = pimpl_->begin();
     for (size_t i = 0; i < n; ++i) {
         new (p + i) Any(value);
     }
 }
+
+template<typename T>
+template<typename Iter, typename>
+void Array<T>::InitWithRange(Iter first, Iter last) {
+    auto n = std::distance(first, last);
+    pimpl_ = make_array_object<ArrayImpl, Any>(n);
+    pimpl_->start_ = reinterpret_cast<char*>(pimpl_.get()) + sizeof(ArrayImpl);
+    pimpl_->size_ = n;
+    pimpl_->capacity_ = n;
+
+    auto* p = pimpl_->begin();
+    for (size_t i = 0; i < n; ++i) {
+        new (p + i) Any(*(first + i));
+    }
+}
+
 
 }// namespace aethermind
 

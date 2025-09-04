@@ -101,6 +101,8 @@ public:
     // shrink the array by delta elements.
     void ShrinkBy(int64_t delta);
 
+    void clear();
+
     static ArrayImpl* create(size_t n);
 
 private:
@@ -158,13 +160,14 @@ public:
         pimpl_->ConstructAtEnd(n, value);
     }
 
-    Array(const std::vector<T>& other)// NOLINT
-        : pimpl_(ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(other.size()))) {
-        pimpl_->ConstructAtEnd(other.begin(), other.end());
+    Array(const std::vector<T>& other) {
+        pimpl_ = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(other.size()));
+        pimpl_->ConstructAtEnd<>(other.begin(), other.end());
     }
 
-    Array(std::initializer_list<T> other) : pimpl_(ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(other.size()))) {
-        pimpl_->ConstructAtEnd(other.begin(), other.end());
+    Array(std::initializer_list<T> other) {
+        pimpl_ = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(other.size()));
+        pimpl_->ConstructAtEnd<>(other.begin(), other.end());
     }
 
     explicit Array(ObjectPtr<ArrayImpl> pimpl) : pimpl_(std::move(pimpl)) {}
@@ -281,10 +284,32 @@ public:
         std::swap(pimpl_, other.pimpl_);
     }
 
+    void clear() {
+        CopyOnWrite();
+        pimpl_->clear();
+    }
+
 private:
     ObjectPtr<ArrayImpl> pimpl_;
+    void CopyOnWrite();
     void CopyOnWrite(size_t extra);
 };
+
+template<typename T>
+void Array<T>::CopyOnWrite() {
+    if (defined() && !unique()) {
+        auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(capacity()));
+        // copy to new ArrayImpl
+        auto* from = pimpl_->begin();
+        auto* to = new_pimpl->begin();
+        size_t& i = new_pimpl->size_;
+        while (i < size()) {
+            new (to++) Any(*from++);
+            ++i;
+        }
+        pimpl_ = new_pimpl;
+    }
+}
 
 template<typename T>
 void Array<T>::CopyOnWrite(size_t extra) {

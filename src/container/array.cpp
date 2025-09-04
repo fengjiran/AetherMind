@@ -34,6 +34,10 @@ void ArrayImpl::ShrinkBy(int64_t delta) {
     }
 }
 
+void ArrayImpl::clear() {
+    ShrinkBy(size());
+}
+
 ArrayImpl* ArrayImpl::create(size_t n) {
     auto pimpl = make_array_object<ArrayImpl, Any>(n);
     pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);

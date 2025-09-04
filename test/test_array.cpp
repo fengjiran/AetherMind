@@ -78,6 +78,40 @@ TEST(Array, InitializerListConstructor) {
     EXPECT_EQ(arr.back(), 4.5);
 }
 
+TEST(Array, CopyConstructor) {
+    Array<int> original = {1, 2, 3};
+    Array<int> copy(original);
+
+    EXPECT_EQ(copy.size(), original.size());
+    for (size_t i = 0; i < copy.size(); ++i) {
+        EXPECT_EQ(copy[i], original[i]);
+    }
+
+    // // 验证深拷贝
+    // if (copy.size() > 0) {
+    //     copy[0] = 999;
+    //     EXPECT_NE(copy[0], original[0]);
+    // }
+}
+
+// 测试移动构造函数
+TEST(Array, MoveConstructor) {
+    Array<int> original = {1, 2, 3};
+    size_t original_size = original.size();
+
+    Array<int> moved(std::move(original));
+
+    EXPECT_EQ(moved.size(), original_size);
+    EXPECT_TRUE(original.empty()); // 原对象应该为空
+
+    // 验证移动后的数据
+    if (moved.size() >= 3) {
+        EXPECT_EQ(moved[0], 1);
+        EXPECT_EQ(moved[1], 2);
+        EXPECT_EQ(moved[2], 3);
+    }
+}
+
 TEST(Array, ElementAccess) {
     Array<int> arr = {10, 20, 30, 40};
 

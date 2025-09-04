@@ -95,8 +95,6 @@ private:
     static constexpr size_t kInitSize = 4;
     static constexpr size_t kIncFactor = 2;
 
-    // static ObjectPtr<ArrayImpl> AllocateWithSize(size_t size);
-
     template<typename T>
     friend class Array;
 };
@@ -220,6 +218,11 @@ public:
         return *(end() - 1);
     }
 
+    void push_back(const T& item);
+
+    template<typename... Args>
+    void emplace_back(Args&&... args);
+
     const T operator[](int64_t i) const;
 
     void swap(Array& other) noexcept {
@@ -237,7 +240,14 @@ private:
     template<typename Iter, typename = std::enable_if_t<details::is_valid_iterator_v<Iter, T>>>
     void InitWithRange(Iter first, Iter last);
 
-    ObjectPtr<ArrayImpl> CopyOnWrite(size_t extra);
+    static ObjectPtr<ArrayImpl> AllocateWithSize(size_t size);
+
+    void ConstructAtEnd(size_t n, const Any& value = Any()) const;
+
+    template<typename Iter, typename = std::enable_if_t<details::is_valid_iterator_v<Iter, T>>>
+    void ConstructAtEnd(Iter first, Iter last);
+
+    void CopyOnWrite(size_t extra);
 };
 
 template<typename T>
@@ -268,6 +278,21 @@ Array<T>& Array<T>::operator=(Array&& other) noexcept {
 }
 
 template<typename T>
+void Array<T>::push_back(const T& item) {
+    CopyOnWrite(1);
+    ConstructAtEnd(1, item);
+}
+
+template<typename T>
+template<typename... Args>
+void Array<T>::emplace_back(Args&&... args) {
+    CopyOnWrite(1);
+    auto* p = pimpl_->end();
+    new (p) Any(T(std::forward<Args>(args)...));
+    ++pimpl_->size_;
+}
+
+template<typename T>
 const T Array<T>::operator[](int64_t i) const {
     if (empty()) {
         AETHERMIND_THROW(index_error) << "Cannot index an empty array.";
@@ -281,13 +306,18 @@ const T Array<T>::operator[](int64_t i) const {
 }
 
 template<typename T>
-void Array<T>::InitWithSize(size_t n, const Any& value) {
-    pimpl_ = make_array_object<ArrayImpl, Any>(n);
-    pimpl_->start_ = reinterpret_cast<char*>(pimpl_.get()) + sizeof(ArrayImpl);
-    pimpl_->size_ = 0;
-    pimpl_->capacity_ = n;
+ObjectPtr<ArrayImpl> Array<T>::AllocateWithSize(size_t size) {
+    auto pimpl = make_array_object<ArrayImpl, Any>(size);
+    pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);
+    pimpl->size_ = 0;
+    pimpl->capacity_ = size;
+    return pimpl;
+}
 
-    auto* p = pimpl_->begin();
+template<typename T>
+void Array<T>::ConstructAtEnd(size_t n, const Any& value) const {
+    auto* p = pimpl_->end();
+    // placement new
     // To ensure exception safety, size is only incremented after the initialization succeeds
     size_t& i = pimpl_->size_;
     while (i < n) {
@@ -298,33 +328,60 @@ void Array<T>::InitWithSize(size_t n, const Any& value) {
 
 template<typename T>
 template<typename Iter, typename>
-void Array<T>::InitWithRange(Iter first, Iter last) {
-    auto n = std::distance(first, last);
-    pimpl_ = make_array_object<ArrayImpl, Any>(n);
-    pimpl_->start_ = reinterpret_cast<char*>(pimpl_.get()) + sizeof(ArrayImpl);
-    pimpl_->size_ = 0;
-    pimpl_->capacity_ = n;
-
-    auto* p = pimpl_->begin();
+void Array<T>::ConstructAtEnd(Iter first, Iter last) {
+    auto* p = pimpl_->end();
+    // placement new
     // To ensure exception safety, size is only incremented after the initialization succeeds
     size_t& i = pimpl_->size_;
-    while (i < n) {
-        new (p++) Any(*first++);
-        ++i;
+    for (auto it = first; it != last; ++it, ++i) {
+        new (p++) Any(*it);
     }
 }
 
 template<typename T>
-ObjectPtr<ArrayImpl> Array<T>::CopyOnWrite(size_t extra) {
-    if (!defined()) {
-        size_t cap = std::max(extra, ArrayImpl::kInitSize);
-        pimpl_ = make_array_object<ArrayImpl, Any>(cap);
-        pimpl_->start_ = reinterpret_cast<char*>(pimpl_.get()) + sizeof(ArrayImpl);
-        pimpl_->size_ = 0;
-        pimpl_->capacity_ = cap;
-    }
+void Array<T>::InitWithSize(size_t n, const Any& value) {
+    pimpl_ = AllocateWithSize(n);
+    ConstructAtEnd(n, value);
 }
 
+template<typename T>
+template<typename Iter, typename>
+void Array<T>::InitWithRange(Iter first, Iter last) {
+    pimpl_ = AllocateWithSize(std::distance(first, last));
+    ConstructAtEnd(first, last);
+}
+
+template<typename T>
+void Array<T>::CopyOnWrite(size_t extra) {
+    if (!defined()) {
+        pimpl_ = AllocateWithSize(std::max(extra, ArrayImpl::kInitSize));
+    } else if (unique()) {
+        if (extra + size() > capacity()) {
+            auto new_pimpl = AllocateWithSize(std::max(capacity() * ArrayImpl::kIncFactor, extra + size()));
+            // move to new ArrayImpl
+            auto* from = pimpl_->begin();
+            auto* to = new_pimpl->begin();
+            size_t& i = new_pimpl->size_;
+            while (i < size()) {
+                new (to++) Any(std::move(*from++));
+                ++i;
+            }
+            pimpl_ = std::move(new_pimpl);
+        }
+    } else {
+        size_t new_cap = extra + size() > capacity() ? std::max(capacity() * ArrayImpl::kIncFactor, extra + size()) : capacity();
+        auto new_pimpl = AllocateWithSize(new_cap);
+        // copy to new ArrayImpl
+        auto* from = pimpl_->begin();
+        auto* to = new_pimpl->begin();
+        size_t& i = new_pimpl->size_;
+        while (i < size()) {
+            new (to++) Any(*from++);
+            ++i;
+        }
+        pimpl_ = new_pimpl;
+    }
+}
 
 
 }// namespace aethermind

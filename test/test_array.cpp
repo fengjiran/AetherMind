@@ -162,4 +162,26 @@ TEST(ArrayTest, SwapOperation) {
     EXPECT_EQ(arr2[0], 1);
 }
 
+TEST(Array, PushBackAndEmplaceBack) {
+    Array<int> arr;
+
+    // Test push_back
+    arr.push_back(1);
+    EXPECT_EQ(arr.size(), 1);
+    EXPECT_EQ(arr[0], 1);
+
+    arr.push_back(2);
+    EXPECT_EQ(arr.size(), 2);
+    EXPECT_EQ(arr[1], 2);
+
+    // Test emplace_back
+    arr.emplace_back(3);
+    EXPECT_EQ(arr.size(), 3);
+    EXPECT_EQ(arr[2], 3);
+
+    arr.emplace_back(4);
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[3], 4);
+}
+
 }// namespace

@@ -222,6 +222,11 @@ public:
         std::swap(pimpl_, other.pimpl_);
     }
 
+    // TODO: 实现 CopyOnWrite
+    ObjectPtr<ArrayImpl> CopyOnWrite() {
+        //
+    }
+
     template<typename Iter>
     void assign();
 
@@ -232,6 +237,8 @@ private:
 
     template<typename Iter, typename = std::enable_if_t<details::is_valid_iterator_v<Iter, T>>>
     void InitWithRange(Iter first, Iter last);
+
+    ObjectPtr<ArrayImpl> CheckAndReallocate(size_t new_cap);
 };
 
 template<typename T>

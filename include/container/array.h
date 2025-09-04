@@ -95,6 +95,8 @@ private:
     static constexpr size_t kInitSize = 4;
     static constexpr size_t kIncFactor = 2;
 
+    // static ObjectPtr<ArrayImpl> AllocateWithSize(size_t size);
+
     template<typename T>
     friend class Array;
 };
@@ -147,7 +149,6 @@ public:
 
     Array& operator=(const Array& other);
     Array& operator=(Array&& other) noexcept;
-
 
     NODISCARD bool defined() const noexcept {
         return pimpl_;
@@ -225,11 +226,6 @@ public:
         std::swap(pimpl_, other.pimpl_);
     }
 
-    // TODO: 实现 CopyOnWrite
-    ObjectPtr<ArrayImpl> CopyOnWrite() {
-        //
-    }
-
     template<typename Iter>
     void assign();
 
@@ -241,7 +237,7 @@ private:
     template<typename Iter, typename = std::enable_if_t<details::is_valid_iterator_v<Iter, T>>>
     void InitWithRange(Iter first, Iter last);
 
-    ObjectPtr<ArrayImpl> CheckAndReallocate(size_t new_cap);
+    ObjectPtr<ArrayImpl> CopyOnWrite(size_t extra);
 };
 
 template<typename T>
@@ -317,6 +313,18 @@ void Array<T>::InitWithRange(Iter first, Iter last) {
         ++i;
     }
 }
+
+template<typename T>
+ObjectPtr<ArrayImpl> Array<T>::CopyOnWrite(size_t extra) {
+    if (!defined()) {
+        size_t cap = std::max(extra, ArrayImpl::kInitSize);
+        pimpl_ = make_array_object<ArrayImpl, Any>(cap);
+        pimpl_->start_ = reinterpret_cast<char*>(pimpl_.get()) + sizeof(ArrayImpl);
+        pimpl_->size_ = 0;
+        pimpl_->capacity_ = cap;
+    }
+}
+
 
 
 }// namespace aethermind

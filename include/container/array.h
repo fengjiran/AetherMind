@@ -92,6 +92,9 @@ private:
     size_t size_;
     size_t capacity_;
 
+    static constexpr size_t kInitSize = 4;
+    static constexpr size_t kIncFactor = 2;
+
     template<typename T>
     friend class Array;
 };
@@ -285,12 +288,15 @@ template<typename T>
 void Array<T>::InitWithSize(size_t n, const Any& value) {
     pimpl_ = make_array_object<ArrayImpl, Any>(n);
     pimpl_->start_ = reinterpret_cast<char*>(pimpl_.get()) + sizeof(ArrayImpl);
-    pimpl_->size_ = n;
+    pimpl_->size_ = 0;
     pimpl_->capacity_ = n;
 
     auto* p = pimpl_->begin();
-    for (size_t i = 0; i < n; ++i) {
-        new (p + i) Any(value);
+    // To ensure exception safety, size is only incremented after the initialization succeeds
+    size_t& i = pimpl_->size_;
+    while (i < n) {
+        new (p++) Any(value);
+        ++i;
     }
 }
 
@@ -300,12 +306,15 @@ void Array<T>::InitWithRange(Iter first, Iter last) {
     auto n = std::distance(first, last);
     pimpl_ = make_array_object<ArrayImpl, Any>(n);
     pimpl_->start_ = reinterpret_cast<char*>(pimpl_.get()) + sizeof(ArrayImpl);
-    pimpl_->size_ = n;
+    pimpl_->size_ = 0;
     pimpl_->capacity_ = n;
 
     auto* p = pimpl_->begin();
-    for (size_t i = 0; i < n; ++i) {
-        new (p + i) Any(*(first + i));
+    // To ensure exception safety, size is only incremented after the initialization succeeds
+    size_t& i = pimpl_->size_;
+    while (i < n) {
+        new (p++) Any(*first++);
+        ++i;
     }
 }
 

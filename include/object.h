@@ -267,8 +267,8 @@ private:
     template<typename T2, typename NullType2>
     friend class ObjectPtr;
 
-    // template<typename T3, typename T4>
-    // friend struct TypeTraits;
+    // template<typename T3>
+    // friend class Array;
 };
 
 struct ObjectUnsafe {

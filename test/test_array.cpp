@@ -169,6 +169,7 @@ TEST(Array, PushBackAndEmplaceBack) {
     arr.push_back(1);
     EXPECT_EQ(arr.size(), 1);
     EXPECT_EQ(arr[0], 1);
+    EXPECT_TRUE(arr.unique());
 
     arr.push_back(2);
     EXPECT_EQ(arr.size(), 2);
@@ -182,6 +183,132 @@ TEST(Array, PushBackAndEmplaceBack) {
     arr.emplace_back(4);
     EXPECT_EQ(arr.size(), 4);
     EXPECT_EQ(arr[3], 4);
+}
+
+TEST(Array, OutOfBoundsException) {
+    Array<int> arr = {1, 2, 3};
+
+    // Test negative index
+    EXPECT_THROW({
+        try {
+            UNUSED(arr[-1]);
+        } catch (const Error&) {
+            throw;
+        } }, Error);
+
+    // Test index beyond size
+    EXPECT_THROW({
+        try {
+            UNUSED(arr[5]);
+        } catch (const Error&) {
+            throw;
+        } }, Error);
+}
+
+TEST(Array, UseCountAndUnique) {
+    Array<int> arr1 = {1, 2, 3};
+    EXPECT_TRUE(arr1.unique());
+    EXPECT_EQ(arr1.use_count(), 1);
+
+    // Test copy increases use count
+    Array<int> arr2 = arr1;
+    EXPECT_EQ(arr1.use_count(), 2);
+    EXPECT_EQ(arr2.use_count(), 2);
+    EXPECT_FALSE(arr1.unique());
+    EXPECT_FALSE(arr2.unique());
+
+    // Test move resets use count
+    Array<int> arr3 = std::move(arr1);
+    EXPECT_TRUE(arr1.empty());
+    EXPECT_EQ(arr3.use_count(), 2);
+}
+
+TEST(Array, DefinedAndEmpty) {
+    Array<int> arr1;
+    EXPECT_FALSE(arr1.defined());
+    EXPECT_TRUE(arr1.empty());
+
+    Array<int> arr2 = {1};
+    EXPECT_TRUE(arr2.defined());
+    EXPECT_FALSE(arr2.empty());
+
+    Array<int> arr3(3, 0);
+    EXPECT_TRUE(arr3.defined());
+    EXPECT_FALSE(arr3.empty());
+}
+
+TEST(Array, IteratorValidity) {
+    Array<int> arr = {1, 2, 3, 4, 5};
+
+    // Test iterator arithmetic
+    auto it = arr.begin();
+    EXPECT_EQ(*it, 1);
+    EXPECT_EQ(*(it + 1), 2);
+    EXPECT_EQ(*(it + 4), 5);
+
+    // Test reverse iterator
+    auto rit = arr.rbegin();
+    EXPECT_EQ(*rit, 5);
+    EXPECT_EQ(*(rit + 1), 4);
+
+    // Test const iterators
+    const Array<int>& carr = arr;
+    auto cit = carr.begin();
+    EXPECT_EQ(*cit, 1);
+}
+
+TEST(Array, CapacityManagement) {
+    Array<int> arr;
+
+    // Initial capacity should be 0
+    EXPECT_EQ(arr.capacity(), 0);
+
+    // Adding elements should increase capacity
+    arr.push_back(1);
+    EXPECT_GE(arr.capacity(), 1);
+
+    arr.push_back(2);
+    arr.push_back(3);
+    arr.push_back(4);
+    EXPECT_GE(arr.capacity(), 4);
+}
+
+TEST(Array, ComplexTypes) {
+    // Test with std::string
+    Array<std::string> str_arr = {"hello", "world", "test"};
+    EXPECT_EQ(str_arr.size(), 3);
+    EXPECT_EQ(str_arr[0], "hello");
+    EXPECT_EQ(str_arr[2], "test");
+
+    // // Test with custom types
+    // struct TestStruct {
+    //     int id;
+    //     std::string name;
+    //     bool operator==(const TestStruct& other) const {
+    //         return id == other.id && name == other.name;
+    //     }
+    // };
+    //
+    // Array<TestStruct> custom_arr = {{1, "first"}, {2, "second"}};
+    // EXPECT_EQ(custom_arr.size(), 2);
+    // EXPECT_EQ(custom_arr[0].id, 1);
+    // EXPECT_EQ(custom_arr[1].name, "second");
+}
+
+TEST(Array, CopyOnWriteSemantics) {
+    Array<int> arr1 = {1, 2, 3};
+    Array<int> arr2 = arr1;
+
+    // Both should share the same underlying data
+    EXPECT_EQ(arr1.use_count(), 2);
+    EXPECT_EQ(arr2.use_count(), 2);
+
+    // Modifying arr2 should trigger copy-on-write
+    arr2.push_back(4);
+    EXPECT_EQ(arr1.size(), 3);  // arr1 unchanged
+    EXPECT_EQ(arr2.size(), 4);  // arr2 modified
+    EXPECT_TRUE(arr1.unique());  // Now they have separate data
+    EXPECT_TRUE(arr2.unique());
 }
 
 }// namespace

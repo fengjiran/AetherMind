@@ -15,6 +15,16 @@ ArrayImpl::~ArrayImpl() {
     }
 }
 
+void ArrayImpl::ConstructAtEnd(size_t n, const Any& value) {
+    auto* p = end();
+    // placement new
+    // To ensure exception safety, size is only incremented after the initialization succeeds
+    for (size_t i = 0; i < n; ++i) {
+        new (p++) Any(value);
+        ++size_;
+    }
+}
+
 void ArrayImpl::ShrinkBy(int64_t delta) {
     auto* p = end();
     while (delta > 0) {
@@ -22,6 +32,14 @@ void ArrayImpl::ShrinkBy(int64_t delta) {
         --size_;
         --delta;
     }
+}
+
+ArrayImpl* ArrayImpl::create(size_t n) {
+    auto pimpl = make_array_object<ArrayImpl, Any>(n);
+    pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);
+    pimpl->size_ = 0;
+    pimpl->capacity_ = n;
+    return pimpl.release();
 }
 
 

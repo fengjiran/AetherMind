@@ -93,12 +93,12 @@ private:
     static constexpr size_t kInitSize = 4;
     static constexpr size_t kIncFactor = 2;
 
+    static ArrayImpl* create(size_t n);
+
     // shrink the array by delta elements.
     void ShrinkBy(int64_t delta);
 
     void EnlargeBy(int64_t delta, const Any& value);
-
-    static ArrayImpl* create(size_t n);
 
     void ConstructAtEnd(size_t n, const Any& value);
 
@@ -112,6 +112,10 @@ private:
             ++size_;
         }
     }
+
+    void MoveElemsRight(size_t dst, size_t src, size_t n);
+
+    void MoveElemsLeft(size_t dst, size_t src, size_t n);
 
     template<typename T>
     friend class Array;
@@ -328,6 +332,33 @@ public:
                     ++i;
                 }
                 pimpl_ = new_pimpl;
+            }
+        }
+    }
+
+    void insert(iterator pos, const T& value) {
+        size_t idx = std::distance(begin(), pos);
+        size_t n = std::distance(pos, end());
+        CopyOnWrite(1);
+        pimpl_->EnlargeBy(1, T());
+        pimpl_->MoveElemsRight(idx + 1, idx, n);
+        new (pimpl_->begin() + idx) Any(value);
+    }
+
+    template<typename Iter>
+    void insert(iterator pos, Iter first, Iter last) {
+        static_assert(details::is_valid_iterator_v<Iter, T>, "Iter cannot be inserted into a Array<T>");
+        if (first != last) {
+            size_t idx = std::distance(begin(), pos);
+            size_t n = std::distance(pos, end());
+            size_t numel = std::distance(first, last);
+            CopyOnWrite(numel);
+            pimpl_->EnlargeBy(numel, T());
+            pimpl_->MoveElemsRight(idx + numel, idx, n);
+
+            auto* p = pimpl_->begin() + idx;
+            for (int i = 0; i < numel; ++i) {
+                new (p++) Any(std::move(*first++));
             }
         }
     }

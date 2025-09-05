@@ -928,4 +928,126 @@ TEST(Array, ReserveAndThenAddElements) {
     EXPECT_EQ(arr.size(), 101);
 }
 
+TEST(Array, InsertSingleElement) {
+    // Test inserting single element at beginning
+    Array<int> arr = {2, 3, 4};
+    arr.insert(arr.begin(), 1);
+
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 4);
+
+    // Test inserting single element at middle
+    Array<int> arr2 = {1, 3, 4};
+    arr2.insert(arr2.begin() + 1, 2);
+
+    EXPECT_EQ(arr2.size(), 4);
+    EXPECT_EQ(arr2[0], 1);
+    EXPECT_EQ(arr2[1], 2);
+    EXPECT_EQ(arr2[2], 3);
+    EXPECT_EQ(arr2[3], 4);
+
+    // Test inserting single element at end
+    Array<int> arr3 = {1, 2, 3};
+    arr3.insert(arr3.end(), 4);
+
+    EXPECT_EQ(arr3.size(), 4);
+    EXPECT_EQ(arr3[0], 1);
+    EXPECT_EQ(arr3[1], 2);
+    EXPECT_EQ(arr3[2], 3);
+    EXPECT_EQ(arr3[3], 4);
+}
+
+TEST(Array, InsertMultipleElements) {
+    // Test inserting multiple elements at beginning
+    Array<int> arr = {4, 5, 6};
+    std::vector<int> elements = {1, 2, 3};
+    arr.insert(arr.begin(), elements.begin(), elements.end());
+
+    EXPECT_EQ(arr.size(), 6);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 4);
+    EXPECT_EQ(arr[4], 5);
+    EXPECT_EQ(arr[5], 6);
+
+    // Test inserting multiple elements at middle
+    Array<int> arr2 = {1, 5, 6};
+    std::vector<int> elements2 = {2, 3, 4};
+    arr2.insert(arr2.begin() + 1, elements2.begin(), elements2.end());
+
+    EXPECT_EQ(arr2.size(), 6);
+    EXPECT_EQ(arr2[0], 1);
+    EXPECT_EQ(arr2[1], 2);
+    EXPECT_EQ(arr2[2], 3);
+    EXPECT_EQ(arr2[3], 4);
+    EXPECT_EQ(arr2[4], 5);
+    EXPECT_EQ(arr2[5], 6);
+
+    // Test inserting multiple elements at end
+    Array<int> arr3 = {1, 2, 3};
+    std::vector<int> elements3 = {4, 5, 6};
+    arr3.insert(arr3.end(), elements3.begin(), elements3.end());
+
+    EXPECT_EQ(arr3.size(), 6);
+    EXPECT_EQ(arr3[0], 1);
+    EXPECT_EQ(arr3[1], 2);
+    EXPECT_EQ(arr3[2], 3);
+    EXPECT_EQ(arr3[3], 4);
+    EXPECT_EQ(arr3[4], 5);
+    EXPECT_EQ(arr3[5], 6);
+}
+
+TEST(Array, InsertIntoEmptyArray) {
+    // Test inserting into empty array
+    Array<int> arr;
+    arr.insert(arr.begin(), 42);
+
+    EXPECT_EQ(arr.size(), 1);
+    EXPECT_EQ(arr[0], 42);
+
+    // Test inserting multiple elements into empty array
+    Array<int> arr2;
+    std::vector<int> elements = {1, 2, 3};
+    arr2.insert(arr2.begin(), elements.begin(), elements.end());
+
+    EXPECT_EQ(arr2.size(), 3);
+    EXPECT_EQ(arr2[0], 1);
+    EXPECT_EQ(arr2[1], 2);
+    EXPECT_EQ(arr2[2], 3);
+}
+
+TEST(Array, InsertWithCopyOnWrite) {
+    // Test insert behavior with shared data (copy-on-write)
+    Array<int> arr1 = {1, 2, 3};
+    Array<int> arr2 = arr1;// Shared data
+
+    EXPECT_EQ(arr1.use_count(), 2);
+    EXPECT_EQ(arr2.use_count(), 2);
+
+    // Inserting into one array should trigger copy-on-write
+    arr1.insert(arr1.begin() + 1, 99);
+
+    // Arrays should now have separate data
+    EXPECT_TRUE(arr1.unique());
+    EXPECT_TRUE(arr2.unique());
+
+    // arr1 should be modified
+    EXPECT_EQ(arr1.size(), 4);
+    EXPECT_EQ(arr1[0], 1);
+    EXPECT_EQ(arr1[1], 99);
+    EXPECT_EQ(arr1[2], 2);
+    EXPECT_EQ(arr1[3], 3);
+
+    // arr2 should remain unchanged
+    EXPECT_EQ(arr2.size(), 3);
+    EXPECT_EQ(arr2[0], 1);
+    EXPECT_EQ(arr2[1], 2);
+    EXPECT_EQ(arr2[2], 3);
+}
+
+
 }// namespace

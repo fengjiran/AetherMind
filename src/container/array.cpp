@@ -43,10 +43,28 @@ void ArrayImpl::EnlargeBy(int64_t delta, const Any& value) {
     }
 }
 
-
 void ArrayImpl::clear() {
     ShrinkBy(size());
 }
+
+void ArrayImpl::MoveElemsRight(size_t dst, size_t src, size_t n) {
+    CHECK(src < dst);
+    auto* from = begin() + src + n;
+    auto* to = begin() + dst + n;
+    for (size_t i = 0; i < n; ++i) {
+        *--to = std::move(*--from);
+    }
+}
+
+void ArrayImpl::MoveElemsLeft(size_t dst, size_t src, size_t n) {
+    CHECK(src > dst);
+    auto* from = begin() + src;
+    auto* to = begin() + dst;
+    for (size_t i = 0; i < n; ++i) {
+        *to++ = std::move(*from++);
+    }
+}
+
 
 ArrayImpl* ArrayImpl::create(size_t n) {
     auto pimpl = make_array_object<ArrayImpl, Any>(n);

@@ -155,7 +155,7 @@ public:
 
     Array() = default;
 
-    explicit Array(size_t n, const Any& value = Any())
+    explicit Array(size_t n, const Any& value = Any(T()))
         : pimpl_(ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n))) {
         pimpl_->ConstructAtEnd(n, value);
     }
@@ -301,7 +301,14 @@ public:
             AETHERMIND_THROW(value_error) << "Cannot resize an array to negative size.";
         }
 
-
+        auto sz = size();
+        if (sz < n) {
+            CopyOnWrite(n - sz);
+            pimpl_->EnlargeBy(n - sz);
+        } else if (sz > n) {
+            CopyOnWrite();
+            pimpl_->ShrinkBy(sz - n);
+        }
     }
 
 private:

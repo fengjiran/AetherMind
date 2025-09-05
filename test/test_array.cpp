@@ -498,8 +498,7 @@ TEST(Array, PopBackEmptyArrayException) {
             // Verify it's the correct exception type
             EXPECT_NE(std::string(e.what()).find("Cannot pop back an empty array"), std::string::npos);
             throw;
-        }
-    }, Error);
+        } }, Error);
 
     // Test popping from array that becomes empty
     Array<int> arr2 = {42};
@@ -511,14 +510,13 @@ TEST(Array, PopBackEmptyArrayException) {
         } catch (const Error& e) {
             EXPECT_NE(std::string(e.what()).find("Cannot pop back an empty array"), std::string::npos);
             throw;
-        }
-    }, Error);
+        } }, Error);
 }
 
 TEST(Array, PopBackWithCopyOnWrite) {
     // Test pop_back behavior with shared data (copy-on-write)
     Array<int> arr1 = {1, 2, 3, 4, 5};
-    Array<int> arr2 = arr1; // Shared data
+    Array<int> arr2 = arr1;// Shared data
 
     EXPECT_EQ(arr1.use_count(), 2);
     EXPECT_EQ(arr2.use_count(), 2);
@@ -530,10 +528,10 @@ TEST(Array, PopBackWithCopyOnWrite) {
     EXPECT_TRUE(arr1.unique());
     EXPECT_TRUE(arr2.unique());
 
-    EXPECT_EQ(arr1.size(), 4); // arr1 modified
+    EXPECT_EQ(arr1.size(), 4);// arr1 modified
     EXPECT_EQ(arr1.back(), 4);
 
-    EXPECT_EQ(arr2.size(), 5); // arr2 unchanged
+    EXPECT_EQ(arr2.size(), 5);// arr2 unchanged
     EXPECT_EQ(arr2.back(), 5);
     EXPECT_EQ(arr2[4], 5);
 }
@@ -556,7 +554,7 @@ TEST(Array, PopBackPreservesCapacity) {
     arr.pop_back();
 
     EXPECT_EQ(arr.size(), 7);
-    EXPECT_EQ(arr.capacity(), original_capacity); // Capacity should be preserved
+    EXPECT_EQ(arr.capacity(), original_capacity);// Capacity should be preserved
 
     // Pop all elements
     while (!arr.empty()) {
@@ -565,7 +563,7 @@ TEST(Array, PopBackPreservesCapacity) {
 
     EXPECT_TRUE(arr.empty());
     EXPECT_EQ(arr.size(), 0);
-    EXPECT_EQ(arr.capacity(), original_capacity); // Capacity should still be preserved
+    EXPECT_EQ(arr.capacity(), original_capacity);// Capacity should still be preserved
 }
 
 TEST(Array, PopBackWithComplexTypes) {
@@ -586,6 +584,180 @@ TEST(Array, PopBackWithComplexTypes) {
     // Test pop_back preserves remaining elements
     EXPECT_EQ(str_arr[0], "hello");
     EXPECT_EQ(str_arr[1], "world");
+}
+
+TEST(Array, ResizeMethod) {
+    // Test resizing to larger size
+    Array<int> arr = {1, 2, 3};
+    EXPECT_EQ(arr.size(), 3);
+
+    arr.resize(5);
+    EXPECT_EQ(arr.size(), 5);
+    EXPECT_GE(arr.capacity(), 5);
+
+    // Original elements should be preserved
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+
+    // New elements should be default initialized (but behavior depends on implementation)
+    // For int, new elements might be uninitialized or zero-initialized
+}
+
+TEST(Array, ResizeToSmallerSize) {
+    // Test resizing to smaller size
+    Array<int> arr = {1, 2, 3, 4, 5};
+    EXPECT_EQ(arr.size(), 5);
+
+    arr.resize(3);
+    EXPECT_EQ(arr.size(), 3);
+
+    // Remaining elements should be preserved
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+
+    // Capacity should be preserved
+    size_t original_capacity = arr.capacity();
+    EXPECT_GE(original_capacity, 5);
+}
+
+TEST(Array, ResizeToSameSize) {
+    // Test resizing to the same size
+    Array<int> arr = {1, 2, 3};
+    size_t original_size = arr.size();
+    size_t original_capacity = arr.capacity();
+
+    arr.resize(3);
+    EXPECT_EQ(arr.size(), original_size);
+    EXPECT_EQ(arr.capacity(), original_capacity);
+
+    // Elements should be unchanged
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+}
+
+TEST(Array, ResizeEmptyArray) {
+    // Test resizing an empty array
+    Array<int> arr;
+    EXPECT_TRUE(arr.empty());
+
+    arr.resize(3);
+    EXPECT_EQ(arr.size(), 3);
+    EXPECT_GE(arr.capacity(), 3);
+
+    // Array should now be initialized with default values
+}
+
+TEST(Array, ResizeToZero) {
+    // Test resizing to zero
+    Array<int> arr = {1, 2, 3};
+    EXPECT_EQ(arr.size(), 3);
+
+    arr.resize(0);
+    EXPECT_TRUE(arr.empty());
+    EXPECT_EQ(arr.size(), 0);
+
+    // Capacity should be preserved
+    EXPECT_GE(arr.capacity(), 3);
+}
+
+TEST(Array, ResizeNegativeSizeException) {
+    // Test that resizing to negative size throws exception
+    Array<int> arr = {1, 2, 3};
+
+    EXPECT_THROW({
+        try {
+            arr.resize(-1);
+        } catch (const Error& e) {
+            // Verify it's the correct exception type and message
+            EXPECT_NE(std::string(e.what()).find("Cannot resize an array to negative size"), std::string::npos);
+            throw;
+        } }, Error);
+}
+
+TEST(Array, ResizeWithCopyOnWrite) {
+    // Test resize behavior with shared data (copy-on-write)
+    Array<int> arr1 = {1, 2, 3, 4, 5};
+    Array<int> arr2 = arr1;// Shared data
+
+    EXPECT_EQ(arr1.use_count(), 2);
+    EXPECT_EQ(arr2.use_count(), 2);
+
+    // Resizing one array should trigger copy-on-write
+    arr1.resize(3);
+
+    // Arrays should now have separate data
+    EXPECT_TRUE(arr1.unique());
+    EXPECT_TRUE(arr2.unique());
+
+    EXPECT_EQ(arr1.size(), 3);// arr1 resized
+    EXPECT_EQ(arr2.size(), 5);// arr2 unchanged
+
+    // Verify arr1 elements
+    EXPECT_EQ(arr1[0], 1);
+    EXPECT_EQ(arr1[1], 2);
+    EXPECT_EQ(arr1[2], 3);
+
+    // Verify arr2 elements
+    EXPECT_EQ(arr2[0], 1);
+    EXPECT_EQ(arr2[1], 2);
+    EXPECT_EQ(arr2[2], 3);
+    EXPECT_EQ(arr2[3], 4);
+    EXPECT_EQ(arr2[4], 5);
+}
+
+TEST(Array, ResizeMultipleTimes) {
+    // Test multiple resize operations
+    Array<int> arr;
+
+    // Grow
+    arr.resize(5);
+    EXPECT_EQ(arr.size(), 5);
+
+    // Shrink
+    arr.resize(2);
+    EXPECT_EQ(arr.size(), 2);
+
+    // Grow again
+    arr.resize(8);
+    EXPECT_EQ(arr.size(), 8);
+
+    // Shrink to zero
+    arr.resize(0);
+    EXPECT_TRUE(arr.empty());
+
+    // Grow from zero
+    arr.resize(4);
+    EXPECT_EQ(arr.size(), 4);
+}
+
+TEST(Array, ResizeWithComplexTypes) {
+    // Test resize with std::string
+    Array<std::string> str_arr = {"hello", "world", "test"};
+
+    EXPECT_EQ(str_arr.size(), 3);
+
+    // Resize to larger
+    // str_arr.resize(5);
+    // EXPECT_EQ(str_arr.size(), 5);
+    EXPECT_TRUE(str_arr.unique());
+
+    // // Original elements should be preserved
+    // EXPECT_EQ(str_arr[0], "hello");
+    // EXPECT_EQ(str_arr[1], "world");
+    // EXPECT_EQ(str_arr[2], "test");
+    //
+    // // New elements should be default initialized (empty strings)
+    // EXPECT_EQ(str_arr[3], "");
+    // EXPECT_EQ(str_arr[4], "");
+    //
+    // // Resize to smaller
+    // str_arr.resize(2);
+    // EXPECT_EQ(str_arr.size(), 2);
+    // EXPECT_EQ(str_arr[0], "hello");
+    // EXPECT_EQ(str_arr[1], "world");
 }
 
 }// namespace

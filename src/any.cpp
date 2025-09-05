@@ -19,12 +19,12 @@ Any::Any(Any&& other) noexcept : data_(std::move(other.data_)) {
 }
 
 void Any::reset() {
-    if (is_object_ptr()) {
-        auto* obj = std::get<Object*>(data_.payload_);
-        if (!IsNullTypePtr(obj)) {
-            ObjectPtr<Object>::reclaim(obj);
-        }
-    }
+    // if (is_object_ptr()) {
+    //     auto* obj = std::get<Object*>(data_.payload_);
+    //     if (!IsNullTypePtr(obj)) {
+    //         ObjectPtr<Object>::reclaim(obj);
+    //     }
+    // }
     data_.payload_ = 0;
     data_.tag_ = AnyTag::None;
 }

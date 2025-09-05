@@ -96,11 +96,11 @@ private:
     // shrink the array by delta elements.
     void ShrinkBy(int64_t delta);
 
-    void EnlargeBy(int64_t delta, const Any& value = Any());
+    void EnlargeBy(int64_t delta, const Any& value);
 
     static ArrayImpl* create(size_t n);
 
-    void ConstructAtEnd(size_t n, const Any& value = Any());
+    void ConstructAtEnd(size_t n, const Any& value);
 
     template<typename Iter>
     void ConstructAtEnd(Iter first, Iter last) {
@@ -295,7 +295,6 @@ public:
         pimpl_->ShrinkBy(1);
     }
 
-    // TODO: complete resize
     void resize(int64_t n) {
         if (n < 0) {
             AETHERMIND_THROW(value_error) << "Cannot resize an array to negative size.";
@@ -304,7 +303,7 @@ public:
         auto sz = size();
         if (sz < n) {
             CopyOnWrite(n - sz);
-            pimpl_->EnlargeBy(n - sz);
+            pimpl_->EnlargeBy(n - sz, T());
         } else if (sz > n) {
             CopyOnWrite();
             pimpl_->ShrinkBy(sz - n);

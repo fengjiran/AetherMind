@@ -736,28 +736,26 @@ TEST(Array, ResizeMultipleTimes) {
 TEST(Array, ResizeWithComplexTypes) {
     // Test resize with std::string
     Array<std::string> str_arr = {"hello", "world", "test"};
-
     EXPECT_EQ(str_arr.size(), 3);
 
     // Resize to larger
-    // str_arr.resize(5);
-    // EXPECT_EQ(str_arr.size(), 5);
+    str_arr.resize(5);
     EXPECT_TRUE(str_arr.unique());
 
-    // // Original elements should be preserved
-    // EXPECT_EQ(str_arr[0], "hello");
-    // EXPECT_EQ(str_arr[1], "world");
-    // EXPECT_EQ(str_arr[2], "test");
-    //
-    // // New elements should be default initialized (empty strings)
-    // EXPECT_EQ(str_arr[3], "");
-    // EXPECT_EQ(str_arr[4], "");
-    //
-    // // Resize to smaller
-    // str_arr.resize(2);
-    // EXPECT_EQ(str_arr.size(), 2);
-    // EXPECT_EQ(str_arr[0], "hello");
-    // EXPECT_EQ(str_arr[1], "world");
+    // Original elements should be preserved
+    EXPECT_EQ(str_arr[0], "hello");
+    EXPECT_EQ(str_arr[1], "world");
+    EXPECT_EQ(str_arr[2], "test");
+
+    // New elements should be default initialized (empty strings)
+    EXPECT_EQ(str_arr[3], "");
+    EXPECT_EQ(str_arr[4], "");
+
+    // Resize to smaller
+    str_arr.resize(2);
+    EXPECT_EQ(str_arr.size(), 2);
+    EXPECT_EQ(str_arr[0], "hello");
+    EXPECT_EQ(str_arr[1], "world");
 }
 
 }// namespace

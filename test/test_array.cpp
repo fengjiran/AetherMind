@@ -758,4 +758,174 @@ TEST(Array, ResizeWithComplexTypes) {
     EXPECT_EQ(str_arr[1], "world");
 }
 
+TEST(Array, ReserveMethod) {
+    // Test reserving capacity for empty array
+    Array<int> arr;
+    EXPECT_EQ(arr.capacity(), 0);
+
+    arr.reserve(10);
+    EXPECT_EQ(arr.capacity(), 10);
+    EXPECT_TRUE(arr.empty());
+    EXPECT_EQ(arr.size(), 0);
+}
+
+TEST(Array, ReserveLargerCapacity) {
+    // Test reserving larger capacity than current
+    Array<int> arr = {1, 2, 3};
+    size_t original_capacity = arr.capacity();
+    size_t original_size = arr.size();
+
+    arr.reserve(20);
+    EXPECT_EQ(arr.capacity(), 20);
+    EXPECT_EQ(arr.size(), original_size);
+
+    // Original elements should be preserved
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+}
+
+TEST(Array, ReserveSmallerCapacity) {
+    // Test reserving smaller capacity than current (should be no-op)
+    Array<int> arr;
+    arr.reserve(10);
+    EXPECT_EQ(arr.capacity(), 10);
+
+    size_t current_capacity = arr.capacity();
+    arr.reserve(5);
+    EXPECT_EQ(arr.capacity(), current_capacity);// Capacity should remain unchanged
+    EXPECT_TRUE(arr.empty());
+}
+
+TEST(Array, ReserveSameCapacity) {
+    // Test reserving the same capacity as current
+    Array<int> arr = {1, 2, 3};
+    size_t original_capacity = arr.capacity();
+    size_t original_size = arr.size();
+
+    arr.reserve(original_capacity);
+    EXPECT_EQ(arr.capacity(), original_capacity);
+    EXPECT_EQ(arr.size(), original_size);
+
+    // Elements should be unchanged
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+}
+
+TEST(Array, ReserveWithCopyOnWrite) {
+    // Test reserve behavior with shared data (copy-on-write)
+    Array<int> arr1 = {1, 2, 3};
+    Array<int> arr2 = arr1;// Shared data
+
+    EXPECT_EQ(arr1.use_count(), 2);
+    EXPECT_EQ(arr2.use_count(), 2);
+
+    // Reserving capacity in one array should trigger copy-on-write
+    arr1.reserve(20);
+
+    // Arrays should now have separate data
+    EXPECT_TRUE(arr1.unique());
+    EXPECT_TRUE(arr2.unique());
+
+    EXPECT_EQ(arr1.capacity(), 20);
+    EXPECT_EQ(arr2.capacity(), 3);// arr2 capacity unchanged
+
+    // Both arrays should have the same elements
+    EXPECT_EQ(arr1.size(), 3);
+    EXPECT_EQ(arr2.size(), 3);
+    EXPECT_EQ(arr1[0], 1);
+    EXPECT_EQ(arr1[1], 2);
+    EXPECT_EQ(arr1[2], 3);
+    EXPECT_EQ(arr2[0], 1);
+    EXPECT_EQ(arr2[1], 2);
+    EXPECT_EQ(arr2[2], 3);
+}
+
+TEST(Array, ReserveMultipleTimes) {
+    // Test multiple reserve operations
+    Array<int> arr;
+
+    arr.reserve(5);
+    EXPECT_EQ(arr.capacity(), 5);
+
+    arr.reserve(10);
+    EXPECT_EQ(arr.capacity(), 10);
+
+    arr.reserve(15);
+    EXPECT_EQ(arr.capacity(), 15);
+
+    // Adding elements after reserving
+    arr.push_back(1);
+    arr.push_back(2);
+    arr.push_back(3);
+
+    EXPECT_EQ(arr.size(), 3);
+    EXPECT_EQ(arr.capacity(), 15);
+}
+
+TEST(Array, ReserveWithComplexTypes) {
+    // Test reserve with std::string
+    Array<std::string> str_arr = {"hello", "world", "test"};
+    size_t original_size = str_arr.size();
+
+    str_arr.reserve(20);
+    EXPECT_EQ(str_arr.capacity(), 20);
+    EXPECT_EQ(str_arr.size(), original_size);
+
+    // Original elements should be preserved
+    EXPECT_EQ(str_arr[0], "hello");
+    EXPECT_EQ(str_arr[1], "world");
+    EXPECT_EQ(str_arr[2], "test");
+
+    // Adding new elements should work correctly
+    str_arr.push_back("new");
+    str_arr.emplace_back("element");
+
+    EXPECT_EQ(str_arr.size(), 5);
+    EXPECT_EQ(str_arr.capacity(), 20);
+    EXPECT_EQ(str_arr[3], "new");
+    EXPECT_EQ(str_arr[4], "element");
+}
+
+TEST(Array, ReserveZeroCapacity) {
+    // Test reserving zero capacity (should be no-op for non-empty arrays)
+    Array<int> arr = {1, 2, 3};
+    size_t original_capacity = arr.capacity();
+
+    arr.reserve(0);
+    EXPECT_EQ(arr.capacity(), original_capacity);// Should remain unchanged
+    EXPECT_EQ(arr.size(), 3);
+
+    // Test with empty array
+    Array<int> empty_arr;
+    empty_arr.reserve(0);
+    EXPECT_EQ(empty_arr.capacity(), 0);
+    EXPECT_TRUE(empty_arr.empty());
+}
+
+TEST(Array, ReserveAndThenAddElements) {
+    // Test that reserved capacity is actually used when adding elements
+    Array<int> arr;
+
+    // Reserve capacity first
+    arr.reserve(100);
+    EXPECT_EQ(arr.capacity(), 100);
+    EXPECT_TRUE(arr.empty());
+
+    // Add elements - should not trigger reallocation
+    for (int i = 0; i < 100; ++i) {
+        arr.push_back(i);
+        EXPECT_EQ(arr.capacity(), 100);// Capacity should remain constant
+    }
+
+    EXPECT_EQ(arr.size(), 100);
+    EXPECT_EQ(arr.capacity(), 100);
+
+    // Adding one more element should trigger reallocation
+    arr.push_back(100);
+    EXPECT_GT(arr.capacity(), 100);// Capacity should increase
+    EXPECT_EQ(arr.size(), 101);
+}
+
 }// namespace

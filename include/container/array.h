@@ -160,7 +160,7 @@ public:
         pimpl_->ConstructAtEnd(n, value);
     }
 
-    Array(const std::vector<T>& other) { //NOLINT
+    Array(const std::vector<T>& other) {//NOLINT
         pimpl_ = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(other.size()));
         pimpl_->ConstructAtEnd<>(other.begin(), other.end());
     }
@@ -307,6 +307,28 @@ public:
         } else if (sz > n) {
             CopyOnWrite();
             pimpl_->ShrinkBy(sz - n);
+        }
+    }
+
+    void reserve(int64_t n) {
+        if (n > capacity()) {
+            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
+            auto* from = pimpl_->begin();
+            auto* to = new_pimpl->begin();
+            size_t& i = new_pimpl->size_;
+            if (unique()) {
+                while (i < size()) {
+                    new (to++) Any(std::move(*from++));
+                    ++i;
+                }
+                pimpl_ = std::move(new_pimpl);
+            } else {
+                while (i < size()) {
+                    new (to++) Any(*from++);
+                    ++i;
+                }
+                pimpl_ = new_pimpl;
+            }
         }
     }
 

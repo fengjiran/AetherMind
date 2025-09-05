@@ -83,7 +83,22 @@ public:
         return static_cast<const Any*>(start_)[idx];
     }
 
-    // void InitWithSize(size_t n, const Any& value);
+    void clear();
+
+private:
+    void* start_;
+    size_t size_;
+    size_t capacity_;
+
+    static constexpr size_t kInitSize = 4;
+    static constexpr size_t kIncFactor = 2;
+
+    // shrink the array by delta elements.
+    void ShrinkBy(int64_t delta);
+
+    void EnlargeBy(int64_t delta, const Any& value = Any());
+
+    static ArrayImpl* create(size_t n);
 
     void ConstructAtEnd(size_t n, const Any& value = Any());
 
@@ -97,21 +112,6 @@ public:
             ++size_;
         }
     }
-
-    // shrink the array by delta elements.
-    void ShrinkBy(int64_t delta);
-
-    void clear();
-
-    static ArrayImpl* create(size_t n);
-
-private:
-    void* start_;
-    size_t size_;
-    size_t capacity_;
-
-    static constexpr size_t kInitSize = 4;
-    static constexpr size_t kIncFactor = 2;
 
     template<typename T>
     friend class Array;
@@ -160,7 +160,7 @@ public:
         pimpl_->ConstructAtEnd(n, value);
     }
 
-    Array(const std::vector<T>& other) {
+    Array(const std::vector<T>& other) { //NOLINT
         pimpl_ = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(other.size()));
         pimpl_->ConstructAtEnd<>(other.begin(), other.end());
     }
@@ -263,9 +263,7 @@ public:
     template<typename... Args>
     void emplace_back(Args&&... args) {
         CopyOnWrite(1);
-        auto* p = pimpl_->end();
-        new (p) Any(T(std::forward<Args>(args)...));
-        ++pimpl_->size_;
+        pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
     }
 
     const T operator[](int64_t i) const {
@@ -287,6 +285,23 @@ public:
     void clear() {
         CopyOnWrite();
         pimpl_->clear();
+    }
+
+    void pop_back() {
+        if (empty()) {
+            AETHERMIND_THROW(runtime_error) << "Cannot pop back an empty array.";
+        }
+        CopyOnWrite();
+        pimpl_->ShrinkBy(1);
+    }
+
+    // TODO: complete resize
+    void resize(int64_t n) {
+        if (n < 0) {
+            AETHERMIND_THROW(value_error) << "Cannot resize an array to negative size.";
+        }
+
+
     }
 
 private:

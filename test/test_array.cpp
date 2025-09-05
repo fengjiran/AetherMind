@@ -102,7 +102,7 @@ TEST(Array, MoveConstructor) {
     Array<int> moved(std::move(original));
 
     EXPECT_EQ(moved.size(), original_size);
-    EXPECT_TRUE(original.empty()); // 原对象应该为空
+    EXPECT_TRUE(original.empty());// 原对象应该为空
 
     // 验证移动后的数据
     if (moved.size() >= 3) {
@@ -339,10 +339,253 @@ TEST(Array, CopyOnWriteSemantics) {
 
     // Modifying arr2 should trigger copy-on-write
     arr2.push_back(4);
-    EXPECT_EQ(arr1.size(), 3);  // arr1 unchanged
-    EXPECT_EQ(arr2.size(), 4);  // arr2 modified
-    EXPECT_TRUE(arr1.unique());  // Now they have separate data
+    EXPECT_EQ(arr1.size(), 3); // arr1 unchanged
+    EXPECT_EQ(arr2.size(), 4); // arr2 modified
+    EXPECT_TRUE(arr1.unique());// Now they have separate data
     EXPECT_TRUE(arr2.unique());
+}
+
+TEST(Array, ClearMethod) {
+    // Test clearing a non-empty array
+    Array<int> arr = {1, 2, 3, 4, 5};
+    EXPECT_FALSE(arr.empty());
+    EXPECT_EQ(arr.size(), 5);
+
+    arr.clear();
+    EXPECT_TRUE(arr.empty());
+    EXPECT_EQ(arr.size(), 0);
+    EXPECT_EQ(arr.capacity(), 5);// Capacity should remain unchanged
+
+    // Test that elements are actually removed
+    EXPECT_THROW({
+        try {
+            UNUSED(arr[0]);
+        } catch (const Error&) {
+            throw;
+        } }, Error);
+
+    EXPECT_THROW({
+        try {
+            UNUSED(arr.front());
+        } catch (const Error&) {
+            throw;
+        } }, Error);
+
+    EXPECT_THROW({
+        try {
+            UNUSED(arr.back());
+        } catch (const Error&) {
+            throw;
+        } }, Error);
+}
+
+TEST(Array, ClearEmptyArray) {
+    // Test clearing an already empty array
+    Array<int> arr;
+    EXPECT_TRUE(arr.empty());
+
+    arr.clear();// Should not throw any exception
+    EXPECT_TRUE(arr.empty());
+    EXPECT_EQ(arr.size(), 0);
+}
+
+TEST(Array, ClearAfterModifications) {
+    // Test clear after various operations
+    Array<std::string> arr;
+
+    // Add some elements
+    arr.push_back("hello");
+    arr.push_back("world");
+    arr.emplace_back("test");
+
+    EXPECT_EQ(arr.size(), 3);
+
+    // Clear and verify
+    arr.clear();
+    EXPECT_TRUE(arr.empty());
+
+    // Add elements again after clear
+    arr.push_back("new");
+    arr.emplace_back("data");
+
+    EXPECT_EQ(arr.size(), 2);
+    EXPECT_EQ(arr[0], "new");
+    EXPECT_EQ(arr[1], "data");
+
+    // Clear again
+    arr.clear();
+    EXPECT_TRUE(arr.empty());
+}
+
+TEST(Array, ClearWithSharedData) {
+    // Test clear behavior with shared data (copy-on-write)
+    Array<int> arr1 = {1, 2, 3};
+    Array<int> arr2 = arr1;// Shared data
+
+    EXPECT_EQ(arr1.use_count(), 2);
+    EXPECT_EQ(arr2.use_count(), 2);
+
+    // Clearing one array should not affect the other
+    arr1.clear();
+    EXPECT_TRUE(arr1.empty());
+    EXPECT_EQ(arr2.size(), 3);// arr2 should remain unchanged
+    EXPECT_EQ(arr2[0], 1);
+    EXPECT_EQ(arr2[1], 2);
+    EXPECT_EQ(arr2[2], 3);
+
+    // Now they should have separate data
+    EXPECT_TRUE(arr1.unique());
+    EXPECT_TRUE(arr2.unique());
+}
+
+TEST(Array, ClearPreservesCapacity) {
+    // Test that clear preserves capacity
+    Array<int> arr;
+
+    // Add multiple elements to increase capacity
+    for (int i = 0; i < 10; ++i) {
+        arr.push_back(i);
+    }
+
+    size_t original_capacity = arr.capacity();
+    EXPECT_GE(original_capacity, 10);
+
+    arr.clear();
+    EXPECT_TRUE(arr.empty());
+    EXPECT_EQ(arr.size(), 0);
+    EXPECT_EQ(arr.capacity(), original_capacity);// Capacity should be preserved
+
+    // Adding elements again should use existing capacity
+    arr.push_back(42);
+    EXPECT_EQ(arr.size(), 1);
+    EXPECT_EQ(arr.capacity(), original_capacity);
+}
+
+TEST(Array, PopBackMethod) {
+    // Test popping from non-empty array
+    Array<int> arr = {1, 2, 3, 4, 5};
+    size_t original_size = arr.size();
+
+    arr.pop_back();
+    EXPECT_EQ(arr.size(), original_size - 1);
+    EXPECT_EQ(arr.back(), 4);
+    EXPECT_EQ(arr[arr.size() - 1], 4);
+
+    // Test multiple pops
+    arr.pop_back();
+    EXPECT_EQ(arr.size(), 3);
+    EXPECT_EQ(arr.back(), 3);
+
+    arr.pop_back();
+    EXPECT_EQ(arr.size(), 2);
+    EXPECT_EQ(arr.back(), 2);
+
+    // Test popping until empty
+    arr.pop_back();
+    arr.pop_back();
+    EXPECT_TRUE(arr.empty());
+    EXPECT_EQ(arr.size(), 0);
+}
+
+TEST(Array, PopBackEmptyArrayException) {
+    // Test popping from empty array throws exception
+    Array<int> arr;
+
+    EXPECT_THROW({
+        try {
+            arr.pop_back();
+        } catch (const Error& e) {
+            // Verify it's the correct exception type
+            EXPECT_NE(std::string(e.what()).find("Cannot pop back an empty array"), std::string::npos);
+            throw;
+        }
+    }, Error);
+
+    // Test popping from array that becomes empty
+    Array<int> arr2 = {42};
+    arr2.pop_back();
+
+    EXPECT_THROW({
+        try {
+            arr2.pop_back();
+        } catch (const Error& e) {
+            EXPECT_NE(std::string(e.what()).find("Cannot pop back an empty array"), std::string::npos);
+            throw;
+        }
+    }, Error);
+}
+
+TEST(Array, PopBackWithCopyOnWrite) {
+    // Test pop_back behavior with shared data (copy-on-write)
+    Array<int> arr1 = {1, 2, 3, 4, 5};
+    Array<int> arr2 = arr1; // Shared data
+
+    EXPECT_EQ(arr1.use_count(), 2);
+    EXPECT_EQ(arr2.use_count(), 2);
+
+    // Popping from one array should trigger copy-on-write
+    arr1.pop_back();
+
+    // Arrays should now have separate data
+    EXPECT_TRUE(arr1.unique());
+    EXPECT_TRUE(arr2.unique());
+
+    EXPECT_EQ(arr1.size(), 4); // arr1 modified
+    EXPECT_EQ(arr1.back(), 4);
+
+    EXPECT_EQ(arr2.size(), 5); // arr2 unchanged
+    EXPECT_EQ(arr2.back(), 5);
+    EXPECT_EQ(arr2[4], 5);
+}
+
+TEST(Array, PopBackPreservesCapacity) {
+    // Test that pop_back preserves capacity
+    Array<int> arr;
+
+    // Add multiple elements to increase capacity
+    for (int i = 0; i < 10; ++i) {
+        arr.push_back(i);
+    }
+
+    size_t original_capacity = arr.capacity();
+    EXPECT_GE(original_capacity, 10);
+
+    // Pop some elements
+    arr.pop_back();
+    arr.pop_back();
+    arr.pop_back();
+
+    EXPECT_EQ(arr.size(), 7);
+    EXPECT_EQ(arr.capacity(), original_capacity); // Capacity should be preserved
+
+    // Pop all elements
+    while (!arr.empty()) {
+        arr.pop_back();
+    }
+
+    EXPECT_TRUE(arr.empty());
+    EXPECT_EQ(arr.size(), 0);
+    EXPECT_EQ(arr.capacity(), original_capacity); // Capacity should still be preserved
+}
+
+TEST(Array, PopBackWithComplexTypes) {
+    // Test pop_back with std::string
+    Array<std::string> str_arr = {"hello", "world", "test", "example"};
+
+    EXPECT_EQ(str_arr.size(), 4);
+    EXPECT_EQ(str_arr.back(), "example");
+
+    str_arr.pop_back();
+    EXPECT_EQ(str_arr.size(), 3);
+    EXPECT_EQ(str_arr.back(), "test");
+
+    str_arr.pop_back();
+    EXPECT_EQ(str_arr.size(), 2);
+    EXPECT_EQ(str_arr.back(), "world");
+
+    // Test pop_back preserves remaining elements
+    EXPECT_EQ(str_arr[0], "hello");
+    EXPECT_EQ(str_arr[1], "world");
 }
 
 }// namespace

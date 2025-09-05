@@ -34,6 +34,16 @@ void ArrayImpl::ShrinkBy(int64_t delta) {
     }
 }
 
+void ArrayImpl::EnlargeBy(int64_t delta, const Any& value) {
+    auto* p = end();
+    while (delta > 0) {
+        new (p++) Any(value);
+        ++size_;
+        --delta;
+    }
+}
+
+
 void ArrayImpl::clear() {
     ShrinkBy(size());
 }

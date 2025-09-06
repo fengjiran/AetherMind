@@ -1395,6 +1395,9 @@ TEST(Array, SetWithMoveSemantics) {
 
     EXPECT_EQ(arr[1], "moved_value");
     // moved_string 可能处于有效但未指定的状态
+
+    // int a = 10;
+    // static_assert(std::is_same_v<decltype((a)), int&>);
 }
 
 }// namespace

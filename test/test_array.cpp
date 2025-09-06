@@ -1049,6 +1049,78 @@ TEST(Array, InsertWithCopyOnWrite) {
     EXPECT_EQ(arr2[2], 3);
 }
 
+TEST(Array, InsertWithComplexTypes) {
+    // Test insert with std::string
+    Array<std::string> str_arr = {"world", "!"};
+
+    // Insert at beginning
+    str_arr.insert(str_arr.begin(), "hello");
+    EXPECT_EQ(str_arr.size(), 3);
+    EXPECT_EQ(str_arr[0], "hello");
+    EXPECT_EQ(str_arr[1], "world");
+    EXPECT_EQ(str_arr[2], "!");
+
+    // Insert multiple strings
+    Array<std::string> str_arr2 = {"hello", "!"};
+    std::vector<std::string> words = {"beautiful", "world"};
+    str_arr2.insert(str_arr2.begin() + 1, words.begin(), words.end());
+
+    EXPECT_EQ(str_arr2.size(), 4);
+    EXPECT_EQ(str_arr2[0], "hello");
+    EXPECT_EQ(str_arr2[1], "beautiful");
+    EXPECT_EQ(str_arr2[2], "world");
+    EXPECT_EQ(str_arr2[3], "!");
+}
+
+TEST(Array, InsertEmptyRange) {
+    // Test inserting empty range (should be no-op)
+    Array<int> arr = {1, 2, 3};
+    size_t original_size = arr.size();
+
+    std::vector<int> empty_vec;
+    arr.insert(arr.begin() + 1, empty_vec.begin(), empty_vec.end());
+
+    EXPECT_EQ(arr.size(), original_size);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+}
+
+TEST(Array, InsertPreservesCapacity) {
+    // Test that insert operations preserve capacity appropriately
+    Array<int> arr;
+    arr.reserve(10);
+    size_t original_capacity = arr.capacity();
+
+    // Insert elements within reserved capacity
+    for (int i = 0; i < 5; ++i) {
+        arr.insert(arr.begin(), i);
+        EXPECT_EQ(arr.capacity(), original_capacity);
+    }
+
+    EXPECT_EQ(arr.size(), 5);
+    EXPECT_EQ(arr.capacity(), original_capacity);
+}
+
+TEST(Array, InsertIteratorValidity) {
+    // Test that insert operations maintain iterator validity
+    Array<int> arr = {1, 3, 5};
+
+    // Get iterator before insert
+    auto it = arr.begin() + 1;
+    EXPECT_EQ(*it, 3);
+
+    // Insert at position
+    arr.insert(arr.begin() + 1, 2);
+
+    // // Verify array contents
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 5);
+}
+
 TEST(Array, EraseSingleElement) {
     Array<int> arr = {1, 2, 3, 4, 5};
 
@@ -1144,6 +1216,26 @@ TEST(Array, EraseStringElements) {
     EXPECT_EQ(arr[3], "elderberry");
 }
 
+TEST(Array, EraseWithComplexTypes) {
+    // Test erase with std::string
+    Array<std::string> str_arr = {"hello", "world", "test", "example"};
+
+    // Erase single element
+    str_arr.erase(str_arr.begin() + 1);
+    EXPECT_EQ(str_arr.size(), 3);
+    EXPECT_EQ(str_arr[0], "hello");
+    EXPECT_EQ(str_arr[1], "test");
+    EXPECT_EQ(str_arr[2], "example");
+
+    // Erase range of elements
+    Array<std::string> str_arr2 = {"hello", "beautiful", "world", "!"};
+    str_arr2.erase(str_arr2.begin() + 1, str_arr2.begin() + 3);
+
+    EXPECT_EQ(str_arr2.size(), 2);
+    EXPECT_EQ(str_arr2[0], "hello");
+    EXPECT_EQ(str_arr2[1], "!");
+}
+
 // 测试删除后的迭代器有效性
 TEST(Array, IteratorValidityAfterErase) {
     Array<int> arr = {1, 2, 3, 4, 5};
@@ -1165,23 +1257,11 @@ TEST(Array, IteratorValidityAfterErase) {
 TEST(Array, EraseFromEmptyArray) {
     Array<int> empty_arr;
 
-    // EXPECT_THROW({
-    //     try {
-    //         arr.resize(-1);
-    //     } catch (const Error& e) {
-    //         // Verify it's the correct exception type and message
-    //         EXPECT_NE(std::string(e.what()).find("Cannot resize an array to negative size"), std::string::npos);
-    //         throw;
-    //     } }, Error);
-
     EXPECT_THROW({try {
       empty_arr.erase(empty_arr.begin());
       } catch(const Error&) {
       throw;
       } }, Error);
-
-    // EXPECT_THROW(empty_arr.erase(empty_arr.begin()), std::runtime_error);
-    // EXPECT_THROW(empty_arr.erase(empty_arr.begin(), empty_arr.end()), std::runtime_error);
 }
 
 }// namespace

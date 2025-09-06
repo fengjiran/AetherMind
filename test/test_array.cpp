@@ -1264,4 +1264,137 @@ TEST(Array, EraseFromEmptyArray) {
       } }, Error);
 }
 
+TEST(Array, SetMethod) {
+    // 测试基本Set功能
+    Array<int> arr = {1, 2, 3, 4, 5};
+
+    // 设置中间元素
+    arr.Set(2, 99);
+    EXPECT_EQ(arr[2], 99);
+    EXPECT_EQ(arr.size(), 5);
+
+    // 设置第一个元素
+    arr.Set(0, 100);
+    EXPECT_EQ(arr[0], 100);
+
+    // 设置最后一个元素
+    arr.Set(4, 200);
+    EXPECT_EQ(arr[4], 200);
+
+    // 验证其他元素未被修改
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[3], 4);
+}
+
+TEST(Array, SetWithComplexTypes) {
+    // 测试复杂类型的Set操作
+    Array<std::string> arr = {"hello", "world", "test"};
+
+    arr.Set(1, "modified");
+    EXPECT_EQ(arr[1], "modified");
+    EXPECT_EQ(arr[0], "hello");
+    EXPECT_EQ(arr[2], "test");
+
+    // 测试长字符串
+    arr.Set(0, "this is a very long string for testing purposes");
+    EXPECT_EQ(arr[0], "this is a very long string for testing purposes");
+}
+
+TEST(Array, SetCopyOnWriteBehavior) {
+    // 测试Set操作的写时复制行为
+    Array<int> arr1 = {1, 2, 3, 4, 5};
+    Array<int> arr2 = arr1;// 共享数据
+
+    EXPECT_FALSE(arr1.unique());
+    EXPECT_FALSE(arr2.unique());
+
+    // 在arr2上执行Set操作，应该触发写时复制
+    arr2.Set(2, 999);
+
+    // 验证写时复制发生
+    EXPECT_TRUE(arr1.unique());
+    EXPECT_TRUE(arr2.unique());
+
+    // 验证数据正确性
+    EXPECT_EQ(arr1[2], 3);  // 原始数据未改变
+    EXPECT_EQ(arr2[2], 999);// 新数据已设置
+
+    // 验证其他元素未被修改
+    for (int i = 0; i < 5; ++i) {
+        if (i != 2) {
+            EXPECT_EQ(arr1[i], arr2[i]);
+        }
+    }
+}
+
+TEST(Array, SetOutOfBounds) {
+    // 测试越界Set操作（应该抛出异常）
+    Array<int> arr = {1, 2, 3};
+
+    // 负索引
+    EXPECT_THROW(arr.Set(-1, 99), Error);
+
+    // 超出大小的索引
+    EXPECT_THROW(arr.Set(3, 99), Error);
+    EXPECT_THROW(arr.Set(100, 99), Error);
+
+    // 空数组的Set操作
+    Array<int> empty_arr;
+    EXPECT_THROW(empty_arr.Set(0, 1), Error);
+}
+
+TEST(Array, SetMultipleOperations) {
+    // 测试多次Set操作
+    Array<int> arr = {0, 0, 0, 0, 0};
+
+    // 多次设置不同位置的元素
+    for (int i = 0; i < 5; ++i) {
+        arr.Set(i, i * 10);
+    }
+
+    // 验证所有设置都正确
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(arr[i], i * 10);
+    }
+
+    // 再次修改某些元素
+    arr.Set(0, 100);
+    arr.Set(2, 200);
+    arr.Set(4, 400);
+
+    EXPECT_EQ(arr[0], 100);
+    EXPECT_EQ(arr[1], 10);
+    EXPECT_EQ(arr[2], 200);
+    EXPECT_EQ(arr[3], 30);
+    EXPECT_EQ(arr[4], 400);
+}
+
+TEST(Array, SetPreservesCapacity) {
+    // 测试Set操作不会改变容量
+    Array<int> arr;
+    arr.reserve(10);
+    arr = {1, 2, 3, 4, 5};// 填充一些数据
+
+    size_t original_capacity = arr.capacity();
+
+    // 执行Set操作
+    arr.Set(2, 99);
+
+    // 验证容量保持不变
+    EXPECT_EQ(arr.capacity(), original_capacity);
+    EXPECT_EQ(arr.size(), 5);
+    EXPECT_EQ(arr[2], 99);
+}
+
+TEST(Array, SetWithMoveSemantics) {
+    // 测试Set操作支持移动语义
+    Array<std::string> arr = {"original1", "original2", "original3"};
+
+    std::string moved_string = "moved_value";
+    arr.Set(1, std::move(moved_string));
+
+    EXPECT_EQ(arr[1], "moved_value");
+    // moved_string 可能处于有效但未指定的状态
+}
+
 }// namespace

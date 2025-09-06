@@ -282,6 +282,15 @@ public:
         return *(begin() + i);
     }
 
+    void Set(int idx, T value) {
+        CopyOnWrite();
+        if (idx < 0 || idx >= size()) {
+            AETHERMIND_THROW(index_error) << "indexing " << idx << " on an array of size " << size();
+        }
+
+        *(pimpl_->begin() + idx) = std::move(value);
+    }
+
     void swap(Array& other) noexcept {
         std::swap(pimpl_, other.pimpl_);
     }

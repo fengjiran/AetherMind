@@ -133,7 +133,7 @@ TEST(Array, Iterators) {
     EXPECT_TRUE(std::equal(arr.rbegin(), arr.rend(), expected.begin()));
 }
 
-TEST(ArrayTest, EmptyArrayExceptions) {
+TEST(Array, EmptyArrayExceptions) {
     Array<int> arr;
 
     EXPECT_THROW({
@@ -184,7 +184,7 @@ TEST(Array, CopyAndMoveOperations) {
     EXPECT_EQ(arr5.use_count(), 3);
 }
 
-TEST(ArrayTest, SwapOperation) {
+TEST(Array, SwapOperation) {
     Array<int> arr1 = {1, 2, 3};
     Array<int> arr2 = {4, 5};
 
@@ -1049,5 +1049,139 @@ TEST(Array, InsertWithCopyOnWrite) {
     EXPECT_EQ(arr2[2], 3);
 }
 
+TEST(Array, EraseSingleElement) {
+    Array<int> arr = {1, 2, 3, 4, 5};
+
+    // 删除中间元素
+    auto it = arr.begin() + 2;// 指向元素3
+    arr.erase(it);
+
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 4);
+    EXPECT_EQ(arr[3], 5);
+}
+
+// 测试删除第一个元素
+TEST(Array, EraseFirstElement) {
+    Array<int> arr = {1, 2, 3, 4, 5};
+
+    arr.erase(arr.begin());
+
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 2);
+    EXPECT_EQ(arr[1], 3);
+    EXPECT_EQ(arr[2], 4);
+    EXPECT_EQ(arr[3], 5);
+}
+
+// 测试删除最后一个元素
+TEST(Array, EraseLastElement) {
+    Array<int> arr = {1, 2, 3, 4, 5};
+
+    arr.erase(arr.end() - 1);
+
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 4);
+}
+
+// 测试删除范围元素
+TEST(Array, EraseRange) {
+    Array<int> arr = {1, 2, 3, 4, 5, 6, 7};
+
+    // 删除中间范围的元素 [2, 3, 4, 5]
+    auto first = arr.begin() + 1;// 指向元素2
+    auto last = arr.begin() + 5; // 指向元素6
+    arr.erase(first, last);
+
+    EXPECT_EQ(arr.size(), 3);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 6);
+    EXPECT_EQ(arr[2], 7);
+}
+
+// 测试删除整个数组范围
+TEST(Array, EraseEntireRange) {
+    Array<int> arr = {1, 2, 3, 4, 5};
+
+    arr.erase(arr.begin(), arr.end());
+
+    EXPECT_TRUE(arr.empty());
+    EXPECT_EQ(arr.size(), 0);
+}
+
+// 测试删除空范围（应该没有变化）
+TEST(Array, EraseEmptyRange) {
+    Array<int> arr = {1, 2, 3, 4, 5};
+    size_t original_size = arr.size();
+
+    // 删除空范围
+    arr.erase(arr.begin(), arr.begin());
+
+    EXPECT_EQ(arr.size(), original_size);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 4);
+    EXPECT_EQ(arr[4], 5);
+}
+
+// 测试删除字符串元素
+TEST(Array, EraseStringElements) {
+    Array<std::string> arr = {"apple", "banana", "cherry", "date", "elderberry"};
+
+    // 删除中间元素
+    arr.erase(arr.begin() + 2);// 删除"cherry"
+
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], "apple");
+    EXPECT_EQ(arr[1], "banana");
+    EXPECT_EQ(arr[2], "date");
+    EXPECT_EQ(arr[3], "elderberry");
+}
+
+// 测试删除后的迭代器有效性
+TEST(Array, IteratorValidityAfterErase) {
+    Array<int> arr = {1, 2, 3, 4, 5};
+
+    auto it = arr.begin() + 2;// 指向元素3
+    arr.erase(it);
+
+    // 迭代器应该仍然有效，但指向被删除元素后的位置
+    EXPECT_EQ(*it, 4);// 现在指向元素4
+
+    // 继续遍历剩余元素
+    int expected = 4;
+    for (; it != arr.end(); ++it) {
+        EXPECT_EQ(*it, expected++);
+    }
+}
+
+// 测试空数组的erase操作（应该抛出异常）
+TEST(Array, EraseFromEmptyArray) {
+    Array<int> empty_arr;
+
+    // EXPECT_THROW({
+    //     try {
+    //         arr.resize(-1);
+    //     } catch (const Error& e) {
+    //         // Verify it's the correct exception type and message
+    //         EXPECT_NE(std::string(e.what()).find("Cannot resize an array to negative size"), std::string::npos);
+    //         throw;
+    //     } }, Error);
+
+    EXPECT_THROW({try {
+      empty_arr.erase(empty_arr.begin());
+      } catch(const Error&) {
+      throw;
+      } }, Error);
+
+    // EXPECT_THROW(empty_arr.erase(empty_arr.begin()), std::runtime_error);
+    // EXPECT_THROW(empty_arr.erase(empty_arr.begin(), empty_arr.end()), std::runtime_error);
+}
 
 }// namespace

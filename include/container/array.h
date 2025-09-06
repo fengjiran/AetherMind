@@ -363,6 +363,44 @@ public:
         }
     }
 
+    void erase(iterator pos) {
+        if (!defined()) {
+            AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
+        }
+
+        size_t idx = std::distance(begin(), pos);
+        if (idx >= size()) {
+            AETHERMIND_THROW(runtime_error) << "the index out of range.";
+        }
+        size_t n = std::distance(pos + 1, end());
+        CopyOnWrite();
+        pimpl_->MoveElemsLeft(idx, idx + 1, n);
+        pimpl_->ShrinkBy(1);
+    }
+
+    void erase(iterator first, iterator last) {
+        if (first != last) {
+            if (!defined()) {
+                AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
+            }
+
+            size_t begin_idx = std::distance(begin(), first);
+            size_t end_idx = std::distance(begin(), last);
+            size_t numel = std::distance(last, end());
+            if (begin_idx >= end_idx) {
+                AETHERMIND_THROW(index_error) << "cannot erase array in range [" << begin_idx << ", " << end_idx << ")";
+            }
+
+            if (begin_idx > size() || end_idx > size()) {
+                AETHERMIND_THROW(index_error) << "the index out of range.";
+            }
+
+            CopyOnWrite();
+            pimpl_->MoveElemsLeft(begin_idx, end_idx, numel);
+            pimpl_->ShrinkBy(end_idx - begin_idx);
+        }
+    }
+
 private:
     ObjectPtr<ArrayImpl> pimpl_;
     void CopyOnWrite();

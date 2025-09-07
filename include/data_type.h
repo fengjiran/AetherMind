@@ -8,6 +8,7 @@
 #include "macros.h"
 #include "error.h"
 #include "utils/bits.h"
+#include "utils/half.h"
 #include "utils/float8_e4m3fn.h"
 
 #include <cstdint>

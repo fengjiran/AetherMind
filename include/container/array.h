@@ -285,12 +285,11 @@ public:
     }
 
     void Set(int idx, T value) {
-        // CopyOnWrite();
         if (idx < 0 || idx >= size()) {
             AETHERMIND_THROW(index_error) << "indexing " << idx << " on an array of size " << size();
         }
 
-        COW(0);
+        COW(0, true);
 
         *(pimpl_->begin() + idx) = std::move(value);
     }
@@ -334,7 +333,7 @@ private:
     void CopyOnWrite();
     void CopyOnWrite(size_t extra);
 
-    void COW(int64_t extra);
+    void COW(int64_t extra, bool single_elem_inplace_change = false);
 };
 
 template<typename T>
@@ -344,10 +343,6 @@ void Array<T>::resize(int64_t n) {
     }
 
     auto sz = size();
-    if (n == sz) {
-        return;
-    }
-
     COW(n - sz);
     if (sz < n) {
         pimpl_->EnlargeBy(n - sz, T());
@@ -383,8 +378,6 @@ template<typename T>
 void Array<T>::insert(iterator pos, const T& value) {
     size_t idx = std::distance(begin(), pos);
     size_t n = std::distance(pos, end());
-    // CopyOnWrite(1);
-    // CopyOnWrite(1);
     COW(1);
     pimpl_->EnlargeBy(1, T());
     pimpl_->MoveElemsRight(idx + 1, idx, n);
@@ -400,7 +393,6 @@ void Array<T>::insert(iterator pos, Iter first, Iter last) {
         size_t idx = std::distance(begin(), pos);
         size_t n = std::distance(pos, end());
         size_t numel = std::distance(first, last);
-        // CopyOnWrite(numel);
         COW(numel);
         pimpl_->EnlargeBy(numel, T());
         pimpl_->MoveElemsRight(idx + numel, idx, n);
@@ -423,7 +415,6 @@ void Array<T>::erase(iterator pos) {
         AETHERMIND_THROW(runtime_error) << "the index out of range.";
     }
     size_t n = std::distance(pos + 1, end());
-    // CopyOnWrite();
     COW(-1);
     pimpl_->MoveElemsLeft(idx, idx + 1, n);
     pimpl_->ShrinkBy(1);
@@ -450,7 +441,6 @@ void Array<T>::erase(iterator first, iterator last) {
         AETHERMIND_THROW(index_error) << "the index out of range.";
     }
 
-    // CopyOnWrite();
     COW(begin_idx - end_idx);
     pimpl_->MoveElemsLeft(begin_idx, end_idx, numel);
     pimpl_->ShrinkBy(end_idx - begin_idx);
@@ -507,17 +497,23 @@ void Array<T>::CopyOnWrite(size_t extra) {
 }
 
 template<typename T>
-void Array<T>::COW(int64_t extra) {
+void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
     if (extra == 0) {
-        if (defined() && !unique()) {
-            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(capacity()));
-            // copy to new ArrayImpl
-            auto* src = pimpl_->begin();
-            auto* dst = new_pimpl->begin();
-            for (auto& i = new_pimpl->size_; i < size(); ++i) {
-                new (dst++) Any(*src++);
+        if (single_elem_inplace_change) {
+            if (!defined()) {
+                AETHERMIND_THROW(runtime_error) << "Cannot change an empty array.";
             }
-            pimpl_ = new_pimpl;
+
+            if (!unique()) {
+                auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(capacity()));
+                // copy to new ArrayImpl
+                auto* src = pimpl_->begin();
+                auto* dst = new_pimpl->begin();
+                for (auto& i = new_pimpl->size_; i < size(); ++i) {
+                    new (dst++) Any(*src++);
+                }
+                pimpl_ = new_pimpl;
+            }
         }
     } else if (extra < 0) {// shrink the array
         if (!defined()) {

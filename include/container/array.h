@@ -260,13 +260,15 @@ public:
     }
 
     void push_back(const T& item) {
-        CopyOnWrite(1);
+        // CopyOnWrite(1);
+        COW(1);
         pimpl_->ConstructAtEnd(1, Any(item));
     }
 
     template<typename... Args>
     void emplace_back(Args&&... args) {
-        CopyOnWrite(1);
+        // CopyOnWrite(1);
+        COW(1);
         pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
     }
 
@@ -283,10 +285,12 @@ public:
     }
 
     void Set(int idx, T value) {
-        CopyOnWrite();
+        // CopyOnWrite();
         if (idx < 0 || idx >= size()) {
             AETHERMIND_THROW(index_error) << "indexing " << idx << " on an array of size " << size();
         }
+
+        COW(0);
 
         *(pimpl_->begin() + idx) = std::move(value);
     }
@@ -296,7 +300,11 @@ public:
     }
 
     void clear() {
-        CopyOnWrite();
+        if (empty()) {
+            return;
+        }
+
+        COW(-size());
         pimpl_->clear();
     }
 
@@ -304,117 +312,149 @@ public:
         if (empty()) {
             AETHERMIND_THROW(runtime_error) << "Cannot pop back an empty array.";
         }
-        CopyOnWrite();
+        // CopyOnWrite();
+        COW(-1);
         pimpl_->ShrinkBy(1);
     }
 
-    void resize(int64_t n) {
-        if (n < 0) {
-            AETHERMIND_THROW(value_error) << "Cannot resize an array to negative size.";
-        }
+    void resize(int64_t n);
 
-        auto sz = size();
-        if (sz < n) {
-            CopyOnWrite(n - sz);
-            pimpl_->EnlargeBy(n - sz, T());
-        } else if (sz > n) {
-            CopyOnWrite();
-            pimpl_->ShrinkBy(sz - n);
-        }
-    }
+    void reserve(int64_t n);
 
-    void reserve(int64_t n) {
-        if (n > capacity()) {
-            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
-            auto* from = pimpl_->begin();
-            auto* to = new_pimpl->begin();
-            size_t& i = new_pimpl->size_;
-            if (unique()) {
-                while (i < size()) {
-                    new (to++) Any(std::move(*from++));
-                    ++i;
-                }
-                pimpl_ = std::move(new_pimpl);
-            } else {
-                while (i < size()) {
-                    new (to++) Any(*from++);
-                    ++i;
-                }
-                pimpl_ = new_pimpl;
-            }
-        }
-    }
-
-    void insert(iterator pos, const T& value) {
-        size_t idx = std::distance(begin(), pos);
-        size_t n = std::distance(pos, end());
-        CopyOnWrite(1);
-        pimpl_->EnlargeBy(1, T());
-        pimpl_->MoveElemsRight(idx + 1, idx, n);
-        new (pimpl_->begin() + idx) Any(value);
-    }
+    void insert(iterator pos, const T& value);
 
     template<typename Iter>
-    void insert(iterator pos, Iter first, Iter last) {
-        static_assert(details::is_valid_iterator_v<Iter, T>, "Iter cannot be inserted into a Array<T>");
-        if (first != last) {
-            size_t idx = std::distance(begin(), pos);
-            size_t n = std::distance(pos, end());
-            size_t numel = std::distance(first, last);
-            CopyOnWrite(numel);
-            pimpl_->EnlargeBy(numel, T());
-            pimpl_->MoveElemsRight(idx + numel, idx, n);
+    void insert(iterator pos, Iter first, Iter last);
 
-            auto* p = pimpl_->begin() + idx;
-            for (int i = 0; i < numel; ++i) {
-                new (p++) Any(std::move(*first++));
-            }
-        }
-    }
-
-    void erase(iterator pos) {
-        if (!defined()) {
-            AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
-        }
-
-        size_t idx = std::distance(begin(), pos);
-        if (idx >= size()) {
-            AETHERMIND_THROW(runtime_error) << "the index out of range.";
-        }
-        size_t n = std::distance(pos + 1, end());
-        CopyOnWrite();
-        pimpl_->MoveElemsLeft(idx, idx + 1, n);
-        pimpl_->ShrinkBy(1);
-    }
-
-    void erase(iterator first, iterator last) {
-        if (first != last) {
-            if (!defined()) {
-                AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
-            }
-
-            size_t begin_idx = std::distance(begin(), first);
-            size_t end_idx = std::distance(begin(), last);
-            size_t numel = std::distance(last, end());
-            if (begin_idx >= end_idx) {
-                AETHERMIND_THROW(index_error) << "cannot erase array in range [" << begin_idx << ", " << end_idx << ")";
-            }
-
-            if (begin_idx > size() || end_idx > size()) {
-                AETHERMIND_THROW(index_error) << "the index out of range.";
-            }
-
-            CopyOnWrite();
-            pimpl_->MoveElemsLeft(begin_idx, end_idx, numel);
-            pimpl_->ShrinkBy(end_idx - begin_idx);
-        }
-    }
+    void erase(iterator pos);
+    void erase(iterator first, iterator last);
 
 private:
     ObjectPtr<ArrayImpl> pimpl_;
     void CopyOnWrite();
     void CopyOnWrite(size_t extra);
+
+    void COW(int64_t extra);
 };
+
+template<typename T>
+void Array<T>::resize(int64_t n) {
+    if (n < 0) {
+        AETHERMIND_THROW(value_error) << "Cannot resize an array to negative size.";
+    }
+
+    auto sz = size();
+    if (n == sz) {
+        return;
+    }
+
+    COW(n - sz);
+    if (sz < n) {
+        pimpl_->EnlargeBy(n - sz, T());
+    } else if (sz > n) {
+        pimpl_->ShrinkBy(sz - n);
+    }
+}
+
+template<typename T>
+void Array<T>::reserve(int64_t n) {
+    if (n > capacity()) {
+        auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
+        auto* from = pimpl_->begin();
+        auto* to = new_pimpl->begin();
+        size_t& i = new_pimpl->size_;
+        if (unique()) {
+            while (i < size()) {
+                new (to++) Any(std::move(*from++));
+                ++i;
+            }
+            pimpl_ = std::move(new_pimpl);
+        } else {
+            while (i < size()) {
+                new (to++) Any(*from++);
+                ++i;
+            }
+            pimpl_ = new_pimpl;
+        }
+    }
+}
+
+template<typename T>
+void Array<T>::insert(iterator pos, const T& value) {
+    size_t idx = std::distance(begin(), pos);
+    size_t n = std::distance(pos, end());
+    // CopyOnWrite(1);
+    // CopyOnWrite(1);
+    COW(1);
+    pimpl_->EnlargeBy(1, T());
+    pimpl_->MoveElemsRight(idx + 1, idx, n);
+    new (pimpl_->begin() + idx) Any(value);
+}
+
+
+template<typename T>
+template<typename Iter>
+void Array<T>::insert(iterator pos, Iter first, Iter last) {
+    static_assert(details::is_valid_iterator_v<Iter, T>, "Iter cannot be inserted into a Array<T>");
+    if (first != last) {
+        size_t idx = std::distance(begin(), pos);
+        size_t n = std::distance(pos, end());
+        size_t numel = std::distance(first, last);
+        // CopyOnWrite(numel);
+        COW(numel);
+        pimpl_->EnlargeBy(numel, T());
+        pimpl_->MoveElemsRight(idx + numel, idx, n);
+
+        auto* p = pimpl_->begin() + idx;
+        for (int i = 0; i < numel; ++i) {
+            new (p++) Any(std::move(*first++));
+        }
+    }
+}
+
+template<typename T>
+void Array<T>::erase(iterator pos) {
+    if (!defined()) {
+        AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
+    }
+
+    size_t idx = std::distance(begin(), pos);
+    if (idx >= size()) {
+        AETHERMIND_THROW(runtime_error) << "the index out of range.";
+    }
+    size_t n = std::distance(pos + 1, end());
+    // CopyOnWrite();
+    COW(-1);
+    pimpl_->MoveElemsLeft(idx, idx + 1, n);
+    pimpl_->ShrinkBy(1);
+}
+
+template<typename T>
+void Array<T>::erase(iterator first, iterator last) {
+    if (first == last) {
+        return;
+    }
+
+    if (!defined()) {
+        AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
+    }
+
+    size_t begin_idx = std::distance(begin(), first);
+    size_t end_idx = std::distance(begin(), last);
+    size_t numel = std::distance(last, end());
+    if (begin_idx >= end_idx) {
+        AETHERMIND_THROW(index_error) << "cannot erase array in range [" << begin_idx << ", " << end_idx << ")";
+    }
+
+    if (begin_idx > size() || end_idx > size()) {
+        AETHERMIND_THROW(index_error) << "the index out of range.";
+    }
+
+    // CopyOnWrite();
+    COW(begin_idx - end_idx);
+    pimpl_->MoveElemsLeft(begin_idx, end_idx, numel);
+    pimpl_->ShrinkBy(end_idx - begin_idx);
+}
 
 template<typename T>
 void Array<T>::CopyOnWrite() {
@@ -463,6 +503,70 @@ void Array<T>::CopyOnWrite(size_t extra) {
             ++i;
         }
         pimpl_ = new_pimpl;
+    }
+}
+
+template<typename T>
+void Array<T>::COW(int64_t extra) {
+    if (extra == 0) {
+        if (defined() && !unique()) {
+            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(capacity()));
+            // copy to new ArrayImpl
+            auto* src = pimpl_->begin();
+            auto* dst = new_pimpl->begin();
+            for (auto& i = new_pimpl->size_; i < size(); ++i) {
+                new (dst++) Any(*src++);
+            }
+            pimpl_ = new_pimpl;
+        }
+    } else if (extra < 0) {// shrink the array
+        if (!defined()) {
+            AETHERMIND_THROW(runtime_error) << "Cannot shrink an empty array.";
+        }
+
+        if (-extra > static_cast<int64_t>(size())) {
+            AETHERMIND_THROW(runtime_error) << "Cannot shrink the array by " << -extra << " elements.";
+        }
+
+        if (!unique()) {
+            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(capacity()));
+            // copy to the new ArrayImpl
+            auto* src = pimpl_->begin();
+            auto* dst = new_pimpl->begin();
+            for (auto& i = new_pimpl->size_; i < size(); ++i) {
+                new (dst++) Any(*src++);
+            }
+            pimpl_ = new_pimpl;
+        }
+    } else {
+        if (!defined()) {
+            size_t n = std::max(static_cast<size_t>(extra), ArrayImpl::kInitSize);
+            pimpl_ = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
+        } else if (unique()) {
+            if (static_cast<size_t>(extra) + size() > capacity()) {
+                size_t n = std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(extra) + size());
+                auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
+                // move to new ArrayImpl
+                auto* src = pimpl_->begin();
+                auto* dst = new_pimpl->begin();
+                for (auto& i = new_pimpl->size_; i < size(); ++i) {
+                    new (dst++) Any(std::move(*src++));
+                }
+                pimpl_ = std::move(new_pimpl);
+            }
+        } else {
+            size_t new_cap = static_cast<size_t>(extra) + size() > capacity()
+                                     ? std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(extra) + size())
+                                     : capacity();
+            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(new_cap));
+            // copy to new ArrayImpl
+            auto* src = pimpl_->begin();
+            auto* dst = new_pimpl->begin();
+            for (auto& i = new_pimpl->size_; i < size(); ++i) {
+                new (dst++) Any(*src++);
+            }
+            pimpl_ = new_pimpl;
+        }
     }
 }
 

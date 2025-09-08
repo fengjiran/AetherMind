@@ -260,14 +260,12 @@ public:
     }
 
     void push_back(const T& item) {
-        // CopyOnWrite(1);
         COW(1);
         pimpl_->ConstructAtEnd(1, Any(item));
     }
 
     template<typename... Args>
     void emplace_back(Args&&... args) {
-        // CopyOnWrite(1);
         COW(1);
         pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
     }
@@ -290,7 +288,6 @@ public:
         }
 
         COW(0, true);
-
         *(pimpl_->begin() + idx) = std::move(value);
     }
 
@@ -299,10 +296,6 @@ public:
     }
 
     void clear() {
-        if (empty()) {
-            return;
-        }
-
         COW(-size());
         pimpl_->clear();
     }
@@ -330,9 +323,9 @@ public:
 
 private:
     ObjectPtr<ArrayImpl> pimpl_;
-    void CopyOnWrite();
-    void CopyOnWrite(size_t extra);
-
+    // Switch to a new container with the given capacity
+    void SwitchContainer(size_t new_cap, bool copy_data = true);
+    // Copy on write semantic
     void COW(int64_t extra, bool single_elem_inplace_change = false);
 };
 
@@ -447,54 +440,25 @@ void Array<T>::erase(iterator first, iterator last) {
 }
 
 template<typename T>
-void Array<T>::CopyOnWrite() {
-    if (defined() && !unique()) {
-        auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(capacity()));
+void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
+    auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(new_cap));
+    auto* src = pimpl_->begin();
+    auto* dst = new_pimpl->begin();
+    if (copy_data) {
         // copy to new ArrayImpl
-        auto* from = pimpl_->begin();
-        auto* to = new_pimpl->begin();
-        size_t& i = new_pimpl->size_;
-        while (i < size()) {
-            new (to++) Any(*from++);
-            ++i;
+        for (auto& i = new_pimpl->size_; i < size(); ++i) {
+            new (dst++) Any(*src++);
         }
         pimpl_ = new_pimpl;
+    } else {
+        // move to new ArrayImpl
+        for (auto& i = new_pimpl->size_; i < size(); ++i) {
+            new (dst++) Any(std::move(*src++));
+        }
+        pimpl_ = std::move(new_pimpl);
     }
 }
 
-template<typename T>
-void Array<T>::CopyOnWrite(size_t extra) {
-    if (!defined()) {
-        size_t n = std::max(extra, ArrayImpl::kInitSize);
-        pimpl_ = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
-    } else if (unique()) {
-        if (extra + size() > capacity()) {
-            size_t n = std::max(capacity() * ArrayImpl::kIncFactor, extra + size());
-            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
-            // move to new ArrayImpl
-            auto* from = pimpl_->begin();
-            auto* to = new_pimpl->begin();
-            size_t& i = new_pimpl->size_;
-            while (i < size()) {
-                new (to++) Any(std::move(*from++));
-                ++i;
-            }
-            pimpl_ = std::move(new_pimpl);
-        }
-    } else {
-        size_t new_cap = extra + size() > capacity() ? std::max(capacity() * ArrayImpl::kIncFactor, extra + size()) : capacity();
-        auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(new_cap));
-        // copy to new ArrayImpl
-        auto* from = pimpl_->begin();
-        auto* to = new_pimpl->begin();
-        size_t& i = new_pimpl->size_;
-        while (i < size()) {
-            new (to++) Any(*from++);
-            ++i;
-        }
-        pimpl_ = new_pimpl;
-    }
-}
 
 template<typename T>
 void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
@@ -505,14 +469,7 @@ void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
             }
 
             if (!unique()) {
-                auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(capacity()));
-                // copy to new ArrayImpl
-                auto* src = pimpl_->begin();
-                auto* dst = new_pimpl->begin();
-                for (auto& i = new_pimpl->size_; i < size(); ++i) {
-                    new (dst++) Any(*src++);
-                }
-                pimpl_ = new_pimpl;
+                SwitchContainer(capacity());
             }
         }
     } else if (extra < 0) {// shrink the array
@@ -525,43 +482,22 @@ void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
         }
 
         if (!unique()) {
-            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(capacity()));
-            // copy to the new ArrayImpl
-            auto* src = pimpl_->begin();
-            auto* dst = new_pimpl->begin();
-            for (auto& i = new_pimpl->size_; i < size(); ++i) {
-                new (dst++) Any(*src++);
-            }
-            pimpl_ = new_pimpl;
+            SwitchContainer(capacity());
         }
-    } else {
+    } else {// expand the array
         if (!defined()) {
             size_t n = std::max(static_cast<size_t>(extra), ArrayImpl::kInitSize);
-            pimpl_ = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
+            SwitchContainer(n);
         } else if (unique()) {
             if (static_cast<size_t>(extra) + size() > capacity()) {
                 size_t n = std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(extra) + size());
-                auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
-                // move to new ArrayImpl
-                auto* src = pimpl_->begin();
-                auto* dst = new_pimpl->begin();
-                for (auto& i = new_pimpl->size_; i < size(); ++i) {
-                    new (dst++) Any(std::move(*src++));
-                }
-                pimpl_ = std::move(new_pimpl);
+                SwitchContainer(n, false);
             }
         } else {
-            size_t new_cap = static_cast<size_t>(extra) + size() > capacity()
-                                     ? std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(extra) + size())
-                                     : capacity();
-            auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(new_cap));
-            // copy to new ArrayImpl
-            auto* src = pimpl_->begin();
-            auto* dst = new_pimpl->begin();
-            for (auto& i = new_pimpl->size_; i < size(); ++i) {
-                new (dst++) Any(*src++);
-            }
-            pimpl_ = new_pimpl;
+            size_t n = static_cast<size_t>(extra) + size() > capacity()
+                               ? std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(extra) + size())
+                               : capacity();
+            SwitchContainer(n);
         }
     }
 }

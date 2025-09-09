@@ -100,7 +100,38 @@ inline uint32_t half_to_fp32_bits(uint16_t h) {
    * into 1. Thus, inf_nan_mask == 0x7F800000 if the half-precision number
    * had exponent of 15 (i.e. was NaN or infinity) 0x00000000 otherwise
    */
+}
 
+inline float half_to_fp32_value(uint16_t h) {
+    // 提取 FP16 的各个部分
+    uint32_t sign = (h & 0x8000) << 16;    // 符号位
+    uint32_t exponent = (h & 0x7C00) >> 10;// 指数位
+    uint32_t mantissa = h & 0x03FF;      // 尾数位
+
+    // 处理特殊情况
+    if (exponent == 0) {
+        // 零或非规约数
+        if (mantissa == 0) {
+            // 零
+            return std::bit_cast<float>(sign);
+        }
+        // 非规约数 - 转换为规约形式
+        // 计算前导零的数量以归一化
+        int shift = 10 - __builtin_clz(mantissa);
+        exponent = 127 - 14 - shift;                    // 调整指数
+        mantissa = (mantissa << (shift + 1)) & 0x7FE000;// 调整尾数
+    } else if (exponent == 0x1F) {
+        // 无穷大或 NaN
+        exponent = 0xFF;// FP32 的最大指数
+    } else {
+        // 规约数
+        exponent = exponent + (127 - 15);// 调整指数偏置
+        mantissa = mantissa << 13;       // 扩展尾数
+    }
+
+    // 组合 FP32 的各个部分
+    uint32_t fp32 = sign | (exponent << 23) | mantissa;
+    return std::bit_cast<float>(fp32);
 }
 
 }// namespace details

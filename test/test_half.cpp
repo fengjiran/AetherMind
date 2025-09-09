@@ -4,6 +4,7 @@
 #include "utils/half.h"
 
 #include <gtest/gtest.h>
+#include <cmath>
 
 using namespace aethermind::details;
 
@@ -52,6 +53,7 @@ TEST(HalfToFP32Test, Infinity) {
     uint16_t pos_inf = 0x7C00;
     EXPECT_TRUE(std::isinf(half_to_fp32_value(pos_inf)));
     EXPECT_GT(half_to_fp32_value(pos_inf), 0);
+    std::cout << half_to_fp32_bits_test(0x7F00);
 
     // 测试负无穷
     uint16_t neg_inf = 0xFC00;

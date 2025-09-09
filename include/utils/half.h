@@ -102,6 +102,24 @@ inline uint32_t half_to_fp32_bits(uint16_t h) {
    */
 }
 
+inline uint32_t half_to_fp32_bits_test(uint16_t h) {
+    const uint32_t sign = (h & 0x8000) << 16;
+    const uint32_t exponent = (h & 0x7C00) >> 10;
+    const uint32_t mantissa = h & 0x03FF;
+    // return __builtin_clz(mantissa);
+
+    if (exponent == 0x1F) {
+        return sign | 0x7F800000 | (mantissa << 13);
+    }
+
+    if (exponent == 0) {
+        if (mantissa == 0) {
+            return sign;
+        }
+
+    }
+}
+
 inline float half_to_fp32_value(uint16_t h) {
     // 提取 FP16 的各个部分
     uint32_t sign = (h & 0x8000) << 16;    // 符号位

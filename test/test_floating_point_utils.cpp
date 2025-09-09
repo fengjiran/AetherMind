@@ -4,6 +4,7 @@
 #include "utils/floating_point_utils.h"
 
 #include <gtest/gtest.h>
+#include <cmath>
 
 using namespace aethermind::details;
 

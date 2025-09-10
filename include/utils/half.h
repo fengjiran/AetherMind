@@ -38,13 +38,6 @@
 namespace aethermind {
 namespace details {
 
-/*
- * Convert a 16-bit floating-point number in IEEE half-precision format, in bit
- * representation, to a 32-bit floating-point number in IEEE single-precision
- * format, in a bit representation.
- *
- * @note The implementation doesn't use any floating-point operations.
- */
 inline uint32_t half_to_fp32_bits_benchmark(uint16_t h) {
     /*
    * Extend the half-precision floating-point number to 32 bits and shift to the
@@ -133,6 +126,13 @@ inline uint32_t half_to_fp32_bits_benchmark(uint16_t h) {
             ~zero_mask);
 }
 
+/*
+ * Convert a 16-bit floating-point number in IEEE half-precision format, in bit
+ * representation, to a 32-bit floating-point number in IEEE single-precision
+ * format, in a bit representation.
+ *
+ * @note The implementation doesn't use any floating-point operations.
+ */
 inline uint32_t half_to_fp32_bits(uint16_t h) {
     const uint32_t w = static_cast<uint32_t>(h) << 16;
 
@@ -156,6 +156,15 @@ inline uint32_t half_to_fp32_bits(uint16_t h) {
     return sign | (nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23);
 }
 
+/*
+ * Convert a 16-bit floating-point number in IEEE half-precision format, in bit
+ * representation, to a 32-bit floating-point number in IEEE single-precision
+ * format.
+ *
+ * @note The implementation relies on IEEE-like (no assumption about rounding
+ * mode and no operations on denormals) floating-point operations and bitcasts
+ * between integer and floating-point variables.
+ */
 inline float half_to_fp32_value(uint16_t h) {
     return fp32_from_bits(half_to_fp32_bits(h));
 }

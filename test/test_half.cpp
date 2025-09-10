@@ -253,7 +253,6 @@ TEST(HalfToFP32Test, SpecialValues) {
 
     // 黄金比例: 0x3FCF -> ~1.618
     EXPECT_NEAR(half_to_fp32_value(0x3FCF), 1.95215f, 1e-3f);
-    std::cout << half_to_fp32_value(0x3FCF);
 }
 
 TEST(HalfToFP32Test, RandomValues) {

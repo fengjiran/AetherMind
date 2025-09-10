@@ -35,7 +35,6 @@
                       // || defined(__HIP_DEVICE_COMPILE__))
 #endif                // __x86_64__ || _M_X64 || __i386 || _M_IX86
 #endif                // __GNUC__ || __clang__
-
 namespace aethermind {
 namespace details {
 
@@ -46,7 +45,7 @@ namespace details {
  *
  * @note The implementation doesn't use any floating-point operations.
  */
-inline uint32_t half_to_fp32_bits(uint16_t h) {
+inline uint32_t half_to_fp32_bits_benchmark(uint16_t h) {
     /*
    * Extend the half-precision floating-point number to 32 bits and shift to the
    * upper part of the 32-bit word:
@@ -68,8 +67,7 @@ inline uint32_t half_to_fp32_bits(uint16_t h) {
    *      +---+----------------------------------+
    * Bits  31                 0-31
    */
-    const uint32_t sign = w & 0x80000000U;
-
+    const uint32_t sign = w & UINT32_C(0x80000000);
 
     /*
    * Extract mantissa and biased exponent of the input number into the bits 0-30
@@ -100,56 +98,66 @@ inline uint32_t half_to_fp32_bits(uint16_t h) {
    * into 1. Thus, inf_nan_mask == 0x7F800000 if the half-precision number
    * had exponent of 15 (i.e. was NaN or infinity) 0x00000000 otherwise
    */
+    const int32_t inf_nan_mask = (static_cast<int32_t>(nonsign + 0x04000000) >> 8) & INT32_C(0x7F800000);
+
+    /*
+   * Iff nonsign is 0, it overflows into 0xFFFFFFFF, turning bit 31
+   * into 1. Otherwise, bit 31 remains 0. The signed shift right by 31
+   * broadcasts bit 31 into all bits of the zero_mask. Thus zero_mask ==
+   * 0xFFFFFFFF if the half-precision number was zero (+0.0h or -0.0h)
+   * 0x00000000 otherwise
+   */
+    const int32_t zero_mask = (int32_t) (nonsign - 1) >> 31;
+
+    /*
+   * 1. Shift nonsign left by renorm_shift to normalize it (if the input
+   * was denormal)
+   * 2. Shift nonsign right by 3 so the exponent (5 bits originally)
+   * becomes an 8-bit field and 10-bit mantissa shifts into the 10 high
+   * bits of the 23-bit mantissa of IEEE single-precision number.
+   * 3. Add 0x70 to the exponent (starting at bit 23) to compensate the
+   * different in exponent bias (0x7F for single-precision number less 0xF
+   * for half-precision number).
+   * 4. Subtract renorm_shift from the exponent (starting at bit 23) to
+   * account for renormalization. As renorm_shift is less than 0x70, this
+   * can be combined with step 3.
+   * 5. Binary OR with inf_nan_mask to turn the exponent into 0xFF if the
+   * input was NaN or infinity.
+   * 6. Binary ANDNOT with zero_mask to turn the mantissa and exponent
+   * into zero if the input was zero.
+   * 7. Combine with the sign of the input number.
+   */
+    return sign |
+           ((((nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23)) |
+             inf_nan_mask) &
+            ~zero_mask);
 }
 
-inline uint32_t half_to_fp32_bits_test(uint16_t h) {
-    const uint32_t sign = (h & 0x8000) << 16;
-    const uint32_t exponent = (h & 0x7C00) >> 10;
-    const uint32_t mantissa = h & 0x03FF;
-    // return __builtin_clz(mantissa);
+inline uint32_t half_to_fp32_bits(uint16_t h) {
+    const uint32_t w = static_cast<uint32_t>(h) << 16;
 
-    if (exponent == 0x1F) {
-        return sign | 0x7F800000 | (mantissa << 13);
+    const uint32_t sign = w & UINT32_C(0x80000000);
+    const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
+    const uint32_t exponent = w & UINT32_C(0x7C000000);
+    const uint32_t mantissa = w & UINT32_C(0x03FF0000);
+
+    // inf or nan
+    if (exponent == 0x7C000000) {
+        return sign | 0x7F800000 | mantissa >> 3;
     }
 
-    if (exponent == 0) {
-        if (mantissa == 0) {
-            return sign;
-        }
-
+    // zero
+    if (exponent == 0 && mantissa == 0) {
+        return sign;
     }
+
+    uint32_t renorm_shift = __builtin_clz(nonsign);
+    renorm_shift = renorm_shift > 5 ? renorm_shift - 5 : 0;
+    return sign | (nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23);
 }
 
 inline float half_to_fp32_value(uint16_t h) {
-    // 提取 FP16 的各个部分
-    uint32_t sign = (h & 0x8000) << 16;    // 符号位
-    uint32_t exponent = (h & 0x7C00) >> 10;// 指数位
-    uint32_t mantissa = h & 0x03FF;      // 尾数位
-
-    // 处理特殊情况
-    if (exponent == 0) {
-        // 零或非规约数
-        if (mantissa == 0) {
-            // 零
-            return std::bit_cast<float>(sign);
-        }
-        // 非规约数 - 转换为规约形式
-        // 计算前导零的数量以归一化
-        int shift = 10 - __builtin_clz(mantissa);
-        exponent = 127 - 14 - shift;                    // 调整指数
-        mantissa = (mantissa << (shift + 1)) & 0x7FE000;// 调整尾数
-    } else if (exponent == 0x1F) {
-        // 无穷大或 NaN
-        exponent = 0xFF;// FP32 的最大指数
-    } else {
-        // 规约数
-        exponent = exponent + (127 - 15);// 调整指数偏置
-        mantissa = mantissa << 13;       // 扩展尾数
-    }
-
-    // 组合 FP32 的各个部分
-    uint32_t fp32 = sign | (exponent << 23) | mantissa;
-    return std::bit_cast<float>(fp32);
+    return fp32_from_bits(half_to_fp32_bits(h));
 }
 
 }// namespace details

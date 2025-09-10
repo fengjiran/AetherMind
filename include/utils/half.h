@@ -169,6 +169,62 @@ inline float half_to_fp32_value(uint16_t h) {
     return fp32_from_bits(half_to_fp32_bits(h));
 }
 
+inline uint16_t half_from_fp32_value(float f) {
+    uint32_t x = fp32_to_bits(f);
+    const uint32_t sign = x & UINT32_C(0x80000000);
+    const uint32_t exponent = x & UINT32_C(0x7F800000);
+    const uint32_t mantissa = x & UINT32_C(0x007FFFFF);
+
+    // zero case
+    if (exponent == 0 && mantissa == 0) {
+        return static_cast<uint16_t>(sign >> 16);
+    }
+
+    // inf and nan case
+    if (exponent == UINT32_C(0x7F800000)) {
+        // inf case: set exponent to max and mantissa to zero
+        if (mantissa == 0) {
+            return static_cast<uint16_t>(sign >> 16 | 0x7C00);
+        }
+
+        // nan case: preserve mantissa bits and set exponent to max
+        return static_cast<uint16_t>(sign >> 16 | 0x7C00 | mantissa >> 13);
+    }
+
+    // normalize the exponent from fp32 bias(127) to fp16 bias(15)
+    auto exp32 = static_cast<int32_t>((exponent >> 23) - 127);
+
+    // handle denorm numbers(exponent underflow)
+    if (exp32 < -14) {
+        // underflow to zero
+        return static_cast<uint16_t>(sign >> 16);
+    }
+
+    if (exp32 > 15) {
+        // overflow to inf
+        return static_cast<uint16_t>(sign >> 16 | 0x7C00);
+    }
+
+    // convert to fp16 format
+    uint32_t res = sign >> 16;
+
+    // add fp16 bias (15) to exponent
+    res |= static_cast<uint32_t>(exp32 + 15) << 10;
+
+    // add mantissa (round to nearest even)
+    res |= mantissa >> 13;
+
+    // handle rounding
+    const uint32_t rounding_bit = mantissa & UINT32_C(0x00001000);
+    const uint32_t sticky_bits = mantissa & UINT32_C(0x00000FFF);
+
+    if (rounding_bit && (sticky_bits || (res & 1))) {
+        res += 1;
+    }
+
+    return static_cast<uint16_t>(res);
+}
+
 }// namespace details
 }// namespace aethermind
 

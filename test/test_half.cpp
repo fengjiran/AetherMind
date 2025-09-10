@@ -309,4 +309,117 @@ TEST(HalfToFP32Test, Precision) {
     }
 }
 
+
+TEST(HalfFromFP32Test, ZeroValues) {
+    // 正零
+    EXPECT_EQ(half_from_fp32_value(0.0f), 0x0000);
+
+    // 负零
+    EXPECT_EQ(half_from_fp32_value(-0.0f), 0x8000);
+}
+
+TEST(HalfFromFP32Test, DenormalizedNumbers) {
+    // 最小正非规格化数
+    float smallest_denormal = std::numeric_limits<float>::denorm_min();
+    EXPECT_EQ(half_from_fp32_value(smallest_denormal), 0x0000);
+
+    // 最大非规格化数
+    float max_denormal = 1.1754942e-38f; // 约等于2^-126 * (1 - 2^-23)
+    EXPECT_EQ(half_from_fp32_value(max_denormal), 0x0000);
+}
+
+TEST(HalfFromFP32Test, NormalizedNumbers) {
+    // 1.0
+    EXPECT_EQ(half_from_fp32_value(1.0f), 0x3C00);
+
+    // 2.0
+    EXPECT_EQ(half_from_fp32_value(2.0f), 0x4000);
+
+    // 0.5
+    EXPECT_EQ(half_from_fp32_value(0.5f), 0x3800);
+
+    // -1.0
+    EXPECT_EQ(half_from_fp32_value(-1.0f), 0xBC00);
+
+    // 最小正规格化数
+    float smallest_normal = 1.17549435e-38f; // 2^-126
+    EXPECT_EQ(half_from_fp32_value(smallest_normal), 0x0400);
+
+    // 最大规格化数
+    float max_normal = 65504.0f;
+    EXPECT_EQ(half_from_fp32_value(max_normal), 0x7BFF);
+}
+
+TEST(HalfFromFP32Test, Infinity) {
+    // 正无穷
+    EXPECT_EQ(half_from_fp32_value(std::numeric_limits<float>::infinity()), 0x7C00);
+
+    // 负无穷
+    EXPECT_EQ(half_from_fp32_value(-std::numeric_limits<float>::infinity()), 0xFC00);
+}
+
+TEST(HalfFromFP32Test, NaN) {
+    // 静默NaN
+    float quiet_nan = std::numeric_limits<float>::quiet_NaN();
+    uint16_t half_nan = half_from_fp32_value(quiet_nan);
+    EXPECT_TRUE((half_nan & 0x7C00) == 0x7C00); // 指数全1
+    EXPECT_TRUE((half_nan & 0x03FF) != 0);      // 尾数非零
+
+    // 信号NaN
+    float signaling_nan = std::numeric_limits<float>::signaling_NaN();
+    half_nan = half_from_fp32_value(signaling_nan);
+    EXPECT_TRUE((half_nan & 0x7C00) == 0x7C00); // 指数全1
+    EXPECT_TRUE((half_nan & 0x03FF) != 0);      // 尾数非零
+}
+
+TEST(HalfFromFP32Test, Overflow) {
+    // 超过fp16最大值的数
+    float overflow = 70000.0f;
+    EXPECT_EQ(half_from_fp32_value(overflow), 0x7C00); // 转换为无穷大
+
+    // 超过fp16最小值的负数
+    float underflow = -70000.0f;
+    EXPECT_EQ(half_from_fp32_value(underflow), 0xFC00); // 转换为负无穷大
+}
+
+TEST(HalfFromFP32Test, Underflow) {
+    // 下溢到零的正数
+    float tiny_positive = 1e-10f;
+    EXPECT_EQ(half_from_fp32_value(tiny_positive), 0x0000);
+
+    // 下溢到零的负数
+    float tiny_negative = -1e-10f;
+    EXPECT_EQ(half_from_fp32_value(tiny_negative), 0x8000);
+}
+
+TEST(HalfFromFP32Test, Rounding) {
+    // 测试舍入到最近偶数
+    float value1 = 1.0009765625f; // 刚好在中间值，应该舍入到1.0
+    EXPECT_EQ(half_from_fp32_value(value1), 0x3C00);
+
+    float value2 = 1.001953125f; // 超过中间值，应该向上舍入
+    EXPECT_EQ(half_from_fp32_value(value2), 0x3C01);
+}
+
+TEST(HalfFromFP32Test, SpecialValues) {
+    // PI
+    EXPECT_EQ(half_from_fp32_value(3.141592653589793f), 0x4248);
+
+    // E
+    EXPECT_EQ(half_from_fp32_value(2.718281828459045f), 0x416F);
+
+    // 黄金比例
+    EXPECT_EQ(half_from_fp32_value(1.618033988749895f), 0x3CF4);
+}
+
+TEST(HalfFromFP32Test, RoundTrip) {
+    // 往返测试：fp32 -> fp16 -> fp32
+    float original = 1.2345f;
+    uint16_t half_val = half_from_fp32_value(original);
+    float reconstructed = half_to_fp32_value(half_val);
+
+    // 允许一定的精度损失
+    EXPECT_NEAR(original, reconstructed, 1e-3);
+}
+
 }// namespace

@@ -69,10 +69,10 @@ struct alignas(2) Half {
 
     struct from_bits_t {};
     static constexpr from_bits_t from_bits() {
-        return from_bits_t();
+        return {};
     }
 
-    Half() = default;
+    Half() : x(0) {}
     constexpr Half(uint16_t bits, from_bits_t) : x(bits) {}
     Half(float value);
 
@@ -167,31 +167,31 @@ public:
     static constexpr auto tinyness_before = numeric_limits<float>::tinyness_before;
 
     static constexpr aethermind::Half min() {
-        return aethermind::Half(0x0400, aethermind::Half::from_bits());
+        return {0x0400, aethermind::Half::from_bits()};
     }
     static constexpr aethermind::Half lowest() {
-        return aethermind::Half(0xFBFF, aethermind::Half::from_bits());
+        return {0xFBFF, aethermind::Half::from_bits()};
     }
     static constexpr aethermind::Half max() {
-        return aethermind::Half(0x7BFF, aethermind::Half::from_bits());
+        return {0x7BFF, aethermind::Half::from_bits()};
     }
     static constexpr aethermind::Half epsilon() {
-        return aethermind::Half(0x1400, aethermind::Half::from_bits());
+        return {0x1400, aethermind::Half::from_bits()};
     }
     static constexpr aethermind::Half round_error() {
-        return aethermind::Half(0x3800, aethermind::Half::from_bits());
+        return {0x3800, aethermind::Half::from_bits()};
     }
     static constexpr aethermind::Half infinity() {
-        return aethermind::Half(0x7C00, aethermind::Half::from_bits());
+        return {0x7C00, aethermind::Half::from_bits()};
     }
     static constexpr aethermind::Half quiet_NaN() {
-        return aethermind::Half(0x7E00, aethermind::Half::from_bits());
+        return {0x7E00, aethermind::Half::from_bits()};
     }
     static constexpr aethermind::Half signaling_NaN() {
-        return aethermind::Half(0x7D00, aethermind::Half::from_bits());
+        return {0x7D00, aethermind::Half::from_bits()};
     }
     static constexpr aethermind::Half denorm_min() {
-        return aethermind::Half(0x0001, aethermind::Half::from_bits());
+        return {0x0001, aethermind::Half::from_bits()};
     }
 };
 }// namespace std

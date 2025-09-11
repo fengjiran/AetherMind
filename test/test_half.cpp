@@ -455,7 +455,7 @@ TEST(HalfTest, ArithmeticOperations) {
     EXPECT_FLOAT_EQ(a + b, 4.0f);
     EXPECT_FLOAT_EQ(a - b, -1.0f);
     EXPECT_FLOAT_EQ(a * b, 3.75f);
-    EXPECT_FLOAT_EQ(a / b, 0.6f);
+    EXPECT_FLOAT_EQ(a / b, 0.60009766f);
 
     // Compound assignment
     Half c(1.0f);
@@ -510,7 +510,7 @@ TEST(HalfTest, EdgeCases) {
     // Test overflow
     Half large(1.0e8f);
     EXPECT_TRUE(std::isinf(static_cast<float>(large)) ||
-               static_cast<float>(large) == std::numeric_limits<float>::infinity());
+                static_cast<float>(large) == std::numeric_limits<float>::infinity());
 }
 
 

@@ -23,9 +23,9 @@ namespace details {
  *
  * @note The implementation doesn't use any floating-point operations.
  */
-inline float fp8e4m3fn_to_fp32_value(uint8_t input) {
-
-}
+// inline float fp8e4m3fn_to_fp32_value(uint8_t input) {
+//
+// }
 
 }
 

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
+using namespace aethermind;
 using namespace aethermind::details;
 
 namespace {
@@ -293,11 +294,11 @@ TEST(HalfToFP32Test, Precision) {
         for (int mantissa = 0; mantissa < 1024; mantissa += 128) {
             // 构造半精度数的各个部分
             uint16_t sign = 0;
-            uint16_t exponent = (exp + 15) << 10; // 偏置指数
+            uint16_t exponent = (exp + 15) << 10;// 偏置指数
             uint16_t fraction = mantissa;
             uint16_t half_val = sign | exponent | fraction;
 
-            if ((half_val & 0x7C00) != 0x7C00) { // 排除无穷和NaN
+            if ((half_val & 0x7C00) != 0x7C00) {// 排除无穷和NaN
                 float value = half_to_fp32_value(half_val);
 
                 // 验证值是有限的（除非是特殊情况）
@@ -324,7 +325,7 @@ TEST(HalfFromFP32Test, DenormalizedNumbers) {
     EXPECT_EQ(half_from_fp32_value(smallest_denormal), 0x0000);
 
     // 最大非规格化数
-    float max_denormal = 1.1754942e-38f; // 约等于2^-126 * (1 - 2^-23)
+    float max_denormal = 1.1754942e-38f;// 约等于2^-126 * (1 - 2^-23)
     EXPECT_EQ(half_from_fp32_value(max_denormal), 0x0000);
 }
 
@@ -342,8 +343,8 @@ TEST(HalfFromFP32Test, NormalizedNumbers) {
     EXPECT_EQ(half_from_fp32_value(-1.0f), 0xBC00);
 
     // 最小正规格化数
-    float smallest_normal = 1.17549435e-38f; // 2^-126
-    EXPECT_EQ(half_from_fp32_value(smallest_normal), 0x0400);
+    float smallest_normal = 1.17549435e-38f;// 2^-126
+    EXPECT_EQ(half_from_fp32_value(smallest_normal), 0);
 
     // 最大规格化数
     float max_normal = 65504.0f;
@@ -362,24 +363,24 @@ TEST(HalfFromFP32Test, NaN) {
     // 静默NaN
     float quiet_nan = std::numeric_limits<float>::quiet_NaN();
     uint16_t half_nan = half_from_fp32_value(quiet_nan);
-    EXPECT_TRUE((half_nan & 0x7C00) == 0x7C00); // 指数全1
-    EXPECT_TRUE((half_nan & 0x03FF) != 0);      // 尾数非零
+    EXPECT_TRUE((half_nan & 0x7C00) == 0x7C00);// 指数全1
+    EXPECT_TRUE((half_nan & 0x03FF) != 0);     // 尾数非零
 
     // 信号NaN
     float signaling_nan = std::numeric_limits<float>::signaling_NaN();
     half_nan = half_from_fp32_value(signaling_nan);
-    EXPECT_TRUE((half_nan & 0x7C00) == 0x7C00); // 指数全1
-    EXPECT_TRUE((half_nan & 0x03FF) != 0);      // 尾数非零
+    EXPECT_TRUE((half_nan & 0x7C00) == 0x7C00);// 指数全1
+    EXPECT_TRUE((half_nan & 0x03FF) != 0);     // 尾数非零
 }
 
 TEST(HalfFromFP32Test, Overflow) {
     // 超过fp16最大值的数
     float overflow = 70000.0f;
-    EXPECT_EQ(half_from_fp32_value(overflow), 0x7C00); // 转换为无穷大
+    EXPECT_EQ(half_from_fp32_value(overflow), 0x7C00);// 转换为无穷大
 
     // 超过fp16最小值的负数
     float underflow = -70000.0f;
-    EXPECT_EQ(half_from_fp32_value(underflow), 0xFC00); // 转换为负无穷大
+    EXPECT_EQ(half_from_fp32_value(underflow), 0xFC00);// 转换为负无穷大
 }
 
 TEST(HalfFromFP32Test, Underflow) {
@@ -394,11 +395,11 @@ TEST(HalfFromFP32Test, Underflow) {
 
 TEST(HalfFromFP32Test, Rounding) {
     // 测试舍入到最近偶数
-    float value1 = 1.0009765625f; // 刚好在中间值，应该舍入到1.0
-    EXPECT_EQ(half_from_fp32_value(value1), 0x3C00);
+    float value1 = 1.0009765625f;// 刚好在中间值，应该舍入到1.0
+    EXPECT_EQ(half_from_fp32_value(value1), 0x3C01);
 
-    float value2 = 1.001953125f; // 超过中间值，应该向上舍入
-    EXPECT_EQ(half_from_fp32_value(value2), 0x3C01);
+    float value2 = 1.001953125f;// 超过中间值，应该向上舍入
+    EXPECT_EQ(half_from_fp32_value(value2), 0x3C02);
 }
 
 TEST(HalfFromFP32Test, SpecialValues) {
@@ -406,10 +407,10 @@ TEST(HalfFromFP32Test, SpecialValues) {
     EXPECT_EQ(half_from_fp32_value(3.141592653589793f), 0x4248);
 
     // E
-    EXPECT_EQ(half_from_fp32_value(2.718281828459045f), 0x416F);
+    EXPECT_EQ(half_from_fp32_value(2.718281828459045f), 0x4170);
 
     // 黄金比例
-    EXPECT_EQ(half_from_fp32_value(1.618033988749895f), 0x3CF4);
+    EXPECT_EQ(half_from_fp32_value(1.618033988749895f), 0x3E79);
 }
 
 TEST(HalfFromFP32Test, RoundTrip) {
@@ -420,6 +421,104 @@ TEST(HalfFromFP32Test, RoundTrip) {
 
     // 允许一定的精度损失
     EXPECT_NEAR(original, reconstructed, 1e-3);
+}
+
+TEST(HalfTest, ConstructorAndConversion) {
+    // Test default constructor
+    Half h1;
+    EXPECT_EQ(h1.x, 0);
+
+    // Test from_bits constructor
+    Half h2(0x3C00, Half::from_bits());// 1.0 in half precision
+    EXPECT_EQ(h2.x, 0x3C00);
+
+    // Test float constructor and conversion
+    Half h3(1.0f);
+    EXPECT_EQ(static_cast<float>(h3), 1.0f);
+
+    // Test edge cases
+    Half h4(0.0f);
+    EXPECT_EQ(static_cast<float>(h4), 0.0f);
+
+    Half h5(-0.0f);
+    EXPECT_EQ(static_cast<float>(h5), -0.0f);
+
+    Half h6(std::numeric_limits<float>::infinity());
+    EXPECT_TRUE(std::isinf(static_cast<float>(h6)));
+}
+
+TEST(HalfTest, ArithmeticOperations) {
+    Half a(1.5f);
+    Half b(2.5f);
+
+    // Basic arithmetic
+    EXPECT_FLOAT_EQ(a + b, 4.0f);
+    EXPECT_FLOAT_EQ(a - b, -1.0f);
+    EXPECT_FLOAT_EQ(a * b, 3.75f);
+    EXPECT_FLOAT_EQ(a / b, 0.6f);
+
+    // Compound assignment
+    Half c(1.0f);
+    c += a;
+    EXPECT_FLOAT_EQ(c, 2.5f);
+
+    // Unary minus
+    EXPECT_FLOAT_EQ(-a, -1.5f);
+}
+
+TEST(HalfTest, MixedTypeArithmetic) {
+    Half h(2.0f);
+
+    // With float
+    EXPECT_FLOAT_EQ(h + 3.0f, 5.0f);
+    EXPECT_FLOAT_EQ(3.0f + h, 5.0f);
+
+    // With double
+    EXPECT_DOUBLE_EQ(h + 3.0, 5.0);
+    EXPECT_DOUBLE_EQ(3.0 + h, 5.0);
+
+    // With int
+    EXPECT_FLOAT_EQ(h + 3, 5.0f);
+    EXPECT_FLOAT_EQ(3 + h, 5.0f);
+
+    // With int64_t
+    EXPECT_FLOAT_EQ(h + int64_t(3), 5.0f);
+    EXPECT_FLOAT_EQ(int64_t(3) + h, 5.0f);
+}
+
+TEST(HalfTest, NumericLimits) {
+    // Test numeric limits
+    EXPECT_EQ(std::numeric_limits<Half>::min().x, 0x0400);
+    EXPECT_EQ(std::numeric_limits<Half>::max().x, 0x7BFF);
+    EXPECT_EQ(std::numeric_limits<Half>::lowest().x, 0xFBFF);
+    EXPECT_EQ(std::numeric_limits<Half>::epsilon().x, 0x1400);
+    EXPECT_EQ(std::numeric_limits<Half>::infinity().x, 0x7C00);
+    EXPECT_EQ(std::numeric_limits<Half>::quiet_NaN().x, 0x7E00);
+    EXPECT_EQ(std::numeric_limits<Half>::signaling_NaN().x, 0x7D00);
+    EXPECT_EQ(std::numeric_limits<Half>::denorm_min().x, 0x0001);
+}
+
+TEST(HalfTest, EdgeCases) {
+    // Test denormalized numbers
+    Half denorm(std::numeric_limits<Half>::denorm_min());
+    EXPECT_GT(static_cast<float>(denorm), 0.0f);
+
+    // Test NaN
+    Half nan = std::numeric_limits<Half>::quiet_NaN();
+    EXPECT_TRUE(std::isnan(static_cast<float>(nan)));
+
+    // Test overflow
+    Half large(1.0e8f);
+    EXPECT_TRUE(std::isinf(static_cast<float>(large)) ||
+               static_cast<float>(large) == std::numeric_limits<float>::infinity());
+}
+
+
+TEST(HalfTest, OutputOperator) {
+    Half h(3.14f);
+    std::ostringstream oss;
+    oss << h;
+    EXPECT_FALSE(oss.str().empty());
 }
 
 }// namespace

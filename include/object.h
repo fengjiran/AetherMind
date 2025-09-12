@@ -13,23 +13,6 @@
 
 namespace aethermind {
 
-template<typename T>
-struct DefaultNullType final {
-    static constexpr T* singleton() noexcept {
-        return nullptr;
-    }
-};
-
-template<typename T>
-struct GetNullType {
-    using type = DefaultNullType<T>;
-};
-
-template<typename T>
-using null_type = GetNullType<T>::type;
-
-struct DoNotIncRefCountTag final {};
-
 class Object {
 public:
     using FDeleter = void (*)(Object*);
@@ -76,6 +59,23 @@ private:
     friend struct ObjectUnsafe;
 };
 
+template<typename T>
+struct DefaultNullType {
+    static constexpr T* singleton() noexcept {
+        return nullptr;
+    }
+};
+
+template<typename T>
+struct GetNullType {
+    using type = DefaultNullType<T>;
+};
+
+template<typename T>
+using null_type = GetNullType<T>::type;
+
+struct DoNotIncRefCountTag final {};
+
 template<typename T, typename NullType = null_type<T>>
 class ObjectPtr final {
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
@@ -114,6 +114,7 @@ public:
     ObjectPtr(const ObjectPtr& other) : ptr_(other.ptr_) {
         retain();
     }
+
     /*!
      * \brief Move constructor.
      */
@@ -210,6 +211,7 @@ public:
 
     NODISCARD uint32_t use_count() const noexcept {
         return defined() ? ptr_->use_count() : 0;
+        // return ptr_->use_count();
     }
 
     NODISCARD bool unique() const noexcept {
@@ -266,9 +268,6 @@ private:
 
     template<typename T2, typename NullType2>
     friend class ObjectPtr;
-
-    // template<typename T3>
-    // friend class Array;
 };
 
 struct ObjectUnsafe {

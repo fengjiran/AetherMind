@@ -10,20 +10,20 @@ uint32_t half_to_fp32_bits(uint16_t h) {
     const uint32_t w = static_cast<uint32_t>(h) << 16;
 
     const uint32_t sign = w & UINT32_C(0x80000000);
-    const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
     const uint32_t exponent = w & UINT32_C(0x7C000000);
     const uint32_t mantissa = w & UINT32_C(0x03FF0000);
-
-    // inf or nan
-    if (exponent == 0x7C000000) {
-        return sign | 0x7F800000 | mantissa >> 3;
-    }
 
     // zero
     if (exponent == 0 && mantissa == 0) {
         return sign;
     }
 
+    // inf or nan
+    if (exponent == 0x7C000000) {
+        return sign | 0x7F800000 | mantissa >> 3;
+    }
+
+    const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
     uint32_t renorm_shift = __builtin_clz(nonsign);
     renorm_shift = renorm_shift > 5 ? renorm_shift - 5 : 0;
     return sign | (nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23);

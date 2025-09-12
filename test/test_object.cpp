@@ -6,8 +6,6 @@
 
 using namespace aethermind;
 
-namespace {
-
 class NumberObj : public Object {};
 
 class IntObj : public NumberObj {
@@ -16,6 +14,25 @@ public:
     IntObj() : value(0) {}
     explicit IntObj(int64_t value) : value(value) {}
 };
+
+// class IntObjNullType final : IntObj {
+//     static IntObjNullType singleton_;
+//     IntObjNullType() = default;
+//
+// public:
+//     static constexpr IntObj* singleton() noexcept {
+//         return &singleton_;
+//     }
+// };
+//
+// IntObjNullType IntObjNullType::singleton_;
+//
+// template<>
+// struct GetNullType<IntObj> {
+//     using type = IntObjNullType;
+// };
+
+namespace {
 
 TEST(object, ctors) {
     ObjectPtr<NumberObj> p1;

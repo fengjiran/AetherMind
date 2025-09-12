@@ -47,7 +47,7 @@ namespace details {
  *
  * @note The implementation doesn't use any floating-point operations.
  */
-uint32_t half_to_fp32_bits(uint16_t h);
+uint32_t half_to_fp32_bits_ieee(uint16_t h);
 
 /*
  * Convert a 16-bit floating-point number in IEEE half-precision format, in bit
@@ -58,9 +58,9 @@ uint32_t half_to_fp32_bits(uint16_t h);
  * mode and no operations on denormals) floating-point operations and bitcasts
  * between integer and floating-point variables.
  */
-float half_to_fp32_value(uint16_t h);
+float half_to_fp32_value_ieee(uint16_t h);
 
-uint16_t half_from_fp32_value(float f);
+uint16_t half_from_fp32_value_ieee(float f);
 
 }// namespace details
 

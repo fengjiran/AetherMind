@@ -19,10 +19,15 @@ static uint32_t fp8e4m3fn_to_fp32_bits(uint8_t input) {
         return sign;
     }
 
-    // inf or nan
-    if (exponent == 0x78000000) {
+    // nan
+    if (exponent == 0x78000000 && mantissa == 0x07000000) {
         return sign | 0x7F800000 | mantissa >> 4;
     }
+
+    // // inf or nan
+    // if (exponent == 0x78000000) {
+    //     return sign | 0x7F800000 | mantissa >> 4;
+    // }
 
     const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
     uint32_t renorm_shift = __builtin_clz(nonsign);

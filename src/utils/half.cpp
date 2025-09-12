@@ -6,7 +6,7 @@
 namespace aethermind {
 namespace details {
 
-uint32_t half_to_fp32_bits(uint16_t h) {
+uint32_t half_to_fp32_bits_ieee(uint16_t h) {
     const uint32_t w = static_cast<uint32_t>(h) << 16;
 
     const uint32_t sign = w & UINT32_C(0x80000000);
@@ -29,11 +29,11 @@ uint32_t half_to_fp32_bits(uint16_t h) {
     return sign | (nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23);
 }
 
-float half_to_fp32_value(uint16_t h) {
-    return fp32_from_bits(half_to_fp32_bits(h));
+float half_to_fp32_value_ieee(uint16_t h) {
+    return fp32_from_bits(half_to_fp32_bits_ieee(h));
 }
 
-uint16_t half_from_fp32_value(float f) {
+uint16_t half_from_fp32_value_ieee(float f) {
     uint32_t x = fp32_to_bits(f);
     const uint32_t sign = x & UINT32_C(0x80000000);
     const uint32_t exponent = x & UINT32_C(0x7F800000);
@@ -90,10 +90,10 @@ uint16_t half_from_fp32_value(float f) {
 }
 }// namespace details
 
-Half::Half(float value) : x(details::half_from_fp32_value(value)) {}
+Half::Half(float value) : x(details::half_from_fp32_value_ieee(value)) {}
 
 Half::operator float() const {
-    return details::half_to_fp32_value(x);
+    return details::half_to_fp32_value_ieee(x);
 }
 
 std::ostream& operator<<(std::ostream& os, const Half& value) {

@@ -38,6 +38,8 @@ namespace details {
  */
 float fp8e4m3fn_to_fp32_value(uint8_t input);
 
+uint8_t fp8e4m3fn_from_fp32_value(float f);
+
 inline float fp8e4m3fn_to_fp32_value_bk(uint8_t input) {
   /*
    * Extend the fp8 E4M3FN number to 32 bits and shift to the

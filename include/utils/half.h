@@ -74,9 +74,9 @@ struct alignas(2) Half {
 
     Half() : x(0) {}
     constexpr Half(uint16_t bits, from_bits_t) : x(bits) {}
-    Half(float value);
+    Half(float value);// NOLINT
 
-    operator float() const;
+    operator float() const;// NOLINT
 };
 
 std::ostream& operator<<(std::ostream& os, const Half& value);

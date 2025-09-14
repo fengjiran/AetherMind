@@ -2,6 +2,8 @@
 // Created by 赵丹 on 2025/9/12.
 //
 #include "utils/float8_e4m3fn.h"
+
+#include <bitset>
 #include <cmath>
 #include <gtest/gtest.h>
 
@@ -86,10 +88,10 @@ TEST(FP8E4M3FNFromFP32Test, ZeroValues) {
 
 TEST(FP8E4M3FNFromFP32Test, InfinityAndNaN) {
     // 正无穷 -> 转换为最大规格化数
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(std::numeric_limits<float>::infinity()), 0x7E);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(std::numeric_limits<float>::infinity()), 0x7F);
 
     // 负无穷 -> 转换为负的最大规格化数
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(-std::numeric_limits<float>::infinity()), 0xFE);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(-std::numeric_limits<float>::infinity()), 0xFF);
 
     // NaN -> 转换为NaN表示
     float quiet_nan = std::numeric_limits<float>::quiet_NaN();
@@ -137,10 +139,10 @@ TEST(FP8E4M3FNFromFP32Test, DenormalizedNumbers) {
 TEST(FP8E4M3FNFromFP32Test, Overflow) {
     // 超过最大规格化数的值会溢出到最大规格化数
     float overflow = 300.0f;
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(overflow), 0x7E);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(overflow), 0x79);
 
     float negative_overflow = -300.0f;
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(negative_overflow), 0xFE);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(negative_overflow), 0xF9);
 }
 
 TEST(FP8E4M3FNFromFP32Test, Rounding) {
@@ -163,9 +165,9 @@ TEST(FP8E4M3FNFromFP32Test, SpecialValues) {
 
     // 常见机器学习值
     EXPECT_EQ(fp8e4m3fn_from_fp32_value(0.1f), 0x1D);
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(0.01f), 0x00);
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(10.0f), 0x4C);
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(100.0f), 0x5E);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(0.01f), 0x05);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(10.0f), 0x52);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(100.0f), 0x6C);
 }
 
 }// namespace

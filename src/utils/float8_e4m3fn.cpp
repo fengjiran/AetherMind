@@ -45,49 +45,40 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
     const uint32_t exponent = x & UINT32_C(0x7F800000);
     const uint32_t mantissa = x & UINT32_C(0x007FFFFF);
 
+    // zero
     if (exponent == 0 && mantissa == 0) {
         return static_cast<uint8_t>(sign >> 24);
     }
 
-    // inf or nan
-    if (exponent == UINT32_C(0x7F800000)) {
-        if (mantissa == 0) {// inf(fp8 maximum)
-            return static_cast<uint8_t>(sign >> 24 | 0x7E);
-        }
-        // nan
+    uint32_t nonsign = x & UINT32_C(0x7FFFFFFF);
+
+    // convert inf, nan and greater than fp8e4m3fn max(480.0f) in fp32 to fp8e4m3fn max
+    if (exponent == UINT32_C(0x7F800000) || nonsign >= UINT32_C(0x43F00000)) {
         return static_cast<uint8_t>(sign >> 24 | 0x7F);
     }
 
-    // normalize the exponent from fp32 bias(127) to fp8e4m3fn bias(7)
-    auto exp32 = static_cast<int32_t>((exponent >> 23) - 127);
-    if (exp32 < -6) {
+    if (nonsign < UINT32_C(121) << 23) {
         // The input number is smaller than 2^(-6), which is the smallest
-        // fp8e4m3fn normal number, underflow to zero
-        return static_cast<uint8_t>(sign >> 24);
+        // fp8e4m3fn normal number, convert to denormal number
+        uint32_t denorm_mask = UINT32_C(141) << 23;
+        nonsign = fp32_to_bits(fp32_from_bits(nonsign) + fp32_from_bits(denorm_mask));
+        return static_cast<uint8_t>(nonsign - denorm_mask) | static_cast<uint8_t>(sign >> 24);
     }
 
-    if (exp32 > 7) {
-        // overflow to max norm
-        return static_cast<uint8_t>(sign >> 24 | 0x7E);
-    }
+    // resulting mantissa is odd
+    uint8_t mant_odd = (nonsign >> 20) & 1;
 
-    // convert to fp8 format
-    uint32_t res = sign >> 24;
+    // update exponent, rounding bias part 1
+    nonsign += (static_cast<uint32_t>(7 - 127) << 23) + 0x7FFFF;
 
-    // add fp8 bias (7) to exponent
-    res |= static_cast<uint8_t>(exp32 + 7) << 3;
+    // rounding bias part 2
+    nonsign += mant_odd;
 
-    // add mantissa (round to the nearest even)
-    res |= mantissa >> 20;
+    auto res = static_cast<uint8_t>(nonsign >> 20);
 
-    // handle rounding
-    const uint32_t rounding_bit = mantissa & UINT32_C(0x00080000);
-    const uint32_t sticky_bits = mantissa & UINT32_C(0x0007FFFF);
-    if (rounding_bit && (sticky_bits || (res & 1))) {
-        res += 1;
-    }
+    res |= static_cast<uint8_t>(sign >> 24);
 
-    return static_cast<uint8_t>(res);
+    return res;
 }
 
 

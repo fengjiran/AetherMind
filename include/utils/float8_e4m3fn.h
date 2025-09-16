@@ -5,12 +5,13 @@
 #ifndef AETHERMIND_FLOAT8_E4M3FN_H
 #define AETHERMIND_FLOAT8_E4M3FN_H
 
+#include "macros.h"
+#include "utils/floating_point_utils.h"
+
 #include <climits>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
-
-#include "utils/floating_point_utils.h"
 
 /// Defines the Float8_e4m3fn type (8-bit floating-point) including conversions
 /// to standard C types and basic arithmetic operations. Note that arithmetic
@@ -203,7 +204,134 @@ inline uint8_t fp8e4m3fn_from_fp32_value_bk(float f) {
 
 }// namespace details
 
+struct alignas(1) Float8_e4m3fn {
+    uint8_t x;
+
+    struct from_bits_t {};
+    static constexpr from_bits_t from_bits() {
+        return {};
+    }
+
+    Float8_e4m3fn() : x(0) {}
+    constexpr Float8_e4m3fn(uint8_t bits, from_bits_t) : x(bits) {}
+    Float8_e4m3fn(float value);// NOLINT
+    operator float() const;    // NOLINT
+    bool isnan() const;
+};
+
+std::ostream& operator<<(std::ostream& os, const Float8_e4m3fn& value);
+
+/// Arithmetic
+Float8_e4m3fn operator+(const Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
+Float8_e4m3fn operator-(const Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
+Float8_e4m3fn operator*(const Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
+Float8_e4m3fn operator/(const Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
+Float8_e4m3fn operator-(const Float8_e4m3fn&);
+Float8_e4m3fn& operator+=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
+Float8_e4m3fn& operator-=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
+Float8_e4m3fn& operator*=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
+Float8_e4m3fn& operator/=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
+
+
+/// Arithmetic with float
+float operator+(Float8_e4m3fn lhs, float rhs);
+float operator-(Float8_e4m3fn lhs, float rhs);
+float operator*(Float8_e4m3fn lhs, float rhs);
+float operator/(Float8_e4m3fn lhs, float rhs);
+float operator+(float lhs, Float8_e4m3fn rhs);
+float operator-(float lhs, Float8_e4m3fn rhs);
+float operator*(float lhs, Float8_e4m3fn rhs);
+float operator/(float lhs, Float8_e4m3fn rhs);
+float& operator+=(float& lhs, const Float8_e4m3fn& rhs);
+float& operator-=(float& lhs, const Float8_e4m3fn& rhs);
+float& operator*=(float& lhs, const Float8_e4m3fn& rhs);
+float& operator/=(float& lhs, const Float8_e4m3fn& rhs);
+
+/// Arithmetic with double
+double operator+(Float8_e4m3fn lhs, double rhs);
+double operator-(Float8_e4m3fn lhs, double rhs);
+double operator*(Float8_e4m3fn lhs, double rhs);
+double operator/(Float8_e4m3fn lhs, double rhs);
+double operator+(double lhs, Float8_e4m3fn rhs);
+double operator-(double lhs, Float8_e4m3fn rhs);
+double operator*(double lhs, Float8_e4m3fn rhs);
+double operator/(double lhs, Float8_e4m3fn rhs);
+
+/// Arithmetic with int
+Float8_e4m3fn operator+(Float8_e4m3fn lhs, int rhs);
+Float8_e4m3fn operator-(Float8_e4m3fn lhs, int rhs);
+Float8_e4m3fn operator*(Float8_e4m3fn lhs, int rhs);
+Float8_e4m3fn operator/(Float8_e4m3fn lhs, int rhs);
+Float8_e4m3fn operator+(int lhs, Float8_e4m3fn rhs);
+Float8_e4m3fn operator-(int lhs, Float8_e4m3fn rhs);
+Float8_e4m3fn operator*(int lhs, Float8_e4m3fn rhs);
+Float8_e4m3fn operator/(int lhs, Float8_e4m3fn rhs);
+
+/// Arithmetic with int64_t
+Float8_e4m3fn operator+(Float8_e4m3fn lhs, int64_t rhs);
+Float8_e4m3fn operator-(Float8_e4m3fn lhs, int64_t rhs);
+Float8_e4m3fn operator*(Float8_e4m3fn lhs, int64_t rhs);
+Float8_e4m3fn operator/(Float8_e4m3fn lhs, int64_t rhs);
+Float8_e4m3fn operator+(int64_t lhs, Float8_e4m3fn rhs);
+Float8_e4m3fn operator-(int64_t lhs, Float8_e4m3fn rhs);
+Float8_e4m3fn operator*(int64_t lhs, Float8_e4m3fn rhs);
+Float8_e4m3fn operator/(int64_t lhs, Float8_e4m3fn rhs);
+
 }// namespace aethermind
+
+namespace std {
+
+template<>
+class numeric_limits<aethermind::Float8_e4m3fn> {
+public:
+    static constexpr bool is_specialized = true;
+    static constexpr bool is_signed = true;
+    static constexpr bool is_integer = false;
+    static constexpr bool is_exact = false;
+    static constexpr bool has_infinity = false;
+    static constexpr bool has_quiet_NaN = true;
+    static constexpr bool has_signaling_NaN = false;
+    static constexpr auto has_denorm = true;
+    static constexpr auto has_denorm_loss = true;
+    static constexpr auto round_style = numeric_limits<float>::round_style;
+    static constexpr bool is_iec559 = false;
+    static constexpr bool is_bounded = true;
+    static constexpr bool is_modulo = false;
+    static constexpr int digits = 4;
+    static constexpr int digits10 = 0;
+    static constexpr int max_digits10 = 3;
+    static constexpr int radix = 2;
+    static constexpr int min_exponent = -5;
+    static constexpr int min_exponent10 = -1;
+    static constexpr int max_exponent = 8;
+    static constexpr int max_exponent10 = 2;
+    static constexpr auto traps = numeric_limits<float>::traps;
+    static constexpr auto tinyness_before = false;
+
+    static constexpr aethermind::Float8_e4m3fn min() {
+        return aethermind::Float8_e4m3fn(0x08, aethermind::Float8_e4m3fn::from_bits());
+    }
+    static constexpr aethermind::Float8_e4m3fn lowest() {
+        return aethermind::Float8_e4m3fn(0xFE, aethermind::Float8_e4m3fn::from_bits());
+    }
+    static constexpr aethermind::Float8_e4m3fn max() {
+        return aethermind::Float8_e4m3fn(0x7E, aethermind::Float8_e4m3fn::from_bits());
+    }
+    static constexpr aethermind::Float8_e4m3fn epsilon() {
+        return aethermind::Float8_e4m3fn(0x20, aethermind::Float8_e4m3fn::from_bits());
+    }
+    static constexpr aethermind::Float8_e4m3fn round_error() {
+        return aethermind::Float8_e4m3fn(0x30, aethermind::Float8_e4m3fn::from_bits());
+    }
+    static constexpr aethermind::Float8_e4m3fn quiet_NaN() {
+        return aethermind::Float8_e4m3fn(0x7F, aethermind::Float8_e4m3fn::from_bits());
+    }
+    static constexpr aethermind::Float8_e4m3fn denorm_min() {
+        return aethermind::Float8_e4m3fn(0x01, aethermind::Float8_e4m3fn::from_bits());
+    }
+};
+
+}// namespace std
 
 
 #endif//AETHERMIND_FLOAT8_E4M3FN_H

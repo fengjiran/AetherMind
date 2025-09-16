@@ -24,11 +24,6 @@ static uint32_t fp8e4m3fn_to_fp32_bits(uint8_t input) {
         return sign | 0x7F800000 | mantissa >> 4;
     }
 
-    // // inf or nan
-    // if (exponent == 0x78000000) {
-    //     return sign | 0x7F800000 | mantissa >> 4;
-    // }
-
     const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
     uint32_t renorm_shift = __builtin_clz(nonsign);
     renorm_shift = renorm_shift > 4 ? renorm_shift - 4 : 0;
@@ -50,7 +45,7 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
         return static_cast<uint8_t>(sign >> 24);
     }
 
-    uint32_t nonsign = x & UINT32_C(0x7FFFFFFF);
+    uint32_t nonsign = exponent | mantissa;
 
     // convert inf, nan and greater than fp8e4m3fn max(480.0f) in fp32 to fp8e4m3fn max
     if (exponent == UINT32_C(0x7F800000) || nonsign >= UINT32_C(0x43F00000)) {
@@ -80,7 +75,206 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
 
     return res;
 }
-
-
 }// namespace details
+
+Float8_e4m3fn::Float8_e4m3fn(float value) : x(details::fp8e4m3fn_from_fp32_value(value)) {}
+
+Float8_e4m3fn::operator float() const {
+    return details::fp8e4m3fn_to_fp32_value(x);
+}
+
+bool Float8_e4m3fn::isnan() const {
+    return (x & 0x7F) == 0x7F;
+}
+
+std::ostream& operator<<(std::ostream& os, const Float8_e4m3fn& value) {
+    os << static_cast<float>(value);
+    return os;
+}
+
+Float8_e4m3fn operator+(const Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs) {
+    return static_cast<float>(lhs) + static_cast<float>(rhs);
+}
+
+Float8_e4m3fn operator-(const Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs) {
+    return static_cast<float>(lhs) - static_cast<float>(rhs);
+}
+
+Float8_e4m3fn operator*(const Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs) {
+    return static_cast<float>(lhs) * static_cast<float>(rhs);
+}
+
+Float8_e4m3fn operator/(const Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return static_cast<float>(lhs) / static_cast<float>(rhs);
+}
+
+Float8_e4m3fn operator-(const Float8_e4m3fn& a) {
+    return -static_cast<float>(a);
+}
+
+Float8_e4m3fn& operator+=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs) {
+    lhs = lhs + rhs;
+    return lhs;
+}
+
+Float8_e4m3fn& operator-=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs) {
+    lhs = lhs - rhs;
+    return lhs;
+}
+
+Float8_e4m3fn& operator*=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs) {
+    lhs = lhs * rhs;
+    return lhs;
+}
+
+Float8_e4m3fn& operator/=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs) {
+    lhs = lhs / rhs;
+    return lhs;
+}
+
+float operator+(Float8_e4m3fn lhs, float rhs) {
+    return static_cast<float>(lhs) + rhs;
+}
+
+float operator-(Float8_e4m3fn lhs, float rhs) {
+    return static_cast<float>(lhs) - rhs;
+}
+
+float operator*(Float8_e4m3fn lhs, float rhs) {
+    return static_cast<float>(lhs) * rhs;
+}
+
+float operator/(Float8_e4m3fn lhs, float rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return static_cast<float>(lhs) / rhs;
+}
+
+float operator+(float lhs, Float8_e4m3fn rhs) {
+    return lhs + static_cast<float>(rhs);
+}
+
+float operator-(float lhs, Float8_e4m3fn rhs) {
+    return lhs - static_cast<float>(rhs);
+}
+
+float operator*(float lhs, Float8_e4m3fn rhs) {
+    return lhs * static_cast<float>(rhs);
+}
+
+float operator/(float lhs, Float8_e4m3fn rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return lhs / static_cast<float>(rhs);
+}
+
+float& operator+=(float& lhs, const Float8_e4m3fn& rhs) {
+    return lhs += static_cast<float>(rhs);
+}
+
+float& operator-=(float& lhs, const Float8_e4m3fn& rhs) {
+    return lhs -= static_cast<float>(rhs);
+}
+
+float& operator*=(float& lhs, const Float8_e4m3fn& rhs) {
+    return lhs *= static_cast<float>(rhs);
+}
+
+float& operator/=(float& lhs, const Float8_e4m3fn& rhs) {
+    return lhs /= static_cast<float>(rhs);
+}
+
+double operator+(Float8_e4m3fn lhs, double rhs) {
+    return static_cast<double>(lhs) + rhs;
+}
+
+double operator-(Float8_e4m3fn lhs, double rhs) {
+    return static_cast<double>(lhs) - rhs;
+}
+
+double operator*(Float8_e4m3fn lhs, double rhs) {
+    return static_cast<double>(lhs) * rhs;
+}
+
+double operator/(Float8_e4m3fn lhs, double rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return static_cast<double>(lhs) / rhs;
+}
+
+double operator+(double lhs, Float8_e4m3fn rhs) {
+    return lhs + static_cast<double>(rhs);
+}
+
+double operator-(double lhs, Float8_e4m3fn rhs) {
+    return lhs - static_cast<double>(rhs);
+}
+
+double operator*(double lhs, Float8_e4m3fn rhs) {
+    return lhs * static_cast<double>(rhs);
+}
+
+double operator/(double lhs, Float8_e4m3fn rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return lhs / static_cast<double>(rhs);
+}
+
+Float8_e4m3fn operator+(Float8_e4m3fn lhs, int rhs) {
+    return lhs + static_cast<Float8_e4m3fn>(rhs);
+}
+
+Float8_e4m3fn operator-(Float8_e4m3fn lhs, int rhs) {
+    return lhs - static_cast<Float8_e4m3fn>(rhs);
+}
+
+Float8_e4m3fn operator*(Float8_e4m3fn lhs, int rhs) {
+    return lhs * static_cast<Float8_e4m3fn>(rhs);
+}
+
+Float8_e4m3fn operator/(Float8_e4m3fn lhs, int rhs) {
+    return lhs / static_cast<Float8_e4m3fn>(rhs);
+}
+
+Float8_e4m3fn operator+(int lhs, Float8_e4m3fn rhs) {
+    return static_cast<Float8_e4m3fn>(lhs) / rhs;
+}
+
+Float8_e4m3fn operator-(int lhs, Float8_e4m3fn rhs) {
+    return static_cast<Float8_e4m3fn>(lhs) / rhs;
+}
+
+Float8_e4m3fn operator*(int lhs, Float8_e4m3fn rhs) {
+    return static_cast<Float8_e4m3fn>(lhs) * rhs;
+}
+
+Float8_e4m3fn operator/(int lhs, Float8_e4m3fn rhs) {
+    return static_cast<Float8_e4m3fn>(lhs) / rhs;
+}
+
+Float8_e4m3fn operator+(Float8_e4m3fn lhs, int64_t rhs) {
+    return lhs + static_cast<Float8_e4m3fn>(rhs);
+}
+
+Float8_e4m3fn operator-(Float8_e4m3fn lhs, int64_t rhs) {
+    return lhs - static_cast<Float8_e4m3fn>(rhs);
+}
+
+Float8_e4m3fn operator*(Float8_e4m3fn lhs, int64_t rhs) {
+    return lhs * static_cast<Float8_e4m3fn>(rhs);
+}
+
+Float8_e4m3fn operator/(Float8_e4m3fn lhs, int64_t rhs) {
+    return lhs / static_cast<Float8_e4m3fn>(rhs);
+}
+
+Float8_e4m3fn operator+(int64_t lhs, Float8_e4m3fn rhs) {
+    return static_cast<Float8_e4m3fn>(lhs) + rhs;
+}
+
+Float8_e4m3fn operator-(int64_t lhs, Float8_e4m3fn rhs) {
+    return static_cast<Float8_e4m3fn>(lhs) - rhs;
+}
+
+Float8_e4m3fn operator*(int64_t lhs, Float8_e4m3fn rhs) {
+    return static_cast<Float8_e4m3fn>(lhs) * rhs;
+}
+
+Float8_e4m3fn operator/(int64_t lhs, Float8_e4m3fn rhs) {
+    return static_cast<Float8_e4m3fn>(lhs) / rhs;
+}
+
+
 }// namespace aethermind

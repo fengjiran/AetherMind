@@ -170,4 +170,98 @@ TEST(FP8E4M3FNFromFP32Test, SpecialValues) {
     EXPECT_EQ(fp8e4m3fn_from_fp32_value(100.0f), 0x6C);
 }
 
+TEST(Float8_e4m3fnTest, ConstructorAndConversion) {
+    // Default constructor
+    Float8_e4m3fn f1;
+    EXPECT_EQ(static_cast<float>(f1), 0.0f);
+
+    // From bits constructor
+    Float8_e4m3fn f2(0x7F, Float8_e4m3fn::from_bits());
+    EXPECT_EQ(f2.x, 0x7F);
+
+    // Float constructor and conversion
+    Float8_e4m3fn f3(1.5f);
+    EXPECT_NEAR(f3, 1.5f, 0.01f);
+
+    // Edge cases
+    Float8_e4m3fn f4(std::numeric_limits<float>::infinity());
+    EXPECT_TRUE(std::isnan(static_cast<float>(f4)));
+
+    Float8_e4m3fn f5(std::numeric_limits<float>::quiet_NaN());
+    EXPECT_TRUE(f5.isnan());
+}
+
+TEST(Float8_e4m3fnTest, ArithmeticOperations) {
+    Float8_e4m3fn a(1.5f);
+    Float8_e4m3fn b(2.5f);
+
+    // Basic arithmetic
+    EXPECT_NEAR(a + b, 4.0f, 0.01f);
+    EXPECT_NEAR(a - b, -1.0f, 0.01f);
+    EXPECT_NEAR(a * b, 3.75f, 0.01f);
+    EXPECT_NEAR(a / b, 0.6f, 0.025f);
+
+    // Compound assignment
+    a += b;
+    EXPECT_NEAR(a, 4.0f, 0.01f);
+    a -= b;
+    EXPECT_NEAR(a, 1.5f, 0.01f);
+    a *= b;
+    EXPECT_NEAR(a, 3.75f, 0.01f);
+    a /= b;
+    EXPECT_NEAR(a, 1.5f, 0.01f);
+
+    // Unary minus
+    EXPECT_NEAR(-a, -1.5f, 0.01f);
+}
+
+TEST(Float8_e4m3fnTest, MixedTypeOperations) {
+    Float8_e4m3fn a(1.5f);
+
+    // With float
+    EXPECT_NEAR(a + 2.5f, 4.0f, 0.01f);
+    EXPECT_NEAR(2.5f + a, 4.0f, 0.01f);
+
+    // With double
+    EXPECT_NEAR(a + 2.5, 4.0, 0.01);
+    EXPECT_NEAR(2.5 + a, 4.0, 0.01);
+
+    // With int
+    Float8_e4m3fn b = a + 2;
+    EXPECT_NEAR(b, 3.5f, 0.01f);
+    b = 2 + a;
+    EXPECT_NEAR(b, 3.5f, 0.01f);
+
+    // With int64_t
+    b = a + int64_t(2);
+    EXPECT_NEAR(b, 3.5f, 0.01f);
+    b = int64_t(2) + a;
+    EXPECT_NEAR(b, 3.5f, 0.01f);
+}
+
+TEST(Float8_e4m3fnTest, EdgeCases) {
+    // Overflow/underflow
+    Float8_e4m3fn max_val(6.0e4f); // Assuming this is near max representable value
+    Float8_e4m3fn min_val(-6.0e4f);// Assuming this is near min representable value
+
+    EXPECT_TRUE(std::isnan(static_cast<float>(max_val * max_val)));
+    EXPECT_TRUE(std::isnan(static_cast<float>(min_val * min_val)));
+
+    // Division by zero
+    Float8_e4m3fn zero(0.0f);
+    Float8_e4m3fn one(1.0f);
+    EXPECT_TRUE(std::isnan(static_cast<float>(one / zero)));
+
+    // NaN propagation
+    Float8_e4m3fn nan_val(std::numeric_limits<float>::quiet_NaN());
+    EXPECT_TRUE((nan_val + one).isnan());
+}
+
+TEST(Float8_e4m3fnTest, OutputOperator) {
+    Float8_e4m3fn a(1.5f);
+    std::ostringstream oss;
+    oss << a;
+    EXPECT_FALSE(oss.str().empty());
+}
+
 }// namespace

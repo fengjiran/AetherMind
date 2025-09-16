@@ -60,20 +60,27 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
         return static_cast<uint8_t>(nonsign - denorm_mask) | static_cast<uint8_t>(sign >> 24);
     }
 
-    // resulting mantissa is odd
-    uint8_t mant_odd = (nonsign >> 20) & 1;
+    // normalize the exponent from fp32 bias(127) to fp8 bias(7)
+    auto exp32 = static_cast<int32_t>((exponent >> 23) - 127);
 
-    // update exponent, rounding bias part 1
-    nonsign += (static_cast<uint32_t>(7 - 127) << 23) + 0x7FFFF;
+    // convert to fp8 format
+    uint32_t res = sign >> 24;
 
-    // rounding bias part 2
-    nonsign += mant_odd;
+    // add fp8 bias (7) to exponent
+    res |= static_cast<uint32_t>(exp32 + 7) << 3;
 
-    auto res = static_cast<uint8_t>(nonsign >> 20);
+    // add mantissa (round to the nearest even)
+    res |= mantissa >> 20;
 
-    res |= static_cast<uint8_t>(sign >> 24);
+    // handle rounding
+    const uint32_t rounding_bit = mantissa & UINT32_C(0x00080000);
+    const uint32_t sticky_bits = mantissa & UINT32_C(0x0007FFFF);
 
-    return res;
+    if (rounding_bit && (sticky_bits || (res & 1))) {
+        res += 1;
+    }
+
+    return static_cast<uint8_t>(res);
 }
 }// namespace details
 
@@ -229,7 +236,7 @@ Float8_e4m3fn operator/(Float8_e4m3fn lhs, int rhs) {
 }
 
 Float8_e4m3fn operator+(int lhs, Float8_e4m3fn rhs) {
-    return static_cast<Float8_e4m3fn>(lhs) / rhs;
+    return static_cast<Float8_e4m3fn>(lhs) + rhs;
 }
 
 Float8_e4m3fn operator-(int lhs, Float8_e4m3fn rhs) {

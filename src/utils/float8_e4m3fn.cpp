@@ -47,7 +47,7 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
 
     uint32_t nonsign = exponent | mantissa;
 
-    // convert inf, nan and greater than fp8e4m3fn max(480.0f) in fp32 to fp8e4m3fn max
+    // convert inf, nan and greater than fp8e4m3fn max(480.0f) in fp32 to nan
     if (exponent == UINT32_C(0x7F800000) || nonsign >= UINT32_C(0x43F00000)) {
         return static_cast<uint8_t>(sign >> 24 | 0x7F);
     }

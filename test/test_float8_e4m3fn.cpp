@@ -125,6 +125,13 @@ TEST(FP8E4M3FNFromFP32Test, NormalizedNumbers) {
 
     // 最大规格化数 (240.0)
     EXPECT_EQ(fp8e4m3fn_from_fp32_value(240.0f), 0x77);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(256.0f), 0x78);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(288.0f), 0x79);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(320.0f), 0x7A);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(352.0f), 0x7B);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(384.0f), 0x7C);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(416.0f), 0x7D);
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(448.0f), 0x7E);
 }
 
 TEST(FP8E4M3FNFromFP32Test, DenormalizedNumbers) {

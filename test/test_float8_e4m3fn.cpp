@@ -251,13 +251,13 @@ TEST(Float8_e4m3fnTest, EdgeCases) {
     Float8_e4m3fn max_val(6.0e4f); // Assuming this is near max representable value
     Float8_e4m3fn min_val(-6.0e4f);// Assuming this is near min representable value
 
-    EXPECT_TRUE(std::isnan(static_cast<float>(max_val * max_val)));
-    EXPECT_TRUE(std::isnan(static_cast<float>(min_val * min_val)));
+    EXPECT_TRUE(std::isnan(max_val * max_val));
+    EXPECT_TRUE(std::isnan(min_val * min_val));
 
     // Division by zero
     Float8_e4m3fn zero(0.0f);
     Float8_e4m3fn one(1.0f);
-    EXPECT_TRUE(std::isnan(static_cast<float>(one / zero)));
+    EXPECT_TRUE(std::isnan(one / zero));
 
     // NaN propagation
     Float8_e4m3fn nan_val(std::numeric_limits<float>::quiet_NaN());

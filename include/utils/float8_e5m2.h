@@ -142,30 +142,36 @@ public:
     static constexpr int max_exponent = 16;
     static constexpr int max_exponent10 = 4;
     static constexpr auto traps = numeric_limits<float>::traps;
-    static constexpr auto tinyness_before =
-            numeric_limits<float>::tinyness_before;
+    static constexpr auto tinyness_before = numeric_limits<float>::tinyness_before;
 
     static constexpr aethermind::Float8_e5m2 min() {
         return {0x4, aethermind::Float8_e5m2::from_bits()};
     }
+
     static constexpr aethermind::Float8_e5m2 max() {
         return {0x7B, aethermind::Float8_e5m2::from_bits()};
     }
+
     static constexpr aethermind::Float8_e5m2 lowest() {
         return {0xFB, aethermind::Float8_e5m2::from_bits()};
     }
+
     static constexpr aethermind::Float8_e5m2 epsilon() {
         return {0x34, aethermind::Float8_e5m2::from_bits()};
     }
+
     static constexpr aethermind::Float8_e5m2 round_error() {
         return {0x38, aethermind::Float8_e5m2::from_bits()};
     }
+
     static constexpr aethermind::Float8_e5m2 infinity() {
         return {0x7C, aethermind::Float8_e5m2::from_bits()};
     }
+
     static constexpr aethermind::Float8_e5m2 quiet_NaN() {
         return {0x7F, aethermind::Float8_e5m2::from_bits()};
     }
+
     static constexpr aethermind::Float8_e5m2 denorm_min() {
         return {0x01, aethermind::Float8_e5m2::from_bits()};
     }

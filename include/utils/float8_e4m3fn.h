@@ -216,7 +216,7 @@ struct alignas(1) Float8_e4m3fn {
     constexpr Float8_e4m3fn(uint8_t bits, from_bits_t) : x(bits) {}
     Float8_e4m3fn(float value);// NOLINT
     operator float() const;    // NOLINT
-    bool isnan() const;
+    NODISCARD bool isnan() const;
 };
 
 std::ostream& operator<<(std::ostream& os, const Float8_e4m3fn& value);
@@ -231,7 +231,6 @@ Float8_e4m3fn& operator+=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
 Float8_e4m3fn& operator-=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
 Float8_e4m3fn& operator*=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
 Float8_e4m3fn& operator/=(Float8_e4m3fn& lhs, const Float8_e4m3fn& rhs);
-
 
 /// Arithmetic with float
 float operator+(Float8_e4m3fn lhs, float rhs);

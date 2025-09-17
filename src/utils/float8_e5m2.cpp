@@ -68,6 +68,208 @@ uint8_t fp8e5m2_from_fp32_value(float f) {
     return static_cast<uint8_t>(res);
 }
 
-
 }// namespace details
+
+Float8_e5m2::Float8_e5m2(float value) : x(details::fp8e5m2_from_fp32_value(value)) {}
+
+Float8_e5m2::operator float() const {
+    return details::fp8e5m2_to_fp32_value(x);
+}
+
+bool Float8_e5m2::isinf() const {
+    return (x & 0x7F) == 0x7C;
+}
+
+bool Float8_e5m2::isnan() const {
+    return (x & 0x7F) > 0x7C;
+}
+
+std::ostream& operator<<(std::ostream& os, const Float8_e5m2& value) {
+    os << static_cast<float>(value);
+    return os;
+}
+
+Float8_e5m2 operator+(const Float8_e5m2& lhs, const Float8_e5m2& rhs) {
+    return static_cast<float>(lhs) + static_cast<float>(rhs);
+}
+
+Float8_e5m2 operator-(const Float8_e5m2& lhs, const Float8_e5m2& rhs) {
+    return static_cast<float>(lhs) - static_cast<float>(rhs);
+}
+
+Float8_e5m2 operator*(const Float8_e5m2& lhs, const Float8_e5m2& rhs) {
+    return static_cast<float>(lhs) * static_cast<float>(rhs);
+}
+
+Float8_e5m2 operator/(const Float8_e5m2& lhs, const Float8_e5m2& rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return static_cast<float>(lhs) / static_cast<float>(rhs);
+}
+
+Float8_e5m2 operator-(const Float8_e5m2& a) {
+    return -static_cast<float>(a);
+}
+
+Float8_e5m2& operator+=(Float8_e5m2& lhs, const Float8_e5m2& rhs) {
+    lhs = lhs + rhs;
+    return lhs;
+}
+
+Float8_e5m2& operator-=(Float8_e5m2& lhs, const Float8_e5m2& rhs) {
+    lhs = lhs - rhs;
+    return lhs;
+}
+
+Float8_e5m2& operator*=(Float8_e5m2& lhs, const Float8_e5m2& rhs) {
+    lhs = lhs * rhs;
+    return lhs;
+}
+
+Float8_e5m2& operator/=(Float8_e5m2& lhs, const Float8_e5m2& rhs) {
+    lhs = lhs / rhs;
+    return lhs;
+}
+
+float operator+(Float8_e5m2 lhs, float rhs) {
+    return static_cast<float>(lhs) + rhs;
+}
+
+float operator-(Float8_e5m2 lhs, float rhs) {
+    return static_cast<float>(lhs) + rhs;
+}
+
+float operator*(Float8_e5m2 lhs, float rhs) {
+    return static_cast<float>(lhs) * rhs;
+}
+
+float operator/(Float8_e5m2 lhs, float rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return static_cast<float>(lhs) / rhs;
+}
+
+float operator+(float lhs, Float8_e5m2 rhs) {
+    return lhs + static_cast<float>(rhs);
+}
+
+float operator-(float lhs, Float8_e5m2 rhs) {
+    return lhs - static_cast<float>(rhs);
+}
+
+float operator*(float lhs, Float8_e5m2 rhs) {
+    return lhs * static_cast<float>(rhs);
+}
+
+float operator/(float lhs, Float8_e5m2 rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return lhs / static_cast<float>(rhs);
+}
+
+float& operator+=(float& lhs, const Float8_e5m2& rhs) {
+    return lhs += static_cast<float>(rhs);
+}
+
+float& operator-=(float& lhs, const Float8_e5m2& rhs) {
+    return lhs -= static_cast<float>(rhs);
+}
+
+float& operator*=(float& lhs, const Float8_e5m2& rhs) {
+    return lhs *= static_cast<float>(rhs);
+}
+
+float& operator/=(float& lhs, const Float8_e5m2& rhs) {
+    return lhs /= static_cast<float>(rhs);
+}
+
+double operator+(Float8_e5m2 lhs, double rhs) {
+    return static_cast<double>(lhs) + rhs;
+}
+
+double operator-(Float8_e5m2 lhs, double rhs) {
+    return static_cast<double>(lhs) - rhs;
+}
+
+double operator*(Float8_e5m2 lhs, double rhs) {
+    return static_cast<double>(lhs) * rhs;
+}
+
+double operator/(Float8_e5m2 lhs, double rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return static_cast<double>(lhs) / rhs;
+}
+
+double operator+(double lhs, Float8_e5m2 rhs) {
+    return lhs + static_cast<double>(rhs);
+}
+
+double operator-(double lhs, Float8_e5m2 rhs) {
+    return lhs - static_cast<double>(rhs);
+}
+
+double operator*(double lhs, Float8_e5m2 rhs) {
+    return lhs * static_cast<double>(rhs);
+}
+
+double operator/(double lhs, Float8_e5m2 rhs) __ubsan_ignore_float_divide_by_zero__ {
+    return lhs / static_cast<double>(rhs);
+}
+
+Float8_e5m2 operator+(Float8_e5m2 lhs, int rhs) {
+    return lhs + static_cast<Float8_e5m2>(rhs);
+}
+
+Float8_e5m2 operator-(Float8_e5m2 lhs, int rhs) {
+    return lhs - static_cast<Float8_e5m2>(rhs);
+}
+
+Float8_e5m2 operator*(Float8_e5m2 lhs, int rhs) {
+    return lhs * static_cast<Float8_e5m2>(rhs);
+}
+
+Float8_e5m2 operator/(Float8_e5m2 lhs, int rhs) {
+    return lhs / static_cast<Float8_e5m2>(rhs);
+}
+
+Float8_e5m2 operator+(int lhs, Float8_e5m2 rhs) {
+    return static_cast<Float8_e5m2>(lhs) + rhs;
+}
+
+Float8_e5m2 operator-(int lhs, Float8_e5m2 rhs) {
+    return static_cast<Float8_e5m2>(lhs) - rhs;
+}
+
+Float8_e5m2 operator*(int lhs, Float8_e5m2 rhs) {
+    return static_cast<Float8_e5m2>(lhs) * rhs;
+}
+
+Float8_e5m2 operator/(int lhs, Float8_e5m2 rhs) {
+    return static_cast<Float8_e5m2>(lhs) / rhs;
+}
+
+Float8_e5m2 operator+(Float8_e5m2 lhs, int64_t rhs) {
+    return lhs + static_cast<Float8_e5m2>(rhs);
+}
+
+Float8_e5m2 operator-(Float8_e5m2 lhs, int64_t rhs) {
+    return lhs - static_cast<Float8_e5m2>(rhs);
+}
+
+Float8_e5m2 operator*(Float8_e5m2 lhs, int64_t rhs) {
+    return lhs * static_cast<Float8_e5m2>(rhs);
+}
+
+Float8_e5m2 operator/(Float8_e5m2 lhs, int64_t rhs) {
+    return lhs / static_cast<Float8_e5m2>(rhs);
+}
+
+Float8_e5m2 operator+(int64_t lhs, Float8_e5m2 rhs) {
+    return static_cast<Float8_e5m2>(lhs) + rhs;
+}
+
+Float8_e5m2 operator-(int64_t lhs, Float8_e5m2 rhs) {
+    return static_cast<Float8_e5m2>(lhs) - rhs;
+}
+
+Float8_e5m2 operator*(int64_t lhs, Float8_e5m2 rhs) {
+    return static_cast<Float8_e5m2>(lhs) * rhs;
+}
+
+Float8_e5m2 operator/(int64_t lhs, Float8_e5m2 rhs) {
+    return static_cast<Float8_e5m2>(lhs) / rhs;
+}
 }// namespace aethermind

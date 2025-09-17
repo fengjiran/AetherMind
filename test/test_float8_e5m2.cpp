@@ -22,12 +22,12 @@ TEST(Float8E5M2Test, SpecialValues) {
     // Test infinity
     EXPECT_EQ(fp8e5m2_from_fp32_value(INFINITY), 0x7C);
     EXPECT_EQ(fp8e5m2_from_fp32_value(-INFINITY), 0xFC);
-    EXPECT_TRUE(isinf(fp8e5m2_to_fp32_value(0x7C)));
-    EXPECT_TRUE(isinf(fp8e5m2_to_fp32_value(0xFC)));
+    EXPECT_TRUE(std::isinf(fp8e5m2_to_fp32_value(0x7C)));
+    EXPECT_TRUE(std::isinf(fp8e5m2_to_fp32_value(0xFC)));
 
     // Test NaN
     EXPECT_EQ(fp8e5m2_from_fp32_value(NAN), 0x7E);// Canonical NaN
-    EXPECT_TRUE(isnan(fp8e5m2_to_fp32_value(0x7F)));
+    EXPECT_TRUE(std::isnan(fp8e5m2_to_fp32_value(0x7F)));
 }
 
 TEST(Float8E5M2Test, NormalRange) {

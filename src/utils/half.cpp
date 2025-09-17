@@ -52,7 +52,8 @@ uint16_t half_from_fp32_value_ieee(float f) {
         }
 
         // nan case: preserve mantissa bits and set exponent to max
-        return static_cast<uint16_t>(sign >> 16 | 0x7C00 | mantissa >> 13);
+        // return static_cast<uint16_t>(sign >> 16 | 0x7C00 | mantissa >> 13);
+        return static_cast<uint16_t>(sign >> 16 | 0x7E00);
     }
 
     // normalize the exponent from fp32 bias(127) to fp16 bias(15)

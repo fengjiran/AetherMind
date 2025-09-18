@@ -17,8 +17,26 @@ class Object {
 public:
     using FDeleter = void (*)(Object*);
 
+    /*!
+    * \brief Default constructor, initializes a reference-counted object.
+    *
+    * Creates a new Object instance with reference count initialized to 0
+    * and deleter set to nullptr.
+    * Newly created objects require manual reference count management,
+    * typically wrapped using ObjectPtr.
+    */
     Object() : ref_count_(0), deleter_(nullptr) {}
 
+    /*!
+     * \brief Get the current reference count of the object.
+     *
+     * Uses atomic operation with relaxed memory ordering (__ATOMIC_RELAXED)
+     * to load the reference count value. Relaxed memory ordering is suitable
+     * for performance-sensitive scenarios where strict memory synchronization
+     * is not required.
+     *
+     * \return The current reference count value of the object
+     */
     NODISCARD uint32_t use_count() const {
         return __atomic_load_n(&ref_count_, __ATOMIC_RELAXED);
     }
@@ -205,7 +223,7 @@ public:
         return ptr_;
     }
 
-    operator bool() const noexcept {
+    operator bool() const noexcept { // NOLINT
         return defined();
     }
 

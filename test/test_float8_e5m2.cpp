@@ -158,7 +158,7 @@ TEST(Float8E5M2Test, ArithmeticOperators) {
 
     // 除法
     Float8_e5m2 quot = a / b;
-    EXPECT_FLOAT_EQ(quot, 2.0f / 3.0f);
+    EXPECT_FLOAT_EQ(quot, 0.625f);
 
     // 负号
     Float8_e5m2 neg = -a;
@@ -187,7 +187,7 @@ TEST(Float8E5M2Test, CompoundAssignmentOperators) {
     // /=
     c = a;
     c /= b;
-    EXPECT_FLOAT_EQ(c, 2.0f / 3.0f);
+    EXPECT_FLOAT_EQ(c, 0.625f);
 }
 
 TEST(Float8E5M2Test, MixedTypeArithmetic) {
@@ -215,7 +215,7 @@ TEST(Float8E5M2Test, MixedTypeArithmetic) {
 
 TEST(Float8E5M2Test, EdgeCasesAndRounding) {
     // 边界值测试
-    Float8_e5m2 max_val(65504.0f);// E5M2最大规格化数
+    Float8_e5m2 max_val(57344.0f);// E5M2最大规格化数
     EXPECT_EQ(max_val.x, 0x7B);
 
     Float8_e5m2 min_val(0.00006103515625f);// E5M2最小规格化数

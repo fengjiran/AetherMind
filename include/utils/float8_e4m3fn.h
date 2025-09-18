@@ -310,21 +310,27 @@ public:
     static constexpr aethermind::Float8_e4m3fn min() {
         return aethermind::Float8_e4m3fn(0x08, aethermind::Float8_e4m3fn::from_bits());
     }
+
     static constexpr aethermind::Float8_e4m3fn lowest() {
         return aethermind::Float8_e4m3fn(0xFE, aethermind::Float8_e4m3fn::from_bits());
     }
+
     static constexpr aethermind::Float8_e4m3fn max() {
         return aethermind::Float8_e4m3fn(0x7E, aethermind::Float8_e4m3fn::from_bits());
     }
+
     static constexpr aethermind::Float8_e4m3fn epsilon() {
         return aethermind::Float8_e4m3fn(0x20, aethermind::Float8_e4m3fn::from_bits());
     }
+
     static constexpr aethermind::Float8_e4m3fn round_error() {
         return aethermind::Float8_e4m3fn(0x30, aethermind::Float8_e4m3fn::from_bits());
     }
+
     static constexpr aethermind::Float8_e4m3fn quiet_NaN() {
         return aethermind::Float8_e4m3fn(0x7F, aethermind::Float8_e4m3fn::from_bits());
     }
+
     static constexpr aethermind::Float8_e4m3fn denorm_min() {
         return aethermind::Float8_e4m3fn(0x01, aethermind::Float8_e4m3fn::from_bits());
     }

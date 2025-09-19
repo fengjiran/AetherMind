@@ -13,6 +13,16 @@
 
 namespace aethermind {
 
+namespace details {
+// Helper to perform
+// unsafe operations related to object
+struct ObjectUnsafe;
+
+template<typename Derived>
+class ObjectAllocatorBase;
+
+}// namespace details
+
 /*!
  * \brief Base class for reference-counted objects.
  *
@@ -110,7 +120,7 @@ private:
     template<typename T>
     friend class ObjectPtr;
 
-    friend struct ObjectUnsafe;
+    friend struct details::ObjectUnsafe;
 };
 
 /*!
@@ -341,12 +351,13 @@ private:
     T* ptr_;
 
     template<typename Derived>
-    friend class ObjectAllocatorBase;
+    friend class details::ObjectAllocatorBase;
 
     template<typename T2>
     friend class ObjectPtr;
 };
 
+namespace details {
 struct ObjectUnsafe {
     static void IncRef(Object* ptr) {
         if (ptr) {
@@ -360,6 +371,7 @@ struct ObjectUnsafe {
         }
     }
 };
+}// namespace details
 
 template<typename T>
 void swap(ObjectPtr<T>& lhs, ObjectPtr<T>& rhs) noexcept {
@@ -402,6 +414,7 @@ bool operator!=(std::nullptr_t, const ObjectPtr<T>& rhs) noexcept {
     return nullptr != rhs.get();
 }
 
+namespace details {
 // allocate object
 template<typename Derived>
 class ObjectAllocatorBase {
@@ -444,7 +457,6 @@ public:
             T* p = static_cast<T*>(ptr);
             p->T::~T();
             delete reinterpret_cast<StorageType*>(p);
-            // LOG(INFO) << "deleter called" << std::endl;
         }
     };
 
@@ -472,15 +484,17 @@ public:
         }
     };
 };
+}// namespace details
+
 
 template<typename T, typename... Args>
 ObjectPtr<T> make_object(Args&&... args) {
-    return ObjectAllocator().make_object<T>(std::forward<Args>(args)...);
+    return details::ObjectAllocator().make_object<T>(std::forward<Args>(args)...);
 }
 
 template<typename T, typename ElemType, typename... Args>
 ObjectPtr<T> make_array_object(size_t num_elems, Args&&... args) {
-    return ObjectAllocator().make_array_object<T, ElemType>(num_elems, std::forward<Args>(args)...);
+    return details::ObjectAllocator().make_array_object<T, ElemType>(num_elems, std::forward<Args>(args)...);
 }
 
 }// namespace aethermind
@@ -492,7 +506,6 @@ struct hash<aethermind::ObjectPtr<T>> {
         return std::hash<T*>()(ptr.get());
     }
 };
-
 }// namespace std
 
 #endif//AETHERMIND_OBJECT_H

@@ -121,8 +121,6 @@ private:
     friend class Array;
 };
 
-DEFINE_OBJECT_NULLTYPE(ArrayImpl);
-
 template<typename T>
 class Array {
 public:

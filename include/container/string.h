@@ -24,9 +24,6 @@ private:
     friend class String;
 };
 
-
-DEFINE_OBJECT_NULLTYPE(StringImpl);
-
 class String {
 public:
     String() = default;

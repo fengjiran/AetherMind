@@ -21,12 +21,12 @@ TEST(object, ctors) {
     ObjectPtr<NumberObj> p1;
     EXPECT_TRUE(!p1.defined());
     EXPECT_EQ(p1.use_count(), 0);
-    EXPECT_TRUE(p1.get() == nullptr);
+    EXPECT_TRUE(p1.get() == null_type_of<NumberObj>::singleton());
 
     ObjectPtr<NumberObj> p2 = nullptr;
     EXPECT_TRUE(!p2.defined());
     EXPECT_EQ(p2.use_count(), 0);
-    EXPECT_TRUE(p2.get() == nullptr);
+    EXPECT_TRUE(p2.get() == null_type_of<NumberObj>::singleton());
 
     auto p3 = make_object<NumberObj>();
     EXPECT_TRUE(p3.defined());
@@ -54,12 +54,14 @@ TEST(object, ctors) {
 class Class0 : public Object {};
 class Class1 : public Object {
 public:
+    Class1() : val_(0) {}
     explicit Class1(int val) : val_(val) {}
     int val_;
 };
 
 class Class2 : public Object {
 public:
+    Class2() : val1_(0), val2_(0) {}
     Class2(int val1, int val2) : val1_(val1), val2_(val2) {}
     int val1_;
     int val2_;
@@ -68,11 +70,13 @@ public:
 static_assert(std::is_same_v<Class0, ObjectPtr<Class0>::element_type>);
 
 struct SomeBaseClass : Object {
+    SomeBaseClass() : val_(0) {}
     explicit SomeBaseClass(int val) : val_(val) {}
     int val_;
 };
 
 struct SomeChildClass : SomeBaseClass {
+    SomeChildClass() : SomeBaseClass(0) {}
     explicit SomeChildClass(int v) : SomeBaseClass(v) {}
 };
 

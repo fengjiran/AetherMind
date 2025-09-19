@@ -389,8 +389,6 @@ private:
     // bool is_channels_last_ : 1;
 };
 
-DEFINE_OBJECT_NULLTYPE(TensorImpl);
-
 }// namespace aethermind
 
 #endif//AETHERMIND_TENSOR_IMPL_H

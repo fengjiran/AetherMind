@@ -65,10 +65,6 @@
             static ClassName##NullType singleton_;       \
             return &singleton_;                          \
         }                                                \
-    };                                                   \
-    template<>                                           \
-    struct GetNullType<ClassName> {                      \
-        using type = ClassName##NullType;                \
     };
 
 

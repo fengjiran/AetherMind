@@ -78,19 +78,18 @@ private:
 };
 
 template<typename T>
-struct DefaultNullType {
-    static constexpr T* singleton() noexcept {
-        return nullptr;
+class NullTypeOf : public T {
+    NullTypeOf() = default;
+
+public:
+    static T* singleton() noexcept {
+        static NullTypeOf inst;
+        return &inst;
     }
 };
 
 template<typename T>
-struct GetNullType {
-    using type = DefaultNullType<T>;
-};
-
-template<typename T>
-using null_type_of = GetNullType<T>::type;
+using null_type_of = NullTypeOf<T>;
 
 struct DoNotIncRefCountTag final {};
 
@@ -101,7 +100,6 @@ public:
     using null_type = null_type_of<T>;
 
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
-    // static_assert(NullType::singleton() == NullType::singleton(), "NullType must have a constexpr singleton() method");
     static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
                   "NullType::singleton() must return a element_type* pointer");
 
@@ -113,8 +111,7 @@ public:
     /*!
      * \brief Constructor from nullptr.
      */
-    ObjectPtr(std::nullptr_t) noexcept// NOLINT
-        : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}
+    ObjectPtr(std::nullptr_t) noexcept : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}// NOLINT
 
     /*!
      * \brief Constructor from unique_ptr.

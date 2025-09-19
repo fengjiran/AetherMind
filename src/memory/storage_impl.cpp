@@ -6,6 +6,6 @@
 
 namespace aethermind {
 
-StorageImplNullType StorageImplNullType::singleton_;
+// StorageImplNullType StorageImplNullType::singleton_;
 
 }

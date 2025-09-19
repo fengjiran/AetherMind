@@ -9,8 +9,6 @@
 
 namespace aethermind {
 
-StringImplNullType StringImplNullType::singleton_;
-
 StringImpl::StringImpl() : data_(nullptr), size_(0) {}
 
 size_t StringImpl::size() const noexcept {

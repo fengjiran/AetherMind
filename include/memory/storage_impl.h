@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_STORAGE_IMPL_H
 #define AETHERMIND_STORAGE_IMPL_H
 
-#include "object.h"
 #include "memory/allocator.h"
+#include "object.h"
 
 namespace aethermind {
 
@@ -22,6 +22,8 @@ public:
 
     StorageImpl(size_t nbytes, const std::unique_ptr<Allocator>& alloc)
         : StorageImpl(nbytes, alloc->allocate(nbytes), alloc) {}
+
+    StorageImpl() : StorageImpl(0, AllocatorTable::Global().get_allocator(kUndefined)) {}
 
     NODISCARD size_t nbytes() const {
         return nbytes_;
@@ -51,7 +53,6 @@ public:
         return data_ptr_.device().type();
     }
 
-    StorageImpl() = delete;
     StorageImpl(const StorageImpl&) = delete;
     StorageImpl(StorageImpl&&) noexcept = delete;
     StorageImpl& operator=(const StorageImpl&) = delete;
@@ -63,22 +64,7 @@ private:
     const std::unique_ptr<Allocator>& alloc_;
 };
 
-class StorageImplNullType final : public StorageImpl {
-    static StorageImplNullType singleton_;
-    StorageImplNullType() : StorageImpl(0, AllocatorTable::Global().get_allocator(kUndefined)) {}
-
-public:
-    static constexpr StorageImpl* singleton() noexcept {
-        return &singleton_;
-    }
-};
-
-template<>
-struct GetNullType<StorageImpl> {
-    using type = StorageImplNullType;
-};
-
-static_assert(std::is_same_v<null_type<StorageImpl>, StorageImplNullType>);
+DEFINE_OBJECT_NULLTYPE(StorageImpl);
 
 }// namespace aethermind
 

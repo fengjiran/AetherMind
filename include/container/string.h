@@ -24,22 +24,8 @@ private:
     friend class String;
 };
 
-class StringImplNullType final : public StringImpl {
-    static StringImplNullType singleton_;
-    StringImplNullType() = default;
 
-public:
-    static constexpr StringImpl* singleton() noexcept {
-        return &singleton_;
-    }
-};
-
-template<>
-struct GetNullType<StringImpl> {
-    using type = StringImplNullType;
-};
-
-static_assert(std::is_same_v<null_type<StringImpl>, StringImplNullType>);
+DEFINE_OBJECT_NULLTYPE(StringImpl);
 
 class String {
 public:

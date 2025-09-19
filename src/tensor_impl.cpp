@@ -7,8 +7,6 @@
 
 namespace aethermind {
 
-TensorImplNullType TensorImplNullType::singleton_;
-
 TensorImpl::TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device)
     : storage_offset_(storage_offset), numel_(0), dtype_(dtype), device_opt_(device) {
     CHECK(dtype_initialized()) << "dtype should be initialized.";

@@ -6,8 +6,6 @@
 
 namespace aethermind {
 
-ArrayImplNullType ArrayImplNullType::singleton_;
-
 ArrayImpl::~ArrayImpl() {
     auto* p = begin();
     for (size_t i = 0; i < size(); ++i) {

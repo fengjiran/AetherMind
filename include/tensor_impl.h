@@ -188,11 +188,7 @@ std::string toString(const Scalar& s);
  **/
 class TensorImpl : public Object {
 public:
-    TensorImpl() = delete;
-    TensorImpl(const TensorImpl&) = delete;
-    TensorImpl(TensorImpl&&) noexcept = delete;
-    TensorImpl& operator=(const TensorImpl&) = delete;
-    TensorImpl& operator=(TensorImpl&&) noexcept = delete;
+    TensorImpl() : TensorImpl(DataType(), std::nullopt) {}
 
     TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device);
 
@@ -202,6 +198,11 @@ public:
 
     // Construct a 1-dim 0 size tensor that doesn't have a storage.
     TensorImpl(DataType dtype, std::optional<Device> device_opt);
+
+    TensorImpl(const TensorImpl&) = delete;
+    TensorImpl(TensorImpl&&) noexcept = delete;
+    TensorImpl& operator=(const TensorImpl&) = delete;
+    TensorImpl& operator=(TensorImpl&&) noexcept = delete;
 
     virtual ~TensorImpl() = default;
 
@@ -388,22 +389,7 @@ private:
     // bool is_channels_last_ : 1;
 };
 
-class TensorImplNullType final : public TensorImpl {
-    static TensorImplNullType singleton_;
-    TensorImplNullType() : TensorImpl(DataType(), std::nullopt) {}
-
-public:
-    static constexpr TensorImpl* singleton() noexcept {
-        return &singleton_;
-    }
-};
-
-template<>
-struct GetNullType<TensorImpl> {
-    using type = TensorImplNullType;
-};
-
-static_assert(std::is_same_v<null_type<TensorImpl>, TensorImplNullType>);
+DEFINE_OBJECT_NULLTYPE(TensorImpl);
 
 }// namespace aethermind
 

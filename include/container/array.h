@@ -121,20 +121,7 @@ private:
     friend class Array;
 };
 
-class ArrayImplNullType final : public ArrayImpl {
-    static ArrayImplNullType singleton_;
-    ArrayImplNullType() = default;
-
-public:
-    static constexpr ArrayImpl* singleton() noexcept {
-        return &singleton_;
-    }
-};
-
-template<>
-struct GetNullType<ArrayImpl> {
-    using type = ArrayImplNullType;
-};
+DEFINE_OBJECT_NULLTYPE(ArrayImpl);
 
 template<typename T>
 class Array {

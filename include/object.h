@@ -97,7 +97,7 @@ struct DoNotIncRefCountTag final {};
 template<typename T, typename NullType = null_type<T>>
 class ObjectPtr final {
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
-    static_assert(NullType::singleton() == NullType::singleton(), "NullType must have a constexpr singleton() method");
+    // static_assert(NullType::singleton() == NullType::singleton(), "NullType must have a constexpr singleton() method");
     static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(NullType::singleton())>>,
                   "NullType::singleton() must return a element_type* pointer");
 

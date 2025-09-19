@@ -56,5 +56,20 @@
 
 #define AETHERMIND_UNREACHABLE() __builtin_unreachable()
 
+#define DEFINE_OBJECT_NULLTYPE(ClassName)                \
+    class ClassName##NullType final : public ClassName { \
+        ClassName##NullType() = default;                 \
+                                                         \
+    public:                                              \
+        static ClassName* singleton() noexcept {         \
+            static ClassName##NullType singleton_;       \
+            return &singleton_;                          \
+        }                                                \
+    };                                                   \
+    template<>                                           \
+    struct GetNullType<ClassName> {                      \
+        using type = ClassName##NullType;                \
+    };
+
 
 #endif//AETHERMIND_MACROS_H

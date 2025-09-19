@@ -19,8 +19,7 @@ const char* StringImpl::data() const noexcept {
     return data_;
 }
 
-String::String(const char* other, size_t size)
-    : impl_(make_array_object<StringImpl, char>(size + 1)) {
+String::String(const char* other, size_t size) : impl_(make_array_object<StringImpl, char>(size + 1)) {
     char* dst = reinterpret_cast<char*>(impl_.get()) + sizeof(StringImpl);
     impl_->data_ = dst;
     impl_->size_ = size;

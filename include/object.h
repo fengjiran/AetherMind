@@ -13,6 +13,13 @@
 
 namespace aethermind {
 
+/*!
+ * \brief Base class for reference-counted objects.
+ *
+ * \note Objects of this class are reference-counted, meaning that each object
+ * has a reference count that tracks the number of references to the object.
+ * When the reference count reaches zero, the object is automatically destroyed.
+ */
 class Object {
 public:
     using FDeleter = void (*)(Object*);
@@ -20,7 +27,7 @@ public:
     /*!
     * \brief Default constructor, initializes a reference-counted object.
     *
-    * Creates a new Object instance with reference count initialized to 0
+    * \note Creates a new Object instance with reference count initialized to 0
     * and deleter set to nullptr.
     * Newly created objects require manual reference count management,
     * typically wrapped using ObjectPtr.
@@ -30,7 +37,7 @@ public:
     /*!
      * \brief Get the current reference count of the object.
      *
-     * Uses atomic operation with relaxed memory ordering (__ATOMIC_RELAXED)
+     * \note Uses atomic operation with relaxed memory ordering (__ATOMIC_RELAXED)
      * to load the reference count value. Relaxed memory ordering is suitable
      * for performance-sensitive scenarios where strict memory synchronization
      * is not required.
@@ -41,19 +48,48 @@ public:
         return __atomic_load_n(&ref_count_, __ATOMIC_RELAXED);
     }
 
+    /*!
+     * \brief Check if the object has a unique reference count.
+     *
+     * \return true if the object has a reference count of 1, false otherwise.
+     */
     NODISCARD bool unique() const {
         return use_count() == 1;
     }
 
+    /*!
+     * \brief Set the deleter function for the object.
+     *
+     * \param deleter The deleter function to be invoked when the reference count reaches zero.
+     */
     void SetDeleter(FDeleter deleter) {
         deleter_ = deleter;
     }
 
 private:
+    /*!
+     * \brief Increment the reference count of the object.
+     *
+     * \note Uses atomic operation with relaxed memory ordering (__ATOMIC_RELAXED)
+     * to increment the reference count. Relaxed memory ordering is suitable
+     * for performance-sensitive scenarios where strict memory synchronization
+     * is not required.
+     */
     void IncRef() {
         __atomic_fetch_add(&ref_count_, 1, __ATOMIC_RELAXED);
     }
 
+    /*!
+     * \brief Decrement the reference count of the object.
+     *
+     * \note Uses atomic operation with release memory ordering (__ATOMIC_RELEASE)
+     * to decrement the reference count. Release memory ordering is suitable
+     * for scenarios where a thread releases a lock or a resource, and other
+     * threads that depend on that resource need to see the effects of the
+     * release.
+     * If the reference count reaches zero after decrementing, and a deleter
+     * function is set, the deleter function will be invoked.
+     */
     void DecRef() {
         if (__atomic_fetch_sub(&ref_count_, 1, __ATOMIC_RELEASE) == 1) {
             // only acquire when we need to call deleter
@@ -77,8 +113,13 @@ private:
     friend struct ObjectUnsafe;
 };
 
+/*!
+ * \brief Null type of the given type.
+ *
+ * \tparam T The type for which the null type is defined.
+ */
 template<typename T>
-class NullTypeOf : public T {
+class NullTypeOf final : public T {
     NullTypeOf() = default;
 
 public:
@@ -91,8 +132,22 @@ public:
 template<typename T>
 using null_type_of = NullTypeOf<T>;
 
+/*!
+ * \brief Tag type to indicate that reference count should not be incremented.
+ */
 struct DoNotIncRefCountTag final {};
 
+/*!
+ * \brief Smart pointer for reference-counted objects.
+ *
+ * \tparam T The type of the object being managed.
+ *
+ * \note The ObjectPtr class provides a way to manage the lifetime of reference-counted objects.
+ * It ensures that objects are properly reference-counted and destroyed when no longer needed.
+ * The ObjectPtr class follows the RAII (Resource Acquisition Is Initialization) idiom,
+ * guaranteeing that resources are released when the reference count goes to zero.
+ *
+ */
 template<typename T>
 class ObjectPtr final {
 public:
@@ -105,16 +160,24 @@ public:
 
     /*!
      * \brief Default constructor.
+     *
+     * \note Initializes the ObjectPtr with a null pointer and does not increment the reference count.
      */
     ObjectPtr() noexcept : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}
 
     /*!
      * \brief Constructor from nullptr.
+     *
+     * \note Initializes the ObjectPtr with a null pointer and does not increment the reference count.
      */
     ObjectPtr(std::nullptr_t) noexcept : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}// NOLINT
 
     /*!
      * \brief Constructor from unique_ptr.
+     *
+     * \param other The unique_ptr to transfer ownership from.
+     *
+     * \note Initializes the ObjectPtr with the pointer from the unique_ptr and increments the reference count.
      */
     explicit ObjectPtr(std::unique_ptr<T> other) noexcept : ObjectPtr(other.release()) {}
 
@@ -225,8 +288,7 @@ public:
     }
 
     NODISCARD uint32_t use_count() const noexcept {
-        return defined() ? ptr_->use_count() : 0;
-        // return ptr_->use_count();
+        return ptr_->use_count();
     }
 
     NODISCARD bool unique() const noexcept {

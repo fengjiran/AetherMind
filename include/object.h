@@ -71,7 +71,7 @@ private:
     /*! \brief Deleter to be invoked when reference counter goes to zero. */
     FDeleter deleter_;
 
-    template<typename T, typename NullType>
+    template<typename T>
     friend class ObjectPtr;
 
     friend struct ObjectUnsafe;
@@ -90,31 +90,31 @@ struct GetNullType {
 };
 
 template<typename T>
-using null_type = GetNullType<T>::type;
+using null_type_of = GetNullType<T>::type;
 
 struct DoNotIncRefCountTag final {};
 
-template<typename T, typename NullType = null_type<T>>
+template<typename T>
 class ObjectPtr final {
-    static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
-    // static_assert(NullType::singleton() == NullType::singleton(), "NullType must have a constexpr singleton() method");
-    static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(NullType::singleton())>>,
-                  "NullType::singleton() must return a element_type* pointer");
-
 public:
     using element_type = T;
-    using null_type = NullType;
+    using null_type = null_type_of<T>;
+
+    static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
+    // static_assert(NullType::singleton() == NullType::singleton(), "NullType must have a constexpr singleton() method");
+    static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
+                  "NullType::singleton() must return a element_type* pointer");
 
     /*!
      * \brief Default constructor.
      */
-    ObjectPtr() noexcept : ObjectPtr(NullType::singleton(), DoNotIncRefCountTag()) {}
+    ObjectPtr() noexcept : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}
 
     /*!
      * \brief Constructor from nullptr.
      */
     ObjectPtr(std::nullptr_t) noexcept// NOLINT
-        : ObjectPtr(NullType::singleton(), DoNotIncRefCountTag()) {}
+        : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}
 
     /*!
      * \brief Constructor from unique_ptr.
@@ -137,7 +137,7 @@ public:
      * \brief Move constructor.
      */
     ObjectPtr(ObjectPtr&& other) noexcept : ptr_(other.ptr_) {
-        other.ptr_ = NullType::singleton();
+        other.ptr_ = null_type::singleton();
     }
 
     /*!
@@ -145,9 +145,9 @@ public:
      *
      * \param other The other ObjectPtr.
      */
-    template<typename Derived, typename DerivedNullType>
-    ObjectPtr(const ObjectPtr<Derived, DerivedNullType>& other)// NOLINT
-        : ptr_(other.ptr_ == DerivedNullType::singleton() ? NullType::singleton() : other.ptr_) {
+    template<typename Derived>
+    ObjectPtr(const ObjectPtr<Derived>& other)// NOLINT
+        : ptr_(other.ptr_ == null_type_of<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         retain();
     }
@@ -155,18 +155,18 @@ public:
     /*!
      * \brief Move constructor.
      */
-    template<typename Derived, typename DerivedNullType>
-    ObjectPtr(ObjectPtr<Derived, DerivedNullType>&& other) noexcept// NOLINT
-        : ptr_(other.ptr_ == DerivedNullType::singleton() ? NullType::singleton() : other.ptr_) {
+    template<typename Derived>
+    ObjectPtr(ObjectPtr<Derived>&& other) noexcept// NOLINT
+        : ptr_(other.ptr_ == null_type_of<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
-        other.ptr_ = DerivedNullType::singleton();
+        other.ptr_ = null_type_of<Derived>::singleton();
     }
 
     /*!
      * \brief Copy assignment operator.
      */
-    template<typename Derived, typename DerivedNullType>
-    ObjectPtr& operator=(const ObjectPtr<Derived, DerivedNullType>& rhs) & {
+    template<typename Derived>
+    ObjectPtr& operator=(const ObjectPtr<Derived>& rhs) & {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         ObjectPtr(rhs).swap(*this);
         return *this;
@@ -175,8 +175,8 @@ public:
     /*!
      * \brief Move assignment operator.
      */
-    template<typename Derived, typename DerivedNullType>
-    ObjectPtr& operator=(ObjectPtr<Derived, DerivedNullType>&& rhs) & noexcept {
+    template<typename Derived>
+    ObjectPtr& operator=(ObjectPtr<Derived>&& rhs) & noexcept {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         ObjectPtr(std::move(rhs)).swap(*this);
         return *this;
@@ -200,7 +200,7 @@ public:
         if (defined()) {
             ptr_->DecRef();
         }
-        ptr_ = NullType::singleton();
+        ptr_ = null_type::singleton();
     }
 
     void swap(ObjectPtr& other) noexcept {
@@ -208,7 +208,7 @@ public:
     }
 
     NODISCARD bool defined() const {
-        return ptr_ != NullType::singleton();
+        return ptr_ != null_type::singleton();
     }
 
     T* get() const noexcept {
@@ -223,7 +223,7 @@ public:
         return ptr_;
     }
 
-    operator bool() const noexcept { // NOLINT
+    operator bool() const noexcept {// NOLINT
         return defined();
     }
 
@@ -246,7 +246,7 @@ public:
    */
     T* release() noexcept {
         T* tmp = ptr_;
-        ptr_ = NullType::singleton();
+        ptr_ = null_type::singleton();
         return tmp;
     }
 
@@ -264,7 +264,7 @@ public:
 
 private:
     void retain() {
-        if (ptr_ != NullType::singleton()) {
+        if (ptr_ != null_type::singleton()) {
             CHECK(ptr_->use_count() > 0)
                     << "ObjectPtr must be copy constructed with an object with ref_count_ > 0";
             ptr_->IncRef();
@@ -272,9 +272,9 @@ private:
     }
 
     explicit ObjectPtr(T* ptr) : ObjectPtr(ptr, DoNotIncRefCountTag()) {
-        if (ptr_ != NullType::singleton()) {
+        if (ptr_ != null_type::singleton()) {
             CHECK(ptr_->use_count() == 0)
-                    << "ObjectPtr must be constructed with a NullType or an object with ref_count_ == 0";
+                    << "ObjectPtr must be constructed with a null_type or an object with ref_count_ == 0";
             ptr_->IncRef();
         }
     }
@@ -284,7 +284,7 @@ private:
     template<typename Derived>
     friend class ObjectAllocatorBase;
 
-    template<typename T2, typename NullType2>
+    template<typename T2>
     friend class ObjectPtr;
 };
 

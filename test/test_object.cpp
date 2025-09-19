@@ -15,23 +15,6 @@ public:
     explicit IntObj(int64_t value) : value(value) {}
 };
 
-// class IntObjNullType final : IntObj {
-//     static IntObjNullType singleton_;
-//     IntObjNullType() = default;
-//
-// public:
-//     static constexpr IntObj* singleton() noexcept {
-//         return &singleton_;
-//     }
-// };
-//
-// IntObjNullType IntObjNullType::singleton_;
-//
-// template<>
-// struct GetNullType<IntObj> {
-//     using type = IntObjNullType;
-// };
-
 namespace {
 
 TEST(object, ctors) {
@@ -263,13 +246,13 @@ TEST(object, given_invalid_ptr_move_assign_invalid_ptr_to_base_class_then_new_in
 }
 
 TEST(object, given_nulltype_move_assign_to_diff_nulltype_then_has_new_nulltype) {
-    ObjectPtr<SomeClass, NullType1> obj1;
-    ObjectPtr<SomeClass, NullType2> obj2;
+    ObjectPtr<SomeClass> obj1;
+    ObjectPtr<SomeClass> obj2;
     obj2 = std::move(obj1);
     EXPECT_NE(NullType1::singleton(), NullType2::singleton());
     // NOLINTNEXTLINE(bugprone-use-after-move)
-    EXPECT_EQ(NullType1::singleton(), obj1.get());
-    EXPECT_EQ(NullType2::singleton(), obj2.get());
+    EXPECT_NE(NullType1::singleton(), obj1.get());
+    EXPECT_NE(NullType2::singleton(), obj2.get());
     EXPECT_FALSE(obj1.defined());
     EXPECT_FALSE(obj2.defined());
 }
@@ -355,12 +338,12 @@ TEST(object, givenPtr_whenCopyAssigningInvalidPtrToBaseClass_thenNewInstanceIsIn
 }
 
 TEST(object, givenNullPtr_whenCopyAssigningToDifferentNullptr_thenHasNewNullptr) {
-    ObjectPtr<SomeClass, NullType1> obj1;
-    ObjectPtr<SomeClass, NullType2> obj2;
+    ObjectPtr<SomeClass> obj1;
+    ObjectPtr<SomeClass> obj2;
     obj2 = obj1;
     EXPECT_NE(NullType1::singleton(), NullType2::singleton());
-    EXPECT_EQ(NullType1::singleton(), obj1.get());
-    EXPECT_EQ(NullType2::singleton(), obj2.get());
+    EXPECT_NE(NullType1::singleton(), obj1.get());
+    EXPECT_NE(NullType2::singleton(), obj2.get());
     EXPECT_FALSE(obj1.defined());
     EXPECT_FALSE(obj2.defined());
 }
@@ -419,12 +402,12 @@ TEST(object, givenPtr_whenMoveConstructingToBaseClassFromInvalidPtr_thenNewInsta
 }
 
 TEST(object, givenNullPtr_whenMoveConstructingToDifferentNullptr_thenHasNewNullptr) {
-    ObjectPtr<SomeClass, NullType1> obj1;
-    ObjectPtr<SomeClass, NullType2> obj2 = std::move(obj1);
+    ObjectPtr<SomeClass> obj1;
+    ObjectPtr<SomeClass> obj2 = std::move(obj1);
     EXPECT_NE(NullType1::singleton(), NullType2::singleton());
     // NOLINTNEXTLINE(bugprone-use-after-move)
-    EXPECT_EQ(NullType1::singleton(), obj1.get());
-    EXPECT_EQ(NullType2::singleton(), obj2.get());
+    EXPECT_NE(NullType1::singleton(), obj1.get());
+    EXPECT_NE(NullType2::singleton(), obj2.get());
     EXPECT_FALSE(obj1.defined());
     EXPECT_FALSE(obj2.defined());
 }

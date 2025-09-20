@@ -42,7 +42,7 @@ public:
     * Newly created objects require manual reference count management,
     * typically wrapped using ObjectPtr.
     */
-    Object() : ref_count_(0), deleter_(nullptr) {}
+    Object() : strong_ref_count_(0), weak_ref_count_(0), deleter_(nullptr) {}
 
     /*!
      * \brief Get the current reference count of the object.
@@ -55,7 +55,11 @@ public:
      * \return The current reference count value of the object
      */
     NODISCARD uint32_t use_count() const {
-        return __atomic_load_n(&ref_count_, __ATOMIC_RELAXED);
+        return __atomic_load_n(&strong_ref_count_, __ATOMIC_RELAXED);
+    }
+
+    NODISCARD uint32_t weak_use_count() const {
+        return __atomic_load_n(&weak_ref_count_, __ATOMIC_RELAXED);
     }
 
     /*!
@@ -86,7 +90,11 @@ private:
      * is not required.
      */
     void IncRef() {
-        __atomic_fetch_add(&ref_count_, 1, __ATOMIC_RELAXED);
+        __atomic_fetch_add(&strong_ref_count_, 1, __ATOMIC_RELAXED);
+    }
+
+    void IncWeakRef() {
+        __atomic_fetch_add(&weak_ref_count_, 1, __ATOMIC_RELAXED);
     }
 
     /*!
@@ -101,7 +109,7 @@ private:
      * function is set, the deleter function will be invoked.
      */
     void DecRef() {
-        if (__atomic_fetch_sub(&ref_count_, 1, __ATOMIC_RELEASE) == 1) {
+        if (__atomic_fetch_sub(&strong_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
             // only acquire when we need to call deleter
             // in this case we need to ensure all previous writes are visible
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
@@ -111,14 +119,23 @@ private:
         }
     }
 
+    void DecWeakRef() {
+        __atomic_fetch_sub(&weak_ref_count_, 1, __ATOMIC_RELEASE);
+    }
+
     /*! \brief Reference counter of the object. */
-    uint32_t ref_count_;
+    uint32_t strong_ref_count_;
+
+    uint32_t weak_ref_count_;
 
     /*! \brief Deleter to be invoked when reference counter goes to zero. */
     FDeleter deleter_;
 
     template<typename T>
     friend class ObjectPtr;
+
+    template<typename U>
+    friend class WeakObjectPtr;
 
     friend struct details::ObjectUnsafe;
 };
@@ -160,7 +177,6 @@ struct DoNotIncRefCountTag final {};
  */
 template<typename T>
 class ObjectPtr final {
-public:
     using element_type = T;
     using null_type = null_type_of<T>;
 
@@ -168,6 +184,7 @@ public:
     static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
                   "NullType::singleton() must return a element_type* pointer");
 
+public:
     /*!
      * \brief Default constructor.
      *
@@ -333,7 +350,7 @@ public:
 
 private:
     void retain() {
-        if (ptr_ != null_type::singleton()) {
+        if (defined()) {
             CHECK(ptr_->use_count() > 0)
                     << "ObjectPtr must be copy constructed with an object with ref_count_ > 0";
             ptr_->IncRef();
@@ -341,7 +358,7 @@ private:
     }
 
     explicit ObjectPtr(T* ptr) : ObjectPtr(ptr, DoNotIncRefCountTag()) {
-        if (ptr_ != null_type::singleton()) {
+        if (defined()) {
             CHECK(ptr_->use_count() == 0)
                     << "ObjectPtr must be constructed with a null_type or an object with ref_count_ == 0";
             ptr_->IncRef();
@@ -355,6 +372,50 @@ private:
 
     template<typename T2>
     friend class ObjectPtr;
+};
+
+template<typename T>
+class WeakObjectPtr final {
+    using element_type = T;
+    using null_type = null_type_of<T>;
+
+    static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
+    static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
+                  "NullType::singleton() must return a element_type* pointer");
+
+public:
+    NODISCARD bool defined() const noexcept {
+        return ptr_ != null_type::singleton();
+    }
+
+    NODISCARD uint32_t use_count() const noexcept {
+        return ptr_->use_count();
+    }
+
+    NODISCARD uint32_t weak_use_count() const noexcept {
+        return ptr_->weak_use_count();
+    }
+
+    NODISCARD bool expired() const noexcept {
+        return use_count() == 0;
+    }
+
+    void reset() {
+        if (defined()) {
+            ptr_->DecWeakRef();
+        }
+        ptr_ = null_type::singleton();
+    }
+
+private:
+    explicit WeakObjectPtr(T* ptr) : ptr_(ptr) {}
+
+
+
+    T* ptr_;
+
+    template<typename T2>
+    friend class WeakObjectPtr;
 };
 
 namespace details {

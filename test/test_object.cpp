@@ -49,6 +49,8 @@ TEST(object, ctors) {
     EXPECT_TRUE(p4.defined());
     EXPECT_EQ(p4.use_count(), 2);
     EXPECT_EQ(static_cast<IntObj*>(p4.get())->value, 5);
+    // std::weak_ptr<int> p;
+    // p.expired();
 }
 
 class Class0 : public Object {};
@@ -67,7 +69,6 @@ public:
     int val2_;
 };
 
-static_assert(std::is_same_v<Class0, ObjectPtr<Class0>::element_type>);
 
 struct SomeBaseClass : Object {
     SomeBaseClass() : val_(0) {}

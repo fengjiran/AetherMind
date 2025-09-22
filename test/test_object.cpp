@@ -455,4 +455,179 @@ TEST(object, givenPtr_whenCopyConstructingToBaseClass_thenPointsToSameObject) {
     EXPECT_EQ(objptr, base.get());
 }
 //546
+
+TEST(weak_object_ptr, basic_construction) {
+    // 默认构造函数
+    WeakObjectPtr<NumberObj> weak1;
+    EXPECT_FALSE(weak1.defined());
+    EXPECT_TRUE(weak1.expired());
+    EXPECT_EQ(weak1.use_count(), 0);
+    EXPECT_EQ(weak1.weak_use_count(), 0);
+
+    // 从ObjectPtr构造
+    auto obj = make_object<NumberObj>();
+    WeakObjectPtr<NumberObj> weak2(obj);
+    EXPECT_TRUE(weak2.defined());
+    EXPECT_FALSE(weak2.expired());
+    EXPECT_EQ(weak2.use_count(), 1);
+    EXPECT_EQ(weak2.weak_use_count(), 2);
+}
+
+TEST(weak_object_ptr, copy_construction) {
+    auto obj = make_object<NumberObj>();
+    WeakObjectPtr<NumberObj> weak1(obj);
+
+    // 拷贝构造
+    WeakObjectPtr<NumberObj> weak2(weak1);
+    EXPECT_TRUE(weak2.defined());
+    EXPECT_EQ(weak2.use_count(), 1);
+    EXPECT_EQ(weak2.weak_use_count(), 3);
+
+    // 验证两个weak指针指向同一个对象
+    EXPECT_EQ(weak1.unsafe_get(), weak2.unsafe_get());
+}
+
+TEST(weak_object_ptr, move_construction) {
+    auto obj = make_object<NumberObj>();
+    WeakObjectPtr<NumberObj> weak1(obj);
+
+    // 移动构造
+    WeakObjectPtr<NumberObj> weak2(std::move(weak1));
+    EXPECT_TRUE(weak2.defined());
+    EXPECT_FALSE(weak1.defined());// 原指针应该被置空
+    EXPECT_EQ(weak2.use_count(), 1);
+    EXPECT_EQ(weak2.weak_use_count(), 2);
+}
+
+TEST(weak_object_ptr, assignment_operators) {
+    auto obj1 = make_object<NumberObj>();
+    auto obj2 = make_object<NumberObj>();
+
+    WeakObjectPtr<NumberObj> weak1(obj1);
+    WeakObjectPtr<NumberObj> weak2(obj2);
+
+    // 拷贝赋值
+    weak2 = weak1;
+    EXPECT_EQ(weak1.unsafe_get(), weak2.unsafe_get());
+    EXPECT_EQ(weak1.use_count(), 1);
+    EXPECT_EQ(weak1.weak_use_count(), 3);
+
+    // 移动赋值
+    WeakObjectPtr<NumberObj> weak3;
+    weak3 = std::move(weak1);
+    EXPECT_TRUE(weak3.defined());
+    EXPECT_FALSE(weak1.defined());
+}
+
+TEST(weak_object_ptr, lock_operation) {
+    auto obj = make_object<NumberObj>();
+    WeakObjectPtr<NumberObj> weak(obj);
+
+    // lock应该返回有效的ObjectPtr
+    auto locked = weak.lock();
+    EXPECT_TRUE(locked.defined());
+    EXPECT_EQ(locked.use_count(), 2);// obj + locked
+
+    // 释放原始对象后lock应该返回nullptr
+    obj.reset();
+    auto locked_after = weak.lock();
+    EXPECT_TRUE(locked_after.defined());
+    EXPECT_FALSE(weak.expired());
+}
+
+TEST(weak_object_ptr, expired_check) {
+    auto obj = make_object<NumberObj>();
+    WeakObjectPtr<NumberObj> weak(obj);
+
+    EXPECT_FALSE(weak.expired());
+
+    obj.reset();
+    EXPECT_TRUE(weak.expired());
+}
+
+TEST(weak_object_ptr, reset_operation) {
+    auto obj = make_object<NumberObj>();
+    WeakObjectPtr<NumberObj> weak(obj);
+
+    EXPECT_TRUE(weak.defined());
+
+    weak.reset();
+    EXPECT_FALSE(weak.defined());
+    EXPECT_TRUE(weak.expired());
+}
+
+TEST(weak_object_ptr, release_operation) {
+    auto obj = make_object<NumberObj>();
+    WeakObjectPtr<NumberObj> weak(obj);
+
+    auto* released = weak.release();
+    EXPECT_EQ(released, obj.get());
+    EXPECT_FALSE(weak.defined());
+
+    // 需要手动管理释放的指针
+    details::ObjectUnsafe::DecWeakRef(released);
+}
+
+TEST(weak_object_ptr, inheritance_conversion) {
+    auto intObj = make_object<IntObj>(42);
+
+    // 从派生类到基类的转换
+    WeakObjectPtr<NumberObj> weak_base(intObj);
+    EXPECT_TRUE(weak_base.defined());
+
+    // 验证转换后的指针类型
+    auto locked = weak_base.lock();
+    EXPECT_TRUE(locked.get() == intObj.get());
+}
+
+TEST(weak_object_ptr, comparison_operators) {
+    auto obj1 = make_object<NumberObj>();
+    auto obj2 = make_object<NumberObj>();
+
+    WeakObjectPtr<NumberObj> weak1(obj1);
+    WeakObjectPtr<NumberObj> weak2(obj1);// 指向同一个对象
+    WeakObjectPtr<NumberObj> weak3(obj2);// 指向不同对象
+
+    EXPECT_EQ(weak1, weak2);
+    EXPECT_NE(weak1, weak3);
+
+    // 空指针比较
+    WeakObjectPtr<NumberObj> weak4;
+    WeakObjectPtr<NumberObj> weak5;
+    EXPECT_EQ(weak4, weak5);
+}
+
+TEST(weak_object_ptr, swap_operation) {
+    auto obj1 = make_object<NumberObj>();
+    auto obj2 = make_object<NumberObj>();
+
+    WeakObjectPtr<NumberObj> weak1(obj1);
+    WeakObjectPtr<NumberObj> weak2(obj2);
+
+    auto* ptr1 = weak1.unsafe_get();
+    auto* ptr2 = weak2.unsafe_get();
+
+    weak1.swap(weak2);
+
+    EXPECT_EQ(weak1.unsafe_get(), ptr2);
+    EXPECT_EQ(weak2.unsafe_get(), ptr1);
+}
+
+TEST(weak_object_ptr, reclaim_operation) {
+    auto obj = make_object<NumberObj>();
+
+    // 创建多个weak引用
+    WeakObjectPtr<NumberObj> weak1(obj);
+    WeakObjectPtr<NumberObj> weak2(obj);
+
+    // 释放原始对象
+    obj.reset();
+
+    // 使用reclaim回收指针
+    auto reclaimed = WeakObjectPtr<NumberObj>::reclaim(weak1.release());
+    EXPECT_TRUE(reclaimed.defined());
+    EXPECT_EQ(reclaimed.use_count(), 0);
+    EXPECT_EQ(reclaimed.weak_use_count(), 2);
+}
+
 }// namespace

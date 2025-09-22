@@ -40,26 +40,38 @@
 namespace aethermind {
 namespace details {
 
-/*
- * Convert a 16-bit floating-point number in IEEE half-precision format, in bit
+/*!
+ * \brief Converts a 16-bit floating-point number in IEEE half-precision format, in bit
  * representation, to a 32-bit floating-point number in IEEE single-precision
  * format, in a bit representation.
  *
  * @note The implementation doesn't use any floating-point operations.
+ * \param h The 16-bit floating-point number in IEEE half-precision format, in bit representation.
+ * \return The 32-bit floating-point number in IEEE single-precision format, in bit representation.
  */
 uint32_t half_to_fp32_bits_ieee(uint16_t h);
 
-/*
- * Convert a 16-bit floating-point number in IEEE half-precision format, in bit
- * representation, to a 32-bit floating-point number in IEEE single-precision
- * format.
+/*!
+ * \brief Converts a 16-bit floating-point number in IEEE half-precision format, in bit
+ * representation, to a 32-bit floating-point number in IEEE single-precision format.
  *
  * @note The implementation relies on IEEE-like (no assumption about rounding
  * mode and no operations on denormals) floating-point operations and bitcasts
  * between integer and floating-point variables.
+ * \param h The 16-bit floating-point number in IEEE half-precision format, in bit representation.
+ * \return The 32-bit floating-point number in IEEE single-precision format.
  */
 float half_to_fp32_value_ieee(uint16_t h);
 
+/*!
+ * \brief Converts a 32-bit floating-point number in IEEE single-precision format, in bit
+ * representation, to a 16-bit floating-point number in IEEE half-precision format, in bit
+ * representation.
+ *
+ * @note The implementation doesn't use any floating-point operations.
+ * \param f The 32-bit floating-point number in IEEE single-precision format, in bit representation.
+ * \return The 16-bit floating-point number in IEEE half-precision format, in bit representation.
+ */
 uint16_t half_from_fp32_value_ieee(float f);
 
 }// namespace details

@@ -23,6 +23,12 @@ class ObjectAllocatorBase;
 
 }// namespace details
 
+enum DeleterFlag : uint8_t {
+    kStrongPtrMask = 0x01,
+    kWeakPtrMask = 0x02,
+    kBothPtrMask = kStrongPtrMask | kWeakPtrMask,
+};
+
 /*!
  * \brief Base class for reference-counted objects.
  *
@@ -32,7 +38,8 @@ class ObjectAllocatorBase;
  */
 class Object {
 public:
-    using FDeleter = void (*)(Object*);
+    // using FDeleter = void (*)(Object*);
+    using FDeleter = void (*)(Object*, uint8_t);
 
     /*!
     * \brief Default constructor, initializes a reference-counted object.
@@ -110,17 +117,41 @@ private:
      */
     void DecRef() {
         if (__atomic_fetch_sub(&strong_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
-            // only acquire when we need to call deleter
-            // in this case we need to ensure all previous writes are visible
-            __atomic_thread_fence(__ATOMIC_ACQUIRE);
-            if (deleter_ != nullptr) {
-                deleter_(this);
+            if (weak_use_count() == 1) {
+                // only acquire when we need to call deleter
+                // in this case we need to ensure all previous writes are visible
+                __atomic_thread_fence(__ATOMIC_ACQUIRE);
+                if (deleter_ != nullptr) {
+                    deleter_(this, kBothPtrMask);
+                }
+            } else {
+                // Slower path: there is still a weak reference left
+                __atomic_thread_fence(__ATOMIC_ACQUIRE);
+                // call destructor first, release source
+                if (deleter_ != nullptr) {
+                    deleter_(this, kStrongPtrMask);
+                }
+
+                // decrease weak ref count
+                if (__atomic_fetch_sub(&weak_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
+                    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+                    // free memory
+                    if (deleter_ != nullptr) {
+                        deleter_(this, kWeakPtrMask);
+                    }
+                }
             }
         }
     }
 
     void DecWeakRef() {
-        __atomic_fetch_sub(&weak_ref_count_, 1, __ATOMIC_RELEASE);
+        if (__atomic_fetch_sub(&weak_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
+            __atomic_thread_fence(__ATOMIC_ACQUIRE);
+            // free memory
+            if (deleter_ != nullptr) {
+                deleter_(this, kWeakPtrMask);
+            }
+        }
     }
 
     /*! \brief Reference counter of the object. */
@@ -384,6 +415,8 @@ class WeakObjectPtr final {
                   "NullType::singleton() must return a element_type* pointer");
 
 public:
+    WeakObjectPtr() noexcept : ptr_(null_type::singleton()) {}
+
     NODISCARD bool defined() const noexcept {
         return ptr_ != null_type::singleton();
     }
@@ -409,7 +442,6 @@ public:
 
 private:
     explicit WeakObjectPtr(T* ptr) : ptr_(ptr) {}
-
 
     T* ptr_;
 
@@ -527,10 +559,15 @@ public:
             return reinterpret_cast<T*>(data);
         }
 
-        static void deleter(Object* ptr) {
+        static void deleter(Object* ptr, uint8_t flag) {
             T* p = static_cast<T*>(ptr);
-            p->T::~T(); // release source
-            delete reinterpret_cast<StorageType*>(p); // free memory
+            if (flag & kStrongPtrMask) {
+                p->T::~T();// release source
+            }
+
+            if (flag & kWeakPtrMask) {
+                delete reinterpret_cast<StorageType*>(p);// free memory
+            }
         }
     };
 
@@ -551,10 +588,15 @@ public:
             return reinterpret_cast<ObjType*>(data);
         }
 
-        static void deleter(Object* ptr) {
+        static void deleter(Object* ptr, uint8_t flag) {
             auto* p = static_cast<ObjType*>(ptr);
-            p->ObjType::~ObjType();
-            delete[] reinterpret_cast<StorageType*>(p);
+            if (flag & kStrongPtrMask) {
+                p->ObjType::~ObjType();
+            }
+
+            if (flag & kWeakPtrMask) {
+                delete[] reinterpret_cast<StorageType*>(p);
+            }
         }
     };
 };

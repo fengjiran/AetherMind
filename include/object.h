@@ -6,6 +6,7 @@
 #define AETHERMIND_OBJECT_H
 
 #include "macros.h"
+#include "object.h"
 
 #include <glog/logging.h>
 #include <memory>
@@ -152,6 +153,21 @@ private:
                 deleter_(this, kWeakPtrMask);
             }
         }
+    }
+
+    bool TryPromoteWeakPtr() {
+        uint32_t old_cnt = __atomic_load_n(&strong_ref_count_, __ATOMIC_RELAXED);
+        // must do CAS to ensure that we are the only one that increases the reference count
+        // avoid condition when two threads tries to promote weak to strong at same time
+        // or when strong deletion happens between the load and the CAS
+        while (old_cnt > 0) {
+            uint32_t new_cnt = old_cnt + 1;
+            if (__atomic_compare_exchange_n(&strong_ref_count_, &old_cnt, new_cnt, true,
+                                            __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /*! \brief Reference counter of the object. */
@@ -417,6 +433,60 @@ class WeakObjectPtr final {
 public:
     WeakObjectPtr() noexcept : ptr_(null_type::singleton()) {}
 
+    explicit WeakObjectPtr(const ObjectPtr<T>& other) : WeakObjectPtr(other.get()) {
+        retain();
+    }
+
+    WeakObjectPtr(const WeakObjectPtr& other) : ptr_(other.ptr_) {
+        retain();
+    }
+
+    WeakObjectPtr(WeakObjectPtr&& other) noexcept : ptr_(other.ptr_) {
+        other.ptr_ = null_type::singleton();
+    }
+
+    template<typename Derived>
+    WeakObjectPtr(const WeakObjectPtr<Derived>& other)// NOLINT
+        : ptr_(other.ptr_ == null_type_of<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
+        retain();
+    }
+
+    template<typename Derived>
+    WeakObjectPtr(WeakObjectPtr<Derived>&& other) noexcept// NOLINT
+        : ptr_(other.ptr_ == null_type_of<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
+        other.ptr_ = null_type_of<Derived>::singleton();
+    }
+
+    WeakObjectPtr& operator=(const WeakObjectPtr& rhs) & {
+        WeakObjectPtr(rhs).swap(*this);
+        return *this;
+    }
+
+    WeakObjectPtr& operator=(WeakObjectPtr&& rhs) & noexcept {
+        WeakObjectPtr(std::move(rhs)).swap(*this);
+        return *this;
+    }
+
+    template<typename Derived>
+    WeakObjectPtr& operator=(const WeakObjectPtr<Derived>& rhs) & {
+        static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
+        WeakObjectPtr(rhs).swap(*this);
+        return *this;
+    }
+
+    template<typename Derived>
+    WeakObjectPtr& operator=(WeakObjectPtr<Derived>&& rhs) & noexcept {
+        static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
+        WeakObjectPtr(std::move(rhs)).swap(*this);
+        return *this;
+    }
+
+    ~WeakObjectPtr() noexcept {
+        reset();
+    }
+
     NODISCARD bool defined() const noexcept {
         return ptr_ != null_type::singleton();
     }
@@ -433,6 +503,30 @@ public:
         return use_count() == 0;
     }
 
+    ObjectPtr<T> lock() const noexcept {
+        if (ptr_->TryPromoteWeakPtr()) {
+            return ObjectPtr<T>(ptr_, DoNotIncRefCountTag());
+        }
+        return nullptr;
+    }
+
+    T* release() noexcept {
+        auto* tmp = ptr_;
+        ptr_ = null_type::singleton();
+        return tmp;
+    }
+
+    static WeakObjectPtr reclaim(T* ptr) {
+        CHECK(ptr == null_type::singleton() ||
+              ptr->weak_use_count() > 1 ||
+              (ptr->use_count() == 0 && ptr->weak_use_count() > 0));
+        return WeakObjectPtr(ptr);
+    }
+
+    void swap(WeakObjectPtr& other) noexcept {
+        std::swap(ptr_, other.ptr_);
+    }
+
     void reset() {
         if (defined()) {
             ptr_->DecWeakRef();
@@ -440,13 +534,31 @@ public:
         ptr_ = null_type::singleton();
     }
 
+    T* unsafe_get() const noexcept {
+        return ptr_;
+    }
+
 private:
     explicit WeakObjectPtr(T* ptr) : ptr_(ptr) {}
+
+    void retain() {
+        if (defined()) {
+            CHECK(ptr_->weak_use_count() > 0)
+                    << "ObjectPtr must be copy constructed with an object with weak_ref_count_ > 0";
+            ptr_->IncWeakRef();
+        }
+    }
 
     T* ptr_;
 
     template<typename T2>
     friend class WeakObjectPtr;
+
+    template<typename T1, typename T2>
+    friend bool operator<(const WeakObjectPtr<T1>&, const WeakObjectPtr<T2>&) noexcept;
+
+    template<typename T1, typename T2>
+    friend bool operator==(const WeakObjectPtr<T1>&, const WeakObjectPtr<T2>&) noexcept;
 };
 
 namespace details {
@@ -516,6 +628,26 @@ bool operator!=(const ObjectPtr<T>& lhs, std::nullptr_t) noexcept {
 template<typename T>
 bool operator!=(std::nullptr_t, const ObjectPtr<T>& rhs) noexcept {
     return nullptr != rhs.get();
+}
+
+template<typename T1, typename T2>
+void swap(WeakObjectPtr<T1>& lhs, WeakObjectPtr<T2>& rhs) noexcept {
+    lhs.swap(rhs);
+}
+
+template<typename T1, typename T2>
+bool operator<(const WeakObjectPtr<T1>& lhs, const WeakObjectPtr<T2>& rhs) noexcept {
+    return lhs.ptr_ < rhs.ptr_;
+}
+
+template<typename T1, typename T2>
+bool operator==(const WeakObjectPtr<T1>& lhs, const WeakObjectPtr<T2>& rhs) noexcept {
+    return lhs.ptr_ == rhs.ptr_;
+}
+
+template<typename T1, typename T2>
+bool operator!=(const WeakObjectPtr<T1>& lhs, const WeakObjectPtr<T2>& rhs) noexcept {
+    return !(lhs == rhs);
 }
 
 namespace details {
@@ -620,6 +752,13 @@ template<typename T>
 struct hash<aethermind::ObjectPtr<T>> {
     size_t operator()(const aethermind::ObjectPtr<T>& ptr) const {
         return std::hash<T*>()(ptr.get());
+    }
+};
+
+template<typename T>
+struct hash<aethermind::WeakObjectPtr<T>> {
+    size_t operator()(const aethermind::WeakObjectPtr<T>& ptr) const {
+        return std::hash<T*>()(ptr.unsafe_get());
     }
 };
 }// namespace std

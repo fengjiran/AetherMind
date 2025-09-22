@@ -411,7 +411,6 @@ private:
     explicit WeakObjectPtr(T* ptr) : ptr_(ptr) {}
 
 
-
     T* ptr_;
 
     template<typename T2>
@@ -429,6 +428,18 @@ struct ObjectUnsafe {
     static void DecRef(Object* ptr) {
         if (ptr) {
             ptr->DecRef();
+        }
+    }
+
+    static void IncWeakRef(Object* ptr) {
+        if (ptr) {
+            ptr->IncWeakRef();
+        }
+    }
+
+    static void DecWeakRef(Object* ptr) {
+        if (ptr) {
+            ptr->DecWeakRef();
         }
     }
 };
@@ -486,6 +497,7 @@ public:
         using Handler = Derived::template Handler<T>;
         T* ptr = Handler::allocate(std::forward<Args>(args)...);
         ptr->SetDeleter(Handler::deleter);
+        ObjectUnsafe::IncWeakRef(ptr);
         return ObjectPtr<T>(ptr);
     }
 
@@ -495,6 +507,7 @@ public:
         using Handler = Derived::template ArrayHandler<T, ElemType>;
         T* ptr = Handler::allocate(num_elems, std::forward<Args>(args)...);
         ptr->SetDeleter(Handler::deleter);
+        ObjectUnsafe::IncWeakRef(ptr);
         return ObjectPtr<T>(ptr);
     }
 };
@@ -516,8 +529,8 @@ public:
 
         static void deleter(Object* ptr) {
             T* p = static_cast<T*>(ptr);
-            p->T::~T();
-            delete reinterpret_cast<StorageType*>(p);
+            p->T::~T(); // release source
+            delete reinterpret_cast<StorageType*>(p); // free memory
         }
     };
 

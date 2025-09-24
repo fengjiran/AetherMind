@@ -133,6 +133,17 @@ private:
     ObjectPtr<FunctionImpl> pimpl_;
 };
 
+template<>
+struct TypeTraits<Function> : TypeTraitsBase {
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::Function;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::Function);
+    }
+};
+
 }// namespace aethermind
 
 #endif//AETHERMIND_FUNCTION_H

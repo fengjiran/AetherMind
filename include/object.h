@@ -99,6 +99,10 @@ public:
         deleter_ = deleter;
     }
 
+    // virtual bool is_null_type_ptr() const {
+    //     return false;
+    // }
+
 private:
     /*!
      * \brief Increment the reference count of the object.
@@ -248,9 +252,6 @@ public:
     }
 };
 
-template<typename T>
-using null_type_of = NullTypeOf<T>;
-
 /*!
  * \brief Tag type to indicate that reference count should not be incremented.
  */
@@ -270,7 +271,7 @@ struct DoNotIncRefCountTag final {};
 template<typename T>
 class ObjectPtr final {
     using element_type = T;
-    using null_type = null_type_of<T>;
+    using null_type = NullTypeOf<T>;
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
     static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
                   "NullType::singleton() must return a element_type* pointer");
@@ -325,7 +326,7 @@ public:
      */
     template<typename Derived>
     ObjectPtr(const ObjectPtr<Derived>& other)// NOLINT
-        : ptr_(other.ptr_ == null_type_of<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         retain();
     }
@@ -337,9 +338,9 @@ public:
      */
     template<typename Derived>
     ObjectPtr(ObjectPtr<Derived>&& other) noexcept// NOLINT
-        : ptr_(other.ptr_ == null_type_of<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
-        other.ptr_ = null_type_of<Derived>::singleton();
+        other.ptr_ = NullTypeOf<Derived>::singleton();
     }
 
     /*!
@@ -556,7 +557,7 @@ private:
 template<typename T>
 class WeakObjectPtr final {
     using element_type = T;
-    using null_type = null_type_of<T>;
+    using null_type = NullTypeOf<T>;
 
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
     static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
@@ -579,16 +580,16 @@ public:
 
     template<typename Derived>
     WeakObjectPtr(const WeakObjectPtr<Derived>& other)// NOLINT
-        : ptr_(other.ptr_ == null_type_of<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         retain();
     }
 
     template<typename Derived>
     WeakObjectPtr(WeakObjectPtr<Derived>&& other) noexcept// NOLINT
-        : ptr_(other.ptr_ == null_type_of<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
-        other.ptr_ = null_type_of<Derived>::singleton();
+        other.ptr_ = NullTypeOf<Derived>::singleton();
     }
 
     WeakObjectPtr& operator=(const WeakObjectPtr& rhs) & {

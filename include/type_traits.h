@@ -6,7 +6,7 @@
 #define AETHERMIND_TYPE_TRAITS_H
 
 #include "container/string.h"
-#include "function.h"
+// #include "function.h"
 #include "object.h"
 #include "tensor.h"
 
@@ -102,7 +102,7 @@ inline bool IsNullTypePtr(const Object* ptr) {
         return true;
     }
 
-    if (static_cast<const void*>(ptr) == static_cast<void*>(null_type_of<StringImpl>::singleton())) {
+    if (static_cast<const void*>(ptr) == static_cast<void*>(NullTypeOf<StringImpl>::singleton())) {
         return true;
     }
     return false;
@@ -402,7 +402,7 @@ struct TypeTraits<String> : TypeTraitsBase {
         dst->tag_ = AnyTag::String;
         Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
-        if (obj != null_type_of<StringImpl>::singleton()) {
+        if (obj != NullTypeOf<StringImpl>::singleton()) {
             details::ObjectUnsafe::IncRef(obj);
         }
     }
@@ -414,7 +414,7 @@ struct TypeTraits<String> : TypeTraitsBase {
 
     static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
-        if (obj != null_type_of<StringImpl>::singleton()) {
+        if (obj != NullTypeOf<StringImpl>::singleton()) {
             details::ObjectUnsafe::IncRef(obj);
         }
         return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
@@ -447,31 +447,23 @@ template<>
 struct TypeTraits<const char*> : TypeTraits<String> {};
 
 template<>
-struct TypeTraits<std::string> : TypeTraits<String> {
-    // static void CopyToAny(const std::string& src, AetherMindAny* dst) {
-    //     TypeTraits<String>::CopyToAny(String(src), dst);
-    // }
-    //
-    // static void MoveToAny(std::string src, AetherMindAny* dst) {
-    //     TypeTraits<String>::MoveToAny(std::move(src), dst);
-    // }
-};
+struct TypeTraits<std::string> : TypeTraits<String> {};
 
-// TODO: 实现StorageImpl的类型 traits
+// TODO: 实现Storage的类型 traits
 template<>
 struct TypeTraits<Storage> : TypeTraitsBase {
 };
 
-template<>
-struct TypeTraits<Function> : TypeTraitsBase {
-    static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Function;
-    }
-
-    static std::string TypeStr() {
-        return AnyTagToString(AnyTag::Function);
-    }
-};
+// template<>
+// struct TypeTraits<Function> : TypeTraitsBase {
+//     static bool check(const AetherMindAny* src) {
+//         return src->tag_ == AnyTag::Function;
+//     }
+//
+//     static std::string TypeStr() {
+//         return AnyTagToString(AnyTag::Function);
+//     }
+// };
 
 }// namespace aethermind
 

@@ -10,6 +10,9 @@ using namespace aethermind;
 namespace {
 
 TEST(Array, init) {
+    ObjectPtr<ArrayImpl> impl;
+    EXPECT_TRUE(impl.get() == NullTypeOf<ArrayImpl>::singleton());
+    EXPECT_TRUE(IsNullTypePtr(impl.get()));
     Array<int> vec1(5, 42);
     EXPECT_TRUE(vec1.defined());
     EXPECT_TRUE(vec1.unique());

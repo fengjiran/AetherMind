@@ -21,12 +21,12 @@ TEST(object, ctors) {
     ObjectPtr<NumberObj> p1;
     EXPECT_TRUE(!p1.defined());
     EXPECT_EQ(p1.use_count(), 0);
-    EXPECT_TRUE(p1.get() == null_type_of<NumberObj>::singleton());
+    EXPECT_TRUE(p1.get() == NullTypeOf<NumberObj>::singleton());
 
     ObjectPtr<NumberObj> p2 = nullptr;
     EXPECT_TRUE(!p2.defined());
     EXPECT_EQ(p2.use_count(), 0);
-    EXPECT_TRUE(p2.get() == null_type_of<NumberObj>::singleton());
+    EXPECT_TRUE(p2.get() == NullTypeOf<NumberObj>::singleton());
 
     auto p3 = make_object<NumberObj>();
     EXPECT_TRUE(p3.defined());

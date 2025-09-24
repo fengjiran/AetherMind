@@ -6,6 +6,7 @@
 #define AETHERMIND_TYPE_TRAITS_H
 
 #include "container/string.h"
+#include "function.h"
 #include "object.h"
 #include "tensor.h"
 
@@ -46,7 +47,8 @@ namespace aethermind {
     _(RRef, true)                     \
     _(Quantizer, true)                \
     _(Generator, true)                \
-    _(Enum, true)
+    _(Enum, true)                     \
+    _(Function, true)
 
 enum class AnyTag : uint32_t {
 #define DEFINE_TAG(x, _) x,
@@ -457,7 +459,18 @@ struct TypeTraits<std::string> : TypeTraits<String> {
 
 // TODO: 实现StorageImpl的类型 traits
 template<>
-struct TypeTraits<StorageImpl> : TypeTraitsBase {
+struct TypeTraits<Storage> : TypeTraitsBase {
+};
+
+template<>
+struct TypeTraits<Function> : TypeTraitsBase {
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::Function;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::Function);
+    }
 };
 
 }// namespace aethermind

@@ -75,7 +75,7 @@ struct infer_function_traits<std::function<R (*)(Args...)>> {
 };
 
 template<typename T>
-using infer_function_traits_t = typename infer_function_traits<T>::type;
+using infer_function_traits_t = infer_function_traits<T>::type;
 
 template<typename R, typename args_tuple>
 struct make_function_traits;

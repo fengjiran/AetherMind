@@ -271,7 +271,6 @@ template<typename T>
 class ObjectPtr final {
     using element_type = T;
     using null_type = null_type_of<T>;
-
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
     static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
                   "NullType::singleton() must return a element_type* pointer");

@@ -6,7 +6,6 @@
 #define AETHERMIND_ANY_H
 
 #include "error.h"
-#include "container/string.h"
 #include "type_traits.h"
 
 namespace aethermind {

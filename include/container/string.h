@@ -5,7 +5,6 @@
 #ifndef AETHERMIND_STRING_H
 #define AETHERMIND_STRING_H
 
-#include "object.h"
 #include "type_traits.h"
 
 namespace aethermind {
@@ -178,10 +177,6 @@ struct TypeTraits<String> : TypeTraitsBase {
         dst->tag_ = AnyTag::String;
         Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
-        // if (obj != NullTypeOf<StringImpl>::singleton()) {
-        //     details::ObjectUnsafe::IncRef(obj);
-        // }
-
         if (!IsNullTypePtr(obj)) {
             details::ObjectUnsafe::IncRef(obj);
         }
@@ -194,9 +189,6 @@ struct TypeTraits<String> : TypeTraitsBase {
 
     static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
-        // if (obj != NullTypeOf<StringImpl>::singleton()) {
-        //     details::ObjectUnsafe::IncRef(obj);
-        // }
         if (!IsNullTypePtr(obj)) {
             details::ObjectUnsafe::IncRef(obj);
         }
@@ -227,10 +219,41 @@ struct TypeTraits<String> : TypeTraitsBase {
 };
 
 template<>
-struct TypeTraits<const char*> : TypeTraits<String> {};
+struct TypeTraits<const char*> : TypeTraits<String> {
+    static void CopyToAny(const char* src, AetherMindAny* dst) {
+        TypeTraits<String>::CopyToAny(src, dst);
+    }
+
+    static void MoveToAny(const char* src, AetherMindAny* dst) {
+        TypeTraits<String>::MoveToAny(src, dst);
+    }
+};
 
 template<>
-struct TypeTraits<std::string> : TypeTraits<String> {};
+struct TypeTraits<std::string> : TypeTraits<String> {
+    static void CopyToAny(const std::string& src, AetherMindAny* dst) {
+        TypeTraits<String>::CopyToAny(src, dst);
+    }
+
+    static void MoveToAny(std::string src, AetherMindAny* dst) {
+        TypeTraits<String>::MoveToAny(std::move(src), dst);
+    }
+
+    static std::string CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return TypeTraits<String>::CopyFromAnyAfterCheck(src);
+    }
+
+    static std::string MoveFromAnyAfterCheck(AetherMindAny* src) {
+        return TypeTraits<String>::MoveFromAnyAfterCheck(src);
+    }
+
+    static std::optional<std::string> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+};
 
 // Overload < operator
 bool operator<(std::nullptr_t, const String& rhs) = delete;

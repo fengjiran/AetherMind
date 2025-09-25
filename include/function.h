@@ -72,11 +72,11 @@ private:
 
 class FunctionImpl : public Object {
 public:
-    using FCall = void (*)(const FunctionImpl*, const Any*, int32_t, Any*);
+    using FCall = std::function<void(const FunctionImpl*, const Any*, int32_t, Any*)>;
 
     FunctionImpl() : callable_(nullptr) {}
 
-    explicit FunctionImpl(FCall callable) : callable_(callable) {}
+    explicit FunctionImpl(FCall callable) : callable_(std::move(callable)) {}
 
     void CallPacked(const Any* args, int32_t num_args, Any* res) const {
         callable_(this, args, num_args, res);
@@ -88,13 +88,13 @@ public:
                               std::is_convertible_v<TCallable, std::function<void(details::PackedArgs args, Any*)>>,
                       "FromPacked requires input function signature to match packed func format");
         if constexpr (std::is_convertible_v<TCallable, std::function<void(details::PackedArgs args, Any*)>>) {
-            auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) mutable -> void {
+            auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) -> void {
                 details::PackedArgs packed_args(args, num_args);
                 packed_call(packed_args, res);
             };
             return make_object<FunctionImpl>(f);
         } else {
-            auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) mutable -> void {
+            auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) -> void {
                 packed_call(args, num_args, res);
             };
             return make_object<FunctionImpl>(f);
@@ -110,6 +110,8 @@ class Function {
 public:
     Function() = default;
 
+    explicit Function(ObjectPtr<FunctionImpl> impl) : pimpl_(std::move(impl)) {}
+
     template<typename TCallable>
     explicit Function(TCallable packed_call) : pimpl_(FunctionImpl::create(packed_call)) {}
 
@@ -117,6 +119,16 @@ public:
     static Function FromPacked(TCallable packed_call) {
         return Function(packed_call);
     }
+
+    NODISCARD bool defined() const noexcept;
+
+    NODISCARD uint32_t use_count() const noexcept;
+
+    NODISCARD bool unique() const noexcept;
+
+    NODISCARD FunctionImpl* get_impl_ptr_unsafe() const noexcept;
+
+    NODISCARD FunctionImpl* release_impl_unsafe() noexcept;
 
     template<typename... Args>
     Any operator()(Args&&... args) const {
@@ -129,12 +141,49 @@ public:
         return res;
     }
 
+
 private:
     ObjectPtr<FunctionImpl> pimpl_;
 };
 
 template<>
 struct TypeTraits<Function> : TypeTraitsBase {
+    static void CopyToAny(const Function& src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Function;
+        FunctionImpl* obj = src.get_impl_ptr_unsafe();
+        dst->payload_ = obj;
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRef(obj);
+        }
+    }
+
+    static void MoveToAny(Function src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Function;
+        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
+    }
+
+    static Function CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRef(obj);
+        }
+        return Function(ObjectPtr<FunctionImpl>::reclaim(static_cast<FunctionImpl*>(obj)));
+    }
+
+    static Function MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        src->payload_ = 0;
+        src->tag_ = AnyTag::None;
+        return Function(ObjectPtr<FunctionImpl>::reclaim(static_cast<FunctionImpl*>(obj)));
+    }
+
+    static std::optional<Function> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+
     static bool check(const AetherMindAny* src) {
         return src->tag_ == AnyTag::Function;
     }

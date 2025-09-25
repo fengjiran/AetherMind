@@ -6,6 +6,7 @@
 #define AETHERMIND_TENSOR_H
 
 #include "tensor_impl.h"
+#include "type_traits.h"
 
 namespace aethermind {
 
@@ -65,6 +66,10 @@ public:
 
     NODISCARD bool is_cuda() const;
 
+    NODISCARD TensorImpl* get_impl_ptr_unsafe() const noexcept;
+
+    NODISCARD TensorImpl* release_impl_unsafe();
+
     // NODISCARD Scalar item() const;
 
     NODISCARD void* data_ptr() const;
@@ -96,46 +101,55 @@ private:
     ObjectPtr<TensorImpl> impl_;
 };
 
-
 // Tensor type
-// template<>
-// struct TypeTraits<Tensor> : TypeTraitsBase {
-//     static void CopyToAny(const Tensor& src, AetherMindAny* dst) {
-//         dst->tag_ = AnyTag::Tensor;
-//         dst->payload_ = src;
-//     }
-//
-//     static void MoveToAny(Tensor src, AetherMindAny* dst) {
-//         dst->tag_ = AnyTag::Tensor;
-//         dst->payload_ = std::move(src);
-//     }
-//
-//     static Tensor CopyFromAnyAfterCheck(const AetherMindAny* src) {
-//         return std::get<Tensor>(src->payload_);
-//     }
-//
-//     static Tensor MoveFromAnyAfterCheck(AetherMindAny* src) {
-//         auto t = std::get<Tensor>(std::move(src->payload_));
-//         src->payload_ = 0;
-//         src->tag_ = AnyTag::None;
-//         return t;
-//     }
-//
-//     static std::optional<Tensor> TryCastFromAny(const AetherMindAny* src) {
-//         if (check(src)) {
-//             return std::get<Tensor>(src->payload_);
-//         }
-//         return std::nullopt;
-//     }
-//
-//     static bool check(const AetherMindAny* src) {
-//         return src->tag_ == AnyTag::Tensor;
-//     }
-//
-//     static std::string TypeStr() {
-//         return AnyTagToString(AnyTag::Tensor);
-//     }
-// };
+template<>
+struct TypeTraits<Tensor> : TypeTraitsBase {
+    static void CopyToAny(const Tensor& src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Tensor;
+        Object* obj = src.get_impl_ptr_unsafe();
+        dst->payload_ = obj;
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRef(obj);
+        }
+    }
+
+    static void MoveToAny(Tensor src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Tensor;
+        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
+    }
+
+    static Tensor CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRef(obj);
+        }
+
+        return Tensor(ObjectPtr<TensorImpl>::reclaim(static_cast<TensorImpl*>(obj)));
+    }
+
+    static Tensor MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        src->payload_ = 0;
+        src->tag_ = AnyTag::None;
+        return Tensor(ObjectPtr<TensorImpl>::reclaim(static_cast<TensorImpl*>(obj)));
+    }
+
+    static std::optional<Tensor> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::Tensor;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::Tensor);
+    }
+};
+
 
 std::ostream& operator<<(std::ostream& os, const Tensor& t);
 

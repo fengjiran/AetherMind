@@ -5,9 +5,8 @@
 #ifndef AETHERMIND_TYPE_TRAITS_H
 #define AETHERMIND_TYPE_TRAITS_H
 
-#include "object.h"
-#include "tensor.h"
 #include "device.h"
+#include "object.h"
 
 #include <string>
 #include <type_traits>
@@ -21,7 +20,7 @@ namespace aethermind {
 #define AETHERMIND_FORALL_ANY_TAGS(_) \
     _(None, false)                    \
     _(OpaquePtr, false)               \
-    _(Tensor, false)                  \
+    _(Tensor, true)                   \
     _(Storage, true)                  \
     _(Double, false)                  \
     _(ComplexDouble, true)            \
@@ -90,8 +89,7 @@ struct AetherMindAny {
                                  bool,
                                  void*,
                                  Object*,
-                                 Device,
-                                 Tensor>;
+                                 Device>;
     Payload payload_;
     AnyTag tag_{AnyTag::None};
 };
@@ -341,48 +339,6 @@ struct TypeTraits<Device> : TypeTraitsBase {
         return AnyTagToString(AnyTag::Device);
     }
 };
-
-
-// Tensor type
-template<>
-struct TypeTraits<Tensor> : TypeTraitsBase {
-    static void CopyToAny(const Tensor& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Tensor;
-        dst->payload_ = src;
-    }
-
-    static void MoveToAny(Tensor src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Tensor;
-        dst->payload_ = std::move(src);
-    }
-
-    static Tensor CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return std::get<Tensor>(src->payload_);
-    }
-
-    static Tensor MoveFromAnyAfterCheck(AetherMindAny* src) {
-        auto t = std::get<Tensor>(std::move(src->payload_));
-        src->payload_ = 0;
-        src->tag_ = AnyTag::None;
-        return t;
-    }
-
-    static std::optional<Tensor> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
-            return std::get<Tensor>(src->payload_);
-        }
-        return std::nullopt;
-    }
-
-    static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Tensor;
-    }
-
-    static std::string TypeStr() {
-        return AnyTagToString(AnyTag::Tensor);
-    }
-};
-
 
 // template<>
 // struct TypeTraits<Function> : TypeTraitsBase {

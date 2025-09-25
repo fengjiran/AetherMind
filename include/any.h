@@ -11,6 +11,9 @@
 
 namespace aethermind {
 
+class String;
+class Tensor;
+
 class Any {
 public:
     Any() = default;

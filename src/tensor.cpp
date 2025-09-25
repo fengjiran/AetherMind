@@ -60,6 +60,14 @@ bool Tensor::unique() const {
     return impl_.unique();
 }
 
+TensorImpl* Tensor::get_impl_ptr_unsafe() const noexcept {
+    return impl_.get();
+}
+
+TensorImpl* Tensor::release_impl_unsafe() {
+    return impl_.release();
+}
+
 void* Tensor::data_ptr() const {
     return impl_->data();
 }

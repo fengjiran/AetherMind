@@ -178,7 +178,11 @@ struct TypeTraits<String> : TypeTraitsBase {
         dst->tag_ = AnyTag::String;
         Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
-        if (obj != NullTypeOf<StringImpl>::singleton()) {
+        // if (obj != NullTypeOf<StringImpl>::singleton()) {
+        //     details::ObjectUnsafe::IncRef(obj);
+        // }
+
+        if (!IsNullTypePtr(obj)) {
             details::ObjectUnsafe::IncRef(obj);
         }
     }
@@ -190,7 +194,10 @@ struct TypeTraits<String> : TypeTraitsBase {
 
     static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
-        if (obj != NullTypeOf<StringImpl>::singleton()) {
+        // if (obj != NullTypeOf<StringImpl>::singleton()) {
+        //     details::ObjectUnsafe::IncRef(obj);
+        // }
+        if (!IsNullTypePtr(obj)) {
             details::ObjectUnsafe::IncRef(obj);
         }
         return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));

@@ -3,6 +3,7 @@
 //
 #include "any.h"
 #include "container/string.h"
+#include "tensor.h"
 
 namespace aethermind {
 
@@ -16,16 +17,16 @@ Any::Any(const Any& other) : data_(other.data_) {
 }
 
 Any::Any(Any&& other) noexcept : data_(std::move(other.data_)) {
-    other.reset();
+    other.data_.payload_ = 0;
+    other.data_.tag_ = AnyTag::None;
 }
 
 void Any::reset() {
-    // if (is_object_ptr()) {
-    //     auto* obj = std::get<Object*>(data_.payload_);
-    //     if (!IsNullTypePtr(obj)) {
-    //         ObjectPtr<Object>::reclaim(obj);
-    //     }
-    // }
+    if (is_object_ptr()) {
+        if (auto* obj = std::get<Object*>(data_.payload_); !IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::DecRef(obj);
+        }
+    }
     data_.payload_ = 0;
     data_.tag_ = AnyTag::None;
 }
@@ -33,11 +34,6 @@ void Any::reset() {
 uint32_t Any::use_count() const noexcept {
     if (tag() == AnyTag::None) {
         return 0;
-    }
-
-    if (is_tensor()) {
-        auto t = std::get<Tensor>(data_.payload_);
-        return t.defined() ? t.use_count() - 1 : 0;
     }
 
     if (is_object_ptr()) {

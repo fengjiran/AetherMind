@@ -5,10 +5,9 @@
 #ifndef AETHERMIND_TYPE_TRAITS_H
 #define AETHERMIND_TYPE_TRAITS_H
 
-#include "container/string.h"
-// #include "function.h"
 #include "object.h"
 #include "tensor.h"
+#include "device.h"
 
 #include <string>
 #include <type_traits>
@@ -97,17 +96,6 @@ struct AetherMindAny {
     AnyTag tag_{AnyTag::None};
 };
 
-inline bool IsNullTypePtr(const Object* ptr) {
-    if (ptr == nullptr) {
-        return true;
-    }
-
-    if (static_cast<const void*>(ptr) == static_cast<void*>(NullTypeOf<StringImpl>::singleton())) {
-        return true;
-    }
-    return false;
-}
-
 template<typename, typename = void>
 struct TypeTraits {
     /*! \brief Whether the type can appear as a storage type in Container */
@@ -117,7 +105,6 @@ struct TypeTraits {
 struct TypeTraitsBase {
     static constexpr bool storage_enabled = true;
 };
-
 
 template<>
 struct TypeTraits<std::nullptr_t> : TypeTraitsBase {
@@ -355,6 +342,7 @@ struct TypeTraits<Device> : TypeTraitsBase {
     }
 };
 
+
 // Tensor type
 template<>
 struct TypeTraits<Tensor> : TypeTraitsBase {
@@ -395,64 +383,6 @@ struct TypeTraits<Tensor> : TypeTraitsBase {
     }
 };
 
-// string type
-template<>
-struct TypeTraits<String> : TypeTraitsBase {
-    static void CopyToAny(const String& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
-        Object* obj = src.get_impl_ptr_unsafe();
-        dst->payload_ = obj;
-        if (obj != NullTypeOf<StringImpl>::singleton()) {
-            details::ObjectUnsafe::IncRef(obj);
-        }
-    }
-
-    static void MoveToAny(String src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
-        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
-    }
-
-    static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        auto* obj = std::get<Object*>(src->payload_);
-        if (obj != NullTypeOf<StringImpl>::singleton()) {
-            details::ObjectUnsafe::IncRef(obj);
-        }
-        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
-    }
-
-    static String MoveFromAnyAfterCheck(AetherMindAny* src) {
-        auto* obj = std::get<Object*>(src->payload_);
-        src->payload_ = 0;
-        src->tag_ = AnyTag::None;
-        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
-    }
-
-    static std::optional<String> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
-            return CopyFromAnyAfterCheck(src);
-        }
-        return std::nullopt;
-    }
-
-    static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::String;
-    }
-
-    static std::string TypeStr() {
-        return AnyTagToString(AnyTag::String);
-    }
-};
-
-template<>
-struct TypeTraits<const char*> : TypeTraits<String> {};
-
-template<>
-struct TypeTraits<std::string> : TypeTraits<String> {};
-
-// TODO: 实现Storage的类型 traits
-template<>
-struct TypeTraits<Storage> : TypeTraitsBase {
-};
 
 // template<>
 // struct TypeTraits<Function> : TypeTraitsBase {

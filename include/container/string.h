@@ -6,7 +6,7 @@
 #define AETHERMIND_STRING_H
 
 #include "object.h"
-// #include "type_traits.h"
+#include "type_traits.h"
 
 namespace aethermind {
 
@@ -170,6 +170,60 @@ private:
     friend String operator+(const String& lhs, const char* rhs);
     friend String operator+(const char* lhs, const String& rhs);
 };
+
+// string type
+template<>
+struct TypeTraits<String> : TypeTraitsBase {
+    static void CopyToAny(const String& src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::String;
+        Object* obj = src.get_impl_ptr_unsafe();
+        dst->payload_ = obj;
+        if (obj != NullTypeOf<StringImpl>::singleton()) {
+            details::ObjectUnsafe::IncRef(obj);
+        }
+    }
+
+    static void MoveToAny(String src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::String;
+        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
+    }
+
+    static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        if (obj != NullTypeOf<StringImpl>::singleton()) {
+            details::ObjectUnsafe::IncRef(obj);
+        }
+        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
+    }
+
+    static String MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        src->payload_ = 0;
+        src->tag_ = AnyTag::None;
+        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
+    }
+
+    static std::optional<String> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::String;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::String);
+    }
+};
+
+template<>
+struct TypeTraits<const char*> : TypeTraits<String> {};
+
+template<>
+struct TypeTraits<std::string> : TypeTraits<String> {};
 
 // Overload < operator
 bool operator<(std::nullptr_t, const String& rhs) = delete;

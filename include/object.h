@@ -53,6 +53,8 @@ public:
     */
     Object() : strong_ref_count_(0), weak_ref_count_(0), deleter_(nullptr) {}
 
+    virtual ~Object() = default;
+
     /*!
      * \brief Get the current reference count of the object.
      *
@@ -99,9 +101,9 @@ public:
         deleter_ = deleter;
     }
 
-    // virtual bool is_null_type_ptr() const {
-    //     return false;
-    // }
+    virtual bool is_null_type_ptr() const {
+        return false;
+    }
 
 private:
     /*!
@@ -250,7 +252,15 @@ public:
         static NullTypeOf inst;
         return &inst;
     }
+
+    virtual bool is_null_type_ptr() const override {
+        return true;
+    }
 };
+
+inline bool IsNullTypePtr(const Object* ptr) {
+    return ptr == nullptr ? true : ptr->is_null_type_ptr();
+}
 
 /*!
  * \brief Tag type to indicate that reference count should not be incremented.

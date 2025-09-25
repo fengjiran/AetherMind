@@ -7,6 +7,7 @@
 
 #include "container/array_view.h"
 #include "memory/storage_impl.h"
+// #include "type_traits.h"
 
 namespace aethermind {
 
@@ -70,6 +71,11 @@ public:
 private:
     ObjectPtr<StorageImpl> impl_;
 };
+
+// TODO: 实现Storage的类型 traits
+// template<>
+// struct TypeTraits<Storage> : TypeTraitsBase {
+// };
 
 }// namespace aethermind
 

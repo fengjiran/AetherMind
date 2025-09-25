@@ -6,10 +6,8 @@
 #define AETHERMIND_TENSOR_IMPL_H
 
 #include "data_type.h"
-#include "device.h"
 #include "memory/cpu_allocator.h"
 #include "memory/storage.h"
-#include "object.h"
 #include "shape_and_stride.h"
 #include "tensor_utils.h"
 

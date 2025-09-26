@@ -63,11 +63,11 @@ static constexpr bool RetSupported = std::is_same_v<T, Any> || std::is_void_v<T>
 
 
 template<typename FuncType>
-struct function_traits;
+struct FunctionTraits;
 
 // plain function type.
 template<typename R, typename... Args>
-struct function_traits<R(Args...)> {
+struct FunctionTraits<R(Args...)> {
     using func_type = R(Args...);
     using return_type = R;
     using args_type_tuple = std::tuple<Args...>;
@@ -91,43 +91,42 @@ struct function_traits<R(Args...)> {
  * Currently, does not support class methods.
  */
 template<typename Functor>
-struct infer_function_traits {
-    using type = function_traits<std::remove_const_t<decltype(Functor::operator())>>;
-};
+struct FunctionInfoForFunctor;
+
+template<typename Functor, typename R, typename... Args>
+struct FunctionInfoForFunctor<R (Functor::*)(Args...)> : FunctionTraits<R(Args...)> {};
+
+template<typename Functor, typename R, typename... Args>
+struct FunctionInfoForFunctor<R (Functor::*)(Args...) const> : FunctionTraits<R(Args...)> {};
+
+template<typename Functor>
+struct FunctionInfo : FunctionInfoForFunctor<decltype(&Functor::operator())> {};
 
 template<typename R, typename... Args>
-struct infer_function_traits<R(Args...)> {
-    using type = function_traits<R(Args...)>;
-};
+struct FunctionInfo<R(Args...)> : FunctionTraits<R(Args...)> {};
 
 template<typename R, typename... Args>
-struct infer_function_traits<R (*)(Args...)> {
-    using type = function_traits<R(Args...)>;
-};
+struct FunctionInfo<R (*)(Args...)> : FunctionTraits<R(Args...)> {};
 
 template<typename R, typename... Args>
-struct infer_function_traits<std::function<R(Args...)>> {
-    using type = function_traits<R(Args...)>;
-};
+struct FunctionInfo<std::function<R(Args...)>> : FunctionTraits<R(Args...)> {};
 
 template<typename R, typename... Args>
-struct infer_function_traits<std::function<R (*)(Args...)>> {
-    using type = function_traits<R(Args...)>;
-};
+struct FunctionInfo<std::function<R (*)(Args...)>> : FunctionTraits<R(Args...)> {};
 
-template<typename T>
-using infer_function_traits_t = infer_function_traits<T>::type;
+
+
 
 template<typename R, typename args_tuple>
 struct make_function_traits;
 
 template<typename R, typename... Args>
 struct make_function_traits<R, std::tuple<Args...>> {
-    using type = function_traits<R(Args...)>;
+    using type = FunctionTraits<R(Args...)>;
 };
 
 template<typename R, typename... Args>
-using make_function_traits_t = typename make_function_traits<R, std::tuple<Args...>>::type;
+using make_function_traits_t = make_function_traits<R, std::tuple<Args...>>::type;
 
 template<size_t start, size_t N, size_t... Is>
 struct make_offset_index_sequence_impl : make_offset_index_sequence_impl<start, N - 1, start + N - 1, Is...> {

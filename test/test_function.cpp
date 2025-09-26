@@ -303,21 +303,21 @@ TEST(FunctionTest, function_traits) {
         return a + b;
     };
 
-    // using func_type = decltype(f);
-    using func_type = float(int, float);
-    // using func_type = std::function<float(int, float)>;
-    // using func_type = std::function<float(*)(int, float)>;
-    // using func_type = float(*)(int, float);
+    struct test_functor {
+        float operator()(int a, float b) {
+            return a + b;
+        }
+    };
 
-    using func_traits = infer_function_traits_t<func_type>;
+    // using func_info = FunctionInfo<test_functor>;
+    using func_info = FunctionInfo<decltype(f)>;
 
-    // static_assert(is_function_type_v<func_type>);
-    static_assert(std::is_same_v<func_traits::return_type, float>);
-    static_assert(std::is_same_v<func_traits::args_type_tuple, std::tuple<int, float>>);
-    static_assert(std::is_same_v<func_traits::func_type, float(int, float)>);
-    static_assert(func_traits::num_args == 2);
+    static_assert(std::is_same_v<func_info::return_type, float>);
+    static_assert(std::is_same_v<func_info::args_type_tuple, std::tuple<int, float>>);
+    static_assert(std::is_same_v<func_info::func_type, float(int, float)>);
+    static_assert(func_info::num_args == 2);
     static_assert(std::is_same_v<std::make_index_sequence<5>, std::index_sequence<0, 1, 2, 3, 4>>);
-    std::cout << func_traits::Schema() << std::endl;
+    std::cout << func_info::Schema() << std::endl;
 }
 
 

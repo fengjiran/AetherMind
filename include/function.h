@@ -88,13 +88,13 @@ public:
                               std::is_convertible_v<TCallable, std::function<void(details::PackedArgs args, Any*)>>,
                       "FromPacked requires input function signature to match packed func format");
         if constexpr (std::is_convertible_v<TCallable, std::function<void(details::PackedArgs args, Any*)>>) {
-            auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) -> void {
+            auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) mutable -> void {
                 details::PackedArgs packed_args(args, num_args);
                 packed_call(packed_args, res);
             };
             return make_object<FunctionImpl>(f);
         } else {
-            auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) -> void {
+            auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) mutable -> void {
                 packed_call(args, num_args, res);
             };
             return make_object<FunctionImpl>(f);

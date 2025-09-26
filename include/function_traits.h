@@ -114,7 +114,37 @@ struct FunctionInfo<std::function<R(Args...)>> : FunctionTraits<R(Args...)> {};
 template<typename R, typename... Args>
 struct FunctionInfo<std::function<R (*)(Args...)>> : FunctionTraits<R(Args...)> {};
 
+using FGetFunctionSchema = std::string (*)();
 
+class Any2Arg {
+public:
+    Any2Arg(const Any* args, int32_t idx, const std::string* opt_name, FGetFunctionSchema f_schema)
+        : args_(args), idx_(idx), opt_name_(opt_name), f_schema_(f_schema) {}
+
+    template<typename T>
+    operator T() {//NOLINT
+        using TypeWithoutCR = std::remove_const_t<std::remove_reference_t<T>>;
+        if constexpr (std::is_same_v<TypeWithoutCR, Any>) {
+            return args_[idx_];
+        } else {
+            std::optional<TypeWithoutCR> opt = args_[idx_].try_cast<TypeWithoutCR>();
+            if (!opt.has_value()) {
+                AETHERMIND_THROW(TypeError) << "Mismatched type on argument #" << idx_
+                                            << " when calling: `"
+                                            << (opt_name_ == nullptr ? "" : *opt_name_)
+                                            << (f_schema_ == nullptr ? "" : (*f_schema_)()) << "`. Expected `"
+                                            << Type2Str<TypeWithoutCR>::value();
+            }
+            return opt.value();
+        }
+    }
+
+private:
+    const Any* args_;
+    int32_t idx_;
+    const std::string* opt_name_;
+    FGetFunctionSchema f_schema_;
+};
 
 
 template<typename R, typename args_tuple>

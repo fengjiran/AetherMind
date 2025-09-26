@@ -87,8 +87,8 @@ struct function_traits<R(Args...)> {
 };
 
 /**
- * creates a `function_traits` type for a simple function (pointer) or functor (lambda/struct).
- * Currently does not support class methods.
+ * creates a function_traits type for a simple function (pointer) or functor (lambda/struct).
+ * Currently, does not support class methods.
  */
 template<typename Functor>
 struct infer_function_traits {

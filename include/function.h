@@ -141,9 +141,30 @@ public:
         return res;
     }
 
+    void CallPacked(const Any* args, int32_t num_args, Any* res) const;
+
+    void CallPacked(details::PackedArgs args, Any* res) const;
 
 private:
     ObjectPtr<FunctionImpl> pimpl_;
+};
+
+template<typename FType>
+class TypedFunction;
+
+template<typename R, typename... Args>
+class TypedFunction<R(Args...)> {
+public:
+    using Self = TypedFunction;
+
+    TypedFunction() = default;
+
+    TypedFunction(std::nullopt_t) {} // NOLINT
+
+    TypedFunction(Function packed_func) : packed_func_(std::move(packed_func)) {} //NOLINT
+
+private:
+    Function packed_func_;
 };
 
 template<>

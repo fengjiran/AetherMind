@@ -5,11 +5,14 @@
 #ifndef AETHERMIND_FUNCTION_TRAITS_H
 #define AETHERMIND_FUNCTION_TRAITS_H
 
+#include "any.h"
+
 #include <functional>
 #include <tuple>
 #include <type_traits>
 
 namespace aethermind {
+namespace details {
 
 template<typename T>
 struct is_tuple : std::false_type {};
@@ -33,6 +36,32 @@ struct is_plain_function_type<R(Args...)> : std::true_type {};
 template<typename T>
 constexpr bool is_plain_function_type_v = is_plain_function_type<T>::value;
 
+template<typename ArgType, typename = std::enable_if_t<is_tuple_v<ArgType>>>
+struct Arg2Str {
+    template<size_t i>
+    static void f(std::ostream& os) {
+        using Arg = std::tuple_element_t<i, ArgType>;
+        if constexpr (i != 0) {
+            os << ", ";
+        }
+        os << i << ": " << Type2Str<Arg>::value();
+    }
+
+    template<size_t... I>
+    static void Run(std::ostream& os, std::index_sequence<I...>) {
+        (f<I>(os), ...);
+    }
+};
+
+template<typename T>
+static constexpr bool ArgSupported = std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, Any> ||
+                                     TypeTraitsNoCR<T>::convert_enabled;
+
+// NOTE: return type can only support non-reference managed returns
+template<typename T>
+static constexpr bool RetSupported = std::is_same_v<T, Any> || std::is_void_v<T> || TypeTraits<T>::convert_enabled;
+
+
 template<typename FuncType>
 struct function_traits;
 
@@ -42,7 +71,19 @@ struct function_traits<R(Args...)> {
     using func_type = R(Args...);
     using return_type = R;
     using args_type_tuple = std::tuple<Args...>;
-    static constexpr auto params_num = sizeof...(Args);
+    static constexpr auto num_args = sizeof...(Args);
+
+    /*! \brief Whether this function can be converted to Function via FromTyped */
+    static constexpr bool unpacked_args_supported = (ArgSupported<Args> && ...) && RetSupported<R>;
+
+    static std::string Schema() {
+        using idx_seq = std::make_index_sequence<sizeof...(Args)>;
+        std::stringstream ss;
+        ss << "(";
+        Arg2Str<args_type_tuple>::Run(ss, idx_seq{});
+        ss << ") -> " << Type2Str<R>::value();
+        return ss.str();
+    }
 };
 
 /**
@@ -93,6 +134,8 @@ struct make_offset_index_sequence_impl : make_offset_index_sequence_impl<start, 
     static_assert(static_cast<int>(start) >= 0);
     static_assert(static_cast<int>(N) >= 0);
 };
+
+}// namespace details
 
 }// namespace aethermind
 

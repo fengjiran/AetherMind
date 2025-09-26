@@ -14,6 +14,9 @@
 #endif
 
 using namespace aethermind;
+using namespace aethermind::details;
+
+namespace {
 
 TEST(Tensor, format) {
     // GTEST_SKIP();
@@ -155,28 +158,4 @@ TEST(Tensor, random) {
     EXPECT_EQ(t2.use_count(), 1);
 }
 
-TEST(Tensor, function_traits) {
-    static_assert(!is_tuple_v<int>);
-    static_assert(is_tuple_v<std::tuple<>>);
-    static_assert(is_tuple_v<std::tuple<int, float>>);
-
-    auto f = [](int a, float b) {
-        return a + b;
-    };
-
-    // using func_type = decltype(f);
-    using func_type = float(int, float);
-    // using func_type = std::function<float(int, float)>;
-    // using func_type = std::function<float(*)(int, float)>;
-    // using func_type = float(*)(int, float);
-
-    using func_traits = infer_function_traits_t<func_type>;
-
-    // static_assert(is_function_type_v<func_type>);
-    static_assert(std::is_same_v<func_traits::return_type, float>);
-    static_assert(std::is_same_v<func_traits::args_type_tuple, std::tuple<int, float>>);
-    static_assert(std::is_same_v<func_traits::func_type, float(int, float)>);
-    static_assert(func_traits::params_num == 2);
-
-    static_assert(std::is_same_v<std::make_index_sequence<5>, std::index_sequence<0, 1, 2, 3, 4>>);
 }

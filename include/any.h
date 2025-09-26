@@ -196,6 +196,37 @@ private:
 #undef COUNT_TAG
 };
 
+namespace details {
+
+template<typename T>
+struct Type2Str {
+    static std::string value() {
+        return TypeTraitsNoCR<T>::TypeStr();
+    }
+};
+
+template<>
+struct Type2Str<Any> {
+    static std::string value() {
+        return "Any";
+    }
+};
+
+template<>
+struct Type2Str<const Any&> {
+    static std::string value() {
+        return "Any";
+    }
+};
+
+template<>
+struct Type2Str<void> {
+    static std::string value() {
+        return "void";
+    }
+};
+}// namespace details
+
 }// namespace aethermind
 
 #endif//AETHERMIND_ANY_H

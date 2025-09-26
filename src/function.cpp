@@ -3,6 +3,10 @@
 //
 
 #include "function.h"
+#include "container/array.h"
+#include "container/string.h"
+
+#include <unordered_map>
 
 namespace aethermind {
 
@@ -25,5 +29,75 @@ FunctionImpl* Function::get_impl_ptr_unsafe() const noexcept {
 FunctionImpl* Function::release_impl_unsafe() noexcept {
     return pimpl_.release();
 }
+
+void Function::CallPacked(const Any* args, int32_t num_args, Any* res) const {
+    pimpl_->CallPacked(args, num_args, res);
+}
+
+void Function::CallPacked(details::PackedArgs args, Any* res) const {
+    pimpl_->CallPacked(args.data(), args.size(), res);
+}
+
+class GlobalFunctionTable {
+public:
+    class Entry {
+    public:
+        String name_;
+        String doc_;
+        String schema_;
+        Function func_;
+
+        Entry(String name, String doc, String schema, Function func)
+            : name_(std::move(name)), doc_(std::move(doc)), schema_(std::move(schema)),
+              func_(std::move(func)) {}
+    };
+
+    static GlobalFunctionTable* Global() {
+        static GlobalFunctionTable instance;
+        return &instance;
+    }
+
+    void Register(const String& name, const String& doc, const String& schema, const Function& func,
+                  bool can_override) {
+        if (table_.contains(name)) {
+            if (!can_override) {
+                AETHERMIND_THROW(RuntimeError) << "Global Function `" << name << "` is already registered";
+            }
+        }
+        auto* entry = new Entry(name, doc, schema, func);
+        table_[name] = entry;
+    }
+
+    const Entry* Get(const String& name) {
+        auto it = table_.find(name);
+        if (it == table_.end()) {
+            return nullptr;
+        }
+        return it->second;
+    }
+
+    bool Remove(const String& name) {
+        auto it = table_.find(name);
+        if (it == table_.end()) {
+            return false;
+        }
+        table_.erase(it);
+        return true;
+    }
+
+    NODISCARD Array<String> ListNames() const {
+        Array<String> names;
+        names.reserve(table_.size());
+        for (const auto& kv: table_) {
+            names.push_back(kv.first);
+        }
+        return names;
+    }
+
+private:
+    GlobalFunctionTable() = default;
+    std::unordered_map<String, Entry*> table_{};
+};
+
 
 }// namespace aethermind

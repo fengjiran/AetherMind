@@ -146,6 +146,26 @@ private:
     FGetFunctionSchema f_schema_;
 };
 
+template<typename R, size_t... Is, typename F>
+void unpack_call(const F& callable, std::index_sequence<Is...>, const std::string* opt_name,
+                 const Any* args, int32_t num_args, Any* res) {
+    using FuncInfo = FunctionInfo<F>;
+    const FGetFunctionSchema f_schema = FuncInfo::Schema;
+    static_assert(FuncInfo::unpacked_args_supported, "the function signature do not support unpacked.");
+    constexpr size_t nargs = sizeof...(Is);
+    if (nargs != num_args) {
+        AETHERMIND_THROW(TypeError) << "Mismatched number of arguments when calling: `"
+                                    << (opt_name == nullptr ? "" : *opt_name)
+                                    << (f_schema == nullptr ? "" : (*f_schema)()) << "`. Expected " << nargs
+                                    << " but got " << num_args << " arguments";
+    }
+
+    if constexpr (std::is_same_v<R, void>) {
+        callable(Any2Arg(args, Is, opt_name, f_schema)...);
+    } else {
+        *res = R(callable(Any2Arg(args, Is, opt_name, f_schema)...));
+    }
+}
 
 template<typename R, typename args_tuple>
 struct make_function_traits;

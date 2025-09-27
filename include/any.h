@@ -81,7 +81,7 @@ public:
     }
 
     template<typename T>
-    std::optional<T> try_cast() {
+    std::optional<T> try_cast() const {
         if constexpr (std::is_same_v<T, Any>) {
             return *this;
         } else {

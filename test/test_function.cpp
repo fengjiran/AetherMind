@@ -320,5 +320,217 @@ TEST(FunctionTest, function_traits) {
     std::cout << func_info::Schema() << std::endl;
 }
 
+// 测试辅助函数
+int add(int a, int b) {
+    return a + b;
+}
+
+std::string concat(const std::string& a, const std::string& b) {
+    return a + b;
+}
+
+void void_function(int& counter) {
+    counter++;
+}
+
+class TestClass {
+public:
+    static int multiply(int a, int b) {
+        return a * b;
+    }
+
+    static std::string greet(const std::string& name) {
+        return "Hello, " + name + "!";
+    }
+};
+
+TEST(TypeFunction, default_construction) {
+    TypedFunction<int(int, int)> func;
+    EXPECT_FALSE(func.packed().defined());
+    EXPECT_THROW(func(0, 0), std::bad_function_call);
+    Function f = func;
+    EXPECT_FALSE(f.defined());
+    EXPECT_FALSE(func.operator Function().defined());
+}
+
+TEST(TypeFunction, nullopt_construction) {
+    TypedFunction<int(int, int)> func(std::nullopt);
+    EXPECT_FALSE(func.packed().defined());
+}
+
+TEST(typed_function, lambda_construction) {
+    // 从lambda构造
+    auto f = [](int a, int b) { return a + b; };
+    TypedFunction<int(int, int)> func(f);
+    EXPECT_TRUE(func.packed().defined());
+
+    // 测试调用
+    EXPECT_EQ(func(2, 3), 5);
+}
+
+TEST(typed_function, lambda_with_name) {
+    auto lambda = [](int a, int b) { return a * b; };
+    TypedFunction<int(int, int)> func(lambda, "multiply_function");
+    EXPECT_TRUE(func.packed().defined());
+    EXPECT_EQ(func(3, 4), 12);
+}
+
+TEST(typed_function, std_function_construction) {
+    std::function<int(int, int)> std_func = [](int a, int b) { return a - b; };
+    TypedFunction<int(int, int)> func(std_func);
+    EXPECT_TRUE(func.packed().defined());
+    EXPECT_EQ(func(10, 3), 7);
+}
+
+TEST(typed_function, function_packed_construction) {
+    auto lambda = [](int a, int b) { return a + b + 1; };
+    Function packed_func = Function::FromTyped(lambda);
+    TypedFunction<int(int, int)> func(packed_func);
+    EXPECT_TRUE(func.packed().defined());
+    EXPECT_EQ(func(2, 3), 6);
+}
+
+TEST(typed_function, assignment_operators) {
+    TypedFunction<int(int, int)> func;
+
+    // lambda赋值
+    auto lambda = [](int a, int b) { return a * b; };
+    func = lambda;
+    EXPECT_EQ(func(3, 4), 12);
+
+    // Function赋值
+    auto lambda2 = [](int a, int b) { return a - b; };
+    Function packed_func = Function::FromTyped(lambda2);
+    func = packed_func;
+    EXPECT_EQ(func(10, 3), 7);
+}
+
+TEST(typed_function, void_return_type) {
+    int counter = 0;
+    auto lambda = [&counter](int a, int b) {
+        counter = a + b;
+    };
+
+    TypedFunction<void(int, int)> func(lambda);
+    func(2, 3);
+    EXPECT_EQ(counter, 5);
+}
+
+TEST(typed_function, string_arguments_and_return) {
+    auto lambda = [](const std::string& a, const std::string& b) {
+        return a + " " + b;
+    };
+
+    TypedFunction<std::string(const std::string&, const std::string&)> func(lambda);
+    std::string result = func("Hello", "World");
+    EXPECT_EQ(result, "Hello World");
+}
+
+TEST(typed_function, conversion_to_function) {
+    auto lambda = [](int a, int b) { return a + b; };
+    TypedFunction<int(int, int)> typed_func(lambda);
+
+    // 转换为Function
+    Function packed_func = typed_func;
+    EXPECT_TRUE(packed_func.defined());
+
+    // 通过Function调用
+    Any result = packed_func(2, 3);
+    EXPECT_EQ(result.cast<int>(), 5);
+}
+
+TEST(typed_function, member_function_wrapper) {
+    TestClass obj;
+
+    // 包装成员函数
+    auto lambda = [&obj](int a, int b) { return obj.multiply(a, b); };
+    TypedFunction<int(int, int)> func(lambda);
+
+    EXPECT_EQ(func(3, 4), 12);
+}
+
+TEST(typed_function, any_return_type) {
+    auto lambda = [](int a, int b) -> Any {
+        return Any(a + b);
+    };
+
+    TypedFunction<Any(int, int)> func(lambda);
+    Any result = func(2, 3);
+    EXPECT_EQ(result.cast<int>(), 5);
+}
+
+// TEST(typed_function, reference_arguments) {
+//     int value = 0;
+//     auto lambda = [](int&& ref, int new_value) {
+//         ref = new_value;
+//     };
+//
+//     TypedFunction<void(int&&, int)> func(lambda);
+//     func(std::move(value), 42);
+//     EXPECT_EQ(value, 42);
+// }
+
+TEST(typed_function, move_semantics) {
+    auto lambda = [](std::string&& str) {
+        return std::move(str) + " processed";
+    };
+
+    TypedFunction<std::string(std::string&&)> func(lambda);
+    std::string input = "test";
+    std::string result = func(std::move(input));
+    EXPECT_EQ(result, "test processed");
+    EXPECT_TRUE(input.empty());// 输入被移动
+}
+
+TEST(typed_function, const_arguments) {
+    auto lambda = [](const int& a, const int& b) {
+        return a + b;
+    };
+
+    TypedFunction<int(const int&, const int&)> func(lambda);
+    const int x = 5, y = 3;
+    EXPECT_EQ(func(x, y), 8);
+}
+
+TEST(typed_function, variadic_arguments) {
+    auto sum_lambda = [](int a, int b, int c) {
+        return a + b + c;
+    };
+
+    TypedFunction<int(int, int, int)> func(sum_lambda);
+    EXPECT_EQ(func(1, 2, 3), 6);
+}
+
+TEST(typed_function, exception_handling) {
+    auto throwing_lambda = [](int a, int b) {
+        if (b == 0) {
+            throw std::runtime_error("Division by zero");
+        }
+        return a / b;
+    };
+
+    TypedFunction<int(int, int)> func(throwing_lambda);
+
+    // 正常情况
+    EXPECT_EQ(func(6, 2), 3);
+
+    // 异常情况 - 测试是否会抛出异常
+    EXPECT_THROW(func(5, 0), std::runtime_error);
+}
+
+TEST(typed_function, packed_methods) {
+    auto lambda = [](int a, int b) { return a * b; };
+    TypedFunction<int(int, int)> func(lambda);
+
+    // 测试packed()方法
+    const Function& packed = func.packed();
+    EXPECT_TRUE(packed.defined());
+
+    // 测试移动语义的packed()
+    TypedFunction<int(int, int)> func2(lambda);
+    Function moved_packed = std::move(func2).packed();
+    EXPECT_TRUE(moved_packed.defined());
+    EXPECT_FALSE(func2.packed().defined()); // 原对象应该被移动
+}
 
 }// namespace

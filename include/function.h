@@ -115,9 +115,36 @@ public:
     template<typename TCallable>
     explicit Function(TCallable packed_call) : pimpl_(FunctionImpl::create(packed_call)) {}
 
+    Function(const Function&) = default;
+    Function(Function&&) noexcept = default;
+    Function& operator=(const Function&) = default;
+    Function& operator=(Function&&) noexcept = default;
+
     template<typename TCallable>
     static Function FromPacked(TCallable packed_call) {
         return Function(packed_call);
+    }
+
+    template<typename TCallable>
+    static Function FromTyped(TCallable callable) {
+        using FuncInfo = details::FunctionInfo<TCallable>;
+        using R = FuncInfo::return_type;
+        using idx_seq = std::make_index_sequence<FuncInfo::num_args>;
+        auto f = [callable](const Any* args, int32_t num_args, Any* res) mutable -> void {
+            details::unpack_call<R>(callable, idx_seq{}, nullptr, args, num_args, res);
+        };
+        return Function(f);
+    }
+
+    template<typename TCallable>
+    static Function FromTyped(TCallable callable, std::string name) {
+        using FuncInfo = details::FunctionInfo<TCallable>;
+        using R = FuncInfo::return_type;
+        using idx_seq = std::make_index_sequence<FuncInfo::num_args>;
+        auto f = [callable, name](const Any* args, int32_t num_args, Any* res) mutable -> void {
+            details::unpack_call<R>(callable, idx_seq{}, &name, args, num_args, res);
+        };
+        return Function(f);
     }
 
     NODISCARD bool defined() const noexcept;
@@ -159,9 +186,55 @@ public:
 
     TypedFunction() = default;
 
-    TypedFunction(std::nullopt_t) {} // NOLINT
+    TypedFunction(std::nullopt_t) {}// NOLINT
 
-    TypedFunction(Function packed_func) : packed_func_(std::move(packed_func)) {} //NOLINT
+    TypedFunction(Function packed_func) : packed_func_(std::move(packed_func)) {}//NOLINT
+
+    template<typename FLambda,
+             typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
+    TypedFunction(const FLambda& callable, const std::string& name) : packed_func_(Function::FromTyped(callable, name)) {}
+
+    template<typename FLambda,
+             typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
+    TypedFunction(const FLambda& callable) : packed_func_(Function::FromTyped(callable)) {}
+
+    template<typename FLambda,
+             typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
+    Self& operator=(const FLambda& callable) {
+        packed_func_ = Function::FromTyped(callable);
+        return *this;
+    }
+
+    Self& operator=(Function packed) {
+        packed_func_ = std::move(packed);
+        return *this;
+    }
+
+    operator Function() const {
+        return packed();
+    }
+
+    const Function& packed() const& {
+        return packed_func_;
+    }
+
+    constexpr Function&& packed() && {
+        return std::move(packed_func_);
+    }
+
+    R operator()(Args... args) const {
+        if constexpr (std::is_same_v<R, void>) {
+            packed_func_(std::forward<Args>(args)...);
+            return;
+        } else {
+            Any res = packed_func_(std::forward<Args>(args)...);
+            if constexpr (std::is_same_v<R, Any>) {
+                return res;
+            } else {
+                return std::move(res).cast<R>();
+            }
+        }
+    }
 
 private:
     Function packed_func_;
@@ -212,6 +285,11 @@ struct TypeTraits<Function> : TypeTraitsBase {
     static std::string TypeStr() {
         return AnyTagToString(AnyTag::Function);
     }
+};
+
+template<typename F>
+struct TypeTraits<TypedFunction<F>> : TypeTraitsBase {
+
 };
 
 }// namespace aethermind

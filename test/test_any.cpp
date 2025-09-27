@@ -54,10 +54,10 @@ TEST(Any, null) {
 }
 
 TEST(Any, int) {
-    Any x0;
+    const Any x0;
     EXPECT_TRUE(x0.tag() == AnyTag::None);
 
-    auto opt0 = x0.as<int64_t>();
+    auto opt0 = x0.try_cast<int64_t>();
     EXPECT_TRUE(!opt0.has_value());
 
     EXPECT_THROW(

@@ -74,7 +74,7 @@ class FunctionImpl : public Object {
 public:
     using FCall = std::function<void(const FunctionImpl*, const Any*, int32_t, Any*)>;
 
-    FunctionImpl() : callable_(nullptr) {}
+    FunctionImpl() : callable_(nullptr), schema_("") {}
 
     explicit FunctionImpl(FCall callable) : callable_(std::move(callable)) {}
 
@@ -103,6 +103,7 @@ public:
 
 private:
     FCall callable_;
+    std::string schema_;
 };
 
 
@@ -145,6 +146,10 @@ public:
             details::unpack_call<R>(callable, idx_seq{}, &name, args, num_args, res);
         };
         return Function(f);
+    }
+
+    static void RegisterGlobalFunction(const std::string& name, const Function& func, bool can_override) {
+        //TODO:
     }
 
     NODISCARD bool defined() const noexcept;

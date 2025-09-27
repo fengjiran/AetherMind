@@ -22,6 +22,10 @@ bool Function::unique() const noexcept {
     return pimpl_.unique();
 }
 
+const std::string& Function::schema() const noexcept {
+    return pimpl_->schema();
+}
+
 FunctionImpl* Function::get_impl_ptr_unsafe() const noexcept {
     return pimpl_.get();
 }

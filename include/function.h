@@ -76,14 +76,19 @@ public:
 
     FunctionImpl() : callable_(nullptr), schema_("") {}
 
-    explicit FunctionImpl(FCall callable) : callable_(std::move(callable)) {}
+    explicit FunctionImpl(FCall callable, const std::string& schema = "")
+        : callable_(std::move(callable)), schema_(schema) {}
 
     void CallPacked(const Any* args, int32_t num_args, Any* res) const {
         callable_(this, args, num_args, res);
     }
 
+    const std::string& schema() const {
+        return schema_;
+    }
+
     template<typename TCallable>
-    static ObjectPtr<FunctionImpl> create(TCallable packed_call) {
+    static ObjectPtr<FunctionImpl> create(TCallable packed_call, const std::string& schema = "") {
         static_assert(std::is_convertible_v<TCallable, std::function<void(const Any*, int32_t, Any*)>> ||
                               std::is_convertible_v<TCallable, std::function<void(details::PackedArgs args, Any*)>>,
                       "FromPacked requires input function signature to match packed func format");
@@ -92,12 +97,12 @@ public:
                 details::PackedArgs packed_args(args, num_args);
                 packed_call(packed_args, res);
             };
-            return make_object<FunctionImpl>(f);
+            return make_object<FunctionImpl>(f, schema);
         } else {
             auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) mutable -> void {
                 packed_call(args, num_args, res);
             };
-            return make_object<FunctionImpl>(f);
+            return make_object<FunctionImpl>(f, schema);
         }
     }
 
@@ -114,7 +119,8 @@ public:
     explicit Function(ObjectPtr<FunctionImpl> impl) : pimpl_(std::move(impl)) {}
 
     template<typename TCallable>
-    explicit Function(TCallable packed_call) : pimpl_(FunctionImpl::create(packed_call)) {}
+    explicit Function(TCallable packed_call, const std::string& schema = "")
+        : pimpl_(FunctionImpl::create(packed_call, schema)) {}
 
     Function(const Function&) = default;
     Function(Function&&) noexcept = default;
@@ -123,7 +129,8 @@ public:
 
     template<typename TCallable>
     static Function FromPacked(TCallable packed_call) {
-        return Function(packed_call);
+        using FuncInfo = details::FunctionInfo<TCallable>;
+        return Function(packed_call, FuncInfo::Schema());
     }
 
     template<typename TCallable>
@@ -134,7 +141,7 @@ public:
         auto f = [callable](const Any* args, int32_t num_args, Any* res) mutable -> void {
             details::unpack_call<R>(callable, idx_seq{}, nullptr, args, num_args, res);
         };
-        return Function(f);
+        return Function(f, FuncInfo::Schema());
     }
 
     template<typename TCallable>
@@ -145,7 +152,7 @@ public:
         auto f = [callable, name](const Any* args, int32_t num_args, Any* res) mutable -> void {
             details::unpack_call<R>(callable, idx_seq{}, &name, args, num_args, res);
         };
-        return Function(f);
+        return Function(f, FuncInfo::Schema());
     }
 
     static void RegisterGlobalFunction(const std::string& name, const Function& func, bool can_override) {
@@ -157,6 +164,8 @@ public:
     NODISCARD uint32_t use_count() const noexcept;
 
     NODISCARD bool unique() const noexcept;
+
+    const std::string& schema() const noexcept;
 
     NODISCARD FunctionImpl* get_impl_ptr_unsafe() const noexcept;
 

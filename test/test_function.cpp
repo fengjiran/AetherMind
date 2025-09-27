@@ -53,6 +53,7 @@ TEST(FunctionTest, FromPackedMethod) {
     };
 
     Function f = Function::FromPacked(raw_func);
+    std::cout << f.schema() << std::endl;
     Any result = f(4, 7);
     EXPECT_EQ(result.cast<int>(), 28);
 }
@@ -67,6 +68,7 @@ TEST(FunctionTest, OperatorCallWithMultipleArgs) {
     };
 
     Function f(func);
+    std::cout << f.schema() << std::endl;
     Any result = f(5, 3.14, std::string("hello"));
     EXPECT_EQ(result.cast<int>(), 5 + 3 + 5);// 5 + 3(整数部分) + 5(字符串长度)
 }

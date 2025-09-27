@@ -213,9 +213,23 @@ struct Type2Str<Any> {
 };
 
 template<>
+struct Type2Str<Any*> {
+    static std::string value() {
+        return "Any*";
+    }
+};
+
+template<>
+struct Type2Str<const Any*> {
+    static std::string value() {
+        return "const Any*";
+    }
+};
+
+template<>
 struct Type2Str<const Any&> {
     static std::string value() {
-        return "Any";
+        return "const Any&";
     }
 };
 

@@ -218,7 +218,7 @@ public:
         return packed_func_;
     }
 
-    constexpr Function&& packed() && {
+    Function&& packed() && {
         return std::move(packed_func_);
     }
 
@@ -266,7 +266,7 @@ struct TypeTraits<Function> : TypeTraitsBase {
 
     static Function MoveFromAnyAfterCheck(AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
-        src->payload_ = 0;
+        src->payload_ = static_cast<Object*>(nullptr);
         src->tag_ = AnyTag::None;
         return Function(ObjectPtr<FunctionImpl>::reclaim(static_cast<FunctionImpl*>(obj)));
     }
@@ -289,7 +289,37 @@ struct TypeTraits<Function> : TypeTraitsBase {
 
 template<typename F>
 struct TypeTraits<TypedFunction<F>> : TypeTraitsBase {
+    static void CopyToAny(const TypedFunction<F>& src, AetherMindAny* dst) {
+        TypeTraits<Function>::CopyToAny(src.packed(), dst);
+    }
 
+    static void MoveToAny(TypedFunction<F> src, AetherMindAny* dst) {
+        TypeTraits<Function>::MoveToAny(std::move(src.packed()), dst);
+    }
+
+    static TypedFunction<F> CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return TypeTraits<Function>::CopyFromAnyAfterCheck(src);
+    }
+
+    static TypedFunction<F> MoveFromAnyAfterCheck(AetherMindAny* src) {
+        return TypeTraits<Function>::MoveFromAnyAfterCheck(src);
+    }
+
+    static std::optional<TypedFunction<F>> TryCastFromAny(const AetherMindAny* src) {
+        auto opt = TypeTraits<Function>::TryCastFromAny(src);
+        if (opt.has_value()) {
+            return TypedFunction<F>(*std::move(opt));
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::Function;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::Function);
+    }
 };
 
 }// namespace aethermind

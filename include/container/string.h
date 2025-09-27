@@ -197,7 +197,7 @@ struct TypeTraits<String> : TypeTraitsBase {
 
     static String MoveFromAnyAfterCheck(AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
-        src->payload_ = 0;
+        src->payload_ = static_cast<Object*>(nullptr);
         src->tag_ = AnyTag::None;
         return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
     }

@@ -330,7 +330,7 @@ struct TypeTraits<Device> : TypeTraitsBase {
 
     static Device MoveFromAnyAfterCheck(AetherMindAny* src) {
         auto dev = std::get<Device>(std::move(src->payload_));
-        src->payload_ = 0;
+        src->payload_ = Device(kUndefined);
         src->tag_ = AnyTag::None;
         return dev;
     }

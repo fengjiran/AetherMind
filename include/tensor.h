@@ -129,7 +129,7 @@ struct TypeTraits<Tensor> : TypeTraitsBase {
 
     static Tensor MoveFromAnyAfterCheck(AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
-        src->payload_ = 0;
+        src->payload_ = static_cast<Object*>(nullptr);
         src->tag_ = AnyTag::None;
         return Tensor(ObjectPtr<TensorImpl>::reclaim(static_cast<TensorImpl*>(obj)));
     }

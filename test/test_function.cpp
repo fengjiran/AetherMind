@@ -358,7 +358,7 @@ TEST(TypeFunction, nullopt_construction) {
     EXPECT_FALSE(func.packed().defined());
 }
 
-TEST(typed_function, lambda_construction) {
+TEST(TypeFunction, lambda_construction) {
     // 从lambda构造
     auto f = [](int a, int b) { return a + b; };
     TypedFunction<int(int, int)> func(f);
@@ -368,21 +368,21 @@ TEST(typed_function, lambda_construction) {
     EXPECT_EQ(func(2, 3), 5);
 }
 
-TEST(typed_function, lambda_with_name) {
+TEST(TypeFunction, lambda_with_name) {
     auto lambda = [](int a, int b) { return a * b; };
     TypedFunction<int(int, int)> func(lambda, "multiply_function");
     EXPECT_TRUE(func.packed().defined());
     EXPECT_EQ(func(3, 4), 12);
 }
 
-TEST(typed_function, std_function_construction) {
+TEST(TypeFunction, std_function_construction) {
     std::function<int(int, int)> std_func = [](int a, int b) { return a - b; };
     TypedFunction<int(int, int)> func(std_func);
     EXPECT_TRUE(func.packed().defined());
     EXPECT_EQ(func(10, 3), 7);
 }
 
-TEST(typed_function, function_packed_construction) {
+TEST(TypeFunction, function_packed_construction) {
     auto lambda = [](int a, int b) { return a + b + 1; };
     Function packed_func = Function::FromTyped(lambda);
     TypedFunction<int(int, int)> func(packed_func);
@@ -390,7 +390,7 @@ TEST(typed_function, function_packed_construction) {
     EXPECT_EQ(func(2, 3), 6);
 }
 
-TEST(typed_function, assignment_operators) {
+TEST(TypeFunction, assignment_operators) {
     TypedFunction<int(int, int)> func;
 
     // lambda赋值
@@ -405,7 +405,7 @@ TEST(typed_function, assignment_operators) {
     EXPECT_EQ(func(10, 3), 7);
 }
 
-TEST(typed_function, void_return_type) {
+TEST(TypeFunction, void_return_type) {
     int counter = 0;
     auto lambda = [&counter](int a, int b) {
         counter = a + b;
@@ -416,7 +416,7 @@ TEST(typed_function, void_return_type) {
     EXPECT_EQ(counter, 5);
 }
 
-TEST(typed_function, string_arguments_and_return) {
+TEST(TypeFunction, string_arguments_and_return) {
     auto lambda = [](const std::string& a, const std::string& b) {
         return a + " " + b;
     };
@@ -426,7 +426,7 @@ TEST(typed_function, string_arguments_and_return) {
     EXPECT_EQ(result, "Hello World");
 }
 
-TEST(typed_function, conversion_to_function) {
+TEST(TypeFunction, conversion_to_function) {
     auto lambda = [](int a, int b) { return a + b; };
     TypedFunction<int(int, int)> typed_func(lambda);
 
@@ -439,7 +439,7 @@ TEST(typed_function, conversion_to_function) {
     EXPECT_EQ(result.cast<int>(), 5);
 }
 
-TEST(typed_function, member_function_wrapper) {
+TEST(TypeFunction, member_function_wrapper) {
     TestClass obj;
 
     // 包装成员函数
@@ -449,7 +449,7 @@ TEST(typed_function, member_function_wrapper) {
     EXPECT_EQ(func(3, 4), 12);
 }
 
-TEST(typed_function, any_return_type) {
+TEST(TypeFunction, any_return_type) {
     auto lambda = [](int a, int b) -> Any {
         return Any(a + b);
     };
@@ -459,7 +459,7 @@ TEST(typed_function, any_return_type) {
     EXPECT_EQ(result.cast<int>(), 5);
 }
 
-// TEST(typed_function, reference_arguments) {
+// TEST(TypeFunction, reference_arguments) {
 //     int value = 0;
 //     auto lambda = [](int&& ref, int new_value) {
 //         ref = new_value;
@@ -470,7 +470,7 @@ TEST(typed_function, any_return_type) {
 //     EXPECT_EQ(value, 42);
 // }
 
-TEST(typed_function, move_semantics) {
+TEST(TypeFunction, move_semantics) {
     auto lambda = [](std::string&& str) {
         return std::move(str) + " processed";
     };
@@ -482,7 +482,7 @@ TEST(typed_function, move_semantics) {
     EXPECT_TRUE(input.empty());// 输入被移动
 }
 
-TEST(typed_function, const_arguments) {
+TEST(TypeFunction, const_arguments) {
     auto lambda = [](const int& a, const int& b) {
         return a + b;
     };
@@ -492,7 +492,7 @@ TEST(typed_function, const_arguments) {
     EXPECT_EQ(func(x, y), 8);
 }
 
-TEST(typed_function, variadic_arguments) {
+TEST(TypeFunction, variadic_arguments) {
     auto sum_lambda = [](int a, int b, int c) {
         return a + b + c;
     };
@@ -501,7 +501,7 @@ TEST(typed_function, variadic_arguments) {
     EXPECT_EQ(func(1, 2, 3), 6);
 }
 
-TEST(typed_function, exception_handling) {
+TEST(TypeFunction, exception_handling) {
     auto throwing_lambda = [](int a, int b) {
         if (b == 0) {
             throw std::runtime_error("Division by zero");
@@ -518,7 +518,7 @@ TEST(typed_function, exception_handling) {
     EXPECT_THROW(func(5, 0), std::runtime_error);
 }
 
-TEST(typed_function, packed_methods) {
+TEST(TypeFunction, packed_methods) {
     auto lambda = [](int a, int b) { return a * b; };
     TypedFunction<int(int, int)> func(lambda);
 
@@ -530,7 +530,292 @@ TEST(typed_function, packed_methods) {
     TypedFunction<int(int, int)> func2(lambda);
     Function moved_packed = std::move(func2).packed();
     EXPECT_TRUE(moved_packed.defined());
-    EXPECT_FALSE(func2.packed().defined()); // 原对象应该被移动
+    EXPECT_FALSE(func2.packed().defined());// 原对象应该被移动
+}
+
+TEST(function_type_traits, function_copy_to_any) {
+    // 测试Function的CopyToAny
+    auto lambda = [](int a, int b) { return a + b; };
+    Function func = Function::FromTyped(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<Function>::CopyToAny(func, &any_data);
+
+    EXPECT_EQ(any_data.tag_, AnyTag::Function);
+    EXPECT_NE(std::get<Object*>(any_data.payload_), nullptr);
+}
+
+TEST(function_type_traits, function_move_to_any) {
+    // 测试Function的MoveToAny
+    auto lambda = [](int a, int b) { return a * b; };
+    Function func = Function::FromTyped(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<Function>::MoveToAny(std::move(func), &any_data);
+
+    EXPECT_EQ(any_data.tag_, AnyTag::Function);
+    EXPECT_NE(std::get<Object*>(any_data.payload_), nullptr);
+    // 原Function应该被移动，但Function内部使用ObjectPtr，所以原Function仍然有效
+}
+
+TEST(function_type_traits, function_copy_from_any) {
+    // 测试Function的CopyFromAnyAfterCheck
+    auto lambda = [](int a, int b) { return a - b; };
+    Function original_func = Function::FromTyped(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<Function>::CopyToAny(original_func, &any_data);
+
+    Function copied_func = TypeTraits<Function>::CopyFromAnyAfterCheck(&any_data);
+
+    // 测试复制的函数是否正常工作
+    Any result = copied_func(10, 3);
+    EXPECT_EQ(result.cast<int>(), 7);
+
+    // 验证引用计数增加
+    EXPECT_EQ(copied_func.use_count(), original_func.use_count());
+}
+
+TEST(function_type_traits, function_move_from_any) {
+    // 测试Function的MoveFromAnyAfterCheck
+    auto lambda = [](int a, int b) { return a + b + 1; };
+    Function original_func = Function::FromTyped(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<Function>::CopyToAny(original_func, &any_data);
+
+    Function moved_func = TypeTraits<Function>::MoveFromAnyAfterCheck(&any_data);
+
+    // 测试移动的函数是否正常工作
+    Any result = moved_func(2, 3);
+    EXPECT_EQ(result.cast<int>(), 6);
+
+    // Any数据应该被清空
+    EXPECT_EQ(any_data.tag_, AnyTag::None);
+    EXPECT_EQ(std::get<Object*>(any_data.payload_), nullptr);
+}
+
+TEST(function_type_traits, function_try_cast_from_any) {
+    // 测试Function的TryCastFromAny
+    auto lambda = [](int a, int b) { return a * b; };
+    Function func = Function::FromTyped(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<Function>::CopyToAny(func, &any_data);
+
+    auto result = TypeTraits<Function>::TryCastFromAny(&any_data);
+    EXPECT_TRUE(result.has_value());
+
+    // 测试转换后的函数
+    Any call_result = result.value()(3, 4);
+    EXPECT_EQ(call_result.cast<int>(), 12);
+}
+
+TEST(function_type_traits, function_try_cast_from_wrong_type) {
+    // 测试从错误类型的Any转换Function
+    AetherMindAny any_data;
+    any_data.tag_ = AnyTag::Int;
+    any_data.payload_ = 42;
+
+    auto result = TypeTraits<Function>::TryCastFromAny(&any_data);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(function_type_traits, function_check_method) {
+    // 测试Function的check方法
+    AetherMindAny any_data;
+
+    // 设置错误类型
+    any_data.tag_ = AnyTag::Int;
+    EXPECT_FALSE(TypeTraits<Function>::check(&any_data));
+
+    // 设置正确类型
+    any_data.tag_ = AnyTag::Function;
+    EXPECT_TRUE(TypeTraits<Function>::check(&any_data));
+}
+
+TEST(function_type_traits, function_type_str) {
+    // 测试Function的TypeStr方法
+    std::string type_str = TypeTraits<Function>::TypeStr();
+    EXPECT_EQ(type_str, "Function");
+}
+
+TEST(typed_function_type_traits, typed_function_copy_to_any) {
+    // 测试TypedFunction的CopyToAny
+    auto lambda = [](int a, int b) { return a + b; };
+    TypedFunction<int(int, int)> typed_func(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<TypedFunction<int(int, int)>>::CopyToAny(typed_func, &any_data);
+
+    EXPECT_EQ(any_data.tag_, AnyTag::Function);
+    EXPECT_NE(std::get<Object*>(any_data.payload_), nullptr);
+}
+
+TEST(typed_function_type_traits, typed_function_move_to_any) {
+    // 测试TypedFunction的MoveToAny
+    auto lambda = [](int a, int b) { return a * b; };
+    TypedFunction<int(int, int)> typed_func(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<TypedFunction<int(int, int)>>::MoveToAny(std::move(typed_func), &any_data);
+
+    EXPECT_EQ(any_data.tag_, AnyTag::Function);
+    EXPECT_NE(std::get<Object*>(any_data.payload_), nullptr);
+}
+
+TEST(typed_function_type_traits, typed_function_copy_from_any) {
+    // 测试TypedFunction的CopyFromAnyAfterCheck
+    auto lambda = [](int a, int b) { return a - b; };
+    TypedFunction<int(int, int)> original_func(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<TypedFunction<int(int, int)>>::CopyToAny(original_func, &any_data);
+
+    TypedFunction<int(int, int)> copied_func =
+            TypeTraits<TypedFunction<int(int, int)>>::CopyFromAnyAfterCheck(&any_data);
+
+    // 测试复制的函数是否正常工作
+    int result = copied_func(10, 3);
+    EXPECT_EQ(result, 7);
+}
+
+TEST(typed_function_type_traits, typed_function_move_from_any) {
+    // 测试TypedFunction的MoveFromAnyAfterCheck
+    auto lambda = [](int a, int b) { return a + b + 1; };
+    TypedFunction<int(int, int)> original_func(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<TypedFunction<int(int, int)>>::CopyToAny(original_func, &any_data);
+
+    TypedFunction<int(int, int)> moved_func =
+            TypeTraits<TypedFunction<int(int, int)>>::MoveFromAnyAfterCheck(&any_data);
+
+    // 测试移动的函数是否正常工作
+    int result = moved_func(2, 3);
+    EXPECT_EQ(result, 6);
+
+    // Any数据应该被清空
+    EXPECT_EQ(any_data.tag_, AnyTag::None);
+    EXPECT_EQ(std::get<Object*>(any_data.payload_), nullptr);
+}
+
+TEST(typed_function_type_traits, typed_function_try_cast_from_any) {
+    // 测试TypedFunction的TryCastFromAny
+    auto lambda = [](int a, int b) { return a * b; };
+    TypedFunction<int(int, int)> typed_func(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<TypedFunction<int(int, int)>>::CopyToAny(typed_func, &any_data);
+
+    auto result = TypeTraits<TypedFunction<int(int, int)>>::TryCastFromAny(&any_data);
+    EXPECT_TRUE(result.has_value());
+
+    // 测试转换后的函数
+    int call_result = result.value()(3, 4);
+    EXPECT_EQ(call_result, 12);
+}
+
+TEST(typed_function_type_traits, typed_function_try_cast_from_wrong_type) {
+    // 测试从错误类型的Any转换TypedFunction
+    AetherMindAny any_data;
+    any_data.tag_ = AnyTag::String;
+
+    auto result = TypeTraits<TypedFunction<int(int, int)>>::TryCastFromAny(&any_data);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(typed_function_type_traits, typed_function_check_method) {
+    // 测试TypedFunction的check方法
+    AetherMindAny any_data;
+
+    // 设置错误类型
+    any_data.tag_ = AnyTag::Double;
+    EXPECT_FALSE(TypeTraits<TypedFunction<int(int, int)>>::check(&any_data));
+
+    // 设置正确类型
+    any_data.tag_ = AnyTag::Function;
+    EXPECT_TRUE(TypeTraits<TypedFunction<int(int, int)>>::check(&any_data));
+}
+
+TEST(typed_function_type_traits, typed_function_type_str) {
+    // 测试TypedFunction的TypeStr方法
+    std::string type_str = TypeTraits<TypedFunction<int(int, int)>>::TypeStr();
+    EXPECT_EQ(type_str, "Function");
+}
+
+TEST(typed_function_type_traits, void_return_type_handling) {
+    // 测试void返回类型的TypedFunction
+    int counter = 0;
+    auto lambda = [&counter](int a, int b) {
+        counter = a + b;
+    };
+
+    TypedFunction<void(int, int)> typed_func(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<TypedFunction<void(int, int)>>::CopyToAny(typed_func, &any_data);
+
+    auto result = TypeTraits<TypedFunction<void(int, int)>>::TryCastFromAny(&any_data);
+    EXPECT_TRUE(result.has_value());
+
+    // 测试void函数调用
+    result.value()(2, 3);
+    EXPECT_EQ(counter, 5);
+}
+
+TEST(typed_function_type_traits, string_arguments_and_return) {
+    // 测试字符串参数的TypedFunction
+    auto lambda = [](const std::string& a, const std::string& b) {
+        return a + " " + b;
+    };
+
+    TypedFunction<std::string(const std::string&, const std::string&)> typed_func(lambda);
+
+    AetherMindAny any_data;
+    TypeTraits<decltype(typed_func)>::CopyToAny(typed_func, &any_data);
+
+    auto result = TypeTraits<decltype(typed_func)>::TryCastFromAny(&any_data);
+    EXPECT_TRUE(result.has_value());
+
+    std::string call_result = result.value()("Hello", "World");
+    EXPECT_EQ(call_result, "Hello World");
+}
+
+TEST(function_type_traits, integration_with_any_class) {
+    // 测试与Any类的集成
+    auto lambda = [](int a, int b) { return a + b; };
+    Function func = Function::FromTyped(lambda);
+
+    // 使用Any构造函数
+    Any any_func = func;
+    EXPECT_TRUE(any_func.is_object_ptr());
+
+    // 使用as方法转换回Function
+    auto result = any_func.as<Function>();
+    EXPECT_TRUE(result.has_value());
+
+    // 测试转换后的函数
+    Any call_result = result.value()(2, 3);
+    EXPECT_EQ(call_result.cast<int>(), 5);
+}
+
+TEST(typed_function_type_traits, integration_with_any_class) {
+    // 测试TypedFunction与Any类的集成
+    auto lambda = [](int a, int b) { return a * b; };
+    TypedFunction<int(int, int)> typed_func(lambda);
+
+    // 使用Any构造函数
+    Any any_func = typed_func;
+    EXPECT_TRUE(any_func.is_object_ptr());
+
+    // 使用as方法转换回TypedFunction
+    auto result = any_func.as<TypedFunction<int(int, int)>>();
+    EXPECT_TRUE(result.has_value());
+
+    // 测试转换后的函数
+    int call_result = result.value()(3, 4);
+    EXPECT_EQ(call_result, 12);
 }
 
 }// namespace

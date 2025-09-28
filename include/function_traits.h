@@ -118,7 +118,7 @@ struct FunctionInfo<std::function<R (*)(Args...)>> : FunctionTraits<R(Args...)> 
 using FGetFunctionSchema = String (*)();
 class Any2Arg {
 public:
-    Any2Arg(const Any* args, int32_t idx, const std::string* opt_name, FGetFunctionSchema f_schema)
+    Any2Arg(const Any* args, int32_t idx, const String* opt_name, FGetFunctionSchema f_schema)
         : args_(args), idx_(idx), opt_name_(opt_name), f_schema_(f_schema) {}
 
     template<typename T>
@@ -142,12 +142,12 @@ public:
 private:
     const Any* args_;
     int32_t idx_;
-    const std::string* opt_name_;
+    const String* opt_name_;
     FGetFunctionSchema f_schema_;
 };
 
 template<typename R, size_t... Is, typename F>
-void unpack_call(const F& callable, std::index_sequence<Is...>, const std::string* opt_name,
+void unpack_call(const F& callable, std::index_sequence<Is...>, const String* opt_name,
                  const Any* args, int32_t num_args, Any* res) {
     using FuncInfo = FunctionInfo<F>;
     const FGetFunctionSchema f_schema = FuncInfo::Schema;

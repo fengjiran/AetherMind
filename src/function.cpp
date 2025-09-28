@@ -14,10 +14,10 @@ class GlobalFunctionTable {
 public:
     class Entry {
     public:
-        String name_;
-        String doc_;
-        String schema_;
-        Function func_;
+        String name_{};
+        String doc_{};
+        String schema_{};
+        Function func_{};
 
         Entry(String name, String doc, String schema, Function func)
             : name_(std::move(name)), doc_(std::move(doc)), schema_(std::move(schema)), func_(std::move(func)) {}

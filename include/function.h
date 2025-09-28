@@ -157,7 +157,7 @@ public:
     }
 
     template<typename TCallable>
-    static Function FromTyped(TCallable callable, std::string name) {
+    static Function FromTyped(TCallable callable, String name) {
         using FuncInfo = details::FunctionInfo<TCallable>;
         using R = FuncInfo::return_type;
         using idx_seq = std::make_index_sequence<FuncInfo::num_args>;
@@ -219,7 +219,7 @@ public:
 
     template<typename FLambda,
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
-    TypedFunction(const FLambda& callable, const std::string& name) : packed_func_(Function::FromTyped(callable, name)) {}
+    TypedFunction(const FLambda& callable, const String& name) : packed_func_(Function::FromTyped(callable, name)) {}
 
     template<typename FLambda,
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>

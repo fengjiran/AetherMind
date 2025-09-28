@@ -6,12 +6,14 @@
 #define AETHERMIND_FUNCTION_H
 
 #include "any.h"
+#include "container/array.h"
 #include "container/string.h"
 #include "function_traits.h"
 #include "object.h"
 
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace aethermind {
@@ -41,11 +43,11 @@ class PackedArgs {
 public:
     PackedArgs(const Any* args, int32_t size) : args_(args), size_(size) {}
 
-    int32_t size() const {
+    NODISCARD int32_t size() const {
         return size_;
     }
 
-    const Any* data() const {
+    NODISCARD const Any* data() const {
         return args_;
     }
 
@@ -53,7 +55,7 @@ public:
         return args_[i];
     }
 
-    PackedArgs slice(int begin, int end = -1) const {
+    NODISCARD PackedArgs slice(int begin, int end = -1) const {
         if (end == -1) {
             end = size_;
         }
@@ -77,14 +79,14 @@ public:
 
     FunctionImpl() : callable_(nullptr), schema_("") {}
 
-    explicit FunctionImpl(FCall callable, const String& schema = "")
-        : callable_(std::move(callable)), schema_(schema) {}
+    explicit FunctionImpl(FCall callable, String schema = "")
+        : callable_(std::move(callable)), schema_(std::move(schema)) {}
 
     void CallPacked(const Any* args, int32_t num_args, Any* res) const {
         callable_(this, args, num_args, res);
     }
 
-    const String& schema() const {
+    NODISCARD const String& schema() const {
         return schema_;
     }
 
@@ -169,13 +171,17 @@ public:
 
     static void RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool can_override);
 
+    NODISCARD static std::optional<Function> GetGlobalFunction(const String& name);
+
+    NODISCARD static Array<String> ListGlobalFunctionNames();
+
     NODISCARD bool defined() const noexcept;
 
     NODISCARD uint32_t use_count() const noexcept;
 
     NODISCARD bool unique() const noexcept;
 
-    const String& schema() const noexcept;
+    NODISCARD const String& schema() const noexcept;
 
     NODISCARD FunctionImpl* get_impl_ptr_unsafe() const noexcept;
 
@@ -223,7 +229,7 @@ public:
 
     template<typename FLambda,
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
-    TypedFunction(const FLambda& callable) : packed_func_(Function::FromTyped(callable)) {}
+    TypedFunction(const FLambda& callable) : packed_func_(Function::FromTyped(callable)) {}//NOLINT
 
     template<typename FLambda,
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
@@ -237,16 +243,20 @@ public:
         return *this;
     }
 
-    operator Function() const {
+    operator Function() const {//NOLINT
         return packed();
     }
 
-    const Function& packed() const& {
+    NODISCARD const Function& packed() const& {
         return packed_func_;
     }
 
     Function&& packed() && {
         return std::move(packed_func_);
+    }
+
+    NODISCARD const String& schema() const noexcept {
+        return packed_func_.schema();
     }
 
     R operator()(Args... args) const {

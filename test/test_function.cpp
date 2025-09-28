@@ -64,8 +64,8 @@ TEST(FunctionTest, FromPackedMethod) {
 TEST(FunctionTest, OperatorCallWithMultipleArgs) {
     auto func = [](PackedArgs args, Any* res) {
         int a = args[0].cast<int>();
-        double b = args[1].cast<double>();
-        std::string c = args[2].cast<std::string>();
+        auto b = args[1].cast<double>();
+        auto c = args[2].cast<std::string>();
         *res = a + static_cast<int>(b) + c.size();
     };
 
@@ -271,7 +271,7 @@ TEST(FunctionTest, NestedFunctionCalls) {
     Any adder_any = create_func(100);
 
     // 从Any中提取Function并调用
-    Function adder = adder_any.cast<Function>();
+    auto adder = adder_any.cast<Function>();
     Any result1 = adder(50);
     Any result2 = adder(-25);
 
@@ -352,6 +352,15 @@ public:
         return "Hello, " + name + "!";
     }
 };
+
+TEST(FunctionTest, class_method) {
+    Function f = &TestClass::greet;
+    EXPECT_EQ(f("World").cast<String>(), "Hello, World!");
+
+    TypedFunction<std::string(std::string)> ft = &TestClass::greet;
+    EXPECT_EQ(ft("World"), "Hello, World!");
+    EXPECT_EQ(f.schema(), ft.schema());
+}
 
 TEST(TypeFunction, default_construction) {
     TypedFunction<int(int, int)> func;
@@ -449,10 +458,8 @@ TEST(TypeFunction, conversion_to_function) {
 }
 
 TEST(TypeFunction, member_function_wrapper) {
-    TestClass obj;
-
     // 包装成员函数
-    auto lambda = [&obj](int a, int b) { return obj.multiply(a, b); };
+    auto lambda = [](int a, int b) { return TestClass::multiply(a, b); };
     TypedFunction<int(int, int)> func(lambda);
 
     EXPECT_EQ(func(3, 4), 12);
@@ -460,7 +467,7 @@ TEST(TypeFunction, member_function_wrapper) {
 
 TEST(TypeFunction, any_return_type) {
     auto lambda = [](int a, int b) -> Any {
-        return Any(a + b);
+        return {a + b};
     };
 
     TypedFunction<Any(int, int)> func(lambda);

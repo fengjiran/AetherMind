@@ -3,8 +3,6 @@
 //
 
 #include "function.h"
-#include "container/array.h"
-#include "container/string.h"
 
 #include <unordered_map>
 
@@ -105,6 +103,18 @@ void Function::CallPacked(details::PackedArgs args, Any* res) const {
 void Function::RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool can_override) {
     GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, can_override);
 }
+
+std::optional<Function> Function::GetGlobalFunction(const String& name) {
+    if (const auto* entry = GlobalFunctionTable::Global()->Get(name); entry != nullptr) {
+        return entry->func_;
+    }
+    return std::nullopt;
+}
+
+Array<String> Function::ListGlobalFunctionNames() {
+    return GlobalFunctionTable::Global()->ListNames();
+}
+
 
 
 }// namespace aethermind

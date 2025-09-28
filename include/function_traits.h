@@ -6,6 +6,7 @@
 #define AETHERMIND_FUNCTION_TRAITS_H
 
 #include "any.h"
+#include "container/string.h"
 
 #include <functional>
 #include <tuple>
@@ -76,7 +77,7 @@ struct FunctionTraits<R(Args...)> {
     /*! \brief Whether this function can be converted to Function via FromTyped */
     static constexpr bool unpacked_args_supported = (ArgSupported<Args> && ...) && RetSupported<R>;
 
-    static std::string Schema() {
+    static String Schema() {
         using idx_seq = std::make_index_sequence<sizeof...(Args)>;
         std::stringstream ss;
         ss << "(";
@@ -114,8 +115,7 @@ struct FunctionInfo<std::function<R(Args...)>> : FunctionTraits<R(Args...)> {};
 template<typename R, typename... Args>
 struct FunctionInfo<std::function<R (*)(Args...)>> : FunctionTraits<R(Args...)> {};
 
-using FGetFunctionSchema = std::string (*)();
-
+using FGetFunctionSchema = String (*)();
 class Any2Arg {
 public:
     Any2Arg(const Any* args, int32_t idx, const std::string* opt_name, FGetFunctionSchema f_schema)

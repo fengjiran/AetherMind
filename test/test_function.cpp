@@ -37,7 +37,8 @@ TEST(FunctionTest, FromCallable) {
         *res = a + b;
     };
 
-    Function f(packed_func);
+    // Function f = Function::FromPacked(packed_func);
+    Function f = packed_func;
     Any result = f(5, 3);
     EXPECT_EQ(result.cast<int>(), 8);
 }
@@ -52,10 +53,11 @@ TEST(FunctionTest, FromPackedMethod) {
         *res = a * b;
     };
 
-    Function f = Function::FromPacked(raw_func);
-    std::cout << f.schema() << std::endl;
+    // Function f = Function::FromPacked(raw_func);
+    Function f = raw_func;
     Any result = f(4, 7);
     EXPECT_EQ(result.cast<int>(), 28);
+    EXPECT_EQ(f.schema(), "(0: const Any*, 1: Int, 2: Any*) -> void");
 }
 
 // 测试Function的operator()调用，带多个参数和不同类型
@@ -67,8 +69,8 @@ TEST(FunctionTest, OperatorCallWithMultipleArgs) {
         *res = a + static_cast<int>(b) + c.size();
     };
 
-    Function f(func);
-    std::cout << f.schema() << std::endl;
+    // auto f = Function::FromPacked(func);
+    Function f = func;
     Any result = f(5, 3.14, std::string("hello"));
     EXPECT_EQ(result.cast<int>(), 5 + 3 + 5);// 5 + 3(整数部分) + 5(字符串长度)
 }
@@ -80,7 +82,8 @@ TEST(FunctionTest, OperatorCallWithNoArgs) {
         *res = 42;
     };
 
-    Function f(func);
+    // Function f = Function::FromPacked(func);
+    Function f = func;
     Any result = f();
     EXPECT_EQ(result.cast<int>(), 42);
 }
@@ -88,26 +91,30 @@ TEST(FunctionTest, OperatorCallWithNoArgs) {
 // 测试Function返回不同类型的结果
 TEST(FunctionTest, ReturnDifferentTypes) {
     // 返回整数
-    Function f1([](PackedArgs, Any* res) { *res = 100; });
+    // Function f1 = Function::FromPacked([](PackedArgs, Any* res) { *res = 100; });
+    Function f1 = [](PackedArgs, Any* res) { *res = 100; };
     EXPECT_EQ(f1().cast<int>(), 100);
 
     // 返回浮点数
-    Function f2([](PackedArgs, Any* res) { *res = 3.14159; });
+    // Function f2 = Function::FromPacked([](PackedArgs, Any* res) { *res = 3.14159; });
+    Function f2 = [](PackedArgs, Any* res) { *res = 3.14159; };
     EXPECT_FLOAT_EQ(f2().cast<float>(), 3.14159);
 
     // 返回字符串
-    Function f3([](PackedArgs, Any* res) { *res = std::string("test"); });
+    // Function f3 = Function::FromPacked([](PackedArgs, Any* res) { *res = std::string("test"); });
+    Function f3 = [](PackedArgs, Any* res) { *res = std::string("test"); };
     EXPECT_EQ(f3().cast<std::string>(), "test");
 
     // 返回布尔值
-    Function f4([](PackedArgs, Any* res) { *res = true; });
+    // Function f4 = Function::FromPacked([](PackedArgs, Any* res) { *res = true; });
+    Function f4 = [](PackedArgs, Any* res) { *res = true; };
     EXPECT_TRUE(f4().cast<bool>());
 }
 
 // 测试get_impl_ptr_unsafe和release_impl_unsafe方法
 TEST(FunctionTest, ImplPointerMethods) {
     auto func = [](PackedArgs, Any* res) { *res = 0; };
-    Function f(func);
+    Function f = func;
 
     // 测试get_impl_ptr_unsafe
     FunctionImpl* impl_ptr = f.get_impl_ptr_unsafe();
@@ -238,7 +245,7 @@ TEST(DetailsTest, ForEachFunction) {
 TEST(FunctionTypeTraitsTest, BasicFunctionality) {
     // 准备Function对象
     auto func = [](PackedArgs, Any* res) { *res = 42; };
-    Function f(func);
+    Function f = func;
 
     // 测试TypeTraits的基本特性
     // EXPECT_TRUE(TypeTraits<Function>::is_specialized);
@@ -260,7 +267,7 @@ TEST(FunctionTest, NestedFunctionCalls) {
         *res = Function(adder_func);
     };
 
-    Function create_func(create_adder);
+    Function create_func = Function(create_adder);
     Any adder_any = create_func(100);
 
     // 从Any中提取Function并调用
@@ -283,7 +290,7 @@ TEST(FunctionTest, LargeNumberOfArgs) {
         *res = sum;
     };
 
-    Function f(sum_func);
+    Function f = sum_func;
 
     // 使用可变参数模板展开来调用带有多个参数的函数
     auto call_with_args = [&f](auto&&... args) -> Any {

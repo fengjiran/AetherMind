@@ -10,38 +10,6 @@
 
 namespace aethermind {
 
-bool Function::defined() const noexcept {
-    return pimpl_;
-}
-
-uint32_t Function::use_count() const noexcept {
-    return pimpl_.use_count();
-}
-
-bool Function::unique() const noexcept {
-    return pimpl_.unique();
-}
-
-const std::string& Function::schema() const noexcept {
-    return pimpl_->schema();
-}
-
-FunctionImpl* Function::get_impl_ptr_unsafe() const noexcept {
-    return pimpl_.get();
-}
-
-FunctionImpl* Function::release_impl_unsafe() noexcept {
-    return pimpl_.release();
-}
-
-void Function::CallPacked(const Any* args, int32_t num_args, Any* res) const {
-    pimpl_->CallPacked(args, num_args, res);
-}
-
-void Function::CallPacked(details::PackedArgs args, Any* res) const {
-    pimpl_->CallPacked(args.data(), args.size(), res);
-}
-
 class GlobalFunctionTable {
 public:
     class Entry {
@@ -52,8 +20,7 @@ public:
         Function func_;
 
         Entry(String name, String doc, String schema, Function func)
-            : name_(std::move(name)), doc_(std::move(doc)), schema_(std::move(schema)),
-              func_(std::move(func)) {}
+            : name_(std::move(name)), doc_(std::move(doc)), schema_(std::move(schema)), func_(std::move(func)) {}
     };
 
     static GlobalFunctionTable* Global() {
@@ -102,6 +69,42 @@ private:
     GlobalFunctionTable() = default;
     std::unordered_map<String, Entry*> table_{};
 };
+
+bool Function::defined() const noexcept {
+    return pimpl_;
+}
+
+uint32_t Function::use_count() const noexcept {
+    return pimpl_.use_count();
+}
+
+bool Function::unique() const noexcept {
+    return pimpl_.unique();
+}
+
+const String& Function::schema() const noexcept {
+    return pimpl_->schema();
+}
+
+FunctionImpl* Function::get_impl_ptr_unsafe() const noexcept {
+    return pimpl_.get();
+}
+
+FunctionImpl* Function::release_impl_unsafe() noexcept {
+    return pimpl_.release();
+}
+
+void Function::CallPacked(const Any* args, int32_t num_args, Any* res) const {
+    pimpl_->CallPacked(args, num_args, res);
+}
+
+void Function::CallPacked(details::PackedArgs args, Any* res) const {
+    pimpl_->CallPacked(args.data(), args.size(), res);
+}
+
+void Function::RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool can_override) {
+    GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, can_override);
+}
 
 
 }// namespace aethermind

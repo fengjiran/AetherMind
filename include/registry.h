@@ -11,14 +11,16 @@ namespace aethermind {
 
 class Registry {
 public:
-
-private:
-    void RegisterFunc(const char* name, const Function& func) {
-
+    template<typename F>
+    Registry& def(const String& name, const String& doc, F&& func) {
+        RegisterFunc(name, doc, Function::FromTyped(std::forward<F>(func)), false);
+        return *this;
     }
 
+private:
+    static void RegisterFunc(const String& name, const String& doc, Function func, bool allow_override);
 };
 
-}
+}// namespace aethermind
 
 #endif//AETHERMIND_REGISTRY_H

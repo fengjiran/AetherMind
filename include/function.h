@@ -168,7 +168,7 @@ public:
         return Function(f, FuncInfo::Schema());
     }
 
-    static void RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool can_override);
+    static void RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool allow_override);
 
     NODISCARD static std::optional<Function> GetGlobalFunction(const String& name);
 

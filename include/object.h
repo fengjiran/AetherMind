@@ -713,6 +713,10 @@ private:
 
 namespace details {
 struct ObjectUnsafe {
+    static ObjectHeader* GetHeader(const Object* src) {
+        return const_cast<ObjectHeader*>(&src->header_);
+    }
+
     static void IncRefObjectHandle(const ObjectHandle handle) {
         if (handle) {
             static_cast<Object*>(handle)->IncRef();

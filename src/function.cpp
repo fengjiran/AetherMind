@@ -2,8 +2,8 @@
 // Created by richard on 9/24/25.
 //
 
-#include "c_api.h"
 #include "function.h"
+#include "c_api.h"
 #include "registry.h"
 
 #include <unordered_map>
@@ -29,9 +29,9 @@ public:
     }
 
     void Register(const String& name, const String& doc, const String& schema, const Function& func,
-                  bool can_override) {
+                  bool allow_override) {
         if (table_.contains(name)) {
-            if (!can_override) {
+            if (!allow_override) {
                 AETHERMIND_THROW(RuntimeError) << "Global Function `" << name << "` is already registered";
             }
         }
@@ -102,8 +102,8 @@ void Function::CallPacked(details::PackedArgs args, Any* res) const {
     pimpl_->CallPacked(args.data(), args.size(), res);
 }
 
-void Function::RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool can_override) {
-    GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, can_override);
+void Function::RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool allow_override) {
+    GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, allow_override);
 }
 
 std::optional<Function> Function::GetGlobalFunction(const String& name) {
@@ -117,6 +117,9 @@ Array<String> Function::ListGlobalFunctionNames() {
     return GlobalFunctionTable::Global()->ListNames();
 }
 
+void Registry::RegisterFunc(const String& name, const String& doc, Function func, bool allow_override) {
+    GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, allow_override);
+}
 
 
 }// namespace aethermind

@@ -24,7 +24,7 @@ Any::Any(Any&& other) noexcept : data_(std::move(other.data_)) {
 void Any::reset() {
     if (is_object_ptr()) {
         if (auto* obj = std::get<Object*>(data_.payload_); !IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::DecRef(obj);
+            details::ObjectUnsafe::DecRefObjectHandle(obj);
         }
     }
     data_.payload_ = 0;

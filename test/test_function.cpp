@@ -126,7 +126,7 @@ TEST(FunctionTest, ImplPointerMethods) {
     EXPECT_EQ(f.get_impl_ptr_unsafe(), NullTypeOf<FunctionImpl>::singleton());
 
     // 释放资源
-    ObjectUnsafe::DecRef(released_impl);
+    ObjectUnsafe::DecRefObjectHandle(released_impl);
 }
 
 // 测试FunctionImpl的CallPacked方法

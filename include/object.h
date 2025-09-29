@@ -41,7 +41,7 @@ enum DeleterFlag : uint8_t {
  */
 class Object {
 public:
-    using FDeleter = void (*)(Object*, uint8_t);
+    // using FDeleter = void (*)(Object*, uint8_t);
 
     /*!
     * \brief Default constructor, initializes a reference-counted object.
@@ -51,7 +51,11 @@ public:
     * Newly created objects require manual reference count management,
     * typically wrapped using ObjectPtr.
     */
-    Object() : strong_ref_count_(0), weak_ref_count_(0), deleter_(nullptr) {}
+    Object() {
+        header_.strong_ref_count_ = 0;
+        header_.weak_ref_count_ = 0;
+        header_.deleter_ = nullptr;
+    }
 
     virtual ~Object() = default;
 
@@ -66,7 +70,7 @@ public:
      * \return The current reference count value of the object
      */
     NODISCARD uint32_t use_count() const {
-        return __atomic_load_n(&strong_ref_count_, __ATOMIC_RELAXED);
+        return __atomic_load_n(&header_.strong_ref_count_, __ATOMIC_RELAXED);
     }
 
     /*!
@@ -80,7 +84,7 @@ public:
      * \return The current weak reference count value of the object
      */
     NODISCARD uint32_t weak_use_count() const {
-        return __atomic_load_n(&weak_ref_count_, __ATOMIC_RELAXED);
+        return __atomic_load_n(&header_.weak_ref_count_, __ATOMIC_RELAXED);
     }
 
     /*!
@@ -98,7 +102,7 @@ public:
      * \param deleter The deleter function to be invoked when the reference count reaches zero.
      */
     void SetDeleter(FDeleter deleter) {
-        deleter_ = deleter;
+        header_.deleter_ = deleter;
     }
 
     virtual bool is_null_type_ptr() const {
@@ -115,7 +119,7 @@ private:
      * is not required.
      */
     void IncRef() {
-        __atomic_fetch_add(&strong_ref_count_, 1, __ATOMIC_RELAXED);
+        __atomic_fetch_add(&header_.strong_ref_count_, 1, __ATOMIC_RELAXED);
     }
 
     /*!
@@ -127,7 +131,7 @@ private:
      * is not required.
      */
     void IncWeakRef() {
-        __atomic_fetch_add(&weak_ref_count_, 1, __ATOMIC_RELAXED);
+        __atomic_fetch_add(&header_.weak_ref_count_, 1, __ATOMIC_RELAXED);
     }
 
     /*!
@@ -145,28 +149,28 @@ private:
      * invoked to destroy the object only.
      */
     void DecRef() {
-        if (__atomic_fetch_sub(&strong_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
+        if (__atomic_fetch_sub(&header_.strong_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
             if (weak_use_count() == 1) {
                 // only acquire when we need to call deleter
                 // in this case we need to ensure all previous writes are visible
                 __atomic_thread_fence(__ATOMIC_ACQUIRE);
-                if (deleter_ != nullptr) {
-                    deleter_(this, kBothPtrMask);
+                if (header_.deleter_ != nullptr) {
+                    header_.deleter_(this, kBothPtrMask);
                 }
             } else {
                 // Slower path: there is still a weak reference left
                 __atomic_thread_fence(__ATOMIC_ACQUIRE);
                 // call destructor first, release source
-                if (deleter_ != nullptr) {
-                    deleter_(this, kStrongPtrMask);
+                if (header_.deleter_ != nullptr) {
+                    header_.deleter_(this, kStrongPtrMask);
                 }
 
                 // decrease weak ref count
-                if (__atomic_fetch_sub(&weak_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
+                if (__atomic_fetch_sub(&header_.weak_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
                     __atomic_thread_fence(__ATOMIC_ACQUIRE);
                     // free memory
-                    if (deleter_ != nullptr) {
-                        deleter_(this, kWeakPtrMask);
+                    if (header_.deleter_ != nullptr) {
+                        header_.deleter_(this, kWeakPtrMask);
                     }
                 }
             }
@@ -186,11 +190,11 @@ private:
      * the object.
      */
     void DecWeakRef() {
-        if (__atomic_fetch_sub(&weak_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
+        if (__atomic_fetch_sub(&header_.weak_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
             // free memory
-            if (deleter_ != nullptr) {
-                deleter_(this, kWeakPtrMask);
+            if (header_.deleter_ != nullptr) {
+                header_.deleter_(this, kWeakPtrMask);
             }
         }
     }
@@ -206,13 +210,13 @@ private:
      * at the same time.
      */
     bool TryPromoteWeakPtr() {
-        uint32_t old_cnt = __atomic_load_n(&strong_ref_count_, __ATOMIC_RELAXED);
+        uint32_t old_cnt = __atomic_load_n(&header_.strong_ref_count_, __ATOMIC_RELAXED);
         // must do CAS to ensure that we are the only one that increases the reference count
         // avoid condition when two threads tries to promote weak to strong at same time
         // or when strong deletion happens between the load and the CAS
         while (old_cnt > 0) {
             uint32_t new_cnt = old_cnt + 1;
-            if (__atomic_compare_exchange_n(&strong_ref_count_, &old_cnt, new_cnt, true,
+            if (__atomic_compare_exchange_n(&header_.strong_ref_count_, &old_cnt, new_cnt, true,
                                             __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
                 return true;
             }
@@ -221,13 +225,16 @@ private:
     }
 
     /*! \brief Reference counter of the object. */
-    uint32_t strong_ref_count_;
+    // uint32_t strong_ref_count_;
 
     /*! \brief Weak reference counter of the object. */
-    uint32_t weak_ref_count_;
+    // uint32_t weak_ref_count_;
 
     /*! \brief Deleter to be invoked when reference counter goes to zero. */
-    FDeleter deleter_;
+    // FDeleter deleter_{nullptr};
+
+    /*! \brief header field that is the common prefix of all objects */
+    ObjectHeader header_;
 
     template<typename T>
     friend class ObjectPtr;
@@ -706,33 +713,27 @@ private:
 
 namespace details {
 struct ObjectUnsafe {
-    static void IncRef(Object* ptr) {
-        if (ptr) {
-            ptr->IncRef();
-        }
-    }
-
     static void IncRefObjectHandle(const ObjectHandle handle) {
         if (handle) {
             static_cast<Object*>(handle)->IncRef();
         }
     }
 
-    static void DecRef(Object* ptr) {
-        if (ptr) {
-            ptr->DecRef();
+    static void DecRefObjectHandle(const ObjectHandle handle) {
+        if (handle) {
+            static_cast<Object*>(handle)->DecRef();
         }
     }
 
-    static void IncWeakRef(Object* ptr) {
-        if (ptr) {
-            ptr->IncWeakRef();
+    static void IncWeakRefObjectHandle(const ObjectHandle handle) {
+        if (handle) {
+            static_cast<Object*>(handle)->IncWeakRef();
         }
     }
 
-    static void DecWeakRef(Object* ptr) {
-        if (ptr) {
-            ptr->DecWeakRef();
+    static void DecWeakRefObjectHandle(const ObjectHandle handle) {
+        if (handle) {
+            static_cast<Object*>(handle)->DecWeakRef();
         }
     }
 };
@@ -810,7 +811,7 @@ public:
         using Handler = Derived::template Handler<T>;
         T* ptr = Handler::allocate(std::forward<Args>(args)...);
         ptr->SetDeleter(Handler::deleter);
-        ObjectUnsafe::IncWeakRef(ptr);
+        ObjectUnsafe::IncWeakRefObjectHandle(ptr);
         return ObjectPtr<T>(ptr);
     }
 
@@ -820,7 +821,7 @@ public:
         using Handler = Derived::template ArrayHandler<T, ElemType>;
         T* ptr = Handler::allocate(num_elems, std::forward<Args>(args)...);
         ptr->SetDeleter(Handler::deleter);
-        ObjectUnsafe::IncWeakRef(ptr);
+        ObjectUnsafe::IncWeakRefObjectHandle(ptr);
         return ObjectPtr<T>(ptr);
     }
 };
@@ -840,8 +841,8 @@ public:
             return reinterpret_cast<T*>(data);
         }
 
-        static void deleter(Object* ptr, uint8_t flag) {
-            T* p = static_cast<T*>(ptr);
+        static void deleter(void* ptr, uint8_t flag) {
+            auto* p = static_cast<T*>(ptr);
             if (flag & kStrongPtrMask) {
                 p->T::~T();// release source
             }
@@ -869,7 +870,7 @@ public:
             return reinterpret_cast<ObjType*>(data);
         }
 
-        static void deleter(Object* ptr, uint8_t flag) {
+        static void deleter(void* ptr, uint8_t flag) {
             auto* p = static_cast<ObjType*>(ptr);
             if (flag & kStrongPtrMask) {
                 p->ObjType::~ObjType();

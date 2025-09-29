@@ -565,7 +565,7 @@ TEST(weak_object_ptr, release_operation) {
     EXPECT_FALSE(weak.defined());
 
     // 需要手动管理释放的指针
-    details::ObjectUnsafe::DecWeakRef(released);
+    details::ObjectUnsafe::DecWeakRefObjectHandle(released);
 }
 
 TEST(weak_object_ptr, inheritance_conversion) {

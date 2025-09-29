@@ -109,7 +109,7 @@ struct TypeTraits<Tensor> : TypeTraitsBase {
         Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
         if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRef(obj);
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
         }
     }
 
@@ -121,7 +121,7 @@ struct TypeTraits<Tensor> : TypeTraitsBase {
     static Tensor CopyFromAnyAfterCheck(const AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
         if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRef(obj);
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
         }
 
         return Tensor(ObjectPtr<TensorImpl>::reclaim(static_cast<TensorImpl*>(obj)));

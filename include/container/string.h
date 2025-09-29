@@ -178,7 +178,7 @@ struct TypeTraits<String> : TypeTraitsBase {
         Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
         if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRef(obj);
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
         }
     }
 
@@ -190,7 +190,7 @@ struct TypeTraits<String> : TypeTraitsBase {
     static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
         if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRef(obj);
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
         }
         return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
     }

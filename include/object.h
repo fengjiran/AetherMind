@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_OBJECT_H
 #define AETHERMIND_OBJECT_H
 
-#include "macros.h"
+#include "c_api.h"
 
 #include <glog/logging.h>
 #include <memory>
@@ -709,6 +709,12 @@ struct ObjectUnsafe {
     static void IncRef(Object* ptr) {
         if (ptr) {
             ptr->IncRef();
+        }
+    }
+
+    static void IncRefObjectHandle(const ObjectHandle handle) {
+        if (handle) {
+            static_cast<Object*>(handle)->IncRef();
         }
     }
 

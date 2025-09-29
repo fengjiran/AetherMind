@@ -2,7 +2,9 @@
 // Created by richard on 9/24/25.
 //
 
+#include "c_api.h"
 #include "function.h"
+#include "registry.h"
 
 #include <unordered_map>
 

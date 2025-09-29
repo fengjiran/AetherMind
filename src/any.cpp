@@ -11,7 +11,7 @@ Any::Any(const Any& other) : data_(other.data_) {
     if (is_object_ptr()) {
         auto* obj = std::get<Object*>(data_.payload_);
         if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRef(obj);
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
         }
     }
 }

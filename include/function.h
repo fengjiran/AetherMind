@@ -114,7 +114,6 @@ private:
     String schema_;
 };
 
-
 class Function {
 public:
     Function() = default;
@@ -284,7 +283,7 @@ struct TypeTraits<Function> : TypeTraitsBase {
         FunctionImpl* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
         if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRef(obj);
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
         }
     }
 
@@ -296,7 +295,7 @@ struct TypeTraits<Function> : TypeTraitsBase {
     static Function CopyFromAnyAfterCheck(const AetherMindAny* src) {
         auto* obj = std::get<Object*>(src->payload_);
         if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRef(obj);
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
         }
         return Function(ObjectPtr<FunctionImpl>::reclaim(static_cast<FunctionImpl*>(obj)));
     }

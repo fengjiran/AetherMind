@@ -30,7 +30,7 @@ public:
     }
 
 private:
-    static void RegisterFunc(const String& name, const String& doc, Function func, bool allow_override);
+    static void RegisterFunc(const String& name, const String& doc, const Function& func, bool allow_override);
 
     template<typename Class, typename R, typename... Args>
     static Function GetMethod(const String& name, R (Class::*func)(Args...)) {

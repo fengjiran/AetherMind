@@ -29,6 +29,9 @@ TEST(String, Assignment) {
     EXPECT_TRUE(s.size() == 5);
     EXPECT_EQ(s.use_count(), 1);
     EXPECT_TRUE(s.unique());
+
+    s = String("Hello, world");
+    EXPECT_TRUE(s == "Hello, world");
 }
 
 TEST(String, empty) {

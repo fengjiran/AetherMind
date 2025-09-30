@@ -113,16 +113,39 @@ std::optional<Function> Function::GetGlobalFunction(const String& name) {
     return std::nullopt;
 }
 
+Function Function::GetGlobalFunctionRequired(const String& name) {
+    auto opt_func = GetGlobalFunction(name);
+    if (!opt_func.has_value()) {
+        AETHERMIND_THROW(ValueError) << "Function `" << name << "` is not registered";
+    }
+    return opt_func.value();
+}
+
 Array<String> Function::ListGlobalFunctionNames() {
     return GlobalFunctionTable::Global()->ListNames();
 }
 
-void Registry::RegisterFunc(const String& name, const String& doc, Function func, bool allow_override) {
+void Registry::RegisterFunc(const String& name, const String& doc, const Function& func, bool allow_override) {
     GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, allow_override);
 }
 
-DEFINE_STATIC_FUNCTION() {
-
-}
-
 }// namespace aethermind
+
+DEFINE_STATIC_FUNCTION() {
+    aethermind::Registry()
+            .def("ListGlobalFunctionNamesFunctor", "List all global function names registered in GlobalFunctionTable",
+                 [] {
+                     auto names = aethermind::GlobalFunctionTable::Global()->ListNames();
+                     auto functor = [names](int64_t i) -> aethermind::Any {
+                         if (i < 0) {
+                             return names.size();
+                         }
+                         return names[i];
+                     };
+                     return aethermind::Function(functor);
+                 })
+            .def("RemoveGlobalFunction", "Remove a global function from GlobalFunctionTable",
+                 [](const aethermind::String& name) {
+                     return aethermind::GlobalFunctionTable::Global()->Remove(name);
+                 });
+}

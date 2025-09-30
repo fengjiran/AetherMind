@@ -834,4 +834,30 @@ TEST(typed_function_type_traits, integration_with_any_class) {
     EXPECT_EQ(call_result, 12);
 }
 
+TEST(GlobalFunctionTable, init) {
+    auto add_one = [](const int& i) {
+        return i + 1;
+    };
+    Function::RegisterGlobalFunction("test.add_one", "add one function for test",
+        Function(add_one), false);
+
+    auto fadd1 = Function::GetGlobalFunctionRequired("test.add_one");
+    int x = fadd1(1).cast<int>();
+    EXPECT_EQ(x, 2);
+
+    auto fnot_exist = Function::GetGlobalFunction("test.not_existing_func");
+    EXPECT_TRUE(!fnot_exist);
+
+    auto fname_functor = Function::GetGlobalFunctionRequired("ListGlobalFunctionNamesFunctor")().cast<Function>();
+    int len = fname_functor(-1).cast<int>();
+    Array<String> names(len);
+    for (int i = 0; i < len; ++i) {
+        names.Set(i, fname_functor(i).cast<String>());
+    }
+
+    for (int i = 0; i < len; ++i) {
+        std::cout << names[i] << std::endl;
+    }
+}
+
 }// namespace

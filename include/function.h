@@ -172,6 +172,8 @@ public:
 
     NODISCARD static std::optional<Function> GetGlobalFunction(const String& name);
 
+    NODISCARD static Function GetGlobalFunctionRequired(const String& name);
+
     NODISCARD static Array<String> ListGlobalFunctionNames();
 
     NODISCARD bool defined() const noexcept;

@@ -67,5 +67,14 @@
         }                                                \
     };
 
+#define DEFINE_STATIC_FUNCTION_(FuncName)       \
+    static void FuncName();                     \
+    STR_CONCAT(REG_VAR_DEF, __COUNTER__) = [] { \
+        FuncName();                             \
+        return 0;                               \
+    }();                                        \
+    static void FuncName()
+
+#define DEFINE_STATIC_FUNCTION() DEFINE_STATIC_FUNCTION_(STR_CONCAT(_static_func_tid_, __COUNTER__))
 
 #endif//AETHERMIND_MACROS_H

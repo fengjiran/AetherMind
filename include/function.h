@@ -158,7 +158,7 @@ public:
     }
 
     template<typename TCallable>
-    static Function FromTyped(TCallable callable, String name) {
+    static Function FromTyped(TCallable callable, const String& name) {
         using FuncInfo = details::FunctionInfo<TCallable>;
         using R = FuncInfo::return_type;
         using idx_seq = std::make_index_sequence<FuncInfo::num_args>;

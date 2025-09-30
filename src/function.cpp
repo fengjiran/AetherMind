@@ -121,5 +121,8 @@ void Registry::RegisterFunc(const String& name, const String& doc, Function func
     GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, allow_override);
 }
 
+DEFINE_STATIC_FUNCTION() {
+
+}
 
 }// namespace aethermind

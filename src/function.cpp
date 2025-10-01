@@ -6,6 +6,7 @@
 #include "c_api.h"
 #include "registry.h"
 
+#include <fmt/format.h>
 #include <unordered_map>
 
 namespace aethermind {
@@ -14,13 +15,14 @@ class GlobalFunctionTable {
 public:
     class Entry {
     public:
-        String name_{};
-        String doc_{};
-        String schema_{};
-        Function func_{};
+        String name_;
+        Function func_;
+        String filename_;
+        uint32_t lineno_;
 
-        Entry(String name, String doc, String schema, Function func)
-            : name_(std::move(name)), doc_(std::move(doc)), schema_(std::move(schema)), func_(std::move(func)) {}
+        Entry(String name, Function func, String filename, uint32_t lineno)
+            : name_(std::move(name)), func_(std::move(func)),
+              filename_(std::move(filename)), lineno_(lineno) {}
     };
 
     static GlobalFunctionTable* Global() {
@@ -28,19 +30,19 @@ public:
         return &instance;
     }
 
-    void Register(const String& name, const String& doc, const String& schema, const Function& func,
-                  bool allow_override) {
+    void Register(const String& name, const Function& func, bool allow_override,
+                  const String& filename, uint32_t lineno) {
         if (table_.contains(name)) {
             if (!allow_override) {
                 AETHERMIND_THROW(RuntimeError) << "Global Function `" << name << "` is already registered";
             }
         }
-        auto* entry = new Entry(name, doc, schema, func);
+        auto* entry = new Entry(name, func, filename, lineno);
         table_[name] = entry;
     }
 
     const Entry* Get(const String& name) {
-        auto it = table_.find(name);
+        const auto it = table_.find(name);
         if (it == table_.end()) {
             return nullptr;
         }
@@ -48,7 +50,7 @@ public:
     }
 
     bool Remove(const String& name) {
-        auto it = table_.find(name);
+        const auto it = table_.find(name);
         if (it == table_.end()) {
             return false;
         }
@@ -63,6 +65,14 @@ public:
             names.push_back(kv.first);
         }
         return names;
+    }
+
+    String GetRegisteredLocation(const String& name) {
+        if (!table_.contains(name)) {
+            AETHERMIND_THROW(RuntimeError) << "Global Function `" << name << "` is not registered";
+        }
+        return fmt::format("Global function `{}` is registered at {}:{}",
+                           name.c_str(), table_[name]->filename_.c_str(), table_[name]->lineno_);
     }
 
 private:
@@ -102,10 +112,6 @@ void Function::CallPacked(details::PackedArgs args, Any* res) const {
     pimpl_->CallPacked(args.data(), args.size(), res);
 }
 
-void Function::RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool allow_override) {
-    GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, allow_override);
-}
-
 std::optional<Function> Function::GetGlobalFunction(const String& name) {
     if (const auto* entry = GlobalFunctionTable::Global()->Get(name); entry != nullptr) {
         return entry->func_;
@@ -125,16 +131,20 @@ Array<String> Function::ListGlobalFunctionNames() {
     return GlobalFunctionTable::Global()->ListNames();
 }
 
-void Registry::RegisterFunc(const String& name, const String& doc, const Function& func, bool allow_override) {
-    GlobalFunctionTable::Global()->Register(name, doc, func.schema(), func, allow_override);
+void Registry::RegisterFunc(const String& name, const Function& func, bool allow_override,
+                            const String& filename, uint32_t lineno) {
+    GlobalFunctionTable::Global()->Register(name, func, allow_override, filename, lineno);
+}
+
+String Registry::GetRegisteredLocation(const String& name) {
+    return GlobalFunctionTable::Global()->GetRegisteredLocation(name);
 }
 
 }// namespace aethermind
 
 DEFINE_STATIC_FUNCTION() {
     aethermind::Registry()
-            .def("ListGlobalFunctionNamesFunctor", "List all global function names registered in GlobalFunctionTable",
-                 [] {
+            .def("ListGlobalFunctionNamesFunctor", [] {
                      auto names = aethermind::GlobalFunctionTable::Global()->ListNames();
                      auto functor = [names](int64_t i) -> aethermind::Any {
                          if (i < 0) {
@@ -142,10 +152,6 @@ DEFINE_STATIC_FUNCTION() {
                          }
                          return names[i];
                      };
-                     return aethermind::Function(functor);
-                 })
-            .def("RemoveGlobalFunction", "Remove a global function from GlobalFunctionTable",
-                 [](const aethermind::String& name) {
-                     return aethermind::GlobalFunctionTable::Global()->Remove(name);
-                 });
+                     return aethermind::Function(functor); }, __FILE__, __LINE__)
+            .def("RemoveGlobalFunction", [](const aethermind::String& name) { return aethermind::GlobalFunctionTable::Global()->Remove(name); }, __FILE__, __LINE__);
 }

@@ -3,6 +3,7 @@
 //
 #include "container/string.h"
 #include "function.h"
+#include "registry.h"
 #include "testing_object.h"
 
 #include <gtest/gtest.h>
@@ -838,10 +839,11 @@ TEST(GlobalFunctionTable, init) {
     auto add_one = [](const int& i) {
         return i + 1;
     };
-    Function::RegisterGlobalFunction("test.add_one", "add one function for test",
-        Function(add_one), false);
 
+    Registry().def("test.add_one", add_one, __FILE__, __LINE__);
+    std::cout << Registry::GetRegisteredLocation("test.add_one") << std::endl;
     auto fadd1 = Function::GetGlobalFunctionRequired("test.add_one");
+    std::cout << fadd1.schema() << std::endl;
     int x = fadd1(1).cast<int>();
     EXPECT_EQ(x, 2);
 
@@ -849,15 +851,13 @@ TEST(GlobalFunctionTable, init) {
     EXPECT_TRUE(!fnot_exist);
 
     auto fname_functor = Function::GetGlobalFunctionRequired("ListGlobalFunctionNamesFunctor")().cast<Function>();
+    std::cout << fname_functor.schema() << std::endl;
     int len = fname_functor(-1).cast<int>();
     Array<String> names(len);
     for (int i = 0; i < len; ++i) {
         names.Set(i, fname_functor(i).cast<String>());
     }
-
-    for (int i = 0; i < len; ++i) {
-        std::cout << names[i] << std::endl;
-    }
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "test.add_one") != names.end());
 }
 
 }// namespace

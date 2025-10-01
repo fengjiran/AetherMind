@@ -12,25 +12,31 @@ namespace aethermind {
 class Registry {
 public:
     template<typename F>
-    Registry& def(const String& name, const String& doc, F&& func) {
-        RegisterFunc(name, doc, Function::FromTyped(std::forward<F>(func)), false);
+    Registry& def(const String& name, F&& func, const String& filename, uint32_t lineno) {
+        RegisterFunc(name, Function::FromTyped(std::forward<F>(func)), false,
+                     filename, lineno);
         return *this;
     }
 
     template<typename F>
-    Registry& def_packed(const String& name, const String& doc, F&& func) {
-        RegisterFunc(name, doc, Function::FromPacked(std::forward<F>(func)), false);
+    Registry& def_packed(const String& name, F&& func, const String& filename, uint32_t lineno) {
+        RegisterFunc(name, Function::FromPacked(std::forward<F>(func)), false,
+                     filename, lineno);
         return *this;
     }
 
     template<typename F>
-    Registry& def_method(const String& name, const String& doc, F&& func) {
-        RegisterFunc(name, doc, GetMethod(name, std::forward<F>(func)));
+    Registry& def_method(const String& name, F&& func, const String& filename, uint32_t lineno) {
+        RegisterFunc(name, GetMethod(name, std::forward<F>(func)), false,
+                     filename, lineno);
         return *this;
     }
+
+    static String GetRegisteredLocation(const String& name);
 
 private:
-    static void RegisterFunc(const String& name, const String& doc, const Function& func, bool allow_override);
+    static void RegisterFunc(const String& name, const Function& func, bool allow_override,
+                             const String& filename, uint32_t lineno);
 
     template<typename Class, typename R, typename... Args>
     static Function GetMethod(const String& name, R (Class::*func)(Args...)) {

@@ -9,7 +9,6 @@
 #include "container/array.h"
 #include "container/string.h"
 #include "function_traits.h"
-#include "object.h"
 
 #include <functional>
 #include <string>
@@ -167,8 +166,6 @@ public:
         };
         return Function(f, FuncInfo::Schema());
     }
-
-    static void RegisterGlobalFunction(const String& name, const String& doc, const Function& func, bool allow_override);
 
     NODISCARD static std::optional<Function> GetGlobalFunction(const String& name);
 

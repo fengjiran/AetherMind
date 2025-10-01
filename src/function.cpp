@@ -15,14 +15,12 @@ class GlobalFunctionTable {
 public:
     class Entry {
     public:
-        String name_;
         Function func_;
         String filename_;
         uint32_t lineno_;
 
-        Entry(String name, Function func, String filename, uint32_t lineno)
-            : name_(std::move(name)), func_(std::move(func)),
-              filename_(std::move(filename)), lineno_(lineno) {}
+        Entry(Function func, String filename, uint32_t lineno)
+            : func_(std::move(func)), filename_(std::move(filename)), lineno_(lineno) {}
     };
 
     static GlobalFunctionTable* Global() {
@@ -37,7 +35,7 @@ public:
                 AETHERMIND_THROW(RuntimeError) << "Global Function `" << name << "` is already registered";
             }
         }
-        auto* entry = new Entry(name, func, filename, lineno);
+        auto* entry = new Entry(func, filename, lineno);
         table_[name] = entry;
     }
 

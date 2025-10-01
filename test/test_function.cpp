@@ -842,6 +842,7 @@ TEST(GlobalFunctionTable, init) {
 
     Registry().def("test.add_one", add_one, __FILE__, __LINE__);
     std::cout << Registry::GetRegisteredLocation("test.add_one") << std::endl;
+    std::cout << Registry::GetRegisteredLocation("ListGlobalFunctionNamesFunctor") << std::endl;
     auto fadd1 = Function::GetGlobalFunctionRequired("test.add_one");
     std::cout << fadd1.schema() << std::endl;
     int x = fadd1(1).cast<int>();

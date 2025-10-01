@@ -9,6 +9,7 @@
 #include "container/array.h"
 #include "container/string.h"
 #include "function_traits.h"
+#include "function_schema.h"
 
 #include <functional>
 #include <string>

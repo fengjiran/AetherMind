@@ -8,7 +8,6 @@
 #include "macros.h"
 
 #include <glog/logging.h>
-#include <memory>
 
 namespace aethermind {
 
@@ -34,7 +33,7 @@ public:
         return get();
     }
 
-    operator bool() const {
+    operator bool() const {//NOLINT
         return get() != nullptr;
     }
 

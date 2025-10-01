@@ -7,15 +7,9 @@
 
 #include "container/array_view.h"
 #include "error.h"
-#include "macros.h"
-#include "type.h"
 #include "type_ptr.h"
 
 #include <functional>
-#include <glog/logging.h>
-#include <memory>
-#include <optional>
-#include <string>
 
 namespace aethermind {
 
@@ -250,9 +244,8 @@ public:
     // Dynamically cast this object to the subclass indicated by the
     // template variable, returning nullptr if the cast is invalid.
     template<typename T,
-             typename = std::enable_if_t<!detail::is_singleton_type_v<T>>,
-             typename RetType = detail::CastReturnType_t<T>>
-    RetType cast() {
+             typename = std::enable_if_t<!detail::is_singleton_type_v<T>>>
+    auto cast() -> detail::CastReturnType_t<T> {
         if (T::Kind == kind()) {
             return std::static_pointer_cast<T>(static_cast<T*>(this)->shared_from_this());
         }
@@ -262,9 +255,8 @@ public:
     // cast to SingletonTypePtr<T>
     template<typename T,
              typename = void,
-             typename = std::enable_if_t<detail::is_singleton_type_v<T>>,
-             typename RetType = detail::CastReturnType_t<T>>
-    RetType cast() {
+             typename = std::enable_if_t<detail::is_singleton_type_v<T>>>
+    auto cast() -> detail::CastReturnType_t<T> {
         if (T::Kind == kind()) {
             CHECK(this == T::Global().get());
             return static_cast<T*>(this);
@@ -273,9 +265,8 @@ public:
     }
 
     template<typename T,
-             typename = std::enable_if_t<!detail::is_singleton_type_v<T>>,
-             typename RetType = detail::CastConstReturnType_t<T>>
-    RetType cast() const {
+             typename = std::enable_if_t<!detail::is_singleton_type_v<T>>>
+    auto cast() const -> detail::CastConstReturnType_t<T> {
         if (T::Kind == kind()) {
             return std::static_pointer_cast<const T>(static_cast<const T*>(this)->shared_from_this());
         }
@@ -284,9 +275,8 @@ public:
 
     template<typename T,
              typename = void,
-             typename = std::enable_if_t<detail::is_singleton_type_v<T>>,
-             typename RetType = detail::CastConstReturnType_t<T>>
-    RetType cast() const {
+             typename = std::enable_if_t<detail::is_singleton_type_v<T>>>
+    auto cast() const -> detail::CastConstReturnType_t<T> {
         if (T::Kind == kind()) {
             CHECK(this == T::Global().get());
             return static_cast<const T*>(this);

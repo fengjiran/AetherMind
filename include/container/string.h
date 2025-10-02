@@ -13,6 +13,8 @@ class StringImpl : public Object {
 public:
     StringImpl();
 
+    // ~StringImpl() override = default;
+
     NODISCARD size_t size() const noexcept;
 
     NODISCARD const char* data() const noexcept;

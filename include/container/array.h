@@ -25,7 +25,7 @@ public:
 
     ArrayImpl() : start_(nullptr), size_(0), capacity_(0) {}
 
-    ~ArrayImpl();
+    ~ArrayImpl() override;
 
     // return the number of elements in the array.
     NODISCARD size_t size() const noexcept {

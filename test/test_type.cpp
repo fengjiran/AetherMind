@@ -147,6 +147,40 @@ TEST(TypeSystem, SubtypeRelationships) {
     // EXPECT_FALSE(why_not.str().empty());
 }
 
+// UnionType测试
+TEST(TypeSystem, UnionType) {
+    GTEST_SKIP();
+    // 创建UnionType
+    std::vector<TypePtr> types = {
+            IntType::Global(),
+            FloatType::Global(),
+            StringType::Global()};
+    auto union_type = UnionType::create(types);
+
+    EXPECT_TRUE(union_type);
+    EXPECT_EQ(union_type->kind(), TypeKind::UnionType);
+    EXPECT_TRUE(union_type->isUnionType());
+
+    // 检查包含的类型
+    auto contained_types = union_type->containedTypes();
+    EXPECT_EQ(contained_types.size(), 3);
+
+    // 检查canHoldType方法
+    EXPECT_TRUE(union_type->canHoldType(*IntType::Global()));
+    EXPECT_TRUE(union_type->canHoldType(*FloatType::Global()));
+    EXPECT_TRUE(union_type->canHoldType(*StringType::Global()));
+    EXPECT_FALSE(union_type->canHoldType(*NoneType::Global()));
+
+    // 测试hasFreeVariables
+    EXPECT_FALSE(union_type->hasFreeVariables());
+
+    // 测试空的UnionType
+    std::vector<TypePtr> empty_types;
+    auto empty_union = UnionType::create(empty_types);
+    EXPECT_TRUE(empty_union);
+    EXPECT_EQ(empty_union->containedTypes().size(), 0);
+}
+
 TEST(SingletonOrSharedTypePtr, Empty) {
     SingletonOrSharedTypePtr<int> empty;
     EXPECT_FALSE(empty);

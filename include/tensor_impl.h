@@ -202,7 +202,7 @@ public:
     TensorImpl& operator=(const TensorImpl&) = delete;
     TensorImpl& operator=(TensorImpl&&) noexcept = delete;
 
-    virtual ~TensorImpl() = default;
+    // ~TensorImpl() override = default;
 
     /**
      * The number of elements in a tensor.

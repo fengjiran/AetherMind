@@ -552,12 +552,12 @@ private:
 using StringTypePtr = SingletonOrSharedTypePtr<StringType>;
 class StringType : public Singleton<StringType> {
 public:
-    NODISCARD bool equals(const Type& rhs) const override {
-        return kind() == rhs.kind();
-    }
-
     NODISCARD String str() const override {
         return "string";
+    }
+
+    NODISCARD bool equals(const Type& rhs) const override {
+        return kind() == rhs.kind();
     }
 
     static constexpr auto Kind = TypeKind::StringType;
@@ -573,14 +573,13 @@ private:
 using DeviceObjTypePtr = SingletonOrSharedTypePtr<DeviceObjType>;
 class DeviceObjType : public Singleton<DeviceObjType> {
 public:
-    NODISCARD bool equals(const Type& rhs) const override {
-        return kind() == rhs.kind();
-    }
-
     NODISCARD String str() const override {
         return "Device";
     }
 
+    NODISCARD bool equals(const Type& rhs) const override {
+        return kind() == rhs.kind();
+    }
     static constexpr auto Kind = TypeKind::DeviceObjType;
 
 private:
@@ -655,7 +654,7 @@ public:
     bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
 
     const TypePtr& get_element_type() const {
-        return containe_type_;
+        return contained_type_;
     }
 
     static OptionalTypePtr create(const TypePtr& contained);
@@ -665,7 +664,7 @@ public:
 private:
     explicit OptionalType(const TypePtr& contained);
 
-    TypePtr containe_type_;
+    TypePtr contained_type_;
 };
 
 inline String toString(const Type& t) {
@@ -684,6 +683,46 @@ inline bool operator!=(const Type& lhs, const Type& rhs) {
     return !(lhs == rhs);
 }
 
+struct ShapeSymbol {
+    ShapeSymbol() : value_(-1) {}
+
+    NODISCARD int64_t value() const {
+        return value_;
+    }
+
+    NODISCARD bool is_static() const {
+        return value_ >= 0;
+    }
+
+    NODISCARD int64_t static_size() const {
+        CHECK(is_static());
+        return value_;
+    }
+
+    bool operator==(const ShapeSymbol& other) const {
+        return value_ == other.value_;
+    }
+
+    bool operator<(const ShapeSymbol& other) const {
+        return value_ < other.value_;
+    }
+
+    static ShapeSymbol CreateFromStaticSize(int64_t val) {
+        return ShapeSymbol(val);
+    }
+
+    static ShapeSymbol Create() {
+        return CreateFromStaticSize(-static_cast<int64_t>(++num_symbols_));
+    }
+
+private:
+    explicit ShapeSymbol(int64_t val) : value_(val) {}
+
+    int64_t value_;
+    static std::atomic<size_t> num_symbols_;
+};
+
+std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s);
 
 // Attempt to find the correct supertype of the two types `t1` and `t2`.
 // If no supertype is found, then nullopt will be returned if

@@ -351,11 +351,11 @@ OptionalType::OptionalType(const TypePtr& contained)
     }
 
     if (UnionType::containedTypeSize() == 2) {
-        containe_type_ = UnionType::containedTypes()[0]->kind() != NoneType::Kind
+        contained_type_ = UnionType::containedTypes()[0]->kind() != NoneType::Kind
                                  ? UnionType::containedTypes()[0]
                                  : UnionType::containedTypes()[1];
     } else if (contained == NumberType::Global() || is_numbertype) {
-        containe_type_ = NumberType::Global();
+        contained_type_ = NumberType::Global();
         types_.clear();
         types_.emplace_back(NumberType::Global());
         types_.emplace_back(NoneType::Global());
@@ -363,9 +363,9 @@ OptionalType::OptionalType(const TypePtr& contained)
         std::vector<TypePtr> to_subtract{NoneType::Global()};
         auto without_none = subtractTypeSetFrom(to_subtract, types_);
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-        containe_type_ = UnionType::create({std::move(without_none.value())});
+        contained_type_ = UnionType::create({std::move(without_none.value())});
     }
-    has_free_variables_ = containe_type_->hasFreeVariables();
+    has_free_variables_ = contained_type_->hasFreeVariables();
 }
 
 bool OptionalType::equals(const Type& rhs) const {

@@ -7,6 +7,17 @@
 
 namespace aethermind {
 
+std::atomic<size_t> ShapeSymbol::num_symbols_ = 1;
+
+std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
+    if (s.is_static()) {
+        os << s.value();
+    } else {
+        os << "SS(" << s.value() << ')';
+    }
+    return os;
+}
+
 String TypeKindToString(TypeKind kind) {
 #define CASE(T)       \
     case TypeKind::T: \

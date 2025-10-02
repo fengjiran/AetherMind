@@ -724,6 +724,21 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s);
 
+// Shape of a Tensor represented with ShapeSymbol's. Unranked, ranked unknown
+// dims, partially known and fully known shapes are all supported.
+struct SymbolicShape {
+    SymbolicShape() = default;
+
+    // Known rank but unknown dimensions
+    SymbolicShape(std::optional<size_t> rank);//NOLINT
+
+    // Mix of known and unknown ranks
+    SymbolicShape(const std::vector<std::optional<int64_t>>& dims);//NOLINT
+
+private:
+    std::optional<std::vector<ShapeSymbol>> dims_{std::nullopt};
+};
+
 // Attempt to find the correct supertype of the two types `t1` and `t2`.
 // If no supertype is found, then nullopt will be returned if
 // `default_to_union` is false, and `Union[t1, t2]` will be returned

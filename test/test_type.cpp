@@ -8,6 +8,145 @@ namespace {
 
 using namespace aethermind;
 
+// 基本类型测试
+TEST(TypeSystem, BasicTypeProperties) {
+    // 测试单例类型的全局实例
+    EXPECT_TRUE(AnyType::Global());
+    EXPECT_TRUE(NoneType::Global());
+    EXPECT_TRUE(NumberType::Global());
+    EXPECT_TRUE(IntType::Global());
+    EXPECT_TRUE(FloatType::Global());
+    EXPECT_TRUE(ComplexType::Global());
+    EXPECT_TRUE(StringType::Global());
+    EXPECT_TRUE(DeviceObjType::Global());
+
+    // 测试类型的字符串表示
+    EXPECT_EQ(AnyType::Global()->str(), "Any");
+    EXPECT_EQ(NoneType::Global()->str(), "None");
+    EXPECT_EQ(NumberType::Global()->str(), "Scalar");
+    EXPECT_EQ(IntType::Global()->str(), "int");
+    EXPECT_EQ(FloatType::Global()->str(), "float");
+    EXPECT_EQ(ComplexType::Global()->str(), "complex");
+    EXPECT_EQ(StringType::Global()->str(), "string");
+    EXPECT_EQ(DeviceObjType::Global()->str(), "Device");
+
+    // 测试类型的注释字符串表示
+    EXPECT_EQ(AnyType::Global()->annotation_str(), "Any");
+    EXPECT_EQ(NoneType::Global()->annotation_str(), "None");
+    EXPECT_EQ(NumberType::Global()->annotation_str(), "number");
+    EXPECT_EQ(IntType::Global()->annotation_str(), "int");
+    EXPECT_EQ(FloatType::Global()->annotation_str(), "float");
+    EXPECT_EQ(ComplexType::Global()->annotation_str(), "complex");
+    EXPECT_EQ(StringType::Global()->annotation_str(), "string");
+    EXPECT_EQ(DeviceObjType::Global()->annotation_str(), "Device");
+
+    // 测试自定义类型打印机
+    auto custom_printer = [](const Type& t) -> std::optional<std::string> {
+        if (t.kind() == TypeKind::IntType) {
+            return "CustomInt";
+        }
+        return std::nullopt;
+    };
+
+    EXPECT_EQ(IntType::Global()->annotation_str(custom_printer), "CustomInt");
+    EXPECT_EQ(FloatType::Global()->annotation_str(custom_printer), "float");
+}
+
+// 类型相等性测试
+TEST(TypeSystem, TypeEquality) {
+    // 相同类型比较
+    EXPECT_TRUE(*AnyType::Global() == *AnyType::Global());
+    EXPECT_TRUE(*NoneType::Global() == *NoneType::Global());
+    EXPECT_TRUE(*IntType::Global() == *IntType::Global());
+    EXPECT_TRUE(*FloatType::Global() == *FloatType::Global());
+
+    // 不同类型比较
+    EXPECT_FALSE(*AnyType::Global() == *NoneType::Global());
+    EXPECT_FALSE(*IntType::Global() == *FloatType::Global());
+    EXPECT_FALSE(*NumberType::Global() == *StringType::Global());
+
+    // 不等运算符测试
+    EXPECT_TRUE(*AnyType::Global() != *NoneType::Global());
+    EXPECT_FALSE(*IntType::Global() != *IntType::Global());
+
+    // TypePtr比较
+    TypePtr t1 = AnyType::Global();
+    TypePtr t2 = AnyType::Global();
+    TypePtr t3 = NoneType::Global();
+
+    EXPECT_TRUE(*t1 == *t2);
+    EXPECT_FALSE(*t1 == *t3);
+    EXPECT_TRUE(t1 == t2);
+    EXPECT_FALSE(t1 == t3);
+}
+
+// 类型转换和投射测试
+TEST(TypeSystem, TypeCasting) {
+    // 向下转型测试
+    Type* any_type = AnyType::Global().get();
+    auto* cast_any = any_type->cast_to_raw_type<AnyType>();
+    EXPECT_TRUE(cast_any != nullptr);
+    EXPECT_TRUE(cast_any == any_type);
+
+    // 无效转型测试
+    auto* cast_int = any_type->cast_to_raw_type<IntType>();
+    EXPECT_TRUE(cast_int == nullptr);
+
+    // 使用cast()方法测试
+    TypePtr any_ptr = AnyType::Global();
+    auto any_cast = any_ptr->cast<AnyType>();
+    EXPECT_TRUE(any_cast);
+
+    auto int_cast = any_ptr->cast<IntType>();
+    EXPECT_FALSE(int_cast);
+
+    // expect()方法测试 - 成功情况
+    TypePtr int_ptr = IntType::Global();
+    auto int_expect = int_ptr->expect<IntType>();
+    EXPECT_TRUE(int_expect);
+
+    // expectRef()方法测试
+    const Type& float_ref = *FloatType::Global();
+    const auto& float_expect_ref = float_ref.expectRef<FloatType>();
+    EXPECT_EQ(float_expect_ref.str(), "float");
+}
+
+// 子类型关系测试
+TEST(TypeSystem, SubtypeRelationships) {
+    // IntType应该是NumberType的子类型
+    EXPECT_TRUE(IntType::Global()->is_subtype_of(*NumberType::Global()));
+    EXPECT_FALSE(NumberType::Global()->is_subtype_of(*IntType::Global()));
+
+    // FloatType应该是NumberType的子类型
+    EXPECT_TRUE(FloatType::Global()->is_subtype_of(*NumberType::Global()));
+    EXPECT_FALSE(NumberType::Global()->is_subtype_of(*FloatType::Global()));
+
+    // ComplexType应该是NumberType的子类型
+    EXPECT_TRUE(ComplexType::Global()->is_subtype_of(*NumberType::Global()));
+    EXPECT_FALSE(NumberType::Global()->is_subtype_of(*ComplexType::Global()));
+
+    // 相同类型应该是彼此的子类型
+    EXPECT_TRUE(IntType::Global()->is_subtype_of(*IntType::Global()));
+
+    // 不同分支的类型不应该有子类型关系
+    EXPECT_FALSE(IntType::Global()->is_subtype_of(*FloatType::Global()));
+    EXPECT_FALSE(FloatType::Global()->is_subtype_of(*IntType::Global()));
+    EXPECT_FALSE(StringType::Global()->is_subtype_of(*NumberType::Global()));
+
+    // 使用TypePtr测试子类型关系
+    TypePtr int_ptr = IntType::Global();
+    TypePtr num_ptr = NumberType::Global();
+    EXPECT_TRUE(int_ptr->is_subtype_of(*num_ptr));
+    EXPECT_FALSE(num_ptr->is_subtype_of(*int_ptr));
+
+    // 带why_not参数的测试
+    std::ostringstream why_not;
+    bool result = FloatType::Global()->isSubtypeOfExt(*StringType::Global(), &why_not);
+    EXPECT_FALSE(result);
+    // 检查是否有错误信息被写入
+    // EXPECT_FALSE(why_not.str().empty());
+}
+
 TEST(SingletonOrSharedTypePtr, Empty) {
     SingletonOrSharedTypePtr<int> empty;
     EXPECT_FALSE(empty);

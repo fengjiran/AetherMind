@@ -296,7 +296,7 @@ bool UnionType::equals(const Type& rhs) const {
     return false;
 }
 
-std::string UnionType::union_str(const TypePrinter& printer, bool is_annotation_str) const {
+String UnionType::union_str(const TypePrinter& printer, bool is_annotation_str) const {
     std::stringstream ss;
 
     bool can_hold_numbertype = this->canHoldType(*NumberType::Global());

@@ -7,7 +7,7 @@
 
 namespace aethermind {
 
-const char* TypeKindToString(TypeKind kind) {
+String TypeKindToString(TypeKind kind) {
 #define CASE(T)       \
     case TypeKind::T: \
         return #T;

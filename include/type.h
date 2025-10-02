@@ -6,6 +6,7 @@
 #define AETHERMIND_TYPE_H
 
 #include "container/array_view.h"
+#include "container/string.h"
 #include "error.h"
 #include "type_ptr.h"
 
@@ -62,7 +63,7 @@ enum class TypeKind {
 #undef DEFINE_TYPE
 };
 
-const char* TypeKindToString(TypeKind kind);
+String TypeKindToString(TypeKind kind);
 
 class Type;
 class SharedType;
@@ -143,7 +144,7 @@ public:
         return kind_;
     }
 
-    NODISCARD virtual std::string str() const = 0;
+    NODISCARD virtual String str() const = 0;
 
     // a == b
     NODISCARD virtual bool equals(const Type& rhs) const = 0;
@@ -175,7 +176,7 @@ public:
         return false;
     }
 
-    NODISCARD std::string annotation_str(const TypePrinter& printer) const {
+    NODISCARD String annotation_str(const TypePrinter& printer) const {
         if (printer) {
             if (auto renamed = printer(*this)) {
                 return *renamed;
@@ -184,7 +185,7 @@ public:
         return this->annotation_str_impl(printer);
     }
 
-    NODISCARD std::string annotation_str() const {
+    NODISCARD String annotation_str() const {
         // Overload instead of define a default value for `printer` to help
         // debuggers out.
         return annotation_str(nullptr);
@@ -193,7 +194,7 @@ public:
     // Returns a human-readable string that includes additional information like
     // "type is inferred rather than explicitly defined" to help construct more
     // user-friendly messages.
-    NODISCARD virtual std::string repr_str() const {
+    NODISCARD virtual String repr_str() const {
         return annotation_str();
     }
 
@@ -243,6 +244,7 @@ public:
 
     // Dynamically cast this object to the subclass indicated by the
     // template variable, returning nullptr if the cast is invalid.
+    // cast to SharedTypePtr<T>
     template<typename T,
              typename = std::enable_if_t<!detail::is_singleton_type_v<T>>>
     auto cast() -> detail::CastReturnType_t<T> {
@@ -332,7 +334,7 @@ protected:
     explicit Type(TypeKind kind) : kind_(kind) {}
     virtual ~Type() = default;
 
-    NODISCARD virtual std::string annotation_str_impl(const TypePrinter&) const {
+    NODISCARD virtual String annotation_str_impl(const TypePrinter&) const {
         return this->str();
     }
 
@@ -403,7 +405,7 @@ protected:
 using AnyTypePtr = SingletonTypePtr<AnyType>;
 class AnyType : public Singleton<AnyType> {
 public:
-    NODISCARD std::string str() const override {
+    NODISCARD String str() const override {
         return "Any";
     }
 
@@ -425,7 +427,7 @@ public:
         return rhs.kind() == kind();
     }
 
-    NODISCARD std::string str() const override {
+    NODISCARD String str() const override {
         return "None";
     }
 
@@ -439,7 +441,7 @@ private:
 using NumberTypePtr = SingletonTypePtr<NumberType>;
 class NumberType : public Singleton<NumberType> {
 public:
-    NODISCARD std::string str() const override {
+    NODISCARD String str() const override {
         return "Scalar";
     }
 
@@ -453,7 +455,7 @@ protected:
     explicit NumberType(TypeKind kind = Kind) : Singleton(kind) {}
 
 private:
-    NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
         return "number";
     }
 
@@ -463,7 +465,7 @@ private:
 using IntTypePtr = SingletonTypePtr<IntType>;
 class IntType : public NumberType {
 public:
-    NODISCARD std::string str() const override {
+    NODISCARD String str() const override {
         return "int";
     }
 
@@ -484,7 +486,7 @@ public:
 
 private:
     IntType() : NumberType(Kind) {}
-    NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
         return "int";
     }
 };
@@ -492,7 +494,7 @@ private:
 using FloatTypePtr = SingletonTypePtr<FloatType>;
 class FloatType : public NumberType {
 public:
-    NODISCARD std::string str() const override {
+    NODISCARD String str() const override {
         return "float";
     }
 
@@ -513,7 +515,7 @@ public:
 
 private:
     FloatType() : NumberType(Kind) {}
-    NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
         return "float";
     }
 };
@@ -521,7 +523,7 @@ private:
 using ComplexTypePtr = SingletonTypePtr<ComplexType>;
 class ComplexType : public NumberType {
 public:
-    NODISCARD std::string str() const override {
+    NODISCARD String str() const override {
         return "complex";
     }
 
@@ -542,9 +544,9 @@ public:
 
 private:
     ComplexType() : NumberType(Kind) {}
-    // NODISCARD std::string annotation_str_impl(const TypePrinter&) const override {
-    //     return "complex";
-    // }
+    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+        return "complex";
+    }
 };
 
 using StringTypePtr = SingletonOrSharedTypePtr<StringType>;
@@ -554,14 +556,17 @@ public:
         return kind() == rhs.kind();
     }
 
-    NODISCARD std::string str() const override {
-        return "str";
+    NODISCARD String str() const override {
+        return "string";
     }
 
     static constexpr auto Kind = TypeKind::StringType;
 
 private:
     explicit StringType() : Singleton(Kind) {}
+    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+        return "string";
+    }
     friend class Singleton;
 };
 
@@ -572,7 +577,7 @@ public:
         return kind() == rhs.kind();
     }
 
-    NODISCARD std::string str() const override {
+    NODISCARD String str() const override {
         return "Device";
     }
 
@@ -580,9 +585,11 @@ public:
 
 private:
     explicit DeviceObjType() : Singleton(Kind) {}
+    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+        return "Device";
+    }
     friend class Singleton;
 };
-
 
 class UnionType;
 using UnionTypePtr = std::shared_ptr<UnionType>;
@@ -609,7 +616,7 @@ public:
         return types_;
     }
 
-    std::string str() const override {
+    NODISCARD String str() const override {
         return union_str(nullptr, false);
     }
 
@@ -624,13 +631,11 @@ public:
 protected:
     explicit UnionType(const std::vector<TypePtr>& types, TypeKind kind = TypeKind::UnionType);
 
-    std::string union_str(const TypePrinter& printer = nullptr, bool is_annotation_str = false) const;
+    String union_str(const TypePrinter& printer = nullptr, bool is_annotation_str = false) const;
 
     std::vector<TypePtr> types_;
     bool can_hold_none_;
     bool has_free_variables_;
-
-    // friend class Type;
 };
 
 class OptionalType;
@@ -641,7 +646,7 @@ public:
         return true;
     }
 
-    std::string str() const override {
+    NODISCARD String str() const override {
         return get_element_type()->str() + "?";
     }
 
@@ -661,13 +666,14 @@ private:
     explicit OptionalType(const TypePtr& contained);
 
     TypePtr containe_type_;
-
-    // friend class Type;
 };
 
-
-inline std::string toString(const Type& t) {
+inline String toString(const Type& t) {
     return t.str();
+}
+
+inline String toString(const TypePtr& p) {
+    return toString(*p);
 }
 
 inline bool operator==(const Type& lhs, const Type& rhs) {

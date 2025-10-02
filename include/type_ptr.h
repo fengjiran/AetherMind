@@ -85,7 +85,7 @@ public:
         return get();
     }
 
-    operator bool() const {
+    operator bool() const {//NOLINT
         return repr_.is_not_null();
     }
 

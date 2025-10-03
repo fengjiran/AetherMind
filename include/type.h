@@ -683,6 +683,14 @@ inline bool operator!=(const Type& lhs, const Type& rhs) {
     return !(lhs == rhs);
 }
 
+template<typename T>
+std::optional<T> merge_primitive(const std::optional<T>& a, const std::optional<T>& b) {
+    if (a.has_value() && b.has_value() && a.value() == b.value()) {
+        return a;
+    }
+    return std::nullopt;
+}
+
 struct ShapeSymbol {
     ShapeSymbol() : value_(-1) {}
 
@@ -761,6 +769,8 @@ struct SymbolicShape {
     // of every dimension are known.
     NODISCARD bool is_complete() const;
 
+    void dump() const;
+
     // Create new SymbolicShape that is result of merging self and another
     // SymbolicShape. Only dimensions that are static and equal will be
     // preserved.
@@ -779,6 +789,73 @@ struct SymbolicShape {
 private:
     std::optional<std::vector<ShapeSymbol>> dims_{std::nullopt};
 };
+
+std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
+
+namespace details {
+
+template<typename T>
+bool is_complete(const T&) {
+    return true;
+}
+
+}// namespace details
+
+template<typename T>
+struct VaryingShape {
+    using ListOfOptionalElements = std::vector<std::optional<T>>;
+
+    VaryingShape(ListOfOptionalElements dims) : dims_(std::move(dims)) {}//NOLINT
+
+    VaryingShape(const std::vector<T>& vec)// NOLINT
+        : VaryingShape(ListOfOptionalElements(vec.begin(), vec.end())) {}
+
+    VaryingShape(ArrayView<T> vec)//NOLINT
+        : VaryingShape(ListOfOptionalElements(vec.begin(), vec.end())) {}
+
+    VaryingShape(std::optional<size_t> size = std::nullopt) : dims_(std::nullopt) {//NOLINT
+        if (size.has_value()) {
+            dims_ = ListOfOptionalElements(size.value());
+        }
+    }
+
+    VaryingShape(size_t size) : VaryingShape(std::optional<size_t>(size)) {}//NOLINT
+
+    const std::optional<T>& operator[](size_t i) const {
+        if (!dims_.has_value()) {
+            AETHERMIND_THROW(RuntimeError) << "Rank isn't fixed";
+        }
+        return dims_.value()[i];
+    }
+
+    NODISCARD std::optional<size_t> size() const {
+        if (!dims_.has_value()) {
+            return std::nullopt;
+        }
+
+        return dims_.value().size();
+    }
+
+    const std::optional<ListOfOptionalElements>& sizes() const {
+        return dims_;
+    }
+
+    bool operator==(const VaryingShape& other) const {
+        return dims_ == other.dims_;
+    }
+
+    NODISCARD std::optional<std::vector<T>> concrete_sizes() const;
+
+    NODISCARD bool is_complete() const;
+
+    VaryingShape merge(const VaryingShape& other) const;
+
+private:
+    std::optional<ListOfOptionalElements> dims_;
+};
+
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const VaryingShape<T>& t);
 
 // Attempt to find the correct supertype of the two types `t1` and `t2`.
 // If no supertype is found, then nullopt will be returned if

@@ -17,6 +17,29 @@ std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
     return os;
 }
 
+std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
+    auto rank_opt = s.rank();
+    if (!rank_opt.has_value()) {
+        os << "(*)";
+        return os;
+    }
+    auto size_opt = s.sizes();
+    os << "(";
+    for (size_t i = 0; i < rank_opt.value(); ++i) {
+        if (i > 0) {
+            os << ", ";
+        }
+
+        if (size_opt.has_value() && size_opt.value()[i].is_static()) {
+            os << size_opt.value()[i];
+        } else {
+            os << "*";
+        }
+    }
+    os << ")";
+    return os;
+}
+
 SymbolicShape::SymbolicShape(std::optional<size_t> rank) {
     if (rank.has_value()) {
         std::vector<ShapeSymbol> shape_symbols(rank.value());
@@ -101,6 +124,10 @@ bool SymbolicShape::is_complete() const {
     return true;
 }
 
+void SymbolicShape::dump() const {
+    std::cout << *this << std::endl;
+}
+
 SymbolicShape SymbolicShape::merge(const SymbolicShape& other) const {
     if (!dims_.has_value() || !other.dims_.has_value() || dims_->size() != other.dims_->size()) {
         return {};
@@ -113,6 +140,86 @@ SymbolicShape SymbolicShape::merge(const SymbolicShape& other) const {
     }
     return {std::move(dims)};
 }
+
+template<typename T>
+std::optional<std::vector<T>> VaryingShape<T>::concrete_sizes() const {
+    if (!dims_.has_value()) {
+        return std::nullopt;
+    }
+
+    auto n = dims_->size();
+    std::vector<T> res(n);
+    for (size_t i = 0; i < n; i++) {
+        if (!dims_.value()[i].has_value()) {
+            return std::nullopt;
+        }
+        res[i] = dims_.value()[i].value();
+    }
+    return res;
+}
+
+template<typename T>
+bool VaryingShape<T>::is_complete() const {
+    if (!dims_.has_value()) {
+        return false;
+    }
+
+    for (auto d: dims_.value()) {
+        if (!d.has_value() || details::is_complete(d.value())) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template<typename T>
+VaryingShape<T> VaryingShape<T>::merge(const VaryingShape& other) const {
+    if (!dims_.has_value() || !other.dims_.has_value() || dims_->size() != other.dims_->size()) {
+        return {};
+    }
+
+    auto n = dims_->size();
+    ListOfOptionalElements dims(n);
+    for (size_t i = 0; i < n; ++i) {
+        dims[i] = merge_primitive(dims_.value()[i], other.dims_.value()[i]);
+    }
+
+    return {std::move(dims)};
+}
+
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const VaryingShape<T>& t) {
+    const auto& sizes_opt = t.sizes();
+    if (!sizes_opt.has_value()) {
+        os << "(*)";
+        return os;
+    }
+
+    auto n = sizes_opt->size();
+    os << "(";
+    for (size_t i = 0; i < n; ++i) {
+        if (i > 0) {
+            os << ", ";
+        }
+        const auto& v = t[i];
+        if (v.has_value()) {
+            os << v.value();
+        } else {
+            os << "*";
+        }
+    }
+    os << ")";
+    return os;
+}
+
+template std::ostream& operator<<(std::ostream& os, const VaryingShape<int64_t>&);
+// template std::ostream& operator<<(std::ostream& os, const VaryingShape<Stride>&);
+
+template struct VaryingShape<bool>;
+template struct VaryingShape<size_t>;
+template struct VaryingShape<int64_t>;
+template struct VaryingShape<ShapeSymbol>;
+// template struct VaryingShape<Stride>;
 
 
 }// namespace aethermind

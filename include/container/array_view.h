@@ -76,11 +76,11 @@ public:
         return data_;
     }
 
-    size_type size() const {
+    NODISCARD size_type size() const {
         return size_;
     }
 
-    bool empty() const {
+    NODISCARD bool empty() const {
         return size_ == 0;
     }
 

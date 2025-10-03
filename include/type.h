@@ -724,6 +724,13 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s);
 
+inline ShapeSymbol merge_primitive(const ShapeSymbol& a, const ShapeSymbol& b) {
+    if (a.is_static() && b.is_static() && a == b) {
+        return a;
+    }
+    return ShapeSymbol::Create();
+}
+
 // Shape of a Tensor represented with ShapeSymbol's. Unranked, ranked unknown
 // dims, partially known and fully known shapes are all supported.
 struct SymbolicShape {
@@ -734,6 +741,40 @@ struct SymbolicShape {
 
     // Mix of known and unknown ranks
     SymbolicShape(const std::vector<std::optional<int64_t>>& dims);//NOLINT
+
+    SymbolicShape(std::vector<ShapeSymbol> dims) : dims_(std::move(dims)) {}//NOLINT
+
+    SymbolicShape(IntArrayView dims);//NOLINT
+
+    ShapeSymbol operator[](size_t i) const;
+
+    NODISCARD ShapeSymbol at(size_t i) const;
+
+    // Returns rank or nullopt in case of unranked shape.
+    NODISCARD std::optional<size_t> rank() const;
+
+    NODISCARD std::optional<std::vector<ShapeSymbol>> sizes() const;
+
+    NODISCARD std::optional<std::vector<bool>> symbolic_dims() const;
+
+    // Checks whether the shape is fully defined/complete, i.e. rank and sizes
+    // of every dimension are known.
+    NODISCARD bool is_complete() const;
+
+    // Create new SymbolicShape that is result of merging self and another
+    // SymbolicShape. Only dimensions that are static and equal will be
+    // preserved.
+    // If either of two shapes are of unknown rank or they have unmatching rank,
+    // result will be unranked.
+    NODISCARD SymbolicShape merge(const SymbolicShape& other) const;
+
+    friend bool operator==(const SymbolicShape& lhs, const SymbolicShape& rhs) {
+        return lhs.dims_ == rhs.dims_;
+    }
+
+    friend bool operator!=(const SymbolicShape& lhs, const SymbolicShape& rhs) {
+        return !(lhs == rhs);
+    }
 
 private:
     std::optional<std::vector<ShapeSymbol>> dims_{std::nullopt};

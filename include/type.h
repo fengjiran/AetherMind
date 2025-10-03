@@ -792,7 +792,57 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
 
+struct Stride {
+    Stride() = default;
+
+    Stride(const std::optional<size_t>& stride_idx, std::optional<bool> contiguous, const std::optional<size_t>& stride)
+        : stride_idx_(stride_idx), contiguous_(contiguous), stride_(stride) {}
+
+    NODISCARD bool is_complete() const {
+        return stride_idx_ && contiguous_ && stride_;
+    }
+
+    bool operator==(const Stride& other) const {
+        return stride_idx_ == other.stride_idx_ &&
+               contiguous_ == other.contiguous_ &&
+               stride_ == other.stride_;
+    }
+
+    std::optional<size_t> stride_idx_;
+    std::optional<bool> contiguous_;
+    std::optional<size_t> stride_;
+};
+
+std::ostream& operator<<(std::ostream& os, const Stride& s);
+
+template<>
+inline std::optional<Stride> merge_primitive(const std::optional<Stride>& a, const std::optional<Stride>& b) {
+    auto lhs = a;
+    auto rhs = b;
+    if (!lhs.has_value()) {
+        lhs = Stride();
+    }
+
+    if (!rhs.has_value()) {
+        rhs = Stride();
+    }
+
+    auto merged_idx = merge_primitive(lhs->stride_idx_, rhs->stride_idx_);
+    auto merged_contiguous = merge_primitive(lhs->contiguous_, rhs->contiguous_);
+    auto merged_stride = merge_primitive(lhs->stride_, rhs->stride_);
+
+    if (!(merged_idx.has_value() || merged_contiguous.has_value() || merged_stride.has_value())) {
+        return std::optional<Stride>{};
+    }
+
+    return Stride(merged_idx, merged_contiguous, merged_stride);
+}
+
 namespace details {
+
+inline bool is_complete(const Stride& s) {
+    return s.is_complete();
+}
 
 template<typename T>
 bool is_complete(const T&) {

@@ -8,6 +8,24 @@ namespace aethermind {
 
 std::atomic<size_t> ShapeSymbol::num_symbols_ = 1;
 
+std::ostream& operator<<(std::ostream& os, const Stride& s) {
+    os << "{";
+    if (s.stride_idx_.has_value()) {
+        os << *s.stride_idx_;
+    } else {
+        os << "*";
+    }
+
+    os << ":";
+    if (s.stride_.has_value()) {
+        os << *s.stride_;
+    } else {
+        os << "*";
+    }
+    os << '}';
+    return os;
+}
+
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
     if (s.is_static()) {
         os << s.value();
@@ -213,13 +231,13 @@ std::ostream& operator<<(std::ostream& os, const VaryingShape<T>& t) {
 }
 
 template std::ostream& operator<<(std::ostream& os, const VaryingShape<int64_t>&);
-// template std::ostream& operator<<(std::ostream& os, const VaryingShape<Stride>&);
+template std::ostream& operator<<(std::ostream& os, const VaryingShape<Stride>&);
 
 template struct VaryingShape<bool>;
 template struct VaryingShape<size_t>;
 template struct VaryingShape<int64_t>;
 template struct VaryingShape<ShapeSymbol>;
-// template struct VaryingShape<Stride>;
+template struct VaryingShape<Stride>;
 
 
 }// namespace aethermind

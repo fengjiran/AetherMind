@@ -16,26 +16,6 @@
 
 namespace aethermind {
 
-std::ostream& operator<<(std::ostream& out, const Scalar& s) {
-    if (s.isFloatingPoint()) {
-        return out << s.toDouble();
-    }
-
-    if (s.isBool()) {
-        return out << (s.toBool() ? "true" : "false");
-    }
-
-    if (s.isIntegral()) {
-        return out << s.toLong();
-    }
-
-    throw std::logic_error("Unknown type in Scalar");
-}
-
-std::string toString(const Scalar& s) {
-    return fmt::format("{}", fmt::streamed(s));
-}
-
 enum class FormatType {
     Default,   // 'g' format (defaultfloat equivalent)
     Scientific,// 'e' format with precision 4

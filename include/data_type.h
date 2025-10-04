@@ -10,6 +10,8 @@
 #include "utils/bits.h"
 #include "utils/half.h"
 #include "utils/float8_e4m3fn.h"
+#include "utils/float8_e5m2.h"
+#include "utils/bfloat16.h"
 
 #include <cstdint>
 #include <glog/logging.h>

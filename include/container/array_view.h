@@ -41,7 +41,7 @@ public:
 
     ArrayView() : data_(nullptr), size_(0) {}
 
-    ArrayView(const T& e) : ArrayView(&e, 1) {}// NOLINT
+    explicit ArrayView(const T& e) : ArrayView(&e, 1) {}// NOLINT
 
     ArrayView(const T* begin, const T* end) : ArrayView(begin, end - begin) {}
 
@@ -171,7 +171,7 @@ std::ostream& operator<<(std::ostream& os, ArrayView<T> array) {
 // Returns an ArrayView of a single element.
 template<typename T>
 ArrayView<T> make_array_view(const T& elem) {
-    return elem;
+    return ArrayView<T>(elem);
 }
 
 // Returns an ArrayView of a pointer and size.

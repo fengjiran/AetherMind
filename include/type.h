@@ -362,7 +362,7 @@ public:
     }
 
     ArrayView<TypePtr> containedTypes() const override {
-        return elem_;
+        return ArrayView<TypePtr>(elem_);
     }
 
     bool equals(const Type& rhs) const override {

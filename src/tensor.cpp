@@ -16,7 +16,7 @@ void check_type(const Tensor& t, DLDataTypeCode type_code, int8_t type_bits, int
 }
 }// namespace
 
-#define DEFINE_DATA_PTR(type_code, type_bits, type_lanes, name, T) \
+#define DEFINE_DATA_PTR(type_code, type_bits, type_lanes, T, name) \
     template<>                                                     \
     T* Tensor::data_ptr<T>() const {                               \
         check_type(*this, type_code, type_bits, type_lanes);       \
@@ -35,7 +35,7 @@ void check_type(const Tensor& t, DLDataTypeCode type_code, int8_t type_bits, int
         return impl_->const_data_ptr_impl<T>();                    \
     }
 
-SCALAR_TYPE_TO_NAME_AND_CPP_TYPE(DEFINE_DATA_PTR);
+SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_DATA_PTR);
 #undef DEFINE_DATA_PTR
 
 Tensor::Tensor(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device)

@@ -21,7 +21,6 @@ std::ostream& operator<<(std::ostream& out, const Scalar& s) {
         return out << s.toLong();
     }
 
-    // throw std::logic_error("Unknown type in Scalar");
     AETHERMIND_THROW(RuntimeError) << "Unknown type in Scalar";
     AETHERMIND_UNREACHABLE();
 }

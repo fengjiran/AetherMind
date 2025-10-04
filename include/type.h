@@ -14,7 +14,7 @@
 
 namespace aethermind {
 
-#define AETHERMIND_FORALL_TYPES(_) \
+#define AETHERMIND_ALL_TYPES(_) \
     _(AnyType)                     \
     _(EnumType)                    \
     _(AnyEnumType)                 \
@@ -59,7 +59,7 @@ namespace aethermind {
 
 enum class TypeKind {
 #define DEFINE_TYPE(T) T,
-    AETHERMIND_FORALL_TYPES(DEFINE_TYPE)
+    AETHERMIND_ALL_TYPES(DEFINE_TYPE)
 #undef DEFINE_TYPE
 };
 

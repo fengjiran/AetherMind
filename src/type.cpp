@@ -13,7 +13,7 @@ String TypeKindToString(TypeKind kind) {
         return #T;
 
     switch (kind) {
-        AETHERMIND_FORALL_TYPES(CASE)
+        AETHERMIND_ALL_TYPES(CASE)
     }
 #undef CASE
     return "";

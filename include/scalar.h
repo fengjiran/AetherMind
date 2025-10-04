@@ -9,7 +9,6 @@
 
 namespace aethermind {
 
-
 class Scalar {
 public:
     Scalar() : Scalar(static_cast<int64_t>(0)) {}
@@ -86,6 +85,7 @@ public:
             AETHERMIND_UNREACHABLE();                                        \
         }                                                                    \
     }
+
     SCALAR_TYPES_NAME(ACCESSOR);
 #undef ACCESSOR
 

@@ -152,27 +152,193 @@ public:
 
     DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable = false);
 
+    DataType& operator=(const DataType& other) {
+        if (this != &other) {
+            dtype_ = other.dtype_;
+        }
+        return *this;
+    }
+
+    operator DLDataType() const {// NOLINT
+        return dtype_;
+    }
+
     NODISCARD DLDataTypeCode code() const {
         return dtype_.code;
     }
 
     NODISCARD int bits() const {
-        CHECK(code() != DLDataTypeCode::Undefined);
         return dtype_.bits;
     }
 
     NODISCARD int lanes() const {
-        CHECK(code() != DLDataTypeCode::Undefined);
-        return dtype_.lanes;
+        int lanes_as_int = static_cast<int16_t>(dtype_.lanes);
+        if (lanes_as_int < 0) {
+            LOG(FATAL) << "Can't fetch the lanes of a scalable vector at compile time.";
+        }
+        return lanes_as_int;
+    }
+
+    NODISCARD int vscale_factor() const {
+        int lanes_as_int = static_cast<int16_t>(dtype_.lanes);
+        if (lanes_as_int >= -1) {
+            LOG(FATAL) << "A fixed length vector doesn't have a vscale factor.";
+        }
+        return -lanes_as_int;
+    }
+
+    NODISCARD int get_lanes_or_vscale_factor() const {
+        return is_scalable_vector() ? vscale_factor() : lanes();
+    }
+
+    NODISCARD bool is_scalar() const {
+        return !is_scalable_vector() && lanes() == 1;
+    }
+
+    NODISCARD bool is_bool() const {
+        return code() == DLDataTypeCode::kBool && bits() == 1;
+    }
+
+    NODISCARD bool is_float() const {
+        return code() == DLDataTypeCode::kFloat;
+    }
+
+    NODISCARD bool is_float8() const {
+        return bits() == 8 &&
+               (code() == DLDataTypeCode::kFloat8_e3m4 || code() == DLDataTypeCode::kFloat8_e4m3 ||
+                code() == DLDataTypeCode::kFloat8_e4m3b11fnuz || code() == DLDataTypeCode::kFloat8_e4m3fn ||
+                code() == DLDataTypeCode::kFloat8_e4m3fnuz || code() == DLDataTypeCode::kFloat8_e5m2 ||
+                code() == DLDataTypeCode::kFloat8_e5m2fnuz || code() == DLDataTypeCode::kFloat8_e8m0fnu);
+    }
+
+    NODISCARD bool is_float6() const {
+        return bits() == 6 &&
+               (code() == DLDataTypeCode::kFloat6_e2m3fn || code() == DLDataTypeCode::kFloat6_e3m2fn);
+    }
+
+    NODISCARD bool is_float4() const {
+        return bits() == 4 && code() == DLDataTypeCode::kFloat4_e2m1fn;
+    }
+
+    NODISCARD bool is_float8_e3m4() const {
+        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e3m4;
+    }
+
+    NODISCARD bool is_float8_e4m3() const {
+        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3;
+    }
+
+    NODISCARD bool is_float8_e4m3b11fnuz() const {
+        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3b11fnuz;
+    }
+
+    NODISCARD bool is_float8_e4m3fn() const {
+        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3fn;
+    }
+
+    NODISCARD bool is_float8_e4m3fnuz() const {
+        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3fnuz;
+    }
+
+    NODISCARD bool is_float8_e5m2() const {
+        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e5m2;
+    }
+
+    NODISCARD bool is_float8_e5m2fnuz() const {
+        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e5m2fnuz;
+    }
+
+    NODISCARD bool is_float8_e8m0fnu() const {
+        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e8m0fnu;
+    }
+
+    NODISCARD bool is_float6_e2m3fn() const {
+        return bits() == 6 && code() == DLDataTypeCode::kFloat6_e2m3fn;
+    }
+
+    NODISCARD bool is_float6_e3m2fn() const {
+        return bits() == 6 && code() == DLDataTypeCode::kFloat6_e3m2fn;
+    }
+
+    NODISCARD bool is_float4_e2m1fn() const {
+        return bits() == 4 && code() == DLDataTypeCode::kFloat4_e2m1fn;
+    }
+
+    NODISCARD bool is_float16() const {
+        return is_float() && bits() == 16;
+    }
+
+    NODISCARD bool is_half() const {
+        return is_float16();
+    }
+
+    NODISCARD bool is_bfloat16() const {
+        return code() == DLDataTypeCode::kBFloat && bits() == 16;
+    }
+
+    NODISCARD bool is_int() const {
+        return code() == DLDataTypeCode::kInt;
+    }
+
+    NODISCARD bool is_uint() const {
+        return code() == DLDataTypeCode::kUInt;
+    }
+
+    NODISCARD bool is_handle() const {
+        return code() == DLDataTypeCode::kOpaqueHandle && !is_void();
+    }
+
+    NODISCARD bool is_void() const {
+        return code() == DLDataTypeCode::kOpaqueHandle && bits() == 0 && lanes() == 0;
+    }
+
+    NODISCARD bool is_vector() const {
+        return lanes() > 1;
+    }
+
+    NODISCARD bool is_fixed_length_vector() const {
+        return static_cast<int16_t>(dtype_.lanes) > 1;
+    }
+
+    NODISCARD bool is_scalable_vector() const {
+        return static_cast<int16_t>(dtype_.lanes) < -1;
+    }
+
+    NODISCARD bool is_scalable_or_fixed_length_vector() const {
+        int encoded_lanes = static_cast<int16_t>(dtype_.lanes);
+        return (encoded_lanes < -1) || (1 < encoded_lanes);
+    }
+
+    NODISCARD bool is_vector_bool() const {
+        return is_scalable_or_fixed_length_vector() && bits() == 1;
     }
 
     NODISCARD int nbytes() const {
-        CHECK(code() != DLDataTypeCode::Undefined);
-        return (bits() * lanes() + 7) / 8;
+        return (bits() + 7) / 8;
+    }
+
+    NODISCARD DataType with_lanes(int lanes) const {
+        return {code(), bits(), lanes};
+    }
+
+    NODISCARD DataType with_bits(int bits) const {
+        return {code(), bits, dtype_.lanes};
+    }
+
+    NODISCARD DataType with_scalable_vscale_factor(int vscale_factor) const {
+        return {code(), bits(), -vscale_factor};
+    }
+
+    NODISCARD DataType element_of() const {
+        return with_lanes(1);
     }
 
     static DataType Int(int bits, int lanes = 1) {
         return {DLDataTypeCode::kInt, bits, lanes};
+    }
+
+    static DataType UInt(int bits, int lanes = 1, bool is_scalable = false) {
+        return {DLDataTypeCode::kUInt, bits, lanes, is_scalable};
     }
 
     static DataType Float(int bits, int lanes = 1) {
@@ -181,6 +347,62 @@ public:
 
     static DataType Float32() {
         return {DLDataTypeCode::kFloat, 32, 1};
+    }
+
+    static DataType BFloat(int bits, int lanes = 1) {
+        return {DLDataTypeCode::kBFloat, bits, lanes};
+    }
+
+    static DataType Float8E3M4(int lanes = 1) {
+        return {DLDataTypeCode::kFloat8_e3m4, 8, lanes};
+    }
+
+    static DataType Float8E4M3(int lanes = 1) {
+        return {DLDataTypeCode::kFloat8_e4m3, 8, lanes};
+    }
+
+    static DataType Float8E4M3B11FNUZ(int lanes = 1) {
+        return {DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, lanes};
+    }
+
+    static DataType Float8E4M3FN(int lanes = 1) {
+        return {DLDataTypeCode::kFloat8_e4m3fn, 8, lanes};
+    }
+
+    static DataType Float8E4M3FNUZ(int lanes = 1) {
+        return {DLDataTypeCode::kFloat8_e4m3fnuz, 8, lanes};
+    }
+
+    static DataType Float8E5M2(int lanes = 1) {
+        return {DLDataTypeCode::kFloat8_e5m2, 8, lanes};
+    }
+
+    static DataType Float8E5M2FNUZ(int lanes = 1) {
+        return {DLDataTypeCode::kFloat8_e5m2fnuz, 8, lanes};
+    }
+
+    static DataType Float8E8M0FNU(int lanes = 1) {
+        return {DLDataTypeCode::kFloat8_e8m0fnu, 8, lanes};
+    }
+
+    static DataType Float6E3M2FN(int lanes = 1) {
+        return {DLDataTypeCode::kFloat6_e3m2fn, 6, lanes};
+    }
+
+    static DataType Float6E2M3FN(int lanes = 1) {
+        return {DLDataTypeCode::kFloat6_e2m3fn, 6, lanes};
+    }
+
+    static DataType Float4E2M1FN(int lanes = 1) {
+        return {DLDataTypeCode::kFloat4_e2m1fn, 4, lanes};
+    }
+
+    static DataType Bool(int lanes = 1, bool is_scalable = false) {
+        return UInt(1, lanes, is_scalable);
+    }
+
+    static DataType Handle(int bits = 64, int lanes = 1) {
+        return {DLDataTypeCode::kOpaqueHandle, bits, lanes};
     }
 
     static DataType Void() {
@@ -252,5 +474,9 @@ private:
 
 
 }// namespace aethermind
+
+namespace std {
+
+}
 
 #endif//AETHERMIND_DATA_TYPE_H

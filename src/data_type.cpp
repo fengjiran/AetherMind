@@ -9,7 +9,7 @@ namespace aethermind {
 #define DEFINE_MAKE(code, bits, lanes, T, name) \
     template<>                                  \
     DataType DataType::Make<T>() {              \
-        return DataType(code, bits, lanes);     \
+        return {code, bits, lanes};             \
     }
 SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_MAKE);
 #undef DEFINE_MAKE

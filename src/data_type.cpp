@@ -44,5 +44,36 @@ DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
     }
 }
 
+std::string DataTypeToString(const DataType& dtype) {
+    if (dtype.code() == DLDataTypeCode::kUInt && dtype.bits() == 1 && dtype.lanes() == 1) {
+        return "bool";
+    }
+
+    if (dtype.is_void()) {
+        return "void";
+    }
+
+    std::ostringstream os;
+#define GET_NAME(c, b, lanes, T, name)            \
+    if (dtype.code() == c && dtype.bits() == b) { \
+        os << #name;                              \
+    }
+    SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(GET_NAME);
+#undef GET_NAME
+
+    auto lanes = static_cast<int16_t>(dtype.lanes());
+    if (lanes > 1) {
+        os << 'x' << lanes;
+    } else if (lanes < -1) {
+        os << "xvscalex" << -lanes;
+    }
+    return os.str();
+}
+
+std::ostream& operator<<(std::ostream& os, const DataType& dtype) {
+    os << DataTypeToString(dtype);
+    return os;
+}
+
 
 }// namespace aethermind

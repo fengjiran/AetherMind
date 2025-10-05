@@ -196,7 +196,7 @@ public:
     }
 
     NODISCARD bool is_bool() const {
-        return code() == DLDataTypeCode::kBool && bits() == 1;
+        return code() == DLDataTypeCode::kUInt && bits() == 1;
     }
 
     NODISCARD bool is_float() const {
@@ -306,7 +306,7 @@ public:
 
     NODISCARD bool is_scalable_or_fixed_length_vector() const {
         int encoded_lanes = static_cast<int16_t>(dtype_.lanes);
-        return (encoded_lanes < -1) || (1 < encoded_lanes);
+        return encoded_lanes < -1 || encoded_lanes > 1;
     }
 
     NODISCARD bool is_vector_bool() const {
@@ -432,6 +432,10 @@ private:
     DLDataType dtype_;
 };
 
+std::string DataTypeToString(const DataType& dtype);
+
+std::ostream& operator<<(std::ostream& os, const DataType& dtype);
+
 #define SCALAR_TYPES_NAME(f) \
     f(bool, Bool);           \
     f(uint8_t, Byte);        \
@@ -445,6 +449,7 @@ private:
     f(float, Float);         \
     f(double, Double);
 
+
 // TODO: float8, float6 and float4 type need to be defined.
 #define SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(f)                                \
     f(DLDataTypeCode::kInt, 8, 1, int8_t, Char);                           \
@@ -455,22 +460,22 @@ private:
     f(DLDataTypeCode::kUInt, 16, 1, uint16_t, UShort);                     \
     f(DLDataTypeCode::kUInt, 32, 1, uint32_t, UInt);                       \
     f(DLDataTypeCode::kUInt, 64, 1, uint64_t, ULong);                      \
-    f(DLDataTypeCode::kBool, 8, 1, bool, Bool);                            \
+    f(DLDataTypeCode::kUInt, 8, 1, bool, Bool);                            \
     f(DLDataTypeCode::kFloat, 16, 1, Half, Half);                          \
     f(DLDataTypeCode::kFloat, 32, 1, float, Float);                        \
     f(DLDataTypeCode::kFloat, 64, 1, double, Double);                      \
     f(DLDataTypeCode::kBFloat, 16, 1, BFloat16, BFloat16);                 \
     f(DLDataTypeCode::kFloat8_e4m3fn, 8, 1, Float8_e4m3fn, Float8_e4m3fn); \
     f(DLDataTypeCode::kFloat8_e5m2, 8, 1, Float8_e5m2, Float8_e5m2);       \
-    // f(DLDataTypeCode::kFloat8_e3m4, 8, 1, float);        \
-// f(DLDataTypeCode::kFloat8_e4m3, 8, 1, float);        \
-// f(DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, 1, float); \
-// f(DLDataTypeCode::kFloat8_e4m3fnuz, 8, 1, float);    \
-// f(DLDataTypeCode::kFloat8_e5m2fnuz, 8, 1, float);    \
-// f(DLDataTypeCode::kFloat8_e8m0fnu, 8, 1, float);     \
-// f(DLDataTypeCode::kFloat6_e2m3fn, 6, 1, float);      \
-// f(DLDataTypeCode::kFloat6_e3m2fn, 6, 1, float);      \
-// f(DLDataTypeCode::kFloat4_e2m1fn, 4, 1, float)
+    //f(DLDataTypeCode::kFloat8_e3m4, 8, 1, Float8_e3m4, Float8_e3m4);                      \
+    //f(DLDataTypeCode::kFloat8_e4m3, 8, 1, Float8_e4m3, Float8_e4m3);                      \
+    //f(DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, 1, Float8_e4m3b11fnuz, Float8_e4m3b11fnuz); \
+    // f(DLDataTypeCode::kFloat8_e4m3fnuz, 8, 1, Float8_e4m3fnuz,Float8_e4m3fnuz);    \
+// f(DLDataTypeCode::kFloat8_e5m2fnuz, 8, 1, Float8_e5m2fnuz,Float8_e5m2fnuz);    \
+// f(DLDataTypeCode::kFloat8_e8m0fnu, 8, 1, Float8_e8m0fnu,Float8_e8m0fnu);     \
+// f(DLDataTypeCode::kFloat6_e2m3fn, 6, 1, Float6_e2m3fn,Float6_e2m3fn);      \
+// f(DLDataTypeCode::kFloat6_e3m2fn, 6, 1, Float6_e3m2fn,Float6_e3m2fn);      \
+// f(DLDataTypeCode::kFloat4_e2m1fn, 4, 1, Float4_e2m1fn,Float4_e2m1fn)
 
 
 }// namespace aethermind

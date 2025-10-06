@@ -9,10 +9,10 @@
 #include "macros.h"
 #include "utils/bfloat16.h"
 #include "utils/bits.h"
+#include "utils/complex.h"
 #include "utils/float8_e4m3fn.h"
 #include "utils/float8_e5m2.h"
 #include "utils/half.h"
-#include "utils/complex.h"
 
 #include <cstdint>
 #include <glog/logging.h>
@@ -488,6 +488,18 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
 
 namespace std {
 
-}
+template<>
+struct hash<aethermind::DataType> {
+    NODISCARD static int cantor_pairing_function(int a, int b) { return (a + b) * (a + b + 1) / 2 + b; }
+    std::size_t operator()(aethermind::DataType const& dtype) const noexcept {
+        int a = static_cast<int>(dtype.code());
+        int b = dtype.bits();
+        int c = dtype.lanes();
+        int d = cantor_pairing_function(a, b);
+        return cantor_pairing_function(c, d);
+    }
+};
+
+}// namespace std
 
 #endif//AETHERMIND_DATA_TYPE_H

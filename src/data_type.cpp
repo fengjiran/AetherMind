@@ -45,7 +45,7 @@ DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
 }
 
 std::string DataTypeToString(const DataType& dtype) {
-    if (dtype.code() == DLDataTypeCode::kUInt && dtype.bits() == 1 && dtype.lanes() == 1) {
+    if (dtype.code() == DLDataTypeCode::kUInt && dtype.bits() == 1 && dtype.raw_lanes() == 1) {
         return "bool";
     }
 
@@ -58,10 +58,10 @@ std::string DataTypeToString(const DataType& dtype) {
     if (dtype.code() == c && dtype.bits() == b) { \
         os << #name;                              \
     }
-    SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(GET_NAME);
+    SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(GET_NAME)
 #undef GET_NAME
 
-    auto lanes = static_cast<int16_t>(dtype.lanes());
+    auto lanes = static_cast<int16_t>(dtype.raw_lanes());
     if (lanes > 1) {
         os << 'x' << lanes;
     } else if (lanes < -1) {

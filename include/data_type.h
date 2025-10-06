@@ -179,6 +179,10 @@ public:
         return lanes_as_int;
     }
 
+    NODISCARD uint16_t raw_lanes() const {
+        return dtype_.lanes;
+    }
+
     NODISCARD int vscale_factor() const {
         int lanes_as_int = static_cast<int16_t>(dtype_.lanes);
         if (lanes_as_int >= -1) {
@@ -399,6 +403,7 @@ public:
 
     static DataType Bool(int lanes = 1, bool is_scalable = false) {
         return UInt(1, lanes, is_scalable);
+        // return {DLDataTypeCode::kBool, 1, lanes, is_scalable};
     }
 
     static DataType Handle(int bits = 64, int lanes = 1) {
@@ -460,7 +465,7 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
     f(DLDataTypeCode::kUInt, 16, 1, uint16_t, UShort);                     \
     f(DLDataTypeCode::kUInt, 32, 1, uint32_t, UInt);                       \
     f(DLDataTypeCode::kUInt, 64, 1, uint64_t, ULong);                      \
-    f(DLDataTypeCode::kUInt, 8, 1, bool, Bool);                            \
+    f(DLDataTypeCode::kUInt, 1, 1, bool, Bool);                            \
     f(DLDataTypeCode::kFloat, 16, 1, Half, Half);                          \
     f(DLDataTypeCode::kFloat, 32, 1, float, Float);                        \
     f(DLDataTypeCode::kFloat, 64, 1, double, Double);                      \

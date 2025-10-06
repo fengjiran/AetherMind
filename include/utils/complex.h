@@ -239,6 +239,84 @@ constexpr complex<T> operator/(const T& lhs, const complex<T>& rhs) {
     return res /= rhs;
 }
 
+template<typename Float, typename Int,
+         typename = std::enable_if_t<std::is_floating_point_v<Float> && std::is_integral_v<Int>>>
+constexpr complex<Float> operator+(const complex<Float>& a, const Int& b) {
+    return a + static_cast<Float>(b);
+}
+
+template<typename Float, typename Int,
+         typename = std::enable_if_t<std::is_floating_point_v<Float> && std::is_integral_v<Int>>>
+constexpr complex<Float> operator+(const Int& a, const complex<Float>& b) {
+    return static_cast<Float>(a) + b;
+}
+
+template<typename Float, typename Int,
+         typename = std::enable_if_t<std::is_floating_point_v<Float> && std::is_integral_v<Int>>>
+constexpr complex<Float> operator-(const complex<Float>& a, const Int& b) {
+    return a - static_cast<Float>(b);
+}
+
+template<typename Float, typename Int,
+         typename = std::enable_if_t<std::is_floating_point_v<Float> && std::is_integral_v<Int>>>
+constexpr complex<Float> operator-(const Int& a, const complex<Float>& b) {
+    return static_cast<Float>(a) - b;
+}
+
+template<typename Float, typename Int,
+         typename = std::enable_if_t<std::is_floating_point_v<Float> && std::is_integral_v<Int>>>
+constexpr complex<Float> operator*(const complex<Float>& a, const Int& b) {
+    return a * static_cast<Float>(b);
+}
+
+template<typename Float, typename Int,
+         typename = std::enable_if_t<std::is_floating_point_v<Float> && std::is_integral_v<Int>>>
+constexpr complex<Float> operator*(const Int& a, const complex<Float>& b) {
+    return static_cast<Float>(a) * b;
+}
+
+template<typename Float, typename Int,
+         typename = std::enable_if_t<std::is_floating_point_v<Float> && std::is_integral_v<Int>>>
+constexpr complex<Float> operator/(const complex<Float>& a, const Int& b) {
+    return a / static_cast<Float>(b);
+}
+
+template<typename Float, typename Int,
+         typename = std::enable_if_t<std::is_floating_point_v<Float> && std::is_integral_v<Int>>>
+constexpr complex<Float> operator/(const Int& a, const complex<Float>& b) {
+    return static_cast<Float>(a) / b;
+}
+
+template<typename T>
+constexpr bool operator==(const complex<T>& lhs, const complex<T>& rhs) {
+    return lhs.real() == rhs.real() && lhs.imag() == rhs.imag();
+}
+
+template<typename T>
+constexpr bool operator==(const complex<T>& lhs, const T& rhs) {
+    return lhs.real() == rhs && lhs.imag() == T();
+}
+
+template<typename T>
+constexpr bool operator==(const T& lhs, const complex<T>& rhs) {
+    return lhs == rhs.real() && T() == rhs.imag();
+}
+
+template<typename T>
+constexpr bool operator!=(const complex<T>& lhs, const complex<T>& rhs) {
+    return !(lhs == rhs);
+}
+
+template<typename T>
+constexpr bool operator!=(const complex<T>& lhs, const T& rhs) {
+    return !(lhs == rhs);
+}
+
+template<typename T>
+constexpr bool operator!=(const T& lhs, const complex<T>& rhs) {
+    return !(lhs == rhs);
+}
+
 }// namespace aethermind
 
 

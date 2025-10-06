@@ -12,11 +12,9 @@
 namespace aethermind {
 
 template<typename T>
-struct alignas(sizeof(T) * 2) complex {
+class alignas(sizeof(T) * 2) complex {
+public:
     using value_type = T;
-
-    T real_ = T(0);
-    T imag_ = T(0);
 
     constexpr complex() = default;
     constexpr complex(const T& real, const T& imag = T()) : real_(real), imag_(imag) {}// NOLINT
@@ -153,7 +151,93 @@ struct alignas(sizeof(T) * 2) complex {
     explicit constexpr operator bool() const {
         return real_ || imag_;
     }
+
+private:
+    T real_ = T(0);
+    T imag_ = T(0);
 };
+
+template<typename T>
+constexpr complex<T> operator+(const complex<T>& val) {
+    return val;
+}
+
+template<typename T>
+constexpr complex<T> operator-(const complex<T>& val) {
+    return complex<T>(-val.real(), -val.imag());
+}
+
+template<typename T>
+constexpr complex<T> operator+(const complex<T>& lhs, const complex<T>& rhs) {
+    auto res = lhs;
+    return res += rhs;
+}
+
+template<typename T>
+constexpr complex<T> operator+(const complex<T>& lhs, const T& rhs) {
+    auto res = lhs;
+    return res += rhs;
+}
+
+template<typename T>
+constexpr complex<T> operator+(const T& lhs, const complex<T>& rhs) {
+    auto res = rhs;
+    return res += lhs;
+}
+
+template<typename T>
+constexpr complex<T> operator-(const complex<T>& lhs, const complex<T>& rhs) {
+    auto res = lhs;
+    return res -= rhs;
+}
+
+template<typename T>
+constexpr complex<T> operator-(const complex<T>& lhs, const T& rhs) {
+    auto res = lhs;
+    return res -= rhs;
+}
+
+template<typename T>
+constexpr complex<T> operator-(const T& lhs, const complex<T>& rhs) {
+    auto res = -rhs;
+    return res += lhs;
+}
+
+template<typename T>
+constexpr complex<T> operator*(const complex<T>& lhs, const complex<T>& rhs) {
+    auto res = lhs;
+    return res *= lhs;
+}
+
+template<typename T>
+constexpr complex<T> operator*(const complex<T>& lhs, const T& rhs) {
+    auto res = lhs;
+    return res *= rhs;
+}
+
+template<typename T>
+constexpr complex<T> operator*(const T& lhs, const complex<T>& rhs) {
+    auto res = rhs;
+    return res *= lhs;
+}
+
+template<typename T>
+constexpr complex<T> operator/(const complex<T>& lhs, const complex<T>& rhs) {
+    auto res = lhs;
+    return res /= lhs;
+}
+
+template<typename T>
+constexpr complex<T> operator/(const complex<T>& lhs, const T& rhs) {
+    auto res = lhs;
+    return res /= rhs;
+}
+
+template<typename T>
+constexpr complex<T> operator/(const T& lhs, const complex<T>& rhs) {
+    complex<T> res(lhs);
+    return res /= rhs;
+}
 
 }// namespace aethermind
 

@@ -9,6 +9,12 @@
 
 namespace aethermind {
 
+/// Scalar represents a 0-dimensional tensor which contains a single element.
+/// Unlike a tensor, numeric literals (in C++) are implicitly convertible to
+/// Scalar (which is why, for example, we provide both add(Tensor) and
+/// add(Scalar) overloads for many operations). It may also be used in
+/// circumstances where you statically know a tensor is 0-dim and single size,
+/// but don't know its type.
 class Scalar {
 public:
     Scalar() : Scalar(static_cast<int64_t>(0)) {}
@@ -103,6 +109,7 @@ private:
     } v;
 
     DLDataTypeCode dtype;
+    DataType dtype_;
 };
 
 #define DEFINE_TO(T, name)           \

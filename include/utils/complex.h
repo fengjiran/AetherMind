@@ -332,7 +332,7 @@ public:
     complex(const Half& real, const Half& imag) : real_(real), imag_(imag) {}
     complex(const complex<float>& value) : real_(value.real()), imag_(value.imag()) {}//NOLINT
 
-    operator complex<float>() const { //NOLINT
+    operator complex<float>() const {//NOLINT
         return {real_, imag_};
     }
 
@@ -377,6 +377,15 @@ std::ostream& operator<<(std::ostream& os, const complex<T>& val) {
     return os;
 }
 
+template<typename T>
+struct is_complex : std::false_type {};
+
+template<typename T>
+struct is_complex<std::complex<T>> : std::true_type {};
+
+template<typename T>
+struct is_complex<complex<T>> : std::true_type {};
+
 }// namespace aethermind
 
 namespace std {
@@ -408,6 +417,14 @@ constexpr T norm(const aethermind::complex<T>& x) {
 template<typename T>
 constexpr aethermind::complex<T> conj(const aethermind::complex<T>& x) {
     return aethermind::complex<T>(x.real(), -x.imag());
+}
+
+template<typename T>
+class numeric_limits<aethermind::complex<T>> : public numeric_limits<T> {};
+
+template<typename T>
+bool isnan(const aethermind::complex<T>& v) {
+    return std::isnan(v.real()) || std::isnan(v.imag());
 }
 
 }// namespace std

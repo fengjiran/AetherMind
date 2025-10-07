@@ -20,7 +20,7 @@ public:
     constexpr complex(const T& real, const T& imag = T()) : real_(real), imag_(imag) {}// NOLINT
 
     template<typename U>
-    explicit constexpr complex(const complex<U>& other) : complex(other.real_, other.imag_) {}
+    explicit constexpr complex(const std::complex<U>& other) : complex(other.real(), other.imag()) {}
 
     // ctors for complex<float> and complex<double>
     template<typename U = T,
@@ -155,6 +155,9 @@ public:
 private:
     T real_ = T(0);
     T imag_ = T(0);
+
+    template<typename U>
+    friend class complex;
 };
 
 template<typename T>
@@ -206,7 +209,7 @@ constexpr complex<T> operator-(const T& lhs, const complex<T>& rhs) {
 template<typename T>
 constexpr complex<T> operator*(const complex<T>& lhs, const complex<T>& rhs) {
     auto res = lhs;
-    return res *= lhs;
+    return res *= rhs;
 }
 
 template<typename T>
@@ -224,7 +227,7 @@ constexpr complex<T> operator*(const T& lhs, const complex<T>& rhs) {
 template<typename T>
 constexpr complex<T> operator/(const complex<T>& lhs, const complex<T>& rhs) {
     auto res = lhs;
-    return res /= lhs;
+    return res /= rhs;
 }
 
 template<typename T>
@@ -317,7 +320,90 @@ constexpr bool operator!=(const T& lhs, const complex<T>& rhs) {
     return !(lhs == rhs);
 }
 
+template<typename T>
+complex<T> polar(const T& r, const T& theta = T()) {
+    return complex<T>(r * std::cos(theta), r * std::sin(theta));
+}
+
+template<>
+class alignas(4) complex<Half> {
+public:
+    complex() = default;
+    complex(const Half& real, const Half& imag) : real_(real), imag_(imag) {}
+    complex(const complex<float>& value) : real_(value.real()), imag_(value.imag()) {}//NOLINT
+
+    operator complex<float>() const { //NOLINT
+        return {real_, imag_};
+    }
+
+    NODISCARD Half real() const {
+        return real_;
+    }
+
+    NODISCARD Half imag() const {
+        return imag_;
+    }
+
+    complex& operator+=(const complex& other) {
+        real_ += other.real_;
+        imag_ += other.imag_;
+        return *this;
+    }
+
+    complex& operator-=(const complex& other) {
+        real_ -= other.real_;
+        imag_ -= other.imag_;
+        return *this;
+    }
+
+    complex& operator*=(const complex& other) {
+        auto a = real_;
+        auto b = imag_;
+        auto c = other.real_;
+        auto d = other.imag_;
+        real_ = a * c - b * d;
+        imag_ = a * d + b * c;
+        return *this;
+    }
+
+private:
+    Half real_;
+    Half imag_;
+};
+
 }// namespace aethermind
 
+namespace std {
+template<typename T>
+constexpr T real(const aethermind::complex<T>& x) {
+    return x.real();
+}
+
+template<typename T>
+constexpr T imag(const aethermind::complex<T>& x) {
+    return x.imag();
+}
+
+template<typename T>
+T abs(const aethermind::complex<T>& x) {
+    return std::abs(static_cast<std::complex<T>>(x));
+}
+
+template<typename T>
+constexpr T arg(const aethermind::complex<T>& x) {
+    return std::atan2(std::imag(x), std::real(x));
+}
+
+template<typename T>
+constexpr T norm(const aethermind::complex<T>& x) {
+    return x.real() * x.real() + x.imag() * x.imag();
+}
+
+template<typename T>
+constexpr aethermind::complex<T> conj(const aethermind::complex<T>& x) {
+    return aethermind::complex<T>(x.real(), -x.imag());
+}
+
+}// namespace std
 
 #endif//AETHERMIND_COMPLEX_H

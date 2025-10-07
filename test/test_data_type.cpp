@@ -72,7 +72,7 @@ TEST(DataTypeTest, TypeChecks) {
     DataType boolean = DataType::Bool();
     EXPECT_TRUE(boolean.is_bool());
     EXPECT_FALSE(boolean.is_int());
-    EXPECT_TRUE(boolean.is_uint());// Bool is implemented as UInt(1)
+    EXPECT_TRUE(boolean.is_uint(true));// Bool is implemented as UInt(1)
 
     // 浮点类型
     DataType float32 = DataType::Float(32);
@@ -113,6 +113,14 @@ TEST(DataTypeTest, TypeChecks) {
     DataType void_type = DataType::Void();
     EXPECT_FALSE(void_type.is_handle());
     EXPECT_TRUE(void_type.is_void());
+
+    // complex
+    DataType complex_half = DataType::ComplexHalf();
+    DataType complex_float = DataType::ComplexFloat();
+    DataType complex_double = DataType::ComplexDouble();
+    EXPECT_TRUE(complex_half.is_complex_half());
+    EXPECT_TRUE(complex_float.is_complex_float());
+    EXPECT_TRUE(complex_double.is_complex_double());
 }
 
 // 测试DataType的向量类型检查

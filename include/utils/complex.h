@@ -371,6 +371,12 @@ private:
     Half imag_;
 };
 
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const complex<T>& val) {
+    os << static_cast<std::complex<T>>(val);
+    return os;
+}
+
 }// namespace aethermind
 
 namespace std {

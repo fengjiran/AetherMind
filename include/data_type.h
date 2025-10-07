@@ -25,6 +25,11 @@ enum class DLDataTypeCode : uint8_t {
     kUInt = 1,
     kBool,
     kOpaqueHandle,
+    kBits1,
+    kBits2,
+    kBits4,
+    kBits8,
+    kBits16,
     kFloat,
     kBFloat,
     kFloat8_e3m4,
@@ -200,6 +205,14 @@ public:
         return !is_scalable_vector() && lanes() == 1;
     }
 
+    NODISCARD bool is_int() const {
+        return code() == DLDataTypeCode::kInt;
+    }
+
+    NODISCARD bool is_uint(bool include_bool = false) const {
+        return code() == DLDataTypeCode::kUInt && (bits() > 1 || include_bool);
+    }
+
     NODISCARD bool is_bool() const {
         return code() == DLDataTypeCode::kUInt && bits() == 1;
     }
@@ -281,20 +294,28 @@ public:
         return code() == DLDataTypeCode::kBFloat && bits() == 16;
     }
 
-    NODISCARD bool is_int() const {
-        return code() == DLDataTypeCode::kInt;
-    }
-
-    NODISCARD bool is_uint() const {
-        return code() == DLDataTypeCode::kUInt;
-    }
-
     NODISCARD bool is_handle() const {
         return code() == DLDataTypeCode::kOpaqueHandle && !is_void();
     }
 
     NODISCARD bool is_void() const {
         return code() == DLDataTypeCode::kOpaqueHandle && bits() == 0 && lanes() == 0;
+    }
+
+    NODISCARD bool is_complex_half() const {
+        return code() == DLDataTypeCode::kComplex && bits() == 32;
+    }
+
+    NODISCARD bool is_complex_float() const {
+        return code() == DLDataTypeCode::kComplex && bits() == 64;
+    }
+
+    NODISCARD bool is_complex_double() const {
+        return code() == DLDataTypeCode::kComplex && bits() == 128;
+    }
+
+    NODISCARD bool is_complex() const {
+        return is_complex_half() || is_complex_float() || is_complex_double();
     }
 
     NODISCARD bool is_vector() const {
@@ -415,6 +436,18 @@ public:
         return {DLDataTypeCode::kOpaqueHandle, 0, 0};
     }
 
+    static DataType ComplexHalf(int lanes = 1) {
+        return {DLDataTypeCode::kComplex, 32, lanes};
+    }
+
+    static DataType ComplexFloat(int lanes = 1) {
+        return {DLDataTypeCode::kComplex, 64, lanes};
+    }
+
+    static DataType ComplexDouble(int lanes = 1) {
+        return {DLDataTypeCode::kComplex, 128, lanes};
+    }
+
     template<typename T>
     static DataType Make();
 
@@ -473,7 +506,10 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
     f(DLDataTypeCode::kBFloat, 16, 1, BFloat16, BFloat16);                 \
     f(DLDataTypeCode::kFloat8_e4m3fn, 8, 1, Float8_e4m3fn, Float8_e4m3fn); \
     f(DLDataTypeCode::kFloat8_e5m2, 8, 1, Float8_e5m2, Float8_e5m2);       \
-    //f(DLDataTypeCode::kFloat8_e3m4, 8, 1, Float8_e3m4, Float8_e3m4);                      \
+    f(DLDataTypeCode::kComplex, 32, 1, complex<Half>, ComplexHalf);        \
+    f(DLDataTypeCode::kComplex, 64, 1, complex<float>, ComplexFloat);      \
+    f(DLDataTypeCode::kComplex, 128, 1, complex<double>, ComplexDouble);
+//f(DLDataTypeCode::kFloat8_e3m4, 8, 1, Float8_e3m4, Float8_e3m4);                      \
     //f(DLDataTypeCode::kFloat8_e4m3, 8, 1, Float8_e4m3, Float8_e4m3);                      \
     //f(DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, 1, Float8_e4m3b11fnuz, Float8_e4m3b11fnuz); \
     // f(DLDataTypeCode::kFloat8_e4m3fnuz, 8, 1, Float8_e4m3fnuz,Float8_e4m3fnuz);    \

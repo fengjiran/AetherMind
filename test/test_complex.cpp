@@ -21,11 +21,11 @@ TEST(ComplexTest, DefaultConstructor) {
     EXPECT_DOUBLE_EQ(c2.imag(), 0.0);
 }
 
-
 TEST(ComplexTest, ValueConstructor) {
     complex<float> c1(1.0f, 2.0f);
     EXPECT_FLOAT_EQ(c1.real(), 1.0f);
     EXPECT_FLOAT_EQ(c1.imag(), 2.0f);
+    std::cout << c1;
 
     complex<double> c2(3.0, 4.0);
     EXPECT_DOUBLE_EQ(c2.real(), 3.0);

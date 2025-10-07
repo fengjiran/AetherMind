@@ -9,15 +9,15 @@
 
 namespace aethermind {
 std::ostream& operator<<(std::ostream& out, const Scalar& s) {
-    if (s.isFloatingPoint()) {
+    if (s.is_floating_point()) {
         return out << s.toDouble();
     }
 
-    if (s.isBool()) {
+    if (s.is_bool()) {
         return out << (s.toBool() ? "true" : "false");
     }
 
-    if (s.isIntegral()) {
+    if (s.is_integral()) {
         return out << s.toLong();
     }
 

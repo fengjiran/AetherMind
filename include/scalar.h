@@ -53,15 +53,15 @@ public:
         return *this;
     }
 
-    NODISCARD bool isIntegral() const {
+    NODISCARD bool is_integral() const {
         return dtype == DLDataTypeCode::kInt;
     }
 
-    NODISCARD bool isFloatingPoint() const {
+    NODISCARD bool is_floating_point() const {
         return dtype == DLDataTypeCode::kFloat;
     }
 
-    NODISCARD bool isBool() const {
+    NODISCARD bool is_bool() const {
         return dtype == DLDataTypeCode::kBool;
     }
 
@@ -95,7 +95,11 @@ public:
 private:
     union val {
         int64_t i;
+        uint64_t u;
         double d{};
+        complex<double> z;
+
+        val() = default;
     } v;
 
     DLDataTypeCode dtype;

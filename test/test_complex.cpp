@@ -2,6 +2,7 @@
 // Created by richard on 10/7/25.
 //
 #include "utils/complex.h"
+#include "utils/float8_e4m3fn.h"
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -19,6 +20,9 @@ TEST(ComplexTest, DefaultConstructor) {
     complex<double> c2;
     EXPECT_DOUBLE_EQ(c2.real(), 0.0);
     EXPECT_DOUBLE_EQ(c2.imag(), 0.0);
+
+    // Float8_e4m3fn x = -1;
+    // complex<float> c3{x};
 }
 
 TEST(ComplexTest, ValueConstructor) {

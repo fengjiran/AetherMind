@@ -6,6 +6,7 @@
 #define AETHERMIND_SCALAR_H
 
 #include "data_type.h"
+#include "cast.h"
 
 namespace aethermind {
 
@@ -51,19 +52,25 @@ public:
     }
 
     Scalar& operator=(const Scalar& other) {
-        Scalar tmp(other);
-        swap(*this, tmp);
+        Scalar(other).swap(*this);
         return *this;
     }
 
     Scalar& operator=(Scalar&& other) noexcept {
-        Scalar tmp(std::move(other));
-        swap(*this, tmp);
+        Scalar(std::move(other)).swap(*this);
         return *this;
     }
 
     NODISCARD bool is_integral() const {
         return dtype_.is_int() || dtype_.is_uint();
+    }
+
+    NODISCARD bool is_signed_integral() const {
+        return dtype_.is_int();
+    }
+
+    NODISCARD bool is_unsigned_integral() const {
+        return dtype_.is_uint();
     }
 
     NODISCARD bool is_floating_point() const {
@@ -82,15 +89,17 @@ public:
         return dtype_;
     }
 
-    friend void swap(Scalar& a, Scalar& b) noexcept {
-        std::swap(a.v, b.v);
-        std::swap(a.dtype_, b.dtype_);
+    void swap(Scalar& other) noexcept {
+        std::swap(v, other.v);
+        std::swap(dtype_, other.dtype_);
     }
 
 #define ACCESSOR(type, name)                                           \
     type to##name() const {                                            \
-        if (is_integral())                                             \
+        if (is_signed_integral())                                      \
             return static_cast<type>(v.i);                             \
+        else if (is_unsigned_integral())                               \
+            return static_cast<type>(v.u);                             \
         else if (is_bool())                                            \
             return static_cast<type>(v.d);                             \
         else {                                                         \

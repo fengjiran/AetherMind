@@ -121,6 +121,19 @@ R overflows(From, MAYBE_UNUSED bool strict_unsigned = false) {
     return false;
 }
 
+template<typename From, typename To, typename = void,
+         typename R = std::enable_if_t<std::is_integral_v<From> && !std::is_same_v<From, bool>, bool>>
+R overflows(From f, bool strict_unsigned = false) {
+    using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
+    if constexpr (!Limit::is_signed && std::numeric_limits<From>::is_signed) {
+        if (!strict_unsigned) {
+            return greater_than_max<To>(f) ||
+                   (is_negative(f) && -static_cast<uint64_t>(f) > static_cast<uint64_t>(Limit::max()));
+        }
+    }
+
+    return greater_than_max<To>(f) || less_than_lowest<To>(f);
+}
 
 }// namespace aethermind
 

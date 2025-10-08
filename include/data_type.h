@@ -218,7 +218,28 @@ public:
     }
 
     NODISCARD bool is_float() const {
-        return code() == DLDataTypeCode::kFloat;
+        return code() == DLDataTypeCode::kFloat || is_bfloat16() ||
+               is_float8() || is_float6() || is_float4();
+    }
+
+    NODISCARD bool is_double() const {
+        return code() == DLDataTypeCode::kFloat && bits() == 64;
+    }
+
+    NODISCARD bool is_float32() const {
+        return code() == DLDataTypeCode::kFloat && bits() == 32;
+    }
+
+    NODISCARD bool is_float16() const {
+        return code() == DLDataTypeCode::kFloat && bits() == 16;
+    }
+
+    NODISCARD bool is_half() const {
+        return is_float16();
+    }
+
+    NODISCARD bool is_bfloat16() const {
+        return code() == DLDataTypeCode::kBFloat && bits() == 16;
     }
 
     NODISCARD bool is_float8() const {
@@ -280,18 +301,6 @@ public:
 
     NODISCARD bool is_float4_e2m1fn() const {
         return bits() == 4 && code() == DLDataTypeCode::kFloat4_e2m1fn;
-    }
-
-    NODISCARD bool is_float16() const {
-        return is_float() && bits() == 16;
-    }
-
-    NODISCARD bool is_half() const {
-        return is_float16();
-    }
-
-    NODISCARD bool is_bfloat16() const {
-        return code() == DLDataTypeCode::kBFloat && bits() == 16;
     }
 
     NODISCARD bool is_handle() const {
@@ -369,6 +378,10 @@ public:
 
     static DataType Float(int bits, int lanes = 1) {
         return {DLDataTypeCode::kFloat, bits, lanes};
+    }
+
+    static DataType Double() {
+        return {DLDataTypeCode::kFloat, 64, 1};
     }
 
     static DataType Float32() {

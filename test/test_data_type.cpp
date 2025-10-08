@@ -59,14 +59,14 @@ TEST(DataTypeTest, TypeChecks) {
     DataType int32 = DataType::Int(32);
     EXPECT_TRUE(int32.is_int());
     EXPECT_FALSE(int32.is_uint());
-    EXPECT_FALSE(int32.is_float());
+    EXPECT_FALSE(int32.is_float32());
     EXPECT_FALSE(int32.is_bool());
 
     // 无符号整数类型
     DataType uint8 = DataType::UInt(8);
     EXPECT_FALSE(uint8.is_int());
     EXPECT_TRUE(uint8.is_uint());
-    EXPECT_FALSE(uint8.is_float());
+    EXPECT_FALSE(uint8.is_float32());
 
     // 布尔类型
     DataType boolean = DataType::Bool();
@@ -78,7 +78,7 @@ TEST(DataTypeTest, TypeChecks) {
     DataType float32 = DataType::Float(32);
     EXPECT_FALSE(float32.is_int());
     EXPECT_FALSE(float32.is_uint());
-    EXPECT_TRUE(float32.is_float());
+    EXPECT_TRUE(float32.is_float32());
     EXPECT_FALSE(float32.is_float16());
     EXPECT_FALSE(float32.is_bfloat16());
 
@@ -91,7 +91,7 @@ TEST(DataTypeTest, TypeChecks) {
     // BFloat16类型
     DataType bfloat16 = DataType::BFloat(16);
     EXPECT_TRUE(bfloat16.is_bfloat16());
-    EXPECT_FALSE(bfloat16.is_float());
+    EXPECT_TRUE(bfloat16.is_float());
 
     // Float8类型变体
     DataType f8e4m3 = DataType::Float8E4M3();

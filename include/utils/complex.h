@@ -77,8 +77,8 @@ public:
 
     template<typename U>
     constexpr complex& operator=(const complex<U>& other) {
-        real_ = other.real_;
-        imag_ = other.imag_;
+        real_ = other.real();
+        imag_ = other.imag();
         return *this;
     }
 
@@ -385,6 +385,21 @@ struct is_complex<std::complex<T>> : std::true_type {};
 
 template<typename T>
 struct is_complex<complex<T>> : std::true_type {};
+
+template<typename T>
+struct scalar_value_type {
+    using type = T;
+};
+
+template<typename T>
+struct scalar_value_type<std::complex<T>> {
+    using type = T;
+};
+
+template<typename T>
+struct scalar_value_type<complex<T>> {
+    using type = T;
+};
 
 }// namespace aethermind
 

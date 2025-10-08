@@ -19,32 +19,35 @@ class Scalar {
 public:
     Scalar() : Scalar(static_cast<int64_t>(0)) {}
 
-    template<typename T,
-             std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>>* = nullptr>
-    Scalar(T val) {//NOLINT
-        v.i = static_cast<decltype(v.i)>(val);
-        dtype = DLDataTypeCode::kInt;
-    }
+    // integral ctors
+    Scalar(int8_t val);  //NOLINT
+    Scalar(int16_t val); //NOLINT
+    Scalar(int32_t val); //NOLINT
+    Scalar(int64_t val); //NOLINT
+    Scalar(bool val);    //NOLINT
+    Scalar(uint8_t val); //NOLINT
+    Scalar(uint16_t val);//NOLINT
+    Scalar(uint32_t val);//NOLINT
+    Scalar(uint64_t val);//NOLINT
 
-    template<typename T,
-             std::enable_if_t<std::is_floating_point_v<T>>* = nullptr>
-    Scalar(T val) {//NOLINT
-        v.d = static_cast<decltype(v.d)>(val);
-        dtype = DLDataTypeCode::kFloat;
-    }
+    // floating point ctors
+    Scalar(double val);
+    Scalar(float val);
+    Scalar(Half val);
+    Scalar(BFloat16 val);
+    Scalar(Float8_e4m3fn val);
+    Scalar(Float8_e5m2 val);
 
-    template<typename T,
-             std::enable_if_t<std::is_same_v<T, bool>>* = nullptr>
-    Scalar(T val) {//NOLINT
-        v.i = static_cast<decltype(v.i)>(val);
-        dtype = DLDataTypeCode::kBool;
-    }
+    // complex ctors
+    Scalar(complex<Half> val);
+    Scalar(complex<float> val);
+    Scalar(complex<double> val);
 
-    Scalar(const Scalar& other) : v(other.v), dtype(other.dtype) {}//NOLINT
+    Scalar(const Scalar& other) : v(other.v), dtype_(other.dtype_) {}
 
-    Scalar(Scalar&& other) noexcept : v(other.v), dtype(other.dtype) {
+    Scalar(Scalar&& other) noexcept : v(other.v), dtype_(other.dtype_) {
         other.v.i = 0;
-        other.dtype = DLDataTypeCode::kInt;
+        other.dtype_ = {};
     }
 
     Scalar& operator=(const Scalar& other) {
@@ -60,36 +63,40 @@ public:
     }
 
     NODISCARD bool is_integral() const {
-        return dtype == DLDataTypeCode::kInt;
+        return dtype_.is_int() || dtype_.is_uint();
     }
 
     NODISCARD bool is_floating_point() const {
-        return dtype == DLDataTypeCode::kFloat;
+        return dtype_.is_float();
     }
 
     NODISCARD bool is_bool() const {
-        return dtype == DLDataTypeCode::kBool;
+        return dtype_.is_bool();
     }
 
-    NODISCARD DLDataTypeCode type() const {
-        return dtype;
+    NODISCARD bool is_complex() const {
+        return dtype_.is_complex();
+    }
+
+    NODISCARD DataType type() const {
+        return dtype_;
     }
 
     friend void swap(Scalar& a, Scalar& b) noexcept {
         std::swap(a.v, b.v);
-        std::swap(a.dtype, b.dtype);
+        std::swap(a.dtype_, b.dtype_);
     }
 
-#define ACCESSOR(type, name)                                                 \
-    type to##name() const {                                                  \
-        if (dtype == DLDataTypeCode::kInt || dtype == DLDataTypeCode::kBool) \
-            return static_cast<type>(v.i);                                   \
-        else if (dtype == DLDataTypeCode::kFloat)                            \
-            return static_cast<type>(v.d);                                   \
-        else {                                                               \
-            AETHERMIND_THROW(RuntimeError) << "Unsupported data type";       \
-            AETHERMIND_UNREACHABLE();                                        \
-        }                                                                    \
+#define ACCESSOR(type, name)                                           \
+    type to##name() const {                                            \
+        if (is_integral())                                             \
+            return static_cast<type>(v.i);                             \
+        else if (is_bool())                                            \
+            return static_cast<type>(v.d);                             \
+        else {                                                         \
+            AETHERMIND_THROW(RuntimeError) << "Unsupported data type"; \
+            AETHERMIND_UNREACHABLE();                                  \
+        }                                                              \
     }
 
     SCALAR_TYPES_NAME(ACCESSOR);
@@ -108,7 +115,7 @@ private:
         val() = default;
     } v;
 
-    DLDataTypeCode dtype;
+    // DLDataTypeCode dtype;
     DataType dtype_;
 };
 

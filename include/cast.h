@@ -135,6 +135,20 @@ R overflows(From f, bool strict_unsigned = false) {
     return greater_than_max<To>(f) || less_than_lowest<To>(f);
 }
 
+template<typename From, typename To,
+         typename R = std::enable_if_t<std::is_floating_point_v<From>, bool>>
+R overflow(From f, MAYBE_UNUSED bool strict_unsigned = false) {
+    using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
+    if (Limit::has_infinity && std::isinf(static_cast<double>(f))) {
+        return false;
+    }
+
+    if (!Limit::has_quiet_NaN && f != f) {
+        return true;
+    }
+    return f < Limit::lowest() || f > Limit::max();
+}
+
 }// namespace aethermind
 
 #endif//AETHERMIND_CAST_H

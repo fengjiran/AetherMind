@@ -5,8 +5,12 @@
 #ifndef AETHERMIND_CAST_H
 #define AETHERMIND_CAST_H
 
+#include "error.h"
 #include "macros.h"
+#include "utils/bfloat16.h"
 #include "utils/complex.h"
+#include "utils/float8_e4m3fn.h"
+#include "utils/float8_e5m2.h"
 
 namespace aethermind {
 
@@ -118,52 +122,156 @@ constexpr bool less_than_lowest(const T& x) {
 // bool can be converted to any type
 template<typename From, typename To,
          std::enable_if_t<std::is_same_v<From, bool>>* = nullptr>
-bool overflows(From, MAYBE_UNUSED bool strict_unsigned = false) {
+bool is_overflow(From, MAYBE_UNUSED bool strict_unsigned = false) {
     return false;
 }
 
 template<typename From, typename To,
          std::enable_if_t<std::is_integral_v<From> && !std::is_same_v<From, bool>>* = nullptr>
-bool overflows(From f, bool strict_unsigned = false) {
+bool is_overflow(From src, bool strict_unsigned = false) {
     using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
     if constexpr (!Limit::is_signed && std::numeric_limits<From>::is_signed) {
         if (!strict_unsigned) {
-            return greater_than_max<To>(f) ||
-                   (is_negative(f) && -static_cast<uint64_t>(f) > static_cast<uint64_t>(Limit::max()));
+            return greater_than_max<To>(src) ||
+                   (is_negative(src) && -static_cast<uint64_t>(src) > static_cast<uint64_t>(Limit::max()));
         }
     }
 
-    return greater_than_max<To>(f) || less_than_lowest<To>(f);
+    return greater_than_max<To>(src) || less_than_lowest<To>(src);
 }
 
 template<typename From, typename To,
          std::enable_if_t<std::is_floating_point_v<From>>* = nullptr>
-bool overflows(From f, MAYBE_UNUSED bool strict_unsigned = false) {
+bool is_overflow(From src, MAYBE_UNUSED bool strict_unsigned = false) {
     using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
-    if (Limit::has_infinity && std::isinf(static_cast<double>(f))) {
+    if (Limit::has_infinity && std::isinf(static_cast<double>(src))) {
         return false;
     }
 
-    if (!Limit::has_quiet_NaN && f != f) {
+    if (!Limit::has_quiet_NaN && src != src) {
         return true;
     }
-    return f < Limit::lowest() || f > Limit::max();
+    return src < Limit::lowest() || src > Limit::max();
 }
 
 template<typename From, typename To, std::enable_if_t<is_complex_v<From>>* = nullptr>
-bool overflows(From f, bool strict_unsigned = false) {
-    if (!is_complex_v<To> && f.imag() != 0) {
+bool is_overflow(From src, bool strict_unsigned = false) {
+    if (!is_complex_v<To> && src.imag() != 0) {
         return true;
     }
 
     using from_type = From::value_type;
     using to_type = scalar_value_type<To>::type;
 
-    return overflows<from_type, to_type>(f.real(), strict_unsigned) ||
-           overflows<from_type, to_type>(f.imag(), strict_unsigned);
+    return is_overflow<from_type, to_type>(src.real(), strict_unsigned) ||
+           is_overflow<from_type, to_type>(src.imag(), strict_unsigned);
 }
 
-void report_overflow(const char* name);
+template<typename From, typename To>
+constexpr static bool only_need_real = is_complex_v<From> && !is_complex_v<To>;
+
+template<typename From, bool>
+struct maybe_real {
+    static From apply(From src) {
+        return src;
+    }
+};
+
+template<typename From>
+struct maybe_real<From, true> {
+    static decltype(auto) apply(From src) {
+        return src.real();
+    }
+};
+
+template<typename From, bool>
+struct maybe_bool {
+    static From apply(From src) {
+        return src;
+    }
+};
+
+template<typename From>
+struct maybe_bool<From, true> {
+    static decltype(auto) apply(From src) {
+        return src.real() || src.imag();
+    }
+};
+
+template<typename From, typename To>
+struct cast {
+    static To apply(From src) {
+        constexpr bool real = only_need_real<From, To>;
+        auto r = maybe_real<From, real>::apply(src);
+        return static_cast<To>(r);
+    }
+};
+
+template<typename From>
+struct cast<From, bool> {
+    static bool apply(From src) {
+        constexpr bool complex = only_need_real<From, bool>;
+        auto r = maybe_bool<From, complex>::apply(src);
+        return static_cast<bool>(r);
+    }
+};
+
+template<typename From>
+struct cast<From, uint8_t> {
+    static uint8_t apply(From src) {
+        constexpr bool real = only_need_real<From, uint8_t>;
+        auto r = maybe_real<From, real>::apply(src);
+        return static_cast<uint8_t>(static_cast<int64_t>(r));
+    }
+};
+
+template<>
+struct cast<BFloat16, complex<Half>> {
+    static complex<Half> apply(BFloat16 src) {
+        return complex<float>{src};
+    }
+};
+
+template<>
+struct cast<Float8_e5m2, complex<Half>> {
+    static complex<Half> apply(Float8_e5m2 src) {
+        return complex<float>{src};
+    }
+};
+
+template<>
+struct cast<Float8_e4m3fn, complex<Half>> {
+    static complex<Half> apply(Float8_e4m3fn src) {
+        return complex<float>{src};
+    }
+};
+
+template<>
+struct cast<Half, complex<Half>> {
+    static complex<Half> apply(Half src) {
+        return complex<float>{src};
+    }
+};
+
+template<>
+struct cast<complex<double>, complex<Half>> {
+    static complex<Half> apply(complex<double> src) {
+        return static_cast<complex<float>>(src);
+    }
+};
+
+template<typename From, typename To>
+To convert(From src) {
+    return cast<From, To>::apply(src);
+}
+
+template<typename From, typename To>
+To check_and_convert(From src, const char* name) {
+    if (!std::is_same_v<To, bool> && is_overflow<From, To>(src)) {
+        AETHERMIND_THROW(RuntimeError) << "Cannot convert the value to type " << name << " without overflow.";
+    }
+    return convert<From, To>(src);
+}
 
 
 }// namespace aethermind

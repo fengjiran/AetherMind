@@ -150,8 +150,7 @@ bool overflows(From f, MAYBE_UNUSED bool strict_unsigned = false) {
     return f < Limit::lowest() || f > Limit::max();
 }
 
-template<typename From, typename To,
-         std::enable_if_t<is_complex_v<From>>* = nullptr>
+template<typename From, typename To, std::enable_if_t<is_complex_v<From>>* = nullptr>
 bool overflows(From f, bool strict_unsigned = false) {
     if (!is_complex_v<To> && f.imag() != 0) {
         return true;
@@ -163,6 +162,9 @@ bool overflows(From f, bool strict_unsigned = false) {
     return overflows<from_type, to_type>(f.real(), strict_unsigned) ||
            overflows<from_type, to_type>(f.imag(), strict_unsigned);
 }
+
+void report_overflow(const char* name);
+
 
 }// namespace aethermind
 

@@ -99,6 +99,11 @@ Scalar::Scalar(complex<double> val) {
     dtype_ = DataType::ComplexDouble();
 }
 
+void report_overflow(const char* name) {
+    std::ostringstream ss;
+    ss << "value cannot be converted to type " << name << " without overflow.";
+    AETHERMIND_THROW(RuntimeError) << ss.str();
+}
 
 std::ostream& operator<<(std::ostream& out, const Scalar& s) {
     if (s.is_floating_point()) {

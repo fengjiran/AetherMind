@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_SCALAR_H
 #define AETHERMIND_SCALAR_H
 
-#include "data_type.h"
 #include "cast.h"
+#include "data_type.h"
 
 namespace aethermind {
 
@@ -32,19 +32,19 @@ public:
     Scalar(uint64_t val);//NOLINT
 
     // floating point ctors
-    Scalar(double val);
-    Scalar(float val);
-    Scalar(Half val);
-    Scalar(BFloat16 val);
-    Scalar(Float8_e4m3fn val);
-    Scalar(Float8_e5m2 val);
+    Scalar(double val);       //NOLINT
+    Scalar(float val);        //NOLINT
+    Scalar(Half val);         //NOLINT
+    Scalar(BFloat16 val);     //NOLINT
+    Scalar(Float8_e4m3fn val);//NOLINT
+    Scalar(Float8_e5m2 val);  //NOLINT
 
     // complex ctors
-    Scalar(complex<Half> val);
-    Scalar(complex<float> val);
-    Scalar(complex<double> val);
+    Scalar(complex<Half> val);  //NOLINT
+    Scalar(complex<float> val); //NOLINT
+    Scalar(complex<double> val);//NOLINT
 
-    Scalar(const Scalar& other) : v(other.v), dtype_(other.dtype_) {}
+    Scalar(const Scalar& other) = default;
 
     Scalar(Scalar&& other) noexcept : v(other.v), dtype_(other.dtype_) {
         other.v.i = 0;

@@ -116,14 +116,15 @@ constexpr bool less_than_lowest(const T& x) {
 }
 
 // bool can be converted to any type
-template<typename From, typename To, typename R = std::enable_if_t<std::is_same_v<From, bool>, bool>>
-R overflows(From, MAYBE_UNUSED bool strict_unsigned = false) {
+template<typename From, typename To,
+         std::enable_if_t<std::is_same_v<From, bool>>* = nullptr>
+bool overflows(From, MAYBE_UNUSED bool strict_unsigned = false) {
     return false;
 }
 
-template<typename From, typename To, typename = void,
-         typename R = std::enable_if_t<std::is_integral_v<From> && !std::is_same_v<From, bool>, bool>>
-R overflows(From f, bool strict_unsigned = false) {
+template<typename From, typename To,
+         std::enable_if_t<std::is_integral_v<From> && !std::is_same_v<From, bool>>* = nullptr>
+bool overflows(From f, bool strict_unsigned = false) {
     using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
     if constexpr (!Limit::is_signed && std::numeric_limits<From>::is_signed) {
         if (!strict_unsigned) {
@@ -136,8 +137,8 @@ R overflows(From f, bool strict_unsigned = false) {
 }
 
 template<typename From, typename To,
-         typename R = std::enable_if_t<std::is_floating_point_v<From>, bool>>
-R overflow(From f, MAYBE_UNUSED bool strict_unsigned = false) {
+         std::enable_if_t<std::is_floating_point_v<From>>* = nullptr>
+bool overflows(From f, MAYBE_UNUSED bool strict_unsigned = false) {
     using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
     if (Limit::has_infinity && std::isinf(static_cast<double>(f))) {
         return false;
@@ -147,6 +148,20 @@ R overflow(From f, MAYBE_UNUSED bool strict_unsigned = false) {
         return true;
     }
     return f < Limit::lowest() || f > Limit::max();
+}
+
+template<typename From, typename To,
+         std::enable_if_t<is_complex_v<From>>* = nullptr>
+bool overflows(From f, bool strict_unsigned = false) {
+    if (!is_complex_v<To> && f.imag() != 0) {
+        return true;
+    }
+
+    using from_type = From::value_type;
+    using to_type = scalar_value_type<To>::type;
+
+    return overflows<from_type, to_type>(f.real(), strict_unsigned) ||
+           overflows<from_type, to_type>(f.imag(), strict_unsigned);
 }
 
 }// namespace aethermind

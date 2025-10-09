@@ -387,6 +387,9 @@ template<typename T>
 struct is_complex<complex<T>> : std::true_type {};
 
 template<typename T>
+constexpr bool is_complex_v = is_complex<T>::value;
+
+template<typename T>
 struct scalar_value_type {
     using type = T;
 };

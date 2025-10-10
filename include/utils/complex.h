@@ -404,6 +404,125 @@ struct scalar_value_type<complex<T>> {
     using type = T;
 };
 
+namespace complex_math {
+
+template<typename T>
+complex<T> exp(const complex<T>& x) {
+    return complex<T>(std::exp(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> log(const complex<T>& x) {
+    return complex<T>(std::log(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> log10(const complex<T>& x) {
+    return complex<T>(std::log10(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> log2(const complex<T>& x) {
+    return complex<T>(std::log2(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> sqrt(const complex<T>& x) {
+    return complex<T>(std::sqrt(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> pow(const complex<T>& x, const complex<T>& y) {
+    return complex<T>(std::pow(std::complex<T>(x), std::complex<T>(y)));
+}
+
+template<typename T>
+complex<T> pow(const complex<T>& x, const T& y) {
+    return complex<T>(std::pow(std::complex<T>(x), y));
+}
+
+template<typename T>
+complex<T> pow(const T& x, const complex<T>& y) {
+    return complex<T>(std::pow(x, std::complex<T>(y)));
+}
+
+template<typename T, typename U>
+complex<decltype(T() * U())> pow(const complex<T>& x, const complex<U>& y) {
+    return complex<T>(std::pow(std::complex<T>(x), std::complex<T>(y)));
+}
+
+template<typename T, typename U>
+complex<decltype(T() * U())> pow(const complex<T>& x, const U& y) {
+    return complex<T>(std::pow(std::complex<T>(x), y));
+}
+
+template<typename T, typename U>
+complex<decltype(T() * U())> pow(const T& x, const complex<U>& y) {
+    return complex<T>(std::pow(x, std::complex<T>(y)));
+}
+
+template<typename T>
+complex<T> sin(const complex<T>& x) {
+    return complex<T>(std::sin(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> cos(const complex<T>& x) {
+    return complex<T>(std::cos(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> tan(const complex<T>& x) {
+    return complex<T>(std::tan(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> asin(const complex<T>& x) {
+    return complex<T>(std::asin(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> acos(const complex<T>& x) {
+    return complex<T>(std::acos(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> atan(const complex<T>& x) {
+    return complex<T>(std::atan(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> sinh(const complex<T>& x) {
+    return complex<T>(std::sinh(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> cosh(const complex<T>& x) {
+    return complex<T>(std::cosh(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> tanh(const complex<T>& x) {
+    return complex<T>(std::tanh(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> asinh(const complex<T>& x) {
+    return complex<T>(std::asinh(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> acosh(const complex<T>& x) {
+    return complex<T>(std::acosh(std::complex<T>(x)));
+}
+
+template<typename T>
+complex<T> atanh(const complex<T>& x) {
+    return complex<T>(std::atanh(std::complex<T>(x)));
+}
+
+}// namespace complex_math
+
 }// namespace aethermind
 
 namespace std {
@@ -444,6 +563,25 @@ template<typename T>
 bool isnan(const aethermind::complex<T>& v) {
     return std::isnan(v.real()) || std::isnan(v.imag());
 }
+
+using aethermind::complex_math::acos;
+using aethermind::complex_math::acosh;
+using aethermind::complex_math::asin;
+using aethermind::complex_math::asinh;
+using aethermind::complex_math::atan;
+using aethermind::complex_math::atanh;
+using aethermind::complex_math::cos;
+using aethermind::complex_math::cosh;
+using aethermind::complex_math::exp;
+using aethermind::complex_math::log;
+using aethermind::complex_math::log10;
+using aethermind::complex_math::log2;
+using aethermind::complex_math::pow;
+using aethermind::complex_math::sin;
+using aethermind::complex_math::sinh;
+using aethermind::complex_math::sqrt;
+using aethermind::complex_math::tan;
+using aethermind::complex_math::tanh;
 
 }// namespace std
 

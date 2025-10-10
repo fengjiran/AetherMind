@@ -122,6 +122,24 @@ Scalar Scalar::operator-() const {
     AETHERMIND_UNREACHABLE();
 }
 
+Scalar Scalar::log() const {
+    if (is_integral()) {
+        return std::log(v.i);
+    }
+
+    if (is_floating_point()) {
+        return std::log(v.d);
+    }
+
+    if (is_complex()) {
+        return std::log(v.z);
+    }
+
+    AETHERMIND_THROW(RuntimeError) << dtype_ << " is not supported.";
+    AETHERMIND_UNREACHABLE();
+}
+
+
 
 std::ostream& operator<<(std::ostream& out, const Scalar& s) {
     if (s.is_floating_point()) {

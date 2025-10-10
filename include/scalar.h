@@ -95,8 +95,8 @@ public:
     }
 
     Scalar operator-() const;
-    Scalar log() const;
-    Scalar conj() const;
+    NODISCARD Scalar log() const;
+    NODISCARD Scalar conj() const;
 
 #define ACCESSOR(code, bits, lanes, type, name)                        \
     type to##name() const {                                            \

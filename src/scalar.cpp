@@ -139,7 +139,12 @@ Scalar Scalar::log() const {
     AETHERMIND_UNREACHABLE();
 }
 
-
+Scalar Scalar::conj() const {
+    if (is_complex()) {
+        return {std::conj(v.z)};
+    }
+    return *this;
+}
 
 std::ostream& operator<<(std::ostream& out, const Scalar& s) {
     if (s.is_floating_point()) {

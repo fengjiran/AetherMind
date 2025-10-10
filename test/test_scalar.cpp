@@ -153,6 +153,198 @@ TEST(CastOverflowsTest, MixedTypesAndEdgeCases) {
     EXPECT_FALSE((is_overflow<double, float>(0.0 / 0.0)));// NaN
 }
 
+// 测试 maybe_real 结构体
+TEST(CastTest, MaybeReal) {
+    // 测试非复数类型
+    int value = 42;
+    EXPECT_EQ((maybe_real<int, false>::apply(value)), 42);
+
+    // 测试复数类型
+    complex<float> c(1.0f, 2.0f);
+    EXPECT_FLOAT_EQ((maybe_real<complex<float>, true>::apply(c)), 1.0f);
+}
+
+// 测试 maybe_bool 结构体
+TEST(CastTest, MaybeBool) {
+    // 测试非复数类型
+    int value = 42;
+    EXPECT_EQ((maybe_bool<int, false>::apply(value)), 42);
+
+    // 测试复数类型
+    complex<float> c1(0.0f, 0.0f);
+    EXPECT_FALSE((maybe_bool<complex<float>, true>::apply(c1)));
+
+    complex<float> c2(1.0f, 0.0f);
+    EXPECT_TRUE((maybe_bool<complex<float>, true>::apply(c2)));
+
+    complex<float> c3(0.0f, 1.0f);
+    EXPECT_TRUE((maybe_bool<complex<float>, true>::apply(c3)));
+
+    complex<float> c4(1.0f, 1.0f);
+    EXPECT_TRUE((maybe_bool<complex<float>, true>::apply(c4)));
+}
+
+// 测试通用cast模板
+TEST(CastTest, CastBasicTypes) {
+    // 基本类型转换
+    EXPECT_EQ((cast<int, double>::apply(42)), 42.0);
+    EXPECT_EQ((cast<double, int>::apply(42.5)), 42);
+
+    // 复数到实数的转换
+    complex<float> c(1.5f, 2.5f);
+    EXPECT_FLOAT_EQ((cast<complex<float>, float>::apply(c)), 1.5f);
+
+    // 实数到复数的转换
+    complex<double> c2 = cast<double, complex<double>>::apply(3.14);
+    EXPECT_DOUBLE_EQ(c2.real(), 3.14);
+    EXPECT_DOUBLE_EQ(c2.imag(), 0.0);
+}
+
+// 测试cast<bool>特化
+TEST(CastTest, CastToBool) {
+    // 基本类型到bool的转换
+    EXPECT_TRUE((cast<int, bool>::apply(1)));
+    EXPECT_FALSE((cast<int, bool>::apply(0)));
+    EXPECT_TRUE((cast<double, bool>::apply(1.5)));
+    EXPECT_FALSE((cast<double, bool>::apply(0.0)));
+
+    // 复数到bool的转换
+    complex<float> c1(0.0f, 0.0f);
+    EXPECT_FALSE((cast<complex<float>, bool>::apply(c1)));
+
+    complex<float> c2(1.0f, 0.0f);
+    EXPECT_TRUE((cast<complex<float>, bool>::apply(c2)));
+
+    complex<float> c3(0.0f, 1.0f);
+    EXPECT_TRUE((cast<complex<float>, bool>::apply(c3)));
+}
+
+// 测试cast<uint8_t>特化
+TEST(CastTest, CastToUint8) {
+    // 基本类型到uint8_t的转换
+    EXPECT_EQ((cast<int, uint8_t>::apply(42)), 42);
+    EXPECT_EQ((cast<int64_t, uint8_t>::apply(255)), 255);
+
+    // 复数到uint8_t的转换
+    complex<int> c(100, 50);
+    EXPECT_EQ((cast<complex<int>, uint8_t>::apply(c)), 100);
+}
+
+// 测试特殊浮点类型到complex<Half>的转换
+TEST(CastTest, CastToComplexHalf) {
+    // BFloat16到complex<Half>的转换
+    BFloat16 bfloat(1.5f);
+    complex<Half> c1 = cast<BFloat16, complex<Half>>::apply(bfloat);
+    EXPECT_FLOAT_EQ(c1.real(), 1.5f);
+    EXPECT_FLOAT_EQ(c1.imag(), 0.0f);
+
+    // Float8_e5m2到complex<Half>的转换
+    Float8_e5m2 f8e5m2(2.5f);
+    complex<Half> c2 = cast<Float8_e5m2, complex<Half>>::apply(f8e5m2);
+    EXPECT_FLOAT_EQ(c2.real(), 2.5f);
+    EXPECT_FLOAT_EQ(c2.imag(), 0.0f);
+
+    // Float8_e4m3fn到complex<Half>的转换
+    Float8_e4m3fn f8e4m3fn(3.5f);
+    complex<Half> c3 = cast<Float8_e4m3fn, complex<Half>>::apply(f8e4m3fn);
+    EXPECT_FLOAT_EQ(c3.real(), 3.5f);
+    EXPECT_FLOAT_EQ(c3.imag(), 0.0f);
+
+    // Half到complex<Half>的转换
+    Half half(4.5f);
+    complex<Half> c4 = cast<Half, complex<Half>>::apply(half);
+    EXPECT_FLOAT_EQ(c4.real(), 4.5f);
+    EXPECT_FLOAT_EQ(c4.imag(), 0.0f);
+
+    // complex<double>到complex<Half>的转换
+    complex<double> cd(5.5, 6.5);
+    complex<Half> c5 = cast<complex<double>, complex<Half>>::apply(cd);
+    EXPECT_FLOAT_EQ(c5.real(), 5.5f);
+    EXPECT_FLOAT_EQ(c5.imag(), 6.5f);
+}
+
+// 测试check_and_cast函数
+TEST(CastTest, CheckAndCastNoOverflow) {
+    // 不会溢出的转换
+    EXPECT_EQ((check_and_cast<int, short>(32767, "short")), 32767);
+    EXPECT_EQ((check_and_cast<int, unsigned>(100, "unsigned")), 100U);
+    EXPECT_EQ((check_and_cast<int, uint8_t>(-1, "unsigned char")), 255);
+
+    // 复数到实数的安全转换
+    complex<double> c(1.0, 0.0);
+    EXPECT_DOUBLE_EQ((check_and_cast<complex<double>, double>(c, "double")), 1.0);
+}
+
+// 测试check_and_cast函数的溢出检测
+TEST(CastTest, CheckAndCastOverflow) {
+    // 整数溢出情况
+    EXPECT_THROW((check_and_cast<int, char>(128, "char")), Error);
+
+    // 浮点数溢出情况
+    EXPECT_THROW((check_and_cast<double, float>(1e39, "float")), Error);
+
+    // 复数虚部不为零的情况
+    complex<double> c(1.0, 2.0);
+    EXPECT_THROW((check_and_cast<complex<double>, double>(c, "double")), Error);
+}
+
+// 测试check_and_cast对bool类型的特殊处理
+TEST(CastTest, CheckAndCastBool) {
+    // bool类型不进行溢出检查
+    EXPECT_TRUE((check_and_cast<int, bool>(100, "bool")));
+    EXPECT_FALSE((check_and_cast<int, bool>(0, "bool")));
+
+    // 复数到bool的转换，即使虚部不为零也不会抛出异常
+    complex<double> c(0.0, 1.0);
+    EXPECT_TRUE((check_and_cast<complex<double>, bool>(c, "bool")));
+}
+
+// 测试边界值转换
+TEST(CastTest, CastBoundaryValues) {
+    // 测试边界值
+    EXPECT_EQ((cast<int, char>::apply(127)), 127);
+    EXPECT_EQ((cast<int, unsigned char>::apply(255)), 255);
+
+    // 测试零值
+    EXPECT_EQ((cast<int, float>::apply(0)), 0.0f);
+    EXPECT_FALSE((cast<int, bool>::apply(0)));
+
+    // 测试负值
+    EXPECT_FLOAT_EQ((cast<int, float>::apply(-42)), -42.0f);
+    EXPECT_TRUE((cast<int, bool>::apply(-1)));
+}
+
+// 测试混合类型转换
+TEST(CastTest, MixedTypeCasts) {
+    // 测试不同整数类型之间的转换
+    int64_t big_int = 10000000000;
+    EXPECT_EQ((cast<int64_t, int32_t>::apply(big_int)), static_cast<int32_t>(big_int));
+
+    // 测试整数到浮点数的转换
+    int64_t large_int = 1000000000;
+    EXPECT_DOUBLE_EQ((cast<int64_t, double>::apply(large_int)), 1000000000.0);
+
+    // 测试浮点数到整数的转换
+    double pi = 3.14159;
+    EXPECT_EQ((cast<double, int>::apply(pi)), 3);
+}
+
+// 测试特殊浮点值
+TEST(CastTest, SpecialFloatingPointValues) {
+    // 测试无穷大
+    double inf = std::numeric_limits<double>::infinity();
+    float inf_float = cast<double, float>::apply(inf);
+    EXPECT_TRUE(std::isinf(inf_float));
+
+    // 测试NaN
+    double nan = std::numeric_limits<double>::quiet_NaN();
+    float nan_float = cast<double, float>::apply(nan);
+    EXPECT_TRUE(std::isnan(nan_float));
+
+    // 注意：check_and_cast对于NaN的处理取决于目标类型是否支持NaN
+    EXPECT_NO_THROW((cast<double, float>::apply(nan)));
+}
+
 TEST(Scalar, init) {
     GTEST_SKIP();
     Scalar s1 = false;

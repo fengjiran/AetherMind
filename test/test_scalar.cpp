@@ -346,7 +346,7 @@ TEST(CastTest, SpecialFloatingPointValues) {
 }
 
 TEST(Scalar, init) {
-    GTEST_SKIP();
+    // GTEST_SKIP();
     Scalar s1 = false;
     EXPECT_EQ(s1.toBool(), false);
     EXPECT_TRUE(s1.type() == DataType::Bool());
@@ -367,6 +367,57 @@ TEST(Scalar, init) {
     EXPECT_TRUE(std::isfinite(s3.toFloat()));
     std::cout << s3 << std::endl;
     std::cout << toString(s3) << std::endl;
+}
+
+// 测试Scalar类的默认构造函数和基本整数构造
+TEST(ScalarTest, DefaultAndIntegralConstructors) {
+    // 默认构造函数（应该是int64_t(0)）
+    Scalar default_scalar;
+    EXPECT_TRUE(default_scalar.is_signed_integral());
+    EXPECT_EQ(default_scalar.toLong(), 0);
+    EXPECT_EQ(default_scalar.type(), DataType::Int(64));
+
+    // 有符号整数构造函数
+    Scalar i8(static_cast<int8_t>(42));
+    EXPECT_TRUE(i8.is_signed_integral());
+    EXPECT_EQ(i8.toChar(), 42);
+    EXPECT_EQ(i8.type(), DataType::Int(8));
+
+    Scalar i16(static_cast<int16_t>(-1234));
+    EXPECT_TRUE(i16.is_signed_integral());
+    EXPECT_EQ(i16.toShort(), -1234);
+    EXPECT_EQ(i16.type(), DataType::Int(16));
+
+    Scalar i32(static_cast<int32_t>(123456));
+    EXPECT_TRUE(i32.is_signed_integral());
+    EXPECT_EQ(i32.toInt(), 123456);
+    EXPECT_EQ(i32.type(), DataType::Int(32));
+
+    Scalar i64(static_cast<int64_t>(-9876543210));
+    EXPECT_TRUE(i64.is_signed_integral());
+    EXPECT_EQ(i64.toLong(), -9876543210);
+    EXPECT_EQ(i64.type(), DataType::Int(64));
+
+    // 无符号整数构造函数
+    Scalar u8(static_cast<uint8_t>(200));
+    EXPECT_TRUE(u8.is_signed_integral());
+    EXPECT_EQ(u8.toByte(), 200);
+    EXPECT_EQ(u8.type(), DataType::Int(8));
+
+    Scalar u16(static_cast<uint16_t>(40000));
+    EXPECT_TRUE(u16.is_signed_integral());
+    EXPECT_EQ(u16.toUInt16(), 40000);
+    EXPECT_EQ(u16.type(), DataType::Int(16));
+
+    Scalar u32(static_cast<uint32_t>(123456789));
+    EXPECT_TRUE(u32.is_signed_integral());
+    EXPECT_EQ(u32.toUInt32(), 123456789);
+    EXPECT_EQ(u32.type(), DataType::Int(32));
+
+    Scalar u64(static_cast<uint64_t>(18446744073709551615ULL));
+    EXPECT_TRUE(u64.is_unsigned_integral());
+    EXPECT_EQ(u64.toUInt64(), 18446744073709551615ULL);
+    EXPECT_EQ(u64.type(), DataType::UInt(64));
 }
 
 }// namespace

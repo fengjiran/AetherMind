@@ -218,7 +218,7 @@ private:
 SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TO);
 #undef DEFINE_TO
 
-std::ostream& operator<<(std::ostream& out, const Scalar& s);
+std::ostream& operator<<(std::ostream& os, const Scalar& s);
 std::string toString(const Scalar& s);
 
 }// namespace aethermind

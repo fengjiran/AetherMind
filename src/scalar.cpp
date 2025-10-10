@@ -146,18 +146,28 @@ Scalar Scalar::conj() const {
     return *this;
 }
 
-std::ostream& operator<<(std::ostream& out, const Scalar& s) {
+std::ostream& operator<<(std::ostream& os, const Scalar& s) {
     if (s.is_floating_point()) {
-        return out << s.toDouble();
+        os << s.toDouble();
     }
 
     if (s.is_bool()) {
-        return out << (s.toBool() ? "true" : "false");
+        os << (s.toBool() ? "true" : "false");
     }
 
-    if (s.is_integral()) {
-        return out << s.toLong();
+    if (s.is_signed_integral()) {
+        os << s.toLong();
     }
+
+    if (s.is_unsigned_integral()) {
+        os << s.toUInt64();
+    }
+
+    if (s.is_complex()) {
+        os << s.toComplexDouble();
+    }
+
+    return os;
 
     AETHERMIND_THROW(RuntimeError) << "Unknown type in Scalar";
     AETHERMIND_UNREACHABLE();

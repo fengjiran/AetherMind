@@ -294,9 +294,9 @@ TEST(DataTypeToStringTest, BasicScalarTypes) {
 
     // 测试无符号整数类型
     EXPECT_EQ(DataTypeToString(DataType::UInt(8)), "Byte");
-    EXPECT_EQ(DataTypeToString(DataType::UInt(16)), "UShort");
-    EXPECT_EQ(DataTypeToString(DataType::UInt(32)), "UInt");
-    EXPECT_EQ(DataTypeToString(DataType::UInt(64)), "ULong");
+    EXPECT_EQ(DataTypeToString(DataType::UInt(16)), "UInt16");
+    EXPECT_EQ(DataTypeToString(DataType::UInt(32)), "UInt32");
+    EXPECT_EQ(DataTypeToString(DataType::UInt(64)), "UInt64");
 
     // 测试浮点类型
     EXPECT_EQ(DataTypeToString(DataType::Float(16)), "Half");

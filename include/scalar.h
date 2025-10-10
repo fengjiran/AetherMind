@@ -116,12 +116,85 @@ public:
         }                                                              \
     }
 
-    // SCALAR_TYPES_NAME(ACCESSOR);
     SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(ACCESSOR);
 #undef ACCESSOR
 
     template<typename T>
     T to() const = delete;
+
+    template<typename T, std::enable_if_t<!is_complex_v<T>>* = nullptr>
+    bool equal(T x) const {
+        if (is_complex()) {
+            const auto val = v.z;
+            return val.real() == x && val.imag() == T();
+        }
+
+        if (is_floating_point()) {
+            return toDouble() == x;
+        }
+
+        if (is_signed_integral()) {
+            if (is_overflow<decltype(v.i), T>(v.i, true)) {
+                return false;
+            }
+            return static_cast<T>(v.i) == x;
+        }
+
+        if (is_unsigned_integral()) {
+            if (is_overflow<decltype(v.u), T>(v.u, true)) {
+                return false;
+            }
+            return static_cast<T>(v.u) == x;
+        }
+
+        if (is_bool()) {
+            return false;
+        }
+
+        AETHERMIND_THROW(RuntimeError) << "Unsupported data type";
+        AETHERMIND_UNREACHABLE();
+    }
+
+    template<typename T, std::enable_if_t<is_complex_v<T>>* = nullptr>
+    bool equal(T x) const {
+        if (is_complex()) {
+            return x == v.z;
+        }
+
+        if (is_floating_point()) {
+            return toDouble() == x.real() && x.imag() == T();
+        }
+
+        if (is_signed_integral()) {
+            if (is_overflow<decltype(v.i), T>(v.i, true)) {
+                return false;
+            }
+
+            return static_cast<T>(v.i) == x.real() && x.imag() == T();
+        }
+
+        if (is_unsigned_integral()) {
+            if (is_overflow<decltype(v.u), T>(v.u, true)) {
+                return false;
+            }
+
+            return static_cast<T>(v.u) == x.real() && x.imag() == T();
+        }
+
+        if (is_bool()) {
+            return false;
+        }
+
+        AETHERMIND_THROW(RuntimeError) << "Unsupported data type";
+        AETHERMIND_UNREACHABLE();
+    }
+
+    NODISCARD bool equal(bool x) const {
+        if (is_bool()) {
+            return static_cast<bool>(v.i) == x;
+        }
+        return false;
+    }
 
 private:
     union val {
@@ -133,16 +206,16 @@ private:
         val() = default;
     } v;
 
-    // DLDataTypeCode dtype;
     DataType dtype_;
 };
 
-#define DEFINE_TO(T, name)           \
-    template<>                       \
-    inline T Scalar::to<T>() const { \
-        return to##name();           \
+#define DEFINE_TO(code, bits, lanes, T, name) \
+    template<>                                \
+    inline T Scalar::to<T>() const {          \
+        return to##name();                    \
     }
-SCALAR_TYPES_NAME(DEFINE_TO);
+
+SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TO);
 #undef DEFINE_TO
 
 std::ostream& operator<<(std::ostream& out, const Scalar& s);

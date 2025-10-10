@@ -488,21 +488,6 @@ std::string DataTypeToString(const DataType& dtype);
 
 std::ostream& operator<<(std::ostream& os, const DataType& dtype);
 
-#define SCALAR_TYPES_NAME(f) \
-    f(bool, Bool);           \
-    f(uint8_t, Byte);        \
-    f(int8_t, Char);         \
-    f(uint16_t, UShort);     \
-    f(int16_t, Short);       \
-    f(uint32_t, UInt);       \
-    f(int, Int);             \
-    f(uint64_t, ULong);      \
-    f(int64_t, Long);        \
-    f(float, Float);         \
-    f(double, Double);       \
-    f(BFloat16, BFloat16);
-
-
 // TODO: float8, float6 and float4 type need to be defined.
 #define SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(f)                                \
     f(DLDataTypeCode::kInt, 8, 1, int8_t, Char);                           \
@@ -510,9 +495,9 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
     f(DLDataTypeCode::kInt, 32, 1, int32_t, Int);                          \
     f(DLDataTypeCode::kInt, 64, 1, int64_t, Long);                         \
     f(DLDataTypeCode::kUInt, 8, 1, uint8_t, Byte);                         \
-    f(DLDataTypeCode::kUInt, 16, 1, uint16_t, UShort);                     \
-    f(DLDataTypeCode::kUInt, 32, 1, uint32_t, UInt);                       \
-    f(DLDataTypeCode::kUInt, 64, 1, uint64_t, ULong);                      \
+    f(DLDataTypeCode::kUInt, 16, 1, uint16_t, UInt16);                     \
+    f(DLDataTypeCode::kUInt, 32, 1, uint32_t, UInt32);                     \
+    f(DLDataTypeCode::kUInt, 64, 1, uint64_t, UInt64);                     \
     f(DLDataTypeCode::kUInt, 1, 1, bool, Bool);                            \
     f(DLDataTypeCode::kFloat, 16, 1, Half, Half);                          \
     f(DLDataTypeCode::kFloat, 32, 1, float, Float);                        \

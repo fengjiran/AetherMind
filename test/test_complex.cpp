@@ -476,7 +476,7 @@ TEST(ComplexTest, Log10) {
 template<typename T>
 void TestLog2() {
     using Complex = complex<T>;
-    using Real = typename Complex::value_type;
+    using Real = Complex::value_type;
 
     // 测试实数输入
     Complex z1(Real(2.0), Real(0.0));

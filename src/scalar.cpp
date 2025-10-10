@@ -30,28 +30,33 @@ Scalar::Scalar(int64_t val) {
 }
 
 Scalar::Scalar(bool val) {
-    v.u = static_cast<decltype(v.u)>(val);
+    v.i = static_cast<decltype(v.i)>(val);
     dtype_ = DataType::Bool();
 }
 
 Scalar::Scalar(uint8_t val) {
-    v.u = static_cast<decltype(v.u)>(val);
-    dtype_ = DataType::UInt(8);
+    v.i = static_cast<decltype(v.i)>(val);
+    dtype_ = DataType::Int(8);
 }
 
 Scalar::Scalar(uint16_t val) {
-    v.u = static_cast<decltype(v.u)>(val);
-    dtype_ = DataType::UInt(16);
+    v.i = static_cast<decltype(v.i)>(val);
+    dtype_ = DataType::Int(16);
 }
 
 Scalar::Scalar(uint32_t val) {
-    v.u = static_cast<decltype(v.u)>(val);
-    dtype_ = DataType::UInt(32);
+    v.i = static_cast<decltype(v.i)>(val);
+    dtype_ = DataType::Int(32);
 }
 
 Scalar::Scalar(uint64_t val) {
-    v.u = val;
-    dtype_ = DataType::UInt(64);
+    if (val > static_cast<uint64_t>(INT64_MAX)) {
+        v.u = val;
+        dtype_ = DataType::UInt(64);
+    } else {
+        v.i = static_cast<int64_t>(val);
+        dtype_ = DataType::Int(64);
+    }
 }
 
 Scalar::Scalar(double val) {
@@ -98,6 +103,25 @@ Scalar::Scalar(complex<double> val) {
     v.z = val;
     dtype_ = DataType::ComplexDouble();
 }
+
+Scalar Scalar::operator-() const {
+    CHECK(!is_bool()) << "boolean negative is not supported.";
+    if (is_signed_integral()) {
+        return {-v.i};
+    }
+
+    if (is_floating_point()) {
+        return {-v.d};
+    }
+
+    if (is_complex()) {
+        return {-v.z};
+    }
+
+    AETHERMIND_THROW(RuntimeError) << dtype_ << " is not supported.";
+    AETHERMIND_UNREACHABLE();
+}
+
 
 std::ostream& operator<<(std::ostream& out, const Scalar& s) {
     if (s.is_floating_point()) {

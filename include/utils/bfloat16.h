@@ -98,8 +98,8 @@ BFloat16 operator-(int64_t lhs, BFloat16 rhs);
 BFloat16 operator*(int64_t lhs, BFloat16 rhs);
 BFloat16 operator/(int64_t lhs, BFloat16 rhs);
 
-bool operator>(const BFloat16& lhs, const BFloat16& rhs);
-bool operator<(const BFloat16& lhs, const BFloat16& rhs);
+bool operator>(BFloat16& lhs, BFloat16& rhs);
+bool operator<(BFloat16& lhs, BFloat16& rhs);
 
 template<typename T>
 struct is_reduced_floating_point : std::false_type {};

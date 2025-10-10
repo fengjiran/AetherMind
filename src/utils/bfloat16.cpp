@@ -235,11 +235,11 @@ BFloat16 operator/(int64_t lhs, BFloat16 rhs) {
     return static_cast<BFloat16>(lhs) / rhs;
 }
 
-bool operator>(const BFloat16& lhs, const BFloat16& rhs) {
+bool operator>(BFloat16& lhs, BFloat16& rhs) {
     return static_cast<float>(lhs) > static_cast<float>(rhs);
 }
 
-bool operator<(const BFloat16& lhs, const BFloat16& rhs) {
+bool operator<(BFloat16& lhs, BFloat16& rhs) {
     return static_cast<float>(lhs) < static_cast<float>(rhs);
 }
 

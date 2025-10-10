@@ -94,21 +94,28 @@ public:
         std::swap(dtype_, other.dtype_);
     }
 
-#define ACCESSOR(type, name)                                           \
+    Scalar operator-() const;
+
+#define ACCESSOR(code, bits, lanes, type, name)                        \
     type to##name() const {                                            \
         if (is_signed_integral())                                      \
-            return static_cast<type>(v.i);                             \
+            return check_and_cast<int64_t, type>(v.i, #type);          \
         else if (is_unsigned_integral())                               \
-            return static_cast<type>(v.u);                             \
+            return check_and_cast<uint64_t, type>(v.u, #type);         \
         else if (is_bool())                                            \
-            return static_cast<type>(v.d);                             \
+            return check_and_cast<bool, type>(v.u, #type);             \
+        else if (is_floating_point())                                  \
+            return check_and_cast<double, type>(v.d, #type);           \
+        else if (is_complex())                                         \
+            return check_and_cast<complex<double>, type>(v.z, #type);  \
         else {                                                         \
             AETHERMIND_THROW(RuntimeError) << "Unsupported data type"; \
             AETHERMIND_UNREACHABLE();                                  \
         }                                                              \
     }
 
-    SCALAR_TYPES_NAME(ACCESSOR);
+    // SCALAR_TYPES_NAME(ACCESSOR);
+    SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(ACCESSOR);
 #undef ACCESSOR
 
     template<typename T>

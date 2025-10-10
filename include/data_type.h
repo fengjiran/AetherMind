@@ -499,7 +499,8 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
     f(uint64_t, ULong);      \
     f(int64_t, Long);        \
     f(float, Float);         \
-    f(double, Double);
+    f(double, Double);       \
+    f(BFloat16, BFloat16);
 
 
 // TODO: float8, float6 and float4 type need to be defined.

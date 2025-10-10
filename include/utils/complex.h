@@ -423,7 +423,8 @@ complex<T> log10(const complex<T>& x) {
 
 template<typename T>
 complex<T> log2(const complex<T>& x) {
-    return complex<T>(std::log2(std::complex<T>(x)));
+    auto log2 = complex<T>(std::log(2.0), 0.0);
+    return log(x) / log2;
 }
 
 template<typename T>

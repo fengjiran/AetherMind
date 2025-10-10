@@ -387,4 +387,328 @@ TEST(ComplexTest, EdgeCases) {
     EXPECT_FLOAT_EQ(product.imag(), 2.0f);
 }
 
+// 测试复数指数函数
+template<typename T>
+void TestExp() {
+    using Complex = complex<T>;
+    using Real = Complex::value_type;
+
+    // 测试实数输入
+    Complex z1(Real(1.0), Real(0.0));
+    Complex result1 = std::exp(z1);
+    EXPECT_NEAR(result1.real(), std::exp(Real(1.0)), 1e-6);
+    EXPECT_NEAR(result1.imag(), 0.0, 1e-6);
+
+    // 测试纯虚数输入
+    Complex z2(Real(0.0), static_cast<Real>(M_PI));
+    Complex result2 = std::exp(z2);
+    EXPECT_NEAR(result2.real(), -1.0, 1e-6);
+    EXPECT_NEAR(result2.imag(), 0.0, 1e-6);
+
+    // 测试一般复数输入
+    Complex z3(Real(1.0), static_cast<Real>(M_PI_2));
+    Complex result3 = std::exp(z3);
+    EXPECT_NEAR(result3.real(), 0.0, 1e-6);
+    EXPECT_NEAR(result3.imag(), std::exp(Real(1.0)), 1e-6);
+}
+
+TEST(ComplexTest, Exp) {
+    TestExp<float>();
+    TestExp<double>();
+}
+
+// 测试复数对数函数
+template<typename T>
+void TestLog() {
+    using Complex = complex<T>;
+    using Real = Complex::value_type;
+
+    // 测试实数输入
+    Complex z1(Real(2.71828), Real(0.0));
+    Complex result1 = std::log(z1);
+    EXPECT_NEAR(result1.real(), 1.0, 1e-5);
+    EXPECT_NEAR(result1.imag(), 0.0, 1e-6);
+
+    // 测试负数输入
+    Complex z2(Real(-1.0), Real(0.0));
+    Complex result2 = std::log(z2);
+    EXPECT_NEAR(result2.real(), 0.0, 1e-6);
+    EXPECT_NEAR(result2.imag(), static_cast<Real>(M_PI), 1e-6);
+
+    // 测试一般复数输入
+    Complex z3(Real(1.0), Real(1.0));
+    Complex result3 = std::log(z3);
+    EXPECT_NEAR(result3.real(), std::log(std::sqrt(2.0)), 1e-6);
+    EXPECT_NEAR(result3.imag(), static_cast<Real>(M_PI_4), 1e-6);
+}
+
+TEST(ComplexTest, Log) {
+    TestLog<float>();
+    TestLog<double>();
+}
+
+// 测试复数常用对数函数
+template<typename T>
+void TestLog10() {
+    using Complex = complex<T>;
+    using Real = Complex::value_type;
+
+    // 测试实数输入
+    Complex z1(Real(10.0), Real(0.0));
+    Complex result1 = std::log10(z1);
+    EXPECT_NEAR(result1.real(), 1.0, 1e-6);
+    EXPECT_NEAR(result1.imag(), 0.0, 1e-6);
+
+    // 测试一般复数输入
+    Complex z2(Real(10.0), Real(10.0));
+    Complex result2 = std::log10(z2);
+    Complex expected = std::log(z2) / static_cast<Real>(std::log(10.0));
+    EXPECT_NEAR(result2.real(), expected.real(), 1e-6);
+    EXPECT_NEAR(result2.imag(), expected.imag(), 1e-6);
+}
+
+TEST(ComplexTest, Log10) {
+    TestLog10<float>();
+    TestLog10<double>();
+}
+
+// 测试复数以2为底的对数函数
+template<typename T>
+void TestLog2() {
+    using Complex = complex<T>;
+    using Real = typename Complex::value_type;
+
+    // 测试实数输入
+    Complex z1(Real(2.0), Real(0.0));
+    Complex result1 = std::log2(z1);
+    EXPECT_NEAR(result1.real(), 1.0, 1e-6);
+    EXPECT_NEAR(result1.imag(), 0.0, 1e-6);
+
+    // 测试一般复数输入
+    Complex z2(Real(2.0), Real(2.0));
+    Complex result2 = std::log2(z2);
+    Complex expected = std::log(z2) / static_cast<Real>(std::log(2.0));
+    EXPECT_NEAR(result2.real(), expected.real(), 1e-6);
+    EXPECT_NEAR(result2.imag(), expected.imag(), 1e-6);
+}
+
+TEST(ComplexTest, Log2) {
+    TestLog2<float>();
+    TestLog2<double>();
+}
+
+// 测试复数平方根函数
+template<typename T>
+void TestSqrt() {
+    using Complex = complex<T>;
+    using Real = Complex::value_type;
+
+    // 测试实数输入
+    Complex z1(Real(4.0), Real(0.0));
+    Complex result1 = std::sqrt(z1);
+    EXPECT_NEAR(result1.real(), 2.0, 1e-6);
+    EXPECT_NEAR(result1.imag(), 0.0, 1e-6);
+
+    // 测试负数输入
+    Complex z2(Real(-4.0), Real(0.0));
+    Complex result2 = std::sqrt(z2);
+    EXPECT_NEAR(result2.real(), 0.0, 1e-6);
+    EXPECT_NEAR(result2.imag(), 2.0, 1e-6);
+
+    // 测试一般复数输入
+    Complex z3(Real(3.0), Real(4.0));
+    Complex result3 = complex_math::sqrt(z3);
+    EXPECT_NEAR(result3.real(), 2.0, 1e-6);
+    EXPECT_NEAR(result3.imag(), 1.0, 1e-6);
+}
+
+TEST(ComplexTest, Sqrt) {
+    TestSqrt<float>();
+    TestSqrt<double>();
+}
+
+// 测试复数幂函数
+template<typename T>
+void TestPow() {
+    using Complex = complex<T>;
+    using Real = Complex::value_type;
+
+    // 测试复数的复数次幂
+    Complex z1(Real(1.0), Real(0.0));
+    Complex z2(Real(2.0), Real(0.0));
+    Complex result1 = std::pow(z1, z2);
+    EXPECT_NEAR(result1.real(), 1.0, 1e-6);
+    EXPECT_NEAR(result1.imag(), 0.0, 1e-6);
+
+    // 测试复数的实数次幂
+    Complex z3(Real(0.0), Real(1.0));
+    T exponent = 2.0;
+    Complex result2 = std::pow(z3, exponent);
+    EXPECT_NEAR(result2.real(), -1.0, 1e-6);
+    EXPECT_NEAR(result2.imag(), 0.0, 1e-6);
+
+    // 测试实数的复数次幂
+    T base = 2.0;
+    Complex z4(Real(1.0), Real(0.0));
+    Complex result3 = std::pow(base, z4);
+    EXPECT_NEAR(result3.real(), 2.0, 1e-6);
+    EXPECT_NEAR(result3.imag(), 0.0, 1e-6);
+}
+
+TEST(ComplexTest, Pow) {
+    TestPow<float>();
+    TestPow<double>();
+}
+
+// 测试复数三角函数
+template<typename T>
+void TestTrigonometricFunctions() {
+    using Complex = complex<T>;
+    using Real = Complex::value_type;
+
+    // 测试正弦函数
+    Complex z1(Real(0.0), Real(0.0));
+    Complex sin_result = std::sin(z1);
+    EXPECT_NEAR(sin_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(sin_result.imag(), 0.0, 1e-6);
+
+    // 测试余弦函数
+    Complex z2(Real(0.0), Real(0.0));
+    Complex cos_result = std::cos(z2);
+    EXPECT_NEAR(cos_result.real(), 1.0, 1e-6);
+    EXPECT_NEAR(cos_result.imag(), 0.0, 1e-6);
+
+    // 测试正切函数
+    Complex z3(Real(0.0), Real(0.0));
+    Complex tan_result = std::tan(z3);
+    EXPECT_NEAR(tan_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(tan_result.imag(), 0.0, 1e-6);
+
+    // 测试反正弦函数
+    Complex z4(Real(0.0), Real(0.0));
+    Complex asin_result = std::asin(z4);
+    EXPECT_NEAR(asin_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(asin_result.imag(), 0.0, 1e-6);
+
+    // 测试反余弦函数
+    Complex z5(Real(1.0), Real(0.0));
+    Complex acos_result = std::acos(z5);
+    EXPECT_NEAR(acos_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(acos_result.imag(), 0.0, 1e-6);
+
+    // 测试反正切函数
+    Complex z6(Real(0.0), Real(0.0));
+    Complex atan_result = std::atan(z6);
+    EXPECT_NEAR(atan_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(atan_result.imag(), 0.0, 1e-6);
+}
+
+TEST(ComplexTest, TrigonometricFunctions) {
+    TestTrigonometricFunctions<float>();
+    TestTrigonometricFunctions<double>();
+}
+
+// 测试复数双曲函数
+template<typename T>
+void TestHyperbolicFunctions() {
+    using Complex = complex<T>;
+    using Real = Complex::value_type;
+
+    // 测试双曲正弦函数
+    Complex z1(Real(0.0), Real(0.0));
+    Complex sinh_result = std::sinh(z1);
+    EXPECT_NEAR(sinh_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(sinh_result.imag(), 0.0, 1e-6);
+
+    // 测试双曲余弦函数
+    Complex z2(Real(0.0), Real(0.0));
+    Complex cosh_result = std::cosh(z2);
+    EXPECT_NEAR(cosh_result.real(), 1.0, 1e-6);
+    EXPECT_NEAR(cosh_result.imag(), 0.0, 1e-6);
+
+    // 测试双曲正切函数
+    Complex z3(Real(0.0), Real(0.0));
+    Complex tanh_result = std::tanh(z3);
+    EXPECT_NEAR(tanh_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(tanh_result.imag(), 0.0, 1e-6);
+
+    // 测试反双曲正弦函数
+    Complex z4(Real(0.0), Real(0.0));
+    Complex asinh_result = std::asinh(z4);
+    EXPECT_NEAR(asinh_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(asinh_result.imag(), 0.0, 1e-6);
+
+    // 测试反双曲余弦函数
+    Complex z5(Real(1.0), Real(0.0));
+    Complex acosh_result = std::acosh(z5);
+    EXPECT_NEAR(acosh_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(acosh_result.imag(), 0.0, 1e-6);
+
+    // 测试反双曲正切函数
+    Complex z6(Real(0.0), Real(0.0));
+    Complex atanh_result = std::atanh(z6);
+    EXPECT_NEAR(atanh_result.real(), 0.0, 1e-6);
+    EXPECT_NEAR(atanh_result.imag(), 0.0, 1e-6);
+}
+
+TEST(ComplexTest, HyperbolicFunctions) {
+    TestHyperbolicFunctions<float>();
+    TestHyperbolicFunctions<double>();
+}
+
+// 测试复数函数的边界情况
+template<typename T>
+void TestComplexFunctionEdgeCases() {
+    using Complex = complex<T>;
+    using Real = Complex::value_type;
+
+    // 测试无穷大输入
+    Complex inf(std::numeric_limits<Real>::infinity(), 0.0);
+    Complex exp_inf = std::exp(inf);
+    EXPECT_TRUE(std::isinf(exp_inf.real()) || std::isnan(exp_inf.real()));
+
+    // 测试NaN输入
+    Complex nan(std::numeric_limits<Real>::quiet_NaN(), 0.0);
+    Complex log_nan = std::log(nan);
+    EXPECT_TRUE(std::isnan(log_nan.real()));
+    EXPECT_TRUE(std::isnan(log_nan.imag()));
+
+    // 测试零输入的特殊情况
+    Complex zero(0.0, 0.0);
+    Complex log_zero = std::log(zero);
+    EXPECT_TRUE(std::isinf(log_zero.real()));
+    EXPECT_TRUE(log_zero.real() < 0);// log(0) 应该是负无穷
+}
+
+TEST(ComplexTest, FunctionEdgeCases) {
+    TestComplexFunctionEdgeCases<float>();
+    TestComplexFunctionEdgeCases<double>();
+}
+
+// 测试跨类型的复数函数
+template<typename T1, typename T2>
+void TestCrossTypeComplexFunctions() {
+    using Complex1 = complex<T1>;
+    using Complex2 = complex<T2>;
+
+    // 测试跨类型的pow函数
+    Complex1 z1(1.0f, 1.0f);
+    Complex2 z2(2.0, 0.0);
+    auto result = std::pow(z1, z2);
+
+    // 验证结果类型
+    static_assert(std::is_same_v<decltype(result), complex<decltype(T1() * T2())>>,
+                  "pow return type is incorrect");
+
+    // 验证结果值
+    Complex1 expected = std::pow(z1, static_cast<T1>(2.0f));
+    EXPECT_NEAR(static_cast<float>(result.real()), expected.real(), 1e-6);
+    EXPECT_NEAR(static_cast<float>(result.imag()), expected.imag(), 1e-6);
+}
+
+TEST(ComplexTest, CrossTypeFunctions) {
+    TestCrossTypeComplexFunctions<float, double>();
+    TestCrossTypeComplexFunctions<double, float>();
+}
+
 }// namespace

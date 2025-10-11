@@ -113,7 +113,7 @@ std::optional<size_t> SymbolicShape::rank() const {
     return std::nullopt;
 }
 
-std::optional<std::vector<ShapeSymbol>> SymbolicShape::sizes() const {
+const std::optional<std::vector<ShapeSymbol>>& SymbolicShape::sizes() const {
     return dims_;
 }
 
@@ -239,6 +239,59 @@ template struct VaryingShape<size_t>;
 template struct VaryingShape<int64_t>;
 template struct VaryingShape<ShapeSymbol>;
 template struct VaryingShape<Stride>;
+
+TensorType::TensorType(std::optional<DataType> dtype,
+                       std::optional<Device> device,
+                       SymbolicShape shape,
+                       VaryingShape<Stride> strides,
+                       std::optional<bool> requires_grad,
+                       std::optional<bool> undefined)
+    : SharedType(Kind), dtype_(dtype), device_(device),
+      shape_(std::move(shape)), strides_(std::move(strides)),
+      requires_grad_(requires_grad), undefined_(undefined) {}
+
+VaryingShape<int64_t> TensorType::shape() const {
+    if (!shape_.rank().has_value()) {
+        return VaryingShape<int64_t>();
+    }
+
+    auto n = shape_.rank().value();
+    std::vector<std::optional<int64_t>> dims;
+    dims.reserve(n);
+    for (const auto& ss: shape_.sizes().value()) {
+        dims.push_back(ss.is_static() ? std::optional<int64_t>(ss.static_size())
+                                      : std::nullopt);
+    }
+    return {std::move(dims)};
+}
+
+VaryingShape<int64_t> TensorType::strides() const {
+
+}
+
+
+
+bool TensorType::equals(const Type& rhs) const {
+    if (rhs.kind() != kind()) {
+        return false;
+    }
+
+    // auto
+
+}
+
+
+TensorTypePtr TensorType::create(std::optional<DataType> dtype,
+                                 std::optional<Device> device,
+                                 SymbolicShape shape,
+                                 VaryingShape<Stride> strides,
+                                 std::optional<bool> requires_grad,
+                                 std::optional<bool> undefined) {
+
+    // return std::make_shared<TensorType>(dtype, device, std::move(shape),
+    //                                     std::move(strides), requires_grad,
+    //                                     undefined);
+}
 
 
 }// namespace aethermind

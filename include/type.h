@@ -17,46 +17,46 @@
 namespace aethermind {
 
 #define AETHERMIND_ALL_TYPES(_) \
-    _(AnyType)                     \
-    _(EnumType)                    \
-    _(AnyEnumType)                 \
-    _(TensorType)                  \
-    _(StorageType)                 \
-    _(TupleType)                   \
-    _(ListType)                    \
-    _(DictType)                    \
-    _(NumberType)                  \
-    _(FloatType)                   \
-    _(ComplexType)                 \
-    _(FutureType)                  \
-    _(AwaitType)                   \
-    _(RRefType)                    \
-    _(IntType)                     \
-    _(NoneType)                    \
-    _(StringType)                  \
-    _(GeneratorType)               \
-    _(QuantizerType)               \
-    _(BoolType)                    \
-    _(OptionalType)                \
-    _(VarType)                     \
-    _(DeviceObjType)               \
-    _(StreamObjType)               \
-    _(FunctionType)                \
-    _(ClassType)                   \
-    _(PyObjectType)                \
-    _(CapsuleType)                 \
-    _(InterfaceType)               \
-    _(QSchemeType)                 \
-    _(ScalarTypeType)              \
-    _(LayoutType)                  \
-    _(MemoryFormatType)            \
-    _(AnyListType)                 \
-    _(AnyTupleType)                \
-    _(AnyClassType)                \
-    _(SymIntType)                  \
-    _(SymFloatType)                \
-    _(SymBoolType)                 \
-    _(UnionType)                   \
+    _(AnyType)                  \
+    _(EnumType)                 \
+    _(AnyEnumType)              \
+    _(TensorType)               \
+    _(StorageType)              \
+    _(TupleType)                \
+    _(ListType)                 \
+    _(DictType)                 \
+    _(NumberType)               \
+    _(FloatType)                \
+    _(ComplexType)              \
+    _(FutureType)               \
+    _(AwaitType)                \
+    _(RRefType)                 \
+    _(IntType)                  \
+    _(NoneType)                 \
+    _(StringType)               \
+    _(GeneratorType)            \
+    _(QuantizerType)            \
+    _(BoolType)                 \
+    _(OptionalType)             \
+    _(VarType)                  \
+    _(DeviceObjType)            \
+    _(StreamObjType)            \
+    _(FunctionType)             \
+    _(ClassType)                \
+    _(PyObjectType)             \
+    _(CapsuleType)              \
+    _(InterfaceType)            \
+    _(QSchemeType)              \
+    _(ScalarTypeType)           \
+    _(LayoutType)               \
+    _(MemoryFormatType)         \
+    _(AnyListType)              \
+    _(AnyTupleType)             \
+    _(AnyClassType)             \
+    _(SymIntType)               \
+    _(SymFloatType)             \
+    _(SymBoolType)              \
+    _(UnionType)                \
     _(DynamicType)
 
 enum class TypeKind {
@@ -763,7 +763,7 @@ struct SymbolicShape {
     // Returns rank or nullopt in case of unranked shape.
     NODISCARD std::optional<size_t> rank() const;
 
-    NODISCARD std::optional<std::vector<ShapeSymbol>> sizes() const;
+    NODISCARD const std::optional<std::vector<ShapeSymbol>>& sizes() const;
 
     NODISCARD std::optional<std::vector<bool>> symbolic_dims() const;
 
@@ -910,13 +910,50 @@ class TensorType;
 using TensorTypePtr = std::shared_ptr<TensorType>;
 class TensorType : public SharedType {
 public:
+    String str() const override {
+        return "Tensor";
+    }
+
+    bool equals(const Type& rhs) const override;
+
+    const std::optional<DataType>& data_type() const {
+        return dtype_;
+    }
+
+    const std::optional<Device>& device() const {
+        return device_;
+    }
+
+    VaryingShape<int64_t> shape() const;
+
+    VaryingShape<int64_t> strides() const;
+
+    const VaryingShape<Stride>& stride_properties() const {
+        return strides_;
+    }
+
+    static TensorTypePtr create(std::optional<DataType> dtype,
+                                std::optional<Device> device,
+                                SymbolicShape shape,
+                                VaryingShape<Stride> strides,
+                                std::optional<bool> requires_grad,
+                                std::optional<bool> undefined = false);
+
     static constexpr auto Kind = TypeKind::TensorType;
 
 private:
+    TensorType(std::optional<DataType> dtype,
+               std::optional<Device> device,
+               SymbolicShape shape,
+               VaryingShape<Stride> strides,
+               std::optional<bool> requires_grad,
+               std::optional<bool> undefined = false);
+
     std::optional<DataType> dtype_;
     std::optional<Device> device_;
     SymbolicShape shape_;
-    VaryingShape<Stride> stride_;
+    VaryingShape<Stride> strides_;
+    std::optional<bool> requires_grad_;
     std::optional<bool> undefined_;
     // Whether this type was inferred.
     bool is_inferred_ = false;

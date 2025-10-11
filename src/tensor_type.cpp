@@ -266,9 +266,24 @@ VaryingShape<int64_t> TensorType::shape() const {
 }
 
 VaryingShape<int64_t> TensorType::strides() const {
+    const auto& sizes = strides_.sizes();
+    if (!sizes.has_value()) {
+        return VaryingShape<int64_t>();
+    }
 
+    auto n = sizes->size();
+    std::vector<std::optional<int64_t>> dims(n);
+    for (const auto& stride: sizes.value()) {
+        if (!stride.has_value()) {
+            continue;
+        }
+        const auto& s = stride.value();
+        if (s.stride_idx_.has_value() && s.stride_.has_value()) {
+            dims[*s.stride_idx_] = *s.stride_;
+        }
+    }
+    return {std::move(dims)};
 }
-
 
 
 bool TensorType::equals(const Type& rhs) const {
@@ -276,8 +291,13 @@ bool TensorType::equals(const Type& rhs) const {
         return false;
     }
 
-    // auto
-
+    auto t = rhs.expect<TensorType>();
+    return data_type() == t->data_type() &&
+           shape() == t->shape() &&
+           stride_properties() == t->stride_properties() &&
+           device() == t->device() &&
+           requiresGrad() == t->requiresGrad() &&
+           undefined() == t->undefined();
 }
 
 
@@ -287,10 +307,12 @@ TensorTypePtr TensorType::create(std::optional<DataType> dtype,
                                  VaryingShape<Stride> strides,
                                  std::optional<bool> requires_grad,
                                  std::optional<bool> undefined) {
-
-    // return std::make_shared<TensorType>(dtype, device, std::move(shape),
-    //                                     std::move(strides), requires_grad,
-    //                                     undefined);
+    //NOLINTBEGIN
+    auto ptr = new TensorType(dtype, device, std::move(shape),
+                              std::move(strides), requires_grad,
+                              undefined);
+    //NOLINTEND
+    return TensorTypePtr(ptr);
 }
 
 

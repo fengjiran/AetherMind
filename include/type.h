@@ -160,6 +160,15 @@ public:
         return false;
     }
 
+    NODISCARD virtual bool requires_grad() const {
+        for (const auto& ct: containedTypes()) {
+            if (ct->requires_grad()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // list of types this type contains, e.g. for a List then element type of
     // list for a tuple, the types of the tuple elements
     NODISCARD virtual ArrayView<TypePtr> containedTypes() const {
@@ -928,8 +937,24 @@ public:
 
     VaryingShape<int64_t> strides() const;
 
+    std::optional<size_t> dim() const {
+        return shape().size();
+    }
+
     const VaryingShape<Stride>& stride_properties() const {
         return strides_;
+    }
+
+    const std::optional<bool>& requiresGrad() const {
+        return requires_grad_;
+    }
+
+    bool requires_grad() const override {
+        return requires_grad_ ? *requires_grad_ : true;
+    }
+
+    const std::optional<bool>& undefined() const {
+        return undefined_;
     }
 
     static TensorTypePtr create(std::optional<DataType> dtype,

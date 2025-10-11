@@ -166,12 +166,13 @@ std::optional<std::vector<T>> VaryingShape<T>::concrete_sizes() const {
     }
 
     auto n = dims_->size();
+    auto shape = dims_.value();
     std::vector<T> res(n);
     for (size_t i = 0; i < n; i++) {
-        if (!dims_.value()[i].has_value()) {
+        if (!shape[i].has_value()) {
             return std::nullopt;
         }
-        res[i] = dims_.value()[i].value();
+        res[i] = shape[i].value();
     }
     return res;
 }

@@ -7,7 +7,9 @@
 
 #include "container/array_view.h"
 #include "container/string.h"
+#include "data_type.h"
 #include "error.h"
+#include "type.h"
 #include "type_ptr.h"
 
 #include <functional>
@@ -902,6 +904,22 @@ struct VaryingShape {
 
 private:
     std::optional<ListOfOptionalElements> dims_;
+};
+
+class TensorType;
+using TensorTypePtr = std::shared_ptr<TensorType>;
+class TensorType : public SharedType {
+public:
+    static constexpr auto Kind = TypeKind::TensorType;
+
+private:
+    std::optional<DataType> dtype_;
+    std::optional<Device> device_;
+    SymbolicShape shape_;
+    VaryingShape<Stride> stride_;
+    std::optional<bool> undefined_;
+    // Whether this type was inferred.
+    bool is_inferred_ = false;
 };
 
 template<typename T>

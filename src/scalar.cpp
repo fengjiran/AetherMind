@@ -10,42 +10,42 @@
 namespace aethermind {
 
 Scalar::Scalar(int8_t val) {
-    v.i = static_cast<decltype(v.i)>(val);
+    v.i = cast<int8_t, decltype(v.i)>::apply(val);
     dtype_ = DataType::Int(8);
 }
 
 Scalar::Scalar(int16_t val) {
-    v.i = static_cast<decltype(v.i)>(val);
+    v.i = cast<int16_t, decltype(v.i)>::apply(val);
     dtype_ = DataType::Int(16);
 }
 
 Scalar::Scalar(int32_t val) {
-    v.i = static_cast<decltype(v.i)>(val);
+    v.i = cast<int32_t, decltype(v.i)>::apply(val);
     dtype_ = DataType::Int(32);
 }
 
 Scalar::Scalar(int64_t val) {
-    v.i = val;
+    v.i = cast<int64_t, decltype(v.i)>::apply(val);
     dtype_ = DataType::Int(64);
 }
 
 Scalar::Scalar(bool val) {
-    v.i = static_cast<decltype(v.i)>(val);
+    v.i = cast<bool, decltype(v.i)>::apply(val);
     dtype_ = DataType::Bool();
 }
 
 Scalar::Scalar(uint8_t val) {
-    v.i = static_cast<decltype(v.i)>(val);
+    v.i = cast<uint8_t, decltype(v.i)>::apply(val);
     dtype_ = DataType::Int(8);
 }
 
 Scalar::Scalar(uint16_t val) {
-    v.i = static_cast<decltype(v.i)>(val);
+    v.i = cast<uint16_t, decltype(v.i)>::apply(val);
     dtype_ = DataType::Int(16);
 }
 
 Scalar::Scalar(uint32_t val) {
-    v.i = static_cast<decltype(v.i)>(val);
+    v.i = cast<uint32_t, decltype(v.i)>::apply(val);
     dtype_ = DataType::Int(32);
 }
 
@@ -60,47 +60,47 @@ Scalar::Scalar(uint64_t val) {
 }
 
 Scalar::Scalar(double val) {
-    v.d = val;
+    v.d = cast<double, decltype(v.d)>::apply(val);
     dtype_ = DataType::Double();
 }
 
 Scalar::Scalar(float val) {
-    v.d = static_cast<double>(val);
+    v.d = cast<float, decltype(v.d)>::apply(val);
     dtype_ = DataType::Float32();
 }
 
 Scalar::Scalar(Half val) {
-    v.d = static_cast<float>(val);
+    v.d = cast<Half, decltype(v.d)>::apply(val);
     dtype_ = DataType::Float(16);
 }
 
 Scalar::Scalar(BFloat16 val) {
-    v.d = static_cast<float>(val);
+    v.d = cast<BFloat16, decltype(v.d)>::apply(val);
     dtype_ = DataType::BFloat(16);
 }
 
 Scalar::Scalar(Float8_e4m3fn val) {
-    v.d = static_cast<float>(val);
+    v.d = cast<Float8_e4m3fn, decltype(v.d)>::apply(val);
     dtype_ = DataType::Float8E4M3FN();
 }
 
 Scalar::Scalar(Float8_e5m2 val) {
-    v.d = static_cast<float>(val);
+    v.d = cast<Float8_e5m2, decltype(v.d)>::apply(val);
     dtype_ = DataType::Float8E5M2();
 }
 
 Scalar::Scalar(complex<Half> val) {
-    v.z = val;
+    v.z = cast<complex<Half>, decltype(v.z)>::apply(val);
     dtype_ = DataType::ComplexHalf();
 }
 
 Scalar::Scalar(complex<float> val) {
-    v.z = val;
+    v.z = cast<complex<float>, decltype(v.z)>::apply(val);
     dtype_ = DataType::ComplexFloat();
 }
 
 Scalar::Scalar(complex<double> val) {
-    v.z = val;
+    v.z = cast<complex<double>, decltype(v.z)>::apply(val);
     dtype_ = DataType::ComplexDouble();
 }
 

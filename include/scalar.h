@@ -221,6 +221,16 @@ SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TO);
 std::ostream& operator<<(std::ostream& os, const Scalar& s);
 std::string toString(const Scalar& s);
 
+template<typename T>
+bool operator==(const Scalar& lhs, T rhs) {
+    return lhs.equal(rhs);
+}
+
+template<typename T>
+bool operator==(T lhs, const Scalar& rhs) {
+    return rhs.equal(lhs);
+}
+
 }// namespace aethermind
 
 #endif//AETHERMIND_SCALAR_H

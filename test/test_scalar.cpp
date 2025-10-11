@@ -572,6 +572,7 @@ TEST(ScalarTest, EqualMethod) {
     EXPECT_FALSE(i64.equal(43));
     EXPECT_TRUE(i64.equal(42L));
     EXPECT_TRUE(i64 == 42);
+    EXPECT_TRUE(42 == i64);
 
     // 浮点数相等性测试
     Scalar f64(1.234);
@@ -579,17 +580,20 @@ TEST(ScalarTest, EqualMethod) {
     EXPECT_FALSE(f64.equal(1.235));
     EXPECT_FALSE(f64.equal(1.234f));
     EXPECT_TRUE(f64 == 1.234);
+    EXPECT_TRUE(1.234 == f64);
 
     // 布尔相等性测试
     Scalar bool_true(true);
     EXPECT_TRUE(bool_true.equal(true));
     EXPECT_FALSE(bool_true.equal(false));
     EXPECT_TRUE(bool_true == true);
+    EXPECT_TRUE(true == bool_true);
 
     Scalar bool_false(false);
     EXPECT_TRUE(bool_false.equal(false));
     EXPECT_FALSE(bool_false.equal(true));
     EXPECT_TRUE(bool_false == false);
+    EXPECT_TRUE(false == bool_false);
 
     // 复数相等性测试
     complex<double> cval(1.0, 2.0);
@@ -597,12 +601,14 @@ TEST(ScalarTest, EqualMethod) {
     EXPECT_TRUE(cscalar.equal(cval));
     EXPECT_FALSE(cscalar.equal(complex<double>(1.0, 3.0)));
     EXPECT_TRUE(cscalar == cval);
+    EXPECT_TRUE(cval == cscalar);
 
     // 跨类型相等性测试
     Scalar int_42(42);
     EXPECT_TRUE(int_42.equal(42.0)); // 整数和浮点数相等
     EXPECT_FALSE(int_42.equal(true));// 整数和布尔值不等
     EXPECT_TRUE(int_42 == 42.0);
+    EXPECT_TRUE(42.0 == int_42);
 }
 
 // 测试Scalar类的一元减运算符

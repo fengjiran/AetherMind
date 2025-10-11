@@ -388,12 +388,12 @@ TEST(ScalarTest, DefaultAndIntegralConstructors) {
     EXPECT_EQ(i16.toShort(), -1234);
     EXPECT_EQ(i16.type(), DataType::Int(16));
 
-    Scalar i32(static_cast<int32_t>(123456));
+    Scalar i32(123456);
     EXPECT_TRUE(i32.is_signed_integral());
     EXPECT_EQ(i32.toInt(), 123456);
     EXPECT_EQ(i32.type(), DataType::Int(32));
 
-    Scalar i64(static_cast<int64_t>(-9876543210));
+    Scalar i64(-9876543210);
     EXPECT_TRUE(i64.is_signed_integral());
     EXPECT_EQ(i64.toLong(), -9876543210);
     EXPECT_EQ(i64.type(), DataType::Int(64));
@@ -420,4 +420,283 @@ TEST(ScalarTest, DefaultAndIntegralConstructors) {
     EXPECT_EQ(u64.type(), DataType::UInt(64));
 }
 
+// 测试Scalar类的布尔构造函数
+TEST(ScalarTest, BoolConstructor) {
+    Scalar true_bool(true);
+    EXPECT_TRUE(true_bool.is_bool());
+    EXPECT_TRUE(true_bool.equal(true));
+    EXPECT_FALSE(true_bool.equal(false));
+    EXPECT_EQ(true_bool.type(), DataType::Bool());
+
+    Scalar false_bool(false);
+    EXPECT_TRUE(false_bool.is_bool());
+    EXPECT_FALSE(false_bool.equal(true));
+    EXPECT_TRUE(false_bool.equal(false));
+}
+
+// 测试Scalar类的浮点构造函数
+TEST(ScalarTest, FloatingPointConstructors) {
+    // 标准浮点类型
+    Scalar f32(1.234f);
+    EXPECT_TRUE(f32.is_floating_point());
+    EXPECT_FLOAT_EQ(f32.toFloat(), 1.234f);
+    EXPECT_DOUBLE_EQ(f32.toDouble(), 1.2339999675750732);
+    EXPECT_EQ(f32.type(), DataType::Float(32));
+
+    Scalar f64(5.6789);
+    EXPECT_TRUE(f64.is_floating_point());
+    EXPECT_DOUBLE_EQ(f64.toDouble(), 5.6789);
+    EXPECT_EQ(f64.type(), DataType::Float(64));
+
+    // 半精度浮点类型
+    Half half_val(0.123f);
+    Scalar half_scalar(half_val);
+    EXPECT_TRUE(half_scalar.is_floating_point());
+    EXPECT_EQ(half_scalar.type(), DataType::Float(16));
+
+    // BFloat16类型
+    BFloat16 bf16_val(0.456f);
+    Scalar bf16_scalar(bf16_val);
+    EXPECT_TRUE(bf16_scalar.is_floating_point());
+    EXPECT_EQ(bf16_scalar.type(), DataType::BFloat(16));
+
+    // Float8类型变体
+    Float8_e4m3fn f8e4m3fn_val(0.789f);
+    Scalar f8e4m3fn_scalar(f8e4m3fn_val);
+    EXPECT_TRUE(f8e4m3fn_scalar.is_floating_point());
+    EXPECT_EQ(f8e4m3fn_scalar.type(), DataType::Float8E4M3FN());
+
+    Float8_e5m2 f8e5m2_val(0.321f);
+    Scalar f8e5m2_scalar(f8e5m2_val);
+    EXPECT_TRUE(f8e5m2_scalar.is_floating_point());
+    EXPECT_EQ(f8e5m2_scalar.type(), DataType::Float8E5M2());
+}
+
+// 测试Scalar类的复数构造函数
+TEST(ScalarTest, ComplexConstructors) {
+    // 复数float
+    complex<float> cfloat(1.0f, 2.0f);
+    Scalar cfloat_scalar(cfloat);
+    EXPECT_TRUE(cfloat_scalar.is_complex());
+    EXPECT_EQ(cfloat_scalar.type().code(), DLDataTypeCode::kComplex);
+
+    // 复数double
+    complex<double> cdouble(3.0, 4.0);
+    Scalar cdouble_scalar(cdouble);
+    EXPECT_TRUE(cdouble_scalar.is_complex());
+    EXPECT_EQ(cdouble_scalar.type().code(), DLDataTypeCode::kComplex);
+
+    // 复数Half
+    complex<Half> chalf(Half(5.0f), Half(6.0f));
+    Scalar chalf_scalar(chalf);
+    EXPECT_TRUE(chalf_scalar.is_complex());
+    EXPECT_EQ(chalf_scalar.type().code(), DLDataTypeCode::kComplex);
+}
+
+// 测试Scalar类的复制和移动语义
+TEST(ScalarTest, CopyAndMoveSemantics) {
+    // 测试复制构造函数
+    Scalar original(42);
+    Scalar copy(original);
+    EXPECT_EQ(original.toLong(), copy.toLong());
+    EXPECT_EQ(original.type(), copy.type());
+
+    // 测试复制赋值运算符
+    Scalar assigned;
+    assigned = original;
+    EXPECT_EQ(original.toLong(), assigned.toLong());
+    EXPECT_EQ(original.type(), assigned.type());
+
+    // 测试移动构造函数
+    Scalar moved(std::move(Scalar(123)));
+    EXPECT_EQ(moved.toLong(), 123);
+
+    // 测试移动赋值运算符
+    Scalar move_assigned;
+    move_assigned = std::move(Scalar(456));
+    EXPECT_EQ(move_assigned.toLong(), 456);
+
+    // 测试自赋值
+    Scalar self_assign(789);
+    self_assign = self_assign;
+    EXPECT_EQ(self_assign.toLong(), 789);
+}
+
+// 测试Scalar类的类型转换方法
+TEST(ScalarTest, TypeConversionMethods) {
+    // 整数类型转换
+    Scalar i64(123456789L);
+    EXPECT_THROW(i64.toChar(), Error);
+    EXPECT_THROW(i64.toShort(), Error);
+    EXPECT_EQ(i64.toInt(), static_cast<int32_t>(123456789L));
+    EXPECT_EQ(i64.toLong(), 123456789L);
+    EXPECT_THROW(i64.toByte(), Error);
+    EXPECT_THROW(i64.toUInt16(), Error);
+    EXPECT_EQ(i64.toUInt32(), static_cast<uint32_t>(123456789L));
+    EXPECT_EQ(i64.toUInt64(), static_cast<uint64_t>(123456789L));
+    EXPECT_FLOAT_EQ(i64.toFloat(), 123456789.0f);
+    EXPECT_DOUBLE_EQ(i64.toDouble(), 123456789.0);
+
+    // 浮点类型转换
+    Scalar f64(1.23456789);
+    EXPECT_EQ(f64.toChar(), static_cast<int8_t>(1.23456789));
+    EXPECT_EQ(f64.toShort(), static_cast<int16_t>(1.23456789));
+    EXPECT_EQ(f64.toInt(), static_cast<int32_t>(1.23456789));
+    EXPECT_EQ(f64.toLong(), static_cast<int64_t>(1.23456789));
+    EXPECT_EQ(f64.toByte(), static_cast<uint8_t>(1.23456789));
+    EXPECT_EQ(f64.toUInt16(), static_cast<uint16_t>(1.23456789));
+    EXPECT_EQ(f64.toUInt32(), static_cast<uint32_t>(1.23456789));
+    EXPECT_EQ(f64.toUInt64(), static_cast<uint64_t>(1.23456789));
+    EXPECT_FLOAT_EQ(f64.toFloat(), 1.23456789f);
+    EXPECT_DOUBLE_EQ(f64.toDouble(), 1.23456789);
+
+    // 布尔类型转换
+    Scalar bool_true(true);
+    EXPECT_TRUE(bool_true.toBool());
+    EXPECT_EQ(bool_true.toChar(), 1);
+    EXPECT_EQ(bool_true.toLong(), 1L);
+    EXPECT_FLOAT_EQ(bool_true.toFloat(), 1.0f);
+
+    Scalar bool_false(false);
+    EXPECT_FALSE(bool_false.toBool());
+    EXPECT_EQ(bool_false.toChar(), 0);
+    EXPECT_EQ(bool_false.toLong(), 0L);
+    EXPECT_FLOAT_EQ(bool_false.toFloat(), 0.0f);
+}
+
+// 测试Scalar类的equal方法
+TEST(ScalarTest, EqualMethod) {
+    // 整数相等性测试
+    Scalar i64(42);
+    EXPECT_TRUE(i64.equal(42));
+    EXPECT_FALSE(i64.equal(43));
+    EXPECT_TRUE(i64.equal(42L));
+
+    // 浮点数相等性测试
+    Scalar f64(1.234);
+    EXPECT_TRUE(f64.equal(1.234));
+    EXPECT_FALSE(f64.equal(1.235));
+    EXPECT_FALSE(f64.equal(1.234f));
+
+    // 布尔相等性测试
+    Scalar bool_true(true);
+    EXPECT_TRUE(bool_true.equal(true));
+    EXPECT_FALSE(bool_true.equal(false));
+
+    Scalar bool_false(false);
+    EXPECT_TRUE(bool_false.equal(false));
+    EXPECT_FALSE(bool_false.equal(true));
+
+    // 复数相等性测试
+    complex<double> cval(1.0, 2.0);
+    Scalar cscalar(cval);
+    EXPECT_TRUE(cscalar.equal(cval));
+    EXPECT_FALSE(cscalar.equal(complex<double>(1.0, 3.0)));
+
+    // 跨类型相等性测试
+    Scalar int_42(42);
+    EXPECT_TRUE(int_42.equal(42.0)); // 整数和浮点数相等
+    EXPECT_FALSE(int_42.equal(true));// 整数和布尔值不等
+}
+
+// 测试Scalar类的一元减运算符
+TEST(ScalarTest, UnaryMinusOperator) {
+    // 整数测试
+    Scalar i64(42);
+    Scalar neg_i64 = -i64;
+    EXPECT_EQ(neg_i64.toLong(), -42L);
+
+    Scalar neg_i64_2(-123);
+    Scalar pos_i64 = -neg_i64_2;
+    EXPECT_EQ(pos_i64.toLong(), 123L);
+
+    // 浮点数测试
+    Scalar f64(1.234);
+    Scalar neg_f64 = -f64;
+    EXPECT_DOUBLE_EQ(neg_f64.toDouble(), -1.234);
+    EXPECT_EQ(neg_f64.type(), f64.type());
+
+    // 边界情况：最小整数
+    Scalar min_int(std::numeric_limits<int64_t>::min());
+    Scalar neg_min_int = -min_int;
+    // 注意：这可能会溢出，取决于实现
+}
+
+// 测试Scalar类的log方法
+TEST(ScalarTest, LogMethod) {
+    // 正数测试
+    Scalar positive(1.0);
+    Scalar log_positive = positive.log();
+    EXPECT_DOUBLE_EQ(log_positive.toDouble(), 0.0);
+
+    Scalar e_val(M_E);
+    Scalar log_e = e_val.log();
+    EXPECT_NEAR(log_e.toDouble(), 1.0, 1e-10);
+
+    // 整数转换为浮点数后计算log
+    Scalar int_val(2);
+    Scalar log_int = int_val.log();
+    EXPECT_NEAR(log_int.toDouble(), std::log(2.0), 1e-10);
+    EXPECT_TRUE(log_int.is_floating_point());
+}
+
+// 测试Scalar类的conj方法（复数共轭）
+TEST(ScalarTest, ConjMethod) {
+    // 复数测试
+    complex<double> cval(1.0, 2.0);
+    Scalar cscalar(cval);
+    Scalar conj_c = cscalar.conj();
+    complex<double> conj_val = cval;
+    conj_val = std::conj(conj_val);
+    EXPECT_TRUE(conj_c.equal(conj_val));
+
+    // 实数的共轭是其本身
+    Scalar real_val(3.14);
+    Scalar conj_real = real_val.conj();
+    EXPECT_TRUE(conj_real.equal(3.14));
+
+    // 整数的共轭是其本身
+    Scalar int_val(42);
+    Scalar conj_int = int_val.conj();
+    EXPECT_TRUE(conj_int.equal(42));
+}
+
+// 测试Scalar类的swap方法
+TEST(ScalarTest, SwapMethod) {
+    Scalar a(10);
+    Scalar b(20.5);
+    DataType type_a = a.type();
+    DataType type_b = b.type();
+
+    a.swap(b);
+    EXPECT_EQ(a.toDouble(), 20.5);
+    EXPECT_EQ(a.type(), type_b);
+    EXPECT_EQ(b.toLong(), 10L);
+    EXPECT_EQ(b.type(), type_a);
+}
+
+// 测试Scalar类的边界情况
+TEST(ScalarTest, EdgeCases) {
+    // 最大/最小整数值
+    Scalar max_int(std::numeric_limits<int64_t>::max());
+    EXPECT_EQ(max_int.toLong(), std::numeric_limits<int64_t>::max());
+
+    Scalar min_int(std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(min_int.toLong(), std::numeric_limits<int64_t>::min());
+
+    Scalar max_uint(std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(max_uint.toUInt64(), std::numeric_limits<uint64_t>::max());
+
+    // 浮点边界值
+    Scalar zero(0.0);
+    Scalar neg_zero(-0.0);
+    EXPECT_TRUE(zero.equal(neg_zero.toDouble()));// -0.0 和 0.0 在浮点数中被视为相等
+
+    Scalar inf(std::numeric_limits<double>::infinity());
+    Scalar neg_inf(-std::numeric_limits<double>::infinity());
+    Scalar nan(std::numeric_limits<double>::quiet_NaN());
+
+    // NaN不等于任何值，包括它自己
+    EXPECT_FALSE(nan.equal(nan.toDouble()));
+}
 }// namespace

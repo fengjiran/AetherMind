@@ -4,6 +4,8 @@
 #include "tensor.h"
 #include "type.h"
 
+#include <utility>
+
 namespace aethermind {
 
 std::atomic<size_t> ShapeSymbol::num_symbols_ = 1;
@@ -246,13 +248,13 @@ TensorType::TensorType(std::optional<DataType> dtype,
                        VaryingShape<Stride> strides,
                        std::optional<bool> requires_grad,
                        std::optional<bool> undefined)
-    : SharedType(Kind), dtype_(dtype), device_(device),
+    : SharedType(Kind), dtype_(std::move(dtype)), device_(device),
       shape_(std::move(shape)), strides_(std::move(strides)),
       requires_grad_(requires_grad), undefined_(undefined) {}
 
 VaryingShape<int64_t> TensorType::shape() const {
     if (!shape_.rank().has_value()) {
-        return VaryingShape<int64_t>();
+        return {};
     }
 
     auto n = shape_.rank().value();
@@ -268,7 +270,7 @@ VaryingShape<int64_t> TensorType::shape() const {
 VaryingShape<int64_t> TensorType::strides() const {
     const auto& sizes = strides_.sizes();
     if (!sizes.has_value()) {
-        return VaryingShape<int64_t>();
+        return {};
     }
 
     auto n = sizes->size();
@@ -314,6 +316,11 @@ TensorTypePtr TensorType::create(std::optional<DataType> dtype,
     //NOLINTEND
     return TensorTypePtr(ptr);
 }
+
+TensorTypePtr TensorType::create(const Tensor& t) {
+    //
+}
+
 
 
 }// namespace aethermind

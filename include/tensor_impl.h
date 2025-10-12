@@ -11,6 +11,7 @@
 #include "scalar.h"
 #include "shape_and_stride.h"
 #include "tensor_utils.h"
+#include "layout.h"
 
 #include <fmt/format.h>
 #include <glog/logging.h>

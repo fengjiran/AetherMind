@@ -9,6 +9,7 @@
 #include "container/string.h"
 #include "data_type.h"
 #include "error.h"
+#include "tensor.h"
 #include "type.h"
 #include "type_ptr.h"
 
@@ -897,7 +898,7 @@ struct VaryingShape {
         return dims_.value().size();
     }
 
-    const std::optional<ListOfOptionalElements>& sizes() const {
+    NODISCARD const std::optional<ListOfOptionalElements>& sizes() const {
         return dims_;
     }
 
@@ -909,7 +910,7 @@ struct VaryingShape {
 
     NODISCARD bool is_complete() const;
 
-    VaryingShape merge(const VaryingShape& other) const;
+    NODISCARD VaryingShape merge(const VaryingShape& other) const;
 
 private:
     std::optional<ListOfOptionalElements> dims_;
@@ -956,6 +957,21 @@ public:
     const std::optional<bool>& undefined() const {
         return undefined_;
     }
+
+    static TensorTypePtr create(const Tensor& t);
+
+    static TensorTypePtr create(std::optional<DataType> dtype,
+                                std::optional<Device> device,
+                                const VaryingShape<int64_t>& shape,
+                                const VaryingShape<int64_t>& strides,
+                                std::optional<bool> requires_grad,
+                                std::optional<bool> undefined = false,
+                                bool tensor_contiguity = false);
+
+    static TensorTypePtr create(std::optional<DataType> dtype,
+                                std::optional<Device> device,
+                                std::optional<size_t> dim,
+                                std::optional<bool> requires_grad);
 
     static TensorTypePtr create(std::optional<DataType> dtype,
                                 std::optional<Device> device,

@@ -6,12 +6,13 @@
 #define AETHERMIND_TENSOR_IMPL_H
 
 #include "data_type.h"
+#include "layout.h"
 #include "memory/cpu_allocator.h"
 #include "memory/storage.h"
 #include "scalar.h"
 #include "shape_and_stride.h"
 #include "tensor_utils.h"
-#include "layout.h"
+#include "memory_format.h"
 
 #include <fmt/format.h>
 #include <glog/logging.h>
@@ -166,8 +167,26 @@ public:
 
     NODISCARD int64_t get_real_dim(int64_t dim) const;
 
+    // TODO: layout
     NODISCARD Layout layout() const {
         return layout_;
+    }
+
+    // TODO: is nested
+    NODISCARD bool is_nested() const {
+        return false;
+    }
+
+    // TODO: requires_grad
+    /**
+   * True if a tensor requires gradient. Tensors which require gradient
+   * have history tracked for any operations performed on them, so that
+   * we can automatically differentiate back to them.  A tensor that
+   * requires gradient and has no history is a "leaf" tensor, which we
+   * accumulate gradients into.
+   */
+    NODISCARD bool requires_grad() const {
+        return true;
     }
 
     /**

@@ -302,6 +302,12 @@ bool TensorType::equals(const Type& rhs) const {
            undefined() == t->undefined();
 }
 
+VaryingShape<Stride> TensorType::compute_stride_props(
+        IntArrayView shape, IntArrayView strides, bool tensor_contiguity) {
+    int n_dim = static_cast<int>(shape.size());
+
+}
+
 
 TensorTypePtr TensorType::create(std::optional<DataType> dtype,
                                  std::optional<Device> device,
@@ -317,10 +323,28 @@ TensorTypePtr TensorType::create(std::optional<DataType> dtype,
     return TensorTypePtr(ptr);
 }
 
-TensorTypePtr TensorType::create(const Tensor& t) {
-    //
+TensorTypePtr TensorType::create(std::optional<DataType> dtype,
+                                 std::optional<Device> device,
+                                 const VaryingShape<int64_t>& shape,
+                                 const VaryingShape<int64_t>& strides,
+                                 std::optional<bool> requires_grad,
+                                 std::optional<bool> undefined,
+                                 bool tensor_contiguity) {
+    auto concrete_stride_size = strides.concrete_sizes();
+    if (concrete_stride_size.has_value()) {
+        //
+    }
 }
 
+
+TensorTypePtr TensorType::create(const Tensor& t) {
+    VaryingShape<bool> contiguity;
+    VaryingShape<size_t> stride_indices;
+    VaryingShape<int64_t> strides;
+    VaryingShape<int64_t> shape;
+
+    // return create(t.dtype(),t.device(),SymbolicShape(), VaryingShape<Stride>{},);
+}
 
 
 }// namespace aethermind

@@ -128,6 +128,10 @@ Layout Tensor::layout() const {
     return impl_->layout();
 }
 
+bool Tensor::is_nested() const {
+    return impl_->is_nested();
+}
+
 bool Tensor::is_contiguous() const {
     return impl_->is_contiguous();
 }

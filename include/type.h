@@ -958,37 +958,46 @@ public:
         return undefined_;
     }
 
+    static VaryingShape<Stride> compute_stride_props(
+            IntArrayView shape,
+            IntArrayView strides,
+            bool tensor_contiguity = false);
+
     static TensorTypePtr create(const Tensor& t);
 
-    static TensorTypePtr create(std::optional<DataType> dtype,
-                                std::optional<Device> device,
-                                const VaryingShape<int64_t>& shape,
-                                const VaryingShape<int64_t>& strides,
-                                std::optional<bool> requires_grad,
-                                std::optional<bool> undefined = false,
-                                bool tensor_contiguity = false);
+    static TensorTypePtr create(
+            std::optional<DataType> dtype,
+            std::optional<Device> device,
+            const VaryingShape<int64_t>& shape,
+            const VaryingShape<int64_t>& strides,
+            std::optional<bool> requires_grad,
+            std::optional<bool> undefined = false,
+            bool tensor_contiguity = false);
 
-    static TensorTypePtr create(std::optional<DataType> dtype,
-                                std::optional<Device> device,
-                                std::optional<size_t> dim,
-                                std::optional<bool> requires_grad);
+    static TensorTypePtr create(
+            std::optional<DataType> dtype,
+            std::optional<Device> device,
+            std::optional<size_t> dim,
+            std::optional<bool> requires_grad);
 
-    static TensorTypePtr create(std::optional<DataType> dtype,
-                                std::optional<Device> device,
-                                SymbolicShape shape,
-                                VaryingShape<Stride> strides,
-                                std::optional<bool> requires_grad,
-                                std::optional<bool> undefined = false);
+    static TensorTypePtr create(
+            std::optional<DataType> dtype,
+            std::optional<Device> device,
+            SymbolicShape shape,
+            VaryingShape<Stride> strides,
+            std::optional<bool> requires_grad,
+            std::optional<bool> undefined = false);
 
     static constexpr auto Kind = TypeKind::TensorType;
 
 private:
-    TensorType(std::optional<DataType> dtype,
-               std::optional<Device> device,
-               SymbolicShape shape,
-               VaryingShape<Stride> strides,
-               std::optional<bool> requires_grad,
-               std::optional<bool> undefined = false);
+    TensorType(
+            std::optional<DataType> dtype,
+            std::optional<Device> device,
+            SymbolicShape shape,
+            VaryingShape<Stride> strides,
+            std::optional<bool> requires_grad,
+            std::optional<bool> undefined = false);
 
     std::optional<DataType> dtype_;
     std::optional<Device> device_;

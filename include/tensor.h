@@ -62,6 +62,8 @@ public:
 
     NODISCARD Layout layout() const;
 
+    NODISCARD bool is_nested() const;
+
     NODISCARD bool is_contiguous() const;
 
     NODISCARD bool is_cpu() const;

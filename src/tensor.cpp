@@ -124,6 +124,10 @@ int64_t Tensor::storage_offset() const {
     return impl_->storage_offset();
 }
 
+Layout Tensor::layout() const {
+    return impl_->layout();
+}
+
 bool Tensor::is_contiguous() const {
     return impl_->is_contiguous();
 }

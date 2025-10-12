@@ -60,6 +60,8 @@ public:
 
     NODISCARD int64_t storage_offset() const;
 
+    NODISCARD Layout layout() const;
+
     NODISCARD bool is_contiguous() const;
 
     NODISCARD bool is_cpu() const;

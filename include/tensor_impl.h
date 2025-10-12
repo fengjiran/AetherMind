@@ -166,6 +166,10 @@ public:
 
     NODISCARD int64_t get_real_dim(int64_t dim) const;
 
+    NODISCARD Layout layout() const {
+        return layout_;
+    }
+
     /**
    * Whether a tensor is laid out in contiguous memory.
    *
@@ -267,6 +271,8 @@ private:
     Storage storage_;
     // The offset in number of elements into the storage that this tensor points to.
     int64_t storage_offset_ = 0;
+
+    Layout layout_ = kStrided;
 
     // If shape and strides are empty, the numel is 1!! However, most of the
     // time, we will immediately set the shape to {0} and reset numel to 0.

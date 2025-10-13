@@ -1033,6 +1033,9 @@ std::optional<TypePtr> unify_types(const TypePtr& t1, const TypePtr& t2,
 
 void StandardizeVectorForUnion(const std::vector<TypePtr>& ref, std::vector<TypePtr>& need_to_fill);
 void StandardizeVectorForUnion(std::vector<TypePtr>& to_flatten);
+
+bool is_contiguous_stride(IntArrayView shape, IntArrayView strides);
+
 }// namespace aethermind
 
 #endif//AETHERMIND_TYPE_H

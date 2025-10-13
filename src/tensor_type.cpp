@@ -5,6 +5,7 @@
 #include "type.h"
 
 #include <utility>
+#include <numeric>
 
 namespace aethermind {
 
@@ -305,7 +306,30 @@ bool TensorType::equals(const Type& rhs) const {
 VaryingShape<Stride> TensorType::compute_stride_props(
         IntArrayView shape, IntArrayView strides, bool tensor_contiguity) {
     int n_dim = static_cast<int>(shape.size());
+    std::vector<size_t> stride_indices(n_dim);
 
+    // default has_overlap to false as we only compute overlap when:
+    // 1. input sizes/strides fails format check;
+    // 2. tensor_contiguity are not set.
+    bool has_overlap = false;
+
+    // Sorting strides in ascending order
+    // Example:
+    //  Prior to sorting
+    //  Idx:     [0,   1,  2,  3]
+    //  sizes:   [8,   1, 10, 16]
+    //  Strides: [160, 1, 16,  1]
+    //
+    //  After sorting
+    //  Idx:     [1,  3,  2,   0]
+    //  sizes:   [1, 16, 10,   8]
+    //  Strides: [1,  1, 16, 160]
+    //
+    if (is_channels_last_strides_2d(shape, strides) || is_channels_last_strides_3d(shape, strides)) {
+        std::iota(stride_indices.rbegin() + 1, stride_indices.rend() - 1, 2);
+        stride_indices[0] = 1;
+        stride_indices[n_dim - 1] = 0;
+    }
 }
 
 
@@ -346,5 +370,22 @@ TensorTypePtr TensorType::create(const Tensor& t) {
     // return create(t.dtype(),t.device(),SymbolicShape(), VaryingShape<Stride>{},);
 }
 
+bool is_contiguous_stride(IntArrayView shape, IntArrayView strides) {
+    if (shape.empty()) {
+        return true;
+    }
+
+    auto ndim = shape.size();
+    if (strides[ndim - 1] != 1) {
+        return false;
+    }
+
+    for (int i = ndim - 2; i >= 0; --i) {
+        if (strides[i] != strides[i + 1] * shape[i + 1]) {
+            return false;
+        }
+    }
+    return true;
+}
 
 }// namespace aethermind

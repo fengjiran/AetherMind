@@ -4,8 +4,8 @@
 #include "tensor.h"
 #include "type.h"
 
-#include <utility>
 #include <numeric>
+#include <utility>
 
 namespace aethermind {
 
@@ -303,10 +303,41 @@ bool TensorType::equals(const Type& rhs) const {
            undefined() == t->undefined();
 }
 
+// The idea is to only mark possible overlap across dimensions. We want to
+// return false for expanded tensors and permuted tensors, for which dimensional
+// collapsing is safe.
+bool possible_cross_dimension_overlap(IntArrayView shape, IntArrayView strides) {
+    int ndim = static_cast<int>(shape.size());
+    std::vector<size_t> stride_indices(ndim);
+    std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
+
+    // sort indices going with ascending strides
+    for (int i = 1; i < ndim; ++i) {
+        int c = i;
+        for (int j = i - 1; j >= 0; --j) {
+            if (strides[stride_indices[j]] > strides[stride_indices[c]]) {
+                std::swap(stride_indices[j], stride_indices[c]);
+                c = j;
+            }
+        }
+    }
+
+    for (int i = 1; i < ndim; ++i) {
+        if (i != 0) {
+            // we are being conservative on checking for memory overlap
+            if (shape[stride_indices[i]] != 1 &&
+                strides[stride_indices[i]] < shape[stride_indices[i - 1]] * strides[stride_indices[i - 1]]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 VaryingShape<Stride> TensorType::compute_stride_props(
         IntArrayView shape, IntArrayView strides, bool tensor_contiguity) {
-    int n_dim = static_cast<int>(shape.size());
-    std::vector<size_t> stride_indices(n_dim);
+    int ndim = static_cast<int>(shape.size());
+    std::vector<size_t> stride_indices(ndim);
 
     // default has_overlap to false as we only compute overlap when:
     // 1. input sizes/strides fails format check;
@@ -328,10 +359,72 @@ VaryingShape<Stride> TensorType::compute_stride_props(
     if (is_channels_last_strides_2d(shape, strides) || is_channels_last_strides_3d(shape, strides)) {
         std::iota(stride_indices.rbegin() + 1, stride_indices.rend() - 1, 2);
         stride_indices[0] = 1;
-        stride_indices[n_dim - 1] = 0;
-    }
-}
+        stride_indices[ndim - 1] = 0;
+    } else if (is_contiguous_stride(shape, strides)) {
+        std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
+    } else {
+        std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
+        auto should_swap = [&](size_t i, size_t j) {
+            if (strides[i] == 0 || strides[j] == 0) {
+                return 0;
+            }
 
+            if (strides[i] < strides[j]) {
+                return -1;
+            }
+
+            if (strides[i] > strides[j]) {
+                return 1;
+            }
+
+            // strides[i] == strides[j]
+            if (shape[i] > shape[j]) {
+                return 1;
+            }
+
+            return 0;
+        };
+
+        for (int i = 1; i < ndim; ++i) {
+            int dim1 = i;
+            for (int dim0 = i - 1; dim0 >= 0; --dim0) {
+                int comp = should_swap(stride_indices[dim0], stride_indices[dim1]);
+                if (comp > 0) {
+                    std::swap(stride_indices[dim0], stride_indices[dim1]);
+                    dim1 = dim0;
+                } else if (comp < 0) {
+                    break;
+                }
+            }
+        }
+
+        if (!tensor_contiguity) {
+            has_overlap = possible_cross_dimension_overlap(shape, strides);
+        }
+    }
+
+    std::vector<Stride> stride_properties;
+    stride_properties.reserve(ndim);
+    for (size_t i = 0; i < ndim; ++i) {
+        bool contiguous = tensor_contiguity;
+        if (!contiguous) {
+            if (!has_overlap) {
+                if (i == 0) {
+                    contiguous = strides[stride_indices[i]] == 1;
+                } else {
+                    contiguous = strides[stride_indices[i]] == 1 ||
+                                 (strides[stride_indices[i]] != 0 &&
+                                  strides[stride_indices[i]] ==
+                                          strides[stride_indices[i - 1]] * shape[stride_indices[i - 1]]);
+                }
+            } else {
+                contiguous = false;
+            }
+        }
+        stride_properties.emplace_back(stride_indices[i], contiguous, strides[stride_indices[i]]);
+    }
+    return {stride_properties};
+}
 
 TensorTypePtr TensorType::create(std::optional<DataType> dtype,
                                  std::optional<Device> device,

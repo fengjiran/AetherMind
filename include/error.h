@@ -22,18 +22,29 @@ public:
     Error(String kind, String message, String traceback)
         : kind_(std::move(kind)), message_(std::move(message)), traceback_(std::move(traceback)) {}
 
+    String kind() const {
+        return kind_;
+    }
+
+    String message() const {
+        return message_;
+    }
+
+    String traceback() const {
+        return traceback_;
+    }
+
     NODISCARD const char* what() const noexcept override {
         thread_local String what_str = kind_ + ": " + message_;
         what_str = "Traceback (most recent call last):\n" + traceback_ + kind_ + ": " + message_;
         return what_str.c_str();
     }
 
-    // TODO
     static void UpdateTraceback(Error* e, const String& traceback, uint8_t update_mode) {
         if (update_mode == kBacktraceUpdateModeReplace) {
-            //
+            e->traceback_ = traceback;
         } else {
-            //
+            e->traceback_ = e->traceback_ + traceback;
         }
     }
 
@@ -45,7 +56,7 @@ private:
 
 class ErrorBuilder {
 public:
-    ErrorBuilder(std::string kind, std::string traceback, bool log_before_throw)
+    ErrorBuilder(String kind, String traceback, bool log_before_throw)
         : kind_(std::move(kind)), traceback_(std::move(traceback)), log_before_throw_(log_before_throw) {}
 
     std::ostringstream& stream() {
@@ -61,8 +72,8 @@ public:
     }
 
 private:
-    std::string kind_;
-    std::string traceback_;
+    String kind_;
+    String traceback_;
     std::ostringstream stream_;
     bool log_before_throw_;
 };

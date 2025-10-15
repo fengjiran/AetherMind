@@ -20,6 +20,7 @@ TEST(String, CopyFromStd) {
     EXPECT_TRUE(s.unique());
     EXPECT_EQ(copy.use_count(), 1);
     EXPECT_TRUE(copy.unique());
+    std::cout << s << std::endl;
 }
 
 TEST(String, Assignment) {

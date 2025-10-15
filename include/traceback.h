@@ -7,6 +7,8 @@
 
 #include "env.h"
 #include "macros.h"
+// #include "container/array.h"
+// #include "container/string.h"
 
 #include <cstring>
 #include <ranges>
@@ -63,6 +65,7 @@ public:
 
 private:
     std::vector<std::string> lines;
+    // Array<String> lines;
     size_t max_frame_size;
 };
 

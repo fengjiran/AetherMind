@@ -813,7 +813,7 @@ namespace details {
  * \return The pointer to the allocated memory.
  */
 template<size_t align>
-void* AlignedAlloc(size_t sz) {
+void* AllocObject(size_t sz) {
     static_assert(align != 0 && (align & align - 1) == 0, "align must be a power of 2");
     if constexpr (align <= alignof(std::max_align_t)) {
         if (void* ptr = std::malloc(sz)) {
@@ -829,7 +829,7 @@ void* AlignedAlloc(size_t sz) {
     }
 }
 
-inline void AlignedFree(void* ptr) {
+inline void FreeObject(void* ptr) {
     std::free(ptr);
 }
 
@@ -864,7 +864,7 @@ public:
     struct Handler {
         template<typename... Args>
         static T* allocate(Args&&... args) {
-            void* data = AlignedAlloc<alignof(T)>(sizeof(T));
+            void* data = AllocObject<alignof(T)>(sizeof(T));
             new (data) T(std::forward<Args>(args)...);
             return static_cast<T*>(data);
         }
@@ -876,7 +876,7 @@ public:
             }
 
             if (flag & kWeakPtrMask) {
-                AlignedFree(static_cast<void*>(p));// free memory
+                FreeObject(static_cast<void*>(p));// free memory
             }
         }
     };
@@ -894,7 +894,7 @@ public:
             // C++ standard always guarantees that alignof operator returns a power of 2
             // const size_t aligned_size = (size + (align - 1)) & ~(align - 1);
             const size_t aligned_size = (size + align - 1) / align * align;
-            void* data = AlignedAlloc<align>(aligned_size);
+            void* data = AllocObject<align>(aligned_size);
             new (data) ObjType(std::forward<Args>(args)...);
             return static_cast<ObjType*>(data);
         }
@@ -906,7 +906,7 @@ public:
             }
 
             if (flag & kWeakPtrMask) {
-                AlignedFree(static_cast<void*>(p)); // free memory
+                FreeObject(static_cast<void*>(p)); // free memory
             }
         }
     };

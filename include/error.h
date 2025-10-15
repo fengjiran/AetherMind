@@ -5,7 +5,9 @@
 #ifndef AETHERMIND_ERROR_H
 #define AETHERMIND_ERROR_H
 
+#include "c_api.h"
 #include "traceback.h"
+#include "container/string.h"
 
 #include <exception>
 #include <iostream>
@@ -17,20 +19,28 @@ namespace aethermind {
 
 class Error : public std::exception {
 public:
-    Error(std::string kind, std::string message, std::string traceback)
+    Error(String kind, String message, String traceback)
         : kind_(std::move(kind)), message_(std::move(message)), traceback_(std::move(traceback)) {}
 
     NODISCARD const char* what() const noexcept override {
-        thread_local std::string what_str = kind_ + ": " + message_;
-        what_str = std::string("Traceback (most recent call last):\n") +
-                   traceback_ + kind_ + ": " + message_;
+        thread_local String what_str = kind_ + ": " + message_;
+        what_str = "Traceback (most recent call last):\n" + traceback_ + kind_ + ": " + message_;
         return what_str.c_str();
     }
 
+    // TODO
+    static void UpdateTraceback(Error* e, const String& traceback, uint8_t update_mode) {
+        if (update_mode == kBacktraceUpdateModeReplace) {
+            //
+        } else {
+            //
+        }
+    }
+
 private:
-    std::string kind_;
-    std::string message_;
-    std::string traceback_;
+    String kind_;
+    String message_;
+    String traceback_;
 };
 
 class ErrorBuilder {

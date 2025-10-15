@@ -3,6 +3,7 @@
 //
 
 #include "device.h"
+#include "error.h"
 
 #include <glog/logging.h>
 

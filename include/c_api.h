@@ -9,12 +9,22 @@
 
 #include <cstdint>
 
-/*! \brief Handle to Object from C API's pov */
-typedef void* ObjectHandle;
-// using ObjectHandle = void*;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+/*! \brief Handle to Object from C API's pov */
+#ifdef __cplusplus
+using ObjectHandle = void*;
+#else
+typedef void* ObjectHandle;
+#endif
+
+#ifdef __cplusplus
+using FObjectDeleter = void (*)(ObjectHandle, uint8_t);
+#else
 typedef void (*FObjectDeleter)(ObjectHandle, uint8_t);
-// using FObjectDeleter = void(*)(void*, uint8_t);
+#endif
 
 struct ObjectHeader {
     /*! \brief Reference counter of the object. */
@@ -30,5 +40,22 @@ struct ObjectHeader {
 int IncObjectRef(ObjectHandle obj_ptr);
 
 int DecObjectRef(ObjectHandle obj_ptr);
+
+#ifdef __cplusplus
+enum BacktraceUpdateMode : uint8_t {
+#else
+typedef enum {
+#endif
+    kBacktraceUpdateModeReplace = 0,
+    kBacktraceUpdateModeAppend
+#ifdef __cplusplus
+};
+#else
+} BacktraceUpdateMode;
+#endif
+
+#ifdef __cplusplus
+}// TVM_FFI_EXTERN_C
+#endif
 
 #endif//AETHERMIND_C_API_H

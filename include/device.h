@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_DEVICE_H
 #define AETHERMIND_DEVICE_H
 
-#include "error.h"
+#include "macros.h"
 #include <cstdint>
 #include <string>
 

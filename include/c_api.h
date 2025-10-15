@@ -13,8 +13,8 @@
 typedef void* ObjectHandle;
 // using ObjectHandle = void*;
 
-typedef void (*FDeleter)(ObjectHandle, uint8_t);
-// using FDeleter = void(*)(void*, uint8_t);
+typedef void (*FObjectDeleter)(ObjectHandle, uint8_t);
+// using FObjectDeleter = void(*)(void*, uint8_t);
 
 struct ObjectHeader {
     /*! \brief Reference counter of the object. */
@@ -24,7 +24,7 @@ struct ObjectHeader {
     uint32_t weak_ref_count_;
 
     /*! \brief Deleter to be invoked when reference counter goes to zero. */
-    FDeleter deleter_;
+    FObjectDeleter deleter_;
 };
 
 int IncObjectRef(ObjectHandle obj_ptr);

@@ -49,8 +49,11 @@ TEST(object, ctors) {
     EXPECT_TRUE(p4.defined());
     EXPECT_EQ(p4.use_count(), 2);
     EXPECT_EQ(static_cast<IntObj*>(p4.get())->value, 5);
-    // std::weak_ptr<int> p;
-    // p.expired();
+
+    size_t sz = 9;
+    size_t align = 4;
+    size_t res = (sz + (align - 1)) & ~(align - 1);
+    std::cout << res;
 }
 
 class Class0 : public Object {};

@@ -101,7 +101,7 @@ public:
      *
      * \param deleter The deleter function to be invoked when the reference count reaches zero.
      */
-    void SetDeleter(FDeleter deleter) {
+    void SetDeleter(FObjectDeleter deleter) {
         header_.deleter_ = deleter;
     }
 
@@ -805,6 +805,34 @@ bool operator!=(const WeakObjectPtr<T1>& lhs, const WeakObjectPtr<T2>& rhs) noex
 }
 
 namespace details {
+
+/*!
+ * \brief Allocate aligned memory.
+ * \param sz The size.
+ * \tparam align The alignment, must be a power of 2.
+ * \return The pointer to the allocated memory.
+ */
+template<size_t align>
+void* AlignedAlloc(size_t sz) {
+    static_assert(align != 0 && (align & align - 1) == 0, "align must be a power of 2");
+    if constexpr (align <= alignof(std::max_align_t)) {
+        if (void* ptr = std::malloc(sz)) {
+            return ptr;
+        }
+        throw std::bad_alloc();
+    } else {
+        void* ptr;
+        if (posix_memalign(&ptr, align, sz) != 0) {
+            throw std::bad_alloc();
+        }
+        return ptr;
+    }
+}
+
+inline void AlignedFree(void* ptr) {
+    std::free(ptr);
+}
+
 // allocate object
 template<typename Derived>
 class ObjectAllocatorBase {
@@ -834,15 +862,11 @@ class ObjectAllocator : public ObjectAllocatorBase<ObjectAllocator> {
 public:
     template<typename T>
     struct Handler {
-        struct alignas(T) StorageType {
-            char data[sizeof(T)];
-        };
-
         template<typename... Args>
         static T* allocate(Args&&... args) {
-            auto* data = new StorageType();
+            void* data = AlignedAlloc<alignof(T)>(sizeof(T));
             new (data) T(std::forward<Args>(args)...);
-            return reinterpret_cast<T*>(data);
+            return static_cast<T*>(data);
         }
 
         static void deleter(void* ptr, uint8_t flag) {
@@ -852,26 +876,27 @@ public:
             }
 
             if (flag & kWeakPtrMask) {
-                delete reinterpret_cast<StorageType*>(p);// free memory
+                AlignedFree(static_cast<void*>(p));// free memory
             }
         }
     };
 
     template<typename ObjType, typename ElemType>
     struct ArrayHandler {
-        using StorageType = std::aligned_storage_t<sizeof(ObjType), alignof(ObjType)>;
         // for now, only support elements that aligns with array header.
         static_assert(alignof(ObjType) % alignof(ElemType) == 0 && sizeof(ObjType) % alignof(ElemType) == 0,
                       "element alignment constraint");
 
         template<typename... Args>
         static ObjType* allocate(size_t num_elems, Args&&... args) {
-            size_t storage_size = sizeof(StorageType);
-            size_t required_size = sizeof(ObjType) + num_elems * sizeof(ElemType);
-            size_t num_storage_slots = (required_size + storage_size - 1) / storage_size;
-            auto* data = new StorageType[num_storage_slots];
+            const size_t size = sizeof(ObjType) + num_elems * sizeof(ElemType);
+            constexpr size_t align = alignof(ObjType);
+            // C++ standard always guarantees that alignof operator returns a power of 2
+            // const size_t aligned_size = (size + (align - 1)) & ~(align - 1);
+            const size_t aligned_size = (size + align - 1) / align * align;
+            void* data = AlignedAlloc<align>(aligned_size);
             new (data) ObjType(std::forward<Args>(args)...);
-            return reinterpret_cast<ObjType*>(data);
+            return static_cast<ObjType*>(data);
         }
 
         static void deleter(void* ptr, uint8_t flag) {
@@ -881,7 +906,7 @@ public:
             }
 
             if (flag & kWeakPtrMask) {
-                delete[] reinterpret_cast<StorageType*>(p);
+                AlignedFree(static_cast<void*>(p)); // free memory
             }
         }
     };

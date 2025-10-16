@@ -11,7 +11,6 @@
 #include <backtrace.h>
 #include <cxxabi.h>
 
-#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -173,6 +172,11 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
         return 1;
     }
 
+    if (backtrace_stk->skip_frame_count_ > 0) {
+        backtrace_stk->skip_frame_count_--;
+        return 0;
+    }
+
     if (ExcludeFrame(filename, symbol)) {
         return 0;
     }
@@ -183,32 +187,17 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
 
 }// namespace aethermind
 
-
-aethermind::String Traceback() {
-    aethermind::TraceBackStorage traceback;
-    if (aethermind::_bt_state == nullptr) {
-        return "";
-    }
-
-    // libbacktrace eats memory if run on multiple threads at the same time, so we guard against it
-    {
-        static std::mutex m;
-        std::lock_guard<std::mutex> lock(m);
-        backtrace_full(aethermind::_bt_state, 0, aethermind::BacktraceFullCallback,
-                       aethermind::BacktraceErrorCallback, &traceback);
-    }
-    return traceback.GetTraceback();
-}
-
 #if BACKTRACE_ON_SEGFAULT
 void backtrace_handler(int sig) {
     // Technically we shouldn't do any allocation in a signal handler, but
     // Backtrace may allocate. What's the worst it could do? We're already
     // crashing.
+    const char* backtrace = AetherMindTraceback(nullptr, 0, nullptr, 1);
     std::cerr << "!!!!!!! AetherMind encountered a Segfault !!!!!!!\n"
-              << Traceback() << std::endl;
+              << backtrace << std::endl;
     // Re-raise signal with default handler
     struct sigaction act = {};
+    std::memset(&act, 0, sizeof(struct sigaction));
     act.sa_flags = SA_RESETHAND;
     act.sa_handler = SIG_DFL;
     sigaction(sig, &act, nullptr);
@@ -229,6 +218,8 @@ const char* AetherMindTraceback(MAYBE_UNUSED const char* filename,
     aethermind::TraceBackStorage traceback;
     traceback.stop_at_boundary_ = cross_aethermind_boundary == 0;
     if (filename != nullptr && func != nullptr) {
+        // need to skip AetherMindTraceback and the caller function
+        // which is already included in filename and func.
         traceback.skip_frame_count_ = 2;
         if (!aethermind::ExcludeFrame(filename, func)) {
             traceback.Append(filename, lineno, func);

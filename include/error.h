@@ -6,13 +6,12 @@
 #define AETHERMIND_ERROR_H
 
 #include "c_api.h"
-#include "container/string.h"
 #include "traceback.h"
+#include "container/string.h"
 
 #include <exception>
 #include <iostream>
 #include <sstream>
-#include <string>
 #include <utility>
 
 namespace aethermind {
@@ -22,22 +21,22 @@ public:
     Error(String kind, String message, String traceback)
         : kind_(std::move(kind)), message_(std::move(message)), traceback_(std::move(traceback)) {}
 
-    String kind() const {
+    NODISCARD String kind() const {
         return kind_;
     }
 
-    String message() const {
+    NODISCARD String message() const {
         return message_;
     }
 
-    String traceback() const {
+    NODISCARD String traceback() const {
         return traceback_;
     }
 
     NODISCARD const char* what() const noexcept override {
         thread_local String what_str = kind_ + ": " + message_;
-        what_str = "Traceback (most recent call last):\n" + TracebackMostRecent() +
-                   kind_ + ": " + message_;
+        what_str = "Traceback (most recent call last):\n" +
+                   TracebackMostRecent() + kind_ + ": " + message_;
         return what_str.c_str();
     }
 
@@ -54,7 +53,7 @@ public:
    *
    * \return The traceback of the error object.
    */
-    String TracebackMostRecent() const {
+    NODISCARD String TracebackMostRecent() const {
         std::vector<int64_t> delimiter = {-1};
         for (size_t i = 0; i < traceback_.size(); ++i) {
             if (traceback_[i] == '\n') {

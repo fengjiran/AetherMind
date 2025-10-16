@@ -8,7 +8,6 @@
 #include "macros.h"
 #include "container/string.h"
 
-#include <ranges>
 #include <sstream>
 
 namespace aethermind {

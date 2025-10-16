@@ -90,7 +90,7 @@ backtrace_state* BacktraceCreate() {
 
 static backtrace_state* _bt_state = BacktraceCreate();
 
-std::string DemangleName(std::string name) {
+String DemangleName(String name) {
     int status = 0;
     size_t length = name.size();
     char* demangled_name = abi::__cxa_demangle(name.c_str(), nullptr, &length, &status);
@@ -142,7 +142,7 @@ void BacktraceErrorCallback(void*, const char*, int) {
 }
 
 void BacktraceSyminfoCallback(void* data, uintptr_t pc, const char* symname, uintptr_t, uintptr_t) {
-    auto str = static_cast<std::string*>(data);
+    auto str = static_cast<String*>(data);
 
     if (symname != nullptr) {
         *str = DemangleName(symname);
@@ -156,7 +156,7 @@ void BacktraceSyminfoCallback(void* data, uintptr_t pc, const char* symname, uin
 int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int lineno,
                           const char* symbol) {
     auto* backtrace_stk = static_cast<TraceBackStorage*>(data);
-    std::string symbol_str = "<unknown>";
+    String symbol_str = "<unknown>";
     if (symbol) {
         symbol_str = DemangleName(symbol);
     } else {
@@ -184,7 +184,7 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
 }// namespace aethermind
 
 
-std::string Traceback() {
+aethermind::String Traceback() {
     aethermind::TraceBackStorage traceback;
     if (aethermind::_bt_state == nullptr) {
         return "";
@@ -225,7 +225,7 @@ const char* AetherMindTraceback(MAYBE_UNUSED const char* filename,
                                 MAYBE_UNUSED int lineno,
                                 MAYBE_UNUSED const char* func,
                                 int cross_aethermind_boundary) {
-    thread_local std::string traceback_str;
+    thread_local aethermind::String traceback_str;
     aethermind::TraceBackStorage traceback;
     traceback.stop_at_boundary_ = cross_aethermind_boundary == 0;
     if (filename != nullptr && func != nullptr) {

@@ -6,11 +6,10 @@
 #define AETHERMIND_TRACEBACK_H
 
 #include "macros.h"
+#include "container/string.h"
 
-#include <cstring>
 #include <ranges>
 #include <sstream>
-#include <string>
 
 namespace aethermind {
 
@@ -34,7 +33,7 @@ struct TraceBackStorage {
         return line_count_ >= max_frame_size_;
     }
 
-    NODISCARD std::string GetTraceback() const {
+    NODISCARD String GetTraceback() const {
         return traceback_stream_.str();
     }
 

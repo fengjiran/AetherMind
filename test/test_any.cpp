@@ -2,10 +2,10 @@
 // Created by 赵丹 on 2025/8/15.
 //
 #include "any.h"
-#include "testing_object.h"
-#include <gtest/gtest.h>
 #include "container/string.h"
 #include "tensor.h"
+#include "testing_object.h"
+#include <gtest/gtest.h>
 
 using namespace aethermind;
 
@@ -17,15 +17,8 @@ TEST(Any, bool) {
     auto opt0 = x0.as<bool>();
     EXPECT_TRUE(!opt0.has_value());
 
-    EXPECT_THROW(
-            {
-                try {
-                    MAYBE_UNUSED auto v0 = x0.cast<bool>();
-                } catch (const Error&) {
-                    throw;
-                }
-            },
-            Error);
+    EXPECT_THROW(x0.cast<float>(), Error);
+    EXPECT_THROW(x0.cast<bool>(), Error);
 
     Any x1 = true;
     EXPECT_TRUE(x1.cast<bool>());
@@ -60,15 +53,7 @@ TEST(Any, int) {
     auto opt0 = x0.try_cast<int64_t>();
     EXPECT_TRUE(!opt0.has_value());
 
-    EXPECT_THROW(
-            {
-                try {
-                    MAYBE_UNUSED auto v0 = x0.cast<float>();
-                } catch (const Error&) {
-                    throw;
-                }
-            },
-            Error);
+    EXPECT_THROW(x0.cast<float>(), Error);
 
     Any x1 = 1;
     EXPECT_TRUE(x1.tag() == AnyTag::Int);

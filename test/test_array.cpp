@@ -139,12 +139,7 @@ TEST(Array, Iterators) {
 TEST(Array, EmptyArrayExceptions) {
     Array<int> arr;
 
-    EXPECT_THROW({
-        try {
-            UNUSED(arr.front());
-        } catch (const Error&) {
-            throw;
-        } }, Error);
+    EXPECT_THROW(arr.front(), Error);
 
     EXPECT_THROW({try {
             UNUSED(arr.back());

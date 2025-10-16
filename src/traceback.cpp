@@ -72,17 +72,11 @@ void TraceBackStorage::Append(const char* filename, int lineno, const char* func
     }
 
     traceback_stream_ << "  File \"" << filename << "\"";
-    traceback_stream_ << ", line " << lineno;
+    if (lineno != 0) {
+        traceback_stream_ << ", line " << lineno;
+    }
     traceback_stream_ << ", in " << func << '\n';
     line_count_++;
-
-    // std::ostringstream traceback_stream;
-    // traceback_stream << "  File \"" << filename << "\"";
-    // if (lineno != 0) {
-    //     traceback_stream << ", line " << lineno;
-    // }
-    // traceback_stream << ", in " << func << '\n';
-    // lines.push_back(traceback_stream.str());
 }
 
 void BacktraceCreateErrorCallback(void*, const char* msg, int) {
@@ -186,7 +180,6 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
     backtrace_stk->Append(filename, lineno, symbol);
     return 0;
 }
-
 
 }// namespace aethermind
 

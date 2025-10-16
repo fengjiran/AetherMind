@@ -231,14 +231,14 @@ public:
 
     const T front() const {
         if (empty()) {
-            AETHERMIND_THROW(index_error) << "Cannot index an empty array.";
+            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
         return *begin();
     }
 
     const T back() const {
         if (empty()) {
-            AETHERMIND_THROW(index_error) << "Cannot index an empty array.";
+            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
         return *(end() - 1);
     }
@@ -256,11 +256,11 @@ public:
 
     const T operator[](int64_t i) const {
         if (empty()) {
-            AETHERMIND_THROW(index_error) << "Cannot index an empty array.";
+            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
 
         if (i < 0 || i >= size()) {
-            AETHERMIND_THROW(index_error) << "the index out of range.";
+            AETHERMIND_THROW(IndexError) << "the index out of range.";
         }
 
         return *(begin() + i);
@@ -268,7 +268,7 @@ public:
 
     void Set(int idx, T value) {
         if (idx < 0 || idx >= size()) {
-            AETHERMIND_THROW(index_error) << "indexing " << idx << " on an array of size " << size();
+            AETHERMIND_THROW(IndexError) << "indexing " << idx << " on an array of size " << size();
         }
 
         COW(0, true);
@@ -286,7 +286,7 @@ public:
 
     void pop_back() {
         if (empty()) {
-            AETHERMIND_THROW(runtime_error) << "Cannot pop back an empty array.";
+            AETHERMIND_THROW(RuntimeError) << "Cannot pop back an empty array.";
         }
         // CopyOnWrite();
         COW(-1);
@@ -316,7 +316,7 @@ private:
 template<typename T>
 void Array<T>::resize(int64_t n) {
     if (n < 0) {
-        AETHERMIND_THROW(value_error) << "Cannot resize an array to negative size.";
+        AETHERMIND_THROW(ValueError) << "Cannot resize an array to negative size.";
     }
 
     auto sz = size();

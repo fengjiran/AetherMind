@@ -11,7 +11,6 @@
 #include <ranges>
 #include <sstream>
 #include <string>
-#include <vector>
 
 namespace aethermind {
 
@@ -39,7 +38,6 @@ struct TraceBackStorage {
         return traceback_stream_.str();
     }
 
-    std::vector<std::string> lines;
     /*! \brief The stream to store the backtrace. */
     std::ostringstream traceback_stream_;
     /*! \brief The number of lines in the backtrace. */

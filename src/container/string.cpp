@@ -81,6 +81,10 @@ bool String::empty() const noexcept {
     return size() == 0;
 }
 
+char String::operator[](size_t i) const noexcept {
+    return data()[i];
+}
+
 char String::at(size_t i) const {
     if (i < size()) {
         return data()[i];

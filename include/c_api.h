@@ -58,4 +58,7 @@ typedef enum {
 }// TVM_FFI_EXTERN_C
 #endif
 
+const char* AetherMindTraceback(const char* filename, int lineno, const char* func,
+    int cross_aethermind_boundary = 0);
+
 #endif//AETHERMIND_C_API_H

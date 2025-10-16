@@ -3,6 +3,7 @@
 //
 
 #include "traceback.h"
+#include "env.h"
 #include "error.h"
 
 #if USE_LIBBACKTRACE
@@ -24,12 +25,73 @@
 namespace aethermind {
 #if USE_LIBBACKTRACE
 
+int32_t GetTracebackLimit() {
+    if (has_env("TRACEBACK_LIMIT")) {
+        return std::stoi(get_env("TRACEBACK_LIMIT").value());
+    }
+    return 512;
+}
+
+bool DetectBoundary(MAYBE_UNUSED const char* filename, const char* symbol) {
+    if (symbol) {
+        // if (strncmp(symbol, "TVMFFIFunctionCall", 18) == 0) {
+        //     return true;
+        // }
+
+        // python ABI functions
+        if (strncmp(symbol, "slot_tp_call", 12) == 0) {
+            return true;
+        }
+
+        if (strncmp(symbol, "object_is_not_callable", 11) == 0) {
+            return true;
+        }
+
+        // Python interpreter stack frames
+        // we stop backtrace at the Python interpreter stack frames
+        // since these frame will be handled from by the python side.
+        if (strncmp(symbol, "_Py", 3) == 0 ||
+            strncmp(symbol, "PyObject", 8) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void TraceBackStorage::Append(const char* filename, int lineno, const char* func) {
+    // skip frames with empty filename
+    if (!filename) {
+        if (func) {
+            if (strncmp(func, "0x0", 3) == 0) {
+                return;
+            }
+            filename = "<unknown>";
+        } else {
+            return;
+        }
+    }
+
+    traceback_stream_ << "  File \"" << filename << "\"";
+    traceback_stream_ << ", line " << lineno;
+    traceback_stream_ << ", in " << func << '\n';
+    line_count_++;
+
+    // std::ostringstream traceback_stream;
+    // traceback_stream << "  File \"" << filename << "\"";
+    // if (lineno != 0) {
+    //     traceback_stream << ", line " << lineno;
+    // }
+    // traceback_stream << ", in " << func << '\n';
+    // lines.push_back(traceback_stream.str());
+}
+
 void BacktraceCreateErrorCallback(void*, const char* msg, int) {
     std::cerr << "Could not initialize backtrace state: " << msg << std::endl;
 }
 
 backtrace_state* BacktraceCreate() {
-    return backtrace_create_state(nullptr, 1, BacktraceCreateErrorCallback, nullptr);
+    return backtrace_create_state(nullptr, 1,
+                                  BacktraceCreateErrorCallback, nullptr);
 }
 
 static backtrace_state* _bt_state = BacktraceCreate();
@@ -97,17 +159,23 @@ void BacktraceSyminfoCallback(void* data, uintptr_t pc, const char* symname, uin
     }
 }
 
-int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int lineno, const char* symbol) {
-    auto* trace_stk = static_cast<TraceBackStorage*>(data);
+int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int lineno,
+                          const char* symbol) {
+    auto* backtrace_stk = static_cast<TraceBackStorage*>(data);
     std::string symbol_str = "<unknown>";
     if (symbol) {
         symbol_str = DemangleName(symbol);
     } else {
-        backtrace_syminfo(_bt_state, pc, BacktraceSyminfoCallback, BacktraceErrorCallback, &symbol_str);
+        backtrace_syminfo(_bt_state, pc, BacktraceSyminfoCallback,
+                          BacktraceErrorCallback, &symbol_str);
     }
     symbol = symbol_str.data();
 
-    if (trace_stk->ExceedTracebackLimit()) {
+    if (backtrace_stk->ExceedTracebackLimit()) {
+        return 1;
+    }
+
+    if (backtrace_stk->stop_at_boundary_ && DetectBoundary(filename, symbol)) {
         return 1;
     }
 
@@ -115,13 +183,17 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
         return 0;
     }
 
-    trace_stk->Append(filename, lineno, symbol);
+    backtrace_stk->Append(filename, lineno, symbol);
     return 0;
 }
 
+
+}// namespace aethermind
+
+
 std::string Traceback() {
-    TraceBackStorage traceback;
-    if (_bt_state == nullptr) {
+    aethermind::TraceBackStorage traceback;
+    if (aethermind::_bt_state == nullptr) {
         return "";
     }
 
@@ -129,7 +201,8 @@ std::string Traceback() {
     {
         static std::mutex m;
         std::lock_guard<std::mutex> lock(m);
-        backtrace_full(_bt_state, 0, BacktraceFullCallback, BacktraceErrorCallback, &traceback);
+        backtrace_full(aethermind::_bt_state, 0, aethermind::BacktraceFullCallback,
+                       aethermind::BacktraceErrorCallback, &traceback);
     }
     return traceback.GetTraceback();
 }
@@ -155,15 +228,37 @@ __attribute__((constructor)) void install_signal_handler() {
 }
 #endif
 
-const char* AetherMindTraceback(MAYBE_UNUSED const char* filename, MAYBE_UNUSED int lineno, MAYBE_UNUSED const char* func) {
+const char* AetherMindTraceback(MAYBE_UNUSED const char* filename,
+                                MAYBE_UNUSED int lineno,
+                                MAYBE_UNUSED const char* func,
+                                int cross_aethermind_boundary) {
     thread_local std::string traceback_str;
-    traceback_str = Traceback();
+    aethermind::TraceBackStorage traceback;
+    traceback.stop_at_boundary_ = cross_aethermind_boundary == 0;
+    if (filename != nullptr && func != nullptr) {
+        traceback.skip_frame_count_ = 2;
+        if (!aethermind::ExcludeFrame(filename, func)) {
+            traceback.Append(filename, lineno, func);
+        }
+    }
+
+    if (aethermind::_bt_state != nullptr) {
+        static std::mutex m;
+        std::scoped_lock<std::mutex> lock(m);
+        backtrace_full(aethermind::_bt_state, 0, aethermind::BacktraceFullCallback,
+                       aethermind::BacktraceErrorCallback, &traceback);
+    }
+
+    traceback_str = traceback.GetTraceback();
     return traceback_str.c_str();
 }
 
 #else
 
-const char* AetherMindTraceback(const char* filename, int lineno, const char* func) {
+const char* AetherMindTraceback(const char* filename,
+                                int lineno,
+                                const char* func,
+                                int cross_aethermind_boundary) {
     thread_local std::string traceback_str;
     std::ostringstream traceback_stream;
     traceback_stream << "  File \"" << filename << "\", line " << lineno << ", in " << func << '\n';
@@ -172,5 +267,3 @@ const char* AetherMindTraceback(const char* filename, int lineno, const char* fu
 }
 
 #endif
-
-}// namespace aethermind

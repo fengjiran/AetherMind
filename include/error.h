@@ -6,8 +6,8 @@
 #define AETHERMIND_ERROR_H
 
 #include "c_api.h"
-#include "traceback.h"
 #include "container/string.h"
+#include "traceback.h"
 
 #include <exception>
 #include <iostream>
@@ -36,7 +36,8 @@ public:
 
     NODISCARD const char* what() const noexcept override {
         thread_local String what_str = kind_ + ": " + message_;
-        what_str = "Traceback (most recent call last):\n" + traceback_ + kind_ + ": " + message_;
+        what_str = "Traceback (most recent call last):\n" + TracebackMostRecent() +
+                   kind_ + ": " + message_;
         return what_str.c_str();
     }
 
@@ -46,6 +47,31 @@ public:
         } else {
             e->traceback_ = e->traceback_ + traceback;
         }
+    }
+
+    /*!
+   * \brief Get the traceback in the order of most recent call last.
+   *
+   * \return The traceback of the error object.
+   */
+    String TracebackMostRecent() const {
+        std::vector<int64_t> delimiter = {-1};
+        for (size_t i = 0; i < traceback_.size(); ++i) {
+            if (traceback_[i] == '\n') {
+                delimiter.push_back(static_cast<int64_t>(i));
+            }
+        }
+
+        String res;
+        for (size_t i = delimiter.size() - 1; i > 0; i--) {
+            int64_t start = delimiter[i - 1] + 1;
+            int64_t end = delimiter[i];
+            if (start == end) {
+                continue;
+            }
+            res = res + String(traceback_.data() + start, end - start) + "\n";
+        }
+        return res;
     }
 
 private:
@@ -79,7 +105,7 @@ private:
 };
 
 // define traceback here as call into traceback function
-#define TRACEBACK_HERE AetherMindTraceback(__FILE__, __LINE__, FUNC_SIG)
+#define TRACEBACK_HERE AetherMindTraceback(__FILE__, __LINE__, FUNC_SIG, 0)
 
 #define AETHERMIND_THROW(ErrorKind) ErrorBuilder(#ErrorKind, TRACEBACK_HERE, true).stream()
 

@@ -81,6 +81,8 @@ public:
 
     NODISCARD bool empty() const noexcept;
 
+    NODISCARD char operator[](size_t i) const noexcept;
+
     NODISCARD char at(size_t i) const;
 
     NODISCARD uint32_t use_count() const noexcept;

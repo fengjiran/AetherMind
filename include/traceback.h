@@ -5,10 +5,7 @@
 #ifndef AETHERMIND_TRACEBACK_H
 #define AETHERMIND_TRACEBACK_H
 
-#include "env.h"
 #include "macros.h"
-// #include "container/array.h"
-// #include "container/string.h"
 
 #include <cstring>
 #include <ranges>
@@ -18,58 +15,41 @@
 
 namespace aethermind {
 
-inline int32_t GetTracebackLimit() {
-    if (has_env("TRACEBACK_LIMIT")) {
-        return std::stoi(get_env("TRACEBACK_LIMIT").value());
-    }
-    return 512;
-}
+int32_t GetTracebackLimit();
 
-class TraceBackStorage {
-public:
-    TraceBackStorage() : max_frame_size(GetTracebackLimit()) {}
+/**
+ * \brief List frames that should stop the backtrace.
+ * \param filename The filename of the frame.
+ * \param symbol The symbol name of the frame.
+ * \return true if the frame should stop the backtrace.
+ * \note We stop backtrace at the boundary.
+ */
+bool DetectBoundary(const char* filename, const char* symbol);
 
-    void Append(const char* filename, int lineno, const char* func) {
-        // skip frames with empty filename
-        if (filename == nullptr) {
-            if (func != nullptr) {
-                if (strncmp(func, "0x0", 3) == 0) {
-                    return;
-                }
-                filename = "<unknown>";
-            } else {
-                return;
-            }
-        }
+struct TraceBackStorage {
+    TraceBackStorage() = default;
 
-        std::ostringstream traceback_stream;
-        traceback_stream << "  File \"" << filename << "\"";
-        if (lineno != 0) {
-            traceback_stream << ", line " << lineno;
-        }
-        traceback_stream << ", in " << func << '\n';
-        lines.push_back(traceback_stream.str());
-    }
+    void Append(const char* filename, int lineno, const char* func);
 
     NODISCARD bool ExceedTracebackLimit() const {
-        return lines.size() >= max_frame_size;
+        return line_count_ >= max_frame_size_;
     }
 
     NODISCARD std::string GetTraceback() const {
-        std::string traceback;
-        for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
-            traceback += *it;
-        }
-        return traceback;
+        return traceback_stream_.str();
     }
 
-private:
     std::vector<std::string> lines;
-    // Array<String> lines;
-    size_t max_frame_size;
+    /*! \brief The stream to store the backtrace. */
+    std::ostringstream traceback_stream_;
+    /*! \brief The number of lines in the backtrace. */
+    size_t line_count_ = 0;
+    size_t max_frame_size_ = GetTracebackLimit();
+    /*! \brief Number of frames to skip. */
+    size_t skip_frame_count_ = 0;
+    /*! \brief Whether to stop at the boundary. */
+    bool stop_at_boundary_ = true;
 };
-
-const char* AetherMindTraceback(const char* filename, int lineno, const char* func);
 
 }// namespace aethermind
 

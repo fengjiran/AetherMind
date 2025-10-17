@@ -898,7 +898,7 @@ struct VaryingShape {
         return dims_.value().size();
     }
 
-    NODISCARD const std::optional<ListOfOptionalElements>& sizes() const {
+    NODISCARD const std::optional<ListOfOptionalElements>& shape() const {
         return dims_;
     }
 

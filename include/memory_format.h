@@ -48,10 +48,13 @@ inline MemoryFormat get_contiguous_memory_format() {
     return MemoryFormat::Contiguous;
 }
 
+// shape and stride is NCHW
+// underlying data in memory is NHWC
 template<typename T>
 std::vector<T> get_channels_last_strides_2d(ArrayView<T> shape) {
-    std::vector<T> strides(shape.size());// NCHW
-    switch (shape.size()) {
+    auto n = shape.size();
+    std::vector<T> strides(n);// (stride_n, stride_c, stride_h, stride_w)
+    switch (n) {
         case 4: {
             strides[1] = 1;
             strides[3] = shape[1];
@@ -66,6 +69,7 @@ std::vector<T> get_channels_last_strides_2d(ArrayView<T> shape) {
             strides[1] = strides[2] * shape[2];
             break;
         }
+
         default: {
             CHECK(false) << "ChannelsLast2d doesn't support size " << shape.size();
         }
@@ -77,10 +81,13 @@ inline std::vector<int64_t> get_channels_last_strides_2d(IntArrayView shape) {
     return get_channels_last_strides_2d<int64_t>(shape);
 }
 
+// shape and stride is NCDHW
+// underlying data in memory is NDHWC
 template<typename T>
 std::vector<T> get_channels_last_strides_3d(ArrayView<T> shape) {
-    std::vector<T> strides(shape.size());// NCDHW
-    switch (shape.size()) {
+    auto n = shape.size();
+    std::vector<T> strides(n);// NCDHW
+    switch (n) {
         case 5: {
             strides[1] = 1;
             strides[4] = strides[1] * shape[1];
@@ -112,28 +119,24 @@ inline std::vector<int64_t> get_channels_last_strides_3d(IntArrayView shape) {
 
 template<typename T>
 bool is_channels_last_strides_2d_s4(ArrayView<T> shape, ArrayView<T> strides) {
-    T min = 0;
+    T pre = 0;
     // special case for trivial C dimension. default to NCHW
     if (strides[1] == 0) {
         return false;
     }
 
     for (int d: {1, 3, 2, 0}) {
-        if (shape[d] == 0) {
+        if (shape[d] == 0 || strides[d] < pre) {
             return false;
         }
 
-        if (strides[d] < min) {
+        if (d == 0 && pre == strides[1]) {
             return false;
         }
 
-        if (d == 0 && min == strides[1]) {
-            return false;
-        }
-
-        min = strides[d];
+        pre = strides[d];
         if (shape[d] > 1) {
-            min *= shape[d];
+            pre *= shape[d];
         }
     }
     return true;

@@ -211,7 +211,7 @@ VaryingShape<T> VaryingShape<T>::merge(const VaryingShape& other) const {
 
 template<typename T>
 std::ostream& operator<<(std::ostream& os, const VaryingShape<T>& t) {
-    const auto& sizes_opt = t.sizes();
+    const auto& sizes_opt = t.shape();
     if (!sizes_opt.has_value()) {
         os << "(*)";
         return os;
@@ -254,11 +254,12 @@ TensorType::TensorType(std::optional<DataType> dtype,
       requires_grad_(requires_grad), undefined_(undefined) {}
 
 VaryingShape<int64_t> TensorType::shape() const {
-    if (!shape_.rank().has_value()) {
+    auto rank = shape_.rank();
+    if (!rank.has_value()) {
         return {};
     }
 
-    auto n = shape_.rank().value();
+    auto n = rank.value();
     std::vector<std::optional<int64_t>> dims;
     dims.reserve(n);
     for (const auto& ss: shape_.sizes().value()) {
@@ -269,25 +270,24 @@ VaryingShape<int64_t> TensorType::shape() const {
 }
 
 VaryingShape<int64_t> TensorType::strides() const {
-    const auto& sizes = strides_.sizes();
-    if (!sizes.has_value()) {
+    const auto& shape = strides_.shape();
+    if (!shape.has_value()) {
         return {};
     }
 
-    auto n = sizes->size();
+    auto n = shape->size();
     std::vector<std::optional<int64_t>> dims(n);
-    for (const auto& stride: sizes.value()) {
+    for (const auto& stride: shape.value()) {
         if (!stride.has_value()) {
             continue;
         }
         const auto& s = stride.value();
         if (s.stride_idx_.has_value() && s.stride_.has_value()) {
-            dims[*s.stride_idx_] = *s.stride_;
+            dims[s.stride_idx_.value()] = s.stride_.value();
         }
     }
     return {std::move(dims)};
 }
-
 
 bool TensorType::equals(const Type& rhs) const {
     if (rhs.kind() != kind()) {

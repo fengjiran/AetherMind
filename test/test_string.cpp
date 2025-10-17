@@ -21,6 +21,36 @@ TEST(String, CopyFromStd) {
     EXPECT_EQ(copy.use_count(), 1);
     EXPECT_TRUE(copy.unique());
     std::cout << s << std::endl;
+
+    std::vector<std::string> pow5;
+    pow5.reserve(7);
+    int x = 1;
+    for (int i = 0; i < 7; ++i) {
+        int t = x;
+        std::string code;
+        while (t > 0) {
+            char c = t % 2 == 0 ? '0' : '1';
+            code += c;
+            t /= 2;
+        }
+        std::reverse(code.begin(), code.end());
+        pow5.push_back(code);
+        x *= 5;
+    }
+
+    for (const auto& str: pow5) {
+        std::cout << str << std::endl;
+    }
+
+    int ciphertext = 216613;
+    std::string ss;
+    while (ciphertext > 0) {
+        int mod = ciphertext % 10;
+        ciphertext /= 10;
+        ss += ('0' + mod);
+    }
+    std::reverse(ss.begin(), ss.end());
+    std::cout << ss << std::endl;
 }
 
 TEST(String, Assignment) {

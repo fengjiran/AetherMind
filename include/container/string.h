@@ -95,7 +95,7 @@ public:
 
     NODISCARD const ObjectPtr<StringImpl>& get_object_ptr() const;
 
-    operator std::string() const;
+    operator std::string() const;// NOLINT
 
     /*!
      * \brief Compares this String object to other

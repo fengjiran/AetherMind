@@ -232,7 +232,7 @@ TEST(VaryingShapeTest, BasicOperations) {
     // 测试默认构造函数（无秩）
     VaryingShape<int64_t> unranked;
     EXPECT_FALSE(unranked.size().has_value());
-    EXPECT_FALSE(unranked.sizes().has_value());
+    EXPECT_FALSE(unranked.shape().has_value());
 
     // 测试指定秩但无具体值的构造函数
     VaryingShape<int64_t> rank_3(3);

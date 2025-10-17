@@ -308,7 +308,7 @@ bool TensorType::equals(const Type& rhs) const {
 // collapsing is safe.
 bool possible_cross_dimension_overlap(IntArrayView shape, IntArrayView strides) {
     int ndim = static_cast<int>(shape.size());
-    std::vector<size_t> stride_indices(ndim); // stride ascend order index
+    std::vector<size_t> stride_indices(ndim);// stride ascend order index
     std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
 
     // sort indices going with ascending strides
@@ -334,8 +334,9 @@ bool possible_cross_dimension_overlap(IntArrayView shape, IntArrayView strides) 
     return false;
 }
 
-VaryingShape<Stride> TensorType::compute_stride_props(
-        IntArrayView shape, IntArrayView strides, bool tensor_contiguity) {
+VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
+                                                      IntArrayView strides,
+                                                      bool tensor_contiguity) {
     int ndim = static_cast<int>(shape.size());
     std::vector<size_t> stride_indices(ndim);
 

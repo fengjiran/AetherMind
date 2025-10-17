@@ -163,21 +163,21 @@ SymbolicShape SymbolicShape::merge(const SymbolicShape& other) const {
 }
 
 template<typename T>
-std::optional<std::vector<T>> VaryingShape<T>::concrete_sizes() const {
+std::optional<std::vector<T>> VaryingShape<T>::get_concrete_shape() const {
     if (!dims_.has_value()) {
         return std::nullopt;
     }
 
-    auto n = dims_->size();
-    auto shape = dims_.value();
-    std::vector<T> res(n);
-    for (size_t i = 0; i < n; i++) {
-        if (!shape[i].has_value()) {
+    std::vector<T> shape;
+    shape.reserve(dims_->size());
+    for (auto d: dims_.value()) {
+        if (!d.has_value()) {
             return std::nullopt;
         }
-        res[i] = shape[i].value();
+        shape.push_back(d.value());
     }
-    return res;
+
+    return shape;
 }
 
 template<typename T>
@@ -308,7 +308,7 @@ bool TensorType::equals(const Type& rhs) const {
 // collapsing is safe.
 bool possible_cross_dimension_overlap(IntArrayView shape, IntArrayView strides) {
     int ndim = static_cast<int>(shape.size());
-    std::vector<size_t> stride_indices(ndim);
+    std::vector<size_t> stride_indices(ndim); // stride ascend order index
     std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
 
     // sort indices going with ascending strides
@@ -447,7 +447,7 @@ TensorTypePtr TensorType::create(std::optional<DataType> dtype,
                                  std::optional<bool> requires_grad,
                                  std::optional<bool> undefined,
                                  bool tensor_contiguity) {
-    auto concrete_stride_size = strides.concrete_sizes();
+    auto concrete_stride_size = strides.get_concrete_shape();
     if (concrete_stride_size.has_value()) {
         //
     }

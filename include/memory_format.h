@@ -119,24 +119,31 @@ inline std::vector<int64_t> get_channels_last_strides_3d(IntArrayView shape) {
 
 template<typename T>
 bool is_channels_last_strides_2d_s4(ArrayView<T> shape, ArrayView<T> strides) {
-    T pre = 0;
+    T pre_stride = 0;
     // special case for trivial C dimension. default to NCHW
     if (strides[1] == 0) {
         return false;
     }
 
     for (int d: {1, 3, 2, 0}) {
-        if (shape[d] == 0 || strides[d] < pre) {
+        if (shape[d] == 0 || strides[d] < pre_stride) {
             return false;
         }
 
-        if (d == 0 && pre == strides[1]) {
+        // Fallback to NCHW as default layout for ambiguous cases,
+        // This is the flaw of implicit memory_format from strides.
+        // N111 tensor with identical strides for size 1 dimension;
+        // Two cases could lead us here:
+        // a. N111 contiguous Tensor ([N,1,1,1]@[1,1,1,1])
+        // b. N11W contiguous Tensor sliced on the W-dimension.
+        // ([N,1,1,1]@[W,W,W,W])
+        if (d == 0 && pre_stride == strides[1]) {
             return false;
         }
 
-        pre = strides[d];
+        pre_stride = strides[d];
         if (shape[d] > 1) {
-            pre *= shape[d];
+            pre_stride *= shape[d];
         }
     }
     return true;
@@ -144,28 +151,24 @@ bool is_channels_last_strides_2d_s4(ArrayView<T> shape, ArrayView<T> strides) {
 
 template<typename T>
 bool is_channels_last_strides_3d_s5(ArrayView<T> shape, ArrayView<T> strides) {
-    T min = 0;
+    T pre_stride = 0;
     // special case for trivial C dimension. default to NCHW
     if (strides[1] == 0) {
         return false;
     }
 
     for (int d: {1, 4, 3, 2, 0}) {
-        if (shape[d] == 0) {
+        if (shape[d] == 0 || strides[d] < pre_stride) {
             return false;
         }
 
-        if (strides[d] < min) {
+        if (d == 0 && pre_stride == strides[1]) {
             return false;
         }
 
-        if (d == 0 && min == strides[1]) {
-            return false;
-        }
-
-        min = strides[d];
+        pre_stride = strides[d];
         if (shape[d] > 1) {
-            min *= shape[d];
+            pre_stride *= shape[d];
         }
     }
     return true;

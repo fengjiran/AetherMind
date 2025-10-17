@@ -906,7 +906,7 @@ struct VaryingShape {
         return dims_ == other.dims_;
     }
 
-    NODISCARD std::optional<std::vector<T>> concrete_sizes() const;
+    NODISCARD std::optional<std::vector<T>> get_concrete_shape() const;
 
     NODISCARD bool is_complete() const;
 

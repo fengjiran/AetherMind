@@ -12,6 +12,7 @@ namespace aethermind {
 
 class Tensor;
 
+// shape placeholder
 struct ShapeSymbol {
     ShapeSymbol() : value_(-1) {}
 
@@ -19,6 +20,7 @@ struct ShapeSymbol {
         return value_;
     }
 
+    // is this symbol a fixed/static dimension
     NODISCARD bool is_static() const {
         return value_ >= 0;
     }
@@ -36,12 +38,12 @@ struct ShapeSymbol {
         return value_ < other.value_;
     }
 
-    static ShapeSymbol CreateFromStaticSize(int64_t val) {
+    static ShapeSymbol create_from_static_size(int64_t val) {
         return ShapeSymbol(val);
     }
 
-    static ShapeSymbol Create() {
-        return CreateFromStaticSize(-static_cast<int64_t>(++num_symbols_));
+    static ShapeSymbol create() {
+        return create_from_static_size(-static_cast<int64_t>(++num_symbols_));
     }
 
 private:
@@ -210,7 +212,7 @@ inline ShapeSymbol merge_primitive(const ShapeSymbol& a, const ShapeSymbol& b) {
     if (a.is_static() && b.is_static() && a == b) {
         return a;
     }
-    return ShapeSymbol::Create();
+    return ShapeSymbol::create();
 }
 
 namespace details {

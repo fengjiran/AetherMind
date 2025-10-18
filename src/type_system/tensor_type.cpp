@@ -65,7 +65,7 @@ SymbolicShape::SymbolicShape(std::optional<size_t> rank) {
     if (rank.has_value()) {
         std::vector<ShapeSymbol> shape_symbols(rank.value());
         for (size_t i = 0; i < rank.value(); ++i) {
-            shape_symbols[i] = ShapeSymbol::Create();
+            shape_symbols[i] = ShapeSymbol::create();
         }
         dims_ = shape_symbols;
     }
@@ -75,9 +75,9 @@ SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& dims) {
     std::vector<ShapeSymbol> shape_symbols(dims.size());
     for (size_t i = 0; i < dims.size(); ++i) {
         if (dims[i].has_value()) {
-            shape_symbols[i] = ShapeSymbol::CreateFromStaticSize(dims[i].value());
+            shape_symbols[i] = ShapeSymbol::create_from_static_size(dims[i].value());
         } else {
-            shape_symbols[i] = ShapeSymbol::Create();
+            shape_symbols[i] = ShapeSymbol::create();
         }
     }
     dims_ = shape_symbols;
@@ -86,7 +86,7 @@ SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& dims) {
 SymbolicShape::SymbolicShape(IntArrayView dims) {
     std::vector<ShapeSymbol> shape_symbols(dims.size());
     for (size_t i = 0; i < dims.size(); ++i) {
-        shape_symbols[i] = ShapeSymbol::CreateFromStaticSize(dims[i]);
+        shape_symbols[i] = ShapeSymbol::create_from_static_size(dims[i]);
     }
     dims_ = shape_symbols;
 }

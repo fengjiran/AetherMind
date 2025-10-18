@@ -18,52 +18,52 @@ TEST(ShapeSymbolTest, BasicOperations) {
     EXPECT_EQ(default_sym.value(), -1);
 
     // 测试创建静态大小
-    ShapeSymbol static_sym = ShapeSymbol::CreateFromStaticSize(10);
+    ShapeSymbol static_sym = ShapeSymbol::create_from_static_size(10);
     EXPECT_TRUE(static_sym.is_static());
     EXPECT_EQ(static_sym.value(), 10);
     EXPECT_EQ(static_sym.static_size(), 10);
 
     // 测试创建动态符号
-    ShapeSymbol dynamic_sym = ShapeSymbol::Create();
+    ShapeSymbol dynamic_sym = ShapeSymbol::create();
     EXPECT_FALSE(dynamic_sym.is_static());
     EXPECT_LT(dynamic_sym.value(), 0);
 
     // 测试创建多个动态符号，应该有不同的值
-    ShapeSymbol dyn1 = ShapeSymbol::Create();
-    ShapeSymbol dyn2 = ShapeSymbol::Create();
+    ShapeSymbol dyn1 = ShapeSymbol::create();
+    ShapeSymbol dyn2 = ShapeSymbol::create();
     EXPECT_NE(dyn1.value(), dyn2.value());
 
     // 测试比较运算符
-    ShapeSymbol static1 = ShapeSymbol::CreateFromStaticSize(5);
-    ShapeSymbol static2 = ShapeSymbol::CreateFromStaticSize(5);
+    ShapeSymbol static1 = ShapeSymbol::create_from_static_size(5);
+    ShapeSymbol static2 = ShapeSymbol::create_from_static_size(5);
     EXPECT_EQ(static1, static2);
     EXPECT_FALSE(static1 < static2);
 
-    ShapeSymbol static3 = ShapeSymbol::CreateFromStaticSize(10);
+    ShapeSymbol static3 = ShapeSymbol::create_from_static_size(10);
     EXPECT_LT(static1, static3);
     EXPECT_FALSE(static3 < static1);
 }
 
 TEST(ShapeSymbolTest, MergePrimitive) {
     // 测试合并相同的静态符号
-    ShapeSymbol s1 = ShapeSymbol::CreateFromStaticSize(42);
-    ShapeSymbol s2 = ShapeSymbol::CreateFromStaticSize(42);
+    ShapeSymbol s1 = ShapeSymbol::create_from_static_size(42);
+    ShapeSymbol s2 = ShapeSymbol::create_from_static_size(42);
     ShapeSymbol merged = merge_primitive(s1, s2);
     EXPECT_TRUE(merged.is_static());
     EXPECT_EQ(merged.static_size(), 42);
 
     // 测试合并不同的静态符号
-    ShapeSymbol s3 = ShapeSymbol::CreateFromStaticSize(10);
+    ShapeSymbol s3 = ShapeSymbol::create_from_static_size(10);
     ShapeSymbol merged2 = merge_primitive(s1, s3);
     EXPECT_FALSE(merged2.is_static());
 
     // 测试合并静态和动态符号
-    ShapeSymbol dyn = ShapeSymbol::Create();
+    ShapeSymbol dyn = ShapeSymbol::create();
     ShapeSymbol merged3 = merge_primitive(s1, dyn);
     EXPECT_FALSE(merged3.is_static());
 
     // 测试合并两个动态符号
-    ShapeSymbol dyn2 = ShapeSymbol::Create();
+    ShapeSymbol dyn2 = ShapeSymbol::create();
     ShapeSymbol merged4 = merge_primitive(dyn, dyn2);
     EXPECT_FALSE(merged4.is_static());
 }
@@ -103,9 +103,9 @@ TEST(SymbolicShapeTest, Constructors) {
 
     // 测试从ShapeSymbol向量构造
     std::vector<ShapeSymbol> symbols = {
-            ShapeSymbol::CreateFromStaticSize(5),
-            ShapeSymbol::Create(),
-            ShapeSymbol::CreateFromStaticSize(6)};
+            ShapeSymbol::create_from_static_size(5),
+            ShapeSymbol::create(),
+            ShapeSymbol::create_from_static_size(6)};
     SymbolicShape from_symbols(symbols);
     EXPECT_TRUE(from_symbols.rank().has_value());
     EXPECT_EQ(from_symbols.rank().value(), 3);
@@ -330,9 +330,9 @@ TEST(VaryingShapeTest, Merge) {
 TEST(VaryingShapeShapeSymbolTest, BasicOperations) {
     // 测试从ShapeSymbol向量构造
     std::vector<ShapeSymbol> symbols = {
-            ShapeSymbol::CreateFromStaticSize(5),
-            ShapeSymbol::Create(),
-            ShapeSymbol::CreateFromStaticSize(6)};
+            ShapeSymbol::create_from_static_size(5),
+            ShapeSymbol::create(),
+            ShapeSymbol::create_from_static_size(6)};
     VaryingShape<ShapeSymbol> shape(symbols);
 
     EXPECT_TRUE(shape.size().has_value());

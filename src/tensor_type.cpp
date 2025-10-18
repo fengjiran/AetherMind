@@ -163,7 +163,7 @@ SymbolicShape SymbolicShape::merge(const SymbolicShape& other) const {
 }
 
 template<typename T>
-std::optional<std::vector<T>> VaryingShape<T>::get_concrete_shape() const {
+std::optional<std::vector<T>> VaryingShape<T>::get_concrete_value() const {
     if (!dims_.has_value()) {
         return std::nullopt;
     }
@@ -341,7 +341,7 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
     std::vector<size_t> stride_indices(ndim);
 
     // default has_overlap to false as we only compute overlap when:
-    // 1. input sizes/strides fails format check;
+    // 1. input shape/strides fails format check;
     // 2. tensor_contiguity are not set.
     bool has_overlap = false;
 
@@ -349,12 +349,12 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
     // Example:
     //  Prior to sorting
     //  Idx:     [0,   1,  2,  3]
-    //  sizes:   [8,   1, 10, 16]
+    //  shape:   [8,   1, 10, 16]
     //  Strides: [160, 1, 16,  1]
     //
     //  After sorting
     //  Idx:     [1,  3,  2,   0]
-    //  sizes:   [1, 16, 10,   8]
+    //  shape:   [1, 16, 10,   8]
     //  Strides: [1,  1, 16, 160]
     //
     if (is_channels_last_strides_2d(shape, strides) || is_channels_last_strides_3d(shape, strides)) {
@@ -364,6 +364,10 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
     } else if (is_contiguous_stride(shape, strides)) {
         std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
     } else {
+        // For broadcasted dimension where stride is 0, we have to stick to
+        // TensorIterator behavior in eager, where they introduce an ambiguous
+        // comparison result to preserve permutation by best effort.
+        // For more details, see NOTE: [Computing output strides]
         std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
         auto should_swap = [&](size_t i, size_t j) {
             if (strides[i] == 0 || strides[j] == 0) {
@@ -399,7 +403,11 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
             }
         }
 
+        // conveniently is_contiguous_strides/is_contiguous_strides only returns
+        // true when there's no memory overlap, so we only re-compute has_overlap
+        // in the last branch when both returns false
         if (!tensor_contiguity) {
+            // trust tensor_contiguity and only computes overlap when it is not set
             has_overlap = possible_cross_dimension_overlap(shape, strides);
         }
     }
@@ -407,22 +415,22 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
     std::vector<Stride> stride_properties;
     stride_properties.reserve(ndim);
     for (size_t i = 0; i < ndim; ++i) {
+        auto cur_idx = stride_indices[i];
         bool contiguous = tensor_contiguity;
-        if (!contiguous) {
+        if (!contiguous) {// the contiguity is not set, compute contiguity by shape and stride
             if (!has_overlap) {
                 if (i == 0) {
-                    contiguous = strides[stride_indices[i]] == 1;
+                    contiguous = strides[cur_idx] == 1;
                 } else {
-                    contiguous = strides[stride_indices[i]] == 1 ||
-                                 (strides[stride_indices[i]] != 0 &&
-                                  strides[stride_indices[i]] ==
-                                          strides[stride_indices[i - 1]] * shape[stride_indices[i - 1]]);
+                    auto pre_idx = stride_indices[i - 1];
+                    contiguous = strides[cur_idx] == 1 ||
+                                 (strides[cur_idx] != 0 && strides[cur_idx] == strides[pre_idx] * shape[pre_idx]);
                 }
             } else {
                 contiguous = false;
             }
         }
-        stride_properties.emplace_back(stride_indices[i], contiguous, strides[stride_indices[i]]);
+        stride_properties.emplace_back(cur_idx, contiguous, strides[cur_idx]);
     }
     return {stride_properties};
 }
@@ -448,20 +456,46 @@ TensorTypePtr TensorType::create(std::optional<DataType> dtype,
                                  std::optional<bool> requires_grad,
                                  std::optional<bool> undefined,
                                  bool tensor_contiguity) {
-    auto concrete_stride_size = strides.get_concrete_shape();
-    if (concrete_stride_size.has_value()) {
-        //
+    auto concrete_stride = strides.get_concrete_value();
+    if (concrete_stride.has_value()) {
+        auto concrete_shape = shape.get_concrete_value();
+        CHECK(concrete_shape.has_value() && concrete_shape->size() == concrete_stride->size());
+        auto sprops = compute_stride_props(concrete_shape.value(),
+                                           concrete_stride.value(),
+                                           tensor_contiguity);
+        auto symbol_shape = SymbolicShape(concrete_shape.value());
+        return create(dtype, device, std::move(symbol_shape), std::move(sprops), requires_grad, undefined);
     }
+
+    // strides are all null, but still have number of strides equal to number of ranks
+    const auto& shape_opt = shape.shape();
+    CHECK(shape_opt.has_value() && shape.size().has_value());
+    auto symbol_shape = SymbolicShape(shape_opt.value());
+    return create(dtype, device, std::move(symbol_shape),
+                  VaryingShape<Stride>(shape_opt->size()), requires_grad, undefined);
+}
+
+TensorTypePtr TensorType::create(std::optional<DataType> dtype,
+                                 std::optional<Device> device,
+                                 std::optional<size_t> dim,
+                                 std::optional<bool> requires_grad) {
+    return create(dtype, device, SymbolicShape(dim), VaryingShape<Stride>(dim), requires_grad);
 }
 
 
 TensorTypePtr TensorType::create(const Tensor& t) {
     VaryingShape<bool> contiguity;
     VaryingShape<size_t> stride_indices;
-    VaryingShape<int64_t> strides;
-    VaryingShape<int64_t> shape;
 
-    // return create(t.dtype(),t.device(),SymbolicShape(), VaryingShape<Stride>{},);
+    if (t.layout() == kStrided && !t.is_nested()) {
+        auto shape = VaryingShape<int64_t>{t.shape().vec()};
+        auto strides = VaryingShape<int64_t>{t.strides().vec()};
+        return create(t.dtype(), t.device(), shape, strides,
+                      t.requires_grad(), false, t.is_contiguous());
+    }
+
+    return create(t.dtype(), t.device(), SymbolicShape(), VaryingShape<Stride>{},
+                  t.requires_grad(), false);
 }
 
 bool is_contiguous_stride(IntArrayView shape, IntArrayView strides) {
@@ -469,7 +503,7 @@ bool is_contiguous_stride(IntArrayView shape, IntArrayView strides) {
         return true;
     }
 
-    auto ndim = shape.size();
+    auto ndim = static_cast<int>(shape.size());
     if (strides[ndim - 1] != 1) {
         return false;
     }

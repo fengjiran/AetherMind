@@ -286,7 +286,7 @@ TEST(VaryingShapeTest, ConcreteSizes) {
     // 测试完全指定的形状
     std::vector<int64_t> values = {2, 3, 4};
     VaryingShape<int64_t> concrete(values);
-    auto concrete_sizes = concrete.get_concrete_shape();
+    auto concrete_sizes = concrete.get_concrete_value();
     EXPECT_TRUE(concrete_sizes.has_value());
     EXPECT_EQ(concrete_sizes.value().size(), 3);
     EXPECT_EQ(concrete_sizes.value()[0], 2);
@@ -294,12 +294,12 @@ TEST(VaryingShapeTest, ConcreteSizes) {
     // 测试部分指定的形状
     std::vector<std::optional<int64_t>> partial_values = {5, std::nullopt, 6};
     VaryingShape<int64_t> partial(partial_values);
-    auto partial_sizes = partial.get_concrete_shape();
+    auto partial_sizes = partial.get_concrete_value();
     EXPECT_FALSE(partial_sizes.has_value());
 
     // 测试无秩形状
     VaryingShape<int64_t> unranked;
-    auto unranked_sizes = unranked.get_concrete_shape();
+    auto unranked_sizes = unranked.get_concrete_value();
     EXPECT_FALSE(unranked_sizes.has_value());
 }
 

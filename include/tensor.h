@@ -64,6 +64,8 @@ public:
 
     NODISCARD bool is_nested() const;
 
+    NODISCARD bool requires_grad() const;
+
     NODISCARD bool is_contiguous() const;
 
     NODISCARD bool is_cpu() const;

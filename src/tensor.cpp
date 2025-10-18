@@ -132,6 +132,10 @@ bool Tensor::is_nested() const {
     return impl_->is_nested();
 }
 
+bool Tensor::requires_grad() const {
+    return impl_->requires_grad();
+}
+
 bool Tensor::is_contiguous() const {
     return impl_->is_contiguous();
 }

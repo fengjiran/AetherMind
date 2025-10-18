@@ -121,6 +121,7 @@ template<typename T>
 bool is_channels_last_strides_2d_s4(ArrayView<T> shape, ArrayView<T> strides) {
     T pre_stride = 0;
     // special case for trivial C dimension. default to NCHW
+    // for broadcast case.
     if (strides[1] == 0) {
         return false;
     }

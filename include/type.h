@@ -906,7 +906,7 @@ struct VaryingShape {
         return dims_ == other.dims_;
     }
 
-    NODISCARD std::optional<std::vector<T>> get_concrete_shape() const;
+    NODISCARD std::optional<std::vector<T>> get_concrete_value() const;
 
     NODISCARD bool is_complete() const;
 
@@ -958,11 +958,6 @@ public:
         return undefined_;
     }
 
-    static VaryingShape<Stride> compute_stride_props(
-            IntArrayView shape,
-            IntArrayView strides,
-            bool tensor_contiguity = false);
-
     static TensorTypePtr create(const Tensor& t);
 
     static TensorTypePtr create(
@@ -998,6 +993,11 @@ private:
             VaryingShape<Stride> strides,
             std::optional<bool> requires_grad,
             std::optional<bool> undefined = false);
+
+    static VaryingShape<Stride> compute_stride_props(
+            IntArrayView shape,
+            IntArrayView strides,
+            bool tensor_contiguity = false);
 
     std::optional<DataType> dtype_;
     std::optional<Device> device_;

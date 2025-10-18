@@ -10,7 +10,6 @@
 #include "data_type.h"
 #include "error.h"
 #include "tensor.h"
-#include "type.h"
 #include "type_ptr.h"
 
 #include <functional>
@@ -1030,6 +1029,8 @@ public:
     TensorTypePtr with_undefined() const;
 
     TensorTypePtr with_possibly_undefined() const;
+
+    static const TensorTypePtr& get();
 
     static constexpr auto Kind = TypeKind::TensorType;
 

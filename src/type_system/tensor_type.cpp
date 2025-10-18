@@ -1,8 +1,8 @@
 //
 // Created by richard on 10/2/25.
 //
+#include "type_system/type.h"
 #include "tensor.h"
-#include "type.h"
 
 #include <numeric>
 #include <utility>
@@ -633,5 +633,11 @@ TensorTypePtr TensorType::with_possibly_undefined() const {
     cloned->undefined_ = std::nullopt;
     return cloned;
 }
+
+const TensorTypePtr& TensorType::get() {
+    static auto ptr = create({}, {}, SymbolicShape(), VaryingShape<Stride>{}, {});
+    return ptr;
+}
+
 
 }// namespace aethermind

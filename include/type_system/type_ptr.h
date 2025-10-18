@@ -2,8 +2,8 @@
 // Created by 赵丹 on 2025/8/29.
 //
 
-#ifndef AETHERMIND_TYPE_PTR_H
-#define AETHERMIND_TYPE_PTR_H
+#ifndef AETHERMIND_TYPE_SYSTEM_TYPE_PTR_H
+#define AETHERMIND_TYPE_SYSTEM_TYPE_PTR_H
 
 #include "macros.h"
 
@@ -285,4 +285,4 @@ struct hash<aethermind::SingletonOrSharedTypePtr<T>> {
 };
 }// namespace std
 
-#endif//AETHERMIND_TYPE_PTR_H
+#endif//AETHERMIND_TYPE_SYSTEM_TYPE_PTR_H

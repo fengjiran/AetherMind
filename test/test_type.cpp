@@ -1,7 +1,8 @@
 //
 // Created by 赵丹 on 2025/8/14.
 //
-#include "type_system/type.h"
+#include "type_system/union_type.h"
+#include "type_system/tensor_type.h"
 
 #include <gtest/gtest.h>
 

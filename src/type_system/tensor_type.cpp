@@ -1,7 +1,7 @@
 //
 // Created by richard on 10/2/25.
 //
-#include "type_system/type.h"
+#include "type_system/tensor_type.h"
 #include "tensor.h"
 
 #include <numeric>

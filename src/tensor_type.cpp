@@ -622,5 +622,16 @@ TensorTypePtr TensorType::with_symbolic_shape(SymbolicShape symbolic_shape) cons
     return cloned;
 }
 
+TensorTypePtr TensorType::with_undefined() const {
+    auto cloned = clone();
+    cloned->undefined_ = true;
+    return cloned;
+}
+
+TensorTypePtr TensorType::with_possibly_undefined() const {
+    auto cloned = clone();
+    cloned->undefined_ = std::nullopt;
+    return cloned;
+}
 
 }// namespace aethermind

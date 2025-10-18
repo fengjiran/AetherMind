@@ -1027,6 +1027,10 @@ public:
 
     TensorTypePtr with_shape_and_strides(IntArrayView shape, IntArrayView strides) const;
 
+    TensorTypePtr with_undefined() const;
+
+    TensorTypePtr with_possibly_undefined() const;
+
     static constexpr auto Kind = TypeKind::TensorType;
 
 private:

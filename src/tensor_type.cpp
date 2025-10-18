@@ -289,6 +289,19 @@ VaryingShape<int64_t> TensorType::strides() const {
     return {std::move(dims)};
 }
 
+std::optional<size_t> TensorType::numel() const {
+    size_t prod = 1;
+    for (size_t i = 0; i < shape().size(); ++i) {
+        auto s = shape()[i];
+        if (!s.has_value()) {
+            return std::optional<size_t>{};
+        }
+        prod *= s.value();
+    }
+    return prod;
+}
+
+
 bool TensorType::equals(const Type& rhs) const {
     if (rhs.kind() != kind()) {
         return false;
@@ -435,6 +448,44 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
     return {stride_properties};
 }
 
+TensorTypePtr TensorType::contiguous() const {
+    auto cloned = clone();
+    auto concrete_shape = shape().get_concrete_value();
+    CHECK(concrete_shape.has_value());
+    auto strides = compute_stride_props(concrete_shape.value(),
+                                        contiguous_stride_of(concrete_shape.value()));
+    cloned->strides_ = strides;
+    return cloned;
+}
+
+std::vector<int64_t> TensorType::contiguous_stride_of(IntArrayView shape, MemoryFormat memory_format) {
+    if (shape.empty()) {
+        return {};
+    }
+
+    auto ndim = shape.size();
+    std::vector<int64_t> stride_ascend_order(ndim);
+    if (memory_format == MemoryFormat::ChannelsLast) {
+        stride_ascend_order = {1, 3, 2, 0};
+    } else if (memory_format == MemoryFormat::ChannelsLast3d) {
+        stride_ascend_order = {1, 4, 3, 2, 0};
+    } else {
+        for (size_t i = 0; i < ndim; ++i) {
+            stride_ascend_order[i] = static_cast<int64_t>(ndim - i - 1);
+        }
+    }
+
+    std::vector<int64_t> strides(ndim);
+    strides[stride_ascend_order[0]] = 1;
+    for (int i = 1; i < ndim; ++i) {
+        auto pre_idx = stride_ascend_order[i - 1];
+        auto cur_idx = stride_ascend_order[i];
+        strides[cur_idx] = strides[pre_idx] * shape[pre_idx];
+    }
+    return strides;
+}
+
+
 TensorTypePtr TensorType::create(std::optional<DataType> dtype,
                                  std::optional<Device> device,
                                  SymbolicShape shape,
@@ -515,5 +566,61 @@ bool is_contiguous_stride(IntArrayView shape, IntArrayView strides) {
     }
     return true;
 }
+
+TensorTypePtr TensorType::create_contiguous(DataType dtype, Device device, IntArrayView shape) {
+    auto strides = contiguous_stride_of(shape);
+    CHECK(shape.size() == strides.size());
+    return create(dtype, device, VaryingShape<int64_t>(shape),
+                  VaryingShape<int64_t>(strides), std::nullopt);
+}
+
+TensorTypePtr TensorType::with_requires_grad(std::optional<bool> s) const {
+    auto cloned = clone();
+    cloned->requires_grad_ = s;
+    return cloned;
+}
+
+TensorTypePtr TensorType::with_data_type(const std::optional<DataType>& dtype) const {
+    auto cloned = clone();
+    cloned->dtype_ = dtype;
+    return cloned;
+}
+
+TensorTypePtr TensorType::with_dim(std::optional<size_t> d) const {
+    auto cloned = clone();
+    cloned->shape_ = SymbolicShape(d);
+    cloned->strides_ = VaryingShape<Stride>(d);
+    return cloned;
+}
+
+TensorTypePtr TensorType::with_strides(VaryingShape<Stride> strides) const {
+    auto cloned = clone();
+    cloned->strides_ = std::move(strides);
+    return cloned;
+}
+
+TensorTypePtr TensorType::with_shape(IntArrayView shape) const {
+    return with_shape_and_strides(shape, contiguous_stride_of(shape));
+}
+
+TensorTypePtr TensorType::with_device(std::optional<Device> device) const {
+    auto cloned = clone();
+    cloned->device_ = device;
+    return cloned;
+}
+
+TensorTypePtr TensorType::with_shape_and_strides(IntArrayView shape, IntArrayView strides) const {
+    auto cloned = clone();
+    cloned->shape_ = SymbolicShape(shape);
+    cloned->strides_ = compute_stride_props(shape, strides);
+    return cloned;
+}
+
+TensorTypePtr TensorType::with_symbolic_shape(SymbolicShape symbolic_shape) const {
+    auto cloned = clone();
+    cloned->shape_ = std::move(symbolic_shape);
+    return cloned;
+}
+
 
 }// namespace aethermind

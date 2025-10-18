@@ -949,6 +949,8 @@ public:
         return shape().size();
     }
 
+    std::optional<size_t> numel() const;
+
     const VaryingShape<Stride>& stride_properties() const {
         return strides_;
     }
@@ -977,6 +979,11 @@ public:
         return data_type() && device() && shape_.is_complete() && strides_.is_complete();
     }
 
+    TensorTypePtr contiguous() const;
+
+    static std::vector<int64_t> contiguous_stride_of(IntArrayView shape,
+                                                     MemoryFormat memory_format = MemoryFormat::Contiguous);
+
     static TensorTypePtr create(const Tensor& t);
 
     static TensorTypePtr create(
@@ -1002,21 +1009,44 @@ public:
             std::optional<bool> requires_grad,
             std::optional<bool> undefined = false);
 
+    static TensorTypePtr create_contiguous(DataType dtype, Device device, IntArrayView shape);
+
+    TensorTypePtr with_requires_grad(std::optional<bool> s) const;
+
+    TensorTypePtr with_data_type(const std::optional<DataType>&) const;
+
+    TensorTypePtr with_dim(std::optional<size_t>) const;
+
+    TensorTypePtr with_shape(IntArrayView shape) const;
+
+    TensorTypePtr with_strides(VaryingShape<Stride>) const;
+
+    TensorTypePtr with_device(std::optional<Device> device) const;
+
+    TensorTypePtr with_symbolic_shape(SymbolicShape symbolic_shape) const;
+
+    TensorTypePtr with_shape_and_strides(IntArrayView shape, IntArrayView strides) const;
+
     static constexpr auto Kind = TypeKind::TensorType;
 
 private:
-    TensorType(
-            std::optional<DataType> dtype,
-            std::optional<Device> device,
-            SymbolicShape shape,
-            VaryingShape<Stride> strides,
-            std::optional<bool> requires_grad,
-            std::optional<bool> undefined = false);
+    // constructor
+    TensorType(std::optional<DataType> dtype,
+               std::optional<Device> device,
+               SymbolicShape shape,
+               VaryingShape<Stride> strides,
+               std::optional<bool> requires_grad,
+               std::optional<bool> undefined = false);
 
     static VaryingShape<Stride> compute_stride_props(
             IntArrayView shape,
             IntArrayView strides,
             bool tensor_contiguity = false);
+
+    TensorTypePtr clone() const {
+        auto ptr = new TensorType(dtype_, device_, shape_, strides_, requires_grad_, undefined_);
+        return TensorTypePtr(ptr);
+    }
 
     std::optional<DataType> dtype_;
     std::optional<Device> device_;

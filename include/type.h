@@ -924,6 +924,13 @@ public:
         return "Tensor";
     }
 
+    String repr_str() const override {
+        if (is_inferred_type()) {
+            return str() + " (inferred)";
+        }
+        return str();
+    }
+
     bool equals(const Type& rhs) const override;
 
     const std::optional<DataType>& data_type() const {
@@ -956,6 +963,18 @@ public:
 
     const std::optional<bool>& undefined() const {
         return undefined_;
+    }
+
+    bool is_inferred_type() const {
+        return is_inferred_;
+    }
+
+    // is all information about the type specified except for autograd?
+    // This replaces the notion of a 'CompleteTensorType' that used to exist
+    // in the type-hierarchy. Excluding require_grad and undefined allows
+    // this to match the old behavior.
+    bool is_complete() const {
+        return data_type() && device() && shape_.is_complete() && strides_.is_complete();
     }
 
     static TensorTypePtr create(const Tensor& t);

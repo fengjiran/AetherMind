@@ -13,7 +13,8 @@ namespace aethermind {
 class Tensor;
 
 // shape placeholder
-struct ShapeSymbol {
+class ShapeSymbol {
+public:
     ShapeSymbol() : value_(-1) {}
 
     NODISCARD int64_t value() const {
@@ -55,7 +56,8 @@ private:
 
 // Shape of a Tensor represented with ShapeSymbol's. Unranked, ranked unknown
 // dims, partially known and fully known shapes are all supported.
-struct SymbolicShape {
+class SymbolicShape {
+public:
     SymbolicShape() = default;
 
     // Known rank but unknown dimensions
@@ -126,7 +128,8 @@ struct Stride {
 };
 
 template<typename T>
-struct VaryingShape {
+class VaryingShape {
+public:
     using ListOfOptionalElements = std::vector<std::optional<T>>;
 
     VaryingShape(ListOfOptionalElements dims) : dims_(std::move(dims)) {}//NOLINT

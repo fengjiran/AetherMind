@@ -28,13 +28,13 @@ typedef void (*FObjectDeleter)(ObjectHandle, uint8_t);
 
 struct ObjectHeader {
     /*! \brief Reference counter of the object. */
-    uint32_t strong_ref_count_;
+    uint32_t strong_ref_count;
 
     /*! \brief Weak reference counter of the object. */
-    uint32_t weak_ref_count_;
+    uint32_t weak_ref_count;
 
     /*! \brief Deleter to be invoked when reference counter goes to zero. */
-    FObjectDeleter deleter_;
+    FObjectDeleter deleter;
 };
 
 int IncObjectRef(ObjectHandle obj_ptr);

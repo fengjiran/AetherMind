@@ -41,8 +41,6 @@ enum DeleterFlag : uint8_t {
  */
 class Object {
 public:
-    // using FDeleter = void (*)(Object*, uint8_t);
-
     /*!
     * \brief Default constructor, initializes a reference-counted object.
     *
@@ -51,11 +49,7 @@ public:
     * Newly created objects require manual reference count management,
     * typically wrapped using ObjectPtr.
     */
-    Object() {
-        header_.strong_ref_count_ = 0;
-        header_.weak_ref_count_ = 0;
-        header_.deleter_ = nullptr;
-    }
+    Object();
 
     virtual ~Object() = default;
 
@@ -69,9 +63,7 @@ public:
      *
      * \return The current reference count value of the object
      */
-    NODISCARD uint32_t use_count() const {
-        return __atomic_load_n(&header_.strong_ref_count_, __ATOMIC_RELAXED);
-    }
+    NODISCARD uint32_t use_count() const;
 
     /*!
      * \brief Get the current weak reference count of the object.
@@ -83,29 +75,23 @@ public:
      *
      * \return The current weak reference count value of the object
      */
-    NODISCARD uint32_t weak_use_count() const {
-        return __atomic_load_n(&header_.weak_ref_count_, __ATOMIC_RELAXED);
-    }
+    NODISCARD uint32_t weak_use_count() const;
 
     /*!
      * \brief Check if the object has a unique reference count.
      *
      * \return true if the object has a reference count of 1, false otherwise.
      */
-    NODISCARD bool unique() const {
-        return use_count() == 1;
-    }
+    NODISCARD bool unique() const;
 
     /*!
      * \brief Set the deleter function for the object.
      *
      * \param deleter The deleter function to be invoked when the reference count reaches zero.
      */
-    void SetDeleter(FObjectDeleter deleter) {
-        header_.deleter_ = deleter;
-    }
+    void SetDeleter(FObjectDeleter deleter);
 
-    virtual bool is_null_type_ptr() const {
+    NODISCARD virtual bool IsNullTypePtr() const {
         return false;
     }
 
@@ -118,9 +104,7 @@ private:
      * for performance-sensitive scenarios where strict memory synchronization
      * is not required.
      */
-    void IncRef() {
-        __atomic_fetch_add(&header_.strong_ref_count_, 1, __ATOMIC_RELAXED);
-    }
+    void IncRef();
 
     /*!
      * \brief Increment the weak reference count of the object.
@@ -130,9 +114,7 @@ private:
      * for performance-sensitive scenarios where strict memory synchronization
      * is not required.
      */
-    void IncWeakRef() {
-        __atomic_fetch_add(&header_.weak_ref_count_, 1, __ATOMIC_RELAXED);
-    }
+    void IncWeakRef();
 
     /*!
      * \brief Decrement the reference count of the object.
@@ -148,34 +130,7 @@ private:
      * weak reference count is greater than one, the deleter function will be
      * invoked to destroy the object only.
      */
-    void DecRef() {
-        if (__atomic_fetch_sub(&header_.strong_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
-            if (weak_use_count() == 1) {
-                // only acquire when we need to call deleter
-                // in this case we need to ensure all previous writes are visible
-                __atomic_thread_fence(__ATOMIC_ACQUIRE);
-                if (header_.deleter_ != nullptr) {
-                    header_.deleter_(this, kBothPtrMask);
-                }
-            } else {
-                // Slower path: there is still a weak reference left
-                __atomic_thread_fence(__ATOMIC_ACQUIRE);
-                // call destructor first, release source
-                if (header_.deleter_ != nullptr) {
-                    header_.deleter_(this, kStrongPtrMask);
-                }
-
-                // decrease weak ref count
-                if (__atomic_fetch_sub(&header_.weak_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
-                    __atomic_thread_fence(__ATOMIC_ACQUIRE);
-                    // free memory
-                    if (header_.deleter_ != nullptr) {
-                        header_.deleter_(this, kWeakPtrMask);
-                    }
-                }
-            }
-        }
-    }
+    void DecRef();
 
     /*!
      * \brief Decrement the weak reference count of the object.
@@ -189,15 +144,7 @@ private:
      * function is set, the deleter function will be invoked to free the memory of
      * the object.
      */
-    void DecWeakRef() {
-        if (__atomic_fetch_sub(&header_.weak_ref_count_, 1, __ATOMIC_RELEASE) == 1) {
-            __atomic_thread_fence(__ATOMIC_ACQUIRE);
-            // free memory
-            if (header_.deleter_ != nullptr) {
-                header_.deleter_(this, kWeakPtrMask);
-            }
-        }
-    }
+    void DecWeakRef();
 
     /*! \brief Whether the weak pointer can be promoted to a strong pointer.
      *
@@ -209,32 +156,10 @@ private:
      * when multiple threads try to promote a weak pointer to a strong pointer
      * at the same time.
      */
-    bool TryPromoteWeakPtr() {
-        uint32_t old_cnt = __atomic_load_n(&header_.strong_ref_count_, __ATOMIC_RELAXED);
-        // must do CAS to ensure that we are the only one that increases the reference count
-        // avoid condition when two threads tries to promote weak to strong at same time
-        // or when strong deletion happens between the load and the CAS
-        while (old_cnt > 0) {
-            uint32_t new_cnt = old_cnt + 1;
-            if (__atomic_compare_exchange_n(&header_.strong_ref_count_, &old_cnt, new_cnt, true,
-                                            __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /*! \brief Reference counter of the object. */
-    // uint32_t strong_ref_count_;
-
-    /*! \brief Weak reference counter of the object. */
-    // uint32_t weak_ref_count_;
-
-    /*! \brief Deleter to be invoked when reference counter goes to zero. */
-    // FDeleter deleter_{nullptr};
+    bool TryPromoteWeakPtr();
 
     /*! \brief header field that is the common prefix of all objects */
-    ObjectHeader header_;
+    ObjectHeader header_{};
 
     template<typename T>
     friend class ObjectPtr;
@@ -260,13 +185,13 @@ public:
         return &inst;
     }
 
-    virtual bool is_null_type_ptr() const override {
+    NODISCARD bool IsNullTypePtr() const override {
         return true;
     }
 };
 
 inline bool IsNullTypePtr(const Object* ptr) {
-    return ptr == nullptr ? true : ptr->is_null_type_ptr();
+    return ptr == nullptr ? true : ptr->IsNullTypePtr();
 }
 
 /*!
@@ -906,7 +831,7 @@ public:
             }
 
             if (flag & kWeakPtrMask) {
-                FreeObject(static_cast<void*>(p)); // free memory
+                FreeObject(static_cast<void*>(p));// free memory
             }
         }
     };

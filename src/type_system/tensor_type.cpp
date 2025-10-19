@@ -30,7 +30,7 @@ std::ostream& operator<<(std::ostream& os, const Stride& s) {
 }
 
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
-    if (s.is_static()) {
+    if (s.IsStatic()) {
         os << s.value();
     } else {
         os << "SS(" << s.value() << ')';
@@ -44,14 +44,14 @@ std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
         os << "(*)";
         return os;
     }
-    auto size_opt = s.sizes();
+    auto size_opt = s.Shape();
     os << "(";
     for (size_t i = 0; i < rank_opt.value(); ++i) {
         if (i > 0) {
             os << ", ";
         }
 
-        if (size_opt.has_value() && size_opt.value()[i].is_static()) {
+        if (size_opt.has_value() && size_opt.value()[i].IsStatic()) {
             os << size_opt.value()[i];
         } else {
             os << "*";
@@ -65,7 +65,7 @@ SymbolicShape::SymbolicShape(std::optional<size_t> rank) {
     if (rank.has_value()) {
         std::vector<ShapeSymbol> shape_symbols(rank.value());
         for (size_t i = 0; i < rank.value(); ++i) {
-            shape_symbols[i] = ShapeSymbol::create();
+            shape_symbols[i] = ShapeSymbol::Create();
         }
         dims_ = shape_symbols;
     }
@@ -75,9 +75,9 @@ SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& dims) {
     std::vector<ShapeSymbol> shape_symbols(dims.size());
     for (size_t i = 0; i < dims.size(); ++i) {
         if (dims[i].has_value()) {
-            shape_symbols[i] = ShapeSymbol::create_from_static_size(dims[i].value());
+            shape_symbols[i] = ShapeSymbol::CreateFromValue(dims[i].value());
         } else {
-            shape_symbols[i] = ShapeSymbol::create();
+            shape_symbols[i] = ShapeSymbol::Create();
         }
     }
     dims_ = shape_symbols;
@@ -86,7 +86,7 @@ SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& dims) {
 SymbolicShape::SymbolicShape(IntArrayView dims) {
     std::vector<ShapeSymbol> shape_symbols(dims.size());
     for (size_t i = 0; i < dims.size(); ++i) {
-        shape_symbols[i] = ShapeSymbol::create_from_static_size(dims[i]);
+        shape_symbols[i] = ShapeSymbol::CreateFromValue(dims[i]);
     }
     dims_ = shape_symbols;
 }
@@ -116,40 +116,43 @@ std::optional<size_t> SymbolicShape::rank() const {
     return std::nullopt;
 }
 
-const std::optional<std::vector<ShapeSymbol>>& SymbolicShape::sizes() const {
+const std::optional<std::vector<ShapeSymbol>>& SymbolicShape::Shape() const {
     return dims_;
 }
 
-std::optional<std::vector<bool>> SymbolicShape::symbolic_dims() const {
-    if (!dims_.has_value()) {
+std::optional<std::vector<bool>> SymbolicShape::GetSymbolicDims() const {
+    const auto rank_opt = rank();
+    if (!rank_opt.has_value()) {
         return std::nullopt;
     }
 
-    std::vector<bool> res(rank().value());
-    for (size_t i = 0; i < rank().value(); ++i) {
-        res[i] = !dims_.value()[i].is_static();
+    const auto n = rank_opt.value();
+    std::vector<bool> symbolic_dims;
+    symbolic_dims.reserve(n);
+    for (const auto& s: dims_.value()) {
+        symbolic_dims.push_back(!s.IsStatic());
     }
-    return res;
+    return symbolic_dims;
 }
 
-bool SymbolicShape::is_complete() const {
+bool SymbolicShape::IsComplete() const {
     if (!dims_.has_value()) {
         return false;
     }
 
     for (auto d: dims_.value()) {
-        if (!d.is_static()) {
+        if (!d.IsStatic()) {
             return false;
         }
     }
     return true;
 }
 
-void SymbolicShape::dump() const {
+void SymbolicShape::Dump() const {
     std::cout << *this << std::endl;
 }
 
-SymbolicShape SymbolicShape::merge(const SymbolicShape& other) const {
+SymbolicShape SymbolicShape::Merge(const SymbolicShape& other) const {
     if (!dims_.has_value() || !other.dims_.has_value() || dims_->size() != other.dims_->size()) {
         return {};
     }
@@ -262,9 +265,9 @@ VaryingShape<int64_t> TensorType::shape() const {
     auto n = rank.value();
     std::vector<std::optional<int64_t>> dims;
     dims.reserve(n);
-    for (const auto& ss: shape_.sizes().value()) {
-        dims.push_back(ss.is_static() ? std::optional<int64_t>(ss.static_size())
-                                      : std::nullopt);
+    for (const auto& ss: shape_.Shape().value()) {
+        dims.push_back(ss.IsStatic() ? std::optional<int64_t>(ss.GetStaticValue())
+                                     : std::nullopt);
     }
     return {std::move(dims)};
 }

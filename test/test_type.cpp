@@ -14,58 +14,58 @@ using namespace aethermind;
 TEST(ShapeSymbolTest, BasicOperations) {
     // 测试默认构造函数
     ShapeSymbol default_sym;
-    EXPECT_FALSE(default_sym.is_static());
+    EXPECT_FALSE(default_sym.IsStatic());
     EXPECT_EQ(default_sym.value(), -1);
 
     // 测试创建静态大小
-    ShapeSymbol static_sym = ShapeSymbol::create_from_static_size(10);
-    EXPECT_TRUE(static_sym.is_static());
+    ShapeSymbol static_sym = ShapeSymbol::CreateFromValue(10);
+    EXPECT_TRUE(static_sym.IsStatic());
     EXPECT_EQ(static_sym.value(), 10);
-    EXPECT_EQ(static_sym.static_size(), 10);
+    EXPECT_EQ(static_sym.GetStaticValue(), 10);
 
     // 测试创建动态符号
-    ShapeSymbol dynamic_sym = ShapeSymbol::create();
-    EXPECT_FALSE(dynamic_sym.is_static());
+    ShapeSymbol dynamic_sym = ShapeSymbol::Create();
+    EXPECT_FALSE(dynamic_sym.IsStatic());
     EXPECT_LT(dynamic_sym.value(), 0);
 
     // 测试创建多个动态符号，应该有不同的值
-    ShapeSymbol dyn1 = ShapeSymbol::create();
-    ShapeSymbol dyn2 = ShapeSymbol::create();
+    ShapeSymbol dyn1 = ShapeSymbol::Create();
+    ShapeSymbol dyn2 = ShapeSymbol::Create();
     EXPECT_NE(dyn1.value(), dyn2.value());
 
     // 测试比较运算符
-    ShapeSymbol static1 = ShapeSymbol::create_from_static_size(5);
-    ShapeSymbol static2 = ShapeSymbol::create_from_static_size(5);
+    ShapeSymbol static1 = ShapeSymbol::CreateFromValue(5);
+    ShapeSymbol static2 = ShapeSymbol::CreateFromValue(5);
     EXPECT_EQ(static1, static2);
     EXPECT_FALSE(static1 < static2);
 
-    ShapeSymbol static3 = ShapeSymbol::create_from_static_size(10);
+    ShapeSymbol static3 = ShapeSymbol::CreateFromValue(10);
     EXPECT_LT(static1, static3);
     EXPECT_FALSE(static3 < static1);
 }
 
 TEST(ShapeSymbolTest, MergePrimitive) {
     // 测试合并相同的静态符号
-    ShapeSymbol s1 = ShapeSymbol::create_from_static_size(42);
-    ShapeSymbol s2 = ShapeSymbol::create_from_static_size(42);
+    ShapeSymbol s1 = ShapeSymbol::CreateFromValue(42);
+    ShapeSymbol s2 = ShapeSymbol::CreateFromValue(42);
     ShapeSymbol merged = merge_primitive(s1, s2);
-    EXPECT_TRUE(merged.is_static());
-    EXPECT_EQ(merged.static_size(), 42);
+    EXPECT_TRUE(merged.IsStatic());
+    EXPECT_EQ(merged.GetStaticValue(), 42);
 
     // 测试合并不同的静态符号
-    ShapeSymbol s3 = ShapeSymbol::create_from_static_size(10);
+    ShapeSymbol s3 = ShapeSymbol::CreateFromValue(10);
     ShapeSymbol merged2 = merge_primitive(s1, s3);
-    EXPECT_FALSE(merged2.is_static());
+    EXPECT_FALSE(merged2.IsStatic());
 
     // 测试合并静态和动态符号
-    ShapeSymbol dyn = ShapeSymbol::create();
+    ShapeSymbol dyn = ShapeSymbol::Create();
     ShapeSymbol merged3 = merge_primitive(s1, dyn);
-    EXPECT_FALSE(merged3.is_static());
+    EXPECT_FALSE(merged3.IsStatic());
 
     // 测试合并两个动态符号
-    ShapeSymbol dyn2 = ShapeSymbol::create();
+    ShapeSymbol dyn2 = ShapeSymbol::Create();
     ShapeSymbol merged4 = merge_primitive(dyn, dyn2);
-    EXPECT_FALSE(merged4.is_static());
+    EXPECT_FALSE(merged4.IsStatic());
 }
 
 // SymbolicShape 测试组
@@ -73,39 +73,39 @@ TEST(SymbolicShapeTest, Constructors) {
     // 测试默认构造函数（无秩）
     SymbolicShape unranked;
     EXPECT_FALSE(unranked.rank().has_value());
-    EXPECT_FALSE(unranked.sizes().has_value());
+    EXPECT_FALSE(unranked.Shape().has_value());
 
     // 测试已知秩但未知维度的构造函数
     SymbolicShape rank_3(3);
     EXPECT_TRUE(rank_3.rank().has_value());
     EXPECT_EQ(rank_3.rank().value(), 3);
-    EXPECT_TRUE(rank_3.sizes().has_value());
-    EXPECT_EQ(rank_3.sizes().value().size(), 3);
-    EXPECT_FALSE(rank_3.is_complete());
+    EXPECT_TRUE(rank_3.Shape().has_value());
+    EXPECT_EQ(rank_3.Shape().value().size(), 3);
+    EXPECT_FALSE(rank_3.IsComplete());
 
     // 测试从部分已知维度构造
     std::vector<std::optional<int64_t>> partial_dims = {10, std::nullopt, 20};
     SymbolicShape partial(partial_dims);
     EXPECT_TRUE(partial.rank().has_value());
     EXPECT_EQ(partial.rank().value(), 3);
-    EXPECT_TRUE(partial.sizes().has_value());
-    EXPECT_TRUE(partial.sizes().value()[0].is_static());
-    EXPECT_FALSE(partial.sizes().value()[1].is_static());
-    EXPECT_TRUE(partial.sizes().value()[2].is_static());
-    EXPECT_FALSE(partial.is_complete());
+    EXPECT_TRUE(partial.Shape().has_value());
+    EXPECT_TRUE(partial.Shape().value()[0].IsStatic());
+    EXPECT_FALSE(partial.Shape().value()[1].IsStatic());
+    EXPECT_TRUE(partial.Shape().value()[2].IsStatic());
+    EXPECT_FALSE(partial.IsComplete());
 
     // 测试从具体形状构造
     std::vector<int64_t> concrete_dims = {2, 3, 4};
     SymbolicShape concrete(IntArrayView{concrete_dims});
     EXPECT_TRUE(concrete.rank().has_value());
     EXPECT_EQ(concrete.rank().value(), 3);
-    EXPECT_TRUE(concrete.is_complete());
+    EXPECT_TRUE(concrete.IsComplete());
 
     // 测试从ShapeSymbol向量构造
     std::vector<ShapeSymbol> symbols = {
-            ShapeSymbol::create_from_static_size(5),
-            ShapeSymbol::create(),
-            ShapeSymbol::create_from_static_size(6)};
+            ShapeSymbol::CreateFromValue(5),
+            ShapeSymbol::Create(),
+            ShapeSymbol::CreateFromValue(6)};
     SymbolicShape from_symbols(symbols);
     EXPECT_TRUE(from_symbols.rank().has_value());
     EXPECT_EQ(from_symbols.rank().value(), 3);
@@ -116,17 +116,17 @@ TEST(SymbolicShapeTest, Accessors) {
     SymbolicShape shape(IntArrayView{dims});
 
     // 测试operator[]访问
-    EXPECT_EQ(shape[0].static_size(), 2);
-    EXPECT_EQ(shape[1].static_size(), 3);
-    EXPECT_EQ(shape[2].static_size(), 4);
+    EXPECT_EQ(shape[0].GetStaticValue(), 2);
+    EXPECT_EQ(shape[1].GetStaticValue(), 3);
+    EXPECT_EQ(shape[2].GetStaticValue(), 4);
 
     // 测试at()访问
-    EXPECT_EQ(shape.at(0).static_size(), 2);
-    EXPECT_EQ(shape.at(1).static_size(), 3);
-    EXPECT_EQ(shape.at(2).static_size(), 4);
+    EXPECT_EQ(shape.at(0).GetStaticValue(), 2);
+    EXPECT_EQ(shape.at(1).GetStaticValue(), 3);
+    EXPECT_EQ(shape.at(2).GetStaticValue(), 4);
 
     // 测试symbolic_dims方法
-    auto sym_dims = shape.symbolic_dims();
+    auto sym_dims = shape.GetSymbolicDims();
     EXPECT_TRUE(sym_dims.has_value());
     EXPECT_EQ(sym_dims.value().size(), 3);
     EXPECT_FALSE(sym_dims.value()[0]);// 第一个维度是静态的
@@ -146,27 +146,27 @@ TEST(SymbolicShapeTest, Merge) {
     // 测试合并两个相同的具体形状
     SymbolicShape shape1(IntArrayView({2, 3, 4}));
     SymbolicShape shape2(IntArrayView({2, 3, 4}));
-    SymbolicShape merged = shape1.merge(shape2);
-    EXPECT_TRUE(merged.is_complete());
+    SymbolicShape merged = shape1.Merge(shape2);
+    EXPECT_TRUE(merged.IsComplete());
     EXPECT_TRUE(merged.rank().has_value());
     EXPECT_EQ(merged.rank().value(), 3);
-    EXPECT_EQ(merged[0].static_size(), 2);
+    EXPECT_EQ(merged[0].GetStaticValue(), 2);
 
     // 测试合并不同的具体形状
     SymbolicShape shape3(IntArrayView({2, 4, 4}));
-    SymbolicShape merged2 = shape1.merge(shape3);
-    EXPECT_FALSE(merged2.is_complete());
+    SymbolicShape merged2 = shape1.Merge(shape3);
+    EXPECT_FALSE(merged2.IsComplete());
     EXPECT_TRUE(merged2.rank().has_value());
     EXPECT_EQ(merged2.rank().value(), 3);
 
     // 测试合并无秩和有秩形状
     SymbolicShape unranked;
-    SymbolicShape merged3 = shape1.merge(unranked);
+    SymbolicShape merged3 = shape1.Merge(unranked);
     EXPECT_FALSE(merged3.rank().has_value());
 
     // 测试合并不同秩的形状
     SymbolicShape rank_2(2);
-    SymbolicShape merged4 = shape1.merge(rank_2);
+    SymbolicShape merged4 = shape1.Merge(rank_2);
     EXPECT_FALSE(merged4.rank().has_value());
 }
 
@@ -330,16 +330,16 @@ TEST(VaryingShapeTest, Merge) {
 TEST(VaryingShapeShapeSymbolTest, BasicOperations) {
     // 测试从ShapeSymbol向量构造
     std::vector<ShapeSymbol> symbols = {
-            ShapeSymbol::create_from_static_size(5),
-            ShapeSymbol::create(),
-            ShapeSymbol::create_from_static_size(6)};
+            ShapeSymbol::CreateFromValue(5),
+            ShapeSymbol::Create(),
+            ShapeSymbol::CreateFromValue(6)};
     VaryingShape<ShapeSymbol> shape(symbols);
 
     EXPECT_TRUE(shape.size().has_value());
     EXPECT_EQ(shape.size().value(), 3);
     EXPECT_TRUE(shape[0].has_value());
-    EXPECT_TRUE(shape[0].value().is_static());
-    EXPECT_FALSE(shape[1].value().is_static());
+    EXPECT_TRUE(shape[0].value().IsStatic());
+    EXPECT_FALSE(shape[1].value().IsStatic());
 }
 
 // VaryingShape<Stride> 特殊测试

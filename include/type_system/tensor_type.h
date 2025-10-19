@@ -22,12 +22,12 @@ public:
     }
 
     // is this symbol a fixed/static dimension
-    NODISCARD bool is_static() const {
+    NODISCARD bool IsStatic() const {
         return value_ >= 0;
     }
 
-    NODISCARD int64_t static_size() const {
-        CHECK(is_static());
+    NODISCARD int64_t GetStaticValue() const {
+        CHECK(IsStatic());
         return value_;
     }
 
@@ -39,12 +39,12 @@ public:
         return value_ < other.value_;
     }
 
-    static ShapeSymbol create_from_static_size(int64_t val) {
+    static ShapeSymbol CreateFromValue(int64_t val) {
         return ShapeSymbol(val);
     }
 
-    static ShapeSymbol create() {
-        return create_from_static_size(-static_cast<int64_t>(++num_symbols_));
+    static ShapeSymbol Create() {
+        return CreateFromValue(-static_cast<int64_t>(++num_symbols_));
     }
 
 private:
@@ -77,22 +77,22 @@ public:
     // Returns rank or nullopt in case of unranked shape.
     NODISCARD std::optional<size_t> rank() const;
 
-    NODISCARD const std::optional<std::vector<ShapeSymbol>>& sizes() const;
+    NODISCARD const std::optional<std::vector<ShapeSymbol>>& Shape() const;
 
-    NODISCARD std::optional<std::vector<bool>> symbolic_dims() const;
+    NODISCARD std::optional<std::vector<bool>> GetSymbolicDims() const;
 
-    // Checks whether the shape is fully defined/complete, i.e. rank and sizes
+    // Checks whether the shape is fully static, i.e. rank and shape
     // of every dimension are known.
-    NODISCARD bool is_complete() const;
+    NODISCARD bool IsComplete() const;
 
-    void dump() const;
+    void Dump() const;
 
     // Create new SymbolicShape that is result of merging self and another
     // SymbolicShape. Only dimensions that are static and equal will be
     // preserved.
     // If either of two shapes are of unknown rank or they have unmatching rank,
     // result will be unranked.
-    NODISCARD SymbolicShape merge(const SymbolicShape& other) const;
+    NODISCARD SymbolicShape Merge(const SymbolicShape& other) const;
 
     friend bool operator==(const SymbolicShape& lhs, const SymbolicShape& rhs) {
         return lhs.dims_ == rhs.dims_;
@@ -212,10 +212,10 @@ inline std::optional<Stride> merge_primitive(const std::optional<Stride>& a,
 }
 
 inline ShapeSymbol merge_primitive(const ShapeSymbol& a, const ShapeSymbol& b) {
-    if (a.is_static() && b.is_static() && a == b) {
+    if (a.IsStatic() && b.IsStatic() && a == b) {
         return a;
     }
-    return ShapeSymbol::create();
+    return ShapeSymbol::Create();
 }
 
 namespace details {
@@ -286,7 +286,7 @@ public:
     // in the type-hierarchy. Excluding require_grad and undefined allows
     // this to match the old behavior.
     bool is_complete() const {
-        return data_type() && device() && shape_.is_complete() && strides_.is_complete();
+        return data_type() && device() && shape_.IsComplete() && strides_.is_complete();
     }
 
     TensorTypePtr contiguous() const;

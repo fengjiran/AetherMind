@@ -184,7 +184,7 @@ std::optional<std::vector<T>> VaryingShape<T>::get_concrete_value() const {
 }
 
 template<typename T>
-bool VaryingShape<T>::is_complete() const {
+bool VaryingShape<T>::IsComplete() const {
     if (!dims_.has_value()) {
         return false;
     }
@@ -200,7 +200,7 @@ bool VaryingShape<T>::is_complete() const {
 template<typename T>
 VaryingShape<T> VaryingShape<T>::merge(const VaryingShape& other) const {
     if (!dims_.has_value() || !other.dims_.has_value() || dims_->size() != other.dims_->size()) {
-        return {};
+        return VaryingShape<T>{};
     }
 
     auto n = dims_->size();
@@ -209,7 +209,7 @@ VaryingShape<T> VaryingShape<T>::merge(const VaryingShape& other) const {
         dims[i] = merge_primitive(dims_.value()[i], other.dims_.value()[i]);
     }
 
-    return {std::move(dims)};
+    return VaryingShape<T>{std::move(dims)};
 }
 
 template<typename T>
@@ -259,7 +259,7 @@ TensorType::TensorType(std::optional<DataType> dtype,
 VaryingShape<int64_t> TensorType::shape() const {
     auto rank = shape_.rank();
     if (!rank.has_value()) {
-        return {};
+        return VaryingShape<int64_t>{};
     }
 
     auto n = rank.value();
@@ -269,13 +269,13 @@ VaryingShape<int64_t> TensorType::shape() const {
         dims.push_back(ss.IsStatic() ? std::optional<int64_t>(ss.GetStaticValue())
                                      : std::nullopt);
     }
-    return {std::move(dims)};
+    return VaryingShape<int64_t>{std::move(dims)};
 }
 
 VaryingShape<int64_t> TensorType::strides() const {
     const auto& shape = strides_.shape();
     if (!shape.has_value()) {
-        return {};
+        return VaryingShape<int64_t>{};
     }
 
     auto n = shape->size();
@@ -289,7 +289,7 @@ VaryingShape<int64_t> TensorType::strides() const {
             dims[s.stride_idx_.value()] = s.stride_.value();
         }
     }
-    return {std::move(dims)};
+    return VaryingShape<int64_t>{std::move(dims)};
 }
 
 std::optional<size_t> TensorType::numel() const {
@@ -448,7 +448,7 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
         }
         stride_properties.emplace_back(cur_idx, contiguous, strides[cur_idx]);
     }
-    return {stride_properties};
+    return VaryingShape<Stride>{stride_properties};
 }
 
 TensorTypePtr TensorType::contiguous() const {

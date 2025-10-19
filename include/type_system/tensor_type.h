@@ -61,7 +61,7 @@ public:
     SymbolicShape() = default;
 
     // Known rank but unknown dimensions
-    SymbolicShape(std::optional<size_t> rank);//NOLINT
+    explicit SymbolicShape(std::optional<size_t> rank);
 
     // Mix of known and unknown ranks
     SymbolicShape(const std::vector<std::optional<int64_t>>& dims);//NOLINT
@@ -106,13 +106,16 @@ private:
     std::optional<std::vector<ShapeSymbol>> dims_{std::nullopt};
 };
 
-struct Stride {
+class Stride {
+public:
     Stride() = default;
 
-    Stride(const std::optional<size_t>& stride_idx, std::optional<bool> contiguous, const std::optional<size_t>& stride)
+    Stride(const std::optional<size_t>& stride_idx,
+           std::optional<bool> contiguous,
+           const std::optional<size_t>& stride)
         : stride_idx_(stride_idx), contiguous_(contiguous), stride_(stride) {}
 
-    NODISCARD bool is_complete() const {
+    NODISCARD bool IsComplete() const {
         return stride_idx_ && contiguous_ && stride_;
     }
 
@@ -122,6 +125,7 @@ struct Stride {
                stride_ == other.stride_;
     }
 
+    // private:
     std::optional<size_t> stride_idx_;
     std::optional<bool> contiguous_;
     std::optional<size_t> stride_;
@@ -132,21 +136,22 @@ class VaryingShape {
 public:
     using ListOfOptionalElements = std::vector<std::optional<T>>;
 
-    VaryingShape(ListOfOptionalElements dims) : dims_(std::move(dims)) {}//NOLINT
+    explicit VaryingShape(ListOfOptionalElements dims) : dims_(std::move(dims)) {}
 
-    VaryingShape(const std::vector<T>& vec)// NOLINT
+    explicit VaryingShape(const std::vector<T>& vec)
         : VaryingShape(ListOfOptionalElements(vec.begin(), vec.end())) {}
 
-    VaryingShape(ArrayView<T> vec)//NOLINT
+    explicit VaryingShape(ArrayView<T> vec)
         : VaryingShape(ListOfOptionalElements(vec.begin(), vec.end())) {}
 
-    VaryingShape(std::optional<size_t> size = std::nullopt) : dims_(std::nullopt) {//NOLINT
+    explicit VaryingShape(std::optional<size_t> size = std::nullopt)
+        : dims_(std::nullopt) {
         if (size.has_value()) {
             dims_ = ListOfOptionalElements(size.value());
         }
     }
 
-    VaryingShape(size_t size) : VaryingShape(std::optional<size_t>(size)) {}//NOLINT
+    explicit VaryingShape(size_t size) : VaryingShape(std::optional<size_t>(size)) {}
 
     const std::optional<T>& operator[](size_t i) const {
         if (!dims_.has_value()) {
@@ -173,7 +178,7 @@ public:
 
     NODISCARD std::optional<std::vector<T>> get_concrete_value() const;
 
-    NODISCARD bool is_complete() const;
+    NODISCARD bool IsComplete() const;
 
     NODISCARD VaryingShape merge(const VaryingShape& other) const;
 
@@ -221,7 +226,7 @@ inline ShapeSymbol merge_primitive(const ShapeSymbol& a, const ShapeSymbol& b) {
 namespace details {
 
 inline bool is_complete(const Stride& s) {
-    return s.is_complete();
+    return s.IsComplete();
 }
 
 }// namespace details
@@ -286,7 +291,7 @@ public:
     // in the type-hierarchy. Excluding require_grad and undefined allows
     // this to match the old behavior.
     bool is_complete() const {
-        return data_type() && device() && shape_.IsComplete() && strides_.is_complete();
+        return data_type() && device() && shape_.IsComplete() && strides_.IsComplete();
     }
 
     TensorTypePtr contiguous() const;

@@ -174,14 +174,14 @@ TEST(SymbolicShapeTest, Merge) {
 TEST(StrideTest, BasicOperations) {
     // 测试默认构造函数
     Stride default_stride;
-    EXPECT_FALSE(default_stride.is_complete());
+    EXPECT_FALSE(default_stride.IsComplete());
     EXPECT_FALSE(default_stride.stride_idx_.has_value());
     EXPECT_FALSE(default_stride.contiguous_.has_value());
     EXPECT_FALSE(default_stride.stride_.has_value());
 
     // 测试完全指定的构造函数
     Stride complete(1, true, 10);
-    EXPECT_TRUE(complete.is_complete());
+    EXPECT_TRUE(complete.IsComplete());
     EXPECT_TRUE(complete.stride_idx_.has_value());
     EXPECT_EQ(complete.stride_idx_.value(), 1);
     EXPECT_TRUE(complete.contiguous_.has_value());
@@ -191,7 +191,7 @@ TEST(StrideTest, BasicOperations) {
 
     // 测试部分指定的构造函数
     Stride partial(2, std::nullopt, 20);
-    EXPECT_FALSE(partial.is_complete());
+    EXPECT_FALSE(partial.IsComplete());
     EXPECT_TRUE(partial.stride_idx_.has_value());
     EXPECT_FALSE(partial.contiguous_.has_value());
     EXPECT_TRUE(partial.stride_.has_value());
@@ -210,14 +210,14 @@ TEST(StrideTest, MergePrimitive) {
     std::optional<Stride> s2 = Stride(1, true, 10);
     auto merged = merge_primitive(s1, s2);
     EXPECT_TRUE(merged.has_value());
-    EXPECT_TRUE(merged.value().is_complete());
+    EXPECT_TRUE(merged.value().IsComplete());
     EXPECT_EQ(merged.value().stride_idx_.value(), 1);
 
     // 测试合并两个完整但不同的Stride
     std::optional<Stride> s3 = Stride(2, true, 10);
     auto merged2 = merge_primitive(s1, s3);
     EXPECT_TRUE(merged2.has_value());
-    EXPECT_FALSE(merged2.value().is_complete());
+    EXPECT_FALSE(merged2.value().IsComplete());
 
     // 测试合并空和非空Stride
     std::optional<Stride> none;
@@ -354,7 +354,7 @@ TEST(VaryingShapeStrideTest, BasicOperations) {
     EXPECT_TRUE(shape.size().has_value());
     EXPECT_EQ(shape.size().value(), 3);
     EXPECT_TRUE(shape[0].has_value());
-    EXPECT_TRUE(shape[0].value().is_complete());
+    EXPECT_TRUE(shape[0].value().IsComplete());
 }
 
 // 基本类型测试

@@ -309,7 +309,7 @@ std::optional<size_t> TensorType::numel() const {
 }
 
 
-bool TensorType::equals(const Type& rhs) const {
+bool TensorType::Equals(const Type& rhs) const {
     if (rhs.kind() != kind()) {
         return false;
     }
@@ -641,15 +641,15 @@ TypePtr TensorType::create_from_bool_type() {
 }
 
 TypePtr TensorType::create_from_number_type(const Type& t) {
-    if (t.is_subtype_of(*IntType::Global())) {
+    if (t.IsSubtypeOf(*IntType::Global())) {
         return create_contiguous(DataType::Int(64), Device::CPU(), {});
     }
 
-    if (t.is_subtype_of(*FloatType::Global())) {
+    if (t.IsSubtypeOf(*FloatType::Global())) {
         return create_contiguous(DataType::Double(), Device::CPU(), {});
     }
 
-    if (t.is_subtype_of(*BoolType::Global())) {
+    if (t.IsSubtypeOf(*BoolType::Global())) {
         return create_contiguous(DataType::Bool(), Device::CPU(), {});
     }
 

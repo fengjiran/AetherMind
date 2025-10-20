@@ -380,14 +380,14 @@ TEST(TypeSystem, BasicTypeProperties) {
     EXPECT_EQ(DeviceObjType::Global()->str(), "Device");
 
     // 测试类型的注释字符串表示
-    EXPECT_EQ(AnyType::Global()->annotation_str(), "Any");
-    EXPECT_EQ(NoneType::Global()->annotation_str(), "None");
-    EXPECT_EQ(NumberType::Global()->annotation_str(), "number");
-    EXPECT_EQ(IntType::Global()->annotation_str(), "int");
-    EXPECT_EQ(FloatType::Global()->annotation_str(), "float");
-    EXPECT_EQ(ComplexType::Global()->annotation_str(), "complex");
-    EXPECT_EQ(StringType::Global()->annotation_str(), "string");
-    EXPECT_EQ(DeviceObjType::Global()->annotation_str(), "Device");
+    EXPECT_EQ(AnyType::Global()->Annotation(), "Any");
+    EXPECT_EQ(NoneType::Global()->Annotation(), "None");
+    EXPECT_EQ(NumberType::Global()->Annotation(), "number");
+    EXPECT_EQ(IntType::Global()->Annotation(), "int");
+    EXPECT_EQ(FloatType::Global()->Annotation(), "float");
+    EXPECT_EQ(ComplexType::Global()->Annotation(), "complex");
+    EXPECT_EQ(StringType::Global()->Annotation(), "string");
+    EXPECT_EQ(DeviceObjType::Global()->Annotation(), "Device");
 
     // 测试自定义类型打印机
     auto custom_printer = [](const Type& t) -> std::optional<std::string> {
@@ -397,8 +397,8 @@ TEST(TypeSystem, BasicTypeProperties) {
         return std::nullopt;
     };
 
-    EXPECT_EQ(IntType::Global()->annotation_str(custom_printer), "CustomInt");
-    EXPECT_EQ(FloatType::Global()->annotation_str(custom_printer), "float");
+    EXPECT_EQ(IntType::Global()->Annotation(custom_printer), "CustomInt");
+    EXPECT_EQ(FloatType::Global()->Annotation(custom_printer), "float");
 }
 
 // 类型相等性测试
@@ -463,30 +463,30 @@ TEST(TypeSystem, TypeCasting) {
 // 子类型关系测试
 TEST(TypeSystem, SubtypeRelationships) {
     // IntType应该是NumberType的子类型
-    EXPECT_TRUE(IntType::Global()->is_subtype_of(*NumberType::Global()));
-    EXPECT_FALSE(NumberType::Global()->is_subtype_of(*IntType::Global()));
+    EXPECT_TRUE(IntType::Global()->IsSubtypeOf(*NumberType::Global()));
+    EXPECT_FALSE(NumberType::Global()->IsSubtypeOf(*IntType::Global()));
 
     // FloatType应该是NumberType的子类型
-    EXPECT_TRUE(FloatType::Global()->is_subtype_of(*NumberType::Global()));
-    EXPECT_FALSE(NumberType::Global()->is_subtype_of(*FloatType::Global()));
+    EXPECT_TRUE(FloatType::Global()->IsSubtypeOf(*NumberType::Global()));
+    EXPECT_FALSE(NumberType::Global()->IsSubtypeOf(*FloatType::Global()));
 
     // ComplexType应该是NumberType的子类型
-    EXPECT_TRUE(ComplexType::Global()->is_subtype_of(*NumberType::Global()));
-    EXPECT_FALSE(NumberType::Global()->is_subtype_of(*ComplexType::Global()));
+    EXPECT_TRUE(ComplexType::Global()->IsSubtypeOf(*NumberType::Global()));
+    EXPECT_FALSE(NumberType::Global()->IsSubtypeOf(*ComplexType::Global()));
 
     // 相同类型应该是彼此的子类型
-    EXPECT_TRUE(IntType::Global()->is_subtype_of(*IntType::Global()));
+    EXPECT_TRUE(IntType::Global()->IsSubtypeOf(*IntType::Global()));
 
     // 不同分支的类型不应该有子类型关系
-    EXPECT_FALSE(IntType::Global()->is_subtype_of(*FloatType::Global()));
-    EXPECT_FALSE(FloatType::Global()->is_subtype_of(*IntType::Global()));
-    EXPECT_FALSE(StringType::Global()->is_subtype_of(*NumberType::Global()));
+    EXPECT_FALSE(IntType::Global()->IsSubtypeOf(*FloatType::Global()));
+    EXPECT_FALSE(FloatType::Global()->IsSubtypeOf(*IntType::Global()));
+    EXPECT_FALSE(StringType::Global()->IsSubtypeOf(*NumberType::Global()));
 
     // 使用TypePtr测试子类型关系
     TypePtr int_ptr = IntType::Global();
     TypePtr num_ptr = NumberType::Global();
-    EXPECT_TRUE(int_ptr->is_subtype_of(*num_ptr));
-    EXPECT_FALSE(num_ptr->is_subtype_of(*int_ptr));
+    EXPECT_TRUE(int_ptr->IsSubtypeOf(*num_ptr));
+    EXPECT_FALSE(num_ptr->IsSubtypeOf(*int_ptr));
 
     // 带why_not参数的测试
     std::ostringstream why_not;
@@ -508,10 +508,10 @@ TEST(TypeSystem, UnionType) {
 
     EXPECT_TRUE(union_type);
     EXPECT_EQ(union_type->kind(), TypeKind::UnionType);
-    EXPECT_TRUE(union_type->isUnionType());
+    EXPECT_TRUE(union_type->IsUnionType());
 
     // 检查包含的类型
-    auto contained_types = union_type->containedTypes();
+    auto contained_types = union_type->GetContainedTypes();
     EXPECT_EQ(contained_types.size(), 3);
 
     // 检查canHoldType方法
@@ -521,13 +521,13 @@ TEST(TypeSystem, UnionType) {
     EXPECT_FALSE(union_type->canHoldType(*NoneType::Global()));
 
     // 测试hasFreeVariables
-    EXPECT_FALSE(union_type->hasFreeVariables());
+    EXPECT_FALSE(union_type->HasFreeVars());
 
     // 测试空的UnionType
     std::vector<TypePtr> empty_types;
     auto empty_union = UnionType::create(empty_types);
     EXPECT_TRUE(empty_union);
-    EXPECT_EQ(empty_union->containedTypes().size(), 0);
+    EXPECT_EQ(empty_union->GetContainedTypes().size(), 0);
 }
 
 TEST(SingletonOrSharedTypePtr, Empty) {
@@ -603,24 +603,24 @@ TEST(Type, init) {
     const Type* t1 = AnyType::Global().get();
     EXPECT_EQ(t1->kind(), TypeKind::AnyType);
     EXPECT_EQ(t1->str(), "Any");
-    EXPECT_EQ(t1->annotation_str(), "Any");
+    EXPECT_EQ(t1->Annotation(), "Any");
     EXPECT_TRUE(t1->cast_to_raw_type<AnyType>() == t1);
     EXPECT_TRUE(t1->cast<AnyType>().get() == t1);
 
     auto printer = [](const Type& t) -> std::optional<std::string> {
         return t.str() + "_test";
     };
-    EXPECT_EQ(t1->annotation_str(printer), "Any_test");
+    EXPECT_EQ(t1->Annotation(printer), "Any_test");
 
     TypePtr t3 = IntType::Global();
     EXPECT_EQ(t3->kind(), TypeKind::IntType);
     EXPECT_EQ(t3->str(), "int");
-    EXPECT_EQ(t3->annotation_str(), "int");
+    EXPECT_EQ(t3->Annotation(), "int");
 
     const auto& t4 = *t3;
     EXPECT_EQ(t4.kind(), TypeKind::IntType);
     EXPECT_EQ(t4.str(), "int");
-    EXPECT_EQ(t4.annotation_str(), "int");
+    EXPECT_EQ(t4.Annotation(), "int");
 }
 
 TEST(Type, Union) {
@@ -633,7 +633,7 @@ TEST(Type, Union) {
     TypePtr t7 = StringType::Global();
     TypePtr t8 = DeviceObjType::Global();
 
-    EXPECT_TRUE(t4->is_subtype_of(t3));
+    EXPECT_TRUE(t4->IsSubtypeOf(t3));
 
     TypePtr union_type_1 = UnionType::create({t1, t2, t4, t5, t5});
     EXPECT_EQ(union_type_1->kind(), TypeKind::OptionalType);

@@ -239,14 +239,14 @@ public:
         return "Tensor";
     }
 
-    String repr_str() const override {
+    String ReprStr() const override {
         if (is_inferred_type()) {
             return str() + " (inferred)";
         }
         return str();
     }
 
-    bool equals(const Type& rhs) const override;
+    bool Equals(const Type& rhs) const override;
 
     bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
 

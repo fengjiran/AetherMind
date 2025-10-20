@@ -73,7 +73,7 @@ class SharedType;
 // Use this to customize how a Type is printed using `annotation_str()`. If
 // std::nullopt is returned, `annotation_str()` falls through to its default
 // implementation.
-using TypePrinter = std::function<std::optional<std::string>(const Type&)>;
+using TypePrinter = std::function<std::optional<String>(const Type&)>;
 
 namespace detail {
 
@@ -150,20 +150,20 @@ public:
     NODISCARD virtual String str() const = 0;
 
     // a == b
-    NODISCARD virtual bool equals(const Type& rhs) const = 0;
+    NODISCARD virtual bool Equals(const Type& rhs) const = 0;
 
     // a == b <=> b == a
-    NODISCARD virtual bool symmetric() const {
+    NODISCARD virtual bool IsSymmetric() const {
         return true;
     }
 
-    NODISCARD virtual bool isUnionType() const {
+    NODISCARD virtual bool IsUnionType() const {
         return false;
     }
 
     NODISCARD virtual bool requires_grad() const {
-        for (const auto& ct: containedTypes()) {
-            if (ct->requires_grad()) {
+        for (const auto& t: GetContainedTypes()) {
+            if (t->requires_grad()) {
                 return true;
             }
         }
@@ -172,44 +172,45 @@ public:
 
     // list of types this type contains, e.g. for a List then element type of
     // list for a tuple, the types of the tuple elements
-    NODISCARD virtual ArrayView<TypePtr> containedTypes() const {
+    NODISCARD virtual ArrayView<TypePtr> GetContainedTypes() const {
         return {};
     }
 
-    NODISCARD virtual TypePtr containedType(size_t i) const {
-        return containedTypes().at(i);
+    NODISCARD virtual TypePtr GetContainedType(size_t i) const {
+        return GetContainedTypes().at(i);
     }
 
-    NODISCARD virtual size_t containedTypeSize() const {
-        return containedTypes().size();
+    NODISCARD virtual size_t GetContainedTypeSize() const {
+        return GetContainedTypes().size();
     }
 
-    NODISCARD virtual bool hasFreeVars() const {
+    NODISCARD virtual bool HasFreeVars() const {
         return false;
     }
 
-    NODISCARD String annotation_str(const TypePrinter& printer) const {
+    NODISCARD String Annotation(const TypePrinter& printer) const {
         if (printer) {
             if (auto renamed = printer(*this)) {
                 return *renamed;
             }
         }
-        return this->annotation_str_impl(printer);
+        return this->AnnotationImpl(printer);
     }
 
-    NODISCARD String annotation_str() const {
+    NODISCARD String Annotation() const {
         // Overload instead of define a default value for `printer` to help
         // debuggers out.
-        return annotation_str(nullptr);
+        return Annotation(nullptr);
     }
 
     // Returns a human-readable string that includes additional information like
     // "type is inferred rather than explicitly defined" to help construct more
     // user-friendly messages.
-    NODISCARD virtual String repr_str() const {
-        return annotation_str();
+    NODISCARD virtual String ReprStr() const {
+        return Annotation();
     }
 
+    // IsSubtypeOfImpl
     virtual bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const;
 
     template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
@@ -227,30 +228,26 @@ public:
         return isSubtypeOfExt(*other, why_not);
     }
 
-    NODISCARD bool is_subtype_of(const Type& other) const {
+    NODISCARD bool IsSubtypeOf(const Type& other) const {
         return isSubtypeOfExt(other, nullptr);
     }
 
     template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    bool is_subtype_of(const SingletonOrSharedTypePtr<T>& other) const {
-        return is_subtype_of(*other);
+    bool IsSubtypeOf(const SingletonOrSharedTypePtr<T>& other) const {
+        return IsSubtypeOf(*other);
     }
 
     template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    bool is_subtype_of(const std::shared_ptr<T>& other) const {
-        return is_subtype_of(*other);
+    bool IsSubtypeOf(const std::shared_ptr<T>& other) const {
+        return IsSubtypeOf(*other);
     }
 
     template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    bool is_subtype_of(const SingletonTypePtr<T>& other) const {
-        return is_subtype_of(*other);
+    bool IsSubtypeOf(const SingletonTypePtr<T>& other) const {
+        return IsSubtypeOf(*other);
     }
 
-    NODISCARD virtual bool is_module() const {
-        return false;
-    }
-
-    NODISCARD virtual bool hasFreeVariables() const {
+    NODISCARD virtual bool IsModule() const {
         return false;
     }
 
@@ -346,7 +343,7 @@ protected:
     explicit Type(TypeKind kind) : kind_(kind) {}
     virtual ~Type() = default;
 
-    NODISCARD virtual String annotation_str_impl(const TypePrinter&) const {
+    NODISCARD virtual String AnnotationImpl(const TypePrinter&) const {
         return this->str();
     }
 
@@ -369,15 +366,15 @@ public:
         return elem_;
     }
 
-    NODISCARD bool hasFreeVars() const override {
-        return get_element_type()->hasFreeVars();
+    NODISCARD bool HasFreeVars() const override {
+        return get_element_type()->HasFreeVars();
     }
 
-    ArrayView<TypePtr> containedTypes() const override {
+    ArrayView<TypePtr> GetContainedTypes() const override {
         return ArrayView<TypePtr>(elem_);
     }
 
-    bool equals(const Type& rhs) const override {
+    bool Equals(const Type& rhs) const override {
         if (auto cast_rhs = rhs.cast<T>()) {
             return *get_element_type() == *cast_rhs->get_element_type();
         }
@@ -421,7 +418,7 @@ public:
         return "Any";
     }
 
-    NODISCARD bool equals(const Type& rhs) const override {
+    NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
@@ -435,7 +432,7 @@ private:
 using NoneTypePtr = SingletonTypePtr<NoneType>;
 class NoneType : public Singleton<NoneType> {
 public:
-    NODISCARD bool equals(const Type& rhs) const override {
+    NODISCARD bool Equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
@@ -457,7 +454,7 @@ public:
         return "Scalar";
     }
 
-    NODISCARD bool equals(const Type& other) const override;
+    NODISCARD bool Equals(const Type& other) const override;
 
     NODISCARD bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
 
@@ -467,7 +464,7 @@ protected:
     explicit NumberType(TypeKind kind = Kind) : Singleton(kind) {}
 
 private:
-    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "number";
     }
 
@@ -481,7 +478,7 @@ public:
         return "int";
     }
 
-    NODISCARD bool equals(const Type& rhs) const override {
+    NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
@@ -498,7 +495,7 @@ public:
 
 private:
     IntType() : NumberType(Kind) {}
-    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "int";
     }
 };
@@ -510,7 +507,7 @@ public:
         return "float";
     }
 
-    NODISCARD bool equals(const Type& rhs) const override {
+    NODISCARD bool Equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
@@ -527,7 +524,7 @@ public:
 
 private:
     FloatType() : NumberType(Kind) {}
-    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "float";
     }
 };
@@ -539,7 +536,7 @@ public:
         return "bool";
     }
 
-    NODISCARD bool equals(const Type& rhs) const override {
+    NODISCARD bool Equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
@@ -558,7 +555,7 @@ public:
         return "complex";
     }
 
-    NODISCARD bool equals(const Type& rhs) const override {
+    NODISCARD bool Equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
@@ -575,7 +572,7 @@ public:
 
 private:
     ComplexType() : NumberType(Kind) {}
-    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "complex";
     }
 };
@@ -587,7 +584,7 @@ public:
         return "string";
     }
 
-    NODISCARD bool equals(const Type& rhs) const override {
+    NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
@@ -595,7 +592,7 @@ public:
 
 private:
     explicit StringType() : Singleton(Kind) {}
-    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "string";
     }
     friend class Singleton;
@@ -608,14 +605,14 @@ public:
         return "Device";
     }
 
-    NODISCARD bool equals(const Type& rhs) const override {
+    NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
     static constexpr auto Kind = TypeKind::DeviceObjType;
 
 private:
     explicit DeviceObjType() : Singleton(Kind) {}
-    NODISCARD String annotation_str_impl(const TypePrinter&) const override {
+    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "Device";
     }
     friend class Singleton;
@@ -630,7 +627,7 @@ inline String toString(const TypePtr& p) {
 }
 
 inline bool operator==(const Type& lhs, const Type& rhs) {
-    return rhs.symmetric() ? lhs.equals(rhs) : rhs.equals(lhs);
+    return rhs.IsSymmetric() ? lhs.Equals(rhs) : rhs.Equals(lhs);
 }
 
 inline bool operator!=(const Type& lhs, const Type& rhs) {

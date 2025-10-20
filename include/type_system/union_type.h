@@ -13,19 +13,19 @@ class UnionType;
 using UnionTypePtr = std::shared_ptr<UnionType>;
 class UnionType : public SharedType {
 public:
-    bool isUnionType() const override {
+    bool IsUnionType() const override {
         return true;
     }
 
-    bool equals(const Type& rhs) const override;
+    bool Equals(const Type& rhs) const override;
 
     bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
 
-    ArrayView<TypePtr> containedTypes() const override {
+    ArrayView<TypePtr> GetContainedTypes() const override {
         return types_;
     }
 
-    bool hasFreeVariables() const override {
+    bool HasFreeVars() const override {
         return has_free_variables_;
     }
 
@@ -60,7 +60,7 @@ class OptionalType;
 using OptionalTypePtr = std::shared_ptr<OptionalType>;
 class OptionalType : public UnionType {
 public:
-    bool isUnionType() const override {
+    bool IsUnionType() const override {
         return true;
     }
 
@@ -68,7 +68,7 @@ public:
         return get_element_type()->str() + "?";
     }
 
-    bool equals(const Type& rhs) const override;
+    bool Equals(const Type& rhs) const override;
 
     bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
 

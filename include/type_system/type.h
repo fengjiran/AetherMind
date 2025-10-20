@@ -547,6 +547,8 @@ public:
 
 private:
     BoolType() : Singleton(Kind) {}
+
+    friend class Singleton;
 };
 
 using ComplexTypePtr = SingletonTypePtr<ComplexType>;

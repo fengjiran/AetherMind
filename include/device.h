@@ -72,6 +72,18 @@ struct Device {
 
     NODISCARD std::string str() const;
 
+    static Device CPU() {
+        return Device(DeviceType::kCPU);
+    }
+
+    static Device CUDA() {
+        return Device(DeviceType::kCUDA);
+    }
+
+    static Device CANN() {
+        return Device(DeviceType::kCANN);
+    }
+
     bool operator==(const Device& other) const {
         return type_ == other.type_ && index_ == other.index_;
     }

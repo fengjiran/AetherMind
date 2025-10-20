@@ -248,6 +248,8 @@ public:
 
     bool equals(const Type& rhs) const override;
 
+    bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
+
     const std::optional<DataType>& data_type() const {
         return dtype_;
     }
@@ -257,6 +259,8 @@ public:
     }
 
     VaryingShape<int64_t> shape() const;
+
+    const SymbolicShape& symbolic_shape() const;
 
     VaryingShape<int64_t> strides() const;
 
@@ -294,6 +298,10 @@ public:
         return data_type() && device() && shape_.IsComplete() && strides_.IsComplete();
     }
 
+    bool matchTensor(const Tensor& t) const;
+
+    TensorTypePtr merge(const TensorType& other, bool merge_shape = true) const;
+
     TensorTypePtr contiguous() const;
 
     static std::vector<int64_t> contiguous_stride_of(IntArrayView shape,
@@ -326,6 +334,10 @@ public:
 
     static TensorTypePtr create_contiguous(DataType dtype, Device device, IntArrayView shape);
 
+    static TypePtr create_from_bool_type();
+
+    static TypePtr create_from_number_type(const Type& t);
+
     TensorTypePtr with_requires_grad(std::optional<bool> s) const;
 
     TensorTypePtr with_data_type(const std::optional<DataType>&) const;
@@ -345,6 +357,8 @@ public:
     TensorTypePtr with_undefined() const;
 
     TensorTypePtr with_possibly_undefined() const;
+
+    TensorTypePtr dimensioned_only() const;
 
     static const TensorTypePtr& get();
 
@@ -378,7 +392,6 @@ private:
     // Whether this type was inferred.
     bool is_inferred_ = false;
 };
-
 
 }// namespace aethermind
 

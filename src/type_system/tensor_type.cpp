@@ -272,6 +272,10 @@ VaryingShape<int64_t> TensorType::shape() const {
     return VaryingShape<int64_t>{std::move(dims)};
 }
 
+const SymbolicShape& TensorType::symbolic_shape() const {
+    return shape_;
+}
+
 VaryingShape<int64_t> TensorType::strides() const {
     const auto& shape = strides_.shape();
     if (!shape.has_value()) {
@@ -317,6 +321,16 @@ bool TensorType::equals(const Type& rhs) const {
            device() == t->device() &&
            requiresGrad() == t->requiresGrad() &&
            undefined() == t->undefined();
+}
+
+bool TensorType::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
+    if (auto ptr = rhs.cast<TensorType>()) {
+        if (this == ptr.get()) {
+            return true;
+        }
+        return *merge(*ptr) == *ptr;
+    }
+    return Type::isSubtypeOfExt(rhs, why_not);
 }
 
 // The idea is to only mark possible overlap across dimensions. We want to
@@ -451,6 +465,51 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
     return VaryingShape<Stride>{stride_properties};
 }
 
+template<typename T>
+static bool is_null_or_equal(std::optional<T> a, IntArrayView b) {
+    return !a.has_value() || a.value() == b;
+}
+
+bool TensorType::matchTensor(const Tensor& t) const {
+    bool undef = undefined().value_or(!t.defined());
+
+    // When the followings are true, we consider it's not a match:
+    // - undefined().has_value() == true
+    // - undefined().value() != !t.defined()
+    if (undef != !t.defined()) {
+        return false;
+    }
+
+    // When the followings are true, we consider it's a match:
+    // - t is not defined
+    // - undefined() == null or undefined().value() == true
+    if (!t.defined()) {
+        return true;
+    }
+
+    // TODO
+    bool rg = t.requires_grad();
+    bool matched_strides = !stride_properties().size() ||
+                           (!t.has_storage() && !stride_properties().IsComplete()) ||
+                           stride_properties() == compute_stride_props(t.shape(), t.strides(), t.is_contiguous());
+    return data_type().value_or(t.dtype()) == t.dtype() &&
+           device().value_or(t.device()) == t.device() &&
+           requiresGrad().value_or(rg) == rg &&
+           matched_strides &&
+           is_null_or_equal(shape().get_concrete_value(), t.shape());
+}
+
+
+TensorTypePtr TensorType::merge(const TensorType& other, bool merge_shape) const {
+    auto dtype = merge_primitive(data_type(), other.data_type());
+    auto shape = merge_shape ? symbolic_shape().Merge(other.symbolic_shape()) : symbolic_shape();
+    auto sprops = stride_properties().merge(other.stride_properties());
+    auto dev = merge_primitive(device(), other.device());
+    auto gr = merge_primitive(requiresGrad(), other.requiresGrad());
+    auto undef = merge_primitive(undefined(), other.undefined());
+    return create(dtype, dev, shape, sprops, gr, undef);
+}
+
 TensorTypePtr TensorType::contiguous() const {
     auto cloned = clone();
     auto concrete_shape = shape().get_concrete_value();
@@ -577,6 +636,32 @@ TensorTypePtr TensorType::create_contiguous(DataType dtype, Device device, IntAr
                   VaryingShape<int64_t>(strides), std::nullopt);
 }
 
+TypePtr TensorType::create_from_bool_type() {
+    return create_contiguous(DataType::Bool(), Device::CPU(), {});
+}
+
+TypePtr TensorType::create_from_number_type(const Type& t) {
+    if (t.is_subtype_of(*IntType::Global())) {
+        return create_contiguous(DataType::Int(64), Device::CPU(), {});
+    }
+
+    if (t.is_subtype_of(*FloatType::Global())) {
+        return create_contiguous(DataType::Double(), Device::CPU(), {});
+    }
+
+    if (t.is_subtype_of(*BoolType::Global())) {
+        return create_contiguous(DataType::Bool(), Device::CPU(), {});
+    }
+
+    if (t.kind() == NumberType::Kind) {
+        return create(std::nullopt, Device::CPU(), {}, std::nullopt);
+    }
+
+    CHECK(false) << "Unknown number type: " << t.str();
+    AETHERMIND_UNREACHABLE();
+}
+
+
 TensorTypePtr TensorType::with_requires_grad(std::optional<bool> s) const {
     auto cloned = clone();
     cloned->requires_grad_ = s;
@@ -637,10 +722,16 @@ TensorTypePtr TensorType::with_possibly_undefined() const {
     return cloned;
 }
 
+TensorTypePtr TensorType::dimensioned_only() const {
+    auto cloned = clone();
+    cloned->shape_ = SymbolicShape(shape().size());
+    cloned->strides_ = VaryingShape<Stride>(shape().size());
+    return cloned;
+}
+
 const TensorTypePtr& TensorType::get() {
     static auto ptr = create({}, {}, SymbolicShape(), VaryingShape<Stride>{}, {});
     return ptr;
 }
-
 
 }// namespace aethermind

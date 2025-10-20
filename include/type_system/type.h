@@ -9,6 +9,7 @@
 #include "container/string.h"
 #include "data_type.h"
 #include "error.h"
+#include "type.h"
 #include "type_ptr.h"
 
 #include <functional>
@@ -133,6 +134,7 @@ DECLARE_SINGLETON_TYPE(NoneType);
 DECLARE_SINGLETON_TYPE(NumberType);
 DECLARE_SINGLETON_TYPE(IntType);
 DECLARE_SINGLETON_TYPE(FloatType);
+DECLARE_SINGLETON_TYPE(BoolType);
 DECLARE_SINGLETON_TYPE(ComplexType);
 DECLARE_SINGLETON_TYPE(StringType);
 DECLARE_SINGLETON_TYPE(DeviceObjType);
@@ -528,6 +530,23 @@ private:
     NODISCARD String annotation_str_impl(const TypePrinter&) const override {
         return "float";
     }
+};
+
+using BoolTypePtr = SingletonTypePtr<BoolType>;
+class BoolType : public Singleton<BoolType> {
+public:
+    NODISCARD String str() const override {
+        return "bool";
+    }
+
+    NODISCARD bool equals(const Type& rhs) const override {
+        return rhs.kind() == kind();
+    }
+
+    static constexpr auto Kind = TypeKind::BoolType;
+
+private:
+    BoolType() : Singleton(Kind) {}
 };
 
 using ComplexTypePtr = SingletonTypePtr<ComplexType>;

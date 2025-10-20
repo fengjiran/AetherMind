@@ -89,7 +89,6 @@ bool Object::TryPromoteWeakPtr() {
     return false;
 }
 
-
 }// namespace aethermind
 
 int IncObjectRef(ObjectHandle obj_ptr) {

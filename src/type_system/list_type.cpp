@@ -3,6 +3,7 @@
 //
 
 #include "type_system/list_type.h"
+#include "type_system/tensor_type.h"
 
 namespace aethermind {
 

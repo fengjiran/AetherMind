@@ -248,7 +248,7 @@ public:
 
     bool Equals(const Type& rhs) const override;
 
-    bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
+    bool IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
 
     const std::optional<DataType>& data_type() const {
         return dtype_;

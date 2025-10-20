@@ -323,14 +323,14 @@ bool TensorType::Equals(const Type& rhs) const {
            undefined() == t->undefined();
 }
 
-bool TensorType::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
-    if (auto ptr = rhs.cast<TensorType>()) {
+bool TensorType::IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
+    if (auto ptr = rhs.CastTo<TensorType>()) {
         if (this == ptr.get()) {
             return true;
         }
         return *merge(*ptr) == *ptr;
     }
-    return Type::isSubtypeOfExt(rhs, why_not);
+    return Type::IsSubtypeOfExt(rhs, why_not);
 }
 
 // The idea is to only mark possible overlap across dimensions. We want to

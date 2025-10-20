@@ -38,11 +38,11 @@ std::optional<TypePtr> subtractTypeSetFrom(std::vector<TypePtr>& to_subtract, Ar
 // flattening. At the end of this function, `types` may have
 // duplicates, but it will not have nested Optionals/Unions
 static void FlattenUnionTypes(const TypePtr& type, std::vector<TypePtr>& need_to_fill) {
-    if (auto union_type = type->cast<UnionType>()) {
+    if (auto union_type = type->CastTo<UnionType>()) {
         for (const auto& t: union_type->GetContainedTypes()) {
             FlattenUnionTypes(t, need_to_fill);
         }
-    } else if (auto opt_type = type->cast<OptionalType>()) {
+    } else if (auto opt_type = type->CastTo<OptionalType>()) {
         const auto& t = opt_type->get_element_type();
         FlattenUnionTypes(t, need_to_fill);
         need_to_fill.emplace_back(NoneType::Global());
@@ -163,7 +163,7 @@ UnionType::UnionType(const std::vector<TypePtr>& types, TypeKind kind) : SharedT
 }
 
 bool UnionType::canHoldType(const Type& type) const {
-    if (type.cast<NumberType>()) {
+    if (type.CastTo<NumberType>()) {
         return canHoldType(*IntType::Global()) &&
                canHoldType(*FloatType::Global()) &&
                canHoldType(*ComplexType::Global());
@@ -174,9 +174,9 @@ bool UnionType::canHoldType(const Type& type) const {
                        });
 }
 
-bool UnionType::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
+bool UnionType::IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
     std::vector<const Type*> rhs_types;
-    if (const auto union_rhs = rhs.cast<UnionType>()) {
+    if (const auto union_rhs = rhs.CastTo<UnionType>()) {
         // Fast path
         if (this->GetContainedTypes() == rhs.GetContainedTypes()) {
             return true;
@@ -185,7 +185,7 @@ bool UnionType::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
         for (const auto& t: rhs.GetContainedTypes()) {
             rhs_types.push_back(t.get());
         }
-    } else if (const auto optional_rhs = rhs.cast<OptionalType>()) {
+    } else if (const auto optional_rhs = rhs.CastTo<OptionalType>()) {
         rhs_types.push_back(NoneType::Global().get());
         if (optional_rhs->get_element_type() == NumberType::Global()) {
             std::array<const Type*, 3> number_types{IntType::Global().get(), FloatType::Global().get(), ComplexType::Global().get()};
@@ -193,7 +193,7 @@ bool UnionType::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
         } else {
             rhs_types.push_back(optional_rhs->get_element_type().get());
         }
-    } else if (const auto number_rhs = rhs.cast<NumberType>()) {
+    } else if (const auto number_rhs = rhs.CastTo<NumberType>()) {
         std::array<const Type*, 3> number_types{IntType::Global().get(), FloatType::Global().get(), ComplexType::Global().get()};
         rhs_types.insert(rhs_types.end(), number_types.begin(), number_types.end());
     } else {
@@ -204,7 +204,7 @@ bool UnionType::isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
                        [&](const TypePtr& lhs_type) -> bool {
                            return std::any_of(rhs_types.begin(), rhs_types.end(),
                                               [&](const Type* rhs_type) -> bool {
-                                                  return lhs_type->isSubtypeOfExt(*rhs_type, why_not);
+                                                  return lhs_type->IsSubtypeOfExt(*rhs_type, why_not);
                                               });
                        });
 }
@@ -265,7 +265,7 @@ std::optional<TypePtr> UnionType::to_optional() const {
 
 
 bool UnionType::Equals(const Type& rhs) const {
-    if (auto union_rhs = rhs.cast<UnionType>()) {
+    if (auto union_rhs = rhs.CastTo<UnionType>()) {
         if (this->GetContainedTypeSize() != rhs.GetContainedTypeSize()) {
             return false;
         }
@@ -281,7 +281,7 @@ bool UnionType::Equals(const Type& rhs) const {
                            });
     }
 
-    if (auto optional_rhs = rhs.cast<OptionalType>()) {
+    if (auto optional_rhs = rhs.CastTo<OptionalType>()) {
         if (optional_rhs->get_element_type() == NumberType::Global()) {
             return this->GetContainedTypeSize() == 4 && this->can_hold_none_ && this->canHoldType(*NumberType::Global());
         }
@@ -346,7 +346,7 @@ String UnionType::union_str(const TypePrinter& printer, bool is_annotation_str) 
 OptionalType::OptionalType(const TypePtr& contained)
     : UnionType({contained, NoneType::Global()}, TypeKind::OptionalType) {
     bool is_numbertype = false;
-    if (auto as_union = contained->cast<UnionType>()) {
+    if (auto as_union = contained->CastTo<UnionType>()) {
         is_numbertype = as_union->GetContainedTypeSize() == 3 && as_union->canHoldType(*NumberType::Global());
     }
 
@@ -369,23 +369,23 @@ OptionalType::OptionalType(const TypePtr& contained)
 }
 
 bool OptionalType::Equals(const Type& rhs) const {
-    if (auto union_rhs = rhs.cast<UnionType>()) {
+    if (auto union_rhs = rhs.CastTo<UnionType>()) {
         auto optional_rhs = union_rhs->to_optional();
         return optional_rhs && *this == **optional_rhs;
     }
 
-    if (auto optional_rhs = rhs.cast<OptionalType>()) {
+    if (auto optional_rhs = rhs.CastTo<OptionalType>()) {
         return *this->get_element_type() == *optional_rhs->get_element_type();
     }
     return false;
 }
 
-bool OptionalType::isSubtypeOfExt(const Type& other, std::ostream* why_not) const {
-    if (auto opt_other = other.cast<OptionalType>()) {
-        return this->get_element_type()->isSubtypeOfExt(*opt_other->get_element_type(), why_not);
+bool OptionalType::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
+    if (auto opt_other = other.CastTo<OptionalType>()) {
+        return this->get_element_type()->IsSubtypeOfExt(*opt_other->get_element_type(), why_not);
     }
 
-    if (auto union_other = other.cast<UnionType>()) {
+    if (auto union_other = other.CastTo<UnionType>()) {
         if (!union_other->canHoldType(*NoneType::Global())) {
             if (why_not) {
                 *why_not << other.ReprStr() << " cannot hole none";
@@ -402,7 +402,7 @@ bool OptionalType::isSubtypeOfExt(const Type& other, std::ostream* why_not) cons
         return true;
     }
 
-    return UnionType::isSubtypeOfExt(other, why_not);
+    return UnionType::IsSubtypeOfExt(other, why_not);
 }
 
 

@@ -19,20 +19,20 @@ String TypeKindToString(TypeKind kind) {
     return "";
 }
 
-bool Type::isSubtypeOfExt(const Type& other, std::ostream* why_not) const {
+bool Type::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
     if (other.kind() == TypeKind::AnyType || *this == other) {
         return true;
     }
 
-    if (auto opt_rhs = other.cast<OptionalType>()) {
-        return isSubtypeOfExt(*opt_rhs->get_element_type(), why_not);
+    if (auto opt_rhs = other.CastTo<OptionalType>()) {
+        return IsSubtypeOfExt(*opt_rhs->get_element_type(), why_not);
     }
 
     // Check if `this` is a subtype of the types within the Union
-    if (auto union_type = other.cast<UnionType>()) {
+    if (auto union_type = other.CastTo<UnionType>()) {
         return std::any_of(union_type->GetContainedTypes().begin(), union_type->GetContainedTypes().end(),
                            [&](const TypePtr& inner) {
-                               return isSubtypeOfExt(*inner, why_not);
+                               return IsSubtypeOfExt(*inner, why_not);
                            });
     }
 
@@ -46,17 +46,17 @@ bool Type::isSubtypeOfExt(const Type& other, std::ostream* why_not) const {
 
 
 bool NumberType::Equals(const Type& other) const {
-    if (auto union_type = other.cast<UnionType>()) {
+    if (auto union_type = other.CastTo<UnionType>()) {
         return union_type->GetContainedTypeSize() == 3 && union_type->canHoldType(*Global());
     }
     return kind() == other.kind();
 }
 
-bool NumberType::isSubtypeOfExt(const Type& other, std::ostream* why_not) const {
-    if (auto union_type = other.cast<UnionType>()) {
+bool NumberType::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
+    if (auto union_type = other.CastTo<UnionType>()) {
         return union_type->canHoldType(*Global());
     }
-    return Type::isSubtypeOfExt(other, why_not);
+    return Type::IsSubtypeOfExt(other, why_not);
 }
 
 

@@ -19,7 +19,7 @@ public:
 
     bool Equals(const Type& rhs) const override;
 
-    bool isSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
+    bool IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
 
     ArrayView<TypePtr> GetContainedTypes() const override {
         return types_;
@@ -70,7 +70,7 @@ public:
 
     bool Equals(const Type& rhs) const override;
 
-    bool isSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
+    bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
 
     const TypePtr& get_element_type() const {
         return contained_type_;

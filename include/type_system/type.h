@@ -358,12 +358,12 @@ public:
 template<typename T, TypeKind K>
 class SingleElementType : public SharedType {
 public:
-    const TypePtr& get_element_type() const {
+    const TypePtr& GetElementType() const {
         return elem_;
     }
 
     NODISCARD bool HasFreeVars() const override {
-        return get_element_type()->HasFreeVars();
+        return GetElementType()->HasFreeVars();
     }
 
     ArrayView<TypePtr> GetContainedTypes() const override {
@@ -372,7 +372,7 @@ public:
 
     bool Equals(const Type& rhs) const override {
         if (auto cast_rhs = rhs.CastTo<T>()) {
-            return *get_element_type() == *cast_rhs->get_element_type();
+            return *GetElementType() == *cast_rhs->GetElementType();
         }
         return false;
     }
@@ -382,7 +382,8 @@ public:
 protected:
     explicit SingleElementType(TypePtr elem) : SharedType(Kind), elem_(std::move(elem)) {
         if (!elem_) {
-            AETHERMIND_THROW(runtime_error) << "Cannot create " << TypeKindToString(Kind) << " with none type.";
+            AETHERMIND_THROW(runtime_error) << "Cannot create " << TypeKindToString(Kind)
+                                            << " with none type.";
         }
     }
 

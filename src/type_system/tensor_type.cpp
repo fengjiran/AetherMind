@@ -314,7 +314,7 @@ bool TensorType::Equals(const Type& rhs) const {
         return false;
     }
 
-    auto t = rhs.expect<TensorType>();
+    auto t = rhs.Expect<TensorType>();
     return data_type() == t->data_type() &&
            shape() == t->shape() &&
            stride_properties() == t->stride_properties() &&

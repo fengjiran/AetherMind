@@ -210,6 +210,10 @@ public:
         return Annotation();
     }
 
+    NODISCARD virtual bool IsModule() const {
+        return false;
+    }
+
     virtual bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const;
 
     template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
@@ -244,10 +248,6 @@ public:
     template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
     bool IsSubtypeOf(const SingletonOrSharedTypePtr<T>& other) const {
         return IsSubtypeOf(*other);
-    }
-
-    NODISCARD virtual bool IsModule() const {
-        return false;
     }
 
     // Dynamically cast this object to the subclass indicated by the
@@ -291,7 +291,7 @@ public:
     }
 
     template<typename T>
-    T* cast_to_raw_type() {
+    T* CastToRawTypePtr() {
         if (T::Kind == kind()) {
             return static_cast<T*>(this);
         }
@@ -299,7 +299,7 @@ public:
     }
 
     template<typename T>
-    const T* cast_to_raw_type() const {
+    const T* CastToRawTypePtr() const {
         if (T::Kind == kind()) {
             return static_cast<const T*>(this);
         }
@@ -307,30 +307,30 @@ public:
     }
 
     template<typename T>
-    auto expect() {
+    decltype(auto) Expect() {
         auto r = CastTo<T>();
         CHECK(r);
         return r;
     }
 
     template<typename T>
-    auto expect() const {
+    decltype(auto) Expect() const {
         auto r = CastTo<const T>();
         CHECK(r);
         return r;
     }
 
     template<typename T>
-    T& expectRef() {
-        auto* r = cast_to_raw_type<T>();
-        CHECK(r);
+    T& ExpectRef() {
+        auto* r = CastToRawTypePtr<T>();
+        CHECK(r != nullptr);
         return *r;
     }
 
     template<typename T>
-    const T& expectRef() const {
-        auto* r = cast_to_raw_type<const T>();
-        CHECK(r);
+    const T& ExpectRef() const {
+        auto* r = CastToRawTypePtr<const T>();
+        CHECK(r != nullptr);
         return *r;
     }
 

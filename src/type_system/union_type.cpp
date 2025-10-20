@@ -286,7 +286,7 @@ bool UnionType::Equals(const Type& rhs) const {
             return this->GetContainedTypeSize() == 4 && this->can_hold_none_ && this->canHoldType(*NumberType::Global());
         }
         auto optional_lhs = this->to_optional();
-        return optional_lhs && *optional_rhs == *optional_lhs.value()->expect<OptionalType>();
+        return optional_lhs && *optional_rhs == *optional_lhs.value()->Expect<OptionalType>();
     }
 
     if (rhs.kind() == NumberType::Kind) {

@@ -433,12 +433,12 @@ TEST(TypeSystem, TypeEquality) {
 TEST(TypeSystem, TypeCasting) {
     // 向下转型测试
     Type* any_type = AnyType::Global().get();
-    auto* cast_any = any_type->cast_to_raw_type<AnyType>();
+    auto* cast_any = any_type->CastToRawTypePtr<AnyType>();
     EXPECT_TRUE(cast_any != nullptr);
     EXPECT_TRUE(cast_any == any_type);
 
     // 无效转型测试
-    auto* cast_int = any_type->cast_to_raw_type<IntType>();
+    auto* cast_int = any_type->CastToRawTypePtr<IntType>();
     EXPECT_TRUE(cast_int == nullptr);
 
     // 使用cast()方法测试
@@ -451,12 +451,12 @@ TEST(TypeSystem, TypeCasting) {
 
     // expect()方法测试 - 成功情况
     TypePtr int_ptr = IntType::Global();
-    auto int_expect = int_ptr->expect<IntType>();
+    auto int_expect = int_ptr->Expect<IntType>();
     EXPECT_TRUE(int_expect);
 
     // expectRef()方法测试
     const Type& float_ref = *FloatType::Global();
-    const auto& float_expect_ref = float_ref.expectRef<FloatType>();
+    const auto& float_expect_ref = float_ref.ExpectRef<FloatType>();
     EXPECT_EQ(float_expect_ref.str(), "float");
 }
 
@@ -604,7 +604,7 @@ TEST(Type, init) {
     EXPECT_EQ(t1->kind(), TypeKind::AnyType);
     EXPECT_EQ(t1->str(), "Any");
     EXPECT_EQ(t1->Annotation(), "Any");
-    EXPECT_TRUE(t1->cast_to_raw_type<AnyType>() == t1);
+    EXPECT_TRUE(t1->CastToRawTypePtr<AnyType>() == t1);
     EXPECT_TRUE(t1->CastTo<AnyType>().get() == t1);
 
     auto printer = [](const Type& t) -> std::optional<std::string> {

@@ -64,11 +64,11 @@ public:
     explicit SymbolicShape(std::optional<size_t> rank);
 
     // Mix of known and unknown ranks
-    explicit SymbolicShape(const std::vector<std::optional<int64_t>>& dims);
+    explicit SymbolicShape(const std::vector<std::optional<int64_t>>& shape);
 
-    explicit SymbolicShape(std::vector<ShapeSymbol> dims) : symbolic_shape_(std::move(dims)) {}
+    explicit SymbolicShape(std::vector<ShapeSymbol> shape) : symbolic_shape_(std::move(shape)) {}
 
-    explicit SymbolicShape(IntArrayView dims);
+    explicit SymbolicShape(IntArrayView shape);
 
     // Returns rank or nullopt in case of unranked shape.
     NODISCARD std::optional<size_t> rank() const;

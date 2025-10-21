@@ -47,14 +47,14 @@ std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
 std::ostream& operator<<(std::ostream& os, const Stride& s) {
     os << "{";
     if (s.stride_idx().has_value()) {
-        os << *s.stride_idx();
+        os << s.stride_idx().value();
     } else {
         os << "*";
     }
 
     os << ":";
     if (s.stride().has_value()) {
-        os << *s.stride();
+        os << s.stride().value();
     } else {
         os << "*";
     }
@@ -64,32 +64,32 @@ std::ostream& operator<<(std::ostream& os, const Stride& s) {
 
 SymbolicShape::SymbolicShape(std::optional<size_t> rank) {
     if (rank.has_value()) {
-        std::vector<ShapeSymbol> shape_symbols(rank.value());
+        std::vector<ShapeSymbol> symbolic_shape(rank.value());
         for (size_t i = 0; i < rank.value(); ++i) {
-            shape_symbols[i] = ShapeSymbol::Create();
+            symbolic_shape[i] = ShapeSymbol::Create();
         }
-        symbolic_shape_ = shape_symbols;
+        symbolic_shape_ = symbolic_shape;
     }
 }
 
-SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& dims) {
-    std::vector<ShapeSymbol> shape_symbols(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        if (dims[i].has_value()) {
-            shape_symbols[i] = ShapeSymbol::CreateFromValue(dims[i].value());
+SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& shape) {
+    std::vector<ShapeSymbol> symbolic_shape(shape.size());
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (shape[i].has_value()) {
+            symbolic_shape[i] = ShapeSymbol::CreateFromValue(shape[i].value());
         } else {
-            shape_symbols[i] = ShapeSymbol::Create();
+            symbolic_shape[i] = ShapeSymbol::Create();
         }
     }
-    symbolic_shape_ = shape_symbols;
+    symbolic_shape_ = symbolic_shape;
 }
 
-SymbolicShape::SymbolicShape(IntArrayView dims) {
-    std::vector<ShapeSymbol> shape_symbols(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape_symbols[i] = ShapeSymbol::CreateFromValue(dims[i]);
+SymbolicShape::SymbolicShape(IntArrayView shape) {
+    std::vector<ShapeSymbol> symbolic_shape(shape.size());
+    for (size_t i = 0; i < shape.size(); ++i) {
+        symbolic_shape[i] = ShapeSymbol::CreateFromValue(shape[i]);
     }
-    symbolic_shape_ = shape_symbols;
+    symbolic_shape_ = symbolic_shape;
 }
 
 ShapeSymbol SymbolicShape::operator[](size_t i) const {
@@ -214,13 +214,13 @@ VaryingShape<T> VaryingShape<T>::Merge(const VaryingShape& other) const {
 
 template<typename T>
 std::ostream& operator<<(std::ostream& os, const VaryingShape<T>& t) {
-    const auto& sizes_opt = t.shape();
-    if (!sizes_opt.has_value()) {
+    const auto& shape_opt = t.shape();
+    if (!shape_opt.has_value()) {
         os << "(*)";
         return os;
     }
 
-    auto n = sizes_opt->size();
+    auto n = shape_opt->size();
     os << "(";
     for (size_t i = 0; i < n; ++i) {
         if (i > 0) {

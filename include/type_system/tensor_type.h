@@ -308,14 +308,14 @@ public:
         return dtype() && device() && shape_.IsComplete() && strides_.IsComplete();
     }
 
-    bool matchTensor(const Tensor& t) const;
+    bool MatchTensor(const Tensor& t) const;
 
     TensorTypePtr Merge(const TensorType& other, bool merge_shape = true) const;
 
     TensorTypePtr contiguous() const;
 
-    static std::vector<int64_t> contiguous_stride_of(IntArrayView shape,
-                                                     MemoryFormat memory_format = MemoryFormat::Contiguous);
+    static std::vector<int64_t> GetContiguousStrideOf(IntArrayView shape,
+                                                     MemoryFormat memory_format = MemoryFormat::kContiguous);
 
     static TensorTypePtr Create(std::optional<DataType> dtype,
                                 std::optional<Device> device,
@@ -341,9 +341,9 @@ public:
 
     static TensorTypePtr create_contiguous(DataType dtype, Device device, IntArrayView shape);
 
-    static TypePtr create_from_bool_type();
+    static TypePtr CreateFromBoolType();
 
-    static TypePtr create_from_number_type(const Type& t);
+    static TypePtr CreateFromNumberType(const Type& t);
 
     TensorTypePtr with_requires_grad(std::optional<bool> s) const;
 

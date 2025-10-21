@@ -35,23 +35,23 @@ namespace aethermind {
 enum class MemoryFormat : uint8_t {
     // NCHW, dense, no overlap,
     // strides[0] > strides[1] > strides[2] > strides[3] == 1
-    Contiguous,
-    Preserve,
+    kContiguous,
+    kPreserve,
     // NHWC, dense, no overlap
     // strides[0] > strides[2] > strides[3] > strides[1] == 1
-    ChannelsLast,
-    ChannelsLast3d,// NDHWC
+    kChannelsLast,
+    kChannelsLast3d,// NDHWC
     NumOptions
 };
 
-inline MemoryFormat get_contiguous_memory_format() {
-    return MemoryFormat::Contiguous;
+inline MemoryFormat GetContiguousMemoryFormat() {
+    return MemoryFormat::kContiguous;
 }
 
 // shape and stride is NCHW
 // underlying data in memory is NHWC
 template<typename T>
-std::vector<T> get_channels_last_strides_2d(ArrayView<T> shape) {
+std::vector<T> GetChannelsLastStrides2d(ArrayView<T> shape) {
     auto n = shape.size();
     std::vector<T> strides(n);// (stride_n, stride_c, stride_h, stride_w)
     switch (n) {
@@ -77,14 +77,14 @@ std::vector<T> get_channels_last_strides_2d(ArrayView<T> shape) {
     return strides;
 }
 
-inline std::vector<int64_t> get_channels_last_strides_2d(IntArrayView shape) {
-    return get_channels_last_strides_2d<int64_t>(shape);
+inline std::vector<int64_t> GetChannelsLastStrides2d(IntArrayView shape) {
+    return GetChannelsLastStrides2d<int64_t>(shape);
 }
 
 // shape and stride is NCDHW
 // underlying data in memory is NDHWC
 template<typename T>
-std::vector<T> get_channels_last_strides_3d(ArrayView<T> shape) {
+std::vector<T> GetChannelsLastStrides3d(ArrayView<T> shape) {
     auto n = shape.size();
     std::vector<T> strides(n);// NCDHW
     switch (n) {
@@ -113,12 +113,12 @@ std::vector<T> get_channels_last_strides_3d(ArrayView<T> shape) {
     return strides;
 }
 
-inline std::vector<int64_t> get_channels_last_strides_3d(IntArrayView shape) {
-    return get_channels_last_strides_3d<int64_t>(shape);
+inline std::vector<int64_t> GetChannelsLastStrides3d(IntArrayView shape) {
+    return GetChannelsLastStrides3d<int64_t>(shape);
 }
 
 template<typename T>
-bool is_channels_last_strides_2d_s4(ArrayView<T> shape, ArrayView<T> strides) {
+bool IsChannelsLastStrides2ds4(ArrayView<T> shape, ArrayView<T> strides) {
     T pre_stride = 0;
     // special case for trivial C dimension. default to NCHW
     // for broadcast case.
@@ -151,7 +151,7 @@ bool is_channels_last_strides_2d_s4(ArrayView<T> shape, ArrayView<T> strides) {
 }
 
 template<typename T>
-bool is_channels_last_strides_3d_s5(ArrayView<T> shape, ArrayView<T> strides) {
+bool IsChannelsLastStrides3ds5(ArrayView<T> shape, ArrayView<T> strides) {
     T pre_stride = 0;
     // special case for trivial C dimension. default to NCHW
     if (strides[1] == 0) {
@@ -176,10 +176,10 @@ bool is_channels_last_strides_3d_s5(ArrayView<T> shape, ArrayView<T> strides) {
 }
 
 template<typename T>
-bool is_channels_last_strides_2d(ArrayView<T> shape, ArrayView<T> strides) {
+bool IsChannelsLastStrides2d(ArrayView<T> shape, ArrayView<T> strides) {
     switch (shape.size()) {
         case 4: {
-            return is_channels_last_strides_2d_s4(shape, strides);
+            return IsChannelsLastStrides2ds4(shape, strides);
         }
 
         case 3: {
@@ -192,10 +192,10 @@ bool is_channels_last_strides_2d(ArrayView<T> shape, ArrayView<T> strides) {
 }
 
 template<typename T>
-bool is_channels_last_strides_3d(ArrayView<T> shape, ArrayView<T> strides) {
+bool IsChannelsLastStrides3d(ArrayView<T> shape, ArrayView<T> strides) {
     switch (shape.size()) {
         case 5: {
-            return is_channels_last_strides_3d_s5(shape, strides);
+            return IsChannelsLastStrides3ds5(shape, strides);
         }
 
         case 4: {
@@ -207,26 +207,26 @@ bool is_channels_last_strides_3d(ArrayView<T> shape, ArrayView<T> strides) {
     }
 }
 
-inline bool is_channels_last_strides_2d(IntArrayView shape, IntArrayView strides) {
-    return is_channels_last_strides_2d<int64_t>(shape, strides);
+inline bool IsChannelsLastStrides2d(IntArrayView shape, IntArrayView strides) {
+    return IsChannelsLastStrides2d<int64_t>(shape, strides);
 }
 
-inline bool is_channels_last_strides_3d(IntArrayView shape, IntArrayView strides) {
-    return is_channels_last_strides_3d<int64_t>(shape, strides);
+inline bool IsChannelsLastStrides3d(IntArrayView shape, IntArrayView strides) {
+    return IsChannelsLastStrides3d<int64_t>(shape, strides);
 }
 
 inline std::ostream& operator<<(std::ostream& os, MemoryFormat format) {
     switch (format) {
-        case MemoryFormat::Preserve:
+        case MemoryFormat::kPreserve:
             os << "Preserve";
             break;
-        case MemoryFormat::Contiguous:
+        case MemoryFormat::kContiguous:
             os << "Contiguous";
             break;
-        case MemoryFormat::ChannelsLast:
+        case MemoryFormat::kChannelsLast:
             os << "ChannelsLast";
             break;
-        case MemoryFormat::ChannelsLast3d:
+        case MemoryFormat::kChannelsLast3d:
             os << "ChannelsLast3d";
             break;
         default:

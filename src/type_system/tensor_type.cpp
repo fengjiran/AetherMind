@@ -257,49 +257,50 @@ TensorType::TensorType(std::optional<DataType> dtype,
       requires_grad_(requires_grad), undefined_(undefined) {}
 
 VaryingShape<int64_t> TensorType::shape() const {
-    auto rank = shape_.rank();
+    const auto rank = shape_.rank();
     if (!rank.has_value()) {
         return VaryingShape<int64_t>{};
     }
 
-    auto n = rank.value();
-    std::vector<std::optional<int64_t>> dims;
-    dims.reserve(n);
+    const auto n = rank.value();
+    std::vector<std::optional<int64_t>> shape;
+    shape.reserve(n);
     for (const auto& ss: shape_.shape().value()) {
-        dims.push_back(ss.IsStatic() ? std::optional<int64_t>(ss.GetStaticValue())
-                                     : std::nullopt);
+        shape.push_back(ss.IsStatic() ? std::optional(ss.GetStaticValue())
+                                      : std::nullopt);
     }
-    return VaryingShape<int64_t>{std::move(dims)};
-}
-
-const SymbolicShape& TensorType::symbolic_shape() const {
-    return shape_;
+    return VaryingShape{std::move(shape)};
 }
 
 VaryingShape<int64_t> TensorType::strides() const {
-    const auto& shape = strides_.shape();
-    if (!shape.has_value()) {
+    const auto& strides_opt = strides_.shape();
+    if (!strides_opt.has_value()) {
         return VaryingShape<int64_t>{};
     }
 
-    auto n = shape->size();
-    std::vector<std::optional<int64_t>> dims(n);
-    for (const auto& stride: shape.value()) {
+    std::vector<std::optional<int64_t>> strides(strides_opt->size());
+    for (const auto& stride: strides_opt.value()) {
         if (!stride.has_value()) {
             continue;
         }
-        const auto& s = stride.value();
-        if (s.stride_idx().has_value() && s.stride().has_value()) {
-            dims[s.stride_idx().value()] = s.stride().value();
+
+        if (const auto& s = stride.value(); s.stride_idx().has_value() && s.stride().has_value()) {
+            strides[s.stride_idx().value()] = s.stride().value();
         }
     }
-    return VaryingShape<int64_t>{std::move(dims)};
+    return VaryingShape{std::move(strides)};
 }
 
 std::optional<size_t> TensorType::numel() const {
+    const auto& vary_shape = shape();
+    const auto& ndim = vary_shape.size();
+    if (!ndim.has_value()) {
+        return std::optional<size_t>{};
+    }
+
     size_t prod = 1;
-    for (size_t i = 0; i < shape().size(); ++i) {
-        auto s = shape()[i];
+    for (size_t i = 0; i < ndim.value(); ++i) {
+        auto s = vary_shape[i];
         if (!s.has_value()) {
             return std::optional<size_t>{};
         }
@@ -308,19 +309,18 @@ std::optional<size_t> TensorType::numel() const {
     return prod;
 }
 
-
 bool TensorType::Equals(const Type& rhs) const {
     if (rhs.kind() != kind()) {
         return false;
     }
 
-    auto t = rhs.Expect<TensorType>();
-    return data_type() == t->data_type() &&
-           shape() == t->shape() &&
-           stride_properties() == t->stride_properties() &&
+    const auto t = rhs.Expect<TensorType>();
+    return dtype() == t->dtype() &&
            device() == t->device() &&
-           requiresGrad() == t->requiresGrad() &&
-           undefined() == t->undefined();
+           shape() == t->shape() &&
+           undefined() == t->undefined() &&
+           GetStrideProperties() == t->GetStrideProperties() &&
+           RequiresGrad() == t->RequiresGrad();
 }
 
 bool TensorType::IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
@@ -328,7 +328,7 @@ bool TensorType::IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
         if (this == ptr.get()) {
             return true;
         }
-        return *merge(*ptr) == *ptr;
+        return *Merge(*ptr) == *ptr;
     }
     return Type::IsSubtypeOfExt(rhs, why_not);
 }
@@ -489,25 +489,25 @@ bool TensorType::matchTensor(const Tensor& t) const {
 
     // TODO
     bool rg = t.requires_grad();
-    bool matched_strides = !stride_properties().size() ||
-                           (!t.has_storage() && !stride_properties().IsComplete()) ||
-                           stride_properties() == compute_stride_props(t.shape(), t.strides(), t.is_contiguous());
-    return data_type().value_or(t.dtype()) == t.dtype() &&
+    bool matched_strides = !GetStrideProperties().size() ||
+                           (!t.has_storage() && !GetStrideProperties().IsComplete()) ||
+                           GetStrideProperties() == compute_stride_props(t.shape(), t.strides(), t.is_contiguous());
+    return dtype().value_or(t.dtype()) == t.dtype() &&
            device().value_or(t.device()) == t.device() &&
-           requiresGrad().value_or(rg) == rg &&
+           RequiresGrad().value_or(rg) == rg &&
            matched_strides &&
            is_null_or_equal(shape().GetConcreteValue(), t.shape());
 }
 
 
-TensorTypePtr TensorType::merge(const TensorType& other, bool merge_shape) const {
-    auto dtype = MergePrimitiveValue(data_type(), other.data_type());
-    auto shape = merge_shape ? symbolic_shape().Merge(other.symbolic_shape()) : symbolic_shape();
-    auto sprops = stride_properties().Merge(other.stride_properties());
+TensorTypePtr TensorType::Merge(const TensorType& other, bool merge_shape) const {
+    auto dtype1 = MergePrimitiveValue(dtype(), other.dtype());
+    auto shape = merge_shape ? GetSymbolicShape().Merge(other.GetSymbolicShape()) : GetSymbolicShape();
+    auto sprops = GetStrideProperties().Merge(other.GetStrideProperties());
     auto dev = MergePrimitiveValue(device(), other.device());
-    auto gr = MergePrimitiveValue(requiresGrad(), other.requiresGrad());
+    auto gr = MergePrimitiveValue(RequiresGrad(), other.RequiresGrad());
     auto undef = MergePrimitiveValue(undefined(), other.undefined());
-    return create(dtype, dev, shape, sprops, gr, undef);
+    return Create(dtype1, dev, shape, sprops, gr, undef);
 }
 
 TensorTypePtr TensorType::contiguous() const {
@@ -548,21 +548,20 @@ std::vector<int64_t> TensorType::contiguous_stride_of(IntArrayView shape, Memory
 }
 
 
-TensorTypePtr TensorType::create(std::optional<DataType> dtype,
+TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
                                  std::optional<Device> device,
                                  SymbolicShape shape,
                                  VaryingShape<Stride> strides,
                                  std::optional<bool> requires_grad,
                                  std::optional<bool> undefined) {
-    //NOLINTBEGIN
-    auto ptr = new TensorType(dtype, device, std::move(shape),
-                              std::move(strides), requires_grad,
-                              undefined);
-    //NOLINTEND
+    //NOLINT BEGIN
+    auto* ptr = new TensorType(dtype, device, std::move(shape), std::move(strides),
+                              requires_grad, undefined);
+    //NOLINT END
     return TensorTypePtr(ptr);
 }
 
-TensorTypePtr TensorType::create(std::optional<DataType> dtype,
+TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
                                  std::optional<Device> device,
                                  const VaryingShape<int64_t>& shape,
                                  const VaryingShape<int64_t>& strides,
@@ -577,37 +576,37 @@ TensorTypePtr TensorType::create(std::optional<DataType> dtype,
                                            concrete_stride.value(),
                                            tensor_contiguity);
         auto symbol_shape = SymbolicShape(concrete_shape.value());
-        return create(dtype, device, std::move(symbol_shape), std::move(sprops), requires_grad, undefined);
+        return Create(dtype, device, std::move(symbol_shape), std::move(sprops), requires_grad, undefined);
     }
 
     // strides are all null, but still have number of strides equal to number of ranks
     const auto& shape_opt = shape.shape();
     CHECK(shape_opt.has_value() && shape.size().has_value());
     auto symbol_shape = SymbolicShape(shape_opt.value());
-    return create(dtype, device, std::move(symbol_shape),
+    return Create(dtype, device, std::move(symbol_shape),
                   VaryingShape<Stride>(shape_opt->size()), requires_grad, undefined);
 }
 
-TensorTypePtr TensorType::create(std::optional<DataType> dtype,
+TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
                                  std::optional<Device> device,
                                  std::optional<size_t> dim,
                                  std::optional<bool> requires_grad) {
-    return create(dtype, device, SymbolicShape(dim), VaryingShape<Stride>(dim), requires_grad);
+    return Create(dtype, device, SymbolicShape(dim), VaryingShape<Stride>(dim), requires_grad);
 }
 
 
-TensorTypePtr TensorType::create(const Tensor& t) {
+TensorTypePtr TensorType::Create(const Tensor& t) {
     VaryingShape<bool> contiguity;
     VaryingShape<size_t> stride_indices;
 
     if (t.layout() == kStrided && !t.is_nested()) {
         auto shape = VaryingShape<int64_t>{t.shape().vec()};
         auto strides = VaryingShape<int64_t>{t.strides().vec()};
-        return create(t.dtype(), t.device(), shape, strides,
+        return Create(t.dtype(), t.device(), shape, strides,
                       t.requires_grad(), false, t.is_contiguous());
     }
 
-    return create(t.dtype(), t.device(), SymbolicShape(), VaryingShape<Stride>{},
+    return Create(t.dtype(), t.device(), SymbolicShape(), VaryingShape<Stride>{},
                   t.requires_grad(), false);
 }
 
@@ -632,7 +631,7 @@ bool is_contiguous_stride(IntArrayView shape, IntArrayView strides) {
 TensorTypePtr TensorType::create_contiguous(DataType dtype, Device device, IntArrayView shape) {
     auto strides = contiguous_stride_of(shape);
     CHECK(shape.size() == strides.size());
-    return create(dtype, device, VaryingShape<int64_t>(shape),
+    return Create(dtype, device, VaryingShape<int64_t>(shape),
                   VaryingShape<int64_t>(strides), std::nullopt);
 }
 
@@ -654,7 +653,7 @@ TypePtr TensorType::create_from_number_type(const Type& t) {
     }
 
     if (t.kind() == NumberType::Kind) {
-        return create(std::nullopt, Device::CPU(), {}, std::nullopt);
+        return Create(std::nullopt, Device::CPU(), {}, std::nullopt);
     }
 
     CHECK(false) << "Unknown number type: " << t.str();
@@ -730,7 +729,7 @@ TensorTypePtr TensorType::dimensioned_only() const {
 }
 
 const TensorTypePtr& TensorType::get() {
-    static auto ptr = create({}, {}, SymbolicShape(), VaryingShape<Stride>{}, {});
+    static auto ptr = Create({}, {}, SymbolicShape(), VaryingShape<Stride>{}, {});
     return ptr;
 }
 

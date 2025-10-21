@@ -162,12 +162,9 @@ public:
     }
 
     NODISCARD virtual bool requires_grad() const {
-        for (const auto& t: GetContainedTypes()) {
-            if (t->requires_grad()) {
-                return true;
-            }
-        }
-        return false;
+        const auto types = GetContainedTypes();
+        return std::any_of(types.begin(), types.end(),
+                           [](const TypePtr& t) { return t->requires_grad(); });
     }
 
     // list of types this type contains, e.g. for a List then element type of

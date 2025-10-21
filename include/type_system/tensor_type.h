@@ -162,7 +162,7 @@ public:
         }
     }
 
-    explicit VaryingShape(size_t size) : VaryingShape(std::optional<size_t>(size)) {}
+    explicit VaryingShape(size_t size) : VaryingShape(std::optional(size)) {}
 
     const std::optional<T>& operator[](size_t i) const {
         if (!shape_.has_value()) {
@@ -250,18 +250,7 @@ public:
         return "Tensor";
     }
 
-    String ReprStr() const override {
-        if (is_inferred_type()) {
-            return str() + " (inferred)";
-        }
-        return str();
-    }
-
-    bool Equals(const Type& rhs) const override;
-
-    bool IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
-
-    const std::optional<DataType>& data_type() const {
+    const std::optional<DataType>& dtype() const {
         return dtype_;
     }
 
@@ -271,77 +260,84 @@ public:
 
     VaryingShape<int64_t> shape() const;
 
-    const SymbolicShape& symbolic_shape() const;
-
     VaryingShape<int64_t> strides() const;
 
-    std::optional<size_t> dim() const {
+    std::optional<size_t> ndim() const {
         return shape().size();
     }
 
     std::optional<size_t> numel() const;
 
-    const VaryingShape<Stride>& stride_properties() const {
-        return strides_;
-    }
-
-    const std::optional<bool>& requiresGrad() const {
-        return requires_grad_;
-    }
-
-    bool requires_grad() const override {
-        return requires_grad_ ? *requires_grad_ : true;
-    }
-
     const std::optional<bool>& undefined() const {
         return undefined_;
     }
 
-    bool is_inferred_type() const {
+    bool is_inferred() const {
         return is_inferred_;
     }
+
+    bool requires_grad() const override {
+        return requires_grad_ ? requires_grad_.value() : true;
+    }
+
+    const SymbolicShape& GetSymbolicShape() const {
+        return shape_;
+    }
+
+    const VaryingShape<Stride>& GetStrideProperties() const {
+        return strides_;
+    }
+
+    const std::optional<bool>& RequiresGrad() const {
+        return requires_grad_;
+    }
+
+    String ReprStr() const override {
+        return is_inferred() ? str() + " (inferred)" : str();
+    }
+
+    bool Equals(const Type& rhs) const override;
+
+    bool IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
 
     // is all information about the type specified except for autograd?
     // This replaces the notion of a 'CompleteTensorType' that used to exist
     // in the type-hierarchy. Excluding require_grad and undefined allows
     // this to match the old behavior.
-    bool is_complete() const {
-        return data_type() && device() && shape_.IsComplete() && strides_.IsComplete();
+    bool IsComplete() const {
+        return dtype() && device() && shape_.IsComplete() && strides_.IsComplete();
     }
 
     bool matchTensor(const Tensor& t) const;
 
-    TensorTypePtr merge(const TensorType& other, bool merge_shape = true) const;
+    TensorTypePtr Merge(const TensorType& other, bool merge_shape = true) const;
 
     TensorTypePtr contiguous() const;
 
     static std::vector<int64_t> contiguous_stride_of(IntArrayView shape,
                                                      MemoryFormat memory_format = MemoryFormat::Contiguous);
 
-    static TensorTypePtr create(const Tensor& t);
+    static TensorTypePtr Create(std::optional<DataType> dtype,
+                                std::optional<Device> device,
+                                SymbolicShape shape,
+                                VaryingShape<Stride> strides,
+                                std::optional<bool> requires_grad,
+                                std::optional<bool> undefined = false);
 
-    static TensorTypePtr create(
-            std::optional<DataType> dtype,
-            std::optional<Device> device,
-            const VaryingShape<int64_t>& shape,
-            const VaryingShape<int64_t>& strides,
-            std::optional<bool> requires_grad,
-            std::optional<bool> undefined = false,
-            bool tensor_contiguity = false);
+    static TensorTypePtr Create(std::optional<DataType> dtype,
+                                std::optional<Device> device,
+                                const VaryingShape<int64_t>& shape,
+                                const VaryingShape<int64_t>& strides,
+                                std::optional<bool> requires_grad,
+                                std::optional<bool> undefined = false,
+                                bool tensor_contiguity = false);
 
-    static TensorTypePtr create(
-            std::optional<DataType> dtype,
-            std::optional<Device> device,
-            std::optional<size_t> dim,
-            std::optional<bool> requires_grad);
+    static TensorTypePtr Create(std::optional<DataType> dtype,
+                                std::optional<Device> device,
+                                std::optional<size_t> dim,
+                                std::optional<bool> requires_grad);
 
-    static TensorTypePtr create(
-            std::optional<DataType> dtype,
-            std::optional<Device> device,
-            SymbolicShape shape,
-            VaryingShape<Stride> strides,
-            std::optional<bool> requires_grad,
-            std::optional<bool> undefined = false);
+    static TensorTypePtr Create(const Tensor& t);
 
     static TensorTypePtr create_contiguous(DataType dtype, Device device, IntArrayView shape);
 

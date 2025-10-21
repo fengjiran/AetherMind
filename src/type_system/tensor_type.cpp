@@ -547,17 +547,16 @@ std::vector<int64_t> TensorType::contiguous_stride_of(IntArrayView shape, Memory
     return strides;
 }
 
-
 TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
                                  std::optional<Device> device,
                                  SymbolicShape shape,
                                  VaryingShape<Stride> strides,
                                  std::optional<bool> requires_grad,
                                  std::optional<bool> undefined) {
-    //NOLINT BEGIN
+    //NOLINTBEGIN
     auto* ptr = new TensorType(dtype, device, std::move(shape), std::move(strides),
                               requires_grad, undefined);
-    //NOLINT END
+    //NOLINTEND
     return TensorTypePtr(ptr);
 }
 

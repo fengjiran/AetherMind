@@ -632,7 +632,7 @@ inline bool operator!=(const Type& lhs, const Type& rhs) {
 }
 
 template<typename T>
-std::optional<T> merge_primitive(const std::optional<T>& a, const std::optional<T>& b) {
+std::optional<T> MergePrimitiveValue(const std::optional<T>& a, const std::optional<T>& b) {
     if (a.has_value() && b.has_value() && a.value() == b.value()) {
         return a;
     }
@@ -642,7 +642,7 @@ std::optional<T> merge_primitive(const std::optional<T>& a, const std::optional<
 namespace details {
 
 template<typename T>
-bool is_complete(const T&) {
+bool IsComplete(const T&) {
     return true;
 }
 

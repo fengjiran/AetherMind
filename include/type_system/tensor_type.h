@@ -64,20 +64,20 @@ public:
     explicit SymbolicShape(std::optional<size_t> rank);
 
     // Mix of known and unknown ranks
-    SymbolicShape(const std::vector<std::optional<int64_t>>& dims);//NOLINT
+    explicit SymbolicShape(const std::vector<std::optional<int64_t>>& dims);
 
-    SymbolicShape(std::vector<ShapeSymbol> dims) : dims_(std::move(dims)) {}//NOLINT
+    explicit SymbolicShape(std::vector<ShapeSymbol> dims) : symbolic_shape_(std::move(dims)) {}
 
-    SymbolicShape(IntArrayView dims);//NOLINT
-
-    ShapeSymbol operator[](size_t i) const;
-
-    NODISCARD ShapeSymbol at(size_t i) const;
+    explicit SymbolicShape(IntArrayView dims);
 
     // Returns rank or nullopt in case of unranked shape.
     NODISCARD std::optional<size_t> rank() const;
 
-    NODISCARD const std::optional<std::vector<ShapeSymbol>>& Shape() const;
+    NODISCARD const std::optional<std::vector<ShapeSymbol>>& shape() const;
+
+    ShapeSymbol operator[](size_t i) const;
+
+    NODISCARD ShapeSymbol at(size_t i) const;
 
     NODISCARD std::optional<std::vector<bool>> GetSymbolicDims() const;
 
@@ -87,15 +87,14 @@ public:
 
     void Dump() const;
 
-    // Create new SymbolicShape that is result of merging self and another
-    // SymbolicShape. Only dimensions that are static and equal will be
-    // preserved.
-    // If either of two shapes are of unknown rank or they have unmatching rank,
-    // result will be unranked.
+    // Generate a new SymbolicShape through merging itself with another SymbolicShape.
+    // Only dimensions that are both static and identical will be retained.
+    // If either shape has an unknown rank, or if their ranks differ,
+    // the resulting shape will be unranked.
     NODISCARD SymbolicShape Merge(const SymbolicShape& other) const;
 
     friend bool operator==(const SymbolicShape& lhs, const SymbolicShape& rhs) {
-        return lhs.dims_ == rhs.dims_;
+        return lhs.symbolic_shape_ == rhs.symbolic_shape_;
     }
 
     friend bool operator!=(const SymbolicShape& lhs, const SymbolicShape& rhs) {
@@ -103,7 +102,7 @@ public:
     }
 
 private:
-    std::optional<std::vector<ShapeSymbol>> dims_{std::nullopt};
+    std::optional<std::vector<ShapeSymbol>> symbolic_shape_{std::nullopt};
 };
 
 class Stride {
@@ -111,24 +110,36 @@ public:
     Stride() = default;
 
     Stride(const std::optional<size_t>& stride_idx,
-           std::optional<bool> contiguous,
+           std::optional<bool> is_contiguous,
            const std::optional<size_t>& stride)
-        : stride_idx_(stride_idx), contiguous_(contiguous), stride_(stride) {}
+        : stride_idx_(stride_idx), stride_(stride), is_contiguous_(is_contiguous) {}
+
+    NODISCARD std::optional<size_t> stride_idx() const {
+        return stride_idx_;
+    }
+
+    NODISCARD std::optional<size_t> stride() const {
+        return stride_;
+    }
+
+    NODISCARD std::optional<bool> is_contiguous() const {
+        return is_contiguous_;
+    }
 
     NODISCARD bool IsComplete() const {
-        return stride_idx_ && contiguous_ && stride_;
+        return stride_idx_ && stride_ && is_contiguous_;
     }
 
     bool operator==(const Stride& other) const {
         return stride_idx_ == other.stride_idx_ &&
-               contiguous_ == other.contiguous_ &&
-               stride_ == other.stride_;
+               stride_ == other.stride_ &&
+               is_contiguous_ == other.is_contiguous_;
     }
 
-    // private:
+private:
     std::optional<size_t> stride_idx_;
-    std::optional<bool> contiguous_;
     std::optional<size_t> stride_;
+    std::optional<bool> is_contiguous_;
 };
 
 template<typename T>
@@ -136,7 +147,7 @@ class VaryingShape {
 public:
     using ListOfOptionalElements = std::vector<std::optional<T>>;
 
-    explicit VaryingShape(ListOfOptionalElements dims) : dims_(std::move(dims)) {}
+    explicit VaryingShape(ListOfOptionalElements shape) : shape_(std::move(shape)) {}
 
     explicit VaryingShape(const std::vector<T>& vec)
         : VaryingShape(ListOfOptionalElements(vec.begin(), vec.end())) {}
@@ -145,45 +156,45 @@ public:
         : VaryingShape(ListOfOptionalElements(vec.begin(), vec.end())) {}
 
     explicit VaryingShape(std::optional<size_t> size = std::nullopt)
-        : dims_(std::nullopt) {
+        : shape_(std::nullopt) {
         if (size.has_value()) {
-            dims_ = ListOfOptionalElements(size.value());
+            shape_ = ListOfOptionalElements(size.value());
         }
     }
 
     explicit VaryingShape(size_t size) : VaryingShape(std::optional<size_t>(size)) {}
 
     const std::optional<T>& operator[](size_t i) const {
-        if (!dims_.has_value()) {
+        if (!shape_.has_value()) {
             AETHERMIND_THROW(RuntimeError) << "Rank isn't fixed";
         }
-        return dims_.value()[i];
+        return shape_.value()[i];
     }
 
     NODISCARD std::optional<size_t> size() const {
-        if (!dims_.has_value()) {
+        if (!shape_.has_value()) {
             return std::nullopt;
         }
 
-        return dims_.value().size();
+        return shape_.value().size();
     }
 
     NODISCARD const std::optional<ListOfOptionalElements>& shape() const {
-        return dims_;
+        return shape_;
     }
 
     bool operator==(const VaryingShape& other) const {
-        return dims_ == other.dims_;
+        return shape_ == other.shape_;
     }
 
-    NODISCARD std::optional<std::vector<T>> get_concrete_value() const;
+    NODISCARD std::optional<std::vector<T>> GetConcreteValue() const;
 
     NODISCARD bool IsComplete() const;
 
-    NODISCARD VaryingShape merge(const VaryingShape& other) const;
+    NODISCARD VaryingShape Merge(const VaryingShape& other) const;
 
 private:
-    std::optional<ListOfOptionalElements> dims_;
+    std::optional<ListOfOptionalElements> shape_;
 };
 
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s);
@@ -193,8 +204,8 @@ template<typename T>
 std::ostream& operator<<(std::ostream& os, const VaryingShape<T>& t);
 
 template<>
-inline std::optional<Stride> merge_primitive(const std::optional<Stride>& a,
-                                             const std::optional<Stride>& b) {
+inline std::optional<Stride> MergePrimitiveValue(const std::optional<Stride>& a,
+                                                 const std::optional<Stride>& b) {
     auto lhs = a;
     auto rhs = b;
     if (!lhs.has_value()) {
@@ -205,9 +216,9 @@ inline std::optional<Stride> merge_primitive(const std::optional<Stride>& a,
         rhs = Stride();
     }
 
-    auto merged_idx = merge_primitive(lhs->stride_idx_, rhs->stride_idx_);
-    auto merged_contiguous = merge_primitive(lhs->contiguous_, rhs->contiguous_);
-    auto merged_stride = merge_primitive(lhs->stride_, rhs->stride_);
+    auto merged_idx = MergePrimitiveValue(lhs->stride_idx(), rhs->stride_idx());
+    auto merged_contiguous = MergePrimitiveValue(lhs->is_contiguous(), rhs->is_contiguous());
+    auto merged_stride = MergePrimitiveValue(lhs->stride(), rhs->stride());
 
     if (!(merged_idx.has_value() || merged_contiguous.has_value() || merged_stride.has_value())) {
         return std::optional<Stride>{};
@@ -216,7 +227,7 @@ inline std::optional<Stride> merge_primitive(const std::optional<Stride>& a,
     return Stride(merged_idx, merged_contiguous, merged_stride);
 }
 
-inline ShapeSymbol merge_primitive(const ShapeSymbol& a, const ShapeSymbol& b) {
+inline ShapeSymbol MergePrimitiveValue(const ShapeSymbol& a, const ShapeSymbol& b) {
     if (a.IsStatic() && b.IsStatic() && a == b) {
         return a;
     }
@@ -225,7 +236,7 @@ inline ShapeSymbol merge_primitive(const ShapeSymbol& a, const ShapeSymbol& b) {
 
 namespace details {
 
-inline bool is_complete(const Stride& s) {
+inline bool IsComplete(const Stride& s) {
     return s.IsComplete();
 }
 

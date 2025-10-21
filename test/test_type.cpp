@@ -1,8 +1,8 @@
 //
 // Created by 赵丹 on 2025/8/14.
 //
-#include "type_system/union_type.h"
 #include "type_system/tensor_type.h"
+#include "type_system/union_type.h"
 
 #include <gtest/gtest.h>
 
@@ -48,23 +48,23 @@ TEST(ShapeSymbolTest, MergePrimitive) {
     // 测试合并相同的静态符号
     ShapeSymbol s1 = ShapeSymbol::CreateFromValue(42);
     ShapeSymbol s2 = ShapeSymbol::CreateFromValue(42);
-    ShapeSymbol merged = merge_primitive(s1, s2);
+    ShapeSymbol merged = MergePrimitiveValue(s1, s2);
     EXPECT_TRUE(merged.IsStatic());
     EXPECT_EQ(merged.GetStaticValue(), 42);
 
     // 测试合并不同的静态符号
     ShapeSymbol s3 = ShapeSymbol::CreateFromValue(10);
-    ShapeSymbol merged2 = merge_primitive(s1, s3);
+    ShapeSymbol merged2 = MergePrimitiveValue(s1, s3);
     EXPECT_FALSE(merged2.IsStatic());
 
     // 测试合并静态和动态符号
     ShapeSymbol dyn = ShapeSymbol::Create();
-    ShapeSymbol merged3 = merge_primitive(s1, dyn);
+    ShapeSymbol merged3 = MergePrimitiveValue(s1, dyn);
     EXPECT_FALSE(merged3.IsStatic());
 
     // 测试合并两个动态符号
     ShapeSymbol dyn2 = ShapeSymbol::Create();
-    ShapeSymbol merged4 = merge_primitive(dyn, dyn2);
+    ShapeSymbol merged4 = MergePrimitiveValue(dyn, dyn2);
     EXPECT_FALSE(merged4.IsStatic());
 }
 
@@ -73,14 +73,14 @@ TEST(SymbolicShapeTest, Constructors) {
     // 测试默认构造函数（无秩）
     SymbolicShape unranked;
     EXPECT_FALSE(unranked.rank().has_value());
-    EXPECT_FALSE(unranked.Shape().has_value());
+    EXPECT_FALSE(unranked.shape().has_value());
 
     // 测试已知秩但未知维度的构造函数
     SymbolicShape rank_3(3);
     EXPECT_TRUE(rank_3.rank().has_value());
     EXPECT_EQ(rank_3.rank().value(), 3);
-    EXPECT_TRUE(rank_3.Shape().has_value());
-    EXPECT_EQ(rank_3.Shape().value().size(), 3);
+    EXPECT_TRUE(rank_3.shape().has_value());
+    EXPECT_EQ(rank_3.shape().value().size(), 3);
     EXPECT_FALSE(rank_3.IsComplete());
 
     // 测试从部分已知维度构造
@@ -88,10 +88,10 @@ TEST(SymbolicShapeTest, Constructors) {
     SymbolicShape partial(partial_dims);
     EXPECT_TRUE(partial.rank().has_value());
     EXPECT_EQ(partial.rank().value(), 3);
-    EXPECT_TRUE(partial.Shape().has_value());
-    EXPECT_TRUE(partial.Shape().value()[0].IsStatic());
-    EXPECT_FALSE(partial.Shape().value()[1].IsStatic());
-    EXPECT_TRUE(partial.Shape().value()[2].IsStatic());
+    EXPECT_TRUE(partial.shape().has_value());
+    EXPECT_TRUE(partial.shape().value()[0].IsStatic());
+    EXPECT_FALSE(partial.shape().value()[1].IsStatic());
+    EXPECT_TRUE(partial.shape().value()[2].IsStatic());
     EXPECT_FALSE(partial.IsComplete());
 
     // 测试从具体形状构造
@@ -175,26 +175,26 @@ TEST(StrideTest, BasicOperations) {
     // 测试默认构造函数
     Stride default_stride;
     EXPECT_FALSE(default_stride.IsComplete());
-    EXPECT_FALSE(default_stride.stride_idx_.has_value());
-    EXPECT_FALSE(default_stride.contiguous_.has_value());
-    EXPECT_FALSE(default_stride.stride_.has_value());
+    EXPECT_FALSE(default_stride.stride_idx().has_value());
+    EXPECT_FALSE(default_stride.is_contiguous().has_value());
+    EXPECT_FALSE(default_stride.stride().has_value());
 
     // 测试完全指定的构造函数
     Stride complete(1, true, 10);
     EXPECT_TRUE(complete.IsComplete());
-    EXPECT_TRUE(complete.stride_idx_.has_value());
-    EXPECT_EQ(complete.stride_idx_.value(), 1);
-    EXPECT_TRUE(complete.contiguous_.has_value());
-    EXPECT_TRUE(complete.contiguous_.value());
-    EXPECT_TRUE(complete.stride_.has_value());
-    EXPECT_EQ(complete.stride_.value(), 10);
+    EXPECT_TRUE(complete.stride_idx().has_value());
+    EXPECT_EQ(complete.stride_idx().value(), 1);
+    EXPECT_TRUE(complete.is_contiguous().has_value());
+    EXPECT_TRUE(complete.is_contiguous().value());
+    EXPECT_TRUE(complete.stride().has_value());
+    EXPECT_EQ(complete.stride().value(), 10);
 
     // 测试部分指定的构造函数
     Stride partial(2, std::nullopt, 20);
     EXPECT_FALSE(partial.IsComplete());
-    EXPECT_TRUE(partial.stride_idx_.has_value());
-    EXPECT_FALSE(partial.contiguous_.has_value());
-    EXPECT_TRUE(partial.stride_.has_value());
+    EXPECT_TRUE(partial.stride_idx().has_value());
+    EXPECT_FALSE(partial.is_contiguous().has_value());
+    EXPECT_TRUE(partial.stride().has_value());
 
     // 测试比较运算符
     Stride complete2(1, true, 10);
@@ -208,24 +208,24 @@ TEST(StrideTest, MergePrimitive) {
     // 测试合并两个完整且相同的Stride
     std::optional<Stride> s1 = Stride(1, true, 10);
     std::optional<Stride> s2 = Stride(1, true, 10);
-    auto merged = merge_primitive(s1, s2);
+    auto merged = MergePrimitiveValue(s1, s2);
     EXPECT_TRUE(merged.has_value());
     EXPECT_TRUE(merged.value().IsComplete());
-    EXPECT_EQ(merged.value().stride_idx_.value(), 1);
+    EXPECT_EQ(merged.value().stride_idx().value(), 1);
 
     // 测试合并两个完整但不同的Stride
     std::optional<Stride> s3 = Stride(2, true, 10);
-    auto merged2 = merge_primitive(s1, s3);
+    auto merged2 = MergePrimitiveValue(s1, s3);
     EXPECT_TRUE(merged2.has_value());
     EXPECT_FALSE(merged2.value().IsComplete());
 
     // 测试合并空和非空Stride
     std::optional<Stride> none;
-    auto merged3 = merge_primitive(s1, none);
+    auto merged3 = MergePrimitiveValue(s1, none);
     EXPECT_FALSE(merged3.has_value());
 
     // 测试合并两个空Stride
-    auto merged4 = merge_primitive(none, none);
+    auto merged4 = MergePrimitiveValue(none, none);
     EXPECT_FALSE(merged4.has_value());
 }
 
@@ -288,7 +288,7 @@ TEST(VaryingShapeTest, ConcreteSizes) {
     // 测试完全指定的形状
     std::vector<int64_t> values = {2, 3, 4};
     VaryingShape<int64_t> concrete(values);
-    auto concrete_sizes = concrete.get_concrete_value();
+    auto concrete_sizes = concrete.GetConcreteValue();
     EXPECT_TRUE(concrete_sizes.has_value());
     EXPECT_EQ(concrete_sizes.value().size(), 3);
     EXPECT_EQ(concrete_sizes.value()[0], 2);
@@ -296,12 +296,12 @@ TEST(VaryingShapeTest, ConcreteSizes) {
     // 测试部分指定的形状
     std::vector<std::optional<int64_t>> partial_values = {5, std::nullopt, 6};
     VaryingShape<int64_t> partial(partial_values);
-    auto partial_sizes = partial.get_concrete_value();
+    auto partial_sizes = partial.GetConcreteValue();
     EXPECT_FALSE(partial_sizes.has_value());
 
     // 测试无秩形状
     VaryingShape<int64_t> unranked;
-    auto unranked_sizes = unranked.get_concrete_value();
+    auto unranked_sizes = unranked.GetConcreteValue();
     EXPECT_FALSE(unranked_sizes.has_value());
 }
 
@@ -309,7 +309,7 @@ TEST(VaryingShapeTest, Merge) {
     // 测试合并两个相同的形状
     VaryingShape<int64_t> shape1(std::vector<int64_t>{2, 3, 4});
     VaryingShape<int64_t> shape2(std::vector<int64_t>{2, 3, 4});
-    VaryingShape<int64_t> merged = shape1.merge(shape2);
+    VaryingShape<int64_t> merged = shape1.Merge(shape2);
     EXPECT_TRUE(merged.size().has_value());
     EXPECT_EQ(merged.size().value(), 3);
     EXPECT_TRUE(merged[0].has_value());
@@ -317,12 +317,12 @@ TEST(VaryingShapeTest, Merge) {
 
     // 测试合并不同秩的形状
     VaryingShape<int64_t> rank_2(2);
-    VaryingShape<int64_t> merged2 = shape1.merge(rank_2);
+    VaryingShape<int64_t> merged2 = shape1.Merge(rank_2);
     EXPECT_FALSE(merged2.size().has_value());
 
     // 测试合并无秩和有秩形状
     VaryingShape<int64_t> unranked;
-    VaryingShape<int64_t> merged3 = shape1.merge(unranked);
+    VaryingShape<int64_t> merged3 = shape1.Merge(unranked);
     EXPECT_FALSE(merged3.size().has_value());
 }
 

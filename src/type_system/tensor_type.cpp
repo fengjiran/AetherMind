@@ -11,24 +11,6 @@ namespace aethermind {
 
 std::atomic<size_t> ShapeSymbol::num_symbols_ = 1;
 
-std::ostream& operator<<(std::ostream& os, const Stride& s) {
-    os << "{";
-    if (s.stride_idx_.has_value()) {
-        os << *s.stride_idx_;
-    } else {
-        os << "*";
-    }
-
-    os << ":";
-    if (s.stride_.has_value()) {
-        os << *s.stride_;
-    } else {
-        os << "*";
-    }
-    os << '}';
-    return os;
-}
-
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
     if (s.IsStatic()) {
         os << s.value();
@@ -39,25 +21,44 @@ std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
 }
 
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
-    auto rank_opt = s.rank();
+    const auto rank_opt = s.rank();
     if (!rank_opt.has_value()) {
         os << "(*)";
         return os;
     }
-    auto size_opt = s.Shape();
+
+    const auto& shape = s.shape().value();
     os << "(";
     for (size_t i = 0; i < rank_opt.value(); ++i) {
         if (i > 0) {
             os << ", ";
         }
 
-        if (size_opt.has_value() && size_opt.value()[i].IsStatic()) {
-            os << size_opt.value()[i];
+        if (shape[i].IsStatic()) {
+            os << shape[i];
         } else {
             os << "*";
         }
     }
     os << ")";
+    return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const Stride& s) {
+    os << "{";
+    if (s.stride_idx().has_value()) {
+        os << *s.stride_idx();
+    } else {
+        os << "*";
+    }
+
+    os << ":";
+    if (s.stride().has_value()) {
+        os << *s.stride();
+    } else {
+        os << "*";
+    }
+    os << '}';
     return os;
 }
 
@@ -67,7 +68,7 @@ SymbolicShape::SymbolicShape(std::optional<size_t> rank) {
         for (size_t i = 0; i < rank.value(); ++i) {
             shape_symbols[i] = ShapeSymbol::Create();
         }
-        dims_ = shape_symbols;
+        symbolic_shape_ = shape_symbols;
     }
 }
 
@@ -80,7 +81,7 @@ SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& dims) {
             shape_symbols[i] = ShapeSymbol::Create();
         }
     }
-    dims_ = shape_symbols;
+    symbolic_shape_ = shape_symbols;
 }
 
 SymbolicShape::SymbolicShape(IntArrayView dims) {
@@ -88,36 +89,36 @@ SymbolicShape::SymbolicShape(IntArrayView dims) {
     for (size_t i = 0; i < dims.size(); ++i) {
         shape_symbols[i] = ShapeSymbol::CreateFromValue(dims[i]);
     }
-    dims_ = shape_symbols;
+    symbolic_shape_ = shape_symbols;
 }
 
 ShapeSymbol SymbolicShape::operator[](size_t i) const {
-    if (!dims_.has_value()) {
+    if (!symbolic_shape_.has_value()) {
         AETHERMIND_THROW(RuntimeError) << "Rank isn't fixed";
     }
-    return dims_.value()[i];
+    return symbolic_shape_.value()[i];
 }
 
 ShapeSymbol SymbolicShape::at(size_t i) const {
-    if (!dims_.has_value()) {
+    if (!symbolic_shape_.has_value()) {
         AETHERMIND_THROW(RuntimeError) << "Rank isn't fixed";
     }
 
-    if (i >= dims_->size()) {
+    if (i >= symbolic_shape_->size()) {
         AETHERMIND_THROW(OutOfRangeError) << "Out of range";
     }
-    return dims_.value()[i];
+    return symbolic_shape_.value()[i];
 }
 
 std::optional<size_t> SymbolicShape::rank() const {
-    if (dims_.has_value()) {
-        return dims_->size();
+    if (symbolic_shape_.has_value()) {
+        return symbolic_shape_->size();
     }
     return std::nullopt;
 }
 
-const std::optional<std::vector<ShapeSymbol>>& SymbolicShape::Shape() const {
-    return dims_;
+const std::optional<std::vector<ShapeSymbol>>& SymbolicShape::shape() const {
+    return symbolic_shape_;
 }
 
 std::optional<std::vector<bool>> SymbolicShape::GetSymbolicDims() const {
@@ -127,25 +128,22 @@ std::optional<std::vector<bool>> SymbolicShape::GetSymbolicDims() const {
     }
 
     const auto n = rank_opt.value();
-    std::vector<bool> symbolic_dims;
-    symbolic_dims.reserve(n);
-    for (const auto& s: dims_.value()) {
-        symbolic_dims.push_back(!s.IsStatic());
+    std::vector<bool> is_symbolic_dims;
+    is_symbolic_dims.reserve(n);
+    for (const auto& s: symbolic_shape_.value()) {
+        is_symbolic_dims.push_back(!s.IsStatic());
     }
-    return symbolic_dims;
+    return is_symbolic_dims;
 }
 
 bool SymbolicShape::IsComplete() const {
-    if (!dims_.has_value()) {
+    if (!symbolic_shape_.has_value()) {
         return false;
     }
 
-    for (auto d: dims_.value()) {
-        if (!d.IsStatic()) {
-            return false;
-        }
-    }
-    return true;
+    auto shape = symbolic_shape_.value();
+    return std::all_of(shape.begin(), shape.end(),
+                       [](const ShapeSymbol& s) { return s.IsStatic(); });
 }
 
 void SymbolicShape::Dump() const {
@@ -153,27 +151,29 @@ void SymbolicShape::Dump() const {
 }
 
 SymbolicShape SymbolicShape::Merge(const SymbolicShape& other) const {
-    if (!dims_.has_value() || !other.dims_.has_value() || dims_->size() != other.dims_->size()) {
+    if (!symbolic_shape_.has_value() ||
+        !other.symbolic_shape_.has_value() ||
+        symbolic_shape_->size() != other.symbolic_shape_->size()) {
         return {};
     }
 
-    auto n = dims_->size();
+    const auto n = symbolic_shape_->size();
     std::vector<ShapeSymbol> dims(n);
     for (size_t i = 0; i < n; ++i) {
-        dims[i] = merge_primitive(dims_.value()[i], other.dims_.value()[i]);
+        dims[i] = MergePrimitiveValue(symbolic_shape_.value()[i], other.symbolic_shape_.value()[i]);
     }
-    return {std::move(dims)};
+    return SymbolicShape(std::move(dims));
 }
 
 template<typename T>
-std::optional<std::vector<T>> VaryingShape<T>::get_concrete_value() const {
-    if (!dims_.has_value()) {
+std::optional<std::vector<T>> VaryingShape<T>::GetConcreteValue() const {
+    if (!shape_.has_value()) {
         return std::nullopt;
     }
 
     std::vector<T> shape;
-    shape.reserve(dims_->size());
-    for (auto d: dims_.value()) {
+    shape.reserve(shape_->size());
+    for (auto d: shape_.value()) {
         if (!d.has_value()) {
             return std::nullopt;
         }
@@ -185,12 +185,12 @@ std::optional<std::vector<T>> VaryingShape<T>::get_concrete_value() const {
 
 template<typename T>
 bool VaryingShape<T>::IsComplete() const {
-    if (!dims_.has_value()) {
+    if (!shape_.has_value()) {
         return false;
     }
 
-    for (auto d: dims_.value()) {
-        if (!d.has_value() || details::is_complete(d.value())) {
+    for (auto d: shape_.value()) {
+        if (!d.has_value() || details::IsComplete(d.value())) {
             return false;
         }
     }
@@ -198,18 +198,18 @@ bool VaryingShape<T>::IsComplete() const {
 }
 
 template<typename T>
-VaryingShape<T> VaryingShape<T>::merge(const VaryingShape& other) const {
-    if (!dims_.has_value() || !other.dims_.has_value() || dims_->size() != other.dims_->size()) {
-        return VaryingShape<T>{};
+VaryingShape<T> VaryingShape<T>::Merge(const VaryingShape& other) const {
+    if (!shape_.has_value() || !other.shape_.has_value() || shape_->size() != other.shape_->size()) {
+        return VaryingShape();
     }
 
-    auto n = dims_->size();
-    ListOfOptionalElements dims(n);
+    auto n = shape_->size();
+    ListOfOptionalElements shape(n);
     for (size_t i = 0; i < n; ++i) {
-        dims[i] = merge_primitive(dims_.value()[i], other.dims_.value()[i]);
+        shape[i] = MergePrimitiveValue(shape_.value()[i], other.shape_.value()[i]);
     }
 
-    return VaryingShape<T>{std::move(dims)};
+    return VaryingShape(std::move(shape));
 }
 
 template<typename T>
@@ -265,7 +265,7 @@ VaryingShape<int64_t> TensorType::shape() const {
     auto n = rank.value();
     std::vector<std::optional<int64_t>> dims;
     dims.reserve(n);
-    for (const auto& ss: shape_.Shape().value()) {
+    for (const auto& ss: shape_.shape().value()) {
         dims.push_back(ss.IsStatic() ? std::optional<int64_t>(ss.GetStaticValue())
                                      : std::nullopt);
     }
@@ -289,8 +289,8 @@ VaryingShape<int64_t> TensorType::strides() const {
             continue;
         }
         const auto& s = stride.value();
-        if (s.stride_idx_.has_value() && s.stride_.has_value()) {
-            dims[s.stride_idx_.value()] = s.stride_.value();
+        if (s.stride_idx().has_value() && s.stride().has_value()) {
+            dims[s.stride_idx().value()] = s.stride().value();
         }
     }
     return VaryingShape<int64_t>{std::move(dims)};
@@ -496,23 +496,23 @@ bool TensorType::matchTensor(const Tensor& t) const {
            device().value_or(t.device()) == t.device() &&
            requiresGrad().value_or(rg) == rg &&
            matched_strides &&
-           is_null_or_equal(shape().get_concrete_value(), t.shape());
+           is_null_or_equal(shape().GetConcreteValue(), t.shape());
 }
 
 
 TensorTypePtr TensorType::merge(const TensorType& other, bool merge_shape) const {
-    auto dtype = merge_primitive(data_type(), other.data_type());
+    auto dtype = MergePrimitiveValue(data_type(), other.data_type());
     auto shape = merge_shape ? symbolic_shape().Merge(other.symbolic_shape()) : symbolic_shape();
-    auto sprops = stride_properties().merge(other.stride_properties());
-    auto dev = merge_primitive(device(), other.device());
-    auto gr = merge_primitive(requiresGrad(), other.requiresGrad());
-    auto undef = merge_primitive(undefined(), other.undefined());
+    auto sprops = stride_properties().Merge(other.stride_properties());
+    auto dev = MergePrimitiveValue(device(), other.device());
+    auto gr = MergePrimitiveValue(requiresGrad(), other.requiresGrad());
+    auto undef = MergePrimitiveValue(undefined(), other.undefined());
     return create(dtype, dev, shape, sprops, gr, undef);
 }
 
 TensorTypePtr TensorType::contiguous() const {
     auto cloned = clone();
-    auto concrete_shape = shape().get_concrete_value();
+    auto concrete_shape = shape().GetConcreteValue();
     CHECK(concrete_shape.has_value());
     auto strides = compute_stride_props(concrete_shape.value(),
                                         contiguous_stride_of(concrete_shape.value()));
@@ -569,9 +569,9 @@ TensorTypePtr TensorType::create(std::optional<DataType> dtype,
                                  std::optional<bool> requires_grad,
                                  std::optional<bool> undefined,
                                  bool tensor_contiguity) {
-    auto concrete_stride = strides.get_concrete_value();
+    auto concrete_stride = strides.GetConcreteValue();
     if (concrete_stride.has_value()) {
-        auto concrete_shape = shape.get_concrete_value();
+        auto concrete_shape = shape.GetConcreteValue();
         CHECK(concrete_shape.has_value() && concrete_shape->size() == concrete_stride->size());
         auto sprops = compute_stride_props(concrete_shape.value(),
                                            concrete_stride.value(),

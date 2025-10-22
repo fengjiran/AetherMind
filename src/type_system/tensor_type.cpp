@@ -190,7 +190,7 @@ bool VaryingShape<T>::IsComplete() const {
     }
 
     for (auto d: shape_.value()) {
-        if (!d.has_value() || details::IsComplete(d.value())) {
+        if (!d.has_value() || !details::IsComplete(d.value())) {
             return false;
         }
     }

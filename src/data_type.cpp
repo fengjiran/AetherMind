@@ -49,7 +49,7 @@ std::string DataTypeToString(const DataType& dtype) {
         return "bool";
     }
 
-    if (dtype.is_void()) {
+    if (dtype.IsVoid()) {
         return "void";
     }
 

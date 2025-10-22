@@ -62,27 +62,27 @@ public:
     }
 
     NODISCARD bool is_integral() const {
-        return dtype_.is_int() || dtype_.is_uint();
+        return dtype_.IsInt() || dtype_.IsUint();
     }
 
     NODISCARD bool is_signed_integral() const {
-        return dtype_.is_int();
+        return dtype_.IsInt();
     }
 
     NODISCARD bool is_unsigned_integral() const {
-        return dtype_.is_uint();
+        return dtype_.IsUint();
     }
 
     NODISCARD bool is_floating_point() const {
-        return dtype_.is_float();
+        return dtype_.IsFloat();
     }
 
     NODISCARD bool is_bool() const {
-        return dtype_.is_bool();
+        return dtype_.IsBool();
     }
 
     NODISCARD bool is_complex() const {
-        return dtype_.is_complex();
+        return dtype_.IsComplex();
     }
 
     NODISCARD DataType type() const {

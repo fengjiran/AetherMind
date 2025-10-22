@@ -57,88 +57,88 @@ TEST(DataTypeTest, AssignmentOperator) {
 TEST(DataTypeTest, TypeChecks) {
     // 整数类型
     DataType int32 = DataType::Int(32);
-    EXPECT_TRUE(int32.is_int());
-    EXPECT_FALSE(int32.is_uint());
-    EXPECT_FALSE(int32.is_float32());
-    EXPECT_FALSE(int32.is_bool());
+    EXPECT_TRUE(int32.IsInt());
+    EXPECT_FALSE(int32.IsUint());
+    EXPECT_FALSE(int32.IsFloat32());
+    EXPECT_FALSE(int32.IsBool());
 
     // 无符号整数类型
     DataType uint8 = DataType::UInt(8);
-    EXPECT_FALSE(uint8.is_int());
-    EXPECT_TRUE(uint8.is_uint());
-    EXPECT_FALSE(uint8.is_float32());
+    EXPECT_FALSE(uint8.IsInt());
+    EXPECT_TRUE(uint8.IsUint());
+    EXPECT_FALSE(uint8.IsFloat32());
 
     // 布尔类型
     DataType boolean = DataType::Bool();
-    EXPECT_TRUE(boolean.is_bool());
-    EXPECT_FALSE(boolean.is_int());
-    EXPECT_TRUE(boolean.is_uint(true));// Bool is implemented as UInt(1)
+    EXPECT_TRUE(boolean.IsBool());
+    EXPECT_FALSE(boolean.IsInt());
+    EXPECT_TRUE(boolean.IsUint(true));// Bool is implemented as UInt(1)
 
     // 浮点类型
     DataType float32 = DataType::Float(32);
-    EXPECT_FALSE(float32.is_int());
-    EXPECT_FALSE(float32.is_uint());
-    EXPECT_TRUE(float32.is_float32());
-    EXPECT_FALSE(float32.is_float16());
-    EXPECT_FALSE(float32.is_bfloat16());
+    EXPECT_FALSE(float32.IsInt());
+    EXPECT_FALSE(float32.IsUint());
+    EXPECT_TRUE(float32.IsFloat32());
+    EXPECT_FALSE(float32.IsFloat16());
+    EXPECT_FALSE(float32.IsBFloat16());
 
     // 半精度浮点类型
     DataType float16 = DataType::Float(16);
-    EXPECT_TRUE(float16.is_float());
-    EXPECT_TRUE(float16.is_float16());
-    EXPECT_TRUE(float16.is_half());
+    EXPECT_TRUE(float16.IsFloat());
+    EXPECT_TRUE(float16.IsFloat16());
+    EXPECT_TRUE(float16.IsHalf());
 
     // BFloat16类型
     DataType bfloat16 = DataType::BFloat(16);
-    EXPECT_TRUE(bfloat16.is_bfloat16());
-    EXPECT_TRUE(bfloat16.is_float());
+    EXPECT_TRUE(bfloat16.IsBFloat16());
+    EXPECT_TRUE(bfloat16.IsFloat());
 
     // Float8类型变体
     DataType f8e4m3 = DataType::Float8E4M3();
-    EXPECT_TRUE(f8e4m3.is_float8());
-    EXPECT_TRUE(f8e4m3.is_float8_e4m3());
-    EXPECT_FALSE(f8e4m3.is_float8_e5m2());
+    EXPECT_TRUE(f8e4m3.IsFloat8());
+    EXPECT_TRUE(f8e4m3.IsFloat8E4M3());
+    EXPECT_FALSE(f8e4m3.IsFloat8E5M2());
 
     DataType f8e5m2 = DataType::Float8E5M2();
-    EXPECT_TRUE(f8e5m2.is_float8());
-    EXPECT_FALSE(f8e5m2.is_float8_e4m3());
-    EXPECT_TRUE(f8e5m2.is_float8_e5m2());
+    EXPECT_TRUE(f8e5m2.IsFloat8());
+    EXPECT_FALSE(f8e5m2.IsFloat8E4M3());
+    EXPECT_TRUE(f8e5m2.IsFloat8E5M2());
 
     // 句柄类型
     DataType handle = DataType::Handle();
-    EXPECT_TRUE(handle.is_handle());
-    EXPECT_FALSE(handle.is_void());
+    EXPECT_TRUE(handle.IsHandle());
+    EXPECT_FALSE(handle.IsVoid());
 
     // Void类型
     DataType void_type = DataType::Void();
-    EXPECT_FALSE(void_type.is_handle());
-    EXPECT_TRUE(void_type.is_void());
+    EXPECT_FALSE(void_type.IsHandle());
+    EXPECT_TRUE(void_type.IsVoid());
 
     // complex
     DataType complex_half = DataType::ComplexHalf();
     DataType complex_float = DataType::ComplexFloat();
     DataType complex_double = DataType::ComplexDouble();
-    EXPECT_TRUE(complex_half.is_complex_half());
-    EXPECT_TRUE(complex_float.is_complex_float());
-    EXPECT_TRUE(complex_double.is_complex_double());
+    EXPECT_TRUE(complex_half.IsComplexHalf());
+    EXPECT_TRUE(complex_float.IsComplexFloat());
+    EXPECT_TRUE(complex_double.IsComplexDouble());
 }
 
 // 测试DataType的向量类型检查
 TEST(DataTypeTest, VectorChecks) {
     // 标量类型
     DataType scalar = DataType::Float(32);
-    EXPECT_TRUE(scalar.is_scalar());
-    EXPECT_FALSE(scalar.is_vector());
-    EXPECT_FALSE(scalar.is_fixed_length_vector());
-    EXPECT_FALSE(scalar.is_scalable_vector());
+    EXPECT_TRUE(scalar.IsScalar());
+    EXPECT_FALSE(scalar.IsVector());
+    EXPECT_FALSE(scalar.IsFixedLengthVector());
+    EXPECT_FALSE(scalar.IsScalableVector());
 
     // 固定长度向量
     DataType fixed_vector = DataType::Float(32, 4);
-    EXPECT_FALSE(fixed_vector.is_scalar());
-    EXPECT_TRUE(fixed_vector.is_vector());
-    EXPECT_TRUE(fixed_vector.is_fixed_length_vector());
-    EXPECT_FALSE(fixed_vector.is_scalable_vector());
-    EXPECT_TRUE(fixed_vector.is_scalable_or_fixed_length_vector());
+    EXPECT_FALSE(fixed_vector.IsScalar());
+    EXPECT_TRUE(fixed_vector.IsVector());
+    EXPECT_TRUE(fixed_vector.IsFixedLengthVector());
+    EXPECT_FALSE(fixed_vector.IsScalableVector());
+    EXPECT_TRUE(fixed_vector.IsScalableOrFixedLengthVector());
 
     // 测试向量布尔类型
     DataType vector_bool = DataType::Bool(4);
@@ -189,21 +189,21 @@ TEST(DataTypeTest, StaticFactoryMethods) {
     EXPECT_EQ(DataType::Float(64).code(), DLDataTypeCode::kFloat);
     EXPECT_EQ(DataType::Float(64).bits(), 64);
 
-    EXPECT_TRUE(DataType::Bool().is_bool());
+    EXPECT_TRUE(DataType::Bool().IsBool());
 
     // 测试特定类型快捷方法
     EXPECT_EQ(DataType::Float32().code(), DLDataTypeCode::kFloat);
     EXPECT_EQ(DataType::Float32().bits(), 32);
 
     // 测试Float8变体快捷方法
-    EXPECT_TRUE(DataType::Float8E4M3().is_float8_e4m3());
-    EXPECT_TRUE(DataType::Float8E5M2().is_float8_e5m2());
-    EXPECT_TRUE(DataType::Float8E4M3FN().is_float8_e4m3fn());
-    EXPECT_TRUE(DataType::Float8E5M2FNUZ().is_float8_e5m2fnuz());
+    EXPECT_TRUE(DataType::Float8E4M3().IsFloat8E4M3());
+    EXPECT_TRUE(DataType::Float8E5M2().IsFloat8E5M2());
+    EXPECT_TRUE(DataType::Float8E4M3FN().IsFloat8E4M3fn());
+    EXPECT_TRUE(DataType::Float8E5M2FNUZ().IsFloat8E5M2fnuz());
 
     // 测试句柄类型
-    EXPECT_TRUE(DataType::Handle().is_handle());
-    EXPECT_TRUE(DataType::Void().is_void());
+    EXPECT_TRUE(DataType::Handle().IsHandle());
+    EXPECT_TRUE(DataType::Void().IsVoid());
 }
 
 // 测试DataType的相等性比较
@@ -241,7 +241,7 @@ TEST(DataTypeTest, EqualityOperators) {
 TEST(DataTypeTest, EdgeCases) {
     // 测试空类型
     DataType void_type = DataType::Void();
-    EXPECT_TRUE(void_type.is_void());
+    EXPECT_TRUE(void_type.IsVoid());
     EXPECT_EQ(void_type.bits(), 0);
     EXPECT_EQ(void_type.lanes(), 0);
 
@@ -254,16 +254,16 @@ TEST(DataTypeTest, EdgeCases) {
     DataType f8_e3m4 = DataType::Float8E3M4();
     DataType f8_e4m3 = DataType::Float8E4M3();
     DataType f8_e5m2 = DataType::Float8E5M2();
-    EXPECT_TRUE(f8_e3m4.is_float8());
-    EXPECT_TRUE(f8_e4m3.is_float8());
-    EXPECT_TRUE(f8_e5m2.is_float8());
-    EXPECT_FALSE(f8_e3m4.is_float8_e4m3());
-    EXPECT_FALSE(f8_e3m4.is_float8_e5m2());
+    EXPECT_TRUE(f8_e3m4.IsFloat8());
+    EXPECT_TRUE(f8_e4m3.IsFloat8());
+    EXPECT_TRUE(f8_e5m2.IsFloat8());
+    EXPECT_FALSE(f8_e3m4.IsFloat8E4M3());
+    EXPECT_FALSE(f8_e3m4.IsFloat8E5M2());
 
     // 测试自定义lanes的类型
     DataType custom_lanes = DataType::Int(32, 8);
-    EXPECT_FALSE(custom_lanes.is_scalar());
-    EXPECT_TRUE(custom_lanes.is_vector());
+    EXPECT_FALSE(custom_lanes.IsScalar());
+    EXPECT_TRUE(custom_lanes.IsVector());
     EXPECT_EQ(custom_lanes.lanes(), 8);
 }
 

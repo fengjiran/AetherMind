@@ -198,51 +198,51 @@ public:
     }
 
     NODISCARD int get_lanes_or_vscale_factor() const {
-        return is_scalable_vector() ? vscale_factor() : lanes();
+        return IsScalableVector() ? vscale_factor() : lanes();
     }
 
-    NODISCARD bool is_scalar() const {
-        return !is_scalable_vector() && lanes() == 1;
+    NODISCARD bool IsScalar() const {
+        return !IsScalableVector() && lanes() == 1;
     }
 
-    NODISCARD bool is_int() const {
+    NODISCARD bool IsInt() const {
         return code() == DLDataTypeCode::kInt;
     }
 
-    NODISCARD bool is_uint(bool include_bool = false) const {
+    NODISCARD bool IsUint(bool include_bool = false) const {
         return code() == DLDataTypeCode::kUInt && (bits() > 1 || include_bool);
     }
 
-    NODISCARD bool is_bool() const {
+    NODISCARD bool IsBool() const {
         return code() == DLDataTypeCode::kUInt && bits() == 1;
     }
 
-    NODISCARD bool is_float() const {
-        return code() == DLDataTypeCode::kFloat || is_bfloat16() ||
-               is_float8() || is_float6() || is_float4();
+    NODISCARD bool IsFloat() const {
+        return code() == DLDataTypeCode::kFloat || IsBFloat16() ||
+               IsFloat8() || IsFloat6() || IsFloat4();
     }
 
-    NODISCARD bool is_double() const {
+    NODISCARD bool IsDouble() const {
         return code() == DLDataTypeCode::kFloat && bits() == 64;
     }
 
-    NODISCARD bool is_float32() const {
+    NODISCARD bool IsFloat32() const {
         return code() == DLDataTypeCode::kFloat && bits() == 32;
     }
 
-    NODISCARD bool is_float16() const {
+    NODISCARD bool IsFloat16() const {
         return code() == DLDataTypeCode::kFloat && bits() == 16;
     }
 
-    NODISCARD bool is_half() const {
-        return is_float16();
+    NODISCARD bool IsHalf() const {
+        return IsFloat16();
     }
 
-    NODISCARD bool is_bfloat16() const {
+    NODISCARD bool IsBFloat16() const {
         return code() == DLDataTypeCode::kBFloat && bits() == 16;
     }
 
-    NODISCARD bool is_float8() const {
+    NODISCARD bool IsFloat8() const {
         return bits() == 8 &&
                (code() == DLDataTypeCode::kFloat8_e3m4 || code() == DLDataTypeCode::kFloat8_e4m3 ||
                 code() == DLDataTypeCode::kFloat8_e4m3b11fnuz || code() == DLDataTypeCode::kFloat8_e4m3fn ||
@@ -250,102 +250,102 @@ public:
                 code() == DLDataTypeCode::kFloat8_e5m2fnuz || code() == DLDataTypeCode::kFloat8_e8m0fnu);
     }
 
-    NODISCARD bool is_float6() const {
+    NODISCARD bool IsFloat6() const {
         return bits() == 6 &&
                (code() == DLDataTypeCode::kFloat6_e2m3fn || code() == DLDataTypeCode::kFloat6_e3m2fn);
     }
 
-    NODISCARD bool is_float4() const {
+    NODISCARD bool IsFloat4() const {
         return bits() == 4 && code() == DLDataTypeCode::kFloat4_e2m1fn;
     }
 
-    NODISCARD bool is_float8_e3m4() const {
+    NODISCARD bool IsFloat8E3M4() const {
         return bits() == 8 && code() == DLDataTypeCode::kFloat8_e3m4;
     }
 
-    NODISCARD bool is_float8_e4m3() const {
+    NODISCARD bool IsFloat8E4M3() const {
         return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3;
     }
 
-    NODISCARD bool is_float8_e4m3b11fnuz() const {
+    NODISCARD bool IsFloat8E4M3b11fnuz() const {
         return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3b11fnuz;
     }
 
-    NODISCARD bool is_float8_e4m3fn() const {
+    NODISCARD bool IsFloat8E4M3fn() const {
         return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3fn;
     }
 
-    NODISCARD bool is_float8_e4m3fnuz() const {
+    NODISCARD bool IsFloat8E4M3fnuz() const {
         return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3fnuz;
     }
 
-    NODISCARD bool is_float8_e5m2() const {
+    NODISCARD bool IsFloat8E5M2() const {
         return bits() == 8 && code() == DLDataTypeCode::kFloat8_e5m2;
     }
 
-    NODISCARD bool is_float8_e5m2fnuz() const {
+    NODISCARD bool IsFloat8E5M2fnuz() const {
         return bits() == 8 && code() == DLDataTypeCode::kFloat8_e5m2fnuz;
     }
 
-    NODISCARD bool is_float8_e8m0fnu() const {
+    NODISCARD bool IsFloat8E8M0fnu() const {
         return bits() == 8 && code() == DLDataTypeCode::kFloat8_e8m0fnu;
     }
 
-    NODISCARD bool is_float6_e2m3fn() const {
+    NODISCARD bool IsFloat6E2M3fn() const {
         return bits() == 6 && code() == DLDataTypeCode::kFloat6_e2m3fn;
     }
 
-    NODISCARD bool is_float6_e3m2fn() const {
+    NODISCARD bool IsFloat6E3M2fn() const {
         return bits() == 6 && code() == DLDataTypeCode::kFloat6_e3m2fn;
     }
 
-    NODISCARD bool is_float4_e2m1fn() const {
+    NODISCARD bool IsFloat4E2M1fn() const {
         return bits() == 4 && code() == DLDataTypeCode::kFloat4_e2m1fn;
     }
 
-    NODISCARD bool is_handle() const {
-        return code() == DLDataTypeCode::kOpaqueHandle && !is_void();
+    NODISCARD bool IsHandle() const {
+        return code() == DLDataTypeCode::kOpaqueHandle && !IsVoid();
     }
 
-    NODISCARD bool is_void() const {
+    NODISCARD bool IsVoid() const {
         return code() == DLDataTypeCode::kOpaqueHandle && bits() == 0 && lanes() == 0;
     }
 
-    NODISCARD bool is_complex_half() const {
+    NODISCARD bool IsComplexHalf() const {
         return code() == DLDataTypeCode::kComplex && bits() == 32;
     }
 
-    NODISCARD bool is_complex_float() const {
+    NODISCARD bool IsComplexFloat() const {
         return code() == DLDataTypeCode::kComplex && bits() == 64;
     }
 
-    NODISCARD bool is_complex_double() const {
+    NODISCARD bool IsComplexDouble() const {
         return code() == DLDataTypeCode::kComplex && bits() == 128;
     }
 
-    NODISCARD bool is_complex() const {
-        return is_complex_half() || is_complex_float() || is_complex_double();
+    NODISCARD bool IsComplex() const {
+        return IsComplexHalf() || IsComplexFloat() || IsComplexDouble();
     }
 
-    NODISCARD bool is_vector() const {
+    NODISCARD bool IsVector() const {
         return lanes() > 1;
     }
 
-    NODISCARD bool is_fixed_length_vector() const {
+    NODISCARD bool IsFixedLengthVector() const {
         return static_cast<int16_t>(dtype_.lanes) > 1;
     }
 
-    NODISCARD bool is_scalable_vector() const {
+    NODISCARD bool IsScalableVector() const {
         return static_cast<int16_t>(dtype_.lanes) < -1;
     }
 
-    NODISCARD bool is_scalable_or_fixed_length_vector() const {
+    NODISCARD bool IsScalableOrFixedLengthVector() const {
         int encoded_lanes = static_cast<int16_t>(dtype_.lanes);
         return encoded_lanes < -1 || encoded_lanes > 1;
     }
 
     NODISCARD bool is_vector_bool() const {
-        return is_scalable_or_fixed_length_vector() && bits() == 1;
+        return IsScalableOrFixedLengthVector() && bits() == 1;
     }
 
     NODISCARD int nbytes() const {

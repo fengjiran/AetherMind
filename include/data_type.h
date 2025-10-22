@@ -344,7 +344,7 @@ public:
         return encoded_lanes < -1 || encoded_lanes > 1;
     }
 
-    NODISCARD bool is_vector_bool() const {
+    NODISCARD bool IsVectorBool() const {
         return IsScalableOrFixedLengthVector() && bits() == 1;
     }
 
@@ -481,7 +481,7 @@ public:
     }
 
 private:
-    DLDataType dtype_;
+    DLDataType dtype_{};
 };
 
 std::string DataTypeToString(const DataType& dtype);

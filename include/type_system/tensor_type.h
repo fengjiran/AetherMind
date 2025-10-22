@@ -280,6 +280,8 @@ public:
         return requires_grad_ ? requires_grad_.value() : true;
     }
 
+    static const TensorTypePtr& get();
+
     const SymbolicShape& GetSymbolicShape() const {
         return shape_;
     }
@@ -314,8 +316,9 @@ public:
 
     TensorTypePtr Contiguity() const;
 
-    static std::vector<int64_t> GetContiguousStrideOf(IntArrayView shape,
-                                                     MemoryFormat memory_format = MemoryFormat::kContiguous);
+    static std::vector<int64_t> GetContiguousStrideOf(
+            IntArrayView shape,
+            MemoryFormat memory_format = MemoryFormat::kContiguous);
 
     static TensorTypePtr Create(std::optional<DataType> dtype,
                                 std::optional<Device> device,
@@ -366,8 +369,6 @@ public:
     TensorTypePtr WithPossibleUndefined() const;
 
     TensorTypePtr WithDimensionOnly() const;
-
-    static const TensorTypePtr& get();
 
     static constexpr auto Kind = TypeKind::TensorType;
 

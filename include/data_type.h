@@ -189,7 +189,11 @@ public:
         return dtype_.lanes;
     }
 
-    NODISCARD int vscale_factor() const {
+    NODISCARD int nbytes() const {
+        return (bits() + 7) / 8;
+    }
+
+    NODISCARD int GetScaleFactor() const {
         int lanes_as_int = static_cast<int16_t>(dtype_.lanes);
         if (lanes_as_int >= -1) {
             LOG(FATAL) << "A fixed length vector doesn't have a vscale factor.";
@@ -197,8 +201,8 @@ public:
         return -lanes_as_int;
     }
 
-    NODISCARD int get_lanes_or_vscale_factor() const {
-        return IsScalableVector() ? vscale_factor() : lanes();
+    NODISCARD int GetLanesOrScaleFactor() const {
+        return IsScalableVector() ? GetScaleFactor() : lanes();
     }
 
     NODISCARD bool IsScalar() const {
@@ -348,24 +352,20 @@ public:
         return IsScalableOrFixedLengthVector() && bits() == 1;
     }
 
-    NODISCARD int nbytes() const {
-        return (bits() + 7) / 8;
-    }
-
-    NODISCARD DataType with_lanes(int lanes) const {
+    NODISCARD DataType WithLanes(int lanes) const {
         return {code(), bits(), lanes};
     }
 
-    NODISCARD DataType with_bits(int bits) const {
+    NODISCARD DataType WithBits(int bits) const {
         return {code(), bits, dtype_.lanes};
     }
 
-    NODISCARD DataType with_scalable_vscale_factor(int vscale_factor) const {
+    NODISCARD DataType WithScalableVscaleFactor(int vscale_factor) const {
         return {code(), bits(), -vscale_factor};
     }
 
-    NODISCARD DataType element_of() const {
-        return with_lanes(1);
+    NODISCARD DataType ElementOf() const {
+        return WithLanes(1);
     }
 
     static DataType Int(int bits, int lanes = 1) {

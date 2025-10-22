@@ -157,19 +157,19 @@ TEST(DataTypeTest, HelperMethods) {
     EXPECT_EQ(bool_type.nbytes(), 1);// 1 bit is stored as 1 byte
 
     // 测试with_lanes方法
-    DataType float32x4 = float32.with_lanes(4);
+    DataType float32x4 = float32.WithLanes(4);
     EXPECT_EQ(float32x4.lanes(), 4);
     EXPECT_EQ(float32x4.code(), DLDataTypeCode::kFloat);
     EXPECT_EQ(float32x4.bits(), 32);
 
     // 测试with_bits方法
-    DataType float16 = float32.with_bits(16);
+    DataType float16 = float32.WithBits(16);
     EXPECT_EQ(float16.bits(), 16);
     EXPECT_EQ(float16.code(), DLDataTypeCode::kFloat);
     EXPECT_EQ(float16.lanes(), 1);
 
     // 测试element_of方法
-    DataType element = float32x4.element_of();
+    DataType element = float32x4.ElementOf();
     EXPECT_EQ(element.lanes(), 1);
     EXPECT_EQ(element.code(), DLDataTypeCode::kFloat);
     EXPECT_EQ(element.bits(), 32);
@@ -376,15 +376,15 @@ TEST(DataTypeToStringTest, EdgeCases) {
 TEST(DataTypeToStringTest, CombinedWithOtherMethods) {
     // 测试通过with_lanes方法创建的向量
     DataType float32 = DataType::Float(32);
-    DataType float32x4 = float32.with_lanes(4);
+    DataType float32x4 = float32.WithLanes(4);
     EXPECT_EQ(DataTypeToString(float32x4), "Floatx4");
 
     // 测试element_of方法获取元素类型
-    DataType element = float32x4.element_of();
+    DataType element = float32x4.ElementOf();
     EXPECT_EQ(DataTypeToString(element), "Float");
 
     // 测试不同位宽的转换
-    DataType float16 = float32.with_bits(16);
+    DataType float16 = float32.WithBits(16);
     EXPECT_EQ(DataTypeToString(float16), "Half");
 }
 

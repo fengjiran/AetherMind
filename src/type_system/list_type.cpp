@@ -7,6 +7,17 @@
 
 namespace aethermind {
 
-
-
+String ListType::str() const {
+    std::stringstream ss;
+    ss << GetElementType()->str() << "[]";
+    return ss.str();
 }
+
+String ListType::AnnotationImpl(const TypePrinter& printer) const {
+    std::stringstream ss;
+    ss << "List[" << GetElementType()->Annotation(printer) << "]";
+    return ss.str();
+}
+
+
+}// namespace aethermind

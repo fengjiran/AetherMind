@@ -336,27 +336,48 @@ bool TensorType::IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
 // The idea is to only mark possible overlap across dimensions. We want to
 // return false for expanded tensors and permuted tensors, for which dimensional
 // collapsing is safe.
-bool possible_cross_dimension_overlap(IntArrayView shape, IntArrayView strides) {
-    int ndim = static_cast<int>(shape.size());
-    std::vector<size_t> stride_indices(ndim);// stride ascend order index
-    std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
+bool IsCrossDimensionOverlap(IntArrayView shape, IntArrayView strides) {
+    const int ndim = static_cast<int>(shape.size());
+    std::vector<size_t> stride_ascend_idx(ndim);// stride ascend order index
+    std::iota(stride_ascend_idx.rbegin(), stride_ascend_idx.rend(), 0);
 
     // sort indices going with ascending strides
-    for (int i = 1; i < ndim; ++i) {
-        int c = i;
-        for (int j = i - 1; j >= 0; --j) {
-            if (strides[stride_indices[j]] > strides[stride_indices[c]]) {
-                std::swap(stride_indices[j], stride_indices[c]);
-                c = j;
+    // insertion sort
+    // for (int i = 1; i < ndim; ++i) {
+    //     int c = i;
+    //     for (int j = i - 1; j >= 0; --j) {
+    //         if (strides[stride_ascend_idx[j]] > strides[stride_ascend_idx[c]]) {
+    //             std::swap(stride_ascend_idx[j], stride_ascend_idx[c]);
+    //             c = j;
+    //         }
+    //     }
+    // }
+
+    int exch_num = 0;
+    for (size_t i = ndim - 1; i > 0; --i) {
+        if (strides[stride_ascend_idx[i]] < strides[stride_ascend_idx[i - 1]]) {
+            std::swap(stride_ascend_idx[i], stride_ascend_idx[i - 1]);
+            ++exch_num;
+        }
+    }
+
+    if (exch_num != 0) {
+        for (int i = 2; i < ndim; ++i) {
+            auto x = stride_ascend_idx[i];
+            auto j = i;
+            while (strides[x] < strides[stride_ascend_idx[j - 1]]) {
+                stride_ascend_idx[j] = stride_ascend_idx[j - 1];
+                --j;
             }
+            stride_ascend_idx[j] = x;
         }
     }
 
     for (int i = 1; i < ndim; ++i) {
         if (i != 0) {
             // we are being conservative on checking for memory overlap
-            if (shape[stride_indices[i]] != 1 &&
-                strides[stride_indices[i]] < shape[stride_indices[i - 1]] * strides[stride_indices[i - 1]]) {
+            if (shape[stride_ascend_idx[i]] != 1 &&
+                strides[stride_ascend_idx[i]] < shape[stride_ascend_idx[i - 1]] * strides[stride_ascend_idx[i - 1]]) {
                 return true;
             }
         }
@@ -364,11 +385,11 @@ bool possible_cross_dimension_overlap(IntArrayView shape, IntArrayView strides) 
     return false;
 }
 
-VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
-                                                      IntArrayView strides,
-                                                      bool tensor_contiguity) {
+VaryingShape<Stride> TensorType::ComputeStrideProps(IntArrayView shape,
+                                                    IntArrayView strides,
+                                                    bool tensor_contiguity) {
     int ndim = static_cast<int>(shape.size());
-    std::vector<size_t> stride_indices(ndim);
+    std::vector<size_t> stride_idx(ndim);
 
     // default has_overlap to false as we only compute overlap when:
     // 1. input shape/strides fails format check;
@@ -388,17 +409,17 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
     //  Strides: [1,  1, 16, 160]
     //
     if (IsChannelsLastStrides2d(shape, strides) || IsChannelsLastStrides3d(shape, strides)) {
-        std::iota(stride_indices.rbegin() + 1, stride_indices.rend() - 1, 2);
-        stride_indices[0] = 1;
-        stride_indices[ndim - 1] = 0;
+        std::iota(stride_idx.rbegin() + 1, stride_idx.rend() - 1, 2);
+        stride_idx[0] = 1;
+        stride_idx[ndim - 1] = 0;
     } else if (IsContiguousStride(shape, strides)) {
-        std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
+        std::iota(stride_idx.rbegin(), stride_idx.rend(), 0);
     } else {
         // For broadcasted dimension where stride is 0, we have to stick to
         // TensorIterator behavior in eager, where they introduce an ambiguous
         // comparison result to preserve permutation by best effort.
         // For more details, see NOTE: [Computing output strides]
-        std::iota(stride_indices.rbegin(), stride_indices.rend(), 0);
+        std::iota(stride_idx.rbegin(), stride_idx.rend(), 0);
         auto should_swap = [&](size_t i, size_t j) {
             if (strides[i] == 0 || strides[j] == 0) {
                 return 0;
@@ -423,9 +444,9 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
         for (int i = 1; i < ndim; ++i) {
             int dim1 = i;
             for (int dim0 = i - 1; dim0 >= 0; --dim0) {
-                int comp = should_swap(stride_indices[dim0], stride_indices[dim1]);
+                int comp = should_swap(stride_idx[dim0], stride_idx[dim1]);
                 if (comp > 0) {
-                    std::swap(stride_indices[dim0], stride_indices[dim1]);
+                    std::swap(stride_idx[dim0], stride_idx[dim1]);
                     dim1 = dim0;
                 } else if (comp < 0) {
                     break;
@@ -438,35 +459,35 @@ VaryingShape<Stride> TensorType::compute_stride_props(IntArrayView shape,
         // in the last branch when both returns false
         if (!tensor_contiguity) {
             // trust tensor_contiguity and only computes overlap when it is not set
-            has_overlap = possible_cross_dimension_overlap(shape, strides);
+            has_overlap = IsCrossDimensionOverlap(shape, strides);
         }
     }
 
     std::vector<Stride> stride_properties;
     stride_properties.reserve(ndim);
     for (size_t i = 0; i < ndim; ++i) {
-        auto cur_idx = stride_indices[i];
-        bool contiguous = tensor_contiguity;
-        if (!contiguous) {// the contiguity is not set, compute contiguity by shape and stride
+        auto cur_idx = stride_idx[i];
+        bool is_contiguous = tensor_contiguity;
+        if (!is_contiguous) {// the contiguity is not set, compute contiguity by shape and stride
             if (!has_overlap) {
                 if (i == 0) {
-                    contiguous = strides[cur_idx] == 1;
+                    is_contiguous = strides[cur_idx] == 1;
                 } else {
-                    auto pre_idx = stride_indices[i - 1];
-                    contiguous = strides[cur_idx] == 1 ||
-                                 (strides[cur_idx] != 0 && strides[cur_idx] == strides[pre_idx] * shape[pre_idx]);
+                    auto pre_idx = stride_idx[i - 1];
+                    is_contiguous = strides[cur_idx] == 1 ||
+                                    (strides[cur_idx] != 0 && strides[cur_idx] == strides[pre_idx] * shape[pre_idx]);
                 }
             } else {
-                contiguous = false;
+                is_contiguous = false;
             }
         }
-        stride_properties.emplace_back(cur_idx, contiguous, strides[cur_idx]);
+        stride_properties.emplace_back(cur_idx, is_contiguous, strides[cur_idx]);
     }
-    return VaryingShape<Stride>{stride_properties};
+    return VaryingShape{stride_properties};
 }
 
 template<typename T>
-static bool is_null_or_equal(std::optional<T> a, IntArrayView b) {
+static bool IsNullOrEqual(std::optional<T> a, IntArrayView b) {
     return !a.has_value() || a.value() == b;
 }
 
@@ -491,12 +512,12 @@ bool TensorType::MatchTensor(const Tensor& t) const {
     bool rg = t.requires_grad();
     bool matched_strides = !GetStrideProperties().size() ||
                            (!t.has_storage() && !GetStrideProperties().IsComplete()) ||
-                           GetStrideProperties() == compute_stride_props(t.shape(), t.strides(), t.is_contiguous());
+                           GetStrideProperties() == ComputeStrideProps(t.shape(), t.strides(), t.is_contiguous());
     return dtype().value_or(t.dtype()) == t.dtype() &&
            device().value_or(t.device()) == t.device() &&
            RequiresGrad().value_or(rg) == rg &&
            matched_strides &&
-           is_null_or_equal(shape().GetConcreteValue(), t.shape());
+           IsNullOrEqual(shape().GetConcreteValue(), t.shape());
 }
 
 
@@ -510,13 +531,12 @@ TensorTypePtr TensorType::Merge(const TensorType& other, bool merge_shape) const
     return Create(data_type, dev, shape, stride_props, gr, undef);
 }
 
-TensorTypePtr TensorType::contiguous() const {
-    auto cloned = clone();
+TensorTypePtr TensorType::Contiguity() const {
+    auto cloned = Clone();
     auto concrete_shape = shape().GetConcreteValue();
     CHECK(concrete_shape.has_value());
-    auto strides = compute_stride_props(concrete_shape.value(),
-                                        GetContiguousStrideOf(concrete_shape.value()));
-    cloned->strides_ = strides;
+    cloned->strides_ = ComputeStrideProps(concrete_shape.value(),
+                                          GetContiguousStrideOf(concrete_shape.value()));
     return cloned;
 }
 
@@ -526,22 +546,23 @@ std::vector<int64_t> TensorType::GetContiguousStrideOf(IntArrayView shape, Memor
     }
 
     const auto ndim = shape.size();
-    std::vector<int64_t> stride_ascend_order(ndim);
+    std::vector<int64_t> stride_ascend_idx;
     if (memory_format == MemoryFormat::kChannelsLast) {
-        stride_ascend_order = {1, 3, 2, 0};
+        stride_ascend_idx = {1, 3, 2, 0};
     } else if (memory_format == MemoryFormat::kChannelsLast3d) {
-        stride_ascend_order = {1, 4, 3, 2, 0};
+        stride_ascend_idx = {1, 4, 3, 2, 0};
     } else {
+        stride_ascend_idx.reserve(ndim);
         for (size_t i = 0; i < ndim; ++i) {
-            stride_ascend_order[i] = static_cast<int64_t>(ndim - i - 1);
+            stride_ascend_idx.push_back(static_cast<int64_t>(ndim - i - 1));
         }
     }
 
     std::vector<int64_t> strides(ndim);
-    strides[stride_ascend_order[0]] = 1;
+    strides[stride_ascend_idx[0]] = 1;
     for (int i = 1; i < ndim; ++i) {
-        auto pre_idx = stride_ascend_order[i - 1];
-        auto cur_idx = stride_ascend_order[i];
+        auto pre_idx = stride_ascend_idx[i - 1];
+        auto cur_idx = stride_ascend_idx[i];
         strides[cur_idx] = strides[pre_idx] * shape[pre_idx];
     }
     return strides;
@@ -571,9 +592,9 @@ TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
     if (concrete_stride.has_value()) {
         auto concrete_shape = shape.GetConcreteValue();
         CHECK(concrete_shape.has_value() && concrete_shape->size() == concrete_stride->size());
-        auto sprops = compute_stride_props(concrete_shape.value(),
-                                           concrete_stride.value(),
-                                           tensor_contiguity);
+        auto sprops = ComputeStrideProps(concrete_shape.value(),
+                                         concrete_stride.value(),
+                                         tensor_contiguity);
         auto symbol_shape = SymbolicShape(concrete_shape.value());
         return Create(dtype, device, std::move(symbol_shape), std::move(sprops), requires_grad, undefined);
     }
@@ -627,27 +648,27 @@ bool IsContiguousStride(IntArrayView shape, IntArrayView strides) {
     return true;
 }
 
-TensorTypePtr TensorType::create_contiguous(DataType dtype, Device device, IntArrayView shape) {
-    auto strides = GetContiguousStrideOf(shape);
+TensorTypePtr TensorType::CreateContiguous(DataType dtype, Device device, IntArrayView shape) {
+    const auto strides = GetContiguousStrideOf(shape);
     CHECK(shape.size() == strides.size());
     return Create(dtype, device, VaryingShape(shape), VaryingShape(strides), std::nullopt);
 }
 
 TypePtr TensorType::CreateFromBoolType() {
-    return create_contiguous(DataType::Bool(), Device::CPU(), {});
+    return CreateContiguous(DataType::Bool(), Device::CPU(), {});
 }
 
 TypePtr TensorType::CreateFromNumberType(const Type& t) {
     if (t.IsSubtypeOf(*IntType::Global())) {
-        return create_contiguous(DataType::Int(64), Device::CPU(), {});
+        return CreateContiguous(DataType::Int(64), Device::CPU(), {});
     }
 
     if (t.IsSubtypeOf(*FloatType::Global())) {
-        return create_contiguous(DataType::Double(), Device::CPU(), {});
+        return CreateContiguous(DataType::Double(), Device::CPU(), {});
     }
 
     if (t.IsSubtypeOf(*BoolType::Global())) {
-        return create_contiguous(DataType::Bool(), Device::CPU(), {});
+        return CreateContiguous(DataType::Bool(), Device::CPU(), {});
     }
 
     if (t.kind() == NumberType::Kind) {
@@ -659,68 +680,68 @@ TypePtr TensorType::CreateFromNumberType(const Type& t) {
 }
 
 
-TensorTypePtr TensorType::with_requires_grad(std::optional<bool> s) const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithRequiresGrad(std::optional<bool> s) const {
+    auto cloned = Clone();
     cloned->requires_grad_ = s;
     return cloned;
 }
 
-TensorTypePtr TensorType::with_data_type(const std::optional<DataType>& dtype) const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithDataType(const std::optional<DataType>& dtype) const {
+    auto cloned = Clone();
     cloned->dtype_ = dtype;
     return cloned;
 }
 
-TensorTypePtr TensorType::with_dim(std::optional<size_t> d) const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithDim(std::optional<size_t> d) const {
+    auto cloned = Clone();
     cloned->shape_ = SymbolicShape(d);
     cloned->strides_ = VaryingShape<Stride>(d);
     return cloned;
 }
 
-TensorTypePtr TensorType::with_strides(VaryingShape<Stride> strides) const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithStrides(VaryingShape<Stride> strides) const {
+    auto cloned = Clone();
     cloned->strides_ = std::move(strides);
     return cloned;
 }
 
-TensorTypePtr TensorType::with_shape(IntArrayView shape) const {
-    return with_shape_and_strides(shape, GetContiguousStrideOf(shape));
+TensorTypePtr TensorType::WithShape(IntArrayView shape) const {
+    return WithShapeAndStrides(shape, GetContiguousStrideOf(shape));
 }
 
-TensorTypePtr TensorType::with_device(std::optional<Device> device) const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithDevice(std::optional<Device> device) const {
+    auto cloned = Clone();
     cloned->device_ = device;
     return cloned;
 }
 
-TensorTypePtr TensorType::with_shape_and_strides(IntArrayView shape, IntArrayView strides) const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithShapeAndStrides(IntArrayView shape, IntArrayView strides) const {
+    auto cloned = Clone();
     cloned->shape_ = SymbolicShape(shape);
-    cloned->strides_ = compute_stride_props(shape, strides);
+    cloned->strides_ = ComputeStrideProps(shape, strides);
     return cloned;
 }
 
-TensorTypePtr TensorType::with_symbolic_shape(SymbolicShape symbolic_shape) const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithSymbolicShape(SymbolicShape symbolic_shape) const {
+    auto cloned = Clone();
     cloned->shape_ = std::move(symbolic_shape);
     return cloned;
 }
 
-TensorTypePtr TensorType::with_undefined() const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithUndefined() const {
+    auto cloned = Clone();
     cloned->undefined_ = true;
     return cloned;
 }
 
-TensorTypePtr TensorType::with_possibly_undefined() const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithPossibleUndefined() const {
+    auto cloned = Clone();
     cloned->undefined_ = std::nullopt;
     return cloned;
 }
 
-TensorTypePtr TensorType::dimensioned_only() const {
-    auto cloned = clone();
+TensorTypePtr TensorType::WithDimensionOnly() const {
+    auto cloned = Clone();
     cloned->shape_ = SymbolicShape(shape().size());
     cloned->strides_ = VaryingShape<Stride>(shape().size());
     return cloned;

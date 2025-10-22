@@ -312,7 +312,7 @@ public:
 
     TensorTypePtr Merge(const TensorType& other, bool merge_shape = true) const;
 
-    TensorTypePtr contiguous() const;
+    TensorTypePtr Contiguity() const;
 
     static std::vector<int64_t> GetContiguousStrideOf(IntArrayView shape,
                                                      MemoryFormat memory_format = MemoryFormat::kContiguous);
@@ -339,33 +339,33 @@ public:
 
     static TensorTypePtr Create(const Tensor& t);
 
-    static TensorTypePtr create_contiguous(DataType dtype, Device device, IntArrayView shape);
+    static TensorTypePtr CreateContiguous(DataType dtype, Device device, IntArrayView shape);
 
     static TypePtr CreateFromBoolType();
 
     static TypePtr CreateFromNumberType(const Type& t);
 
-    TensorTypePtr with_requires_grad(std::optional<bool> s) const;
+    TensorTypePtr WithRequiresGrad(std::optional<bool> s) const;
 
-    TensorTypePtr with_data_type(const std::optional<DataType>&) const;
+    TensorTypePtr WithDataType(const std::optional<DataType>&) const;
 
-    TensorTypePtr with_dim(std::optional<size_t>) const;
+    TensorTypePtr WithDim(std::optional<size_t>) const;
 
-    TensorTypePtr with_shape(IntArrayView shape) const;
+    TensorTypePtr WithShape(IntArrayView shape) const;
 
-    TensorTypePtr with_strides(VaryingShape<Stride>) const;
+    TensorTypePtr WithStrides(VaryingShape<Stride>) const;
 
-    TensorTypePtr with_device(std::optional<Device> device) const;
+    TensorTypePtr WithDevice(std::optional<Device> device) const;
 
-    TensorTypePtr with_symbolic_shape(SymbolicShape symbolic_shape) const;
+    TensorTypePtr WithSymbolicShape(SymbolicShape symbolic_shape) const;
 
-    TensorTypePtr with_shape_and_strides(IntArrayView shape, IntArrayView strides) const;
+    TensorTypePtr WithShapeAndStrides(IntArrayView shape, IntArrayView strides) const;
 
-    TensorTypePtr with_undefined() const;
+    TensorTypePtr WithUndefined() const;
 
-    TensorTypePtr with_possibly_undefined() const;
+    TensorTypePtr WithPossibleUndefined() const;
 
-    TensorTypePtr dimensioned_only() const;
+    TensorTypePtr WithDimensionOnly() const;
 
     static const TensorTypePtr& get();
 
@@ -380,12 +380,12 @@ private:
                std::optional<bool> requires_grad,
                std::optional<bool> undefined = false);
 
-    static VaryingShape<Stride> compute_stride_props(
+    static VaryingShape<Stride> ComputeStrideProps(
             IntArrayView shape,
             IntArrayView strides,
             bool tensor_contiguity = false);
 
-    TensorTypePtr clone() const {
+    TensorTypePtr Clone() const {
         auto ptr = new TensorType(dtype_, device_, shape_, strides_, requires_grad_, undefined_);
         return TensorTypePtr(ptr);
     }

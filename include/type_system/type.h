@@ -665,7 +665,7 @@ std::optional<TypePtr> unify_types(const TypePtr& t1, const TypePtr& t2,
                                    const TypePtr& type_hint = nullptr);
 
 bool IsContiguousStride(IntArrayView shape, IntArrayView strides);
-bool possible_cross_dimension_overlap(IntArrayView shape, IntArrayView strides);
+bool IsCrossDimensionOverlap(IntArrayView shape, IntArrayView strides);
 
 }// namespace aethermind
 

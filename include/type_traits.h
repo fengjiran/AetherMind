@@ -5,31 +5,14 @@
 #ifndef AETHERMIND_TYPE_TRAITS_H
 #define AETHERMIND_TYPE_TRAITS_H
 
-#include "object.h"
 #include "any_utils.h"
+#include "container/string.h"
+#include "device.h"
+#include "object.h"
+#include "tensor.h"
 
 namespace aethermind {
 
-template<typename, typename = void>
-struct TypeTraits {
-    /*! \brief Whether the type can appear as a storage type in Container */
-    static constexpr bool storage_enabled = false;
-
-    /*! \brief Whether the type can be converted to Any. */
-    static constexpr bool convert_enabled = false;
-};
-
-struct TypeTraitsBase {
-    static constexpr bool storage_enabled = true;
-    static constexpr bool convert_enabled = true;
-};
-
-/*!
- * \brief TypeTraits that removes const and reference keywords.
- * \tparam T the original type
- */
-template<typename T>
-using TypeTraitsNoCR = TypeTraits<std::remove_const_t<std::remove_reference_t<T>>>;
 
 template<>
 struct TypeTraits<std::nullptr_t> : TypeTraitsBase {
@@ -224,6 +207,189 @@ struct TypeTraits<void*> : TypeTraitsBase {
 
     static std::string TypeStr() {
         return AnyTagToString(AnyTag::OpaquePtr);
+    }
+};
+
+
+// string type
+template<>
+struct TypeTraits<String> : TypeTraitsBase {
+    static void CopyToAny(const String& src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::String;
+        Object* obj = src.get_impl_ptr_unsafe();
+        dst->payload_ = obj;
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
+        }
+    }
+
+    static void MoveToAny(String src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::String;
+        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
+    }
+
+    static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
+        }
+        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
+    }
+
+    static String MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        src->payload_ = static_cast<Object*>(nullptr);
+        src->tag_ = AnyTag::None;
+        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
+    }
+
+    static std::optional<String> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::String;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::String);
+    }
+};
+
+template<>
+struct TypeTraits<const char*> : TypeTraits<String> {
+    static void CopyToAny(const char* src, AetherMindAny* dst) {
+        TypeTraits<String>::CopyToAny(src, dst);
+    }
+
+    static void MoveToAny(const char* src, AetherMindAny* dst) {
+        TypeTraits<String>::MoveToAny(src, dst);
+    }
+};
+
+template<>
+struct TypeTraits<std::string> : TypeTraits<String> {
+    static void CopyToAny(const std::string& src, AetherMindAny* dst) {
+        TypeTraits<String>::CopyToAny(src, dst);
+    }
+
+    static void MoveToAny(std::string src, AetherMindAny* dst) {
+        TypeTraits<String>::MoveToAny(std::move(src), dst);
+    }
+
+    static std::string CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return TypeTraits<String>::CopyFromAnyAfterCheck(src);
+    }
+
+    static std::string MoveFromAnyAfterCheck(AetherMindAny* src) {
+        return TypeTraits<String>::MoveFromAnyAfterCheck(src);
+    }
+
+    static std::optional<std::string> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+};
+
+// Tensor type
+template<>
+struct TypeTraits<Tensor> : TypeTraitsBase {
+    static void CopyToAny(const Tensor& src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Tensor;
+        Object* obj = src.get_impl_ptr_unsafe();
+        dst->payload_ = obj;
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
+        }
+    }
+
+    static void MoveToAny(Tensor src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Tensor;
+        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
+    }
+
+    static Tensor CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
+        }
+
+        return Tensor(ObjectPtr<TensorImpl>::reclaim(static_cast<TensorImpl*>(obj)));
+    }
+
+    static Tensor MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        src->payload_ = static_cast<Object*>(nullptr);
+        src->tag_ = AnyTag::None;
+        return Tensor(ObjectPtr<TensorImpl>::reclaim(static_cast<TensorImpl*>(obj)));
+    }
+
+    static std::optional<Tensor> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::Tensor;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::Tensor);
+    }
+};
+
+// Device type
+template<>
+struct TypeTraits<Device> : TypeTraitsBase {
+    static void CopyToAny(const Device& src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Device;
+        Object* obj = src.get_impl_ptr_unsafe();
+        dst->payload_ = obj;
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
+        }
+    }
+
+    static void MoveToAny(Device src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Device;
+        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
+    }
+
+    static Device CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
+        }
+        return Device(ObjectPtr<DeviceImpl>::reclaim(static_cast<DeviceImpl*>(obj)));
+    }
+
+    static Device MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        src->payload_ = static_cast<Object*>(nullptr);
+        src->tag_ = AnyTag::None;
+        return Device(ObjectPtr<DeviceImpl>::reclaim(static_cast<DeviceImpl*>(obj)));
+    }
+
+    static std::optional<Device> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::Device;
+    }
+
+    static String TypeStr() {
+        return AnyTagToString(AnyTag::Device);
     }
 };
 

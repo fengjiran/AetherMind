@@ -7,7 +7,6 @@
 
 #include "any.h"
 #include "container/container_utils.h"
-#include "object.h"
 
 #include <initializer_list>
 #include <vector>

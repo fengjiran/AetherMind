@@ -3,7 +3,6 @@
 //
 
 #include "device.h"
-#include "container/string.h"
 #include "error.h"
 
 namespace aethermind {

@@ -5,9 +5,7 @@
 #ifndef AETHERMIND_FUNCTION_H
 #define AETHERMIND_FUNCTION_H
 
-#include "any.h"
 #include "container/array.h"
-#include "container/string.h"
 #include "function_traits.h"
 #include "function_schema.h"
 

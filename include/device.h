@@ -8,7 +8,6 @@
 #include "container/string.h"
 #include "macros.h"
 #include "object.h"
-#include "type_traits.h"
 
 #include <cstdint>
 
@@ -25,8 +24,6 @@ constexpr DeviceType kCPU = DeviceType::kCPU;
 constexpr DeviceType kCUDA = DeviceType::kCUDA;
 constexpr DeviceType kCANN = DeviceType::kCANN;
 constexpr DeviceType kUndefined = DeviceType::kUndefined;
-
-class String;
 
 /// Represents a compute device on which a tensor is located. A device is
 /// uniquely identified by a type, which specifies the type of machine it is
@@ -150,54 +147,6 @@ String DeviceType2Str(DeviceType device_type, bool lower_case = false);
 bool IsValidDeviceType(DeviceType device_type);
 std::ostream& operator<<(std::ostream& os, DeviceType device_type);
 std::ostream& operator<<(std::ostream& os, const Device& device);
-
-// Device type
-template<>
-struct TypeTraits<Device> : TypeTraitsBase {
-    static void CopyToAny(const Device& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Device;
-        Object* obj = src.get_impl_ptr_unsafe();
-        dst->payload_ = obj;
-        if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRefObjectHandle(obj);
-        }
-    }
-
-    static void MoveToAny(Device src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Device;
-        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
-    }
-
-    static Device CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        auto* obj = std::get<Object*>(src->payload_);
-        if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRefObjectHandle(obj);
-        }
-        return Device(ObjectPtr<DeviceImpl>::reclaim(static_cast<DeviceImpl*>(obj)));
-    }
-
-    static Device MoveFromAnyAfterCheck(AetherMindAny* src) {
-        auto* obj = std::get<Object*>(src->payload_);
-        src->payload_ = static_cast<Object*>(nullptr);
-        src->tag_ = AnyTag::None;
-        return Device(ObjectPtr<DeviceImpl>::reclaim(static_cast<DeviceImpl*>(obj)));
-    }
-
-    static std::optional<Device> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
-            return CopyFromAnyAfterCheck(src);
-        }
-        return std::nullopt;
-    }
-
-    static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Device;
-    }
-
-    static String TypeStr() {
-        return AnyTagToString(AnyTag::Device);
-    }
-};
 
 }// namespace aethermind
 

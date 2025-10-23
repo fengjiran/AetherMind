@@ -7,13 +7,8 @@
 
 #include "error.h"
 #include "type_traits.h"
-#include "any_utils.h"
 
 namespace aethermind {
-
-class String;
-class Tensor;
-class Device;
 
 class Any {
 public:
@@ -25,7 +20,7 @@ public:
 
     // constructor from general types
     template<typename T>
-    Any(T other) {//NOLINT
+    Any(T other) {// NOLINT
         TypeTraits<T>::MoveToAny(std::move(other), &data_);
     }
 

@@ -2,10 +2,10 @@
 // Created by 赵丹 on 2025/8/22.
 //
 
-#ifndef AETHERMIND_STRING_H
-#define AETHERMIND_STRING_H
+#ifndef AETHERMIND_CONTAINER_STRING_H
+#define AETHERMIND_CONTAINER_STRING_H
 
-#include "type_traits.h"
+#include "object.h"
 
 namespace aethermind {
 
@@ -174,91 +174,6 @@ private:
     friend String operator+(const char* lhs, const String& rhs);
 };
 
-// string type
-template<>
-struct TypeTraits<String> : TypeTraitsBase {
-    static void CopyToAny(const String& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
-        Object* obj = src.get_impl_ptr_unsafe();
-        dst->payload_ = obj;
-        if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRefObjectHandle(obj);
-        }
-    }
-
-    static void MoveToAny(String src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
-        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
-    }
-
-    static String CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        auto* obj = std::get<Object*>(src->payload_);
-        if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRefObjectHandle(obj);
-        }
-        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
-    }
-
-    static String MoveFromAnyAfterCheck(AetherMindAny* src) {
-        auto* obj = std::get<Object*>(src->payload_);
-        src->payload_ = static_cast<Object*>(nullptr);
-        src->tag_ = AnyTag::None;
-        return String(ObjectPtr<StringImpl>::reclaim(static_cast<StringImpl*>(obj)));
-    }
-
-    static std::optional<String> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
-            return CopyFromAnyAfterCheck(src);
-        }
-        return std::nullopt;
-    }
-
-    static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::String;
-    }
-
-    static std::string TypeStr() {
-        return AnyTagToString(AnyTag::String);
-    }
-};
-
-template<>
-struct TypeTraits<const char*> : TypeTraits<String> {
-    static void CopyToAny(const char* src, AetherMindAny* dst) {
-        TypeTraits<String>::CopyToAny(src, dst);
-    }
-
-    static void MoveToAny(const char* src, AetherMindAny* dst) {
-        TypeTraits<String>::MoveToAny(src, dst);
-    }
-};
-
-template<>
-struct TypeTraits<std::string> : TypeTraits<String> {
-    static void CopyToAny(const std::string& src, AetherMindAny* dst) {
-        TypeTraits<String>::CopyToAny(src, dst);
-    }
-
-    static void MoveToAny(std::string src, AetherMindAny* dst) {
-        TypeTraits<String>::MoveToAny(std::move(src), dst);
-    }
-
-    static std::string CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return TypeTraits<String>::CopyFromAnyAfterCheck(src);
-    }
-
-    static std::string MoveFromAnyAfterCheck(AetherMindAny* src) {
-        return TypeTraits<String>::MoveFromAnyAfterCheck(src);
-    }
-
-    static std::optional<std::string> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
-            return CopyFromAnyAfterCheck(src);
-        }
-        return std::nullopt;
-    }
-};
-
 // Overload < operator
 bool operator<(std::nullptr_t, const String& rhs) = delete;
 bool operator<(const String& lhs, std::nullptr_t) = delete;
@@ -332,4 +247,4 @@ struct hash<aethermind::String> {
 };
 }// namespace std
 
-#endif//AETHERMIND_STRING_H
+#endif//AETHERMIND_CONTAINER_STRING_H

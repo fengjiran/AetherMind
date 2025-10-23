@@ -6,8 +6,6 @@
 #include "container/string.h"
 #include "error.h"
 
-#include <glog/logging.h>
-
 namespace aethermind {
 
 String DeviceType2Str(DeviceType device_type, bool lower_case) {
@@ -78,24 +76,10 @@ Device Device::CANN() {
     return Device(kCANN);
 }
 
-
 std::ostream& operator<<(std::ostream& os, DeviceType device_type) {
     os << DeviceType2Str(device_type, true);
     return os;
 }
-
-// String Device::str() const {
-//     String s = DeviceType2Str(type(), true);
-//     if (has_index()) {
-//         s = s + ":" + std::to_string(index());
-//     }
-//     return s;
-// }
-//
-// void Device::validate() const {
-//     CHECK(index() >= -1) << "Device index must be greater than or equal to -1, but got " << index();
-//     CHECK(!is_cpu() || index() <= 0) << "CPU device index must be -1 or zero, but got " << index();
-// }
 
 std::ostream& operator<<(std::ostream& os, const Device& device) {
     os << device.str();

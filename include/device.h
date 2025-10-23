@@ -5,12 +5,12 @@
 #ifndef AETHERMIND_DEVICE_H
 #define AETHERMIND_DEVICE_H
 
+#include "container/string.h"
 #include "macros.h"
 #include "object.h"
 #include "type_traits.h"
 
 #include <cstdint>
-#include <string>
 
 namespace aethermind {
 
@@ -166,7 +166,6 @@ struct TypeTraits<Device> : TypeTraitsBase {
     static void MoveToAny(Device src, AetherMindAny* dst) {
         dst->tag_ = AnyTag::Device;
         dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
-        // dst->payload_ = src;
     }
 
     static Device CopyFromAnyAfterCheck(const AetherMindAny* src) {
@@ -175,7 +174,6 @@ struct TypeTraits<Device> : TypeTraitsBase {
             details::ObjectUnsafe::IncRefObjectHandle(obj);
         }
         return Device(ObjectPtr<DeviceImpl>::reclaim(static_cast<DeviceImpl*>(obj)));
-        // return std::get<Device>(src->payload_);
     }
 
     static Device MoveFromAnyAfterCheck(AetherMindAny* src) {
@@ -196,7 +194,7 @@ struct TypeTraits<Device> : TypeTraitsBase {
         return src->tag_ == AnyTag::Device;
     }
 
-    static std::string TypeStr() {
+    static String TypeStr() {
         return AnyTagToString(AnyTag::Device);
     }
 };

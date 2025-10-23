@@ -5,6 +5,7 @@
 #include "function.h"
 #include "c_api.h"
 #include "registry.h"
+#include "container/array.h"
 
 #include <fmt/format.h>
 #include <unordered_map>

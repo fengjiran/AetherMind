@@ -687,6 +687,13 @@ struct ObjectUnsafe {
         }
     }
 };
+
+template<typename T>
+struct Type2Str {
+    static std::string value() {
+        return TypeTraitsNoCR<T>::TypeStr();
+    }
+};
 }// namespace details
 
 template<typename T>

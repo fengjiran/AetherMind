@@ -195,12 +195,12 @@ private:
 
 namespace details {
 
-template<typename T>
-struct Type2Str {
-    static std::string value() {
-        return TypeTraitsNoCR<T>::TypeStr();
-    }
-};
+// template<typename T>
+// struct Type2Str {
+//     static std::string value() {
+//         return TypeTraitsNoCR<T>::TypeStr();
+//     }
+// };
 
 template<>
 struct Type2Str<Any> {

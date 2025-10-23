@@ -2,6 +2,7 @@
 // Created by richard on 9/25/25.
 //
 #include "container/string.h"
+#include "container/array.h"
 #include "function.h"
 #include "registry.h"
 #include "testing_object.h"

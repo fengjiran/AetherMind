@@ -5,7 +5,6 @@
 #ifndef AETHERMIND_FUNCTION_H
 #define AETHERMIND_FUNCTION_H
 
-#include "container/array.h"
 #include "function_traits.h"
 #include "function_schema.h"
 
@@ -70,6 +69,9 @@ private:
     int32_t size_;
 };
 }// namespace details
+
+template<typename T>
+class Array;
 
 class FunctionImpl : public Object {
 public:

@@ -5,7 +5,6 @@
 #ifndef AETHERMIND_TYPE_TRAITS_H
 #define AETHERMIND_TYPE_TRAITS_H
 
-#include "device.h"
 #include "object.h"
 
 #include <string>
@@ -36,7 +35,7 @@ namespace aethermind {
     _(GenericDict, true)              \
     _(Future, true)                   \
     _(Await, true)                    \
-    _(Device, false)                  \
+    _(Device, true)                   \
     _(Stream, true)                   \
     _(Object, true)                   \
     _(PyObject, true)                 \
@@ -88,8 +87,7 @@ struct AetherMindAny {
                                  double,
                                  bool,
                                  void*,
-                                 Object*,
-                                 Device>;
+                                 Object*>;
     Payload payload_;
     AnyTag tag_{AnyTag::None};
 };
@@ -308,46 +306,6 @@ struct TypeTraits<void*> : TypeTraitsBase {
 
     static std::string TypeStr() {
         return AnyTagToString(AnyTag::OpaquePtr);
-    }
-};
-
-// Device type
-template<>
-struct TypeTraits<Device> : TypeTraitsBase {
-    static void CopyToAny(const Device& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Device;
-        dst->payload_ = src;
-    }
-
-    static void MoveToAny(Device src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Device;
-        dst->payload_ = src;
-    }
-
-    static Device CopyFromAnyAfterCheck(const AetherMindAny* src) {
-        return std::get<Device>(src->payload_);
-    }
-
-    static Device MoveFromAnyAfterCheck(AetherMindAny* src) {
-        auto dev = std::get<Device>(std::move(src->payload_));
-        src->payload_ = Device(kUndefined);
-        src->tag_ = AnyTag::None;
-        return dev;
-    }
-
-    static std::optional<Device> TryCastFromAny(const AetherMindAny* src) {
-        if (check(src)) {
-            return std::get<Device>(src->payload_);
-        }
-        return std::nullopt;
-    }
-
-    static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Device;
-    }
-
-    static std::string TypeStr() {
-        return AnyTagToString(AnyTag::Device);
     }
 };
 

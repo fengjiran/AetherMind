@@ -2,6 +2,7 @@
 // Created by 赵丹 on 2025/8/15.
 //
 #include "device.h"
+#include "container/string.h"
 #include <gtest/gtest.h>
 
 using namespace aethermind;
@@ -9,10 +10,10 @@ using namespace aethermind;
 namespace {
 
 TEST(Device, device_type) {
-    EXPECT_TRUE(isValidDeviceType(kCPU));
-    EXPECT_TRUE(isValidDeviceType(kCUDA));
-    EXPECT_TRUE(isValidDeviceType(kCANN));
-    EXPECT_FALSE(isValidDeviceType(kUndefined));
+    EXPECT_TRUE(IsValidDeviceType(kCPU));
+    EXPECT_TRUE(IsValidDeviceType(kCUDA));
+    EXPECT_TRUE(IsValidDeviceType(kCANN));
+    EXPECT_FALSE(IsValidDeviceType(kUndefined));
 
     EXPECT_EQ(DeviceType2Str(DeviceType::kCPU), "CPU");
     EXPECT_EQ(DeviceType2Str(DeviceType::kCUDA), "CUDA");

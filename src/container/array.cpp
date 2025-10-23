@@ -71,7 +71,7 @@ ArrayImpl* ArrayImpl::create_raw_ptr(size_t n) {
     return pimpl.release();
 }
 
-ObjectPtr<ArrayImpl> ArrayImpl::create(size_t n) {
+ObjectPtr<ArrayImpl> ArrayImpl::Create(size_t n) {
     auto pimpl = make_array_object<ArrayImpl, Any>(n);
     pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);
     pimpl->size_ = 0;

@@ -6,12 +6,12 @@
 #define AETHERMIND_ANY_H
 
 #include "error.h"
-#include "type_traits.h"
 
 namespace aethermind {
 
 class String;
 class Tensor;
+class Device;
 
 class Any {
 public:

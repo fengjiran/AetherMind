@@ -95,7 +95,7 @@ private:
 
     static ArrayImpl* create_raw_ptr(size_t n);
 
-    static ObjectPtr<ArrayImpl> create(size_t n);
+    static ObjectPtr<ArrayImpl> Create(size_t n);
 
     // shrink the array by delta elements.
     void ShrinkBy(int64_t delta);
@@ -146,15 +146,15 @@ public:
 
     Array() = default;
 
-    explicit Array(size_t n, const Any& value = Any(T())) : pimpl_(ArrayImpl::create(n)) {
+    explicit Array(size_t n, const Any& value = Any(T())) : pimpl_(ArrayImpl::Create(n)) {
         pimpl_->ConstructAtEnd(n, value);
     }
 
-    Array(const std::vector<T>& other) : pimpl_(ArrayImpl::create(other.size())) {//NOLINT
+    Array(const std::vector<T>& other) : pimpl_(ArrayImpl::Create(other.size())) {//NOLINT
         pimpl_->ConstructAtEnd<>(other.begin(), other.end());                     // NOLINT
     }
 
-    Array(std::initializer_list<T> other) : pimpl_(ArrayImpl::create(other.size())) {
+    Array(std::initializer_list<T> other) : pimpl_(ArrayImpl::Create(other.size())) {
         pimpl_->ConstructAtEnd<>(other.begin(), other.end());// NOLINT
     }
 
@@ -332,7 +332,7 @@ template<typename T>
 void Array<T>::reserve(int64_t n) {
     if (n > capacity()) {
         // auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
-        auto new_pimpl = ArrayImpl::create(n);
+        auto new_pimpl = ArrayImpl::Create(n);
         auto* from = pimpl_->begin();
         auto* to = new_pimpl->begin();
         size_t& i = new_pimpl->size_;
@@ -427,7 +427,7 @@ void Array<T>::erase(iterator first, iterator last) {
 template<typename T>
 void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
     // auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(new_cap));
-    auto new_pimpl = ArrayImpl::create(new_cap);
+    auto new_pimpl = ArrayImpl::Create(new_cap);
     auto* src = pimpl_->begin();
     auto* dst = new_pimpl->begin();
     if (copy_data) {

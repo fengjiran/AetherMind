@@ -3,6 +3,7 @@
 //
 #include "any.h"
 #include "container/string.h"
+#include "device.h"
 #include "tensor.h"
 
 namespace aethermind {

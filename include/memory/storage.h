@@ -7,7 +7,6 @@
 
 #include "container/array_view.h"
 #include "memory/storage_impl.h"
-// #include "type_traits.h"
 
 namespace aethermind {
 

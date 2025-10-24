@@ -13,18 +13,38 @@ namespace aethermind {
 class HolderBase {
 public:
     virtual ~HolderBase() = default;
-    virtual std::unique_ptr<HolderBase> Clone() const = 0;
-    virtual AnyTag tag() const = 0;
+    NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
+    NODISCARD virtual std::type_index type() const = 0;
 };
 
 template<typename T>
-class Holder : public HolderBase {
+class Holder final : public HolderBase {
 public:
-    explicit Holder(T&& value) : value_(std::forward<T>(value)) {}
+    explicit Holder(T&& value)
+        : value_(std::forward<T>(value)), type_index_(typeid(T)) {}
+
+    NODISCARD std::unique_ptr<HolderBase> Clone() const override {
+        return std::make_unique<Holder>(value_);
+    }
+
+    NODISCARD std::type_index type() const override {
+        return type_index_;
+    }
 
 private:
     T value_;
-    // AnyTag tag_;
+    std::type_index type_index_;
+};
+
+class Param {
+public:
+    Param() = default;
+
+    template<typename T>
+    Param(T value) : ptr_(std::make_unique<Holder<T>>(std::move(value))) {}// NOLINT
+
+private:
+    std::unique_ptr<HolderBase> ptr_;
 };
 
 class Any {

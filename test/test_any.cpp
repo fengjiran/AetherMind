@@ -5,6 +5,7 @@
 #include "container/string.h"
 #include "tensor.h"
 #include "testing_object.h"
+
 #include <gtest/gtest.h>
 
 using namespace aethermind;

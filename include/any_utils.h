@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_ANY_UTILS_H
 #define AETHERMIND_ANY_UTILS_H
 
+#include <memory>
 #include <ostream>
 
 namespace aethermind {
@@ -86,6 +87,24 @@ struct AetherMindAny {
     Payload payload_;
     AnyTag tag_{AnyTag::None};
 };
+
+class HolderBase {
+public:
+    virtual ~HolderBase() = default;
+    virtual std::unique_ptr<HolderBase> Clone() const = 0;
+    virtual AnyTag tag() const = 0;
+};
+
+template<typename T>
+class Holder : public HolderBase {
+public:
+    explicit Holder(T&& value) : value_(std::forward<T>(value)) {}
+
+private:
+    T value_;
+    AnyTag tag_;
+};
+
 }// namespace aethermind
 
 #endif//AETHERMIND_ANY_UTILS_H

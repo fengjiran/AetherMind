@@ -17,12 +17,12 @@ namespace aethermind {
 template<>
 struct TypeTraits<std::nullptr_t> : TypeTraitsBase {
     static void CopyToAny(const std::nullptr_t&, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::None;
+        dst->tag_ = tag();
         dst->payload_ = 0;
     }
 
     static void MoveToAny(const std::nullptr_t&, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::None;
+        dst->tag_ = tag();
         dst->payload_ = 0;
     }
 
@@ -35,25 +35,29 @@ struct TypeTraits<std::nullptr_t> : TypeTraitsBase {
     }
 
     static std::optional<std::nullptr_t> TryCastFromAny(const AetherMindAny* src) {
-        if (src->tag_ == AnyTag::None) {
+        if (src->tag_ == tag()) {
             return nullptr;
         }
         return std::nullopt;
     }
 
     static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::None;
+        return src->tag_ == tag();
     }
 
     static std::string TypeStr() {
-        return AnyTagToString(AnyTag::None);
+        return AnyTagToString(tag());
+    }
+
+    static AnyTag tag() {
+        return AnyTag::None;
     }
 };
 
 template<>
 struct TypeTraits<bool> : TypeTraitsBase {
     static void CopyToAny(const bool& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Bool;
+        dst->tag_ = tag();
         dst->payload_ = src;
     }
 
@@ -82,11 +86,15 @@ struct TypeTraits<bool> : TypeTraitsBase {
     }
 
     static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Bool;
+        return src->tag_ == tag();
     }
 
     static std::string TypeStr() {
-        return AnyTagToString(AnyTag::Bool);
+        return AnyTagToString(tag());
+    }
+
+    static AnyTag tag() {
+        return AnyTag::Bool;
     }
 };
 
@@ -94,7 +102,7 @@ struct TypeTraits<bool> : TypeTraitsBase {
 template<typename T>
 struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> : TypeTraitsBase {
     static void CopyToAny(const T& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Int;
+        dst->tag_ = tag();
         dst->payload_ = static_cast<int64_t>(src);
     }
 
@@ -123,11 +131,15 @@ struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> : TypeTraitsBase {
     }
 
     static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Int;
+        return src->tag_ == tag();
     }
 
     static std::string TypeStr() {
-        return AnyTagToString(AnyTag::Int);
+        return AnyTagToString(tag());
+    }
+
+    static AnyTag tag() {
+        return AnyTag::Int;
     }
 };
 
@@ -135,7 +147,7 @@ struct TypeTraits<T, std::enable_if_t<std::is_integral_v<T>>> : TypeTraitsBase {
 template<typename T>
 struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> : TypeTraitsBase {
     static void CopyToAny(const T& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Double;
+        dst->tag_ = tag();
         dst->payload_ = static_cast<double>(src);
     }
 
@@ -167,18 +179,22 @@ struct TypeTraits<T, std::enable_if_t<std::is_floating_point_v<T>>> : TypeTraits
     }
 
     static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Double;
+        return src->tag_ == tag();
     }
 
     static std::string TypeStr() {
-        return AnyTagToString(AnyTag::Double);
+        return AnyTagToString(tag());
+    }
+
+    static AnyTag tag() {
+        return AnyTag::Double;
     }
 };
 
 template<>
 struct TypeTraits<void*> : TypeTraitsBase {
     static void CopyToAny(void* src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::OpaquePtr;
+        dst->tag_ = tag();
         dst->payload_ = src;
     }
 
@@ -202,11 +218,15 @@ struct TypeTraits<void*> : TypeTraitsBase {
     }
 
     static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::OpaquePtr;
+        return src->tag_ == tag();
     }
 
     static std::string TypeStr() {
-        return AnyTagToString(AnyTag::OpaquePtr);
+        return AnyTagToString(tag());
+    }
+
+    static AnyTag tag() {
+        return AnyTag::OpaquePtr;
     }
 };
 
@@ -215,7 +235,7 @@ struct TypeTraits<void*> : TypeTraitsBase {
 template<>
 struct TypeTraits<String> : TypeTraitsBase {
     static void CopyToAny(const String& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
+        dst->tag_ = tag();
         Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
         if (!IsNullTypePtr(obj)) {
@@ -224,7 +244,7 @@ struct TypeTraits<String> : TypeTraitsBase {
     }
 
     static void MoveToAny(String src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::String;
+        dst->tag_ = tag();
         dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
     }
 
@@ -251,11 +271,15 @@ struct TypeTraits<String> : TypeTraitsBase {
     }
 
     static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::String;
+        return src->tag_ == tag();
     }
 
     static std::string TypeStr() {
-        return AnyTagToString(AnyTag::String);
+        return AnyTagToString(tag());
+    }
+
+    static AnyTag tag() {
+        return AnyTag::String;
     }
 };
 
@@ -300,7 +324,7 @@ struct TypeTraits<std::string> : TypeTraits<String> {
 template<>
 struct TypeTraits<Tensor> : TypeTraitsBase {
     static void CopyToAny(const Tensor& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Tensor;
+        dst->tag_ = tag();
         Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
         if (!IsNullTypePtr(obj)) {
@@ -309,7 +333,7 @@ struct TypeTraits<Tensor> : TypeTraitsBase {
     }
 
     static void MoveToAny(Tensor src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Tensor;
+        dst->tag_ = tag();
         dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
     }
 
@@ -337,11 +361,15 @@ struct TypeTraits<Tensor> : TypeTraitsBase {
     }
 
     static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Tensor;
+        return src->tag_ == tag();
     }
 
     static std::string TypeStr() {
-        return AnyTagToString(AnyTag::Tensor);
+        return AnyTagToString(tag());
+    }
+
+    static AnyTag tag() {
+        return AnyTag::Tensor;
     }
 };
 
@@ -349,7 +377,7 @@ struct TypeTraits<Tensor> : TypeTraitsBase {
 template<>
 struct TypeTraits<Device> : TypeTraitsBase {
     static void CopyToAny(const Device& src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Device;
+        dst->tag_ = tag();
         Object* obj = src.get_impl_ptr_unsafe();
         dst->payload_ = obj;
         if (!IsNullTypePtr(obj)) {
@@ -358,7 +386,7 @@ struct TypeTraits<Device> : TypeTraitsBase {
     }
 
     static void MoveToAny(Device src, AetherMindAny* dst) {
-        dst->tag_ = AnyTag::Device;
+        dst->tag_ = tag();
         dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
     }
 
@@ -385,11 +413,15 @@ struct TypeTraits<Device> : TypeTraitsBase {
     }
 
     static bool check(const AetherMindAny* src) {
-        return src->tag_ == AnyTag::Device;
+        return src->tag_ == tag();
     }
 
     static String TypeStr() {
-        return AnyTagToString(AnyTag::Device);
+        return AnyTagToString(tag());
+    }
+
+    static AnyTag tag() {
+        return AnyTag::Device;
     }
 };
 

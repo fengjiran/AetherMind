@@ -74,8 +74,15 @@ public:
         if constexpr (std::is_same_v<T, Param>) {
             return *this;
         } else {
-            if (type() == std::type_index(typeid(T))) {
-                return static_cast<Holder<T>*>(ptr_.get())->value_;
+            // if (type() == std::type_index(typeid(T))) {
+            //     return static_cast<Holder<T>*>(ptr_.get())->value_;
+            // }
+            if (ptr_) {
+                auto* p = dynamic_cast<Holder<T>*>(ptr_.get());
+                if (p) {
+                    return p->value_;
+                }
+                return std::nullopt;
             }
             return std::nullopt;
         }
@@ -88,6 +95,10 @@ public:
             return *this;
         } else {
             if (type() == std::type_index(typeid(T))) {
+                return std::move(static_cast<T>(static_cast<Holder<T>*>(ptr_.get())->value_));
+            }
+
+            if (ptr_) {
                 return std::move(static_cast<Holder<T>*>(ptr_.get())->value_);
             }
             return std::nullopt;

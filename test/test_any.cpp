@@ -63,6 +63,9 @@ TEST(Any, int) {
     int64_t v1 = 10;
     x1 = v1;
     EXPECT_EQ(x1.cast<int>(), 10);
+
+    Param x2 = v1;
+    EXPECT_EQ(Param(v1).cast<int64_t>(), 10);
 }
 
 TEST(Any, float) {

@@ -14,24 +14,23 @@ class HolderBase {
 public:
     virtual ~HolderBase() = default;
     NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
-    NODISCARD virtual std::type_index type() const = 0;
+    NODISCARD virtual const std::type_index& type() const = 0;
 };
 
 template<typename T>
 class Holder final : public HolderBase {
 public:
-    explicit Holder(T&& value)
-        : value_(std::forward<T>(value)), type_index_(typeid(T)) {}
+    explicit Holder(T value)
+        : value_(std::move(value)), type_index_(typeid(T)) {}
 
     NODISCARD std::unique_ptr<HolderBase> Clone() const override {
         return std::make_unique<Holder>(value_);
     }
 
-    NODISCARD std::type_index type() const override {
+    NODISCARD const std::type_index& type() const override {
         return type_index_;
     }
 
-private:
     T value_;
     std::type_index type_index_;
 };
@@ -41,7 +40,94 @@ public:
     Param() = default;
 
     template<typename T>
-    Param(T value) : ptr_(std::make_unique<Holder<T>>(std::move(value))) {}// NOLINT
+    Param(T&& value) : ptr_(std::make_unique<Holder<std::decay_t<T>>>(std::forward<T>(value))) {// NOLINT
+        static_assert(!std::is_same_v<std::decay_t<T>, Param>, "Cannot store Any in Any.");
+    }
+
+    Param(const Param& other) {
+        ptr_ = other.ptr_ ? other.ptr_->Clone() : nullptr;
+    }
+
+    Param(Param&& other) noexcept {
+        ptr_ = std::move(other.ptr_);
+    }
+
+    Param& operator=(const Param& other) & {
+        Param(other).swap(*this);
+        return *this;
+    }
+
+    Param& operator=(Param&& other) & noexcept {
+        Param(std::move(other)).swap(*this);
+        return *this;
+    }
+
+    template<typename T>
+    Param& operator=(T value) & {
+        Param(std::move(value)).swap(*this);
+        return *this;
+    }
+
+    template<typename T>
+    std::optional<T> as() const& {
+        std::cout << "lvalue call.\n";
+        if constexpr (std::is_same_v<T, Param>) {
+            return *this;
+        } else {
+            if (type() == std::type_index(typeid(T))) {
+                return static_cast<Holder<T>*>(ptr_.get())->value_;
+            }
+            return std::nullopt;
+        }
+    }
+
+    template<typename T>
+    std::optional<T> as() && {
+        std::cout << "rvalue call.\n";
+        if constexpr (std::is_same_v<T, Param>) {
+            return *this;
+        } else {
+            if (type() == std::type_index(typeid(T))) {
+                return std::move(static_cast<Holder<T>*>(ptr_.get())->value_);
+            }
+            return std::nullopt;
+        }
+    }
+
+    template<typename T>
+    std::optional<T> try_cast() {
+        return as<T>();
+    }
+
+    template<typename T>
+    T cast() const& {
+        auto opt = as<T>();
+        if (!opt.has_value()) {
+            AETHERMIND_THROW(TypeError);
+        }
+        return opt.value();
+    }
+
+    template<typename T>
+    T cast() && {
+        auto opt = std::move(*this).as<T>();
+        if (!opt.has_value()) {
+            AETHERMIND_THROW(TypeError);
+        }
+        return opt.value();
+    }
+
+    void swap(Param& other) noexcept {
+        std::swap(ptr_, other.ptr_);
+    }
+
+    NODISCARD const std::type_index& type() const {
+        if (ptr_) {
+            return ptr_->type();
+        }
+        AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
+        AETHERMIND_UNREACHABLE();
+    }
 
 private:
     std::unique_ptr<HolderBase> ptr_;

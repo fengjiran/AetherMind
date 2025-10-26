@@ -20,8 +20,7 @@ public:
 template<typename T>
 class Holder final : public HolderBase {
 public:
-    explicit Holder(T value)
-        : value_(std::move(value)), type_index_(typeid(T)) {}
+    explicit Holder(T value) : value_(std::move(value)), type_index_(typeid(T)) {}
 
     NODISCARD std::unique_ptr<HolderBase> Clone() const override {
         return std::make_unique<Holder>(value_);
@@ -35,14 +34,25 @@ public:
     std::type_index type_index_;
 };
 
+
 class Param {
 public:
     Param() = default;
 
-    template<typename T>
-    Param(T&& value) : ptr_(std::make_unique<Holder<std::decay_t<T>>>(std::forward<T>(value))) {// NOLINT
-        static_assert(!std::is_same_v<std::decay_t<T>, Param>, "Cannot store Any in Any.");
+    template<typename T,
+             typename U = std::decay_t<T>,
+             typename = std::enable_if_t<!(details::is_integral_v<U> ||
+                                           details::is_floating_point_v<U>) &&
+                                         !std::is_same_v<U, Param>>>
+    Param(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {// NOLINT
+        static_assert(!std::is_same_v<U, Param>, "Cannot store Any in Any.");
     }
+
+    template<typename T, std::enable_if_t<details::is_integral_v<T>>* = nullptr>
+    Param(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
+
+    template<typename T, std::enable_if_t<details::is_floating_point_v<T>>* = nullptr>
+    Param(T value) : ptr_(std::make_unique<Holder<double>>(value)) {}//NOLINT
 
     Param(const Param& other) {
         ptr_ = other.ptr_ ? other.ptr_->Clone() : nullptr;
@@ -68,8 +78,8 @@ public:
         return *this;
     }
 
-    template<typename T>
-    std::optional<T> as() const& {
+    template<typename T, typename>
+    std::optional<T> as() const {
         std::cout << "lvalue call.\n";
         if constexpr (std::is_same_v<T, Param>) {
             return *this;
@@ -88,21 +98,43 @@ public:
         }
     }
 
-    template<typename T>
-    std::optional<T> as() && {
-        std::cout << "rvalue call.\n";
-        if constexpr (std::is_same_v<T, Param>) {
-            return *this;
-        } else {
-            if (type() == std::type_index(typeid(T))) {
-                return std::move(static_cast<T>(static_cast<Holder<T>*>(ptr_.get())->value_));
-            }
+    // template<typename T>
+    // std::optional<T> as() && {
+    //     std::cout << "rvalue call.\n";
+    //     if constexpr (std::is_same_v<T, Param>) {
+    //         return *this;
+    //     } else {
+    //         if (type() == std::type_index(typeid(T))) {
+    //             return std::move(static_cast<T>(static_cast<Holder<T>*>(ptr_.get())->value_));
+    //         }
+    //
+    //         if (ptr_) {
+    //             return std::move(static_cast<Holder<T>*>(ptr_.get())->value_);
+    //         }
+    //         return std::nullopt;
+    //     }
+    // }
 
-            if (ptr_) {
-                return std::move(static_cast<Holder<T>*>(ptr_.get())->value_);
+    template<typename T, std::enable_if_t<details::is_integral_v<T>>* = nullptr>
+    std::optional<T> as() const {
+        if (ptr_) {
+            if (auto* p = dynamic_cast<Holder<int64_t>*>(ptr_.get())) {
+                return static_cast<T>(p->value_);
             }
             return std::nullopt;
         }
+        return std::nullopt;
+    }
+
+    template<typename T, std::enable_if_t<details::is_floating_point_v<T>>* = nullptr>
+    std::optional<T> as() const {
+        if (ptr_) {
+            if (auto* p = dynamic_cast<Holder<double>*>(ptr_.get())) {
+                return static_cast<T>(p->value_);
+            }
+            return std::nullopt;
+        }
+        return std::nullopt;
     }
 
     template<typename T>

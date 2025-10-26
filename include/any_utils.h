@@ -89,6 +89,32 @@ struct AetherMindAny {
     AnyTag tag_{AnyTag::None};
 };
 
+struct Half;
+struct BFloat16;
+struct Float8_e4m3fn;
+struct Float8_e5m2;
+
+// template<typename T>
+// struct complex;
+
+namespace details {
+
+template<typename T>
+constexpr bool is_integral_v = std::is_integral_v<T>;
+
+template<typename T>
+constexpr bool is_floating_point_v = std::is_floating_point_v<T> ||
+                                     std::is_same_v<T, Half> ||
+                                     std::is_same_v<T, BFloat16> ||
+                                     std::is_same_v<T, Float8_e4m3fn> ||
+                                     std::is_same_v<T, Float8_e5m2>;
+
+template<typename T>
+constexpr bool is_pod_v = std::is_standard_layout_v<T> && std::is_trivial_v<T>;
+
+
+}// namespace details
+
 }// namespace aethermind
 
 #endif//AETHERMIND_ANY_UTILS_H

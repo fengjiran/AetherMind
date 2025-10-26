@@ -64,9 +64,16 @@ TEST(Any, int) {
     x1 = v1;
     EXPECT_EQ(x1.cast<int>(), 10);
 
+    Param x2 = v1;
+    EXPECT_EQ(x2.cast<int>(), 10);
+    EXPECT_EQ(Param(x2).cast<int>(), 10);
 
-    // Param x2 = v1;
-    // EXPECT_EQ(x2.cast<int>(), 10);
+    float v2 = 3.14f;
+    Param x3 = v2;
+    EXPECT_EQ(x3.cast<float>(), 3.14f);
+
+    x2 = v2;
+    EXPECT_EQ(x2.cast<float>(), 3.14f);
 }
 
 TEST(Any, float) {

@@ -56,6 +56,8 @@ public:
 
     String(std::string&& other);// NOLINT
 
+    String(std::string_view other);//NOLINT
+
     explicit String(ObjectPtr<StringImpl>);
 
     String(const String&) = default;
@@ -96,6 +98,8 @@ public:
     NODISCARD const ObjectPtr<StringImpl>& get_object_ptr() const;
 
     operator std::string() const;// NOLINT
+
+    operator const char*() const;//NOLINT
 
     /*!
      * \brief Compares this String object to other

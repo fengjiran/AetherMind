@@ -41,18 +41,17 @@ public:
 
     template<typename T,
              typename U = std::decay_t<T>,
-             typename = std::enable_if_t<!details::is_integral_v<U> &&
-                                         !details::is_floating_point_v<U> &&
-                                         !std::is_same_v<U, Param>>>
-    Param(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {// NOLINT
-        static_assert(!std::is_same_v<U, Param>, "Cannot store Any in Any.");
-    }
+             typename = std::enable_if_t<!details::is_plain_v<U> && !std::is_same_v<U, Param>>>
+    Param(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {}// NOLINT
 
     template<typename T, std::enable_if_t<details::is_integral_v<T>>* = nullptr>
     Param(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
 
     template<typename T, std::enable_if_t<details::is_floating_point_v<T>>* = nullptr>
     Param(T value) : ptr_(std::make_unique<Holder<double>>(value)) {}//NOLINT
+
+    template<typename T, std::enable_if_t<details::is_string_v<T>>* = nullptr>
+    Param(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {}//NOLINT
 
     Param(const Param& other) {
         ptr_ = other.ptr_ ? other.ptr_->Clone() : nullptr;
@@ -78,7 +77,7 @@ public:
         return *this;
     }
 
-    template<typename T, std::enable_if_t<!details::is_integral_v<T> && !details::is_floating_point_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<!details::is_plain_v<T>>* = nullptr>
     std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Param>) {
             return *this;
@@ -93,7 +92,7 @@ public:
         }
     }
 
-    template<typename T, std::enable_if_t<!details::is_integral_v<T> && !details::is_floating_point_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<!details::is_plain_v<T>>* = nullptr>
     std::optional<T> as() && {
         if constexpr (std::is_same_v<T, Param>) {
             return *this;
@@ -123,6 +122,17 @@ public:
     std::optional<T> as() const {
         if (ptr_) {
             if (auto* p = dynamic_cast<Holder<double>*>(ptr_.get())) {
+                return static_cast<T>(p->value_);
+            }
+            return std::nullopt;
+        }
+        return std::nullopt;
+    }
+
+    template<typename T, std::enable_if_t<details::is_string_v<T>>* = nullptr>
+    std::optional<T> as() const {
+        if (ptr_) {
+            if (auto* p = dynamic_cast<Holder<String>*>(ptr_.get())) {
                 return static_cast<T>(p->value_);
             }
             return std::nullopt;
@@ -177,10 +187,13 @@ public:
         return type() == std::type_index(typeid(double));
     }
 
+    NODISCARD bool is_string() const noexcept {
+        return type() == std::type_index(typeid(String));
+    }
+
     NODISCARD bool is_void_ptr() const noexcept {
         return type() == std::type_index(typeid(void*));
     }
-
 
 
 private:

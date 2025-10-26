@@ -108,8 +108,23 @@ TEST(Any, string) {
     EXPECT_TRUE(x0.is_string());
     EXPECT_EQ(x0.to_string(), "world");
 
-    // Param s0 = String("hell0");
+    Param s0 = String("hello");
+    Param s1 = "hello";
+    Param s2 = std::string("hello");
+    EXPECT_TRUE(s0.is_string());
+    EXPECT_TRUE(s1.is_string());
+    EXPECT_TRUE(s2.is_string());
 
+    std::string_view s3 = "hello";
+    String t = s3;
+    const char* s4 = "hello";
+    // EXPECT_EQ(t.c_str(), "hello");
+    EXPECT_EQ(s4, "hello");
+    std::cout << t.c_str();
+
+    EXPECT_EQ(s0.cast<String>(), "hello");
+    // EXPECT_EQ(s1.cast<const char*>(), "hello");
+    EXPECT_EQ(s2.cast<std::string>(), "hello");
 }
 
 TEST(Any, cast_vs_as) {

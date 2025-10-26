@@ -35,6 +35,8 @@ String::String(std::string&& other) : String(other.data(), other.size()) {
     other.clear();
 }
 
+String::String(std::string_view other) : String(other.data(), other.size()) {}
+
 String::String(ObjectPtr<StringImpl> impl) : impl_(std::move(impl)) {}
 
 void String::swap(String& other) noexcept {
@@ -115,6 +117,10 @@ StringImpl* String::release_impl_unsafe() {
 
 String::operator std::string() const {
     return {data(), size()};
+}
+
+ String::operator const char*() const {
+    return data();
 }
 
 int String::compare(const String& other) const {

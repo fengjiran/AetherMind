@@ -93,6 +93,7 @@ struct Half;
 struct BFloat16;
 struct Float8_e4m3fn;
 struct Float8_e5m2;
+class String;
 
 // template<typename T>
 // struct complex;
@@ -108,6 +109,17 @@ constexpr bool is_floating_point_v = std::is_floating_point_v<T> ||
                                      std::is_same_v<T, BFloat16> ||
                                      std::is_same_v<T, Float8_e4m3fn> ||
                                      std::is_same_v<T, Float8_e5m2>;
+
+template<typename T>
+constexpr bool is_string_v = std::is_same_v<T, std::string> ||
+                             std::is_same_v<T, std::string_view> ||
+                             std::is_same_v<T, const char*> ||
+                             std::is_same_v<T, String>;
+
+template<typename T>
+constexpr bool is_plain_v = is_integral_v<T> ||
+                            is_floating_point_v<T> ||
+                            is_string_v<T>;
 
 template<typename T>
 constexpr bool is_pod_v = std::is_standard_layout_v<T> && std::is_trivial_v<T>;

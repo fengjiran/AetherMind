@@ -41,8 +41,8 @@ public:
 
     template<typename T,
              typename U = std::decay_t<T>,
-             typename = std::enable_if_t<!(details::is_integral_v<U> ||
-                                           details::is_floating_point_v<U>) &&
+             typename = std::enable_if_t<!details::is_integral_v<U> &&
+                                         !details::is_floating_point_v<U> &&
                                          !std::is_same_v<U, Param>>>
     Param(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {// NOLINT
         static_assert(!std::is_same_v<U, Param>, "Cannot store Any in Any.");
@@ -78,18 +78,13 @@ public:
         return *this;
     }
 
-    template<typename T, typename>
-    std::optional<T> as() const {
-        std::cout << "lvalue call.\n";
+    template<typename T, std::enable_if_t<!details::is_integral_v<T> && !details::is_floating_point_v<T>>* = nullptr>
+    std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Param>) {
             return *this;
         } else {
-            // if (type() == std::type_index(typeid(T))) {
-            //     return static_cast<Holder<T>*>(ptr_.get())->value_;
-            // }
             if (ptr_) {
-                auto* p = dynamic_cast<Holder<T>*>(ptr_.get());
-                if (p) {
+                if (auto* p = dynamic_cast<Holder<T>*>(ptr_.get())) {
                     return p->value_;
                 }
                 return std::nullopt;
@@ -98,22 +93,20 @@ public:
         }
     }
 
-    // template<typename T>
-    // std::optional<T> as() && {
-    //     std::cout << "rvalue call.\n";
-    //     if constexpr (std::is_same_v<T, Param>) {
-    //         return *this;
-    //     } else {
-    //         if (type() == std::type_index(typeid(T))) {
-    //             return std::move(static_cast<T>(static_cast<Holder<T>*>(ptr_.get())->value_));
-    //         }
-    //
-    //         if (ptr_) {
-    //             return std::move(static_cast<Holder<T>*>(ptr_.get())->value_);
-    //         }
-    //         return std::nullopt;
-    //     }
-    // }
+    template<typename T, std::enable_if_t<!details::is_integral_v<T> && !details::is_floating_point_v<T>>* = nullptr>
+    std::optional<T> as() && {
+        if constexpr (std::is_same_v<T, Param>) {
+            return *this;
+        } else {
+            if (ptr_) {
+                if (auto* p = dynamic_cast<Holder<T>*>(ptr_.get())) {
+                    return std::move(p->value_);
+                }
+                return std::nullopt;
+            }
+            return std::nullopt;
+        }
+    }
 
     template<typename T, std::enable_if_t<details::is_integral_v<T>>* = nullptr>
     std::optional<T> as() const {
@@ -157,7 +150,7 @@ public:
         if (!opt.has_value()) {
             AETHERMIND_THROW(TypeError);
         }
-        return opt.value();
+        return std::move(opt.value());
     }
 
     void swap(Param& other) noexcept {
@@ -171,6 +164,24 @@ public:
         AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
         AETHERMIND_UNREACHABLE();
     }
+
+    NODISCARD bool is_bool() const noexcept {
+        return type() == std::type_index(typeid(bool));
+    }
+
+    NODISCARD bool is_int() const noexcept {
+        return type() == std::type_index(typeid(int64_t));
+    }
+
+    NODISCARD bool is_floating_point() const noexcept {
+        return type() == std::type_index(typeid(double));
+    }
+
+    NODISCARD bool is_void_ptr() const noexcept {
+        return type() == std::type_index(typeid(void*));
+    }
+
+
 
 private:
     std::unique_ptr<HolderBase> ptr_;

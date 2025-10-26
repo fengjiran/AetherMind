@@ -636,6 +636,8 @@ private:
     friend bool operator==(const WeakObjectPtr<T1>&, const WeakObjectPtr<T2>&) noexcept;
 };
 
+class ObjectRef {};
+
 template<typename, typename = void>
 struct TypeTraits {
     /*! \brief Whether the type can appear as a storage type in Container */

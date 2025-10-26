@@ -100,7 +100,7 @@ struct Float8_e5m2;
 namespace details {
 
 template<typename T>
-constexpr bool is_integral_v = std::is_integral_v<T>;
+constexpr bool is_integral_v = std::is_integral_v<T> && !std::is_same_v<T, bool>;
 
 template<typename T>
 constexpr bool is_floating_point_v = std::is_floating_point_v<T> ||
@@ -111,7 +111,6 @@ constexpr bool is_floating_point_v = std::is_floating_point_v<T> ||
 
 template<typename T>
 constexpr bool is_pod_v = std::is_standard_layout_v<T> && std::is_trivial_v<T>;
-
 
 }// namespace details
 

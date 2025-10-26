@@ -67,6 +67,7 @@ TEST(Any, int) {
     Param x2 = v1;
     EXPECT_EQ(x2.cast<int>(), 10);
     EXPECT_EQ(Param(x2).cast<int>(), 10);
+    EXPECT_TRUE(x2.is_int());
 
     float v2 = 3.14f;
     Param x3 = v2;
@@ -74,6 +75,11 @@ TEST(Any, int) {
 
     x2 = v2;
     EXPECT_EQ(x2.cast<float>(), 3.14f);
+
+    EXPECT_EQ(Param(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
+
+    x2 = &v1;
+    std::cout << x2.type().name();
 }
 
 TEST(Any, float) {
@@ -101,6 +107,9 @@ TEST(Any, string) {
     EXPECT_EQ(x0.use_count(), 1);
     EXPECT_TRUE(x0.is_string());
     EXPECT_EQ(x0.to_string(), "world");
+
+    // Param s0 = String("hell0");
+
 }
 
 TEST(Any, cast_vs_as) {

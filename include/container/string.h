@@ -26,7 +26,7 @@ private:
     friend class String;
 };
 
-class String {
+class String : public ObjectRef {
 public:
     String() = default;
     String(std::nullopt_t) = delete;// NOLINT

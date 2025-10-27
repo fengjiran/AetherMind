@@ -237,13 +237,16 @@ TEST(String, compare) {
 }
 
 TEST(String, c_str) {
-    using namespace std;
-    string source = "this is a string";
-    string mismatch = "mismatch";
+    std::string source = "this is a string";
+    std::string mismatch = "mismatch";
     String s{source};
 
     EXPECT_EQ(std::strcmp(s.c_str(), source.data()), 0);
     EXPECT_NE(std::strcmp(s.c_str(), mismatch.data()), 0);
+
+    String s1 = "hello";
+    EXPECT_TRUE(s1 == "hello");
+    EXPECT_NE(s1.data(), &"hello"[0]);
 }
 
 TEST(String, hash) {

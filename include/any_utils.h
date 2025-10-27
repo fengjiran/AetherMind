@@ -124,6 +124,15 @@ constexpr bool is_plain_v = is_integral_v<T> ||
 template<typename T>
 constexpr bool is_pod_v = std::is_standard_layout_v<T> && std::is_trivial_v<T>;
 
+template<typename T, typename = void>
+struct has_use_count_method : std::false_type {};
+
+template<typename T>
+struct has_use_count_method<T, decltype((void) std::declval<T>().use_count())> : std::true_type {};
+
+template<typename T>
+constexpr bool has_use_count_method_v = has_use_count_method<T>::value;
+
 }// namespace details
 
 }// namespace aethermind

@@ -30,6 +30,14 @@ public:
         return type_index_;
     }
 
+    NODISCARD uint32_t use_count() {
+        if constexpr (details::has_use_count_method_v<T>) {
+            return value_.use_count();
+        } else {
+            return 1;
+        }
+    }
+
     T value_;
     std::type_index type_index_;
 };
@@ -44,12 +52,15 @@ public:
              typename = std::enable_if_t<!details::is_plain_v<U> && !std::is_same_v<U, Param>>>
     Param(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {}// NOLINT
 
+    // integer ctor
     template<typename T, std::enable_if_t<details::is_integral_v<T>>* = nullptr>
     Param(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
 
+    // floating point ctor
     template<typename T, std::enable_if_t<details::is_floating_point_v<T>>* = nullptr>
     Param(T value) : ptr_(std::make_unique<Holder<double>>(value)) {}//NOLINT
 
+    // string ctor
     template<typename T, std::enable_if_t<details::is_string_v<T>>* = nullptr>
     Param(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {}//NOLINT
 
@@ -86,7 +97,6 @@ public:
                 if (auto* p = dynamic_cast<Holder<T>*>(ptr_.get())) {
                     return p->value_;
                 }
-                return std::nullopt;
             }
             return std::nullopt;
         }
@@ -101,41 +111,27 @@ public:
                 if (auto* p = dynamic_cast<Holder<T>*>(ptr_.get())) {
                     return std::move(p->value_);
                 }
-                return std::nullopt;
             }
             return std::nullopt;
         }
     }
 
-    template<typename T, std::enable_if_t<details::is_integral_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<details::is_plain_v<T>>* = nullptr>
     std::optional<T> as() const {
         if (ptr_) {
-            if (auto* p = dynamic_cast<Holder<int64_t>*>(ptr_.get())) {
-                return static_cast<T>(p->value_);
+            if constexpr (details::is_integral_v<T>) {
+                if (auto* p = dynamic_cast<Holder<int64_t>*>(ptr_.get())) {
+                    return static_cast<T>(p->value_);
+                }
+            } else if constexpr (details::is_floating_point_v<T>) {
+                if (auto* p = dynamic_cast<Holder<double>*>(ptr_.get())) {
+                    return static_cast<T>(p->value_);
+                }
+            } else if constexpr (details::is_string_v<T>) {
+                if (auto* p = dynamic_cast<Holder<String>*>(ptr_.get())) {
+                    return static_cast<T>(p->value_);
+                }
             }
-            return std::nullopt;
-        }
-        return std::nullopt;
-    }
-
-    template<typename T, std::enable_if_t<details::is_floating_point_v<T>>* = nullptr>
-    std::optional<T> as() const {
-        if (ptr_) {
-            if (auto* p = dynamic_cast<Holder<double>*>(ptr_.get())) {
-                return static_cast<T>(p->value_);
-            }
-            return std::nullopt;
-        }
-        return std::nullopt;
-    }
-
-    template<typename T, std::enable_if_t<details::is_string_v<T>>* = nullptr>
-    std::optional<T> as() const {
-        if (ptr_) {
-            if (auto* p = dynamic_cast<Holder<String>*>(ptr_.get())) {
-                return static_cast<T>(p->value_);
-            }
-            return std::nullopt;
         }
         return std::nullopt;
     }
@@ -194,6 +190,24 @@ public:
     NODISCARD bool is_void_ptr() const noexcept {
         return type() == std::type_index(typeid(void*));
     }
+
+    NODISCARD bool is_device() const noexcept {
+        return type() == std::type_index(typeid(Device));
+    }
+
+    NODISCARD bool is_tensor() const noexcept {
+        return type() == std::type_index(typeid(Tensor));
+    }
+
+    // NODISCARD uint32_t use_count() const noexcept {
+    //     if (ptr_) {
+    //     }
+    //     return 0;
+    // }
+
+    // NODISCARD bool is_unique() const noexcept {
+    //     return use_count() == 1;
+    // }
 
 
 private:

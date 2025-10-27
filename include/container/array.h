@@ -123,7 +123,7 @@ private:
 };
 
 template<typename T>
-class Array {
+class Array : public ObjectRef {
 public:
     static_assert(details::compatible_with_any_v<T>, "T must be compatible with Any");
 

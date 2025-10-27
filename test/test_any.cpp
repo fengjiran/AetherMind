@@ -117,13 +117,13 @@ TEST(Any, string) {
 
     std::string_view s3 = "hello";
     String t = s3;
-    const char* s4 = "hello";
-    // EXPECT_EQ(t.c_str(), "hello");
-    EXPECT_EQ(s4, "hello");
-    std::cout << t.c_str();
 
-    EXPECT_EQ(s0.cast<String>(), "hello");
-    // EXPECT_EQ(s1.cast<const char*>(), "hello");
+    std::cout << t.c_str();
+    std::cout << typeid(String).name();
+    auto tt = s1.cast<const char*>();
+
+    EXPECT_EQ(s0.cast<std::string>() == "hello", true);
+    EXPECT_EQ(tt, t);
     EXPECT_EQ(s2.cast<std::string>(), "hello");
 }
 

@@ -4,6 +4,7 @@
 #include "any.h"
 #include "container/string.h"
 #include "tensor.h"
+#include "device.h"
 #include "testing_object.h"
 
 #include <gtest/gtest.h>
@@ -51,11 +52,10 @@ TEST(Any, int) {
 
     auto opt0 = x0.try_cast<int64_t>();
     EXPECT_TRUE(!opt0.has_value());
-
     EXPECT_THROW(UNUSED(x0.cast<float>()), Error);
 
-    Any x1 = 1;
-    EXPECT_TRUE(x1.tag() == AnyTag::Int);
+    Param x1 = 1;
+    EXPECT_TRUE(x1.is_int());
     EXPECT_EQ(x1.cast<int>(), 1);
 
     int64_t v1 = 10;
@@ -74,20 +74,16 @@ TEST(Any, int) {
 
     x2 = v2;
     EXPECT_EQ(x2.cast<float>(), 3.14f);
-
     EXPECT_EQ(Param(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
-
-    x2 = &v1;
-    std::cout << x2.type().name();
 }
 
 TEST(Any, float) {
-    Any x0;
+    Param x0;
     auto opt0 = x0.as<double>();
     EXPECT_TRUE(!opt0.has_value());
 
     x0 = 1;
-    auto v1 = x0.cast<float>();
+    auto v1 = x0.cast<int>();
     EXPECT_EQ(v1, 1);
 
     x0 = 2.2;
@@ -96,7 +92,7 @@ TEST(Any, float) {
 }
 
 TEST(Any, string) {
-    Any x0 = "hello";
+    Param x0 = "hello";
     EXPECT_EQ(x0.use_count(), 1);
     EXPECT_TRUE(x0.is_string());
     EXPECT_TRUE(x0.as<String>().has_value());
@@ -122,7 +118,7 @@ TEST(Any, string) {
 }
 
 TEST(Any, cast_vs_as) {
-    Any x0 = 1;
+    Param x0 = 1;
     auto opt_v0 = x0.as<int64_t>();
     EXPECT_TRUE(opt_v0.has_value());
     EXPECT_EQ(*opt_v0, 1);
@@ -134,28 +130,25 @@ TEST(Any, cast_vs_as) {
     EXPECT_TRUE(!opt_v2.has_value());
 
     auto opt_v3 = x0.try_cast<bool>();
-    EXPECT_TRUE(opt_v3.has_value());
-    EXPECT_TRUE(*opt_v3);
+    EXPECT_TRUE(!opt_v3.has_value());
 
     auto opt_v4 = x0.try_cast<double>();
-    EXPECT_TRUE(opt_v4.has_value());
-    EXPECT_EQ(opt_v4.value(), 1);
+    EXPECT_TRUE(!opt_v4.has_value());
 
-    Any x1 = true;
+    Param x1 = true;
     auto opt_v5 = x1.as<bool>();
     EXPECT_TRUE(opt_v5.has_value());
     EXPECT_EQ(opt_v5.value(), 1);
 
     auto opt_v6 = x1.try_cast<int>();
-    EXPECT_TRUE(opt_v6.has_value());
-    EXPECT_EQ(opt_v6.value(), 1);
+    EXPECT_TRUE(!opt_v6.has_value());
 
     auto opt_v7 = x1.try_cast<double>();
-    EXPECT_TRUE(opt_v7.has_value());
+    EXPECT_TRUE(!opt_v7.has_value());
 }
 
 TEST(Any, device) {
-    Any x = Device(kCUDA, 1);
+    Param x = Device(kCUDA, 1);
     auto dev = x.to_device();
     EXPECT_TRUE(x.is_device());
     EXPECT_EQ(dev.type(), kCUDA);
@@ -164,20 +157,20 @@ TEST(Any, device) {
 
 TEST(Any, tensor) {
     Tensor t({3, 10});
-    Any x = t;
+    Param x = t;
     EXPECT_TRUE(x.is_tensor());
     EXPECT_EQ(t.use_count(), 2);
     EXPECT_EQ(x.use_count(), 2);
     auto t2 = x.to_tensor();
     {
-        Any y = t2;
+        Param y = t2;
         EXPECT_TRUE(y.is_tensor());
         EXPECT_EQ(t2.use_count(), 4);
         EXPECT_EQ(y.use_count(), 4);
     }
 
     EXPECT_EQ(t2.use_count(), 3);
-    auto t3 = Any(t2).to_tensor();
+    auto t3 = Param(t2).to_tensor();
     EXPECT_EQ(t3.use_count(), 4);
 }
 

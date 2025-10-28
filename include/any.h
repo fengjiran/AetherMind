@@ -8,7 +8,6 @@
 #include "any_utils.h"
 #include "data_type.h"
 #include "error.h"
-// #include "type_traits.h"
 
 namespace aethermind {
 
@@ -18,7 +17,7 @@ public:
     NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
     NODISCARD virtual const std::type_index& type() const = 0;
     NODISCARD virtual uint32_t use_count() const = 0;
-    NODISCARD virtual bool is_object_ptr() const = 0;
+    NODISCARD virtual bool is_object_ref() const = 0;
 };
 
 template<typename T>
@@ -42,8 +41,8 @@ public:
         }
     }
 
-    NODISCARD bool is_object_ptr() const override {
-        if constexpr (std::is_base_of_v<ObjectRef, T> || std::is_base_of_v<Object, T>) {
+    NODISCARD bool is_object_ref() const override {
+        if constexpr (std::is_base_of_v<ObjectRef, T>) {
             return true;
         } else {
             return false;
@@ -226,8 +225,8 @@ public:
 
     NODISCARD bool is_tensor() const noexcept;
 
-    NODISCARD bool is_object_ptr() const noexcept {
-        return has_value() ? ptr_->is_object_ptr() : false;
+    NODISCARD bool is_object_ref() const noexcept {
+        return has_value() ? ptr_->is_object_ref() : false;
     }
 
     NODISCARD uint32_t use_count() const noexcept {
@@ -482,59 +481,22 @@ struct TypeName {
 SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TYPE_NAME);
 DEFINE_TYPE_NAME(_, _, _, Tensor, Tensor);
 DEFINE_TYPE_NAME(_, _, _, Device, Device);
+DEFINE_TYPE_NAME(_, _, _, Any, Any);
+DEFINE_TYPE_NAME(_, _, _, Any*, Any*);
+DEFINE_TYPE_NAME(_, _, _, const Any*, const Any*);
+DEFINE_TYPE_NAME(_, _, _, const Any&, const Any&);
+DEFINE_TYPE_NAME(_, _, _, void, void);
 
 #undef DEFINE_TYPE_NAME
 
 template<typename T>
-struct Type2Str_bk {
+struct Type2Str {
     using U = std::remove_const_t<std::remove_reference_t<T>>;
     static String value() {
         return TypeName<U>::value();
     }
 };
 
-template<typename T>
-struct Type2Str {
-    static String value() {
-        // return TypeTraitsNoCR<T>::TypeStr();
-        return "";
-    }
-};
-
-template<>
-struct Type2Str<Any> {
-    static String value() {
-        return "Any";
-    }
-};
-
-template<>
-struct Type2Str<Any*> {
-    static String value() {
-        return "Any*";
-    }
-};
-
-template<>
-struct Type2Str<const Any*> {
-    static String value() {
-        return "const Any*";
-    }
-};
-
-template<>
-struct Type2Str<const Any&> {
-    static String value() {
-        return "const Any&";
-    }
-};
-
-template<>
-struct Type2Str<void> {
-    static String value() {
-        return "void";
-    }
-};
 }// namespace details
 
 }// namespace aethermind

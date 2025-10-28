@@ -27,8 +27,8 @@ TEST(Any, bool) {
     x1 = false;
     EXPECT_TRUE(!x1.cast<bool>());
 
-    EXPECT_EQ(details::Type2Str_bk<bool>::value(), "Bool");
-    EXPECT_EQ(details::Type2Str_bk<Tensor>::value(), "Tensor");
+    EXPECT_EQ(details::Type2Str<bool>::value(), "Bool");
+    EXPECT_EQ(details::Type2Str<Tensor>::value(), "Tensor");
 }
 
 TEST(Any, null) {
@@ -112,7 +112,6 @@ TEST(Any, string) {
     EXPECT_TRUE(s0.is_string());
     EXPECT_TRUE(s1.is_string());
     EXPECT_TRUE(s2.is_string());
-    EXPECT_TRUE(s0.is_object_ptr());
 
     Any s3 = s0;
     EXPECT_EQ(s3.use_count(), 2);

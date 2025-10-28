@@ -807,7 +807,7 @@ TEST(function_type_traits, integration_with_any_class) {
 
     // 使用Any构造函数
     Any any_func = func;
-    EXPECT_TRUE(any_func.is_object_ptr());
+    EXPECT_TRUE(any_func.is_object_ref());
 
     // 使用as方法转换回Function
     auto result = any_func.as<Function>();
@@ -825,7 +825,7 @@ TEST(typed_function_type_traits, integration_with_any_class) {
 
     // 使用Any构造函数
     Any any_func = typed_func;
-    EXPECT_TRUE(any_func.is_object_ptr());
+    EXPECT_TRUE(any_func.is_object_ref());
 
     // 使用as方法转换回TypedFunction
     auto result = any_func.as<TypedFunction<int(int, int)>>();

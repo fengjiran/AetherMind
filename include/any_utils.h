@@ -124,8 +124,7 @@ constexpr bool is_plain_v = is_integral_v<T> ||
                             is_floating_point_v<T> ||
                             is_string_v<T>;
 
-template<typename T>
-constexpr bool is_pod_v = std::is_standard_layout_v<T> && std::is_trivial_v<T>;
+
 
 template<typename T, typename = void>
 struct has_use_count_method : std::false_type {};

@@ -7,7 +7,7 @@
 
 #include "any_utils.h"
 #include "error.h"
-#include "type_traits.h"
+// #include "type_traits.h"
 
 namespace aethermind {
 
@@ -463,51 +463,49 @@ private:
 
 namespace details {
 
-// template<typename T>
-// struct Type2Str {
-//     static std::string value() {
-//         return TypeTraitsNoCR<T>::TypeStr();
-//     }
-// };
+template<typename T, typename = void>
+struct Type2Str_bk {
+};
 
 template<typename T>
 struct Type2Str {
-    static std::string value() {
-        return TypeTraitsNoCR<T>::TypeStr();
+    static String value() {
+        // return TypeTraitsNoCR<T>::TypeStr();
+        return "";
     }
 };
 
 template<>
 struct Type2Str<Any> {
-    static std::string value() {
+    static String value() {
         return "Any";
     }
 };
 
 template<>
 struct Type2Str<Any*> {
-    static std::string value() {
+    static String value() {
         return "Any*";
     }
 };
 
 template<>
 struct Type2Str<const Any*> {
-    static std::string value() {
+    static String value() {
         return "const Any*";
     }
 };
 
 template<>
 struct Type2Str<const Any&> {
-    static std::string value() {
+    static String value() {
         return "const Any&";
     }
 };
 
 template<>
 struct Type2Str<void> {
-    static std::string value() {
+    static String value() {
         return "void";
     }
 };

@@ -16,6 +16,7 @@ public:
     NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
     NODISCARD virtual const std::type_index& type() const = 0;
     NODISCARD virtual uint32_t use_count() const = 0;
+    NODISCARD virtual bool is_object_ptr() const = 0;
 };
 
 template<typename T>
@@ -36,6 +37,14 @@ public:
             return value_.use_count();
         } else {
             return 1;
+        }
+    }
+
+    NODISCARD bool is_object_ptr() const override {
+        if constexpr (std::is_base_of_v<ObjectRef, T> || std::is_base_of_v<Object, T>) {
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -66,7 +75,9 @@ public:
     Param(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {}//NOLINT
 
     Param(const Param& other) {
-        ptr_ = other.ptr_ ? other.ptr_->Clone() : nullptr;
+        if (other.has_value()) {
+            ptr_ = other.ptr_->Clone();
+        }
     }
 
     Param(Param&& other) noexcept {
@@ -90,11 +101,11 @@ public:
     }
 
     template<typename T, std::enable_if_t<!details::is_plain_v<T>>* = nullptr>
-    std::optional<T> as() const& {
+    NODISCARD std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Param>) {
             return *this;
         } else {
-            if (ptr_) {
+            if (has_value()) {
                 if (auto* p = dynamic_cast<Holder<T>*>(ptr_.get())) {
                     return p->value_;
                 }
@@ -108,7 +119,7 @@ public:
         if constexpr (std::is_same_v<T, Param>) {
             return *this;
         } else {
-            if (ptr_) {
+            if (has_value()) {
                 if (auto* p = dynamic_cast<Holder<T>*>(ptr_.get())) {
                     return std::move(p->value_);
                 }
@@ -118,8 +129,8 @@ public:
     }
 
     template<typename T, std::enable_if_t<details::is_plain_v<T>>* = nullptr>
-    std::optional<T> as() const {
-        if (ptr_) {
+    NODISCARD std::optional<T> as() const {
+        if (has_value()) {
             if constexpr (details::is_integral_v<T>) {
                 if (auto* p = dynamic_cast<Holder<int64_t>*>(ptr_.get())) {
                     return static_cast<T>(p->value_);
@@ -138,12 +149,12 @@ public:
     }
 
     template<typename T>
-    std::optional<T> try_cast() {
+    std::optional<T> try_cast() const {
         return as<T>();
     }
 
     template<typename T>
-    T cast() const& {
+    NODISCARD T cast() const& {
         auto opt = as<T>();
         if (!opt.has_value()) {
             AETHERMIND_THROW(TypeError);
@@ -165,11 +176,15 @@ public:
     }
 
     NODISCARD const std::type_index& type() const {
-        if (ptr_) {
+        if (has_value()) {
             return ptr_->type();
         }
         AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
         AETHERMIND_UNREACHABLE();
+    }
+
+    NODISCARD bool has_value() const noexcept {
+        return ptr_ != nullptr;
     }
 
     NODISCARD bool is_bool() const noexcept {
@@ -181,6 +196,10 @@ public:
     }
 
     NODISCARD bool is_floating_point() const noexcept {
+        return type() == std::type_index(typeid(double));
+    }
+
+    NODISCARD bool is_double() const noexcept {
         return type() == std::type_index(typeid(double));
     }
 
@@ -200,19 +219,63 @@ public:
         return type() == std::type_index(typeid(Tensor));
     }
 
+    NODISCARD bool is_object_ptr() const noexcept {
+        return has_value() ? ptr_->is_object_ptr() : false;
+    }
+
     NODISCARD uint32_t use_count() const noexcept {
-        if (ptr_) {
-            return ptr_->use_count();
-        }
-        return 0;
+        return has_value() ? ptr_->use_count() : 0;
     }
 
     NODISCARD bool is_unique() const noexcept {
         return use_count() == 1;
     }
 
+    NODISCARD int64_t to_int() const {
+        CHECK(is_int()) << "Expected Int.";
+        return cast<int64_t>();
+    }
+
+    NODISCARD double to_double() const {
+        CHECK(is_double()) << "Expected Double.";
+        return cast<double>();
+    }
+
+    NODISCARD bool to_bool() const {
+        CHECK(is_bool()) << "Expected Bool.";
+        return cast<bool>();
+    }
+
+    NODISCARD void* to_void_ptr() const {
+        CHECK(is_void_ptr()) << "Expected VoidPtr.";
+        return cast<void*>();
+    }
+
+    NODISCARD Device to_device() const {
+        CHECK(is_device()) << "Expected Device.";
+        return cast<Device>();
+    }
+
+    NODISCARD String to_string() const {
+        CHECK(is_string()) << "Expected String.";
+        return cast<String>();
+    }
+
+    NODISCARD Tensor to_tensor() const {
+        CHECK(is_tensor()) << "Expected Tensor.";
+        return cast<Tensor>();
+    }
+
     void reset() {
         ptr_.reset();
+    }
+
+    bool operator==(std::nullptr_t) const noexcept {
+        return has_value() ? dynamic_cast<Holder<std::nullptr_t>*>(ptr_.get()) != nullptr : true;
+    }
+
+    bool operator!=(std::nullptr_t p) const noexcept {
+        return !operator==(p);
     }
 
 private:

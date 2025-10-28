@@ -13,24 +13,22 @@ using namespace aethermind;
 namespace {
 
 TEST(Any, bool) {
-    Any x0;
+    Param x0;
     EXPECT_EQ(x0.use_count(), 0);
     auto opt0 = x0.as<bool>();
     EXPECT_TRUE(!opt0.has_value());
 
-    EXPECT_THROW(x0.cast<float>(), Error);
-    EXPECT_THROW(x0.cast<bool>(), Error);
+    EXPECT_THROW(UNUSED(x0.cast<float>()), Error);
+    EXPECT_THROW(UNUSED(x0.cast<bool>()), Error);
 
-    Any x1 = true;
+    Param x1 = true;
     EXPECT_TRUE(x1.cast<bool>());
-    auto v1 = x1.cast<int>();
-    EXPECT_EQ(v1, 1);
     x1 = false;
     EXPECT_TRUE(!x1.cast<bool>());
 }
 
 TEST(Any, null) {
-    Any x0;
+    Param x0;
     EXPECT_TRUE(x0 == nullptr);
     EXPECT_FALSE(x0 != nullptr);
 
@@ -38,7 +36,7 @@ TEST(Any, null) {
     EXPECT_TRUE(x0 != nullptr);
     EXPECT_FALSE(x0 == nullptr);
 
-    Any x1 = x0;
+    Param x1 = x0;
     EXPECT_TRUE(x1 != nullptr);
     EXPECT_FALSE(x1 == nullptr);
 
@@ -48,13 +46,13 @@ TEST(Any, null) {
 }
 
 TEST(Any, int) {
-    const Any x0;
-    EXPECT_TRUE(x0.tag() == AnyTag::None);
+    const Param x0;
+    EXPECT_TRUE(!x0.has_value());
 
     auto opt0 = x0.try_cast<int64_t>();
     EXPECT_TRUE(!opt0.has_value());
 
-    EXPECT_THROW(x0.cast<float>(), Error);
+    EXPECT_THROW(UNUSED(x0.cast<float>()), Error);
 
     Any x1 = 1;
     EXPECT_TRUE(x1.tag() == AnyTag::Int);
@@ -115,6 +113,7 @@ TEST(Any, string) {
     EXPECT_TRUE(s0.is_string());
     EXPECT_TRUE(s1.is_string());
     EXPECT_TRUE(s2.is_string());
+    EXPECT_TRUE(s0.is_object_ptr());
 
     Param s3 = s0;
     EXPECT_EQ(s3.use_count(), 2);

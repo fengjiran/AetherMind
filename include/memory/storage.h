@@ -10,7 +10,7 @@
 
 namespace aethermind {
 
-class Storage {
+class Storage : public ObjectRef {
 public:
     Storage() = default;
 
@@ -70,11 +70,6 @@ public:
 private:
     ObjectPtr<StorageImpl> impl_;
 };
-
-// TODO: 实现Storage的类型 traits
-// template<>
-// struct TypeTraits<Storage> : TypeTraitsBase {
-// };
 
 }// namespace aethermind
 

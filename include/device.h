@@ -77,7 +77,7 @@ private:
     }
 };
 
-class Device {
+class Device : public ObjectRef {
 public:
     Device() = default;// default cpu
 

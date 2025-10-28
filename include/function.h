@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_FUNCTION_H
 #define AETHERMIND_FUNCTION_H
 
-#include "function_traits.h"
 #include "function_schema.h"
+#include "function_traits.h"
 
 #include <functional>
 #include <string>
@@ -114,7 +114,7 @@ private:
     String schema_;
 };
 
-class Function {
+class Function : public ObjectRef {
 public:
     Function() = default;
 

@@ -15,6 +15,7 @@ public:
     virtual ~HolderBase() = default;
     NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
     NODISCARD virtual const std::type_index& type() const = 0;
+    NODISCARD virtual uint32_t use_count() const = 0;
 };
 
 template<typename T>
@@ -30,7 +31,7 @@ public:
         return type_index_;
     }
 
-    NODISCARD uint32_t use_count() {
+    NODISCARD uint32_t use_count() const override {
         if constexpr (details::has_use_count_method_v<T>) {
             return value_.use_count();
         } else {
@@ -199,16 +200,20 @@ public:
         return type() == std::type_index(typeid(Tensor));
     }
 
-    // NODISCARD uint32_t use_count() const noexcept {
-    //     if (ptr_) {
-    //     }
-    //     return 0;
-    // }
+    NODISCARD uint32_t use_count() const noexcept {
+        if (ptr_) {
+            return ptr_->use_count();
+        }
+        return 0;
+    }
 
-    // NODISCARD bool is_unique() const noexcept {
-    //     return use_count() == 1;
-    // }
+    NODISCARD bool is_unique() const noexcept {
+        return use_count() == 1;
+    }
 
+    void reset() {
+        ptr_.reset();
+    }
 
 private:
     std::unique_ptr<HolderBase> ptr_;

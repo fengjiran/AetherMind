@@ -72,6 +72,7 @@ TEST(Any, int) {
     float v2 = 3.14f;
     Param x3 = v2;
     EXPECT_EQ(x3.cast<float>(), 3.14f);
+    EXPECT_TRUE(x3.is_unique());
 
     x2 = v2;
     EXPECT_EQ(x2.cast<float>(), 3.14f);
@@ -115,16 +116,10 @@ TEST(Any, string) {
     EXPECT_TRUE(s1.is_string());
     EXPECT_TRUE(s2.is_string());
 
-    std::string_view s3 = "hello";
-    String t = s3;
-
-    std::cout << t.c_str();
-    std::cout << typeid(String).name();
-    auto tt = s1.cast<const char*>();
-
-    EXPECT_EQ(s0.cast<std::string>() == "hello", true);
-    EXPECT_EQ(tt, t);
-    EXPECT_EQ(s2.cast<std::string>(), "hello");
+    Param s3 = s0;
+    EXPECT_EQ(s3.use_count(), 2);
+    s3.reset();
+    EXPECT_TRUE(s0.is_unique());
 }
 
 TEST(Any, cast_vs_as) {

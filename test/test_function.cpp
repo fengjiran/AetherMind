@@ -310,7 +310,7 @@ TEST(FunctionTest, function_traits) {
     static_assert(is_tuple_v<std::tuple<>>);
     static_assert(is_tuple_v<std::tuple<int, float>>);
 
-    auto f = [](int a, float b) {
+    MAYBE_UNUSED auto f = [](int a, float b) {
         return a + b;
     };
 

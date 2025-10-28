@@ -39,7 +39,8 @@ template<typename T>
 constexpr bool is_plain_function_type_v = is_plain_function_type<T>::value;
 
 template<typename ArgType, typename = std::enable_if_t<is_tuple_v<ArgType>>>
-struct Arg2Str {
+class Args2Str {
+public:
     template<size_t i>
     static void f(std::ostream& os) {
         using Arg = std::tuple_element_t<i, ArgType>;
@@ -82,7 +83,7 @@ struct FunctionTraits<R(Args...)> {
         using idx_seq = std::make_index_sequence<sizeof...(Args)>;
         std::stringstream ss;
         ss << "(";
-        Arg2Str<args_type_tuple>::Run(ss, idx_seq{});
+        Args2Str<args_type_tuple>::Run(ss, idx_seq{});
         ss << ") -> " << Type2Str<R>::value();
         return ss.str();
     }
@@ -124,17 +125,17 @@ public:
 
     template<typename T>
     operator T() {//NOLINT
-        using TypeWithoutCR = std::remove_const_t<std::remove_reference_t<T>>;
-        if constexpr (std::is_same_v<TypeWithoutCR, Any>) {
+        using U = std::remove_const_t<std::remove_reference_t<T>>;
+        if constexpr (std::is_same_v<U, Any>) {
             return args_[idx_];
         } else {
-            std::optional<TypeWithoutCR> opt = args_[idx_].try_cast<TypeWithoutCR>();
+            std::optional<U> opt = args_[idx_].try_cast<U>();
             if (!opt.has_value()) {
                 AETHERMIND_THROW(TypeError) << "Mismatched type on argument #" << idx_
                                             << " when calling: `"
                                             << (opt_name_ == nullptr ? "" : *opt_name_)
                                             << (f_schema_ == nullptr ? "" : (*f_schema_)()) << "`. Expected `"
-                                            << Type2Str<TypeWithoutCR>::value();
+                                            << Type2Str<U>::value();
             }
             return opt.value();
         }

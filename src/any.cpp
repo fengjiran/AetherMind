@@ -2,9 +2,30 @@
 // Created by 赵丹 on 2025/8/24.
 //
 #include "any.h"
+#include "device.h"
+#include "tensor.h"
 
 namespace aethermind {
 
+bool Any::is_device() const noexcept {
+    return type() == std::type_index(typeid(Device));
+}
+
+bool Any::is_tensor() const noexcept {
+    return type() == std::type_index(typeid(Tensor));
+}
+
+Device Any::to_device() const {
+    CHECK(is_device()) << "Expected Device.";
+    return cast<Device>();
+}
+
+Tensor Any::to_tensor() const {
+    CHECK(is_tensor()) << "Expected Tensor.";
+    return cast<Tensor>();
+}
+
+/*
 Any::Any(const Any& other) : data_(other.data_) {
     if (is_object_ptr()) {
         auto* obj = std::get<Object*>(data_.payload_);
@@ -85,6 +106,6 @@ Tensor Any::to_tensor() && {
     CHECK(is_tensor()) << "Expected Tensor but got " << AnyTagToString(tag());
     return TypeTraits<Tensor>::MoveFromAnyAfterCheck(&data_);
 }
-
+*/
 
 }// namespace aethermind

@@ -652,13 +652,6 @@ struct TypeTraitsBase {
     static constexpr bool convert_enabled = true;
 };
 
-/*!
- * \brief TypeTraits that removes const and reference keywords.
- * \tparam T the original type
- */
-template<typename T>
-using TypeTraitsNoCR = TypeTraits<std::remove_const_t<std::remove_reference_t<T>>>;
-
 namespace details {
 struct ObjectUnsafe {
     static ObjectHeader* GetHeader(const Object* src) {
@@ -690,12 +683,14 @@ struct ObjectUnsafe {
     }
 };
 
+/*!
+ * \brief TypeTraits that removes const and reference keywords.
+ * \tparam T the original type
+ */
 template<typename T>
-struct Type2Str {
-    static std::string value() {
-        return TypeTraitsNoCR<T>::TypeStr();
-    }
-};
+using TypeTraitsNoCR = TypeTraits<std::remove_const_t<std::remove_reference_t<T>>>;
+
+
 }// namespace details
 
 template<typename T>

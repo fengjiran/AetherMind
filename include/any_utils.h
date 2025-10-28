@@ -5,9 +5,12 @@
 #ifndef AETHERMIND_ANY_UTILS_H
 #define AETHERMIND_ANY_UTILS_H
 
+#include "object.h"
+
 #include <memory>
 #include <ostream>
 #include <typeindex>
+#include <variant>
 
 namespace aethermind {
 

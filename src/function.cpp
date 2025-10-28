@@ -6,6 +6,8 @@
 #include "c_api.h"
 #include "registry.h"
 #include "container/array.h"
+#include "tensor.h"
+#include "device.h"
 
 #include <fmt/format.h>
 #include <unordered_map>

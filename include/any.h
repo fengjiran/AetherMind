@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_ANY_H
 #define AETHERMIND_ANY_H
 
+#include "any_utils.h"
 #include "error.h"
 #include "type_traits.h"
 
@@ -52,57 +53,66 @@ public:
     std::type_index type_index_;
 };
 
+class Device;
+class Tensor;
 
-class Param {
+class Any {
 public:
-    Param() = default;
+    Any() = default;
 
     template<typename T,
              typename U = std::decay_t<T>,
-             typename = std::enable_if_t<!details::is_plain_v<U> && !std::is_same_v<U, Param>>>
-    Param(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {}// NOLINT
+             typename = std::enable_if_t<!details::is_plain_v<U> && !std::is_same_v<U, Any>>>
+    Any(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {}// NOLINT
 
     // integer ctor
     template<typename T, std::enable_if_t<details::is_integral_v<T>>* = nullptr>
-    Param(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
+    Any(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
 
     // floating point ctor
     template<typename T, std::enable_if_t<details::is_floating_point_v<T>>* = nullptr>
-    Param(T value) : ptr_(std::make_unique<Holder<double>>(value)) {}//NOLINT
+    Any(T value) : ptr_(std::make_unique<Holder<double>>(value)) {}//NOLINT
 
     // string ctor
     template<typename T, std::enable_if_t<details::is_string_v<T>>* = nullptr>
-    Param(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {}//NOLINT
+    Any(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {}//NOLINT
 
-    Param(const Param& other) {
+    Any(const Any& other) {
         if (other.has_value()) {
             ptr_ = other.ptr_->Clone();
         }
     }
 
-    Param(Param&& other) noexcept {
+    Any(Any&& other) noexcept {
         ptr_ = std::move(other.ptr_);
     }
 
-    Param& operator=(const Param& other) & {
-        Param(other).swap(*this);
+    Any& operator=(const Any& other) & {
+        Any(other).swap(*this);
         return *this;
     }
 
-    Param& operator=(Param&& other) & noexcept {
-        Param(std::move(other)).swap(*this);
+    Any& operator=(Any&& other) & noexcept {
+        Any(std::move(other)).swap(*this);
         return *this;
     }
 
     template<typename T>
-    Param& operator=(T value) & {
-        Param(std::move(value)).swap(*this);
+    Any& operator=(T value) & {
+        Any(std::move(value)).swap(*this);
         return *this;
     }
 
+    /**
+   * \brief Try to reinterpret the Any as a type T, return std::nullopt if it is not possible.
+   *
+   * \tparam T The type to cast to.
+   * \return The cast value, or std::nullopt if the cast is not possible.
+   * \note This function won't try to run type conversion (use try_cast for that purpose).
+   */
     template<typename T, std::enable_if_t<!details::is_plain_v<T>>* = nullptr>
     NODISCARD std::optional<T> as() const& {
-        if constexpr (std::is_same_v<T, Param>) {
+        if constexpr (std::is_same_v<T, Any>) {
             return *this;
         } else {
             if (has_value()) {
@@ -116,7 +126,7 @@ public:
 
     template<typename T, std::enable_if_t<!details::is_plain_v<T>>* = nullptr>
     std::optional<T> as() && {
-        if constexpr (std::is_same_v<T, Param>) {
+        if constexpr (std::is_same_v<T, Any>) {
             return *this;
         } else {
             if (has_value()) {
@@ -171,7 +181,7 @@ public:
         return std::move(opt.value());
     }
 
-    void swap(Param& other) noexcept {
+    void swap(Any& other) noexcept {
         std::swap(ptr_, other.ptr_);
     }
 
@@ -211,13 +221,9 @@ public:
         return type() == std::type_index(typeid(void*));
     }
 
-    NODISCARD bool is_device() const noexcept {
-        return type() == std::type_index(typeid(Device));
-    }
+    NODISCARD bool is_device() const noexcept;
 
-    NODISCARD bool is_tensor() const noexcept {
-        return type() == std::type_index(typeid(Tensor));
-    }
+    NODISCARD bool is_tensor() const noexcept;
 
     NODISCARD bool is_object_ptr() const noexcept {
         return has_value() ? ptr_->is_object_ptr() : false;
@@ -251,20 +257,14 @@ public:
         return cast<void*>();
     }
 
-    NODISCARD Device to_device() const {
-        CHECK(is_device()) << "Expected Device.";
-        return cast<Device>();
-    }
+    NODISCARD Device to_device() const;
 
     NODISCARD String to_string() const {
         CHECK(is_string()) << "Expected String.";
         return cast<String>();
     }
 
-    NODISCARD Tensor to_tensor() const {
-        CHECK(is_tensor()) << "Expected Tensor.";
-        return cast<Tensor>();
-    }
+    NODISCARD Tensor to_tensor() const;
 
     void reset() {
         ptr_.reset();
@@ -282,6 +282,7 @@ private:
     std::unique_ptr<HolderBase> ptr_;
 };
 
+/*
 class Any {
 public:
     Any() = default;
@@ -318,13 +319,7 @@ public:
         return *this;
     }
 
-    /**
-   * \brief Try to reinterpret the Any as a type T, return std::nullopt if it is not possible.
-   *
-   * \tparam T The type to cast to.
-   * \return The cast value, or std::nullopt if the cast is not possible.
-   * \note This function won't try to run type conversion (use try_cast for that purpose).
-   */
+
     template<typename T>
     std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Any>) {
@@ -464,6 +459,7 @@ private:
     static constexpr auto kNumTags = AETHERMIND_FORALL_ANY_TAGS(COUNT_TAG) 0;
 #undef COUNT_TAG
 };
+*/
 
 namespace details {
 
@@ -473,6 +469,13 @@ namespace details {
 //         return TypeTraitsNoCR<T>::TypeStr();
 //     }
 // };
+
+template<typename T>
+struct Type2Str {
+    static std::string value() {
+        return TypeTraitsNoCR<T>::TypeStr();
+    }
+};
 
 template<>
 struct Type2Str<Any> {

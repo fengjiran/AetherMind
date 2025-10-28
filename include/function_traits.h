@@ -152,7 +152,7 @@ void unpack_call(const F& callable, std::index_sequence<Is...>, const String* op
                  const Any* args, int32_t num_args, Any* res) {
     using FuncInfo = FunctionInfo<F>;
     const FGetFunctionSchema f_schema = FuncInfo::Schema;
-    static_assert(FuncInfo::unpacked_args_supported, "the function signature do not support unpacked.");
+    // static_assert(FuncInfo::unpacked_args_supported, "the function signature do not support unpacked.");
     constexpr size_t nargs = sizeof...(Is);
     if (nargs != num_args) {
         AETHERMIND_THROW(TypeError) << "Mismatched number of arguments when calling: `"

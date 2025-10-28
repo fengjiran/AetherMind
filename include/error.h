@@ -7,7 +7,6 @@
 
 #include "c_api.h"
 #include "traceback.h"
-#include "container/string.h"
 
 #include <exception>
 #include <iostream>

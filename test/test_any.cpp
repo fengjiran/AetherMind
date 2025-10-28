@@ -14,7 +14,7 @@ using namespace aethermind;
 namespace {
 
 TEST(Any, bool) {
-    Param x0;
+    Any x0;
     EXPECT_EQ(x0.use_count(), 0);
     auto opt0 = x0.as<bool>();
     EXPECT_TRUE(!opt0.has_value());
@@ -22,14 +22,14 @@ TEST(Any, bool) {
     EXPECT_THROW(UNUSED(x0.cast<float>()), Error);
     EXPECT_THROW(UNUSED(x0.cast<bool>()), Error);
 
-    Param x1 = true;
+    Any x1 = true;
     EXPECT_TRUE(x1.cast<bool>());
     x1 = false;
     EXPECT_TRUE(!x1.cast<bool>());
 }
 
 TEST(Any, null) {
-    Param x0;
+    Any x0;
     EXPECT_TRUE(x0 == nullptr);
     EXPECT_FALSE(x0 != nullptr);
 
@@ -37,7 +37,7 @@ TEST(Any, null) {
     EXPECT_TRUE(x0 != nullptr);
     EXPECT_FALSE(x0 == nullptr);
 
-    Param x1 = x0;
+    Any x1 = x0;
     EXPECT_TRUE(x1 != nullptr);
     EXPECT_FALSE(x1 == nullptr);
 
@@ -47,14 +47,14 @@ TEST(Any, null) {
 }
 
 TEST(Any, int) {
-    const Param x0;
+    const Any x0;
     EXPECT_TRUE(!x0.has_value());
 
     auto opt0 = x0.try_cast<int64_t>();
     EXPECT_TRUE(!opt0.has_value());
     EXPECT_THROW(UNUSED(x0.cast<float>()), Error);
 
-    Param x1 = 1;
+    Any x1 = 1;
     EXPECT_TRUE(x1.is_int());
     EXPECT_EQ(x1.cast<int>(), 1);
 
@@ -62,23 +62,23 @@ TEST(Any, int) {
     x1 = v1;
     EXPECT_EQ(x1.cast<int>(), 10);
 
-    Param x2 = v1;
+    Any x2 = v1;
     EXPECT_EQ(x2.cast<int>(), 10);
-    EXPECT_EQ(Param(x2).cast<int>(), 10);
+    EXPECT_EQ(Any(x2).cast<int>(), 10);
     EXPECT_TRUE(x2.is_int());
 
     float v2 = 3.14f;
-    Param x3 = v2;
+    Any x3 = v2;
     EXPECT_EQ(x3.cast<float>(), 3.14f);
     EXPECT_TRUE(x3.is_unique());
 
     x2 = v2;
     EXPECT_EQ(x2.cast<float>(), 3.14f);
-    EXPECT_EQ(Param(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
+    EXPECT_EQ(Any(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
 }
 
 TEST(Any, float) {
-    Param x0;
+    Any x0;
     auto opt0 = x0.as<double>();
     EXPECT_TRUE(!opt0.has_value());
 
@@ -92,7 +92,7 @@ TEST(Any, float) {
 }
 
 TEST(Any, string) {
-    Param x0 = "hello";
+    Any x0 = "hello";
     EXPECT_EQ(x0.use_count(), 1);
     EXPECT_TRUE(x0.is_string());
     EXPECT_TRUE(x0.as<String>().has_value());
@@ -103,22 +103,22 @@ TEST(Any, string) {
     EXPECT_TRUE(x0.is_string());
     EXPECT_EQ(x0.to_string(), "world");
 
-    Param s0 = String("hello");
-    Param s1 = "hello";
-    Param s2 = std::string("hello");
+    Any s0 = String("hello");
+    Any s1 = "hello";
+    Any s2 = std::string("hello");
     EXPECT_TRUE(s0.is_string());
     EXPECT_TRUE(s1.is_string());
     EXPECT_TRUE(s2.is_string());
     EXPECT_TRUE(s0.is_object_ptr());
 
-    Param s3 = s0;
+    Any s3 = s0;
     EXPECT_EQ(s3.use_count(), 2);
     s3.reset();
     EXPECT_TRUE(s0.is_unique());
 }
 
 TEST(Any, cast_vs_as) {
-    Param x0 = 1;
+    Any x0 = 1;
     auto opt_v0 = x0.as<int64_t>();
     EXPECT_TRUE(opt_v0.has_value());
     EXPECT_EQ(*opt_v0, 1);
@@ -135,7 +135,7 @@ TEST(Any, cast_vs_as) {
     auto opt_v4 = x0.try_cast<double>();
     EXPECT_TRUE(!opt_v4.has_value());
 
-    Param x1 = true;
+    Any x1 = true;
     auto opt_v5 = x1.as<bool>();
     EXPECT_TRUE(opt_v5.has_value());
     EXPECT_EQ(opt_v5.value(), 1);
@@ -148,7 +148,7 @@ TEST(Any, cast_vs_as) {
 }
 
 TEST(Any, device) {
-    Param x = Device(kCUDA, 1);
+    Any x = Device(kCUDA, 1);
     auto dev = x.to_device();
     EXPECT_TRUE(x.is_device());
     EXPECT_EQ(dev.type(), kCUDA);
@@ -157,20 +157,20 @@ TEST(Any, device) {
 
 TEST(Any, tensor) {
     Tensor t({3, 10});
-    Param x = t;
+    Any x = t;
     EXPECT_TRUE(x.is_tensor());
     EXPECT_EQ(t.use_count(), 2);
     EXPECT_EQ(x.use_count(), 2);
     auto t2 = x.to_tensor();
     {
-        Param y = t2;
+        Any y = t2;
         EXPECT_TRUE(y.is_tensor());
         EXPECT_EQ(t2.use_count(), 4);
         EXPECT_EQ(y.use_count(), 4);
     }
 
     EXPECT_EQ(t2.use_count(), 3);
-    auto t3 = Param(t2).to_tensor();
+    auto t3 = Any(t2).to_tensor();
     EXPECT_EQ(t3.use_count(), 4);
 }
 

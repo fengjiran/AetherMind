@@ -212,7 +212,7 @@ template<typename FType>
 class TypedFunction;
 
 template<typename R, typename... Args>
-class TypedFunction<R(Args...)> {
+class TypedFunction<R(Args...)> : public ObjectRef {
 public:
     using Self = TypedFunction;
 

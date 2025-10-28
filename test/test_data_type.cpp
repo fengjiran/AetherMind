@@ -366,10 +366,10 @@ TEST(DataTypeToStringTest, EdgeCases) {
 
     // 测试向量和可缩放向量的最大合理值
     DataType large_vector(DLDataTypeCode::kFloat, 32, 1024);
-    EXPECT_TRUE(DataTypeToString(large_vector).find("Floatx") == 0);
+    EXPECT_TRUE(std::string(DataTypeToString(large_vector)).find("Floatx") == 0);
 
     DataType large_scalable(DLDataTypeCode::kFloat, 32, -1024);
-    EXPECT_TRUE(DataTypeToString(large_scalable).find("Floatxvscalex") == 0);
+    EXPECT_TRUE(std::string(DataTypeToString(large_scalable)).find("Floatxvscalex") == 0);
 }
 
 // 测试DataTypeToString函数与DataType的其他方法结合使用

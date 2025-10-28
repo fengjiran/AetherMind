@@ -6,6 +6,7 @@
 #define AETHERMIND_ANY_H
 
 #include "any_utils.h"
+#include "data_type.h"
 #include "error.h"
 // #include "type_traits.h"
 
@@ -463,8 +464,33 @@ private:
 
 namespace details {
 
-template<typename T, typename = void>
+template<typename T>
+struct TypeName {
+    static String value() {
+        return typeid(T).name();
+    }
+};
+
+#define DEFINE_TYPE_NAME(code, bits, lanes, T, name) \
+    template<>                                       \
+    struct TypeName<T> {                             \
+        static String value() {                      \
+            return #name;                            \
+        }                                            \
+    };
+
+SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TYPE_NAME);
+DEFINE_TYPE_NAME(_, _, _, Tensor, Tensor);
+DEFINE_TYPE_NAME(_, _, _, Device, Device);
+
+#undef DEFINE_TYPE_NAME
+
+template<typename T>
 struct Type2Str_bk {
+    using U = std::remove_const_t<std::remove_reference_t<T>>;
+    static String value() {
+        return TypeName<U>::value();
+    }
 };
 
 template<typename T>

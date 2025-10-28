@@ -16,7 +16,6 @@
 
 #include <cstdint>
 #include <glog/logging.h>
-#include <string>
 
 namespace aethermind {
 
@@ -484,7 +483,7 @@ private:
     DLDataType dtype_{};
 };
 
-std::string DataTypeToString(const DataType& dtype);
+String DataTypeToString(const DataType& dtype);
 
 std::ostream& operator<<(std::ostream& os, const DataType& dtype);
 

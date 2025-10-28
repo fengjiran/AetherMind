@@ -44,7 +44,7 @@ DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
     }
 }
 
-std::string DataTypeToString(const DataType& dtype) {
+String DataTypeToString(const DataType& dtype) {
     if (dtype.code() == DLDataTypeCode::kUInt && dtype.bits() == 1 && dtype.raw_lanes() == 1) {
         return "bool";
     }

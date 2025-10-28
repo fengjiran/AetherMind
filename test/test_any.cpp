@@ -3,8 +3,8 @@
 //
 #include "any.h"
 #include "container/string.h"
-#include "tensor.h"
 #include "device.h"
+#include "tensor.h"
 #include "testing_object.h"
 
 #include <gtest/gtest.h>
@@ -26,6 +26,9 @@ TEST(Any, bool) {
     EXPECT_TRUE(x1.cast<bool>());
     x1 = false;
     EXPECT_TRUE(!x1.cast<bool>());
+
+    EXPECT_EQ(details::Type2Str_bk<bool>::value(), "Bool");
+    EXPECT_EQ(details::Type2Str_bk<Tensor>::value(), "Tensor");
 }
 
 TEST(Any, null) {

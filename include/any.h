@@ -9,6 +9,8 @@
 #include "data_type.h"
 #include "error.h"
 
+#include <typeindex>
+
 namespace aethermind {
 
 class HolderBase {
@@ -86,7 +88,7 @@ public:
 
     Any& operator=(const Any& other) &;
 
-    Any& operator=(Any&& other) & noexcept ;
+    Any& operator=(Any&& other) & noexcept;
 
     template<typename T>
     Any& operator=(T value) & {
@@ -178,102 +180,51 @@ public:
         return std::move(*this).cast<T>();
     }
 
-    void swap(Any& other) noexcept {
-        std::swap(ptr_, other.ptr_);
-    }
+    void reset();
 
-    NODISCARD const std::type_index& type() const {
-        if (has_value()) {
-            return ptr_->type();
-        }
-        AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
-        AETHERMIND_UNREACHABLE();
-    }
+    void swap(Any& other) noexcept;
 
-    NODISCARD bool has_value() const noexcept {
-        return ptr_ != nullptr;
-    }
+    NODISCARD const std::type_index& type() const;
 
-    NODISCARD bool is_bool() const noexcept {
-        return type() == std::type_index(typeid(bool));
-    }
+    NODISCARD bool has_value() const noexcept;
 
-    NODISCARD bool is_int() const noexcept {
-        return type() == std::type_index(typeid(int64_t));
-    }
+    NODISCARD bool IsBool() const noexcept;
 
-    NODISCARD bool is_floating_point() const noexcept {
-        return type() == std::type_index(typeid(double));
-    }
+    NODISCARD bool IsInteger() const noexcept;
 
-    NODISCARD bool is_double() const noexcept {
-        return type() == std::type_index(typeid(double));
-    }
+    NODISCARD bool IsFloatingPoint() const noexcept;
 
-    NODISCARD bool is_string() const noexcept {
-        return type() == std::type_index(typeid(String));
-    }
+    NODISCARD bool IsString() const noexcept;
 
-    NODISCARD bool is_void_ptr() const noexcept {
-        return type() == std::type_index(typeid(void*));
-    }
+    NODISCARD bool IsVoidPtr() const noexcept;
 
-    NODISCARD bool is_device() const noexcept;
+    NODISCARD bool IsDevice() const noexcept;
 
-    NODISCARD bool is_tensor() const noexcept;
+    NODISCARD bool IsTensor() const noexcept;
 
-    NODISCARD bool is_object_ref() const noexcept {
-        return has_value() ? ptr_->is_object_ref() : false;
-    }
+    NODISCARD bool IsObjectRef() const noexcept;
 
-    NODISCARD uint32_t use_count() const noexcept {
-        return has_value() ? ptr_->use_count() : 0;
-    }
+    NODISCARD int64_t ToInt() const;
 
-    NODISCARD bool is_unique() const noexcept {
-        return use_count() == 1;
-    }
+    NODISCARD double ToDouble() const;
 
-    NODISCARD int64_t to_int() const {
-        CHECK(is_int()) << "Expected Int.";
-        return cast<int64_t>();
-    }
+    NODISCARD bool ToBool() const;
 
-    NODISCARD double to_double() const {
-        CHECK(is_double()) << "Expected Double.";
-        return cast<double>();
-    }
+    NODISCARD void* ToVoidPtr() const;
 
-    NODISCARD bool to_bool() const {
-        CHECK(is_bool()) << "Expected Bool.";
-        return cast<bool>();
-    }
+    NODISCARD Device ToDevice() const;
 
-    NODISCARD void* to_void_ptr() const {
-        CHECK(is_void_ptr()) << "Expected VoidPtr.";
-        return cast<void*>();
-    }
+    NODISCARD String ToString() const;
 
-    NODISCARD Device to_device() const;
+    NODISCARD Tensor ToTensor() const;
 
-    NODISCARD String to_string() const {
-        CHECK(is_string()) << "Expected String.";
-        return cast<String>();
-    }
+    NODISCARD uint32_t use_count() const noexcept;
 
-    NODISCARD Tensor to_tensor() const;
+    NODISCARD bool unique() const noexcept;
 
-    void reset() {
-        ptr_.reset();
-    }
+    bool operator==(std::nullptr_t) const noexcept;
 
-    bool operator==(std::nullptr_t) const noexcept {
-        return has_value() ? dynamic_cast<Holder<std::nullptr_t>*>(ptr_.get()) != nullptr : true;
-    }
-
-    bool operator!=(std::nullptr_t p) const noexcept {
-        return !operator==(p);
-    }
+    bool operator!=(std::nullptr_t p) const noexcept;
 
 private:
     std::unique_ptr<HolderBase> ptr_;

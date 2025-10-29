@@ -2,6 +2,7 @@
 // Created by 赵丹 on 2025/8/24.
 //
 #include "any.h"
+#include "container/string.h"
 #include "device.h"
 #include "tensor.h"
 
@@ -25,22 +26,108 @@ Any& Any::operator=(Any&& other) & noexcept {
     return *this;
 }
 
-bool Any::is_device() const noexcept {
+const std::type_index& Any::type() const {
+    if (has_value()) {
+        return ptr_->type();
+    }
+    AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
+    AETHERMIND_UNREACHABLE();
+}
+
+void Any::swap(Any& other) noexcept {
+    std::swap(ptr_, other.ptr_);
+}
+
+void Any::reset() {
+    ptr_.reset();
+}
+
+bool Any::has_value() const noexcept {
+    return ptr_ != nullptr;
+}
+
+bool Any::IsBool() const noexcept {
+    return type() == std::type_index(typeid(bool));
+}
+
+bool Any::IsInteger() const noexcept {
+    return type() == std::type_index(typeid(int64_t));
+}
+
+bool Any::IsFloatingPoint() const noexcept {
+    return type() == std::type_index(typeid(double));
+}
+
+bool Any::IsString() const noexcept {
+    return type() == std::type_index(typeid(String));
+}
+
+bool Any::IsVoidPtr() const noexcept {
+    return type() == std::type_index(typeid(void*));
+}
+
+bool Any::IsObjectRef() const noexcept {
+    return has_value() ? ptr_->is_object_ref() : false;
+}
+
+bool Any::IsDevice() const noexcept {
     return type() == std::type_index(typeid(Device));
 }
 
-bool Any::is_tensor() const noexcept {
+bool Any::IsTensor() const noexcept {
     return type() == std::type_index(typeid(Tensor));
 }
 
-Device Any::to_device() const {
-    CHECK(is_device()) << "Expected Device.";
+uint32_t Any::use_count() const noexcept {
+    return has_value() ? ptr_->use_count() : 0;
+}
+
+
+double Any::ToDouble() const {
+    CHECK(IsFloatingPoint()) << "Expected Double.";
+    return cast<double>();
+}
+
+bool Any::ToBool() const {
+    CHECK(IsBool()) << "Expected Bool.";
+    return cast<bool>();
+}
+
+void* Any::ToVoidPtr() const {
+    CHECK(IsVoidPtr()) << "Expected VoidPtr.";
+    return cast<void*>();
+}
+
+String Any::ToString() const {
+    CHECK(IsString()) << "Expected String.";
+    return cast<String>();
+}
+
+Device Any::ToDevice() const {
+    CHECK(IsDevice()) << "Expected Device.";
     return cast<Device>();
 }
 
-Tensor Any::to_tensor() const {
-    CHECK(is_tensor()) << "Expected Tensor.";
+Tensor Any::ToTensor() const {
+    CHECK(IsTensor()) << "Expected Tensor.";
     return cast<Tensor>();
+}
+
+bool Any::unique() const noexcept {
+    return use_count() == 1;
+}
+
+int64_t Any::ToInt() const {
+    CHECK(IsInteger()) << "Expected Int.";
+    return cast<int64_t>();
+}
+
+bool Any::operator==(std::nullptr_t) const noexcept {
+    return has_value() ? dynamic_cast<Holder<std::nullptr_t>*>(ptr_.get()) != nullptr : true;
+}
+
+bool Any::operator!=(std::nullptr_t p) const noexcept {
+    return !operator==(p);
 }
 
 /*

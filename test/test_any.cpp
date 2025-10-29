@@ -5,7 +5,6 @@
 #include "container/string.h"
 #include "device.h"
 #include "tensor.h"
-#include "testing_object.h"
 
 #include <gtest/gtest.h>
 
@@ -58,7 +57,7 @@ TEST(Any, int) {
     EXPECT_THROW(UNUSED(x0.cast<float>()), Error);
 
     Any x1 = 1;
-    EXPECT_TRUE(x1.is_int());
+    EXPECT_TRUE(x1.IsInteger());
     EXPECT_EQ(x1.cast<int>(), 1);
 
     int64_t v1 = 10;
@@ -68,12 +67,12 @@ TEST(Any, int) {
     Any x2 = v1;
     EXPECT_EQ(x2.cast<int>(), 10);
     EXPECT_EQ(Any(x2).cast<int>(), 10);
-    EXPECT_TRUE(x2.is_int());
+    EXPECT_TRUE(x2.IsInteger());
 
     float v2 = 3.14f;
     Any x3 = v2;
     EXPECT_EQ(x3.cast<float>(), 3.14f);
-    EXPECT_TRUE(x3.is_unique());
+    EXPECT_TRUE(x3.unique());
 
     x2 = v2;
     EXPECT_EQ(x2.cast<float>(), 3.14f);
@@ -97,26 +96,26 @@ TEST(Any, float) {
 TEST(Any, string) {
     Any x0 = "hello";
     EXPECT_EQ(x0.use_count(), 1);
-    EXPECT_TRUE(x0.is_string());
+    EXPECT_TRUE(x0.IsString());
     EXPECT_TRUE(x0.as<String>().has_value());
-    EXPECT_EQ(x0.to_string(), "hello");
+    EXPECT_EQ(x0.ToString(), "hello");
 
     x0 = std::string("world");
     EXPECT_EQ(x0.use_count(), 1);
-    EXPECT_TRUE(x0.is_string());
-    EXPECT_EQ(x0.to_string(), "world");
+    EXPECT_TRUE(x0.IsString());
+    EXPECT_EQ(x0.ToString(), "world");
 
     Any s0 = String("hello");
     Any s1 = "hello";
     Any s2 = std::string("hello");
-    EXPECT_TRUE(s0.is_string());
-    EXPECT_TRUE(s1.is_string());
-    EXPECT_TRUE(s2.is_string());
+    EXPECT_TRUE(s0.IsString());
+    EXPECT_TRUE(s1.IsString());
+    EXPECT_TRUE(s2.IsString());
 
     Any s3 = s0;
     EXPECT_EQ(s3.use_count(), 2);
     s3.reset();
-    EXPECT_TRUE(s0.is_unique());
+    EXPECT_TRUE(s0.unique());
 }
 
 TEST(Any, cast_vs_as) {
@@ -151,8 +150,8 @@ TEST(Any, cast_vs_as) {
 
 TEST(Any, device) {
     Any x = Device(kCUDA, 1);
-    auto dev = x.to_device();
-    EXPECT_TRUE(x.is_device());
+    auto dev = x.ToDevice();
+    EXPECT_TRUE(x.IsDevice());
     EXPECT_EQ(dev.type(), kCUDA);
     EXPECT_EQ(dev.index(), 1);
 }
@@ -160,19 +159,19 @@ TEST(Any, device) {
 TEST(Any, tensor) {
     Tensor t({3, 10});
     Any x = t;
-    EXPECT_TRUE(x.is_tensor());
+    EXPECT_TRUE(x.IsTensor());
     EXPECT_EQ(t.use_count(), 2);
     EXPECT_EQ(x.use_count(), 2);
-    auto t2 = x.to_tensor();
+    auto t2 = x.ToTensor();
     {
         Any y = t2;
-        EXPECT_TRUE(y.is_tensor());
+        EXPECT_TRUE(y.IsTensor());
         EXPECT_EQ(t2.use_count(), 4);
         EXPECT_EQ(y.use_count(), 4);
     }
 
     EXPECT_EQ(t2.use_count(), 3);
-    auto t3 = Any(t2).to_tensor();
+    auto t3 = Any(t2).ToTensor();
     EXPECT_EQ(t3.use_count(), 4);
 }
 

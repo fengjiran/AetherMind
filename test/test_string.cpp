@@ -3,7 +3,7 @@
 //
 #include "container/string.h"
 #include "any.h"
-#include "type_traits.h"
+// #include "type_traits.h"
 
 #include <gtest/gtest.h>
 
@@ -295,32 +295,29 @@ TEST(String, StdHash) {
 }
 
 TEST(String, Any1) {
-    AetherMindAny x1;
     String s1 = "hello";
-    TypeTraits<String>::CopyToAny(s1, &x1);
+    Any x1 = s1;
     EXPECT_EQ(s1.use_count(), 2);
-    auto s2 = TypeTraits<String>::TryCastFromAny(&x1);
+    auto s2 = x1.try_cast<String>();
     EXPECT_TRUE(s2.has_value());
     EXPECT_EQ(s1.use_count(), 3);
     EXPECT_TRUE(s2.value() == s1);
 
-    AetherMindAny x2;
-    TypeTraits<String>::MoveToAny(std::move(s1), &x2);
+    Any x2 = std::move(s1);
     EXPECT_EQ(s2.value().use_count(), 3);
 
-    auto s3 = TypeTraits<String>::CopyFromAnyAfterCheck(&x1);
+    auto s3 = x1.cast<String>();
     EXPECT_EQ(s3.use_count(), 4);
 
     String s4;
-    AetherMindAny x4;
-    TypeTraits<String>::CopyToAny(s4, &x4);
+    Any x4 = s4;
     EXPECT_TRUE(!s4.defined());
     EXPECT_EQ(s4.use_count(), 0);
 }
 
 TEST(String, Any2) {
     Any b = "hello";
-    EXPECT_TRUE(b.is_string());
+    EXPECT_TRUE(b.IsString());
     EXPECT_TRUE(b.as<String>().has_value());
     EXPECT_EQ(b.as<String>().value(), "hello");
     EXPECT_EQ(b.try_cast<std::string>().value(), "hello");

@@ -11,8 +11,8 @@
 namespace aethermind {
 namespace details {
 
-template<typename T>
-constexpr bool compatible_with_any_v = std::is_same_v<T, Any> || TypeTraits<T>::storage_enabled;
+// template<typename T>
+// constexpr bool compatible_with_any_v = std::is_same_v<T, Any> || TypeTraits<T>::storage_enabled;
 
 template<typename Iter, typename T>
 struct is_valid_iterator {

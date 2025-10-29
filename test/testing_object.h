@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_TESTING_OBJECT_H
 #define AETHERMIND_TESTING_OBJECT_H
 
-#include "type_traits.h"
+// #include "type_traits.h"
 
 
 #endif//AETHERMIND_TESTING_OBJECT_H

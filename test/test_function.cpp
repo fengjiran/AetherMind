@@ -1,8 +1,8 @@
 //
 // Created by richard on 9/25/25.
 //
-#include "container/string.h"
 #include "container/array.h"
+#include "container/string.h"
 #include "function.h"
 #include "registry.h"
 #include "testing_object.h"
@@ -254,7 +254,7 @@ TEST(FunctionTypeTraitsTest, BasicFunctionality) {
     // EXPECT_FALSE(TypeTraits<Function>::is_trivially_copyable);
 
     // 测试TypeStr方法
-    EXPECT_EQ(TypeTraits<Function>::TypeStr(), "Function");
+    EXPECT_EQ(Type2Str<Function>::value(), "Function");
 }
 
 // 测试复杂嵌套的Function调用
@@ -556,11 +556,10 @@ TEST(function_type_traits, function_copy_to_any) {
     auto lambda = [](int a, int b) { return a + b; };
     Function func = Function::FromTyped(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<Function>::CopyToAny(func, &any_data);
-
-    EXPECT_EQ(any_data.tag_, AnyTag::Function);
-    EXPECT_NE(std::get<Object*>(any_data.payload_), nullptr);
+    Any any_func = func;
+    auto res = any_func.cast<Function>()(1, 2);
+    EXPECT_EQ(any_func.use_count(), 2);
+    EXPECT_EQ(res.cast<int>(), 3);
 }
 
 TEST(function_type_traits, function_move_to_any) {
@@ -568,23 +567,18 @@ TEST(function_type_traits, function_move_to_any) {
     auto lambda = [](int a, int b) { return a * b; };
     Function func = Function::FromTyped(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<Function>::MoveToAny(std::move(func), &any_data);
-
-    EXPECT_EQ(any_data.tag_, AnyTag::Function);
-    EXPECT_NE(std::get<Object*>(any_data.payload_), nullptr);
-    // 原Function应该被移动，但Function内部使用ObjectPtr，所以原Function仍然有效
+    Any any_data = std::move(func);
+    EXPECT_EQ(func.use_count(), 0);
+    EXPECT_EQ(any_data.use_count(), 1);
 }
 
 TEST(function_type_traits, function_copy_from_any) {
     // 测试Function的CopyFromAnyAfterCheck
     auto lambda = [](int a, int b) { return a - b; };
     Function original_func = Function::FromTyped(lambda);
+    Any any_data = original_func;
 
-    AetherMindAny any_data;
-    TypeTraits<Function>::CopyToAny(original_func, &any_data);
-
-    Function copied_func = TypeTraits<Function>::CopyFromAnyAfterCheck(&any_data);
+    Function copied_func = any_data.cast<Function>();
 
     // 测试复制的函数是否正常工作
     Any result = copied_func(10, 3);
@@ -598,19 +592,14 @@ TEST(function_type_traits, function_move_from_any) {
     // 测试Function的MoveFromAnyAfterCheck
     auto lambda = [](int a, int b) { return a + b + 1; };
     Function original_func = Function::FromTyped(lambda);
+    Any any_data = original_func;
 
-    AetherMindAny any_data;
-    TypeTraits<Function>::CopyToAny(original_func, &any_data);
-
-    Function moved_func = TypeTraits<Function>::MoveFromAnyAfterCheck(&any_data);
+    Function moved_func = any_data.MoveFromAny<Function>();
+    EXPECT_EQ(moved_func.use_count(), 2);
 
     // 测试移动的函数是否正常工作
     Any result = moved_func(2, 3);
     EXPECT_EQ(result.cast<int>(), 6);
-
-    // Any数据应该被清空
-    EXPECT_EQ(any_data.tag_, AnyTag::None);
-    EXPECT_EQ(std::get<Object*>(any_data.payload_), nullptr);
 }
 
 TEST(function_type_traits, function_try_cast_from_any) {
@@ -618,10 +607,9 @@ TEST(function_type_traits, function_try_cast_from_any) {
     auto lambda = [](int a, int b) { return a * b; };
     Function func = Function::FromTyped(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<Function>::CopyToAny(func, &any_data);
+    Any any_data = func;
 
-    auto result = TypeTraits<Function>::TryCastFromAny(&any_data);
+    auto result = any_data.try_cast<Function>();
     EXPECT_TRUE(result.has_value());
 
     // 测试转换后的函数
@@ -631,30 +619,15 @@ TEST(function_type_traits, function_try_cast_from_any) {
 
 TEST(function_type_traits, function_try_cast_from_wrong_type) {
     // 测试从错误类型的Any转换Function
-    AetherMindAny any_data;
-    any_data.tag_ = AnyTag::Int;
-    any_data.payload_ = 42;
+    Any any_data = 42;
 
-    auto result = TypeTraits<Function>::TryCastFromAny(&any_data);
+    auto result = any_data.try_cast<Function>();
     EXPECT_FALSE(result.has_value());
-}
-
-TEST(function_type_traits, function_check_method) {
-    // 测试Function的check方法
-    AetherMindAny any_data;
-
-    // 设置错误类型
-    any_data.tag_ = AnyTag::Int;
-    EXPECT_FALSE(TypeTraits<Function>::check(&any_data));
-
-    // 设置正确类型
-    any_data.tag_ = AnyTag::Function;
-    EXPECT_TRUE(TypeTraits<Function>::check(&any_data));
 }
 
 TEST(function_type_traits, function_type_str) {
     // 测试Function的TypeStr方法
-    std::string type_str = TypeTraits<Function>::TypeStr();
+    auto type_str = Type2Str<Function>::value();
     EXPECT_EQ(type_str, "Function");
 }
 
@@ -663,11 +636,7 @@ TEST(typed_function_type_traits, typed_function_copy_to_any) {
     auto lambda = [](int a, int b) { return a + b; };
     TypedFunction<int(int, int)> typed_func(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<TypedFunction<int(int, int)>>::CopyToAny(typed_func, &any_data);
-
-    EXPECT_EQ(any_data.tag_, AnyTag::Function);
-    EXPECT_NE(std::get<Object*>(any_data.payload_), nullptr);
+    Any any_data = typed_func;
 }
 
 TEST(typed_function_type_traits, typed_function_move_to_any) {
@@ -675,11 +644,7 @@ TEST(typed_function_type_traits, typed_function_move_to_any) {
     auto lambda = [](int a, int b) { return a * b; };
     TypedFunction<int(int, int)> typed_func(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<TypedFunction<int(int, int)>>::MoveToAny(std::move(typed_func), &any_data);
-
-    EXPECT_EQ(any_data.tag_, AnyTag::Function);
-    EXPECT_NE(std::get<Object*>(any_data.payload_), nullptr);
+    Any any_data = std::move(typed_func);
 }
 
 TEST(typed_function_type_traits, typed_function_copy_from_any) {
@@ -687,11 +652,9 @@ TEST(typed_function_type_traits, typed_function_copy_from_any) {
     auto lambda = [](int a, int b) { return a - b; };
     TypedFunction<int(int, int)> original_func(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<TypedFunction<int(int, int)>>::CopyToAny(original_func, &any_data);
+    Any any_data = original_func;
 
-    TypedFunction<int(int, int)> copied_func =
-            TypeTraits<TypedFunction<int(int, int)>>::CopyFromAnyAfterCheck(&any_data);
+    TypedFunction<int(int, int)> copied_func = any_data.cast<TypedFunction<int(int, int)>>();
 
     // 测试复制的函数是否正常工作
     int result = copied_func(10, 3);
@@ -703,19 +666,12 @@ TEST(typed_function_type_traits, typed_function_move_from_any) {
     auto lambda = [](int a, int b) { return a + b + 1; };
     TypedFunction<int(int, int)> original_func(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<TypedFunction<int(int, int)>>::CopyToAny(original_func, &any_data);
+    Any any_data = original_func;
 
-    TypedFunction<int(int, int)> moved_func =
-            TypeTraits<TypedFunction<int(int, int)>>::MoveFromAnyAfterCheck(&any_data);
-
+    TypedFunction<int(int, int)> moved_func = any_data.MoveFromAny<TypedFunction<int(int, int)>>();
     // 测试移动的函数是否正常工作
     int result = moved_func(2, 3);
     EXPECT_EQ(result, 6);
-
-    // Any数据应该被清空
-    EXPECT_EQ(any_data.tag_, AnyTag::None);
-    EXPECT_EQ(std::get<Object*>(any_data.payload_), nullptr);
 }
 
 TEST(typed_function_type_traits, typed_function_try_cast_from_any) {
@@ -723,10 +679,8 @@ TEST(typed_function_type_traits, typed_function_try_cast_from_any) {
     auto lambda = [](int a, int b) { return a * b; };
     TypedFunction<int(int, int)> typed_func(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<TypedFunction<int(int, int)>>::CopyToAny(typed_func, &any_data);
-
-    auto result = TypeTraits<TypedFunction<int(int, int)>>::TryCastFromAny(&any_data);
+    Any any_data = typed_func;
+    auto result = any_data.try_cast<TypedFunction<int(int, int)>>();
     EXPECT_TRUE(result.has_value());
 
     // 测试转换后的函数
@@ -736,29 +690,15 @@ TEST(typed_function_type_traits, typed_function_try_cast_from_any) {
 
 TEST(typed_function_type_traits, typed_function_try_cast_from_wrong_type) {
     // 测试从错误类型的Any转换TypedFunction
-    AetherMindAny any_data;
-    any_data.tag_ = AnyTag::String;
+    Any any_data = "hello world";
 
-    auto result = TypeTraits<TypedFunction<int(int, int)>>::TryCastFromAny(&any_data);
+    auto result = any_data.try_cast<TypedFunction<int(int, int)>>();
     EXPECT_FALSE(result.has_value());
-}
-
-TEST(typed_function_type_traits, typed_function_check_method) {
-    // 测试TypedFunction的check方法
-    AetherMindAny any_data;
-
-    // 设置错误类型
-    any_data.tag_ = AnyTag::Double;
-    EXPECT_FALSE(TypeTraits<TypedFunction<int(int, int)>>::check(&any_data));
-
-    // 设置正确类型
-    any_data.tag_ = AnyTag::Function;
-    EXPECT_TRUE(TypeTraits<TypedFunction<int(int, int)>>::check(&any_data));
 }
 
 TEST(typed_function_type_traits, typed_function_type_str) {
     // 测试TypedFunction的TypeStr方法
-    std::string type_str = TypeTraits<TypedFunction<int(int, int)>>::TypeStr();
+    auto type_str = Type2Str<TypedFunction<int(int, int)>>::value();
     EXPECT_EQ(type_str, "Function");
 }
 
@@ -771,10 +711,9 @@ TEST(typed_function_type_traits, void_return_type_handling) {
 
     TypedFunction<void(int, int)> typed_func(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<TypedFunction<void(int, int)>>::CopyToAny(typed_func, &any_data);
+    Any any_data = typed_func;
 
-    auto result = TypeTraits<TypedFunction<void(int, int)>>::TryCastFromAny(&any_data);
+    auto result = any_data.try_cast<TypedFunction<void(int, int)>>();
     EXPECT_TRUE(result.has_value());
 
     // 测试void函数调用
@@ -790,10 +729,9 @@ TEST(typed_function_type_traits, string_arguments_and_return) {
 
     TypedFunction<std::string(const std::string&, const std::string&)> typed_func(lambda);
 
-    AetherMindAny any_data;
-    TypeTraits<decltype(typed_func)>::CopyToAny(typed_func, &any_data);
+    Any any_data = typed_func;
 
-    auto result = TypeTraits<decltype(typed_func)>::TryCastFromAny(&any_data);
+    auto result = any_data.try_cast<decltype(typed_func)>();
     EXPECT_TRUE(result.has_value());
 
     std::string call_result = result.value()("Hello", "World");

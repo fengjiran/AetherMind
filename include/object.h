@@ -638,20 +638,6 @@ private:
 
 class ObjectRef {};
 
-template<typename, typename = void>
-struct TypeTraits {
-    /*! \brief Whether the type can appear as a storage type in Container */
-    static constexpr bool storage_enabled = false;
-
-    /*! \brief Whether the type can be converted to Any. */
-    static constexpr bool convert_enabled = false;
-};
-
-struct TypeTraitsBase {
-    static constexpr bool storage_enabled = true;
-    static constexpr bool convert_enabled = true;
-};
-
 namespace details {
 struct ObjectUnsafe {
     static ObjectHeader* GetHeader(const Object* src) {
@@ -687,8 +673,8 @@ struct ObjectUnsafe {
  * \brief TypeTraits that removes const and reference keywords.
  * \tparam T the original type
  */
-template<typename T>
-using TypeTraitsNoCR = TypeTraits<std::remove_const_t<std::remove_reference_t<T>>>;
+// template<typename T>
+// using TypeTraitsNoCR = TypeTraits<std::remove_const_t<std::remove_reference_t<T>>>;
 
 
 }// namespace details

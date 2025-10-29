@@ -9,9 +9,23 @@
 #include "container/string.h"
 #include "device.h"
 #include "tensor.h"
+#include "function.h"
 
 namespace aethermind {
 
+template<typename, typename = void>
+struct TypeTraits {
+    /*! \brief Whether the type can appear as a storage type in Container */
+    static constexpr bool storage_enabled = false;
+
+    /*! \brief Whether the type can be converted to Any. */
+    static constexpr bool convert_enabled = false;
+};
+
+struct TypeTraitsBase {
+    static constexpr bool storage_enabled = true;
+    static constexpr bool convert_enabled = true;
+};
 
 template<>
 struct TypeTraits<std::nullptr_t> : TypeTraitsBase {
@@ -423,6 +437,90 @@ struct TypeTraits<Device> : TypeTraitsBase {
         return AnyTag::Device;
     }
 };
+
+// function
+template<>
+struct TypeTraits<Function> : TypeTraitsBase {
+    static void CopyToAny(const Function& src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Function;
+        FunctionImpl* obj = src.get_impl_ptr_unsafe();
+        dst->payload_ = obj;
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
+        }
+    }
+
+    static void MoveToAny(Function src, AetherMindAny* dst) {
+        dst->tag_ = AnyTag::Function;
+        dst->payload_ = static_cast<Object*>(src.release_impl_unsafe());
+    }
+
+    static Function CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        if (!IsNullTypePtr(obj)) {
+            details::ObjectUnsafe::IncRefObjectHandle(obj);
+        }
+        return Function(ObjectPtr<FunctionImpl>::reclaim(static_cast<FunctionImpl*>(obj)));
+    }
+
+    static Function MoveFromAnyAfterCheck(AetherMindAny* src) {
+        auto* obj = std::get<Object*>(src->payload_);
+        src->payload_ = static_cast<Object*>(nullptr);
+        src->tag_ = AnyTag::None;
+        return Function(ObjectPtr<FunctionImpl>::reclaim(static_cast<FunctionImpl*>(obj)));
+    }
+
+    static std::optional<Function> TryCastFromAny(const AetherMindAny* src) {
+        if (check(src)) {
+            return CopyFromAnyAfterCheck(src);
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::Function;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::Function);
+    }
+};
+
+template<typename F>
+struct TypeTraits<TypedFunction<F>> : TypeTraitsBase {
+    static void CopyToAny(const TypedFunction<F>& src, AetherMindAny* dst) {
+        TypeTraits<Function>::CopyToAny(src.packed(), dst);
+    }
+
+    static void MoveToAny(TypedFunction<F> src, AetherMindAny* dst) {
+        TypeTraits<Function>::MoveToAny(std::move(src.packed()), dst);
+    }
+
+    static TypedFunction<F> CopyFromAnyAfterCheck(const AetherMindAny* src) {
+        return TypeTraits<Function>::CopyFromAnyAfterCheck(src);
+    }
+
+    static TypedFunction<F> MoveFromAnyAfterCheck(AetherMindAny* src) {
+        return TypeTraits<Function>::MoveFromAnyAfterCheck(src);
+    }
+
+    static std::optional<TypedFunction<F>> TryCastFromAny(const AetherMindAny* src) {
+        auto opt = TypeTraits<Function>::TryCastFromAny(src);
+        if (opt.has_value()) {
+            return TypedFunction<F>(*std::move(opt));
+        }
+        return std::nullopt;
+    }
+
+    static bool check(const AetherMindAny* src) {
+        return src->tag_ == AnyTag::Function;
+    }
+
+    static std::string TypeStr() {
+        return AnyTagToString(AnyTag::Function);
+    }
+};
+
 
 }// namespace aethermind
 

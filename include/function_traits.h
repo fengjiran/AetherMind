@@ -56,13 +56,13 @@ public:
     }
 };
 
-template<typename T>
-static constexpr bool ArgSupported = std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, Any> ||
-                                     TypeTraitsNoCR<T>::convert_enabled;
+// template<typename T>
+// static constexpr bool ArgSupported = std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, Any> ||
+//                                      TypeTraitsNoCR<T>::convert_enabled;
 
 // NOTE: return type can only support non-reference managed returns
-template<typename T>
-static constexpr bool RetSupported = std::is_same_v<T, Any> || std::is_void_v<T> || TypeTraits<T>::convert_enabled;
+// template<typename T>
+// static constexpr bool RetSupported = std::is_same_v<T, Any> || std::is_void_v<T> || TypeTraits<T>::convert_enabled;
 
 
 template<typename FuncType>
@@ -77,7 +77,7 @@ struct FunctionTraits<R(Args...)> {
     static constexpr auto num_args = sizeof...(Args);
 
     /*! \brief Whether this function can be converted to Function via FromTyped */
-    static constexpr bool unpacked_args_supported = (ArgSupported<Args> && ...) && RetSupported<R>;
+    // static constexpr bool unpacked_args_supported = (ArgSupported<Args> && ...) && RetSupported<R>;
 
     static String Schema() {
         using idx_seq = std::make_index_sequence<sizeof...(Args)>;

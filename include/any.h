@@ -55,6 +55,9 @@ public:
 
 class Device;
 class Tensor;
+class Function;
+template<typename FType>
+class TypedFunction;
 
 class Any {
 public:
@@ -77,25 +80,13 @@ public:
     template<typename T, std::enable_if_t<details::is_string_v<T>>* = nullptr>
     Any(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {}//NOLINT
 
-    Any(const Any& other) {
-        if (other.has_value()) {
-            ptr_ = other.ptr_->Clone();
-        }
-    }
+    Any(const Any& other);
 
-    Any(Any&& other) noexcept {
-        ptr_ = std::move(other.ptr_);
-    }
+    Any(Any&& other) noexcept;
 
-    Any& operator=(const Any& other) & {
-        Any(other).swap(*this);
-        return *this;
-    }
+    Any& operator=(const Any& other) &;
 
-    Any& operator=(Any&& other) & noexcept {
-        Any(std::move(other)).swap(*this);
-        return *this;
-    }
+    Any& operator=(Any&& other) & noexcept ;
 
     template<typename T>
     Any& operator=(T value) & {
@@ -127,7 +118,7 @@ public:
     template<typename T, std::enable_if_t<!details::is_plain_v<T>>* = nullptr>
     std::optional<T> as() && {
         if constexpr (std::is_same_v<T, Any>) {
-            return *this;
+            return std::move(*this);
         } else {
             if (has_value()) {
                 if (auto* p = dynamic_cast<Holder<T>*>(ptr_.get())) {
@@ -167,7 +158,7 @@ public:
     NODISCARD T cast() const& {
         auto opt = as<T>();
         if (!opt.has_value()) {
-            AETHERMIND_THROW(TypeError);
+            AETHERMIND_THROW(TypeError) << "cast failed.";
         }
         return opt.value();
     }
@@ -178,7 +169,13 @@ public:
         if (!opt.has_value()) {
             AETHERMIND_THROW(TypeError);
         }
+        reset();
         return std::move(opt.value());
+    }
+
+    template<typename T>
+    T MoveFromAny() {
+        return std::move(*this).cast<T>();
     }
 
     void swap(Any& other) noexcept {
@@ -486,6 +483,14 @@ DEFINE_TYPE_NAME(_, _, _, Any*, Any*);
 DEFINE_TYPE_NAME(_, _, _, const Any*, const Any*);
 DEFINE_TYPE_NAME(_, _, _, const Any&, const Any&);
 DEFINE_TYPE_NAME(_, _, _, void, void);
+DEFINE_TYPE_NAME(_, _, _, Function, Function);
+
+template<typename FType>
+struct TypeName<TypedFunction<FType>> {
+    static String value() {
+        return "Function";
+    }
+};
 
 #undef DEFINE_TYPE_NAME
 

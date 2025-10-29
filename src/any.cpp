@@ -7,6 +7,24 @@
 
 namespace aethermind {
 
+Any::Any(const Any& other) {
+    if (other.has_value()) {
+        ptr_ = other.ptr_->Clone();
+    }
+}
+
+Any::Any(Any&& other) noexcept : ptr_(std::move(other.ptr_)) {}
+
+Any& Any::operator=(const Any& other) & {
+    Any(other).swap(*this);
+    return *this;
+}
+
+Any& Any::operator=(Any&& other) & noexcept {
+    Any(std::move(other)).swap(*this);
+    return *this;
+}
+
 bool Any::is_device() const noexcept {
     return type() == std::type_index(typeid(Device));
 }

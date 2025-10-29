@@ -636,7 +636,9 @@ private:
     friend bool operator==(const WeakObjectPtr<T1>&, const WeakObjectPtr<T2>&) noexcept;
 };
 
-class ObjectRef {};
+class ObjectRef {
+    ObjectPtr<Object> ptr_;
+};
 
 namespace details {
 struct ObjectUnsafe {

@@ -68,6 +68,8 @@ TEST(Any, int) {
     EXPECT_EQ(x2.cast<int>(), 10);
     EXPECT_EQ(Any(x2).cast<int>(), 10);
     EXPECT_TRUE(x2.IsInteger());
+    int x22 = x2;
+    EXPECT_EQ(x22, 10);
 
     float v2 = 3.14f;
     Any x3 = v2;
@@ -116,6 +118,10 @@ TEST(Any, string) {
     EXPECT_EQ(s3.use_count(), 2);
     s3.reset();
     EXPECT_TRUE(s0.unique());
+
+    String s4 = Any("hello");
+    EXPECT_EQ(s4, "hello");
+    EXPECT_EQ(s4.use_count(), 1);
 }
 
 TEST(Any, cast_vs_as) {

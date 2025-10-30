@@ -327,7 +327,7 @@ template<>
 struct TypeTraits<String> : TypeTraitsBase {
     static void CopyToAny(const String& src, AetherMindAny* dst) {
         dst->tag_ = tag();
-        Object* obj = src.get_impl_ptr_unsafe();
+        Object* obj = src.GetImplPtrUnsafe();
         dst->payload_ = obj;
         if (!IsNullTypePtr(obj)) {
             details::ObjectUnsafe::IncRefObjectHandle(obj);

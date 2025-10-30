@@ -30,7 +30,7 @@ std::optional<TypePtr> subtractTypeSetFrom(std::vector<TypePtr>& to_subtract, Ar
     if (types.size() == 1) {
         return types[0];
     }
-    return UnionType::create(types);
+    return UnionType::Create(types);
 }
 
 // Remove nested Optionals/Unions during the instantiation of a Union or
@@ -210,7 +210,7 @@ bool UnionType::IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const {
 }
 
 
-UnionTypePtr UnionType::create(const std::vector<TypePtr>& ref) {
+UnionTypePtr UnionType::Create(const std::vector<TypePtr>& ref) {
     UnionTypePtr union_type(new UnionType(ref));
     bool int_found = false;
     bool float_found = false;
@@ -236,18 +236,22 @@ UnionTypePtr UnionType::create(const std::vector<TypePtr>& ref) {
     bool numbertype_found = int_found && float_found && complex_found;
     if (nonetype_found) {
         if (union_type->GetContainedTypeSize() == 4 && numbertype_found) {
-            return OptionalType::create(NumberType::Global());
+            return OptionalType::Create(NumberType::Global());
         }
 
         if (union_type->GetContainedTypeSize() == 2) {
             auto not_none = union_type->GetContainedTypes()[0] != NoneType::Global()
                                     ? union_type->GetContainedTypes()[0]
                                     : union_type->GetContainedTypes()[1];
-            return OptionalType::create(not_none);
+            return OptionalType::Create(not_none);
         }
     }
 
     return union_type;
+}
+
+TypePtr UnionType::CreateWithContainedTypes(const std::vector<TypePtr>& contained_types) const {
+    return Create(contained_types);
 }
 
 std::optional<TypePtr> UnionType::to_optional() const {
@@ -256,7 +260,7 @@ std::optional<TypePtr> UnionType::to_optional() const {
     }
 
     std::vector<TypePtr> copied_types = this->GetContainedTypes().vec();
-    auto maybe_opt = create(copied_types);
+    auto maybe_opt = Create(copied_types);
     if (maybe_opt->kind() == Kind) {
         return std::nullopt;
     }
@@ -363,7 +367,7 @@ OptionalType::OptionalType(const TypePtr& contained)
         std::vector<TypePtr> to_subtract{NoneType::Global()};
         auto without_none = subtractTypeSetFrom(to_subtract, types_);
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-        contained_type_ = UnionType::create({std::move(without_none.value())});
+        contained_type_ = UnionType::Create({std::move(without_none.value())});
     }
     has_free_variables_ = contained_type_->HasFreeVars();
 }
@@ -405,9 +409,13 @@ bool OptionalType::IsSubtypeOfExt(const Type& other, std::ostream* why_not) cons
     return UnionType::IsSubtypeOfExt(other, why_not);
 }
 
+OptionalTypePtr OptionalType::Create(const TypePtr& contained) {
+    return OptionalTypePtr(new OptionalType(contained)); //NOLINT
+}
 
-OptionalTypePtr OptionalType::create(const TypePtr& contained) {
-    return OptionalTypePtr(new OptionalType(contained));
+TypePtr OptionalType::CreateWithContainedTypes(const std::vector<TypePtr>& contained_types) const {
+    CHECK(contained_types.size() == 1);
+    return Create(contained_types[0]);
 }
 
 

@@ -19,6 +19,16 @@ String TypeKindToString(TypeKind kind) {
     return "";
 }
 
+TypePtr Type::WithContainedTypes(const std::vector<TypePtr>& contained_types) {
+    auto cur_contained_types = GetContainedTypes();
+    CHECK(!cur_contained_types.empty() && cur_contained_types.size() == contained_types.size());
+    if (cur_contained_types.equals(contained_types)) {
+        return std::static_pointer_cast<Type>(static_cast<SharedType*>(this)->shared_from_this());
+    }
+    return CreateWithContainedTypes(contained_types);
+}
+
+
 bool Type::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
     if (other.kind() == TypeKind::AnyType || *this == other) {
         return true;
@@ -79,7 +89,7 @@ static std::optional<TypePtr> unify_types_impl(const TypePtr& t1, const TypePtr&
 std::optional<TypePtr> unify_types(const TypePtr& t1, const TypePtr& t2, bool default_to_union, const TypePtr& type_hint) {
     auto unified = unify_types_impl(t1, t2, default_to_union, type_hint);
     if (default_to_union && !unified) {
-        return UnionType::create({t1, t2});
+        return UnionType::Create({t1, t2});
     }
     return unified;
 }

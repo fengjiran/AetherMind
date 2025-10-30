@@ -67,7 +67,7 @@ bool Any::IsVoidPtr() const noexcept {
 }
 
 bool Any::IsObjectRef() const noexcept {
-    return has_value() ? ptr_->is_object_ref() : false;
+    return has_value() ? ptr_->IsObjectRef() : false;
 }
 
 bool Any::IsDevice() const noexcept {

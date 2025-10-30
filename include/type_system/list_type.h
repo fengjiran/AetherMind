@@ -19,8 +19,10 @@ public:
     // List[T] for every T
     template<typename... T>
     static ListTypePtr Create(T&&... all) {
-        return std::make_shared<ListType>(std::forward<T>(all)...);
+        return ListTypePtr(new ListType(std::forward<T>(all)...));//NOLINT
     }
+
+    TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const override;
 
 private:
     explicit ListType(TypePtr elem) : SingleElementType(std::move(elem)) {}

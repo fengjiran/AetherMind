@@ -103,15 +103,15 @@ bool String::unique() const noexcept {
     return impl_.unique();
 }
 
-StringImpl* String::get_impl_ptr_unsafe() const noexcept {
+StringImpl* String::GetImplPtrUnsafe() const noexcept {
     return impl_.get();
 }
 
-const ObjectPtr<StringImpl>& String::get_object_ptr() const {
+const ObjectPtr<StringImpl>& String::GetObjectPtr() const {
     return impl_;
 }
 
-StringImpl* String::release_impl_unsafe() {
+StringImpl* String::ReleaseImplUnsafe() {
     return impl_.release();
 }
 
@@ -123,19 +123,19 @@ String::operator std::string() const {
     return data();
 }
 
-int String::compare(const String& other) const {
-    return memncmp(data(), size(), other.data(), other.size());
+int String::Compare(const String& other) const {
+    return MemoryCompare(data(), size(), other.data(), other.size());
 }
 
-int String::compare(const std::string& other) const {
-    return memncmp(data(), size(), other.data(), other.size());
+int String::Compare(const std::string& other) const {
+    return MemoryCompare(data(), size(), other.data(), other.size());
 }
 
-int String::compare(const char* other) const {
-    return memncmp(data(), size(), other, std::strlen(other));
+int String::Compare(const char* other) const {
+    return MemoryCompare(data(), size(), other, std::strlen(other));
 }
 
-int String::memncmp(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
+int String::MemoryCompare(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
     if (lhs == rhs && lhs_cnt == rhs_cnt) {
         return 0;
     }
@@ -161,12 +161,11 @@ int String::memncmp(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs
     return 0;
 }
 
-bool String::memequal(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
-    // return (lhs_cnt == rhs_cnt) && (lhs == rhs || std::memcmp(lhs, rhs, lhs_cnt) == 0);
-    return memncmp(lhs, lhs_cnt, rhs, rhs_cnt) == 0;
+bool String::MemoryEqual(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
+    return MemoryCompare(lhs, lhs_cnt, rhs, rhs_cnt) == 0;
 }
 
-String String::concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
+String String::Concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
     auto ptr = make_array_object<StringImpl, char>(lhs_cnt + rhs_cnt + 1);
     char* dst = reinterpret_cast<char*>(ptr.get()) + sizeof(StringImpl);
     ptr->data_ = dst;
@@ -178,23 +177,23 @@ String String::concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t r
 }
 
 String operator+(const String& lhs, const String& rhs) {
-    return String::concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+    return String::Concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
 }
 
 String operator+(const String& lhs, const std::string& rhs) {
-    return String::concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+    return String::Concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
 }
 
 String operator+(const std::string& lhs, const String& rhs) {
-    return String::concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+    return String::Concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
 }
 
 String operator+(const String& lhs, const char* rhs) {
-    return String::concat(lhs.data(), lhs.size(), rhs, std::strlen(rhs));
+    return String::Concat(lhs.data(), lhs.size(), rhs, std::strlen(rhs));
 }
 
 String operator+(const char* lhs, const String& rhs) {
-    return String::concat(lhs, std::strlen(lhs), rhs.data(), rhs.size());
+    return String::Concat(lhs, std::strlen(lhs), rhs.data(), rhs.size());
 }
 
 std::ostream& operator<<(std::ostream& os, const String& str) {

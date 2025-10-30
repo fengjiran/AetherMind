@@ -19,5 +19,9 @@ String ListType::AnnotationImpl(const TypePrinter& printer) const {
     return ss.str();
 }
 
+TypePtr ListType::CreateWithContainedTypes(const std::vector<TypePtr>& contained_types) const {
+    return Create(contained_types.at(0));
+}
+
 
 }// namespace aethermind

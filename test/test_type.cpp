@@ -157,7 +157,7 @@ TEST(TypeSystem, UnionType) {
             IntType::Global(),
             FloatType::Global(),
             StringType::Global()};
-    auto union_type = UnionType::create(types);
+    auto union_type = UnionType::Create(types);
 
     EXPECT_TRUE(union_type);
     EXPECT_EQ(union_type->kind(), TypeKind::UnionType);
@@ -178,7 +178,7 @@ TEST(TypeSystem, UnionType) {
 
     // 测试空的UnionType
     std::vector<TypePtr> empty_types;
-    auto empty_union = UnionType::create(empty_types);
+    auto empty_union = UnionType::Create(empty_types);
     EXPECT_TRUE(empty_union);
     EXPECT_EQ(empty_union->GetContainedTypes().size(), 0);
 }
@@ -288,7 +288,7 @@ TEST(Type, Union) {
 
     EXPECT_TRUE(t4->IsSubtypeOf(t3));
 
-    TypePtr union_type_1 = UnionType::create({t1, t2, t4, t5, t5});
+    TypePtr union_type_1 = UnionType::Create({t1, t2, t4, t5, t5});
     EXPECT_EQ(union_type_1->kind(), TypeKind::OptionalType);
     // EXPECT_EQ(union_type_1->containedTypeSize(), 4);
 }

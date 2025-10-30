@@ -140,7 +140,6 @@ DECLARE_SINGLETON_TYPE(StringType);
 DECLARE_SINGLETON_TYPE(DeviceObjType);
 
 using TypePtr = SingletonOrSharedTypePtr<Type>;
-
 class Type {
 public:
     NODISCARD TypeKind kind() const {
@@ -180,6 +179,15 @@ public:
     NODISCARD virtual size_t GetContainedTypeSize() const {
         return GetContainedTypes().size();
     }
+
+    virtual TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const {
+        CHECK(false) << "CreateWithContainedTypes() is not implemented: " << str();
+        AETHERMIND_UNREACHABLE();
+    }
+
+    // create a new version of this type, replacing its contained types with
+    // contained_types
+    TypePtr WithContainedTypes(const std::vector<TypePtr>& contained_types);
 
     NODISCARD virtual bool HasFreeVars() const {
         return false;
@@ -364,7 +372,7 @@ public:
     }
 
     ArrayView<TypePtr> GetContainedTypes() const override {
-        return ArrayView<TypePtr>(elem_);
+        return ArrayView(elem_);
     }
 
     bool Equals(const Type& rhs) const override {

@@ -42,7 +42,9 @@ public:
 
     bool canHoldType(const Type& type) const;
 
-    static UnionTypePtr create(const std::vector<TypePtr>& ref);
+    static UnionTypePtr Create(const std::vector<TypePtr>& ref);
+
+    TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const override;
 
     static constexpr auto Kind = TypeKind::UnionType;
 
@@ -76,7 +78,9 @@ public:
         return contained_type_;
     }
 
-    static OptionalTypePtr create(const TypePtr& contained);
+    static OptionalTypePtr Create(const TypePtr& contained);
+
+    TypePtr CreateWithContainedTypes(const std::vector<TypePtr>& contained_types) const override;
 
     static constexpr auto Kind = TypeKind::OptionalType;
 

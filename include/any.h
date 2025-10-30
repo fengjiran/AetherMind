@@ -19,7 +19,7 @@ public:
     NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
     NODISCARD virtual const std::type_index& type() const = 0;
     NODISCARD virtual uint32_t use_count() const = 0;
-    NODISCARD virtual bool is_object_ref() const = 0;
+    NODISCARD virtual bool IsObjectRef() const = 0;
 };
 
 template<typename T>
@@ -43,7 +43,7 @@ public:
         }
     }
 
-    NODISCARD bool is_object_ref() const override {
+    NODISCARD bool IsObjectRef() const override {
         if constexpr (std::is_base_of_v<ObjectRef, T>) {
             return true;
         } else {

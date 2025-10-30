@@ -125,8 +125,6 @@ private:
 template<typename T>
 class Array : public ObjectRef {
 public:
-    // static_assert(details::compatible_with_any_v<T>, "T must be compatible with Any");
-
     struct Converter {
         using RetType = T;
         static T convert(const Any& elem) {
@@ -501,6 +499,6 @@ struct hash<aethermind::Array<T>> {
     }
 };
 
-}
+}// namespace std
 
 #endif//AETHERMIND_CONTAINER_ARRAY_IMPL_H

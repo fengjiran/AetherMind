@@ -486,8 +486,21 @@ void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
         }
     }
 }
-
-
 }// namespace aethermind
+
+namespace std {
+
+template<typename T>
+struct hash<aethermind::Array<T>> {
+    size_t operator()(const aethermind::Array<T>& v) {
+        size_t seed = 0;
+        for (const auto& elem: v) {
+            seed = aethermind::hash_combine(seed, aethermind::hash_details::simple_get_hash(elem));
+        }
+        return seed;
+    }
+};
+
+}
 
 #endif//AETHERMIND_CONTAINER_ARRAY_IMPL_H

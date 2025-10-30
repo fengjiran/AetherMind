@@ -235,4 +235,9 @@ using IntArrayView = ArrayView<int64_t>;
 
 }// namespace aethermind
 
+namespace std {
+
+
+}
+
 #endif//AETHERMIND_ARRAY_REF_H

@@ -6,6 +6,7 @@
 #define AETHERMIND_OBJECT_H
 
 #include "c_api.h"
+#include "utils/hash.h"
 
 #include <glog/logging.h>
 #include <memory>

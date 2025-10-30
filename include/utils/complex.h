@@ -6,6 +6,7 @@
 #define AETHERMIND_COMPLEX_H
 
 #include "utils/half.h"
+#include "utils/hash.h"
 
 #include <complex>
 
@@ -583,6 +584,14 @@ using aethermind::complex_math::sinh;
 using aethermind::complex_math::sqrt;
 using aethermind::complex_math::tan;
 using aethermind::complex_math::tanh;
+
+template<typename T>
+struct hash<aethermind::complex<T>> {
+    size_t operator()(const aethermind::complex<T>& c) const {
+        return aethermind::hash<aethermind::complex<T>>()(c);
+    }
+};
+
 
 }// namespace std
 

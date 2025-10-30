@@ -24,6 +24,8 @@ public:
 
     TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const override;
 
+    static TypePtr Get(const String& identifier, TypePtr inner);
+
 private:
     explicit ListType(TypePtr elem) : SingleElementType(std::move(elem)) {}
 

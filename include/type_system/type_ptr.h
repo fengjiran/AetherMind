@@ -6,6 +6,7 @@
 #define AETHERMIND_TYPE_SYSTEM_TYPE_PTR_H
 
 #include "macros.h"
+#include "utils/hash.h"
 
 #include <glog/logging.h>
 

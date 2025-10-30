@@ -240,7 +240,6 @@ inline bool operator!=(const String& lhs, const char* rhs) { return lhs.Compare(
 inline bool operator!=(const char* lhs, const String& rhs) { return rhs.Compare(lhs) != 0; }
 
 std::ostream& operator<<(std::ostream& os, const String&);
-
 }// namespace aethermind
 
 namespace std {

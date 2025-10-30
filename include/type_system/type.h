@@ -9,7 +9,6 @@
 #include "container/string.h"
 #include "data_type.h"
 #include "error.h"
-#include "type.h"
 #include "type_ptr.h"
 
 #include <functional>

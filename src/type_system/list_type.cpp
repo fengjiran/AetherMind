@@ -4,6 +4,8 @@
 
 #include "type_system/list_type.h"
 #include "type_system/tensor_type.h"
+#include <map>
+#include <unordered_map>
 
 namespace aethermind {
 
@@ -21,6 +23,13 @@ String ListType::AnnotationImpl(const TypePrinter& printer) const {
 
 TypePtr ListType::CreateWithContainedTypes(const std::vector<TypePtr>& contained_types) const {
     return Create(contained_types.at(0));
+}
+
+TypePtr ListType::Get(const String& identifier, TypePtr inner) {
+    static std::unordered_map<std::tuple<String, TypePtr>, TypePtr> container_types;;
+    static std::mutex mutex;
+    auto key = std::make_tuple(identifier, inner);
+
 }
 
 

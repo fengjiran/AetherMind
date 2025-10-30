@@ -6,6 +6,7 @@
 #define AETHERMIND_ARRAY_REF_H
 
 #include "macros.h"
+#include "utils/hash.h"
 
 #include <array>
 #include <cstddef>
@@ -237,7 +238,17 @@ using IntArrayView = ArrayView<int64_t>;
 
 namespace std {
 
+template<typename T>
+struct hash<aethermind::ArrayView<T>> {
+    size_t operator()(aethermind::ArrayView<T> v) const {
+        size_t seed = 0;
+        for (const auto& elem: v) {
+            seed = aethermind::hash_combine(seed, aethermind::hash_details::simple_get_hash(elem));
+        }
+        return seed;
+    }
+};
 
-}
+}// namespace std
 
 #endif//AETHERMIND_ARRAY_REF_H

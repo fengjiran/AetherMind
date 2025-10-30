@@ -588,7 +588,7 @@ using aethermind::complex_math::tanh;
 template<typename T>
 struct hash<aethermind::complex<T>> {
     size_t operator()(const aethermind::complex<T>& c) const {
-        return aethermind::hash<aethermind::complex<T>>()(c);
+        return aethermind::hash<std::complex<T>>()(c);
     }
 };
 

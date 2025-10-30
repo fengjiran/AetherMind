@@ -5,10 +5,6 @@
 #ifndef AETHERMIND_UTILS_HASH_H
 #define AETHERMIND_UTILS_HASH_H
 
-// #include "container/array_view.h"
-// #include "container/string.h"
-// #include "utils/complex.h"
-
 #include <complex>
 #include <cstddef>
 #include <functional>
@@ -23,12 +19,6 @@
 #include <vector>
 
 namespace aethermind {
-
-template<typename T>
-class ArrayView;
-
-template<typename T>
-class complex;
 
 inline size_t hash_combine(size_t seed, size_t value) {
     return seed ^ (value + 0x9e3779b9 + (seed << 6u) + (seed >> 2u));
@@ -163,15 +153,15 @@ private:
     }
 
     void process_block(void const* bytes_begin, void const* bytes_end) {
-        unsigned char const* begin = static_cast<unsigned char const*>(bytes_begin);
-        unsigned char const* end = static_cast<unsigned char const*>(bytes_end);
+        auto const* begin = static_cast<unsigned char const*>(bytes_begin);
+        auto const* end = static_cast<unsigned char const*>(bytes_end);
         for (; begin != end; ++begin) {
             process_byte(*begin);
         }
     }
 
     void process_bytes(void const* buffer, std::size_t byte_count) {
-        unsigned char const* b = static_cast<unsigned char const*>(buffer);
+        auto const* b = static_cast<unsigned char const*>(buffer);
         process_block(b, b + byte_count);
     }
 
@@ -305,22 +295,15 @@ struct hash<std::pair<T1, T2>> {
     }
 };
 
+// Specialization for std::vector
 template<typename T>
-struct hash<ArrayView<T>> {
-    size_t operator()(ArrayView<T> v) const {
+struct hash<std::vector<T>> {
+    size_t operator()(const std::vector<T>& v) const {
         size_t seed = 0;
         for (const auto& elem: v) {
             seed = hash_combine(seed, hash_details::simple_get_hash(elem));
         }
         return seed;
-    }
-};
-
-// Specialization for std::vector
-template<typename T>
-struct hash<std::vector<T>> {
-    size_t operator()(const std::vector<T>& v) const {
-        return hash<ArrayView<T>>()(v);
     }
 };
 
@@ -347,8 +330,8 @@ size_t get_hash(const Types&... args) {
 
 // Specialization for aethermind::complex
 template<typename T>
-struct hash<complex<T>> {
-    size_t operator()(const complex<T>& c) const {
+struct hash<std::complex<T>> {
+    size_t operator()(const std::complex<T>& c) const {
         return get_hash(c.real(), c.imag());
     }
 };
@@ -360,13 +343,6 @@ template<typename... Types>
 struct hash<std::tuple<Types...>> {
     size_t operator()(const std::tuple<Types...>& t) const {
         return aethermind::hash<std::tuple<Types...>>()(t);
-    }
-};
-
-template<typename T>
-struct hash<aethermind::ArrayView<T>> {
-    size_t operator()(const aethermind::ArrayView<T>& v) const {
-        return aethermind::hash<aethermind::ArrayView<T>>()(v);
     }
 };
 
@@ -387,7 +363,7 @@ struct hash<std::pair<T1, T2>> {
 template<typename T>
 struct hash<std::complex<T>> {
     size_t operator()(const std::complex<T>& c) const {
-        return aethermind::hash<aethermind::complex<T>>()(c);
+        return aethermind::hash<std::complex<T>>()(c);
     }
 };
 

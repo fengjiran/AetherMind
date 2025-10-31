@@ -16,6 +16,14 @@ public:
     QualifiedName() = default;
 
 private:
+    template<typename T, typename = T::iterator>
+    String join(char delimiter, const T& v) {
+        String res;
+    }
+
+    // default delimiter
+    static constexpr char delimiter_ = '.';
+
     // The actual list of names, like "{foo, bar, baz}"
     std::vector<String> atoms_;
 

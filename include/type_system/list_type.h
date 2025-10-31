@@ -50,6 +50,27 @@ private:
     String AnnotationImpl(const TypePrinter& printer) const override;
 };
 
+// the common supertype of all lists,
+// List[T] <: AnyList for all T
+class AnyListType;
+using AnyListTypePtr = SingletonTypePtr<AnyListType>;
+class AnyListType : public Singleton<AnyListType> {
+public:
+    NODISCARD bool Equals(const Type& rhs) const override {
+        return kind() == rhs.kind();
+    }
+
+    NODISCARD String str() const override {
+        return "list";
+    }
+
+    static constexpr auto Kind = TypeKind::AnyListType;
+
+private:
+    AnyListType() : Singleton(Kind) {}
+    friend class Singleton;
+};
+
 }// namespace aethermind
 
 #endif//AETHERMIND_TYPE_SYSTEM_LIST_TYPE_H

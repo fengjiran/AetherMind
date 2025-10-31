@@ -26,6 +26,18 @@ TypePtr ListType::CreateWithContainedTypes(const std::vector<TypePtr>& contained
     return Create(contained_types.at(0));
 }
 
+bool ListType::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
+    if (Type::IsSubtypeOfExt(other, why_not)) {
+        return true;
+    }
+
+    if (other.kind() == AnyListType::Kind) {
+        return true;
+    }
+    return false;
+}
+
+
 TypePtr ListType::Get(const String& identifier, const TypePtr& inner) {
     static std::unordered_map<std::tuple<String, TypePtr>, TypePtr> container_types;
 

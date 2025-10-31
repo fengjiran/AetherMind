@@ -7,10 +7,11 @@
 namespace aethermind {
 
 ArrayImpl::~ArrayImpl() {
-    auto* p = begin();
-    for (size_t i = 0; i < size(); ++i) {
-        (p + i)->~Any();
-    }
+    // auto* p = begin();
+    // for (size_t i = 0; i < size(); ++i) {
+    //     (p + i)->~Any();
+    // }
+    clear();
 }
 
 void ArrayImpl::ConstructAtEnd(size_t n, const Any& value) {
@@ -42,7 +43,7 @@ void ArrayImpl::EnlargeBy(int64_t delta, const Any& value) {
 }
 
 void ArrayImpl::clear() {
-    ShrinkBy(size());
+    ShrinkBy(static_cast<int64_t>(size()));
 }
 
 void ArrayImpl::MoveElemsRight(size_t dst, size_t src, size_t n) {

@@ -19,6 +19,7 @@ private:
     template<typename T, typename = T::iterator>
     String join(char delimiter, const T& v) {
         String res;
+        return res;
     }
 
     // default delimiter

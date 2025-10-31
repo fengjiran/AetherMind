@@ -106,8 +106,7 @@ private:
     template<typename Iter>
     void ConstructAtEnd(Iter first, Iter last) {
         auto* p = end();
-        // placement new
-        // To ensure exception safety, size is only incremented after the initialization succeeds
+        // To ensure exception safety, size is only incremented after the initialization succeeds.
         for (auto it = first; it != last; ++it) {
             new (p++) Any(*it);
             ++size_;
@@ -143,7 +142,7 @@ public:
 
     Array() = default;
 
-    explicit Array(size_t n, const Any& value = Any(T())) : pimpl_(ArrayImpl::Create(n)) {
+    explicit Array(size_t n, const T& value = T()) : pimpl_(ArrayImpl::Create(n)) {
         pimpl_->ConstructAtEnd(n, value);
     }
 
@@ -423,7 +422,6 @@ void Array<T>::erase(iterator first, iterator last) {
 
 template<typename T>
 void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
-    // auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(new_cap));
     auto new_pimpl = ArrayImpl::Create(new_cap);
     auto* src = pimpl_->begin();
     auto* dst = new_pimpl->begin();

@@ -747,7 +747,7 @@ TensorTypePtr TensorType::WithDimensionOnly() const {
     return cloned;
 }
 
-const TensorTypePtr& TensorType::get() {
+const TensorTypePtr& TensorType::Get() {
     static auto ptr = Create({}, {}, SymbolicShape(), VaryingShape<Stride>{}, {});
     return ptr;
 }

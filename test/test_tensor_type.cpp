@@ -584,7 +584,7 @@ TEST(TensorTypeTest, IsCompleteMethod) {
 // 测试TensorType的静态get方法
 TEST(TensorTypeTest, StaticGetMethod) {
     // 获取静态实例
-    const auto& static_instance = TensorType::get();
+    const auto& static_instance = TensorType::Get();
 
     // 验证实例
     EXPECT_TRUE(static_instance != nullptr);

@@ -179,7 +179,7 @@ public:
         return GetContainedTypes().size();
     }
 
-    virtual TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const {
+    NODISCARD virtual TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const {
         CHECK(false) << "CreateWithContainedTypes() is not implemented: " << str();
         AETHERMIND_UNREACHABLE();
     }
@@ -530,25 +530,6 @@ private:
     }
 };
 
-using BoolTypePtr = SingletonTypePtr<BoolType>;
-class BoolType : public Singleton<BoolType> {
-public:
-    NODISCARD String str() const override {
-        return "bool";
-    }
-
-    NODISCARD bool Equals(const Type& rhs) const override {
-        return rhs.kind() == kind();
-    }
-
-    static constexpr auto Kind = TypeKind::BoolType;
-
-private:
-    BoolType() : Singleton(Kind) {}
-
-    friend class Singleton;
-};
-
 using ComplexTypePtr = SingletonTypePtr<ComplexType>;
 class ComplexType : public NumberType {
 public:
@@ -576,6 +557,25 @@ private:
     NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "complex";
     }
+};
+
+using BoolTypePtr = SingletonTypePtr<BoolType>;
+class BoolType : public Singleton<BoolType> {
+public:
+    NODISCARD String str() const override {
+        return "bool";
+    }
+
+    NODISCARD bool Equals(const Type& rhs) const override {
+        return rhs.kind() == kind();
+    }
+
+    static constexpr auto Kind = TypeKind::BoolType;
+
+private:
+    BoolType() : Singleton(Kind) {}
+
+    friend class Singleton;
 };
 
 using StringTypePtr = SingletonOrSharedTypePtr<StringType>;

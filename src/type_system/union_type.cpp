@@ -2,6 +2,7 @@
 // Created by 赵丹 on 2025/8/29.
 //
 #include "type_system/union_type.h"
+#include "type_system/tensor_type.h"
 
 namespace aethermind {
 
@@ -356,8 +357,8 @@ OptionalType::OptionalType(const TypePtr& contained)
 
     if (UnionType::GetContainedTypeSize() == 2) {
         contained_type_ = UnionType::GetContainedTypes()[0]->kind() != NoneType::Kind
-                                 ? UnionType::GetContainedTypes()[0]
-                                 : UnionType::GetContainedTypes()[1];
+                                  ? UnionType::GetContainedTypes()[0]
+                                  : UnionType::GetContainedTypes()[1];
     } else if (contained == NumberType::Global() || is_numbertype) {
         contained_type_ = NumberType::Global();
         types_.clear();
@@ -410,12 +411,29 @@ bool OptionalType::IsSubtypeOfExt(const Type& other, std::ostream* why_not) cons
 }
 
 OptionalTypePtr OptionalType::Create(const TypePtr& contained) {
-    return OptionalTypePtr(new OptionalType(contained)); //NOLINT
+    return OptionalTypePtr(new OptionalType(contained));//NOLINT
 }
 
 TypePtr OptionalType::CreateWithContainedTypes(const std::vector<TypePtr>& contained_types) const {
     CHECK(contained_types.size() == 1);
     return Create(contained_types[0]);
+}
+
+TypePtr OptionalType::Get(const TypePtr& inner) {
+    static std::unordered_map<TypePtr, TypePtr> contained_types;
+    static std::mutex mutex;
+    std::lock_guard lock(mutex);
+    if (!contained_types.contains(inner)) {
+        TypePtr t = Create(inner);
+        contained_types.emplace(inner, std::move(t));
+    }
+    return contained_types[inner];
+}
+
+
+TypePtr OptionalType::OfTensor() {
+    static auto optional_type = Create(TensorType::Get());
+    return optional_type;
 }
 
 

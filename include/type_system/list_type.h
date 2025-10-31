@@ -17,14 +17,32 @@ public:
 
     // It's not exactly a singleton, but there should be exactly one instance of
     // List[T] for every T
-    template<typename... T>
-    static ListTypePtr Create(T&&... all) {
-        return ListTypePtr(new ListType(std::forward<T>(all)...));//NOLINT
+    template<typename... Args>
+    static ListTypePtr Create(Args&&... args) {
+        return ListTypePtr(new ListType(std::forward<Args>(args)...));//NOLINT
     }
 
     TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const override;
 
-    static TypePtr Get(const String& identifier, TypePtr inner);
+    bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
+
+    static TypePtr Get(const String& identifier, const TypePtr& inner);
+
+    static ListTypePtr OfNumbers();
+
+    static ListTypePtr OfInts();
+
+    static ListTypePtr OfFloats();
+
+    static ListTypePtr OfBools();
+
+    static ListTypePtr OfComplexDoubles();
+
+    static ListTypePtr OfStrings();
+
+    static ListTypePtr OfTensors();
+
+    static ListTypePtr OfOptionalTensors();
 
 private:
     explicit ListType(TypePtr elem) : SingleElementType(std::move(elem)) {}

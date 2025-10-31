@@ -281,7 +281,7 @@ public:
         return requires_grad_ ? requires_grad_.value() : true;
     }
 
-    static const TensorTypePtr& get();
+    static const TensorTypePtr& Get();
 
     const SymbolicShape& GetSymbolicShape() const {
         return shape_;

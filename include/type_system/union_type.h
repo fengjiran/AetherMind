@@ -82,6 +82,10 @@ public:
 
     TypePtr CreateWithContainedTypes(const std::vector<TypePtr>& contained_types) const override;
 
+    static TypePtr Get(const TypePtr& inner);
+
+    static TypePtr OfTensor();
+
     static constexpr auto Kind = TypeKind::OptionalType;
 
 private:

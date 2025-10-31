@@ -15,8 +15,8 @@ ArrayImpl::~ArrayImpl() {
 }
 
 void ArrayImpl::ConstructAtEnd(size_t n, const Any& value) {
+    CHECK(n <= capacity() - size());
     auto* p = end();
-    // placement new
     // To ensure exception safety, size is only incremented after the initialization succeeds
     for (size_t i = 0; i < n; ++i) {
         new (p++) Any(value);
@@ -25,6 +25,7 @@ void ArrayImpl::ConstructAtEnd(size_t n, const Any& value) {
 }
 
 void ArrayImpl::ShrinkBy(int64_t delta) {
+    CHECK(delta <= size());
     auto* p = end();
     while (delta > 0) {
         (--p)->~Any();
@@ -34,12 +35,13 @@ void ArrayImpl::ShrinkBy(int64_t delta) {
 }
 
 void ArrayImpl::EnlargeBy(int64_t delta, const Any& value) {
-    auto* p = end();
-    while (delta > 0) {
-        new (p++) Any(value);
-        ++size_;
-        --delta;
-    }
+    // auto* p = end();
+    // while (delta > 0) {
+    //     new (p++) Any(value);
+    //     ++size_;
+    //     --delta;
+    // }
+    ConstructAtEnd(delta, value);
 }
 
 void ArrayImpl::clear() {

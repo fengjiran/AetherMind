@@ -105,6 +105,8 @@ private:
 
     template<typename Iter>
     void ConstructAtEnd(Iter first, Iter last) {
+        auto n = std::distance(first, last);
+        CHECK(n <= capacity() - size());
         auto* p = end();
         // To ensure exception safety, size is only incremented after the initialization succeeds.
         for (auto it = first; it != last; ++it) {
@@ -318,7 +320,7 @@ void Array<T>::resize(int64_t n) {
     auto sz = size();
     COW(n - sz);
     if (sz < n) {
-        pimpl_->EnlargeBy(n - sz, T());
+        pimpl_->ConstructAtEnd(n - sz, T());
     } else if (sz > n) {
         pimpl_->ShrinkBy(sz - n);
     }

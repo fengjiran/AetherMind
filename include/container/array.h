@@ -127,13 +127,14 @@ template<typename T>
 class Array : public ObjectRef {
 public:
     struct Converter {
-        using RetType = T;
-        static T convert(const Any& elem) {
-            if constexpr (std::is_same_v<T, Any>) {
-                return elem;
-            } else {
-                return elem.cast<T>();
-            }
+        using RetType = T*;
+        static T* convert(const Any& elem) {
+            // if constexpr (std::is_same_v<T, Any>) {
+            //     return elem;
+            // } else {
+            //     return elem.cast<T>();
+            // }
+            return static_cast<T*>(elem.GetUnderlyingPtr());
         }
     };
 
@@ -227,14 +228,21 @@ public:
         return const_reverse_iterator(pimpl_->begin() - 1);
     }
 
-    const T front() const {
+    const T& front() const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
         return *begin();
     }
 
-    const T back() const {
+    T& front() {
+        if (empty()) {
+            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+        }
+        return *begin();
+    }
+
+    const T& back() const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -252,7 +260,7 @@ public:
         pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
     }
 
-    const T operator[](int64_t i) const {
+    const T& operator[](int64_t i) const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }

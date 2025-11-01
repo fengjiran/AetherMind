@@ -106,7 +106,7 @@ public:
         return !(*this == other);
     }
 
-    const value_type operator*() const {
+    value_type operator*() const {
         return Converter::convert(*iter_);
     }
 

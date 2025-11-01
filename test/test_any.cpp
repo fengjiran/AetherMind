@@ -71,14 +71,9 @@ TEST(Any, int) {
     int x22 = x2;
     EXPECT_EQ(x22, 10);
 
-    float v2 = 3.14f;
-    Any x3 = v2;
-    EXPECT_EQ(x3.cast<float>(), 3.14f);
-    EXPECT_TRUE(x3.unique());
-
-    x2 = v2;
-    EXPECT_EQ(x2.cast<float>(), 3.14f);
-    EXPECT_EQ(Any(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
+    auto* p = static_cast<int64_t*>(x2.GetUnderlyingPtr());
+    *p = 20;
+    EXPECT_EQ(x2.cast<int>(), 20);
 }
 
 TEST(Any, float) {
@@ -93,6 +88,15 @@ TEST(Any, float) {
     x0 = 2.2;
     auto v2 = x0.cast<float>();
     EXPECT_FLOAT_EQ(v2, 2.2);
+
+    float v3 = 3.14f;
+    Any x3 = v3;
+    EXPECT_EQ(x3.cast<float>(), 3.14f);
+    EXPECT_TRUE(x3.unique());
+
+    Any x2 = v3;
+    EXPECT_EQ(x2.cast<float>(), 3.14f);
+    EXPECT_EQ(Any(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
 }
 
 TEST(Any, string) {

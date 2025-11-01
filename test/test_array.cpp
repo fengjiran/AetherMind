@@ -22,6 +22,9 @@ TEST(Array, init) {
     EXPECT_EQ(vec1.back(), 42);
     EXPECT_EQ(*(vec1.end() - 1), 42);
 
+    auto x = std::vector<int>{1, 2, 3, 4, 5};
+    auto y = x.front();
+
     Array<int> vec2 = std::vector<int>{1, 2, 3, 4, 5};
     EXPECT_TRUE(vec2.defined());
     EXPECT_TRUE(vec2.unique());

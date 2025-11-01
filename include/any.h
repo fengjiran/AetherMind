@@ -20,6 +20,7 @@ public:
     NODISCARD virtual const std::type_index& type() const = 0;
     NODISCARD virtual uint32_t use_count() const = 0;
     NODISCARD virtual bool IsObjectRef() const = 0;
+    NODISCARD virtual void* GetUnderlyingPtr() = 0;
 };
 
 template<typename T>
@@ -51,8 +52,15 @@ public:
         }
     }
 
+    NODISCARD void* GetUnderlyingPtr() override {
+        return &value_;
+    }
+
+private:
     T value_;
     std::type_index type_index_;
+
+    friend class Any;
 };
 
 class Device;
@@ -130,6 +138,8 @@ public:
             return std::nullopt;
         }
     }
+
+    NODISCARD void* GetUnderlyingPtr() const ;
 
     template<typename T, std::enable_if_t<details::is_plain_v<T>>* = nullptr>
     NODISCARD std::optional<T> as() const {

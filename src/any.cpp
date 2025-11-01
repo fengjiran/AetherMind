@@ -46,6 +46,10 @@ bool Any::has_value() const noexcept {
     return ptr_ != nullptr;
 }
 
+void* Any::GetUnderlyingPtr() const {
+    return has_value() ? ptr_->GetUnderlyingPtr() : nullptr;
+}
+
 bool Any::IsBool() const noexcept {
     return type() == std::type_index(typeid(bool));
 }

@@ -47,7 +47,7 @@ bool Any::has_value() const noexcept {
 }
 
 void* Any::GetUnderlyingPtr() const {
-
+    return has_value() ? ptr_->GetUnderlyingPtr() : nullptr;
 }
 
 bool Any::IsBool() const noexcept {

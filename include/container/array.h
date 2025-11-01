@@ -132,6 +132,8 @@ public:
             return elem.cast<T>();
             // return *static_cast<T*>(elem.GetUnderlyingPtr());
         }
+
+        // static T*
     };
 
     using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;

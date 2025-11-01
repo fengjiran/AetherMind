@@ -134,6 +134,7 @@ bool Any::operator!=(std::nullptr_t p) const noexcept {
     return !operator==(p);
 }
 
+
 /*
 Any::Any(const Any& other) : data_(other.data_) {
     if (is_object_ptr()) {

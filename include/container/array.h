@@ -132,9 +132,15 @@ public:
             return elem.cast<T>();
             // return *static_cast<T*>(elem.GetUnderlyingPtr());
         }
-
-        // static T*
     };
+
+    // struct Converter {
+    //     using RetType = Any;
+    //     static T convert(const Any& elem) {
+    //         return elem.cast<T>();
+    //         // return *static_cast<T*>(elem.GetUnderlyingPtr());
+    //     }
+    // };
 
     using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;

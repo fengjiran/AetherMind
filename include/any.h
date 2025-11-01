@@ -241,9 +241,32 @@ public:
 
     bool operator!=(std::nullptr_t p) const noexcept;
 
+    // bool operator==(const Any&) const noexcept;
+    // bool operator!=(const Any&) const noexcept;
+
 private:
     std::unique_ptr<HolderBase> ptr_;
 };
+
+template<typename T>
+bool operator==(const Any& lhs, const T& rhs) {
+    return lhs.has_value() ? lhs.cast<T>() == rhs : false;
+}
+
+template<typename T>
+bool operator!=(const Any& lhs, const T& rhs) {
+    return !operator==(lhs, rhs);
+}
+
+template<typename T>
+bool operator==(const T& lhs, const Any& rhs) {
+    return rhs.has_value() ? lhs == rhs.cast<T>() : false;
+}
+
+template<typename T>
+bool operator!=(const T& lhs, const Any& rhs) {
+    return !operator==(lhs, rhs);
+}
 
 /*
 class Any {

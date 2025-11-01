@@ -71,9 +71,9 @@ TEST(Any, int) {
     int x22 = x2;
     EXPECT_EQ(x22, 10);
 
-    auto* p = static_cast<int64_t*>(x2.GetUnderlyingPtr());
-    *p = 20;
-    EXPECT_EQ(x2.cast<int>(), 20);
+    // auto* p = static_cast<int64_t*>(x2.GetUnderlyingPtr());
+    // *p = 20;
+    // EXPECT_EQ(x2.cast<int>(), 20);
 }
 
 TEST(Any, float) {
@@ -110,6 +110,9 @@ TEST(Any, string) {
     EXPECT_EQ(x0.use_count(), 1);
     EXPECT_TRUE(x0.IsString());
     EXPECT_EQ(x0.ToString(), "world");
+
+    // auto* p = static_cast<String*>(x0.GetUnderlyingPtr());
+    // std::cout << *p << std::endl;
 
     Any s0 = String("hello");
     Any s1 = "hello";

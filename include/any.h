@@ -139,7 +139,7 @@ public:
         }
     }
 
-    NODISCARD void* GetUnderlyingPtr() const ;
+    NODISCARD void* GetUnderlyingPtr() const;
 
     template<typename T, std::enable_if_t<details::is_plain_v<T>>* = nullptr>
     NODISCARD std::optional<T> as() const {

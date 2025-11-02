@@ -253,9 +253,11 @@ public:
     bool operator()(const Any& lhs, const Any& rhs) const {
         if (lhs.has_value() && rhs.has_value()) {
             //
+        } else if (!lhs.has_value() && !rhs.has_value()) {
+            return true;
         }
 
-
+        return false;
     }
 };
 

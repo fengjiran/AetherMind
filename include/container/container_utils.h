@@ -42,9 +42,10 @@ inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;
 template<typename Iter, typename Converter>
 class IteratorAdapter {
 public:
-    using value_type = Converter::RetType;
-    using pointer = Converter::RetType*;
-    using reference = Converter::RetType&;
+    using value_type = Converter::value_type;
+    using pointer = value_type*;
+    using const_pointer = const value_type*;
+    using reference = value_type&;
     using iterator_category = std::iterator_traits<Iter>::iterator_category;
     using difference_type = std::iterator_traits<Iter>::difference_type;
 
@@ -110,8 +111,6 @@ public:
         return Converter::convert(*iter_);
     }
 
-
-
 private:
     Iter iter_;
 };
@@ -119,9 +118,9 @@ private:
 template<typename Iter, typename Converter>
 class ReverseIteratorAdapter {
 public:
-    using value_type = Converter::RetType;
-    using pointer = Converter::RetType*;
-    using reference = Converter::RetType&;
+    using value_type = Converter::value_type;
+    using pointer = value_type*;
+    using reference = value_type&;
     using iterator_category = std::iterator_traits<Iter>::iterator_category;
     using difference_type = std::iterator_traits<Iter>::difference_type;
 

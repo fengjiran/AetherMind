@@ -18,7 +18,7 @@ TEST(Array, init) {
     EXPECT_EQ(vec1.size(), 5);
     EXPECT_EQ(vec1.capacity(), 5);
     EXPECT_EQ(vec1.front(), 42);
-    EXPECT_EQ(*vec1.begin(), 42);
+    EXPECT_EQ(*vec1.begin1(), 42);
     EXPECT_EQ(vec1.back(), 42);
     EXPECT_EQ(*(vec1.end() - 1), 42);
 

@@ -248,25 +248,36 @@ private:
     std::unique_ptr<HolderBase> ptr_;
 };
 
-template<typename T>
-bool operator==(const Any& lhs, const T& rhs) {
-    return lhs.has_value() ? lhs.cast<T>() == rhs : false;
-}
+class AnyEqual {
+public:
+    bool operator()(const Any& lhs, const Any& rhs) const {
+        if (lhs.has_value() && rhs.has_value()) {
+            //
+        }
 
-template<typename T>
-bool operator!=(const Any& lhs, const T& rhs) {
-    return !operator==(lhs, rhs);
-}
 
-template<typename T>
-bool operator==(const T& lhs, const Any& rhs) {
-    return rhs.has_value() ? lhs == rhs.cast<T>() : false;
-}
+    }
+};
 
-template<typename T>
-bool operator!=(const T& lhs, const Any& rhs) {
-    return !operator==(lhs, rhs);
-}
+// template<typename T, typename = std::enable_if_t<details::is_integral_v<T>>>
+// bool operator==(const Any& lhs, const T& rhs) {
+//     return lhs.has_value() ? lhs.cast<T>() == rhs : false;
+// }
+
+// template<typename T>
+// bool operator!=(const Any& lhs, const T& rhs) {
+//     return !operator==(lhs, rhs);
+// }
+//
+// template<typename T>
+// bool operator==(const T& lhs, const Any& rhs) {
+//     return rhs.has_value() ? lhs == rhs.cast<T>() : false;
+// }
+//
+// template<typename T>
+// bool operator!=(const T& lhs, const Any& rhs) {
+//     return !operator==(lhs, rhs);
+// }
 
 /*
 class Any {

@@ -127,20 +127,20 @@ template<typename T>
 class Array : public ObjectRef {
 public:
     struct Converter {
-        using RetType = T;
+        using value_type = T;
         static T convert(const Any& elem) {
             return elem.cast<T>();
             // return *static_cast<T*>(elem.GetUnderlyingPtr());
         }
     };
 
-    // struct Converter {
-    //     using RetType = Any;
-    //     static T convert(const Any& elem) {
-    //         return elem.cast<T>();
-    //         // return *static_cast<T*>(elem.GetUnderlyingPtr());
-    //     }
-    // };
+    struct Converter1 {
+        using value_type = Any;
+        static const value_type* convert(const Any& elem) {
+            return &elem;
+            // return *static_cast<T*>(elem.GetUnderlyingPtr());
+        }
+    };
 
     using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;
@@ -206,6 +206,14 @@ public:
 
     const_iterator begin() const noexcept {
         return const_iterator(pimpl_->begin());
+    }
+
+    Any* begin1() noexcept {
+        return pimpl_->begin();
+    }
+
+    const Any* begin1() const noexcept {
+        return pimpl_->begin();
     }
 
     iterator end() noexcept {

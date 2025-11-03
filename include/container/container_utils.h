@@ -114,7 +114,7 @@ public:
     }
 
     // reference operator*() {
-    //     return *const_cast<Any*>(iter_);
+    //     return *iter_;
     //     // return Converter::convert(iter_);
     // }
 

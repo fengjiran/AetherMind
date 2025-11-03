@@ -236,7 +236,7 @@ public:
         return const_reverse_iterator(pimpl_->begin() - 1);
     }
 
-    const Any& front() const {
+    NODISCARD const Any& front() const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -250,7 +250,7 @@ public:
     //     return *begin();
     // }
 
-    const Any& back() const {
+    NODISCARD const Any& back() const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }

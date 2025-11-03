@@ -241,25 +241,20 @@ public:
 
     bool operator!=(std::nullptr_t p) const noexcept;
 
-    // bool operator==(const Any&) const noexcept;
-    // bool operator!=(const Any&) const noexcept;
+    bool operator==(const Any& other) const noexcept;
+    bool operator!=(const Any& other) const noexcept;
 
 private:
     std::unique_ptr<HolderBase> ptr_;
+
+    friend class AnyEqual;
 };
 
 class AnyEqual {
 public:
-    bool operator()(const Any& lhs, const Any& rhs) const {
-        if (lhs.has_value() && rhs.has_value()) {
-            //
-        } else if (!lhs.has_value() && !rhs.has_value()) {
-            return true;
-        }
-
-        return false;
-    }
+    bool operator()(const Any& lhs, const Any& rhs) const;
 };
+
 
 // template<typename T, typename = std::enable_if_t<details::is_integral_v<T>>>
 // bool operator==(const Any& lhs, const T& rhs) {

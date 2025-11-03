@@ -109,8 +109,14 @@ public:
     }
 
     const_reference operator*() const {
-        return Converter::convert(iter_);
+        return *iter_;
+        // return Converter::convert(iter_);
     }
+
+    // reference operator*() {
+    //     return *const_cast<Any*>(iter_);
+    //     // return Converter::convert(iter_);
+    // }
 
 private:
     Iter iter_;

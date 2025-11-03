@@ -13,6 +13,8 @@ TEST(Array, init) {
     EXPECT_TRUE(impl.get() == NullTypeOf<ArrayImpl>::singleton());
     EXPECT_TRUE(IsNullTypePtr(impl.get()));
     Array<int> vec1(5, 42);
+    auto it = vec1.begin();
+    auto& x = *it;
     EXPECT_TRUE(vec1.defined());
     EXPECT_TRUE(vec1.unique());
     EXPECT_EQ(vec1.size(), 5);
@@ -41,12 +43,6 @@ TEST(Array, init) {
     EXPECT_EQ(vec3.back(), 9);
     // vec3[0] = 8;
 
-    Any t = 8;
-    Any& ref = t;
-    t = 10;
-
-    const auto* p = &t;
-    auto* p1 = const_cast<Any*>(p);
 }
 
 TEST(Array, DefaultConstructor) {

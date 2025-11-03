@@ -18,12 +18,9 @@ TEST(Array, init) {
     EXPECT_EQ(vec1.size(), 5);
     EXPECT_EQ(vec1.capacity(), 5);
     EXPECT_EQ(vec1.front(), 42);
-    EXPECT_EQ(*vec1.begin1(), 42);
+    EXPECT_EQ(*vec1.begin(), 42);
     EXPECT_EQ(vec1.back(), 42);
     EXPECT_EQ(*(vec1.end() - 1), 42);
-
-    auto x = std::vector<int>{1, 2, 3, 4, 5};
-    auto y = x.front();
 
     Array<int> vec2 = std::vector<int>{1, 2, 3, 4, 5};
     EXPECT_TRUE(vec2.defined());
@@ -42,6 +39,14 @@ TEST(Array, init) {
     EXPECT_EQ(vec3.capacity(), 6);
     EXPECT_EQ(vec3.front(), 4);
     EXPECT_EQ(vec3.back(), 9);
+    // vec3[0] = 8;
+
+    Any t = 8;
+    Any& ref = t;
+    t = 10;
+
+    const auto* p = &t;
+    auto* p1 = const_cast<Any*>(p);
 }
 
 TEST(Array, DefaultConstructor) {

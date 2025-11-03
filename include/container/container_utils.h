@@ -46,6 +46,7 @@ public:
     using pointer = value_type*;
     using const_pointer = const value_type*;
     using reference = value_type&;
+    using const_reference = const value_type&;
     using iterator_category = std::iterator_traits<Iter>::iterator_category;
     using difference_type = std::iterator_traits<Iter>::difference_type;
 
@@ -107,8 +108,8 @@ public:
         return !(*this == other);
     }
 
-    value_type operator*() const {
-        return Converter::convert(*iter_);
+    const_reference operator*() const {
+        return Converter::convert(iter_);
     }
 
 private:

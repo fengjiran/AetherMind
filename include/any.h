@@ -255,7 +255,6 @@ public:
     bool operator()(const Any& lhs, const Any& rhs) const;
 };
 
-
 // template<typename T, typename = std::enable_if_t<details::is_integral_v<T>>>
 // bool operator==(const Any& lhs, const T& rhs) {
 //     return lhs.has_value() ? lhs.cast<T>() == rhs : false;

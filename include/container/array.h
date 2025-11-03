@@ -17,6 +17,7 @@ class ArrayImpl : public Object {
 public:
     using iterator = Any*;
     using const_iterator = const Any*;
+    // using const_iterator = Any* const;
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
     using reference = Any&;
@@ -136,14 +137,17 @@ public:
 
     struct Converter1 {
         using value_type = Any;
-        static const value_type* convert(const Any& elem) {
-            return &elem;
-            // return *static_cast<T*>(elem.GetUnderlyingPtr());
+        static const value_type& convert(const Any* ptr) {
+            return *ptr;
+        }
+
+        static value_type& convert(Any* ptr) {
+            return *ptr;
         }
     };
 
-    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;
-    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;
+    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter1>;
+    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter1>;
     using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter>;
 
@@ -208,14 +212,6 @@ public:
         return const_iterator(pimpl_->begin());
     }
 
-    Any* begin1() noexcept {
-        return pimpl_->begin();
-    }
-
-    const Any* begin1() const noexcept {
-        return pimpl_->begin();
-    }
-
     iterator end() noexcept {
         return iterator(pimpl_->end());
     }
@@ -240,28 +236,28 @@ public:
         return const_reverse_iterator(pimpl_->begin() - 1);
     }
 
-    const T front() const {
+    const Any& front() const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
         return *begin();
     }
 
-    // T& front() {
+    // Any& front() {
     //     if (empty()) {
     //         AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
     //     }
     //     return *begin();
     // }
 
-    const T back() const {
+    const Any& back() const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
         return *(end() - 1);
     }
 
-    // T& back() {
+    // Any& back() {
     //     if (empty()) {
     //         AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
     //     }
@@ -279,7 +275,7 @@ public:
         pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
     }
 
-    const T operator[](int64_t i) const {
+    const Any operator[](int64_t i) const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -291,17 +287,20 @@ public:
         return *(begin() + i);
     }
 
-    // T& operator[](int64_t i) {
-    //     if (empty()) {
-    //         AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
-    //     }
-    //
-    //     if (i < 0 || i >= size()) {
-    //         AETHERMIND_THROW(IndexError) << "the index out of range.";
-    //     }
-    //
-    //     return *(begin() + i);
-    // }
+    Any operator[](int64_t i) {
+        if (empty()) {
+            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+        }
+
+        if (i < 0 || i >= size()) {
+            AETHERMIND_THROW(IndexError) << "the index out of range.";
+        }
+
+        auto* p = pimpl_->begin();
+        return *(p + i);
+
+        return *(begin() + i);
+    }
 
     void Set(int idx, T value) {
         if (idx < 0 || idx >= size()) {

@@ -256,17 +256,6 @@ public:
         return *(end() - 1);
     }
 
-    void push_back(const T& item) {
-        COW(1);
-        pimpl_->ConstructAtEnd(1, Any(item));
-    }
-
-    template<typename... Args>
-    void emplace_back(Args&&... args) {
-        COW(1);
-        pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
-    }
-
     const Any& operator[](int64_t i) const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
@@ -288,10 +277,18 @@ public:
             AETHERMIND_THROW(IndexError) << "the index out of range.";
         }
 
-        auto* p = pimpl_->begin();
-        return *(p + i);
-
         return *(begin() + i);
+    }
+
+    void push_back(const T& item) {
+        COW(1);
+        pimpl_->ConstructAtEnd(1, Any(item));
+    }
+
+    template<typename... Args>
+    void emplace_back(Args&&... args) {
+        COW(1);
+        pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
     }
 
     void Set(int idx, T value) {
@@ -316,7 +313,7 @@ public:
         if (empty()) {
             AETHERMIND_THROW(RuntimeError) << "Cannot pop back an empty array.";
         }
-        // CopyOnWrite();
+
         COW(-1);
         pimpl_->ShrinkBy(1);
     }

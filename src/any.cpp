@@ -134,14 +134,6 @@ bool Any::operator!=(std::nullptr_t p) const noexcept {
     return !operator==(p);
 }
 
-bool Any::operator==(const Any& other) const noexcept {
-    return AnyEqual()(*this, other);
-}
-
-bool Any::operator!=(const Any& other) const noexcept {
-    return !operator==(other);
-}
-
 bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
     if (!(lhs.has_value() || rhs.has_value())) {
         return true;
@@ -177,7 +169,6 @@ bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
 
     return lhs.ptr_ == rhs.ptr_;
 }
-
 
 /*
 Any::Any(const Any& other) : data_(other.data_) {

@@ -68,7 +68,7 @@ TEST(Any, int) {
     EXPECT_EQ(x2.cast<int>(), 10);
     EXPECT_EQ(Any(x2).cast<int>(), 10);
     EXPECT_TRUE(x2.IsInteger());
-    int x22 = x2;
+    int x22 = static_cast<int>(x2);
     EXPECT_EQ(x22, 10);
 }
 
@@ -122,7 +122,7 @@ TEST(Any, string) {
     s3.reset();
     EXPECT_TRUE(s0.unique());
 
-    String s4 = Any("hello");
+    String s4 = static_cast<String>(Any("hello"));
     EXPECT_EQ(s4, "hello");
     EXPECT_EQ(s4.use_count(), 1);
 }

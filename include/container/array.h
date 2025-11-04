@@ -128,26 +128,18 @@ template<typename T>
 class Array : public ObjectRef {
 public:
     struct Converter {
-        using value_type = T;
-        static T convert(const Any& elem) {
-            return elem.cast<T>();
-            // return *static_cast<T*>(elem.GetUnderlyingPtr());
-        }
-    };
-
-    struct Converter1 {
         using value_type = Any;
-        static const value_type& convert(const Any* ptr) {
+        static value_type& convert(value_type* ptr) {
             return *ptr;
         }
 
-        static value_type& convert(Any* ptr) {
+        static const value_type& convert(const value_type* ptr) {
             return *ptr;
         }
     };
 
-    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter1>;
-    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter1>;
+    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;
+    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;
     using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter>;
 
@@ -243,12 +235,12 @@ public:
         return *begin();
     }
 
-    // Any& front() {
-    //     if (empty()) {
-    //         AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
-    //     }
-    //     return *begin();
-    // }
+    Any& front() {
+        if (empty()) {
+            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+        }
+        return *begin();
+    }
 
     NODISCARD const Any& back() const {
         if (empty()) {
@@ -257,12 +249,12 @@ public:
         return *(end() - 1);
     }
 
-    // Any& back() {
-    //     if (empty()) {
-    //         AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
-    //     }
-    //     return *(end() - 1);
-    // }
+    Any& back() {
+        if (empty()) {
+            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+        }
+        return *(end() - 1);
+    }
 
     void push_back(const T& item) {
         COW(1);
@@ -275,7 +267,7 @@ public:
         pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
     }
 
-    const Any operator[](int64_t i) const {
+    const Any& operator[](int64_t i) const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -287,7 +279,7 @@ public:
         return *(begin() + i);
     }
 
-    Any operator[](int64_t i) {
+    Any& operator[](int64_t i) {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }

@@ -41,8 +41,7 @@ TEST(Array, init) {
     EXPECT_EQ(vec3.capacity(), 6);
     EXPECT_EQ(vec3.front(), 4);
     EXPECT_EQ(vec3.back(), 9);
-    // vec3[0] = 8;
-
+    vec3[0] = 8;
 }
 
 TEST(Array, DefaultConstructor) {
@@ -94,10 +93,10 @@ TEST(Array, CopyConstructor) {
     }
 
     // // 验证深拷贝
-    // if (copy.size() > 0) {
-    //     copy[0] = 999;
-    //     EXPECT_NE(copy[0], original[0]);
-    // }
+    if (copy.size() > 0) {
+        copy[0] = 999;
+        EXPECT_TRUE(copy[0] == original[0]);
+    }
 }
 
 // 测试移动构造函数

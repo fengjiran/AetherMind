@@ -186,7 +186,7 @@ public:
     }
 
     template<typename T>
-    operator T() {//NOLINT
+    explicit operator T() {//NOLINT
         return cast<T>();
     }
 
@@ -241,9 +241,6 @@ public:
 
     bool operator!=(std::nullptr_t p) const noexcept;
 
-    bool operator==(const Any& other) const noexcept;
-    bool operator!=(const Any& other) const noexcept;
-
 private:
     std::unique_ptr<HolderBase> ptr_;
 
@@ -255,25 +252,14 @@ public:
     bool operator()(const Any& lhs, const Any& rhs) const;
 };
 
-// template<typename T, typename = std::enable_if_t<details::is_integral_v<T>>>
-// bool operator==(const Any& lhs, const T& rhs) {
-//     return lhs.has_value() ? lhs.cast<T>() == rhs : false;
-// }
+inline bool operator==(const Any& lhs, const Any& rhs) noexcept {
+    return AnyEqual()(lhs, rhs);
+}
 
-// template<typename T>
-// bool operator!=(const Any& lhs, const T& rhs) {
-//     return !operator==(lhs, rhs);
-// }
-//
-// template<typename T>
-// bool operator==(const T& lhs, const Any& rhs) {
-//     return rhs.has_value() ? lhs == rhs.cast<T>() : false;
-// }
-//
-// template<typename T>
-// bool operator!=(const T& lhs, const Any& rhs) {
-//     return !operator==(lhs, rhs);
-// }
+inline bool operator!=(const Any& lhs, const Any& rhs) noexcept {
+    return !AnyEqual()(lhs, rhs);
+}
+
 
 /*
 class Any {

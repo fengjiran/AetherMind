@@ -44,9 +44,7 @@ class IteratorAdapter {
 public:
     using value_type = Converter::value_type;
     using pointer = value_type*;
-    using const_pointer = const value_type*;
     using reference = value_type&;
-    using const_reference = const value_type&;
     using iterator_category = std::iterator_traits<Iter>::iterator_category;
     using difference_type = std::iterator_traits<Iter>::difference_type;
 
@@ -108,15 +106,9 @@ public:
         return !(*this == other);
     }
 
-    const_reference operator*() const {
-        return *iter_;
-        // return Converter::convert(iter_);
+    auto&& operator*() {
+        return Converter::convert(iter_);
     }
-
-    // reference operator*() {
-    //     return *iter_;
-    //     // return Converter::convert(iter_);
-    // }
 
 private:
     Iter iter_;
@@ -179,8 +171,8 @@ public:
         return !(*this == other);
     }
 
-    value_type operator*() const {
-        return Converter::convert(*iter_);
+    auto&& operator*() {
+        return Converter::convert(iter_);
     }
 
 private:

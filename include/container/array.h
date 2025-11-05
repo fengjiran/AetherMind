@@ -163,6 +163,7 @@ public:
     private:
         Array& arr_;
         int64_t idx_;
+
     };
 
     class Converter {

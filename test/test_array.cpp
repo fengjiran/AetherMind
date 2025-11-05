@@ -15,12 +15,13 @@ TEST(Array, init) {
     Array<int> vec1(5, 42);
     auto it = vec1.begin();
     auto& x = *it;
+    x = 43;
     EXPECT_TRUE(vec1.defined());
     EXPECT_TRUE(vec1.unique());
     EXPECT_EQ(vec1.size(), 5);
     EXPECT_EQ(vec1.capacity(), 5);
-    EXPECT_EQ(vec1.front(), 42);
-    EXPECT_EQ(*vec1.begin(), 42);
+    EXPECT_EQ(vec1.front(), 43);
+    EXPECT_EQ(*vec1.begin(), 43);
     EXPECT_EQ(vec1.back(), 42);
     EXPECT_EQ(*(vec1.end() - 1), 42);
 
@@ -42,6 +43,12 @@ TEST(Array, init) {
     EXPECT_EQ(vec3.front(), 4);
     EXPECT_EQ(vec3.back(), 9);
     vec3[0] = 8;
+    EXPECT_EQ(vec3.front(), 8);
+    vec3.front() = 9;
+    EXPECT_EQ(vec3.front(), 9);
+
+    vec3.back() = 10;
+    EXPECT_EQ(vec3.back(), 10);
 }
 
 TEST(Array, DefaultConstructor) {

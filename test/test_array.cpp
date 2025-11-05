@@ -95,7 +95,7 @@ TEST(Array, CopyConstructor) {
     // // 验证深拷贝
     if (copy.size() > 0) {
         copy[0] = 999;
-        EXPECT_TRUE(copy[0] == original[0]);
+        EXPECT_FALSE(copy[0] == original[0]);
     }
 }
 

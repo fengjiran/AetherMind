@@ -7,10 +7,6 @@
 namespace aethermind {
 
 ArrayImpl::~ArrayImpl() {
-    // auto* p = begin();
-    // for (size_t i = 0; i < size(); ++i) {
-    //     (p + i)->~Any();
-    // }
     clear();
 }
 
@@ -35,12 +31,6 @@ void ArrayImpl::ShrinkBy(int64_t delta) {
 }
 
 void ArrayImpl::EnlargeBy(int64_t delta, const Any& value) {
-    // auto* p = end();
-    // while (delta > 0) {
-    //     new (p++) Any(value);
-    //     ++size_;
-    //     --delta;
-    // }
     ConstructAtEnd(delta, value);
 }
 
@@ -81,6 +71,5 @@ ObjectPtr<ArrayImpl> ArrayImpl::Create(size_t n) {
     pimpl->capacity_ = n;
     return pimpl;
 }
-
 
 }// namespace aethermind

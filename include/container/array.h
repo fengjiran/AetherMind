@@ -127,7 +127,8 @@ private:
 template<typename T>
 class Array : public ObjectRef {
 public:
-    struct Converter {
+    class Converter {
+    public:
         using value_type = Any;
         static value_type& convert(value_type* ptr) {
             return *ptr;
@@ -142,6 +143,42 @@ public:
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;
     using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter>;
+
+    class AnyProxy {
+    public:
+        AnyProxy(Array& array, int64_t idx) : array_(array), idx_(idx) {}
+
+        Any& operator=(Any other) {
+            array_.COW(0, true);
+            auto& ref = *(array_.begin() + idx_);
+            ref = std::move(other);
+            return ref;
+        }
+
+        friend bool operator==(const AnyProxy& lhs, const AnyProxy& rhs) {
+            return *(lhs.array_.begin() + lhs.idx_) == *(rhs.array_.begin() + rhs.idx_);
+        }
+
+        friend bool operator==(const AnyProxy& lhs, const Any& rhs) {
+            return *(lhs.array_.begin() + lhs.idx_) == rhs;
+        }
+
+        friend bool operator!=(const AnyProxy& lhs, const Any& rhs) {
+            return !(lhs == rhs);
+        }
+
+        friend bool operator==(const Any& lhs, const AnyProxy& rhs) {
+            return lhs == *(rhs.array_.begin() + rhs.idx_);
+        }
+
+        friend bool operator!=(const Any& lhs, const AnyProxy& rhs) {
+            return !(lhs == rhs);
+        }
+
+    private:
+        Array& array_;
+        int64_t idx_;
+    };
 
     Array() = default;
 
@@ -268,7 +305,19 @@ public:
         return *(begin() + i);
     }
 
-    Any& operator[](int64_t i) {
+    // Any& operator[](int64_t i) {
+    //     if (empty()) {
+    //         AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+    //     }
+    //
+    //     if (i < 0 || i >= size()) {
+    //         AETHERMIND_THROW(IndexError) << "the index out of range.";
+    //     }
+    //
+    //     return *(begin() + i);
+    // }
+
+    AnyProxy operator[](int64_t i) {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -277,8 +326,11 @@ public:
             AETHERMIND_THROW(IndexError) << "the index out of range.";
         }
 
-        return *(begin() + i);
+        return AnyProxy(*this, i);
+
+        // return *(begin() + i);
     }
+
 
     void push_back(const T& item) {
         COW(1);
@@ -511,6 +563,15 @@ void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
         }
     }
 }
+
+// template<typename T>
+// Any& Array<T>::AnyProxy::operator=(Any other) {
+//     array_.COW(0, true);
+//     auto& ref = *(array_.begin() + idx_);
+//     ref = std::move(other);
+//     return ref;
+// }
+
 }// namespace aethermind
 
 namespace std {

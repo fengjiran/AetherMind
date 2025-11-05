@@ -127,30 +127,13 @@ private:
 template<typename T>
 class Array : public ObjectRef {
 public:
-    class Converter {
-    public:
-        using value_type = Any;
-        static value_type& convert(value_type* ptr) {
-            return *ptr;
-        }
-
-        static const value_type& convert(const value_type* ptr) {
-            return *ptr;
-        }
-    };
-
-    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;
-    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;
-    using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter>;
-    using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter>;
-
     class AnyProxy {
     public:
         AnyProxy(Array& arr, int64_t idx) : arr_(arr), idx_(idx) {}
 
         Any& operator=(Any other) {
             arr_.COW(0, true);
-            return *(arr_.begin() + idx_) = std::move(other);
+            return *(arr_.pimpl_->begin() + idx_) = std::move(other);
         }
 
         friend bool operator==(const AnyProxy& lhs, const AnyProxy& rhs) {
@@ -181,6 +164,23 @@ public:
         Array& arr_;
         int64_t idx_;
     };
+
+    class Converter {
+    public:
+        using value_type = Any;
+        static value_type& convert(value_type* ptr) {
+            return *ptr;
+        }
+
+        static const value_type& convert(const value_type* ptr) {
+            return *ptr;
+        }
+    };
+
+    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;
+    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;
+    using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter>;
+    using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter>;
 
     Array() = default;
 

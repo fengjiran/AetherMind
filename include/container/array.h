@@ -131,9 +131,10 @@ public:
     public:
         AnyProxy(Array& arr, int64_t idx) : arr_(arr), idx_(idx) {}
 
-        Any& operator=(Any other) {
+        AnyProxy& operator=(Any other) {
             arr_.COW(0, true);
-            return *(arr_.pimpl_->begin() + idx_) = std::move(other);
+            *(arr_.pimpl_->begin() + idx_) = std::move(other);
+            return *this;
         }
 
         friend bool operator==(const AnyProxy& lhs, const AnyProxy& rhs) {

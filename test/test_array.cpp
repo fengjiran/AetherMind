@@ -14,14 +14,8 @@ TEST(Array, init) {
     EXPECT_TRUE(IsNullTypePtr(impl.get()));
     Array<int> vec1(5, 42);
     auto it = vec1.begin();
-    auto x = *it;
+    *it = 43;
 
-    vec1.front() == 43;
-
-    vec1[0] = 43;
-    auto y = vec1.front();
-    // Array<int>::AnyProxy ap(vec1, 0);
-    // EXPECT_EQ(ap, 43);
     EXPECT_TRUE(vec1.defined());
     EXPECT_TRUE(vec1.unique());
     EXPECT_EQ(vec1.size(), 5);

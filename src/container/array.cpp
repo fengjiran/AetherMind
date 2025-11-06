@@ -10,6 +10,13 @@ ArrayImpl::~ArrayImpl() {
     clear();
 }
 
+void ArrayImpl::ConstructOneElemAtEnd(Any value) {
+    CHECK(capacity() - size() >= 1);
+    auto* p = end();
+    new (p) Any(std::move(value));
+    ++size_;
+}
+
 void ArrayImpl::ConstructAtEnd(size_t n, const Any& value) {
     CHECK(n <= capacity() - size());
     auto* p = end();
@@ -56,11 +63,12 @@ void ArrayImpl::MoveElemsLeft(size_t dst, size_t src, size_t n) {
     }
 }
 
-ArrayImpl* ArrayImpl::create_raw_ptr(size_t n) {
-    auto pimpl = make_array_object<ArrayImpl, Any>(n);
-    pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);
-    pimpl->size_ = 0;
-    pimpl->capacity_ = n;
+ArrayImpl* ArrayImpl::CreateRawPtr(size_t n) {
+    // auto pimpl = make_array_object<ArrayImpl, Any>(n);
+    // pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);
+    // pimpl->size_ = 0;
+    // pimpl->capacity_ = n;
+    auto pimpl = Create(n);
     return pimpl.release();
 }
 

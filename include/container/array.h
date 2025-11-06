@@ -17,7 +17,6 @@ class ArrayImpl : public Object {
 public:
     using iterator = Any*;
     using const_iterator = const Any*;
-    // using const_iterator = Any* const;
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
     using reference = Any&;
@@ -93,14 +92,11 @@ private:
     static constexpr size_t kInitSize = 4;
     static constexpr size_t kIncFactor = 2;
 
-    static ArrayImpl* create_raw_ptr(size_t n);
-
     static ObjectPtr<ArrayImpl> Create(size_t n);
 
-    // shrink the array by delta elements.
-    void ShrinkBy(int64_t delta);
+    static ArrayImpl* CreateRawPtr(size_t n);
 
-    void EnlargeBy(int64_t delta, const Any& value);
+    void ConstructOneElemAtEnd(Any value);
 
     void ConstructAtEnd(size_t n, const Any& value);
 
@@ -115,6 +111,11 @@ private:
             ++size_;
         }
     }
+
+    // shrink the array by delta elements.
+    void ShrinkBy(int64_t delta);
+
+    void EnlargeBy(int64_t delta, const Any& value);
 
     void MoveElemsRight(size_t dst, size_t src, size_t n);
 
@@ -274,13 +275,13 @@ public:
 
     void push_back(const T& item) {
         COW(1);
-        pimpl_->ConstructAtEnd(1, Any(item));
+        pimpl_->ConstructOneElemAtEnd(item);
     }
 
     template<typename... Args>
     void emplace_back(Args&&... args) {
         COW(1);
-        pimpl_->ConstructAtEnd(1, Any(T(std::forward<Args>(args)...)));
+        pimpl_->ConstructOneElemAtEnd(T(std::forward<Args>(args)...));
     }
 
     void Set(int idx, T value) {
@@ -333,10 +334,10 @@ private:
 template<typename T>
 void Array<T>::resize(int64_t n) {
     if (n < 0) {
-        AETHERMIND_THROW(ValueError) << "Cannot resize an array to negative size.";
+        AETHERMIND_THROW(ValueError) << "Cannot resize an array to a negative size.";
     }
 
-    auto sz = size();
+    const auto sz = size();
     COW(n - sz);
     if (sz < n) {
         pimpl_->ConstructAtEnd(n - sz, T());

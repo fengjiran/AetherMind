@@ -10,13 +10,10 @@
 
 namespace aethermind {
 
-class Any;
-
 namespace details {
 
 // template<typename T>
 // constexpr bool compatible_with_any_v = std::is_same_v<T, Any> || TypeTraits<T>::storage_enabled;
-
 
 template<typename Iter, typename T>
 struct is_valid_iterator {
@@ -39,7 +36,7 @@ inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;
 // type of the iterator to another type.
 // \tparam Iter The type of the iterator.
 // \tparam Converter The type of the converter.
-template<typename Iter, typename Converter>
+template<typename Iter, typename Converter, typename Array>
 class IteratorAdapter {
 public:
     using value_type = Converter::value_type;
@@ -48,7 +45,7 @@ public:
     using iterator_category = std::iterator_traits<Iter>::iterator_category;
     using difference_type = std::iterator_traits<Iter>::difference_type;
 
-    explicit IteratorAdapter(Iter iter) : iter_(iter) {}
+    explicit IteratorAdapter(Array& arr, Iter iter) : arr_(arr), iter_(iter) {}
 
     IteratorAdapter& operator++() {
         ++iter_;
@@ -73,11 +70,11 @@ public:
     }
 
     IteratorAdapter operator+(difference_type offset) const {
-        return IteratorAdapter(iter_ + offset);
+        return IteratorAdapter(arr_, iter_ + offset);
     }
 
     IteratorAdapter operator-(difference_type offset) const {
-        return IteratorAdapter(iter_ - offset);
+        return IteratorAdapter(arr_, iter_ - offset);
     }
 
     IteratorAdapter& operator+=(difference_type offset) {
@@ -106,11 +103,13 @@ public:
         return !(*this == other);
     }
 
-    auto&& operator*() {
-        return Converter::convert(iter_);
+    decltype(auto) operator*() {
+        // return Converter::convert(iter_);
+        return Converter::convert(arr_, iter_);
     }
 
 private:
+    Array& arr_;
     Iter iter_;
 };
 

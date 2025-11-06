@@ -130,8 +130,8 @@ public:
     class AnyProxy;
     class Converter;
 
-    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;
-    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;
+    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter, Array>;
+    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
     using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter>;
 
@@ -189,19 +189,19 @@ public:
     }
 
     iterator begin() noexcept {
-        return iterator(pimpl_->begin());
+        return iterator(*this, pimpl_->begin());
     }
 
     const_iterator begin() const noexcept {
-        return const_iterator(pimpl_->begin());
+        return const_iterator(*this, pimpl_->begin());
     }
 
     iterator end() noexcept {
-        return iterator(pimpl_->end());
+        return iterator(*this, pimpl_->end());
     }
 
     const_iterator end() const noexcept {
-        return const_iterator(pimpl_->end());
+        return const_iterator(*this, pimpl_->end());
     }
 
     reverse_iterator rbegin() noexcept {
@@ -386,7 +386,6 @@ void Array<T>::insert(iterator pos, const T& value) {
     new (pimpl_->begin() + idx) Any(value);
 }
 
-
 template<typename T>
 template<typename Iter>
 void Array<T>::insert(iterator pos, Iter first, Iter last) {
@@ -522,7 +521,9 @@ public:
     }
 
     friend bool operator==(const AnyProxy& lhs, const AnyProxy& rhs) {
-        return *(lhs.arr_.begin() + lhs.idx_) == *(rhs.arr_.begin() + rhs.idx_);
+        auto it_lhs = lhs.arr_.pimpl_->begin() + lhs.idx_;
+        auto it_rhs = rhs.arr_.pimpl_->begin() + rhs.idx_;
+        return *it_lhs == *it_rhs;
     }
 
     friend bool operator!=(const AnyProxy& lhs, const AnyProxy& rhs) {
@@ -530,7 +531,8 @@ public:
     }
 
     friend bool operator==(const AnyProxy& lhs, const Any& rhs) {
-        return *(lhs.arr_.begin() + lhs.idx_) == rhs;
+        auto it = lhs.arr_.pimpl_->begin() + lhs.idx_;
+        return *it == rhs;
     }
 
     friend bool operator!=(const AnyProxy& lhs, const Any& rhs) {
@@ -538,7 +540,8 @@ public:
     }
 
     friend bool operator==(const Any& lhs, const AnyProxy& rhs) {
-        return lhs == *(rhs.arr_.begin() + rhs.idx_);
+        auto it = rhs.arr_.pimpl_->begin() + rhs.idx_;
+        return lhs == *it;
     }
 
     friend bool operator!=(const Any& lhs, const AnyProxy& rhs) {
@@ -560,6 +563,15 @@ public:
 
     static const value_type& convert(const value_type* ptr) {
         return *ptr;
+    }
+
+    static const value_type& convert(const Array&, const value_type* ptr) {
+        return *ptr;
+    }
+
+    static AnyProxy convert(Array& arr, value_type* ptr) {
+        auto idx = std::distance(arr.pimpl_->begin(), ptr);
+        return AnyProxy(arr, idx);
     }
 };
 

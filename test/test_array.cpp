@@ -14,8 +14,14 @@ TEST(Array, init) {
     EXPECT_TRUE(IsNullTypePtr(impl.get()));
     Array<int> vec1(5, 42);
     auto it = vec1.begin();
-    auto& x = *it;
-    x = 43;
+    auto x = *it;
+
+    vec1.front() == 43;
+
+    vec1[0] = 43;
+    auto y = vec1.front();
+    // Array<int>::AnyProxy ap(vec1, 0);
+    // EXPECT_EQ(ap, 43);
     EXPECT_TRUE(vec1.defined());
     EXPECT_TRUE(vec1.unique());
     EXPECT_EQ(vec1.size(), 5);
@@ -75,7 +81,6 @@ TEST(Array, SizeValueConstructor) {
 TEST(Array, VectorConstructor) {
     std::vector<std::string> vec = {"hello", "world", "test"};
     Array<std::string> arr(vec);
-
     EXPECT_EQ(arr.size(), vec.size());
     EXPECT_EQ(arr.capacity(), arr.size());
     EXPECT_TRUE(std::equal(arr.begin(), arr.end(), vec.begin()));

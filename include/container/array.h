@@ -132,8 +132,8 @@ public:
 
     using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter, Array>;
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
-    using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter>;
-    using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter>;
+    using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter, Array>;
+    using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
 
     Array() = default;
 
@@ -205,19 +205,19 @@ public:
     }
 
     reverse_iterator rbegin() noexcept {
-        return reverse_iterator(pimpl_->end() - 1);
+        return reverse_iterator(*this, pimpl_->end() - 1);
     }
 
     const_reverse_iterator rbegin() const noexcept {
-        return const_reverse_iterator(pimpl_->end() - 1);
+        return const_reverse_iterator(*this, pimpl_->end() - 1);
     }
 
     reverse_iterator rend() noexcept {
-        return reverse_iterator(pimpl_->begin() - 1);
+        return reverse_iterator(*this, pimpl_->begin() - 1);
     }
 
     const_reverse_iterator rend() const noexcept {
-        return const_reverse_iterator(pimpl_->begin() - 1);
+        return const_reverse_iterator(*this, pimpl_->begin() - 1);
     }
 
     NODISCARD const Any& front() const {
@@ -247,13 +247,6 @@ public:
         }
         return AnyProxy(*this, size() - 1);
     }
-
-    // Any& back() {
-    //     if (empty()) {
-    //         AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
-    //     }
-    //     return *(end() - 1);
-    // }
 
     const Any& operator[](int64_t i) const {
         if (empty()) {

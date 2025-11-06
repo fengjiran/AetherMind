@@ -113,7 +113,7 @@ private:
     Iter iter_;
 };
 
-template<typename Iter, typename Converter>
+template<typename Iter, typename Converter, typename Array>
 class ReverseIteratorAdapter {
 public:
     using value_type = Converter::value_type;
@@ -122,7 +122,7 @@ public:
     using iterator_category = std::iterator_traits<Iter>::iterator_category;
     using difference_type = std::iterator_traits<Iter>::difference_type;
 
-    explicit ReverseIteratorAdapter(Iter iter) : iter_(iter) {}
+    explicit ReverseIteratorAdapter(Array& arr, Iter iter) : arr_(arr), iter_(iter) {}
 
     ReverseIteratorAdapter& operator++() {
         --iter_;
@@ -147,11 +147,11 @@ public:
     }
 
     ReverseIteratorAdapter operator+(difference_type offset) const {
-        return ReverseIteratorAdapter(iter_ - offset);
+        return ReverseIteratorAdapter(arr_, iter_ - offset);
     }
 
     ReverseIteratorAdapter operator-(difference_type offset) const {
-        return ReverseIteratorAdapter(iter_ + offset);
+        return ReverseIteratorAdapter(arr_, iter_ + offset);
     }
 
     template<typename T = ReverseIteratorAdapter,
@@ -170,11 +170,17 @@ public:
         return !(*this == other);
     }
 
-    auto&& operator*() {
-        return Converter::convert(iter_);
+    // auto&& operator*() {
+    //     return Converter::convert(iter_);
+    // }
+
+    decltype(auto) operator*() {
+        // return Converter::convert(iter_);
+        return Converter::convert(arr_, iter_);
     }
 
 private:
+    Array& arr_;
     Iter iter_;
 };
 

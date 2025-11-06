@@ -127,57 +127,8 @@ private:
 template<typename T>
 class Array : public ObjectRef {
 public:
-    class AnyProxy {
-    public:
-        AnyProxy(Array& arr, int64_t idx) : arr_(arr), idx_(idx) {}
-
-        AnyProxy& operator=(Any other) {
-            arr_.COW(0, true);
-            *(arr_.pimpl_->begin() + idx_) = std::move(other);
-            return *this;
-        }
-
-        friend bool operator==(const AnyProxy& lhs, const AnyProxy& rhs) {
-            return *(lhs.arr_.begin() + lhs.idx_) == *(rhs.arr_.begin() + rhs.idx_);
-        }
-
-        friend bool operator!=(const AnyProxy& lhs, const AnyProxy& rhs) {
-            return !(lhs == rhs);
-        }
-
-        friend bool operator==(const AnyProxy& lhs, const Any& rhs) {
-            return *(lhs.arr_.begin() + lhs.idx_) == rhs;
-        }
-
-        friend bool operator!=(const AnyProxy& lhs, const Any& rhs) {
-            return !(lhs == rhs);
-        }
-
-        friend bool operator==(const Any& lhs, const AnyProxy& rhs) {
-            return lhs == *(rhs.arr_.begin() + rhs.idx_);
-        }
-
-        friend bool operator!=(const Any& lhs, const AnyProxy& rhs) {
-            return !(lhs == rhs);
-        }
-
-    private:
-        Array& arr_;
-        int64_t idx_;
-
-    };
-
-    class Converter {
-    public:
-        using value_type = Any;
-        static value_type& convert(value_type* ptr) {
-            return *ptr;
-        }
-
-        static const value_type& convert(const value_type* ptr) {
-            return *ptr;
-        }
-    };
+    class AnyProxy;
+    class Converter;
 
     using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter>;
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter>;
@@ -282,13 +233,6 @@ public:
         }
         return AnyProxy(*this, 0);
     }
-
-    // Any& front() {
-    //     if (empty()) {
-    //         AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
-    //     }
-    //     return *begin();
-    // }
 
     NODISCARD const Any& back() const {
         if (empty()) {
@@ -524,7 +468,6 @@ void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
     }
 }
 
-
 template<typename T>
 void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
     if (extra == 0) {
@@ -566,6 +509,59 @@ void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
         }
     }
 }
+
+template<typename T>
+class Array<T>::AnyProxy {
+public:
+    AnyProxy(Array& arr, int64_t idx) : arr_(arr), idx_(idx) {}
+
+    AnyProxy& operator=(Any other) {
+        arr_.COW(0, true);
+        *(arr_.pimpl_->begin() + idx_) = std::move(other);
+        return *this;
+    }
+
+    friend bool operator==(const AnyProxy& lhs, const AnyProxy& rhs) {
+        return *(lhs.arr_.begin() + lhs.idx_) == *(rhs.arr_.begin() + rhs.idx_);
+    }
+
+    friend bool operator!=(const AnyProxy& lhs, const AnyProxy& rhs) {
+        return !(lhs == rhs);
+    }
+
+    friend bool operator==(const AnyProxy& lhs, const Any& rhs) {
+        return *(lhs.arr_.begin() + lhs.idx_) == rhs;
+    }
+
+    friend bool operator!=(const AnyProxy& lhs, const Any& rhs) {
+        return !(lhs == rhs);
+    }
+
+    friend bool operator==(const Any& lhs, const AnyProxy& rhs) {
+        return lhs == *(rhs.arr_.begin() + rhs.idx_);
+    }
+
+    friend bool operator!=(const Any& lhs, const AnyProxy& rhs) {
+        return !(lhs == rhs);
+    }
+
+private:
+    Array& arr_;
+    int64_t idx_;
+};
+
+template<typename T>
+class Array<T>::Converter {
+public:
+    using value_type = Any;
+    static value_type& convert(value_type* ptr) {
+        return *ptr;
+    }
+
+    static const value_type& convert(const value_type* ptr) {
+        return *ptr;
+    }
+};
 
 }// namespace aethermind
 

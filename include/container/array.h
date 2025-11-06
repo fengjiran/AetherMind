@@ -126,10 +126,10 @@ private:
 
 template<typename T>
 class Array : public ObjectRef {
-public:
     class AnyProxy;
     class Converter;
 
+public:
     using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter, Array>;
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
     using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter, Array>;

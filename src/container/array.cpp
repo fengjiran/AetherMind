@@ -29,11 +29,9 @@ void ArrayImpl::ConstructAtEnd(size_t n, const Any& value) {
 
 void ArrayImpl::ShrinkBy(int64_t delta) {
     CHECK(delta <= size());
-    auto* p = end();
-    while (delta > 0) {
+    for (auto* p = end(); delta > 0; --delta) {
         (--p)->~Any();
         --size_;
-        --delta;
     }
 }
 

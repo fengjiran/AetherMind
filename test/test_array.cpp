@@ -678,7 +678,7 @@ TEST(Array, ResizeNegativeSizeException) {
             arr.resize(-1);
         } catch (const Error& e) {
             // Verify it's the correct exception type and message
-            EXPECT_NE(std::string(e.what()).find("Cannot resize an array to negative size"), std::string::npos);
+            EXPECT_NE(std::string(e.what()).find("Cannot resize an array to a negative size"), std::string::npos);
             throw;
         } }, Error);
 }

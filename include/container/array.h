@@ -431,7 +431,7 @@ void Array<T>::erase(iterator first, iterator last) {
     }
 
     if (!defined()) {
-        AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
+        AETHERMIND_THROW(RuntimeError) << "Cannot erase an empty array.";
     }
 
     size_t begin_idx = std::distance(begin(), first);
@@ -472,7 +472,7 @@ void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
 
 template<typename T>
 void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
-    if (delta == 0) { // inplace
+    if (delta == 0) {// inplace
         if (single_elem_inplace_change) {
             if (!defined()) {
                 AETHERMIND_THROW(RuntimeError) << "Cannot change an empty array.";
@@ -495,19 +495,19 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
             SwitchContainer(capacity());
         }
     } else {// expand the array
+        size_t new_size = static_cast<size_t>(delta) + size();
         if (!defined()) {
-            size_t n = std::max(static_cast<size_t>(delta), ArrayImpl::kInitSize);
-            SwitchContainer(n);
+            size_t new_cap = std::max(new_size, ArrayImpl::kInitSize);
+            SwitchContainer(new_cap);
         } else if (unique()) {
-            if (static_cast<size_t>(delta) + size() > capacity()) {
-                size_t n = std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(delta) + size());
-                SwitchContainer(n, false);
+            if (new_size > capacity()) {
+                size_t new_cap = std::max(new_size, capacity() * ArrayImpl::kIncFactor);
+                SwitchContainer(new_cap, false);
             }
         } else {
-            size_t n = static_cast<size_t>(delta) + size() > capacity()
-                               ? std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(delta) + size())
-                               : capacity();
-            SwitchContainer(n);
+            size_t new_cap = new_size > capacity() ? std::max(new_size, capacity() * ArrayImpl::kIncFactor)
+                                                   : new_size;
+            SwitchContainer(new_cap);
         }
     }
 }

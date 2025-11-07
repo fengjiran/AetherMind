@@ -517,10 +517,16 @@ class Array<T>::AnyProxy {
 public:
     AnyProxy(Array& arr, int64_t idx) : arr_(arr), idx_(idx) {}
 
-    template<typename U, typename = std::enable_if_t<std::is_convertible_v<U, T>>>
-    AnyProxy& operator=(U value) {
+    // template<typename U, typename = std::enable_if_t<std::is_convertible_v<U, T>>>
+    // AnyProxy& operator=(U value) {
+    //     arr_.COW(0, true);
+    //     *(arr_.pimpl_->begin() + idx_) = T(std::move(value));
+    //     return *this;
+    // }
+
+    AnyProxy& operator=(T value) {
         arr_.COW(0, true);
-        *(arr_.pimpl_->begin() + idx_) = T(std::move(value));
+        *(arr_.pimpl_->begin() + idx_) = std::move(value);
         return *this;
     }
 

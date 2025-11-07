@@ -495,7 +495,7 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
             SwitchContainer(capacity());
         }
     } else {// expand the array
-        size_t new_size = static_cast<size_t>(delta) + size();
+        const size_t new_size = static_cast<size_t>(delta) + size();
         if (!defined()) {
             size_t new_cap = std::max(new_size, ArrayImpl::kInitSize);
             SwitchContainer(new_cap);

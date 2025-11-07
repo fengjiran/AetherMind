@@ -127,6 +127,7 @@ private:
 
 template<typename T>
 class Array : public ObjectRef {
+    static_assert(std::is_constructible_v<T>);
     class AnyProxy;
     class Converter;
 
@@ -137,8 +138,6 @@ public:
     using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
 
     Array() = default;
-
-    static_assert(std::is_convertible_v<float, int>);
 
     explicit Array(size_t n, const T& value = T()) : pimpl_(ArrayImpl::Create(n)) {
         pimpl_->ConstructAtEnd(n, value);
@@ -338,7 +337,7 @@ private:
     // Switch to a new container with the given capacity
     void SwitchContainer(size_t new_cap, bool copy_data = true);
     // Copy on write semantic
-    void COW(int64_t extra, bool single_elem_inplace_change = false);
+    void COW(int64_t delta, bool single_elem_inplace_change = false);
 };
 
 template<typename T>
@@ -456,40 +455,40 @@ void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
     auto new_pimpl = ArrayImpl::Create(new_cap);
     auto* src = pimpl_->begin();
     auto* dst = new_pimpl->begin();
+
     if (copy_data) {
         // copy to new ArrayImpl
         for (auto& i = new_pimpl->size_; i < size(); ++i) {
             new (dst++) Any(*src++);
         }
-        pimpl_ = new_pimpl;
     } else {
         // move to new ArrayImpl
         for (auto& i = new_pimpl->size_; i < size(); ++i) {
             new (dst++) Any(std::move(*src++));
         }
-        pimpl_ = std::move(new_pimpl);
     }
+    pimpl_ = new_pimpl;
 }
 
 template<typename T>
-void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
-    if (extra == 0) {
+void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
+    if (delta == 0) { // inplace
         if (single_elem_inplace_change) {
             if (!defined()) {
-                AETHERMIND_THROW(runtime_error) << "Cannot change an empty array.";
+                AETHERMIND_THROW(RuntimeError) << "Cannot change an empty array.";
             }
 
             if (!unique()) {
                 SwitchContainer(capacity());
             }
         }
-    } else if (extra < 0) {// shrink the array
+    } else if (delta < 0) {// shrink the array
         if (!defined()) {
-            AETHERMIND_THROW(runtime_error) << "Cannot shrink an empty array.";
+            AETHERMIND_THROW(RuntimeError) << "Cannot shrink an empty array.";
         }
 
-        if (-extra > static_cast<int64_t>(size())) {
-            AETHERMIND_THROW(runtime_error) << "Cannot shrink the array by " << -extra << " elements.";
+        if (-delta > static_cast<int64_t>(size())) {
+            AETHERMIND_THROW(RuntimeError) << "Cannot shrink the array by " << -delta << " elements.";
         }
 
         if (!unique()) {
@@ -497,16 +496,16 @@ void Array<T>::COW(int64_t extra, bool single_elem_inplace_change) {
         }
     } else {// expand the array
         if (!defined()) {
-            size_t n = std::max(static_cast<size_t>(extra), ArrayImpl::kInitSize);
+            size_t n = std::max(static_cast<size_t>(delta), ArrayImpl::kInitSize);
             SwitchContainer(n);
         } else if (unique()) {
-            if (static_cast<size_t>(extra) + size() > capacity()) {
-                size_t n = std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(extra) + size());
+            if (static_cast<size_t>(delta) + size() > capacity()) {
+                size_t n = std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(delta) + size());
                 SwitchContainer(n, false);
             }
         } else {
-            size_t n = static_cast<size_t>(extra) + size() > capacity()
-                               ? std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(extra) + size())
+            size_t n = static_cast<size_t>(delta) + size() > capacity()
+                               ? std::max(capacity() * ArrayImpl::kIncFactor, static_cast<size_t>(delta) + size())
                                : capacity();
             SwitchContainer(n);
         }

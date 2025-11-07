@@ -42,12 +42,12 @@ TEST(Array, init) {
     EXPECT_EQ(vec3.capacity(), 6);
     EXPECT_EQ(vec3.front(), 4);
     EXPECT_EQ(vec3.back(), 9);
-    vec3[0] = 8;
+    vec3[0] = 8.1;
     EXPECT_EQ(vec3.front(), 8);
     vec3.front() = 9;
     EXPECT_EQ(vec3.front(), 9);
 
-    vec3.back() = 10;
+    vec3.back() = 10.5;
     EXPECT_EQ(vec3.back(), 10);
 }
 
@@ -156,7 +156,7 @@ TEST(Array, EmptyArrayExceptions) {
         } }, Error);
 
     EXPECT_THROW({try {
-            UNUSED(arr[1]);
+            UNUSED(arr.at(1));
         } catch (const Error&) {
             throw;
         } }, Error);
@@ -231,7 +231,7 @@ TEST(Array, OutOfBoundsException) {
     // Test negative index
     EXPECT_THROW({
         try {
-            UNUSED(arr[-1]);
+            UNUSED(arr.at(-1));
         } catch (const Error&) {
             throw;
         } }, Error);
@@ -239,7 +239,7 @@ TEST(Array, OutOfBoundsException) {
     // Test index beyond size
     EXPECT_THROW({
         try {
-            UNUSED(arr[5]);
+            UNUSED(arr.at(5));
         } catch (const Error&) {
             throw;
         } }, Error);
@@ -365,7 +365,7 @@ TEST(Array, ClearMethod) {
     // Test that elements are actually removed
     EXPECT_THROW({
         try {
-            UNUSED(arr[0]);
+            UNUSED(arr.at(0));
         } catch (const Error&) {
             throw;
         } }, Error);

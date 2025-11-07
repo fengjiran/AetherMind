@@ -138,6 +138,8 @@ public:
 
     Array() = default;
 
+    static_assert(std::is_convertible_v<float, int>);
+
     explicit Array(size_t n, const T& value = T()) : pimpl_(ArrayImpl::Create(n)) {
         pimpl_->ConstructAtEnd(n, value);
     }
@@ -250,6 +252,14 @@ public:
     }
 
     const Any& operator[](int64_t i) const {
+        return *(begin() + i);
+    }
+
+    AnyProxy operator[](int64_t i) {
+        return AnyProxy(*this, i);
+    }
+
+    const Any& at(int64_t i) const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -261,7 +271,7 @@ public:
         return *(begin() + i);
     }
 
-    AnyProxy operator[](int64_t i) {
+    AnyProxy at(int64_t i) {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -508,9 +518,10 @@ class Array<T>::AnyProxy {
 public:
     AnyProxy(Array& arr, int64_t idx) : arr_(arr), idx_(idx) {}
 
-    AnyProxy& operator=(Any other) {
+    template<typename U, typename = std::enable_if_t<std::is_convertible_v<U, T>>>
+    AnyProxy& operator=(U value) {
         arr_.COW(0, true);
-        *(arr_.pimpl_->begin() + idx_) = std::move(other);
+        *(arr_.pimpl_->begin() + idx_) = T(std::move(value));
         return *this;
     }
 

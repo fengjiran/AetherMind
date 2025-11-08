@@ -15,18 +15,126 @@ class QualifiedName {
 public:
     QualifiedName() = default;
 
+    // `name` can be a dotted string, like "foo.bar.baz", or just a bare name.
+    QualifiedName(const std::string& name) {// NOLINT
+        CHECK(!name.empty());
+
+        // split the string into atoms
+        size_t start = 0;
+        size_t pos = name.find(delimiter_, start);
+        while (pos != std::string::npos) {
+            auto atom = name.substr(start, pos - start);
+            CHECK(!atom.empty());
+            atoms_.emplace_back(atom);
+            start = pos + 1;
+            pos = name.find(delimiter_, start);
+        }
+
+        auto final_atom = name.substr(start);
+        CHECK(!final_atom.empty());
+        atoms_.emplace_back(final_atom);
+        CacheAccessors();
+    }
+
+    QualifiedName(const char* name) : QualifiedName(std::string(name)) {}// NOLINT
+
+    explicit QualifiedName(std::vector<std::string> atoms) : atoms_(std::move(atoms)) {
+        for (const auto& atom: atoms_) {
+            CHECK(!atom.empty()) << "atom cannot be empty";
+            CHECK(atom.find(delimiter_) == std::string::npos)
+                    << "delimiter not allowed in atom";
+        }
+        CacheAccessors();
+    }
+
+    // name must be a bare name(not dots)
+    explicit QualifiedName(const QualifiedName& prefix, std::string name) {
+        CHECK(!name.empty());
+        CHECK(name.find(delimiter_) == std::string::npos);
+        atoms_ = prefix.atoms_;
+        atoms_.push_back(std::move(name));
+        CacheAccessors();
+    }
+
+    // Is `this` a prefix of `other`?
+    // For example, "foo.bar" is a prefix of "foo.bar.baz"
+    NODISCARD bool IsPrefixOf(const QualifiedName& other) const {
+        if (atoms_.size() > other.atoms_.size()) {
+            return false;
+        }
+
+        for (int i = 0; i < atoms_.size(); ++i) {
+            if (atoms_[i] != other.atoms_[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // The fully qualified name, like "foo.bar.baz"
+    NODISCARD const String& GetQualifiedName() const {
+        return qualified_name_;
+    }
+
+    // The leading qualifier, like "foo.bar"
+    NODISCARD const String& GetPrefix() const {
+        return prefix_;
+    }
+
+    // The base name, like "baz"
+    NODISCARD const String& GetName() const {
+        return name_;
+    }
+
+    NODISCARD const std::vector<std::string>& GetAtoms() const {
+        return atoms_;
+    }
+
+    bool operator==(const QualifiedName& other) const {
+        return qualified_name_ == other.qualified_name_;
+    }
+
+    bool operator!=(const QualifiedName& other) const {
+        return !operator==(other);
+    }
+
 private:
     template<typename T, typename = T::iterator>
-    String join(char delimiter, const T& v) {
-        String res;
+    std::string join(char delimiter, const T& v) {
+        std::string res;
+        size_t reserve = 0;
+        for (const auto& e: v) {
+            reserve += e.size() + 1;
+        }
+        res.reserve(reserve);
+
+        for (int i = 0; i < v.size(); ++i) {
+            if (i != 0) {
+                res.push_back(delimiter);
+            }
+            res.append(v[i]);
+        }
         return res;
+    }
+
+    void CacheAccessors() {
+        qualified_name_ = join(delimiter_, atoms_);
+        if (atoms_.size() > 1) {
+            ArrayView view(atoms_);
+            const auto prefix_view = view.slice(0, view.size() - 1);
+            prefix_ = join(delimiter_, prefix_view);
+        }
+
+        if (!atoms_.empty()) {
+            name_ = atoms_.back();
+        }
     }
 
     // default delimiter
     static constexpr char delimiter_ = '.';
 
     // The actual list of names, like "{foo, bar, baz}"
-    std::vector<String> atoms_;
+    std::vector<std::string> atoms_;
 
     // Cached accessors, derived from `atoms_`.
     String qualified_name_;

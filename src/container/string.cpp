@@ -26,7 +26,7 @@ const char* StringImpl::data() const noexcept {
 ObjectPtr<StringImpl> StringImpl::Create(size_t cap) {
     auto impl = make_array_object<StringImpl, char>(cap + 1);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(StringImpl);
-    impl->size_ = 0;
+    // impl->size_ = 0;
     impl->capacity_ = cap;
     return impl;
 }

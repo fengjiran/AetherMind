@@ -9,7 +9,7 @@
 
 namespace aethermind {
 
-StringImpl::StringImpl() : data_(nullptr), size_(0) {}
+StringImpl::StringImpl() : data_(nullptr), size_(0), capacity_(0) {}
 
 size_t StringImpl::size() const noexcept {
     return size_;
@@ -19,13 +19,25 @@ const char* StringImpl::data() const noexcept {
     return data_;
 }
 
-String::String(const char* other, size_t size) : impl_(make_array_object<StringImpl, char>(size + 1)) {
-    char* dst = reinterpret_cast<char*>(impl_.get()) + sizeof(StringImpl);
-    impl_->data_ = dst;
-    impl_->size_ = size;
-    std::memcpy(dst, other, size);
-    dst[size] = '\0';
+ObjectPtr<StringImpl> StringImpl::Create(size_t n) {
+    auto impl = make_array_object<StringImpl, char>(n + 1);
+    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(StringImpl);
+    impl->size_ = n;
+    return impl;
 }
+
+String::String(const char* other, size_t size) : impl_(StringImpl::Create(size)) {
+    std::memcpy(impl_->data_, other, size);
+    impl_->data_[size] = '\0';
+}
+
+// String::String(const char* other, size_t size) : impl_(make_array_object<StringImpl, char>(size + 1)) {
+//     char* dst = reinterpret_cast<char*>(impl_.get()) + sizeof(StringImpl);
+//     impl_->data_ = dst;
+//     impl_->size_ = size;
+//     std::memcpy(dst, other, size);
+//     dst[size] = '\0';
+// }
 
 String::String(const char* other) : String(other, std::strlen(other)) {}
 
@@ -119,7 +131,7 @@ String::operator std::string() const {
     return {data(), size()};
 }
 
- String::operator const char*() const {
+String::operator const char*() const {
     return data();
 }
 

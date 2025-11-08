@@ -13,15 +13,16 @@ class StringImpl : public Object {
 public:
     StringImpl();
 
-    // ~StringImpl() override = default;
-
     NODISCARD size_t size() const noexcept;
 
     NODISCARD const char* data() const noexcept;
 
 private:
-    const char* data_;
+    static ObjectPtr<StringImpl> Create(size_t n);
+
+    char* data_;
     size_t size_;
+    size_t capacity_;
 
     friend class String;
 };
@@ -155,6 +156,8 @@ public:
      * \return true if the two char sequences are equal, false otherwise.
      */
     static bool MemoryEqual(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt);
+
+    static constexpr size_t npos = static_cast<size_t>(-1);
 
 private:
     ObjectPtr<StringImpl> impl_;

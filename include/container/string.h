@@ -15,10 +15,12 @@ public:
 
     NODISCARD size_t size() const noexcept;
 
+    NODISCARD size_t capacity() const noexcept;
+
     NODISCARD const char* data() const noexcept;
 
 private:
-    static ObjectPtr<StringImpl> Create(size_t n);
+    static ObjectPtr<StringImpl> Create(size_t cap);
 
     char* data_;
     size_t size_;

@@ -15,19 +15,25 @@ size_t StringImpl::size() const noexcept {
     return size_;
 }
 
+size_t StringImpl::capacity() const noexcept {
+    return capacity_;
+}
+
 const char* StringImpl::data() const noexcept {
     return data_;
 }
 
-ObjectPtr<StringImpl> StringImpl::Create(size_t n) {
-    auto impl = make_array_object<StringImpl, char>(n + 1);
+ObjectPtr<StringImpl> StringImpl::Create(size_t cap) {
+    auto impl = make_array_object<StringImpl, char>(cap + 1);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(StringImpl);
-    impl->size_ = n;
+    impl->size_ = 0;
+    impl->capacity_ = cap;
     return impl;
 }
 
 String::String(const char* other, size_t size) : impl_(StringImpl::Create(size)) {
     std::memcpy(impl_->data_, other, size);
+    impl_->size_ = size;
     impl_->data_[size] = '\0';
 }
 

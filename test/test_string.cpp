@@ -4,7 +4,9 @@
 #include "any.h"
 #include "container/string.h"
 
+#include <deque>
 #include <gtest/gtest.h>
+#include <list>
 
 using namespace aethermind;
 
@@ -152,6 +154,90 @@ TEST(StringConstructorFill, MemorySharing) {
     // 这里我们假设它不支持，因为当前实现中没有明确的copy-on-write逻辑
 }
 
+// 测试迭代器范围构造函数 - 基本功能
+TEST(StringIteratorConstructor, BasicFunctionality) {
+    // 使用 std::string 迭代器
+    std::string source = "hello world";
+    String s1(source.begin(), source.end());
+    EXPECT_FALSE(s1.empty());
+    EXPECT_EQ(s1.size(), source.size());
+    EXPECT_STREQ(s1.c_str(), source.c_str());
+
+    // 使用子范围迭代器
+    String s2(source.begin() + 6, source.end());
+    EXPECT_EQ(s2.size(), 5);
+    EXPECT_STREQ(s2.c_str(), "world");
+}
+
+// 测试迭代器范围构造函数 - 不同类型的迭代器
+TEST(StringIteratorConstructor, DifferentIteratorTypes) {
+    // 使用 vector<char> 迭代器
+    std::vector<char> vec = {'t', 'e', 's', 't'};
+    String s1(vec.begin(), vec.end());
+    EXPECT_EQ(s1.size(), vec.size());
+    EXPECT_STREQ(s1.c_str(), "test");
+
+    // 使用 list<char> 迭代器
+    std::list<char> lst = {'l', 'i', 's', 't'};
+    String s2(lst.begin(), lst.end());
+    EXPECT_EQ(s2.size(), lst.size());
+    EXPECT_STREQ(s2.c_str(), "list");
+
+    // 使用 array<char, N> 迭代器
+    std::array<char, 4> arr = {'a', 'r', 'r', 'a'};
+    String s3(arr.begin(), arr.end());
+    EXPECT_EQ(s3.size(), arr.size());
+    EXPECT_STREQ(s3.c_str(), "arra");
+
+    // 使用 deque<char> 迭代器
+    std::deque<char> deq = {'d', 'e', 'q', 'u', 'e'};
+    String s4(deq.begin(), deq.end());
+    EXPECT_EQ(s4.size(), deq.size());
+    EXPECT_STREQ(s4.c_str(), "deque");
+}
+
+// 测试迭代器范围构造函数 - 边界情况
+TEST(StringIteratorConstructor, EdgeCases) {
+    // 空范围
+    std::string empty_str;
+    String s1(empty_str.begin(), empty_str.end());
+    EXPECT_TRUE(s1.empty());
+    EXPECT_EQ(s1.size(), 0);
+    EXPECT_STREQ(s1.c_str(), "");
+
+    // 单元素范围
+    std::string single_char = "a";
+    String s2(single_char.begin(), single_char.end());
+    EXPECT_FALSE(s2.empty());
+    EXPECT_EQ(s2.size(), 1);
+    EXPECT_STREQ(s2.c_str(), "a");
+
+    // 相同的迭代器（空范围）
+    std::string source = "test";
+    auto it = source.begin();
+    String s3(it, it);
+    EXPECT_TRUE(s3.empty());
+}
+
+// 测试迭代器范围构造函数 - 特殊字符
+TEST(StringIteratorConstructor, SpecialCharacters) {
+    // 包含控制字符的范围
+    std::string special_chars = "a\tb\nc\r";
+    String s1(special_chars.begin(), special_chars.end());
+    EXPECT_EQ(s1.size(), special_chars.size());
+    EXPECT_TRUE(s1.Compare(special_chars) == 0);
+
+    // 包含空字符的范围
+    std::string null_char_str = "ab\0cd";
+    String s2(null_char_str.begin(), null_char_str.begin() + 5);// 包含空字符和后续字符
+    EXPECT_EQ(s2.size(), 5);
+    EXPECT_EQ(s2[0], 'a');
+    EXPECT_EQ(s2[1], 'b');
+    EXPECT_EQ(s2[2], '\0');
+    EXPECT_EQ(s2[3], 'c');
+    EXPECT_EQ(s2[4], 'd');
+}
+
 TEST(String, CopyFromStd) {
     std::string source = "this is a string";
     std::string expect = source;
@@ -163,7 +249,8 @@ TEST(String, CopyFromStd) {
     EXPECT_TRUE(s.unique());
     EXPECT_EQ(copy.use_count(), 1);
     EXPECT_TRUE(copy.unique());
-    std::cout << s << std::endl;
+    // String ss0{'a', 'b'};
+    // String test(source.begin(), source.end());
 
     std::vector<std::string> pow5;
     pow5.reserve(7);

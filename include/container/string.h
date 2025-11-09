@@ -53,6 +53,19 @@ public:
 
     String(size_t size, char c);
 
+    template<typename Iter>
+    String(Iter first, Iter last) {
+        impl_ = StringImpl::Create(std::distance(first, last));
+        size_t i = 0;
+        for (auto it = first; it != last; ++it) {
+            impl_->data_[i++] = *it;
+            ++impl_->size_;
+        }
+        impl_->data_[i] = '\0';
+    }
+
+    String(std::initializer_list<char> list);
+
     /*!
      * \brief Construct a new string object
      * \param other The std::string object to be copied

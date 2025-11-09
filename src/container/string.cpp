@@ -43,6 +43,8 @@ String::String(size_t size, char c) : impl_(StringImpl::Create(size)) {
     impl_->data_[size] = '\0';
 }
 
+String::String(std::initializer_list<char> list) : String(list.begin(), list.end()) {}
+
 String::String(const char* other) : String(other, std::strlen(other)) {}
 
 String::String(const std::string& other) : String(other.data(), other.size()) {}

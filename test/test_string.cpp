@@ -482,15 +482,14 @@ TEST(String, c_str) {
 }
 
 TEST(String, hash) {
-    using namespace std;
-    string source = "this is a string";
+    std::string source = "this is a string";
     String s{source};
 
     std::unordered_map<String, std::string> map;
-    String k1{string{"k1"}};
-    string v1{"v1"};
-    String k2{string{"k2"}};
-    string v2{"v2"};
+    String k1{std::string{"k1"}};
+    std::string v1{"v1"};
+    String k2{std::string{"k2"}};
+    std::string v2{"v2"};
     map[k1] = v1;
     map[k2] = v2;
 

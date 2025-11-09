@@ -28,19 +28,25 @@ ObjectPtr<StringImpl> StringImpl::Create(size_t cap) {
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(StringImpl);
     impl->size_ = 0;
     impl->capacity_ = cap;
+    std::memset(impl->data_, '\0', cap + 1);
     return impl;
 }
 
-String::String(const char* other, size_t size) : impl_(StringImpl::Create(size)) {
-    std::memcpy(impl_->data_, other, size);
-    impl_->size_ = size;
-    impl_->data_[size] = '\0';
+String::String(const char* other, size_t size) {
+    if (other == nullptr) {
+        if (size > 0) {
+            AETHERMIND_THROW(LogicError) << "construction from null is not valid";
+        }
+    } else {
+        impl_ = StringImpl::Create(size);
+        std::memcpy(impl_->data_, other, size);
+        impl_->size_ = size;
+    }
 }
 
 String::String(size_t size, char c) : impl_(StringImpl::Create(size)) {
     std::memset(impl_->data_, c, size);
     impl_->size_ = size;
-    impl_->data_[size] = '\0';
 }
 
 String::String(std::initializer_list<char> list) : String(list.begin(), list.end()) {}

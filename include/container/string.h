@@ -61,7 +61,6 @@ public:
             impl_->data_[i++] = *it;
             ++impl_->size_;
         }
-        impl_->data_[i] = '\0';
     }
 
     String(std::initializer_list<char> list);

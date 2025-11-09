@@ -10,6 +10,148 @@ using namespace aethermind;
 
 namespace {
 
+// 测试基本功能：创建指定大小和字符的字符串
+TEST(StringConstructorFill, BasicFunctionality) {
+    // 测试基本ASCII字符
+    String s1(5, 'a');
+    EXPECT_FALSE(s1.empty());
+    EXPECT_EQ(s1.size(), 5);
+    EXPECT_STREQ(s1.c_str(), "aaaaa");
+    EXPECT_EQ(s1.use_count(), 1);
+    EXPECT_TRUE(s1.unique());
+
+    // 测试数字字符
+    String s2(3, '5');
+    EXPECT_EQ(s2.size(), 3);
+    EXPECT_STREQ(s2.c_str(), "555");
+
+    // 测试特殊字符
+    String s3(2, '!');
+    EXPECT_EQ(s3.size(), 2);
+    EXPECT_STREQ(s3.c_str(), "!!");
+}
+
+// 测试边界情况：空字符串
+TEST(StringConstructorFill, EmptyString) {
+    String s(0, 'x');
+    EXPECT_TRUE(s.empty());
+    EXPECT_EQ(s.size(), 0);
+    EXPECT_STREQ(s.c_str(), "");
+    // 确保空字符串仍然有有效的空终止符
+    EXPECT_EQ(s.data()[0], '\0');
+}
+
+// 测试边界情况：较大的字符串
+TEST(StringConstructorFill, LargeString) {
+    // 创建一个包含100个字符的字符串
+    const size_t large_size = 100;
+    String s(large_size, 'B');
+
+    EXPECT_EQ(s.size(), large_size);
+    EXPECT_FALSE(s.empty());
+
+    // 验证所有字符都是 'B'
+    for (size_t i = 0; i < large_size; ++i) {
+        EXPECT_EQ(s[i], 'B');
+    }
+
+    // 验证字符串结尾有正确的空终止符
+    EXPECT_EQ(s.c_str()[large_size], '\0');
+}
+
+// 测试特殊字符：包括控制字符
+TEST(StringConstructorFill, SpecialCharacters) {
+    // 测试空格字符
+    String space(4, ' ');
+    EXPECT_EQ(space.size(), 4);
+    EXPECT_STREQ(space.c_str(), "    ");
+
+    // 测试制表符
+    String tab(2, '\t');
+    EXPECT_EQ(tab.size(), 2);
+    EXPECT_EQ(tab.data()[0], '\t');
+    EXPECT_EQ(tab.data()[1], '\t');
+    EXPECT_EQ(tab.data()[2], '\0');
+
+    // 测试换行符
+    String newline(3, '\n');
+    EXPECT_EQ(newline.size(), 3);
+    EXPECT_EQ(newline.data()[0], '\n');
+    EXPECT_EQ(newline.data()[1], '\n');
+    EXPECT_EQ(newline.data()[2], '\n');
+    EXPECT_EQ(newline.data()[3], '\0');
+}
+
+// 测试非ASCII字符
+TEST(StringConstructorFill, NonAsciiCharacters) {
+    // 测试扩展ASCII字符
+    String extended_ascii(2, static_cast<char>(169));// © 符号
+    EXPECT_EQ(extended_ascii.size(), 2);
+    EXPECT_EQ(extended_ascii.data()[0], static_cast<char>(169));
+    EXPECT_EQ(extended_ascii.data()[1], static_cast<char>(169));
+
+    // 注意：此测试仅验证存储的字节值，不保证这些值在所有系统上都表示相同的字符
+}
+
+
+// 测试与其他String操作的兼容性
+TEST(StringConstructorFill, CompatibilityWithOtherOperations) {
+    String s(5, 'z');
+
+    // 测试比较操作
+    EXPECT_TRUE(s == String("zzzzz"));
+    EXPECT_FALSE(s == String("zzzz"));
+
+    // 测试连接操作
+    String concat = s + String("abc");
+    EXPECT_EQ(concat.size(), 8);
+    EXPECT_STREQ(concat.c_str(), "zzzzzabc");
+
+    // 测试赋值操作
+    String assign;
+    assign = s;
+    EXPECT_TRUE(assign == s);
+
+    // 测试转换为std::string
+    std::string std_str = static_cast<std::string>(s);
+    EXPECT_EQ(std_str, "zzzzz");
+}
+
+// 测试索引访问
+TEST(StringConstructorFill, IndexAccess) {
+    String s(5, 'm');
+
+    // 测试operator[]
+    for (size_t i = 0; i < s.size(); ++i) {
+        EXPECT_EQ(s[i], 'm');
+    }
+
+    // 测试at()方法，包括边界检查
+    EXPECT_EQ(s.at(0), 'm');
+    EXPECT_EQ(s.at(4), 'm');
+
+    // 测试越界访问会抛出异常
+    EXPECT_THROW(UNUSED(s.at(5)), std::exception);
+    EXPECT_THROW(UNUSED(s.at(100)), std::exception);
+}
+
+// 测试内存共享和引用计数
+TEST(StringConstructorFill, MemorySharing) {
+    String original(10, 's');
+    EXPECT_EQ(original.use_count(), 1);
+
+    // 复制构造应该共享内存
+    String copy = original;
+    EXPECT_EQ(original.use_count(), 2);
+    EXPECT_EQ(copy.use_count(), 2);
+    EXPECT_FALSE(original.unique());
+    EXPECT_FALSE(copy.unique());
+
+    // 修改其中一个不应影响另一个（写时复制）
+    // 注意：String类的实现是否支持写时复制需要查看完整代码
+    // 这里我们假设它不支持，因为当前实现中没有明确的copy-on-write逻辑
+}
+
 TEST(String, CopyFromStd) {
     std::string source = "this is a string";
     std::string expect = source;

@@ -26,7 +26,7 @@ const char* StringImpl::data() const noexcept {
 ObjectPtr<StringImpl> StringImpl::Create(size_t cap) {
     auto impl = make_array_object<StringImpl, char>(cap + 1);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(StringImpl);
-    // impl->size_ = 0;
+    impl->size_ = 0;
     impl->capacity_ = cap;
     return impl;
 }
@@ -37,13 +37,11 @@ String::String(const char* other, size_t size) : impl_(StringImpl::Create(size))
     impl_->data_[size] = '\0';
 }
 
-// String::String(const char* other, size_t size) : impl_(make_array_object<StringImpl, char>(size + 1)) {
-//     char* dst = reinterpret_cast<char*>(impl_.get()) + sizeof(StringImpl);
-//     impl_->data_ = dst;
-//     impl_->size_ = size;
-//     std::memcpy(dst, other, size);
-//     dst[size] = '\0';
-// }
+String::String(size_t size, char c) : impl_(StringImpl::Create(size)) {
+    std::memset(impl_->data_, c, size);
+    impl_->size_ = size;
+    impl_->data_[size] = '\0';
+}
 
 String::String(const char* other) : String(other, std::strlen(other)) {}
 

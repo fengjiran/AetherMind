@@ -51,6 +51,8 @@ public:
      */
     String(const char* other);// NOLINT
 
+    String(size_t size, char c);
+
     /*!
      * \brief Construct a new string object
      * \param other The std::string object to be copied

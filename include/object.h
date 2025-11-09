@@ -176,7 +176,7 @@ private:
  *
  * \tparam T The type for which the null type is defined.
  */
-template<typename T>
+template<typename T, typename = std::enable_if_t<std::is_constructible_v<T>>>
 class NullTypeOf final : public T {
     NullTypeOf() = default;
 

@@ -31,6 +31,12 @@ TEST(StringConstructorFill, BasicFunctionality) {
     String s3(2, '!');
     EXPECT_EQ(s3.size(), 2);
     EXPECT_STREQ(s3.c_str(), "!!");
+
+    const char* t = "hello\0world";
+    std::string s4(t, 11);
+    String s5(t, 11);
+    std::cout << s4 << std::endl;
+    std::cout << s5 << std::endl;
 }
 
 // 测试边界情况：空字符串

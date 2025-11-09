@@ -221,8 +221,7 @@ String operator+(const char* lhs, const String& rhs) {
 }
 
 std::ostream& operator<<(std::ostream& os, const String& str) {
-    // os.write(str.data(), str.size());
-    os << str.data();
+    os.write(str.data(), str.size());
     return os;
 }
 

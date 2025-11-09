@@ -44,14 +44,23 @@ String::String(const char* other, size_t size) {
     }
 }
 
+String::String(const char* other) {
+    if (other == nullptr) {
+        AETHERMIND_THROW(LogicError) << "construction from null is not valid";
+    }
+
+    const auto size = std::strlen(other);
+    impl_ = StringImpl::Create(size);
+    std::memcpy(impl_->data_, other, size);
+    impl_->size_ = size;
+}
+
 String::String(size_t size, char c) : impl_(StringImpl::Create(size)) {
     std::memset(impl_->data_, c, size);
     impl_->size_ = size;
 }
 
 String::String(std::initializer_list<char> list) : String(list.begin(), list.end()) {}
-
-String::String(const char* other) : String(other, std::strlen(other)) {}
 
 String::String(const std::string& other) : String(other.data(), other.size()) {}
 

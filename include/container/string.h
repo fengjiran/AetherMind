@@ -46,8 +46,6 @@ public:
      * \brief constructor from raw string
      *
      * \param other a char array.
-     * \note This constructor is marked as explicit to avoid implicit conversion
-     *       of nullptr value here to string, which then was used in comparison
      */
     String(const char* other);// NOLINT
 

@@ -12,6 +12,7 @@
 #include "type.h"
 #include "type_ptr.h"
 #include "utils/qualified_name.h"
+#include "function.h"
 
 #include <functional>
 
@@ -642,6 +643,15 @@ public:
 
 private:
     std::optional<QualifiedName> name_;
+};
+
+class FunctionType;
+using FunctionTypePtr = std::shared_ptr<FunctionType>;
+class FunctionType : public NamedType {
+public:
+    static constexpr auto Kind = TypeKind::FunctionType;
+private:
+    Function function_;
 };
 
 inline String toString(const Type& t) {

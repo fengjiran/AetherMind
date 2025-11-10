@@ -159,7 +159,7 @@ TEST(FunctionImplTest, CreateMethod) {
         *res = sum;
     };
 
-    auto impl = FunctionImpl::create(packed_func);
+    auto impl = FunctionImpl::Create(packed_func);
 
     Any args[3] = {1, 2, 3};
     Any result;
@@ -176,7 +176,7 @@ TEST(FunctionImplTest, CreateMethod) {
         *res = product;
     };
 
-    auto impl2 = FunctionImpl::create(raw_func);
+    auto impl2 = FunctionImpl::Create(raw_func);
 
     Any args2[3] = {2, 3, 4};
     Any result2;
@@ -403,7 +403,7 @@ TEST(TypeFunction, std_function_construction) {
 
 TEST(TypeFunction, function_packed_construction) {
     auto lambda = [](int a, int b) { return a + b + 1; };
-    Function packed_func = Function::FromTyped(lambda);
+    Function packed_func = Function::FromTyped(lambda, "add_function");
     TypedFunction<int(int, int)> func(packed_func);
     EXPECT_TRUE(func.packed().defined());
     EXPECT_EQ(func(2, 3), 6);
@@ -419,7 +419,7 @@ TEST(TypeFunction, assignment_operators) {
 
     // Function赋值
     auto lambda2 = [](int a, int b) { return a - b; };
-    Function packed_func = Function::FromTyped(lambda2);
+    Function packed_func = Function::FromTyped(lambda2, "subtract_function");
     func = packed_func;
     EXPECT_EQ(func(10, 3), 7);
 }
@@ -553,7 +553,7 @@ TEST(TypeFunction, packed_methods) {
 TEST(function_type_traits, function_copy_to_any) {
     // 测试Function的CopyToAny
     auto lambda = [](int a, int b) { return a + b; };
-    Function func = Function::FromTyped(lambda);
+    Function func = Function::FromTyped(lambda, "add_function");
 
     Any any_func = func;
     auto res = any_func.cast<Function>()(1, 2);
@@ -564,7 +564,7 @@ TEST(function_type_traits, function_copy_to_any) {
 TEST(function_type_traits, function_move_to_any) {
     // 测试Function的MoveToAny
     auto lambda = [](int a, int b) { return a * b; };
-    Function func = Function::FromTyped(lambda);
+    Function func = Function::FromTyped(lambda, "multiply_function");
 
     Any any_data = std::move(func);
     EXPECT_EQ(func.use_count(), 0);
@@ -574,7 +574,7 @@ TEST(function_type_traits, function_move_to_any) {
 TEST(function_type_traits, function_copy_from_any) {
     // 测试Function的CopyFromAnyAfterCheck
     auto lambda = [](int a, int b) { return a - b; };
-    Function original_func = Function::FromTyped(lambda);
+    Function original_func = Function::FromTyped(lambda, "subtract_function");
     Any any_data = original_func;
 
     Function copied_func = any_data.cast<Function>();
@@ -590,7 +590,7 @@ TEST(function_type_traits, function_copy_from_any) {
 TEST(function_type_traits, function_move_from_any) {
     // 测试Function的MoveFromAnyAfterCheck
     auto lambda = [](int a, int b) { return a + b + 1; };
-    Function original_func = Function::FromTyped(lambda);
+    Function original_func = Function::FromTyped(lambda, "add_function");
     Any any_data = original_func;
 
     Function moved_func = any_data.MoveFromAny<Function>();
@@ -604,7 +604,7 @@ TEST(function_type_traits, function_move_from_any) {
 TEST(function_type_traits, function_try_cast_from_any) {
     // 测试Function的TryCastFromAny
     auto lambda = [](int a, int b) { return a * b; };
-    Function func = Function::FromTyped(lambda);
+    Function func = Function::FromTyped(lambda, "multiply_function");
 
     Any any_data = func;
 
@@ -740,7 +740,7 @@ TEST(typed_function_type_traits, string_arguments_and_return) {
 TEST(function_type_traits, integration_with_any_class) {
     // 测试与Any类的集成
     auto lambda = [](int a, int b) { return a + b; };
-    Function func = Function::FromTyped(lambda);
+    Function func = Function::FromTyped(lambda, "add_function");
 
     // 使用Any构造函数
     Any any_func = func;

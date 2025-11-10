@@ -5,8 +5,9 @@
 #ifndef AETHERMIND_FUNCTION_H
 #define AETHERMIND_FUNCTION_H
 
-#include "function_schema.h"
+// #include "function_schema.h"
 #include "function_traits.h"
+#include "utils/qualified_name.h"
 
 #include <functional>
 #include <utility>
@@ -75,10 +76,10 @@ class FunctionImpl : public Object {
 public:
     using FCall = std::function<void(const FunctionImpl*, const Any*, int32_t, Any*)>;
 
-    FunctionImpl() : callable_(nullptr), schema_("") {}
+    FunctionImpl() : callable_(nullptr), schema_(""), qualified_name_("no_qualified_name") {}
 
-    explicit FunctionImpl(FCall callable, String schema = "")
-        : callable_(std::move(callable)), schema_(std::move(schema)) {}
+    explicit FunctionImpl(FCall callable, QualifiedName qualified_name = "no_qualified_name", String schema = "")
+        : callable_(std::move(callable)), qualified_name_(std::move(qualified_name)), schema_(std::move(schema)) {}
 
     void CallPacked(const Any* args, int32_t num_args, Any* res) const {
         callable_(this, args, num_args, res);
@@ -88,8 +89,18 @@ public:
         return schema_;
     }
 
+    NODISCARD const QualifiedName& GetQualifiedName() const {
+        return qualified_name_;
+    }
+
+    NODISCARD const String& GetName() const {
+        return qualified_name_.GetName();
+    }
+
     template<typename TCallable>
-    static ObjectPtr<FunctionImpl> create(TCallable packed_call, const String& schema = "") {
+    static ObjectPtr<FunctionImpl> Create(TCallable packed_call,
+                                          const QualifiedName& qualified_name = "no_qualified_name",
+                                          const String& schema = "") {
         static_assert(std::is_convertible_v<TCallable, std::function<void(const Any*, int32_t, Any*)>> ||
                               std::is_convertible_v<TCallable, std::function<void(details::PackedArgs args, Any*)>>,
                       "FromPacked requires input function signature to match packed func format");
@@ -98,18 +109,19 @@ public:
                 details::PackedArgs packed_args(args, num_args);
                 packed_call(packed_args, res);
             };
-            return make_object<FunctionImpl>(f, schema);
+            return make_object<FunctionImpl>(f, qualified_name, schema);
         } else {
             auto f = [packed_call](const FunctionImpl*, const Any* args, int32_t num_args, Any* res) mutable -> void {
                 packed_call(args, num_args, res);
             };
-            return make_object<FunctionImpl>(f, schema);
+            return make_object<FunctionImpl>(f, qualified_name, schema);
         }
     }
 
 private:
     FCall callable_;
     String schema_;
+    QualifiedName qualified_name_;
 };
 
 class Function : public ObjectRef {
@@ -119,12 +131,12 @@ public:
     explicit Function(ObjectPtr<FunctionImpl> impl) : pimpl_(std::move(impl)) {}
 
     template<typename TCallable>
-    Function(TCallable callable) {// NOLINT
+    Function(TCallable callable, const QualifiedName& qualified_name = "no_qualified_name") {
         if constexpr (std::is_convertible_v<TCallable, std::function<void(const Any*, int32_t, Any*)>> ||
                       std::is_convertible_v<TCallable, std::function<void(details::PackedArgs args, Any*)>>) {
-            *this = FromPacked(callable);
+            *this = FromPacked(callable, qualified_name);
         } else {
-            *this = FromTyped(callable);
+            *this = FromTyped(callable, qualified_name);
         }
     }
 
@@ -134,36 +146,36 @@ public:
     Function& operator=(Function&&) noexcept = default;
 
     template<typename TCallable>
-    static Function FromPacked(TCallable packed_call) {
+    static Function FromPacked(TCallable packed_call, const QualifiedName& qualified_name) {
         String schema;
         if constexpr (std::is_convertible_v<TCallable, std::function<void(details::PackedArgs args, Any*)>>) {
             schema = "(0: PackedArgs, 1: Any*) -> void";
         } else if constexpr (std::is_convertible_v<TCallable, std::function<void(const Any*, int32_t, Any*)>>) {
             schema = "(0: const Any*, 1: Int, 2: Any*) -> void";
         }
-        return Function(packed_call, schema);
+        return Function(packed_call, qualified_name, schema);
     }
 
+    // template<typename TCallable>
+    // static Function FromTyped(TCallable callable, const QualifiedName& qualified_name) {
+    //     using FuncInfo = details::FunctionInfo<TCallable>;
+    //     using R = FuncInfo::return_type;
+    //     using idx_seq = std::make_index_sequence<FuncInfo::num_args>;
+    //     auto f = [callable](const Any* args, int32_t num_args, Any* res) mutable -> void {
+    //         details::unpack_call<R>(callable, idx_seq{}, nullptr, args, num_args, res);
+    //     };
+    //     return Function(f, qualified_name, FuncInfo::Schema());
+    // }
+
     template<typename TCallable>
-    static Function FromTyped(TCallable callable) {
+    static Function FromTyped(TCallable callable, const QualifiedName& qualified_name) {
         using FuncInfo = details::FunctionInfo<TCallable>;
         using R = FuncInfo::return_type;
         using idx_seq = std::make_index_sequence<FuncInfo::num_args>;
-        auto f = [callable](const Any* args, int32_t num_args, Any* res) mutable -> void {
-            details::unpack_call<R>(callable, idx_seq{}, nullptr, args, num_args, res);
+        auto f = [callable, qualified_name](const Any* args, int32_t num_args, Any* res) mutable -> void {
+            details::unpack_call<R>(callable, idx_seq{}, &qualified_name.GetQualifiedName(), args, num_args, res);
         };
-        return Function(f, FuncInfo::Schema());
-    }
-
-    template<typename TCallable>
-    static Function FromTyped(TCallable callable, const String& name) {
-        using FuncInfo = details::FunctionInfo<TCallable>;
-        using R = FuncInfo::return_type;
-        using idx_seq = std::make_index_sequence<FuncInfo::num_args>;
-        auto f = [callable, name](const Any* args, int32_t num_args, Any* res) mutable -> void {
-            details::unpack_call<R>(callable, idx_seq{}, &name, args, num_args, res);
-        };
-        return Function(f, FuncInfo::Schema());
+        return Function(f, qualified_name, FuncInfo::Schema());
     }
 
     NODISCARD static std::optional<Function> GetGlobalFunction(const String& name);
@@ -179,6 +191,8 @@ public:
     NODISCARD bool unique() const noexcept;
 
     NODISCARD const String& schema() const noexcept;
+
+    NODISCARD const QualifiedName& GetQualifiedName() const noexcept;
 
     NODISCARD FunctionImpl* get_impl_ptr_unsafe() const noexcept;
 
@@ -201,7 +215,8 @@ public:
 
 private:
     template<typename TCallable>
-    Function(TCallable packed_call, const String& schema) : pimpl_(FunctionImpl::create(packed_call, schema)) {}
+    Function(TCallable packed_call, const QualifiedName& qualified_name, const String& schema)
+        : pimpl_(FunctionImpl::Create(packed_call, qualified_name, schema)) {}
 
     ObjectPtr<FunctionImpl> pimpl_;
 };
@@ -222,16 +237,17 @@ public:
 
     template<typename FLambda,
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
-    TypedFunction(const FLambda& callable, const String& name) : packed_func_(Function::FromTyped(callable, name)) {}
+    TypedFunction(const FLambda& callable, const QualifiedName& qualified_name = "no_qualified_name")
+        : packed_func_(Function::FromTyped(callable, qualified_name)) {}
 
-    template<typename FLambda,
-             typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
-    TypedFunction(const FLambda& callable) : packed_func_(Function::FromTyped(callable)) {}//NOLINT
+    // template<typename FLambda,
+    //          typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
+    // TypedFunction(const FLambda& callable) : packed_func_(Function::FromTyped(callable)) {}//NOLINT
 
     template<typename FLambda,
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
     Self& operator=(const FLambda& callable) {
-        packed_func_ = Function::FromTyped(callable);
+        packed_func_ = Function::FromTyped(callable, "no_qualified_name");
         return *this;
     }
 

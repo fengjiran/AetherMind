@@ -13,14 +13,14 @@ class Registry {
 public:
     template<typename F>
     Registry& def(const String& name, F&& func, const String& filename, uint32_t lineno) {
-        RegisterFunc(name, Function::FromTyped(std::forward<F>(func)), false,
+        RegisterFunc(name, Function::FromTyped(std::forward<F>(func), name), false,
                      filename, lineno);
         return *this;
     }
 
     template<typename F>
     Registry& def_packed(const String& name, F&& func, const String& filename, uint32_t lineno) {
-        RegisterFunc(name, Function::FromPacked(std::forward<F>(func)), false,
+        RegisterFunc(name, Function::FromPacked(std::forward<F>(func), name), false,
                      filename, lineno);
         return *this;
     }

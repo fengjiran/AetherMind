@@ -97,6 +97,10 @@ const String& Function::schema() const noexcept {
     return pimpl_->schema();
 }
 
+const QualifiedName& Function::GetQualifiedName() const noexcept {
+    return pimpl_->GetQualifiedName();
+}
+
 FunctionImpl* Function::get_impl_ptr_unsafe() const noexcept {
     return pimpl_.get();
 }

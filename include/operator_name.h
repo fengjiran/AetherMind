@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_OPERATOR_NAME_H
 #define AETHERMIND_OPERATOR_NAME_H
 
+#include "macros.h"
+
 #include <cstring>
 #include <optional>
 #include <ostream>
@@ -19,18 +21,18 @@ public:
     OperatorName(std::string name, std::string overload_name)
         : name_(std::move(name)), overload_name_(std::move(overload_name)) {}
 
-    std::string name() const {
+    NODISCARD std::string name() const {
         return name_;
     }
 
-    std::string overload_name() const {
+    NODISCARD std::string overload_name() const {
         return overload_name_;
     }
 
     // Return the namespace of this OperatorName, if it exists.  The
     // returned string_view is only live as long as the OperatorName
     // exists and name is not mutated
-    std::optional<std::string_view> GetNamespace() const {
+    NODISCARD std::optional<std::string_view> GetNamespace() const {
         auto pos = name_.find("::");
         if (pos == std::string::npos) {
             return std::nullopt;

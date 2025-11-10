@@ -9,6 +9,7 @@
 #include "container/string.h"
 #include "data_type.h"
 #include "error.h"
+#include "type.h"
 #include "type_ptr.h"
 #include "utils/qualified_name.h"
 
@@ -618,6 +619,29 @@ private:
         return "Device";
     }
     friend class Singleton;
+};
+
+class NamedType;
+using NamedTypePtr = std::shared_ptr<NamedType>;
+using ConstNamedTypePtr = std::shared_ptr<const NamedType>;
+class NamedType : public SharedType {
+public:
+    NamedType(TypeKind kind, std::optional<QualifiedName> name) : SharedType(kind), name_(std::move(name)) {
+        CHECK(kind == TypeKind::TupleType || kind == TypeKind::FunctionType ||
+              kind == TypeKind::ClassType || kind == TypeKind::InterfaceType ||
+              kind == TypeKind::EnumType)
+                << "If you add a new kind of NamedType, "
+                   "please update the cast<NamedType> specialization and this assert";
+    }
+
+    // Fully qualified name of type
+    // Looks like: "foo.bar.Baz".
+    const std::optional<QualifiedName>& name() const {
+        return name_;
+    }
+
+private:
+    std::optional<QualifiedName> name_;
 };
 
 inline String toString(const Type& t) {

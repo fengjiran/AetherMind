@@ -37,7 +37,6 @@ bool ListType::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
     return false;
 }
 
-
 TypePtr ListType::Get(const String& identifier, const TypePtr& inner) {
     static std::unordered_map<std::tuple<String, TypePtr>, TypePtr> container_types;
 

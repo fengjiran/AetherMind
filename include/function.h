@@ -76,7 +76,7 @@ class FunctionImpl : public Object {
 public:
     using FCall = std::function<void(const FunctionImpl*, const Any*, int32_t, Any*)>;
 
-    FunctionImpl() : callable_(nullptr), schema_(""), qualified_name_("no_qualified_name") {}
+    FunctionImpl() : callable_(nullptr), qualified_name_("no_qualified_name"), schema_("") {}
 
     explicit FunctionImpl(FCall callable, QualifiedName qualified_name = "no_qualified_name", String schema = "")
         : callable_(std::move(callable)), qualified_name_(std::move(qualified_name)), schema_(std::move(schema)) {}
@@ -120,8 +120,8 @@ public:
 
 private:
     FCall callable_;
-    String schema_;
     QualifiedName qualified_name_;
+    String schema_;
 };
 
 class Function : public ObjectRef {
@@ -239,10 +239,6 @@ public:
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
     TypedFunction(const FLambda& callable, const QualifiedName& qualified_name = "no_qualified_name")
         : packed_func_(Function::FromTyped(callable, qualified_name)) {}
-
-    // template<typename FLambda,
-    //          typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
-    // TypedFunction(const FLambda& callable) : packed_func_(Function::FromTyped(callable)) {}//NOLINT
 
     template<typename FLambda,
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>

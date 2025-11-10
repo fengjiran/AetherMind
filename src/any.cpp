@@ -143,9 +143,6 @@ bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
         return false;
     }
 
-    auto s1 = lhs.type().name();
-    auto s2 = rhs.type().name();
-
     if (lhs.type() != rhs.type()) {
         return false;
     }

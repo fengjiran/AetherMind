@@ -9,10 +9,10 @@
 #include "container/string.h"
 #include "data_type.h"
 #include "error.h"
+#include "function.h"
 #include "type.h"
 #include "type_ptr.h"
 #include "utils/qualified_name.h"
-#include "function.h"
 
 #include <functional>
 
@@ -649,8 +649,35 @@ class FunctionType;
 using FunctionTypePtr = std::shared_ptr<FunctionType>;
 class FunctionType : public NamedType {
 public:
+    bool Equals(const Type& rhs) const override {
+        if (auto func_type = rhs.CastTo<FunctionType>()) {
+            return func_type->function_.get_impl_ptr_unsafe() == function_.get_impl_ptr_unsafe();
+        }
+        return false;
+    }
+
+    String str() const override {
+        return "Function";
+    }
+
+    Function function() const {
+        return function_;
+    }
+
+    static FunctionTypePtr Create(const Function& function) {
+        return FunctionTypePtr(new FunctionType(function));//NOLINT
+    }
+
     static constexpr auto Kind = TypeKind::FunctionType;
+
 private:
+    FunctionType(const Function& function)// NOLINT
+        : NamedType(TypeKind::FunctionType, function.GetQualifiedName()), function_(function) {}
+
+    String AnnotationImpl(const TypePrinter&) const override {
+        return name()->GetQualifiedName();
+    }
+
     Function function_;
 };
 

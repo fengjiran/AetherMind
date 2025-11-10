@@ -36,8 +36,8 @@ public:
         CacheAccessors();
     }
 
-    QualifiedName(const char* name) : QualifiedName(std::string(name)) {}// NOLINT
-    QualifiedName(const String& name) : QualifiedName(std::string(name)) {}
+    QualifiedName(const char* name) : QualifiedName(std::string(name)) {}  // NOLINT
+    QualifiedName(const String& name) : QualifiedName(std::string(name)) {}//NOLINT
 
     explicit QualifiedName(std::vector<std::string> atoms) : atoms_(std::move(atoms)) {
         for (const auto& atom: atoms_) {

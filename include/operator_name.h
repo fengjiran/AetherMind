@@ -14,7 +14,7 @@
 
 namespace aethermind {
 
-class OperatorName {
+class OperatorName final{
 public:
     OperatorName(std::string name, std::string overload_name)
         : name_(std::move(name)), overload_name_(std::move(overload_name)) {}

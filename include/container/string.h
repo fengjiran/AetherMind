@@ -175,6 +175,9 @@ public:
 
 private:
     ObjectPtr<StringImpl> impl_;
+    // union {
+    //     char local_buf[16];
+    // };
 
     /*!
      * \brief Concatenate two char sequences

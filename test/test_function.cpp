@@ -5,6 +5,7 @@
 #include "container/string.h"
 #include "function.h"
 #include "registry.h"
+#include "function_schema.h"
 
 #include <gtest/gtest.h>
 #include <string>

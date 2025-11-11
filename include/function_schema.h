@@ -142,6 +142,15 @@ private:
 };
 
 inline bool operator==(const Argument& lhs, const Argument& rhs) {
+    return lhs.name() == rhs.name() &&
+           *lhs.type() == *rhs.type() &&
+           lhs.N() == rhs.N() &&
+           lhs.default_value() == rhs.default_value() &&
+           lhs.IsKwargOnly() == rhs.IsKwargOnly();
+}
+
+inline bool operator!=(const Argument& lhs, const Argument& rhs) {
+    return !(lhs == rhs);
 }
 
 }// namespace aethermind

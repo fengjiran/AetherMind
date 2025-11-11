@@ -374,7 +374,7 @@ TEST(TensorTypeTest, BasicProperties) {
     EXPECT_TRUE(tensor_type->ndim().has_value());
     EXPECT_EQ(tensor_type->ndim().value(), 3);
     EXPECT_FALSE(tensor_type->undefined().value_or(false));
-    EXPECT_FALSE(tensor_type->is_inferred());
+    EXPECT_FALSE(tensor_type->IsInferredType());
     EXPECT_TRUE(tensor_type->IsComplete());
     EXPECT_EQ(tensor_type->str(), "Tensor");
     EXPECT_EQ(tensor_type->ReprStr(), "Tensor");

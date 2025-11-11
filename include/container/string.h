@@ -174,10 +174,15 @@ public:
     static constexpr size_t npos = static_cast<size_t>(-1);
 
 private:
+    enum {
+        local_capacity = 15
+    };
+
+    union {
+        char local_buf[local_capacity + 1];
+    };
+
     ObjectPtr<StringImpl> impl_;
-    // union {
-    //     char local_buf[16];
-    // };
 
     /*!
      * \brief Concatenate two char sequences

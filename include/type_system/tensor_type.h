@@ -273,7 +273,7 @@ public:
         return undefined_;
     }
 
-    bool is_inferred() const {
+    bool IsInferredType() const {
         return is_inferred_;
     }
 
@@ -296,7 +296,7 @@ public:
     }
 
     String ReprStr() const override {
-        return is_inferred() ? str() + " (inferred)" : str();
+        return IsInferredType() ? str() + " (inferred)" : str();
     }
 
     bool Equals(const Type& rhs) const override;

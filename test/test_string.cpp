@@ -316,6 +316,8 @@ TEST(String, Comparisons) {
     std::string mismatch = "a string but longer";
     String s{"a string"};
     String m{mismatch};
+    auto x = source.size();
+    // source.push_back();
 
     EXPECT_EQ("a str" >= s, false);
     EXPECT_EQ(s == source, true);

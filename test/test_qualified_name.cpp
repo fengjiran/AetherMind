@@ -8,6 +8,12 @@ using namespace aethermind;
 
 namespace {
 
+struct short_str {
+    char local_buf[15];
+    unsigned char size: 7;
+    unsigned char is_long: 1;
+};
+
 // 测试默认构造函数和基本功能
 TEST(QualifiedName, DefaultConstructor) {
     QualifiedName qn;
@@ -15,6 +21,8 @@ TEST(QualifiedName, DefaultConstructor) {
     EXPECT_TRUE(qn.GetName().empty());
     EXPECT_TRUE(qn.GetPrefix().empty());
     EXPECT_TRUE(qn.GetQualifiedName().empty());
+
+    short_str t{"test", 127, 0};
 }
 
 // 测试字符串构造函数 - 简单名称

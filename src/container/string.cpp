@@ -287,23 +287,29 @@ void String::swap(String& other) noexcept {
             } else if (!other.empty()) {
                 InitLocalBuffer();
                 std::memcpy(local_buffer_, other.local_buffer_, other.size() + 1);
-                std::swap(size_, other.size_);
             } else if (!empty()) {
                 other.InitLocalBuffer();
                 std::memcpy(other.local_buffer_, local_buffer_, size() + 1);
-                std::swap(size_, other.size_);
             }
         } else {
-            //
+            const auto tmp_cap = other.capacity_;
+            other.InitLocalBuffer();
+            std::memcpy(other.local_buffer_, local_buffer_, size() + 1);
+            capacity_ = tmp_cap;
         }
     } else {
         if (other.IsLocal()) {
-            //
+            const auto tmp_cap = capacity_;
+            InitLocalBuffer();
+            std::memcpy(local_buffer_, other.local_buffer_, other.size() + 1);
+            other.capacity_ = tmp_cap;
         } else {
-            //
+            std::swap(capacity_, other.capacity_);
         }
     }
-}
 
+    std::swap(impl_, other.impl_);
+    std::swap(size_, other.size_);
+}
 
 }// namespace string_test

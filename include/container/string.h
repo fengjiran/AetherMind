@@ -326,6 +326,17 @@ private:
 
 class String : public ObjectRef {
 public:
+    using size_type = size_t;
+    using value_type = char;
+    using iterator = value_type*;
+    using const_iterator = const value_type*;
+    using pointer = std::iterator_traits<iterator>::pointer;
+    using const_pointer = std::iterator_traits<const_iterator>::pointer;
+    using reference = std::iterator_traits<iterator>::reference;
+    using const_reference = std::iterator_traits<const_iterator>::reference;
+    using reverse_iterator = std::reverse_iterator<iterator>;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
     String() = default;
 
     String(std::nullopt_t) = delete;// NOLINT
@@ -368,7 +379,7 @@ public:
 
     explicit String(ObjectPtr<StringImpl>);
 
-    String(const String&) = default;
+    String(const String& other);
 
     String(String&&) noexcept = default;
 
@@ -379,6 +390,22 @@ public:
     String& operator=(const std::string&);
 
     String& operator=(const char*);
+
+    NODISCARD iterator begin() noexcept {
+        return data();
+    }
+
+    NODISCARD const_iterator begin() const noexcept {
+        return data();
+    }
+
+    NODISCARD iterator end() noexcept {
+        return data() + size();
+    }
+
+    NODISCARD const_iterator end() const noexcept {
+        return data() + size();
+    }
 
     void swap(String& other) noexcept;
 

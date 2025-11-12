@@ -165,7 +165,7 @@ void String::InitLocalBuffer() noexcept {
 }
 
 bool String::IsLocal() const noexcept {
-    return defined();
+    return !defined();
 }
 
 

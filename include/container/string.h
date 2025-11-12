@@ -305,20 +305,21 @@ using namespace aethermind;
 
 class StringImpl : public Object {
 public:
-    StringImpl();
+    StringImpl() : data_(nullptr) {}
 
-    NODISCARD size_t size() const noexcept;
-
-    NODISCARD size_t capacity() const noexcept;
-
-    NODISCARD const char* data() const noexcept;
+    NODISCARD char* data() const noexcept {
+        return data_;
+    }
 
 private:
-    static ObjectPtr<StringImpl> Create(size_t cap);
+    static ObjectPtr<StringImpl> Create(size_t cap) {
+        auto impl = make_array_object<StringImpl, char>(cap + 1);
+        impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(StringImpl);
+        std::memset(impl->data_, '\0', cap + 1);
+        return impl;
+    }
 
     char* data_;
-    size_t size_;
-    size_t capacity_;
 
     friend class String;
 };
@@ -347,12 +348,7 @@ public:
 
     template<typename Iter>
     String(Iter first, Iter last) {
-        impl_ = StringImpl::Create(std::distance(first, last));
-        size_t i = 0;
-        for (auto it = first; it != last; ++it) {
-            impl_->data_[i++] = *it;
-            ++impl_->size_;
-        }
+        Construct<>(first, last);
     }
 
     String(std::initializer_list<char> list);
@@ -383,7 +379,13 @@ public:
 
     void swap(String& other) noexcept;
 
-    NODISCARD const char* data() const noexcept;
+    NODISCARD const char* data() const noexcept {
+        return IsLocal() ? local_buffer_ : impl_->data();
+    }
+
+    NODISCARD char* data() noexcept {
+        return IsLocal() ? local_buffer_ : impl_->data();
+    }
 
     NODISCARD const char* c_str() const noexcept;
 
@@ -480,9 +482,50 @@ private:
     size_t size_;
     ObjectPtr<StringImpl> impl_;
 
-    void InitLocalBuffer() noexcept;
+    void InitLocalBuffer() noexcept {
+        std::memset(local_buffer_, '\0', local_capacity_ + 1);
+    }
 
-    bool IsLocal() const noexcept;
+    bool IsLocal() const noexcept {
+        return !defined();
+    }
+
+    template<typename Iter,
+             typename = std::enable_if_t<std::is_convertible_v<
+                     typename std::iterator_traits<Iter>::iterator_category,
+                     std::forward_iterator_tag>>>
+    void Construct(Iter first, Iter last) {
+        const size_t cap = std::distance(first, last);
+        char* dst = nullptr;
+        if (cap > static_cast<size_t>(local_capacity_)) {
+            impl_ = StringImpl::Create(cap);
+            capacity_ = cap;
+            dst = impl_->data_;
+        } else {
+            InitLocalBuffer();
+            dst = local_buffer_;
+        }
+
+        for (size_t i = 0; i < cap; ++i) {
+            dst[i] = *first++;
+        }
+
+        size_ = cap;
+    }
+
+    void Construct(size_t n, char c) {
+        char* dst = nullptr;
+        if (n > static_cast<size_t>(local_capacity_)) {
+            impl_ = StringImpl::Create(n);
+            capacity_ = n;
+            dst = impl_->data_;
+        } else {
+            InitLocalBuffer();
+            dst = local_buffer_;
+        }
+        std::memset(dst, c, n);
+        size_ = n;
+    }
     /*!
      * \brief Concatenate two char sequences
      *
@@ -503,6 +546,6 @@ private:
     friend String operator+(const char* lhs, const String& rhs);
 };
 
-}
+}// namespace string_test
 
 #endif//AETHERMIND_CONTAINER_STRING_H

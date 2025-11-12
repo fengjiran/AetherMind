@@ -31,7 +31,7 @@ private:
 
 class String : public ObjectRef {
 public:
-    String() = default;
+    String();
     String(std::nullopt_t) = delete;// NOLINT
 
     /*!

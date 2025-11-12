@@ -32,6 +32,10 @@ ObjectPtr<StringImpl> StringImpl::Create(size_t cap) {
     return impl;
 }
 
+String::String() : size_(0) {
+    InitLocalBuffer();
+}
+
 String::String(const char* other, size_t size) {
     if (other == nullptr) {
         if (size > 0) {

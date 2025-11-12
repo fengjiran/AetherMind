@@ -156,6 +156,15 @@ String::operator const char*() const {
     return data();
 }
 
+void String::InitLocalBuffer() noexcept {
+    std::memset(local_buffer_, '\0', local_capacity_ + 1);
+}
+
+bool String::IsLocal() const noexcept {
+    return defined();
+}
+
+
 int String::Compare(const String& other) const {
     return MemoryCompare(data(), size(), other.data(), other.size());
 }

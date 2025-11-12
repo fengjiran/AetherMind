@@ -37,6 +37,9 @@ TEST(StringConstructorFill, BasicFunctionality) {
     String s5(t, 11);
     std::cout << s4 << std::endl;
     std::cout << s5 << std::endl;
+
+    std::string s6;
+    std::cout << s6.capacity();
 }
 
 // 测试边界情况：空字符串

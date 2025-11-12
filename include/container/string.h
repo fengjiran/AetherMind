@@ -175,15 +175,20 @@ public:
 
 private:
     enum {
-        local_capacity = 15
+        local_capacity_ = 15
     };
 
     union {
-        char local_buf[local_capacity + 1];
+        char local_buffer_[local_capacity_ + 1];
+        size_t capacity_;
     };
 
+    size_t size_;
     ObjectPtr<StringImpl> impl_;
 
+    void InitLocalBuffer() noexcept;
+
+    bool IsLocal() const noexcept;
     /*!
      * \brief Concatenate two char sequences
      *
@@ -202,6 +207,24 @@ private:
     friend String operator+(const std::string& lhs, const String& rhs);
     friend String operator+(const String& lhs, const char* rhs);
     friend String operator+(const char* lhs, const String& rhs);
+};
+
+class string_test {
+public:
+    string_test() = default;
+
+private:
+    enum {
+        local_capacity_ = 15
+    };
+
+    union {
+        char local_buf[local_capacity_ + 1];
+        size_t capacity_;
+    };
+
+    ObjectPtr<StringImpl> impl_;
+    size_t size_;
 };
 
 // Overload < operator

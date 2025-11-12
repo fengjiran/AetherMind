@@ -188,7 +188,7 @@ private:
 
     void InitLocalBuffer() noexcept;
 
-    bool IsLocal() const noexcept;
+    NODISCARD bool IsLocal() const noexcept;
     /*!
      * \brief Concatenate two char sequences
      *
@@ -326,7 +326,8 @@ private:
 
 class String : public ObjectRef {
 public:
-    String();
+    String() = default;
+
     String(std::nullopt_t) = delete;// NOLINT
 
     /*!
@@ -342,16 +343,18 @@ public:
      *
      * \param other a char array.
      */
-    String(const char* other);// NOLINT
+    String(const char* other);//NOLINT
 
-    String(size_t size, char c);
+    String(size_t size, char c) {
+        Construct(size, c);
+    }
 
     template<typename Iter>
     String(Iter first, Iter last) {
         Construct<>(first, last);
     }
 
-    String(std::initializer_list<char> list);
+    String(std::initializer_list<char> list) : String(list.begin(), list.end()) {}
 
     /*!
      * \brief Construct a new string object
@@ -389,11 +392,21 @@ public:
 
     NODISCARD const char* c_str() const noexcept;
 
-    NODISCARD bool defined() const noexcept;
+    NODISCARD bool defined() const noexcept {
+        return impl_;
+    }
 
-    NODISCARD size_t size() const noexcept;
+    NODISCARD size_t size() const noexcept {
+        return size_;
+    }
 
-    NODISCARD bool empty() const noexcept;
+    NODISCARD size_t capacity() const noexcept {
+        return IsLocal() ? static_cast<size_t>(local_capacity_) : capacity_;
+    }
+
+    NODISCARD bool empty() const noexcept {
+        return size() == 0;
+    }
 
     NODISCARD char operator[](size_t i) const noexcept;
 
@@ -476,17 +489,17 @@ private:
 
     union {
         char local_buffer_[local_capacity_ + 1];
-        size_t capacity_;
+        size_t capacity_ = 0;
     };
 
-    size_t size_;
+    size_t size_ = 0;
     ObjectPtr<StringImpl> impl_;
 
     void InitLocalBuffer() noexcept {
         std::memset(local_buffer_, '\0', local_capacity_ + 1);
     }
 
-    bool IsLocal() const noexcept {
+    NODISCARD bool IsLocal() const noexcept {
         return !defined();
     }
 
@@ -500,7 +513,7 @@ private:
         if (cap > static_cast<size_t>(local_capacity_)) {
             impl_ = StringImpl::Create(cap);
             capacity_ = cap;
-            dst = impl_->data_;
+            dst = impl_->data();
         } else {
             InitLocalBuffer();
             dst = local_buffer_;
@@ -518,7 +531,7 @@ private:
         if (n > static_cast<size_t>(local_capacity_)) {
             impl_ = StringImpl::Create(n);
             capacity_ = n;
-            dst = impl_->data_;
+            dst = impl_->data();
         } else {
             InitLocalBuffer();
             dst = local_buffer_;

@@ -579,3 +579,13 @@ TEST(String, Any2) {
 }
 
 }// namespace
+
+namespace string_test {
+
+TEST(test_string, t1) {
+    String t1 = "hello world";
+    EXPECT_EQ(t1.size(), 11);
+    EXPECT_EQ(t1.capacity(), 15);
+}
+
+}// namespace

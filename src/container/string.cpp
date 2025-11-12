@@ -249,3 +249,61 @@ std::ostream& operator<<(std::ostream& os, const String& str) {
 
 
 }// namespace aethermind
+
+namespace string_test {
+
+String::String(const char* other, size_t size) {
+    if (other == nullptr) {
+        if (size > 0) {
+            AETHERMIND_THROW(LogicError) << "construction from null is not valid";
+            AETHERMIND_UNREACHABLE();
+        }
+    } else {
+        Construct(other, other + size);
+    }
+}
+
+String::String(const char* other) {
+    if (other == nullptr) {
+        AETHERMIND_THROW(LogicError) << "construction from null is not valid";
+        AETHERMIND_UNREACHABLE();
+    }
+
+    Construct(other, other + std::strlen(other));
+}
+
+void String::swap(String& other) noexcept {
+    if (this == &other) {
+        return;
+    }
+
+    if (IsLocal()) {
+        if (other.IsLocal()) {
+            if (!empty() && !other.empty()) {
+                char tmp[local_capacity_ + 1];
+                std::memcpy(tmp, other.local_buffer_, other.size() + 1);
+                std::memcpy(other.local_buffer_, local_buffer_, size() + 1);
+                std::memcpy(local_buffer_, tmp, other.size() + 1);
+            } else if (!other.empty()) {
+                InitLocalBuffer();
+                std::memcpy(local_buffer_, other.local_buffer_, other.size() + 1);
+                std::swap(size_, other.size_);
+            } else if (!empty()) {
+                other.InitLocalBuffer();
+                std::memcpy(other.local_buffer_, local_buffer_, size() + 1);
+                std::swap(size_, other.size_);
+            }
+        } else {
+            //
+        }
+    } else {
+        if (other.IsLocal()) {
+            //
+        } else {
+            //
+        }
+    }
+}
+
+
+}// namespace string_test

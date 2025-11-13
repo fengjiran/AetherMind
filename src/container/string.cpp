@@ -386,6 +386,18 @@ void String::Construct(size_type n, char c) {
     size_ = n;
 }
 
+String::size_type String::Limit(size_type pos, size_type limit) const noexcept {
+    const bool exceed = size() - pos > limit;
+    return exceed ? limit : size() - pos;
+}
+
+String::size_type String::CheckPos(size_type pos) const {
+    if (pos > size()) {
+        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    }
+    return pos;
+}
+
 
 int String::MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt) {
     if (lhs == rhs && lhs_cnt == rhs_cnt) {

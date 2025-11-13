@@ -529,6 +529,10 @@ private:
         return !defined();
     }
 
+    size_type Limit(size_type pos, size_type limit) const noexcept;
+
+    size_type CheckPos(size_type pos) const;
+
     template<typename Iter,
              typename = std::enable_if_t<std::is_convertible_v<
                      typename std::iterator_traits<Iter>::iterator_category,

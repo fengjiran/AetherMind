@@ -252,7 +252,7 @@ std::ostream& operator<<(std::ostream& os, const String& str) {
 
 namespace string_test {
 
-String::String(const char* other, size_t size) {
+String::String(const char* other, size_type size) {
     if (other == nullptr) {
         if (size > 0) {
             AETHERMIND_THROW(LogicError) << "construction from null is not valid";
@@ -270,6 +270,22 @@ String::String(const char* other) {
     }
 
     Construct(other, other + std::strlen(other));
+}
+
+String::value_type String::at(size_type i) const {
+    if (i < size()) {
+        return data()[i];
+    }
+    AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    AETHERMIND_UNREACHABLE();
+}
+
+String::operator std::string() const {
+    return {data(), size()};
+}
+
+String::operator const char*() const {
+    return data();
 }
 
 void String::swap(String& other) noexcept {
@@ -310,6 +326,76 @@ void String::swap(String& other) noexcept {
 
     std::swap(impl_, other.impl_);
     std::swap(size_, other.size_);
+}
+
+int String::MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt) {
+    if (lhs == rhs && lhs_cnt == rhs_cnt) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < std::min(lhs_cnt, rhs_cnt); ++i) {
+        if (lhs[i] < rhs[i]) {
+            return -1;
+        }
+
+        if (lhs[i] > rhs[i]) {
+            return 1;
+        }
+    }
+
+    if (lhs_cnt < rhs_cnt) {
+        return -1;
+    }
+
+    if (lhs_cnt > rhs_cnt) {
+        return 1;
+    }
+
+    return 0;
+}
+
+bool String::MemoryEqual(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt) {
+    return MemoryCompare(lhs, lhs_cnt, rhs, rhs_cnt) == 0;
+}
+
+int String::Compare(const String& other) const {
+    return MemoryCompare(data(), size(), other.data(), other.size());
+}
+
+int String::Compare(const std::string& other) const {
+    return MemoryCompare(data(), size(), other.data(), other.size());
+}
+
+int String::Compare(const_pointer other) const {
+    return MemoryCompare(data(), size(), other, std::strlen(other));
+}
+
+String String::Concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
+    String res(lhs_cnt + rhs_cnt, '\0');
+    std::memcpy(res.data(), lhs, lhs_cnt);
+    std::memcpy(res.data() + lhs_cnt, rhs, rhs_cnt);
+    return res;
+}
+
+
+String operator+(const String& lhs, const String& rhs) {
+    return String::Concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+
+String operator+(const String& lhs, const std::string& rhs) {
+    return String::Concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+
+String operator+(const std::string& lhs, const String& rhs) {
+    return String::Concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
+}
+
+String operator+(const String& lhs, const char* rhs) {
+    return String::Concat(lhs.data(), lhs.size(), rhs, std::strlen(rhs));
+}
+
+String operator+(const char* lhs, const String& rhs) {
+    return String::Concat(lhs, std::strlen(lhs), rhs.data(), rhs.size());
 }
 
 }// namespace string_test

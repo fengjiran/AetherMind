@@ -577,6 +577,8 @@ private:
 
     void Construct(size_type n, char c);
 
+    void COW(int64_t delta, bool inplace_change);
+
     void SwitchContainer(size_type new_cap);
     /*!
      * \brief Concatenate two char sequences

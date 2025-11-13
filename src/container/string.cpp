@@ -401,6 +401,11 @@ void String::Construct(size_type n, char c) {
     size_ = n;
 }
 
+void String::COW(int64_t delta, bool inplace_change) {
+    //
+}
+
+
 void String::SwitchContainer(size_type new_cap) {
     auto impl = StringImpl::Create(new_cap);
     std::memcpy(impl->data(), data(), size());

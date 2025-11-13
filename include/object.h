@@ -638,7 +638,7 @@ private:
 };
 
 class ObjectRef {
-    ObjectPtr<Object> ptr_;
+    // ObjectPtr<Object> ptr_;
 };
 
 namespace details {

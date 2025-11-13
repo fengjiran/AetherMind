@@ -538,7 +538,6 @@ private:
         char local_buffer_[local_capacity_ + 1];
         size_type capacity_ = 0;
     };
-
     size_type size_ = 0;
     ObjectPtr<StringImpl> impl_;
 

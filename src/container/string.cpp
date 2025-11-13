@@ -272,6 +272,50 @@ String::String(const char* other) {
     Construct(other, other + std::strlen(other));
 }
 
+String::String(size_type size, char c) {
+    Construct(size, c);
+}
+
+String::String(const String& other) : size_(other.size_), impl_(other.impl_) {
+    if (other.IsLocal()) {
+        InitLocalBuffer();
+        std::memcpy(local_buffer_, other.local_buffer_, size_);
+    } else {
+        capacity_ = other.capacity_;
+    }
+}
+
+String::String(String&& other) noexcept : size_(other.size_), impl_(std::move(other.impl_)) {
+    if (IsLocal()) {
+        InitLocalBuffer();
+        std::memcpy(local_buffer_, other.local_buffer_, size_);
+    } else {
+        capacity_ = other.capacity_;
+        other.capacity_ = 0;
+    }
+    other.size_ = 0;
+}
+
+String& String::operator=(const String& other) {
+    String(other).swap(*this);
+    return *this;
+}
+
+String& String::operator=(String&& other) noexcept {
+    String(std::move(other)).swap(*this);
+    return *this;
+}
+
+String& String::operator=(const std::string& other) {
+    String(other).swap(*this);
+    return *this;
+}
+
+String& String::operator=(const char* other) {
+    String(other).swap(*this);
+    return *this;
+}
+
 String::value_type String::at(size_type i) const {
     if (i < size()) {
         return data()[i];
@@ -327,6 +371,21 @@ void String::swap(String& other) noexcept {
     std::swap(impl_, other.impl_);
     std::swap(size_, other.size_);
 }
+
+void String::Construct(size_type n, char c) {
+    char* dst = nullptr;
+    if (n > static_cast<size_type>(local_capacity_)) {
+        impl_ = StringImpl::Create(n);
+        capacity_ = n;
+        dst = impl_->data();
+    } else {
+        InitLocalBuffer();
+        dst = local_buffer_;
+    }
+    std::memset(dst, c, n);
+    size_ = n;
+}
+
 
 int String::MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt) {
     if (lhs == rhs && lhs_cnt == rhs_cnt) {

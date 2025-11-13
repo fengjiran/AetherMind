@@ -7,7 +7,7 @@
 
 #include "object.h"
 
-namespace aethermind_test{
+namespace aethermind_test {
 using namespace aethermind;
 
 class StringImpl : public Object {
@@ -289,12 +289,10 @@ inline bool operator!=(const String& lhs, const char* rhs) { return lhs.Compare(
 inline bool operator!=(const char* lhs, const String& rhs) { return rhs.Compare(lhs) != 0; }
 
 std::ostream& operator<<(std::ostream& os, const String&);
-}// namespace aethermind
+}// namespace aethermind_test
 
 
 namespace aethermind {
-
-// using namespace aethermind;
 
 class StringImpl : public Object {
 public:
@@ -349,9 +347,7 @@ public:
      */
     String(const char* other);//NOLINT
 
-    String(size_type size, char c) {
-        Construct(size, c);
-    }
+    String(size_type size, char c);
 
     template<typename Iter>
     String(Iter first, Iter last) {
@@ -368,47 +364,17 @@ public:
 
     String(std::string_view other) : String(other.begin(), other.end()) {}//NOLINT
 
-    // explicit String(ObjectPtr<StringImpl>);
+    String(const String& other);
 
-    String(const String& other) : size_(other.size_), impl_(other.impl_) {
-        if (other.IsLocal()) {
-            InitLocalBuffer();
-            std::memcpy(local_buffer_, other.local_buffer_, size_);
-        } else {
-            capacity_ = other.capacity_;
-        }
-    }
+    String(String&& other) noexcept;
 
-    String(String&& other) noexcept : size_(other.size_), impl_(std::move(other.impl_)) {
-        if (IsLocal()) {
-            InitLocalBuffer();
-            std::memcpy(local_buffer_, other.local_buffer_, size_);
-        } else {
-            capacity_ = other.capacity_;
-            other.capacity_ = 0;
-        }
-        other.size_ = 0;
-    }
+    String& operator=(const String& other);
 
-    String& operator=(const String& other) {
-        String(other).swap(*this);
-        return *this;
-    }
+    String& operator=(String&& other) noexcept;
 
-    String& operator=(String&& other) noexcept {
-        String(std::move(other)).swap(*this);
-        return *this;
-    }
+    String& operator=(const std::string& other);
 
-    String& operator=(const std::string& other) {
-        String(other).swap(*this);
-        return *this;
-    }
-
-    String& operator=(const char* other) {
-        String(other).swap(*this);
-        return *this;
-    }
+    String& operator=(const char* other);
 
     NODISCARD iterator begin() noexcept {
         return data();
@@ -586,19 +552,7 @@ private:
         size_ = cap;
     }
 
-    void Construct(size_type n, char c) {
-        char* dst = nullptr;
-        if (n > static_cast<size_type>(local_capacity_)) {
-            impl_ = StringImpl::Create(n);
-            capacity_ = n;
-            dst = impl_->data();
-        } else {
-            InitLocalBuffer();
-            dst = local_buffer_;
-        }
-        std::memset(dst, c, n);
-        size_ = n;
-    }
+    void Construct(size_type n, char c);
     /*!
      * \brief Concatenate two char sequences
      *
@@ -623,7 +577,6 @@ inline std::ostream& operator<<(std::ostream& os, const String& str) {
     os.write(str.data(), str.size());
     return os;
 }
-
 
 // Overload < operator
 bool operator<(std::nullptr_t, const String& rhs) = delete;
@@ -685,7 +638,7 @@ inline bool operator!=(const String& lhs, const String& rhs) { return lhs.Compar
 inline bool operator!=(const String& lhs, const char* rhs) { return lhs.Compare(rhs) != 0; }
 inline bool operator!=(const char* lhs, const String& rhs) { return rhs.Compare(lhs) != 0; }
 
-}// namespace string_test
+}// namespace aethermind
 
 namespace std {
 template<>

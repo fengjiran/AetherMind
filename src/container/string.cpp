@@ -331,6 +331,11 @@ String& String::operator=(const char* other) {
     return *this;
 }
 
+void String::push_back(char c) {
+    COW(1);
+    data()[size_++] = c;
+}
+
 String::value_type String::at(size_type i) const {
     if (i < size()) {
         return data()[i];
@@ -402,9 +407,14 @@ void String::Construct(size_type n, char c) {
 }
 
 void String::COW(int64_t delta, bool inplace_change) {
-    //
+    if (delta > 0) {
+        const size_t new_size = static_cast<size_t>(delta) + size();
+        if (new_size > capacity()) {
+            size_t new_cap = std::max(new_size, capacity() * 2);
+            SwitchContainer(new_cap);
+        }
+    }
 }
-
 
 void String::SwitchContainer(size_type new_cap) {
     auto impl = StringImpl::Create(new_cap);

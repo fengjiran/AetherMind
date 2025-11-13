@@ -258,7 +258,7 @@ public:
         return AnyProxy(*this, i);
     }
 
-    const Any& at(int64_t i) const {
+    NODISCARD const Any& at(int64_t i) const {
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }

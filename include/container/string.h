@@ -439,6 +439,8 @@ public:
         size_ = 0;
     }
 
+    void push_back(char c);
+
     NODISCARD static size_type max_size() noexcept;
 
     NODISCARD value_type operator[](size_t i) const noexcept {
@@ -548,9 +550,9 @@ private:
         return !defined();
     }
 
-    size_type Limit(size_type pos, size_type limit) const noexcept;
+    NODISCARD size_type Limit(size_type pos, size_type limit) const noexcept;
 
-    size_type CheckPos(size_type pos) const;
+    NODISCARD size_type CheckPos(size_type pos) const;
 
     template<typename Iter,
              typename = std::enable_if_t<std::is_convertible_v<
@@ -577,7 +579,7 @@ private:
 
     void Construct(size_type n, char c);
 
-    void COW(int64_t delta, bool inplace_change);
+    void COW(int64_t delta, bool inplace_change = false);
 
     void SwitchContainer(size_type new_cap);
     /*!

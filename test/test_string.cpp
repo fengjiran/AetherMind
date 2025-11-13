@@ -577,4 +577,167 @@ TEST(String, Any2) {
     EXPECT_EQ(c.try_cast<std::string>().value(), "long string very long");
 }
 
+// 测试向空字符串添加字符
+TEST(StringPushBack, EmptyString) {
+    String s;
+    EXPECT_TRUE(s.empty());
+
+    s.push_back('a');
+    EXPECT_FALSE(s.empty());
+    EXPECT_EQ(s.size(), 1);
+    EXPECT_STREQ(s.c_str(), "a");
+    EXPECT_EQ(s.use_count(), 1);
+    EXPECT_TRUE(s.unique());
+}
+
+// 测试向非空字符串添加字符（在本地缓冲区容量内）
+TEST(StringPushBack, WithinLocalBuffer) {
+    // 创建一个小于本地缓冲区大小的字符串（local_capacity_ = 15）
+    String s(5, 'x');
+    EXPECT_EQ(s.size(), 5);
+    EXPECT_STREQ(s.c_str(), "xxxxx");
+
+    // 添加一个字符，仍然在本地缓冲区容量内
+    s.push_back('y');
+    EXPECT_EQ(s.size(), 6);
+    EXPECT_STREQ(s.c_str(), "xxxxxy");
+    // EXPECT_TRUE(s.IsLocal());  // 应该仍然使用本地缓冲区
+}
+
+// 测试添加字符达到本地缓冲区容量上限
+TEST(StringPushBack, LocalBufferBoundary) {
+    // 创建一个正好达到本地缓冲区容量的字符串
+    String s(15, 'a');
+    EXPECT_EQ(s.size(), 15);
+    // EXPECT_TRUE(s.IsLocal());  // 确认使用本地缓冲区
+
+    // 添加一个字符，应该仍然可以容纳在本地缓冲区中（包括结束符）
+    s.push_back('b');
+    EXPECT_EQ(s.size(), 16);
+    // 验证字符串内容
+    std::string expected(15, 'a');
+    expected += 'b';
+    EXPECT_EQ(static_cast<std::string>(s), expected);
+    // 注意：此时可能已经切换到动态分配，因为local_capacity_+1=16
+    // 取决于实现细节，可能在添加第16个字符时切换
+}
+
+// 测试添加字符触发从小字符串优化到动态分配的转换
+TEST(StringPushBack, ExceedLocalBuffer) {
+    // 先填充到接近本地缓冲区容量
+    String s(10, 'c');
+    // EXPECT_TRUE(s.IsLocal());
+
+    // 逐个添加字符直到超过本地缓冲区容量
+    for (int i = 0; i < 10; ++i) {
+        s.push_back('d' + i);
+    }
+
+    // 此时字符串长度应该超过本地缓冲区容量
+    EXPECT_EQ(s.size(), 20);
+    // 验证内容正确性
+    std::string expected(10, 'c');
+    for (int i = 0; i < 10; ++i) {
+        expected += 'd' + i;
+    }
+    EXPECT_EQ(static_cast<std::string>(s), expected);
+}
+
+// 测试向动态分配的字符串添加字符
+TEST(StringPushBack, DynamicAllocation) {
+    // 创建一个肯定会动态分配的大字符串
+    String s(100, 'x');
+    // EXPECT_FALSE(s.IsLocal());  // 应该使用动态分配
+
+    // 添加字符到动态分配的字符串
+    s.push_back('y');
+    EXPECT_EQ(s.size(), 101);
+
+    // 验证最后一个字符是'y'
+    EXPECT_EQ(s[s.size() - 1], 'y');
+
+    // 验证前100个字符仍然是'x'
+    for (size_t i = 0; i < 100; ++i) {
+        EXPECT_EQ(s[i], 'x');
+    }
+}
+
+// 测试添加各种类型的字符
+TEST(StringPushBack, VariousCharacters) {
+    String s;
+
+    // 测试小写字母
+    s.push_back('a');
+
+    // 测试大写字母
+    s.push_back('Z');
+
+    // 测试数字
+    s.push_back('9');
+
+    // 测试空格
+    s.push_back(' ');
+
+    // 测试特殊字符
+    s.push_back('!');
+
+    // 测试控制字符
+    s.push_back('\n');
+
+    EXPECT_EQ(s.size(), 6);
+    EXPECT_STREQ(s.c_str(), "aZ9 !\n");
+}
+
+// 测试多次连续调用push_back
+TEST(StringPushBack, MultipleCalls) {
+    String s;
+    const std::string test_str = "Hello, World!";
+
+    // 逐个字符添加
+    for (char c: test_str) {
+        s.push_back(c);
+    }
+
+    EXPECT_EQ(s.size(), test_str.size());
+    EXPECT_STREQ(s.c_str(), test_str.c_str());
+}
+
+// 测试push_back与字符串共享/复制的交互
+TEST(StringPushBack, CopyOnWrite) {
+    // 创建原始字符串
+    String original("shared_string");
+
+    // 创建共享引用
+    String shared = original;
+    EXPECT_EQ(original.use_count(), 2);
+    EXPECT_EQ(shared.use_count(), 2);
+
+    // 对共享字符串进行修改，应该触发复制
+    shared.push_back('!');
+
+    // 验证引用计数分离
+    EXPECT_EQ(original.use_count(), 1);
+    EXPECT_EQ(shared.use_count(), 1);
+
+    // 验证内容正确性
+    EXPECT_STREQ(original.c_str(), "shared_string");
+    EXPECT_STREQ(shared.c_str(), "shared_string!");
+}
+
+// 测试边界情况：大量push_back操作
+TEST(StringPushBack, LargeNumberOfOperations) {
+    String s;
+    const size_t num_chars = 1000;
+
+    for (size_t i = 0; i < num_chars; ++i) {
+        s.push_back(static_cast<char>('a' + (i % 26)));
+    }
+
+    EXPECT_EQ(s.size(), num_chars);
+
+    // 验证字符串内容
+    for (size_t i = 0; i < num_chars; ++i) {
+        EXPECT_EQ(s[i], static_cast<char>('a' + (i % 26)));
+    }
+}
 }// namespace

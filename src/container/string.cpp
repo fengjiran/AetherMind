@@ -296,6 +296,21 @@ String::String(String&& other) noexcept : size_(other.size_), impl_(std::move(ot
     other.size_ = 0;
 }
 
+String::String(const String& other, size_type pos) {
+    const auto* start = other.data() + CheckPos(pos);
+    Construct(start, start + Limit(pos, npos));
+}
+
+String::String(const String& other, size_type pos, size_type n) {
+    const auto* start = other.data() + CheckPos(pos);
+    Construct(start, start + Limit(pos, n));
+}
+
+String::size_type String::max_size() noexcept {
+    return std::min<size_type>(allocator_traits::max_size(allocator_type()),
+                               std::numeric_limits<size_type>::max());
+}
+
 String& String::operator=(const String& other) {
     String(other).swap(*this);
     return *this;
@@ -386,6 +401,13 @@ void String::Construct(size_type n, char c) {
     size_ = n;
 }
 
+void String::SwitchContainer(size_type new_cap) {
+    auto impl = StringImpl::Create(new_cap);
+    std::memcpy(impl->data(), data(), size());
+    impl_ = impl;
+    capacity_ = new_cap;
+}
+
 String::size_type String::Limit(size_type pos, size_type limit) const noexcept {
     const bool exceed = size() - pos > limit;
     return exceed ? limit : size() - pos;
@@ -397,7 +419,6 @@ String::size_type String::CheckPos(size_type pos) const {
     }
     return pos;
 }
-
 
 int String::MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt) {
     if (lhs == rhs && lhs_cnt == rhs_cnt) {

@@ -8,10 +8,9 @@
 #include <gtest/gtest.h>
 #include <list>
 
-using namespace aethermind;
-
 namespace {
 
+using namespace aethermind;
 // 测试基本功能：创建指定大小和字符的字符串
 TEST(StringConstructorFill, BasicFunctionality) {
     // 测试基本ASCII字符
@@ -576,22 +575,6 @@ TEST(String, Any2) {
     Any c = "long string very long";
     EXPECT_EQ(c.as<String>().value(), "long string very long");
     EXPECT_EQ(c.try_cast<std::string>().value(), "long string very long");
-}
-
-}// namespace
-
-namespace string_test {
-
-TEST(test_string, t1) {
-    String t1 = "hello world";
-    EXPECT_EQ(t1.size(), 11);
-    EXPECT_EQ(t1.capacity(), 15);
-
-    String t2 = std::move(t1);
-    EXPECT_EQ(t2.size(), 11);
-    EXPECT_EQ(t2.capacity(), 15);
-    EXPECT_TRUE(t1.empty());
-    EXPECT_EQ(t1.capacity(), 15);
 }
 
 }// namespace

@@ -317,12 +317,17 @@ private:
 
 class String : public ObjectRef {
 public:
-    using size_type = size_t;
-    using value_type = char;
+    using traits_type = std::char_traits<char>;
+    using allocator_type = std::allocator<char>;
+    using allocator_traits = std::allocator_traits<allocator_type>;
+
+    using value_type = traits_type::char_type;
+    using size_type = allocator_traits::size_type;
+    using difference_type = allocator_traits::difference_type;
     using iterator = value_type*;
     using const_iterator = const value_type*;
-    using pointer = std::iterator_traits<iterator>::pointer;
-    using const_pointer = std::iterator_traits<const_iterator>::pointer;
+    using pointer = allocator_traits::pointer;
+    using const_pointer = allocator_traits::const_pointer;
     using reference = std::iterator_traits<iterator>::reference;
     using const_reference = std::iterator_traits<const_iterator>::reference;
     using reverse_iterator = std::reverse_iterator<iterator>;
@@ -367,6 +372,10 @@ public:
     String(const String& other);
 
     String(String&& other) noexcept;
+
+    String(const String& other, size_type pos);
+
+    String(const String& other, size_type pos, size_type n);
 
     String& operator=(const String& other);
 
@@ -414,6 +423,10 @@ public:
         return size_;
     }
 
+    NODISCARD size_type length() const noexcept {
+        return size_;
+    }
+
     NODISCARD size_type capacity() const noexcept {
         return IsLocal() ? static_cast<size_type>(local_capacity_) : capacity_;
     }
@@ -421,6 +434,12 @@ public:
     NODISCARD bool empty() const noexcept {
         return size() == 0;
     }
+
+    void clear() noexcept {
+        size_ = 0;
+    }
+
+    NODISCARD static size_type max_size() noexcept;
 
     NODISCARD value_type operator[](size_t i) const noexcept {
         return data()[i];
@@ -557,6 +576,8 @@ private:
     }
 
     void Construct(size_type n, char c);
+
+    void SwitchContainer(size_type new_cap);
     /*!
      * \brief Concatenate two char sequences
      *

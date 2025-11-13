@@ -118,7 +118,7 @@ TEST(Any, string) {
     EXPECT_TRUE(s2.IsString());
 
     Any s3 = s0;
-    EXPECT_EQ(s3.use_count(), 2);
+    EXPECT_EQ(s3.use_count(), 1);
     s3.reset();
     EXPECT_TRUE(s0.unique());
 

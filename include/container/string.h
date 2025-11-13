@@ -7,7 +7,8 @@
 
 #include "object.h"
 
-namespace aethermind {
+namespace aethermind_test{
+using namespace aethermind;
 
 class StringImpl : public Object {
 public:
@@ -290,18 +291,10 @@ inline bool operator!=(const char* lhs, const String& rhs) { return rhs.Compare(
 std::ostream& operator<<(std::ostream& os, const String&);
 }// namespace aethermind
 
-namespace std {
-template<>
-struct hash<aethermind::String> {
-    std::size_t operator()(const aethermind::String& str) const noexcept {
-        return std::hash<std::string_view>()(std::string_view(str.data(), str.size()));
-    }
-};
-}// namespace std
 
-namespace string_test {
+namespace aethermind {
 
-using namespace aethermind;
+// using namespace aethermind;
 
 class StringImpl : public Object {
 public:
@@ -693,5 +686,14 @@ inline bool operator!=(const String& lhs, const char* rhs) { return lhs.Compare(
 inline bool operator!=(const char* lhs, const String& rhs) { return rhs.Compare(lhs) != 0; }
 
 }// namespace string_test
+
+namespace std {
+template<>
+struct hash<aethermind::String> {
+    std::size_t operator()(const aethermind::String& str) const noexcept {
+        return std::hash<std::string_view>()(std::string_view(str.data(), str.size()));
+    }
+};
+}// namespace std
 
 #endif//AETHERMIND_CONTAINER_STRING_H

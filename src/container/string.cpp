@@ -7,7 +7,7 @@
 #include <cstring>
 #include <utility>
 
-namespace aethermind {
+namespace aethermind_test {
 
 StringImpl::StringImpl() : data_(nullptr), size_(0), capacity_(0) {}
 
@@ -248,9 +248,9 @@ std::ostream& operator<<(std::ostream& os, const String& str) {
 }
 
 
-}// namespace aethermind
+}// namespace aethermind_test
 
-namespace string_test {
+namespace aethermind {
 
 String::String(const char* other, size_type size) {
     if (other == nullptr) {
@@ -398,4 +398,4 @@ String operator+(const char* lhs, const String& rhs) {
     return String::Concat(lhs, std::strlen(lhs), rhs.data(), rhs.size());
 }
 
-}// namespace string_test
+}// namespace aethermind

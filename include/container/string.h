@@ -449,6 +449,8 @@ public:
 
     NODISCARD value_type at(size_t i) const;
 
+    String& append(const_pointer src, size_type n);
+
     NODISCARD uint32_t use_count() const noexcept {
         return IsLocal() ? 1 : impl_.use_count();
     }
@@ -554,6 +556,8 @@ private:
 
     NODISCARD size_type CheckPos(size_type pos) const;
 
+    void CheckSize(size_type delta) const;
+
     template<typename Iter,
              typename = std::enable_if_t<std::is_convertible_v<
                      typename std::iterator_traits<Iter>::iterator_category,
@@ -579,7 +583,7 @@ private:
 
     void Construct(size_type n, char c);
 
-    void COW(int64_t delta, bool inplace_change = false);
+    void COW(int64_t delta);
 
     void SwitchContainer(size_type new_cap);
     /*!

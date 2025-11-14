@@ -333,7 +333,7 @@ String& String::operator=(const char* other) {
 
 void String::push_back(char c) {
     COW(1);
-    data()[size_++] = c;
+    traits_type::assign(data()[size_++], c);
 }
 
 String::value_type String::at(size_type i) const {
@@ -343,6 +343,16 @@ String::value_type String::at(size_type i) const {
     AETHERMIND_THROW(out_of_range) << "String index out of bounds";
     AETHERMIND_UNREACHABLE();
 }
+
+String& String::append(const_pointer src, size_type n) {
+    CHECK(n > 0);
+    CheckSize(n);
+    COW(n);
+    std::memcpy(data() + size_, src, n);
+    size_ += n;
+    return *this;
+}
+
 
 String::operator std::string() const {
     return {data(), size()};
@@ -413,7 +423,7 @@ void String::SwitchContainer(size_type new_cap) {
     capacity_ = new_cap;
 }
 
-void String::COW(int64_t delta, bool inplace_change) {
+void String::COW(int64_t delta) {
     if (delta > 0) {// expand
         const size_type new_size = static_cast<size_t>(delta) + size();
         if (IsLocal()) {
@@ -450,6 +460,12 @@ String::size_type String::CheckPos(size_type pos) const {
         AETHERMIND_THROW(out_of_range) << "String index out of bounds";
     }
     return pos;
+}
+
+void String::CheckSize(size_type delta) const {
+    if (delta > max_size() - size()) {
+        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    }
 }
 
 int String::MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt) {

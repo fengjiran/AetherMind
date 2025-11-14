@@ -454,7 +454,7 @@ public:
     String& append(const String& str, size_type pos, size_type n = npos);
     String& append(const_pointer src);
 
-    String& replace(size_type pos, size_type n1, const_pointer src, size_type n2);
+    String& replace(size_type pos, size_type n1, const_pointer str, size_type n2);
     String& replace(size_type pos, size_type n1, const_pointer src);
     String& replace(size_type pos, size_type n, const String& src);
     String& replace(size_type pos1, size_type n1, const String& src, size_type pos2, size_type n2 = npos);

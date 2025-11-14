@@ -366,7 +366,7 @@ String& String::append(const String& str, size_type pos, size_type n) {
     return append(str.data() + str.CheckPos(pos), str.Limit(pos, n));
 }
 
-String& String::replace(size_type pos, size_type n1, const_pointer src, const size_type n2) {
+String& String::replace(size_type pos, size_type n1, const_pointer str, const size_type n2) {
     if (n2 > max_size() - (size() - n1)) {
         AETHERMIND_THROW(out_of_range) << "String index out of bounds";
     }
@@ -376,20 +376,20 @@ String& String::replace(size_type pos, size_type n1, const_pointer src, const si
     const int64_t delta = n2 - n1;
     COW(delta);
     if (delta > 0) {
-        pointer s = data() + size_;
-        pointer d = s + delta;
+        pointer src = data() + size_;
+        pointer dst = src + delta;
         for (size_type i = 0; i < size_ - pos - n1; ++i) {
-            *--d = *--s;
+            *--dst = *--src;
         }
     } else if (delta < 0) {
-        pointer s = data() + pos + n1;
-        pointer d = s + delta;
+        pointer src = data() + pos + n1;
+        pointer dst = src + delta;
         for (size_type i = 0; i < size_ - pos - n1; ++i) {
-            *d++ = *s++;
+            *dst++ = *src++;
         }
     }
 
-    std::memcpy(data() + pos, src, n2);
+    std::memcpy(data() + pos, str, n2);
     size_ += delta;
     return *this;
 }

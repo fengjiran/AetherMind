@@ -741,4 +741,218 @@ TEST(StringPushBack, LargeNumberOfOperations) {
         EXPECT_EQ(s[i], static_cast<char>('a' + (i % 26)));
     }
 }
+
+// 测试基于位置的 replace 方法 - 基本功能
+TEST(StringReplace, PositionBasedBasic) {
+    // 测试 replace(pos, n1, src, n2)
+    String s1("Hello, world!");
+    s1.replace(7, 5, "C++", 3);
+    EXPECT_EQ(s1.size(), 10);
+    EXPECT_STREQ(s1.c_str(), "Hello, C++!");
+
+    // 测试 replace(pos, n1, src)
+    String s2("Hello, world!");
+    s2.replace(7, 5, "C++");
+    EXPECT_STREQ(s2.c_str(), "Hello, C++!");
+
+    // 测试 replace(pos, n, src)
+    String s3("Hello, world!");
+    s3.replace(7, 5, String("C++"));
+    EXPECT_STREQ(s3.c_str(), "Hello, C++!");
+
+    // 测试 replace(pos, n1, n2, c)
+    String s4("Hello, world!");
+    s4.replace(7, 5, 3, 'X');
+    EXPECT_STREQ(s4.c_str(), "Hello, XXX!");
+}
+
+#ifdef TEST_REPLACE
+// 测试基于位置的 replace 方法 - 子字符串替换
+TEST(StringReplace, PositionBasedSubstring) {
+    // 测试 replace(pos1, n1, src, pos2, n2)
+    String s1("Hello, world!");
+    String src("beautiful code");
+    s1.replace(7, 5, src, 0, 9);// 用 "beautiful" 替换 "world"
+    EXPECT_STREQ(s1.c_str(), "Hello, beautiful!");
+
+    // 测试默认 n2 = npos
+    String s2("Hello, world!");
+    s2.replace(7, 5, src, 10);// 用 "code" 替换 "world"
+    EXPECT_STREQ(s2.c_str(), "Hello, code!");
+}
+
+// 测试基于迭代器的 replace 方法
+TEST(StringReplace, IteratorBased) {
+    String s("Hello, world!");
+
+    // 测试 replace(first, last, src, n)
+    s.replace(s.begin() + 7, s.begin() + 12, "C++", 3);
+    EXPECT_STREQ(s.c_str(), "Hello, C++!");
+
+    // 测试 replace(first, last, src)
+    s.replace(s.begin() + 7, s.begin() + 10, "Java");
+    EXPECT_STREQ(s.c_str(), "Hello, Java!");
+
+    // 测试 replace(first, last, String&)
+    s.replace(s.begin() + 7, s.begin() + 11, String("Python"));
+    EXPECT_STREQ(s.c_str(), "Hello, Python!");
+
+    // 测试 replace(first, last, n, c)
+    s.replace(s.begin() + 7, s.begin() + 13, 2, 'X');
+    EXPECT_STREQ(s.c_str(), "Hello, XX!");
+}
+
+// 测试模板迭代器版本的 replace 方法
+TEST(StringReplace, TemplateIteratorVersion) {
+    String s("Hello, world!");
+
+    // 使用 std::vector 迭代器
+    std::vector<char> vec = {'C', '+', '+'};
+    s.replace(s.begin() + 7, s.begin() + 12, vec.begin(), vec.end());
+    EXPECT_STREQ(s.c_str(), "Hello, C++!");
+
+    // 使用 std::list 迭代器
+    std::list<char> lst = {'J', 'a', 'v', 'a'};
+    s.replace(s.begin() + 7, s.begin() + 10, lst.begin(), lst.end());
+    EXPECT_STREQ(s.c_str(), "Hello, Java!");
+
+    // 使用 std::array 迭代器
+    std::array<char, 6> arr = {'P', 'y', 't', 'h', 'o', 'n'};
+    s.replace(s.begin() + 7, s.begin() + 11, arr.begin(), arr.end());
+    EXPECT_STREQ(s.c_str(), "Hello, Python!");
+
+    // 使用原始指针迭代器
+    const char* c_str = "Ruby";
+    s.replace(s.begin() + 7, s.begin() + 13, c_str, c_str + 4);
+    EXPECT_STREQ(s.c_str(), "Hello, Ruby!");
+}
+
+// 测试初始化列表版本的 replace 方法
+TEST(StringReplace, InitializerListVersion) {
+    String s("Hello, world!");
+
+    // 使用初始化列表替换
+    s.replace(s.begin() + 7, s.begin() + 12, {'C', '+', '+'});
+    EXPECT_STREQ(s.c_str(), "Hello, C++!");
+
+    // 使用初始化列表替换为空字符串
+    s.replace(s.begin() + 7, s.begin() + 10, {});
+    EXPECT_STREQ(s.c_str(), "Hello, !");
+}
+
+// 测试边界情况 - 空替换
+TEST(StringReplace, EdgeCaseEmptyReplace) {
+    String s("Hello, world!");
+
+    // 替换为空字符串
+    s.replace(7, 5, "", 0);
+    EXPECT_STREQ(s.c_str(), "Hello, !");
+    EXPECT_EQ(s.size(), 7);
+
+    // 空范围替换（不改变字符串）
+    s.replace(5, 0, "extra", 5);
+    EXPECT_STREQ(s.c_str(), "Helloextra, !");
+    EXPECT_EQ(s.size(), 12);
+}
+
+// 测试边界情况 - 替换整个字符串
+TEST(StringReplace, EdgeCaseReplaceWholeString) {
+    String s("Hello, world!");
+
+    // 替换整个字符串
+    s.replace(0, s.size(), "New string");
+    EXPECT_STREQ(s.c_str(), "New string");
+    EXPECT_EQ(s.size(), 10);
+
+    // 使用迭代器替换整个字符串
+    s.replace(s.begin(), s.end(), {'E', 'n', 't', 'i', 'r', 'e'});
+    EXPECT_STREQ(s.c_str(), "Entire");
+    EXPECT_EQ(s.size(), 6);
+}
+
+// 测试边界情况 - 长度变化
+TEST(StringReplace, EdgeCaseLengthVariation) {
+    String s("abcdef");
+
+    // 替换为更短的内容
+    s.replace(2, 3, "x");
+    EXPECT_STREQ(s.c_str(), "abx f");// 注意：f 前有空格，因为我们替换了 'cde' 为 'x'
+    EXPECT_EQ(s.size(), 4);
+
+    // 替换为更长的内容
+    s.replace(1, 1, "long text");
+    EXPECT_STREQ(s.c_str(), "along textx f");
+    EXPECT_EQ(s.size(), 12);
+}
+
+// 测试特殊字符处理
+TEST(StringReplace, SpecialCharacters) {
+    String s("Hello\tworld\n");
+
+    // 替换包含控制字符的部分
+    s.replace(5, 6, "user\r", 5);
+    EXPECT_STREQ(s.c_str(), "Hellouser\r\n");
+    EXPECT_EQ(s[5], 'u');
+    EXPECT_EQ(s[9], '\r');
+
+    // 替换为空字符
+    s.replace(5, 5, "\0\0", 2);
+    EXPECT_EQ(s.size(), 7);
+    EXPECT_EQ(s[5], '\0');
+    EXPECT_EQ(s[6], '\n');
+
+    // 使用迭代器替换控制字符
+    std::vector<char> special = {'\t', '\n', '\r'};
+    s.replace(s.begin() + 5, s.end(), special.begin(), special.end());
+    EXPECT_EQ(s.size(), 8);
+    EXPECT_EQ(s[5], '\t');
+    EXPECT_EQ(s[6], '\n');
+    EXPECT_EQ(s[7], '\r');
+}
+
+// 测试内存管理和引用计数
+TEST(StringReplace, MemoryManagement) {
+    String original("Hello, world!");
+    String copy = original;
+
+    // 确认共享内存
+    EXPECT_EQ(original.use_count(), 2);
+    EXPECT_EQ(copy.use_count(), 2);
+
+    // 修改其中一个，应该触发写时复制
+    original.replace(7, 5, "C++");
+    EXPECT_EQ(original.use_count(), 1);
+    EXPECT_EQ(copy.use_count(), 1);
+    EXPECT_TRUE(original != copy);
+    EXPECT_STREQ(original.c_str(), "Hello, C++!");
+    EXPECT_STREQ(copy.c_str(), "Hello, world!");
+}
+
+// 测试链式调用
+TEST(StringReplace, ChainedCalls) {
+    String s("Hello, world!");
+
+    // 链式调用多个 replace
+    s.replace(0, 5, "Hi")
+            .replace(3, 1, ",")
+            .replace(4, 6, "there");
+
+    EXPECT_STREQ(s.c_str(), "Hi, there!");
+    EXPECT_EQ(s.size(), 10);
+}
+
+// 测试异常处理
+TEST(StringReplace, ExceptionHandling) {
+    String s("Hello, world!");
+
+    // 越界位置应该抛出异常
+    EXPECT_THROW(s.replace(20, 5, "error"), std::exception);
+
+    // 迭代器越界应该触发断言失败
+    // 注意：由于使用了 CHECK 宏，这里可能无法捕获为异常，而是导致程序终止
+    // 此处不直接测试 CHECK 断言，因为它通常会导致程序终止
+}
+#endif
+
+
 }// namespace

@@ -747,39 +747,41 @@ TEST(StringReplace, PositionBasedBasic) {
     // 测试 replace(pos, n1, src, n2)
     String s1("Hello, world!");
     s1.replace(7, 5, "C++", 3);
-    EXPECT_EQ(s1.size(), 10);
-    EXPECT_STREQ(s1.c_str(), "Hello, C++!");
+    EXPECT_EQ(s1.size(), 11);
+    EXPECT_TRUE(s1 == "Hello, C++!");
 
     // 测试 replace(pos, n1, src)
     String s2("Hello, world!");
     s2.replace(7, 5, "C++");
-    EXPECT_STREQ(s2.c_str(), "Hello, C++!");
+    EXPECT_TRUE(s2 == "Hello, C++!");
 
     // 测试 replace(pos, n, src)
     String s3("Hello, world!");
     s3.replace(7, 5, String("C++"));
-    EXPECT_STREQ(s3.c_str(), "Hello, C++!");
+    EXPECT_TRUE(s3 == "Hello, C++!");
 
     // 测试 replace(pos, n1, n2, c)
     String s4("Hello, world!");
     s4.replace(7, 5, 3, 'X');
-    EXPECT_STREQ(s4.c_str(), "Hello, XXX!");
+    EXPECT_TRUE(s4 == "Hello, XXX!");
 }
 
-#ifdef TEST_REPLACE
 // 测试基于位置的 replace 方法 - 子字符串替换
 TEST(StringReplace, PositionBasedSubstring) {
     // 测试 replace(pos1, n1, src, pos2, n2)
     String s1("Hello, world!");
     String src("beautiful code");
     s1.replace(7, 5, src, 0, 9);// 用 "beautiful" 替换 "world"
-    EXPECT_STREQ(s1.c_str(), "Hello, beautiful!");
+    EXPECT_TRUE(s1 == "Hello, beautiful!");
 
     // 测试默认 n2 = npos
     String s2("Hello, world!");
     s2.replace(7, 5, src, 10);// 用 "code" 替换 "world"
-    EXPECT_STREQ(s2.c_str(), "Hello, code!");
+    EXPECT_TRUE(s2 == "Hello, code!");
 }
+
+#ifdef TEST_REPLACE
+
 
 // 测试基于迭代器的 replace 方法
 TEST(StringReplace, IteratorBased) {

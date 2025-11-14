@@ -403,7 +403,7 @@ String& String::replace(size_type pos, size_type n, const String& src) {
 }
 
 String& String::replace(size_type pos1, size_type n1, const String& src, size_type pos2, size_type n2) {
-    return replace(pos1, n1, src.data() + CheckPos(pos2), Limit(pos2, n2));
+    return replace(pos1, n1, src.data() + src.CheckPos(pos2), src.Limit(pos2, n2));
 }
 
 String& String::replace(size_type pos, size_type n1, size_type n2, value_type c) {
@@ -563,7 +563,7 @@ void String::COW(int64_t delta) {
 }
 
 String::size_type String::Limit(size_type pos, size_type limit) const noexcept {
-    const bool exceed = size() - pos > limit;
+    const bool exceed = limit < size() - pos;
     return exceed ? limit : size() - pos;
 }
 

@@ -450,6 +450,30 @@ public:
     NODISCARD value_type at(size_t i) const;
 
     String& append(const_pointer src, size_type n);
+    String& append(const String& str);
+    String& append(const String& str, size_type pos, size_type n = npos);
+    String& append(const_pointer src);
+
+    String& replace(size_type pos, size_type n1, const_pointer src, size_type n2);
+    String& replace(size_type pos, size_type n1, const_pointer src);
+    String& replace(size_type pos, size_type n, const String& src);
+    String& replace(size_type pos1, size_type n1, const String& src, size_type pos2, size_type n2 = npos);
+    String& replace(size_type pos, size_type n1, size_type n2, value_type c);
+    String& replace(const_iterator first, const_iterator last, const_pointer src, size_type n);
+    String& replace(const_iterator first, const_iterator last, const String& src);
+    String& replace(const_iterator first, const_iterator last, const_pointer src);
+    String& replace(const_iterator first, const_iterator last, size_type n, value_type c);
+
+    template<typename Iter>
+    String& replace(const_iterator first, const_iterator last, Iter k1, Iter k2) {
+        CHECK(first >= begin() && first <= last && last <= end());
+        String src(k1, k2);
+        return replace(first - begin(), last - first, src.data(), src.size());
+    }
+
+    String& replace(const_iterator first, const_iterator last, pointer k1, pointer k2);
+    String& replace(const_iterator first, const_iterator last, const_pointer k1, const_pointer k2);
+    String& replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l);
 
     NODISCARD uint32_t use_count() const noexcept {
         return IsLocal() ? 1 : impl_.use_count();

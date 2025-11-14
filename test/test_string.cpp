@@ -691,7 +691,7 @@ TEST(StringPushBack, VariousCharacters) {
 // 测试多次连续调用push_back
 TEST(StringPushBack, MultipleCalls) {
     String s;
-    const std::string test_str = "Hello, World!";
+    std::string test_str = "Hello, World!";
 
     // 逐个字符添加
     for (char c: test_str) {
@@ -700,7 +700,7 @@ TEST(StringPushBack, MultipleCalls) {
 
     EXPECT_EQ(s.size(), test_str.size());
     EXPECT_TRUE(s == test_str);
-    // EXPECT_STREQ(s.c_str(), test_str.c_str());
+    // test_str.replace()
 }
 
 // 测试push_back与字符串共享/复制的交互

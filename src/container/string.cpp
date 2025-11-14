@@ -353,6 +353,118 @@ String& String::append(const_pointer src, size_type n) {
     return *this;
 }
 
+String& String::append(const_pointer src) {
+    size_type n = traits_type::length(src);
+    return append(src, n);
+}
+
+String& String::append(const String& str) {
+    return append(str.data(), str.size());
+}
+
+String& String::append(const String& str, size_type pos, size_type n) {
+    return append(str.data() + str.CheckPos(pos), str.Limit(pos, n));
+}
+
+String& String::replace(size_type pos, size_type n1, const_pointer src, const size_type n2) {
+    if (n2 > max_size() - (size() - n1)) {
+        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    }
+
+    pos = CheckPos(pos);
+    n1 = Limit(pos, n1);
+    const int64_t delta = n2 - n1;
+    COW(delta);
+    if (delta > 0) {
+        pointer s = data() + size_;
+        pointer d = s + delta;
+        for (size_type i = 0; i < size_ - pos - n1; ++i) {
+            *--d = *--s;
+        }
+    } else if (delta < 0) {
+        pointer s = data() + pos + n1;
+        pointer d = s + delta;
+        for (size_type i = 0; i < size_ - pos - n1; ++i) {
+            *d++ = *s++;
+        }
+    }
+
+    std::memcpy(data() + pos, src, n2);
+    size_ += delta;
+    return *this;
+}
+
+String& String::replace(size_type pos, size_type n1, const_pointer src) {
+    return replace(pos, n1, src, traits_type::length(src));
+}
+
+String& String::replace(size_type pos, size_type n, const String& src) {
+    return replace(pos, n, src.data(), src.size());
+}
+
+String& String::replace(size_type pos1, size_type n1, const String& src, size_type pos2, size_type n2) {
+    return replace(pos1, n1, src.data() + CheckPos(pos2), Limit(pos2, n2));
+}
+
+String& String::replace(size_type pos, size_type n1, size_type n2, value_type c) {
+    if (n2 > max_size() - (size() - n1)) {
+        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    }
+
+    pos = CheckPos(pos);
+    n1 = Limit(pos, n1);
+    const int64_t delta = n2 - n1;
+    COW(delta);
+    if (delta > 0) {
+        pointer s = data() + size_;
+        pointer d = s + delta;
+        for (size_type i = 0; i < size_ - pos - n1; ++i) {
+            *--d = *--s;
+        }
+    } else if (delta < 0) {
+        pointer s = data() + pos + n1;
+        pointer d = s + delta;
+        for (size_type i = 0; i < size_ - pos - n1; ++i) {
+            *d++ = *s++;
+        }
+    }
+
+    std::memset(data() + pos, c, n2);
+    size_ += delta;
+    return *this;
+}
+
+String& String::replace(const_iterator first, const_iterator last, const_pointer src, size_type n) {
+    CHECK(first >= begin() && first <= last && last <= end());
+    return replace(first - begin(), last - first, src, n);
+}
+
+String& String::replace(const_iterator first, const_iterator last, const String& src) {
+    return replace(first, last, src.data(), src.size());
+}
+
+String& String::replace(const_iterator first, const_iterator last, const_pointer src) {
+    return replace(first, last, src, traits_type::length(src));
+}
+
+String& String::replace(const_iterator first, const_iterator last, size_type n, value_type c) {
+    CHECK(first >= begin() && first <= last && last <= end());
+    return replace(first - begin(), last - first, n, c);
+}
+
+String& String::replace(const_iterator first, const_iterator last, pointer k1, pointer k2) {
+    CHECK(first >= begin() && first <= last && last <= end());
+    return replace(first - begin(), last - first, k1, k2 - k1);
+}
+
+String& String::replace(const_iterator first, const_iterator last, const_pointer k1, const_pointer k2) {
+    CHECK(first >= begin() && first <= last && last <= end());
+    return replace(first - begin(), last - first, k1, k2 - k1);
+}
+
+String& String::replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l) {
+    return replace(first, last, l.begin(), l.size());
+}
 
 String::operator std::string() const {
     return {data(), size()};

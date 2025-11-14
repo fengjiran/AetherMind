@@ -527,7 +527,8 @@ public:
      */
     static bool MemoryEqual(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt);
 
-    static constexpr size_t npos = static_cast<size_t>(-1);
+    static constexpr size_type npos = static_cast<size_type>(-1);
+    static constexpr size_type kIncFactor = 2;
 
 private:
     enum {

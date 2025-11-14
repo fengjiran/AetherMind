@@ -406,21 +406,38 @@ void String::Construct(size_type n, char c) {
     size_ = n;
 }
 
-void String::COW(int64_t delta, bool inplace_change) {
-    if (delta > 0) {
-        const size_t new_size = static_cast<size_t>(delta) + size();
-        if (new_size > capacity()) {
-            size_t new_cap = std::max(new_size, capacity() * 2);
-            SwitchContainer(new_cap);
-        }
-    }
-}
-
 void String::SwitchContainer(size_type new_cap) {
     auto impl = StringImpl::Create(new_cap);
     std::memcpy(impl->data(), data(), size());
     impl_ = impl;
     capacity_ = new_cap;
+}
+
+void String::COW(int64_t delta, bool inplace_change) {
+    if (delta > 0) {// expand
+        const size_type new_size = static_cast<size_t>(delta) + size();
+        if (IsLocal()) {
+            if (new_size > capacity()) {
+                const size_type new_cap = std::max(new_size, capacity() * kIncFactor);
+                SwitchContainer(new_cap);
+            }
+        } else {
+            if (unique()) {
+                if (new_size > capacity()) {
+                    const size_type new_cap = std::max(new_size, capacity() * kIncFactor);
+                    SwitchContainer(new_cap);
+                }
+            } else {
+                const size_type new_cap = new_size > capacity() ? std::max(new_size, capacity() * kIncFactor)
+                                                                : new_size;
+                SwitchContainer(new_cap);
+            }
+        }
+    } else {// inplace or shrink
+        if (!IsLocal() && !unique()) {
+            SwitchContainer(capacity());
+        }
+    }
 }
 
 String::size_type String::Limit(size_type pos, size_type limit) const noexcept {

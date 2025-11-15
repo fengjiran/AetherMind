@@ -345,11 +345,12 @@ String::value_type String::at(size_type i) const {
 }
 
 String& String::append(const_pointer src, size_type n) {
-    CHECK(n > 0);
     CheckSize(n);
-    COW(n);
-    std::memcpy(data() + size_, src, n);
-    size_ += n;
+    if (n > 0) {
+        COW(static_cast<int64_t>(n));
+        std::memcpy(data() + size_, src, n);
+        size_ += n;
+    }
     return *this;
 }
 
@@ -364,6 +365,14 @@ String& String::append(const String& str) {
 
 String& String::append(const String& str, size_type pos, size_type n) {
     return append(str.data() + str.CheckPos(pos), str.Limit(pos, n));
+}
+
+String& String::append(size_type n, value_type c) {
+    return replace(size(), 0, n, c);
+}
+
+String& String::append(std::initializer_list<value_type> l) {
+    return append(l.begin(), l.size());
 }
 
 String& String::replace(size_type pos, size_type n1, const_pointer str, const size_type n2) {

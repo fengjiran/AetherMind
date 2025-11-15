@@ -953,6 +953,251 @@ TEST(StringReplace, ExceptionHandling) {
     // 此处不直接测试 CHECK 断言，因为它通常会导致程序终止
 }
 
+// 测试 append(const_pointer src, size_type n)
+TEST(StringAppend, AppendPointerAndCount) {
+    // 测试向空字符串追加
+    String s1;
+    s1.append("hello", 5);
+    EXPECT_EQ(s1.size(), 5);
+    EXPECT_TRUE(s1 == "hello");
+
+    // 测试向非空字符串追加
+    String s2("world");
+    s2.append("!", 1);
+    EXPECT_EQ(s2.size(), 6);
+    EXPECT_TRUE(s2 == "world!");
+
+    // 测试追加空字符串
+    String s3("test");
+    s3.append("", 0);
+    EXPECT_EQ(s3.size(), 4);
+    EXPECT_TRUE(s3 == "test");
+
+    // 测试追加包含空字符的字符串
+    const char mixed[] = "abc\0def";
+    String s4("prefix");
+    s4.append(mixed, 7);// 包括空字符在内的7个字符
+    EXPECT_EQ(s4.size(), 13);
+    EXPECT_EQ(s4[6], 'a');// 验证空字符被正确添加
+
+    // 测试追加大量字符
+    const size_t large_size = 1000;
+    std::string large_str(large_size, 'x');
+    String s5("start");
+    s5.append(large_str.data(), large_size);
+    EXPECT_EQ(s5.size(), 5 + large_size);
+    // EXPECT_TRUE(s5.starts_with("start"));
+}
+
+// 测试 append(const String& str)
+TEST(StringAppend, AppendString) {
+    // 基本追加
+    String s1("Hello");
+    String s2(" World");
+    s1.append(s2);
+    EXPECT_EQ(s1.size(), 11);
+    EXPECT_STREQ(s1, "Hello World");
+
+    // 追加空字符串
+    String s3("test");
+    String empty;
+    s3.append(empty);
+    EXPECT_EQ(s3.size(), 4);
+    EXPECT_STREQ(s3, "test");
+
+    // 自我追加
+    String s4("abc");
+    s4.append(s4);
+    EXPECT_EQ(s4.size(), 6);
+    EXPECT_STREQ(s4, "abcabc");
+
+    // 测试追加共享字符串
+    String original("shared");
+    String shared = original;
+    String target("prefix_");
+    target.append(shared);
+    EXPECT_EQ(target.size(), 7 + 6);
+    EXPECT_STREQ(target, "prefix_shared");
+    EXPECT_EQ(original.use_count(), 1);// 共享引用不应被修改
+}
+
+// 测试 append(const String& str, size_type pos, size_type n = npos)
+TEST(StringAppend, AppendSubstring) {
+    // 基本子字符串追加
+    String s1("Hello");
+    String s2("Beautiful World");
+    s1.append(s2, 10, 5);// 从位置9开始追加5个字符("World")
+    EXPECT_EQ(s1.size(), 5 + 5);
+    EXPECT_STREQ(s1, "HelloWorld");
+
+    // 测试默认参数n=npos
+    String s3("Hi");
+    s3.append(s2, 10);// 从位置10开始追加到末尾
+    EXPECT_STREQ(s3, "HiWorld");
+
+    // 测试pos超出范围（应该抛出异常或安全处理）
+    String s4("test");
+    // 此处应根据实现检查异常行为
+
+    // 测试n大于可用字符数
+    String s5("Start");
+    String s6("End");
+    s5.append(s6, 1, 10);// 请求10个字符，但只有2个可用
+    EXPECT_STREQ(s5, "Startnd");
+
+    // 测试pos为0的情况
+    String s7("Result:");
+    s7.append(s2, 0, 9);
+    EXPECT_STREQ(s7, "Result:Beautiful");
+}
+
+// 测试 append(const_pointer src)
+TEST(StringAppend, AppendCString) {
+    // 基本C字符串追加
+    String s1("Hello");
+    s1.append(", world!");
+    EXPECT_EQ(s1.size(), 13);
+    EXPECT_STREQ(s1, "Hello, world!");
+
+    // 追加空字符串
+    String s2("test");
+    s2.append("");
+    EXPECT_EQ(s2.size(), 4);
+    EXPECT_STREQ(s2, "test");
+
+    // 追加单个字符的C字符串
+    String s3("number ");
+    s3.append("1");
+    EXPECT_STREQ(s3, "number 1");
+
+    // 测试追加长C字符串
+    const char long_str[] = "This is a much longer null-terminated C string for testing append functionality.";
+    String s4("Start: ");
+    s4.append(long_str);
+    // EXPECT_TRUE(s4.ends_with("functionality."));
+}
+
+// 测试 append(size_type n, value_type c)
+TEST(StringAppend, AppendCharNTimes) {
+    // 基本字符重复追加
+    String s1("Hello");
+    s1.append(3, '!');
+    EXPECT_EQ(s1.size(), 5 + 3);
+    EXPECT_STREQ(s1, "Hello!!!");
+
+    // 追加0个字符
+    String s2("test");
+    s2.append(0, 'x');
+    EXPECT_EQ(s2.size(), 4);
+    EXPECT_STREQ(s2, "test");
+
+    // 追加特殊字符
+    String s3("Line");
+    s3.append(2, '\n');
+    s3.append(1, 'E');
+    EXPECT_EQ(s3.size(), 4 + 2 + 1);
+    EXPECT_EQ(s3[4], '\n');
+    EXPECT_EQ(s3[5], '\n');
+
+    // 测试大量字符追加
+    const size_t large_count = 100;
+    String s4("Repeat:");
+    s4.append(large_count, 'z');
+    EXPECT_EQ(s4.size(), 7 + large_count);
+    for (size_t i = 7; i < s4.size(); ++i) {
+        EXPECT_EQ(s4[i], 'z');
+    }
+}
+
+// 测试 append(std::initializer_list<value_type> l)
+TEST(StringAppend, AppendInitializerList) {
+    // 基本初始化列表追加
+    String s1("Hello");
+    s1.append({' ', 'W', 'o', 'r', 'l', 'd'});
+    EXPECT_EQ(s1.size(), 5 + 6);
+    EXPECT_STREQ(s1, "Hello World");
+
+    // 追加空初始化列表
+    String s2("test");
+    s2.append({});
+    EXPECT_EQ(s2.size(), 4);
+    EXPECT_STREQ(s2, "test");
+
+    // 追加包含特殊字符的初始化列表
+    String s3("Special: ");
+    s3.append({'!', '\t', '?', '\n'});
+    EXPECT_EQ(s3.size(), 9 + 4);
+    EXPECT_EQ(s3[9], '!');
+    EXPECT_EQ(s3[10], '\t');
+    EXPECT_EQ(s3[11], '?');
+    EXPECT_EQ(s3[12], '\n');
+}
+
+// 测试模板方法 append(Iter first, Iter last)
+TEST(StringAppend, AppendIterators) {
+    // 使用vector迭代器
+    std::vector<char> vec = {'W', 'o', 'r', 'l', 'd'};
+    String s1("Hello ");
+    s1.append(vec.begin(), vec.end());
+    EXPECT_EQ(s1.size(), 6 + 5);
+    EXPECT_STREQ(s1, "Hello World");
+
+    // 使用list迭代器
+    std::list<char> lst = {'!', '!', '!'};
+    String s2("Test");
+    s2.append(lst.begin(), lst.end());
+    EXPECT_STREQ(s2, "Test!!!");
+
+    // 使用deque迭代器
+    std::deque<char> deq = {'1', '2', '3'};
+    String s3("Numbers: ");
+    s3.append(deq.begin(), deq.end());
+    EXPECT_STREQ(s3, "Numbers: 123");
+
+    // 使用子范围迭代器
+    std::vector<char> long_vec = {'a', 'b', 'c', 'd', 'e', 'f'};
+    String s4("Part: ");
+    s4.append(long_vec.begin() + 2, long_vec.begin() + 5);// 追加 "cde"
+    EXPECT_STREQ(s4, "Part: cde");
+
+    // 使用空范围迭代器
+    String s5("Empty: ");
+    s5.append(vec.begin(), vec.begin());// 空范围
+    EXPECT_STREQ(s5, "Empty: ");
+}
+
+// 测试append方法链式调用
+TEST(StringAppend, ChainedAppend) {
+    String s;
+    s.append("Hello")
+            .append(1, ' ')
+            .append("beautiful")
+            .append(1, ' ')
+            .append("world!");
+
+    EXPECT_STREQ(s, "Hello beautiful world!");
+    EXPECT_EQ(s.size(), 22);
+}
+
+// 测试append方法在小字符串优化边界的行为
+TEST(StringAppend, AppendAtLocalBufferBoundary) {
+    // 创建一个接近本地缓冲区大小的字符串（local_capacity_ = 15）
+    String s(12, 'a');// "aaaaaaaaaaaa"
+    // EXPECT_TRUE(s.IsLocal());
+
+    // 追加刚好填满本地缓冲区的字符
+    s.append(3, 'b');// 现在长度为15
+    // EXPECT_TRUE(s.IsLocal());// 应该仍然使用本地缓冲区
+
+    // 追加一个字符，可能触发动态分配
+    s.append(1, 'c');// 现在长度为16
+    EXPECT_STREQ(s.c_str(), "aaaaaaaaaaaabbbc");
+
+    // 继续追加更多字符
+    s.append("_more");
+    EXPECT_STREQ(s.c_str(), "aaaaaaaaaaaabbbc_more");
+}
+
 #ifdef TEST_REPLACE
 
 

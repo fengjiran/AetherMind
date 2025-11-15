@@ -453,6 +453,15 @@ public:
     String& append(const String& str);
     String& append(const String& str, size_type pos, size_type n = npos);
     String& append(const_pointer src);
+    String& append(size_type n, value_type c);
+    String& append(std::initializer_list<value_type> l);
+    template<typename Iter,
+             typename = std::enable_if_t<std::is_convertible_v<
+                     typename std::iterator_traits<Iter>::iterator_category,
+                     std::forward_iterator_tag>>>
+    String& append(Iter first, Iter last) {
+        return replace(end(), end(), first, last);
+    }
 
     String& replace(size_type pos, size_type n1, const_pointer str, size_type n2);
     String& replace(size_type pos, size_type n1, const_pointer src);

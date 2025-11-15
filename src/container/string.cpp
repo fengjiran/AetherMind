@@ -680,17 +680,33 @@ int String::compare(const String& other) const {
     return MemoryCompare(data(), size(), other.data(), other.size());
 }
 
-int String::compare(size_type pos, size_type n, const String& other) {
+int String::compare(size_type pos, size_type n, const String& other) const {
     return MemoryCompare(data() + CheckPos(pos), Limit(pos, n), other.data(), other.size());
 }
+
+int String::compare(size_type pos1, size_type n1,
+                    const String& other, size_type pos2, size_type n2) const {
+    return MemoryCompare(data() + CheckPos(pos1), Limit(pos1, n1),
+                         other.data() + other.CheckPos(pos2), other.Limit(pos2, n2));
+}
+
 
 int String::compare(const std::string& other) const {
     return MemoryCompare(data(), size(), other.data(), other.size());
 }
 
 int String::compare(const_pointer other) const {
-    return MemoryCompare(data(), size(), other, std::strlen(other));
+    return MemoryCompare(data(), size(), other, traits_type::length(other));
 }
+
+int String::compare(size_type pos, size_type n, const_pointer other) const {
+    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n), other, traits_type::length(other));
+}
+
+int String::compare(size_type pos, size_type n1, const_pointer other, size_type n2) const {
+    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n1), other, n2);
+}
+
 
 String String::Concat(const_pointer lhs, size_t lhs_cnt, const_pointer rhs, size_t rhs_cnt) {
     String res(lhs, lhs_cnt);

@@ -565,8 +565,9 @@ public:
      * before other, positive otherwise.
      */
     NODISCARD int compare(const String& other) const;
-    NODISCARD int compare(size_type pos, size_type n, const String& other);
-    
+    NODISCARD int compare(size_type pos, size_type n, const String& other) const;
+    NODISCARD int compare(size_type pos1, size_type n1,
+                          const String& other, size_type pos2, size_type n2 = npos) const;
 
     /*!
      * \brief Compares this String object to other
@@ -587,6 +588,8 @@ public:
      * before other, positive otherwise.
      */
     NODISCARD int compare(const_pointer other) const;
+    NODISCARD int compare(size_type pos, size_type n, const_pointer other) const;
+    NODISCARD int compare(size_type pos, size_type n1, const_pointer other, size_type n2) const;
 
     /*!
      * \brief Compare two char sequence

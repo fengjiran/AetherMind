@@ -230,7 +230,7 @@ TEST(StringIteratorConstructor, SpecialCharacters) {
     std::string special_chars = "a\tb\nc\r";
     String s1(special_chars.begin(), special_chars.end());
     EXPECT_EQ(s1.size(), special_chars.size());
-    EXPECT_TRUE(s1.Compare(special_chars) == 0);
+    EXPECT_TRUE(s1.compare(special_chars) == 0);
 
     // 包含空字符的范围
     std::string null_char_str = "ab\0cd";
@@ -342,19 +342,19 @@ TEST(String, Comparisons) {
 TEST(String, Compare) {
     // string compare const char*
     String s{"hello"};
-    EXPECT_EQ(s.Compare("hello"), 0);
-    EXPECT_EQ(s.Compare(String("hello")), 0);
+    EXPECT_EQ(s.compare("hello"), 0);
+    EXPECT_EQ(s.compare(String("hello")), 0);
 
-    EXPECT_EQ(s.Compare("hallo"), 1);
-    EXPECT_EQ(s.Compare(String("hallo")), 1);
-    EXPECT_EQ(s.Compare("hfllo"), -1);
-    EXPECT_EQ(s.Compare(String("hfllo")), -1);
+    EXPECT_EQ(s.compare("hallo"), 1);
+    EXPECT_EQ(s.compare(String("hallo")), 1);
+    EXPECT_EQ(s.compare("hfllo"), -1);
+    EXPECT_EQ(s.compare(String("hfllo")), -1);
     // s is longer
-    EXPECT_EQ(s.Compare("hell"), 1);
-    EXPECT_EQ(s.Compare(String("hell")), 1);
+    EXPECT_EQ(s.compare("hell"), 1);
+    EXPECT_EQ(s.compare(String("hell")), 1);
     // s is shorter
-    EXPECT_EQ(s.Compare("hello world"), -1);
-    EXPECT_EQ(s.Compare(String("helloworld")), -1);
+    EXPECT_EQ(s.compare("hello world"), -1);
+    EXPECT_EQ(s.compare(String("helloworld")), -1);
 }
 
 // Check '\0' handling
@@ -366,7 +366,7 @@ TEST(String, null_byte_handling) {
     EXPECT_EQ(v1[5], '\0');
     EXPECT_EQ(v1.size(), v1_size);
     String str_v1{v1};
-    EXPECT_EQ(str_v1.Compare(v1), 0);
+    EXPECT_EQ(str_v1.compare(v1), 0);
     EXPECT_EQ(str_v1.size(), v1_size);
 
     // Ensure bytes after '\0' are taken into account for mismatches.
@@ -376,7 +376,7 @@ TEST(String, null_byte_handling) {
     v3[3] = '\0';
     String str_v2{v2};
     String str_v3{v3};
-    EXPECT_EQ(str_v2.Compare(str_v3), -1);
+    EXPECT_EQ(str_v2.compare(str_v3), -1);
     EXPECT_EQ(str_v2.size(), 7);
     // strcmp won't be able to detect the mismatch
     EXPECT_EQ(strcmp(v2.data(), v3.data()), 0);
@@ -390,7 +390,7 @@ TEST(String, null_byte_handling) {
     v5[3] = '\0';
     String str_v4{v4};
     String str_v5{v5};
-    EXPECT_GT(str_v4.Compare(str_v5), 0);
+    EXPECT_GT(str_v4.compare(str_v5), 0);
     EXPECT_EQ(str_v4.size(), 7);
     // strcmp is able to detect the mismatch
     EXPECT_GT(strcmp(v4.data(), v5.data()), 0);
@@ -402,11 +402,11 @@ TEST(String, compare_same_memory_region_different_size) {
     std::string source = "a string";
     String str_source{source};
     char* memory = const_cast<char*>(str_source.data());
-    EXPECT_EQ(str_source.Compare(memory), 0);
+    EXPECT_EQ(str_source.compare(memory), 0);
     // This changes the string size
     memory[2] = '\0';
     // memory is logically shorter now
-    EXPECT_GT(str_source.Compare(memory), 0);
+    EXPECT_GT(str_source.compare(memory), 0);
 }
 
 TEST(String, compare) {
@@ -424,54 +424,54 @@ TEST(String, compare) {
     String str_mismatch4{mismatch4};
 
     // compare with string
-    EXPECT_EQ(str_source.Compare(source), 0);
+    EXPECT_EQ(str_source.compare(source), 0);
     EXPECT_TRUE(str_source == source);
     EXPECT_TRUE(source == str_source);
     EXPECT_TRUE(str_source <= source);
     EXPECT_TRUE(source <= str_source);
     EXPECT_TRUE(str_source >= source);
     EXPECT_TRUE(source >= str_source);
-    EXPECT_LT(str_source.Compare(mismatch1), 0);
+    EXPECT_LT(str_source.compare(mismatch1), 0);
     EXPECT_TRUE(str_source < mismatch1);
     EXPECT_TRUE(mismatch1 != str_source);
-    EXPECT_GT(str_source.Compare(mismatch2), 0);
+    EXPECT_GT(str_source.compare(mismatch2), 0);
     EXPECT_TRUE(str_source > mismatch2);
     EXPECT_TRUE(mismatch2 < str_source);
-    EXPECT_GT(str_source.Compare(mismatch3), 0);
+    EXPECT_GT(str_source.compare(mismatch3), 0);
     EXPECT_TRUE(str_source > mismatch3);
-    EXPECT_LT(str_source.Compare(mismatch4), 0);
+    EXPECT_LT(str_source.compare(mismatch4), 0);
     EXPECT_TRUE(str_source < mismatch4);
     EXPECT_TRUE(mismatch4 > str_source);
 
     // compare with char*
-    EXPECT_EQ(str_source.Compare(source.data()), 0);
+    EXPECT_EQ(str_source.compare(source.data()), 0);
     EXPECT_TRUE(str_source == source.data());
     EXPECT_TRUE(source.data() == str_source);
     EXPECT_TRUE(str_source <= source.data());
     EXPECT_TRUE(source <= str_source.data());
     EXPECT_TRUE(str_source >= source.data());
     EXPECT_TRUE(source >= str_source.data());
-    EXPECT_LT(str_source.Compare(mismatch1.data()), 0);
+    EXPECT_LT(str_source.compare(mismatch1.data()), 0);
     EXPECT_TRUE(str_source < mismatch1.data());
     EXPECT_TRUE(str_source != mismatch1.data());
     EXPECT_TRUE(mismatch1.data() != str_source);
-    EXPECT_GT(str_source.Compare(mismatch2.data()), 0);
+    EXPECT_GT(str_source.compare(mismatch2.data()), 0);
     EXPECT_TRUE(str_source > mismatch2.data());
     EXPECT_TRUE(mismatch2.data() < str_source);
-    EXPECT_GT(str_source.Compare(mismatch3.data()), 0);
+    EXPECT_GT(str_source.compare(mismatch3.data()), 0);
     EXPECT_TRUE(str_source > mismatch3.data());
-    EXPECT_LT(str_source.Compare(mismatch4.data()), 0);
+    EXPECT_LT(str_source.compare(mismatch4.data()), 0);
     EXPECT_TRUE(str_source < mismatch4.data());
     EXPECT_TRUE(mismatch4.data() > str_source);
 
     // compare with String
-    EXPECT_LT(str_source.Compare(str_mismatch1), 0);
+    EXPECT_LT(str_source.compare(str_mismatch1), 0);
     EXPECT_TRUE(str_source < str_mismatch1);
-    EXPECT_GT(str_source.Compare(str_mismatch2), 0);
+    EXPECT_GT(str_source.compare(str_mismatch2), 0);
     EXPECT_TRUE(str_source > str_mismatch2);
-    EXPECT_GT(str_source.Compare(str_mismatch3), 0);
+    EXPECT_GT(str_source.compare(str_mismatch3), 0);
     EXPECT_TRUE(str_source > str_mismatch3);
-    EXPECT_LT(str_source.Compare(str_mismatch4), 0);
+    EXPECT_LT(str_source.compare(str_mismatch4), 0);
     EXPECT_TRUE(str_source < str_mismatch4);
 }
 
@@ -514,15 +514,15 @@ TEST(String, Concat) {
     String res4 = s1 + "world";
     String res5 = "world" + s1;
 
-    EXPECT_EQ(res1.Compare("helloworld"), 0);
-    EXPECT_EQ(res2.Compare("helloworld"), 0);
-    EXPECT_EQ(res3.Compare("worldhello"), 0);
-    EXPECT_EQ(res4.Compare("helloworld"), 0);
-    EXPECT_EQ(res5.Compare("worldhello"), 0);
+    EXPECT_EQ(res1.compare("helloworld"), 0);
+    EXPECT_EQ(res2.compare("helloworld"), 0);
+    EXPECT_EQ(res3.compare("worldhello"), 0);
+    EXPECT_EQ(res4.compare("helloworld"), 0);
+    EXPECT_EQ(res5.compare("worldhello"), 0);
 
     String storage_scope;
     String res = "The input storage scope \"" + storage_scope + "\" is invalid.";
-    EXPECT_EQ(res.Compare("The input storage scope \"\" is invalid."), 0);
+    EXPECT_EQ(res.compare("The input storage scope \"\" is invalid."), 0);
 }
 
 TEST(String, StdHash) {

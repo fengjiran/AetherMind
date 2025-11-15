@@ -676,15 +676,19 @@ bool String::MemoryEqual(const_pointer lhs, size_type lhs_cnt, const_pointer rhs
     return MemoryCompare(lhs, lhs_cnt, rhs, rhs_cnt) == 0;
 }
 
-int String::Compare(const String& other) const {
+int String::compare(const String& other) const {
     return MemoryCompare(data(), size(), other.data(), other.size());
 }
 
-int String::Compare(const std::string& other) const {
+int String::compare(size_type pos, size_type n, const String& other) {
+    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n), other.data(), other.size());
+}
+
+int String::compare(const std::string& other) const {
     return MemoryCompare(data(), size(), other.data(), other.size());
 }
 
-int String::Compare(const_pointer other) const {
+int String::compare(const_pointer other) const {
     return MemoryCompare(data(), size(), other, std::strlen(other));
 }
 

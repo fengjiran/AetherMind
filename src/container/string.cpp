@@ -252,50 +252,7 @@ std::ostream& operator<<(std::ostream& os, const String& str) {
 
 namespace aethermind {
 
-// class String::CharProxy {
-// public:
-//     CharProxy(String& str, size_type idx) : str_(str), idx_(idx) {}
-//     CharProxy& operator=(value_type c) {
-//         str_.COW(0);
-//         *(str_.data() + idx_) = c;
-//         return *this;
-//     }
-//
-//     friend bool operator==(const CharProxy& lhs, const CharProxy& rhs) {
-//         return *(lhs.str_.data() + lhs.idx_) == *(rhs.str_.data() + rhs.idx_);
-//     }
-//
-//     friend bool operator!=(const CharProxy& lhs, const CharProxy& rhs) {
-//         return !(lhs == rhs);
-//     }
-//
-//     friend bool operator==(const CharProxy& lhs, value_type rhs) {
-//         return *(lhs.str_.data() + lhs.idx_) == rhs;
-//     }
-//
-//     friend bool operator!=(const CharProxy& lhs, value_type rhs) {
-//         return !(lhs == rhs);
-//     }
-//
-//     friend bool operator==(value_type lhs, const CharProxy& rhs) {
-//         return rhs == lhs;
-//     }
-//
-//     friend bool operator!=(value_type lhs, const CharProxy& rhs) {
-//         return rhs != lhs;
-//     }
-//
-//     friend std::ostream& operator<<(std::ostream& os, const CharProxy& c) {
-//         os << *(c.str_.data() + c.idx_);
-//         return os;
-//     }
-//
-// private:
-//     String& str_;
-//     size_type idx_;
-// };
-
-String::String(const char* other, size_type size) {
+String::String(const_pointer other, size_type size) {
     if (other == nullptr) {
         if (size > 0) {
             AETHERMIND_THROW(LogicError) << "construction from null is not valid";
@@ -306,7 +263,7 @@ String::String(const char* other, size_type size) {
     }
 }
 
-String::String(const char* other) {
+String::String(const_pointer other) {
     if (other == nullptr) {
         AETHERMIND_THROW(LogicError) << "construction from null is not valid";
         AETHERMIND_UNREACHABLE();
@@ -322,7 +279,7 @@ String::String(size_type size, char c) {
 String::String(const String& other) : size_(other.size_), impl_(other.impl_) {
     if (other.IsLocal()) {
         InitLocalBuffer();
-        std::memcpy(local_buffer_, other.local_buffer_, size_);
+        std::memcpy(local_buffer_, other.local_buffer_, other.size_);
     } else {
         capacity_ = other.capacity_;
     }
@@ -340,13 +297,13 @@ String::String(String&& other) noexcept : size_(other.size_), impl_(std::move(ot
 }
 
 String::String(const String& other, size_type pos) {
-    const auto* start = other.data() + CheckPos(pos);
-    Construct(start, start + Limit(pos, npos));
+    const_pointer start = other.data() + other.CheckPos(pos);
+    Construct(start, start + other.Limit(pos, npos));
 }
 
 String::String(const String& other, size_type pos, size_type n) {
-    const auto* start = other.data() + CheckPos(pos);
-    Construct(start, start + Limit(pos, n));
+    const_pointer start = other.data() + other.CheckPos(pos);
+    Construct(start, start + other.Limit(pos, n));
 }
 
 String::size_type String::max_size() noexcept {
@@ -383,8 +340,8 @@ String::const_reference String::operator[](size_type i) const noexcept {
     return data()[i];
 }
 
-String::reference String::operator[](size_type i) noexcept {
-    return data()[i];
+String::CharProxy String::operator[](size_type i) noexcept {
+    return {*this, i};
 }
 
 String::const_reference String::at(size_type i) const {
@@ -395,9 +352,9 @@ String::const_reference String::at(size_type i) const {
     AETHERMIND_UNREACHABLE();
 }
 
-String::reference String::at(size_type i) {
+String::CharProxy String::at(size_type i) {
     if (i < size()) {
-        return data()[i];
+        return {*this, i};
     }
     AETHERMIND_THROW(out_of_range) << "String index out of bounds";
     AETHERMIND_UNREACHABLE();
@@ -421,6 +378,10 @@ String::CharProxy String::back() noexcept {
 String::const_reference String::back() const noexcept {
     CHECK(!empty());
     return operator[](size() - 1);
+}
+
+String String::substr(size_type pos, size_type n) const {
+    return {*this, pos, n};
 }
 
 String& String::append(const_pointer src, size_type n) {
@@ -727,13 +688,11 @@ int String::Compare(const_pointer other) const {
     return MemoryCompare(data(), size(), other, std::strlen(other));
 }
 
-String String::Concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt) {
-    String res(lhs_cnt + rhs_cnt, '\0');
-    std::memcpy(res.data(), lhs, lhs_cnt);
-    std::memcpy(res.data() + lhs_cnt, rhs, rhs_cnt);
+String String::Concat(const_pointer lhs, size_t lhs_cnt, const_pointer rhs, size_t rhs_cnt) {
+    String res(lhs, lhs_cnt);
+    res.append(rhs, rhs_cnt);
     return res;
 }
-
 
 String operator+(const String& lhs, const String& rhs) {
     return String::Concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
@@ -747,12 +706,23 @@ String operator+(const std::string& lhs, const String& rhs) {
     return String::Concat(lhs.data(), lhs.size(), rhs.data(), rhs.size());
 }
 
-String operator+(const String& lhs, const char* rhs) {
+String operator+(const String& lhs, String::const_pointer rhs) {
     return String::Concat(lhs.data(), lhs.size(), rhs, std::strlen(rhs));
 }
 
-String operator+(const char* lhs, const String& rhs) {
+String operator+(String::const_pointer lhs, const String& rhs) {
     return String::Concat(lhs, std::strlen(lhs), rhs.data(), rhs.size());
 }
+
+String operator+(const String& lhs, String::value_type rhs) {
+    String res(lhs);
+    res += rhs;
+    return res;
+}
+
+String operator+(String::value_type lhs, const String& rhs) {
+    return rhs + lhs;
+}
+
 
 }// namespace aethermind

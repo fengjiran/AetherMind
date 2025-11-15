@@ -1195,6 +1195,155 @@ TEST(StringAppend, AppendAtLocalBufferBoundary) {
     EXPECT_STREQ(s.c_str(), "aaaaaaaaaaaabbbc_more");
 }
 
+// 测试operator+=(const String& str)功能
+TEST(StringOperatorPlusEqual, StringAddition) {
+    // 基本功能测试
+    String s1 = "hello";
+    String s2 = " world";
+    s1 += s2;
+    EXPECT_EQ(s1.size(), 11);
+    EXPECT_STREQ(s1, "hello world");
+    EXPECT_FALSE(s1.empty());
+
+    // 空字符串添加
+    String s3 = "test";
+    String s4;
+    s3 += s4;
+    EXPECT_EQ(s3.size(), 4);
+    EXPECT_STREQ(s3, "test");
+
+    // 向空字符串添加
+    String s5;
+    String s6 = "append";
+    s5 += s6;
+    EXPECT_EQ(s5.size(), 6);
+    EXPECT_STREQ(s5, "append");
+
+    // 自我添加
+    String s7 = "loop";
+    s7 += s7;
+    EXPECT_EQ(s7.size(), 8);
+    EXPECT_STREQ(s7, "looploop");
+
+    // 特殊字符测试
+    String s8 = "special: ";
+    String s9 = "!@#$%^&*()";
+    s8 += s9;
+    EXPECT_EQ(s8.size(), 19);
+    EXPECT_STREQ(s8, "special: !@#$%^&*()");
+}
+
+// 测试operator+=(const_pointer str)功能
+TEST(StringOperatorPlusEqual, CStringAddition) {
+    // 基本功能测试
+    String s1 = "hello";
+    const char* s2 = " world";
+    s1 += s2;
+    EXPECT_EQ(s1.size(), 11);
+    EXPECT_STREQ(s1, "hello world");
+
+    // 空字符串添加
+    String s3 = "test";
+    s3 += "";
+    EXPECT_EQ(s3.size(), 4);
+    EXPECT_STREQ(s3, "test");
+
+    // 向空字符串添加
+    String s4;
+    s4 += "append";
+    EXPECT_EQ(s4.size(), 6);
+    EXPECT_STREQ(s4, "append");
+
+    // 特殊字符和转义字符
+    String s5 = "escape: ";
+    s5 += "\\n\\t\\r";
+    EXPECT_EQ(s5.size(), 14);
+    EXPECT_STREQ(s5, "escape: \\n\\t\\r");
+
+    // 长字符串测试
+    const char* long_str = "This is a relatively longer string to test the operator+= functionality with C-style strings";
+    String s6 = "Start: ";
+    s6 += long_str;
+    EXPECT_EQ(s6.size(), 7 + std::strlen(long_str));
+    EXPECT_STREQ(s6, "Start: This is a relatively longer string to test the operator+= functionality with C-style strings");
+}
+
+// 测试operator+=(value_type c)功能
+TEST(StringOperatorPlusEqual, CharAddition) {
+    // 基本功能测试
+    String s1 = "hello";
+    s1 += '!';
+    EXPECT_EQ(s1.size(), 6);
+    EXPECT_STREQ(s1, "hello!");
+
+    // 多次添加字符
+    String s2 = "test";
+    s2 += '1';
+    s2 += '2';
+    s2 += '3';
+    EXPECT_EQ(s2.size(), 7);
+    EXPECT_STREQ(s2, "test123");
+
+    // 向空字符串添加字符
+    String s3;
+    s3 += 'a';
+    EXPECT_EQ(s3.size(), 1);
+    EXPECT_STREQ(s3, "a");
+
+    // 特殊字符测试
+    String s4 = "special: ";
+    s4 += '\n';
+    s4 += '\t';
+    s4 += '\r';
+    EXPECT_EQ(s4.size(), 12);
+    EXPECT_EQ(s4[9], '\n');
+    EXPECT_EQ(s4[10], '\t');
+    EXPECT_EQ(s4[11], '\r');
+}
+
+// 测试operator+=(std::initializer_list<value_type> l)功能
+TEST(StringOperatorPlusEqual, InitializerListAddition) {
+    // 基本功能测试
+    String s1 = "hello";
+    s1 += {' ', 'w', 'o', 'r', 'l', 'd'};
+    EXPECT_EQ(s1.size(), 11);
+    EXPECT_STREQ(s1, "hello world");
+
+    // 空初始化列表
+    String s2 = "test";
+    s2 += {};
+    EXPECT_EQ(s2.size(), 4);
+    EXPECT_STREQ(s2, "test");
+
+    // 向空字符串添加初始化列表
+    String s3;
+    s3 += {'a', 'p', 'p', 'e', 'n', 'd'};
+    EXPECT_EQ(s3.size(), 6);
+    EXPECT_STREQ(s3, "append");
+
+    // 特殊字符测试
+    String s4 = "special: ";
+    s4 += {'!', '@', '#', '$', '%'};
+    EXPECT_EQ(s4.size(), 14);
+    EXPECT_STREQ(s4, "special: !@#$%");// 注意：size()应该是13，因为添加了5个字符
+}
+
+// 测试引用计数和复制时修改
+TEST(StringOperatorPlusEqual, ReferenceCounting) {
+    // 测试写时复制
+    String s1 = "shared";
+    String s2 = s1;// 共享数据
+    EXPECT_TRUE(s1.unique());
+    EXPECT_TRUE(s2.unique());
+
+    // 修改s1应该触发复制
+    s1 += "_modified";
+    EXPECT_TRUE(s1.unique());
+    EXPECT_TRUE(s2.unique());// s2现在应该有自己的副本
+    EXPECT_STREQ(s1.c_str(), "shared_modified");
+    EXPECT_STREQ(s2.c_str(), "shared");
+}
+
 // 测试front()和back()的基本功能
 TEST(StringFrontBack, BasicFunctionality) {
     // 测试单字符字符串
@@ -1306,8 +1455,129 @@ TEST(StringFrontBack, ReferenceCounting) {
     EXPECT_EQ(original.back(), copy.back());
 }
 
+// 测试substr的基本功能
+TEST(StringSubstr, BasicFunctionality) {
+    String s("hello world");
+
+    // 测试从指定位置开始，截取指定长度
+    String sub1 = s.substr(0, 5);
+    EXPECT_EQ(sub1.size(), 5);
+    EXPECT_STREQ(sub1, "hello");
+
+    // 测试从中间位置开始截取
+    String sub2 = s.substr(6, 5);
+    EXPECT_EQ(sub2.size(), 5);
+    EXPECT_STREQ(sub2, "world");
+
+    // 测试截取单个字符
+    String sub3 = s.substr(3, 1);
+    EXPECT_EQ(sub3.size(), 1);
+    EXPECT_STREQ(sub3, "l");
+}
+
+// 测试默认参数
+TEST(StringSubstr, DefaultParameters) {
+    String s("default test");
+
+    // 测试默认n=npos，即截取到字符串末尾
+    String sub1 = s.substr(8);
+    EXPECT_EQ(sub1.size(), 4);
+    EXPECT_STREQ(sub1, "test");
+
+    // 测试默认pos=0，截取整个字符串
+    String sub2 = s.substr();
+    EXPECT_EQ(sub2.size(), 12);
+    EXPECT_STREQ(sub2, "default test");
+
+    // 测试两个默认参数，也应该截取整个字符串
+    String sub3 = s.substr(0);
+    EXPECT_EQ(sub3.size(), 12);
+    EXPECT_STREQ(sub3, "default test");
+}
+
+// 测试边界情况
+TEST(StringSubstr, BoundaryConditions) {
+    String s("boundary");
+    const size_t len = s.size();
+
+    // 测试截取到字符串末尾
+    String sub1 = s.substr(4, 100);// 100超过剩余字符数
+    EXPECT_EQ(sub1.size(), len - 4);
+    EXPECT_STREQ(sub1, "dary");
+
+    // 测试pos等于字符串长度，应该返回空字符串
+    String sub2 = s.substr(len);
+    EXPECT_TRUE(sub2.empty());
+    EXPECT_EQ(sub2.size(), 0);
+    EXPECT_STREQ(sub2, "");
+
+    // 测试n=0，应该返回空字符串
+    String sub3 = s.substr(3, 0);
+    EXPECT_TRUE(sub3.empty());
+    EXPECT_EQ(sub3.size(), 0);
+    EXPECT_STREQ(sub3, "");
+}
+
+// 测试空字符串
+TEST(StringSubstr, EmptyString) {
+    String empty;
+
+    // 测试空字符串从位置0截取，返回空字符串
+    String sub1 = empty.substr();
+    EXPECT_TRUE(sub1.empty());
+    EXPECT_EQ(sub1.size(), 0);
+
+    // 测试空字符串从位置0截取0个字符，返回空字符串
+    String sub2 = empty.substr(0, 0);
+    EXPECT_TRUE(sub2.empty());
+    EXPECT_EQ(sub2.size(), 0);
+}
+
+// 测试异常情况
+TEST(StringSubstr, ExceptionHandling) {
+    String s("exception");
+
+    // 测试pos超出范围，应该抛出异常
+    EXPECT_THROW({ String sub = s.substr(s.size() + 1); }, Error);
+
+    // 测试pos超出范围，即使n=0也应该抛出异常
+    EXPECT_THROW({ String sub = s.substr(s.size() + 1, 0); }, Error);
+}
+
+// 测试特殊字符和多字节字符
+TEST(StringSubstr, SpecialCharacters) {
+    // 测试包含特殊字符的字符串
+    String special("!@#$%^&*()");
+    String sub1 = special.substr(2, 4);
+    EXPECT_EQ(sub1.size(), 4);
+    EXPECT_STREQ(sub1, "#$%^");
+
+    // 测试包含数字和字母混合的字符串
+    String mixed("a1b2c3d4");
+    String sub2 = mixed.substr(1, 6);
+    EXPECT_EQ(sub2.size(), 6);
+    EXPECT_STREQ(sub2, "1b2c3d");
+}
+
+// 测试引用计数和COW行为
+TEST(StringSubstr, ReferenceCounting) {
+    String original("reference test");
+
+    // 截取子字符串
+    String substring = original.substr(4, 4);
+
+    // 验证子字符串是一个独立的对象
+    EXPECT_EQ(substring.use_count(), 1);
+    EXPECT_TRUE(substring.unique());
+
+    // 验证原始字符串没有被修改
+    EXPECT_STREQ(original, "reference test");
+}
+
 #ifdef TEST_REPLACE
 
+
+}// namespace
 
 #endif
 

@@ -6,6 +6,7 @@
 #define AETHERMIND_CONTAINER_STRING_H
 
 #include "object.h"
+#include "string.h"
 
 namespace aethermind_test {
 using namespace aethermind;
@@ -386,14 +387,14 @@ public:
      * \param other a char array.
      * \param size the size of the char array.
      */
-    String(const char* other, size_type size);
+    String(const_pointer other, size_type size);
 
     /*!
      * \brief constructor from raw string
      *
      * \param other a char array.
      */
-    String(const char* other);//NOLINT
+    String(const_pointer other);//NOLINT
 
     String(size_type size, char c);
 
@@ -409,23 +410,15 @@ public:
      * \param other The std::string object to be copied
      */
     String(const std::string& other) : String(other.begin(), other.end()) {}//NOLINT
-
-    String(std::string_view other) : String(other.begin(), other.end()) {}//NOLINT
-
+    String(std::string_view other) : String(other.begin(), other.end()) {}  //NOLINT
     String(const String& other);
-
     String(String&& other) noexcept;
-
     String(const String& other, size_type pos);
-
     String(const String& other, size_type pos, size_type n);
 
     String& operator=(const String& other);
-
     String& operator=(String&& other) noexcept;
-
     String& operator=(const std::string& other);
-
     String& operator=(const char* other);
 
     NODISCARD iterator begin() noexcept {
@@ -487,16 +480,17 @@ public:
     NODISCARD static size_type max_size() noexcept;
 
     const_reference operator[](size_type i) const noexcept;
-    reference operator[](size_type i) noexcept;
+    CharProxy operator[](size_type i) noexcept;
 
     NODISCARD const_reference at(size_type i) const;
-    reference at(size_type i);
+    CharProxy at(size_type i);
 
     CharProxy front() noexcept;
     NODISCARD const_reference front() const noexcept;
     CharProxy back() noexcept;
     NODISCARD const_reference back() const noexcept;
 
+    NODISCARD String substr(size_type pos = 0, size_type n = npos) const;
 
     String& append(const_pointer src, size_type n);
     String& append(const String& str);
@@ -683,14 +677,17 @@ private:
      *
      * \return The concatenated char sequence
      */
-    static String Concat(const char* lhs, size_t lhs_cnt, const char* rhs, size_t rhs_cnt);
+    static String Concat(const_pointer lhs, size_t lhs_cnt, const_pointer rhs, size_t rhs_cnt);
 
     // Overload + operator
     friend String operator+(const String& lhs, const String& rhs);
     friend String operator+(const String& lhs, const std::string& rhs);
+    friend String operator+(const String& lhs, const_pointer rhs);
+    friend String operator+(const String& lhs, value_type rhs);
+
     friend String operator+(const std::string& lhs, const String& rhs);
-    friend String operator+(const String& lhs, const char* rhs);
-    friend String operator+(const char* lhs, const String& rhs);
+    friend String operator+(const_pointer lhs, const String& rhs);
+    friend String operator+(value_type lhs, const String& rhs);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const String& str) {

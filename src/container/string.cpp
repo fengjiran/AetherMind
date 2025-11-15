@@ -252,6 +252,49 @@ std::ostream& operator<<(std::ostream& os, const String& str) {
 
 namespace aethermind {
 
+// class String::CharProxy {
+// public:
+//     CharProxy(String& str, size_type idx) : str_(str), idx_(idx) {}
+//     CharProxy& operator=(value_type c) {
+//         str_.COW(0);
+//         *(str_.data() + idx_) = c;
+//         return *this;
+//     }
+//
+//     friend bool operator==(const CharProxy& lhs, const CharProxy& rhs) {
+//         return *(lhs.str_.data() + lhs.idx_) == *(rhs.str_.data() + rhs.idx_);
+//     }
+//
+//     friend bool operator!=(const CharProxy& lhs, const CharProxy& rhs) {
+//         return !(lhs == rhs);
+//     }
+//
+//     friend bool operator==(const CharProxy& lhs, value_type rhs) {
+//         return *(lhs.str_.data() + lhs.idx_) == rhs;
+//     }
+//
+//     friend bool operator!=(const CharProxy& lhs, value_type rhs) {
+//         return !(lhs == rhs);
+//     }
+//
+//     friend bool operator==(value_type lhs, const CharProxy& rhs) {
+//         return rhs == lhs;
+//     }
+//
+//     friend bool operator!=(value_type lhs, const CharProxy& rhs) {
+//         return rhs != lhs;
+//     }
+//
+//     friend std::ostream& operator<<(std::ostream& os, const CharProxy& c) {
+//         os << *(c.str_.data() + c.idx_);
+//         return os;
+//     }
+//
+// private:
+//     String& str_;
+//     size_type idx_;
+// };
+
 String::String(const char* other, size_type size) {
     if (other == nullptr) {
         if (size > 0) {
@@ -336,12 +379,48 @@ void String::push_back(char c) {
     traits_type::assign(data()[size_++], c);
 }
 
-String::value_type String::at(size_type i) const {
+String::const_reference String::operator[](size_type i) const noexcept {
+    return data()[i];
+}
+
+String::reference String::operator[](size_type i) noexcept {
+    return data()[i];
+}
+
+String::const_reference String::at(size_type i) const {
     if (i < size()) {
         return data()[i];
     }
     AETHERMIND_THROW(out_of_range) << "String index out of bounds";
     AETHERMIND_UNREACHABLE();
+}
+
+String::reference String::at(size_type i) {
+    if (i < size()) {
+        return data()[i];
+    }
+    AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    AETHERMIND_UNREACHABLE();
+}
+
+String::CharProxy String::front() noexcept {
+    CHECK(!empty());
+    return {*this, 0};
+}
+
+String::const_reference String::front() const noexcept {
+    CHECK(!empty());
+    return operator[](0);
+}
+
+String::CharProxy String::back() noexcept {
+    CHECK(!empty());
+    return {*this, size() - 1};
+}
+
+String::const_reference String::back() const noexcept {
+    CHECK(!empty());
+    return operator[](size() - 1);
 }
 
 String& String::append(const_pointer src, size_type n) {
@@ -372,6 +451,23 @@ String& String::append(size_type n, value_type c) {
 }
 
 String& String::append(std::initializer_list<value_type> l) {
+    return append(l.begin(), l.size());
+}
+
+String& String::operator+=(const String& str) {
+    return append(str);
+}
+
+String& String::operator+=(const_pointer str) {
+    return append(str);
+}
+
+String& String::operator+=(value_type c) {
+    push_back(c);
+    return *this;
+}
+
+String& String::operator+=(std::initializer_list<value_type> l) {
     return append(l.begin(), l.size());
 }
 

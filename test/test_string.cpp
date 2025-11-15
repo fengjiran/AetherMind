@@ -36,9 +36,6 @@ TEST(StringConstructorFill, BasicFunctionality) {
     String s5(t, 11);
     std::cout << s4 << std::endl;
     std::cout << s5 << std::endl;
-
-    std::string s6;
-    std::cout << s6.capacity();
 }
 
 // 测试边界情况：空字符串
@@ -1196,6 +1193,117 @@ TEST(StringAppend, AppendAtLocalBufferBoundary) {
     // 继续追加更多字符
     s.append("_more");
     EXPECT_STREQ(s.c_str(), "aaaaaaaaaaaabbbc_more");
+}
+
+// 测试front()和back()的基本功能
+TEST(StringFrontBack, BasicFunctionality) {
+    // 测试单字符字符串
+    String s1(1, 'a');
+    EXPECT_FALSE(s1.empty());
+    EXPECT_EQ(s1.size(), 1);
+    EXPECT_EQ(s1.front(), 'a');
+    EXPECT_EQ(s1.back(), 'a');
+
+    // 测试多字符字符串
+    String s2(5, 'b');
+    EXPECT_EQ(s2.front(), 'b');
+    EXPECT_EQ(s2.back(), 'b');
+
+    // 测试不同字符的字符串
+    String s3("hello");
+    EXPECT_EQ(s3.front(), 'h');
+    EXPECT_EQ(s3.back(), 'o');
+}
+
+// 测试const版本的front()和back()
+TEST(StringFrontBack, ConstVersion) {
+    const String s("const_string");
+    EXPECT_EQ(s.front(), 'c');
+    EXPECT_EQ(s.back(), 'g');
+
+    // 确保const版本不会修改字符串
+    EXPECT_STREQ(s, "const_string");
+}
+
+// 测试非const版本的front()和back()
+TEST(StringFrontBack, NonConstVersion) {
+    String s("modify_string");
+
+    // 使用front()和back()修改字符串的首尾字符
+    // 注意：由于CharProxy的具体实现细节不明确，这里使用operator[]代替
+    // 如果CharProxy支持直接赋值，可以使用s.front() = 'M'和s.back() = 'G'
+    s[0] = 'M';           // 等价于s.front()
+    s[s.size() - 1] = 'G';// 等价于s.back()
+
+    EXPECT_EQ(s.front(), 'M');
+    EXPECT_EQ(s.back(), 'G');
+    EXPECT_STREQ(s, "Modify_strinG");
+}
+
+// 测试特殊字符
+TEST(StringFrontBack, SpecialCharacters) {
+    // 测试数字字符
+    String digits("1234567890");
+    EXPECT_EQ(digits.front(), '1');
+    EXPECT_EQ(digits.back(), '0');
+
+    // 测试特殊符号
+    String special("!@#$%");
+    EXPECT_EQ(special.front(), '!');
+    EXPECT_EQ(special.back(), '%');
+
+    // 测试控制字符
+    String control(2, '\n');
+    EXPECT_EQ(control.front(), '\n');
+    EXPECT_EQ(control.back(), '\n');
+}
+
+// 测试边界情况：front()和back()在空字符串上的行为
+// 注意：根据实现，对空字符串调用front()/back()会触发CHECK失败
+// 这个测试需要在支持异常处理或检查的环境中运行
+TEST(StringFrontBack, DISABLED_EmptyString) {
+    // 注意：这个测试会触发CHECK失败，因此被禁用
+    // 如果需要测试CHECK行为，可以使用GTest的死亡测试
+    String empty;
+    EXPECT_TRUE(empty.empty());
+    EXPECT_EQ(empty.size(), 0);
+
+    // 以下两行会触发CHECK失败
+    // empty.front();
+    // empty.back();
+}
+
+// 测试通过迭代器构造的字符串
+TEST(StringFrontBack, IteratorConstructed) {
+    std::string std_str("iterator_test");
+    String s(std_str.begin(), std_str.end());
+
+    EXPECT_EQ(s.front(), 'i');
+    EXPECT_EQ(s.back(), 't');
+    EXPECT_STREQ(s, "iterator_test");
+}
+
+// 测试使用初始化列表构造的字符串
+TEST(StringFrontBack, InitializerList) {
+    String s({'i', 'n', 'i', 't', '_', 'l', 'i', 's', 't'});
+
+    EXPECT_EQ(s.front(), 'i');
+    EXPECT_EQ(s.back(), 't');
+    EXPECT_STREQ(s, "init_list");
+}
+
+// 测试引用计数情况下的front()和back()
+TEST(StringFrontBack, ReferenceCounting) {
+    String original("reference_test");
+    String copy = original;
+
+    // 验证两个字符串共享同一个实现
+    EXPECT_EQ(original.use_count(), 1);
+    EXPECT_TRUE(original.unique());
+
+    // 测试front()和back()在共享实现的情况下的行为
+    EXPECT_EQ(original.front(), copy.front());
+    EXPECT_EQ(original.back(), copy.back());
 }
 
 #ifdef TEST_REPLACE

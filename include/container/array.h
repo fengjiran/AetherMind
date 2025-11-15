@@ -233,7 +233,8 @@ public:
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
-        return AnyProxy(*this, 0);
+        // return AnyProxy(*this, 0);
+        return {*this, 0};
     }
 
     NODISCARD const Any& back() const {
@@ -247,7 +248,8 @@ public:
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
-        return AnyProxy(*this, size() - 1);
+        // return AnyProxy(*this, size() - 1);
+        return {*this, size() - 1};
     }
 
     const Any& operator[](int64_t i) const {
@@ -515,7 +517,7 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
 template<typename T>
 class Array<T>::AnyProxy {
 public:
-    AnyProxy(Array& arr, int64_t idx) : arr_(arr), idx_(idx) {}
+    AnyProxy(Array& arr, size_t idx) : arr_(arr), idx_(idx) {}
 
     // template<typename U, typename = std::enable_if_t<std::is_convertible_v<U, T>>>
     // AnyProxy& operator=(U value) {
@@ -560,7 +562,7 @@ public:
 
 private:
     Array& arr_;
-    int64_t idx_;
+    size_t idx_;
 };
 
 template<typename T>

@@ -333,6 +333,49 @@ public:
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
+    class CharProxy {
+    public:
+        CharProxy(String& str, size_type idx) : str_(str), idx_(idx) {}
+        CharProxy& operator=(value_type c) {
+            str_.COW(0);
+            *(str_.data() + idx_) = c;
+            return *this;
+        }
+
+        friend bool operator==(const CharProxy& lhs, const CharProxy& rhs) {
+            return *(lhs.str_.data() + lhs.idx_) == *(rhs.str_.data() + rhs.idx_);
+        }
+
+        friend bool operator!=(const CharProxy& lhs, const CharProxy& rhs) {
+            return !(lhs == rhs);
+        }
+
+        friend bool operator==(const CharProxy& lhs, value_type rhs) {
+            return *(lhs.str_.data() + lhs.idx_) == rhs;
+        }
+
+        friend bool operator!=(const CharProxy& lhs, value_type rhs) {
+            return !(lhs == rhs);
+        }
+
+        friend bool operator==(value_type lhs, const CharProxy& rhs) {
+            return rhs == lhs;
+        }
+
+        friend bool operator!=(value_type lhs, const CharProxy& rhs) {
+            return rhs != lhs;
+        }
+
+        friend std::ostream& operator<<(std::ostream& os, const CharProxy& c) {
+            os << *(c.str_.data() + c.idx_);
+            return os;
+        }
+
+    private:
+        String& str_;
+        size_type idx_;
+    };
+
     String() = default;
 
     String(std::nullopt_t) = delete;// NOLINT
@@ -443,11 +486,17 @@ public:
 
     NODISCARD static size_type max_size() noexcept;
 
-    NODISCARD value_type operator[](size_t i) const noexcept {
-        return data()[i];
-    }
+    const_reference operator[](size_type i) const noexcept;
+    reference operator[](size_type i) noexcept;
 
-    NODISCARD value_type at(size_t i) const;
+    NODISCARD const_reference at(size_type i) const;
+    reference at(size_type i);
+
+    CharProxy front() noexcept;
+    NODISCARD const_reference front() const noexcept;
+    CharProxy back() noexcept;
+    NODISCARD const_reference back() const noexcept;
+
 
     String& append(const_pointer src, size_type n);
     String& append(const String& str);
@@ -462,6 +511,11 @@ public:
     String& append(Iter first, Iter last) {
         return replace(end(), end(), first, last);
     }
+
+    String& operator+=(const String& str);
+    String& operator+=(const_pointer str);
+    String& operator+=(value_type c);
+    String& operator+=(std::initializer_list<value_type> l);
 
     String& replace(size_type pos, size_type n1, const_pointer str, size_type n2);
     String& replace(size_type pos, size_type n1, const_pointer src);

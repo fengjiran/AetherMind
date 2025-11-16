@@ -532,6 +532,8 @@ public:
     String& replace(const_iterator first, const_iterator last, const_pointer k1, const_pointer k2);
     String& replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l);
 
+    iterator insert(const_iterator p, size_type n, value_type c);
+
     NODISCARD uint32_t use_count() const noexcept {
         return IsLocal() ? 1 : impl_.use_count();
     }
@@ -593,18 +595,6 @@ public:
     NODISCARD int compare(const_pointer other) const;
     NODISCARD int compare(size_type pos, size_type n, const_pointer other) const;
     NODISCARD int compare(size_type pos, size_type n1, const_pointer other, size_type n2) const;
-
-    /*!
-     * \brief Compare two char sequence
-     *
-     * \param lhs Pointers to the char array to compare
-     * \param lhs_cnt Length of the char array to compare
-     * \param rhs Pointers to the char array to compare
-     * \param rhs_cnt Length of the char array to compare
-     * \return int zero if both char sequences compare equal. negative if this
-     * appears before other, positive otherwise.
-     */
-    static int MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt);
 
     /*!
      * \brief Compare two char sequence for equality
@@ -672,6 +662,19 @@ private:
     void Construct(size_type n, char c);
     void COW(int64_t delta);
     void SwitchContainer(size_type new_cap);
+
+    /*!
+     * \brief Compare two char sequence
+     *
+     * \param lhs Pointers to the char array to compare
+     * \param lhs_cnt Length of the char array to compare
+     * \param rhs Pointers to the char array to compare
+     * \param rhs_cnt Length of the char array to compare
+     * \return int zero if both char sequences compare equal. negative if this
+     * appears before other, positive otherwise.
+     */
+    static int MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt);
+
     /*!
      * \brief Concatenate two char sequences
      *

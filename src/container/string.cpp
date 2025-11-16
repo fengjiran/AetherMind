@@ -539,6 +539,14 @@ String& String::replace(const_iterator first, const_iterator last, std::initiali
     return replace(first, last, l.begin(), l.size());
 }
 
+String::iterator String::insert(const_iterator p, size_type n, value_type c) {
+    CHECK(p >= begin() && p <= end());
+    const size_type pos = p - begin();
+    replace(p, p, n, c);
+    return iterator(data() + pos);
+}
+
+
 String::operator std::string() const {
     return {data(), size()};
 }

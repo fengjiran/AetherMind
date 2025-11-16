@@ -439,7 +439,8 @@ String& String::operator+=(std::initializer_list<value_type> l) {
     return append_aux(l.begin(), l.size());
 }
 
-String& String::replace(size_type pos, size_type n1, const_pointer str, const size_type n2) {
+String& String::replace(size_type pos, size_type n1, const_pointer str, size_type n2) {
+    // n2 = n2 > traits_type::length(str) ? traits_type::length(str) : n2;
     if (n2 > max_size() - (size() - n1)) {
         AETHERMIND_THROW(out_of_range) << "String index out of bounds";
     }
@@ -447,17 +448,18 @@ String& String::replace(size_type pos, size_type n1, const_pointer str, const si
     pos = CheckPos(pos);
     n1 = Limit(pos, n1);
     const int64_t delta = n2 - n1;
+    const size_type remain = size() - pos - n1;
     COW(delta);
     if (delta > 0) {
         pointer src = data() + size_;
         pointer dst = src + delta;
-        for (size_type i = 0; i < size_ - pos - n1; ++i) {
+        for (size_type i = 0; i < remain; ++i) {
             *--dst = *--src;
         }
     } else if (delta < 0) {
         pointer src = data() + pos + n1;
         pointer dst = src + delta;
-        for (size_type i = 0; i < size_ - pos - n1; ++i) {
+        for (size_type i = 0; i < remain; ++i) {
             *dst++ = *src++;
         }
     }
@@ -487,17 +489,18 @@ String& String::replace(size_type pos, size_type n1, size_type n2, value_type c)
     pos = CheckPos(pos);
     n1 = Limit(pos, n1);
     const int64_t delta = n2 - n1;
+    const size_type remain = size() - pos - n1;
     COW(delta);
     if (delta > 0) {
         pointer s = data() + size_;
         pointer d = s + delta;
-        for (size_type i = 0; i < size_ - pos - n1; ++i) {
+        for (size_type i = 0; i < remain; ++i) {
             *--d = *--s;
         }
     } else if (delta < 0) {
         pointer s = data() + pos + n1;
         pointer d = s + delta;
-        for (size_type i = 0; i < size_ - pos - n1; ++i) {
+        for (size_type i = 0; i < remain; ++i) {
             *d++ = *s++;
         }
     }
@@ -544,6 +547,38 @@ String::iterator String::insert(const_iterator p, size_type n, value_type c) {
     const size_type pos = p - begin();
     replace(p, p, n, c);
     return iterator(data() + pos);
+}
+
+String::iterator String::insert(const_iterator p, std::initializer_list<char> l) {
+    return insert(p, l.begin(), l.end());
+}
+
+String::iterator String::insert(const_iterator p, value_type c) {
+    CHECK(p >= begin() && p <= end());
+    size_type pos = p - begin();
+    replace(pos, 0, 1, c);
+    return iterator(data() + pos);
+}
+
+
+String& String::insert(size_type pos, const String& other) {
+    return replace(pos, 0, other);
+}
+
+String& String::insert(size_type pos1, const String& other, size_type pos2, size_type n) {
+    return replace(pos1, 0, other, other.CheckPos(pos2), other.Limit(pos2, n));
+}
+
+String& String::insert(size_type pos, const_pointer str, size_type n) {
+    return replace(pos, 0, str, n);
+}
+
+String& String::insert(size_type pos, const_pointer str) {
+    return replace(pos, 0, str, traits_type::length(str));
+}
+
+String& String::insert(size_type pos, size_type n, value_type c) {
+    return replace(pos, 0, n, c);
 }
 
 

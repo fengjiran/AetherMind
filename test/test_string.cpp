@@ -30,6 +30,10 @@ TEST(StringConstructorFill, BasicFunctionality) {
     String s3(2, '!');
     EXPECT_EQ(s3.size(), 2);
     EXPECT_STREQ(s3.c_str(), "!!");
+
+    String s4 = "hello";
+    s4.insert(s4.begin() + 2, 3, 'a');
+    EXPECT_TRUE(s4 == "heaaallo");
 }
 
 // 测试边界情况：空字符串

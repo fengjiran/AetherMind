@@ -533,6 +533,21 @@ public:
     String& replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l);
 
     iterator insert(const_iterator p, size_type n, value_type c);
+    template<typename Iter>
+    iterator insert(const_iterator p, Iter first, Iter last) {
+        CHECK(p >= begin() && p <= end());
+        const size_type pos = p - begin();
+        replace(p, p, first, last);
+        return iterator(data() + pos);
+    }
+    iterator insert(const_iterator p, std::initializer_list<char> l);
+    iterator insert(const_iterator p, value_type c);
+    String& insert(size_type pos, const String& other);
+    String& insert(size_type pos1, const String& other, size_type pos2, size_type n = npos);
+    String& insert(size_type pos, const_pointer str, size_type n);
+    String& insert(size_type pos, const_pointer str);
+    String& insert(size_type pos, size_type n, value_type c);
+
 
     NODISCARD uint32_t use_count() const noexcept {
         return IsLocal() ? 1 : impl_.use_count();
@@ -660,8 +675,8 @@ private:
     }
 
     void Construct(size_type n, char c);
-    void COW(int64_t delta);
     void SwitchContainer(size_type new_cap);
+    void COW(int64_t delta);
 
     /*!
      * \brief Compare two char sequence

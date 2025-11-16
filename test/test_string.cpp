@@ -974,7 +974,7 @@ TEST(StringAppend, AppendPointerAndCount) {
     const char mixed[] = "abc\0def";
     String s4("prefix");
     s4.append(mixed, 7);// 包括空字符在内的7个字符
-    EXPECT_EQ(s4.size(), 13);
+    EXPECT_EQ(s4.size(), 9);
     EXPECT_EQ(s4[6], 'a');// 验证空字符被正确添加
 
     // 测试追加大量字符
@@ -1055,6 +1055,9 @@ TEST(StringAppend, AppendCString) {
     s1.append(", world!");
     EXPECT_EQ(s1.size(), 13);
     EXPECT_STREQ(s1, "Hello, world!");
+    s1.append("hello", 10);
+    EXPECT_TRUE(s1 == "Hello, world!hello");
+    std::cout << s1 << std::endl;
 
     // 追加空字符串
     String s2("test");
@@ -1574,10 +1577,203 @@ TEST(StringSubstr, ReferenceCounting) {
     EXPECT_STREQ(original, "reference test");
 }
 
+// 测试基本比较功能 - 与String对象比较
+TEST(StringCompareTest, BasicCompareWithString) {
+    // 测试相等字符串
+    String s1("hello");
+    String s2("hello");
+    EXPECT_EQ(s1.compare(s2), 0);
+    EXPECT_EQ(s2.compare(s1), 0);
+
+    // 测试不等字符串 - s1在字典序上小于s2
+    String s3("apple");
+    String s4("banana");
+    EXPECT_LT(s3.compare(s4), 0);
+    EXPECT_GT(s4.compare(s3), 0);
+
+    // 测试前缀字符串
+    String s5("test");
+    String s6("testing");
+    EXPECT_LT(s5.compare(s6), 0);
+    EXPECT_GT(s6.compare(s5), 0);
+
+    // 测试空字符串
+    String empty;
+    EXPECT_GT(s1.compare(empty), 0);
+    EXPECT_LT(empty.compare(s1), 0);
+    EXPECT_EQ(empty.compare(empty), 0);
+}
+
+// 测试带位置和长度参数的比较 - 与String对象
+TEST(StringCompareTest, CompareWithPosAndLength) {
+    String s1("hello world");
+    String s2("world");
+    String s3("hello");
+    String s4("hello beautiful world");
+
+    // 测试从指定位置开始比较
+    EXPECT_EQ(s1.compare(6, 5, s2), 0);// 比较 "world" 和 "world"
+    EXPECT_EQ(s1.compare(0, 5, s3), 0);// 比较 "hello" 和 "hello"
+
+    // 测试长度限制
+    EXPECT_EQ(s1.compare(0, 5, s4, 0, 5), 0);// 比较 "hello" 和 "hello"
+
+    // 测试不同子串的比较
+    EXPECT_LT(s1.compare(0, 5, s2), 0);// "hello" < "world"
+    EXPECT_GT(s1.compare(6, 5, s3), 0);// "world" > "hello"
+
+    // 测试默认长度参数
+    EXPECT_EQ(s1.compare(0, 5, s4, 0), -1);// 使用默认n2 = npos
+}
+
+// 测试与std::string比较
+TEST(StringCompareTest, CompareWithStdString) {
+    String s1("hello");
+    std::string std_s1("hello");
+    std::string std_s2("world");
+    std::string std_s3("hello world");
+
+    // 测试相等字符串
+    EXPECT_EQ(s1.compare(std_s1), 0);
+
+    // 测试不等字符串
+    EXPECT_LT(s1.compare(std_s2), 0);
+    EXPECT_GT(s1.compare(std_s1.substr(0, 4)), 0);// "hello" > "hell"
+
+    // 测试带位置和长度参数的比较
+    EXPECT_EQ(s1.compare(0, 5, std_s3), -1);     // 比较 "hello" 和 "hello world"
+    EXPECT_EQ(s1.compare(0, 5, std_s3, 0, 5), 0);// 比较 "hello" 和 "hello"
+
+    // 测试位置超出范围
+    EXPECT_THROW(UNUSED(s1.compare(0, 5, std_s3, 100, 5)), Error);
+}
+
+// 测试与C风格字符串比较
+TEST(StringCompareTest, CompareWithConstCharPtr) {
+    String s1("hello");
+    const char* cstr1 = "hello";
+    const char* cstr2 = "world";
+    const char* cstr3 = "hello world";
+
+    // 测试相等字符串
+    EXPECT_EQ(s1.compare(cstr1), 0);
+
+    // 测试不等字符串
+    EXPECT_LT(s1.compare(cstr2), 0);
+    EXPECT_GT(s1.compare("hell"), 0);// "hello" > "hell"
+
+    // 测试带位置和长度参数的比较
+    EXPECT_EQ(s1.compare(0, 5, cstr3), -1);  // 比较 "hello" 和 "hello world"
+    EXPECT_EQ(s1.compare(0, 5, cstr3, 5), 0);// 比较 "hello" 和 "hello"
+
+    // 测试长度限制（如果n2大于实际字符串长度，应该使用实际长度）
+    EXPECT_EQ(s1.compare(0, 5, cstr1, 10), 0);// n2=10大于实际长度
+}
+
+// 测试边界情况
+TEST(StringCompareTest, EdgeCases) {
+    // 空字符串与空字符串比较
+    String empty1;
+    String empty2;
+    EXPECT_EQ(empty1.compare(empty2), 0);
+    EXPECT_EQ(empty1.compare(std::string()), 0);
+    EXPECT_EQ(empty1.compare(""), 0);
+
+    // 空字符串与非空字符串比较
+    String non_empty("test");
+    EXPECT_LT(empty1.compare(non_empty), 0);
+    EXPECT_GT(non_empty.compare(empty1), 0);
+
+    // 长度为1的字符串比较
+    String single_char1("a");
+    String single_char2("b");
+    EXPECT_LT(single_char1.compare(single_char2), 0);
+    EXPECT_GT(single_char2.compare(single_char1), 0);
+
+    // 比较前缀相同但长度不同的字符串
+    String short_str("prefix");
+    String long_str("prefix_suffix");
+    EXPECT_LT(short_str.compare(long_str), 0);
+    EXPECT_GT(long_str.compare(short_str), 0);
+}
+
+// 测试特殊字符
+TEST(StringCompareTest, SpecialCharacters) {
+    // 测试空格和控制字符
+    String s1("a b");
+    String s2("a\tb");
+    String s3("a\nb");
+
+    EXPECT_GT(s1.compare(s2), 0);// 空格的ASCII值小于制表符
+    EXPECT_GT(s1.compare(s3), 0);// 空格的ASCII值小于换行符
+    EXPECT_LT(s2.compare(s3), 0);// 制表符的ASCII值小于换行符
+
+    // 测试非ASCII字符
+    // String extended_ascii1("a\x7Fb");// DEL字符
+    // String extended_ascii2("a\x80b");// 扩展ASCII
+    // EXPECT_LT(extended_ascii1.compare(extended_ascii2), 0);
+
+    // 测试空字符
+    const char* with_null = "test\0partial";
+    String s4(with_null, 11);// 包含null字符的字符串
+    String s5("test");
+    EXPECT_GT(s4.compare(s5), 0);// 包含null的字符串比前缀长，所以更大
+}
+
+// 测试异常情况
+TEST(StringCompareTest, ExceptionHandling) {
+    String s("hello");
+    String other("world");
+    std::string std_s("world");
+
+    // 测试位置超出范围
+    EXPECT_THROW(UNUSED(s.compare(10, 5, other)), Error);
+    // EXPECT_THROW(UNUSED(s.compare(5, 5, other)), Error);// pos有效但pos+n超过size
+
+    EXPECT_THROW(UNUSED(s.compare(10, 5, std_s)), Error);
+    // EXPECT_THROW(UNUSED(s.compare(5, 5, std_s)), Error);
+
+    EXPECT_THROW(UNUSED(s.compare(10, 5, "world")), Error);
+    // EXPECT_THROW(UNUSED(s.compare(5, 5, "world")), Error);
+
+    // 测试other位置超出范围
+    EXPECT_THROW(UNUSED(s.compare(0, 5, other, 10, 5)), Error);
+}
+
+// 测试相同内存区域的比较
+TEST(StringCompareTest, SameMemoryRegion) {
+    String s("hello world");
+
+    // 比较自身
+    EXPECT_EQ(s.compare(s), 0);
+
+    // 比较自身的不同子串
+    EXPECT_LT(s.compare(0, 5, s, 6, 5), 0);// "hello" < "world"
+    EXPECT_GT(s.compare(6, 5, s, 0, 5), 0);// "world" > "hello"
+}
+
+// 测试compare与==操作符的一致性
+TEST(StringCompareTest, ConsistencyWithEqualityOperator) {
+    String s1("hello");
+    String s2("hello");
+    String s3("world");
+
+    EXPECT_TRUE((s1.compare(s2) == 0) == (s1 == s2));
+    EXPECT_TRUE((s1.compare(s3) != 0) == (s1 != s3));
+
+    // 与std::string比较的一致性
+    std::string std_s1("hello");
+    std::string std_s3("world");
+    EXPECT_TRUE((s1.compare(std_s1) == 0) == (s1 == std_s1));
+    EXPECT_TRUE((s1.compare(std_s3) != 0) == (s1 != std_s3));
+
+    // 与C字符串比较的一致性
+    EXPECT_TRUE((s1.compare("hello") == 0) == (s1 == "hello"));
+    EXPECT_TRUE((s1.compare("world") != 0) == (s1 != "world"));
+}
+
 #ifdef TEST_REPLACE
 
-
-}// namespace
 
 #endif
 

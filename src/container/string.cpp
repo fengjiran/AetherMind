@@ -384,7 +384,7 @@ String String::substr(size_type pos, size_type n) const {
     return {*this, pos, n};
 }
 
-String& String::append(const_pointer src, size_type n) {
+String& String::append_aux(const_pointer src, size_type n) {
     CheckSize(n);
     if (n > 0) {
         COW(static_cast<int64_t>(n));
@@ -394,17 +394,24 @@ String& String::append(const_pointer src, size_type n) {
     return *this;
 }
 
+String& String::append(const_pointer src, size_type n) {
+    auto actual_len = traits_type::length(src);
+    if (n > actual_len) {
+        n = actual_len;
+    }
+    return append_aux(src, n);
+}
+
 String& String::append(const_pointer src) {
-    size_type n = traits_type::length(src);
-    return append(src, n);
+    return append_aux(src, traits_type::length(src));
 }
 
 String& String::append(const String& str) {
-    return append(str.data(), str.size());
+    return append_aux(str.data(), str.size());
 }
 
 String& String::append(const String& str, size_type pos, size_type n) {
-    return append(str.data() + str.CheckPos(pos), str.Limit(pos, n));
+    return append_aux(str.data() + str.CheckPos(pos), str.Limit(pos, n));
 }
 
 String& String::append(size_type n, value_type c) {
@@ -412,7 +419,7 @@ String& String::append(size_type n, value_type c) {
 }
 
 String& String::append(std::initializer_list<value_type> l) {
-    return append(l.begin(), l.size());
+    return append_aux(l.begin(), l.size());
 }
 
 String& String::operator+=(const String& str) {
@@ -429,7 +436,7 @@ String& String::operator+=(value_type c) {
 }
 
 String& String::operator+=(std::initializer_list<value_type> l) {
-    return append(l.begin(), l.size());
+    return append_aux(l.begin(), l.size());
 }
 
 String& String::replace(size_type pos, size_type n1, const_pointer str, const size_type n2) {
@@ -681,7 +688,8 @@ int String::compare(const String& other) const {
 }
 
 int String::compare(size_type pos, size_type n, const String& other) const {
-    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n), other.data(), other.size());
+    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n),
+                         other.data(), other.size());
 }
 
 int String::compare(size_type pos1, size_type n1,
@@ -690,23 +698,39 @@ int String::compare(size_type pos1, size_type n1,
                          other.data() + other.CheckPos(pos2), other.Limit(pos2, n2));
 }
 
-
 int String::compare(const std::string& other) const {
     return MemoryCompare(data(), size(), other.data(), other.size());
 }
+
+int String::compare(size_type pos, size_type n, const std::string& other) const {
+    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n), other.data(), other.size());
+}
+
+int String::compare(size_type pos1, size_type n1, const std::string& other, size_type pos2, size_type n2) const {
+    if (pos2 > other.size()) {
+        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    }
+
+    n2 = n2 > other.size() - pos2 ? other.size() - pos2 : n2;
+    return MemoryCompare(data() + CheckPos(pos1), Limit(pos1, n1),
+                         other.data() + pos2, n2);
+}
+
 
 int String::compare(const_pointer other) const {
     return MemoryCompare(data(), size(), other, traits_type::length(other));
 }
 
 int String::compare(size_type pos, size_type n, const_pointer other) const {
-    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n), other, traits_type::length(other));
+    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n),
+                         other, traits_type::length(other));
 }
 
 int String::compare(size_type pos, size_type n1, const_pointer other, size_type n2) const {
-    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n1), other, n2);
+    n2 = n2 > traits_type::length(other) ? traits_type::length(other) : n2;
+    return MemoryCompare(data() + CheckPos(pos), Limit(pos, n1),
+                         other, n2);
 }
-
 
 String String::Concat(const_pointer lhs, size_t lhs_cnt, const_pointer rhs, size_t rhs_cnt) {
     String res(lhs, lhs_cnt);

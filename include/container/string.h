@@ -578,6 +578,9 @@ public:
      * before other, positive otherwise.
      */
     NODISCARD int compare(const std::string& other) const;
+    NODISCARD int compare(size_type pos, size_type n, const std::string& other) const;
+    NODISCARD int compare(size_type pos1, size_type n1,
+                          const std::string& other, size_type pos2, size_type n2 = npos) const;
 
     /*!
      * \brief Compares this to other
@@ -639,10 +642,9 @@ private:
     }
 
     NODISCARD size_type Limit(size_type pos, size_type limit) const noexcept;
-
     NODISCARD size_type CheckPos(size_type pos) const;
-
     void CheckSize(size_type delta) const;
+    String& append_aux(const_pointer src, size_type n);
 
     template<typename Iter,
              typename = std::enable_if_t<std::is_convertible_v<
@@ -668,9 +670,7 @@ private:
     }
 
     void Construct(size_type n, char c);
-
     void COW(int64_t delta);
-
     void SwitchContainer(size_type new_cap);
     /*!
      * \brief Concatenate two char sequences

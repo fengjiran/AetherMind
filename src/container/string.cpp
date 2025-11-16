@@ -307,8 +307,10 @@ String::String(const String& other, size_type pos, size_type n) {
 }
 
 String::size_type String::max_size() noexcept {
-    return std::min<size_type>(allocator_traits::max_size(allocator_type()),
-                               std::numeric_limits<size_type>::max());
+    return (std::min<size_type>(allocator_traits::max_size(allocator_type()),
+                                std::numeric_limits<size_type>::max()) -
+            1) /
+           2;
 }
 
 String& String::operator=(const String& other) {
@@ -383,6 +385,40 @@ String::const_reference String::back() const noexcept {
 String String::substr(size_type pos, size_type n) const {
     return {*this, pos, n};
 }
+
+void String::resize(size_type n, value_type c) {
+    if (const size_type sz = size(); n > sz) {
+        append(n - sz, c);
+    } else {
+        size_ = n;
+    }
+}
+
+void String::resize(size_type n) {
+    resize(n, value_type());
+}
+
+void String::reserve(size_type n) {
+    if (const size_type cap = capacity(); n > cap) {
+        SwitchContainer(n);
+    }
+}
+
+void String::shrink_to_fit() noexcept {
+    if (IsLocal()) {
+        return;
+    }
+
+    const size_type sz = size();
+    if (sz <= static_cast<size_type>(local_capacity_)) {
+        InitLocalBuffer();
+        std::memcpy(local_buffer_, data(), sz + 1);
+        impl_.reset();
+    } else {
+        SwitchContainer(sz);
+    }
+}
+
 
 String& String::append_aux(const_pointer src, size_type n) {
     CheckSize(n);

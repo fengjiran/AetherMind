@@ -316,6 +316,8 @@ private:
     friend class String;
 };
 
+//TODO: implementation iterator
+//
 class String : public ObjectRef {
 public:
     using traits_type = std::char_traits<char>;
@@ -494,8 +496,8 @@ public:
 
     void resize(size_type n, value_type c);
     void resize(size_type n);
-    void reserve();
     void reserve(size_type n);
+    void shrink_to_fit() noexcept;
 
     String& append(const_pointer src, size_type n);
     String& append(const String& str);

@@ -492,6 +492,11 @@ public:
 
     NODISCARD String substr(size_type pos = 0, size_type n = npos) const;
 
+    void resize(size_type n, value_type c);
+    void resize(size_type n);
+    void reserve();
+    void reserve(size_type n);
+
     String& append(const_pointer src, size_type n);
     String& append(const String& str);
     String& append(const String& str, size_type pos, size_type n = npos);

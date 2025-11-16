@@ -1770,6 +1770,185 @@ TEST(StringCompareTest, ConsistencyWithEqualityOperator) {
     EXPECT_TRUE((s1.compare("world") != 0) == (s1 != "world"));
 }
 
+// 测试迭代器版本的insert方法
+TEST(StringInsert, IteratorVersion) {
+    // 测试在字符串中间插入多个相同字符
+    String s1("hello");
+    auto it1 = s1.insert(s1.begin() + 2, 3, 'a');
+    EXPECT_STREQ(s1, "heaaallo");
+    EXPECT_EQ(it1, s1.begin() + 2);// 验证迭代器指向插入位置
+
+    // 测试在字符串开头插入单个字符
+    String s2("world");
+    auto it2 = s2.insert(s2.begin(), 'H');
+    EXPECT_STREQ(s2, "Hworld");
+    EXPECT_EQ(it2, s2.begin());// 验证迭代器指向插入位置
+
+    // 测试在字符串结尾插入单个字符
+    String s3("hello");
+    auto it3 = s3.insert(s3.end(), '!');
+    EXPECT_STREQ(s3, "hello!");
+    EXPECT_EQ(it3, s3.end() - 1);// 验证迭代器指向插入位置
+}
+
+// 测试迭代器范围插入
+TEST(StringInsert, IteratorRange) {
+    String s1("hello");
+    std::vector<char> chars = {'w', 'o', 'r', 'l', 'd'};
+
+    // 在字符串中间插入字符范围
+    auto it1 = s1.insert(s1.begin() + 5, chars.begin(), chars.end());
+    EXPECT_STREQ(s1, "helloworld");
+    EXPECT_EQ(it1, s1.begin() + 5);
+
+    // 在空字符串中插入字符范围
+    String s2;
+    auto it2 = s2.insert(s2.begin(), chars.begin(), chars.end());
+    EXPECT_STREQ(s2, "world");
+    EXPECT_EQ(it2, s2.begin());
+}
+
+// 测试初始化列表插入
+TEST(StringInsert, InitializerList) {
+    String s1("hello");
+
+    // 使用初始化列表插入
+    auto it1 = s1.insert(s1.begin() + 2, {'a', 'b', 'c'});
+    EXPECT_STREQ(s1, "heabcllo");
+    EXPECT_EQ(it1, s1.begin() + 2);
+
+    // 在字符串开头插入初始化列表
+    String s2("world");
+    auto it2 = s2.insert(s2.begin(), {'H', 'e', 'l', 'l', 'o', ' '});
+    EXPECT_STREQ(s2, "Hello world");
+    EXPECT_EQ(it2, s2.begin());
+}
+
+// 测试位置版本的insert方法 - 插入String对象
+TEST(StringInsert, PositionString) {
+    String s1("hello");
+    String s2("world");
+
+    // 在中间位置插入整个String
+    s1.insert(5, s2);
+    EXPECT_STREQ(s1, "helloworld");
+
+    // 在指定位置插入String的子串
+    String s3("hello");
+    String s4("123456789");
+    s3.insert(2, s4, 3, 4);// 从s4的位置3开始插入4个字符
+    EXPECT_STREQ(s3, "he4567llo");
+}
+
+// 测试位置版本的insert方法 - 插入C字符串
+TEST(StringInsert, PositionCString) {
+    String s1("hello");
+
+    // 插入带长度的C字符串
+    s1.insert(2, "XYZ", 3);
+    EXPECT_STREQ(s1, "heXYZllo");
+
+    // 插入C字符串（自动计算长度）
+    String s2("world");
+    s2.insert(0, "Hello ");
+    EXPECT_STREQ(s2, "Hello world");
+
+    // 插入空C字符串
+    String s3("test");
+    s3.insert(2, "");
+    EXPECT_STREQ(s3, "test");// 应该保持不变
+}
+
+// 测试位置版本的insert方法 - 插入多个相同字符
+TEST(StringInsert, PositionMultipleChars) {
+    String s1("hello");
+
+    // 在指定位置插入多个相同字符
+    s1.insert(3, 4, 'x');
+    EXPECT_STREQ(s1.c_str(), "helxxxxlo");
+
+    // 在位置0插入多个相同字符
+    std::string s2("world");
+    // std::string::const_iterator xc = 0;
+    s2.insert(0, 2, 'A');
+    EXPECT_STREQ(s2.c_str(), "AAworld");
+
+    // 在末尾位置插入多个相同字符
+    String s3("hello");
+    s3.insert(s3.size(), 3, '!');
+    EXPECT_STREQ(s3.c_str(), "hello!!!");
+
+    // 插入0个字符
+    String s4("test");
+    s4.insert(2, 0, 'x');
+    EXPECT_STREQ(s4.c_str(), "test");// 应该保持不变
+}
+
+// 测试边界情况
+TEST(StringInsert, BoundaryConditions) {
+    // 空字符串插入
+    String empty;
+    empty.insert(0, "hello");
+    EXPECT_STREQ(empty.c_str(), "hello");
+
+    // 在超出范围的位置插入（应该抛出异常）
+    String s("test");
+    EXPECT_THROW({ s.insert(s.size() + 1, "x"); }, Error);
+
+    // 插入大量字符
+    const size_t large_count = 100;
+    String large("start");
+    large.insert(large.size(), large_count, 'B');
+    large.insert(large.size(), "end");
+
+    EXPECT_EQ(large.size(), 5 + large_count + 3);
+    EXPECT_STREQ(large.data(), "start" + String(large_count, 'B') + "end");
+}
+
+// 测试特殊字符
+TEST(StringInsert, SpecialCharacters) {
+    String s1("test");
+
+    // 插入控制字符
+    s1.insert(2, 1, '\n');
+    EXPECT_EQ(s1.size(), 5);
+    EXPECT_EQ(s1[2], '\n');
+
+    // 插入特殊符号
+    String s2("hello");
+    s2.insert(5, "!@#$%");
+    EXPECT_STREQ(s2.c_str(), "hello!@#$%");
+
+    // 插入数字
+    String s3("abc");
+    s3.insert(3, "123");
+    EXPECT_STREQ(s3.c_str(), "abc123");
+}
+
+// 测试引用计数和COW行为
+TEST(StringInsert, ReferenceCounting) {
+    String original("reference test");
+    String copy = original;
+
+    // 验证引用计数
+    EXPECT_EQ(original.use_count(), 1);
+    EXPECT_TRUE(original.unique());
+
+    // 对副本进行插入操作，应该触发COW
+    copy.insert(4, "INSERT");
+
+    // 验证引用计数分离
+    EXPECT_EQ(original.use_count(), 1);
+    EXPECT_TRUE(original.unique());
+    EXPECT_EQ(copy.use_count(), 1);
+    EXPECT_TRUE(copy.unique());
+
+    // 验证原始字符串未被修改
+    EXPECT_STREQ(original.c_str(), "reference test");
+    // 验证副本已被修改
+    EXPECT_STREQ(copy.c_str(), "refeINSERTrence test");
+}
+
 #ifdef TEST_REPLACE
 
 

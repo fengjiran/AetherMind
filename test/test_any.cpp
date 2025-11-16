@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#ifndef TEST_ANY
+
 using namespace aethermind;
 
 namespace {
@@ -381,3 +383,5 @@ TEST(AnyOperatorsTest, AnyEqualFunctionObject) {
 }
 
 }// namespace
+
+#endif

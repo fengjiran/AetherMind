@@ -95,6 +95,11 @@ void String::push_back(char c) {
     traits_type::assign(data()[size_++], c);
 }
 
+void String::pop_back() noexcept {
+    CHECK(!empty());
+    erase(size() - 1, 1);
+}
+
 String::const_reference String::operator[](size_type i) const noexcept {
     return data()[i];
 }
@@ -214,6 +219,7 @@ String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
             *dst++ = *src++;
         }
     }
+
     size_ += delta;
     if (!IsLocal()) {
         if (size() <= static_cast<size_type>(local_capacity_)) {
@@ -232,16 +238,32 @@ String& String::erase(size_type pos, size_type n) {
         return *this;
     }
 
-    replace(pos, Limit(pos, n), "", 0);
-    return *this;
+    return replace(pos, Limit(pos, n), "", 0);
 }
+
+String::iterator String::erase(const_iterator position) {
+    CHECK(position >= begin() && position < end()) << "erase position out of bounds";
+    const size_type pos = position - begin();
+    erase(pos, 1);
+    return iterator(data() + pos);
+}
+
+String::iterator String::erase(const_iterator first, const_iterator last) {
+    CHECK(first >= begin() && first <= last && last <= end()) << "erase position out of bounds";
+    const size_type pos = first - begin();
+    const size_type n = last - first;
+    erase(pos, n);
+    return iterator(data() + pos);
+}
+
 
 String& String::append(const_pointer src, size_type n) {
     auto actual_len = traits_type::length(src);
     if (n > actual_len) {
         n = actual_len;
     }
-    return append_aux(src, n);
+    // return append_aux(src, n);
+    return replace(size(), 0, src, n);
 }
 
 String& String::append(const_pointer src) {

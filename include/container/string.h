@@ -196,6 +196,7 @@ public:
     }
 
     void push_back(char c);
+    void pop_back() noexcept;
 
     NODISCARD static size_type max_size() noexcept;
 
@@ -218,6 +219,8 @@ public:
     void shrink_to_fit() noexcept;
 
     String& erase(size_type pos = 0, size_type n = npos);
+    iterator erase(const_iterator position);
+    iterator erase(const_iterator first, const_iterator last);
 
     String& append(const_pointer src, size_type n);
     String& append(const String& str);

@@ -2420,6 +2420,100 @@ TEST(StringErase, CombinedOperations) {
     s2.erase(12, 6);// 删除"Erase"
     EXPECT_TRUE(s2 == "ReplaceThenE");
 }
+
+// 测试单迭代器版本的erase函数
+TEST(StringErase, SingleIterator) {
+    // 删除字符串中间的字符
+    String s1 = "IteratorTest";
+    String::iterator it = s1.begin() + 5;
+    String::iterator new_it = s1.erase(it);
+    EXPECT_TRUE(s1 == "IteraorTest");
+    EXPECT_EQ(s1.size(), 11);
+    // 验证返回的迭代器指向被删除字符的下一个位置
+    EXPECT_EQ(new_it, s1.begin() + 5);
+    EXPECT_EQ(*new_it, 'o');
+
+    // 删除字符串开头的字符
+    String s2 = "DeleteFirst";
+    new_it = s2.erase(s2.begin());
+    EXPECT_TRUE(s2 == "eleteFirst");
+    EXPECT_EQ(s2.size(), 10);
+    EXPECT_EQ(new_it, s2.begin());
+    EXPECT_EQ(*new_it, 'e');
+
+    // 删除字符串结尾的字符
+    String s3 = "DeleteLast";
+    new_it = s3.erase(s3.end() - 1);
+    EXPECT_TRUE(s3 == "DeleteLas");
+    EXPECT_EQ(s3.size(), 9);
+    EXPECT_EQ(new_it, s3.end());
+}
+
+// 测试迭代器范围版本的erase函数
+TEST(StringErase, IteratorRange) {
+    // 删除字符串中间的一段
+    String s1 = "RangeDeleteTest";
+    String::iterator first = s1.begin() + 5;
+    String::iterator last = s1.begin() + 11;
+    String::iterator new_it = s1.erase(first, last);
+    EXPECT_TRUE(s1 == "RangeTest");
+    EXPECT_EQ(s1.size(), 9);
+    // 验证返回的迭代器指向被删除范围的第一个位置
+    EXPECT_EQ(new_it, s1.begin() + 5);
+    EXPECT_EQ(*new_it, 'T');
+
+    // 删除字符串开头的一段
+    String s2 = "DeleteStart";
+    new_it = s2.erase(s2.begin(), s2.begin() + 6);
+    EXPECT_TRUE(s2 == "Start");
+    EXPECT_EQ(s2.size(), 5);
+    EXPECT_EQ(new_it, s2.begin());
+
+    // 删除字符串结尾的一段
+    String s3 = "DeleteEnd";
+    new_it = s3.erase(s3.begin() + 4, s3.end());
+    EXPECT_TRUE(s3 == "Dele");
+    EXPECT_EQ(s3.size(), 4);
+    EXPECT_EQ(new_it, s3.end());
+
+    // 删除整个字符串
+    String s4 = "DeleteAll";
+    new_it = s4.erase(s4.begin(), s4.end());
+    EXPECT_TRUE(s4.empty());
+    EXPECT_EQ(s4.size(), 0);
+    EXPECT_EQ(new_it, s4.begin());
+    EXPECT_EQ(new_it, s4.end());
+}
+
+// 测试不同版本erase的一致性
+TEST(StringErase, Consistency) {
+    // 测试单字符删除的一致性
+    String s1 = "Consistency";
+    String s2 = s1;
+
+    // 使用位置长度版本
+    s1.erase(5, 1);
+
+    // 使用单迭代器版本
+    s2.erase(s2.begin() + 5);
+
+    EXPECT_TRUE(s1 == s2);
+    EXPECT_TRUE(s1 == "Consitency");
+
+    // 测试多字符删除的一致性
+    String s3 = "AnotherTest";
+    String s4 = s3;
+
+    // 使用位置长度版本
+    s3.erase(3, 4);
+
+    // 使用迭代器范围版本
+    s4.erase(s4.begin() + 3, s4.begin() + 7);
+
+    EXPECT_TRUE(s3 == s4);
+    EXPECT_TRUE(s3 == "AnoTest");
+}
+
 #ifdef TEST_REPLACE
 
 

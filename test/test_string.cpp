@@ -2376,6 +2376,11 @@ TEST(StringErase, LocalBufferSwitch) {
     large.erase(5, 90);
     EXPECT_TRUE(large == "xxxxxxxxxx");
     // 由于shrink_to_fit不会自动调用，这里可能仍然在堆上
+
+    String s = "MultipleOperations";
+    s.replace(8, 5, "", 0);
+    std::cout << s << std::endl;
+    EXPECT_TRUE(s.IsLocal());
 }
 
 // 测试连续erase操作

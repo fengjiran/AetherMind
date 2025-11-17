@@ -280,6 +280,13 @@ String& String::replace(size_type pos, size_type n1, const_pointer str, size_typ
 
     std::memcpy(data() + pos, str, n2);
     size_ += delta;
+    if (!IsLocal()) {
+        if (size() <= static_cast<size_type>(local_capacity_)) {
+            InitLocalBuffer();
+            std::memcpy(local_buffer_, data(), size() + 1);
+            impl_.reset();
+        }
+    }
     return *this;
 }
 
@@ -302,6 +309,10 @@ String& String::replace(size_type pos, size_type n1, size_type n2, value_type c)
 
     pos = CheckPos(pos);
     n1 = Limit(pos, n1);
+    if (n1 == 0 && n2 == 0) {
+        return *this;
+    }
+
     const int64_t delta = n2 - n1;
     const size_type remain = size() - pos - n1;
     COW(delta);
@@ -321,6 +332,13 @@ String& String::replace(size_type pos, size_type n1, size_type n2, value_type c)
 
     std::memset(data() + pos, c, n2);
     size_ += delta;
+    if (!IsLocal()) {
+        if (size() <= static_cast<size_type>(local_capacity_)) {
+            InitLocalBuffer();
+            std::memcpy(local_buffer_, data(), size() + 1);
+            impl_.reset();
+        }
+    }
     return *this;
 }
 
@@ -460,8 +478,8 @@ void String::Construct(size_type n, char c) {
 
 void String::SwitchContainer(size_type new_cap) {
     auto impl = StringImpl::Create(new_cap);
-    const size_type copy_num = size() < new_cap ? size() : new_cap;
-    std::memcpy(impl->data(), data(), copy_num);
+    // const size_type copy_num = size() < new_cap ? size() : new_cap;
+    std::memcpy(impl->data(), data(), size());
     impl_ = impl;
     capacity_ = new_cap;
 }
@@ -487,23 +505,23 @@ void String::COW(int64_t delta) {
             }
         }
     } else {// inplace or shrink
-        // if (!IsLocal() && !unique()) {
-        //     SwitchContainer(capacity());
-        // }
-
-        size_type new_size = size() + delta;
-        if (!IsLocal()) {
-            if (new_size <= local_capacity_) {
-                InitLocalBuffer();
-                std::memcpy(local_buffer_, data(), new_size + 1);
-                impl_.reset();
-            } else {
-                if (!unique()) {
-                    SwitchContainer(new_size);
-                    // SwitchContainer(capacity());
-                }
-            }
+        if (!IsLocal() && !unique()) {
+            SwitchContainer(capacity());
         }
+
+        // size_type new_size = size() + delta;
+        // if (!IsLocal()) {
+        //     if (new_size <= static_cast<size_type>(local_capacity_)) {
+        //         InitLocalBuffer();
+        //         std::memcpy(local_buffer_, data(), new_size + 1);
+        //         impl_.reset();
+        //     } else {
+        //         if (!unique()) {
+        //             SwitchContainer(new_size);
+        //             // SwitchContainer(capacity());
+        //         }
+        //     }
+        // }
     }
 }
 

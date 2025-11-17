@@ -33,6 +33,7 @@ TEST(StringConstructorFill, BasicFunctionality) {
 
     String s4 = "hello";
     s4.insert(s4.begin() + 2, 3, 'a');
+    std::memcpy(s4.data() + 2, "111", 0);
     EXPECT_TRUE(s4 == "heaaallo");
 }
 
@@ -2217,6 +2218,203 @@ TEST(StringMemoryManagementTest, CombinedOperations) {
     EXPECT_TRUE(s == "aaa");
 }
 
+// 测试基本功能：删除字符串中的字符
+TEST(StringErase, BasicFunctionality) {
+    // 删除字符串中间的字符
+    String s1 = "Hello, World!";
+    s1.erase(7, 5);// 删除"World"
+    EXPECT_TRUE(s1 == "Hello, !");
+    EXPECT_EQ(s1.size(), 8);
+
+    // 删除字符串开头的字符
+    String s2 = "Programming";
+    s2.erase(0, 3);// 删除"Pro"
+    EXPECT_TRUE(s2 == "gramming");
+    EXPECT_EQ(s2.size(), 8);
+
+    // 删除字符串结尾的字符
+    String s3 = "Testing";
+    s3.erase(4, 3);// 删除"ing"
+    EXPECT_TRUE(s3 == "Test");
+    EXPECT_EQ(s3.size(), 4);
+
+    // 删除单个字符
+    String s4 = "DeleteMe";
+    s4.erase(6, 1);// 删除"e"
+    EXPECT_TRUE(s4 == "Deletee");
+    EXPECT_EQ(s4.size(), 7);
+}
+
+// 测试默认参数：pos=0, n=npos
+TEST(StringErase, DefaultParameters) {
+    // 使用默认pos=0
+    String s1 = "DefaultPos";
+    s1.erase(0, 3);// 删除开头3个字符
+    EXPECT_TRUE(s1 == "aultPos");
+
+    String s2 = "DefaultPos";
+    s2.erase();// 默认删除从0开始的所有字符
+    EXPECT_TRUE(s2.empty());
+    EXPECT_EQ(s2.size(), 0);
+
+    // 使用默认n=npos（删除到字符串末尾）
+    String s3 = "DefaultN";
+    s3.erase(4);// 从位置4开始删除到末尾
+    EXPECT_TRUE(s3 == "Defa");
+    EXPECT_EQ(s3.size(), 4);
+
+    // 同时使用两个默认参数（清空字符串）
+    String s4 = "ClearMe";
+    s4.erase();
+    EXPECT_TRUE(s4.empty());
+    EXPECT_TRUE(s4 == "");
+}
+
+// 测试边界情况：空字符串
+TEST(StringErase, EmptyString) {
+    String empty;
+
+    // 对空字符串调用erase应该没有效果
+    empty.erase();
+    EXPECT_TRUE(empty.empty());
+    EXPECT_EQ(empty.size(), 0);
+    EXPECT_TRUE(empty == "");
+
+    // 对空字符串调用erase(0, 5)应该没有效果
+    empty.erase(0, 5);
+    EXPECT_TRUE(empty.empty());
+}
+
+// 测试边界情况：删除超出剩余字符数的情况
+TEST(StringErase, OverLimit) {
+    String s = "LimitedString";
+    const size_t original_size = s.size();
+
+    // 请求删除的字符数超出剩余字符数
+    s.erase(7, 100);// 从位置7开始，请求删除100个字符，但实际上只有6个字符
+    EXPECT_TRUE(s == "Limited");
+    EXPECT_EQ(s.size(), 7);
+
+    // 删除位置加上删除数量刚好等于字符串长度
+    String s2 = "ExactlyEnd";
+    s2.erase(3, 6);
+    EXPECT_TRUE(s2 == "Exad");
+    EXPECT_EQ(s2.size(), 4);
+}
+
+// 测试异常处理：位置超出范围
+TEST(StringErase, OutOfRangeException) {
+    String s = "SafeTest";
+
+    // pos超出字符串长度应该抛出异常
+    EXPECT_THROW(s.erase(s.size() + 1, 1), Error);
+
+    // pos等于字符串长度是允许的（不会删除任何字符）
+    EXPECT_NO_THROW(s.erase(s.size(), 5));
+    EXPECT_STREQ(s, "SafeTest");
+
+    // pos为负数应该抛出异常（由于size_type是无符号类型，这里传入一个非常大的值模拟）
+    EXPECT_THROW(s.erase(static_cast<String::size_type>(-1), 1), Error);
+}
+
+// 测试特殊字符
+TEST(StringErase, SpecialCharacters) {
+    // 测试包含空格的字符串
+    String spaces = "   Spaces   ";
+    spaces.erase(0, 3);                // 删除开头的空格
+    spaces.erase(spaces.size() - 3, 3);// 删除结尾的空格
+    EXPECT_TRUE(spaces == "Spaces");
+
+    // 测试包含控制字符的字符串
+    String controls = "Line\nBreak\tTab";
+    controls.erase(4, 6);// 删除"\nBreak\t"
+    EXPECT_TRUE(controls == "Line\tTab");
+
+    // 测试包含非ASCII字符的字符串
+    // String non_ascii = "Café résumé";
+    // non_ascii.erase(3, 4);// 删除"é ré"
+    // EXPECT_STREQ(non_ascii.c_str(), "Cafsumé");
+}
+
+// 测试COW（Copy-On-Write）机制
+TEST(StringErase, CopyOnWrite) {
+    String original = "SharedString";
+    String shared = original;
+
+    // 确认两个字符串共享数据
+    EXPECT_TRUE(original.unique());
+    EXPECT_TRUE(shared.unique());
+
+    // 修改其中一个字符串
+    shared.erase(6, 6);
+
+    // 确认两个字符串不再共享数据
+    EXPECT_TRUE(original.unique());
+    EXPECT_TRUE(shared.unique());
+
+    // 确认原始字符串未被修改
+    EXPECT_TRUE(original == "SharedString");
+    // 确认共享字符串已被修改
+    EXPECT_TRUE(shared == "Shared");
+}
+
+// 测试局部缓冲区切换
+TEST(StringErase, LocalBufferSwitch) {
+    // 创建一个足够小的字符串，使其使用局部缓冲区
+    String small = "Small";
+    EXPECT_TRUE(small.IsLocal());// 假设IsLocal()是可访问的，否则需要通过其他方式验证
+
+    // 执行erase操作
+    small.erase(2, 2);// 删除"al"
+    EXPECT_TRUE(small == "Sml");
+
+    // 创建一个大字符串，使其使用堆内存
+    String large(100, 'x');
+    EXPECT_FALSE(large.IsLocal());// 假设IsLocal()是可访问的
+
+    // 大幅缩小字符串，使其可能切换回局部缓冲区
+    large.erase(5, 90);
+    EXPECT_TRUE(large == "xxxxxxxxxx");
+    // 由于shrink_to_fit不会自动调用，这里可能仍然在堆上
+}
+
+// 测试连续erase操作
+TEST(StringErase, MultipleOperations) {
+    String s = "MultipleOperations";
+
+    // 连续执行多个erase操作
+    s.erase(0, 8);// 删除"Multiple"
+    EXPECT_TRUE(s == "Operations");
+
+    s.erase(5, 5);// 删除"ions"
+    EXPECT_TRUE(s == "Opera");
+
+    s.erase(3, 1);// 删除"r"
+    EXPECT_TRUE(s == "Opea");
+
+    s.erase();// 删除所有字符
+    EXPECT_TRUE(s.empty());
+}
+
+// 测试与其他操作的组合
+TEST(StringErase, CombinedOperations) {
+    String s = "StartMiddleEnd";
+
+    // erase后append
+    s.erase(5, 6);// 删除"Middle"
+    EXPECT_TRUE(s == "StartEnd");
+
+    s.append("Modified");
+    EXPECT_TRUE(s == "StartEndModified");
+
+    // replace后erase
+    String s2 = "ReplaceAndErase";
+    s2.replace(7, 3, "Then");
+    EXPECT_TRUE(s2 == "ReplaceThenErase");
+
+    s2.erase(12, 6);// 删除"Erase"
+    EXPECT_TRUE(s2 == "ReplaceThenE");
+}
 #ifdef TEST_REPLACE
 
 

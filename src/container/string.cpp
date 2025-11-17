@@ -187,6 +187,23 @@ String& String::append_aux(const_pointer src, size_type n) {
     return *this;
 }
 
+// void String::erase_aux(size_type pos, size_type n) {
+//     const size_type remain = size() - pos - n;
+//     if (remain > 0 && n > 0) {
+//
+//     }
+// }
+
+String& String::erase(size_type pos, size_type n) {
+    pos = CheckPos(pos);
+    if (pos == size()) {
+        return *this;
+    }
+
+    replace(pos, Limit(pos, n), "", 0);
+    return *this;
+}
+
 String& String::append(const_pointer src, size_type n) {
     auto actual_len = traits_type::length(src);
     if (n > actual_len) {
@@ -240,6 +257,10 @@ String& String::replace(size_type pos, size_type n1, const_pointer str, size_typ
 
     pos = CheckPos(pos);
     n1 = Limit(pos, n1);
+    if (n1 == 0 && n2 == 0) {
+        return *this;
+    }
+
     const int64_t delta = n2 - n1;
     const size_type remain = size() - pos - n1;
     COW(delta);
@@ -439,7 +460,8 @@ void String::Construct(size_type n, char c) {
 
 void String::SwitchContainer(size_type new_cap) {
     auto impl = StringImpl::Create(new_cap);
-    std::memcpy(impl->data(), data(), size());
+    const size_type copy_num = size() < new_cap ? size() : new_cap;
+    std::memcpy(impl->data(), data(), copy_num);
     impl_ = impl;
     capacity_ = new_cap;
 }
@@ -465,8 +487,22 @@ void String::COW(int64_t delta) {
             }
         }
     } else {// inplace or shrink
-        if (!IsLocal() && !unique()) {
-            SwitchContainer(capacity());
+        // if (!IsLocal() && !unique()) {
+        //     SwitchContainer(capacity());
+        // }
+
+        size_type new_size = size() + delta;
+        if (!IsLocal()) {
+            if (new_size <= local_capacity_) {
+                InitLocalBuffer();
+                std::memcpy(local_buffer_, data(), new_size + 1);
+                impl_.reset();
+            } else {
+                if (!unique()) {
+                    SwitchContainer(new_size);
+                    // SwitchContainer(capacity());
+                }
+            }
         }
     }
 }

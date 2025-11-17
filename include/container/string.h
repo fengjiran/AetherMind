@@ -171,6 +171,10 @@ public:
         return impl_;
     }
 
+    NODISCARD bool IsLocal() const noexcept {
+        return !defined();
+    }
+
     NODISCARD size_type size() const noexcept {
         return size_;
     }
@@ -212,6 +216,8 @@ public:
     void resize(size_type n);
     void reserve(size_type n);
     void shrink_to_fit() noexcept;
+
+    String& erase(size_type pos = 0, size_type n = npos);
 
     String& append(const_pointer src, size_type n);
     String& append(const String& str);
@@ -363,14 +369,11 @@ private:
         std::memset(local_buffer_, '\0', local_capacity_ + 1);
     }
 
-    NODISCARD bool IsLocal() const noexcept {
-        return !defined();
-    }
-
     NODISCARD size_type Limit(size_type pos, size_type limit) const noexcept;
     NODISCARD size_type CheckPos(size_type pos) const;
     void CheckSize(size_type delta) const;
     String& append_aux(const_pointer src, size_type n);
+    // void erase_aux(size_type pos, size_type n);
 
     template<typename Iter,
              typename = std::enable_if_t<std::is_convertible_v<

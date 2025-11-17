@@ -187,12 +187,44 @@ String& String::append_aux(const_pointer src, size_type n) {
     return *this;
 }
 
-// void String::erase_aux(size_type pos, size_type n) {
-//     const size_type remain = size() - pos - n;
-//     if (remain > 0 && n > 0) {
-//
-//     }
-// }
+String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
+    if (n2 > max_size() - (size() - n1)) {
+        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    }
+
+    pos = CheckPos(pos);
+    n1 = Limit(pos, n1);
+    if (n1 == 0 && n2 == 0) {
+        return *this;
+    }
+
+    const int64_t delta = n2 - n1;
+    const size_type remain = size() - pos - n1;
+    COW(delta);
+    if (delta > 0) {
+        pointer src = data() + size_;
+        pointer dst = src + delta;
+        for (size_type i = 0; i < remain; ++i) {
+            *--dst = *--src;
+        }
+    } else if (delta < 0) {
+        pointer src = data() + pos + n1;
+        pointer dst = src + delta;
+        for (size_type i = 0; i < remain; ++i) {
+            *dst++ = *src++;
+        }
+    }
+    size_ += delta;
+    if (!IsLocal()) {
+        if (size() <= static_cast<size_type>(local_capacity_)) {
+            InitLocalBuffer();
+            std::memcpy(local_buffer_, data(), size() + 1);
+            impl_.reset();
+        }
+    }
+    return *this;
+}
+
 
 String& String::erase(size_type pos, size_type n) {
     pos = CheckPos(pos);
@@ -250,43 +282,8 @@ String& String::operator+=(std::initializer_list<value_type> l) {
 }
 
 String& String::replace(size_type pos, size_type n1, const_pointer str, size_type n2) {
-    // n2 = n2 > traits_type::length(str) ? traits_type::length(str) : n2;
-    if (n2 > max_size() - (size() - n1)) {
-        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
-    }
-
-    pos = CheckPos(pos);
-    n1 = Limit(pos, n1);
-    if (n1 == 0 && n2 == 0) {
-        return *this;
-    }
-
-    const int64_t delta = n2 - n1;
-    const size_type remain = size() - pos - n1;
-    COW(delta);
-    if (delta > 0) {
-        pointer src = data() + size_;
-        pointer dst = src + delta;
-        for (size_type i = 0; i < remain; ++i) {
-            *--dst = *--src;
-        }
-    } else if (delta < 0) {
-        pointer src = data() + pos + n1;
-        pointer dst = src + delta;
-        for (size_type i = 0; i < remain; ++i) {
-            *dst++ = *src++;
-        }
-    }
-
+    replace_aux(pos, n1, n2);
     std::memcpy(data() + pos, str, n2);
-    size_ += delta;
-    if (!IsLocal()) {
-        if (size() <= static_cast<size_type>(local_capacity_)) {
-            InitLocalBuffer();
-            std::memcpy(local_buffer_, data(), size() + 1);
-            impl_.reset();
-        }
-    }
     return *this;
 }
 
@@ -303,42 +300,8 @@ String& String::replace(size_type pos1, size_type n1, const String& src, size_ty
 }
 
 String& String::replace(size_type pos, size_type n1, size_type n2, value_type c) {
-    if (n2 > max_size() - (size() - n1)) {
-        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
-    }
-
-    pos = CheckPos(pos);
-    n1 = Limit(pos, n1);
-    if (n1 == 0 && n2 == 0) {
-        return *this;
-    }
-
-    const int64_t delta = n2 - n1;
-    const size_type remain = size() - pos - n1;
-    COW(delta);
-    if (delta > 0) {
-        pointer s = data() + size_;
-        pointer d = s + delta;
-        for (size_type i = 0; i < remain; ++i) {
-            *--d = *--s;
-        }
-    } else if (delta < 0) {
-        pointer s = data() + pos + n1;
-        pointer d = s + delta;
-        for (size_type i = 0; i < remain; ++i) {
-            *d++ = *s++;
-        }
-    }
-
+    replace_aux(pos, n1, n2);
     std::memset(data() + pos, c, n2);
-    size_ += delta;
-    if (!IsLocal()) {
-        if (size() <= static_cast<size_type>(local_capacity_)) {
-            InitLocalBuffer();
-            std::memcpy(local_buffer_, data(), size() + 1);
-            impl_.reset();
-        }
-    }
     return *this;
 }
 

@@ -373,6 +373,7 @@ private:
     NODISCARD size_type CheckPos(size_type pos) const;
     void CheckSize(size_type delta) const;
     String& append_aux(const_pointer src, size_type n);
+    String& replace_aux(size_type pos, size_type n1, size_type n2);
     // void erase_aux(size_type pos, size_type n);
 
     template<typename Iter,

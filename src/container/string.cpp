@@ -471,8 +471,7 @@ String::size_type String::rfind(const_pointer s, size_type pos, size_type n) con
         if (compare(pos, n, s, n) == 0) {
             return pos;
         }
-        --pos;
-    } while (pos > 0);
+    } while (pos-- > 0);
 
     return npos;
 }
@@ -495,7 +494,14 @@ String::size_type String::rfind(value_type c, size_type pos) const noexcept {
         sz = pos;
     }
 
+    do {
+        if (*(data() + sz) == c) {
+            return sz;
+        }
+        // --sz;
+    } while (sz-- > 0);
 
+    return npos;
 }
 
 

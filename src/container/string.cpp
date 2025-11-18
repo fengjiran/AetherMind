@@ -399,7 +399,7 @@ String& String::insert(size_type pos, size_type n, value_type c) {
     return replace(pos, 0, n, c);
 }
 
-String::size_type String::find(const_pointer s, size_type pos, size_type n) {
+String::size_type String::find(const_pointer s, size_type pos, size_type n) const noexcept {
     const size_type sz = size();
     if (n == 0) {
         return pos <= sz ? pos : npos;
@@ -438,15 +438,15 @@ String::size_type String::find(const_pointer s, size_type pos, size_type n) {
     return npos;
 }
 
-String::size_type String::find(const String& str, size_type pos) {
+String::size_type String::find(const String& str, size_type pos) const noexcept {
     return find(str.data(), pos, str.size());
 }
 
-String::size_type String::find(const_pointer str, size_type pos) {
+String::size_type String::find(const_pointer str, size_type pos) const noexcept {
     return find(str, pos, traits_type::length(str));
 }
 
-String::size_type String::find(value_type c, size_type pos) {
+String::size_type String::find(value_type c, size_type pos) const noexcept {
     const size_type sz = size();
     if (pos >= sz) {
         return npos;
@@ -458,6 +458,34 @@ String::size_type String::find(value_type c, size_type pos) {
         }
     }
     return npos;
+}
+
+String::size_type String::find_first_of(const_pointer s, size_type pos, size_type n) const noexcept {
+    if (n == 0) {
+        return npos;
+    }
+
+    while (pos < size()) {
+        for (size_type i = 0; i < n; ++i) {
+            if (data()[pos] == s[i]) {
+                return pos;
+            }
+        }
+        ++pos;
+    }
+    return npos;
+}
+
+String::size_type String::find_first_of(const String& str, size_type pos) const noexcept {
+    return find_first_of(str.data(), pos, str.size());
+}
+
+String::size_type String::find_first_of(const_pointer str, size_type pos) const noexcept {
+    return find_first_of(str, pos, traits_type::length(str));
+}
+
+String::size_type String::find_first_of(value_type c, size_type pos) const noexcept {
+    return find(c, pos);
 }
 
 

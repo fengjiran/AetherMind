@@ -16,6 +16,7 @@ String::String(const_pointer other, size_type size) {
             AETHERMIND_UNREACHABLE();
         }
     } else {
+        size = size > traits_type::length(other) ? traits_type::length(other) : size;
         Construct(other, other + size);
     }
 }
@@ -26,7 +27,7 @@ String::String(const_pointer other) {
         AETHERMIND_UNREACHABLE();
     }
 
-    Construct(other, other + std::strlen(other));
+    Construct(other, other + traits_type::length(other));
 }
 
 String::String(size_type size, char c) {
@@ -396,6 +397,45 @@ String& String::insert(size_type pos, const_pointer str) {
 
 String& String::insert(size_type pos, size_type n, value_type c) {
     return replace(pos, 0, n, c);
+}
+
+String::size_type String::find(const_pointer s, size_type pos, size_type n) {
+    const size_type sz = size();
+    if (n == 0) {
+        return pos <= sz ? pos : npos;
+    }
+
+    if (pos >= sz) {
+        return npos;
+    }
+
+    const value_type elem0 = s[0];
+    const const_pointer start = data();
+    const_pointer first = start + pos;
+    const const_pointer last = start + sz;
+    size_type len = sz - pos;
+
+    while (len >= n) {
+        // find the first occurrence of elem0
+        const_pointer first_occur = nullptr;
+        for (size_type i = 0; i < len - n + 1; ++i) {
+            if (*(first + i) == elem0) {
+                first_occur = first + i;
+                break;
+            }
+        }
+
+        if (first_occur == nullptr) {
+            return npos;
+        }
+
+        first = first_occur;
+        if (compare(first - start, n, s, n) == 0) {
+            return first - start;
+        }
+        len = last - ++first;
+    }
+    return npos;
 }
 
 

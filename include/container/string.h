@@ -278,6 +278,19 @@ public:
     String& insert(size_type pos, const_pointer str);
     String& insert(size_type pos, size_type n, value_type c);
 
+    /**
+       *  @brief  Find position of a C substring.
+       *  @param s  C string to locate.
+       *  @param pos  Index of character to search from.
+       *  @param n  Number of characters from @a s to search for.
+       *  @return  Index of start of first occurrence.
+       *
+       *  Starting from @a pos, searches forward for the first @a n
+       *  characters in @a s within this string. If found,
+       *  returns the index where it begins.
+       *  If not found, returns npos.
+      */
+    size_type find(const_pointer s, size_type pos, size_type n);
 
     NODISCARD uint32_t use_count() const noexcept {
         return IsLocal() ? 1 : impl_.use_count();

@@ -6,6 +6,7 @@
 #define AETHERMIND_CONTAINER_STRING_H
 
 #include "object.h"
+#include "string.h"
 
 namespace aethermind {
 
@@ -291,6 +292,9 @@ public:
        *  If not found, returns npos.
       */
     size_type find(const_pointer s, size_type pos, size_type n);
+    size_type find(const String& str, size_type pos = 0);
+    size_type find(const_pointer str, size_type pos = 0);
+    size_type find(value_type c, size_type pos = 0);
 
     NODISCARD uint32_t use_count() const noexcept {
         return IsLocal() ? 1 : impl_.use_count();

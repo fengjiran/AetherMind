@@ -438,6 +438,28 @@ String::size_type String::find(const_pointer s, size_type pos, size_type n) {
     return npos;
 }
 
+String::size_type String::find(const String& str, size_type pos) {
+    return find(str.data(), pos, str.size());
+}
+
+String::size_type String::find(const_pointer str, size_type pos) {
+    return find(str, pos, traits_type::length(str));
+}
+
+String::size_type String::find(value_type c, size_type pos) {
+    const size_type sz = size();
+    if (pos >= sz) {
+        return npos;
+    }
+
+    for (size_type i = pos; i < sz; ++i) {
+        if (*(data() + i) == c) {
+            return i;
+        }
+    }
+    return npos;
+}
+
 
 String::operator std::string() const {
     return {data(), size()};

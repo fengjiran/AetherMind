@@ -460,12 +460,52 @@ String::size_type String::find(value_type c, size_type pos) const noexcept {
     return npos;
 }
 
-String::size_type String::find_first_of(const_pointer s, size_type pos, size_type n) const noexcept {
-    if (n == 0) {
+String::size_type String::rfind(const_pointer s, size_type pos, size_type n) const noexcept {
+    const size_type sz = size();
+    if (n > sz) {
         return npos;
     }
 
-    while (pos < size()) {
+    pos = std::min(pos, sz - n);
+    do {
+        if (compare(pos, n, s, n) == 0) {
+            return pos;
+        }
+        --pos;
+    } while (pos > 0);
+
+    return npos;
+}
+
+String::size_type String::rfind(const String& str, size_type pos) const noexcept {
+    return rfind(str.data(), pos, str.size());
+}
+
+String::size_type String::rfind(const_pointer str, size_type pos) const noexcept {
+    return rfind(str, pos, traits_type::length(str));
+}
+
+String::size_type String::rfind(value_type c, size_type pos) const noexcept {
+    if (empty()) {
+        return npos;
+    }
+
+    size_type sz = size();
+    if (--sz > pos) {
+        sz = pos;
+    }
+
+
+}
+
+
+String::size_type String::find_first_of(const_pointer s, size_type pos, size_type n) const noexcept {
+    const size_type sz = size();
+    if (n == 0 || sz == 0) {
+        return npos;
+    }
+
+    while (pos < sz) {
         for (size_type i = 0; i < n; ++i) {
             if (data()[pos] == s[i]) {
                 return pos;
@@ -486,6 +526,36 @@ String::size_type String::find_first_of(const_pointer str, size_type pos) const 
 
 String::size_type String::find_first_of(value_type c, size_type pos) const noexcept {
     return find(c, pos);
+}
+
+String::size_type String::find_last_of(const_pointer s, size_type pos, size_type n) const noexcept {
+    size_type sz = size();
+    if (n == 0 || sz == 0) {
+        return npos;
+    }
+
+    if (--sz > pos) {
+        sz = pos;
+    }
+
+    do {
+        for (size_type i = 0; i < n; ++i) {
+            if (data()[sz] == s[i]) {
+                return sz;
+            }
+        }
+        --sz;
+    } while (sz > 0);
+
+    return npos;
+}
+
+String::size_type String::find_last_of(const String& str, size_type pos) const noexcept {
+    return find_last_of(str.data(), pos, str.size());
+}
+
+String::size_type String::find_last_of(const_pointer str, size_type pos) const noexcept {
+    return find_last_of(str, pos, traits_type::length(str));
 }
 
 

@@ -609,7 +609,57 @@ String::size_type String::find_last_of(value_type c, size_type pos) const noexce
 }
 
 String::size_type String::find_last_not_of(const_pointer s, size_type pos, size_type n) const noexcept {
-    //
+    if (empty()) {
+        return npos;
+    }
+
+    size_type sz = size();
+    if (--sz > pos) {
+        sz = pos;
+    }
+
+    do {
+        bool found = false;
+        for (size_type i = 0; i < n; ++i) {
+            if (data()[sz] == s[i]) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            return sz;
+        }
+    } while (sz-- > 0);
+
+    return npos;
+}
+
+String::size_type String::find_last_not_of(const String& str, size_type pos) const noexcept {
+    return find_last_not_of(str.data(), pos, str.size());
+}
+
+String::size_type String::find_last_not_of(const_pointer str, size_type pos) const noexcept {
+    return find_last_not_of(str, pos, traits_type::length(str));
+}
+
+String::size_type String::find_last_not_of(value_type c, size_type pos) const noexcept {
+    if (empty()) {
+        return npos;
+    }
+
+    size_type sz = size();
+    if (--sz > pos) {
+        sz = pos;
+    }
+
+    do {
+        if (data()[sz] != c) {
+            return sz;
+        }
+    } while (sz-- > 0);
+
+    return npos;
 }
 
 

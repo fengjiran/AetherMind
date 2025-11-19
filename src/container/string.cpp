@@ -498,7 +498,6 @@ String::size_type String::rfind(value_type c, size_type pos) const noexcept {
         if (*(data() + sz) == c) {
             return sz;
         }
-        // --sz;
     } while (sz-- > 0);
 
     return npos;
@@ -506,11 +505,11 @@ String::size_type String::rfind(value_type c, size_type pos) const noexcept {
 
 
 String::size_type String::find_first_of(const_pointer s, size_type pos, size_type n) const noexcept {
-    const size_type sz = size();
-    if (n == 0 || sz == 0) {
+    if (n == 0) {
         return npos;
     }
 
+    const size_type sz = size();
     while (pos < sz) {
         for (size_type i = 0; i < n; ++i) {
             if (data()[pos] == s[i]) {
@@ -534,6 +533,48 @@ String::size_type String::find_first_of(value_type c, size_type pos) const noexc
     return find(c, pos);
 }
 
+String::size_type String::find_first_not_of(const_pointer s, size_type pos, size_type n) const noexcept {
+    if (n == 0) {
+        return npos;
+    }
+
+    const size_type sz = size();
+    while (pos < sz) {
+        bool found = false;
+        for (size_type i = 0; i < n; ++i) {
+            if (data()[pos] == s[i]) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            return pos;
+        }
+        ++pos;
+    }
+    return npos;
+}
+
+String::size_type String::find_first_not_of(const String& str, size_type pos) const noexcept {
+    return find_first_not_of(str.data(), pos, str.size());
+}
+
+String::size_type String::find_first_not_of(const_pointer str, size_type pos) const noexcept {
+    return find_first_not_of(str, pos, traits_type::length(str));
+}
+
+String::size_type String::find_first_not_of(value_type c, size_type pos) const noexcept {
+    const size_type sz = size();
+    while (pos < sz) {
+        if (!traits_type::eq(data()[pos], c)) {
+            return pos;
+        }
+        ++pos;
+    }
+    return npos;
+}
+
 String::size_type String::find_last_of(const_pointer s, size_type pos, size_type n) const noexcept {
     size_type sz = size();
     if (n == 0 || sz == 0) {
@@ -550,8 +591,7 @@ String::size_type String::find_last_of(const_pointer s, size_type pos, size_type
                 return sz;
             }
         }
-        --sz;
-    } while (sz > 0);
+    } while (sz-- > 0);
 
     return npos;
 }
@@ -564,6 +604,9 @@ String::size_type String::find_last_of(const_pointer str, size_type pos) const n
     return find_last_of(str, pos, traits_type::length(str));
 }
 
+String::size_type String::find_last_of(value_type c, size_type pos) const noexcept {
+    return rfind(c, pos);
+}
 
 String::operator std::string() const {
     return {data(), size()};

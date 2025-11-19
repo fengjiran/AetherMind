@@ -291,25 +291,30 @@ public:
        *  returns the index where it begins.
        *  If not found, returns npos.
       */
-    size_type find(const_pointer s, size_type pos, size_type n) const noexcept;
-    size_type find(const String& str, size_type pos = 0) const noexcept;
-    size_type find(const_pointer str, size_type pos = 0) const noexcept;
-    size_type find(value_type c, size_type pos = 0) const noexcept;
+    NODISCARD size_type find(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type find(const String& str, size_type pos = 0) const noexcept;
+    NODISCARD size_type find(const_pointer str, size_type pos = 0) const noexcept;
+    NODISCARD size_type find(value_type c, size_type pos = 0) const noexcept;
 
-    size_type rfind(const_pointer s, size_type pos, size_type n) const noexcept;
-    size_type rfind(const String& str, size_type pos = npos) const noexcept;
-    size_type rfind(const_pointer str, size_type pos = npos) const noexcept;
-    size_type rfind(value_type c, size_type pos = npos) const noexcept;
+    NODISCARD size_type rfind(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type rfind(const String& str, size_type pos = npos) const noexcept;
+    NODISCARD size_type rfind(const_pointer str, size_type pos = npos) const noexcept;
+    NODISCARD size_type rfind(value_type c, size_type pos = npos) const noexcept;
 
-    size_type find_first_of(const_pointer s, size_type pos, size_type n) const noexcept;
-    size_type find_first_of(const String& str, size_type pos = 0) const noexcept;
-    size_type find_first_of(const_pointer str, size_type pos = 0) const noexcept;
-    size_type find_first_of(value_type c, size_type pos = 0) const noexcept;
+    NODISCARD size_type find_first_of(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type find_first_of(const String& str, size_type pos = 0) const noexcept;
+    NODISCARD size_type find_first_of(const_pointer str, size_type pos = 0) const noexcept;
+    NODISCARD size_type find_first_of(value_type c, size_type pos = 0) const noexcept;
 
-    size_type find_last_of(const_pointer s, size_type pos, size_type n) const noexcept;
-    size_type find_last_of(const String& str, size_type pos = npos) const noexcept;
-    size_type find_last_of(const_pointer str, size_type pos = npos) const noexcept;
-    size_type find_last_of(value_type c, size_type pos = npos) const noexcept;
+    NODISCARD size_type find_first_not_of(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type find_first_not_of(const String& str, size_type pos = 0) const noexcept;
+    NODISCARD size_type find_first_not_of(const_pointer str, size_type pos = 0) const noexcept;
+    NODISCARD size_type find_first_not_of(value_type c, size_type pos = 0) const noexcept;
+
+    NODISCARD size_type find_last_of(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type find_last_of(const String& str, size_type pos = npos) const noexcept;
+    NODISCARD size_type find_last_of(const_pointer str, size_type pos = npos) const noexcept;
+    NODISCARD size_type find_last_of(value_type c, size_type pos = npos) const noexcept;
 
     NODISCARD uint32_t use_count() const noexcept {
         return IsLocal() ? 1 : impl_.use_count();

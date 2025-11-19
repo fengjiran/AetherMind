@@ -662,6 +662,38 @@ String::size_type String::find_last_not_of(value_type c, size_type pos) const no
     return npos;
 }
 
+bool String::starts_with(const String& str) const noexcept {
+    return compare(0, str.size(), str) == 0;
+}
+
+bool String::starts_with(const_pointer str) const noexcept {
+    return compare(0, traits_type::length(str), str) == 0;
+}
+
+bool String::starts_with(value_type c) const noexcept {
+    return empty() ? false : traits_type::eq(front(), c);
+}
+
+bool String::ends_with(const String& str) const noexcept {
+    if (str.size() > size()) {
+        return false;
+    }
+
+    return compare(size() - str.size(), str.size(), str) == 0;
+}
+
+bool String::ends_with(const_pointer str) const noexcept {
+    const size_type len = traits_type::length(str);
+    if (len > size()) {
+        return false;
+    }
+
+    return compare(size() - len, len, str) == 0;
+}
+
+bool String::ends_with(value_type c) const noexcept {
+    return empty() ? false : traits_type::eq(back(), c);
+}
 
 String::operator std::string() const {
     return {data(), size()};

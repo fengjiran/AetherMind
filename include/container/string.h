@@ -321,6 +321,14 @@ public:
     NODISCARD size_type find_last_not_of(const_pointer str, size_type pos = npos) const noexcept;
     NODISCARD size_type find_last_not_of(value_type c, size_type pos = npos) const noexcept;
 
+    NODISCARD bool starts_with(const String& str) const noexcept;
+    NODISCARD bool starts_with(const_pointer str) const noexcept;
+    NODISCARD bool starts_with(value_type c) const noexcept;
+
+    NODISCARD bool ends_with(const String& str) const noexcept;
+    NODISCARD bool ends_with(const_pointer str) const noexcept;
+    NODISCARD bool ends_with(value_type c) const noexcept;
+
     NODISCARD uint32_t use_count() const noexcept {
         return IsLocal() ? 1 : impl_.use_count();
     }

@@ -608,6 +608,11 @@ String::size_type String::find_last_of(value_type c, size_type pos) const noexce
     return rfind(c, pos);
 }
 
+String::size_type String::find_last_not_of(const_pointer s, size_type pos, size_type n) const noexcept {
+    //
+}
+
+
 String::operator std::string() const {
     return {data(), size()};
 }

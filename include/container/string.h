@@ -32,7 +32,6 @@ private:
 };
 
 //TODO: implementation iterator(iterator adapter)
-//
 class String : public ObjectRef {
 public:
     using traits_type = std::char_traits<char>;
@@ -95,7 +94,6 @@ public:
     };
 
     String() = default;
-
     String(std::nullopt_t) = delete;// NOLINT
 
     /*!
@@ -112,15 +110,11 @@ public:
      * \param other a char array.
      */
     String(const_pointer other);//NOLINT
-
     String(size_type size, char c);
-
     template<typename Iter>
     String(Iter first, Iter last) {
         Construct<>(first, last);
     }
-
-    String(std::initializer_list<char> list) : String(list.begin(), list.end()) {}
 
     /*!
      * \brief Construct a new string object
@@ -132,69 +126,38 @@ public:
     String(String&& other) noexcept;
     String(const String& other, size_type pos);
     String(const String& other, size_type pos, size_type n);
+    String(std::initializer_list<char> list) : String(list.begin(), list.end()) {}
 
     String& operator=(const String& other);
     String& operator=(String&& other) noexcept;
     String& operator=(const std::string& other);
     String& operator=(const char* other);
 
-    NODISCARD iterator begin() noexcept {
-        return data();
-    }
+    NODISCARD const_pointer data() const noexcept;
+    NODISCARD pointer data() noexcept;
+    NODISCARD const_pointer c_str() const noexcept;
 
-    NODISCARD const_iterator begin() const noexcept {
-        return data();
-    }
-
-    NODISCARD iterator end() noexcept {
-        return data() + size();
-    }
-
-    NODISCARD const_iterator end() const noexcept {
-        return data() + size();
-    }
+    NODISCARD iterator begin() noexcept;
+    NODISCARD const_iterator begin() const noexcept;
+    NODISCARD iterator end() noexcept;
+    NODISCARD const_iterator end() const noexcept;
 
     void swap(String& other) noexcept;
 
-    NODISCARD const_pointer data() const noexcept {
-        return IsLocal() ? local_buffer_ : impl_->data();
-    }
+    NODISCARD bool defined() const noexcept;
+    NODISCARD bool IsLocal() const noexcept;
 
-    NODISCARD pointer data() noexcept {
-        return IsLocal() ? local_buffer_ : impl_->data();
-    }
+    NODISCARD size_type size() const noexcept;
+    NODISCARD size_type length() const noexcept;
+    NODISCARD size_type capacity() const noexcept;
+    NODISCARD bool empty() const noexcept;
+    void clear() noexcept;
 
-    NODISCARD const_pointer c_str() const noexcept {
-        return data();
-    }
-
-    NODISCARD bool defined() const noexcept {
-        return impl_;
-    }
-
-    NODISCARD bool IsLocal() const noexcept {
-        return !defined();
-    }
-
-    NODISCARD size_type size() const noexcept {
-        return size_;
-    }
-
-    NODISCARD size_type length() const noexcept {
-        return size_;
-    }
-
-    NODISCARD size_type capacity() const noexcept {
-        return IsLocal() ? static_cast<size_type>(local_capacity_) : capacity_;
-    }
-
-    NODISCARD bool empty() const noexcept {
-        return size() == 0;
-    }
-
-    void clear() noexcept {
-        size_ = 0;
-    }
+    NODISCARD uint32_t use_count() const noexcept;
+    NODISCARD bool unique() const noexcept;
+    NODISCARD StringImpl* GetImplPtrUnsafe() const noexcept;
+    NODISCARD StringImpl* ReleaseImplUnsafe();
+    NODISCARD const ObjectPtr<StringImpl>& GetObjectPtr() const;
 
     void push_back(char c);
     void pop_back() noexcept;
@@ -203,16 +166,35 @@ public:
 
     const_reference operator[](size_type i) const noexcept;
     CharProxy operator[](size_type i) noexcept;
-
     NODISCARD const_reference at(size_type i) const;
     CharProxy at(size_type i);
-
     CharProxy front() noexcept;
     NODISCARD const_reference front() const noexcept;
     CharProxy back() noexcept;
     NODISCARD const_reference back() const noexcept;
 
     NODISCARD String substr(size_type pos = 0, size_type n = npos) const;
+    operator std::string() const;// NOLINT
+    operator const char*() const;//NOLINT
+
+    String& replace(size_type pos, size_type n1, const_pointer str, size_type n2);
+    String& replace(size_type pos, size_type n1, const_pointer src);
+    String& replace(size_type pos, size_type n, const String& src);
+    String& replace(size_type pos1, size_type n1, const String& src, size_type pos2, size_type n2 = npos);
+    String& replace(size_type pos, size_type n1, size_type n2, value_type c);
+    String& replace(const_iterator first, const_iterator last, const_pointer src, size_type n);
+    String& replace(const_iterator first, const_iterator last, const String& src);
+    String& replace(const_iterator first, const_iterator last, const_pointer src);
+    String& replace(const_iterator first, const_iterator last, size_type n, value_type c);
+    template<typename Iter>
+    String& replace(const_iterator first, const_iterator last, Iter k1, Iter k2) {
+        CHECK(first >= begin() && first <= last && last <= end());
+        String src(k1, k2);
+        return replace(first - begin(), last - first, src.data(), src.size());
+    }
+    String& replace(const_iterator first, const_iterator last, pointer k1, pointer k2);
+    String& replace(const_iterator first, const_iterator last, const_pointer k1, const_pointer k2);
+    String& replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l);
 
     void resize(size_type n, value_type c);
     void resize(size_type n);
@@ -236,32 +218,10 @@ public:
     String& append(Iter first, Iter last) {
         return replace(end(), end(), first, last);
     }
-
     String& operator+=(const String& str);
     String& operator+=(const_pointer str);
     String& operator+=(value_type c);
     String& operator+=(std::initializer_list<value_type> l);
-
-    String& replace(size_type pos, size_type n1, const_pointer str, size_type n2);
-    String& replace(size_type pos, size_type n1, const_pointer src);
-    String& replace(size_type pos, size_type n, const String& src);
-    String& replace(size_type pos1, size_type n1, const String& src, size_type pos2, size_type n2 = npos);
-    String& replace(size_type pos, size_type n1, size_type n2, value_type c);
-    String& replace(const_iterator first, const_iterator last, const_pointer src, size_type n);
-    String& replace(const_iterator first, const_iterator last, const String& src);
-    String& replace(const_iterator first, const_iterator last, const_pointer src);
-    String& replace(const_iterator first, const_iterator last, size_type n, value_type c);
-
-    template<typename Iter>
-    String& replace(const_iterator first, const_iterator last, Iter k1, Iter k2) {
-        CHECK(first >= begin() && first <= last && last <= end());
-        String src(k1, k2);
-        return replace(first - begin(), last - first, src.data(), src.size());
-    }
-
-    String& replace(const_iterator first, const_iterator last, pointer k1, pointer k2);
-    String& replace(const_iterator first, const_iterator last, const_pointer k1, const_pointer k2);
-    String& replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l);
 
     iterator insert(const_iterator p, size_type n, value_type c);
     template<typename Iter>
@@ -329,30 +289,6 @@ public:
     NODISCARD bool ends_with(const_pointer str) const noexcept;
     NODISCARD bool ends_with(value_type c) const noexcept;
 
-    NODISCARD uint32_t use_count() const noexcept {
-        return IsLocal() ? 1 : impl_.use_count();
-    }
-
-    NODISCARD bool unique() const noexcept {
-        return use_count() == 1;
-    }
-
-    NODISCARD StringImpl* GetImplPtrUnsafe() const noexcept {
-        return impl_.get();
-    }
-
-    NODISCARD StringImpl* ReleaseImplUnsafe() {
-        return impl_.release();
-    }
-
-    NODISCARD const ObjectPtr<StringImpl>& GetObjectPtr() const {
-        return impl_;
-    }
-
-    operator std::string() const;// NOLINT
-
-    operator const char*() const;//NOLINT
-
     /*!
      * \brief Compares this String object to other
      *
@@ -391,18 +327,6 @@ public:
     NODISCARD int compare(size_type pos, size_type n, const_pointer other) const;
     NODISCARD int compare(size_type pos, size_type n1, const_pointer other, size_type n2) const;
 
-    /*!
-     * \brief Compare two char sequence for equality
-     *
-     * \param lhs Pointers to the char array to compare
-     * \param rhs Pointers to the char array to compare
-     * \param lhs_cnt Length of the char array to compare
-     * \param rhs_cnt Length of the char array to compare
-     *
-     * \return true if the two char sequences are equal, false otherwise.
-     */
-    static bool MemoryEqual(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt);
-
     static constexpr size_type npos = static_cast<size_type>(-1);
     static constexpr size_type kIncFactor = 2;
 
@@ -418,16 +342,12 @@ private:
     size_type size_ = 0;
     ObjectPtr<StringImpl> impl_;
 
-    void InitLocalBuffer() noexcept {
-        std::memset(local_buffer_, '\0', local_capacity_ + 1);
-    }
-
+    void InitLocalBuffer() noexcept;
     NODISCARD size_type Limit(size_type pos, size_type limit) const noexcept;
     NODISCARD size_type CheckPos(size_type pos) const;
     void CheckSize(size_type delta) const;
     String& append_aux(const_pointer src, size_type n);
     String& replace_aux(size_type pos, size_type n1, size_type n2);
-    // void erase_aux(size_type pos, size_type n);
 
     template<typename Iter,
              typename = std::enable_if_t<std::is_convertible_v<
@@ -535,15 +455,9 @@ inline bool operator>=(const char* lhs, const String& rhs) { return rhs.compare(
 // Overload == operator
 bool operator==(std::nullptr_t, const String& rhs) = delete;
 bool operator==(const String& lhs, std::nullptr_t) = delete;
-inline bool operator==(const String& lhs, const std::string& rhs) {
-    return String::MemoryEqual(lhs.data(), lhs.size(), rhs.data(), rhs.size());
-}
-inline bool operator==(const std::string& lhs, const String& rhs) {
-    return String::MemoryEqual(lhs.data(), lhs.size(), rhs.data(), rhs.size());
-}
-inline bool operator==(const String& lhs, const String& rhs) {
-    return String::MemoryEqual(lhs.data(), lhs.size(), rhs.data(), rhs.size());
-}
+inline bool operator==(const String& lhs, const std::string& rhs) { return lhs.compare(rhs) == 0; }
+inline bool operator==(const std::string& lhs, const String& rhs) { return rhs.compare(lhs) == 0; }
+inline bool operator==(const String& lhs, const String& rhs) { return lhs.compare(rhs) == 0; }
 inline bool operator==(const String& lhs, const char* rhs) { return lhs.compare(rhs) == 0; }
 inline bool operator==(const char* lhs, const String& rhs) { return rhs.compare(lhs) == 0; }
 

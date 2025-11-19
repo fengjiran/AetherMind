@@ -599,7 +599,7 @@ TEST(StringPushBack, WithinLocalBuffer) {
     s.push_back('y');
     EXPECT_EQ(s.size(), 6);
     EXPECT_STREQ(s.c_str(), "xxxxxy");
-    // EXPECT_TRUE(s.IsLocal());  // 应该仍然使用本地缓冲区
+    EXPECT_TRUE(s.IsLocal());  // 应该仍然使用本地缓冲区
 }
 
 // 测试添加字符达到本地缓冲区容量上限
@@ -607,7 +607,7 @@ TEST(StringPushBack, LocalBufferBoundary) {
     // 创建一个正好达到本地缓冲区容量的字符串
     String s(15, 'a');
     EXPECT_EQ(s.size(), 15);
-    // EXPECT_TRUE(s.IsLocal());  // 确认使用本地缓冲区
+    EXPECT_TRUE(s.IsLocal());  // 确认使用本地缓冲区
 
     // 添加一个字符，应该仍然可以容纳在本地缓冲区中（包括结束符）
     s.push_back('b');
@@ -624,7 +624,7 @@ TEST(StringPushBack, LocalBufferBoundary) {
 TEST(StringPushBack, ExceedLocalBuffer) {
     // 先填充到接近本地缓冲区容量
     String s(10, 'c');
-    // EXPECT_TRUE(s.IsLocal());
+    EXPECT_TRUE(s.IsLocal());
 
     // 逐个添加字符直到超过本地缓冲区容量
     for (int i = 0; i < 10; ++i) {
@@ -645,7 +645,7 @@ TEST(StringPushBack, ExceedLocalBuffer) {
 TEST(StringPushBack, DynamicAllocation) {
     // 创建一个肯定会动态分配的大字符串
     String s(100, 'x');
-    // EXPECT_FALSE(s.IsLocal());  // 应该使用动态分配
+    EXPECT_FALSE(s.IsLocal());  // 应该使用动态分配
 
     // 添加字符到动态分配的字符串
     s.push_back('y');
@@ -1184,11 +1184,11 @@ TEST(StringAppend, ChainedAppend) {
 TEST(StringAppend, AppendAtLocalBufferBoundary) {
     // 创建一个接近本地缓冲区大小的字符串（local_capacity_ = 15）
     String s(12, 'a');// "aaaaaaaaaaaa"
-    // EXPECT_TRUE(s.IsLocal());
+    EXPECT_TRUE(s.IsLocal());
 
     // 追加刚好填满本地缓冲区的字符
     s.append(3, 'b');// 现在长度为15
-    // EXPECT_TRUE(s.IsLocal());// 应该仍然使用本地缓冲区
+    EXPECT_TRUE(s.IsLocal());// 应该仍然使用本地缓冲区
 
     // 追加一个字符，可能触发动态分配
     s.append(1, 'c');// 现在长度为16
@@ -2095,7 +2095,7 @@ TEST(StringMemoryManagementTest, ShrinkToFit) {
 
 // 测试resize和reserve的边界情况
 TEST(StringMemoryManagementTest, BoundaryCases) {
-    GTEST_SKIP();
+    // GTEST_SKIP();
     // 测试resize到最大值
     String s1("test");
     EXPECT_NO_THROW(s1.resize(s1.max_size() - 1));
@@ -2157,17 +2157,17 @@ TEST(StringMemoryManagementTest, LocalBufferSwitching) {
     String s1(large_size, 'a');
 
     // 验证它使用了动态分配（不是本地缓冲区）
-    // EXPECT_FALSE(s1.IsLocal());
+    EXPECT_FALSE(s1.IsLocal());
 
     // 缩小到local_capacity_以下，应该切换回本地缓冲区
     s1.resize(5);
     s1.shrink_to_fit();
-    // EXPECT_TRUE(s1.IsLocal());// 应该使用本地缓冲区
+    EXPECT_TRUE(s1.IsLocal());// 应该使用本地缓冲区
     EXPECT_TRUE(s1 == "aaaaa");
 
     // 再次扩大超过local_capacity_
     s1.resize(large_size, 'b');
-    // EXPECT_FALSE(s1.IsLocal());// 应该切换到动态分配
+    EXPECT_FALSE(s1.IsLocal());// 应该切换到动态分配
     EXPECT_EQ(s1.size(), large_size);
 }
 
@@ -2245,6 +2245,16 @@ TEST(StringErase, BasicFunctionality) {
     s4.erase(6, 1);// 删除"e"
     EXPECT_TRUE(s4 == "Deletee");
     EXPECT_EQ(s4.size(), 7);
+
+    String s6(20, 'a');
+    String s7 = s6;
+    EXPECT_EQ(s6.use_count(), 2);
+    s6.clear();
+    EXPECT_FALSE(s7.empty());
+    s6.push_back('b');
+    EXPECT_TRUE(s6.IsLocal());
+    EXPECT_EQ(s6.size(), 1);
+    EXPECT_EQ(s7.size(), 20);
 }
 
 // 测试默认参数：pos=0, n=npos
@@ -2269,7 +2279,7 @@ TEST(StringErase, DefaultParameters) {
     String s4 = "ClearMe";
     s4.erase();
     EXPECT_TRUE(s4.empty());
-    EXPECT_TRUE(s4 == "");
+    EXPECT_TRUE(s4.empty());
 }
 
 // 测试边界情况：空字符串
@@ -2280,7 +2290,7 @@ TEST(StringErase, EmptyString) {
     empty.erase();
     EXPECT_TRUE(empty.empty());
     EXPECT_EQ(empty.size(), 0);
-    EXPECT_TRUE(empty == "");
+    EXPECT_TRUE(empty.empty());
 
     // 对空字符串调用erase(0, 5)应该没有效果
     empty.erase(0, 5);

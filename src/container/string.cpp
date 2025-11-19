@@ -91,9 +91,92 @@ String& String::operator=(const char* other) {
     return *this;
 }
 
+String::pointer String::data() noexcept {
+    return IsLocal() ? local_buffer_ : impl_->data();
+}
+
+String::const_pointer String::data() const noexcept {
+    return IsLocal() ? local_buffer_ : impl_->data();
+}
+
+String::const_pointer String::c_str() const noexcept {
+    return data();
+}
+
+
+String::iterator String::begin() noexcept {
+    return data();
+}
+
+String::const_iterator String::begin() const noexcept {
+    return data();
+}
+
+String::iterator String::end() noexcept {
+    return data() + size();
+}
+
+String::const_iterator String::end() const noexcept {
+    return data() + size();
+}
+
+bool String::defined() const noexcept {
+    return impl_;
+}
+
+bool String::IsLocal() const noexcept {
+    return !defined();
+}
+
+String::size_type String::size() const noexcept {
+    return size_;
+}
+
+String::size_type String::length() const noexcept {
+    return size_;
+}
+
+String::size_type String::capacity() const noexcept {
+    return IsLocal() ? static_cast<size_type>(local_capacity_) : capacity_;
+}
+
+bool String::empty() const noexcept {
+    return size() == 0;
+}
+
+void String::clear() noexcept {
+    size_ = 0;
+    impl_.reset();
+}
+
+uint32_t String::use_count() const noexcept {
+    return IsLocal() ? 1 : impl_.use_count();
+}
+
+bool String::unique() const noexcept {
+    return use_count() == 1;
+}
+
+StringImpl* String::GetImplPtrUnsafe() const noexcept {
+    return impl_.get();
+}
+
+StringImpl* String::ReleaseImplUnsafe() {
+    return impl_.release();
+}
+
+const ObjectPtr<StringImpl>& String::GetObjectPtr() const {
+    return impl_;
+}
+
+void String::InitLocalBuffer() noexcept {
+    std::memset(local_buffer_, '\0', local_capacity_ + 1);
+}
+
 void String::push_back(char c) {
-    COW(1);
-    traits_type::assign(data()[size_++], c);
+    // COW(1);
+    // traits_type::assign(data()[size_++], c);
+    append(1, c);
 }
 
 void String::pop_back() noexcept {
@@ -195,7 +278,7 @@ String& String::append_aux(const_pointer src, size_type n) {
 
 String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
     if (n2 > max_size() - (size() - n1)) {
-        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+        AETHERMIND_THROW(out_of_range) << "The bytes to be allocated exceed the max_size()!";
     }
 
     pos = CheckPos(pos);
@@ -204,7 +287,7 @@ String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
         return *this;
     }
 
-    const int64_t delta = n2 - n1;
+    const auto delta = static_cast<int64_t>(n2 - n1);
     const size_type remain = size() - pos - n1;
     COW(delta);
     if (delta > 0) {
@@ -781,7 +864,7 @@ void String::COW(int64_t delta) {
                 }
             } else {
                 const size_type new_cap = new_size > capacity() ? std::max(new_size, capacity() * kIncFactor)
-                                                                : new_size;
+                                                                : capacity();
                 SwitchContainer(new_cap);
             }
         }
@@ -807,8 +890,7 @@ void String::COW(int64_t delta) {
 }
 
 String::size_type String::Limit(size_type pos, size_type limit) const noexcept {
-    const bool exceed = limit < size() - pos;
-    return exceed ? limit : size() - pos;
+    return size() - pos > limit ? limit : size() - pos;
 }
 
 String::size_type String::CheckPos(size_type pos) const {
@@ -848,10 +930,6 @@ int String::MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rh
     }
 
     return 0;
-}
-
-bool String::MemoryEqual(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt) {
-    return MemoryCompare(lhs, lhs_cnt, rhs, rhs_cnt) == 0;
 }
 
 int String::compare(const String& other) const {
@@ -938,6 +1016,5 @@ String operator+(const String& lhs, String::value_type rhs) {
 String operator+(String::value_type lhs, const String& rhs) {
     return rhs + lhs;
 }
-
 
 }// namespace aethermind

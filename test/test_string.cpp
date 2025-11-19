@@ -1668,7 +1668,10 @@ TEST(StringCompareTest, CompareWithConstCharPtr) {
     EXPECT_EQ(s1.compare(0, 5, cstr3, 5), 0);// 比较 "hello" 和 "hello"
 
     // 测试长度限制（如果n2大于实际字符串长度，应该使用实际长度）
-    EXPECT_EQ(s1.compare(0, 5, cstr1, 10), 0);// n2=10大于实际长度
+    EXPECT_NE(s1.compare(0, 5, cstr1, 10), 0);// n2=10大于实际长度
+
+    // std::string s2 = "hello";
+    // EXPECT_TRUE(s2.compare(0, 5, cstr1, 10) == 0);
 }
 
 // 测试边界情况

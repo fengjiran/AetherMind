@@ -388,6 +388,10 @@ String& String::operator+=(std::initializer_list<value_type> l) {
 }
 
 String& String::replace(size_type pos, size_type n1, const_pointer str, size_type n2) {
+    if (n1 == n2 && compare(pos, n1, str, n2) == 0) {
+        return *this;
+    }
+
     replace_aux(pos, n1, n2);
     std::memcpy(data() + pos, str, n2);
     return *this;
@@ -976,7 +980,7 @@ int String::compare(size_type pos, size_type n, const_pointer other) const {
 }
 
 int String::compare(size_type pos, size_type n1, const_pointer other, size_type n2) const {
-    n2 = n2 > traits_type::length(other) ? traits_type::length(other) : n2;
+    // n2 = n2 > traits_type::length(other) ? traits_type::length(other) : n2;
     return MemoryCompare(data() + CheckPos(pos), Limit(pos, n1),
                          other, n2);
 }

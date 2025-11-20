@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_CONTAINER_STRING_H
 #define AETHERMIND_CONTAINER_STRING_H
 
+#include "container/container_utils.h"
 #include "object.h"
-#include "string.h"
 
 namespace aethermind {
 
@@ -41,56 +41,22 @@ public:
     using value_type = traits_type::char_type;
     using size_type = allocator_traits::size_type;
     using difference_type = allocator_traits::difference_type;
-    using iterator = value_type*;
-    using const_iterator = const value_type*;
+
     using pointer = allocator_traits::pointer;
     using const_pointer = allocator_traits::const_pointer;
-    using reference = std::iterator_traits<iterator>::reference;
-    using const_reference = std::iterator_traits<const_iterator>::reference;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+
+    class CharProxy;
+    class Converter;
+
+    // using iterator = details::IteratorAdapter<pointer, Converter, String>;
+    // using const_iterator = details::IteratorAdapter<const_pointer, Converter, const String>;
+
+    using iterator = value_type*;
+    using const_iterator = const value_type*;
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-
-    class CharProxy {
-    public:
-        CharProxy(String& str, size_type idx) : str_(str), idx_(idx) {}
-        CharProxy& operator=(value_type c) {
-            str_.replace(idx_, 1, 1, c);
-            return *this;
-        }
-
-        friend bool operator==(const CharProxy& lhs, const CharProxy& rhs) {
-            return *(lhs.str_.data() + lhs.idx_) == *(rhs.str_.data() + rhs.idx_);
-        }
-
-        friend bool operator!=(const CharProxy& lhs, const CharProxy& rhs) {
-            return !(lhs == rhs);
-        }
-
-        friend bool operator==(const CharProxy& lhs, value_type rhs) {
-            return *(lhs.str_.data() + lhs.idx_) == rhs;
-        }
-
-        friend bool operator!=(const CharProxy& lhs, value_type rhs) {
-            return !(lhs == rhs);
-        }
-
-        friend bool operator==(value_type lhs, const CharProxy& rhs) {
-            return rhs == lhs;
-        }
-
-        friend bool operator!=(value_type lhs, const CharProxy& rhs) {
-            return rhs != lhs;
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const CharProxy& c) {
-            os << *(c.str_.data() + c.idx_);
-            return os;
-        }
-
-    private:
-        String& str_;
-        size_type idx_;
-    };
 
     String() = default;
     String(std::nullopt_t) = delete;// NOLINT
@@ -414,6 +380,60 @@ private:
     friend String operator+(const std::string& lhs, const String& rhs);
     friend String operator+(const_pointer lhs, const String& rhs);
     friend String operator+(value_type lhs, const String& rhs);
+};
+
+class String::CharProxy {
+public:
+    CharProxy(String& str, size_type idx) : str_(str), idx_(idx) {}
+    CharProxy& operator=(value_type c) {
+        str_.replace(idx_, 1, 1, c);
+        return *this;
+    }
+
+    friend bool operator==(const CharProxy& lhs, const CharProxy& rhs) {
+        return *(lhs.str_.data() + lhs.idx_) == *(rhs.str_.data() + rhs.idx_);
+    }
+
+    friend bool operator!=(const CharProxy& lhs, const CharProxy& rhs) {
+        return !(lhs == rhs);
+    }
+
+    friend bool operator==(const CharProxy& lhs, value_type rhs) {
+        return *(lhs.str_.data() + lhs.idx_) == rhs;
+    }
+
+    friend bool operator!=(const CharProxy& lhs, value_type rhs) {
+        return !(lhs == rhs);
+    }
+
+    friend bool operator==(value_type lhs, const CharProxy& rhs) {
+        return rhs == lhs;
+    }
+
+    friend bool operator!=(value_type lhs, const CharProxy& rhs) {
+        return rhs != lhs;
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const CharProxy& c) {
+        os << *(c.str_.data() + c.idx_);
+        return os;
+    }
+
+private:
+    String& str_;
+    size_type idx_;
+};
+
+class String::Converter {
+public:
+    // using value_type = value_type;
+    static const value_type& convert(const String&, const value_type* ptr) {
+        return *ptr;
+    }
+
+    static CharProxy convert(String& str, value_type* ptr) {
+        return {str, static_cast<size_type>(ptr - str.data())};
+    }
 };
 
 inline std::ostream& operator<<(std::ostream& os, const String& str) {

@@ -25,8 +25,8 @@ struct is_valid_iterator {
 template<typename Iter, typename T>
 struct is_valid_iterator<Iter, std::optional<T>> : is_valid_iterator<Iter, T> {};
 
-template<typename Iter>
-struct is_valid_iterator<Iter, Any> : std::true_type {};
+// template<typename Iter>
+// struct is_valid_iterator<Iter, Any> : std::true_type {};
 
 template<typename Iter, typename T>
 inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;

@@ -569,13 +569,13 @@ template<typename T>
 class Array<T>::Converter {
 public:
     using value_type = Any;
-    static value_type& convert(value_type* ptr) {
-        return *ptr;
-    }
-
-    static const value_type& convert(const value_type* ptr) {
-        return *ptr;
-    }
+    // static value_type& convert(value_type* ptr) {
+    //     return *ptr;
+    // }
+    //
+    // static const value_type& convert(const value_type* ptr) {
+    //     return *ptr;
+    // }
 
     static const value_type& convert(const Array&, const value_type* ptr) {
         return *ptr;

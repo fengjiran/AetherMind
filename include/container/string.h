@@ -109,7 +109,7 @@ public:
      * \param other a char array.
      */
     String(const_pointer other);//NOLINT
-    String(size_type size, char c);
+    String(size_type size, value_type c);
     template<typename Iter>
     String(Iter first, Iter last) {
         Construct<>(first, last);
@@ -158,7 +158,7 @@ public:
     NODISCARD StringImpl* ReleaseImplUnsafe();
     NODISCARD const ObjectPtr<StringImpl>& GetObjectPtr() const;
 
-    void push_back(char c);
+    void push_back(value_type c);
     void pop_back() noexcept;
 
     NODISCARD static size_type max_size() noexcept;
@@ -342,7 +342,7 @@ private:
     };
 
     union {
-        char local_buffer_[local_capacity_ + 1];
+        value_type local_buffer_[local_capacity_ + 1];
         size_type capacity_ = 0;
     };
     size_type size_ = 0;
@@ -360,7 +360,7 @@ private:
                      std::forward_iterator_tag>>>
     void Construct(Iter first, Iter last) {
         const size_type cap = std::distance(first, last);
-        char* dst = nullptr;
+        pointer dst = nullptr;
         if (cap > static_cast<size_type>(local_capacity_)) {
             impl_ = StringImpl::Create(cap);
             capacity_ = cap;
@@ -377,7 +377,7 @@ private:
         size_ = cap;
     }
 
-    void Construct(size_type n, char c);
+    void Construct(size_type n, value_type c);
     void SwitchContainer(size_type new_cap);
     void COW(int64_t delta);
 

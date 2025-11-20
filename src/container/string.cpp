@@ -30,7 +30,7 @@ String::String(const_pointer other) {
     Construct(other, other + traits_type::length(other));
 }
 
-String::String(size_type size, char c) {
+String::String(size_type size, value_type c) {
     Construct(size, c);
 }
 
@@ -173,7 +173,7 @@ void String::InitLocalBuffer() noexcept {
     std::memset(local_buffer_, '\0', local_capacity_ + 1);
 }
 
-void String::push_back(char c) {
+void String::push_back(value_type c) {
     append(1, c);
 }
 
@@ -804,7 +804,7 @@ void String::swap(String& other) noexcept {
     if (IsLocal()) {
         if (other.IsLocal()) {
             if (!empty() && !other.empty()) {
-                char tmp[local_capacity_ + 1];
+                value_type tmp[local_capacity_ + 1];
                 std::memcpy(tmp, other.local_buffer_, other.size() + 1);
                 std::memcpy(other.local_buffer_, local_buffer_, size() + 1);
                 std::memcpy(local_buffer_, tmp, other.size() + 1);
@@ -836,8 +836,8 @@ void String::swap(String& other) noexcept {
     std::swap(size_, other.size_);
 }
 
-void String::Construct(size_type n, char c) {
-    char* dst = nullptr;
+void String::Construct(size_type n, value_type c) {
+    pointer dst = nullptr;
     if (n > static_cast<size_type>(local_capacity_)) {
         impl_ = StringImpl::Create(n);
         capacity_ = n;

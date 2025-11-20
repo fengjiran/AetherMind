@@ -189,11 +189,18 @@ public:
     template<typename Iter>
     String& replace(const_iterator first, const_iterator last, Iter k1, Iter k2) {
         CHECK(first >= begin() && first <= last && last <= end());
-        String src(k1, k2);
-        return replace(first - begin(), last - first, src.data(), src.size());
+        size_t pos = first - begin();
+        const size_type n1 = std::distance(first, last);
+        const size_type n2 = std::distance(k1, k2);
+
+        replace_aux(pos, n1, n2);
+        for (auto it = k1; it != k2; ++it) {
+            traits_type::assign(data()[pos++], *it);
+        }
+        return *this;
     }
-    String& replace(const_iterator first, const_iterator last, pointer k1, pointer k2);
-    String& replace(const_iterator first, const_iterator last, const_pointer k1, const_pointer k2);
+    String& replace(const_iterator first, const_iterator last, pointer p1, pointer p2);
+    String& replace(const_iterator first, const_iterator last, const_pointer p1, const_pointer p2);
     String& replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l);
 
     void resize(size_type n, value_type c);
@@ -252,6 +259,7 @@ public:
        *  If not found, returns npos.
       */
     NODISCARD size_type find(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type find_kmp(const_pointer s, size_type pos, size_type n) const noexcept;
     NODISCARD size_type find(const String& str, size_type pos = 0) const noexcept;
     NODISCARD size_type find(const_pointer str, size_type pos = 0) const noexcept;
     NODISCARD size_type find(value_type c, size_type pos = 0) const noexcept;
@@ -346,7 +354,6 @@ private:
     NODISCARD size_type Limit(size_type pos, size_type limit) const noexcept;
     NODISCARD size_type CheckPos(size_type pos) const;
     void CheckSize(size_type delta) const;
-    String& append_aux(const_pointer src, size_type n);
     String& replace_aux(size_type pos, size_type n1, size_type n2);
 
     template<typename Iter,

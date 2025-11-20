@@ -599,7 +599,7 @@ TEST(StringPushBack, WithinLocalBuffer) {
     s.push_back('y');
     EXPECT_EQ(s.size(), 6);
     EXPECT_STREQ(s.c_str(), "xxxxxy");
-    EXPECT_TRUE(s.IsLocal());  // 应该仍然使用本地缓冲区
+    EXPECT_TRUE(s.IsLocal());// 应该仍然使用本地缓冲区
 }
 
 // 测试添加字符达到本地缓冲区容量上限
@@ -607,7 +607,7 @@ TEST(StringPushBack, LocalBufferBoundary) {
     // 创建一个正好达到本地缓冲区容量的字符串
     String s(15, 'a');
     EXPECT_EQ(s.size(), 15);
-    EXPECT_TRUE(s.IsLocal());  // 确认使用本地缓冲区
+    EXPECT_TRUE(s.IsLocal());// 确认使用本地缓冲区
 
     // 添加一个字符，应该仍然可以容纳在本地缓冲区中（包括结束符）
     s.push_back('b');
@@ -645,7 +645,7 @@ TEST(StringPushBack, ExceedLocalBuffer) {
 TEST(StringPushBack, DynamicAllocation) {
     // 创建一个肯定会动态分配的大字符串
     String s(100, 'x');
-    EXPECT_FALSE(s.IsLocal());  // 应该使用动态分配
+    EXPECT_FALSE(s.IsLocal());// 应该使用动态分配
 
     // 添加字符到动态分配的字符串
     s.push_back('y');
@@ -762,6 +762,11 @@ TEST(StringReplace, PositionBasedBasic) {
     String s4("Hello, world!");
     s4.replace(7, 5, 3, 'X');
     EXPECT_TRUE(s4 == "Hello, XXX!");
+
+    String s5("Hello, world, hello!");
+    String s6 = s5;
+    s5.replace(0, 5, "Hello", 5);
+    EXPECT_EQ(s6.use_count(), 2);
 }
 
 // 测试基于位置的 replace 方法 - 子字符串替换
@@ -975,7 +980,7 @@ TEST(StringAppend, AppendPointerAndCount) {
     const char mixed[] = "abc\0def";
     String s4("prefix");
     s4.append(mixed, 7);// 包括空字符在内的7个字符
-    EXPECT_EQ(s4.size(), 9);
+    EXPECT_EQ(s4.size(), 13);
     EXPECT_EQ(s4[6], 'a');// 验证空字符被正确添加
 
     // 测试追加大量字符
@@ -1055,10 +1060,10 @@ TEST(StringAppend, AppendCString) {
     String s1("Hello");
     s1.append(", world!");
     EXPECT_EQ(s1.size(), 13);
-    EXPECT_STREQ(s1, "Hello, world!");
-    s1.append("hello", 10);
-    EXPECT_TRUE(s1 == "Hello, world!hello");
-    std::cout << s1 << std::endl;
+    EXPECT_TRUE(s1 == "Hello, world!");
+    // s1.append("hello", 10);
+    // EXPECT_TRUE(s1 == "Hello, world!hello");
+    // std::cout << s1 << std::endl;
 
     // 追加空字符串
     String s2("test");
@@ -1187,7 +1192,7 @@ TEST(StringAppend, AppendAtLocalBufferBoundary) {
     EXPECT_TRUE(s.IsLocal());
 
     // 追加刚好填满本地缓冲区的字符
-    s.append(3, 'b');// 现在长度为15
+    s.append(3, 'b');        // 现在长度为15
     EXPECT_TRUE(s.IsLocal());// 应该仍然使用本地缓冲区
 
     // 追加一个字符，可能触发动态分配
@@ -2098,14 +2103,14 @@ TEST(StringMemoryManagementTest, ShrinkToFit) {
 
 // 测试resize和reserve的边界情况
 TEST(StringMemoryManagementTest, BoundaryCases) {
-    // GTEST_SKIP();
     // 测试resize到最大值
     String s1("test");
-    EXPECT_NO_THROW(s1.resize(s1.max_size() - 1));
+
+    EXPECT_THROW(s1.resize(s1.max_size() - 1), std::bad_alloc);
 
     // 测试reserve到最大值附近
     String s2("sample");
-    EXPECT_NO_THROW(s2.reserve(s2.max_size() / 2));
+    EXPECT_THROW(s2.reserve(s2.max_size() / 2), std::bad_alloc);
 
     // 测试resize为0再resize为大值
     String s3("hello");

@@ -265,17 +265,6 @@ void String::shrink_to_fit() noexcept {
     }
 }
 
-
-String& String::append_aux(const_pointer src, size_type n) {
-    CheckSize(n);
-    if (n > 0) {
-        COW(static_cast<int64_t>(n));
-        std::memcpy(data() + size_, src, n);
-        size_ += n;
-    }
-    return *this;
-}
-
 String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
     if (n2 > max_size() - (size() - n1)) {
         AETHERMIND_THROW(out_of_range) << "The bytes to be allocated exceed the max_size()!";
@@ -305,7 +294,7 @@ String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
     }
 
     size_ += delta;
-    if (!IsLocal()) {
+    if (!IsLocal()) { // shrink to local buffer
         if (size() <= static_cast<size_type>(local_capacity_)) {
             InitLocalBuffer();
             std::memcpy(local_buffer_, data(), size() + 1);
@@ -314,7 +303,6 @@ String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
     }
     return *this;
 }
-
 
 String& String::erase(size_type pos, size_type n) {
     pos = CheckPos(pos);
@@ -340,26 +328,20 @@ String::iterator String::erase(const_iterator first, const_iterator last) {
     return iterator(data() + pos);
 }
 
-
 String& String::append(const_pointer src, size_type n) {
-    auto actual_len = traits_type::length(src);
-    if (n > actual_len) {
-        n = actual_len;
-    }
-    // return append_aux(src, n);
     return replace(size(), 0, src, n);
 }
 
 String& String::append(const_pointer src) {
-    return append_aux(src, traits_type::length(src));
+    return replace(size(), 0, src, traits_type::length(src));
 }
 
 String& String::append(const String& str) {
-    return append_aux(str.data(), str.size());
+    return replace(size(), 0, str);
 }
 
 String& String::append(const String& str, size_type pos, size_type n) {
-    return append_aux(str.data() + str.CheckPos(pos), str.Limit(pos, n));
+    return replace(size(), 0, str, pos, n);
 }
 
 String& String::append(size_type n, value_type c) {
@@ -367,7 +349,7 @@ String& String::append(size_type n, value_type c) {
 }
 
 String& String::append(std::initializer_list<value_type> l) {
-    return append_aux(l.begin(), l.size());
+    return replace(size(), 0, l);
 }
 
 String& String::operator+=(const String& str) {
@@ -379,12 +361,11 @@ String& String::operator+=(const_pointer str) {
 }
 
 String& String::operator+=(value_type c) {
-    push_back(c);
-    return *this;
+    return append(1, c);
 }
 
 String& String::operator+=(std::initializer_list<value_type> l) {
-    return append_aux(l.begin(), l.size());
+    return append(l);
 }
 
 String& String::replace(size_type pos, size_type n1, const_pointer str, size_type n2) {
@@ -433,14 +414,14 @@ String& String::replace(const_iterator first, const_iterator last, size_type n, 
     return replace(first - begin(), last - first, n, c);
 }
 
-String& String::replace(const_iterator first, const_iterator last, pointer k1, pointer k2) {
+String& String::replace(const_iterator first, const_iterator last, pointer p1, pointer p2) {
     CHECK(first >= begin() && first <= last && last <= end());
-    return replace(first - begin(), last - first, k1, k2 - k1);
+    return replace(first - begin(), last - first, p1, p2 - p1);
 }
 
-String& String::replace(const_iterator first, const_iterator last, const_pointer k1, const_pointer k2) {
+String& String::replace(const_iterator first, const_iterator last, const_pointer p1, const_pointer p2) {
     CHECK(first >= begin() && first <= last && last <= end());
-    return replace(first - begin(), last - first, k1, k2 - k1);
+    return replace(first - begin(), last - first, p1, p2 - p1);
 }
 
 String& String::replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l) {
@@ -487,6 +468,42 @@ String& String::insert(size_type pos, size_type n, value_type c) {
 }
 
 String::size_type String::find(const_pointer s, size_type pos, size_type n) const noexcept {
+    const size_type sz = size();
+    if (n == 0) {
+        return pos <= sz ? pos : npos;
+    }
+
+    if (pos >= sz || sz - pos < n) {
+        return npos;
+    }
+
+    const value_type elem0 = s[0];
+    while (pos <= sz - n) {
+        size_type i = pos;
+        bool found = false;
+        while (i <= sz - n) {
+            if (traits_type::eq(data()[i], elem0)) {
+                found = true;
+                break;
+            }
+            ++i;
+        }
+
+        if (!found) {
+            return npos;
+        }
+
+        if (compare(i, n, s, n) == 0) {
+            return i;
+        }
+
+        pos = i + 1;
+    }
+
+    return npos;
+}
+
+String::size_type String::find_kmp(const_pointer s, size_type pos, size_type n) const noexcept {
     const size_type sz = size();
     if (n == 0) {
         return pos <= sz ? pos : npos;

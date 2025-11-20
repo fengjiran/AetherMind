@@ -174,8 +174,6 @@ void String::InitLocalBuffer() noexcept {
 }
 
 void String::push_back(char c) {
-    // COW(1);
-    // traits_type::assign(data()[size_++], c);
     append(1, c);
 }
 
@@ -240,28 +238,21 @@ void String::resize(size_type n, value_type c) {
     }
 }
 
-void String::resize(size_type n) {
-    resize(n, value_type());
-}
-
 void String::reserve(size_type n) {
-    if (const size_type cap = capacity(); n > cap) {
+    if (n > capacity()) {
         SwitchContainer(n);
     }
 }
 
 void String::shrink_to_fit() noexcept {
-    if (IsLocal()) {
-        return;
-    }
-
-    const size_type sz = size();
-    if (sz <= static_cast<size_type>(local_capacity_)) {
-        InitLocalBuffer();
-        std::memcpy(local_buffer_, data(), sz + 1);
-        impl_.reset();
-    } else {
-        SwitchContainer(sz);
+    if (!IsLocal()) {
+        if (const size_type sz = size(); sz <= static_cast<size_type>(local_capacity_)) {
+            InitLocalBuffer();
+            std::memcpy(local_buffer_, data(), sz + 1);
+            impl_.reset();
+        } else {
+            SwitchContainer(sz);
+        }
     }
 }
 
@@ -294,7 +285,7 @@ String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
     }
 
     size_ += delta;
-    if (!IsLocal()) { // shrink to local buffer
+    if (!IsLocal()) {// shrink to local buffer
         if (size() <= static_cast<size_type>(local_capacity_)) {
             InitLocalBuffer();
             std::memcpy(local_buffer_, data(), size() + 1);
@@ -309,8 +300,7 @@ String& String::erase(size_type pos, size_type n) {
     if (pos == size()) {
         return *this;
     }
-
-    return replace(pos, Limit(pos, n), "", 0);
+    return replace_aux(pos, Limit(pos, n), 0);
 }
 
 String::iterator String::erase(const_iterator position) {
@@ -441,11 +431,10 @@ String::iterator String::insert(const_iterator p, std::initializer_list<char> l)
 
 String::iterator String::insert(const_iterator p, value_type c) {
     CHECK(p >= begin() && p <= end());
-    size_type pos = p - begin();
-    replace(pos, 0, 1, c);
+    const size_type pos = p - begin();
+    insert(pos, 1, c);
     return iterator(data() + pos);
 }
-
 
 String& String::insert(size_type pos, const String& other) {
     return replace(pos, 0, other);
@@ -863,7 +852,6 @@ void String::Construct(size_type n, char c) {
 
 void String::SwitchContainer(size_type new_cap) {
     auto impl = StringImpl::Create(new_cap);
-    // const size_type copy_num = size() < new_cap ? size() : new_cap;
     std::memcpy(impl->data(), data(), size());
     impl_ = impl;
     capacity_ = new_cap;

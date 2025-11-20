@@ -54,8 +54,7 @@ public:
     public:
         CharProxy(String& str, size_type idx) : str_(str), idx_(idx) {}
         CharProxy& operator=(value_type c) {
-            str_.COW(0);
-            *(str_.data() + idx_) = c;
+            str_.replace(idx_, 1, 1, c);
             return *this;
         }
 
@@ -203,8 +202,7 @@ public:
     String& replace(const_iterator first, const_iterator last, const_pointer p1, const_pointer p2);
     String& replace(const_iterator first, const_iterator last, std::initializer_list<value_type> l);
 
-    void resize(size_type n, value_type c);
-    void resize(size_type n);
+    void resize(size_type n, value_type c = value_type());
     void reserve(size_type n);
     void shrink_to_fit() noexcept;
 

@@ -426,12 +426,12 @@ private:
 
 class String::Converter {
 public:
-    // using value_type = value_type;
-    static const value_type& convert(const String&, const value_type* ptr) {
+    using value_type = String::value_type;
+    static const value_type& convert(const String&, const_pointer ptr) {
         return *ptr;
     }
 
-    static CharProxy convert(String& str, value_type* ptr) {
+    static CharProxy convert(String& str, pointer ptr) {
         return {str, static_cast<size_type>(ptr - str.data())};
     }
 };

@@ -95,6 +95,11 @@ public:
         return iter_ - other.iter_;
     }
 
+    decltype(auto) operator*() {
+        // return Converter::convert(iter_);
+        return Converter::convert(arr_, iter_);
+    }
+
     bool operator==(const IteratorAdapter& other) const {
         return iter_ == other.iter_;
     }
@@ -103,9 +108,20 @@ public:
         return !(*this == other);
     }
 
-    decltype(auto) operator*() {
-        // return Converter::convert(iter_);
-        return Converter::convert(arr_, iter_);
+    bool operator<(const IteratorAdapter& other) const {
+        return iter_ < other.iter_;
+    }
+
+    bool operator<=(const IteratorAdapter& other) const {
+        return iter_ <= other.iter_;
+    }
+
+    bool operator>(const IteratorAdapter& other) const {
+        return iter_ > other.iter_;
+    }
+
+    bool operator>=(const IteratorAdapter& other) const {
+        return iter_ >= other.iter_;
     }
 
 private:

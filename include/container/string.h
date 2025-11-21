@@ -12,58 +12,55 @@ namespace aethermind {
 
 class StringImpl : public Object {
 public:
-    using iterator = char*;
-    using const_iterator = const char*;
-    using traits_type = std::char_traits<char>;
-    using value_type = std::iterator_traits<iterator>::value_type;
+    using value_type = char;
+    using iterator = value_type*;
+    using const_iterator = const value_type*;
+
+    using traits_type = std::char_traits<value_type>;
+    using allocator_type = std::allocator<value_type>;
+    using allocator_traits = std::allocator_traits<allocator_type>;
+    using pointer = allocator_traits::pointer;
+    using const_pointer = allocator_traits::const_pointer;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+    using size_type = allocator_traits::size_type;
+    using difference_type = allocator_traits::difference_type;
 
     StringImpl() : data_(nullptr) {}
 
-    NODISCARD char* data() const noexcept {
+    NODISCARD pointer data() const noexcept {
         return data_;
     }
 
 private:
-    static ObjectPtr<StringImpl> Create(size_t cap) {
-        auto impl = make_array_object<StringImpl, char>(cap + 1);
-        impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(StringImpl);
-        std::memset(impl->data_, '\0', cap + 1);
-        return impl;
-    }
+    static ObjectPtr<StringImpl> Create(size_type cap);
 
-    char* data_;
+    pointer data_;
 
     friend class String;
 };
 
-//TODO: implementation iterator(iterator adapter)
 class String : public ObjectRef {
 public:
-    using traits_type = std::char_traits<char>;
-    using allocator_type = std::allocator<char>;
-    using allocator_traits = std::allocator_traits<allocator_type>;
+    using traits_type = StringImpl::traits_type;
+    using allocator_type = StringImpl::allocator_type;
+    using allocator_traits = StringImpl::allocator_traits;
 
-    // using value_type = traits_type::char_type;
-    using size_type = allocator_traits::size_type;
-    using difference_type = allocator_traits::difference_type;
-
-    using pointer = allocator_traits::pointer;
-    using const_pointer = allocator_traits::const_pointer;
-
-
-    class CharProxy;
-    class Converter;
+    using value_type = StringImpl::value_type;
+    using size_type = StringImpl::size_type;
+    using difference_type = StringImpl::difference_type;
+    using pointer = StringImpl::pointer;
+    using const_pointer = StringImpl::const_pointer;
+    using reference = StringImpl::reference;
+    using const_reference = StringImpl::const_reference;
 
     using iterator = details::IteratorAdapter<StringImpl::iterator, String>;
     using const_iterator = details::IteratorAdapter<StringImpl::const_iterator, String>;
     using reverse_iterator = details::ReverseIteratorAdapter<StringImpl::iterator, String>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<StringImpl::const_iterator, String>;
 
-    using traits_type1 = std::iterator_traits<iterator>;
-    using value_type = traits_type1::value_type;
-    using reference = value_type&;
-    using const_reference = const value_type&;
-
+    class CharProxy;
+    class Converter;
 
     String() = default;
     String(std::nullopt_t) = delete;// NOLINT
@@ -98,12 +95,12 @@ public:
     String(String&& other) noexcept;
     String(const String& other, size_type pos);
     String(const String& other, size_type pos, size_type n);
-    String(std::initializer_list<char> list) : String(list.begin(), list.end()) {}
+    String(std::initializer_list<value_type> list) : String(list.begin(), list.end()) {}
 
     String& operator=(const String& other);
     String& operator=(String&& other) noexcept;
     String& operator=(const std::string& other);
-    String& operator=(const char* other);
+    String& operator=(const_pointer other);
 
     NODISCARD const_pointer data() const noexcept;
     NODISCARD pointer data() noexcept;
@@ -146,8 +143,8 @@ public:
     NODISCARD const_reference back() const noexcept;
 
     NODISCARD String substr(size_type pos = 0, size_type n = npos) const;
-    operator std::string() const;// NOLINT
-    operator const char*() const;//NOLINT
+    operator std::string() const;  // NOLINT
+    operator const_pointer() const;//NOLINT
 
     String& replace(size_type pos, size_type n1, const_pointer str, size_type n2);
     String& replace(size_type pos, size_type n1, const_pointer src);
@@ -209,7 +206,7 @@ public:
         replace(p, p, first, last);
         return iterator(this, data() + pos);
     }
-    iterator insert(const_iterator p, std::initializer_list<char> l);
+    iterator insert(const_iterator p, std::initializer_list<value_type> l);
     iterator insert(const_iterator p, value_type c);
     String& insert(size_type pos, const String& other);
     String& insert(size_type pos1, const String& other, size_type pos2, size_type n = npos);

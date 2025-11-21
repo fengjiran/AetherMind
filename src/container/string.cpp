@@ -9,6 +9,13 @@
 
 namespace aethermind {
 
+ObjectPtr<StringImpl> StringImpl::Create(size_type cap) {
+    auto impl = make_array_object<StringImpl, value_type>(cap + 1);
+    impl->data_ = reinterpret_cast<pointer>(impl.get()) + sizeof(StringImpl);
+    std::memset(impl->data_, '\0', cap + 1);
+    return impl;
+}
+
 String::String(const_pointer other, size_type size) {
     if (other == nullptr) {
         if (size > 0) {
@@ -86,7 +93,7 @@ String& String::operator=(const std::string& other) {
     return *this;
 }
 
-String& String::operator=(const char* other) {
+String& String::operator=(const_pointer other) {
     String(other).swap(*this);
     return *this;
 }
@@ -103,18 +110,9 @@ String::const_pointer String::c_str() const noexcept {
     return data();
 }
 
-
-// String::iterator String::begin() noexcept {
-//     return data();
-// }
-
 String::iterator String::begin() noexcept {
     return iterator(this, data());
 }
-
-// String::const_iterator String::begin() const noexcept {
-//     return data();
-// }
 
 String::const_iterator String::begin() const noexcept {
     return const_iterator(const_cast<String*>(this), data());
@@ -433,7 +431,7 @@ String::iterator String::insert(const_iterator p, size_type n, value_type c) {
     return iterator(this, data() + pos);
 }
 
-String::iterator String::insert(const_iterator p, std::initializer_list<char> l) {
+String::iterator String::insert(const_iterator p, std::initializer_list<value_type> l) {
     return insert(p, l.begin(), l.end());
 }
 
@@ -800,7 +798,7 @@ String::operator std::string() const {
     return {data(), size()};
 }
 
-String::operator const char*() const {
+String::operator String::const_pointer() const {
     return data();
 }
 
@@ -889,20 +887,6 @@ void String::COW(int64_t delta) {
         if (!IsLocal() && !unique()) {
             SwitchContainer(capacity());
         }
-
-        // size_type new_size = size() + delta;
-        // if (!IsLocal()) {
-        //     if (new_size <= static_cast<size_type>(local_capacity_)) {
-        //         InitLocalBuffer();
-        //         std::memcpy(local_buffer_, data(), new_size + 1);
-        //         impl_.reset();
-        //     } else {
-        //         if (!unique()) {
-        //             SwitchContainer(new_size);
-        //             // SwitchContainer(capacity());
-        //         }
-        //     }
-        // }
     }
 }
 
@@ -998,7 +982,7 @@ int String::compare(size_type pos, size_type n1, const_pointer other, size_type 
                          other, n2);
 }
 
-String String::Concat(const_pointer lhs, size_t lhs_cnt, const_pointer rhs, size_t rhs_cnt) {
+String String::Concat(const_pointer lhs, size_t lhs_cnt, const_pointer rhs, size_type rhs_cnt) {
     String res(lhs, lhs_cnt);
     res.append(rhs, rhs_cnt);
     return res;

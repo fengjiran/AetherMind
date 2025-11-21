@@ -2454,7 +2454,7 @@ TEST(StringErase, SingleIterator) {
     String s2 = "DeleteFirst";
     new_it = s2.erase(s2.begin());
     EXPECT_TRUE(s2 == "eleteFirst");
-    // EXPECT_TRUE(s1 == "IteraorTest");
+    EXPECT_TRUE(s1 == "IteraorTest");
     EXPECT_EQ(s2.size(), 10);
     EXPECT_EQ(new_it, s2.begin());
     EXPECT_EQ(*new_it, 'e');

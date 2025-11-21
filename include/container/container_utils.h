@@ -57,10 +57,7 @@ public:
     IteratorAdapter(const IteratorAdapter& other) : ptr_(other.ptr_), iter_(other.iter_) {}
 
     IteratorAdapter& operator=(const IteratorAdapter& other) {
-        if (this != &other) {
-            ptr_ = other.ptr_;
-            iter_ = other.iter_;
-        }
+        IteratorAdapter(other).swap(*this);
         return *this;
     }
 
@@ -114,6 +111,11 @@ public:
 
     const Iter& base() const noexcept {
         return iter_;
+    }
+
+    void swap(IteratorAdapter& other) noexcept {
+        std::swap(ptr_, other.ptr_);
+        std::swap(iter_, other.iter_);
     }
 
     decltype(auto) operator*() {
@@ -214,17 +216,25 @@ operator-(const IteratorAdapter<Iter, Container>& lhs,
     return lhs.base() - rhs.base();
 }
 
-template<typename Iter, typename Converter, typename Array>
+template<typename Iter, typename Container>
+IteratorAdapter<Iter, Container> operator+(typename IteratorAdapter<Iter, Container>::difference_type n,
+                                           const IteratorAdapter<Iter, Container>& rhs) noexcept {
+    return rhs + n;
+}
+
+template<typename Iter, typename Container>
 class ReverseIteratorAdapter {
 public:
     using traits_type = std::iterator_traits<Iter>;
     using value_type = traits_type::value_type;
-    using pointer = value_type*;
-    using reference = value_type&;
-    using iterator_category = std::iterator_traits<Iter>::iterator_category;
-    using difference_type = std::iterator_traits<Iter>::difference_type;
+    using pointer = traits_type::pointer;
+    using reference = traits_type::reference;
+    using iterator_category = traits_type::iterator_category;
+    using difference_type = traits_type::difference_type;
 
-    explicit ReverseIteratorAdapter(Array& arr, Iter iter) : arr_(arr), iter_(iter) {}
+    using Converter = Container::Converter;
+
+    explicit ReverseIteratorAdapter(Container* ptr, Iter iter) : ptr_(ptr), iter_(iter) {}
 
     ReverseIteratorAdapter& operator++() {
         --iter_;
@@ -245,15 +255,25 @@ public:
     ReverseIteratorAdapter operator--(int) {
         ReverseIteratorAdapter tmp = *this;
         ++iter_;
-        return *this;
+        return tmp;
     }
 
     ReverseIteratorAdapter operator+(difference_type offset) const {
-        return ReverseIteratorAdapter(arr_, iter_ - offset);
+        return ReverseIteratorAdapter(ptr_, iter_ - offset);
     }
 
     ReverseIteratorAdapter operator-(difference_type offset) const {
-        return ReverseIteratorAdapter(arr_, iter_ + offset);
+        return ReverseIteratorAdapter(ptr_, iter_ + offset);
+    }
+
+    ReverseIteratorAdapter& operator+=(difference_type offset) {
+        iter_ -= offset;
+        return *this;
+    }
+
+    ReverseIteratorAdapter& operator-=(difference_type offset) {
+        iter_ += offset;
+        return *this;
     }
 
     template<typename T = ReverseIteratorAdapter,
@@ -264,28 +284,128 @@ public:
         return other.iter_ - iter_;
     }
 
-    bool operator==(const ReverseIteratorAdapter& other) const {
-        return iter_ == other.iter_;
-    }
-
-    bool operator!=(const ReverseIteratorAdapter& other) const {
-        return !(*this == other);
-    }
-
-    // auto&& operator*() {
-    //     return Converter::convert(iter_);
+    // bool operator==(const ReverseIteratorAdapter& other) const {
+    //     return iter_ == other.iter_;
     // }
 
+    // bool operator!=(const ReverseIteratorAdapter& other) const {
+    //     return !(*this == other);
+    // }
+
+    const Iter& base() const noexcept {
+        return iter_;
+    }
+
+    void swap(ReverseIteratorAdapter& other) noexcept {
+        std::swap(ptr_, other.ptr_);
+        std::swap(iter_, other.iter_);
+    }
+
     decltype(auto) operator*() {
-        // return Converter::convert(iter_);
-        return Converter::convert(arr_, iter_);
+        return Converter::convert(ptr_, iter_);
     }
 
 private:
-    Array& arr_;
+    Container* ptr_;
     Iter iter_;
+
+    template<typename T1, typename T2>
+    friend class ReverseIteratorAdapter;
 };
 
+template<typename IterL, typename IterR, typename Container>
+bool operator==(const ReverseIteratorAdapter<IterL, Container>& lhs,
+                const ReverseIteratorAdapter<IterR, Container>& rhs) noexcept {
+    return lhs.base() == rhs.base();
+}
+
+template<typename Iter, typename Container>
+bool operator==(const ReverseIteratorAdapter<Iter, Container>& lhs,
+                const ReverseIteratorAdapter<Iter, Container>& rhs) noexcept {
+    return lhs.base() == rhs.base();
+}
+
+
+template<typename IterL, typename IterR, typename Container>
+bool operator!=(const ReverseIteratorAdapter<IterL, Container>& lhs,
+                const ReverseIteratorAdapter<IterR, Container>& rhs) noexcept {
+    return lhs.base() != rhs.base();
+}
+
+template<typename Iter, typename Container>
+bool operator!=(const ReverseIteratorAdapter<Iter, Container>& lhs,
+                const ReverseIteratorAdapter<Iter, Container>& rhs) noexcept {
+    return lhs.base() != rhs.base();
+}
+
+template<typename IterL, typename IterR, typename Container>
+bool operator>(const ReverseIteratorAdapter<IterL, Container>& lhs,
+               const ReverseIteratorAdapter<IterR, Container>& rhs) noexcept {
+    return rhs.base() > lhs.base();
+}
+
+template<typename Iter, typename Container>
+bool operator>(const ReverseIteratorAdapter<Iter, Container>& lhs,
+               const ReverseIteratorAdapter<Iter, Container>& rhs) noexcept {
+    return rhs.base() > lhs.base();
+}
+
+
+template<typename IterL, typename IterR, typename Container>
+bool operator>=(const ReverseIteratorAdapter<IterL, Container>& lhs,
+                const ReverseIteratorAdapter<IterR, Container>& rhs) noexcept {
+    return rhs.base() >= lhs.base();
+}
+
+template<typename Iter, typename Container>
+bool operator>=(const ReverseIteratorAdapter<Iter, Container>& lhs,
+                const ReverseIteratorAdapter<Iter, Container>& rhs) noexcept {
+    return rhs.base() >= lhs.base();
+}
+
+template<typename IterL, typename IterR, typename Container>
+bool operator<(const ReverseIteratorAdapter<IterL, Container>& lhs,
+               const ReverseIteratorAdapter<IterR, Container>& rhs) noexcept {
+    return rhs.base() < lhs.base();
+}
+
+template<typename Iter, typename Container>
+bool operator<(const ReverseIteratorAdapter<Iter, Container>& lhs,
+               const ReverseIteratorAdapter<Iter, Container>& rhs) noexcept {
+    return rhs.base() < lhs.base();
+}
+
+template<typename IterL, typename IterR, typename Container>
+bool operator<=(const ReverseIteratorAdapter<IterL, Container>& lhs,
+                const ReverseIteratorAdapter<IterR, Container>& rhs) noexcept {
+    return rhs.base() <= lhs.base();
+}
+
+template<typename Iter, typename Container>
+bool operator<=(const ReverseIteratorAdapter<Iter, Container>& lhs,
+                const ReverseIteratorAdapter<Iter, Container>& rhs) noexcept {
+    return rhs.base() <= lhs.base();
+}
+
+template<typename IterL, typename IterR, typename Container>
+auto operator-(const ReverseIteratorAdapter<IterL, Container>& lhs,
+               const ReverseIteratorAdapter<IterR, Container>& rhs) noexcept
+        -> decltype(rhs.base() - lhs.base()) {
+    return rhs.base() - lhs.base();
+}
+
+template<typename Iter, typename Container>
+ReverseIteratorAdapter<Iter, Container>::difference_type
+operator-(const ReverseIteratorAdapter<Iter, Container>& lhs,
+          const ReverseIteratorAdapter<Iter, Container>& rhs) noexcept {
+    return rhs.base() - lhs.base();
+}
+
+template<typename Iter, typename Container>
+ReverseIteratorAdapter<Iter, Container> operator+(typename ReverseIteratorAdapter<Iter, Container>::difference_type n,
+                                                  const ReverseIteratorAdapter<Iter, Container>& rhs) noexcept {
+    return rhs + n;
+}
 
 }// namespace details
 }// namespace aethermind

@@ -135,8 +135,8 @@ public:
 
     using iterator = details::IteratorAdapter<ArrayImpl::iterator, Array>;
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, const Array>;
-    using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter, Array>;
-    using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
+    using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Array>;
+    using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, const Array>;
     using value_type = iterator::value_type;
 
     Array() = default;
@@ -209,19 +209,19 @@ public:
     }
 
     reverse_iterator rbegin() noexcept {
-        return reverse_iterator(*this, pimpl_->end() - 1);
+        return reverse_iterator(this, pimpl_->end() - 1);
     }
 
     const_reverse_iterator rbegin() const noexcept {
-        return const_reverse_iterator(*this, pimpl_->end() - 1);
+        return const_reverse_iterator(this, pimpl_->end() - 1);
     }
 
     reverse_iterator rend() noexcept {
-        return reverse_iterator(*this, pimpl_->begin() - 1);
+        return reverse_iterator(this, pimpl_->begin() - 1);
     }
 
     const_reverse_iterator rend() const noexcept {
-        return const_reverse_iterator(*this, pimpl_->begin() - 1);
+        return const_reverse_iterator(this, pimpl_->begin() - 1);
     }
 
     NODISCARD const Any& front() const {
@@ -570,15 +570,6 @@ private:
 template<typename T>
 class Array<T>::Converter {
 public:
-    static const value_type& convert(const Array&, const value_type* ptr) {
-        return *ptr;
-    }
-
-    static AnyProxy convert(Array& arr, value_type* ptr) {
-        auto idx = std::distance(arr.pimpl_->begin(), ptr);
-        return AnyProxy(arr, idx);
-    }
-
     static const value_type& convert(const Array*, const value_type* ptr) {
         return *ptr;
     }

@@ -193,19 +193,19 @@ public:
     }
 
     iterator begin() noexcept {
-        return iterator(*this, pimpl_->begin());
+        return iterator(this, pimpl_->begin());
     }
 
     const_iterator begin() const noexcept {
-        return const_iterator(*this, pimpl_->begin());
+        return const_iterator(this, pimpl_->begin());
     }
 
     iterator end() noexcept {
-        return iterator(*this, pimpl_->end());
+        return iterator(this, pimpl_->end());
     }
 
     const_iterator end() const noexcept {
-        return const_iterator(*this, pimpl_->end());
+        return const_iterator(this, pimpl_->end());
     }
 
     reverse_iterator rbegin() noexcept {
@@ -570,15 +570,6 @@ private:
 template<typename T>
 class Array<T>::Converter {
 public:
-    // using value_type = Any;
-    // static value_type& convert(value_type* ptr) {
-    //     return *ptr;
-    // }
-    //
-    // static const value_type& convert(const value_type* ptr) {
-    //     return *ptr;
-    // }
-
     static const value_type& convert(const Array&, const value_type* ptr) {
         return *ptr;
     }
@@ -586,6 +577,15 @@ public:
     static AnyProxy convert(Array& arr, value_type* ptr) {
         auto idx = std::distance(arr.pimpl_->begin(), ptr);
         return AnyProxy(arr, idx);
+    }
+
+    static const value_type& convert(const Array*, const value_type* ptr) {
+        return *ptr;
+    }
+
+    static AnyProxy convert(Array* arr, value_type* ptr) {
+        auto idx = std::distance(arr->pimpl_->begin(), ptr);
+        return AnyProxy(*arr, idx);
     }
 };
 

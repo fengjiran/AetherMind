@@ -48,15 +48,13 @@ public:
 
     using Converter = Container::Converter;
 
-    explicit IteratorAdapter(Container& arr, Iter iter) : arr_(arr), ptr_(&arr_), iter_(iter) {}
-
-    explicit IteratorAdapter(Container* ptr, Iter iter) : ptr_(ptr), arr_(*ptr_), iter_(iter) {}
+    explicit IteratorAdapter(Container* ptr, Iter iter) : ptr_(ptr), iter_(iter) {}
 
     template<typename Iter1,
              typename = std::enable_if_t<std::is_convertible_v<Iter1, Iter>>>
-    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : arr_(other.arr_), ptr_(&arr_), iter_(other.iter_) {}
+    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : ptr_(other.ptr_), iter_(other.iter_) {}
 
-    IteratorAdapter(const IteratorAdapter& other) : arr_(other.arr_), ptr_(&arr_), iter_(other.iter_) {}
+    IteratorAdapter(const IteratorAdapter& other) : ptr_(other.ptr_), iter_(other.iter_) {}
 
     IteratorAdapter& operator=(const IteratorAdapter& other) {
         if (this != &other) {
@@ -119,11 +117,10 @@ public:
     }
 
     decltype(auto) operator*() {
-        return Converter::convert(*ptr_, iter_);
+        return Converter::convert(ptr_, iter_);
     }
 
 private:
-    Container& arr_;
     Container* ptr_;
     Iter iter_;
 

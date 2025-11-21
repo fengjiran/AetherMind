@@ -1061,9 +1061,6 @@ TEST(StringAppend, AppendCString) {
     s1.append(", world!");
     EXPECT_EQ(s1.size(), 13);
     EXPECT_TRUE(s1 == "Hello, world!");
-    // s1.append("hello", 10);
-    // EXPECT_TRUE(s1 == "Hello, world!hello");
-    // std::cout << s1 << std::endl;
 
     // 追加空字符串
     String s2("test");

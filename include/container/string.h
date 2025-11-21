@@ -51,7 +51,7 @@ public:
     class Converter;
 
     // using iterator = details::IteratorAdapter<pointer, Converter, String>;
-    // using const_iterator = details::IteratorAdapter<const_pointer, Converter, const String>;
+    // using const_iterator = details::IteratorAdapter<const_pointer, Converter, String>;
 
     using iterator = value_type*;
     using const_iterator = const value_type*;
@@ -426,7 +426,6 @@ private:
 
 class String::Converter {
 public:
-    using value_type = String::value_type;
     static const value_type& convert(const String&, const_pointer ptr) {
         return *ptr;
     }

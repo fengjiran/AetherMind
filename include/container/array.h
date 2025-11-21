@@ -136,6 +136,7 @@ public:
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
     using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter, Array>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
+    using value_type = iterator::value_type;
 
     Array() = default;
 
@@ -568,7 +569,7 @@ private:
 template<typename T>
 class Array<T>::Converter {
 public:
-    using value_type = Any;
+    // using value_type = Any;
     // static value_type& convert(value_type* ptr) {
     //     return *ptr;
     // }

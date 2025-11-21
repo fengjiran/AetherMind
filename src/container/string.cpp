@@ -108,9 +108,17 @@ String::iterator String::begin() noexcept {
     return data();
 }
 
+// String::iterator String::begin() noexcept {
+//     return iterator(*this, data());
+// }
+
 String::const_iterator String::begin() const noexcept {
     return data();
 }
+
+// String::const_iterator String::begin() const noexcept {
+//     return const_iterator(*this, data());
+// }
 
 String::iterator String::end() noexcept {
     return data() + size();

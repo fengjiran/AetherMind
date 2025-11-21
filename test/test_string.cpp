@@ -2454,6 +2454,7 @@ TEST(StringErase, SingleIterator) {
     String s2 = "DeleteFirst";
     new_it = s2.erase(s2.begin());
     EXPECT_TRUE(s2 == "eleteFirst");
+    // EXPECT_TRUE(s1 == "IteraorTest");
     EXPECT_EQ(s2.size(), 10);
     EXPECT_EQ(new_it, s2.begin());
     EXPECT_EQ(*new_it, 'e');
@@ -2500,6 +2501,15 @@ TEST(StringErase, IteratorRange) {
     EXPECT_EQ(s4.size(), 0);
     EXPECT_EQ(new_it, s4.begin());
     EXPECT_EQ(new_it, s4.end());
+
+    String s5 = "hello, hello, hello";
+    String s6 = s5;
+    EXPECT_EQ(s5.use_count(), 2);
+    *s6.begin() = 'c';
+    EXPECT_EQ(s5.use_count(), 1);
+
+    EXPECT_TRUE(s5 == "hello, hello, hello");
+    EXPECT_TRUE(s6 == "cello, hello, hello");
 }
 
 // 测试不同版本erase的一致性

@@ -128,12 +128,13 @@ private:
 template<typename T>
 class Array : public ObjectRef {
     static_assert(std::is_constructible_v<T>);
+
+public:
     class AnyProxy;
     class Converter;
 
-public:
-    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Converter, Array>;
-    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
+    using iterator = details::IteratorAdapter<ArrayImpl::iterator, Array>;
+    using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, const Array>;
     using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Converter, Array>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::const_iterator, Converter, const Array>;
     using value_type = iterator::value_type;

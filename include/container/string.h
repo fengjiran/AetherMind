@@ -50,11 +50,11 @@ public:
     class CharProxy;
     class Converter;
 
-    // using iterator = details::IteratorAdapter<pointer, Converter, String>;
-    // using const_iterator = details::IteratorAdapter<const_pointer, Converter, String>;
+    using iterator = details::IteratorAdapter<pointer, String>;
+    using const_iterator = details::IteratorAdapter<const_pointer, String>;
 
-    using iterator = value_type*;
-    using const_iterator = const value_type*;
+    // using iterator = value_type*;
+    // using const_iterator = const value_type*;
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
@@ -200,7 +200,8 @@ public:
         CHECK(p >= begin() && p <= end());
         const size_type pos = p - begin();
         replace(p, p, first, last);
-        return iterator(data() + pos);
+        return iterator(*this, data() + pos);
+        // return iterator(data() + pos);
     }
     iterator insert(const_iterator p, std::initializer_list<char> l);
     iterator insert(const_iterator p, value_type c);

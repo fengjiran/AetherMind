@@ -35,8 +35,8 @@ inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;
 // IteratorAdapter is a wrapper around an iterator that converts the value
 // type of the iterator to another type.
 // \tparam Iter The type of the iterator.
-// \tparam Converter The type of the converter.
-template<typename Iter, typename Converter, typename Container>
+// \tparam Container The value container.
+template<typename Iter, typename Container>
 class IteratorAdapter {
 public:
     using traits_type = std::iterator_traits<Iter>;
@@ -46,7 +46,23 @@ public:
     using iterator_category = traits_type::iterator_category;
     using difference_type = traits_type::difference_type;
 
+    using Converter = Container::Converter;
+
     explicit IteratorAdapter(Container& arr, Iter iter) : arr_(arr), iter_(iter) {}
+
+    template<typename Iter1,
+             typename = std::enable_if_t<std::is_convertible_v<Iter1, Iter>>>
+    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : arr_(other.arr_), iter_(other.iter_) {}
+
+    IteratorAdapter(const IteratorAdapter& other) : arr_(other.arr_), iter_(other.iter_) {}
+
+    IteratorAdapter& operator=(const IteratorAdapter& other) {
+        if (this != &other) {
+            // arr_ = other.arr_;
+            iter_ = other.iter_;
+        }
+        return *this;
+    }
 
     IteratorAdapter& operator++() {
         ++iter_;
@@ -96,102 +112,106 @@ public:
     //     return iter_ - other.iter_;
     // }
 
-    decltype(auto) operator*() {
-        return Converter::convert(arr_, iter_);
-    }
-
     const Iter& base() const noexcept {
         return iter_;
     }
 
+    decltype(auto) operator*() {
+        return Converter::convert(arr_, iter_);
+    }
+
 private:
     Container& arr_;
+    // Container* ptr_;
     Iter iter_;
+
+    template<typename T1, typename T2>
+    friend class IteratorAdapter;
 };
 
-template<typename IterL, typename IterR, typename Converter, typename Container>
-bool operator==(const IteratorAdapter<IterL, Converter, Container>& lhs,
-                const IteratorAdapter<IterR, Converter, Container>& rhs) noexcept {
+template<typename IterL, typename IterR, typename Container>
+bool operator==(const IteratorAdapter<IterL, Container>& lhs,
+                const IteratorAdapter<IterR, Container>& rhs) noexcept {
     return lhs.base() == rhs.base();
 }
 
-template<typename Iter, typename Converter, typename Container>
-bool operator==(const IteratorAdapter<Iter, Converter, Container>& lhs,
-                const IteratorAdapter<Iter, Converter, Container>& rhs) noexcept {
+template<typename Iter, typename Container>
+bool operator==(const IteratorAdapter<Iter, Container>& lhs,
+                const IteratorAdapter<Iter, Container>& rhs) noexcept {
     return lhs.base() == rhs.base();
 }
 
-template<typename IterL, typename IterR, typename Converter, typename Container>
-bool operator!=(const IteratorAdapter<IterL, Converter, Container>& lhs,
-                const IteratorAdapter<IterR, Converter, Container>& rhs) noexcept {
+template<typename IterL, typename IterR, typename Container>
+bool operator!=(const IteratorAdapter<IterL, Container>& lhs,
+                const IteratorAdapter<IterR, Container>& rhs) noexcept {
     return lhs.base() != rhs.base();
 }
 
-template<typename Iter, typename Converter, typename Container>
-bool operator!=(const IteratorAdapter<Iter, Converter, Container>& lhs,
-                const IteratorAdapter<Iter, Converter, Container>& rhs) noexcept {
+template<typename Iter, typename Container>
+bool operator!=(const IteratorAdapter<Iter, Container>& lhs,
+                const IteratorAdapter<Iter, Container>& rhs) noexcept {
     return lhs.base() != rhs.base();
 }
 
-template<typename IterL, typename IterR, typename Converter, typename Container>
-bool operator>(const IteratorAdapter<IterL, Converter, Container>& lhs,
-               const IteratorAdapter<IterR, Converter, Container>& rhs) noexcept {
+template<typename IterL, typename IterR, typename Container>
+bool operator>(const IteratorAdapter<IterL, Container>& lhs,
+               const IteratorAdapter<IterR, Container>& rhs) noexcept {
     return lhs.base() > rhs.base();
 }
 
-template<typename Iter, typename Converter, typename Container>
-bool operator>(const IteratorAdapter<Iter, Converter, Container>& lhs,
-               const IteratorAdapter<Iter, Converter, Container>& rhs) noexcept {
+template<typename Iter, typename Container>
+bool operator>(const IteratorAdapter<Iter, Container>& lhs,
+               const IteratorAdapter<Iter, Container>& rhs) noexcept {
     return lhs.base() > rhs.base();
 }
 
-template<typename IterL, typename IterR, typename Converter, typename Container>
-bool operator>=(const IteratorAdapter<IterL, Converter, Container>& lhs,
-                const IteratorAdapter<IterR, Converter, Container>& rhs) noexcept {
+template<typename IterL, typename IterR, typename Container>
+bool operator>=(const IteratorAdapter<IterL, Container>& lhs,
+                const IteratorAdapter<IterR, Container>& rhs) noexcept {
     return lhs.base() >= rhs.base();
 }
 
-template<typename Iter, typename Converter, typename Container>
-bool operator>=(const IteratorAdapter<Iter, Converter, Container>& lhs,
-                const IteratorAdapter<Iter, Converter, Container>& rhs) noexcept {
+template<typename Iter, typename Container>
+bool operator>=(const IteratorAdapter<Iter, Container>& lhs,
+                const IteratorAdapter<Iter, Container>& rhs) noexcept {
     return lhs.base() >= rhs.base();
 }
 
-template<typename IterL, typename IterR, typename Converter, typename Container>
-bool operator<(const IteratorAdapter<IterL, Converter, Container>& lhs,
-               const IteratorAdapter<IterR, Converter, Container>& rhs) noexcept {
+template<typename IterL, typename IterR, typename Container>
+bool operator<(const IteratorAdapter<IterL, Container>& lhs,
+               const IteratorAdapter<IterR, Container>& rhs) noexcept {
     return lhs.base() < rhs.base();
 }
 
-template<typename Iter, typename Converter, typename Container>
-bool operator<(const IteratorAdapter<Iter, Converter, Container>& lhs,
-               const IteratorAdapter<Iter, Converter, Container>& rhs) noexcept {
+template<typename Iter, typename Container>
+bool operator<(const IteratorAdapter<Iter, Container>& lhs,
+               const IteratorAdapter<Iter, Container>& rhs) noexcept {
     return lhs.base() < rhs.base();
 }
 
-template<typename IterL, typename IterR, typename Converter, typename Container>
-bool operator<=(const IteratorAdapter<IterL, Converter, Container>& lhs,
-                const IteratorAdapter<IterR, Converter, Container>& rhs) noexcept {
+template<typename IterL, typename IterR, typename Container>
+bool operator<=(const IteratorAdapter<IterL, Container>& lhs,
+                const IteratorAdapter<IterR, Container>& rhs) noexcept {
     return lhs.base() <= rhs.base();
 }
 
-template<typename Iter, typename Converter, typename Container>
-bool operator<=(const IteratorAdapter<Iter, Converter, Container>& lhs,
-                const IteratorAdapter<Iter, Converter, Container>& rhs) noexcept {
+template<typename Iter, typename Container>
+bool operator<=(const IteratorAdapter<Iter, Container>& lhs,
+                const IteratorAdapter<Iter, Container>& rhs) noexcept {
     return lhs.base() <= rhs.base();
 }
 
-template<typename IterL, typename IterR, typename Converter, typename Container>
-auto operator-(const IteratorAdapter<IterL, Converter, Container>& lhs,
-               const IteratorAdapter<IterR, Converter, Container>& rhs) noexcept
+template<typename IterL, typename IterR, typename Container>
+auto operator-(const IteratorAdapter<IterL, Container>& lhs,
+               const IteratorAdapter<IterR, Container>& rhs) noexcept
         -> decltype(lhs.base() - rhs.base()) {
     return lhs.base() - rhs.base();
 }
 
-template<typename Iter, typename Converter, typename Container>
-IteratorAdapter<Iter, Converter, Container>::difference_type
-operator-(const IteratorAdapter<Iter, Converter, Container>& lhs,
-          const IteratorAdapter<Iter, Converter, Container>& rhs) noexcept {
+template<typename Iter, typename Container>
+IteratorAdapter<Iter, Container>::difference_type
+operator-(const IteratorAdapter<Iter, Container>& lhs,
+          const IteratorAdapter<Iter, Container>& rhs) noexcept {
     return lhs.base() - rhs.base();
 }
 

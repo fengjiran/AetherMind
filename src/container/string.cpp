@@ -109,7 +109,7 @@ String::const_pointer String::c_str() const noexcept {
 // }
 
 String::iterator String::begin() noexcept {
-    return iterator(*this, data());
+    return iterator(this, data());
 }
 
 // String::const_iterator String::begin() const noexcept {
@@ -117,15 +117,15 @@ String::iterator String::begin() noexcept {
 // }
 
 String::const_iterator String::begin() const noexcept {
-    return const_iterator(*const_cast<String*>(this), data());
+    return const_iterator(const_cast<String*>(this), data());
 }
 
 String::iterator String::end() noexcept {
-    return iterator(*this, data() + size());
+    return iterator(this, data() + size());
 }
 
 String::const_iterator String::end() const noexcept {
-    return const_iterator(*const_cast<String*>(this), data() + size());
+    return const_iterator(const_cast<String*>(this), data() + size());
 }
 
 bool String::defined() const noexcept {
@@ -315,7 +315,7 @@ String::iterator String::erase(const_iterator position) {
     CHECK(position >= begin() && position < end()) << "erase position out of bounds";
     const size_type pos = position - begin();
     erase(pos, 1);
-    return iterator(*this, data() + pos);
+    return iterator(this, data() + pos);
 }
 
 String::iterator String::erase(const_iterator first, const_iterator last) {
@@ -323,7 +323,7 @@ String::iterator String::erase(const_iterator first, const_iterator last) {
     const size_type pos = first - begin();
     const size_type n = last - first;
     erase(pos, n);
-    return iterator(*this, data() + pos);
+    return iterator(this, data() + pos);
 }
 
 String& String::append(const_pointer src, size_type n) {
@@ -430,7 +430,7 @@ String::iterator String::insert(const_iterator p, size_type n, value_type c) {
     CHECK(p >= begin() && p <= end());
     const size_type pos = p - begin();
     replace(p, p, n, c);
-    return iterator(*this, data() + pos);
+    return iterator(this, data() + pos);
 }
 
 String::iterator String::insert(const_iterator p, std::initializer_list<char> l) {
@@ -441,7 +441,7 @@ String::iterator String::insert(const_iterator p, value_type c) {
     CHECK(p >= begin() && p <= end());
     const size_type pos = p - begin();
     insert(pos, 1, c);
-    return iterator(*this, data() + pos);
+    return iterator(this, data() + pos);
 }
 
 String& String::insert(size_type pos, const String& other) {

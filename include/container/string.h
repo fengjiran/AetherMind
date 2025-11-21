@@ -200,7 +200,7 @@ public:
         CHECK(p >= begin() && p <= end());
         const size_type pos = p - begin();
         replace(p, p, first, last);
-        return iterator(*this, data() + pos);
+        return iterator(this, data() + pos);
         // return iterator(data() + pos);
     }
     iterator insert(const_iterator p, std::initializer_list<char> l);

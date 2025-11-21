@@ -48,17 +48,19 @@ public:
 
     using Converter = Container::Converter;
 
-    explicit IteratorAdapter(Container& arr, Iter iter) : arr_(arr), iter_(iter) {}
+    explicit IteratorAdapter(Container& arr, Iter iter) : arr_(arr), ptr_(&arr_), iter_(iter) {}
+
+    explicit IteratorAdapter(Container* ptr, Iter iter) : ptr_(ptr), arr_(*ptr_), iter_(iter) {}
 
     template<typename Iter1,
              typename = std::enable_if_t<std::is_convertible_v<Iter1, Iter>>>
-    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : arr_(other.arr_), iter_(other.iter_) {}
+    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : arr_(other.arr_), ptr_(&arr_), iter_(other.iter_) {}
 
-    IteratorAdapter(const IteratorAdapter& other) : arr_(other.arr_), iter_(other.iter_) {}
+    IteratorAdapter(const IteratorAdapter& other) : arr_(other.arr_), ptr_(&arr_), iter_(other.iter_) {}
 
     IteratorAdapter& operator=(const IteratorAdapter& other) {
         if (this != &other) {
-            // arr_ = other.arr_;
+            ptr_ = other.ptr_;
             iter_ = other.iter_;
         }
         return *this;
@@ -87,11 +89,11 @@ public:
     }
 
     IteratorAdapter operator+(difference_type offset) const {
-        return IteratorAdapter(arr_, iter_ + offset);
+        return IteratorAdapter(ptr_, iter_ + offset);
     }
 
     IteratorAdapter operator-(difference_type offset) const {
-        return IteratorAdapter(arr_, iter_ - offset);
+        return IteratorAdapter(ptr_, iter_ - offset);
     }
 
     IteratorAdapter& operator+=(difference_type offset) {
@@ -117,12 +119,12 @@ public:
     }
 
     decltype(auto) operator*() {
-        return Converter::convert(arr_, iter_);
+        return Converter::convert(*ptr_, iter_);
     }
 
 private:
     Container& arr_;
-    // Container* ptr_;
+    Container* ptr_;
     Iter iter_;
 
     template<typename T1, typename T2>

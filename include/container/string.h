@@ -12,6 +12,11 @@ namespace aethermind {
 
 class StringImpl : public Object {
 public:
+    using iterator = char*;
+    using const_iterator = const char*;
+    using traits_type = std::char_traits<char>;
+    using value_type = std::iterator_traits<iterator>::value_type;
+
     StringImpl() : data_(nullptr) {}
 
     NODISCARD char* data() const noexcept {
@@ -38,25 +43,27 @@ public:
     using allocator_type = std::allocator<char>;
     using allocator_traits = std::allocator_traits<allocator_type>;
 
-    using value_type = traits_type::char_type;
+    // using value_type = traits_type::char_type;
     using size_type = allocator_traits::size_type;
     using difference_type = allocator_traits::difference_type;
 
     using pointer = allocator_traits::pointer;
     using const_pointer = allocator_traits::const_pointer;
-    using reference = value_type&;
-    using const_reference = const value_type&;
+
 
     class CharProxy;
     class Converter;
 
-    using iterator = details::IteratorAdapter<pointer, String>;
-    using const_iterator = details::IteratorAdapter<const_pointer, String>;
+    using iterator = details::IteratorAdapter<StringImpl::iterator, String>;
+    using const_iterator = details::IteratorAdapter<StringImpl::const_iterator, String>;
+    using reverse_iterator = details::ReverseIteratorAdapter<StringImpl::iterator, String>;
+    using const_reverse_iterator = details::ReverseIteratorAdapter<StringImpl::const_iterator, String>;
 
-    // using iterator = value_type*;
-    // using const_iterator = const value_type*;
-    using reverse_iterator = std::reverse_iterator<iterator>;
-    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+    using traits_type1 = std::iterator_traits<iterator>;
+    using value_type = traits_type1::value_type;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+
 
     String() = default;
     String(std::nullopt_t) = delete;// NOLINT
@@ -201,7 +208,6 @@ public:
         const size_type pos = p - begin();
         replace(p, p, first, last);
         return iterator(this, data() + pos);
-        // return iterator(data() + pos);
     }
     iterator insert(const_iterator p, std::initializer_list<char> l);
     iterator insert(const_iterator p, value_type c);

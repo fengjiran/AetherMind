@@ -6,17 +6,17 @@
 #define AETHERMIND_OPERATOR_NAME_H
 
 #include "macros.h"
+#include "container/string.h"
 
 #include <cstring>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <string_view>
 #include <utility>
 
 namespace aethermind {
 
-class OperatorName final{
+class OperatorName final {
 public:
     OperatorName(std::string name, std::string overload_name)
         : name_(std::move(name)), overload_name_(std::move(overload_name)) {}

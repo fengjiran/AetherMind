@@ -16,13 +16,13 @@ public:
     QualifiedName() = default;
 
     // `name` can be a dotted string, like "foo.bar.baz", or just a bare name.
-    QualifiedName(const std::string& name) {// NOLINT
+    QualifiedName(const String& name) {// NOLINT
         CHECK(!name.empty());
 
         // split the string into atoms
         size_t start = 0;
         size_t pos = name.find(delimiter_, start);
-        while (pos != std::string::npos) {
+        while (pos != String::npos) {
             auto atom = name.substr(start, pos - start);
             CHECK(!atom.empty());
             atoms_.emplace_back(atom);
@@ -36,22 +36,21 @@ public:
         CacheAccessors();
     }
 
-    QualifiedName(const char* name) : QualifiedName(std::string(name)) {}  // NOLINT
-    QualifiedName(const String& name) : QualifiedName(std::string(name)) {}//NOLINT
+    QualifiedName(const char* name) : QualifiedName(String(name)) {}// NOLINT
 
-    explicit QualifiedName(std::vector<std::string> atoms) : atoms_(std::move(atoms)) {
+    explicit QualifiedName(std::vector<String> atoms) : atoms_(std::move(atoms)) {
         for (const auto& atom: atoms_) {
             CHECK(!atom.empty()) << "atom cannot be empty";
-            CHECK(atom.find(delimiter_) == std::string::npos)
+            CHECK(atom.find(delimiter_) == String::npos)
                     << "delimiter not allowed in atom";
         }
         CacheAccessors();
     }
 
     // name must be a bare name(not dots)
-    explicit QualifiedName(const QualifiedName& prefix, std::string name) {
+    explicit QualifiedName(const QualifiedName& prefix, String name) {
         CHECK(!name.empty());
-        CHECK(name.find(delimiter_) == std::string::npos);
+        CHECK(name.find(delimiter_) == String::npos);
         atoms_ = prefix.atoms_;
         atoms_.push_back(std::move(name));
         CacheAccessors();
@@ -87,7 +86,7 @@ public:
         return name_;
     }
 
-    NODISCARD const std::vector<std::string>& GetAtoms() const {
+    NODISCARD const std::vector<String>& GetAtoms() const {
         return atoms_;
     }
 
@@ -101,8 +100,8 @@ public:
 
 private:
     template<typename T, typename = T::iterator>
-    std::string join(char delimiter, const T& v) {
-        std::string res;
+    String join(char delimiter, const T& v) {
+        String res;
         size_t reserve = 0;
         for (const auto& e: v) {
             reserve += e.size() + 1;
@@ -135,7 +134,7 @@ private:
     static constexpr char delimiter_ = '.';
 
     // The actual list of names, like "{foo, bar, baz}"
-    std::vector<std::string> atoms_;
+    std::vector<String> atoms_;
 
     // Cached accessors, derived from `atoms_`.
     String qualified_name_;

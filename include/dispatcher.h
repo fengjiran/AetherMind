@@ -15,7 +15,7 @@ namespace aethermind {
 
 class OperatorSchema {
 public:
-    OperatorSchema(std::string name, std::string overload_name)
+    OperatorSchema(String name, String overload_name)
         : name_({std::move(name), std::move(overload_name)}) {}
 
 private:

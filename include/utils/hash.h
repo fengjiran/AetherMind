@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_UTILS_HASH_H
 #define AETHERMIND_UTILS_HASH_H
 
+#include "container/string.h"
+
 #include <complex>
 #include <cstddef>
 #include <functional>
@@ -12,7 +14,6 @@
 #include <iomanip>
 #include <ios>
 #include <sstream>
-#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -35,7 +36,7 @@ inline size_t hash_combine(size_t seed, size_t value) {
 struct sha1 {
     typedef unsigned int(digest_type)[5];
 
-    sha1(const std::string& s = "") {
+    sha1(const String& s = "") {
         if (!s.empty()) {
             reset();
             process_bytes(s.c_str(), s.size());
@@ -54,7 +55,7 @@ struct sha1 {
         bit_count_high = 0;
     }
 
-    std::string str() {
+    String str() {
         unsigned int digest[5];
         get_digest(digest);
 

@@ -5,10 +5,11 @@
 #ifndef AETHERMIND_TENSOR_UTILS_H
 #define AETHERMIND_TENSOR_UTILS_H
 
+#include "container/string.h"
+
 #include <cxxabi.h>
 #include <functional>
 #include <memory>
-#include <string>
 
 namespace aethermind {
 
@@ -41,7 +42,7 @@ bool safe_multiply_u64(const Container& c, uint64_t* out) {
 // readable format, e.g. _Z1gv -> g().
 // More information:
 // https://github.com/gcc-mirror/gcc/blob/master/libstdc%2B%2B-v3/libsupc%2B%2B/cxxabi.h
-inline std::string demangle(const char* name) {
+inline String demangle(const char* name) {
     int status = -1;
     std::unique_ptr<char, std::function<void(char*)>> demangled(
             abi::__cxa_demangle(

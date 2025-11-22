@@ -243,7 +243,7 @@ const char* AetherMindTraceback(const char* filename,
                                 int lineno,
                                 const char* func,
                                 int cross_aethermind_boundary) {
-    thread_local std::string traceback_str;
+    thread_local aethermind::String traceback_str;
     std::ostringstream traceback_stream;
     traceback_stream << "  File \"" << filename << "\", line " << lineno << ", in " << func << '\n';
     traceback_str = traceback_stream.str();

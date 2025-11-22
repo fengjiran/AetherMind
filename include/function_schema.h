@@ -77,15 +77,15 @@ public:
         return default_value_;
     }
 
-    bool IsKwargOnly() const {
+    NODISCARD bool IsKwargOnly() const {
         return kwarg_only_;
     }
 
-    bool IsOut() const {
+    NODISCARD bool IsOut() const {
         return is_out_;
     }
 
-    bool IsInferredType() const {
+    NODISCARD bool IsInferredType() const {
         bool is_inferred_type = false;
         CHECK(type_ != nullptr);
         if (auto t = type_->CastTo<TensorType>()) {
@@ -94,24 +94,19 @@ public:
         return is_inferred_type;
     }
 
-    Argument CloneWithType(const TypePtr& new_type) const {
+    NODISCARD Argument CloneWithType(const TypePtr& new_type) const {
         return Argument(name_, new_type, N_, default_value_, kwarg_only_);
     }
 
-    String TypeMismatchMsg(const String& actual_type) const {
-        std::string inferred_type_hint;
+    NODISCARD String TypeMismatchMsg(const String& actual_type) const {
+        String inferred_type_hint;
         if (IsInferredType()) {
-            inferred_type_hint = "Inferred type '" +
-                                 std::string(name()) +
-                                 "' to be of type 'Tensor' "
-                                 "because it was not annotated with an explicit type.\n";
+            inferred_type_hint = "Inferred type '" + name() + "' to be of type 'Tensor' "
+                                                              "because it was not annotated with an explicit type.\n";
         }
         return "Expected a value of type '" +
-               std::string(type()->ReprStr()) +
-               "' for argument '" +
-               std::string(name()) +
-               "', but instead found type '" +
-               actual_type + ".\n" +
+               type()->ReprStr() + "' for argument '" + name() +
+               "', but instead found type '" + actual_type + ".\n" +
                inferred_type_hint;
     }
 

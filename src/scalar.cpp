@@ -173,7 +173,7 @@ std::ostream& operator<<(std::ostream& os, const Scalar& s) {
     AETHERMIND_UNREACHABLE();
 }
 
-std::string toString(const Scalar& s) {
+String toString(const Scalar& s) {
     return fmt::format("{}", fmt::streamed(s));
 }
 }// namespace aethermind

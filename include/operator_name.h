@@ -5,27 +5,20 @@
 #ifndef AETHERMIND_OPERATOR_NAME_H
 #define AETHERMIND_OPERATOR_NAME_H
 
-#include "macros.h"
 #include "container/string.h"
-
-#include <cstring>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <utility>
 
 namespace aethermind {
 
 class OperatorName final {
 public:
-    OperatorName(std::string name, std::string overload_name)
+    OperatorName(String name, String overload_name)
         : name_(std::move(name)), overload_name_(std::move(overload_name)) {}
 
-    NODISCARD std::string name() const {
+    NODISCARD String name() const {
         return name_;
     }
 
-    NODISCARD std::string overload_name() const {
+    NODISCARD String overload_name() const {
         return overload_name_;
     }
 
@@ -34,7 +27,7 @@ public:
     // exists and name is not mutated
     NODISCARD std::optional<std::string_view> GetNamespace() const {
         auto pos = name_.find("::");
-        if (pos == std::string::npos) {
+        if (pos == String::npos) {
             return std::nullopt;
         }
         return std::string_view(name_.data(), pos);
@@ -67,21 +60,21 @@ public:
     }
 
 private:
-    std::string name_;
-    std::string overload_name_;
+    String name_;
+    String overload_name_;
 };
 
 std::ostream& operator<<(std::ostream& os, const OperatorName& opName);
 
-std::string toString(const OperatorName& opName);
+String toString(const OperatorName& opName);
 
 }// namespace aethermind
 
 namespace std {
 template<>
 struct hash<aethermind::OperatorName> {
-    size_t operator()(const aethermind::OperatorName& x) const {
-        return std::hash<std::string>()(x.name()) ^ ~std::hash<std::string>()(x.overload_name());
+    size_t operator()(const aethermind::OperatorName& x) const noexcept {
+        return std::hash<aethermind::String>()(x.name()) ^ ~std::hash<aethermind::String>()(x.overload_name());
     };
 };
 }// namespace std

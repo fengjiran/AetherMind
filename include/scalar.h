@@ -219,7 +219,7 @@ SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TO);
 #undef DEFINE_TO
 
 std::ostream& operator<<(std::ostream& os, const Scalar& s);
-std::string toString(const Scalar& s);
+String toString(const Scalar& s);
 
 template<typename T>
 bool operator==(const Scalar& lhs, T rhs) {

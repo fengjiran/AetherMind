@@ -5,15 +5,15 @@
 #ifndef AETHERMIND_ENV_H
 #define AETHERMIND_ENV_H
 
-#include <optional>
-#include <string>
+#include "container/string.h"
+
 #include <vector>
 
 namespace aethermind {
 
 void set_env(const char* name, const char* value, bool overwrite);
 
-std::optional<std::string> get_env(const char* name) noexcept;
+std::optional<String> get_env(const char* name) noexcept;
 
 bool has_env(const char* name) noexcept;
 
@@ -35,7 +35,7 @@ public:
 private:
     RegisterEnvs() = default;
 
-    std::vector<std::string> names_;
+    std::vector<String> names_;
 };
 
 }// namespace aethermind

@@ -23,10 +23,10 @@ void set_env(const char* name, const char* value, bool overwrite) {
     CHECK(err == 0);
 }
 
-std::optional<std::string> get_env(const char* name) noexcept {
+std::optional<String> get_env(const char* name) noexcept {
     std::shared_lock lock(get_env_mutex());
     if (const char* env_value = std::getenv(name)) {
-        return std::string(env_value);
+        return String(env_value);
     }
     return std::nullopt;
 }

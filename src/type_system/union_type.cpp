@@ -314,8 +314,9 @@ String UnionType::union_str(const TypePrinter& printer, bool is_annotation_str) 
         }
         return false;
     };
-    std::string open_delimeter = is_annotation_str ? "[" : "(";
-    std::string close_delimeter = is_annotation_str ? "]" : ")";
+
+    String open_delimeter = is_annotation_str ? "[" : "(";
+    String close_delimeter = is_annotation_str ? "]" : ")";
     ss << "Union" + open_delimeter;
 
     bool printed = false;

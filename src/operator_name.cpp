@@ -15,7 +15,7 @@ std::ostream& operator<<(std::ostream& os, const OperatorName& opName) {
     return os;
 }
 
-std::string toString(const OperatorName& opName) {
+String toString(const OperatorName& opName) {
     std::ostringstream oss;
     oss << opName;
     return oss.str();

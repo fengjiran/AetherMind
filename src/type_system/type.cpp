@@ -3,7 +3,6 @@
 //
 
 #include "type_system/union_type.h"
-// #include "type_traits.h"
 
 namespace aethermind {
 

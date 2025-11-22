@@ -227,10 +227,10 @@ public:
        *  If not found, returns npos.
       */
     NODISCARD size_type find(const_pointer s, size_type pos, size_type n) const noexcept;
-    NODISCARD size_type find_kmp(const_pointer s, size_type pos, size_type n) const noexcept;
     NODISCARD size_type find(const String& str, size_type pos = 0) const noexcept;
     NODISCARD size_type find(const_pointer str, size_type pos = 0) const noexcept;
     NODISCARD size_type find(value_type c, size_type pos = 0) const noexcept;
+    NODISCARD size_type find_kmp(const_pointer s, size_type pos, size_type n) const noexcept;
 
     NODISCARD size_type rfind(const_pointer s, size_type pos, size_type n) const noexcept;
     NODISCARD size_type rfind(const String& str, size_type pos = npos) const noexcept;

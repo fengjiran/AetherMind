@@ -77,7 +77,7 @@ class SharedType;
 // implementation.
 using TypePrinter = std::function<std::optional<String>(const Type&)>;
 
-namespace detail {
+namespace details {
 
 template<typename T>
 struct IsSingletonType : std::false_type {};
@@ -121,12 +121,12 @@ struct as_shared_type<const T*> {
     using type = const SharedType*;
 };
 
-}// namespace detail
+}// namespace details
 
 
 #define DECLARE_SINGLETON_TYPE(Type)                  \
     class Type;                                       \
-    namespace detail {                                \
+    namespace details {                               \
     template<>                                        \
     struct IsSingletonType<Type> : std::true_type {}; \
     }
@@ -260,7 +260,7 @@ public:
     // Dynamically cast this object to the subclass indicated by the
     // template variable, returning nullptr if the cast is invalid.
     // cast to std::shared_ptr<T>
-    template<typename T, std::enable_if_t<!detail::is_singleton_type_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<!details::is_singleton_type_v<T>>* = nullptr>
     std::shared_ptr<T> CastTo() {
         if (T::Kind == kind()) {
             return std::static_pointer_cast<T>(static_cast<T*>(this)->shared_from_this());
@@ -269,7 +269,7 @@ public:
     }
 
     // cast to SingletonTypePtr<T>
-    template<typename T, std::enable_if_t<detail::is_singleton_type_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<details::is_singleton_type_v<T>>* = nullptr>
     SingletonTypePtr<T> CastTo() {
         if (T::Kind == kind()) {
             CHECK(this == T::Global().get());
@@ -279,8 +279,8 @@ public:
     }
 
     // cast to std::shared_ptr<const T>
-    template<typename T, std::enable_if_t<!detail::is_singleton_type_v<T>>* = nullptr>
-    std::shared_ptr<const T> CastTo() const {
+    template<typename T, std::enable_if_t<!details::is_singleton_type_v<T>>* = nullptr>
+    NODISCARD std::shared_ptr<const T> CastTo() const {
         if (T::Kind == kind()) {
             return std::static_pointer_cast<const T>(static_cast<const T*>(this)->shared_from_this());
         }
@@ -288,7 +288,7 @@ public:
     }
 
     // cast to SingletonTypePtr<const T>
-    template<typename T, std::enable_if_t<detail::is_singleton_type_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<details::is_singleton_type_v<T>>* = nullptr>
     SingletonTypePtr<const T> CastTo() const {
         if (T::Kind == kind()) {
             CHECK(this == T::Global().get());

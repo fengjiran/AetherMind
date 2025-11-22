@@ -175,7 +175,6 @@ public:
     NODISCARD virtual bool HasFreeVars() const;
 
     NODISCARD String Annotation(const TypePrinter& printer) const;
-
     NODISCARD String Annotation() const;
 
     // Returns a human-readable string that includes additional information like

@@ -301,7 +301,7 @@ public:
 
     bool Equals(const Type& rhs) const override;
 
-    bool IsSubtypeOfExt(const Type& rhs, std::ostream* why_not) const override;
+    bool IsSubtypeOfExtTypeImpl(const Type& rhs, std::ostream* why_not) const override;
 
     // is all information about the type specified except for autograd?
     // This replaces the notion of a 'CompleteTensorType' that used to exist

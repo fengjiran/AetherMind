@@ -174,9 +174,6 @@ public:
 
     NODISCARD virtual bool HasFreeVars() const;
 
-    NODISCARD String Annotation(const TypePrinter& printer) const;
-    NODISCARD String Annotation() const;
-
     // Returns a human-readable string that includes additional information like
     // "type is inferred rather than explicitly defined" to help construct more
     // user-friendly messages.
@@ -184,26 +181,27 @@ public:
 
     NODISCARD virtual bool IsModule() const;
 
-    virtual bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const;
+    NODISCARD String Annotation(const TypePrinter& printer) const;
+    NODISCARD String Annotation() const;
 
-    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    bool IsSubTypeOfExt(const std::shared_ptr<T>& other, std::ostream* why_not) const {
-        return IsSubtypeOfExt(*other, why_not);
-    }
+    virtual bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const;
 
-    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    bool IsSubTypeOfExt(const SingletonTypePtr<T>& other, std::ostream* why_not) const {
-        return IsSubtypeOfExt(*other, why_not);
-    }
+    // template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    // bool IsSubTypeOfExtType(const std::shared_ptr<T>& other, std::ostream* why_not) const {
+    //     return IsSubtypeOfExtTypeImpl(*other, why_not);
+    // }
+    //
+    // template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    // bool IsSubTypeOfExtType(const SingletonTypePtr<T>& other, std::ostream* why_not) const {
+    //     return IsSubtypeOfExtTypeImpl(*other, why_not);
+    // }
+    //
+    // template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
+    // bool IsSubTypeOfExtType(const SingletonOrSharedTypePtr<T>& other, std::ostream* why_not) const {
+    //     return IsSubtypeOfExtTypeImpl(*other, why_not);
+    // }
 
-    template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    bool IsSubTypeOfExt(const SingletonOrSharedTypePtr<T>& other, std::ostream* why_not) const {
-        return IsSubtypeOfExt(*other, why_not);
-    }
-
-    NODISCARD bool IsSubtypeOf(const Type& other) const {
-        return IsSubtypeOfExt(other, nullptr);
-    }
+    NODISCARD bool IsSubtypeOf(const Type& other) const;
 
     template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
     bool IsSubtypeOf(const std::shared_ptr<T>& other) const {
@@ -221,10 +219,10 @@ public:
     }
 
     // Dynamically cast this object to the subclass indicated by the
-    // template variable, returning nullptr if the cast is invalid.
+    // template variable, return nullptr if the cast is invalid.
     // cast to std::shared_ptr<T>
     template<typename T, std::enable_if_t<!details::is_singleton_type_v<T>>* = nullptr>
-    std::shared_ptr<T> CastTo() {
+    std::shared_ptr<T> Cast() {
         if (T::Kind == kind()) {
             return std::static_pointer_cast<T>(static_cast<T*>(this)->shared_from_this());
         }
@@ -233,7 +231,7 @@ public:
 
     // cast to SingletonTypePtr<T>
     template<typename T, std::enable_if_t<details::is_singleton_type_v<T>>* = nullptr>
-    SingletonTypePtr<T> CastTo() {
+    SingletonTypePtr<T> Cast() {
         if (T::Kind == kind()) {
             CHECK(this == T::Global().get());
             return static_cast<T*>(this);
@@ -243,7 +241,7 @@ public:
 
     // cast to std::shared_ptr<const T>
     template<typename T, std::enable_if_t<!details::is_singleton_type_v<T>>* = nullptr>
-    NODISCARD std::shared_ptr<const T> CastTo() const {
+    NODISCARD std::shared_ptr<const T> Cast() const {
         if (T::Kind == kind()) {
             return std::static_pointer_cast<const T>(static_cast<const T*>(this)->shared_from_this());
         }
@@ -252,7 +250,7 @@ public:
 
     // cast to SingletonTypePtr<const T>
     template<typename T, std::enable_if_t<details::is_singleton_type_v<T>>* = nullptr>
-    SingletonTypePtr<const T> CastTo() const {
+    SingletonTypePtr<const T> Cast() const {
         if (T::Kind == kind()) {
             CHECK(this == T::Global().get());
             return static_cast<const T*>(this);
@@ -278,14 +276,14 @@ public:
 
     template<typename T>
     decltype(auto) Expect() {
-        auto r = CastTo<T>();
+        auto r = Cast<T>();
         CHECK(r);
         return r;
     }
 
     template<typename T>
     decltype(auto) Expect() const {
-        auto r = CastTo<const T>();
+        auto r = Cast<const T>();
         CHECK(r);
         return r;
     }
@@ -341,7 +339,7 @@ public:
     }
 
     bool Equals(const Type& rhs) const override {
-        if (auto cast_rhs = rhs.CastTo<T>()) {
+        if (auto cast_rhs = rhs.Cast<T>()) {
             return *GetElementType() == *cast_rhs->GetElementType();
         }
         return false;
@@ -423,7 +421,7 @@ public:
 
     NODISCARD bool Equals(const Type& other) const override;
 
-    NODISCARD bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const override;
+    NODISCARD bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override;
 
     static constexpr auto Kind = TypeKind::NumberType;
 
@@ -449,8 +447,8 @@ public:
         return kind() == rhs.kind();
     }
 
-    NODISCARD bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const override {
-        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExt(other, why_not);
+    NODISCARD bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override {
+        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExtTypeImpl(other, why_not);
     }
 
     static IntTypePtr Global() {
@@ -478,8 +476,8 @@ public:
         return rhs.kind() == kind();
     }
 
-    NODISCARD bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const override {
-        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExt(other, why_not);
+    NODISCARD bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override {
+        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExtTypeImpl(other, why_not);
     }
 
     static FloatTypePtr Global() {
@@ -507,8 +505,8 @@ public:
         return rhs.kind() == kind();
     }
 
-    NODISCARD bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const override {
-        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExt(other, why_not);
+    NODISCARD bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override {
+        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExtTypeImpl(other, why_not);
     }
 
     static ComplexTypePtr Global() {
@@ -613,7 +611,7 @@ using FunctionTypePtr = std::shared_ptr<FunctionType>;
 class FunctionType : public NamedType {
 public:
     bool Equals(const Type& rhs) const override {
-        if (auto func_type = rhs.CastTo<FunctionType>()) {
+        if (auto func_type = rhs.Cast<FunctionType>()) {
             return func_type->function_.get_impl_ptr_unsafe() == function_.get_impl_ptr_unsafe();
         }
         return false;

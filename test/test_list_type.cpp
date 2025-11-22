@@ -202,12 +202,12 @@ TEST(ListTypeTest, IsSubtypeOfExtWithWhyNot) {
 
     // 当子类型关系成立时
     std::stringstream why_not1;
-    EXPECT_TRUE(list_of_ints->IsSubtypeOfExt(*any_list, &why_not1));
+    EXPECT_TRUE(list_of_ints->IsSubtypeOfExtTypeImpl(*any_list, &why_not1));
     EXPECT_TRUE(why_not1.str().empty());
 
     // 当子类型关系不成立时
     std::stringstream why_not2;
-    EXPECT_FALSE(list_of_ints->IsSubtypeOfExt(*list_of_floats, &why_not2));
+    EXPECT_FALSE(list_of_ints->IsSubtypeOfExtTypeImpl(*list_of_floats, &why_not2));
     // 具体的错误消息内容取决于实现，但应该不为空
 }
 }// namespace

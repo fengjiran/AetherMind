@@ -88,7 +88,7 @@ public:
     NODISCARD bool IsInferredType() const {
         bool is_inferred_type = false;
         CHECK(type_ != nullptr);
-        if (auto t = type_->CastTo<TensorType>()) {
+        if (auto t = type_->Cast<TensorType>()) {
             is_inferred_type = t->IsInferredType();
         }
         return is_inferred_type;

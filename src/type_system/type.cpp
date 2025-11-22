@@ -89,20 +89,20 @@ bool Type::IsModule() const {
     return false;
 }
 
-bool Type::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
+bool Type::IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const {
     if (other.kind() == TypeKind::AnyType || *this == other) {
         return true;
     }
 
-    if (auto opt_rhs = other.CastTo<OptionalType>()) {
-        return IsSubtypeOfExt(*opt_rhs->get_element_type(), why_not);
+    if (auto opt_rhs = other.Cast<OptionalType>()) {
+        return IsSubtypeOfExtTypeImpl(*opt_rhs->get_element_type(), why_not);
     }
 
     // Check if `this` is a subtype of the types within the Union
-    if (auto union_type = other.CastTo<UnionType>()) {
+    if (auto union_type = other.Cast<UnionType>()) {
         return std::any_of(union_type->GetContainedTypes().begin(), union_type->GetContainedTypes().end(),
                            [&](const TypePtr& inner) {
-                               return IsSubtypeOfExt(*inner, why_not);
+                               return IsSubtypeOfExtTypeImpl(*inner, why_not);
                            });
     }
 
@@ -114,19 +114,22 @@ bool Type::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
     return false;
 }
 
+bool Type::IsSubtypeOf(const Type& other) const {
+    return IsSubtypeOfExtTypeImpl(other, nullptr);
+}
 
 bool NumberType::Equals(const Type& other) const {
-    if (auto union_type = other.CastTo<UnionType>()) {
+    if (auto union_type = other.Cast<UnionType>()) {
         return union_type->GetContainedTypeSize() == 3 && union_type->canHoldType(*Global());
     }
     return kind() == other.kind();
 }
 
-bool NumberType::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
-    if (auto union_type = other.CastTo<UnionType>()) {
+bool NumberType::IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const {
+    if (auto union_type = other.Cast<UnionType>()) {
         return union_type->canHoldType(*Global());
     }
-    return Type::IsSubtypeOfExt(other, why_not);
+    return Type::IsSubtypeOfExtTypeImpl(other, why_not);
 }
 
 

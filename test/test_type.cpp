@@ -96,10 +96,10 @@ TEST(TypeSystem, TypeCasting) {
 
     // 使用cast()方法测试
     TypePtr any_ptr = AnyType::Global();
-    auto any_cast = any_ptr->CastTo<AnyType>();
+    auto any_cast = any_ptr->Cast<AnyType>();
     EXPECT_TRUE(any_cast);
 
-    auto int_cast = any_ptr->CastTo<IntType>();
+    auto int_cast = any_ptr->Cast<IntType>();
     EXPECT_FALSE(int_cast);
 
     // expect()方法测试 - 成功情况
@@ -143,7 +143,7 @@ TEST(TypeSystem, SubtypeRelationships) {
 
     // 带why_not参数的测试
     std::ostringstream why_not;
-    bool result = FloatType::Global()->IsSubtypeOfExt(*StringType::Global(), &why_not);
+    bool result = FloatType::Global()->IsSubtypeOfExtTypeImpl(*StringType::Global(), &why_not);
     EXPECT_FALSE(result);
     // 检查是否有错误信息被写入
     // EXPECT_FALSE(why_not.str().empty());
@@ -258,7 +258,7 @@ TEST(Type, init) {
     EXPECT_EQ(t1->str(), "Any");
     EXPECT_EQ(t1->Annotation(), "Any");
     EXPECT_TRUE(t1->CastToRawTypePtr<AnyType>() == t1);
-    EXPECT_TRUE(t1->CastTo<AnyType>().get() == t1);
+    EXPECT_TRUE(t1->Cast<AnyType>().get() == t1);
 
     auto printer = [](const Type& t) -> std::optional<std::string> {
         return t.str() + "_test";

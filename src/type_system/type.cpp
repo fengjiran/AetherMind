@@ -18,6 +18,41 @@ String TypeKindToString(TypeKind kind) {
     return "";
 }
 
+TypeKind Type::kind() const {
+    return kind_;
+}
+
+bool Type::IsSymmetric() const {
+    return true;
+}
+
+bool Type::IsUnionType() const {
+    return false;
+}
+
+bool Type::requires_grad() const {
+    const auto types = GetContainedTypes();
+    return std::any_of(types.begin(), types.end(),
+                       [](const TypePtr& t) { return t->requires_grad(); });
+}
+
+ArrayView<TypePtr> Type::GetContainedTypes() const {
+    return {};
+}
+
+TypePtr Type::GetContainedType(size_t i) const {
+    return GetContainedTypes().at(i);
+}
+
+size_t Type::GetContainedTypeSize() const {
+    return GetContainedTypes().size();
+}
+
+TypePtr Type::CreateWithContainedTypes(const std::vector<TypePtr>&) const {
+    CHECK(false) << "CreateWithContainedTypes() is not implemented: " << str();
+    AETHERMIND_UNREACHABLE();
+}
+
 TypePtr Type::WithContainedTypes(const std::vector<TypePtr>& contained_types) {
     auto cur_contained_types = GetContainedTypes();
     CHECK(!cur_contained_types.empty() && cur_contained_types.size() == contained_types.size());
@@ -27,6 +62,32 @@ TypePtr Type::WithContainedTypes(const std::vector<TypePtr>& contained_types) {
     return CreateWithContainedTypes(contained_types);
 }
 
+bool Type::HasFreeVars() const {
+    return false;
+}
+
+String Type::Annotation(const TypePrinter& printer) const {
+    if (printer) {
+        if (auto renamed = printer(*this)) {
+            return *renamed;
+        }
+    }
+    return this->AnnotationImpl(printer);
+}
+
+String Type::Annotation() const {
+    // Overload instead of define a default value for `printer` to help
+    // debuggers out.
+    return Annotation(nullptr);
+}
+
+String Type::ReprStr() const {
+    return Annotation();
+}
+
+bool Type::IsModule() const {
+    return false;
+}
 
 bool Type::IsSubtypeOfExt(const Type& other, std::ostream* why_not) const {
     if (other.kind() == TypeKind::AnyType || *this == other) {

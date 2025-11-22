@@ -144,9 +144,7 @@ DECLARE_SINGLETON_TYPE(DeviceObjType);
 using TypePtr = SingletonOrSharedTypePtr<Type>;
 class Type {
 public:
-    NODISCARD TypeKind kind() const {
-        return kind_;
-    }
+    NODISCARD TypeKind kind() const;
 
     NODISCARD virtual String str() const = 0;
 
@@ -154,72 +152,38 @@ public:
     NODISCARD virtual bool Equals(const Type& rhs) const = 0;
 
     // a == b <=> b == a
-    NODISCARD virtual bool IsSymmetric() const {
-        return true;
-    }
+    NODISCARD virtual bool IsSymmetric() const;
 
-    NODISCARD virtual bool IsUnionType() const {
-        return false;
-    }
+    NODISCARD virtual bool IsUnionType() const;
 
-    NODISCARD virtual bool requires_grad() const {
-        const auto types = GetContainedTypes();
-        return std::any_of(types.begin(), types.end(),
-                           [](const TypePtr& t) { return t->requires_grad(); });
-    }
+    NODISCARD virtual bool requires_grad() const;
 
     // list of types this type contains, e.g. for a List then element type of
     // list for a tuple, the types of the tuple elements
-    NODISCARD virtual ArrayView<TypePtr> GetContainedTypes() const {
-        return {};
-    }
+    NODISCARD virtual ArrayView<TypePtr> GetContainedTypes() const;
 
-    NODISCARD virtual TypePtr GetContainedType(size_t i) const {
-        return GetContainedTypes().at(i);
-    }
+    NODISCARD virtual TypePtr GetContainedType(size_t i) const;
 
-    NODISCARD virtual size_t GetContainedTypeSize() const {
-        return GetContainedTypes().size();
-    }
+    NODISCARD virtual size_t GetContainedTypeSize() const;
 
-    NODISCARD virtual TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const {
-        CHECK(false) << "CreateWithContainedTypes() is not implemented: " << str();
-        AETHERMIND_UNREACHABLE();
-    }
+    NODISCARD virtual TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const;
 
     // create a new version of this type, replacing its contained types with
     // contained_types
     TypePtr WithContainedTypes(const std::vector<TypePtr>& contained_types);
 
-    NODISCARD virtual bool HasFreeVars() const {
-        return false;
-    }
+    NODISCARD virtual bool HasFreeVars() const;
 
-    NODISCARD String Annotation(const TypePrinter& printer) const {
-        if (printer) {
-            if (auto renamed = printer(*this)) {
-                return *renamed;
-            }
-        }
-        return this->AnnotationImpl(printer);
-    }
+    NODISCARD String Annotation(const TypePrinter& printer) const;
 
-    NODISCARD String Annotation() const {
-        // Overload instead of define a default value for `printer` to help
-        // debuggers out.
-        return Annotation(nullptr);
-    }
+    NODISCARD String Annotation() const;
 
     // Returns a human-readable string that includes additional information like
     // "type is inferred rather than explicitly defined" to help construct more
     // user-friendly messages.
-    NODISCARD virtual String ReprStr() const {
-        return Annotation();
-    }
+    NODISCARD virtual String ReprStr() const;
 
-    NODISCARD virtual bool IsModule() const {
-        return false;
-    }
+    NODISCARD virtual bool IsModule() const;
 
     virtual bool IsSubtypeOfExt(const Type& other, std::ostream* why_not) const;
 

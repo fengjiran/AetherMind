@@ -169,13 +169,13 @@ bool UnionType::canHoldType(const Type& type) const {
                canHoldType(*FloatType::Global()) &&
                canHoldType(*ComplexType::Global());
     }
-    return std::any_of(this->GetContainedTypes().begin(), this->GetContainedTypes().end(),
+    return std::any_of(GetContainedTypes().begin(), GetContainedTypes().end(),
                        [&](const TypePtr& inner) {
                            return type.IsSubtypeOf(*inner);
                        });
 }
 
-bool UnionType::IsSubtypeOfExtTypeImpl(const Type& rhs, std::ostream* why_not) const {
+bool UnionType::IsSubtypeOfImpl(const Type& rhs) const {
     std::vector<const Type*> rhs_types;
     if (const auto union_rhs = rhs.Cast<UnionType>()) {
         // Fast path
@@ -205,7 +205,7 @@ bool UnionType::IsSubtypeOfExtTypeImpl(const Type& rhs, std::ostream* why_not) c
                        [&](const TypePtr& lhs_type) -> bool {
                            return std::any_of(rhs_types.begin(), rhs_types.end(),
                                               [&](const Type* rhs_type) -> bool {
-                                                  return lhs_type->IsSubtypeOfExtTypeImpl(*rhs_type, why_not);
+                                                  return lhs_type->IsSubtypeOfImpl(*rhs_type);
                                               });
                        });
 }
@@ -386,29 +386,23 @@ bool OptionalType::Equals(const Type& rhs) const {
     return false;
 }
 
-bool OptionalType::IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const {
+bool OptionalType::IsSubtypeOfImpl(const Type& other) const {
     if (auto opt_other = other.Cast<OptionalType>()) {
-        return this->get_element_type()->IsSubtypeOfExtTypeImpl(*opt_other->get_element_type(), why_not);
+        return this->get_element_type()->IsSubtypeOfImpl(*opt_other->get_element_type());
     }
 
     if (auto union_other = other.Cast<UnionType>()) {
         if (!union_other->canHoldType(*NoneType::Global())) {
-            if (why_not) {
-                *why_not << other.ReprStr() << " cannot hole none";
-            }
             return false;
         }
 
         if (!union_other->canHoldType(*this->get_element_type())) {
-            if (why_not) {
-                *why_not << other.ReprStr() << " cannot hold " << this->get_element_type();
-            }
             return false;
         }
         return true;
     }
 
-    return UnionType::IsSubtypeOfExtTypeImpl(other, why_not);
+    return UnionType::IsSubtypeOfImpl(other);
 }
 
 OptionalTypePtr OptionalType::Create(const TypePtr& contained) {

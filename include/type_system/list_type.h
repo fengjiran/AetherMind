@@ -24,7 +24,7 @@ public:
 
     TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const override;
 
-    bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override;
+    bool IsSubtypeOfImpl(const Type& other) const override;
 
     static TypePtr Get(const String& identifier, const TypePtr& inner);
 

@@ -26,8 +26,8 @@ TypePtr ListType::CreateWithContainedTypes(const std::vector<TypePtr>& contained
     return Create(contained_types.at(0));
 }
 
-bool ListType::IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const {
-    if (Type::IsSubtypeOfExtTypeImpl(other, why_not)) {
+bool ListType::IsSubtypeOfImpl(const Type& other) const {
+    if (Type::IsSubtypeOfImpl(other)) {
         return true;
     }
 

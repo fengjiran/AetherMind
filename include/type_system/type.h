@@ -184,22 +184,7 @@ public:
     NODISCARD String Annotation(const TypePrinter& printer) const;
     NODISCARD String Annotation() const;
 
-    virtual bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const;
-
-    // template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    // bool IsSubTypeOfExtType(const std::shared_ptr<T>& other, std::ostream* why_not) const {
-    //     return IsSubtypeOfExtTypeImpl(*other, why_not);
-    // }
-    //
-    // template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    // bool IsSubTypeOfExtType(const SingletonTypePtr<T>& other, std::ostream* why_not) const {
-    //     return IsSubtypeOfExtTypeImpl(*other, why_not);
-    // }
-    //
-    // template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
-    // bool IsSubTypeOfExtType(const SingletonOrSharedTypePtr<T>& other, std::ostream* why_not) const {
-    //     return IsSubtypeOfExtTypeImpl(*other, why_not);
-    // }
+    NODISCARD virtual bool IsSubtypeOfImpl(const Type& other) const;
 
     NODISCARD bool IsSubtypeOf(const Type& other) const;
 
@@ -307,9 +292,7 @@ protected:
 
     virtual ~Type() = default;
 
-    NODISCARD virtual String AnnotationImpl(const TypePrinter&) const {
-        return this->str();
-    }
+    NODISCARD virtual String AnnotationImpl(const TypePrinter&) const;
 
 private:
     TypeKind kind_;
@@ -421,7 +404,7 @@ public:
 
     NODISCARD bool Equals(const Type& other) const override;
 
-    NODISCARD bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override;
+    NODISCARD bool IsSubtypeOfImpl(const Type& other) const override;
 
     static constexpr auto Kind = TypeKind::NumberType;
 
@@ -447,8 +430,8 @@ public:
         return kind() == rhs.kind();
     }
 
-    NODISCARD bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override {
-        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExtTypeImpl(other, why_not);
+    NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
+        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfImpl(other);
     }
 
     static IntTypePtr Global() {
@@ -476,8 +459,8 @@ public:
         return rhs.kind() == kind();
     }
 
-    NODISCARD bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override {
-        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExtTypeImpl(other, why_not);
+    NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
+        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfImpl(other);
     }
 
     static FloatTypePtr Global() {
@@ -505,8 +488,8 @@ public:
         return rhs.kind() == kind();
     }
 
-    NODISCARD bool IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const override {
-        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfExtTypeImpl(other, why_not);
+    NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
+        return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfImpl(other);
     }
 
     static ComplexTypePtr Global() {

@@ -89,20 +89,20 @@ bool Type::IsModule() const {
     return false;
 }
 
-bool Type::IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const {
+bool Type::IsSubtypeOfImpl(const Type& other) const {
     if (other.kind() == TypeKind::AnyType || *this == other) {
         return true;
     }
 
     if (auto opt_rhs = other.Cast<OptionalType>()) {
-        return IsSubtypeOfExtTypeImpl(*opt_rhs->get_element_type(), why_not);
+        return IsSubtypeOfImpl(*opt_rhs->get_element_type());
     }
 
     // Check if `this` is a subtype of the types within the Union
     if (auto union_type = other.Cast<UnionType>()) {
         return std::any_of(union_type->GetContainedTypes().begin(), union_type->GetContainedTypes().end(),
                            [&](const TypePtr& inner) {
-                               return IsSubtypeOfExtTypeImpl(*inner, why_not);
+                               return IsSubtypeOfImpl(*inner);
                            });
     }
 
@@ -115,7 +115,11 @@ bool Type::IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) cons
 }
 
 bool Type::IsSubtypeOf(const Type& other) const {
-    return IsSubtypeOfExtTypeImpl(other, nullptr);
+    return IsSubtypeOfImpl(other);
+}
+
+String Type::AnnotationImpl(const TypePrinter&) const {
+    return str();
 }
 
 bool NumberType::Equals(const Type& other) const {
@@ -125,11 +129,11 @@ bool NumberType::Equals(const Type& other) const {
     return kind() == other.kind();
 }
 
-bool NumberType::IsSubtypeOfExtTypeImpl(const Type& other, std::ostream* why_not) const {
+bool NumberType::IsSubtypeOfImpl(const Type& other) const {
     if (auto union_type = other.Cast<UnionType>()) {
         return union_type->canHoldType(*Global());
     }
-    return Type::IsSubtypeOfExtTypeImpl(other, why_not);
+    return Type::IsSubtypeOfImpl(other);
 }
 
 

@@ -142,8 +142,8 @@ TEST(TypeSystem, SubtypeRelationships) {
     EXPECT_FALSE(num_ptr->IsSubtypeOf(*int_ptr));
 
     // 带why_not参数的测试
-    std::ostringstream why_not;
-    bool result = FloatType::Global()->IsSubtypeOfExtTypeImpl(*StringType::Global(), &why_not);
+    // std::ostringstream why_not;
+    bool result = FloatType::Global()->IsSubtypeOfImpl(*StringType::Global());
     EXPECT_FALSE(result);
     // 检查是否有错误信息被写入
     // EXPECT_FALSE(why_not.str().empty());

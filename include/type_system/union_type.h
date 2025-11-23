@@ -13,9 +13,7 @@ class UnionType;
 using UnionTypePtr = std::shared_ptr<UnionType>;
 class UnionType : public SharedType {
 public:
-    bool IsUnionType() const override {
-        return true;
-    }
+    bool IsUnionType() const override;
 
     bool Equals(const Type& rhs) const override;
 

@@ -101,13 +101,12 @@ public:
     NODISCARD String TypeMismatchMsg(const String& actual_type) const {
         String inferred_type_hint;
         if (IsInferredType()) {
-            inferred_type_hint = "Inferred type '" + name() + "' to be of type 'Tensor' "
-                                                              "because it was not annotated with an explicit type.\n";
+            inferred_type_hint = "Inferred type '";
+            inferred_type_hint += name();
+            inferred_type_hint += "' to be of type 'Tensor' because it was not annotated with an explicit type.\n";
         }
-        return "Expected a value of type '" +
-               type()->ReprStr() + "' for argument '" + name() +
-               "', but instead found type '" + actual_type + ".\n" +
-               inferred_type_hint;
+        return "Expected a value of type '" + type()->ReprStr() + "' for argument '" + name() +
+               "', but instead found type '" + actual_type + ".\n" + inferred_type_hint;
     }
 
     void swap(Argument& other) noexcept {

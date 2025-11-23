@@ -6,6 +6,10 @@
 
 namespace aethermind {
 
+bool UnionType::IsUnionType() const {
+    return true;
+}
+
 std::optional<TypePtr> subtractTypeSetFrom(std::vector<TypePtr>& to_subtract, ArrayView<TypePtr> from) {
     std::vector<TypePtr> types;
 
@@ -37,7 +41,7 @@ std::optional<TypePtr> subtractTypeSetFrom(std::vector<TypePtr>& to_subtract, Ar
 // Remove nested Optionals/Unions during the instantiation of a Union or
 // an Optional. This populates `types` with all the types found during
 // flattening. At the end of this function, `types` may have
-// duplicates, but it will not have nested Optionals/Unions
+// duplicates, but it will not have nested Optionals/Unions.
 static void FlattenUnionTypes(const TypePtr& type, std::vector<TypePtr>& need_to_fill) {
     if (auto union_type = type->Cast<UnionType>()) {
         for (const auto& t: union_type->GetContainedTypes()) {
@@ -56,7 +60,7 @@ static void FlattenUnionTypes(const TypePtr& type, std::vector<TypePtr>& need_to
     }
 }
 
-// Helper function for `standardizeUnion`
+// Helper function for `StandardizeUnion`
 //
 // NB: If we have types `T1`, `T2`, `T3`, and `PARENT_T` such that `T1`,
 // `T2`, and `T2` are children of `PARENT_T`, then `unifyTypes(T1, T2)`

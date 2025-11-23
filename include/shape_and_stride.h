@@ -33,7 +33,7 @@ public:
 
     ShapeAndStride(ShapeAndStride&& other) noexcept : size_(other.size_) {
         if (other.is_inline()) {
-            memcpy(inline_storage_, other.inline_storage_, sizeof(inline_storage_));
+            std::memcpy(inline_storage_, other.inline_storage_, sizeof(inline_storage_));
         } else {
             outline_storage_ = other.outline_storage_;
             other.outline_storage_ = nullptr;

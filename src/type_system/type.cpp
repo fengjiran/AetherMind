@@ -94,8 +94,9 @@ bool Type::IsSubtypeOfImpl(const Type& other) const {
         return true;
     }
 
-    if (auto opt_rhs = other.Cast<OptionalType>()) {
-        return IsSubtypeOfImpl(*opt_rhs->get_element_type());
+    // Check if this type is a subtype of OptionalType
+    if (auto opt = other.Cast<OptionalType>()) {
+        return IsSubtypeOfImpl(*opt->get_element_type());
     }
 
     // Check if `this` is a subtype of the types within the Union

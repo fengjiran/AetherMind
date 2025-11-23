@@ -556,6 +556,7 @@ public:
     NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
+
     static constexpr auto Kind = TypeKind::DeviceObjType;
 
 private:
@@ -575,8 +576,7 @@ public:
         CHECK(kind == TypeKind::TupleType || kind == TypeKind::FunctionType ||
               kind == TypeKind::ClassType || kind == TypeKind::InterfaceType ||
               kind == TypeKind::EnumType)
-                << "If you add a new kind of NamedType, "
-                   "please update the cast<NamedType> specialization and this assert";
+                << "If you add a new kind of NamedType, please update the cast<NamedType> specialization and this assert";
     }
 
     // Fully qualified name of type

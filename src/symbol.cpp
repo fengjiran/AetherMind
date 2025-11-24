@@ -32,6 +32,10 @@ String Symbol::ToUnQualString() const {
     return InternedStrings::Global().string(*this).second;
 }
 
+String Symbol::GetDomainString() const {
+    return GetDomainPrefix() + NS().ToUnQualString();
+}
+
 Symbol Symbol::NS() const {
     return InternedStrings::Global().NS(*this);
 }

@@ -39,6 +39,8 @@ public:
     // obvious; this is a *lossy* conversion.
     String ToUnQualString() const;
 
+    String GetDomainString() const;
+
     Symbol NS() const;
 
 

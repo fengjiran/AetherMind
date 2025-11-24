@@ -131,7 +131,7 @@ private:
     std::optional<Any> default_value_;
     // is this only specifiable as a keyword argument?
     bool kwarg_only_;
-    // whether the argument is marked as out
+    // whether the argument is marked as out, like int& ref
     bool is_out_;
 };
 

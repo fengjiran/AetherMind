@@ -137,16 +137,17 @@ public:
 
     Symbol GetSymbol(const String& s);
 
+    // Get qualified and unqualied name given the symbol
     std::pair<String, String> string(Symbol sym);
 
-    Symbol ns(Symbol sym);
+    // Get namespace symbol
+    Symbol NS(Symbol sym);
 
     std::vector<String> ListAllSymbolNames() const;
 
 private:
     InternedStrings();
     Symbol GetSymbolImpl(const String& s);
-    std::pair<String, String> CustomString(Symbol sym);
 
     struct SymbolInfo {
         Symbol ns;

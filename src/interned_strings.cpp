@@ -65,12 +65,6 @@ Symbol InternedStrings::GetSymbol(const String& s) {
     return GetSymbolImpl(s);
 }
 
-std::pair<String, String> InternedStrings::CustomString(Symbol sym) {
-    std::lock_guard lock(mutex_);
-    const auto& sym_info = symbol_infos_[sym];
-    return {sym_info.qual_name, sym_info.unqual_name};
-}
-
 std::pair<String, String> InternedStrings::string(Symbol sym) {
     switch (sym) {
 #define CASE(ns, s)                    \
@@ -78,12 +72,15 @@ std::pair<String, String> InternedStrings::string(Symbol sym) {
         return {#ns "::" #s, #s};
         FORALL_NS_SYMBOLS(CASE)
 #undef CASE
-        default:
-            return CustomString(sym);
+        default: {
+            std::lock_guard lock(mutex_);
+            const auto& sym_info = symbol_infos_[sym];
+            return {sym_info.qual_name, sym_info.unqual_name};
+        }
     }
 }
 
-Symbol InternedStrings::ns(Symbol sym) {
+Symbol InternedStrings::NS(Symbol sym) {
     switch (sym) {
 #define CASE(ns, s)                    \
     case static_cast<uint32_t>(ns::s): \
@@ -92,7 +89,7 @@ Symbol InternedStrings::ns(Symbol sym) {
 #undef CASE
         default: {
             std::lock_guard lock(mutex_);
-            return symbol_infos_.at(sym).ns;
+            return symbol_infos_[sym].ns;
         }
     }
 }
@@ -105,6 +102,5 @@ std::vector<String> InternedStrings::ListAllSymbolNames() const {
     }
     return res;
 }
-
 
 }// namespace aethermind

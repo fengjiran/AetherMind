@@ -52,10 +52,11 @@ Symbol InternedStrings::GetSymbolImpl(const String& s) {
 
     auto pos = s.find("::");
     CHECK(pos != String::npos) << "all symbols must have a namespace, <namespace>::<string>, but found: " << s;
-    Symbol ns = GetSymbolImpl("namespaces::" + s.substr(0, pos));
+    const Symbol ns = GetSymbolImpl("namespaces::" + s.substr(0, pos));
     Symbol sym(symbol_infos_.size());
     string_to_symbol_[s] = sym;
-    symbol_infos_.push_back({ns, s, s.substr(pos + 2)});
+    // symbol_infos_.push_back({ns, s, s.substr(pos + 2)});
+    symbol_infos_.emplace_back(ns, s, s.substr(pos + 2));
     return sym;
 }
 

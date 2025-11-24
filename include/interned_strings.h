@@ -13,6 +13,7 @@ namespace aethermind {
     _(namespaces, prim)              \
     _(namespaces, cuda)              \
     _(namespaces, attr)              \
+    _(namespaces, namespaces)        \
     _(prim, Assign)                  \
     _(prim, BroadcastingChunk)       \
     _(prim, BroadcastSizes)          \
@@ -136,18 +137,21 @@ public:
     std::pair<const char*, const char*> string(Symbol sym);
 
     Symbol ns(Symbol sym);
-private:
 
+private:
     struct SymbolInfo {
         Symbol ns;
         String qual_name;
         String unqual_name;
     };
 
+    Symbol _symbol(const String& s);
+
     std::unordered_map<String, Symbol> string_to_symbol_;
     std::vector<SymbolInfo> symbol_infos_;
     std::mutex mutex_;
 };
+
 
 }// namespace aethermind
 

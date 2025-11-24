@@ -26,6 +26,10 @@ public:
     // Get a Symbol for a qualified string like "foo.bar.baz", "add.Tensor"
     static Symbol FromQualString(const String& qual);
 
+    constexpr operator uint32_t() const {
+        return value_;
+    }
+
 private:
     uint32_t value_;
 };

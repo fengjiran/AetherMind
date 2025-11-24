@@ -45,23 +45,23 @@ InternedStrings::InternedStrings() : symbol_infos_(static_cast<size_t>(Keys::num
     }
 }
 
-Symbol InternedStrings::_symbol(const String& s) {
+Symbol InternedStrings::GetSymbolImpl(const String& s) {
     if (const auto it = string_to_symbol_.find(s); it != string_to_symbol_.end()) {
         return it->second;
     }
 
     auto pos = s.find("::");
     CHECK(pos != String::npos) << "all symbols must have a namespace, <namespace>::<string>, but found: " << s;
-    Symbol ns = _symbol("namespaces::" + s.substr(0, pos));
+    Symbol ns = GetSymbolImpl("namespaces::" + s.substr(0, pos));
     Symbol sym(symbol_infos_.size());
     string_to_symbol_[s] = sym;
     symbol_infos_.push_back({ns, s, s.substr(pos + 2)});
     return sym;
 }
 
-Symbol InternedStrings::symbol(const String& s) {
+Symbol InternedStrings::GetSymbol(const String& s) {
     std::lock_guard lock(mutex_);
-    return _symbol(s);
+    return GetSymbolImpl(s);
 }
 
 std::pair<String, String> InternedStrings::CustomString(Symbol sym) {
@@ -96,7 +96,7 @@ Symbol InternedStrings::ns(Symbol sym) {
     }
 }
 
-std::vector<String> InternedStrings::ListAllSymbols() const {
+std::vector<String> InternedStrings::ListAllSymbolNames() const {
     std::vector<String> res;
     res.reserve(symbol_infos_.size());
     for (const auto& sym_info: symbol_infos_) {

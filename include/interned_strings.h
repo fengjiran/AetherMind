@@ -135,17 +135,17 @@ public:
         return inst;
     }
 
-    Symbol symbol(const String& s);
+    Symbol GetSymbol(const String& s);
 
     std::pair<String, String> string(Symbol sym);
 
     Symbol ns(Symbol sym);
 
-    std::vector<String> ListAllSymbols() const;
+    std::vector<String> ListAllSymbolNames() const;
 
 private:
     InternedStrings();
-    Symbol _symbol(const String& s);
+    Symbol GetSymbolImpl(const String& s);
     std::pair<String, String> CustomString(Symbol sym);
 
     struct SymbolInfo {

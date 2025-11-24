@@ -13,7 +13,7 @@ const String& GetDomainPrefix() {
 }
 
 Symbol Symbol::FromQualString(const String& qual) {
-    return InternedStrings::Global().symbol(qual);
+    return InternedStrings::Global().GetSymbol(qual);
 }
 
 

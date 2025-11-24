@@ -30,23 +30,23 @@ String GetQualNameFromEntry(const Entry& entry) {
 }
 
 constexpr Entry entries[] = {
-#define SYMBOL_ENTRY(n, s) {#n, #s, n::s, namespaces::n},
+#define SYMBOL_ENTRY(n, s) Entry{#n, #s, n::s, namespaces::n},
         FORALL_NS_SYMBOLS(SYMBOL_ENTRY)
 #undef SYMBOL_ENTRY
 };
 
 }// namespace
 
-InternedStrings::InternedStrings() : symbol_infos_(static_cast<size_t>(keys::num_symbols)) {
+InternedStrings::InternedStrings() : symbol_infos_(static_cast<size_t>(Keys::num_symbols)) {
     for (const auto& entry: entries) {
         auto qual_name = GetQualNameFromEntry(entry);
         string_to_symbol_[qual_name] = entry.sym;
-        symbol_infos_[entry.sym] = {entry.ns_sym, std::move(qual_name), entry.unqual_name};
+        symbol_infos_[entry.sym] = SymbolInfo{entry.ns_sym, std::move(qual_name), entry.unqual_name};
     }
 }
 
 Symbol InternedStrings::_symbol(const String& s) {
-    if (auto it = string_to_symbol_.find(s); it != string_to_symbol_.end()) {
+    if (const auto it = string_to_symbol_.find(s); it != string_to_symbol_.end()) {
         return it->second;
     }
 
@@ -59,8 +59,50 @@ Symbol InternedStrings::_symbol(const String& s) {
     return sym;
 }
 
-
 Symbol InternedStrings::symbol(const String& s) {
+    std::lock_guard lock(mutex_);
+    return _symbol(s);
+}
+
+std::pair<String, String> InternedStrings::CustomString(Symbol sym) {
+    std::lock_guard lock(mutex_);
+    const auto& sym_info = symbol_infos_[sym];
+    return {sym_info.qual_name, sym_info.unqual_name};
+}
+
+std::pair<String, String> InternedStrings::string(Symbol sym) {
+    switch (sym) {
+#define CASE(ns, s)                    \
+    case static_cast<uint32_t>(ns::s): \
+        return {#ns "::" #s, #s};
+        FORALL_NS_SYMBOLS(CASE)
+#undef CASE
+        default:
+            return CustomString(sym);
+    }
+}
+
+Symbol InternedStrings::ns(Symbol sym) {
+    switch (sym) {
+#define CASE(ns, s)                    \
+    case static_cast<uint32_t>(ns::s): \
+        return namespaces::ns;
+        FORALL_NS_SYMBOLS(CASE)
+#undef CASE
+        default: {
+            std::lock_guard lock(mutex_);
+            return symbol_infos_.at(sym).ns;
+        }
+    }
+}
+
+std::vector<String> InternedStrings::ListAllSymbols() const {
+    std::vector<String> res;
+    res.reserve(symbol_infos_.size());
+    for (const auto& sym_info: symbol_infos_) {
+        res.push_back(sym_info.qual_name);
+    }
+    return res;
 }
 
 

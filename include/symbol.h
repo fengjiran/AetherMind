@@ -26,6 +26,11 @@ public:
     // Get a Symbol for a qualified string like "foo.bar.baz", "add.Tensor"
     static Symbol FromQualString(const String& qual);
 
+    // Give a string corresponding to the qualified version of this name,
+    // e.g., "aten::mm". This string format is made available to Python bindings
+    // (so we know how to parse it.)
+
+
     constexpr operator uint32_t() const {
         return value_;
     }

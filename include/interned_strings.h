@@ -113,7 +113,7 @@ namespace aethermind {
     _(prim, max)                     \
     _(prim, abs)
 
-enum class keys : uint32_t {
+enum class Keys : uint32_t {
 #define Key(ns, s) ns##_##s,
     FORALL_NS_SYMBOLS(Key)
 #undef Key
@@ -122,7 +122,7 @@ enum class keys : uint32_t {
 
 #define DEFINE_SYMBOL(ns, s)                                   \
     namespace ns {                                             \
-    constexpr Symbol s(static_cast<uint32_t>(keys::ns##_##s)); \
+    constexpr Symbol s(static_cast<uint32_t>(Keys::ns##_##s)); \
     }
 FORALL_NS_SYMBOLS(DEFINE_SYMBOL)
 
@@ -130,28 +130,34 @@ FORALL_NS_SYMBOLS(DEFINE_SYMBOL)
 
 class InternedStrings {
 public:
-    InternedStrings();
+    static InternedStrings& Global() {
+        static InternedStrings inst;
+        return inst;
+    }
 
     Symbol symbol(const String& s);
 
-    std::pair<const char*, const char*> string(Symbol sym);
+    std::pair<String, String> string(Symbol sym);
 
     Symbol ns(Symbol sym);
 
+    std::vector<String> ListAllSymbols() const;
+
 private:
+    InternedStrings();
+    Symbol _symbol(const String& s);
+    std::pair<String, String> CustomString(Symbol sym);
+
     struct SymbolInfo {
         Symbol ns;
         String qual_name;
         String unqual_name;
     };
 
-    Symbol _symbol(const String& s);
-
     std::unordered_map<String, Symbol> string_to_symbol_;
     std::vector<SymbolInfo> symbol_infos_;
     std::mutex mutex_;
 };
-
 
 }// namespace aethermind
 

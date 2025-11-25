@@ -25,31 +25,10 @@ public:
     // Return the namespace of this OperatorName, if it exists.  The
     // returned string_view is only live as long as the OperatorName
     // exists and name is not mutated
-    NODISCARD std::optional<std::string_view> GetNamespace() const {
-        auto pos = name_.find("::");
-        if (pos == String::npos) {
-            return std::nullopt;
-        }
-        return std::string_view(name_.data(), pos);
-    }
+    NODISCARD std::optional<String> GetNamespace() const;
 
     // Returns true if successfully set the namespace
-    bool SetNamespaceIfNotSet(const char* ns) {
-        if (GetNamespace().has_value()) {
-            return false;
-        }
-
-        auto ns_len = strlen(ns);
-        auto old_name_len = name_.size();
-        name_.resize(ns_len + 2 + old_name_len);
-
-        // Shift current value of name to the end of the new space.
-        name_.replace(name_.size() - old_name_len, old_name_len, name_, 0, old_name_len);
-        name_.replace(0, ns_len, ns, ns_len);
-        name_[ns_len] = ':';
-        name_[ns_len + 1] = ':';
-        return true;
-    }
+    bool SetNamespaceIfNotSet(const char* ns);
 
     friend bool operator==(const OperatorName& lhs, const OperatorName& rhs) {
         return lhs.name_ == rhs.name_ && lhs.overload_name_ == rhs.overload_name_;
@@ -66,7 +45,7 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const OperatorName& opName);
 
-String toString(const OperatorName& opName);
+String ToString(const OperatorName& opName);
 
 }// namespace aethermind
 

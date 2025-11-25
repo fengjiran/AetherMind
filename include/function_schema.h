@@ -114,6 +114,16 @@ enum class ArgDirection {
     OUTPUT
 };
 
+struct SchemaArgument {
+    ArgDirection dir;
+    size_t index;
+
+    SchemaArgument(ArgDirection arg_dir, size_t idx) : dir(arg_dir), index(idx) {}
+    bool operator==(const SchemaArgument& other) const {
+        return dir == other.dir && index == other.index;
+    }
+};
+
 }// namespace aethermind
 
 #endif//AETHERMIND_FUNCTION_SCHEMA_H

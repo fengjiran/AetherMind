@@ -6,7 +6,7 @@
 #define AETHERMIND_CONTAINER_STRING_H
 
 #include "container/container_utils.h"
-#include "object.h"
+#include "object_allocator.h"
 
 namespace aethermind {
 

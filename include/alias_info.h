@@ -28,6 +28,7 @@ namespace aethermind {
 class AliasInfo {
 public:
     AliasInfo() = default;
+
     AliasInfo(bool is_write, const std::set<String>& before_qual_strings,
               const std::set<String>& after_qual_strings) : is_write_(is_write) {
         for (const auto& s: before_qual_strings) {
@@ -99,7 +100,7 @@ private:
     std::unordered_set<Symbol> before_set_;
     std::unordered_set<Symbol> after_set_;
     std::vector<AliasInfo> contained_types_;
-    bool is_write_;
+    bool is_write_{};
 };
 
 inline bool operator==(const AliasInfo& lhs, const AliasInfo& rhs) {

@@ -12,44 +12,58 @@
 #include "type_system/type.h"
 
 #include <optional>
+#include <utility>
 
 namespace aethermind {
 
 class Argument {
 public:
-    explicit Argument(String name = "",
-                      TypePtr type = nullptr,
-                      std::optional<int32_t> N = std::nullopt,
-                      std::optional<Any> default_value = std::nullopt,
-                      bool kwarg_only = false,
-                      bool is_out = false)
-        : name_(std::move(name)),
-          type_(std::move(type)),
-          N_(N),
-          default_value_(std::move(default_value)),
-          kwarg_only_(kwarg_only),
-          is_out_(is_out) {}
-
     Argument(String name,
              TypePtr fake_type,
              TypePtr real_type,
              std::optional<int32_t> N = std::nullopt,
              std::optional<Any> default_value = std::nullopt,
              bool kwarg_only = false,
-             bool is_out = false)
+             std::optional<AliasInfo> alias_info = std::nullopt)
         : name_(std::move(name)),
           type_(fake_type ? std::move(fake_type) : TensorType::Get()),
           real_type_(real_type ? std::move(real_type) : type_),
           N_(N),
           default_value_(std::move(default_value)),
           kwarg_only_(kwarg_only),
-          is_out_(is_out) {}
+          alias_info_(alias_info ? std::make_unique<AliasInfo>(std::move(*alias_info)) : nullptr) {
+        bool is_alias = alias_info_ != nullptr && alias_info_->IsWrite();
+        is_out_ = kwarg_only_ && is_alias;
+    }
 
-    Argument(const Argument& other) = default;
+    explicit Argument(String name = "",
+                      const TypePtr& type = nullptr,
+                      std::optional<int32_t> N = std::nullopt,
+                      std::optional<Any> default_value = std::nullopt,
+                      bool kwarg_only = false,
+                      std::optional<AliasInfo> alias_info = std::nullopt)
+        : Argument(std::move(name), type, type, N,
+                   std::move(default_value), kwarg_only, std::move(alias_info)) {}
+
+    Argument(const Argument& other) : name_(other.name_), type_(other.type_), real_type_(other.real_type_),
+                                      N_(other.N_), default_value_(other.default_value_),
+                                      kwarg_only_(other.kwarg_only_),
+                                      alias_info_(other.alias_info_ ? std::make_unique<AliasInfo>(*other.alias_info_) : nullptr),
+                                      is_out_(other.is_out_) {}
+
     Argument(Argument&& other) noexcept = default;
 
     Argument& operator=(const Argument& other) {
-        Argument(other).swap(*this);
+        if (this != &other) {
+            name_ = other.name_;
+            type_ = other.type_;
+            real_type_ = other.real_type_;
+            N_ = other.N_;
+            default_value_ = other.default_value_;
+            kwarg_only_ = other.kwarg_only_;
+            alias_info_ = other.alias_info_ ? std::make_unique<AliasInfo>(*other.alias_info_) : nullptr;
+            is_out_ = other.is_out_;
+        }
         return *this;
     }
 
@@ -78,6 +92,10 @@ public:
         return default_value_;
     }
 
+    NODISCARD const AliasInfo* alias_info() const {
+        return alias_info_.get();
+    }
+
     NODISCARD bool IsKwargOnly() const {
         return kwarg_only_;
     }
@@ -96,7 +114,8 @@ public:
     }
 
     NODISCARD Argument CloneWithType(const TypePtr& new_type) const {
-        return Argument(name_, new_type, N_, default_value_, kwarg_only_);
+        return Argument(name_, new_type, N_, default_value_, kwarg_only_,
+                        alias_info_ ? std::optional(*alias_info_) : std::nullopt);
     }
 
     NODISCARD String TypeMismatchMsg(const String& actual_type) const {
@@ -117,6 +136,7 @@ public:
         std::swap(default_value_, other.default_value_);
         std::swap(N_, other.N_);
         std::swap(kwarg_only_, other.kwarg_only_);
+        std::swap(alias_info_, other.alias_info_);
         std::swap(is_out_, other.is_out_);
     }
 
@@ -132,6 +152,7 @@ private:
     std::optional<Any> default_value_;
     // is this only specifiable as a keyword argument?
     bool kwarg_only_;
+    std::unique_ptr<AliasInfo> alias_info_;
     // whether the argument is marked as out, like int& ref
     bool is_out_;
 };
@@ -141,7 +162,10 @@ inline bool operator==(const Argument& lhs, const Argument& rhs) {
            *lhs.type() == *rhs.type() &&
            lhs.N() == rhs.N() &&
            lhs.default_value() == rhs.default_value() &&
-           lhs.IsKwargOnly() == rhs.IsKwargOnly();
+           lhs.IsKwargOnly() == rhs.IsKwargOnly() &&
+           (lhs.alias_info() == rhs.alias_info() ||
+            (lhs.alias_info() != nullptr && rhs.alias_info() != nullptr &&
+             *lhs.alias_info() == *rhs.alias_info()));
 }
 
 inline bool operator!=(const Argument& lhs, const Argument& rhs) {

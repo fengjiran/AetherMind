@@ -68,7 +68,7 @@ Symbol InternedStrings::GetSymbol(const String& s) {
 std::pair<String, String> InternedStrings::string(Symbol sym) {
     switch (sym) {
 #define CASE(ns, s)                    \
-    case static_cast<uint32_t>(ns::s): \
+    case static_cast<SymId>(ns::s): \
         return {#ns "::" #s, #s};
         FORALL_NS_SYMBOLS(CASE)
 #undef CASE
@@ -83,7 +83,7 @@ std::pair<String, String> InternedStrings::string(Symbol sym) {
 Symbol InternedStrings::NS(Symbol sym) {
     switch (sym) {
 #define CASE(ns, s)                    \
-    case static_cast<uint32_t>(ns::s): \
+    case static_cast<SymId>(ns::s): \
         return namespaces::ns;
         FORALL_NS_SYMBOLS(CASE)
 #undef CASE

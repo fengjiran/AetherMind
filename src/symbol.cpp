@@ -40,5 +40,28 @@ Symbol Symbol::NS() const {
     return InternedStrings::Global().NS(*this);
 }
 
+Symbol Symbol::prim(const String& name) {
+    return FromQualString("prim::" + name);
+}
+
+Symbol Symbol::cuda(const String& name) {
+    return FromQualString("cuda::" + name);
+}
+
+Symbol Symbol::attr(const String& name) {
+    return FromQualString("attr::" + name);
+}
+
+bool Symbol::IsPrim() const {
+    return NS() == namespaces::prim;
+}
+
+bool Symbol::IsCuda() const {
+    return NS() == namespaces::cuda;
+}
+
+bool Symbol::IsAttr() const {
+    return NS() == namespaces::attr;
+}
 
 }// namespace aethermind

@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_FUNCTION_SCHEMA_H
 #define AETHERMIND_FUNCTION_SCHEMA_H
 
+#include "alias_info.h"
 #include "any.h"
 #include "container/string.h"
 #include "type_system/tensor_type.h"

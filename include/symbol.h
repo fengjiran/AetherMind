@@ -15,13 +15,15 @@ namespace aethermind {
 // aethermind
 const String& GetDomainPrefix();
 
+using SymId = uint32_t;
+
 // A Symbol is like an interned string, but with a little extra
 // structure; it is namespaced via SymbolNamespace and the resulting
 // intern pointers support efficient namespace testing.
 class Symbol {
 public:
     constexpr Symbol() : value_(0) {}
-    explicit constexpr Symbol(uint32_t value) : value_(value) {}
+    explicit constexpr Symbol(SymId value) : value_(value) {}
 
     // Get a Symbol for a qualified string like "foo.bar.baz", "add.Tensor"
     static Symbol FromQualString(const String& qual);
@@ -43,15 +45,40 @@ public:
 
     Symbol NS() const;
 
-
-    constexpr operator uint32_t() const {
+    constexpr operator SymId() const {
         return value_;
     }
 
+    // Constructors for our various namespaced strings. This will construct
+    // the appropriate namespaced string, e.g., "attr::foo" for the
+    // argument "foo", and then attempt to intern it.  DO NOT USE THIS
+    // with a string literal; attr::foo should be available in that case
+    // (and if it's not, you should add it to the built-ins list above.)
+    static Symbol prim(const String& name);
+    static Symbol cuda(const String& name);
+    static Symbol attr(const String& name);
+
+    bool IsPrim() const;
+    bool IsCuda() const;
+    bool IsAttr() const;
+
 private:
-    uint32_t value_;
+    SymId value_;
 };
 
+inline bool operator==(Symbol lhs, Symbol rhs) noexcept {
+    return static_cast<SymId>(lhs) == static_cast<SymId>(rhs);
+}
+
 }// namespace aethermind
+
+namespace std {
+template<>
+struct hash<aethermind::Symbol> {
+    size_t operator()(const aethermind::Symbol& sym) const noexcept {
+        return std::hash<uint32_t>()(sym);
+    }
+};
+}// namespace std
 
 #endif//AETHERMIND_SYMBOL_H

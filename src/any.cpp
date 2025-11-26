@@ -74,6 +74,10 @@ bool Any::IsObjectRef() const noexcept {
     return has_value() ? ptr_->IsObjectRef() : false;
 }
 
+bool Any::IsMap() const noexcept {
+    return has_value() ? ptr_->IsMap() : false;
+}
+
 bool Any::IsDevice() const noexcept {
     return type() == std::type_index(typeid(Device));
 }

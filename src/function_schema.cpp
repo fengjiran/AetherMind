@@ -3,6 +3,9 @@
 //
 #include "function_schema.h"
 
+#include "type_system/list_type.h"
+#include <utility>
+
 namespace aethermind {
 
 Argument::Argument(String name,
@@ -94,5 +97,50 @@ void Argument::swap(Argument& other) noexcept {
     std::swap(alias_info_, other.alias_info_);
     std::swap(is_out_, other.is_out_);
 }
+
+FunctionSchema::FunctionSchema(String name,
+                               String overload_name,
+                               std::vector<Argument> arguments,
+                               std::vector<Argument> returns,
+                               bool is_var_args,
+                               bool is_var_returns)
+    : name_({std::move(name), std::move(overload_name)}),
+      arguments_(std::move(arguments)),
+      returns_(std::move(returns)),
+      is_var_args_(is_var_args),
+      is_var_returns_(is_var_returns) {
+    Check();
+}
+
+FunctionSchema::FunctionSchema(Symbol qual_name,
+                               String overload_name,
+                               std::vector<Argument> arguments,
+                               std::vector<Argument> returns,
+                               bool is_var_args,
+                               bool is_var_returns)
+    : FunctionSchema(qual_name.ToQualString(),
+                     std::move(overload_name),
+                     std::move(arguments),
+                     std::move(returns),
+                     is_var_args,
+                     is_var_returns) {}
+
+
+void FunctionSchema::Check() const {
+    bool seen_default_arg = false;
+    for (const auto& arg: arguments()) {
+        if (arg.default_value()) {
+            seen_default_arg = true;
+        } else {
+            if (arg.type()->kind() == ListType::Kind) {
+                continue;
+            }
+            CHECK(!seen_default_arg || arg.IsKwargOnly())
+                    << "Non-default positional argument follows default argument. Parameter ";
+                    // << arg.name() << " in " << *this;
+        }
+    }
+}
+
 
 }// namespace aethermind

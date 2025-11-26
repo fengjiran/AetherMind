@@ -20,6 +20,7 @@ public:
     NODISCARD virtual const std::type_index& type() const = 0;
     NODISCARD virtual uint32_t use_count() const = 0;
     NODISCARD virtual bool IsObjectRef() const = 0;
+    NODISCARD virtual bool IsMap() const = 0;
     NODISCARD virtual void* GetUnderlyingPtr() = 0;
 };
 
@@ -46,6 +47,14 @@ public:
 
     NODISCARD bool IsObjectRef() const override {
         if constexpr (std::is_base_of_v<ObjectRef, T>) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    NODISCARD bool IsMap() const override {
+        if constexpr (details::is_map_v<T>) {
             return true;
         } else {
             return false;
@@ -218,6 +227,8 @@ public:
     NODISCARD bool IsTensor() const noexcept;
 
     NODISCARD bool IsObjectRef() const noexcept;
+
+    NODISCARD bool IsMap() const noexcept;
 
     NODISCARD int64_t ToInt() const;
 

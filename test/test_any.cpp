@@ -129,6 +129,17 @@ TEST(Any, string) {
     EXPECT_EQ(s4.use_count(), 1);
 }
 
+TEST(Any, map) {
+    std::unordered_map<int, String> m = {{0, "hello"}, {1, "world"}};
+    Any x0 = m;
+    EXPECT_TRUE(x0.has_value());
+    EXPECT_TRUE(x0.IsMap());
+
+    auto y = x0.cast<std::unordered_map<int, String>>();
+    EXPECT_TRUE(y[0] == "hello");
+    EXPECT_TRUE(y[1] == "world");
+}
+
 TEST(Any, cast_vs_as) {
     Any x0 = 1;
     auto opt_v0 = x0.as<int64_t>();

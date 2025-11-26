@@ -7,6 +7,9 @@
 
 #include "object.h"
 
+#include <map>
+#include <unordered_map>
+
 namespace aethermind {
 
 struct Half;
@@ -40,6 +43,18 @@ template<typename T>
 constexpr bool is_plain_v = is_integral_v<T> ||
                             is_floating_point_v<T> ||
                             is_string_v<T>;
+
+template<typename T>
+struct is_map : std::false_type {};
+
+template<typename K, typename V>
+struct is_map<std::unordered_map<K, V>> : std::true_type {};
+
+template<typename K, typename V>
+struct is_map<std::map<K, V>> : std::true_type {};
+
+template<typename T>
+constexpr bool is_map_v = is_map<T>::value;
 
 template<typename T, typename = void>
 struct has_use_count_method : std::false_type {};

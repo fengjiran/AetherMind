@@ -7,6 +7,7 @@
 
 #include "alias_info.h"
 #include "container/string.h"
+#include "operator_name.h"
 #include "type_system/tensor_type.h"
 #include "type_system/type.h"
 
@@ -109,20 +110,51 @@ inline bool operator!=(const Argument& lhs, const Argument& rhs) {
     return !(lhs == rhs);
 }
 
+std::ostream& operator<<(std::ostream& os, const Argument& arg);
+
 enum class ArgDirection {
     INPUT,
     OUTPUT
 };
 
 struct SchemaArgument {
-    ArgDirection dir;
+    ArgDirection direction;
     size_t index;
 
-    SchemaArgument(ArgDirection arg_dir, size_t idx) : dir(arg_dir), index(idx) {}
+    SchemaArgument(ArgDirection arg_dir, size_t idx) : direction(arg_dir), index(idx) {}
     bool operator==(const SchemaArgument& other) const {
-        return dir == other.dir && index == other.index;
+        return direction == other.direction && index == other.index;
     }
 };
+
+class FunctionSchema {
+public:
+    FunctionSchema(String name, String overload_name, std::vector<Argument> arguments,
+                   std::vector<Argument> returns, bool is_var_args, bool is_var_returns);
+
+    FunctionSchema(Symbol name, String overload_name, std::vector<Argument> arguments,
+                   std::vector<Argument> returns, bool is_var_args, bool is_var_returns);
+
+    NODISCARD const std::vector<Argument>& arguments() const {
+        return arguments_;
+    }
+
+private:
+    OperatorName name_;
+    std::vector<Argument> arguments_;
+    std::vector<Argument> returns_;
+
+    // if true then this schema takes an arbitrary number of additional arguments
+    // after the argument specified in arguments,
+    // currently this is used primarily to represent 'primitive' operators whose
+    // arguments are not checked by schema
+    bool is_var_args_;
+    bool is_var_returns_;
+
+    void Check() const;
+};
+
+std::ostream& operator<<(std::ostream& os, const FunctionSchema& schema);
 
 }// namespace aethermind
 

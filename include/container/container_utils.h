@@ -31,6 +31,34 @@ struct is_valid_iterator<Iter, std::optional<T>> : is_valid_iterator<Iter, T> {}
 template<typename Iter, typename T>
 inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;
 
+template<typename T, std::enable_if_t<std::is_unsigned_v<T>>* = nullptr>
+unsigned int GetDigitNumOfUnsigned(T val, int base = 10) noexcept {
+    unsigned int n = 1;
+    const unsigned int b2 = base * base;
+    const unsigned int b3 = b2 * base;
+    const unsigned long b4 = b3 * base;
+
+    while (true) {
+        if (val < static_cast<unsigned int>(base)) {
+            return n;
+        }
+
+        if (val < b2) {
+            return n + 1;
+        }
+
+        if (val < b3) {
+            return n + 2;
+        }
+
+        if (val < b4) {
+            return n + 3;
+        }
+
+        val /= b4;
+        n += 4;
+    }
+}
 
 // IteratorAdapter is a wrapper around an iterator that converts the value
 // type of the iterator to another type.

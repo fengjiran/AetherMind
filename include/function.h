@@ -5,7 +5,6 @@
 #ifndef AETHERMIND_FUNCTION_H
 #define AETHERMIND_FUNCTION_H
 
-// #include "function_schema.h"
 #include "function_traits.h"
 #include "utils/qualified_name.h"
 
@@ -67,6 +66,28 @@ private:
     const Any* args_;
     int32_t size_;
 };
+
+template<typename R, size_t... Is, typename F>
+void unpack_call(const F& callable, std::index_sequence<Is...>, const String* opt_name,
+                 const Any* args, int32_t num_args, Any* res) {
+    using FuncInfo = FunctionInfo<F>;
+    const FGetFunctionSchema f_schema = FuncInfo::Schema;
+    // static_assert(FuncInfo::unpacked_args_supported, "the function signature do not support unpacked.");
+    constexpr size_t nargs = sizeof...(Is);
+    if (nargs != num_args) {
+        AETHERMIND_THROW(TypeError) << "Mismatched number of arguments when calling: `"
+                                    << (opt_name == nullptr ? "" : *opt_name)
+                                    << (f_schema == nullptr ? "" : (*f_schema)()) << "`. Expected " << nargs
+                                    << " but got " << num_args << " arguments";
+    }
+
+    if constexpr (std::is_same_v<R, void>) {
+        callable(Any2Arg(args, Is, opt_name, f_schema)...);
+    } else {
+        *res = R(callable(Any2Arg(args, Is, opt_name, f_schema)...));
+    }
+}
+
 }// namespace details
 
 template<typename T>
@@ -155,17 +176,6 @@ public:
         }
         return Function(packed_call, qualified_name, schema);
     }
-
-    // template<typename TCallable>
-    // static Function FromTyped(TCallable callable, const QualifiedName& qualified_name) {
-    //     using FuncInfo = details::FunctionInfo<TCallable>;
-    //     using R = FuncInfo::return_type;
-    //     using idx_seq = std::make_index_sequence<FuncInfo::num_args>;
-    //     auto f = [callable](const Any* args, int32_t num_args, Any* res) mutable -> void {
-    //         details::unpack_call<R>(callable, idx_seq{}, nullptr, args, num_args, res);
-    //     };
-    //     return Function(f, qualified_name, FuncInfo::Schema());
-    // }
 
     template<typename TCallable>
     static Function FromTyped(TCallable callable, const QualifiedName& qualified_name) {

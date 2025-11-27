@@ -138,6 +138,10 @@ TEST(Any, map) {
     auto y = x0.cast<std::unordered_map<int, String>>();
     EXPECT_TRUE(y[0] == "hello");
     EXPECT_TRUE(y[1] == "world");
+
+    Any x1 = "hello";
+    std::unordered_map<Any, int> b = {{x1, 1}};
+    EXPECT_EQ(b[x1], 1);
 }
 
 TEST(Any, cast_vs_as) {

@@ -21,22 +21,23 @@
 
 namespace aethermind {
 
-inline size_t hash_combine(size_t seed, size_t value) {
+template<typename T, std::enable_if_t<std::is_convertible_v<T, size_t>>* = nullptr>
+size_t hash_combine(size_t seed, const T& value) {
     return seed ^ (value + 0x9e3779b9 + (seed << 6u) + (seed >> 2u));
 }
 
 // Creates the SHA1 hash of a string. A 160-bit hash.
 // Based on the implementation in Boost.
 // Note that SHA1 hashes are no longer considered cryptographically
-//   secure, but are the standard hash for generating unique ids.
+// secure, but are the standard hash for generating unique ids.
 // Usage:
-//   // Let 'code' be a std::string
-//   c10::sha1 sha1_hash{code};
+//   Let 'code' be a std::string
+//   SHA1 sha1_hash{code};
 //   const auto hash_code = sha1_hash.str();
-struct sha1 {
-    typedef unsigned int(digest_type)[5];
+struct SHA1 {
+    using digest_type = unsigned int[5];
 
-    sha1(const String& s = "") {
+    explicit SHA1(const String& s = "") {
         if (!s.empty()) {
             reset();
             process_bytes(s.c_str(), s.size());
@@ -226,7 +227,7 @@ constexpr uint64_t twang_mix64(uint64_t key) noexcept {
     return key;
 }
 
-namespace hash_details {
+namespace details {
 
 template<typename T>
 size_t simple_get_hash(const T& o);
@@ -255,13 +256,13 @@ auto dispatch_hash(const T& o) -> decltype(T::hash(o), size_t()) {
     return T::hash(o);
 }
 
-}// namespace hash_details
+}// namespace details
 
 // Hasher struct
 template<typename T>
 struct hash {
     size_t operator()(const T& o) const {
-        return hash_details::dispatch_hash(o);
+        return details::dispatch_hash(o);
     }
 };
 
@@ -271,7 +272,7 @@ struct hash<std::tuple<Types...>> {
     template<size_t idx, typename... Ts>
     struct tuple_hash {
         size_t operator()(const std::tuple<Ts...>& t) const {
-            return hash_combine(hash_details::simple_get_hash(std::get<idx>(t)),
+            return hash_combine(details::simple_get_hash(std::get<idx>(t)),
                                 tuple_hash<idx - 1, Ts...>()(t));
         }
     };
@@ -279,7 +280,7 @@ struct hash<std::tuple<Types...>> {
     template<typename... Ts>
     struct tuple_hash<0, Ts...> {
         size_t operator()(const std::tuple<Ts...>& t) const {
-            return hash_details::simple_get_hash(std::get<0>(t));
+            return details::simple_get_hash(std::get<0>(t));
         }
     };
 
@@ -292,7 +293,7 @@ template<typename T1, typename T2>
 struct hash<std::pair<T1, T2>> {
     size_t operator()(const std::pair<T1, T2>& pair) const {
         std::tuple<T1, T2> tuple = std::make_tuple(pair.first, pair.second);
-        return hash_details::simple_get_hash(tuple);
+        return details::simple_get_hash(tuple);
     }
 };
 
@@ -302,20 +303,25 @@ struct hash<std::vector<T>> {
     size_t operator()(const std::vector<T>& v) const {
         size_t seed = 0;
         for (const auto& elem: v) {
-            seed = hash_combine(seed, hash_details::simple_get_hash(elem));
+            seed = hash_combine(seed, details::simple_get_hash(elem));
         }
         return seed;
     }
 };
 
-namespace hash_details {
+namespace details {
 
 template<typename T>
 size_t simple_get_hash(const T& o) {
     return hash<T>()(o);
 }
 
-}// namespace hash_details
+inline size_t FibonacciHash(size_t hash_value, uint32_t fib_shift) {
+    constexpr size_t coeff = 11400714819323198485ull;
+    return (coeff * hash_value) >> fib_shift;
+}
+
+}// namespace details
 
 // Use this function to actually hash multiple things in one line.
 // Dispatches to aethermind::hash, so it can hash containers.

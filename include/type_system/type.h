@@ -10,7 +10,6 @@
 #include "data_type.h"
 #include "error.h"
 #include "function.h"
-#include "type.h"
 #include "type_ptr.h"
 #include "utils/qualified_name.h"
 

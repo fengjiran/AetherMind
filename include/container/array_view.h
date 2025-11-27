@@ -244,7 +244,7 @@ struct hash<aethermind::ArrayView<T>> {
     size_t operator()(aethermind::ArrayView<T> v) const {
         size_t seed = 0;
         for (const auto& elem: v) {
-            seed = aethermind::hash_combine(seed, aethermind::hash_details::simple_get_hash(elem));
+            seed = aethermind::hash_combine(seed, aethermind::details::simple_get_hash(elem));
         }
         return seed;
     }

@@ -5,6 +5,8 @@
 #include "container/string.h"
 #include "device.h"
 #include "tensor.h"
+#include "type_system/tensor_type.h"
+#include "type_system/type.h"
 
 namespace aethermind {
 
@@ -34,6 +36,39 @@ const std::type_index& Any::type() const {
     AETHERMIND_UNREACHABLE();
 }
 
+SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
+    if (!has_value()) {
+        return NoneType::Global();
+    }
+
+    if (IsBool()) {
+        return BoolType::Global();
+    }
+
+    if (IsInteger()) {
+        return IntType::Global();
+    }
+
+    if (IsFloatingPoint()) {
+        return FloatType::Global();
+    }
+
+    if (IsString()) {
+        return StringType::Global();
+    }
+
+    if (IsDevice()) {
+        return DeviceObjType::Global();
+    }
+
+    if (IsTensor()) {
+        return TensorType::Create(ToTensor());
+    }
+
+    CHECK(false) << "The type is unknown!";
+    AETHERMIND_UNREACHABLE();
+}
+
 void Any::swap(Any& other) noexcept {
     std::swap(ptr_, other.ptr_);
 }
@@ -48,6 +83,10 @@ bool Any::has_value() const noexcept {
 
 void* Any::GetUnderlyingPtr() const {
     return has_value() ? ptr_->GetUnderlyingPtr() : nullptr;
+}
+
+bool Any::IsNone() const noexcept {
+    return !has_value();
 }
 
 bool Any::IsBool() const noexcept {
@@ -125,6 +164,11 @@ bool Any::unique() const noexcept {
     return use_count() == 1;
 }
 
+String Any::ToNone() const noexcept {
+    CHECK(IsNone());
+    return "None";
+}
+
 int64_t Any::ToInt() const {
     CHECK(IsInteger()) << "Expected Int.";
     return cast<int64_t>();
@@ -174,87 +218,35 @@ bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
     return lhs.ptr_ == rhs.ptr_;
 }
 
-/*
-Any::Any(const Any& other) : data_(other.data_) {
-    if (is_object_ptr()) {
-        auto* obj = std::get<Object*>(data_.payload_);
-        if (!IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::IncRefObjectHandle(obj);
-        }
-    }
-}
-
-Any::Any(Any&& other) noexcept : data_(std::move(other.data_)) {
-    other.data_.payload_ = 0;
-    other.data_.tag_ = AnyTag::None;
-}
-
-void Any::reset() {
-    if (is_object_ptr()) {
-        if (auto* obj = std::get<Object*>(data_.payload_); !IsNullTypePtr(obj)) {
-            details::ObjectUnsafe::DecRefObjectHandle(obj);
-        }
-    }
-    data_.payload_ = 0;
-    data_.tag_ = AnyTag::None;
-}
-
-uint32_t Any::use_count() const noexcept {
-    if (tag() == AnyTag::None) {
+// TODO: any hash
+size_t AnyHash::operator()(const Any& v) const {
+    if (!v.has_value()) {
         return 0;
     }
 
-    if (is_object_ptr()) {
-        auto* obj = std::get<Object*>(data_.payload_);
-        return IsNullTypePtr(obj) ? 0 : obj->use_count();
+    if (v.IsBool()) {
+        return get_hash(v.ToBool());
     }
-    return 1;
+
+    if (v.IsInteger()) {
+        return get_hash(v.ToInt());
+    }
+
+    if (v.IsFloatingPoint()) {
+        return get_hash(v.ToDouble());
+    }
+
+    if (v.IsString()) {
+        return get_hash(v.ToString());
+    }
+
+    // if (v.IsDevice()) {
+    //     return get_hash(v.ToDevice());
+    // }
+
+    CHECK(false) << "Unhashable type: '" << v.GetTypePtr()->ReprStr() << "'";
+    AETHERMIND_UNREACHABLE();
 }
 
-int64_t Any::to_int() const {
-    CHECK(is_int()) << "Expected Int but got " << AnyTagToString(tag());
-    return cast<int64_t>();
-}
-
-double Any::to_double() const {
-    CHECK(is_double()) << "Expected Double but got " << AnyTagToString(tag());
-    return cast<double>();
-}
-
-bool Any::to_bool() const {
-    CHECK(is_bool()) << "Expected Bool but got " << AnyTagToString(tag());
-    return cast<bool>();
-}
-
-void* Any::to_void_ptr() const {
-    CHECK(is_void_ptr()) << "Expected VoidPtr but got " << AnyTagToString(tag());
-    return cast<void*>();
-}
-
-Device Any::to_device() const {
-    CHECK(is_device()) << "Expected Device but got " << AnyTagToString(tag());
-    return cast<Device>();
-}
-
-String Any::to_string() const& {
-    CHECK(is_string()) << "Expected String but got " << AnyTagToString(tag());
-    return cast<String>();
-}
-
-String Any::to_string() && {
-    CHECK(is_string()) << "Expected String but got " << AnyTagToString(tag());
-    return TypeTraits<String>::MoveFromAnyAfterCheck(&data_);
-}
-
-Tensor Any::to_tensor() const& {
-    CHECK(is_tensor()) << "Expected Tensor but got " << AnyTagToString(tag());
-    return cast<Tensor>();
-}
-
-Tensor Any::to_tensor() && {
-    CHECK(is_tensor()) << "Expected Tensor but got " << AnyTagToString(tag());
-    return TypeTraits<Tensor>::MoveFromAnyAfterCheck(&data_);
-}
-*/
 
 }// namespace aethermind

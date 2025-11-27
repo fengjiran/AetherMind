@@ -77,6 +77,9 @@ class Tensor;
 class Function;
 template<typename FType>
 class TypedFunction;
+template<typename>
+class SingletonOrSharedTypePtr;
+class Type;
 
 class Any {
 public:
@@ -210,7 +213,11 @@ public:
 
     NODISCARD const std::type_index& type() const;
 
+    NODISCARD SingletonOrSharedTypePtr<Type> GetTypePtr() const noexcept;
+
     NODISCARD bool has_value() const noexcept;
+
+    NODISCARD bool IsNone() const noexcept;
 
     NODISCARD bool IsBool() const noexcept;
 
@@ -229,6 +236,8 @@ public:
     NODISCARD bool IsObjectRef() const noexcept;
 
     NODISCARD bool IsMap() const noexcept;
+
+    NODISCARD String ToNone() const noexcept;
 
     NODISCARD int64_t ToInt() const;
 
@@ -258,6 +267,8 @@ private:
     friend class AnyEqual;
 };
 
+// std::ostream& operator<<(std::ostream& os, const Any& any);
+
 class AnyEqual {
 public:
     bool operator()(const Any& lhs, const Any& rhs) const;
@@ -270,6 +281,11 @@ inline bool operator==(const Any& lhs, const Any& rhs) noexcept {
 inline bool operator!=(const Any& lhs, const Any& rhs) noexcept {
     return !AnyEqual()(lhs, rhs);
 }
+
+class AnyHash {
+public:
+    size_t operator()(const Any& v) const;
+};
 
 namespace details {
 
@@ -318,5 +334,14 @@ struct Type2Str {
 }// namespace details
 
 }// namespace aethermind
+
+namespace std {
+template<>
+struct hash<aethermind::Any> {
+    size_t operator()(const aethermind::Any& v) const noexcept {
+        return aethermind::AnyHash()(v);
+    }
+};
+}// namespace std
 
 #endif//AETHERMIND_ANY_H

@@ -7,7 +7,6 @@
 
 #include "container/string.h"
 #include "macros.h"
-#include "object.h"
 
 #include <cstdint>
 
@@ -35,11 +34,11 @@ constexpr DeviceType kUndefined = DeviceType::kUndefined;
 /// 1. A negative index represents the current device, a non-negative index
 /// represents a specific, concrete device,
 /// 2. When the device type is CPU, the device index must be zero.
-class DeviceImpl : public Object {
+class Device {
 public:
-    DeviceImpl() : DeviceImpl(kCPU) {}
+    Device() : Device(DeviceType::kCPU) {}
 
-    explicit DeviceImpl(DeviceType type, int8_t index = -1) : type_(type), index_(index) {
+    explicit Device(DeviceType type, int8_t index = -1) : type_(type), index_(index) {
         validate();
     }
 
@@ -67,64 +66,6 @@ public:
         return type_ == kCANN;
     }
 
-private:
-    DeviceType type_;
-    int8_t index_ = -1;
-
-    void validate() const {
-        CHECK(index() >= -1) << "Device index must be greater than or equal to -1, but got " << index();
-        CHECK(!is_cpu() || index() <= 0) << "CPU device index must be -1 or zero, but got " << index();
-    }
-};
-
-class Device : public ObjectRef {
-public:
-    Device() = default;// default cpu
-
-    explicit Device(DeviceType type, int8_t index = -1);
-
-    explicit Device(ObjectPtr<DeviceImpl>);
-
-    NODISCARD bool defined() const noexcept {
-        return impl_;
-    }
-
-    NODISCARD uint32_t use_count() const noexcept {
-        return impl_.use_count();
-    }
-
-    NODISCARD bool unique() const noexcept {
-        return use_count() == 1;
-    }
-
-    NODISCARD DeviceType type() const noexcept {
-        return impl_->type();
-    }
-
-    NODISCARD int8_t index() const noexcept {
-        return impl_->index();
-    }
-
-    NODISCARD bool has_index() const noexcept {
-        return impl_->has_index();
-    }
-
-    NODISCARD DeviceImpl* get_impl_ptr_unsafe() const noexcept;
-
-    NODISCARD DeviceImpl* release_impl_unsafe();
-
-    NODISCARD bool is_cpu() const noexcept {
-        return type() == kCPU;
-    }
-
-    NODISCARD bool is_cuda() const noexcept {
-        return type() == kCUDA;
-    }
-
-    NODISCARD bool is_cann() const noexcept {
-        return type() == kCANN;
-    }
-
     NODISCARD String str() const;
 
     static Device CPU();
@@ -140,7 +81,13 @@ public:
     }
 
 private:
-    ObjectPtr<DeviceImpl> impl_;
+    DeviceType type_;
+    int8_t index_ = -1;
+
+    void validate() const {
+        CHECK(index() >= -1) << "Device index must be greater than or equal to -1, but got " << index();
+        CHECK(!is_cpu() || index() <= 0) << "CPU device index must be -1 or zero, but got " << index();
+    }
 };
 
 String DeviceType2Str(DeviceType device_type, bool lower_case = false);
@@ -157,6 +104,17 @@ struct hash<aethermind::DeviceType> {
         return std::hash<int>()(static_cast<int>(k));
     }
 };
+
+template<>
+struct hash<aethermind::Device> {
+    std::size_t operator()(aethermind::Device dev) const noexcept {
+        static_assert(sizeof(aethermind::DeviceType) == 1);
+        const uint32_t bits = static_cast<uint32_t>(static_cast<uint8_t>(dev.type())) << 16 |
+                              static_cast<uint32_t>(static_cast<uint8_t>(dev.index()));
+        return std::hash<uint32_t>()(bits);
+    }
+};
+
 }// namespace std
 
 #endif//AETHERMIND_DEVICE_H

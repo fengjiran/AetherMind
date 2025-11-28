@@ -3,7 +3,6 @@
 //
 #include "any.h"
 #include "container/string.h"
-#include "device.h"
 #include "tensor.h"
 #include "type_system/tensor_type.h"
 #include "type_system/type.h"
@@ -240,9 +239,9 @@ size_t AnyHash::operator()(const Any& v) const {
         return get_hash(v.ToString());
     }
 
-    // if (v.IsDevice()) {
-    //     return get_hash(v.ToDevice());
-    // }
+    if (v.IsDevice()) {
+        return get_hash(v.ToDevice());
+    }
 
     CHECK(false) << "Unhashable type: '" << v.GetTypePtr()->ReprStr() << "'";
     AETHERMIND_UNREACHABLE();

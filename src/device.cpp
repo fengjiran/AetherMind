@@ -39,29 +39,16 @@ bool IsValidDeviceType(DeviceType device_type) {
     }
 }
 
-Device::Device(DeviceType type, int8_t index)
-    : impl_(make_object<DeviceImpl>(type, index)) {}
-
-Device::Device(ObjectPtr<DeviceImpl> impl)
-    : impl_(std::move(impl)) {}
-
 
 String Device::str() const {
     String s = DeviceType2Str(type(), true);
     if (has_index()) {
-        s = s + ":" + std::to_string(index());
+        // s = s + ":" + std::to_string(index());
+        s += ":";
+        s += std::to_string(index());
     }
     return s;
 }
-
-DeviceImpl* Device::get_impl_ptr_unsafe() const noexcept {
-    return impl_.get();
-}
-
-DeviceImpl* Device::release_impl_unsafe() {
-    return impl_.release();
-}
-
 
 Device Device::CPU() {
     return Device(kCPU);

@@ -8,6 +8,7 @@
 #include "any_utils.h"
 #include "data_type.h"
 #include "error.h"
+#include "device.h"
 
 #include <typeindex>
 
@@ -72,7 +73,6 @@ private:
     friend class Any;
 };
 
-class Device;
 class Tensor;
 class Function;
 template<typename FType>

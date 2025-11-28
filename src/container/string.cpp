@@ -1018,4 +1018,50 @@ String operator+(String::value_type lhs, const String& rhs) {
     return rhs + lhs;
 }
 
+String to_string(int val) noexcept {
+    const bool neg = val < 0;
+    const unsigned int uval = neg ? static_cast<unsigned int>(~val) + 1u : val;
+    const auto len = details::GetDigitNumOfUnsigned(uval);
+    String res(neg + len, '-');
+    details::UnsignedToDigitChar(res.data() + neg, len, uval);
+    return res;
+}
+
+String to_string(unsigned int val) noexcept {
+    String res(details::GetDigitNumOfUnsigned(val), '\0');
+    details::UnsignedToDigitChar(res.data(), res.size(), val);
+    return res;
+}
+
+String to_string(long val) noexcept {
+    const bool neg = val < 0;
+    const unsigned long uval = neg ? static_cast<unsigned long>(~val) + 1ul : val;
+    const auto len = details::GetDigitNumOfUnsigned(uval);
+    String res(neg + len, '-');
+    details::UnsignedToDigitChar(res.data() + neg, len, uval);
+    return res;
+}
+
+String to_string(unsigned long val) noexcept {
+    String res(details::GetDigitNumOfUnsigned(val), '\0');
+    details::UnsignedToDigitChar(res.data(), res.size(), val);
+    return res;
+}
+
+String to_string(long long val) noexcept {
+    const bool neg = val < 0;
+    const unsigned long long uval = neg ? static_cast<unsigned long long>(~val) + 1ull : val;
+    const auto len = details::GetDigitNumOfUnsigned(uval);
+    String res(neg + len, '-');
+    details::UnsignedToDigitChar(res.data() + neg, len, uval);
+    return res;
+}
+
+String to_string(unsigned long long val) noexcept {
+    String res(details::GetDigitNumOfUnsigned(val), '\0');
+    details::UnsignedToDigitChar(res.data(), res.size(), val);
+    return res;
+}
+
+
 }// namespace aethermind

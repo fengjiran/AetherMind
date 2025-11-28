@@ -142,6 +142,8 @@ TEST(Any, map) {
     Any x1 = "hello";
     std::unordered_map<Any, int> b = {{x1, 1}};
     EXPECT_EQ(b[x1], 1);
+
+    std::unordered_map<Any, Any> m1;
 }
 
 TEST(Any, cast_vs_as) {

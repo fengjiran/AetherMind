@@ -35,6 +35,9 @@ TEST(StringConstructorFill, BasicFunctionality) {
     s4.insert(s4.begin() + 2, 3, 'a');
     std::memcpy(s4.data() + 2, "111", 0);
     EXPECT_TRUE(s4 == "heaaallo");
+
+    int x = -105;
+    EXPECT_TRUE(to_string(x) == "-105");
 }
 
 // 测试边界情况：空字符串
@@ -98,7 +101,6 @@ TEST(StringConstructorFill, NonAsciiCharacters) {
 
     // 注意：此测试仅验证存储的字节值，不保证这些值在所有系统上都表示相同的字符
 }
-
 
 // 测试与其他String操作的兼容性
 TEST(StringConstructorFill, CompatibilityWithOtherOperations) {

@@ -60,6 +60,32 @@ unsigned int GetDigitNumOfUnsigned(T val, int base = 10) noexcept {
     }
 }
 
+template<typename T, std::enable_if_t<std::is_unsigned_v<T>>* = nullptr>
+void UnsignedToDigitChar(char* p, unsigned int len, T val) noexcept {
+    constexpr char digits[201] =
+            "0001020304050607080910111213141516171819"
+            "2021222324252627282930313233343536373839"
+            "4041424344454647484950515253545556575859"
+            "6061626364656667686970717273747576777879"
+            "8081828384858687888990919293949596979899";
+    unsigned int pos = len - 1;
+    while (val >= 100) {
+        const auto idx = (val % 100) * 2;
+        val /= 100;
+        p[pos] = digits[idx + 1];
+        p[pos - 1] = digits[idx];
+        pos -= 2;
+    }
+
+    if (val >= 10) {
+        const auto idx = val * 2;
+        p[1] = digits[idx + 1];
+        p[0] = digits[idx];
+    } else {
+        p[0] = '0' + val;
+    }
+}
+
 // IteratorAdapter is a wrapper around an iterator that converts the value
 // type of the iterator to another type.
 // \tparam Iter The type of the iterator.

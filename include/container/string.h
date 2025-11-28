@@ -499,6 +499,13 @@ inline bool operator!=(const String& lhs, const String& rhs) { return lhs.compar
 inline bool operator!=(const String& lhs, const char* rhs) { return lhs.compare(rhs) != 0; }
 inline bool operator!=(const char* lhs, const String& rhs) { return rhs.compare(lhs) != 0; }
 
+String to_string(int val) noexcept;
+String to_string(unsigned int val) noexcept;
+String to_string(long val) noexcept;
+String to_string(unsigned long val) noexcept;
+String to_string(long long val) noexcept;
+String to_string(unsigned long long val) noexcept;
+
 }// namespace aethermind
 
 namespace std {

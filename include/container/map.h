@@ -78,6 +78,22 @@ private:
     static constexpr size_t kInitSize = 2;
     static constexpr size_t kMaxSize = 4;
 
+    size_t GetSize() const {
+        return size_;
+    }
+
+    KVType* GetItemPtr(size_t index) const {
+        return static_cast<KVType*>(data_) + index;
+    }
+
+    size_t IncIter(size_t index) const {
+        return index + 1 < size_ ? index + 1 : size_;
+    }
+
+    size_t DecIter(size_t index) const {
+        return index > 0 ? index - 1 : size_;
+    }
+
     static ObjectPtr<SmallMapImpl> Create(size_t n = kInitSize);
 
     template<typename Iter>
@@ -91,6 +107,9 @@ private:
     }
 
     static ObjectPtr<SmallMapImpl> CopyFrom(const SmallMapImpl* src);
+
+    friend class MapImpl;
+    friend class DenseMapImpl;
 };
 
 class DenseMapImpl : public MapImpl {

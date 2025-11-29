@@ -113,6 +113,72 @@ private:
 };
 
 class DenseMapImpl : public MapImpl {
+public:
+    size_t GetSlotNum() const {
+        return slot_;
+    }
+
+private:
+    // The number of elements in a memory block.
+    static constexpr int kBlockCap = 16;
+    // Binary representation of the metadata of an empty slot.
+    static constexpr uint8_t kEmptySlot = 0xFF;
+    // Binary representation of the metadata of a protected slot.
+    static constexpr uint8_t kProtectedSlot = 0xFE;
+    // Index indicator to indicate an invalid index.
+    static constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
+
+    struct Item {
+        KVType data{};
+        size_t prev = kInvalidIndex;
+        size_t next = kInvalidIndex;
+
+        Item() = default;
+        explicit Item(KVType&& data) : data(std::move(data)) {}
+        explicit Item(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
+    };
+
+    struct Block {
+        uint8_t bytes[kBlockCap + kBlockCap * sizeof(Item)];
+
+        Block() {
+            auto* p = reinterpret_cast<Item*>(bytes + kBlockCap);
+            for (int i = 0; i < kBlockCap; ++i) {
+                bytes[i] = kEmptySlot;
+                new (p++) Item();
+            }
+        }
+
+        ~Block() {
+            auto* p = reinterpret_cast<Item*>(bytes + kEmptySlot);
+            for (int i = 0; i < kEmptySlot; ++i) {
+                p->~Item();
+            }
+        }
+    };
+
+    class ListNode {
+    public:
+        ListNode() : index(0), block(nullptr) {}
+
+        ListNode(size_t index, const DenseMapImpl* p)
+            : index(index), block(p->GetBlock(index / kBlockCap)) {}
+
+        // Get metadata of an entry
+        uint8_t& GetMetadata() const {
+            return *(block->bytes + index % kBlockCap);
+        }
+
+        
+
+    private:
+        size_t index;
+        Block* block;
+    };
+
+    Block* GetBlock(size_t index) const {
+        return static_cast<Block*>(data_) + index;
+    }
 };
 
 template<typename K, typename V>

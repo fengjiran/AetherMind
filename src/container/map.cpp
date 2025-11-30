@@ -71,6 +71,26 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::Create(uint32_t fib_shift, size_t slot_num
     return impl;
 }
 
+ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFrom(const DenseMapImpl* src) {
+    CHECK((src->GetSlotNum() & kSmallMapMask) == 0ull);
+    auto block_num = ComputeBlockNum(src->GetSlotNum());
+    auto impl = make_array_object<DenseMapImpl, Block>(block_num);
+    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapImpl);
+    impl->size_ = src->size();
+    impl->slot_ = src->GetSlotNum();
+    impl->fib_shift_ = src->fib_shift_;
+    impl->iter_list_head_ = src->iter_list_head_;
+    impl->iter_list_tail_ = src->iter_list_tail_;
+
+    auto* p = static_cast<Block*>(impl->data_);
+    for (size_t i = 0; i < block_num; ++i) {
+        new (p++) Block(*src->GetBlock(i));
+    }
+
+    return impl;
+}
+
+
 const size_t DenseMapImpl::NextProbePosOffset[kNumJumpDists] = {
         /* clang-format off */
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,

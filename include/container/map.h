@@ -13,31 +13,6 @@
 
 namespace aethermind {
 
-struct Item {
-    std::pair<Any, Any> data;
-    size_t prev = std::numeric_limits<size_t>::max();
-    size_t next = std::numeric_limits<size_t>::max();
-};
-
-struct Block {
-    uint8_t bytes[16 + 16 * sizeof(Item)];
-
-    Block() {
-        auto* p = reinterpret_cast<Item*>(bytes + 16);
-        for (int i = 0; i < 16; ++i) {
-            bytes[i] = 0xFF;
-            new (p++) Item();
-        }
-    }
-
-    ~Block() {
-        auto* p = reinterpret_cast<Item*>(bytes + 16);
-        for (int i = 0; i < 16; ++i) {
-            p->~Item();
-        }
-    }
-};
-
 class MapImpl : public Object {
 public:
     using key_type = Any;
@@ -158,6 +133,14 @@ private:
             for (int i = 0; i < kBlockCap; ++i) {
                 bytes[i] = kEmptySlot;
                 new (p++) Entry();
+            }
+        }
+
+        Block(const Block& other) {
+            auto* p = reinterpret_cast<Entry*>(bytes + kBlockCap);
+            for (int i = 0; i < kBlockCap; ++i) {
+                bytes[i] = other.bytes[i];
+                new (p++) Entry(reinterpret_cast<const Entry*>(other.bytes + kBlockCap)[i]);
             }
         }
 
@@ -317,6 +300,8 @@ private:
     }
 
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
+
+    static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);
 };
 
 template<typename K, typename V>

@@ -128,31 +128,32 @@ private:
     // Index indicator to indicate an invalid index.
     static constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
 
-    struct Item {
+    struct Entry {
         KVType data{};
         size_t prev = kInvalidIndex;
         size_t next = kInvalidIndex;
 
-        Item() = default;
-        explicit Item(KVType&& data) : data(std::move(data)) {}
-        explicit Item(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
+        Entry() = default;
+        explicit Entry(KVType&& data) : data(std::move(data)) {}
+        explicit Entry(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
     };
 
     struct Block {
-        uint8_t bytes[kBlockCap + kBlockCap * sizeof(Item)];
+        uint8_t bytes[kBlockCap + kBlockCap * sizeof(Entry)];
 
         Block() {
-            auto* p = reinterpret_cast<Item*>(bytes + kBlockCap);
+            auto* p = reinterpret_cast<Entry*>(bytes + kBlockCap);
             for (int i = 0; i < kBlockCap; ++i) {
                 bytes[i] = kEmptySlot;
-                new (p++) Item();
+                new (p++) Entry();
             }
         }
 
         ~Block() {
-            auto* p = reinterpret_cast<Item*>(bytes + kEmptySlot);
-            for (int i = 0; i < kEmptySlot; ++i) {
-                p->~Item();
+            auto* p = reinterpret_cast<Entry*>(bytes + kBlockCap);
+            for (int i = 0; i < kBlockCap; ++i) {
+                bytes[i] = kEmptySlot;
+                p->~Entry();
             }
         }
     };
@@ -169,15 +170,60 @@ private:
             return *(block->bytes + index % kBlockCap);
         }
 
-        
+        // Get an entry
+        Entry& GetEntry() const {
+            auto* p = reinterpret_cast<Entry*>(block->bytes + kBlockCap);
+            return *(p + index % kBlockCap);
+        }
+
+        KVType& GetData() const {
+            return GetEntry().data;
+        }
+
+        key_type& GetKey() const {
+            return GetData().first;
+        }
+
+        value_type& GetValue() const {
+            return GetData().second;
+        }
+
+        bool IsNone() const {
+            return block == nullptr;
+        }
+
+        bool IsEmpty() const {
+            return GetMetadata() == kEmptySlot;
+        }
+
+        bool IsProtected() const {
+            return GetMetadata() == kProtectedSlot;
+        }
+
+        bool IsHead() const {
+            return (GetMetadata() & 0x80) == 0x00;
+        }
+
+        void SetEmpty() const {
+            GetMetadata() = kEmptySlot;
+        }
+
+        void SetProtected() const {
+            GetMetadata() = kProtectedSlot;
+        }
+
+        void DestructData() const {
+            GetKey().~Any();
+            GetValue().~Any();
+        }
 
     private:
         size_t index;
         Block* block;
     };
 
-    Block* GetBlock(size_t index) const {
-        return static_cast<Block*>(data_) + index;
+    Block* GetBlock(size_t block_index) const {
+        return static_cast<Block*>(data_) + block_index;
     }
 };
 

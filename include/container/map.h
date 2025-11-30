@@ -7,6 +7,7 @@
 
 #include "any.h"
 #include "container/container_utils.h"
+#include "map.h"
 #include "object.h"
 #include "object_allocator.h"
 
@@ -121,12 +122,23 @@ public:
 private:
     // The number of elements in a memory block.
     static constexpr int kBlockCap = 16;
-    // Binary representation of the metadata of an empty slot.
+    // 0b11111111 representation of the metadata of an empty slot.
     static constexpr uint8_t kEmptySlot = 0xFF;
-    // Binary representation of the metadata of a protected slot.
+    // 0b11111110 representation of the metadata of a protected slot.
     static constexpr uint8_t kProtectedSlot = 0xFE;
+    // Number of probing choices available
+    static constexpr int kNumJumpDists = 126;
     // Index indicator to indicate an invalid index.
     static constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
+
+    static const size_t NextProbePosOffset[kNumJumpDists];
+
+    // fib shift in Fibonacci hash
+    uint32_t fib_shift_;
+    // The head of iterator list
+    size_t iter_list_head_ = kInvalidIndex;
+    // The tail of iterator list
+    size_t iter_list_tail_ = kInvalidIndex;
 
     struct Entry {
         KVType data{};
@@ -212,9 +224,79 @@ private:
             GetMetadata() = kProtectedSlot;
         }
 
+        // Set the entry's jump to its next entry.
+        void SetJump(uint8_t jump) const {
+            (GetMetadata() &= 0x80) |= jump;
+        }
+
+        // Destroy the item in the entry.
         void DestructData() const {
             GetKey().~Any();
             GetValue().~Any();
+        }
+
+        // Construct a head of linked list inplace.
+        void NewHead(Entry entry) const {
+            GetMetadata() = 0x00;
+            GetEntry() = std::move(entry);
+        }
+
+        // Construct a tail of linked list inplace
+        void NewTail(Entry entry) const {
+            GetMetadata() = 0x80;
+            GetEntry() = std::move(entry);
+        }
+
+        // Whether the entry has the next entry on the linked list
+        bool HasNext() const {
+            return NextProbePosOffset[GetMetadata() & 0x7F] != 0;
+        }
+
+        // Move the entry to the next entry on the linked list
+        bool MoveToNext(const DenseMapImpl* p, uint8_t meta) {
+            auto offset = NextProbePosOffset[meta & 0x7F];
+            if (offset == 0) {
+                index = 0;
+                block = nullptr;
+                return false;
+            }
+
+            // The probing will go to the next pos and round back to stay within
+            // the correct range of the slots.
+            index = (index + offset) % p->GetSlotNum();
+            block = p->GetBlock(index / kBlockCap);
+            return true;
+        }
+
+        bool MoveToNext(const DenseMapImpl* p) {
+            return MoveToNext(p, GetMetadata());
+        }
+
+        // Get the prev entry on the linked list
+        ListNode FindPrev(const DenseMapImpl* p) const {
+            // start from the head of the linked list, which must exist
+            auto next = p->IndexFromHash(AnyHash()(GetKey()));
+            auto prev = next;
+
+            next.MoveToNext(p);
+            while (index != next.index) {
+                prev = next;
+                next.MoveToNext(p);
+            }
+
+            return prev;
+        }
+
+        bool GetNextEmpty(const DenseMapImpl* p, uint8_t* jump, ListNode* res) const {
+            for (uint8_t i = 1; i < kNumJumpDists; ++i) {
+                ListNode candidate((index + NextProbePosOffset[i]) % p->GetSlotNum(), p);
+                if (candidate.IsEmpty()) {
+                    *jump = i;
+                    *res = candidate;
+                    return true;
+                }
+            }
+            return false;
         }
 
     private:
@@ -225,6 +307,16 @@ private:
     Block* GetBlock(size_t block_index) const {
         return static_cast<Block*>(data_) + block_index;
     }
+
+    ListNode IndexFromHash(size_t hash_value) const {
+        return ListNode(details::FibonacciHash(hash_value, fib_shift_), this);
+    }
+
+    static size_t ComputeBlockNum(size_t slot_num) {
+        return (slot_num + kBlockCap - 1) / kBlockCap;
+    }
+
+    static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 };
 
 template<typename K, typename V>

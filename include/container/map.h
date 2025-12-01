@@ -132,7 +132,7 @@ private:
             auto* p = reinterpret_cast<Entry*>(bytes + kBlockCap);
             for (int i = 0; i < kBlockCap; ++i) {
                 bytes[i] = kEmptySlot;
-                new (p++) Entry();
+                new (p++) Entry;
             }
         }
 
@@ -155,22 +155,23 @@ private:
 
     class ListNode {
     public:
-        ListNode() : index(0), block(nullptr) {}
+        ListNode() : index_(0), block_(nullptr) {}
 
         ListNode(size_t index, const DenseMapImpl* p)
-            : index(index), block(p->GetBlock(index / kBlockCap)) {}
+            : index_(index), block_(p->GetBlock(index / kBlockCap)) {}
 
         // Get metadata of an entry
         uint8_t& GetMetadata() const {
-            return *(block->bytes + index % kBlockCap);
+            return *(block_->bytes + index_ % kBlockCap);
         }
 
-        // Get an entry
+        // Get an entry ref
         Entry& GetEntry() const {
-            auto* p = reinterpret_cast<Entry*>(block->bytes + kBlockCap);
-            return *(p + index % kBlockCap);
+            auto* p = reinterpret_cast<Entry*>(block_->bytes + kBlockCap);
+            return *(p + index_ % kBlockCap);
         }
 
+        // Get KV
         KVType& GetData() const {
             return GetEntry().data;
         }
@@ -184,7 +185,7 @@ private:
         }
 
         bool IsNone() const {
-            return block == nullptr;
+            return block_ == nullptr;
         }
 
         bool IsEmpty() const {
@@ -209,13 +210,14 @@ private:
 
         // Set the entry's jump to its next entry.
         void SetJump(uint8_t jump) const {
+            CHECK(jump < kNumJumpDists);
             (GetMetadata() &= 0x80) |= jump;
         }
 
         // Destroy the item in the entry.
         void DestructData() const {
-            GetKey().~Any();
-            GetValue().~Any();
+            GetKey().~key_type();
+            GetValue().~value_type();
         }
 
         // Construct a head of linked list inplace.
@@ -235,19 +237,19 @@ private:
             return NextProbePosOffset[GetMetadata() & 0x7F] != 0;
         }
 
-        // Move the entry to the next entry on the linked list
+        // Move to the next entry on the linked list
         bool MoveToNext(const DenseMapImpl* p, uint8_t meta) {
             auto offset = NextProbePosOffset[meta & 0x7F];
             if (offset == 0) {
-                index = 0;
-                block = nullptr;
+                index_ = 0;
+                block_ = nullptr;
                 return false;
             }
 
             // The probing will go to the next pos and round back to stay within
             // the correct range of the slots.
-            index = (index + offset) % p->GetSlotNum();
-            block = p->GetBlock(index / kBlockCap);
+            index_ = (index_ + offset) % p->GetSlotNum();
+            block_ = p->GetBlock(index_ / kBlockCap);
             return true;
         }
 
@@ -258,13 +260,13 @@ private:
         // Get the prev entry on the linked list
         ListNode FindPrev(const DenseMapImpl* p) const {
             // start from the head of the linked list, which must exist
-            auto next = p->IndexFromHash(AnyHash()(GetKey()));
-            auto prev = next;
+            auto cur = p->IndexFromHash(AnyHash()(GetKey()));
+            auto prev = cur;
 
-            next.MoveToNext(p);
-            while (index != next.index) {
-                prev = next;
-                next.MoveToNext(p);
+            cur.MoveToNext(p);
+            while (index_ != cur.index_) {
+                prev = cur;
+                cur.MoveToNext(p);
             }
 
             return prev;
@@ -272,7 +274,7 @@ private:
 
         bool GetNextEmpty(const DenseMapImpl* p, uint8_t* jump, ListNode* res) const {
             for (uint8_t i = 1; i < kNumJumpDists; ++i) {
-                ListNode candidate((index + NextProbePosOffset[i]) % p->GetSlotNum(), p);
+                ListNode candidate((index_ + NextProbePosOffset[i]) % p->GetSlotNum(), p);
                 if (candidate.IsEmpty()) {
                     *jump = i;
                     *res = candidate;
@@ -283,8 +285,10 @@ private:
         }
 
     private:
-        size_t index;
-        Block* block;
+        // Index of entry on the array
+        size_t index_;
+        // Pointer to the actual block
+        Block* block_;
     };
 
     Block* GetBlock(size_t block_index) const {

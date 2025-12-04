@@ -97,6 +97,8 @@ public:
 private:
     // The number of elements in a memory block.
     static constexpr int kBlockCap = 16;
+    // Max load factor of hash table
+    static constexpr double kMaxLoadFactor = 0.99;
     // 0b11111111 representation of the metadata of an empty slot.
     static constexpr uint8_t kEmptySlot = 0xFF;
     // 0b11111110 representation of the metadata of a protected slot.
@@ -303,9 +305,22 @@ private:
         return (slot_num + kBlockCap - 1) / kBlockCap;
     }
 
+    ListNode GetListHead(size_t hash_value) const {
+        const auto node = IndexFromHash(hash_value);
+        return node.IsHead() ? node : ListNode();
+    }
+
+    // Whether the hash table is full.
+    bool IsFull() const {
+        return size() + 1 > GetSlotNum() * kMaxLoadFactor;
+    }
+
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);
+
+    // Calculate the power-of-2 table size given the lower-bound of required capacity.
+    static void ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots);
 };
 
 template<typename K, typename V>

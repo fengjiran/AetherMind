@@ -90,6 +90,26 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFrom(const DenseMapImpl* src) {
     return impl;
 }
 
+void DenseMapImpl::ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots) {
+    uint32_t shift = 64;
+    size_t slots = 1;
+    size_t c = cap;
+    while (c > 0) {
+        shift -= 1;
+        slots <<= 1;
+        c >>= 1;
+    }
+    CHECK(slots > cap);
+
+    if (slots < 2 * cap) {
+        *fib_shift = shift - 1;
+        *n_slots = slots << 1;
+    } else {
+        *fib_shift = shift;
+        *n_slots = slots;
+    }
+}
+
 
 const size_t DenseMapImpl::NextProbePosOffset[kNumJumpDists] = {
         /* clang-format off */

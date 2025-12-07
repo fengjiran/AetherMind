@@ -37,7 +37,7 @@ protected:
     // Small map mask, the most significant bit is used to indicate the small map layout.
     static constexpr size_t kSmallMapMask = static_cast<size_t>(1) << 63;
 
-    bool IsSmallMap() const {
+    NODISCARD bool IsSmallMap() const {
         return (slot_ & kSmallMapMask) != 0ull;
     }
 };
@@ -46,7 +46,7 @@ class SmallMapImpl : public MapImpl {
 public:
     using MapImpl::iterator;
 
-    size_t GetSlotNum() const {
+    NODISCARD size_t GetSlotNum() const {
         return slot_ & ~kSmallMapMask;
     }
 
@@ -54,19 +54,19 @@ private:
     static constexpr size_t kInitSize = 2;
     static constexpr size_t kMaxSize = 4;
 
-    size_t GetSize() const {
+    NODISCARD size_t GetSize() const {
         return size_;
     }
 
-    KVType* GetItemPtr(size_t index) const {
+    NODISCARD KVType* GetItemPtr(size_t index) const {
         return static_cast<KVType*>(data_) + index;
     }
 
-    size_t IncIter(size_t index) const {
+    NODISCARD size_t IncIter(size_t index) const {
         return index + 1 < size_ ? index + 1 : size_;
     }
 
-    size_t DecIter(size_t index) const {
+    NODISCARD size_t DecIter(size_t index) const {
         return index > 0 ? index - 1 : size_;
     }
 
@@ -88,9 +88,68 @@ private:
     friend class DenseMapImpl;
 };
 
+
+/*! \brief A specialization of hash map that implements the idea of array-based hash map.
+ * Another reference implementation can be found [1].
+ *
+ * A. Overview
+ *
+ * DenseMapObj did several improvements over traditional separate chaining hash,
+ * in terms of cache locality, memory footprints and data organization.
+ *
+ * A1. Implicit linked list. For better cache locality, instead of using linked list
+ * explicitly for each bucket, we store list data into a single array that spans contiguously
+ * in memory, and then carefully design access patterns to make sure most of them fall into
+ * a single cache line.
+ *
+ * A2. 1-byte metadata. There is only 1 byte overhead for each slot in the array to indexing and
+ * traversal. This can be divided in 3 parts.
+ * 1) Reserved code: (0b11111111)_2 indicates a slot is empty; (0b11111110)_2 indicates protected,
+ * which means the slot is empty but not allowed to be written.
+ * 2) If not empty or protected, the highest bit is used to indicate whether data in the slot is
+ * head of a linked list.
+ * 3) The rest 7 bits are used as the "next pointer" (i.e. pointer to the next element). On 64-bit
+ * architecture, an ordinary pointer can take up to 8 bytes, which is not acceptable overhead when
+ * dealing with 16-byte ObjectRef pairs. Based on a commonly noticed fact that the lists are
+ * relatively short (length <= 3) in hash maps, we follow [1]'s idea that only allows the pointer to
+ * be one of the 126 possible values, i.e. if the next element of i-th slot is (i + x)-th element,
+ * then x must be one of the 126 pre-defined values.
+ *
+ * A3. Data blocking. We organize the array in the way that every 16 elements forms a data block.
+ * The 16-byte metadata of those 16 elements is stored together, followed by the real data, i.e.
+ * 16 key-value pairs.
+ *
+ * B. Implementation details
+ *
+ * B1. Power-of-2 table size and Fibonacci Hashing. We use power-of-two as table size to avoid
+ * modulo for more efficient arithmetics. To make the hash-to-slot mapping distribute more evenly,
+ * we use the Fibonacci Hashing [2] trick.
+ *
+ * B2. Traverse a linked list in the array.
+ * 1) List head. Assume Fibonacci Hashing maps a given key to slot i, if metadata at slot i
+ * indicates that it is list head, then we found the head; otherwise the list is empty. No probing
+ * is done in this procedure. 2) Next element. To find the next element of a non-empty slot i, we
+ * look at the last 7 bits of the metadata at slot i. If they are all zeros, then it is the end of
+ * the list; otherwise, we know that the next element is (i + candidates[the-last-7-bits]).
+ *
+ * B3. InsertMaybeReHash an element. Following B2, we first traverse the linked list to see if this
+ * element is in the linked list, and if not, we put it at the end by probing the next empty
+ * position in one of the 126 candidate positions. If the linked list does not even exist, but the
+ * slot for list head has been occupied by another linked list, we should find this intruder another
+ * place.
+ *
+ * B4. Quadratic probing with triangle numbers. In open address hashing, it is provable that probing
+ * with triangle numbers can traverse power-of-2-sized table [3]. In our algorithm, we follow the
+ * suggestion in [1] that also use triangle numbers for "next pointer" as well as sparing for list
+ * head.
+ *
+ * [1] https://github.com/skarupke/flat_hash_map
+ * [2] https://programmingpraxis.com/2018/06/19/fibonacci-hash/
+ * [3] https://fgiesen.wordpress.com/2015/02/22/triangular-numbers-mod-2n/
+ */
 class DenseMapImpl : public MapImpl {
 public:
-    size_t GetSlotNum() const {
+    NODISCARD size_t GetSlotNum() const {
         return slot_;
     }
 
@@ -163,42 +222,42 @@ private:
             : index_(index), block_(p->GetBlock(index / kBlockCap)) {}
 
         // Get metadata of an entry
-        uint8_t& GetMetadata() const {
+        NODISCARD uint8_t& GetMetadata() const {
             return *(block_->bytes + index_ % kBlockCap);
         }
 
         // Get an entry ref
-        Entry& GetEntry() const {
+        NODISCARD Entry& GetEntry() const {
             auto* p = reinterpret_cast<Entry*>(block_->bytes + kBlockCap);
             return *(p + index_ % kBlockCap);
         }
 
         // Get KV
-        KVType& GetData() const {
+        NODISCARD KVType& GetData() const {
             return GetEntry().data;
         }
 
-        key_type& GetKey() const {
+        NODISCARD key_type& GetKey() const {
             return GetData().first;
         }
 
-        value_type& GetValue() const {
+        NODISCARD value_type& GetValue() const {
             return GetData().second;
         }
 
-        bool IsNone() const {
+        NODISCARD bool IsNone() const {
             return block_ == nullptr;
         }
 
-        bool IsEmpty() const {
+        NODISCARD bool IsEmpty() const {
             return GetMetadata() == kEmptySlot;
         }
 
-        bool IsProtected() const {
+        NODISCARD bool IsProtected() const {
             return GetMetadata() == kProtectedSlot;
         }
 
-        bool IsHead() const {
+        NODISCARD bool IsHead() const {
             return (GetMetadata() & 0x80) == 0x00;
         }
 
@@ -235,7 +294,7 @@ private:
         }
 
         // Whether the entry has the next entry on the linked list
-        bool HasNext() const {
+        NODISCARD bool HasNext() const {
             return NextProbePosOffset[GetMetadata() & 0x7F] != 0;
         }
 
@@ -293,29 +352,29 @@ private:
         Block* block_;
     };
 
-    Block* GetBlock(size_t block_index) const {
+    NODISCARD Block* GetBlock(size_t block_index) const {
         return static_cast<Block*>(data_) + block_index;
     }
 
-    ListNode IndexFromHash(size_t hash_value) const {
-        return ListNode(details::FibonacciHash(hash_value, fib_shift_), this);
+    NODISCARD ListNode IndexFromHash(size_t hash_value) const {
+        return {details::FibonacciHash(hash_value, fib_shift_), this};
     }
 
     static size_t ComputeBlockNum(size_t slot_num) {
         return (slot_num + kBlockCap - 1) / kBlockCap;
     }
 
-    ListNode GetListHead(size_t hash_value) const {
+    NODISCARD ListNode GetListHead(size_t hash_value) const {
         const auto node = IndexFromHash(hash_value);
         return node.IsHead() ? node : ListNode();
     }
 
     // Whether the hash table is full.
-    bool IsFull() const {
+    NODISCARD bool IsFull() const {
         return size() + 1 > GetSlotNum() * kMaxLoadFactor;
     }
 
-    size_t IncIter(size_t index) const {
+    NODISCARD size_t IncIter(size_t index) const {
         // keep at the end of iterator
         if (index == kInvalidIndex) {
             return index;
@@ -324,7 +383,7 @@ private:
         return ListNode(index, this).GetEntry().next;
     }
 
-    size_t DecIter(size_t index) const {
+    NODISCARD size_t DecIter(size_t index) const {
         // this is the end iterator, we need to return tail.
         if (index == kInvalidIndex) {
             return iter_list_tail_;

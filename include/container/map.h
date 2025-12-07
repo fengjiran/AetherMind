@@ -315,6 +315,24 @@ private:
         return size() + 1 > GetSlotNum() * kMaxLoadFactor;
     }
 
+    size_t IncIter(size_t index) const {
+        // keep at the end of iterator
+        if (index == kInvalidIndex) {
+            return index;
+        }
+
+        return ListNode(index, this).GetEntry().next;
+    }
+
+    size_t DecIter(size_t index) const {
+        // this is the end iterator, we need to return tail.
+        if (index == kInvalidIndex) {
+            return iter_list_tail_;
+        }
+
+        return ListNode(index, this).GetEntry().prev;
+    }
+
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);

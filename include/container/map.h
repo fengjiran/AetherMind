@@ -429,6 +429,25 @@ private:
         iter_list_tail_ = node.index();
     }
 
+    // Unlink the entry from iterator list.
+    // This function is usually used before deletion,
+    // and it does not change data content of the node.
+    void IterListUnlink(ListNode node) {
+        if (node.GetEntry().prev == kInvalidIndex) {
+            iter_list_head_ = node.GetEntry().next;
+        } else {
+            ListNode prev_node(node.GetEntry().prev, this);
+            prev_node.GetEntry().next = node.GetEntry().next;
+        }
+
+        if (node.GetEntry().next == kInvalidIndex) {
+            iter_list_tail_ = node.GetEntry().prev;
+        } else {
+            ListNode next_node(node.GetEntry().next, this);
+            next_node.GetEntry().prev = node.GetEntry().prev;
+        }
+    }
+
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);

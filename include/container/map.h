@@ -448,6 +448,32 @@ private:
         }
     }
 
+    /*!
+   * \brief Replace node src by dst in the iter list
+   * \param src The source node
+   * \param dst The destination node, must be empty
+   * \note This function does not change data content of the nodes,
+   *       which needs to be updated by the caller.
+   */
+    void IterListReplaceNodeBy(ListNode src, ListNode dst) {
+        dst.GetEntry().prev = src.GetEntry().prev;
+        dst.GetEntry().next = src.GetEntry().next;
+
+        if (dst.GetEntry().prev == kInvalidIndex) {
+            iter_list_head_ = dst.index();
+        } else {
+            ListNode prev_node(dst.GetEntry().prev, this);
+            prev_node.GetEntry().next = dst.index();
+        }
+
+        if (dst.GetEntry().next == kInvalidIndex) {
+            iter_list_tail_ = dst.index();
+        } else {
+            ListNode next_node(dst.GetEntry().next, this);
+            next_node.GetEntry().prev = dst.index();
+        }
+    }
+
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);

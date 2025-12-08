@@ -337,11 +337,11 @@ private:
             return prev;
         }
 
-        bool GetNextEmpty(const DenseMapImpl* p, uint8_t* jump, ListNode* res) const {
+        bool GetNextEmpty(const DenseMapImpl* p, uint8_t* offset_idx, ListNode* res) const {
             for (uint8_t i = 1; i < kNumJumpDists; ++i) {
-                ListNode candidate((index_ + NextProbePosOffset[i]) % p->GetSlotNum(), p);
-                if (candidate.IsEmpty()) {
-                    *jump = i;
+                if (ListNode candidate((index_ + NextProbePosOffset[i]) % p->GetSlotNum(), p);
+                    candidate.IsEmpty()) {
+                    *offset_idx = i;
                     *res = candidate;
                     return true;
                 }

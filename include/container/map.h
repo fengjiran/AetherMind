@@ -155,7 +155,7 @@ public:
 
 private:
     // The number of elements in a memory block.
-    static constexpr int kBlockCap = 16;
+    static constexpr int kBlockSize = 16;
     // Max load factor of hash table
     static constexpr double kMaxLoadFactor = 0.99;
     // 0b11111111 representation of the metadata of an empty slot.
@@ -187,29 +187,29 @@ private:
     };
 
     struct Block {
-        uint8_t bytes[kBlockCap + kBlockCap * sizeof(Entry)];
+        uint8_t bytes[kBlockSize + kBlockSize * sizeof(Entry)];
 
-        Block() {
-            auto* p = reinterpret_cast<Entry*>(bytes + kBlockCap);
-            for (int i = 0; i < kBlockCap; ++i) {
+        Block() {// NOLINT
+            auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+            for (int i = 0; i < kBlockSize; ++i) {
                 bytes[i] = kEmptySlot;
-                new (p++) Entry;
+                new (data++) Entry;
             }
         }
 
-        Block(const Block& other) {
-            auto* p = reinterpret_cast<Entry*>(bytes + kBlockCap);
-            for (int i = 0; i < kBlockCap; ++i) {
+        Block(const Block& other) {// NOLINT
+            auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+            for (int i = 0; i < kBlockSize; ++i) {
                 bytes[i] = other.bytes[i];
-                new (p++) Entry(reinterpret_cast<const Entry*>(other.bytes + kBlockCap)[i]);
+                new (data++) Entry(reinterpret_cast<const Entry*>(other.bytes + kBlockSize)[i]);
             }
         }
 
         ~Block() {
-            auto* p = reinterpret_cast<Entry*>(bytes + kBlockCap);
-            for (int i = 0; i < kBlockCap; ++i) {
+            auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+            for (int i = 0; i < kBlockSize; ++i) {
                 bytes[i] = kEmptySlot;
-                p->~Entry();
+                data->~Entry();
             }
         }
     };
@@ -219,17 +219,21 @@ private:
         ListNode() : index_(0), block_(nullptr) {}
 
         ListNode(size_t index, const DenseMapImpl* p)
-            : index_(index), block_(p->GetBlock(index / kBlockCap)) {}
+            : index_(index), block_(p->GetBlock(index / kBlockSize)) {}
+
+        NODISCARD size_t index() const {
+            return index_;
+        }
 
         // Get metadata of an entry
         NODISCARD uint8_t& GetMetadata() const {
-            return *(block_->bytes + index_ % kBlockCap);
+            return *(block_->bytes + index_ % kBlockSize);
         }
 
         // Get an entry ref
         NODISCARD Entry& GetEntry() const {
-            auto* p = reinterpret_cast<Entry*>(block_->bytes + kBlockCap);
-            return *(p + index_ % kBlockCap);
+            auto* p = reinterpret_cast<Entry*>(block_->bytes + kBlockSize);
+            return *(p + index_ % kBlockSize);
         }
 
         // Get KV
@@ -310,7 +314,7 @@ private:
             // The probing will go to the next pos and round back to stay within
             // the correct range of the slots.
             index_ = (index_ + offset) % p->GetSlotNum();
-            block_ = p->GetBlock(index_ / kBlockCap);
+            block_ = p->GetBlock(index_ / kBlockSize);
             return true;
         }
 
@@ -361,7 +365,7 @@ private:
     }
 
     static size_t ComputeBlockNum(size_t slot_num) {
-        return (slot_num + kBlockCap - 1) / kBlockCap;
+        return (slot_num + kBlockSize - 1) / kBlockSize;
     }
 
     // Construct a ListNode from hash code if the position is head of list
@@ -406,6 +410,23 @@ private:
             iter.MoveToNext(this);
         }
         return {};
+    }
+
+    // Insert the entry into tail of iterator list.
+    // This function does not change data content of the node.
+    void IterListPushBack(ListNode node) {
+        node.GetEntry().prev = iter_list_tail_;
+        node.GetEntry().next = kInvalidIndex;
+
+        if (iter_list_tail_ != kInvalidIndex) {
+            ListNode(iter_list_tail_, this).GetEntry().next = node.index();
+        }
+
+        if (iter_list_head_ == kInvalidIndex) {
+            iter_list_head_ = node.index();
+        }
+
+        iter_list_tail_ = node.index();
     }
 
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);

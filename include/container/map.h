@@ -364,6 +364,7 @@ private:
         return (slot_num + kBlockCap - 1) / kBlockCap;
     }
 
+    // Construct a ListNode from hash code if the position is head of list
     NODISCARD ListNode GetListHead(size_t hash_value) const {
         const auto node = IndexFromHash(hash_value);
         return node.IsHead() ? node : ListNode();
@@ -371,7 +372,7 @@ private:
 
     // Whether the hash table is full.
     NODISCARD bool IsFull() const {
-        return size() + 1 > GetSlotNum() * kMaxLoadFactor;
+        return size() + 1 > static_cast<size_t>(static_cast<double>(GetSlotNum()) * kMaxLoadFactor);
     }
 
     NODISCARD size_t IncIter(size_t index) const {
@@ -390,6 +391,21 @@ private:
         }
 
         return ListNode(index, this).GetEntry().prev;
+    }
+
+    NODISCARD ListNode Search(const key_type& key) const {
+        if (size_ == 0) {
+            return {};
+        }
+
+        ListNode iter = GetListHead(AnyHash()(key));
+        while (!iter.IsNone()) {
+            if (iter.GetKey() == key) {
+                return iter;
+            }
+            iter.MoveToNext(this);
+        }
+        return {};
     }
 
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);

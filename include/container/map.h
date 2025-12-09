@@ -163,6 +163,8 @@ public:
 
     NODISCARD size_t count(const key_type& key) const;
 
+    ~DenseMapImpl() override;
+
 private:
     struct Entry;
     struct Block;
@@ -184,7 +186,7 @@ private:
     static const size_t NextProbePosOffset[kNumJumpDists];
 
     // fib shift in Fibonacci hash
-    uint32_t fib_shift_;
+    uint32_t fib_shift_{63};
     // The head of iterator list
     size_t iter_list_head_ = kInvalidIndex;
     // The tail of iterator list
@@ -258,12 +260,16 @@ private:
    */
     bool TryInsert(const key_type& key, ListNode* result);
 
+    void reset();
+
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     static void ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots);
+
+    static void InsertMaybeRehash(KVType&& kv, ObjectPtr<DenseMapImpl> impl);
 };
 
 template<typename K, typename V>

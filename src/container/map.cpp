@@ -263,6 +263,23 @@ size_t DenseMapImpl::DecIter(size_t index) const {
     return ListNode(index, this).GetEntry().prev;
 }
 
+void DenseMapImpl::reset() {
+    size_t block_num = ComputeBlockNum(this->GetSlotNum());
+    auto* p = static_cast<Block*>(data_);
+    for (size_t i = 0; i < block_num; ++i) {
+        p->~Block();
+        ++p;
+    }
+
+    size_ = 0;
+    slot_ = 0;
+    fib_shift_ = 63;
+}
+
+DenseMapImpl::~DenseMapImpl() {
+    reset();
+}
+
 ObjectPtr<DenseMapImpl> DenseMapImpl::Create(uint32_t fib_shift, size_t slot_num) {
     CHECK(slot_num > SmallMapImpl::kMaxSize);
     CHECK((slot_num & kSmallMapMask) == 0ull);

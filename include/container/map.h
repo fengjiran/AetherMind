@@ -474,6 +474,19 @@ private:
         }
     }
 
+    /*!
+   * \brief Spare an entry to be the head of a linked list.
+   * As described in B3, during insertion, it is possible that the entire linked list does not
+   * exist, but the slot of its head has been occupied by other linked lists. In this case, we need
+   * to spare the slot by moving away the elements to another valid empty one to make insertion
+   * possible.
+   * \param target The given entry to be spared
+   * \param key The indexing key
+   * \param result The linked-list entry constructed as the head
+   * \return A boolean, if actual insertion happens
+   */
+    bool TrySpareListHead(ListNode target, const key_type& key, ListNode* result);
+
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);

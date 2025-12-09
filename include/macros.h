@@ -5,6 +5,10 @@
 #ifndef AETHERMIND_MACROS_H
 #define AETHERMIND_MACROS_H
 
+#if __cplusplus >= 202002L
+#define CPP20
+#endif
+
 #ifdef __has_cpp_attribute
 #if __has_cpp_attribute(nodiscard)
 #define NODISCARD [[nodiscard]]

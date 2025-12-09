@@ -63,7 +63,9 @@ public:
      *
      * \return The current reference count value of the object
      */
-    NODISCARD uint32_t use_count() const;
+    NODISCARD uint32_t use_count() const {
+        return __atomic_load_n(&header_.strong_ref_count, __ATOMIC_RELAXED);
+    }
 
     /*!
      * \brief Get the current weak reference count of the object.
@@ -75,21 +77,27 @@ public:
      *
      * \return The current weak reference count value of the object
      */
-    NODISCARD uint32_t weak_use_count() const;
+    NODISCARD uint32_t weak_use_count() const {
+        return __atomic_load_n(&header_.weak_ref_count, __ATOMIC_RELAXED);
+    }
 
     /*!
      * \brief Check if the object has a unique reference count.
      *
      * \return true if the object has a reference count of 1, false otherwise.
      */
-    NODISCARD bool unique() const;
+    NODISCARD bool unique() const {
+        return use_count() == 1;
+    }
 
     /*!
      * \brief Set the deleter function for the object.
      *
      * \param deleter The deleter function to be invoked when the reference count reaches zero.
      */
-    void SetDeleter(FObjectDeleter deleter);
+    void SetDeleter(FObjectDeleter deleter) {
+        header_.deleter = deleter;
+    }
 
     NODISCARD virtual bool IsNullTypePtr() const {
         return false;
@@ -104,7 +112,9 @@ private:
      * for performance-sensitive scenarios where strict memory synchronization
      * is not required.
      */
-    void IncRef();
+    void IncRef() {
+        __atomic_fetch_add(&header_.strong_ref_count, 1, __ATOMIC_RELAXED);
+    }
 
     /*!
      * \brief Increment the weak reference count of the object.
@@ -114,7 +124,9 @@ private:
      * for performance-sensitive scenarios where strict memory synchronization
      * is not required.
      */
-    void IncWeakRef();
+    void IncWeakRef() {
+        __atomic_fetch_add(&header_.weak_ref_count, 1, __ATOMIC_RELAXED);
+    }
 
     /*!
      * \brief Decrement the reference count of the object.

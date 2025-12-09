@@ -11,30 +11,6 @@ Object::Object() {
     header_.deleter = nullptr;
 }
 
-uint32_t Object::use_count() const {
-    return __atomic_load_n(&header_.strong_ref_count, __ATOMIC_RELAXED);
-}
-
-uint32_t Object::weak_use_count() const {
-    return __atomic_load_n(&header_.weak_ref_count, __ATOMIC_RELAXED);
-}
-
-bool Object::unique() const {
-    return use_count() == 1;
-}
-
-void Object::SetDeleter(FObjectDeleter deleter) {
-    header_.deleter = deleter;
-}
-
-void Object::IncRef() {
-    __atomic_fetch_add(&header_.strong_ref_count, 1, __ATOMIC_RELAXED);
-}
-
-void Object::IncWeakRef() {
-    __atomic_fetch_add(&header_.weak_ref_count, 1, __ATOMIC_RELAXED);
-}
-
 void Object::DecRef() {
     if (__atomic_fetch_sub(&header_.strong_ref_count, 1, __ATOMIC_RELEASE) == 1) {
         if (weak_use_count() == 1) {

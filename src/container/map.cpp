@@ -110,6 +110,58 @@ void DenseMapImpl::ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_s
     }
 }
 
+bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNode* result) {
+    // `target` is not the head of the linked list
+    // move the original item of `target` (if any)
+    // and construct new item on the position `target`
+    // To make `target` empty, we
+    // 1) find `w` the previous element of `target` in the linked list
+    // 2) copy the linked list starting from `r = target`
+    // 3) paste them after `w`
+
+    // read from the linked list after `r`
+    ListNode r = target;
+    // write to the tail of `w`
+    ListNode w = target.FindPrev(this);
+    // after `target` is moved, we disallow writing to the slot
+    bool is_first = true;
+    uint8_t r_metadata;
+    uint8_t offset_idx;
+    ListNode empty;
+
+    do {
+        if (!w.GetNextEmpty(this, &offset_idx, &empty)) {
+            return false;
+        }
+
+        // move `r` to `empty`
+        // first move the data over
+        empty.NewTail(Entry(std::move(r.GetData())));
+        // then move link list chain of r to empty
+        // this needs to happen after NewTail so empty's prev/next get updated
+        IterListReplaceNodeBy(r, empty);
+        // explicit call destructor to destroy the item in `r`
+        r.DestructData();
+        // clear the metadata of `r`
+        r_metadata = r.GetMetadata();
+        if (is_first) {
+            is_first = false;
+            r.SetProtected();
+        } else {
+            r.SetEmpty();
+        }
+        // link `w` to `empty`, and move forward
+        w.SetJump(offset_idx);
+        w = empty;
+    } while (r.MoveToNext(this, r_metadata));// move `r` forward as well
+
+    // finally we have done moving the linked list
+    // fill data_ into `target`
+    target.NewHead(Entry(key, value_type(nullptr)));
+    size_ += 1;
+    *result = target;
+    return true;
+}
 
 const size_t DenseMapImpl::NextProbePosOffset[kNumJumpDists] = {
         /* clang-format off */

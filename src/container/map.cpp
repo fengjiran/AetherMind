@@ -52,6 +52,217 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFrom(const SmallMapImpl* src) {
     return CreateFromRange(src->size_, first, last);
 }
 
+struct DenseMapImpl::Entry {
+    KVType data{};
+    size_t prev = kInvalidIndex;
+    size_t next = kInvalidIndex;
+
+    Entry() = default;
+    explicit Entry(KVType&& data) : data(std::move(data)) {}
+    explicit Entry(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
+};
+
+struct DenseMapImpl::Block {
+    uint8_t bytes[kBlockSize + kBlockSize * sizeof(Entry)];
+
+    Block() {// NOLINT
+        auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+        for (int i = 0; i < kBlockSize; ++i) {
+            bytes[i] = kEmptySlot;
+            new (data++) Entry;
+        }
+    }
+
+    Block(const Block& other) {// NOLINT
+        auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+        for (int i = 0; i < kBlockSize; ++i) {
+            bytes[i] = other.bytes[i];
+            new (data++) Entry(reinterpret_cast<const Entry*>(other.bytes + kBlockSize)[i]);
+        }
+    }
+
+    ~Block() {
+        auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+        for (int i = 0; i < kBlockSize; ++i) {
+            bytes[i] = kEmptySlot;
+            data->~Entry();
+        }
+    }
+};
+
+class DenseMapImpl::ListNode {
+public:
+    ListNode() : index_(0), block_(nullptr) {}
+
+    ListNode(size_t index, const DenseMapImpl* p)
+        : index_(index), block_(p->GetBlock(index / kBlockSize)) {}
+
+    NODISCARD size_t index() const {
+        return index_;
+    }
+
+    // Get metadata of an entry
+    NODISCARD uint8_t& GetMetadata() const {
+        return *(block_->bytes + index_ % kBlockSize);
+    }
+
+    // Get an entry ref
+    NODISCARD Entry& GetEntry() const {
+        auto* p = reinterpret_cast<Entry*>(block_->bytes + kBlockSize);
+        return *(p + index_ % kBlockSize);
+    }
+
+    // Get KV
+    NODISCARD KVType& GetData() const {
+        return GetEntry().data;
+    }
+
+    NODISCARD key_type& GetKey() const {
+        return GetData().first;
+    }
+
+    NODISCARD value_type& GetValue() const {
+        return GetData().second;
+    }
+
+    NODISCARD bool IsNone() const {
+        return block_ == nullptr;
+    }
+
+    NODISCARD bool IsEmpty() const {
+        return GetMetadata() == kEmptySlot;
+    }
+
+    NODISCARD bool IsProtected() const {
+        return GetMetadata() == kProtectedSlot;
+    }
+
+    NODISCARD bool IsHead() const {
+        return (GetMetadata() & 0x80) == 0x00;
+    }
+
+    void SetEmpty() const {
+        GetMetadata() = kEmptySlot;
+    }
+
+    void SetProtected() const {
+        GetMetadata() = kProtectedSlot;
+    }
+
+    // Set the entry's jump to its next entry.
+    void SetJump(uint8_t jump) const {
+        CHECK(jump < kNumJumpDists);
+        (GetMetadata() &= 0x80) |= jump;
+    }
+
+    // Destroy the item in the entry.
+    void DestructData() const {
+        GetKey().~key_type();
+        GetValue().~value_type();
+    }
+
+    // Construct a head of linked list inplace.
+    void NewHead(Entry entry) const {
+        GetMetadata() = 0x00;
+        GetEntry() = std::move(entry);
+    }
+
+    // Construct a tail of linked list inplace
+    void NewTail(Entry entry) const {
+        GetMetadata() = 0x80;
+        GetEntry() = std::move(entry);
+    }
+
+    // Whether the entry has the next entry on the linked list
+    NODISCARD bool HasNext() const {
+        return NextProbePosOffset[GetMetadata() & 0x7F] != 0;
+    }
+
+    // Move to the next entry on the linked list
+    bool MoveToNext(const DenseMapImpl* p, uint8_t meta) {
+        auto offset = NextProbePosOffset[meta & 0x7F];
+        if (offset == 0) {
+            index_ = 0;
+            block_ = nullptr;
+            return false;
+        }
+
+        // The probing will go to the next pos and round back to stay within
+        // the correct range of the slots.
+        index_ = (index_ + offset) % p->GetSlotNum();
+        block_ = p->GetBlock(index_ / kBlockSize);
+        return true;
+    }
+
+    bool MoveToNext(const DenseMapImpl* p) {
+        return MoveToNext(p, GetMetadata());
+    }
+
+    // Get the prev entry on the linked list
+    ListNode FindPrev(const DenseMapImpl* p) const {
+        // start from the head of the linked list, which must exist
+        auto cur = p->IndexFromHash(AnyHash()(GetKey()));
+        auto prev = cur;
+
+        cur.MoveToNext(p);
+        while (index_ != cur.index_) {
+            prev = cur;
+            cur.MoveToNext(p);
+        }
+
+        return prev;
+    }
+
+    bool GetNextEmpty(const DenseMapImpl* p, uint8_t* offset_idx, ListNode* res) const {
+        for (uint8_t i = 1; i < kNumJumpDists; ++i) {
+            if (ListNode candidate((index_ + NextProbePosOffset[i]) % p->GetSlotNum(), p);
+                candidate.IsEmpty()) {
+                *offset_idx = i;
+                *res = candidate;
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    // Index of entry on the array
+    size_t index_;
+    // Pointer to the actual block
+    Block* block_;
+};
+
+DenseMapImpl::Block* DenseMapImpl::GetBlock(size_t block_index) const {
+    return static_cast<Block*>(data_) + block_index;
+}
+
+DenseMapImpl::ListNode DenseMapImpl::IndexFromHash(size_t hash_value) const {
+    return {details::FibonacciHash(hash_value, fib_shift_), this};
+}
+
+DenseMapImpl::ListNode DenseMapImpl::GetListHead(size_t hash_value) const {
+    const auto node = IndexFromHash(hash_value);
+    return node.IsHead() ? node : ListNode();
+}
+
+size_t DenseMapImpl::IncIter(size_t index) const {
+    // keep at the end of iterator
+    if (index == kInvalidIndex) {
+        return index;
+    }
+
+    return ListNode(index, this).GetEntry().next;
+}
+
+size_t DenseMapImpl::DecIter(size_t index) const {
+    // this is the end iterator, we need to return tail.
+    if (index == kInvalidIndex) {
+        return iter_list_tail_;
+    }
+
+    return ListNode(index, this).GetEntry().prev;
+}
+
 ObjectPtr<DenseMapImpl> DenseMapImpl::Create(uint32_t fib_shift, size_t slot_num) {
     CHECK(slot_num > SmallMapImpl::kMaxSize);
     CHECK((slot_num & kSmallMapMask) == 0ull);
@@ -109,6 +320,85 @@ void DenseMapImpl::ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_s
         *n_slots = slots;
     }
 }
+
+DenseMapImpl::ListNode DenseMapImpl::Search(const key_type& key) const {
+    if (size_ == 0) {
+        return {};
+    }
+
+    ListNode iter = GetListHead(AnyHash()(key));
+    while (!iter.IsNone()) {
+        if (iter.GetKey() == key) {
+            return iter;
+        }
+        iter.MoveToNext(this);
+    }
+    return {};
+}
+
+size_t DenseMapImpl::count(const key_type& key) const {
+    return !Search(key).IsNone();
+}
+
+MapImpl::value_type& DenseMapImpl::At(const key_type& key) const {
+    const ListNode iter = Search(key);
+    if (iter.IsNone()) {
+        AETHERMIND_THROW(KeyError) << "Key not found";
+    }
+
+    return iter.GetValue();
+}
+
+void DenseMapImpl::IterListPushBack(ListNode node) {
+    node.GetEntry().prev = iter_list_tail_;
+    node.GetEntry().next = kInvalidIndex;
+
+    if (iter_list_tail_ != kInvalidIndex) {
+        ListNode(iter_list_tail_, this).GetEntry().next = node.index();
+    }
+
+    if (iter_list_head_ == kInvalidIndex) {
+        iter_list_head_ = node.index();
+    }
+
+    iter_list_tail_ = node.index();
+}
+
+void DenseMapImpl::IterListUnlink(ListNode node) {
+    if (node.GetEntry().prev == kInvalidIndex) {
+        iter_list_head_ = node.GetEntry().next;
+    } else {
+        ListNode prev_node(node.GetEntry().prev, this);
+        prev_node.GetEntry().next = node.GetEntry().next;
+    }
+
+    if (node.GetEntry().next == kInvalidIndex) {
+        iter_list_tail_ = node.GetEntry().prev;
+    } else {
+        ListNode next_node(node.GetEntry().next, this);
+        next_node.GetEntry().prev = node.GetEntry().prev;
+    }
+}
+
+void DenseMapImpl::IterListReplaceNodeBy(ListNode src, ListNode dst) {
+    dst.GetEntry().prev = src.GetEntry().prev;
+    dst.GetEntry().next = src.GetEntry().next;
+
+    if (dst.GetEntry().prev == kInvalidIndex) {
+        iter_list_head_ = dst.index();
+    } else {
+        ListNode prev_node(dst.GetEntry().prev, this);
+        prev_node.GetEntry().next = dst.index();
+    }
+
+    if (dst.GetEntry().next == kInvalidIndex) {
+        iter_list_tail_ = dst.index();
+    } else {
+        ListNode next_node(dst.GetEntry().next, this);
+        next_node.GetEntry().prev = dst.index();
+    }
+}
+
 
 bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNode* result) {
     // `target` is not the head of the linked list

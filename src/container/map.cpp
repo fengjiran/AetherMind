@@ -163,6 +163,64 @@ bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNo
     return true;
 }
 
+bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
+    if (slot_ == 0) {
+        return false;
+    }
+
+    // required that `iter` to be the head of a linked list through which we can iterator
+    ListNode iter = IndexFromHash(AnyHash()(key));
+    // `iter` can be: 1) empty; 2) body of an irrelevant list; 3) head of the relevant list
+
+    // Case 1: empty
+    if (iter.IsEmpty()) {
+        iter.NewHead(Entry(key, value_type(nullptr)));
+        size_ += 1;
+        *result = iter;
+        return true;
+    }
+
+    // Case 2: body of an irrelevant list
+    if (!iter.IsHead()) {
+        // we move the elements around and construct the single-element linked list
+        return IsFull() ? false : TrySpareListHead(iter, key, result);
+    }
+
+    // Case 3: head of the relevant list
+    // we iterate through the linked list until the end
+    // make sure `iter` is the previous element of `cur`
+    ListNode cur = iter;
+    do {
+        // find equal item, do not insert
+        if (key == cur.GetKey()) {
+            // we plan to take next, so we need to unlink it from iterator list
+            IterListUnlink(cur);
+            *result = cur;
+            return true;
+        }
+        // make sure `iter` is the previous element of `cur`
+        iter = cur;
+    } while (cur.MoveToNext(this));
+
+    // `iter` is the tail of the linked list
+    // always check capacity before insertion
+    if (IsFull()) {
+        return false;
+    }
+
+    // find the next empty slot
+    uint8_t offset_idx;
+    if (!iter.GetNextEmpty(this, &offset_idx, result)) {
+        return false;
+    }
+
+    result->NewTail(Entry(key, value_type(nullptr)));
+    // link `iter` to `empty`, and move forward
+    iter.SetJump(offset_idx);
+    size_ += 1;
+    return true;
+}
+
 const size_t DenseMapImpl::NextProbePosOffset[kNumJumpDists] = {
         /* clang-format off */
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,

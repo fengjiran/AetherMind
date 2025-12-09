@@ -487,6 +487,14 @@ private:
    */
     bool TrySpareListHead(ListNode target, const key_type& key, ListNode* result);
 
+    /*!
+   * \brief Try to insert a key, or do nothing if already exists
+   * \param key The indexing key
+   * \param result The linked-list entry found or just constructed
+   * \return A boolean, indicating if actual insertion happens
+   */
+    bool TryInsert(const key_type& key, ListNode* result);
+
     static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);

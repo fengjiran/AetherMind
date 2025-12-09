@@ -70,6 +70,10 @@ private:
         return index > 0 ? index - 1 : size_;
     }
 
+    NODISCARD KVType* DeRefIter(size_t index) const {
+        return static_cast<KVType*>(data_) + index;
+    }
+
     static ObjectPtr<SmallMapImpl> Create(size_t n = kInitSize);
 
     template<typename Iter>
@@ -165,6 +169,10 @@ public:
 
     ~DenseMapImpl() override;
 
+    using MapImpl::iterator;
+
+    friend class MapImpl;
+
 private:
     struct Entry;
     struct Block;
@@ -211,6 +219,8 @@ private:
     NODISCARD size_t IncIter(size_t index) const;
 
     NODISCARD size_t DecIter(size_t index) const;
+
+    NODISCARD KVType* DeRefIter(size_t index) const;
 
     NODISCARD ListNode Search(const key_type& key) const;
 

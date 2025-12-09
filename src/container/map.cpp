@@ -16,9 +16,14 @@ public:
 
     iterator() : index_(0), ptr_(nullptr) {}
 
-    // pointer operator->() const {
-    //     //
-    // }
+    pointer operator->() const {
+        if (ptr_->IsSmallMap()) {
+            const auto* p = dynamic_cast<const SmallMapImpl*>(ptr_);
+            return p->DeRefIter(index_);
+        }
+        const auto* p = dynamic_cast<const DenseMapImpl*>(ptr_);
+        return p->DeRefIter(index_);
+    }
 
     bool operator==(const iterator& other) const {
         return index_ == other.index_ && ptr_ == other.ptr_;
@@ -261,6 +266,10 @@ size_t DenseMapImpl::DecIter(size_t index) const {
     }
 
     return ListNode(index, this).GetEntry().prev;
+}
+
+MapImpl::KVType* DenseMapImpl::DeRefIter(size_t index) const {
+    return &ListNode(index, this).GetData();
 }
 
 void DenseMapImpl::reset() {

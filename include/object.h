@@ -187,7 +187,12 @@ private:
  *
  * \tparam T The type for which the null type is defined.
  */
+#ifdef CPP20
+template<typename T>
+    requires std::default_initializable<T>
+#else
 template<typename T, typename = std::enable_if_t<std::is_constructible_v<T>>>
+#endif
 class NullTypeOf final : public T {
     NullTypeOf() = default;
 
@@ -211,6 +216,13 @@ inline bool IsNullTypePtr(const Object* ptr) {
  */
 struct DoNotIncRefCountTag final {};
 
+template<typename T>
+concept object_ptr_type_c = requires {
+    requires std::derived_from<T, Object>;
+    typename NullTypeOf<T>;
+    { NullTypeOf<T>::singleton() } -> std::same_as<T*>;
+};
+
 /*!
  * \brief Smart pointer for reference-counted objects.
  *
@@ -227,7 +239,7 @@ class ObjectPtr final {
     using element_type = T;
     using null_type = NullTypeOf<T>;
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
-    static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
+    static_assert(std::is_same_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
                   "NullType::singleton() must return a element_type* pointer");
 
 public:
@@ -499,7 +511,7 @@ private:
     template<typename Derived>
     friend class details::ObjectAllocatorBase;
 
-    template<typename T2>
+    template<typename U>
     friend class ObjectPtr;
 };
 

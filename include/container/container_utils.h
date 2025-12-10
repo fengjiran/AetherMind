@@ -35,7 +35,12 @@ struct is_valid_iterator<Iter, std::optional<T>> : is_valid_iterator<Iter, T> {}
 template<typename Iter, typename T>
 inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;
 
+#ifdef CPP20
+template<typename T>
+    requires std::unsigned_integral<T>
+#else
 template<typename T, std::enable_if_t<std::is_unsigned_v<T>>* = nullptr>
+#endif
 unsigned int GetDigitNumOfUnsigned(T val, int base = 10) noexcept {
     unsigned int n = 1;
     const unsigned int b2 = base * base;
@@ -64,7 +69,12 @@ unsigned int GetDigitNumOfUnsigned(T val, int base = 10) noexcept {
     }
 }
 
+#ifdef CPP20
+template<typename T>
+    requires std::unsigned_integral<T>
+#else
 template<typename T, std::enable_if_t<std::is_unsigned_v<T>>* = nullptr>
+#endif
 void UnsignedToDigitChar(char* p, unsigned int len, T val) noexcept {
     constexpr char digits[201] =
             "0001020304050607080910111213141516171819"

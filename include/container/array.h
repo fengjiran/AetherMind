@@ -133,8 +133,9 @@ template<typename T>
     requires details::array_type_constrait<T>
 #endif
 class Array : public ObjectRef {
-    // static_assert(std::is_constructible_v<T>);
-    static_assert(std::default_initializable<T>);
+#ifndef CPP20
+    static_assert(std::is_constructible_v<T>);
+#endif
 
 public:
     class AnyProxy;

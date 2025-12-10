@@ -7,8 +7,8 @@
 
 #include "any_utils.h"
 #include "data_type.h"
-#include "error.h"
 #include "device.h"
+#include "error.h"
 
 #include <typeindex>
 
@@ -85,22 +85,48 @@ class Any {
 public:
     Any() = default;
 
+#ifdef CPP20
+    template<typename T>
+        requires requires {
+            requires !details::is_plain_type<std::decay_t<T>>;
+            requires !std::is_same_v<std::decay_t<T>, Any>;
+        }
+#else
     template<typename T,
              typename U = std::decay_t<T>,
              typename = std::enable_if_t<!details::is_plain_type<U> && !std::is_same_v<U, Any>>>
-    Any(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {}// NOLINT
+#endif
+    Any(T&& value) : ptr_(std::make_unique<Holder<std::decay_t<T>>>(std::forward<T>(value))) {// NOLINT
+    }
 
-    // integer ctor
+// integer ctor
+#ifdef CPP20
+    template<details::is_integral T>
+#else
     template<typename T, std::enable_if_t<details::is_integral<T>>* = nullptr>
-    Any(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
+#endif
+    Any(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {//NOLINT
+    }
+
+    // Any(details::is_integral auto value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
 
     // floating point ctor
+#ifdef CPP20
+    template<details::is_floating_point T>
+#else
     template<typename T, std::enable_if_t<details::is_floating_point<T>>* = nullptr>
-    Any(T value) : ptr_(std::make_unique<Holder<double>>(value)) {}//NOLINT
+#endif
+    Any(T value) : ptr_(std::make_unique<Holder<double>>(value)) {//NOLINT
+    }
 
     // string ctor
+#ifdef CPP20
+    template<details::is_string T>
+#else
     template<typename T, std::enable_if_t<details::is_string<T>>* = nullptr>
-    Any(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {}//NOLINT
+#endif
+    Any(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {//NOLINT
+    }
 
     Any(const Any& other);
 

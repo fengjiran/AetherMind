@@ -7,8 +7,14 @@
 
 #include "object.h"
 
+// #include <gtest/internal/gtest-string.h>
+#include <gtest/internal/gtest-string.h>
 #include <map>
 #include <unordered_map>
+
+#ifdef CPP20
+#include <concepts>
+#endif
 
 namespace aethermind {
 
@@ -31,6 +37,28 @@ concept is_floating_point = std::is_floating_point_v<T> ||
                             std::is_same_v<T, Float8_e4m3fn> ||
                             std::is_same_v<T, Float8_e5m2>;
 
+template<typename T>
+concept is_string = std::is_same_v<T, std::string> ||
+                    std::is_same_v<T, std::string_view> ||
+                    std::is_same_v<T, const char*> ||
+                    std::is_same_v<T, String>;
+
+template<typename T>
+concept is_plain_type = is_integral<T> ||
+                        is_floating_point<T> ||
+                        is_string<T>;
+
+template<typename T>
+concept has_use_count_method_v = requires(const T& t) {
+    t.use_count();
+};
+
+template<typename T>
+concept test = requires
+{
+    requires requires (typename T::value_type x) {x++;};
+};
+
 #else
 template<typename T>
 constexpr bool is_integral = std::is_integral_v<T> && !std::is_same_v<T, bool>;
@@ -42,9 +70,6 @@ constexpr bool is_floating_point = std::is_floating_point_v<T> ||
                                    std::is_same_v<T, Float8_e4m3fn> ||
                                    std::is_same_v<T, Float8_e5m2>;
 
-#endif
-
-
 template<typename T>
 constexpr bool is_string = std::is_same_v<T, std::string> ||
                            std::is_same_v<T, std::string_view> ||
@@ -55,6 +80,16 @@ template<typename T>
 constexpr bool is_plain_type = is_integral<T> ||
                                is_floating_point<T> ||
                                is_string<T>;
+
+template<typename T, typename = void>
+struct has_use_count_method : std::false_type {};
+
+template<typename T>
+struct has_use_count_method<T, decltype((void) std::declval<T>().use_count())> : std::true_type {};
+
+template<typename T>
+constexpr bool has_use_count_method_v = has_use_count_method<T>::value;
+#endif
 
 template<typename T>
 struct is_map : std::false_type {};
@@ -68,14 +103,6 @@ struct is_map<std::map<K, V>> : std::true_type {};
 template<typename T>
 constexpr bool is_map_v = is_map<T>::value;
 
-template<typename T, typename = void>
-struct has_use_count_method : std::false_type {};
-
-template<typename T>
-struct has_use_count_method<T, decltype((void) std::declval<T>().use_count())> : std::true_type {};
-
-template<typename T>
-constexpr bool has_use_count_method_v = has_use_count_method<T>::value;
 
 }// namespace details
 

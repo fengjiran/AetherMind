@@ -7,8 +7,6 @@
 
 #include "object.h"
 
-// #include <gtest/internal/gtest-string.h>
-#include <gtest/internal/gtest-string.h>
 #include <map>
 #include <unordered_map>
 
@@ -28,20 +26,20 @@ namespace details {
 
 #ifdef CPP20
 template<typename T>
-concept is_integral = std::is_integral_v<T> && !std::is_same_v<T, bool>;
+concept is_integral = std::integral<T> && !std::same_as<T, bool>;
 
 template<typename T>
-concept is_floating_point = std::is_floating_point_v<T> ||
-                            std::is_same_v<T, Half> ||
-                            std::is_same_v<T, BFloat16> ||
-                            std::is_same_v<T, Float8_e4m3fn> ||
-                            std::is_same_v<T, Float8_e5m2>;
+concept is_floating_point = std::floating_point<T> ||
+                            std::same_as<T, Half> ||
+                            std::same_as<T, BFloat16> ||
+                            std::same_as<T, Float8_e4m3fn> ||
+                            std::same_as<T, Float8_e5m2>;
 
 template<typename T>
-concept is_string = std::is_same_v<T, std::string> ||
-                    std::is_same_v<T, std::string_view> ||
-                    std::is_same_v<T, const char*> ||
-                    std::is_same_v<T, String>;
+concept is_string = std::same_as<T, std::string> ||
+                    std::same_as<T, std::string_view> ||
+                    std::same_as<T, const char*> ||
+                    std::same_as<T, String>;
 
 template<typename T>
 concept is_plain_type = is_integral<T> ||
@@ -54,9 +52,8 @@ concept has_use_count_method_v = requires(const T& t) {
 };
 
 template<typename T>
-concept test = requires
-{
-    requires requires (typename T::value_type x) {x++;};
+concept test = requires {
+    requires requires(typename T::value_type x) { x++; };
 };
 
 #else

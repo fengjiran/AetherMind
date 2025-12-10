@@ -86,17 +86,14 @@ public:
     Any() = default;
 
 #ifdef CPP20
-    template<typename T>
-        requires requires {
-            requires !details::is_plain_type<std::decay_t<T>>;
-            requires !std::is_same_v<std::decay_t<T>, Any>;
-        }
+    template<typename T, typename U = std::decay_t<T>>
+        requires(!details::is_plain_type<U> && !std::is_same_v<U, Any>)
 #else
     template<typename T,
              typename U = std::decay_t<T>,
              typename = std::enable_if_t<!details::is_plain_type<U> && !std::is_same_v<U, Any>>>
 #endif
-    Any(T&& value) : ptr_(std::make_unique<Holder<std::decay_t<T>>>(std::forward<T>(value))) {// NOLINT
+    Any(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {// NOLINT
     }
 
 // integer ctor
@@ -142,6 +139,8 @@ public:
         return *this;
     }
 
+    NODISCARD void* GetUnderlyingPtr() const;
+
     /**
    * \brief Try to reinterpret the Any as a type T, return std::nullopt if it is not possible.
    *
@@ -149,7 +148,12 @@ public:
    * \return The cast value, or std::nullopt if the cast is not possible.
    * \note This function won't try to run type conversion (use try_cast for that purpose).
    */
+#ifdef CPP20
+    template<typename T>
+        requires(!details::is_plain_type<T>)
+#else
     template<typename T, std::enable_if_t<!details::is_plain_type<T>>* = nullptr>
+#endif
     NODISCARD std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Any>) {
             return *this;
@@ -163,7 +167,12 @@ public:
         }
     }
 
+#ifdef CPP20
+    template<typename T>
+        requires(!details::is_plain_type<T>)
+#else
     template<typename T, std::enable_if_t<!details::is_plain_type<T>>* = nullptr>
+#endif
     std::optional<T> as() && {
         if constexpr (std::is_same_v<T, Any>) {
             return std::move(*this);
@@ -177,9 +186,12 @@ public:
         }
     }
 
-    NODISCARD void* GetUnderlyingPtr() const;
-
+#ifdef CPP20
+    template<typename T>
+        requires details::is_plain_type<T>
+#else
     template<typename T, std::enable_if_t<details::is_plain_type<T>>* = nullptr>
+#endif
     NODISCARD std::optional<T> as() const {
         if (has_value()) {
             if constexpr (details::is_integral<T>) {
@@ -358,6 +370,24 @@ struct Type2Str {
 };
 
 }// namespace details
+
+template<typename T>
+    requires std::default_initializable<T>
+class Test {
+public:
+    Test() = default;
+
+    void print();
+
+private:
+    T value;
+};
+
+template<typename T>
+    requires std::default_initializable<T>
+void Test<T>::print() {
+    std::cout << value;
+}
 
 }// namespace aethermind
 

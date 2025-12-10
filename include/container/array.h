@@ -13,6 +13,11 @@
 
 namespace aethermind {
 
+#ifdef CPP201
+template<typename T>
+concept type_constrait = std::default_initializable<T>;
+#endif
+
 class ArrayImpl : public Object {
 public:
     using iterator = Any*;
@@ -122,12 +127,21 @@ private:
     void MoveElemsLeft(size_t dst, size_t src, size_t n);
 
     template<typename T>
+#ifdef CPP201
+        requires type_constrait<T>
+#endif
     friend class Array;
 };
 
+#ifdef CPP201
 template<typename T>
+    requires type_constrait<T>
+#else
+template<typename T>
+#endif
 class Array : public ObjectRef {
-    static_assert(std::is_constructible_v<T>);
+    // static_assert(std::is_constructible_v<T>);
+    static_assert(std::default_initializable<T>);
 
 public:
     class AnyProxy;
@@ -345,6 +359,9 @@ private:
 };
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 void Array<T>::resize(int64_t n) {
     if (n < 0) {
         AETHERMIND_THROW(ValueError) << "Cannot resize an array to a negative size.";
@@ -360,6 +377,9 @@ void Array<T>::resize(int64_t n) {
 }
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 void Array<T>::reserve(int64_t n) {
     if (n > capacity()) {
         // auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
@@ -384,6 +404,9 @@ void Array<T>::reserve(int64_t n) {
 }
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 void Array<T>::insert(iterator pos, const T& value) {
     size_t idx = std::distance(begin(), pos);
     size_t n = std::distance(pos, end());
@@ -394,6 +417,9 @@ void Array<T>::insert(iterator pos, const T& value) {
 }
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 template<typename Iter>
 void Array<T>::insert(iterator pos, Iter first, Iter last) {
     static_assert(details::is_valid_iterator_v<Iter, T>, "Iter cannot be inserted into a Array<T>");
@@ -413,6 +439,9 @@ void Array<T>::insert(iterator pos, Iter first, Iter last) {
 }
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 void Array<T>::erase(iterator pos) {
     if (!defined()) {
         AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
@@ -429,6 +458,9 @@ void Array<T>::erase(iterator pos) {
 }
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 void Array<T>::erase(iterator first, iterator last) {
     if (first == last) {
         return;
@@ -455,6 +487,9 @@ void Array<T>::erase(iterator first, iterator last) {
 }
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
     auto new_pimpl = ArrayImpl::Create(new_cap);
     auto* src = pimpl_->begin();
@@ -475,6 +510,9 @@ void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
 }
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
     if (delta == 0) {// inplace
         if (single_elem_inplace_change) {
@@ -517,6 +555,9 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
 }
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 class Array<T>::AnyProxy {
 public:
     AnyProxy(Array& arr, size_t idx) : arr_(arr), idx_(idx) {}
@@ -568,6 +609,9 @@ private:
 };
 
 template<typename T>
+#ifdef CPP201
+    requires type_constrait<T>
+#endif
 class Array<T>::Converter {
 public:
     static const value_type& convert(const Array*, const value_type* ptr) {

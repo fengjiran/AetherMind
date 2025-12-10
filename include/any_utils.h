@@ -86,6 +86,7 @@ struct has_use_count_method<T, decltype((void) std::declval<T>().use_count())> :
 
 template<typename T>
 constexpr bool has_use_count_method_v = has_use_count_method<T>::value;
+
 #endif
 
 template<typename T>

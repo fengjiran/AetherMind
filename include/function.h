@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_FUNCTION_H
 #define AETHERMIND_FUNCTION_H
 
+#include "container/array.h"
 #include "function_traits.h"
 #include "utils/qualified_name.h"
 
@@ -89,9 +90,6 @@ void unpack_call(const F& callable, std::index_sequence<Is...>, const String* op
 }
 
 }// namespace details
-
-template<typename T>
-class Array;
 
 class FunctionImpl : public Object {
 public:

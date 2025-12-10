@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_CONTAINER_UTILS_H
 #define AETHERMIND_CONTAINER_UTILS_H
 
+#include "macros.h"
+
 #include <iterator>
 #include <optional>
 
@@ -12,8 +14,10 @@ namespace aethermind {
 
 namespace details {
 
-// template<typename T>
-// constexpr bool compatible_with_any_v = std::is_same_v<T, Any> || TypeTraits<T>::storage_enabled;
+#ifdef CPP20
+template<typename T>
+concept array_type_constrait = std::default_initializable<T>;
+#endif
 
 template<typename Iter, typename T>
 struct is_valid_iterator {

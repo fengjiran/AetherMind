@@ -87,19 +87,19 @@ public:
 
     template<typename T,
              typename U = std::decay_t<T>,
-             typename = std::enable_if_t<!details::is_plain_v<U> && !std::is_same_v<U, Any>>>
+             typename = std::enable_if_t<!details::is_plain_type<U> && !std::is_same_v<U, Any>>>
     Any(T&& value) : ptr_(std::make_unique<Holder<U>>(std::forward<T>(value))) {}// NOLINT
 
     // integer ctor
-    template<typename T, std::enable_if_t<details::is_integral_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<details::is_integral<T>>* = nullptr>
     Any(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
 
     // floating point ctor
-    template<typename T, std::enable_if_t<details::is_floating_point_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<details::is_floating_point<T>>* = nullptr>
     Any(T value) : ptr_(std::make_unique<Holder<double>>(value)) {}//NOLINT
 
     // string ctor
-    template<typename T, std::enable_if_t<details::is_string_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<details::is_string<T>>* = nullptr>
     Any(T value) : ptr_(std::make_unique<Holder<String>>(std::move(value))) {}//NOLINT
 
     Any(const Any& other);
@@ -123,7 +123,7 @@ public:
    * \return The cast value, or std::nullopt if the cast is not possible.
    * \note This function won't try to run type conversion (use try_cast for that purpose).
    */
-    template<typename T, std::enable_if_t<!details::is_plain_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<!details::is_plain_type<T>>* = nullptr>
     NODISCARD std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Any>) {
             return *this;
@@ -137,7 +137,7 @@ public:
         }
     }
 
-    template<typename T, std::enable_if_t<!details::is_plain_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<!details::is_plain_type<T>>* = nullptr>
     std::optional<T> as() && {
         if constexpr (std::is_same_v<T, Any>) {
             return std::move(*this);
@@ -153,18 +153,18 @@ public:
 
     NODISCARD void* GetUnderlyingPtr() const;
 
-    template<typename T, std::enable_if_t<details::is_plain_v<T>>* = nullptr>
+    template<typename T, std::enable_if_t<details::is_plain_type<T>>* = nullptr>
     NODISCARD std::optional<T> as() const {
         if (has_value()) {
-            if constexpr (details::is_integral_v<T>) {
+            if constexpr (details::is_integral<T>) {
                 if (auto* p = dynamic_cast<Holder<int64_t>*>(ptr_.get())) {
                     return static_cast<T>(p->value_);
                 }
-            } else if constexpr (details::is_floating_point_v<T>) {
+            } else if constexpr (details::is_floating_point<T>) {
                 if (auto* p = dynamic_cast<Holder<double>*>(ptr_.get())) {
                     return static_cast<T>(p->value_);
                 }
-            } else if constexpr (details::is_string_v<T>) {
+            } else if constexpr (details::is_string<T>) {
                 if (auto* p = dynamic_cast<Holder<String>*>(ptr_.get())) {
                     return static_cast<T>(p->value_);
                 }

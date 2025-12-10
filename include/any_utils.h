@@ -18,31 +18,43 @@ struct Float8_e4m3fn;
 struct Float8_e5m2;
 class String;
 
-// template<typename T>
-// struct complex;
-
 namespace details {
 
+#ifdef CPP20
 template<typename T>
-constexpr bool is_integral_v = std::is_integral_v<T> && !std::is_same_v<T, bool>;
+concept is_integral = std::is_integral_v<T> && !std::is_same_v<T, bool>;
 
 template<typename T>
-constexpr bool is_floating_point_v = std::is_floating_point_v<T> ||
-                                     std::is_same_v<T, Half> ||
-                                     std::is_same_v<T, BFloat16> ||
-                                     std::is_same_v<T, Float8_e4m3fn> ||
-                                     std::is_same_v<T, Float8_e5m2>;
+concept is_floating_point = std::is_floating_point_v<T> ||
+                            std::is_same_v<T, Half> ||
+                            std::is_same_v<T, BFloat16> ||
+                            std::is_same_v<T, Float8_e4m3fn> ||
+                            std::is_same_v<T, Float8_e5m2>;
+
+#else
+template<typename T>
+constexpr bool is_integral = std::is_integral_v<T> && !std::is_same_v<T, bool>;
 
 template<typename T>
-constexpr bool is_string_v = std::is_same_v<T, std::string> ||
-                             std::is_same_v<T, std::string_view> ||
-                             std::is_same_v<T, const char*> ||
-                             std::is_same_v<T, String>;
+constexpr bool is_floating_point = std::is_floating_point_v<T> ||
+                                   std::is_same_v<T, Half> ||
+                                   std::is_same_v<T, BFloat16> ||
+                                   std::is_same_v<T, Float8_e4m3fn> ||
+                                   std::is_same_v<T, Float8_e5m2>;
+
+#endif
+
 
 template<typename T>
-constexpr bool is_plain_v = is_integral_v<T> ||
-                            is_floating_point_v<T> ||
-                            is_string_v<T>;
+constexpr bool is_string = std::is_same_v<T, std::string> ||
+                           std::is_same_v<T, std::string_view> ||
+                           std::is_same_v<T, const char*> ||
+                           std::is_same_v<T, String>;
+
+template<typename T>
+constexpr bool is_plain_type = is_integral<T> ||
+                               is_floating_point<T> ||
+                               is_string<T>;
 
 template<typename T>
 struct is_map : std::false_type {};

@@ -61,21 +61,4 @@ void ArrayImpl::MoveElemsLeft(size_t dst, size_t src, size_t n) {
     }
 }
 
-ArrayImpl* ArrayImpl::CreateRawPtr(size_t n) {
-    // auto pimpl = make_array_object<ArrayImpl, Any>(n);
-    // pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);
-    // pimpl->size_ = 0;
-    // pimpl->capacity_ = n;
-    auto pimpl = Create(n);
-    return pimpl.release();
-}
-
-ObjectPtr<ArrayImpl> ArrayImpl::Create(size_t n) {
-    auto pimpl = make_array_object<ArrayImpl, Any>(n);
-    pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);
-    pimpl->size_ = 0;
-    pimpl->capacity_ = n;
-    return pimpl;
-}
-
 }// namespace aethermind

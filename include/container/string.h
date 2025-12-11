@@ -33,8 +33,6 @@ public:
     }
 
 private:
-    static ObjectPtr<StringImpl> Create(size_type cap);
-
     pointer data_;
 
     friend class String;
@@ -333,7 +331,7 @@ private:
         const size_type cap = std::distance(first, last);
         pointer dst = nullptr;
         if (cap > static_cast<size_type>(local_capacity_)) {
-            impl_ = StringImpl::Create(cap);
+            impl_ = Create(cap);
             capacity_ = cap;
             dst = impl_->data();
         } else {
@@ -351,6 +349,8 @@ private:
     void Construct(size_type n, value_type c);
     void SwitchContainer(size_type new_cap);
     void COW(int64_t delta);
+
+    static ObjectPtr<StringImpl> Create(size_type cap);
 
     /*!
      * \brief Compare two char sequence

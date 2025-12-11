@@ -33,6 +33,42 @@ enum DeleterFlag : uint8_t {
 };
 
 /*!
+ * \brief Null type of the given type.
+ *
+ * \tparam T The type for which the null type is defined.
+ */
+#ifdef CPP20
+template<typename T>
+    requires std::default_initializable<T>
+#else
+template<typename T, typename = std::enable_if_t<std::is_constructible_v<T>>>
+#endif
+class NullTypeOf final : public T {
+    NullTypeOf() = default;
+
+public:
+    static T* singleton() noexcept {
+        static NullTypeOf inst;
+        return &inst;
+    }
+
+    NODISCARD bool IsNullTypePtr() const override {
+        return true;
+    }
+};
+
+class Object;
+
+template<typename T>
+concept is_valid_object_type = requires {
+    requires true;
+    // requires std::is_base_of_v<Object, T>;
+    // requires std::derived_from<T, Object>;
+    // typename NullTypeOf<T>;
+    // { NullTypeOf<T>::singleton() } -> std::same_as<T*>;
+};
+
+/*!
  * \brief Base class for reference-counted objects.
  *
  * \note Objects of this class are reference-counted, meaning that each object
@@ -174,37 +210,15 @@ private:
     ObjectHeader header_{};
 
     template<typename T>
+#ifdef CPP20
+        requires is_valid_object_type<T>
+#endif
     friend class ObjectPtr;
 
     template<typename U>
     friend class WeakObjectPtr;
 
     friend struct details::ObjectUnsafe;
-};
-
-/*!
- * \brief Null type of the given type.
- *
- * \tparam T The type for which the null type is defined.
- */
-#ifdef CPP20
-template<typename T>
-    requires std::default_initializable<T>
-#else
-template<typename T, typename = std::enable_if_t<std::is_constructible_v<T>>>
-#endif
-class NullTypeOf final : public T {
-    NullTypeOf() = default;
-
-public:
-    static T* singleton() noexcept {
-        static NullTypeOf inst;
-        return &inst;
-    }
-
-    NODISCARD bool IsNullTypePtr() const override {
-        return true;
-    }
 };
 
 inline bool IsNullTypePtr(const Object* ptr) {
@@ -215,13 +229,6 @@ inline bool IsNullTypePtr(const Object* ptr) {
  * \brief Tag type to indicate that reference count should not be incremented.
  */
 struct DoNotIncRefCountTag final {};
-
-template<typename T>
-concept object_ptr_type_c = requires {
-    requires std::derived_from<T, Object>;
-    typename NullTypeOf<T>;
-    { NullTypeOf<T>::singleton() } -> std::same_as<T*>;
-};
 
 /*!
  * \brief Smart pointer for reference-counted objects.
@@ -235,6 +242,9 @@ concept object_ptr_type_c = requires {
  *
  */
 template<typename T>
+#ifdef CPP20
+    requires is_valid_object_type<T>
+#endif
 class ObjectPtr final {
     using element_type = T;
     using null_type = NullTypeOf<T>;
@@ -291,6 +301,9 @@ public:
      * \param other The other ObjectPtr.
      */
     template<typename Derived>
+#ifdef CPP20
+        requires is_valid_object_type<Derived>
+#endif
     ObjectPtr(const ObjectPtr<Derived>& other)// NOLINT
         : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
@@ -303,6 +316,9 @@ public:
      * \param other The other ObjectPtr.
      */
     template<typename Derived>
+#ifdef CPP20
+        requires is_valid_object_type<Derived>
+#endif
     ObjectPtr(ObjectPtr<Derived>&& other) noexcept// NOLINT
         : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
@@ -316,6 +332,9 @@ public:
      * \return A reference to this ObjectPtr.
      */
     template<typename Derived>
+#ifdef CPP20
+        requires is_valid_object_type<Derived>
+#endif
     ObjectPtr& operator=(const ObjectPtr<Derived>& rhs) & {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         ObjectPtr(rhs).swap(*this);
@@ -329,6 +348,9 @@ public:
      * \return A reference to this ObjectPtr.
      */
     template<typename Derived>
+#ifdef CPP20
+        requires is_valid_object_type<Derived>
+#endif
     ObjectPtr& operator=(ObjectPtr<Derived>&& rhs) & noexcept {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         ObjectPtr(std::move(rhs)).swap(*this);
@@ -512,6 +534,9 @@ private:
     friend class details::ObjectAllocatorBase;
 
     template<typename U>
+#ifdef CPP20
+        requires is_valid_object_type<U>
+#endif
     friend class ObjectPtr;
 };
 

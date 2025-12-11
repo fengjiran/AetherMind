@@ -9,13 +9,6 @@
 
 namespace aethermind {
 
-ObjectPtr<StringImpl> StringImpl::Create(size_type cap) {
-    auto impl = make_array_object<StringImpl, value_type>(cap + 1);
-    impl->data_ = reinterpret_cast<pointer>(impl.get()) + sizeof(StringImpl);
-    std::memset(impl->data_, '\0', cap + 1);
-    return impl;
-}
-
 String::String(const_pointer other, size_type size) {
     if (other == nullptr) {
         if (size > 0) {
@@ -845,7 +838,7 @@ void String::swap(String& other) noexcept {
 void String::Construct(size_type n, value_type c) {
     pointer dst = nullptr;
     if (n > static_cast<size_type>(local_capacity_)) {
-        impl_ = StringImpl::Create(n);
+        impl_ = Create(n);
         capacity_ = n;
         dst = impl_->data();
     } else {
@@ -857,7 +850,7 @@ void String::Construct(size_type n, value_type c) {
 }
 
 void String::SwitchContainer(size_type new_cap) {
-    auto impl = StringImpl::Create(new_cap);
+    auto impl = Create(new_cap);
     std::memcpy(impl->data(), data(), size());
     impl_ = impl;
     capacity_ = new_cap;
@@ -905,6 +898,13 @@ void String::CheckSize(size_type delta) const {
     if (delta > max_size() - size()) {
         AETHERMIND_THROW(out_of_range) << "String index out of bounds";
     }
+}
+
+ObjectPtr<StringImpl> String::Create(size_type cap) {
+    auto impl = make_array_object<StringImpl, value_type>(cap + 1);
+    impl->data_ = reinterpret_cast<pointer>(impl.get()) + sizeof(StringImpl);
+    std::memset(impl->data_, '\0', cap + 1);
+    return impl;
 }
 
 int String::MemoryCompare(const_pointer lhs, size_type lhs_cnt, const_pointer rhs, size_type rhs_cnt) {

@@ -92,10 +92,6 @@ private:
     static constexpr size_t kInitSize = 4;
     static constexpr size_t kIncFactor = 2;
 
-    static ObjectPtr<ArrayImpl> Create(size_t n);
-
-    static ArrayImpl* CreateRawPtr(size_t n);
-
     void ConstructOneElemAtEnd(Any value);
 
     void ConstructAtEnd(size_t n, const Any& value);
@@ -149,15 +145,15 @@ public:
 
     Array() = default;
 
-    explicit Array(size_t n, const T& value = T()) : pimpl_(ArrayImpl::Create(n)) {
+    explicit Array(size_t n, const T& value = T()) : pimpl_(Create(n)) {
         pimpl_->ConstructAtEnd(n, value);
     }
 
-    Array(const std::vector<T>& other) : pimpl_(ArrayImpl::Create(other.size())) {//NOLINT
-        pimpl_->ConstructAtEnd<>(other.begin(), other.end());                     // NOLINT
+    Array(const std::vector<T>& other) : pimpl_(Create(other.size())) {//NOLINT
+        pimpl_->ConstructAtEnd<>(other.begin(), other.end());          // NOLINT
     }
 
-    Array(std::initializer_list<T> other) : pimpl_(ArrayImpl::Create(other.size())) {
+    Array(std::initializer_list<T> other) : pimpl_(Create(other.size())) {
         pimpl_->ConstructAtEnd<>(other.begin(), other.end());// NOLINT
     }
 
@@ -350,6 +346,9 @@ private:
     void SwitchContainer(size_t new_cap, bool copy_data = true);
     // Copy on write semantic
     void COW(int64_t delta, bool single_elem_inplace_change = false);
+
+    static ObjectPtr<ArrayImpl> Create(size_t n);
+    static ArrayImpl* CreateRawPtr(size_t n);
 };
 
 template<typename T>
@@ -377,7 +376,7 @@ template<typename T>
 void Array<T>::reserve(int64_t n) {
     if (n > capacity()) {
         // auto new_pimpl = ObjectPtr<ArrayImpl>::reclaim(ArrayImpl::create(n));
-        auto new_pimpl = ArrayImpl::Create(n);
+        auto new_pimpl = Create(n);
         auto* from = pimpl_->begin();
         auto* to = new_pimpl->begin();
         size_t& i = new_pimpl->size_;
@@ -485,7 +484,7 @@ template<typename T>
     requires details::array_type_constrait<T>
 #endif
 void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
-    auto new_pimpl = ArrayImpl::Create(new_cap);
+    auto new_pimpl = Create(new_cap);
     auto* src = pimpl_->begin();
     auto* dst = new_pimpl->begin();
 
@@ -546,6 +545,27 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
             SwitchContainer(new_cap);
         }
     }
+}
+
+template<typename T>
+#ifdef CPP20
+    requires details::array_type_constrait<T>
+#endif
+ObjectPtr<ArrayImpl> Array<T>::Create(size_t n) {
+    auto pimpl = make_array_object<ArrayImpl, Any>(n);
+    pimpl->start_ = reinterpret_cast<char*>(pimpl.get()) + sizeof(ArrayImpl);
+    pimpl->size_ = 0;
+    pimpl->capacity_ = n;
+    return pimpl;
+}
+
+template<typename T>
+#ifdef CPP20
+    requires details::array_type_constrait<T>
+#endif
+ArrayImpl* Array<T>::CreateRawPtr(size_t n) {
+    auto pimpl = Create(n);
+    return pimpl.release();
 }
 
 template<typename T>

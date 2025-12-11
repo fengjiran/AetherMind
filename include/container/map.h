@@ -77,20 +77,23 @@ private:
     static ObjectPtr<SmallMapImpl> Create(size_t n = kInitSize);
 
     template<typename Iter>
-    static ObjectPtr<SmallMapImpl> CreateFromRange(size_t n, Iter first, Iter last) {
-        ObjectPtr<SmallMapImpl> impl = Create(n);
-        auto* ptr = static_cast<KVType*>(impl->data_);
-        while (first != last) {
-            new (ptr++) KVType(*first++);
-        }
-        return impl;
-    }
+    static ObjectPtr<SmallMapImpl> CreateFromRange(size_t n, Iter first, Iter last);
 
     static ObjectPtr<SmallMapImpl> CopyFrom(const SmallMapImpl* src);
 
     friend class MapImpl;
     friend class DenseMapImpl;
 };
+
+template<typename Iter>
+ObjectPtr<SmallMapImpl> SmallMapImpl::CreateFromRange(size_t n, Iter first, Iter last) {
+    auto impl = Create(n);
+    auto* ptr = static_cast<KVType*>(impl->data_);
+    while (first != last) {
+        new (ptr++) KVType(*first++);
+    }
+    return impl;
+}
 
 
 /*! \brief A specialization of hash map that implements the idea of array-based hash map.

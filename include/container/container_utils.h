@@ -20,7 +20,8 @@ concept is_valid_array_type = std::default_initializable<T>;
 
 template<typename Iter, typename T>
 concept is_valid_iterator_v = std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag> &&
-                              (requires(Iter it) { requires std::same_as<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; } || requires(Iter it) { requires std::derived_from<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; });
+                              (requires(Iter it) { requires std::same_as<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; } ||//
+                               requires(Iter it) { requires std::derived_from<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; });
 #else
 template<typename Iter, typename T>
 struct is_valid_iterator {
@@ -37,10 +38,8 @@ inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;
 
 #endif
 
-
 #ifdef CPP20
-template<typename T>
-    requires std::unsigned_integral<T>
+template<std::unsigned_integral T>
 #else
 template<typename T, std::enable_if_t<std::is_unsigned_v<T>>* = nullptr>
 #endif
@@ -73,8 +72,7 @@ unsigned int GetDigitNumOfUnsigned(T val, int base = 10) noexcept {
 }
 
 #ifdef CPP20
-template<typename T>
-    requires std::unsigned_integral<T>
+template<std::unsigned_integral T>
 #else
 template<typename T, std::enable_if_t<std::is_unsigned_v<T>>* = nullptr>
 #endif
@@ -108,6 +106,9 @@ void UnsignedToDigitChar(char* p, unsigned int len, T val) noexcept {
 // \tparam Iter The type of the iterator.
 // \tparam Container The value container.
 template<typename Iter, typename Container>
+#ifdef CPP20
+    requires requires { typename Container::Converter; }
+#endif
 class IteratorAdapter {
 public:
     using traits_type = std::iterator_traits<Iter>;
@@ -121,9 +122,15 @@ public:
 
     explicit IteratorAdapter(Container* ptr, Iter iter) : ptr_(ptr), iter_(iter) {}
 
+#ifdef CPP20
+    template<typename Iter1>
+        requires std::convertible_to<Iter1, Iter>
+#else
     template<typename Iter1,
              typename = std::enable_if_t<std::is_convertible_v<Iter1, Iter>>>
-    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : ptr_(other.ptr_), iter_(other.iter_) {}
+#endif
+    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : ptr_(other.ptr_), iter_(other.iter_) {//NOLINT
+    }
 
     IteratorAdapter(const IteratorAdapter& other) : ptr_(other.ptr_), iter_(other.iter_) {}
 
@@ -172,14 +179,6 @@ public:
         return *this;
     }
 
-    // template<typename T = IteratorAdapter,
-    //          typename R = std::enable_if_t<std::is_same_v<iterator_category,
-    //                                                       std::random_access_iterator_tag>,
-    //                                        typename T::difference_type>>
-    // R operator-(const IteratorAdapter& other) const {
-    //     return iter_ - other.iter_;
-    // }
-
     const Iter& base() const noexcept {
         return iter_;
     }
@@ -198,6 +197,9 @@ private:
     Iter iter_;
 
     template<typename T1, typename T2>
+#ifdef CPP20
+        requires requires { typename T2::Converter; }
+#endif
     friend class IteratorAdapter;
 };
 
@@ -294,6 +296,9 @@ IteratorAdapter<Iter, Container> operator+(typename IteratorAdapter<Iter, Contai
 }
 
 template<typename Iter, typename Container>
+#ifdef CPP20
+    requires requires { typename Container::Converter; }
+#endif
 class ReverseIteratorAdapter {
 public:
     using traits_type = std::iterator_traits<Iter>;
@@ -355,14 +360,6 @@ public:
         return other.iter_ - iter_;
     }
 
-    // bool operator==(const ReverseIteratorAdapter& other) const {
-    //     return iter_ == other.iter_;
-    // }
-
-    // bool operator!=(const ReverseIteratorAdapter& other) const {
-    //     return !(*this == other);
-    // }
-
     const Iter& base() const noexcept {
         return iter_;
     }
@@ -381,6 +378,9 @@ private:
     Iter iter_;
 
     template<typename T1, typename T2>
+#ifdef CPP20
+        requires requires { typename T2::Converter; }
+#endif
     friend class ReverseIteratorAdapter;
 };
 

@@ -412,13 +412,14 @@ void Array<T>::insert(iterator pos, const T& value) {
     new (pimpl_->begin() + idx) Any(value);
 }
 
+#ifdef CPP20
 template<typename T>
-#ifdef CPP20
     requires details::is_valid_array_type<T>
-#endif
 template<typename Iter>
-#ifdef CPP20
     requires details::is_valid_iterator_v<Iter, T>
+#else
+template<typename T>
+template<typename Iter>
 #endif
 void Array<T>::insert(iterator pos, Iter first, Iter last) {
 #ifndef CPP20

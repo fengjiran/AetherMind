@@ -146,7 +146,12 @@ private:
 
 // hash function
 namespace std {
-
-}
+template<>
+struct hash<aethermind::QualifiedName> {
+    size_t operator()(const aethermind::QualifiedName& name) const noexcept {
+        return std::hash<aethermind::String>()(name.GetQualifiedName());
+    }
+};
+}// namespace std
 
 #endif//AETHERMIND_UTILS_QUALIFIED_NAME_H

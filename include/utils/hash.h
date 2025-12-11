@@ -12,7 +12,6 @@
 #include <functional>
 #include <glog/logging.h>
 #include <iomanip>
-#include <ios>
 #include <sstream>
 #include <tuple>
 #include <type_traits>
@@ -21,7 +20,12 @@
 
 namespace aethermind {
 
+#ifdef CPP20
+template<typename T>
+    requires std::convertible_to<T, size_t>
+#else
 template<typename T, std::enable_if_t<std::is_convertible_v<T, size_t>>* = nullptr>
+#endif
 size_t hash_combine(size_t seed, const T& value) {
     return seed ^ (value + 0x9e3779b9 + (seed << 6u) + (seed >> 2u));
 }

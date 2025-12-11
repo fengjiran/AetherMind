@@ -51,11 +51,6 @@ concept has_use_count_method_v = requires(const T& t) {
     t.use_count();
 };
 
-template<typename T>
-concept test = requires {
-    requires requires(typename T::value_type x) { x++; };
-};
-
 #else
 template<typename T>
 constexpr bool is_integral = std::is_integral_v<T> && !std::is_same_v<T, bool>;

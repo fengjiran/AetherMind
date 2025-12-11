@@ -40,6 +40,9 @@ private:
 
 class String : public ObjectRef {
 public:
+    class CharProxy;
+    class Converter;
+
     using traits_type = StringImpl::traits_type;
     using allocator_type = StringImpl::allocator_type;
     using allocator_traits = StringImpl::allocator_traits;
@@ -57,8 +60,6 @@ public:
     using reverse_iterator = details::ReverseIteratorAdapter<StringImpl::iterator, String>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<StringImpl::const_iterator, String>;
 
-    class CharProxy;
-    class Converter;
 
     String() = default;
     String(std::nullopt_t) = delete;// NOLINT

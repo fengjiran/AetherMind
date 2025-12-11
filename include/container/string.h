@@ -184,13 +184,20 @@ public:
     String& append(const_pointer src);
     String& append(size_type n, value_type c);
     String& append(std::initializer_list<value_type> l);
+
+#ifdef CPP20
+    template<typename Iter, typename U = std::iterator_traits<Iter>::iterator_category>
+        requires std::convertible_to<U, std::forward_iterator_tag>
+#else
     template<typename Iter,
              typename = std::enable_if_t<std::is_convertible_v<
                      typename std::iterator_traits<Iter>::iterator_category,
                      std::forward_iterator_tag>>>
+#endif
     String& append(Iter first, Iter last) {
         return replace(end(), end(), first, last);
     }
+
     String& operator+=(const String& str);
     String& operator+=(const_pointer str);
     String& operator+=(value_type c);
@@ -323,10 +330,15 @@ private:
     void CheckSize(size_type delta) const;
     String& replace_aux(size_type pos, size_type n1, size_type n2);
 
+#ifdef CPP20
+    template<typename Iter, typename U = std::iterator_traits<Iter>::iterator_category>
+        requires std::convertible_to<U, std::forward_iterator_tag>
+#else
     template<typename Iter,
              typename = std::enable_if_t<std::is_convertible_v<
                      typename std::iterator_traits<Iter>::iterator_category,
                      std::forward_iterator_tag>>>
+#endif
     void Construct(Iter first, Iter last) {
         const size_type cap = std::distance(first, last);
         pointer dst = nullptr;

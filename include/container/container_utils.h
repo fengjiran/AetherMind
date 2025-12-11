@@ -16,9 +16,12 @@ namespace details {
 
 #ifdef CPP20
 template<typename T>
-concept array_type_constrait = std::default_initializable<T>;
-#endif
+concept is_valid_array_type = std::default_initializable<T>;
 
+template<typename Iter, typename T>
+concept is_valid_iterator_v = std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag> &&
+                              (requires(Iter it) { requires std::same_as<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; } || requires(Iter it) { requires std::derived_from<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; });
+#else
 template<typename Iter, typename T>
 struct is_valid_iterator {
     static constexpr bool value = std::is_convertible_v<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag> &&
@@ -29,11 +32,11 @@ struct is_valid_iterator {
 template<typename Iter, typename T>
 struct is_valid_iterator<Iter, std::optional<T>> : is_valid_iterator<Iter, T> {};
 
-// template<typename Iter>
-// struct is_valid_iterator<Iter, Any> : std::true_type {};
-
 template<typename Iter, typename T>
 inline constexpr bool is_valid_iterator_v = is_valid_iterator<Iter, T>::value;
+
+#endif
+
 
 #ifdef CPP20
 template<typename T>

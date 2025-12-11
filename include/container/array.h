@@ -119,14 +119,14 @@ private:
 
     template<typename T>
 #ifdef CPP20
-        requires details::array_type_constrait<T>
+        requires details::is_valid_array_type<T>
 #endif
     friend class Array;
 };
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 class Array : public ObjectRef {
 #ifndef CPP20
@@ -335,6 +335,9 @@ public:
     void insert(iterator pos, const T& value);
 
     template<typename Iter>
+#ifdef CPP20
+        requires details::is_valid_iterator_v<Iter, T>
+#endif
     void insert(iterator pos, Iter first, Iter last);
 
     void erase(iterator pos);
@@ -353,7 +356,7 @@ private:
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 void Array<T>::resize(int64_t n) {
     if (n < 0) {
@@ -371,7 +374,7 @@ void Array<T>::resize(int64_t n) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 void Array<T>::reserve(int64_t n) {
     if (n > capacity()) {
@@ -398,7 +401,7 @@ void Array<T>::reserve(int64_t n) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 void Array<T>::insert(iterator pos, const T& value) {
     size_t idx = std::distance(begin(), pos);
@@ -411,11 +414,17 @@ void Array<T>::insert(iterator pos, const T& value) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 template<typename Iter>
+#ifdef CPP20
+    requires details::is_valid_iterator_v<Iter, T>
+#endif
 void Array<T>::insert(iterator pos, Iter first, Iter last) {
+#ifndef CPP20
     static_assert(details::is_valid_iterator_v<Iter, T>, "Iter cannot be inserted into a Array<T>");
+#endif
+
     if (first != last) {
         size_t idx = std::distance(begin(), pos);
         size_t n = std::distance(pos, end());
@@ -433,7 +442,7 @@ void Array<T>::insert(iterator pos, Iter first, Iter last) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 void Array<T>::erase(iterator pos) {
     if (!defined()) {
@@ -452,7 +461,7 @@ void Array<T>::erase(iterator pos) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 void Array<T>::erase(iterator first, iterator last) {
     if (first == last) {
@@ -481,7 +490,7 @@ void Array<T>::erase(iterator first, iterator last) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
     auto new_pimpl = Create(new_cap);
@@ -504,7 +513,7 @@ void Array<T>::SwitchContainer(size_t new_cap, bool copy_data) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
     if (delta == 0) {// inplace
@@ -549,7 +558,7 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 ObjectPtr<ArrayImpl> Array<T>::Create(size_t n) {
     auto pimpl = make_array_object<ArrayImpl, Any>(n);
@@ -561,7 +570,7 @@ ObjectPtr<ArrayImpl> Array<T>::Create(size_t n) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 ArrayImpl* Array<T>::CreateRawPtr(size_t n) {
     auto pimpl = Create(n);
@@ -570,7 +579,7 @@ ArrayImpl* Array<T>::CreateRawPtr(size_t n) {
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 class Array<T>::AnyProxy {
 public:
@@ -624,7 +633,7 @@ private:
 
 template<typename T>
 #ifdef CPP20
-    requires details::array_type_constrait<T>
+    requires details::is_valid_array_type<T>
 #endif
 class Array<T>::Converter {
 public:

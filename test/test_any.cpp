@@ -30,26 +30,6 @@ TEST(Any, bool) {
 
     EXPECT_EQ(details::Type2Str<bool>::value(), "Bool");
     EXPECT_EQ(details::Type2Str<Tensor>::value(), "Tensor");
-
-    int t = 1;
-    enum class E {
-        k1,
-        k2
-    };
-
-    class Test {
-    public:
-        static size_t hash(const Test& t) {
-            return 0;
-        }
-    };
-
-    Test test;
-    auto h1 = details::dispatch_hash(t);
-    auto h2 = details::dispatch_hash(E::k1);
-
-    auto h3 = details::dispatch_hash(test);
-
 }
 
 TEST(Any, null) {

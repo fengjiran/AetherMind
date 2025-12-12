@@ -369,23 +369,23 @@ struct Type2Str {
 
 }// namespace details
 
-template<typename T>
-    requires std::default_initializable<T>
-class Test {
-public:
-    Test() = default;
-
-    void print();
-
-private:
-    T value;
-};
-
-template<typename T>
-    requires std::default_initializable<T>
-void Test<T>::print() {
-    std::cout << value;
-}
+// template<typename T>
+//     requires std::default_initializable<T>
+// class Test {
+// public:
+//     Test() = default;
+//
+//     void print();
+//
+// private:
+//     T value;
+// };
+//
+// template<typename T>
+//     requires std::default_initializable<T>
+// void Test<T>::print() {
+//     std::cout << value;
+// }
 
 }// namespace aethermind
 

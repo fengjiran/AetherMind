@@ -9,7 +9,7 @@
 #include "utils/hash.h"
 // #include "container/array.h"
 
-#include <array>
+// #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <glog/logging.h>
@@ -47,10 +47,19 @@ public:
 
     ArrayView(const T* begin, const T* end) : ArrayView(begin, end - begin) {}
 
+#ifdef CPP20
+    template<typename Container>
+        requires requires(Container container) {
+            { container.data() } -> std::convertible_to<const T*>;
+            container.size();
+        }
+#else
     template<typename Container,
              typename U = decltype(std::declval<Container>().data()),
              typename = std::enable_if_t<std::is_same_v<U, T*> || std::is_same_v<U, const T*>>>
-    ArrayView(const Container& container) : ArrayView(container.data(), container.size()) {}// NOLINT
+#endif
+    ArrayView(const Container& container) : ArrayView(container.data(), container.size()) {
+    }// NOLINT
 
     ArrayView(const std::vector<T>& vec) : ArrayView(vec.data(), vec.size()) {// NOLINT
         static_assert(!std::is_same_v<T, bool>, "ArrayView<bool> cannot be constructed from a std::vector<bool> bitfield.");

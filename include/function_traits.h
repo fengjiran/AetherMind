@@ -22,6 +22,15 @@ struct is_tuple : std::false_type {};
 template<typename... Args>
 struct is_tuple<std::tuple<Args...>> : std::true_type {};
 
+#ifdef CPP20
+
+template<typename T>
+concept is_tuple_v = is_tuple<T>::value;
+
+
+
+#else
+
 template<typename T>
 constexpr bool is_tuple_v = is_tuple<T>::value;
 
@@ -38,7 +47,14 @@ struct is_plain_function_type<R(Args...)> : std::true_type {};
 template<typename T>
 constexpr bool is_plain_function_type_v = is_plain_function_type<T>::value;
 
+#endif
+
+
+#ifdef CPP20
+template<is_tuple_v ArgType>
+#else
 template<typename ArgType, typename = std::enable_if_t<is_tuple_v<ArgType>>>
+#endif
 class Args2Str {
 public:
     template<size_t i>
@@ -55,15 +71,6 @@ public:
         (f<I>(os), ...);
     }
 };
-
-// template<typename T>
-// static constexpr bool ArgSupported = std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, Any> ||
-//                                      TypeTraitsNoCR<T>::convert_enabled;
-
-// NOTE: return type can only support non-reference managed returns
-// template<typename T>
-// static constexpr bool RetSupported = std::is_same_v<T, Any> || std::is_void_v<T> || TypeTraits<T>::convert_enabled;
-
 
 template<typename FuncType>
 struct FunctionTraits;

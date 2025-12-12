@@ -87,7 +87,7 @@ public:
 
 #ifdef CPP20
     template<typename T, typename U = std::decay_t<T>>
-        requires(!details::is_plain_type<U> && !std::is_same_v<U, Any>)
+        requires(!details::is_plain_type<U> && !std::same_as<U, Any>)
 #else
     template<typename T,
              typename U = std::decay_t<T>,
@@ -104,8 +104,6 @@ public:
 #endif
     Any(T value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {//NOLINT
     }
-
-    // Any(details::is_integral auto value) : ptr_(std::make_unique<Holder<int64_t>>(value)) {}//NOLINT
 
     // floating point ctor
 #ifdef CPP20

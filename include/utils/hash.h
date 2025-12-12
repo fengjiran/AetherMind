@@ -236,6 +236,38 @@ namespace details {
 template<typename T>
 size_t simple_get_hash(const T& o);
 
+#ifdef CPP20
+
+template<typename T>
+concept has_std_hash = requires(T v) {
+    typename std::hash<T>;
+    { std::hash<T>()(v) } -> std::same_as<size_t>;
+};
+
+template<typename T>
+    requires requires(T v) {
+        T::hash;
+        { T::hash(v) } -> std::same_as<size_t>;
+    }
+size_t dispatch_hash(const T& o) {
+    return T::hash(o);
+}
+
+template<typename T>
+    requires has_std_hash<T> && std::is_enum_v<T>
+size_t dispatch_hash(const T& v) {
+    using R = std::underlying_type_t<T>;
+    return std::hash<R>()(static_cast<R>(v));
+}
+
+template<typename T>
+    requires has_std_hash<T>
+size_t dispatch_hash(const T& v) {
+    return std::hash<T>()(v);
+}
+
+#else
+
 template<typename T, typename V>
 using type_if_not_enum = std::enable_if_t<!std::is_enum_v<T>, V>;
 
@@ -259,6 +291,8 @@ template<typename T>
 auto dispatch_hash(const T& o) -> decltype(T::hash(o), size_t()) {
     return T::hash(o);
 }
+
+#endif
 
 }// namespace details
 

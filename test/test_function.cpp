@@ -8,7 +8,6 @@
 #include "registry.h"
 
 #include <gtest/gtest.h>
-#include <string>
 
 using namespace aethermind;
 using namespace aethermind::details;

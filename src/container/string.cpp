@@ -501,32 +501,7 @@ String::size_type String::find_kmp(const_pointer s, size_type pos, size_type n) 
         return npos;
     }
 
-    const value_type elem0 = s[0];
-    const const_pointer start = data();
-    const_pointer first = start + pos;
-    const const_pointer last = start + sz;
-    size_type len = sz - pos;
 
-    while (len >= n) {
-        // find the first occurrence of elem0
-        const_pointer first_occur = nullptr;
-        for (size_type i = 0; i < len - n + 1; ++i) {
-            if (*(first + i) == elem0) {
-                first_occur = first + i;
-                break;
-            }
-        }
-
-        if (first_occur == nullptr) {
-            return npos;
-        }
-
-        first = first_occur;
-        if (compare(first - start, n, s, n) == 0) {
-            return first - start;
-        }
-        len = last - ++first;
-    }
     return npos;
 }
 

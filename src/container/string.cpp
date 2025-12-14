@@ -5,7 +5,7 @@
 #include "error.h"
 
 #include <cstring>
-#include <utility>
+#include <vector>
 
 namespace aethermind {
 
@@ -497,9 +497,10 @@ String::size_type String::find_kmp(const_pointer s, size_type pos, size_type n) 
         return pos <= sz ? pos : npos;
     }
 
-    if (pos >= sz) {
+    if (pos >= sz || sz - pos < n) {
         return npos;
     }
+
 
 
     return npos;

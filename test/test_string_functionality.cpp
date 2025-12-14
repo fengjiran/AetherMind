@@ -11,6 +11,35 @@
 namespace {
 
 using namespace aethermind;
+
+std::vector<int> build_bad_char_rule(const String& pat) {
+    std::vector<int> right(256, -1);
+    for (int i = 0; i < pat.size(); ++i) {
+        auto c = static_cast<unsigned char>(pat[i]);
+        right[c] = i;
+    }
+    return right;
+}
+
+std::pair<std::vector<int>, std::vector<bool>> build_good_suffix_rule(const String& pat) {
+    auto m = pat.size();
+    std::vector<int> suffix(m, -1);
+    std::vector<bool> prefix(m);
+
+    for (int i = 0; i <= m - 2; ++i) {
+        int j = i;
+        while (j >= 0 && pat[j] == pat[m - 1 - (i - j)]) {
+            suffix[i - j + 1] = j--;
+        }
+
+        if (j == -1) {
+            prefix[i + 1] = true;
+        }
+    }
+
+    return {suffix, prefix};
+}
+
 // 测试基本功能：创建指定大小和字符的字符串
 TEST(StringConstructorFill, BasicFunctionality) {
     // 测试基本ASCII字符

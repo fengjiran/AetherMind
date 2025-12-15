@@ -332,7 +332,10 @@ private:
     String& replace_aux(size_type pos, size_type n1, size_type n2);
     NODISCARD size_type KMPSearch(const_pointer s, size_type pos, size_type n);
     NODISCARD size_type BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const;
+    // Create bad char static table(ASCII), size = 256
     static std::vector<int64_t> CreateBadCharRule(const_pointer pat);
+    // Create suffix and prefix vectors based on good suffix rule
+    // suffix[k]:
     static std::pair<std::vector<int64_t>, std::vector<bool>> CreateGoodSuffixRule(const_pointer pat);
     static size_type ComputeDelta2(size_type j, size_type m,
                                    const std::vector<int64_t>& suffix, const std::vector<bool>& prefix);

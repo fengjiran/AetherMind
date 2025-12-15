@@ -455,23 +455,25 @@ String& String::insert(size_type pos, size_type n, value_type c) {
     return replace(pos, 0, n, c);
 }
 
+// Create bad char static table(ASCII), size = 256
 std::vector<int64_t> String::CreateBadCharRule(const_pointer pat) {
     std::vector<int64_t> right(256, -1);
     for (size_type i = 0; i < traits_type::length(pat); ++i) {
         const auto c = static_cast<unsigned char>(pat[i]);
-        right[i] = c;
+        right[c] = static_cast<int64_t>(i);
     }
     return right;
 }
 
+// Create suffix and prefix vectors based on good suffix rule
 std::pair<std::vector<int64_t>, std::vector<bool>> String::CreateGoodSuffixRule(const_pointer pat) {
-    const auto m = traits_type::length(pat);
+    const auto m = static_cast<int64_t>(traits_type::length(pat));
     std::vector<int64_t> suffix(m, -1);
     std::vector<bool> prefix(m);
     suffix[0] = static_cast<int64_t>(m);// for length 0 good suffix
 
-    for (size_type i = 0; i <= m - 2; ++i) {
-        auto j = static_cast<int64_t>(i);
+    for (int64_t i = 0; i <= m - 2; ++i) {
+        auto j = i;
 
         while (j >= 0 && pat[j] == pat[m - 1 - (i - j)]) {
             --j;

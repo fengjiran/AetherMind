@@ -25,18 +25,14 @@ std::pair<std::vector<int>, std::vector<bool>> build_good_suffix_rule(const Stri
     const auto m = pat.size();
     std::vector<int> suffix(m, -1);
     std::vector<bool> prefix(m);
+    suffix[0] = m;// for length 0 good suffix
 
     for (int i = 0; i <= m - 2; ++i) {
         int j = i;
 
         while (j >= 0 && pat[j] == pat[m - 1 - (i - j)]) {
-            // suffix[i - j + 1] = j;
             --j;
         }
-
-        // if (j == -1) {
-        //     prefix[i + 1] = true;
-        // }
 
         if (j == -1) {
             suffix[i + 1] = 0;
@@ -66,7 +62,8 @@ int compute_delta2(int j, int m, const std::vector<int>& suffix, const std::vect
 
 String::size_type boyer_moore_search(const String& pat, const String& s) {
     const auto m = pat.size();
-    auto n = s.size();
+    const auto n = s.size();
+    const auto large = m + n;
     if (n < m) {
         return String::npos;
     }
@@ -74,8 +71,23 @@ String::size_type boyer_moore_search(const String& pat, const String& s) {
     auto right = build_bad_char_rule(pat);
     auto [suffix, prefix] = build_good_suffix_rule(pat);
 
+    char last_char = pat[m - 1];
+    auto compute_delta1 = [&](int i, int j) {
+        int delta1 = j - right[s[i + j]];
+        return delta1 < 1 ? 1 : delta1;
+    };
+
     int i = 0;
     while (i <= n - m) {
+        while (i <= n - m) {
+            i += s[i + m - 1] == last_char ? large : compute_delta1(i, m - 1);
+        }
+
+        if (i < large) {
+            return String::npos;
+        }
+
+        i -= large;
         int j = m - 1;
         while (j >= 0 && s[i + j] == pat[j]) {
             --j;
@@ -85,11 +97,7 @@ String::size_type boyer_moore_search(const String& pat, const String& s) {
             return i;
         }
 
-        int delta1 = j - right[s[i + j]];
-        if (delta1 < 1) {
-            delta1 = 1;
-        }
-
+        int delta1 = compute_delta1(i, j);
         int delta2 = compute_delta2(j, m, suffix, prefix);
         i += std::max(delta1, delta2);
     }
@@ -101,6 +109,14 @@ TEST(StringSearch, bm) {
     String text1 = "GCATCGCAGAGAGT";
     String pattern1 = "GCAGAGAG";
     EXPECT_EQ(boyer_moore_search(pattern1, text1), 5);
+
+    String text2 = "ABCD1234EFG";
+    String pattern2 = "ABCD";
+    EXPECT_EQ(boyer_moore_search(pattern2, text2), 0);
+
+    String text3 = "Hello World";
+    String pattern3 = "Java";
+    EXPECT_EQ(boyer_moore_search(pattern3, text3), String::npos);
 }
 
 // 测试基本功能：创建指定大小和字符的字符串

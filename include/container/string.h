@@ -330,6 +330,8 @@ private:
     NODISCARD size_type CheckPos(size_type pos) const;
     void CheckSize(size_type delta) const;
     String& replace_aux(size_type pos, size_type n1, size_type n2);
+    NODISCARD size_type KMPSearch(const_pointer s, size_type pos, size_type n);
+    NODISCARD size_type BoyerMooreSearch(const_pointer s, size_type pos, size_type n);
 
 #ifdef CPP20
     template<typename Iter, typename U = std::iterator_traits<Iter>::iterator_category>

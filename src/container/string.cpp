@@ -470,7 +470,7 @@ std::pair<std::vector<int64_t>, std::vector<bool>> String::CreateGoodSuffixRule(
     const auto m = static_cast<int64_t>(traits_type::length(pat));
     std::vector<int64_t> suffix(m, -1);
     std::vector<bool> prefix(m);
-    suffix[0] = static_cast<int64_t>(m);// for length 0 good suffix
+    suffix[0] = m;// for length 0 good suffix
 
     for (int64_t i = 0; i <= m - 2; ++i) {
         auto j = i;
@@ -589,15 +589,13 @@ String::size_type String::NaiveSearch(const_pointer s, size_type pos, size_type 
 
 String::size_type String::find(const_pointer s, size_type pos, size_type n, FindMethod method) const noexcept {
     switch (method) {
-        case FindMethod::kNaive:
-            return NaiveSearch(s, pos, n);
-
         case FindMethod::kBoyerMoore:
             return BoyerMooreSearch(s, pos, n);
 
         case FindMethod::kKMP:
             return KMPSearch(s, pos, n);
 
+        case FindMethod::kNaive:
         default:
             return NaiveSearch(s, pos, n);
     }

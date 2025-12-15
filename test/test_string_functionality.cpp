@@ -15,29 +15,92 @@ using namespace aethermind;
 std::vector<int> build_bad_char_rule(const String& pat) {
     std::vector<int> right(256, -1);
     for (int i = 0; i < pat.size(); ++i) {
-        auto c = static_cast<unsigned char>(pat[i]);
+        const auto c = static_cast<unsigned char>(pat[i]);
         right[c] = i;
     }
     return right;
 }
 
 std::pair<std::vector<int>, std::vector<bool>> build_good_suffix_rule(const String& pat) {
-    auto m = pat.size();
+    const auto m = pat.size();
     std::vector<int> suffix(m, -1);
     std::vector<bool> prefix(m);
 
     for (int i = 0; i <= m - 2; ++i) {
         int j = i;
+
         while (j >= 0 && pat[j] == pat[m - 1 - (i - j)]) {
-            suffix[i - j + 1] = j--;
+            // suffix[i - j + 1] = j;
+            --j;
         }
 
+        // if (j == -1) {
+        //     prefix[i + 1] = true;
+        // }
+
         if (j == -1) {
+            suffix[i + 1] = 0;
             prefix[i + 1] = true;
+        } else if (j != i) {
+            suffix[i - j] = j + 1;
         }
     }
 
     return {suffix, prefix};
+}
+
+int compute_delta2(int j, int m, const std::vector<int>& suffix, const std::vector<bool>& prefix) {
+    const int len = m - 1 - j;
+    if (suffix[len] != -1) {
+        return j - suffix[len] + 1;
+    }
+
+    for (int k = len - 1; k >= 1; --k) {
+        if (prefix[k]) {
+            return m - k;
+        }
+    }
+
+    return m;
+}
+
+String::size_type boyer_moore_search(const String& pat, const String& s) {
+    const auto m = pat.size();
+    auto n = s.size();
+    if (n < m) {
+        return String::npos;
+    }
+
+    auto right = build_bad_char_rule(pat);
+    auto [suffix, prefix] = build_good_suffix_rule(pat);
+
+    int i = 0;
+    while (i <= n - m) {
+        int j = m - 1;
+        while (j >= 0 && s[i + j] == pat[j]) {
+            --j;
+        }
+
+        if (j == -1) {
+            return i;
+        }
+
+        int delta1 = j - right[s[i + j]];
+        if (delta1 < 1) {
+            delta1 = 1;
+        }
+
+        int delta2 = compute_delta2(j, m, suffix, prefix);
+        i += std::max(delta1, delta2);
+    }
+
+    return String::npos;
+}
+
+TEST(StringSearch, bm) {
+    String text1 = "GCATCGCAGAGAGT";
+    String pattern1 = "GCAGAGAG";
+    EXPECT_EQ(boyer_moore_search(pattern1, text1), 5);
 }
 
 // 测试基本功能：创建指定大小和字符的字符串

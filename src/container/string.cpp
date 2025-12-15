@@ -507,7 +507,7 @@ String::size_type String::ComputeDelta2(size_type j, size_type m,
     return m;
 }
 
-String::size_type String::BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const {
+String::size_type String::BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const noexcept {
     const auto sz = size();
     const auto large = sz + n;
     if (n == 0) {
@@ -551,9 +551,7 @@ String::size_type String::BoyerMooreSearch(const_pointer pat, size_type pos, siz
     return npos;
 }
 
-
-String::size_type String::find(const_pointer s, size_type pos, size_type n) const noexcept {
-    return BoyerMooreSearch(s, pos, n);
+String::size_type String::NaiveSearch(const_pointer s, size_type pos, size_type n) const noexcept {
     const size_type sz = size();
     if (n == 0) {
         return pos <= sz ? pos : npos;
@@ -589,7 +587,23 @@ String::size_type String::find(const_pointer s, size_type pos, size_type n) cons
     return npos;
 }
 
-String::size_type String::find_kmp(const_pointer s, size_type pos, size_type n) const noexcept {
+String::size_type String::find(const_pointer s, size_type pos, size_type n, FindMethod method) const noexcept {
+    switch (method) {
+        case FindMethod::kNaive:
+            return NaiveSearch(s, pos, n);
+
+        case FindMethod::kBoyerMoore:
+            return BoyerMooreSearch(s, pos, n);
+
+        case FindMethod::kKMP:
+            return KMPSearch(s, pos, n);
+
+        default:
+            return NaiveSearch(s, pos, n);
+    }
+}
+
+String::size_type String::KMPSearch(const_pointer s, size_type pos, size_type n) const noexcept {
     const size_type sz = size();
     if (n == 0) {
         return pos <= sz ? pos : npos;

@@ -60,6 +60,11 @@ public:
     using reverse_iterator = details::ReverseIteratorAdapter<StringImpl::iterator, String>;
     using const_reverse_iterator = details::ReverseIteratorAdapter<StringImpl::const_iterator, String>;
 
+    enum class FindMethod {
+        kNaive,
+        kKMP,
+        kBoyerMoore
+    };
 
     String() = default;
     String(std::nullopt_t) = delete;// NOLINT
@@ -225,6 +230,7 @@ public:
        *  @param s  C string to locate.
        *  @param pos  Index of character to search from.
        *  @param n  Number of characters from @a s to search for.
+       *  @param method search method.
        *  @return  Index of start of first occurrence.
        *
        *  Starting from @a pos, searches forward for the first @a n
@@ -232,11 +238,10 @@ public:
        *  returns the index where it begins.
        *  If not found, returns npos.
       */
-    NODISCARD size_type find(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type find(const_pointer s, size_type pos, size_type n, FindMethod method = FindMethod::kBoyerMoore) const noexcept;
     NODISCARD size_type find(const String& str, size_type pos = 0) const noexcept;
     NODISCARD size_type find(const_pointer str, size_type pos = 0) const noexcept;
     NODISCARD size_type find(value_type c, size_type pos = 0) const noexcept;
-    NODISCARD size_type find_kmp(const_pointer s, size_type pos, size_type n) const noexcept;
 
     NODISCARD size_type rfind(const_pointer s, size_type pos, size_type n) const noexcept;
     NODISCARD size_type rfind(const String& str, size_type pos = npos) const noexcept;
@@ -330,8 +335,9 @@ private:
     NODISCARD size_type CheckPos(size_type pos) const;
     void CheckSize(size_type delta) const;
     String& replace_aux(size_type pos, size_type n1, size_type n2);
-    NODISCARD size_type KMPSearch(const_pointer s, size_type pos, size_type n);
-    NODISCARD size_type BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const;
+    NODISCARD size_type NaiveSearch(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type KMPSearch(const_pointer s, size_type pos, size_type n) const noexcept;
+    NODISCARD size_type BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const noexcept;
     // Create bad char static table(ASCII), size = 256
     static std::vector<int64_t> CreateBadCharRule(const_pointer pat);
     // Create suffix and prefix vectors based on good suffix rule

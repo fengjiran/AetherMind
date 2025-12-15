@@ -455,7 +455,103 @@ String& String::insert(size_type pos, size_type n, value_type c) {
     return replace(pos, 0, n, c);
 }
 
+std::vector<int64_t> String::CreateBadCharRule(const_pointer pat) {
+    std::vector<int64_t> right(256, -1);
+    for (size_type i = 0; i < traits_type::length(pat); ++i) {
+        const auto c = static_cast<unsigned char>(pat[i]);
+        right[i] = c;
+    }
+    return right;
+}
+
+std::pair<std::vector<int64_t>, std::vector<bool>> String::CreateGoodSuffixRule(const_pointer pat) {
+    const auto m = traits_type::length(pat);
+    std::vector<int64_t> suffix(m, -1);
+    std::vector<bool> prefix(m);
+    suffix[0] = static_cast<int64_t>(m);// for length 0 good suffix
+
+    for (size_type i = 0; i <= m - 2; ++i) {
+        auto j = static_cast<int64_t>(i);
+
+        while (j >= 0 && pat[j] == pat[m - 1 - (i - j)]) {
+            --j;
+        }
+
+        if (j == -1) {
+            suffix[i + 1] = 0;
+            prefix[i + 1] = true;
+        } else if (j != i) {
+            suffix[i - j] = j + 1;
+        }
+    }
+
+    return {suffix, prefix};
+}
+
+String::size_type String::ComputeDelta2(size_type j, size_type m,
+                                        const std::vector<int64_t>& suffix,
+                                        const std::vector<bool>& prefix) {
+    const auto len = m - 1 - j;
+    if (suffix[len] != -1) {
+        return j - suffix[len] + 1;
+    }
+
+    for (size_type k = len - 1; k >= 1; --k) {
+        if (prefix[k]) {
+            return m - k;
+        }
+    }
+
+    return m;
+}
+
+String::size_type String::BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const {
+    const auto sz = size();
+    const auto large = sz + n;
+    if (n == 0) {
+        return pos <= sz ? pos : npos;
+    }
+
+    if (pos >= sz || sz - pos < n) {
+        return npos;
+    }
+
+    const auto right = CreateBadCharRule(pat);
+    const auto [suffix, prefix] = CreateGoodSuffixRule(pat);
+    const value_type last_char = pat[n - 1];
+    auto ComputeDelta1 = [&](size_type i, int64_t j) -> size_type {
+        const auto delta1 = j - right[at(i + j)];
+        return delta1 < 1 ? 1 : delta1;
+    };
+
+    while (pos <= sz - n) {
+        while (pos <= sz - n) {
+            pos += at(pos + n - 1) == last_char ? large : ComputeDelta1(pos, static_cast<int64_t>(n - 1));
+        }
+
+        if (pos < large) {
+            break;
+        }
+
+        pos -= large;
+        auto j = static_cast<int64_t>(n - 1);
+        while (j >= 0 && at(pos + j) == pat[j]) {
+            --j;
+        }
+
+        if (j == -1) {
+            return pos;
+        }
+
+        pos += std::max(ComputeDelta1(pos, j), ComputeDelta2(j, n, suffix, prefix));
+    }
+
+    return npos;
+}
+
+
 String::size_type String::find(const_pointer s, size_type pos, size_type n) const noexcept {
+    return BoyerMooreSearch(s, pos, n);
     const size_type sz = size();
     if (n == 0) {
         return pos <= sz ? pos : npos;
@@ -502,9 +598,9 @@ String::size_type String::find_kmp(const_pointer s, size_type pos, size_type n) 
     }
 
 
-
     return npos;
 }
+
 
 String::size_type String::find(const String& str, size_type pos) const noexcept {
     return find(str.data(), pos, str.size());

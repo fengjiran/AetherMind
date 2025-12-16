@@ -535,7 +535,6 @@ String::size_type String::BoyerMooreSearch(const_pointer pat, size_type pos, siz
             return j <= right[c] ? 1 : j - right[c];
         }
         return j + 1;
-        // return j <= right[at(i + j)] ? 1 : j - right[at(i + j)];
     };
 
     while (pos <= sz - n) {
@@ -613,7 +612,7 @@ String::size_type String::find(const_pointer s, size_type pos, size_type n, Find
     }
 }
 
-String::size_type String::KMPSearch(const_pointer s, size_type pos, size_type n) const noexcept {
+String::size_type String::KMPSearch(const_pointer pat, size_type pos, size_type n) const noexcept {
     const size_type sz = size();
     if (n == 0) {
         return pos <= sz ? pos : npos;
@@ -623,10 +622,38 @@ String::size_type String::KMPSearch(const_pointer s, size_type pos, size_type n)
         return npos;
     }
 
+    std::vector<size_type> next(n);
+    size_type i = 1;
+    size_type j = 0;
+    while (i < n) {
+        if (pat[i] == pat[j]) {
+            next[i++] = ++j;
+        } else {
+            if (j == 0) {
+                ++i;
+            } else {
+                j = next[j - 1];
+            }
+        }
+    }
 
-    return npos;
+    i = pos;
+    j = 0;
+    while (i < sz && j < n) {
+        if (at(i) == pat[j]) {
+            ++i;
+            ++j;
+        } else {
+            if (j == 0) {
+                ++i;
+            } else {
+                j = next[j - 1];
+            }
+        }
+    }
+
+    return j == n ? i - n : npos;
 }
-
 
 String::size_type String::find(const String& str, size_type pos) const noexcept {
     return find(str.data(), pos, str.size());

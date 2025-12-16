@@ -92,24 +92,36 @@ struct DenseMapObj::Block {
 
 class DenseMapObj::ListNode {
 public:
-    ListNode() : index_(0), block_(nullptr), obj_(nullptr) {}
+    ListNode() : index_(0), obj_(nullptr) {}
 
-    ListNode(size_t index, const DenseMapObj* p)
-        : index_(index), block_(p->GetBlock(index / kBlockSize)) {}
+    ListNode(size_t index, const DenseMapObj* p) : index_(index), obj_(p) {}
 
     NODISCARD size_t index() const {
         return index_;
     }
 
+    NODISCARD const DenseMapObj* obj() const {
+        return obj_;
+    }
+
+    void reset() {
+        index_ = 0;
+        obj_ = nullptr;
+    }
+
+    NODISCARD Block* GetBlock() const {
+        return obj()->GetBlock(index() / kBlockSize);
+    }
+
     // Get metadata of an entry
     NODISCARD uint8_t& GetMeta() const {
-        return block_->bytes[index_ % kBlockSize];
+        return GetBlock()->bytes[index() % kBlockSize];
     }
 
     // Get an entry ref
     NODISCARD Entry& GetEntry() const {
-        auto* p = reinterpret_cast<Entry*>(block_->bytes + kBlockSize);
-        return p[index_ % kBlockSize];
+        auto* p = reinterpret_cast<Entry*>(GetBlock()->bytes + kBlockSize);
+        return p[index() % kBlockSize];
     }
 
     // Get KV
@@ -126,7 +138,7 @@ public:
     }
 
     NODISCARD bool IsNone() const {
-        return block_ == nullptr;
+        return obj() == nullptr;
     }
 
     NODISCARD bool IsEmpty() const {
@@ -180,35 +192,49 @@ public:
     }
 
     // Move to the next entry on the linked list
-    bool MoveToNext(const DenseMapObj* p, uint8_t meta) {
-        const auto offset = NextProbePosOffset[meta & 0x7F];
+    bool MoveToNext() {
+        const auto offset = NextProbePosOffset[GetMeta() & 0x7F];
         if (offset == 0) {
-            index_ = 0;
-            block_ = nullptr;
+            reset();
             return false;
         }
 
         // The probing will go to the next pos and round back to stay within
         // the correct range of the slots.
-        index_ = (index_ + offset) % p->slots();
-        block_ = p->GetBlock(index_ / kBlockSize);
+        index_ = (index_ + offset) % obj()->slots();
         return true;
     }
 
-    bool MoveToNext(const DenseMapObj* p) {
-        return MoveToNext(p, GetMeta());
-    }
+    // // Move to the next entry on the linked list
+    // bool MoveToNext(const DenseMapObj* p, uint8_t meta) {
+    //     const auto offset = NextProbePosOffset[meta & 0x7F];
+    //     if (offset == 0) {
+    //         index_ = 0;
+    //         block_ = nullptr;
+    //         return false;
+    //     }
+    //
+    //     // The probing will go to the next pos and round back to stay within
+    //     // the correct range of the slots.
+    //     index_ = (index_ + offset) % p->slots();
+    //     block_ = p->GetBlock(index_ / kBlockSize);
+    //     return true;
+    // }
+    //
+    // bool MoveToNext(const DenseMapObj* p) {
+    //     return MoveToNext(p, GetMeta());
+    // }
 
     // Get the prev entry on the linked list
-    ListNode FindPrev(const DenseMapObj* p) const {
+    NODISCARD ListNode FindPrev() const {
         // start from the head of the linked list, which must exist
-        auto cur = p->IndexFromHash(AnyHash()(GetKey()));
+        auto cur = obj()->IndexFromHash(AnyHash()(GetKey()));
         auto prev = cur;
 
-        cur.MoveToNext(p);
+        cur.MoveToNext();
         while (index_ != cur.index_) {
             prev = cur;
-            cur.MoveToNext(p);
+            cur.MoveToNext();
         }
 
         return prev;
@@ -230,7 +256,7 @@ private:
     // Index of entry on the array
     size_t index_;
     // Pointer to the actual block
-    Block* block_;
+    // Block* block_;
     // Pointer to the current DenseMapObj
     const DenseMapObj* obj_;
 };

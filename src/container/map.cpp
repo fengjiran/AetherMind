@@ -90,14 +90,167 @@ struct DenseMapObj::Block {
     }
 };
 
-ObjectPtr<DenseMapObj> DenseMapObj::CreateDenseMap(uint32_t fib_shift, size_t slot_num) {
-    CHECK(slot_num > SmallMapObj::kMaxSize);
-    CHECK((slot_num & kSmallMapMask) == 0ull);
-    size_t block_num = ComputeBlockNum(slot_num);
+class DenseMapObj::ListNode {
+public:
+    ListNode() : index_(0), block_(nullptr), obj_(nullptr) {}
+
+    ListNode(size_t index, const DenseMapObj* p)
+        : index_(index), block_(p->GetBlock(index / kBlockSize)) {}
+
+    NODISCARD size_t index() const {
+        return index_;
+    }
+
+    // Get metadata of an entry
+    NODISCARD uint8_t& GetMeta() const {
+        return block_->bytes[index_ % kBlockSize];
+    }
+
+    // Get an entry ref
+    NODISCARD Entry& GetEntry() const {
+        auto* p = reinterpret_cast<Entry*>(block_->bytes + kBlockSize);
+        return p[index_ % kBlockSize];
+    }
+
+    // Get KV
+    NODISCARD KVType& GetData() const {
+        return GetEntry().data;
+    }
+
+    NODISCARD key_type& GetKey() const {
+        return GetData().first;
+    }
+
+    NODISCARD value_type& GetValue() const {
+        return GetData().second;
+    }
+
+    NODISCARD bool IsNone() const {
+        return block_ == nullptr;
+    }
+
+    NODISCARD bool IsEmpty() const {
+        return GetMeta() == kEmptySlot;
+    }
+
+    NODISCARD bool IsProtected() const {
+        return GetMeta() == kProtectedSlot;
+    }
+
+    NODISCARD bool IsHead() const {
+        return (GetMeta() & 0x80) == 0x00;
+    }
+
+    void SetEmpty() const {
+        GetMeta() = kEmptySlot;
+    }
+
+    void SetProtected() const {
+        GetMeta() = kProtectedSlot;
+    }
+
+    // Set the entry's offset to its next entry.
+    void SetOffset(uint8_t offset_idx) const {
+        CHECK(offset_idx < kNumOffsetDists);
+        (GetMeta() &= 0x80) |= offset_idx;
+    }
+
+    // Destroy the item in the entry.
+    void DestructData() const {
+        // GetKey().~key_type();
+        // GetValue().~value_type();
+        GetEntry().~Entry();
+    }
+
+    // Construct a head of linked list inplace.
+    void NewHead(Entry entry) const {
+        GetMeta() = 0x00;
+        GetEntry() = std::move(entry);
+    }
+
+    // Construct a tail of linked list inplace
+    void NewTail(Entry entry) const {
+        GetMeta() = 0x80;
+        GetEntry() = std::move(entry);
+    }
+
+    // Whether the entry has the next entry on the linked list
+    NODISCARD bool HasNext() const {
+        return NextProbePosOffset[GetMeta() & 0x7F] != 0;
+    }
+
+    // Move to the next entry on the linked list
+    bool MoveToNext(const DenseMapObj* p, uint8_t meta) {
+        const auto offset = NextProbePosOffset[meta & 0x7F];
+        if (offset == 0) {
+            index_ = 0;
+            block_ = nullptr;
+            return false;
+        }
+
+        // The probing will go to the next pos and round back to stay within
+        // the correct range of the slots.
+        index_ = (index_ + offset) % p->slots();
+        block_ = p->GetBlock(index_ / kBlockSize);
+        return true;
+    }
+
+    bool MoveToNext(const DenseMapObj* p) {
+        return MoveToNext(p, GetMeta());
+    }
+
+    // Get the prev entry on the linked list
+    ListNode FindPrev(const DenseMapObj* p) const {
+        // start from the head of the linked list, which must exist
+        auto cur = p->IndexFromHash(AnyHash()(GetKey()));
+        auto prev = cur;
+
+        cur.MoveToNext(p);
+        while (index_ != cur.index_) {
+            prev = cur;
+            cur.MoveToNext(p);
+        }
+
+        return prev;
+    }
+
+    bool GetNextEmpty(const DenseMapObj* p, uint8_t* offset_idx, ListNode* res) const {
+        for (uint8_t i = 1; i < kNumOffsetDists; ++i) {
+            if (ListNode candidate((index_ + NextProbePosOffset[i]) % p->slots(), p);
+                candidate.IsEmpty()) {
+                *offset_idx = i;
+                *res = candidate;
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    // Index of entry on the array
+    size_t index_;
+    // Pointer to the actual block
+    Block* block_;
+    // Pointer to the current DenseMapObj
+    const DenseMapObj* obj_;
+};
+
+DenseMapObj::Block* DenseMapObj::GetBlock(size_t block_idx) const {
+    return static_cast<Block*>(data_) + block_idx;
+}
+
+DenseMapObj::ListNode DenseMapObj::IndexFromHash(size_t hash_value) const {
+    return {details::FibonacciHash(hash_value, fib_shift_), this};
+}
+
+ObjectPtr<DenseMapObj> DenseMapObj::CreateDenseMap(uint32_t fib_shift, size_t slots) {
+    CHECK(slots > SmallMapObj::kMaxSize);
+    CHECK((slots & kSmallMapMask) == 0ull);
+    const size_t block_num = ComputeBlockNum(slots);
     auto impl = make_array_object<DenseMapObj, Block>(block_num);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapObj);
     impl->size_ = 0;
-    impl->slots_ = slot_num;
+    impl->slots_ = slots;
     impl->fib_shift_ = fib_shift;
     impl->iter_list_head_ = kInvalidIndex;
     impl->iter_list_tail_ = kInvalidIndex;
@@ -605,7 +758,7 @@ bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
 }
 
 
-const size_t DenseMapObj::NextProbePosOffset[kNumJumpDists] = {
+const size_t DenseMapObj::NextProbePosOffset[kNumOffsetDists] = {
         /* clang-format off */
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
       // Quadratic probing with triangle numbers. See also:

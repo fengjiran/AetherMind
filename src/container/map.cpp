@@ -43,11 +43,78 @@ protected:
     friend class DenseMapImpl;
 };
 
+ObjectPtr<SmallMapObj> SmallMapObj::CreateSmallMap(size_t n) {
+    auto impl = make_array_object<SmallMapObj, KVType>(n);
+    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapObj);
+    impl->size_ = 0;
+    impl->slots_ = n & ~kSmallMapMask | kSmallMapMask;
+    return impl;
+}
+
+struct DenseMapObj::Entry {
+    KVType data{};
+    size_t prev = kInvalidIndex;
+    size_t next = kInvalidIndex;
+
+    Entry() = default;
+    explicit Entry(KVType&& data) : data(std::move(data)) {}
+    explicit Entry(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
+};
+
+struct DenseMapObj::Block {
+    uint8_t bytes[kBlockSize + kBlockSize * sizeof(Entry)];
+
+    Block() {// NOLINT
+        auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+        for (int i = 0; i < kBlockSize; ++i) {
+            bytes[i] = kEmptySlot;
+            new (data++) Entry;
+        }
+    }
+
+    Block(const Block& other) {// NOLINT
+        const auto* src = reinterpret_cast<const Entry*>(other.bytes + kBlockSize);
+        auto* dst = reinterpret_cast<Entry*>(bytes + kBlockSize);
+        for (int i = 0; i < kBlockSize; ++i) {
+            bytes[i] = other.bytes[i];
+            new (dst++) Entry(src[i]);
+        }
+    }
+
+    ~Block() {
+        auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+        for (int i = 0; i < kBlockSize; ++i) {
+            bytes[i] = kEmptySlot;
+            data->~Entry();
+        }
+    }
+};
+
+ObjectPtr<DenseMapObj> DenseMapObj::CreateDenseMap(uint32_t fib_shift, size_t slot_num) {
+    CHECK(slot_num > SmallMapObj::kMaxSize);
+    CHECK((slot_num & kSmallMapMask) == 0ull);
+    size_t block_num = ComputeBlockNum(slot_num);
+    auto impl = make_array_object<DenseMapObj, Block>(block_num);
+    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapObj);
+    impl->size_ = 0;
+    impl->slots_ = slot_num;
+    impl->fib_shift_ = fib_shift;
+    impl->iter_list_head_ = kInvalidIndex;
+    impl->iter_list_tail_ = kInvalidIndex;
+
+    auto* p = static_cast<Block*>(impl->data_);
+    for (size_t i = 0; i < block_num; ++i) {
+        new (p++) Block;
+    }
+    return impl;
+}
+
+
 ObjectPtr<SmallMapImpl> SmallMapImpl::Create(size_t n) {
     auto impl = make_array_object<SmallMapImpl, KVType>(n);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapImpl);
     impl->size_ = 0;
-    impl->slot_ = n & ~kSmallMapMask | kSmallMapMask;
+    impl->slots_ = n & ~kSmallMapMask | kSmallMapMask;
     return impl;
 }
 
@@ -281,7 +348,7 @@ void DenseMapImpl::reset() {
     }
 
     size_ = 0;
-    slot_ = 0;
+    slots_ = 0;
     fib_shift_ = 63;
 }
 
@@ -296,7 +363,7 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::Create(uint32_t fib_shift, size_t slot_num
     auto impl = make_array_object<DenseMapImpl, Block>(block_num);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapImpl);
     impl->size_ = 0;
-    impl->slot_ = slot_num;
+    impl->slots_ = slot_num;
     impl->fib_shift_ = fib_shift;
     impl->iter_list_head_ = kInvalidIndex;
     impl->iter_list_tail_ = kInvalidIndex;
@@ -314,7 +381,7 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFrom(const DenseMapImpl* src) {
     auto impl = make_array_object<DenseMapImpl, Block>(block_num);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapImpl);
     impl->size_ = src->size();
-    impl->slot_ = src->GetSlotNum();
+    impl->slots_ = src->GetSlotNum();
     impl->fib_shift_ = src->fib_shift_;
     impl->iter_list_head_ = src->iter_list_head_;
     impl->iter_list_tail_ = src->iter_list_tail_;
@@ -480,7 +547,7 @@ bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNo
 }
 
 bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
-    if (slot_ == 0) {
+    if (slots_ == 0) {
         return false;
     }
 
@@ -536,6 +603,34 @@ bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
     size_ += 1;
     return true;
 }
+
+
+const size_t DenseMapObj::NextProbePosOffset[kNumJumpDists] = {
+        /* clang-format off */
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+      // Quadratic probing with triangle numbers. See also:
+      // 1) https://en.wikipedia.org/wiki/Quadratic_probing
+      // 2) https://fgiesen.wordpress.com/2015/02/22/triangular-numbers-mod-2n/
+      // 3) https://github.com/skarupke/flat_hash_map
+      21, 28, 36, 45, 55, 66, 78, 91, 105, 120,
+      136, 153, 171, 190, 210, 231, 253, 276, 300, 325,
+      351, 378, 406, 435, 465, 496, 528, 561, 595, 630,
+      666, 703, 741, 780, 820, 861, 903, 946, 990, 1035,
+      1081, 1128, 1176, 1225, 1275, 1326, 1378, 1431, 1485, 1540,
+      1596, 1653, 1711, 1770, 1830, 1891, 1953, 2016, 2080, 2145,
+      2211, 2278, 2346, 2415, 2485, 2556, 2628,
+      // larger triangle numbers
+      8515, 19110, 42778, 96141, 216153,
+      486591, 1092981, 2458653, 5532801, 12442566,
+      27993903, 62983476, 141717030, 318844378, 717352503,
+      1614057336, 3631522476, 8170957530, 18384510628, 41364789378,
+      93070452520, 209408356380, 471168559170, 1060128894105, 2385289465695,
+      5366898840628, 12075518705635, 27169915244790, 61132312065111, 137547689707000,
+      309482283181501, 696335127828753, 1566753995631385, 3525196511162271, 7931691992677701,
+      17846306936293605, 40154190677507445, 90346928918121501, 203280589587557251,
+      457381325854679626, 1029107982097042876, 2315492959180353330, 5209859154120846435,
+};
+
 
 const size_t DenseMapImpl::NextProbePosOffset[kNumJumpDists] = {
         /* clang-format off */

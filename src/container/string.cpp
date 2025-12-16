@@ -4,7 +4,8 @@
 #include "container/string.h"
 #include "error.h"
 
-#include <cstring>
+// #include <cstring>
+#include <unordered_map>
 #include <vector>
 
 namespace aethermind {
@@ -456,12 +457,19 @@ String& String::insert(size_type pos, size_type n, value_type c) {
 }
 
 // Create bad char static table(ASCII), size = 256
-std::vector<int64_t> String::CreateBadCharRule(const_pointer pat) {
-    std::vector<int64_t> right(256, -1);
+std::unordered_map<String::value_type, String::size_type> String::CreateBadCharRule(const_pointer pat) {
+    // std::vector<int64_t> right(256, -1);
+    // for (size_type i = 0; i < traits_type::length(pat); ++i) {
+    //     const auto c = static_cast<unsigned char>(pat[i]);
+    //     right[c] = static_cast<int64_t>(i);
+    // }
+    // return right;
+
+    std::unordered_map<value_type, size_type> right;
     for (size_type i = 0; i < traits_type::length(pat); ++i) {
-        const auto c = static_cast<unsigned char>(pat[i]);
-        right[c] = static_cast<int64_t>(i);
+        right[pat[i]] = i;
     }
+
     return right;
 }
 
@@ -518,17 +526,21 @@ String::size_type String::BoyerMooreSearch(const_pointer pat, size_type pos, siz
         return npos;
     }
 
-    const auto right = CreateBadCharRule(pat);
+    auto right = CreateBadCharRule(pat);
     const auto [suffix, prefix] = CreateGoodSuffixRule(pat);
-    const value_type last_char = pat[n - 1];
-    auto ComputeDelta1 = [&](size_type i, int64_t j) -> size_type {
-        const auto delta1 = j - right[at(i + j)];
-        return delta1 < 1 ? 1 : delta1;
+
+    auto ComputeDelta1 = [&](size_type i, size_type j) {
+        const auto c = at(i + j);
+        if (right.contains(c)) {
+            return j <= right[c] ? 1 : j - right[c];
+        }
+        return j + 1;
+        // return j <= right[at(i + j)] ? 1 : j - right[at(i + j)];
     };
 
     while (pos <= sz - n) {
         while (pos <= sz - n) {
-            pos += at(pos + n - 1) == last_char ? large : ComputeDelta1(pos, static_cast<int64_t>(n - 1));
+            pos += at(pos + n - 1) == pat[n - 1] ? large : ComputeDelta1(pos, n - 1);
         }
 
         if (pos < large) {

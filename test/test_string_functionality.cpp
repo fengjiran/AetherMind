@@ -12,113 +12,6 @@ namespace {
 
 using namespace aethermind;
 
-std::vector<int> build_bad_char_rule(const String& pat) {
-    std::vector<int> right(256, -1);
-    for (int i = 0; i < pat.size(); ++i) {
-        const auto c = static_cast<unsigned char>(pat[i]);
-        right[c] = i;
-    }
-    return right;
-}
-
-std::pair<std::vector<int>, std::vector<bool>> build_good_suffix_rule(const String& pat) {
-    const auto m = pat.size();
-    std::vector<int> suffix(m, -1);
-    std::vector<bool> prefix(m);
-    suffix[0] = m;// for length 0 good suffix
-
-    for (int i = 0; i <= m - 2; ++i) {
-        int j = i;
-
-        while (j >= 0 && pat[j] == pat[m - 1 - (i - j)]) {
-            --j;
-        }
-
-        if (j == -1) {
-            suffix[i + 1] = 0;
-            prefix[i + 1] = true;
-        } else if (j != i) {
-            suffix[i - j] = j + 1;
-        }
-    }
-
-    return {suffix, prefix};
-}
-
-int compute_delta2(int j, int m, const std::vector<int>& suffix, const std::vector<bool>& prefix) {
-    const int len = m - 1 - j;
-    if (suffix[len] != -1) {
-        return j - suffix[len] + 1;
-    }
-
-    for (int k = len - 1; k >= 1; --k) {
-        if (prefix[k]) {
-            return m - k;
-        }
-    }
-
-    return m;
-}
-
-String::size_type boyer_moore_search(const String& pat, const String& s) {
-    const auto m = pat.size();
-    const auto n = s.size();
-    const auto large = m + n;
-    if (n < m) {
-        return String::npos;
-    }
-
-    auto right = build_bad_char_rule(pat);
-    auto [suffix, prefix] = build_good_suffix_rule(pat);
-
-    char last_char = pat[m - 1];
-    auto compute_delta1 = [&](int i, int j) {
-        int delta1 = j - right[s[i + j]];
-        return delta1 < 1 ? 1 : delta1;
-    };
-
-    int i = 0;
-    while (i <= n - m) {
-        while (i <= n - m) {
-            i += s[i + m - 1] == last_char ? large : compute_delta1(i, m - 1);
-        }
-
-        if (i < large) {
-            return String::npos;
-        }
-
-        i -= large;
-        int j = m - 1;
-        while (j >= 0 && s[i + j] == pat[j]) {
-            --j;
-        }
-
-        if (j == -1) {
-            return i;
-        }
-
-        int delta1 = compute_delta1(i, j);
-        int delta2 = compute_delta2(j, m, suffix, prefix);
-        i += std::max(delta1, delta2);
-    }
-
-    return String::npos;
-}
-
-TEST(StringSearch, bm) {
-    String text1 = "GCATCGCAGAGAGT";
-    String pattern1 = "GCAGAGAG";
-    EXPECT_EQ(boyer_moore_search(pattern1, text1), 5);
-
-    String text2 = "ABCD1234EFG";
-    String pattern2 = "ABCD";
-    EXPECT_EQ(boyer_moore_search(pattern2, text2), 0);
-
-    String text3 = "Hello World";
-    String pattern3 = "Java";
-    EXPECT_EQ(boyer_moore_search(pattern3, text3), String::npos);
-}
-
 // 测试基本功能：创建指定大小和字符的字符串
 TEST(StringConstructorFill, BasicFunctionality) {
     // 测试基本ASCII字符
@@ -2781,7 +2674,7 @@ TEST(StringFindTest, ExceptionHandling) {
 
 // 多字节字符边界测试
 TEST(StringFindTest, MultiByteCharacterBoundaries) {
-    GTEST_SKIP();
+    // GTEST_SKIP();
     String utf8("Hello, 世界！");// 包含ASCII和UTF-8字符
 
     // 确保在多字节字符边界上正确查找

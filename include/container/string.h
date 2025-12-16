@@ -8,6 +8,8 @@
 #include "container/container_utils.h"
 #include "object_allocator.h"
 
+#include <unordered_map>
+
 namespace aethermind {
 
 class StringImpl : public Object {
@@ -339,7 +341,7 @@ private:
     NODISCARD size_type KMPSearch(const_pointer s, size_type pos, size_type n) const noexcept;
     NODISCARD size_type BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const noexcept;
     // Create bad char static table(ASCII), size = 256
-    static std::vector<int64_t> CreateBadCharRule(const_pointer pat);
+    static std::unordered_map<value_type, size_type> CreateBadCharRule(const_pointer pat);
     // Create suffix and prefix vectors based on good suffix rule
     // suffix[k]:
     static std::pair<std::vector<int64_t>, std::vector<bool>> CreateGoodSuffixRule(const_pointer pat);

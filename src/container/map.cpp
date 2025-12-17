@@ -6,7 +6,7 @@
 
 namespace aethermind {
 
-MapObj<SmallMapObj>::iterator SmallMapObj::find(const key_type& key) const {
+MapImpl<SmallMapImpl>::iterator SmallMapImpl::find(const key_type& key) const {
     const auto* p = static_cast<KVType*>(data_);
     for (size_t i = 0; i < size(); ++i) {
         if (key == p[i].first) {
@@ -17,7 +17,7 @@ MapObj<SmallMapObj>::iterator SmallMapObj::find(const key_type& key) const {
     return end();
 }
 
-MapObj<SmallMapObj>::value_type& SmallMapObj::at(const key_type& key) {
+MapImpl<SmallMapImpl>::value_type& SmallMapImpl::at(const key_type& key) {
     const auto iter = find(key);
     if (iter == end()) {
         AETHERMIND_THROW(KeyError) << "key is not int map.";
@@ -25,7 +25,7 @@ MapObj<SmallMapObj>::value_type& SmallMapObj::at(const key_type& key) {
     return iter->second;
 }
 
-const MapObj<SmallMapObj>::value_type& SmallMapObj::at(const key_type& key) const {
+const MapImpl<SmallMapImpl>::value_type& SmallMapImpl::at(const key_type& key) const {
     const auto iter = find(key);
     if (iter == end()) {
         AETHERMIND_THROW(KeyError) << "key is not int map.";
@@ -33,23 +33,23 @@ const MapObj<SmallMapObj>::value_type& SmallMapObj::at(const key_type& key) cons
     return iter->second;
 }
 
-ObjectPtr<SmallMapObj> SmallMapObj::CreateSmallMap(size_t n) {
+ObjectPtr<SmallMapImpl> SmallMapImpl::CreateSmallMap(size_t n) {
     CHECK(n <= kMaxSize);
-    auto impl = make_array_object<SmallMapObj, KVType>(n);
-    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapObj);
+    auto impl = make_array_object<SmallMapImpl, KVType>(n);
+    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapImpl);
     impl->size_ = 0;
     impl->slots_ = n & ~kSmallMapMask | kSmallMapMask;
     return impl;
 }
 
-ObjectPtr<SmallMapObj> SmallMapObj::CopyFrom(const SmallMapObj* src) {
+ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFrom(const SmallMapImpl* src) {
     const auto* first = static_cast<KVType*>(src->data_);
     const auto* last = first + src->size();
     return CreateSmallMapFromRange(first, last);
 }
 
-void SmallMapObj::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_impl) {
-    auto* map = static_cast<SmallMapObj*>(old_impl->get());
+void SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_impl) {
+    auto* map = static_cast<SmallMapImpl*>(old_impl->get());
     if (const auto iter = map->find(kv.first); iter != map->end()) {
         iter->second = kv.second;
         return;
@@ -75,7 +75,7 @@ void SmallMapObj::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_imp
     *old_impl = std::move(new_impl);
 }
 
-void SmallMapObj::insert(const KVType& kv) {
+void SmallMapImpl::insert(const KVType& kv) {
     if (const auto iter = find(kv.first); iter != end()) {
         iter->second = kv.second;
         return;
@@ -92,9 +92,9 @@ void SmallMapObj::insert(const KVType& kv) {
 }
 
 
-void SmallMapObj::erase(const iterator& pos) {
+void SmallMapImpl::erase(const iterator& pos) {
     const auto idx = pos.index();
-    if (idx >= size()) {
+    if (pos.ptr_ == nullptr || idx >= size()) {
         return;
     }
 
@@ -114,7 +114,7 @@ void SmallMapObj::erase(const iterator& pos) {
 }
 
 
-SmallMapObj::~SmallMapObj() {
+SmallMapImpl::~SmallMapImpl() {
     auto* p = static_cast<KVType*>(data_);
     for (size_t i = 0; i < size(); ++i) {
         p[i].~KVType();
@@ -122,7 +122,7 @@ SmallMapObj::~SmallMapObj() {
 }
 
 
-struct DenseMapObj::Entry {
+struct DenseMapImpl::Entry {
     KVType data{};
     size_t prev = kInvalidIndex;
     size_t next = kInvalidIndex;
@@ -132,7 +132,7 @@ struct DenseMapObj::Entry {
     explicit Entry(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
 };
 
-struct DenseMapObj::Block {
+struct DenseMapImpl::Block {
     uint8_t bytes[kBlockSize + kBlockSize * sizeof(Entry)];
 
     Block() {// NOLINT
@@ -161,17 +161,17 @@ struct DenseMapObj::Block {
     }
 };
 
-class DenseMapObj::ListNode {
+class DenseMapImpl::ListNode {
 public:
     ListNode() : index_(0), obj_(nullptr) {}
 
-    ListNode(size_t index, const DenseMapObj* p) : index_(index), obj_(p) {}
+    ListNode(size_t index, const DenseMapImpl* p) : index_(index), obj_(p) {}
 
     NODISCARD size_t index() const {
         return index_;
     }
 
-    NODISCARD const DenseMapObj* obj() const {
+    NODISCARD const DenseMapImpl* obj() const {
         return obj_;
     }
 
@@ -313,32 +313,32 @@ private:
     // Pointer to the actual block
     // Block* block_;
     // Pointer to the current DenseMapObj
-    const DenseMapObj* obj_;
+    const DenseMapImpl* obj_;
 };
 
-size_t DenseMapObj::count(const key_type& key) const {
+size_t DenseMapImpl::count(const key_type& key) const {
     return !Search(key).IsNone();
 }
 
 
-DenseMapObj::Block* DenseMapObj::GetBlock(size_t block_idx) const {
+DenseMapImpl::Block* DenseMapImpl::GetBlock(size_t block_idx) const {
     return static_cast<Block*>(data_) + block_idx;
 }
 
-DenseMapObj::ListNode DenseMapObj::IndexFromHash(size_t hash_value) const {
+DenseMapImpl::ListNode DenseMapImpl::IndexFromHash(size_t hash_value) const {
     return {details::FibonacciHash(hash_value, fib_shift_), this};
 }
 
-MapObj<DenseMapObj>::KVType* DenseMapObj::DeRefIter(size_t index) const {
+MapImpl<DenseMapImpl>::KVType* DenseMapImpl::DeRefIter(size_t index) const {
     return &ListNode(index, this).GetData();
 }
 
-DenseMapObj::ListNode DenseMapObj::GetListHead(size_t hash_value) const {
+DenseMapImpl::ListNode DenseMapImpl::GetListHead(size_t hash_value) const {
     const auto node = IndexFromHash(hash_value);
     return node.IsHead() ? node : ListNode();
 }
 
-size_t DenseMapObj::IncIter(size_t index) const {
+size_t DenseMapImpl::IncIter(size_t index) const {
     // keep at the end of iterator
     if (index == kInvalidIndex) {
         return index;
@@ -347,7 +347,7 @@ size_t DenseMapObj::IncIter(size_t index) const {
     return ListNode(index, this).GetEntry().next;
 }
 
-size_t DenseMapObj::DecIter(size_t index) const {
+size_t DenseMapImpl::DecIter(size_t index) const {
     // this is the end iterator, we need to return tail.
     if (index == kInvalidIndex) {
         return iter_list_tail_;
@@ -356,7 +356,7 @@ size_t DenseMapObj::DecIter(size_t index) const {
     return ListNode(index, this).GetEntry().prev;
 }
 
-MapObj<DenseMapObj>::value_type& DenseMapObj::At(const key_type& key) const {
+MapImpl<DenseMapImpl>::value_type& DenseMapImpl::At(const key_type& key) const {
     const ListNode iter = Search(key);
     if (iter.IsNone()) {
         AETHERMIND_THROW(KeyError) << "Key not found";
@@ -365,7 +365,7 @@ MapObj<DenseMapObj>::value_type& DenseMapObj::At(const key_type& key) const {
     return iter.GetValue();
 }
 
-DenseMapObj::ListNode DenseMapObj::Search(const key_type& key) const {
+DenseMapImpl::ListNode DenseMapImpl::Search(const key_type& key) const {
     if (empty()) {
         return {};
     }
@@ -381,8 +381,7 @@ DenseMapObj::ListNode DenseMapObj::Search(const key_type& key) const {
     return {};
 }
 
-
-void DenseMapObj::reset() {
+void DenseMapImpl::reset() {
     size_t block_num = ComputeBlockNum(slots());
     auto* p = static_cast<Block*>(data_);
     for (size_t i = 0; i < block_num; ++i) {
@@ -394,7 +393,7 @@ void DenseMapObj::reset() {
     fib_shift_ = 63;
 }
 
-void DenseMapObj::IterListPushBack(ListNode node) {
+void DenseMapImpl::IterListPushBack(ListNode node) {
     node.GetEntry().prev = iter_list_tail_;
     node.GetEntry().next = kInvalidIndex;
 
@@ -409,7 +408,7 @@ void DenseMapObj::IterListPushBack(ListNode node) {
     iter_list_tail_ = node.index();
 }
 
-void DenseMapObj::IterListUnlink(ListNode node) {
+void DenseMapImpl::IterListUnlink(ListNode node) {
     if (node.GetEntry().prev == kInvalidIndex) {
         iter_list_head_ = node.GetEntry().next;
     } else {
@@ -425,7 +424,7 @@ void DenseMapObj::IterListUnlink(ListNode node) {
     }
 }
 
-void DenseMapObj::IterListReplaceNodeBy(ListNode src, ListNode dst) {
+void DenseMapImpl::IterListReplaceNodeBy(ListNode src, ListNode dst) {
     dst.GetEntry().prev = src.GetEntry().prev;
     dst.GetEntry().next = src.GetEntry().next;
 
@@ -444,7 +443,7 @@ void DenseMapObj::IterListReplaceNodeBy(ListNode src, ListNode dst) {
     }
 }
 
-bool DenseMapObj::TrySpareListHead(ListNode target, const key_type& key, ListNode* result) {
+bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNode* result) {
     // `target` is not the head of the linked list
     // move the original item of `target` (if any)
     // and construct new item on the position `target`
@@ -497,7 +496,7 @@ bool DenseMapObj::TrySpareListHead(ListNode target, const key_type& key, ListNod
     return true;
 }
 
-bool DenseMapObj::TryInsert(const key_type& key, ListNode* result) {
+bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
     if (slots_ == 0) {
         return false;
     }
@@ -555,7 +554,7 @@ bool DenseMapObj::TryInsert(const key_type& key, ListNode* result) {
     return true;
 }
 
-void DenseMapObj::ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots) {
+void DenseMapImpl::ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots) {
     uint32_t shift = 64;
     size_t slots = 1;
     size_t c = cap;
@@ -575,12 +574,12 @@ void DenseMapObj::ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_sl
     }
 }
 
-ObjectPtr<DenseMapObj> DenseMapObj::CreateDenseMap(uint32_t fib_shift, size_t slots) {
-    CHECK(slots > SmallMapObj::kMaxSize);
+ObjectPtr<DenseMapImpl> DenseMapImpl::CreateDenseMap(uint32_t fib_shift, size_t slots) {
+    CHECK(slots > SmallMapImpl::kMaxSize);
     CHECK((slots & kSmallMapMask) == 0ull);
     const size_t block_num = ComputeBlockNum(slots);
-    auto impl = make_array_object<DenseMapObj, Block>(block_num);
-    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapObj);
+    auto impl = make_array_object<DenseMapImpl, Block>(block_num);
+    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapImpl);
     impl->size_ = 0;
     impl->slots_ = slots;
     impl->fib_shift_ = fib_shift;
@@ -594,11 +593,11 @@ ObjectPtr<DenseMapObj> DenseMapObj::CreateDenseMap(uint32_t fib_shift, size_t sl
     return impl;
 }
 
-ObjectPtr<DenseMapObj> DenseMapObj::CopyFrom(const DenseMapObj* src) {
+ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFrom(const DenseMapImpl* src) {
     CHECK(src->IsDenseMap());
     auto block_num = ComputeBlockNum(src->slots());
-    auto impl = make_array_object<DenseMapObj, Block>(block_num);
-    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapObj);
+    auto impl = make_array_object<DenseMapImpl, Block>(block_num);
+    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapImpl);
     impl->size_ = src->size();
     impl->slots_ = src->slots();
     impl->fib_shift_ = src->fib_shift_;
@@ -613,7 +612,7 @@ ObjectPtr<DenseMapObj> DenseMapObj::CopyFrom(const DenseMapObj* src) {
     return impl;
 }
 
-const size_t DenseMapObj::NextProbePosOffset[kNumOffsetDists] = {
+const size_t DenseMapImpl::NextProbePosOffset[kNumOffsetDists] = {
         /* clang-format off */
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
       // Quadratic probing with triangle numbers. See also:

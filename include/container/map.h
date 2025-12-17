@@ -13,7 +13,7 @@
 namespace aethermind {
 
 template<typename Derived>
-class MapObj : public Object {
+class MapImpl : public Object {
 public:
     using key_type = Any;
     using value_type = Any;
@@ -21,7 +21,7 @@ public:
 
     class iterator;
 
-    MapObj() : data_(nullptr), size_(0), slots_(0) {}
+    MapImpl() : data_(nullptr), size_(0), slots_(0) {}
 
     NODISCARD size_t size() const {
         return size_;
@@ -57,7 +57,7 @@ protected:
 };
 
 template<typename Derived>
-class MapObj<Derived>::iterator {
+class MapImpl<Derived>::iterator {
 public:
     using iterator_category = std::forward_iterator_tag;
     using value_type = KVType;
@@ -113,16 +113,16 @@ public:
     }
 
 protected:
-    size_t index_;     // The position in the array.
-    const MapObj* ptr_;// The container it pointer to.
+    size_t index_;      // The position in the array.
+    const MapImpl* ptr_;// The container it pointer to.
 
-    iterator(size_t index, const MapObj* ptr) : index_(index), ptr_(ptr) {}
+    iterator(size_t index, const MapImpl* ptr) : index_(index), ptr_(ptr) {}
 
-    friend class SmallMapObj;
-    friend class DenseMapObj;
+    friend class SmallMapImpl;
+    friend class DenseMapImpl;
 };
 
-class SmallMapObj : public MapObj<SmallMapObj> {
+class SmallMapImpl : public MapImpl<SmallMapImpl> {
 public:
     iterator begin() const {
         return iterator(0, this);
@@ -146,7 +146,7 @@ public:
 
     void erase(const iterator& pos);
 
-    ~SmallMapObj() override;
+    ~SmallMapImpl() override;
 
 private:
     static constexpr size_t kInitSize = 2;
@@ -164,15 +164,15 @@ private:
         return index > 0 ? index - 1 : size_;
     }
 
-    static ObjectPtr<SmallMapObj> CreateSmallMap(size_t n = kInitSize);
+    static ObjectPtr<SmallMapImpl> CreateSmallMap(size_t n = kInitSize);
 
-    static ObjectPtr<SmallMapObj> CopyFrom(const SmallMapObj* src);
+    static ObjectPtr<SmallMapImpl> CopyFrom(const SmallMapImpl* src);
 
     template<typename Iter>
         requires requires(Iter t) {
             { *t } -> std::convertible_to<KVType>;
         }
-    static ObjectPtr<SmallMapObj> CreateSmallMapFromRange(Iter first, Iter last) {
+    static ObjectPtr<SmallMapImpl> CreateSmallMapFromRange(Iter first, Iter last) {
         const auto n = std::distance(first, last);
         auto impl = CreateSmallMap(n);
         auto* ptr = static_cast<KVType*>(impl->data_);
@@ -185,8 +185,8 @@ private:
     static void InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_impl);
 
     template<typename Derived>
-    friend class MapObj;
-    friend class DenseMapObj;
+    friend class MapImpl;
+    friend class DenseMapImpl;
 };
 
 
@@ -248,7 +248,7 @@ private:
  * [2] https://programmingpraxis.com/2018/06/19/fibonacci-hash/
  * [3] https://fgiesen.wordpress.com/2015/02/22/triangular-numbers-mod-2n/
  */
-class DenseMapObj : public MapObj<DenseMapObj> {
+class DenseMapImpl : public MapImpl<DenseMapImpl> {
 public:
     NODISCARD size_t count(const key_type& key) const;
 
@@ -260,7 +260,17 @@ public:
         return At(key);
     }
 
-    ~DenseMapObj() override {
+    iterator begin() const {
+        return iterator(iter_list_head_, this);
+    }
+
+    iterator end() const {
+        return iterator(kInvalidIndex, this);
+    }
+
+    void erase(const iterator& pos);
+
+    ~DenseMapImpl() override {
         reset();
     }
 
@@ -367,16 +377,16 @@ private:
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     static void ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots);
 
-    static ObjectPtr<DenseMapObj> CreateDenseMap(uint32_t fib_shift, size_t slots);
+    static ObjectPtr<DenseMapImpl> CreateDenseMap(uint32_t fib_shift, size_t slots);
 
-    static ObjectPtr<DenseMapObj> CopyFrom(const DenseMapObj* src);
+    static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);
 };
 
 template<typename K, typename V>
 class Map : public ObjectRef {
 public:
 private:
-    // ObjectPtr<MapImpl> impl_;
+    ObjectPtr<Object> impl_;
 };
 
 }// namespace aethermind

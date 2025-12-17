@@ -488,7 +488,7 @@ bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNo
         w = empty;
     } while (r.MoveToNext(r_meta));// move `r` forward as well
 
-    // finally we have done moving the linked list
+    // finally, we have done moving the linked list
     // fill data_ into `target`
     target.NewHead(Entry(key, value_type(nullptr)));
     size_ += 1;

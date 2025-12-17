@@ -124,21 +124,21 @@ protected:
 
 class SmallMapImpl : public MapImpl<SmallMapImpl> {
 public:
-    iterator begin() const {
-        return iterator(0, this);
+    NODISCARD iterator begin() const {
+        return {0, this};
     }
 
-    iterator end() const {
-        return iterator(size(), this);
+    NODISCARD iterator end() const {
+        return {size(), this};
     }
 
     value_type& at(const key_type& key);
 
-    const value_type& at(const key_type& key) const;
+    NODISCARD const value_type& at(const key_type& key) const;
 
-    iterator find(const key_type& key) const;
+    NODISCARD iterator find(const key_type& key) const;
 
-    size_t count(const key_type& key) const {
+    NODISCARD size_t count(const key_type& key) const {
         return find(key).index() < size();
     }
 
@@ -260,12 +260,12 @@ public:
         return At(key);
     }
 
-    iterator begin() const {
-        return iterator(iter_list_head_, this);
+    NODISCARD iterator begin() const {
+        return {iter_list_head_, this};
     }
 
-    iterator end() const {
-        return iterator(kInvalidIndex, this);
+    NODISCARD iterator end() const {
+        return {kInvalidIndex, this};
     }
 
     void erase(const iterator& pos);
@@ -295,7 +295,7 @@ private:
     static const size_t NextProbePosOffset[kNumOffsetDists];
 
     // fib shift in Fibonacci hash
-    uint32_t fib_shift_;
+    uint32_t fib_shift_ = 63;
     // The head of iterator list
     size_t iter_list_head_ = kInvalidIndex;
     // The tail of iterator list
@@ -375,6 +375,7 @@ private:
     bool TryInsert(const key_type& key, ListNode* result);
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
+    // shift = 64 - log2(slots)
     static void ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots);
 
     static ObjectPtr<DenseMapImpl> CreateDenseMap(uint32_t fib_shift, size_t slots);

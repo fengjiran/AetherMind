@@ -7,7 +7,6 @@
 
 #include "any.h"
 #include "container/container_utils.h"
-#include "map.h"
 #include "object.h"
 #include "object_allocator.h"
 
@@ -34,6 +33,10 @@ public:
         }
         // SmallMapObj
         return slots_ & ~kSmallMapMask;
+    }
+
+    NODISCARD bool empty() const {
+        return size() == 0;
     }
 
     NODISCARD bool IsSmallMap() const {
@@ -247,6 +250,20 @@ private:
  */
 class DenseMapObj : public MapObj<DenseMapObj> {
 public:
+    NODISCARD size_t count(const key_type& key) const;
+
+    NODISCARD value_type& at(const key_type& key) {
+        return At(key);
+    }
+
+    NODISCARD const value_type& at(const key_type& key) const {
+        return At(key);
+    }
+
+    ~DenseMapObj() override {
+        reset();
+    }
+
 private:
     struct Entry;
     struct Block;
@@ -284,167 +301,6 @@ private:
 
     NODISCARD KVType* DeRefIter(size_t index) const;
 
-    NODISCARD size_t IncIter(size_t index) const;
-
-    NODISCARD size_t DecIter(size_t index) const;
-
-    // Whether the hash table is full.
-    NODISCARD bool IsFull() const {
-        return size() + 1 > static_cast<size_t>(static_cast<double>(slots()) * kMaxLoadFactor);
-    }
-
-    static ObjectPtr<DenseMapObj> CreateDenseMap(uint32_t fib_shift, size_t slots);
-};
-
-class MapImpl : public Object {
-public:
-    using key_type = Any;
-    using value_type = Any;
-    using KVType = std::pair<key_type, value_type>;
-
-    static_assert(sizeof(KVType) == 16);
-
-    class iterator;
-
-    MapImpl() : data_(nullptr), size_(0), slots_(0) {}
-
-    NODISCARD size_t size() const {
-        return size_;
-    }
-
-protected:
-    void* data_;
-    size_t size_;
-    size_t slots_;
-
-    // Small map mask, the most significant bit is used to indicate the small map layout.
-    static constexpr size_t kSmallMapMask = static_cast<size_t>(1) << 63;
-
-    NODISCARD bool IsSmallMap() const {
-        return !IsDenseMap();
-    }
-
-    NODISCARD bool IsDenseMap() const {
-        return (slots_ & kSmallMapMask) == 0ull;
-    }
-};
-
-class SmallMapImpl : public MapImpl {
-public:
-    using MapImpl::iterator;
-
-    NODISCARD size_t GetSlotNum() const {
-        return slots_ & ~kSmallMapMask;
-    }
-
-private:
-    static constexpr size_t kInitSize = 2;
-    static constexpr size_t kMaxSize = 4;
-
-    NODISCARD size_t GetSize() const {
-        return size_;
-    }
-
-    NODISCARD KVType* GetItemPtr(size_t index) const {
-        return static_cast<KVType*>(data_) + index;
-    }
-
-    NODISCARD size_t IncIter(size_t index) const {
-        return index + 1 < size_ ? index + 1 : size_;
-    }
-
-    NODISCARD size_t DecIter(size_t index) const {
-        return index > 0 ? index - 1 : size_;
-    }
-
-    NODISCARD KVType* DeRefIter(size_t index) const {
-        return static_cast<KVType*>(data_) + index;
-    }
-
-    static ObjectPtr<SmallMapImpl> Create(size_t n = kInitSize);
-
-    template<typename Iter>
-    static ObjectPtr<SmallMapImpl> CreateFromRange(size_t n, Iter first, Iter last);
-
-    static ObjectPtr<SmallMapImpl> CopyFrom(const SmallMapImpl* src);
-
-    friend class MapImpl;
-    friend class DenseMapImpl;
-};
-
-template<typename Iter>
-ObjectPtr<SmallMapImpl> SmallMapImpl::CreateFromRange(size_t n, Iter first, Iter last) {
-    auto impl = Create(n);
-    auto* ptr = static_cast<KVType*>(impl->data_);
-    while (first != last) {
-        new (ptr++) KVType(*first++);
-    }
-    return impl;
-}
-
-
-class DenseMapImpl : public MapImpl {
-public:
-    NODISCARD size_t GetSlotNum() const {
-        return slots_;
-    }
-
-    NODISCARD value_type& at(const key_type& key) {
-        return At(key);
-    }
-
-    NODISCARD const value_type& at(const key_type& key) const {
-        return At(key);
-    }
-
-    NODISCARD size_t count(const key_type& key) const;
-
-    ~DenseMapImpl() override;
-
-    using MapImpl::iterator;
-
-    friend class MapImpl;
-
-private:
-    struct Entry;
-    struct Block;
-    class ListNode;
-
-    // The number of elements in a memory block.
-    static constexpr int kBlockSize = 16;
-    // Max load factor of hash table
-    static constexpr double kMaxLoadFactor = 0.99;
-    // 0b11111111 representation of the metadata of an empty slot.
-    static constexpr uint8_t kEmptySlot = 0xFF;
-    // 0b11111110 representation of the metadata of a protected slot.
-    static constexpr uint8_t kProtectedSlot = 0xFE;
-    // Number of probing choices available
-    static constexpr int kNumJumpDists = 126;
-    // Index indicator to indicate an invalid index.
-    static constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
-
-    static const size_t NextProbePosOffset[kNumJumpDists];
-
-    // fib shift in Fibonacci hash
-    uint32_t fib_shift_{63};
-    // The head of iterator list
-    size_t iter_list_head_ = kInvalidIndex;
-    // The tail of iterator list
-    size_t iter_list_tail_ = kInvalidIndex;
-
-    NODISCARD Block* GetBlock(size_t block_index) const;
-
-    static size_t ComputeBlockNum(size_t slot_num) {
-        return (slot_num + kBlockSize - 1) / kBlockSize;
-    }
-
-    // Whether the hash table is full.
-    NODISCARD bool IsFull() const {
-        return size() + 1 > static_cast<size_t>(static_cast<double>(GetSlotNum()) * kMaxLoadFactor);
-    }
-
-    NODISCARD ListNode IndexFromHash(size_t hash_value) const;
-
     // Construct a ListNode from hash code if the position is head of list
     NODISCARD ListNode GetListHead(size_t hash_value) const;
 
@@ -452,19 +308,25 @@ private:
 
     NODISCARD size_t DecIter(size_t index) const;
 
-    NODISCARD KVType* DeRefIter(size_t index) const;
-
-    NODISCARD ListNode Search(const key_type& key) const;
+    NODISCARD value_type& At(const key_type& key) const;
 
     /*!
    * \brief Search for the given key, throw exception if not exists
    * \param key The key
    * \return ListNode that associated with the key
    */
-    NODISCARD value_type& At(const key_type& key) const;
+    NODISCARD ListNode Search(const key_type& key) const;
+
+    // Whether the hash table is full.
+    NODISCARD bool IsFull() const {
+        return size() + 1 > static_cast<size_t>(static_cast<double>(slots()) * kMaxLoadFactor);
+    }
+
+    void reset();
 
     // Insert the entry into tail of iterator list.
     // This function does not change data content of the node.
+    // or NodeListPushBack ?
     void IterListPushBack(ListNode node);
 
     // Unlink the entry from iterator list.
@@ -502,23 +364,19 @@ private:
    */
     bool TryInsert(const key_type& key, ListNode* result);
 
-    void reset();
-
-    static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
-
-    static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);
-
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     static void ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots);
 
-    static void InsertMaybeRehash(KVType&& kv, ObjectPtr<DenseMapImpl> impl);
+    static ObjectPtr<DenseMapObj> CreateDenseMap(uint32_t fib_shift, size_t slots);
+
+    static ObjectPtr<DenseMapObj> CopyFrom(const DenseMapObj* src);
 };
 
 template<typename K, typename V>
 class Map : public ObjectRef {
 public:
 private:
-    ObjectPtr<MapImpl> impl_;
+    // ObjectPtr<MapImpl> impl_;
 };
 
 }// namespace aethermind

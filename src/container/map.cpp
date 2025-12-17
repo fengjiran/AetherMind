@@ -44,6 +44,7 @@ protected:
 };
 
 ObjectPtr<SmallMapObj> SmallMapObj::CreateSmallMap(size_t n) {
+    CHECK(n <= kMaxSize);
     auto impl = make_array_object<SmallMapObj, KVType>(n);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapObj);
     impl->size_ = 0;
@@ -232,7 +233,7 @@ public:
         auto prev = cur;
 
         cur.MoveToNext();
-        while (index_ != cur.index_) {
+        while (index() != cur.index()) {
             prev = cur;
             cur.MoveToNext();
         }
@@ -240,9 +241,9 @@ public:
         return prev;
     }
 
-    bool GetNextEmpty(const DenseMapObj* p, uint8_t* offset_idx, ListNode* res) const {
+    bool GetNextEmpty(uint8_t* offset_idx, ListNode* res) const {
         for (uint8_t i = 1; i < kNumOffsetDists; ++i) {
-            if (ListNode candidate((index_ + NextProbePosOffset[i]) % p->slots(), p);
+            if (ListNode candidate((index() + NextProbePosOffset[i]) % obj()->slots(), obj());
                 candidate.IsEmpty()) {
                 *offset_idx = i;
                 *res = candidate;
@@ -268,6 +269,29 @@ DenseMapObj::Block* DenseMapObj::GetBlock(size_t block_idx) const {
 DenseMapObj::ListNode DenseMapObj::IndexFromHash(size_t hash_value) const {
     return {details::FibonacciHash(hash_value, fib_shift_), this};
 }
+
+MapObj<DenseMapObj>::KVType* DenseMapObj::DeRefIter(size_t index) const {
+    return &ListNode(index, this).GetData();
+}
+
+size_t DenseMapObj::IncIter(size_t index) const {
+    // keep at the end of iterator
+    if (index == kInvalidIndex) {
+        return index;
+    }
+
+    return ListNode(index, this).GetEntry().next;
+}
+
+size_t DenseMapObj::DecIter(size_t index) const {
+    // this is the end iterator, we need to return tail.
+    if (index == kInvalidIndex) {
+        return iter_list_tail_;
+    }
+
+    return ListNode(index, this).GetEntry().prev;
+}
+
 
 ObjectPtr<DenseMapObj> DenseMapObj::CreateDenseMap(uint32_t fib_shift, size_t slots) {
     CHECK(slots > SmallMapObj::kMaxSize);

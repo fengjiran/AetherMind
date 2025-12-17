@@ -20,6 +20,8 @@ public:
     using value_type = Any;
     using KVType = std::pair<key_type, value_type>;
 
+    class iterator;
+
     MapObj() : data_(nullptr), size_(0), slots_(0) {}
 
     NODISCARD size_t size() const {
@@ -51,13 +53,101 @@ protected:
     size_t slots_;
 };
 
+template<typename Derived>
+class MapObj<Derived>::iterator {
+public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = KVType;
+    using pointer = value_type*;
+    using reference = value_type&;
+    using difference_type = int64_t;
+
+    iterator() : index_(0), ptr_(nullptr) {}
+
+    pointer operator->() const {
+        const auto* p = static_cast<Derived*>(ptr_);
+        return p->DeRefIter(index_);
+    }
+
+    reference operator*() const {
+        return *operator->();
+    }
+
+    iterator& operator++() {
+        const auto* p = static_cast<Derived*>(ptr_);
+        index_ = p->IncIter(index_);
+        return *this;
+    }
+
+    iterator& operator--() {
+        const auto* p = static_cast<Derived*>(ptr_);
+        index_ = p->DecIter(index_);
+        return *this;
+    }
+
+    iterator operator++(int) {
+        iterator tmp = *this;
+        operator++();
+        return tmp;
+    }
+
+    iterator operator--(int) {
+        iterator tmp = *this;
+        operator--();
+        return tmp;
+    }
+
+    bool operator==(const iterator& other) const {
+        return index_ == other.index_ && ptr_ == other.ptr_;
+    }
+
+    bool operator!=(const iterator& other) const {
+        return !(*this == other);
+    }
+
+protected:
+    size_t index_;     // The position in the array.
+    const MapObj* ptr_;// The container it pointer to.
+
+    iterator(size_t index, const MapObj* ptr) : index_(index), ptr_(ptr) {}
+
+    friend class SmallMapObj;
+    friend class DenseMapObj;
+};
+
 class SmallMapObj : public MapObj<SmallMapObj> {
 public:
 private:
     static constexpr size_t kInitSize = 2;
     static constexpr size_t kMaxSize = 4;
 
+    NODISCARD KVType* DeRefIter(size_t index) const {
+        return static_cast<KVType*>(data_) + index;
+    }
+
+    NODISCARD size_t IncIter(size_t index) const {
+        return index + 1 < size_ ? index + 1 : size_;
+    }
+
+    NODISCARD size_t DecIter(size_t index) const {
+        return index > 0 ? index - 1 : size_;
+    }
+
     static ObjectPtr<SmallMapObj> CreateSmallMap(size_t n = kInitSize);
+
+    template<typename Iter>
+        requires requires(Iter t) {
+            { *t } -> std::convertible_to<KVType>;
+        }
+    static ObjectPtr<SmallMapObj> CreateSmallMapFromRange(Iter first, Iter last) {
+        const auto n = std::distance(first, last);
+        auto impl = CreateSmallMap(n);
+        auto* ptr = static_cast<KVType*>(impl->data_);
+        while (first != last) {
+            new (ptr++) KVType(*first++);
+        }
+        return impl;
+    }
 
     friend class DenseMapObj;
 };
@@ -157,6 +247,12 @@ private:
     NODISCARD Block* GetBlock(size_t block_idx) const;
 
     NODISCARD ListNode IndexFromHash(size_t hash_value) const;
+
+    NODISCARD KVType* DeRefIter(size_t index) const;
+
+    NODISCARD size_t IncIter(size_t index) const;
+
+    NODISCARD size_t DecIter(size_t index) const;
 
     // Whether the hash table is full.
     NODISCARD bool IsFull() const {

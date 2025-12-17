@@ -43,6 +43,33 @@ protected:
     friend class DenseMapImpl;
 };
 
+MapObj<SmallMapObj>::iterator SmallMapObj::find(const key_type& key) const {
+    const auto* p = static_cast<KVType*>(data_);
+    for (size_t i = 0; i < size(); ++i) {
+        if (key == p[i].first) {
+            return iterator(i, this);
+        }
+    }
+
+    return end();
+}
+
+MapObj<SmallMapObj>::value_type& SmallMapObj::at(const key_type& key) {
+    const auto iter = find(key);
+    if (iter == end()) {
+        AETHERMIND_THROW(KeyError) << "key is not int map.";
+    }
+    return iter->second;
+}
+
+const MapObj<SmallMapObj>::value_type& SmallMapObj::at(const key_type& key) const {
+    const auto iter = find(key);
+    if (iter == end()) {
+        AETHERMIND_THROW(KeyError) << "key is not int map.";
+    }
+    return iter->second;
+}
+
 ObjectPtr<SmallMapObj> SmallMapObj::CreateSmallMap(size_t n) {
     CHECK(n <= kMaxSize);
     auto impl = make_array_object<SmallMapObj, KVType>(n);
@@ -51,6 +78,60 @@ ObjectPtr<SmallMapObj> SmallMapObj::CreateSmallMap(size_t n) {
     impl->slots_ = n & ~kSmallMapMask | kSmallMapMask;
     return impl;
 }
+
+ObjectPtr<SmallMapObj> SmallMapObj::CopyFrom(const SmallMapObj* src) {
+    const auto* first = static_cast<KVType*>(src->data_);
+    const auto* last = first + src->size();
+    return CreateSmallMapFromRange(first, last);
+}
+
+void SmallMapObj::insert(const KVType& kv) {
+    if (const auto iter = find(kv.first); iter != end()) {
+        iter->second = kv.second;
+        return;
+    }
+
+    if (size() < slots()) {
+        auto* p = static_cast<KVType*>(data_) + size();
+        new (p) KVType(kv);
+        ++size_;
+        return;
+    }
+
+    size_t new_cap = std::min(kMaxSize, std::max(2 * slots(), kInitSize));
+
+}
+
+
+void SmallMapObj::erase(const iterator& pos) {
+    const auto idx = pos.index();
+    if (idx >= size()) {
+        return;
+    }
+
+    auto* p = static_cast<KVType*>(data_);
+    p[idx].~KVType();
+
+    auto n = size() - idx - 1;
+    auto from = idx + 1;
+    auto to = idx;
+    for (size_t i = 0; i < n; ++i) {
+        p[to] = std::move(p[from]);
+        ++to;
+        ++from;
+    }
+
+    size_ -= 1;
+}
+
+
+SmallMapObj::~SmallMapObj() {
+    auto* p = static_cast<KVType*>(data_);
+    for (size_t i = 0; i < size(); ++i) {
+        p[i].~KVType();
+    }
+}
+
 
 struct DenseMapObj::Entry {
     KVType data{};

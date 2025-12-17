@@ -64,8 +64,12 @@ public:
 
     iterator() : index_(0), ptr_(nullptr) {}
 
+    NODISCARD size_t index() const {
+        return index_;
+    }
+
     pointer operator->() const {
-        const auto* p = static_cast<Derived*>(ptr_);
+        const auto* p = static_cast<const Derived*>(ptr_);
         return p->DeRefIter(index_);
     }
 
@@ -117,6 +121,30 @@ protected:
 
 class SmallMapObj : public MapObj<SmallMapObj> {
 public:
+    iterator begin() const {
+        return iterator(0, this);
+    }
+
+    iterator end() const {
+        return iterator(size(), this);
+    }
+
+    value_type& at(const key_type& key);
+
+    const value_type& at(const key_type& key) const;
+
+    iterator find(const key_type& key) const;
+
+    size_t count(const key_type& key) const {
+        return find(key).index() < size();
+    }
+
+    void insert(const KVType& kv);
+
+    void erase(const iterator& pos);
+
+    ~SmallMapObj() override;
+
 private:
     static constexpr size_t kInitSize = 2;
     static constexpr size_t kMaxSize = 4;
@@ -135,6 +163,8 @@ private:
 
     static ObjectPtr<SmallMapObj> CreateSmallMap(size_t n = kInitSize);
 
+    static ObjectPtr<SmallMapObj> CopyFrom(const SmallMapObj* src);
+
     template<typename Iter>
         requires requires(Iter t) {
             { *t } -> std::convertible_to<KVType>;
@@ -149,6 +179,8 @@ private:
         return impl;
     }
 
+    template<typename Derived>
+    friend class MapObj;
     friend class DenseMapObj;
 };
 

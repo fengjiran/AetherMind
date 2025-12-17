@@ -85,6 +85,33 @@ ObjectPtr<SmallMapObj> SmallMapObj::CopyFrom(const SmallMapObj* src) {
     return CreateSmallMapFromRange(first, last);
 }
 
+void SmallMapObj::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_impl) {
+    auto* map = static_cast<SmallMapObj*>(old_impl->get());
+    if (const auto iter = map->find(kv.first); iter != map->end()) {
+        iter->second = kv.second;
+        return;
+    }
+
+    if (map->size() < map->slots()) {
+        auto* p = static_cast<KVType*>(map->data_) + map->size();
+        new (p) KVType(kv);
+        ++map->size_;
+        return;
+    }
+
+    size_t new_cap = std::min(kMaxSize, std::max(2 * map->slots(), kInitSize));
+    auto new_impl = CreateSmallMap(new_cap);
+    auto* src = static_cast<KVType*>(map->data_);
+    auto* dst = static_cast<KVType*>(new_impl->data_);
+    for (size_t i = 0; i < map->size(); ++i) {
+        new (dst++) KVType(std::move(*src++));
+        ++new_impl->size_;
+    }
+    new (dst) KVType(kv);
+    ++new_impl->size_;
+    *old_impl = std::move(new_impl);
+}
+
 void SmallMapObj::insert(const KVType& kv) {
     if (const auto iter = find(kv.first); iter != end()) {
         iter->second = kv.second;
@@ -99,7 +126,6 @@ void SmallMapObj::insert(const KVType& kv) {
     }
 
     size_t new_cap = std::min(kMaxSize, std::max(2 * slots(), kInitSize));
-
 }
 
 

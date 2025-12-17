@@ -179,6 +179,8 @@ private:
         return impl;
     }
 
+    static void InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_impl);
+
     template<typename Derived>
     friend class MapObj;
     friend class DenseMapObj;

@@ -7,6 +7,7 @@
 
 #include "any.h"
 #include "container/container_utils.h"
+#include "map.h"
 #include "object.h"
 
 namespace aethermind {
@@ -39,33 +40,30 @@ public:
     }
 
     NODISCARD size_t count(const key_type& key) const {
-        const auto* p = static_cast<Derived*>(this);
-        return p->count_impl(key);
+        return static_cast<const Derived*>(this)->count_impl(key);
     }
 
     value_type& at(const key_type& key) {
-        auto* p = static_cast<Derived*>(this);
-        return p->at_impl(key);
+        // auto* p = static_cast<Derived*>(this);
+        return static_cast<Derived*>(this)->at_impl(key);
     }
 
     NODISCARD const value_type& at(const key_type& key) const {
-        const auto* p = static_cast<const Derived*>(this);
-        return p->at_impl(key);
+        // const auto* p = static_cast<const Derived*>(this);
+        return static_cast<const Derived*>(this)->at_impl(key);
     }
 
     NODISCARD iterator begin() const {
-        const auto* p = static_cast<const Derived*>(this);
-        return p->begin_impl();
+        return static_cast<const Derived*>(this)->begin_impl();
     }
 
     NODISCARD iterator end() const {
-        const auto* p = static_cast<const Derived*>(this);
-        return p->end_impl();
+        return static_cast<const Derived*>(this)->end_impl();
     }
 
     NODISCARD iterator find(const key_type& key) const {
-        const auto* p = static_cast<const Derived*>(this);
-        return p->find_impl(key);
+        // const auto* p = static_cast<const Derived*>(this);
+        return static_cast<const Derived*>(this)->find_impl(key);
     }
 
     NODISCARD bool IsSmallMap() const {
@@ -75,8 +73,6 @@ public:
     NODISCARD bool IsDenseMap() const {
         return (slots_ & kSmallMapMask) == 0ull;
     }
-
-    static ObjectPtr<MapImpl> Create(size_t n);
 
     // Small map mask, the most significant bit is used to indicate the small map layout.
     static constexpr size_t kSmallMapMask = static_cast<size_t>(1) << 63;
@@ -97,6 +93,8 @@ public:
     using difference_type = int64_t;
 
     iterator() : index_(0), ptr_(nullptr) {}
+
+    iterator(size_t index, const MapImpl* ptr) : index_(index), ptr_(ptr) {}
 
     NODISCARD size_t index() const {
         return index_;
@@ -147,7 +145,6 @@ protected:
     size_t index_;      // The position in the array.
     const MapImpl* ptr_;// The container it pointer to.
 
-    iterator(size_t index, const MapImpl* ptr) : index_(index), ptr_(ptr) {}
 
     friend class SmallMapImpl;
     friend class DenseMapImpl;
@@ -155,23 +152,9 @@ protected:
 
 class SmallMapImpl : public MapImpl<SmallMapImpl> {
 public:
-    NODISCARD iterator begin_impl() const {
-        return {0, this};
-    }
-
-    NODISCARD iterator end_impl() const {
-        return {size(), this};
-    }
-
     value_type& at_impl(const key_type& key);
 
     NODISCARD const value_type& at_impl(const key_type& key) const;
-
-    NODISCARD iterator find_impl(const key_type& key) const;
-
-    NODISCARD size_t count_impl(const key_type& key) const {
-        return find_impl(key).index() < size();
-    }
 
     void erase(const iterator& pos);
 
@@ -180,6 +163,20 @@ public:
 private:
     static constexpr size_t kInitSize = 2;
     static constexpr size_t kMaxSize = 4;
+
+    NODISCARD iterator begin_impl() const {
+        return {0, this};
+    }
+
+    NODISCARD iterator end_impl() const {
+        return {size(), this};
+    }
+
+    NODISCARD iterator find_impl(const key_type& key) const;
+
+    NODISCARD size_t count_impl(const key_type& key) const {
+        return find(key).index() < size();
+    }
 
     NODISCARD KVType* DeRefIter(size_t index) const {
         return static_cast<KVType*>(data_) + index;
@@ -193,7 +190,7 @@ private:
         return index > 0 ? index - 1 : size_;
     }
 
-    static ObjectPtr<SmallMapImpl> CreateSmallMap(size_t n = kInitSize);
+    static ObjectPtr<SmallMapImpl> CreateImpl(size_t n = kInitSize);
 
     static ObjectPtr<SmallMapImpl> CopyFrom(const SmallMapImpl* src);
 
@@ -203,7 +200,7 @@ private:
         }
     static ObjectPtr<SmallMapImpl> CreateSmallMapFromRange(Iter first, Iter last) {
         const auto n = std::distance(first, last);
-        auto impl = CreateSmallMap(n);
+        auto impl = CreateImpl(n);
         auto* ptr = static_cast<KVType*>(impl->data_);
         while (first != last) {
             new (ptr++) KVType(*first++);
@@ -216,6 +213,8 @@ private:
     template<typename Derived>
     friend class MapImpl;
     friend class DenseMapImpl;
+    template<typename K, typename V>
+    friend class Map;
 };
 
 
@@ -289,15 +288,7 @@ public:
         return At(key);
     }
 
-    NODISCARD iterator begin_impl() const {
-        return {iter_list_head_, this};
-    }
-
-    NODISCARD iterator end_impl() const {
-        return {kInvalidIndex, this};
-    }
-
-    iterator find_impl(const key_type& key) const;
+    NODISCARD iterator find_impl(const key_type& key) const;
 
     void erase(const iterator& pos);
 
@@ -332,9 +323,14 @@ private:
     // The tail of iterator list
     size_t iter_list_tail_ = kInvalidIndex;
 
-    static size_t ComputeBlockNum(size_t slots) {
-        return (slots + kBlockSize - 1) / kBlockSize;
+    NODISCARD iterator begin_impl() const {
+        return {iter_list_head_, this};
     }
+
+    NODISCARD iterator end_impl() const {
+        return {kInvalidIndex, this};
+    }
+
 
     NODISCARD Block* GetBlock(size_t block_idx) const;
 
@@ -407,20 +403,51 @@ private:
 
     static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
 
+    static size_t ComputeBlockNum(size_t slots) {
+        return (slots + kBlockSize - 1) / kBlockSize;
+    }
+
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     // shift = 64 - log2(slots)
     static std::pair<uint32_t, size_t> ComputeTableSize(size_t cap);
 
-    static ObjectPtr<DenseMapImpl> CreateDenseMap(uint32_t fib_shift, size_t slots);
+    static ObjectPtr<DenseMapImpl> CreateImpl(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);
+
+    template<typename Derived>
+    friend class MapImpl;
+    template<typename K, typename V>
+    friend class Map;
 };
 
 template<typename K, typename V>
 class Map : public ObjectRef {
 public:
+    Map() : impl_(SmallMapImpl::CreateImpl()) {}
+
+    NODISCARD size_t size() const {
+        if (auto* p = dynamic_cast<SmallMapImpl*>(impl_.get())) {
+            return p->size();
+        }
+
+        return dynamic_cast<DenseMapImpl*>(impl_.get())->size();
+    }
+
+    NODISCARD bool empty() const {
+        return size() == 0;
+    }
+
 private:
     ObjectPtr<Object> impl_;
+
+    decltype(auto) GetMapImpl() const {
+        if (auto* p = dynamic_cast<SmallMapImpl*>(impl_.get())) {
+            return p;
+        }
+
+        return dynamic_cast<DenseMapImpl*>(impl_.get());
+    }
 };
 
 }// namespace aethermind

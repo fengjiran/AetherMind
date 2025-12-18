@@ -10,30 +10,30 @@ MapImpl<SmallMapImpl>::iterator SmallMapImpl::find_impl(const key_type& key) con
     const auto* p = static_cast<KVType*>(data_);
     for (size_t i = 0; i < size(); ++i) {
         if (key == p[i].first) {
-            return iterator(i, this);
+            return {i, this};
         }
     }
 
-    return end_impl();
+    return end();
 }
 
 MapImpl<SmallMapImpl>::value_type& SmallMapImpl::at_impl(const key_type& key) {
-    const auto iter = find_impl(key);
-    if (iter == end_impl()) {
+    const auto iter = find(key);
+    if (iter == end()) {
         AETHERMIND_THROW(KeyError) << "key is not int map.";
     }
     return iter->second;
 }
 
 const MapImpl<SmallMapImpl>::value_type& SmallMapImpl::at_impl(const key_type& key) const {
-    const auto iter = find_impl(key);
-    if (iter == end_impl()) {
+    const auto iter = find(key);
+    if (iter == end()) {
         AETHERMIND_THROW(KeyError) << "key is not int map.";
     }
     return iter->second;
 }
 
-ObjectPtr<SmallMapImpl> SmallMapImpl::CreateSmallMap(size_t n) {
+ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {
     CHECK(n <= kMaxSize);
     auto impl = make_array_object<SmallMapImpl, KVType>(n);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapImpl);
@@ -50,7 +50,7 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFrom(const SmallMapImpl* src) {
 
 ObjectPtr<Object> SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<SmallMapImpl*>(old_impl.get());
-    if (const auto iter = map->find_impl(kv.first); iter != map->end_impl()) {
+    if (const auto iter = map->find(kv.first); iter != map->end()) {
         iter->second = kv.second;
         return old_impl;
     }
@@ -63,7 +63,7 @@ ObjectPtr<Object> SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Ob
     }
 
     size_t new_cap = std::min(kMaxSize, std::max(2 * map->slots(), kInitSize));
-    auto new_impl = CreateSmallMap(new_cap);
+    auto new_impl = CreateImpl(new_cap);
     auto* src = static_cast<KVType*>(map->data_);
     auto* dst = static_cast<KVType*>(new_impl->data_);
     for (size_t i = 0; i < map->size(); ++i) {
@@ -275,7 +275,7 @@ public:
         return prev;
     }
 
-    std::optional<std::pair<uint8_t, ListNode>> GetNextEmptySlot() const {
+    NODISCARD std::optional<std::pair<uint8_t, ListNode>> GetNextEmptySlot() const {
         for (uint8_t i = 1; i < kNumOffsetDists; ++i) {
             if (ListNode candidate((index() + NextProbePosOffset[i]) % obj()->slots(), obj());
                 candidate.IsEmpty()) {
@@ -300,7 +300,7 @@ size_t DenseMapImpl::count_impl(const key_type& key) const {
 
 MapImpl<DenseMapImpl>::iterator DenseMapImpl::find_impl(const key_type& key) const {
     ListNode node = Search(key);
-    return node.IsNone() ? end_impl() : iterator(node.index(), this);
+    return node.IsNone() ? end() : iterator(node.index(), this);
 }
 
 void DenseMapImpl::erase(const iterator& pos) {
@@ -646,7 +646,7 @@ ObjectPtr<Object> DenseMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Ob
     }
 
     // Otherwise, start rehash
-    auto new_impl = CreateDenseMap(map->fib_shift_ - 1, map->slots() * 2);
+    auto new_impl = CreateImpl(map->fib_shift_ - 1, map->slots() * 2);
 
     // need to insert in the same order as the original map
     size_t idx = map->iter_list_head_;
@@ -685,7 +685,7 @@ std::pair<uint32_t, size_t> DenseMapImpl::ComputeTableSize(size_t cap) {
     return {shift, slots};
 }
 
-ObjectPtr<DenseMapImpl> DenseMapImpl::CreateDenseMap(uint32_t fib_shift, size_t slots) {
+ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(uint32_t fib_shift, size_t slots) {
     CHECK(slots > SmallMapImpl::kMaxSize);
     CHECK((slots & kSmallMapMask) == 0ull);
     const size_t block_num = ComputeBlockNum(slots);

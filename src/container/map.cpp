@@ -246,13 +246,13 @@ public:
     }
 
     // Construct a head of linked list inplace.
-    void NewHead(Entry entry) const {
+    void CreateHead(Entry entry) const {
         GetMeta() = 0x00;
         GetEntry() = std::move(entry);
     }
 
     // Construct a tail of linked list inplace
-    void NewTail(Entry entry) const {
+    void CreateTail(Entry entry) const {
         GetMeta() = 0x80;
         GetEntry() = std::move(entry);
     }
@@ -469,7 +469,7 @@ bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNo
 
         // move `r` to `empty`
         // first move the data over
-        empty.NewTail(Entry(std::move(r.GetData())));
+        empty.CreateTail(Entry(std::move(r.GetData())));
         // then move link list chain of r to empty
         // this needs to happen after NewTail so empty's prev/next get updated
         IterListReplaceNodeBy(r, empty);
@@ -490,24 +490,27 @@ bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNo
 
     // finally, we have done moving the linked list
     // fill data_ into `target`
-    target.NewHead(Entry(key, value_type(nullptr)));
+    target.CreateHead(Entry(key, value_type(nullptr)));
     size_ += 1;
     *result = target;
     return true;
 }
 
 bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
-    if (slots_ == 0) {
+    if (slots() == 0) {
         return false;
     }
 
-    // required that `iter` to be the head of a linked list through which we can iterator
+    // required that `iter` to be the head of a linked list through which we can iterator.
+    // `iter` can be:
+    // 1) empty;
+    // 2) body of an irrelevant list;
+    // 3) head of the relevant list
     ListNode iter = IndexFromHash(AnyHash()(key));
-    // `iter` can be: 1) empty; 2) body of an irrelevant list; 3) head of the relevant list
 
     // Case 1: empty
     if (iter.IsEmpty()) {
-        iter.NewHead(Entry(key, value_type(nullptr)));
+        iter.CreateHead(Entry(key, value_type(nullptr)));
         size_ += 1;
         *result = iter;
         return true;
@@ -515,13 +518,13 @@ bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
 
     // Case 2: body of an irrelevant list
     if (!iter.IsHead()) {
-        // we move the elements around and construct the single-element linked list
+        // Move the elements around and construct the single-element linked list
         return IsFull() ? false : TrySpareListHead(iter, key, result);
     }
 
     // Case 3: head of the relevant list
     // we iterate through the linked list until the end
-    // make sure `iter` is the previous element of `cur`
+    // make sure `iter` is the prev element of `cur`
     ListNode cur = iter;
     do {
         // find equal item, do not insert
@@ -547,31 +550,30 @@ bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
         return false;
     }
 
-    result->NewTail(Entry(key, value_type(nullptr)));
+    result->CreateTail(Entry(key, value_type(nullptr)));
     // link `iter` to `empty`, and move forward
     iter.SetOffset(offset_idx);
     size_ += 1;
     return true;
 }
 
-void DenseMapImpl::ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots) {
+std::pair<uint32_t, size_t> DenseMapImpl::ComputeTableSize(size_t cap) {
     uint32_t shift = 64;
     size_t slots = 1;
     size_t c = cap;
     while (c > 0) {
-        shift -= 1;
+        --shift;
         slots <<= 1;
         c >>= 1;
     }
     CHECK(slots > cap);
 
     if (slots < 2 * cap) {
-        *fib_shift = shift - 1;
-        *n_slots = slots << 1;
-    } else {
-        *fib_shift = shift;
-        *n_slots = slots;
+        --shift;
+        slots <<= 1;
     }
+
+    return {shift, slots};
 }
 
 ObjectPtr<DenseMapImpl> DenseMapImpl::CreateDenseMap(uint32_t fib_shift, size_t slots) {

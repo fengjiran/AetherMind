@@ -376,7 +376,7 @@ private:
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     // shift = 64 - log2(slots)
-    static void ComputeTableSize(size_t cap, uint32_t* fib_shift, size_t* n_slots);
+    static std::pair<uint32_t, size_t> ComputeTableSize(size_t cap);
 
     static ObjectPtr<DenseMapImpl> CreateDenseMap(uint32_t fib_shift, size_t slots);
 

@@ -303,6 +303,45 @@ MapImpl<DenseMapImpl>::iterator DenseMapImpl::find(const key_type& key) const {
     return node.IsNone() ? end() : iterator(node.index(), this);
 }
 
+void DenseMapImpl::erase(const iterator& pos) {
+    const auto idx = pos.index();
+    if (pos.ptr_ == nullptr || idx >= size()) {
+        return;
+    }
+
+    ListNode node(idx, this);
+    if (node.HasNext()) {
+        ListNode prev = node;
+        ListNode last = node;
+        last.MoveToNext();
+        while (last.HasNext()) {
+            prev = last;
+            last.MoveToNext();
+        }
+
+        // needs to first unlink node from the list
+        IterListUnlink(node);
+        // move data from last to node
+        node.GetData() = std::move(last.GetData());
+        // Move link chain of iter to last as we stores last node to the new iter loc.
+        IterListReplaceNodeBy(last, node);
+        last.DestructData();
+        last.SetEmpty();
+        prev.SetOffset(0);
+    } else {// the last node
+        if (!node.IsHead()) {
+            // cut the link if there is any
+            node.FindPrev().SetOffset(0);
+        }
+        // unlink the node from iterator list
+        IterListUnlink(node);
+        node.DestructData();
+        node.SetEmpty();
+    }
+    size_ -= 1;
+}
+
+
 DenseMapImpl::Block* DenseMapImpl::GetBlock(size_t block_idx) const {
     return static_cast<Block*>(data_) + block_idx;
 }
@@ -614,7 +653,7 @@ ObjectPtr<Object> DenseMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Ob
     while (idx != kInvalidIndex) {
         ListNode node(idx, map);
         auto opt = new_impl->TryInsert(node.GetKey());
-        opt->GetValue() = node.GetValue();
+        opt->GetValue() = std::move(node.GetValue());
         new_impl->IterListPushBack(opt.value());
         idx = node.GetEntry().next;
     }

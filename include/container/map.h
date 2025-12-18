@@ -8,7 +8,6 @@
 #include "any.h"
 #include "container/container_utils.h"
 #include "object.h"
-#include "object_allocator.h"
 
 namespace aethermind {
 
@@ -39,6 +38,36 @@ public:
         return size() == 0;
     }
 
+    NODISCARD size_t count(const key_type& key) const {
+        const auto* p = static_cast<Derived*>(this);
+        return p->count_impl(key);
+    }
+
+    value_type& at(const key_type& key) {
+        auto* p = static_cast<Derived*>(this);
+        return p->at_impl(key);
+    }
+
+    NODISCARD const value_type& at(const key_type& key) const {
+        const auto* p = static_cast<const Derived*>(this);
+        return p->at_impl(key);
+    }
+
+    NODISCARD iterator begin() const {
+        const auto* p = static_cast<const Derived*>(this);
+        return p->begin_impl();
+    }
+
+    NODISCARD iterator end() const {
+        const auto* p = static_cast<const Derived*>(this);
+        return p->end_impl();
+    }
+
+    NODISCARD iterator find(const key_type& key) const {
+        const auto* p = static_cast<const Derived*>(this);
+        return p->find_impl(key);
+    }
+
     NODISCARD bool IsSmallMap() const {
         return !IsDenseMap();
     }
@@ -46,6 +75,8 @@ public:
     NODISCARD bool IsDenseMap() const {
         return (slots_ & kSmallMapMask) == 0ull;
     }
+
+    static ObjectPtr<MapImpl> Create(size_t n);
 
     // Small map mask, the most significant bit is used to indicate the small map layout.
     static constexpr size_t kSmallMapMask = static_cast<size_t>(1) << 63;
@@ -124,22 +155,22 @@ protected:
 
 class SmallMapImpl : public MapImpl<SmallMapImpl> {
 public:
-    NODISCARD iterator begin() const {
+    NODISCARD iterator begin_impl() const {
         return {0, this};
     }
 
-    NODISCARD iterator end() const {
+    NODISCARD iterator end_impl() const {
         return {size(), this};
     }
 
-    value_type& at(const key_type& key);
+    value_type& at_impl(const key_type& key);
 
-    NODISCARD const value_type& at(const key_type& key) const;
+    NODISCARD const value_type& at_impl(const key_type& key) const;
 
-    NODISCARD iterator find(const key_type& key) const;
+    NODISCARD iterator find_impl(const key_type& key) const;
 
-    NODISCARD size_t count(const key_type& key) const {
-        return find(key).index() < size();
+    NODISCARD size_t count_impl(const key_type& key) const {
+        return find_impl(key).index() < size();
     }
 
     void erase(const iterator& pos);
@@ -248,25 +279,25 @@ private:
  */
 class DenseMapImpl : public MapImpl<DenseMapImpl> {
 public:
-    NODISCARD size_t count(const key_type& key) const;
+    NODISCARD size_t count_impl(const key_type& key) const;
 
-    NODISCARD value_type& at(const key_type& key) {
+    NODISCARD value_type& at_impl(const key_type& key) {
         return At(key);
     }
 
-    NODISCARD const value_type& at(const key_type& key) const {
+    NODISCARD const value_type& at_impl(const key_type& key) const {
         return At(key);
     }
 
-    NODISCARD iterator begin() const {
+    NODISCARD iterator begin_impl() const {
         return {iter_list_head_, this};
     }
 
-    NODISCARD iterator end() const {
+    NODISCARD iterator end_impl() const {
         return {kInvalidIndex, this};
     }
 
-    iterator find(const key_type& key) const;
+    iterator find_impl(const key_type& key) const;
 
     void erase(const iterator& pos);
 

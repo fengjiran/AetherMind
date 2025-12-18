@@ -142,8 +142,6 @@ public:
         return find(key).index() < size();
     }
 
-    void insert(const KVType& kv);
-
     void erase(const iterator& pos);
 
     ~SmallMapImpl() override;
@@ -182,7 +180,7 @@ private:
         return impl;
     }
 
-    static void InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_impl);
+    static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
 
     template<typename Derived>
     friend class MapImpl;
@@ -267,6 +265,8 @@ public:
     NODISCARD iterator end() const {
         return {kInvalidIndex, this};
     }
+
+    iterator find(const key_type& key) const;
 
     void erase(const iterator& pos);
 
@@ -361,18 +361,20 @@ private:
    * possible.
    * \param target The given entry to be spared
    * \param key The indexing key
-   * \param result The linked-list entry constructed as the head
-   * \return A boolean, if actual insertion happens
+   * \return The linked-list entry constructed as the head, if actual insertion happens
    */
-    bool TrySpareListHead(ListNode target, const key_type& key, ListNode* result);
+    // bool TrySpareListHead(ListNode target, const key_type& key, ListNode* result);
+    std::optional<ListNode> TrySpareListHead(ListNode target, const key_type& key);
 
     /*!
    * \brief Try to insert a key, or do nothing if already exists
    * \param key The indexing key
-   * \param result The linked-list entry found or just constructed
-   * \return A boolean, indicating if actual insertion happens
+   * \return The linked-list entry found or just constructed,indicating if actual insertion happens
    */
-    bool TryInsert(const key_type& key, ListNode* result);
+    // bool TryInsert(const key_type& key, ListNode* result);
+    std::optional<ListNode> TryInsert(const key_type& key);
+
+    static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     // shift = 64 - log2(slots)

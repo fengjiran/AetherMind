@@ -48,18 +48,18 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFrom(const SmallMapImpl* src) {
     return CreateSmallMapFromRange(first, last);
 }
 
-void SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_impl) {
-    auto* map = static_cast<SmallMapImpl*>(old_impl->get());
+ObjectPtr<Object> SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl) {
+    auto* map = static_cast<SmallMapImpl*>(old_impl.get());
     if (const auto iter = map->find(kv.first); iter != map->end()) {
         iter->second = kv.second;
-        return;
+        return old_impl;
     }
 
     if (map->size() < map->slots()) {
         auto* p = static_cast<KVType*>(map->data_) + map->size();
         new (p) KVType(kv);
         ++map->size_;
-        return;
+        return old_impl;
     }
 
     size_t new_cap = std::min(kMaxSize, std::max(2 * map->slots(), kInitSize));
@@ -72,25 +72,8 @@ void SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object>* old_im
     }
     new (dst) KVType(kv);
     ++new_impl->size_;
-    *old_impl = std::move(new_impl);
+    return new_impl;
 }
-
-void SmallMapImpl::insert(const KVType& kv) {
-    if (const auto iter = find(kv.first); iter != end()) {
-        iter->second = kv.second;
-        return;
-    }
-
-    if (size() < slots()) {
-        auto* p = static_cast<KVType*>(data_) + size();
-        new (p) KVType(kv);
-        ++size_;
-        return;
-    }
-
-    size_t new_cap = std::min(kMaxSize, std::max(2 * slots(), kInitSize));
-}
-
 
 void SmallMapImpl::erase(const iterator& pos) {
     const auto idx = pos.index();
@@ -263,11 +246,8 @@ public:
     }
 
     // Move to the next entry on the linked list
-    bool MoveToNext() {
-        return MoveToNext(GetMeta());
-    }
-
-    bool MoveToNext(uint8_t meta) {
+    bool MoveToNext(std::optional<uint8_t> meta_opt = std::nullopt) {
+        uint8_t meta = meta_opt ? meta_opt.value() : GetMeta();
         const auto offset = NextProbePosOffset[meta & 0x7F];
         if (offset == 0) {
             reset();
@@ -295,16 +275,14 @@ public:
         return prev;
     }
 
-    bool GetNextEmpty(uint8_t* offset_idx, ListNode* res) const {
+    std::optional<std::pair<uint8_t, ListNode>> GetNextEmptySlot() const {
         for (uint8_t i = 1; i < kNumOffsetDists; ++i) {
             if (ListNode candidate((index() + NextProbePosOffset[i]) % obj()->slots(), obj());
                 candidate.IsEmpty()) {
-                *offset_idx = i;
-                *res = candidate;
-                return true;
+                return std::make_pair(i, candidate);
             }
         }
-        return false;
+        return std::nullopt;
     }
 
 private:
@@ -320,6 +298,10 @@ size_t DenseMapImpl::count(const key_type& key) const {
     return !Search(key).IsNone();
 }
 
+MapImpl<DenseMapImpl>::iterator DenseMapImpl::find(const key_type& key) const {
+    ListNode node = Search(key);
+    return node.IsNone() ? end() : iterator(node.index(), this);
+}
 
 DenseMapImpl::Block* DenseMapImpl::GetBlock(size_t block_idx) const {
     return static_cast<Block*>(data_) + block_idx;
@@ -442,8 +424,63 @@ void DenseMapImpl::IterListReplaceNodeBy(ListNode src, ListNode dst) {
         next_node.GetEntry().prev = dst.index();
     }
 }
+//
+// bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNode* result) {
+//     // `target` is not the head of the linked list
+//     // move the original item of `target` (if any)
+//     // and construct new item on the position `target`
+//     // To make `target` empty, we
+//     // 1) find `w` the previous element of `target` in the linked list
+//     // 2) copy the linked list starting from `r = target`
+//     // 3) paste them after `w`
+//
+//     // read from the linked list after `r`
+//     ListNode r = target;
+//     // write to the tail of `w`
+//     ListNode w = target.FindPrev();
+//     // after `target` is moved, we disallow writing to the slot
+//     bool is_first = true;
+//     uint8_t r_meta;
+//
+//     do {
+//         auto empty_slot_info = w.GetNextEmptySlot();
+//         if (!empty_slot_info) {
+//             return false;
+//         }
+//
+//         uint8_t offset_idx = empty_slot_info->first;
+//         ListNode empty = empty_slot_info->second;
+//
+//         // move `r` to `empty`
+//         // first move the data over
+//         empty.CreateTail(Entry(std::move(r.GetData())));
+//         // then move link list chain of r to empty
+//         // this needs to happen after NewTail so empty's prev/next get updated
+//         IterListReplaceNodeBy(r, empty);
+//         // explicit call destructor to destroy the item in `r`
+//         r.DestructData();
+//         // clear the metadata of `r`
+//         r_meta = r.GetMeta();
+//         if (is_first) {
+//             is_first = false;
+//             r.SetProtected();
+//         } else {
+//             r.SetEmpty();
+//         }
+//         // link `w` to `empty`, and move forward
+//         w.SetOffset(offset_idx);
+//         w = empty;
+//     } while (r.MoveToNext(r_meta));// move `r` forward as well
+//
+//     // finally, we have done moving the linked list
+//     // fill data_ into `target`
+//     target.CreateHead(Entry(key, value_type(nullptr)));
+//     size_ += 1;
+//     *result = target;
+//     return true;
+// }
 
-bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNode* result) {
+std::optional<DenseMapImpl::ListNode> DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key) {
     // `target` is not the head of the linked list
     // move the original item of `target` (if any)
     // and construct new item on the position `target`
@@ -459,13 +496,15 @@ bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNo
     // after `target` is moved, we disallow writing to the slot
     bool is_first = true;
     uint8_t r_meta;
-    uint8_t offset_idx;
-    ListNode empty;
 
     do {
-        if (!w.GetNextEmpty(&offset_idx, &empty)) {
-            return false;
+        auto empty_slot_info = w.GetNextEmptySlot();
+        if (!empty_slot_info) {
+            return std::nullopt;
         }
+
+        uint8_t offset_idx = empty_slot_info->first;
+        ListNode empty = empty_slot_info->second;
 
         // move `r` to `empty`
         // first move the data over
@@ -492,34 +531,32 @@ bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNo
     // fill data_ into `target`
     target.CreateHead(Entry(key, value_type(nullptr)));
     size_ += 1;
-    *result = target;
-    return true;
+    return target;
 }
 
-bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
+std::optional<DenseMapImpl::ListNode> DenseMapImpl::TryInsert(const key_type& key) {
     if (slots() == 0) {
-        return false;
+        return std::nullopt;
     }
 
     // required that `iter` to be the head of a linked list through which we can iterator.
     // `iter` can be:
     // 1) empty;
     // 2) body of an irrelevant list;
-    // 3) head of the relevant list
+    // 3) head of the relevant list.
     ListNode iter = IndexFromHash(AnyHash()(key));
 
     // Case 1: empty
     if (iter.IsEmpty()) {
         iter.CreateHead(Entry(key, value_type(nullptr)));
         size_ += 1;
-        *result = iter;
-        return true;
+        return iter;
     }
 
     // Case 2: body of an irrelevant list
     if (!iter.IsHead()) {
         // Move the elements around and construct the single-element linked list
-        return IsFull() ? false : TrySpareListHead(iter, key, result);
+        return IsFull() ? std::nullopt : TrySpareListHead(iter, key);
     }
 
     // Case 3: head of the relevant list
@@ -531,8 +568,7 @@ bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
         if (key == cur.GetKey()) {
             // we plan to take next, so we need to unlink it from iterator list
             IterListUnlink(cur);
-            *result = cur;
-            return true;
+            return cur;
         }
         // make sure `iter` is the previous element of `cur`
         iter = cur;
@@ -541,21 +577,55 @@ bool DenseMapImpl::TryInsert(const key_type& key, ListNode* result) {
     // `iter` is the tail of the linked list
     // always check capacity before insertion
     if (IsFull()) {
-        return false;
+        return std::nullopt;
     }
 
     // find the next empty slot
-    uint8_t offset_idx;
-    if (!iter.GetNextEmpty(&offset_idx, result)) {
-        return false;
+    auto empty_slot_info = iter.GetNextEmptySlot();
+    if (!empty_slot_info) {
+        return std::nullopt;
     }
 
-    result->CreateTail(Entry(key, value_type(nullptr)));
+    uint8_t offset_idx = empty_slot_info->first;
+    ListNode empty = empty_slot_info->second;
+    empty.CreateTail(Entry(key, value_type(nullptr)));
     // link `iter` to `empty`, and move forward
     iter.SetOffset(offset_idx);
     size_ += 1;
-    return true;
+    return empty;
 }
+
+ObjectPtr<Object> DenseMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl) {
+    auto* map = static_cast<DenseMapImpl*>(old_impl.get());
+    CHECK(map->IsDenseMap());
+
+    if (auto opt = map->TryInsert(kv.first)) {
+        auto node = opt.value();
+        node.GetValue() = kv.second;
+        map->IterListPushBack(node);
+        return old_impl;
+    }
+
+    // Otherwise, start rehash
+    auto new_impl = CreateDenseMap(map->fib_shift_ - 1, map->slots() * 2);
+
+    // need to insert in the same order as the original map
+    size_t idx = map->iter_list_head_;
+    while (idx != kInvalidIndex) {
+        ListNode node(idx, map);
+        auto opt = new_impl->TryInsert(node.GetKey());
+        opt->GetValue() = node.GetValue();
+        new_impl->IterListPushBack(opt.value());
+        idx = node.GetEntry().next;
+    }
+
+    auto opt = new_impl->TryInsert(kv.first);
+    opt->GetValue() = kv.second;
+    new_impl->IterListPushBack(opt.value());
+
+    return new_impl;
+}
+
 
 std::pair<uint32_t, size_t> DenseMapImpl::ComputeTableSize(size_t cap) {
     uint32_t shift = 64;

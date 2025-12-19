@@ -6,8 +6,6 @@
 #define AETHERMIND_MAP_H
 
 #include "any.h"
-#include "container/container_utils.h"
-#include "object.h"
 
 namespace aethermind {
 
@@ -152,6 +150,7 @@ protected:
 
 class SmallMapImpl : public MapImpl<SmallMapImpl> {
 public:
+    SmallMapImpl() = default;
     ~SmallMapImpl() override;
 
 private:
@@ -275,6 +274,7 @@ private:
  */
 class DenseMapImpl : public MapImpl<DenseMapImpl> {
 public:
+    DenseMapImpl() = default;
     ~DenseMapImpl() override {
         reset();
     }
@@ -405,7 +405,7 @@ private:
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     // shift = 64 - log2(slots)
-    static std::pair<uint32_t, size_t> ComputeTableSize(size_t cap);
+    static std::pair<uint32_t, size_t> ComputeSlotNum(size_t cap);
 
     static ObjectPtr<DenseMapImpl> CreateImpl(uint32_t fib_shift, size_t slots);
 
@@ -442,7 +442,7 @@ ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
         return impl;
     }
 
-    auto [fib_shift, slots] = DenseMapImpl::ComputeTableSize(cap);
+    auto [fib_shift, slots] = DenseMapImpl::ComputeSlotNum(cap);
     ObjectPtr<Object> impl = DenseMapImpl::CreateImpl(fib_shift, slots);
     while (first != last) {
         impl = DenseMapImpl::InsertMaybeRehashImpl(KVType(*first++), impl);
@@ -463,16 +463,13 @@ ObjectPtr<Object> MapImpl<Derived>::CopyFrom(const Object* src) {
 template<typename Derived>
 ObjectPtr<Object> MapImpl<Derived>::insert(const KVType& kv, ObjectPtr<Object> old_impl) {
     if constexpr (std::is_same_v<Derived, SmallMapImpl>) {
-        auto* base = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
-        if (base->slots() < SmallMapImpl::kMaxSize) {
-            return SmallMapImpl::InsertMaybeRehashImpl(kv, old_impl);
-        }
-
-        if (base->slots() == SmallMapImpl::kMaxSize) {
-            if (base->size() < SmallMapImpl::kMaxSize) {
+        auto* p = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
+        if (p->slots() <= SmallMapImpl::kMaxSize) {
+            if (p->size() < SmallMapImpl::kMaxSize) {
                 return SmallMapImpl::InsertMaybeRehashImpl(kv, old_impl);
             }
-            auto new_impl = CreateFromRange(base->begin(), base->end());
+
+            const auto new_impl = CreateFromRange(p->begin(), p->end());
             return DenseMapImpl::InsertMaybeRehashImpl(kv, new_impl);
         }
         return old_impl;

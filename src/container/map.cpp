@@ -580,7 +580,7 @@ std::optional<DenseMapImpl::ListNode> DenseMapImpl::TryInsert(const key_type& ke
 }
 
 ObjectPtr<Object> DenseMapImpl::InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
-    auto* map = static_cast<DenseMapImpl*>(old_impl.get());
+    auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT
 
     if (auto opt = map->TryInsert(kv.first)) {
         auto node = opt.value();
@@ -610,7 +610,7 @@ ObjectPtr<Object> DenseMapImpl::InsertMaybeRehashImpl(const KVType& kv, ObjectPt
 }
 
 
-std::pair<uint32_t, size_t> DenseMapImpl::ComputeTableSize(size_t cap) {
+std::pair<uint32_t, size_t> DenseMapImpl::ComputeSlotNum(size_t cap) {
     uint32_t shift = 64;
     size_t slots = 1;
     size_t c = cap;

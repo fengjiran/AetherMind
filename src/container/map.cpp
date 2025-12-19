@@ -45,7 +45,7 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {
 ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFromImpl(const SmallMapImpl* src) {
     const auto* first = static_cast<KVType*>(src->data_);
     const auto* last = first + src->size();
-    return CreateFromRange(first, last);
+    return CreateFromRangeImpl(first, last);
 }
 
 ObjectPtr<Object> SmallMapImpl::InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl) {

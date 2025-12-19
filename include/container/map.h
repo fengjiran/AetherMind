@@ -69,6 +69,9 @@ protected:
     size_t size_;
     size_t slots_;
 
+    static constexpr size_t kInitSize = 2; // Init map size
+    static constexpr size_t kThreshold = 4; // The threshold of the small and dense map
+
     template<typename Iter>
         requires requires(Iter t) {
             { *t } -> std::convertible_to<KVType>;
@@ -154,8 +157,6 @@ public:
     ~SmallMapImpl() override;
 
 private:
-    static constexpr size_t kInitSize = 2;
-    static constexpr size_t kMaxSize = 4;
 
     NODISCARD iterator begin_impl() const {
         return {0, this};
@@ -189,14 +190,14 @@ private:
         return index > 0 ? index - 1 : size_;
     }
 
-    static ObjectPtr<SmallMapImpl> CreateImpl(size_t n = kInitSize);
+    static ObjectPtr<SmallMapImpl> Create(size_t n = kInitSize);
 
     static ObjectPtr<SmallMapImpl> CopyFromImpl(const SmallMapImpl* src);
 
     template<typename Iter>
     static ObjectPtr<SmallMapImpl> CreateFromRangeImpl(Iter first, Iter last) {
         const auto n = std::distance(first, last);
-        auto impl = CreateImpl(n);
+        auto impl = Create(n);
         auto* ptr = static_cast<KVType*>(impl->data_);
         while (first != last) {
             new (ptr++) KVType(*first++);
@@ -204,7 +205,7 @@ private:
         return impl;
     }
 
-    static ObjectPtr<Object> InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl);
+    static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
 
     template<typename Derived>
     friend class MapImpl;
@@ -397,7 +398,7 @@ private:
     // bool TryInsert(const key_type& key, ListNode* result);
     std::optional<ListNode> TryInsert(const key_type& key);
 
-    static ObjectPtr<Object> InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl);
+    static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
 
     static size_t ComputeBlockNum(size_t slots) {
         return (slots + kBlockSize - 1) / kBlockSize;
@@ -407,7 +408,7 @@ private:
     // shift = 64 - log2(slots)
     static std::pair<uint32_t, size_t> ComputeSlotNum(size_t cap);
 
-    static ObjectPtr<DenseMapImpl> CreateImpl(uint32_t fib_shift, size_t slots);
+    static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFromImpl(const DenseMapImpl* src);
 
@@ -425,27 +426,27 @@ template<typename Iter>
 ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
     const int64_t _cap = std::distance(first, last);
     if (_cap <= 0) {
-        return SmallMapImpl::CreateImpl();
+        return SmallMapImpl::Create();
     }
 
     auto cap = static_cast<size_t>(_cap);
-    if (cap < SmallMapImpl::kMaxSize) {
-        if (cap < SmallMapImpl::kInitSize) {
+    if (cap < kThreshold) {
+        if (cap < kInitSize) {
             return SmallMapImpl::CreateFromRangeImpl(first, last);
         }
 
         // need to insert to avoid duplicate keys
-        ObjectPtr<Object> impl = SmallMapImpl::CreateImpl(cap);
+        ObjectPtr<Object> impl = SmallMapImpl::Create(cap);
         while (first != last) {
-            impl = SmallMapImpl::InsertMaybeRehashImpl(KVType(*first++), impl);
+            impl = SmallMapImpl::InsertMaybeRehash(KVType(*first++), impl);
         }
         return impl;
     }
 
     auto [fib_shift, slots] = DenseMapImpl::ComputeSlotNum(cap);
-    ObjectPtr<Object> impl = DenseMapImpl::CreateImpl(fib_shift, slots);
+    ObjectPtr<Object> impl = DenseMapImpl::Create(fib_shift, slots);
     while (first != last) {
-        impl = DenseMapImpl::InsertMaybeRehashImpl(KVType(*first++), impl);
+        impl = DenseMapImpl::InsertMaybeRehash(KVType(*first++), impl);
     }
     return impl;
 }
@@ -464,39 +465,31 @@ template<typename Derived>
 ObjectPtr<Object> MapImpl<Derived>::insert(const KVType& kv, ObjectPtr<Object> old_impl) {
     if constexpr (std::is_same_v<Derived, SmallMapImpl>) {
         auto* p = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
-        if (p->slots() <= SmallMapImpl::kMaxSize) {
-            if (p->size() < SmallMapImpl::kMaxSize) {
-                return SmallMapImpl::InsertMaybeRehashImpl(kv, old_impl);
+        if (p->slots() <= kThreshold) {
+            if (p->size() < kThreshold) {
+                return SmallMapImpl::InsertMaybeRehash(kv, old_impl);
             }
 
             const auto new_impl = CreateFromRange(p->begin(), p->end());
-            return DenseMapImpl::InsertMaybeRehashImpl(kv, new_impl);
+            return DenseMapImpl::InsertMaybeRehash(kv, new_impl);
         }
         return old_impl;
     }
 
-    return DenseMapImpl::InsertMaybeRehashImpl(kv, old_impl);
+    return DenseMapImpl::InsertMaybeRehash(kv, old_impl);
 }
 
 template<typename K, typename V>
 class Map : public ObjectRef {
 public:
-    Map() : impl_(SmallMapImpl::CreateImpl()) {}
+    Map() : impl_(SmallMapImpl::Create()) {}
 
     NODISCARD size_t size() const {
-        if (auto* p = dynamic_cast<SmallMapImpl*>(impl_.get())) {
-            return p->size();
-        }
-
-        return dynamic_cast<DenseMapImpl*>(impl_.get())->size();
+        return IsSmallMap() ? small_ptr()->size() : dense_ptr()->size();
     }
 
     NODISCARD size_t slots() const {
-        if (auto* p = dynamic_cast<SmallMapImpl*>(impl_.get())) {
-            return p->slots();
-        }
-
-        return dynamic_cast<DenseMapImpl*>(impl_.get())->slots();
+        return IsSmallMap() ? small_ptr()->slots() : dense_ptr()->slots();
     }
 
     NODISCARD bool empty() const {
@@ -505,19 +498,11 @@ public:
 
     void insert(const K& key, const V& value) {
         std::pair<Any, Any> data(key, value);
-        if (dynamic_cast<SmallMapImpl*>(impl_.get())) {
-            impl_ = SmallMapImpl::insert(data, impl_);
-        } else {
-            impl_ = DenseMapImpl::insert(data, impl_);
-        }
+        impl_ = IsSmallMap() ? SmallMapImpl::insert(data, impl_) : DenseMapImpl::insert(data, impl_);
     }
 
     V at(const K& key) const {
-        if (auto* p = dynamic_cast<SmallMapImpl*>(impl_.get())) {
-            return p->at(key).template cast<V>();
-        }
-
-        return dynamic_cast<DenseMapImpl*>(impl_.get())->at(key).template cast<V>();
+        return IsSmallMap() ? small_ptr()->at(key).template cast<V>() : dense_ptr()->at(key).template cast<V>();
     }
 
     V operator[](const K& key) const {
@@ -525,11 +510,19 @@ public:
     }
 
     NODISCARD bool IsSmallMap() const {
-        return dynamic_cast<SmallMapImpl*>(impl_.get());
+        return dynamic_cast<SmallMapImpl*>(impl_.get()) != nullptr;
     }
 
 private:
     ObjectPtr<Object> impl_;
+
+    NODISCARD SmallMapImpl* small_ptr() const {
+        return static_cast<SmallMapImpl*>(impl_.get()); //NOLINT
+    }
+
+    NODISCARD DenseMapImpl* dense_ptr() const {
+        return static_cast<DenseMapImpl*>(impl_.get()); //NOLINT
+    }
 };
 
 }// namespace aethermind

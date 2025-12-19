@@ -27,11 +27,7 @@ public:
     }
 
     NODISCARD size_t slots() const {
-        if (IsDenseMap()) {
-            return slots_;
-        }
-        // SmallMapObj
-        return slots_ & ~kSmallMapMask;
+        return slots_;
     }
 
     NODISCARD bool empty() const {
@@ -70,21 +66,10 @@ public:
         erase(find(key));
     }
 
-    NODISCARD bool IsSmallMap() const {
-        return !IsDenseMap();
-    }
-
-    NODISCARD bool IsDenseMap() const {
-        return (slots_ & kSmallMapMask) == 0ull;
-    }
-
 protected:
     void* data_;
     size_t size_;
     size_t slots_;
-
-    // Small map mask, the most significant bit is used to indicate the small map layout.
-    static constexpr size_t kSmallMapMask = static_cast<size_t>(1) << 63;
 
     template<typename Iter>
         requires requires(Iter t) {
@@ -477,25 +462,23 @@ ObjectPtr<Object> MapImpl<Derived>::CopyFrom(const Object* src) {
 
 template<typename Derived>
 ObjectPtr<Object> MapImpl<Derived>::insert(const KVType& kv, ObjectPtr<Object> old_impl) {
-    auto* base = static_cast<Derived*>(old_impl.get());
     if constexpr (std::is_same_v<Derived, SmallMapImpl>) {
-        if (base->IsSmallMap()) {
-            if (base->slots() < SmallMapImpl::kMaxSize) {
+        auto* base = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
+        if (base->slots() < SmallMapImpl::kMaxSize) {
+            return SmallMapImpl::InsertMaybeRehashImpl(kv, old_impl);
+        }
+
+        if (base->slots() == SmallMapImpl::kMaxSize) {
+            if (base->size() < SmallMapImpl::kMaxSize) {
                 return SmallMapImpl::InsertMaybeRehashImpl(kv, old_impl);
             }
-
-            if (base->slots() == SmallMapImpl::kMaxSize) {
-                if (base->size() < SmallMapImpl::kMaxSize) {
-                    return SmallMapImpl::InsertMaybeRehashImpl(kv, old_impl);
-                }
-                auto new_impl = CreateFromRange(base->begin(), base->end());
-                return DenseMapImpl::InsertMaybeRehashImpl(kv, new_impl);
-            }
+            auto new_impl = CreateFromRange(base->begin(), base->end());
+            return DenseMapImpl::InsertMaybeRehashImpl(kv, new_impl);
         }
         return old_impl;
-    } else {
-        return DenseMapImpl::InsertMaybeRehashImpl(kv, old_impl);
     }
+
+    return DenseMapImpl::InsertMaybeRehashImpl(kv, old_impl);
 }
 
 template<typename K, typename V>
@@ -545,10 +528,7 @@ public:
     }
 
     NODISCARD bool IsSmallMap() const {
-        if (auto* p = dynamic_cast<SmallMapImpl*>(impl_.get())) {
-            return p->IsSmallMap();
-        }
-        return dynamic_cast<DenseMapImpl*>(impl_.get())->IsSmallMap();
+        return dynamic_cast<SmallMapImpl*>(impl_.get());
     }
 
 private:

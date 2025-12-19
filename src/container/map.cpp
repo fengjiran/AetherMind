@@ -38,7 +38,8 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {
     auto impl = make_array_object<SmallMapImpl, KVType>(n);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapImpl);
     impl->size_ = 0;
-    impl->slots_ = n & ~kSmallMapMask | kSmallMapMask;
+    impl->slots_ = n;
+    // impl->slots_ = n & ~kSmallMapMask | kSmallMapMask;
     return impl;
 }
 
@@ -103,7 +104,6 @@ SmallMapImpl::~SmallMapImpl() {
         p[i].~KVType();
     }
 }
-
 
 struct DenseMapImpl::Entry {
     KVType data{};
@@ -463,61 +463,6 @@ void DenseMapImpl::IterListReplaceNodeBy(ListNode src, ListNode dst) {
         next_node.GetEntry().prev = dst.index();
     }
 }
-//
-// bool DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key, ListNode* result) {
-//     // `target` is not the head of the linked list
-//     // move the original item of `target` (if any)
-//     // and construct new item on the position `target`
-//     // To make `target` empty, we
-//     // 1) find `w` the previous element of `target` in the linked list
-//     // 2) copy the linked list starting from `r = target`
-//     // 3) paste them after `w`
-//
-//     // read from the linked list after `r`
-//     ListNode r = target;
-//     // write to the tail of `w`
-//     ListNode w = target.FindPrev();
-//     // after `target` is moved, we disallow writing to the slot
-//     bool is_first = true;
-//     uint8_t r_meta;
-//
-//     do {
-//         auto empty_slot_info = w.GetNextEmptySlot();
-//         if (!empty_slot_info) {
-//             return false;
-//         }
-//
-//         uint8_t offset_idx = empty_slot_info->first;
-//         ListNode empty = empty_slot_info->second;
-//
-//         // move `r` to `empty`
-//         // first move the data over
-//         empty.CreateTail(Entry(std::move(r.GetData())));
-//         // then move link list chain of r to empty
-//         // this needs to happen after NewTail so empty's prev/next get updated
-//         IterListReplaceNodeBy(r, empty);
-//         // explicit call destructor to destroy the item in `r`
-//         r.DestructData();
-//         // clear the metadata of `r`
-//         r_meta = r.GetMeta();
-//         if (is_first) {
-//             is_first = false;
-//             r.SetProtected();
-//         } else {
-//             r.SetEmpty();
-//         }
-//         // link `w` to `empty`, and move forward
-//         w.SetOffset(offset_idx);
-//         w = empty;
-//     } while (r.MoveToNext(r_meta));// move `r` forward as well
-//
-//     // finally, we have done moving the linked list
-//     // fill data_ into `target`
-//     target.CreateHead(Entry(key, value_type(nullptr)));
-//     size_ += 1;
-//     *result = target;
-//     return true;
-// }
 
 std::optional<DenseMapImpl::ListNode> DenseMapImpl::TrySpareListHead(ListNode target, const key_type& key) {
     // `target` is not the head of the linked list
@@ -636,7 +581,6 @@ std::optional<DenseMapImpl::ListNode> DenseMapImpl::TryInsert(const key_type& ke
 
 ObjectPtr<Object> DenseMapImpl::InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<DenseMapImpl*>(old_impl.get());
-    CHECK(map->IsDenseMap());
 
     if (auto opt = map->TryInsert(kv.first)) {
         auto node = opt.value();
@@ -687,7 +631,7 @@ std::pair<uint32_t, size_t> DenseMapImpl::ComputeTableSize(size_t cap) {
 
 ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(uint32_t fib_shift, size_t slots) {
     CHECK(slots > SmallMapImpl::kMaxSize);
-    CHECK((slots & kSmallMapMask) == 0ull);
+    // CHECK((slots & kSmallMapMask) == 0ull);
     const size_t block_num = ComputeBlockNum(slots);
     auto impl = make_array_object<DenseMapImpl, Block>(block_num);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapImpl);
@@ -705,7 +649,6 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(uint32_t fib_shift, size_t slot
 }
 
 ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFromImpl(const DenseMapImpl* src) {
-    CHECK(src->IsDenseMap());
     auto block_num = ComputeBlockNum(src->slots());
     auto impl = make_array_object<DenseMapImpl, Block>(block_num);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapImpl);

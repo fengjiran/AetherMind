@@ -7,8 +7,9 @@
 
 #include "any.h"
 #include "container/container_utils.h"
-#include "map.h"
 #include "object.h"
+
+#include <variant>
 
 namespace aethermind {
 
@@ -44,12 +45,10 @@ public:
     }
 
     value_type& at(const key_type& key) {
-        // auto* p = static_cast<Derived*>(this);
         return static_cast<Derived*>(this)->at_impl(key);
     }
 
     NODISCARD const value_type& at(const key_type& key) const {
-        // const auto* p = static_cast<const Derived*>(this);
         return static_cast<const Derived*>(this)->at_impl(key);
     }
 
@@ -62,8 +61,15 @@ public:
     }
 
     NODISCARD iterator find(const key_type& key) const {
-        // const auto* p = static_cast<const Derived*>(this);
         return static_cast<const Derived*>(this)->find_impl(key);
+    }
+
+    void erase(const iterator& pos) {
+        return static_cast<Derived*>(this)->erase_impl(pos);
+    }
+
+    void erase(const key_type& key) {
+        erase(find(key));
     }
 
     NODISCARD bool IsSmallMap() const {
@@ -74,13 +80,23 @@ public:
         return (slots_ & kSmallMapMask) == 0ull;
     }
 
-    // Small map mask, the most significant bit is used to indicate the small map layout.
-    static constexpr size_t kSmallMapMask = static_cast<size_t>(1) << 63;
-
 protected:
     void* data_;
     size_t size_;
     size_t slots_;
+
+    // Small map mask, the most significant bit is used to indicate the small map layout.
+    static constexpr size_t kSmallMapMask = static_cast<size_t>(1) << 63;
+
+    template<typename Iter>
+        requires requires(Iter t) {
+            { *t } -> std::convertible_to<KVType>;
+        }
+    static ObjectPtr<Object> CreateFromRange(Iter first, Iter last);
+
+    static ObjectPtr<Object> CopyFrom(const Object* src);
+
+    static void InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
 };
 
 template<typename Derived>
@@ -152,12 +168,6 @@ protected:
 
 class SmallMapImpl : public MapImpl<SmallMapImpl> {
 public:
-    value_type& at_impl(const key_type& key);
-
-    NODISCARD const value_type& at_impl(const key_type& key) const;
-
-    void erase(const iterator& pos);
-
     ~SmallMapImpl() override;
 
 private:
@@ -178,6 +188,12 @@ private:
         return find(key).index() < size();
     }
 
+    value_type& at_impl(const key_type& key);
+
+    NODISCARD const value_type& at_impl(const key_type& key) const;
+
+    void erase_impl(const iterator& pos);
+
     NODISCARD KVType* DeRefIter(size_t index) const {
         return static_cast<KVType*>(data_) + index;
     }
@@ -192,13 +208,10 @@ private:
 
     static ObjectPtr<SmallMapImpl> CreateImpl(size_t n = kInitSize);
 
-    static ObjectPtr<SmallMapImpl> CopyFrom(const SmallMapImpl* src);
+    static ObjectPtr<SmallMapImpl> CopyFromImpl(const SmallMapImpl* src);
 
     template<typename Iter>
-        requires requires(Iter t) {
-            { *t } -> std::convertible_to<KVType>;
-        }
-    static ObjectPtr<SmallMapImpl> CreateSmallMapFromRange(Iter first, Iter last) {
+    static ObjectPtr<SmallMapImpl> CreateFromRange(Iter first, Iter last) {
         const auto n = std::distance(first, last);
         auto impl = CreateImpl(n);
         auto* ptr = static_cast<KVType*>(impl->data_);
@@ -208,7 +221,7 @@ private:
         return impl;
     }
 
-    static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
+    static ObjectPtr<Object> InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl);
 
     template<typename Derived>
     friend class MapImpl;
@@ -278,20 +291,6 @@ private:
  */
 class DenseMapImpl : public MapImpl<DenseMapImpl> {
 public:
-    NODISCARD size_t count_impl(const key_type& key) const;
-
-    NODISCARD value_type& at_impl(const key_type& key) {
-        return At(key);
-    }
-
-    NODISCARD const value_type& at_impl(const key_type& key) const {
-        return At(key);
-    }
-
-    NODISCARD iterator find_impl(const key_type& key) const;
-
-    void erase(const iterator& pos);
-
     ~DenseMapImpl() override {
         reset();
     }
@@ -331,6 +330,19 @@ private:
         return {kInvalidIndex, this};
     }
 
+    NODISCARD iterator find_impl(const key_type& key) const;
+
+    NODISCARD size_t count_impl(const key_type& key) const;
+
+    NODISCARD value_type& at_impl(const key_type& key) {
+        return At(key);
+    }
+
+    NODISCARD const value_type& at_impl(const key_type& key) const {
+        return At(key);
+    }
+
+    void erase_impl(const iterator& pos);
 
     NODISCARD Block* GetBlock(size_t block_idx) const;
 
@@ -401,7 +413,7 @@ private:
     // bool TryInsert(const key_type& key, ListNode* result);
     std::optional<ListNode> TryInsert(const key_type& key);
 
-    static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
+    static ObjectPtr<Object> InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl);
 
     static size_t ComputeBlockNum(size_t slots) {
         return (slots + kBlockSize - 1) / kBlockSize;
@@ -413,13 +425,63 @@ private:
 
     static ObjectPtr<DenseMapImpl> CreateImpl(uint32_t fib_shift, size_t slots);
 
-    static ObjectPtr<DenseMapImpl> CopyFrom(const DenseMapImpl* src);
+    static ObjectPtr<DenseMapImpl> CopyFromImpl(const DenseMapImpl* src);
 
     template<typename Derived>
     friend class MapImpl;
     template<typename K, typename V>
     friend class Map;
 };
+
+template<typename Derived>
+template<typename Iter>
+    requires requires(Iter t) {
+        { *t } -> std::convertible_to<std::pair<Any, Any>>;
+    }
+ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
+    const int64_t _cap = std::distance(first, last);
+    if (_cap <= 0) {
+        return SmallMapImpl::CreateImpl();
+    }
+
+    auto cap = static_cast<size_t>(_cap);
+    if (cap <= SmallMapImpl::kMaxSize) {
+        if (cap < SmallMapImpl::kInitSize) {
+            return SmallMapImpl::CreateFromRange(first, last);
+        }
+
+        // need to insert to avoid duplicate keys
+        ObjectPtr<Object> impl = SmallMapImpl::CreateImpl(cap);
+        while (first != last) {
+            impl = SmallMapImpl::InsertMaybeRehashImpl(KVType(*first++), impl);
+        }
+        return impl;
+    }
+
+    auto [fib_shift, slots] = DenseMapImpl::ComputeTableSize(cap);
+    ObjectPtr<Object> impl = DenseMapImpl::CreateImpl(fib_shift, slots);
+    while (first != last) {
+        impl = DenseMapImpl::InsertMaybeRehashImpl(KVType(*first++), impl);
+    }
+    return impl;
+}
+
+template<typename Derived>
+ObjectPtr<Object> MapImpl<Derived>::CopyFrom(const Object* src) {
+    const auto* p = static_cast<const Derived*>(src);
+    if constexpr (std::is_same_v<Derived, SmallMapImpl>) {
+        return SmallMapImpl::CopyFromImpl(p);
+    } else {
+        return DenseMapImpl::CopyFromImpl(p);
+    }
+}
+
+template<typename Derived>
+void MapImpl<Derived>::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl) {
+    auto* base = static_cast<Derived*>(old_impl.get());
+
+}
+
 
 template<typename K, typename V>
 class Map : public ObjectRef {
@@ -441,13 +503,18 @@ public:
 private:
     ObjectPtr<Object> impl_;
 
-    decltype(auto) GetMapImpl() const {
-        if (auto* p = dynamic_cast<SmallMapImpl*>(impl_.get())) {
-            return p;
+    struct MapObjPtr {
+        explicit MapObjPtr(const ObjectPtr<Object>& impl) {
+            if (auto* p = dynamic_cast<SmallMapImpl*>(impl.get())) {
+                ptr = p;
+            } else {
+                ptr = dynamic_cast<DenseMapImpl*>(impl.get());
+            }
         }
 
-        return dynamic_cast<DenseMapImpl*>(impl_.get());
-    }
+
+        std::variant<SmallMapImpl*, DenseMapImpl*> ptr;
+    };
 };
 
 }// namespace aethermind

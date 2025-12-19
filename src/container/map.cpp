@@ -42,13 +42,13 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {
     return impl;
 }
 
-ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFrom(const SmallMapImpl* src) {
+ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFromImpl(const SmallMapImpl* src) {
     const auto* first = static_cast<KVType*>(src->data_);
     const auto* last = first + src->size();
-    return CreateSmallMapFromRange(first, last);
+    return CreateFromRange(first, last);
 }
 
-ObjectPtr<Object> SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl) {
+ObjectPtr<Object> SmallMapImpl::InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<SmallMapImpl*>(old_impl.get());
     if (const auto iter = map->find(kv.first); iter != map->end()) {
         iter->second = kv.second;
@@ -75,7 +75,7 @@ ObjectPtr<Object> SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Ob
     return new_impl;
 }
 
-void SmallMapImpl::erase(const iterator& pos) {
+void SmallMapImpl::erase_impl(const iterator& pos) {
     const auto idx = pos.index();
     if (pos.ptr_ == nullptr || idx >= size()) {
         return;
@@ -303,7 +303,7 @@ MapImpl<DenseMapImpl>::iterator DenseMapImpl::find_impl(const key_type& key) con
     return node.IsNone() ? end() : iterator(node.index(), this);
 }
 
-void DenseMapImpl::erase(const iterator& pos) {
+void DenseMapImpl::erase_impl(const iterator& pos) {
     const auto idx = pos.index();
     if (pos.ptr_ == nullptr || idx >= size()) {
         return;
@@ -634,7 +634,7 @@ std::optional<DenseMapImpl::ListNode> DenseMapImpl::TryInsert(const key_type& ke
     return empty;
 }
 
-ObjectPtr<Object> DenseMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl) {
+ObjectPtr<Object> DenseMapImpl::InsertMaybeRehashImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<DenseMapImpl*>(old_impl.get());
     CHECK(map->IsDenseMap());
 
@@ -704,7 +704,7 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(uint32_t fib_shift, size_t slot
     return impl;
 }
 
-ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFrom(const DenseMapImpl* src) {
+ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFromImpl(const DenseMapImpl* src) {
     CHECK(src->IsDenseMap());
     auto block_num = ComputeBlockNum(src->slots());
     auto impl = make_array_object<DenseMapImpl, Block>(block_num);

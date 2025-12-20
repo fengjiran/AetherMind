@@ -161,7 +161,7 @@ protected:
 class SmallMapImpl : public MapImpl<SmallMapImpl> {
 public:
     SmallMapImpl() = default;
-    ~SmallMapImpl() override;
+    ~SmallMapImpl() override = default;
 
 private:
     NODISCARD iterator begin_impl() const {

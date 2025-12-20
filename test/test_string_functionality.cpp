@@ -39,6 +39,11 @@ TEST(StringConstructorFill, BasicFunctionality) {
 
     int x = -105;
     EXPECT_TRUE(to_string(x) == "-105");
+
+    // String s5 = "hello";
+    // String s6 = s5;
+    // Any a = s5;
+    // EXPECT_EQ(a.use_count(), 3);
 }
 
 // 测试边界情况：空字符串

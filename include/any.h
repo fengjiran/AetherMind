@@ -41,25 +41,22 @@ public:
     NODISCARD uint32_t use_count() const override {
         if constexpr (details::has_use_count_method_v<T>) {
             return value_.use_count();
-        } else {
-            return 1;
         }
+        return 1;
     }
 
     NODISCARD bool IsObjectRef() const override {
         if constexpr (std::is_base_of_v<ObjectRef, T>) {
             return true;
-        } else {
-            return false;
         }
+        return false;
     }
 
     NODISCARD bool IsMap() const override {
         if constexpr (details::is_map_v<T>) {
             return true;
-        } else {
-            return false;
         }
+        return false;
     }
 
     NODISCARD void* GetUnderlyingPtr() override {

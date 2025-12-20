@@ -30,6 +30,12 @@ TEST(MAPTEST, basic) {
     dict.insert(6, 7);
     EXPECT_EQ(dict.size(), 6);
     EXPECT_TRUE(!dict.IsSmallMap());
+
+    // Any x = 1;
+    // Any y = x;
+    // Any z = x;
+    // std::pair<Any, Any> p = std::make_pair(x, x);
+    // EXPECT_EQ(x.use_count(), 3);
 }
 
 }// namespace

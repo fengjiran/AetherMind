@@ -97,14 +97,6 @@ void SmallMapImpl::erase_impl(const iterator& pos) {
     size_ -= 1;
 }
 
-
-SmallMapImpl::~SmallMapImpl() {
-    auto* p = static_cast<KVType*>(data());
-    for (size_t i = 0; i < size(); ++i) {
-        p[i].~KVType();
-    }
-}
-
 struct DenseMapImpl::Entry {
     KVType data{};
     size_t prev = kInvalidIndex;

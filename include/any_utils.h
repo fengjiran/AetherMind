@@ -47,7 +47,7 @@ concept is_plain_type = is_integral<T> ||
                         is_string<T>;
 
 template<typename T>
-concept has_use_count_method_v = requires(const T& t) {
+concept has_use_count_method_v = requires(T t) {
     t.use_count();
 };
 

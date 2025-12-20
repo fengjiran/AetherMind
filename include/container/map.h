@@ -70,7 +70,9 @@ protected:
     size_t slots_;
 
     static constexpr size_t kInitSize = 2; // Init map size
-    static constexpr size_t kThreshold = 4; // The threshold of the small and dense map
+    static constexpr size_t kThreshold = 4;// The threshold of the small and dense map
+
+    static ObjectPtr<Object> Create(size_t n = kInitSize);
 
     template<typename Iter>
         requires requires(Iter t) {
@@ -157,7 +159,6 @@ public:
     ~SmallMapImpl() override;
 
 private:
-
     NODISCARD iterator begin_impl() const {
         return {0, this};
     }
@@ -190,14 +191,14 @@ private:
         return index > 0 ? index - 1 : size_;
     }
 
-    static ObjectPtr<SmallMapImpl> Create(size_t n = kInitSize);
+    static ObjectPtr<SmallMapImpl> CreateImpl(size_t n = kInitSize);
 
     static ObjectPtr<SmallMapImpl> CopyFromImpl(const SmallMapImpl* src);
 
     template<typename Iter>
     static ObjectPtr<SmallMapImpl> CreateFromRangeImpl(Iter first, Iter last) {
         const auto n = std::distance(first, last);
-        auto impl = Create(n);
+        auto impl = CreateImpl(n);
         auto* ptr = static_cast<KVType*>(impl->data_);
         while (first != last) {
             new (ptr++) KVType(*first++);
@@ -408,7 +409,7 @@ private:
     // shift = 64 - log2(slots)
     static std::pair<uint32_t, size_t> ComputeSlotNum(size_t cap);
 
-    static ObjectPtr<DenseMapImpl> Create(uint32_t fib_shift, size_t slots);
+    static ObjectPtr<DenseMapImpl> CreateImpl(uint32_t fib_shift, size_t slots);
 
     static ObjectPtr<DenseMapImpl> CopyFromImpl(const DenseMapImpl* src);
 
@@ -419,32 +420,42 @@ private:
 };
 
 template<typename Derived>
+ObjectPtr<Object> MapImpl<Derived>::Create(size_t n) {
+    if (n <= kThreshold) {
+        return SmallMapImpl::CreateImpl(n);
+    }
+
+    auto [fib_shift, slots] = DenseMapImpl::ComputeSlotNum(n);
+    return DenseMapImpl::CreateImpl(fib_shift, slots);
+}
+
+template<typename Derived>
 template<typename Iter>
     requires requires(Iter t) {
         { *t } -> std::convertible_to<std::pair<Any, Any>>;
     }
 ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
-    const int64_t _cap = std::distance(first, last);
-    if (_cap <= 0) {
+    const int64_t _size = std::distance(first, last);
+    if (_size <= 0) {
         return SmallMapImpl::Create();
     }
 
-    auto cap = static_cast<size_t>(_cap);
-    if (cap < kThreshold) {
-        if (cap < kInitSize) {
-            return SmallMapImpl::CreateFromRangeImpl(first, last);
-        }
+    const auto size = static_cast<size_t>(_size);
+    if (size < kThreshold) {
+        // if (size < kInitSize) {
+        //     return SmallMapImpl::CreateFromRangeImpl(first, last);
+        // }
 
         // need to insert to avoid duplicate keys
-        ObjectPtr<Object> impl = SmallMapImpl::Create(cap);
+        ObjectPtr<Object> impl = SmallMapImpl::CreateImpl(size);
         while (first != last) {
             impl = SmallMapImpl::InsertMaybeRehash(KVType(*first++), impl);
         }
         return impl;
     }
 
-    auto [fib_shift, slots] = DenseMapImpl::ComputeSlotNum(cap);
-    ObjectPtr<Object> impl = DenseMapImpl::Create(fib_shift, slots);
+    auto [fib_shift, slots] = DenseMapImpl::ComputeSlotNum(size);
+    ObjectPtr<Object> impl = DenseMapImpl::CreateImpl(fib_shift, slots);
     while (first != last) {
         impl = DenseMapImpl::InsertMaybeRehash(KVType(*first++), impl);
     }
@@ -517,11 +528,11 @@ private:
     ObjectPtr<Object> impl_;
 
     NODISCARD SmallMapImpl* small_ptr() const {
-        return static_cast<SmallMapImpl*>(impl_.get()); //NOLINT
+        return static_cast<SmallMapImpl*>(impl_.get());//NOLINT
     }
 
     NODISCARD DenseMapImpl* dense_ptr() const {
-        return static_cast<DenseMapImpl*>(impl_.get()); //NOLINT
+        return static_cast<DenseMapImpl*>(impl_.get());//NOLINT
     }
 };
 

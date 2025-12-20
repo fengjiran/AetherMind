@@ -33,7 +33,7 @@ const MapImpl<SmallMapImpl>::value_type& SmallMapImpl::at_impl(const key_type& k
     return iter->second;
 }
 
-ObjectPtr<SmallMapImpl> SmallMapImpl::Create(size_t n) {
+ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {
     CHECK(n <= kThreshold);
     auto impl = make_array_object<SmallMapImpl, KVType>(n);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapImpl);
@@ -63,7 +63,7 @@ ObjectPtr<Object> SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Ob
     }
 
     size_t new_cap = std::min(kThreshold, std::max(2 * map->slots(), kInitSize));
-    auto new_impl = Create(new_cap);
+    auto new_impl = CreateImpl(new_cap);
     auto* src = static_cast<KVType*>(map->data_);
     auto* dst = static_cast<KVType*>(new_impl->data_);
     for (size_t i = 0; i < map->size(); ++i) {
@@ -587,7 +587,7 @@ ObjectPtr<Object> DenseMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Ob
     }
 
     // Otherwise, start rehash
-    auto new_impl = Create(map->fib_shift_ - 1, map->slots() * 2);
+    auto new_impl = CreateImpl(map->fib_shift_ - 1, map->slots() * 2);
 
     // need to insert in the same order as the original map
     size_t idx = map->iter_list_head_;
@@ -626,7 +626,7 @@ std::pair<uint32_t, size_t> DenseMapImpl::ComputeSlotNum(size_t cap) {
     return {shift, slots};
 }
 
-ObjectPtr<DenseMapImpl> DenseMapImpl::Create(uint32_t fib_shift, size_t slots) {
+ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(uint32_t fib_shift, size_t slots) {
     CHECK(slots > kThreshold);
     const size_t block_num = ComputeBlockNum(slots);
     auto impl = make_array_object<DenseMapImpl, Block>(block_num);

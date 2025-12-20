@@ -20,6 +20,10 @@ public:
 
     MapImpl() : data_(nullptr), size_(0), slots_(0) {}
 
+    NODISCARD void* data() const {
+        return data_;
+    }
+
     NODISCARD size_t size() const {
         return size_;
     }
@@ -181,7 +185,7 @@ private:
     void erase_impl(const iterator& pos);
 
     NODISCARD KVType* DeRefIter(size_t index) const {
-        return static_cast<KVType*>(data_) + index;
+        return static_cast<KVType*>(data()) + index;
     }
 
     NODISCARD size_t IncIter(size_t index) const {
@@ -199,15 +203,15 @@ private:
     template<typename Iter>
     static ObjectPtr<SmallMapImpl> CreateFromRangeImpl(Iter first, Iter last) {
         const auto n = std::distance(first, last);
-        auto impl = CreateImpl(n);
-        auto* ptr = static_cast<KVType*>(impl->data_);
+        auto impl = Create(n);
+        auto* ptr = static_cast<KVType*>(static_cast<SmallMapImpl*>(impl.get())->data());
         while (first != last) {
             new (ptr++) KVType(*first++);
         }
         return impl;
     }
 
-    static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
+    static ObjectPtr<Object> InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl);
 
     template<typename Derived>
     friend class MapImpl;
@@ -400,7 +404,8 @@ private:
     // bool TryInsert(const key_type& key, ListNode* result);
     std::optional<ListNode> TryInsert(const key_type& key);
 
-    static ObjectPtr<Object> InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl);
+    // may be rehash
+    static ObjectPtr<Object> InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl);
 
     static size_t ComputeBlockNum(size_t slots) {
         return (slots + kBlockSize - 1) / kBlockSize;
@@ -410,9 +415,7 @@ private:
     // shift = 64 - log2(slots)
     static std::pair<uint32_t, size_t> ComputeSlotNum(size_t cap);
 
-    static ObjectPtr<DenseMapImpl> CreateImpl(uint32_t fib_shift, size_t slots);
-
-    static ObjectPtr<DenseMapImpl> CreateImpl_(size_t n);
+    static ObjectPtr<DenseMapImpl> CreateImpl(size_t n);
 
     static ObjectPtr<DenseMapImpl> CopyFromImpl(const DenseMapImpl* src);
 
@@ -427,7 +430,7 @@ ObjectPtr<Object> MapImpl<Derived>::Create(size_t n) {
     if (n <= kThreshold) {
         return SmallMapImpl::CreateImpl(n);
     }
-    return DenseMapImpl::CreateImpl_(n);
+    return DenseMapImpl::CreateImpl(n);
 }
 
 template<typename Derived>
@@ -442,18 +445,18 @@ ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
     }
 
     const auto size = static_cast<size_t>(_size);
-    if (size < kThreshold) {
+    if (size <= kThreshold) {
         // need to insert to avoid duplicate keys
-        ObjectPtr<Object> impl = SmallMapImpl::CreateImpl(size);
+        ObjectPtr<Object> impl = SmallMapImpl::Create(size);
         while (first != last) {
-            impl = SmallMapImpl::InsertMaybeRehash(KVType(*first++), impl);
+            impl = SmallMapImpl::InsertImpl(KVType(*first++), impl);
         }
         return impl;
     }
 
-    ObjectPtr<Object> impl = DenseMapImpl::CreateImpl_(size);
+    ObjectPtr<Object> impl = DenseMapImpl::Create(size);
     while (first != last) {
-        impl = DenseMapImpl::InsertMaybeRehash(KVType(*first++), impl);
+        impl = DenseMapImpl::InsertImpl(KVType(*first++), impl);
     }
     return impl;
 }
@@ -463,23 +466,27 @@ ObjectPtr<Object> MapImpl<Derived>::CopyFrom(const Object* src) {
     const auto* p = static_cast<const Derived*>(src);
     if constexpr (std::is_same_v<Derived, SmallMapImpl>) {
         return SmallMapImpl::CopyFromImpl(p);
-    } else {
-        return DenseMapImpl::CopyFromImpl(p);
     }
+    return DenseMapImpl::CopyFromImpl(p);
 }
 
 template<typename Derived>
 ObjectPtr<Object> MapImpl<Derived>::insert(const KVType& kv, const ObjectPtr<Object>& old_impl) {
     if constexpr (std::is_same_v<Derived, SmallMapImpl>) {
         auto* p = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
-        if (p->size() < kThreshold) {
-            return SmallMapImpl::InsertMaybeRehash(kv, old_impl);
+        const auto size = p->size();
+        if (size < kThreshold) {
+            return SmallMapImpl::InsertImpl(kv, old_impl);
         }
-        const auto new_impl = CreateFromRange(p->begin(), p->end());
-        return DenseMapImpl::InsertMaybeRehash(kv, new_impl);
+
+        ObjectPtr<Object> new_impl = DenseMapImpl::Create(size * kIncFactor);
+        for (const auto& iter: *p) {
+            new_impl = DenseMapImpl::InsertImpl(KVType(iter), new_impl);
+        }
+        return DenseMapImpl::InsertImpl(kv, new_impl);
     }
 
-    return DenseMapImpl::InsertMaybeRehash(kv, old_impl);
+    return DenseMapImpl::InsertImpl(kv, old_impl);
 }
 
 template<typename K, typename V>

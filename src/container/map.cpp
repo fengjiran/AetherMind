@@ -7,7 +7,7 @@
 namespace aethermind {
 
 MapImpl<SmallMapImpl>::iterator SmallMapImpl::find_impl(const key_type& key) const {
-    const auto* p = static_cast<KVType*>(data_);
+    const auto* p = static_cast<KVType*>(data());
     for (size_t i = 0; i < size(); ++i) {
         if (key == p[i].first) {
             return {i, this};
@@ -43,12 +43,13 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {
 }
 
 ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFromImpl(const SmallMapImpl* src) {
-    const auto* first = static_cast<KVType*>(src->data_);
+    const auto* first = static_cast<KVType*>(src->data());
     const auto* last = first + src->size();
-    return CreateFromRangeImpl(first, last);
+    auto impl = CreateFromRange(first, last);
+    return ObjectPtr<SmallMapImpl>::reclaim(static_cast<SmallMapImpl*>(impl.release())); //NOLINT
 }
 
-ObjectPtr<Object> SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl) {
+ObjectPtr<Object> SmallMapImpl::InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
     if (const auto iter = map->find(kv.first); iter != map->end()) {
         iter->second = kv.second;
@@ -56,16 +57,16 @@ ObjectPtr<Object> SmallMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Ob
     }
 
     if (map->size() < map->slots()) {
-        auto* p = static_cast<KVType*>(map->data_) + map->size();
+        auto* p = static_cast<KVType*>(map->data()) + map->size();
         new (p) KVType(kv);
         ++map->size_;
         return old_impl;
     }
 
-    size_t new_cap = std::min(kThreshold, std::max(kIncFactor * map->slots(), kInitSize));
-    auto new_impl = CreateImpl(new_cap);
-    auto* src = static_cast<KVType*>(map->data_);
-    auto* dst = static_cast<KVType*>(new_impl->data_);
+    const size_t new_cap = std::min(kThreshold, std::max(kIncFactor * map->slots(), kInitSize));
+    auto new_impl = ObjectPtr<SmallMapImpl>::reclaim(static_cast<SmallMapImpl*>(Create(new_cap).release()));//NOLINT
+    auto* src = static_cast<KVType*>(map->data());
+    auto* dst = static_cast<KVType*>(new_impl->data());
     for (size_t i = 0; i < map->size(); ++i) {
         new (dst++) KVType(std::move(*src++));
         ++new_impl->size_;
@@ -81,7 +82,7 @@ void SmallMapImpl::erase_impl(const iterator& pos) {
         return;
     }
 
-    auto* p = static_cast<KVType*>(data_);
+    auto* p = static_cast<KVType*>(data());
     p[idx].~KVType();
 
     auto n = size() - idx - 1;
@@ -98,7 +99,7 @@ void SmallMapImpl::erase_impl(const iterator& pos) {
 
 
 SmallMapImpl::~SmallMapImpl() {
-    auto* p = static_cast<KVType*>(data_);
+    auto* p = static_cast<KVType*>(data());
     for (size_t i = 0; i < size(); ++i) {
         p[i].~KVType();
     }
@@ -110,8 +111,9 @@ struct DenseMapImpl::Entry {
     size_t next = kInvalidIndex;
 
     Entry() = default;
-    explicit Entry(KVType&& data) : data(std::move(data)) {}
-    explicit Entry(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
+    Entry(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
+    explicit Entry(const KVType& kv) : data(kv) {}
+    explicit Entry(KVType&& kv) : data(std::move(kv)) {}
 };
 
 struct DenseMapImpl::Block {
@@ -119,7 +121,7 @@ struct DenseMapImpl::Block {
 
     Block() {// NOLINT
         auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
-        for (int i = 0; i < kBlockSize; ++i) {
+        for (uint8_t i = 0; i < kBlockSize; ++i) {
             bytes[i] = kEmptySlot;
             new (data++) Entry;
         }
@@ -128,7 +130,7 @@ struct DenseMapImpl::Block {
     Block(const Block& other) {// NOLINT
         const auto* src = reinterpret_cast<const Entry*>(other.bytes + kBlockSize);
         auto* dst = reinterpret_cast<Entry*>(bytes + kBlockSize);
-        for (int i = 0; i < kBlockSize; ++i) {
+        for (uint8_t i = 0; i < kBlockSize; ++i) {
             bytes[i] = other.bytes[i];
             new (dst++) Entry(src[i]);
         }
@@ -136,7 +138,7 @@ struct DenseMapImpl::Block {
 
     ~Block() {
         auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
-        for (int i = 0; i < kBlockSize; ++i) {
+        for (uint8_t i = 0; i < kBlockSize; ++i) {
             bytes[i] = kEmptySlot;
             data->~Entry();
         }
@@ -340,7 +342,7 @@ void DenseMapImpl::erase_impl(const iterator& pos) {
 
 
 DenseMapImpl::Block* DenseMapImpl::GetBlock(size_t block_idx) const {
-    return static_cast<Block*>(data_) + block_idx;
+    return static_cast<Block*>(data()) + block_idx;
 }
 
 DenseMapImpl::ListNode DenseMapImpl::IndexFromHash(size_t hash_value) const {
@@ -401,7 +403,7 @@ DenseMapImpl::ListNode DenseMapImpl::Search(const key_type& key) const {
 
 void DenseMapImpl::reset() {
     size_t block_num = ComputeBlockNum(slots());
-    auto* p = static_cast<Block*>(data_);
+    auto* p = static_cast<Block*>(data());
     for (size_t i = 0; i < block_num; ++i) {
         p[i].~Block();
     }
@@ -576,7 +578,7 @@ std::optional<DenseMapImpl::ListNode> DenseMapImpl::TryInsert(const key_type& ke
     return empty;
 }
 
-ObjectPtr<Object> DenseMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Object> old_impl) {
+ObjectPtr<Object> DenseMapImpl::InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT
 
     if (auto opt = map->TryInsert(kv.first)) {
@@ -587,7 +589,8 @@ ObjectPtr<Object> DenseMapImpl::InsertMaybeRehash(const KVType& kv, ObjectPtr<Ob
     }
 
     // Otherwise, start rehash
-    auto new_impl = CreateImpl(map->fib_shift_ - 1, map->slots() * kIncFactor);
+    auto new_impl = ObjectPtr<DenseMapImpl>::reclaim(
+            static_cast<DenseMapImpl*>(DenseMapImpl::Create(map->slots() * kIncFactor).release()));// NOLINT
 
     // need to insert in the same order as the original map
     size_t idx = map->iter_list_head_;
@@ -623,29 +626,11 @@ std::pair<uint32_t, size_t> DenseMapImpl::ComputeSlotNum(size_t cap) {
         slots <<= 1;
     }
 
-    return {shift, slots};
+    return std::make_pair(shift, slots);
 }
 
-ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(uint32_t fib_shift, size_t slots) {
-    CHECK(slots > kThreshold);
-    const size_t block_num = ComputeBlockNum(slots);
-    auto impl = make_array_object<DenseMapImpl, Block>(block_num);
-    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapImpl);
-    impl->size_ = 0;
-    impl->slots_ = slots;
-    impl->fib_shift_ = fib_shift;
-    impl->iter_list_head_ = kInvalidIndex;
-    impl->iter_list_tail_ = kInvalidIndex;
-
-    auto* p = static_cast<Block*>(impl->data_);
-    for (size_t i = 0; i < block_num; ++i) {
-        new (p++) Block;
-    }
-    return impl;
-}
-
-ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl_(size_t n) {
-    CHECK(n >= kThreshold);
+ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(size_t n) {
+    CHECK(n > kThreshold);
     auto [fib_shift, slots] = ComputeSlotNum(n);
     const size_t block_num = ComputeBlockNum(slots);
     auto impl = make_array_object<DenseMapImpl, Block>(block_num);
@@ -656,7 +641,7 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl_(size_t n) {
     impl->iter_list_head_ = kInvalidIndex;
     impl->iter_list_tail_ = kInvalidIndex;
 
-    auto* p = static_cast<Block*>(impl->data_);
+    auto* p = static_cast<Block*>(impl->data());
     for (size_t i = 0; i < block_num; ++i) {
         new (p++) Block;
     }
@@ -674,7 +659,7 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFromImpl(const DenseMapImpl* src) {
     impl->iter_list_head_ = src->iter_list_head_;
     impl->iter_list_tail_ = src->iter_list_tail_;
 
-    auto* p = static_cast<Block*>(impl->data_);
+    auto* p = static_cast<Block*>(impl->data());
     for (size_t i = 0; i < block_num; ++i) {
         new (p++) Block(*src->GetBlock(i));
     }

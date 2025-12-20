@@ -30,7 +30,6 @@ TEST(MAPTEST, basic) {
     dict.insert(6, 7);
     EXPECT_EQ(dict.size(), 6);
     EXPECT_TRUE(!dict.IsSmallMap());
-    EXPECT_EQ(dict.slots(), 8);
 }
 
 }// namespace

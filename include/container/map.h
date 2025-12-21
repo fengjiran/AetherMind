@@ -289,7 +289,7 @@ public:
 private:
     struct Entry;
     struct Block;
-    class ListNode;
+    class Cursor;
 
     // The number of elements in a memory block.
     static constexpr int kBlockSize = 16;
@@ -337,12 +337,12 @@ private:
 
     NODISCARD Block* GetBlock(size_t block_idx) const;
 
-    NODISCARD ListNode IndexFromHash(size_t hash_value) const;
+    NODISCARD Cursor GetCursorFromHash(size_t hash_value) const;
 
     NODISCARD KVType* DeRefIter(size_t index) const;
 
     // Construct a ListNode from hash code if the position is head of list
-    NODISCARD ListNode GetListHead(size_t hash_value) const;
+    NODISCARD std::optional<Cursor> GetListHead(size_t hash_value) const;
 
     NODISCARD size_t IncIter(size_t index) const;
 
@@ -355,7 +355,7 @@ private:
    * \param key The key
    * \return ListNode that associated with the key
    */
-    NODISCARD ListNode Search(const key_type& key) const;
+    NODISCARD Cursor Search(const key_type& key) const;
 
     // Whether the hash table is full.
     NODISCARD bool IsFull() const {
@@ -367,12 +367,12 @@ private:
     // Insert the entry into tail of iterator list.
     // This function does not change data content of the node.
     // or NodeListPushBack ?
-    void IterListPushBack(ListNode node);
+    void IterListPushBack(Cursor node);
 
-    // Unlink the entry from iterator list.
+    // Remove the entry from iterator list.
     // This function is usually used before deletion,
     // and it does not change data content of the node.
-    void IterListUnlink(ListNode node);
+    void IterListRemove(Cursor node);
 
     /*!
    * \brief Replace node src by dst in the iter list
@@ -381,7 +381,7 @@ private:
    * \note This function does not change data content of the nodes,
    *       which needs to be updated by the caller.
    */
-    void IterListReplaceNodeBy(ListNode src, ListNode dst);
+    void IterListReplaceNodeBy(Cursor src, Cursor dst);
 
     /*!
    * \brief Spare an entry to be the head of a linked list.
@@ -394,7 +394,7 @@ private:
    * \return The linked-list entry constructed as the head, if actual insertion happens
    */
     // bool TrySpareListHead(ListNode target, const key_type& key, ListNode* result);
-    std::optional<ListNode> TrySpareListHead(ListNode target, const key_type& key);
+    std::optional<Cursor> TrySpareListHead(Cursor target, const key_type& key);
 
     /*!
    * \brief Try to insert a key, or do nothing if already exists
@@ -402,7 +402,7 @@ private:
    * \return The linked-list entry found or just constructed,indicating if actual insertion happens
    */
     // bool TryInsert(const key_type& key, ListNode* result);
-    std::optional<ListNode> TryInsert(const key_type& key);
+    std::optional<Cursor> TryInsert(const key_type& key);
 
     // may be rehash
     static ObjectPtr<Object> InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl);

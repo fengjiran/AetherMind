@@ -40,10 +40,13 @@ TEST(StringConstructorFill, BasicFunctionality) {
     int x = -105;
     EXPECT_TRUE(to_string(x) == "-105");
 
-    // String s5 = "hello";
-    // String s6 = s5;
-    // Any a = s5;
-    // EXPECT_EQ(a.use_count(), 3);
+    using  KVType = std::pair<Any, Any>;
+    String s5 = "hello xxxxxxxxxxx";
+    String s6 = s5;
+    KVType p = {s5, s5};
+    EXPECT_EQ(s5.use_count(), 4);
+    p.~KVType();
+    EXPECT_EQ(s5.use_count(), 2);
 }
 
 // 测试边界情况：空字符串

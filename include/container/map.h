@@ -602,6 +602,10 @@ private:
     NODISCARD DenseMapImpl* dense_ptr() const {
         return static_cast<DenseMapImpl*>(impl_.get());//NOLINT
     }
+
+    void SwitchContainer(size_t new_cap) {
+        //
+    }
 };
 
 // sizeof = 24

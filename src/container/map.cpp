@@ -353,34 +353,36 @@ void DenseMapImpl::erase_impl(const iterator& pos) {
         return;
     }
 
-    Cursor node(idx, this);
-    if (node.HasNextSlot()) {
-        Cursor prev = node;
-        Cursor last = node;
+    if (Cursor cur(idx, this); cur.HasNextSlot()) {
+        Cursor prev = cur;
+        Cursor last = cur;
         last.MoveToNextSlot();
-        while (last.HasNextSlot()) {
+        while (last.MoveToNextSlot()) {
             prev = last;
-            last.MoveToNextSlot();
         }
+        // while (last.HasNextSlot()) {
+        //     prev = last;
+        //     last.MoveToNextSlot();
+        // }
 
         // needs to first unlink node from the list
-        IterListRemove(node);
+        IterListRemove(cur);
         // move data from last to node
-        node.GetData() = std::move(last.GetData());
-        // Move link chain of iter to last as we stores last node to the new iter loc.
-        IterListReplace(last, node);
-        last.DestructData();
+        cur.GetData() = std::move(last.GetData());
+        // Move link chain of iter to last as we store last node to the new iter loc.
+        IterListReplace(last, cur);
+        // last.DestructData();
         last.SetEmpty();
         prev.SetOffsetIdx(0);
     } else {// the last node
-        if (!node.IsHead()) {
+        if (!cur.IsHead()) {
             // cut the link if there is any
-            node.FindPrevSlot().SetOffsetIdx(0);
+            cur.FindPrevSlot().SetOffsetIdx(0);
         }
         // unlink the node from iterator list
-        IterListRemove(node);
-        node.DestructData();
-        node.SetEmpty();
+        IterListRemove(cur);
+        cur.DestructData();
+        cur.SetEmpty();
     }
     --size_;
 }
@@ -594,9 +596,8 @@ ObjectPtr<Object> DenseMapImpl::InsertImpl(const KVType& kv, ObjectPtr<Object> o
     auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT
 
     if (const auto opt = map->TryInsert(kv.first)) {
-        auto node = opt.value();
-        node.GetValue() = kv.second;
-        map->IterListPushBack(node);
+        opt->GetValue() = kv.second;
+        map->IterListPushBack(opt.value());
         return old_impl;
     }
 
@@ -607,11 +608,11 @@ ObjectPtr<Object> DenseMapImpl::InsertImpl(const KVType& kv, ObjectPtr<Object> o
     // need to insert in the same order as the original map
     size_t idx = map->iter_list_head_;
     while (idx != kInvalidIndex) {
-        Cursor node(idx, map);
-        auto opt = new_impl->TryInsert(node.GetKey());
-        opt->GetValue() = std::move(node.GetValue());
+        Cursor cur(idx, map);
+        auto opt = new_impl->TryInsert(cur.GetKey());
+        opt->GetValue() = std::move(cur.GetValue());
         new_impl->IterListPushBack(opt.value());
-        idx = node.GetEntry().next;
+        idx = cur.GetEntry().next;
     }
 
     auto opt = new_impl->TryInsert(kv.first);
@@ -654,7 +655,7 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(size_t n) {
 
     auto* p = static_cast<Block*>(impl->data());
     for (size_t i = 0; i < block_num; ++i) {
-        new (p++) Block;
+        new (p + i) Block;
     }
     return impl;
 }
@@ -671,7 +672,7 @@ ObjectPtr<DenseMapImpl> DenseMapImpl::CopyFromImpl(const DenseMapImpl* src) {
 
     auto* p = static_cast<Block*>(impl->data());
     for (size_t i = 0; i < block_num; ++i) {
-        new (p++) Block(*src->GetBlock(i));
+        new (p + i) Block(*src->GetBlock(i));
     }
 
     return impl;

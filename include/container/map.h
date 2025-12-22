@@ -381,7 +381,7 @@ private:
    * \note This function does not change data content of the nodes,
    *       which needs to be updated by the caller.
    */
-    void IterListReplaceNodeBy(Cursor src, Cursor dst);
+    void IterListReplace(Cursor src, Cursor dst);
 
     /*!
    * \brief Spare an entry to be the head of a linked list.

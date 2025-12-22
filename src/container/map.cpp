@@ -349,7 +349,7 @@ MapImpl<DenseMapImpl>::iterator DenseMapImpl::find_impl(const key_type& key) con
 
 void DenseMapImpl::erase_impl(const iterator& pos) {
     const auto idx = pos.index();
-    if (pos.ptr_ == nullptr || idx >= size()) {
+    if (pos.ptr_ == nullptr || idx >= slots()) {
         return;
     }
 

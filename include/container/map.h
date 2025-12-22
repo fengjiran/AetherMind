@@ -6,6 +6,7 @@
 #define AETHERMIND_MAP_H
 
 #include "any.h"
+#include "map.h"
 
 namespace aethermind {
 
@@ -493,6 +494,48 @@ class Map : public ObjectRef {
 public:
     Map() : impl_(SmallMapImpl::Create()) {}
 
+    Map(const Map& other) : impl_(other.impl_) {}
+
+    Map(Map&& other) noexcept : impl_(other.impl_) {//NOLINT
+        other.clear();
+    }
+
+    template<typename KU, typename VU>
+        requires std::is_base_of_v<K, KU> && std::is_base_of_v<V, VU>
+    Map(const Map<KU, VU>& other) : impl_(other.impl_) {}//NOLINT
+
+    template<typename KU, typename VU>
+        requires std::is_base_of_v<K, KU> && std::is_base_of_v<V, VU>
+    Map(Map<KU, VU>&& other) noexcept : impl_(other.impl_) {//NOLINT
+        other.clear();
+    }
+
+    Map& operator=(const Map& other) {
+        impl_ = other.impl_;
+        return *this;
+    }
+
+    Map& operator=(Map&& other) noexcept {
+        impl_ = other.impl_;
+        other.clear();
+        return *this;
+    }
+
+    template<typename KU, typename VU>
+        requires std::is_base_of_v<K, KU> && std::is_base_of_v<V, VU>
+    Map& operator=(const Map<KU, VU>& other) {
+        impl_ = other.impl_;
+        return *this;
+    }
+
+    template<typename KU, typename VU>
+        requires std::is_base_of_v<K, KU> && std::is_base_of_v<V, VU>
+    Map& operator=(Map<KU, VU>&& other) noexcept {
+        impl_ = other.impl_;
+        other.clear();
+        return *this;
+    }
+
     class iterator;
 
     NODISCARD size_t size() const {
@@ -536,9 +579,18 @@ public:
         return IsSmallMap() ? iterator(small_ptr()->end()) : iterator(dense_ptr()->end());
     }
 
+    void clear() {
+        impl_ = SmallMapImpl::Create();
+    }
+
+    iterator find(const K& key) const {
+        return IsSmallMap() ? iterator(small_ptr()->find(key)) : iterator(dense_ptr()->find(key));
+    }
+
     NODISCARD bool IsSmallMap() const {
         return dynamic_cast<SmallMapImpl*>(impl_.get()) != nullptr;
     }
+
 
 private:
     ObjectPtr<Object> impl_;
@@ -552,6 +604,7 @@ private:
     }
 };
 
+// sizeof = 24
 template<typename K, typename V>
 class Map<K, V>::iterator {
 public:
@@ -564,36 +617,57 @@ public:
     iterator() = default;
 
     iterator& operator++() {
-        ++iter_;
+        if (is_small_map_) {
+            ++iter_.small_iter;
+        } else {
+            ++iter_.dense_iter;
+        }
         return *this;
     }
 
     iterator& operator--() {
-        --iter_;
+        if (is_small_map_) {
+            ++iter_.small_iter;
+        } else {
+            ++iter_.dense_iter;
+        }
         return *this;
     }
 
     iterator operator++(int) {
         iterator tmp = *this;
-        ++iter_;
+        operator++();
         return tmp;
     }
 
     iterator operator--(int) {
         iterator tmp = *this;
-        --iter_;
+        operator--();
         return tmp;
     }
 
     reference operator*() const {
-        auto& kv = *iter_;
-        return std::make_pair(kv.first.template cast<K>(), kv.second.template cast<V>());
+        std::pair<Any, Any> kv;
+        if (is_small_map_) {
+            kv = *iter_.small_iter;
+        } else {
+            kv = *iter_.dense_iter;
+        }
+        return std::make_pair(kv.first.cast<K>(), kv.second.cast<V>());
     }
 
     pointer operator->() const = delete;
 
     bool operator==(const iterator& other) const {
-        return iter_ == other.iter_;
+        if (is_small_map_ && other.is_small_map_) {
+            return iter_.small_iter == other.iter_.small_iter;
+        }
+
+        if (!is_small_map_ && !other.is_small_map_) {
+            return iter_.dense_iter == other.iter_.dense_iter;
+        }
+
+        return false;
     }
 
     bool operator!=(const iterator& other) const {
@@ -601,13 +675,19 @@ public:
     }
 
 private:
-    union {
+    union Iter {
         MapImpl<SmallMapImpl>::iterator small_iter;
         MapImpl<DenseMapImpl>::iterator dense_iter;
-    } iter_;
 
-    iterator(const MapImpl<SmallMapImpl>::iterator& iter) : iter_(iter) {}//NOLINT
-    iterator(const MapImpl<DenseMapImpl>::iterator& iter) : iter_(iter) {}//NOLINT
+        Iter(const MapImpl<SmallMapImpl>::iterator& iter) : small_iter(iter) {}//NOLINT
+        Iter(const MapImpl<DenseMapImpl>::iterator& iter) : dense_iter(iter) {}//NOLINT
+    };
+
+    Iter iter_;
+    bool is_small_map_{true};
+
+    iterator(const MapImpl<SmallMapImpl>::iterator& iter) : iter_(iter), is_small_map_(true) {} //NOLINT
+    iterator(const MapImpl<DenseMapImpl>::iterator& iter) : iter_(iter), is_small_map_(false) {}//NOLINT
 
     template<typename, typename>
     friend class Map;

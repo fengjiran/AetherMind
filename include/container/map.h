@@ -2,8 +2,8 @@
 // Created by richard on 11/28/25.
 //
 
-#ifndef AETHERMIND_MAP_H
-#define AETHERMIND_MAP_H
+#ifndef AETHERMIND_CONTAINER_MAP_H
+#define AETHERMIND_CONTAINER_MAP_H
 
 #include "any.h"
 #include "map.h"
@@ -82,6 +82,7 @@ protected:
 
     template<typename Iter>
         requires requires(Iter t) {
+            std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>;
             { *t } -> std::convertible_to<KVType>;
         }
     static ObjectPtr<Object> CreateFromRange(Iter first, Iter last);
@@ -436,6 +437,7 @@ ObjectPtr<Object> MapImpl<Derived>::Create(size_t n) {
 template<typename Derived>
 template<typename Iter>
     requires requires(Iter t) {
+        std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>;
         { *t } -> std::convertible_to<std::pair<Any, Any>>;
     }
 ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
@@ -466,8 +468,9 @@ ObjectPtr<Object> MapImpl<Derived>::CopyFrom(const Object* src) {
     const auto* p = static_cast<const Derived*>(src);
     if constexpr (std::is_same_v<Derived, SmallMapImpl>) {
         return SmallMapImpl::CopyFromImpl(p);
+    } else {
+        return DenseMapImpl::CopyFromImpl(p);
     }
-    return DenseMapImpl::CopyFromImpl(p);
 }
 
 template<typename Derived>
@@ -484,9 +487,9 @@ ObjectPtr<Object> MapImpl<Derived>::insert(const KVType& kv, const ObjectPtr<Obj
             new_impl = DenseMapImpl::InsertImpl(KVType(iter), new_impl);
         }
         return DenseMapImpl::InsertImpl(kv, new_impl);
+    } else {
+        return DenseMapImpl::InsertImpl(kv, old_impl);
     }
-
-    return DenseMapImpl::InsertImpl(kv, old_impl);
 }
 
 template<typename K, typename V>
@@ -494,7 +497,12 @@ class Map : public ObjectRef {
 public:
     Map() : impl_(SmallMapImpl::Create()) {}
 
+    explicit Map(size_t n) : impl_(SmallMapImpl::Create(n)) {}
+
     Map(const Map& other) : impl_(other.impl_) {}
+
+    template<typename Iter>
+    Map(Iter first, Iter last) : impl_(SmallMapImpl::CreateFromRange(first, last)) {}
 
     Map(Map&& other) noexcept : impl_(other.impl_) {//NOLINT
         other.clear();
@@ -550,16 +558,27 @@ public:
         return size() == 0;
     }
 
+    NODISCARD uint32_t use_count() const {
+        return IsSmallMap() ? small_ptr()->use_count() : dense_ptr()->use_count();
+    }
+
+    NODISCARD bool unique() const {
+        return use_count() == 1;
+    }
+
     NODISCARD size_t count() const {
         return IsSmallMap() ? small_ptr()->count() : dense_ptr()->count();
     }
 
     void insert(const K& key, const V& value) {
+        COW();
         std::pair<Any, Any> data(key, value);
-        impl_ = IsSmallMap() ? SmallMapImpl::insert(data, impl_) : DenseMapImpl::insert(data, impl_);
+        impl_ = IsSmallMap() ? SmallMapImpl::insert(data, impl_)
+                             : DenseMapImpl::insert(data, impl_);
     }
 
     void erase(const K& key) {
+        COW();
         IsSmallMap() ? small_ptr()->erase(key) : dense_ptr()->erase(key);
     }
 
@@ -603,8 +622,13 @@ private:
         return static_cast<DenseMapImpl*>(impl_.get());//NOLINT
     }
 
-    void SwitchContainer(size_t new_cap) {
-        //
+    void COW() {
+        if (unique()) {
+            return;
+        }
+
+        impl_ = IsSmallMap() ? SmallMapImpl::CopyFrom(impl_.get())
+                             : DenseMapImpl::CopyFrom(impl_.get());
     }
 };
 
@@ -699,4 +723,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_MAP_H
+#endif//AETHERMIND_CONTAINER_MAP_H

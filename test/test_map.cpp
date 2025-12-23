@@ -33,14 +33,16 @@ TEST(MapTest, basic) {
     auto it = dict.begin();
     EXPECT_EQ((*it).first, 1);
     EXPECT_EQ((*it).second, 2);
+    std::unordered_map<int, int> x;
 }
 
 // 测试构造函数和赋值运算符
-TEST(MAPTEST, constructors_and_assignment) {
+TEST(MapTest, constructors_and_assignment) {
     // 默认构造函数
     Map<int, String> map1;
     EXPECT_TRUE(map1.empty());
     EXPECT_EQ(map1.size(), 0);
+    EXPECT_TRUE(map1.unique());
 
     // 复制构造函数
     map1.insert(1, "one");
@@ -49,6 +51,9 @@ TEST(MAPTEST, constructors_and_assignment) {
     EXPECT_EQ(map2.size(), 2);
     EXPECT_EQ(map2[1], "one");
     EXPECT_EQ(map2[2], "two");
+    EXPECT_EQ(map2.use_count(), 2);
+    map2.insert(3, "three");
+    EXPECT_TRUE(map2.unique());
 
     // 移动构造函数
     Map<int, String> map3(std::move(map1));
@@ -61,6 +66,7 @@ TEST(MAPTEST, constructors_and_assignment) {
     map4 = map3;
     EXPECT_EQ(map4.size(), 2);
     EXPECT_EQ(map4[1], "one");
+    EXPECT_EQ(map3.use_count(), 2);
 
     // 移动赋值运算符
     Map<int, String> map5;
@@ -71,7 +77,7 @@ TEST(MAPTEST, constructors_and_assignment) {
 }
 
 // 测试插入和访问操作
-TEST(MAPTEST, insert_and_access) {
+TEST(MapTest, insert_and_access) {
     Map<String, int> map;
 
     // 插入元素
@@ -99,7 +105,7 @@ TEST(MAPTEST, insert_and_access) {
 }
 
 // 测试删除操作
-TEST(MAPTEST, erase) {
+TEST(MapTest, erase) {
     Map<int, int> map;
     map.insert(1, 10);
     map.insert(2, 20);
@@ -127,7 +133,7 @@ TEST(MAPTEST, erase) {
 }
 
 // 测试查找操作
-TEST(MAPTEST, find) {
+TEST(MapTest, find) {
     Map<int, String> map;
     map.insert(1, "one");
     map.insert(2, "two");
@@ -145,7 +151,7 @@ TEST(MAPTEST, find) {
 }
 
 // 测试迭代器
-TEST(MAPTEST, iterators) {
+TEST(MapTest, iterators) {
     Map<int, int> map;
     map.insert(1, 10);
     map.insert(2, 20);
@@ -168,7 +174,7 @@ TEST(MAPTEST, iterators) {
 }
 
 // 测试清除操作
-TEST(MAPTEST, clear) {
+TEST(MapTest, clear) {
     Map<int, String> map;
     map.insert(1, "one");
     map.insert(2, "two");
@@ -189,7 +195,7 @@ TEST(MAPTEST, clear) {
 }
 
 // 测试小地图到大地图的转换
-TEST(MAPTEST, small_to_large_conversion) {
+TEST(MapTest, small_to_large_conversion) {
     Map<int, int> map;
 
     // 插入元素直到转换为大地图
@@ -206,7 +212,7 @@ TEST(MAPTEST, small_to_large_conversion) {
 }
 
 // 测试边界条件
-TEST(MAPTEST, edge_cases) {
+TEST(MapTest, edge_cases) {
     Map<int, int> map;
 
     // 单个元素
@@ -231,7 +237,7 @@ TEST(MAPTEST, edge_cases) {
 }
 
 // 测试不同类型的键和值
-TEST(MAPTEST, different_types) {
+TEST(MapTest, different_types) {
     // String作为键，int作为值
     Map<String, int> string_map;
     string_map.insert("apple", 1);

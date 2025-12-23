@@ -231,7 +231,7 @@ public:
     }
 
     template<typename T>
-    explicit operator T() {//NOLINT
+    operator T() {//NOLINT
         return cast<T>();
     }
 

@@ -99,7 +99,7 @@ public:
     using value_type = KVType;
     using pointer = value_type*;
     using reference = value_type&;
-    using difference_type = int64_t;
+    using difference_type = std::ptrdiff_t;
 
     iterator() : index_(0), ptr_(nullptr) {}
 
@@ -111,7 +111,7 @@ public:
 
     pointer operator->() const {
         const auto* p = static_cast<const Derived*>(ptr_);
-        return p->DeRefIter(index_);
+        return p->GetDataPtr(index_);
     }
 
     reference operator*() const {
@@ -184,7 +184,8 @@ private:
 
     void erase_impl(const iterator& pos);
 
-    NODISCARD KVType* DeRefIter(size_t index) const {
+    // GetDataPtr
+    NODISCARD KVType* GetDataPtr(size_t index) const {
         return static_cast<KVType*>(data()) + index;
     }
 
@@ -339,7 +340,7 @@ private:
 
     NODISCARD Cursor GetCursorFromHash(size_t hash_value) const;
 
-    NODISCARD KVType* DeRefIter(size_t index) const;
+    NODISCARD KVType* GetDataPtr(size_t index) const;
 
     // Construct a ListNode from hash code if the position is head of list
     NODISCARD std::optional<Cursor> GetListHead(size_t hash_value) const;
@@ -656,10 +657,10 @@ template<typename K, typename V>
 class Map<K, V>::iterator {
 public:
     using iterator_category = std::bidirectional_iterator_tag;
-    using difference_type = int64_t;
-    using value_type = const std::pair<K, V>;
+    using difference_type = std::ptrdiff_t;
+    using value_type = SmallMapImpl::KVType;
     using pointer = value_type*;
-    using reference = value_type;
+    using reference = value_type&;
 
     iterator() = default;
 
@@ -674,9 +675,9 @@ public:
 
     iterator& operator--() {
         if (is_small_map_) {
-            ++iter_.small_iter;
+            --iter_.small_iter;
         } else {
-            ++iter_.dense_iter;
+            --iter_.dense_iter;
         }
         return *this;
     }
@@ -694,16 +695,12 @@ public:
     }
 
     reference operator*() const {
-        std::pair<Any, Any> kv;
-        if (is_small_map_) {
-            kv = *iter_.small_iter;
-        } else {
-            kv = *iter_.dense_iter;
-        }
-        return std::make_pair(kv.first.cast<K>(), kv.second.cast<V>());
+        return is_small_map_ ? iter_.small_iter.operator*() : iter_.dense_iter.operator*();
     }
 
-    pointer operator->() const = delete;
+    pointer operator->() const {
+        return is_small_map_ ? iter_.small_iter.operator->() : iter_.dense_iter.operator->();
+    }
 
     bool operator==(const iterator& other) const {
         if (is_small_map_ && other.is_small_map_) {

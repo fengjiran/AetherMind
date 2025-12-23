@@ -142,8 +142,8 @@ TEST(MapTest, find) {
     // 查找存在的键
     auto it = map.find(2);
     EXPECT_NE(it, map.end());
-    EXPECT_EQ((*it).first, 2);
-    EXPECT_EQ((*it).second, "two");
+    EXPECT_EQ(it->first, 2);
+    EXPECT_EQ(it->second, "two");
 
     // 查找不存在的键
     it = map.find(10);
@@ -164,7 +164,7 @@ TEST(MapTest, iterators) {
     // 遍历所有元素
     int sum = 0;
     for (auto& pair: map) {
-        sum += pair.second;
+        sum += static_cast<int>(pair.second);
     }
     EXPECT_EQ(sum, 60);
 

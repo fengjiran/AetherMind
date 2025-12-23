@@ -6,7 +6,6 @@
 #define AETHERMIND_CONTAINER_MAP_H
 
 #include "any.h"
-#include "map.h"
 
 namespace aethermind {
 
@@ -14,8 +13,8 @@ template<typename Derived>
 class MapImpl : public Object {
 public:
     using key_type = Any;
-    using value_type = Any;
-    using KVType = std::pair<key_type, value_type>;
+    using mapped_type = Any;
+    using KVType = std::pair<key_type, mapped_type>;
 
     class iterator;
 
@@ -41,11 +40,11 @@ public:
         return static_cast<const Derived*>(this)->count_impl(key);
     }
 
-    value_type& at(const key_type& key) {
+    mapped_type& at(const key_type& key) {
         return static_cast<Derived*>(this)->at_impl(key);
     }
 
-    NODISCARD const value_type& at(const key_type& key) const {
+    NODISCARD const mapped_type& at(const key_type& key) const {
         return static_cast<const Derived*>(this)->at_impl(key);
     }
 
@@ -82,7 +81,7 @@ protected:
 
     template<typename Iter>
         requires requires(Iter t) {
-            std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>;
+            requires std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>;
             { *t } -> std::convertible_to<KVType>;
         }
     static ObjectPtr<Object> CreateFromRange(Iter first, Iter last);
@@ -179,9 +178,9 @@ private:
         return find(key).index() < size();
     }
 
-    value_type& at_impl(const key_type& key);
+    mapped_type& at_impl(const key_type& key);
 
-    NODISCARD const value_type& at_impl(const key_type& key) const;
+    NODISCARD const mapped_type& at_impl(const key_type& key) const;
 
     void erase_impl(const iterator& pos);
 
@@ -326,11 +325,11 @@ private:
 
     NODISCARD size_t count_impl(const key_type& key) const;
 
-    NODISCARD value_type& at_impl(const key_type& key) {
+    NODISCARD mapped_type& at_impl(const key_type& key) {
         return At(key);
     }
 
-    NODISCARD const value_type& at_impl(const key_type& key) const {
+    NODISCARD const mapped_type& at_impl(const key_type& key) const {
         return At(key);
     }
 
@@ -349,7 +348,7 @@ private:
 
     NODISCARD size_t DecIter(size_t index) const;
 
-    NODISCARD value_type& At(const key_type& key) const;
+    NODISCARD mapped_type& At(const key_type& key) const;
 
     /*!
    * \brief Search for the given key, throw exception if not exists
@@ -437,7 +436,7 @@ ObjectPtr<Object> MapImpl<Derived>::Create(size_t n) {
 template<typename Derived>
 template<typename Iter>
     requires requires(Iter t) {
-        std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>;
+        requires std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>;
         { *t } -> std::convertible_to<std::pair<Any, Any>>;
     }
 ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
@@ -495,9 +494,21 @@ ObjectPtr<Object> MapImpl<Derived>::insert(const KVType& kv, const ObjectPtr<Obj
 template<typename K, typename V>
 class Map : public ObjectRef {
 public:
+    using key_type = K;
+    using mapped_type = V;
+    using value_type = std::pair<const K, V>;
+    using size_type = size_t;
+    using difference_type = std::ptrdiff_t;
+    using pointer = value_type*;
+    using const_pointer = const value_type*;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+
     Map() : impl_(SmallMapImpl::Create()) {}
 
-    explicit Map(size_t n) : impl_(SmallMapImpl::Create(n)) {}
+    explicit Map(size_type n) : impl_(SmallMapImpl::Create(n)) {}
+
+    Map(const std::initializer_list<value_type>& list) : Map(list.begin(), list.end()) {}
 
     Map(const Map& other) : impl_(other.impl_) {}
 
@@ -546,11 +557,11 @@ public:
 
     class iterator;
 
-    NODISCARD size_t size() const {
+    NODISCARD size_type size() const {
         return IsSmallMap() ? small_ptr()->size() : dense_ptr()->size();
     }
 
-    NODISCARD size_t slots() const {
+    NODISCARD size_type slots() const {
         return IsSmallMap() ? small_ptr()->slots() : dense_ptr()->slots();
     }
 
@@ -566,27 +577,35 @@ public:
         return use_count() == 1;
     }
 
-    NODISCARD size_t count() const {
+    NODISCARD size_type count() const {
         return IsSmallMap() ? small_ptr()->count() : dense_ptr()->count();
     }
 
-    void insert(const K& key, const V& value) {
+    void insert(const key_type& key, const mapped_type& value) {
         COW();
         std::pair<Any, Any> data(key, value);
         impl_ = IsSmallMap() ? SmallMapImpl::insert(data, impl_)
                              : DenseMapImpl::insert(data, impl_);
     }
 
-    void erase(const K& key) {
+    void erase(const key_type& key) {
         COW();
         IsSmallMap() ? small_ptr()->erase(key) : dense_ptr()->erase(key);
     }
 
-    V at(const K& key) const {
-        return IsSmallMap() ? small_ptr()->at(key).template cast<V>() : dense_ptr()->at(key).template cast<V>();
+    Any& at(const key_type& key) {
+        return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
     }
 
-    V operator[](const K& key) const {
+    const Any& at(const key_type& key) const {
+        return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
+    }
+
+    Any& operator[](const key_type& key) {
+        return at(key);
+    }
+
+    const Any& operator[](const key_type& key) const {
         return at(key);
     }
 

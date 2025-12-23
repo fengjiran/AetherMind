@@ -17,7 +17,7 @@ MapImpl<SmallMapImpl>::iterator SmallMapImpl::find_impl(const key_type& key) con
     return end();
 }
 
-MapImpl<SmallMapImpl>::value_type& SmallMapImpl::at_impl(const key_type& key) {
+MapImpl<SmallMapImpl>::mapped_type& SmallMapImpl::at_impl(const key_type& key) {
     const auto iter = find(key);
     if (iter == end()) {
         AETHERMIND_THROW(KeyError) << "key is not int map.";
@@ -25,7 +25,7 @@ MapImpl<SmallMapImpl>::value_type& SmallMapImpl::at_impl(const key_type& key) {
     return iter->second;
 }
 
-const MapImpl<SmallMapImpl>::value_type& SmallMapImpl::at_impl(const key_type& key) const {
+const MapImpl<SmallMapImpl>::mapped_type& SmallMapImpl::at_impl(const key_type& key) const {
     const auto iter = find(key);
     if (iter == end()) {
         AETHERMIND_THROW(KeyError) << "key is not int map.";
@@ -101,7 +101,7 @@ struct DenseMapImpl::Entry {
     size_t next = kInvalidIndex;
 
     Entry() = default;
-    Entry(key_type key, value_type value) : data(std::move(key), std::move(value)) {}
+    Entry(key_type key, mapped_type value) : data(std::move(key), std::move(value)) {}
     explicit Entry(const KVType& kv) : data(kv) {}
     explicit Entry(KVType&& kv) : data(std::move(kv)) {}
 
@@ -197,7 +197,7 @@ public:
         return GetData().first;
     }
 
-    NODISCARD value_type& GetValue() const {
+    NODISCARD mapped_type& GetValue() const {
         return GetData().second;
     }
 
@@ -387,7 +387,7 @@ void DenseMapImpl::erase_impl(const iterator& pos) {
     --size_;
 }
 
-MapImpl<DenseMapImpl>::value_type& DenseMapImpl::At(const key_type& key) const {
+MapImpl<DenseMapImpl>::mapped_type& DenseMapImpl::At(const key_type& key) const {
     const Cursor iter = Search(key);
     if (iter.IsNone()) {
         AETHERMIND_THROW(KeyError) << "Key not found";
@@ -526,7 +526,7 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::TrySpareListHead(Cursor target
 
     // finally, we have done moving the linked list
     // fill data_ into `target`
-    target.CreateHead(Entry(key, value_type(nullptr)));
+    target.CreateHead(Entry(key, mapped_type(nullptr)));
     ++size_;
     return target;
 }
@@ -545,7 +545,7 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsert(const key_type& key)
 
     // Case 1: empty
     if (node.IsEmpty()) {
-        node.CreateHead(Entry(key, value_type(nullptr)));
+        node.CreateHead(Entry(key, mapped_type(nullptr)));
         ++size_;
         return node;
     }
@@ -585,7 +585,7 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsert(const key_type& key)
 
     uint8_t offset_idx = empty_slot_info->first;
     Cursor empty = empty_slot_info->second;
-    empty.CreateTail(Entry(key, value_type(nullptr)));
+    empty.CreateTail(Entry(key, mapped_type(nullptr)));
     // link `iter` to `empty`, and move forward
     node.SetOffsetIdx(offset_idx);
     ++size_;

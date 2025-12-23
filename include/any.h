@@ -235,6 +235,7 @@ public:
         return cast<T>();
     }
 
+
     template<typename T>
     T MoveFromAny() {
         return std::move(*this).cast<T>();

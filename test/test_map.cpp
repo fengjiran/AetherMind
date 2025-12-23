@@ -31,8 +31,8 @@ TEST(MapTest, basic) {
     EXPECT_EQ(dict.size(), 6);
     EXPECT_TRUE(!dict.IsSmallMap());
     auto it = dict.begin();
-    EXPECT_EQ((*it).first, 1);
-    EXPECT_EQ((*it).second, 2);
+    EXPECT_EQ(it->first, 1);
+    EXPECT_EQ(it->second, 2);
     std::unordered_map<int, int> x;
 }
 

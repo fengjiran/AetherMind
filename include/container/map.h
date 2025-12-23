@@ -17,6 +17,7 @@ public:
     using KVType = std::pair<key_type, mapped_type>;
 
     class iterator;
+    class const_iterator;
 
     MapImpl() : data_(nullptr), size_(0), slots_(0) {}
 
@@ -103,15 +104,14 @@ public:
 
     iterator() : index_(0), ptr_(nullptr) {}
 
-    iterator(size_t index, const MapImpl* ptr) : index_(index), ptr_(ptr) {}
+    iterator(size_t index, const Derived* ptr) : index_(index), ptr_(ptr) {}
 
     NODISCARD size_t index() const {
         return index_;
     }
 
     pointer operator->() const {
-        const auto* p = static_cast<const Derived*>(ptr_);
-        return p->GetDataPtr(index_);
+        return ptr_->GetDataPtr(index_);
     }
 
     reference operator*() const {
@@ -119,14 +119,12 @@ public:
     }
 
     iterator& operator++() {
-        const auto* p = static_cast<const Derived*>(ptr_);
-        index_ = p->IncIter(index_);
+        index_ = ptr_->IncIter(index_);
         return *this;
     }
 
     iterator& operator--() {
-        const auto* p = static_cast<const Derived*>(ptr_);
-        index_ = p->DecIter(index_);
+        index_ = ptr_->DecIter(index_);
         return *this;
     }
 
@@ -151,8 +149,43 @@ public:
     }
 
 protected:
+    size_t index_;// The position in the array.
+    const Derived* ptr_;
+
+    friend class SmallMapImpl;
+    friend class DenseMapImpl;
+};
+
+template<typename Derived>
+class MapImpl<Derived>::const_iterator {
+public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = KVType;
+    using pointer = value_type*;
+    using const_pointer = const value_type*;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+    using difference_type = std::ptrdiff_t;
+
+    const_iterator() : index_(0), ptr_(nullptr) {}
+
+    const_iterator(size_t index, const Derived* ptr) : index_(index), ptr_(ptr) {}
+
+    NODISCARD size_t index() const {
+        return index_;
+    }
+
+    const_pointer operator->() const {
+        return ptr_->GetDataPtr(index_);
+    }
+
+    const_reference operator*() const {
+        return *operator->();
+    }
+
+protected:
     size_t index_;      // The position in the array.
-    const MapImpl* ptr_;// The container it pointer to.
+    const Derived* ptr_;// The container it pointer to.
 
     friend class SmallMapImpl;
     friend class DenseMapImpl;
@@ -521,11 +554,11 @@ public:
     }
 
     template<typename KU, typename VU>
-        requires std::is_base_of_v<K, KU> && std::is_base_of_v<V, VU>
+        requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
     Map(const Map<KU, VU>& other) : impl_(other.impl_) {}//NOLINT
 
     template<typename KU, typename VU>
-        requires std::is_base_of_v<K, KU> && std::is_base_of_v<V, VU>
+        requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
     Map(Map<KU, VU>&& other) noexcept : impl_(other.impl_) {//NOLINT
         other.clear();
     }
@@ -542,14 +575,14 @@ public:
     }
 
     template<typename KU, typename VU>
-        requires std::is_base_of_v<K, KU> && std::is_base_of_v<V, VU>
+        requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
     Map& operator=(const Map<KU, VU>& other) {
         impl_ = other.impl_;
         return *this;
     }
 
     template<typename KU, typename VU>
-        requires std::is_base_of_v<K, KU> && std::is_base_of_v<V, VU>
+        requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
     Map& operator=(Map<KU, VU>&& other) noexcept {
         impl_ = other.impl_;
         other.clear();
@@ -558,23 +591,23 @@ public:
 
     class iterator;
 
-    NODISCARD size_type size() const {
+    NODISCARD size_type size() const noexcept {
         return IsSmallMap() ? small_ptr()->size() : dense_ptr()->size();
     }
 
-    NODISCARD size_type slots() const {
+    NODISCARD size_type slots() const noexcept {
         return IsSmallMap() ? small_ptr()->slots() : dense_ptr()->slots();
     }
 
-    NODISCARD bool empty() const {
+    NODISCARD bool empty() const noexcept {
         return size() == 0;
     }
 
-    NODISCARD uint32_t use_count() const {
+    NODISCARD uint32_t use_count() const noexcept {
         return IsSmallMap() ? small_ptr()->use_count() : dense_ptr()->use_count();
     }
 
-    NODISCARD bool unique() const {
+    NODISCARD bool unique() const noexcept {
         return use_count() == 1;
     }
 
@@ -610,11 +643,11 @@ public:
         return at(key);
     }
 
-    iterator begin() const {
+    iterator begin() {
         return IsSmallMap() ? iterator(small_ptr()->begin()) : iterator(dense_ptr()->begin());
     }
 
-    iterator end() const {
+    iterator end() {
         return IsSmallMap() ? iterator(small_ptr()->end()) : iterator(dense_ptr()->end());
     }
 

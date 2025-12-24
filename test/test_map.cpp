@@ -34,6 +34,12 @@ TEST(MapTest, basic) {
     EXPECT_EQ(it->first, 1);
     EXPECT_EQ(it->second, 2);
     std::unordered_map<int, int> x;
+    auto res = x.insert({1, 1});
+    // auto res1 = x.insert_or_assign(1, 2);
+    auto res1 = x.insert({1, 2});
+    EXPECT_TRUE(!res1.second);
+    EXPECT_EQ(res1.first->first, 1);
+    EXPECT_EQ(x[1], 1);
 }
 
 // 测试构造函数和赋值运算符

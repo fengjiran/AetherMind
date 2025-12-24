@@ -49,6 +49,35 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFromImpl(const SmallMapImpl* src) {
     return ObjectPtr<SmallMapImpl>::reclaim(static_cast<SmallMapImpl*>(impl.release()));//NOLINT
 }
 
+std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::InsertImpl_(
+        const KVType& kv, const ObjectPtr<Object>& old_impl) {
+    auto* map = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
+    if (const auto it = map->find(kv.first); it != map->end()) {
+        return std::make_tuple(old_impl, it, false);
+    }
+
+    if (map->size() < map->slots()) {
+        auto* p = static_cast<KVType*>(map->data()) + map->size();
+        new (p) KVType(kv);
+        ++map->size_;
+        return std::make_tuple(old_impl, iterator(map->size() - 1, map), true);
+    }
+
+    const size_t new_cap = std::min(kThreshold, std::max(kIncFactor * map->slots(), kInitSize));
+    auto new_impl = ObjectPtr<SmallMapImpl>::reclaim(static_cast<SmallMapImpl*>(Create(new_cap).release()));//NOLINT
+    auto* src = static_cast<KVType*>(map->data());
+    auto* dst = static_cast<KVType*>(new_impl->data());
+    for (size_t i = 0; i < map->size(); ++i) {
+        new (dst++) KVType(std::move(*src++));
+        ++new_impl->size_;
+    }
+    new (dst) KVType(kv);
+    ++new_impl->size_;
+    iterator pos(new_impl->size() - 1, new_impl.get());
+    return std::make_tuple(new_impl, pos, true);
+}
+
+
 ObjectPtr<Object> SmallMapImpl::InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
     if (const auto iter = map->find(kv.first); iter != map->end()) {
@@ -485,6 +514,60 @@ void DenseMapImpl::IterListReplace(Cursor src, Cursor dst) {
     }
 }
 
+std::optional<DenseMapImpl::Cursor> DenseMapImpl::TrySpareListHead_(Cursor target, const KVType& kv) {
+    // `target` is not the head of the linked list
+    // move the original item of `target` (if any)
+    // and construct new item on the position `target`
+    // To make `target` empty, we
+    // 1) find `w` the previous element of `target` in the linked list
+    // 2) copy the linked list starting from `r = target`
+    // 3) paste them after `w`
+
+    // read from the linked list after `r`
+    Cursor r = target;
+    // write to the tail of `w`
+    Cursor w = target.FindPrevSlot();
+    // after `target` is moved, we disallow writing to the slot
+    bool is_first = true;
+    uint8_t r_meta;
+
+    do {
+        const auto empty_slot_info = w.GetNextEmptySlot();
+        if (!empty_slot_info) {
+            return std::nullopt;
+        }
+
+        uint8_t offset_idx = empty_slot_info->first;
+        Cursor empty = empty_slot_info->second;
+
+        // move `r` to `empty`
+        // first move the data over
+        empty.CreateTail(Entry(std::move(r.GetData())));
+        // then move link list chain of r to empty
+        // this needs to happen after NewTail so empty's prev/next get updated
+        IterListReplace(r, empty);
+        // clear the metadata of `r`
+        r_meta = r.GetMeta();
+        if (is_first) {
+            is_first = false;
+            r.SetProtected();
+        } else {
+            r.SetEmpty();
+        }
+        // link `w` to `empty`, and move forward
+        w.SetOffsetIdx(offset_idx);
+        w = empty;
+    } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
+
+    // finally, we have done moving the linked list
+    // fill data_ into `target`
+    target.CreateHead(Entry(kv));
+    ++size_;
+    return target;
+}
+
+
+
 std::optional<DenseMapImpl::Cursor> DenseMapImpl::TrySpareListHead(Cursor target, const key_type& key) {
     // `target` is not the head of the linked list
     // move the original item of `target` (if any)
@@ -597,6 +680,13 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsert(const key_type& key)
     ++size_;
     return empty;
 }
+
+std::tuple<ObjectPtr<Object>, MapImpl<DenseMapImpl>::iterator, bool> DenseMapImpl::InsertImpl_(
+        const KVType& kv, const ObjectPtr<Object>& old_impl) {
+    auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT
+    //
+}
+
 
 ObjectPtr<Object> DenseMapImpl::InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT

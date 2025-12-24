@@ -7,6 +7,8 @@
 
 #include "any.h"
 
+#include <tuple>
+
 namespace aethermind {
 
 template<typename Derived>
@@ -302,6 +304,9 @@ private:
 
     static ObjectPtr<Object> InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl);
 
+    static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl_(
+            const KVType& kv, const ObjectPtr<Object>& old_impl);
+
     template<typename Derived>
     friend class MapImpl;
     friend class DenseMapImpl;
@@ -494,6 +499,7 @@ private:
    */
     // bool TrySpareListHead(ListNode target, const key_type& key, ListNode* result);
     std::optional<Cursor> TrySpareListHead(Cursor target, const key_type& key);
+    std::optional<Cursor> TrySpareListHead_(Cursor target, const KVType& kv);
 
     /*!
    * \brief Try to insert a key, or do nothing if already exists
@@ -502,9 +508,13 @@ private:
    */
     // bool TryInsert(const key_type& key, ListNode* result);
     std::optional<Cursor> TryInsert(const key_type& key);
+    std::optional<Cursor> TryInsert_(const KVType& key);
 
     // may be rehash
     static ObjectPtr<Object> InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl);
+
+    static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl_(
+            const KVType& kv, const ObjectPtr<Object>& old_impl);
 
     static size_t ComputeBlockNum(size_t slots) {
         return (slots + kBlockSize - 1) / kBlockSize;
@@ -595,7 +605,7 @@ class Map : public ObjectRef {
 public:
     using key_type = K;
     using mapped_type = V;
-    using value_type = std::pair<const K, V>;
+    using value_type = std::pair<const key_type, mapped_type>;
     using size_type = size_t;
     using difference_type = std::ptrdiff_t;
     using pointer = value_type*;
@@ -607,16 +617,16 @@ public:
 
     explicit Map(size_type n) : impl_(SmallMapImpl::Create(n)) {}
 
-    Map(const std::initializer_list<value_type>& list) : Map(list.begin(), list.end()) {}
+    Map(std::initializer_list<value_type> list) : Map(list.begin(), list.end()) {}
 
-    Map(const Map& other) : impl_(other.impl_) {}
-
-    template<typename Iter>
-    Map(Iter first, Iter last) : impl_(SmallMapImpl::CreateFromRange(first, last)) {}
+    Map(const Map& other) = default;
 
     Map(Map&& other) noexcept : impl_(other.impl_) {//NOLINT
         other.clear();
     }
+
+    template<typename Iter>
+    Map(Iter first, Iter last) : impl_(SmallMapImpl::CreateFromRange(first, last)) {}
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
@@ -629,28 +639,36 @@ public:
     }
 
     Map& operator=(const Map& other) {
-        impl_ = other.impl_;
+        Map(other).swap(*this);
         return *this;
     }
 
     Map& operator=(Map&& other) noexcept {
-        impl_ = other.impl_;
-        other.clear();
+        Map(std::move(other)).swap(*this);
         return *this;
     }
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
     Map& operator=(const Map<KU, VU>& other) {
-        impl_ = other.impl_;
+        if (this != &other) {
+            impl_ = other.impl_;
+        }
         return *this;
     }
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
     Map& operator=(Map<KU, VU>&& other) noexcept {
-        impl_ = other.impl_;
-        other.clear();
+        if (this != &other) {
+            impl_ = other.impl_;
+            other.clear();
+        }
+        return *this;
+    }
+
+    Map& operator=(std::initializer_list<value_type> list) {
+        Map(list).swap(*this);
         return *this;
     }
 
@@ -709,19 +727,19 @@ public:
         return at(key);
     }
 
-    iterator begin() {
+    iterator begin() noexcept {
         return IsSmallMap() ? iterator(small_ptr()->begin()) : iterator(dense_ptr()->begin());
     }
 
-    iterator end() {
+    iterator end() noexcept {
         return IsSmallMap() ? iterator(small_ptr()->end()) : iterator(dense_ptr()->end());
     }
 
-    const_iterator begin() const {
+    const_iterator begin() const noexcept {
         return IsSmallMap() ? const_iterator(small_ptr()->begin()) : const_iterator(dense_ptr()->begin());
     }
 
-    const_iterator end() const {
+    const_iterator end() const noexcept {
         return IsSmallMap() ? const_iterator(small_ptr()->end()) : const_iterator(dense_ptr()->end());
     }
 
@@ -739,6 +757,10 @@ public:
 
     NODISCARD bool IsSmallMap() const {
         return dynamic_cast<SmallMapImpl*>(impl_.get()) != nullptr;
+    }
+
+    void swap(Map& other) noexcept {
+        impl_.swap(other.impl_);
     }
 
 private:

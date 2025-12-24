@@ -260,6 +260,7 @@ private:
     NODISCARD const_iterator end_impl() const {
         return const_cast<SmallMapImpl*>(this)->end_impl();
     }
+
     NODISCARD const_iterator find_impl(const key_type& key) const;
 
     NODISCARD iterator find_impl(const key_type& key);
@@ -508,7 +509,7 @@ private:
    */
     // bool TryInsert(const key_type& key, ListNode* result);
     std::optional<Cursor> TryInsert(const key_type& key);
-    std::optional<Cursor> TryInsert_(const KVType& key);
+    std::optional<Cursor> TryInsert_(const KVType& kv);
 
     // may be rehash
     static ObjectPtr<Object> InsertImpl(const KVType& kv, ObjectPtr<Object> old_impl);

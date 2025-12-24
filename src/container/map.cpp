@@ -566,8 +566,6 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::TrySpareListHead_(Cursor targe
     return target;
 }
 
-
-
 std::optional<DenseMapImpl::Cursor> DenseMapImpl::TrySpareListHead(Cursor target, const key_type& key) {
     // `target` is not the head of the linked list
     // move the original item of `target` (if any)
@@ -619,6 +617,11 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::TrySpareListHead(Cursor target
     ++size_;
     return target;
 }
+
+std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsert_(const KVType& kv) {
+
+}
+
 
 std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsert(const key_type& key) {
     if (slots() == 0) {
@@ -681,10 +684,32 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsert(const key_type& key)
     return empty;
 }
 
-std::tuple<ObjectPtr<Object>, MapImpl<DenseMapImpl>::iterator, bool> DenseMapImpl::InsertImpl_(
+std::tuple<ObjectPtr<Object>, DenseMapImpl::iterator, bool> DenseMapImpl::InsertImpl_(
         const KVType& kv, const ObjectPtr<Object>& old_impl) {
     auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT
-    //
+
+    // The key is already in the hash table
+    if (auto it = map->find(kv.first); it != map->end()) {
+        return std::make_tuple(old_impl, it, false);
+    }
+
+    // required that `iter` to be the head of a linked list through which we can iterator.
+    // `iter` can be:
+    // 1) empty;
+    // 2) body of an irrelevant list;
+    // 3) head of the relevant list.
+    Cursor node = map->GetCursorFromHash(AnyHash()(kv.first));
+
+    // Case 1: empty
+    if (node.IsEmpty()) {
+        node.CreateHead(Entry(kv));
+        ++map->size_;
+        map->IterListPushBack(node);
+        return std::make_tuple(old_impl, iterator(node.index(), map), true);
+    }
+
+    // Case 2: body of an irrelevant list
+
 }
 
 

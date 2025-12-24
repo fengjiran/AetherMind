@@ -49,16 +49,28 @@ public:
         return static_cast<const Derived*>(this)->at_impl(key);
     }
 
-    NODISCARD iterator begin() const {
+    NODISCARD const_iterator begin() const {
         return static_cast<const Derived*>(this)->begin_impl();
     }
 
-    NODISCARD iterator end() const {
+    NODISCARD const_iterator end() const {
         return static_cast<const Derived*>(this)->end_impl();
     }
 
-    NODISCARD iterator find(const key_type& key) const {
+    NODISCARD iterator begin() {
+        return static_cast<Derived*>(this)->begin_impl();
+    }
+
+    NODISCARD iterator end() {
+        return static_cast<Derived*>(this)->end_impl();
+    }
+
+    NODISCARD const_iterator find(const key_type& key) const {
         return static_cast<const Derived*>(this)->find_impl(key);
+    }
+
+    NODISCARD iterator find(const key_type& key) {
+        return static_cast<Derived*>(this)->find_impl(key);
     }
 
     void erase(const iterator& pos) {
@@ -104,10 +116,14 @@ public:
 
     iterator() : index_(0), ptr_(nullptr) {}
 
-    iterator(size_t index, const Derived* ptr) : index_(index), ptr_(ptr) {}
+    iterator(size_t index, Derived* ptr) : index_(index), ptr_(ptr) {}
 
     NODISCARD size_t index() const {
         return index_;
+    }
+
+    NODISCARD Derived* ptr() const {
+        return ptr_;
     }
 
     pointer operator->() const {
@@ -150,7 +166,7 @@ public:
 
 protected:
     size_t index_;// The position in the array.
-    const Derived* ptr_;
+    Derived* ptr_;
 
     friend class SmallMapImpl;
     friend class DenseMapImpl;
@@ -161,15 +177,15 @@ class MapImpl<Derived>::const_iterator {
 public:
     using iterator_category = std::forward_iterator_tag;
     using value_type = KVType;
-    using pointer = value_type*;
     using const_pointer = const value_type*;
-    using reference = value_type&;
     using const_reference = const value_type&;
     using difference_type = std::ptrdiff_t;
 
     const_iterator() : index_(0), ptr_(nullptr) {}
 
     const_iterator(size_t index, const Derived* ptr) : index_(index), ptr_(ptr) {}
+
+    const_iterator(const iterator& iter) : index_(iter.index()), ptr_(iter.ptr()) {}//NOLINT
 
     NODISCARD size_t index() const {
         return index_;
@@ -181,6 +197,36 @@ public:
 
     const_reference operator*() const {
         return *operator->();
+    }
+
+    const_iterator& operator++() {
+        index_ = ptr_->IncIter(index_);
+        return *this;
+    }
+
+    const_iterator& operator--() {
+        index_ = ptr_->DecIter(index_);
+        return *this;
+    }
+
+    const_iterator operator++(int) {
+        const_iterator tmp = *this;
+        operator++();
+        return tmp;
+    }
+
+    const_iterator operator--(int) {
+        const_iterator tmp = *this;
+        operator--();
+        return tmp;
+    }
+
+    bool operator==(const const_iterator& other) const {
+        return index_ == other.index_ && ptr_ == other.ptr_;
+    }
+
+    bool operator!=(const const_iterator& other) const {
+        return !(*this == other);
     }
 
 protected:
@@ -197,15 +243,24 @@ public:
     ~SmallMapImpl() override = default;
 
 private:
-    NODISCARD iterator begin_impl() const {
+    NODISCARD iterator begin_impl() {
         return {0, this};
     }
 
-    NODISCARD iterator end_impl() const {
+    NODISCARD iterator end_impl() {
         return {size(), this};
     }
 
-    NODISCARD iterator find_impl(const key_type& key) const;
+    NODISCARD const_iterator begin_impl() const {
+        return const_cast<SmallMapImpl*>(this)->begin_impl();
+    }
+
+    NODISCARD const_iterator end_impl() const {
+        return const_cast<SmallMapImpl*>(this)->end_impl();
+    }
+    NODISCARD const_iterator find_impl(const key_type& key) const;
+
+    NODISCARD iterator find_impl(const key_type& key);
 
     NODISCARD size_t count_impl(const key_type& key) const {
         return find(key).index() < size();
@@ -347,15 +402,25 @@ private:
     // The tail of iterator list
     size_t iter_list_tail_ = kInvalidIndex;
 
-    NODISCARD iterator begin_impl() const {
+    NODISCARD iterator begin_impl() {
         return {iter_list_head_, this};
     }
 
-    NODISCARD iterator end_impl() const {
+    NODISCARD iterator end_impl() {
         return {kInvalidIndex, this};
     }
 
-    NODISCARD iterator find_impl(const key_type& key) const;
+    NODISCARD const_iterator begin_impl() const {
+        return const_cast<DenseMapImpl*>(this)->begin_impl();
+    }
+
+    NODISCARD const_iterator end_impl() const {
+        return const_cast<DenseMapImpl*>(this)->end_impl();
+    }
+
+    NODISCARD const_iterator find_impl(const key_type& key) const;
+
+    NODISCARD iterator find_impl(const key_type& key);
 
     NODISCARD size_t count_impl(const key_type& key) const;
 
@@ -590,6 +655,7 @@ public:
     }
 
     class iterator;
+    class const_iterator;
 
     NODISCARD size_type size() const noexcept {
         return IsSmallMap() ? small_ptr()->size() : dense_ptr()->size();
@@ -651,18 +717,29 @@ public:
         return IsSmallMap() ? iterator(small_ptr()->end()) : iterator(dense_ptr()->end());
     }
 
+    const_iterator begin() const {
+        return IsSmallMap() ? const_iterator(small_ptr()->begin()) : const_iterator(dense_ptr()->begin());
+    }
+
+    const_iterator end() const {
+        return IsSmallMap() ? const_iterator(small_ptr()->end()) : const_iterator(dense_ptr()->end());
+    }
+
     void clear() {
         impl_ = SmallMapImpl::Create();
     }
 
-    iterator find(const K& key) const {
+    iterator find(const key_type& key) {
+        return IsSmallMap() ? iterator(small_ptr()->find(key)) : iterator(dense_ptr()->find(key));
+    }
+
+    const_iterator find(const K& key) const {
         return IsSmallMap() ? iterator(small_ptr()->find(key)) : iterator(dense_ptr()->find(key));
     }
 
     NODISCARD bool IsSmallMap() const {
         return dynamic_cast<SmallMapImpl*>(impl_.get()) != nullptr;
     }
-
 
 private:
     ObjectPtr<Object> impl_;
@@ -685,7 +762,6 @@ private:
     }
 };
 
-// sizeof = 24
 template<typename K, typename V>
 class Map<K, V>::iterator {
 public:
@@ -753,18 +829,103 @@ public:
 
 private:
     union Iter {
-        MapImpl<SmallMapImpl>::iterator small_iter;
-        MapImpl<DenseMapImpl>::iterator dense_iter;
+        SmallMapImpl::iterator small_iter;
+        DenseMapImpl::iterator dense_iter;
 
-        Iter(const MapImpl<SmallMapImpl>::iterator& iter) : small_iter(iter) {}//NOLINT
-        Iter(const MapImpl<DenseMapImpl>::iterator& iter) : dense_iter(iter) {}//NOLINT
+        Iter(const SmallMapImpl::iterator& iter) : small_iter(iter) {}//NOLINT
+        Iter(const DenseMapImpl::iterator& iter) : dense_iter(iter) {}//NOLINT
     };
 
     Iter iter_;
     bool is_small_map_{true};
 
-    iterator(const MapImpl<SmallMapImpl>::iterator& iter) : iter_(iter), is_small_map_(true) {} //NOLINT
-    iterator(const MapImpl<DenseMapImpl>::iterator& iter) : iter_(iter), is_small_map_(false) {}//NOLINT
+    iterator(const SmallMapImpl::iterator& iter) : iter_(iter), is_small_map_(true) {} //NOLINT
+    iterator(const DenseMapImpl::iterator& iter) : iter_(iter), is_small_map_(false) {}//NOLINT
+
+    template<typename, typename>
+    friend class Map;
+};
+
+// sizeof = 24
+template<typename K, typename V>
+class Map<K, V>::const_iterator {
+public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using value_type = SmallMapImpl::KVType;
+    using const_pointer = const value_type*;
+    using const_reference = const value_type&;
+
+    const_iterator() = default;
+
+    const_iterator& operator++() {
+        if (is_small_map_) {
+            ++iter_.small_iter;
+        } else {
+            ++iter_.dense_iter;
+        }
+        return *this;
+    }
+
+    const_iterator& operator--() {
+        if (is_small_map_) {
+            --iter_.small_iter;
+        } else {
+            --iter_.dense_iter;
+        }
+        return *this;
+    }
+
+    const_iterator operator++(int) {
+        const_iterator tmp = *this;
+        operator++();
+        return tmp;
+    }
+
+    const_iterator operator--(int) {
+        const_iterator tmp = *this;
+        operator--();
+        return tmp;
+    }
+
+    const_reference operator*() const {
+        return is_small_map_ ? iter_.small_iter.operator*() : iter_.dense_iter.operator*();
+    }
+
+    const_pointer operator->() const {
+        return is_small_map_ ? iter_.small_iter.operator->() : iter_.dense_iter.operator->();
+    }
+
+    bool operator==(const const_iterator& other) const {
+        if (is_small_map_ && other.is_small_map_) {
+            return iter_.small_iter == other.iter_.small_iter;
+        }
+
+        if (!is_small_map_ && !other.is_small_map_) {
+            return iter_.dense_iter == other.iter_.dense_iter;
+        }
+
+        return false;
+    }
+
+    bool operator!=(const const_iterator& other) const {
+        return !(*this == other);
+    }
+
+private:
+    union Iter {
+        SmallMapImpl::const_iterator small_iter;
+        DenseMapImpl::const_iterator dense_iter;
+
+        Iter(const SmallMapImpl::const_iterator& iter) : small_iter(iter) {}//NOLINT
+        Iter(const DenseMapImpl::const_iterator& iter) : dense_iter(iter) {}//NOLINT
+    };
+
+    Iter iter_;
+    bool is_small_map_{true};
+
+    const_iterator(const SmallMapImpl::const_iterator& iter) : iter_(iter), is_small_map_(true) {} //NOLINT
+    const_iterator(const DenseMapImpl::const_iterator& iter) : iter_(iter), is_small_map_(false) {}//NOLINT
 
     template<typename, typename>
     friend class Map;

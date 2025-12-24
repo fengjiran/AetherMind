@@ -6,7 +6,7 @@
 
 namespace aethermind {
 
-MapImpl<SmallMapImpl>::iterator SmallMapImpl::find_impl(const key_type& key) const {
+MapImpl<SmallMapImpl>::iterator SmallMapImpl::find_impl(const key_type& key) {
     const auto* p = static_cast<KVType*>(data());
     for (size_t i = 0; i < size(); ++i) {
         if (key == p[i].first) {
@@ -15,6 +15,10 @@ MapImpl<SmallMapImpl>::iterator SmallMapImpl::find_impl(const key_type& key) con
     }
 
     return end();
+}
+
+MapImpl<SmallMapImpl>::const_iterator SmallMapImpl::find_impl(const key_type& key) const {
+    return const_cast<SmallMapImpl*>(this)->find_impl(key);
 }
 
 MapImpl<SmallMapImpl>::mapped_type& SmallMapImpl::at_impl(const key_type& key) {
@@ -26,11 +30,7 @@ MapImpl<SmallMapImpl>::mapped_type& SmallMapImpl::at_impl(const key_type& key) {
 }
 
 const MapImpl<SmallMapImpl>::mapped_type& SmallMapImpl::at_impl(const key_type& key) const {
-    const auto iter = find(key);
-    if (iter == end()) {
-        AETHERMIND_THROW(KeyError) << "key is not int map.";
-    }
-    return iter->second;
+    return const_cast<SmallMapImpl*>(this)->at_impl(key);
 }
 
 ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {
@@ -342,7 +342,13 @@ size_t DenseMapImpl::count_impl(const key_type& key) const {
     return !Search(key).IsNone();
 }
 
-MapImpl<DenseMapImpl>::iterator DenseMapImpl::find_impl(const key_type& key) const {
+MapImpl<DenseMapImpl>::const_iterator DenseMapImpl::find_impl(const key_type& key) const {
+    // const auto node = Search(key);
+    // return node.IsNone() ? end() : const_iterator(node.index(), this);
+    return const_cast<DenseMapImpl*>(this)->find_impl(key);
+}
+
+MapImpl<DenseMapImpl>::iterator DenseMapImpl::find_impl(const key_type& key) {
     const auto node = Search(key);
     return node.IsNone() ? end() : iterator(node.index(), this);
 }

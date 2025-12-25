@@ -315,6 +315,8 @@ private:
     }
 
     static ObjectPtr<Object> InsertOrAssignImpl(const KVType& kv, ObjectPtr<Object> old_impl);
+    static std::tuple<ObjectPtr<Object>, iterator, bool> InsertOrAssignImpl_(
+            KVType&& kv, const ObjectPtr<Object>& old_impl);
 
     static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
             KVType&& kv, const ObjectPtr<Object>& old_impl);
@@ -325,7 +327,6 @@ private:
     template<typename K, typename V>
     friend class Map;
 };
-
 
 /*! \brief A specialization of hash map that implements the idea of array-based hash map.
  * Another reference implementation can be found [1].
@@ -548,6 +549,10 @@ private:
 
 template<typename Derived>
 ObjectPtr<Object> MapImpl<Derived>::Create(size_t n) {
+    if (n <= kInitSize) {
+        return SmallMapImpl::CreateImpl(kInitSize);
+    }
+
     if (n <= kThreshold) {
         return SmallMapImpl::CreateImpl(n);
     }
@@ -558,22 +563,22 @@ template<typename Derived>
 template<typename Iter>
     requires details::is_valid_iter<Iter>
 ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
-    const int64_t _size = std::distance(first, last);
-    if (_size <= 0) {
-        return SmallMapImpl::Create();
+    const int64_t _sz = std::distance(first, last);
+    if (_sz <= 0) {
+        return Create();
     }
 
-    const auto size = static_cast<size_t>(_size);
+    const auto size = static_cast<size_t>(_sz);
     if (size <= kThreshold) {
         // need to insert to avoid duplicate keys
-        ObjectPtr<Object> impl = SmallMapImpl::Create(size);
+        ObjectPtr<Object> impl = Create(size);
         while (first != last) {
             impl = SmallMapImpl::InsertOrAssignImpl(KVType(*first++), impl);
         }
         return impl;
     }
 
-    ObjectPtr<Object> impl = DenseMapImpl::Create(size);
+    ObjectPtr<Object> impl = Create(size);
     while (first != last) {
         impl = DenseMapImpl::InsertOrAssignImpl(KVType(*first++), impl);
     }

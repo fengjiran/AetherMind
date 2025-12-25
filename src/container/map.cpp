@@ -77,6 +77,12 @@ std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::Insert
     return {new_impl, pos, true};
 }
 
+std::tuple<ObjectPtr<Object>, MapImpl<SmallMapImpl>::iterator, bool> SmallMapImpl::InsertOrAssignImpl_(
+        KVType&& kv, const ObjectPtr<Object>& old_impl) {
+    //
+}
+
+
 ObjectPtr<Object> SmallMapImpl::InsertOrAssignImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
     if (const auto iter = map->find(kv.first); iter != map->end()) {

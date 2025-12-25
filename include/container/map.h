@@ -12,6 +12,17 @@
 
 namespace aethermind {
 
+namespace details {
+
+template<typename InputIter>
+concept is_valid_iter = requires(InputIter t) {
+    requires std::convertible_to<typename std::iterator_traits<InputIter>::iterator_category,
+                                 std::input_iterator_tag>;
+    { *t } -> std::convertible_to<std::pair<Any, Any>>;
+};
+
+}// namespace details
+
 template<typename Derived>
 class MapImpl : public Object {
 public:
@@ -96,10 +107,7 @@ protected:
     static ObjectPtr<Object> Create(size_t n = kInitSize);
 
     template<typename Iter>
-        requires requires(Iter t) {
-            requires std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>;
-            { *t } -> std::convertible_to<KVType>;
-        }
+        requires details::is_valid_iter<Iter>
     static ObjectPtr<Object> CreateFromRange(Iter first, Iter last);
 
     static ObjectPtr<Object> CopyFrom(const Object* src);
@@ -548,10 +556,7 @@ ObjectPtr<Object> MapImpl<Derived>::Create(size_t n) {
 
 template<typename Derived>
 template<typename Iter>
-    requires requires(Iter t) {
-        requires std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>;
-        { *t } -> std::convertible_to<std::pair<Any, Any>>;
-    }
+    requires details::is_valid_iter<Iter>
 ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
     const int64_t _size = std::distance(first, last);
     if (_size <= 0) {
@@ -615,8 +620,8 @@ std::tuple<ObjectPtr<Object>, size_t, bool> MapImpl<Derived>::insert(KVType&& kv
         }
 
         ObjectPtr<Object> new_impl = DenseMapImpl::Create(size * kIncFactor);
-        for (const auto& iter: *p) {
-            new_impl = std::get<0>(DenseMapImpl::InsertImpl(KVType(iter), new_impl));
+        for (auto& iter: *p) {
+            new_impl = std::get<0>(DenseMapImpl::InsertImpl(KVType(std::move(iter)), new_impl));
         }
         auto [impl, iter, is_success] = DenseMapImpl::InsertImpl(std::move(kv), new_impl);
         return {impl, iter.index(), is_success};
@@ -625,7 +630,6 @@ std::tuple<ObjectPtr<Object>, size_t, bool> MapImpl<Derived>::insert(KVType&& kv
         return {impl, iter.index(), is_success};
     }
 }
-
 
 template<typename K, typename V>
 class Map : public ObjectRef {
@@ -757,10 +761,27 @@ public:
         return insert(value_type(key, value));
     }
 
+    std::pair<iterator, bool> insert(key_type&& key, mapped_type&& value) {
+        return insert(value_type(std::move(key), std::move(value)));
+    }
+
     template<typename Pair>
-        requires std::constructible_from<value_type, Pair&&>
+        requires(std::constructible_from<value_type, Pair &&> &&
+                 !std::same_as<std::decay_t<Pair>, value_type>)
     std::pair<iterator, bool> insert(Pair&& x) {
-        return insert(std::forward<Pair>(x));
+        return insert(value_type(std::forward<Pair>(x)));
+    }
+
+    template<typename Iter>
+        requires details::is_valid_iter<Iter>
+    void insert(Iter first, Iter last) {
+        while (first != last) {
+            insert(*first++);
+        }
+    }
+
+    void insert(std::initializer_list<value_type> list) {
+        insert(list.begin(), list.end());
     }
 
     void erase(const key_type& key) {

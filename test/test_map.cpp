@@ -262,4 +262,238 @@ TEST(MapTest, different_types) {
     EXPECT_EQ(const_map.size(), 3);
 }
 
+// 测试所有insert方法
+TEST(MapInsertTest, all_insert_methods) {
+    Map<int, int> map;
+
+    // 1. 测试键值对插入 insert(key_type, mapped_type)
+    {
+        auto [it, success] = map.insert(1, 10);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(it->first, 1);
+        EXPECT_EQ(it->second, 10);
+        EXPECT_EQ(map.size(), 1);
+    }
+
+    // 2. 测试值类型插入 insert(const value_type&)
+    {
+        Map<int, int>::value_type pair(2, 20);
+        auto [it, success] = map.insert(pair);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(it->first, 2);
+        EXPECT_EQ(it->second, 20);
+        EXPECT_EQ(map.size(), 2);
+    }
+
+    // 3. 测试移动插入 insert(value_type&&)
+    {
+        auto [it, success] = map.insert(Map<int, int>::value_type(3, 30));
+        EXPECT_TRUE(success);
+        EXPECT_EQ(it->first, 3);
+        EXPECT_EQ(it->second, 30);
+        EXPECT_EQ(map.size(), 3);
+    }
+
+    // 4. 测试可构造对插入 insert(Pair&&)
+    {
+        struct CustomPair {
+            int first = 4;
+            int second = 40;
+            operator Map<int, int>::value_type() const {
+                return {first, second};
+            }
+        };
+        CustomPair custom_pair;
+        auto [it, success] = map.insert(custom_pair);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(it->first, 4);
+        EXPECT_EQ(it->second, 40);
+        EXPECT_EQ(map.size(), 4);
+
+        // 测试右值版本
+        auto [it2, success2] = map.insert(custom_pair);
+        EXPECT_EQ(it2->first, 4);
+        EXPECT_EQ(it2->second, 40);
+        EXPECT_FALSE(success2);  // 应该插入失败，因为键4已经存在
+        EXPECT_EQ(map.size(), 4);// 大小应该保持不变
+    }
+
+    // 5. 测试范围插入 insert(Iter first, Iter last)
+    {
+        std::vector<Map<int, int>::value_type> pairs = {{5, 50}, {6, 60}, {7, 70}};
+        map.insert(pairs.begin(), pairs.end());
+        EXPECT_EQ(map.size(), 7);
+        EXPECT_EQ(map[5], 50);
+        EXPECT_EQ(map[6], 60);
+        EXPECT_EQ(map[7], 70);
+    }
+
+    // 6. 测试初始化列表插入 insert(std::initializer_list<value_type>)
+    {
+        map.insert({{8, 80}, {9, 90}, {10, 100}});
+        EXPECT_EQ(map.size(), 10);
+        EXPECT_EQ(map[8], 80);
+        EXPECT_EQ(map[9], 90);
+        EXPECT_EQ(map[10], 100);
+    }
+}
+
+
+// 测试插入重复键
+TEST(MapInsertTest, insert_duplicate_keys) {
+    Map<int, int> map;
+
+    // 插入第一个元素
+    auto [it1, success1] = map.insert(1, 10);
+    EXPECT_TRUE(success1);
+    EXPECT_EQ(map.size(), 1);
+
+    // 插入重复键，应该失败
+    auto [it2, success2] = map.insert(1, 20);
+    EXPECT_FALSE(success2);
+    EXPECT_EQ(map.size(), 1);
+    EXPECT_EQ(it2->second, 10);// 应该返回已存在的元素
+
+    // 使用不同的insert方法测试重复键
+    auto [it3, success3] = map.insert(Map<int, int>::value_type(1, 30));
+    EXPECT_FALSE(success3);
+    EXPECT_EQ(it3->second, 10);
+
+    auto [it4, success4] = map.insert(std::move(Map<int, int>::value_type(1, 40)));
+    EXPECT_FALSE(success4);
+    EXPECT_EQ(it4->second, 10);
+}
+
+// 测试COW机制下的插入
+TEST(MapInsertTest, insert_with_COW) {
+    Map<int, int> map1;
+    map1.insert(1, 10);
+    map1.insert(2, 20);
+
+    // 创建共享副本
+    Map<int, int> map2 = map1;
+    EXPECT_EQ(map1.use_count(), 2);
+    EXPECT_EQ(map2.use_count(), 2);
+
+    // 在副本上插入，应该触发COW
+    auto [it, success] = map2.insert(3, 30);
+    EXPECT_TRUE(success);
+    EXPECT_EQ(map2.size(), 3);
+    EXPECT_EQ(map1.size(), 2);// 原map应该保持不变
+    EXPECT_EQ(map1.use_count(), 1);
+    EXPECT_EQ(map2.use_count(), 1);
+}
+
+// 测试小地图到大地图转换时的插入
+TEST(MapInsertTest, insert_small_to_large_conversion) {
+    Map<int, int> map;
+    EXPECT_TRUE(map.IsSmallMap());
+
+    // 插入足够多的元素，触发从小地图到大地图的转换
+    for (int i = 0; i < 10; ++i) {
+        auto [it, success] = map.insert(i, i * 10);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(it->first, i);
+        EXPECT_EQ(it->second, i * 10);
+    }
+
+    EXPECT_FALSE(map.IsSmallMap());
+    EXPECT_EQ(map.size(), 10);
+
+    // 在大地图上继续插入
+    auto [it, success] = map.insert(10, 100);
+    EXPECT_TRUE(success);
+    EXPECT_EQ(map.size(), 11);
+}
+
+// 测试不同类型的键和值
+TEST(MapInsertTest, insert_different_types) {
+    // String作为键，int作为值
+    Map<String, int> string_map;
+    auto [it1, success1] = string_map.insert("apple", 1);
+    EXPECT_TRUE(success1);
+    EXPECT_EQ(it1->first, "apple");
+    EXPECT_EQ(it1->second, 1);
+
+    // 使用移动语义插入String键
+    String key = "banana";
+    auto [it2, success2] = string_map.insert(std::move(key), 2);
+    EXPECT_TRUE(success2);
+    EXPECT_EQ(it2->first, "banana");
+    EXPECT_EQ(it2->second, 2);
+
+    // 测试复杂值类型
+    Map<int, std::vector<int>> complex_map;
+    std::vector<int> vec = {1, 2, 3};
+    auto [it3, success3] = complex_map.insert(1, vec);
+    EXPECT_TRUE(success3);
+    EXPECT_TRUE(it3->second == vec);
+
+    // 测试初始化列表插入复杂类型
+    complex_map.insert({{2, {4, 5, 6}}, {3, {7, 8, 9}}});
+    EXPECT_EQ(complex_map.size(), 3);
+}
+
 }// namespace
+
+#ifdef TEST_MAP
+
+namespace {
+using namespace aethermind;
+
+
+// 测试范围插入的各种迭代器
+TEST(MapInsertTest, insert_range_iterators) {
+    Map<int, int> map;
+
+    // 使用vector迭代器
+    std::vector<std::pair<int, int>> vec = {{1, 10}, {2, 20}, {3, 30}};
+    map.insert(vec.begin(), vec.end());
+    EXPECT_EQ(map.size(), 3);
+
+    // 使用数组迭代器
+    std::pair<int, int> arr[] = {{4, 40}, {5, 50}, {6, 60}};
+    map.insert(std::begin(arr), std::end(arr));
+    EXPECT_EQ(map.size(), 6);
+
+    // 使用Map的迭代器
+    Map<int, int> map2;
+    map2.insert(map.begin(), map.end());
+    EXPECT_EQ(map2.size(), 6);
+
+    // 使用const迭代器
+    Map<int, int> map3;
+    const Map<int, int>& const_map = map;
+    map3.insert(const_map.begin(), const_map.end());
+    EXPECT_EQ(map3.size(), 6);
+}
+
+// 测试插入空范围和单元素范围
+TEST(MapInsertTest, insert_edge_cases) {
+    Map<int, int> map;
+
+    // 插入空范围
+    std::vector<std::pair<int, int>> empty_vec;
+    map.insert(empty_vec.begin(), empty_vec.end());
+    EXPECT_TRUE(map.empty());
+
+    // 插入单元素
+    std::vector<std::pair<int, int>> single_vec = {{1, 10}};
+    map.insert(single_vec.begin(), single_vec.end());
+    EXPECT_EQ(map.size(), 1);
+
+    // 插入空初始化列表
+    map.insert({});
+    EXPECT_EQ(map.size(), 1);
+
+    // 插入包含重复键的初始化列表
+    map.insert({{1, 20}, {2, 30}, {3, 40}});
+    EXPECT_EQ(map.size(), 3);// 只有两个新元素被插入
+    EXPECT_EQ(map[1], 10);   // 原元素保持不变
+    EXPECT_EQ(map[2], 30);
+    EXPECT_EQ(map[3], 40);
+}
+
+}// namespace
+
+#endif

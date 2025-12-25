@@ -765,6 +765,10 @@ public:
         return insert(value_type(std::move(key), std::move(value)));
     }
 
+    std::pair<iterator, bool> insert(const std::pair<Any, Any>& x) {
+        return insert(x.first.cast<key_type>(), x.second.cast<mapped_type>());
+    }
+
     template<typename Pair>
         requires(std::constructible_from<value_type, Pair &&> &&
                  !std::same_as<std::decay_t<Pair>, value_type>)

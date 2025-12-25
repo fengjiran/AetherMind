@@ -450,10 +450,11 @@ TEST(MapInsertTest, insert_range_iterators) {
 
     // 使用Map的迭代器
     Map<int, int> map2;
+    auto x = *map.begin();
     map2.insert(map.begin(), map.end());
     EXPECT_EQ(map2.size(), 6);
 
-    // 使用const迭代器
+    // // 使用const迭代器
     Map<int, int> map3;
     const Map<int, int>& const_map = map;
     map3.insert(const_map.begin(), const_map.end());

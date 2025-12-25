@@ -427,20 +427,12 @@ TEST(MapInsertTest, insert_different_types) {
     std::vector<int> vec = {1, 2, 3};
     auto [it3, success3] = complex_map.insert(1, vec);
     EXPECT_TRUE(success3);
-    EXPECT_TRUE(it3->second == vec);
+    EXPECT_EQ(static_cast<std::vector<int>>(it3->second), vec);
 
     // 测试初始化列表插入复杂类型
     complex_map.insert({{2, {4, 5, 6}}, {3, {7, 8, 9}}});
     EXPECT_EQ(complex_map.size(), 3);
 }
-
-}// namespace
-
-#ifdef TEST_MAP
-
-namespace {
-using namespace aethermind;
-
 
 // 测试范围插入的各种迭代器
 TEST(MapInsertTest, insert_range_iterators) {
@@ -493,6 +485,14 @@ TEST(MapInsertTest, insert_edge_cases) {
     EXPECT_EQ(map[2], 30);
     EXPECT_EQ(map[3], 40);
 }
+
+}// namespace
+
+#ifdef TEST_MAP
+
+namespace {
+using namespace aethermind;
+
 
 }// namespace
 

@@ -7,6 +7,7 @@
 
 #include "any.h"
 
+#include <concepts>
 #include <tuple>
 
 namespace aethermind {
@@ -106,7 +107,7 @@ protected:
     // insert may be rehash
     static ObjectPtr<Object> insert_or_assign(const KVType& kv, const ObjectPtr<Object>& old_impl);
 
-    static std::tuple<ObjectPtr<Object>, size_t, bool> insert(const KVType& kv, const ObjectPtr<Object>& old_impl);
+    static std::tuple<ObjectPtr<Object>, size_t, bool> insert(KVType&& kv, const ObjectPtr<Object>& old_impl);
 };
 
 template<typename Derived>
@@ -308,7 +309,7 @@ private:
     static ObjectPtr<Object> InsertOrAssignImpl(const KVType& kv, ObjectPtr<Object> old_impl);
 
     static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
-            const KVType& kv, const ObjectPtr<Object>& old_impl);
+            KVType&& kv, const ObjectPtr<Object>& old_impl);
 
     template<typename Derived>
     friend class MapImpl;
@@ -502,23 +503,22 @@ private:
    */
     // bool TrySpareListHead(ListNode target, const key_type& key, ListNode* result);
     std::optional<Cursor> TrySpareListHeadOrAssign(Cursor target, const key_type& key);
-    std::optional<Cursor> TrySpareListHead(Cursor target, const KVType& kv);
+    std::optional<Cursor> TrySpareListHead(Cursor target, KVType&& kv);
 
     /*!
    * \brief Try to insert a key, or do nothing if already exists
    * \param key The indexing key
    * \return The linked-list entry found or just constructed,indicating if actual insertion happens
    */
-    // bool TryInsert(const key_type& key, ListNode* result);
     std::optional<Cursor> TryInsertOrAssign(const key_type& key);
 
-    std::pair<iterator, bool> TryInsert(const KVType& kv);
+    std::pair<iterator, bool> TryInsert(KVType&& kv);
 
     // may be rehash
     static ObjectPtr<Object> InsertOrAssignImpl(const KVType& kv, ObjectPtr<Object> old_impl);
 
     static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
-            const KVType& kv, const ObjectPtr<Object>& old_impl);
+            KVType&& kv, const ObjectPtr<Object>& old_impl);
 
     static size_t ComputeBlockNum(size_t slots) {
         return (slots + kBlockSize - 1) / kBlockSize;
@@ -605,12 +605,12 @@ ObjectPtr<Object> MapImpl<Derived>::insert_or_assign(const KVType& kv, const Obj
 }
 
 template<typename Derived>
-std::tuple<ObjectPtr<Object>, size_t, bool> MapImpl<Derived>::insert(const KVType& kv, const ObjectPtr<Object>& old_impl) {
+std::tuple<ObjectPtr<Object>, size_t, bool> MapImpl<Derived>::insert(KVType&& kv, const ObjectPtr<Object>& old_impl) {
     if constexpr (std::is_same_v<Derived, SmallMapImpl>) {
         auto* p = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
         const auto size = p->size();
         if (size < kThreshold) {
-            auto [impl, iter, is_success] = SmallMapImpl::InsertImpl(kv, old_impl);
+            auto [impl, iter, is_success] = SmallMapImpl::InsertImpl(std::move(kv), old_impl);
             return {impl, iter.index(), is_success};
         }
 
@@ -618,10 +618,10 @@ std::tuple<ObjectPtr<Object>, size_t, bool> MapImpl<Derived>::insert(const KVTyp
         for (const auto& iter: *p) {
             new_impl = std::get<0>(DenseMapImpl::InsertImpl(KVType(iter), new_impl));
         }
-        auto [impl, iter, is_success] = DenseMapImpl::InsertImpl(kv, new_impl);
+        auto [impl, iter, is_success] = DenseMapImpl::InsertImpl(std::move(kv), new_impl);
         return {impl, iter.index(), is_success};
     } else {
-        auto [impl, iter, is_success] = DenseMapImpl::InsertImpl(kv, old_impl);
+        auto [impl, iter, is_success] = DenseMapImpl::InsertImpl(std::move(kv), old_impl);
         return {impl, iter.index(), is_success};
     }
 }
@@ -632,7 +632,7 @@ class Map : public ObjectRef {
 public:
     using key_type = K;
     using mapped_type = V;
-    using value_type = std::pair<const key_type, mapped_type>;
+    using value_type = std::pair<key_type, mapped_type>;
     using size_type = size_t;
     using difference_type = std::ptrdiff_t;
     using pointer = value_type*;
@@ -726,11 +726,18 @@ public:
         return IsSmallMap() ? small_ptr()->count() : dense_ptr()->count();
     }
 
-    std::pair<iterator, bool> insert(const key_type& key, const mapped_type& value) {
-        COW();
-        std::pair<Any, Any> data(key, value);
-        auto [impl, idx, is_success] = IsSmallMap() ? SmallMapImpl::insert(data, impl_)
-                                                    : DenseMapImpl::insert(data, impl_);
+    std::pair<iterator, bool> insert(value_type&& data) {
+        auto it = find(data.first);
+        if (it != end()) {
+            return {it, false};
+        }
+
+        if (!unique()) {
+            COW();
+        }
+
+        auto [impl, idx, is_success] = IsSmallMap() ? SmallMapImpl::insert(std::move(data), impl_)
+                                                    : DenseMapImpl::insert(std::move(data), impl_);
 
         impl_ = impl;
         if (IsSmallMap()) {
@@ -740,6 +747,20 @@ public:
 
         DenseMapImpl::iterator pos(idx, dense_ptr());
         return {pos, is_success};
+    }
+
+    std::pair<iterator, bool> insert(const value_type& x) {
+        return insert(value_type(x));
+    }
+
+    std::pair<iterator, bool> insert(const key_type& key, const mapped_type& value) {
+        return insert(value_type(key, value));
+    }
+
+    template<typename Pair>
+        requires std::constructible_from<value_type, Pair&&>
+    std::pair<iterator, bool> insert(Pair&& x) {
+        return insert(std::forward<Pair>(x));
     }
 
     void erase(const key_type& key) {
@@ -787,7 +808,7 @@ public:
         return IsSmallMap() ? iterator(small_ptr()->find(key)) : iterator(dense_ptr()->find(key));
     }
 
-    const_iterator find(const K& key) const {
+    const_iterator find(const key_type& key) const {
         return IsSmallMap() ? iterator(small_ptr()->find(key)) : iterator(dense_ptr()->find(key));
     }
 
@@ -811,12 +832,10 @@ private:
     }
 
     void COW() {
-        if (unique()) {
-            return;
+        if (!unique()) {
+            impl_ = IsSmallMap() ? SmallMapImpl::CopyFrom(impl_.get())
+                                 : DenseMapImpl::CopyFrom(impl_.get());
         }
-
-        impl_ = IsSmallMap() ? SmallMapImpl::CopyFrom(impl_.get())
-                             : DenseMapImpl::CopyFrom(impl_.get());
     }
 };
 

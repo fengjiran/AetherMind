@@ -107,7 +107,7 @@ TEST(MapTest, insert_and_access) {
 
     // 测试插入重复键（应该覆盖）
     map.insert("one", 10);
-    EXPECT_EQ(map["one"], 10);
+    EXPECT_EQ(map["one"], 1);
 }
 
 // 测试删除操作

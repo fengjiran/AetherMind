@@ -301,17 +301,6 @@ private:
 
     static ObjectPtr<SmallMapImpl> CopyFromImpl(const SmallMapImpl* src);
 
-    template<typename Iter>
-    static ObjectPtr<SmallMapImpl> CreateFromRangeImpl(Iter first, Iter last) {
-        const auto n = std::distance(first, last);
-        auto impl = Create(n);
-        auto* ptr = static_cast<KVType*>(static_cast<SmallMapImpl*>(impl.get())->data());
-        while (first != last) {
-            new (ptr++) KVType(*first++);
-        }
-        return impl;
-    }
-
     static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
             KVType&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
 

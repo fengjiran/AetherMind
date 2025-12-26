@@ -45,6 +45,13 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {
 ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFromImpl(const SmallMapImpl* src) {
     const auto* first = static_cast<KVType*>(src->data());
     const auto* last = first + src->size();
+    // auto impl = Create(src->slots());
+    // auto* p = static_cast<SmallMapImpl*>(impl.get())->data();//NOLINT
+    // auto* dst = static_cast<KVType*>(p);
+    // for (auto it = first; it != last; ++it) {
+    //     new (dst++) KVType(*it);
+    // }
+
     auto impl = CreateFromRange(first, last);
     return ObjectPtr<SmallMapImpl>::reclaim(static_cast<SmallMapImpl*>(impl.release()));//NOLINT
 }

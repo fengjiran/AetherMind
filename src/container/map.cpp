@@ -645,7 +645,7 @@ std::pair<uint32_t, size_t> DenseMapImpl::ComputeSlotNum(size_t cap) {
         slots <<= 1;
     }
 
-    return std::make_pair(shift, slots);
+    return {shift, slots};
 }
 
 ObjectPtr<DenseMapImpl> DenseMapImpl::CreateImpl(size_t n) {

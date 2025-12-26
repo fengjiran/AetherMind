@@ -703,50 +703,31 @@ public:
         return IsSmallMap() ? small_ptr()->count() : dense_ptr()->count();
     }
 
-    std::pair<iterator, bool> insert(value_type&& data) {
-        auto it = find(data.first);
-        if (it != end()) {
-            return {it, false};
-        }
-
-        if (!unique()) {
-            COW();
-        }
-
-        auto [impl, idx, is_success] = IsSmallMap() ? SmallMapImpl::insert(std::move(data), impl_)
-                                                    : DenseMapImpl::insert(std::move(data), impl_);
-
-        impl_ = impl;
-        if (IsSmallMap()) {
-            SmallMapImpl::iterator pos(idx, small_ptr());
-            return {pos, is_success};
-        }
-
-        DenseMapImpl::iterator pos(idx, dense_ptr());
-        return {pos, is_success};
+    std::pair<iterator, bool> insert(value_type&& x) {
+        return insert_impl(std::move(x), false);
     }
 
     std::pair<iterator, bool> insert(const value_type& x) {
-        return insert(value_type(x));
+        return insert_impl(value_type(x), false);
     }
 
     std::pair<iterator, bool> insert(const key_type& key, const mapped_type& value) {
-        return insert(value_type(key, value));
+        return insert_impl({key, value}, false);
     }
 
     std::pair<iterator, bool> insert(key_type&& key, mapped_type&& value) {
-        return insert(value_type(std::move(key), std::move(value)));
+        return insert_impl({std::move(key), std::move(value)}, false);
     }
 
     std::pair<iterator, bool> insert(const std::pair<Any, Any>& x) {
-        return insert(x.first.cast<key_type>(), x.second.cast<mapped_type>());
+        return insert_impl({x.first.cast<key_type>(), x.second.cast<mapped_type>()}, false);
     }
 
     template<typename Pair>
         requires(std::constructible_from<value_type, Pair &&> &&
                  !std::same_as<std::decay_t<Pair>, value_type>)
     std::pair<iterator, bool> insert(Pair&& x) {
-        return insert(value_type(std::forward<Pair>(x)));
+        return insert_impl(value_type(std::forward<Pair>(x)), false);
     }
 
     template<typename Iter>
@@ -763,23 +744,12 @@ public:
 
     template<typename Obj>
     std::pair<iterator, bool> insert_or_assign(key_type&& key, Obj&& obj) {
-        COW();
-        value_type data(std::move(key), std::forward<Obj>(obj));
-        auto [impl, idx, is_success] = IsSmallMap() ? SmallMapImpl::insert(std::move(data), impl_, true)
-                                                    : DenseMapImpl::insert(std::move(data), impl_, true);
-        impl_ = impl;
-        if (IsSmallMap()) {
-            SmallMapImpl::iterator pos(idx, small_ptr());
-            return {pos, is_success};
-        }
-
-        DenseMapImpl::iterator pos(idx, dense_ptr());
-        return {pos, is_success};
+        return insert_impl({std::move(key), std::forward<Obj>(obj)}, true);
     }
 
     template<typename Obj>
     std::pair<iterator, bool> insert_or_assign(const key_type& key, Obj&& obj) {
-        return insert_or_assign(key_type(key), std::forward<Obj>(obj));
+        return insert_impl({key, std::forward<Obj>(obj)}, true);
     }
 
     void erase(const key_type& key) {
@@ -848,6 +818,28 @@ private:
 
     NODISCARD DenseMapImpl* dense_ptr() const {
         return static_cast<DenseMapImpl*>(impl_.get());//NOLINT
+    }
+
+    std::pair<iterator, bool> insert_impl(value_type&& x, bool assign) {
+        if (!assign) {
+            auto it = find(x.first);
+            if (it != end()) {
+                return {it, false};
+            }
+        }
+
+        COW();
+        auto [impl, idx, is_success] = IsSmallMap()
+                                               ? SmallMapImpl::insert(std::move(x), impl_, assign)
+                                               : DenseMapImpl::insert(std::move(x), impl_, assign);
+        impl_ = impl;
+        if (IsSmallMap()) {
+            SmallMapImpl::iterator pos(idx, small_ptr());
+            return {pos, is_success};
+        }
+
+        DenseMapImpl::iterator pos(idx, dense_ptr());
+        return {pos, is_success};
     }
 
     void COW() {

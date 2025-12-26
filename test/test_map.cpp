@@ -487,14 +487,230 @@ TEST(MapInsertTest, insert_edge_cases) {
     EXPECT_EQ(map[3], 40);
 }
 
+// 测试insert_or_assign方法的基本功能
+TEST(MapInsertOrAssignTest, basic_functionality) {
+    Map<int, int> map;
+
+    // 1. 插入新元素（右值引用版本）
+    {
+        auto [it, success] = map.insert_or_assign(1, 10);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(it->first, 1);
+        EXPECT_EQ(it->second, 10);
+        EXPECT_EQ(map.size(), 1);
+    }
+
+    // 2. 插入新元素（左值引用版本）
+    {
+        int key = 2;
+        int value = 20;
+        auto [it, success] = map.insert_or_assign(key, value);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(it->first, 2);
+        EXPECT_EQ(it->second, 20);
+        EXPECT_EQ(map.size(), 2);
+    }
+
+    // 3. 更新已存在元素（右值引用版本）
+    {
+        auto [it, success] = map.insert_or_assign(1, 100);
+        EXPECT_FALSE(success);
+        EXPECT_EQ(it->first, 1);
+        EXPECT_EQ(it->second, 100);
+        EXPECT_EQ(map.size(), 2);// 大小保持不变
+    }
+
+    // 4. 更新已存在元素（左值引用版本）
+    {
+        int key = 2;
+        int value = 200;
+        auto [it, success] = map.insert_or_assign(key, value);
+        EXPECT_FALSE(success);
+        EXPECT_EQ(it->first, 2);
+        EXPECT_EQ(it->second, 200);
+        EXPECT_EQ(map.size(), 2);// 大小保持不变
+    }
+}
+
+// 测试insert_or_assign与不同数据类型
+TEST(MapInsertOrAssignTest, different_data_types) {
+    // String作为键，int作为值
+    Map<String, int> string_map;
+
+    // 插入新元素
+    auto [it1, success1] = string_map.insert_or_assign("apple", 1);
+    EXPECT_TRUE(success1);
+    EXPECT_EQ(it1->first, "apple");
+    EXPECT_EQ(it1->second, 1);
+
+    // 更新元素
+    auto [it2, success2] = string_map.insert_or_assign("apple", 10);
+    EXPECT_FALSE(success2);
+    EXPECT_EQ(it2->second, 10);
+
+    // 使用移动语义
+    String key = "banana";
+    auto [it3, success3] = string_map.insert_or_assign(std::move(key), 2);
+    EXPECT_TRUE(success3);
+    EXPECT_EQ(it3->first, "banana");
+
+    // 复杂类型作为值
+    Map<int, std::vector<int>> complex_map;
+    std::vector<int> vec = {1, 2, 3};
+
+    // 插入新元素
+    auto [it4, success4] = complex_map.insert_or_assign(1, vec);
+    EXPECT_TRUE(success4);
+    EXPECT_EQ(it4->second.cast<std::vector<int>>(), vec);
+
+    // 更新元素
+    std::vector<int> new_vec = {4, 5, 6};
+    auto [it5, success5] = complex_map.insert_or_assign(1, new_vec);
+    EXPECT_FALSE(success5);
+    EXPECT_EQ(it5->second.cast<std::vector<int>>(), new_vec);
+}
+
+// 测试COW机制下的insert_or_assign
+TEST(MapInsertOrAssignTest, cow_mechanism) {
+    Map<int, int> map1;
+    map1.insert_or_assign(1, 10);
+    map1.insert_or_assign(2, 20);
+
+    // 创建共享副本
+    Map<int, int> map2 = map1;
+    EXPECT_EQ(map1.use_count(), 2);
+    EXPECT_EQ(map2.use_count(), 2);
+
+    // 在副本上更新元素，应该触发COW
+    auto [it, success] = map2.insert_or_assign(1, 100);
+    EXPECT_FALSE(success);
+    EXPECT_EQ(map2.size(), 2);
+    EXPECT_EQ(map1.size(), 2);// 原map应该保持不变
+    EXPECT_EQ(map1[1], 10);   // 原map的元素保持不变
+    EXPECT_EQ(map2[1], 100);  // 副本的元素被更新
+    EXPECT_EQ(map1.use_count(), 1);
+    EXPECT_EQ(map2.use_count(), 1);
+
+    // 在副本上插入新元素，应该继续使用独立的资源
+    auto [it2, success2] = map2.insert_or_assign(3, 30);
+    EXPECT_TRUE(success2);
+    EXPECT_EQ(map2.size(), 3);
+    EXPECT_EQ(map1.size(), 2);// 原map应该保持不变
+}
+
+// 测试小地图到大地图转换时的insert_or_assign
+TEST(MapInsertOrAssignTest, small_to_large_conversion) {
+    Map<int, int> map;
+    EXPECT_TRUE(map.IsSmallMap());
+
+    // 插入足够多的元素，触发从小地图到大地图的转换
+    for (int i = 0; i < 10; ++i) {
+        auto [it, success] = map.insert_or_assign(i, i * 10);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(it->first, i);
+        EXPECT_EQ(it->second, i * 10);
+    }
+
+    EXPECT_FALSE(map.IsSmallMap());
+    EXPECT_EQ(map.size(), 10);
+
+    // 在大地图上更新元素
+    auto [it1, success1] = map.insert_or_assign(5, 500);
+    EXPECT_FALSE(success1);
+    EXPECT_EQ(it1->second, 500);
+
+    // 在大地图上插入新元素
+    auto [it2, success2] = map.insert_or_assign(10, 100);
+    EXPECT_TRUE(success2);
+    EXPECT_EQ(map.size(), 11);
+}
+
+// 测试边界条件
+TEST(MapInsertOrAssignTest, edge_cases) {
+    Map<int, int> map;
+
+    // 插入单个元素
+    auto [it1, success1] = map.insert_or_assign(1, 10);
+    EXPECT_TRUE(success1);
+    EXPECT_EQ(map.size(), 1);
+
+    // 空键测试（如果支持的话）
+    auto [it2, success2] = map.insert_or_assign(0, 0);
+    EXPECT_TRUE(success2);
+    EXPECT_EQ(map[0], 0);
+
+    // 大量元素
+    for (int i = 0; i < 100; ++i) {
+        map.insert_or_assign(100 + i, 200 + i);
+    }
+    EXPECT_EQ(map.size(), 102);
+
+    // 更新大量元素
+    for (int i = 0; i < 100; ++i) {
+        map.insert_or_assign(100 + i, 300 + i);
+    }
+    EXPECT_EQ(map.size(), 102);
+    EXPECT_EQ(map[100], 300);
+    EXPECT_EQ(map[199], 399);
+}
+
+// 测试与其他方法的交互
+TEST(MapInsertOrAssignTest, interaction_with_other_methods) {
+    Map<int, int> map;
+
+    // 与insert方法结合使用
+    map.insert(1, 10);
+    map.insert(2, 20);
+
+    // 使用insert_or_assign更新insert插入的元素
+    auto [it1, success1] = map.insert_or_assign(1, 100);
+    EXPECT_FALSE(success1);
+    EXPECT_EQ(it1->second, 100);
+
+    // 与find方法结合使用
+    auto it = map.find(2);
+    EXPECT_NE(it, map.end());
+    EXPECT_EQ(it->second, 20);
+
+    // 更新后再次查找
+    map.insert_or_assign(2, 200);
+    it = map.find(2);
+    EXPECT_NE(it, map.end());
+    EXPECT_EQ(it->second, 200);
+
+    // 与erase方法结合使用
+    map.erase(1);
+    EXPECT_EQ(map.size(), 1);
+
+    // 在已删除的键上插入
+    auto [it2, success2] = map.insert_or_assign(1, 1000);
+    EXPECT_TRUE(success2);
+    EXPECT_EQ(map.size(), 2);
+}
+
+// 测试不同类型的键和值
+TEST(MapInsertOrAssignTest, different_key_value_types) {
+    // String作为键，String作为值
+    Map<String, String> string_map;
+    string_map.insert_or_assign("name", "apple");
+    EXPECT_EQ(string_map["name"], "apple");
+
+    // 更新字符串值
+    string_map.insert_or_assign("name", "banana");
+    EXPECT_EQ(string_map["name"], "banana");
+
+    // 混合类型
+    Map<String, int> mixed_map;
+    mixed_map.insert_or_assign("count", 5);
+    mixed_map.insert_or_assign("value", 100);
+
+    // 更新不同类型的值
+    mixed_map.insert_or_assign("count", 10);
+    EXPECT_EQ(mixed_map["count"], 10);
+}
+
 }// namespace
 
 #ifdef TEST_MAP
-
-namespace {
-using namespace aethermind;
-
-
-}// namespace
 
 #endif

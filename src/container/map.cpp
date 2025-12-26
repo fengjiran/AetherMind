@@ -77,13 +77,18 @@ std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::Insert
     return {new_impl, pos, true};
 }
 
-std::tuple<ObjectPtr<Object>, MapImpl<SmallMapImpl>::iterator, bool> SmallMapImpl::InsertOrAssignImpl_(
+std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::InsertOrAssignImpl(
         KVType&& kv, const ObjectPtr<Object>& old_impl) {
-    //
+    mapped_type v(kv.second);
+    auto [impl, iter, is_success] = InsertImpl(std::move(kv), old_impl);
+    if (!is_success) {
+        iter->second = std::move(v);
+    }
+    return {impl, iter, is_success};
 }
 
 
-ObjectPtr<Object> SmallMapImpl::InsertOrAssignImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
+ObjectPtr<Object> SmallMapImpl::InsertOrAssignImpl1(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<SmallMapImpl*>(old_impl.get());//NOLINT
     if (const auto iter = map->find(kv.first); iter != map->end()) {
         iter->second = kv.second;
@@ -682,11 +687,77 @@ std::pair<DenseMapImpl::iterator, bool> DenseMapImpl::TryInsert(KVType&& kv) {
     return {iterator(node.index(), this), true};
 }
 
-std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsertOrAssign(const key_type& key) {
-    if (slots() == 0) {
-        return std::nullopt;
+std::pair<DenseMapImpl::iterator, bool> DenseMapImpl::TryInsertOrAssign(KVType&& kv) {
+    // The key is already in the hash table
+    if (auto it = find(kv.first); it != end()) {
+        Cursor cur(it.index(), it.ptr());
+        cur.GetValue() = std::move(kv.second);
+        IterListRemove(cur);
+        IterListPushBack(cur);
+        return {it, false};
     }
 
+    // required that `iter` to be the head of a linked list through which we can iterator.
+    // `iter` can be:
+    // 1) empty;
+    // 2) body of an irrelevant list;
+    // 3) head of the relevant list.
+    auto node = GetCursorFromHash(AnyHash()(kv.first));
+
+    // Case 1: empty
+    if (node.IsEmpty()) {
+        node.CreateHead(Entry(std::move(kv)));
+        ++size_;
+        IterListPushBack(node);
+        return {iterator(node.index(), this), true};
+    }
+
+    // Case 2: body of an irrelevant list
+    if (!node.IsHead()) {
+        if (IsFull()) {
+            return {end(), false};
+        }
+
+        if (const auto target = TrySpareListHead(node, std::move(kv)); target.has_value()) {
+            IterListPushBack(target.value());
+            return {iterator(target->index(), this), true};
+        }
+        return {end(), false};
+    }
+
+    // Case 3: head of the relevant list
+    // we iterate through the linked list until the end
+    // make sure `node` is the prev element of `cur`
+    Cursor cur = node;
+    while (cur.MoveToNextSlot()) {
+        // make sure `node` is the previous element of `cur`
+        node = cur;
+    }
+
+    // `node` is the tail of the linked list
+    // always check capacity before insertion
+    if (IsFull()) {
+        return {end(), false};
+    }
+
+    // find the next empty slot
+    auto empty_slot_info = node.GetNextEmptySlot();
+    if (!empty_slot_info) {
+        return {end(), false};
+    }
+
+    uint8_t offset_idx = empty_slot_info->first;
+    Cursor empty = empty_slot_info->second;
+    empty.CreateTail(Entry(std::move(kv)));
+    // link `iter` to `empty`, and move forward
+    node.SetOffsetIdx(offset_idx);
+    IterListPushBack(empty);
+    ++size_;
+    return {iterator(node.index(), this), true};
+}
+
+
+std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsertOrAssign1(const key_type& key) {
     // required that `iter` to be the head of a linked list through which we can iterator.
     // `iter` can be:
     // 1) empty;
@@ -746,8 +817,8 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::TryInsertOrAssign(const key_ty
 std::tuple<ObjectPtr<Object>, DenseMapImpl::iterator, bool> DenseMapImpl::InsertImpl(
         KVType&& kv, const ObjectPtr<Object>& old_impl) {
     auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT
-    if (auto [pos, is_success] = map->TryInsert(std::move(kv)); pos != map->end()) {
-        return {old_impl, pos, is_success};
+    if (auto [it, is_success] = map->TryInsert(std::move(kv)); it != map->end()) {
+        return {old_impl, it, is_success};
     }
 
     // Otherwise, start rehash
@@ -766,10 +837,33 @@ std::tuple<ObjectPtr<Object>, DenseMapImpl::iterator, bool> DenseMapImpl::Insert
     return {new_impl, pos, is_success};
 }
 
-ObjectPtr<Object> DenseMapImpl::InsertOrAssignImpl(const KVType& kv, ObjectPtr<Object> old_impl) {
+std::tuple<ObjectPtr<Object>, DenseMapImpl::iterator, bool> DenseMapImpl::InsertOrAssignImpl(
+        KVType&& kv, const ObjectPtr<Object>& old_impl) {
+    auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT
+    if (auto [it, is_success] = map->TryInsertOrAssign(std::move(kv)); it != map->end()) {
+        return {old_impl, it, is_success};
+    }
+
+    // Otherwise, start rehash
+    auto new_impl = ObjectPtr<DenseMapImpl>::reclaim(
+            static_cast<DenseMapImpl*>(DenseMapImpl::Create(map->slots() * kIncFactor).release()));// NOLINT
+
+    // need to insert in the same order as the original map
+    size_t idx = map->iter_list_head_;
+    while (idx != kInvalidIndex) {
+        Cursor cur(idx, map);
+        new_impl->TryInsertOrAssign(std::move(cur.GetData()));
+        idx = cur.GetEntry().next;
+    }
+
+    auto [pos, is_success] = new_impl->TryInsertOrAssign(std::move(kv));
+    return {new_impl, pos, is_success};
+}
+
+ObjectPtr<Object> DenseMapImpl::InsertOrAssignImpl1(const KVType& kv, ObjectPtr<Object> old_impl) {
     auto* map = static_cast<DenseMapImpl*>(old_impl.get());// NOLINT
 
-    if (const auto opt = map->TryInsertOrAssign(kv.first)) {
+    if (const auto opt = map->TryInsertOrAssign1(kv.first)) {
         opt->GetValue() = kv.second;
         map->IterListPushBack(opt.value());
         return old_impl;
@@ -783,13 +877,13 @@ ObjectPtr<Object> DenseMapImpl::InsertOrAssignImpl(const KVType& kv, ObjectPtr<O
     size_t idx = map->iter_list_head_;
     while (idx != kInvalidIndex) {
         Cursor cur(idx, map);
-        auto opt = new_impl->TryInsertOrAssign(cur.GetKey());
+        auto opt = new_impl->TryInsertOrAssign1(cur.GetKey());
         opt->GetValue() = std::move(cur.GetValue());
         new_impl->IterListPushBack(opt.value());
         idx = cur.GetEntry().next;
     }
 
-    auto opt = new_impl->TryInsertOrAssign(kv.first);
+    auto opt = new_impl->TryInsertOrAssign1(kv.first);
     opt->GetValue() = kv.second;
     new_impl->IterListPushBack(opt.value());
 

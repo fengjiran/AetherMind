@@ -34,12 +34,13 @@ TEST(MapTest, basic) {
     EXPECT_EQ(it->first, 1);
     EXPECT_EQ(it->second, 2);
     std::unordered_map<int, int> x;
-    auto res = x.insert({1, 1});
-    // auto res1 = x.insert_or_assign(1, 2);
-    auto res1 = x.insert({1, 2});
-    EXPECT_TRUE(!res1.second);
-    EXPECT_EQ(res1.first->first, 1);
-    EXPECT_EQ(x[1], 1);
+    std::vector<std::pair<int, int>> data = {{1, 2}, {1, 3}, {1, 4}};
+    x.insert(data.begin(), data.end());
+    EXPECT_EQ(x.size(), 1);
+    EXPECT_EQ(x[1], 2);
+    auto [it1, success] = x.insert_or_assign(1, 3);
+    EXPECT_TRUE(!success);
+    EXPECT_EQ(x[1], 3);
 }
 
 // 测试构造函数和赋值运算符

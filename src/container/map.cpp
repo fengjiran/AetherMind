@@ -93,7 +93,6 @@ void SmallMapImpl::erase_impl(const iterator& pos) {
     }
 
     auto* p = static_cast<KVType*>(data());
-    // p[idx].~KVType();
 
     auto n = size() - idx - 1;
     auto src = idx + 1;
@@ -103,6 +102,22 @@ void SmallMapImpl::erase_impl(const iterator& pos) {
     }
 
     size_ -= 1;
+}
+
+SmallMapImpl::iterator SmallMapImpl::erase_impl_(iterator pos) {
+    if (pos == end()) {
+        return end();
+    }
+
+    auto src = pos + 1;
+    auto dst = pos;
+    while (src != end()) {
+        *dst = std::move(*src);
+        ++src;
+        ++dst;
+    }
+    --size_;
+    return {(pos + 1).index(), this};
 }
 
 struct DenseMapImpl::Entry {
@@ -326,7 +341,7 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::GetListHead(size_t hash_value)
     return std::nullopt;
 }
 
-MapImpl<DenseMapImpl>::KVType* DenseMapImpl::GetDataPtr(size_t index) const {
+DenseMapImpl::KVType* DenseMapImpl::GetDataPtr(size_t index) const {
     return &Cursor(index, this).GetData();
 }
 
@@ -352,11 +367,11 @@ size_t DenseMapImpl::count_impl(const key_type& key) const {
     return !Search(key).IsNone();
 }
 
-MapImpl<DenseMapImpl>::const_iterator DenseMapImpl::find_impl(const key_type& key) const {
+DenseMapImpl::const_iterator DenseMapImpl::find_impl(const key_type& key) const {
     return const_cast<DenseMapImpl*>(this)->find_impl(key);
 }
 
-MapImpl<DenseMapImpl>::iterator DenseMapImpl::find_impl(const key_type& key) {
+DenseMapImpl::iterator DenseMapImpl::find_impl(const key_type& key) {
     const auto node = Search(key);
     return node.IsNone() ? end() : iterator(node.index(), this);
 }
@@ -397,7 +412,43 @@ void DenseMapImpl::erase_impl(const iterator& pos) {
     --size_;
 }
 
-MapImpl<DenseMapImpl>::mapped_type& DenseMapImpl::At(const key_type& key) const {
+DenseMapImpl::iterator DenseMapImpl::erase_impl_(iterator pos) {
+    if (pos == end()) {
+        return end();
+    }
+
+    if (Cursor cur(pos.index(), this); cur.HasNextSlot()) {
+        Cursor prev = cur;
+        Cursor last = cur;
+        last.MoveToNextSlot();
+        while (last.MoveToNextSlot()) {
+            prev = last;
+        }
+
+        // needs to first unlink node from the list
+        IterListRemove(cur);
+        // move data from last to node
+        cur.GetData() = std::move(last.GetData());
+        // Move link chain of iter to last as we store last node to the new iter loc.
+        IterListReplace(last, cur);
+        // last.DestructData();
+        last.SetEmpty();
+        prev.SetOffsetIdx(0);
+    } else {// the last node
+        if (!cur.IsHead()) {
+            // cut the link if there is any
+            cur.FindPrevSlot().SetOffsetIdx(0);
+        }
+        // unlink the node from iterator list
+        IterListRemove(cur);
+        cur.DestructData();
+        cur.SetEmpty();
+    }
+    --size_;
+    return pos + 1;
+}
+
+DenseMapImpl::mapped_type& DenseMapImpl::At(const key_type& key) const {
     const Cursor iter = Search(key);
     if (iter.IsNone()) {
         AETHERMIND_THROW(KeyError) << "Key not found";

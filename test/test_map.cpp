@@ -42,6 +42,10 @@ TEST(MapTest, basic) {
     auto [it1, success] = x.insert_or_assign(1, 3);
     EXPECT_TRUE(!success);
     EXPECT_EQ(x[1], 3);
+
+    auto it2 = data.erase(data.begin());
+    EXPECT_EQ(it2->first, 1);
+    EXPECT_EQ(it2->second, 3);
 }
 
 // 测试构造函数和赋值运算符

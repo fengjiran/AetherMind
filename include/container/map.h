@@ -95,6 +95,8 @@ public:
         erase(find(key));
     }
 
+    NODISCARD iterator erase_(iterator pos);
+
 protected:
     void* data_;
     size_t size_;
@@ -138,7 +140,7 @@ public:
     }
 
     pointer operator->() const {
-        return ptr_->GetDataPtr(index_);
+        return ptr()->GetDataPtr(index_);
     }
 
     reference operator*() const {
@@ -146,12 +148,12 @@ public:
     }
 
     iterator& operator++() {
-        index_ = ptr_->IncIter(index_);
+        index_ = ptr()->IncIter(index_);
         return *this;
     }
 
     iterator& operator--() {
-        index_ = ptr_->DecIter(index_);
+        index_ = ptr()->DecIter(index_);
         return *this;
     }
 
@@ -165,6 +167,36 @@ public:
         iterator tmp = *this;
         operator--();
         return tmp;
+    }
+
+    iterator operator+(difference_type offset) const {
+        auto sz = index();
+        for (difference_type i = 0; i < offset; ++i) {
+            sz = ptr()->IncIter(sz);
+        }
+        return iterator(sz, ptr());
+    }
+
+    iterator operator-(difference_type offset) const {
+        auto sz = index();
+        for (difference_type i = 0; i < offset; ++i) {
+            sz = ptr()->DecIter(sz);
+        }
+        return iterator(sz, ptr());
+    }
+
+    iterator& operator+=(difference_type offset) {
+        for (difference_type i = 0; i < offset; ++i) {
+            operator++();
+        }
+        return *this;
+    }
+
+    iterator& operator-=(difference_type offset) {
+        for (difference_type i = 0; i < offset; ++i) {
+            operator--();
+        }
+        return *this;
     }
 
     bool operator==(const iterator& other) const {
@@ -202,8 +234,12 @@ public:
         return index_;
     }
 
+    NODISCARD const Derived* ptr() const {
+        return ptr_;
+    }
+
     const_pointer operator->() const {
-        return ptr_->GetDataPtr(index_);
+        return ptr()->GetDataPtr(index_);
     }
 
     const_reference operator*() const {
@@ -211,12 +247,12 @@ public:
     }
 
     const_iterator& operator++() {
-        index_ = ptr_->IncIter(index_);
+        index_ = ptr()->IncIter(index_);
         return *this;
     }
 
     const_iterator& operator--() {
-        index_ = ptr_->DecIter(index_);
+        index_ = ptr()->DecIter(index_);
         return *this;
     }
 
@@ -230,6 +266,36 @@ public:
         const_iterator tmp = *this;
         operator--();
         return tmp;
+    }
+
+    const_iterator operator+(difference_type offset) const {
+        auto sz = index();
+        for (difference_type i = 0; i < offset; ++i) {
+            sz = ptr()->IncIter(sz);
+        }
+        return const_iterator(sz, ptr());
+    }
+
+    const_iterator operator-(difference_type offset) const {
+        auto sz = index();
+        for (difference_type i = 0; i < offset; ++i) {
+            sz = ptr()->DecIter(sz);
+        }
+        return const_iterator(sz, ptr());
+    }
+
+    const_iterator& operator+=(difference_type offset) {
+        for (difference_type i = 0; i < offset; ++i) {
+            operator++();
+        }
+        return *this;
+    }
+
+    const_iterator& operator-=(difference_type offset) {
+        for (difference_type i = 0; i < offset; ++i) {
+            operator--();
+        }
+        return *this;
     }
 
     bool operator==(const const_iterator& other) const {
@@ -283,6 +349,7 @@ private:
     NODISCARD const mapped_type& at_impl(const key_type& key) const;
 
     void erase_impl(const iterator& pos);
+    iterator erase_impl_(iterator pos);
 
     // GetDataPtr
     NODISCARD KVType* GetDataPtr(size_t index) const {
@@ -434,6 +501,7 @@ private:
     }
 
     void erase_impl(const iterator& pos);
+    iterator erase_impl_(iterator pos);
 
     NODISCARD Block* GetBlock(size_t block_idx) const;
 
@@ -583,7 +651,7 @@ std::tuple<ObjectPtr<Object>, size_t, bool> MapImpl<Derived>::insert(KVType&& kv
 
         ObjectPtr<Object> new_impl = DenseMapImpl::Create(size * kIncFactor);
         for (auto& iter: *p) {
-            new_impl = std::get<0>(DenseMapImpl::InsertImpl(KVType(std::move(iter)), new_impl));
+            new_impl = std::get<0>(DenseMapImpl::InsertImpl(std::move(iter), new_impl));
         }
         auto [impl, iter, is_success] = DenseMapImpl::InsertImpl(std::move(kv), new_impl, assign);
         return {impl, iter.index(), is_success};
@@ -591,6 +659,11 @@ std::tuple<ObjectPtr<Object>, size_t, bool> MapImpl<Derived>::insert(KVType&& kv
         auto [impl, iter, is_success] = DenseMapImpl::InsertImpl(std::move(kv), old_impl, assign);
         return {impl, iter.index(), is_success};
     }
+}
+
+template<typename Derived>
+MapImpl<Derived>::iterator MapImpl<Derived>::erase_(iterator pos) {
+    return static_cast<Derived*>(this)->erase_impl_(pos);
 }
 
 template<typename K, typename V>
@@ -745,6 +818,9 @@ public:
         COW();
         IsSmallMap() ? small_ptr()->erase(key) : dense_ptr()->erase(key);
     }
+
+    iterator erase(iterator pos);
+    iterator erase(const_iterator pos);
 
     Any& at(const key_type& key) {
         return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
@@ -1007,6 +1083,27 @@ private:
     template<typename, typename>
     friend class Map;
 };
+
+template<typename K, typename V>
+Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
+    if (pos == end()) {
+        return end();
+    }
+
+    COW();
+    if (IsSmallMap()) {
+        auto it = small_ptr()->erase_(pos.iter_.small_iter);
+        return iterator(it);
+    }
+
+    auto it = dense_ptr()->erase_(pos.iter_.dense_iter);
+    return iterator(it);
+}
+
+template<typename K, typename V>
+Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
+
+}
 
 }// namespace aethermind
 

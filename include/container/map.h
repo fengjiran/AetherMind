@@ -839,19 +839,16 @@ public:
         return find(key) != end();
     }
 
-    Any& at(const key_type& key) {
-        return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
+    PairProxy at(const key_type& key) {
+        auto it = find(key);
+        return {*this, it.index()};
     }
-
-    // PairProxy at_(const key_type& key) {
-    //
-    // }
 
     const Any& at(const key_type& key) const {
         return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
     }
 
-    Any& operator[](const key_type& key) {
+    PairProxy operator[](const key_type& key) {
         return at(key);
     }
 
@@ -943,15 +940,50 @@ public:
 
     PairProxy& operator=(value_type x) {
         map_.COW();
-        value_type* p = map_.IsSmallMap() ? map_.small_ptr()->GetDataPtr(idx_)
-                                          : map_.dense_ptr()->GetDataPtr(idx_);
+        value_type* p = GetRawDataPtr();
         *p = std::move(x);
         return *this;
+    }
+
+    PairProxy& operator=(mapped_type x) {
+        map_.COW();
+        value_type* p = GetRawDataPtr();
+        p->second = std::move(x);
+        return *this;
+    }
+
+    friend bool operator==(const PairProxy& lhs, const PairProxy& rhs) {
+        return *lhs.GetRawDataPtr() == *rhs.GetRawDataPtr();
+    }
+
+    friend bool operator!=(const PairProxy& lhs, const PairProxy& rhs) {
+        return !(lhs == rhs);
+    }
+
+    friend bool operator==(const PairProxy& lhs, const Any& rhs) {
+        return lhs.GetRawDataPtr()->second == rhs;
+    }
+
+    friend bool operator!=(const PairProxy& lhs, const Any& rhs) {
+        return !(rhs == lhs);
+    }
+
+    friend bool operator==(const Any& lhs, const PairProxy& rhs) {
+        return rhs == lhs;
+    }
+
+    friend bool operator!=(const Any& lhs, const PairProxy& rhs) {
+        return !(lhs == rhs);
     }
 
 private:
     Map& map_;
     size_type idx_;
+
+    NODISCARD DenseMapImpl::KVType* GetRawDataPtr() const {
+        return map_.IsSmallMap() ? map_.small_ptr()->GetDataPtr(idx_)
+                                 : map_.dense_ptr()->GetDataPtr(idx_);
+    }
 };
 
 template<typename K, typename V>

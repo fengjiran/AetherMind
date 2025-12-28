@@ -341,7 +341,7 @@ std::optional<DenseMapImpl::Cursor> DenseMapImpl::GetListHead(size_t hash_value)
     return std::nullopt;
 }
 
-DenseMapImpl::KVType* DenseMapImpl::GetDataPtr(size_t index) const {
+DenseMapImpl::KVType* DenseMapImpl::GetDataPtrImpl(size_t index) const {
     return &Cursor(index, this).GetData();
 }
 

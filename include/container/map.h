@@ -6,6 +6,7 @@
 #define AETHERMIND_CONTAINER_MAP_H
 
 #include "any.h"
+#include "map.h"
 
 #include <concepts>
 #include <tuple>
@@ -49,6 +50,10 @@ public:
 
     NODISCARD bool empty() const {
         return size() == 0;
+    }
+
+    NODISCARD KVType* GetDataPtr(size_t idx) const {
+        return static_cast<const Derived*>(this)->GetDataPtrImpl(idx);
     }
 
     NODISCARD size_t count(const key_type& key) const {
@@ -351,8 +356,7 @@ private:
     void erase_impl1(const iterator& pos);
     iterator erase_impl(iterator pos);
 
-    // GetDataPtr
-    NODISCARD KVType* GetDataPtr(size_t index) const {
+    NODISCARD KVType* GetDataPtrImpl(size_t index) const {
         return static_cast<KVType*>(data()) + index;
     }
 
@@ -507,7 +511,7 @@ private:
 
     NODISCARD Cursor GetCursorFromHash(size_t hash_value) const;
 
-    NODISCARD KVType* GetDataPtr(size_t index) const;
+    NODISCARD KVType* GetDataPtrImpl(size_t index) const;
 
     // Construct a ListNode from hash code if the position is head of list
     NODISCARD std::optional<Cursor> GetListHead(size_t hash_value) const;
@@ -679,6 +683,8 @@ public:
     using reference = value_type&;
     using const_reference = const value_type&;
 
+    class PairProxy;
+
     Map() : impl_(SmallMapImpl::Create()) {}
 
     explicit Map(size_type n) : impl_(SmallMapImpl::Create(n)) {}
@@ -821,8 +827,6 @@ public:
     iterator erase(const_iterator first, const_iterator last);
 
     size_type erase(const key_type& key) {
-        // COW();
-        // IsSmallMap() ? small_ptr()->erase(key) : dense_ptr()->erase(key);
         auto it = find(key);
         if (it != end()) {
             erase(it);
@@ -838,6 +842,10 @@ public:
     Any& at(const key_type& key) {
         return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
     }
+
+    // PairProxy at_(const key_type& key) {
+    //
+    // }
 
     const Any& at(const key_type& key) const {
         return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
@@ -926,6 +934,24 @@ private:
                                  : DenseMapImpl::CopyFrom(impl_.get());
         }
     }
+};
+
+template<typename K, typename V>
+class Map<K, V>::PairProxy {
+public:
+    PairProxy(Map& map, size_type idx) : map_(map), idx_(idx) {}
+
+    PairProxy& operator=(value_type x) {
+        map_.COW();
+        value_type* p = map_.IsSmallMap() ? map_.small_ptr()->GetDataPtr(idx_)
+                                          : map_.dense_ptr()->GetDataPtr(idx_);
+        *p = std::move(x);
+        return *this;
+    }
+
+private:
+    Map& map_;
+    size_type idx_;
 };
 
 template<typename K, typename V>

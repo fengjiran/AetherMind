@@ -254,7 +254,6 @@ public:
         if (empty()) {
             AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
         }
-        // return AnyProxy(*this, size() - 1);
         return {*this, size() - 1};
     }
 

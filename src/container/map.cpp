@@ -86,7 +86,7 @@ std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::Insert
     return {new_impl, pos, true};
 }
 
-void SmallMapImpl::erase_impl(const iterator& pos) {
+void SmallMapImpl::erase_impl1(const iterator& pos) {
     const auto idx = pos.index();
     if (pos.ptr_ == nullptr || idx >= size()) {
         return;
@@ -104,7 +104,7 @@ void SmallMapImpl::erase_impl(const iterator& pos) {
     size_ -= 1;
 }
 
-SmallMapImpl::iterator SmallMapImpl::erase_impl_(iterator pos) {
+SmallMapImpl::iterator SmallMapImpl::erase_impl(iterator pos) {
     if (pos == end()) {
         return end();
     }
@@ -117,7 +117,7 @@ SmallMapImpl::iterator SmallMapImpl::erase_impl_(iterator pos) {
         ++dst;
     }
     --size_;
-    return {(pos + 1).index(), this};
+    return pos;
 }
 
 struct DenseMapImpl::Entry {
@@ -376,7 +376,7 @@ DenseMapImpl::iterator DenseMapImpl::find_impl(const key_type& key) {
     return node.IsNone() ? end() : iterator(node.index(), this);
 }
 
-void DenseMapImpl::erase_impl(const iterator& pos) {
+void DenseMapImpl::erase_impl1(const iterator& pos) {
     const auto idx = pos.index();
     if (pos.ptr_ == nullptr || idx >= slots()) {
         return;
@@ -412,10 +412,12 @@ void DenseMapImpl::erase_impl(const iterator& pos) {
     --size_;
 }
 
-DenseMapImpl::iterator DenseMapImpl::erase_impl_(iterator pos) {
+DenseMapImpl::iterator DenseMapImpl::erase_impl(iterator pos) {
     if (pos == end()) {
         return end();
     }
+
+    auto nest_pos = pos + 1;
 
     if (Cursor cur(pos.index(), this); cur.HasNextSlot()) {
         Cursor prev = cur;
@@ -445,7 +447,7 @@ DenseMapImpl::iterator DenseMapImpl::erase_impl_(iterator pos) {
         cur.SetEmpty();
     }
     --size_;
-    return pos + 1;
+    return nest_pos;
 }
 
 DenseMapImpl::mapped_type& DenseMapImpl::At(const key_type& key) const {

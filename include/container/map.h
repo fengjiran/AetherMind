@@ -87,15 +87,15 @@ public:
         return static_cast<Derived*>(this)->find_impl(key);
     }
 
-    void erase(const iterator& pos) {
-        return static_cast<Derived*>(this)->erase_impl(pos);
+    void erase1(const iterator& pos) {
+        return static_cast<Derived*>(this)->erase_impl1(pos);
     }
 
-    void erase(const key_type& key) {
-        erase(find(key));
+    void erase1(const key_type& key) {
+        erase1(find(key));
     }
 
-    NODISCARD iterator erase_(iterator pos);
+    NODISCARD iterator erase(iterator pos);
 
 protected:
     void* data_;
@@ -348,8 +348,8 @@ private:
 
     NODISCARD const mapped_type& at_impl(const key_type& key) const;
 
-    void erase_impl(const iterator& pos);
-    iterator erase_impl_(iterator pos);
+    void erase_impl1(const iterator& pos);
+    iterator erase_impl(iterator pos);
 
     // GetDataPtr
     NODISCARD KVType* GetDataPtr(size_t index) const {
@@ -500,8 +500,8 @@ private:
         return At(key);
     }
 
-    void erase_impl(const iterator& pos);
-    iterator erase_impl_(iterator pos);
+    void erase_impl1(const iterator& pos);
+    iterator erase_impl(iterator pos);
 
     NODISCARD Block* GetBlock(size_t block_idx) const;
 
@@ -662,8 +662,8 @@ std::tuple<ObjectPtr<Object>, size_t, bool> MapImpl<Derived>::insert(KVType&& kv
 }
 
 template<typename Derived>
-MapImpl<Derived>::iterator MapImpl<Derived>::erase_(iterator pos) {
-    return static_cast<Derived*>(this)->erase_impl_(pos);
+MapImpl<Derived>::iterator MapImpl<Derived>::erase(iterator pos) {
+    return static_cast<Derived*>(this)->erase_impl(pos);
 }
 
 template<typename K, typename V>
@@ -781,9 +781,10 @@ public:
         return insert_impl({std::move(key), std::move(value)}, false);
     }
 
-    std::pair<iterator, bool> insert(const std::pair<Any, Any>& x) {
-        return insert_impl({x.first.cast<key_type>(), x.second.cast<mapped_type>()}, false);
-    }
+    // 556 line
+    // std::pair<iterator, bool> insert(const std::pair<Any, Any>& x) {
+    //     return insert_impl({x.first.cast<key_type>(), x.second.cast<mapped_type>()}, false);
+    // }
 
     template<typename Pair>
         requires(std::constructible_from<value_type, Pair &&> &&
@@ -814,13 +815,25 @@ public:
         return insert_impl({key, std::forward<Obj>(obj)}, true);
     }
 
-    void erase(const key_type& key) {
-        COW();
-        IsSmallMap() ? small_ptr()->erase(key) : dense_ptr()->erase(key);
-    }
-
     iterator erase(iterator pos);
     iterator erase(const_iterator pos);
+    iterator erase(iterator first, iterator last);
+    iterator erase(const_iterator first, const_iterator last);
+
+    size_type erase(const key_type& key) {
+        // COW();
+        // IsSmallMap() ? small_ptr()->erase(key) : dense_ptr()->erase(key);
+        auto it = find(key);
+        if (it != end()) {
+            erase(it);
+            return 1;
+        }
+        return 0;
+    }
+
+    bool contains(const key_type& key) const {
+        return find(key) != end();
+    }
 
     Any& at(const key_type& key) {
         return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
@@ -863,7 +876,7 @@ public:
     }
 
     const_iterator find(const key_type& key) const {
-        return IsSmallMap() ? iterator(small_ptr()->find(key)) : iterator(dense_ptr()->find(key));
+        return IsSmallMap() ? const_iterator(small_ptr()->find(key)) : const_iterator(dense_ptr()->find(key));
     }
 
     NODISCARD bool IsSmallMap() const {
@@ -925,6 +938,10 @@ public:
     using reference = value_type&;
 
     iterator() = default;
+
+    NODISCARD size_type index() const {
+        return is_small_map_ ? iter_.small_iter.index() : iter_.dense_iter.index();
+    }
 
     iterator& operator++() {
         if (is_small_map_) {
@@ -1011,6 +1028,10 @@ public:
 
     const_iterator() = default;
 
+    NODISCARD size_type index() const {
+        return is_small_map_ ? iter_.small_iter.index() : iter_.dense_iter.index();
+    }
+
     const_iterator& operator++() {
         if (is_small_map_) {
             ++iter_.small_iter;
@@ -1086,23 +1107,54 @@ private:
 
 template<typename K, typename V>
 Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
+    if (IsSmallMap()) {
+        auto it = SmallMapImpl::const_iterator(pos.iter_.small_iter);
+        return erase(it);
+    }
+    auto it = DenseMapImpl::const_iterator(pos.iter_.dense_iter);
+    return erase(it);
+}
+
+template<typename K, typename V>
+Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
     if (pos == end()) {
         return end();
     }
 
     COW();
     if (IsSmallMap()) {
-        auto it = small_ptr()->erase_(pos.iter_.small_iter);
-        return iterator(it);
+        return small_ptr()->erase({pos.index(), small_ptr()});
     }
 
-    auto it = dense_ptr()->erase_(pos.iter_.dense_iter);
-    return iterator(it);
+    return dense_ptr()->erase({pos.index(), dense_ptr()});
 }
 
 template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
+Map<K, V>::iterator Map<K, V>::erase(const_iterator first, const_iterator last) {
+    if (first == last) {
+        return first;
+    }
 
+    auto n = std::distance(first, last);
+    iterator it = first;
+    for (difference_type i = 0; i < n; ++i) {
+        it = erase(it++);
+    }
+    return it;
+}
+
+template<typename K, typename V>
+Map<K, V>::iterator Map<K, V>::erase(iterator first, iterator last) {
+    if (first == last) {
+        return first;
+    }
+
+    auto n = std::distance(first, last);
+    iterator it = first;
+    for (difference_type i = 0; i < n; ++i) {
+        it = erase(it++);
+    }
+    return it;
 }
 
 }// namespace aethermind

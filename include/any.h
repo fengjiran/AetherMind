@@ -391,9 +391,16 @@ public:
         }
     }
 
-    // Any1(Any1&& other) noexcept : data_(std::move(other.data_)) {
-    //
-    // }
+    Any1(Any1&& other) noexcept {
+        if (other.IsSmallObject()) {
+            std::memcpy(std::get<arr_type>(data_), std::get<arr_type>(other.data_), kSmallObjectSize);
+            small_type_index_ = other.small_type_index_;
+            other.InitLocalBuffer();
+            other.small_type_index_ = typeid(std::nullptr_t);
+        } else {
+            std::get<std::unique_ptr<HolderBase>>(data_) = std::move(std::get<std::unique_ptr<HolderBase>>(other.data_));
+        }
+    }
 
     NODISCARD bool has_value() const noexcept {
         return IsSmallObject() || std::get<std::unique_ptr<HolderBase>>(data_) != nullptr;
@@ -408,7 +415,7 @@ private:
     using arr_type = uint8_t[kSmallObjectSize];
 
     std::variant<arr_type, std::unique_ptr<HolderBase>> data_{};
-    std::type_index small_type_index_{typeid(null_object_tag)};
+    std::type_index small_type_index_{typeid(std::nullptr_t)};
 
     void InitLocalBuffer() noexcept {
         std::memset(std::get<arr_type>(data_), 0, kSmallObjectSize);

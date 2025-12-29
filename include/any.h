@@ -390,8 +390,8 @@ public:
         } else {
             if (other.has_value()) {
                 ptr_ = other.ptr_->Clone();
+                is_small_object_ = false;
             }
-            is_small_object_ = false;
         }
     }
 

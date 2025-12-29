@@ -7,6 +7,7 @@
 
 #include "object.h"
 
+#include <gtest/internal/gtest-string.h>
 #include <map>
 #include <unordered_map>
 
@@ -50,6 +51,21 @@ template<typename T>
 concept has_use_count_method_v = requires(T t) {
     t.use_count();
 };
+
+template<typename T, typename IndexType>
+concept has_operator_subscript = requires(T t, IndexType i) {
+    t[i];
+};
+
+template<typename T>
+concept is_map_subscript = requires {
+    typename T::key_type;
+    typename T::mapped_type;
+    requires has_operator_subscript<T, typename T::key_type>;
+};
+
+template<typename T>
+concept is_array_subscript = has_operator_subscript<T, typename T::size_type>;
 
 #else
 template<typename T>

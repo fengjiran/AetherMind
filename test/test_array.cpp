@@ -49,6 +49,10 @@ TEST(Array, init) {
 
     vec3.back() = 10.5;
     EXPECT_EQ(vec3.back(), 10);
+
+    Any t = vec3;
+    auto x = t.operator[]<Array<int>>(0);
+    EXPECT_EQ(x, 9);
 }
 
 TEST(Array, DefaultConstructor) {

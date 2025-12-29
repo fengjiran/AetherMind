@@ -137,6 +137,7 @@ public:
     class AnyProxy;
     class Converter;
 
+    using size_type = size_t;
     using iterator = details::IteratorAdapter<ArrayImpl::iterator, Array>;
     using const_iterator = details::IteratorAdapter<ArrayImpl::const_iterator, const Array>;
     using reverse_iterator = details::ReverseIteratorAdapter<ArrayImpl::iterator, Array>;

@@ -134,6 +134,8 @@ TEST(Any, map) {
     Any x0 = m;
     EXPECT_TRUE(x0.has_value());
     EXPECT_TRUE(x0.IsMap());
+    auto& s = x0.operator[]<std::unordered_map<int, String>>(0);
+    EXPECT_EQ(s, "hello");
 
     auto y = x0.cast<std::unordered_map<int, String>>();
     EXPECT_TRUE(y[0] == "hello");
@@ -142,8 +144,6 @@ TEST(Any, map) {
     Any x1 = "hello";
     std::unordered_map<Any, int> b = {{x1, 1}};
     EXPECT_EQ(b[x1], 1);
-
-    std::unordered_map<Any, Any> m1;
 }
 
 TEST(Any, cast_vs_as) {

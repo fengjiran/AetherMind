@@ -6,7 +6,6 @@
 #define AETHERMIND_CONTAINER_MAP_H
 
 #include "any.h"
-#include "map.h"
 
 #include <concepts>
 #include <tuple>
@@ -950,6 +949,16 @@ public:
         value_type* p = GetRawDataPtr();
         p->second = std::move(x);
         return *this;
+    }
+
+    template<typename U = V>
+        requires requires {
+            typename U::key_type;
+            typename U::mapped_type;
+            requires details::is_map_subscript<U>;
+        }
+    decltype(auto) operator[](const U::key_type& key) {
+        value_type* p = GetRawDataPtr();
     }
 
     friend bool operator==(const PairProxy& lhs, const PairProxy& rhs) {

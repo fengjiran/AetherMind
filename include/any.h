@@ -241,6 +241,25 @@ public:
         return std::move(*this).cast<T>();
     }
 
+    template<typename T>
+        requires requires {
+            typename T::size_type;
+            requires details::is_array_subscript<T>;
+        }
+    decltype(auto) operator[](T::size_type i) {
+        return (*static_cast<T*>(ptr_->GetUnderlyingPtr()))[i];
+    }
+
+    template<typename T>
+        requires requires {
+            typename T::key_type;
+            typename T::mapped_type;
+            requires details::is_map_subscript<T>;
+        }
+    decltype(auto) operator[](const T::key_type& key) {
+        return (*static_cast<T*>(ptr_->GetUnderlyingPtr()))[key];
+    }
+
     void reset();
 
     void swap(Any& other) noexcept;

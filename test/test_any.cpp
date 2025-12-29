@@ -127,6 +127,8 @@ TEST(Any, string) {
     String s4 = static_cast<String>(Any("hello"));
     EXPECT_EQ(s4, "hello");
     EXPECT_EQ(s4.use_count(), 1);
+
+    Any1 s5 = String("hello");
 }
 
 TEST(Any, map) {

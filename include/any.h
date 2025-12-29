@@ -11,6 +11,7 @@
 #include "error.h"
 
 #include <typeindex>
+#include <variant>
 
 namespace aethermind {
 
@@ -320,9 +321,14 @@ private:
     friend class AnyEqual;
 };
 
+struct null_object_tag {};
+
 class Any1 {
 public:
-    Any1() = default;
+    Any1() {
+        new (std::get<arr_type>(data_)) int64_t(0);
+        small_type_index_ = typeid(int64_t);
+    }
 
     // not plain type ctor
     template<typename T, typename U = std::decay_t<T>>
@@ -330,12 +336,10 @@ public:
     Any1(T&& value) {//NOLINT
         if constexpr (sizeof(U) <= kSmallObjectSize) {
             // small object, construct at local buffer
-            is_small_object_ = true;
-            new (local_buffer_) U(std::forward<T>(value));
+            new (std::get<arr_type>(data_)) U(std::forward<T>(value));
             small_type_index_ = typeid(U);
         } else {
-            is_small_object_ = false;
-            ptr_ = std::make_unique<Holder<U>>(std::forward<T>(value));
+            data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
         }
     }
 
@@ -345,12 +349,10 @@ public:
         using U = int64_t;
         if constexpr (sizeof(U) <= kSmallObjectSize) {
             // small object, construct at local buffer
-            is_small_object_ = true;
-            new (local_buffer_) U(static_cast<U>(value));
+            new (std::get<arr_type>(data_)) U(static_cast<U>(value));
             small_type_index_ = typeid(U);
         } else {
-            is_small_object_ = false;
-            ptr_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+            data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
         }
     }
 
@@ -359,12 +361,10 @@ public:
     Any1(T value) {//NOLINT
         using U = double;
         if constexpr (sizeof(U) <= kSmallObjectSize) {
-            is_small_object_ = true;
-            new (local_buffer_) U(static_cast<U>(value));
+            new (std::get<arr_type>(data_)) U(static_cast<U>(value));
             small_type_index_ = typeid(U);
         } else {
-            is_small_object_ = false;
-            ptr_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+            data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
         }
     }
 
@@ -373,41 +373,46 @@ public:
     Any1(T value) {//NOLINT
         using U = String;
         if constexpr (sizeof(U) <= kSmallObjectSize) {
-            is_small_object_ = true;
-            new (local_buffer_) U(static_cast<U>(value));
+            new (std::get<arr_type>(data_)) U(static_cast<U>(value));
             small_type_index_ = typeid(U);
         } else {
-            is_small_object_ = false;
-            ptr_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+            data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
         }
     }
 
     Any1(const Any1& other) {
-        if (other.is_small_object_) {
-            std::memcpy(local_buffer_, other.local_buffer_, kSmallObjectSize);
-            is_small_object_ = true;
+        if (other.IsSmallObject()) {
+            std::memcpy(std::get<arr_type>(data_), std::get<arr_type>(other.data_), kSmallObjectSize);
             small_type_index_ = other.small_type_index_;
         } else {
             if (other.has_value()) {
-                ptr_ = other.ptr_->Clone();
-                is_small_object_ = false;
+                std::get<std::unique_ptr<HolderBase>>(data_) = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
             }
         }
     }
 
+    // Any1(Any1&& other) noexcept : data_(std::move(other.data_)) {
+    //
+    // }
+
     NODISCARD bool has_value() const noexcept {
-        return is_small_object_ ? small_type_index_ != typeid(std::nullptr_t) : ptr_ != nullptr;
+        return IsSmallObject() || std::get<std::unique_ptr<HolderBase>>(data_) != nullptr;
+    }
+
+    NODISCARD bool IsSmallObject() const {
+        return std::holds_alternative<arr_type>(data_);
     }
 
 private:
-    static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
-    union {
-        alignas(std::max_align_t) uint8_t local_buffer_[kSmallObjectSize];// small object buffer
-        std::unique_ptr<HolderBase> ptr_{nullptr};                        //big object pointer
-    };
+    static constexpr size_t kSmallObjectSize = sizeof(void*) * 1;
+    using arr_type = uint8_t[kSmallObjectSize];
 
-    bool is_small_object_{true};
-    std::type_index small_type_index_{typeid(std::nullptr_t)};
+    std::variant<arr_type, std::unique_ptr<HolderBase>> data_{};
+    std::type_index small_type_index_{typeid(null_object_tag)};
+
+    void InitLocalBuffer() noexcept {
+        std::memset(std::get<arr_type>(data_), 0, kSmallObjectSize);
+    }
 };
 
 // std::ostream& operator<<(std::ostream& os, const Any& any);

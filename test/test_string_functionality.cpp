@@ -47,6 +47,9 @@ TEST(StringConstructorFill, BasicFunctionality) {
     EXPECT_EQ(s5.use_count(), 4);
     p.~KVType();
     EXPECT_EQ(s5.use_count(), 2);
+
+    String s7;
+    EXPECT_TRUE(s7.IsLocal());
 }
 
 // 测试边界情况：空字符串

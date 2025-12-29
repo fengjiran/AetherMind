@@ -840,6 +840,9 @@ public:
 
     PairProxy at(const key_type& key) {
         auto it = find(key);
+        if (it == end()) {
+            AETHERMIND_THROW(KeyError) << "Key does not exist";
+        }
         return {*this, it.index()};
     }
 
@@ -958,7 +961,18 @@ public:
             requires details::is_map_subscript<U>;
         }
     decltype(auto) operator[](const U::key_type& key) {
-        value_type* p = GetRawDataPtr();
+        auto* p = GetRawDataPtr();
+        return p->second.template operator[]<U>(key);
+    }
+
+    template<typename U = V>
+        requires requires {
+            typename U::size_type;
+            requires details::is_array_subscript<U>;
+        }
+    decltype(auto) operator[](U::size_type i) {
+        auto* p = GetRawDataPtr();
+        return p->second.template operator[]<U>(i);
     }
 
     friend bool operator==(const PairProxy& lhs, const PairProxy& rhs) {

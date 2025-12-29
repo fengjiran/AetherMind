@@ -666,6 +666,7 @@ TEST(MapInsertOrAssignTest, different_data_types) {
     auto [it4, success4] = complex_map.insert_or_assign(1, vec);
     EXPECT_TRUE(success4);
     EXPECT_EQ(it4->second.cast<std::vector<int>>(), vec);
+    auto x = it4->second == vec;
 
     // 更新元素
     std::vector<int> new_vec = {4, 5, 6};
@@ -1076,8 +1077,10 @@ TEST(MapEraseTest, erase_with_different_types) {
             {2, {{"c", 30}, {"d", 40}}}};
     EXPECT_EQ(nested_map.size(), 2);
 
-    // auto elem1 = nested_map[1];
-    // auto x = elem1["a"];
+    EXPECT_EQ(nested_map[1]["a"], 10);
+    EXPECT_EQ(nested_map[1]["b"], 20);
+    EXPECT_EQ(nested_map[2]["c"], 30);
+    EXPECT_EQ(nested_map[2]["d"], 40);
 
     // // 删除嵌套Map的元素
     // nested_map[1].erase("a");

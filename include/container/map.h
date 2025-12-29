@@ -6,6 +6,7 @@
 #define AETHERMIND_CONTAINER_MAP_H
 
 #include "any.h"
+#include "map.h"
 
 #include <concepts>
 #include <tuple>
@@ -125,7 +126,7 @@ protected:
 template<typename Derived>
 class MapImpl<Derived>::iterator {
 public:
-    using iterator_category = std::forward_iterator_tag;
+    using iterator_category = std::bidirectional_iterator_tag;
     using value_type = KVType;
     using pointer = value_type*;
     using reference = value_type&;
@@ -203,6 +204,10 @@ public:
         return *this;
     }
 
+    difference_type operator-(const iterator& other) const {
+        return static_cast<difference_type>(index()) - static_cast<difference_type>(other.index());
+    }
+
     bool operator==(const iterator& other) const {
         return index_ == other.index_ && ptr_ == other.ptr_;
     }
@@ -222,7 +227,7 @@ protected:
 template<typename Derived>
 class MapImpl<Derived>::const_iterator {
 public:
-    using iterator_category = std::forward_iterator_tag;
+    using iterator_category = std::bidirectional_iterator_tag;
     using value_type = KVType;
     using const_pointer = const value_type*;
     using const_reference = const value_type&;
@@ -300,6 +305,10 @@ public:
             operator--();
         }
         return *this;
+    }
+
+    difference_type operator-(const const_iterator& other) const {
+        return static_cast<difference_type>(index()) - static_cast<difference_type>(other.index());
     }
 
     bool operator==(const const_iterator& other) const {
@@ -942,14 +951,14 @@ public:
 
     PairProxy& operator=(value_type x) {
         map_.COW();
-        value_type* p = GetRawDataPtr();
+        auto* p = GetRawDataPtr();
         *p = std::move(x);
         return *this;
     }
 
     PairProxy& operator=(mapped_type x) {
         map_.COW();
-        value_type* p = GetRawDataPtr();
+        auto* p = GetRawDataPtr();
         p->second = std::move(x);
         return *this;
     }
@@ -974,6 +983,9 @@ public:
         auto* p = GetRawDataPtr();
         return p->second.template operator[]<U>(i);
     }
+
+    // template<typename U = V>
+
 
     friend bool operator==(const PairProxy& lhs, const PairProxy& rhs) {
         return *lhs.GetRawDataPtr() == *rhs.GetRawDataPtr();

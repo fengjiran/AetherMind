@@ -1082,6 +1082,8 @@ TEST(MapEraseTest, erase_with_different_types) {
     EXPECT_EQ(nested_map[2]["c"], 30);
     EXPECT_EQ(nested_map[2]["d"], 40);
 
+    auto m = nested_map[1]["a"];
+
     // // 删除嵌套Map的元素
     // nested_map[1].erase("a");
     // EXPECT_EQ(nested_map[1].size(), 1);

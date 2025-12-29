@@ -320,6 +320,96 @@ private:
     friend class AnyEqual;
 };
 
+class Any1 {
+public:
+    Any1() = default;
+
+    // not plain type ctor
+    template<typename T, typename U = std::decay_t<T>>
+        requires(!details::is_plain_type<U> && !std::same_as<U, Any>)
+    Any1(T&& value) {//NOLINT
+        if constexpr (sizeof(U) <= kSmallObjectSize) {
+            // small object, construct at local buffer
+            is_small_object_ = true;
+            new (local_buffer_) U(std::forward<T>(value));
+            small_type_index_ = typeid(U);
+        } else {
+            is_small_object_ = false;
+            ptr_ = std::make_unique<Holder<U>>(std::forward<T>(value));
+        }
+    }
+
+    // integer ctor
+    template<details::is_integral T>
+    Any1(T value) {//NOLINT
+        using U = int64_t;
+        if constexpr (sizeof(U) <= kSmallObjectSize) {
+            // small object, construct at local buffer
+            is_small_object_ = true;
+            new (local_buffer_) U(static_cast<U>(value));
+            small_type_index_ = typeid(U);
+        } else {
+            is_small_object_ = false;
+            ptr_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+        }
+    }
+
+    // floating ctor
+    template<details::is_floating_point T>
+    Any1(T value) {//NOLINT
+        using U = double;
+        if constexpr (sizeof(U) <= kSmallObjectSize) {
+            is_small_object_ = true;
+            new (local_buffer_) U(static_cast<U>(value));
+            small_type_index_ = typeid(U);
+        } else {
+            is_small_object_ = false;
+            ptr_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+        }
+    }
+
+    // string ctor
+    template<details::is_string T>
+    Any1(T value) {//NOLINT
+        using U = String;
+        if constexpr (sizeof(U) <= kSmallObjectSize) {
+            is_small_object_ = true;
+            new (local_buffer_) U(static_cast<U>(value));
+            small_type_index_ = typeid(U);
+        } else {
+            is_small_object_ = false;
+            ptr_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+        }
+    }
+
+    Any1(const Any1& other) {
+        if (other.is_small_object_) {
+            std::memcpy(local_buffer_, other.local_buffer_, kSmallObjectSize);
+            is_small_object_ = true;
+            small_type_index_ = other.small_type_index_;
+        } else {
+            if (other.has_value()) {
+                ptr_ = other.ptr_->Clone();
+            }
+            is_small_object_ = false;
+        }
+    }
+
+    NODISCARD bool has_value() const noexcept {
+        return is_small_object_ ? small_type_index_ != typeid(std::nullptr_t) : ptr_ != nullptr;
+    }
+
+private:
+    static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
+    union {
+        alignas(std::max_align_t) uint8_t local_buffer_[kSmallObjectSize];// small object buffer
+        std::unique_ptr<HolderBase> ptr_{nullptr};                        //big object pointer
+    };
+
+    bool is_small_object_{true};
+    std::type_index small_type_index_{typeid(std::nullptr_t)};
+};
+
 // std::ostream& operator<<(std::ostream& os, const Any& any);
 
 class AnyEqual {

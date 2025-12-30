@@ -30,10 +30,6 @@ TEST(Any, bool) {
 
     EXPECT_EQ(details::Type2Str<bool>::value(), "Bool");
     EXPECT_EQ(details::Type2Str<Tensor>::value(), "Tensor");
-
-    Any1 t;
-    EXPECT_TRUE(t.IsSmallObject());
-    EXPECT_TRUE(t.has_value());
 }
 
 TEST(Any, null) {

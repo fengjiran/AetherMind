@@ -407,21 +407,20 @@ private:
     friend class AnyEqual;
 };
 
-class Any1 {
+class AnyV1 {
 public:
-    Any1() = default;
+    AnyV1() = default;
 
-    ~Any1() {
-        reset();
-    }
+    ~AnyV1() = default;
 
     // not plain type ctor
     template<typename T, typename U = std::decay_t<T>>
-        requires(!details::is_plain_type<U> && !std::same_as<U, Any1>)
-    Any1(T&& value) {//NOLINT
+        requires(!details::is_plain_type<U> && !std::same_as<U, AnyV1>)
+    AnyV1(T&& value) {//NOLINT
         if constexpr (sizeof(U) <= kSmallObjectSize) {
             // small object, construct at local buffer
-            new (std::get_if<SmallObject>(&data_)) Holder<U>(std::forward<T>(value));
+            data_ = SmallObject{std::forward<T>(value)};
+            // new (std::get_if<SmallObject>(&data_)) Holder<U>(std::forward<T>(value));
         } else {
             data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
         }
@@ -429,7 +428,7 @@ public:
 
     // integer ctor
     template<details::is_integral T>
-    Any1(T value) {//NOLINT
+    AnyV1(T value) : data_(SmallObject{}) {//NOLINT
         using U = int64_t;
         if constexpr (sizeof(Holder<U>) <= kSmallObjectSize) {
             // small object, construct at local buffer
@@ -441,7 +440,7 @@ public:
 
     // floating ctor
     template<details::is_floating_point T>
-    Any1(T value) {//NOLINT
+    AnyV1(T value) : data_(SmallObject{}) {//NOLINT
         using U = double;
         if constexpr (sizeof(U) <= kSmallObjectSize) {
             new (std::get_if<SmallObject>(&data_)) Holder<U>(static_cast<U>(value));
@@ -452,7 +451,7 @@ public:
 
     // string ctor
     template<details::is_string T>
-    Any1(T value) {//NOLINT
+    AnyV1(T value) : data_(SmallObject{}) {//NOLINT
         using U = String;
         if constexpr (sizeof(U) <= kSmallObjectSize) {
             new (std::get_if<SmallObject>(&data_)) Holder<U>(static_cast<U>(value));
@@ -461,94 +460,61 @@ public:
         }
     }
 
-    Any1(const Any1& other) {
-        if (other.IsSmallObject()) {
-            const auto* src = reinterpret_cast<const HolderBase*>(std::get_if<SmallObject>(&other.data_));
-            auto* dst = std::get_if<SmallObject>(&data_);
-            src->CloneSmallObject(dst);
-        } else {
-            if (other.has_value()) {
-                std::get<std::unique_ptr<HolderBase>>(data_) = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
+    AnyV1(const AnyV1& other) {
+        if (other.has_value()) {
+            if (other.IsSmallObject()) {
+                data_ = SmallObject{};
+                const auto* src = reinterpret_cast<const HolderBase*>(std::get_if<SmallObject>(&other.data_));
+                auto* dst = std::get_if<SmallObject>(&data_);
+                src->CloneSmallObject(dst);
+            } else {
+                data_ = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
             }
         }
     }
 
-    Any1(Any1&& other) noexcept {
-        if (other.IsSmallObject()) {
-            auto* src = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&other.data_));
-            auto* dst = std::get_if<SmallObject>(&data_);
-            src->MoveSmallObject(dst);
-        } else {
-            std::get<std::unique_ptr<HolderBase>>(data_) = std::move(std::get<std::unique_ptr<HolderBase>>(other.data_));
+    AnyV1(AnyV1&& other) noexcept {
+        if (other.has_value()) {
+            if (other.IsSmallObject()) {
+                data_ = SmallObject{};
+                auto* src = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&other.data_));
+                auto* dst = std::get_if<SmallObject>(&data_);
+                src->MoveSmallObject(dst);
+            } else {
+                data_ = std::move(std::get<std::unique_ptr<HolderBase>>(other.data_));
+            }
         }
     }
 
-    Any1& operator=(const Any1& other) {
-        Any1(other).swap(*this);
+    AnyV1& operator=(const AnyV1& other) {
+        AnyV1(other).swap(*this);
         return *this;
     }
 
-    Any1& operator=(Any1&& other) noexcept {
-        Any1(std::move(other)).swap(*this);
+    AnyV1& operator=(AnyV1&& other) noexcept {
+        AnyV1(std::move(other)).swap(*this);
         return *this;
     }
 
     template<typename T>
-    Any1& operator=(T value) & {
-        Any1(std::move(value)).swap(*this);
+    AnyV1& operator=(T value) & {
+        AnyV1(std::move(value)).swap(*this);
         return *this;
     }
 
-    void swap(Any1& other) noexcept {
+    void swap(AnyV1& other) noexcept {
         if (this == &other) {
             return;
         }
-
-        if (IsSmallObject()) {
-            SmallObject tmp;
-            auto* self = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&data_));
-            if (other.IsSmallObject()) {
-                auto* p = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&other.data_));
-                self->MoveSmallObject(&tmp);
-                auto* t = reinterpret_cast<HolderBase*>(&tmp);
-                p->MoveSmallObject(self);
-                t->MoveSmallObject(p);
-            } else {
-                self->MoveSmallObject(&tmp);
-                data_ = std::move(std::get<std::unique_ptr<HolderBase>>(other.data_));
-                other.data_ = tmp;
-                auto* t = reinterpret_cast<HolderBase*>(&tmp);
-                t->MoveSmallObject(std::get_if<SmallObject>(&other.data_));
-            }
-        } else {
-            if (other.IsSmallObject()) {
-                SmallObject tmp;
-                auto* p = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&other.data_));
-                p->MoveSmallObject(&tmp);
-                other.data_ = std::move(std::get<std::unique_ptr<HolderBase>>(data_));
-                data_ = tmp;
-                auto* t = reinterpret_cast<HolderBase*>(&tmp);
-                t->MoveSmallObject(std::get_if<SmallObject>(&data_));
-            } else {
-                std::swap(std::get<std::unique_ptr<HolderBase>>(data_),
-                          std::get<std::unique_ptr<HolderBase>>(other.data_));
-            }
-        }
+        std::swap(data_, other.data_);
     }
 
     void reset() noexcept {
-        if (has_value()) {
-            if (IsSmallObject()) {
-                auto* p = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&data_));
-                p->~HolderBase();
-            } else {
-                std::get<std::unique_ptr<HolderBase>>(data_).reset();
-            }
-        }
+        data_ = std::monostate{};
     }
 
     NODISCARD bool has_value() const noexcept {
-        return IsSmallObject() || std::get<std::unique_ptr<HolderBase>>(data_) != nullptr;
+        return !std::holds_alternative<std::monostate>(data_);
     }
 
     NODISCARD bool IsSmallObject() const {
@@ -565,14 +531,53 @@ private:
     static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
 
     struct SmallObject {
-        SmallObject() : local_buffer{} {
-            new (local_buffer) Holder<uint8_t>(0);
+        SmallObject() : SmallObject(0) {}
+
+        template<typename T, typename U = std::decay_t<T>>
+            requires requires {
+                requires !std::is_same_v<U, SmallObject>;
+                requires sizeof(Holder<U>) <= kSmallObjectSize;
+            }
+        explicit SmallObject(T&& value) {
+            new (local_buffer) Holder<U>(std::forward<T>(value));
         }
 
-        uint8_t local_buffer[kSmallObjectSize];
+        SmallObject(const SmallObject& other) {
+            const auto* src = reinterpret_cast<const HolderBase*>(other.local_buffer);
+            src->CloneSmallObject(local_buffer);
+        }
+
+        SmallObject(SmallObject&& other) noexcept {
+            auto* src = reinterpret_cast<HolderBase*>(other.local_buffer);
+            src->MoveSmallObject(local_buffer);
+        }
+
+        SmallObject& operator=(const SmallObject& other) {
+            SmallObject(other).swap(*this);
+            return *this;
+        }
+
+        SmallObject& operator=(SmallObject&& other) noexcept {
+            SmallObject(std::move(other)).swap(*this);
+            return *this;
+        }
+
+        void swap(SmallObject& other) noexcept {
+            using std::swap;
+            uint8_t tmp[kSmallObjectSize];
+            reinterpret_cast<HolderBase*>(local_buffer)->MoveSmallObject(tmp);
+            reinterpret_cast<HolderBase*>(other.local_buffer)->MoveSmallObject(local_buffer);
+            reinterpret_cast<HolderBase*>(tmp)->MoveSmallObject(other.local_buffer);
+        }
+
+        ~SmallObject() {
+            reinterpret_cast<HolderBase*>(local_buffer)->~HolderBase();
+        }
+
+        uint8_t local_buffer[kSmallObjectSize]{};
     };
 
-    std::variant<SmallObject, std::unique_ptr<HolderBase>> data_{};
+    std::variant<std::monostate, SmallObject, std::unique_ptr<HolderBase>> data_{std::monostate{}};
 };
 
 // std::ostream& operator<<(std::ostream& os, const Any& any);

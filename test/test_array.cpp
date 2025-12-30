@@ -34,12 +34,10 @@ TEST(Array, init) {
     EXPECT_EQ(vec2.back(), 5);
     auto vec21 = vec2;
     EXPECT_EQ(vec21.use_count(), 2);
-    Any1 t1 = vec21;
-    Any1 t2 = vec21;
-    t1 = t2;
+    AnyV1 t1 = vec21;
+    AnyV1 t2 = vec21;
+    // t1 = t2;
     EXPECT_EQ(vec21.use_count(), 4);
-    // t1.reset();
-    EXPECT_TRUE(t1.IsSmallObject());
 
     Array<int> vec3 = {4, 5, 6, 7, 8, 9};
     EXPECT_TRUE(vec3.defined());

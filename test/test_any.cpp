@@ -30,6 +30,10 @@ TEST(Any, bool) {
 
     EXPECT_EQ(details::Type2Str<bool>::value(), "Bool");
     EXPECT_EQ(details::Type2Str<Tensor>::value(), "Tensor");
+
+    Any1 t;
+    EXPECT_TRUE(t.IsSmallObject());
+    EXPECT_TRUE(t.has_value());
 }
 
 TEST(Any, null) {
@@ -127,8 +131,6 @@ TEST(Any, string) {
     String s4 = static_cast<String>(Any("hello"));
     EXPECT_EQ(s4, "hello");
     EXPECT_EQ(s4.use_count(), 1);
-
-    Any1 s5 = String("hello");
 }
 
 TEST(Any, map) {

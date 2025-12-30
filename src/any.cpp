@@ -27,7 +27,7 @@ Any& Any::operator=(Any&& other) & noexcept {
     return *this;
 }
 
-const std::type_index& Any::type() const {
+std::type_index Any::type() const {
     if (has_value()) {
         return ptr_->type();
     }

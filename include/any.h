@@ -15,11 +15,90 @@
 
 namespace aethermind {
 
+#ifdef CRTP_HOLDER
+
+template<typename Derived>
+class HolderBase_ {
+public:
+    NODISCARD std::unique_ptr<HolderBase_> Clone() const {
+        return static_cast<const Derived*>(this)->CloneImpl();
+    }
+
+    NODISCARD const std::type_index& type() const {
+        return static_cast<const Derived*>(this)->type_impl();
+    }
+
+    NODISCARD uint32_t use_count() const {
+        return static_cast<const Derived*>(this)->use_count_impl();
+    }
+
+    NODISCARD bool IsObjectRef() const {
+        return static_cast<const Derived*>(this)->IsObjectRefImpl();
+    }
+
+    NODISCARD bool IsMap() const {
+        return static_cast<const Derived*>(this)->IsMapImpl();
+    }
+
+    NODISCARD void* GetUnderlyingPtr() const {
+        return static_cast<const Derived*>(this)->GetUnderlyingPtrImpl();
+    }
+};
+
+template<typename T>
+class Holder_ final : public HolderBase_<Holder_<T>> {
+public:
+    explicit Holder_(T value) : value_(std::move(value)), type_index_(typeid(T)) {}
+
+    NODISCARD std::unique_ptr<HolderBase_<Holder_>> CloneImpl() const {
+        return std::make_unique<Holder_>(value_);
+    }
+
+    NODISCARD const std::type_index& type_impl() const {
+        return type_index_;
+    }
+
+    NODISCARD uint32_t use_count_impl() const {
+        if constexpr (details::has_use_count_method_v<T>) {
+            return value_.use_count();
+        } else {
+            return 1;
+        }
+    }
+
+    NODISCARD bool IsObjectRefImpl() const {
+        if constexpr (std::is_base_of_v<ObjectRef, T>) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    NODISCARD bool IsMapImpl() const {
+        if constexpr (details::is_map_v<T>) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    NODISCARD void* GetUnderlyingPtrImpl() const {
+        return &value_;
+    }
+
+private:
+    T value_;
+    std::type_index type_index_;
+};
+#endif
+
 class HolderBase {
 public:
     virtual ~HolderBase() = default;
+    virtual void CloneSmallObject(void*) const = 0;
+    virtual void MoveSmallObject(void*) = 0;
     NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
-    NODISCARD virtual const std::type_index& type() const = 0;
+    NODISCARD virtual std::type_index type() const = 0;
     NODISCARD virtual uint32_t use_count() const = 0;
     NODISCARD virtual bool IsObjectRef() const = 0;
     NODISCARD virtual bool IsMap() const = 0;
@@ -29,14 +108,22 @@ public:
 template<typename T>
 class Holder final : public HolderBase {
 public:
-    explicit Holder(T value) : value_(std::move(value)), type_index_(typeid(T)) {}
+    explicit Holder(T value) : value_(std::move(value)) {}
+
+    void CloneSmallObject(void* p) const override {
+        new (p) Holder(*this);
+    }
+
+    void MoveSmallObject(void* p) override {
+        new (p) Holder(std::move(*this));
+    }
 
     NODISCARD std::unique_ptr<HolderBase> Clone() const override {
         return std::make_unique<Holder>(value_);
     }
 
-    NODISCARD const std::type_index& type() const override {
-        return type_index_;
+    NODISCARD std::type_index type() const override {
+        return typeid(T);
     }
 
     NODISCARD uint32_t use_count() const override {
@@ -66,7 +153,6 @@ public:
 
 private:
     T value_;
-    std::type_index type_index_;
 
     friend class Any;
 };
@@ -265,7 +351,7 @@ public:
 
     void swap(Any& other) noexcept;
 
-    NODISCARD const std::type_index& type() const;
+    NODISCARD std::type_index type() const;
 
     NODISCARD SingletonOrSharedTypePtr<Type> GetTypePtr() const noexcept;
 
@@ -321,23 +407,21 @@ private:
     friend class AnyEqual;
 };
 
-struct null_object_tag {};
-
 class Any1 {
 public:
-    Any1() {
-        new (std::get<arr_type>(data_)) int64_t(0);
-        small_type_index_ = typeid(int64_t);
+    Any1() = default;
+
+    ~Any1() {
+        reset();
     }
 
     // not plain type ctor
     template<typename T, typename U = std::decay_t<T>>
-        requires(!details::is_plain_type<U> && !std::same_as<U, Any>)
+        requires(!details::is_plain_type<U> && !std::same_as<U, Any1>)
     Any1(T&& value) {//NOLINT
         if constexpr (sizeof(U) <= kSmallObjectSize) {
             // small object, construct at local buffer
-            new (std::get<arr_type>(data_)) U(std::forward<T>(value));
-            small_type_index_ = typeid(U);
+            new (std::get_if<SmallObject>(&data_)) Holder<U>(std::forward<T>(value));
         } else {
             data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
         }
@@ -347,10 +431,9 @@ public:
     template<details::is_integral T>
     Any1(T value) {//NOLINT
         using U = int64_t;
-        if constexpr (sizeof(U) <= kSmallObjectSize) {
+        if constexpr (sizeof(Holder<U>) <= kSmallObjectSize) {
             // small object, construct at local buffer
-            new (std::get<arr_type>(data_)) U(static_cast<U>(value));
-            small_type_index_ = typeid(U);
+            new (std::get_if<SmallObject>(&data_)) Holder<U>(static_cast<U>(value));
         } else {
             data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
         }
@@ -361,8 +444,7 @@ public:
     Any1(T value) {//NOLINT
         using U = double;
         if constexpr (sizeof(U) <= kSmallObjectSize) {
-            new (std::get<arr_type>(data_)) U(static_cast<U>(value));
-            small_type_index_ = typeid(U);
+            new (std::get_if<SmallObject>(&data_)) Holder<U>(static_cast<U>(value));
         } else {
             data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
         }
@@ -373,8 +455,7 @@ public:
     Any1(T value) {//NOLINT
         using U = String;
         if constexpr (sizeof(U) <= kSmallObjectSize) {
-            new (std::get<arr_type>(data_)) U(static_cast<U>(value));
-            small_type_index_ = typeid(U);
+            new (std::get_if<SmallObject>(&data_)) Holder<U>(static_cast<U>(value));
         } else {
             data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
         }
@@ -382,8 +463,9 @@ public:
 
     Any1(const Any1& other) {
         if (other.IsSmallObject()) {
-            std::memcpy(std::get<arr_type>(data_), std::get<arr_type>(other.data_), kSmallObjectSize);
-            small_type_index_ = other.small_type_index_;
+            const auto* src = reinterpret_cast<const HolderBase*>(std::get_if<SmallObject>(&other.data_));
+            auto* dst = std::get_if<SmallObject>(&data_);
+            src->CloneSmallObject(dst);
         } else {
             if (other.has_value()) {
                 std::get<std::unique_ptr<HolderBase>>(data_) = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
@@ -393,12 +475,75 @@ public:
 
     Any1(Any1&& other) noexcept {
         if (other.IsSmallObject()) {
-            std::memcpy(std::get<arr_type>(data_), std::get<arr_type>(other.data_), kSmallObjectSize);
-            small_type_index_ = other.small_type_index_;
-            other.InitLocalBuffer();
-            other.small_type_index_ = typeid(std::nullptr_t);
+            auto* src = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&other.data_));
+            auto* dst = std::get_if<SmallObject>(&data_);
+            src->MoveSmallObject(dst);
         } else {
             std::get<std::unique_ptr<HolderBase>>(data_) = std::move(std::get<std::unique_ptr<HolderBase>>(other.data_));
+        }
+    }
+
+    Any1& operator=(const Any1& other) {
+        Any1(other).swap(*this);
+        return *this;
+    }
+
+    Any1& operator=(Any1&& other) noexcept {
+        Any1(std::move(other)).swap(*this);
+        return *this;
+    }
+
+    template<typename T>
+    Any1& operator=(T value) & {
+        Any1(std::move(value)).swap(*this);
+        return *this;
+    }
+
+    void swap(Any1& other) noexcept {
+        if (this == &other) {
+            return;
+        }
+
+        if (IsSmallObject()) {
+            SmallObject tmp;
+            auto* self = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&data_));
+            if (other.IsSmallObject()) {
+                auto* p = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&other.data_));
+                self->MoveSmallObject(&tmp);
+                auto* t = reinterpret_cast<HolderBase*>(&tmp);
+                p->MoveSmallObject(self);
+                t->MoveSmallObject(p);
+            } else {
+                self->MoveSmallObject(&tmp);
+                data_ = std::move(std::get<std::unique_ptr<HolderBase>>(other.data_));
+                other.data_ = tmp;
+                auto* t = reinterpret_cast<HolderBase*>(&tmp);
+                t->MoveSmallObject(std::get_if<SmallObject>(&other.data_));
+            }
+        } else {
+            if (other.IsSmallObject()) {
+                SmallObject tmp;
+                auto* p = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&other.data_));
+                p->MoveSmallObject(&tmp);
+                other.data_ = std::move(std::get<std::unique_ptr<HolderBase>>(data_));
+                data_ = tmp;
+                auto* t = reinterpret_cast<HolderBase*>(&tmp);
+                t->MoveSmallObject(std::get_if<SmallObject>(&data_));
+            } else {
+                std::swap(std::get<std::unique_ptr<HolderBase>>(data_),
+                          std::get<std::unique_ptr<HolderBase>>(other.data_));
+            }
+        }
+    }
+
+    void reset() noexcept {
+        if (has_value()) {
+            if (IsSmallObject()) {
+                auto* p = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&data_));
+                p->~HolderBase();
+            } else {
+                std::get<std::unique_ptr<HolderBase>>(data_).reset();
+            }
         }
     }
 
@@ -407,19 +552,27 @@ public:
     }
 
     NODISCARD bool IsSmallObject() const {
-        return std::holds_alternative<arr_type>(data_);
+        return std::holds_alternative<SmallObject>(data_);
     }
 
 private:
-    static constexpr size_t kSmallObjectSize = sizeof(void*) * 1;
-    using arr_type = uint8_t[kSmallObjectSize];
+    // void InitLocalBuffer() noexcept {
+    //     if (auto* p = std::get_if<SmallObject>(&data_)) {
+    //         std::memset(p, 0, kSmallObjectSize);
+    //     }
+    // }
 
-    std::variant<arr_type, std::unique_ptr<HolderBase>> data_{};
-    std::type_index small_type_index_{typeid(std::nullptr_t)};
+    static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
 
-    void InitLocalBuffer() noexcept {
-        std::memset(std::get<arr_type>(data_), 0, kSmallObjectSize);
-    }
+    struct SmallObject {
+        SmallObject() : local_buffer{} {
+            new (local_buffer) Holder<uint8_t>(0);
+        }
+
+        uint8_t local_buffer[kSmallObjectSize];
+    };
+
+    std::variant<SmallObject, std::unique_ptr<HolderBase>> data_{};
 };
 
 // std::ostream& operator<<(std::ostream& os, const Any& any);

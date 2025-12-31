@@ -217,7 +217,7 @@ public:
     // floating ctor
     template<details::is_floating_point T>
     Any(T value) {//NOLINT
-        if constexpr (sizeof(Float) <= kSmallObjectSize) {
+        if constexpr (sizeof(Holder<Float>) <= kSmallObjectSize) {
             data_ = SmallObject{static_cast<Float>(value)};
         } else {
             data_ = std::make_unique<Holder<Float>>(static_cast<Float>(value));
@@ -227,7 +227,7 @@ public:
     // string ctor
     template<details::is_string T>
     Any(T value) {//NOLINT
-        if constexpr (sizeof(String) <= kSmallObjectSize) {
+        if constexpr (sizeof(Holder<String>) <= kSmallObjectSize) {
             data_ = SmallObject{std::move(value)};
         } else {
             data_ = std::make_unique<Holder<String>>(static_cast<String>(value));
@@ -271,9 +271,19 @@ public:
 
     NODISCARD const void* GetDataPtr() const;
 
-    template<typename T>
-        requires details::is_plain_type<T>
+    template<details::is_plain_type T>
     NODISCARD std::optional<T> as() const {
+        // auto visitor = []<typename Arg>(const Arg& arg) -> std::optional<T> {
+        //     using U = std::decay_t<Arg>;
+        //     if constexpr (std::is_same_v<U, SmallObject>) {
+        //         //
+        //     } else if constexpr (std::is_same_v<U, std::unique_ptr<HolderBase>>) {
+        //         //
+        //     } else {
+        //         return std::nullopt;
+        //     }
+        // };
+
         if (has_value()) {
             const auto* p = GetDataPtr();
             if constexpr (details::is_integral<T>) {
@@ -544,6 +554,27 @@ private:
         }
 
         uint8_t local_buffer[kSmallObjectSize]{};
+    };
+
+    template<typename T>
+    struct Caster {
+        std::optional<T> operator()(const std::monostate&) const {
+            if constexpr (std::is_same_v<T, Any>) {
+                return Any{};
+            } else {
+                return std::nullopt;
+            }
+        }
+
+        std::optional<T> operator()(const SmallObject& v) const {
+            // if constexpr (std::is_same_v<T, Any>) {
+            //     return
+            // }
+        }
+
+        std::optional<T> operator()(const std::unique_ptr<HolderBase>& v) const {
+            //
+        }
     };
 
     std::variant<std::monostate,

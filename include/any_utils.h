@@ -47,7 +47,7 @@ concept is_string = std::same_as<T, std::string> ||
 
 template<typename T>
 concept is_plain_type = is_integral<T> ||
-                        // is_boolean<T> ||
+                        is_boolean<T> ||
                         is_floating_point<T> ||
                         is_string<T>;
 

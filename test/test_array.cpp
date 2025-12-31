@@ -34,8 +34,8 @@ TEST(Array, init) {
     EXPECT_EQ(vec2.back(), 5);
     auto vec21 = vec2;
     EXPECT_EQ(vec21.use_count(), 2);
-    AnyV1 t1 = vec21;
-    AnyV1 t2 = vec21;
+    Any t1 = vec21;
+    Any t2 = vec21;
     t1 = t2;
     EXPECT_EQ(vec21.use_count(), 4);
 

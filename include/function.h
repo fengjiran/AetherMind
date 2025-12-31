@@ -294,7 +294,6 @@ private:
     Function packed_func_;
 };
 
-
 }// namespace aethermind
 
 #endif//AETHERMIND_FUNCTION_H

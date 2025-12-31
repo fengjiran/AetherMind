@@ -157,7 +157,7 @@ public:
 private:
     T value_;
 
-    friend class Any;
+    // friend class Any;
 };
 
 class Tensor;
@@ -168,6 +168,7 @@ template<typename>
 class SingletonOrSharedTypePtr;
 class Type;
 
+#ifdef ANY
 class Any {
 public:
     Any() = default;
@@ -410,19 +411,22 @@ private:
     friend class AnyEqual;
 };
 
-class AnyV1 {
+#endif
+
+class Any {
 public:
     using Int = int64_t;
     using Float = double;
+    using Bool = bool;
 
-    AnyV1() = default;
-    ~AnyV1() = default;
+    Any() = default;
+    ~Any() = default;
 
     // not plain type ctor
     template<typename T, typename U = std::decay_t<T>>
-        requires(!details::is_plain_type<U> && !std::same_as<U, AnyV1>)
-    AnyV1(T&& value) {//NOLINT
-        if constexpr (sizeof(U) <= kSmallObjectSize) {
+        requires(!details::is_plain_type<U> && !std::same_as<U, Any>)
+    Any(T&& value) {//NOLINT
+        if constexpr (sizeof(Holder<U>) <= kSmallObjectSize) {
             // small object, construct at local buffer
             data_ = SmallObject{std::forward<T>(value)};
         } else {
@@ -432,7 +436,7 @@ public:
 
     // integer ctor
     template<details::is_integral T>
-    AnyV1(T value) {//NOLINT
+    Any(T value) {//NOLINT
         if constexpr (sizeof(Holder<Int>) <= kSmallObjectSize) {
             // small object, construct at local buffer
             data_ = SmallObject{static_cast<Int>(value)};
@@ -441,9 +445,20 @@ public:
         }
     }
 
+    // boolean ctor
+    template<details::is_boolean T>
+    Any(T value) {//NOLINT
+        if constexpr (sizeof(Holder<Bool>) <= kSmallObjectSize) {
+            // small object, construct at local buffer
+            data_ = SmallObject{static_cast<Bool>(value)};
+        } else {
+            data_ = std::make_unique<Holder<Bool>>(static_cast<Bool>(value));
+        }
+    }
+
     // floating ctor
     template<details::is_floating_point T>
-    AnyV1(T value) {//NOLINT
+    Any(T value) {//NOLINT
         if constexpr (sizeof(Float) <= kSmallObjectSize) {
             data_ = SmallObject{static_cast<Float>(value)};
         } else {
@@ -453,7 +468,7 @@ public:
 
     // string ctor
     template<details::is_string T>
-    AnyV1(T value) {//NOLINT
+    Any(T value) {//NOLINT
         if constexpr (sizeof(String) <= kSmallObjectSize) {
             data_ = SmallObject{std::move(value)};
         } else {
@@ -461,7 +476,7 @@ public:
         }
     }
 
-    AnyV1(const AnyV1& other) {
+    Any(const Any& other) {
         if (other.IsSmallObject()) {
             data_ = std::get<SmallObject>(other.data_);
         } else if (other.IsLargeObject()) {
@@ -469,25 +484,25 @@ public:
         }
     }
 
-    AnyV1(AnyV1&& other) noexcept : data_(std::move(other.data_)) {}
+    Any(Any&& other) noexcept : data_(std::move(other.data_)) {}
 
-    AnyV1& operator=(const AnyV1& other) {
-        AnyV1(other).swap(*this);
+    Any& operator=(const Any& other) {
+        Any(other).swap(*this);
         return *this;
     }
 
-    AnyV1& operator=(AnyV1&& other) noexcept {
-        AnyV1(std::move(other)).swap(*this);
+    Any& operator=(Any&& other) noexcept {
+        Any(std::move(other)).swap(*this);
         return *this;
     }
 
     template<typename T>
-    AnyV1& operator=(T value) & {
-        AnyV1(std::move(value)).swap(*this);
+    Any& operator=(T value) & {
+        Any(std::move(value)).swap(*this);
         return *this;
     }
 
-    void swap(AnyV1& other) noexcept {
+    void swap(Any& other) noexcept {
         if (this == &other) {
             return;
         }
@@ -527,12 +542,23 @@ public:
     NODISCARD std::optional<T> as() const {
         if (has_value()) {
             auto* p = GetUnderlyingPtr();
+            const auto* holder_ptr = GetHolderPtr();
             if constexpr (details::is_integral<T>) {
-                return static_cast<T>(*static_cast<Int*>(p));
+                if (IsInteger()) {
+                    return static_cast<T>(*static_cast<Int*>(p));
+                }
+            } else if constexpr (details::is_boolean<T>) {
+                if (IsBool()) {
+                    return static_cast<T>(*static_cast<Bool*>(p));
+                }
             } else if constexpr (details::is_floating_point<T>) {
-                return static_cast<T>(*static_cast<Float*>(p));
+                if (IsFloatingPoint()) {
+                    return static_cast<T>(*static_cast<Float*>(p));
+                }
             } else if constexpr (details::is_string<T>) {
-                return static_cast<T>(*static_cast<String*>(p));
+                if (IsString()) {
+                    return static_cast<T>(*static_cast<String*>(p));
+                }
             }
         }
 
@@ -542,13 +568,13 @@ public:
     template<typename T>
         requires(!details::is_plain_type<T>)
     NODISCARD std::optional<T> as() const& {
-        if constexpr (std::is_same_v<T, AnyV1>) {
+        if constexpr (std::is_same_v<T, Any>) {
             return *this;
         } else {
             if (has_value()) {
-
-                auto* p = GetUnderlyingPtr();
-                return *static_cast<T*>(p);
+                if (dynamic_cast<const Holder<T>*>(GetHolderPtr())) {
+                    return *static_cast<T*>(GetUnderlyingPtr());
+                }
             }
             return std::nullopt;
         }
@@ -557,12 +583,13 @@ public:
     template<typename T>
         requires(!details::is_plain_type<T>)
     NODISCARD std::optional<T> as() && {
-        if constexpr (std::is_same_v<T, AnyV1>) {
+        if constexpr (std::is_same_v<T, Any>) {
             return std::move(*this);
         } else {
             if (has_value()) {
-                auto* p = GetUnderlyingPtr();
-                return std::move(*static_cast<T*>(p));
+                if (dynamic_cast<const Holder<T>*>(GetHolderPtr())) {
+                    return std::move(*static_cast<T*>(GetUnderlyingPtr()));
+                }
             }
             return std::nullopt;
         }
@@ -648,7 +675,7 @@ public:
     }
 
     NODISCARD bool IsBool() const noexcept {
-        return type() == std::type_index(typeid(bool));
+        return type() == std::type_index(typeid(Bool));
     }
 
     NODISCARD bool IsInteger() const noexcept {
@@ -806,9 +833,17 @@ private:
 
 class AnyEqual {
 public:
+    // bool operator()(const Any& lhs, const Any& rhs) const;
     bool operator()(const Any& lhs, const Any& rhs) const;
-    bool operator()(const AnyV1& lhs, const AnyV1& rhs) const;
 };
+
+// inline bool operator==(const Any& lhs, const Any& rhs) noexcept {
+//     return AnyEqual()(lhs, rhs);
+// }
+//
+// inline bool operator!=(const Any& lhs, const Any& rhs) noexcept {
+//     return !AnyEqual()(lhs, rhs);
+// }
 
 inline bool operator==(const Any& lhs, const Any& rhs) noexcept {
     return AnyEqual()(lhs, rhs);
@@ -818,18 +853,10 @@ inline bool operator!=(const Any& lhs, const Any& rhs) noexcept {
     return !AnyEqual()(lhs, rhs);
 }
 
-// inline bool operator==(const AnyV1& lhs, const AnyV1& rhs) noexcept {
-//     return AnyEqual()(lhs, rhs);
-// }
-//
-// inline bool operator!=(const AnyV1& lhs, const AnyV1& rhs) noexcept {
-//     return !AnyEqual()(lhs, rhs);
-// }
-
 class AnyHash {
 public:
+    // size_t operator()(const Any& v) const;
     size_t operator()(const Any& v) const;
-    size_t operator()(const AnyV1& v) const;
 };
 
 namespace details {
@@ -899,16 +926,16 @@ struct Type2Str {
 }// namespace aethermind
 
 namespace std {
+// template<>
+// struct hash<aethermind::Any> {
+//     size_t operator()(const aethermind::Any& v) const noexcept {
+//         return aethermind::AnyHash()(v);
+//     }
+// };
+
 template<>
 struct hash<aethermind::Any> {
     size_t operator()(const aethermind::Any& v) const noexcept {
-        return aethermind::AnyHash()(v);
-    }
-};
-
-template<>
-struct hash<aethermind::AnyV1> {
-    size_t operator()(const aethermind::AnyV1& v) const noexcept {
         return aethermind::AnyHash()(v);
     }
 };

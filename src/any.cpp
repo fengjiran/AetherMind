@@ -9,6 +9,7 @@
 
 namespace aethermind {
 
+#ifdef ANY
 Any::Any(const Any& other) {
     if (other.has_value()) {
         ptr_ = other.ptr_->Clone();
@@ -36,39 +37,6 @@ std::type_index Any::type() const {
 }
 
 SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
-    if (!has_value()) {
-        return NoneType::Global();
-    }
-
-    if (IsBool()) {
-        return BoolType::Global();
-    }
-
-    if (IsInteger()) {
-        return IntType::Global();
-    }
-
-    if (IsFloatingPoint()) {
-        return FloatType::Global();
-    }
-
-    if (IsString()) {
-        return StringType::Global();
-    }
-
-    if (IsDevice()) {
-        return DeviceObjType::Global();
-    }
-
-    if (IsTensor()) {
-        return TensorType::Create(ToTensor());
-    }
-
-    CHECK(false) << "The type is unknown!";
-    AETHERMIND_UNREACHABLE();
-}
-
-SingletonOrSharedTypePtr<Type> AnyV1::GetTypePtr() const noexcept {
     if (!has_value()) {
         return NoneType::Global();
     }
@@ -157,9 +125,6 @@ bool Any::IsTensor() const noexcept {
     return type() == std::type_index(typeid(Tensor));
 }
 
-bool AnyV1::IsTensor() const noexcept {
-    return type() == std::type_index(typeid(Tensor));
-}
 
 uint32_t Any::use_count() const noexcept {
     return has_value() ? ptr_->use_count() : 0;
@@ -196,10 +161,6 @@ Tensor Any::ToTensor() const {
     return cast<Tensor>();
 }
 
-Tensor AnyV1::ToTensor() const {
-    CHECK(IsTensor()) << "Expected Tensor.";
-    return cast<Tensor>();
-}
 
 bool Any::unique() const noexcept {
     return use_count() == 1;
@@ -222,44 +183,89 @@ bool Any::operator==(std::nullptr_t) const noexcept {
 bool Any::operator!=(std::nullptr_t p) const noexcept {
     return !operator==(p);
 }
+#endif
 
-bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
-    if (!(lhs.has_value() || rhs.has_value())) {
-        return true;
-    }
 
-    if (!(lhs.has_value() && rhs.has_value())) {
-        return false;
-    }
-
-    if (lhs.type() != rhs.type()) {
-        return false;
-    }
-
-    if (lhs.IsInteger()) {
-        return lhs.ToInt() == rhs.ToInt();
-    }
-
-    if (lhs.IsFloatingPoint()) {
-        return lhs.ToDouble() == rhs.ToDouble();
-    }
-
-    if (lhs.IsBool()) {
-        return lhs.ToBool() == rhs.ToBool();
-    }
-
-    if (lhs.IsString()) {
-        return lhs.ToString() == rhs.ToString();
-    }
-
-    if (lhs.IsDevice()) {
-        return lhs.ToDevice() == rhs.ToDevice();
-    }
-
-    return lhs.ptr_ == rhs.ptr_;
+bool Any::IsTensor() const noexcept {
+    return type() == std::type_index(typeid(Tensor));
 }
 
-bool AnyEqual::operator()(const AnyV1& lhs, const AnyV1& rhs) const {
+Tensor Any::ToTensor() const {
+    CHECK(IsTensor()) << "Expected Tensor.";
+    return cast<Tensor>();
+}
+
+
+SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
+    if (!has_value()) {
+        return NoneType::Global();
+    }
+
+    if (IsBool()) {
+        return BoolType::Global();
+    }
+
+    if (IsInteger()) {
+        return IntType::Global();
+    }
+
+    if (IsFloatingPoint()) {
+        return FloatType::Global();
+    }
+
+    if (IsString()) {
+        return StringType::Global();
+    }
+
+    if (IsDevice()) {
+        return DeviceObjType::Global();
+    }
+
+    if (IsTensor()) {
+        return TensorType::Create(ToTensor());
+    }
+
+    CHECK(false) << "The type is unknown!";
+    AETHERMIND_UNREACHABLE();
+}
+
+// bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
+//     if (!(lhs.has_value() || rhs.has_value())) {
+//         return true;
+//     }
+//
+//     if (!(lhs.has_value() && rhs.has_value())) {
+//         return false;
+//     }
+//
+//     if (lhs.type() != rhs.type()) {
+//         return false;
+//     }
+//
+//     if (lhs.IsInteger()) {
+//         return lhs.ToInt() == rhs.ToInt();
+//     }
+//
+//     if (lhs.IsFloatingPoint()) {
+//         return lhs.ToDouble() == rhs.ToDouble();
+//     }
+//
+//     if (lhs.IsBool()) {
+//         return lhs.ToBool() == rhs.ToBool();
+//     }
+//
+//     if (lhs.IsString()) {
+//         return lhs.ToString() == rhs.ToString();
+//     }
+//
+//     if (lhs.IsDevice()) {
+//         return lhs.ToDevice() == rhs.ToDevice();
+//     }
+//
+//     return lhs.ptr_ == rhs.ptr_;
+// }
+
+bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
     if (!(lhs.has_value() || rhs.has_value())) {
         return true;
     }
@@ -296,36 +302,36 @@ bool AnyEqual::operator()(const AnyV1& lhs, const AnyV1& rhs) const {
 }
 
 // TODO: any hash
+// size_t AnyHash::operator()(const Any& v) const {
+//     if (!v.has_value()) {
+//         return 0;
+//     }
+//
+//     if (v.IsBool()) {
+//         return get_hash(v.ToBool());
+//     }
+//
+//     if (v.IsInteger()) {
+//         return get_hash(v.ToInt());
+//     }
+//
+//     if (v.IsFloatingPoint()) {
+//         return get_hash(v.ToDouble());
+//     }
+//
+//     if (v.IsString()) {
+//         return get_hash(v.ToString());
+//     }
+//
+//     if (v.IsDevice()) {
+//         return get_hash(v.ToDevice());
+//     }
+//
+//     CHECK(false) << "Unhashable type: '" << v.GetTypePtr()->ReprStr() << "'";
+//     AETHERMIND_UNREACHABLE();
+// }
+
 size_t AnyHash::operator()(const Any& v) const {
-    if (!v.has_value()) {
-        return 0;
-    }
-
-    if (v.IsBool()) {
-        return get_hash(v.ToBool());
-    }
-
-    if (v.IsInteger()) {
-        return get_hash(v.ToInt());
-    }
-
-    if (v.IsFloatingPoint()) {
-        return get_hash(v.ToDouble());
-    }
-
-    if (v.IsString()) {
-        return get_hash(v.ToString());
-    }
-
-    if (v.IsDevice()) {
-        return get_hash(v.ToDevice());
-    }
-
-    CHECK(false) << "Unhashable type: '" << v.GetTypePtr()->ReprStr() << "'";
-    AETHERMIND_UNREACHABLE();
-}
-
-size_t AnyHash::operator()(const AnyV1& v) const {
     if (!v.has_value()) {
         return 0;
     }

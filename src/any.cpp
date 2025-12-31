@@ -22,7 +22,6 @@ Any::Any(const Any& other) {
     std::visit(visitor, other.data_);
 }
 
-
 const HolderBase* Any::GetHolderPtr() const {
     auto visitor = []<typename T>(const T& arg) -> const HolderBase* {
         using U = std::decay_t<T>;

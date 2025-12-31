@@ -501,6 +501,11 @@ public:
 private:
     static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
 
+    // template<typename R, typename F>
+    // std::optional<R> visitor(F&& func) const {
+    //
+    // }
+
     struct SmallObject {
         SmallObject() : SmallObject(0) {}
 
@@ -559,15 +564,11 @@ private:
     template<typename T>
     struct Caster {
         std::optional<T> operator()(const std::monostate&) const {
-            if constexpr (std::is_same_v<T, Any>) {
-                return Any{};
-            } else {
-                return std::nullopt;
-            }
+            return std::nullopt;
         }
 
         std::optional<T> operator()(const SmallObject& v) const {
-            // if constexpr (std::is_same_v<T, Any>) {
+            // if constexpr (details::is_integral<T>) {
             //     return
             // }
         }

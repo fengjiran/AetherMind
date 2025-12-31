@@ -129,22 +129,25 @@ public:
     NODISCARD uint32_t use_count() const override {
         if constexpr (details::has_use_count_method_v<T>) {
             return value_.use_count();
+        } else {
+            return 1;
         }
-        return 1;
     }
 
     NODISCARD bool IsObjectRef() const override {
         if constexpr (std::is_base_of_v<ObjectRef, T>) {
             return true;
+        } else {
+            return false;
         }
-        return false;
     }
 
     NODISCARD bool IsMap() const override {
         if constexpr (details::is_map_v<T>) {
             return true;
+        } else {
+            return false;
         }
-        return false;
     }
 
     NODISCARD void* GetUnderlyingPtr() override {
@@ -409,9 +412,8 @@ private:
 
 class AnyV1 {
 public:
-    using IntType = int64_t;
-    using FloatType = double;
-    using StringType = String;
+    using Int = int64_t;
+    using Float = double;
 
     AnyV1() = default;
     ~AnyV1() = default;
@@ -431,31 +433,31 @@ public:
     // integer ctor
     template<details::is_integral T>
     AnyV1(T value) {//NOLINT
-        if constexpr (sizeof(Holder<IntType>) <= kSmallObjectSize) {
+        if constexpr (sizeof(Holder<Int>) <= kSmallObjectSize) {
             // small object, construct at local buffer
-            data_ = SmallObject{static_cast<IntType>(value)};
+            data_ = SmallObject{static_cast<Int>(value)};
         } else {
-            data_ = std::make_unique<Holder<IntType>>(static_cast<IntType>(value));
+            data_ = std::make_unique<Holder<Int>>(static_cast<Int>(value));
         }
     }
 
     // floating ctor
     template<details::is_floating_point T>
     AnyV1(T value) {//NOLINT
-        if constexpr (sizeof(FloatType) <= kSmallObjectSize) {
-            data_ = SmallObject{static_cast<FloatType>(value)};
+        if constexpr (sizeof(Float) <= kSmallObjectSize) {
+            data_ = SmallObject{static_cast<Float>(value)};
         } else {
-            data_ = std::make_unique<Holder<FloatType>>(static_cast<FloatType>(value));
+            data_ = std::make_unique<Holder<Float>>(static_cast<Float>(value));
         }
     }
 
     // string ctor
     template<details::is_string T>
     AnyV1(T value) {//NOLINT
-        if constexpr (sizeof(StringType) <= kSmallObjectSize) {
+        if constexpr (sizeof(String) <= kSmallObjectSize) {
             data_ = SmallObject{std::move(value)};
         } else {
-            data_ = std::make_unique<Holder<StringType>>(static_cast<StringType>(value));
+            data_ = std::make_unique<Holder<String>>(static_cast<String>(value));
         }
     }
 
@@ -496,6 +498,18 @@ public:
         data_ = std::monostate{};
     }
 
+    NODISCARD const HolderBase* GetHolderPtr() const {
+        if (IsSmallObject()) {
+            return reinterpret_cast<const HolderBase*>(std::get<SmallObject>(data_).local_buffer);
+        }
+
+        if (IsLargeObject()) {
+            return std::get<std::unique_ptr<HolderBase>>(data_).get();
+        }
+
+        return nullptr;
+    }
+
     NODISCARD void* GetUnderlyingPtr() const {
         if (IsSmallObject()) {
             return std::get<SmallObject>(data_).GetUnderlyingPtr();
@@ -514,11 +528,11 @@ public:
         if (has_value()) {
             auto* p = GetUnderlyingPtr();
             if constexpr (details::is_integral<T>) {
-                return static_cast<T>(*static_cast<IntType*>(p));
+                return static_cast<T>(*static_cast<Int*>(p));
             } else if constexpr (details::is_floating_point<T>) {
-                return static_cast<T>(*static_cast<FloatType*>(p));
+                return static_cast<T>(*static_cast<Float*>(p));
             } else if constexpr (details::is_string<T>) {
-                return static_cast<T>(*static_cast<StringType*>(p));
+                return static_cast<T>(*static_cast<String*>(p));
             }
         }
 
@@ -532,6 +546,7 @@ public:
             return *this;
         } else {
             if (has_value()) {
+
                 auto* p = GetUnderlyingPtr();
                 return *static_cast<T*>(p);
             }
@@ -577,6 +592,34 @@ public:
         return std::move(opt.value());
     }
 
+    template<typename T>
+    operator T() {//NOLINT
+        return cast<T>();
+    }
+
+    template<typename T>
+    T MoveFromAny() {
+        return std::move(*this).cast<T>();
+    }
+
+    template<typename T>
+        requires requires {
+            typename T::size_type;
+            requires details::is_array_subscript<T>;
+        }
+    decltype(auto) operator[](T::size_type i) {
+        return (*static_cast<T*>(GetUnderlyingPtr()))[i];
+    }
+
+    template<typename T>
+        requires requires {
+            typename T::key_type;
+            typename T::mapped_type;
+            requires details::is_map_subscript<T>;
+        }
+    decltype(auto) operator[](const T::key_type& key) {
+        return (*static_cast<T*>(GetUnderlyingPtr()))[key];
+    }
 
     NODISCARD bool has_value() const noexcept {
         return !std::holds_alternative<std::monostate>(data_);
@@ -590,8 +633,105 @@ public:
         return std::holds_alternative<std::unique_ptr<HolderBase>>(data_);
     }
 
+    NODISCARD std::type_index type() const {
+        if (has_value()) {
+            return GetHolderPtr()->type();
+        }
+        AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
+        AETHERMIND_UNREACHABLE();
+    }
+
+    NODISCARD SingletonOrSharedTypePtr<Type> GetTypePtr() const noexcept;
+
     NODISCARD bool IsNone() const noexcept {
         return !has_value();
+    }
+
+    NODISCARD bool IsBool() const noexcept {
+        return type() == std::type_index(typeid(bool));
+    }
+
+    NODISCARD bool IsInteger() const noexcept {
+        return type() == std::type_index(typeid(Int));
+    }
+
+    NODISCARD bool IsFloatingPoint() const noexcept {
+        return type() == std::type_index(typeid(Float));
+    }
+
+    NODISCARD bool IsString() const noexcept {
+        return type() == std::type_index(typeid(String));
+    }
+
+    NODISCARD bool IsVoidPtr() const noexcept {
+        return type() == std::type_index(typeid(void*));
+    }
+
+    NODISCARD bool IsDevice() const noexcept {
+        return type() == std::type_index(typeid(Device));
+    }
+
+    NODISCARD bool IsTensor() const noexcept;
+
+    NODISCARD bool IsObjectRef() const noexcept {
+        return has_value() ? GetHolderPtr()->IsObjectRef() : false;
+    }
+
+    NODISCARD bool IsMap() const noexcept {
+        return has_value() ? GetHolderPtr()->IsMap() : false;
+    }
+
+    NODISCARD String ToNone() const noexcept {
+        CHECK(IsNone());
+        return "None";
+    }
+
+    NODISCARD Int ToInt() const {
+        CHECK(IsInteger()) << "Expected Int.";
+        return cast<Int>();
+    }
+
+    NODISCARD Float ToDouble() const {
+        CHECK(IsFloatingPoint()) << "Expected Double.";
+        return cast<double>();
+    }
+
+    NODISCARD bool ToBool() const {
+        CHECK(IsBool()) << "Expected Bool.";
+        return cast<bool>();
+    }
+
+    NODISCARD void* ToVoidPtr() const {
+        CHECK(IsVoidPtr()) << "Expected VoidPtr.";
+        return cast<void*>();
+    }
+
+    NODISCARD Device ToDevice() const {
+        CHECK(IsDevice()) << "Expected Device.";
+        return cast<Device>();
+    }
+
+    NODISCARD String ToString() const {
+        CHECK(IsString()) << "Expected String.";
+        return cast<String>();
+    }
+
+    NODISCARD Tensor ToTensor() const;
+
+    NODISCARD uint32_t use_count() const noexcept {
+        return has_value() ? GetHolderPtr()->use_count() : 0;
+    }
+
+    NODISCARD bool unique() const noexcept {
+        return use_count() == 1;
+    }
+
+    bool operator==(std::nullptr_t) const noexcept {
+        return has_value() ? type() == std::type_index(typeid(std::nullptr_t)) : true;
+    }
+
+    bool operator!=(std::nullptr_t p) const noexcept {
+        return !(*this == p);
     }
 
 private:
@@ -667,6 +807,7 @@ private:
 class AnyEqual {
 public:
     bool operator()(const Any& lhs, const Any& rhs) const;
+    bool operator()(const AnyV1& lhs, const AnyV1& rhs) const;
 };
 
 inline bool operator==(const Any& lhs, const Any& rhs) noexcept {
@@ -677,9 +818,18 @@ inline bool operator!=(const Any& lhs, const Any& rhs) noexcept {
     return !AnyEqual()(lhs, rhs);
 }
 
+// inline bool operator==(const AnyV1& lhs, const AnyV1& rhs) noexcept {
+//     return AnyEqual()(lhs, rhs);
+// }
+//
+// inline bool operator!=(const AnyV1& lhs, const AnyV1& rhs) noexcept {
+//     return !AnyEqual()(lhs, rhs);
+// }
+
 class AnyHash {
 public:
     size_t operator()(const Any& v) const;
+    size_t operator()(const AnyV1& v) const;
 };
 
 namespace details {
@@ -755,6 +905,14 @@ struct hash<aethermind::Any> {
         return aethermind::AnyHash()(v);
     }
 };
+
+template<>
+struct hash<aethermind::AnyV1> {
+    size_t operator()(const aethermind::AnyV1& v) const noexcept {
+        return aethermind::AnyHash()(v);
+    }
+};
+
 }// namespace std
 
 #endif//AETHERMIND_ANY_H

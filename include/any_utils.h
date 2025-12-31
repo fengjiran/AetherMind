@@ -30,6 +30,9 @@ template<typename T>
 concept is_integral = std::integral<T> && !std::same_as<T, bool>;
 
 template<typename T>
+concept is_boolean = std::is_same_v<T, bool>;
+
+template<typename T>
 concept is_floating_point = std::floating_point<T> ||
                             std::same_as<T, Half> ||
                             std::same_as<T, BFloat16> ||
@@ -44,6 +47,7 @@ concept is_string = std::same_as<T, std::string> ||
 
 template<typename T>
 concept is_plain_type = is_integral<T> ||
+                        // is_boolean<T> ||
                         is_floating_point<T> ||
                         is_string<T>;
 

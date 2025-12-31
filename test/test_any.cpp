@@ -15,7 +15,7 @@ using namespace aethermind;
 namespace {
 
 TEST(Any, bool) {
-    Any x0;
+    AnyV1 x0;
     EXPECT_EQ(x0.use_count(), 0);
     auto opt0 = x0.as<bool>();
     EXPECT_TRUE(!opt0.has_value());
@@ -23,7 +23,7 @@ TEST(Any, bool) {
     EXPECT_THROW(UNUSED(x0.cast<float>()), Error);
     EXPECT_THROW(UNUSED(x0.cast<bool>()), Error);
 
-    Any x1 = true;
+    AnyV1 x1 = true;
     EXPECT_TRUE(x1.cast<bool>());
     x1 = false;
     EXPECT_TRUE(!x1.cast<bool>());
@@ -33,7 +33,7 @@ TEST(Any, bool) {
 }
 
 TEST(Any, null) {
-    Any x0;
+    AnyV1 x0;
     EXPECT_TRUE(x0 == nullptr);
     EXPECT_FALSE(x0 != nullptr);
 
@@ -41,7 +41,7 @@ TEST(Any, null) {
     EXPECT_TRUE(x0 != nullptr);
     EXPECT_FALSE(x0 == nullptr);
 
-    Any x1 = x0;
+    AnyV1 x1 = x0;
     EXPECT_TRUE(x1 != nullptr);
     EXPECT_FALSE(x1 == nullptr);
 
@@ -51,14 +51,14 @@ TEST(Any, null) {
 }
 
 TEST(Any, int) {
-    const Any x0;
+    const AnyV1 x0;
     EXPECT_TRUE(!x0.has_value());
 
     auto opt0 = x0.try_cast<int64_t>();
     EXPECT_TRUE(!opt0.has_value());
     EXPECT_THROW(UNUSED(x0.cast<float>()), Error);
 
-    Any x1 = 1;
+    AnyV1 x1 = 1;
     EXPECT_TRUE(x1.IsInteger());
     EXPECT_EQ(x1.cast<int>(), 1);
 
@@ -66,19 +66,16 @@ TEST(Any, int) {
     x1 = v1;
     EXPECT_EQ(x1.cast<int>(), 10);
 
-    Any x2 = v1;
+    AnyV1 x2 = v1;
     EXPECT_EQ(x2.cast<int>(), 10);
-    EXPECT_EQ(Any(x2).cast<int>(), 10);
+    EXPECT_EQ(AnyV1(x2).cast<int>(), 10);
     EXPECT_TRUE(x2.IsInteger());
     int x22 = static_cast<int>(x2);
     EXPECT_EQ(x22, 10);
-
-    AnyV1 y1 = 10;
-    AnyV1 y2 = 10.0;
 }
 
 TEST(Any, float) {
-    Any x0;
+    AnyV1 x0;
     auto opt0 = x0.as<double>();
     EXPECT_TRUE(!opt0.has_value());
 
@@ -91,17 +88,17 @@ TEST(Any, float) {
     EXPECT_FLOAT_EQ(v2, 2.2);
 
     float v3 = 3.14f;
-    Any x3 = v3;
+    AnyV1 x3 = v3;
     EXPECT_EQ(x3.cast<float>(), 3.14f);
     EXPECT_TRUE(x3.unique());
 
-    Any x2 = v3;
+    AnyV1 x2 = v3;
     EXPECT_EQ(x2.cast<float>(), 3.14f);
-    EXPECT_EQ(Any(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
+    EXPECT_EQ(AnyV1(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
 }
 
 TEST(Any, string) {
-    Any x0 = "hello";
+    AnyV1 x0 = "hello";
     EXPECT_EQ(x0.use_count(), 1);
     EXPECT_TRUE(x0.IsString());
     EXPECT_TRUE(x0.as<String>().has_value());
@@ -115,26 +112,26 @@ TEST(Any, string) {
     // auto* p = static_cast<String*>(x0.GetUnderlyingPtr());
     // std::cout << *p << std::endl;
 
-    Any s0 = String("hello");
-    Any s1 = "hello";
-    Any s2 = std::string("hello");
+    AnyV1 s0 = String("hello");
+    AnyV1 s1 = "hello";
+    AnyV1 s2 = std::string("hello");
     EXPECT_TRUE(s0.IsString());
     EXPECT_TRUE(s1.IsString());
     EXPECT_TRUE(s2.IsString());
 
-    Any s3 = s0;
+    AnyV1 s3 = s0;
     EXPECT_EQ(s3.use_count(), 1);
     s3.reset();
     EXPECT_TRUE(s0.unique());
 
-    String s4 = static_cast<String>(Any("hello"));
+    String s4 = static_cast<String>(AnyV1("hello"));
     EXPECT_EQ(s4, "hello");
     EXPECT_EQ(s4.use_count(), 1);
 }
 
 TEST(Any, map) {
     std::unordered_map<int, String> m = {{0, "hello"}, {1, "world"}};
-    Any x0 = m;
+    AnyV1 x0 = m;
     EXPECT_TRUE(x0.has_value());
     EXPECT_TRUE(x0.IsMap());
     auto& s = x0.operator[]<std::unordered_map<int, String>>(0);
@@ -144,13 +141,13 @@ TEST(Any, map) {
     EXPECT_TRUE(y[0] == "hello");
     EXPECT_TRUE(y[1] == "world");
 
-    Any x1 = "hello";
-    std::unordered_map<Any, int> b = {{x1, 1}};
+    AnyV1 x1 = "hello";
+    std::unordered_map<AnyV1, int> b = {{x1, 1}};
     EXPECT_EQ(b[x1], 1);
 }
 
 TEST(Any, cast_vs_as) {
-    Any x0 = 1;
+    AnyV1 x0 = 1;
     auto opt_v0 = x0.as<int64_t>();
     EXPECT_TRUE(opt_v0.has_value());
     EXPECT_EQ(*opt_v0, 1);
@@ -167,7 +164,7 @@ TEST(Any, cast_vs_as) {
     auto opt_v4 = x0.try_cast<double>();
     EXPECT_TRUE(!opt_v4.has_value());
 
-    Any x1 = true;
+    AnyV1 x1 = true;
     auto opt_v5 = x1.as<bool>();
     EXPECT_TRUE(opt_v5.has_value());
     EXPECT_EQ(opt_v5.value(), 1);
@@ -180,7 +177,7 @@ TEST(Any, cast_vs_as) {
 }
 
 TEST(Any, device) {
-    Any x = Device(kCUDA, 1);
+    AnyV1 x = Device(kCUDA, 1);
     auto dev = x.ToDevice();
     EXPECT_TRUE(x.IsDevice());
     EXPECT_EQ(dev.type(), kCUDA);
@@ -189,20 +186,20 @@ TEST(Any, device) {
 
 TEST(Any, tensor) {
     Tensor t({3, 10});
-    Any x = t;
+    AnyV1 x = t;
     EXPECT_TRUE(x.IsTensor());
     EXPECT_EQ(t.use_count(), 2);
     EXPECT_EQ(x.use_count(), 2);
     auto t2 = x.ToTensor();
     {
-        Any y = t2;
+        AnyV1 y = t2;
         EXPECT_TRUE(y.IsTensor());
         EXPECT_EQ(t2.use_count(), 4);
         EXPECT_EQ(y.use_count(), 4);
     }
 
     EXPECT_EQ(t2.use_count(), 3);
-    auto t3 = Any(t2).ToTensor();
+    auto t3 = AnyV1(t2).ToTensor();
     EXPECT_EQ(t3.use_count(), 4);
 }
 
@@ -389,10 +386,10 @@ TEST(AnyOperatorsTest, AssignmentAndComparison) {
 TEST(AnyOperatorsTest, AnyEqualFunctionObject) {
     AnyEqual equal;
 
-    Any int1(42);
-    Any int2(42);
-    Any int3(43);
-    Any empty;
+    AnyV1 int1(42);
+    AnyV1 int2(42);
+    AnyV1 int3(43);
+    AnyV1 empty;
 
     // 测试各种比较场景
     EXPECT_TRUE(equal(int1, int2));

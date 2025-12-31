@@ -234,13 +234,7 @@ public:
         }
     }
 
-    Any(const Any& other) {
-        if (other.IsSmallObject()) {
-            data_ = std::get<SmallObject>(other.data_);
-        } else if (other.IsLargeObject()) {
-            data_ = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
-        }
-    }
+    Any(const Any& other);
 
     Any(Any&& other) noexcept : data_(std::move(other.data_)) {}
 

@@ -9,6 +9,25 @@
 
 namespace aethermind {
 
+Any::Any(const Any& other) {
+    auto visitor = [&]<typename T>(const T& arg) {
+        using U = std::decay_t<T>;
+        if constexpr (std::is_same_v<U, SmallObject>) {
+            data_ = arg;
+        } else if constexpr (std::is_same_v<U, std::unique_ptr<HolderBase>>) {
+            data_ = arg->Clone();
+        }
+    };
+
+    std::visit(visitor, other.data_);
+    // if (other.IsSmallObject()) {
+    //     data_ = std::get<SmallObject>(other.data_);
+    // } else if (other.IsLargeObject()) {
+    //     data_ = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
+    // }
+}
+
+
 const HolderBase* Any::GetHolderPtr() const {
     auto visitor = []<typename T>(const T& arg) -> const HolderBase* {
         using U = std::decay_t<T>;

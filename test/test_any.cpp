@@ -107,9 +107,6 @@ TEST(Any, string) {
     EXPECT_TRUE(x0.IsString());
     EXPECT_EQ(x0.ToString(), "world");
 
-    // auto* p = static_cast<String*>(x0.GetUnderlyingPtr());
-    // std::cout << *p << std::endl;
-
     Any s0 = String("hello");
     Any s1 = "hello";
     Any s2 = std::string("hello");

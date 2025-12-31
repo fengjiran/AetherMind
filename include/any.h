@@ -102,7 +102,8 @@ public:
     NODISCARD virtual uint32_t use_count() const = 0;
     NODISCARD virtual bool IsObjectRef() const = 0;
     NODISCARD virtual bool IsMap() const = 0;
-    NODISCARD virtual void* GetUnderlyingPtr() = 0;
+    NODISCARD virtual void* GetDataPtr() = 0;
+    NODISCARD virtual const void* GetDataPtr() const = 0;
 };
 
 template<typename T>
@@ -150,7 +151,11 @@ public:
         }
     }
 
-    NODISCARD void* GetUnderlyingPtr() override {
+    NODISCARD void* GetDataPtr() override {
+        return &value_;
+    }
+
+    NODISCARD const void* GetDataPtr() const override {
         return &value_;
     }
 
@@ -268,29 +273,30 @@ public:
 
     NODISCARD const HolderBase* GetHolderPtr() const;
 
-    NODISCARD void* GetUnderlyingPtr() const;
+    NODISCARD void* GetDataPtr();
+
+    NODISCARD const void* GetDataPtr() const;
 
     template<typename T>
         requires details::is_plain_type<T>
     NODISCARD std::optional<T> as() const {
         if (has_value()) {
-            auto* p = GetUnderlyingPtr();
-            const auto* holder_ptr = GetHolderPtr();
+            const auto* p = GetDataPtr();
             if constexpr (details::is_integral<T>) {
                 if (IsInteger()) {
-                    return static_cast<T>(*static_cast<Int*>(p));
+                    return static_cast<T>(*static_cast<const Int*>(p));
                 }
             } else if constexpr (details::is_boolean<T>) {
                 if (IsBool()) {
-                    return static_cast<T>(*static_cast<Bool*>(p));
+                    return static_cast<T>(*static_cast<const Bool*>(p));
                 }
             } else if constexpr (details::is_floating_point<T>) {
                 if (IsFloatingPoint()) {
-                    return static_cast<T>(*static_cast<Float*>(p));
+                    return static_cast<T>(*static_cast<const Float*>(p));
                 }
             } else if constexpr (details::is_string<T>) {
                 if (IsString()) {
-                    return static_cast<T>(*static_cast<String*>(p));
+                    return static_cast<T>(*static_cast<const String*>(p));
                 }
             }
         }
@@ -306,7 +312,7 @@ public:
         } else {
             if (has_value()) {
                 if (dynamic_cast<const Holder<T>*>(GetHolderPtr())) {
-                    return *static_cast<T*>(GetUnderlyingPtr());
+                    return *static_cast<const T*>(GetDataPtr());
                 }
             }
             return std::nullopt;
@@ -321,7 +327,7 @@ public:
         } else {
             if (has_value()) {
                 if (dynamic_cast<const Holder<T>*>(GetHolderPtr())) {
-                    return std::move(*static_cast<T*>(GetUnderlyingPtr()));
+                    return std::move(*static_cast<T*>(GetDataPtr()));
                 }
             }
             return std::nullopt;
@@ -368,7 +374,7 @@ public:
             requires details::is_array_subscript<T>;
         }
     decltype(auto) operator[](T::size_type i) {
-        return (*static_cast<T*>(GetUnderlyingPtr()))[i];
+        return (*static_cast<T*>(GetDataPtr()))[i];
     }
 
     template<typename T>
@@ -378,7 +384,7 @@ public:
             requires details::is_map_subscript<T>;
         }
     decltype(auto) operator[](const T::key_type& key) {
-        return (*static_cast<T*>(GetUnderlyingPtr()))[key];
+        return (*static_cast<T*>(GetDataPtr()))[key];
     }
 
     NODISCARD bool has_value() const noexcept {
@@ -531,9 +537,12 @@ private:
             reinterpret_cast<HolderBase*>(tmp)->MoveSmallObject(other.local_buffer);
         }
 
-        NODISCARD void* GetUnderlyingPtr() const {
-            auto* p = reinterpret_cast<HolderBase*>(const_cast<uint8_t*>(local_buffer));
-            return p->GetUnderlyingPtr();
+        NODISCARD void* GetDataPtr() {
+            return reinterpret_cast<HolderBase*>(local_buffer)->GetDataPtr();
+        }
+
+        NODISCARD const void* GetDataPtr() const {
+            return reinterpret_cast<const HolderBase*>(local_buffer)->GetDataPtr();
         }
 
         ~SmallObject() {

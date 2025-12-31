@@ -10,27 +10,37 @@
 namespace aethermind {
 
 const HolderBase* Any::GetHolderPtr() const {
-    if (IsSmallObject()) {
-        return reinterpret_cast<const HolderBase*>(std::get<SmallObject>(data_).local_buffer);
-    }
+    auto visitor = []<typename T>(const T& arg) -> const HolderBase* {
+        using U = std::decay_t<T>;
+        if constexpr (std::is_same_v<U, SmallObject>) {
+            return reinterpret_cast<const HolderBase*>(arg.local_buffer);
+        } else if constexpr (std::is_same_v<U, std::unique_ptr<HolderBase>>) {
+            return arg.get();
+        } else {
+            return nullptr;
+        }
+    };
 
-    if (IsLargeObject()) {
-        return std::get<std::unique_ptr<HolderBase>>(data_).get();
-    }
-
-    return nullptr;
+    return std::visit(visitor, data_);
 }
 
-void* Any::GetUnderlyingPtr() const {
-    if (IsSmallObject()) {
-        return std::get<SmallObject>(data_).GetUnderlyingPtr();
-    }
+void* Any::GetDataPtr() {
+    auto visitor = []<typename T>(T& arg) -> void* {
+        using U = std::decay_t<T>;
+        if constexpr (std::is_same_v<U, SmallObject>) {
+            return arg.GetDataPtr();
+        } else if constexpr (std::is_same_v<U, std::unique_ptr<HolderBase>>) {
+            return arg->GetDataPtr();
+        } else {
+            return nullptr;
+        }
+    };
 
-    if (IsLargeObject()) {
-        return std::get<std::unique_ptr<HolderBase>>(data_)->GetUnderlyingPtr();
-    }
+    return std::visit(visitor, data_);
+}
 
-    return nullptr;
+const void* Any::GetDataPtr() const {
+    return const_cast<Any*>(this)->GetDataPtr();
 }
 
 std::type_index Any::type() const {
@@ -117,7 +127,7 @@ bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
         return lhs.ToDevice() == rhs.ToDevice();
     }
 
-    return lhs.GetUnderlyingPtr() == rhs.GetUnderlyingPtr();
+    return lhs.GetDataPtr() == rhs.GetDataPtr();
 }
 
 // TODO: any hash

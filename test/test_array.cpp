@@ -36,7 +36,7 @@ TEST(Array, init) {
     EXPECT_EQ(vec21.use_count(), 2);
     AnyV1 t1 = vec21;
     AnyV1 t2 = vec21;
-    // t1 = t2;
+    t1 = t2;
     EXPECT_EQ(vec21.use_count(), 4);
 
     Array<int> vec3 = {4, 5, 6, 7, 8, 9};

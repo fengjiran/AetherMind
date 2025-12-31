@@ -72,6 +72,9 @@ TEST(Any, int) {
     EXPECT_TRUE(x2.IsInteger());
     int x22 = static_cast<int>(x2);
     EXPECT_EQ(x22, 10);
+
+    AnyV1 y1 = 10;
+    AnyV1 y2 = 10.0;
 }
 
 TEST(Any, float) {

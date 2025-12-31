@@ -409,8 +409,11 @@ private:
 
 class AnyV1 {
 public:
-    AnyV1() = default;
+    using IntType = int64_t;
+    using FloatType = double;
+    using StringType = String;
 
+    AnyV1() = default;
     ~AnyV1() = default;
 
     // not plain type ctor
@@ -420,7 +423,6 @@ public:
         if constexpr (sizeof(U) <= kSmallObjectSize) {
             // small object, construct at local buffer
             data_ = SmallObject{std::forward<T>(value)};
-            // new (std::get_if<SmallObject>(&data_)) Holder<U>(std::forward<T>(value));
         } else {
             data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
         }
@@ -428,63 +430,44 @@ public:
 
     // integer ctor
     template<details::is_integral T>
-    AnyV1(T value) : data_(SmallObject{}) {//NOLINT
-        using U = int64_t;
-        if constexpr (sizeof(Holder<U>) <= kSmallObjectSize) {
+    AnyV1(T value) {//NOLINT
+        if constexpr (sizeof(Holder<IntType>) <= kSmallObjectSize) {
             // small object, construct at local buffer
-            new (std::get_if<SmallObject>(&data_)) Holder<U>(static_cast<U>(value));
+            data_ = SmallObject{static_cast<IntType>(value)};
         } else {
-            data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+            data_ = std::make_unique<Holder<IntType>>(static_cast<IntType>(value));
         }
     }
 
     // floating ctor
     template<details::is_floating_point T>
-    AnyV1(T value) : data_(SmallObject{}) {//NOLINT
-        using U = double;
-        if constexpr (sizeof(U) <= kSmallObjectSize) {
-            new (std::get_if<SmallObject>(&data_)) Holder<U>(static_cast<U>(value));
+    AnyV1(T value) {//NOLINT
+        if constexpr (sizeof(FloatType) <= kSmallObjectSize) {
+            data_ = SmallObject{static_cast<FloatType>(value)};
         } else {
-            data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+            data_ = std::make_unique<Holder<FloatType>>(static_cast<FloatType>(value));
         }
     }
 
     // string ctor
     template<details::is_string T>
-    AnyV1(T value) : data_(SmallObject{}) {//NOLINT
-        using U = String;
-        if constexpr (sizeof(U) <= kSmallObjectSize) {
-            new (std::get_if<SmallObject>(&data_)) Holder<U>(static_cast<U>(value));
+    AnyV1(T value) {//NOLINT
+        if constexpr (sizeof(StringType) <= kSmallObjectSize) {
+            data_ = SmallObject{std::move(value)};
         } else {
-            data_ = std::make_unique<Holder<U>>(static_cast<U>(value));
+            data_ = std::make_unique<Holder<StringType>>(static_cast<StringType>(value));
         }
     }
 
     AnyV1(const AnyV1& other) {
-        if (other.has_value()) {
-            if (other.IsSmallObject()) {
-                data_ = SmallObject{};
-                const auto* src = reinterpret_cast<const HolderBase*>(std::get_if<SmallObject>(&other.data_));
-                auto* dst = std::get_if<SmallObject>(&data_);
-                src->CloneSmallObject(dst);
-            } else {
-                data_ = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
-            }
+        if (other.IsSmallObject()) {
+            data_ = std::get<SmallObject>(other.data_);
+        } else if (other.IsLargeObject()) {
+            data_ = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
         }
     }
 
-    AnyV1(AnyV1&& other) noexcept {
-        if (other.has_value()) {
-            if (other.IsSmallObject()) {
-                data_ = SmallObject{};
-                auto* src = reinterpret_cast<HolderBase*>(std::get_if<SmallObject>(&other.data_));
-                auto* dst = std::get_if<SmallObject>(&data_);
-                src->MoveSmallObject(dst);
-            } else {
-                data_ = std::move(std::get<std::unique_ptr<HolderBase>>(other.data_));
-            }
-        }
-    }
+    AnyV1(AnyV1&& other) noexcept : data_(std::move(other.data_)) {}
 
     AnyV1& operator=(const AnyV1& other) {
         AnyV1(other).swap(*this);
@@ -513,12 +496,102 @@ public:
         data_ = std::monostate{};
     }
 
+    NODISCARD void* GetUnderlyingPtr() const {
+        if (IsSmallObject()) {
+            return std::get<SmallObject>(data_).GetUnderlyingPtr();
+        }
+
+        if (IsLargeObject()) {
+            return std::get<std::unique_ptr<HolderBase>>(data_)->GetUnderlyingPtr();
+        }
+
+        return nullptr;
+    }
+
+    template<typename T>
+        requires details::is_plain_type<T>
+    NODISCARD std::optional<T> as() const {
+        if (has_value()) {
+            auto* p = GetUnderlyingPtr();
+            if constexpr (details::is_integral<T>) {
+                return static_cast<T>(*static_cast<IntType*>(p));
+            } else if constexpr (details::is_floating_point<T>) {
+                return static_cast<T>(*static_cast<FloatType*>(p));
+            } else if constexpr (details::is_string<T>) {
+                return static_cast<T>(*static_cast<StringType*>(p));
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    template<typename T>
+        requires(!details::is_plain_type<T>)
+    NODISCARD std::optional<T> as() const& {
+        if constexpr (std::is_same_v<T, AnyV1>) {
+            return *this;
+        } else {
+            if (has_value()) {
+                auto* p = GetUnderlyingPtr();
+                return *static_cast<T*>(p);
+            }
+            return std::nullopt;
+        }
+    }
+
+    template<typename T>
+        requires(!details::is_plain_type<T>)
+    NODISCARD std::optional<T> as() && {
+        if constexpr (std::is_same_v<T, AnyV1>) {
+            return std::move(*this);
+        } else {
+            if (has_value()) {
+                auto* p = GetUnderlyingPtr();
+                return std::move(*static_cast<T*>(p));
+            }
+            return std::nullopt;
+        }
+    }
+
+    template<typename T>
+    std::optional<T> try_cast() const {
+        return as<T>();
+    }
+
+    template<typename T>
+    NODISCARD T cast() const& {
+        auto opt = as<T>();
+        if (!opt.has_value()) {
+            AETHERMIND_THROW(TypeError) << "cast failed.";
+        }
+        return opt.value();
+    }
+
+    template<typename T>
+    T cast() && {
+        auto opt = std::move(*this).as<T>();
+        if (!opt.has_value()) {
+            AETHERMIND_THROW(TypeError);
+        }
+        reset();
+        return std::move(opt.value());
+    }
+
+
     NODISCARD bool has_value() const noexcept {
         return !std::holds_alternative<std::monostate>(data_);
     }
 
     NODISCARD bool IsSmallObject() const {
         return std::holds_alternative<SmallObject>(data_);
+    }
+
+    NODISCARD bool IsLargeObject() const {
+        return std::holds_alternative<std::unique_ptr<HolderBase>>(data_);
+    }
+
+    NODISCARD bool IsNone() const noexcept {
+        return !has_value();
     }
 
 private:
@@ -570,6 +643,11 @@ private:
             reinterpret_cast<HolderBase*>(tmp)->MoveSmallObject(other.local_buffer);
         }
 
+        NODISCARD void* GetUnderlyingPtr() const {
+            auto* p = reinterpret_cast<HolderBase*>(const_cast<uint8_t*>(local_buffer));
+            return p->GetUnderlyingPtr();
+        }
+
         ~SmallObject() {
             reinterpret_cast<HolderBase*>(local_buffer)->~HolderBase();
         }
@@ -577,8 +655,12 @@ private:
         uint8_t local_buffer[kSmallObjectSize]{};
     };
 
-    std::variant<std::monostate, SmallObject, std::unique_ptr<HolderBase>> data_{std::monostate{}};
+    std::variant<std::monostate,
+                 SmallObject,
+                 std::unique_ptr<HolderBase>>
+            data_{std::monostate{}};
 };
+
 
 // std::ostream& operator<<(std::ostream& os, const Any& any);
 

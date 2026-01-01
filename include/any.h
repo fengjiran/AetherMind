@@ -7,6 +7,7 @@
 
 #include "any_utils.h"
 
+#include <optional>
 #include <typeindex>
 #include <variant>
 
@@ -400,48 +401,34 @@ private:
     template<typename T>
     class Caster {
     public:
-        std::optional<T> operator()(const std::monostate&) const {
+        template<typename U>
+        std::optional<T> operator()(U&& v) const {
+            using V = std::decay_t<U>;
+            if constexpr (std::is_same_v<V, std::monostate>) {
+                return std::nullopt;
+            } else if constexpr (std::is_same_v<V, SmallObject>) {
+                if constexpr (std::is_const_v<std::remove_reference_t<U>>) {
+                    const auto* holder_ptr = reinterpret_cast<const HolderBase*>(v.local_buffer);
+                    return CastImpl(holder_ptr);
+                } else {
+                    auto* holder_ptr = reinterpret_cast<HolderBase*>(v.local_buffer);
+                    return CastImpl(holder_ptr);
+                }
+            } else if constexpr (std::is_same_v<V, std::unique_ptr<HolderBase>>) {
+                if constexpr (std::is_const_v<std::remove_reference_t<U>>) {
+                    const auto* holder_ptr = v.get();
+                    return CastImpl(holder_ptr);
+                } else {
+                    auto* holder_ptr = v.get();
+                    return CastImpl(holder_ptr);
+                }
+            }
             return std::nullopt;
         }
-
-        std::optional<T> operator()(std::monostate&&) {
-            return std::nullopt;
-        }
-
-        std::optional<T> operator()(const SmallObject& v) const {
-            const auto* holder_ptr = reinterpret_cast<const HolderBase*>(v.local_buffer);
-            return CastImpl(holder_ptr);
-        }
-
-        std::optional<T> operator()(SmallObject&& v) {
-            auto* holder_ptr = reinterpret_cast<HolderBase*>(v.local_buffer);
-            return MoveCastImpl(holder_ptr);
-        }
-
-        std::optional<T> operator()(const std::unique_ptr<HolderBase>& v) const {
-            const auto* holder_ptr = v.get();
-            return CastImpl(holder_ptr);
-        }
-
-        std::optional<T> operator()(std::unique_ptr<HolderBase>&& v) {
-            auto* holder_ptr = v.get();
-            return MoveCastImpl(holder_ptr);
-        }
-
-        // template<typename U>
-        // std::optional<T> operator()(U&& v) const {
-        //     using V = std::decay_t<U>;
-        //     if constexpr (std::is_same_v<V, std::monostate>) {
-        //         return std::nullopt;
-        //     } else if constexpr (std::is_same_v<V, SmallObject>) {
-        //         //
-        //     } else if constexpr (std::is_same_v<V, std::unique_ptr<HolderBase>>) {
-        //         //
-        //     }
-        // }
 
     private:
-        static std::optional<T> CastImpl(const HolderBase* holder_ptr) {
+        template<typename HolderType>
+        static std::optional<T> CastImpl(HolderType* holder_ptr) {
             if constexpr (details::is_integral<T>) {
                 if (holder_ptr->type() == std::type_index(typeid(Int))) {
                     return static_cast<T>(*static_cast<const Int*>(holder_ptr->GetDataPtr()));
@@ -456,38 +443,26 @@ private:
                 }
             } else if constexpr (details::is_string<T>) {
                 if (holder_ptr->type() == std::type_index(typeid(String))) {
-                    return static_cast<T>(*static_cast<const String*>(holder_ptr->GetDataPtr()));
+                    if constexpr (std::is_same_v<HolderType, const HolderBase>) {
+                        return static_cast<T>(*static_cast<const String*>(holder_ptr->GetDataPtr()));
+                    } else {
+                        return static_cast<T>(std::move(*static_cast<String*>(holder_ptr->GetDataPtr())));
+                    }
                 }
             } else {
                 if (holder_ptr->type() == std::type_index(typeid(T))) {
-                    return static_cast<T>(*static_cast<const T*>(holder_ptr->GetDataPtr()));
+                    if constexpr (std::is_same_v<HolderType, const HolderBase>) {
+                        return static_cast<T>(*static_cast<const T*>(holder_ptr->GetDataPtr()));
+                    } else {
+                        if constexpr (std::is_move_constructible_v<T>) {
+                            return static_cast<T>(std::move(*static_cast<T*>(holder_ptr->GetDataPtr())));
+                        } else {
+                            return static_cast<T>(*static_cast<T*>(holder_ptr->GetDataPtr()));
+                        }
+                    }
                 }
             }
-            return std::nullopt;
-        }
 
-        static std::optional<T> MoveCastImpl(HolderBase* holder_ptr) {
-            if constexpr (details::is_integral<T>) {
-                if (holder_ptr->type() == std::type_index(typeid(Int))) {
-                    return static_cast<T>(*static_cast<const Int*>(holder_ptr->GetDataPtr()));
-                }
-            } else if constexpr (details::is_boolean<T>) {
-                if (holder_ptr->type() == std::type_index(typeid(Bool))) {
-                    return static_cast<T>(*static_cast<const Bool*>(holder_ptr->GetDataPtr()));
-                }
-            } else if constexpr (details::is_floating_point<T>) {
-                if (holder_ptr->type() == std::type_index(typeid(Float))) {
-                    return static_cast<T>(*static_cast<const Float*>(holder_ptr->GetDataPtr()));
-                }
-            } else if constexpr (details::is_string<T>) {
-                if (holder_ptr->type() == std::type_index(typeid(String))) {
-                    return static_cast<T>(std::move(*static_cast<String*>(holder_ptr->GetDataPtr())));
-                }
-            } else {
-                if (holder_ptr->type() == std::type_index(typeid(T))) {
-                    return static_cast<T>(*static_cast<T*>(holder_ptr->GetDataPtr()));
-                }
-            }
             return std::nullopt;
         }
     };

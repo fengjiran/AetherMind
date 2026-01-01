@@ -9,7 +9,7 @@
 
 namespace aethermind {
 
-Any::Any(const Any& other) {
+Any::Any(const Any& other) : type_info_cache_(other.type_info_cache_){
     auto visitor = [&]<typename T>(const T& arg) {
         using U = std::decay_t<T>;
         if constexpr (std::is_same_v<U, SmallObject>) {
@@ -69,10 +69,10 @@ const void* Any::GetDataPtr() const {
 
 std::type_index Any::type() const {
     if (has_value()) {
-        if (type_cache_ == std::type_index(typeid(void))) {
-            type_cache_ = GetHolderPtr()->type();
+        if (type_info_cache_ == std::type_index(typeid(void))) {
+            type_info_cache_ = GetHolderPtr()->type();
         }
-        return type_cache_;
+        return type_info_cache_;
     }
     AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
     AETHERMIND_UNREACHABLE();

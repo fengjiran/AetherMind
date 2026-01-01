@@ -107,6 +107,8 @@ public:
         } else {
             data_ = std::make_unique<Holder<TargetType>>(static_cast<TargetType>(value));
         }
+
+        type_info_cache_ = std::type_index(typeid(TargetType));
     }
 
     // not plain type ctor
@@ -119,11 +121,16 @@ public:
         } else {
             data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
         }
+
+        type_info_cache_ = std::type_index(typeid(U));
     }
 
     Any(const Any& other);
 
-    Any(Any&& other) noexcept : data_(std::move(other.data_)) {}
+    Any(Any&& other) noexcept
+        : data_(std::move(other.data_)), type_info_cache_(other.type_info_cache_) {
+        other.type_info_cache_ = std::type_index(typeid(void));
+    }
 
     Any& operator=(const Any& other) {
         Any(other).swap(*this);
@@ -146,10 +153,12 @@ public:
             return;
         }
         std::swap(data_, other.data_);
+        std::swap(type_info_cache_, other.type_info_cache_);
     }
 
     void reset() noexcept {
         data_ = std::monostate{};
+        type_info_cache_ = std::type_index(typeid(void));
     }
 
     NODISCARD const HolderBase* GetHolderPtr() const;
@@ -177,7 +186,12 @@ public:
     }
 
     template<typename T>
-    std::optional<T> try_cast() const {
+    NODISCARD bool can_cast() const noexcept {
+        return as<T>().has_value();
+    }
+
+    template<typename T>
+    NODISCARD std::optional<T> try_cast() const {
         return as<T>();
     }
 
@@ -473,7 +487,7 @@ private:
                  SmallObject,
                  std::unique_ptr<HolderBase>>
             data_{std::monostate{}};
-    mutable std::type_index type_cache_{std::type_index(typeid(void))};
+    mutable std::type_index type_info_cache_{std::type_index(typeid(void))};
 };
 
 // std::ostream& operator<<(std::ostream& os, const Any& any);

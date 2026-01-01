@@ -165,7 +165,7 @@ public:
     NODISCARD const void* GetDataPtr() const;
 
     template<typename T>
-    NODISCARD std::optional<T> as() const {
+    NODISCARD std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Any>) {
             return *this;
         } else {
@@ -174,17 +174,11 @@ public:
     }
 
     template<typename T>
-        requires(!details::is_plain_type<T>)
     NODISCARD std::optional<T> as() && {
         if constexpr (std::is_same_v<T, Any>) {
             return std::move(*this);
         } else {
-            if (has_value()) {
-                if (dynamic_cast<const Holder<T>*>(GetHolderPtr())) {
-                    return std::move(*static_cast<T*>(GetDataPtr()));
-                }
-            }
-            return std::nullopt;
+            return std::visit(Caster<T>{}, std::move(data_));
         }
     }
 
@@ -195,21 +189,21 @@ public:
 
     template<typename T>
     NODISCARD T cast() const& {
-        auto opt = as<T>();
-        if (!opt.has_value()) {
-            AETHERMIND_THROW(TypeError) << "cast failed.";
+        if (auto opt = as<T>(); opt.has_value()) {
+            return *opt;
         }
-        return opt.value();
+        AETHERMIND_THROW(TypeError) << "cast failed.";
+        AETHERMIND_UNREACHABLE();
     }
 
     template<typename T>
     T cast() && {
-        auto opt = std::move(*this).as<T>();
-        if (!opt.has_value()) {
-            AETHERMIND_THROW(TypeError);
+        if (auto opt = std::move(*this).as<T>(); opt.has_value()) {
+            reset();
+            return std::move(opt.value());
         }
-        reset();
-        return std::move(opt.value());
+        AETHERMIND_THROW(TypeError) << "cast failed.";
+        AETHERMIND_UNREACHABLE();
     }
 
     template<typename T>
@@ -351,27 +345,6 @@ public:
 private:
     static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
 
-    // template<typename R, typename F>
-    // std::optional<R> visitor(F&& func) const {
-    //     if (IsBool()) {
-    //         return func(*static_cast<const Bool*>(GetDataPtr()));
-    //     }
-    //
-    //     if (IsInteger()) {
-    //         return func(*static_cast<const Int*>(GetDataPtr()));
-    //     }
-    //
-    //     if (IsFloatingPoint()) {
-    //         return func(*static_cast<const Float*>(GetDataPtr()));
-    //     }
-    //
-    //     if (IsString()) {
-    //         return func(*static_cast<const String*>(GetDataPtr()));
-    //     }
-    //
-    //     // for other type
-    // }
-
     struct SmallObject {
         SmallObject() : SmallObject(0) {}
 
@@ -446,6 +419,20 @@ private:
             return CastImpl(holder_ptr);
         }
 
+        std::optional<T> operator()(std::monostate&&) {
+            return std::nullopt;
+        }
+
+        std::optional<T> operator()(SmallObject&& v) {
+            auto* holder_ptr = reinterpret_cast<HolderBase*>(v.local_buffer);
+            return MoveCastImpl(holder_ptr);
+        }
+
+        std::optional<T> operator()(std::unique_ptr<HolderBase>&& v) {
+            auto* holder_ptr = v.get();
+            return MoveCastImpl(holder_ptr);
+        }
+
         std::optional<T> CastImpl(const HolderBase* holder_ptr) const {
             if constexpr (details::is_integral<T>) {
                 if (const auto* p = dynamic_cast<const Holder<Int>*>(holder_ptr)) {
@@ -466,6 +453,31 @@ private:
             } else {
                 if (const auto* p = dynamic_cast<const Holder<T>*>(holder_ptr)) {
                     return static_cast<T>(*static_cast<const T*>(p->GetDataPtr()));
+                }
+            }
+            return std::nullopt;
+        }
+
+        std::optional<T> MoveCastImpl(HolderBase* holder_ptr) const {
+            if constexpr (details::is_integral<T>) {
+                if (auto* p = dynamic_cast<Holder<Int>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<Int*>(p->GetDataPtr()));
+                }
+            } else if constexpr (details::is_boolean<T>) {
+                if (auto* p = dynamic_cast<Holder<Bool>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<Bool*>(p->GetDataPtr()));
+                }
+            } else if constexpr (details::is_floating_point<T>) {
+                if (auto* p = dynamic_cast<Holder<Float>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<Float*>(p->GetDataPtr()));
+                }
+            } else if constexpr (details::is_string<T>) {
+                if (auto* p = dynamic_cast<Holder<String>*>(holder_ptr)) {
+                    return static_cast<T>(std::move(*static_cast<String*>(p->GetDataPtr())));
+                }
+            } else {
+                if (auto* p = dynamic_cast<Holder<T>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<T*>(p->GetDataPtr()));
                 }
             }
             return std::nullopt;

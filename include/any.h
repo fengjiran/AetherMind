@@ -182,10 +182,11 @@ public:
 
     template<typename T>
     NODISCARD T cast() const& {
-        if (auto opt = as<T>(); opt.has_value()) {
+        auto opt = as<T>();
+        if (opt.has_value()) {
             return *opt;
         }
-        AETHERMIND_THROW(TypeError) << "Cast failed from type '";
+        AETHERMIND_THROW(TypeError) << "Cast failed to type: " << details::Type2Str<T>::value();
         AETHERMIND_UNREACHABLE();
     }
 
@@ -195,7 +196,7 @@ public:
             reset();
             return std::move(opt.value());
         }
-        AETHERMIND_THROW(TypeError) << "cast failed.";
+        AETHERMIND_THROW(TypeError) << "Cast failed to type: " << details::Type2Str<T>::value();
         AETHERMIND_UNREACHABLE();
     }
 
@@ -288,32 +289,32 @@ public:
     }
 
     NODISCARD Int ToInt() const {
-        CHECK(IsInteger()) << "Expected Int.";
+        CHECK(IsInteger()) << "Expected Int, but got " << type().name();
         return cast<Int>();
     }
 
     NODISCARD Float ToDouble() const {
-        CHECK(IsFloatingPoint()) << "Expected Double.";
-        return cast<double>();
+        CHECK(IsFloatingPoint()) << "Expected Double, but got " << type().name();
+        return cast<Float>();
     }
 
-    NODISCARD bool ToBool() const {
-        CHECK(IsBool()) << "Expected Bool.";
-        return cast<bool>();
+    NODISCARD Bool ToBool() const {
+        CHECK(IsBool()) << "Expected Bool, but got " << type().name();
+        return cast<Bool>();
     }
 
     NODISCARD void* ToVoidPtr() const {
-        CHECK(IsVoidPtr()) << "Expected VoidPtr.";
+        CHECK(IsVoidPtr()) << "Expected VoidPtr, but got " << type().name();
         return cast<void*>();
     }
 
     NODISCARD Device ToDevice() const {
-        CHECK(IsDevice()) << "Expected Device.";
+        CHECK(IsDevice()) << "Expected Device, but got " << type().name();
         return cast<Device>();
     }
 
     NODISCARD String ToString() const {
-        CHECK(IsString()) << "Expected String.";
+        CHECK(IsString()) << "Expected String, but got " << type().name();
         return cast<String>();
     }
 
@@ -397,8 +398,13 @@ private:
     };
 
     template<typename T>
-    struct Caster {
+    class Caster {
+    public:
         std::optional<T> operator()(const std::monostate&) const {
+            return std::nullopt;
+        }
+
+        std::optional<T> operator()(std::monostate&&) {
             return std::nullopt;
         }
 
@@ -407,18 +413,14 @@ private:
             return CastImpl(holder_ptr);
         }
 
-        std::optional<T> operator()(const std::unique_ptr<HolderBase>& v) const {
-            const auto* holder_ptr = v.get();
-            return CastImpl(holder_ptr);
-        }
-
-        std::optional<T> operator()(std::monostate&&) {
-            return std::nullopt;
-        }
-
         std::optional<T> operator()(SmallObject&& v) {
             auto* holder_ptr = reinterpret_cast<HolderBase*>(v.local_buffer);
             return MoveCastImpl(holder_ptr);
+        }
+
+        std::optional<T> operator()(const std::unique_ptr<HolderBase>& v) const {
+            const auto* holder_ptr = v.get();
+            return CastImpl(holder_ptr);
         }
 
         std::optional<T> operator()(std::unique_ptr<HolderBase>&& v) {
@@ -426,26 +428,39 @@ private:
             return MoveCastImpl(holder_ptr);
         }
 
-        std::optional<T> CastImpl(const HolderBase* holder_ptr) const {
+        // template<typename U>
+        // std::optional<T> operator()(U&& v) const {
+        //     using V = std::decay_t<U>;
+        //     if constexpr (std::is_same_v<V, std::monostate>) {
+        //         return std::nullopt;
+        //     } else if constexpr (std::is_same_v<V, SmallObject>) {
+        //         //
+        //     } else if constexpr (std::is_same_v<V, std::unique_ptr<HolderBase>>) {
+        //         //
+        //     }
+        // }
+
+    private:
+        static std::optional<T> CastImpl(const HolderBase* holder_ptr) {
             if constexpr (details::is_integral<T>) {
-                if (const auto* p = dynamic_cast<const Holder<Int>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Int*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(Int))) {
+                    return static_cast<T>(*static_cast<const Int*>(holder_ptr->GetDataPtr()));
                 }
             } else if constexpr (details::is_boolean<T>) {
-                if (const auto* p = dynamic_cast<const Holder<Bool>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Bool*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(Bool))) {
+                    return static_cast<T>(*static_cast<const Bool*>(holder_ptr->GetDataPtr()));
                 }
             } else if constexpr (details::is_floating_point<T>) {
-                if (const auto* p = dynamic_cast<const Holder<Float>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Float*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(Float))) {
+                    return static_cast<T>(*static_cast<const Float*>(holder_ptr->GetDataPtr()));
                 }
             } else if constexpr (details::is_string<T>) {
-                if (const auto* p = dynamic_cast<const Holder<String>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const String*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(String))) {
+                    return static_cast<T>(*static_cast<const String*>(holder_ptr->GetDataPtr()));
                 }
             } else {
-                if (const auto* p = dynamic_cast<const Holder<T>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const T*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(T))) {
+                    return static_cast<T>(*static_cast<const T*>(holder_ptr->GetDataPtr()));
                 }
             }
             return std::nullopt;
@@ -453,24 +468,24 @@ private:
 
         std::optional<T> MoveCastImpl(HolderBase* holder_ptr) const {
             if constexpr (details::is_integral<T>) {
-                if (auto* p = dynamic_cast<Holder<Int>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<Int*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(Int))) {
+                    return static_cast<T>(*static_cast<const Int*>(holder_ptr->GetDataPtr()));
                 }
             } else if constexpr (details::is_boolean<T>) {
-                if (auto* p = dynamic_cast<Holder<Bool>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<Bool*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(Bool))) {
+                    return static_cast<T>(*static_cast<const Bool*>(holder_ptr->GetDataPtr()));
                 }
             } else if constexpr (details::is_floating_point<T>) {
-                if (auto* p = dynamic_cast<Holder<Float>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<Float*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(Float))) {
+                    return static_cast<T>(*static_cast<const Float*>(holder_ptr->GetDataPtr()));
                 }
             } else if constexpr (details::is_string<T>) {
-                if (auto* p = dynamic_cast<Holder<String>*>(holder_ptr)) {
-                    return static_cast<T>(std::move(*static_cast<String*>(p->GetDataPtr())));
+                if (holder_ptr->type() == std::type_index(typeid(String))) {
+                    return static_cast<T>(std::move(*static_cast<String*>(holder_ptr->GetDataPtr())));
                 }
             } else {
-                if (auto* p = dynamic_cast<Holder<T>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<T*>(p->GetDataPtr()));
+                if (holder_ptr->type() == std::type_index(typeid(T))) {
+                    return static_cast<T>(*static_cast<T*>(holder_ptr->GetDataPtr()));
                 }
             }
             return std::nullopt;

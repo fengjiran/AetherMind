@@ -46,6 +46,9 @@ TEST(Any, null) {
     x1 = nullptr;
     EXPECT_TRUE(x1 == nullptr);
     EXPECT_FALSE(x1 != nullptr);
+
+    Any x2 = nullptr;
+    EXPECT_TRUE(x2 == nullptr);
 }
 
 TEST(Any, int) {

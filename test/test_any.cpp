@@ -58,6 +58,7 @@ TEST(Any, int) {
 
     Any x1 = 1;
     EXPECT_TRUE(x1.IsInteger());
+    EXPECT_TRUE(x1.IsSmallObject());
     EXPECT_EQ(x1.cast<int>(), 1);
 
     int64_t v1 = 10;

@@ -180,18 +180,6 @@ public:
     Any() = default;
     ~Any() = default;
 
-    // not plain type ctor
-    template<typename T, typename U = std::decay_t<T>>
-        requires(!details::is_plain_type<U> && !std::same_as<U, Any>)
-    Any(T&& value) {//NOLINT
-        if constexpr (sizeof(Holder<U>) <= kSmallObjectSize) {
-            // small object, construct at local buffer
-            data_ = SmallObject{std::forward<T>(value)};
-        } else {
-            data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
-        }
-    }
-
     // integer ctor
     template<details::is_integral T>
     Any(T value) {//NOLINT
@@ -234,6 +222,19 @@ public:
         }
     }
 
+    // not plain type ctor
+    template<typename T, typename U = std::decay_t<T>>
+        requires(!details::is_plain_type<U> && !std::same_as<U, Any>)
+    Any(T&& value) {//NOLINT
+        if constexpr (sizeof(Holder<U>) <= kSmallObjectSize) {
+            // small object, construct at local buffer
+            data_ = SmallObject{std::forward<T>(value)};
+        } else {
+            data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
+        }
+    }
+
+
     Any(const Any& other);
 
     Any(Any&& other) noexcept : data_(std::move(other.data_)) {}
@@ -271,55 +272,12 @@ public:
 
     NODISCARD const void* GetDataPtr() const;
 
-    template<details::is_plain_type T>
-    NODISCARD std::optional<T> as() const {
-        // auto visitor = []<typename Arg>(const Arg& arg) -> std::optional<T> {
-        //     using U = std::decay_t<Arg>;
-        //     if constexpr (std::is_same_v<U, SmallObject>) {
-        //         //
-        //     } else if constexpr (std::is_same_v<U, std::unique_ptr<HolderBase>>) {
-        //         //
-        //     } else {
-        //         return std::nullopt;
-        //     }
-        // };
-
-        if (has_value()) {
-            const auto* p = GetDataPtr();
-            if constexpr (details::is_integral<T>) {
-                if (IsInteger()) {
-                    return static_cast<T>(*static_cast<const Int*>(p));
-                }
-            } else if constexpr (details::is_boolean<T>) {
-                if (IsBool()) {
-                    return static_cast<T>(*static_cast<const Bool*>(p));
-                }
-            } else if constexpr (details::is_floating_point<T>) {
-                if (IsFloatingPoint()) {
-                    return static_cast<T>(*static_cast<const Float*>(p));
-                }
-            } else if constexpr (details::is_string<T>) {
-                if (IsString()) {
-                    return static_cast<T>(*static_cast<const String*>(p));
-                }
-            }
-        }
-
-        return std::nullopt;
-    }
-
     template<typename T>
-        requires(!details::is_plain_type<T>)
-    NODISCARD std::optional<T> as() const& {
+    NODISCARD std::optional<T> as() const {
         if constexpr (std::is_same_v<T, Any>) {
             return *this;
         } else {
-            if (has_value()) {
-                if (dynamic_cast<const Holder<T>*>(GetHolderPtr())) {
-                    return *static_cast<const T*>(GetDataPtr());
-                }
-            }
-            return std::nullopt;
+            return std::visit(Caster<T>(), data_);
         }
     }
 
@@ -503,7 +461,23 @@ private:
 
     // template<typename R, typename F>
     // std::optional<R> visitor(F&& func) const {
+    //     if (IsBool()) {
+    //         return func(*static_cast<const Bool*>(GetDataPtr()));
+    //     }
     //
+    //     if (IsInteger()) {
+    //         return func(*static_cast<const Int*>(GetDataPtr()));
+    //     }
+    //
+    //     if (IsFloatingPoint()) {
+    //         return func(*static_cast<const Float*>(GetDataPtr()));
+    //     }
+    //
+    //     if (IsString()) {
+    //         return func(*static_cast<const String*>(GetDataPtr()));
+    //     }
+    //
+    //     // for other type
     // }
 
     struct SmallObject {
@@ -568,13 +542,56 @@ private:
         }
 
         std::optional<T> operator()(const SmallObject& v) const {
-            // if constexpr (details::is_integral<T>) {
-            //     return
-            // }
+            const auto* holder_ptr = reinterpret_cast<const HolderBase*>(v.local_buffer);
+            if constexpr (details::is_integral<T>) {
+                if (dynamic_cast<const Holder<Int>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Int*>(v.GetDataPtr()));
+                }
+            } else if constexpr (details::is_boolean<T>) {
+                if (dynamic_cast<const Holder<Bool>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Bool*>(v.GetDataPtr()));
+                }
+            } else if constexpr (details::is_floating_point<T>) {
+                if (dynamic_cast<const Holder<Float>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Float*>(v.GetDataPtr()));
+                }
+            } else if constexpr (details::is_string<T>) {
+                if (dynamic_cast<const Holder<String>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const String*>(v.GetDataPtr()));
+                }
+            } else {
+                if (dynamic_cast<const Holder<T>*>(holder_ptr)) {
+                    return *static_cast<const T*>(v.GetDataPtr());
+                }
+            }
+
+            return std::nullopt;
         }
 
         std::optional<T> operator()(const std::unique_ptr<HolderBase>& v) const {
-            //
+            const auto* holder_ptr = v.get();
+            if constexpr (details::is_integral<T>) {
+                if (dynamic_cast<const Holder<Int>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Int*>(v->GetDataPtr()));
+                }
+            } else if constexpr (details::is_boolean<T>) {
+                if (dynamic_cast<const Holder<Bool>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Bool*>(v->GetDataPtr()));
+                }
+            } else if constexpr (details::is_floating_point<T>) {
+                if (dynamic_cast<const Holder<Float>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Float*>(v->GetDataPtr()));
+                }
+            } else if constexpr (details::is_string<T>) {
+                if (dynamic_cast<const Holder<String>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const String*>(v->GetDataPtr()));
+                }
+            } else {
+                if (dynamic_cast<const Holder<T>*>(holder_ptr)) {
+                    return *static_cast<const T*>(v->GetDataPtr());
+                }
+            }
+            return std::nullopt;
         }
     };
 

@@ -6,9 +6,6 @@
 #define AETHERMIND_ANY_H
 
 #include "any_utils.h"
-#include "data_type.h"
-#include "device.h"
-#include "error.h"
 
 #include <typeindex>
 #include <variant>
@@ -86,10 +83,6 @@ private:
     T value_;
 };
 
-class Tensor;
-class Function;
-template<typename FType>
-class TypedFunction;
 template<typename>
 class SingletonOrSharedTypePtr;
 class Type;
@@ -192,7 +185,7 @@ public:
         if (auto opt = as<T>(); opt.has_value()) {
             return *opt;
         }
-        AETHERMIND_THROW(TypeError) << "cast failed.";
+        AETHERMIND_THROW(TypeError) << "Cast failed from type '";
         AETHERMIND_UNREACHABLE();
     }
 
@@ -510,52 +503,6 @@ class AnyHash {
 public:
     size_t operator()(const Any& v) const;
 };
-
-namespace details {
-
-template<typename T>
-struct TypeName {
-    static String value() {
-        return typeid(T).name();
-    }
-};
-
-#define DEFINE_TYPE_NAME(code, bits, lanes, T, name) \
-    template<>                                       \
-    struct TypeName<T> {                             \
-        static String value() {                      \
-            return #name;                            \
-        }                                            \
-    };
-
-SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TYPE_NAME);
-DEFINE_TYPE_NAME(_, _, _, Tensor, Tensor);
-DEFINE_TYPE_NAME(_, _, _, Device, Device);
-DEFINE_TYPE_NAME(_, _, _, Any, Any);
-DEFINE_TYPE_NAME(_, _, _, Any*, Any*);
-DEFINE_TYPE_NAME(_, _, _, const Any*, const Any*);
-DEFINE_TYPE_NAME(_, _, _, const Any&, const Any&);
-DEFINE_TYPE_NAME(_, _, _, void, void);
-DEFINE_TYPE_NAME(_, _, _, Function, Function);
-
-template<typename FType>
-struct TypeName<TypedFunction<FType>> {
-    static String value() {
-        return "Function";
-    }
-};
-
-#undef DEFINE_TYPE_NAME
-
-template<typename T>
-struct Type2Str {
-    using U = std::remove_const_t<std::remove_reference_t<T>>;
-    static String value() {
-        return TypeName<U>::value();
-    }
-};
-
-}// namespace details
 }// namespace aethermind
 
 namespace std {

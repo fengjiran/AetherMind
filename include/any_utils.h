@@ -5,9 +5,10 @@
 #ifndef AETHERMIND_ANY_UTILS_H
 #define AETHERMIND_ANY_UTILS_H
 
+#include "data_type.h"
+#include "device.h"
 #include "object.h"
 
-#include <gtest/internal/gtest-string.h>
 #include <map>
 #include <unordered_map>
 
@@ -17,11 +18,11 @@
 
 namespace aethermind {
 
-struct Half;
-struct BFloat16;
-struct Float8_e4m3fn;
-struct Float8_e5m2;
-class String;
+class Tensor;
+class Function;
+template<typename FType>
+class TypedFunction;
+class Any;
 
 namespace details {
 
@@ -116,6 +117,48 @@ struct is_map<std::map<K, V>> : std::true_type {};
 template<typename T>
 constexpr bool is_map_v = is_map<T>::value;
 
+template<typename T>
+struct TypeName {
+    static String value() {
+        return typeid(T).name();
+    }
+};
+
+#define DEFINE_TYPE_NAME(code, bits, lanes, T, name) \
+    template<>                                       \
+    struct TypeName<T> {                             \
+        static String value() {                      \
+            return #name;                            \
+        }                                            \
+    };
+
+
+SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TYPE_NAME);
+DEFINE_TYPE_NAME(_, _, _, Tensor, Tensor);
+DEFINE_TYPE_NAME(_, _, _, Device, Device);
+DEFINE_TYPE_NAME(_, _, _, Any, Any);
+DEFINE_TYPE_NAME(_, _, _, Any*, Any*);
+DEFINE_TYPE_NAME(_, _, _, const Any*, const Any*);
+DEFINE_TYPE_NAME(_, _, _, const Any&, const Any&);
+DEFINE_TYPE_NAME(_, _, _, void, void);
+DEFINE_TYPE_NAME(_, _, _, Function, Function);
+
+template<typename FType>
+struct TypeName<TypedFunction<FType>> {
+    static String value() {
+        return "Function";
+    }
+};
+
+#undef DEFINE_TYPE_NAME
+
+template<typename T>
+struct Type2Str {
+    using U = std::remove_const_t<std::remove_reference_t<T>>;
+    static String value() {
+        return TypeName<U>::value();
+    }
+};
 
 }// namespace details
 

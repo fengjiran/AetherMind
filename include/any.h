@@ -466,7 +466,7 @@ private:
             return std::nullopt;
         }
 
-        std::optional<T> MoveCastImpl(HolderBase* holder_ptr) const {
+        static std::optional<T> MoveCastImpl(HolderBase* holder_ptr) {
             if constexpr (details::is_integral<T>) {
                 if (holder_ptr->type() == std::type_index(typeid(Int))) {
                     return static_cast<T>(*static_cast<const Int*>(holder_ptr->GetDataPtr()));
@@ -496,6 +496,7 @@ private:
                  SmallObject,
                  std::unique_ptr<HolderBase>>
             data_{std::monostate{}};
+    // std::type_index type_cache_;
 };
 
 

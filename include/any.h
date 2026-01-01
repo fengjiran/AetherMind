@@ -15,83 +15,6 @@
 
 namespace aethermind {
 
-#ifdef CRTP_HOLDER
-
-template<typename Derived>
-class HolderBase_ {
-public:
-    NODISCARD std::unique_ptr<HolderBase_> Clone() const {
-        return static_cast<const Derived*>(this)->CloneImpl();
-    }
-
-    NODISCARD const std::type_index& type() const {
-        return static_cast<const Derived*>(this)->type_impl();
-    }
-
-    NODISCARD uint32_t use_count() const {
-        return static_cast<const Derived*>(this)->use_count_impl();
-    }
-
-    NODISCARD bool IsObjectRef() const {
-        return static_cast<const Derived*>(this)->IsObjectRefImpl();
-    }
-
-    NODISCARD bool IsMap() const {
-        return static_cast<const Derived*>(this)->IsMapImpl();
-    }
-
-    NODISCARD void* GetUnderlyingPtr() const {
-        return static_cast<const Derived*>(this)->GetUnderlyingPtrImpl();
-    }
-};
-
-template<typename T>
-class Holder_ final : public HolderBase_<Holder_<T>> {
-public:
-    explicit Holder_(T value) : value_(std::move(value)), type_index_(typeid(T)) {}
-
-    NODISCARD std::unique_ptr<HolderBase_<Holder_>> CloneImpl() const {
-        return std::make_unique<Holder_>(value_);
-    }
-
-    NODISCARD const std::type_index& type_impl() const {
-        return type_index_;
-    }
-
-    NODISCARD uint32_t use_count_impl() const {
-        if constexpr (details::has_use_count_method_v<T>) {
-            return value_.use_count();
-        } else {
-            return 1;
-        }
-    }
-
-    NODISCARD bool IsObjectRefImpl() const {
-        if constexpr (std::is_base_of_v<ObjectRef, T>) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    NODISCARD bool IsMapImpl() const {
-        if constexpr (details::is_map_v<T>) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    NODISCARD void* GetUnderlyingPtrImpl() const {
-        return &value_;
-    }
-
-private:
-    T value_;
-    std::type_index type_index_;
-};
-#endif
-
 class HolderBase {
 public:
     virtual ~HolderBase() = default;
@@ -180,45 +103,15 @@ public:
     Any() = default;
     ~Any() = default;
 
-    // integer ctor
-    template<details::is_integral T>
+    template<details::is_plain_type T>
     Any(T value) {//NOLINT
-        if constexpr (sizeof(Holder<Int>) <= kSmallObjectSize) {
-            // small object, construct at local buffer
-            data_ = SmallObject{static_cast<Int>(value)};
+        using TargetType = std::conditional_t<details::is_boolean<T>, Bool,
+                                              std::conditional_t<details::is_integral<T>,
+                                                                 Int, std::conditional_t<details::is_floating_point<T>, Float, String>>>;
+        if constexpr (sizeof(Holder<TargetType>) <= kSmallObjectSize) {
+            data_ = SmallObject{static_cast<TargetType>(value)};
         } else {
-            data_ = std::make_unique<Holder<Int>>(static_cast<Int>(value));
-        }
-    }
-
-    // boolean ctor
-    template<details::is_boolean T>
-    Any(T value) {//NOLINT
-        if constexpr (sizeof(Holder<Bool>) <= kSmallObjectSize) {
-            // small object, construct at local buffer
-            data_ = SmallObject{static_cast<Bool>(value)};
-        } else {
-            data_ = std::make_unique<Holder<Bool>>(static_cast<Bool>(value));
-        }
-    }
-
-    // floating ctor
-    template<details::is_floating_point T>
-    Any(T value) {//NOLINT
-        if constexpr (sizeof(Holder<Float>) <= kSmallObjectSize) {
-            data_ = SmallObject{static_cast<Float>(value)};
-        } else {
-            data_ = std::make_unique<Holder<Float>>(static_cast<Float>(value));
-        }
-    }
-
-    // string ctor
-    template<details::is_string T>
-    Any(T value) {//NOLINT
-        if constexpr (sizeof(Holder<String>) <= kSmallObjectSize) {
-            data_ = SmallObject{std::move(value)};
-        } else {
-            data_ = std::make_unique<Holder<String>>(static_cast<String>(value));
+            data_ = std::make_unique<Holder<TargetType>>(static_cast<TargetType>(value));
         }
     }
 
@@ -233,7 +126,6 @@ public:
             data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
         }
     }
-
 
     Any(const Any& other);
 
@@ -277,7 +169,7 @@ public:
         if constexpr (std::is_same_v<T, Any>) {
             return *this;
         } else {
-            return std::visit(Caster<T>(), data_);
+            return std::visit(Caster<T>{}, data_);
         }
     }
 
@@ -353,11 +245,11 @@ public:
         return !std::holds_alternative<std::monostate>(data_);
     }
 
-    NODISCARD bool IsSmallObject() const {
+    NODISCARD bool IsSmallObject() const noexcept {
         return std::holds_alternative<SmallObject>(data_);
     }
 
-    NODISCARD bool IsLargeObject() const {
+    NODISCARD bool IsLargeObject() const noexcept {
         return std::holds_alternative<std::unique_ptr<HolderBase>>(data_);
     }
 
@@ -513,11 +405,14 @@ private:
         }
 
         void swap(SmallObject& other) noexcept {
-            using std::swap;
+            if (this == &other) {
+                return;
+            }
+
             uint8_t tmp[kSmallObjectSize];
-            reinterpret_cast<HolderBase*>(local_buffer)->MoveSmallObject(tmp);
-            reinterpret_cast<HolderBase*>(other.local_buffer)->MoveSmallObject(local_buffer);
-            reinterpret_cast<HolderBase*>(tmp)->MoveSmallObject(other.local_buffer);
+            std::memcpy(tmp, local_buffer, kSmallObjectSize);
+            std::memcpy(local_buffer, other.local_buffer, kSmallObjectSize);
+            std::memcpy(other.local_buffer, tmp, kSmallObjectSize);
         }
 
         NODISCARD void* GetDataPtr() {
@@ -543,52 +438,34 @@ private:
 
         std::optional<T> operator()(const SmallObject& v) const {
             const auto* holder_ptr = reinterpret_cast<const HolderBase*>(v.local_buffer);
-            if constexpr (details::is_integral<T>) {
-                if (dynamic_cast<const Holder<Int>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Int*>(v.GetDataPtr()));
-                }
-            } else if constexpr (details::is_boolean<T>) {
-                if (dynamic_cast<const Holder<Bool>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Bool*>(v.GetDataPtr()));
-                }
-            } else if constexpr (details::is_floating_point<T>) {
-                if (dynamic_cast<const Holder<Float>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Float*>(v.GetDataPtr()));
-                }
-            } else if constexpr (details::is_string<T>) {
-                if (dynamic_cast<const Holder<String>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const String*>(v.GetDataPtr()));
-                }
-            } else {
-                if (dynamic_cast<const Holder<T>*>(holder_ptr)) {
-                    return *static_cast<const T*>(v.GetDataPtr());
-                }
-            }
-
-            return std::nullopt;
+            return CastImpl(holder_ptr);
         }
 
         std::optional<T> operator()(const std::unique_ptr<HolderBase>& v) const {
             const auto* holder_ptr = v.get();
+            return CastImpl(holder_ptr);
+        }
+
+        std::optional<T> CastImpl(const HolderBase* holder_ptr) const {
             if constexpr (details::is_integral<T>) {
-                if (dynamic_cast<const Holder<Int>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Int*>(v->GetDataPtr()));
+                if (const auto* p = dynamic_cast<const Holder<Int>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Int*>(p->GetDataPtr()));
                 }
             } else if constexpr (details::is_boolean<T>) {
-                if (dynamic_cast<const Holder<Bool>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Bool*>(v->GetDataPtr()));
+                if (const auto* p = dynamic_cast<const Holder<Bool>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Bool*>(p->GetDataPtr()));
                 }
             } else if constexpr (details::is_floating_point<T>) {
-                if (dynamic_cast<const Holder<Float>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const Float*>(v->GetDataPtr()));
+                if (const auto* p = dynamic_cast<const Holder<Float>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const Float*>(p->GetDataPtr()));
                 }
             } else if constexpr (details::is_string<T>) {
-                if (dynamic_cast<const Holder<String>*>(holder_ptr)) {
-                    return static_cast<T>(*static_cast<const String*>(v->GetDataPtr()));
+                if (const auto* p = dynamic_cast<const Holder<String>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const String*>(p->GetDataPtr()));
                 }
             } else {
-                if (dynamic_cast<const Holder<T>*>(holder_ptr)) {
-                    return *static_cast<const T*>(v->GetDataPtr());
+                if (const auto* p = dynamic_cast<const Holder<T>*>(holder_ptr)) {
+                    return static_cast<T>(*static_cast<const T*>(p->GetDataPtr()));
                 }
             }
             return std::nullopt;

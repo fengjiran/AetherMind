@@ -236,10 +236,12 @@ public:
 
     NODISCARD bool IsSmallObject() const noexcept {
         return std::holds_alternative<SmallObject>(data_);
+        // return data_.index() == 1;
     }
 
     NODISCARD bool IsLargeObject() const noexcept {
         return std::holds_alternative<std::unique_ptr<HolderBase>>(data_);
+        // return data_.index() == 2;
     }
 
     NODISCARD std::type_index type() const;
@@ -471,9 +473,8 @@ private:
                  SmallObject,
                  std::unique_ptr<HolderBase>>
             data_{std::monostate{}};
-    // std::type_index type_cache_;
+    mutable std::type_index type_cache_{std::type_index(typeid(void))};
 };
-
 
 // std::ostream& operator<<(std::ostream& os, const Any& any);
 

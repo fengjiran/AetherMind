@@ -37,6 +37,17 @@ const HolderBase* Any::GetHolderPtr() const {
     return std::visit(visitor, data_);
 }
 
+// const HolderBase* Any::GetHolderPtr() const {
+//     switch (data_.index()) {
+//         case 1:// small object
+//             return reinterpret_cast<const HolderBase*>(std::get<SmallObject>(data_).local_buffer);
+//         case 2:// large object
+//             return std::get<std::unique_ptr<HolderBase>>(data_).get();
+//         default:// monostate
+//             return nullptr;
+//     }
+// }
+
 void* Any::GetDataPtr() {
     auto visitor = []<typename T>(T& arg) -> void* {
         using U = std::decay_t<T>;
@@ -58,7 +69,10 @@ const void* Any::GetDataPtr() const {
 
 std::type_index Any::type() const {
     if (has_value()) {
-        return GetHolderPtr()->type();
+        if (type_cache_ == std::type_index(typeid(void))) {
+            type_cache_ = GetHolderPtr()->type();
+        }
+        return type_cache_;
     }
     AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
     AETHERMIND_UNREACHABLE();

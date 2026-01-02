@@ -72,6 +72,36 @@ concept is_map_subscript = requires {
 template<typename T>
 concept is_array_subscript = has_operator_subscript<T, typename T::size_type>;
 
+template<typename T>
+concept is_container = requires(T t) {
+    requires !is_string<T>;
+    typename T::value_type;
+    typename T::iterator;
+    typename T::size_type;
+    { t.begin() } -> std::convertible_to<typename T::iterator>;
+    { t.end() } -> std::convertible_to<typename T::iterator>;
+};
+
+template<typename T>
+concept is_map = requires(T t) {
+    typename T::key_type;
+    typename T::mapped_type;
+    typename T::iterator;
+    typename T::value_type;
+    { t.begin() } -> std::convertible_to<typename T::iterator>;
+    { t.end() } -> std::convertible_to<typename T::iterator>;
+    requires std::is_same_v<typename T::value_type, std::pair<const typename T::key_type, typename T::mapped_type>>;
+};
+
+template<typename T>
+concept is_unordered_map = is_map<T> && requires(T t) {
+    { t.hash_function() };
+};
+
+template<typename T>
+concept is_unique_key_map = is_map<T> && (std::is_same_v<T, std::unordered_map<typename T::key_type, typename T::mapped_type>> ||
+                                           std::is_same_v<T, std::map<typename T::key_type, typename T::mapped_type>>);
+
 #else
 template<typename T>
 constexpr bool is_integral = std::is_integral_v<T> && !std::is_same_v<T, bool>;
@@ -105,17 +135,17 @@ constexpr bool has_use_count_method_v = has_use_count_method<T>::value;
 
 #endif
 
-template<typename T>
-struct is_map : std::false_type {};
-
-template<typename K, typename V>
-struct is_map<std::unordered_map<K, V>> : std::true_type {};
-
-template<typename K, typename V>
-struct is_map<std::map<K, V>> : std::true_type {};
-
-template<typename T>
-constexpr bool is_map_v = is_map<T>::value;
+// template<typename T>
+// struct is_map : std::false_type {};
+//
+// template<typename K, typename V>
+// struct is_map<std::unordered_map<K, V>> : std::true_type {};
+//
+// template<typename K, typename V>
+// struct is_map<std::map<K, V>> : std::true_type {};
+//
+// template<typename T>
+// constexpr bool is_map_v = is_map<T>::value;
 
 template<typename T>
 struct TypeName {

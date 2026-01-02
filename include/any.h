@@ -6,6 +6,7 @@
 #define AETHERMIND_ANY_H
 
 #include "any_utils.h"
+#include "object.h"
 
 #include <optional>
 #include <typeindex>
@@ -67,7 +68,7 @@ public:
     }
 
     NODISCARD bool IsMap() const override {
-        if constexpr (details::is_map_v<T>) {
+        if constexpr (details::is_map<T>) {
             return true;
         } else {
             return false;
@@ -264,11 +265,10 @@ public:
     }
 
     template<typename T>
-        requires requires {
-            typename T::size_type;
-            requires details::is_array_subscript<T>;
-        }
+        requires details::is_container<T>
     decltype(auto) operator[](T::size_type i) {
+        CHECK(has_value()) << "Any has no value.";
+        CHECK(CheckType<T>()) << "Type mismatch.";
         return (*static_cast<T*>(GetDataPtr()))[i];
     }
 

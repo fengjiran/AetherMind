@@ -9,7 +9,9 @@
 
 namespace aethermind {
 
-Any::Any(const Any& other) : type_info_cache_(other.type_info_cache_){
+#ifdef USE_VISITOR_PATTERN
+
+Any::Any(const Any& other) : type_info_cache_(other.type_info_cache_) {
     auto visitor = [&]<typename T>(const T& arg) {
         using U = std::decay_t<T>;
         if constexpr (std::is_same_v<U, SmallObject>) {
@@ -37,17 +39,6 @@ const HolderBase* Any::GetHolderPtr() const {
     return std::visit(visitor, data_);
 }
 
-// const HolderBase* Any::GetHolderPtr() const {
-//     switch (data_.index()) {
-//         case 1:// small object
-//             return reinterpret_cast<const HolderBase*>(std::get<SmallObject>(data_).local_buffer);
-//         case 2:// large object
-//             return std::get<std::unique_ptr<HolderBase>>(data_).get();
-//         default:// monostate
-//             return nullptr;
-//     }
-// }
-
 void* Any::GetDataPtr() {
     auto visitor = []<typename T>(T& arg) -> void* {
         using U = std::decay_t<T>;
@@ -62,6 +53,53 @@ void* Any::GetDataPtr() {
 
     return std::visit(visitor, data_);
 }
+
+#else
+
+Any::Any(const Any& other) : type_info_cache_(other.type_info_cache_) {
+    switch (other.data_.index()) {
+        case 0:// std::monostate
+            data_ = std::monostate{};
+            break;
+        case 1:// small object
+            data_ = std::get<SmallObject>(other.data_);
+            break;
+        case 2:// large object
+            data_ = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
+            break;
+        default:// monostate
+            break;
+    }
+}
+
+const HolderBase* Any::GetHolderPtr() const {
+    switch (data_.index()) {
+        case 0:// std::monostate
+            return nullptr;
+        case 1:// small object
+            return reinterpret_cast<const HolderBase*>(std::get<SmallObject>(data_).local_buffer);
+        case 2:// large object
+            return std::get<std::unique_ptr<HolderBase>>(data_).get();
+        default:// monostate
+            return nullptr;
+    }
+}
+
+void* Any::GetDataPtr() {
+    switch (data_.index()) {
+        case 0:// std::monostate
+            return nullptr;
+        case 1:// small object
+            return std::get<SmallObject>(data_).GetDataPtr();
+        case 2:
+            return std::get<std::unique_ptr<HolderBase>>(data_)->GetDataPtr();
+        default:
+            return nullptr;
+    }
+}
+
+#endif
+
 
 const void* Any::GetDataPtr() const {
     return const_cast<Any*>(this)->GetDataPtr();
@@ -78,9 +116,8 @@ std::type_index Any::type() const {
     AETHERMIND_UNREACHABLE();
 }
 
-
 bool Any::IsTensor() const noexcept {
-    return type() == std::type_index(typeid(Tensor));
+    return CheckType<Tensor>();
 }
 
 Tensor Any::ToTensor() const {

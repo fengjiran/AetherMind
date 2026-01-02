@@ -11,6 +11,8 @@
 #include <typeindex>
 #include <variant>
 
+// #define USE_VISITOR_PATTERN
+
 namespace aethermind {
 
 class HolderBase {
@@ -93,36 +95,33 @@ public:
     using Int = int64_t;
     using Float = double;
     using Bool = bool;
-
+    template<typename T>
+    using select_plain_type = std::conditional_t<details::is_boolean<T>, Bool,
+                                                 std::conditional_t<details::is_integral<T>,
+                                                                    Int, std::conditional_t<details::is_floating_point<T>, Float, String>>>;
     Any() = default;
     ~Any() = default;
 
-    template<details::is_plain_type T>
-    Any(T value) {//NOLINT
-        using TargetType = std::conditional_t<details::is_boolean<T>, Bool,
-                                              std::conditional_t<details::is_integral<T>,
-                                                                 Int, std::conditional_t<details::is_floating_point<T>, Float, String>>>;
-        if constexpr (sizeof(Holder<TargetType>) <= kSmallObjectSize) {
-            data_ = SmallObject{static_cast<TargetType>(value)};
+    template<typename T,
+             typename U = std::decay_t<T>,
+             typename TargetType = std::conditional_t<details::is_plain_type<U>, select_plain_type<U>, U>>
+        requires(!std::is_same_v<U, Any>)
+    Any(T&& value) : type_info_cache_(std::type_index(typeid(TargetType))) {//NOLINT
+        if constexpr (details::is_plain_type<U>) {
+            if constexpr (sizeof(Holder<TargetType>) <= kSmallObjectSize) {
+                // small object, construct at local buffer
+                data_ = SmallObject{static_cast<TargetType>(value)};
+            } else {
+                data_ = std::make_unique<Holder<TargetType>>(static_cast<TargetType>(value));
+            }
         } else {
-            data_ = std::make_unique<Holder<TargetType>>(static_cast<TargetType>(value));
+            if constexpr (sizeof(Holder<TargetType>) <= kSmallObjectSize) {
+                // small object, construct at local buffer
+                data_ = SmallObject{std::forward<T>(value)};
+            } else {
+                data_ = std::make_unique<Holder<TargetType>>(std::forward<T>(value));
+            }
         }
-
-        type_info_cache_ = std::type_index(typeid(TargetType));
-    }
-
-    // not plain type ctor
-    template<typename T, typename U = std::decay_t<T>>
-        requires(!details::is_plain_type<U> && !std::same_as<U, Any>)
-    Any(T&& value) {//NOLINT
-        if constexpr (sizeof(Holder<U>) <= kSmallObjectSize) {
-            // small object, construct at local buffer
-            data_ = SmallObject{std::forward<T>(value)};
-        } else {
-            data_ = std::make_unique<Holder<U>>(std::forward<T>(value));
-        }
-
-        type_info_cache_ = std::type_index(typeid(U));
     }
 
     Any(const Any& other);
@@ -167,6 +166,7 @@ public:
 
     NODISCARD const void* GetDataPtr() const;
 
+#ifdef USE_VISITOR_PATTERN
     template<typename T>
     NODISCARD std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Any>) {
@@ -184,6 +184,44 @@ public:
             return std::visit(Caster<T>{}, std::move(data_));
         }
     }
+#else
+    template<typename T>
+    NODISCARD std::optional<T> as() const& {
+        if constexpr (std::is_same_v<T, Any>) {
+            return *this;
+        } else {
+            switch (data_.index()) {
+                case 0:// std::monostate
+                    return std::nullopt;
+                case 1:// small object
+                    return Caster<T>()(std::get<SmallObject>(data_));
+                case 2:// large object
+                    return Caster<T>()(std::get<std::unique_ptr<HolderBase>>(data_));
+                default:
+                    return std::nullopt;
+            }
+        }
+    }
+
+    template<typename T>
+    NODISCARD std::optional<T> as() && {
+        if constexpr (std::is_same_v<T, Any>) {
+            return std::move(*this);
+        } else {
+            switch (data_.index()) {
+                case 0:// std::monostate
+                    return std::nullopt;
+                case 1:// small object
+                    return Caster<T>()(std::move(std::get<SmallObject>(data_)));
+                case 2:// large object
+                    return Caster<T>()(std::move(std::get<std::unique_ptr<HolderBase>>(data_)));
+                default:
+                    return std::nullopt;
+            }
+        }
+    }
+
+#endif
 
     template<typename T>
     NODISCARD bool can_cast() const noexcept {
@@ -267,27 +305,27 @@ public:
     }
 
     NODISCARD bool IsBool() const noexcept {
-        return type() == std::type_index(typeid(Bool));
+        return CheckType<Bool>();
     }
 
     NODISCARD bool IsInteger() const noexcept {
-        return type() == std::type_index(typeid(Int));
+        return CheckType<Int>();
     }
 
     NODISCARD bool IsFloatingPoint() const noexcept {
-        return type() == std::type_index(typeid(Float));
+        return CheckType<Float>();
     }
 
     NODISCARD bool IsString() const noexcept {
-        return type() == std::type_index(typeid(String));
+        return CheckType<String>();
     }
 
     NODISCARD bool IsVoidPtr() const noexcept {
-        return type() == std::type_index(typeid(void*));
+        return CheckType<void*>();
     }
 
     NODISCARD bool IsDevice() const noexcept {
-        return type() == std::type_index(typeid(Device));
+        return CheckType<Device>();
     }
 
     NODISCARD bool IsTensor() const noexcept;
@@ -355,6 +393,11 @@ public:
 
 private:
     static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
+
+    template<typename T>
+    NODISCARD bool CheckType() const noexcept {
+        return type() == std::type_index(typeid(T));
+    }
 
     struct SmallObject {
         SmallObject() : SmallObject(0) {}

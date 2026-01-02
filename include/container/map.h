@@ -72,6 +72,14 @@ public:
         return static_cast<const Derived*>(this)->GetDataPtrImpl(idx);
     }
 
+    NODISCARD size_t GetNextIndexOf(size_t idx) const {
+        return static_cast<const Derived*>(this)->GetNextIndexOfImpl(idx);
+    }
+
+    NODISCARD size_t GetPrevIndexOf(size_t idx) const {
+        return static_cast<const Derived*>(this)->GetPrevIndexOfImpl(idx);
+    }
+
     NODISCARD const_iterator begin() const {
         return static_cast<const Derived*>(this)->begin_impl();
     }
@@ -166,13 +174,13 @@ public:
 
     IteratorImpl& operator++() {
         Check();
-        index_ = ptr()->IncIter(index_);
+        index_ = ptr()->GetNextIndexOf(index_);
         return *this;
     }
 
     IteratorImpl& operator--() {
         Check();
-        index_ = ptr()->DecIter(index_);
+        index_ = ptr()->GetPrevIndexOf(index_);
         return *this;
     }
 
@@ -192,7 +200,7 @@ public:
         Check();
         auto sz = index();
         for (difference_type i = 0; i < offset; ++i) {
-            sz = ptr()->IncIter(sz);
+            sz = ptr()->GetNextIndexOf(sz);
         }
         return IteratorImpl(sz, ptr());
     }
@@ -201,7 +209,7 @@ public:
         Check();
         auto sz = index();
         for (difference_type i = 0; i < offset; ++i) {
-            sz = ptr()->DecIter(sz);
+            sz = ptr()->GetPrevIndexOf(sz);
         }
         return IteratorImpl(sz, ptr());
     }
@@ -283,12 +291,12 @@ private:
         return static_cast<KVType*>(data()) + index;
     }
 
-    NODISCARD size_t IncIter(size_t index) const {
-        return index + 1 < size_ ? index + 1 : size_;
+    NODISCARD size_t GetNextIndexOfImpl(size_t idx) const {
+        return idx + 1 < size_ ? idx + 1 : size_;
     }
 
-    NODISCARD size_t DecIter(size_t index) const {
-        return index > 0 ? index - 1 : size_;
+    NODISCARD size_t GetPrevIndexOfImpl(size_t idx) const {
+        return idx > 0 ? idx - 1 : size_;
     }
 
     static ObjectPtr<SmallMapImpl> CreateImpl(size_t n = kInitSize);
@@ -406,13 +414,11 @@ private:
     }
 
     NODISCARD const_iterator begin_impl() const {
-        // return const_cast<DenseMapImpl*>(this)->begin_impl();
-        return {iter_list_head_, this};
+        return const_cast<DenseMapImpl*>(this)->begin_impl();
     }
 
     NODISCARD const_iterator end_impl() const {
-        // return const_cast<DenseMapImpl*>(this)->end_impl();
-        return {kInvalidIndex, this};
+        return const_cast<DenseMapImpl*>(this)->end_impl();
     }
 
     NODISCARD const_iterator find_impl(const key_type& key) const;
@@ -441,9 +447,9 @@ private:
     // Construct a ListNode from hash code if the position is head of list
     NODISCARD std::optional<Cursor> GetListHead(size_t hash_value) const;
 
-    NODISCARD size_t IncIter(size_t index) const;
+    NODISCARD size_t GetNextIndexOfImpl(size_t idx) const;
 
-    NODISCARD size_t DecIter(size_t index) const;
+    NODISCARD size_t GetPrevIndexOfImpl(size_t idx) const;
 
     NODISCARD mapped_type& At(const key_type& key) const;
 

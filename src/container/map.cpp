@@ -345,7 +345,7 @@ DenseMapImpl::KVType* DenseMapImpl::GetDataPtrImpl(size_t index) const {
     return &Cursor(index, this).GetData();
 }
 
-size_t DenseMapImpl::IncIter(size_t index) const {
+size_t DenseMapImpl::GetNextIndexOfImpl(size_t index) const {
     // keep at the end of iterator
     if (index == kInvalidIndex) {
         return index;
@@ -354,7 +354,7 @@ size_t DenseMapImpl::IncIter(size_t index) const {
     return Cursor(index, this).GetEntry().next;
 }
 
-size_t DenseMapImpl::DecIter(size_t index) const {
+size_t DenseMapImpl::GetPrevIndexOfImpl(size_t index) const {
     // this is the end iterator, we need to return tail.
     if (index == kInvalidIndex) {
         return iter_list_tail_;

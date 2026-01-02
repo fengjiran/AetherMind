@@ -143,6 +143,9 @@ public:
     }
 
     template<typename T>
+        requires requires(T t) {
+            Any(t);
+        }
     Any& operator=(T value) & {
         Any(std::move(value)).swap(*this);
         return *this;
@@ -454,6 +457,7 @@ private:
             reinterpret_cast<HolderBase*>(local_buffer)->~HolderBase();
         }
 
+        // alignas(std::max_align_t)
         uint8_t local_buffer[kSmallObjectSize]{};
     };
 

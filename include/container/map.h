@@ -57,55 +57,55 @@ public:
     }
 
     NODISCARD size_t count(const key_type& key) const {
-        return static_cast<const Derived*>(this)->count_impl(key);
+        return GetDerivedPtr()->count_impl(key);
     }
 
     mapped_type& at(const key_type& key) {
-        return static_cast<Derived*>(this)->at_impl(key);
+        return GetDerivedPtr()->at_impl(key);
     }
 
     NODISCARD const mapped_type& at(const key_type& key) const {
-        return static_cast<const Derived*>(this)->at_impl(key);
+        return GetDerivedPtr()->at_impl(key);
     }
 
     NODISCARD KVType* GetDataPtr(size_t idx) const {
-        return static_cast<const Derived*>(this)->GetDataPtrImpl(idx);
+        return GetDerivedPtr()->GetDataPtrImpl(idx);
     }
 
     NODISCARD size_t GetNextIndexOf(size_t idx) const {
-        return static_cast<const Derived*>(this)->GetNextIndexOfImpl(idx);
+        return GetDerivedPtr()->GetNextIndexOfImpl(idx);
     }
 
     NODISCARD size_t GetPrevIndexOf(size_t idx) const {
-        return static_cast<const Derived*>(this)->GetPrevIndexOfImpl(idx);
+        return GetDerivedPtr()->GetPrevIndexOfImpl(idx);
     }
 
     NODISCARD const_iterator begin() const {
-        return static_cast<const Derived*>(this)->begin_impl();
+        return GetDerivedPtr()->begin_impl();
     }
 
     NODISCARD const_iterator end() const {
-        return static_cast<const Derived*>(this)->end_impl();
+        return GetDerivedPtr()->end_impl();
     }
 
     NODISCARD iterator begin() {
-        return static_cast<Derived*>(this)->begin_impl();
+        return GetDerivedPtr()->begin_impl();
     }
 
     NODISCARD iterator end() {
-        return static_cast<Derived*>(this)->end_impl();
+        return GetDerivedPtr()->end_impl();
     }
 
     NODISCARD const_iterator find(const key_type& key) const {
-        return static_cast<const Derived*>(this)->find_impl(key);
+        return GetDerivedPtr()->find_impl(key);
     }
 
     NODISCARD iterator find(const key_type& key) {
-        return static_cast<Derived*>(this)->find_impl(key);
+        return GetDerivedPtr()->find_impl(key);
     }
 
     void erase1(const iterator& pos) {
-        return static_cast<Derived*>(this)->erase_impl1(pos);
+        return GetDerivedPtr()->erase_impl1(pos);
     }
 
     void erase1(const key_type& key) {
@@ -122,6 +122,14 @@ protected:
     static constexpr size_t kInitSize = 2; // Init map size
     static constexpr size_t kThreshold = 4;// The threshold of the small and dense map
     static constexpr size_t kIncFactor = 2;
+
+    NODISCARD Derived* GetDerivedPtr() noexcept {
+        return static_cast<Derived*>(this);
+    }
+
+    NODISCARD const Derived* GetDerivedPtr() const noexcept {
+        return static_cast<const Derived*>(this);
+    }
 
     static ObjectPtr<Object> Create(size_t n = kInitSize);
 
@@ -198,18 +206,32 @@ public:
 
     IteratorImpl operator+(difference_type offset) const {
         Check();
+        if (offset < 0) {
+            return operator-(static_cast<difference_type>(-offset));
+        }
+
         auto sz = index();
         for (difference_type i = 0; i < offset; ++i) {
             sz = ptr()->GetNextIndexOf(sz);
+            if (sz == ptr()->end().index()) {
+                break;
+            }
         }
         return IteratorImpl(sz, ptr());
     }
 
     IteratorImpl operator-(difference_type offset) const {
         Check();
+        if (offset < 0) {
+            return operator+(static_cast<difference_type>(-offset));
+        }
+
         auto sz = index();
         for (difference_type i = 0; i < offset; ++i) {
             sz = ptr()->GetPrevIndexOf(sz);
+            if (sz == ptr()->end().index()) {
+                break;
+            }
         }
         return IteratorImpl(sz, ptr());
     }

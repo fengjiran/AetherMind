@@ -138,24 +138,25 @@ public:
     using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
     using difference_type = std::ptrdiff_t;
 
-    IteratorImpl() : index_(0), ptr_(nullptr) {}
+    IteratorImpl() noexcept : index_(0), ptr_(nullptr) {}
 
-    IteratorImpl(size_t index, ContainerPtrType ptr) : index_(index), ptr_(ptr) {}
+    IteratorImpl(size_t index, ContainerPtrType ptr) noexcept : index_(index), ptr_(ptr) {}
 
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
-        requires(AlwaysFalse == false)
+        requires(IsConst && !AlwaysFalse)
     IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
 
-    NODISCARD size_t index() const {
+    NODISCARD size_t index() const noexcept {
         return index_;
     }
 
-    NODISCARD ContainerPtrType ptr() const {
+    NODISCARD ContainerPtrType ptr() const noexcept {
         return ptr_;
     }
 
     pointer operator->() const {
+        Check();
         return ptr()->GetDataPtr(index_);
     }
 
@@ -164,11 +165,13 @@ public:
     }
 
     IteratorImpl& operator++() {
+        Check();
         index_ = ptr()->IncIter(index_);
         return *this;
     }
 
     IteratorImpl& operator--() {
+        Check();
         index_ = ptr()->DecIter(index_);
         return *this;
     }
@@ -186,6 +189,7 @@ public:
     }
 
     IteratorImpl operator+(difference_type offset) const {
+        Check();
         auto sz = index();
         for (difference_type i = 0; i < offset; ++i) {
             sz = ptr()->IncIter(sz);
@@ -194,6 +198,7 @@ public:
     }
 
     IteratorImpl operator-(difference_type offset) const {
+        Check();
         auto sz = index();
         for (difference_type i = 0; i < offset; ++i) {
             sz = ptr()->DecIter(sz);
@@ -225,6 +230,11 @@ public:
 
     bool operator!=(const IteratorImpl& other) const {
         return !(*this == other);
+    }
+
+    void Check() const {
+        CHECK(ptr_ != nullptr) << "Iterator pointer is nullptr.";
+        // check index out of range
     }
 
 private:

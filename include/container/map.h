@@ -6,7 +6,6 @@
 #define AETHERMIND_CONTAINER_MAP_H
 
 #include "any.h"
-#include "map.h"
 
 #include <concepts>
 #include <tuple>
@@ -17,9 +16,10 @@ namespace details {
 
 template<typename InputIter>
 concept is_valid_iter = requires(InputIter t) {
-    requires std::convertible_to<typename std::iterator_traits<InputIter>::iterator_category,
-                                 std::input_iterator_tag>;
+    requires std::input_iterator<InputIter>;
     { *t } -> std::convertible_to<std::pair<Any, Any>>;
+    ++t;
+    --t;
 };
 
 }// namespace details
@@ -31,8 +31,12 @@ public:
     using mapped_type = Any;
     using KVType = std::pair<key_type, mapped_type>;
 
-    class iterator;
-    class const_iterator;
+    // IteratorImpl is a base class for iterator and const_iterator
+    template<bool IsConst>
+    class IteratorImpl;
+
+    using iterator = IteratorImpl<false>;
+    using const_iterator = IteratorImpl<true>;
 
     MapImpl() : data_(nullptr), size_(0), slots_(0) {}
 
@@ -52,10 +56,6 @@ public:
         return size() == 0;
     }
 
-    NODISCARD KVType* GetDataPtr(size_t idx) const {
-        return static_cast<const Derived*>(this)->GetDataPtrImpl(idx);
-    }
-
     NODISCARD size_t count(const key_type& key) const {
         return static_cast<const Derived*>(this)->count_impl(key);
     }
@@ -66,6 +66,10 @@ public:
 
     NODISCARD const mapped_type& at(const key_type& key) const {
         return static_cast<const Derived*>(this)->at_impl(key);
+    }
+
+    NODISCARD KVType* GetDataPtr(size_t idx) const {
+        return static_cast<const Derived*>(this)->GetDataPtrImpl(idx);
     }
 
     NODISCARD const_iterator begin() const {
@@ -124,23 +128,30 @@ protected:
 };
 
 template<typename Derived>
-class MapImpl<Derived>::iterator {
+template<bool IsConst>
+class MapImpl<Derived>::IteratorImpl {
 public:
     using iterator_category = std::bidirectional_iterator_tag;
     using value_type = KVType;
-    using pointer = value_type*;
-    using reference = value_type&;
+    using ContainerPtrType = std::conditional_t<IsConst, const Derived*, Derived*>;
+    using pointer = std::conditional_t<IsConst, const value_type*, value_type*>;
+    using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
     using difference_type = std::ptrdiff_t;
 
-    iterator() : index_(0), ptr_(nullptr) {}
+    IteratorImpl() : index_(0), ptr_(nullptr) {}
 
-    iterator(size_t index, Derived* ptr) : index_(index), ptr_(ptr) {}
+    IteratorImpl(size_t index, ContainerPtrType ptr) : index_(index), ptr_(ptr) {}
+
+    // iterator can convert to const_iterator
+    template<bool AlwaysFalse>
+        requires(AlwaysFalse == false)
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
 
     NODISCARD size_t index() const {
         return index_;
     }
 
-    NODISCARD Derived* ptr() const {
+    NODISCARD ContainerPtrType ptr() const {
         return ptr_;
     }
 
@@ -152,179 +163,73 @@ public:
         return *operator->();
     }
 
-    iterator& operator++() {
+    IteratorImpl& operator++() {
         index_ = ptr()->IncIter(index_);
         return *this;
     }
 
-    iterator& operator--() {
+    IteratorImpl& operator--() {
         index_ = ptr()->DecIter(index_);
         return *this;
     }
 
-    iterator operator++(int) {
-        iterator tmp = *this;
+    IteratorImpl operator++(int) {
+        IteratorImpl tmp = *this;
         operator++();
         return tmp;
     }
 
-    iterator operator--(int) {
-        iterator tmp = *this;
+    IteratorImpl operator--(int) {
+        IteratorImpl tmp = *this;
         operator--();
         return tmp;
     }
 
-    iterator operator+(difference_type offset) const {
+    IteratorImpl operator+(difference_type offset) const {
         auto sz = index();
         for (difference_type i = 0; i < offset; ++i) {
             sz = ptr()->IncIter(sz);
         }
-        return iterator(sz, ptr());
+        return IteratorImpl(sz, ptr());
     }
 
-    iterator operator-(difference_type offset) const {
+    IteratorImpl operator-(difference_type offset) const {
         auto sz = index();
         for (difference_type i = 0; i < offset; ++i) {
             sz = ptr()->DecIter(sz);
         }
-        return iterator(sz, ptr());
+        return IteratorImpl(sz, ptr());
     }
 
-    iterator& operator+=(difference_type offset) {
+    IteratorImpl& operator+=(difference_type offset) {
         for (difference_type i = 0; i < offset; ++i) {
             operator++();
         }
         return *this;
     }
 
-    iterator& operator-=(difference_type offset) {
+    IteratorImpl& operator-=(difference_type offset) {
         for (difference_type i = 0; i < offset; ++i) {
             operator--();
         }
         return *this;
     }
 
-    difference_type operator-(const iterator& other) const {
+    difference_type operator-(const IteratorImpl& other) const {
         return static_cast<difference_type>(index()) - static_cast<difference_type>(other.index());
     }
 
-    bool operator==(const iterator& other) const {
+    bool operator==(const IteratorImpl& other) const {
         return index_ == other.index_ && ptr_ == other.ptr_;
     }
 
-    bool operator!=(const iterator& other) const {
+    bool operator!=(const IteratorImpl& other) const {
         return !(*this == other);
     }
 
-protected:
-    size_t index_;// The position in the array.
-    Derived* ptr_;
-
-    friend class SmallMapImpl;
-    friend class DenseMapImpl;
-};
-
-template<typename Derived>
-class MapImpl<Derived>::const_iterator {
-public:
-    using iterator_category = std::bidirectional_iterator_tag;
-    using value_type = KVType;
-    using const_pointer = const value_type*;
-    using const_reference = const value_type&;
-    using difference_type = std::ptrdiff_t;
-
-    const_iterator() : index_(0), ptr_(nullptr) {}
-
-    const_iterator(size_t index, const Derived* ptr) : index_(index), ptr_(ptr) {}
-
-    const_iterator(const iterator& iter) : index_(iter.index()), ptr_(iter.ptr()) {}//NOLINT
-
-    NODISCARD size_t index() const {
-        return index_;
-    }
-
-    NODISCARD const Derived* ptr() const {
-        return ptr_;
-    }
-
-    const_pointer operator->() const {
-        return ptr()->GetDataPtr(index_);
-    }
-
-    const_reference operator*() const {
-        return *operator->();
-    }
-
-    const_iterator& operator++() {
-        index_ = ptr()->IncIter(index_);
-        return *this;
-    }
-
-    const_iterator& operator--() {
-        index_ = ptr()->DecIter(index_);
-        return *this;
-    }
-
-    const_iterator operator++(int) {
-        const_iterator tmp = *this;
-        operator++();
-        return tmp;
-    }
-
-    const_iterator operator--(int) {
-        const_iterator tmp = *this;
-        operator--();
-        return tmp;
-    }
-
-    const_iterator operator+(difference_type offset) const {
-        auto sz = index();
-        for (difference_type i = 0; i < offset; ++i) {
-            sz = ptr()->IncIter(sz);
-        }
-        return const_iterator(sz, ptr());
-    }
-
-    const_iterator operator-(difference_type offset) const {
-        auto sz = index();
-        for (difference_type i = 0; i < offset; ++i) {
-            sz = ptr()->DecIter(sz);
-        }
-        return const_iterator(sz, ptr());
-    }
-
-    const_iterator& operator+=(difference_type offset) {
-        for (difference_type i = 0; i < offset; ++i) {
-            operator++();
-        }
-        return *this;
-    }
-
-    const_iterator& operator-=(difference_type offset) {
-        for (difference_type i = 0; i < offset; ++i) {
-            operator--();
-        }
-        return *this;
-    }
-
-    difference_type operator-(const const_iterator& other) const {
-        return static_cast<difference_type>(index()) - static_cast<difference_type>(other.index());
-    }
-
-    bool operator==(const const_iterator& other) const {
-        return index_ == other.index_ && ptr_ == other.ptr_;
-    }
-
-    bool operator!=(const const_iterator& other) const {
-        return !(*this == other);
-    }
-
-protected:
-    size_t index_;      // The position in the array.
-    const Derived* ptr_;// The container it pointer to.
-
-    friend class SmallMapImpl;
-    friend class DenseMapImpl;
+private:
+    size_t index_;
+    ContainerPtrType ptr_;
 };
 
 class SmallMapImpl : public MapImpl<SmallMapImpl> {
@@ -491,11 +396,13 @@ private:
     }
 
     NODISCARD const_iterator begin_impl() const {
-        return const_cast<DenseMapImpl*>(this)->begin_impl();
+        // return const_cast<DenseMapImpl*>(this)->begin_impl();
+        return {iter_list_head_, this};
     }
 
     NODISCARD const_iterator end_impl() const {
-        return const_cast<DenseMapImpl*>(this)->end_impl();
+        // return const_cast<DenseMapImpl*>(this)->end_impl();
+        return {kInvalidIndex, this};
     }
 
     NODISCARD const_iterator find_impl(const key_type& key) const;
@@ -683,7 +590,7 @@ class Map : public ObjectRef {
 public:
     using key_type = K;
     using mapped_type = V;
-    using value_type = std::pair<key_type, mapped_type>;
+    using value_type = std::pair<const key_type, mapped_type>;
     using size_type = size_t;
     using difference_type = std::ptrdiff_t;
     using pointer = value_type*;
@@ -964,28 +871,18 @@ public:
     }
 
     template<typename U = V>
-        requires requires {
-            typename U::key_type;
-            typename U::mapped_type;
-            requires details::is_map_subscript<U>;
-        }
+        requires details::is_map<U>
     decltype(auto) operator[](const U::key_type& key) {
         auto* p = GetRawDataPtr();
         return p->second.template operator[]<U>(key);
     }
 
     template<typename U = V>
-        requires requires {
-            typename U::size_type;
-            requires details::is_array_subscript<U>;
-        }
+        requires details::is_container<U>
     decltype(auto) operator[](U::size_type i) {
         auto* p = GetRawDataPtr();
         return p->second.template operator[]<U>(i);
     }
-
-    // template<typename U = V>
-
 
     friend bool operator==(const PairProxy& lhs, const PairProxy& rhs) {
         return *lhs.GetRawDataPtr() == *rhs.GetRawDataPtr();

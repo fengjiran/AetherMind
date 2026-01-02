@@ -276,11 +276,7 @@ public:
     }
 
     template<typename T>
-        requires requires {
-            typename T::key_type;
-            typename T::mapped_type;
-            requires details::is_map_subscript<T>;
-        }
+        requires details::is_map<T>
     decltype(auto) operator[](const T::key_type& key) {
         return (*static_cast<T*>(GetDataPtr()))[key];
     }

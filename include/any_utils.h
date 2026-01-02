@@ -57,20 +57,20 @@ concept has_use_count_method_v = requires(T t) {
     t.use_count();
 };
 
-template<typename T, typename IndexType>
-concept has_operator_subscript = requires(T t, IndexType i) {
-    t[i];
-};
+// template<typename T, typename IndexType>
+// concept has_operator_subscript = requires(T t, IndexType i) {
+//     t[i];
+// };
 
-template<typename T>
-concept is_map_subscript = requires {
-    typename T::key_type;
-    typename T::mapped_type;
-    requires has_operator_subscript<T, typename T::key_type>;
-};
-
-template<typename T>
-concept is_array_subscript = has_operator_subscript<T, typename T::size_type>;
+// template<typename T>
+// concept is_map_subscript = requires {
+//     typename T::key_type;
+//     typename T::mapped_type;
+//     requires has_operator_subscript<T, typename T::key_type>;
+// };
+//
+// template<typename T>
+// concept is_array_subscript = has_operator_subscript<T, typename T::size_type>;
 
 template<typename T>
 concept is_container = requires(T t) {
@@ -100,7 +100,7 @@ concept is_unordered_map = is_map<T> && requires(T t) {
 
 template<typename T>
 concept is_unique_key_map = is_map<T> && (std::is_same_v<T, std::unordered_map<typename T::key_type, typename T::mapped_type>> ||
-                                           std::is_same_v<T, std::map<typename T::key_type, typename T::mapped_type>>);
+                                          std::is_same_v<T, std::map<typename T::key_type, typename T::mapped_type>>);
 
 #else
 template<typename T>

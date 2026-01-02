@@ -93,15 +93,10 @@ public:
                               sizeof(ObjType) % alignof(ElemType) == 0,
                       "element alignment constraint");
 
-        // static_assert((alignof(ObjType) % alignof(ElemType) == 0 || alignof(ElemType) % alignof(ObjType) == 0) &&
-        //                       sizeof(ObjType) % alignof(ElemType) == 0,
-        //               "element alignment constraint");
-
         template<typename... Args>
         static ObjType* allocate(size_t num_elems, Args&&... args) {
             const size_t size = sizeof(ObjType) + num_elems * sizeof(ElemType);
             constexpr size_t align = alignof(ObjType);
-            // constexpr size_t align = std::max(alignof(ObjType), alignof(ElemType));
             // C++ standard always guarantees that alignof operator returns a power of 2
             // const size_t aligned_size = (size + (align - 1)) & ~(align - 1);
             const size_t aligned_size = (size + align - 1) / align * align;

@@ -88,7 +88,7 @@ std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::Insert
 
 void SmallMapImpl::erase_impl1(const iterator& pos) {
     const auto idx = pos.index();
-    if (pos.ptr_ == nullptr || idx >= size()) {
+    if (pos.ptr() == nullptr || idx >= size()) {
         return;
     }
 
@@ -378,7 +378,7 @@ DenseMapImpl::iterator DenseMapImpl::find_impl(const key_type& key) {
 
 void DenseMapImpl::erase_impl1(const iterator& pos) {
     const auto idx = pos.index();
-    if (pos.ptr_ == nullptr || idx >= slots()) {
+    if (pos.ptr() == nullptr || idx >= slots()) {
         return;
     }
 

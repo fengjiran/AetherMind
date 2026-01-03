@@ -229,8 +229,13 @@ public:
     }
 
     IteratorImpl& operator+=(difference_type offset) {
-        for (difference_type i = 0; i < offset; ++i) {
-            operator++();
+        Check();
+        if (offset < 0) {
+            return operator-=(static_cast<difference_type>(-offset));
+        }
+
+        for (difference_type i = 0; i < offset && index_ != ptr()->end().index(); ++i) {
+            index_ = ptr()->GetNextIndexOf(index_);
         }
         return *this;
     }
@@ -900,6 +905,11 @@ public:
 
     IteratorImpl() = default;
 
+    // // iterator can convert to const_iterator
+    // template<bool AlwaysFalse>
+    //     requires(IsConst && !AlwaysFalse)
+    // IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : iter_(other.iter_) {}//NOLINT
+
     NODISCARD size_type index() const {
         return std::visit([](const auto& iter) { return iter.index(); }, iter_);
     }
@@ -918,12 +928,6 @@ public:
     }
 
     IteratorImpl& operator++() {
-        // auto visitor = []<typename T>(T& iter) {
-        //     if constexpr (std::is_same_v<T, SmallIterType> || std::is_same_v<T, DenseIterType>) {
-        //         ++iter;
-        //     }
-        // };
-        // std::visit(visitor, iter_);
         std::visit([](auto& iter) { ++iter; }, iter_);
         return *this;
     }
@@ -945,24 +949,30 @@ public:
         return tmp;
     }
 
-    reference operator*() const {
-        switch (iter_.index()) {
-            case 0:
-                return std::get<SmallIterType>(iter_).operator*();
-            default:
-                return std::get<DenseIterType>(iter_).operator*();
-        }
+    IteratorImpl operator+(difference_type offset) const {
+        return std::visit([&](const auto& iter) { return iter + offset; }, iter_);
+    }
 
-        // return std::visit([]( auto&& iter) { return *iter; }, iter_);
+    IteratorImpl operator-(difference_type offset) const {
+        return std::visit([&](const auto& iter) { return iter - offset; }, iter_);
+    }
+
+    IteratorImpl& operator+=(difference_type offset) {
+        std::visit([&](auto& iter) { iter += offset; }, iter_);
+        return *this;
+    }
+
+    IteratorImpl& operator-=(difference_type offset) {
+        std::visit([&](auto& iter) { iter -= offset; }, iter_);
+        return *this;
+    }
+
+    reference operator*() const {
+        return std::visit([](auto& iter) -> reference { return *iter; }, iter_);
     }
 
     pointer operator->() const {
-        switch (iter_.index()) {
-            case 0:
-                return std::get<SmallIterType>(iter_).operator->();
-            default:
-                return std::get<DenseIterType>(iter_).operator->();
-        }
+        return std::visit([](auto& iter) -> pointer { return iter.operator->(); }, iter_);
     }
 
     bool operator==(const IteratorImpl& other) const {
@@ -1058,6 +1068,7 @@ private:
                                  : map_.dense_ptr()->GetDataPtr(idx_);
     }
 };
+
 template<typename K, typename V>
 Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
     if (IsSmallMap()) {

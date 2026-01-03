@@ -6,6 +6,7 @@
 #define AETHERMIND_CONTAINER_MAP_H
 
 #include "any.h"
+#include "map.h"
 
 #include <concepts>
 #include <tuple>
@@ -102,14 +103,6 @@ public:
 
     NODISCARD iterator find(const key_type& key) {
         return GetDerivedPtr()->find_impl(key);
-    }
-
-    void erase1(const iterator& pos) {
-        return GetDerivedPtr()->erase_impl1(pos);
-    }
-
-    void erase1(const key_type& key) {
-        erase1(find(key));
     }
 
     NODISCARD iterator erase(iterator pos);
@@ -307,7 +300,6 @@ private:
 
     NODISCARD const mapped_type& at_impl(const key_type& key) const;
 
-    void erase_impl1(const iterator& pos);
     iterator erase_impl(iterator pos);
 
     NODISCARD KVType* GetDataPtrImpl(size_t index) const {
@@ -638,6 +630,12 @@ public:
     using reference = value_type&;
     using const_reference = const value_type&;
 
+    template<bool IsConst>
+    class IteratorImpl;
+
+    using iterator = IteratorImpl<false>;
+    using const_iterator = IteratorImpl<true>;
+
     class PairProxy;
 
     Map() : impl_(SmallMapImpl::Create()) {}
@@ -698,9 +696,6 @@ public:
         Map(list).swap(*this);
         return *this;
     }
-
-    class iterator;
-    class const_iterator;
 
     NODISCARD size_type size() const noexcept {
         return IsSmallMap() ? small_ptr()->size() : dense_ptr()->size();
@@ -892,6 +887,112 @@ private:
 };
 
 template<typename K, typename V>
+template<bool IsConst>
+class Map<K, V>::IteratorImpl {
+public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using value_type = SmallMapImpl::KVType;
+    using pointer = std::conditional_t<IsConst, const value_type*, value_type*>;
+    using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
+    using SmallIterType = std::conditional_t<IsConst, SmallMapImpl::const_iterator, SmallMapImpl::iterator>;
+    using DenseIterType = std::conditional_t<IsConst, DenseMapImpl::const_iterator, DenseMapImpl::iterator>;
+
+    IteratorImpl() = default;
+
+    NODISCARD size_type index() const {
+        return std::visit([](const auto& iter) { return iter.index(); }, iter_);
+    }
+
+    NODISCARD bool IsSmallMap() const {
+        return std::holds_alternative<SmallIterType>(iter_);
+    }
+
+    NODISCARD SmallIterType GetSmallIter() const {
+        auto it = std::get<SmallIterType>(iter_);
+        return std::get<SmallIterType>(iter_);
+    }
+
+    NODISCARD DenseIterType GetDenseIter() const {
+        return std::get<DenseIterType>(iter_);
+    }
+
+    IteratorImpl& operator++() {
+        // auto visitor = []<typename T>(T& iter) {
+        //     if constexpr (std::is_same_v<T, SmallIterType> || std::is_same_v<T, DenseIterType>) {
+        //         ++iter;
+        //     }
+        // };
+        // std::visit(visitor, iter_);
+        std::visit([](auto& iter) { ++iter; }, iter_);
+        return *this;
+    }
+
+    IteratorImpl& operator--() {
+        std::visit([](auto& iter) { --iter; }, iter_);
+        return *this;
+    }
+
+    IteratorImpl operator++(int) {
+        IteratorImpl tmp = *this;
+        operator++();
+        return tmp;
+    }
+
+    IteratorImpl operator--(int) {
+        IteratorImpl tmp = *this;
+        operator--();
+        return tmp;
+    }
+
+    reference operator*() const {
+        switch (iter_.index()) {
+            case 0:
+                return std::get<SmallIterType>(iter_).operator*();
+            default:
+                return std::get<DenseIterType>(iter_).operator*();
+        }
+
+        // return std::visit([]( auto&& iter) { return *iter; }, iter_);
+    }
+
+    pointer operator->() const {
+        switch (iter_.index()) {
+            case 0:
+                return std::get<SmallIterType>(iter_).operator->();
+            default:
+                return std::get<DenseIterType>(iter_).operator->();
+        }
+    }
+
+    bool operator==(const IteratorImpl& other) const {
+        if (IsSmallMap() && other.IsSmallMap()) {
+            return std::get<SmallIterType>(iter_) == std::get<SmallIterType>(other.iter_);
+        }
+
+        if (!IsSmallMap() && !other.IsSmallMap()) {
+            return std::get<DenseIterType>(iter_) == std::get<DenseIterType>(other.iter_);
+        }
+
+        return false;
+    }
+
+    bool operator!=(const IteratorImpl& other) const {
+        return !(*this == other);
+    }
+
+private:
+    std::variant<SmallIterType, DenseIterType> iter_;
+
+    IteratorImpl(const SmallIterType& iter) : iter_(iter) {}// NOLINT
+
+    IteratorImpl(const DenseIterType& iter) : iter_(iter) {}//NOLINT
+
+    template<typename, typename>
+    friend class Map;
+};
+
+template<typename K, typename V>
 class Map<K, V>::PairProxy {
 public:
     PairProxy(Map& map, size_type idx) : map_(map), idx_(idx) {}
@@ -957,191 +1058,13 @@ private:
                                  : map_.dense_ptr()->GetDataPtr(idx_);
     }
 };
-
-template<typename K, typename V>
-class Map<K, V>::iterator {
-public:
-    using iterator_category = std::bidirectional_iterator_tag;
-    using difference_type = std::ptrdiff_t;
-    using value_type = SmallMapImpl::KVType;
-    using pointer = value_type*;
-    using reference = value_type&;
-
-    iterator() = default;
-
-    NODISCARD size_type index() const {
-        return is_small_map_ ? iter_.small_iter.index() : iter_.dense_iter.index();
-    }
-
-    iterator& operator++() {
-        if (is_small_map_) {
-            ++iter_.small_iter;
-        } else {
-            ++iter_.dense_iter;
-        }
-        return *this;
-    }
-
-    iterator& operator--() {
-        if (is_small_map_) {
-            --iter_.small_iter;
-        } else {
-            --iter_.dense_iter;
-        }
-        return *this;
-    }
-
-    iterator operator++(int) {
-        iterator tmp = *this;
-        operator++();
-        return tmp;
-    }
-
-    iterator operator--(int) {
-        iterator tmp = *this;
-        operator--();
-        return tmp;
-    }
-
-    reference operator*() const {
-        return is_small_map_ ? iter_.small_iter.operator*() : iter_.dense_iter.operator*();
-    }
-
-    pointer operator->() const {
-        return is_small_map_ ? iter_.small_iter.operator->() : iter_.dense_iter.operator->();
-    }
-
-    bool operator==(const iterator& other) const {
-        if (is_small_map_ && other.is_small_map_) {
-            return iter_.small_iter == other.iter_.small_iter;
-        }
-
-        if (!is_small_map_ && !other.is_small_map_) {
-            return iter_.dense_iter == other.iter_.dense_iter;
-        }
-
-        return false;
-    }
-
-    bool operator!=(const iterator& other) const {
-        return !(*this == other);
-    }
-
-private:
-    union Iter {
-        SmallMapImpl::iterator small_iter;
-        DenseMapImpl::iterator dense_iter;
-
-        Iter(const SmallMapImpl::iterator& iter) : small_iter(iter) {}//NOLINT
-        Iter(const DenseMapImpl::iterator& iter) : dense_iter(iter) {}//NOLINT
-    };
-
-    Iter iter_;
-    bool is_small_map_{true};
-
-    iterator(const SmallMapImpl::iterator& iter) : iter_(iter), is_small_map_(true) {} //NOLINT
-    iterator(const DenseMapImpl::iterator& iter) : iter_(iter), is_small_map_(false) {}//NOLINT
-
-    template<typename, typename>
-    friend class Map;
-};
-
-// sizeof = 24
-template<typename K, typename V>
-class Map<K, V>::const_iterator {
-public:
-    using iterator_category = std::bidirectional_iterator_tag;
-    using difference_type = std::ptrdiff_t;
-    using value_type = SmallMapImpl::KVType;
-    using const_pointer = const value_type*;
-    using const_reference = const value_type&;
-
-    const_iterator() = default;
-
-    NODISCARD size_type index() const {
-        return is_small_map_ ? iter_.small_iter.index() : iter_.dense_iter.index();
-    }
-
-    const_iterator& operator++() {
-        if (is_small_map_) {
-            ++iter_.small_iter;
-        } else {
-            ++iter_.dense_iter;
-        }
-        return *this;
-    }
-
-    const_iterator& operator--() {
-        if (is_small_map_) {
-            --iter_.small_iter;
-        } else {
-            --iter_.dense_iter;
-        }
-        return *this;
-    }
-
-    const_iterator operator++(int) {
-        const_iterator tmp = *this;
-        operator++();
-        return tmp;
-    }
-
-    const_iterator operator--(int) {
-        const_iterator tmp = *this;
-        operator--();
-        return tmp;
-    }
-
-    const_reference operator*() const {
-        return is_small_map_ ? iter_.small_iter.operator*() : iter_.dense_iter.operator*();
-    }
-
-    const_pointer operator->() const {
-        return is_small_map_ ? iter_.small_iter.operator->() : iter_.dense_iter.operator->();
-    }
-
-    bool operator==(const const_iterator& other) const {
-        if (is_small_map_ && other.is_small_map_) {
-            return iter_.small_iter == other.iter_.small_iter;
-        }
-
-        if (!is_small_map_ && !other.is_small_map_) {
-            return iter_.dense_iter == other.iter_.dense_iter;
-        }
-
-        return false;
-    }
-
-    bool operator!=(const const_iterator& other) const {
-        return !(*this == other);
-    }
-
-private:
-    union Iter {
-        SmallMapImpl::const_iterator small_iter;
-        DenseMapImpl::const_iterator dense_iter;
-
-        Iter(const SmallMapImpl::const_iterator& iter) : small_iter(iter) {}//NOLINT
-        Iter(const DenseMapImpl::const_iterator& iter) : dense_iter(iter) {}//NOLINT
-    };
-
-    Iter iter_;
-    bool is_small_map_{true};
-
-    const_iterator(const SmallMapImpl::const_iterator& iter) : iter_(iter), is_small_map_(true) {} //NOLINT
-    const_iterator(const DenseMapImpl::const_iterator& iter) : iter_(iter), is_small_map_(false) {}//NOLINT
-
-    template<typename, typename>
-    friend class Map;
-};
-
 template<typename K, typename V>
 Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
     if (IsSmallMap()) {
-        auto it = SmallMapImpl::const_iterator(pos.iter_.small_iter);
+        auto it = SmallMapImpl::const_iterator(pos.GetSmallIter());
         return erase(it);
     }
-    auto it = DenseMapImpl::const_iterator(pos.iter_.dense_iter);
+    auto it = DenseMapImpl::const_iterator(pos.GetDenseIter());
     return erase(it);
 }
 

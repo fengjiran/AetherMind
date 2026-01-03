@@ -96,28 +96,13 @@ std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::Insert
     return {new_impl, pos, true};
 }
 
-void SmallMapImpl::erase_impl1(const iterator& pos) {
-    const auto idx = pos.index();
-    if (pos.ptr() == nullptr || idx >= size()) {
-        return;
-    }
-
-    auto* p = static_cast<KVType*>(data());
-
-    auto n = size() - idx - 1;
-    auto src = idx + 1;
-    auto dst = idx;
-    for (size_t i = 0; i < n; ++i) {
-        p[dst++] = std::move(p[src++]);
-    }
-
-    size_ -= 1;
-}
-
 SmallMapImpl::iterator SmallMapImpl::erase_impl(iterator pos) {
     if (pos == end()) {
         return end();
     }
+
+    // auto src = end() - 1;
+    // *pos = std::move(*src);
 
     auto src = pos + 1;
     auto dst = pos;

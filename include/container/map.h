@@ -203,11 +203,8 @@ public:
         }
 
         auto sz = index();
-        for (difference_type i = 0; i < offset; ++i) {
+        for (difference_type i = 0; i < offset && sz != ptr()->end().index(); ++i) {
             sz = ptr()->GetNextIndexOf(sz);
-            if (sz == ptr()->end().index()) {
-                break;
-            }
         }
         return IteratorImpl(sz, ptr());
     }

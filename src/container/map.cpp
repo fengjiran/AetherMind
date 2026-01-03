@@ -24,13 +24,23 @@ MapImpl<SmallMapImpl>::const_iterator SmallMapImpl::find_impl(const key_type& ke
 MapImpl<SmallMapImpl>::mapped_type& SmallMapImpl::at_impl(const key_type& key) {
     const auto iter = find(key);
     if (iter == end()) {
-        AETHERMIND_THROW(KeyError) << "key is not int map.";
+        AETHERMIND_THROW(KeyError) << "key is not exist.";
     }
     return iter->second;
 }
 
 const MapImpl<SmallMapImpl>::mapped_type& SmallMapImpl::at_impl(const key_type& key) const {
     return const_cast<SmallMapImpl*>(this)->at_impl(key);
+}
+
+void SmallMapImpl::reset() {
+    auto* p = static_cast<KVType*>(data());
+    for (size_t i = 0; i < size(); ++i) {
+        p[i].~KVType();
+    }
+
+    size_ = 0;
+    slots_ = 0;
 }
 
 ObjectPtr<SmallMapImpl> SmallMapImpl::CreateImpl(size_t n) {

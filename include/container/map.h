@@ -133,8 +133,7 @@ protected:
 
     static ObjectPtr<Object> Create(size_t n = kInitSize);
 
-    template<typename Iter>
-        requires details::is_valid_iter<Iter>
+    template<details::is_valid_iter Iter>
     static ObjectPtr<Object> CreateFromRange(Iter first, Iter last);
 
     static ObjectPtr<Object> CopyFrom(const Object* src);
@@ -275,7 +274,9 @@ private:
 class SmallMapImpl : public MapImpl<SmallMapImpl> {
 public:
     SmallMapImpl() = default;
-    ~SmallMapImpl() override = default;
+    ~SmallMapImpl() override {
+        reset();
+    }
 
 private:
     NODISCARD iterator begin_impl() {
@@ -320,6 +321,8 @@ private:
     NODISCARD size_t GetPrevIndexOfImpl(size_t idx) const {
         return idx > 0 ? idx - 1 : size_;
     }
+
+    void reset();
 
     static ObjectPtr<SmallMapImpl> CreateImpl(size_t n = kInitSize);
 
@@ -563,8 +566,7 @@ ObjectPtr<Object> MapImpl<Derived>::Create(size_t n) {
 }
 
 template<typename Derived>
-template<typename Iter>
-    requires details::is_valid_iter<Iter>
+template<details::is_valid_iter Iter>
 ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
     const int64_t _sz = std::distance(first, last);
     if (_sz <= 0) {

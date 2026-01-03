@@ -216,11 +216,8 @@ public:
         }
 
         auto sz = index();
-        for (difference_type i = 0; i < offset; ++i) {
+        for (difference_type i = 0; i < offset && sz != ptr()->end().index(); ++i) {
             sz = ptr()->GetPrevIndexOf(sz);
-            if (sz == ptr()->end().index()) {
-                break;
-            }
         }
         return IteratorImpl(sz, ptr());
     }
@@ -238,8 +235,13 @@ public:
     }
 
     IteratorImpl& operator-=(difference_type offset) {
-        for (difference_type i = 0; i < offset; ++i) {
-            operator--();
+        Check();
+        if (offset < 0) {
+            return operator+=(static_cast<difference_type>(-offset));
+        }
+
+        for (difference_type i = 0; i < offset && index_ != ptr()->end().index(); ++i) {
+            index_ = ptr()->GetPrevIndexOf(index_);
         }
         return *this;
     }
@@ -849,6 +851,7 @@ public:
 
 private:
     ObjectPtr<Object> impl_;
+    // std::variant<ObjectPtr<SmallMapImpl>, ObjectPtr<DenseMapImpl>> obj_;
 
     NODISCARD SmallMapImpl* small_ptr() const {
         return static_cast<SmallMapImpl*>(impl_.get());//NOLINT
@@ -902,10 +905,12 @@ public:
 
     IteratorImpl() = default;
 
-    // // iterator can convert to const_iterator
-    // template<bool AlwaysFalse>
-    //     requires(IsConst && !AlwaysFalse)
-    // IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : iter_(other.iter_) {}//NOLINT
+    // iterator can convert to const_iterator
+    template<bool AlwaysFalse>
+        requires(IsConst && !AlwaysFalse)
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) {//NOLINT
+        std::visit([&](const auto& iter) { iter_ = iter; }, other.iter_);
+    }
 
     NODISCARD size_type index() const {
         return std::visit([](const auto& iter) { return iter.index(); }, iter_);
@@ -916,7 +921,6 @@ public:
     }
 
     NODISCARD SmallIterType GetSmallIter() const {
-        auto it = std::get<SmallIterType>(iter_);
         return std::get<SmallIterType>(iter_);
     }
 

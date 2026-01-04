@@ -877,11 +877,13 @@ private:
     std::variant<ObjectPtr<SmallMapImpl>, ObjectPtr<DenseMapImpl>> obj_;
 
     NODISCARD SmallMapImpl* small_ptr() const {
-        return static_cast<SmallMapImpl*>(impl_.get());//NOLINT
+        return std::get<ObjectPtr<SmallMapImpl>>(obj_).get();
+        // return static_cast<SmallMapImpl*>(impl_.get());//NOLINT
     }
 
     NODISCARD DenseMapImpl* dense_ptr() const {
-        return static_cast<DenseMapImpl*>(impl_.get());//NOLINT
+        return std::get<ObjectPtr<DenseMapImpl>>(obj_).get();
+        // return static_cast<DenseMapImpl*>(impl_.get());//NOLINT
     }
 
     std::pair<iterator, bool> insert_impl(value_type&& x, bool assign) {
@@ -918,9 +920,15 @@ private:
         //                          : DenseMapImpl::CopyFrom(impl_.get());
         // }
         if (!unique()) {
-
-            impl_ = IsSmallMap() ? SmallMapImpl::CopyFrom(impl_.get())
-                                 : DenseMapImpl::CopyFrom(impl_.get());
+            auto* p = std::visit([](const auto& arg) -> Object* { return arg.get(); }, obj_);
+            impl_ = IsSmallMap() ? SmallMapImpl::CopyFrom(p)
+                                 : DenseMapImpl::CopyFrom(p);
+            auto tmp = impl_;
+            if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
+                obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
+            } else {
+                obj_ = details::ObjectUnsafe::Downcast<DenseMapImpl>(tmp);
+            }
         }
     }
 };

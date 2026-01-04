@@ -696,6 +696,12 @@ struct ObjectUnsafe {
             static_cast<Object*>(handle)->DecWeakRef();
         }
     }
+
+    template<typename T>
+        requires std::is_base_of_v<Object, T>
+    static ObjectPtr<T> Downcast(ObjectPtr<Object>& src) {
+        return ObjectPtr<T>::reclaim(static_cast<T*>(src.release()));
+    }
 };
 
 /*!

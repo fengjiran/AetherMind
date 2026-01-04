@@ -62,7 +62,7 @@ ObjectPtr<SmallMapImpl> SmallMapImpl::CopyFromImpl(const SmallMapImpl* src) {
         ++p->size_;
     }
 
-    return ObjectPtr<SmallMapImpl>::reclaim(static_cast<SmallMapImpl*>(impl.release()));//NOLINT
+    return details::ObjectUnsafe::Downcast<SmallMapImpl>(impl);
 }
 
 std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::InsertImpl(
@@ -83,7 +83,8 @@ std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::Insert
     }
 
     const size_t new_cap = std::min(kThreshold, std::max(kIncFactor * map->slots(), kInitSize));
-    auto new_impl = ObjectPtr<SmallMapImpl>::reclaim(static_cast<SmallMapImpl*>(Create(new_cap).release()));//NOLINT
+    auto tmp = Create(new_cap);
+    auto new_impl = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
     auto* src = static_cast<KVType*>(map->data());
     auto* dst = static_cast<KVType*>(new_impl->data());
     for (size_t i = 0; i < map->size(); ++i) {
@@ -668,8 +669,8 @@ std::tuple<ObjectPtr<Object>, DenseMapImpl::iterator, bool> DenseMapImpl::Insert
     }
 
     // Otherwise, start rehash
-    auto new_impl = ObjectPtr<DenseMapImpl>::reclaim(
-            static_cast<DenseMapImpl*>(DenseMapImpl::Create(map->slots() * kIncFactor).release()));// NOLINT
+    auto dense_obj = Create(map->slots() * kIncFactor);
+    auto new_impl = details::ObjectUnsafe::Downcast<DenseMapImpl>(dense_obj);
 
     // need to insert in the same order as the original map
     size_t idx = map->iter_list_head_;

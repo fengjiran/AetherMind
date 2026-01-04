@@ -642,13 +642,10 @@ public:
 
     class PairProxy;
 
-    Map() : impl_(SmallMapImpl::Create()) {
-        auto tmp = impl_;
-        obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
-    }
+    Map() : obj_(details::ObjectUnsafe::Downcast<SmallMapImpl>(SmallMapImpl::Create())) {}
 
-    explicit Map(size_type n) : impl_(SmallMapImpl::Create(n)) {
-        auto tmp = impl_;
+    explicit Map(size_type n) {
+        auto tmp = SmallMapImpl::Create(n);
         if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
             obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
         } else {
@@ -660,13 +657,13 @@ public:
 
     Map(const Map& other) = default;
 
-    Map(Map&& other) noexcept : impl_(other.impl_), obj_(other.obj_) {//NOLINT
+    Map(Map&& other) noexcept : obj_(other.obj_) {//NOLINT
         other.clear();
     }
 
     template<typename Iter>
-    Map(Iter first, Iter last) : impl_(SmallMapImpl::CreateFromRange(first, last)) {
-        auto tmp = impl_;
+    Map(Iter first, Iter last) {
+        auto tmp = SmallMapImpl::CreateFromRange(first, last);
         if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
             obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
         } else {
@@ -676,11 +673,11 @@ public:
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
-    Map(const Map<KU, VU>& other) : impl_(other.impl_), obj_(other.obj_) {}//NOLINT
+    Map(const Map<KU, VU>& other) : obj_(other.obj_) {}//NOLINT
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
-    Map(Map<KU, VU>&& other) noexcept : impl_(other.impl_), obj_(other.obj_) {//NOLINT
+    Map(Map<KU, VU>&& other) noexcept : obj_(other.obj_) {//NOLINT
         other.clear();
     }
 
@@ -698,7 +695,6 @@ public:
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
     Map& operator=(const Map<KU, VU>& other) {
         if (this != &other) {
-            impl_ = other.impl_;
             obj_ = other.obj_;
         }
         return *this;
@@ -708,7 +704,6 @@ public:
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
     Map& operator=(Map<KU, VU>&& other) noexcept {
         if (this != &other) {
-            impl_ = other.impl_;
             obj_ = other.obj_;
             other.clear();
         }
@@ -849,9 +844,7 @@ public:
     }
 
     void clear() {
-        impl_ = SmallMapImpl::Create();
-        auto tmp = impl_;
-        obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
+        obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(SmallMapImpl::Create());
     }
 
     iterator find(const key_type& key) {
@@ -863,27 +856,22 @@ public:
     }
 
     NODISCARD bool IsSmallMap() const {
-        // return dynamic_cast<SmallMapImpl*>(impl_.get()) != nullptr;
         return std::holds_alternative<ObjectPtr<SmallMapImpl>>(obj_);
     }
 
     void swap(Map& other) noexcept {
-        impl_.swap(other.impl_);
         std::swap(obj_, other.obj_);
     }
 
 private:
-    ObjectPtr<Object> impl_;
     std::variant<ObjectPtr<SmallMapImpl>, ObjectPtr<DenseMapImpl>> obj_;
 
     NODISCARD SmallMapImpl* small_ptr() const {
         return std::get<ObjectPtr<SmallMapImpl>>(obj_).get();
-        // return static_cast<SmallMapImpl*>(impl_.get());//NOLINT
     }
 
     NODISCARD DenseMapImpl* dense_ptr() const {
         return std::get<ObjectPtr<DenseMapImpl>>(obj_).get();
-        // return static_cast<DenseMapImpl*>(impl_.get());//NOLINT
     }
 
     std::pair<iterator, bool> insert_impl(value_type&& x, bool assign) {
@@ -896,10 +884,9 @@ private:
 
         COW();
         auto [impl, idx, is_success] = IsSmallMap()
-                                               ? SmallMapImpl::insert(std::move(x), impl_, assign)
-                                               : DenseMapImpl::insert(std::move(x), impl_, assign);
-        impl_ = impl;
-        auto tmp = impl_;
+                                               ? SmallMapImpl::insert(std::move(x), std::get<ObjectPtr<SmallMapImpl>>(obj_), assign)
+                                               : DenseMapImpl::insert(std::move(x), std::get<ObjectPtr<DenseMapImpl>>(obj_), assign);
+        auto tmp = impl;
         if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
             obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
         } else {
@@ -915,15 +902,11 @@ private:
     }
 
     void COW() {
-        // if (!unique()) {
-        //     impl_ = IsSmallMap() ? SmallMapImpl::CopyFrom(impl_.get())
-        //                          : DenseMapImpl::CopyFrom(impl_.get());
-        // }
         if (!unique()) {
             auto* p = std::visit([](const auto& arg) -> Object* { return arg.get(); }, obj_);
-            impl_ = IsSmallMap() ? SmallMapImpl::CopyFrom(p)
-                                 : DenseMapImpl::CopyFrom(p);
-            auto tmp = impl_;
+            auto tmp = IsSmallMap() ? SmallMapImpl::CopyFrom(p)
+                                    : DenseMapImpl::CopyFrom(p);
+
             if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
                 obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
             } else {

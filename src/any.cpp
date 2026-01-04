@@ -158,6 +158,16 @@ SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
     AETHERMIND_UNREACHABLE();
 }
 
+void Any::DebugPrint(std::ostream& os) const {
+    if (const auto* holder_ptr = GetHolderPtr()) {
+        os << "{type: " << holder_ptr->type().name() << ", value: ";
+        holder_ptr->print(os);
+        os << "}";
+    } else {
+        os << "{empty}";
+    }
+}
+
 bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
     if (!(lhs.has_value() || rhs.has_value())) {
         return true;
@@ -226,10 +236,9 @@ size_t AnyHash::operator()(const Any& v) const {
 
 std::ostream& operator<<(std::ostream& os, const Any& any) {
     if (const auto* holder_ptr = any.GetHolderPtr()) {
-        if (holder_ptr->print(os)) {
-            return os;
-        }
-        AETHERMIND_THROW(TypeError) << "Cannot print this type.";
+        holder_ptr->print(os);
+    } else {
+        os << "{empty}";
     }
     return os;
 }

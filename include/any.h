@@ -28,7 +28,7 @@ public:
     NODISCARD virtual bool IsMap() const = 0;
     NODISCARD virtual void* GetDataPtr() = 0;
     NODISCARD virtual const void* GetDataPtr() const = 0;
-    NODISCARD virtual bool print(std::ostream& os) const = 0;
+    virtual void print(std::ostream& os) const = 0;
 };
 
 template<typename T>
@@ -84,12 +84,12 @@ public:
         return &value_;
     }
 
-    bool print(std::ostream& os) const override {
+    void print(std::ostream& os) const override {
         if constexpr (details::is_printable<T>) {
             os << value_;
-            return true;
         } else {
-            return false;
+            // print type info and address
+            os << "[" << type().name() << "@" << std::hex << std::uintptr_t(GetDataPtr()) << "]";
         }
     }
 
@@ -400,6 +400,8 @@ public:
         return !(*this == p);
     }
 
+    void DebugPrint(std::ostream& os) const;
+
 private:
     static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
 
@@ -543,8 +545,6 @@ private:
     mutable std::type_index type_info_cache_{std::type_index(typeid(void))};
 };
 
-std::ostream& operator<<(std::ostream& os, const Any& any);
-
 class AnyEqual {
 public:
     bool operator()(const Any& lhs, const Any& rhs) const;
@@ -562,6 +562,27 @@ class AnyHash {
 public:
     size_t operator()(const Any& v) const;
 };
+
+enum class AnyPrintFormat {
+    Default,// default format
+    Debug,  // debug format, include type info
+    Compact // compact format, only value
+};
+
+std::ostream& operator<<(std::ostream& os, const Any& any);
+
+inline void PrintAny(std::ostream& os, const Any& any, AnyPrintFormat format = AnyPrintFormat::Default) {
+    switch (format) {
+        case AnyPrintFormat::Debug:
+            any.DebugPrint(os);
+            break;
+        case AnyPrintFormat::Compact:
+        default:
+            os << any;
+            break;
+    }
+}
+
 }// namespace aethermind
 
 namespace std {

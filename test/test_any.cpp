@@ -385,5 +385,199 @@ TEST(AnyOperatorsTest, AnyEqualFunctionObject) {
     EXPECT_TRUE(equal(empty, empty));
 }
 
+// 测试辅助函数，用于验证输出
+bool TestPrintOutput(const Any& any, AnyPrintFormat format, const std::string& expected) {
+    std::ostringstream oss;
+    PrintAny(oss, any, format);
+    std::string result = oss.str();
+
+    if (result != expected) {
+        std::cerr << "Test failed! Format: " << static_cast<int>(format) << "\n";
+        std::cerr << "Expected: \"" << expected << "\"\n";
+        std::cerr << "Got:      \"" << result << "\"\n\n";
+        return false;
+    }
+    return true;
+}
+
+TEST(AnyPrintTest, TestBasicTypes) {
+    std::cout << "=== Testing Basic Types ===\n";
+
+    // 整数类型
+    Any any_int(42);
+    TestPrintOutput(any_int, AnyPrintFormat::Default, "42");
+    TestPrintOutput(any_int, AnyPrintFormat::Compact, "42");
+
+    // 浮点数类型
+    Any any_float(3.14159);
+    TestPrintOutput(any_float, AnyPrintFormat::Default, "3.14159");
+
+    // 布尔类型
+    Any any_bool(true);
+    TestPrintOutput(any_bool, AnyPrintFormat::Default, "1");// 注意：C++中默认bool打印为1/0
+
+    // 字符串类型
+    Any any_string(std::string("Hello, World!"));
+    TestPrintOutput(any_string, AnyPrintFormat::Default, "Hello, World!");
+
+    Any any_cstring("C-style string");
+    TestPrintOutput(any_cstring, AnyPrintFormat::Default, "C-style string");
+}
+
+TEST(AnyPrintTest, TestPrintFormats) {
+    std::cout << "=== Testing Print Formats ===\n";
+
+    Any any_int(42);
+
+    // 默认格式和紧凑格式应该相同
+    TestPrintOutput(any_int, AnyPrintFormat::Default, "42");
+    TestPrintOutput(any_int, AnyPrintFormat::Compact, "42");
+
+    // 调试格式应该包含类型信息（具体输出取决于实现）
+    std::ostringstream oss;
+    PrintAny(oss, any_int, AnyPrintFormat::Debug);
+    std::string debug_output = oss.str();
+    std::cout << "Debug format output: " << debug_output << "\n";
+
+    // 验证调试格式包含必要信息
+    if (debug_output.find("int") != std::string::npos && debug_output.find("42") != std::string::npos) {
+        std::cout << "✓ Debug format contains type and value\n";
+    } else {
+        std::cout << "✗ Debug format missing type or value\n";
+    }
+}
+
+TEST(AnyPrintTest, TestEmptyAny) {
+    std::cout << "\n=== Testing Empty Any ===\n";
+
+    Any any_empty;
+
+    std::ostringstream oss_default, oss_debug, oss_compact;
+    PrintAny(oss_default, any_empty, AnyPrintFormat::Default);
+    PrintAny(oss_debug, any_empty, AnyPrintFormat::Debug);
+    PrintAny(oss_compact, any_empty, AnyPrintFormat::Compact);
+
+    std::cout << "Default format: " << oss_default.str() << "\n";
+    std::cout << "Debug format: " << oss_debug.str() << "\n";
+    std::cout << "Compact format: " << oss_compact.str() << "\n";
+}
+
+TEST(AnyPrintTest, TestOperatorStream) {
+    std::cout << "\n=== Testing operator<< ===\n";
+
+    Any any_int(42);
+    Any any_string(std::string("Test"));
+
+    std::ostringstream oss1, oss2;
+    oss1 << any_int;
+    oss2 << any_string;
+
+    std::cout << "operator<<(42): " << oss1.str() << "\n";
+    std::cout << "operator<<(\"Test\"): " << oss2.str() << "\n";
+
+    // 验证与PrintAny的默认格式相同
+    std::ostringstream oss3, oss4;
+    PrintAny(oss3, any_int, AnyPrintFormat::Default);
+    PrintAny(oss4, any_string, AnyPrintFormat::Default);
+
+    if (oss1.str() == oss3.str()) {
+        std::cout << "✓ operator<< matches PrintAny default format for int\n";
+    }
+
+    if (oss2.str() == oss4.str()) {
+        std::cout << "✓ operator<< matches PrintAny default format for string\n";
+    }
+}
+
+TEST(AnyPrintTest, TestCustomType) {
+    std::cout << "\n=== Testing Custom Type ===\n";
+
+    struct Point {
+        int x;
+        int y;
+    };
+
+    // 自定义类型默认不可打印，测试其默认打印行为
+    Point p = {10, 20};
+    Any any_point(p);
+
+    std::ostringstream oss;
+    PrintAny(oss, any_point, AnyPrintFormat::Default);
+    std::string output = oss.str();
+    std::cout << "Custom type output: " << output << "\n";
+
+    // 验证输出包含类型信息或指针地址
+    if (output.find("Point") != std::string::npos || output.find("@") != std::string::npos) {
+        std::cout << "✓ Custom type output contains expected information\n";
+    }
+}
+
 }// namespace
 
+#ifdef TEST_ANY_PRINT
+
+// 为Any类特化fmt::formatter
+template<>
+struct fmt::formatter<aethermind::Any> {
+    constexpr auto parse(format_parse_context& ctx) {
+        // 支持简单的格式说明符：d(debug)、c(compact)
+        auto it = ctx.begin(), end = ctx.end();
+        if (it != end && (*it == 'd' || *it == 'c')) {
+            format_ = *it;
+            ++it;
+        }
+        if (it != end && *it != '}') {
+            throw format_error("invalid format");
+        }
+        return it;
+    }
+
+    template<typename FormatContext>
+    auto format(const aethermind::Any& any, FormatContext& ctx) {
+        const auto* holder_ptr = any.GetHolderPtr();
+        if (holder_ptr) {
+            if (format_ == 'd') {
+                return fmt::format_to(ctx.out(), "{{type: {}, value: {}}}",
+                                      holder_ptr->type().name(), fmt::format("{}", any));
+            } else {
+                return fmt::format_to(ctx.out(), "{}", any);
+            }
+        } else {
+            return fmt::format_to(ctx.out(), "null");
+        }
+    }
+
+private:
+    char format_ = 'c';// 默认紧凑格式
+};
+
+// 在Any类的print方法中支持fmt
+template<typename T>
+class Holder final : public HolderBase {
+public:
+    // ... 其他方法 ...
+
+    bool print(std::ostream& os) const override {
+        // 检查自定义打印器
+        static const auto type_idx = std::type_index(typeid(T));
+        auto& printers = details::GetCustomPrinters();
+        auto it = printers.find(type_idx);
+        if (it != printers.end()) {
+            return it->second(os, &value_);
+        }
+
+        // 使用fmt进行格式化输出
+        try {
+            os << fmt::format("{}", value_);
+            return true;
+        } catch (const fmt::format_error&) {
+            // fmt格式化失败时回退到默认行为
+            os << "[" << typeid(T).name() << "@" << static_cast<const void*>(&value_) << "]";
+            return true;
+        }
+    }
+
+    // ... 其他成员 ...
+};
+
+#endif

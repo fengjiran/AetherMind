@@ -5,7 +5,6 @@
 #include "env.h"
 
 #include <cstdlib>
-#include <fmt/format.h>
 #include <glog/logging.h>
 #include <mutex>
 #include <shared_mutex>

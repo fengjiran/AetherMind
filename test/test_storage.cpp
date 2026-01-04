@@ -1,7 +1,7 @@
 //
 // Created by 赵丹 on 2025/8/24.
 //
-#include "../include/memory/storage.h"
+#include "memory/storage.h"
 
 #include <gtest/gtest.h>
 

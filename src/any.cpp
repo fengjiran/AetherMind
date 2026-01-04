@@ -224,4 +224,15 @@ size_t AnyHash::operator()(const Any& v) const {
     AETHERMIND_UNREACHABLE();
 }
 
+std::ostream& operator<<(std::ostream& os, const Any& any) {
+    if (const auto* holder_ptr = any.GetHolderPtr()) {
+        if (holder_ptr->print(os)) {
+            return os;
+        }
+        AETHERMIND_THROW(TypeError) << "Cannot print this type.";
+    }
+    return os;
+}
+
+
 }// namespace aethermind

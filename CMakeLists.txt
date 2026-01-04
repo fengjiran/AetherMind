@@ -21,7 +21,7 @@ endif ()
 
 find_package(glog REQUIRED)
 
-set(FMT_PATH "3rdparty/fmt/include")
+#set(FMT_PATH "3rdparty/fmt/include")
 set(BACKTRACE_PATH "3rdparty/libbacktrace")
 
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp
@@ -33,13 +33,13 @@ add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 #message(STATUS ${PROJECT_SOURCE_DIR})
 include_directories(
         ${PROJECT_SOURCE_DIR}/include
-        ${FMT_PATH}
+#        ${FMT_PATH}
 )
 
 target_link_libraries(${PROJECT_NAME}
         glog::glog
         pthread
-        fmt::fmt
+#        fmt::fmt
 )
 
 if (USE_LIBBACKTRACE)
@@ -60,7 +60,7 @@ else ()
     target_compile_definitions(${PROJECT_NAME} PRIVATE BACKTRACE_ON_SEGFAULT=0)
 endif (BACKTRACE_ON_SEGFAULT)
 
-add_subdirectory(3rdparty/fmt)
+#add_subdirectory(3rdparty/fmt)
 ########## Adding tests ##########
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")

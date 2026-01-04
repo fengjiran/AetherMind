@@ -87,6 +87,11 @@ template<typename T>
 concept is_unique_key_map = is_map<T> && (std::is_same_v<T, std::unordered_map<typename T::key_type, typename T::mapped_type>> ||
                                           std::is_same_v<T, std::map<typename T::key_type, typename T::mapped_type>>);
 
+template<typename T>
+concept is_printable = requires(std::ostream& os, T t) {
+    { os << t } -> std::same_as<std::ostream&>;
+};
+
 #else
 template<typename T>
 constexpr bool is_integral = std::is_integral_v<T> && !std::is_same_v<T, bool>;

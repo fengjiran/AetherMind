@@ -7,7 +7,6 @@
 
 #include "macros.h"
 #include "utils/hash.h"
-// #include "container/array.h"
 
 // #include <array>
 #include <cstddef>

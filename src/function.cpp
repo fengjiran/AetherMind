@@ -4,11 +4,10 @@
 
 #include "function.h"
 #include "c_api.h"
-#include "registry.h"
 #include "container/array.h"
+#include "registry.h"
 #include "tensor.h"
 
-#include <fmt/format.h>
 #include <unordered_map>
 
 namespace aethermind {
@@ -71,7 +70,7 @@ public:
         if (!table_.contains(name)) {
             AETHERMIND_THROW(RuntimeError) << "Global Function `" << name << "` is not registered";
         }
-        return fmt::format("Global function `{}` is registered at {}:{}",
+        return std::format("Global function `{}` is registered at {}:{}",
                            name.c_str(), table_[name]->filename_.c_str(), table_[name]->lineno_);
     }
 

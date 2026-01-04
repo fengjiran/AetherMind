@@ -3,10 +3,7 @@
 //
 #include "tensor.h"
 
-#include <fmt/compile.h>
-#include <fmt/format.h>
-#include <fmt/ostream.h>
-
+#include <format>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -111,9 +108,9 @@ static PrintFormat get_print_format(const Tensor& t) {
 }
 
 // Precompiled format specs
-static constexpr auto FMT_G = FMT_COMPILE("{:>{}g}");
-static constexpr auto FMT_E4 = FMT_COMPILE("{:>{}.4e}");
-static constexpr auto FMT_F4 = FMT_COMPILE("{:>{}.4f}");
+// static constexpr auto FMT_G = FMT_COMPILE("{:>{}g}");
+// static constexpr auto FMT_E4 = FMT_COMPILE("{:>{}.4e}");
+// static constexpr auto FMT_F4 = FMT_COMPILE("{:>{}.4f}");
 
 // Print a single value directly into the stream buffer with no temporaries
 static void print_value(std::ostream& stream, double v, const PrintFormat& pf) {
@@ -121,15 +118,18 @@ static void print_value(std::ostream& stream, double v, const PrintFormat& pf) {
     double val = v / pf.scale;
     switch (pf.type) {
         case FormatType::Default:
-            fmt::format_to(it, FMT_G, val, pf.width);
+            // fmt::format_to(it, FMT_G, val, pf.width);
+            std::format_to(it, "{:>{}g}", val, pf.width);
             break;
         case FormatType::Scientific:
-            fmt::format_to(it, FMT_E4, val, pf.width);
+            // fmt::format_to(it, FMT_E4, val, pf.width);
+            std::format_to(it, "{:>{}.4e}", val, pf.width);
             break;
         case FormatType::Fixed:
-            fmt::format_to(it, FMT_F4, val, pf.width);
+            // fmt::format_to(it, FMT_F4, val, pf.width);
+            std::format_to(it, "{:>{}.4f}", val, pf.width);
             break;
     }
 }
 
-}// namespace atp
+}// namespace aethermind

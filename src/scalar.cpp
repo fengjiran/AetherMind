@@ -4,9 +4,6 @@
 
 #include "scalar.h"
 
-#include <fmt/format.h>
-#include <fmt/ostream.h>
-
 namespace aethermind {
 
 Scalar::Scalar(int8_t val) {
@@ -173,7 +170,7 @@ std::ostream& operator<<(std::ostream& os, const Scalar& s) {
     AETHERMIND_UNREACHABLE();
 }
 
-String toString(const Scalar& s) {
-    return fmt::format("{}", fmt::streamed(s));
-}
+// String toString(const Scalar& s) {
+//     return std::format("{}", s);
+// }
 }// namespace aethermind

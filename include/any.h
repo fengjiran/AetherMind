@@ -28,6 +28,7 @@ public:
     NODISCARD virtual bool IsMap() const = 0;
     NODISCARD virtual void* GetDataPtr() = 0;
     NODISCARD virtual const void* GetDataPtr() const = 0;
+    NODISCARD virtual bool print(std::ostream& os) const = 0;
 };
 
 template<typename T>
@@ -81,6 +82,15 @@ public:
 
     NODISCARD const void* GetDataPtr() const override {
         return &value_;
+    }
+
+    bool print(std::ostream& os) const override {
+        if constexpr (details::is_printable<T>) {
+            os << value_;
+            return true;
+        } else {
+            return false;
+        }
     }
 
 private:
@@ -533,7 +543,7 @@ private:
     mutable std::type_index type_info_cache_{std::type_index(typeid(void))};
 };
 
-// std::ostream& operator<<(std::ostream& os, const Any& any);
+std::ostream& operator<<(std::ostream& os, const Any& any);
 
 class AnyEqual {
 public:

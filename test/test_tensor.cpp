@@ -6,7 +6,7 @@
 #include "function_traits.h"
 #include "tensor.h"
 
-#include <fmt/format.h>
+// #include <fmt/format.h>
 #include <gtest/gtest.h>
 
 #if BUILD_WITH_TORCH
@@ -20,8 +20,7 @@ namespace {
 
 TEST(Tensor, format) {
     // GTEST_SKIP();
-    fmt::print("hello world\n");
-    std::string s1 = fmt::format("The answer is {}.", 42);
+    std::string s1 = std::format("The answer is {}.", 42);
 }
 
 TEST(Tensor, envs) {

@@ -464,7 +464,7 @@ TEST(MapInsertTest, insert_duplicate_keys) {
     EXPECT_FALSE(success3);
     EXPECT_EQ(it3->second, 10);
 
-    auto [it4, success4] = map.insert(std::move(Map<int, int>::value_type(1, 40)));
+    auto [it4, success4] = map.insert(Map<int, int>::value_type(1, 40));
     EXPECT_FALSE(success4);
     EXPECT_EQ(it4->second, 10);
 }
@@ -553,16 +553,16 @@ TEST(MapInsertTest, insert_range_iterators) {
     map.insert(std::begin(arr), std::end(arr));
     EXPECT_EQ(map.size(), 6);
 
-    // // 使用Map的迭代器
-    // Map<int, int> map2;
-    // map2.insert(map.begin(), map.end());
-    // EXPECT_EQ(map2.size(), 6);
-    //
-    // // // 使用const迭代器
-    // Map<int, int> map3;
-    // const Map<int, int>& const_map = map;
-    // map3.insert(const_map.begin(), const_map.end());
-    // EXPECT_EQ(map3.size(), 6);
+    // 使用Map的迭代器
+    Map<int, int> map2;
+    map2.insert(map.begin(), map.end());
+    EXPECT_EQ(map2.size(), 6);
+
+    // // 使用const迭代器
+    Map<int, int> map3;
+    const Map<int, int>& const_map = map;
+    map3.insert(const_map.begin(), const_map.end());
+    EXPECT_EQ(map3.size(), 6);
 }
 
 // 测试插入空范围和单元素范围

@@ -72,8 +72,12 @@ TEST(Any, int) {
     EXPECT_EQ(x2.cast<int>(), 10);
     EXPECT_EQ(Any(x2).cast<int>(), 10);
     EXPECT_TRUE(x2.IsInteger());
-    int x22 = static_cast<int>(x2);
+    int x22 = x2;
     EXPECT_EQ(x22, 10);
+
+    Any x3 = 100;
+    int x33 = x3.cast<const int>();
+    EXPECT_EQ(x33, 100);
 }
 
 TEST(Any, float) {

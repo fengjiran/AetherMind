@@ -83,8 +83,7 @@ std::tuple<ObjectPtr<Object>, SmallMapImpl::iterator, bool> SmallMapImpl::Insert
     }
 
     const size_t new_cap = std::min(kThreshold, std::max(kIncFactor * map->slots(), kInitSize));
-    auto tmp = Create(new_cap);
-    auto new_impl = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
+    auto new_impl = details::ObjectUnsafe::Downcast<SmallMapImpl>(Create(new_cap));
     auto* src = static_cast<KVType*>(map->data());
     auto* dst = static_cast<KVType*>(new_impl->data());
     for (size_t i = 0; i < map->size(); ++i) {
@@ -669,8 +668,8 @@ std::tuple<ObjectPtr<Object>, DenseMapImpl::iterator, bool> DenseMapImpl::Insert
     }
 
     // Otherwise, start rehash
-    auto dense_obj = Create(map->slots() * kIncFactor);
-    auto new_impl = details::ObjectUnsafe::Downcast<DenseMapImpl>(dense_obj);
+    auto new_impl = details::ObjectUnsafe::Downcast<DenseMapImpl>(
+            Create(map->slots() * kIncFactor));
 
     // need to insert in the same order as the original map
     size_t idx = map->iter_list_head_;

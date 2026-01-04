@@ -646,7 +646,7 @@ public:
 
     explicit Map(size_type n) {
         auto tmp = SmallMapImpl::Create(n);
-        if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
+        if (n <= SmallMapImpl::kThreshold) {
             obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
         } else {
             obj_ = details::ObjectUnsafe::Downcast<DenseMapImpl>(tmp);
@@ -664,7 +664,8 @@ public:
     template<typename Iter>
     Map(Iter first, Iter last) {
         auto tmp = SmallMapImpl::CreateFromRange(first, last);
-        if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
+        auto n = std::distance(first, last);
+        if (n <= SmallMapImpl::kThreshold) {
             obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
         } else {
             obj_ = details::ObjectUnsafe::Downcast<DenseMapImpl>(tmp);
@@ -716,11 +717,11 @@ public:
     }
 
     NODISCARD size_type size() const noexcept {
-        return IsSmallMap() ? small_ptr()->size() : dense_ptr()->size();
+        return std::visit([](const auto& arg) { return arg->size(); }, obj_);
     }
 
     NODISCARD size_type slots() const noexcept {
-        return IsSmallMap() ? small_ptr()->slots() : dense_ptr()->slots();
+        return std::visit([](const auto& arg) { return arg->slots(); }, obj_);
     }
 
     NODISCARD bool empty() const noexcept {
@@ -728,15 +729,15 @@ public:
     }
 
     NODISCARD uint32_t use_count() const noexcept {
-        return IsSmallMap() ? small_ptr()->use_count() : dense_ptr()->use_count();
+        return std::visit([](const auto& arg) { return arg->use_count(); }, obj_);
     }
 
     NODISCARD bool unique() const noexcept {
         return use_count() == 1;
     }
 
-    NODISCARD size_type count() const {
-        return IsSmallMap() ? small_ptr()->count() : dense_ptr()->count();
+    NODISCARD size_type count(const key_type& key) const {
+        return contains(key) ? 1 : 0;
     }
 
     std::pair<iterator, bool> insert(value_type&& x) {
@@ -755,16 +756,28 @@ public:
         return insert_impl({std::move(key), std::move(value)}, false);
     }
 
-    // 556 line
-    // std::pair<iterator, bool> insert(const std::pair<Any, Any>& x) {
+    // std::pair<iterator, bool> insert(const SmallMapImpl::KVType& x) {
     //     return insert_impl({x.first.cast<key_type>(), x.second.cast<mapped_type>()}, false);
     // }
+
+    // static_assert(std::convertible_to<std::pair<Any, Any>&, std::pair<const int, int>>);
 
     template<typename Pair>
         requires(std::constructible_from<value_type, Pair &&> &&
                  !std::same_as<std::decay_t<Pair>, value_type>)
     std::pair<iterator, bool> insert(Pair&& x) {
         return insert_impl(value_type(std::forward<Pair>(x)), false);
+    }
+
+    template<typename T = Any>
+        requires requires(T t) {
+            t.template cast<key_type>();
+            t.template cast<mapped_type>();
+        }
+    std::pair<iterator, bool> insert(const std::pair<T, T>& x) {
+        return insert_impl({x.first.template cast<key_type>(),
+                            x.second.template cast<mapped_type>()},
+                           false);
     }
 
     template<typename Iter>
@@ -787,6 +800,11 @@ public:
     template<typename Obj>
     std::pair<iterator, bool> insert_or_assign(const key_type& key, Obj&& obj) {
         return insert_impl({key, std::forward<Obj>(obj)}, true);
+    }
+
+    template<typename... Args>
+    std::pair<iterator, bool> emplace(Args&&... args) {
+        return insert_impl(value_type(std::forward<Args>(args)...), false);
     }
 
     iterator erase(iterator pos);
@@ -816,7 +834,7 @@ public:
     }
 
     const Any& at(const key_type& key) const {
-        return IsSmallMap() ? small_ptr()->at(key) : dense_ptr()->at(key);
+        return std::visit([&](const auto& arg) -> const Any& { return arg->at(key); }, obj_);
     }
 
     PairProxy operator[](const key_type& key) {
@@ -828,19 +846,19 @@ public:
     }
 
     iterator begin() noexcept {
-        return IsSmallMap() ? iterator(small_ptr()->begin()) : iterator(dense_ptr()->begin());
+        return std::visit([](const auto& arg) { return iterator(arg->begin()); }, obj_);
     }
 
     iterator end() noexcept {
-        return IsSmallMap() ? iterator(small_ptr()->end()) : iterator(dense_ptr()->end());
+        return std::visit([](const auto& arg) { return iterator(arg->end()); }, obj_);
     }
 
     const_iterator begin() const noexcept {
-        return IsSmallMap() ? const_iterator(small_ptr()->begin()) : const_iterator(dense_ptr()->begin());
+        return const_cast<Map*>(this)->begin();
     }
 
     const_iterator end() const noexcept {
-        return IsSmallMap() ? const_iterator(small_ptr()->end()) : const_iterator(dense_ptr()->end());
+        return const_cast<Map*>(this)->end();
     }
 
     void clear() {
@@ -848,11 +866,11 @@ public:
     }
 
     iterator find(const key_type& key) {
-        return IsSmallMap() ? iterator(small_ptr()->find(key)) : iterator(dense_ptr()->find(key));
+        return std::visit([&](const auto& arg) { return iterator(arg->find(key)); }, obj_);
     }
 
     const_iterator find(const key_type& key) const {
-        return IsSmallMap() ? const_iterator(small_ptr()->find(key)) : const_iterator(dense_ptr()->find(key));
+        return const_cast<Map*>(this)->find(key);
     }
 
     NODISCARD bool IsSmallMap() const {
@@ -883,36 +901,44 @@ private:
         }
 
         COW();
-        auto [impl, idx, is_success] = IsSmallMap()
-                                               ? SmallMapImpl::insert(std::move(x), std::get<ObjectPtr<SmallMapImpl>>(obj_), assign)
-                                               : DenseMapImpl::insert(std::move(x), std::get<ObjectPtr<DenseMapImpl>>(obj_), assign);
-        auto tmp = impl;
-        if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
-            obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
-        } else {
-            obj_ = details::ObjectUnsafe::Downcast<DenseMapImpl>(tmp);
-        }
-        if (IsSmallMap()) {
+        auto [impl, idx, is_success] =
+                IsSmallMap() ? SmallMapImpl::insert(std::move(x), std::get<ObjectPtr<SmallMapImpl>>(obj_), assign)
+                             : DenseMapImpl::insert(std::move(x), std::get<ObjectPtr<DenseMapImpl>>(obj_), assign);
+
+        if (dynamic_cast<SmallMapImpl*>(impl.get())) {
+            obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(impl);
             SmallMapImpl::iterator pos(idx, small_ptr());
             return {pos, is_success};
         }
 
+        obj_ = details::ObjectUnsafe::Downcast<DenseMapImpl>(impl);
         DenseMapImpl::iterator pos(idx, dense_ptr());
         return {pos, is_success};
     }
 
     void COW() {
         if (!unique()) {
-            auto* p = std::visit([](const auto& arg) -> Object* { return arg.get(); }, obj_);
-            auto tmp = IsSmallMap() ? SmallMapImpl::CopyFrom(p)
-                                    : DenseMapImpl::CopyFrom(p);
-
-            if (dynamic_cast<SmallMapImpl*>(tmp.get())) {
-                obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
+            const auto* p = std::visit([](const auto& arg) -> Object* { return arg.get(); }, obj_);
+            if (IsSmallMap()) {
+                obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(SmallMapImpl::CopyFrom(p));
             } else {
-                obj_ = details::ObjectUnsafe::Downcast<DenseMapImpl>(tmp);
+                obj_ = details::ObjectUnsafe::Downcast<DenseMapImpl>(DenseMapImpl::CopyFrom(p));
             }
         }
+    }
+
+    // cow wrapper
+    template<typename Operator>
+    decltype(auto) WithCOW(Operator&& op) {
+        if (!unique()) {
+            const auto* p = std::visit([](const auto& arg) -> Object* { return arg.get(); }, obj_);
+            if (IsSmallMap()) {
+                obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(SmallMapImpl::CopyFrom(p));
+            } else {
+                obj_ = details::ObjectUnsafe::Downcast<DenseMapImpl>(DenseMapImpl::CopyFrom(p));
+            }
+        }
+        return op();
     }
 };
 
@@ -943,14 +969,6 @@ public:
 
     NODISCARD bool IsSmallMap() const {
         return std::holds_alternative<SmallIterType>(iter_);
-    }
-
-    NODISCARD SmallIterType GetSmallIter() const {
-        return std::get<SmallIterType>(iter_);
-    }
-
-    NODISCARD DenseIterType GetDenseIter() const {
-        return std::get<DenseIterType>(iter_);
     }
 
     IteratorImpl& operator++() {
@@ -1017,6 +1035,14 @@ public:
         return !(*this == other);
     }
 
+    operator SmallIterType() const {//NOLINT
+        return std::get<SmallIterType>(iter_);
+    }
+
+    operator DenseIterType() const {//NOLINT
+        return std::get<DenseIterType>(iter_);
+    }
+
 private:
     std::variant<SmallIterType, DenseIterType> iter_;
 
@@ -1033,12 +1059,12 @@ class Map<K, V>::PairProxy {
 public:
     PairProxy(Map& map, size_type idx) : map_(map), idx_(idx) {}
 
-    PairProxy& operator=(value_type x) {
-        map_.COW();
-        auto* p = GetRawDataPtr();
-        *p = std::move(x);
-        return *this;
-    }
+    // PairProxy& operator=(value_type x) {
+    //     map_.COW();
+    //     auto* p = GetRawDataPtr();
+    //     *p = std::move(x);
+    //     return *this;
+    // }
 
     PairProxy& operator=(mapped_type x) {
         map_.COW();
@@ -1090,19 +1116,14 @@ private:
     size_type idx_;
 
     NODISCARD DenseMapImpl::KVType* GetRawDataPtr() const {
-        return map_.IsSmallMap() ? map_.small_ptr()->GetDataPtr(idx_)
-                                 : map_.dense_ptr()->GetDataPtr(idx_);
+        return std::visit([&](const auto& arg) { return arg->GetDataPtr(idx_); },
+                          map_.obj_);
     }
 };
 
 template<typename K, typename V>
 Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
-    if (IsSmallMap()) {
-        auto it = SmallMapImpl::const_iterator(pos.GetSmallIter());
-        return erase(it);
-    }
-    auto it = DenseMapImpl::const_iterator(pos.GetDenseIter());
-    return erase(it);
+    return erase(const_iterator(pos));
 }
 
 template<typename K, typename V>
@@ -1112,11 +1133,10 @@ Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
     }
 
     COW();
-    if (IsSmallMap()) {
-        return small_ptr()->erase({pos.index(), small_ptr()});
-    }
-
-    return dense_ptr()->erase({pos.index(), dense_ptr()});
+    auto visitor = [&](const auto& arg) -> iterator {
+        return arg->erase({pos.index(), arg.get()});
+    };
+    return std::visit(visitor, obj_);
 }
 
 template<typename K, typename V>

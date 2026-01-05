@@ -5,10 +5,10 @@
 #ifndef AETHERMIND_ALLOCATOR_H
 #define AETHERMIND_ALLOCATOR_H
 
+#include "container/map.h"
 #include "data_ptr.h"
 #include "device.h"
 #include "env.h"
-#include "tensor_utils.h"
 #include "utils/thread_local_debug_info.h"
 
 #include <glog/logging.h>
@@ -72,6 +72,7 @@ public:
 private:
     AllocatorTable() = default;
     std::unordered_map<DeviceType, std::unique_ptr<Allocator>> table_;
+    // Map<DeviceType, std::unique_ptr<Allocator>> table_;
 };
 
 class UndefinedAllocator final : public Allocator {

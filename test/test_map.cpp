@@ -2,6 +2,7 @@
 // Created by richard on 12/18/25.
 //
 #include "container/map.h"
+#include "container/map_obj.h"
 
 #include <gtest/gtest.h>
 #include <list>

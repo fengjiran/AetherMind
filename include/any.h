@@ -290,7 +290,7 @@ public:
     operator T() {//NOLINT
         return cast<T>();
     }
-    //
+
     // template<typename T>
     // operator T&() {
     //     CHECK(has_value()) << "Any has no value.";

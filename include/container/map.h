@@ -6,7 +6,6 @@
 #define AETHERMIND_CONTAINER_MAP_H
 
 #include "any.h"
-#include "map.h"
 
 #include <concepts>
 #include <tuple>
@@ -756,12 +755,6 @@ public:
         return insert_impl({std::move(key), std::move(value)}, false);
     }
 
-    // std::pair<iterator, bool> insert(const SmallMapImpl::KVType& x) {
-    //     return insert_impl({x.first.cast<key_type>(), x.second.cast<mapped_type>()}, false);
-    // }
-
-    // static_assert(std::convertible_to<std::pair<Any, Any>&, std::pair<const int, int>>);
-
     template<typename Pair>
         requires(std::constructible_from<value_type, Pair &&> &&
                  !std::same_as<std::decay_t<Pair>, value_type>)
@@ -918,7 +911,9 @@ private:
 
     void COW() {
         if (!unique()) {
-            const auto* p = std::visit([](const auto& arg) -> Object* { return arg.get(); }, obj_);
+            const auto* p = std::visit([](const auto& arg) -> Object* { return arg.get(); },
+                                       obj_);
+
             if (IsSmallMap()) {
                 obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(SmallMapImpl::CopyFrom(p));
             } else {
@@ -1058,6 +1053,18 @@ template<typename K, typename V>
 class Map<K, V>::PairProxy {
 public:
     PairProxy(Map& map, size_type idx) : map_(map), idx_(idx) {}
+
+    const auto& first() const {
+        return GetRawDataPtr()->first;
+    }
+
+    auto& second() {
+        return GetRawDataPtr()->second;
+    }
+
+    const auto& second() const {
+        return GetRawDataPtr()->second;
+    }
 
     // PairProxy& operator=(value_type x) {
     //     map_.COW();

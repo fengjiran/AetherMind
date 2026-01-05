@@ -290,6 +290,20 @@ public:
     operator T() {//NOLINT
         return cast<T>();
     }
+    //
+    // template<typename T>
+    // operator T&() {
+    //     CHECK(has_value()) << "Any has no value.";
+    //     CHECK(CheckType<T>()) << "Type mismatch.";
+    //     return *static_cast<T*>(GetDataPtr());
+    // }
+    //
+    // template<typename T>
+    // operator const T&() const {
+    //     CHECK(has_value()) << "Any has no value.";
+    //     CHECK(CheckType<T>()) << "Type mismatch.";
+    //     return *static_cast<const T*>(GetDataPtr());
+    // }
 
     template<typename T>
     T MoveFromAny() {

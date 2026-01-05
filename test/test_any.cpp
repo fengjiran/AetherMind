@@ -127,7 +127,7 @@ TEST(Any, string) {
     s3.reset();
     EXPECT_TRUE(s0.unique());
 
-    String s4 = static_cast<String>(Any("hello"));
+    String s4 = Any("hello");
     EXPECT_EQ(s4, "hello");
     EXPECT_EQ(s4.use_count(), 1);
 }

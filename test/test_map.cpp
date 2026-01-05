@@ -533,6 +533,7 @@ TEST(MapInsertTest, insert_different_types) {
     auto [it3, success3] = complex_map.insert(1, vec);
     EXPECT_TRUE(success3);
     EXPECT_EQ(static_cast<std::vector<int>>(it3->second), vec);
+    // EXPECT_EQ(it3->second, vec);
 
     // 测试初始化列表插入复杂类型
     complex_map.insert({{2, {4, 5, 6}}, {3, {7, 8, 9}}});

@@ -160,7 +160,7 @@ SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
 
 void Any::DebugPrint(std::ostream& os) const {
     if (const auto* holder_ptr = GetHolderPtr()) {
-        os << "{type: " << holder_ptr->type().name() << ", value: ";
+        os << "{type: " << details::demangle(holder_ptr->type().name()) << ", value: ";
         holder_ptr->print(os);
         os << "}";
     } else {
@@ -181,27 +181,29 @@ bool AnyEqual::operator()(const Any& lhs, const Any& rhs) const {
         return false;
     }
 
-    if (lhs.IsInteger()) {
-        return lhs.ToInt() == rhs.ToInt();
-    }
+    return lhs.GetHolderPtr()->EqualsTo(rhs.GetHolderPtr());
 
-    if (lhs.IsFloatingPoint()) {
-        return lhs.ToDouble() == rhs.ToDouble();
-    }
-
-    if (lhs.IsBool()) {
-        return lhs.ToBool() == rhs.ToBool();
-    }
-
-    if (lhs.IsString()) {
-        return lhs.ToString() == rhs.ToString();
-    }
-
-    if (lhs.IsDevice()) {
-        return lhs.ToDevice() == rhs.ToDevice();
-    }
-
-    return lhs.GetDataPtr() == rhs.GetDataPtr();
+    // if (lhs.IsInteger()) {
+    //     return lhs.ToInt() == rhs.ToInt();
+    // }
+    //
+    // if (lhs.IsFloatingPoint()) {
+    //     return lhs.ToDouble() == rhs.ToDouble();
+    // }
+    //
+    // if (lhs.IsBool()) {
+    //     return lhs.ToBool() == rhs.ToBool();
+    // }
+    //
+    // if (lhs.IsString()) {
+    //     return lhs.ToString() == rhs.ToString();
+    // }
+    //
+    // if (lhs.IsDevice()) {
+    //     return lhs.ToDevice() == rhs.ToDevice();
+    // }
+    //
+    // return lhs.GetDataPtr() == rhs.GetDataPtr();
 }
 
 // TODO: any hash

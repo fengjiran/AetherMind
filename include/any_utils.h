@@ -9,6 +9,7 @@
 #include "device.h"
 #include "object.h"
 
+#include <cxxabi.h>
 #include <map>
 #include <unordered_map>
 
@@ -92,6 +93,7 @@ concept is_printable = requires(std::ostream& os, T t) {
     { os << t } -> std::same_as<std::ostream&>;
 };
 
+
 #else
 template<typename T>
 constexpr bool is_integral = std::is_integral_v<T> && !std::is_same_v<T, bool>;
@@ -125,17 +127,29 @@ constexpr bool has_use_count_method_v = has_use_count_method<T>::value;
 
 #endif
 
-// template<typename T>
-// struct is_map : std::false_type {};
-//
-// template<typename K, typename V>
-// struct is_map<std::unordered_map<K, V>> : std::true_type {};
-//
-// template<typename K, typename V>
-// struct is_map<std::map<K, V>> : std::true_type {};
-//
-// template<typename T>
-// constexpr bool is_map_v = is_map<T>::value;
+// This function will demangle the mangled function name into a more human
+// readable format, e.g. _Z1gv -> g().
+// More information:
+// https://github.com/gcc-mirror/gcc/blob/master/libstdc%2B%2B-v3/libsupc%2B%2B/cxxabi.h
+inline String demangle(const char* name) {
+    int status = -1;
+    std::unique_ptr<char, std::function<void(char*)>> demangled(
+            abi::__cxa_demangle(
+                    name,
+                    /*__output_buffer=*/nullptr,
+                    /*__length=*/nullptr,
+                    &status),
+            /*deleter=*/free);
+
+    // Demangling may fail, for example when the name does not follow the
+    // standard C++ (Itanium ABI) mangling scheme. This is the case for `main`
+    // or `clone` for example, so the mangled name is a fine default.
+    if (status == 0) {
+        return demangled.get();
+    }
+
+    return name;
+}
 
 template<typename T>
 struct TypeName {

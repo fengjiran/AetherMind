@@ -28,6 +28,7 @@ public:
     NODISCARD virtual bool IsMap() const = 0;
     NODISCARD virtual void* GetDataPtr() = 0;
     NODISCARD virtual const void* GetDataPtr() const = 0;
+    NODISCARD virtual bool EqualsTo(const HolderBase*) const = 0;
     virtual void print(std::ostream& os) const = 0;
 };
 
@@ -35,6 +36,15 @@ template<typename T>
 class Holder final : public HolderBase {
 public:
     explicit Holder(T value) : value_(std::move(value)) {}
+    // Holder(T&& value) : value_(std::forward<T>(value)) {}
+
+    operator T&() noexcept {
+        return value_;
+    }
+
+    operator const T&() const noexcept {
+        return value_;
+    }
 
     void CloneSmallObject(void* p) const override {
         new (p) Holder(*this);
@@ -84,12 +94,21 @@ public:
         return &value_;
     }
 
+    NODISCARD bool EqualsTo(const HolderBase* other) const override {
+        if constexpr (std::equality_comparable<T>) {
+            return value_ == *static_cast<const T*>(other->GetDataPtr());
+        } else {
+            return GetDataPtr() == other->GetDataPtr();
+        }
+    }
+
     void print(std::ostream& os) const override {
         if constexpr (details::is_printable<T>) {
             os << value_;
         } else {
             // print type info and address
-            os << "[" << type().name() << "@" << std::hex << std::uintptr_t(GetDataPtr()) << "]";
+            os << "[" << details::demangle(type().name()) << "@" << std::hex
+               << reinterpret_cast<std::uintptr_t>(GetDataPtr()) << "]";
         }
     }
 
@@ -423,13 +442,11 @@ private:
         }
 
         SmallObject(const SmallObject& other) {
-            const auto* src = reinterpret_cast<const HolderBase*>(other.local_buffer);
-            src->CloneSmallObject(local_buffer);
+            other.GetHolderPtr()->CloneSmallObject(local_buffer);
         }
 
         SmallObject(SmallObject&& other) noexcept {
-            auto* src = reinterpret_cast<HolderBase*>(other.local_buffer);
-            src->MoveSmallObject(local_buffer);
+            other.GetHolderPtr()->MoveSmallObject(local_buffer);
         }
 
         SmallObject& operator=(const SmallObject& other) {
@@ -453,16 +470,24 @@ private:
             std::memcpy(other.local_buffer, tmp, kSmallObjectSize);
         }
 
+        NODISCARD HolderBase* GetHolderPtr() {
+            return reinterpret_cast<HolderBase*>(local_buffer);
+        }
+
+        NODISCARD const HolderBase* GetHolderPtr() const {
+            return reinterpret_cast<const HolderBase*>(local_buffer);
+        }
+
         NODISCARD void* GetDataPtr() {
-            return reinterpret_cast<HolderBase*>(local_buffer)->GetDataPtr();
+            return GetHolderPtr()->GetDataPtr();
         }
 
         NODISCARD const void* GetDataPtr() const {
-            return reinterpret_cast<const HolderBase*>(local_buffer)->GetDataPtr();
+            return GetHolderPtr()->GetDataPtr();
         }
 
         ~SmallObject() {
-            reinterpret_cast<HolderBase*>(local_buffer)->~HolderBase();
+            GetHolderPtr()->~HolderBase();
         }
 
         // alignas(std::max_align_t)
@@ -478,13 +503,7 @@ private:
             if constexpr (std::is_same_v<V, std::monostate>) {
                 return std::nullopt;
             } else if constexpr (std::is_same_v<V, SmallObject>) {
-                if constexpr (std::is_const_v<std::remove_reference_t<U>>) {
-                    const auto* holder_ptr = reinterpret_cast<const HolderBase*>(v.local_buffer);
-                    return CastImpl(holder_ptr);
-                } else {
-                    auto* holder_ptr = reinterpret_cast<HolderBase*>(v.local_buffer);
-                    return CastImpl(holder_ptr);
-                }
+                return CastImpl(v.GetHolderPtr());
             } else if constexpr (std::is_same_v<V, std::unique_ptr<HolderBase>>) {
                 if constexpr (std::is_const_v<std::remove_reference_t<U>>) {
                     const auto* holder_ptr = v.get();

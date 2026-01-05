@@ -386,10 +386,10 @@ TEST(AnyOperatorsTest, AnyEqualFunctionObject) {
 }
 
 // 测试辅助函数，用于验证输出
-bool TestPrintOutput(const Any& any, AnyPrintFormat format, const std::string& expected) {
+bool TestPrintOutput(const Any& any, AnyPrintFormat format, const String& expected) {
     std::ostringstream oss;
     PrintAny(oss, any, format);
-    std::string result = oss.str();
+    String result = oss.str();
 
     if (result != expected) {
         std::cerr << "Test failed! Format: " << static_cast<int>(format) << "\n";
@@ -417,7 +417,7 @@ TEST(AnyPrintTest, TestBasicTypes) {
     TestPrintOutput(any_bool, AnyPrintFormat::Default, "1");// 注意：C++中默认bool打印为1/0
 
     // 字符串类型
-    Any any_string(std::string("Hello, World!"));
+    Any any_string("Hello, World!");
     TestPrintOutput(any_string, AnyPrintFormat::Default, "Hello, World!");
 
     Any any_cstring("C-style string");
@@ -436,11 +436,11 @@ TEST(AnyPrintTest, TestPrintFormats) {
     // 调试格式应该包含类型信息（具体输出取决于实现）
     std::ostringstream oss;
     PrintAny(oss, any_int, AnyPrintFormat::Debug);
-    std::string debug_output = oss.str();
+    String debug_output = oss.str();
     std::cout << "Debug format output: " << debug_output << "\n";
 
     // 验证调试格式包含必要信息
-    if (debug_output.find("int") != std::string::npos && debug_output.find("42") != std::string::npos) {
+    if (debug_output.find("int") != String::npos && debug_output.find("42") != String::npos) {
         std::cout << "✓ Debug format contains type and value\n";
     } else {
         std::cout << "✗ Debug format missing type or value\n";
@@ -466,7 +466,7 @@ TEST(AnyPrintTest, TestOperatorStream) {
     std::cout << "\n=== Testing operator<< ===\n";
 
     Any any_int(42);
-    Any any_string(std::string("Test"));
+    Any any_string("Test");
 
     std::ostringstream oss1, oss2;
     oss1 << any_int;
@@ -503,11 +503,11 @@ TEST(AnyPrintTest, TestCustomType) {
 
     std::ostringstream oss;
     PrintAny(oss, any_point, AnyPrintFormat::Default);
-    std::string output = oss.str();
+    String output = oss.str();
     std::cout << "Custom type output: " << output << "\n";
 
     // 验证输出包含类型信息或指针地址
-    if (output.find("Point") != std::string::npos || output.find("@") != std::string::npos) {
+    if (output.find("Point") != String::npos || output.find("@") != String::npos) {
         std::cout << "✓ Custom type output contains expected information\n";
     }
 }

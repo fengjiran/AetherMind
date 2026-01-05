@@ -15,7 +15,7 @@ namespace aethermind {
 namespace details {
 
 template<typename InputIter>
-concept is_valid_iter = requires(InputIter t) {
+concept is_valid_iter1 = requires(InputIter t) {
     requires std::input_iterator<InputIter>;
     { *t } -> std::convertible_to<std::pair<Any, Any>>;
     ++t;
@@ -125,7 +125,7 @@ protected:
 
     static ObjectPtr<Object> Create(size_t n = kInitSize);
 
-    template<details::is_valid_iter Iter>
+    template<details::is_valid_iter1 Iter>
     static ObjectPtr<Object> CreateFromRange(Iter first, Iter last);
 
     static ObjectPtr<Object> CopyFrom(const Object* src);
@@ -561,7 +561,7 @@ ObjectPtr<Object> MapImpl<Derived>::Create(size_t n) {
 }
 
 template<typename Derived>
-template<details::is_valid_iter Iter>
+template<details::is_valid_iter1 Iter>
 ObjectPtr<Object> MapImpl<Derived>::CreateFromRange(Iter first, Iter last) {
     const int64_t _sz = std::distance(first, last);
     if (_sz <= 0) {
@@ -774,7 +774,7 @@ public:
     }
 
     template<typename Iter>
-        requires details::is_valid_iter<Iter>
+        requires details::is_valid_iter1<Iter>
     void insert(Iter first, Iter last) {
         while (first != last) {
             insert(*first++);

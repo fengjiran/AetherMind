@@ -10,8 +10,19 @@
 
 namespace aethermind {
 
+namespace details {
+
+template<typename InputIter>
+concept is_valid_iter = requires(InputIter t) {
+    requires std::input_iterator<InputIter>;
+    ++t;
+    --t;
+};
+
+}// namespace details
+
 template<typename K, typename V, typename Derived>
-class MapObjBase {
+class MapObjBase : public Object {
 public:
     using key_type = K;
     using mapped_type = V;
@@ -83,8 +94,6 @@ protected:
     NODISCARD const Derived* GetDerivedPtr() const noexcept {
         return static_cast<const Derived*>(this);
     }
-
-    static ObjectPtr<Object> Create(size_t n = kInitSize);
 };
 
 template<typename K, typename V, typename Derived>
@@ -223,15 +232,18 @@ private:
 template<typename K, typename V>
 class SmallMapObj : public MapObjBase<K, V, SmallMapObj<K, V>> {
 public:
-    using key_type = MapObjBase<K, V, SmallMapObj>::key_type;
-    using mapped_type = MapObjBase<K, V, SmallMapObj>::mapped_type;
-    using value_type = MapObjBase<K, V, SmallMapObj>::value_type;
-    using size_type = MapObjBase<K, V, SmallMapObj>::size_type;
+    using key_type = K;
+    using mapped_type = V;
+    using value_type = std::pair<const key_type, mapped_type>;
+    using size_type = size_t;
 
     using iterator = MapObjBase<K, V, SmallMapObj>::iterator;
     using const_iterator = MapObjBase<K, V, SmallMapObj>::const_iterator;
 
     SmallMapObj() = default;
+    ~SmallMapObj() override {
+        reset();
+    }
 
 private:
     NODISCARD iterator begin_impl() {
@@ -250,6 +262,30 @@ private:
         return const_cast<SmallMapObj*>(this)->end_impl();
     }
 
+    NODISCARD const_iterator find_impl(const key_type& key) const;
+
+    NODISCARD iterator find_impl(const key_type& key);
+
+    NODISCARD size_t count_impl(const key_type& key) const {
+        return this->find(key).index() < this->size();
+    }
+
+    mapped_type& at_impl(const key_type& key) {
+        const auto iter = this->find(key);
+        if (iter == this->end()) {
+            AETHERMIND_THROW(KeyError) << "key is not exist.";
+        }
+        return iter->second;
+    }
+
+    NODISCARD const mapped_type& at_impl(const key_type& key) const {
+        return const_cast<SmallMapObj*>(this)->at_impl(key);
+    }
+
+    NODISCARD value_type* GetDataPtrImpl(size_t index) const {
+        return static_cast<value_type*>(this->data()) + index;
+    }
+
     NODISCARD size_type GetNextIndexOfImpl(size_type idx) const {
         return idx + 1 < this->size() ? idx + 1 : this->size();
     }
@@ -258,19 +294,53 @@ private:
         return idx > 0 ? idx - 1 : this->size();
     }
 
-    static ObjectPtr<SmallMapObj> CreateImpl(size_type n = SmallMapObj::kInitSize);
+    void reset();
 
-    static ObjectPtr<SmallMapObj> CopyFromImpl(const SmallMapObj* src);
+    static ObjectPtr<SmallMapObj> Create(size_type n = SmallMapObj::kInitSize);
 
-    template<typename T1, typename T2, typename T3>
+    static ObjectPtr<SmallMapObj> CopyFrom(const SmallMapObj* src);
+
+    template<typename, typename, typename>
     friend class MapObjBase;
     template<typename T1, typename T2>
     friend class DenseMapObj;
 };
 
 template<typename K, typename V>
-ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CreateImpl(size_type n) {
+void SmallMapObj<K, V>::reset() {
+    auto* p = static_cast<value_type*>(this->data());
+    for (size_t i = 0; i < this->size(); ++i) {
+        p[i].~value_type();
+    }
+
+    this->size_ = 0;
+    this->slots_ = 0;
+}
+
+template<typename K, typename V>
+SmallMapObj<K, V>::iterator SmallMapObj<K, V>::find_impl(const key_type& key) {
+    const auto* p = static_cast<value_type*>(this->data());
+    for (size_t i = 0; i < this->size(); ++i) {
+        if (key == p[i].first) {
+            return {i, this};
+        }
+    }
+
+    return this->end();
+}
+
+template<typename K, typename V>
+SmallMapObj<K, V>::const_iterator SmallMapObj<K, V>::find_impl(const key_type& key) const {
+    return const_cast<SmallMapObj*>(this)->find_impl(key);
+}
+
+
+template<typename K, typename V>
+ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::Create(size_type n) {
     CHECK(n <= SmallMapObj::kThreshold);
+    if (n < SmallMapObj::kInitSize) {
+        n = SmallMapObj::kInitSize;
+    }
     auto impl = make_array_object<SmallMapObj, value_type>(n);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapObj);
     impl->size_ = 0;
@@ -279,32 +349,33 @@ ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CreateImpl(size_type n) {
 }
 
 template<typename K, typename V>
-ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CopyFromImpl(const SmallMapObj* src) {
+ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CopyFrom(const SmallMapObj* src) {
     const auto* first = static_cast<value_type*>(src->data());
-    auto impl = MapObjBase<K, V, SmallMapObj>::Create(src->slots());
-    auto* p = static_cast<SmallMapObj*>(impl.get());//NOLINT
-    auto* dst = static_cast<value_type*>(p->data());
+    auto impl = Create(src->slots());
+    auto* dst = static_cast<value_type*>(impl->data());
     for (size_t i = 0; i < src->size(); ++i) {
         new (dst + i) value_type(*first++);
-        ++p->size_;
+        ++impl->size_;
     }
 
-    return details::ObjectUnsafe::Downcast<SmallMapObj>(impl);
+    return impl;
 }
-
 
 template<typename K, typename V>
 class DenseMapObj : public MapObjBase<K, V, DenseMapObj<K, V>> {
 public:
-    using key_type = MapObjBase<K, V, DenseMapObj>::key_type;
-    using mapped_type = MapObjBase<K, V, DenseMapObj>::mapped_type;
-    using value_type = MapObjBase<K, V, DenseMapObj>::value_type;
-    using size_type = MapObjBase<K, V, DenseMapObj>::size_type;
+    using key_type = K;
+    using mapped_type = V;
+    using value_type = std::pair<const key_type, mapped_type>;
+    using size_type = size_t;
 
     using iterator = MapObjBase<K, V, DenseMapObj>::iterator;
     using const_iterator = MapObjBase<K, V, DenseMapObj>::const_iterator;
 
     DenseMapObj() = default;
+    ~DenseMapObj() override {
+        reset();
+    }
 
 private:
     // The number of elements in a memory block.
@@ -395,6 +466,14 @@ private:
         return {details::FibonacciHash(hash_value, fib_shift_), this};
     }
 
+    NODISCARD Block* GetBlock(size_t block_idx) const {
+        return static_cast<Block*>(this->data()) + block_idx;
+    }
+
+    NODISCARD value_type* GetDataPtrImpl(size_t index) const {
+        return &Cursor(index, this).GetData();
+    }
+
     // Construct a ListNode from hash code if the position is head of list
     NODISCARD std::optional<Cursor> GetListHead(size_t hash_value) const {
         if (const auto head = GetCursorFromHash(hash_value); head.IsHead()) {
@@ -410,6 +489,8 @@ private:
 
     NODISCARD mapped_type& At(const key_type& key) const;
 
+    void reset();
+
     /*!
    * \brief Search for the given key, throw exception if not exists
    * \param key The key
@@ -422,6 +503,14 @@ private:
         return this->size() + 1 >
                static_cast<size_type>(static_cast<double>(this->slots()) * kMaxLoadFactor);
     }
+
+    static size_type ComputeBlockNum(size_type slots) {
+        return (slots + kBlockSize - 1) / kBlockSize;
+    }
+
+    // Calculate the power-of-2 table size given the lower-bound of required capacity.
+    // shift = 64 - log2(slots)
+    static std::pair<uint32_t, size_type> ComputeSlotNum(size_type cap);
 
     // Insert the entry into tail of iterator list.
     // This function does not change data content of the node.
@@ -442,7 +531,12 @@ private:
    */
     void IterListReplace(Cursor src, Cursor dst);
 
-    static ObjectPtr<DenseMapObj> CreateImpl(size_type n);
+    static ObjectPtr<DenseMapObj> Create(size_type n);
+
+    static ObjectPtr<DenseMapObj> CopyFromImpl(const DenseMapObj* src);
+
+    template<typename, typename, typename>
+    friend class MapObjBase;
 };
 
 template<typename K, typename V>
@@ -461,8 +555,8 @@ struct DenseMapObj<K, V>::Entry {
     }
 
     void reset() {
-        data.first.reset();
-        data.second.reset();
+        // data.first.reset();
+        // data.second.reset();
         prev = kInvalidIndex;
         next = kInvalidIndex;
     }
@@ -656,21 +750,21 @@ private:
 template<typename K, typename V>
 DenseMapObj<K, V>::size_type DenseMapObj<K, V>::GetNextIndexOfImpl(size_type idx) const {
     // keep at the end of iterator
-    if (index == kInvalidIndex) {
-        return index;
+    if (idx == kInvalidIndex) {
+        return idx;
     }
 
-    return Cursor(index, this).GetEntry().next;
+    return Cursor(idx, this).GetEntry().next;
 }
 
 template<typename K, typename V>
 DenseMapObj<K, V>::size_type DenseMapObj<K, V>::GetPrevIndexOfImpl(size_type idx) const {
     // this is the end iterator, we need to return tail.
-    if (index == kInvalidIndex) {
+    if (idx == kInvalidIndex) {
         return iter_list_tail_;
     }
 
-    return Cursor(index, this).GetEntry().prev;
+    return Cursor(idx, this).GetEntry().prev;
 }
 
 template<typename K, typename V>
@@ -682,6 +776,20 @@ DenseMapObj<K, V>::mapped_type& DenseMapObj<K, V>::At(const key_type& key) const
 
     return iter.GetValue();
 }
+
+template<typename K, typename V>
+void DenseMapObj<K, V>::reset() {
+    const size_t block_num = ComputeBlockNum(this->slots());
+    auto* p = static_cast<Block*>(this->data());
+    for (size_t i = 0; i < block_num; ++i) {
+        p[i].~Block();
+    }
+
+    this->size_ = 0;
+    this->slots_ = 0;
+    fib_shift_ = 63;
+}
+
 
 template<typename K, typename V>
 DenseMapObj<K, V>::Cursor DenseMapObj<K, V>::Search(const key_type& key) const {
@@ -704,6 +812,27 @@ DenseMapObj<K, V>::Cursor DenseMapObj<K, V>::Search(const key_type& key) const {
 
     return {};
 }
+
+template<typename K, typename V>
+std::pair<uint32_t, typename DenseMapObj<K, V>::size_type> DenseMapObj<K, V>::ComputeSlotNum(size_type cap) {
+    uint32_t shift = 64;
+    size_t slots = 1;
+    size_t c = cap;
+    while (c > 0) {
+        --shift;
+        slots <<= 1;
+        c >>= 1;
+    }
+    CHECK(slots > cap);
+
+    if (slots < 2 * cap) {
+        --shift;
+        slots <<= 1;
+    }
+
+    return {shift, slots};
+}
+
 
 template<typename K, typename V>
 void DenseMapObj<K, V>::IterListPushBack(Cursor node) {
@@ -758,10 +887,45 @@ void DenseMapObj<K, V>::IterListReplace(Cursor src, Cursor dst) {
     }
 }
 
+template<typename K, typename V>
+ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::Create(size_type n) {
+    CHECK(n > DenseMapObj::kThreshold);
+    auto [fib_shift, slots] = ComputeSlotNum(n);
+    const size_t block_num = ComputeBlockNum(slots);
+    auto impl = make_array_object<DenseMapObj, Block>(block_num);
+    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapObj);
+    impl->size_ = 0;
+    impl->slots_ = slots;
+    impl->fib_shift_ = fib_shift;
+    impl->iter_list_head_ = kInvalidIndex;
+    impl->iter_list_tail_ = kInvalidIndex;
+
+    auto* p = static_cast<Block*>(impl->data());
+    for (size_t i = 0; i < block_num; ++i) {
+        new (p + i) Block;
+    }
+    return impl;
+}
 
 template<typename K, typename V>
-ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CreateImpl(size_type n) {
-    //
+ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFromImpl(const DenseMapObj* src) {
+    const auto* first = static_cast<value_type*>(src->data());
+    auto impl = Create(src->slots());
+    auto block_num = ComputeBlockNum(src->slots());
+    // auto impl = make_array_object<DenseMapObj, Block>(block_num);
+    // impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapObj);
+    impl->size_ = src->size();
+    // impl->slots_ = src->slots();
+    // impl->fib_shift_ = src->fib_shift_;
+    impl->iter_list_head_ = src->iter_list_head_;
+    impl->iter_list_tail_ = src->iter_list_tail_;
+
+    auto* p = static_cast<Block*>(impl->data());
+    for (size_t i = 0; i < block_num; ++i) {
+        new (p + i) Block(*src->GetBlock(i));
+    }
+
+    return impl;
 }
 
 

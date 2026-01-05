@@ -334,10 +334,11 @@ SmallMapObj<K, V>::const_iterator SmallMapObj<K, V>::find_impl(const key_type& k
     return const_cast<SmallMapObj*>(this)->find_impl(key);
 }
 
-
 template<typename K, typename V>
 ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::Create(size_type n) {
-    CHECK(n <= SmallMapObj::kThreshold);
+    CHECK(n <= SmallMapObj::kThreshold)
+            << "The allocated size must be less equal to the threshold of " << SmallMapObj::kThreshold
+            << " when using SmallMapObj::Create";
     if (n < SmallMapObj::kInitSize) {
         n = SmallMapObj::kInitSize;
     }
@@ -533,7 +534,7 @@ private:
 
     static ObjectPtr<DenseMapObj> Create(size_type n);
 
-    static ObjectPtr<DenseMapObj> CopyFromImpl(const DenseMapObj* src);
+    static ObjectPtr<DenseMapObj> CopyFrom(const DenseMapObj* src);
 
     template<typename, typename, typename>
     friend class MapObjBase;
@@ -889,7 +890,9 @@ void DenseMapObj<K, V>::IterListReplace(Cursor src, Cursor dst) {
 
 template<typename K, typename V>
 ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::Create(size_type n) {
-    CHECK(n > DenseMapObj::kThreshold);
+    CHECK(n > DenseMapObj::kThreshold) << "The allocated size must be greate than the threshold of "
+                                       << DenseMapObj::kThreshold
+                                       << " when using SmallMapObj::Create";
     auto [fib_shift, slots] = ComputeSlotNum(n);
     const size_t block_num = ComputeBlockNum(slots);
     auto impl = make_array_object<DenseMapObj, Block>(block_num);
@@ -908,8 +911,7 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::Create(size_type n) {
 }
 
 template<typename K, typename V>
-ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFromImpl(const DenseMapObj* src) {
-    const auto* first = static_cast<value_type*>(src->data());
+ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src) {
     auto impl = Create(src->slots());
     auto block_num = ComputeBlockNum(src->slots());
     // auto impl = make_array_object<DenseMapObj, Block>(block_num);

@@ -383,9 +383,13 @@ SmallMapObj<K, V>::iterator SmallMapObj<K, V>::erase_impl(iterator pos) {
         return this->end();
     }
 
+    // auto* p = static_cast<value_type*>(this->data());
+    // auto* p1 = pos.operator->();
     auto src = this->end() - 1;
+    // p[pos.index()].~value_type();
+    // (p + pos.index())->~value_type();
     pos->~value_type();
-    new (pos.ptr()) value_type(std::move(*src));
+    new (pos.ptr()->GetDataPtr(pos.index())) value_type(std::move(*src));
     // *pos = std::move(*src);
 
     // auto src = pos + 1;

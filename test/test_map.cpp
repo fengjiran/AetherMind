@@ -217,7 +217,7 @@ TEST(MapTest, insert_and_access) {
 
 // 测试删除操作
 TEST(MapTest, erase) {
-    Map<int, int> map;
+    MapV1<int, int> map;
     map.insert(1, 10);
     map.insert(2, 20);
     map.insert(3, 30);
@@ -245,7 +245,7 @@ TEST(MapTest, erase) {
 
 // 测试查找操作
 TEST(MapTest, find) {
-    Map<int, String> map;
+    MapV1<int, String> map;
     map.insert(1, "one");
     map.insert(2, "two");
     map.insert(3, "three");
@@ -263,7 +263,7 @@ TEST(MapTest, find) {
 
 // 测试迭代器
 TEST(MapTest, iterators) {
-    Map<int, int> map;
+    MapV1<int, int> map;
     map.insert(1, 10);
     map.insert(2, 20);
     map.insert(3, 30);
@@ -275,18 +275,18 @@ TEST(MapTest, iterators) {
     // 遍历所有元素
     int sum = 0;
     for (auto& pair: map) {
-        sum += static_cast<int>(pair.second);
+        sum += pair.second;
     }
     EXPECT_EQ(sum, 60);
 
     // 测试空地图的迭代器
-    Map<int, int> empty_map;
+    MapV1<int, int> empty_map;
     EXPECT_EQ(empty_map.begin(), empty_map.end());
 }
 
 // 测试清除操作
 TEST(MapTest, clear) {
-    Map<int, String> map;
+    MapV1<int, String> map;
     map.insert(1, "one");
     map.insert(2, "two");
     map.insert(3, "three");
@@ -307,7 +307,7 @@ TEST(MapTest, clear) {
 
 // 测试小地图到大地图的转换
 TEST(MapTest, small_to_large_conversion) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 插入元素直到转换为大地图
     size_t small_slots = map.slots();
@@ -324,7 +324,7 @@ TEST(MapTest, small_to_large_conversion) {
 
 // 测试边界条件
 TEST(MapTest, edge_cases) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 单个元素
     map.insert(1, 10);
@@ -350,26 +350,26 @@ TEST(MapTest, edge_cases) {
 // 测试不同类型的键和值
 TEST(MapTest, different_types) {
     // String作为键，int作为值
-    Map<String, int> string_map;
+    MapV1<String, int> string_map;
     string_map.insert("apple", 1);
     string_map.insert("banana", 2);
     string_map.insert("cherry", 3);
     EXPECT_EQ(string_map["apple"], 1);
 
     // int作为键，Map作为值（嵌套Map）
-    Map<int, Map<String, int>> nested_map;
+    MapV1<int, MapV1<String, int>> nested_map;
     nested_map.insert(1, string_map);
-    // EXPECT_EQ(nested_map[1]["apple"], 1);
+    EXPECT_EQ(nested_map[1]["apple"], 1);
 
     // 使用const类型
-    const Map<String, int> const_map = string_map;
+    const MapV1<String, int> const_map = string_map;
     EXPECT_EQ(const_map.at("apple"), 1);
     EXPECT_EQ(const_map.size(), 3);
 }
 
 // 测试所有insert方法
 TEST(MapInsertTest, all_insert_methods) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 1. 测试键值对插入 insert(key_type, mapped_type)
     {
@@ -382,7 +382,7 @@ TEST(MapInsertTest, all_insert_methods) {
 
     // 2. 测试值类型插入 insert(const value_type&)
     {
-        Map<int, int>::value_type pair(2, 20);
+        MapV1<int, int>::value_type pair(2, 20);
         auto [it, success] = map.insert(pair);
         EXPECT_TRUE(success);
         EXPECT_EQ(it->first, 2);
@@ -392,7 +392,7 @@ TEST(MapInsertTest, all_insert_methods) {
 
     // 3. 测试移动插入 insert(value_type&&)
     {
-        auto [it, success] = map.insert(Map<int, int>::value_type(3, 30));
+        auto [it, success] = map.insert(MapV1<int, int>::value_type(3, 30));
         EXPECT_TRUE(success);
         EXPECT_EQ(it->first, 3);
         EXPECT_EQ(it->second, 30);
@@ -404,7 +404,7 @@ TEST(MapInsertTest, all_insert_methods) {
         struct CustomPair {
             int first = 4;
             int second = 40;
-            operator Map<int, int>::value_type() const {
+            operator MapV1<int, int>::value_type() const {
                 return {first, second};
             }
         };
@@ -425,7 +425,7 @@ TEST(MapInsertTest, all_insert_methods) {
 
     // 5. 测试范围插入 insert(Iter first, Iter last)
     {
-        std::vector<Map<int, int>::value_type> pairs = {{5, 50}, {6, 60}, {7, 70}};
+        std::vector<MapV1<int, int>::value_type> pairs = {{5, 50}, {6, 60}, {7, 70}};
         map.insert(pairs.begin(), pairs.end());
         EXPECT_EQ(map.size(), 7);
         EXPECT_EQ(map[5], 50);
@@ -470,12 +470,12 @@ TEST(MapInsertTest, insert_duplicate_keys) {
 
 // 测试COW机制下的插入
 TEST(MapInsertTest, insert_with_COW) {
-    Map<int, int> map1;
+    MapV1<int, int> map1;
     map1.insert(1, 10);
     map1.insert(2, 20);
 
     // 创建共享副本
-    Map<int, int> map2 = map1;
+    MapV1<int, int> map2 = map1;
     EXPECT_EQ(map1.use_count(), 2);
     EXPECT_EQ(map2.use_count(), 2);
 
@@ -490,7 +490,7 @@ TEST(MapInsertTest, insert_with_COW) {
 
 // 测试小地图到大地图转换时的插入
 TEST(MapInsertTest, insert_small_to_large_conversion) {
-    Map<int, int> map;
+    MapV1<int, int> map;
     EXPECT_TRUE(map.IsSmallMap());
 
     // 插入足够多的元素，触发从小地图到大地图的转换
@@ -513,7 +513,7 @@ TEST(MapInsertTest, insert_small_to_large_conversion) {
 // 测试不同类型的键和值
 TEST(MapInsertTest, insert_different_types) {
     // String作为键，int作为值
-    Map<String, int> string_map;
+    MapV1<String, int> string_map;
     auto [it1, success1] = string_map.insert("apple", 1);
     EXPECT_TRUE(success1);
     EXPECT_EQ(it1->first, "apple");
@@ -527,12 +527,11 @@ TEST(MapInsertTest, insert_different_types) {
     EXPECT_EQ(it2->second, 2);
 
     // 测试复杂值类型
-    Map<int, std::vector<int>> complex_map;
+    MapV1<int, std::vector<int>> complex_map;
     std::vector<int> vec = {1, 2, 3};
     auto [it3, success3] = complex_map.insert(1, vec);
     EXPECT_TRUE(success3);
-    EXPECT_EQ(static_cast<std::vector<int>>(it3->second), vec);
-    // EXPECT_EQ(it3->second, vec);
+    EXPECT_EQ(it3->second, vec);
 
     // 测试初始化列表插入复杂类型
     complex_map.insert({{2, {4, 5, 6}}, {3, {7, 8, 9}}});
@@ -541,7 +540,7 @@ TEST(MapInsertTest, insert_different_types) {
 
 // 测试范围插入的各种迭代器
 TEST(MapInsertTest, insert_range_iterators) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 使用vector迭代器
     std::vector<std::pair<int, int>> vec = {{1, 10}, {2, 20}, {3, 30}};
@@ -554,20 +553,20 @@ TEST(MapInsertTest, insert_range_iterators) {
     EXPECT_EQ(map.size(), 6);
 
     // 使用Map的迭代器
-    Map<int, int> map2;
+    MapV1<int, int> map2;
     map2.insert(map.begin(), map.end());
     EXPECT_EQ(map2.size(), 6);
 
     // // 使用const迭代器
-    Map<int, int> map3;
-    const Map<int, int>& const_map = map;
+    MapV1<int, int> map3;
+    const MapV1<int, int>& const_map = map;
     map3.insert(const_map.begin(), const_map.end());
     EXPECT_EQ(map3.size(), 6);
 }
 
 // 测试插入空范围和单元素范围
 TEST(MapInsertTest, insert_edge_cases) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 插入空范围
     std::vector<std::pair<int, int>> empty_vec;
@@ -593,7 +592,7 @@ TEST(MapInsertTest, insert_edge_cases) {
 
 // 测试insert_or_assign方法的基本功能
 TEST(MapInsertOrAssignTest, basic_functionality) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 1. 插入新元素（右值引用版本）
     {
@@ -639,7 +638,7 @@ TEST(MapInsertOrAssignTest, basic_functionality) {
 // 测试insert_or_assign与不同数据类型
 TEST(MapInsertOrAssignTest, different_data_types) {
     // String作为键，int作为值
-    Map<String, int> string_map;
+    MapV1<String, int> string_map;
 
     // 插入新元素
     auto [it1, success1] = string_map.insert_or_assign("apple", 1);
@@ -659,30 +658,29 @@ TEST(MapInsertOrAssignTest, different_data_types) {
     EXPECT_EQ(it3->first, "banana");
 
     // 复杂类型作为值
-    Map<int, std::vector<int>> complex_map;
+    MapV1<int, std::vector<int>> complex_map;
     std::vector<int> vec = {1, 2, 3};
 
     // 插入新元素
     auto [it4, success4] = complex_map.insert_or_assign(1, vec);
     EXPECT_TRUE(success4);
-    EXPECT_EQ(it4->second.cast<std::vector<int>>(), vec);
-    auto x = it4->second == vec;
+    EXPECT_EQ(it4->second, vec);
 
     // 更新元素
     std::vector<int> new_vec = {4, 5, 6};
     auto [it5, success5] = complex_map.insert_or_assign(1, new_vec);
     EXPECT_FALSE(success5);
-    EXPECT_EQ(it5->second.cast<std::vector<int>>(), new_vec);
+    EXPECT_EQ(it5->second, new_vec);
 }
 
 // 测试COW机制下的insert_or_assign
 TEST(MapInsertOrAssignTest, cow_mechanism) {
-    Map<int, int> map1;
+    MapV1<int, int> map1;
     map1.insert_or_assign(1, 10);
     map1.insert_or_assign(2, 20);
 
     // 创建共享副本
-    Map<int, int> map2 = map1;
+    MapV1<int, int> map2 = map1;
     EXPECT_EQ(map1.use_count(), 2);
     EXPECT_EQ(map2.use_count(), 2);
 
@@ -705,7 +703,7 @@ TEST(MapInsertOrAssignTest, cow_mechanism) {
 
 // 测试小地图到大地图转换时的insert_or_assign
 TEST(MapInsertOrAssignTest, small_to_large_conversion) {
-    Map<int, int> map;
+    MapV1<int, int> map;
     EXPECT_TRUE(map.IsSmallMap());
 
     // 插入足够多的元素，触发从小地图到大地图的转换
@@ -732,7 +730,7 @@ TEST(MapInsertOrAssignTest, small_to_large_conversion) {
 
 // 测试边界条件
 TEST(MapInsertOrAssignTest, edge_cases) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 插入单个元素
     auto [it1, success1] = map.insert_or_assign(1, 10);
@@ -761,7 +759,7 @@ TEST(MapInsertOrAssignTest, edge_cases) {
 
 // 测试与其他方法的交互
 TEST(MapInsertOrAssignTest, interaction_with_other_methods) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 与insert方法结合使用
     map.insert(1, 10);
@@ -796,7 +794,7 @@ TEST(MapInsertOrAssignTest, interaction_with_other_methods) {
 // 测试不同类型的键和值
 TEST(MapInsertOrAssignTest, different_key_value_types) {
     // String作为键，String作为值
-    Map<String, String> string_map;
+    MapV1<String, String> string_map;
     string_map.insert_or_assign("name", "apple");
     EXPECT_EQ(string_map["name"], "apple");
 
@@ -805,7 +803,7 @@ TEST(MapInsertOrAssignTest, different_key_value_types) {
     EXPECT_EQ(string_map["name"], "banana");
 
     // 混合类型
-    Map<String, int> mixed_map;
+    MapV1<String, int> mixed_map;
     mixed_map.insert_or_assign("count", 5);
     mixed_map.insert_or_assign("value", 100);
 

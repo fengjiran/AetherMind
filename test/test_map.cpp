@@ -814,7 +814,7 @@ TEST(MapInsertOrAssignTest, different_key_value_types) {
 
 TEST(MapEraseTest, erase_by_iterator) {
     // 测试SmallMap的情况
-    Map<int, int> small_map = {{1, 10}, {2, 20}, {3, 30}};
+    MapV1<int, int> small_map = {{1, 10}, {2, 20}, {3, 30}};
     EXPECT_TRUE(small_map.IsSmallMap());
     EXPECT_EQ(small_map.size(), 3);
 
@@ -822,8 +822,8 @@ TEST(MapEraseTest, erase_by_iterator) {
     auto it = small_map.begin();
     auto next_it = small_map.erase(it);
     EXPECT_EQ(small_map.size(), 2);
-    EXPECT_EQ(next_it->first, 2);
-    EXPECT_EQ(next_it->second, 20);
+    EXPECT_EQ(next_it->first, 3);
+    EXPECT_EQ(next_it->second, 30);
     EXPECT_FALSE(small_map.contains(1));
     EXPECT_TRUE(small_map.contains(2));
     EXPECT_TRUE(small_map.contains(3));
@@ -831,9 +831,9 @@ TEST(MapEraseTest, erase_by_iterator) {
     // 删除中间元素
     next_it = small_map.erase(next_it);
     EXPECT_EQ(small_map.size(), 1);
-    EXPECT_EQ(next_it->first, 3);
-    EXPECT_EQ(next_it->second, 30);
-    EXPECT_FALSE(small_map.contains(2));
+    EXPECT_EQ(next_it->first, 2);
+    EXPECT_EQ(next_it->second, 20);
+    EXPECT_TRUE(small_map.contains(2));
 
     // 删除最后一个元素
     next_it = small_map.erase(next_it);
@@ -842,7 +842,7 @@ TEST(MapEraseTest, erase_by_iterator) {
     EXPECT_EQ(next_it, small_map.end());
 
     // 测试DenseMap的情况
-    Map<int, int> dense_map = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
+    MapV1<int, int> dense_map = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
     EXPECT_FALSE(dense_map.IsSmallMap());
     EXPECT_EQ(dense_map.size(), 5);
 
@@ -854,7 +854,7 @@ TEST(MapEraseTest, erase_by_iterator) {
     next_it = dense_map.erase(it);
 
     for (const auto& [fst, snd]: dense_map) {
-        std::cout << fst.cast<int>() << ": " << snd.cast<int>() << std::endl;
+        std::cout << fst << ": " << snd<< std::endl;
     }
     EXPECT_EQ(dense_map.size(), 4);
     EXPECT_EQ(next_it->first, 4);
@@ -871,16 +871,16 @@ TEST(MapEraseTest, erase_by_iterator) {
 }
 
 TEST(MapEraseTest, erase_by_const_iterator) {
-    Map<String, int> map = {{"one", 1}, {"two", 2}, {"three", 3}};
+    MapV1<String, int> map = {{"one", 1}, {"two", 2}, {"three", 3}};
     EXPECT_EQ(map.size(), 3);
 
     // 使用const_iterator删除元素
-    const Map<String, int>& const_map = map;
+    const MapV1<String, int>& const_map = map;
     auto it = const_map.find("two");
     EXPECT_NE(it, const_map.end());
 
     // 转换为非const_map并使用const_iterator删除
-    Map<String, int> non_const_map = const_map;
+    MapV1<String, int> non_const_map = const_map;
     auto next_it = non_const_map.erase(it);
     EXPECT_EQ(non_const_map.size(), 2);
     EXPECT_EQ(next_it->first, "three");
@@ -890,7 +890,7 @@ TEST(MapEraseTest, erase_by_const_iterator) {
 
 TEST(MapEraseTest, erase_range) {
     // 测试SmallMap的情况
-    Map<int, int> small_map = {{1, 10}, {2, 20}, {3, 30}};
+    MapV1<int, int> small_map = {{1, 10}, {2, 20}, {3, 30}};
     EXPECT_TRUE(small_map.IsSmallMap());
     EXPECT_EQ(small_map.size(), 3);
 
@@ -911,13 +911,13 @@ TEST(MapEraseTest, erase_range) {
     ++it;// 指向键2
     result = small_map.erase(small_map.begin(), it);
     EXPECT_EQ(small_map.size(), 2);
-    EXPECT_EQ(result->first, 2);
+    EXPECT_EQ(result->first, 3);
     EXPECT_EQ(small_map.contains(1), false);
     EXPECT_EQ(small_map.contains(2), true);
     EXPECT_EQ(small_map.contains(3), true);
 
     // 测试DenseMap的情况
-    Map<int, int> dense_map = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
+    MapV1<int, int> dense_map = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
     EXPECT_FALSE(dense_map.IsSmallMap());
     EXPECT_EQ(dense_map.size(), 5);
 
@@ -944,7 +944,7 @@ TEST(MapEraseTest, erase_range) {
 
 TEST(MapEraseTest, erase_by_key) {
     // 测试SmallMap的情况
-    Map<int, int> small_map = {{1, 10}, {2, 20}, {3, 30}};
+    MapV1<int, int> small_map = {{1, 10}, {2, 20}, {3, 30}};
     EXPECT_TRUE(small_map.IsSmallMap());
     EXPECT_EQ(small_map.size(), 3);
 
@@ -967,7 +967,7 @@ TEST(MapEraseTest, erase_by_key) {
     EXPECT_TRUE(small_map.empty());
 
     // 测试DenseMap的情况
-    Map<int, int> dense_map = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
+    MapV1<int, int> dense_map = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
     EXPECT_FALSE(dense_map.IsSmallMap());
     EXPECT_EQ(dense_map.size(), 5);
 
@@ -994,7 +994,7 @@ TEST(MapEraseTest, erase_by_key) {
 
 TEST(MapEraseTest, erase_edge_cases) {
     // 删除空map的迭代器（不应该崩溃）
-    Map<int, int> empty_map;
+    MapV1<int, int> empty_map;
     EXPECT_TRUE(empty_map.empty());
     auto it = empty_map.end();
     auto result = empty_map.erase(it);
@@ -1005,7 +1005,7 @@ TEST(MapEraseTest, erase_edge_cases) {
     EXPECT_EQ(erased_count, 0);
 
     // 删除单元素map
-    Map<int, int> single_map = {{1, 10}};
+    MapV1<int, int> single_map = {{1, 10}};
     EXPECT_EQ(single_map.size(), 1);
 
     it = single_map.begin();
@@ -1021,7 +1021,7 @@ TEST(MapEraseTest, erase_edge_cases) {
     EXPECT_TRUE(single_map.empty());
 
     // 删除超出范围的迭代器
-    Map<int, int> map = {{1, 10}, {2, 20}};
+    MapV1<int, int> map = {{1, 10}, {2, 20}};
     it = map.end();
     result = map.erase(it);
     EXPECT_EQ(result, map.end());
@@ -1030,8 +1030,8 @@ TEST(MapEraseTest, erase_edge_cases) {
 
 TEST(MapEraseTest, erase_with_cow) {
     // 测试引用计数和COW
-    Map<int, int> map1 = {{1, 10}, {2, 20}, {3, 30}};
-    Map<int, int> map2 = map1;// 共享数据
+    MapV1<int, int> map1 = {{1, 10}, {2, 20}, {3, 30}};
+    MapV1<int, int> map2 = map1;// 共享数据
 
     EXPECT_EQ(map1.use_count(), 2);
     EXPECT_EQ(map2.use_count(), 2);
@@ -1053,7 +1053,7 @@ TEST(MapEraseTest, erase_with_cow) {
 
 TEST(MapEraseTest, erase_with_different_types) {
     // 测试String作为键
-    Map<String, String> string_map = {{"key1", "value1"}, {"key2", "value2"}, {"key3", "value3"}};
+    MapV1<String, String> string_map = {{"key1", "value1"}, {"key2", "value2"}, {"key3", "value3"}};
     EXPECT_EQ(string_map.size(), 3);
 
     // 使用键删除
@@ -1070,7 +1070,7 @@ TEST(MapEraseTest, erase_with_different_types) {
     EXPECT_EQ(result->second, "value3");
 
     // 测试嵌套Map
-    Map<int, Map<String, int>> nested_map = {
+    MapV1<int, MapV1<String, int>> nested_map = {
             {1, {{"a", 10}, {"b", 20}}},
             {2, {{"c", 30}, {"d", 40}}}};
     EXPECT_EQ(nested_map.size(), 2);
@@ -1082,23 +1082,23 @@ TEST(MapEraseTest, erase_with_different_types) {
 
     auto m = nested_map[1]["a"];
 
-    // // 删除嵌套Map的元素
-    // nested_map[1].erase("a");
-    // EXPECT_EQ(nested_map[1].size(), 1);
-    // EXPECT_FALSE(nested_map[1].contains("a"));
-    //
-    // // 删除整个嵌套Map
-    // nested_map.erase(2);
-    // EXPECT_EQ(nested_map.size(), 1);
-    // EXPECT_FALSE(nested_map.contains(2));
+    // 删除嵌套Map的元素
+    nested_map[1].erase("a");
+    EXPECT_EQ(nested_map[1].size(), 1);
+    EXPECT_FALSE(nested_map[1].contains("a"));
+
+    // 删除整个嵌套Map
+    nested_map.erase(2);
+    EXPECT_EQ(nested_map.size(), 1);
+    EXPECT_FALSE(nested_map.contains(2));
 }
 
 TEST(MapEraseTest, erase_and_iterate_safety) {
-    Map<int, int> map = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
+    MapV1<int, int> map = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
 
     // 安全的迭代和删除方式
     for (auto it = map.begin(); it != map.end();) {
-        if (it->first.cast<int>() % 2 == 0) {
+        if (it->first % 2 == 0) {
             it = map.erase(it);// 正确的方式：使用erase返回的迭代器
         } else {
             ++it;

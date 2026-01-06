@@ -196,8 +196,11 @@ public:
         }
 
         auto sz = index();
-        for (difference_type i = 0; i < offset && sz != ptr()->end().index(); ++i) {
+        for (difference_type i = 0; i < offset; ++i) {
             sz = ptr()->GetNextIndexOf(sz);
+            if (sz == ptr()->end().index()) {
+                break;
+            }
         }
         return IteratorImpl(sz, ptr());
     }
@@ -209,8 +212,11 @@ public:
         }
 
         auto sz = index();
-        for (difference_type i = 0; i < offset && sz != ptr()->end().index(); ++i) {
+        for (difference_type i = 0; i < offset; ++i) {
             sz = ptr()->GetPrevIndexOf(sz);
+            if (sz == ptr()->end().index()) {
+                break;
+            }
         }
         return IteratorImpl(sz, ptr());
     }
@@ -221,8 +227,11 @@ public:
             return operator-=(static_cast<difference_type>(-offset));
         }
 
-        for (difference_type i = 0; i < offset && index_ != ptr()->end().index(); ++i) {
+        for (difference_type i = 0; i < offset; ++i) {
             index_ = ptr()->GetNextIndexOf(index_);
+            if (index_ == ptr()->end().index()) {
+                break;
+            }
         }
         return *this;
     }
@@ -233,8 +242,11 @@ public:
             return operator+=(static_cast<difference_type>(-offset));
         }
 
-        for (difference_type i = 0; i < offset && index_ != ptr()->end().index(); ++i) {
+        for (difference_type i = 0; i < offset; ++i) {
             index_ = ptr()->GetPrevIndexOf(index_);
+            if (index_ == ptr()->end().index()) {
+                break;
+            }
         }
         return *this;
     }
@@ -383,22 +395,11 @@ SmallMapObj<K, V>::iterator SmallMapObj<K, V>::erase_impl(iterator pos) {
         return this->end();
     }
 
-    // auto* p = static_cast<value_type*>(this->data());
-    // auto* p1 = pos.operator->();
     auto src = this->end() - 1;
-    // p[pos.index()].~value_type();
-    // (p + pos.index())->~value_type();
+    auto x = *src;
     pos->~value_type();
     new (pos.ptr()->GetDataPtr(pos.index())) value_type(std::move(*src));
-    // *pos = std::move(*src);
 
-    // auto src = pos + 1;
-    // auto dst = pos;
-    // while (src != this->end()) {
-    //     *dst = std::move(*src);
-    //     ++src;
-    //     ++dst;
-    // }
     --this->size_;
     return pos;
 }
@@ -1335,7 +1336,7 @@ public:
         if (_sz <= 0) {
             obj_ = small_map_obj::Create();
         } else {
-            const auto size = static_cast<size_t>(_sz);
+            const auto size = static_cast<size_type>(_sz);
             if (size <= small_map_obj::kThreshold) {
                 obj_ = small_map_obj::Create(size);
                 while (first != last) {
@@ -1650,20 +1651,20 @@ public:
     }
 
     IteratorImpl operator+(difference_type offset) const {
-        return std::visit([&](const auto& iter) { return iter + offset; }, iter_);
+        return std::visit([&](const auto& iter) -> IteratorImpl { return iter + offset; }, iter_);
     }
 
     IteratorImpl operator-(difference_type offset) const {
-        return std::visit([&](const auto& iter) { return iter - offset; }, iter_);
+        return std::visit([&](const auto& iter) -> IteratorImpl { return iter - offset; }, iter_);
     }
 
     IteratorImpl& operator+=(difference_type offset) {
-        std::visit([&](auto& iter) { iter += offset; }, iter_);
+        std::visit([&](auto& iter) -> IteratorImpl& { return iter += offset; }, iter_);
         return *this;
     }
 
     IteratorImpl& operator-=(difference_type offset) {
-        std::visit([&](auto& iter) { iter -= offset; }, iter_);
+        std::visit([&](auto& iter) -> IteratorImpl& { return iter -= offset; }, iter_);
         return *this;
     }
 

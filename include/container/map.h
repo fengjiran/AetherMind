@@ -330,7 +330,7 @@ private:
     friend class MapImpl;
     friend class DenseMapImpl;
     template<typename K, typename V>
-    friend class Map;
+    friend class MapDepr;
 };
 
 /*! \brief A specialization of hash map that implements the idea of array-based hash map.
@@ -545,7 +545,7 @@ private:
     template<typename Derived>
     friend class MapImpl;
     template<typename K, typename V>
-    friend class Map;
+    friend class MapDepr;
 };
 
 template<typename Derived>
@@ -621,7 +621,7 @@ MapImpl<Derived>::iterator MapImpl<Derived>::erase(iterator pos) {
 }
 
 template<typename K, typename V>
-class Map : public ObjectRef {
+class MapDepr : public ObjectRef {
 public:
     using key_type = K;
     using mapped_type = V;
@@ -641,9 +641,9 @@ public:
 
     class PairProxy;
 
-    Map() : obj_(details::ObjectUnsafe::Downcast<SmallMapImpl>(SmallMapImpl::Create())) {}
+    MapDepr() : obj_(details::ObjectUnsafe::Downcast<SmallMapImpl>(SmallMapImpl::Create())) {}
 
-    explicit Map(size_type n) {
+    explicit MapDepr(size_type n) {
         auto tmp = SmallMapImpl::Create(n);
         if (n <= SmallMapImpl::kThreshold) {
             obj_ = details::ObjectUnsafe::Downcast<SmallMapImpl>(tmp);
@@ -652,16 +652,16 @@ public:
         }
     }
 
-    Map(std::initializer_list<value_type> list) : Map(list.begin(), list.end()) {}
+    MapDepr(std::initializer_list<value_type> list) : MapDepr(list.begin(), list.end()) {}
 
-    Map(const Map& other) = default;
+    MapDepr(const MapDepr& other) = default;
 
-    Map(Map&& other) noexcept : obj_(other.obj_) {//NOLINT
+    MapDepr(MapDepr&& other) noexcept : obj_(other.obj_) {//NOLINT
         other.clear();
     }
 
     template<typename Iter>
-    Map(Iter first, Iter last) {
+    MapDepr(Iter first, Iter last) {
         auto tmp = SmallMapImpl::CreateFromRange(first, last);
         auto n = std::distance(first, last);
         if (n <= SmallMapImpl::kThreshold) {
@@ -673,27 +673,27 @@ public:
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
-    Map(const Map<KU, VU>& other) : obj_(other.obj_) {}//NOLINT
+    MapDepr(const MapDepr<KU, VU>& other) : obj_(other.obj_) {}//NOLINT
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
-    Map(Map<KU, VU>&& other) noexcept : obj_(other.obj_) {//NOLINT
+    MapDepr(MapDepr<KU, VU>&& other) noexcept : obj_(other.obj_) {//NOLINT
         other.clear();
     }
 
-    Map& operator=(const Map& other) {
-        Map(other).swap(*this);
+    MapDepr& operator=(const MapDepr& other) {
+        MapDepr(other).swap(*this);
         return *this;
     }
 
-    Map& operator=(Map&& other) noexcept {
-        Map(std::move(other)).swap(*this);
+    MapDepr& operator=(MapDepr&& other) noexcept {
+        MapDepr(std::move(other)).swap(*this);
         return *this;
     }
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
-    Map& operator=(const Map<KU, VU>& other) {
+    MapDepr& operator=(const MapDepr<KU, VU>& other) {
         if (this != &other) {
             obj_ = other.obj_;
         }
@@ -702,7 +702,7 @@ public:
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
-    Map& operator=(Map<KU, VU>&& other) noexcept {
+    MapDepr& operator=(MapDepr<KU, VU>&& other) noexcept {
         if (this != &other) {
             obj_ = other.obj_;
             other.clear();
@@ -710,8 +710,8 @@ public:
         return *this;
     }
 
-    Map& operator=(std::initializer_list<value_type> list) {
-        Map(list).swap(*this);
+    MapDepr& operator=(std::initializer_list<value_type> list) {
+        MapDepr(list).swap(*this);
         return *this;
     }
 
@@ -847,11 +847,11 @@ public:
     }
 
     const_iterator begin() const noexcept {
-        return const_cast<Map*>(this)->begin();
+        return const_cast<MapDepr*>(this)->begin();
     }
 
     const_iterator end() const noexcept {
-        return const_cast<Map*>(this)->end();
+        return const_cast<MapDepr*>(this)->end();
     }
 
     void clear() {
@@ -863,14 +863,14 @@ public:
     }
 
     const_iterator find(const key_type& key) const {
-        return const_cast<Map*>(this)->find(key);
+        return const_cast<MapDepr*>(this)->find(key);
     }
 
     NODISCARD bool IsSmallMap() const {
         return std::holds_alternative<ObjectPtr<SmallMapImpl>>(obj_);
     }
 
-    void swap(Map& other) noexcept {
+    void swap(MapDepr& other) noexcept {
         std::swap(obj_, other.obj_);
     }
 
@@ -939,7 +939,7 @@ private:
 
 template<typename K, typename V>
 template<bool IsConst>
-class Map<K, V>::IteratorImpl {
+class MapDepr<K, V>::IteratorImpl {
 public:
     using iterator_category = std::bidirectional_iterator_tag;
     using difference_type = std::ptrdiff_t;
@@ -1046,13 +1046,13 @@ private:
     IteratorImpl(const DenseIterType& iter) : iter_(iter) {}//NOLINT
 
     template<typename, typename>
-    friend class Map;
+    friend class MapDepr;
 };
 
 template<typename K, typename V>
-class Map<K, V>::PairProxy {
+class MapDepr<K, V>::PairProxy {
 public:
-    PairProxy(Map& map, size_type idx) : map_(map), idx_(idx) {}
+    PairProxy(MapDepr& map, size_type idx) : map_(map), idx_(idx) {}
 
     const auto& first() const {
         return GetRawDataPtr()->first;
@@ -1119,7 +1119,7 @@ public:
     }
 
 private:
-    Map& map_;
+    MapDepr& map_;
     size_type idx_;
 
     NODISCARD DenseMapImpl::KVType* GetRawDataPtr() const {
@@ -1129,12 +1129,12 @@ private:
 };
 
 template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
+MapDepr<K, V>::iterator MapDepr<K, V>::erase(iterator pos) {
     return erase(const_iterator(pos));
 }
 
 template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
+MapDepr<K, V>::iterator MapDepr<K, V>::erase(const_iterator pos) {
     if (pos == end()) {
         return end();
     }
@@ -1147,7 +1147,7 @@ Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
 }
 
 template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(const_iterator first, const_iterator last) {
+MapDepr<K, V>::iterator MapDepr<K, V>::erase(const_iterator first, const_iterator last) {
     if (first == last) {
         return first;
     }
@@ -1161,7 +1161,7 @@ Map<K, V>::iterator Map<K, V>::erase(const_iterator first, const_iterator last) 
 }
 
 template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(iterator first, iterator last) {
+MapDepr<K, V>::iterator MapDepr<K, V>::erase(iterator first, iterator last) {
     if (first == last) {
         return first;
     }

@@ -445,7 +445,7 @@ TEST(MapInsertTest, all_insert_methods) {
 
 // 测试插入重复键
 TEST(MapInsertTest, insert_duplicate_keys) {
-    Map<int, int> map;
+    MapV1<int, int> map;
 
     // 插入第一个元素
     auto [it1, success1] = map.insert(1, 10);
@@ -459,11 +459,11 @@ TEST(MapInsertTest, insert_duplicate_keys) {
     EXPECT_EQ(it2->second, 10);// 应该返回已存在的元素
 
     // 使用不同的insert方法测试重复键
-    auto [it3, success3] = map.insert(Map<int, int>::value_type(1, 30));
+    auto [it3, success3] = map.insert(MapV1<int, int>::value_type(1, 30));
     EXPECT_FALSE(success3);
     EXPECT_EQ(it3->second, 10);
 
-    auto [it4, success4] = map.insert(Map<int, int>::value_type(1, 40));
+    auto [it4, success4] = map.insert(MapV1<int, int>::value_type(1, 40));
     EXPECT_FALSE(success4);
     EXPECT_EQ(it4->second, 10);
 }

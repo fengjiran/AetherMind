@@ -252,7 +252,7 @@ public:
     }
 
     // Destroy the item in the entry.
-    void DestructData() const {
+    void DestructEntry() const {
         GetEntry().~Entry();
     }
 
@@ -401,7 +401,7 @@ void DenseMapImpl::erase_impl1(const iterator& pos) {
         }
         // unlink the node from iterator list
         IterListRemove(cur);
-        cur.DestructData();
+        cur.DestructEntry();
         cur.SetEmpty();
     }
     --size_;
@@ -418,8 +418,9 @@ DenseMapImpl::iterator DenseMapImpl::erase_impl(iterator pos) {
         Cursor prev = cur;
         Cursor last = cur;
         last.MoveToNextSlot();
-        while (last.MoveToNextSlot()) {
+        while (last.HasNextSlot()) {
             prev = last;
+            last.MoveToNextSlot();
         }
 
         // needs to first unlink node from the list
@@ -438,7 +439,7 @@ DenseMapImpl::iterator DenseMapImpl::erase_impl(iterator pos) {
         }
         // unlink the node from iterator list
         IterListRemove(cur);
-        cur.DestructData();
+        cur.DestructEntry();
         cur.SetEmpty();
     }
     --size_;

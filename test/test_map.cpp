@@ -11,7 +11,7 @@ namespace {
 using namespace aethermind;
 
 TEST(MapTest, basic) {
-    Map<int, int> dict;
+    MapV1<int, int> dict;
     EXPECT_TRUE(dict.empty());
     EXPECT_EQ(dict.slots(), 2);
     dict.insert(1, 2);
@@ -47,18 +47,12 @@ TEST(MapTest, basic) {
     auto it2 = data.erase(data.begin());
     EXPECT_EQ(it2->first, 1);
     EXPECT_EQ(it2->second, 3);
-
-    // auto t1 = SmallMapObj<int, int>::Create();
-    // SmallMapObj<int, int>::insert({1, 1}, t1);
-
-    auto t1 = DenseMapObj<int, int>::Create(5);
-    DenseMapObj<int, int>::insert({1, 1}, t1);
 }
 
 // 测试构造函数和赋值运算符
 TEST(MapTest, constructors_and_assignment) {
     // 默认构造函数
-    Map<int, String> map1;
+    MapV1<int, String> map1;
     EXPECT_TRUE(map1.empty());
     EXPECT_EQ(map1.size(), 0);
     EXPECT_TRUE(map1.unique());
@@ -66,7 +60,7 @@ TEST(MapTest, constructors_and_assignment) {
     // 复制构造函数
     map1.insert(1, "one");
     map1.insert(2, "two");
-    Map<int, String> map2(map1);
+    MapV1<int, String> map2(map1);
     EXPECT_EQ(map2.size(), 2);
     EXPECT_EQ(map2[1], "one");
     EXPECT_EQ(map2[2], "two");
@@ -75,39 +69,38 @@ TEST(MapTest, constructors_and_assignment) {
     EXPECT_TRUE(map2.unique());
 
     // 移动构造函数
-    Map<int, String> map3(std::move(map1));
+    MapV1<int, String> map3(std::move(map1));
     EXPECT_TRUE(map1.empty());
     EXPECT_EQ(map3.size(), 2);
     EXPECT_EQ(map3[1], "one");
 
     // 复制赋值运算符
-    Map<int, String> map4;
+    MapV1<int, String> map4;
     map4 = map3;
     EXPECT_EQ(map4.size(), 2);
     EXPECT_EQ(map4[1], "one");
     EXPECT_EQ(map3.use_count(), 2);
 
     // 移动赋值运算符
-    Map<int, String> map5;
+    MapV1<int, String> map5;
     map5 = std::move(map3);
     EXPECT_TRUE(map3.empty());
     EXPECT_EQ(map5.size(), 2);
     EXPECT_EQ(map5[1], "one");
 }
 
-
 // 测试 CreateFromRange 方法
 TEST(MapTest, create_from_range) {
     // 测试从空范围创建
     std::vector<std::pair<int, int>> empty_vec;
-    Map<int, int> empty_map(empty_vec.begin(), empty_vec.end());
+    MapV1<int, int> empty_map(empty_vec.begin(), empty_vec.end());
     EXPECT_TRUE(empty_map.empty());
     EXPECT_EQ(empty_map.size(), 0);
     EXPECT_TRUE(empty_map.IsSmallMap());
 
     // 测试从小范围创建（<= kThreshold，应该使用SmallMapImpl）
     std::vector<std::pair<int, int>> small_vec = {{1, 10}, {2, 20}, {3, 30}};
-    Map<int, int> small_map(small_vec.begin(), small_vec.end());
+    MapV1<int, int> small_map(small_vec.begin(), small_vec.end());
     EXPECT_FALSE(small_map.empty());
     EXPECT_EQ(small_map.size(), 3);
     EXPECT_TRUE(small_map.IsSmallMap());
@@ -117,7 +110,7 @@ TEST(MapTest, create_from_range) {
 
     // 测试从大范围创建（> kThreshold，应该使用DenseMapImpl）
     std::vector<std::pair<int, int>> large_vec = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
-    Map<int, int> large_map(large_vec.begin(), large_vec.end());
+    MapV1<int, int> large_map(large_vec.begin(), large_vec.end());
     EXPECT_FALSE(large_map.empty());
     EXPECT_EQ(large_map.size(), 5);
     EXPECT_FALSE(large_map.IsSmallMap());
@@ -129,52 +122,51 @@ TEST(MapTest, create_from_range) {
 
     // 测试包含重复键的范围（应该只保留第一个键）
     std::vector<std::pair<int, int>> duplicate_vec = {{1, 10}, {1, 20}, {2, 30}, {2, 40}};
-    Map<int, int> duplicate_map(duplicate_vec.begin(), duplicate_vec.end());
+    MapV1<int, int> duplicate_map(duplicate_vec.begin(), duplicate_vec.end());
     EXPECT_EQ(duplicate_map.size(), 2);
     EXPECT_EQ(duplicate_map[1], 10);// 应该保留第一个值
     EXPECT_EQ(duplicate_map[2], 30);// 应该保留第一个值
 
     // 测试从不同类型的容器创建
     std::list<std::pair<String, int>> list_data = {{"apple", 1}, {"banana", 2}, {"cherry", 3}};
-    Map<String, int> list_map(list_data.begin(), list_data.end());
+    MapV1<String, int> list_map(list_data.begin(), list_data.end());
     EXPECT_EQ(list_map.size(), 3);
     EXPECT_EQ(list_map["apple"], 1);
     EXPECT_EQ(list_map["banana"], 2);
     EXPECT_EQ(list_map["cherry"], 3);
 
     // 测试从initializer_list创建（内部使用CreateFromRange）
-    Map<int, int> init_map = {{1, 10}, {2, 20}, {3, 30}};
+    MapV1<int, int> init_map = {{1, 10}, {2, 20}, {3, 30}};
     EXPECT_EQ(init_map.size(), 3);
     EXPECT_EQ(init_map[1], 10);
     EXPECT_EQ(init_map[2], 20);
     EXPECT_EQ(init_map[3], 30);
 }
 
-
 // 测试CreateFromRange的边界条件
 TEST(MapTest, create_from_range_edge_cases) {
     // 测试只有一个元素
     std::vector<std::pair<int, int>> single_vec = {{1, 10}};
-    Map<int, int> single_map(single_vec.begin(), single_vec.end());
+    MapV1<int, int> single_map(single_vec.begin(), single_vec.end());
     EXPECT_EQ(single_map.size(), 1);
     EXPECT_EQ(single_map[1], 10);
     EXPECT_TRUE(single_map.IsSmallMap());
 
     // 测试刚好等于kThreshold个元素
     std::vector<std::pair<int, int>> threshold_vec = {{1, 10}, {2, 20}, {3, 30}, {4, 40}};
-    Map<int, int> threshold_map(threshold_vec.begin(), threshold_vec.end());
+    MapV1<int, int> threshold_map(threshold_vec.begin(), threshold_vec.end());
     EXPECT_EQ(threshold_map.size(), 4);
     EXPECT_TRUE(threshold_map.IsSmallMap());// 应该还是SmallMapImpl
 
     // 测试刚好超过kThreshold个元素
     std::vector<std::pair<int, int>> over_threshold_vec = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
-    Map<int, int> over_threshold_map(over_threshold_vec.begin(), over_threshold_vec.end());
+    MapV1<int, int> over_threshold_map(over_threshold_vec.begin(), over_threshold_vec.end());
     EXPECT_EQ(over_threshold_map.size(), 5);
     EXPECT_FALSE(over_threshold_map.IsSmallMap());// 应该转换为DenseMapImpl
 
     // 测试负数大小（应该创建空Map）
     std::vector<std::pair<int, int>> vec = {{1, 10}, {2, 20}};
-    Map<int, int> negative_map(vec.end(), vec.begin());
+    MapV1<int, int> negative_map(vec.end(), vec.begin());
     EXPECT_TRUE(negative_map.empty());
     EXPECT_EQ(negative_map.size(), 0);
 }
@@ -183,7 +175,7 @@ TEST(MapTest, create_from_range_edge_cases) {
 TEST(MapTest, create_from_range_with_different_types) {
     // 使用String作为键
     std::vector<std::pair<String, String>> string_vec = {{"key1", "value1"}, {"key2", "value2"}};
-    Map<String, String> string_map(string_vec.begin(), string_vec.end());
+    MapV1<String, String> string_map(string_vec.begin(), string_vec.end());
     EXPECT_EQ(string_map.size(), 2);
     EXPECT_EQ(string_map["key1"], "value1");
     EXPECT_EQ(string_map["key2"], "value2");
@@ -191,13 +183,13 @@ TEST(MapTest, create_from_range_with_different_types) {
     // 使用嵌套容器
     std::vector<std::pair<int, std::vector<int>>> nested_vec = {{1, {1, 2, 3}}, {2, {4, 5, 6}}};
     // 注意：这里假设Map类支持vector<int>作为值类型
-    Map<int, std::vector<int>> nested_map(nested_vec.begin(), nested_vec.end());
+    MapV1<int, std::vector<int>> nested_map(nested_vec.begin(), nested_vec.end());
     EXPECT_EQ(nested_map.size(), 2);
 }
 
 // 测试插入和访问操作
 TEST(MapTest, insert_and_access) {
-    Map<String, int> map;
+    MapV1<String, int> map;
 
     // 插入元素
     map.insert("one", 1);

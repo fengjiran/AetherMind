@@ -47,6 +47,8 @@ TEST(MapTest, basic) {
     auto it2 = data.erase(data.begin());
     EXPECT_EQ(it2->first, 1);
     EXPECT_EQ(it2->second, 3);
+
+    auto t1 = DenseMapObj<int, int>::Create(5);
 }
 
 // 测试构造函数和赋值运算符

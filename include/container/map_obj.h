@@ -94,6 +94,10 @@ protected:
     NODISCARD const Derived* GetDerivedPtr() const noexcept {
         return static_cast<const Derived*>(this);
     }
+
+    // insert may be rehash
+    static std::tuple<ObjectPtr<Object>, size_t, bool> insert(
+            value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
 };
 
 template<typename K, typename V, typename Derived>
@@ -300,6 +304,12 @@ private:
 
     static ObjectPtr<SmallMapObj> CopyFrom(const SmallMapObj* src);
 
+    static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
+            value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
+
+    template<details::is_valid_iter Iter>
+    static ObjectPtr<SmallMapObj> CreateFromRange(Iter first, Iter last);
+
     template<typename, typename, typename>
     friend class MapObjBase;
     template<typename T1, typename T2>
@@ -363,6 +373,40 @@ ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CopyFrom(const SmallMapObj* src)
 }
 
 template<typename K, typename V>
+std::tuple<ObjectPtr<Object>, typename SmallMapObj<K, V>::iterator, bool>
+SmallMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
+    auto* map = static_cast<SmallMapObj*>(old_impl.get());//NOLINT
+    if (const auto it = map->find(kv.first); it != map->end()) {
+        if (assign) {
+            it->second = std::move(kv.second);
+        }
+        return {old_impl, it, false};
+    }
+
+    if (map->size() < map->slots()) {
+        auto* p = static_cast<value_type*>(map->data()) + map->size();
+        new (p) value_type(std::move(kv));
+        ++map->size_;
+        return {old_impl, iterator(map->size() - 1, map), true};
+    }
+
+    const size_t new_cap =
+            std::min(SmallMapObj::kThreshold,
+                     std::max(SmallMapObj::kIncFactor * map->slots(), SmallMapObj::kInitSize));
+    auto new_impl = details::ObjectUnsafe::Downcast<SmallMapObj>(Create(new_cap));
+    auto* src = static_cast<value_type*>(map->data());
+    auto* dst = static_cast<value_type*>(new_impl->data());
+    for (size_t i = 0; i < map->size(); ++i) {
+        new (dst++) value_type(std::move(*src++));
+        ++new_impl->size_;
+    }
+    new (dst) value_type(std::move(kv));
+    ++new_impl->size_;
+    iterator pos(new_impl->size() - 1, new_impl.get());
+    return {new_impl, pos, true};
+}
+
+template<typename K, typename V>
 class DenseMapObj : public MapObjBase<K, V, DenseMapObj<K, V>> {
 public:
     using key_type = K;
@@ -378,7 +422,7 @@ public:
         reset();
     }
 
-private:
+    // private:
     // The number of elements in a memory block.
     static constexpr int kBlockSize = 16;
     // Max load factor of hash table
@@ -532,9 +576,36 @@ private:
    */
     void IterListReplace(Cursor src, Cursor dst);
 
+    /*!
+   * \brief Spare an entry to be the head of a linked list.
+   * As described in B3, during insertion, it is possible that the entire linked list does not
+   * exist, but the slot of its head has been occupied by other linked lists. In this case, we need
+   * to spare the slot by moving away the elements to another valid empty one to make insertion
+   * possible.
+   * \param target The given entry to be spared
+   * \param kv The value pair
+   * \return The linked-list entry constructed as the head, if actual insertion happens
+   */
+    std::optional<Cursor> TrySpareListHead(Cursor target, value_type&& kv);
+
+    /*!
+     * \brief Try to insert a key, or do nothing if already exists
+     * \param kv The value pair
+     * \param assign Whether to assign for existing key
+     * \return The linked-list entry found or just constructed,indicating if actual insertion happens
+     */
+    std::pair<iterator, bool> TryInsert(value_type&& kv, bool assign = false);
+
+    // may be rehash
+    static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
+            value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
+
     static ObjectPtr<DenseMapObj> Create(size_type n);
 
     static ObjectPtr<DenseMapObj> CopyFrom(const DenseMapObj* src);
+
+    template<details::is_valid_iter Iter>
+    static ObjectPtr<DenseMapObj> CreateFromRange(Iter first, Iter last);
 
     template<typename, typename, typename>
     friend class MapObjBase;
@@ -889,6 +960,157 @@ void DenseMapObj<K, V>::IterListReplace(Cursor src, Cursor dst) {
 }
 
 template<typename K, typename V>
+std::optional<typename DenseMapObj<K, V>::Cursor>
+DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
+    // `target` is not the head of the linked list
+    // move the original item of `target` (if any)
+    // and construct new item on the position `target`
+    // To make `target` empty, we
+    // 1) find `w` the previous element of `target` in the linked list
+    // 2) copy the linked list starting from `r = target`
+    // 3) paste them after `w`
+
+    // read from the linked list after `r`
+    Cursor r = target;
+    // write to the tail of `w`
+    Cursor w = target.FindPrevSlot();
+    // after `target` is moved, we disallow writing to the slot
+    bool is_first = true;
+    uint8_t r_meta;
+
+    do {
+        const auto empty_slot_info = w.GetNextEmptySlot();
+        if (!empty_slot_info) {
+            return std::nullopt;
+        }
+
+        uint8_t offset_idx = empty_slot_info->first;
+        Cursor empty = empty_slot_info->second;
+
+        // move `r` to `empty`
+        // first move the data over
+        empty.CreateTail(Entry(std::move(r.GetData())));
+        // then move link list chain of r to empty
+        // this needs to happen after NewTail so empty's prev/next get updated
+        IterListReplace(r, empty);
+        // clear the metadata of `r`
+        r_meta = r.GetMeta();
+        if (is_first) {
+            is_first = false;
+            r.SetProtected();
+        } else {
+            r.SetEmpty();
+        }
+        // link `w` to `empty`, and move forward
+        w.SetOffsetIdx(offset_idx);
+        w = empty;
+    } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
+
+    // finally, we have done moving the linked list
+    // fill data_ into `target`
+    target.CreateHead(Entry(std::move(kv)));
+    ++this->size_;
+    return target;
+}
+
+template<typename K, typename V>
+std::pair<typename DenseMapObj<K, V>::iterator, bool>
+DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
+    // The key is already in the hash table
+    if (auto it = this->find(kv.first); it != this->end()) {
+        if (assign) {
+            Cursor cur(it.index(), it.ptr());
+            cur.GetValue() = std::move(kv.second);
+            IterListRemove(cur);
+            IterListPushBack(cur);
+        }
+        return {it, false};
+    }
+
+    // required that `iter` to be the head of a linked list through which we can iterator.
+    // `iter` can be:
+    // 1) empty;
+    // 2) body of an irrelevant list;
+    // 3) head of the relevant list.
+    auto node = GetCursorFromHash(AnyHash()(kv.first));
+
+    // Case 1: empty
+    if (node.IsEmpty()) {
+        node.CreateHead(Entry(std::move(kv)));
+        ++this->size_;
+        IterListPushBack(node);
+        return {iterator(node.index(), this), true};
+    }
+
+    // Case 2: body of an irrelevant list
+    if (!node.IsHead()) {
+        if (IsFull()) {
+            return {this->end(), false};
+        }
+
+        if (const auto target = TrySpareListHead(node, std::move(kv)); target.has_value()) {
+            IterListPushBack(target.value());
+            return {iterator(target->index(), this), true};
+        }
+        return {this->end(), false};
+    }
+
+    // Case 3: head of the relevant list
+    // we iterate through the linked list until the end
+    // make sure `iter` is the prev element of `cur`
+    Cursor cur = node;
+    while (cur.MoveToNextSlot()) {
+        // make sure `node` is the previous element of `cur`
+        node = cur;
+    }
+
+    // `node` is the tail of the linked list
+    // always check capacity before insertion
+    if (IsFull()) {
+        return {this->end(), false};
+    }
+
+    // find the next empty slot
+    auto empty_slot_info = node.GetNextEmptySlot();
+    if (!empty_slot_info) {
+        return {this->end(), false};
+    }
+
+    uint8_t offset_idx = empty_slot_info->first;
+    Cursor empty = empty_slot_info->second;
+    empty.CreateTail(Entry(std::move(kv)));
+    // link `iter` to `empty`, and move forward
+    node.SetOffsetIdx(offset_idx);
+    IterListPushBack(empty);
+    ++this->size_;
+    return {iterator(node.index(), this), true};
+}
+
+template<typename K, typename V>
+std::tuple<ObjectPtr<Object>, typename DenseMapObj<K, V>::iterator, bool>
+DenseMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
+    auto* map = static_cast<DenseMapObj*>(old_impl.get());// NOLINT
+    if (auto [it, is_success] = map->TryInsert(std::move(kv), assign); it != map->end()) {
+        return {old_impl, it, is_success};
+    }
+
+    // Otherwise, start rehash
+    auto new_impl = details::ObjectUnsafe::Downcast<DenseMapObj>(
+            Create(map->slots() * DenseMapObj::kIncFactor));
+    // need to insert in the same order as the original map
+    size_t idx = map->iter_list_head_;
+    while (idx != kInvalidIndex) {
+        Cursor cur(idx, map);
+        new_impl->TryInsert(std::move(cur.GetData()), assign);
+        idx = cur.GetEntry().next;
+    }
+
+    auto [pos, is_success] = new_impl->TryInsert(std::move(kv), assign);
+    return {new_impl, pos, is_success};
+}
+
+
+template<typename K, typename V>
 ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::Create(size_type n) {
     CHECK(n > DenseMapObj::kThreshold) << "The allocated size must be greate than the threshold of "
                                        << DenseMapObj::kThreshold
@@ -914,11 +1136,7 @@ template<typename K, typename V>
 ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src) {
     auto impl = Create(src->slots());
     auto block_num = ComputeBlockNum(src->slots());
-    // auto impl = make_array_object<DenseMapObj, Block>(block_num);
-    // impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapObj);
     impl->size_ = src->size();
-    // impl->slots_ = src->slots();
-    // impl->fib_shift_ = src->fib_shift_;
     impl->iter_list_head_ = src->iter_list_head_;
     impl->iter_list_tail_ = src->iter_list_tail_;
 
@@ -928,6 +1146,29 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src)
     }
 
     return impl;
+}
+
+template<typename K, typename V, typename Derived>
+std::tuple<ObjectPtr<Object>, size_t, bool>
+MapObjBase<K, V, Derived>::insert(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
+    if constexpr (std::is_same_v<Derived, SmallMapObj<K, V>>) {
+        auto* p = static_cast<SmallMapObj<K, V>*>(old_impl.get());//NOLINT
+        const auto size = p->size();
+        if (size < kThreshold) {
+            auto [impl, iter, is_success] = SmallMapObj<K, V>::InsertImpl(std::move(kv), old_impl, assign);
+            return {impl, iter.index(), is_success};
+        }
+
+        ObjectPtr<Object> new_impl = DenseMapObj<K, V>::Create(size * kIncFactor);
+        for (auto& iter: *p) {
+            new_impl = std::get<0>(DenseMapObj<K, V>::InsertImpl(std::move(iter), new_impl));
+        }
+        auto [impl, iter, is_success] = DenseMapObj<K, V>::InsertImpl(std::move(kv), new_impl, assign);
+        return {impl, iter.index(), is_success};
+    } else {
+        auto [impl, iter, is_success] = DenseMapObj<K, V>::InsertImpl(std::move(kv), old_impl, assign);
+        return {impl, iter.index(), is_success};
+    }
 }
 
 

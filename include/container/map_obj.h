@@ -26,7 +26,8 @@ class MapObjBase : public Object {
 public:
     using key_type = K;
     using mapped_type = V;
-    using value_type = std::pair<const key_type, mapped_type>;
+    // using value_type = std::pair<const key_type, mapped_type>;
+    using value_type = std::pair<key_type, mapped_type>;
     using size_type = size_t;
 
     // IteratorImpl is a base class for iterator and const_iterator
@@ -54,6 +55,30 @@ public:
         return size() == 0;
     }
 
+    NODISCARD size_t count(const key_type& key) const {
+        return GetDerivedPtr()->count_impl(key);
+    }
+
+    mapped_type& at(const key_type& key) {
+        return GetDerivedPtr()->at_impl(key);
+    }
+
+    NODISCARD const mapped_type& at(const key_type& key) const {
+        return GetDerivedPtr()->at_impl(key);
+    }
+
+    NODISCARD value_type* GetDataPtr(size_t idx) const {
+        return GetDerivedPtr()->GetDataPtrImpl(idx);
+    }
+
+    NODISCARD size_t GetNextIndexOf(size_t idx) const {
+        return GetDerivedPtr()->GetNextIndexOfImpl(idx);
+    }
+
+    NODISCARD size_t GetPrevIndexOf(size_t idx) const {
+        return GetDerivedPtr()->GetPrevIndexOfImpl(idx);
+    }
+
     NODISCARD const_iterator begin() const {
         return GetDerivedPtr()->begin_impl();
     }
@@ -78,7 +103,7 @@ public:
         return GetDerivedPtr()->find_impl(key);
     }
 
-protected:
+    // protected:
     void* data_;
     size_type size_;
     size_type slots_;
@@ -238,7 +263,8 @@ class SmallMapObj : public MapObjBase<K, V, SmallMapObj<K, V>> {
 public:
     using key_type = K;
     using mapped_type = V;
-    using value_type = std::pair<const key_type, mapped_type>;
+    // using value_type = std::pair<const key_type, mapped_type>;
+    using value_type = std::pair<key_type, mapped_type>;
     using size_type = size_t;
 
     using iterator = MapObjBase<K, V, SmallMapObj>::iterator;
@@ -249,7 +275,7 @@ public:
         reset();
     }
 
-private:
+    // private:
     NODISCARD iterator begin_impl() {
         return {0, this};
     }
@@ -307,8 +333,8 @@ private:
     static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
             value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
 
-    template<details::is_valid_iter Iter>
-    static ObjectPtr<SmallMapObj> CreateFromRange(Iter first, Iter last);
+    // template<details::is_valid_iter Iter>
+    // static ObjectPtr<SmallMapObj> CreateFromRange(Iter first, Iter last);
 
     template<typename, typename, typename>
     friend class MapObjBase;
@@ -411,7 +437,8 @@ class DenseMapObj : public MapObjBase<K, V, DenseMapObj<K, V>> {
 public:
     using key_type = K;
     using mapped_type = V;
-    using value_type = std::pair<const key_type, mapped_type>;
+    // using value_type = std::pair<const key_type, mapped_type>;
+    using value_type = std::pair<key_type, mapped_type>;
     using size_type = size_t;
 
     using iterator = MapObjBase<K, V, DenseMapObj>::iterator;
@@ -638,6 +665,14 @@ template<typename K, typename V>
 struct DenseMapObj<K, V>::Block {
     uint8_t bytes[kBlockSize + kBlockSize * sizeof(Entry)];
 
+    // Block() {// NOLINT
+    //     auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
+    //     for (uint8_t i = 0; i < kBlockSize; ++i) {
+    //         bytes[i] = kEmptySlot;
+    //         new (data + i) Entry;
+    //     }
+    // }
+
     Block() {// NOLINT
         auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
         for (uint8_t i = 0; i < kBlockSize; ++i) {
@@ -712,7 +747,7 @@ public:
         return GetEntry().data;
     }
 
-    NODISCARD key_type& GetKey() const {
+    NODISCARD const key_type& GetKey() const {
         return GetData().first;
     }
 

@@ -48,7 +48,11 @@ TEST(MapTest, basic) {
     EXPECT_EQ(it2->first, 1);
     EXPECT_EQ(it2->second, 3);
 
+    // auto t1 = SmallMapObj<int, int>::Create();
+    // SmallMapObj<int, int>::insert({1, 1}, t1);
+
     auto t1 = DenseMapObj<int, int>::Create(5);
+    DenseMapObj<int, int>::insert({1, 1}, t1);
 }
 
 // 测试构造函数和赋值运算符

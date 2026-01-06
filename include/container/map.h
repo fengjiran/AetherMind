@@ -31,7 +31,6 @@ public:
     using key_type = K;
     using mapped_type = V;
     using value_type = std::pair<const key_type, mapped_type>;
-    // using value_type = std::pair<key_type, mapped_type>;
     using size_type = size_t;
 
     // IteratorImpl is a base class for iterator and const_iterator
@@ -133,149 +132,6 @@ protected:
             value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
 };
 
-template<typename K, typename V, typename Derived>
-template<bool IsConst>
-class MapObjBase<K, V, Derived>::IteratorImpl {
-public:
-    using iterator_category = std::bidirectional_iterator_tag;
-    using ContainerPtrType = std::conditional_t<IsConst, const Derived*, Derived*>;
-    using pointer = std::conditional_t<IsConst, const value_type*, value_type*>;
-    using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
-    using difference_type = std::ptrdiff_t;
-
-    IteratorImpl() noexcept : index_(0), ptr_(nullptr) {}
-
-    IteratorImpl(size_t index, ContainerPtrType ptr) noexcept : index_(index), ptr_(ptr) {}
-
-    // iterator can convert to const_iterator
-    template<bool AlwaysFalse>
-        requires(IsConst && !AlwaysFalse)
-    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
-
-    NODISCARD size_t index() const noexcept {
-        return index_;
-    }
-
-    NODISCARD ContainerPtrType ptr() const noexcept {
-        return ptr_;
-    }
-
-    pointer operator->() const {
-        Check();
-        return ptr()->GetDataPtr(index_);
-    }
-
-    reference operator*() const {
-        return *operator->();
-    }
-
-    IteratorImpl& operator++() {
-        Check();
-        index_ = ptr()->GetNextIndexOf(index_);
-        return *this;
-    }
-
-    IteratorImpl& operator--() {
-        Check();
-        index_ = ptr()->GetPrevIndexOf(index_);
-        return *this;
-    }
-
-    IteratorImpl operator++(int) {
-        IteratorImpl tmp = *this;
-        operator++();
-        return tmp;
-    }
-
-    IteratorImpl operator--(int) {
-        IteratorImpl tmp = *this;
-        operator--();
-        return tmp;
-    }
-
-    IteratorImpl operator+(difference_type offset) const {
-        Check();
-        if (offset < 0) {
-            return operator-(static_cast<difference_type>(-offset));
-        }
-
-        auto sz = index();
-        for (difference_type i = 0; i < offset; ++i) {
-            sz = ptr()->GetNextIndexOf(sz);
-            if (sz == ptr()->end().index()) {
-                break;
-            }
-        }
-        return IteratorImpl(sz, ptr());
-    }
-
-    IteratorImpl operator-(difference_type offset) const {
-        Check();
-        if (offset < 0) {
-            return operator+(static_cast<difference_type>(-offset));
-        }
-
-        auto sz = index();
-        for (difference_type i = 0; i < offset; ++i) {
-            sz = ptr()->GetPrevIndexOf(sz);
-            if (sz == ptr()->end().index()) {
-                break;
-            }
-        }
-        return IteratorImpl(sz, ptr());
-    }
-
-    IteratorImpl& operator+=(difference_type offset) {
-        Check();
-        if (offset < 0) {
-            return operator-=(static_cast<difference_type>(-offset));
-        }
-
-        for (difference_type i = 0; i < offset; ++i) {
-            index_ = ptr()->GetNextIndexOf(index_);
-            if (index_ == ptr()->end().index()) {
-                break;
-            }
-        }
-        return *this;
-    }
-
-    IteratorImpl& operator-=(difference_type offset) {
-        Check();
-        if (offset < 0) {
-            return operator+=(static_cast<difference_type>(-offset));
-        }
-
-        for (difference_type i = 0; i < offset; ++i) {
-            index_ = ptr()->GetPrevIndexOf(index_);
-            if (index_ == ptr()->end().index()) {
-                break;
-            }
-        }
-        return *this;
-    }
-
-    difference_type operator-(const IteratorImpl& other) const {
-        return static_cast<difference_type>(index()) - static_cast<difference_type>(other.index());
-    }
-
-    bool operator==(const IteratorImpl& other) const {
-        return index_ == other.index_ && ptr_ == other.ptr_;
-    }
-
-    bool operator!=(const IteratorImpl& other) const {
-        return !(*this == other);
-    }
-
-    void Check() const {
-        CHECK(ptr_ != nullptr) << "Iterator pointer is nullptr.";
-        // check index out of range
-    }
-
-private:
-    size_t index_;
-    ContainerPtrType ptr_;
-};
 
 template<typename K, typename V>
 class SmallMapObj : public MapObjBase<K, V, SmallMapObj<K, V>> {
@@ -283,7 +139,6 @@ public:
     using key_type = K;
     using mapped_type = V;
     using value_type = std::pair<const key_type, mapped_type>;
-    // using value_type = std::pair<key_type, mapped_type>;
     using size_type = size_t;
 
     using iterator = MapObjBase<K, V, SmallMapObj>::iterator;
@@ -1594,6 +1449,205 @@ private:
     }
 };
 
+
+template<typename K, typename V>
+Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
+    if (pos == end()) {
+        return end();
+    }
+
+    COW();
+    auto visitor = [&](const auto& arg) -> iterator {
+        return arg->erase({pos.index(), arg.get()});
+    };
+    return std::visit(visitor, obj_);
+}
+
+template<typename K, typename V>
+Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
+    return erase(const_iterator(pos));
+}
+
+template<typename K, typename V>
+Map<K, V>::size_type Map<K, V>::erase(const key_type& key) {
+    auto it = find(key);
+    if (it != end()) {
+        erase(it);
+        return 1;
+    }
+    return 0;
+}
+
+template<typename K, typename V>
+Map<K, V>::iterator Map<K, V>::erase(iterator first, iterator last) {
+    if (first == last) {
+        return first;
+    }
+
+    auto n = std::distance(first, last);
+    iterator it = first;
+    for (difference_type i = 0; i < n; ++i) {
+        it = erase(it++);
+    }
+    return it;
+}
+
+template<typename K, typename V>
+Map<K, V>::iterator Map<K, V>::erase(const_iterator first, const_iterator last) {
+    if (first == last) {
+        return first;
+    }
+
+    auto n = std::distance(first, last);
+    iterator it = first;
+    for (difference_type i = 0; i < n; ++i) {
+        it = erase(it++);
+    }
+    return it;
+}
+
+template<typename K, typename V, typename Derived>
+template<bool IsConst>
+class MapObjBase<K, V, Derived>::IteratorImpl {
+public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using ContainerPtrType = std::conditional_t<IsConst, const Derived*, Derived*>;
+    using pointer = std::conditional_t<IsConst, const value_type*, value_type*>;
+    using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
+    using difference_type = std::ptrdiff_t;
+
+    IteratorImpl() noexcept : index_(0), ptr_(nullptr) {}
+
+    IteratorImpl(size_t index, ContainerPtrType ptr) noexcept : index_(index), ptr_(ptr) {}
+
+    // iterator can convert to const_iterator
+    template<bool AlwaysFalse>
+        requires(IsConst && !AlwaysFalse)
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
+
+    NODISCARD size_t index() const noexcept {
+        return index_;
+    }
+
+    NODISCARD ContainerPtrType ptr() const noexcept {
+        return ptr_;
+    }
+
+    pointer operator->() const {
+        Check();
+        return ptr()->GetDataPtr(index_);
+    }
+
+    reference operator*() const {
+        return *operator->();
+    }
+
+    IteratorImpl& operator++() {
+        Check();
+        index_ = ptr()->GetNextIndexOf(index_);
+        return *this;
+    }
+
+    IteratorImpl& operator--() {
+        Check();
+        index_ = ptr()->GetPrevIndexOf(index_);
+        return *this;
+    }
+
+    IteratorImpl operator++(int) {
+        IteratorImpl tmp = *this;
+        operator++();
+        return tmp;
+    }
+
+    IteratorImpl operator--(int) {
+        IteratorImpl tmp = *this;
+        operator--();
+        return tmp;
+    }
+
+    IteratorImpl& operator+=(difference_type offset) {
+        Check();
+        if (offset < 0) {
+            return operator-=(static_cast<difference_type>(-offset));
+        }
+
+        for (difference_type i = 0; i < offset; ++i) {
+            index_ = ptr()->GetNextIndexOf(index_);
+            if (index_ == ptr()->end().index()) {
+                break;
+            }
+        }
+        return *this;
+    }
+
+    IteratorImpl& operator-=(difference_type offset) {
+        Check();
+        if (offset < 0) {
+            return operator+=(static_cast<difference_type>(-offset));
+        }
+
+        for (difference_type i = 0; i < offset; ++i) {
+            index_ = ptr()->GetPrevIndexOf(index_);
+            if (index_ == ptr()->end().index()) {
+                break;
+            }
+        }
+        return *this;
+    }
+
+    IteratorImpl operator+(difference_type offset) const {
+        Check();
+        if constexpr (std::is_same_v<Derived, SmallMapObj<K, V>>) {
+            size_type new_idx = index() + offset;
+            if (new_idx > ptr()->size()) {
+                new_idx = ptr()->size();
+            }
+            return IteratorImpl(new_idx, ptr());
+        } else {
+            auto res = *this;
+            res += offset;
+            return res;
+        }
+    }
+
+    IteratorImpl operator-(difference_type offset) const {
+        Check();
+        if constexpr (std::is_same_v<Derived, SmallMapObj<K, V>>) {
+            size_type new_idx = index() - offset;
+            if (new_idx > ptr()->size()) {
+                new_idx = ptr()->size();
+            }
+            return IteratorImpl(new_idx, ptr());
+        } else {
+            auto res = *this;
+            res -= offset;
+            return res;
+        }
+    }
+
+    difference_type operator-(const IteratorImpl& other) const {
+        return static_cast<difference_type>(index()) - static_cast<difference_type>(other.index());
+    }
+
+    bool operator==(const IteratorImpl& other) const {
+        return index_ == other.index_ && ptr_ == other.ptr_;
+    }
+
+    bool operator!=(const IteratorImpl& other) const {
+        return !(*this == other);
+    }
+
+    void Check() const {
+        CHECK(ptr_ != nullptr) << "Iterator pointer is nullptr.";
+        CHECK(index_ <= ptr_->slots()) << "Iterator index is out of range.";
+    }
+
+private:
+    size_type index_;
+    ContainerPtrType ptr_;
+};
+
 template<typename K, typename V>
 template<bool IsConst>
 class Map<K, V>::IteratorImpl {
@@ -1707,64 +1761,6 @@ private:
     template<typename, typename>
     friend class Map;
 };
-
-template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
-    if (pos == end()) {
-        return end();
-    }
-
-    COW();
-    auto visitor = [&](const auto& arg) -> iterator {
-        return arg->erase({pos.index(), arg.get()});
-    };
-    return std::visit(visitor, obj_);
-}
-
-template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
-    return erase(const_iterator(pos));
-}
-
-template<typename K, typename V>
-Map<K, V>::size_type Map<K, V>::erase(const key_type& key) {
-    auto it = find(key);
-    if (it != end()) {
-        erase(it);
-        return 1;
-    }
-    return 0;
-}
-
-template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(iterator first, iterator last) {
-    if (first == last) {
-        return first;
-    }
-
-    auto n = std::distance(first, last);
-    iterator it = first;
-    for (difference_type i = 0; i < n; ++i) {
-        it = erase(it++);
-    }
-    return it;
-}
-
-template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(const_iterator first, const_iterator last) {
-    if (first == last) {
-        return first;
-    }
-
-    auto n = std::distance(first, last);
-    iterator it = first;
-    for (difference_type i = 0; i < n; ++i) {
-        it = erase(it++);
-    }
-    return it;
-}
-
-
 }// namespace aethermind
 
 #endif//AETHERMIND_CONTAINER_MAP_OBJ_H

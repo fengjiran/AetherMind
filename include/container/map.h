@@ -327,9 +327,11 @@ private:
     // Max load factor of hash table
     static constexpr double kMaxLoadFactor = 0.99;
     // 0b11111111 representation of the metadata of an empty slot.
-    static constexpr uint8_t kEmptySlot = 0xFF;
+    // static constexpr uint8_t kEmptySlot = 0xFF;
+    static constexpr auto kEmptySlot = std::byte{0xFF};
     // 0b11111110 representation of the metadata of a protected slot.
-    static constexpr uint8_t kProtectedSlot = 0xFE;
+    // static constexpr uint8_t kProtectedSlot = 0xFE;
+    static constexpr auto kProtectedSlot = std::byte{0xFE};
     // Number of probing choices available
     static constexpr int kNumOffsetDists = 126;
     // Index indicator to indicate an invalid index.
@@ -535,32 +537,35 @@ struct DenseMapObj<K, V>::Entry {
 
 template<typename K, typename V>
 struct DenseMapObj<K, V>::Block {
-    uint8_t bytes[kBlockSize + kBlockSize * sizeof(Entry)];
     std::array<std::byte, kBlockSize + kBlockSize * sizeof(Entry)> storage_;
 
     Block() {// NOLINT
-        auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
         for (uint8_t i = 0; i < kBlockSize; ++i) {
-            bytes[i] = kEmptySlot;
-            new (data + i) Entry;
+            storage_[i] = kEmptySlot;
+            new (GetEntryPtr(i)) Entry;
         }
     }
 
     Block(const Block& other) {// NOLINT
-        const auto* src = reinterpret_cast<const Entry*>(other.bytes + kBlockSize);
-        auto* dst = reinterpret_cast<Entry*>(bytes + kBlockSize);
         for (uint8_t i = 0; i < kBlockSize; ++i) {
-            bytes[i] = other.bytes[i];
-            new (dst + i) Entry(src[i]);
+            storage_[i] = other.storage_[i];
+            new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
         }
     }
 
     ~Block() {
-        auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
         for (uint8_t i = 0; i < kBlockSize; ++i) {
-            bytes[i] = kEmptySlot;
-            data[i].~Entry();
+            storage_[i] = kEmptySlot;
+            GetEntryPtr(i)->~Entry();
         }
+    }
+
+    Entry* GetEntryPtr(size_type i) {
+        return static_cast<Entry*>(static_cast<void*>(storage_.data() + kBlockSize)) + i;
+    }
+
+    const Entry* GetEntryPtr(size_type i) const {
+        return const_cast<Block*>(this)->GetEntryPtr(i);
     }
 };
 
@@ -597,14 +602,13 @@ public:
     }
 
     // Get metadata of an entry
-    NODISCARD uint8_t& GetMeta() const {
-        return GetBlock()->bytes[index() % kBlockSize];
+    NODISCARD std::byte& GetMeta() const {
+        return GetBlock()->storage_[index() % kBlockSize];
     }
 
     // Get an entry ref
     NODISCARD Entry& GetEntry() const {
-        auto* p = reinterpret_cast<Entry*>(GetBlock()->bytes + kBlockSize);
-        return p[index() % kBlockSize];
+        return *GetBlock()->GetEntryPtr(index() % kBlockSize);
     }
 
     // Get KV
@@ -633,7 +637,7 @@ public:
     }
 
     NODISCARD bool IsHead() const {
-        return (GetMeta() & 0x80) == 0x00;
+        return (GetMeta() & std::byte{0x80}) == std::byte{0x00};
     }
 
     void SetEmpty() const {
@@ -647,13 +651,12 @@ public:
     // Set the entry's offset to its next entry.
     void SetOffsetIdx(uint8_t offset_idx) const {
         CHECK(offset_idx < kNumOffsetDists);
-        (GetMeta() &= 0x80) |= offset_idx;
+        (GetMeta() &= std::byte{0x80}) |= std::byte{offset_idx};
     }
 
     void ConstructEntry(Entry&& entry) const {
-        auto* p = reinterpret_cast<Entry*>(GetBlock()->bytes + kBlockSize);
         DestructEntry();
-        new (p + index() % kBlockSize) Entry(std::move(entry));
+        new (GetBlock()->GetEntryPtr(index() % kBlockSize)) Entry(std::move(entry));
     }
 
     // Destroy the item in the entry.
@@ -667,26 +670,24 @@ public:
 
     // Construct a head of linked list inplace.
     void CreateHead(Entry&& entry) const {
-        GetMeta() = 0x00;
-        // GetEntry() = entry;
+        GetMeta() = std::byte{0x00};
         ConstructEntry(std::move(entry));
     }
 
     // Construct a tail of linked list inplace
     void CreateTail(Entry&& entry) const {
-        GetMeta() = 0x80;
-        // GetEntry() = entry;
+        GetMeta() = std::byte{0x80};
         ConstructEntry(std::move(entry));
     }
 
     // Whether the slot has the next slot on the linked list
     NODISCARD bool HasNextSlot() const {
-        return NextProbePosOffset[GetMeta() & 0x7F] != 0;
+        return NextProbePosOffset[std::to_integer<uint8_t>(GetMeta() & std::byte{0x7F})] != 0;
     }
 
     // Move the current cursor to the next slot on the linked list
     bool MoveToNextSlot(std::optional<uint8_t> meta_opt = std::nullopt) {
-        uint8_t meta = meta_opt ? meta_opt.value() : GetMeta();
+        uint8_t meta = meta_opt ? meta_opt.value() : std::to_integer<uint8_t>(GetMeta());
         const auto offset = NextProbePosOffset[meta & 0x7F];
         if (offset == 0) {
             reset();
@@ -949,7 +950,7 @@ DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
         // this needs to happen after NewTail so empty's prev/next get updated
         IterListReplace(r, empty);
         // clear the metadata of `r`
-        r_meta = r.GetMeta();
+        r_meta = std::to_integer<uint8_t>(r.GetMeta());
         if (is_first) {
             is_first = false;
             r.SetProtected();

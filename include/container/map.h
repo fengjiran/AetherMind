@@ -1296,7 +1296,7 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src)
 }
 
 template<typename Derived, typename K, typename V>
-std::tuple<ObjectPtr<Object>, size_t, bool>
+std::tuple<ObjectPtr<Object>, typename MapObj<Derived, K, V>::size_type, bool>
 MapObj<Derived, K, V>::insert(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
     if constexpr (std::is_same_v<Derived, SmallMapObj<K, V>>) {
         auto* p = static_cast<SmallMapObj<K, V>*>(old_impl.get());//NOLINT
@@ -1306,6 +1306,19 @@ MapObj<Derived, K, V>::insert(value_type&& kv, const ObjectPtr<Object>& old_impl
             return {impl, iter.index(), is_success};
         }
 
+        ObjectPtr<Object> new_impl = DenseMapObj<K, V>::Create(size * kIncFactor);
+        for (auto& iter: *p) {
+            new_impl = std::get<0>(DenseMapObj<K, V>::InsertImpl(std::move(iter), new_impl));
+        }
+        auto [impl, iter, is_success] = DenseMapObj<K, V>::InsertImpl(std::move(kv), new_impl, assign);
+        return {impl, iter.index(), is_success};
+    } else if constexpr (std::is_same_v<Derived, MiniMapObj<K, V>>) {
+        auto* p = static_cast<MiniMapObj<K, V>*>(old_impl.get());//NOLINT
+        const auto size = p->size();
+        if (size < kThreshold) {
+            auto [iter, is_success] = p->InsertImpl(std::move(kv), assign);
+            return {old_impl, iter.index(), is_success};
+        }
         ObjectPtr<Object> new_impl = DenseMapObj<K, V>::Create(size * kIncFactor);
         for (auto& iter: *p) {
             new_impl = std::get<0>(DenseMapObj<K, V>::InsertImpl(std::move(iter), new_impl));
@@ -1338,6 +1351,7 @@ public:
     using const_iterator = IteratorImpl<true>;
 
     using small_map_obj = SmallMapObj<K, V>;
+    // using small_map_obj = MiniMapObj<K, V>;
     using dense_map_obj = DenseMapObj<K, V>;
 
     Map() : obj_(small_map_obj::Create()) {}

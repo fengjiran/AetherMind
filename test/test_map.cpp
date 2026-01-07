@@ -13,7 +13,7 @@ using namespace aethermind;
 TEST(MapTest, basic) {
     Map<int, int> dict;
     EXPECT_TRUE(dict.empty());
-    EXPECT_EQ(dict.slots(), 2);
+    EXPECT_EQ(dict.slots(), 4);
     dict.insert(1, 2);
     dict.insert(2, 3);
     EXPECT_EQ(dict.size(), 2);

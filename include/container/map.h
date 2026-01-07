@@ -70,7 +70,11 @@ public:
         return GetDerivedPtr()->at_impl(key);
     }
 
-    NODISCARD value_type* GetDataPtr(size_t idx) const {
+    NODISCARD value_type* GetDataPtr(size_t idx) {
+        return GetDerivedPtr()->GetDataPtrImpl(idx);
+    }
+
+    NODISCARD const value_type* GetDataPtr(size_t idx) const {
         return GetDerivedPtr()->GetDataPtrImpl(idx);
     }
 
@@ -380,8 +384,12 @@ private:
         return const_cast<MiniMapObj*>(this)->at_impl(key);
     }
 
-    NODISCARD value_type* GetDataPtrImpl(size_type index) const {
+    NODISCARD value_type* GetDataPtrImpl(size_type index) {
         return reinterpret_cast<value_type*>(storage_.data()) + index;
+    }
+
+    NODISCARD const value_type* GetDataPtrImpl(size_type index) const {
+        return reinterpret_cast<const value_type*>(storage_.data()) + index;
     }
 
     NODISCARD size_type GetNextIndexOfImpl(size_type idx) const {
@@ -399,6 +407,8 @@ private:
     void reset();
 
     static ObjectPtr<MiniMapObj> Create();
+
+    static ObjectPtr<MiniMapObj> CopyFrom(const MiniMapObj* src);
 
     static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
             value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
@@ -463,7 +473,7 @@ MiniMapObj<K, V>::iterator MiniMapObj<K, V>::erase_impl(iterator pos) {
 
     auto src = end_impl() - 1;
     pos->~value_type();
-    new (GetDataPtrImpl(pos->index())) value_type(std::move(*src));
+    new (GetDataPtrImpl(pos.index())) value_type(std::move(*src));
     --this->size_;
     return pos;
 }
@@ -475,6 +485,20 @@ ObjectPtr<MiniMapObj<K, V>> MiniMapObj<K, V>::Create() {
     impl->slots_ = BaseType::kThreshold;
     return impl;
 }
+
+template<typename K, typename V>
+ObjectPtr<MiniMapObj<K, V>> MiniMapObj<K, V>::CopyFrom(const MiniMapObj* src) {
+    const auto* first = src->GetDataPtrImpl(0);
+    auto impl = Create();
+    auto* dst = impl->GetDataPtrImpl(0);
+    for (size_t i = 0; i < src->size(); ++i) {
+        new (dst + i) value_type(*first++);
+        ++impl->size_;
+    }
+
+    return impl;
+}
+
 
 template<typename K, typename V>
 std::tuple<ObjectPtr<Object>, typename MiniMapObj<K, V>::iterator, bool>
@@ -694,8 +718,8 @@ private:
 
     static ObjectPtr<DenseMapObj> CopyFrom(const DenseMapObj* src);
 
-    template<details::is_valid_iter Iter>
-    static ObjectPtr<DenseMapObj> CreateFromRange(Iter first, Iter last);
+    // template<details::is_valid_iter Iter>
+    // static ObjectPtr<DenseMapObj> CreateFromRange(Iter first, Iter last);
 
     template<typename, typename, typename>
     friend class MapObj;
@@ -1350,15 +1374,15 @@ public:
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
-    using small_map_obj = SmallMapObj<K, V>;
-    // using small_map_obj = MiniMapObj<K, V>;
+    // using small_map_obj = SmallMapObj<K, V>;
+    using small_map_obj = MiniMapObj<K, V>;
     using dense_map_obj = DenseMapObj<K, V>;
 
     Map() : obj_(small_map_obj::Create()) {}
 
     explicit Map(size_type n) {
         if (n <= small_map_obj::kThreshold) {
-            obj_ = small_map_obj::Create(n);
+            obj_ = small_map_obj::Create();
         } else {
             obj_ = dense_map_obj::Create(n);
         }
@@ -1367,12 +1391,13 @@ public:
     template<typename Iter>
     Map(Iter first, Iter last) {
         auto _sz = std::distance(first, last);
+
         if (_sz <= 0) {
             obj_ = small_map_obj::Create();
         } else {
             const auto size = static_cast<size_type>(_sz);
             if (size <= small_map_obj::kThreshold) {
-                obj_ = small_map_obj::Create(size);
+                obj_ = small_map_obj::Create();
                 while (first != last) {
                     auto t = std::get<0>(small_map_obj::insert(value_type(*first++),
                                                                std::get<ObjectPtr<small_map_obj>>(obj_)));
@@ -1620,8 +1645,6 @@ private:
 
     void COW() {
         if (!unique()) {
-            // const auto* p = std::visit([](const auto& arg) -> Object* { return arg.get(); },
-            //                            obj_);
             if (IsSmallMap()) {
                 obj_ = small_map_obj::CopyFrom(small_ptr());
             } else {

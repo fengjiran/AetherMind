@@ -823,8 +823,8 @@ TEST(MapEraseTest, erase_by_iterator) {
     auto it = small_map.begin();
     auto next_it = small_map.erase(it);
     EXPECT_EQ(small_map.size(), 2);
-    EXPECT_EQ(next_it->first, 3);
-    EXPECT_EQ(next_it->second, 30);
+    EXPECT_EQ(next_it->first, 2);
+    EXPECT_EQ(next_it->second, 20);
     EXPECT_FALSE(small_map.contains(1));
     EXPECT_TRUE(small_map.contains(2));
     EXPECT_TRUE(small_map.contains(3));
@@ -832,9 +832,9 @@ TEST(MapEraseTest, erase_by_iterator) {
     // 删除中间元素
     next_it = small_map.erase(next_it);
     EXPECT_EQ(small_map.size(), 1);
-    EXPECT_EQ(next_it->first, 2);
-    EXPECT_EQ(next_it->second, 20);
-    EXPECT_TRUE(small_map.contains(2));
+    EXPECT_EQ(next_it->first, 3);
+    EXPECT_EQ(next_it->second, 30);
+    EXPECT_TRUE(small_map.contains(3));
 
     // 删除最后一个元素
     next_it = small_map.erase(next_it);
@@ -912,7 +912,7 @@ TEST(MapEraseTest, erase_range) {
     ++it;// 指向键2
     result = small_map.erase(small_map.begin(), it);
     EXPECT_EQ(small_map.size(), 2);
-    EXPECT_EQ(result->first, 3);
+    EXPECT_EQ(result->first, 2);
     EXPECT_EQ(small_map.contains(1), false);
     EXPECT_EQ(small_map.contains(2), true);
     EXPECT_EQ(small_map.contains(3), true);

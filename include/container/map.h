@@ -87,27 +87,27 @@ public:
     }
 
     NODISCARD const_iterator begin() const {
-        return GetDerivedPtr()->begin_impl();
+        return GetDerivedPtr()->BeginImpl();
     }
 
     NODISCARD const_iterator end() const {
-        return GetDerivedPtr()->end_impl();
+        return GetDerivedPtr()->EndImpl();
     }
 
     NODISCARD iterator begin() {
-        return GetDerivedPtr()->begin_impl();
+        return GetDerivedPtr()->BeginImpl();
     }
 
     NODISCARD iterator end() {
-        return GetDerivedPtr()->end_impl();
+        return GetDerivedPtr()->EndImpl();
     }
 
     NODISCARD const_iterator find(const key_type& key) const {
-        return GetDerivedPtr()->find_impl(key);
+        return GetDerivedPtr()->FindImpl(key);
     }
 
     NODISCARD iterator find(const key_type& key) {
-        return GetDerivedPtr()->find_impl(key);
+        return GetDerivedPtr()->FindImpl(key);
     }
 
     NODISCARD iterator erase(iterator pos) {
@@ -154,10 +154,6 @@ public:
         this->data_ = storage_.data();
         this->size_ = 0;
         this->slots_ = BaseType::kThreshold;
-
-        for (size_type i = 0; i < this->slots_; ++i) {
-            new (GetDataPtrImpl(i)) value_type();
-        }
     }
 
     ~SmallMapObj() override {
@@ -167,33 +163,33 @@ public:
 private:
     std::array<std::byte, sizeof(value_type) * BaseType::kThreshold> storage_;
 
-    NODISCARD iterator begin_impl() {
+    NODISCARD iterator BeginImpl() {
         return {0, this};
     }
 
-    NODISCARD iterator end_impl() {
+    NODISCARD iterator EndImpl() {
         return {this->size(), this};
     }
 
     NODISCARD const_iterator begin_impl() const {
-        return const_cast<SmallMapObj*>(this)->begin_impl();
+        return const_cast<SmallMapObj*>(this)->BeginImpl();
     }
 
-    NODISCARD const_iterator end_impl() const {
-        return const_cast<SmallMapObj*>(this)->end_impl();
+    NODISCARD const_iterator EndImpl() const {
+        return const_cast<SmallMapObj*>(this)->EndImpl();
     }
 
-    NODISCARD const_iterator find_impl(const key_type& key) const;
+    NODISCARD const_iterator FindImpl(const key_type& key) const;
 
-    NODISCARD iterator find_impl(const key_type& key);
+    NODISCARD iterator FindImpl(const key_type& key);
 
     NODISCARD size_type count_impl(const key_type& key) const {
-        return find_impl(key) != end_impl();
+        return FindImpl(key) != EndImpl();
     }
 
     mapped_type& at_impl(const key_type& key) {
-        const auto iter = find_impl(key);
-        if (iter == end_impl()) {
+        const auto iter = FindImpl(key);
+        if (iter == EndImpl()) {
             AETHERMIND_THROW(KeyError) << "key is not exist.";
         }
         return iter->second;
@@ -204,11 +200,11 @@ private:
     }
 
     NODISCARD value_type* GetDataPtrImpl(size_type index) {
-        return reinterpret_cast<value_type*>(storage_.data()) + index;
+        return static_cast<value_type*>(static_cast<void*>(storage_.data())) + index;
     }
 
     NODISCARD const value_type* GetDataPtrImpl(size_type index) const {
-        return reinterpret_cast<const value_type*>(storage_.data()) + index;
+        return const_cast<SmallMapObj*>(this)->GetDataPtrImpl(index);
     }
 
     NODISCARD size_type GetNextIndexOfImpl(size_type idx) const {
@@ -225,7 +221,9 @@ private:
 
     void reset();
 
-    static ObjectPtr<SmallMapObj> Create();
+    static ObjectPtr<SmallMapObj> Create() {
+        return make_object<SmallMapObj>();
+    }
 
     static ObjectPtr<SmallMapObj> CopyFrom(const SmallMapObj* src);
 
@@ -239,34 +237,34 @@ private:
 
 template<typename K, typename V>
 void SmallMapObj<K, V>::reset() {
-    auto* p = GetDataPtrImpl(0);
-    for (size_t i = 0; i < this->size(); ++i) {
-        p[i].~value_type();
+    if (!this->empty()) {
+        for (size_t i = 0; i < this->size(); ++i) {
+            GetDataPtrImpl(i)->~value_type();
+        }
+        this->size_ = 0;
     }
-    this->size_ = 0;
 }
 
 template<typename K, typename V>
-SmallMapObj<K, V>::iterator SmallMapObj<K, V>::find_impl(const key_type& key) {
-    const auto* p = GetDataPtrImpl(0);
+SmallMapObj<K, V>::iterator SmallMapObj<K, V>::FindImpl(const key_type& key) {
     for (size_t i = 0; i < this->size(); ++i) {
-        if (key == p[i].first) {
+        if (key == GetDataPtrImpl(i)->first) {
             return {i, this};
         }
     }
 
-    return end_impl();
+    return EndImpl();
 }
 
 template<typename K, typename V>
-SmallMapObj<K, V>::const_iterator SmallMapObj<K, V>::find_impl(const key_type& key) const {
-    return const_cast<SmallMapObj*>(this)->find_impl(key);
+SmallMapObj<K, V>::const_iterator SmallMapObj<K, V>::FindImpl(const key_type& key) const {
+    return const_cast<SmallMapObj*>(this)->FindImpl(key);
 }
 
 template<typename K, typename V>
 std::pair<typename SmallMapObj<K, V>::iterator, bool>
 SmallMapObj<K, V>::InsertImpl(value_type&& kv, bool assign) {
-    if (const auto it = find_impl(kv.first); it != end_impl()) {
+    if (const auto it = FindImpl(kv.first); it != EndImpl()) {
         if (assign) {
             it->second = std::move(kv.second);
         }
@@ -274,47 +272,33 @@ SmallMapObj<K, V>::InsertImpl(value_type&& kv, bool assign) {
     }
 
     CHECK(this->size() < this->slots());
-    auto* p = GetDataPtrImpl(this->size());
-    new (p) value_type(std::move(kv));
+    new (GetDataPtrImpl(this->size())) value_type(std::move(kv));
     ++this->size_;
     return {iterator{this->size() - 1, this}, true};
 }
 
 template<typename K, typename V>
 SmallMapObj<K, V>::iterator SmallMapObj<K, V>::erase_impl(iterator pos) {
-    if (pos == end_impl()) {
+    if (pos == EndImpl()) {
         return pos;
     }
 
-    // auto idx = pos.index();
-    // auto* p = GetDataPtrImpl(0);
-    // if (idx < this->size() - 1) {
-    //     std::move(p + idx + 1, p + this->size(), p + idx);
-    // }
-    //
-    // p[this->size() - 1].~value_type();
-    // --this->size_;
-    // return pos;
-
-    auto src = end_impl() - 1;
     pos->~value_type();
-    new (GetDataPtrImpl(pos.index())) value_type(std::move(*src));
+    if (auto idx = pos.index(); idx < this->size() - 1) {
+        while (idx < this->size() - 1) {
+            new (GetDataPtrImpl(idx)) value_type(std::move(*GetDataPtrImpl(idx + 1)));
+            ++idx;
+        }
+    }
     --this->size_;
     return pos;
 }
 
 template<typename K, typename V>
-ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::Create() {
-    return make_object<SmallMapObj>();
-}
-
-template<typename K, typename V>
 ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CopyFrom(const SmallMapObj* src) {
-    const auto* first = src->GetDataPtrImpl(0);
     auto impl = Create();
-    auto* dst = impl->GetDataPtrImpl(0);
-    for (size_t i = 0; i < src->size(); ++i) {
-        new (dst + i) value_type(*first++);
+    for (size_type i = 0; i < src->size(); ++i) {
+        new (impl->GetDataPtrImpl(i)) value_type(*src->GetDataPtrImpl(i));
         ++impl->size_;
     }
 
@@ -385,27 +369,27 @@ private:
     struct Block;
     class Cursor;
 
-    NODISCARD iterator begin_impl() {
+    NODISCARD iterator BeginImpl() {
         return {iter_list_head_, this};
     }
 
-    NODISCARD iterator end_impl() {
+    NODISCARD iterator EndImpl() {
         return {kInvalidIndex, this};
     }
 
-    NODISCARD const_iterator begin_impl() const {
-        return const_cast<DenseMapObj*>(this)->begin_impl();
+    NODISCARD const_iterator BeginImpl() const {
+        return const_cast<DenseMapObj*>(this)->BeginImpl();
     }
 
-    NODISCARD const_iterator end_impl() const {
-        return const_cast<DenseMapObj*>(this)->end_impl();
+    NODISCARD const_iterator EndImpl() const {
+        return const_cast<DenseMapObj*>(this)->EndImpl();
     }
 
-    NODISCARD const_iterator find_impl(const key_type& key) const {
-        return const_cast<DenseMapObj*>(this)->find_impl(key);
+    NODISCARD const_iterator FindImpl(const key_type& key) const {
+        return const_cast<DenseMapObj*>(this)->FindImpl(key);
     }
 
-    NODISCARD iterator find_impl(const key_type& key) {
+    NODISCARD iterator FindImpl(const key_type& key) {
         const auto node = Search(key);
         return node.IsNone() ? this->end() : iterator(node.index(), this);
     }

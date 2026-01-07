@@ -136,197 +136,6 @@ protected:
             value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
 };
 
-
-template<typename K, typename V>
-class SmallMapObj : public MapObj<SmallMapObj<K, V>, K, V> {
-public:
-    using BaseType = MapObj<SmallMapObj, K, V>;
-
-    using key_type = K;
-    using mapped_type = V;
-    using value_type = std::pair<const key_type, mapped_type>;
-    using size_type = size_t;
-
-    using iterator = MapObj<SmallMapObj, K, V>::iterator;
-    using const_iterator = MapObj<SmallMapObj, K, V>::const_iterator;
-
-    SmallMapObj() = default;
-    ~SmallMapObj() override {
-        reset();
-    }
-
-private:
-    NODISCARD iterator begin_impl() {
-        return {0, this};
-    }
-
-    NODISCARD iterator end_impl() {
-        return {this->size(), this};
-    }
-
-    NODISCARD const_iterator begin_impl() const {
-        return const_cast<SmallMapObj*>(this)->begin_impl();
-    }
-
-    NODISCARD const_iterator end_impl() const {
-        return const_cast<SmallMapObj*>(this)->end_impl();
-    }
-
-    NODISCARD const_iterator find_impl(const key_type& key) const;
-
-    NODISCARD iterator find_impl(const key_type& key);
-
-    NODISCARD size_type count_impl(const key_type& key) const {
-        return this->find(key).index() < this->size();
-    }
-
-    mapped_type& at_impl(const key_type& key) {
-        const auto iter = this->find(key);
-        if (iter == this->end()) {
-            AETHERMIND_THROW(KeyError) << "key is not exist.";
-        }
-        return iter->second;
-    }
-
-    NODISCARD const mapped_type& at_impl(const key_type& key) const {
-        return const_cast<SmallMapObj*>(this)->at_impl(key);
-    }
-
-    iterator erase_impl(iterator pos);
-
-    NODISCARD value_type* GetDataPtrImpl(size_type index) const {
-        return static_cast<value_type*>(this->data()) + index;
-    }
-
-    NODISCARD size_type GetNextIndexOfImpl(size_type idx) const {
-        return idx + 1 < this->size() ? idx + 1 : this->size();
-    }
-
-    NODISCARD size_type GetPrevIndexOfImpl(size_type idx) const {
-        return idx > 0 ? idx - 1 : this->size();
-    }
-
-    void reset();
-
-    static ObjectPtr<SmallMapObj> Create(size_type n = SmallMapObj::kInitSize);
-
-    static ObjectPtr<SmallMapObj> CopyFrom(const SmallMapObj* src);
-
-    static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
-            value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign = false);
-
-    template<typename, typename, typename>
-    friend class MapObj;
-    template<typename, typename>
-    friend class DenseMapObj;
-    template<typename, typename>
-    friend class Map;
-};
-
-template<typename K, typename V>
-void SmallMapObj<K, V>::reset() {
-    auto* p = static_cast<value_type*>(this->data());
-    for (size_t i = 0; i < this->size(); ++i) {
-        p[i].~value_type();
-    }
-
-    this->size_ = 0;
-    this->slots_ = 0;
-}
-
-template<typename K, typename V>
-SmallMapObj<K, V>::iterator SmallMapObj<K, V>::find_impl(const key_type& key) {
-    const auto* p = static_cast<value_type*>(this->data());
-    for (size_t i = 0; i < this->size(); ++i) {
-        if (key == p[i].first) {
-            return {i, this};
-        }
-    }
-
-    return this->end();
-}
-
-template<typename K, typename V>
-SmallMapObj<K, V>::const_iterator SmallMapObj<K, V>::find_impl(const key_type& key) const {
-    return const_cast<SmallMapObj*>(this)->find_impl(key);
-}
-
-template<typename K, typename V>
-SmallMapObj<K, V>::iterator SmallMapObj<K, V>::erase_impl(iterator pos) {
-    if (pos == this->end()) {
-        return this->end();
-    }
-
-    auto src = this->end() - 1;
-    pos->~value_type();
-    new (pos.ptr()->GetDataPtr(pos.index())) value_type(std::move(*src));
-
-    --this->size_;
-    return pos;
-}
-
-template<typename K, typename V>
-ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::Create(size_type n) {
-    CHECK(n <= SmallMapObj::kThreshold)
-            << "The allocated size must be less equal to the threshold of " << SmallMapObj::kThreshold
-            << " when using SmallMapObj::Create";
-    if (n < SmallMapObj::kInitSize) {
-        n = SmallMapObj::kInitSize;
-    }
-    auto impl = make_array_object<SmallMapObj, value_type>(n);
-    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(SmallMapObj);
-    impl->size_ = 0;
-    impl->slots_ = n;
-    return impl;
-}
-
-template<typename K, typename V>
-ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CopyFrom(const SmallMapObj* src) {
-    const auto* first = static_cast<value_type*>(src->data());
-    auto impl = Create(src->slots());
-    auto* dst = static_cast<value_type*>(impl->data());
-    for (size_t i = 0; i < src->size(); ++i) {
-        new (dst + i) value_type(*first++);
-        ++impl->size_;
-    }
-
-    return impl;
-}
-
-template<typename K, typename V>
-std::tuple<ObjectPtr<Object>, typename SmallMapObj<K, V>::iterator, bool>
-SmallMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
-    auto* map = static_cast<SmallMapObj*>(old_impl.get());//NOLINT
-    if (const auto it = map->find(kv.first); it != map->end()) {
-        if (assign) {
-            it->second = std::move(kv.second);
-        }
-        return {old_impl, it, false};
-    }
-
-    if (map->size() < map->slots()) {
-        auto* p = static_cast<value_type*>(map->data()) + map->size();
-        new (p) value_type(std::move(kv));
-        ++map->size_;
-        return {old_impl, iterator(map->size() - 1, map), true};
-    }
-
-    const size_t new_cap =
-            std::min(SmallMapObj::kThreshold,
-                     std::max(SmallMapObj::kIncFactor * map->slots(), SmallMapObj::kInitSize));
-    auto new_impl = details::ObjectUnsafe::Downcast<SmallMapObj>(Create(new_cap));
-    auto* src = static_cast<value_type*>(map->data());
-    auto* dst = static_cast<value_type*>(new_impl->data());
-    for (size_t i = 0; i < map->size(); ++i) {
-        new (dst++) value_type(std::move(*src++));
-        ++new_impl->size_;
-    }
-    new (dst) value_type(std::move(kv));
-    ++new_impl->size_;
-    iterator pos(new_impl->size() - 1, new_impl.get());
-    return {new_impl, pos, true};
-}
-
 template<typename K, typename V>
 class MiniMapObj : public MapObj<MiniMapObj<K, V>, K, V> {
 public:
@@ -1322,21 +1131,7 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src)
 template<typename Derived, typename K, typename V>
 std::tuple<ObjectPtr<Object>, typename MapObj<Derived, K, V>::size_type, bool>
 MapObj<Derived, K, V>::insert(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
-    if constexpr (std::is_same_v<Derived, SmallMapObj<K, V>>) {
-        auto* p = static_cast<SmallMapObj<K, V>*>(old_impl.get());//NOLINT
-        const auto size = p->size();
-        if (size < kThreshold) {
-            auto [impl, iter, is_success] = SmallMapObj<K, V>::InsertImpl(std::move(kv), old_impl, assign);
-            return {impl, iter.index(), is_success};
-        }
-
-        ObjectPtr<Object> new_impl = DenseMapObj<K, V>::Create(size * kIncFactor);
-        for (auto& iter: *p) {
-            new_impl = std::get<0>(DenseMapObj<K, V>::InsertImpl(std::move(iter), new_impl));
-        }
-        auto [impl, iter, is_success] = DenseMapObj<K, V>::InsertImpl(std::move(kv), new_impl, assign);
-        return {impl, iter.index(), is_success};
-    } else if constexpr (std::is_same_v<Derived, MiniMapObj<K, V>>) {
+    if constexpr (std::is_same_v<Derived, MiniMapObj<K, V>>) {
         auto* p = static_cast<MiniMapObj<K, V>*>(old_impl.get());//NOLINT
         const auto size = p->size();
         if (size < kThreshold) {
@@ -1374,7 +1169,6 @@ public:
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
-    // using small_map_obj = SmallMapObj<K, V>;
     using small_map_obj = MiniMapObj<K, V>;
     using dense_map_obj = DenseMapObj<K, V>;
 
@@ -1654,7 +1448,6 @@ private:
     }
 };
 
-
 template<typename K, typename V>
 Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
     if (pos == end()) {
@@ -1803,7 +1596,7 @@ public:
 
     IteratorImpl operator+(difference_type offset) const {
         Check();
-        if constexpr (std::is_same_v<Derived, SmallMapObj<K, V>>) {
+        if constexpr (std::is_same_v<Derived, MiniMapObj<K, V>>) {
             size_type new_idx = index() + offset;
             if (new_idx > ptr()->size()) {
                 new_idx = ptr()->size();
@@ -1818,7 +1611,7 @@ public:
 
     IteratorImpl operator-(difference_type offset) const {
         Check();
-        if constexpr (std::is_same_v<Derived, SmallMapObj<K, V>>) {
+        if constexpr (std::is_same_v<Derived, MiniMapObj<K, V>>) {
             size_type new_idx = index() - offset;
             if (new_idx > ptr()->size()) {
                 new_idx = ptr()->size();

@@ -63,11 +63,11 @@ public:
     }
 
     mapped_type& at(const key_type& key) {
-        return GetDerivedPtr()->at_impl(key);
+        return GetDerivedPtr()->AtImpl(key);
     }
 
     NODISCARD const mapped_type& at(const key_type& key) const {
-        return GetDerivedPtr()->at_impl(key);
+        return GetDerivedPtr()->AtImpl(key);
     }
 
     NODISCARD value_type* GetDataPtr(size_t idx) {
@@ -111,7 +111,7 @@ public:
     }
 
     NODISCARD iterator erase(iterator pos) {
-        return GetDerivedPtr()->erase_impl(pos);
+        return GetDerivedPtr()->EraseImpl(pos);
     }
 
 protected:
@@ -187,7 +187,7 @@ private:
         return FindImpl(key) != EndImpl();
     }
 
-    mapped_type& at_impl(const key_type& key) {
+    mapped_type& AtImpl(const key_type& key) {
         const auto iter = FindImpl(key);
         if (iter == EndImpl()) {
             AETHERMIND_THROW(KeyError) << "key is not exist.";
@@ -195,8 +195,8 @@ private:
         return iter->second;
     }
 
-    NODISCARD const mapped_type& at_impl(const key_type& key) const {
-        return const_cast<SmallMapObj*>(this)->at_impl(key);
+    NODISCARD const mapped_type& AtImpl(const key_type& key) const {
+        return const_cast<SmallMapObj*>(this)->AtImpl(key);
     }
 
     NODISCARD value_type* GetDataPtrImpl(size_type index) {
@@ -217,7 +217,7 @@ private:
 
     std::pair<iterator, bool> InsertImpl(value_type&& kv, bool assign = false);
 
-    iterator erase_impl(iterator pos);
+    iterator EraseImpl(iterator pos);
 
     void reset();
 
@@ -278,7 +278,7 @@ SmallMapObj<K, V>::InsertImpl(value_type&& kv, bool assign) {
 }
 
 template<typename K, typename V>
-SmallMapObj<K, V>::iterator SmallMapObj<K, V>::erase_impl(iterator pos) {
+SmallMapObj<K, V>::iterator SmallMapObj<K, V>::EraseImpl(iterator pos) {
     if (pos == EndImpl()) {
         return pos;
     }
@@ -394,17 +394,17 @@ private:
         return node.IsNone() ? this->end() : iterator(node.index(), this);
     }
 
-    iterator erase_impl(iterator pos);
+    iterator EraseImpl(iterator pos);
 
     NODISCARD size_type count_impl(const key_type& key) const {
         return !Search(key).IsNone();
     }
 
-    NODISCARD mapped_type& at_impl(const key_type& key) {
+    NODISCARD mapped_type& AtImpl(const key_type& key) {
         return At(key);
     }
 
-    NODISCARD const mapped_type& at_impl(const key_type& key) const {
+    NODISCARD const mapped_type& AtImpl(const key_type& key) const {
         return At(key);
     }
 
@@ -505,9 +505,6 @@ private:
 
     static ObjectPtr<DenseMapObj> CopyFrom(const DenseMapObj* src);
 
-    // template<details::is_valid_iter Iter>
-    // static ObjectPtr<DenseMapObj> CreateFromRange(Iter first, Iter last);
-
     template<typename, typename, typename>
     friend class MapObj;
     template<typename, typename>
@@ -530,8 +527,7 @@ struct DenseMapObj<K, V>::Entry {
     }
 
     void reset() {
-        // data.first.reset();
-        // data.second.reset();
+        data.~value_type();
         prev = kInvalidIndex;
         next = kInvalidIndex;
     }
@@ -540,6 +536,7 @@ struct DenseMapObj<K, V>::Entry {
 template<typename K, typename V>
 struct DenseMapObj<K, V>::Block {
     uint8_t bytes[kBlockSize + kBlockSize * sizeof(Entry)];
+    std::array<std::byte, kBlockSize + kBlockSize * sizeof(Entry)> storage_;
 
     Block() {// NOLINT
         auto* data = reinterpret_cast<Entry*>(bytes + kBlockSize);
@@ -736,7 +733,7 @@ private:
 };
 
 template<typename K, typename V>
-DenseMapObj<K, V>::iterator DenseMapObj<K, V>::erase_impl(iterator pos) {
+DenseMapObj<K, V>::iterator DenseMapObj<K, V>::EraseImpl(iterator pos) {
     if (pos == this->end()) {
         return this->end();
     }

@@ -305,6 +305,26 @@ ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CopyFrom(const SmallMapObj* src)
     return impl;
 }
 
+
+/*
+魔法数字和硬编码值较多
+部分方法命名不够清晰
+
+// 动态调整扩容因子，根据负载情况优化
+static constexpr double kMinLoadFactor = 0.1;
+static constexpr double kTargetLoadFactor = 0.7;
+
+// 计算更精确的扩容大小
+static size_type ComputeNewSlots(size_type current_slots, size_type new_elements) {
+    double target_load = static_cast<double>(current_slots + new_elements) / kTargetLoadFactor;
+    size_type new_slots = current_slots;
+    while (new_slots < target_load) {
+        new_slots <<= 1;
+    }
+    return new_slots;
+}
+*/
+
 template<typename K, typename V>
 class DenseMapObj : public MapObj<DenseMapObj<K, V>, K, V> {
 public:
@@ -486,10 +506,9 @@ private:
    * to spare the slot by moving away the elements to another valid empty one to make insertion
    * possible.
    * \param target The given entry to be spared
-   * \param kv The value pair
    * \return The linked-list entry constructed as the head, if actual insertion happens
    */
-    std::optional<Cursor> TrySpareListHead(Cursor target, value_type&& kv);
+    std::optional<Cursor> TrySpareListHead(Cursor target);
 
     /*!
      * \brief Try to insert a key, or do nothing if already exists
@@ -937,7 +956,7 @@ void DenseMapObj<K, V>::IterListReplace(Cursor src, Cursor dst) {
 
 template<typename K, typename V>
 std::optional<typename DenseMapObj<K, V>::Cursor>
-DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
+DenseMapObj<K, V>::TrySpareListHead(Cursor target) {
     // `target` is not the head of the linked list
     // move the original item of `target`
     // and construct new item on the position `target`
@@ -980,10 +999,6 @@ DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
         prev = empty;
     } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
 
-    // finally, we have done moving the linked list
-    // fill data_ into `target`
-    target.CreateHead(Entry{std::move(kv)});
-    ++this->size_;
     return target;
 }
 
@@ -1009,7 +1024,7 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
 
     // Case 1: empty
     if (node.IsEmptySlot()) {
-        node.CreateHead(Entry(std::move(kv)));
+        node.CreateHead(Entry{std::move(kv)});
         ++this->size_;
         IterListPushBack(node);
         return {iterator(node.index(), this), true};
@@ -1021,8 +1036,10 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
             return {EndImpl(), false};
         }
 
-        if (const auto target = TrySpareListHead(node, std::move(kv));
+        if (const auto target = TrySpareListHead(node);
             target.has_value()) {
+            target->CreateHead(Entry{std::move(kv)});
+            ++this->size_;
             IterListPushBack(target.value());
             return {iterator(target->index(), this), true};
         }
@@ -1062,7 +1079,7 @@ template<typename K, typename V>
 std::tuple<ObjectPtr<Object>, typename DenseMapObj<K, V>::iterator, bool>
 DenseMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
     auto* map = static_cast<DenseMapObj*>(old_impl.get());// NOLINT
-    if (auto [it, is_success] = map->TryInsert(std::move(kv), assign); it != map->end()) {
+    if (auto [it, is_success] = map->TryInsert(std::move(kv), assign); it != map->EndImpl()) {
         return {old_impl, it, is_success};
     }
 
@@ -1075,6 +1092,7 @@ DenseMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl
         Cursor cur(idx, map);
         new_impl->TryInsert(std::move(cur.GetData()), assign);
         idx = cur.GetEntry().next;
+        cur.DestroyEntry();
     }
 
     auto [pos, is_success] = new_impl->TryInsert(std::move(kv), assign);
@@ -1122,21 +1140,24 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src)
 template<typename Derived, typename K, typename V>
 std::tuple<ObjectPtr<Object>, typename MapObj<Derived, K, V>::size_type, bool>
 MapObj<Derived, K, V>::insert(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
-    if constexpr (std::is_same_v<Derived, SmallMapObj<K, V>>) {
-        auto* p = static_cast<SmallMapObj<K, V>*>(old_impl.get());//NOLINT
+    using SmallMapType = SmallMapObj<K, V>;
+    using DenseMapType = DenseMapObj<K, V>;
+    if constexpr (std::is_same_v<Derived, SmallMapType>) {
+        auto* p = static_cast<SmallMapType*>(old_impl.get());//NOLINT
         const auto size = p->size();
         if (size < kThreshold) {
             auto [iter, is_success] = p->InsertImpl(std::move(kv), assign);
             return {old_impl, iter.index(), is_success};
         }
-        ObjectPtr<Object> new_impl = DenseMapObj<K, V>::Create(size * kIncFactor);
+
+        ObjectPtr<Object> new_impl = DenseMapType::Create(size * kIncFactor);
         for (auto& iter: *p) {
-            new_impl = std::get<0>(DenseMapObj<K, V>::InsertImpl(std::move(iter), new_impl));
+            new_impl = std::get<0>(DenseMapType::InsertImpl(std::move(iter), new_impl));
         }
-        auto [impl, iter, is_success] = DenseMapObj<K, V>::InsertImpl(std::move(kv), new_impl, assign);
+        auto [impl, iter, is_success] = DenseMapType::InsertImpl(std::move(kv), new_impl, assign);
         return {impl, iter.index(), is_success};
     } else {
-        auto [impl, iter, is_success] = DenseMapObj<K, V>::InsertImpl(std::move(kv), old_impl, assign);
+        auto [impl, iter, is_success] = DenseMapType::InsertImpl(std::move(kv), old_impl, assign);
         return {impl, iter.index(), is_success};
     }
 }

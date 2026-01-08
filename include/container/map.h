@@ -393,7 +393,7 @@ private:
 
     NODISCARD iterator FindImpl(const key_type& key) {
         const auto node = Search(key);
-        return node.IsNone() ? this->end() : iterator(node.index(), this);
+        return node.IsNone() ? EndImpl() : iterator(node.index(), this);
     }
 
     iterator EraseImpl(iterator pos);
@@ -542,21 +542,25 @@ struct DenseMapObj<K, V>::Block {
     Block() {// NOLINT
         for (uint8_t i = 0; i < kBlockSize; ++i) {
             storage_[i] = kEmptySlot;
-            new (GetEntryPtr(i)) Entry;
+            // new (GetEntryPtr(i)) Entry;
         }
     }
 
     Block(const Block& other) {// NOLINT
         for (uint8_t i = 0; i < kBlockSize; ++i) {
-            storage_[i] = other.storage_[i];
-            new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
+            if (other.storage_[i] != kEmptySlot) {
+                storage_[i] = other.storage_[i];
+                new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
+            }
         }
     }
 
     ~Block() {
         for (uint8_t i = 0; i < kBlockSize; ++i) {
-            storage_[i] = kEmptySlot;
-            GetEntryPtr(i)->~Entry();
+            if (storage_[i] != kEmptySlot) {
+                storage_[i] = kEmptySlot;
+                GetEntryPtr(i)->~Entry();
+            }
         }
     }
 
@@ -606,8 +610,10 @@ public:
         return GetBlock()->storage_[index() % kBlockSize];
     }
 
-    // Get an entry ref
+    // Get the entry ref
     NODISCARD Entry& GetEntry() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        CHECK(!IsEmptySlot()) << "The entry is empty.";
         return *GetBlock()->GetEntryPtr(index() % kBlockSize);
     }
 
@@ -628,11 +634,11 @@ public:
         return obj() == nullptr;
     }
 
-    NODISCARD bool IsEmpty() const {
+    NODISCARD bool IsEmptySlot() const {
         return GetMeta() == kEmptySlot;
     }
 
-    NODISCARD bool IsProtected() const {
+    NODISCARD bool IsProtectedSlot() const {
         return GetMeta() == kProtectedSlot;
     }
 
@@ -655,13 +661,18 @@ public:
     }
 
     void ConstructEntry(Entry&& entry) const {
-        DestructEntry();
+        if (!IsEmptySlot()) {
+            DestroyEntry();
+        }
         new (GetBlock()->GetEntryPtr(index() % kBlockSize)) Entry(std::move(entry));
     }
 
     // Destroy the item in the entry.
-    void DestructEntry() const {
-        GetEntry().~Entry();
+    void DestroyEntry() const {
+        if (!IsEmptySlot()) {
+            GetEntry().~Entry();
+            SetEmpty();
+        }
     }
 
     void DestroyData() const {
@@ -670,19 +681,26 @@ public:
 
     // Construct a head of linked list inplace.
     void CreateHead(Entry&& entry) const {
-        GetMeta() = std::byte{0x00};
+        if (!IsEmptySlot()) {
+            DestroyEntry();
+        }
         ConstructEntry(std::move(entry));
+        GetMeta() = std::byte{0x00};
     }
 
     // Construct a tail of linked list inplace
     void CreateTail(Entry&& entry) const {
-        GetMeta() = std::byte{0x80};
+        if (!IsEmptySlot()) {
+            DestroyEntry();
+        }
         ConstructEntry(std::move(entry));
+        GetMeta() = std::byte{0x80};
     }
 
     // Whether the slot has the next slot on the linked list
     NODISCARD bool HasNextSlot() const {
-        return NextProbePosOffset[std::to_integer<uint8_t>(GetMeta() & std::byte{0x7F})] != 0;
+        const auto idx = std::to_integer<uint8_t>(GetMeta() & std::byte{0x7F});
+        return NextProbePosOffset[idx] != 0;
     }
 
     // Move the current cursor to the next slot on the linked list
@@ -703,7 +721,6 @@ public:
     // Get the prev slot on the linked list
     NODISCARD Cursor FindPrevSlot() const {
         // start from the head of the linked list, which must exist
-        // auto cur = obj()->GetCursorFromHash(AnyHash()(GetKey()));
         auto cur = obj()->GetCursorFromHash(get_hash(GetKey()));
         auto prev = cur;
 
@@ -719,7 +736,7 @@ public:
     NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
         for (uint8_t i = 1; i < kNumOffsetDists; ++i) {
             if (Cursor candidate((index() + NextProbePosOffset[i]) % obj()->slots(), obj());
-                candidate.IsEmpty()) {
+                candidate.IsEmptySlot()) {
                 return std::make_pair(i, candidate);
             }
         }
@@ -755,6 +772,7 @@ DenseMapObj<K, V>::iterator DenseMapObj<K, V>::EraseImpl(iterator pos) {
         // IterListReplace(last, cur);
         // move data from last to node
         // cur.GetData() = std::move(last.GetData());
+
         cur.ConstructEntry(Entry{std::move(last.GetData())});
         // Move link chain of iter to last as we store last node to the new iter loc.
         IterListReplace(last, cur);
@@ -768,7 +786,7 @@ DenseMapObj<K, V>::iterator DenseMapObj<K, V>::EraseImpl(iterator pos) {
         }
         // unlink the node from iterator list
         IterListRemove(cur);
-        cur.DestructEntry();
+        cur.DestroyEntry();
         cur.SetEmpty();
     }
     --this->size_;
@@ -808,16 +826,14 @@ DenseMapObj<K, V>::mapped_type& DenseMapObj<K, V>::At(const key_type& key) const
 template<typename K, typename V>
 void DenseMapObj<K, V>::reset() {
     const size_t block_num = ComputeBlockNum(this->slots());
-    auto* p = static_cast<Block*>(this->data());
     for (size_t i = 0; i < block_num; ++i) {
-        p[i].~Block();
+        GetBlock(i)->~Block();
     }
 
     this->size_ = 0;
     this->slots_ = 0;
     fib_shift_ = 63;
 }
-
 
 template<typename K, typename V>
 DenseMapObj<K, V>::Cursor DenseMapObj<K, V>::Search(const key_type& key) const {
@@ -831,12 +847,11 @@ DenseMapObj<K, V>::Cursor DenseMapObj<K, V>::Search(const key_type& key) const {
     }
 
     auto node = *head_opt;
-    while (!node.IsNone()) {
+    do {
         if (key == node.GetKey()) {
             return node;
         }
-        node.MoveToNextSlot();
-    }
+    } while (node.MoveToNextSlot());
 
     return {};
 }
@@ -973,7 +988,7 @@ template<typename K, typename V>
 std::pair<typename DenseMapObj<K, V>::iterator, bool>
 DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
     // The key is already in the hash table
-    if (auto it = this->find(kv.first); it != this->end()) {
+    if (auto it = FindImpl(kv.first); it != EndImpl()) {
         if (assign) {
             Cursor cur(it.index(), it.ptr());
             cur.GetValue() = std::move(kv.second);
@@ -991,7 +1006,7 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
     auto node = GetCursorFromHash(get_hash(kv.first));
 
     // Case 1: empty
-    if (node.IsEmpty()) {
+    if (node.IsEmptySlot()) {
         node.CreateHead(Entry(std::move(kv)));
         ++this->size_;
         IterListPushBack(node);

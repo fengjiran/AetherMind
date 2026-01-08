@@ -542,7 +542,6 @@ struct DenseMapObj<K, V>::Block {
     Block() {// NOLINT
         for (uint8_t i = 0; i < kBlockSize; ++i) {
             storage_[i] = kEmptySlot;
-            // new (GetEntryPtr(i)) Entry;
         }
     }
 
@@ -594,14 +593,17 @@ public:
     }
 
     NODISCARD bool IsIterListHead() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
         return index() == obj()->iter_list_head_;
     }
 
     NODISCARD bool IsIterListTail() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
         return index() == obj()->iter_list_tail_;
     }
 
     NODISCARD Block* GetBlock() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
         return obj()->GetBlock(index() / kBlockSize);
     }
 
@@ -704,7 +706,7 @@ public:
     // Move the current cursor to the next slot on the linked list
     bool MoveToNextSlot(std::optional<std::byte> meta_opt = std::nullopt) {
         std::byte meta = meta_opt ? meta_opt.value() : GetMeta();
-        auto idx = std::to_integer<uint8_t>(meta & std::byte{0x7F});
+        const auto idx = std::to_integer<uint8_t>(meta & std::byte{0x7F});
         const auto offset = NextProbePosOffset[idx];
         if (offset == 0) {
             reset();
@@ -945,7 +947,7 @@ DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
 
     // move from the linked list after `r`
     Cursor r = target;
-    // write to the tail of `w`
+    // write to the tail of `prev`
     Cursor prev = target.FindPrevSlot();
     // after `target` is moved, we disallow writing to the slot
     bool is_first = true;
@@ -971,10 +973,9 @@ DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
         if (is_first) {
             is_first = false;
             r.SetProtected();
-        } else {
-            r.SetEmpty();
         }
-        // link `w` to `empty`, and move forward
+
+        // link `prev` to `empty`, and move forward
         prev.SetOffsetIdx(offset_idx);
         prev = empty;
     } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
@@ -992,7 +993,7 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
     // The key is already in the hash table
     if (auto it = FindImpl(kv.first); it != EndImpl()) {
         if (assign) {
-            Cursor cur(it.index(), it.ptr());
+            Cursor cur{it.index(), it.ptr()};
             cur.GetValue() = std::move(kv.second);
             IterListRemove(cur);
             IterListPushBack(cur);
@@ -1000,8 +1001,7 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
         return {it, false};
     }
 
-    // required that `iter` to be the head of a linked list through which we can iterator.
-    // `iter` can be:
+    // `node` can be:
     // 1) empty;
     // 2) body of an irrelevant list;
     // 3) head of the relevant list.

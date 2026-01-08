@@ -934,7 +934,7 @@ template<typename K, typename V>
 std::optional<typename DenseMapObj<K, V>::Cursor>
 DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
     // `target` is not the head of the linked list
-    // move the original item of `target` (if any)
+    // move the original item of `target`
     // and construct new item on the position `target`
     // To make `target` empty, we
     // 1) find `w` the previous element of `target` in the linked list
@@ -1016,14 +1016,15 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
     // Case 2: body of an irrelevant list
     if (!node.IsHead()) {
         if (IsFull()) {
-            return {this->end(), false};
+            return {EndImpl(), false};
         }
 
-        if (const auto target = TrySpareListHead(node, std::move(kv)); target.has_value()) {
+        if (const auto target = TrySpareListHead(node, std::move(kv));
+            target.has_value()) {
             IterListPushBack(target.value());
             return {iterator(target->index(), this), true};
         }
-        return {this->end(), false};
+        return {EndImpl(), false};
     }
 
     // Case 3: head of the relevant list

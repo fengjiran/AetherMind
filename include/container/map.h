@@ -661,9 +661,7 @@ public:
     }
 
     void ConstructEntry(Entry&& entry) const {
-        if (!IsEmptySlot()) {
-            DestroyEntry();
-        }
+        CHECK(IsEmptySlot());
         new (GetBlock()->GetEntryPtr(index() % kBlockSize)) Entry(std::move(entry));
     }
 
@@ -704,9 +702,10 @@ public:
     }
 
     // Move the current cursor to the next slot on the linked list
-    bool MoveToNextSlot(std::optional<uint8_t> meta_opt = std::nullopt) {
-        uint8_t meta = meta_opt ? meta_opt.value() : std::to_integer<uint8_t>(GetMeta());
-        const auto offset = NextProbePosOffset[meta & 0x7F];
+    bool MoveToNextSlot(std::optional<std::byte> meta_opt = std::nullopt) {
+        std::byte meta = meta_opt ? meta_opt.value() : GetMeta();
+        auto idx = std::to_integer<uint8_t>(meta & std::byte{0x7F});
+        const auto offset = NextProbePosOffset[idx];
         if (offset == 0) {
             reset();
             return false;
@@ -860,18 +859,22 @@ template<typename K, typename V>
 std::pair<uint32_t, typename DenseMapObj<K, V>::size_type> DenseMapObj<K, V>::ComputeSlotNum(size_type cap) {
     uint32_t shift = 64;
     size_t slots = 1;
-    size_t c = cap;
+    if (cap == 1) {
+        return {shift, slots};
+    }
+
+    size_t c = cap - 1;
     while (c > 0) {
         --shift;
         slots <<= 1;
         c >>= 1;
     }
-    CHECK(slots > cap);
+    CHECK(slots >= cap);
 
-    if (slots < 2 * cap) {
-        --shift;
-        slots <<= 1;
-    }
+    // if (slots < 2 * cap) {
+    //     --shift;
+    //     slots <<= 1;
+    // }
 
     return {shift, slots};
 }
@@ -937,35 +940,34 @@ DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
     // move the original item of `target`
     // and construct new item on the position `target`
     // To make `target` empty, we
-    // 1) find `w` the previous element of `target` in the linked list
-    // 2) copy the linked list starting from `r = target`
-    // 3) paste them after `w`
+    // 1) find the previous element of `target` in the linked list
+    // 2) move the linked list starting from `target`
 
-    // read from the linked list after `r`
+    // move from the linked list after `r`
     Cursor r = target;
     // write to the tail of `w`
-    Cursor w = target.FindPrevSlot();
+    Cursor prev = target.FindPrevSlot();
     // after `target` is moved, we disallow writing to the slot
     bool is_first = true;
-    uint8_t r_meta;
+    std::byte r_meta;
 
     do {
-        const auto empty_slot_info = w.GetNextEmptySlot();
+        const auto empty_slot_info = prev.GetNextEmptySlot();
         if (!empty_slot_info) {
             return std::nullopt;
         }
 
-        uint8_t offset_idx = empty_slot_info->first;
-        Cursor empty = empty_slot_info->second;
+        auto [offset_idx, empty] = empty_slot_info.value();
 
         // move `r` to `empty`
-        // first move the data over
-        empty.CreateTail(Entry(std::move(r.GetData())));
+        // first move the data
+        empty.CreateTail(Entry{std::move(r.GetData())});
         // then move link list chain of r to empty
         // this needs to happen after NewTail so empty's prev/next get updated
         IterListReplace(r, empty);
         // clear the metadata of `r`
-        r_meta = std::to_integer<uint8_t>(r.GetMeta());
+        r_meta = r.GetMeta();
+        r.DestroyEntry();
         if (is_first) {
             is_first = false;
             r.SetProtected();
@@ -973,13 +975,13 @@ DenseMapObj<K, V>::TrySpareListHead(Cursor target, value_type&& kv) {
             r.SetEmpty();
         }
         // link `w` to `empty`, and move forward
-        w.SetOffsetIdx(offset_idx);
-        w = empty;
+        prev.SetOffsetIdx(offset_idx);
+        prev = empty;
     } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
 
     // finally, we have done moving the linked list
     // fill data_ into `target`
-    target.CreateHead(Entry(std::move(kv)));
+    target.CreateHead(Entry{std::move(kv)});
     ++this->size_;
     return target;
 }
@@ -1029,7 +1031,7 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
 
     // Case 3: head of the relevant list
     // we iterate through the linked list until the end
-    // make sure `iter` is the prev element of `cur`
+    // make sure `node` is the prev element of `cur`
     Cursor cur = node;
     while (cur.MoveToNextSlot()) {
         // make sure `node` is the previous element of `cur`
@@ -1039,23 +1041,21 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
     // `node` is the tail of the linked list
     // always check capacity before insertion
     if (IsFull()) {
-        return {this->end(), false};
+        return {EndImpl(), false};
     }
 
     // find the next empty slot
     auto empty_slot_info = node.GetNextEmptySlot();
     if (!empty_slot_info) {
-        return {this->end(), false};
+        return {EndImpl(), false};
     }
-
-    uint8_t offset_idx = empty_slot_info->first;
-    Cursor empty = empty_slot_info->second;
-    empty.CreateTail(Entry(std::move(kv)));
+    auto [offset_idx, empty] = empty_slot_info.value();
+    empty.CreateTail(Entry{std::move(kv)});
     // link `iter` to `empty`, and move forward
     node.SetOffsetIdx(offset_idx);
     IterListPushBack(empty);
     ++this->size_;
-    return {iterator(node.index(), this), true};
+    return {iterator(empty.index(), this), true};
 }
 
 template<typename K, typename V>

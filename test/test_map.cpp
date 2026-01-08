@@ -6,6 +6,22 @@
 
 #include <gtest/gtest.h>
 #include <list>
+struct HashCollisionKey {
+    int value;
+    explicit HashCollisionKey(int v) : value(v) {}
+    bool operator==(const HashCollisionKey& rhs) const {
+        return value == rhs.value;
+    }
+};
+
+namespace std {
+template<>
+struct hash<HashCollisionKey> {
+    size_t operator()(const HashCollisionKey& k) const noexcept {
+        return 42;
+    }
+};
+}// namespace std
 
 namespace {
 using namespace aethermind;
@@ -47,7 +63,6 @@ TEST(MapTest, basic) {
     auto it2 = data.erase(data.begin());
     EXPECT_EQ(it2->first, 1);
     EXPECT_EQ(it2->second, 3);
-
 }
 
 // 测试构造函数和赋值运算符
@@ -1113,6 +1128,19 @@ TEST(MapEraseTest, erase_and_iterate_safety) {
     EXPECT_FALSE(map.contains(2));
     EXPECT_FALSE(map.contains(4));
 }
+
+
+TEST(MapTest, HashCollision) {
+    Map<HashCollisionKey, int> map;
+    map.insert(HashCollisionKey(1), 100);
+    map.insert(HashCollisionKey(2), 200);
+    map.insert(HashCollisionKey(3), 300);
+    map.insert(HashCollisionKey(4), 400);
+    map.insert(HashCollisionKey(5), 500);
+    EXPECT_EQ(map.size(), 5);
+    std::cout << map.slots() << std::endl;
+}
+
 }// namespace
 
 #ifdef TEST_MAP

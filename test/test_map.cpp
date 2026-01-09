@@ -63,6 +63,11 @@ TEST(MapTest, basic) {
     auto it2 = data.erase(data.begin());
     EXPECT_EQ(it2->first, 1);
     EXPECT_EQ(it2->second, 3);
+
+    int a = 10;
+    const int& ref = a;
+    static_assert(std::is_same_v<decltype(ref), const int&>);
+    auto&& t = std::forward<decltype(ref)>(ref);
 }
 
 // 测试构造函数和赋值运算符

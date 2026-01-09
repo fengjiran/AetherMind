@@ -307,9 +307,6 @@ ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CopyFrom(const SmallMapObj* src)
 
 
 /*
-魔法数字和硬编码值较多
-部分方法命名不够清晰
-
 // 动态调整扩容因子，根据负载情况优化
 static constexpr double kMinLoadFactor = 0.1;
 static constexpr double kTargetLoadFactor = 0.7;
@@ -1183,6 +1180,8 @@ public:
     template<bool IsConst>
     class IteratorImpl;
 
+    class ValueProxy;
+
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
@@ -1354,12 +1353,12 @@ public:
     }
 
     mapped_type& operator[](key_type&& key) {
-        // auto it = find(key);
-        if (!contains(key)) {
+        auto it = find(key);
+        if (it == end()) {
             auto [iter, _] = insert(std::move(key), mapped_type{});
             return iter->second;
         }
-        return at(key);
+        return it->second;
     }
 
     std::pair<iterator, bool> insert(value_type&& x) {
@@ -1758,15 +1757,11 @@ public:
     }
 
     bool operator==(const IteratorImpl& other) const {
-        if (IsSmallMap() && other.IsSmallMap()) {
-            return std::get<SmallIterType>(iter_) == std::get<SmallIterType>(other.iter_);
+        if (IsSmallMap() != other.IsSmallMap()) {
+            return false;
         }
 
-        if (!IsSmallMap() && !other.IsSmallMap()) {
-            return std::get<DenseIterType>(iter_) == std::get<DenseIterType>(other.iter_);
-        }
-
-        return false;
+        return std::visit([&]<typename T>(const T& it) { return it == std::get<T>(other.iter_); }, iter_);
     }
 
     bool operator!=(const IteratorImpl& other) const {
@@ -1790,6 +1785,14 @@ private:
 
     template<typename, typename>
     friend class Map;
+};
+
+template<typename K, typename V>
+class Map<K, V>::ValueProxy {
+public:
+private:
+    Map& map_;
+    size_type idx_;
 };
 }// namespace aethermind
 

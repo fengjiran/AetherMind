@@ -347,18 +347,30 @@ private:
     // Max load factor of hash table
     static constexpr double kMaxLoadFactor = 0.99;
     // 0b11111111 representation of the metadata of an empty slot.
-    // static constexpr uint8_t kEmptySlot = 0xFF;
     static constexpr auto kEmptySlot = std::byte{0xFF};
     // 0b11111110 representation of the metadata of a protected slot.
     // static constexpr uint8_t kProtectedSlot = 0xFE;
     static constexpr auto kProtectedSlot = std::byte{0xFE};
     // Number of probing choices available
     static constexpr int kNumOffsetDists = 126;
+    // head flag
+    static constexpr auto kHeadFlag = std::byte{0x00};
+    // tail flag
+    static constexpr auto kTailFlag = std::byte{0x80};
+    // head flag mask
+    static constexpr auto kHeadFlagMask = std::byte{0x80};
+    // offset mask
+    static constexpr auto kOffsetIdxMask = std::byte{0x7F};
+    // default fib shift
+    static constexpr uint32_t kDefaultFibShift = 63;
+
     // Index indicator to indicate an invalid index.
     static constexpr size_type kInvalidIndex = std::numeric_limits<size_type>::max();
     static constexpr size_type NextProbePosOffset[kNumOffsetDists] = {
+            // linear probing offset(0-15)
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-            // Quadratic probing with triangle numbers. See also:
+            // Quadratic probing with triangle numbers, n(n+1)/2, n = 6 ~ 72
+            // See also:
             // 1) https://en.wikipedia.org/wiki/Quadratic_probing
             // 2) https://fgiesen.wordpress.com/2015/02/22/triangular-numbers-mod-2n/
             // 3) https://github.com/skarupke/flat_hash_map
@@ -381,7 +393,7 @@ private:
             457381325854679626, 1029107982097042876, 2315492959180353330, 5209859154120846435};
 
     // fib shift in Fibonacci hash
-    uint32_t fib_shift_ = 63;
+    uint32_t fib_shift_ = kDefaultFibShift;
     // The head of iterator list
     size_type iter_list_head_ = kInvalidIndex;
     // The tail of iterator list
@@ -534,14 +546,14 @@ private:
 
 template<typename K, typename V>
 struct DenseMapObj<K, V>::Entry {
-    value_type data{};
-    size_type prev = kInvalidIndex;
-    size_type next = kInvalidIndex;
+    value_type data;
+    size_type prev;
+    size_type next;
 
-    Entry() = default;
-    Entry(key_type key, mapped_type value) : data(std::move(key), std::move(value)) {}
-    explicit Entry(const value_type& kv) : data(kv) {}
-    explicit Entry(value_type&& kv) : data(std::move(kv)) {}
+    Entry() : data(key_type{}, mapped_type{}), prev(kInvalidIndex), next(kInvalidIndex) {}
+    Entry(key_type key, mapped_type value) : data(std::move(key), std::move(value)), prev(kInvalidIndex), next(kInvalidIndex) {}
+    explicit Entry(const value_type& kv) : data(kv), prev(kInvalidIndex), next(kInvalidIndex) {}
+    explicit Entry(value_type&& kv) : data(std::move(kv)), prev(kInvalidIndex), next(kInvalidIndex) {}
 
     ~Entry() {
         reset();
@@ -664,7 +676,7 @@ public:
     }
 
     NODISCARD bool IsHead() const {
-        return (GetMeta() & std::byte{0x80}) == std::byte{0x00};
+        return (GetMeta() & kHeadFlagMask) == kHeadFlag;
     }
 
     void SetEmpty() const {
@@ -678,7 +690,7 @@ public:
     // Set the entry's offset to its next entry.
     void SetOffsetIdx(uint8_t offset_idx) const {
         CHECK(offset_idx < kNumOffsetDists);
-        (GetMeta() &= std::byte{0x80}) |= std::byte{offset_idx};
+        (GetMeta() &= kHeadFlagMask) |= std::byte{offset_idx};
     }
 
     void ConstructEntry(Entry&& entry) const {
@@ -704,7 +716,7 @@ public:
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetMeta() = std::byte{0x00};
+        GetMeta() = kHeadFlag;
     }
 
     // Construct a tail of linked list inplace
@@ -713,19 +725,19 @@ public:
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetMeta() = std::byte{0x80};
+        GetMeta() = kTailFlag;
     }
 
     // Whether the slot has the next slot on the linked list
     NODISCARD bool HasNextSlot() const {
-        const auto idx = std::to_integer<uint8_t>(GetMeta() & std::byte{0x7F});
+        const auto idx = std::to_integer<uint8_t>(GetMeta() & kOffsetIdxMask);
         return NextProbePosOffset[idx] != 0;
     }
 
     // Move the current cursor to the next slot on the linked list
     bool MoveToNextSlot(std::optional<std::byte> meta_opt = std::nullopt) {
         std::byte meta = meta_opt ? meta_opt.value() : GetMeta();
-        const auto idx = std::to_integer<uint8_t>(meta & std::byte{0x7F});
+        const auto idx = std::to_integer<uint8_t>(meta & kOffsetIdxMask);
         const auto offset = NextProbePosOffset[idx];
         if (offset == 0) {
             reset();
@@ -891,15 +903,8 @@ std::pair<uint32_t, typename DenseMapObj<K, V>::size_type> DenseMapObj<K, V>::Co
         c >>= 1;
     }
     CHECK(slots >= cap);
-
-    // if (slots < 2 * cap) {
-    //     --shift;
-    //     slots <<= 1;
-    // }
-
     return {shift, slots};
 }
-
 
 template<typename K, typename V>
 void DenseMapObj<K, V>::IterListPushBack(Cursor node) {
@@ -1181,41 +1186,42 @@ public:
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
-    using small_map_obj = SmallMapObj<K, V>;
-    using dense_map_obj = DenseMapObj<K, V>;
+    using SmallMapType = SmallMapObj<K, V>;
+    using DenseMapType = DenseMapObj<K, V>;
 
-    Map() : obj_(small_map_obj::Create()) {}
+    Map() : obj_(SmallMapType::Create()) {}
 
     explicit Map(size_type n) {
-        if (n <= small_map_obj::kThreshold) {
-            obj_ = small_map_obj::Create();
+        if (n <= SmallMapType::kThreshold) {
+            obj_ = SmallMapType::Create();
         } else {
-            obj_ = dense_map_obj::Create(n);
+            obj_ = DenseMapType::Create(n);
         }
     }
 
     template<typename Iter>
+        requires requires(Iter t) {
+            requires details::is_valid_iter<Iter>;
+            { *t } -> std::convertible_to<value_type>;
+        }
     Map(Iter first, Iter last) {
         auto _sz = std::distance(first, last);
 
         if (_sz <= 0) {
-            obj_ = small_map_obj::Create();
+            obj_ = SmallMapType::Create();
         } else {
             const auto size = static_cast<size_type>(_sz);
-            if (size <= small_map_obj::kThreshold) {
-                obj_ = small_map_obj::Create();
+            if (size <= SmallMapType::kThreshold) {
+                obj_ = SmallMapType::Create();
                 while (first != last) {
-                    auto t = std::get<0>(small_map_obj::insert(value_type(*first++),
-                                                               std::get<ObjectPtr<small_map_obj>>(obj_)));
-                    obj_ = details::ObjectUnsafe::Downcast<small_map_obj>(t);
+                    SmallMapType::insert(value_type(*first++), std::get<ObjectPtr<SmallMapType>>(obj_));
                 }
             } else {
-                obj_ = dense_map_obj::Create(size);
+                obj_ = DenseMapType::Create(size);
                 while (first != last) {
-                    auto t = std::get<0>(
-                            dense_map_obj::insert(value_type(*first++),
-                                                  std::get<ObjectPtr<dense_map_obj>>(obj_)));
-                    obj_ = details::ObjectUnsafe::Downcast<dense_map_obj>(t);
+                    auto [t, ph0, ph1] = DenseMapType::insert(value_type(*first++),
+                                                              std::get<ObjectPtr<DenseMapType>>(obj_));
+                    obj_ = details::ObjectUnsafe::Downcast<DenseMapType>(t);
                 }
             }
         }
@@ -1338,11 +1344,19 @@ public:
         return const_cast<Map*>(this)->at(key);
     }
 
-    const mapped_type& operator[](const key_type& key) const {
+    mapped_type& operator[](const key_type& key) {
+        if (!contains(key)) {
+            auto [iter, _] = insert(key, mapped_type{});
+            return iter->second;
+        }
         return at(key);
     }
 
-    mapped_type& operator[](const key_type& key) {
+    mapped_type& operator[](key_type&& key) {
+        if (!contains(key)) {
+            auto [iter, _] = insert(std::move(key), mapped_type{});
+            return iter->second;
+        }
         return at(key);
     }
 
@@ -1403,7 +1417,7 @@ public:
     iterator erase(const_iterator first, const_iterator last);
 
     void clear() {
-        obj_ = small_map_obj::Create();
+        obj_ = SmallMapType::Create();
     }
 
     void swap(Map& other) noexcept {
@@ -1411,54 +1425,58 @@ public:
     }
 
     NODISCARD bool IsSmallMap() const {
-        return std::holds_alternative<ObjectPtr<small_map_obj>>(obj_);
+        return std::holds_alternative<ObjectPtr<SmallMapType>>(obj_);
     }
 
 private:
-    std::variant<ObjectPtr<small_map_obj>, ObjectPtr<dense_map_obj>> obj_;
+    std::variant<ObjectPtr<SmallMapType>, ObjectPtr<DenseMapType>> obj_;
 
-    NODISCARD small_map_obj* small_ptr() const {
-        return std::get<ObjectPtr<small_map_obj>>(obj_).get();
+    NODISCARD SmallMapType* small_ptr() const {
+        return std::get<ObjectPtr<SmallMapType>>(obj_).get();
     }
 
-    NODISCARD dense_map_obj* dense_ptr() const {
-        return std::get<ObjectPtr<dense_map_obj>>(obj_).get();
+    NODISCARD DenseMapType* dense_ptr() const {
+        return std::get<ObjectPtr<DenseMapType>>(obj_).get();
     }
 
-    std::pair<iterator, bool> insert_impl(value_type&& x, bool assign) {
-        if (!assign) {
-            auto it = find(x.first);
-            if (it != end()) {
-                return {it, false};
-            }
-        }
-
-        COW();
-        auto [impl, idx, is_success] =
-                IsSmallMap() ? small_map_obj::insert(std::move(x), std::get<ObjectPtr<small_map_obj>>(obj_), assign)
-                             : dense_map_obj::insert(std::move(x), std::get<ObjectPtr<dense_map_obj>>(obj_), assign);
-
-        if (dynamic_cast<small_map_obj*>(impl.get())) {
-            obj_ = details::ObjectUnsafe::Downcast<small_map_obj>(impl);
-            typename small_map_obj::iterator pos{idx, small_ptr()};
-            return {pos, is_success};
-        }
-
-        obj_ = details::ObjectUnsafe::Downcast<dense_map_obj>(impl);
-        typename dense_map_obj::iterator pos{idx, dense_ptr()};
-        return {pos, is_success};
-    }
+    std::pair<iterator, bool> insert_impl(value_type&& x, bool assign);
 
     void COW() {
         if (!unique()) {
             if (IsSmallMap()) {
-                obj_ = small_map_obj::CopyFrom(small_ptr());
+                obj_ = SmallMapType::CopyFrom(small_ptr());
             } else {
-                obj_ = dense_map_obj::CopyFrom(dense_ptr());
+                obj_ = DenseMapType::CopyFrom(dense_ptr());
             }
         }
     }
 };
+
+template<typename K, typename V>
+std::pair<typename Map<K, V>::iterator, bool> Map<K, V>::insert_impl(value_type&& x, bool assign) {
+    if (!assign) {
+        auto it = find(x.first);
+        if (it != end()) {
+            return {it, false};
+        }
+    }
+
+    COW();
+    auto visitor = [&]<typename T>(const ObjectPtr<T>& arg) -> std::pair<iterator, bool> {
+        auto [impl, idx, is_success] = T::insert(std::move(x), arg, assign);
+        if constexpr (std::is_same_v<T, SmallMapType>) {
+            if (auto* p = dynamic_cast<SmallMapType*>(impl.get())) {
+                typename SmallMapType::iterator pos{idx, p};
+                return {pos, is_success};
+            }
+        }
+        typename DenseMapType::iterator pos{idx, static_cast<DenseMapType*>(impl.get())};
+        obj_ = details::ObjectUnsafe::Downcast<DenseMapType>(impl);
+        return {pos, is_success};
+    };
+
+    return std::visit(visitor, obj_);
+}
 
 template<typename K, typename V>
 Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
@@ -1667,10 +1685,10 @@ public:
     using value_type = std::pair<const K, V>;
     using pointer = std::conditional_t<IsConst, const value_type*, value_type*>;
     using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
-    using SmallIterType = std::conditional_t<IsConst, typename small_map_obj::const_iterator,
-                                             typename small_map_obj::iterator>;
-    using DenseIterType = std::conditional_t<IsConst, typename dense_map_obj::const_iterator,
-                                             typename dense_map_obj::iterator>;
+    using SmallIterType = std::conditional_t<IsConst, typename SmallMapType::const_iterator,
+                                             typename SmallMapType::iterator>;
+    using DenseIterType = std::conditional_t<IsConst, typename DenseMapType::const_iterator,
+                                             typename DenseMapType::iterator>;
 
     IteratorImpl() = default;
 

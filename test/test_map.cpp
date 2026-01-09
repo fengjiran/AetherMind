@@ -1141,6 +1141,86 @@ TEST(MapTest, HashCollision) {
     std::cout << map.slots() << std::endl;
 }
 
+// 测试operator[]方法（左值和右值版本）
+TEST(MapTest, operator_subscript_lvalue_rvalue) {
+    // 1. 测试左值版本的operator[]
+    Map<int, int> map;
+
+    // 访问不存在的键，应该插入默认构造的值
+    map[1] = 10;
+    EXPECT_TRUE(map.contains(1));
+    EXPECT_EQ(map[1], 10);
+    EXPECT_EQ(map.size(), 1);
+
+    // 修改已存在的键
+    map[1] = 20;
+    EXPECT_EQ(map[1], 20);
+    EXPECT_EQ(map.size(), 1);
+
+    // 插入多个元素
+    map[2] = 30;
+    map[3] = 40;
+    EXPECT_EQ(map.size(), 3);
+    EXPECT_EQ(map[2], 30);
+    EXPECT_EQ(map[3], 40);
+
+    // 2. 测试右值版本的operator[]
+    Map<String, int> string_map;
+
+    // 使用右值字符串作为键
+    string_map[String("key1")] = 100;
+    EXPECT_TRUE(string_map.contains("key1"));
+    EXPECT_EQ(string_map["key1"], 100);
+
+    // 使用临时构造的字符串作为键
+    string_map[String("key2")] = 200;
+    EXPECT_TRUE(string_map.contains("key2"));
+    EXPECT_EQ(string_map["key2"], 200);
+
+    // 3. 测试更复杂的类型
+    struct ComplexValue {
+        int x;
+        int y;
+        ComplexValue() : x(0), y(0) {}
+        ComplexValue(int a, int b) : x(a), y(b) {}
+        bool operator==(const ComplexValue& other) const {
+            return x == other.x && y == other.y;
+        }
+    };
+
+    Map<int, ComplexValue> complex_map;
+
+    // 插入默认构造的值
+    complex_map[1].x = 10;
+    complex_map[1].y = 20;
+    EXPECT_EQ(complex_map[1], ComplexValue(10, 20));
+
+    // 使用右值键插入
+    complex_map[std::move(2)] = ComplexValue(30, 40);
+    EXPECT_EQ(complex_map[2], ComplexValue(30, 40));
+
+    // 4. 测试从SmallMap到DenseMap转换时的operator[]行为
+    Map<int, int> large_map;
+
+    // 插入足够多的元素，使其转换为DenseMap
+    for (int i = 0; i < 20; ++i) {
+        // 混合使用左值和右值键
+        if (i % 2 == 0) {
+            large_map[i] = i * 10;// 左值键
+        } else {
+            int key = i;
+            large_map[std::move(key)] = i * 10;// 右值键
+        }
+    }
+
+    EXPECT_FALSE(large_map.IsSmallMap());
+
+    // 验证所有元素都正确插入并可访问
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(large_map[i], i * 10);
+    }
+}
+
 }// namespace
 
 #ifdef TEST_MAP

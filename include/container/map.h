@@ -343,7 +343,7 @@ public:
 
 private:
     // The number of elements in a memory block.
-    static constexpr int kBlockSize = 16;
+    static constexpr int kEntriesPerBlock = 16;
     // Max load factor of hash table
     static constexpr double kMaxLoadFactor = 0.99;
     // 0b11111111 representation of the metadata of an empty slot.
@@ -442,11 +442,11 @@ private:
         return At(key);
     }
 
-    NODISCARD Cursor GetCursorFromHash(size_t hash_value) const {
+    NODISCARD Cursor CreateCursorFromHash(size_t hash_value) const {
         return {details::FibonacciHash(hash_value, fib_shift_), this};
     }
 
-    NODISCARD Block* GetBlock(size_t block_idx) const {
+    NODISCARD Block* GetBlockByIndex(size_t block_idx) const {
         return static_cast<Block*>(this->data()) + block_idx;
     }
 
@@ -455,8 +455,8 @@ private:
     }
 
     // Construct a ListNode from hash code if the position is head of list
-    NODISCARD std::optional<Cursor> GetListHead(size_t hash_value) const {
-        if (const auto head = GetCursorFromHash(hash_value); head.IsHead()) {
+    NODISCARD std::optional<Cursor> FindListHeadByHash(size_t hash_value) const {
+        if (const auto head = CreateCursorFromHash(hash_value); head.IsHead()) {
             return head;
         }
 
@@ -484,13 +484,13 @@ private:
                static_cast<size_type>(static_cast<double>(this->slots()) * kMaxLoadFactor);
     }
 
-    static size_type ComputeBlockNum(size_type slots) {
-        return (slots + kBlockSize - 1) / kBlockSize;
+    static size_type CalculateBlockCount(size_type total_slots) {
+        return (total_slots + kEntriesPerBlock - 1) / kEntriesPerBlock;
     }
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     // shift = 64 - log2(slots)
-    static std::pair<uint32_t, size_type> ComputeSlotNum(size_type cap);
+    static std::pair<uint32_t, size_type> CalculateSlotCount(size_type cap);
 
     // Insert the entry into tail of iterator list.
     // This function does not change data content of the node.
@@ -520,7 +520,7 @@ private:
    * \param target The given entry to be spared
    * \return The linked-list entry constructed as the head, if actual insertion happens
    */
-    std::optional<Cursor> TrySpareListHead(Cursor target);
+    std::optional<Cursor> TryAllocateListHead(Cursor target);
 
     /*!
      * \brief Try to insert a key, or do nothing if already exists
@@ -528,7 +528,7 @@ private:
      * \param assign Whether to assign for existing key
      * \return The linked-list entry found or just constructed,indicating if actual insertion happens
      */
-    std::pair<iterator, bool> TryInsert(value_type&& kv, bool assign = false);
+    std::pair<iterator, bool> TryInsertOrUpdate(value_type&& kv, bool assign = false);
 
     // may be rehash
     static std::tuple<ObjectPtr<Object>, iterator, bool> InsertImpl(
@@ -568,16 +568,16 @@ struct DenseMapObj<K, V>::Entry {
 
 template<typename K, typename V>
 struct DenseMapObj<K, V>::Block {
-    std::array<std::byte, kBlockSize + kBlockSize * sizeof(Entry)> storage_;
+    std::array<std::byte, kEntriesPerBlock + kEntriesPerBlock * sizeof(Entry)> storage_;
 
     Block() {// NOLINT
-        for (uint8_t i = 0; i < kBlockSize; ++i) {
+        for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
             storage_[i] = kEmptySlot;
         }
     }
 
     Block(const Block& other) {// NOLINT
-        for (uint8_t i = 0; i < kBlockSize; ++i) {
+        for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
             if (other.storage_[i] != kEmptySlot) {
                 storage_[i] = other.storage_[i];
                 new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
@@ -586,7 +586,7 @@ struct DenseMapObj<K, V>::Block {
     }
 
     ~Block() {
-        for (uint8_t i = 0; i < kBlockSize; ++i) {
+        for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
             if (storage_[i] != kEmptySlot) {
                 storage_[i] = kEmptySlot;
                 GetEntryPtr(i)->~Entry();
@@ -595,7 +595,7 @@ struct DenseMapObj<K, V>::Block {
     }
 
     Entry* GetEntryPtr(size_type i) {
-        return static_cast<Entry*>(static_cast<void*>(storage_.data() + kBlockSize)) + i;
+        return static_cast<Entry*>(static_cast<void*>(storage_.data() + kEntriesPerBlock)) + i;
     }
 
     const Entry* GetEntryPtr(size_type i) const {
@@ -635,19 +635,19 @@ public:
 
     NODISCARD Block* GetBlock() const {
         CHECK(!IsNone()) << "The Cursor is none.";
-        return obj()->GetBlock(index() / kBlockSize);
+        return obj()->GetBlockByIndex(index() / kEntriesPerBlock);
     }
 
     // Get metadata of an entry
-    NODISCARD std::byte& GetMeta() const {
-        return GetBlock()->storage_[index() % kBlockSize];
+    NODISCARD std::byte& GetSlotMetadata() const {
+        return GetBlock()->storage_[index() % kEntriesPerBlock];
     }
 
     // Get the entry ref
     NODISCARD Entry& GetEntry() const {
         CHECK(!IsNone()) << "The Cursor is none.";
-        CHECK(!IsEmptySlot()) << "The entry is empty.";
-        return *GetBlock()->GetEntryPtr(index() % kBlockSize);
+        CHECK(!IsSlotEmpty()) << "The entry is empty.";
+        return *GetBlock()->GetEntryPtr(index() % kEntriesPerBlock);
     }
 
     // Get KV
@@ -667,76 +667,76 @@ public:
         return obj() == nullptr;
     }
 
-    NODISCARD bool IsEmptySlot() const {
-        return GetMeta() == kEmptySlot;
+    NODISCARD bool IsSlotEmpty() const {
+        return GetSlotMetadata() == kEmptySlot;
     }
 
-    NODISCARD bool IsProtectedSlot() const {
-        return GetMeta() == kProtectedSlot;
+    NODISCARD bool IsSlotProtected() const {
+        return GetSlotMetadata() == kProtectedSlot;
     }
 
     NODISCARD bool IsHead() const {
-        return (GetMeta() & kHeadFlagMask) == kHeadFlag;
+        return (GetSlotMetadata() & kHeadFlagMask) == kHeadFlag;
     }
 
-    void SetEmpty() const {
-        GetMeta() = kEmptySlot;
+    void MarkSlotAsEmpty() const {
+        GetSlotMetadata() = kEmptySlot;
     }
 
-    void SetProtected() const {
-        GetMeta() = kProtectedSlot;
+    void MarkSlotAsProtected() const {
+        GetSlotMetadata() = kProtectedSlot;
     }
 
     // Set the entry's offset to its next entry.
-    void SetOffsetIdx(uint8_t offset_idx) const {
+    void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
         CHECK(offset_idx < kNumOffsetDists);
-        (GetMeta() &= kHeadFlagMask) |= std::byte{offset_idx};
+        (GetSlotMetadata() &= kHeadFlagMask) |= std::byte{offset_idx};
     }
 
     void ConstructEntry(Entry&& entry) const {
-        CHECK(IsEmptySlot());
-        new (GetBlock()->GetEntryPtr(index() % kBlockSize)) Entry(std::move(entry));
+        CHECK(IsSlotEmpty());
+        new (GetBlock()->GetEntryPtr(index() % kEntriesPerBlock)) Entry(std::move(entry));
     }
 
     // Destroy the item in the entry.
     void DestroyEntry() const {
-        if (!IsEmptySlot()) {
+        if (!IsSlotEmpty()) {
             GetEntry().~Entry();
-            SetEmpty();
+            MarkSlotAsEmpty();
         }
     }
 
-    void DestroyData() const {
+    void DestroyEntryData() const {
         GetData().~value_type();
     }
 
     // Construct a head of linked list inplace.
     void CreateHead(Entry&& entry) const {
-        if (!IsEmptySlot()) {
+        if (!IsSlotEmpty()) {
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetMeta() = kHeadFlag;
+        GetSlotMetadata() = kHeadFlag;
     }
 
     // Construct a tail of linked list inplace
     void CreateTail(Entry&& entry) const {
-        if (!IsEmptySlot()) {
+        if (!IsSlotEmpty()) {
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetMeta() = kTailFlag;
+        GetSlotMetadata() = kTailFlag;
     }
 
     // Whether the slot has the next slot on the linked list
     NODISCARD bool HasNextSlot() const {
-        const auto idx = std::to_integer<uint8_t>(GetMeta() & kOffsetIdxMask);
+        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & kOffsetIdxMask);
         return NextProbePosOffset[idx] != 0;
     }
 
     // Move the current cursor to the next slot on the linked list
     bool MoveToNextSlot(std::optional<std::byte> meta_opt = std::nullopt) {
-        std::byte meta = meta_opt ? meta_opt.value() : GetMeta();
+        std::byte meta = meta_opt ? meta_opt.value() : GetSlotMetadata();
         const auto idx = std::to_integer<uint8_t>(meta & kOffsetIdxMask);
         const auto offset = NextProbePosOffset[idx];
         if (offset == 0) {
@@ -753,7 +753,7 @@ public:
     // Get the prev slot on the linked list
     NODISCARD Cursor FindPrevSlot() const {
         // start from the head of the linked list, which must exist
-        auto cur = obj()->GetCursorFromHash(get_hash(GetKey()));
+        auto cur = obj()->CreateCursorFromHash(get_hash(GetKey()));
         auto prev = cur;
 
         cur.MoveToNextSlot();
@@ -768,7 +768,7 @@ public:
     NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
         for (uint8_t i = 1; i < kNumOffsetDists; ++i) {
             if (Cursor candidate((index() + NextProbePosOffset[i]) % obj()->slots(), obj());
-                candidate.IsEmptySlot()) {
+                candidate.IsSlotEmpty()) {
                 return std::make_pair(i, candidate);
             }
         }
@@ -809,17 +809,17 @@ DenseMapObj<K, V>::iterator DenseMapObj<K, V>::EraseImpl(iterator pos) {
         // Move link chain of iter to last as we store last node to the new iter loc.
         IterListReplace(last, cur);
         // last.DestructData();
-        last.SetEmpty();
-        prev.SetOffsetIdx(0);
+        last.MarkSlotAsEmpty();
+        prev.SetNextSlotOffsetIndex(0);
     } else {// the last node
         if (!cur.IsHead()) {
             // cut the link if there is any
-            cur.FindPrevSlot().SetOffsetIdx(0);
+            cur.FindPrevSlot().SetNextSlotOffsetIndex(0);
         }
         // unlink the node from iterator list
         IterListRemove(cur);
         cur.DestroyEntry();
-        cur.SetEmpty();
+        cur.MarkSlotAsEmpty();
     }
     --this->size_;
     return next_pos;
@@ -857,9 +857,9 @@ DenseMapObj<K, V>::mapped_type& DenseMapObj<K, V>::At(const key_type& key) const
 
 template<typename K, typename V>
 void DenseMapObj<K, V>::reset() {
-    const size_t block_num = ComputeBlockNum(this->slots());
+    const size_t block_num = CalculateBlockCount(this->slots());
     for (size_t i = 0; i < block_num; ++i) {
-        GetBlock(i)->~Block();
+        GetBlockByIndex(i)->~Block();
     }
 
     this->size_ = 0;
@@ -873,7 +873,7 @@ DenseMapObj<K, V>::Cursor DenseMapObj<K, V>::Search(const key_type& key) const {
         return {};
     }
 
-    const auto head_opt = GetListHead(get_hash(key));
+    const auto head_opt = FindListHeadByHash(get_hash(key));
     if (!head_opt.has_value()) {
         return {};
     }
@@ -889,7 +889,7 @@ DenseMapObj<K, V>::Cursor DenseMapObj<K, V>::Search(const key_type& key) const {
 }
 
 template<typename K, typename V>
-std::pair<uint32_t, typename DenseMapObj<K, V>::size_type> DenseMapObj<K, V>::ComputeSlotNum(size_type cap) {
+std::pair<uint32_t, typename DenseMapObj<K, V>::size_type> DenseMapObj<K, V>::CalculateSlotCount(size_type cap) {
     uint32_t shift = 64;
     size_t slots = 1;
     if (cap == 1) {
@@ -961,7 +961,7 @@ void DenseMapObj<K, V>::IterListReplace(Cursor src, Cursor dst) {
 
 template<typename K, typename V>
 std::optional<typename DenseMapObj<K, V>::Cursor>
-DenseMapObj<K, V>::TrySpareListHead(Cursor target) {
+DenseMapObj<K, V>::TryAllocateListHead(Cursor target) {
     // `target` is not the head of the linked list
     // move the original item of `target`
     // and construct new item on the position `target`
@@ -992,15 +992,15 @@ DenseMapObj<K, V>::TrySpareListHead(Cursor target) {
         // this needs to happen after NewTail so empty's prev/next get updated
         IterListReplace(r, empty);
         // clear the metadata of `r`
-        r_meta = r.GetMeta();
+        r_meta = r.GetSlotMetadata();
         r.DestroyEntry();
         if (is_first) {
             is_first = false;
-            r.SetProtected();
+            r.MarkSlotAsProtected();
         }
 
         // link `prev` to `empty`, and move forward
-        prev.SetOffsetIdx(offset_idx);
+        prev.SetNextSlotOffsetIndex(offset_idx);
         prev = empty;
     } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
 
@@ -1009,7 +1009,7 @@ DenseMapObj<K, V>::TrySpareListHead(Cursor target) {
 
 template<typename K, typename V>
 std::pair<typename DenseMapObj<K, V>::iterator, bool>
-DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
+DenseMapObj<K, V>::TryInsertOrUpdate(value_type&& kv, bool assign) {
     // The key is already in the hash table
     if (auto it = FindImpl(kv.first); it != EndImpl()) {
         if (assign) {
@@ -1025,10 +1025,10 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
     // 1) empty;
     // 2) body of an irrelevant list;
     // 3) head of the relevant list.
-    auto node = GetCursorFromHash(get_hash(kv.first));
+    auto node = CreateCursorFromHash(get_hash(kv.first));
 
     // Case 1: empty
-    if (node.IsEmptySlot()) {
+    if (node.IsSlotEmpty()) {
         node.CreateHead(Entry{std::move(kv)});
         ++this->size_;
         IterListPushBack(node);
@@ -1041,7 +1041,7 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
             return {EndImpl(), false};
         }
 
-        if (const auto target = TrySpareListHead(node);
+        if (const auto target = TryAllocateListHead(node);
             target.has_value()) {
             target->CreateHead(Entry{std::move(kv)});
             ++this->size_;
@@ -1074,7 +1074,7 @@ DenseMapObj<K, V>::TryInsert(value_type&& kv, bool assign) {
     auto [offset_idx, empty] = empty_slot_info.value();
     empty.CreateTail(Entry{std::move(kv)});
     // link `iter` to `empty`, and move forward
-    node.SetOffsetIdx(offset_idx);
+    node.SetNextSlotOffsetIndex(offset_idx);
     IterListPushBack(empty);
     ++this->size_;
     return {iterator(empty.index(), this), true};
@@ -1084,7 +1084,7 @@ template<typename K, typename V>
 std::tuple<ObjectPtr<Object>, typename DenseMapObj<K, V>::iterator, bool>
 DenseMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
     auto* map = static_cast<DenseMapObj*>(old_impl.get());// NOLINT
-    if (auto [it, is_success] = map->TryInsert(std::move(kv), assign); it != map->EndImpl()) {
+    if (auto [it, is_success] = map->TryInsertOrUpdate(std::move(kv), assign); it != map->EndImpl()) {
         return {old_impl, it, is_success};
     }
 
@@ -1095,12 +1095,12 @@ DenseMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl
     size_t idx = map->iter_list_head_;
     while (idx != kInvalidIndex) {
         Cursor cur(idx, map);
-        new_impl->TryInsert(std::move(cur.GetData()), assign);
+        new_impl->TryInsertOrUpdate(std::move(cur.GetData()), assign);
         idx = cur.GetEntry().next;
         cur.DestroyEntry();
     }
 
-    auto [pos, is_success] = new_impl->TryInsert(std::move(kv), assign);
+    auto [pos, is_success] = new_impl->TryInsertOrUpdate(std::move(kv), assign);
     return {new_impl, pos, is_success};
 }
 
@@ -1109,8 +1109,8 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::Create(size_type n) {
     CHECK(n > DenseMapObj::kThreshold) << "The allocated size must be greate than the threshold of "
                                        << DenseMapObj::kThreshold
                                        << " when using SmallMapObj::Create";
-    auto [fib_shift, slots] = ComputeSlotNum(n);
-    const size_t block_num = ComputeBlockNum(slots);
+    auto [fib_shift, slots] = CalculateSlotCount(n);
+    const size_t block_num = CalculateBlockCount(slots);
     auto impl = make_array_object<DenseMapObj, Block>(block_num);
     impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(DenseMapObj);
     impl->size_ = 0;
@@ -1129,14 +1129,14 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::Create(size_type n) {
 template<typename K, typename V>
 ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src) {
     auto impl = Create(src->slots());
-    auto block_num = ComputeBlockNum(src->slots());
+    auto block_num = CalculateBlockCount(src->slots());
     impl->size_ = src->size();
     impl->iter_list_head_ = src->iter_list_head_;
     impl->iter_list_tail_ = src->iter_list_tail_;
 
     auto* p = static_cast<Block*>(impl->data());
     for (size_t i = 0; i < block_num; ++i) {
-        new (p + i) Block(*src->GetBlock(i));
+        new (p + i) Block(*src->GetBlockByIndex(i));
     }
 
     return impl;
@@ -1345,14 +1345,16 @@ public:
     }
 
     mapped_type& operator[](const key_type& key) {
-        if (!contains(key)) {
+        auto it = find(key);
+        if (it == end()) {
             auto [iter, _] = insert(key, mapped_type{});
             return iter->second;
         }
-        return at(key);
+        return it->second;
     }
 
     mapped_type& operator[](key_type&& key) {
+        // auto it = find(key);
         if (!contains(key)) {
             auto [iter, _] = insert(std::move(key), mapped_type{});
             return iter->second;

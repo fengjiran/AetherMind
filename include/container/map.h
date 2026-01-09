@@ -10,6 +10,7 @@
 #include "utils/hash.h"
 
 #include <concepts>
+#include <map>
 #include <tuple>
 
 namespace aethermind {
@@ -1361,6 +1362,24 @@ public:
         return it->second;
     }
 
+    // ValueProxy operator[](const key_type& key) {
+    //     auto it = find(key);
+    //     if (it == end()) {
+    //         auto [iter, _] = insert(key, mapped_type{});
+    //         return {*this, iter.index()};
+    //     }
+    //     return {*this, it.index()};
+    // }
+    //
+    // ValueProxy operator[](key_type&& key) {
+    //     auto it = find(key);
+    //     if (it == end()) {
+    //         auto [iter, _] = insert(std::move(key), mapped_type{});
+    //         return {*this, iter.index()};
+    //     }
+    //     return {*this, it.index()};
+    // }
+
     std::pair<iterator, bool> insert(value_type&& x) {
         return insert_impl(std::move(x), false);
     }
@@ -1790,9 +1809,36 @@ private:
 template<typename K, typename V>
 class Map<K, V>::ValueProxy {
 public:
+    ValueProxy(Map& map, size_type idx) : map_(map), idx_(idx) {}
+
+    ValueProxy& operator=(mapped_type x) {
+        map_.COW();
+        GetDataPtr()->second = std::move(x);
+        return *this;
+    }
+
+    operator mapped_type&() const {//NOLINT
+        return GetDataPtr()->second;
+    }
+
+    friend bool operator==(const ValueProxy& lhs, const ValueProxy& rhs) {
+        return lhs.GetDataPtr()->second == rhs.GetDataPtr()->second;
+    }
+
+    friend bool operator!=(const ValueProxy& lhs, const ValueProxy& rhs) {
+        return !(lhs == rhs);
+    }
+
 private:
     Map& map_;
     size_type idx_;
+
+    value_type* GetDataPtr() const {
+        return std::visit([&](const auto& arg) {
+            return arg->GetDataPtr(idx_);
+        },
+                          map_.obj_);
+    }
 };
 }// namespace aethermind
 

@@ -25,9 +25,9 @@ using namespace aethermind;
 //         large_data_ = GenerateRandomData(LARGE_SIZE);
 //     }
 // };
-static constexpr size_t SMALL_SIZE = 1000;
-static constexpr size_t MEDIUM_SIZE = 10000;
-static constexpr size_t LARGE_SIZE = 100000;
+constexpr size_t SMALL_SIZE = 1000;
+constexpr size_t MEDIUM_SIZE = 10000;
+constexpr size_t LARGE_SIZE = 100000;
 
 // insert performance test
 TEST(MapBenchMarkTest, InsertPerformance) {

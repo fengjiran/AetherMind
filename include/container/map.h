@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_CONTAINER_MAP_OBJ_H
 #define AETHERMIND_CONTAINER_MAP_OBJ_H
 
+#include "any_utils.h"
 #include "error.h"
 #include "object.h"
 #include "utils/hash.h"
@@ -552,6 +553,7 @@ struct DenseMapObj<K, V>::Entry {
     Entry(key_type key, mapped_type value) : data(std::move(key), std::move(value)), prev(kInvalidIndex), next(kInvalidIndex) {}
     explicit Entry(const value_type& kv) : data(kv), prev(kInvalidIndex), next(kInvalidIndex) {}
     explicit Entry(value_type&& kv) : data(std::move(kv)), prev(kInvalidIndex), next(kInvalidIndex) {}
+    Entry(value_type&& kv, size_type p, size_type n) : data(std::move(kv)), prev(p), next(n) {}
 
     ~Entry() {
         reset();
@@ -799,15 +801,16 @@ DenseMapObj<K, V>::iterator DenseMapObj<K, V>::EraseImpl(iterator pos) {
 
         // needs to first unlink node from the list
         IterListRemove(cur);
-        // IterListReplace(last, cur);
-        // move data from last to node
-        // cur.GetData() = std::move(last.GetData());
-
-        cur.ConstructEntry(Entry{std::move(last.GetData())});
         // Move link chain of iter to last as we store last node to the new iter loc.
         IterListReplace(last, cur);
-        // last.DestructData();
-        last.MarkSlotAsEmpty();
+
+        auto cur_prev = cur.GetEntry().prev;
+        auto cur_next = cur.GetEntry().next;
+        auto cur_meta = cur.GetSlotMetadata();
+        cur.DestroyEntry();
+        cur.ConstructEntry(Entry{std::move(last.GetData()), cur_prev, cur_next});
+        cur.GetSlotMetadata() = cur_meta;
+        last.DestroyEntry();
         prev.SetNextSlotOffsetIndex(0);
     } else {// the last node
         if (!cur.IsHead()) {
@@ -945,14 +948,14 @@ void DenseMapObj<K, V>::IterListReplace(Cursor src, Cursor dst) {
     if (src.IsIterListHead()) {
         iter_list_head_ = dst.index();
     } else {
-        Cursor prev_node(dst.GetEntry().prev, this);
+        Cursor prev_node(src.GetEntry().prev, this);
         prev_node.GetEntry().next = dst.index();
     }
 
     if (src.IsIterListTail()) {
         iter_list_tail_ = dst.index();
     } else {
-        Cursor next_node(dst.GetEntry().next, this);
+        Cursor next_node(src.GetEntry().next, this);
         next_node.GetEntry().prev = dst.index();
     }
 }
@@ -1231,8 +1234,8 @@ public:
 
     Map(const Map& other) = default;
 
-    Map(Map&& other) noexcept : obj_(other.obj_) {//NOLINT
-        other.clear();
+    Map(Map&& other) noexcept : obj_(std::move(other.obj_)) {//NOLINT
+        // other.clear();
     }
 
     template<typename KU, typename VU>
@@ -1344,41 +1347,46 @@ public:
         return const_cast<Map*>(this)->at(key);
     }
 
-    mapped_type& operator[](const key_type& key) {
+    const mapped_type& operator[](const key_type& key) const {
         auto it = find(key);
-        if (it == end()) {
-            auto [iter, _] = insert(key, mapped_type{});
-            return iter->second;
-        }
         return it->second;
     }
 
-    mapped_type& operator[](key_type&& key) {
-        auto it = find(key);
-        if (it == end()) {
-            auto [iter, _] = insert(std::move(key), mapped_type{});
-            return iter->second;
-        }
-        return it->second;
-    }
-
-    // ValueProxy operator[](const key_type& key) {
+    // mapped_type& operator[](const key_type& key) {
     //     auto it = find(key);
     //     if (it == end()) {
     //         auto [iter, _] = insert(key, mapped_type{});
-    //         return {*this, iter.index()};
+    //         return iter->second;
     //     }
-    //     return {*this, it.index()};
+    //     return it->second;
     // }
-    //
-    // ValueProxy operator[](key_type&& key) {
+
+    // mapped_type& operator[](key_type&& key) {
     //     auto it = find(key);
     //     if (it == end()) {
     //         auto [iter, _] = insert(std::move(key), mapped_type{});
-    //         return {*this, iter.index()};
+    //         return iter->second;
     //     }
-    //     return {*this, it.index()};
+    //     return it->second;
     // }
+
+    ValueProxy operator[](const key_type& key) {
+        auto it = find(key);
+        if (it == end()) {
+            auto [iter, _] = insert(key, mapped_type{});
+            return {*this, iter.index()};
+        }
+        return {*this, it.index()};
+    }
+
+    ValueProxy operator[](key_type&& key) {
+        auto it = find(key);
+        if (it == end()) {
+            auto [iter, _] = insert(std::move(key), mapped_type{});
+            return {*this, iter.index()};
+        }
+        return {*this, it.index()};
+    }
 
     std::pair<iterator, bool> insert(value_type&& x) {
         return insert_impl(std::move(x), false);
@@ -1817,7 +1825,49 @@ public:
         return *this;
     }
 
-    operator mapped_type&() const {//NOLINT
+    const mapped_type* operator->() const noexcept {
+        return std::addressof(GetDataPtr()->second);
+    }
+
+    mapped_type* operator->() noexcept {
+        return std::addressof(GetDataPtr()->second);
+    }
+
+    template<typename MemPtr>
+    decltype(auto) operator->*(MemPtr&& mem_ptr) & noexcept {
+        return get().*std::forward<MemPtr>(mem_ptr);
+    }
+
+    template<typename MemPtr>
+    decltype(auto) operator->*(MemPtr&& mem_ptr) && noexcept {
+        return get().*std::forward<MemPtr>(mem_ptr);
+    }
+
+    template<typename U = mapped_type>
+        requires details::is_map<U>
+    decltype(auto) operator[](const U::key_type& key) {
+        return get()[key];
+    }
+
+    template<typename U = V>
+        requires details::is_container<U>
+    decltype(auto) operator[](U::size_type i) {
+        return get()[i];
+    }
+
+    operator const mapped_type&() const noexcept {//NOLINT
+        return GetDataPtr()->second;
+    }
+
+    operator mapped_type&() noexcept {//NOLINT
+        return GetDataPtr()->second;
+    }
+
+    const mapped_type& get() const noexcept {
+        return GetDataPtr()->second;
+    }
+
+    mapped_type& get() noexcept {
         return GetDataPtr()->second;
     }
 

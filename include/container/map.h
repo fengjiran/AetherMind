@@ -755,7 +755,7 @@ public:
     // Get the prev slot on the linked list
     NODISCARD Cursor FindPrevSlot() const {
         // start from the head of the linked list, which must exist
-        auto cur = obj()->CreateCursorFromHash(get_hash(GetKey()));
+        auto cur = obj()->CreateCursorFromHash(hasher()(GetKey()));
         auto prev = cur;
 
         cur.MoveToNextSlot();
@@ -876,7 +876,7 @@ DenseMapObj<K, V, Hasher>::Cursor DenseMapObj<K, V, Hasher>::Search(const key_ty
         return {};
     }
 
-    const auto head_opt = FindListHeadByHash(get_hash(key));
+    const auto head_opt = FindListHeadByHash(hasher()(key));
     if (!head_opt.has_value()) {
         return {};
     }
@@ -1028,7 +1028,7 @@ DenseMapObj<K, V, Hasher>::TryInsertOrUpdate(value_type&& kv, bool assign) {
     // 1) empty;
     // 2) body of an irrelevant list;
     // 3) head of the relevant list.
-    auto node = CreateCursorFromHash(get_hash(kv.first));
+    auto node = CreateCursorFromHash(hasher()(kv.first));
 
     // Case 1: empty
     if (node.IsSlotEmpty()) {

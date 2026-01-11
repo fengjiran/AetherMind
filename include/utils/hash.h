@@ -26,8 +26,8 @@ template<typename T>
 #else
 template<typename T, std::enable_if_t<std::is_convertible_v<T, size_t>>* = nullptr>
 #endif
-size_t hash_combine(size_t seed, const T& value) {
-    return seed ^ (value + 0x9e3779b9 + (seed << 6u) + (seed >> 2u));
+size_t hash_combine(size_t seed, const T& hash_value) {
+    return seed ^ (hash_value + 0x9e3779b9 + (seed << 6u) + (seed >> 2u));
 }
 
 // Creates the SHA1 hash of a string. A 160-bit hash.
@@ -233,9 +233,6 @@ constexpr uint64_t twang_mix64(uint64_t key) noexcept {
 
 namespace details {
 
-template<typename T>
-size_t simple_get_hash(const T& o);
-
 #ifdef CPP20
 
 template<typename T>
@@ -265,6 +262,9 @@ template<typename T>
 size_t dispatch_hash(const T& v) {
     return std::hash<T>()(v);
 }
+
+template<typename T>
+size_t simple_get_hash(const T& o);
 
 #else
 
@@ -299,31 +299,21 @@ auto dispatch_hash(const T& o) -> decltype(T::hash(o), size_t()) {
 // Hasher struct
 template<typename T>
 struct hash {
-    size_t operator()(const T& o) const {
-        return details::dispatch_hash(o);
+    size_t operator()(const T& v) const {
+        return details::dispatch_hash(v);
     }
 };
 
 // Specialization for std::tuple
 template<typename... Types>
 struct hash<std::tuple<Types...>> {
-    template<size_t idx, typename... Ts>
-    struct tuple_hash {
-        size_t operator()(const std::tuple<Ts...>& t) const {
-            return hash_combine(details::simple_get_hash(std::get<idx>(t)),
-                                tuple_hash<idx - 1, Ts...>()(t));
-        }
-    };
-
-    template<typename... Ts>
-    struct tuple_hash<0, Ts...> {
-        size_t operator()(const std::tuple<Ts...>& t) const {
-            return details::simple_get_hash(std::get<0>(t));
-        }
-    };
-
     size_t operator()(const std::tuple<Types...>& t) const {
-        return tuple_hash<sizeof...(Types) - 1, Types...>()(t);
+        size_t seed = 0;
+        auto func = [&seed](auto&&... x) {
+            ((seed = hash_combine(seed, details::simple_get_hash(x))), ...);
+        };
+        std::apply(func, t);
+        return seed;
     }
 };
 
@@ -350,8 +340,8 @@ struct hash<std::vector<T>> {
 namespace details {
 
 template<typename T>
-size_t simple_get_hash(const T& o) {
-    return hash<T>()(o);
+size_t simple_get_hash(const T& v) {
+    return hash<T>()(v);
 }
 
 inline size_t FibonacciHash(size_t hash_value, uint32_t fib_shift) {
@@ -393,7 +383,7 @@ struct hash<std::tuple<Types...>> {
 
 template<typename T>
 struct hash<std::vector<T>> {
-    size_t operator()(const std::vector<T>& v) {
+    size_t operator()(const std::vector<T>& v) const {
         return aethermind::hash<std::vector<T>>()(v);
     }
 };

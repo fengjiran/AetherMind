@@ -233,7 +233,7 @@ private:
     friend class MapObj;
     template<typename, typename>
     friend class DenseMapObj;
-    template<typename, typename>
+    template<typename, typename, typename>
     friend class Map;
 };
 
@@ -539,7 +539,7 @@ private:
 
     template<typename, typename, typename>
     friend class MapObj;
-    template<typename, typename>
+    template<typename, typename, typename>
     friend class Map;
 };
 
@@ -1168,7 +1168,7 @@ MapObj<Derived, K, V>::insert(value_type&& kv, const ObjectPtr<Object>& old_impl
     }
 }
 
-template<typename K, typename V>
+template<typename K, typename V, typename Hasher = hash<K>>
 class Map : public ObjectRef {
 public:
     using key_type = K;
@@ -1480,8 +1480,8 @@ private:
     }
 };
 
-template<typename K, typename V>
-std::pair<typename Map<K, V>::iterator, bool> Map<K, V>::insert_impl(value_type&& x, bool assign) {
+template<typename K, typename V, typename Hasher>
+std::pair<typename Map<K, V, Hasher>::iterator, bool> Map<K, V, Hasher>::insert_impl(value_type&& x, bool assign) {
     if (!assign) {
         auto it = find(x.first);
         if (it != end()) {
@@ -1506,8 +1506,8 @@ std::pair<typename Map<K, V>::iterator, bool> Map<K, V>::insert_impl(value_type&
     return std::visit(visitor, obj_);
 }
 
-template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
+template<typename K, typename V, typename Hasher>
+Map<K, V, Hasher>::iterator Map<K, V, Hasher>::erase(const_iterator pos) {
     if (pos == end()) {
         return end();
     }
@@ -1519,13 +1519,13 @@ Map<K, V>::iterator Map<K, V>::erase(const_iterator pos) {
     return std::visit(visitor, obj_);
 }
 
-template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(iterator pos) {
+template<typename K, typename V, typename Hasher>
+Map<K, V, Hasher>::iterator Map<K, V, Hasher>::erase(iterator pos) {
     return erase(const_iterator(pos));
 }
 
-template<typename K, typename V>
-Map<K, V>::size_type Map<K, V>::erase(const key_type& key) {
+template<typename K, typename V, typename Hasher>
+Map<K, V, Hasher>::size_type Map<K, V, Hasher>::erase(const key_type& key) {
     auto it = find(key);
     if (it != end()) {
         erase(it);
@@ -1534,8 +1534,8 @@ Map<K, V>::size_type Map<K, V>::erase(const key_type& key) {
     return 0;
 }
 
-template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(iterator first, iterator last) {
+template<typename K, typename V, typename Hasher>
+Map<K, V, Hasher>::iterator Map<K, V, Hasher>::erase(iterator first, iterator last) {
     if (first == last) {
         return first;
     }
@@ -1548,8 +1548,8 @@ Map<K, V>::iterator Map<K, V>::erase(iterator first, iterator last) {
     return it;
 }
 
-template<typename K, typename V>
-Map<K, V>::iterator Map<K, V>::erase(const_iterator first, const_iterator last) {
+template<typename K, typename V, typename Hasher>
+Map<K, V, Hasher>::iterator Map<K, V, Hasher>::erase(const_iterator first, const_iterator last) {
     if (first == last) {
         return first;
     }
@@ -1704,9 +1704,9 @@ private:
     ContainerPtrType ptr_;
 };
 
-template<typename K, typename V>
+template<typename K, typename V, typename Hasher>
 template<bool IsConst>
-class Map<K, V>::IteratorImpl {
+class Map<K, V, Hasher>::IteratorImpl {
 public:
     using iterator_category = std::bidirectional_iterator_tag;
     using difference_type = std::ptrdiff_t;
@@ -1810,12 +1810,12 @@ private:
 
     IteratorImpl(const DenseIterType& iter) : iter_(iter) {}//NOLINT
 
-    template<typename, typename>
+    template<typename, typename, typename >
     friend class Map;
 };
 
-template<typename K, typename V>
-class Map<K, V>::ValueProxy {
+template<typename K, typename V, typename Hasher>
+class Map<K, V, Hasher>::ValueProxy {
 public:
     ValueProxy(Map& map, size_type idx) : map_(map), idx_(idx) {}
 

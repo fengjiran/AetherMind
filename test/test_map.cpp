@@ -64,6 +64,10 @@ TEST(MapTest, basic) {
     auto it2 = data.erase(data.begin());
     EXPECT_EQ(it2->first, 1);
     EXPECT_EQ(it2->second, 3);
+
+    std::tuple<int, String> t = {1, "hello"};
+    auto hash_value = std::hash<std::tuple<int, String>>()(t);
+    std::cout << hash_value << std::endl;
 }
 
 // 测试构造函数和赋值运算符

@@ -27,7 +27,7 @@ concept is_valid_iter = requires(InputIter t) {
 
 }// namespace details
 
-template<typename Derived, typename K, typename V>
+template<typename Derived, typename K, typename V, typename Hasher>
 class MapObj : public Object {
 public:
     using key_type = K;
@@ -139,18 +139,19 @@ protected:
 };
 
 // in heap
-template<typename K, typename V>
-class SmallMapObj : public MapObj<SmallMapObj<K, V>, K, V> {
+template<typename K, typename V, typename Hasher = hash<K>>
+class SmallMapObj : public MapObj<SmallMapObj<K, V, Hasher>, K, V, Hasher> {
 public:
-    using BaseType = MapObj<SmallMapObj, K, V>;
+    using BaseType = MapObj<SmallMapObj, K, V, Hasher>;
 
     using key_type = K;
     using mapped_type = V;
     using value_type = std::pair<const key_type, mapped_type>;
     using size_type = size_t;
+    using hasher = Hasher;
 
-    using iterator = MapObj<SmallMapObj, K, V>::iterator;
-    using const_iterator = MapObj<SmallMapObj, K, V>::const_iterator;
+    using iterator = MapObj<SmallMapObj, K, V, Hasher>::iterator;
+    using const_iterator = MapObj<SmallMapObj, K, V, Hasher>::const_iterator;
 
     SmallMapObj() {
         this->data_ = storage_.data();
@@ -229,16 +230,16 @@ private:
 
     static ObjectPtr<SmallMapObj> CopyFrom(const SmallMapObj* src);
 
-    template<typename, typename, typename>
+    template<typename, typename, typename, typename>
     friend class MapObj;
-    template<typename, typename>
+    template<typename, typename, typename>
     friend class DenseMapObj;
     template<typename, typename, typename>
     friend class Map;
 };
 
-template<typename K, typename V>
-void SmallMapObj<K, V>::reset() {
+template<typename K, typename V, typename Hasher>
+void SmallMapObj<K, V, Hasher>::reset() {
     if (!this->empty()) {
         for (size_t i = 0; i < this->size(); ++i) {
             GetDataPtrImpl(i)->~value_type();
@@ -247,8 +248,8 @@ void SmallMapObj<K, V>::reset() {
     }
 }
 
-template<typename K, typename V>
-SmallMapObj<K, V>::iterator SmallMapObj<K, V>::FindImpl(const key_type& key) {
+template<typename K, typename V, typename Hasher>
+SmallMapObj<K, V, Hasher>::iterator SmallMapObj<K, V, Hasher>::FindImpl(const key_type& key) {
     for (size_t i = 0; i < this->size(); ++i) {
         if (key == GetDataPtrImpl(i)->first) {
             return {i, this};
@@ -258,14 +259,14 @@ SmallMapObj<K, V>::iterator SmallMapObj<K, V>::FindImpl(const key_type& key) {
     return EndImpl();
 }
 
-template<typename K, typename V>
-SmallMapObj<K, V>::const_iterator SmallMapObj<K, V>::FindImpl(const key_type& key) const {
+template<typename K, typename V, typename Hasher>
+SmallMapObj<K, V, Hasher>::const_iterator SmallMapObj<K, V, Hasher>::FindImpl(const key_type& key) const {
     return const_cast<SmallMapObj*>(this)->FindImpl(key);
 }
 
-template<typename K, typename V>
-std::pair<typename SmallMapObj<K, V>::iterator, bool>
-SmallMapObj<K, V>::InsertImpl(value_type&& kv, bool assign) {
+template<typename K, typename V, typename Hasher>
+std::pair<typename SmallMapObj<K, V, Hasher>::iterator, bool>
+SmallMapObj<K, V, Hasher>::InsertImpl(value_type&& kv, bool assign) {
     if (const auto it = FindImpl(kv.first); it != EndImpl()) {
         if (assign) {
             it->second = std::move(kv.second);
@@ -279,8 +280,8 @@ SmallMapObj<K, V>::InsertImpl(value_type&& kv, bool assign) {
     return {iterator{this->size() - 1, this}, true};
 }
 
-template<typename K, typename V>
-SmallMapObj<K, V>::iterator SmallMapObj<K, V>::EraseImpl(iterator pos) {
+template<typename K, typename V, typename Hasher>
+SmallMapObj<K, V, Hasher>::iterator SmallMapObj<K, V, Hasher>::EraseImpl(iterator pos) {
     if (pos == EndImpl()) {
         return pos;
     }
@@ -296,8 +297,8 @@ SmallMapObj<K, V>::iterator SmallMapObj<K, V>::EraseImpl(iterator pos) {
     return pos;
 }
 
-template<typename K, typename V>
-ObjectPtr<SmallMapObj<K, V>> SmallMapObj<K, V>::CopyFrom(const SmallMapObj* src) {
+template<typename K, typename V, typename Hasher>
+ObjectPtr<SmallMapObj<K, V, Hasher>> SmallMapObj<K, V, Hasher>::CopyFrom(const SmallMapObj* src) {
     auto impl = Create();
     for (size_type i = 0; i < src->size(); ++i) {
         new (impl->GetDataPtrImpl(i)) value_type(*src->GetDataPtrImpl(i));
@@ -324,16 +325,17 @@ static size_type ComputeNewSlots(size_type current_slots, size_type new_elements
 }
 */
 
-template<typename K, typename V>
-class DenseMapObj : public MapObj<DenseMapObj<K, V>, K, V> {
+template<typename K, typename V, typename Hasher = hash<K>>
+class DenseMapObj : public MapObj<DenseMapObj<K, V, Hasher>, K, V, Hasher> {
 public:
     using key_type = K;
     using mapped_type = V;
     using value_type = std::pair<const key_type, mapped_type>;
     using size_type = size_t;
+    using hasher = Hasher;
 
-    using iterator = MapObj<DenseMapObj, K, V>::iterator;
-    using const_iterator = MapObj<DenseMapObj, K, V>::const_iterator;
+    using iterator = MapObj<DenseMapObj, K, V, Hasher>::iterator;
+    using const_iterator = MapObj<DenseMapObj, K, V, Hasher>::const_iterator;
 
     DenseMapObj() = default;
     ~DenseMapObj() override {
@@ -537,14 +539,14 @@ private:
 
     static ObjectPtr<DenseMapObj> CopyFrom(const DenseMapObj* src);
 
-    template<typename, typename, typename>
+    template<typename, typename, typename, typename>
     friend class MapObj;
     template<typename, typename, typename>
     friend class Map;
 };
 
-template<typename K, typename V>
-struct DenseMapObj<K, V>::Entry {
+template<typename K, typename V, typename Hasher>
+struct DenseMapObj<K, V, Hasher>::Entry {
     value_type data;
     size_type prev;
     size_type next;
@@ -566,8 +568,8 @@ struct DenseMapObj<K, V>::Entry {
     }
 };
 
-template<typename K, typename V>
-struct DenseMapObj<K, V>::Block {
+template<typename K, typename V, typename Hasher>
+struct DenseMapObj<K, V, Hasher>::Block {
     std::array<std::byte, kEntriesPerBlock + kEntriesPerBlock * sizeof(Entry)> storage_;
 
     Block() {// NOLINT
@@ -603,8 +605,8 @@ struct DenseMapObj<K, V>::Block {
     }
 };
 
-template<typename K, typename V>
-class DenseMapObj<K, V>::Cursor {
+template<typename K, typename V, typename Hasher>
+class DenseMapObj<K, V, Hasher>::Cursor {
 public:
     Cursor() : index_(0), obj_(nullptr) {}
 
@@ -782,8 +784,8 @@ private:
     const DenseMapObj* obj_;
 };
 
-template<typename K, typename V>
-DenseMapObj<K, V>::iterator DenseMapObj<K, V>::EraseImpl(iterator pos) {
+template<typename K, typename V, typename Hasher>
+DenseMapObj<K, V, Hasher>::iterator DenseMapObj<K, V, Hasher>::EraseImpl(iterator pos) {
     if (pos == this->end()) {
         return this->end();
     }
@@ -826,8 +828,8 @@ DenseMapObj<K, V>::iterator DenseMapObj<K, V>::EraseImpl(iterator pos) {
     return next_pos;
 }
 
-template<typename K, typename V>
-DenseMapObj<K, V>::size_type DenseMapObj<K, V>::GetNextIndexOfImpl(size_type idx) const {
+template<typename K, typename V, typename Hasher>
+DenseMapObj<K, V, Hasher>::size_type DenseMapObj<K, V, Hasher>::GetNextIndexOfImpl(size_type idx) const {
     // keep at the end of iterator
     if (idx == kInvalidIndex) {
         return idx;
@@ -836,8 +838,8 @@ DenseMapObj<K, V>::size_type DenseMapObj<K, V>::GetNextIndexOfImpl(size_type idx
     return Cursor(idx, this).GetEntry().next;
 }
 
-template<typename K, typename V>
-DenseMapObj<K, V>::size_type DenseMapObj<K, V>::GetPrevIndexOfImpl(size_type idx) const {
+template<typename K, typename V, typename Hasher>
+DenseMapObj<K, V, Hasher>::size_type DenseMapObj<K, V, Hasher>::GetPrevIndexOfImpl(size_type idx) const {
     // this is the end iterator, we need to return tail.
     if (idx == kInvalidIndex) {
         return iter_list_tail_;
@@ -846,8 +848,8 @@ DenseMapObj<K, V>::size_type DenseMapObj<K, V>::GetPrevIndexOfImpl(size_type idx
     return Cursor(idx, this).GetEntry().prev;
 }
 
-template<typename K, typename V>
-DenseMapObj<K, V>::mapped_type& DenseMapObj<K, V>::At(const key_type& key) const {
+template<typename K, typename V, typename Hasher>
+DenseMapObj<K, V, Hasher>::mapped_type& DenseMapObj<K, V, Hasher>::At(const key_type& key) const {
     const Cursor iter = Search(key);
     if (iter.IsNone()) {
         AETHERMIND_THROW(KeyError) << "Key not found";
@@ -856,8 +858,8 @@ DenseMapObj<K, V>::mapped_type& DenseMapObj<K, V>::At(const key_type& key) const
     return iter.GetValue();
 }
 
-template<typename K, typename V>
-void DenseMapObj<K, V>::reset() {
+template<typename K, typename V, typename Hasher>
+void DenseMapObj<K, V, Hasher>::reset() {
     const size_t block_num = CalculateBlockCount(this->slots());
     for (size_t i = 0; i < block_num; ++i) {
         GetBlockByIndex(i)->~Block();
@@ -868,8 +870,8 @@ void DenseMapObj<K, V>::reset() {
     fib_shift_ = 63;
 }
 
-template<typename K, typename V>
-DenseMapObj<K, V>::Cursor DenseMapObj<K, V>::Search(const key_type& key) const {
+template<typename K, typename V, typename Hasher>
+DenseMapObj<K, V, Hasher>::Cursor DenseMapObj<K, V, Hasher>::Search(const key_type& key) const {
     if (this->empty()) {
         return {};
     }
@@ -889,8 +891,8 @@ DenseMapObj<K, V>::Cursor DenseMapObj<K, V>::Search(const key_type& key) const {
     return {};
 }
 
-template<typename K, typename V>
-std::pair<uint32_t, typename DenseMapObj<K, V>::size_type> DenseMapObj<K, V>::CalculateSlotCount(size_type cap) {
+template<typename K, typename V, typename Hasher>
+std::pair<uint32_t, typename DenseMapObj<K, V, Hasher>::size_type> DenseMapObj<K, V, Hasher>::CalculateSlotCount(size_type cap) {
     uint32_t shift = 64;
     size_t slots = 1;
     if (cap == 1) {
@@ -907,8 +909,8 @@ std::pair<uint32_t, typename DenseMapObj<K, V>::size_type> DenseMapObj<K, V>::Ca
     return {shift, slots};
 }
 
-template<typename K, typename V>
-void DenseMapObj<K, V>::IterListPushBack(Cursor node) {
+template<typename K, typename V, typename Hasher>
+void DenseMapObj<K, V, Hasher>::IterListPushBack(Cursor node) {
     node.GetEntry().prev = iter_list_tail_;
     node.GetEntry().next = kInvalidIndex;
 
@@ -921,8 +923,8 @@ void DenseMapObj<K, V>::IterListPushBack(Cursor node) {
     iter_list_tail_ = node.index();
 }
 
-template<typename K, typename V>
-void DenseMapObj<K, V>::IterListRemove(Cursor node) {
+template<typename K, typename V, typename Hasher>
+void DenseMapObj<K, V, Hasher>::IterListRemove(Cursor node) {
     // head
     if (node.IsIterListHead()) {
         iter_list_head_ = node.GetEntry().next;
@@ -940,8 +942,8 @@ void DenseMapObj<K, V>::IterListRemove(Cursor node) {
     }
 }
 
-template<typename K, typename V>
-void DenseMapObj<K, V>::IterListReplace(Cursor src, Cursor dst) {
+template<typename K, typename V, typename Hasher>
+void DenseMapObj<K, V, Hasher>::IterListReplace(Cursor src, Cursor dst) {
     dst.GetEntry().prev = src.GetEntry().prev;
     dst.GetEntry().next = src.GetEntry().next;
 
@@ -960,9 +962,9 @@ void DenseMapObj<K, V>::IterListReplace(Cursor src, Cursor dst) {
     }
 }
 
-template<typename K, typename V>
-std::optional<typename DenseMapObj<K, V>::Cursor>
-DenseMapObj<K, V>::TryAllocateListHead(Cursor target) {
+template<typename K, typename V, typename Hasher>
+std::optional<typename DenseMapObj<K, V, Hasher>::Cursor>
+DenseMapObj<K, V, Hasher>::TryAllocateListHead(Cursor target) {
     // `target` is not the head of the linked list
     // move the original item of `target`
     // and construct new item on the position `target`
@@ -1008,9 +1010,9 @@ DenseMapObj<K, V>::TryAllocateListHead(Cursor target) {
     return target;
 }
 
-template<typename K, typename V>
-std::pair<typename DenseMapObj<K, V>::iterator, bool>
-DenseMapObj<K, V>::TryInsertOrUpdate(value_type&& kv, bool assign) {
+template<typename K, typename V, typename Hasher>
+std::pair<typename DenseMapObj<K, V, Hasher>::iterator, bool>
+DenseMapObj<K, V, Hasher>::TryInsertOrUpdate(value_type&& kv, bool assign) {
     // The key is already in the hash table
     if (auto it = FindImpl(kv.first); it != EndImpl()) {
         if (assign) {
@@ -1081,9 +1083,9 @@ DenseMapObj<K, V>::TryInsertOrUpdate(value_type&& kv, bool assign) {
     return {iterator(empty.index(), this), true};
 }
 
-template<typename K, typename V>
-std::tuple<ObjectPtr<Object>, typename DenseMapObj<K, V>::iterator, bool>
-DenseMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
+template<typename K, typename V, typename Hasher>
+std::tuple<ObjectPtr<Object>, typename DenseMapObj<K, V, Hasher>::iterator, bool>
+DenseMapObj<K, V, Hasher>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
     auto* map = static_cast<DenseMapObj*>(old_impl.get());// NOLINT
     if (auto [it, is_success] = map->TryInsertOrUpdate(std::move(kv), assign); it != map->EndImpl()) {
         return {old_impl, it, is_success};
@@ -1105,8 +1107,8 @@ DenseMapObj<K, V>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl
     return {new_impl, pos, is_success};
 }
 
-template<typename K, typename V>
-ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::Create(size_type n) {
+template<typename K, typename V, typename Hasher>
+ObjectPtr<DenseMapObj<K, V, Hasher>> DenseMapObj<K, V, Hasher>::Create(size_type n) {
     CHECK(n > DenseMapObj::kThreshold) << "The allocated size must be greate than the threshold of "
                                        << DenseMapObj::kThreshold
                                        << " when using SmallMapObj::Create";
@@ -1127,8 +1129,8 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::Create(size_type n) {
     return impl;
 }
 
-template<typename K, typename V>
-ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src) {
+template<typename K, typename V, typename Hasher>
+ObjectPtr<DenseMapObj<K, V, Hasher>> DenseMapObj<K, V, Hasher>::CopyFrom(const DenseMapObj* src) {
     auto impl = Create(src->slots());
     auto block_num = CalculateBlockCount(src->slots());
     impl->size_ = src->size();
@@ -1143,11 +1145,11 @@ ObjectPtr<DenseMapObj<K, V>> DenseMapObj<K, V>::CopyFrom(const DenseMapObj* src)
     return impl;
 }
 
-template<typename Derived, typename K, typename V>
-std::tuple<ObjectPtr<Object>, typename MapObj<Derived, K, V>::size_type, bool>
-MapObj<Derived, K, V>::insert(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
-    using SmallMapType = SmallMapObj<K, V>;
-    using DenseMapType = DenseMapObj<K, V>;
+template<typename Derived, typename K, typename V, typename Hasher>
+std::tuple<ObjectPtr<Object>, typename MapObj<Derived, K, V, Hasher>::size_type, bool>
+MapObj<Derived, K, V, Hasher>::insert(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
+    using SmallMapType = SmallMapObj<K, V, Hasher>;
+    using DenseMapType = DenseMapObj<K, V, Hasher>;
     if constexpr (std::is_same_v<Derived, SmallMapType>) {
         auto* p = static_cast<SmallMapType*>(old_impl.get());//NOLINT
         const auto size = p->size();
@@ -1174,6 +1176,7 @@ public:
     using key_type = K;
     using mapped_type = V;
     using value_type = std::pair<const key_type, mapped_type>;
+    using hasher = Hasher;
     using size_type = size_t;
     using difference_type = std::ptrdiff_t;
     using pointer = value_type*;
@@ -1189,8 +1192,8 @@ public:
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
-    using SmallMapType = SmallMapObj<K, V>;
-    using DenseMapType = DenseMapObj<K, V>;
+    using SmallMapType = SmallMapObj<K, V, Hasher>;
+    using DenseMapType = DenseMapObj<K, V, Hasher>;
 
     Map() : obj_(SmallMapType::Create()) {}
 
@@ -1562,9 +1565,9 @@ Map<K, V, Hasher>::iterator Map<K, V, Hasher>::erase(const_iterator first, const
     return it;
 }
 
-template<typename Derived, typename K, typename V>
+template<typename Derived, typename K, typename V, typename Hasher>
 template<bool IsConst>
-class MapObj<Derived, K, V>::IteratorImpl {
+class MapObj<Derived, K, V, Hasher>::IteratorImpl {
 public:
     using iterator_category = std::bidirectional_iterator_tag;
     using ContainerPtrType = std::conditional_t<IsConst, const Derived*, Derived*>;
@@ -1810,7 +1813,7 @@ private:
 
     IteratorImpl(const DenseIterType& iter) : iter_(iter) {}//NOLINT
 
-    template<typename, typename, typename >
+    template<typename, typename, typename>
     friend class Map;
 };
 

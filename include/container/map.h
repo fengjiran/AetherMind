@@ -352,50 +352,11 @@ private:
     static constexpr int kEntriesPerBlock = 16;
     // Max load factor of hash table
     static constexpr double kMaxLoadFactor = 0.75;
-    // 0b11111111 representation of the metadata of an empty slot.
-    static constexpr auto kEmptySlot = std::byte{0xFF};
-    // 0b11111110 representation of the metadata of a protected slot.
-    static constexpr auto kProtectedSlot = std::byte{0xFE};
-    // Number of probing choices available
-    static constexpr int kNumOffsetDists = 126;
-    // head flag
-    static constexpr auto kHeadFlag = std::byte{0x00};
-    // tail flag
-    static constexpr auto kTailFlag = std::byte{0x80};
-    // head flag mask
-    static constexpr auto kHeadFlagMask = std::byte{0x80};
-    // offset mask
-    static constexpr auto kOffsetIdxMask = std::byte{0x7F};
     // default fib shift
     static constexpr uint32_t kDefaultFibShift = 63;
 
     // Index indicator to indicate an invalid index.
     static constexpr size_type kInvalidIndex = std::numeric_limits<size_type>::max();
-    static constexpr size_type NextProbePosOffset[kNumOffsetDists] = {
-            // linear probing offset(0-15)
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-            // Quadratic probing with triangle numbers, n(n+1)/2, n = 6 ~ 72
-            // See also:
-            // 1) https://en.wikipedia.org/wiki/Quadratic_probing
-            // 2) https://fgiesen.wordpress.com/2015/02/22/triangular-numbers-mod-2n/
-            // 3) https://github.com/skarupke/flat_hash_map
-            21, 28, 36, 45, 55, 66, 78, 91, 105, 120,
-            136, 153, 171, 190, 210, 231, 253, 276, 300, 325,
-            351, 378, 406, 435, 465, 496, 528, 561, 595, 630,
-            666, 703, 741, 780, 820, 861, 903, 946, 990, 1035,
-            1081, 1128, 1176, 1225, 1275, 1326, 1378, 1431, 1485, 1540,
-            1596, 1653, 1711, 1770, 1830, 1891, 1953, 2016, 2080, 2145,
-            2211, 2278, 2346, 2415, 2485, 2556, 2628,
-            // larger triangle numbers
-            8515, 19110, 42778, 96141, 216153,
-            486591, 1092981, 2458653, 5532801, 12442566,
-            27993903, 62983476, 141717030, 318844378, 717352503,
-            1614057336, 3631522476, 8170957530, 18384510628, 41364789378,
-            93070452520, 209408356380, 471168559170, 1060128894105, 2385289465695,
-            5366898840628, 12075518705635, 27169915244790, 61132312065111, 137547689707000,
-            309482283181501, 696335127828753, 1566753995631385, 3525196511162271, 7931691992677701,
-            17846306936293605, 40154190677507445, 90346928918121501, 203280589587557251,
-            457381325854679626, 1029107982097042876, 2315492959180353330, 5209859154120846435};
 
     // fib shift in Fibonacci hash
     uint32_t fib_shift_ = kDefaultFibShift;
@@ -429,8 +390,10 @@ private:
     }
 
     NODISCARD iterator FindImpl(const key_type& key) {
-        const auto node = Search(key);
-        return node.IsNone() ? EndImpl() : iterator(node.index(), this);
+        // const auto node = Search(key);
+        // return node.IsNone() ? EndImpl() : iterator(node.index(), this);
+        auto index = Search_debug(key);
+        return index == kInvalidIndex ? EndImpl() : iterator(index, this);
     }
 
     iterator EraseImpl(iterator pos);
@@ -482,6 +445,8 @@ private:
    * \return ListNode that associated with the key
    */
     NODISCARD Cursor Search(const key_type& key) const;
+
+    NODISCARD size_type Search_debug(const key_type& key) const;
 
     // Whether the hash table is full.
     NODISCARD bool IsFull() const {
@@ -578,13 +543,13 @@ struct DenseMapObj<K, V, Hasher>::Block {
 
     Block() {// NOLINT
         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            storage_[i] = kEmptySlot;
+            storage_[i] = MagicConstants::kEmptySlot;
         }
     }
 
     Block(const Block& other) {// NOLINT
         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            if (other.storage_[i] != kEmptySlot) {
+            if (other.storage_[i] != MagicConstants::kEmptySlot) {
                 storage_[i] = other.storage_[i];
                 new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
             }
@@ -593,8 +558,8 @@ struct DenseMapObj<K, V, Hasher>::Block {
 
     ~Block() {
         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            if (storage_[i] != kEmptySlot) {
-                storage_[i] = kEmptySlot;
+            if (storage_[i] != MagicConstants::kEmptySlot) {
+                storage_[i] = MagicConstants::kEmptySlot;
                 GetEntryPtr(i)->~Entry();
             }
         }
@@ -675,29 +640,29 @@ public:
     }
 
     NODISCARD bool IsSlotEmpty() const {
-        return GetSlotMetadata() == kEmptySlot;
+        return GetSlotMetadata() == MagicConstants::kEmptySlot;
     }
 
     NODISCARD bool IsSlotProtected() const {
-        return GetSlotMetadata() == kProtectedSlot;
+        return GetSlotMetadata() == MagicConstants::kProtectedSlot;
     }
 
     NODISCARD bool IsHead() const {
-        return (GetSlotMetadata() & kHeadFlagMask) == kHeadFlag;
+        return (GetSlotMetadata() & MagicConstants::kHeadFlagMask) == MagicConstants::kHeadFlag;
     }
 
     void MarkSlotAsEmpty() const {
-        GetSlotMetadata() = kEmptySlot;
+        GetSlotMetadata() = MagicConstants::kEmptySlot;
     }
 
     void MarkSlotAsProtected() const {
-        GetSlotMetadata() = kProtectedSlot;
+        GetSlotMetadata() = MagicConstants::kProtectedSlot;
     }
 
     // Set the entry's offset to its next entry.
     void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
-        CHECK(offset_idx < kNumOffsetDists);
-        (GetSlotMetadata() &= kHeadFlagMask) |= std::byte{offset_idx};
+        CHECK(offset_idx < MagicConstants::kNumOffsetDists);
+        (GetSlotMetadata() &= MagicConstants::kHeadFlagMask) |= std::byte{offset_idx};
     }
 
     void ConstructEntry(Entry&& entry) const {
@@ -723,7 +688,7 @@ public:
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetSlotMetadata() = kHeadFlag;
+        GetSlotMetadata() = MagicConstants::kHeadFlag;
     }
 
     // Construct a tail of linked list inplace
@@ -732,20 +697,20 @@ public:
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetSlotMetadata() = kTailFlag;
+        GetSlotMetadata() = MagicConstants::kTailFlag;
     }
 
     // Whether the slot has the next slot on the linked list
     NODISCARD bool HasNextSlot() const {
-        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & kOffsetIdxMask);
-        return NextProbePosOffset[idx] != 0;
+        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & MagicConstants::kOffsetIdxMask);
+        return MagicConstants::NextProbePosOffset[idx] != 0;
     }
 
     // Move the current cursor to the next slot on the linked list
     bool MoveToNextSlot(std::optional<std::byte> meta_opt = std::nullopt) {
         std::byte meta = meta_opt ? meta_opt.value() : GetSlotMetadata();
-        const auto idx = std::to_integer<uint8_t>(meta & kOffsetIdxMask);
-        const auto offset = NextProbePosOffset[idx];
+        const auto idx = std::to_integer<uint8_t>(meta & MagicConstants::kOffsetIdxMask);
+        const auto offset = MagicConstants::NextProbePosOffset[idx];
         if (offset == 0) {
             reset();
             return false;
@@ -754,7 +719,8 @@ public:
         // The probing will go to the next pos and round back to stay within
         // the correct range of the slots.
         // equal to (index_ + offset) % obj()->slots()
-        index_ = (index_ + offset) & (obj()->slots() - 1);
+        auto t = index_ + offset;
+        index_ = t >= obj()->slots() ? t & obj()->slots() - 1 : t;
         return true;
     }
 
@@ -774,8 +740,8 @@ public:
     }
 
     NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
-        for (uint8_t i = 1; i < kNumOffsetDists; ++i) {
-            if (Cursor candidate((index() + NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
+        for (uint8_t i = 1; i < MagicConstants::kNumOffsetDists; ++i) {
+            if (Cursor candidate((index() + MagicConstants::NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
                 candidate.IsSlotEmpty()) {
                 return std::make_pair(i, candidate);
             }
@@ -896,6 +862,38 @@ DenseMapObj<K, V, Hasher>::Cursor DenseMapObj<K, V, Hasher>::Search(const key_ty
 
     return {};
 }
+
+template<typename K, typename V, typename Hasher>
+DenseMapObj<K, V, Hasher>::size_type DenseMapObj<K, V, Hasher>::Search_debug(const key_type& key) const {
+    auto index = details::FibonacciHash(hasher()(key), fib_shift_);
+    bool is_first = true;
+    while (true) {
+        auto block_idx = index / kEntriesPerBlock;
+        auto inner_idx = index & (kEntriesPerBlock - 1);
+        Block* block = static_cast<Block*>(this->data()) + block_idx;
+        auto meta = block->storage_[inner_idx];
+        if (is_first) {
+            if ((meta & MagicConstants::kHeadFlagMask) != MagicConstants::kHeadFlag) {
+                return kInvalidIndex;
+            }
+            is_first = false;
+        }
+
+        if (key == block->GetEntryPtr(inner_idx)->data.first) {
+            return index;
+        }
+
+        auto offset_idx = std::to_integer<uint8_t>(meta & MagicConstants::kOffsetIdxMask);
+        if (offset_idx == 0) {
+            return kInvalidIndex;
+        }
+
+        auto offset = MagicConstants::NextProbePosOffset[offset_idx];
+        auto t = index + offset;
+        index = t >= this->slots() ? t & this->slots() - 1 : t;
+    }
+}
+
 
 template<typename K, typename V, typename Hasher>
 std::pair<uint32_t, typename DenseMapObj<K, V, Hasher>::size_type>
@@ -1334,6 +1332,14 @@ public:
 
     iterator find(const key_type& key) {
         return std::visit([&](const auto& arg) { return iterator(arg->find(key)); }, obj_);
+        // switch (obj_.index()) {
+        //     case 0:
+        //         return iterator(std::get<ObjectPtr<SmallMapType>>(obj_)->find(key));
+        //     case 1:
+        //         return iterator(std::get<ObjectPtr<DenseMapType>>(obj_)->find(key));
+        //     default:
+        //         return end();
+        // }
     }
 
     const_iterator find(const key_type& key) const {

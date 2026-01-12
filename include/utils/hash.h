@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_UTILS_HASH_H
 #define AETHERMIND_UTILS_HASH_H
 
+#include "utils/xxh3.h"
 #include "container/string.h"
 
 #include <complex>
@@ -264,7 +265,7 @@ size_t dispatch_hash(const T& v) {
 }
 
 template<typename T>
-size_t simple_get_hash(const T& o);
+size_t simple_get_hash(const T& v);
 
 #else
 

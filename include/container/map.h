@@ -346,7 +346,7 @@ private:
     // The number of elements in a memory block.
     static constexpr int kEntriesPerBlock = 16;
     // Max load factor of hash table
-    static constexpr double kMaxLoadFactor = 0.99;
+    static constexpr double kMaxLoadFactor = 0.7;
     // 0b11111111 representation of the metadata of an empty slot.
     static constexpr auto kEmptySlot = std::byte{0xFF};
     // 0b11111110 representation of the metadata of a protected slot.

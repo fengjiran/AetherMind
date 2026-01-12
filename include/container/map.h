@@ -308,22 +308,27 @@ ObjectPtr<SmallMapObj<K, V, Hasher>> SmallMapObj<K, V, Hasher>::CopyFrom(const S
     return impl;
 }
 
+struct MagicConstants {
+    // 0b11111111 represent that the slot is empty
+    static constexpr auto kEmptySlot = std::byte{0xFF};
+    // 0b11111110 represent that the slot is protected
+    static constexpr auto kProtectedSlot = std::byte{0xFE};
+    // Number of probing choices available
+    static constexpr int kNumOffsetDists = 126;
+    // head flag
+    static constexpr auto kHeadFlag = std::byte{0x00};
+    // tail flag
+    static constexpr auto kTailFlag = std::byte{0x80};
+    // head flag mask
+    static constexpr auto kHeadFlagMask = std::byte{0x80};
+    // offset mask
+    static constexpr auto kOffsetIdxMask = std::byte{0x7F};
+    // default fib shift
+    static constexpr uint32_t kDefaultFibShift = 63;
 
-/*
-// 动态调整扩容因子，根据负载情况优化
-static constexpr double kMinLoadFactor = 0.1;
-static constexpr double kTargetLoadFactor = 0.7;
-
-// 计算更精确的扩容大小
-static size_type ComputeNewSlots(size_type current_slots, size_type new_elements) {
-    double target_load = static_cast<double>(current_slots + new_elements) / kTargetLoadFactor;
-    size_type new_slots = current_slots;
-    while (new_slots < target_load) {
-        new_slots <<= 1;
-    }
-    return new_slots;
-}
-*/
+    // next probe position offset
+    static const size_t NextProbePosOffset[kNumOffsetDists];
+};
 
 template<typename K, typename V, typename Hasher = hash<K>>
 class DenseMapObj : public MapObj<DenseMapObj<K, V, Hasher>, K, V, Hasher> {
@@ -346,11 +351,10 @@ private:
     // The number of elements in a memory block.
     static constexpr int kEntriesPerBlock = 16;
     // Max load factor of hash table
-    static constexpr double kMaxLoadFactor = 0.7;
+    static constexpr double kMaxLoadFactor = 0.75;
     // 0b11111111 representation of the metadata of an empty slot.
     static constexpr auto kEmptySlot = std::byte{0xFF};
     // 0b11111110 representation of the metadata of a protected slot.
-    // static constexpr uint8_t kProtectedSlot = 0xFE;
     static constexpr auto kProtectedSlot = std::byte{0xFE};
     // Number of probing choices available
     static constexpr int kNumOffsetDists = 126;
@@ -642,14 +646,15 @@ public:
 
     // Get metadata of an entry
     NODISCARD std::byte& GetSlotMetadata() const {
-        return GetBlock()->storage_[index() % kEntriesPerBlock];
+        // equal to index() % kEntriesPerBlock
+        return GetBlock()->storage_[index() & (kEntriesPerBlock - 1)];
     }
 
     // Get the entry ref
     NODISCARD Entry& GetEntry() const {
         CHECK(!IsNone()) << "The Cursor is none.";
         CHECK(!IsSlotEmpty()) << "The entry is empty.";
-        return *GetBlock()->GetEntryPtr(index() % kEntriesPerBlock);
+        return *GetBlock()->GetEntryPtr(index() & (kEntriesPerBlock - 1));
     }
 
     // Get KV
@@ -697,7 +702,7 @@ public:
 
     void ConstructEntry(Entry&& entry) const {
         CHECK(IsSlotEmpty());
-        new (GetBlock()->GetEntryPtr(index() % kEntriesPerBlock)) Entry(std::move(entry));
+        new (GetBlock()->GetEntryPtr(index() & (kEntriesPerBlock - 1))) Entry(std::move(entry));
     }
 
     // Destroy the item in the entry.
@@ -748,7 +753,8 @@ public:
 
         // The probing will go to the next pos and round back to stay within
         // the correct range of the slots.
-        index_ = (index_ + offset) % obj()->slots();
+        // equal to (index_ + offset) % obj()->slots()
+        index_ = (index_ + offset) & (obj()->slots() - 1);
         return true;
     }
 
@@ -769,7 +775,7 @@ public:
 
     NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
         for (uint8_t i = 1; i < kNumOffsetDists; ++i) {
-            if (Cursor candidate((index() + NextProbePosOffset[i]) % obj()->slots(), obj());
+            if (Cursor candidate((index() + NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
                 candidate.IsSlotEmpty()) {
                 return std::make_pair(i, candidate);
             }
@@ -892,7 +898,8 @@ DenseMapObj<K, V, Hasher>::Cursor DenseMapObj<K, V, Hasher>::Search(const key_ty
 }
 
 template<typename K, typename V, typename Hasher>
-std::pair<uint32_t, typename DenseMapObj<K, V, Hasher>::size_type> DenseMapObj<K, V, Hasher>::CalculateSlotCount(size_type cap) {
+std::pair<uint32_t, typename DenseMapObj<K, V, Hasher>::size_type>
+DenseMapObj<K, V, Hasher>::CalculateSlotCount(size_type cap) {
     uint32_t shift = 64;
     size_t slots = 1;
     if (cap == 1) {

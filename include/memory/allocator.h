@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_ALLOCATOR_H
 #define AETHERMIND_ALLOCATOR_H
 
-#include "container/map_depr.h"
+#include "container/map.h"
 #include "data_ptr.h"
 #include "device.h"
 #include "env.h"

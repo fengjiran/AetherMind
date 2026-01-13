@@ -103,6 +103,7 @@ public:
         return find(key) != end();
     }
 
+    iterator erase(iterator pos);
 
 private:
     // The number of elements in a memory block.
@@ -111,6 +112,8 @@ private:
     static constexpr double kMaxLoadFactor = 0.75;
     // default fib shift
     static constexpr uint32_t kDefaultFibShift = 63;
+
+    static constexpr size_type kIncFactor = 2;
 
     // Index indicator to indicate an invalid index.
     static constexpr size_type kInvalidIndex = std::numeric_limits<size_type>::max();
@@ -193,6 +196,44 @@ private:
         return size() + 1 > static_cast<size_type>(static_cast<double>(slots()) * kMaxLoadFactor);
     }
 
+    // Insert the entry into tail of iterator list.
+    // This function does not change data content of the node.
+    // or NodeListPushBack ?
+    void IterListPushBack(Cursor node);
+
+    // Remove the entry from iterator list.
+    // This function is usually used before deletion,
+    // and it does not change data content of the node.
+    void IterListRemove(Cursor node);
+
+    /*!
+   * \brief Replace node src by dst in the iter list
+   * \param src The source node
+   * \param dst The destination node, must be empty
+   * \note This function does not change data content of the nodes,
+   *       which needs to be updated by the caller.
+   */
+    void IterListReplace(Cursor src, Cursor dst);
+
+    /*!
+   * \brief Spare an entry to be the head of a linked list.
+   * As described in B3, during insertion, it is possible that the entire linked list does not
+   * exist, but the slot of its head has been occupied by other linked lists. In this case, we need
+   * to spare the slot by moving away the elements to another valid empty one to make insertion
+   * possible.
+   * \param target The given entry to be spared
+   * \return The linked-list entry constructed as the head, if actual insertion happens
+   */
+    std::optional<Cursor> TryAllocateListHead(Cursor target);
+
+    /*!
+     * \brief Try to insert a key, or do nothing if already exists
+     * \param kv The value pair
+     * \param assign Whether to assign for existing key
+     * \return The linked-list entry found or just constructed,indicating if actual insertion happens
+     */
+    std::pair<iterator, bool> TryInsertOrUpdate(value_type&& kv, bool assign = false);
+
     static size_type CalculateBlockCount(size_type total_slots) {
         return (total_slots + kEntriesPerBlock - 1) / kEntriesPerBlock;
     }
@@ -202,6 +243,12 @@ private:
     static std::pair<uint32_t, size_type> CalculateSlotCount(size_type cap);
 
     static ObjectPtr<MapImpl> Create(size_type n);
+
+    static ObjectPtr<MapImpl> CopyFrom(const MapImpl* src);
+
+    // may be rehash
+    static std::tuple<ObjectPtr<MapImpl>, iterator, bool> insert(
+            value_type&& kv, const ObjectPtr<MapImpl>& old_impl, bool assign = false);
 };
 
 template<typename K, typename V, typename Hasher>
@@ -446,25 +493,6 @@ private:
 };
 
 template<typename K, typename V, typename Hasher>
-std::pair<uint32_t, typename MapImpl<K, V, Hasher>::size_type>
-MapImpl<K, V, Hasher>::CalculateSlotCount(size_type cap) {
-    uint32_t shift = 64;
-    size_t slots = 1;
-    if (cap == 1) {
-        return {shift, slots};
-    }
-
-    size_t c = cap - 1;
-    while (c > 0) {
-        --shift;
-        slots <<= 1;
-        c >>= 1;
-    }
-    CHECK(slots >= cap);
-    return {shift, slots};
-}
-
-template<typename K, typename V, typename Hasher>
 MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key) {
     auto index = details::FibonacciHash(hasher()(key), fib_shift_);
     bool is_first = true;
@@ -495,6 +523,242 @@ MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key)
     }
 }
 
+template<typename K, typename V, typename Hasher>
+MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::erase(iterator pos) {
+    if (pos == end()) {
+        return end();
+    }
+
+    auto next_pos = pos + 1;
+
+    if (Cursor cur(pos.index(), this); cur.HasNextSlot()) {
+        Cursor prev = cur;
+        Cursor last = cur;
+        last.MoveToNextSlot();
+        while (last.HasNextSlot()) {
+            prev = last;
+            last.MoveToNextSlot();
+        }
+
+        // needs to first unlink node from the list
+        IterListRemove(cur);
+        // Move link chain of iter to last as we store last node to the new iter loc.
+        IterListReplace(last, cur);
+
+        auto cur_prev = cur.GetEntry().prev;
+        auto cur_next = cur.GetEntry().next;
+        auto cur_meta = cur.GetSlotMetadata();
+        cur.DestroyEntry();
+        cur.ConstructEntry(Entry{std::move(last.GetData()), cur_prev, cur_next});
+        cur.GetSlotMetadata() = cur_meta;
+        last.DestroyEntry();
+        prev.SetNextSlotOffsetIndex(0);
+    } else {// the last node
+        if (!cur.IsHead()) {
+            // cut the link if there is any
+            cur.FindPrevSlot().SetNextSlotOffsetIndex(0);
+        }
+        // unlink the node from iterator list
+        IterListRemove(cur);
+        cur.DestroyEntry();
+        cur.MarkSlotAsEmpty();
+    }
+    --this->size_;
+    return next_pos;
+}
+
+
+template<typename K, typename V, typename Hasher>
+void MapImpl<K, V, Hasher>::IterListPushBack(Cursor node) {
+    node.GetEntry().prev = iter_list_tail_;
+    node.GetEntry().next = kInvalidIndex;
+
+    if (iter_list_head_ == kInvalidIndex && iter_list_tail_ == kInvalidIndex) {
+        iter_list_head_ = node.index();
+    } else {
+        Cursor(iter_list_tail_, this).GetEntry().next = node.index();
+    }
+
+    iter_list_tail_ = node.index();
+}
+
+template<typename K, typename V, typename Hasher>
+void MapImpl<K, V, Hasher>::IterListRemove(Cursor node) {
+    // head
+    if (node.IsIterListHead()) {
+        iter_list_head_ = node.GetEntry().next;
+    } else {
+        Cursor prev_node(node.GetEntry().prev, this);
+        prev_node.GetEntry().next = node.GetEntry().next;
+    }
+
+    // tail
+    if (node.IsIterListTail()) {
+        iter_list_tail_ = node.GetEntry().prev;
+    } else {
+        Cursor next_node(node.GetEntry().next, this);
+        next_node.GetEntry().prev = node.GetEntry().prev;
+    }
+}
+
+template<typename K, typename V, typename Hasher>
+void MapImpl<K, V, Hasher>::IterListReplace(Cursor src, Cursor dst) {
+    dst.GetEntry().prev = src.GetEntry().prev;
+    dst.GetEntry().next = src.GetEntry().next;
+
+    if (src.IsIterListHead()) {
+        iter_list_head_ = dst.index();
+    } else {
+        Cursor prev_node(src.GetEntry().prev, this);
+        prev_node.GetEntry().next = dst.index();
+    }
+
+    if (src.IsIterListTail()) {
+        iter_list_tail_ = dst.index();
+    } else {
+        Cursor next_node(src.GetEntry().next, this);
+        next_node.GetEntry().prev = dst.index();
+    }
+}
+
+template<typename K, typename V, typename Hasher>
+std::optional<typename MapImpl<K, V, Hasher>::Cursor> MapImpl<K, V, Hasher>::TryAllocateListHead(Cursor target) {
+    // `target` is not the head of the linked list
+    // move the original item of `target`
+    // and construct new item on the position `target`
+    // To make `target` empty, we
+    // 1) find the previous element of `target` in the linked list
+    // 2) move the linked list starting from `target`
+
+    // move from the linked list after `r`
+    Cursor r = target;
+    // write to the tail of `prev`
+    Cursor prev = target.FindPrevSlot();
+    // after `target` is moved, we disallow writing to the slot
+    bool is_first = true;
+    std::byte r_meta;
+
+    do {
+        const auto empty_slot_info = prev.GetNextEmptySlot();
+        if (!empty_slot_info) {
+            return std::nullopt;
+        }
+
+        auto [offset_idx, empty] = empty_slot_info.value();
+
+        // move `r` to `empty`
+        // first move the data
+        empty.CreateTail(Entry{std::move(r.GetData())});
+        // then move link list chain of r to empty
+        // this needs to happen after NewTail so empty's prev/next get updated
+        IterListReplace(r, empty);
+        // clear the metadata of `r`
+        r_meta = r.GetSlotMetadata();
+        r.DestroyEntry();
+        if (is_first) {
+            is_first = false;
+            r.MarkSlotAsProtected();
+        }
+
+        // link `prev` to `empty`, and move forward
+        prev.SetNextSlotOffsetIndex(offset_idx);
+        prev = empty;
+    } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
+
+    return target;
+}
+
+template<typename K, typename V, typename Hasher>
+std::pair<typename MapImpl<K, V, Hasher>::iterator, bool> MapImpl<K, V, Hasher>::TryInsertOrUpdate(value_type&& kv, bool assign) {
+    // The key is already in the hash table
+    if (auto it = find(kv.first); it != end()) {
+        if (assign) {
+            Cursor cur{it.index(), it.ptr()};
+            cur.GetValue() = std::move(kv.second);
+            IterListRemove(cur);
+            IterListPushBack(cur);
+        }
+        return {it, false};
+    }
+
+    // `node` can be:
+    // 1) empty;
+    // 2) body of an irrelevant list;
+    // 3) head of the relevant list.
+    auto node = CreateCursorFromHash(hasher()(kv.first));
+
+    // Case 1: empty
+    if (node.IsSlotEmpty()) {
+        node.CreateHead(Entry{std::move(kv)});
+        ++this->size_;
+        IterListPushBack(node);
+        return {iterator(node.index(), this), true};
+    }
+
+    // Case 2: body of an irrelevant list
+    if (!node.IsHead()) {
+        if (IsFull()) {
+            return {end(), false};
+        }
+
+        if (const auto target = TryAllocateListHead(node);
+            target.has_value()) {
+            target->CreateHead(Entry{std::move(kv)});
+            ++this->size_;
+            IterListPushBack(target.value());
+            return {iterator(target->index(), this), true};
+        }
+        return {end(), false};
+    }
+
+    // Case 3: head of the relevant list
+    // we iterate through the linked list until the end
+    // make sure `node` is the prev element of `cur`
+    Cursor cur = node;
+    while (cur.MoveToNextSlot()) {
+        // make sure `node` is the previous element of `cur`
+        node = cur;
+    }
+
+    // `node` is the tail of the linked list
+    // always check capacity before insertion
+    if (IsFull()) {
+        return {end(), false};
+    }
+
+    // find the next empty slot
+    auto empty_slot_info = node.GetNextEmptySlot();
+    if (!empty_slot_info) {
+        return {end(), false};
+    }
+    auto [offset_idx, empty] = empty_slot_info.value();
+    empty.CreateTail(Entry{std::move(kv)});
+    // link `iter` to `empty`, and move forward
+    node.SetNextSlotOffsetIndex(offset_idx);
+    IterListPushBack(empty);
+    ++this->size_;
+    return {iterator(empty.index(), this), true};
+}
+
+
+template<typename K, typename V, typename Hasher>
+std::pair<uint32_t, typename MapImpl<K, V, Hasher>::size_type>
+MapImpl<K, V, Hasher>::CalculateSlotCount(size_type cap) {
+    uint32_t shift = 64;
+    size_t slots = 1;
+    if (cap == 1) {
+        return {shift, slots};
+    }
+
+    size_t c = cap - 1;
+    while (c > 0) {
+        --shift;
+        slots <<= 1;
+        c >>= 1;
+    }
+    CHECK(slots >= cap);
+    return {shift, slots};
+}
 
 template<typename K, typename V, typename Hasher>
 ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::Create(size_type n) {
@@ -515,6 +779,45 @@ ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::Create(size_type n) {
 
     return impl;
 }
+
+template<typename K, typename V, typename Hasher>
+ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::CopyFrom(const MapImpl* src) {
+    auto impl = Create(src->slots());
+    auto block_num = CalculateBlockCount(src->slots());
+    impl->size_ = src->size();
+    impl->iter_list_head_ = src->iter_list_head_;
+    impl->iter_list_tail_ = src->iter_list_tail_;
+
+    auto* p = static_cast<Block*>(impl->data());
+    for (size_t i = 0; i < block_num; ++i) {
+        new (p + i) Block(*src->GetBlockByIndex(i));
+    }
+
+    return impl;
+}
+
+template<typename K, typename V, typename Hasher>
+std::tuple<ObjectPtr<MapImpl<K, V, Hasher>>, typename MapImpl<K, V, Hasher>::iterator, bool>
+MapImpl<K, V, Hasher>::insert(value_type&& kv, const ObjectPtr<MapImpl>& old_impl, bool assign) {
+    if (auto [it, is_success] = old_impl->TryInsertOrUpdate(std::move(kv), assign); it != old_impl->end()) {
+        return {old_impl, it, is_success};
+    }
+
+    // Otherwise, start rehash
+    auto new_impl = Create(old_impl->slots() * kIncFactor);
+    // need to insert in the same order as the original map
+    size_t idx = old_impl->iter_list_head_;
+    while (idx != kInvalidIndex) {
+        Cursor cur(idx, old_impl.get());
+        new_impl->TryInsertOrUpdate(std::move(cur.GetData()), assign);
+        idx = cur.GetEntry().next;
+        cur.DestroyEntry();
+    }
+
+    auto [pos, is_success] = new_impl->TryInsertOrUpdate(std::move(kv), assign);
+    return {new_impl, pos, is_success};
+}
+
 
 template<typename K, typename V, typename Hasher>
 template<bool IsConst>
@@ -656,6 +959,14 @@ public:
     using reference = value_type&;
     using const_reference = const value_type&;
 
+    template<bool IsConst>
+    class IteratorImpl;
+
+    using iterator = IteratorImpl<false>;
+    using const_iterator = IteratorImpl<true>;
+
+    MapV1() = default;
+
     NODISCARD size_type size() const noexcept {
         return size_;
     }
@@ -669,11 +980,11 @@ public:
     }
 
     NODISCARD pointer data() noexcept {
-        return IsLocal() ? local_buffer_ : impl_->data();
+        return IsLocal() ? local_buffer_ : dense_impl_->data();
     }
 
     NODISCARD bool IsLocal() const noexcept {
-        return !impl_;
+        return !dense_impl_;
     }
 
 private:
@@ -685,7 +996,7 @@ private:
     };
 
     size_type size_ = 0;
-    ObjectPtr<MapImpl<K, V, Hasher>> impl_;
+    ObjectPtr<MapImpl<K, V, Hasher>> dense_impl_;
 };
 
 }// namespace aethermind

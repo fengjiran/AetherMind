@@ -95,6 +95,15 @@ public:
 
     iterator find(const key_type& key);
 
+    const_iterator find(const key_type& key) const {
+        return const_cast<MapImpl*>(this)->find(key);
+    }
+
+    NODISCARD size_type count(const key_type& key) const {
+        return find(key) != end();
+    }
+
+
 private:
     // The number of elements in a memory block.
     static constexpr int kEntriesPerBlock = 16;

@@ -103,7 +103,7 @@ public:
         return find(key) != end();
     }
 
-    iterator erase(iterator pos);
+    iterator erase(const_iterator pos);
 
 private:
     // The number of elements in a memory block.
@@ -278,10 +278,6 @@ struct MapImpl<K, V, Hasher>::Entry {
     explicit Entry(value_type&& kv) : data(std::move(kv)), prev(kInvalidIndex), next(kInvalidIndex) {}
     Entry(value_type&& kv, size_type p, size_type n) : data(std::move(kv)), prev(p), next(n) {}
 
-    ~Entry() {
-        reset();
-    }
-
     void reset() {
         data.~value_type();
         prev = kInvalidIndex;
@@ -295,13 +291,13 @@ struct MapImpl<K, V, Hasher>::Block {
 
     Block() {// NOLINT
         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            storage_[i] = MagicConstants::kEmptySlot;
+            storage_[i] = MagicConstantsV1::kEmptySlot;
         }
     }
 
     Block(const Block& other) {// NOLINT
         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            if (other.storage_[i] != MagicConstants::kEmptySlot) {
+            if (other.storage_[i] != MagicConstantsV1::kEmptySlot) {
                 storage_[i] = other.storage_[i];
                 new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
             }
@@ -310,8 +306,8 @@ struct MapImpl<K, V, Hasher>::Block {
 
     ~Block() {
         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            if (storage_[i] != MagicConstants::kEmptySlot) {
-                storage_[i] = MagicConstants::kEmptySlot;
+            if (storage_[i] != MagicConstantsV1::kEmptySlot) {
+                storage_[i] = MagicConstantsV1::kEmptySlot;
                 GetEntryPtr(i)->~Entry();
             }
         }
@@ -391,29 +387,29 @@ struct MapImpl<K, V, Hasher>::Cursor {
     }
 
     NODISCARD bool IsSlotEmpty() const {
-        return GetSlotMetadata() == MagicConstants::kEmptySlot;
+        return GetSlotMetadata() == MagicConstantsV1::kEmptySlot;
     }
 
     NODISCARD bool IsSlotProtected() const {
-        return GetSlotMetadata() == MagicConstants::kProtectedSlot;
+        return GetSlotMetadata() == MagicConstantsV1::kProtectedSlot;
     }
 
     NODISCARD bool IsHead() const {
-        return (GetSlotMetadata() & MagicConstants::kHeadFlagMask) == MagicConstants::kHeadFlag;
+        return (GetSlotMetadata() & MagicConstantsV1::kHeadFlagMask) == MagicConstantsV1::kHeadFlag;
     }
 
     void MarkSlotAsEmpty() const {
-        GetSlotMetadata() = MagicConstants::kEmptySlot;
+        GetSlotMetadata() = MagicConstantsV1::kEmptySlot;
     }
 
     void MarkSlotAsProtected() const {
-        GetSlotMetadata() = MagicConstants::kProtectedSlot;
+        GetSlotMetadata() = MagicConstantsV1::kProtectedSlot;
     }
 
     // Set the entry's offset to its next entry.
     void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
-        CHECK(offset_idx < MagicConstants::kNumOffsetDists);
-        (GetSlotMetadata() &= MagicConstants::kHeadFlagMask) |= std::byte{offset_idx};
+        CHECK(offset_idx < MagicConstantsV1::kNumOffsetDists);
+        (GetSlotMetadata() &= MagicConstantsV1::kHeadFlagMask) |= std::byte{offset_idx};
     }
 
     void ConstructEntry(Entry&& entry) const {
@@ -439,7 +435,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetSlotMetadata() = MagicConstants::kHeadFlag;
+        GetSlotMetadata() = MagicConstantsV1::kHeadFlag;
     }
 
     // Construct a tail of linked list inplace
@@ -448,20 +444,20 @@ struct MapImpl<K, V, Hasher>::Cursor {
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetSlotMetadata() = MagicConstants::kTailFlag;
+        GetSlotMetadata() = MagicConstantsV1::kTailFlag;
     }
 
     // Whether the slot has the next slot on the linked list
     NODISCARD bool HasNextSlot() const {
-        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & MagicConstants::kOffsetIdxMask);
-        return MagicConstants::NextProbePosOffset[idx] != 0;
+        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & MagicConstantsV1::kOffsetIdxMask);
+        return MagicConstantsV1::NextProbePosOffset[idx] != 0;
     }
 
     // Move the current cursor to the next slot on the linked list
     bool MoveToNextSlot(std::optional<std::byte> meta_opt = std::nullopt) {
         std::byte meta = meta_opt ? meta_opt.value() : GetSlotMetadata();
-        const auto idx = std::to_integer<uint8_t>(meta & MagicConstants::kOffsetIdxMask);
-        const auto offset = MagicConstants::NextProbePosOffset[idx];
+        const auto idx = std::to_integer<uint8_t>(meta & MagicConstantsV1::kOffsetIdxMask);
+        const auto offset = MagicConstantsV1::NextProbePosOffset[idx];
         if (offset == 0) {
             reset();
             return false;
@@ -491,8 +487,8 @@ struct MapImpl<K, V, Hasher>::Cursor {
     }
 
     NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
-        for (uint8_t i = 1; i < MagicConstants::kNumOffsetDists; ++i) {
-            if (Cursor candidate((index() + MagicConstants::NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
+        for (uint8_t i = 1; i < MagicConstantsV1::kNumOffsetDists; ++i) {
+            if (Cursor candidate((index() + MagicConstantsV1::NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
                 candidate.IsSlotEmpty()) {
                 return std::make_pair(i, candidate);
             }
@@ -517,7 +513,7 @@ MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key)
         auto* block = GetBlockByIndex(block_idx);
         auto meta = block->storage_[inner_idx];
         if (is_first) {
-            if ((meta & MagicConstants::kHeadFlagMask) != MagicConstants::kHeadFlag) {
+            if ((meta & MagicConstantsV1::kHeadFlagMask) != MagicConstantsV1::kHeadFlag) {
                 return end();
             }
             is_first = false;
@@ -527,19 +523,19 @@ MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key)
             return {index, this};
         }
 
-        auto offset_idx = std::to_integer<uint8_t>(meta & MagicConstants::kOffsetIdxMask);
+        auto offset_idx = std::to_integer<uint8_t>(meta & MagicConstantsV1::kOffsetIdxMask);
         if (offset_idx == 0) {
             return end();
         }
 
-        auto offset = MagicConstants::NextProbePosOffset[offset_idx];
+        auto offset = MagicConstantsV1::NextProbePosOffset[offset_idx];
         auto t = index + offset;
         index = t >= slots() ? t & slots() - 1 : t;
     }
 }
 
 template<typename K, typename V, typename Hasher>
-MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::erase(iterator pos) {
+MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::erase(const_iterator pos) {
     if (pos == end()) {
         return end();
     }
@@ -579,7 +575,7 @@ MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::erase(iterator pos) {
         cur.MarkSlotAsEmpty();
     }
     --this->size_;
-    return next_pos;
+    return {next_pos.index(), this};
 }
 
 
@@ -840,7 +836,7 @@ class MapImpl<K, V, Hasher>::IteratorImpl {
 public:
     using iterator_category = std::bidirectional_iterator_tag;
     using ContainerPtrType = std::conditional_t<IsConst, const MapImpl*, MapImpl*>;
-    // using value_type = value_type;
+    using value_type = MapImpl<K, V, Hasher>::value_type;
     using pointer = std::conditional_t<IsConst, const value_type*, value_type*>;
     using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
     using difference_type = std::ptrdiff_t;
@@ -976,9 +972,9 @@ public:
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
-    MapV1() = default;
+    MapV1() : impl_(ContainerType::Create(16)) {}
 
-    explicit MapV1(size_type n) : impl_(ContainerType::Create(n)) {}
+    explicit MapV1(size_type n) : impl_(ContainerType::Create(std::max(n, static_cast<size_type>(16)))) {}
 
     template<typename Iter>
         requires requires(Iter t) {
@@ -989,7 +985,7 @@ public:
         auto _sz = std::distance(first, last);
         if (_sz > 0) {
             const auto size = static_cast<size_type>(_sz);
-            impl_ = ContainerType::Create(size);
+            impl_ = ContainerType::Create(std::max(size, static_cast<size_type>(16)));
             while (first != last) {
                 impl_ = std::get<0>(ContainerType::insert(value_type(*first++), impl_));
             }
@@ -1002,6 +998,14 @@ public:
 
     MapV1(MapV1&&) noexcept = default;
 
+    MapV1& operator=(const MapV1& other) = default;
+
+    MapV1& operator=(MapV1&& other) noexcept = default;
+
+    MapV1& operator=(std::initializer_list<value_type> list) {
+        MapV1(list).swap(*this);
+        return *this;
+    }
 
     NODISCARD size_type size() const noexcept {
         return impl_->size();
@@ -1077,23 +1081,23 @@ public:
         return it->second;
     }
 
-    // mapped_type& operator[](const key_type& key) {
-    //     auto it = find(key);
-    //     if (it == end()) {
-    //         auto [iter, _] = insert(key, mapped_type{});
-    //         return iter->second;
-    //     }
-    //     return it->second;
-    // }
+    mapped_type& operator[](const key_type& key) {
+        auto it = find(key);
+        if (it == end()) {
+            auto [iter, _] = insert(key, mapped_type{});
+            return iter->second;
+        }
+        return it->second;
+    }
 
-    // mapped_type& operator[](key_type&& key) {
-    //     auto it = find(key);
-    //     if (it == end()) {
-    //         auto [iter, _] = insert(std::move(key), mapped_type{});
-    //         return iter->second;
-    //     }
-    //     return it->second;
-    // }
+    mapped_type& operator[](key_type&& key) {
+        auto it = find(key);
+        if (it == end()) {
+            auto [iter, _] = insert(std::move(key), mapped_type{});
+            return iter->second;
+        }
+        return it->second;
+    }
 
     std::pair<iterator, bool> insert(value_type&& x) {
         return insert_(std::move(x), false);
@@ -1147,15 +1151,23 @@ public:
 
     iterator erase(iterator pos) {
         return erase(const_iterator(pos));
+        // if (pos == end()) {
+        //     return end();
+        // }
+        // COW();
+        // typename ContainerType::iterator it(pos.index(), pos.ptr());
+        // return iterator(impl_->erase(it));
     }
 
     iterator erase(const_iterator pos) {
+        // return erase(iterator(pos.index(), pos.ptr()));
         if (pos == end()) {
             return end();
         }
 
         COW();
-        return iterator(impl_->erase({pos.index(), pos.ptr()}));
+        typename ContainerType::const_iterator it(pos.index(), pos.ptr());
+        return iterator(impl_->erase(it));
     }
 
     size_type erase(const key_type& key) {
@@ -1194,7 +1206,8 @@ public:
     }
 
     void clear() noexcept {
-        impl_.reset();
+        // impl_.reset();
+        impl_ = ContainerType::Create(ContainerType::kEntriesPerBlock);
     }
 
     void swap(MapV1& other) noexcept {
@@ -1233,6 +1246,7 @@ public:
                                               typename ContainerType::iterator>;
     using ContainerPtrType = impl_iter_type::ContainerPtrType;
     using iterator_category = impl_iter_type::iterator_category;
+    using value_type = impl_iter_type::value_type;
     using difference_type = impl_iter_type::difference_type;
     using pointer = impl_iter_type::pointer;
     using reference = impl_iter_type::reference;

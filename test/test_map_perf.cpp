@@ -1,7 +1,8 @@
 //
 // Created by richard on 1/10/26.
 //
-#include "container/map.h"
+// #include "container/map.h"
+#include "container/map_v1.h"
 #include "test_utils.h"
 
 #include <gtest/gtest.h>
@@ -36,7 +37,7 @@ TEST(MapBenchMarkTest, InsertPerformance) {
         auto small_data = GenerateRandomData(SMALL_SIZE);
         {
             Timer timer("Map small insert");
-            Map<int, int> map;
+            MapV1<int, int> map;
             for (const auto& [key, value]: small_data) {
                 map.insert(key, value);
             }
@@ -56,7 +57,7 @@ TEST(MapBenchMarkTest, InsertPerformance) {
         auto medium_data = GenerateRandomData(MEDIUM_SIZE);
         {
             Timer timer("Map medium insert");
-            Map<int, int> map;
+            MapV1<int, int> map;
             for (const auto& [key, value]: medium_data) {
                 map.insert(key, value);
             }
@@ -76,7 +77,7 @@ TEST(MapBenchMarkTest, InsertPerformance) {
         auto large_data = GenerateRandomData(LARGE_SIZE);
         {
             Timer timer("Map large insert");
-            Map<int, int> map;
+            MapV1<int, int> map;
             for (const auto& [key, value]: large_data) {
                 map.insert(key, value);
             }
@@ -95,7 +96,7 @@ TEST(MapBenchMarkTest, InsertPerformance) {
 // find performance test
 TEST(MapBenchMarkTest, FindPerformance) {
     // prepare dataset
-    Map<int, int> map;
+    MapV1<int, int> map;
     std::unordered_map<int, int> std_map;
     auto large_data = GenerateRandomData(LARGE_SIZE);
 
@@ -133,7 +134,7 @@ TEST(MapBenchMarkTest, ErasePerformance) {
     // 测试Map删除性能
     {
         Timer timer("Map erase");
-        Map<int, int> map;
+        MapV1<int, int> map;
         for (const auto& [key, value]: medium_data) {
             map.insert(key, value);
         }
@@ -164,7 +165,7 @@ TEST(MapBenchMarkTest, ErasePerformance) {
 // traverse performance test
 TEST(MapBenchMarkTest, TraversePerformance) {
     // 准备数据
-    Map<int, int> map;
+    MapV1<int, int> map;
     std::unordered_map<int, int> std_map;
     auto large_data = GenerateRandomData(LARGE_SIZE);
 
@@ -199,7 +200,7 @@ TEST(MapBenchMarkTest, OperatorBracketPerformance) {
     // 测试Map的operator[]性能
     {
         Timer timer("Map operator[]");
-        Map<int, int> map;
+        MapV1<int, int> map;
         for (size_t i = 0; i < medium_data_.size(); ++i) {
             map[static_cast<int>(i)] = static_cast<int>(i * 2);
         }
@@ -230,7 +231,7 @@ TEST(MapBenchMarkTest, OperatorBracketPerformance) {
 TEST(MapBenchMarkTest, CopyAndMovePerformance) {
     auto medium_data = GenerateRandomData(MEDIUM_SIZE);
     // 准备数据
-    Map<int, int> map;
+    MapV1<int, int> map;
     for (const auto& [key, value]: medium_data) {
         map.insert(key, value);
     }
@@ -238,14 +239,14 @@ TEST(MapBenchMarkTest, CopyAndMovePerformance) {
     // 测试拷贝性能
     {
         Timer timer("Map copy");
-        Map<int, int> map_copy(map);
+        MapV1<int, int> map_copy(map);
         EXPECT_EQ(map_copy.size(), map.size());
     }
 
     // 测试移动性能
     {
         Timer timer("Map move");
-        Map<int, int> map_move(std::move(map));
+        MapV1<int, int> map_move(std::move(map));
         EXPECT_LE(map_move.size(), medium_data.size());
         EXPECT_TRUE(map.empty());
     }

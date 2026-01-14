@@ -160,26 +160,23 @@ private:
         return static_cast<Block*>(data()) + block_idx;
     }
 
-    // NODISCARD const Block* GetBlockByIndex(size_type block_idx) const {
-    //     return const_cast<MapImpl*>(this)->GetBlockByIndex(block_idx);
-    // }
-
     NODISCARD Entry* GetEntryByIndex(size_type index) const {
         auto* block = GetBlockByIndex(index / kEntriesPerBlock);
         return block->GetEntryPtr(index & (kEntriesPerBlock - 1));
     }
 
-    // NODISCARD const Entry* GetEntryByIndex(size_type index) const {
-    //     return const_cast<MapImpl*>(this)->GetEntryByIndex(index);
-    // }
+    // Construct a ListNode from hash code if the position is head of list
+    NODISCARD std::optional<Cursor> FindListHeadByHash(size_t hash_value) const {
+        if (const auto head = CreateCursorFromHash(hash_value); head.IsHead()) {
+            return head;
+        }
+
+        return std::nullopt;
+    }
 
     NODISCARD value_type* GetDataPtr(size_t index) const {
         return &GetEntryByIndex(index)->data;
     }
-
-    // NODISCARD const value_type* GetDataPtr(size_t index) const {
-    //     return &GetEntryByIndex(index)->data;
-    // }
 
     NODISCARD size_type GetNextIndexOf(size_type index) const {
         // keep at the end of iterator

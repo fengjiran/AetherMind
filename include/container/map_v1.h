@@ -156,18 +156,30 @@ private:
         fib_shift_ = 63;
     }
 
-    NODISCARD Block* GetBlockByIndex(size_type block_idx) {
-        return static_cast<Block*>(data_) + block_idx;
+    NODISCARD Block* GetBlockByIndex(size_type block_idx) const {
+        return static_cast<Block*>(data()) + block_idx;
     }
 
-    NODISCARD Entry* GetEntryByIndex(size_type index) {
+    // NODISCARD const Block* GetBlockByIndex(size_type block_idx) const {
+    //     return const_cast<MapImpl*>(this)->GetBlockByIndex(block_idx);
+    // }
+
+    NODISCARD Entry* GetEntryByIndex(size_type index) const {
         auto* block = GetBlockByIndex(index / kEntriesPerBlock);
         return block->GetEntryPtr(index & (kEntriesPerBlock - 1));
     }
 
-    NODISCARD value_type* GetDataPtr(size_t index) {
+    // NODISCARD const Entry* GetEntryByIndex(size_type index) const {
+    //     return const_cast<MapImpl*>(this)->GetEntryByIndex(index);
+    // }
+
+    NODISCARD value_type* GetDataPtr(size_t index) const {
         return &GetEntryByIndex(index)->data;
     }
+
+    // NODISCARD const value_type* GetDataPtr(size_t index) const {
+    //     return &GetEntryByIndex(index)->data;
+    // }
 
     NODISCARD size_type GetNextIndexOf(size_type index) const {
         // keep at the end of iterator
@@ -249,6 +261,9 @@ private:
     // may be rehash
     static std::tuple<ObjectPtr<MapImpl>, iterator, bool> insert(
             value_type&& kv, const ObjectPtr<MapImpl>& old_impl, bool assign = false);
+
+    template<typename, typename, typename>
+    friend class MapV1;
 };
 
 template<typename K, typename V, typename Hasher>
@@ -701,7 +716,7 @@ std::pair<typename MapImpl<K, V, Hasher>::iterator, bool> MapImpl<K, V, Hasher>:
             return {end(), false};
         }
 
-        if (const auto target = TryAllocateListHead(node);
+        if (auto target = TryAllocateListHead(node);
             target.has_value()) {
             target->CreateHead(Entry{std::move(kv)});
             ++this->size_;
@@ -825,20 +840,21 @@ class MapImpl<K, V, Hasher>::IteratorImpl {
 public:
     using iterator_category = std::bidirectional_iterator_tag;
     using ContainerPtrType = std::conditional_t<IsConst, const MapImpl*, MapImpl*>;
+    // using value_type = value_type;
     using pointer = std::conditional_t<IsConst, const value_type*, value_type*>;
     using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
     using difference_type = std::ptrdiff_t;
 
     IteratorImpl() noexcept : index_(0), ptr_(nullptr) {}
 
-    IteratorImpl(size_t index, ContainerPtrType ptr) noexcept : index_(index), ptr_(ptr) {}
+    IteratorImpl(size_type index, ContainerPtrType ptr) noexcept : index_(index), ptr_(ptr) {}
 
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
         requires(IsConst && !AlwaysFalse)
     IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
 
-    NODISCARD size_t index() const noexcept {
+    NODISCARD size_type index() const noexcept {
         return index_;
     }
 
@@ -910,14 +926,12 @@ public:
     }
 
     IteratorImpl operator+(difference_type offset) const {
-        Check();
         auto res = *this;
         res += offset;
         return res;
     }
 
     IteratorImpl operator-(difference_type offset) const {
-        Check();
         auto res = *this;
         res -= offset;
         return res;
@@ -948,16 +962,13 @@ private:
 template<typename K, typename V, typename Hasher = hash<K>>
 class MapV1 : public ObjectRef {
 public:
-    using key_type = K;
-    using mapped_type = V;
-    using value_type = std::pair<const key_type, mapped_type>;
+    using ContainerType = MapImpl<K, V, Hasher>;
+
+    using key_type = ContainerType::key_type;
+    using mapped_type = ContainerType::mapped_type;
+    using value_type = ContainerType::value_type;
+    using size_type = ContainerType::size_type;
     using hasher = Hasher;
-    using size_type = size_t;
-    using difference_type = std::ptrdiff_t;
-    using pointer = value_type*;
-    using const_pointer = const value_type*;
-    using reference = value_type&;
-    using const_reference = const value_type&;
 
     template<bool IsConst>
     class IteratorImpl;
@@ -967,36 +978,353 @@ public:
 
     MapV1() = default;
 
+    explicit MapV1(size_type n) : impl_(ContainerType::Create(n)) {}
+
+    template<typename Iter>
+        requires requires(Iter t) {
+            requires details::is_valid_iter_v1<Iter>;
+            { *t } -> std::convertible_to<value_type>;
+        }
+    MapV1(Iter first, Iter last) {
+        auto _sz = std::distance(first, last);
+        if (_sz > 0) {
+            const auto size = static_cast<size_type>(_sz);
+            impl_ = ContainerType::Create(size);
+            while (first != last) {
+                impl_ = std::get<0>(ContainerType::insert(value_type(*first++), impl_));
+            }
+        }
+    }
+
+    MapV1(std::initializer_list<value_type> list) : MapV1(list.begin(), list.end()) {}
+
+    MapV1(const MapV1&) = default;
+
+    MapV1(MapV1&&) noexcept = default;
+
+
     NODISCARD size_type size() const noexcept {
-        return size_;
+        return impl_->size();
     }
 
     NODISCARD size_type slots() const noexcept {
-        return IsLocal() ? kThreshold : slots_;
+        return impl_->slots();
     }
 
     NODISCARD bool empty() const noexcept {
-        return size_ == 0;
+        return size() == 0;
     }
 
-    NODISCARD pointer data() noexcept {
-        return IsLocal() ? local_buffer_ : dense_impl_->data();
+    NODISCARD uint32_t use_count() const noexcept {
+        return impl_.use_count();
     }
 
-    NODISCARD bool IsLocal() const noexcept {
-        return !dense_impl_;
+    NODISCARD bool unique() const noexcept {
+        return use_count() == 1;
+    }
+
+    NODISCARD void* data() noexcept {
+        return impl_->data();
+    }
+
+    iterator begin() noexcept {
+        return iterator(impl_->begin());
+    }
+
+    iterator end() noexcept {
+        return iterator(impl_->end());
+    }
+
+    const_iterator begin() const noexcept {
+        return const_cast<MapV1*>(this)->begin();
+    }
+
+    const_iterator end() const noexcept {
+        return const_cast<MapV1*>(this)->end();
+    }
+
+    iterator find(const key_type& key) {
+        return iterator(impl_->find(key));
+    }
+
+    const_iterator find(const key_type& key) const {
+        return const_cast<MapV1*>(this)->find(key);
+    }
+
+    bool contains(const key_type& key) const {
+        return find(key) != end();
+    }
+
+    NODISCARD size_type count(const key_type& key) const {
+        return contains(key) ? 1 : 0;
+    }
+
+    mapped_type& at(const key_type& key) {
+        auto it = find(key);
+        if (it == end()) {
+            AETHERMIND_THROW(KeyError) << "Key does not exist";
+        }
+
+        return it->second;
+    }
+
+    const mapped_type& at(const key_type& key) const {
+        return const_cast<MapV1*>(this)->at(key);
+    }
+
+    const mapped_type& operator[](const key_type& key) const {
+        auto it = find(key);
+        return it->second;
+    }
+
+    // mapped_type& operator[](const key_type& key) {
+    //     auto it = find(key);
+    //     if (it == end()) {
+    //         auto [iter, _] = insert(key, mapped_type{});
+    //         return iter->second;
+    //     }
+    //     return it->second;
+    // }
+
+    // mapped_type& operator[](key_type&& key) {
+    //     auto it = find(key);
+    //     if (it == end()) {
+    //         auto [iter, _] = insert(std::move(key), mapped_type{});
+    //         return iter->second;
+    //     }
+    //     return it->second;
+    // }
+
+    std::pair<iterator, bool> insert(value_type&& x) {
+        return insert_(std::move(x), false);
+    }
+
+    std::pair<iterator, bool> insert(const value_type& x) {
+        return insert_(value_type(x), false);
+    }
+
+    std::pair<iterator, bool> insert(const key_type& key, const mapped_type& value) {
+        return insert_({key, value}, false);
+    }
+
+    std::pair<iterator, bool> insert(key_type&& key, mapped_type&& value) {
+        return insert_({std::move(key), std::move(value)}, false);
+    }
+
+    template<typename Pair>
+        requires(std::constructible_from<value_type, Pair &&> &&
+                 !std::same_as<std::decay_t<Pair>, value_type>)
+    std::pair<iterator, bool> insert(Pair&& x) {
+        return insert_(value_type(std::forward<Pair>(x)), false);
+    }
+
+    template<typename Iter>
+        requires details::is_valid_iter_v1<Iter>
+    void insert(Iter first, Iter last) {
+        while (first != last) {
+            insert(*first++);
+        }
+    }
+
+    void insert(std::initializer_list<value_type> list) {
+        insert(list.begin(), list.end());
+    }
+
+    template<typename Obj>
+    std::pair<iterator, bool> insert_or_assign(key_type&& key, Obj&& obj) {
+        return insert_({std::move(key), std::forward<Obj>(obj)}, true);
+    }
+
+    template<typename Obj>
+    std::pair<iterator, bool> insert_or_assign(const key_type& key, Obj&& obj) {
+        return insert_({key, std::forward<Obj>(obj)}, true);
+    }
+
+    template<typename... Args>
+    std::pair<iterator, bool> emplace(Args&&... args) {
+        return insert_(value_type(std::forward<Args>(args)...), false);
+    }
+
+    iterator erase(iterator pos) {
+        return erase(const_iterator(pos));
+    }
+
+    iterator erase(const_iterator pos) {
+        if (pos == end()) {
+            return end();
+        }
+
+        COW();
+        return iterator(impl_->erase({pos.index(), pos.ptr()}));
+    }
+
+    size_type erase(const key_type& key) {
+        auto it = find(key);
+        if (it != end()) {
+            erase(it);
+            return 1;
+        }
+        return 0;
+    }
+
+    iterator erase(iterator first, iterator last) {
+        if (first == last) {
+            return first;
+        }
+
+        auto n = std::distance(first, last);
+        iterator it = first;
+        for (typename iterator::difference_type i = 0; i < n; ++i) {
+            it = erase(it++);
+        }
+        return it;
+    }
+
+    iterator erase(const_iterator first, const_iterator last) {
+        if (first == last) {
+            return first;
+        }
+
+        auto n = std::distance(first, last);
+        iterator it = first;
+        for (typename iterator::difference_type i = 0; i < n; ++i) {
+            it = erase(it++);
+        }
+        return it;
+    }
+
+    void clear() noexcept {
+        impl_.reset();
+    }
+
+    void swap(MapV1& other) noexcept {
+        std::swap(impl_, other.impl_);
     }
 
 private:
-    static constexpr size_type kThreshold = 4;
+    ObjectPtr<ContainerType> impl_;
 
-    union {
-        value_type local_buffer_[kThreshold];
-        size_type slots_ = 0;
-    };
+    std::pair<iterator, bool> insert_(value_type&& x, bool assign) {
+        if (!assign) {
+            auto it = find(x.first);
+            if (it != end()) {
+                return {it, false};
+            }
+        }
 
-    size_type size_ = 0;
-    ObjectPtr<MapImpl<K, V, Hasher>> dense_impl_;
+        COW();
+        auto [impl, pos, is_success] = ContainerType::insert(std::move(x), impl_, assign);
+        impl_ = impl;
+        return {iterator(pos), is_success};
+    }
+
+    void COW() {
+        if (!unique()) {
+            impl_ = ContainerType::CopyFrom(impl_.get());
+        }
+    }
+};
+
+template<typename K, typename V, typename Hasher>
+template<bool IsConst>
+class MapV1<K, V, Hasher>::IteratorImpl {
+public:
+    using impl_iter_type = std::conditional_t<IsConst, typename ContainerType::const_iterator,
+                                              typename ContainerType::iterator>;
+    using ContainerPtrType = impl_iter_type::ContainerPtrType;
+    using iterator_category = impl_iter_type::iterator_category;
+    using difference_type = impl_iter_type::difference_type;
+    using pointer = impl_iter_type::pointer;
+    using reference = impl_iter_type::reference;
+
+    IteratorImpl() = default;
+
+    IteratorImpl(size_type index, ContainerPtrType ptr) : iter_(index, ptr) {}
+
+    explicit IteratorImpl(const impl_iter_type& iter) : iter_(iter) {}
+
+    // iterator can convert to const_iterator
+    template<bool AlwaysFalse>
+        requires(IsConst && !AlwaysFalse)
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : iter_(other.iter_) {}//NOLINT
+
+    NODISCARD size_type index() const noexcept {
+        return iter_.index();
+    }
+
+    NODISCARD ContainerPtrType ptr() const noexcept {
+        return iter_.ptr();
+    }
+
+    pointer operator->() const {
+        return iter_.operator->();
+    }
+
+    reference operator*() const {
+        return iter_.operator*();
+    }
+
+    IteratorImpl& operator++() {
+        ++iter_;
+        return *this;
+    }
+
+    IteratorImpl& operator--() {
+        --iter_;
+        return *this;
+    }
+
+    IteratorImpl operator++(int) {
+        IteratorImpl tmp = *this;
+        operator++();
+        return tmp;
+    }
+
+    IteratorImpl operator--(int) {
+        IteratorImpl tmp = *this;
+        operator--();
+        return tmp;
+    }
+
+    IteratorImpl& operator+=(difference_type offset) {
+        iter_ += offset;
+        return *this;
+    }
+
+    IteratorImpl& operator-=(difference_type offset) {
+        iter_ -= offset;
+        return *this;
+    }
+
+    IteratorImpl operator+(difference_type offset) const {
+        auto res = *this;
+        res += offset;
+        return res;
+    }
+
+    IteratorImpl operator-(difference_type offset) const {
+        auto res = *this;
+        res -= offset;
+        return res;
+    }
+
+    difference_type operator-(const IteratorImpl& other) const {
+        return iter_ - other.iter_;
+    }
+
+    bool operator==(const IteratorImpl& other) const {
+        return iter_ == other.iter_;
+    }
+
+    bool operator!=(const IteratorImpl& other) const {
+        return iter_ != other.iter_;
+    }
+
+private:
+    impl_iter_type iter_;
+
+    template<bool>
+    friend class IteratorImpl;
 };
 
 }// namespace aethermind

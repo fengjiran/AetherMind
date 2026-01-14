@@ -2,6 +2,7 @@
 // Created by richard on 12/18/25.
 //
 #include "container/map.h"
+#include "container/map_v1.h"
 
 #include <gtest/gtest.h>
 #include <list>
@@ -27,13 +28,13 @@ namespace {
 using namespace aethermind;
 
 TEST(MapTest, basic) {
-    Map<int, int> dict;
+    MapV1<int, int> dict;
     EXPECT_TRUE(dict.empty());
-    EXPECT_EQ(dict.slots(), 4);
+    // EXPECT_EQ(dict.slots(), 4);
     dict.insert(1, 2);
     dict.insert(2, 3);
     EXPECT_EQ(dict.size(), 2);
-    EXPECT_TRUE(dict.IsSmallMap());
+    // EXPECT_TRUE(dict.IsSmallMap());
 
     EXPECT_EQ(dict[1], 2);
     EXPECT_EQ(dict[2], 3);
@@ -41,13 +42,13 @@ TEST(MapTest, basic) {
     dict.insert(3, 4);
     dict.insert(4, 5);
     EXPECT_EQ(dict.size(), 4);
-    EXPECT_TRUE(dict.IsSmallMap());
+    // EXPECT_TRUE(dict.IsSmallMap());
     EXPECT_EQ(dict.slots(), 4);
 
     dict.insert(5, 6);
     dict.insert(6, 7);
     EXPECT_EQ(dict.size(), 6);
-    EXPECT_TRUE(!dict.IsSmallMap());
+    // EXPECT_TRUE(!dict.IsSmallMap());
     auto it = dict.begin();
     EXPECT_EQ(it->first, 1);
     EXPECT_EQ(it->second, 2);
@@ -63,10 +64,6 @@ TEST(MapTest, basic) {
     auto it2 = data.erase(data.begin());
     EXPECT_EQ(it2->first, 1);
     EXPECT_EQ(it2->second, 3);
-
-    std::tuple<int, String> t = {1, "hello"};
-    auto hash_value = std::hash<std::tuple<int, String>>()(t);
-    std::cout << hash_value << std::endl;
 }
 
 // 测试构造函数和赋值运算符

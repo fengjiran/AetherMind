@@ -11,8 +11,6 @@
 #include "utils/hash.h"
 
 #include <concepts>
-#include <filesystem>
-#include <map>
 #include <tuple>
 
 namespace aethermind {
@@ -814,7 +812,8 @@ ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::Create(size_type n) {
 
 template<typename K, typename V, typename Hasher>
 ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::CopyFrom(const MapImpl* src) {
-    auto impl = Create(src->slots());
+    // auto impl = Create(src->slots());
+    auto impl = make_object<MapImpl>(src->slots());
     auto block_num = CalculateBlockCount(src->slots());
     impl->size_ = src->size();
     impl->iter_list_head_ = src->iter_list_head_;
@@ -837,7 +836,8 @@ MapImpl<K, V, Hasher>::insert(value_type&& kv, const ObjectPtr<MapImpl>& old_imp
     }
 
     // Otherwise, start rehash
-    auto new_impl = Create(old_impl->slots() * kIncFactor);
+    // auto new_impl = Create(old_impl->slots() * kIncFactor);
+    auto new_impl = make_object<MapImpl>(old_impl->slots() * kIncFactor);
     // need to insert in the same order as the original map
     size_t idx = old_impl->iter_list_head_;
     while (idx != kInvalidIndex) {
@@ -994,9 +994,9 @@ public:
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
-    MapV1() : impl_(ContainerType::Create(16)) {}
+    MapV1() : impl_(make_object<ContainerType>(16)) {}
 
-    explicit MapV1(size_type n) : impl_(ContainerType::Create(std::max(n, static_cast<size_type>(16)))) {}
+    explicit MapV1(size_type n) : impl_(make_object<ContainerType>(std::max(n, static_cast<size_type>(16)))) {}
 
     template<typename Iter>
         requires requires(Iter t) {
@@ -1007,7 +1007,7 @@ public:
         auto _sz = std::distance(first, last);
         if (_sz > 0) {
             const auto size = static_cast<size_type>(_sz);
-            impl_ = ContainerType::Create(std::max(size, static_cast<size_type>(16)));
+            impl_ = make_object<ContainerType>(std::max(size, static_cast<size_type>(16)));
             while (first != last) {
                 impl_ = std::get<0>(ContainerType::insert(value_type(*first++), impl_));
             }
@@ -1229,7 +1229,8 @@ public:
 
     void clear() noexcept {
         // impl_.reset();
-        impl_ = ContainerType::Create(ContainerType::kEntriesPerBlock);
+        // impl_ = ContainerType::Create(ContainerType::kEntriesPerBlock);
+        impl_ = make_object<ContainerType>(ContainerType::kEntriesPerBlock);
     }
 
     void swap(MapV1& other) noexcept {

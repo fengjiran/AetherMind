@@ -49,7 +49,6 @@ struct MagicConstantsV1 {
     static const size_t NextProbePosOffset[kNumOffsetDists];
 };
 
-
 template<typename K, typename V, typename Hasher>
 class MapImpl : public Object {
 public:
@@ -79,9 +78,24 @@ public:
 
     explicit MapImpl(size_type n);
 
+    MapImpl(const MapImpl&) = default;
+    MapImpl(MapImpl&& other) noexcept
+        : fib_shift_(other.fib_shift_), iter_list_head_(other.iter_list_head_), iter_list_tail_(other.iter_list_tail_),
+          data_(other.data_), size_(other.size_), slots_(other.slots_) {
+        other.data_ = nullptr;
+        other.reset();
+    }
+
+    MapImpl& operator=(const MapImpl&) = default;
+    MapImpl& operator=(MapImpl&& other) noexcept {
+        MapImpl(std::move(other)).swap(*this);
+        return *this;
+    }
+
     ~MapImpl() override {
         reset();
     }
+
 
     iterator begin() {
         return {iter_list_head_, this};
@@ -108,6 +122,9 @@ public:
     NODISCARD size_type count(const key_type& key) const {
         return find(key) != end();
     }
+
+    // may be rehash
+    std::pair<iterator, bool> insert_(value_type&& kv, bool assign = false);
 
     iterator erase(const_iterator pos);
 
@@ -145,6 +162,15 @@ private:
 
     NODISCARD size_type slots() const noexcept {
         return slots_;
+    }
+
+    void swap(MapImpl& other) noexcept {
+        std::swap(data_, other.data_);
+        std::swap(size_, other.size_);
+        std::swap(slots_, other.slots_);
+        std::swap(fib_shift_, other.fib_shift_);
+        std::swap(iter_list_head_, other.iter_list_head_);
+        std::swap(iter_list_tail_, other.iter_list_tail_);
     }
 
     void reset();
@@ -244,13 +270,7 @@ private:
     // shift = 64 - log2(slots)
     static std::pair<uint32_t, size_type> CalculateSlotCount(size_type cap);
 
-    static ObjectPtr<MapImpl> Create(size_type n);
-
     static ObjectPtr<MapImpl> CopyFrom(const MapImpl* src);
-
-    // may be rehash
-    static std::tuple<ObjectPtr<MapImpl>, iterator, bool> insert(
-            value_type&& kv, const ObjectPtr<MapImpl>& old_impl, bool assign = false);
 
     template<typename, typename, typename>
     friend class MapV1;
@@ -790,27 +810,6 @@ MapImpl<K, V, Hasher>::CalculateSlotCount(size_type cap) {
 }
 
 template<typename K, typename V, typename Hasher>
-ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::Create(size_type n) {
-    // auto [fib_shift, slots] = CalculateSlotCount(n);
-    // const size_t block_num = CalculateBlockCount(slots);
-    // auto impl = make_array_object<MapImpl, Block>(block_num);
-    // impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(MapImpl);
-    // impl->size_ = 0;
-    // impl->slots_ = slots;
-    // impl->fib_shift_ = fib_shift;
-    // impl->iter_list_head_ = kInvalidIndex;
-    // impl->iter_list_tail_ = kInvalidIndex;
-    //
-    // auto* p = static_cast<Block*>(impl->data());
-    // for (size_t i = 0; i < block_num; ++i) {
-    //     new (p + i) Block;
-    // }
-    auto impl = make_object<MapImpl>(n);
-
-    return impl;
-}
-
-template<typename K, typename V, typename Hasher>
 ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::CopyFrom(const MapImpl* src) {
     // auto impl = Create(src->slots());
     auto impl = make_object<MapImpl>(src->slots());
@@ -829,28 +828,26 @@ ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::CopyFrom(const MapImpl* 
 }
 
 template<typename K, typename V, typename Hasher>
-std::tuple<ObjectPtr<MapImpl<K, V, Hasher>>, typename MapImpl<K, V, Hasher>::iterator, bool>
-MapImpl<K, V, Hasher>::insert(value_type&& kv, const ObjectPtr<MapImpl>& old_impl, bool assign) {
-    if (auto [it, is_success] = old_impl->TryInsertOrUpdate(std::move(kv), assign); it != old_impl->end()) {
-        return {old_impl, it, is_success};
+std::pair<typename MapImpl<K, V, Hasher>::iterator, bool> MapImpl<K, V, Hasher>::insert_(value_type&& kv, bool assign) {
+    if (auto [it, is_success] = TryInsertOrUpdate(std::move(kv), assign); it != end()) {
+        return {it, is_success};
     }
 
     // Otherwise, start rehash
-    // auto new_impl = Create(old_impl->slots() * kIncFactor);
-    auto new_impl = make_object<MapImpl>(old_impl->slots() * kIncFactor);
+    auto new_impl = make_object<MapImpl>(slots() * kIncFactor);
     // need to insert in the same order as the original map
-    size_t idx = old_impl->iter_list_head_;
+    size_t idx = iter_list_head_;
     while (idx != kInvalidIndex) {
-        Cursor cur(idx, old_impl.get());
+        Cursor cur(idx, this);
         new_impl->TryInsertOrUpdate(std::move(cur.GetData()), assign);
         idx = cur.GetEntry().next;
         cur.DestroyEntry();
     }
 
     auto [pos, is_success] = new_impl->TryInsertOrUpdate(std::move(kv), assign);
-    return {new_impl, pos, is_success};
+    *this = std::move(*new_impl);
+    return {iterator(pos.index(), this), is_success};
 }
-
 
 template<typename K, typename V, typename Hasher>
 template<bool IsConst>
@@ -1009,7 +1006,8 @@ public:
             const auto size = static_cast<size_type>(_sz);
             impl_ = make_object<ContainerType>(std::max(size, static_cast<size_type>(16)));
             while (first != last) {
-                impl_ = std::get<0>(ContainerType::insert(value_type(*first++), impl_));
+                impl_->insert_(value_type(*first++));
+                // impl_ = std::get<0>(ContainerType::insert(value_type(*first++), impl_));
             }
         }
     }
@@ -1249,8 +1247,9 @@ private:
         }
 
         COW();
-        auto [impl, pos, is_success] = ContainerType::insert(std::move(x), impl_, assign);
-        impl_ = impl;
+        // auto [impl, pos, is_success] = ContainerType::insert(std::move(x), impl_, assign);
+        // impl_ = impl;
+        auto [pos, is_success] = impl_->insert_(std::move(x), assign);
         return {iterator(pos), is_success};
     }
 

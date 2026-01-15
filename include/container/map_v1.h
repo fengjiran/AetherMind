@@ -45,12 +45,15 @@ struct MagicConstantsV1 {
     // default fib shift
     static constexpr uint32_t kDefaultFibShift = 63;
 
+    // The number of elements in a memory block.
+    static constexpr uint8_t kEntriesPerBlock = 16;
+
     // next probe position offset
     static const size_t NextProbePosOffset[kNumOffsetDists];
 };
 
 template<typename T, uint8_t BlockSize>
-struct MapBlock {
+struct MapBlock : Object {
     std::array<std::byte, BlockSize + BlockSize * sizeof(T)> storage_;
 
     MapBlock() {// NOLINT
@@ -68,7 +71,7 @@ struct MapBlock {
         }
     }
 
-    ~MapBlock() {
+    ~MapBlock() override {
         for (uint8_t i = 0; i < BlockSize; ++i) {
             if (storage_[i] != MagicConstantsV1::kEmptySlot) {
                 storage_[i] = MagicConstantsV1::kEmptySlot;
@@ -107,9 +110,11 @@ public:
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
+    using Constants = MagicConstantsV1;
+
     struct Entry;
-    struct Block;
     struct Cursor;
+    using Block = MapBlock<Entry, Constants::kEntriesPerBlock>;
 
     MapImpl() : data_(nullptr), size_(0), slots_(0) {}
 
@@ -166,8 +171,6 @@ public:
     iterator erase(const_iterator pos);
 
 private:
-    // The number of elements in a memory block.
-    static constexpr int kEntriesPerBlock = 16;
     // Max load factor of hash table
     static constexpr double kMaxLoadFactor = 0.75;
     // default fib shift
@@ -184,6 +187,7 @@ private:
     size_type iter_list_head_ = kInvalidIndex;
     // The tail of iterator list
     size_type iter_list_tail_ = kInvalidIndex;
+
 
     void* data_;
     size_type size_;
@@ -217,8 +221,8 @@ private:
     }
 
     NODISCARD Entry* GetEntryByIndex(size_type index) const {
-        auto* block = GetBlockByIndex(index / kEntriesPerBlock);
-        return block->GetEntryPtr(index & (kEntriesPerBlock - 1));
+        auto* block = GetBlockByIndex(index / Constants::kEntriesPerBlock);
+        return block->GetEntryPtr(index & (Constants::kEntriesPerBlock - 1));
     }
 
     // Construct a ListNode from hash code if the position is head of list
@@ -300,7 +304,7 @@ private:
     std::pair<iterator, bool> TryInsertOrUpdate(value_type&& kv, bool assign = false);
 
     static size_type CalculateBlockCount(size_type total_slots) {
-        return (total_slots + kEntriesPerBlock - 1) / kEntriesPerBlock;
+        return (total_slots + Constants::kEntriesPerBlock - 1) / Constants::kEntriesPerBlock;
     }
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
@@ -329,43 +333,6 @@ struct MapImpl<K, V, Hasher>::Entry {
         data.~value_type();
         prev = kInvalidIndex;
         next = kInvalidIndex;
-    }
-};
-
-template<typename K, typename V, typename Hasher>
-struct MapImpl<K, V, Hasher>::Block {
-    std::array<std::byte, kEntriesPerBlock + kEntriesPerBlock * sizeof(Entry)> storage_;
-
-    Block() {// NOLINT
-        for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            storage_[i] = MagicConstantsV1::kEmptySlot;
-        }
-    }
-
-    Block(const Block& other) {// NOLINT
-        for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            if (other.storage_[i] != MagicConstantsV1::kEmptySlot) {
-                storage_[i] = other.storage_[i];
-                new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
-            }
-        }
-    }
-
-    ~Block() {
-        for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-            if (storage_[i] != MagicConstantsV1::kEmptySlot) {
-                storage_[i] = MagicConstantsV1::kEmptySlot;
-                GetEntryPtr(i)->~Entry();
-            }
-        }
-    }
-
-    Entry* GetEntryPtr(size_type i) {
-        return static_cast<Entry*>(static_cast<void*>(storage_.data() + kEntriesPerBlock)) + i;
-    }
-
-    const Entry* GetEntryPtr(size_type i) const {
-        return const_cast<Block*>(this)->GetEntryPtr(i);
     }
 };
 
@@ -400,20 +367,20 @@ struct MapImpl<K, V, Hasher>::Cursor {
 
     NODISCARD Block* GetBlock() const {
         CHECK(!IsNone()) << "The Cursor is none.";
-        return obj()->GetBlockByIndex(index() / kEntriesPerBlock);
+        return obj()->GetBlockByIndex(index() / Constants::kEntriesPerBlock);
     }
 
     // Get metadata of an entry
     NODISCARD std::byte& GetSlotMetadata() const {
         // equal to index() % kEntriesPerBlock
-        return GetBlock()->storage_[index() & (kEntriesPerBlock - 1)];
+        return GetBlock()->storage_[index() & (Constants::kEntriesPerBlock - 1)];
     }
 
     // Get the entry ref
     NODISCARD Entry& GetEntry() const {
         CHECK(!IsNone()) << "The Cursor is none.";
         CHECK(!IsSlotEmpty()) << "The entry is empty.";
-        return *GetBlock()->GetEntryPtr(index() & (kEntriesPerBlock - 1));
+        return *GetBlock()->GetEntryPtr(index() & (Constants::kEntriesPerBlock - 1));
     }
 
     // Get KV
@@ -434,34 +401,34 @@ struct MapImpl<K, V, Hasher>::Cursor {
     }
 
     NODISCARD bool IsSlotEmpty() const {
-        return GetSlotMetadata() == MagicConstantsV1::kEmptySlot;
+        return GetSlotMetadata() == Constants::kEmptySlot;
     }
 
     NODISCARD bool IsSlotProtected() const {
-        return GetSlotMetadata() == MagicConstantsV1::kProtectedSlot;
+        return GetSlotMetadata() == Constants::kProtectedSlot;
     }
 
     NODISCARD bool IsHead() const {
-        return (GetSlotMetadata() & MagicConstantsV1::kHeadFlagMask) == MagicConstantsV1::kHeadFlag;
+        return (GetSlotMetadata() & Constants::kHeadFlagMask) == Constants::kHeadFlag;
     }
 
     void MarkSlotAsEmpty() const {
-        GetSlotMetadata() = MagicConstantsV1::kEmptySlot;
+        GetSlotMetadata() = Constants::kEmptySlot;
     }
 
     void MarkSlotAsProtected() const {
-        GetSlotMetadata() = MagicConstantsV1::kProtectedSlot;
+        GetSlotMetadata() = Constants::kProtectedSlot;
     }
 
     // Set the entry's offset to its next entry.
     void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
-        CHECK(offset_idx < MagicConstantsV1::kNumOffsetDists);
-        (GetSlotMetadata() &= MagicConstantsV1::kHeadFlagMask) |= std::byte{offset_idx};
+        CHECK(offset_idx < Constants::kNumOffsetDists);
+        (GetSlotMetadata() &= Constants::kHeadFlagMask) |= std::byte{offset_idx};
     }
 
     void ConstructEntry(Entry&& entry) const {
         CHECK(IsSlotEmpty());
-        new (GetBlock()->GetEntryPtr(index() & (kEntriesPerBlock - 1))) Entry(std::move(entry));
+        new (GetBlock()->GetEntryPtr(index() & (Constants::kEntriesPerBlock - 1))) Entry(std::move(entry));
     }
 
     // Destroy the item in the entry.
@@ -482,7 +449,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetSlotMetadata() = MagicConstantsV1::kHeadFlag;
+        GetSlotMetadata() = Constants::kHeadFlag;
     }
 
     // Construct a tail of linked list inplace
@@ -491,20 +458,20 @@ struct MapImpl<K, V, Hasher>::Cursor {
             DestroyEntry();
         }
         ConstructEntry(std::move(entry));
-        GetSlotMetadata() = MagicConstantsV1::kTailFlag;
+        GetSlotMetadata() = Constants::kTailFlag;
     }
 
     // Whether the slot has the next slot on the linked list
     NODISCARD bool HasNextSlot() const {
-        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & MagicConstantsV1::kOffsetIdxMask);
-        return MagicConstantsV1::NextProbePosOffset[idx] != 0;
+        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & Constants::kOffsetIdxMask);
+        return Constants::NextProbePosOffset[idx] != 0;
     }
 
     // Move the current cursor to the next slot on the linked list
     bool MoveToNextSlot(std::optional<std::byte> meta_opt = std::nullopt) {
         std::byte meta = meta_opt ? meta_opt.value() : GetSlotMetadata();
-        const auto idx = std::to_integer<uint8_t>(meta & MagicConstantsV1::kOffsetIdxMask);
-        const auto offset = MagicConstantsV1::NextProbePosOffset[idx];
+        const auto idx = std::to_integer<uint8_t>(meta & Constants::kOffsetIdxMask);
+        const auto offset = Constants::NextProbePosOffset[idx];
         if (offset == 0) {
             reset();
             return false;
@@ -534,8 +501,8 @@ struct MapImpl<K, V, Hasher>::Cursor {
     }
 
     NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
-        for (uint8_t i = 1; i < MagicConstantsV1::kNumOffsetDists; ++i) {
-            if (Cursor candidate((index() + MagicConstantsV1::NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
+        for (uint8_t i = 1; i < Constants::kNumOffsetDists; ++i) {
+            if (Cursor candidate((index() + Constants::NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
                 candidate.IsSlotEmpty()) {
                 return std::make_pair(i, candidate);
             }
@@ -577,18 +544,17 @@ void MapImpl<K, V, Hasher>::reset() {
     iter_list_tail_ = kInvalidIndex;
 }
 
-
 template<typename K, typename V, typename Hasher>
 MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key) {
     auto index = details::FibonacciHash(hasher()(key), fib_shift_);
     bool is_first = true;
     while (true) {
-        auto block_idx = index / kEntriesPerBlock;
-        auto inner_idx = index & (kEntriesPerBlock - 1);
+        auto block_idx = index / Constants::kEntriesPerBlock;
+        auto inner_idx = index & (Constants::kEntriesPerBlock - 1);
         auto* block = GetBlockByIndex(block_idx);
         auto meta = block->storage_[inner_idx];
         if (is_first) {
-            if ((meta & MagicConstantsV1::kHeadFlagMask) != MagicConstantsV1::kHeadFlag) {
+            if ((meta & Constants::kHeadFlagMask) != Constants::kHeadFlag) {
                 return end();
             }
             is_first = false;
@@ -598,12 +564,12 @@ MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key)
             return {index, this};
         }
 
-        auto offset_idx = std::to_integer<uint8_t>(meta & MagicConstantsV1::kOffsetIdxMask);
+        auto offset_idx = std::to_integer<uint8_t>(meta & Constants::kOffsetIdxMask);
         if (offset_idx == 0) {
             return end();
         }
 
-        auto offset = MagicConstantsV1::NextProbePosOffset[offset_idx];
+        auto offset = Constants::NextProbePosOffset[offset_idx];
         auto t = index + offset;
         index = t >= slots() ? t & slots() - 1 : t;
     }
@@ -1260,9 +1226,7 @@ public:
     }
 
     void clear() noexcept {
-        // impl_.reset();
-        // impl_ = ContainerType::Create(ContainerType::kEntriesPerBlock);
-        impl_ = make_object<ContainerType>(ContainerType::kEntriesPerBlock);
+        impl_ = make_object<ContainerType>(ContainerType::Constants::kEntriesPerBlock);
     }
 
     void swap(MapV1& other) noexcept {

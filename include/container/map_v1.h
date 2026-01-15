@@ -116,14 +116,16 @@ public:
     struct Cursor;
     using Block = MapBlock<Entry, Constants::kEntriesPerBlock>;
 
-    MapImpl() : data_(nullptr), size_(0), slots_(0) {}
+    MapImpl() : data_(nullptr), size_(0), slots_(0) {
+        blocks_.push_back(make_object<Block>());
+    }
 
     explicit MapImpl(size_type n);
 
     MapImpl(const MapImpl&) = default;
     MapImpl(MapImpl&& other) noexcept
         : fib_shift_(other.fib_shift_), iter_list_head_(other.iter_list_head_), iter_list_tail_(other.iter_list_tail_),
-          data_(other.data_), size_(other.size_), slots_(other.slots_) {
+          data_(other.data_), size_(other.size_), slots_(other.slots_), blocks_(std::move(other.blocks_)) {
         other.data_ = nullptr;
         other.reset();
     }
@@ -156,6 +158,7 @@ public:
     }
 
     iterator find(const key_type& key);
+    iterator find_(const key_type& key);
 
     const_iterator find(const key_type& key) const {
         return const_cast<MapImpl*>(this)->find(key);
@@ -166,7 +169,7 @@ public:
     }
 
     // may be rehash
-    std::pair<iterator, bool> insert_(value_type&& kv, bool assign = false);
+    std::pair<iterator, bool> insert(value_type&& kv, bool assign = false);
 
     iterator erase(const_iterator pos);
 
@@ -188,10 +191,11 @@ private:
     // The tail of iterator list
     size_type iter_list_tail_ = kInvalidIndex;
 
-
     void* data_;
     size_type size_;
     size_type slots_;
+
+    std::vector<ObjectPtr<Block>> blocks_;// block level cow
 
     NODISCARD void* data() const noexcept {
         return data_;
@@ -520,18 +524,19 @@ private:
 template<typename K, typename V, typename Hasher>
 MapImpl<K, V, Hasher>::MapImpl(size_type n) : size_(0) {
     auto [fib_shift, slots] = CalculateSlotCount(n);
-    const size_t block_num = CalculateBlockCount(slots);
+    const size_type block_num = CalculateBlockCount(slots);
     data_ = new Block[block_num];
     slots_ = slots;
     fib_shift_ = fib_shift;
+
+    blocks_.reserve(block_num);
+    for (size_type i = 0; i < block_num; ++i) {
+        blocks_.push_back(make_object<Block>());
+    }
 }
 
 template<typename K, typename V, typename Hasher>
 void MapImpl<K, V, Hasher>::reset() {
-    // const size_type block_num = CalculateBlockCount(slots());
-    // for (size_t i = 0; i < block_num; ++i) {
-    //     GetBlockByIndex(i)->~Block();
-    // }
     if (data() != nullptr) {
         delete[] static_cast<Block*>(data());
         data_ = nullptr;
@@ -542,6 +547,38 @@ void MapImpl<K, V, Hasher>::reset() {
     fib_shift_ = 63;
     iter_list_head_ = kInvalidIndex;
     iter_list_tail_ = kInvalidIndex;
+    blocks_.clear();
+}
+
+
+template<typename K, typename V, typename Hasher>
+MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find_(const key_type& key) {
+    auto index = details::FibonacciHash(hasher()(key), fib_shift_);
+    bool is_first = true;
+    while (true) {
+        auto block_idx = index / Constants::kEntriesPerBlock;
+        auto inner_idx = index & (Constants::kEntriesPerBlock - 1);
+        auto meta = blocks_[block_idx]->storage_[inner_idx];
+        if (is_first) {
+            if ((meta & Constants::kHeadFlagMask) != Constants::kHeadFlag) {
+                return end();
+            }
+            is_first = false;
+        }
+
+        if (key == blocks_[block_idx]->GetEntryPtr(inner_idx)->data.first) {
+            return {index, this};
+        }
+
+        auto offset_idx = std::to_integer<uint8_t>(meta & Constants::kOffsetIdxMask);
+        if (offset_idx == 0) {
+            return end();
+        }
+
+        auto offset = Constants::NextProbePosOffset[offset_idx];
+        auto t = index + offset;
+        index = t >= slots() ? t & slots() - 1 : t;
+    }
 }
 
 template<typename K, typename V, typename Hasher>
@@ -828,7 +865,7 @@ ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::CopyFrom(const MapImpl* 
 }
 
 template<typename K, typename V, typename Hasher>
-std::pair<typename MapImpl<K, V, Hasher>::iterator, bool> MapImpl<K, V, Hasher>::insert_(value_type&& kv, bool assign) {
+std::pair<typename MapImpl<K, V, Hasher>::iterator, bool> MapImpl<K, V, Hasher>::insert(value_type&& kv, bool assign) {
     if (auto [it, is_success] = TryInsertOrUpdate(std::move(kv), assign); it != end()) {
         return {it, is_success};
     }
@@ -1006,7 +1043,7 @@ public:
             const auto size = static_cast<size_type>(_sz);
             impl_ = make_object<ContainerType>(std::max(size, static_cast<size_type>(16)));
             while (first != last) {
-                impl_->insert_(value_type(*first++));
+                impl_->insert(value_type(*first++));
                 // impl_ = std::get<0>(ContainerType::insert(value_type(*first++), impl_));
             }
         }
@@ -1247,7 +1284,7 @@ private:
         COW();
         // auto [impl, pos, is_success] = ContainerType::insert(std::move(x), impl_, assign);
         // impl_ = impl;
-        auto [pos, is_success] = impl_->insert_(std::move(x), assign);
+        auto [pos, is_success] = impl_->insert(std::move(x), assign);
         return {iterator(pos), is_success};
     }
 

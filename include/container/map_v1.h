@@ -11,6 +11,7 @@
 #include "utils/hash.h"
 
 #include <concepts>
+#include <filesystem>
 #include <map>
 #include <tuple>
 
@@ -72,7 +73,14 @@ public:
     using iterator = IteratorImpl<false>;
     using const_iterator = IteratorImpl<true>;
 
+    struct Entry;
+    struct Block;
+    struct Cursor;
+
     MapImpl() : data_(nullptr), size_(0), slots_(0) {}
+
+    explicit MapImpl(size_type n);
+
     ~MapImpl() override {
         reset();
     }
@@ -129,10 +137,6 @@ private:
     size_type size_;
     size_type slots_;
 
-    struct Entry;
-    struct Block;
-    struct Cursor;
-
     NODISCARD void* data() const noexcept {
         return data_;
     }
@@ -145,16 +149,7 @@ private:
         return slots_;
     }
 
-    void reset() {
-        const size_type block_num = CalculateBlockCount(slots());
-        for (size_t i = 0; i < block_num; ++i) {
-            GetBlockByIndex(i)->~Block();
-        }
-
-        size_ = 0;
-        slots_ = 0;
-        fib_shift_ = 63;
-    }
+    void reset();
 
     NODISCARD Block* GetBlockByIndex(size_type block_idx) const {
         return static_cast<Block*>(data()) + block_idx;
@@ -501,6 +496,34 @@ private:
 };
 
 template<typename K, typename V, typename Hasher>
+MapImpl<K, V, Hasher>::MapImpl(size_type n) : size_(0) {
+    auto [fib_shift, slots] = CalculateSlotCount(n);
+    const size_t block_num = CalculateBlockCount(slots);
+    data_ = new Block[block_num];
+    slots_ = slots;
+    fib_shift_ = fib_shift;
+}
+
+template<typename K, typename V, typename Hasher>
+void MapImpl<K, V, Hasher>::reset() {
+    // const size_type block_num = CalculateBlockCount(slots());
+    // for (size_t i = 0; i < block_num; ++i) {
+    //     GetBlockByIndex(i)->~Block();
+    // }
+    if (data() != nullptr) {
+        delete[] static_cast<Block*>(data());
+        data_ = nullptr;
+    }
+
+    size_ = 0;
+    slots_ = 0;
+    fib_shift_ = 63;
+    iter_list_head_ = kInvalidIndex;
+    iter_list_tail_ = kInvalidIndex;
+}
+
+
+template<typename K, typename V, typename Hasher>
 MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key) {
     auto index = details::FibonacciHash(hasher()(key), fib_shift_);
     bool is_first = true;
@@ -770,20 +793,21 @@ MapImpl<K, V, Hasher>::CalculateSlotCount(size_type cap) {
 
 template<typename K, typename V, typename Hasher>
 ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::Create(size_type n) {
-    auto [fib_shift, slots] = CalculateSlotCount(n);
-    const size_t block_num = CalculateBlockCount(slots);
-    auto impl = make_array_object<MapImpl, Block>(block_num);
-    impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(MapImpl);
-    impl->size_ = 0;
-    impl->slots_ = slots;
-    impl->fib_shift_ = fib_shift;
-    impl->iter_list_head_ = kInvalidIndex;
-    impl->iter_list_tail_ = kInvalidIndex;
-
-    auto* p = static_cast<Block*>(impl->data());
-    for (size_t i = 0; i < block_num; ++i) {
-        new (p + i) Block;
-    }
+    // auto [fib_shift, slots] = CalculateSlotCount(n);
+    // const size_t block_num = CalculateBlockCount(slots);
+    // auto impl = make_array_object<MapImpl, Block>(block_num);
+    // impl->data_ = reinterpret_cast<char*>(impl.get()) + sizeof(MapImpl);
+    // impl->size_ = 0;
+    // impl->slots_ = slots;
+    // impl->fib_shift_ = fib_shift;
+    // impl->iter_list_head_ = kInvalidIndex;
+    // impl->iter_list_tail_ = kInvalidIndex;
+    //
+    // auto* p = static_cast<Block*>(impl->data());
+    // for (size_t i = 0; i < block_num; ++i) {
+    //     new (p + i) Block;
+    // }
+    auto impl = make_object<MapImpl>(n);
 
     return impl;
 }
@@ -798,7 +822,8 @@ ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::CopyFrom(const MapImpl* 
 
     auto* p = static_cast<Block*>(impl->data());
     for (size_t i = 0; i < block_num; ++i) {
-        new (p + i) Block(*src->GetBlockByIndex(i));
+        // new (p + i) Block(*src->GetBlockByIndex(i));
+        p[i] = *src->GetBlockByIndex(i);
     }
 
     return impl;

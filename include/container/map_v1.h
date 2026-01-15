@@ -374,31 +374,56 @@ struct MapImpl<K, V, Hasher>::Cursor {
         return obj()->GetBlockByIndex(index() / Constants::kEntriesPerBlock);
     }
 
+    NODISCARD ObjectPtr<Block> GetBlock_() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return obj()->blocks_[index() / Constants::kEntriesPerBlock];
+    }
+
     // Get metadata of an entry
     NODISCARD std::byte& GetSlotMetadata() const {
         // equal to index() % kEntriesPerBlock
         return GetBlock()->storage_[index() & (Constants::kEntriesPerBlock - 1)];
     }
 
+    // NODISCARD std::byte& GetSlotMetadata_() const {
+    //     return GetBlock_()->storage_[index() & (Constants::kEntriesPerBlock - 1)];
+    // }
+
     // Get the entry ref
     NODISCARD Entry& GetEntry() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
         CHECK(!IsSlotEmpty()) << "The entry is empty.";
         return *GetBlock()->GetEntryPtr(index() & (Constants::kEntriesPerBlock - 1));
     }
+
+    // NODISCARD Entry& GetEntry_() const {
+    //     CHECK(!IsSlotEmpty_()) << "The entry is empty.";
+    //     return *GetBlock_()->GetEntryPtr(index() & (Constants::kEntriesPerBlock - 1));
+    // }
 
     // Get KV
     NODISCARD value_type& GetData() const {
         return GetEntry().data;
     }
 
+    // NODISCARD value_type& GetData_() const {
+    //     return GetEntry_().data;
+    // }
+
     NODISCARD const key_type& GetKey() const {
         return GetData().first;
     }
 
+    // NODISCARD const key_type& GetKey_() const {
+    //     return GetData_().first;
+    // }
+
     NODISCARD mapped_type& GetValue() const {
         return GetData().second;
     }
+
+    // NODISCARD mapped_type& GetValue_() const {
+    //     return GetData_().second;
+    // }
 
     NODISCARD bool IsNone() const {
         return obj() == nullptr;
@@ -407,22 +432,42 @@ struct MapImpl<K, V, Hasher>::Cursor {
     NODISCARD bool IsSlotEmpty() const {
         return GetSlotMetadata() == Constants::kEmptySlot;
     }
+    //
+    // NODISCARD bool IsSlotEmpty_() const {
+    //     return GetSlotMetadata_() == Constants::kEmptySlot;
+    // }
 
     NODISCARD bool IsSlotProtected() const {
         return GetSlotMetadata() == Constants::kProtectedSlot;
     }
 
+    // NODISCARD bool IsSlotProtected_() const {
+    //     return GetSlotMetadata_() == Constants::kProtectedSlot;
+    // }
+
     NODISCARD bool IsHead() const {
         return (GetSlotMetadata() & Constants::kHeadFlagMask) == Constants::kHeadFlag;
     }
+
+    // NODISCARD bool IsHead_() const {
+    //     return (GetSlotMetadata_() & Constants::kHeadFlagMask) == Constants::kHeadFlag;
+    // }
 
     void MarkSlotAsEmpty() const {
         GetSlotMetadata() = Constants::kEmptySlot;
     }
 
+    // void MarkSlotAsEmpty_() const {
+    //     GetSlotMetadata_() = Constants::kEmptySlot;
+    // }
+
     void MarkSlotAsProtected() const {
         GetSlotMetadata() = Constants::kProtectedSlot;
     }
+
+    // void MarkSlotAsProtected_() const {
+    //     GetSlotMetadata_() = Constants::kProtectedSlot;
+    // }
 
     // Set the entry's offset to its next entry.
     void SetNextSlotOffsetIndex(uint8_t offset_idx) const {

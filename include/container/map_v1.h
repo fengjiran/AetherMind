@@ -49,6 +49,43 @@ struct MagicConstantsV1 {
     static const size_t NextProbePosOffset[kNumOffsetDists];
 };
 
+template<typename T, uint8_t BlockSize>
+struct MapBlock {
+    std::array<std::byte, BlockSize + BlockSize * sizeof(T)> storage_;
+
+    MapBlock() {// NOLINT
+        for (uint8_t i = 0; i < BlockSize; ++i) {
+            storage_[i] = MagicConstantsV1::kEmptySlot;
+        }
+    }
+
+    MapBlock(const MapBlock& other) {// NOLINT
+        for (uint8_t i = 0; i < BlockSize; ++i) {
+            if (other.storage_[i] != MagicConstantsV1::kEmptySlot) {
+                storage_[i] = other.storage_[i];
+                new (GetEntryPtr(i)) T(*other.GetEntryPtr(i));
+            }
+        }
+    }
+
+    ~MapBlock() {
+        for (uint8_t i = 0; i < BlockSize; ++i) {
+            if (storage_[i] != MagicConstantsV1::kEmptySlot) {
+                storage_[i] = MagicConstantsV1::kEmptySlot;
+                GetEntryPtr(i)->~Entry();
+            }
+        }
+    }
+
+    T* GetEntryPtr(uint8_t i) {
+        return static_cast<T*>(static_cast<void*>(storage_.data() + BlockSize)) + i;
+    }
+
+    const T* GetEntryPtr(uint8_t i) const {
+        return const_cast<MapBlock*>(this)->GetEntryPtr(i);
+    }
+};
+
 template<typename K, typename V, typename Hasher>
 class MapImpl : public Object {
 public:
@@ -789,7 +826,6 @@ std::pair<typename MapImpl<K, V, Hasher>::iterator, bool> MapImpl<K, V, Hasher>:
     return {iterator(empty.index(), this), true};
 }
 
-
 template<typename K, typename V, typename Hasher>
 std::pair<uint32_t, typename MapImpl<K, V, Hasher>::size_type>
 MapImpl<K, V, Hasher>::CalculateSlotCount(size_type cap) {
@@ -811,7 +847,6 @@ MapImpl<K, V, Hasher>::CalculateSlotCount(size_type cap) {
 
 template<typename K, typename V, typename Hasher>
 ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::CopyFrom(const MapImpl* src) {
-    // auto impl = Create(src->slots());
     auto impl = make_object<MapImpl>(src->slots());
     auto block_num = CalculateBlockCount(src->slots());
     impl->size_ = src->size();
@@ -820,7 +855,6 @@ ObjectPtr<MapImpl<K, V, Hasher>> MapImpl<K, V, Hasher>::CopyFrom(const MapImpl* 
 
     auto* p = static_cast<Block*>(impl->data());
     for (size_t i = 0; i < block_num; ++i) {
-        // new (p + i) Block(*src->GetBlockByIndex(i));
         p[i] = *src->GetBlockByIndex(i);
     }
 

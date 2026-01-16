@@ -124,6 +124,43 @@ struct MapBlock : Object {
     }
 };
 
+// template<typename K, typename V, typename Hasher>
+// struct MapImpl<K, V, Hasher>::Block {
+//     std::array<std::byte, kEntriesPerBlock + kEntriesPerBlock * sizeof(Entry)> storage_;
+//
+//     Block() {// NOLINT
+//         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
+//             storage_[i] = MagicConstantsV1::kEmptySlot;
+//         }
+//     }
+//
+//     Block(const Block& other) {// NOLINT
+//         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
+//             if (other.storage_[i] != MagicConstantsV1::kEmptySlot) {
+//                 storage_[i] = other.storage_[i];
+//                 new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
+//             }
+//         }
+//     }
+//
+//     ~Block() {
+//         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
+//             if (storage_[i] != MagicConstantsV1::kEmptySlot) {
+//                 storage_[i] = MagicConstantsV1::kEmptySlot;
+//                 GetEntryPtr(i)->~Entry();
+//             }
+//         }
+//     }
+//
+//     Entry* GetEntryPtr(size_type i) {
+//         return static_cast<Entry*>(static_cast<void*>(storage_.data() + kEntriesPerBlock)) + i;
+//     }
+//
+//     const Entry* GetEntryPtr(size_type i) const {
+//         return const_cast<Block*>(this)->GetEntryPtr(i);
+//     }
+// };
+
 template<typename K, typename V, typename Hasher>
 class MapImpl : public Object {
 public:
@@ -152,7 +189,7 @@ public:
     using Block = MapBlock<Entry, Constants::kEntriesPerBlock>;
 
     MapImpl() : data_(nullptr), size_(0), slots_(0) {
-        blocks_.push_back(make_object<Block>());
+        // blocks_.push_back(make_object<Block>());
     }
 
     explicit MapImpl(size_type n);
@@ -160,7 +197,7 @@ public:
     MapImpl(const MapImpl&) = default;
     MapImpl(MapImpl&& other) noexcept
         : fib_shift_(other.fib_shift_), iter_list_head_(other.iter_list_head_), iter_list_tail_(other.iter_list_tail_),
-          data_(other.data_), size_(other.size_), slots_(other.slots_), blocks_(std::move(other.blocks_)) {
+          data_(other.data_), size_(other.size_), slots_(other.slots_){
         other.data_ = nullptr;
         other.reset();
     }
@@ -193,7 +230,7 @@ public:
     }
 
     iterator find(const key_type& key);
-    iterator find_(const key_type& key);
+    // iterator find_(const key_type& key);
 
     const_iterator find(const key_type& key) const {
         return const_cast<MapImpl*>(this)->find(key);
@@ -230,7 +267,7 @@ private:
     size_type size_;
     size_type slots_;
 
-    std::vector<ObjectPtr<Block>> blocks_;// block level cow
+    // std::vector<ObjectPtr<Block>> blocks_;// block level cow
 
     NODISCARD void* data() const noexcept {
         return data_;
@@ -409,10 +446,10 @@ struct MapImpl<K, V, Hasher>::Cursor {
         return obj()->GetBlockByIndex(index() / Constants::kEntriesPerBlock);
     }
 
-    NODISCARD ObjectPtr<Block> GetBlock_() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
-        return obj()->blocks_[index() / Constants::kEntriesPerBlock];
-    }
+    // NODISCARD ObjectPtr<Block> GetBlock_() const {
+    //     CHECK(!IsNone()) << "The Cursor is none.";
+    //     return obj()->blocks_[index() / Constants::kEntriesPerBlock];
+    // }
 
     // Get metadata of an entry
     NODISCARD std::byte& GetSlotMetadata() const {
@@ -609,10 +646,10 @@ MapImpl<K, V, Hasher>::MapImpl(size_type n) : size_(0) {
     slots_ = slots;
     fib_shift_ = fib_shift;
 
-    blocks_.reserve(block_num);
-    for (size_type i = 0; i < block_num; ++i) {
-        blocks_.push_back(make_object<Block>());
-    }
+    // blocks_.reserve(block_num);
+    // for (size_type i = 0; i < block_num; ++i) {
+    //     blocks_.push_back(make_object<Block>());
+    // }
 }
 
 template<typename K, typename V, typename Hasher>
@@ -627,39 +664,39 @@ void MapImpl<K, V, Hasher>::reset() {
     fib_shift_ = 63;
     iter_list_head_ = kInvalidIndex;
     iter_list_tail_ = kInvalidIndex;
-    blocks_.clear();
+    // blocks_.clear();
 }
 
 
-template<typename K, typename V, typename Hasher>
-MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find_(const key_type& key) {
-    auto index = details::FibonacciHash(hasher()(key), fib_shift_);
-    bool is_first = true;
-    while (true) {
-        auto block_idx = index / Constants::kEntriesPerBlock;
-        auto inner_idx = index & (Constants::kEntriesPerBlock - 1);
-        auto meta = blocks_[block_idx]->storage_[inner_idx];
-        if (is_first) {
-            if ((meta & Constants::kHeadFlagMask) != Constants::kHeadFlag) {
-                return end();
-            }
-            is_first = false;
-        }
-
-        if (key == blocks_[block_idx]->GetEntryPtr(inner_idx)->data.first) {
-            return {index, this};
-        }
-
-        auto offset_idx = std::to_integer<uint8_t>(meta & Constants::kOffsetIdxMask);
-        if (offset_idx == 0) {
-            return end();
-        }
-
-        auto offset = Constants::NextProbePosOffset[offset_idx];
-        auto t = index + offset;
-        index = t >= slots() ? t & slots() - 1 : t;
-    }
-}
+// template<typename K, typename V, typename Hasher>
+// MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find_(const key_type& key) {
+//     auto index = details::FibonacciHash(hasher()(key), fib_shift_);
+//     bool is_first = true;
+//     while (true) {
+//         auto block_idx = index / Constants::kEntriesPerBlock;
+//         auto inner_idx = index & (Constants::kEntriesPerBlock - 1);
+//         auto meta = blocks_[block_idx]->storage_[inner_idx];
+//         if (is_first) {
+//             if ((meta & Constants::kHeadFlagMask) != Constants::kHeadFlag) {
+//                 return end();
+//             }
+//             is_first = false;
+//         }
+//
+//         if (key == blocks_[block_idx]->GetEntryPtr(inner_idx)->data.first) {
+//             return {index, this};
+//         }
+//
+//         auto offset_idx = std::to_integer<uint8_t>(meta & Constants::kOffsetIdxMask);
+//         if (offset_idx == 0) {
+//             return end();
+//         }
+//
+//         auto offset = Constants::NextProbePosOffset[offset_idx];
+//         auto t = index + offset;
+//         index = t >= slots() ? t & slots() - 1 : t;
+//     }
+// }
 
 template<typename K, typename V, typename Hasher>
 MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key) {

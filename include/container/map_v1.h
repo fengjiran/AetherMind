@@ -53,14 +53,21 @@ struct MagicConstantsV1 {
 };
 
 template<typename value_type>
-struct alignas(64) BBlock : Object {
+struct BBlock : Object {
     using storage_type = std::aligned_storage_t<sizeof(value_type), alignof(value_type)>;
     storage_type storage_[MagicConstantsV1::kEntriesPerBlock];
+    std::array<std::byte, MagicConstantsV1::kEntriesPerBlock / 8 +
+                                  sizeof(value_type) * MagicConstantsV1::kEntriesPerBlock>
+            data_;
 
     BBlock() = default;
     ~BBlock() override = default;
 
-    BBlock(const BBlock&) = delete;
+    // BBlock(const BBlock& other) noexcept(std::is_copy_constructible_v<value_type>){
+    //     data_
+    // }
+
+
     BBlock(BBlock&&) = delete;
     BBlock& operator=(const BBlock&) = delete;
     BBlock& operator=(BBlock&&) = delete;
@@ -197,7 +204,7 @@ public:
     MapImpl(const MapImpl&) = default;
     MapImpl(MapImpl&& other) noexcept
         : fib_shift_(other.fib_shift_), iter_list_head_(other.iter_list_head_), iter_list_tail_(other.iter_list_tail_),
-          data_(other.data_), size_(other.size_), slots_(other.slots_){
+          data_(other.data_), size_(other.size_), slots_(other.slots_) {
         other.data_ = nullptr;
         other.reset();
     }

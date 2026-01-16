@@ -52,6 +52,41 @@ struct MagicConstantsV1 {
     static const size_t NextProbePosOffset[kNumOffsetDists];
 };
 
+template<typename value_type>
+struct alignas(64) BBlock : Object {
+    using storage_type = std::aligned_storage_t<sizeof(value_type), alignof(value_type)>;
+    storage_type storage_[MagicConstantsV1::kEntriesPerBlock];
+
+    BBlock() = default;
+    ~BBlock() override = default;
+
+    BBlock(const BBlock&) = delete;
+    BBlock(BBlock&&) = delete;
+    BBlock& operator=(const BBlock&) = delete;
+    BBlock& operator=(BBlock&&) = delete;
+
+    // readonly visit
+    const value_type& Get(size_t idx) const noexcept {
+        return *std::launder(reinterpret_cast<const value_type*>(storage_ + idx));
+    }
+
+    // inplace construction, only run once when insert KV
+    template<typename... Args>
+    void emplace(size_t idx, Args&&... args) noexcept(std::is_nothrow_constructible_v<value_type, Args...>) {
+        new (storage_ + idx) value_type(std::forward<Args>(args)...);
+    }
+
+    // destroy KV
+    void destroy(size_t idx) noexcept {
+        Get(idx).~value_type();
+    }
+
+private:
+    value_type& Get(size_t idx) noexcept {
+        return *std::launder(reinterpret_cast<value_type*>(storage_ + idx));
+    }
+};
+
 template<typename T, uint8_t BlockSize>
 struct MapBlock : Object {
     std::array<std::byte, BlockSize + BlockSize * sizeof(T)> storage_;

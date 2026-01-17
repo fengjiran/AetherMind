@@ -27,6 +27,12 @@ struct hash<HashCollisionKey> {
 namespace {
 using namespace aethermind;
 
+TEST(MapImplV2Test, basic) {
+    MapImplV2<int, int> map_impl(32);
+    auto* ptr = map_impl.GetDataPtr(0);
+    EXPECT_EQ(map_impl.slots(), 32);
+}
+
 // ========== 测试套件1：基础功能测试（构造/析构/空判断/指针获取） ==========
 TEST(BBlockTest, BasicFunction) {
     BBlock<int> block;

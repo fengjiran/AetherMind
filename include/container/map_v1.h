@@ -48,23 +48,31 @@ struct MagicConstantsV1 {
     // The number of elements in a memory block.
     static constexpr uint8_t kEntriesPerBlock = 16;
 
+    // Max load factor of hash table
+    static constexpr double kMaxLoadFactor = 0.75;
+
+    static constexpr size_t kIncFactor = 2;
+
+    // Index indicator to indicate an invalid index.
+    static constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
+
     // next probe position offset
     static const size_t NextProbePosOffset[kNumOffsetDists];
 };
 
-template<typename value_type>
-class BBlock : Object {
+template<typename value_type, uint8_t BlockSize = MagicConstantsV1::kEntriesPerBlock>
+class BBlock : public Object {
 public:
     BBlock() = default;
     ~BBlock() override {
-        for (size_t i = 0; i < MagicConstantsV1::kEntriesPerBlock; ++i) {
+        for (size_t i = 0; i < BlockSize; ++i) {
             destroy(i);
         }
     }
 
     BBlock(const BBlock& other) noexcept(std::is_copy_constructible_v<value_type>)
         : storage_(other.storage_) {
-        for (size_t i = 0; i < MagicConstantsV1::kEntriesPerBlock; ++i) {
+        for (size_t i = 0; i < BlockSize; ++i) {
             if (other.TestFlag(i)) {
                 new (GetDataPtr(i)) value_type(*other.GetDataPtr(i));
             }
@@ -76,15 +84,14 @@ public:
     BBlock& operator=(const BBlock&) = delete;
     BBlock& operator=(BBlock&&) = delete;
 
-    // readonly visit
     const value_type* GetDataPtr(size_t slot_idx) const noexcept {
         return const_cast<BBlock*>(this)->GetDataPtr(slot_idx);
     }
 
     value_type* GetDataPtr(size_t slot_idx) noexcept {
-        CHECK(slot_idx < MagicConstantsV1::kEntriesPerBlock);
-        auto* p = storage_.data() + FLAG_BYTES;
-        return reinterpret_cast<value_type*>(p) + slot_idx;
+        CHECK(slot_idx < BlockSize);
+        auto* start = storage_.data() + FLAG_BYTES;
+        return reinterpret_cast<value_type*>(start) + slot_idx;
     }
 
     // inplace construction, only run once when insert KV
@@ -114,9 +121,9 @@ public:
 private:
     static constexpr size_t PAIR_SIZE = sizeof(value_type);
     static constexpr size_t PAIR_ALIGN = alignof(value_type);
-    static constexpr size_t FLAG_BYTES_RAW = (MagicConstantsV1::kEntriesPerBlock + 7) / 8;
+    static constexpr size_t FLAG_BYTES_RAW = (BlockSize + 7) / 8;
     static constexpr size_t FLAG_BYTES = (FLAG_BYTES_RAW + PAIR_ALIGN - 1) / PAIR_ALIGN * PAIR_ALIGN;
-    static constexpr size_t TOTAL_SIZE = FLAG_BYTES + PAIR_SIZE * MagicConstantsV1::kEntriesPerBlock;
+    static constexpr size_t TOTAL_SIZE = FLAG_BYTES + PAIR_SIZE * BlockSize;
 
     std::array<std::byte, TOTAL_SIZE> storage_{};
 
@@ -128,25 +135,168 @@ private:
     // 0: Not construct
     // 1: Constructed
     NODISCARD bool TestFlag(size_t slot_idx) const noexcept {
-        CHECK(slot_idx < MagicConstantsV1::kEntriesPerBlock);
+        CHECK(slot_idx < BlockSize);
         auto [b, p] = GetFlagIdx(slot_idx);
         return (storage_[b] & std::byte{1} << (7 - p)) != std::byte{0};
     }
 
     // Set the slot is constructed
     void SetFlag(size_t slot_idx) noexcept {
-        CHECK(slot_idx < MagicConstantsV1::kEntriesPerBlock);
+        CHECK(slot_idx < BlockSize);
         auto [b, p] = GetFlagIdx(slot_idx);
         storage_[b] |= std::byte{1} << (7 - p);
     }
 
     // Set the slot is not constructed
     void ResetFlag(size_t slot_idx) noexcept {
-        CHECK(slot_idx < MagicConstantsV1::kEntriesPerBlock);
+        CHECK(slot_idx < BlockSize);
         auto [b, p] = GetFlagIdx(slot_idx);
         storage_[b] &= ~(std::byte{1} << (7 - p));
     }
 };
+
+template<typename K, typename V, typename Hasher = hash<K>>
+class MapImplV2 : public Object {
+public:
+    using key_type = K;
+    using mapped_type = V;
+    using value_type = std::pair<const key_type, mapped_type>;
+    using hasher = Hasher;
+    using size_type = size_t;
+    using difference_type = std::ptrdiff_t;
+    using pointer = value_type*;
+    using const_pointer = const value_type*;
+    using reference = value_type&;
+    using const_reference = const value_type&;
+    using Constants = MagicConstantsV1;
+
+    // IteratorImpl is a base class for iterator and const_iterator
+    template<bool IsConst>
+    class IteratorImpl;
+
+    using iterator = IteratorImpl<false>;
+    using const_iterator = IteratorImpl<true>;
+
+    using Block = BBlock<value_type>;
+
+    MapImplV2() = default;
+
+    explicit MapImplV2(size_type n) {
+        auto [fib_shift, slots] = CalculateSlotCount(n);
+        const size_type block_num = CalculateBlockCount(slots);
+        blocks_.reserve(block_num);
+        for (size_type i = 0; i < block_num; ++i) {
+            blocks_.push_back(make_object<Block>());
+        }
+
+        slot_metas_.resize(slots);
+        slots_ = slots;
+        fib_shift_ = fib_shift;
+    }
+
+    ~MapImplV2() override {
+        reset();
+    }
+
+    MapImplV2(const MapImplV2&) = default;
+    MapImplV2(MapImplV2&& other) noexcept = default;
+    MapImplV2& operator=(const MapImplV2& other) {
+        MapImplV2(other).swap(*this);
+        return *this;
+    }
+
+    MapImplV2& operator=(MapImplV2&& other) noexcept {
+        MapImplV2(std::move(other)).swap(*this);
+        return *this;
+    }
+
+    NODISCARD size_type size() const noexcept {
+        return size_;
+    }
+
+    NODISCARD size_type slots() const noexcept {
+        return slots_;
+    }
+
+    NODISCARD value_type* GetDataPtr(size_t global_idx) const {
+        CHECK(global_idx < slots_);
+        auto block_idx = global_idx / Constants::kEntriesPerBlock;
+        return blocks_[block_idx]->GetDataPtr(global_idx & Constants::kEntriesPerBlock - 1);
+    }
+
+    void reset() {
+        size_ = 0;
+        slots_ = 0;
+        fib_shift_ = 63;
+        iter_list_head_ = Constants::kInvalidIndex;
+        iter_list_tail_ = Constants::kInvalidIndex;
+        // std::vector<ObjectPtr<Block>>().swap(blocks_);
+        // std::vector<SlotMeta>().swap(slot_metas_);
+        blocks_.clear();
+        blocks_.shrink_to_fit();
+        slot_metas_.clear();
+        slot_metas_.shrink_to_fit();
+    }
+
+    void swap(MapImplV2& other) noexcept {
+        std::swap(size_, other.size_);
+        std::swap(slots_, other.slots_);
+        std::swap(iter_list_head_, other.iter_list_head_);
+        std::swap(iter_list_tail_, other.iter_list_tail_);
+        std::swap(fib_shift_, other.fib_shift_);
+        blocks_.swap(other.blocks_);
+        slot_metas_.swap(other.slot_metas_);
+    }
+
+
+private:
+    struct SlotMeta {
+        std::byte meta;
+        size_type prev;
+        size_type next;
+
+        SlotMeta() : meta(Constants::kEmptySlot),
+                     prev(Constants::kInvalidIndex),
+                     next(Constants::kInvalidIndex) {}
+    };
+
+    size_type size_{0};
+    size_type slots_{0};
+    // The head of iterator list
+    size_type iter_list_head_{Constants::kInvalidIndex};
+    // The tail of iterator list
+    size_type iter_list_tail_{Constants::kInvalidIndex};
+    // fib shift in Fibonacci hash
+    uint32_t fib_shift_{Constants::kDefaultFibShift};
+    // blocks ptr vector
+    std::vector<ObjectPtr<Block>> blocks_;
+    // all slot metas
+    std::vector<SlotMeta> slot_metas_;
+
+    // Calculate the power-of-2 table size given the lower-bound of required capacity.
+    // shift = 64 - log2(slots)
+    static std::pair<uint32_t, size_type> CalculateSlotCount(size_type cap) {
+        uint32_t shift = 64;
+        size_t slots = 1;
+        if (cap == 1) {
+            return {shift, slots};
+        }
+
+        size_t c = cap - 1;
+        while (c > 0) {
+            --shift;
+            slots <<= 1;
+            c >>= 1;
+        }
+        CHECK(slots >= cap);
+        return {shift, slots};
+    }
+
+    static size_type CalculateBlockCount(size_type total_slots) {
+        return (total_slots + Constants::kEntriesPerBlock - 1) / Constants::kEntriesPerBlock;
+    }
+};
+
 
 template<typename T, uint8_t BlockSize>
 struct MapBlock : Object {

@@ -53,19 +53,23 @@ struct MagicConstantsV1 {
 };
 
 template<typename value_type>
-struct BBlock : Object {
-    using storage_type = std::aligned_storage_t<sizeof(value_type), alignof(value_type)>;
-    storage_type storage_[MagicConstantsV1::kEntriesPerBlock];
-    std::array<std::byte, MagicConstantsV1::kEntriesPerBlock / 8 +
-                                  sizeof(value_type) * MagicConstantsV1::kEntriesPerBlock>
-            data_;
-
+class BBlock : Object {
+public:
     BBlock() = default;
-    ~BBlock() override = default;
+    ~BBlock() override {
+        for (size_t i = 0; i < MagicConstantsV1::kEntriesPerBlock; ++i) {
+            destroy(i);
+        }
+    }
 
-    // BBlock(const BBlock& other) noexcept(std::is_copy_constructible_v<value_type>){
-    //     data_
-    // }
+    BBlock(const BBlock& other) noexcept(std::is_copy_constructible_v<value_type>)
+        : storage_(other.storage_) {
+        for (size_t i = 0; i < MagicConstantsV1::kEntriesPerBlock; ++i) {
+            if (other.TestFlag(i)) {
+                new (GetDataPtr(i)) value_type(*other.GetDataPtr(i));
+            }
+        }
+    }
 
 
     BBlock(BBlock&&) = delete;
@@ -73,24 +77,74 @@ struct BBlock : Object {
     BBlock& operator=(BBlock&&) = delete;
 
     // readonly visit
-    const value_type& Get(size_t idx) const noexcept {
-        return *std::launder(reinterpret_cast<const value_type*>(storage_ + idx));
+    const value_type* GetDataPtr(size_t slot_idx) const noexcept {
+        return const_cast<BBlock*>(this)->GetDataPtr(slot_idx);
+    }
+
+    value_type* GetDataPtr(size_t slot_idx) noexcept {
+        CHECK(slot_idx < MagicConstantsV1::kEntriesPerBlock);
+        auto* p = storage_.data() + FLAG_BYTES;
+        return reinterpret_cast<value_type*>(p) + slot_idx;
     }
 
     // inplace construction, only run once when insert KV
     template<typename... Args>
-    void emplace(size_t idx, Args&&... args) noexcept(std::is_nothrow_constructible_v<value_type, Args...>) {
-        new (storage_ + idx) value_type(std::forward<Args>(args)...);
+    void emplace(size_t slot_idx, Args&&... args) noexcept(std::is_nothrow_constructible_v<value_type, Args...>) {
+        destroy(slot_idx);
+        new (GetDataPtr(slot_idx)) value_type(std::forward<Args>(args)...);
+        SetFlag(slot_idx);
     }
 
     // destroy KV
-    void destroy(size_t idx) noexcept {
-        Get(idx).~value_type();
+    void destroy(size_t slot_idx) noexcept(std::is_nothrow_destructible_v<value_type>) {
+        if (TestFlag(slot_idx)) {
+            GetDataPtr(slot_idx)->~value_type();
+            ResetFlag(slot_idx);
+        }
+    }
+
+    NODISCARD bool IsConstructed(size_t slot_idx) const noexcept {
+        return TestFlag(slot_idx);
+    }
+
+    NODISCARD bool IsUnConstructed(size_t slot_idx) const noexcept {
+        return !TestFlag(slot_idx);
     }
 
 private:
-    value_type& Get(size_t idx) noexcept {
-        return *std::launder(reinterpret_cast<value_type*>(storage_ + idx));
+    static constexpr size_t PAIR_SIZE = sizeof(value_type);
+    static constexpr size_t PAIR_ALIGN = alignof(value_type);
+    static constexpr size_t FLAG_BYTES_RAW = (MagicConstantsV1::kEntriesPerBlock + 7) / 8;
+    static constexpr size_t FLAG_BYTES = (FLAG_BYTES_RAW + PAIR_ALIGN - 1) / PAIR_ALIGN * PAIR_ALIGN;
+    static constexpr size_t TOTAL_SIZE = FLAG_BYTES + PAIR_SIZE * MagicConstantsV1::kEntriesPerBlock;
+
+    std::array<std::byte, TOTAL_SIZE> storage_{};
+
+    NODISCARD static std::pair<size_t, size_t> GetFlagIdx(size_t slot_idx) noexcept {
+        return {slot_idx / 8, slot_idx & 7};// slot_idx % 8
+    }
+
+    // test the slot is constructed
+    // 0: Not construct
+    // 1: Constructed
+    NODISCARD bool TestFlag(size_t slot_idx) const noexcept {
+        CHECK(slot_idx < MagicConstantsV1::kEntriesPerBlock);
+        auto [b, p] = GetFlagIdx(slot_idx);
+        return (storage_[b] & std::byte{1} << (7 - p)) != std::byte{0};
+    }
+
+    // Set the slot is constructed
+    void SetFlag(size_t slot_idx) noexcept {
+        CHECK(slot_idx < MagicConstantsV1::kEntriesPerBlock);
+        auto [b, p] = GetFlagIdx(slot_idx);
+        storage_[b] |= std::byte{1} << (7 - p);
+    }
+
+    // Set the slot is not constructed
+    void ResetFlag(size_t slot_idx) noexcept {
+        CHECK(slot_idx < MagicConstantsV1::kEntriesPerBlock);
+        auto [b, p] = GetFlagIdx(slot_idx);
+        storage_[b] &= ~(std::byte{1} << (7 - p));
     }
 };
 
@@ -130,43 +184,6 @@ struct MapBlock : Object {
         return const_cast<MapBlock*>(this)->GetEntryPtr(i);
     }
 };
-
-// template<typename K, typename V, typename Hasher>
-// struct MapImpl<K, V, Hasher>::Block {
-//     std::array<std::byte, kEntriesPerBlock + kEntriesPerBlock * sizeof(Entry)> storage_;
-//
-//     Block() {// NOLINT
-//         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-//             storage_[i] = MagicConstantsV1::kEmptySlot;
-//         }
-//     }
-//
-//     Block(const Block& other) {// NOLINT
-//         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-//             if (other.storage_[i] != MagicConstantsV1::kEmptySlot) {
-//                 storage_[i] = other.storage_[i];
-//                 new (GetEntryPtr(i)) Entry(*other.GetEntryPtr(i));
-//             }
-//         }
-//     }
-//
-//     ~Block() {
-//         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
-//             if (storage_[i] != MagicConstantsV1::kEmptySlot) {
-//                 storage_[i] = MagicConstantsV1::kEmptySlot;
-//                 GetEntryPtr(i)->~Entry();
-//             }
-//         }
-//     }
-//
-//     Entry* GetEntryPtr(size_type i) {
-//         return static_cast<Entry*>(static_cast<void*>(storage_.data() + kEntriesPerBlock)) + i;
-//     }
-//
-//     const Entry* GetEntryPtr(size_type i) const {
-//         return const_cast<Block*>(this)->GetEntryPtr(i);
-//     }
-// };
 
 template<typename K, typename V, typename Hasher>
 class MapImpl : public Object {

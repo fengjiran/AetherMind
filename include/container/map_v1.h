@@ -297,6 +297,38 @@ private:
     }
 };
 
+template<typename K, typename V, typename Hasher>
+template<bool IsConst>
+class MapImplV2<K, V, Hasher>::IteratorImpl {
+public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using ContainerPtrType = std::conditional_t<IsConst, const MapImplV2*, MapImplV2*>;
+    using value_type = MapImplV2<K, V, Hasher>::value_type;
+    using pointer = std::conditional_t<IsConst, const value_type*, value_type*>;
+    using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
+    using difference_type = std::ptrdiff_t;
+
+    IteratorImpl() noexcept : index_(0), ptr_(nullptr) {}
+    IteratorImpl(size_type index, ContainerPtrType ptr) noexcept : index_(index), ptr_(ptr) {}
+
+    // iterator can convert to const_iterator
+    template<bool AlwaysFalse>
+        requires(IsConst && !AlwaysFalse)
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
+
+    NODISCARD size_type index() const noexcept {
+        return index_;
+    }
+
+    NODISCARD ContainerPtrType ptr() const noexcept {
+        return ptr_;
+    }
+
+private:
+    size_type index_;
+    ContainerPtrType ptr_;
+};
+
 
 template<typename T, uint8_t BlockSize>
 struct MapBlock : Object {

@@ -189,7 +189,7 @@ public:
             blocks_.push_back(make_object<Block>());
         }
 
-        slot_metas_.resize(slots);
+        slot_infos_.resize(slots);
         slots_ = slots;
         fib_shift_ = fib_shift;
     }
@@ -218,6 +218,32 @@ public:
         return slots_;
     }
 
+    iterator begin() {
+        return {iter_list_head_, this};
+    }
+
+    iterator end() {
+        return {Constants::kInvalidIndex, this};
+    }
+
+    const_iterator begin() const {
+        return const_cast<MapImplV2*>(this)->begin();
+    }
+
+    const_iterator end() const {
+        return const_cast<MapImplV2*>(this)->end();
+    }
+
+    iterator find(const key_type& key);
+
+    const_iterator find(const key_type& key) const {
+        return const_cast<MapImplV2*>(this)->find(key);
+    }
+
+    NODISCARD size_type count(const key_type& key) const {
+        return find(key) != end();
+    }
+
     NODISCARD value_type* GetDataPtr(size_t global_idx) const {
         CHECK(global_idx < slots_);
         auto block_idx = global_idx / Constants::kEntriesPerBlock;
@@ -234,8 +260,8 @@ public:
         // std::vector<SlotMeta>().swap(slot_metas_);
         blocks_.clear();
         blocks_.shrink_to_fit();
-        slot_metas_.clear();
-        slot_metas_.shrink_to_fit();
+        slot_infos_.clear();
+        slot_infos_.shrink_to_fit();
     }
 
     void swap(MapImplV2& other) noexcept {
@@ -245,19 +271,35 @@ public:
         std::swap(iter_list_tail_, other.iter_list_tail_);
         std::swap(fib_shift_, other.fib_shift_);
         blocks_.swap(other.blocks_);
-        slot_metas_.swap(other.slot_metas_);
+        slot_infos_.swap(other.slot_infos_);
     }
 
 
 private:
-    struct SlotMeta {
+    struct SlotInfo {
         std::byte meta;
         size_type prev;
         size_type next;
 
-        SlotMeta() : meta(Constants::kEmptySlot),
+        SlotInfo() : meta(Constants::kEmptySlot),
                      prev(Constants::kInvalidIndex),
                      next(Constants::kInvalidIndex) {}
+
+        NODISCARD bool IsHead() const {
+            return (meta & Constants::kHeadFlagMask) == Constants::kHeadFlag;
+        }
+
+        NODISCARD bool IsEmpty() const {
+            return meta == Constants::kEmptySlot;
+        }
+
+        NODISCARD bool IsProtected() const {
+            return meta == Constants::kProtectedSlot;
+        }
+
+        NODISCARD uint8_t GetOffsetIdx() const {
+            return std::to_integer<uint8_t>(meta & Constants::kOffsetIdxMask);
+        }
     };
 
     size_type size_{0};
@@ -273,14 +315,23 @@ private:
     // blocks ptr vector
     std::vector<ObjectPtr<Block>> blocks_;
     // all slot metas
-    std::vector<SlotMeta> slot_metas_;
+    std::vector<SlotInfo> slot_infos_;
+
+    void BlockCOW(size_type block_idx) {
+        auto& block_ptr = blocks_[block_idx];
+        if (!block_ptr.unique()) {
+            block_ptr = make_object<Block>();
+        }
+    }
+
+    void rehash(size_type new_slots);
 
     NODISCARD size_type GetNextIndexOf(size_type global_idx) const {
         if (global_idx == Constants::kInvalidIndex) {
             return global_idx;
         }
         CHECK(global_idx < slots_);
-        return slot_metas_[global_idx].next;
+        return slot_infos_[global_idx].next;
     }
 
     NODISCARD size_type GetPrevIndexOf(size_type global_idx) const {
@@ -288,7 +339,7 @@ private:
             return iter_list_tail_;
         }
         CHECK(global_idx < slots_);
-        return slot_metas_[global_idx].prev;
+        return slot_infos_[global_idx].prev;
     }
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
@@ -442,6 +493,33 @@ private:
         CHECK(version_ == ptr_->version_) << "Iterator invalidated: container modified!";
     }
 };
+
+template<typename K, typename V, typename Hasher>
+MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& key) {
+    auto global_idx = details::FibonacciHash(hasher()(key), fib_shift_);
+    bool is_first = true;
+    while (true) {
+        auto& info = slot_infos_[global_idx];
+        if (is_first) {
+            if (!info.IsHead()) {
+                return end();
+            }
+            is_first = false;
+        }
+
+        if (key == GetDataPtr(global_idx)->first) {
+            return {global_idx, this};
+        }
+
+        auto offset_idx = info.GetOffsetIdx();
+        if (offset_idx == 0) {
+            return end();
+        }
+
+        auto t = global_idx + Constants::NextProbePosOffset[offset_idx];
+        global_idx = t >= slots() ? t & slots() - 1 : t;
+    }
+}
 
 
 template<typename T, uint8_t BlockSize>

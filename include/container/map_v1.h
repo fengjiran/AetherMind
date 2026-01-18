@@ -172,10 +172,10 @@ public:
 
     // IteratorImpl is a base class for iterator and const_iterator
     template<bool IsConst>
-    class IteratorImpl;
+    class Iterator;
 
-    using iterator = IteratorImpl<false>;
-    using const_iterator = IteratorImpl<true>;
+    using iterator = Iterator<false>;
+    using const_iterator = Iterator<true>;
 
     using Block = BBlock<value_type>;
 
@@ -262,6 +262,8 @@ private:
 
     size_type size_{0};
     size_type slots_{0};
+    // iterator version
+    mutable size_type version_{0};
     // The head of iterator list
     size_type iter_list_head_{Constants::kInvalidIndex};
     // The tail of iterator list
@@ -272,6 +274,22 @@ private:
     std::vector<ObjectPtr<Block>> blocks_;
     // all slot metas
     std::vector<SlotMeta> slot_metas_;
+
+    NODISCARD size_type GetNextIndexOf(size_type global_idx) const {
+        if (global_idx == Constants::kInvalidIndex) {
+            return global_idx;
+        }
+        CHECK(global_idx < slots_);
+        return slot_metas_[global_idx].next;
+    }
+
+    NODISCARD size_type GetPrevIndexOf(size_type global_idx) const {
+        if (global_idx == Constants::kInvalidIndex) {
+            return iter_list_tail_;
+        }
+        CHECK(global_idx < slots_);
+        return slot_metas_[global_idx].prev;
+    }
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     // shift = 64 - log2(slots)
@@ -299,7 +317,7 @@ private:
 
 template<typename K, typename V, typename Hasher>
 template<bool IsConst>
-class MapImplV2<K, V, Hasher>::IteratorImpl {
+class MapImplV2<K, V, Hasher>::Iterator {
 public:
     using iterator_category = std::bidirectional_iterator_tag;
     using ContainerPtrType = std::conditional_t<IsConst, const MapImplV2*, MapImplV2*>;
@@ -308,13 +326,14 @@ public:
     using reference = std::conditional_t<IsConst, const value_type&, value_type&>;
     using difference_type = std::ptrdiff_t;
 
-    IteratorImpl() noexcept : index_(0), ptr_(nullptr) {}
-    IteratorImpl(size_type index, ContainerPtrType ptr) noexcept : index_(index), ptr_(ptr) {}
+    Iterator() noexcept : index_(0), version_(0), ptr_(nullptr) {}
+    Iterator(size_type index, ContainerPtrType ptr) noexcept
+        : index_(index), version_(ptr->version_), ptr_(ptr) {}
 
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
         requires(IsConst && !AlwaysFalse)
-    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
+    Iterator(const Iterator<AlwaysFalse>& other) : index_(other.index()), version_(other.version_), ptr_(other.ptr()) {}//NOLINT
 
     NODISCARD size_type index() const noexcept {
         return index_;
@@ -324,9 +343,104 @@ public:
         return ptr_;
     }
 
+    pointer operator->() const {
+        Check();
+        return ptr()->GetDataPtr(index_);
+    }
+
+    reference operator*() const {
+        return *operator->();
+    }
+
+    Iterator& operator++() {
+        Check();
+        index_ = ptr()->GetNextIndexOf(index_);
+        return *this;
+    }
+
+    Iterator& operator--() {
+        Check();
+        index_ = ptr()->GetPrevIndexOf(index_);
+        return *this;
+    }
+
+    Iterator operator++(int) {
+        Iterator tmp = *this;
+        operator++();
+        return tmp;
+    }
+
+    Iterator operator--(int) {
+        Iterator tmp = *this;
+        operator--();
+        return tmp;
+    }
+
+    Iterator& operator+=(difference_type offset) {
+        Check();
+        if (offset < 0) {
+            return operator-=(static_cast<difference_type>(-offset));
+        }
+
+        for (difference_type i = 0; i < offset; ++i) {
+            index_ = ptr()->GetNextIndexOf(index_);
+            if (index_ == Constants::kInvalidIndex) {
+                break;
+            }
+        }
+        return *this;
+    }
+
+    Iterator& operator-=(difference_type offset) {
+        Check();
+        if (offset < 0) {
+            return operator+=(static_cast<difference_type>(-offset));
+        }
+
+        for (difference_type i = 0; i < offset; ++i) {
+            index_ = ptr()->GetPrevIndexOf(index_);
+            if (index_ == Constants::kInvalidIndex) {
+                break;
+            }
+        }
+        return *this;
+    }
+
+    Iterator operator+(difference_type offset) const {
+        auto res = *this;
+        res += offset;
+        return res;
+    }
+
+    Iterator operator-(difference_type offset) const {
+        auto res = *this;
+        res -= offset;
+        return res;
+    }
+
+    difference_type operator-(const Iterator& other) const {
+        return static_cast<difference_type>(index()) - static_cast<difference_type>(other.index());
+    }
+
+    bool operator==(const Iterator& other) const {
+        return index_ == other.index_ && version_ == other.version_ && ptr_ == other.ptr_;
+    }
+
+    bool operator!=(const Iterator& other) const {
+        return !(*this == other);
+    }
+
+
 private:
     size_type index_;
+    size_type version_;
     ContainerPtrType ptr_;
+
+    void Check() const {
+        CHECK(ptr_ != nullptr) << "Iterator pointer is nullptr.";
+        CHECK(index_ <= ptr_->slots_) << "Iterator index is out of range.";
+        CHECK(version_ == ptr_->version_) << "Iterator invalidated: container modified!";
+    }
 };
 
 

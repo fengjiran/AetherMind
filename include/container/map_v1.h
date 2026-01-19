@@ -30,8 +30,8 @@ concept is_valid_iter_v1 = requires(InputIter t) {
 struct MagicConstantsV1 {
     // 0b11111111 represent that the slot is empty
     static constexpr auto kEmptySlot = std::byte{0xFF};
-    // 0b11111110 represent that the slot is protected
-    static constexpr auto kProtectedSlot = std::byte{0xFE};
+    // 0b11111110 represent that the slot is tombstone
+    static constexpr auto kTombStoneSlot = std::byte{0xFE};
     // Number of probing choices available
     static constexpr int kNumOffsetDists = 126;
     // head flag
@@ -46,7 +46,7 @@ struct MagicConstantsV1 {
     static constexpr uint32_t kDefaultFibShift = 63;
 
     // The number of elements in a memory block.
-    static constexpr uint8_t kEntriesPerBlock = 16;
+    static constexpr uint8_t kSlotsPerBlock = 16;
 
     // Max load factor of hash table
     static constexpr double kMaxLoadFactor = 0.75;
@@ -60,7 +60,7 @@ struct MagicConstantsV1 {
     static const size_t NextProbePosOffset[kNumOffsetDists];
 };
 
-template<typename value_type, uint8_t BlockSize = MagicConstantsV1::kEntriesPerBlock>
+template<typename value_type, uint8_t BlockSize = MagicConstantsV1::kSlotsPerBlock>
 class BBlock : public Object {
 public:
     BBlock() = default;
@@ -178,6 +178,7 @@ public:
     using const_iterator = Iterator<true>;
 
     using Block = BBlock<value_type>;
+    struct Cursor;
 
     MapImplV2() = default;
 
@@ -244,10 +245,13 @@ public:
         return find(key) != end();
     }
 
+    // may be rehash
+    std::pair<iterator, bool> insert(value_type&& kv, bool assign = false);
+
     NODISCARD value_type* GetDataPtr(size_t global_idx) const {
         CHECK(global_idx < slots_);
-        auto block_idx = global_idx / Constants::kEntriesPerBlock;
-        return blocks_[block_idx]->GetDataPtr(global_idx & Constants::kEntriesPerBlock - 1);
+        auto block_idx = global_idx / Constants::kSlotsPerBlock;
+        return blocks_[block_idx]->GetDataPtr(global_idx & Constants::kSlotsPerBlock - 1);
     }
 
     void reset() {
@@ -274,6 +278,21 @@ public:
         slot_infos_.swap(other.slot_infos_);
     }
 
+    NODISCARD bool IsHead(size_type global_idx) const {
+        return (slot_infos_[global_idx].meta & Constants::kHeadFlagMask) == Constants::kHeadFlag;
+    }
+
+    NODISCARD bool IsEmpty(size_type global_idx) const {
+        return slot_infos_[global_idx].meta == Constants::kEmptySlot;
+    }
+
+    NODISCARD bool IsTombStone(size_type global_idx) const {
+        return slot_infos_[global_idx].meta == Constants::kTombStoneSlot;
+    }
+
+    NODISCARD bool IsAlive(size_type global_idx) const {
+        return !(IsEmpty(global_idx) || IsTombStone(global_idx));
+    }
 
 private:
     struct SlotInfo {
@@ -285,16 +304,16 @@ private:
                      prev(Constants::kInvalidIndex),
                      next(Constants::kInvalidIndex) {}
 
-        NODISCARD bool IsHead() const {
-            return (meta & Constants::kHeadFlagMask) == Constants::kHeadFlag;
-        }
+        // NODISCARD bool IsHead() const {
+        //     return (meta & Constants::kHeadFlagMask) == Constants::kHeadFlag;
+        // }
 
         NODISCARD bool IsEmpty() const {
             return meta == Constants::kEmptySlot;
         }
 
         NODISCARD bool IsProtected() const {
-            return meta == Constants::kProtectedSlot;
+            return meta == Constants::kTombStoneSlot;
         }
 
         NODISCARD uint8_t GetOffsetIdx() const {
@@ -316,6 +335,12 @@ private:
     std::vector<ObjectPtr<Block>> blocks_;
     // all slot metas
     std::vector<SlotInfo> slot_infos_;
+
+    // for rehash
+    // bool is_rehashing_{false};
+    // size_type rehashing_block_idx_{0};
+    // std::vector<ObjectPtr<Block>> new_blocks_;
+    // std::vector<SlotInfo> new_slot_infos_;
 
     void BlockCOW(size_type block_idx) {
         auto& block_ptr = blocks_[block_idx];
@@ -342,6 +367,11 @@ private:
         return slot_infos_[global_idx].prev;
     }
 
+    // Whether the hash table is full.
+    NODISCARD bool IsFull() const {
+        return size() + 1 > static_cast<size_type>(static_cast<double>(slots()) * Constants::kMaxLoadFactor);
+    }
+
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
     // shift = 64 - log2(slots)
     static std::pair<uint32_t, size_type> CalculateSlotCount(size_type cap) {
@@ -362,8 +392,83 @@ private:
     }
 
     static size_type CalculateBlockCount(size_type total_slots) {
-        return (total_slots + Constants::kEntriesPerBlock - 1) / Constants::kEntriesPerBlock;
+        return (total_slots + Constants::kSlotsPerBlock - 1) / Constants::kSlotsPerBlock;
     }
+};
+
+
+template<typename K, typename V, typename Hasher>
+struct MapImplV2<K, V, Hasher>::Cursor {
+    Cursor() : global_idx_(0), obj_(nullptr) {}
+
+    Cursor(size_t index, const MapImplV2* p) : global_idx_(index), obj_(p) {}
+
+    NODISCARD size_t index() const {
+        return global_idx_;
+    }
+
+    NODISCARD const MapImplV2* obj() const {
+        return obj_;
+    }
+
+    void reset() {
+        global_idx_ = 0;
+        obj_ = nullptr;
+    }
+
+    NODISCARD bool IsIterListHead() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return index() == obj()->iter_list_head_;
+    }
+
+    NODISCARD bool IsIterListTail() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return index() == obj()->iter_list_tail_;
+    }
+
+    NODISCARD std::byte& GetSlotMetadata() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return obj()->slot_infos_[global_idx_].meta;
+    }
+
+    NODISCARD value_type& GetData() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return *obj()->GetDataPtr(global_idx_);
+    }
+
+    NODISCARD const key_type& GetKey() const {
+        return GetData().first;
+    }
+
+    NODISCARD mapped_type& GetValue() const {
+        return GetData().second;
+    }
+
+    NODISCARD bool IsSlotEmpty() const {
+        return GetSlotMetadata() == Constants::kEmptySlot;
+    }
+
+    NODISCARD bool IsSlotProtected() const {
+        return GetSlotMetadata() == Constants::kTombStoneSlot;
+    }
+
+    void MarkSlotAsEmpty() const {
+        GetSlotMetadata() = Constants::kEmptySlot;
+    }
+
+    void MarkSlotAsProtected() const {
+        GetSlotMetadata() = Constants::kTombStoneSlot;
+    }
+
+    NODISCARD bool IsNone() const {
+        return obj() == nullptr;
+    }
+
+private:
+    // Index of entry on the array
+    size_t global_idx_;
+    // Pointer to the current MapImpl
+    const MapImplV2* obj_;
 };
 
 template<typename K, typename V, typename Hasher>
@@ -521,6 +626,11 @@ MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& 
     }
 }
 
+template<typename K, typename V, typename Hasher>
+std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
+MapImplV2<K, V, Hasher>::insert(value_type&& kv, bool assign) {
+    //
+}
 
 template<typename T, uint8_t BlockSize>
 struct MapBlock : Object {
@@ -584,7 +694,7 @@ public:
 
     struct Entry;
     struct Cursor;
-    using Block = MapBlock<Entry, Constants::kEntriesPerBlock>;
+    using Block = MapBlock<Entry, Constants::kSlotsPerBlock>;
 
     MapImpl() : data_(nullptr), size_(0), slots_(0) {
         // blocks_.push_back(make_object<Block>());
@@ -695,8 +805,8 @@ private:
     }
 
     NODISCARD Entry* GetEntryByIndex(size_type index) const {
-        auto* block = GetBlockByIndex(index / Constants::kEntriesPerBlock);
-        return block->GetEntryPtr(index & (Constants::kEntriesPerBlock - 1));
+        auto* block = GetBlockByIndex(index / Constants::kSlotsPerBlock);
+        return block->GetEntryPtr(index & (Constants::kSlotsPerBlock - 1));
     }
 
     // Construct a ListNode from hash code if the position is head of list
@@ -778,7 +888,7 @@ private:
     std::pair<iterator, bool> TryInsertOrUpdate(value_type&& kv, bool assign = false);
 
     static size_type CalculateBlockCount(size_type total_slots) {
-        return (total_slots + Constants::kEntriesPerBlock - 1) / Constants::kEntriesPerBlock;
+        return (total_slots + Constants::kSlotsPerBlock - 1) / Constants::kSlotsPerBlock;
     }
 
     // Calculate the power-of-2 table size given the lower-bound of required capacity.
@@ -841,7 +951,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
 
     NODISCARD Block* GetBlock() const {
         CHECK(!IsNone()) << "The Cursor is none.";
-        return obj()->GetBlockByIndex(index() / Constants::kEntriesPerBlock);
+        return obj()->GetBlockByIndex(index() / Constants::kSlotsPerBlock);
     }
 
     // NODISCARD ObjectPtr<Block> GetBlock_() const {
@@ -852,7 +962,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
     // Get metadata of an entry
     NODISCARD std::byte& GetSlotMetadata() const {
         // equal to index() % kEntriesPerBlock
-        return GetBlock()->storage_[index() & (Constants::kEntriesPerBlock - 1)];
+        return GetBlock()->storage_[index() & (Constants::kSlotsPerBlock - 1)];
     }
 
     // NODISCARD std::byte& GetSlotMetadata_() const {
@@ -862,7 +972,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
     // Get the entry ref
     NODISCARD Entry& GetEntry() const {
         CHECK(!IsSlotEmpty()) << "The entry is empty.";
-        return *GetBlock()->GetEntryPtr(index() & (Constants::kEntriesPerBlock - 1));
+        return *GetBlock()->GetEntryPtr(index() & (Constants::kSlotsPerBlock - 1));
     }
 
     // NODISCARD Entry& GetEntry_() const {
@@ -908,7 +1018,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
     // }
 
     NODISCARD bool IsSlotProtected() const {
-        return GetSlotMetadata() == Constants::kProtectedSlot;
+        return GetSlotMetadata() == Constants::kTombStoneSlot;
     }
 
     // NODISCARD bool IsSlotProtected_() const {
@@ -932,7 +1042,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
     // }
 
     void MarkSlotAsProtected() const {
-        GetSlotMetadata() = Constants::kProtectedSlot;
+        GetSlotMetadata() = Constants::kTombStoneSlot;
     }
 
     // void MarkSlotAsProtected_() const {
@@ -947,7 +1057,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
 
     void ConstructEntry(Entry&& entry) const {
         CHECK(IsSlotEmpty());
-        new (GetBlock()->GetEntryPtr(index() & (Constants::kEntriesPerBlock - 1))) Entry(std::move(entry));
+        new (GetBlock()->GetEntryPtr(index() & (Constants::kSlotsPerBlock - 1))) Entry(std::move(entry));
     }
 
     // Destroy the item in the entry.
@@ -1101,8 +1211,8 @@ MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::find(const key_type& key)
     auto index = details::FibonacciHash(hasher()(key), fib_shift_);
     bool is_first = true;
     while (true) {
-        auto block_idx = index / Constants::kEntriesPerBlock;
-        auto inner_idx = index & (Constants::kEntriesPerBlock - 1);
+        auto block_idx = index / Constants::kSlotsPerBlock;
+        auto inner_idx = index & (Constants::kSlotsPerBlock - 1);
         auto* block = GetBlockByIndex(block_idx);
         auto meta = block->storage_[inner_idx];
         if (is_first) {
@@ -1778,7 +1888,7 @@ public:
     }
 
     void clear() noexcept {
-        impl_ = make_object<ContainerType>(ContainerType::Constants::kEntriesPerBlock);
+        impl_ = make_object<ContainerType>(ContainerType::Constants::kSlotsPerBlock);
     }
 
     void swap(MapV1& other) noexcept {

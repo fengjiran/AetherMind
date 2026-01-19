@@ -155,6 +155,32 @@ private:
     }
 };
 
+struct SlotInfo {
+    std::byte meta;
+    size_t prev;
+    size_t next;
+
+    SlotInfo() : meta(MagicConstantsV1::kEmptySlot),
+                 prev(MagicConstantsV1::kInvalidIndex),
+                 next(MagicConstantsV1::kInvalidIndex) {}
+
+    NODISCARD bool IsHead() const {
+        return (meta & MagicConstantsV1::kHeadFlagMask) == MagicConstantsV1::kHeadFlag;
+    }
+
+    NODISCARD bool IsEmpty() const {
+        return meta == MagicConstantsV1::kEmptySlot;
+    }
+
+    NODISCARD bool IsTombStone() const {
+        return meta == MagicConstantsV1::kTombStoneSlot;
+    }
+
+    NODISCARD uint8_t GetOffsetIdx() const {
+        return std::to_integer<uint8_t>(meta & MagicConstantsV1::kOffsetIdxMask);
+    }
+};
+
 template<typename K, typename V, typename Hasher = hash<K>>
 class MapImplV2 : public Object {
 public:
@@ -248,6 +274,8 @@ public:
     // may be rehash
     std::pair<iterator, bool> insert(value_type&& kv, bool assign = false);
 
+    iterator erase(const_iterator pos);
+
     NODISCARD value_type* GetDataPtr(size_t global_idx) const {
         CHECK(global_idx < slots_);
         auto block_idx = global_idx / Constants::kSlotsPerBlock;
@@ -279,15 +307,15 @@ public:
     }
 
     NODISCARD bool IsHead(size_type global_idx) const {
-        return (slot_infos_[global_idx].meta & Constants::kHeadFlagMask) == Constants::kHeadFlag;
+        return slot_infos_[global_idx].IsHead();
     }
 
     NODISCARD bool IsEmpty(size_type global_idx) const {
-        return slot_infos_[global_idx].meta == Constants::kEmptySlot;
+        return slot_infos_[global_idx].IsEmpty();
     }
 
     NODISCARD bool IsTombStone(size_type global_idx) const {
-        return slot_infos_[global_idx].meta == Constants::kTombStoneSlot;
+        return slot_infos_[global_idx].IsTombStone();
     }
 
     NODISCARD bool IsAlive(size_type global_idx) const {
@@ -295,32 +323,6 @@ public:
     }
 
 private:
-    struct SlotInfo {
-        std::byte meta;
-        size_type prev;
-        size_type next;
-
-        SlotInfo() : meta(Constants::kEmptySlot),
-                     prev(Constants::kInvalidIndex),
-                     next(Constants::kInvalidIndex) {}
-
-        // NODISCARD bool IsHead() const {
-        //     return (meta & Constants::kHeadFlagMask) == Constants::kHeadFlag;
-        // }
-
-        NODISCARD bool IsEmpty() const {
-            return meta == Constants::kEmptySlot;
-        }
-
-        NODISCARD bool IsProtected() const {
-            return meta == Constants::kTombStoneSlot;
-        }
-
-        NODISCARD uint8_t GetOffsetIdx() const {
-            return std::to_integer<uint8_t>(meta & Constants::kOffsetIdxMask);
-        }
-    };
-
     size_type size_{0};
     size_type slots_{0};
     // iterator version
@@ -367,6 +369,72 @@ private:
         return slot_infos_[global_idx].prev;
     }
 
+    void IterListPushBack(size_type global_idx) {
+        auto& slot = slot_infos_[global_idx];
+        slot.prev = iter_list_tail_;
+        slot.next = Constants::kInvalidIndex;
+
+        if (iter_list_head_ == Constants::kInvalidIndex &&
+            iter_list_tail_ == Constants::kInvalidIndex) {
+            iter_list_head_ = global_idx;
+        } else {
+            slot_infos_[iter_list_tail_].next = global_idx;
+        }
+
+        iter_list_tail_ = global_idx;
+    }
+
+    // Remove the entry from iterator list.
+    // This function is usually used before deletion,
+    // and it does not change data content of the node.
+    void IterListRemove(size_type global_idx) {
+        // head
+        auto& cur_slot = slot_infos_[global_idx];
+        if (global_idx == iter_list_head_) {
+            iter_list_head_ = cur_slot.next;
+        } else {
+            slot_infos_[cur_slot.prev].next = cur_slot.next;
+        }
+
+        // tail
+        if (global_idx == iter_list_tail_) {
+            iter_list_tail_ = cur_slot.prev;
+        } else {
+            slot_infos_[cur_slot.next].prev = cur_slot.prev;
+        }
+    }
+
+    /*!
+   * \brief Replace node src by dst in the iter list
+   * \param src The source node
+   * \param dst The destination node, must be empty
+   * \note This function does not change data content of the nodes,
+   *       which needs to be updated by the caller.
+   */
+    void IterListReplace(size_type src, size_type dst) {
+        auto& src_slot = slot_infos_[src];
+        auto& dst_slot = slot_infos_[dst];
+
+        dst_slot.prev = src_slot.prev;
+        dst_slot.next = src_slot.next;
+
+        if (src == iter_list_head_) {
+            iter_list_head_ = dst;
+        } else {
+            slot_infos_[src_slot.prev].next = dst;
+        }
+
+        if (src == iter_list_tail_) {
+            iter_list_tail_ = dst;
+        } else {
+            slot_infos_[src_slot.next].prev = dst;
+        }
+    }
+
+    NODISCARD Cursor CreateCursorFromHash(size_t hash_value) const {
+        return {details::FibonacciHash(hash_value, fib_shift_), this};
+    }
+
     // Whether the hash table is full.
     NODISCARD bool IsFull() const {
         return size() + 1 > static_cast<size_type>(static_cast<double>(slots()) * Constants::kMaxLoadFactor);
@@ -395,7 +463,6 @@ private:
         return (total_slots + Constants::kSlotsPerBlock - 1) / Constants::kSlotsPerBlock;
     }
 };
-
 
 template<typename K, typename V, typename Hasher>
 struct MapImplV2<K, V, Hasher>::Cursor {
@@ -445,19 +512,86 @@ struct MapImplV2<K, V, Hasher>::Cursor {
     }
 
     NODISCARD bool IsSlotEmpty() const {
-        return GetSlotMetadata() == Constants::kEmptySlot;
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return obj()->IsEmpty(global_idx_);
     }
 
-    NODISCARD bool IsSlotProtected() const {
-        return GetSlotMetadata() == Constants::kTombStoneSlot;
+    NODISCARD bool IsSlotTombStone() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return obj()->IsTombStone(global_idx_);
+    }
+
+    NODISCARD bool IsSlotHead() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return obj()->IsHead(global_idx_);
+    }
+
+    NODISCARD bool IsSlotAlive() const {
+        CHECK(!IsNone()) << "The Cursor is none.";
+        return obj()->IsAlive(global_idx_);
     }
 
     void MarkSlotAsEmpty() const {
         GetSlotMetadata() = Constants::kEmptySlot;
     }
 
-    void MarkSlotAsProtected() const {
+    void MarkSlotAsTombStone() const {
         GetSlotMetadata() = Constants::kTombStoneSlot;
+    }
+
+    // Set the entry's offset to its next entry.
+    void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
+        CHECK(offset_idx < Constants::kNumOffsetDists);
+        (GetSlotMetadata() &= Constants::kHeadFlagMask) |= std::byte{offset_idx};
+    }
+
+    // Whether the slot has the next slot on the linked list
+    NODISCARD bool HasNextSlot() const {
+        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & Constants::kOffsetIdxMask);
+        return Constants::NextProbePosOffset[idx] != 0;
+    }
+
+    // Move the current cursor to the next slot on the linked list
+    bool MoveToNextSlot(std::optional<std::byte> meta_opt = std::nullopt) {
+        std::byte meta = meta_opt ? meta_opt.value() : GetSlotMetadata();
+        const auto idx = std::to_integer<uint8_t>(meta & Constants::kOffsetIdxMask);
+        const auto offset = Constants::NextProbePosOffset[idx];
+        if (offset == 0) {
+            reset();
+            return false;
+        }
+
+        // The probing will go to the next pos and round back to stay within
+        // the correct range of the slots.
+        // equal to (index_ + offset) % obj()->slots()
+        auto t = global_idx_ + offset;
+        global_idx_ = t >= obj()->slots() ? t & obj()->slots() - 1 : t;
+        return true;
+    }
+
+    // Get the prev slot on the linked list
+    NODISCARD Cursor FindPrevSlot() const {
+        // start from the head of the linked list, which must exist
+        auto cur = obj()->CreateCursorFromHash(hasher()(GetKey()));
+        auto prev = cur;
+
+        cur.MoveToNextSlot();
+        while (index() != cur.index()) {
+            prev = cur;
+            cur.MoveToNextSlot();
+        }
+
+        return prev;
+    }
+
+    NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
+        for (uint8_t i = 1; i < Constants::kNumOffsetDists; ++i) {
+            if (Cursor candidate((index() + Constants::NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
+                candidate.IsSlotEmpty()) {
+                return std::make_pair(i, candidate);
+            }
+        }
+        return std::nullopt;
     }
 
     NODISCARD bool IsNone() const {

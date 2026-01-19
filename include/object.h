@@ -391,7 +391,7 @@ public:
      * \brief Returns whether the ObjectPtr is defined (i.e., not null type pointer).
      * \return True if the ObjectPtr is defined, false otherwise.
      */
-    NODISCARD bool defined() const {
+    NODISCARD bool defined() const noexcept{
         return ptr_ != null_type::singleton();
     }
 
@@ -399,7 +399,7 @@ public:
      * \brief Returns a raw pointer to the underlying object.
      * \return A raw pointer to the underlying object.
      */
-    T* get() const noexcept {
+    NODISCARD T* get() const noexcept {
         return ptr_;
     }
 

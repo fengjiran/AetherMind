@@ -2,6 +2,7 @@
 // Created by richard on 9/29/25.
 //
 #include "object.h"
+#include "object_allocator.h"
 
 namespace aethermind {
 
@@ -64,6 +65,13 @@ bool Object::TryPromoteWeakPtr() {
     }
     return false;
 }
+
+#ifdef  AETHERMIND_ALLOCATOR_DEBUG
+namespace details {
+backtrace_state* AllocTracker::bt_state_ = nullptr;
+}
+#endif
+
 
 }// namespace aethermind
 

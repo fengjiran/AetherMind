@@ -5,11 +5,55 @@
 #ifndef AETHERMIND_OBJECT_ALLOCATOR_H
 #define AETHERMIND_OBJECT_ALLOCATOR_H
 
+// #define AETHERMIND_ALLOCATOR_DEBUG
+
+#include "backtrace.h"
 #include "object.h"
 
-namespace aethermind {
+#include <mutex>
+#include <unordered_map>
 
+namespace aethermind {
 namespace details {
+
+#ifdef AETHERMIND_ALLOCATOR_DEBUG
+
+struct AllocRecord {
+    size_t size;          // allocate size
+    size_t align;         // alignment
+    const char* type_name;// type name
+    void* call_stack[16]; // call stack
+    int stack_frames;     // actual stack frames
+};
+
+class AllocTracker {
+public:
+    static AllocTracker& GetInstance() {
+        static AllocTracker inst;
+        return inst;
+    }
+
+    // ptr: allocate address
+    // size: object size
+    // align: object alignement
+    // type name: allocated object type name
+    void TrackAlloc(void* ptr, size_t size, size_t align, const char* type_name) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        AllocRecord record(size, align, type_name, {nullptr}, 0);
+        // backtrace(record.call_stack, sizeof(record.call_stack) / sizeof(void*));
+    }
+
+private:
+    AllocTracker() {
+        bt_state_ = backtrace_create_state(nullptr, 0, nullptr, nullptr);
+        atexit([] { GetInstance(); });
+    }
+
+    std::unordered_map<void*, AllocRecord> alloc_map_;
+    std::mutex mtx_;
+    static backtrace_state* bt_state_;
+};
+#endif
 
 /*!
  * \brief Allocate aligned memory.
@@ -65,6 +109,11 @@ public:
 
 class ObjectAllocator : public ObjectAllocatorBase<ObjectAllocator> {
 public:
+    static ObjectAllocator& GetInstance() {
+        static ObjectAllocator inst;
+        return inst;
+    }
+
     template<typename T>
     struct Handler {
         template<typename... Args>
@@ -116,18 +165,26 @@ public:
             }
         }
     };
+
+    ObjectAllocator(const ObjectAllocator&) = delete;
+    ObjectAllocator(ObjectAllocator&&) noexcept = delete;
+    ObjectAllocator& operator=(const ObjectAllocator&) = delete;
+    ObjectAllocator& operator=(ObjectAllocator&&) noexcept = delete;
+
+private:
+    ObjectAllocator() = default;
 };
 }// namespace details
 
 
 template<typename T, typename... Args>
 ObjectPtr<T> make_object(Args&&... args) {
-    return details::ObjectAllocator().make_object<T>(std::forward<Args>(args)...);
+    return details::ObjectAllocator::GetInstance().make_object<T>(std::forward<Args>(args)...);
 }
 
 template<typename T, typename ElemType, typename... Args>
 ObjectPtr<T> make_array_object(size_t num_elems, Args&&... args) {
-    return details::ObjectAllocator().make_array_object<T, ElemType>(num_elems, std::forward<Args>(args)...);
+    return details::ObjectAllocator::GetInstance().make_array_object<T, ElemType>(num_elems, std::forward<Args>(args)...);
 }
 
 }// namespace aethermind

@@ -163,22 +163,6 @@ struct SlotInfo {
     SlotInfo() : meta(MagicConstantsV1::kEmptySlot),
                  prev(MagicConstantsV1::kInvalidIndex),
                  next(MagicConstantsV1::kInvalidIndex) {}
-
-    NODISCARD bool IsHead() const {
-        return (meta & MagicConstantsV1::kHeadFlagMask) == MagicConstantsV1::kHeadFlag;
-    }
-
-    NODISCARD bool IsEmpty() const {
-        return meta == MagicConstantsV1::kEmptySlot;
-    }
-
-    NODISCARD bool IsTombStone() const {
-        return meta == MagicConstantsV1::kTombStoneSlot;
-    }
-
-    NODISCARD uint8_t GetOffsetIdx() const {
-        return std::to_integer<uint8_t>(meta & MagicConstantsV1::kOffsetIdxMask);
-    }
 };
 
 template<typename K, typename V, typename Hasher = hash<K>>
@@ -304,22 +288,6 @@ public:
         std::swap(fib_shift_, other.fib_shift_);
         blocks_.swap(other.blocks_);
         slot_infos_.swap(other.slot_infos_);
-    }
-
-    NODISCARD bool IsHead(size_type global_idx) const {
-        return slot_infos_[global_idx].IsHead();
-    }
-
-    NODISCARD bool IsEmpty(size_type global_idx) const {
-        return slot_infos_[global_idx].IsEmpty();
-    }
-
-    NODISCARD bool IsTombStone(size_type global_idx) const {
-        return slot_infos_[global_idx].IsTombStone();
-    }
-
-    NODISCARD bool IsAlive(size_type global_idx) const {
-        return !(IsEmpty(global_idx) || IsTombStone(global_idx));
     }
 
 private:
@@ -483,23 +451,13 @@ struct MapImplV2<K, V, Hasher>::Cursor {
         obj_ = nullptr;
     }
 
-    NODISCARD bool IsIterListHead() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
-        return index() == obj()->iter_list_head_;
-    }
-
-    NODISCARD bool IsIterListTail() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
-        return index() == obj()->iter_list_tail_;
-    }
-
     NODISCARD std::byte& GetSlotMetadata() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
+        DCHECK(!IsNone()) << "The Cursor is none.";
         return obj()->slot_infos_[global_idx_].meta;
     }
 
     NODISCARD value_type& GetData() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
+        DCHECK(!IsNone()) << "The Cursor is none.";
         return *obj()->GetDataPtr(global_idx_);
     }
 
@@ -511,24 +469,34 @@ struct MapImplV2<K, V, Hasher>::Cursor {
         return GetData().second;
     }
 
+    NODISCARD uint8_t GetOffsetIdx() const {
+        return std::to_integer<uint8_t>(GetSlotMetadata() & Constants::kOffsetIdxMask);
+    }
+
+    NODISCARD bool IsIterListHead() const {
+        DCHECK(!IsNone()) << "The Cursor is none.";
+        return index() == obj()->iter_list_head_;
+    }
+
+    NODISCARD bool IsIterListTail() const {
+        DCHECK(!IsNone()) << "The Cursor is none.";
+        return index() == obj()->iter_list_tail_;
+    }
+
     NODISCARD bool IsSlotEmpty() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
-        return obj()->IsEmpty(global_idx_);
+        return GetSlotMetadata() == Constants::kEmptySlot;
     }
 
     NODISCARD bool IsSlotTombStone() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
-        return obj()->IsTombStone(global_idx_);
+        return GetSlotMetadata() == Constants::kTombStoneSlot;
     }
 
     NODISCARD bool IsSlotHead() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
-        return obj()->IsHead(global_idx_);
+        return (GetSlotMetadata() & Constants::kHeadFlagMask) == Constants::kHeadFlag;
     }
 
     NODISCARD bool IsSlotAlive() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
-        return obj()->IsAlive(global_idx_);
+        return !(IsSlotEmpty() || IsSlotTombStone());
     }
 
     void MarkSlotAsEmpty() const {
@@ -547,7 +515,8 @@ struct MapImplV2<K, V, Hasher>::Cursor {
 
     // Whether the slot has the next slot on the linked list
     NODISCARD bool HasNextSlot() const {
-        const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & Constants::kOffsetIdxMask);
+        const auto idx = std::to_integer<uint8_t>(
+                GetSlotMetadata() & Constants::kOffsetIdxMask);
         return Constants::NextProbePosOffset[idx] != 0;
     }
 

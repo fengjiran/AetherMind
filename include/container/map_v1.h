@@ -73,7 +73,7 @@ public:
     BBlock(const BBlock& other) noexcept(std::is_copy_constructible_v<value_type>)
         : storage_(other.storage_) {
         for (size_t i = 0; i < BlockSize; ++i) {
-            if (other.TestFlag(i)) {
+            if (other.IsConstructed(i)) {
                 new (GetDataPtr(i)) value_type(*other.GetDataPtr(i));
             }
         }
@@ -260,8 +260,9 @@ public:
 
     iterator erase(const_iterator pos);
 
-    NODISCARD value_type* GetDataPtr(size_t global_idx) const {
-        CHECK(global_idx < slots_);
+    NODISCARD value_type* GetDataPtr(size_type global_idx) const {
+        DCHECK(global_idx < slots_);
+        DCHECK(slot_infos_[global_idx].meta != Constants::kEmptySlot);
         auto block_idx = global_idx / Constants::kSlotsPerBlock;
         return blocks_[block_idx]->GetDataPtr(global_idx & Constants::kSlotsPerBlock - 1);
     }
@@ -272,12 +273,12 @@ public:
         fib_shift_ = 63;
         iter_list_head_ = Constants::kInvalidIndex;
         iter_list_tail_ = Constants::kInvalidIndex;
-        // std::vector<ObjectPtr<Block>>().swap(blocks_);
-        // std::vector<SlotMeta>().swap(slot_metas_);
-        blocks_.clear();
-        blocks_.shrink_to_fit();
-        slot_infos_.clear();
-        slot_infos_.shrink_to_fit();
+        std::vector<ObjectPtr<Block>>().swap(blocks_);
+        std::vector<SlotInfo>().swap(slot_infos_);
+        // blocks_.clear();
+        // blocks_.shrink_to_fit();
+        // slot_infos_.clear();
+        // slot_infos_.shrink_to_fit();
     }
 
     void swap(MapImplV2& other) noexcept {
@@ -315,11 +316,21 @@ private:
     void BlockCOW(size_type block_idx) {
         auto& block_ptr = blocks_[block_idx];
         if (!block_ptr.unique()) {
-            block_ptr = make_object<Block>();
+            block_ptr = make_object<Block>(*block_ptr);
         }
     }
 
-    void rehash(size_type new_slots);
+    void rehash(size_type new_slots) {
+        //
+    }
+
+    /*!
+     * \brief Try to insert a key, or do nothing if already exists
+     * \param kv The value pair
+     * \param assign Whether to assign for existing key
+     * \return The linked-list entry found or just constructed,indicating if actual insertion happens
+     */
+    std::pair<iterator, bool> TryInsertOrUpdate(value_type&& kv, bool assign = false);
 
     NODISCARD size_type GetNextIndexOf(size_type global_idx) const {
         if (global_idx == Constants::kInvalidIndex) {
@@ -507,9 +518,22 @@ struct MapImplV2<K, V, Hasher>::Cursor {
         GetSlotMetadata() = Constants::kTombStoneSlot;
     }
 
+    void ConstructData(value_type&& x) const {
+        DCHECK(!IsNone()) << "The Cursor is none.";
+        DCHECK(IsSlotEmpty() || IsSlotTombStone());
+        auto& block = obj()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
+        block->emplace(global_idx_ & Constants::kSlotsPerBlock - 1, std::move(x));
+    }
+
+    void DestroyData() const {
+        DCHECK(!IsNone()) << "The Cursor is none.";
+        auto& block = obj()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
+        block->destroy(global_idx_ & Constants::kSlotsPerBlock - 1);
+    }
+
     // Set the entry's offset to its next entry.
     void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
-        CHECK(offset_idx < Constants::kNumOffsetDists);
+        DCHECK(offset_idx < Constants::kNumOffsetDists);
         (GetSlotMetadata() &= Constants::kHeadFlagMask) |= std::byte{offset_idx};
     }
 
@@ -709,7 +733,7 @@ MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& 
     while (true) {
         auto& info = slot_infos_[global_idx];
         if (is_first) {
-            if (!info.IsHead()) {
+            if ((info.meta & Constants::kHeadFlagMask) != Constants::kHeadFlag) {
                 return end();
             }
             is_first = false;
@@ -719,7 +743,7 @@ MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& 
             return {global_idx, this};
         }
 
-        auto offset_idx = info.GetOffsetIdx();
+        auto offset_idx = std::to_integer<uint8_t>(info.meta & Constants::kOffsetIdxMask);
         if (offset_idx == 0) {
             return end();
         }
@@ -727,6 +751,39 @@ MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& 
         auto t = global_idx + Constants::NextProbePosOffset[offset_idx];
         global_idx = t >= slots() ? t & slots() - 1 : t;
     }
+}
+
+template<typename K, typename V, typename Hasher>
+std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
+MapImplV2<K, V, Hasher>::TryInsertOrUpdate(value_type&& kv, bool assign) {
+    // The key is already in the hash table
+    if (auto it = find(kv.first); it != end()) {
+        if (assign) {
+            auto global_idx = it.index();
+            GetDataPtr(global_idx)->second = std::move(kv.second);
+            IterListRemove(global_idx);
+            IterListPushBack(global_idx);
+        }
+        return {it, false};
+    }
+
+    // `node` can be:
+    // 1) empty or tombstone;
+    // 2) body of an irrelevant list;
+    // 3) head of the relevant list.
+    auto node = CreateCursorFromHash(hasher()(kv.first));
+
+    // Case 1: empty or tombstone
+    if (node.IsSlotEmpty() || node.IsSlotTombStone()) {
+        node.ConstructData(std::move(kv));
+        node.GetSlotMetadata() = Constants::kHeadFlag;
+        ++size_;
+        IterListPushBack(node.index());
+        return {iterator(node.index(), this), true};
+    }
+
+    // Case 2: body of an irrelevant list
+
 }
 
 template<typename K, typename V, typename Hasher>

@@ -260,6 +260,34 @@ public:
 
     iterator erase(const_iterator pos);
 
+    template<typename Pair, typename... Args>
+    std::pair<iterator, bool> emplace(Pair&& kv, Args&&... args) {
+        auto global_idx = details::FibonacciHash(hasher()(kv.first), fib_shift_);
+        bool is_first = true;
+
+        while (true) {
+            auto& info = slot_infos_[global_idx];
+            if (is_first) {
+                if (info.meta == Constants::kEmptySlot || info.meta == Constants::kTombStoneSlot) {
+                    //return emplace_direct_hit
+                }
+                is_first = false;
+            }
+
+            if (kv.first == GetDataPtr(global_idx)->first) {
+                return {iterator(global_idx, this), false};
+            }
+
+            auto offset_idx = std::to_integer<uint8_t>(info.meta & Constants::kOffsetIdxMask);
+            if (offset_idx == 0) {
+                // return emplace_new_key
+            }
+
+            auto t = global_idx + Constants::NextProbePosOffset[offset_idx];
+            global_idx = t >= slots() ? t & slots() - 1 : t;
+        }
+    }
+
     NODISCARD value_type* GetDataPtr(size_type global_idx) const {
         DCHECK(global_idx < slots_);
         DCHECK(slot_infos_[global_idx].meta != Constants::kEmptySlot);
@@ -321,7 +349,19 @@ private:
     }
 
     void rehash(size_type new_slots) {
-        //
+        auto [fib_shift, slots] = CalculateSlotCount(new_slots);
+        const size_type block_num = CalculateBlockCount(slots);
+        std::vector<ObjectPtr<Block>> new_blocks;
+        new_blocks.reserve(block_num);
+        for (size_type i = 0; i < block_num; ++i) {
+            new_blocks.push_back(make_object<Block>());
+        }
+
+
+    }
+
+    void grow() {
+        rehash(std::max(static_cast<size_type>(16), slots() * Constants::kIncFactor));
     }
 
     /*!
@@ -783,7 +823,6 @@ MapImplV2<K, V, Hasher>::TryInsertOrUpdate(value_type&& kv, bool assign) {
     }
 
     // Case 2: body of an irrelevant list
-
 }
 
 template<typename K, typename V, typename Hasher>

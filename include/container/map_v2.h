@@ -211,40 +211,24 @@ public:
     }
 
     // may be rehash
-    std::pair<iterator, bool> insert(value_type&& kv, bool assign = false);
-
-    iterator erase(const_iterator pos);
-
-    template<typename Pair, typename... Args>
-    std::pair<iterator, bool> emplace(Pair&& kv, Args&&... args) {
-        auto global_idx = details::FibonacciHash(hasher()(kv.first), fib_shift_);
-        bool is_first = true;
-
-        while (true) {
-            auto& info = slot_infos_[global_idx];
-            if (is_first) {
-                if ((info.meta & Constants::kHeadFlagMask) != Constants::kHeadFlag) {
-                    Cursor cur{global_idx, this};
-                    return emplace_first_attempt(cur, std::forward<Pair>(kv), std::forward<Args>(args)...);
-                }
-                is_first = false;
-            }
-
-            if (kv.first == GetDataPtr(global_idx)->first) {
-                return {iterator(global_idx, this), false};
-            }
-
-            auto offset_idx = std::to_integer<uint8_t>(info.meta & Constants::kOffsetIdxMask);
-            if (offset_idx == 0) {
-                Cursor cur{global_idx, this};
-                return emplace_new_key(cur, std::forward<Pair>(kv), std::forward<Args>(args)...);
-            }
-
-            auto t = global_idx + Constants::NextProbePosOffset[offset_idx];
-            global_idx = t >= slots() ? t & slots() - 1 : t;
-        }
+    std::pair<iterator, bool> insert(const value_type& value) {
+        return emplace(value);
     }
 
+    std::pair<iterator, bool> insert(value_type&& value) {
+        return emplace(std::move(value));
+    }
+
+    template<typename Pair, typename... Args>
+    std::pair<iterator, bool> emplace(Pair&& kv, Args&&... args);
+
+    iterator erase(const_iterator pos) {
+        if (pos == end()) {
+            return end();
+        }
+
+        Cursor cur{pos.index(), this};
+    }
 
     NODISCARD value_type* GetDataPtr(size_type global_idx) const {
         DCHECK(global_idx < slots_);
@@ -257,10 +241,12 @@ public:
         size_ = 0;
         slots_ = 0;
         fib_shift_ = 63;
+        version_ = 0;
         iter_list_head_ = Constants::kInvalidIndex;
         iter_list_tail_ = Constants::kInvalidIndex;
         std::vector<ObjectPtr<Block>>().swap(blocks_);
         std::vector<SlotInfo>().swap(slot_infos_);
+        // compact
         // blocks_.clear();
         // blocks_.shrink_to_fit();
         // slot_infos_.clear();
@@ -275,6 +261,10 @@ public:
         std::swap(fib_shift_, other.fib_shift_);
         blocks_.swap(other.blocks_);
         slot_infos_.swap(other.slot_infos_);
+    }
+
+    void clear() noexcept {
+        reset();
     }
 
 private:
@@ -307,11 +297,12 @@ private:
     }
 
     void rehash(size_type new_slots) {
-        auto new_impl = MapImplV2(new_slots);
+        auto tmp = MapImplV2(new_slots);
         for (auto it = begin(); it != end(); ++it) {
-            new_impl.emplace(*it);
+            tmp.emplace(*it);
         }
-        new_impl.swap(*this);
+        tmp.swap(*this);
+        ++version_;
     }
 
     void grow() {
@@ -593,99 +584,6 @@ private:
 };
 
 template<typename K, typename V, typename Hasher>
-template<typename... Args>
-std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
-MapImplV2<K, V, Hasher>::emplace_first_attempt(Cursor target, Args&&... args) {
-    if (IsFull()) {
-        grow();
-        return emplace(std::forward<Args>(args)...);
-    }
-
-    // Case 1: empty or tombstone
-    if (target.IsSlotEmpty() || target.IsSlotTombStone()) {
-        BlockCOW(target.index() / Constants::kSlotsPerBlock);
-        target.ConstructData(std::forward<Args>(args)...);
-        target.GetSlotMetadata() = Constants::kHeadFlag;
-        IterListPushBack(target.index());
-        ++size_;
-        return {iterator(target.index(), this), true};
-    }
-
-    // Case 2: body of an irrelevant list
-    // `target` is not the head of the linked list
-    // move the original item of `target`
-    // and construct new item on the position `target`
-    // To make `target` empty, we
-    // 1) find the previous element of `target` in the linked list
-    // 2) move the linked list starting from `target`
-    Cursor r = target;
-    Cursor prev = target.FindPrevSlot();
-    // after `target` is moved, we disallow writing to the slot
-    bool is_first = true;
-    std::byte r_meta;
-
-    do {
-        const auto empty_slot_info = prev.GetNextEmptySlot();
-        if (!empty_slot_info) {
-            grow();
-            return emplace(std::forward<Args>(args)...);
-        }
-
-        BlockCOW(r.index() / Constants::kSlotsPerBlock);
-
-        auto [offset_idx, empty] = empty_slot_info.value();
-        BlockCOW(empty.index() / Constants::kSlotsPerBlock);
-        // move `r` to `empty`, first move the data
-        empty.ConstructData(std::move(r.GetData()));
-        empty.GetSlotMetadata() = Constants::kTailFlag;
-        // then move link list chain of r to empty
-        // this needs to happen after NewTail so empty's prev/next get updated
-        IterListReplace(r.index(), empty.index());
-        r_meta = r.GetSlotMetadata();
-        r.MarkSlotAsEmpty();
-        if (is_first) {
-            is_first = false;
-            // the target must be marked as alive
-            r.GetSlotMetadata() = r_meta;
-        }
-        // link `prev` to `empty`, and move forward
-        prev.SetNextSlotOffsetIndex(offset_idx);
-        prev = empty;
-    } while (r.MoveToNextSlot(r_meta));
-
-    target.ConstructData(std::forward<Args>(args)...);
-    target.GetSlotMetadata() = Constants::kHeadFlag;
-    IterListPushBack(target.index());
-    ++size_;
-    return {iterator(target.index(), this), true};
-}
-
-template<typename K, typename V, typename Hasher>
-template<typename... Args>
-std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
-MapImplV2<K, V, Hasher>::emplace_new_key(Cursor prev, Args&&... args) {
-    if (IsFull()) {
-        grow();
-        return emplace(std::forward<Args>(args)...);
-    }
-
-    const auto empty_slot_info = prev.GetNextEmptySlot();
-    if (!empty_slot_info) {
-        grow();
-        return emplace(std::forward<Args>(args)...);
-    }
-
-    auto [offset_idx, empty] = empty_slot_info.value();
-    BlockCOW(empty.index() / Constants::kSlotsPerBlock);
-    empty.ConstructData(std::forward<Args>(args)...);
-    empty.GetSlotMetadata() = Constants::kTailFlag;
-    IterListPushBack(empty.index());
-    prev.SetNextSlotOffsetIndex(offset_idx);
-    ++size_;
-    return {iterator(empty.index(), this), true};
-}
-
-template<typename K, typename V, typename Hasher>
 template<bool IsConst>
 class MapImplV2<K, V, Hasher>::Iterator {
 public:
@@ -812,6 +710,133 @@ private:
         CHECK(version_ == ptr_->version_) << "Iterator invalidated: container modified!";
     }
 };
+
+template<typename K, typename V, typename Hasher>
+template<typename Pair, typename... Args>
+std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool> MapImplV2<K, V, Hasher>::emplace(Pair&& kv, Args&&... args) {
+    auto global_idx = details::FibonacciHash(hasher()(kv.first), fib_shift_);
+    bool is_first = true;
+
+    while (true) {
+        auto& info = slot_infos_[global_idx];
+        if (is_first) {
+            if ((info.meta & Constants::kHeadFlagMask) != Constants::kHeadFlag) {
+                Cursor cur{global_idx, this};
+                return emplace_first_attempt(cur, std::forward<Pair>(kv), std::forward<Args>(args)...);
+            }
+            is_first = false;
+        }
+
+        if (kv.first == GetDataPtr(global_idx)->first) {
+            return {iterator(global_idx, this), false};
+        }
+
+        auto offset_idx = std::to_integer<uint8_t>(info.meta & Constants::kOffsetIdxMask);
+        if (offset_idx == 0) {
+            Cursor cur{global_idx, this};
+            return emplace_new_key(cur, std::forward<Pair>(kv), std::forward<Args>(args)...);
+        }
+
+        auto t = global_idx + Constants::NextProbePosOffset[offset_idx];
+        global_idx = t >= slots() ? t & slots() - 1 : t;
+    }
+}
+
+template<typename K, typename V, typename Hasher>
+template<typename... Args>
+std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
+MapImplV2<K, V, Hasher>::emplace_first_attempt(Cursor target, Args&&... args) {
+    if (IsFull()) {
+        grow();
+        return emplace(std::forward<Args>(args)...);
+    }
+
+    // Case 1: empty or tombstone
+    if (target.IsSlotEmpty() || target.IsSlotTombStone()) {
+        BlockCOW(target.index() / Constants::kSlotsPerBlock);
+        target.ConstructData(std::forward<Args>(args)...);
+        target.GetSlotMetadata() = Constants::kHeadFlag;
+        IterListPushBack(target.index());
+        ++size_;
+        return {iterator(target.index(), this), true};
+    }
+
+    // Case 2: body of an irrelevant list
+    // `target` is not the head of the linked list
+    // move the original item of `target`
+    // and construct new item on the position `target`
+    // To make `target` empty, we
+    // 1) find the previous element of `target` in the linked list
+    // 2) move the linked list starting from `target`
+    Cursor r = target;
+    Cursor prev = target.FindPrevSlot();
+    // after `target` is moved, we disallow writing to the slot
+    bool is_first = true;
+    std::byte r_meta;
+
+    do {
+        const auto empty_slot_info = prev.GetNextEmptySlot();
+        if (!empty_slot_info) {
+            grow();
+            return emplace(std::forward<Args>(args)...);
+        }
+
+        BlockCOW(r.index() / Constants::kSlotsPerBlock);
+
+        auto [offset_idx, empty] = empty_slot_info.value();
+        BlockCOW(empty.index() / Constants::kSlotsPerBlock);
+        // move `r` to `empty`, first move the data
+        empty.ConstructData(std::move(r.GetData()));
+        empty.GetSlotMetadata() = Constants::kTailFlag;
+        // then move link list chain of r to empty
+        // this needs to happen after NewTail so empty's prev/next get updated
+        IterListReplace(r.index(), empty.index());
+        r_meta = r.GetSlotMetadata();
+        r.MarkSlotAsEmpty();
+        if (is_first) {
+            is_first = false;
+            // the target must be marked as alive
+            r.GetSlotMetadata() = r_meta;
+        }
+        // link `prev` to `empty`, and move forward
+        prev.SetNextSlotOffsetIndex(offset_idx);
+        prev = empty;
+    } while (r.MoveToNextSlot(r_meta));
+
+    target.ConstructData(std::forward<Args>(args)...);
+    target.GetSlotMetadata() = Constants::kHeadFlag;
+    IterListPushBack(target.index());
+    ++size_;
+    ++version_;
+    return {iterator(target.index(), this), true};
+}
+
+template<typename K, typename V, typename Hasher>
+template<typename... Args>
+std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
+MapImplV2<K, V, Hasher>::emplace_new_key(Cursor prev, Args&&... args) {
+    if (IsFull()) {
+        grow();
+        return emplace(std::forward<Args>(args)...);
+    }
+
+    const auto empty_slot_info = prev.GetNextEmptySlot();
+    if (!empty_slot_info) {
+        grow();
+        return emplace(std::forward<Args>(args)...);
+    }
+
+    auto [offset_idx, empty] = empty_slot_info.value();
+    BlockCOW(empty.index() / Constants::kSlotsPerBlock);
+    empty.ConstructData(std::forward<Args>(args)...);
+    empty.GetSlotMetadata() = Constants::kTailFlag;
+    IterListPushBack(empty.index());
+    prev.SetNextSlotOffsetIndex(offset_idx);
+    ++size_;
+    ++version_;
+    return {iterator(empty.index(), this), true};
+}
+
 
 template<typename K, typename V, typename Hasher>
 MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& key) {

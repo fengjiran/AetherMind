@@ -236,7 +236,8 @@ public:
 
             auto offset_idx = std::to_integer<uint8_t>(info.meta & Constants::kOffsetIdxMask);
             if (offset_idx == 0) {
-                // return emplace_new_key
+                Cursor cur{global_idx, this};
+                return emplace_new_key(cur, std::forward<Pair>(kv), std::forward<Args>(args)...);
             }
 
             auto t = global_idx + Constants::NextProbePosOffset[offset_idx];
@@ -311,14 +312,6 @@ private:
             new_impl.emplace(*it);
         }
         new_impl.swap(*this);
-
-        // auto [fib_shift, slots] = CalculateSlotCount(new_slots);
-        // const size_type block_num = CalculateBlockCount(slots);
-        // std::vector<ObjectPtr<Block>> new_blocks;
-        // new_blocks.reserve(block_num);
-        // for (size_type i = 0; i < block_num; ++i) {
-        //     new_blocks.push_back(make_object<Block>());
-        // }
     }
 
     void grow() {
@@ -328,13 +321,8 @@ private:
     template<typename... Args>
     std::pair<iterator, bool> emplace_first_attempt(Cursor target, Args&&... args);
 
-    /*!
-     * \brief Try to insert a key, or do nothing if already exists
-     * \param kv The value pair
-     * \param assign Whether to assign for existing key
-     * \return The linked-list entry found or just constructed,indicating if actual insertion happens
-     */
-    std::pair<iterator, bool> TryInsertOrUpdate(value_type&& kv, bool assign = false);
+    template<typename... Args>
+    std::pair<iterator, bool> emplace_new_key(Cursor prev, Args&&... args);
 
     NODISCARD size_type GetNextIndexOf(size_type global_idx) const {
         if (global_idx == Constants::kInvalidIndex) {
@@ -615,6 +603,7 @@ MapImplV2<K, V, Hasher>::emplace_first_attempt(Cursor target, Args&&... args) {
 
     // Case 1: empty or tombstone
     if (target.IsSlotEmpty() || target.IsSlotTombStone()) {
+        BlockCOW(target.index() / Constants::kSlotsPerBlock);
         target.ConstructData(std::forward<Args>(args)...);
         target.GetSlotMetadata() = Constants::kHeadFlag;
         IterListPushBack(target.index());
@@ -642,7 +631,10 @@ MapImplV2<K, V, Hasher>::emplace_first_attempt(Cursor target, Args&&... args) {
             return emplace(std::forward<Args>(args)...);
         }
 
+        BlockCOW(r.index() / Constants::kSlotsPerBlock);
+
         auto [offset_idx, empty] = empty_slot_info.value();
+        BlockCOW(empty.index() / Constants::kSlotsPerBlock);
         // move `r` to `empty`, first move the data
         empty.ConstructData(std::move(r.GetData()));
         empty.GetSlotMetadata() = Constants::kTailFlag;
@@ -666,6 +658,31 @@ MapImplV2<K, V, Hasher>::emplace_first_attempt(Cursor target, Args&&... args) {
     IterListPushBack(target.index());
     ++size_;
     return {iterator(target.index(), this), true};
+}
+
+template<typename K, typename V, typename Hasher>
+template<typename... Args>
+std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
+MapImplV2<K, V, Hasher>::emplace_new_key(Cursor prev, Args&&... args) {
+    if (IsFull()) {
+        grow();
+        return emplace(std::forward<Args>(args)...);
+    }
+
+    const auto empty_slot_info = prev.GetNextEmptySlot();
+    if (!empty_slot_info) {
+        grow();
+        return emplace(std::forward<Args>(args)...);
+    }
+
+    auto [offset_idx, empty] = empty_slot_info.value();
+    BlockCOW(empty.index() / Constants::kSlotsPerBlock);
+    empty.ConstructData(std::forward<Args>(args)...);
+    empty.GetSlotMetadata() = Constants::kTailFlag;
+    IterListPushBack(empty.index());
+    prev.SetNextSlotOffsetIndex(offset_idx);
+    ++size_;
+    return {iterator(empty.index(), this), true};
 }
 
 template<typename K, typename V, typename Hasher>
@@ -821,44 +838,6 @@ MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& 
         auto t = global_idx + Constants::NextProbePosOffset[offset_idx];
         global_idx = t >= slots() ? t & slots() - 1 : t;
     }
-}
-
-template<typename K, typename V, typename Hasher>
-std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
-MapImplV2<K, V, Hasher>::TryInsertOrUpdate(value_type&& kv, bool assign) {
-    // The key is already in the hash table
-    if (auto it = find(kv.first); it != end()) {
-        if (assign) {
-            auto global_idx = it.index();
-            GetDataPtr(global_idx)->second = std::move(kv.second);
-            IterListRemove(global_idx);
-            IterListPushBack(global_idx);
-        }
-        return {it, false};
-    }
-
-    // `node` can be:
-    // 1) empty or tombstone;
-    // 2) body of an irrelevant list;
-    // 3) head of the relevant list.
-    auto node = CreateCursorFromHash(hasher()(kv.first));
-
-    // Case 1: empty or tombstone
-    if (node.IsSlotEmpty() || node.IsSlotTombStone()) {
-        node.ConstructData(std::move(kv));
-        node.GetSlotMetadata() = Constants::kHeadFlag;
-        ++size_;
-        IterListPushBack(node.index());
-        return {iterator(node.index(), this), true};
-    }
-
-    // Case 2: body of an irrelevant list
-}
-
-template<typename K, typename V, typename Hasher>
-std::pair<typename MapImplV2<K, V, Hasher>::iterator, bool>
-MapImplV2<K, V, Hasher>::insert(value_type&& kv, bool assign) {
-    //
 }
 
 

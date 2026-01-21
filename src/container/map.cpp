@@ -40,7 +40,7 @@ const size_t MagicConstants::NextProbePosOffset[kNumOffsetDists] = {
 };
 // clang-format on
 
-const size_t MagicConstantsV1::NextProbePosOffset[kNumOffsetDists] = {
+const size_t MapMagicConstants::NextProbePosOffset[kNumOffsetDists] = {
         // linear probing offset(0-15)
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
         // Quadratic probing with triangle numbers, n(n+1)/2, n = 6 ~ 72

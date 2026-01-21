@@ -16,17 +16,6 @@
 
 namespace aethermind {
 
-namespace details {
-
-template<typename InputIter>
-concept is_valid_iter = requires(InputIter t) {
-    requires std::input_iterator<InputIter>;
-    ++t;
-    --t;
-};
-
-}// namespace details
-
 template<typename Derived, typename K, typename V, typename Hasher>
 class MapObj : public Object {
 public:

@@ -7,10 +7,46 @@
 
 #include "macros.h"
 
+#include <cstdint>
 #include <iterator>
 #include <optional>
+#include <numeric>
 
 namespace aethermind {
+
+struct MapMagicConstants {
+    // 0b11111111 represent that the slot is empty
+    static constexpr auto kEmptySlot = std::byte{0xFF};
+    // 0b11111110 represent that the slot is tombstone
+    static constexpr auto kTombStoneSlot = std::byte{0xFE};
+    // Number of probing choices available
+    static constexpr int kNumOffsetDists = 126;
+    // head flag
+    static constexpr auto kHeadFlag = std::byte{0x00};
+    // tail flag
+    static constexpr auto kTailFlag = std::byte{0x80};
+    // head flag mask
+    static constexpr auto kHeadFlagMask = std::byte{0x80};
+    // offset mask
+    static constexpr auto kOffsetIdxMask = std::byte{0x7F};
+    // default fib shift
+    static constexpr uint32_t kDefaultFibShift = 63;
+
+    // The number of elements in a memory block.
+    static constexpr uint8_t kSlotsPerBlock = 16;
+
+    // Max load factor of hash table
+    static constexpr double kMaxLoadFactor = 0.75;
+
+    static constexpr size_t kIncFactor = 2;
+
+    // Index indicator to indicate an invalid index.
+    static constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
+
+    // next probe position offset
+    static const size_t NextProbePosOffset[kNumOffsetDists];
+};
+
 
 namespace details {
 
@@ -22,6 +58,15 @@ template<typename Iter, typename T>
 concept is_valid_iterator_v = std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag> &&
                               (requires(Iter it) { requires std::same_as<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; } ||//
                                requires(Iter it) { requires std::derived_from<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; });
+
+
+template<typename InputIter>
+concept is_valid_iter = requires(InputIter t) {
+    requires std::input_iterator<InputIter>;
+    ++t;
+    --t;
+};
+
 #else
 template<typename Iter, typename T>
 struct is_valid_iterator {

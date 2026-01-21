@@ -3,6 +3,7 @@
 //
 #include "container/map.h"
 #include "container/map_v1.h"
+#include "container/map_v2.h"
 
 #include <gtest/gtest.h>
 #include <list>
@@ -29,7 +30,6 @@ using namespace aethermind;
 
 TEST(MapImplV2Test, basic) {
     MapImplV2<int, int> map_impl(32);
-    auto* ptr = map_impl.GetDataPtr(0);
     EXPECT_EQ(map_impl.slots(), 32);
 }
 
@@ -38,13 +38,13 @@ TEST(BBlockTest, BasicFunction) {
     BBlock<int> block;
 
     // 测试：初始状态所有槽位都是未构造的
-    for (size_t i = 0; i < MagicConstantsV1::kSlotsPerBlock; ++i) {
+    for (size_t i = 0; i < MapMagicConstants::kSlotsPerBlock; ++i) {
         EXPECT_TRUE(block.IsUnConstructed(i));
     }
 
     // 测试：GetDataPtr返回有效指针，无崩溃
     EXPECT_NE(block.GetDataPtr(0), nullptr);
-    EXPECT_NE(block.GetDataPtr(MagicConstantsV1::kSlotsPerBlock - 1), nullptr);
+    EXPECT_NE(block.GetDataPtr(MapMagicConstants::kSlotsPerBlock - 1), nullptr);
 
     // 测试：const版本GetDataPtr正确性
     const BBlock<int>& const_block = block;
@@ -129,7 +129,7 @@ TEST(BBlockTest, CopyConstructor_DeepCopy) {
 // ========== 测试套件5：边界条件测试（槽位越界/最大槽位/0槽位） ==========
 TEST(BBlockTest, BoundaryCondition) {
     BBlock<int> block;
-    const size_t max_slot = MagicConstantsV1::kSlotsPerBlock - 1;
+    const size_t max_slot = MapMagicConstants::kSlotsPerBlock - 1;
 
     // 测试最大槽位emplace/destroy
     block.emplace(max_slot, 999);

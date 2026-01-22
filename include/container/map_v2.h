@@ -222,13 +222,7 @@ public:
     template<typename Pair, typename... Args>
     std::pair<iterator, bool> emplace(Pair&& kv, Args&&... args);
 
-    iterator erase(const_iterator pos) {
-        if (pos == end()) {
-            return end();
-        }
-
-        Cursor cur{pos.index(), this};
-    }
+    iterator erase(const_iterator pos);
 
     NODISCARD value_type* GetDataPtr(size_type global_idx) const {
         DCHECK(global_idx < slots_);
@@ -837,6 +831,40 @@ MapImplV2<K, V, Hasher>::emplace_new_key(Cursor prev, Args&&... args) {
     return {iterator(empty.index(), this), true};
 }
 
+template<typename K, typename V, typename Hasher>
+MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::erase(const_iterator pos) {
+    if (pos == end()) {
+        return end();
+    }
+
+    Cursor cur{pos.index(), this};
+    if (cur.IsSlotEmpty() || cur.IsSlotTombStone()) {
+        return end();
+    }
+
+    auto next_pos = pos + 1;
+    // cur.MarkSlotAsTombStone();
+    IterListRemove(cur.index());
+    if (cur.HasNextSlot()) {
+        auto meta = cur.GetSlotMetadata();
+        if (cur.IsSlotHead()) {
+            cur.MarkSlotAsTombStone();
+            cur.MoveToNextSlot(meta);
+            cur.GetSlotMetadata() &= ~Constants::kHeadFlagMask;
+        } else {
+            cur.MarkSlotAsTombStone();
+        }
+    } else {
+        if (!cur.IsSlotHead()) {
+            cur.FindPrevSlot().SetNextSlotOffsetIndex(0);
+        }
+        cur.MarkSlotAsTombStone();
+    }
+
+    --size_;
+    ++version_;
+    return {next_pos.index(), this};
+}
 
 template<typename K, typename V, typename Hasher>
 MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& key) {

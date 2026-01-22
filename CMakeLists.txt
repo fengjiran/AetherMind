@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.28)
 project(AetherMind)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_MODULE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/modules)
 
 # Set custom Alloc Alignment for device allocated memory ndarray points to
 set(USE_KALLOC_ALIGNMENT 64)
@@ -15,32 +16,42 @@ option(BUILD_TESTS "Adding test targets." ON)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
 option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
 
+# add -fmodule-ts compiler option for module
+if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 14)
+    add_compile_options(-fmodules-ts)
+endif ()
+
 if (USE_LIBBACKTRACE)
     include(cmake/AddLibbacktrace.cmake)
 endif ()
 
 find_package(glog REQUIRED)
 
-#set(FMT_PATH "3rdparty/fmt/include")
 set(BACKTRACE_PATH "3rdparty/libbacktrace")
 
-file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp
+file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cpp
         ${PROJECT_SOURCE_DIR}/src/*.cc
 )
+file(GLOB_RECURSE MODULE_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/modules/*.*)
+list(FILTER SRC_FILES EXCLUDE REGEX ${PROJECT_SOURCE_DIR}/src/modules/*.*)
 
+add_library(test_modules OBJECT ${MODULE_FILES})
+set_target_properties(test_modules PROPERTIES
+        INTERFACE_MODULE_IMPORT_PATH "${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY}")
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
+#target_compile_options(test_modules PRIVATE -fmodule-dir=${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY})
 
-#message(STATUS ${PROJECT_SOURCE_DIR})
 include_directories(
         ${PROJECT_SOURCE_DIR}/include
-#        ${FMT_PATH}
 )
 
 target_link_libraries(${PROJECT_NAME}
         glog::glog
         pthread
-#        fmt::fmt
+#        test_modules
 )
+
+#target_compile_options(${PROJECT_NAME} PRIVATE -fmodule-dir=${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY})
 
 if (USE_LIBBACKTRACE)
     message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 1")

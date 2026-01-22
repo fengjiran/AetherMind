@@ -35,12 +35,21 @@ file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cpp
 file(GLOB_RECURSE MODULE_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/modules/*.*)
 list(FILTER SRC_FILES EXCLUDE REGEX ${PROJECT_SOURCE_DIR}/src/modules/*.*)
 
-add_library(test_modules OBJECT ${MODULE_FILES})
-set_target_properties(test_modules PROPERTIES
-        INTERFACE_MODULE_IMPORT_PATH "${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY}")
+add_library(test_modules OBJECT)
+target_sources(test_modules PUBLIC
+#        MODULE_SET all_modules
+        FILE_SET CXX_MODULES FILES
+        src/modules/test_module.ixx
+#        src/modules/test_module.cpp
+)
+#set_target_properties(test_modules PROPERTIES
+#        INTERFACE_MODULE_IMPORT_PATH "${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY}")
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
-#target_compile_options(test_modules PRIVATE -fmodule-dir=${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY})
-
+#target_sources(${PROJECT_NAME} PUBLIC
+#        FILE_SET all_modules
+#        TYPE CXX_MODULES
+#        FILES src/modules/test_module.ixx src/modules/test_module.cpp
+#)
 include_directories(
         ${PROJECT_SOURCE_DIR}/include
 )
@@ -48,7 +57,7 @@ include_directories(
 target_link_libraries(${PROJECT_NAME}
         glog::glog
         pthread
-#        test_modules
+        test_modules
 )
 
 #target_compile_options(${PROJECT_NAME} PRIVATE -fmodule-dir=${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY})

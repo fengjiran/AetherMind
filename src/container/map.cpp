@@ -2,6 +2,8 @@
 // Created by richard on 11/28/25.
 //
 
+import test_module;
+
 #include "container/map.h"
 #include "container/bytell_hash_map.hpp"
 #include "container/map_v1.h"

@@ -1,10 +1,10 @@
 //
 // Created by richard on 1/22/26.
 //
+module;
+#include <cmath>
 
 module test_module;
-
-#include <cmath>
 
 namespace aethermind {
 int add(int a, int b) {

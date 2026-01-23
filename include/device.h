@@ -85,8 +85,11 @@ private:
     int8_t index_ = -1;
 
     void validate() const {
-        CHECK(index() >= -1) << "Device index must be greater than or equal to -1, but got " << index();
-        CHECK(!is_cpu() || index() <= 0) << "CPU device index must be -1 or zero, but got " << index();
+        assert(index() >= -1);
+        assert(!is_cpu() || index() <= 0);
+
+        // CHECK(index() >= -1) << "Device index must be greater than or equal to -1, but got " << index();
+        // CHECK(!is_cpu() || index() <= 0) << "CPU device index must be -1 or zero, but got " << index();
     }
 };
 

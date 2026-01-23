@@ -4,6 +4,7 @@
 #include "container/map.h"
 #include "container/map_v1.h"
 #include "container/map_v2.h"
+#include "container/bytell_hash_map.hpp"
 
 #include <gtest/gtest.h>
 #include <list>

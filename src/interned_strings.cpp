@@ -3,6 +3,7 @@
 //
 
 #include "interned_strings.h"
+#include <glog/logging.h>
 
 namespace aethermind {
 

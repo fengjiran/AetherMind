@@ -5,6 +5,7 @@
 #include "error.h"
 
 // #include <cstring>
+#include <glog/logging.h>
 #include <unordered_map>
 #include <vector>
 

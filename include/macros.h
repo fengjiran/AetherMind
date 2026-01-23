@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_MACROS_H
 #define AETHERMIND_MACROS_H
 
+import check_module;
+
 #if __cplusplus >= 202002L
 #define CPP20
 #endif
@@ -81,11 +83,14 @@
 
 #define DEFINE_STATIC_FUNCTION() DEFINE_STATIC_FUNCTION_(STR_CONCAT(_static_func_tid_, __COUNTER__))
 
-// 自定义 CHECK 宏
-// #define SPDLOG_CHECK(condition)                                                        \
-//     if (!(condition)) {                                                                \
-//         spdlog::critical("Check failed: {} at {}:{}", #condition, __FILE__, __LINE__); \
-//         std::abort();                                                                  \
-//     }
-
+#define CHECK_(condition, ...)                                                                                  \
+    do {                                                                                                        \
+        if (!(condition)) [[unlikely]] {                                                                        \
+            if constexpr (std::string_view(#__VA_ARGS__).empty()) {                                             \
+                aethermind::HandleCheckFailed(#condition, std::source_location::current());                     \
+            } else {                                                                                            \
+                aethermind::HandleCheckFailedWithMsg(#condition, std::source_location::current(), __VA_ARGS__); \
+            }                                                                                                   \
+        }                                                                                                       \
+    } while (0)
 #endif//AETHERMIND_MACROS_H

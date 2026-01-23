@@ -223,6 +223,7 @@ public:
     std::pair<iterator, bool> emplace(Pair&& kv, Args&&... args);
 
     iterator erase(const_iterator pos);
+    iterator erase(const_iterator first, const_iterator last);
 
     NODISCARD value_type* GetDataPtr(size_type global_idx) const {
         DCHECK(global_idx < slots_);
@@ -499,13 +500,13 @@ struct MapImplV2<K, V, Hasher>::Cursor {
     void ConstructData(Args&&... args) const {
         DCHECK(!IsNone()) << "The Cursor is none.";
         DCHECK(IsSlotEmpty() || IsSlotTombStone());
-        auto& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
+        Block& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
         block->emplace(global_idx_ & Constants::kSlotsPerBlock - 1, std::forward<Args>(args)...);
     }
 
     void DestroyData() const {
         DCHECK(!IsNone()) << "The Cursor is none.";
-        auto& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
+        Block& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
         block->destroy(global_idx_ & Constants::kSlotsPerBlock - 1);
     }
 
@@ -843,27 +844,79 @@ MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::erase(const_iterator 
     }
 
     auto next_pos = pos + 1;
-    // cur.MarkSlotAsTombStone();
-    IterListRemove(cur.index());
     if (cur.HasNextSlot()) {
-        auto meta = cur.GetSlotMetadata();
-        if (cur.IsSlotHead()) {
-            cur.MarkSlotAsTombStone();
-            cur.MoveToNextSlot(meta);
-            cur.GetSlotMetadata() &= ~Constants::kHeadFlagMask;
-        } else {
-            cur.MarkSlotAsTombStone();
+        Cursor prev = cur;
+        Cursor last = cur;
+        last.MoveToNextSlot();
+        while (last.HasNextSlot()) {
+            prev = last;
+            last.MoveToNextSlot();
         }
-    } else {
+
+        IterListRemove(cur.index());
+        IterListReplace(last.index(), cur.index());
+        BlockCOW(cur.index() / Constants::kSlotsPerBlock);
+        cur.ConstructData(last.GetData());
+        last.MarkSlotAsTombStone();
+        prev.SetNextSlotOffsetIndex(0);
+    } else {// the last node
         if (!cur.IsSlotHead()) {
+            // cut the link if there is any
             cur.FindPrevSlot().SetNextSlotOffsetIndex(0);
         }
+        // unlink the node from iterator list
+        IterListRemove(cur.index());
         cur.MarkSlotAsTombStone();
     }
 
     --size_;
     ++version_;
     return {next_pos.index(), this};
+}
+
+template<typename K, typename V, typename Hasher>
+MapImplV2<K, V, Hasher>::iterator
+MapImplV2<K, V, Hasher>::erase(const_iterator first, const_iterator last) {
+    if (first == last) {
+        return {first.index(), this};
+    }
+
+    if (first + 1 == last) {
+        return erase(first);
+    }
+
+    if (first == begin() && last == end()) {
+        clear();
+        return end();
+    }
+
+    std::vector<std::pair<int, Cursor>> depth_in_chain;
+    for (auto it = first; it != last; ++it) {
+        Cursor cur{it.index(), it.ptr()};
+        if (cur.IsSlotHead()) {
+            depth_in_chain.emplace(0, cur);
+        } else {
+            Cursor root = CreateCursorFromHash(hasher()(cur.GetKey()));
+            int depth = 0;
+            while (root.MoveToNextSlot()) {
+                ++depth;
+                if (root == cur) {
+                    break;
+                }
+            }
+            depth_in_chain.emplace(depth, cur);
+        }
+    }
+
+    std::sort(depth_in_chain.begin(), depth_in_chain.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+    iterator res;
+    for (auto it = depth_in_chain.rbegin(); it != depth_in_chain.rend(); ++it) {
+        const_iterator pos{it.index(), it.ptr()};
+        res = erase(pos);
+    }
+
+    return res;
 }
 
 template<typename K, typename V, typename Hasher>

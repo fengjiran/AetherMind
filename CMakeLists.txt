@@ -32,24 +32,26 @@ set(BACKTRACE_PATH "3rdparty/libbacktrace")
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cpp
         ${PROJECT_SOURCE_DIR}/src/*.cc
 )
-file(GLOB_RECURSE MODULE_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/modules/*.*)
+file(GLOB_RECURSE MODULE_INTERFACE_FILES CONFIGURE_DEPENDS
+        ${PROJECT_SOURCE_DIR}/src/modules/*.ixx
+        ${PROJECT_SOURCE_DIR}/src/modules/*.cppm
+)
+
+file(GLOB_RECURSE MODULE_IMPL_FILES CONFIGURE_DEPENDS
+        ${PROJECT_SOURCE_DIR}/src/modules/*.cpp
+)
+
 list(FILTER SRC_FILES EXCLUDE REGEX ${PROJECT_SOURCE_DIR}/src/modules/*.*)
 
-add_library(test_modules OBJECT)
-target_sources(test_modules PUBLIC
-#        MODULE_SET all_modules
+set(MODULE_NAME all_modules)
+add_library(${MODULE_NAME} OBJECT)
+target_sources(${MODULE_NAME} PUBLIC
         FILE_SET CXX_MODULES FILES
-        src/modules/test_module.ixx
-#        src/modules/test_module.cpp
+        ${MODULE_INTERFACE_FILES}
 )
-#set_target_properties(test_modules PROPERTIES
-#        INTERFACE_MODULE_IMPORT_PATH "${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY}")
+target_sources(${MODULE_NAME} PRIVATE ${MODULE_IMPL_FILES})
+
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
-#target_sources(${PROJECT_NAME} PUBLIC
-#        FILE_SET all_modules
-#        TYPE CXX_MODULES
-#        FILES src/modules/test_module.ixx src/modules/test_module.cpp
-#)
 include_directories(
         ${PROJECT_SOURCE_DIR}/include
 )
@@ -57,10 +59,9 @@ include_directories(
 target_link_libraries(${PROJECT_NAME}
         glog::glog
         pthread
-        test_modules
+        ${MODULE_NAME}
 )
-
-#target_compile_options(${PROJECT_NAME} PRIVATE -fmodule-dir=${CMAKE_CXX_MODULE_OUTPUT_DIRECTORY})
+#set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 
 if (USE_LIBBACKTRACE)
     message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 1")

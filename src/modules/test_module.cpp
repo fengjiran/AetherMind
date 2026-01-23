@@ -6,6 +6,7 @@ module test_module;
 
 #include <cmath>
 
+namespace aethermind {
 int add(int a, int b) {
     return a + b;
 }
@@ -17,3 +18,4 @@ double square(double x) {
 double Point::distance(const Point& other) const {
     return sqrt(square(x - other.x) + square(y - other.y));
 }
+}// namespace aethermind

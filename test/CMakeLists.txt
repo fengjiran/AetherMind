@@ -18,6 +18,8 @@ target_link_libraries(${PROJECT_NAME}
         glog::glog
 )
 
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_SCAN_FOR_MODULES ON)
+
 if (BUILD_WITH_TORCH)
     message(STATUS "Setting C++ macro BUILD_WITH_TORCH - 1")
     find_package(Torch REQUIRED)

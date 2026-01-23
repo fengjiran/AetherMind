@@ -4,6 +4,8 @@
 
 export module test_module;
 
+namespace aethermind {
+
 export int add(int a, int b);
 
 export struct Point {
@@ -12,3 +14,5 @@ export struct Point {
 
     [[nodiscard]] double distance(const Point& other) const;
 };
+
+}

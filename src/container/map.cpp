@@ -2,10 +2,7 @@
 // Created by richard on 11/28/25.
 //
 
-import test_module;
-
 #include "container/map.h"
-#include "container/bytell_hash_map.hpp"
 #include "container/map_v1.h"
 
 namespace aethermind {
@@ -67,5 +64,4 @@ const size_t MapMagicConstants::NextProbePosOffset[kNumOffsetDists] = {
         17846306936293605, 40154190677507445, 90346928918121501, 203280589587557251,
         457381325854679626, 1029107982097042876, 2315492959180353330, 5209859154120846435};
 // clang-format on
-
 }// namespace aethermind

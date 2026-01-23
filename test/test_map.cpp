@@ -1,10 +1,10 @@
 //
 // Created by richard on 12/18/25.
 //
+#include "container/bytell_hash_map.hpp"
 #include "container/map.h"
 #include "container/map_v1.h"
 #include "container/map_v2.h"
-#include "container/bytell_hash_map.hpp"
 
 #include <gtest/gtest.h>
 #include <list>
@@ -32,11 +32,15 @@ using namespace aethermind;
 TEST(MapImplV2Test, basic) {
     MapImplV2<int, int> map_impl(32);
     EXPECT_EQ(map_impl.slots(), 32);
+    std::pair<int, int> x{1, 10};
+    map_impl.insert(x);
+    auto it = map_impl.begin();
+    map_impl.erase(it);
 }
 
 // ========== 测试套件1：基础功能测试（构造/析构/空判断/指针获取） ==========
 TEST(BBlockTest, BasicFunction) {
-    BBlock<int> block;
+    HashTableBlock<int> block;
 
     // 测试：初始状态所有槽位都是未构造的
     for (size_t i = 0; i < MapMagicConstants::kSlotsPerBlock; ++i) {
@@ -48,14 +52,14 @@ TEST(BBlockTest, BasicFunction) {
     EXPECT_NE(block.GetDataPtr(MapMagicConstants::kSlotsPerBlock - 1), nullptr);
 
     // 测试：const版本GetDataPtr正确性
-    const BBlock<int>& const_block = block;
+    const HashTableBlock<int>& const_block = block;
     EXPECT_NE(const_block.GetDataPtr(0), nullptr);
     EXPECT_TRUE(const_block.IsUnConstructed(0));
 }
 
 // ========== 测试套件2：核心功能 - emplace+destroy 正常流程测试 ==========
 TEST(BBlockTest, EmplaceAndDestroy_Normal) {
-    BBlock<int> block;
+    HashTableBlock<int> block;
     const size_t test_slot = 5;
     const int test_val = 1024;
 
@@ -75,7 +79,7 @@ TEST(BBlockTest, EmplaceAndDestroy_Normal) {
 
 // ========== 测试套件3：核心功能 - emplace覆盖写入（修复后的核心场景） ==========
 TEST(BBlockTest, Emplace_CoverWrite) {
-    BBlock<String> block;
+    HashTableBlock<String> block;
     const size_t test_slot = 3;
 
     // 第一次emplace
@@ -96,7 +100,7 @@ TEST(BBlockTest, Emplace_CoverWrite) {
 
 // ========== 测试套件4：拷贝构造测试（深拷贝，重中之重，必测） ==========
 TEST(BBlockTest, CopyConstructor_DeepCopy) {
-    BBlock<std::pair<int, std::vector<int>>> block;
+    HashTableBlock<std::pair<int, std::vector<int>>> block;
     const size_t slot1 = 0;
     const size_t slot2 = 7;
 
@@ -105,7 +109,7 @@ TEST(BBlockTest, CopyConstructor_DeepCopy) {
     block.emplace(slot2, std::make_pair(20, std::vector<int>{4, 5, 6}));
 
     // 拷贝构造新对象
-    BBlock<std::pair<int, std::vector<int>>> block_copy(block);
+    HashTableBlock<std::pair<int, std::vector<int>>> block_copy(block);
 
     // 测试1：拷贝后的对象标记正确
     EXPECT_FALSE(block_copy.IsUnConstructed(slot1));
@@ -129,7 +133,7 @@ TEST(BBlockTest, CopyConstructor_DeepCopy) {
 
 // ========== 测试套件5：边界条件测试（槽位越界/最大槽位/0槽位） ==========
 TEST(BBlockTest, BoundaryCondition) {
-    BBlock<int> block;
+    HashTableBlock<int> block;
     const size_t max_slot = MapMagicConstants::kSlotsPerBlock - 1;
 
     // 测试最大槽位emplace/destroy
@@ -150,7 +154,7 @@ TEST(BBlockTest, BoundaryCondition) {
 
 // ========== 测试套件6：复杂类型测试（带堆内存，无内存泄漏/双重释放） ==========
 TEST(BBlockTest, ComplexValueType_NoLeak) {
-    BBlock<std::vector<int>> block;
+    HashTableBlock<std::vector<int>> block;
     const size_t slot = 2;
 
     // emplace大vector
@@ -169,9 +173,9 @@ TEST(BBlockTest, ComplexValueType_NoLeak) {
 
 // ========== 测试套件7：const正确性测试（const对象只能读，不能写） ==========
 TEST(BBlockTest, ConstCorrectness) {
-    BBlock<std::string> block;
+    HashTableBlock<std::string> block;
     block.emplace(1, "const test");
-    const BBlock<std::string>& const_block = block;
+    const HashTableBlock<std::string>& const_block = block;
 
     // const对象可以调用const版本的GetDataPtr和IsUnconstructed
     EXPECT_EQ(*const_block.GetDataPtr(1), "const test");

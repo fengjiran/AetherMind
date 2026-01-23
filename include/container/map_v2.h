@@ -16,16 +16,16 @@
 namespace aethermind {
 
 template<typename value_type, uint8_t BlockSize = MapMagicConstants::kSlotsPerBlock>
-class BBlock : public Object {
+class HashTableBlock : public Object {
 public:
-    BBlock() = default;
-    ~BBlock() override {
+    HashTableBlock() = default;
+    ~HashTableBlock() override {
         for (size_t i = 0; i < BlockSize; ++i) {
             destroy(i);
         }
     }
 
-    BBlock(const BBlock& other) noexcept(std::is_copy_constructible_v<value_type>)
+    HashTableBlock(const HashTableBlock& other) noexcept(std::is_copy_constructible_v<value_type>)
         : storage_(other.storage_) {
         for (size_t i = 0; i < BlockSize; ++i) {
             if (other.IsConstructed(i)) {
@@ -35,12 +35,12 @@ public:
     }
 
 
-    BBlock(BBlock&&) = delete;
-    BBlock& operator=(const BBlock&) = delete;
-    BBlock& operator=(BBlock&&) = delete;
+    HashTableBlock(HashTableBlock&&) = delete;
+    HashTableBlock& operator=(const HashTableBlock&) = delete;
+    HashTableBlock& operator=(HashTableBlock&&) = delete;
 
     const value_type* GetDataPtr(size_t slot_idx) const noexcept {
-        return const_cast<BBlock*>(this)->GetDataPtr(slot_idx);
+        return const_cast<HashTableBlock*>(this)->GetDataPtr(slot_idx);
     }
 
     value_type* GetDataPtr(size_t slot_idx) noexcept {
@@ -142,7 +142,7 @@ public:
     using iterator = Iterator<false>;
     using const_iterator = Iterator<true>;
 
-    using Block = BBlock<value_type>;
+    using Block = HashTableBlock<value_type>;
     struct Cursor;
 
     MapImplV2() = default;
@@ -224,6 +224,14 @@ public:
 
     iterator erase(const_iterator pos);
     iterator erase(const_iterator first, const_iterator last);
+    size_type erase(const key_type& key) {
+        auto it = find(key);
+        if (it != end()) {
+            erase(it);
+            return 1;
+        }
+        return 0;
+    }
 
     NODISCARD value_type* GetDataPtr(size_type global_idx) const {
         DCHECK(global_idx < slots_);
@@ -442,7 +450,8 @@ struct MapImplV2<K, V, Hasher>::Cursor {
 
     NODISCARD std::byte& GetSlotMetadata() const {
         DCHECK(!IsNone()) << "The Cursor is none.";
-        return owner()->slot_infos_[global_idx_].meta;
+        return const_cast<MapImplV2*>(owner())->slot_infos_[global_idx_].meta;
+        // return owner()->slot_infos_[global_idx_].meta;
     }
 
     NODISCARD value_type& GetData() const {
@@ -500,13 +509,13 @@ struct MapImplV2<K, V, Hasher>::Cursor {
     void ConstructData(Args&&... args) const {
         DCHECK(!IsNone()) << "The Cursor is none.";
         DCHECK(IsSlotEmpty() || IsSlotTombStone());
-        Block& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
+        const ObjectPtr<Block>& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
         block->emplace(global_idx_ & Constants::kSlotsPerBlock - 1, std::forward<Args>(args)...);
     }
 
     void DestroyData() const {
         DCHECK(!IsNone()) << "The Cursor is none.";
-        Block& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
+        const ObjectPtr<Block>& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
         block->destroy(global_idx_ & Constants::kSlotsPerBlock - 1);
     }
 
@@ -596,7 +605,7 @@ public:
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
         requires(IsConst && !AlwaysFalse)
-    Iterator(const Iterator<AlwaysFalse>& other) : index_(other.index()), version_(other.version_), ptr_(other.ptr()) {}//NOLINT
+    Iterator(const Iterator<AlwaysFalse>& other) : index_(other.index()), version_(other.version()), ptr_(other.ptr()) {}//NOLINT
 
     NODISCARD size_type index() const noexcept {
         return index_;
@@ -604,6 +613,10 @@ public:
 
     NODISCARD ContainerPtrType ptr() const noexcept {
         return ptr_;
+    }
+
+    NODISCARD size_type version() const noexcept {
+        return version_;
     }
 
     pointer operator->() const {

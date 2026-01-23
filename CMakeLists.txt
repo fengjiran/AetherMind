@@ -29,7 +29,8 @@ find_package(glog REQUIRED)
 
 set(BACKTRACE_PATH "3rdparty/libbacktrace")
 
-file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cpp
+file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
+        ${PROJECT_SOURCE_DIR}/src/*.cpp
         ${PROJECT_SOURCE_DIR}/src/*.cc
 )
 file(GLOB_RECURSE MODULE_INTERFACE_FILES CONFIGURE_DEPENDS
@@ -61,7 +62,6 @@ target_link_libraries(${PROJECT_NAME}
         pthread
         ${MODULE_NAME}
 )
-#set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 
 if (USE_LIBBACKTRACE)
     message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 1")

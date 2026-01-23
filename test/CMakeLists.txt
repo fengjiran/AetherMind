@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.28)
 project(AetherMindTest)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -8,7 +8,9 @@ option(BUILD_WITH_TORCH "build target with torch" OFF)
 find_package(GTest REQUIRED)
 find_package(glog REQUIRED)
 
-file(GLOB_RECURSE TEST_SRC_FILES ${PROJECT_SOURCE_DIR}/*.cpp)
+file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
+        ${PROJECT_SOURCE_DIR}/*.cpp
+)
 
 add_executable(${PROJECT_NAME} ${TEST_SRC_FILES})
 

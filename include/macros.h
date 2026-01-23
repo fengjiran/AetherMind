@@ -81,4 +81,11 @@
 
 #define DEFINE_STATIC_FUNCTION() DEFINE_STATIC_FUNCTION_(STR_CONCAT(_static_func_tid_, __COUNTER__))
 
+// 自定义 CHECK 宏
+// #define SPDLOG_CHECK(condition)                                                        \
+//     if (!(condition)) {                                                                \
+//         spdlog::critical("Check failed: {} at {}:{}", #condition, __FILE__, __LINE__); \
+//         std::abort();                                                                  \
+//     }
+
 #endif//AETHERMIND_MACROS_H

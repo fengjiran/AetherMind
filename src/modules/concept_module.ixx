@@ -3,10 +3,7 @@
 //
 module;
 //Global Module Fragment
-// #include <glog/logging.h>
-// #include "data_type.h"
 
-// #include "container/string.h"
 #include "utils/bfloat16.h"
 #include "utils/float8_e4m3fn.h"
 #include "utils/float8_e5m2.h"
@@ -22,6 +19,7 @@ class Function;
 template<typename FType>
 class TypedFunction;
 class Any;
+class String;
 
 namespace details {
 
@@ -39,17 +37,17 @@ concept is_floating_point = std::floating_point<T> ||
                             std::same_as<T, Float8_e5m2>;
 
 //
-// export template<typename T>
-// concept is_string = std::same_as<T, std::string> ||
-//                     std::same_as<T, std::string_view> ||
-//                     std::same_as<T, const char*> ||
-//                     std::same_as<T, String>;
-//
-// export template<typename T>
-// concept is_plain_type = is_integral<T> ||
-//                         is_boolean<T> ||
-//                         is_floating_point<T> ||
-//                         is_string<T>;
+export template<typename T>
+concept is_string = std::same_as<T, std::string> ||
+                    std::same_as<T, std::string_view> ||
+                    std::same_as<T, const char*> ||
+                    std::same_as<T, String>;
+
+export template<typename T>
+concept is_plain_type = is_integral<T> ||
+                        is_boolean<T> ||
+                        is_floating_point<T> ||
+                        is_string<T>;
 
 export template<typename T>
 concept has_use_count_method_v = requires(T t) {

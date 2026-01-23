@@ -167,6 +167,7 @@ public:
     template<typename Iter>
     String& replace(const_iterator first, const_iterator last, Iter k1, Iter k2) {
         assert(first >= begin() && first <= last && last <= end());
+        CHECK(true);
         size_t pos = first - begin();
         const size_type n1 = std::distance(first, last);
         const size_type n2 = std::distance(k1, k2);

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 option(BUILD_WITH_TORCH "build target with torch" OFF)
 
 find_package(GTest REQUIRED)
-find_package(glog REQUIRED)
+#find_package(glog REQUIRED)
 
 file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
         ${PROJECT_SOURCE_DIR}/*.cpp
@@ -17,7 +17,7 @@ add_executable(${PROJECT_NAME} ${TEST_SRC_FILES})
 target_link_libraries(${PROJECT_NAME}
         AetherMind
         GTest::gtest_main
-        glog::glog
+#        glog::glog
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_SCAN_FOR_MODULES ON)

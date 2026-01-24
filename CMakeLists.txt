@@ -3,7 +3,6 @@ project(AetherMind)
 
 add_compile_definitions(SPDLOG_USE_STD_FORMAT)
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_MODULE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/modules)
 
 # Set custom Alloc Alignment for device allocated memory ndarray points to
 set(USE_KALLOC_ALIGNMENT 64)
@@ -26,7 +25,7 @@ if (USE_LIBBACKTRACE)
     include(cmake/AddLibbacktrace.cmake)
 endif ()
 
-find_package(glog REQUIRED)
+#find_package(glog REQUIRED)
 
 set(BACKTRACE_PATH "3rdparty/libbacktrace")
 
@@ -70,7 +69,7 @@ include_directories(
 )
 
 target_link_libraries(${PROJECT_NAME}
-        glog::glog
+#        glog::glog
         pthread
         spdlog::spdlog
         ${MODULE_NAME}

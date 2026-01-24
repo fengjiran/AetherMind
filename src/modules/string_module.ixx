@@ -21,11 +21,6 @@ template<typename Char>
 class AMStringCore {
 public:
 private:
-    constexpr static uint8_t categoryExtractMask = kIsLittleEndian ? 0xC0 : 0x3;
-    constexpr static size_t kCategoryShift = (sizeof(size_t) - 1) * 8;
-    constexpr static size_t capacityExtractMask = kIsLittleEndian ? ~(static_cast<size_t>(categoryExtractMask) << kCategoryShift)
-                                                                  : 0x0 /* unused */;
-    // using category_type = uint8_t;
     enum class Category : uint8_t {
         isSmall = 0,
         isMedium = kIsLittleEndian ? 0x80 : 0x02,
@@ -52,6 +47,11 @@ private:
         Char small_[sizeof(MediumLarge) / sizeof(Char)];
         MediumLarge ml_;
     };
+
+    constexpr static uint8_t categoryExtractMask = kIsLittleEndian ? 0xC0 : 0x03;
+    constexpr static size_t kCategoryShift = (sizeof(size_t) - 1) * 8;
+    constexpr static size_t capacityExtractMask = kIsLittleEndian ? ~(static_cast<size_t>(categoryExtractMask) << kCategoryShift)
+                                                                  : 0x0 /* unused */;
 };
 
 

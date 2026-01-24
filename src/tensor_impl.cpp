@@ -9,8 +9,8 @@ namespace aethermind {
 
 TensorImpl::TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device)
     : storage_offset_(storage_offset), numel_(0), dtype_(dtype), device_opt_(device) {
-    CHECK(dtype_initialized()) << "dtype should be initialized.";
-    CHECK(device.type() != DeviceType::kUndefined) << "device should be initialized.";
+    AM_CHECK(dtype_initialized(), "dtype should be initialized.");
+    AM_CHECK(device.type() != DeviceType::kUndefined, "device should be initialized.");
 
     init_bitfield();
     auto ndim = shape.size();
@@ -93,7 +93,7 @@ int64_t TensorImpl::storage_offset() const {
 }
 
 Device TensorImpl::device() const {
-    CHECK(device_opt_.has_value()) << "tensor does not have a device.";
+    AM_CHECK(device_opt_.has_value(), "tensor does not have a device.");
     return *device_opt_;
 }
 
@@ -124,7 +124,7 @@ bool TensorImpl::is_contiguous() const {
 }
 
 void TensorImpl::set_shape_and_strides(IntArrayView shape, IntArrayView strides, std::optional<int64_t> storage_offset) {
-    CHECK(shape.size() == strides.size()) << "dimensionality of shape must match dimensionality of strides.";
+    AM_CHECK(shape.size() == strides.size(), "dimensionality of shape must match dimensionality of strides.");
     auto ndim = shape.size();
     shape_and_stride_.set_shape(shape);
 
@@ -148,7 +148,7 @@ void TensorImpl::set_shape_and_strides(IntArrayView shape, IntArrayView strides,
                 break;
             }
         }
-        CHECK(!overflowed) << "stride calculation overflowed.";
+        AM_CHECK(!overflowed, "stride calculation overflowed.");
     }
 
     refresh_numel();
@@ -172,7 +172,7 @@ int64_t TensorImpl::safe_compute_numel() const {
             std::numeric_limits<int64_t>::max(),
             std::numeric_limits<size_t>::max());
     overflow |= numel > numel_max;
-    CHECK(!overflow) << "interger multiplication overflow when compute numel.";
+    AM_CHECK(!overflow, "interger multiplication overflow when compute numel.");
     return static_cast<int64_t>(numel);
 }
 
@@ -204,7 +204,7 @@ void TensorImpl::set_storage_and_dtype(Storage storage, DataType dtype) {
 
 
 void TensorImpl::set_storage_offset(int64_t storage_offset) {
-    CHECK(storage_offset >= 0) << "storage_offset must be non-negative.";
+    AM_CHECK(storage_offset >= 0, "storage_offset must be non-negative.");
     storage_offset_ = storage_offset;
 }
 

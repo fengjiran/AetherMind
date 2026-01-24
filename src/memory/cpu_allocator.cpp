@@ -4,6 +4,7 @@
 
 #include "memory/cpu_allocator.h"
 #include "alignment.h"
+#include "env.h"
 
 #include <cstring>
 
@@ -61,17 +62,17 @@ void* alloc_cpu(size_t nbytes) {
         return nullptr;
     }
 
-    CHECK(static_cast<ptrdiff_t>(nbytes) >= 0) << "the nbytes is seems a negative number.";
+    AM_CHECK(static_cast<ptrdiff_t>(nbytes) >= 0, "the nbytes is seems a negative number.");
 
     void* data = nullptr;
     int err = posix_memalign(&data, get_alignment(nbytes), nbytes);
-    CHECK(err == 0) << "Try allocate " << nbytes << "bytes memory failed.";
+    AM_CHECK(err == 0, "Try allocate {} bytes memory failed.", nbytes);
 
     if (is_thp_alloc(nbytes)) {
 #ifdef __linux__
         int ret = madvise(data, nbytes, MADV_HUGEPAGE);
         if (ret != 0) {
-            LOG(WARNING) << "thp madvise for HUGEPAGE failed";
+            spdlog::warn("thp madvise for HUGEPAGE failed");
         }
 #endif
     }
@@ -89,4 +90,4 @@ void free_cpu(void* data) {
 
 REGISTER_ALLOCATOR(DeviceType::kCPU, CPUAllocator);
 
-}// namespace atp
+}// namespace aethermind

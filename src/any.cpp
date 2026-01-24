@@ -232,7 +232,7 @@ size_t AnyHash::operator()(const Any& v) const {
         return get_hash(v.ToDevice());
     }
 
-    CHECK(false) << "Unhashable type: '" << v.GetTypePtr()->ReprStr() << "'";
+    AM_CHECK(false, "Unhashable type");
     AETHERMIND_UNREACHABLE();
 }
 

@@ -713,9 +713,9 @@ private:
     ContainerPtrType ptr_;
 
     void Check() const {
-        CHECK(ptr_ != nullptr) << "Iterator pointer is nullptr.";
-        CHECK(index_ <= ptr_->slots_) << "Iterator index is out of range.";
-        CHECK(version_ == ptr_->version_) << "Iterator invalidated: container modified!";
+        AM_CHECK(ptr_ != nullptr, "Iterator pointer is nullptr.");
+        AM_CHECK(index_ <= ptr_->slots_, "Iterator index is out of range.");
+        AM_CHECK(version_ == ptr_->version_, "Iterator invalidated: container modified!");
     }
 };
 

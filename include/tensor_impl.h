@@ -9,10 +9,10 @@
 #include "layout.h"
 #include "memory/cpu_allocator.h"
 #include "memory/storage.h"
+#include "memory_format.h"
 #include "scalar.h"
 #include "shape_and_stride.h"
 #include "tensor_utils.h"
-#include "memory_format.h"
 
 #include <memory>
 #include <vector>
@@ -264,7 +264,7 @@ private:
             AETHERMIND_THROW(runtime_error) << "Can't access data pointer of Tensor that doesn't have storage.";
         }
         // CHECK(has_storage()) << "Can't access data pointer of Tensor that doesn't have storage.";
-        CHECK(dtype_initialized()) << "Can't access data pointer of Tensor that doesn't have initialized dtype.";
+        AM_CHECK(dtype_initialized(), "Can't access data pointer of Tensor that doesn't have initialized dtype.");
         auto* data = get_data();
         static_assert(sizeof(*data) == 1, "get_data must return a byte-addressed pointer.");
         if (empty()) {
@@ -277,9 +277,9 @@ private:
     // Shared implementation of data_ptr_impl() and the const_data_ptr_impl().
     template<typename T, typename Func>
     __ubsan_ignore_pointer_overflow__ T* data_ptr_impl_impl(const Func& get_data) const {
-        CHECK(has_storage()) << "Can't access data pointer of Tensor that doesn't have storage.";
-        CHECK(storage_initialized() && dtype_.Match<std::remove_cv_t<T>>())
-                << "The tensor has a non-zero number of elements, but its data is not allocated yet.";
+        AM_CHECK(has_storage(), "Can't access data pointer of Tensor that doesn't have storage.");
+        AM_CHECK(storage_initialized() && dtype_.Match<std::remove_cv_t<T>>(),
+                 "The tensor has a non-zero number of elements, but its data is not allocated yet.");
         return get_data() + storage_offset_;
     }
 

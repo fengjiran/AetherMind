@@ -275,14 +275,14 @@ public:
     template<typename T>
     T& ExpectRef() {
         auto* r = CastToRawTypePtr<T>();
-        CHECK(r != nullptr);
+        AM_CHECK(r != nullptr);
         return *r;
     }
 
     template<typename T>
     const T& ExpectRef() const {
         auto* r = CastToRawTypePtr<const T>();
-        CHECK(r != nullptr);
+        AM_CHECK(r != nullptr);
         return *r;
     }
 

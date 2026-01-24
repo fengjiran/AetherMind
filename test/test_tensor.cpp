@@ -5,6 +5,7 @@
 #include "error.h"
 #include "function_traits.h"
 #include "tensor.h"
+#include "env.h"
 
 // #include <fmt/format.h>
 #include <gtest/gtest.h>

@@ -9,7 +9,7 @@ namespace aethermind {
 
 namespace {
 void check_type(const Tensor& t, DLDataTypeCode type_code, int8_t type_bits, int16_t type_lanes) {
-    CHECK(t.dtype() == DataType(type_code, type_bits, type_lanes));
+    AM_CHECK(t.dtype() == DataType(type_code, type_bits, type_lanes));
     // CHECK(t.dtype().code() == type_code && t.dtype().bits() == type_bits && t.dtype().lanes() == type_lanes)
     //         << "data type mismatch.";
 }
@@ -149,7 +149,7 @@ bool Tensor::is_cuda() const {
 
 Tensor Tensor::rand(const std::vector<int64_t>& shape) {
     Tensor t(shape);
-    CHECK(t.numel() > 0);
+    AM_CHECK(t.numel() > 0);
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -164,7 +164,7 @@ Tensor Tensor::rand(const std::vector<int64_t>& shape) {
 
 Tensor Tensor::randn(const std::vector<int64_t>& shape) {
     Tensor t(shape);
-    CHECK(t.numel() > 0);
+    AM_CHECK(t.numel() > 0);
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -178,7 +178,7 @@ Tensor Tensor::randn(const std::vector<int64_t>& shape) {
 
 Tensor Tensor::randint(int64_t low, int64_t high, const std::vector<int64_t>& shape) {
     Tensor t(shape, 0, {DLDataTypeCode::kInt, 64, 1}, Device(kCPU));
-    CHECK(t.numel() > 0);
+    AM_CHECK(t.numel() > 0);
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int64_t> dist(low, high);

@@ -15,7 +15,8 @@
 #include "utils/half.h"
 
 #include <cstdint>
-#include <glog/logging.h>
+#include <spdlog/spdlog.h>
+// #include <glog/logging.h>
 
 namespace aethermind {
 
@@ -178,9 +179,7 @@ public:
 
     NODISCARD int lanes() const {
         int lanes_as_int = static_cast<int16_t>(dtype_.lanes);
-        if (lanes_as_int < 0) {
-            LOG(FATAL) << "Can't fetch the lanes of a scalable vector at compile time.";
-        }
+        AM_CHECK(lanes_as_int >= 0, "Can't fetch the lanes of a scalable vector at compile time.");
         return lanes_as_int;
     }
 
@@ -194,9 +193,7 @@ public:
 
     NODISCARD int GetScaleFactor() const {
         int lanes_as_int = static_cast<int16_t>(dtype_.lanes);
-        if (lanes_as_int >= -1) {
-            LOG(FATAL) << "A fixed length vector doesn't have a vscale factor.";
-        }
+        AM_CHECK(lanes_as_int < -1, "A fixed length vector doesn't have a vscale factor.");
         return -lanes_as_int;
     }
 
@@ -508,9 +505,9 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
     f(DLDataTypeCode::kComplex, 64, 1, complex<float>, ComplexFloat);      \
     f(DLDataTypeCode::kComplex, 128, 1, complex<double>, ComplexDouble);
 //f(DLDataTypeCode::kFloat8_e3m4, 8, 1, Float8_e3m4, Float8_e3m4);                      \
-    //f(DLDataTypeCode::kFloat8_e4m3, 8, 1, Float8_e4m3, Float8_e4m3);                      \
-    //f(DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, 1, Float8_e4m3b11fnuz, Float8_e4m3b11fnuz); \
-    // f(DLDataTypeCode::kFloat8_e4m3fnuz, 8, 1, Float8_e4m3fnuz,Float8_e4m3fnuz);    \
+//f(DLDataTypeCode::kFloat8_e4m3, 8, 1, Float8_e4m3, Float8_e4m3);                      \
+//f(DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, 1, Float8_e4m3b11fnuz, Float8_e4m3b11fnuz); \
+// f(DLDataTypeCode::kFloat8_e4m3fnuz, 8, 1, Float8_e4m3fnuz,Float8_e4m3fnuz);    \
 // f(DLDataTypeCode::kFloat8_e5m2fnuz, 8, 1, Float8_e5m2fnuz,Float8_e5m2fnuz);    \
 // f(DLDataTypeCode::kFloat8_e8m0fnu, 8, 1, Float8_e8m0fnu,Float8_e8m0fnu);     \
 // f(DLDataTypeCode::kFloat6_e2m3fn, 6, 1, Float6_e2m3fn,Float6_e2m3fn);      \

@@ -38,12 +38,12 @@ TEST(Storage, init) {
 
 TEST(Storage, data_ptr_context) {
     auto deleter1 = [](void* ptr) {
-        LOG(INFO) << "call test deleter1, free ptr: " << ptr;
+        spdlog::info("call test deleter1, free ptr: {}", ptr);
         free(ptr);
     };
 
     auto deleter2 = [](void* ptr) {
-        LOG(INFO) << "call test deleter2, free ptr: " << ptr;
+        spdlog::info("call test deleter2, free ptr: {}", ptr);
         free(ptr);
     };
 

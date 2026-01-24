@@ -8,7 +8,6 @@
 #include "container/map.h"
 #include "data_ptr.h"
 #include "device.h"
-#include "env.h"
 #include "utils/thread_local_debug_info.h"
 
 #include <unordered_map>
@@ -64,7 +63,7 @@ public:
     }
 
     const std::unique_ptr<Allocator>& get_allocator(DeviceType device) {
-        CHECK(table_.contains(device)) << "Allocator not found";
+        AM_CHECK(table_.contains(device), "Allocator not found");
         return table_[device];
     }
 

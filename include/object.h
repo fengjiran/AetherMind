@@ -6,8 +6,8 @@
 #define AETHERMIND_OBJECT_H
 
 #include "c_api.h"
+#include "utils/logging.h"
 
-#include <glog/logging.h>
 #include <memory>
 #include <type_traits>
 
@@ -391,7 +391,7 @@ public:
      * \brief Returns whether the ObjectPtr is defined (i.e., not null type pointer).
      * \return True if the ObjectPtr is defined, false otherwise.
      */
-    NODISCARD bool defined() const noexcept{
+    NODISCARD bool defined() const noexcept {
         return ptr_ != null_type::singleton();
     }
 
@@ -490,8 +490,7 @@ private:
      */
     void retain() {
         if (defined()) {
-            CHECK(ptr_->use_count() > 0)
-                    << "ObjectPtr must be copy constructed with an object with ref_count_ > 0";
+            AM_CHECK(ptr_->use_count() > 0, "ObjectPtr must be copy constructed with an object with ref_count_ > 0");
             ptr_->IncRef();
         }
     }
@@ -503,8 +502,7 @@ private:
      */
     explicit ObjectPtr(T* ptr) : ObjectPtr(ptr, DoNotIncRefCountTag()) {
         if (defined()) {
-            CHECK(ptr_->use_count() == 0)
-                    << "ObjectPtr must be constructed with a null_type or an object with ref_count_ == 0";
+            AM_CHECK(ptr_->use_count() == 0, "ObjectPtr must be constructed with a null_type or an object with ref_count_ == 0");
             ptr_->IncRef();
         }
     }
@@ -619,9 +617,9 @@ public:
     }
 
     static WeakObjectPtr reclaim(T* ptr) {
-        CHECK(ptr == null_type::singleton() ||
-              ptr->weak_use_count() > 1 ||
-              (ptr->use_count() == 0 && ptr->weak_use_count() > 0));
+        AM_CHECK(ptr == null_type::singleton() ||
+                 ptr->weak_use_count() > 1 ||
+                 (ptr->use_count() == 0 && ptr->weak_use_count() > 0));
         return WeakObjectPtr(ptr);
     }
 
@@ -645,8 +643,7 @@ private:
 
     void retain() {
         if (defined()) {
-            CHECK(ptr_->weak_use_count() > 0)
-                    << "ObjectPtr must be copy constructed with an object with weak_ref_count_ > 0";
+            AM_CHECK(ptr_->weak_use_count() > 0, "ObjectPtr must be copy constructed with an object with weak_ref_count_ > 0");
             ptr_->IncWeakRef();
         }
     }

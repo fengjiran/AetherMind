@@ -11,6 +11,7 @@
 #include <backtrace.h>
 #include <cxxabi.h>
 
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <mutex>

@@ -313,8 +313,8 @@ public:
     template<typename T>
         requires details::is_container<T>
     decltype(auto) operator[](T::size_type i) {
-        CHECK(has_value()) << "Any has no value.";
-        CHECK(CheckType<T>()) << "Type mismatch.";
+        AM_CHECK(has_value(), "Any has no value.");
+        AM_CHECK(CheckType<T>(), "Type mismatch.");
         return (*static_cast<T*>(GetDataPtr()))[i];
     }
 
@@ -381,37 +381,37 @@ public:
     }
 
     NODISCARD String ToNone() const noexcept {
-        CHECK(IsNone());
+        AM_CHECK(IsNone());
         return "None";
     }
 
     NODISCARD Int ToInt() const {
-        CHECK(IsInteger()) << "Expected Int, but got " << type().name();
+        AM_CHECK(IsInteger(), "Expected Int, but got {}", type().name());
         return cast<Int>();
     }
 
     NODISCARD Float ToDouble() const {
-        CHECK(IsFloatingPoint()) << "Expected Double, but got " << type().name();
+        AM_CHECK(IsFloatingPoint(), "Expected Double, but got {}", type().name());
         return cast<Float>();
     }
 
     NODISCARD Bool ToBool() const {
-        CHECK(IsBool()) << "Expected Bool, but got " << type().name();
+        AM_CHECK(IsBool(), "Expected Bool, but got {}", type().name());
         return cast<Bool>();
     }
 
     NODISCARD void* ToVoidPtr() const {
-        CHECK(IsVoidPtr()) << "Expected VoidPtr, but got " << type().name();
+        AM_CHECK(IsVoidPtr(), "Expected VoidPtr, but got {}", type().name());
         return cast<void*>();
     }
 
     NODISCARD Device ToDevice() const {
-        CHECK(IsDevice()) << "Expected Device, but got " << type().name();
+        AM_CHECK(IsDevice(), "Expected Device, but got {}", type().name());
         return cast<Device>();
     }
 
     NODISCARD String ToString() const {
-        CHECK(IsString()) << "Expected String, but got " << type().name();
+        AM_CHECK(IsString(), "Expected String, but got {}", type().name());
         return cast<String>();
     }
 

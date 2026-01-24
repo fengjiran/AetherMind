@@ -8,8 +8,6 @@
 #include "macros.h"
 #include "utils/hash.h"
 
-#include <glog/logging.h>
-
 namespace aethermind {
 
 // The wrapper for singleton type pointer, as the tag of singleton type.
@@ -140,7 +138,7 @@ private:
                 new (&shared_repr_) SharedPtrWrapper(other.shared_repr_);
             } else {
                 singleton_repr_.singleton_ = static_cast<T*>(other.get_raw_repr().first_);
-                CHECK(other.singleton_repr_.padding_ == nullptr);
+                AM_CHECK(other.singleton_repr_.padding_ == nullptr);
                 singleton_repr_.padding_ = nullptr;
             }
         }
@@ -150,7 +148,7 @@ private:
                 new (&shared_repr_) SharedPtrWrapper(std::move(other.shared_repr_));
             } else {
                 singleton_repr_.singleton_ = static_cast<T*>(other.get_raw_repr().first_);
-                CHECK(other.singleton_repr_.padding_ == nullptr);
+                AM_CHECK(other.singleton_repr_.padding_ == nullptr);
                 singleton_repr_.padding_ = nullptr;
             }
         }
@@ -168,7 +166,7 @@ private:
                         destroy();
                     }
                     singleton_repr_.singleton_ = static_cast<T*>(other.get_raw_repr().first_);
-                    CHECK(other.get_raw_repr().null_if_singleton_ == nullptr);
+                    AM_CHECK(other.get_raw_repr().null_if_singleton_ == nullptr);
                     singleton_repr_.padding_ = nullptr;
                 }
             }
@@ -188,7 +186,7 @@ private:
                         destroy();
                     }
                     singleton_repr_.singleton_ = static_cast<T*>(other.get_raw_repr().first_);
-                    CHECK(other.get_raw_repr().null_if_singleton_ == nullptr);
+                    AM_CHECK(other.get_raw_repr().null_if_singleton_ == nullptr);
                     singleton_repr_.padding_ = nullptr;
                 }
             }
@@ -203,7 +201,7 @@ private:
 
         NODISCARD bool is_not_null() const {
             auto repr = get_raw_repr();
-            CHECK(repr.null_if_singleton_ == nullptr || repr.first_ != nullptr);
+            AM_CHECK(repr.null_if_singleton_ == nullptr || repr.first_ != nullptr);
             return repr.first_ != nullptr;
         }
 

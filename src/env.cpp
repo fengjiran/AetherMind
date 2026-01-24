@@ -5,7 +5,6 @@
 #include "env.h"
 
 #include <cstdlib>
-#include <glog/logging.h>
 #include <mutex>
 #include <shared_mutex>
 
@@ -19,7 +18,7 @@ static std::shared_mutex& get_env_mutex() {
 void set_env(const char* name, const char* value, bool overwrite) {
     std::lock_guard lock(get_env_mutex());
     auto err = setenv(name, value, overwrite);
-    CHECK(err == 0);
+    AM_CHECK(err == 0);
 }
 
 std::optional<String> get_env(const char* name) noexcept {

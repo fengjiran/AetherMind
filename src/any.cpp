@@ -121,7 +121,7 @@ bool Any::IsTensor() const noexcept {
 }
 
 Tensor Any::ToTensor() const {
-    CHECK(IsTensor()) << "Expected Tensor.";
+    AM_CHECK(IsTensor(), "Expected Tensor.");
     return cast<Tensor>();
 }
 
@@ -154,7 +154,7 @@ SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
         return TensorType::Create(ToTensor());
     }
 
-    CHECK(false) << "The type is unknown!";
+    AM_CHECK(false, "The type is unknown!");
     AETHERMIND_UNREACHABLE();
 }
 

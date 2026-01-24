@@ -534,7 +534,7 @@ TensorTypePtr TensorType::Merge(const TensorType& other, bool merge_shape) const
 TensorTypePtr TensorType::Contiguity() const {
     auto cloned = Clone();
     auto concrete_shape = shape().GetConcreteValue();
-    CHECK(concrete_shape.has_value());
+    AM_CHECK(concrete_shape.has_value());
     cloned->strides_ = ComputeStrideProps(concrete_shape.value(),
                                           GetContiguousStrideOf(concrete_shape.value()));
     return cloned;
@@ -591,7 +591,7 @@ TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
     auto concrete_stride = strides.GetConcreteValue();
     if (concrete_stride.has_value()) {
         auto concrete_shape = shape.GetConcreteValue();
-        CHECK(concrete_shape.has_value() && concrete_shape->size() == concrete_stride->size());
+        AM_CHECK(concrete_shape.has_value() && concrete_shape->size() == concrete_stride->size());
         auto sprops = ComputeStrideProps(concrete_shape.value(),
                                          concrete_stride.value(),
                                          tensor_contiguity);
@@ -601,7 +601,7 @@ TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
 
     // strides are all null, but still have number of strides equal to number of ranks
     const auto& shape_opt = shape.shape();
-    CHECK(shape_opt.has_value() && shape.size().has_value());
+    AM_CHECK(shape_opt.has_value() && shape.size().has_value());
     auto symbol_shape = SymbolicShape(shape_opt.value());
     return Create(dtype, device, std::move(symbol_shape),
                   VaryingShape<Stride>(shape_opt->size()), requires_grad, undefined);
@@ -650,7 +650,7 @@ bool IsContiguousStride(IntArrayView shape, IntArrayView strides) {
 
 TensorTypePtr TensorType::CreateContiguous(DataType dtype, Device device, IntArrayView shape) {
     const auto strides = GetContiguousStrideOf(shape);
-    CHECK(shape.size() == strides.size());
+    AM_CHECK(shape.size() == strides.size());
     return Create(dtype, device, VaryingShape(shape), VaryingShape(strides), std::nullopt);
 }
 
@@ -675,7 +675,7 @@ TypePtr TensorType::CreateFromNumberType(const Type& t) {
         return Create(std::nullopt, Device::CPU(), {}, std::nullopt);
     }
 
-    CHECK(false) << "Unknown number type: " << t.str();
+    AM_CHECK(false, "Unknown number type: {}", t.str().c_str());
     AETHERMIND_UNREACHABLE();
 }
 

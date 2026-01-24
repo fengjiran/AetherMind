@@ -135,7 +135,7 @@ void StandardizeVectorForUnion(std::vector<TypePtr>& to_flatten) {
 }
 
 UnionType::UnionType(const std::vector<TypePtr>& types, TypeKind kind) : SharedType(kind) {
-    CHECK(!types.empty()) << "Can not create an empty Union type.";
+    AM_CHECK(!types.empty(), "Can not create an empty Union type.");
     StandardizeVectorForUnion(types, types_);
 
     if (types_.size() == 1) {
@@ -152,7 +152,7 @@ UnionType::UnionType(const std::vector<TypePtr>& types, TypeKind kind) : SharedT
         msg << "} has the single type " << types_[0]->ReprStr()
             << ". Use the common supertype instead of creating a Union"
             << "type";
-        CHECK(false) << msg.str();
+        AM_CHECK(false);
     }
 
     can_hold_none_ = false;
@@ -414,7 +414,7 @@ OptionalTypePtr OptionalType::Create(const TypePtr& contained) {
 }
 
 TypePtr OptionalType::CreateWithContainedTypes(const std::vector<TypePtr>& contained_types) const {
-    CHECK(contained_types.size() == 1);
+    AM_CHECK(contained_types.size() == 1);
     return Create(contained_types[0]);
 }
 

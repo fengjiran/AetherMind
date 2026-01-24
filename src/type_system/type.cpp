@@ -49,13 +49,13 @@ size_t Type::GetContainedTypeSize() const {
 }
 
 TypePtr Type::CreateWithContainedTypes(const std::vector<TypePtr>&) const {
-    CHECK(false) << "CreateWithContainedTypes() is not implemented: " << str();
+    AM_CHECK(false, "CreateWithContainedTypes() is not implemented: {}", str().c_str());
     AETHERMIND_UNREACHABLE();
 }
 
 TypePtr Type::WithContainedTypes(const std::vector<TypePtr>& contained_types) {
     auto cur_contained_types = GetContainedTypes();
-    CHECK(!cur_contained_types.empty() && cur_contained_types.size() == contained_types.size());
+    AM_CHECK(!cur_contained_types.empty() && cur_contained_types.size() == contained_types.size());
     if (cur_contained_types.equals(contained_types)) {
         return std::static_pointer_cast<Type>(static_cast<SharedType*>(this)->shared_from_this());
     }

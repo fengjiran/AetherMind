@@ -6,7 +6,6 @@
 #include "alignment.h"
 
 #include <cstring>
-#include <glog/logging.h>
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <sys/mman.h>

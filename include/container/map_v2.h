@@ -44,7 +44,7 @@ public:
     }
 
     value_type* GetDataPtr(size_t slot_idx) noexcept {
-        CHECK(slot_idx < BlockSize);
+        AM_CHECK(slot_idx < BlockSize);
         auto* start = storage_.data() + FLAG_BYTES;
         return reinterpret_cast<value_type*>(start) + slot_idx;
     }
@@ -90,21 +90,21 @@ private:
     // 0: Not construct
     // 1: Constructed
     NODISCARD bool TestFlag(size_t slot_idx) const noexcept {
-        CHECK(slot_idx < BlockSize);
+        AM_CHECK(slot_idx < BlockSize);
         auto [b, p] = GetFlagIdx(slot_idx);
         return (storage_[b] & std::byte{1} << (7 - p)) != std::byte{0};
     }
 
     // Set the slot is constructed
     void SetFlag(size_t slot_idx) noexcept {
-        CHECK(slot_idx < BlockSize);
+        AM_CHECK(slot_idx < BlockSize);
         auto [b, p] = GetFlagIdx(slot_idx);
         storage_[b] |= std::byte{1} << (7 - p);
     }
 
     // Set the slot is not constructed
     void ResetFlag(size_t slot_idx) noexcept {
-        CHECK(slot_idx < BlockSize);
+        AM_CHECK(slot_idx < BlockSize);
         auto [b, p] = GetFlagIdx(slot_idx);
         storage_[b] &= ~(std::byte{1} << (7 - p));
     }
@@ -234,8 +234,8 @@ public:
     }
 
     NODISCARD value_type* GetDataPtr(size_type global_idx) const {
-        DCHECK(global_idx < slots_);
-        DCHECK(slot_infos_[global_idx].meta != Constants::kEmptySlot);
+        AM_DCHECK(global_idx < slots_);
+        AM_DCHECK(slot_infos_[global_idx].meta != Constants::kEmptySlot);
         auto block_idx = global_idx / Constants::kSlotsPerBlock;
         return blocks_[block_idx]->GetDataPtr(global_idx & Constants::kSlotsPerBlock - 1);
     }
@@ -322,7 +322,7 @@ private:
         if (global_idx == Constants::kInvalidIndex) {
             return global_idx;
         }
-        CHECK(global_idx < slots_);
+        AM_CHECK(global_idx < slots_);
         return slot_infos_[global_idx].next;
     }
 
@@ -330,7 +330,7 @@ private:
         if (global_idx == Constants::kInvalidIndex) {
             return iter_list_tail_;
         }
-        CHECK(global_idx < slots_);
+        AM_CHECK(global_idx < slots_);
         return slot_infos_[global_idx].prev;
     }
 
@@ -420,7 +420,7 @@ private:
             slots <<= 1;
             c >>= 1;
         }
-        CHECK(slots >= cap);
+        AM_CHECK(slots >= cap);
         return {shift, slots};
     }
 
@@ -449,13 +449,13 @@ struct MapImplV2<K, V, Hasher>::Cursor {
     }
 
     NODISCARD std::byte& GetSlotMetadata() const {
-        DCHECK(!IsNone()) << "The Cursor is none.";
+        AM_DCHECK(!IsNone(), "The Cursor is none.");
         return const_cast<MapImplV2*>(owner())->slot_infos_[global_idx_].meta;
         // return owner()->slot_infos_[global_idx_].meta;
     }
 
     NODISCARD value_type& GetData() const {
-        DCHECK(!IsNone()) << "The Cursor is none.";
+        AM_DCHECK(!IsNone(), "The Cursor is none.");
         return *owner()->GetDataPtr(global_idx_);
     }
 
@@ -472,12 +472,12 @@ struct MapImplV2<K, V, Hasher>::Cursor {
     }
 
     NODISCARD bool IsIterListHead() const {
-        DCHECK(!IsNone()) << "The Cursor is none.";
+        AM_DCHECK(!IsNone(), "The Cursor is none.");
         return index() == owner()->iter_list_head_;
     }
 
     NODISCARD bool IsIterListTail() const {
-        DCHECK(!IsNone()) << "The Cursor is none.";
+        AM_DCHECK(!IsNone(), "The Cursor is none.");
         return index() == owner()->iter_list_tail_;
     }
 
@@ -507,21 +507,21 @@ struct MapImplV2<K, V, Hasher>::Cursor {
 
     template<typename... Args>
     void ConstructData(Args&&... args) const {
-        DCHECK(!IsNone()) << "The Cursor is none.";
-        DCHECK(IsSlotEmpty() || IsSlotTombStone());
+        AM_DCHECK(!IsNone(), "The Cursor is none.");
+        AM_DCHECK(IsSlotEmpty() || IsSlotTombStone());
         const ObjectPtr<Block>& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
         block->emplace(global_idx_ & Constants::kSlotsPerBlock - 1, std::forward<Args>(args)...);
     }
 
     void DestroyData() const {
-        DCHECK(!IsNone()) << "The Cursor is none.";
+        AM_DCHECK(!IsNone(), "The Cursor is none.");
         const ObjectPtr<Block>& block = owner()->blocks_[global_idx_ / Constants::kSlotsPerBlock];
         block->destroy(global_idx_ & Constants::kSlotsPerBlock - 1);
     }
 
     // Set the entry's offset to its next entry.
     void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
-        DCHECK(offset_idx < Constants::kNumOffsetDists);
+        AM_DCHECK(offset_idx < Constants::kNumOffsetDists);
         (GetSlotMetadata() &= Constants::kHeadFlagMask) |= std::byte{offset_idx};
     }
 

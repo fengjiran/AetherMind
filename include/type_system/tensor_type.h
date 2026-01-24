@@ -28,7 +28,7 @@ public:
     }
 
     NODISCARD int64_t GetStaticValue() const {
-        CHECK(IsStatic());
+        AM_CHECK(IsStatic());
         return value_;
     }
 

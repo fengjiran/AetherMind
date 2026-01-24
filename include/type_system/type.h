@@ -217,7 +217,7 @@ public:
     template<typename T, std::enable_if_t<details::is_singleton_type_v<T>>* = nullptr>
     SingletonTypePtr<T> Cast() {
         if (T::Kind == kind()) {
-            CHECK(this == T::Global().get());
+            AM_CHECK(this == T::Global().get());
             return static_cast<T*>(this);
         }
         return nullptr;
@@ -236,7 +236,7 @@ public:
     template<typename T, std::enable_if_t<details::is_singleton_type_v<T>>* = nullptr>
     SingletonTypePtr<const T> Cast() const {
         if (T::Kind == kind()) {
-            CHECK(this == T::Global().get());
+            AM_CHECK(this == T::Global().get());
             return static_cast<const T*>(this);
         }
         return nullptr;
@@ -261,14 +261,14 @@ public:
     template<typename T>
     decltype(auto) Expect() {
         auto r = Cast<T>();
-        CHECK(r);
+        AM_CHECK(r);
         return r;
     }
 
     template<typename T>
     decltype(auto) Expect() const {
         auto r = Cast<const T>();
-        CHECK(r);
+        AM_CHECK(r);
         return r;
     }
 
@@ -572,10 +572,10 @@ using ConstNamedTypePtr = std::shared_ptr<const NamedType>;
 class NamedType : public SharedType {
 public:
     NamedType(TypeKind kind, std::optional<QualifiedName> name) : SharedType(kind), name_(std::move(name)) {
-        CHECK(kind == TypeKind::TupleType || kind == TypeKind::FunctionType ||
-              kind == TypeKind::ClassType || kind == TypeKind::InterfaceType ||
-              kind == TypeKind::EnumType)
-                << "If you add a new kind of NamedType, please update the cast<NamedType> specialization and this assert";
+        AM_CHECK(kind == TypeKind::TupleType || kind == TypeKind::FunctionType ||
+                         kind == TypeKind::ClassType || kind == TypeKind::InterfaceType ||
+                         kind == TypeKind::EnumType,
+                 "If you add a new kind of NamedType, please update the cast<NamedType> specialization and this assert");
     }
 
     // Fully qualified name of type

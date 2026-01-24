@@ -11,14 +11,14 @@ ArrayImpl::~ArrayImpl() {
 }
 
 void ArrayImpl::ConstructOneElemAtEnd(Any value) {
-    CHECK(capacity() - size() >= 1);
+    AM_CHECK(capacity() - size() >= 1);
     auto* p = end();
     new (p) Any(std::move(value));
     ++size_;
 }
 
 void ArrayImpl::ConstructAtEnd(size_t n, const Any& value) {
-    CHECK(n <= capacity() - size());
+    AM_CHECK(n <= capacity() - size());
     auto* p = end();
     // To ensure exception safety, size is only incremented after the initialization succeeds
     for (size_t i = 0; i < n; ++i) {
@@ -28,7 +28,7 @@ void ArrayImpl::ConstructAtEnd(size_t n, const Any& value) {
 }
 
 void ArrayImpl::ShrinkBy(int64_t delta) {
-    CHECK(delta <= size());
+    AM_CHECK(delta <= size());
     for (auto* p = end(); delta > 0; --delta) {
         (--p)->~Any();
         --size_;
@@ -44,7 +44,7 @@ void ArrayImpl::clear() {
 }
 
 void ArrayImpl::MoveElemsRight(size_t dst, size_t src, size_t n) {
-    CHECK(src < dst);
+    AM_CHECK(src < dst);
     auto* from = begin() + src + n;
     auto* to = begin() + dst + n;
     for (size_t i = 0; i < n; ++i) {
@@ -53,7 +53,7 @@ void ArrayImpl::MoveElemsRight(size_t dst, size_t src, size_t n) {
 }
 
 void ArrayImpl::MoveElemsLeft(size_t dst, size_t src, size_t n) {
-    CHECK(src > dst);
+    AM_CHECK(src > dst);
     auto* from = begin() + src;
     auto* to = begin() + dst;
     for (size_t i = 0; i < n; ++i) {

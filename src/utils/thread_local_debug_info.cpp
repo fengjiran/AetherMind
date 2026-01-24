@@ -2,9 +2,8 @@
 // Created by 赵丹 on 2025/8/27.
 //
 #include "utils/thread_local_debug_info.h"
+#include "utils/logging.h"
 #include "utils/thread_local.h"
-
-#include <glog/logging.h>
 
 namespace aethermind {
 
@@ -39,14 +38,14 @@ void ThreadLocalDebugInfo::_push(DebugInfoKind kind, std::shared_ptr<DebugInfoBa
 }
 
 std::shared_ptr<DebugInfoBase> ThreadLocalDebugInfo::_pop(DebugInfoKind kind) {
-    CHECK(debug_info && debug_info->kind_ == kind) << "Expected debug info of type " << static_cast<int>(kind);
+    AM_CHECK(debug_info && debug_info->kind_ == kind, "Expected debug info of type {}", static_cast<int>(kind));
     auto res = debug_info;
     debug_info = debug_info->parent_info_;
     return res->info_;
 }
 
 std::shared_ptr<DebugInfoBase> ThreadLocalDebugInfo::_peek(DebugInfoKind kind) {
-    CHECK(debug_info && debug_info->kind_ == kind) << "Expected debug info of type " << static_cast<int>(kind);
+    AM_CHECK(debug_info && debug_info->kind_ == kind, "Expected debug info of type {}", static_cast<int>(kind));
     return debug_info->info_;
 }
 

@@ -99,7 +99,7 @@ private:
     template<typename Iter>
     void ConstructAtEnd(Iter first, Iter last) {
         auto n = std::distance(first, last);
-        CHECK(n <= capacity() - size());
+        AM_CHECK(n <= capacity() - size());
         auto* p = end();
         // To ensure exception safety, size is only incremented after the initialization succeeds.
         for (auto it = first; it != last; ++it) {

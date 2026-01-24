@@ -154,12 +154,12 @@ public:
     }
 
     NODISCARD int64_t shape_at(size_t idx) const noexcept {
-        CHECK(idx < size());
+        AM_CHECK(idx < size());
         return shape_data()[idx];
     }
 
     NODISCARD int64_t& shape_at(size_t idx) noexcept {
-        CHECK(idx < size());
+        AM_CHECK(idx < size());
         return shape_data()[idx];
     }
 
@@ -172,12 +172,12 @@ public:
     }
 
     NODISCARD int64_t stride_at(size_t idx) const noexcept {
-        CHECK(idx < size());
+        AM_CHECK(idx < size());
         return stride_data()[idx];
     }
 
     NODISCARD int64_t& stride_at(size_t idx) noexcept {
-        CHECK(idx < size());
+        AM_CHECK(idx < size());
         return stride_data()[idx];
     }
 
@@ -195,7 +195,7 @@ public:
     }
 
     void set_strides(IntArrayView strides) {
-        CHECK(strides.size() == size());
+        AM_CHECK(strides.size() == size());
         std::copy(strides.begin(), strides.end(), stride_begin());
     }
 
@@ -227,7 +227,7 @@ public:
 
     void resize_slow_path(size_t new_size, size_t old_size) {
         if (new_size <= MAX_INLINE_SIZE) {
-            CHECK(!is_inline()) << "resize slow path called when fast path should have been hit!";
+            AM_CHECK(!is_inline(), "resize slow path called when fast path should have been hit!");
             auto* tmp = outline_storage_;
             memcpy(&inline_storage_[0], &tmp[0], MAX_INLINE_SIZE * sizeof(inline_storage_[0]));
             memcpy(&inline_storage_[MAX_INLINE_SIZE], &tmp[old_size], MAX_INLINE_SIZE * sizeof(inline_storage_[0]));
@@ -235,7 +235,7 @@ public:
         } else {
             if (is_inline()) {
                 auto* tmp = static_cast<int64_t*>(malloc(storage_bytes(new_size)));
-                CHECK(tmp) << "Could not allocate memory for Tensor ShapeAndStride.";
+                AM_CHECK(tmp, "Could not allocate memory for Tensor ShapeAndStride.");
                 const auto bytes_to_copy = old_size * sizeof(inline_storage_[0]);
                 const auto bytes_to_zero = new_size > old_size ? (new_size - old_size) * sizeof(tmp[0]) : 0;
                 memcpy(&tmp[0], &inline_storage_[0], bytes_to_copy);
@@ -276,7 +276,7 @@ private:
     }
 
     void copy_inline_data(const ShapeAndStride& other) {
-        CHECK(other.is_inline());
+        AM_CHECK(other.is_inline());
         memcpy(inline_storage_, other.inline_storage_, sizeof(inline_storage_));
     }
 
@@ -286,7 +286,7 @@ private:
 
     void allocate_outline_storage(size_t size) {
         outline_storage_ = static_cast<int64_t*>(malloc(storage_bytes(size)));
-        CHECK(outline_storage_) << "Could not allocate memory for Tensor ShapeAndStride.";
+        AM_CHECK(outline_storage_, "Could not allocate memory for Tensor ShapeAndStride.");
     }
 
     void copy_outline_data(const ShapeAndStride& other) const noexcept {
@@ -294,9 +294,9 @@ private:
     }
 
     void resize_outline_storage(size_t new_size) {
-        CHECK(!is_inline());
+        AM_CHECK(!is_inline());
         outline_storage_ = static_cast<int64_t*>(realloc(outline_storage_, storage_bytes(new_size)));
-        CHECK(outline_storage_) << "Could not reallocate memory for Tensor ShapeAndStride.";
+        AM_CHECK(outline_storage_, "Could not reallocate memory for Tensor ShapeAndStride.");
     }
 
     size_t size_{1};

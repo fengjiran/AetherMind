@@ -5,8 +5,6 @@
 #ifndef AETHERMIND_MACROS_H
 #define AETHERMIND_MACROS_H
 
-import check_module;
-
 #if __cplusplus >= 202002L
 #define CPP20
 #endif
@@ -82,15 +80,4 @@ import check_module;
     static void FuncName()
 
 #define DEFINE_STATIC_FUNCTION() DEFINE_STATIC_FUNCTION_(STR_CONCAT(_static_func_tid_, __COUNTER__))
-
-#define CHECK_(condition, ...)                                                                                  \
-    do {                                                                                                        \
-        if (!(condition)) [[unlikely]] {                                                                        \
-            if constexpr (std::string_view(#__VA_ARGS__).empty()) {                                             \
-                aethermind::HandleCheckFailed(#condition, std::source_location::current());                     \
-            } else {                                                                                            \
-                aethermind::HandleCheckFailedWithMsg(#condition, std::source_location::current(), __VA_ARGS__); \
-            }                                                                                                   \
-        }                                                                                                       \
-    } while (0)
 #endif//AETHERMIND_MACROS_H

@@ -3,7 +3,8 @@
 //
 
 #include "interned_strings.h"
-#include <glog/logging.h>
+
+#include <cstring>
 
 namespace aethermind {
 
@@ -52,7 +53,7 @@ Symbol InternedStrings::GetSymbolImpl(const String& s) {
     }
 
     auto pos = s.find("::");
-    CHECK(pos != String::npos) << "all symbols must have a namespace, <namespace>::<string>, but found: " << s;
+    AM_CHECK(pos != String::npos, "all symbols must have a namespace, <namespace>::<string>, but found: {}", s.c_str());
     const Symbol ns = GetSymbolImpl("namespaces::" + s.substr(0, pos));
     Symbol sym(symbol_infos_.size());
     string_to_symbol_[s] = sym;
@@ -68,7 +69,7 @@ Symbol InternedStrings::GetSymbol(const String& s) {
 
 std::pair<String, String> InternedStrings::string(Symbol sym) {
     switch (sym) {
-#define CASE(ns, s)                    \
+#define CASE(ns, s)                 \
     case static_cast<SymId>(ns::s): \
         return {#ns "::" #s, #s};
         FORALL_NS_SYMBOLS(CASE)
@@ -83,7 +84,7 @@ std::pair<String, String> InternedStrings::string(Symbol sym) {
 
 Symbol InternedStrings::NS(Symbol sym) {
     switch (sym) {
-#define CASE(ns, s)                    \
+#define CASE(ns, s)                 \
     case static_cast<SymId>(ns::s): \
         return namespaces::ns;
         FORALL_NS_SYMBOLS(CASE)

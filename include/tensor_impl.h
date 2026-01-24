@@ -14,7 +14,6 @@
 #include "tensor_utils.h"
 #include "memory_format.h"
 
-#include <glog/logging.h>
 #include <memory>
 #include <vector>
 

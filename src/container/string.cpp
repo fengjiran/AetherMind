@@ -4,8 +4,7 @@
 #include "container/string.h"
 #include "error.h"
 
-// #include <cstring>
-#include <glog/logging.h>
+#include <cstring>
 #include <unordered_map>
 #include <vector>
 
@@ -179,7 +178,7 @@ void String::push_back(value_type c) {
 }
 
 void String::pop_back() noexcept {
-    CHECK(!empty());
+    AM_CHECK(!empty());
     erase(size() - 1, 1);
 }
 
@@ -208,22 +207,22 @@ String::CharProxy String::at(size_type i) {
 }
 
 String::CharProxy String::front() noexcept {
-    CHECK(!empty());
+    AM_CHECK(!empty());
     return {*this, 0};
 }
 
 String::const_reference String::front() const noexcept {
-    CHECK(!empty());
+    AM_CHECK(!empty());
     return operator[](0);
 }
 
 String::CharProxy String::back() noexcept {
-    CHECK(!empty());
+    AM_CHECK(!empty());
     return {*this, size() - 1};
 }
 
 String::const_reference String::back() const noexcept {
-    CHECK(!empty());
+    AM_CHECK(!empty());
     return operator[](size() - 1);
 }
 
@@ -305,14 +304,14 @@ String& String::erase(size_type pos, size_type n) {
 }
 
 String::iterator String::erase(const_iterator position) {
-    CHECK(position >= begin() && position < end()) << "erase position out of bounds";
+    AM_CHECK(position >= begin() && position < end(), "erase position out of bounds");
     const size_type pos = position - begin();
     erase(pos, 1);
     return iterator(this, data() + pos);
 }
 
 String::iterator String::erase(const_iterator first, const_iterator last) {
-    CHECK(first >= begin() && first <= last && last <= end()) << "erase position out of bounds";
+    AM_CHECK(first >= begin() && first <= last && last <= end(), "erase position out of bounds");
     const size_type pos = first - begin();
     const size_type n = last - first;
     erase(pos, n);
@@ -388,7 +387,7 @@ String& String::replace(size_type pos, size_type n1, size_type n2, value_type c)
 }
 
 String& String::replace(const_iterator first, const_iterator last, const_pointer src, size_type n) {
-    CHECK(first >= begin() && first <= last && last <= end());
+    AM_CHECK(first >= begin() && first <= last && last <= end());
     return replace(first - begin(), last - first, src, n);
 }
 
@@ -401,17 +400,17 @@ String& String::replace(const_iterator first, const_iterator last, const_pointer
 }
 
 String& String::replace(const_iterator first, const_iterator last, size_type n, value_type c) {
-    CHECK(first >= begin() && first <= last && last <= end());
+    AM_CHECK(first >= begin() && first <= last && last <= end());
     return replace(first - begin(), last - first, n, c);
 }
 
 String& String::replace(const_iterator first, const_iterator last, pointer p1, pointer p2) {
-    CHECK(first >= begin() && first <= last && last <= end());
+    AM_CHECK(first >= begin() && first <= last && last <= end());
     return replace(first - begin(), last - first, p1, p2 - p1);
 }
 
 String& String::replace(const_iterator first, const_iterator last, const_pointer p1, const_pointer p2) {
-    CHECK(first >= begin() && first <= last && last <= end());
+    AM_CHECK(first >= begin() && first <= last && last <= end());
     return replace(first - begin(), last - first, p1, p2 - p1);
 }
 
@@ -420,7 +419,7 @@ String& String::replace(const_iterator first, const_iterator last, std::initiali
 }
 
 String::iterator String::insert(const_iterator p, size_type n, value_type c) {
-    CHECK(p >= begin() && p <= end());
+    AM_CHECK(p >= begin() && p <= end());
     const size_type pos = p - begin();
     replace(p, p, n, c);
     return iterator(this, data() + pos);
@@ -431,7 +430,7 @@ String::iterator String::insert(const_iterator p, std::initializer_list<value_ty
 }
 
 String::iterator String::insert(const_iterator p, value_type c) {
-    CHECK(p >= begin() && p <= end());
+    AM_CHECK(p >= begin() && p <= end());
     const size_type pos = p - begin();
     insert(pos, 1, c);
     return iterator(this, data() + pos);

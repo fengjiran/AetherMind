@@ -50,7 +50,7 @@ inline std::ostream& operator<<(std::ostream& os, Layout layout) {
         case kJagged:
             os << "Jagged";
         default:
-            CHECK(false) << "Unknown layout";
+            AM_CHECK(false, "Unknown layout");
     }
     return os;
 }

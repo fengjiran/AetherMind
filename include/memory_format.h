@@ -71,7 +71,7 @@ std::vector<T> GetChannelsLastStrides2d(ArrayView<T> shape) {
         }
 
         default: {
-            CHECK(false) << "ChannelsLast2d doesn't support size " << shape.size();
+            AM_CHECK(false, "ChannelsLast2d doesn't support size {}", shape.size());
         }
     }
     return strides;
@@ -106,7 +106,7 @@ std::vector<T> GetChannelsLastStrides3d(ArrayView<T> shape) {
         }
 
         default: {
-            CHECK(false) << "ChannelsLast3d doesn't support size " << shape.size();
+            AM_CHECK(false, "ChannelsLast3d doesn't support size {}", shape.size());
         }
     }
 
@@ -230,7 +230,7 @@ inline std::ostream& operator<<(std::ostream& os, MemoryFormat format) {
             os << "ChannelsLast3d";
             break;
         default:
-            CHECK(false) << "Unknown memory format.";
+            AM_CHECK(false, "Unknown memory format.");
     }
     return os;
 }

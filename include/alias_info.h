@@ -79,12 +79,12 @@ public:
     }
 
     Symbol GetBeforeSet() const {
-        CHECK(before_set_.size() == 1);
+        AM_CHECK(before_set_.size() == 1);
         return *before_set_.begin();
     }
 
     Symbol GetAfterSet() const {
-        CHECK(after_set_.size() == 1);
+        AM_CHECK(after_set_.size() == 1);
         return *after_set_.begin();
     }
 

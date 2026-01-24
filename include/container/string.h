@@ -7,11 +7,10 @@
 
 #include "container/container_utils.h"
 #include "object_allocator.h"
+#include "utils/logging.h"
 
-#include <cassert>
 #include <unordered_map>
 #include <vector>
-// #include <glog/logging.h>
 
 namespace aethermind {
 
@@ -166,8 +165,7 @@ public:
     String& replace(const_iterator first, const_iterator last, size_type n, value_type c);
     template<typename Iter>
     String& replace(const_iterator first, const_iterator last, Iter k1, Iter k2) {
-        assert(first >= begin() && first <= last && last <= end());
-        CHECK(true);
+        AM_DCHECK(first >= begin() && first <= last && last <= end());
         size_t pos = first - begin();
         const size_type n1 = std::distance(first, last);
         const size_type n2 = std::distance(k1, k2);
@@ -218,7 +216,7 @@ public:
     iterator insert(const_iterator p, size_type n, value_type c);
     template<typename Iter>
     iterator insert(const_iterator p, Iter first, Iter last) {
-        assert(p >= begin() && p <= end());
+        AM_DCHECK(p >= begin() && p <= end());
         const size_type pos = p - begin();
         replace(p, p, first, last);
         return iterator(this, data() + pos);

@@ -11,7 +11,6 @@
 #include "env.h"
 #include "utils/thread_local_debug_info.h"
 
-#include <glog/logging.h>
 #include <unordered_map>
 
 namespace aethermind {

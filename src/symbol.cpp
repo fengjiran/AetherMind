@@ -17,9 +17,8 @@ Symbol Symbol::FromQualString(const String& qual_name) {
 }
 
 Symbol Symbol::FromDomainAndUnqualifiedName(const String& dom, const String& unqual) {
-    CHECK(dom.compare(0, GetDomainPrefix().size(), GetDomainPrefix()) == 0)
-            << "Symbol: domain string is expected to be prefixed with '" << GetDomainPrefix()
-            << "', e.g. 'aethermind.add'";
+    AM_CHECK(dom.compare(0, GetDomainPrefix().size(), GetDomainPrefix()) == 0,
+             "Symbol: domain string is expected to be prefixed with '{}', e.g. 'aethermind.add'", GetDomainPrefix().c_str());
     auto qual_name = dom.substr(GetDomainPrefix().size()) + "::" + unqual;
     return FromQualString(qual_name);
 }

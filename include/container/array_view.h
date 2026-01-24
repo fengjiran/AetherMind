@@ -8,10 +8,7 @@
 #include "macros.h"
 #include "utils/hash.h"
 
-// #include <array>
 #include <cstddef>
-#include <cstdint>
-#include <glog/logging.h>
 #include <initializer_list>
 #include <iterator>
 #include <ostream>
@@ -78,8 +75,7 @@ public:
     }
 
     void check() const {
-        CHECK(data_ != nullptr || size_ == 0)
-                << "created ArrayRef with nullptr and non-zero length! std::optional relies on this being illegal";
+        AM_CHECK(data_ != nullptr || size_ == 0, "created ArrayRef with nullptr and non-zero length! std::optional relies on this being illegal");
     }
 
     const T* data() const {
@@ -119,12 +115,12 @@ public:
     }
 
     const T& front() const {
-        CHECK(!empty()) << "ArrayView front() must not be empty";
+        AM_CHECK(!empty(), "ArrayView front() must not be empty");
         return data()[0];
     }
 
     const T& back() const {
-        CHECK(!empty()) << "ArrayView back() must not be empty";
+        AM_CHECK(!empty(), "ArrayView back() must not be empty");
         return data()[size() - 1];
     }
 
@@ -138,7 +134,7 @@ public:
     }
 
     ArrayView slice(size_type offset, size_type n) const {
-        CHECK(offset + n <= size()) << n << "ArrayView slice out of bounds!";
+        AM_CHECK(offset + n <= size(), "ArrayView slice out of bounds!");
         return ArrayView(data() + offset, n);
     }
 
@@ -151,7 +147,7 @@ public:
     }
 
     const T& at(size_type idx) const {
-        CHECK(idx < size()) << "ArrayView::at() index out of bounds!";
+        AM_CHECK(idx < size(), "ArrayView::at() index out of bounds!");
         return data()[idx];
     }
 

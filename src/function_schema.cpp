@@ -63,7 +63,7 @@ Argument& Argument::operator=(Argument&& other) noexcept {
 
 bool Argument::IsInferredType() const {
     bool is_inferred_type = false;
-    CHECK(type_ != nullptr);
+    AM_CHECK(type_ != nullptr);
     if (auto t = type_->Cast<TensorType>()) {
         is_inferred_type = t->IsInferredType();
     }
@@ -135,9 +135,8 @@ void FunctionSchema::Check() const {
             if (arg.type()->kind() == ListType::Kind) {
                 continue;
             }
-            CHECK(!seen_default_arg || arg.IsKwargOnly())
-                    << "Non-default positional argument follows default argument. Parameter ";
-                    // << arg.name() << " in " << *this;
+            AM_CHECK(!seen_default_arg || arg.IsKwargOnly(),
+                     "Non-default positional argument follows default argument. Parameter ");
         }
     }
 }

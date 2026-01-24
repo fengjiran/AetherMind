@@ -263,7 +263,7 @@ SmallMapObj<K, V, Hasher>::InsertImpl(value_type&& kv, bool assign) {
         return {it, false};
     }
 
-    CHECK(this->size() < this->slots());
+    AM_CHECK(this->size() < this->slots());
     new (GetDataPtrImpl(this->size())) value_type(std::move(kv));
     ++this->size_;
     return {iterator{this->size() - 1, this}, true};
@@ -584,17 +584,17 @@ public:
     }
 
     NODISCARD bool IsIterListHead() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
+        AM_CHECK(!IsNone(), "The Cursor is none.");
         return index() == obj()->iter_list_head_;
     }
 
     NODISCARD bool IsIterListTail() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
+        AM_CHECK(!IsNone(), "The Cursor is none.");
         return index() == obj()->iter_list_tail_;
     }
 
     NODISCARD Block* GetBlock() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
+        AM_CHECK(!IsNone(), "The Cursor is none.");
         return obj()->GetBlockByIndex(index() / kEntriesPerBlock);
     }
 
@@ -606,8 +606,8 @@ public:
 
     // Get the entry ref
     NODISCARD Entry& GetEntry() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
-        CHECK(!IsSlotEmpty()) << "The entry is empty.";
+        AM_CHECK(!IsNone(), "The Cursor is none.");
+        AM_CHECK(!IsSlotEmpty(), "The entry is empty.");
         return *GetBlock()->GetEntryPtr(index() & (kEntriesPerBlock - 1));
     }
 
@@ -650,12 +650,12 @@ public:
 
     // Set the entry's offset to its next entry.
     void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
-        CHECK(offset_idx < MagicConstants::kNumOffsetDists);
+        AM_CHECK(offset_idx < MagicConstants::kNumOffsetDists);
         (GetSlotMetadata() &= MagicConstants::kHeadFlagMask) |= std::byte{offset_idx};
     }
 
     void ConstructEntry(Entry&& entry) const {
-        CHECK(IsSlotEmpty());
+        AM_CHECK(IsSlotEmpty());
         new (GetBlock()->GetEntryPtr(index() & (kEntriesPerBlock - 1))) Entry(std::move(entry));
     }
 
@@ -899,7 +899,7 @@ DenseMapObj<K, V, Hasher>::CalculateSlotCount(size_type cap) {
         slots <<= 1;
         c >>= 1;
     }
-    CHECK(slots >= cap);
+    AM_CHECK(slots >= cap);
     return {shift, slots};
 }
 
@@ -1103,9 +1103,8 @@ DenseMapObj<K, V, Hasher>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& 
 
 template<typename K, typename V, typename Hasher>
 ObjectPtr<DenseMapObj<K, V, Hasher>> DenseMapObj<K, V, Hasher>::Create(size_type n) {
-    CHECK(n > DenseMapObj::kThreshold) << "The allocated size must be greate than the threshold of "
-                                       << DenseMapObj::kThreshold
-                                       << " when using SmallMapObj::Create";
+    AM_CHECK(n > DenseMapObj::kThreshold,
+             "The allocated size must be greate than the threshold of {} when using SmallMapObj::Create", DenseMapObj::kThreshold);
     auto [fib_shift, slots] = CalculateSlotCount(n);
     const size_t block_num = CalculateBlockCount(slots);
     auto impl = make_array_object<DenseMapObj, Block>(block_num);
@@ -1700,8 +1699,8 @@ public:
     }
 
     void Check() const {
-        CHECK(ptr_ != nullptr) << "Iterator pointer is nullptr.";
-        CHECK(index_ <= ptr_->slots()) << "Iterator index is out of range.";
+        AM_CHECK(ptr_ != nullptr, "Iterator pointer is nullptr.");
+        AM_CHECK(index_ <= ptr_->slots(), "Iterator index is out of range.");
     }
 
 private:

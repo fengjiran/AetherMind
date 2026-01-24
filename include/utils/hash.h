@@ -11,8 +11,6 @@
 #include <complex>
 #include <cstddef>
 #include <functional>
-// #include <glog/logging.h>
-#include <sstream>
 #include <tuple>
 #include <type_traits>
 #include <utility>

@@ -3,7 +3,6 @@
 //
 
 #include "tensor.h"
-#include <glog/logging.h>
 #include <random>
 
 namespace aethermind {

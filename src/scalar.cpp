@@ -102,7 +102,7 @@ Scalar::Scalar(complex<double> val) {
 }
 
 Scalar Scalar::operator-() const {
-    CHECK(!is_bool()) << "boolean negative is not supported.";
+    AM_CHECK(!is_bool(), "boolean negative is not supported.");
     if (is_signed_integral()) {
         return {-v.i};
     }

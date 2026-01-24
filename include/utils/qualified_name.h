@@ -17,21 +17,21 @@ public:
 
     // `name` can be a dotted string, like "foo.bar.baz", or just a bare name.
     QualifiedName(const String& name) {// NOLINT
-        CHECK(!name.empty());
+        AM_CHECK(!name.empty());
 
         // split the string into atoms
         size_t start = 0;
         size_t pos = name.find(delimiter_, start);
         while (pos != String::npos) {
             auto atom = name.substr(start, pos - start);
-            CHECK(!atom.empty());
+            AM_CHECK(!atom.empty());
             atoms_.emplace_back(atom);
             start = pos + 1;
             pos = name.find(delimiter_, start);
         }
 
         auto final_atom = name.substr(start);
-        CHECK(!final_atom.empty());
+        AM_CHECK(!final_atom.empty());
         atoms_.emplace_back(final_atom);
         CacheAccessors();
     }
@@ -40,17 +40,16 @@ public:
 
     explicit QualifiedName(std::vector<String> atoms) : atoms_(std::move(atoms)) {
         for (const auto& atom: atoms_) {
-            CHECK(!atom.empty()) << "atom cannot be empty";
-            CHECK(atom.find(delimiter_) == String::npos)
-                    << "delimiter not allowed in atom";
+            AM_CHECK(!atom.empty(), "atom cannot be empty");
+            AM_CHECK(atom.find(delimiter_) == String::npos, "delimiter not allowed in atom");
         }
         CacheAccessors();
     }
 
     // name must be a bare name(not dots)
     explicit QualifiedName(const QualifiedName& prefix, String name) {
-        CHECK(!name.empty());
-        CHECK(name.find(delimiter_) == String::npos);
+        AM_CHECK(!name.empty());
+        AM_CHECK(name.find(delimiter_) == String::npos);
         atoms_ = prefix.atoms_;
         atoms_.push_back(std::move(name));
         CacheAccessors();

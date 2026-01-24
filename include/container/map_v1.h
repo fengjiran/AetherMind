@@ -323,17 +323,17 @@ struct MapImpl<K, V, Hasher>::Cursor {
     }
 
     NODISCARD bool IsIterListHead() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
+        AM_CHECK(!IsNone(), "The Cursor is none.");
         return index() == obj()->iter_list_head_;
     }
 
     NODISCARD bool IsIterListTail() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
+        AM_CHECK(!IsNone(), "The Cursor is none.");
         return index() == obj()->iter_list_tail_;
     }
 
     NODISCARD Block* GetBlock() const {
-        CHECK(!IsNone()) << "The Cursor is none.";
+        AM_CHECK(!IsNone(), "The Cursor is none.");
         return obj()->GetBlockByIndex(index() / Constants::kSlotsPerBlock);
     }
 
@@ -354,7 +354,7 @@ struct MapImpl<K, V, Hasher>::Cursor {
 
     // Get the entry ref
     NODISCARD Entry& GetEntry() const {
-        CHECK(!IsSlotEmpty()) << "The entry is empty.";
+        AM_CHECK(!IsSlotEmpty(), "The entry is empty.");
         return *GetBlock()->GetEntryPtr(index() & (Constants::kSlotsPerBlock - 1));
     }
 
@@ -434,12 +434,12 @@ struct MapImpl<K, V, Hasher>::Cursor {
 
     // Set the entry's offset to its next entry.
     void SetNextSlotOffsetIndex(uint8_t offset_idx) const {
-        CHECK(offset_idx < Constants::kNumOffsetDists);
+        AM_CHECK(offset_idx < Constants::kNumOffsetDists);
         (GetSlotMetadata() &= Constants::kHeadFlagMask) |= std::byte{offset_idx};
     }
 
     void ConstructEntry(Entry&& entry) const {
-        CHECK(IsSlotEmpty());
+        AM_CHECK(IsSlotEmpty());
         new (GetBlock()->GetEntryPtr(index() & (Constants::kSlotsPerBlock - 1))) Entry(std::move(entry));
     }
 
@@ -852,7 +852,7 @@ MapImpl<K, V, Hasher>::CalculateSlotCount(size_type cap) {
         slots <<= 1;
         c >>= 1;
     }
-    CHECK(slots >= cap);
+    AM_CHECK(slots >= cap);
     return {shift, slots};
 }
 
@@ -1010,8 +1010,8 @@ public:
     }
 
     void Check() const {
-        CHECK(ptr_ != nullptr) << "Iterator pointer is nullptr.";
-        CHECK(index_ <= ptr_->slots()) << "Iterator index is out of range.";
+        AM_CHECK(ptr_ != nullptr, "Iterator pointer is nullptr.");
+        AM_CHECK(index_ <= ptr_->slots(), "Iterator index is out of range.");
     }
 
 private:

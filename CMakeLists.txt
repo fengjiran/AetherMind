@@ -62,6 +62,7 @@ target_link_libraries(${PROJECT_NAME}
         pthread
         ${MODULE_NAME}
 )
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_SCAN_FOR_MODULES ON)
 
 if (USE_LIBBACKTRACE)
     message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 1")

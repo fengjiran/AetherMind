@@ -231,14 +231,14 @@ public:
 
     NODISCARD const Any& front() const {
         if (empty()) {
-            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+            AM_THROW(IndexError) << "Cannot index an empty array.";
         }
         return *begin();
     }
 
     AnyProxy front() {
         if (empty()) {
-            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+            AM_THROW(IndexError) << "Cannot index an empty array.";
         }
         // return AnyProxy(*this, 0);
         return {*this, 0};
@@ -246,14 +246,14 @@ public:
 
     NODISCARD const Any& back() const {
         if (empty()) {
-            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+            AM_THROW(IndexError) << "Cannot index an empty array.";
         }
         return *(end() - 1);
     }
 
     AnyProxy back() {
         if (empty()) {
-            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+            AM_THROW(IndexError) << "Cannot index an empty array.";
         }
         return {*this, size() - 1};
     }
@@ -268,11 +268,11 @@ public:
 
     NODISCARD const Any& at(int64_t i) const {
         if (empty()) {
-            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+            AM_THROW(IndexError) << "Cannot index an empty array.";
         }
 
         if (i < 0 || i >= size()) {
-            AETHERMIND_THROW(IndexError) << "the index out of range.";
+            AM_THROW(IndexError) << "the index out of range.";
         }
 
         return *(begin() + i);
@@ -280,11 +280,11 @@ public:
 
     AnyProxy at(int64_t i) {
         if (empty()) {
-            AETHERMIND_THROW(IndexError) << "Cannot index an empty array.";
+            AM_THROW(IndexError) << "Cannot index an empty array.";
         }
 
         if (i < 0 || i >= size()) {
-            AETHERMIND_THROW(IndexError) << "the index out of range.";
+            AM_THROW(IndexError) << "the index out of range.";
         }
 
         return AnyProxy(*this, i);
@@ -303,7 +303,7 @@ public:
 
     void Set(int idx, T value) {
         if (idx < 0 || idx >= size()) {
-            AETHERMIND_THROW(IndexError) << "indexing " << idx << " on an array of size " << size();
+            AM_THROW(IndexError) << "indexing " << idx << " on an array of size " << size();
         }
 
         COW(0, true);
@@ -321,7 +321,7 @@ public:
 
     void pop_back() {
         if (empty()) {
-            AETHERMIND_THROW(RuntimeError) << "Cannot pop back an empty array.";
+            AM_THROW(RuntimeError) << "Cannot pop back an empty array.";
         }
 
         COW(-1);
@@ -360,7 +360,7 @@ template<typename T>
 #endif
 void Array<T>::resize(int64_t n) {
     if (n < 0) {
-        AETHERMIND_THROW(ValueError) << "Cannot resize an array to a negative size.";
+        AM_THROW(ValueError) << "Cannot resize an array to a negative size.";
     }
 
     const auto sz = size();
@@ -447,12 +447,12 @@ template<typename T>
 #endif
 void Array<T>::erase(iterator pos) {
     if (!defined()) {
-        AETHERMIND_THROW(runtime_error) << "Cannot erase an empty array.";
+        AM_THROW(runtime_error) << "Cannot erase an empty array.";
     }
 
     size_t idx = std::distance(begin(), pos);
     if (idx >= size()) {
-        AETHERMIND_THROW(runtime_error) << "the index out of range.";
+        AM_THROW(runtime_error) << "the index out of range.";
     }
     size_t n = std::distance(pos + 1, end());
     COW(-1);
@@ -470,18 +470,18 @@ void Array<T>::erase(iterator first, iterator last) {
     }
 
     if (!defined()) {
-        AETHERMIND_THROW(RuntimeError) << "Cannot erase an empty array.";
+        AM_THROW(RuntimeError) << "Cannot erase an empty array.";
     }
 
     size_t begin_idx = std::distance(begin(), first);
     size_t end_idx = std::distance(begin(), last);
     size_t numel = std::distance(last, end());
     if (begin_idx >= end_idx) {
-        AETHERMIND_THROW(index_error) << "cannot erase array in range [" << begin_idx << ", " << end_idx << ")";
+        AM_THROW(index_error) << "cannot erase array in range [" << begin_idx << ", " << end_idx << ")";
     }
 
     if (begin_idx > size() || end_idx > size()) {
-        AETHERMIND_THROW(index_error) << "the index out of range.";
+        AM_THROW(index_error) << "the index out of range.";
     }
 
     COW(begin_idx - end_idx);
@@ -520,7 +520,7 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
     if (delta == 0) {// inplace
         if (single_elem_inplace_change) {
             if (!defined()) {
-                AETHERMIND_THROW(RuntimeError) << "Cannot change an empty array.";
+                AM_THROW(RuntimeError) << "Cannot change an empty array.";
             }
 
             if (!unique()) {
@@ -529,11 +529,11 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
         }
     } else if (delta < 0) {// shrink the array
         if (!defined()) {
-            AETHERMIND_THROW(RuntimeError) << "Cannot shrink an empty array.";
+            AM_THROW(RuntimeError) << "Cannot shrink an empty array.";
         }
 
         if (-delta > static_cast<int64_t>(size())) {
-            AETHERMIND_THROW(RuntimeError) << "Cannot shrink the array by " << -delta << " elements.";
+            AM_THROW(RuntimeError) << "Cannot shrink the array by " << -delta << " elements.";
         }
 
         if (!unique()) {

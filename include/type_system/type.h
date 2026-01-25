@@ -332,7 +332,7 @@ public:
 protected:
     explicit SingleElementType(TypePtr elem) : SharedType(Kind), elem_(std::move(elem)) {
         if (!elem_) {
-            AETHERMIND_THROW(runtime_error) << "Cannot create " << TypeKindToString(Kind)
+            AM_THROW(runtime_error) << "Cannot create " << TypeKindToString(Kind)
                                             << " with none type.";
         }
     }

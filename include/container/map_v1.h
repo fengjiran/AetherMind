@@ -1131,7 +1131,7 @@ public:
     mapped_type& at(const key_type& key) {
         auto it = find(key);
         if (it == end()) {
-            AETHERMIND_THROW(KeyError) << "Key does not exist";
+            AM_THROW(KeyError) << "Key does not exist";
         }
 
         return it->second;

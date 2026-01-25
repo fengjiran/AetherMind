@@ -261,7 +261,7 @@ private:
     NODISCARD Void* data_impl(const Func& get_data) const {
         if (!has_storage()) {
             // throw std::runtime_error("Can't access data pointer of Tensor that doesn't have storage.");
-            AETHERMIND_THROW(runtime_error) << "Can't access data pointer of Tensor that doesn't have storage.";
+            AM_THROW(runtime_error) << "Can't access data pointer of Tensor that doesn't have storage.";
         }
         // CHECK(has_storage()) << "Can't access data pointer of Tensor that doesn't have storage.";
         AM_CHECK(dtype_initialized(), "Can't access data pointer of Tensor that doesn't have initialized dtype.");

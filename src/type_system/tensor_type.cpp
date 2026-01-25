@@ -94,18 +94,18 @@ SymbolicShape::SymbolicShape(IntArrayView shape) {
 
 ShapeSymbol SymbolicShape::operator[](size_t i) const {
     if (!symbolic_shape_.has_value()) {
-        AETHERMIND_THROW(RuntimeError) << "Rank isn't fixed";
+        AM_THROW(RuntimeError) << "Rank isn't fixed";
     }
     return symbolic_shape_.value()[i];
 }
 
 ShapeSymbol SymbolicShape::at(size_t i) const {
     if (!symbolic_shape_.has_value()) {
-        AETHERMIND_THROW(RuntimeError) << "Rank isn't fixed";
+        AM_THROW(RuntimeError) << "Rank isn't fixed";
     }
 
     if (i >= symbolic_shape_->size()) {
-        AETHERMIND_THROW(OutOfRangeError) << "Out of range";
+        AM_THROW(OutOfRangeError) << "Out of range";
     }
     return symbolic_shape_.value()[i];
 }

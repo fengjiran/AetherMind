@@ -13,7 +13,7 @@ namespace aethermind {
 String::String(const_pointer other, size_type size) {
     if (other == nullptr) {
         if (size > 0) {
-            AETHERMIND_THROW(LogicError) << "construction from null is not valid";
+            AM_THROW(LogicError) << "construction from null is not valid";
             AETHERMIND_UNREACHABLE();
         }
     } else {
@@ -24,7 +24,7 @@ String::String(const_pointer other, size_type size) {
 
 String::String(const_pointer other) {
     if (other == nullptr) {
-        AETHERMIND_THROW(LogicError) << "construction from null is not valid";
+        AM_THROW(LogicError) << "construction from null is not valid";
         AETHERMIND_UNREACHABLE();
     }
 
@@ -194,7 +194,7 @@ String::const_reference String::at(size_type i) const {
     if (i < size()) {
         return data()[i];
     }
-    AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    AM_THROW(out_of_range) << "String index out of bounds";
     AETHERMIND_UNREACHABLE();
 }
 
@@ -202,7 +202,7 @@ String::CharProxy String::at(size_type i) {
     if (i < size()) {
         return {*this, i};
     }
-    AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+    AM_THROW(out_of_range) << "String index out of bounds";
     AETHERMIND_UNREACHABLE();
 }
 
@@ -258,7 +258,7 @@ void String::shrink_to_fit() noexcept {
 
 String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
     if (n2 > max_size() - (size() - n1)) {
-        AETHERMIND_THROW(out_of_range) << "The bytes to be allocated exceed the max_size()!";
+        AM_THROW(out_of_range) << "The bytes to be allocated exceed the max_size()!";
     }
 
     pos = CheckPos(pos);
@@ -1014,14 +1014,14 @@ String::size_type String::Limit(size_type pos, size_type limit) const noexcept {
 
 String::size_type String::CheckPos(size_type pos) const {
     if (pos > size()) {
-        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+        AM_THROW(out_of_range) << "String index out of bounds";
     }
     return pos;
 }
 
 void String::CheckSize(size_type delta) const {
     if (delta > max_size() - size()) {
-        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+        AM_THROW(out_of_range) << "String index out of bounds";
     }
 }
 
@@ -1083,7 +1083,7 @@ int String::compare(size_type pos, size_type n, const std::string& other) const 
 
 int String::compare(size_type pos1, size_type n1, const std::string& other, size_type pos2, size_type n2) const {
     if (pos2 > other.size()) {
-        AETHERMIND_THROW(out_of_range) << "String index out of bounds";
+        AM_THROW(out_of_range) << "String index out of bounds";
     }
 
     n2 = n2 > other.size() - pos2 ? other.size() - pos2 : n2;

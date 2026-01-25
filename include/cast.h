@@ -263,7 +263,7 @@ struct cast<complex<double>, complex<Half>> {
 template<typename From, typename To>
 To check_and_cast(From src, const char* name) {
     if (!std::is_same_v<To, bool> && is_overflow<From, To>(src)) {
-        AETHERMIND_THROW(RuntimeError) << "Cannot convert the value to type " << name << " without overflow.";
+        AM_THROW(RuntimeError) << "Cannot convert the value to type " << name << " without overflow.";
     }
     return cast<From, To>::apply(src);
 }

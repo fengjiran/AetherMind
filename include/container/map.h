@@ -182,7 +182,7 @@ private:
     mapped_type& AtImpl(const key_type& key) {
         const auto iter = FindImpl(key);
         if (iter == EndImpl()) {
-            AETHERMIND_THROW(KeyError) << "key is not exist.";
+            AM_THROW(KeyError) << "key is not exist.";
         }
         return iter->second;
     }
@@ -813,7 +813,7 @@ template<typename K, typename V, typename Hasher>
 DenseMapObj<K, V, Hasher>::mapped_type& DenseMapObj<K, V, Hasher>::At(const key_type& key) const {
     const Cursor iter = Search(key);
     if (iter.IsNone()) {
-        AETHERMIND_THROW(KeyError) << "Key not found";
+        AM_THROW(KeyError) << "Key not found";
     }
 
     return iter.GetValue();
@@ -1341,7 +1341,7 @@ public:
     mapped_type& at(const key_type& key) {
         auto it = find(key);
         if (it == end()) {
-            AETHERMIND_THROW(KeyError) << "Key does not exist";
+            AM_THROW(KeyError) << "Key does not exist";
         }
 
         return it->second;

@@ -167,7 +167,7 @@ public:
 
     const std::optional<T>& operator[](size_t i) const {
         if (!shape_.has_value()) {
-            AETHERMIND_THROW(RuntimeError) << "Rank isn't fixed";
+            AM_THROW(RuntimeError) << "Rank isn't fixed";
         }
         return shape_.value()[i];
     }

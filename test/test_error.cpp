@@ -9,13 +9,13 @@ using namespace aethermind;
 
 namespace {
 
-TEST(AETHERMIND_THROW, BasicExceptionThrowing) {
-    EXPECT_THROW({ AETHERMIND_THROW(index_error) << "Test index out of bounds"; }, Error);
+TEST(AM_THROW, BasicExceptionThrowing) {
+    EXPECT_THROW({ AM_THROW(index_error) << "Test index out of bounds"; }, Error);
 }
 
 TEST(AETHERMIND_THROW, ErrorKindAndMessage) {
     try {
-        AETHERMIND_THROW(value_error) << "Invalid parameter value";
+        AM_THROW(value_error) << "Invalid parameter value";
         FAIL() << "AETHERMIND_THROW should have thrown an exception";
     } catch (const Error& e) {
         const std::string what_str = e.what();
@@ -41,16 +41,16 @@ TEST(AETHERMIND_THROW, ErrorKindAndMessage) {
 // }
 
 TEST(AETHERMIND_THROW, DifferentErrorKinds) {
-    EXPECT_THROW({ AETHERMIND_THROW(type_error) << "Type mismatch"; }, Error);
+    EXPECT_THROW({ AM_THROW(type_error) << "Type mismatch"; }, Error);
 
-    EXPECT_THROW({ AETHERMIND_THROW(range_error) << "Value out of range"; }, Error);
+    EXPECT_THROW({ AM_THROW(range_error) << "Value out of range"; }, Error);
 
-    EXPECT_THROW({ AETHERMIND_THROW(io_error) << "File not found"; }, Error);
+    EXPECT_THROW({ AM_THROW(io_error) << "File not found"; }, Error);
 }
 
 TEST(AETHERMIND_THROW, MultiLineErrorMessage) {
     try {
-        AETHERMIND_THROW(assertion_error)
+        AM_THROW(assertion_error)
                 << "Assertion failed: " << 42
                 << " is not equal to " << 24;
         FAIL() << "AETHERMIND_THROW should have thrown an exception";
@@ -62,7 +62,7 @@ TEST(AETHERMIND_THROW, MultiLineErrorMessage) {
 
 TEST(AETHERMIND_THROW, EmptyErrorMessage) {
     try {
-        AETHERMIND_THROW(unknown_error);
+        AM_THROW(unknown_error);
         FAIL() << "AETHERMIND_THROW should have thrown an exception";
     } catch (const Error& e) {
         const std::string what_str = e.what();

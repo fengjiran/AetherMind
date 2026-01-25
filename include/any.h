@@ -272,7 +272,7 @@ public:
         if (opt.has_value()) {
             return *opt;
         }
-        AETHERMIND_THROW(TypeError) << "Cast failed to type: " << details::Type2Str<T>::value();
+        AM_THROW(TypeError) << "Cast failed to type: " << details::Type2Str<T>::value();
         AETHERMIND_UNREACHABLE();
     }
 
@@ -282,7 +282,7 @@ public:
             reset();
             return std::move(opt.value());
         }
-        AETHERMIND_THROW(TypeError) << "Cast failed to type: " << details::Type2Str<T>::value();
+        AM_THROW(TypeError) << "Cast failed to type: " << details::Type2Str<T>::value();
         AETHERMIND_UNREACHABLE();
     }
 

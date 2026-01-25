@@ -112,7 +112,7 @@ std::type_index Any::type() const {
         }
         return type_info_cache_;
     }
-    AETHERMIND_THROW(BadAnyCast) << "Any has no value.";
+    AM_THROW(BadAnyCast) << "Any has no value.";
     AETHERMIND_UNREACHABLE();
 }
 

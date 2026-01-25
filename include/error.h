@@ -105,7 +105,7 @@ private:
 // define traceback here as call into traceback function
 #define TRACEBACK_HERE AetherMindTraceback(__FILE__, __LINE__, FUNC_SIG, 0)
 
-#define AETHERMIND_THROW(ErrorKind) ErrorBuilder(#ErrorKind, TRACEBACK_HERE, true).stream()
+#define AM_THROW(ErrorKind) ErrorBuilder(#ErrorKind, TRACEBACK_HERE, true).stream()
 
 }// namespace aethermind
 

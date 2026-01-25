@@ -33,7 +33,7 @@ public:
                   const String& filename, uint32_t lineno) {
         if (table_.contains(name)) {
             if (!allow_override) {
-                AETHERMIND_THROW(RuntimeError) << "Global Function `" << name << "` is already registered";
+                AM_THROW(RuntimeError) << "Global Function `" << name << "` is already registered";
             }
         }
         auto* entry = new Entry(func, filename, lineno);
@@ -68,7 +68,7 @@ public:
 
     String GetRegisteredLocation(const String& name) {
         if (!table_.contains(name)) {
-            AETHERMIND_THROW(RuntimeError) << "Global Function `" << name << "` is not registered";
+            AM_THROW(RuntimeError) << "Global Function `" << name << "` is not registered";
         }
         return std::format("Global function `{}` is registered at {}:{}",
                            name.c_str(), table_[name]->filename_.c_str(), table_[name]->lineno_);
@@ -125,7 +125,7 @@ std::optional<Function> Function::GetGlobalFunction(const String& name) {
 Function Function::GetGlobalFunctionRequired(const String& name) {
     auto opt_func = GetGlobalFunction(name);
     if (!opt_func.has_value()) {
-        AETHERMIND_THROW(ValueError) << "Function `" << name << "` is not registered";
+        AM_THROW(ValueError) << "Function `" << name << "` is not registered";
     }
     return opt_func.value();
 }

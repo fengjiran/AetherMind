@@ -138,7 +138,7 @@ public:
         } else {
             std::optional<U> opt = args_[idx_].try_cast<U>();
             if (!opt.has_value()) {
-                AETHERMIND_THROW(TypeError) << "Mismatched type on argument #" << idx_
+                AM_THROW(TypeError) << "Mismatched type on argument #" << idx_
                                             << " when calling: `"
                                             << (opt_name_ == nullptr ? "" : *opt_name_)
                                             << (f_schema_ == nullptr ? "" : (*f_schema_)()) << "`. Expected `"

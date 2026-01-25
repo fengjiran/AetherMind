@@ -50,7 +50,7 @@ size_t Type::GetContainedTypeSize() const {
 
 TypePtr Type::CreateWithContainedTypes(const std::vector<TypePtr>&) const {
     AM_CHECK(false, "CreateWithContainedTypes() is not implemented: {}", str().c_str());
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 TypePtr Type::WithContainedTypes(const std::vector<TypePtr>& contained_types) {

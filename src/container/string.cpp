@@ -14,7 +14,7 @@ String::String(const_pointer other, size_type size) {
     if (other == nullptr) {
         if (size > 0) {
             AM_THROW(LogicError) << "construction from null is not valid";
-            AETHERMIND_UNREACHABLE();
+            AM_UNREACHABLE();
         }
     } else {
         size = size > traits_type::length(other) ? traits_type::length(other) : size;
@@ -25,7 +25,7 @@ String::String(const_pointer other, size_type size) {
 String::String(const_pointer other) {
     if (other == nullptr) {
         AM_THROW(LogicError) << "construction from null is not valid";
-        AETHERMIND_UNREACHABLE();
+        AM_UNREACHABLE();
     }
 
     Construct(other, other + traits_type::length(other));
@@ -195,7 +195,7 @@ String::const_reference String::at(size_type i) const {
         return data()[i];
     }
     AM_THROW(out_of_range) << "String index out of bounds";
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 String::CharProxy String::at(size_type i) {
@@ -203,7 +203,7 @@ String::CharProxy String::at(size_type i) {
         return {*this, i};
     }
     AM_THROW(out_of_range) << "String index out of bounds";
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 String::CharProxy String::front() noexcept {

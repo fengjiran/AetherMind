@@ -116,7 +116,7 @@ Scalar Scalar::operator-() const {
     }
 
     AM_THROW(RuntimeError) << dtype_ << " is not supported.";
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 Scalar Scalar::log() const {
@@ -133,7 +133,7 @@ Scalar Scalar::log() const {
     }
 
     AM_THROW(RuntimeError) << dtype_ << " is not supported.";
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 Scalar Scalar::conj() const {
@@ -167,7 +167,7 @@ std::ostream& operator<<(std::ostream& os, const Scalar& s) {
     return os;
 
     AM_THROW(RuntimeError) << "Unknown type in Scalar";
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 // String toString(const Scalar& s) {

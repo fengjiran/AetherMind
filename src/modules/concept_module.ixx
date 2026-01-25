@@ -22,6 +22,12 @@ class Any;
 class String;
 
 namespace details {
+//
+// export template<typename T>
+// concept is_pod = std::is_trivial_v<T> && std::is_standard_layout_v<T>;
+
+export template<typename T>
+concept is_pod = std::is_trivially_copyable_v<T>;
 
 export template<typename T>
 concept is_integral = std::integral<T> && !std::same_as<T, bool>;

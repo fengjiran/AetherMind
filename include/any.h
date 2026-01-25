@@ -273,7 +273,7 @@ public:
             return *opt;
         }
         AM_THROW(TypeError) << "Cast failed to type: " << details::Type2Str<T>::value();
-        AETHERMIND_UNREACHABLE();
+        AM_UNREACHABLE();
     }
 
     template<typename T>
@@ -283,7 +283,7 @@ public:
             return std::move(opt.value());
         }
         AM_THROW(TypeError) << "Cast failed to type: " << details::Type2Str<T>::value();
-        AETHERMIND_UNREACHABLE();
+        AM_UNREACHABLE();
     }
 
     template<typename T>

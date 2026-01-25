@@ -113,7 +113,7 @@ std::type_index Any::type() const {
         return type_info_cache_;
     }
     AM_THROW(BadAnyCast) << "Any has no value.";
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 bool Any::IsTensor() const noexcept {
@@ -155,7 +155,7 @@ SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
     }
 
     AM_CHECK(false, "The type is unknown!");
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 void Any::DebugPrint(std::ostream& os) const {
@@ -233,7 +233,7 @@ size_t AnyHash::operator()(const Any& v) const {
     }
 
     AM_CHECK(false, "Unhashable type");
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 std::ostream& operator<<(std::ostream& os, const Any& any) {

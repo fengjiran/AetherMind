@@ -676,7 +676,7 @@ TypePtr TensorType::CreateFromNumberType(const Type& t) {
     }
 
     AM_CHECK(false, "Unknown number type: {}", t.str().c_str());
-    AETHERMIND_UNREACHABLE();
+    AM_UNREACHABLE();
 }
 
 

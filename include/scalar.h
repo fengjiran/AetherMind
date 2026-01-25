@@ -112,7 +112,7 @@ public:
             return check_and_cast<complex<double>, type>(v.z, #type); \
         else {                                                        \
             AM_THROW(RuntimeError) << "Unsupported data type";        \
-            AETHERMIND_UNREACHABLE();                                 \
+            AM_UNREACHABLE();                                         \
         }                                                             \
     }
 
@@ -152,7 +152,7 @@ public:
         }
 
         AM_THROW(RuntimeError) << "Unsupported data type";
-        AETHERMIND_UNREACHABLE();
+        AM_UNREACHABLE();
     }
 
     template<typename T, std::enable_if_t<is_complex_v<T>>* = nullptr>
@@ -186,7 +186,7 @@ public:
         }
 
         AM_THROW(RuntimeError) << "Unsupported data type";
-        AETHERMIND_UNREACHABLE();
+        AM_UNREACHABLE();
     }
 
     NODISCARD bool equal(bool x) const {

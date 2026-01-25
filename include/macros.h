@@ -58,7 +58,7 @@
 #define FUNC_SIG __func__
 #endif
 
-#define AETHERMIND_UNREACHABLE() __builtin_unreachable()
+#define AM_UNREACHABLE() __builtin_unreachable()
 
 #define DEFINE_OBJECT_NULLTYPE(ClassName)                \
     class ClassName##NullType final : public ClassName { \

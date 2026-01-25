@@ -23,7 +23,7 @@ String DeviceType2Str(DeviceType device_type, bool lower_case) {
 
         default: {
             AM_THROW(runtime_error) << "Unsupported device type: " << static_cast<int>(device_type);
-            AETHERMIND_UNREACHABLE();
+            AM_UNREACHABLE();
         }
     }
 }

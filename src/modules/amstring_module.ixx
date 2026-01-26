@@ -175,7 +175,7 @@ void PodFill(std::span<Pod> storage, const T& c) noexcept {
 
 }// namespace details
 
-struct Constants {
+struct MagicConstants {
     // constexpr bool kIsLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
     constexpr static auto kIsBigEndian = __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__;
     constexpr static auto kIsLittleEndian = std::endian::native == std::endian::little;
@@ -202,7 +202,7 @@ public:
 
     AM_NODISCARD size_t size() const {
         auto res = ml_.size_;
-        if constexpr (Constants::kIsLittleEndian) {
+        if constexpr (MagicConstants::kIsLittleEndian) {
             using UChar = std::make_unsigned_t<Char>;
             auto small_size = maxSmallSize - static_cast<size_t>(static_cast<UChar>(small_[maxSmallSize]));
             res = static_cast<std::ptrdiff_t>(small_size) >= 0 ? small_size : res;// gcc will generate a CMOV instead of a branch
@@ -225,8 +225,8 @@ private:
 
     enum class Category : uint8_t {
         isSmall = 0,
-        isMedium = Constants::kIsLittleEndian ? 0x80 : 0x02,
-        isLarge = Constants::kIsLittleEndian ? 0x40 : 0x01,
+        isMedium = MagicConstants::kIsLittleEndian ? 0x80 : 0x02,
+        isLarge = MagicConstants::kIsLittleEndian ? 0x40 : 0x01,
     };
 
     Category category() const {
@@ -240,12 +240,12 @@ private:
         size_t cap_;
 
         AM_NODISCARD size_t capacity() const {
-            return Constants::kIsLittleEndian ? cap_ & capacityExtractMask : cap_ >> 2;
+            return MagicConstants::kIsLittleEndian ? cap_ & capacityExtractMask : cap_ >> 2;
         }
 
         void SetCapacity(size_t cap, Category cat) {
-            cap_ = Constants::kIsLittleEndian ? cap | (static_cast<size_t>(cat) << kCategoryShift)
-                                              : (cap << 2) | static_cast<size_t>(cat);
+            cap_ = MagicConstants::kIsLittleEndian ? cap | (static_cast<size_t>(cat) << kCategoryShift)
+                                                   : (cap << 2) | static_cast<size_t>(cat);
         }
     };
 
@@ -259,7 +259,7 @@ private:
 
     AM_NODISCARD size_t SmallSize() const {
         AM_CHECK(category() == Category::isSmall);
-        constexpr auto shift = Constants::kIsLittleEndian ? 0 : 2;
+        constexpr auto shift = MagicConstants::kIsLittleEndian ? 0 : 2;
         auto diff = static_cast<size_t>(small_[maxSmallSize]) >> shift;
         AM_CHECK(maxSmallSize >= diff);
         return maxSmallSize - diff;
@@ -267,7 +267,7 @@ private:
 
     void SetSmallSize(size_t sz) {
         AM_CHECK(sz <= maxSmallSize);
-        constexpr auto shift = Constants::kIsLittleEndian ? 0 : 2;
+        constexpr auto shift = MagicConstants::kIsLittleEndian ? 0 : 2;
         small_[maxSmallSize] = static_cast<char>((maxSmallSize - sz) << shift);
         small_[sz] = '\0';
         AM_DCHECK(category() == Category::isSmall && size() == sz);
@@ -279,10 +279,10 @@ private:
     constexpr static size_t lastChar = sizeof(MediumLarge) - 1;
     constexpr static size_t maxSmallSize = lastChar / sizeof(Char);
     constexpr static size_t maxMediumSize = 254 / sizeof(Char);
-    constexpr static uint8_t categoryExtractMask = Constants::kIsLittleEndian ? 0xC0 : 0x03;
+    constexpr static uint8_t categoryExtractMask = MagicConstants::kIsLittleEndian ? 0xC0 : 0x03;
     constexpr static size_t kCategoryShift = (sizeof(size_t) - 1) * 8;
-    constexpr static size_t capacityExtractMask = Constants::kIsLittleEndian ? ~(static_cast<size_t>(categoryExtractMask) << kCategoryShift)
-                                                                             : 0x0 /* unused */;
+    constexpr static size_t capacityExtractMask = MagicConstants::kIsLittleEndian ? ~(static_cast<size_t>(categoryExtractMask) << kCategoryShift)
+                                                                                  : 0x0 /* unused */;
 };
 
 /**
@@ -311,7 +311,7 @@ void AMStringCore<Char>::InitSmall(std::span<const Char> src) {
 
     // Optimization: Block copy 24 bytes if safe (no page crossing and no ASAN)
     // We add parenthesis around XOR operands for correct precedence
-    if (!Constants::kIsSanitize &&// sanitizer would trap on over-reads
+    if (!MagicConstants::kIsSanitize &&// sanitizer would trap on over-reads
         sz > 0 &&
         (addr ^ (addr + sizeof(small_) - 1)) < page_size) AM_LIKELY {
             // the input data is all within one page so over-reads will not segfault.

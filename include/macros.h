@@ -21,6 +21,12 @@
 #define AM_HAS_BUILTIN(...) 0
 #endif
 
+#if AM_HAS_BUILTIN(__builtin_prefetch)
+#define AM_BUILTIN_PREFETCH(...) __builtin_prefetch(__VA_ARGS__)
+#else
+#define AM_BUILTIN_PREFETCH(...)
+#endif
+
 #ifdef __has_cpp_attribute
 #define AM_HAS_CPP_ATTRIBUTE(...) __has_cpp_attribute(__VA_ARGS__)
 #else

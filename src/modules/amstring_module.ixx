@@ -306,14 +306,13 @@ void AMStringCore<Char>::InitSmall(std::span<const Char> src) {
                   "amstring size assumption violation");
 
     const size_t sz = src.size();
-    constexpr size_t page_size = 4096;
     const auto addr = reinterpret_cast<uintptr_t>(src.data());
 
     // Optimization: Block copy 24 bytes if safe (no page crossing and no ASAN)
     // We add parenthesis around XOR operands for correct precedence
-    if (!MagicConstants::kIsSanitize &&// sanitizer would trap on over-reads
-        sz > 0 &&
-        (addr ^ (addr + sizeof(small_) - 1)) < page_size) AM_LIKELY {
+    if (constexpr size_t page_size = 4096; !MagicConstants::kIsSanitize &&// sanitizer would trap on over-reads
+                                           sz > 0 &&
+                                           (addr ^ (addr + sizeof(small_) - 1)) < page_size) AM_LIKELY {
             // the input data is all within one page so over-reads will not segfault.
             // Direct word-aligned copy, likely lowered to 3-4 LDP/STP or SIMD instructions.
             std::memcpy(small_, src.data(), sizeof(small_));

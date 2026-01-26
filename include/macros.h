@@ -9,31 +9,50 @@
 #define CPP20
 #endif
 
-#ifdef __has_cpp_attribute
-#if __has_cpp_attribute(nodiscard)
-#define NODISCARD [[nodiscard]]
-#else
-#define NODISCARD
-#endif
-
-#if __has_cpp_attribute(maybe_unused)
-#define MAYBE_UNUSED [[maybe_unused]]
-#else
-#define MAYBE_UNUSED
-#endif
-#endif
-
-#if defined(__has_feature)
+#ifdef __has_feature
 #define AM_HAS_FEATURE(...) __has_feature(__VA_ARGS__)
 #else
 #define AM_HAS_FEATURE(...) 0
 #endif
 
-#if defined(__has_builtin)
+#ifdef __has_builtin
 #define AM_HAS_BUILTIN(...) __has_builtin(__VA_ARGS__)
 #else
 #define AM_HAS_BUILTIN(...) 0
 #endif
+
+#ifdef __has_cpp_attribute
+#define AM_HAS_CPP_ATTRIBUTE(...) __has_cpp_attribute(__VA_ARGS__)
+#else
+#define AM_HAS_CPP_ATTRIBUTE(...) 0
+#endif
+
+#if AM_HAS_CPP_ATTRIBUTE(nodiscard)
+#define NODISCARD [[nodiscard]]
+#else
+#define NODISCARD
+#endif
+
+#if AM_HAS_CPP_ATTRIBUTE(maybe_unused)
+#define MAYBE_UNUSED [[maybe_unused]]
+#else
+#define MAYBE_UNUSED
+#endif
+
+// #ifdef __has_cpp_attribute
+// #if __has_cpp_attribute(nodiscard)
+// #define NODISCARD [[nodiscard]]
+// #else
+// #define NODISCARD
+// #endif
+//
+// #if __has_cpp_attribute(maybe_unused)
+// #define MAYBE_UNUSED [[maybe_unused]]
+// #else
+// #define MAYBE_UNUSED
+// #endif
+// #endif
+
 
 #ifndef AM_SANITIZE_ADDRESS
 #if AM_HAS_FEATURE(address_sanitizer) || \
@@ -52,6 +71,7 @@
         defined(AM_SANITIZE_MEMORY) || defined(AM_SANITIZE_DATAFLOW) || \
         defined(AM_SANITIZE_UNDEFINED_BEHAVIOR)
 #define AM_SANITIZE 1
+#endif
 #endif
 
 #define AETHERMIND_THROW_EXCEPTION noexcept(false)

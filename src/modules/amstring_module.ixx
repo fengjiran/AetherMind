@@ -178,11 +178,12 @@ void PodFill(std::span<Pod> storage, const T& c) noexcept {
 // constexpr auto kIsLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 // constexpr auto kIsBigEndian = __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__;
 
-constexpr static auto kIsLittleEndian = std::endian::native == std::endian::little;
+inline constexpr auto kIsLittleEndian = std::endian::native == std::endian::little;
+
 #ifdef AM_SANITIZE
-constexpr static bool kIsSanitize = true;
+inline constexpr auto kIsSanitize = true;
 #else
-constexpr static bool kIsSanitize = false;
+inline constexpr auto kIsSanitize = false;
 #endif
 
 template<typename Char>

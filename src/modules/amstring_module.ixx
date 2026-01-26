@@ -178,7 +178,12 @@ void PodFill(std::span<Pod> storage, const T& c) noexcept {
 // constexpr auto kIsLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 // constexpr auto kIsBigEndian = __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__;
 
-constexpr auto kIsLittleEndian = std::endian::native == std::endian::little;
+constexpr static auto kIsLittleEndian = std::endian::native == std::endian::little;
+#ifdef AM_SANITIZE
+constexpr static bool kIsSanitize = true;
+#else
+constexpr static bool kIsSanitize = false;
+#endif
 
 template<typename Char>
 class AMStringCore {
@@ -266,6 +271,8 @@ private:
         AM_DCHECK(category() == Category::isSmall && size() == sz);
     }
 
+    void InitSmall(std::span<const Char> src);
+
     constexpr static size_t lastChar = sizeof(MediumLarge) - 1;
     constexpr static size_t maxSmallSize = lastChar / sizeof(Char);
     constexpr static size_t maxMediumSize = 254 / sizeof(Char);
@@ -274,6 +281,48 @@ private:
     constexpr static size_t capacityExtractMask = kIsLittleEndian ? ~(static_cast<size_t>(categoryExtractMask) << kCategoryShift)
                                                                   : 0x0 /* unused */;
 };
+
+/**
+ * @brief Fast initialization for Small String Optimization (SSO).
+ *
+ * Uses a technique called "Safe Over-reading": if the source data is within a
+ * single 4KB memory page, we copy the entire 24-byte block regardless of
+ * actual size to eliminate branching.
+ *
+ * @param src A span representing the source characters to initialize from.
+ */
+template<typename Char>
+void AMStringCore<Char>::InitSmall(std::span<const Char> src) {
+    // Layout is: Char* data_, size_t size_, size_t capacity_
+    static_assert(sizeof(*this) == sizeof(Char*) + 2 * sizeof(size_t),
+                  "amstring has unexpected size");
+    static_assert(sizeof(Char*) == sizeof(size_t),
+                  "amstring size assumption violation");
+    // sizeof(size_t) must be a power of 2
+    static_assert((sizeof(size_t) & (sizeof(size_t) - 1)) == 0,
+                  "amstring size assumption violation");
+
+    const size_t sz = src.size();
+    constexpr size_t page_size = 4096;
+    const auto addr = reinterpret_cast<uintptr_t>(src.data());
+
+    // Optimization: Block copy 24 bytes if safe (no page crossing and no ASAN)
+    // We add parenthesis around XOR operands for correct precedence
+    if (!kIsSanitize &&// sanitizer would trap on over-reads
+        sz > 0 &&
+        (addr ^ (addr + sizeof(small_) - 1)) < page_size) [[likely]] {
+        // the input data is all within one page so over-reads will not segfault.
+        // Direct word-aligned copy, likely lowered to 3-4 LDP/STP or SIMD instructions.
+        std::memcpy(small_, src.data(), sizeof(small_));
+    } else {
+        // Precise copy path
+        if (sz > 0) {
+            details::PodCopy(src.data(), src.data() + sz, small_);
+        }
+    }
+
+    SetSmallSize(sz);
+}
 
 
 }// namespace aethermind

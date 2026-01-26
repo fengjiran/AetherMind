@@ -23,6 +23,37 @@
 #endif
 #endif
 
+#if defined(__has_feature)
+#define AM_HAS_FEATURE(...) __has_feature(__VA_ARGS__)
+#else
+#define AM_HAS_FEATURE(...) 0
+#endif
+
+#if defined(__has_builtin)
+#define AM_HAS_BUILTIN(...) __has_builtin(__VA_ARGS__)
+#else
+#define AM_HAS_BUILTIN(...) 0
+#endif
+
+#ifndef AM_SANITIZE_ADDRESS
+#if AM_HAS_FEATURE(address_sanitizer) || \
+        defined(__SANITIZE_ADDRESS__) || \
+        AM_HAS_FEATURE(hwaddress_sanitizer)
+#define AM_SANITIZE_ADDRESS 1
+#endif
+#endif
+
+/**
+ * Define a convenience macro to test when ASAN, UBSAN, TSAN or MSAN sanitizer
+ * are being used
+ */
+#ifndef AM_SANITIZE
+#if defined(AM_SANITIZE_ADDRESS) || defined(AM_SANITIZE_THREAD) ||      \
+        defined(AM_SANITIZE_MEMORY) || defined(AM_SANITIZE_DATAFLOW) || \
+        defined(AM_SANITIZE_UNDEFINED_BEHAVIOR)
+#define AM_SANITIZE 1
+#endif
+
 #define AETHERMIND_THROW_EXCEPTION noexcept(false)
 
 #if defined(__clang__)

@@ -32,11 +32,11 @@ public:
              typename = std::enable_if_t<std::is_same_v<U, double>>>
     constexpr complex(const complex<float>& other) : real_(other.real_), imag_(other.imag_) {}//NOLINT
 
-    NODISCARD constexpr T real() const {
+    AM_NODISCARD constexpr T real() const {
         return real_;
     }
 
-    NODISCARD constexpr T imag() const {
+    AM_NODISCARD constexpr T imag() const {
         return imag_;
     }
 
@@ -337,11 +337,11 @@ public:
         return {real_, imag_};
     }
 
-    NODISCARD Half real() const {
+    AM_NODISCARD Half real() const {
         return real_;
     }
 
-    NODISCARD Half imag() const {
+    AM_NODISCARD Half imag() const {
         return imag_;
     }
 

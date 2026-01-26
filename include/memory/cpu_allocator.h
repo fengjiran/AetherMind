@@ -17,7 +17,7 @@ class CPUAllocator final : public Allocator {
 public:
     CPUAllocator() = default;
 
-    NODISCARD DataPtr allocate(size_t nbytes) const override {
+    AM_NODISCARD DataPtr allocate(size_t nbytes) const override {
         void* data = alloc_cpu(nbytes);
         return {data, deleter, Device(kCPU)};
     }

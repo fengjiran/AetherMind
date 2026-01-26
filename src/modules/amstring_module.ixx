@@ -56,9 +56,9 @@ void PodCopy(const T* begin, const T* end, T* dst) noexcept {
     AM_DCHECK(dst >= end || dst + (end - begin) <= begin);
 
     const auto n = static_cast<size_t>(end - begin);
-    if (n == 0) [[unlikely]] {
-        return;
-    }
+    if (n == 0) AM_UNLIKELY {
+            return;
+        }
 
     std::memcpy(dst, begin, n * sizeof(T));
 }
@@ -94,9 +94,9 @@ void PodCopy(std::span<const T> src, std::span<T> dst) noexcept {
     AM_DCHECK(dst.data() >= src.data() + src.size() ||
               dst.data() + src.size() <= src.data());
 
-    if (src.empty()) [[unlikely]] {
-        return;
-    }
+    if (src.empty()) AM_UNLIKELY {
+            return;
+        }
 
     std::memcpy(dst.data(), src.data(), src.size_bytes());
 }
@@ -105,9 +105,9 @@ template<is_pod T>
 void PodMove(const T* begin, const T* end, T* dst) noexcept {
     AM_DCHECK(end >= begin);
     const auto n = static_cast<size_t>(end - begin);
-    if (n == 0) [[unlikely]] {
-        return;
-    }
+    if (n == 0) AM_UNLIKELY {
+            return;
+        }
     std::memmove(dst, begin, n * sizeof(T));
 }
 
@@ -135,9 +135,9 @@ void PodMove(const T* begin, const T* end, T* dst) noexcept {
 template<is_pod T>
 void PodMove(std::span<const T> src, std::span<T> dst) noexcept {
     AM_DCHECK(dst.size() >= src.size());
-    if (src.empty()) [[unlikely]] {
-        return;
-    }
+    if (src.empty()) AM_UNLIKELY {
+            return;
+        }
 
     std::memmove(dst.data(), src.data(), src.size_bytes());
 }
@@ -166,25 +166,26 @@ void PodMove(std::span<const T> src, std::span<T> dst) noexcept {
 template<typename Pod, typename T>
     requires is_pod<Pod> && std::is_convertible_v<T, Pod>
 void PodFill(std::span<Pod> storage, const T& c) noexcept {
-    if (storage.empty()) [[unlikely]] {
-        return;
-    }
+    if (storage.empty()) AM_UNLIKELY {
+            return;
+        }
 
     std::ranges::fill(storage, static_cast<Pod>(c));
 }
 
 }// namespace details
 
-// constexpr auto kIsLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
-// constexpr auto kIsBigEndian = __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__;
-
-inline constexpr auto kIsLittleEndian = std::endian::native == std::endian::little;
+struct Constants {
+    // constexpr bool kIsLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
+    constexpr static auto kIsBigEndian = __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__;
+    constexpr static auto kIsLittleEndian = std::endian::native == std::endian::little;
 
 #ifdef AM_SANITIZE
-inline constexpr auto kIsSanitize = true;
+    constexpr static auto kIsSanitize = true;
 #else
-inline constexpr auto kIsSanitize = false;
+    constexpr static auto kIsSanitize = false;
 #endif
+};
 
 template<typename Char>
 class AMStringCore {
@@ -199,9 +200,9 @@ public:
         return ptr;
     }
 
-    NODISCARD size_t size() const {
+    AM_NODISCARD size_t size() const {
         auto res = ml_.size_;
-        if constexpr (kIsLittleEndian) {
+        if constexpr (Constants::kIsLittleEndian) {
             using UChar = std::make_unsigned_t<Char>;
             auto small_size = maxSmallSize - static_cast<size_t>(static_cast<UChar>(small_[maxSmallSize]));
             res = static_cast<std::ptrdiff_t>(small_size) >= 0 ? small_size : res;// gcc will generate a CMOV instead of a branch
@@ -224,8 +225,8 @@ private:
 
     enum class Category : uint8_t {
         isSmall = 0,
-        isMedium = kIsLittleEndian ? 0x80 : 0x02,
-        isLarge = kIsLittleEndian ? 0x40 : 0x01,
+        isMedium = Constants::kIsLittleEndian ? 0x80 : 0x02,
+        isLarge = Constants::kIsLittleEndian ? 0x40 : 0x01,
     };
 
     Category category() const {
@@ -238,13 +239,13 @@ private:
         size_t size_;
         size_t cap_;
 
-        NODISCARD size_t capacity() const {
-            return kIsLittleEndian ? cap_ & capacityExtractMask : cap_ >> 2;
+        AM_NODISCARD size_t capacity() const {
+            return Constants::kIsLittleEndian ? cap_ & capacityExtractMask : cap_ >> 2;
         }
 
         void SetCapacity(size_t cap, Category cat) {
-            cap_ = kIsLittleEndian ? cap | (static_cast<size_t>(cat) << kCategoryShift)
-                                   : (cap << 2) | static_cast<size_t>(cat);
+            cap_ = Constants::kIsLittleEndian ? cap | (static_cast<size_t>(cat) << kCategoryShift)
+                                              : (cap << 2) | static_cast<size_t>(cat);
         }
     };
 
@@ -256,9 +257,9 @@ private:
 
     static_assert(sizeof(MediumLarge) % sizeof(Char) == 0, "Corrupt memory layout.");
 
-    NODISCARD size_t SmallSize() const {
+    AM_NODISCARD size_t SmallSize() const {
         AM_CHECK(category() == Category::isSmall);
-        constexpr auto shift = kIsLittleEndian ? 0 : 2;
+        constexpr auto shift = Constants::kIsLittleEndian ? 0 : 2;
         auto diff = static_cast<size_t>(small_[maxSmallSize]) >> shift;
         AM_CHECK(maxSmallSize >= diff);
         return maxSmallSize - diff;
@@ -266,21 +267,22 @@ private:
 
     void SetSmallSize(size_t sz) {
         AM_CHECK(sz <= maxSmallSize);
-        constexpr auto shift = kIsLittleEndian ? 0 : 2;
+        constexpr auto shift = Constants::kIsLittleEndian ? 0 : 2;
         small_[maxSmallSize] = static_cast<char>((maxSmallSize - sz) << shift);
         small_[sz] = '\0';
         AM_DCHECK(category() == Category::isSmall && size() == sz);
     }
 
     void InitSmall(std::span<const Char> src);
+    void InitMedium(std::span<const Char> src);
 
     constexpr static size_t lastChar = sizeof(MediumLarge) - 1;
     constexpr static size_t maxSmallSize = lastChar / sizeof(Char);
     constexpr static size_t maxMediumSize = 254 / sizeof(Char);
-    constexpr static uint8_t categoryExtractMask = kIsLittleEndian ? 0xC0 : 0x03;
+    constexpr static uint8_t categoryExtractMask = Constants::kIsLittleEndian ? 0xC0 : 0x03;
     constexpr static size_t kCategoryShift = (sizeof(size_t) - 1) * 8;
-    constexpr static size_t capacityExtractMask = kIsLittleEndian ? ~(static_cast<size_t>(categoryExtractMask) << kCategoryShift)
-                                                                  : 0x0 /* unused */;
+    constexpr static size_t capacityExtractMask = Constants::kIsLittleEndian ? ~(static_cast<size_t>(categoryExtractMask) << kCategoryShift)
+                                                                             : 0x0 /* unused */;
 };
 
 /**
@@ -309,13 +311,14 @@ void AMStringCore<Char>::InitSmall(std::span<const Char> src) {
 
     // Optimization: Block copy 24 bytes if safe (no page crossing and no ASAN)
     // We add parenthesis around XOR operands for correct precedence
-    if (!kIsSanitize &&// sanitizer would trap on over-reads
+    if (!Constants::kIsSanitize &&// sanitizer would trap on over-reads
         sz > 0 &&
-        (addr ^ (addr + sizeof(small_) - 1)) < page_size) [[likely]] {
-        // the input data is all within one page so over-reads will not segfault.
-        // Direct word-aligned copy, likely lowered to 3-4 LDP/STP or SIMD instructions.
-        std::memcpy(small_, src.data(), sizeof(small_));
-    } else {
+        (addr ^ (addr + sizeof(small_) - 1)) < page_size) AM_LIKELY {
+            // the input data is all within one page so over-reads will not segfault.
+            // Direct word-aligned copy, likely lowered to 3-4 LDP/STP or SIMD instructions.
+            std::memcpy(small_, src.data(), sizeof(small_));
+        }
+    else {
         // Precise copy path
         if (sz > 0) {
             details::PodCopy(src.data(), src.data() + sz, small_);
@@ -325,5 +328,9 @@ void AMStringCore<Char>::InitSmall(std::span<const Char> src) {
     SetSmallSize(sz);
 }
 
+template<typename Char>
+void AMStringCore<Char>::InitMedium(std::span<const Char> src) {
+    //
+}
 
 }// namespace aethermind

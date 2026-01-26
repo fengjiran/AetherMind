@@ -25,31 +25,31 @@ public:
 
     StorageImpl() : StorageImpl(0, AllocatorTable::Global().get_allocator(kUndefined)) {}
 
-    NODISCARD size_t nbytes() const {
+    AM_NODISCARD size_t nbytes() const {
         return nbytes_;
     }
 
-    NODISCARD DataPtr& data_ptr() {
+    AM_NODISCARD DataPtr& data_ptr() {
         return data_ptr_;
     }
 
-    NODISCARD const DataPtr& const_data_ptr() const {
+    AM_NODISCARD const DataPtr& const_data_ptr() const {
         return data_ptr_;
     }
 
-    NODISCARD void* get() const {
+    AM_NODISCARD void* get() const {
         return data_ptr_.get();
     }
 
-    NODISCARD const void* const_get() const {
+    AM_NODISCARD const void* const_get() const {
         return data_ptr_.get();
     }
 
-    NODISCARD Device device() const {
+    AM_NODISCARD Device device() const {
         return data_ptr_.device();
     }
 
-    NODISCARD DeviceType device_type() const {
+    AM_NODISCARD DeviceType device_type() const {
         return data_ptr_.device().type();
     }
 

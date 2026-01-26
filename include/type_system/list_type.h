@@ -56,11 +56,11 @@ class AnyListType;
 using AnyListTypePtr = SingletonTypePtr<AnyListType>;
 class AnyListType : public Singleton<AnyListType> {
 public:
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "list";
     }
 

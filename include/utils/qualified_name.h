@@ -57,7 +57,7 @@ public:
 
     // Is `this` a prefix of `other`?
     // For example, "foo.bar" is a prefix of "foo.bar.baz"
-    NODISCARD bool IsPrefixOf(const QualifiedName& other) const {
+    AM_NODISCARD bool IsPrefixOf(const QualifiedName& other) const {
         if (atoms_.size() > other.atoms_.size()) {
             return false;
         }
@@ -71,21 +71,21 @@ public:
     }
 
     // The fully qualified name, like "foo.bar.baz"
-    NODISCARD const String& GetQualifiedName() const {
+    AM_NODISCARD const String& GetQualifiedName() const {
         return qualified_name_;
     }
 
     // The leading qualifier, like "foo.bar"
-    NODISCARD const String& GetPrefix() const {
+    AM_NODISCARD const String& GetPrefix() const {
         return prefix_;
     }
 
     // The base name, like "baz"
-    NODISCARD const String& GetName() const {
+    AM_NODISCARD const String& GetName() const {
         return name_;
     }
 
-    NODISCARD const std::vector<String>& GetAtoms() const {
+    AM_NODISCARD const std::vector<String>& GetAtoms() const {
         return atoms_;
     }
 

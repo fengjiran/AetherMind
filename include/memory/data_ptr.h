@@ -45,7 +45,7 @@ public:
         std::swap(deleter_, other.deleter_);
     }
 
-    NODISCARD deleter_type get_deleter() const {
+    AM_NODISCARD deleter_type get_deleter() const {
         return deleter_;
     }
 
@@ -81,23 +81,23 @@ public:
 
     DataPtr() : DataPtr(nullptr, delete_nothing, Device(kUndefined)) {}
 
-    NODISCARD Device device() const {
+    AM_NODISCARD Device device() const {
         return device_;
     }
 
-    NODISCARD void* get() const {
+    AM_NODISCARD void* get() const {
         return data_;
     }
 
-    NODISCARD deleter_type get_deleter() const {
+    AM_NODISCARD deleter_type get_deleter() const {
         return ctx_->get_deleter();
     }
 
-    NODISCARD DataPtrContext* get_context() const {
+    AM_NODISCARD DataPtrContext* get_context() const {
         return ctx_.get();
     }
 
-    NODISCARD DataPtrContext* release_context() {
+    AM_NODISCARD DataPtrContext* release_context() {
         return ctx_.release();
     }
 
@@ -127,7 +127,7 @@ public:
         device_ = device;
     }
 
-    NODISCARD bool unsafe_reset_data_and_ctx(void* new_data, deleter_type new_deleter) {
+    AM_NODISCARD bool unsafe_reset_data_and_ctx(void* new_data, deleter_type new_deleter) {
         if (get_deleter() != delete_nothing) {
             return false;
         }

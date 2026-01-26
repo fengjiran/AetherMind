@@ -64,7 +64,7 @@ public:
      *
      * \return The current reference count value of the object
      */
-    NODISCARD uint32_t use_count() const {
+    AM_NODISCARD uint32_t use_count() const {
         return __atomic_load_n(&header_.strong_ref_count, __ATOMIC_RELAXED);
     }
 
@@ -78,7 +78,7 @@ public:
      *
      * \return The current weak reference count value of the object
      */
-    NODISCARD uint32_t weak_use_count() const {
+    AM_NODISCARD uint32_t weak_use_count() const {
         return __atomic_load_n(&header_.weak_ref_count, __ATOMIC_RELAXED);
     }
 
@@ -87,7 +87,7 @@ public:
      *
      * \return true if the object has a reference count of 1, false otherwise.
      */
-    NODISCARD bool unique() const {
+    AM_NODISCARD bool unique() const {
         return use_count() == 1;
     }
 
@@ -100,7 +100,7 @@ public:
         header_.deleter = deleter;
     }
 
-    NODISCARD virtual bool IsNullTypePtr() const {
+    AM_NODISCARD virtual bool IsNullTypePtr() const {
         return false;
     }
 
@@ -203,7 +203,7 @@ public:
         return &inst;
     }
 
-    NODISCARD bool IsNullTypePtr() const override {
+    AM_NODISCARD bool IsNullTypePtr() const override {
         return true;
     }
 };
@@ -391,7 +391,7 @@ public:
      * \brief Returns whether the ObjectPtr is defined (i.e., not null type pointer).
      * \return True if the ObjectPtr is defined, false otherwise.
      */
-    NODISCARD bool defined() const noexcept {
+    AM_NODISCARD bool defined() const noexcept {
         return ptr_ != null_type::singleton();
     }
 
@@ -399,7 +399,7 @@ public:
      * \brief Returns a raw pointer to the underlying object.
      * \return A raw pointer to the underlying object.
      */
-    NODISCARD T* get() const noexcept {
+    AM_NODISCARD T* get() const noexcept {
         return ptr_;
     }
 
@@ -431,7 +431,7 @@ public:
      * \brief Returns the reference count of the underlying object.
      * \return The reference count of the underlying object.
      */
-    NODISCARD uint32_t use_count() const noexcept {
+    AM_NODISCARD uint32_t use_count() const noexcept {
         return ptr_->use_count();
     }
 
@@ -439,7 +439,7 @@ public:
      * \brief Returns whether the ObjectPtr has a unique reference to the underlying object.
      * \return True if the ObjectPtr has a unique reference to the underlying object, false otherwise.
      */
-    NODISCARD bool unique() const noexcept {
+    AM_NODISCARD bool unique() const noexcept {
         return use_count() == 1;
     }
 
@@ -587,19 +587,19 @@ public:
         reset();
     }
 
-    NODISCARD bool defined() const noexcept {
+    AM_NODISCARD bool defined() const noexcept {
         return ptr_ != null_type::singleton();
     }
 
-    NODISCARD uint32_t use_count() const noexcept {
+    AM_NODISCARD uint32_t use_count() const noexcept {
         return ptr_->use_count();
     }
 
-    NODISCARD uint32_t weak_use_count() const noexcept {
+    AM_NODISCARD uint32_t weak_use_count() const noexcept {
         return ptr_->weak_use_count();
     }
 
-    NODISCARD bool expired() const noexcept {
+    AM_NODISCARD bool expired() const noexcept {
         return use_count() == 0;
     }
 

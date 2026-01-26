@@ -34,16 +34,16 @@ public:
     // Give a string corresponding to the qualified version of this name,
     // e.g., "aten::mm". This string format is made available to Python bindings
     // (so we know how to parse it.)
-    NODISCARD String ToQualString() const;
+    AM_NODISCARD String ToQualString() const;
 
     // Give a string corresponding to the unqualified version of this name, e.g.,
     // "mm". Use this in a context where the intended namespace of the string is
     // obvious; this is a *lossy* conversion.
-    NODISCARD String ToUnQualString() const;
+    AM_NODISCARD String ToUnQualString() const;
 
-    NODISCARD String GetDomainString() const;
+    AM_NODISCARD String GetDomainString() const;
 
-    NODISCARD Symbol NS() const;
+    AM_NODISCARD Symbol NS() const;
 
     constexpr operator SymId() const { //NOLINT
         return value_;
@@ -58,9 +58,9 @@ public:
     static Symbol cuda(const String& name);
     static Symbol attr(const String& name);
 
-    NODISCARD bool IsPrim() const;
-    NODISCARD bool IsCuda() const;
-    NODISCARD bool IsAttr() const;
+    AM_NODISCARD bool IsPrim() const;
+    AM_NODISCARD bool IsCuda() const;
+    AM_NODISCARD bool IsAttr() const;
 
 private:
     SymId value_;

@@ -46,7 +46,7 @@ public:
     Allocator() = default;
     virtual ~Allocator() = default;
 
-    NODISCARD virtual DataPtr allocate(size_t nbytes) const = 0;
+    AM_NODISCARD virtual DataPtr allocate(size_t nbytes) const = 0;
 
     virtual void deallocate(void* p) const = 0;
 };
@@ -77,7 +77,7 @@ class UndefinedAllocator final : public Allocator {
 public:
     UndefinedAllocator() = default;
 
-    NODISCARD DataPtr allocate(size_t nbytes) const override {
+    AM_NODISCARD DataPtr allocate(size_t nbytes) const override {
         return {};
     }
 
@@ -93,7 +93,7 @@ public:
     //     return p;
     // }
 
-    NODISCARD DataPtr allocate(size_t nbytes) const override {
+    AM_NODISCARD DataPtr allocate(size_t nbytes) const override {
         return {};
     }
 

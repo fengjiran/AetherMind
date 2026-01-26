@@ -28,31 +28,28 @@
 #endif
 
 #if AM_HAS_CPP_ATTRIBUTE(nodiscard)
-#define NODISCARD [[nodiscard]]
+#define AM_NODISCARD [[nodiscard]]
 #else
-#define NODISCARD
+#define AM_NODISCARD
 #endif
 
 #if AM_HAS_CPP_ATTRIBUTE(maybe_unused)
-#define MAYBE_UNUSED [[maybe_unused]]
+#define AM_MAYBE_UNUSED [[maybe_unused]]
 #else
-#define MAYBE_UNUSED
+#define AM_MAYBE_UNUSED
 #endif
 
-// #ifdef __has_cpp_attribute
-// #if __has_cpp_attribute(nodiscard)
-// #define NODISCARD [[nodiscard]]
-// #else
-// #define NODISCARD
-// #endif
-//
-// #if __has_cpp_attribute(maybe_unused)
-// #define MAYBE_UNUSED [[maybe_unused]]
-// #else
-// #define MAYBE_UNUSED
-// #endif
-// #endif
+#if AM_HAS_CPP_ATTRIBUTE(likely)
+#define AM_LIKELY [[likely]]
+#else
+#define AM_LIKELY
+#endif
 
+#if AM_HAS_CPP_ATTRIBUTE(unlikely)
+#define AM_UNLIKELY [[unlikely]]
+#else
+#define AM_UNLIKELY
+#endif
 
 #ifndef AM_SANITIZE_ADDRESS
 #if AM_HAS_FEATURE(address_sanitizer) || \

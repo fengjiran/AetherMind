@@ -14,18 +14,18 @@ public:
     OperatorName(String name, String overload_name)
         : name_(std::move(name)), overload_name_(std::move(overload_name)) {}
 
-    NODISCARD String name() const {
+    AM_NODISCARD String name() const {
         return name_;
     }
 
-    NODISCARD String overload_name() const {
+    AM_NODISCARD String overload_name() const {
         return overload_name_;
     }
 
     // Return the namespace of this OperatorName, if it exists.  The
     // returned string_view is only live as long as the OperatorName
     // exists and name is not mutated
-    NODISCARD std::optional<String> GetNamespace() const;
+    AM_NODISCARD std::optional<String> GetNamespace() const;
 
     // Returns true if successfully set the namespace
     bool SetNamespaceIfNotSet(const char* ns);

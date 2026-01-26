@@ -57,7 +57,7 @@ public:
         return true;
     }
 
-    NODISCARD Array<String> ListNames() const {
+    AM_NODISCARD Array<String> ListNames() const {
         Array<String> names;
         names.reserve(table_.size());
         for (const auto& kv: table_) {

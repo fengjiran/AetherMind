@@ -32,7 +32,7 @@ public:
 
     StringImpl() : data_(nullptr) {}
 
-    NODISCARD pointer data() const noexcept {
+    AM_NODISCARD pointer data() const noexcept {
         return data_;
     }
 
@@ -110,47 +110,47 @@ public:
     String& operator=(const std::string& other);
     String& operator=(const_pointer other);
 
-    NODISCARD const_pointer data() const noexcept;
-    NODISCARD pointer data() noexcept;
-    NODISCARD const_pointer c_str() const noexcept;
+    AM_NODISCARD const_pointer data() const noexcept;
+    AM_NODISCARD pointer data() noexcept;
+    AM_NODISCARD const_pointer c_str() const noexcept;
 
-    NODISCARD iterator begin() noexcept;
-    NODISCARD const_iterator begin() const noexcept;
-    NODISCARD iterator end() noexcept;
-    NODISCARD const_iterator end() const noexcept;
+    AM_NODISCARD iterator begin() noexcept;
+    AM_NODISCARD const_iterator begin() const noexcept;
+    AM_NODISCARD iterator end() noexcept;
+    AM_NODISCARD const_iterator end() const noexcept;
 
     void swap(String& other) noexcept;
 
-    NODISCARD bool defined() const noexcept;
-    NODISCARD bool IsLocal() const noexcept;
+    AM_NODISCARD bool defined() const noexcept;
+    AM_NODISCARD bool IsLocal() const noexcept;
 
-    NODISCARD size_type size() const noexcept;
-    NODISCARD size_type length() const noexcept;
-    NODISCARD size_type capacity() const noexcept;
-    NODISCARD bool empty() const noexcept;
+    AM_NODISCARD size_type size() const noexcept;
+    AM_NODISCARD size_type length() const noexcept;
+    AM_NODISCARD size_type capacity() const noexcept;
+    AM_NODISCARD bool empty() const noexcept;
     void clear() noexcept;
 
-    NODISCARD uint32_t use_count() const noexcept;
-    NODISCARD bool unique() const noexcept;
-    NODISCARD StringImpl* GetImplPtrUnsafe() const noexcept;
-    NODISCARD StringImpl* ReleaseImplUnsafe();
-    NODISCARD const ObjectPtr<StringImpl>& GetObjectPtr() const;
+    AM_NODISCARD uint32_t use_count() const noexcept;
+    AM_NODISCARD bool unique() const noexcept;
+    AM_NODISCARD StringImpl* GetImplPtrUnsafe() const noexcept;
+    AM_NODISCARD StringImpl* ReleaseImplUnsafe();
+    AM_NODISCARD const ObjectPtr<StringImpl>& GetObjectPtr() const;
 
     void push_back(value_type c);
     void pop_back() noexcept;
 
-    NODISCARD static size_type max_size() noexcept;
+    AM_NODISCARD static size_type max_size() noexcept;
 
     const_reference operator[](size_type i) const noexcept;
     CharProxy operator[](size_type i) noexcept;
-    NODISCARD const_reference at(size_type i) const;
+    AM_NODISCARD const_reference at(size_type i) const;
     CharProxy at(size_type i);
     CharProxy front() noexcept;
-    NODISCARD const_reference front() const noexcept;
+    AM_NODISCARD const_reference front() const noexcept;
     CharProxy back() noexcept;
-    NODISCARD const_reference back() const noexcept;
+    AM_NODISCARD const_reference back() const noexcept;
 
-    NODISCARD String substr(size_type pos = 0, size_type n = npos) const;
+    AM_NODISCARD String substr(size_type pos = 0, size_type n = npos) const;
     operator std::string() const;  // NOLINT
     operator const_pointer() const;//NOLINT
 
@@ -242,43 +242,43 @@ public:
        *  returns the index where it begins.
        *  If not found, returns npos.
       */
-    NODISCARD size_type find(const_pointer s, size_type pos, size_type n, FindMethod method = FindMethod::kBoyerMoore) const noexcept;
-    NODISCARD size_type find(const String& str, size_type pos = 0) const noexcept;
-    NODISCARD size_type find(const_pointer str, size_type pos = 0) const noexcept;
-    NODISCARD size_type find(value_type c, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find(const_pointer s, size_type pos, size_type n, FindMethod method = FindMethod::kBoyerMoore) const noexcept;
+    AM_NODISCARD size_type find(const String& str, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find(const_pointer str, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find(value_type c, size_type pos = 0) const noexcept;
 
-    NODISCARD size_type rfind(const_pointer s, size_type pos, size_type n) const noexcept;
-    NODISCARD size_type rfind(const String& str, size_type pos = npos) const noexcept;
-    NODISCARD size_type rfind(const_pointer str, size_type pos = npos) const noexcept;
-    NODISCARD size_type rfind(value_type c, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type rfind(const_pointer s, size_type pos, size_type n) const noexcept;
+    AM_NODISCARD size_type rfind(const String& str, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type rfind(const_pointer str, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type rfind(value_type c, size_type pos = npos) const noexcept;
 
-    NODISCARD size_type find_first_of(const_pointer s, size_type pos, size_type n) const noexcept;
-    NODISCARD size_type find_first_of(const String& str, size_type pos = 0) const noexcept;
-    NODISCARD size_type find_first_of(const_pointer str, size_type pos = 0) const noexcept;
-    NODISCARD size_type find_first_of(value_type c, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find_first_of(const_pointer s, size_type pos, size_type n) const noexcept;
+    AM_NODISCARD size_type find_first_of(const String& str, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find_first_of(const_pointer str, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find_first_of(value_type c, size_type pos = 0) const noexcept;
 
-    NODISCARD size_type find_first_not_of(const_pointer s, size_type pos, size_type n) const noexcept;
-    NODISCARD size_type find_first_not_of(const String& str, size_type pos = 0) const noexcept;
-    NODISCARD size_type find_first_not_of(const_pointer str, size_type pos = 0) const noexcept;
-    NODISCARD size_type find_first_not_of(value_type c, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find_first_not_of(const_pointer s, size_type pos, size_type n) const noexcept;
+    AM_NODISCARD size_type find_first_not_of(const String& str, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find_first_not_of(const_pointer str, size_type pos = 0) const noexcept;
+    AM_NODISCARD size_type find_first_not_of(value_type c, size_type pos = 0) const noexcept;
 
-    NODISCARD size_type find_last_of(const_pointer s, size_type pos, size_type n) const noexcept;
-    NODISCARD size_type find_last_of(const String& str, size_type pos = npos) const noexcept;
-    NODISCARD size_type find_last_of(const_pointer str, size_type pos = npos) const noexcept;
-    NODISCARD size_type find_last_of(value_type c, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type find_last_of(const_pointer s, size_type pos, size_type n) const noexcept;
+    AM_NODISCARD size_type find_last_of(const String& str, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type find_last_of(const_pointer str, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type find_last_of(value_type c, size_type pos = npos) const noexcept;
 
-    NODISCARD size_type find_last_not_of(const_pointer s, size_type pos, size_type n) const noexcept;
-    NODISCARD size_type find_last_not_of(const String& str, size_type pos = npos) const noexcept;
-    NODISCARD size_type find_last_not_of(const_pointer str, size_type pos = npos) const noexcept;
-    NODISCARD size_type find_last_not_of(value_type c, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type find_last_not_of(const_pointer s, size_type pos, size_type n) const noexcept;
+    AM_NODISCARD size_type find_last_not_of(const String& str, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type find_last_not_of(const_pointer str, size_type pos = npos) const noexcept;
+    AM_NODISCARD size_type find_last_not_of(value_type c, size_type pos = npos) const noexcept;
 
-    NODISCARD bool starts_with(const String& str) const noexcept;
-    NODISCARD bool starts_with(const_pointer str) const noexcept;
-    NODISCARD bool starts_with(value_type c) const noexcept;
+    AM_NODISCARD bool starts_with(const String& str) const noexcept;
+    AM_NODISCARD bool starts_with(const_pointer str) const noexcept;
+    AM_NODISCARD bool starts_with(value_type c) const noexcept;
 
-    NODISCARD bool ends_with(const String& str) const noexcept;
-    NODISCARD bool ends_with(const_pointer str) const noexcept;
-    NODISCARD bool ends_with(value_type c) const noexcept;
+    AM_NODISCARD bool ends_with(const String& str) const noexcept;
+    AM_NODISCARD bool ends_with(const_pointer str) const noexcept;
+    AM_NODISCARD bool ends_with(value_type c) const noexcept;
 
     /*!
      * \brief Compares this String object to other
@@ -288,9 +288,9 @@ public:
      * \return zero if both char sequences compare equal. negative if this appears
      * before other, positive otherwise.
      */
-    NODISCARD int compare(const String& other) const;
-    NODISCARD int compare(size_type pos, size_type n, const String& other) const;
-    NODISCARD int compare(size_type pos1, size_type n1,
+    AM_NODISCARD int compare(const String& other) const;
+    AM_NODISCARD int compare(size_type pos, size_type n, const String& other) const;
+    AM_NODISCARD int compare(size_type pos1, size_type n1,
                           const String& other, size_type pos2, size_type n2 = npos) const;
 
     /*!
@@ -301,9 +301,9 @@ public:
      * \return zero if both char sequences compare equal. negative if this appears
      * before other, positive otherwise.
      */
-    NODISCARD int compare(const std::string& other) const;
-    NODISCARD int compare(size_type pos, size_type n, const std::string& other) const;
-    NODISCARD int compare(size_type pos1, size_type n1,
+    AM_NODISCARD int compare(const std::string& other) const;
+    AM_NODISCARD int compare(size_type pos, size_type n, const std::string& other) const;
+    AM_NODISCARD int compare(size_type pos1, size_type n1,
                           const std::string& other, size_type pos2, size_type n2 = npos) const;
 
     /*!
@@ -314,9 +314,9 @@ public:
      * \return zero if both char sequences compare equal. negative if this appears
      * before other, positive otherwise.
      */
-    NODISCARD int compare(const_pointer other) const;
-    NODISCARD int compare(size_type pos, size_type n, const_pointer other) const;
-    NODISCARD int compare(size_type pos, size_type n1, const_pointer other, size_type n2) const;
+    AM_NODISCARD int compare(const_pointer other) const;
+    AM_NODISCARD int compare(size_type pos, size_type n, const_pointer other) const;
+    AM_NODISCARD int compare(size_type pos, size_type n1, const_pointer other, size_type n2) const;
 
     static constexpr size_type npos = static_cast<size_type>(-1);
     static constexpr size_type kIncFactor = 2;
@@ -335,13 +335,13 @@ private:
     ObjectPtr<StringImpl> impl_;
 
     void InitLocalBuffer() noexcept;
-    NODISCARD size_type Limit(size_type pos, size_type limit) const noexcept;
-    NODISCARD size_type CheckPos(size_type pos) const;
+    AM_NODISCARD size_type Limit(size_type pos, size_type limit) const noexcept;
+    AM_NODISCARD size_type CheckPos(size_type pos) const;
     void CheckSize(size_type delta) const;
     String& replace_aux(size_type pos, size_type n1, size_type n2);
-    NODISCARD size_type NaiveSearch(const_pointer s, size_type pos, size_type n) const noexcept;
-    NODISCARD size_type KMPSearch(const_pointer s, size_type pos, size_type n) const noexcept;
-    NODISCARD size_type BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const noexcept;
+    AM_NODISCARD size_type NaiveSearch(const_pointer s, size_type pos, size_type n) const noexcept;
+    AM_NODISCARD size_type KMPSearch(const_pointer s, size_type pos, size_type n) const noexcept;
+    AM_NODISCARD size_type BoyerMooreSearch(const_pointer pat, size_type pos, size_type n) const noexcept;
     // Create bad char static table(ASCII), size = 256
     static std::unordered_map<value_type, size_type> CreateBadCharRule(const_pointer pat);
     // Create suffix and prefix vectors based on good suffix rule

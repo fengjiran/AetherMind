@@ -65,11 +65,11 @@ public:
         }
     }
 
-    NODISCARD bool IsConstructed(size_t slot_idx) const noexcept {
+    AM_NODISCARD bool IsConstructed(size_t slot_idx) const noexcept {
         return TestFlag(slot_idx);
     }
 
-    NODISCARD bool IsUnConstructed(size_t slot_idx) const noexcept {
+    AM_NODISCARD bool IsUnConstructed(size_t slot_idx) const noexcept {
         return !TestFlag(slot_idx);
     }
 
@@ -82,14 +82,14 @@ private:
 
     std::array<std::byte, TOTAL_SIZE> storage_{};
 
-    NODISCARD static std::pair<size_t, size_t> GetFlagIdx(size_t slot_idx) noexcept {
+    AM_NODISCARD static std::pair<size_t, size_t> GetFlagIdx(size_t slot_idx) noexcept {
         return {slot_idx / 8, slot_idx & 7};// slot_idx % 8
     }
 
     // test the slot is constructed
     // 0: Not construct
     // 1: Constructed
-    NODISCARD bool TestFlag(size_t slot_idx) const noexcept {
+    AM_NODISCARD bool TestFlag(size_t slot_idx) const noexcept {
         AM_CHECK(slot_idx < BlockSize);
         auto [b, p] = GetFlagIdx(slot_idx);
         return (storage_[b] & std::byte{1} << (7 - p)) != std::byte{0};
@@ -176,11 +176,11 @@ public:
         return *this;
     }
 
-    NODISCARD size_type size() const noexcept {
+    AM_NODISCARD size_type size() const noexcept {
         return size_;
     }
 
-    NODISCARD size_type slots() const noexcept {
+    AM_NODISCARD size_type slots() const noexcept {
         return slots_;
     }
 
@@ -206,7 +206,7 @@ public:
         return const_cast<MapImplV2*>(this)->find(key);
     }
 
-    NODISCARD size_type count(const key_type& key) const {
+    AM_NODISCARD size_type count(const key_type& key) const {
         return find(key) != end();
     }
 
@@ -233,7 +233,7 @@ public:
         return 0;
     }
 
-    NODISCARD value_type* GetDataPtr(size_type global_idx) const {
+    AM_NODISCARD value_type* GetDataPtr(size_type global_idx) const {
         AM_DCHECK(global_idx < slots_);
         AM_DCHECK(slot_infos_[global_idx].meta != Constants::kEmptySlot);
         auto block_idx = global_idx / Constants::kSlotsPerBlock;
@@ -318,7 +318,7 @@ private:
     template<typename... Args>
     std::pair<iterator, bool> emplace_new_key(Cursor prev, Args&&... args);
 
-    NODISCARD size_type GetNextIndexOf(size_type global_idx) const {
+    AM_NODISCARD size_type GetNextIndexOf(size_type global_idx) const {
         if (global_idx == Constants::kInvalidIndex) {
             return global_idx;
         }
@@ -326,7 +326,7 @@ private:
         return slot_infos_[global_idx].next;
     }
 
-    NODISCARD size_type GetPrevIndexOf(size_type global_idx) const {
+    AM_NODISCARD size_type GetPrevIndexOf(size_type global_idx) const {
         if (global_idx == Constants::kInvalidIndex) {
             return iter_list_tail_;
         }
@@ -396,12 +396,12 @@ private:
         }
     }
 
-    NODISCARD Cursor CreateCursorFromHash(size_t hash_value) const {
+    AM_NODISCARD Cursor CreateCursorFromHash(size_t hash_value) const {
         return {details::FibonacciHash(hash_value, fib_shift_), this};
     }
 
     // Whether the hash table is full.
-    NODISCARD bool IsFull() const {
+    AM_NODISCARD bool IsFull() const {
         return size() + 1 > static_cast<size_type>(static_cast<double>(slots()) * Constants::kMaxLoadFactor);
     }
 
@@ -435,11 +435,11 @@ struct MapImplV2<K, V, Hasher>::Cursor {
 
     Cursor(size_t index, const MapImplV2* p) : global_idx_(index), owner_(p) {}
 
-    NODISCARD size_t index() const {
+    AM_NODISCARD size_t index() const {
         return global_idx_;
     }
 
-    NODISCARD const MapImplV2* owner() const {
+    AM_NODISCARD const MapImplV2* owner() const {
         return owner_;
     }
 
@@ -448,52 +448,52 @@ struct MapImplV2<K, V, Hasher>::Cursor {
         owner_ = nullptr;
     }
 
-    NODISCARD std::byte& GetSlotMetadata() const {
+    AM_NODISCARD std::byte& GetSlotMetadata() const {
         AM_DCHECK(!IsNone(), "The Cursor is none.");
         return const_cast<MapImplV2*>(owner())->slot_infos_[global_idx_].meta;
         // return owner()->slot_infos_[global_idx_].meta;
     }
 
-    NODISCARD value_type& GetData() const {
+    AM_NODISCARD value_type& GetData() const {
         AM_DCHECK(!IsNone(), "The Cursor is none.");
         return *owner()->GetDataPtr(global_idx_);
     }
 
-    NODISCARD const key_type& GetKey() const {
+    AM_NODISCARD const key_type& GetKey() const {
         return GetData().first;
     }
 
-    NODISCARD mapped_type& GetValue() const {
+    AM_NODISCARD mapped_type& GetValue() const {
         return GetData().second;
     }
 
-    NODISCARD uint8_t GetOffsetIdx() const {
+    AM_NODISCARD uint8_t GetOffsetIdx() const {
         return std::to_integer<uint8_t>(GetSlotMetadata() & Constants::kOffsetIdxMask);
     }
 
-    NODISCARD bool IsIterListHead() const {
+    AM_NODISCARD bool IsIterListHead() const {
         AM_DCHECK(!IsNone(), "The Cursor is none.");
         return index() == owner()->iter_list_head_;
     }
 
-    NODISCARD bool IsIterListTail() const {
+    AM_NODISCARD bool IsIterListTail() const {
         AM_DCHECK(!IsNone(), "The Cursor is none.");
         return index() == owner()->iter_list_tail_;
     }
 
-    NODISCARD bool IsSlotEmpty() const {
+    AM_NODISCARD bool IsSlotEmpty() const {
         return GetSlotMetadata() == Constants::kEmptySlot;
     }
 
-    NODISCARD bool IsSlotTombStone() const {
+    AM_NODISCARD bool IsSlotTombStone() const {
         return GetSlotMetadata() == Constants::kTombStoneSlot;
     }
 
-    NODISCARD bool IsSlotHead() const {
+    AM_NODISCARD bool IsSlotHead() const {
         return (GetSlotMetadata() & Constants::kHeadFlagMask) == Constants::kHeadFlag;
     }
 
-    NODISCARD bool IsSlotAlive() const {
+    AM_NODISCARD bool IsSlotAlive() const {
         return !(IsSlotEmpty() || IsSlotTombStone());
     }
 
@@ -526,7 +526,7 @@ struct MapImplV2<K, V, Hasher>::Cursor {
     }
 
     // Whether the slot has the next slot on the linked list
-    NODISCARD bool HasNextSlot() const {
+    AM_NODISCARD bool HasNextSlot() const {
         const auto idx = std::to_integer<uint8_t>(
                 GetSlotMetadata() & Constants::kOffsetIdxMask);
         return Constants::NextProbePosOffset[idx] != 0;
@@ -551,7 +551,7 @@ struct MapImplV2<K, V, Hasher>::Cursor {
     }
 
     // Get the prev slot on the linked list
-    NODISCARD Cursor FindPrevSlot() const {
+    AM_NODISCARD Cursor FindPrevSlot() const {
         // start from the head of the linked list, which must exist
         auto cur = owner()->CreateCursorFromHash(hasher()(GetKey()));
         auto prev = cur;
@@ -565,7 +565,7 @@ struct MapImplV2<K, V, Hasher>::Cursor {
         return prev;
     }
 
-    NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
+    AM_NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
         for (uint8_t i = 1; i < Constants::kNumOffsetDists; ++i) {
             if (Cursor candidate(
                         index() + (Constants::NextProbePosOffset[i] & owner()->slots() - 1), owner());
@@ -576,7 +576,7 @@ struct MapImplV2<K, V, Hasher>::Cursor {
         return std::nullopt;
     }
 
-    NODISCARD bool IsNone() const {
+    AM_NODISCARD bool IsNone() const {
         return owner() == nullptr;
     }
 
@@ -607,15 +607,15 @@ public:
         requires(IsConst && !AlwaysFalse)
     Iterator(const Iterator<AlwaysFalse>& other) : index_(other.index()), version_(other.version()), ptr_(other.ptr()) {}//NOLINT
 
-    NODISCARD size_type index() const noexcept {
+    AM_NODISCARD size_type index() const noexcept {
         return index_;
     }
 
-    NODISCARD ContainerPtrType ptr() const noexcept {
+    AM_NODISCARD ContainerPtrType ptr() const noexcept {
         return ptr_;
     }
 
-    NODISCARD size_type version() const noexcept {
+    AM_NODISCARD size_type version() const noexcept {
         return version_;
     }
 

@@ -33,23 +33,23 @@ public:
 
     MapObj() : data_(nullptr), size_(0), slots_(0) {}
 
-    NODISCARD void* data() const {
+    AM_NODISCARD void* data() const {
         return data_;
     }
 
-    NODISCARD size_type size() const {
+    AM_NODISCARD size_type size() const {
         return size_;
     }
 
-    NODISCARD size_type slots() const {
+    AM_NODISCARD size_type slots() const {
         return slots_;
     }
 
-    NODISCARD bool empty() const {
+    AM_NODISCARD bool empty() const {
         return size() == 0;
     }
 
-    NODISCARD size_t count(const key_type& key) const {
+    AM_NODISCARD size_t count(const key_type& key) const {
         return GetDerivedPtr()->count_impl(key);
     }
 
@@ -57,51 +57,51 @@ public:
         return GetDerivedPtr()->AtImpl(key);
     }
 
-    NODISCARD const mapped_type& at(const key_type& key) const {
+    AM_NODISCARD const mapped_type& at(const key_type& key) const {
         return GetDerivedPtr()->AtImpl(key);
     }
 
-    NODISCARD value_type* GetDataPtr(size_t idx) {
+    AM_NODISCARD value_type* GetDataPtr(size_t idx) {
         return GetDerivedPtr()->GetDataPtrImpl(idx);
     }
 
-    NODISCARD const value_type* GetDataPtr(size_t idx) const {
+    AM_NODISCARD const value_type* GetDataPtr(size_t idx) const {
         return GetDerivedPtr()->GetDataPtrImpl(idx);
     }
 
-    NODISCARD size_t GetNextIndexOf(size_t idx) const {
+    AM_NODISCARD size_t GetNextIndexOf(size_t idx) const {
         return GetDerivedPtr()->GetNextIndexOfImpl(idx);
     }
 
-    NODISCARD size_t GetPrevIndexOf(size_t idx) const {
+    AM_NODISCARD size_t GetPrevIndexOf(size_t idx) const {
         return GetDerivedPtr()->GetPrevIndexOfImpl(idx);
     }
 
-    NODISCARD const_iterator begin() const {
+    AM_NODISCARD const_iterator begin() const {
         return GetDerivedPtr()->BeginImpl();
     }
 
-    NODISCARD const_iterator end() const {
+    AM_NODISCARD const_iterator end() const {
         return GetDerivedPtr()->EndImpl();
     }
 
-    NODISCARD iterator begin() {
+    AM_NODISCARD iterator begin() {
         return GetDerivedPtr()->BeginImpl();
     }
 
-    NODISCARD iterator end() {
+    AM_NODISCARD iterator end() {
         return GetDerivedPtr()->EndImpl();
     }
 
-    NODISCARD const_iterator find(const key_type& key) const {
+    AM_NODISCARD const_iterator find(const key_type& key) const {
         return GetDerivedPtr()->FindImpl(key);
     }
 
-    NODISCARD iterator find(const key_type& key) {
+    AM_NODISCARD iterator find(const key_type& key) {
         return GetDerivedPtr()->FindImpl(key);
     }
 
-    NODISCARD iterator erase(iterator pos) {
+    AM_NODISCARD iterator erase(iterator pos) {
         return GetDerivedPtr()->EraseImpl(pos);
     }
 
@@ -114,11 +114,11 @@ protected:
     static constexpr size_type kThreshold = 4;// The threshold of the small and dense map
     static constexpr size_type kIncFactor = 2;
 
-    NODISCARD Derived* GetDerivedPtr() noexcept {
+    AM_NODISCARD Derived* GetDerivedPtr() noexcept {
         return static_cast<Derived*>(this);
     }
 
-    NODISCARD const Derived* GetDerivedPtr() const noexcept {
+    AM_NODISCARD const Derived* GetDerivedPtr() const noexcept {
         return static_cast<const Derived*>(this);
     }
 
@@ -155,27 +155,27 @@ public:
 private:
     std::array<std::byte, sizeof(value_type) * BaseType::kThreshold> storage_;
 
-    NODISCARD iterator BeginImpl() {
+    AM_NODISCARD iterator BeginImpl() {
         return {0, this};
     }
 
-    NODISCARD iterator EndImpl() {
+    AM_NODISCARD iterator EndImpl() {
         return {this->size(), this};
     }
 
-    NODISCARD const_iterator begin_impl() const {
+    AM_NODISCARD const_iterator begin_impl() const {
         return const_cast<SmallMapObj*>(this)->BeginImpl();
     }
 
-    NODISCARD const_iterator EndImpl() const {
+    AM_NODISCARD const_iterator EndImpl() const {
         return const_cast<SmallMapObj*>(this)->EndImpl();
     }
 
-    NODISCARD const_iterator FindImpl(const key_type& key) const;
+    AM_NODISCARD const_iterator FindImpl(const key_type& key) const;
 
-    NODISCARD iterator FindImpl(const key_type& key);
+    AM_NODISCARD iterator FindImpl(const key_type& key);
 
-    NODISCARD size_type count_impl(const key_type& key) const {
+    AM_NODISCARD size_type count_impl(const key_type& key) const {
         return FindImpl(key) != EndImpl();
     }
 
@@ -187,23 +187,23 @@ private:
         return iter->second;
     }
 
-    NODISCARD const mapped_type& AtImpl(const key_type& key) const {
+    AM_NODISCARD const mapped_type& AtImpl(const key_type& key) const {
         return const_cast<SmallMapObj*>(this)->AtImpl(key);
     }
 
-    NODISCARD value_type* GetDataPtrImpl(size_type index) {
+    AM_NODISCARD value_type* GetDataPtrImpl(size_type index) {
         return static_cast<value_type*>(static_cast<void*>(storage_.data())) + index;
     }
 
-    NODISCARD const value_type* GetDataPtrImpl(size_type index) const {
+    AM_NODISCARD const value_type* GetDataPtrImpl(size_type index) const {
         return const_cast<SmallMapObj*>(this)->GetDataPtrImpl(index);
     }
 
-    NODISCARD size_type GetNextIndexOfImpl(size_type idx) const {
+    AM_NODISCARD size_type GetNextIndexOfImpl(size_type idx) const {
         return idx + 1 < this->size() ? idx + 1 : this->size();
     }
 
-    NODISCARD size_type GetPrevIndexOfImpl(size_type idx) const {
+    AM_NODISCARD size_type GetPrevIndexOfImpl(size_type idx) const {
         return idx > 0 ? idx - 1 : this->size();
     }
 
@@ -358,27 +358,27 @@ private:
     struct Block;
     class Cursor;
 
-    NODISCARD iterator BeginImpl() {
+    AM_NODISCARD iterator BeginImpl() {
         return {iter_list_head_, this};
     }
 
-    NODISCARD iterator EndImpl() {
+    AM_NODISCARD iterator EndImpl() {
         return {kInvalidIndex, this};
     }
 
-    NODISCARD const_iterator BeginImpl() const {
+    AM_NODISCARD const_iterator BeginImpl() const {
         return const_cast<DenseMapObj*>(this)->BeginImpl();
     }
 
-    NODISCARD const_iterator EndImpl() const {
+    AM_NODISCARD const_iterator EndImpl() const {
         return const_cast<DenseMapObj*>(this)->EndImpl();
     }
 
-    NODISCARD const_iterator FindImpl(const key_type& key) const {
+    AM_NODISCARD const_iterator FindImpl(const key_type& key) const {
         return const_cast<DenseMapObj*>(this)->FindImpl(key);
     }
 
-    NODISCARD iterator FindImpl(const key_type& key) {
+    AM_NODISCARD iterator FindImpl(const key_type& key) {
         // const auto node = Search(key);
         // return node.IsNone() ? EndImpl() : iterator(node.index(), this);
         auto index = Search_debug(key);
@@ -387,32 +387,32 @@ private:
 
     iterator EraseImpl(iterator pos);
 
-    NODISCARD size_type count_impl(const key_type& key) const {
+    AM_NODISCARD size_type count_impl(const key_type& key) const {
         return !Search(key).IsNone();
     }
 
-    NODISCARD mapped_type& AtImpl(const key_type& key) {
+    AM_NODISCARD mapped_type& AtImpl(const key_type& key) {
         return At(key);
     }
 
-    NODISCARD const mapped_type& AtImpl(const key_type& key) const {
+    AM_NODISCARD const mapped_type& AtImpl(const key_type& key) const {
         return At(key);
     }
 
-    NODISCARD Cursor CreateCursorFromHash(size_t hash_value) const {
+    AM_NODISCARD Cursor CreateCursorFromHash(size_t hash_value) const {
         return {details::FibonacciHash(hash_value, fib_shift_), this};
     }
 
-    NODISCARD Block* GetBlockByIndex(size_t block_idx) const {
+    AM_NODISCARD Block* GetBlockByIndex(size_t block_idx) const {
         return static_cast<Block*>(this->data()) + block_idx;
     }
 
-    NODISCARD value_type* GetDataPtrImpl(size_t index) const {
+    AM_NODISCARD value_type* GetDataPtrImpl(size_t index) const {
         return &Cursor(index, this).GetData();
     }
 
     // Construct a ListNode from hash code if the position is head of list
-    NODISCARD std::optional<Cursor> FindListHeadByHash(size_t hash_value) const {
+    AM_NODISCARD std::optional<Cursor> FindListHeadByHash(size_t hash_value) const {
         if (const auto head = CreateCursorFromHash(hash_value); head.IsHead()) {
             return head;
         }
@@ -420,11 +420,11 @@ private:
         return std::nullopt;
     }
 
-    NODISCARD size_type GetNextIndexOfImpl(size_type idx) const;
+    AM_NODISCARD size_type GetNextIndexOfImpl(size_type idx) const;
 
-    NODISCARD size_type GetPrevIndexOfImpl(size_type idx) const;
+    AM_NODISCARD size_type GetPrevIndexOfImpl(size_type idx) const;
 
-    NODISCARD mapped_type& At(const key_type& key) const;
+    AM_NODISCARD mapped_type& At(const key_type& key) const;
 
     void reset();
 
@@ -433,12 +433,12 @@ private:
    * \param key The key
    * \return ListNode that associated with the key
    */
-    NODISCARD Cursor Search(const key_type& key) const;
+    AM_NODISCARD Cursor Search(const key_type& key) const;
 
-    NODISCARD size_type Search_debug(const key_type& key) const;
+    AM_NODISCARD size_type Search_debug(const key_type& key) const;
 
     // Whether the hash table is full.
-    NODISCARD bool IsFull() const {
+    AM_NODISCARD bool IsFull() const {
         return this->size() + 1 >
                static_cast<size_type>(static_cast<double>(this->slots()) * kMaxLoadFactor);
     }
@@ -570,11 +570,11 @@ public:
 
     Cursor(size_t index, const DenseMapObj* p) : index_(index), obj_(p) {}
 
-    NODISCARD size_t index() const {
+    AM_NODISCARD size_t index() const {
         return index_;
     }
 
-    NODISCARD const DenseMapObj* obj() const {
+    AM_NODISCARD const DenseMapObj* obj() const {
         return obj_;
     }
 
@@ -583,60 +583,60 @@ public:
         obj_ = nullptr;
     }
 
-    NODISCARD bool IsIterListHead() const {
+    AM_NODISCARD bool IsIterListHead() const {
         AM_CHECK(!IsNone(), "The Cursor is none.");
         return index() == obj()->iter_list_head_;
     }
 
-    NODISCARD bool IsIterListTail() const {
+    AM_NODISCARD bool IsIterListTail() const {
         AM_CHECK(!IsNone(), "The Cursor is none.");
         return index() == obj()->iter_list_tail_;
     }
 
-    NODISCARD Block* GetBlock() const {
+    AM_NODISCARD Block* GetBlock() const {
         AM_CHECK(!IsNone(), "The Cursor is none.");
         return obj()->GetBlockByIndex(index() / kEntriesPerBlock);
     }
 
     // Get metadata of an entry
-    NODISCARD std::byte& GetSlotMetadata() const {
+    AM_NODISCARD std::byte& GetSlotMetadata() const {
         // equal to index() % kEntriesPerBlock
         return GetBlock()->storage_[index() & (kEntriesPerBlock - 1)];
     }
 
     // Get the entry ref
-    NODISCARD Entry& GetEntry() const {
+    AM_NODISCARD Entry& GetEntry() const {
         AM_CHECK(!IsNone(), "The Cursor is none.");
         AM_CHECK(!IsSlotEmpty(), "The entry is empty.");
         return *GetBlock()->GetEntryPtr(index() & (kEntriesPerBlock - 1));
     }
 
     // Get KV
-    NODISCARD value_type& GetData() const {
+    AM_NODISCARD value_type& GetData() const {
         return GetEntry().data;
     }
 
-    NODISCARD const key_type& GetKey() const {
+    AM_NODISCARD const key_type& GetKey() const {
         return GetData().first;
     }
 
-    NODISCARD mapped_type& GetValue() const {
+    AM_NODISCARD mapped_type& GetValue() const {
         return GetData().second;
     }
 
-    NODISCARD bool IsNone() const {
+    AM_NODISCARD bool IsNone() const {
         return obj() == nullptr;
     }
 
-    NODISCARD bool IsSlotEmpty() const {
+    AM_NODISCARD bool IsSlotEmpty() const {
         return GetSlotMetadata() == MagicConstants::kEmptySlot;
     }
 
-    NODISCARD bool IsSlotProtected() const {
+    AM_NODISCARD bool IsSlotProtected() const {
         return GetSlotMetadata() == MagicConstants::kProtectedSlot;
     }
 
-    NODISCARD bool IsHead() const {
+    AM_NODISCARD bool IsHead() const {
         return (GetSlotMetadata() & MagicConstants::kHeadFlagMask) == MagicConstants::kHeadFlag;
     }
 
@@ -690,7 +690,7 @@ public:
     }
 
     // Whether the slot has the next slot on the linked list
-    NODISCARD bool HasNextSlot() const {
+    AM_NODISCARD bool HasNextSlot() const {
         const auto idx = std::to_integer<uint8_t>(GetSlotMetadata() & MagicConstants::kOffsetIdxMask);
         return MagicConstants::NextProbePosOffset[idx] != 0;
     }
@@ -714,7 +714,7 @@ public:
     }
 
     // Get the prev slot on the linked list
-    NODISCARD Cursor FindPrevSlot() const {
+    AM_NODISCARD Cursor FindPrevSlot() const {
         // start from the head of the linked list, which must exist
         auto cur = obj()->CreateCursorFromHash(hasher()(GetKey()));
         auto prev = cur;
@@ -728,7 +728,7 @@ public:
         return prev;
     }
 
-    NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
+    AM_NODISCARD std::optional<std::pair<uint8_t, Cursor>> GetNextEmptySlot() const {
         for (uint8_t i = 1; i < MagicConstants::kNumOffsetDists; ++i) {
             if (Cursor candidate((index() + MagicConstants::NextProbePosOffset[i]) & (obj()->slots() - 1), obj());
                 candidate.IsSlotEmpty()) {
@@ -1278,27 +1278,27 @@ public:
         return *this;
     }
 
-    NODISCARD size_type size() const noexcept {
+    AM_NODISCARD size_type size() const noexcept {
         return std::visit([](const auto& arg) { return arg->size(); }, obj_);
     }
 
-    NODISCARD size_type slots() const noexcept {
+    AM_NODISCARD size_type slots() const noexcept {
         return std::visit([](const auto& arg) { return arg->slots(); }, obj_);
     }
 
-    NODISCARD bool empty() const noexcept {
+    AM_NODISCARD bool empty() const noexcept {
         return size() == 0;
     }
 
-    NODISCARD uint32_t use_count() const noexcept {
+    AM_NODISCARD uint32_t use_count() const noexcept {
         return std::visit([](const auto& arg) { return arg->use_count(); }, obj_);
     }
 
-    NODISCARD bool unique() const noexcept {
+    AM_NODISCARD bool unique() const noexcept {
         return use_count() == 1;
     }
 
-    NODISCARD size_type count(const key_type& key) const {
+    AM_NODISCARD size_type count(const key_type& key) const {
         return contains(key) ? 1 : 0;
     }
 
@@ -1456,18 +1456,18 @@ public:
         std::swap(obj_, other.obj_);
     }
 
-    NODISCARD bool IsSmallMap() const {
+    AM_NODISCARD bool IsSmallMap() const {
         return std::holds_alternative<ObjectPtr<SmallMapType>>(obj_);
     }
 
 private:
     std::variant<ObjectPtr<SmallMapType>, ObjectPtr<DenseMapType>> obj_;
 
-    NODISCARD SmallMapType* small_ptr() const {
+    AM_NODISCARD SmallMapType* small_ptr() const {
         return std::get<ObjectPtr<SmallMapType>>(obj_).get();
     }
 
-    NODISCARD DenseMapType* dense_ptr() const {
+    AM_NODISCARD DenseMapType* dense_ptr() const {
         return std::get<ObjectPtr<DenseMapType>>(obj_).get();
     }
 
@@ -1585,11 +1585,11 @@ public:
         requires(IsConst && !AlwaysFalse)
     IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
 
-    NODISCARD size_t index() const noexcept {
+    AM_NODISCARD size_t index() const noexcept {
         return index_;
     }
 
-    NODISCARD ContainerPtrType ptr() const noexcept {
+    AM_NODISCARD ContainerPtrType ptr() const noexcept {
         return ptr_;
     }
 
@@ -1731,11 +1731,11 @@ public:
         std::visit([&](const auto& iter) { iter_ = iter; }, other.iter_);
     }
 
-    NODISCARD size_type index() const {
+    AM_NODISCARD size_type index() const {
         return std::visit([](const auto& iter) { return iter.index(); }, iter_);
     }
 
-    NODISCARD bool IsSmallMap() const {
+    AM_NODISCARD bool IsSmallMap() const {
         return std::holds_alternative<SmallIterType>(iter_);
     }
 

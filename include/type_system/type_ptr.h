@@ -199,13 +199,13 @@ private:
             return repr;
         }
 
-        NODISCARD bool is_not_null() const {
+        AM_NODISCARD bool is_not_null() const {
             auto repr = get_raw_repr();
             AM_CHECK(repr.null_if_singleton_ == nullptr || repr.first_ != nullptr);
             return repr.first_ != nullptr;
         }
 
-        NODISCARD bool is_shared_and_not_null() const {
+        AM_NODISCARD bool is_shared_and_not_null() const {
             return get_raw_repr().null_if_singleton_ != nullptr;
         }
 

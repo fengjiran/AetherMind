@@ -39,11 +39,11 @@ class PackedArgs {
 public:
     PackedArgs(const Any* args, int32_t size) : args_(args), size_(size) {}
 
-    NODISCARD int32_t size() const {
+    AM_NODISCARD int32_t size() const {
         return size_;
     }
 
-    NODISCARD const Any* data() const {
+    AM_NODISCARD const Any* data() const {
         return args_;
     }
 
@@ -51,7 +51,7 @@ public:
         return args_[i];
     }
 
-    NODISCARD PackedArgs slice(int begin, int end = -1) const {
+    AM_NODISCARD PackedArgs slice(int begin, int end = -1) const {
         if (end == -1) {
             end = size_;
         }
@@ -104,15 +104,15 @@ public:
         callable_(this, args, num_args, res);
     }
 
-    NODISCARD const String& schema() const {
+    AM_NODISCARD const String& schema() const {
         return schema_;
     }
 
-    NODISCARD const QualifiedName& GetQualifiedName() const {
+    AM_NODISCARD const QualifiedName& GetQualifiedName() const {
         return qualified_name_;
     }
 
-    NODISCARD const String& GetName() const {
+    AM_NODISCARD const String& GetName() const {
         return qualified_name_.GetName();
     }
 
@@ -186,25 +186,25 @@ public:
         return Function(f, qualified_name, FuncInfo::Schema());
     }
 
-    NODISCARD static std::optional<Function> GetGlobalFunction(const String& name);
+    AM_NODISCARD static std::optional<Function> GetGlobalFunction(const String& name);
 
-    NODISCARD static Function GetGlobalFunctionRequired(const String& name);
+    AM_NODISCARD static Function GetGlobalFunctionRequired(const String& name);
 
-    NODISCARD static Array<String> ListGlobalFunctionNames();
+    AM_NODISCARD static Array<String> ListGlobalFunctionNames();
 
-    NODISCARD bool defined() const noexcept;
+    AM_NODISCARD bool defined() const noexcept;
 
-    NODISCARD uint32_t use_count() const noexcept;
+    AM_NODISCARD uint32_t use_count() const noexcept;
 
-    NODISCARD bool unique() const noexcept;
+    AM_NODISCARD bool unique() const noexcept;
 
-    NODISCARD const String& schema() const noexcept;
+    AM_NODISCARD const String& schema() const noexcept;
 
-    NODISCARD const QualifiedName& GetQualifiedName() const noexcept;
+    AM_NODISCARD const QualifiedName& GetQualifiedName() const noexcept;
 
-    NODISCARD FunctionImpl* get_impl_ptr_unsafe() const noexcept;
+    AM_NODISCARD FunctionImpl* get_impl_ptr_unsafe() const noexcept;
 
-    NODISCARD FunctionImpl* release_impl_unsafe() noexcept;
+    AM_NODISCARD FunctionImpl* release_impl_unsafe() noexcept;
 
     template<typename... Args>
     Any operator()(Args&&... args) const {
@@ -264,7 +264,7 @@ public:
         return packed();
     }
 
-    NODISCARD const Function& packed() const& {
+    AM_NODISCARD const Function& packed() const& {
         return packed_func_;
     }
 
@@ -272,7 +272,7 @@ public:
         return std::move(packed_func_);
     }
 
-    NODISCARD const String& schema() const noexcept {
+    AM_NODISCARD const String& schema() const noexcept {
         return packed_func_.schema();
     }
 

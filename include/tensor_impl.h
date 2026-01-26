@@ -108,43 +108,43 @@ public:
     /**
      * The number of elements in a tensor.
      **/
-    NODISCARD int64_t numel() const;
+    AM_NODISCARD int64_t numel() const;
 
-    NODISCARD bool empty() const;
+    AM_NODISCARD bool empty() const;
 
     /**
      * Return the number of dimensions of this tensor.  Note that 0-dimension
      * represents a Tensor that is a Scalar, e.g., one that has a single element.
      **/
-    NODISCARD int64_t ndim() const;
+    AM_NODISCARD int64_t ndim() const;
 
     /**
      * Return the shape of this tensor.
      **/
-    NODISCARD IntArrayView shape() const;
+    AM_NODISCARD IntArrayView shape() const;
 
-    NODISCARD int64_t shape(int64_t dim) const;
+    AM_NODISCARD int64_t shape(int64_t dim) const;
 
     /**
      * Return the strides of this tensor.
      **/
-    NODISCARD IntArrayView strides() const;
+    AM_NODISCARD IntArrayView strides() const;
 
-    NODISCARD int64_t strides(int64_t dim) const;
+    AM_NODISCARD int64_t strides(int64_t dim) const;
 
-    NODISCARD size_t itemsize() const;
+    AM_NODISCARD size_t itemsize() const;
 
-    NODISCARD bool has_storage() const;
+    AM_NODISCARD bool has_storage() const;
 
-    NODISCARD const Storage& storage() const;
+    AM_NODISCARD const Storage& storage() const;
 
     /**
      * True if a tensor is storage initialized.  A tensor may become
      * storage UNINITIALIZED after a Resize() or FreeMemory()
      **/
-    NODISCARD bool storage_initialized() const;
+    AM_NODISCARD bool storage_initialized() const;
 
-    NODISCARD bool dtype_initialized() const;
+    AM_NODISCARD bool dtype_initialized() const;
 
     /**
      * Return the offset in number of elements into the storage that this
@@ -153,25 +153,25 @@ public:
      *
      * WARNING: This is NOT computed in bytes.
      **/
-    NODISCARD int64_t storage_offset() const;
+    AM_NODISCARD int64_t storage_offset() const;
 
-    NODISCARD Device device() const;
+    AM_NODISCARD Device device() const;
 
-    NODISCARD DataType dtype() const;
+    AM_NODISCARD DataType dtype() const;
 
-    NODISCARD bool is_cpu() const;
+    AM_NODISCARD bool is_cpu() const;
 
-    NODISCARD bool is_cuda() const;
+    AM_NODISCARD bool is_cuda() const;
 
-    NODISCARD int64_t get_real_dim(int64_t dim) const;
+    AM_NODISCARD int64_t get_real_dim(int64_t dim) const;
 
     // TODO: layout
-    NODISCARD Layout layout() const {
+    AM_NODISCARD Layout layout() const {
         return layout_;
     }
 
     // TODO: is nested
-    NODISCARD bool is_nested() const {
+    AM_NODISCARD bool is_nested() const {
         return false;
     }
 
@@ -183,7 +183,7 @@ public:
    * requires gradient and has no history is a "leaf" tensor, which we
    * accumulate gradients into.
    */
-    NODISCARD bool requires_grad() const {
+    AM_NODISCARD bool requires_grad() const {
         return true;
     }
 
@@ -194,7 +194,7 @@ public:
    * compute_contiguous() for the exact definition of whether
    * a tensor is contiguous or not.
    */
-    NODISCARD bool is_contiguous() const;
+    AM_NODISCARD bool is_contiguous() const;
 
     /**
    * Return a void* data pointer to the actual data which this tensor refers to.
@@ -205,9 +205,9 @@ public:
    * assume that itemsize() * numel() is sufficient to compute the bytes that
    * can be validly read from this tensor.
    */
-    NODISCARD void* data() const;
+    AM_NODISCARD void* data() const;
 
-    NODISCARD const void* const_data() const;
+    AM_NODISCARD const void* const_data() const;
 
     void set_shape_and_strides(IntArrayView shape,
                                IntArrayView strides,
@@ -220,7 +220,7 @@ public:
      * tensor. Catches integer overflow that may occur when a tensor
      * using a sparse layout has multiple dimensions with large sizes.
      */
-    NODISCARD int64_t safe_compute_numel() const;
+    AM_NODISCARD int64_t safe_compute_numel() const;
 
     void refresh_numel();
 
@@ -238,7 +238,7 @@ public:
 
     void set_contiguous(bool b);
 
-    NODISCARD bool compute_contiguous() const;
+    AM_NODISCARD bool compute_contiguous() const;
 
     template<typename T>
     T* data_ptr_impl() const {
@@ -258,7 +258,7 @@ public:
 
 private:
     template<typename Void, typename Func>
-    NODISCARD Void* data_impl(const Func& get_data) const {
+    AM_NODISCARD Void* data_impl(const Func& get_data) const {
         if (!has_storage()) {
             // throw std::runtime_error("Can't access data pointer of Tensor that doesn't have storage.");
             AM_THROW(runtime_error) << "Can't access data pointer of Tensor that doesn't have storage.";

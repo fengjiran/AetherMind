@@ -38,43 +38,43 @@ public:
     Argument& operator=(const Argument& other);
     Argument& operator=(Argument&& other) noexcept;
 
-    NODISCARD const String& name() const {
+    AM_NODISCARD const String& name() const {
         return name_;
     }
 
-    NODISCARD const TypePtr& type() const {
+    AM_NODISCARD const TypePtr& type() const {
         return type_;
     }
 
-    NODISCARD const TypePtr& real_type() const {
+    AM_NODISCARD const TypePtr& real_type() const {
         return real_type_;
     }
 
-    NODISCARD const std::optional<int32_t>& N() const {
+    AM_NODISCARD const std::optional<int32_t>& N() const {
         return N_;
     }
 
-    NODISCARD const std::optional<Any>& default_value() const {
+    AM_NODISCARD const std::optional<Any>& default_value() const {
         return default_value_;
     }
 
-    NODISCARD const AliasInfo* alias_info() const {
+    AM_NODISCARD const AliasInfo* alias_info() const {
         return alias_info_.get();
     }
 
-    NODISCARD bool IsKwargOnly() const {
+    AM_NODISCARD bool IsKwargOnly() const {
         return kwarg_only_;
     }
 
-    NODISCARD bool IsOut() const {
+    AM_NODISCARD bool IsOut() const {
         return is_out_;
     }
 
-    NODISCARD bool IsInferredType() const;
+    AM_NODISCARD bool IsInferredType() const;
 
-    NODISCARD Argument CloneWithType(const TypePtr& new_type) const;
+    AM_NODISCARD Argument CloneWithType(const TypePtr& new_type) const;
 
-    NODISCARD String TypeMismatchMsg(const String& actual_type) const;
+    AM_NODISCARD String TypeMismatchMsg(const String& actual_type) const;
 
     void swap(Argument& other) noexcept;
 
@@ -135,7 +135,7 @@ public:
     FunctionSchema(Symbol name, String overload_name, std::vector<Argument> arguments,
                    std::vector<Argument> returns, bool is_var_args, bool is_var_returns);
 
-    NODISCARD const std::vector<Argument>& arguments() const {
+    AM_NODISCARD const std::vector<Argument>& arguments() const {
         return arguments_;
     }
 

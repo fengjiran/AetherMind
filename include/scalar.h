@@ -61,31 +61,31 @@ public:
         return *this;
     }
 
-    NODISCARD bool is_integral() const {
+    AM_NODISCARD bool is_integral() const {
         return dtype_.IsInt() || dtype_.IsUint();
     }
 
-    NODISCARD bool is_signed_integral() const {
+    AM_NODISCARD bool is_signed_integral() const {
         return dtype_.IsInt();
     }
 
-    NODISCARD bool is_unsigned_integral() const {
+    AM_NODISCARD bool is_unsigned_integral() const {
         return dtype_.IsUint();
     }
 
-    NODISCARD bool is_floating_point() const {
+    AM_NODISCARD bool is_floating_point() const {
         return dtype_.IsFloat();
     }
 
-    NODISCARD bool is_bool() const {
+    AM_NODISCARD bool is_bool() const {
         return dtype_.IsBool();
     }
 
-    NODISCARD bool is_complex() const {
+    AM_NODISCARD bool is_complex() const {
         return dtype_.IsComplex();
     }
 
-    NODISCARD DataType type() const {
+    AM_NODISCARD DataType type() const {
         return dtype_;
     }
 
@@ -95,8 +95,8 @@ public:
     }
 
     Scalar operator-() const;
-    NODISCARD Scalar log() const;
-    NODISCARD Scalar conj() const;
+    AM_NODISCARD Scalar log() const;
+    AM_NODISCARD Scalar conj() const;
 
 #define ACCESSOR(code, bits, lanes, type, name)                       \
     type to##name() const {                                           \
@@ -189,7 +189,7 @@ public:
         AM_UNREACHABLE();
     }
 
-    NODISCARD bool equal(bool x) const {
+    AM_NODISCARD bool equal(bool x) const {
         if (is_bool()) {
             return static_cast<bool>(v.i) == x;
         }

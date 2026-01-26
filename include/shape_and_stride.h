@@ -101,23 +101,23 @@ public:
         }
     }
 
-    NODISCARD size_t size() const noexcept {
+    AM_NODISCARD size_t size() const noexcept {
         return size_;
     }
 
-    NODISCARD int64_t* shape_data() noexcept {
+    AM_NODISCARD int64_t* shape_data() noexcept {
         return is_inline() ? &inline_storage_[0] : &outline_storage_[0];
     }
 
-    NODISCARD const int64_t* shape_data() const noexcept {
+    AM_NODISCARD const int64_t* shape_data() const noexcept {
         return is_inline() ? &inline_storage_[0] : &outline_storage_[0];
     }
 
-    NODISCARD int64_t* stride_data() noexcept {
+    AM_NODISCARD int64_t* stride_data() noexcept {
         return is_inline() ? &inline_storage_[MAX_INLINE_SIZE] : &outline_storage_[size()];
     }
 
-    NODISCARD const int64_t* stride_data() const noexcept {
+    AM_NODISCARD const int64_t* stride_data() const noexcept {
         return is_inline() ? &inline_storage_[MAX_INLINE_SIZE] : &outline_storage_[size()];
     }
 
@@ -125,7 +125,7 @@ public:
         return shape_data();
     }
 
-    NODISCARD const int64_t* shape_begin() const noexcept {
+    AM_NODISCARD const int64_t* shape_begin() const noexcept {
         return shape_data();
     }
 
@@ -133,7 +133,7 @@ public:
         return shape_data() + size();
     }
 
-    NODISCARD const int64_t* shape_end() const noexcept {
+    AM_NODISCARD const int64_t* shape_end() const noexcept {
         return shape_data() + size();
     }
 
@@ -141,7 +141,7 @@ public:
         return stride_data();
     }
 
-    NODISCARD const int64_t* stride_begin() const noexcept {
+    AM_NODISCARD const int64_t* stride_begin() const noexcept {
         return stride_data();
     }
 
@@ -149,43 +149,43 @@ public:
         return stride_data() + size();
     }
 
-    NODISCARD const int64_t* stride_end() const noexcept {
+    AM_NODISCARD const int64_t* stride_end() const noexcept {
         return stride_data() + size();
     }
 
-    NODISCARD int64_t shape_at(size_t idx) const noexcept {
+    AM_NODISCARD int64_t shape_at(size_t idx) const noexcept {
         AM_CHECK(idx < size());
         return shape_data()[idx];
     }
 
-    NODISCARD int64_t& shape_at(size_t idx) noexcept {
+    AM_NODISCARD int64_t& shape_at(size_t idx) noexcept {
         AM_CHECK(idx < size());
         return shape_data()[idx];
     }
 
-    NODISCARD int64_t shape_at_uncheck(size_t idx) const noexcept {
+    AM_NODISCARD int64_t shape_at_uncheck(size_t idx) const noexcept {
         return shape_data()[idx];
     }
 
-    NODISCARD int64_t& shape_at_uncheck(size_t idx) noexcept {
+    AM_NODISCARD int64_t& shape_at_uncheck(size_t idx) noexcept {
         return shape_data()[idx];
     }
 
-    NODISCARD int64_t stride_at(size_t idx) const noexcept {
-        AM_CHECK(idx < size());
-        return stride_data()[idx];
-    }
-
-    NODISCARD int64_t& stride_at(size_t idx) noexcept {
+    AM_NODISCARD int64_t stride_at(size_t idx) const noexcept {
         AM_CHECK(idx < size());
         return stride_data()[idx];
     }
 
-    NODISCARD int64_t stride_at_uncheck(size_t idx) const noexcept {
+    AM_NODISCARD int64_t& stride_at(size_t idx) noexcept {
+        AM_CHECK(idx < size());
         return stride_data()[idx];
     }
 
-    NODISCARD int64_t& stride_at_uncheck(size_t idx) noexcept {
+    AM_NODISCARD int64_t stride_at_uncheck(size_t idx) const noexcept {
+        return stride_data()[idx];
+    }
+
+    AM_NODISCARD int64_t& stride_at_uncheck(size_t idx) noexcept {
         return stride_data()[idx];
     }
 
@@ -199,11 +199,11 @@ public:
         std::copy(strides.begin(), strides.end(), stride_begin());
     }
 
-    NODISCARD IntArrayView get_shape() const {
+    AM_NODISCARD IntArrayView get_shape() const {
         return {shape_begin(), shape_end()};
     }
 
-    NODISCARD IntArrayView get_strides() const {
+    AM_NODISCARD IntArrayView get_strides() const {
         return {stride_begin(), stride_end()};
     }
 
@@ -271,7 +271,7 @@ public:
     }
 
 private:
-    NODISCARD bool is_inline() const noexcept {
+    AM_NODISCARD bool is_inline() const noexcept {
         return size_ <= MAX_INLINE_SIZE;
     }
 

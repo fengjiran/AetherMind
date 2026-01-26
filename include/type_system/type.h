@@ -143,49 +143,49 @@ DECLARE_SINGLETON_TYPE(DeviceObjType);
 using TypePtr = SingletonOrSharedTypePtr<Type>;
 class Type {
 public:
-    NODISCARD TypeKind kind() const;
+    AM_NODISCARD TypeKind kind() const;
 
-    NODISCARD virtual String str() const = 0;
+    AM_NODISCARD virtual String str() const = 0;
 
     // a == b
-    NODISCARD virtual bool Equals(const Type& rhs) const = 0;
+    AM_NODISCARD virtual bool Equals(const Type& rhs) const = 0;
 
     // a == b <=> b == a
-    NODISCARD virtual bool IsSymmetric() const;
+    AM_NODISCARD virtual bool IsSymmetric() const;
 
-    NODISCARD virtual bool IsUnionType() const;
+    AM_NODISCARD virtual bool IsUnionType() const;
 
-    NODISCARD virtual bool requires_grad() const;
+    AM_NODISCARD virtual bool requires_grad() const;
 
     // list of types this type contains, e.g. for a List then element type of
     // list for a tuple, the types of the tuple elements
-    NODISCARD virtual ArrayView<TypePtr> GetContainedTypes() const;
+    AM_NODISCARD virtual ArrayView<TypePtr> GetContainedTypes() const;
 
-    NODISCARD virtual TypePtr GetContainedType(size_t i) const;
+    AM_NODISCARD virtual TypePtr GetContainedType(size_t i) const;
 
-    NODISCARD virtual size_t GetContainedTypeSize() const;
+    AM_NODISCARD virtual size_t GetContainedTypeSize() const;
 
-    NODISCARD virtual TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const;
+    AM_NODISCARD virtual TypePtr CreateWithContainedTypes(const std::vector<TypePtr>&) const;
 
     // create a new version of this type, replacing its contained types with
     // contained_types
     TypePtr WithContainedTypes(const std::vector<TypePtr>& contained_types);
 
-    NODISCARD virtual bool HasFreeVars() const;
+    AM_NODISCARD virtual bool HasFreeVars() const;
 
     // Returns a human-readable string that includes additional information like
     // "type is inferred rather than explicitly defined" to help construct more
     // user-friendly messages.
-    NODISCARD virtual String ReprStr() const;
+    AM_NODISCARD virtual String ReprStr() const;
 
-    NODISCARD virtual bool IsModule() const;
+    AM_NODISCARD virtual bool IsModule() const;
 
-    NODISCARD String Annotation(const TypePrinter& printer) const;
-    NODISCARD String Annotation() const;
+    AM_NODISCARD String Annotation(const TypePrinter& printer) const;
+    AM_NODISCARD String Annotation() const;
 
-    NODISCARD virtual bool IsSubtypeOfImpl(const Type& other) const;
+    AM_NODISCARD virtual bool IsSubtypeOfImpl(const Type& other) const;
 
-    NODISCARD bool IsSubtypeOf(const Type& other) const;
+    AM_NODISCARD bool IsSubtypeOf(const Type& other) const;
 
     template<typename T, typename = std::enable_if_t<std::is_base_of_v<Type, T>>>
     bool IsSubtypeOf(const std::shared_ptr<T>& other) const {
@@ -225,7 +225,7 @@ public:
 
     // cast to std::shared_ptr<const T>
     template<typename T, std::enable_if_t<!details::is_singleton_type_v<T>>* = nullptr>
-    NODISCARD std::shared_ptr<const T> Cast() const {
+    AM_NODISCARD std::shared_ptr<const T> Cast() const {
         if (T::Kind == kind()) {
             return std::static_pointer_cast<const T>(static_cast<const T*>(this)->shared_from_this());
         }
@@ -291,7 +291,7 @@ protected:
 
     virtual ~Type() = default;
 
-    NODISCARD virtual String AnnotationImpl(const TypePrinter&) const;
+    AM_NODISCARD virtual String AnnotationImpl(const TypePrinter&) const;
 
 private:
     TypeKind kind_;
@@ -312,7 +312,7 @@ public:
         return elem_;
     }
 
-    NODISCARD bool HasFreeVars() const override {
+    AM_NODISCARD bool HasFreeVars() const override {
         return GetElementType()->HasFreeVars();
     }
 
@@ -361,11 +361,11 @@ protected:
 using AnyTypePtr = SingletonTypePtr<AnyType>;
 class AnyType : public Singleton<AnyType> {
 public:
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "Any";
     }
 
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
@@ -379,11 +379,11 @@ private:
 using NoneTypePtr = SingletonTypePtr<NoneType>;
 class NoneType : public Singleton<NoneType> {
 public:
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "None";
     }
 
@@ -397,13 +397,13 @@ private:
 using NumberTypePtr = SingletonTypePtr<NumberType>;
 class NumberType : public Singleton<NumberType> {
 public:
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "Scalar";
     }
 
-    NODISCARD bool Equals(const Type& other) const override;
+    AM_NODISCARD bool Equals(const Type& other) const override;
 
-    NODISCARD bool IsSubtypeOfImpl(const Type& other) const override;
+    AM_NODISCARD bool IsSubtypeOfImpl(const Type& other) const override;
 
     static constexpr auto Kind = TypeKind::NumberType;
 
@@ -411,7 +411,7 @@ protected:
     explicit NumberType(TypeKind kind = Kind) : Singleton(kind) {}
 
 private:
-    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
+    AM_NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "number";
     }
 
@@ -421,15 +421,15 @@ private:
 using IntTypePtr = SingletonTypePtr<IntType>;
 class IntType : public NumberType {
 public:
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "int";
     }
 
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
-    NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
+    AM_NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
         return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfImpl(other);
     }
 
@@ -442,7 +442,7 @@ public:
 
 private:
     IntType() : NumberType(Kind) {}
-    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
+    AM_NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "int";
     }
 };
@@ -450,15 +450,15 @@ private:
 using FloatTypePtr = SingletonTypePtr<FloatType>;
 class FloatType : public NumberType {
 public:
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "float";
     }
 
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
-    NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
+    AM_NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
         return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfImpl(other);
     }
 
@@ -471,7 +471,7 @@ public:
 
 private:
     FloatType() : NumberType(Kind) {}
-    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
+    AM_NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "float";
     }
 };
@@ -479,15 +479,15 @@ private:
 using ComplexTypePtr = SingletonTypePtr<ComplexType>;
 class ComplexType : public NumberType {
 public:
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "complex";
     }
 
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
-    NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
+    AM_NODISCARD bool IsSubtypeOfImpl(const Type& other) const override {
         return other.kind() == NumberType::Kind || NumberType::IsSubtypeOfImpl(other);
     }
 
@@ -500,7 +500,7 @@ public:
 
 private:
     ComplexType() : NumberType(Kind) {}
-    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
+    AM_NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "complex";
     }
 };
@@ -508,11 +508,11 @@ private:
 using BoolTypePtr = SingletonTypePtr<BoolType>;
 class BoolType : public Singleton<BoolType> {
 public:
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "bool";
     }
 
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return rhs.kind() == kind();
     }
 
@@ -527,11 +527,11 @@ private:
 using StringTypePtr = SingletonOrSharedTypePtr<StringType>;
 class StringType : public Singleton<StringType> {
 public:
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "string";
     }
 
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
@@ -539,7 +539,7 @@ public:
 
 private:
     explicit StringType() : Singleton(Kind) {}
-    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
+    AM_NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "string";
     }
     friend class Singleton;
@@ -548,11 +548,11 @@ private:
 using DeviceObjTypePtr = SingletonOrSharedTypePtr<DeviceObjType>;
 class DeviceObjType : public Singleton<DeviceObjType> {
 public:
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return "Device";
     }
 
-    NODISCARD bool Equals(const Type& rhs) const override {
+    AM_NODISCARD bool Equals(const Type& rhs) const override {
         return kind() == rhs.kind();
     }
 
@@ -560,7 +560,7 @@ public:
 
 private:
     explicit DeviceObjType() : Singleton(Kind) {}
-    NODISCARD String AnnotationImpl(const TypePrinter&) const override {
+    AM_NODISCARD String AnnotationImpl(const TypePrinter&) const override {
         return "Device";
     }
     friend class Singleton;

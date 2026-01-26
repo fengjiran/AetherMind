@@ -52,8 +52,8 @@ struct alignas(1) Float8_e5m2 {
     constexpr Float8_e5m2(uint8_t bits, from_bits_t) : x(bits) {}
     Float8_e5m2(float value);// NOLINT
     operator float() const;  // NOLINT
-    NODISCARD bool isinf() const;
-    NODISCARD bool isnan() const;
+    AM_NODISCARD bool isinf() const;
+    AM_NODISCARD bool isnan() const;
 };
 
 std::ostream& operator<<(std::ostream& os, const Float8_e5m2& value);

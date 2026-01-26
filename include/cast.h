@@ -122,7 +122,7 @@ constexpr bool less_than_lowest(const T& x) {
 // bool can be converted to any type
 template<typename From, typename To,
          std::enable_if_t<std::is_same_v<From, bool>>* = nullptr>
-bool is_overflow(From, MAYBE_UNUSED bool strict_unsigned = false) {
+bool is_overflow(From, AM_MAYBE_UNUSED bool strict_unsigned = false) {
     return false;
 }
 
@@ -142,7 +142,7 @@ bool is_overflow(From src, bool strict_unsigned = false) {
 
 template<typename From, typename To,
          std::enable_if_t<std::is_floating_point_v<From>>* = nullptr>
-bool is_overflow(From src, MAYBE_UNUSED bool strict_unsigned = false) {
+bool is_overflow(From src, AM_MAYBE_UNUSED bool strict_unsigned = false) {
     using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
     if (Limit::has_infinity && std::isinf(static_cast<double>(src))) {
         return false;

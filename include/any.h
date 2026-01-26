@@ -21,14 +21,14 @@ public:
     virtual ~HolderBase() = default;
     virtual void CloneSmallObject(void*) const = 0;
     virtual void MoveSmallObject(void*) = 0;
-    NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
-    NODISCARD virtual std::type_index type() const = 0;
-    NODISCARD virtual uint32_t use_count() const = 0;
-    NODISCARD virtual bool IsObjectRef() const = 0;
-    NODISCARD virtual bool IsMap() const = 0;
-    NODISCARD virtual void* GetDataPtr() = 0;
-    NODISCARD virtual const void* GetDataPtr() const = 0;
-    NODISCARD virtual bool EqualsTo(const HolderBase*) const = 0;
+    AM_NODISCARD virtual std::unique_ptr<HolderBase> Clone() const = 0;
+    AM_NODISCARD virtual std::type_index type() const = 0;
+    AM_NODISCARD virtual uint32_t use_count() const = 0;
+    AM_NODISCARD virtual bool IsObjectRef() const = 0;
+    AM_NODISCARD virtual bool IsMap() const = 0;
+    AM_NODISCARD virtual void* GetDataPtr() = 0;
+    AM_NODISCARD virtual const void* GetDataPtr() const = 0;
+    AM_NODISCARD virtual bool EqualsTo(const HolderBase*) const = 0;
     virtual void print(std::ostream& os) const = 0;
 };
 
@@ -54,15 +54,15 @@ public:
         new (p) Holder(std::move(*this));
     }
 
-    NODISCARD std::unique_ptr<HolderBase> Clone() const override {
+    AM_NODISCARD std::unique_ptr<HolderBase> Clone() const override {
         return std::make_unique<Holder>(value_);
     }
 
-    NODISCARD std::type_index type() const override {
+    AM_NODISCARD std::type_index type() const override {
         return typeid(T);
     }
 
-    NODISCARD uint32_t use_count() const override {
+    AM_NODISCARD uint32_t use_count() const override {
         if constexpr (details::has_use_count_method_v<T>) {
             return value_.use_count();
         } else {
@@ -70,7 +70,7 @@ public:
         }
     }
 
-    NODISCARD bool IsObjectRef() const override {
+    AM_NODISCARD bool IsObjectRef() const override {
         if constexpr (std::is_base_of_v<ObjectRef, T>) {
             return true;
         } else {
@@ -78,7 +78,7 @@ public:
         }
     }
 
-    NODISCARD bool IsMap() const override {
+    AM_NODISCARD bool IsMap() const override {
         if constexpr (details::is_map<T>) {
             return true;
         } else {
@@ -86,15 +86,15 @@ public:
         }
     }
 
-    NODISCARD void* GetDataPtr() override {
+    AM_NODISCARD void* GetDataPtr() override {
         return &value_;
     }
 
-    NODISCARD const void* GetDataPtr() const override {
+    AM_NODISCARD const void* GetDataPtr() const override {
         return &value_;
     }
 
-    NODISCARD bool EqualsTo(const HolderBase* other) const override {
+    AM_NODISCARD bool EqualsTo(const HolderBase* other) const override {
         if constexpr (std::equality_comparable<T>) {
             return value_ == *static_cast<const T*>(other->GetDataPtr());
         } else {
@@ -193,11 +193,11 @@ public:
         type_info_cache_ = std::type_index(typeid(void));
     }
 
-    NODISCARD const HolderBase* GetHolderPtr() const;
+    AM_NODISCARD const HolderBase* GetHolderPtr() const;
 
-    NODISCARD void* GetDataPtr();
+    AM_NODISCARD void* GetDataPtr();
 
-    NODISCARD const void* GetDataPtr() const;
+    AM_NODISCARD const void* GetDataPtr() const;
 
 #ifdef USE_VISITOR_PATTERN
     template<typename T>
@@ -219,7 +219,7 @@ public:
     }
 #else
     template<typename T>
-    NODISCARD std::optional<T> as() const& {
+    AM_NODISCARD std::optional<T> as() const& {
         if constexpr (std::is_same_v<T, Any>) {
             return *this;
         } else {
@@ -237,7 +237,7 @@ public:
     }
 
     template<typename T>
-    NODISCARD std::optional<T> as() && {
+    AM_NODISCARD std::optional<T> as() && {
         if constexpr (std::is_same_v<T, Any>) {
             return std::move(*this);
         } else {
@@ -257,17 +257,17 @@ public:
 #endif
 
     template<typename T>
-    NODISCARD bool can_cast() const noexcept {
+    AM_NODISCARD bool can_cast() const noexcept {
         return as<T>().has_value();
     }
 
     template<typename T>
-    NODISCARD std::optional<T> try_cast() const {
+    AM_NODISCARD std::optional<T> try_cast() const {
         return as<T>();
     }
 
     template<typename T>
-    NODISCARD T cast() const& {
+    AM_NODISCARD T cast() const& {
         auto opt = as<T>();
         if (opt.has_value()) {
             return *opt;
@@ -324,104 +324,104 @@ public:
         return (*static_cast<T*>(GetDataPtr()))[key];
     }
 
-    NODISCARD bool has_value() const noexcept {
+    AM_NODISCARD bool has_value() const noexcept {
         return !std::holds_alternative<std::monostate>(data_);
     }
 
-    NODISCARD bool IsSmallObject() const noexcept {
+    AM_NODISCARD bool IsSmallObject() const noexcept {
         return std::holds_alternative<SmallObject>(data_);
         // return data_.index() == 1;
     }
 
-    NODISCARD bool IsLargeObject() const noexcept {
+    AM_NODISCARD bool IsLargeObject() const noexcept {
         return std::holds_alternative<std::unique_ptr<HolderBase>>(data_);
         // return data_.index() == 2;
     }
 
-    NODISCARD std::type_index type() const;
+    AM_NODISCARD std::type_index type() const;
 
-    NODISCARD SingletonOrSharedTypePtr<Type> GetTypePtr() const noexcept;
+    AM_NODISCARD SingletonOrSharedTypePtr<Type> GetTypePtr() const noexcept;
 
-    NODISCARD bool IsNone() const noexcept {
+    AM_NODISCARD bool IsNone() const noexcept {
         return !has_value();
     }
 
-    NODISCARD bool IsBool() const noexcept {
+    AM_NODISCARD bool IsBool() const noexcept {
         return CheckType<Bool>();
     }
 
-    NODISCARD bool IsInteger() const noexcept {
+    AM_NODISCARD bool IsInteger() const noexcept {
         return CheckType<Int>();
     }
 
-    NODISCARD bool IsFloatingPoint() const noexcept {
+    AM_NODISCARD bool IsFloatingPoint() const noexcept {
         return CheckType<Float>();
     }
 
-    NODISCARD bool IsString() const noexcept {
+    AM_NODISCARD bool IsString() const noexcept {
         return CheckType<String>();
     }
 
-    NODISCARD bool IsVoidPtr() const noexcept {
+    AM_NODISCARD bool IsVoidPtr() const noexcept {
         return CheckType<void*>();
     }
 
-    NODISCARD bool IsDevice() const noexcept {
+    AM_NODISCARD bool IsDevice() const noexcept {
         return CheckType<Device>();
     }
 
-    NODISCARD bool IsTensor() const noexcept;
+    AM_NODISCARD bool IsTensor() const noexcept;
 
-    NODISCARD bool IsObjectRef() const noexcept {
+    AM_NODISCARD bool IsObjectRef() const noexcept {
         return has_value() ? GetHolderPtr()->IsObjectRef() : false;
     }
 
-    NODISCARD bool IsMap() const noexcept {
+    AM_NODISCARD bool IsMap() const noexcept {
         return has_value() ? GetHolderPtr()->IsMap() : false;
     }
 
-    NODISCARD String ToNone() const noexcept {
+    AM_NODISCARD String ToNone() const noexcept {
         AM_CHECK(IsNone());
         return "None";
     }
 
-    NODISCARD Int ToInt() const {
+    AM_NODISCARD Int ToInt() const {
         AM_CHECK(IsInteger(), "Expected Int, but got {}", type().name());
         return cast<Int>();
     }
 
-    NODISCARD Float ToDouble() const {
+    AM_NODISCARD Float ToDouble() const {
         AM_CHECK(IsFloatingPoint(), "Expected Double, but got {}", type().name());
         return cast<Float>();
     }
 
-    NODISCARD Bool ToBool() const {
+    AM_NODISCARD Bool ToBool() const {
         AM_CHECK(IsBool(), "Expected Bool, but got {}", type().name());
         return cast<Bool>();
     }
 
-    NODISCARD void* ToVoidPtr() const {
+    AM_NODISCARD void* ToVoidPtr() const {
         AM_CHECK(IsVoidPtr(), "Expected VoidPtr, but got {}", type().name());
         return cast<void*>();
     }
 
-    NODISCARD Device ToDevice() const {
+    AM_NODISCARD Device ToDevice() const {
         AM_CHECK(IsDevice(), "Expected Device, but got {}", type().name());
         return cast<Device>();
     }
 
-    NODISCARD String ToString() const {
+    AM_NODISCARD String ToString() const {
         AM_CHECK(IsString(), "Expected String, but got {}", type().name());
         return cast<String>();
     }
 
-    NODISCARD Tensor ToTensor() const;
+    AM_NODISCARD Tensor ToTensor() const;
 
-    NODISCARD uint32_t use_count() const noexcept {
+    AM_NODISCARD uint32_t use_count() const noexcept {
         return has_value() ? GetHolderPtr()->use_count() : 0;
     }
 
-    NODISCARD bool unique() const noexcept {
+    AM_NODISCARD bool unique() const noexcept {
         return use_count() == 1;
     }
 
@@ -439,7 +439,7 @@ private:
     static constexpr size_t kSmallObjectSize = sizeof(void*) * 2;
 
     template<typename T>
-    NODISCARD bool CheckType() const noexcept {
+    AM_NODISCARD bool CheckType() const noexcept {
         return type() == std::type_index(typeid(T));
     }
 
@@ -484,19 +484,19 @@ private:
             std::memcpy(other.local_buffer, tmp, kSmallObjectSize);
         }
 
-        NODISCARD HolderBase* GetHolderPtr() {
+        AM_NODISCARD HolderBase* GetHolderPtr() {
             return reinterpret_cast<HolderBase*>(local_buffer);
         }
 
-        NODISCARD const HolderBase* GetHolderPtr() const {
+        AM_NODISCARD const HolderBase* GetHolderPtr() const {
             return reinterpret_cast<const HolderBase*>(local_buffer);
         }
 
-        NODISCARD void* GetDataPtr() {
+        AM_NODISCARD void* GetDataPtr() {
             return GetHolderPtr()->GetDataPtr();
         }
 
-        NODISCARD const void* GetDataPtr() const {
+        AM_NODISCARD const void* GetDataPtr() const {
             return GetHolderPtr()->GetDataPtr();
         }
 

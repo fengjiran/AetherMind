@@ -27,50 +27,50 @@ public:
     ~ArrayImpl() override;
 
     // return the number of elements in the array.
-    NODISCARD size_t size() const noexcept {
+    AM_NODISCARD size_t size() const noexcept {
         return size_;
     }
 
     // return the number of elements that the array can hold.
-    NODISCARD size_t capacity() const noexcept {
+    AM_NODISCARD size_t capacity() const noexcept {
         return capacity_;
     }
 
     // return the mutable pointer to the first element in the array.
-    NODISCARD iterator begin() noexcept {
+    AM_NODISCARD iterator begin() noexcept {
         return static_cast<Any*>(start_);
     }
 
     // return the const pointer to the first element in the array.
-    NODISCARD const_iterator begin() const noexcept {
+    AM_NODISCARD const_iterator begin() const noexcept {
         return static_cast<const Any*>(start_);
     }
 
     // return the mutable pointer to the element after the last element in the array.
-    NODISCARD iterator end() noexcept {
+    AM_NODISCARD iterator end() noexcept {
         return begin() + size_;
     }
 
     // return the const pointer to the element after the last element in the array.
-    NODISCARD const_iterator end() const noexcept {
+    AM_NODISCARD const_iterator end() const noexcept {
         return begin() + size_;
     }
 
     // return the mutable reverse iterator to the first element in the array.
-    NODISCARD reverse_iterator rbegin() noexcept {
+    AM_NODISCARD reverse_iterator rbegin() noexcept {
         return reverse_iterator(end());
     }
 
     // return the const reverse iterator to the end element in the array
-    NODISCARD const_reverse_iterator rbegin() const noexcept {
+    AM_NODISCARD const_reverse_iterator rbegin() const noexcept {
         return const_reverse_iterator(end());
     }
 
-    NODISCARD reverse_iterator rend() noexcept {
+    AM_NODISCARD reverse_iterator rend() noexcept {
         return reverse_iterator(begin());
     }
 
-    NODISCARD const_reverse_iterator rend() const noexcept {
+    AM_NODISCARD const_reverse_iterator rend() const noexcept {
         return const_reverse_iterator(begin());
     }
 
@@ -173,27 +173,27 @@ public:
         return *this;
     }
 
-    NODISCARD bool defined() const noexcept {
+    AM_NODISCARD bool defined() const noexcept {
         return pimpl_;
     }
 
-    NODISCARD uint32_t use_count() const noexcept {
+    AM_NODISCARD uint32_t use_count() const noexcept {
         return pimpl_.use_count();
     }
 
-    NODISCARD bool unique() const noexcept {
+    AM_NODISCARD bool unique() const noexcept {
         return use_count() == 1;
     }
 
-    NODISCARD size_t size() const noexcept {
+    AM_NODISCARD size_t size() const noexcept {
         return pimpl_->size();
     }
 
-    NODISCARD size_t capacity() const noexcept {
+    AM_NODISCARD size_t capacity() const noexcept {
         return pimpl_->capacity();
     }
 
-    NODISCARD bool empty() const noexcept {
+    AM_NODISCARD bool empty() const noexcept {
         return size() == 0;
     }
 
@@ -229,7 +229,7 @@ public:
         return const_reverse_iterator(this, pimpl_->begin() - 1);
     }
 
-    NODISCARD const Any& front() const {
+    AM_NODISCARD const Any& front() const {
         if (empty()) {
             AM_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -244,7 +244,7 @@ public:
         return {*this, 0};
     }
 
-    NODISCARD const Any& back() const {
+    AM_NODISCARD const Any& back() const {
         if (empty()) {
             AM_THROW(IndexError) << "Cannot index an empty array.";
         }
@@ -266,7 +266,7 @@ public:
         return AnyProxy(*this, i);
     }
 
-    NODISCARD const Any& at(int64_t i) const {
+    AM_NODISCARD const Any& at(int64_t i) const {
         if (empty()) {
             AM_THROW(IndexError) << "Cannot index an empty array.";
         }

@@ -32,7 +32,7 @@ int32_t GetTracebackLimit() {
     return 512;
 }
 
-bool DetectBoundary(MAYBE_UNUSED const char* filename, const char* symbol) {
+bool DetectBoundary(AM_MAYBE_UNUSED const char* filename, const char* symbol) {
     if (symbol) {
         // if (strncmp(symbol, "TVMFFIFunctionCall", 18) == 0) {
         //     return true;
@@ -211,9 +211,9 @@ __attribute__((constructor)) void install_signal_handler() {
 }
 #endif
 
-const char* AetherMindTraceback(MAYBE_UNUSED const char* filename,
-                                MAYBE_UNUSED int lineno,
-                                MAYBE_UNUSED const char* func,
+const char* AetherMindTraceback(AM_MAYBE_UNUSED const char* filename,
+                                AM_MAYBE_UNUSED int lineno,
+                                AM_MAYBE_UNUSED const char* func,
                                 int cross_aethermind_boundary) {
     thread_local aethermind::String traceback_str;
     aethermind::TraceBackStorage traceback;

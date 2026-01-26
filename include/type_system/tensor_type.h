@@ -18,16 +18,16 @@ class ShapeSymbol {
 public:
     ShapeSymbol() : value_(-1) {}
 
-    NODISCARD int64_t value() const {
+    AM_NODISCARD int64_t value() const {
         return value_;
     }
 
     // is this symbol a fixed/static dimension
-    NODISCARD bool IsStatic() const {
+    AM_NODISCARD bool IsStatic() const {
         return value_ >= 0;
     }
 
-    NODISCARD int64_t GetStaticValue() const {
+    AM_NODISCARD int64_t GetStaticValue() const {
         AM_CHECK(IsStatic());
         return value_;
     }
@@ -72,19 +72,19 @@ public:
     explicit SymbolicShape(IntArrayView shape);
 
     // Returns rank or nullopt in case of unranked shape.
-    NODISCARD std::optional<size_t> rank() const;
+    AM_NODISCARD std::optional<size_t> rank() const;
 
-    NODISCARD const std::optional<std::vector<ShapeSymbol>>& shape() const;
+    AM_NODISCARD const std::optional<std::vector<ShapeSymbol>>& shape() const;
 
     ShapeSymbol operator[](size_t i) const;
 
-    NODISCARD ShapeSymbol at(size_t i) const;
+    AM_NODISCARD ShapeSymbol at(size_t i) const;
 
-    NODISCARD std::optional<std::vector<bool>> GetSymbolicDims() const;
+    AM_NODISCARD std::optional<std::vector<bool>> GetSymbolicDims() const;
 
     // Checks whether the shape is fully static, i.e. rank and shape
     // of every dimension are known.
-    NODISCARD bool IsComplete() const;
+    AM_NODISCARD bool IsComplete() const;
 
     void Dump() const;
 
@@ -92,7 +92,7 @@ public:
     // Only dimensions that are both static and identical will be retained.
     // If either shape has an unknown rank, or if their ranks differ,
     // the resulting shape will be unranked.
-    NODISCARD SymbolicShape Merge(const SymbolicShape& other) const;
+    AM_NODISCARD SymbolicShape Merge(const SymbolicShape& other) const;
 
     friend bool operator==(const SymbolicShape& lhs, const SymbolicShape& rhs) {
         return lhs.symbolic_shape_ == rhs.symbolic_shape_;
@@ -115,19 +115,19 @@ public:
            const std::optional<size_t>& stride)
         : stride_idx_(stride_idx), stride_(stride), is_contiguous_(is_contiguous) {}
 
-    NODISCARD std::optional<size_t> stride_idx() const {
+    AM_NODISCARD std::optional<size_t> stride_idx() const {
         return stride_idx_;
     }
 
-    NODISCARD std::optional<size_t> stride() const {
+    AM_NODISCARD std::optional<size_t> stride() const {
         return stride_;
     }
 
-    NODISCARD std::optional<bool> is_contiguous() const {
+    AM_NODISCARD std::optional<bool> is_contiguous() const {
         return is_contiguous_;
     }
 
-    NODISCARD bool IsComplete() const {
+    AM_NODISCARD bool IsComplete() const {
         return stride_idx_ && stride_ && is_contiguous_;
     }
 
@@ -172,7 +172,7 @@ public:
         return shape_.value()[i];
     }
 
-    NODISCARD std::optional<size_t> size() const {
+    AM_NODISCARD std::optional<size_t> size() const {
         if (!shape_.has_value()) {
             return std::nullopt;
         }
@@ -180,7 +180,7 @@ public:
         return shape_.value().size();
     }
 
-    NODISCARD const std::optional<ListOfOptionalElements>& shape() const {
+    AM_NODISCARD const std::optional<ListOfOptionalElements>& shape() const {
         return shape_;
     }
 
@@ -188,11 +188,11 @@ public:
         return shape_ == other.shape_;
     }
 
-    NODISCARD std::optional<std::vector<T>> GetConcreteValue() const;
+    AM_NODISCARD std::optional<std::vector<T>> GetConcreteValue() const;
 
-    NODISCARD bool IsComplete() const;
+    AM_NODISCARD bool IsComplete() const;
 
-    NODISCARD VaryingShape Merge(const VaryingShape& other) const;
+    AM_NODISCARD VaryingShape Merge(const VaryingShape& other) const;
 
 private:
     std::optional<ListOfOptionalElements> shape_;

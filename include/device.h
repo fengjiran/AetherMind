@@ -42,31 +42,31 @@ public:
         validate();
     }
 
-    NODISCARD DeviceType type() const noexcept {
+    AM_NODISCARD DeviceType type() const noexcept {
         return type_;
     }
 
-    NODISCARD int8_t index() const noexcept {
+    AM_NODISCARD int8_t index() const noexcept {
         return index_;
     }
 
-    NODISCARD bool has_index() const noexcept {
+    AM_NODISCARD bool has_index() const noexcept {
         return index_ != -1;
     }
 
-    NODISCARD bool is_cpu() const noexcept {
+    AM_NODISCARD bool is_cpu() const noexcept {
         return type_ == kCPU;
     }
 
-    NODISCARD bool is_cuda() const noexcept {
+    AM_NODISCARD bool is_cuda() const noexcept {
         return type_ == kCUDA;
     }
 
-    NODISCARD bool is_cann() const noexcept {
+    AM_NODISCARD bool is_cann() const noexcept {
         return type_ == kCANN;
     }
 
-    NODISCARD String str() const;
+    AM_NODISCARD String str() const;
 
     static Device CPU();
     static Device CUDA();

@@ -28,11 +28,11 @@ struct TraceBackStorage {
 
     void Append(const char* filename, int lineno, const char* func);
 
-    NODISCARD bool ExceedTracebackLimit() const {
+    AM_NODISCARD bool ExceedTracebackLimit() const {
         return line_count_ >= max_frame_size_;
     }
 
-    NODISCARD String GetTraceback() const {
+    AM_NODISCARD String GetTraceback() const {
         return traceback_stream_.str();
     }
 

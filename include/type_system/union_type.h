@@ -32,7 +32,7 @@ public:
         return types_;
     }
 
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return union_str(nullptr, false);
     }
 
@@ -64,7 +64,7 @@ public:
         return true;
     }
 
-    NODISCARD String str() const override {
+    AM_NODISCARD String str() const override {
         return get_element_type()->str() + "?";
     }
 

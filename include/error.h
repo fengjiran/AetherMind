@@ -20,19 +20,19 @@ public:
     Error(String kind, String message, String traceback)
         : kind_(std::move(kind)), message_(std::move(message)), traceback_(std::move(traceback)) {}
 
-    NODISCARD String kind() const {
+    AM_NODISCARD String kind() const {
         return kind_;
     }
 
-    NODISCARD String message() const {
+    AM_NODISCARD String message() const {
         return message_;
     }
 
-    NODISCARD String traceback() const {
+    AM_NODISCARD String traceback() const {
         return traceback_;
     }
 
-    NODISCARD const char* what() const noexcept override {
+    AM_NODISCARD const char* what() const noexcept override {
         thread_local String what_str = kind_ + ": " + message_;
         what_str = "Traceback (most recent call last):\n" +
                    TracebackMostRecent() + kind_ + ": " + message_;
@@ -52,7 +52,7 @@ public:
    *
    * \return The traceback of the error object.
    */
-    NODISCARD String TracebackMostRecent() const {
+    AM_NODISCARD String TracebackMostRecent() const {
         std::vector<int64_t> delimiter = {-1};
         for (size_t i = 0; i < traceback_.size(); ++i) {
             if (traceback_[i] == '\n') {

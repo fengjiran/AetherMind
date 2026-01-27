@@ -105,16 +105,43 @@ AM_NODISCARD constexpr size_t SizeClassIndex(size_t size) noexcept {
     }
 }
 
+/**
+ * @brief Maps a requested memory size to its corresponding size class index.
+ *
+ * This function implements a hybrid mapping strategy to balance memory overhead
+ * and lookup speed:
+ * 1. Linear Mapping (0 - 128B): Precise 8-byte alignment for the most frequent
+ *    small allocations.
+ * 2. Logarithmic Stepped Mapping (128B+): Uses a geometric progression (groups)
+ *    to maintain a constant relative fragmentation (~12.5% to 25% depending on
+ *    kStepShift) while significantly reducing the number of FreeLists in ThreadCache.
+ *
+ * @param size The requested allocation size in bytes.
+ * @return The zero-based index of the size class, or std::numeric_limits<size_t>::max()
+ *         if the size is invalid or exceeds MAX_TC_SIZE.
+ *
+ * @note This implementation is branch-prediction friendly and utilizes C++20
+ *       bit-manipulation (std::bit_width) for O(1) performance without large tables.
+ */
 AM_NODISCARD constexpr size_t GetSizeClassIndexFromSize(size_t size) noexcept {
     // Validate boundaries: size 0 or exceeding MAX_TC_SIZE are rare edge cases.
     if (size == 0 || size > MagicConstants::MAX_TC_SIZE) AM_UNLIKELY {
             return std::numeric_limits<size_t>::max();
         }
 
+    // Fast path for small objects: 8-byte alignment (0-128 bytes)
+    // Maps [1, 8] -> 0, ..., [121, 128] -> 15
     if (size <= 128) AM_LIKELY {
             return (size - 1) >> 3;
         }
 
+    /*
+     * Stepped Mapping for objects > 128B:
+     * 1. msb: Find the power of 2 group (e.g., 129-256B falls into the 2^7 group).
+     * 2. group_idx: Normalize msb so that the first group starts at index 0.
+     * 3. base_idx: Calculate the starting index of the group.
+     * 4. group_offset: Subdivide each power-of-2 group into 2^kStepShift steps.
+     */
     int msb = std::bit_width(size - 1) - 1;
     int group_idx = msb - 7;
     int base_idx = 16 + (group_idx << MagicConstants::kStepShift);
@@ -123,6 +150,60 @@ AM_NODISCARD constexpr size_t GetSizeClassIndexFromSize(size_t size) noexcept {
 
     return base_idx + group_offset;
 }
+
+/**
+ * @brief Reconstructs the maximum object size for a given size class index.
+ *
+ * This function serves as the exact inverse of GetSizeClassIndexFromSize.
+ * It decodes the logical index back into the actual byte size of the memory block.
+ *
+ * ### Mathematical Inverse Model
+ *
+ * 1. **Linear Range** ($idx < 16$):
+ *    The size is recovered using a constant 8-byte stride:
+ *    $S = (idx + 1) \times 8$
+ *
+ * 2. **Log-Stepped Range** ($idx \ge 16$):
+ *    The function decodes the group and step components:
+ *    - **Group Identification**: $msb = \lfloor (idx - 16) / 2^k \rfloor + 7$
+ *      (Determines the power-of-2 interval, e.g., 128-256, 256-512, etc.)
+ *    - **Step Identification**: $step\_idx = (idx - 16) \pmod{2^k}$
+ *      (Determines the subdivision within the power-of-2 interval.)
+ *    - **Size Recovery**: $S = 2^{msb} + (step\_idx + 1) \times 2^{msb-k}$
+ *
+ * This ensures that $GetSizeFromSizeClassIndex(GetSizeClassIndexFromSize(s)) \ge s$
+ * for any $s \in (0, MAX\_TC\_SIZE]$.
+ *
+ * @param idx The size class index to be decoded.
+ * @return The maximum byte size of the objects stored in this size class's FreeList.
+ */
+AM_NODISCARD constexpr size_t GetSizeFromSizeClassIndex(size_t idx) noexcept {
+    // Fast path for small objects (0-128 bytes): Maps index 0..15 back to 8..128
+    if (idx < 16) AM_LIKELY {
+            return (idx + 1) << 3;
+        }
+
+    // Decoding logarithmic stepped index
+    size_t relative_idx = idx - 16;
+    // Identify the binary group (2^7, 2^8, ...) and the step within it
+    size_t group_idx = relative_idx >> MagicConstants::kStepShift;
+    size_t step_idx = relative_idx & (MagicConstants::kStepsPerGroup - 1);
+    // Reconstruct size components using 64-bit safe shifts
+    size_t msb = group_idx + 7;
+    size_t base_size = 1ULL << msb;
+    size_t step_size = 1ULL << (msb - MagicConstants::kStepShift);
+    // Return the upper bound of the current size class ladder
+    return base_size + (step_idx + 1) * step_size;
+}
+
+static_assert(GetSizeFromSizeClassIndex(0) == 8);
+static_assert(GetSizeFromSizeClassIndex(15) == 128);
+static_assert(GetSizeFromSizeClassIndex(16) == 160);
+static_assert(GetSizeFromSizeClassIndex(19) == 256);
+static_assert(GetSizeFromSizeClassIndex(20) == 320);
+// Round-trip check
+static_assert(GetSizeClassIndexFromSize(GetSizeFromSizeClassIndex(20)) == 20);
+static_assert(GetSizeClassIndexFromSize(129) == 16);
 
 /**
  * @brief Maps a raw memory pointer to its global page index.
@@ -263,7 +344,7 @@ inline ThreadCache& GetThreadCache() noexcept {
  * Optimized for high-core-count processors by utilizing atomic CAS loops
  * and cache-line alignment to prevent false sharing.
  */
-alignas(64) struct BitmapMeta {
+struct alignas(64) BitmapMeta {
     /**
      * @brief Availability bitmask.
      * bit = 1: Free (Available), bit = 0: Used (Allocated).

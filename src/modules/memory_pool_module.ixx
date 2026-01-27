@@ -5,6 +5,7 @@ module;
 
 #include "macros.h"
 
+#include <array>
 #include <atomic>
 #include <immintrin.h>
 #include <mutex>
@@ -156,16 +157,9 @@ struct FreeBlock {
     FreeBlock* next;
 };
 
-struct FreeBlockMeta {
-    FreeBlockMeta* next;
-    void* block;
-
-    explicit FreeBlockMeta(void* block) noexcept : next(nullptr), block(block) {}
-};
-
 class FreeList {
 public:
-    constexpr FreeList() : head_(nullptr), size_(0) {}
+    constexpr FreeList() noexcept : head_(nullptr), size_(0) {}
 
     FreeList(const FreeList&) = delete;
     FreeList& operator=(const FreeList&) = delete;
@@ -217,6 +211,27 @@ private:
     FreeBlock* head_;
     size_t size_;
 };
+
+class alignas(64) ThreadCache {
+public:
+    ThreadCache() noexcept = default;
+
+    ThreadCache(const ThreadCache&) = delete;
+    ThreadCache& operator=(const ThreadCache&) = delete;
+
+private:
+    constexpr static size_t kNumSizeClasses = SizeClassIndex(MagicConstants::MAX_TC_SIZE) + 1;
+    std::array<FreeList, kNumSizeClasses> free_lists_{};
+};
+
+/**
+ * @brief The global thread-local instance.
+ * Initialized lazily upon the first access by each thread.
+ */
+inline ThreadCache& GetThreadCache() noexcept {
+    thread_local ThreadCache inst;
+    return inst;
+}
 
 /**
  * @brief Thread-safe, lock-free bitmap metadata for memory block management.

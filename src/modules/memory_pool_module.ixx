@@ -5,6 +5,8 @@ module;
 
 #include "macros.h"
 
+#include <atomic>
+#include <immintrin.h>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -36,6 +38,9 @@ struct MagicConstants {
     // Maximum number of consecutive pages managed by Page Cache
     // (to avoid excessively large Spans)
     constexpr static size_t MAX_PAGE_NUM = 1024;
+
+    // bitmap bits
+    constexpr static size_t BITMAP_BITS = 64;
 };
 
 /**
@@ -134,8 +139,28 @@ AM_NODISCARD constexpr void* PageNumToPtr(size_t page_idx) noexcept {
     }
 }
 
+inline void CPUPause() noexcept {
+#if defined(__x86_64__) || defined(_M_X64)
+    // x86 环境：_mm_pause 是最稳妥的，由编译器映射为 PAUSE 指令
+    _mm_pause();
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    // ARM 环境：使用 ISB 或 YIELD
+    __asm__ volatile("yield" ::: "memory");
+#else
+    // 其他架构：简单的空操作，防止编译器把循环优化掉
+    std::atomic_signal_fence(std::memory_order_seq_cst);
+#endif
+}
+
 struct FreeBlock {
     FreeBlock* next;
+};
+
+struct FreeBlockMeta {
+    FreeBlockMeta* next;
+    void* block;
+
+    explicit FreeBlockMeta(void* block) noexcept : next(nullptr), block(block) {}
 };
 
 class FreeList {
@@ -177,7 +202,7 @@ public:
         size_ += count;
     }
 
-    AM_NODISCARD void* pop() {
+    AM_NODISCARD void* pop() noexcept {
         if (empty()) AM_UNLIKELY return nullptr;
 
         auto* block = head_;
@@ -185,12 +210,85 @@ public:
 
         head_ = head_->next;
         --size_;
-        return block;
+        return reinterpret_cast<char*>(block) + sizeof(FreeBlock);
     }
 
 private:
     FreeBlock* head_;
     size_t size_;
+};
+
+/**
+ * @brief Thread-safe, lock-free bitmap metadata for memory block management.
+ *
+ * This structure manages the allocation state of up to 64 memory blocks within a slab.
+ * Optimized for high-core-count processors by utilizing atomic CAS loops
+ * and cache-line alignment to prevent false sharing.
+ */
+alignas(64) struct BitmapMeta {
+    /**
+     * @brief Availability bitmask.
+     * bit = 1: Free (Available), bit = 0: Used (Allocated).
+     */
+    std::atomic<uint64_t> bits_;
+    /** @brief Pointer to the next bitmap node in the linked list. */
+    BitmapMeta* next_;
+
+    BitmapMeta() : bits_(0), next_(nullptr) {}
+
+    /**
+     * @brief Marks a block as free (sets bit to 1).
+     * @param idx The index of the block [0-63].
+     */
+    void SetFree(size_t idx) noexcept {
+        bits_.fetch_or(1ULL << idx, std::memory_order_release);
+    }
+
+    /**
+     * @brief Marks a block as used (sets bit to 0).
+     * @param idx The index of the block [0-63].
+     */
+    void SetUsed(size_t idx) noexcept {
+        bits_.fetch_and(~(1ULL << idx), std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Checks if a specific block is free.
+     * @return True if the block is free, false otherwise.
+     */
+    AM_NODISCARD bool IsFree(size_t idx) const noexcept {
+        return (bits_.load(std::memory_order_relaxed) & (1ULL << idx)) != 0;
+    }
+
+    /**
+     * @brief Atomically finds and acquires (takes) the first available free block.
+     *
+     * Uses a CAS (Compare-And-Swap) loop to ensure the "find and set" operation
+     * is atomic and thread-safe without using mutexes.
+     *
+     * @return The index of the acquired block, or MagicConstants::BITMAP_BITS if full.
+     */
+    AM_NODISCARD size_t FindAndTakeFirstFree() noexcept {
+        // Early exit if the bitmap is full (all bits are 0).
+        uint64_t old_val = bits_.load(std::memory_order_relaxed);
+        do {
+            if (old_val == 0) AM_UNLIKELY {
+                    return MagicConstants::BITMAP_BITS;
+                }
+            // Calculate index of the first trailing 1 (free block).
+            size_t idx = std::countr_zero(old_val);
+            // Prepare the new value by flipping the bit to 0 (occupying the block).
+            // Attempt to update the bitmap atomically.
+            if (uint64_t new_val = old_val & ~(1ULL << idx);
+                bits_.compare_exchange_weak(old_val, new_val,
+                                            std::memory_order_acquire,
+                                            std::memory_order_relaxed)) AM_LIKELY {
+                    return idx;
+                }
+            // High-contention optimization: hint CPU to yield execution resources.
+            CPUPause();
+        } while (true);
+    }
 };
 
 /**

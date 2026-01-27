@@ -19,8 +19,8 @@ namespace aethermind {
 struct MagicConstants {
     // page size (default: 4KB)
     constexpr static size_t PAGE_SIZE = 4096;
-    // max thread cache size(256KB)
-    constexpr static size_t MAX_TC_SIZE = 256 * 1024;
+    // max thread cache size(32KB)
+    constexpr static size_t MAX_TC_SIZE = 32 * 1024;
     // size class alignment
     constexpr static size_t ALIGNMENT = 16;
     // cache line size
@@ -42,6 +42,10 @@ struct MagicConstants {
 
     // bitmap bits
     constexpr static size_t BITMAP_BITS = 64;
+
+    // For size class index
+    constexpr static int kStepsPerGroup = 4;
+    constexpr static int kStepShift = 2;
 };
 
 /**
@@ -99,6 +103,25 @@ AM_NODISCARD constexpr size_t SizeClassIndex(size_t size) noexcept {
         // Fallback path for non-power-of-two alignments.
         return (size - 1) / MagicConstants::ALIGNMENT;
     }
+}
+
+AM_NODISCARD constexpr size_t GetSizeClassIndexFromSize(size_t size) noexcept {
+    // Validate boundaries: size 0 or exceeding MAX_TC_SIZE are rare edge cases.
+    if (size == 0 || size > MagicConstants::MAX_TC_SIZE) AM_UNLIKELY {
+            return std::numeric_limits<size_t>::max();
+        }
+
+    if (size <= 128) AM_LIKELY {
+            return (size - 1) >> 3;
+        }
+
+    int msb = std::bit_width(size - 1) - 1;
+    int group_idx = msb - 7;
+    int base_idx = 16 + (group_idx << MagicConstants::kStepShift);
+    int shift = msb - MagicConstants::kStepShift;
+    int group_offset = ((size - 1) >> shift) & (MagicConstants::kStepsPerGroup - 1);
+
+    return base_idx + group_offset;
 }
 
 /**
@@ -220,7 +243,7 @@ public:
     ThreadCache& operator=(const ThreadCache&) = delete;
 
 private:
-    constexpr static size_t kNumSizeClasses = SizeClassIndex(MagicConstants::MAX_TC_SIZE) + 1;
+    constexpr static size_t kNumSizeClasses = GetSizeClassIndexFromSize(MagicConstants::MAX_TC_SIZE) + 1;
     std::array<FreeList, kNumSizeClasses> free_lists_{};
 };
 

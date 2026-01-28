@@ -20,6 +20,8 @@ namespace aethermind {
 struct MagicConstants {
     // page size (default: 4KB)
     constexpr static size_t PAGE_SIZE = 4096;
+    // page shift
+    constexpr static size_t PAGE_SHIFT = 12;
     // max thread cache size(32KB)
     constexpr static size_t MAX_TC_SIZE = 32 * 1024;
     // size class alignment
@@ -47,6 +49,7 @@ struct MagicConstants {
     //
     constexpr static size_t RADIX_BITS = 9;
     constexpr static size_t RADIX_NODE_SIZE = 1 << RADIX_BITS;
+    constexpr static size_t RADIX_MASK = RADIX_NODE_SIZE - 1;
 
     // For size class index
     constexpr static int kStepsPerGroup = 4;
@@ -323,6 +326,79 @@ private:
 
 
 /**
+ * @brief Thread-safe, lock-free bitmap metadata for memory block management.
+ *
+ * This structure manages the allocation state of up to 64 memory blocks within a slab.
+ * Optimized for high-core-count processors by utilizing atomic CAS loops
+ * and cache-line alignment to prevent false sharing.
+ */
+struct alignas(64) BitmapMeta {
+    /**
+     * @brief Availability bitmask.
+     * bit = 1: Free (Available), bit = 0: Used (Allocated).
+     */
+    std::atomic<uint64_t> bits_;
+    /** @brief Pointer to the next bitmap node in the linked list. */
+    BitmapMeta* next_;
+
+    BitmapMeta() : bits_(~0ULL), next_(nullptr) {}
+
+    /**
+     * @brief Marks a block as free (sets bit to 1).
+     * @param idx The index of the block [0-63].
+     */
+    void SetFree(size_t idx) noexcept {
+        bits_.fetch_or(1ULL << idx, std::memory_order_release);
+    }
+
+    /**
+     * @brief Marks a block as used (sets bit to 0).
+     * @param idx The index of the block [0-63].
+     */
+    void SetUsed(size_t idx) noexcept {
+        bits_.fetch_and(~(1ULL << idx), std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Checks if a specific block is free.
+     * @return True if the block is free, false otherwise.
+     */
+    AM_NODISCARD bool IsFree(size_t idx) const noexcept {
+        return (bits_.load(std::memory_order_relaxed) & (1ULL << idx)) != 0;
+    }
+
+    /**
+     * @brief Atomically finds and acquires (takes) the first available free block.
+     *
+     * Uses a CAS (Compare-And-Swap) loop to ensure the "find and set" operation
+     * is atomic and thread-safe without using mutexes.
+     *
+     * @return The index of the acquired block, or MagicConstants::BITMAP_BITS if full.
+     */
+    AM_NODISCARD size_t FindAndTakeFirstFree() noexcept {
+        // Early exit if the bitmap is full (all bits are 0).
+        uint64_t old_val = bits_.load(std::memory_order_relaxed);
+        do {
+            if (old_val == 0) AM_UNLIKELY {
+                    return MagicConstants::BITMAP_BITS;
+                }
+            // Calculate index of the first trailing 1 (free block).
+            size_t idx = std::countr_zero(old_val);
+            // Prepare the new value by flipping the bit to 0 (occupying the block).
+            // Attempt to update the bitmap atomically.
+            if (uint64_t new_val = old_val & ~(1ULL << idx);
+                bits_.compare_exchange_weak(old_val, new_val,
+                                            std::memory_order_acquire,
+                                            std::memory_order_relaxed)) AM_LIKELY {
+                    return idx;
+                }
+            // High-contention optimization: hint CPU to yield execution resources.
+            CPUPause();
+        } while (true);
+    }
+};
+
+/**
  * @brief Span represents a contiguous range of memory pages.
  * Optimized for 64-bit architectures to minimize padding.
  * Total size: 64 bytes(1 cache line) to prevent false sharing and optimize fetch
@@ -378,8 +454,8 @@ public:
     }
 
     // Disable copy/move to prevent lock state corruption and pointer invalidation.
-    SpanList(const SpanList&) = delete;
-    SpanList& operator=(const SpanList&) = delete;
+    // SpanList(const SpanList&) = delete;
+    // SpanList& operator=(const SpanList&) = delete;
 
     /// @brief Returns a pointer to the first valid Span in the list.
     AM_NODISCARD Span* begin() noexcept {
@@ -496,7 +572,53 @@ struct alignas(MagicConstants::PAGE_SIZE) RadixNode {
      * - In leaf nodes, these point to `Span` objects.
      * - In internal nodes, these point to the next level `RadixNode`.
      */
-    std::array<Span*, MagicConstants::RADIX_NODE_SIZE> children{};
+    std::array<void*, MagicConstants::RADIX_NODE_SIZE> children{};
+
+    AM_NODISCARD RadixNode* GetChild(size_t idx) const {
+        return static_cast<RadixNode*>(children[idx]);
+    }
+
+    AM_NODISCARD Span* GetSpan(size_t idx) const {
+        return static_cast<Span*>(children[idx]);
+    }
+
+    void Set(size_t idx, void* ptr) {
+        children[idx] = ptr;
+    }
+};
+
+class PageMap {
+public:
+    static Span* GetSpan(void* ptr) {
+        const auto page_id = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
+        return Get(page_id);
+    }
+
+private:
+    // Global root node
+    inline static RadixNode* root_ = new RadixNode;
+    inline static std::mutex mutex_;
+
+    static Span* Get(uintptr_t k) {
+        const size_t i1 = k >> (MagicConstants::RADIX_BITS * 2);
+        const size_t i2 = (k >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
+        const size_t i3 = k & MagicConstants::RADIX_MASK;
+
+        // first level radix node
+        if (!root_->children[i1]) {
+            return nullptr;
+        }
+        auto* n2 = static_cast<RadixNode*>(root_->children[i1]);
+
+        // second level radix node
+        if (!n2->children[i2]) {
+            return nullptr;
+        }
+        auto* n3 = static_cast<RadixNode*>(n2->children[i2]);
+
+        // third level leaf node
+        return static_cast<Span*>(n3->children[i3]);
+    }
 };
 
 class PageAllocator {
@@ -506,6 +628,9 @@ public:
         return instance;
     }
 
+    PageAllocator(const PageAllocator&) = delete;
+    PageAllocator& operator=(const PageAllocator&) = delete;
+
     AM_NODISCARD Span* AllocateSpan(size_t page_num) noexcept {
         if (page_num == 0 || page_num > MagicConstants::MAX_PAGE_NUM) AM_UNLIKELY {
                 return nullptr;
@@ -514,14 +639,11 @@ public:
 
 private:
     PageAllocator() noexcept {
-        span_lists_.resize(MagicConstants::MAX_PAGE_NUM + 1);
+        // span_lists_.resize(MagicConstants::MAX_PAGE_NUM + 1);
     }
 
-    PageAllocator(const PageAllocator&) = delete;
-    PageAllocator& operator=(const PageAllocator&) = delete;
-
     RadixNode root_;
-    std::vector<SpanList> span_lists_;
+    // std::vector<SpanList> span_lists_;
     std::mutex mutex_;
 };
 
@@ -562,77 +684,5 @@ inline ThreadCache& GetThreadCache() noexcept {
     return inst;
 }
 
-/**
- * @brief Thread-safe, lock-free bitmap metadata for memory block management.
- *
- * This structure manages the allocation state of up to 64 memory blocks within a slab.
- * Optimized for high-core-count processors by utilizing atomic CAS loops
- * and cache-line alignment to prevent false sharing.
- */
-struct alignas(64) BitmapMeta {
-    /**
-     * @brief Availability bitmask.
-     * bit = 1: Free (Available), bit = 0: Used (Allocated).
-     */
-    std::atomic<uint64_t> bits_;
-    /** @brief Pointer to the next bitmap node in the linked list. */
-    BitmapMeta* next_;
-
-    BitmapMeta() : bits_(0), next_(nullptr) {}
-
-    /**
-     * @brief Marks a block as free (sets bit to 1).
-     * @param idx The index of the block [0-63].
-     */
-    void SetFree(size_t idx) noexcept {
-        bits_.fetch_or(1ULL << idx, std::memory_order_release);
-    }
-
-    /**
-     * @brief Marks a block as used (sets bit to 0).
-     * @param idx The index of the block [0-63].
-     */
-    void SetUsed(size_t idx) noexcept {
-        bits_.fetch_and(~(1ULL << idx), std::memory_order_relaxed);
-    }
-
-    /**
-     * @brief Checks if a specific block is free.
-     * @return True if the block is free, false otherwise.
-     */
-    AM_NODISCARD bool IsFree(size_t idx) const noexcept {
-        return (bits_.load(std::memory_order_relaxed) & (1ULL << idx)) != 0;
-    }
-
-    /**
-     * @brief Atomically finds and acquires (takes) the first available free block.
-     *
-     * Uses a CAS (Compare-And-Swap) loop to ensure the "find and set" operation
-     * is atomic and thread-safe without using mutexes.
-     *
-     * @return The index of the acquired block, or MagicConstants::BITMAP_BITS if full.
-     */
-    AM_NODISCARD size_t FindAndTakeFirstFree() noexcept {
-        // Early exit if the bitmap is full (all bits are 0).
-        uint64_t old_val = bits_.load(std::memory_order_relaxed);
-        do {
-            if (old_val == 0) AM_UNLIKELY {
-                    return MagicConstants::BITMAP_BITS;
-                }
-            // Calculate index of the first trailing 1 (free block).
-            size_t idx = std::countr_zero(old_val);
-            // Prepare the new value by flipping the bit to 0 (occupying the block).
-            // Attempt to update the bitmap atomically.
-            if (uint64_t new_val = old_val & ~(1ULL << idx);
-                bits_.compare_exchange_weak(old_val, new_val,
-                                            std::memory_order_acquire,
-                                            std::memory_order_relaxed)) AM_LIKELY {
-                    return idx;
-                }
-            // High-contention optimization: hint CPU to yield execution resources.
-            CPUPause();
-        } while (true);
-    }
-};
 
 }// namespace aethermind

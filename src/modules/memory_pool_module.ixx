@@ -323,6 +323,22 @@ public:
     ThreadCache(const ThreadCache&) = delete;
     ThreadCache& operator=(const ThreadCache&) = delete;
 
+    AM_NODISCARD void* Allocate(size_t size) noexcept {
+        if (size == 0) AM_UNLIKELY {
+                return nullptr;
+            }
+
+        // large object
+
+        // small object
+        size_t sc_idx = GetSizeClassIndexFromSize(size);
+        auto& free_list = free_lists_[sc_idx];
+        auto* ptr = free_list.pop();
+        if (!ptr) { // allocate from Central Cache
+            //
+        }
+    }
+
 private:
     constexpr static size_t kNumSizeClasses = GetSizeClassIndexFromSize(MagicConstants::MAX_TC_SIZE) + 1;
     std::array<FreeList, kNumSizeClasses> free_lists_{};

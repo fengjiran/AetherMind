@@ -43,6 +43,10 @@ struct MagicConstants {
     // bitmap bits
     constexpr static size_t BITMAP_BITS = 64;
 
+    //
+    constexpr static size_t RADIX_BITS = 9;
+    constexpr static size_t RADIX_NODE_SIZE = 1 << RADIX_BITS;
+
     // For size class index
     constexpr static int kStepsPerGroup = 4;
     constexpr static int kStepShift = 2;
@@ -316,6 +320,57 @@ private:
     size_t size_;
 };
 
+
+/**
+ * @brief Span represents a contiguous range of memory pages.
+ * Optimized for 64-bit architectures to minimize padding.
+ * Total size: 64 bytes(1 cache line) to prevent false sharing and optimize fetch
+ */
+struct Span {
+    // --- Page Cache Info ---
+    size_t start_page_idx;// Global start page index
+    size_t page_num;      // Number of contiguous pages
+
+    // --- Double linked list ---
+    Span* prev{nullptr};
+    Span* next{nullptr};
+
+    // --- Central Cache Object Info ---
+    size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
+    size_t obj_num{0}; // Number of objects currently allocated
+    void* free_list;   // Embedded free list for small object allocation
+
+    // --- Status & Meta (Packed) ---
+    bool is_used{false};// Is this span currently in CentralCache?
+
+    // Remining bytes: 3 bytes padding
+
+    AM_NODISCARD void* GetStartAddr() const noexcept {
+        return PageNumToPtr(start_page_idx);
+    }
+
+    AM_NODISCARD void* GetEndAddr() const noexcept {
+        const auto start = reinterpret_cast<uintptr_t>(GetStartAddr());
+        constexpr size_t shift = std::countr_zero(MagicConstants::PAGE_SIZE);
+        return reinterpret_cast<void*>(start + (page_num << shift));
+    }
+};
+static_assert(sizeof(Span) == 64);
+
+struct RadixNode {
+    std::array<Span*, 512> children{};
+};
+
+class PageAllocator {
+public:
+    static PageAllocator& GetInstance() noexcept {
+        static PageAllocator instance;
+        return instance;
+    }
+
+private:
+};
+
 class alignas(64) ThreadCache {
 public:
     ThreadCache() noexcept = default;
@@ -334,7 +389,7 @@ public:
         size_t sc_idx = GetSizeClassIndexFromSize(size);
         auto& free_list = free_lists_[sc_idx];
         auto* ptr = free_list.pop();
-        if (!ptr) { // allocate from Central Cache
+        if (!ptr) {// allocate from Central Cache
             //
         }
     }
@@ -425,40 +480,5 @@ struct alignas(64) BitmapMeta {
         } while (true);
     }
 };
-
-/**
- * @brief Span represents a contiguous range of memory pages.
- * Optimized for 64-bit architectures to minimize padding.
- * Total size: 64 bytes(1 cache line) to prevent false sharing and optimize fetch
- */
-struct Span {
-    // --- Hot Data (First Cache Line) ---
-    size_t start_page_idx;// Global start page index
-    size_t page_num;      // Number of contiguous pages
-    size_t block_size;    // Size of objects allocated from this Span(if applicable)
-
-    // --- Control Data ---
-    FreeList free_list;// Embedded free list for small object allocation
-    Span* prev{nullptr};
-    Span* next{nullptr};
-
-    // --- Status & Meta (Packed) ---
-    uint32_t obj_num{0};// Number of objects currently allocated
-    bool is_used;       // Is this span currently in CentralCache?
-
-    // Remining bytes: 3 bytes padding
-
-    AM_NODISCARD void* GetStartAddr() const noexcept {
-        return PageNumToPtr(start_page_idx);
-    }
-
-    AM_NODISCARD void* GetEndAddr() const noexcept {
-        const auto start = reinterpret_cast<uintptr_t>(GetStartAddr());
-        constexpr size_t shift = std::countr_zero(MagicConstants::PAGE_SIZE);
-        return reinterpret_cast<void*>(start + (page_num << shift));
-    }
-};
-
-static_assert(sizeof(Span) == 64);
 
 }// namespace aethermind

@@ -567,22 +567,15 @@ struct alignas(MagicConstants::PAGE_SIZE) RadixNode {
      * @brief Array of pointers to child nodes or Spans.
      *
      * - Size is typically 512 for 64-bit systems (9 bits stride).
-     * - Value initialization `{}` guarantees all pointers start as `nullptr`.
      * - In leaf nodes, these point to `Span` objects.
      * - In internal nodes, these point to the next level `RadixNode`.
      */
-    std::array<void*, MagicConstants::RADIX_NODE_SIZE> children{};
+    std::array<std::atomic<void*>, MagicConstants::RADIX_NODE_SIZE> children;
 
-    AM_NODISCARD RadixNode* GetChild(size_t idx) const {
-        return static_cast<RadixNode*>(children[idx]);
-    }
-
-    AM_NODISCARD Span* GetSpan(size_t idx) const {
-        return static_cast<Span*>(children[idx]);
-    }
-
-    void Set(size_t idx, void* ptr) {
-        children[idx] = ptr;
+    RadixNode() {
+        for (auto& child: children) {
+            child.store(nullptr, std::memory_order_relaxed);
+        }
     }
 };
 
@@ -601,9 +594,9 @@ public:
         // Acquire semantics ensure we see the initialized data of the root node
         // if it was just created by another thread.
         auto* curr = root_.load(std::memory_order_acquire);
-        if (!curr) {
-            return nullptr;
-        }
+        if (!curr) AM_UNLIKELY {
+                return nullptr;
+            }
 
         // Calculate Page ID and Radix Tree indices
         const auto page_id = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
@@ -612,22 +605,24 @@ public:
         const size_t i3 = page_id & MagicConstants::RADIX_MASK;
 
         // Traverse Level 1
-        if (!curr->children[i1]) {
-            return nullptr;
-        }
-        auto* p2 = static_cast<RadixNode*>(curr->children[i1]);
+        auto* p2_raw = curr->children[i1].load(std::memory_order_acquire);
+        if (!p2_raw) AM_UNLIKELY {
+                return nullptr;
+            }
+        auto* p2 = static_cast<RadixNode*>(p2_raw);
 
         // Traverse Level 2
-        if (!p2->children[i2]) {
-            return nullptr;
-        }
-        auto* p3 = static_cast<RadixNode*>(p2->children[i2]);
+        auto* p3_raw = p2->children[i2].load(std::memory_order_acquire);
+        if (!p3_raw) AM_UNLIKELY {
+                return nullptr;
+            }
+        auto* p3 = static_cast<RadixNode*>(p3_raw);
 
         // Fetch Level 3 (Leaf)
         // Note: On weak memory models (ARM), an acquire fence might be technically required here
         // to ensure the content of the returned Span is visible. However, on x86-64,
         // data dependency usually suffices.
-        return static_cast<Span*>(p3->children[i3]);
+        return static_cast<Span*>(p3->children[i3].load(std::memory_order_acquire));
     }
 
     /**
@@ -654,18 +649,11 @@ public:
             uintptr_t page_id = start + i;
             // 1. Ensure the path (Intermediate Nodes) exists.
             // Note: Called WITHOUT internal locking to avoid deadlock.
-            EnsurePath(curr, page_id);
+            auto* p3 = EnsurePath(curr, page_id);
             // 2. Traverse to the leaf node.
-            const size_t i1 = page_id >> (MagicConstants::RADIX_BITS * 2);
-            auto* p2 = static_cast<RadixNode*>(curr->children[i1]);
-            const size_t i2 = (page_id >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
-            auto* p3 = static_cast<RadixNode*>(p2->children[i2]);
             const size_t i3 = page_id & MagicConstants::RADIX_MASK;
             // 3. Set the Leaf.
-            // CRITICAL: Release fence ensures that the fully initialized 'span' object
-            // is visible to any thread that reads this pointer via GetSpan.
-            std::atomic_thread_fence(std::memory_order_release);
-            p3->children[i3] = span;
+            p3->children[i3].store(span, std::memory_order_release);
         }
     }
 
@@ -681,25 +669,26 @@ private:
      * @warning **MUST be called with 'mutex_' held.**
      * Internal helper function. Does not lock internally to prevent recursive deadlock.
      */
-    static void EnsurePath(RadixNode* curr, uintptr_t page_id) {
+    static RadixNode* EnsurePath(RadixNode* curr, uintptr_t page_id) {
         // Step 1: Ensure Level 2 Node exists
         const size_t i1 = page_id >> (MagicConstants::RADIX_BITS * 2);
         const size_t i2 = (page_id >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
-        if (!curr->children[i1]) {
+        auto* p2_raw = curr->children[i1].load(std::memory_order_relaxed);
+        if (!p2_raw) {
             auto* new_node = new RadixNode;
-            // Fence prevents reordering of pointer assignment before initialization
-            std::atomic_thread_fence(std::memory_order_release);
-            curr->children[i1] = new_node;
+            curr->children[i1].store(new_node, std::memory_order_release);
+            p2_raw = new_node;
         }
 
         // Step 2: Ensure Level 3 Node exists
-        auto* n2 = static_cast<RadixNode*>(curr->children[i1]);
-        if (!n2->children[i2]) {
+        auto* p2 = static_cast<RadixNode*>(p2_raw);
+        auto* p3_raw = p2->children[i2].load(std::memory_order_relaxed);
+        if (!p3_raw) {
             auto* new_node = new RadixNode;
-            // Fence prevents reordering of pointer assignment before initialization
-            std::atomic_thread_fence(std::memory_order_release);
-            n2->children[i2] = new_node;
+            p2->children[i2].store(new_node, std::memory_order_release);
+            p3_raw = new_node;
         }
+        return static_cast<RadixNode*>(p3_raw);
     }
 };
 

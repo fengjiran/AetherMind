@@ -324,7 +324,6 @@ private:
     size_t size_;
 };
 
-
 /**
  * @brief Thread-safe, lock-free bitmap metadata for memory block management.
  *
@@ -589,35 +588,118 @@ struct alignas(MagicConstants::PAGE_SIZE) RadixNode {
 
 class PageMap {
 public:
+    /**
+     * @brief Lookup the Span associated with a specific memory address.
+     *
+     * This function is lock-free and extremely hot in the deallocation path.
+     * It relies on the memory barriers established by SetSpan to ensure data visibility.
+     *
+     * @param ptr The pointer to the object being freed or looked up.
+     * @return Span* Pointer to the managing Span, or nullptr if not found.
+     */
     static Span* GetSpan(void* ptr) {
+        // Acquire semantics ensure we see the initialized data of the root node
+        // if it was just created by another thread.
+        auto* curr = root_.load(std::memory_order_acquire);
+        if (!curr) {
+            return nullptr;
+        }
+
+        // Calculate Page ID and Radix Tree indices
         const auto page_id = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
-        return Get(page_id);
+        const size_t i1 = page_id >> (MagicConstants::RADIX_BITS * 2);
+        const size_t i2 = (page_id >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
+        const size_t i3 = page_id & MagicConstants::RADIX_MASK;
+
+        // Traverse Level 1
+        if (!curr->children[i1]) {
+            return nullptr;
+        }
+        auto* p2 = static_cast<RadixNode*>(curr->children[i1]);
+
+        // Traverse Level 2
+        if (!p2->children[i2]) {
+            return nullptr;
+        }
+        auto* p3 = static_cast<RadixNode*>(p2->children[i2]);
+
+        // Fetch Level 3 (Leaf)
+        // Note: On weak memory models (ARM), an acquire fence might be technically required here
+        // to ensure the content of the returned Span is visible. However, on x86-64,
+        // data dependency usually suffices.
+        return static_cast<Span*>(p3->children[i3]);
+    }
+
+    /**
+    * @brief Register a Span into the PageMap.
+    *
+    * Associates all page IDs covered by the span with the span pointer.
+    * This operation holds a lock to protect the tree structure during growth.
+    *
+    * @param span The Span to register. Must have valid start_page_idx and page_num.
+    */
+    static void SetSpan(Span* span) {
+        // Lock protects the tree structure from concurrent modifications.
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto* curr = root_.load(std::memory_order_relaxed);
+        if (!curr) {
+            curr = new RadixNode;
+            root_.store(curr, std::memory_order_release);
+        }
+
+        const auto start = span->start_page_idx;
+        const auto page_num = span->page_num;
+
+        for (size_t i = 0; i < page_num; ++i) {
+            uintptr_t page_id = start + i;
+            // 1. Ensure the path (Intermediate Nodes) exists.
+            // Note: Called WITHOUT internal locking to avoid deadlock.
+            EnsurePath(curr, page_id);
+            // 2. Traverse to the leaf node.
+            const size_t i1 = page_id >> (MagicConstants::RADIX_BITS * 2);
+            auto* p2 = static_cast<RadixNode*>(curr->children[i1]);
+            const size_t i2 = (page_id >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
+            auto* p3 = static_cast<RadixNode*>(p2->children[i2]);
+            const size_t i3 = page_id & MagicConstants::RADIX_MASK;
+            // 3. Set the Leaf.
+            // CRITICAL: Release fence ensures that the fully initialized 'span' object
+            // is visible to any thread that reads this pointer via GetSpan.
+            std::atomic_thread_fence(std::memory_order_release);
+            p3->children[i3] = span;
+        }
     }
 
 private:
-    // Global root node
-    inline static RadixNode* root_ = new RadixNode;
+    // Atomic root pointer for double-checked locking / lazy initialization.
+    inline static std::atomic<RadixNode*> root_ = nullptr;
+    // Mutex protects tree growth (new node allocation).
     inline static std::mutex mutex_;
 
-    static Span* Get(uintptr_t k) {
-        const size_t i1 = k >> (MagicConstants::RADIX_BITS * 2);
-        const size_t i2 = (k >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
-        const size_t i3 = k & MagicConstants::RADIX_MASK;
-
-        // first level radix node
-        if (!root_->children[i1]) {
-            return nullptr;
+    /**
+     * @brief Helper to create missing intermediate nodes for a given Page ID.
+     *
+     * @warning **MUST be called with 'mutex_' held.**
+     * Internal helper function. Does not lock internally to prevent recursive deadlock.
+     */
+    static void EnsurePath(RadixNode* curr, uintptr_t page_id) {
+        // Step 1: Ensure Level 2 Node exists
+        const size_t i1 = page_id >> (MagicConstants::RADIX_BITS * 2);
+        const size_t i2 = (page_id >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
+        if (!curr->children[i1]) {
+            auto* new_node = new RadixNode;
+            // Fence prevents reordering of pointer assignment before initialization
+            std::atomic_thread_fence(std::memory_order_release);
+            curr->children[i1] = new_node;
         }
-        auto* n2 = static_cast<RadixNode*>(root_->children[i1]);
 
-        // second level radix node
+        // Step 2: Ensure Level 3 Node exists
+        auto* n2 = static_cast<RadixNode*>(curr->children[i1]);
         if (!n2->children[i2]) {
-            return nullptr;
+            auto* new_node = new RadixNode;
+            // Fence prevents reordering of pointer assignment before initialization
+            std::atomic_thread_fence(std::memory_order_release);
+            n2->children[i2] = new_node;
         }
-        auto* n3 = static_cast<RadixNode*>(n2->children[i2]);
-
-        // third level leaf node
-        return static_cast<Span*>(n3->children[i3]);
     }
 };
 
@@ -640,10 +722,11 @@ public:
 private:
     PageAllocator() noexcept {
         // span_lists_.resize(MagicConstants::MAX_PAGE_NUM + 1);
+        // span_lists_.resize(10);
     }
 
     RadixNode root_;
-    // std::vector<SpanList> span_lists_;
+    std::vector<SpanList> span_lists_;
     std::mutex mutex_;
 };
 
@@ -683,6 +766,5 @@ inline ThreadCache& GetThreadCache() noexcept {
     thread_local ThreadCache inst;
     return inst;
 }
-
 
 }// namespace aethermind

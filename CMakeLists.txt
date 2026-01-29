@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 project(AetherMind)
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_compile_definitions(SPDLOG_USE_STD_FORMAT)
 set(CMAKE_CXX_STANDARD 20)
 
@@ -25,9 +26,9 @@ if (USE_LIBBACKTRACE)
     include(cmake/AddLibbacktrace.cmake)
 endif ()
 
-#find_package(glog REQUIRED)
-
 set(BACKTRACE_PATH "3rdparty/libbacktrace")
+
+find_package(Threads REQUIRED)
 
 # add spdlog
 include(FetchContent)
@@ -69,8 +70,8 @@ include_directories(
 )
 
 target_link_libraries(${PROJECT_NAME}
-#        glog::glog
-        pthread
+        Threads::Threads
+#        pthread
         spdlog::spdlog
         ${MODULE_NAME}
 )
@@ -95,7 +96,6 @@ else ()
     target_compile_definitions(${PROJECT_NAME} PRIVATE BACKTRACE_ON_SEGFAULT=0)
 endif (BACKTRACE_ON_SEGFAULT)
 
-#add_subdirectory(3rdparty/fmt)
 ########## Adding tests ##########
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")

@@ -434,12 +434,12 @@ struct Span {
 
     // --- Central Cache Object Info ---
     size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
-    size_t obj_num{0}; // Number of objects currently allocated
+    size_t capacity{0};// Object capacity
     // void* free_list{nullptr};// Embedded free list for small object allocation
 
     // --- bitmap info ---
     std::atomic<uint64_t>* bitmap{nullptr};
-    size_t bitmap_len{0};
+    size_t bitmap_num{0};
     size_t scan_cursor{0};
 
     // --- Status & Meta (Packed) ---
@@ -451,6 +451,16 @@ struct Span {
         // 1.
         void* start_addr = PageNumToPtr(start_page_idx);
         size_t total_bytes = page_num << MagicConstants::PAGE_SHIFT;
+        size_t max_objs = total_bytes / (obj_size + 1);
+        bitmap_num = (max_objs + 63) / 64;
+        bitmap = new (start_addr) std::atomic<uint64_t>[bitmap_num];
+
+        for (size_t i = 0; i < bitmap_num; ++i) {
+            bitmap[i].store(~0ULL, std::memory_order_relaxed);
+        }
+
+        uintptr_t data_start = reinterpret_cast<uintptr_t>(bitmap) +
+                               (capacity * 8);
     }
 
     AM_NODISCARD void* GetStartAddr() const noexcept {

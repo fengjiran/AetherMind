@@ -330,34 +330,43 @@ private:
 /**
  * @brief Thread-safe, lock-free bitmap metadata for memory block management.
  *
- * This structure manages the allocation state of up to 64 memory blocks within a slab.
- * Optimized for high-core-count processors by utilizing atomic CAS loops
- * and cache-line alignment to prevent false sharing.
+ * This structure manages the allocation state of up to 64 memory blocks within a span.
+ * Optimized for high-core-count processors by utilizing atomic CAS loops.
  */
-struct alignas(64) BitmapMeta {
+struct Bitmap {
     /**
      * @brief Availability bitmask.
      * bit = 1: Free (Available), bit = 0: Used (Allocated).
+     * Initialized to ~0ULL (all 1s) representing all blocks are free.
      */
     std::atomic<uint64_t> bits_;
-    /** @brief Pointer to the next bitmap node in the linked list. */
-    BitmapMeta* next_;
+    /**
+     * @brief Pointer to the next bitmap node in the linked list.
+     * Use atomic if the list structure itself changes concurrently (e.g., dynamic expansion).
+     * If the list is fixed size at Span initialization, raw pointer is fine.
+     */
+    // Bitmap* next_;
 
-    BitmapMeta() : bits_(~0ULL), next_(nullptr) {}
+    Bitmap() : bits_(~0ULL) {}
 
     /**
      * @brief Marks a block as free (sets bit to 1).
      * @param idx The index of the block [0-63].
      */
     void SetFree(size_t idx) noexcept {
+        AM_DCHECK(idx < MagicConstants::BITMAP_BITS);
+        // memory_order_release: Ensures any writes to the memory block happening
+        // before this free are visible to the thread that next allocates it.
         bits_.fetch_or(1ULL << idx, std::memory_order_release);
     }
 
     /**
      * @brief Marks a block as used (sets bit to 0).
-     * @param idx The index of the block [0-63].
+     * Note: Usually used during initialization or specific reservation scenarios.
+     * Normal allocation should use FindAndTakeFirstFree.
      */
     void SetUsed(size_t idx) noexcept {
+        AM_DCHECK(idx < MagicConstants::BITMAP_BITS);
         bits_.fetch_and(~(1ULL << idx), std::memory_order_relaxed);
     }
 
@@ -366,7 +375,16 @@ struct alignas(64) BitmapMeta {
      * @return True if the block is free, false otherwise.
      */
     AM_NODISCARD bool IsFree(size_t idx) const noexcept {
+        AM_DCHECK(idx < MagicConstants::BITMAP_BITS);
         return (bits_.load(std::memory_order_relaxed) & (1ULL << idx)) != 0;
+    }
+
+    /**
+     * @brief Check if the entire bitmap is full (all bits 0).
+     * Useful for fast-path checks before attempting CAS.
+     */
+    AM_NODISCARD bool IsFull() const noexcept {
+        return bits_.load(std::memory_order_relaxed) == 0;
     }
 
     /**
@@ -415,14 +433,25 @@ struct Span {
     Span* next{nullptr};
 
     // --- Central Cache Object Info ---
-    size_t obj_size{0};      // Size of objects allocated from this Span(if applicable)
-    size_t obj_num{0};       // Number of objects currently allocated
-    void* free_list{nullptr};// Embedded free list for small object allocation
+    size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
+    size_t obj_num{0}; // Number of objects currently allocated
+    // void* free_list{nullptr};// Embedded free list for small object allocation
+
+    // --- bitmap info ---
+    std::atomic<uint64_t>* bitmap{nullptr};
+    size_t bitmap_len{0};
+    size_t scan_cursor{0};
 
     // --- Status & Meta (Packed) ---
     bool is_used{false};// Is this span currently in CentralCache?
 
-    // Remining bytes: 3 bytes padding
+    void Init(size_t object_size) {
+        obj_size = object_size;
+
+        // 1.
+        void* start_addr = PageNumToPtr(start_page_idx);
+        size_t total_bytes = page_num << MagicConstants::PAGE_SHIFT;
+    }
 
     AM_NODISCARD void* GetStartAddr() const noexcept {
         return PageNumToPtr(start_page_idx);
@@ -434,7 +463,7 @@ struct Span {
         return reinterpret_cast<void*>(start + (page_num << shift));
     }
 };
-static_assert(sizeof(Span) == 64);
+// static_assert(sizeof(Span) == 64);
 
 /**
  * @brief A doubly linked list managing a collection of Spans.

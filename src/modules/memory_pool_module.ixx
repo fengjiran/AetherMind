@@ -10,6 +10,7 @@ module;
 #include <atomic>
 #include <immintrin.h>
 #include <mutex>
+#include <sys/mman.h>
 #include <thread>
 #include <vector>
 
@@ -22,6 +23,8 @@ struct MagicConstants {
     constexpr static size_t PAGE_SIZE = 4096;
     // page shift
     constexpr static size_t PAGE_SHIFT = 12;
+    // huge page size(2MB)
+    constexpr static size_t HUGE_PAGE_SIZE = 2 * 1024 * 1024;
     // max thread cache size(32KB)
     constexpr static size_t MAX_TC_SIZE = 32 * 1024;
     // size class alignment
@@ -41,7 +44,7 @@ struct MagicConstants {
 
     // Maximum number of consecutive pages managed by Page Cache
     // (to avoid excessively large Spans)
-    constexpr static size_t MAX_PAGE_NUM = 1024;
+    constexpr static size_t MAX_PAGE_NUM = 128;
 
     // bitmap bits
     constexpr static size_t BITMAP_BITS = 64;
@@ -587,10 +590,10 @@ public:
      * This function is lock-free and extremely hot in the deallocation path.
      * It relies on the memory barriers established by SetSpan to ensure data visibility.
      *
-     * @param ptr The pointer to the object being freed or looked up.
+     * @param page_id The page id being freed or looked up.
      * @return Span* Pointer to the managing Span, or nullptr if not found.
      */
-    static Span* GetSpan(void* ptr) {
+    static Span* GetSpan(size_t page_id) {
         // Acquire semantics ensure we see the initialized data of the root node
         // if it was just created by another thread.
         auto* curr = root_.load(std::memory_order_acquire);
@@ -598,8 +601,7 @@ public:
                 return nullptr;
             }
 
-        // Calculate Page ID and Radix Tree indices
-        const auto page_id = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
+        // Calculate Radix Tree indices
         const size_t i1 = page_id >> (MagicConstants::RADIX_BITS * 2);
         const size_t i2 = (page_id >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
         const size_t i3 = page_id & MagicConstants::RADIX_MASK;
@@ -623,6 +625,12 @@ public:
         // to ensure the content of the returned Span is visible. However, on x86-64,
         // data dependency usually suffices.
         return static_cast<Span*>(p3->children[i3].load(std::memory_order_acquire));
+    }
+
+    static Span* GetSpan(void* ptr) {
+        const auto addr = reinterpret_cast<uintptr_t>(ptr);
+        const size_t page_id = addr >> MagicConstants::PAGE_SHIFT;
+        return GetSpan(page_id);
     }
 
     /**
@@ -694,29 +702,187 @@ private:
 
 class PageAllocator {
 public:
-    static PageAllocator& GetInstance() noexcept {
-        static PageAllocator instance;
-        return instance;
+    static void* Allocate(size_t page_num) {
+        const size_t size = page_num << MagicConstants::PAGE_SHIFT;
+        if (size < (MagicConstants::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
+                return AllocNormalPage(size);
+            }
+
+        return AllocHugePage(size);
     }
 
-    PageAllocator(const PageAllocator&) = delete;
-    PageAllocator& operator=(const PageAllocator&) = delete;
+    static void Release(void* ptr, size_t page_num) {
+        if (!ptr || page_num == 0) {
+            return;
+        }
 
-    AM_NODISCARD Span* AllocateSpan(size_t page_num) noexcept {
-        if (page_num == 0 || page_num > MagicConstants::MAX_PAGE_NUM) AM_UNLIKELY {
-                return nullptr;
-            }
+        const size_t size = page_num << MagicConstants::PAGE_SHIFT;
+        munmap(ptr, size);
     }
 
 private:
-    PageAllocator() noexcept {
-        // span_lists_.resize(MagicConstants::MAX_PAGE_NUM + 1);
-        // span_lists_.resize(10);
+    static void* AllocNormalPage(size_t size) {
+        void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (ptr == MAP_FAILED) {
+            return nullptr;
+        }
+
+        return ptr;
     }
 
-    RadixNode root_;
-    std::vector<SpanList> span_lists_;
+    static void* AllocHugePage(size_t size) {
+        size_t alloc_size = size + MagicConstants::HUGE_PAGE_SIZE;
+        void* ptr = mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (ptr == MAP_FAILED) {
+            return nullptr;
+        }
+
+        const auto addr = reinterpret_cast<uintptr_t>(ptr);
+        const uintptr_t aligned_addr = (addr + MagicConstants::HUGE_PAGE_SIZE - 1) &
+                                       ~(MagicConstants::HUGE_PAGE_SIZE - 1);
+        const size_t head_gap = aligned_addr - addr;
+        if (head_gap > 0) {
+            munmap(ptr, head_gap);
+        }
+
+        if (const size_t tail_gap = alloc_size - head_gap - size; tail_gap > 0) {
+            munmap(reinterpret_cast<void*>(aligned_addr + size), tail_gap);
+        }
+
+        madvise(reinterpret_cast<void*>(aligned_addr), size, MADV_HUGEPAGE);
+        return reinterpret_cast<void*>(aligned_addr);
+    }
+};
+
+class PageCache {
+public:
+    static PageCache& GetInstance() {
+        static PageCache instance;
+        return instance;
+    }
+
+    PageCache(const PageCache&) = delete;
+    PageCache& operator=(const PageCache&) = delete;
+
+    Span* AllocSpan(size_t page_num, size_t obj_size) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return AllocSpanLocked(page_num, obj_size);
+    }
+
+    void ReleaseSpan(Span* span) noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        // 1.
+        if (span->page_num > MagicConstants::MAX_PAGE_NUM) AM_UNLIKELY {
+                auto* ptr = span->GetStartAddr();
+                PageAllocator::Release(ptr, span->page_num);
+                delete span;
+                return;
+            }
+
+        // 2. merge left
+        while (true) {
+            size_t left_id = span->start_page_idx - 1;
+            auto* left_span = PageMap::GetSpan(left_id);
+            if (!left_span || left_span->is_used ||
+                span->page_num + left_span->page_num > MagicConstants::MAX_PAGE_NUM) {
+                break;
+            }
+
+            span_lists_[left_span->page_num].erase(left_span);
+            span->start_page_idx = left_span->start_page_idx;
+            span->page_num += left_span->page_num;
+            delete left_span;
+        }
+
+        // 3. merge right
+        while (true) {
+            size_t right_id = span->start_page_idx + span->page_num;
+            auto* right_span = PageMap::GetSpan(right_id);
+            if (!right_span || right_span->is_used ||
+                span->page_num + right_span->page_num > MagicConstants::MAX_PAGE_NUM) {
+                break;
+            }
+
+            span_lists_[right_span->page_num].erase(right_span);
+            span->page_num += right_span->page_num;
+            delete right_span;
+        }
+
+        span->is_used = false;
+        span->obj_size = 0;
+        span_lists_[span->page_num].push_front(span);
+        PageMap::SetSpan(span);
+    }
+
+    AM_NODISCARD std::mutex& GetMutex() noexcept {
+        return mutex_;
+    }
+
+private:
+    PageCache() = default;
     std::mutex mutex_;
+    std::array<SpanList, MagicConstants::MAX_PAGE_NUM + 1> span_lists_;
+
+    Span* AllocSpanLocked(size_t page_num, size_t obj_size) {
+        while (true) {
+            // 1.
+            if (page_num > MagicConstants::MAX_PAGE_NUM) AM_UNLIKELY {
+                    void* ptr = PageAllocator::Allocate(page_num);
+                    auto* span = new Span;
+                    span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
+                    span->page_num = page_num;
+                    span->obj_size = obj_size;
+                    span->is_used = true;
+
+                    PageMap::SetSpan(span);
+                    return span;
+                }
+
+            // 2.
+            if (!span_lists_[page_num].empty()) {
+                auto* span = span_lists_[page_num].pop_front();
+                span->obj_size = obj_size;
+                span->is_used = true;
+                return span;
+            }
+
+            // 3.
+            for (size_t i = page_num + 1; i <= MagicConstants::MAX_PAGE_NUM; ++i) {
+                if (span_lists_[i].empty()) {
+                    continue;
+                }
+
+                auto* big_span = span_lists_[i].pop_front();
+                auto* small_span = new Span;
+                small_span->start_page_idx = big_span->start_page_idx;
+                small_span->page_num = page_num;
+                small_span->obj_size = obj_size;
+                small_span->is_used = true;
+
+                big_span->start_page_idx += page_num;
+                big_span->page_num -= page_num;
+                big_span->is_used = false;
+                span_lists_[big_span->page_num].push_front(big_span);
+
+                PageMap::SetSpan(small_span);
+                PageMap::SetSpan(big_span);
+                return small_span;
+            }
+
+            // 4.
+            size_t alloc_page_nums = MagicConstants::MAX_PAGE_NUM;
+            void* ptr = PageAllocator::Allocate(alloc_page_nums);
+            auto* span = new Span;
+            span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
+            span->page_num = alloc_page_nums;
+            span->is_used = false;
+            span_lists_[alloc_page_nums].push_front(span);
+            PageMap::SetSpan(span);
+        }
+    }
 };
 
 class alignas(64) ThreadCache {

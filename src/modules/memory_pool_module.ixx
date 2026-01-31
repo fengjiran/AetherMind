@@ -246,7 +246,7 @@ AM_NODISCARD constexpr size_t PtrToPageIdx(void* ptr) noexcept {
     }
 }
 
-AM_NODISCARD constexpr void* PageNumToPtr(size_t page_idx) noexcept {
+AM_NODISCARD constexpr void* PageIDToPtr(size_t page_idx) noexcept {
     if constexpr (std::has_single_bit(MagicConstants::PAGE_SIZE)) {
         constexpr size_t shift = std::countr_zero(MagicConstants::PAGE_SIZE);
         return reinterpret_cast<void*>(page_idx << shift);
@@ -435,7 +435,6 @@ struct Span {
     // --- Central Cache Object Info ---
     size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
     size_t capacity{0};// Object capacity
-    // void* free_list{nullptr};// Embedded free list for small object allocation
 
     // --- bitmap info ---
     std::atomic<uint64_t>* bitmap{nullptr};
@@ -449,22 +448,40 @@ struct Span {
         obj_size = object_size;
 
         // 1.
-        void* start_addr = PageNumToPtr(start_page_idx);
-        size_t total_bytes = page_num << MagicConstants::PAGE_SHIFT;
-        size_t max_objs = total_bytes / (obj_size + 1);
+        void* start_ptr = PageIDToPtr(start_page_idx);
+        const size_t total_bytes = page_num << MagicConstants::PAGE_SHIFT;
+
+        // 2.
+        size_t max_objs = (total_bytes * 8) / (obj_size * 8 + 1);
         bitmap_num = (max_objs + 63) / 64;
-        bitmap = new (start_addr) std::atomic<uint64_t>[bitmap_num];
+        bitmap = new (start_ptr) std::atomic<uint64_t>[bitmap_num];
 
         for (size_t i = 0; i < bitmap_num; ++i) {
             bitmap[i].store(~0ULL, std::memory_order_relaxed);
         }
 
-        uintptr_t data_start = reinterpret_cast<uintptr_t>(bitmap) +
-                               (capacity * 8);
+        // 3.
+        uintptr_t data_start = reinterpret_cast<uintptr_t>(bitmap) + bitmap_num * 8;
+        data_start = (data_start + 16 - 1) & ~(16 - 1);
+
+        // 4.
+        uintptr_t data_end = reinterpret_cast<uintptr_t>(start_ptr) + total_bytes;
+        if (data_start >= data_end) {
+            capacity = 0;
+        } else {
+            capacity = (data_end - data_start) / obj_size;
+        }
+
+        // 5.
+        size_t valid_bits = capacity & (64 - 1);
+        if (valid_bits != 0) {
+            uint64_t mask = (1ULL << valid_bits) - 1;
+            bitmap[bitmap_num - 1].store(mask, std::memory_order_relaxed);
+        }
     }
 
     AM_NODISCARD void* GetStartAddr() const noexcept {
-        return PageNumToPtr(start_page_idx);
+        return PageIDToPtr(start_page_idx);
     }
 
     AM_NODISCARD void* GetEndAddr() const noexcept {

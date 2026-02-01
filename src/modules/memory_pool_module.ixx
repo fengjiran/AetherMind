@@ -434,6 +434,7 @@ struct Span {
 
     // --- Central Cache Object Info ---
     size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
+    size_t use_count{0};
     size_t capacity{0};// Object capacity
 
     // --- bitmap info ---
@@ -477,6 +478,38 @@ struct Span {
         if (valid_bits != 0) {
             uint64_t mask = (1ULL << valid_bits) - 1;
             bitmap[bitmap_num - 1].store(mask, std::memory_order_relaxed);
+        }
+    }
+
+    void* Alloc() {
+        if (use_count >= capacity) {
+            return nullptr;
+        }
+
+        size_t idx = scan_cursor;
+        for (size_t i = 0; i < bitmap_num; ++i) {
+            size_t cur_idx = idx + i;
+            if (cur_idx >= bitmap_num) {
+                cur_idx -= bitmap_num;
+            }
+
+            uint64_t val = bitmap[cur_idx].load(std::memory_order_relaxed);
+            if (val == 0) {
+                continue;
+            }
+
+            // CAS
+            while (val != 0) {
+                int bit_pos = std::countr_zero(val);
+                uint64_t mask = 1ULL << bit_pos;
+                if (bitmap[cur_idx].compare_exchange_weak(val, val & ~mask,
+                                                          std::memory_order_acquire, std::memory_order_relaxed)) {
+                    ++use_count;
+                    scan_cursor = cur_idx;
+                    size_t global_obj_idx = cur_idx * 64 + bit_pos;
+                    // return
+                }
+            }
         }
     }
 

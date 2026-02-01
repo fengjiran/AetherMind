@@ -434,13 +434,15 @@ struct Span {
 
     // --- Central Cache Object Info ---
     size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
-    size_t use_count{0};
+    // size_t use_count{0};
+    std::atomic<size_t> use_count{0};
     size_t capacity{0};// Object capacity
+    void* data_base_ptr{nullptr};
 
     // --- bitmap info ---
     std::atomic<uint64_t>* bitmap{nullptr};
     size_t bitmap_num{0};
-    size_t scan_cursor{0};
+    std::atomic<size_t> scan_cursor{0};
 
     // --- Status & Meta (Packed) ---
     bool is_used{false};// Is this span currently in CentralCache?
@@ -448,24 +450,24 @@ struct Span {
     void Init(size_t object_size) {
         obj_size = object_size;
 
-        // 1.
+        // 1. Calculate Base Address
         void* start_ptr = PageIDToPtr(start_page_idx);
         const size_t total_bytes = page_num << MagicConstants::PAGE_SHIFT;
 
-        // 2.
+        // 2. Estimate Bitmap Size
+        // Formula: Total = BitmapBytes + DataBytes
+        //          Total = (Num * 1/8) + (Num * ObjSize)
         size_t max_objs = (total_bytes * 8) / (obj_size * 8 + 1);
         bitmap_num = (max_objs + 63) / 64;
+        // Placement New: Create atomic array at page start
         bitmap = new (start_ptr) std::atomic<uint64_t>[bitmap_num];
 
-        for (size_t i = 0; i < bitmap_num; ++i) {
-            bitmap[i].store(~0ULL, std::memory_order_relaxed);
-        }
-
-        // 3.
+        // 3. Calculate Data Start Address (Aligned)
         uintptr_t data_start = reinterpret_cast<uintptr_t>(bitmap) + bitmap_num * 8;
         data_start = (data_start + 16 - 1) & ~(16 - 1);
+        data_base_ptr = reinterpret_cast<void*>(data_start);
 
-        // 4.
+        // 4. Calculate Actual Capacity
         uintptr_t data_end = reinterpret_cast<uintptr_t>(start_ptr) + total_bytes;
         if (data_start >= data_end) {
             capacity = 0;
@@ -473,20 +475,47 @@ struct Span {
             capacity = (data_end - data_start) / obj_size;
         }
 
-        // 5.
-        size_t valid_bits = capacity & (64 - 1);
-        if (valid_bits != 0) {
-            uint64_t mask = (1ULL << valid_bits) - 1;
-            bitmap[bitmap_num - 1].store(mask, std::memory_order_relaxed);
+        // 5. Initialize Bitmap Bits (Loop unrolling for performance)
+        size_t full_bitmap_num = capacity / 64;
+        size_t tail_bits = capacity & 63;
+
+        // Part A: Set full blocks to ~0ULL(all free)
+        for (size_t i = 0; i < full_bitmap_num; ++i) {
+            bitmap[i].store(~0ULL, std::memory_order_relaxed);
         }
+
+        // Part B: Handle the tail block(if any)
+        if (full_bitmap_num < bitmap_num) {
+            if (tail_bits == 0) {
+                // If capacity is exact multiple of 64, this block is actually out of bounds
+                // But if num_full_blocks == bitmap_num, we won't enter this branch unless i < bitmap_num
+                // So this handles the case where capacity < bitmap_num * 64
+                bitmap[full_bitmap_num].store(0, std::memory_order_relaxed);
+            } else {
+                // Set lower 'tail_bits' to 1, rest to 0
+                uint64_t mask = (1ULL << tail_bits) - 1;
+                // Relaxed is sufficient during initialization
+                bitmap[full_bitmap_num].store(mask, std::memory_order_relaxed);
+            }
+
+            // Part C: Zero out remaining padding blocks
+            for (size_t i = full_bitmap_num + 1; i < bitmap_num; ++i) {
+                // Out of capacity range blocks (padding space)
+                bitmap[i].store(0, std::memory_order_relaxed);
+            }
+        }
+
+        use_count.store(0, std::memory_order_relaxed);
+        scan_cursor.store(0, std::memory_order_relaxed);
     }
 
-    void* Alloc() {
-        if (use_count >= capacity) {
+    // allocate an object
+    void* AllocObject() {
+        if (use_count.load(std::memory_order_relaxed) >= capacity) {
             return nullptr;
         }
 
-        size_t idx = scan_cursor;
+        size_t idx = scan_cursor.load(std::memory_order_relaxed);
         for (size_t i = 0; i < bitmap_num; ++i) {
             size_t cur_idx = idx + i;
             if (cur_idx >= bitmap_num) {
@@ -503,14 +532,38 @@ struct Span {
                 int bit_pos = std::countr_zero(val);
                 uint64_t mask = 1ULL << bit_pos;
                 if (bitmap[cur_idx].compare_exchange_weak(val, val & ~mask,
-                                                          std::memory_order_acquire, std::memory_order_relaxed)) {
-                    ++use_count;
-                    scan_cursor = cur_idx;
+                                                          std::memory_order_acquire,
+                                                          std::memory_order_relaxed)) {
+                    use_count.fetch_add(1, std::memory_order_relaxed);
+                    if (cur_idx != idx) {
+                        scan_cursor.store(cur_idx, std::memory_order_relaxed);
+                    }
                     size_t global_obj_idx = cur_idx * 64 + bit_pos;
-                    // return
+                    return static_cast<char*>(data_base_ptr) + global_obj_idx * obj_size;
                 }
+                CPUPause();
             }
         }
+        return nullptr;
+    }
+
+    /**
+     * @brief Release an object back to this Span.
+     * @note Can be called concurrently without locks.
+     */
+    void FreeObject(void* ptr) {
+        size_t offset = static_cast<char*>(ptr) - static_cast<char*>(data_base_ptr);
+        size_t global_obj_idx = offset / obj_size;
+
+        size_t bitmap_idx = global_obj_idx / 64;
+        int bit_pos = global_obj_idx & (64 - 1);
+        // Release: Ensures all my writes to the object are visible
+        // before the bit is marked as free.
+        bitmap[bitmap_idx].fetch_or(1ULL << bit_pos, std::memory_order_release);
+        // Decrement use count.
+        // Release is needed if the logic checks use_count == 0 to return Span to PageCache.
+        // It ensures all memory accesses in this Span are done before Span destruction/moving.
+        use_count.fetch_sub(1, std::memory_order_release);
     }
 
     AM_NODISCARD void* GetStartAddr() const noexcept {

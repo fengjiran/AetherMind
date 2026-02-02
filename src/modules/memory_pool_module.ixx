@@ -292,7 +292,7 @@ public:
         size_t total_objs = batch_num << 3;
         // 3. Convert total bytes to pages.
         size_t total_bytes = total_objs * size;
-        // Optimization: For extremely small objects, ensure we allocate at least 32KB (8 pages)
+        // Optimization: For tiny objects, ensure we allocate at least 32KB (8 pages)
         // to minimize metadata overhead (Span structure + Bitmap) per object.
         if (total_bytes < 32 * 1024) {
             total_bytes = 32 * 1024;
@@ -696,6 +696,16 @@ public:
     */
     void push_front(Span* span) noexcept {
         insert(begin(), span);
+    }
+
+    /**
+    * @brief Inserts a Span at the end of the list.
+    *
+    * This is typically used when returning memory to the cache.
+    * LIFO (Last-In-First-Out) behavior improves CPU cache locality for hot data.
+    */
+    void push_back(Span* span) noexcept {
+        insert(end(), span);
     }
 
     /**

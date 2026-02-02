@@ -268,6 +268,11 @@ inline void CPUPause() noexcept {
 #endif
 }
 
+class SizeClass {
+public:
+private:
+};
+
 struct FreeBlock {
     FreeBlock* next;
 };

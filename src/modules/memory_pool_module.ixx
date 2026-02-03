@@ -1392,6 +1392,9 @@ private:
         CentralCache::GetInstance().ReleaseListToSpans(start, size);
     }
 };
+//sudo apt update
+//# 安装常用的文泉驿微米黑等字体
+//sudo apt install fonts-wqy-microhei fonts-wqy-zenhei xfonts-wqy
 
 /**
  * @brief The global thread-local instance.

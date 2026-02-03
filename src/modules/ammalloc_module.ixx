@@ -14,7 +14,7 @@ module;
 #include <thread>
 #include <vector>
 
-export module MemoryPool;
+export module AMMalloc;
 
 namespace aethermind {
 
@@ -1339,13 +1339,26 @@ private:
     std::array<SpanList, kNumSizeClasses> span_lists_{};
 };
 
+/**
+ * @brief Per-thread memory cache (TLS) for high-speed allocation.
+ *
+ * ThreadCache is the "Frontend" of the memory pool. It is lock-free and
+ * handles the vast majority of malloc/free requests (Fast Path).
+ * Only communicates with CentralCache (Slow Path) when empty or full.
+ */
 class alignas(64) ThreadCache {
 public:
     ThreadCache() noexcept = default;
 
+    // Disable copy/move (TLS objects shouldn't be moved)
     ThreadCache(const ThreadCache&) = delete;
     ThreadCache& operator=(const ThreadCache&) = delete;
 
+    /**
+     * @brief Allocate memory of a specific size.
+     * @param size User requested size (must be <= MAX_TC_SIZE).
+     * @return Pointer to the allocated memory.
+     */
     AM_NODISCARD void* Allocate(size_t size) noexcept {
         if (size == 0) AM_UNLIKELY {
                 return nullptr;
@@ -1354,47 +1367,97 @@ public:
 
         size_t idx = SizeClass::Index(size);
         auto& list = free_lists_[idx];
+        // 1. Fast Path: Pop from local free list (Lock-Free)
         if (!list.empty()) AM_LIKELY {
                 return list.pop();
             }
+        // 2. Slow Path: Fetch from CentralCache
+        // Note: We must pass the aligned size to CentralCache/PageCache logic
+        return FetchFromCentralCache(list, SizeClass::RoundUp(size));
+    }
+
+    /**
+     * @brief Deallocate memory.
+     * @param ptr Pointer to the memory.
+     * @param size The size of the object (lookup via PageMap in global interface).
+     */
+    void Deallocate(void* ptr, size_t size) {
+        AM_DCHECK(ptr != nullptr);
+        AM_DCHECK(size <= MagicConstants::MAX_TC_SIZE);
+
+        size_t idx = SizeClass::Index(size);
+        auto& list = free_lists_[idx];
+        // 1. Fast Path: Push to local free list (Lock-Free)
+        list.push(ptr);
+
+        // 2. Slow Path: Return memory if cache is too large (Scavenging)
+        // If the list length exceeds the limit, return a batch to CentralCache.
+        if (list.size() >= list.max_size()) {
+            ReleaseTooLongList(list, size);
+        }
     }
 
 private:
+    // Size class configuration
     constexpr static size_t kNumSizeClasses = SizeClass::Index(MagicConstants::MAX_TC_SIZE) + 1;
+    // Array of FreeLists. Access is lock-free as it's thread-local.
     std::array<FreeList, kNumSizeClasses> free_lists_{};
 
-    void* FetchFromCentralCache(size_t index, size_t size) {
+    /**
+     * @brief Fetch objects from CentralCache when ThreadCache is empty.
+     */
+    static void* FetchFromCentralCache(FreeList& list, size_t size) {
+        // Calculate how many objects to fetch (Batch Size)
+        // Strategy: Small objects fetch more (512), large objects fetch less (2).
         auto batch_num = SizeClass::CalculateBatchSize(size);
         if (batch_num == 0) {
             batch_num = 1;
         }
 
-        auto actual_num = CentralCache::GetInstance().FetchRange(free_lists_[index], batch_num, size);
+        // Fetch from CentralCache (This involves locking in CentralCache)
+        // 'list' is modified in-place by FetchRange.
+        auto actual_num = CentralCache::GetInstance().FetchRange(list, batch_num, size);
         if (actual_num == 0) {
-            return nullptr;
+            return nullptr;// Out of memory
         }
 
-        if (free_lists_[index].max_size() == 0) {
-            free_lists_[index].set_max_size(batch_num);
+        // Dynamic Limit Strategy (Slow Start):
+        // If max_size is not set yet, initialize it to the batch size.
+        // Optimization: In standard TCMalloc, max_size grows slowly.
+        // Here we simplify by setting it to the calculated batch size immediately.
+        if (list.max_size() < batch_num) {
+            list.set_max_size(list.max_size() + 1);
         }
-        return free_lists_[index].pop();
+        return list.pop();
     }
 
+    /**
+     * @brief Return objects to CentralCache when ThreadCache is full.
+     */
     static void ReleaseTooLongList(FreeList& list, size_t size) {
+        // Strategy: When full, release 'batch_num' objects back to CentralCache.
+        // This keeps 'batch_num' objects in ThreadCache (if limit is 2*batch),
+        // or empties it if limit == batch.
+
+        // Use the same batch calculation for releasing.
+        // We pop 'batch_num' items from the list and link them together.
+        // Note: list.max_size() is usually equal to batch_num in this simplified implementation.
         auto batch_num = list.max_size();
         void* start = nullptr;
+        // Construct a linked list of objects to return
+        // We assume FreeList::pop() returns the raw pointer.
+        // We use the object's memory to store the 'next' pointer (Embedded List).
         for (size_t i = 0; i < batch_num; ++i) {
             void* ptr = list.pop();
+            // Link node: ptr->next = start; start = ptr;
             static_cast<FreeBlock*>(ptr)->next = static_cast<FreeBlock*>(start);
             start = ptr;
         }
 
+        // Send the list to CentralCache
         CentralCache::GetInstance().ReleaseListToSpans(start, size);
     }
 };
-//sudo apt update
-//# 安装常用的文泉驿微米黑等字体
-//sudo apt install fonts-wqy-microhei fonts-wqy-zenhei xfonts-wqy
 
 /**
  * @brief The global thread-local instance.

@@ -327,7 +327,7 @@ struct FreeBlock {
 
 class FreeList {
 public:
-    constexpr FreeList() noexcept : head_(nullptr), size_(0) {}
+    constexpr FreeList() noexcept : head_(nullptr), size_(0), max_size_(0) {}
 
     FreeList(const FreeList&) = delete;
     FreeList& operator=(const FreeList&) = delete;
@@ -375,9 +375,18 @@ public:
         return block;
     }
 
+    AM_NODISCARD size_t max_size() const noexcept {
+        return max_size_;
+    }
+
+    void set_max_size(size_t n) noexcept {
+        max_size_ = n;
+    }
+
 private:
     FreeBlock* head_;
     size_t size_;
+    size_t max_size_;
 };
 
 /**
@@ -1341,21 +1350,47 @@ public:
         if (size == 0) AM_UNLIKELY {
                 return nullptr;
             }
+        AM_DCHECK(size <= MagicConstants::MAX_TC_SIZE);
 
-        // large object
-
-        // small object
-        size_t sc_idx = SizeClass::Index(size);
-        auto& free_list = free_lists_[sc_idx];
-        auto* ptr = free_list.pop();
-        if (!ptr) {// allocate from Central Cache
-            //
-        }
+        size_t idx = SizeClass::Index(size);
+        auto& list = free_lists_[idx];
+        if (!list.empty()) AM_LIKELY {
+                return list.pop();
+            }
     }
 
 private:
     constexpr static size_t kNumSizeClasses = SizeClass::Index(MagicConstants::MAX_TC_SIZE) + 1;
     std::array<FreeList, kNumSizeClasses> free_lists_{};
+
+    void* FetchFromCentralCache(size_t index, size_t size) {
+        auto batch_num = SizeClass::CalculateBatchSize(size);
+        if (batch_num == 0) {
+            batch_num = 1;
+        }
+
+        auto actual_num = CentralCache::GetInstance().FetchRange(free_lists_[index], batch_num, size);
+        if (actual_num == 0) {
+            return nullptr;
+        }
+
+        if (free_lists_[index].max_size() == 0) {
+            free_lists_[index].set_max_size(batch_num);
+        }
+        return free_lists_[index].pop();
+    }
+
+    static void ReleaseTooLongList(FreeList& list, size_t size) {
+        auto batch_num = list.max_size();
+        void* start = nullptr;
+        for (size_t i = 0; i < batch_num; ++i) {
+            void* ptr = list.pop();
+            static_cast<FreeBlock*>(ptr)->next = static_cast<FreeBlock*>(start);
+            start = ptr;
+        }
+
+        CentralCache::GetInstance().ReleaseListToSpans(start, size);
+    }
 };
 
 /**

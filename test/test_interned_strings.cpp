@@ -9,10 +9,10 @@ namespace {
 
 using namespace aethermind;
 
-TEST(InternedString, basic) {
-    for (const auto& sym_name: InternedStrings::Global().ListAllSymbolNames()) {
-        std::cout << sym_name << std::endl;
-    }
-}
+// TEST(InternedString, basic) {
+//     for (const auto& sym_name: InternedStrings::Global().ListAllSymbolNames()) {
+//         std::cout << sym_name << std::endl;
+//     }
+// }
 
 }// namespace

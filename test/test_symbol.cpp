@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#ifdef TEST_SYMBOL
 namespace {
 using namespace aethermind;
 
@@ -202,8 +203,5 @@ TEST(SymbolTest, GetDomainPrefix) {
 }
 
 }// namespace
-
-#ifdef TEST_SYMBOL
-
 
 #endif

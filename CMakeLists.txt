@@ -13,6 +13,24 @@ if (USE_KALLOC_ALIGNMENT)
     add_definitions(-DKALLOC_ALIGNMENT=${USE_KALLOC_ALIGNMENT})
 endif (USE_KALLOC_ALIGNMENT)
 
+# =========================================================
+# 开启 ThreadSanitizer 配置
+# =========================================================
+option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+
+if(ENABLE_TSAN)
+    # 1. 添加编译选项
+    add_compile_options(-fsanitize=thread -g -O1)
+    # -g:  保留调试信息，让 TSAN 能打印出行号
+    # -O1: 适度优化，TSAN 建议在 O1 或 O2 下运行，O0 可能会太慢或误报
+
+    # 2. 添加链接选项 (这一步非常重要，否则链接会失败)
+    add_link_options(-fsanitize=thread)
+
+    # 可选：为了获得更好的堆栈回溯，建议加上这个
+    add_compile_options(-fno-omit-frame-pointer)
+endif()
+
 option(BUILD_TESTS "Adding test targets." ON)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
 option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)

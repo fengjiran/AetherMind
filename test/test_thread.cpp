@@ -12,7 +12,63 @@ namespace {
 
 using namespace std::chrono_literals;
 
+// =========================================================================
+// 测试组 1: 基础启动与 Lambda
+// =========================================================================
+TEST(ThreadBasicTest, LambdaExecution) {
+    std::atomic<bool> is_executed{false};
 
+    // 1. 创建线程，执行 Lambda
+    std::thread t([&is_executed]() {
+        // 模拟一些工作
+        std::this_thread::sleep_for(10ms);
+        is_executed = true;
+    });
+
+    // 断言：在 join 之前，我们无法确定它是否执行完（取决于调度）
+    EXPECT_TRUE(t.joinable());
+
+    // 2. 汇合 (Join)
+    t.join();
+
+    // 3. 验证结果
+    EXPECT_FALSE(t.joinable());// join 之后变为不可 join
+    EXPECT_TRUE(is_executed);  // 线程任务已完成
+}
+
+// =========================================================================
+// 测试组 2: 参数传递 (值传递 vs 引用传递)
+// =========================================================================
+// 辅助函数：按值接收
+void thread_by_value(int val, std::atomic<int>& output) {
+    val += 100;// 修改的是副本
+    output = val;
+}
+
+// 辅助函数：按引用接收
+void thread_by_ref(int& val) {
+    val = 100;// 修改的是本体
+}
+
+TEST(ThreadParamTest, PassByValue) {
+    int input = 10;
+    std::atomic<int> result{0};
+
+    // input 按值拷贝传递给线程，result 用 std::ref 传引用以便回写结果
+    std::thread t(thread_by_value, input, std::ref(result));
+    t.join();
+
+    EXPECT_EQ(result, 110);
+    EXPECT_EQ(input, 10);// input 保持不变，证明是拷贝传递
+}
+
+TEST(ThreadParamTest, PassByRef) {
+    int input = 10;
+    std::thread t(thread_by_ref, std::ref(input));
+    if (t.joinable()) {
+        t.join();
+    }
+}
 
 // 对比 std::thread，验证 jthread 在作用域结束时会自动等待线程完成
 TEST(JThreadBasicTest, AutoJoinOnDestruction) {

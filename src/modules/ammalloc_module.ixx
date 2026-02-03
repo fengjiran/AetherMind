@@ -1422,9 +1422,6 @@ private:
         }
 
         // Dynamic Limit Strategy (Slow Start):
-        // If max_size is not set yet, initialize it to the batch size.
-        // Optimization: In standard TCMalloc, max_size grows slowly.
-        // Here we simplify by setting it to the calculated batch size immediately.
         if (list.max_size() < batch_num) {
             list.set_max_size(list.max_size() + 1);
         }
@@ -1441,8 +1438,7 @@ private:
 
         // Use the same batch calculation for releasing.
         // We pop 'batch_num' items from the list and link them together.
-        // Note: list.max_size() is usually equal to batch_num in this simplified implementation.
-        auto batch_num = list.max_size();
+        auto batch_num = SizeClass::CalculateBatchSize(size);
         void* start = nullptr;
         // Construct a linked list of objects to return
         // We assume FreeList::pop() returns the raw pointer.

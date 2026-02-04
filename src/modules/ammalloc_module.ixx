@@ -15,8 +15,13 @@ import ammemory_pool;
 namespace aethermind {
 
 thread_local ThreadCache* pTLSThreadCache = nullptr;
+thread_local bool g_ThreadCacheAlreadyDestructed = false;
 
 static ThreadCache* CreateThreadCache() {
+    if (g_ThreadCacheAlreadyDestructed) {
+        return nullptr;
+    }
+
     static std::mutex tc_init_mtx;
     std::lock_guard<std::mutex> lock(tc_init_mtx);
     if (pTLSThreadCache) {
@@ -25,7 +30,7 @@ static ThreadCache* CreateThreadCache() {
 
     constexpr auto tc_size = sizeof(ThreadCache);
     constexpr auto page_num = (tc_size + MagicConstants::PAGE_SIZE - 1) >> MagicConstants::PAGE_SHIFT;
-    void* ptr = PageAllocator::Allocate(page_num);
+    void* ptr = PageAllocator::SystemAlloc(page_num);
     return new (ptr) ThreadCache;
 }
 
@@ -37,11 +42,12 @@ static void ReleaseThreadCache(ThreadCache* tc) {
     tc->~ThreadCache();
     constexpr auto tc_size = sizeof(ThreadCache);
     constexpr auto page_num = (tc_size + MagicConstants::PAGE_SIZE - 1) >> MagicConstants::PAGE_SHIFT;
-    PageAllocator::Release(tc, page_num);
+    PageAllocator::SystemFree(tc, page_num);
 }
 
 struct ThreadCacheCleaner {
     ~ThreadCacheCleaner() {
+        g_ThreadCacheAlreadyDestructed = true;
         if (pTLSThreadCache) {
             pTLSThreadCache->ReleaseAll();
             ReleaseThreadCache(pTLSThreadCache);
@@ -67,6 +73,9 @@ export void* am_malloc(size_t size) {
     // clang-format off
     if (!pTLSThreadCache) AM_UNLIKELY {
         pTLSThreadCache = CreateThreadCache();
+        if (!pTLSThreadCache) {
+            return nullptr;
+        }
     }
     // clang-format on
 
@@ -90,8 +99,13 @@ export void am_free(void* ptr) {
     }
 
     // clang-format off
-    if (!pTLSThreadCache) AM_UNLIKELY{
+    if (!pTLSThreadCache) AM_UNLIKELY {
         pTLSThreadCache = CreateThreadCache();
+        if (!pTLSThreadCache) {
+            static_cast<FreeBlock*>(ptr)->next = nullptr;
+            CentralCache::GetInstance().ReleaseListToSpans(ptr, size);
+            return;
+        }
     }
     // clang-format on
 

@@ -320,7 +320,7 @@ static_assert(SizeClass::Size(20) == 320);
 static_assert(SizeClass::Index(SizeClass::Size(20)) == 20);
 static_assert(SizeClass::Index(129) == 16);
 
-struct FreeBlock {
+export struct FreeBlock {
     FreeBlock* next;
 };
 
@@ -915,7 +915,7 @@ private:
 
 export class PageAllocator {
 public:
-    static void* Allocate(size_t page_num) {
+    static void* SystemAlloc(size_t page_num) {
         const size_t size = page_num << MagicConstants::PAGE_SHIFT;
         if (size < (MagicConstants::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
                 return AllocNormalPage(size);
@@ -924,7 +924,7 @@ public:
         return AllocHugePage(size);
     }
 
-    static void Release(void* ptr, size_t page_num) {
+    static void SystemFree(void* ptr, size_t page_num) {
         if (!ptr || page_num == 0) {
             return;
         }
@@ -1025,7 +1025,7 @@ public:
         // return it directly to the OS (PageAllocator).
         if (span->page_num > MagicConstants::MAX_PAGE_NUM) AM_UNLIKELY {
                 auto* ptr = span->GetStartAddr();
-                PageAllocator::Release(ptr, span->page_num);
+                PageAllocator::SystemFree(ptr, span->page_num);
                 delete span;
                 return;
             }
@@ -1098,7 +1098,7 @@ private:
             // 1. Oversized Allocation:
             // Requests larger than the max bucket (>128 pages) go directly to the OS.
             if (page_num > MagicConstants::MAX_PAGE_NUM) AM_UNLIKELY {
-                    void* ptr = PageAllocator::Allocate(page_num);
+                    void* ptr = PageAllocator::SystemAlloc(page_num);
                     auto* span = new Span;
                     span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
                     span->page_num = page_num;
@@ -1152,7 +1152,7 @@ private:
             // If no suitable spans exist in cache, allocate a large block (128 pages) from OS.
             // We request the MAX_PAGE_NUM to maximize cache efficiency.
             size_t alloc_page_nums = MagicConstants::MAX_PAGE_NUM;
-            void* ptr = PageAllocator::Allocate(alloc_page_nums);
+            void* ptr = PageAllocator::SystemAlloc(alloc_page_nums);
             auto* span = new Span;
             span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
             span->page_num = alloc_page_nums;
@@ -1178,7 +1178,7 @@ private:
  * 2. **Recycling**: Receives returned objects from ThreadCache and releases Spans back to PageCache when they are completely empty.
  * 3. **Concurrency**: Reduces lock contention using fine-grained bucket locks compared to the single global lock in PageCache.
  */
-class CentralCache {
+export class CentralCache {
 public:
     /**
      * @brief Singleton Accessor.

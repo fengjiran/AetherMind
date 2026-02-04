@@ -6,7 +6,7 @@ module;
 #include "macros.h"
 #include "utils/logging.h"
 
-module AMMalloc;
+module ammemory_pool;
 
 namespace aethermind {
 

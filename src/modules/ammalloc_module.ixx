@@ -327,7 +327,7 @@ struct FreeBlock {
 
 class FreeList {
 public:
-    constexpr FreeList() noexcept : head_(nullptr), size_(0), max_size_(0) {}
+    constexpr FreeList() noexcept : head_(nullptr), size_(0), max_size_(1) {}
 
     FreeList(const FreeList&) = delete;
     FreeList& operator=(const FreeList&) = delete;
@@ -1393,7 +1393,12 @@ public:
         // 2. Slow Path: Return memory if cache is too large (Scavenging)
         // If the list length exceeds the limit, return a batch to CentralCache.
         if (list.size() >= list.max_size()) {
-            ReleaseTooLongList(list, size);
+            const auto limit = SizeClass::CalculateBatchSize(size);
+            if (list.max_size() < limit) {
+                list.set_max_size(list.max_size() + 1);
+            } else {
+                ReleaseTooLongList(list, size);
+            }
         }
     }
 
@@ -1407,11 +1412,10 @@ private:
      * @brief Fetch objects from CentralCache when ThreadCache is empty.
      */
     static void* FetchFromCentralCache(FreeList& list, size_t size) {
-        // Calculate how many objects to fetch (Batch Size)
-        // Strategy: Small objects fetch more (512), large objects fetch less (2).
-        auto batch_num = SizeClass::CalculateBatchSize(size);
-        if (batch_num == 0) {
-            batch_num = 1;
+        const auto limit = SizeClass::CalculateBatchSize(size);
+        auto batch_num = list.max_size();
+        if (batch_num > limit) {
+            batch_num = limit;
         }
 
         // Fetch from CentralCache (This involves locking in CentralCache)
@@ -1422,7 +1426,7 @@ private:
         }
 
         // Dynamic Limit Strategy (Slow Start):
-        if (list.max_size() < batch_num) {
+        if (list.max_size() < limit) {
             list.set_max_size(list.max_size() + 1);
         }
         return list.pop();

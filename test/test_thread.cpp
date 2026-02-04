@@ -70,6 +70,82 @@ TEST(ThreadParamTest, PassByRef) {
     }
 }
 
+// =========================================================================
+// 测试组 3: 调用类成员函数
+// =========================================================================
+
+class Calculator {
+public:
+    void add(int a, int b, std::atomic<int>& res) {
+        res = a + b;
+    }
+};
+
+TEST(ThreadMemberTest, CallMemberFunction) {
+    Calculator calc;
+    std::atomic<int> result{0};
+
+    // 语法：std::thread(&类名::函数名, 对象指针, 参数...)
+    std::thread t(&Calculator::add, &calc, 10, 20, std::ref(result));
+    t.join();
+
+    EXPECT_EQ(result, 30);
+}
+
+// =========================================================================
+// 测试组 4: 移动语义 (Move Semantics)
+// =========================================================================
+TEST(ThreadMoveTest, MoveOwnership) {
+    // 1. 创建 t1
+    std::thread t1([] { std::this_thread::sleep_for(10ms); });
+
+    EXPECT_TRUE(t1.joinable());
+
+    // 2. 移动构造：将 t1 的所有权转移给 t2
+    std::thread t2 = std::move(t1);
+
+    // 3. 验证状态
+    EXPECT_FALSE(t1.joinable());// t1 变为空对象
+    EXPECT_TRUE(t2.joinable()); // t2 接管了线程
+
+    // 4. 只需 join t2
+    t2.join();
+}
+
+// =========================================================================
+// 测试组 5: Detach (分离线程)
+// =========================================================================
+TEST(ThreadDetachTest, DetachExecution) {
+    std::atomic<bool> flag{false};
+
+    {
+        std::thread t([&flag]() {
+            std::this_thread::sleep_for(50ms);
+            flag = true;
+        });
+
+        EXPECT_TRUE(t.joinable());
+
+        // 分离线程：让它在后台跑
+        t.detach();
+
+        EXPECT_FALSE(t.joinable());// detach 后不可再 join
+        // t 在这里析构，但不会导致 terminate，因为已经 detach 了
+    }
+
+    // 此时 t 对象已销毁，但后台线程可能还在跑
+    // 为了测试演示，我们主线程等它一会儿
+    // 注意：实际开发中慎用 detach，因为很难确定它什么时候结束
+    int retries = 0;
+    while (!flag && retries < 10) {
+        std::this_thread::sleep_for(20ms);
+        retries++;
+    }
+
+    EXPECT_TRUE(flag);
+}
+
+
 // 对比 std::thread，验证 jthread 在作用域结束时会自动等待线程完成
 TEST(JThreadBasicTest, AutoJoinOnDestruction) {
     std::atomic<bool> task_completed{false};

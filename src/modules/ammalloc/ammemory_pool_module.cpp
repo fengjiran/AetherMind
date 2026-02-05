@@ -3,10 +3,12 @@
 //
 module;
 
-#include "macros.h"
-#include "utils/logging.h"
+// #include "macros.h"
+// #include "utils/logging.h"
 
 module ammemory_pool;
+
+import size_class;
 
 namespace aethermind {
 

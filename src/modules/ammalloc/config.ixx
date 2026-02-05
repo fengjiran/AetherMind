@@ -41,6 +41,7 @@ export struct SizeConfig {
     // For size class index
     constexpr static int kStepsPerGroup = 4;
     constexpr static int kStepShift = 2;
+    constexpr static size_t kSmallObjectThreshold = 1024;
 };
 
 // ===========================================================================
@@ -55,18 +56,7 @@ export struct PageConfig {
     constexpr static size_t RADIX_MASK = RADIX_NODE_SIZE - 1;
 };
 
-export class RuntimeConfig {
-public:
-    static RuntimeConfig& GetInstance() {
-        static RuntimeConfig instance;
-        return instance;
-    }
-
-    AM_NODISCARD size_t MaxTCSize() const {
-        return max_tc_size_;
-    }
-
-    /**
+/**
      * @brief 解析带单位的内存大小字符串
      *
      * 支持格式示例：
@@ -78,59 +68,71 @@ public:
      * @param str 环境变量字符串
      * @return size_t 解析后的字节数。解析失败返回 0。
      */
-    static size_t ParseSize(const char* str) {
-        if (!str || *str == '\0') {
-            return 0;
-        }
-        char* end_ptr = nullptr;
-        // 1. 解析数字部分
-        // strtoull 会自动跳过前导空格，并处理数字
-        auto value = strtoul(str, &end_ptr, 10);
-
-        // 如果 end_ptr 等于 str，说明没有读到任何数字
-        if (str == end_ptr) {
-            return 0;
-        }
-
-        // 2. 跳过数字和单位之间的空格 (例如 "64 KB")
-        while (*end_ptr && std::isspace(static_cast<unsigned char>(*end_ptr))) {
-            ++end_ptr;
-        }
-
-        // 3. 检查单位
-        if (*end_ptr == '\0') {
-            return value;// 无单位，默认为 Bytes
-        }
-
-        size_t multiplier = 1;
-        switch (std::tolower(static_cast<unsigned char>(*end_ptr))) {
-            case 'b':
-                multiplier = 1;
-                break;
-            case 'k':
-                multiplier = 1ULL << 10;
-                break;// KB
-            case 'm':
-                multiplier = 1ULL << 20;
-                break;// MB
-            case 'g':
-                multiplier = 1ULL << 30;
-                break;// GB
-            case 't':
-                multiplier = 1ULL << 40;
-                break;// TB
-            default:
-                return value;// 未知单位，按 Bytes 处理或报错
-        }
-
-        // 4. 溢出检查 (Overflow Check)
-        // 检查 value * multiplier 是否会超过 size_t 的最大值
-        if (value > std::numeric_limits<size_t>::max() / multiplier) {
-            return std::numeric_limits<size_t>::max();
-        }
-
-        return multiplier * value;
+export size_t ParseSize(const char* str) {
+    if (!str || *str == '\0') {
+        return 0;
     }
+    char* end_ptr = nullptr;
+    // 1. 解析数字部分
+    // strtoull 会自动跳过前导空格，并处理数字
+    auto value = strtoul(str, &end_ptr, 10);
+
+    // 如果 end_ptr 等于 str，说明没有读到任何数字
+    if (str == end_ptr) {
+        return 0;
+    }
+
+    // 2. 跳过数字和单位之间的空格 (例如 "64 KB")
+    while (*end_ptr && std::isspace(static_cast<unsigned char>(*end_ptr))) {
+        ++end_ptr;
+    }
+
+    // 3. 检查单位
+    if (*end_ptr == '\0') {
+        return value;// 无单位，默认为 Bytes
+    }
+
+    size_t multiplier = 1;
+    switch (std::tolower(static_cast<unsigned char>(*end_ptr))) {
+        case 'b':
+            multiplier = 1;
+            break;
+        case 'k':
+            multiplier = 1ULL << 10;
+            break;// KB
+        case 'm':
+            multiplier = 1ULL << 20;
+            break;// MB
+        case 'g':
+            multiplier = 1ULL << 30;
+            break;// GB
+        case 't':
+            multiplier = 1ULL << 40;
+            break;// TB
+        default:
+            return value;// 未知单位，按 Bytes 处理或报错
+    }
+
+    // 4. 溢出检查 (Overflow Check)
+    // 检查 value * multiplier 是否会超过 size_t 的最大值
+    if (value > std::numeric_limits<size_t>::max() / multiplier) {
+        return std::numeric_limits<size_t>::max();
+    }
+
+    return multiplier * value;
+}
+
+export class RuntimeConfig {
+public:
+    static RuntimeConfig& GetInstance() {
+        static RuntimeConfig instance;
+        return instance;
+    }
+
+    AM_NODISCARD size_t MaxTCSize() const {
+        return max_tc_size_;
+    }
+
 
 private:
     RuntimeConfig() {

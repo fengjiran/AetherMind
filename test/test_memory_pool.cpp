@@ -3,7 +3,7 @@
 //
 #include <gtest/gtest.h>
 
-import ammalloc;
+// import ammalloc;
 import ammemory_pool;
 import ammalloc_config;
 
@@ -12,30 +12,36 @@ using namespace aethermind;
 
 TEST(ConfigTest, ParseSize) {
     // 基础测试
-    EXPECT_EQ(RuntimeConfig::ParseSize("100"), 100);
-    EXPECT_EQ(RuntimeConfig::ParseSize("1024"), 1024);
+    EXPECT_EQ(ParseSize("100"), 100);
+    EXPECT_EQ(ParseSize("1024"), 1024);
 
     // 单位测试 (大小写不敏感)
-    EXPECT_EQ(RuntimeConfig::ParseSize("1k"), 1024);
-    EXPECT_EQ(RuntimeConfig::ParseSize("1K"), 1024);
-    EXPECT_EQ(RuntimeConfig::ParseSize("1kb"), 1024);// 'b' 被忽略，只看首字母
-    EXPECT_EQ(RuntimeConfig::ParseSize("1M"), 1024 * 1024);
-    EXPECT_EQ(RuntimeConfig::ParseSize("2G"), 2ULL * 1024 * 1024 * 1024);
+    EXPECT_EQ(ParseSize("1k"), 1024);
+    EXPECT_EQ(ParseSize("1K"), 1024);
+    EXPECT_EQ(ParseSize("1kb"), 1024);// 'b' 被忽略，只看首字母
+    EXPECT_EQ(ParseSize("1M"), 1024 * 1024);
+    EXPECT_EQ(ParseSize("2G"), 2ULL * 1024 * 1024 * 1024);
 
     // 空格测试
-    EXPECT_EQ(RuntimeConfig::ParseSize("  64"), 64);
-    EXPECT_EQ(RuntimeConfig::ParseSize("64 KB"), 64 * 1024);
-    EXPECT_EQ(RuntimeConfig::ParseSize("  10  mb  "), 10 * 1024 * 1024);
+    EXPECT_EQ(ParseSize("  64"), 64);
+    EXPECT_EQ(ParseSize("64 KB"), 64 * 1024);
+    EXPECT_EQ(ParseSize("  10  mb  "), 10 * 1024 * 1024);
 
     // 边界与异常测试
-    EXPECT_EQ(RuntimeConfig::ParseSize(nullptr), 0);
-    EXPECT_EQ(RuntimeConfig::ParseSize(""), 0);
-    EXPECT_EQ(RuntimeConfig::ParseSize("abc"), 0); // 无效数字
-    EXPECT_EQ(RuntimeConfig::ParseSize("10x"), 10);// 未知单位，当作 Bytes
+    EXPECT_EQ(ParseSize(nullptr), 0);
+    EXPECT_EQ(ParseSize(""), 0);
+    EXPECT_EQ(ParseSize("abc"), 0); // 无效数字
+    EXPECT_EQ(ParseSize("10x"), 10);// 未知单位，当作 Bytes
 
-    // 溢出测试 (假设是 64位系统)
-    // 10000 TB 肯定溢出 size_t
-    // EXPECT_EQ(RuntimeConfig::ParseSize("10000 TB"), std::numeric_limits<size_t>::max());
+    // 溢出测试 (64位系统下)
+    // 1. 正常边界测试
+    // 10000 TB = 10 PB，远未溢出
+    EXPECT_EQ(ParseSize("10000 TB"), 10000ULL * 1024 * 1024 * 1024 * 1024);
+
+    // 2. 真正的溢出测试
+    // 需要超过 16777216 TB (即 16 EB)
+    // 这里使用 2000万 TB (20 EB)，肯定溢出
+    EXPECT_EQ(ParseSize("20000000 TB"), std::numeric_limits<size_t>::max());
 }
 
 TEST(SizeClassTest, IndexAndSizeMapping) {

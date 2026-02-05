@@ -6,15 +6,14 @@ module;
 #include "macros.h"
 #include "utils/logging.h"
 
-#include <array>
 #include <atomic>
 #include <immintrin.h>
 #include <mutex>
 #include <sys/mman.h>
-#include <thread>
 
 export module ammemory_pool;
 
+// import size_class;
 import ammalloc_config;
 
 namespace aethermind {
@@ -292,6 +291,7 @@ static_assert(SizeClass::Index(SizeClass::Size(20)) == 20);
 static_assert(SizeClass::Index(129) == 16);
 static_assert(SizeClass::Index(150) == 16);
 
+
 export struct FreeBlock {
     FreeBlock* next;
 };
@@ -358,97 +358,6 @@ private:
     FreeBlock* head_;
     size_t size_;
     size_t max_size_;
-};
-
-/**
- * @brief Thread-safe, lock-free bitmap metadata for memory block management.
- *
- * This structure manages the allocation state of up to 64 memory blocks within a span.
- * Optimized for high-core-count processors by utilizing atomic CAS loops.
- */
-struct Bitmap {
-    /**
-     * @brief Availability bitmask.
-     * bit = 1: Free (Available), bit = 0: Used (Allocated).
-     * Initialized to ~0ULL (all 1s) representing all blocks are free.
-     */
-    std::atomic<uint64_t> bits_;
-    /**
-     * @brief Pointer to the next bitmap node in the linked list.
-     * Use atomic if the list structure itself changes concurrently (e.g., dynamic expansion).
-     * If the list is fixed size at Span initialization, raw pointer is fine.
-     */
-    // Bitmap* next_;
-
-    Bitmap() : bits_(~0ULL) {}
-
-    /**
-     * @brief Marks a block as free (sets bit to 1).
-     * @param idx The index of the block [0-63].
-     */
-    void SetFree(size_t idx) noexcept {
-        AM_DCHECK(idx < SystemConfig::BITMAP_BITS);
-        // memory_order_release: Ensures any writes to the memory block happening
-        // before this free are visible to the thread that next allocates it.
-        bits_.fetch_or(1ULL << idx, std::memory_order_release);
-    }
-
-    /**
-     * @brief Marks a block as used (sets bit to 0).
-     * Note: Usually used during initialization or specific reservation scenarios.
-     * Normal allocation should use FindAndTakeFirstFree.
-     */
-    void SetUsed(size_t idx) noexcept {
-        AM_DCHECK(idx < SystemConfig::BITMAP_BITS);
-        bits_.fetch_and(~(1ULL << idx), std::memory_order_relaxed);
-    }
-
-    /**
-     * @brief Checks if a specific block is free.
-     * @return True if the block is free, false otherwise.
-     */
-    AM_NODISCARD bool IsFree(size_t idx) const noexcept {
-        AM_DCHECK(idx < SystemConfig::BITMAP_BITS);
-        return (bits_.load(std::memory_order_relaxed) & (1ULL << idx)) != 0;
-    }
-
-    /**
-     * @brief Check if the entire bitmap is full (all bits 0).
-     * Useful for fast-path checks before attempting CAS.
-     */
-    AM_NODISCARD bool IsFull() const noexcept {
-        return bits_.load(std::memory_order_relaxed) == 0;
-    }
-
-    /**
-     * @brief Atomically finds and acquires (takes) the first available free block.
-     *
-     * Uses a CAS (Compare-And-Swap) loop to ensure the "find and set" operation
-     * is atomic and thread-safe without using mutexes.
-     *
-     * @return The index of the acquired block, or MagicConstants::BITMAP_BITS if full.
-     */
-    AM_NODISCARD size_t FindAndTakeFirstFree() noexcept {
-        // Early exit if the bitmap is full (all bits are 0).
-        uint64_t old_val = bits_.load(std::memory_order_relaxed);
-        do {
-            if (old_val == 0) AM_UNLIKELY {
-                    return SystemConfig::BITMAP_BITS;
-                }
-            // Calculate index of the first trailing 1 (free block).
-            size_t idx = std::countr_zero(old_val);
-            // Prepare the new value by flipping the bit to 0 (occupying the block).
-            // Attempt to update the bitmap atomically.
-            if (uint64_t new_val = old_val & ~(1ULL << idx);
-                bits_.compare_exchange_weak(old_val, new_val,
-                                            std::memory_order_acquire,
-                                            std::memory_order_relaxed)) AM_LIKELY {
-                    return idx;
-                }
-            // High-contention optimization: hint CPU to yield execution resources.
-            CPUPause();
-        } while (true);
-    }
 };
 
 /**

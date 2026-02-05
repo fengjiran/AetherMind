@@ -15,9 +15,11 @@ module;
 
 export module ammemory_pool;
 
+import ammalloc_config;
+
 namespace aethermind {
 
-export struct MagicConstants {
+export struct MagicConstants1 {
     // page size (default: 4KB)
     constexpr static size_t PAGE_SIZE = 4096;
     // page shift
@@ -52,7 +54,8 @@ export struct MagicConstants {
  * @brief Aligns 'size' up to the specified 'align'.
  * @return The smallest multiple of 'align' that is greater than or equal to 'size'.
  */
-AM_NODISCARD constexpr size_t AlignUp(size_t size, size_t align = MagicConstants::ALIGNMENT) noexcept {
+AM_NODISCARD constexpr size_t AlignUp(size_t size,
+                                      size_t align = SystemConfig::ALIGNMENT) noexcept {
     if (size == 0) AM_UNLIKELY {
             return align;
         }
@@ -84,22 +87,22 @@ AM_NODISCARD constexpr size_t PtrToPageIdx(void* ptr) noexcept {
     // but enables massive runtime inlining optimizations.
     const auto addr = reinterpret_cast<uintptr_t>(ptr);
     // 2. Static dispatch for page size alignment.
-    if constexpr (std::has_single_bit(MagicConstants::PAGE_SIZE)) {
+    if constexpr (std::has_single_bit(SystemConfig::PAGE_SIZE)) {
         // Optimization: Address / 2^n -> Address >> n
-        constexpr size_t shift = std::countr_zero(MagicConstants::PAGE_SIZE);
+        constexpr size_t shift = std::countr_zero(SystemConfig::PAGE_SIZE);
         return addr >> shift;
     } else {
         // Fallback for non-standard page sizes.
-        return addr / MagicConstants::PAGE_SIZE;
+        return addr / SystemConfig::PAGE_SIZE;
     }
 }
 
 AM_NODISCARD constexpr void* PageIDToPtr(size_t page_idx) noexcept {
-    if constexpr (std::has_single_bit(MagicConstants::PAGE_SIZE)) {
-        constexpr size_t shift = std::countr_zero(MagicConstants::PAGE_SIZE);
+    if constexpr (std::has_single_bit(SystemConfig::PAGE_SIZE)) {
+        constexpr size_t shift = std::countr_zero(SystemConfig::PAGE_SIZE);
         return reinterpret_cast<void*>(page_idx << shift);
     } else {
-        return reinterpret_cast<void*>(page_idx * MagicConstants::PAGE_SIZE);
+        return reinterpret_cast<void*>(page_idx * SystemConfig::PAGE_SIZE);
     }
 }
 
@@ -151,7 +154,7 @@ public:
      */
     static constexpr size_t Index(size_t size) noexcept {
         // Validate boundaries: size 0 or exceeding MAX_TC_SIZE are rare edge cases.
-        if (size == 0 || size > MagicConstants::MAX_TC_SIZE) AM_UNLIKELY {
+        if (size == 0 || size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
                 return std::numeric_limits<size_t>::max();
             }
 
@@ -170,9 +173,9 @@ public:
          */
         int msb = std::bit_width(size - 1) - 1;
         int group_idx = msb - 7;
-        size_t base_idx = 16 + (group_idx << MagicConstants::kStepShift);
-        int shift = msb - MagicConstants::kStepShift;
-        size_t group_offset = ((size - 1) >> shift) & (MagicConstants::kStepsPerGroup - 1);
+        size_t base_idx = 16 + (group_idx << SizeConfig::kStepShift);
+        int shift = msb - SizeConfig::kStepShift;
+        size_t group_offset = ((size - 1) >> shift) & (SizeConfig::kStepsPerGroup - 1);
 
         return base_idx + group_offset;
     }
@@ -212,12 +215,12 @@ public:
         // Decoding logarithmic stepped index
         size_t relative_idx = idx - 16;
         // Identify the binary group (2^7, 2^8, ...) and the step within it
-        size_t group_idx = relative_idx >> MagicConstants::kStepShift;
-        size_t step_idx = relative_idx & (MagicConstants::kStepsPerGroup - 1);
+        size_t group_idx = relative_idx >> SizeConfig::kStepShift;
+        size_t step_idx = relative_idx & (SizeConfig::kStepsPerGroup - 1);
         // Reconstruct size components using 64-bit safe shifts
         size_t msb = group_idx + 7;
         size_t base_size = 1ULL << msb;
-        size_t step_size = 1ULL << (msb - MagicConstants::kStepShift);
+        size_t step_size = 1ULL << (msb - SizeConfig::kStepShift);
         // Return the upper bound of the current size class ladder
         return base_size + (step_idx + 1) * step_size;
     }
@@ -228,7 +231,7 @@ public:
      * @return Aligned size.
      */
     static constexpr size_t RoundUp(size_t size) noexcept {
-        if (size > MagicConstants::MAX_TC_SIZE) AM_UNLIKELY {
+        if (size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
                 return size;
             }
 
@@ -257,7 +260,7 @@ public:
         // Base strategy: Inverse proportion to size.
         // Example: 32KB / 8B = 4096 (Clamped to 512).
         // Example: 32KB / 32KB = 1 (Clamped to 2).
-        size_t batch = MagicConstants::MAX_TC_SIZE / size;
+        size_t batch = SizeConfig::MAX_TC_SIZE / size;
         // Lower bound: Always move at least 2 objects to leverage cache locality.
         if (batch < 2) {
             batch = 2;
@@ -297,14 +300,14 @@ public:
             total_bytes = 32 * 1024;
         }
 
-        size_t page_num = (total_bytes + MagicConstants::PAGE_SIZE - 1) >> MagicConstants::PAGE_SHIFT;
+        size_t page_num = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
         // 4. Boundary Enforcement
         if (page_num < 1) {
             page_num = 1;
         }
 
-        if (page_num > MagicConstants::MAX_PAGE_NUM) {
-            page_num = MagicConstants::MAX_PAGE_NUM;
+        if (page_num > PageConfig::MAX_PAGE_NUM) {
+            page_num = PageConfig::MAX_PAGE_NUM;
         }
 
         return page_num;
@@ -319,6 +322,7 @@ static_assert(SizeClass::Size(20) == 320);
 // Round-trip check
 static_assert(SizeClass::Index(SizeClass::Size(20)) == 20);
 static_assert(SizeClass::Index(129) == 16);
+static_assert(SizeClass::Index(150) == 16);
 
 export struct FreeBlock {
     FreeBlock* next;
@@ -415,7 +419,7 @@ struct Bitmap {
      * @param idx The index of the block [0-63].
      */
     void SetFree(size_t idx) noexcept {
-        AM_DCHECK(idx < MagicConstants::BITMAP_BITS);
+        AM_DCHECK(idx < SystemConfig::BITMAP_BITS);
         // memory_order_release: Ensures any writes to the memory block happening
         // before this free are visible to the thread that next allocates it.
         bits_.fetch_or(1ULL << idx, std::memory_order_release);
@@ -427,7 +431,7 @@ struct Bitmap {
      * Normal allocation should use FindAndTakeFirstFree.
      */
     void SetUsed(size_t idx) noexcept {
-        AM_DCHECK(idx < MagicConstants::BITMAP_BITS);
+        AM_DCHECK(idx < SystemConfig::BITMAP_BITS);
         bits_.fetch_and(~(1ULL << idx), std::memory_order_relaxed);
     }
 
@@ -436,7 +440,7 @@ struct Bitmap {
      * @return True if the block is free, false otherwise.
      */
     AM_NODISCARD bool IsFree(size_t idx) const noexcept {
-        AM_DCHECK(idx < MagicConstants::BITMAP_BITS);
+        AM_DCHECK(idx < SystemConfig::BITMAP_BITS);
         return (bits_.load(std::memory_order_relaxed) & (1ULL << idx)) != 0;
     }
 
@@ -461,7 +465,7 @@ struct Bitmap {
         uint64_t old_val = bits_.load(std::memory_order_relaxed);
         do {
             if (old_val == 0) AM_UNLIKELY {
-                    return MagicConstants::BITMAP_BITS;
+                    return SystemConfig::BITMAP_BITS;
                 }
             // Calculate index of the first trailing 1 (free block).
             size_t idx = std::countr_zero(old_val);
@@ -513,7 +517,7 @@ struct Span {
 
         // 1. Calculate Base Address
         void* start_ptr = PageIDToPtr(start_page_idx);
-        const size_t total_bytes = page_num << MagicConstants::PAGE_SHIFT;
+        const size_t total_bytes = page_num << SystemConfig::PAGE_SHIFT;
 
         // 2. Estimate Bitmap Size
         // Formula: Total = BitmapBytes + DataBytes
@@ -633,7 +637,7 @@ struct Span {
 
     AM_NODISCARD void* GetEndAddr() const noexcept {
         const auto start = reinterpret_cast<uintptr_t>(GetStartAddr());
-        constexpr size_t shift = std::countr_zero(MagicConstants::PAGE_SIZE);
+        constexpr size_t shift = std::countr_zero(SystemConfig::PAGE_SIZE);
         return reinterpret_cast<void*>(start + (page_num << shift));
     }
 };
@@ -778,7 +782,7 @@ private:
  * 2. Prevents False Sharing in multi-thread environments.
  * 3. Optimizes interaction with system allocators (like mmap).
  */
-struct alignas(MagicConstants::PAGE_SIZE) RadixNode {
+struct alignas(SystemConfig::PAGE_SIZE) RadixNode {
     /**
      * @brief Array of pointers to child nodes or Spans.
      *
@@ -786,7 +790,7 @@ struct alignas(MagicConstants::PAGE_SIZE) RadixNode {
      * - In leaf nodes, these point to `Span` objects.
      * - In internal nodes, these point to the next level `RadixNode`.
      */
-    std::array<std::atomic<void*>, MagicConstants::RADIX_NODE_SIZE> children;
+    std::array<std::atomic<void*>, PageConfig::RADIX_NODE_SIZE> children;
 
     RadixNode() {
         for (auto& child: children) {
@@ -815,9 +819,9 @@ public:
             }
 
         // Calculate Radix Tree indices
-        const size_t i1 = page_id >> (MagicConstants::RADIX_BITS * 2);
-        const size_t i2 = (page_id >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
-        const size_t i3 = page_id & MagicConstants::RADIX_MASK;
+        const size_t i1 = page_id >> (PageConfig::RADIX_BITS * 2);
+        const size_t i2 = (page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
+        const size_t i3 = page_id & PageConfig::RADIX_MASK;
 
         // Traverse Level 1
         auto* p2_raw = curr->children[i1].load(std::memory_order_acquire);
@@ -842,7 +846,7 @@ public:
 
     static Span* GetSpan(void* ptr) {
         const auto addr = reinterpret_cast<uintptr_t>(ptr);
-        const size_t page_id = addr >> MagicConstants::PAGE_SHIFT;
+        const size_t page_id = addr >> SystemConfig::PAGE_SHIFT;
         return GetSpan(page_id);
     }
 
@@ -872,7 +876,7 @@ public:
             // Note: Called WITHOUT internal locking to avoid deadlock.
             auto* p3 = EnsurePath(curr, page_id);
             // 2. Traverse to the leaf node.
-            const size_t i3 = page_id & MagicConstants::RADIX_MASK;
+            const size_t i3 = page_id & PageConfig::RADIX_MASK;
             // 3. Set the Leaf.
             p3->children[i3].store(span, std::memory_order_release);
         }
@@ -892,8 +896,8 @@ private:
      */
     static RadixNode* EnsurePath(RadixNode* curr, uintptr_t page_id) {
         // Step 1: Ensure Level 2 Node exists
-        const size_t i1 = page_id >> (MagicConstants::RADIX_BITS * 2);
-        const size_t i2 = (page_id >> MagicConstants::RADIX_BITS) & MagicConstants::RADIX_MASK;
+        const size_t i1 = page_id >> (PageConfig::RADIX_BITS * 2);
+        const size_t i2 = (page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
         auto* p2_raw = curr->children[i1].load(std::memory_order_relaxed);
         if (!p2_raw) {
             auto* new_node = new RadixNode;
@@ -916,8 +920,8 @@ private:
 export class PageAllocator {
 public:
     static void* SystemAlloc(size_t page_num) {
-        const size_t size = page_num << MagicConstants::PAGE_SHIFT;
-        if (size < (MagicConstants::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
+        const size_t size = page_num << SystemConfig::PAGE_SHIFT;
+        if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
                 return AllocNormalPage(size);
             }
 
@@ -929,7 +933,7 @@ public:
             return;
         }
 
-        const size_t size = page_num << MagicConstants::PAGE_SHIFT;
+        const size_t size = page_num << SystemConfig::PAGE_SHIFT;
         munmap(ptr, size);
     }
 
@@ -945,7 +949,7 @@ private:
     }
 
     static void* AllocHugePage(size_t size) {
-        size_t alloc_size = size + MagicConstants::HUGE_PAGE_SIZE;
+        size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
         void* ptr = mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE,
                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (ptr == MAP_FAILED) {
@@ -953,8 +957,8 @@ private:
         }
 
         const auto addr = reinterpret_cast<uintptr_t>(ptr);
-        const uintptr_t aligned_addr = (addr + MagicConstants::HUGE_PAGE_SIZE - 1) &
-                                       ~(MagicConstants::HUGE_PAGE_SIZE - 1);
+        const uintptr_t aligned_addr = (addr + SystemConfig::HUGE_PAGE_SIZE - 1) &
+                                       ~(SystemConfig::HUGE_PAGE_SIZE - 1);
         const size_t head_gap = aligned_addr - addr;
         if (head_gap > 0) {
             munmap(ptr, head_gap);
@@ -1023,7 +1027,7 @@ public:
 
         // 1. Direct Return: If the Span is larger than the cache can manage (>128 pages),
         // return it directly to the OS (PageAllocator).
-        if (span->page_num > MagicConstants::MAX_PAGE_NUM) AM_UNLIKELY {
+        if (span->page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
                 auto* ptr = span->GetStartAddr();
                 PageAllocator::SystemFree(ptr, span->page_num);
                 delete span;
@@ -1040,7 +1044,7 @@ public:
             // - Left span is currently in use (in CentralCache).
             // - Merged size would exceed the maximum bucket size.
             if (!left_span || left_span->is_used ||
-                span->page_num + left_span->page_num > MagicConstants::MAX_PAGE_NUM) {
+                span->page_num + left_span->page_num > PageConfig::MAX_PAGE_NUM) {
                 break;
             }
 
@@ -1057,7 +1061,7 @@ public:
             auto* right_span = PageMap::GetSpan(right_id);
             // Similar stop conditions as Merge Left.
             if (!right_span || right_span->is_used ||
-                span->page_num + right_span->page_num > MagicConstants::MAX_PAGE_NUM) {
+                span->page_num + right_span->page_num > PageConfig::MAX_PAGE_NUM) {
                 break;
             }
 
@@ -1085,7 +1089,7 @@ private:
     std::mutex mutex_;
     /// Array of free lists. Index `i` holds Spans of size `i` pages.
     /// Range: [0, MAX_PAGE_NUM], supporting spans up to 128 pages.
-    std::array<SpanList, MagicConstants::MAX_PAGE_NUM + 1> span_lists_;
+    std::array<SpanList, PageConfig::MAX_PAGE_NUM + 1> span_lists_;
 
     PageCache() = default;
 
@@ -1097,10 +1101,10 @@ private:
         while (true) {
             // 1. Oversized Allocation:
             // Requests larger than the max bucket (>128 pages) go directly to the OS.
-            if (page_num > MagicConstants::MAX_PAGE_NUM) AM_UNLIKELY {
+            if (page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
                     void* ptr = PageAllocator::SystemAlloc(page_num);
                     auto* span = new Span;
-                    span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
+                    span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
                     span->page_num = page_num;
                     span->obj_size = obj_size;
                     span->is_used = true;
@@ -1121,7 +1125,7 @@ private:
 
             // 3. Splitting (Best Fit / First Fit):
             // Iterate through larger buckets to find a span we can split.
-            for (size_t i = page_num + 1; i <= MagicConstants::MAX_PAGE_NUM; ++i) {
+            for (size_t i = page_num + 1; i <= PageConfig::MAX_PAGE_NUM; ++i) {
                 if (span_lists_[i].empty()) {
                     continue;
                 }
@@ -1151,10 +1155,10 @@ private:
             // 4. System Refill:
             // If no suitable spans exist in cache, allocate a large block (128 pages) from OS.
             // We request the MAX_PAGE_NUM to maximize cache efficiency.
-            size_t alloc_page_nums = MagicConstants::MAX_PAGE_NUM;
+            size_t alloc_page_nums = PageConfig::MAX_PAGE_NUM;
             void* ptr = PageAllocator::SystemAlloc(alloc_page_nums);
             auto* span = new Span;
-            span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> MagicConstants::PAGE_SHIFT;
+            span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
             span->page_num = alloc_page_nums;
             span->is_used = false;
             // Insert the new large span into the last bucket.
@@ -1321,7 +1325,6 @@ private:
         list.GetMutex().unlock();
 
         // 2. Calculate optimal page count and request from PageCache.
-        // Assuming SizeClass::GetMovePageNum is equivalent to NumMovePage discussed earlier.
         auto page_num = SizeClass::GetMovePageNum(size);
         auto* span = PageCache::GetInstance().AllocSpan(page_num, size);
         AM_DCHECK(span != nullptr);
@@ -1334,7 +1337,7 @@ private:
         return span;
     }
 
-    constexpr static size_t kNumSizeClasses = SizeClass::Index(MagicConstants::MAX_TC_SIZE) + 1;
+    constexpr static size_t kNumSizeClasses = SizeClass::Index(SizeConfig::MAX_TC_SIZE) + 1;
     std::array<SpanList, kNumSizeClasses> span_lists_{};
 };
 
@@ -1362,7 +1365,7 @@ public:
         if (size == 0) AM_UNLIKELY {
                 return nullptr;
             }
-        AM_DCHECK(size <= MagicConstants::MAX_TC_SIZE);
+        AM_DCHECK(size <= SizeConfig::MAX_TC_SIZE);
 
         size_t idx = SizeClass::Index(size);
         auto& list = free_lists_[idx];
@@ -1382,7 +1385,7 @@ public:
      */
     void Deallocate(void* ptr, size_t size) {
         AM_DCHECK(ptr != nullptr);
-        AM_DCHECK(size <= MagicConstants::MAX_TC_SIZE);
+        AM_DCHECK(size <= SizeConfig::MAX_TC_SIZE);
 
         size_t idx = SizeClass::Index(size);
         auto& list = free_lists_[idx];
@@ -1422,7 +1425,7 @@ public:
 
 private:
     // Size class configuration
-    constexpr static size_t kNumSizeClasses = SizeClass::Index(MagicConstants::MAX_TC_SIZE) + 1;
+    constexpr static size_t kNumSizeClasses = SizeClass::Index(SizeConfig::MAX_TC_SIZE) + 1;
     // Array of FreeLists. Access is lock-free as it's thread-local.
     std::array<FreeList, kNumSizeClasses> free_lists_{};
 

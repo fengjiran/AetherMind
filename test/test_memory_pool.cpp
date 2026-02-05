@@ -5,6 +5,7 @@
 
 import ammalloc;
 import ammemory_pool;
+import ammalloc_config;
 
 namespace {
 using namespace aethermind;
@@ -26,12 +27,26 @@ TEST(SizeClassTest, IndexAndSizeMapping) {
 
     // 3. 验证互逆性 (RoundTrip)
     // Size(Index(s)) 应该 >= s 且是对齐后的值
-    for (size_t size = 1; size <= MagicConstants::MAX_TC_SIZE; size += 7) {
+    for (size_t size = 1; size <= SizeConfig::MAX_TC_SIZE; size += 7) {
         size_t idx = SizeClass::Index(size);
         size_t aligned_size = SizeClass::Size(idx);
         EXPECT_GE(aligned_size, size);
         EXPECT_EQ(idx, SizeClass::Index(aligned_size));
     }
+}
+
+TEST(SizeClassTest, BatchStrategy) {
+    // 小对象：批量数应为 512
+    EXPECT_EQ(SizeClass::CalculateBatchSize(8), 512);
+    // 大对象：批量数应为 2
+    EXPECT_EQ(SizeClass::CalculateBatchSize(32 * 1024), 2);
+
+    // 验证 GetMovePageNum 至少能支撑 8 次 Batch
+    size_t size = 8;
+    size_t batch = SizeClass::CalculateBatchSize(size);
+    size_t pages = SizeClass::GetMovePageNum(size);
+    size_t total_bytes = pages * SystemConfig::PAGE_SIZE;
+    EXPECT_GE(total_bytes, batch * 8 * size);
 }
 
 }// namespace

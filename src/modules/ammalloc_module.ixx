@@ -11,6 +11,7 @@ module;
 export module ammalloc;
 
 import ammemory_pool;
+import ammalloc_config;
 
 namespace aethermind {
 
@@ -29,7 +30,7 @@ static ThreadCache* CreateThreadCache() {
     }
 
     constexpr auto tc_size = sizeof(ThreadCache);
-    constexpr auto page_num = (tc_size + MagicConstants::PAGE_SIZE - 1) >> MagicConstants::PAGE_SHIFT;
+    constexpr auto page_num = (tc_size + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
     void* ptr = PageAllocator::SystemAlloc(page_num);
     return new (ptr) ThreadCache;
 }
@@ -41,7 +42,7 @@ static void ReleaseThreadCache(ThreadCache* tc) {
 
     tc->~ThreadCache();
     constexpr auto tc_size = sizeof(ThreadCache);
-    constexpr auto page_num = (tc_size + MagicConstants::PAGE_SIZE - 1) >> MagicConstants::PAGE_SHIFT;
+    constexpr auto page_num = (tc_size + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
     PageAllocator::SystemFree(tc, page_num);
 }
 
@@ -59,9 +60,9 @@ struct ThreadCacheCleaner {
 thread_local ThreadCacheCleaner tc_cleaner;
 
 export void* am_malloc(size_t size) {
-    if (size > MagicConstants::MAX_TC_SIZE) {
-        const auto align_size = (size + MagicConstants::PAGE_SIZE - 1) & ~(MagicConstants::PAGE_SIZE - 1);
-        const size_t page_num = align_size >> MagicConstants::PAGE_SHIFT;
+    if (size > SizeConfig::MAX_TC_SIZE) {
+        const auto align_size = (size + SystemConfig::PAGE_SIZE - 1) & ~(SystemConfig::PAGE_SIZE - 1);
+        const size_t page_num = align_size >> SystemConfig::PAGE_SHIFT;
         const auto* span = PageCache::GetInstance().AllocSpan(page_num, 0);
         if (!span) {
             return nullptr;

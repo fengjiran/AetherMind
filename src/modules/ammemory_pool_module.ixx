@@ -18,38 +18,6 @@ export module ammemory_pool;
 import ammalloc_config;
 
 namespace aethermind {
-
-export struct MagicConstants1 {
-    // page size (default: 4KB)
-    constexpr static size_t PAGE_SIZE = 4096;
-    // page shift
-    constexpr static size_t PAGE_SHIFT = 12;
-    // huge page size(2MB)
-    constexpr static size_t HUGE_PAGE_SIZE = 2 * 1024 * 1024;
-    // max thread cache size(32KB)
-    constexpr static size_t MAX_TC_SIZE = 32 * 1024;
-    // size class alignment
-    constexpr static size_t ALIGNMENT = 16;
-    // cache line size
-    constexpr static size_t CACHE_LINE_SIZE = 64;
-
-    // Maximum number of consecutive pages managed by Page Cache
-    // (to avoid excessively large Spans)
-    constexpr static size_t MAX_PAGE_NUM = 128;
-
-    // bitmap bits
-    constexpr static size_t BITMAP_BITS = 64;
-
-    //
-    constexpr static size_t RADIX_BITS = 9;
-    constexpr static size_t RADIX_NODE_SIZE = 1 << RADIX_BITS;
-    constexpr static size_t RADIX_MASK = RADIX_NODE_SIZE - 1;
-
-    // For size class index
-    constexpr static int kStepsPerGroup = 4;
-    constexpr static int kStepShift = 2;
-};
-
 /**
  * @brief Aligns 'size' up to the specified 'align'.
  * @return The smallest multiple of 'align' that is greater than or equal to 'size'.

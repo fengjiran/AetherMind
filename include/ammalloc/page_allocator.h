@@ -2,12 +2,13 @@
 // Created by richard on 2/6/26.
 //
 
-#ifndef AETHERMIND_AMMALLOC_PAGE_ALLOCATOR_H
-#define AETHERMIND_AMMALLOC_PAGE_ALLOCATOR_H
+#ifndef AETHERMIND_MALLOC_PAGE_ALLOCATOR_H
+#define AETHERMIND_MALLOC_PAGE_ALLOCATOR_H
 
 #include "ammalloc/config.h"
+#include "spdlog/spdlog.h"
 
-#include <cstdint>
+#include <cstring>
 #include <sys/mman.h>
 
 namespace aethermind {
@@ -16,9 +17,11 @@ class PageAllocator {
 public:
     static void* SystemAlloc(size_t page_num) {
         const size_t size = page_num << SystemConfig::PAGE_SHIFT;
+        // clang-format off
         if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
-                return AllocNormalPage(size);
-            }
+            return AllocNormalPage(size);
+        }
+        // clang-format on
 
         return AllocHugePage(size);
     }
@@ -41,6 +44,7 @@ private:
 
         void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, -1, 0);
         if (ptr == MAP_FAILED) {
+            spdlog::error("mmap failed for size {}: {}", size, strerror(errno));
             return nullptr;
         }
 
@@ -49,8 +53,8 @@ private:
 
     static void* AllocHugePage(size_t size) {
         size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
-        void* ptr = mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+        void* ptr = mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE, flags, -1, 0);
         if (ptr == MAP_FAILED) {
             return nullptr;
         }
@@ -74,4 +78,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_AMMALLOC_PAGE_ALLOCATOR_H
+#endif//AETHERMIND_MALLOC_PAGE_ALLOCATOR_H

@@ -8,7 +8,6 @@
 #include <cstddef>
 
 namespace aethermind {
-
 namespace details {
 
 /**

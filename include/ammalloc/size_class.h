@@ -9,6 +9,77 @@
 
 namespace aethermind {
 
+namespace details {
+
+constexpr static size_t CalculateIndex(size_t size) noexcept {
+    if (size == 0) {
+        return 0;
+    }
+
+    // Fast path for small objects: 8-byte alignment (0-128 bytes)
+    // Maps [1, 8] -> 0, ..., [121, 128] -> 15
+    if (size <= 128) AM_LIKELY {
+            return (size - 1) >> 3;
+        }
+
+    /*
+     * Stepped Mapping for objects > 128B:
+     * 1. msb: Find the power of 2 group (e.g., 129-256B falls into the 2^7 group).
+     * 2. group_idx: Normalize msb so that the first group starts at index 0.
+     * 3. base_idx: Calculate the starting index of the group.
+     * 4. group_offset: Subdivide each power-of-2 group into 2^kStepShift steps.
+     */
+    int msb = std::bit_width(size - 1) - 1;
+    int group_idx = msb - 7;
+    size_t base_idx = 16 + (group_idx << SizeConfig::kStepShift);
+    int shift = msb - SizeConfig::kStepShift;
+    size_t group_offset = ((size - 1) >> shift) & (SizeConfig::kStepsPerGroup - 1);
+
+    return base_idx + group_offset;
+}
+
+constexpr static size_t CalculateSize(size_t idx) noexcept {
+    // Fast path for small objects (0-128 bytes): Maps index 0..15 back to 8..128
+    if (idx < 16) AM_LIKELY {
+            return (idx + 1) << 3;
+        }
+
+    // Decoding logarithmic stepped index
+    size_t relative_idx = idx - 16;
+    // Identify the binary group (2^7, 2^8, ...) and the step within it
+    size_t group_idx = relative_idx >> SizeConfig::kStepShift;
+    size_t step_idx = relative_idx & (SizeConfig::kStepsPerGroup - 1);
+    // Reconstruct size components using 64-bit safe shifts
+    size_t msb = group_idx + 7;
+    size_t base_size = 1ULL << msb;
+    size_t step_size = 1ULL << (msb - SizeConfig::kStepShift);
+    // Return the upper bound of the current size class ladder
+    return base_size + (step_idx + 1) * step_size;
+}
+
+}// namespace details
+
+// Validate Small Object Boundaries
+static_assert(details::CalculateSize(0) == 8);
+static_assert(details::CalculateSize(15) == 128);
+
+// Validate Large Object Group 0 (Range: 129-256)
+// Step size = (256-128)/4 = 32
+static_assert(details::CalculateSize(16) == 160);// 128 + 32
+static_assert(details::CalculateSize(17) == 192);// 160 + 32
+static_assert(details::CalculateSize(19) == 256);// Last bucket of group 0
+
+// Validate Large Object Group 1 (Range: 257-512)
+// Step size = (512-256)/4 = 64
+static_assert(details::CalculateSize(20) == 320);// 256 + 64
+
+// Validate Inverse Property (Index -> Size -> Index)
+static_assert(details::CalculateIndex(1) == 0);
+static_assert(details::CalculateIndex(8) == 0);
+static_assert(details::CalculateIndex(9) == 1);
+static_assert(details::CalculateIndex(128) == 15);
+static_assert(details::CalculateIndex(129) == 16);// 129 落在 160 的桶里
+static_assert(details::CalculateIndex(160) == 16);
 
 /**
  * @brief Static utility class for managing size classes and alignment policies.
@@ -43,32 +114,20 @@ public:
      * @note This implementation is branch-prediction friendly and utilizes C++20
      *       bit-manipulation (std::bit_width) for O(1) performance without large tables.
      */
-    static constexpr size_t Index(size_t size) noexcept {
-        // Validate boundaries: size 0 or exceeding MAX_TC_SIZE are rare edge cases.
-        if (size == 0 || size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
-                return std::numeric_limits<size_t>::max();
-            }
+    constexpr static size_t Index(size_t size) noexcept {
+        // clang-format off
+        if (size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
+            return std::numeric_limits<size_t>::max();
+        }
 
-        // Fast path for small objects: 8-byte alignment (0-128 bytes)
-        // Maps [1, 8] -> 0, ..., [121, 128] -> 15
-        if (size <= 128) AM_LIKELY {
-                return (size - 1) >> 3;
-            }
+        // Fast path: O(1) table lookup for small objects
+        if (size <= SizeConfig::kSmallSizeThreshold) AM_LIKELY {
+            return small_index_table_[size];
+        }
+        // clang-format on
 
-        /*
-         * Stepped Mapping for objects > 128B:
-         * 1. msb: Find the power of 2 group (e.g., 129-256B falls into the 2^7 group).
-         * 2. group_idx: Normalize msb so that the first group starts at index 0.
-         * 3. base_idx: Calculate the starting index of the group.
-         * 4. group_offset: Subdivide each power-of-2 group into 2^kStepShift steps.
-         */
-        int msb = std::bit_width(size - 1) - 1;
-        int group_idx = msb - 7;
-        size_t base_idx = 16 + (group_idx << SizeConfig::kStepShift);
-        int shift = msb - SizeConfig::kStepShift;
-        size_t group_offset = ((size - 1) >> shift) & (SizeConfig::kStepsPerGroup - 1);
-
-        return base_idx + group_offset;
+        // Slow path: Mathematical calculation for large objects
+        return details::CalculateIndex(size);
     }
 
     /**
@@ -98,22 +157,8 @@ public:
      * @return The maximum byte size of the objects stored in this size class's FreeList.
      */
     static constexpr size_t Size(size_t idx) noexcept {
-        // Fast path for small objects (0-128 bytes): Maps index 0..15 back to 8..128
-        if (idx < 16) AM_LIKELY {
-                return (idx + 1) << 3;
-            }
-
-        // Decoding logarithmic stepped index
-        size_t relative_idx = idx - 16;
-        // Identify the binary group (2^7, 2^8, ...) and the step within it
-        size_t group_idx = relative_idx >> SizeConfig::kStepShift;
-        size_t step_idx = relative_idx & (SizeConfig::kStepsPerGroup - 1);
-        // Reconstruct size components using 64-bit safe shifts
-        size_t msb = group_idx + 7;
-        size_t base_size = 1ULL << msb;
-        size_t step_size = 1ULL << (msb - SizeConfig::kStepShift);
-        // Return the upper bound of the current size class ladder
-        return base_size + (step_idx + 1) * step_size;
+        // O(1) table lookup for all size classes
+        return size_table_[idx];
     }
 
     /**
@@ -203,6 +248,39 @@ public:
 
         return page_num;
     }
+
+    SizeClass() = delete;
+
+    /**
+     * @brief The total number of size classes (buckets) available.
+     * Calculated at compile-time to size the arrays in ThreadCache/CentralCache.
+     */
+    constexpr static size_t kNumSizeClasses = details::CalculateIndex(SizeConfig::MAX_TC_SIZE) + 1;
+
+private:
+    // -----------------------------------------------------------------------
+    // Compile-time Lookup Tables (IILE)
+    // -----------------------------------------------------------------------
+
+    // Table for O(1) Index lookup (Size -> Index)
+    // Only covers small objects up to kSmallSizeThreshold
+    constexpr static auto small_index_table_ = []() consteval {
+        std::array<uint8_t, SizeConfig::kSmallSizeThreshold + 1> small_index_table{};
+        for (size_t sz = 0; sz <= SizeConfig::kSmallSizeThreshold; ++sz) {
+            small_index_table[sz] = static_cast<uint8_t>(details::CalculateIndex(sz));
+        }
+        return small_index_table;
+    }();
+
+    // Table for O(1) Size lookup (Index -> Size)
+    // Covers ALL indices
+    constexpr static auto size_table_ = []() consteval {
+        std::array<uint32_t, kNumSizeClasses> size_table{};
+        for (size_t idx = 0; idx < kNumSizeClasses; ++idx) {
+            size_table[idx] = static_cast<uint32_t>(details::CalculateSize(idx));
+        }
+        return size_table;
+    }();
 };
 
 static_assert(SizeClass::Size(0) == 8);

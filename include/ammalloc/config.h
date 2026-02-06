@@ -41,7 +41,7 @@ struct SizeConfig {
     // For size class index
     constexpr static int kStepsPerGroup = 4;
     constexpr static int kStepShift = 2;
-    constexpr static size_t kSmallObjectThreshold = 1024;
+    constexpr static size_t kSmallSizeThreshold = 1024;
 };
 
 // ===========================================================================
@@ -132,7 +132,6 @@ public:
     AM_NODISCARD size_t MaxTCSize() const {
         return max_tc_size_;
     }
-
 
 private:
     RuntimeConfig() {

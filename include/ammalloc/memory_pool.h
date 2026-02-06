@@ -5,14 +5,14 @@
 #ifndef AETHERMIND_AMMALLOC_MEMORY_POOL_H
 #define AETHERMIND_AMMALLOC_MEMORY_POOL_H
 
-#include "utils/logging.h"
 #include "ammalloc/config.h"
+#include "ammalloc/page_allocator.h"
 #include "ammalloc/size_class.h"
+#include "utils/logging.h"
 
 #include <atomic>
 #include <immintrin.h>
 #include <mutex>
-#include <sys/mman.h>
 
 namespace aethermind {
 
@@ -589,63 +589,6 @@ private:
     }
 };
 
-
-class PageAllocator {
-public:
-    static void* SystemAlloc(size_t page_num) {
-        const size_t size = page_num << SystemConfig::PAGE_SHIFT;
-        if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
-                return AllocNormalPage(size);
-            }
-
-        return AllocHugePage(size);
-    }
-
-    static void SystemFree(void* ptr, size_t page_num) {
-        if (!ptr || page_num == 0) {
-            return;
-        }
-
-        const size_t size = page_num << SystemConfig::PAGE_SHIFT;
-        munmap(ptr, size);
-    }
-
-private:
-    static void* AllocNormalPage(size_t size) {
-        void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (ptr == MAP_FAILED) {
-            return nullptr;
-        }
-
-        return ptr;
-    }
-
-    static void* AllocHugePage(size_t size) {
-        size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
-        void* ptr = mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (ptr == MAP_FAILED) {
-            return nullptr;
-        }
-
-        const auto addr = reinterpret_cast<uintptr_t>(ptr);
-        const uintptr_t aligned_addr = (addr + SystemConfig::HUGE_PAGE_SIZE - 1) &
-                                       ~(SystemConfig::HUGE_PAGE_SIZE - 1);
-        const size_t head_gap = aligned_addr - addr;
-        if (head_gap > 0) {
-            munmap(ptr, head_gap);
-        }
-
-        if (const size_t tail_gap = alloc_size - head_gap - size; tail_gap > 0) {
-            munmap(reinterpret_cast<void*>(aligned_addr + size), tail_gap);
-        }
-
-        madvise(reinterpret_cast<void*>(aligned_addr), size, MADV_HUGEPAGE);
-        return reinterpret_cast<void*>(aligned_addr);
-    }
-};
-
 /**
  * @brief Global singleton managing page-level memory allocation and deallocation.
  *
@@ -1079,7 +1022,7 @@ public:
     }
 
     void ReleaseAll() {
-        for (size_t i = 0; i < kNumSizeClasses; ++i) {
+        for (size_t i = 0; i < SizeClass::kNumSizeClasses; ++i) {
             auto& list = free_lists_[i];
             if (list.empty()) {
                 continue;
@@ -1098,10 +1041,8 @@ public:
     }
 
 private:
-    // Size class configuration
-    constexpr static size_t kNumSizeClasses = SizeClass::Index(SizeConfig::MAX_TC_SIZE) + 1;
     // Array of FreeLists. Access is lock-free as it's thread-local.
-    std::array<FreeList, kNumSizeClasses> free_lists_{};
+    std::array<FreeList, SizeClass::kNumSizeClasses> free_lists_{};
 
     /**
      * @brief Fetch objects from CentralCache when ThreadCache is empty.

@@ -7,6 +7,10 @@
 
 #include "ammalloc/config.h"
 
+#include <array>
+#include <bit>
+#include <limits>
+
 namespace aethermind {
 
 namespace details {
@@ -202,7 +206,7 @@ public:
             batch = 2;
         }
 
-        // At most 512, to prevent the central pool from being drained instantly
+        // At most 512, to prevent the central cache pool from being drained instantly
         // Upper bound: Cap at 512 to prevent CentralCache depletion and excessive ThreadCache footprint.
         if (batch > 512) {
             batch = 512;

@@ -1,11 +1,9 @@
 //
 // Created by richard on 2/4/26.
 //
-#include <gtest/gtest.h>
+#include "ammalloc/ammalloc.h"
 
-// import ammalloc;
-import ammemory_pool;
-import ammalloc_config;
+#include <gtest/gtest.h>
 
 namespace {
 using namespace aethermind;

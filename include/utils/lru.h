@@ -1,17 +1,17 @@
 //
-// Created by richard on 1/28/26.
+// Created by richard on 2/6/26.
 //
-module;
+
+#ifndef AETHERMIND_LRU_H
+#define AETHERMIND_LRU_H
 
 #include <list>
 #include <mutex>
 #include <unordered_map>
 
-export module LRU;
-
 namespace aethermind {
 
-export template<typename Key, typename Value>
+template<typename Key, typename Value>
 class LRUCache {
 public:
     explicit LRUCache(size_t cap) : cap_(cap) {}
@@ -52,3 +52,5 @@ private:
 };
 
 }// namespace aethermind
+
+#endif//AETHERMIND_LRU_H

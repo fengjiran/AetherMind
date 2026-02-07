@@ -56,6 +56,7 @@ private:
         int flags = MAP_PRIVATE | MAP_ANONYMOUS;
         void* ptr = mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE, flags, -1, 0);
         if (ptr == MAP_FAILED) {
+            spdlog::error("mmap failed for size {}: {}", alloc_size, strerror(errno));
             return nullptr;
         }
 
@@ -72,6 +73,10 @@ private:
         }
 
         madvise(reinterpret_cast<void*>(aligned_addr), size, MADV_HUGEPAGE);
+        if (RuntimeConfig::GetInstance().UseMapPopulate()) {
+            madvise(reinterpret_cast<void*>(aligned_addr), size, MADV_WILLNEED);
+        }
+
         return reinterpret_cast<void*>(aligned_addr);
     }
 };

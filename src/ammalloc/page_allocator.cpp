@@ -23,12 +23,25 @@ void* PageAllocator::AllocNormalPage(size_t size) {
     return ptr;
 }
 
-void* PageAllocator::AllocHugePage(size_t size) {
+void PageAllocator::ApplyHugePageHint(void* ptr, size_t size) {
+    if (madvise(ptr, size, MADV_HUGEPAGE) != 0) {
+        spdlog::debug("madvise MADV_HUGEPAGE failed (expected on non-THP systems).");
+    }
+
+    if (RuntimeConfig::GetInstance().UseMapPopulate()) {
+        if (madvise(ptr, size, MADV_WILLNEED) != 0) {
+            spdlog::warn("madvise MADV_WILLNEED failed.");
+        }
+    }
+}
+
+void* PageAllocator::AllocHugePageRobust(size_t size) {
     size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     void* ptr = mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE, flags, -1, 0);
     if (ptr == MAP_FAILED) {
-        spdlog::error("mmap failed for size {}: {}", alloc_size, strerror(errno));
+        spdlog::error("AllocHugePageRobust: mmap failed for size {}: {}",
+                      alloc_size, strerror(errno));
         return nullptr;
     }
 
@@ -44,12 +57,33 @@ void* PageAllocator::AllocHugePage(size_t size) {
         munmap(reinterpret_cast<void*>(aligned_addr + size), tail_gap);
     }
 
-    madvise(reinterpret_cast<void*>(aligned_addr), size, MADV_HUGEPAGE);
-    if (RuntimeConfig::GetInstance().UseMapPopulate()) {
-        madvise(reinterpret_cast<void*>(aligned_addr), size, MADV_WILLNEED);
+    auto* res = reinterpret_cast<void*>(aligned_addr);
+    ApplyHugePageHint(res, size);
+    return res;
+}
+
+/**
+     * @brief 乐观的大页分配策略 [优化1]
+     * 策略：
+     * 1. 先尝试直接申请 size 大小（赌它刚好对齐）。
+     * 2. 如果不对齐，munmap 掉，再走 "Over-allocate" 流程。
+     * 收益：在内存碎片较少或 OS 激进 THP 时，避免了 2MB 的 VMA 浪费和额外的 munmap 调用。
+     */
+void* PageAllocator::AllocHugePage(size_t size) {
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+    void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, -1, 0);
+    if (ptr == MAP_FAILED) {
+        return nullptr;
     }
 
-    return reinterpret_cast<void*>(aligned_addr);
+    auto addr = reinterpret_cast<uintptr_t>(ptr);
+    if ((addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
+        ApplyHugePageHint(ptr, size);
+        return ptr;
+    }
+
+    munmap(ptr, size);
+    return AllocHugePageRobust(size);
 }
 
 }// namespace aethermind

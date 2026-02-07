@@ -8,12 +8,28 @@
 
 namespace aethermind {
 
+static void* AllocWithRetry(size_t size, int flags) {
+    for (size_t i = 0; i < PageConfig::MAX_ALLOC_RETRIES; ++i) {
+        if (void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, -1, 0);
+            ptr != MAP_FAILED) {
+            return ptr;
+        }
+
+        if (errno != ENOMEM) {
+            spdlog::error("mmap fatal error: errno={}", errno);
+            break;
+        }
+
+        spdlog::warn("mmap ENOMEM for size {}, retry {}/{}...",
+                     size, i + 1, PageConfig::MAX_ALLOC_RETRIES);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    return MAP_FAILED;
+}
+
 void* PageAllocator::SystemAlloc(size_t page_num) {
     const size_t size = page_num << SystemConfig::PAGE_SHIFT;
-    void* ptr = nullptr;
-    // for (size_t i = 0; i < PageConfig::MAX_ALLOC_RETRIES; ++i) {
-    //
-    // }
 
     // clang-format off
     if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
@@ -21,7 +37,11 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     }
     // clang-format on
 
-    return AllocHugePage(size);
+    auto* ptr = AllocHugePage(size);
+    if (ptr == nullptr) {
+        return AllocNormalPage(size);
+    }
+    return ptr;
 }
 
 void PageAllocator::SystemFree(void* ptr, size_t page_num) {
@@ -39,7 +59,8 @@ void* PageAllocator::AllocNormalPage(size_t size) {
         flags |= MAP_POPULATE;
     }
 
-    void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, -1, 0);
+    // void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, -1, 0);
+    void* ptr = AllocWithRetry(size, flags);
     if (ptr == MAP_FAILED) {
         spdlog::error("mmap failed for size {}: {}", size, strerror(errno));
         return nullptr;

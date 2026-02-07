@@ -30,29 +30,18 @@ struct PageAllocatorStats {
 
 class PageAllocator {
 public:
-    static void* SystemAlloc(size_t page_num) {
-        const size_t size = page_num << SystemConfig::PAGE_SHIFT;
-        // clang-format off
-        if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
-            return AllocNormalPage(size);
-        }
-        // clang-format on
-
-        return AllocHugePage(size);
+    static const PageAllocatorStats& GetStats() {
+        return stats_;
     }
 
-    static void SystemFree(void* ptr, size_t page_num) {
-        if (!ptr || page_num == 0) {
-            return;
-        }
+    static void* SystemAlloc(size_t page_num);
 
-        const size_t size = page_num << SystemConfig::PAGE_SHIFT;
-        munmap(ptr, size);
-    }
+    static void SystemFree(void* ptr, size_t page_num);
 
 private:
-    static void* AllocNormalPage(size_t size);
+    static PageAllocatorStats stats_;
 
+    static void* AllocNormalPage(size_t size);
     static void ApplyHugePageHint(void* ptr, size_t size);
     static void* AllocHugePage(size_t size);
     static void* AllocHugePageRobust(size_t size);

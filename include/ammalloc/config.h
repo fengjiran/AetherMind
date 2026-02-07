@@ -51,6 +51,7 @@ struct PageConfig {
     constexpr static size_t RADIX_BITS = 9;
     constexpr static size_t RADIX_NODE_SIZE = 1 << RADIX_BITS;
     constexpr static size_t RADIX_MASK = RADIX_NODE_SIZE - 1;
+    constexpr static size_t MAX_ALLOC_RETRIES = 3;
 };
 
 class RuntimeConfig {

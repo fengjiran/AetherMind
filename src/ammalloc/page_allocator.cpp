@@ -8,6 +8,31 @@
 
 namespace aethermind {
 
+void* PageAllocator::SystemAlloc(size_t page_num) {
+    const size_t size = page_num << SystemConfig::PAGE_SHIFT;
+    void* ptr = nullptr;
+    // for (size_t i = 0; i < PageConfig::MAX_ALLOC_RETRIES; ++i) {
+    //
+    // }
+
+    // clang-format off
+    if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
+        return AllocNormalPage(size);
+    }
+    // clang-format on
+
+    return AllocHugePage(size);
+}
+
+void PageAllocator::SystemFree(void* ptr, size_t page_num) {
+    if (!ptr || page_num == 0) {
+        return;
+    }
+
+    const size_t size = page_num << SystemConfig::PAGE_SHIFT;
+    munmap(ptr, size);
+}
+
 void* PageAllocator::AllocNormalPage(size_t size) {
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     if (RuntimeConfig::GetInstance().UseMapPopulate()) {

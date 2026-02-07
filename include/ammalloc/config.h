@@ -5,12 +5,9 @@
 #ifndef AETHERMIND_AMMALLOC_CONFIG_H
 #define AETHERMIND_AMMALLOC_CONFIG_H
 
-#include "ammalloc/common.h"
 #include "macros.h"
 
-#include <cctype>
 #include <cstddef>
-#include <cstdlib>
 
 namespace aethermind {
 
@@ -56,7 +53,6 @@ struct PageConfig {
     constexpr static size_t RADIX_MASK = RADIX_NODE_SIZE - 1;
 };
 
-
 class RuntimeConfig {
 public:
     static RuntimeConfig& GetInstance() {
@@ -77,17 +73,7 @@ private:
         InitFromEnv();
     }
 
-    void InitFromEnv() {
-        if (const char* env = std::getenv("AM_TC_SIZE")) {
-            if (const auto val = details::ParseSize(env); val > 0) {
-                max_tc_size_ = val < SizeConfig::MAX_TC_SIZE ? val : SizeConfig::MAX_TC_SIZE;
-            }
-        }
-
-        if (const char* env = std::getenv("AM_USE_MAP_POPULATE")) {
-            use_map_populate = details::ParseBool(env);
-        }
-    }
+    void InitFromEnv();
 
     size_t max_tc_size_ = SizeConfig::MAX_TC_SIZE;
     bool use_map_populate = false;// default: Lazy Allocation

@@ -3,6 +3,7 @@
 //
 #include "ammalloc/ammalloc.h"
 
+#include <cstring>
 #include <gtest/gtest.h>
 
 namespace {

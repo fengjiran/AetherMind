@@ -4,46 +4,52 @@
 #include "ammalloc/page_allocator.h"
 #include "spdlog/spdlog.h"
 
+#include <cstring>
 #include <sys/mman.h>
 
 namespace aethermind {
 
-namespace {
-
-void* AllocWithRetry(size_t size, int flags) {
+void* PageAllocator::AllocWithRetry(size_t size, int flags) {
     for (size_t i = 0; i < PageConfig::MAX_ALLOC_RETRIES; ++i) {
         if (void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, -1, 0);
             ptr != MAP_FAILED) {
             return ptr;
         }
 
-        if (errno != ENOMEM) {
-            spdlog::error("mmap fatal error: errno={}", errno);
+        if (errno == ENOMEM) {
+            stats_.mmap_enomem_count.fetch_add(1, std::memory_order_relaxed);
+            spdlog::warn("mmap ENOMEM for size {}, retry {}/{}...",
+                         size, i + 1, PageConfig::MAX_ALLOC_RETRIES);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        } else {
+            stats_.mmap_other_error_count.fetch_add(1, std::memory_order_relaxed);
+            spdlog::error("mmap fatal error: errno={}, msg={}", errno, strerror(errno));
             break;
         }
-
-        spdlog::warn("mmap ENOMEM for size {}, retry {}/{}...",
-                     size, i + 1, PageConfig::MAX_ALLOC_RETRIES);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     return MAP_FAILED;
 }
 
-void ApplyHugePageHint(void* ptr, size_t size) {
+void PageAllocator::ApplyHugePageHint(void* ptr, size_t size) {
     if (madvise(ptr, size, MADV_HUGEPAGE) != 0) {
+        stats_.madvise_failed_count.fetch_add(1, std::memory_order_relaxed);
         spdlog::debug("madvise MADV_HUGEPAGE failed (expected on non-THP systems).");
     }
 
     if (RuntimeConfig::GetInstance().UseMapPopulate()) {
         if (madvise(ptr, size, MADV_WILLNEED) != 0) {
-            spdlog::warn("madvise MADV_WILLNEED failed.");
+            stats_.madvise_failed_count.fetch_add(1, std::memory_order_relaxed);
+            spdlog::warn("madvise MADV_WILLNEED failed: ptr={}, size={}", ptr, size);
         }
     }
 }
 
-void* AllocNormalPage(size_t size, PageAllocatorStats& stats) {
-    stats.normal_alloc_count.fetch_add(1, std::memory_order_relaxed);
+void* PageAllocator::AllocNormalPage(size_t size, bool is_fallback) {
+    if (!is_fallback) {
+        stats_.normal_alloc_count.fetch_add(1, std::memory_order_relaxed);
+    }
+
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     if (RuntimeConfig::GetInstance().UseMapPopulate()) {
         flags |= MAP_POPULATE;
@@ -51,19 +57,21 @@ void* AllocNormalPage(size_t size, PageAllocatorStats& stats) {
 
     void* ptr = AllocWithRetry(size, flags);
     if (ptr == MAP_FAILED) {
+        stats_.normal_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
 
-    stats.normal_alloc_success.fetch_add(1, std::memory_order_relaxed);
-    stats.normal_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
+    stats_.normal_alloc_success.fetch_add(1, std::memory_order_relaxed);
+    stats_.normal_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
     return ptr;
 }
 
-void* AllocHugePageRobust(size_t size, PageAllocatorStats& stats) {
+void* PageAllocator::AllocHugePageFallback(size_t size) {
     size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     void* ptr = AllocWithRetry(alloc_size, flags);
     if (ptr == MAP_FAILED) {
+        stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
 
@@ -82,12 +90,12 @@ void* AllocHugePageRobust(size_t size, PageAllocatorStats& stats) {
         waste += tail_gap;
     }
 
-    stats.huge_align_waste_bytes.fetch_add(waste, std::memory_order_relaxed);
+    stats_.huge_align_waste_bytes.fetch_add(waste, std::memory_order_relaxed);
 
     auto* res = reinterpret_cast<void*>(aligned_addr);
     ApplyHugePageHint(res, size);
-    stats.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
-    stats.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
+    stats_.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
+    stats_.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
     return res;
 }
 
@@ -98,35 +106,33 @@ void* AllocHugePageRobust(size_t size, PageAllocatorStats& stats) {
      * 2. 如果不对齐，munmap 掉，再走 "Over-allocate" 流程。
      * 收益：在内存碎片较少或 OS 激进 THP 时，避免了 2MB 的 VMA 浪费和额外的 munmap 调用。
      */
-void* AllocHugePage(size_t size, PageAllocatorStats& stats) {
-    stats.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
+void* PageAllocator::AllocHugePage(size_t size) {
+    stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     void* ptr = AllocWithRetry(size, flags);
     if (ptr == MAP_FAILED) {
+        stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
 
     auto addr = reinterpret_cast<uintptr_t>(ptr);
     if ((addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
         ApplyHugePageHint(ptr, size);
-        stats.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
-        stats.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
+        stats_.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
+        stats_.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
         return ptr;
     }
 
     munmap(ptr, size);
-    return AllocHugePageRobust(size, stats);
+    return AllocHugePageFallback(size);
 }
-
-}// namespace
-
 
 void* PageAllocator::SystemAlloc(size_t page_num) {
     const size_t size = page_num << SystemConfig::PAGE_SHIFT;
 
     // clang-format off
     if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
-        void* ptr = AllocNormalPage(size, stats_);
+        void* ptr = AllocNormalPage(size);
         if (!ptr) {
             stats_.alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         }
@@ -134,9 +140,9 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     }
     // clang-format on
 
-    auto* ptr = AllocHugePage(size, stats_);
+    auto* ptr = AllocHugePage(size);
     if (ptr == nullptr) {
-        ptr = AllocNormalPage(size, stats_);
+        ptr = AllocNormalPage(size);
     }
 
     if (ptr == nullptr) {

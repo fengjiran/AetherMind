@@ -8,7 +8,6 @@
 #include "ammalloc/config.h"
 
 #include <atomic>
-#include <sys/mman.h>
 
 namespace aethermind {
 
@@ -35,16 +34,10 @@ public:
     }
 
     static void* SystemAlloc(size_t page_num);
-
     static void SystemFree(void* ptr, size_t page_num);
 
 private:
-    static PageAllocatorStats stats_;
-
-    static void* AllocNormalPage(size_t size);
-    static void ApplyHugePageHint(void* ptr, size_t size);
-    static void* AllocHugePage(size_t size);
-    static void* AllocHugePageRobust(size_t size);
+    inline static PageAllocatorStats stats_;
 };
 
 }// namespace aethermind

@@ -15,6 +15,7 @@ public:
     void SetUp() override {
         PageAllocator::ResetStats();
         PageAllocator::ReleaseHugePageCache();
+        g_mock_huge_alloc_fail.store(false, std::memory_order_relaxed);
     }
 
     void TearDown() override {
@@ -29,22 +30,26 @@ public:
     // 辅助函数：模拟大页分配失败（修改mmap返回值，仅测试用）
     static void MockHugePageAllocFail() {
         // 可通过全局标志/环境变量控制AllocHugePage返回nullptr
-        g_mock_huge_alloc_fail = true;
+        g_mock_huge_alloc_fail.store(true, std::memory_order_relaxed);
     }
 
     static void ResetMock() {
-        g_mock_huge_alloc_fail = false;
+        g_mock_huge_alloc_fail.store(false, std::memory_order_relaxed);
     }
-
-private:
-    inline static std::atomic<bool> g_mock_huge_alloc_fail = false;
 };
 
-TEST(PageAllocatorTest, AllocSmall) {
+// ========== 测试用例1：普通页分配/释放（无缓存） ==========
+TEST_F(PageAllocatorTest, NormalPageAllocFree) {
     size_t page_num = 1;
     void* ptr = PageAllocator::SystemAlloc(page_num);
     // 1. 验证指针非空
-    EXPECT_TRUE(ptr != nullptr);
+    EXPECT_TRUE(IsValidPtr(ptr));
+
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.normal_alloc_count.load(), 1);
+    EXPECT_EQ(stats.normal_alloc_success.load(), 1);
+    EXPECT_EQ(stats.normal_alloc_bytes.load(), SystemConfig::PAGE_SIZE * page_num);
+    EXPECT_EQ(stats.huge_alloc_count.load(), 0);// 无大页请求
 
     // 2. 验证读写权限 (防止只分配了虚拟地址但不可写)
     // 写入 Pattern
@@ -59,9 +64,69 @@ TEST(PageAllocatorTest, AllocSmall) {
     }
 
     PageAllocator::SystemFree(ptr, page_num);
+    EXPECT_EQ(stats.free_count.load(), 1);
+    EXPECT_EQ(stats.free_bytes.load(), SystemConfig::PAGE_SIZE * page_num);
+
+    EXPECT_EQ(stats.huge_cache_hit_count.load(), 0);
+    EXPECT_EQ(stats.huge_cache_miss_count.load(), 0);
 }
 
-TEST(PageAllocatorTest, AllocHugeAlignment) {
+// ========== 测试用例2：大页分配/释放（缓存未命中） ==========
+TEST_F(PageAllocatorTest, HugePageAllocFree_MissCache) {
+    size_t page_num = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
+    void* ptr = PageAllocator::SystemAlloc(page_num);
+    EXPECT_TRUE(IsValidPtr(ptr));
+
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.huge_alloc_count.load(), 1);
+    EXPECT_EQ(stats.huge_alloc_success.load(), 1);
+    EXPECT_EQ(stats.huge_alloc_bytes.load(), SystemConfig::HUGE_PAGE_SIZE);
+    EXPECT_EQ(stats.huge_cache_miss_count.load(), 1);
+    EXPECT_EQ(stats.huge_cache_hit_count.load(), 0);
+
+    PageAllocator::SystemFree(ptr, page_num);
+    EXPECT_EQ(stats.free_count.load(), 1);
+    EXPECT_EQ(stats.free_bytes.load(), SystemConfig::HUGE_PAGE_SIZE);
+}
+
+// ========== 测试用例3：大页分配（缓存命中） ==========
+TEST_F(PageAllocatorTest, HugePageAlloc_HitCache) {
+    size_t page_num = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
+    void* ptr1 = PageAllocator::SystemAlloc(page_num);
+    EXPECT_TRUE(IsValidPtr(ptr1));
+    PageAllocator::SystemFree(ptr1, page_num);
+
+    void* ptr2 = PageAllocator::SystemAlloc(page_num);
+    EXPECT_TRUE(IsValidPtr(ptr2));
+
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.huge_cache_hit_count.load(), 1);
+    EXPECT_EQ(stats.huge_cache_miss_count.load(), 1);// 第一次未命中
+    EXPECT_EQ(stats.huge_alloc_count.load(), 1);     // 缓存命中不触发新分配
+
+    PageAllocator::SystemFree(ptr2, page_num);
+}
+
+// ========== 测试用例4：大页分配失败→降级到普通页 ==========
+TEST_F(PageAllocatorTest, HugePageAllocFail_FallbackToNormal) {
+    MockHugePageAllocFail();
+
+    size_t page_num = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
+    void* ptr = PageAllocator::SystemAlloc(page_num);
+    EXPECT_TRUE(IsValidPtr(ptr));
+
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.huge_alloc_count.load(), 1);
+    EXPECT_EQ(stats.huge_alloc_success.load(), 0);           // 大页分配失败
+    EXPECT_EQ(stats.huge_fallback_to_normal_count.load(), 1);// 降级次数
+    EXPECT_EQ(stats.normal_alloc_count.load(), 1);           // 普通页分配（降级）
+    EXPECT_EQ(stats.normal_alloc_success.load(), 1);
+
+    ResetMock();
+    PageAllocator::SystemFree(ptr, page_num);
+}
+
+TEST_F(PageAllocatorTest, AllocHugeAlignment) {
     // 1. 计算触发 HugePage 逻辑的阈值
     // 代码逻辑是: size >= HUGE_PAGE_SIZE / 2
     size_t huge_size = SystemConfig::HUGE_PAGE_SIZE;
@@ -91,7 +156,7 @@ TEST(PageAllocatorTest, AllocHugeAlignment) {
     PageAllocator::SystemFree(ptr, page_num);
 }
 
-TEST(PageAllocatorTest, MultipleAllocations) {
+TEST_F(PageAllocatorTest, MultipleAllocations) {
     std::vector<std::pair<void*, size_t>> allocations;
 
     // 混合分配：1页, 10页, 512页(大页)
@@ -119,7 +184,7 @@ TEST(PageAllocatorTest, MultipleAllocations) {
     }
 }
 
-TEST(PageAllocatorTest, InvalidArgs) {
+TEST_F(PageAllocatorTest, InvalidArgs) {
     // 1. 申请 0 页
     // mmap 申请 0 大小通常会失败，PageAllocator 应该返回 nullptr 或处理
     // 根据实现，size=0 会传入 mmap，导致失败返回 nullptr
@@ -134,7 +199,7 @@ TEST(PageAllocatorTest, InvalidArgs) {
     PageAllocator::SystemFree(&dummy, 0);
 }
 
-TEST(PageAllocatorTest, AllocWithPopulateConfig) {
+TEST_F(PageAllocatorTest, AllocWithPopulateConfig) {
     // 设置环境变量 (Linux/macOS)
     // 注意：setenv 不是线程安全的，最好在 main 开始前设置，或者独立跑这个测试
     setenv("AM_USE_MAP_POPULATE", "1", 1);

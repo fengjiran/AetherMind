@@ -68,6 +68,10 @@ private:
 
 }// namespace
 
+#ifdef PAGE_ALLOCATOR_TEST
+std::atomic<bool> g_mock_huge_alloc_fail{false};
+#endif
+
 void PageAllocator::ResetStats() {
     stats_.normal_alloc_count.store(0, std::memory_order_relaxed);
     stats_.normal_alloc_success.store(0, std::memory_order_relaxed);
@@ -206,6 +210,13 @@ void* PageAllocator::AllocHugePageFallback(size_t size) {
  * 收益：在内存碎片较少或 OS 激进 THP 时，避免了 2MB 的 VMA 浪费和额外的 munmap 调用。
  */
 void* PageAllocator::AllocHugePage(size_t size) {
+#ifdef PAGE_ALLOCATOR_TEST
+    if (g_mock_huge_alloc_fail.load(std::memory_order_relaxed)) {
+        stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
+    }
+#endif
+
     stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     void* ptr = AllocWithRetry(size, flags);
@@ -249,11 +260,11 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     if (size == SystemConfig::HUGE_PAGE_SIZE) {
         if (void* ptr = HugePageCache::GetInstance().Get()) {
             stats_.huge_cache_hit_count.fetch_add(1, std::memory_order_relaxed);
-            stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
-            stats_.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
-            stats_.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
             return ptr;
         }
+        // stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
+        // stats_.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
+        // stats_.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
         stats_.huge_cache_miss_count.fetch_add(1, std::memory_order_relaxed);
     }
 

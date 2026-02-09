@@ -12,10 +12,12 @@
 namespace aethermind {
 
 #ifdef PAGE_ALLOCATOR_TEST
+extern std::atomic<bool> g_mock_huge_alloc_fail;
 #define TEST_FRIEND_TEST            \
     friend class PageAllocatorTest; \
     friend class PageAllocatorThreadSafeTest;
 #else
+#define g_mock_huge_alloc_fail (false)
 #define TEST_FRIEND_TEST
 #endif
 

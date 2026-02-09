@@ -1,9 +1,11 @@
 //
-// Created by richard on 1/23/26.
+// Created by richard on 2/9/26.
 //
 
-/* Global Module Fragment Begin*/
-module;
+#ifndef AETHERMIND_CONTAINER_AMSTRING_H
+#define AETHERMIND_CONTAINER_AMSTRING_H
+
+#include "any_utils.h"
 #include "macros.h"
 #include "utils/logging.h"
 
@@ -11,11 +13,6 @@ module;
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-/* Global Module Fragment end*/
-
-export module AMString;
-
-import concept_module;
 
 namespace aethermind {
 
@@ -175,6 +172,7 @@ void PodFill(std::span<Pod> storage, const T& c) noexcept {
 
 }// namespace details
 
+
 struct MagicConstants {
     // constexpr bool kIsLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
     constexpr static auto kIsBigEndian = __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__;
@@ -333,3 +331,5 @@ void AMStringCore<Char>::InitMedium(std::span<const Char> src) {
 }
 
 }// namespace aethermind
+
+#endif//AETHERMIND_CONTAINER_AMSTRING_H

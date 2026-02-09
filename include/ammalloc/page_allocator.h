@@ -41,6 +41,8 @@ public:
         return stats_;
     }
 
+    static void ResetStats();
+
     static void* SystemAlloc(size_t page_num);
     static void SystemFree(void* ptr, size_t page_num);
 
@@ -52,6 +54,7 @@ private:
     static void* AllocNormalPage(size_t size, bool is_fallback = false);
     static void* AllocHugePageFallback(size_t size);
     static void* AllocHugePage(size_t size);
+    static bool SafeMunmap(void* ptr, size_t size);
 };
 
 }// namespace aethermind

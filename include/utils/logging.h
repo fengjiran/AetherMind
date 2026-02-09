@@ -8,6 +8,7 @@
 #include <format>
 #include <iostream>
 #include <source_location>
+#include <spdlog/spdlog.h>
 #include <string_view>
 
 namespace aethermind {

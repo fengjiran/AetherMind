@@ -29,6 +29,9 @@ namespace details {
 
 #ifdef CPP20
 template<typename T>
+concept is_pod = std::is_trivially_copyable_v<T>;
+
+template<typename T>
 concept is_integral = std::integral<T> && !std::same_as<T, bool>;
 
 template<typename T>

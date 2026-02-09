@@ -37,7 +37,7 @@ public:
     }
 
 private:
-    static std::atomic<bool> g_mock_huge_alloc_fail;
+    inline static std::atomic<bool> g_mock_huge_alloc_fail = false;
 };
 
 TEST(PageAllocatorTest, AllocSmall) {

@@ -160,8 +160,11 @@ void* PageAllocator::AllocNormalPage(size_t size, bool is_fallback) {
         return nullptr;
     }
 
-    stats_.normal_alloc_success.fetch_add(1, std::memory_order_relaxed);
-    stats_.normal_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
+    if (!is_fallback) {
+        stats_.normal_alloc_success.fetch_add(1, std::memory_order_relaxed);
+        stats_.normal_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
+    }
+
     return ptr;
 }
 

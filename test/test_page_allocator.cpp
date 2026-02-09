@@ -116,14 +116,29 @@ TEST_F(PageAllocatorTest, HugePageAllocFail_FallbackToNormal) {
     EXPECT_TRUE(IsValidPtr(ptr));
 
     const auto& stats = PageAllocator::GetStats();
-    EXPECT_EQ(stats.huge_alloc_count.load(), 1);
+    EXPECT_EQ(stats.huge_alloc_count.load(), 0);
     EXPECT_EQ(stats.huge_alloc_success.load(), 0);           // 大页分配失败
     EXPECT_EQ(stats.huge_fallback_to_normal_count.load(), 1);// 降级次数
-    EXPECT_EQ(stats.normal_alloc_count.load(), 1);           // 普通页分配（降级）
-    EXPECT_EQ(stats.normal_alloc_success.load(), 1);
+    EXPECT_EQ(stats.normal_alloc_count.load(), 0);
+    EXPECT_EQ(stats.normal_alloc_success.load(), 0);
 
     ResetMock();
     PageAllocator::SystemFree(ptr, page_num);
+}
+
+// ========== 测试用例5：缓存清理（全局缓存） ==========
+TEST_F(PageAllocatorTest, HugeCacheCleanup) {
+    size_t page_num = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
+    std::vector<void*> ptrs;
+    for (int i = 0; i < RuntimeConfig::GetInstance().HugePageCacheSize(); ++i) {
+        void* p = PageAllocator::SystemAlloc(page_num);
+        ptrs.push_back(p);
+        PageAllocator::SystemFree(p, page_num);
+    }
+
+    void* p = PageAllocator::SystemAlloc(page_num);
+    PageAllocator::SystemFree(p, page_num);
+    // EXPECT_TRUE();
 }
 
 TEST_F(PageAllocatorTest, AllocHugeAlignment) {

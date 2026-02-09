@@ -19,6 +19,10 @@ void RuntimeConfig::InitFromEnv() {
     if (const char* env = std::getenv("AM_USE_MAP_POPULATE")) {
         use_map_populate = details::ParseBool(env);
     }
+
+    if (const char* env = std::getenv("HUGE_PAGE_CACHE_SIZE")) {
+        huge_page_cache_size_ = std::strtoull(env, nullptr, 10);
+    }
 }
 
 }// namespace aethermind

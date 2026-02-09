@@ -40,14 +40,15 @@ void HandleCheckFailed(std::string_view condition,
     } while (false)
 
 #ifdef NDEBUG
+#define AM_RELEASE
 #define AM_DCHECK(condition, ...)                     \
     while (false)                                     \
         if (static_cast<bool>(condition)) [[likely]]; \
         else
 #else
+#define AM_DEBUG
 #define AM_DCHECK(condition, ...) AM_CHECK(condition __VA_OPT__(, ) __VA_ARGS__)
 #endif
-
 
 }// namespace aethermind
 

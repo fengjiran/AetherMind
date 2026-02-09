@@ -9,6 +9,65 @@
 
 namespace aethermind {
 
+namespace {
+
+class HugePageCache {
+public:
+    static HugePageCache& GetInstance() {
+        static HugePageCache instance;
+        return instance;
+    }
+
+    ~HugePageCache() {
+#ifdef AM_DEBUG
+        ReleaseAll();// 测试模式下清理，为了让 ASan 通过
+#endif
+        // 生产模式下什么都不做
+        // 依赖 OS 回收，避免析构顺序 crash
+    }
+
+    void* Get() {
+        std::lock_guard lock(mtx_);
+        if (cache_.empty()) {
+            return nullptr;
+        }
+
+        void* ptr = cache_.back();
+        cache_.pop_back();
+        return ptr;
+    }
+
+    bool Put(void* ptr) {
+        std::lock_guard lock(mtx_);
+        static size_t huge_page_cache_size =
+                RuntimeConfig::GetInstance().HugePageCacheSize();
+        if (cache_.size() >= huge_page_cache_size) {
+            return false;
+        }
+        cache_.push_back(ptr);
+        return true;
+    }
+
+    void ReleaseAll() {
+        std::lock_guard lock(mtx_);
+        while (!cache_.empty()) {
+            void* ptr = cache_.back();
+            cache_.pop_back();
+            munmap(ptr, SystemConfig::HUGE_PAGE_SIZE);
+        }
+    }
+
+private:
+    HugePageCache() {
+        cache_.reserve(16);
+    }
+
+    std::mutex mtx_;
+    std::vector<void*> cache_;
+};
+
+}// namespace
+
 void PageAllocator::ResetStats() {
     stats_.normal_alloc_count.store(0, std::memory_order_relaxed);
     stats_.normal_alloc_success.store(0, std::memory_order_relaxed);
@@ -17,6 +76,8 @@ void PageAllocator::ResetStats() {
     stats_.huge_alloc_success.store(0, std::memory_order_relaxed);
     stats_.huge_alloc_bytes.store(0, std::memory_order_relaxed);
     stats_.huge_align_waste_bytes.store(0, std::memory_order_relaxed);
+    stats_.huge_cache_hit_count.store(0, std::memory_order_relaxed);
+    stats_.huge_cache_miss_count.store(0, std::memory_order_relaxed);
     stats_.free_count.store(0, std::memory_order_relaxed);
     stats_.free_bytes.store(0, std::memory_order_relaxed);
     stats_.alloc_failed_count.store(0, std::memory_order_relaxed);
@@ -183,6 +244,19 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     }
     // clang-format on
 
+    // 如果请求的大小正好是大页大小，尝试走缓存
+    // 只有标准大页大小才值得缓存，不定长的小内存直接走 mmap
+    if (size == SystemConfig::HUGE_PAGE_SIZE) {
+        if (void* ptr = HugePageCache::GetInstance().Get()) {
+            stats_.huge_cache_hit_count.fetch_add(1, std::memory_order_relaxed);
+            stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
+            stats_.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
+            stats_.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
+            return ptr;
+        }
+        stats_.huge_cache_miss_count.fetch_add(1, std::memory_order_relaxed);
+    }
+
     auto* ptr = AllocHugePage(size);
     // 大页分配失败，统计降级次数并降级到普通页
     if (ptr == nullptr) {
@@ -205,7 +279,22 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
     const size_t size = page_num << SystemConfig::PAGE_SHIFT;
     stats_.free_count.fetch_add(1, std::memory_order_relaxed);
     stats_.free_bytes.fetch_add(size, std::memory_order_relaxed);
+    // 如果释放的是标准大页，尝试放入缓存
+    // 调用 madvise(ptr, size, MADV_FREE / MADV_DONTNEED)
+    // 告诉 OS 这块物理内存暂时不用了，但在缓存期间保留虚拟地址
+    // 这样既节省物理内存，又避免了 munmap 的 VMA 销毁开销。
+    // 下次复用时只有缺页中断开销，没有 mmap 锁开销
+    if (size == SystemConfig::HUGE_PAGE_SIZE) {
+        madvise(ptr, size, MADV_DONTNEED);
+        if (HugePageCache::GetInstance().Put(ptr)) {
+            return;
+        }
+    }
     SafeMunmap(ptr, size);
+}
+
+void PageAllocator::ReleaseHugePageCache() {
+    HugePageCache::GetInstance().ReleaseAll();
 }
 
 }// namespace aethermind

@@ -11,6 +11,14 @@
 
 namespace aethermind {
 
+#ifdef PAGE_ALLOCATOR_TEST
+#define TEST_FRIEND_TEST            \
+    friend class PageAllocatorTest; \
+    friend class PageAllocatorThreadSafeTest;
+#else
+#define TEST_FRIEND_TEST
+#endif
+
 struct PageAllocatorStats {
     // 基础分配统计
     std::atomic<size_t> normal_alloc_count{0};    // 普通页分配请求数
@@ -20,6 +28,8 @@ struct PageAllocatorStats {
     std::atomic<size_t> huge_alloc_success{0};    // 大页分配成功数
     std::atomic<size_t> huge_alloc_bytes{0};      // 大页总分配字节数
     std::atomic<size_t> huge_align_waste_bytes{0};// 大页对齐浪费的内存字节数
+    std::atomic<size_t> huge_cache_hit_count{0};  // 大页缓存命中数
+    std::atomic<size_t> huge_cache_miss_count{0}; // 大页缓存未命中数
     // 释放统计
     std::atomic<size_t> free_count{0};
     std::atomic<size_t> free_bytes{0};
@@ -45,6 +55,7 @@ public:
 
     static void* SystemAlloc(size_t page_num);
     static void SystemFree(void* ptr, size_t page_num);
+    static void ReleaseHugePageCache();
 
 private:
     inline static PageAllocatorStats stats_;
@@ -55,6 +66,8 @@ private:
     static void* AllocHugePageFallback(size_t size);
     static void* AllocHugePage(size_t size);
     static bool SafeMunmap(void* ptr, size_t size);
+
+    TEST_FRIEND_TEST;
 };
 
 }// namespace aethermind

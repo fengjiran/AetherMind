@@ -10,7 +10,8 @@ set(USE_KALLOC_ALIGNMENT 64)
 
 if (USE_KALLOC_ALIGNMENT)
     message(STATUS "Build Alloc alignment set to ${USE_KALLOC_ALIGNMENT}")
-    add_definitions(-DKALLOC_ALIGNMENT=${USE_KALLOC_ALIGNMENT})
+#    add_definitions(-DKALLOC_ALIGNMENT=${USE_KALLOC_ALIGNMENT})
+    add_compile_definitions(KALLOC_ALIGNMENT=${USE_KALLOC_ALIGNMENT})
 endif (USE_KALLOC_ALIGNMENT)
 
 # =========================================================
@@ -89,7 +90,6 @@ include_directories(
 
 target_link_libraries(${PROJECT_NAME}
         Threads::Threads
-#        pthread
         spdlog::spdlog
         ${MODULE_NAME}
 )
@@ -117,5 +117,6 @@ endif (BACKTRACE_ON_SEGFAULT)
 ########## Adding tests ##########
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")
+    add_compile_definitions(PAGE_ALLOCATOR_TEST)
     add_subdirectory(test)
 endif ()

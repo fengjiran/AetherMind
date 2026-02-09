@@ -2,8 +2,8 @@
 // Created by richard on 2/6/26.
 //
 
-#ifndef AETHERMIND_AMMALLOC_AMMALLOC_H
-#define AETHERMIND_AMMALLOC_AMMALLOC_H
+#ifndef AETHERMIND_MALLOC_AMMALLOC_H
+#define AETHERMIND_MALLOC_AMMALLOC_H
 
 #include "ammalloc/memory_pool.h"
 
@@ -110,4 +110,4 @@ inline void am_free(void* ptr) {
 
 }// namespace aethermind
 
-#endif//AETHERMIND_AMMALLOC_AMMALLOC_H
+#endif//AETHERMIND_MALLOC_AMMALLOC_H

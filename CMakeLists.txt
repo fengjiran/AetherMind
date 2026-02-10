@@ -30,12 +30,7 @@ if (ENABLE_TSAN)
     add_compile_options(-fno-omit-frame-pointer)
 endif ()
 
-if (USE_LIBBACKTRACE)
-    set(BACKTRACE_PATH "3rdparty/libbacktrace")
-    include(cmake/AddLibbacktrace.cmake)
-endif ()
 add_compile_definitions(SPDLOG_USE_STD_FORMAT)
-
 # add spdlog
 include(FetchContent)
 FetchContent_Declare(

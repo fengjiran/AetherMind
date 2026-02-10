@@ -17,6 +17,11 @@ target_link_libraries(${PROJECT_NAME}
         spdlog::spdlog
 )
 
+if (USE_LIBBACKTRACE)
+    set(BACKTRACE_PATH "3rdparty/libbacktrace")
+    include(${PROJECT_SOURCE_DIR}/cmake/AddLibbacktrace.cmake)
+endif ()
+
 if (USE_KALLOC_ALIGNMENT)
     message(STATUS "Build Alloc alignment set to ${USE_KALLOC_ALIGNMENT}")
     target_compile_definitions(${PROJECT_NAME} PRIVATE KALLOC_ALIGNMENT=${USE_KALLOC_ALIGNMENT})

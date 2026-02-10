@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 project(AetherMind
         VERSION 1.0.0
         DESCRIPTION "Inference Engine"
-        LANGUAGES CXX
+        LANGUAGES CXX C
 )
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,6 +15,8 @@ option(BUILD_TESTS "Adding test targets." ON)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
 option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+
+find_package(Threads REQUIRED)
 
 if (ENABLE_TSAN)
     message(STATUS "ThreadSanitizer enabled")
@@ -39,7 +41,6 @@ FetchContent_Declare(
         GIT_TAG v1.17.0
 )
 FetchContent_MakeAvailable(spdlog)
-find_package(Threads REQUIRED)
 
 add_subdirectory(src)
 if (BUILD_TESTS)

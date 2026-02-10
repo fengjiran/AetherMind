@@ -39,15 +39,16 @@ struct PageAllocatorStats {
     // 释放统计
     std::atomic<size_t> free_count{0};
     std::atomic<size_t> free_bytes{0};
+
     // 错误统计
-    std::atomic<size_t> alloc_failed_count{0};           // 最终分配失败总数
-    std::atomic<size_t> huge_fallback_to_normal_count{0};// 大页降级到普通页的次数
     std::atomic<size_t> normal_alloc_failed_count{0};    // 普通页分配失败次数
     std::atomic<size_t> huge_alloc_failed_count{0};      // 大页分配失败次数
-    std::atomic<size_t> munmap_failed_count{0};          // munmap失败次数
-    std::atomic<size_t> madvise_failed_count{0};         // madvise失败次数
+    std::atomic<size_t> alloc_failed_count{0};           // 最终分配失败总数
+    std::atomic<size_t> huge_fallback_to_normal_count{0};// 大页降级到普通页的次数
     std::atomic<size_t> mmap_enomem_count{0};            // mmap ENOMEM失败次数
     std::atomic<size_t> mmap_other_error_count{0};       // mmap其他错误次数
+    std::atomic<size_t> munmap_failed_count{0};          // munmap失败次数
+    std::atomic<size_t> madvise_failed_count{0};         // madvise失败次数
 };
 
 class PageAllocator {

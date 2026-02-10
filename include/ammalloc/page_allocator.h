@@ -23,15 +23,19 @@ extern std::atomic<bool> g_mock_huge_alloc_fail;
 
 struct PageAllocatorStats {
     // 基础分配统计
+    // normal page
     std::atomic<size_t> normal_alloc_count{0};    // 普通页分配请求数
     std::atomic<size_t> normal_alloc_success{0};  // 普通页分配成功数
     std::atomic<size_t> normal_alloc_bytes{0};    // 普通页总分配字节数
+
+    // huge page
     std::atomic<size_t> huge_alloc_count{0};      // 大页分配请求数
     std::atomic<size_t> huge_alloc_success{0};    // 大页分配成功数
     std::atomic<size_t> huge_alloc_bytes{0};      // 大页总分配字节数
     std::atomic<size_t> huge_align_waste_bytes{0};// 大页对齐浪费的内存字节数
     std::atomic<size_t> huge_cache_hit_count{0};  // 大页缓存命中数
     std::atomic<size_t> huge_cache_miss_count{0}; // 大页缓存未命中数
+
     // 释放统计
     std::atomic<size_t> free_count{0};
     std::atomic<size_t> free_bytes{0};

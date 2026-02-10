@@ -138,7 +138,7 @@ TEST_F(PageAllocatorTest, HugeCacheCleanup) {
 
     void* p = PageAllocator::SystemAlloc(page_num);
     PageAllocator::SystemFree(p, page_num);
-    // EXPECT_TRUE();
+    PageAllocator::ReleaseHugePageCache();
 }
 
 TEST_F(PageAllocatorTest, AllocHugeAlignment) {

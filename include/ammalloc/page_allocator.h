@@ -35,7 +35,6 @@ struct PageAllocatorStats {
     // 释放统计
     std::atomic<size_t> free_count{0};
     std::atomic<size_t> free_bytes{0};
-
     // 错误统计
     std::atomic<size_t> alloc_failed_count{0};           // 最终分配失败总数
     std::atomic<size_t> huge_fallback_to_normal_count{0};// 大页降级到普通页的次数
@@ -53,10 +52,9 @@ public:
         return stats_;
     }
 
-    static void ResetStats();
-
     static void* SystemAlloc(size_t page_num);
     static void SystemFree(void* ptr, size_t page_num);
+    static void ResetStats();
     static void ReleaseHugePageCache();
 
 private:

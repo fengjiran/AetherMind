@@ -3,6 +3,8 @@
 //
 #include "ammalloc/page_allocator.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <sys/mman.h>
@@ -116,11 +118,11 @@ TEST_F(PageAllocatorTest, HugePageAllocFail_FallbackToNormal) {
     EXPECT_TRUE(IsValidPtr(ptr));
 
     const auto& stats = PageAllocator::GetStats();
-    EXPECT_EQ(stats.huge_alloc_count.load(), 0);
+    EXPECT_EQ(stats.huge_alloc_count.load(), 1);
     EXPECT_EQ(stats.huge_alloc_success.load(), 0);           // 大页分配失败
     EXPECT_EQ(stats.huge_fallback_to_normal_count.load(), 1);// 降级次数
-    EXPECT_EQ(stats.normal_alloc_count.load(), 0);
-    EXPECT_EQ(stats.normal_alloc_success.load(), 0);
+    EXPECT_EQ(stats.normal_alloc_count.load(), 1);
+    EXPECT_EQ(stats.normal_alloc_success.load(), 1);
 
     ResetMock();
     PageAllocator::SystemFree(ptr, page_num);
@@ -139,6 +141,105 @@ TEST_F(PageAllocatorTest, HugeCacheCleanup) {
     void* p = PageAllocator::SystemAlloc(page_num);
     PageAllocator::SystemFree(p, page_num);
     PageAllocator::ReleaseHugePageCache();
+}
+
+// ========== 测试用例6：边界条件（page_num=0/空指针释放） ==========
+TEST_F(PageAllocatorTest, BoundaryConditions) {
+    // 1. page_num=0分配
+    void* ptr1 = PageAllocator::SystemAlloc(0);
+    EXPECT_EQ(ptr1, nullptr);
+
+    // 2. 空指针释放
+    PageAllocator::SystemFree(nullptr, 1);
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.free_count.load(), 0);// 无效释放不统计
+
+    // 3. 释放page_num=0
+    void* ptr2 = PageAllocator::SystemAlloc(1);
+    PageAllocator::SystemFree(ptr2, 0);
+    EXPECT_EQ(stats.free_count.load(), 0);// 无效释放不统计
+
+    // 清理
+    PageAllocator::SystemFree(ptr2, 1);
+}
+
+// ========== 测试套件：线程安全测试 ==========
+class PageAllocatorThreadSafeTest : public ::testing::Test {
+protected:
+    static constexpr int THREAD_NUM = 8;        // 8个线程
+    static constexpr int ALLOC_PER_THREAD = 100;// 每个线程分配100次
+
+    void SetUp() override {
+        PageAllocator::ResetStats();
+        PageAllocator::ReleaseHugePageCache();
+    }
+
+    void TearDown() override {
+        PageAllocator::ReleaseHugePageCache();
+    }
+
+    static bool IsValidPtr(void* ptr) {
+        return ptr != nullptr && ptr != MAP_FAILED;
+    }
+
+    static void ThreadFunc(std::atomic<int>& counter) {
+        size_t page_num = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
+        for (int i = 0; i < ALLOC_PER_THREAD; ++i) {
+            void* ptr = PageAllocator::SystemAlloc(page_num);
+            if (IsValidPtr(ptr)) {
+                PageAllocator::SystemFree(ptr, page_num);
+                counter.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    }
+};
+
+// ========== 测试用例7：多线程并发分配/释放（线程安全） ==========
+TEST_F(PageAllocatorThreadSafeTest, ConcurrentAllocFree) {
+    std::atomic<int> success_count{0};
+    std::vector<std::thread> threads;
+
+    // 启动8个线程
+    for (int i = 0; i < THREAD_NUM; ++i) {
+        threads.emplace_back(ThreadFunc, std::ref(success_count));
+    }
+
+    // 等待所有线程完成
+    for (auto& t: threads) {
+        t.join();
+    }
+
+    // ========== 核心验证：线程安全基础（必须成立） ==========
+    // 1. 总成功次数 = 线程数 × 每线程分配次数（验证无分配/释放失败）
+    const int total_expected = THREAD_NUM * ALLOC_PER_THREAD;
+    EXPECT_EQ(success_count.load(std::memory_order_relaxed), total_expected);
+
+    // 2. 释放次数 = 成功分配次数（每个分配都对应释放，验证无漏释放）
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.free_count.load(std::memory_order_relaxed), total_expected);
+
+    // ========== 适配缓存机制的统计验证（核心修正） ==========
+    // 关键公式：总大页请求数 = 缓存命中数 + 缓存未命中数
+    // （所有成功分配都是大页请求，因为线程函数只分配大页）
+    size_t total_huge_request = stats.huge_cache_hit_count.load() + stats.huge_cache_miss_count.load();
+    EXPECT_EQ(total_huge_request, total_expected);
+
+    // 关键公式：缓存未命中数 = 大页实际分配数（huge_alloc_count）
+    // （只有未命中时才会调用AllocHugePage，累加huge_alloc_count）
+    EXPECT_EQ(stats.huge_cache_miss_count.load(), stats.huge_alloc_count.load());
+
+    // 额外验证：普通页分配数为0（线程函数只分配大页，无普通页请求）
+    EXPECT_EQ(stats.normal_alloc_count.load(), 0);
+
+    // 验证统计（总成功次数=线程数×每线程次数）
+    // const auto& stats = PageAllocator::GetStats();
+    // EXPECT_EQ(success_count.load(), THREAD_NUM * ALLOC_PER_THREAD);
+    // EXPECT_EQ(stats.free_count.load(), success_count.load());
+    // EXPECT_EQ(stats.huge_alloc_count.load() + stats.normal_alloc_count.load(),
+    //           success_count.load());
+
+    // 验证无崩溃、无数据竞争
+    SUCCEED();
 }
 
 TEST_F(PageAllocatorTest, AllocHugeAlignment) {

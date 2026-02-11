@@ -67,8 +67,8 @@ private:
 
     static void* AllocWithRetry(size_t size, int flags);
     static void ApplyHugePageHint(void* ptr, size_t size);
-    static void* AllocNormalPage(size_t size, bool is_fallback = false);
-    static void* AllocHugePageFallback(size_t size);
+    static void* AllocNormalPage(size_t size);
+    static void* AllocHugePageWithTrim(size_t size);
     static void* AllocHugePage(size_t size);
     static bool SafeMunmap(void* ptr, size_t size);
 

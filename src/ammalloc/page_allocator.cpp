@@ -99,7 +99,7 @@ bool PageAllocator::SafeMunmap(void* ptr, size_t size) {
         return true;
     }
 
-    if (const int ret = munmap(ptr, size); ret != 0) {
+    if (munmap(ptr, size) != 0) {
         stats_.munmap_failed_count.fetch_add(1, std::memory_order_relaxed);
         spdlog::error("munmap failed: ptr={}, size={}, errno={}, msg={}",
                       ptr, size, errno, strerror(errno));
@@ -144,11 +144,8 @@ void PageAllocator::ApplyHugePageHint(void* ptr, size_t size) {
     }
 }
 
-void* PageAllocator::AllocNormalPage(size_t size, bool is_fallback) {
-    if (!is_fallback) {
-        stats_.normal_alloc_count.fetch_add(1, std::memory_order_relaxed);
-    }
-
+void* PageAllocator::AllocNormalPage(size_t size) {
+    stats_.normal_alloc_count.fetch_add(1, std::memory_order_relaxed);
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     if (RuntimeConfig::GetInstance().UseMapPopulate()) {
         flags |= MAP_POPULATE;
@@ -160,15 +157,13 @@ void* PageAllocator::AllocNormalPage(size_t size, bool is_fallback) {
         return nullptr;
     }
 
-    if (!is_fallback) {
-        stats_.normal_alloc_success.fetch_add(1, std::memory_order_relaxed);
-        stats_.normal_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
-    }
+    stats_.normal_alloc_success.fetch_add(1, std::memory_order_relaxed);
+    stats_.normal_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
 
     return ptr;
 }
 
-void* PageAllocator::AllocHugePageFallback(size_t size) {
+void* PageAllocator::AllocHugePageWithTrim(size_t size) {
     size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     void* ptr = AllocWithRetry(alloc_size, flags);
@@ -213,6 +208,8 @@ void* PageAllocator::AllocHugePageFallback(size_t size) {
  * 收益：在内存碎片较少或 OS 激进 THP 时，避免了 2MB 的 VMA 浪费和额外的 munmap 调用。
  */
 void* PageAllocator::AllocHugePage(size_t size) {
+    stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
+
 #ifdef PAGE_ALLOCATOR_TEST
     if (g_mock_huge_alloc_fail.load(std::memory_order_relaxed)) {
         stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
@@ -220,7 +217,6 @@ void* PageAllocator::AllocHugePage(size_t size) {
     }
 #endif
 
-    stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     void* ptr = AllocWithRetry(size, flags);
     if (ptr == MAP_FAILED) {
@@ -237,20 +233,20 @@ void* PageAllocator::AllocHugePage(size_t size) {
     }
 
     SafeMunmap(ptr, size);
-    return AllocHugePageFallback(size);
+    return AllocHugePageWithTrim(size);
 }
 
 void* PageAllocator::SystemAlloc(size_t page_num) {
-    if (page_num == 0) {
-        spdlog::warn("SystemAlloc called with page_num=0");
+    // AM_DCHECK(page_num > 0);
+    // clang-format off
+    if (page_num == 0) AM_UNLIKELY {
+        spdlog::warn("SystemAlloc called with page_num = 0");
         return nullptr;
     }
 
     const size_t size = page_num << SystemConfig::PAGE_SHIFT;
-
-    // clang-format off
     if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
-        void* ptr = AllocNormalPage(size, false);
+        void* ptr = AllocNormalPage(size);
         if (!ptr) {
             stats_.alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         }
@@ -265,19 +261,15 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
             stats_.huge_cache_hit_count.fetch_add(1, std::memory_order_relaxed);
             return ptr;
         }
-        // stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
-        // stats_.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
-        // stats_.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
         stats_.huge_cache_miss_count.fetch_add(1, std::memory_order_relaxed);
     }
 
     auto* ptr = AllocHugePage(size);
     // 大页分配失败，统计降级次数并降级到普通页
-    if (ptr == nullptr) {
+    if (!ptr) {
         stats_.huge_fallback_to_normal_count.fetch_add(1, std::memory_order_relaxed);
-        // 标记为降级请求，不统计normal_alloc_count
-        ptr = AllocNormalPage(size, true);
-        if (ptr == nullptr) {
+        ptr = AllocNormalPage(size);
+        if (!ptr) {
             stats_.alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         }
     }

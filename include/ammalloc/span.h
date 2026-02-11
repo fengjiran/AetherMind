@@ -29,7 +29,6 @@ struct Span {
 
     // --- Central Cache Object Info ---
     size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
-    // size_t use_count{0};
     std::atomic<size_t> use_count{0};
     size_t capacity{0};// Object capacity
     void* data_base_ptr{nullptr};

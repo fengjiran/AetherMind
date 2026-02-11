@@ -17,7 +17,7 @@ void Span::Init(size_t object_size) {
     // Formula: Total = BitmapBytes + DataBytes
     //          Total = (Num * 1/8) + (Num * ObjSize)
     size_t max_objs = (total_bytes * 8) / (obj_size * 8 + 1);
-    bitmap_num = (max_objs + 63) / 64;
+    bitmap_num = (max_objs + 64 - 1) >> 6;
     // Placement New: Create atomic array at page start
     bitmap = new (start_ptr) std::atomic<uint64_t>[bitmap_num];
 

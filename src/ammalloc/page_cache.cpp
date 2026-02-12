@@ -93,7 +93,8 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
             }
 
             auto* span = span_pool_.New();
-            span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
+            // span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
+            span->start_page_idx = details::PtrToPageIdx(ptr);
             span->page_num = page_num;
             span->obj_size = obj_size;
             span->is_used = true;

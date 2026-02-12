@@ -80,18 +80,20 @@ void* Span::AllocObject() {
             cur_idx -= bitmap_num;
         }
 
-        uint64_t val = bitmap[cur_idx].load(std::memory_order_relaxed);
-        if (val == 0) {
+        uint64_t old_val = bitmap[cur_idx].load(std::memory_order_relaxed);
+        if (old_val == 0) {
             continue;
         }
 
         // CAS
-        while (val != 0) {
-            int bit_pos = std::countr_zero(val);
+        // clang-format off
+        while (old_val != 0) {
+            int bit_pos = std::countr_zero(old_val);
             uint64_t mask = 1ULL << bit_pos;
-            if (bitmap[cur_idx].compare_exchange_weak(val, val & ~mask,
+            if (uint64_t new_val = old_val & ~mask;
+                bitmap[cur_idx].compare_exchange_weak(old_val, new_val,
                                                       std::memory_order_acquire,
-                                                      std::memory_order_relaxed)) {
+                                                      std::memory_order_relaxed)) AM_LIKELY {
                 use_count.fetch_add(1, std::memory_order_relaxed);
                 if (cur_idx != idx) {
                     scan_cursor.store(cur_idx, std::memory_order_relaxed);
@@ -101,6 +103,7 @@ void* Span::AllocObject() {
             }
             details::CPUPause();
         }
+        // clang-format on
     }
     return nullptr;
 }
@@ -109,7 +112,7 @@ void Span::FreeObject(void* ptr) {
     size_t offset = static_cast<char*>(ptr) - static_cast<char*>(data_base_ptr);
     size_t global_obj_idx = offset / obj_size;
 
-    size_t bitmap_idx = global_obj_idx / 64;
+    size_t bitmap_idx = global_obj_idx >> 6;
     int bit_pos = global_obj_idx & (64 - 1);
     // Release: Ensures all my writes to the object are visible
     // before the bit is marked as free.

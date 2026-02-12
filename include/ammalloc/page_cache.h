@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_MALLOC_PAGE_CACHE_H
 #define AETHERMIND_MALLOC_PAGE_CACHE_H
 
-#include "ammalloc/span.h"
 #include "ammalloc/page_allocator.h"
+#include "ammalloc/span.h"
 
 #include <mutex>
 
@@ -50,39 +50,7 @@ public:
      * @param page_id The page id being freed or looked up.
      * @return Span* Pointer to the managing Span, or nullptr if not found.
      */
-    static Span* GetSpan(size_t page_id) {
-        // Acquire semantics ensure we see the initialized data of the root node
-        // if it was just created by another thread.
-        auto* curr = root_.load(std::memory_order_acquire);
-        if (!curr) AM_UNLIKELY {
-                return nullptr;
-            }
-
-        // Calculate Radix Tree indices
-        const size_t i1 = page_id >> (PageConfig::RADIX_BITS * 2);
-        const size_t i2 = (page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
-        const size_t i3 = page_id & PageConfig::RADIX_MASK;
-
-        // Traverse Level 1
-        auto* p2_raw = curr->children[i1].load(std::memory_order_acquire);
-        if (!p2_raw) AM_UNLIKELY {
-                return nullptr;
-            }
-        auto* p2 = static_cast<RadixNode*>(p2_raw);
-
-        // Traverse Level 2
-        auto* p3_raw = p2->children[i2].load(std::memory_order_acquire);
-        if (!p3_raw) AM_UNLIKELY {
-                return nullptr;
-            }
-        auto* p3 = static_cast<RadixNode*>(p3_raw);
-
-        // Fetch Level 3 (Leaf)
-        // Note: On weak memory models (ARM), an acquire fence might be technically required here
-        // to ensure the content of the returned Span is visible. However, on x86-64,
-        // data dependency usually suffices.
-        return static_cast<Span*>(p3->children[i3].load(std::memory_order_acquire));
-    }
+    static Span* GetSpan(size_t page_id);
 
     static Span* GetSpan(void* ptr) {
         const auto addr = reinterpret_cast<uintptr_t>(ptr);
@@ -98,64 +66,24 @@ public:
     *
     * @param span The Span to register. Must have valid start_page_idx and page_num.
     */
-    static void SetSpan(Span* span) {
-        // Lock protects the tree structure from concurrent modifications.
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto* curr = root_.load(std::memory_order_relaxed);
-        if (!curr) {
-            curr = new RadixNode;
-            root_.store(curr, std::memory_order_release);
-        }
-
-        const auto start = span->start_page_idx;
-        const auto page_num = span->page_num;
-
-        for (size_t i = 0; i < page_num; ++i) {
-            uintptr_t page_id = start + i;
-            // 1. Ensure the path (Intermediate Nodes) exists.
-            // Note: Called WITHOUT internal locking to avoid deadlock.
-            auto* p3 = EnsurePath(curr, page_id);
-            // 2. Traverse to the leaf node.
-            const size_t i3 = page_id & PageConfig::RADIX_MASK;
-            // 3. Set the Leaf.
-            p3->children[i3].store(span, std::memory_order_release);
-        }
-    }
+    static void SetSpan(Span* span);
 
 private:
     // Atomic root pointer for double-checked locking / lazy initialization.
     inline static std::atomic<RadixNode*> root_ = nullptr;
     // Mutex protects tree growth (new node allocation).
     inline static std::mutex mutex_;
-
-    /**
-     * @brief Helper to create missing intermediate nodes for a given Page ID.
-     *
-     * @warning **MUST be called with 'mutex_' held.**
-     * Internal helper function. Does not lock internally to prevent recursive deadlock.
-     */
-    static RadixNode* EnsurePath(RadixNode* curr, uintptr_t page_id) {
-        // Step 1: Ensure Level 2 Node exists
-        const size_t i1 = page_id >> (PageConfig::RADIX_BITS * 2);
-        const size_t i2 = (page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
-        auto* p2_raw = curr->children[i1].load(std::memory_order_relaxed);
-        if (!p2_raw) {
-            auto* new_node = new RadixNode;
-            curr->children[i1].store(new_node, std::memory_order_release);
-            p2_raw = new_node;
-        }
-
-        // Step 2: Ensure Level 3 Node exists
-        auto* p2 = static_cast<RadixNode*>(p2_raw);
-        auto* p3_raw = p2->children[i2].load(std::memory_order_relaxed);
-        if (!p3_raw) {
-            auto* new_node = new RadixNode;
-            p2->children[i2].store(new_node, std::memory_order_release);
-            p3_raw = new_node;
-        }
-        return static_cast<RadixNode*>(p3_raw);
-    }
+    // radix node pool
+    inline static ObjectPool<RadixNode> radix_node_pool_{};
 };
+
+#ifdef AMMALLOC_TEST
+#define PAGE_CACHE_FRIENDS_TEST \
+    friend class PageCacheTest;
+#else
+#define PAGE_CACHE_FRIENDS_TEST
+#endif
+
 
 /**
  * @brief Global singleton managing page-level memory allocation and deallocation.
@@ -228,6 +156,8 @@ private:
      * Uses a loop to handle system refill and splitting.
      */
     Span* AllocSpanLocked(size_t page_num, size_t obj_size);
+
+    PAGE_CACHE_FRIENDS_TEST;
 };
 
 }// namespace aethermind

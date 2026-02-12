@@ -13,14 +13,14 @@
 
 namespace aethermind {
 
-#ifdef PAGE_ALLOCATOR_TEST
+#ifdef AMMALLOC_TEST
 extern std::atomic<bool> g_mock_huge_alloc_fail;
-#define TEST_FRIEND_TEST            \
+#define PAGEALLOCATOR_FRIEND_TEST   \
     friend class PageAllocatorTest; \
     friend class PageAllocatorThreadSafeTest;
 #else
 #define g_mock_huge_alloc_fail (false)
-#define TEST_FRIEND_TEST
+#define PAGEALLOCATOR_FRIEND_TEST
 #endif
 
 struct PageAllocatorStats {
@@ -74,7 +74,7 @@ private:
     static void* AllocHugePage(size_t size);
     static bool SafeMunmap(void* ptr, size_t size);
 
-    TEST_FRIEND_TEST;
+    PAGEALLOCATOR_FRIEND_TEST;
 };
 
 template<typename T, size_t CHUNK_SIZE = 1024>

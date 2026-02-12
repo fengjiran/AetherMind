@@ -46,5 +46,5 @@ else ()
 endif (BACKTRACE_ON_SEGFAULT)
 
 if (BUILD_TESTS)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC PAGE_ALLOCATOR_TEST)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC AMMALLOC_TEST)
 endif()

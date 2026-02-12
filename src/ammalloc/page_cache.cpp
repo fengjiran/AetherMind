@@ -6,6 +6,81 @@
 
 namespace aethermind {
 
+Span* PageMap::GetSpan(size_t page_id) {
+    // clang-format off
+    // Acquire semantics ensure we see the initialized data of the root node
+    // if it was just created by another thread.
+    auto* curr = root_.load(std::memory_order_acquire);
+    if (!curr) AM_UNLIKELY {
+        return nullptr;
+    }
+
+    // Calculate Radix Tree indices
+    const size_t i1 = page_id >> (PageConfig::RADIX_BITS * 2);
+    const size_t i2 = (page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
+    const size_t i3 = page_id & PageConfig::RADIX_MASK;
+
+    // Traverse Level 1
+    auto* p2 = static_cast<RadixNode*>(curr->children[i1].load(std::memory_order_acquire));
+    if (!p2) AM_UNLIKELY {
+        return nullptr;
+    }
+
+    // Traverse Level 2
+    auto* p3 = static_cast<RadixNode*>(p2->children[i2].load(std::memory_order_acquire));
+    if (!p3) AM_UNLIKELY {
+        return nullptr;
+    }
+
+    // Fetch Level 3 (Leaf)
+    // Note: On weak memory models (ARM), an acquire fence might be technically required here
+    // to ensure the content of the returned Span is visible. However, on x86-64,
+    // data dependency usually suffices.
+    return static_cast<Span*>(p3->children[i3].load(std::memory_order_acquire));
+    // clang-format on
+}
+
+void PageMap::SetSpan(Span* span) {
+    // Lock protects the tree structure from concurrent modifications.
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto* curr = root_.load(std::memory_order_relaxed);
+    if (!curr) {
+        curr = radix_node_pool_.New();
+        root_.store(curr, std::memory_order_release);
+    }
+
+    auto start = span->start_page_idx;
+    const auto end = start + span->page_num;
+
+    // batch fill the leaf nodes
+    while (start < end) {
+        // Step 1: Ensure Level 2 Node exists
+        const size_t i1 = start >> (PageConfig::RADIX_BITS * 2);
+        const size_t i2 = (start >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
+        const size_t i3 = start & PageConfig::RADIX_MASK;
+
+        auto* p2 = static_cast<RadixNode*>(curr->children[i1].load(std::memory_order_relaxed));
+        if (!p2) {
+            p2 = radix_node_pool_.New();
+            curr->children[i1].store(p2, std::memory_order_release);
+        }
+
+        // Step 2: Ensure Level 3 Node exists
+        auto* p3 = static_cast<RadixNode*>(p2->children[i2].load(std::memory_order_relaxed));
+        if (!p3) {
+            p3 = radix_node_pool_.New();
+            p2->children[i2].store(p3, std::memory_order_release);
+        }
+
+        // Step 3. Set the Leaf.
+        size_t cnt = std::min(end - start, PageConfig::RADIX_NODE_SIZE - i3);
+        for (size_t k = 0; k < cnt; ++k) {
+            p3->children[i3 + k].store(span, std::memory_order_release);
+        }
+        start += cnt;
+    }
+}
+
 Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
     while (true) {
         // 1. Oversized Allocation:
@@ -72,6 +147,9 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
         // We request the MAX_PAGE_NUM to maximize cache efficiency.
         size_t alloc_page_nums = PageConfig::MAX_PAGE_NUM;
         void* ptr = PageAllocator::SystemAlloc(alloc_page_nums);
+        if (!ptr) {
+            return nullptr;
+        }
         auto* span = span_pool_.New();
         span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
         span->page_num = alloc_page_nums;

@@ -68,7 +68,7 @@ private:
 
 }// namespace
 
-#ifdef PAGE_ALLOCATOR_TEST
+#ifdef AMMALLOC_TEST
 std::atomic<bool> g_mock_huge_alloc_fail{false};
 #endif
 
@@ -210,7 +210,7 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
 void* PageAllocator::AllocHugePage(size_t size) {
     stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
 
-#ifdef PAGE_ALLOCATOR_TEST
+#ifdef AMMALLOC_TEST
     if (g_mock_huge_alloc_fail.load(std::memory_order_relaxed)) {
         stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         return nullptr;

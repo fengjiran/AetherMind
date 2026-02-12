@@ -4,7 +4,6 @@
 #include "ammalloc/page_allocator.h"
 
 #include <atomic>
-#include <cstddef>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <sys/mman.h>
@@ -230,13 +229,6 @@ TEST_F(PageAllocatorThreadSafeTest, ConcurrentAllocFree) {
 
     // 额外验证：普通页分配数为0（线程函数只分配大页，无普通页请求）
     EXPECT_EQ(stats.normal_alloc_count.load(), 0);
-
-    // 验证统计（总成功次数=线程数×每线程次数）
-    // const auto& stats = PageAllocator::GetStats();
-    // EXPECT_EQ(success_count.load(), THREAD_NUM * ALLOC_PER_THREAD);
-    // EXPECT_EQ(stats.free_count.load(), success_count.load());
-    // EXPECT_EQ(stats.huge_alloc_count.load() + stats.normal_alloc_count.load(),
-    //           success_count.load());
 
     // 验证无崩溃、无数据竞争
     SUCCEED();

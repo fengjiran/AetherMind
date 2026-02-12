@@ -7,7 +7,6 @@
 
 #include "ammalloc/config.h"
 
-#include <cstdint>
 #include <array>
 #include <bit>
 #include <limits>

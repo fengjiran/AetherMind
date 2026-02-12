@@ -86,7 +86,7 @@ private:
 
 
 /**
- * @brief Global singleton managing page-level memory allocation and deallocation.
+ * @brief Global singleton managing page-level memory allocation and deallocation (leaky singleton).
  *
  * The PageCache is the central repository for Spans (contiguous memory pages).
  * It sits above the OS memory allocator (PageAllocator) and below the CentralCache.

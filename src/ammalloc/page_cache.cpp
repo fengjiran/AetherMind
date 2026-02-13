@@ -16,12 +16,18 @@ Span* PageMap::GetSpan(size_t page_id) {
     }
 
     // Calculate Radix Tree indices
-    const size_t i1 = page_id >> (PageConfig::RADIX_BITS * 2);
+    const size_t i0 = page_id >> (PageConfig::RADIX_BITS * 3);
+    const size_t i1 = (page_id >> (PageConfig::RADIX_BITS * 2)) & PageConfig::RADIX_MASK;
     const size_t i2 = (page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
     const size_t i3 = page_id & PageConfig::RADIX_MASK;
 
+    auto* p1 = static_cast<RadixNode*>(curr->children[i0].load(std::memory_order_acquire));
+    if (!p1) AM_UNLIKELY {
+        return nullptr;
+    }
+
     // Traverse Level 1
-    auto* p2 = static_cast<RadixNode*>(curr->children[i1].load(std::memory_order_acquire));
+    auto* p2 = static_cast<RadixNode*>(p1->children[i1].load(std::memory_order_acquire));
     if (!p2) AM_UNLIKELY {
         return nullptr;
     }
@@ -55,14 +61,21 @@ void PageMap::SetSpan(Span* span) {
     // batch fill the leaf nodes
     while (start < end) {
         // Step 1: Ensure Level 2 Node exists
-        const size_t i1 = start >> (PageConfig::RADIX_BITS * 2);
+        const size_t i0 = start >> (PageConfig::RADIX_BITS * 3);
+        const size_t i1 = (start >> (PageConfig::RADIX_BITS * 2)) & PageConfig::RADIX_MASK;
         const size_t i2 = (start >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
         const size_t i3 = start & PageConfig::RADIX_MASK;
 
-        auto* p2 = static_cast<RadixNode*>(curr->children[i1].load(std::memory_order_relaxed));
+        auto* p1 = static_cast<RadixNode*>(curr->children[i0].load(std::memory_order_acquire));
+        if (!p1) {
+            p1 = radix_node_pool_.New();
+            curr->children[i0].store(p1, std::memory_order_release);
+        }
+
+        auto* p2 = static_cast<RadixNode*>(p1->children[i1].load(std::memory_order_relaxed));
         if (!p2) {
             p2 = radix_node_pool_.New();
-            curr->children[i1].store(p2, std::memory_order_release);
+            p1->children[i1].store(p2, std::memory_order_release);
         }
 
         // Step 2: Ensure Level 3 Node exists

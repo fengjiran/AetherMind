@@ -77,7 +77,7 @@ private:
     PAGEALLOCATOR_FRIEND_TEST;
 };
 
-template<typename T, size_t BATCH_SIZE = 10>
+template<typename T, size_t CHUNK_SIZE = 64 * 1024>
     requires(sizeof(T) >= sizeof(void*) && std::default_initializable<T>)
 class ObjectPool {
 public:
@@ -92,7 +92,11 @@ public:
         }
 
         if (remain_bytes_ < sizeof(T)) {
-            size_t needed_bytes = sizeof(ChunkHeader) + BATCH_SIZE * sizeof(T);
+            size_t num_objs = CHUNK_SIZE / sizeof(T);
+            if (num_objs < 10) {
+                num_objs = 10;
+            }
+            size_t needed_bytes = sizeof(ChunkHeader) + num_objs * sizeof(T);
             size_t page_num = (needed_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
             void* ptr = PageAllocator::SystemAlloc(page_num);
             if (!ptr) {

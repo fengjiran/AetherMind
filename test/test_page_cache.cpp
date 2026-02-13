@@ -39,10 +39,16 @@ TEST_F(PageCacheTest, OversizedAllocation) {
     size_t huge_pages = PageConfig::MAX_PAGE_NUM + 10;
     auto* span = cache_.AllocSpan(huge_pages, 0);
     EXPECT_TRUE(span != nullptr);
+    EXPECT_EQ(span->page_num, huge_pages);
+    EXPECT_EQ(span->obj_size, 0);
+    EXPECT_TRUE(span->is_used);
 
     EXPECT_EQ(PageMap::GetSpan(span->GetStartAddr()), span);
+    void* last_page_ptr = static_cast<char*>(span->GetStartAddr()) + (huge_pages - 1) * SystemConfig::PAGE_SIZE;
+    EXPECT_EQ(PageMap::GetSpan(last_page_ptr), span);
 
     cache_.ReleaseSpan(span);
+    EXPECT_TRUE(PageMap::GetSpan(last_page_ptr) != nullptr);
 }
 
 }// namespace

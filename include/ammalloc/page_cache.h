@@ -62,12 +62,21 @@ public:
     * @brief Register a Span into the PageMap.
     *
     * Associates all page IDs covered by the span with the span pointer.
-    * This operation holds a lock to protect the tree structure during growth.
+    * MUST be called with PageCache::mutex_ held to protect the tree structure.
     *
     * @param span The Span to register. Must have valid start_page_idx and page_num.
     */
     static void SetSpan(Span* span);
 
+    /**
+    * @brief Clear a range of page mappings from the PageMap.
+    *
+    * Sets the span pointers for the specified page range to nullptr.
+    * MUST be called with PageCache::mutex_ held.
+    *
+    * @param start_page_id First page ID to clear.
+    * @param page_num Number of consecutive pages to clear.
+    */
     static void ClearRange(size_t start_page_id, size_t page_num);
 
 private:

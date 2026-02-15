@@ -93,7 +93,6 @@ void PageMap::SetSpan(Span* span) {
 }
 
 void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
-    // std::lock_guard<std::mutex> lock(mutex_);
     auto* curr = root_.load(std::memory_order_relaxed);
     if (!curr) {
         return;
@@ -139,8 +138,9 @@ void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
         const size_t i3 = cur_page_id & PageConfig::RADIX_MASK;
         size_t cnt = std::min(remaining_pages, PageConfig::RADIX_NODE_SIZE - i3);
 
-        auto** start_ptr = reinterpret_cast<void**>(&p3->children[i3]);
-        std::fill_n(start_ptr, cnt, nullptr);
+        for (size_t k = 0; k < cnt; ++k) {
+            p3->children[i3 + k].store(nullptr, std::memory_order_relaxed);
+        }
         cur_page_id += cnt;
         remaining_pages -= cnt;
     }
@@ -236,6 +236,7 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
     // clang-format off
     if (span->page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
         auto* ptr = span->GetStartAddr();
+        PageMap::ClearRange(span->start_page_idx, span->page_num);
         PageAllocator::SystemFree(ptr, span->page_num);
         span_pool_.Delete(span);
         return;

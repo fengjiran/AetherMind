@@ -68,11 +68,11 @@ public:
     */
     static void SetSpan(Span* span);
 
+    static void ClearRange(size_t start_page_id, size_t page_num);
+
 private:
     // Atomic root pointer for double-checked locking / lazy initialization.
     inline static std::atomic<RadixNode*> root_ = nullptr;
-    // Mutex protects tree growth (new node allocation).
-    inline static std::mutex mutex_;
     // radix node pool
     inline static ObjectPool<RadixNode> radix_node_pool_{};
 };

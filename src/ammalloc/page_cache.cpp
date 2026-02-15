@@ -47,8 +47,6 @@ Span* PageMap::GetSpan(size_t page_id) {
 }
 
 void PageMap::SetSpan(Span* span) {
-    // Lock protects the tree structure from concurrent modifications.
-    std::lock_guard<std::mutex> lock(mutex_);
     auto* curr = root_.load(std::memory_order_relaxed);
     if (!curr) {
         curr = radix_node_pool_.New();
@@ -66,7 +64,7 @@ void PageMap::SetSpan(Span* span) {
         const size_t i2 = (start >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
         const size_t i3 = start & PageConfig::RADIX_MASK;
 
-        auto* p1 = static_cast<RadixNode*>(curr->children[i0].load(std::memory_order_acquire));
+        auto* p1 = static_cast<RadixNode*>(curr->children[i0].load(std::memory_order_relaxed));
         if (!p1) {
             p1 = radix_node_pool_.New();
             curr->children[i0].store(p1, std::memory_order_release);
@@ -94,6 +92,60 @@ void PageMap::SetSpan(Span* span) {
     }
 }
 
+void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
+    // std::lock_guard<std::mutex> lock(mutex_);
+    auto* curr = root_.load(std::memory_order_relaxed);
+    if (!curr) {
+        return;
+    }
+
+    auto cur_page_id = start_page_id;
+    auto remaining_pages = page_num;
+
+    while (remaining_pages > 0) {
+        const size_t i0 = cur_page_id >> (PageConfig::RADIX_BITS * 3);
+        auto* p1 = static_cast<RadixNode*>(curr->children[i0].load(std::memory_order_relaxed));
+        if (!p1) {
+            constexpr size_t l0_coverage = 1ULL << (PageConfig::RADIX_BITS * 3);
+            size_t skip = l0_coverage - (cur_page_id & (l0_coverage - 1));
+            size_t step = std::min(remaining_pages, skip);
+            cur_page_id += step;
+            remaining_pages -= step;
+            continue;
+        }
+
+        const size_t i1 = (cur_page_id >> (PageConfig::RADIX_BITS * 2)) & PageConfig::RADIX_MASK;
+        auto* p2 = static_cast<RadixNode*>(p1->children[i1].load(std::memory_order_relaxed));
+        if (!p2) {
+            constexpr size_t l1_coverage = 1ULL << (PageConfig::RADIX_BITS * 2);
+            size_t skip = l1_coverage - (cur_page_id & (l1_coverage - 1));
+            size_t step = std::min(remaining_pages, skip);
+            cur_page_id += step;
+            remaining_pages -= step;
+            continue;
+        }
+
+        const size_t i2 = (cur_page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
+        auto* p3 = static_cast<RadixNode*>(p2->children[i2].load(std::memory_order_relaxed));
+        if (!p3) {
+            constexpr size_t l2_coverage = 1ULL << PageConfig::RADIX_BITS;
+            size_t skip = l2_coverage - (cur_page_id & (l2_coverage - 1));
+            size_t step = std::min(remaining_pages, skip);
+            cur_page_id += step;
+            remaining_pages -= step;
+            continue;
+        }
+
+        const size_t i3 = cur_page_id & PageConfig::RADIX_MASK;
+        size_t cnt = std::min(remaining_pages, PageConfig::RADIX_NODE_SIZE - i3);
+
+        auto** start_ptr = reinterpret_cast<void**>(&p3->children[i3]);
+        std::fill_n(start_ptr, cnt, nullptr);
+        cur_page_id += cnt;
+        remaining_pages -= cnt;
+    }
+}
+
 Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
     while (true) {
         // 1. Oversized Allocation:
@@ -106,7 +158,6 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
             }
 
             auto* span = span_pool_.New();
-            // span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
             span->start_page_idx = details::PtrToPageIdx(ptr);
             span->page_num = page_num;
             span->obj_size = obj_size;

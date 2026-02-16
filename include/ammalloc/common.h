@@ -46,7 +46,7 @@ AM_NODISCARD constexpr size_t AlignUp(size_t size,
  * - Uses `if constexpr` to eliminate division overhead at compile-time.
  * - If PAGE_SIZE is a power of two, this lowers to a single bitwise SHR instruction.
  */
-AM_NODISCARD inline size_t PtrToPageIdx(void* ptr) noexcept {
+AM_NODISCARD inline size_t PtrToPageId(void* ptr) noexcept {
     // 1. Cast pointer to integer. Note: This limits 'true' constexpr usage
     // but enables massive runtime inlining optimizations.
     const auto addr = reinterpret_cast<uintptr_t>(ptr);

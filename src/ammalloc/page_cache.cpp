@@ -157,8 +157,15 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
                 return nullptr;
             }
 
-            auto* span = span_pool_.New();
-            span->start_page_idx = details::PtrToPageIdx(ptr);
+            Span* span = nullptr;
+            try {
+                span = span_pool_.New();
+            } catch (const std::bad_alloc&) {
+                PageAllocator::SystemFree(ptr, page_num);
+                return nullptr;
+            }
+
+            span->start_page_idx = details::PtrToPageId(ptr);
             span->page_num = page_num;
             span->obj_size = obj_size;
             span->is_used = true;
@@ -171,6 +178,7 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
 
         // 2. Exact Match:
         // Check if there is a free span in the bucket corresponding exactly to page_num.
+        AM_DCHECK(page_num >= 1 && page_num <= PageConfig::MAX_PAGE_NUM);
         if (!span_lists_[page_num].empty()) {
             auto* span = span_lists_[page_num].pop_front();
             span->obj_size = obj_size;
@@ -188,7 +196,14 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
             // Found a larger span.
             auto* big_span = span_lists_[i].pop_front();
             // Create a new span for the requested `page_num` (Head Split).
-            auto* small_span = span_pool_.New();
+            Span* small_span = nullptr;
+            try {
+                small_span = span_pool_.New();
+            } catch (const std::bad_alloc&) {
+                // Rollback: Return the big span to the list.
+                span_lists_[i].push_front(big_span);
+                return nullptr;
+            }
             small_span->start_page_idx = big_span->start_page_idx;
             small_span->page_num = page_num;
             small_span->obj_size = obj_size;
@@ -215,7 +230,14 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
         if (!ptr) {
             return nullptr;
         }
-        auto* span = span_pool_.New();
+
+        Span* span = nullptr;
+        try {
+            span = span_pool_.New();
+        } catch (const std::bad_alloc&) {
+            PageAllocator::SystemFree(ptr, alloc_page_nums);
+            return nullptr;
+        }
         span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
         span->page_num = alloc_page_nums;
         span->is_used = false;

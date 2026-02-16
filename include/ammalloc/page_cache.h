@@ -7,6 +7,7 @@
 
 #include "ammalloc/page_allocator.h"
 #include "ammalloc/span.h"
+#include "macros.h"
 
 #include <mutex>
 
@@ -144,6 +145,11 @@ public:
      * @param span The Span to be released.
      */
     void ReleaseSpan(Span* span) noexcept;
+
+    AM_NODISCARD bool IsBucketEmpty(size_t bucket_idx) const noexcept {
+        AM_DCHECK(bucket_idx < span_lists_.size());
+        return span_lists_[bucket_idx].empty();
+    }
 
     AM_NODISCARD std::mutex& GetMutex() noexcept {
         return mutex_;

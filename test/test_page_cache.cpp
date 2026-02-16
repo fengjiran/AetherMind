@@ -48,7 +48,33 @@ TEST_F(PageCacheTest, OversizedAllocation) {
     EXPECT_EQ(PageMap::GetSpan(last_page_ptr), span);
 
     cache_.ReleaseSpan(span);
-    EXPECT_TRUE(PageMap::GetSpan(last_page_ptr) != nullptr);
+    EXPECT_TRUE(PageMap::GetSpan(last_page_ptr) == nullptr);
+}
+
+// 测试点 2: 系统进货与切分 (Refill & Split)
+TEST_F(PageCacheTest, RefillAndSplit) {
+    // 1. 申请 1 页
+    // 预期：PageCache 发现没内存 -> 申请 128 页 -> 切出 1 页给用户 -> 剩 127 页挂在 bucket[127]
+    Span* span1 = cache_.AllocSpan(1, 8);
+    ASSERT_NE(span1, nullptr);
+    EXPECT_EQ(span1->page_num, 1);
+
+    // 2. 再申请 10 页
+    // 预期：从 bucket[127] 拿出 -> 切出 10 页 -> 剩 117 页挂在 bucket[117]
+    Span* span2 = cache_.AllocSpan(10, 16);
+    ASSERT_NE(span2, nullptr);
+    EXPECT_EQ(span2->page_num, 10);
+
+    // 验证：127 号桶空了，117 号桶有了
+    // 注意：这取决于单例之前的状态，如果之前是空的，逻辑成立。
+    // 如果之前有残留数据，可能直接从 bucket[10] 拿。
+    // 假设这是冷启动环境：
+    EXPECT_TRUE(IsBucketEmpty(127));
+    EXPECT_FALSE(IsBucketEmpty(117));
+
+    // 清理
+    cache_.ReleaseSpan(span1);
+    cache_.ReleaseSpan(span2);
 }
 
 }// namespace

@@ -80,6 +80,14 @@ public:
     */
     static void ClearRange(size_t start_page_id, size_t page_num);
 
+    /**
+     * @brief Reset the entire PageMap.
+     *
+     * Clears all mappings and releases all RadixNode objects.
+     * MUST be called with PageCache::mutex_ held.
+     */
+    static void Reset();
+
 private:
     // Atomic root pointer for double-checked locking / lazy initialization.
     inline static std::atomic<RadixNode*> root_ = nullptr;
@@ -145,6 +153,14 @@ public:
      * @param span The Span to be released.
      */
     void ReleaseSpan(Span* span) noexcept;
+
+    /**
+     * @brief Reset the PageCache to its initial state.
+     *
+     * Clears all cached spans, releases all allocated resources, and resets the PageMap.
+     * This is primarily used for test isolation.
+     */
+    void Reset();
 
     AM_NODISCARD bool IsBucketEmpty(size_t bucket_idx) const noexcept {
         AM_DCHECK(bucket_idx < span_lists_.size());

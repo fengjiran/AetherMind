@@ -127,6 +127,20 @@ public:
         free_list_ = header;
     }
 
+    void ReleaseMemory() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto* cur = chunk_header_;
+        while (cur) {
+            auto* next = cur->next;
+            PageAllocator::SystemFree(cur, cur->page_num);
+            cur = next;
+        }
+        chunk_header_ = nullptr;
+        free_list_ = nullptr;
+        data_ = nullptr;
+        remain_bytes_ = 0;
+    }
+
     ~ObjectPool() {
         auto* cur = chunk_header_;
         while (cur) {

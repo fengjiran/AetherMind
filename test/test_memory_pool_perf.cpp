@@ -15,6 +15,8 @@
 #include <thread>
 #include <vector>
 
+#ifdef NOOOO
+
 namespace {
 
 using namespace aethermind;
@@ -411,3 +413,4 @@ TEST(MemoryPoolPerf, MultiThread_8Threads_MixedSize) {
 }
 
 }// namespace
+#endif

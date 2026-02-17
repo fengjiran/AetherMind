@@ -146,6 +146,11 @@ void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
     }
 }
 
+void PageMap::Reset() {
+    root_.store(nullptr, std::memory_order_relaxed);
+    radix_node_pool_.ReleaseMemory();
+}
+
 Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
     while (true) {
         // 1. Oversized Allocation:
@@ -309,6 +314,21 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
     // Update PageMap: Map ALL pages in this coalesced span to the span pointer.
     // This ensures subsequent merge operations can find this span via any of its pages.
     PageMap::SetSpan(span);
+}
+
+void PageCache::Reset() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& list: span_lists_) {
+        while (!list.empty()) {
+            auto* span = list.pop_front();
+            PageMap::ClearRange(span->start_page_idx, span->page_num);
+            PageAllocator::SystemFree(span->GetStartAddr(), span->page_num);
+            span_pool_.Delete(span);
+        }
+    }
+
+    span_pool_.ReleaseMemory();
+    PageMap::Reset();
 }
 
 }// namespace aethermind

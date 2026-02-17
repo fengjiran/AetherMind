@@ -13,6 +13,14 @@ class PageCacheTest : public ::testing::Test {
 protected:
     PageCache& cache_ = PageCache::GetInstance();
 
+    void SetUp() override {
+        cache_.Reset();
+    }
+
+    void TearDown() override {
+        cache_.Reset();
+    }
+
     AM_NODISCARD bool IsBucketEmpty(size_t page_num) const {
         return cache_.span_lists_[page_num].empty();
     }

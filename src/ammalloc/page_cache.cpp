@@ -334,7 +334,7 @@ void PageCache::Reset() {
     for (auto& list: span_lists_) {
         while (!list.empty()) {
             auto* span = list.pop_front();
-            PageMap::ClearRange(span->start_page_idx, span->page_num);
+            // PageMap::ClearRange(span->start_page_idx, span->page_num);
             PageAllocator::SystemFree(span->GetStartAddr(), span->page_num);
             span_pool_.Delete(span);
         }

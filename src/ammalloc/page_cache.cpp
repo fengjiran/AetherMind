@@ -4,6 +4,8 @@
 
 #include "ammalloc/page_cache.h"
 
+#include <limits>
+
 namespace aethermind {
 
 Span* PageMap::GetSpan(size_t page_id) {
@@ -272,6 +274,9 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
 
     // 2. Merge Left: Check the previous page ID.
     while (true) {
+        if (span->start_page_idx == 0) {
+            break;
+        }
         size_t left_id = span->start_page_idx - 1;
         // Retrieve the Span managing the left page from the global PageMap.
         auto* left_span = PageMap::GetSpan(left_id);
@@ -288,7 +293,11 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
         span_lists_[left_span->page_num].erase(left_span);
         span->start_page_idx = left_span->start_page_idx;// Update start to left
         span->page_num += left_span->page_num;           // Increase size
-        span_pool_.Delete(left_span);                    // Destroy metadata
+        // Corrupt metadata to safely detect dangling pointer access
+        left_span->start_page_idx = std::numeric_limits<size_t>::max();
+        left_span->page_num = 0;
+        left_span->is_used = true;
+        span_pool_.Delete(left_span);// Destroy metadata
     }
 
     // 3. Merge Right: Check the page ID immediately following this span.
@@ -304,6 +313,10 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
         // Perform merge: Remove right_span, absorb it.
         span_lists_[right_span->page_num].erase(right_span);
         span->page_num += right_span->page_num;// Start index stays same, size increases
+        // Corrupt metadata to safely detect dangling pointer access
+        right_span->start_page_idx = std::numeric_limits<size_t>::max();
+        right_span->page_num = 0;
+        right_span->is_used = true;
         span_pool_.Delete(right_span);
     }
 

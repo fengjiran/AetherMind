@@ -19,13 +19,13 @@ namespace aethermind {
  * Total size: 64 bytes(1 cache line) to prevent false sharing and optimize fetch
  */
 struct Span {
+    // --- Double linked list ---
+    Span* next{nullptr};
+    Span* prev{nullptr};
+
     // --- Page Cache Info ---
     size_t start_page_idx{0};// Global start page index
     size_t page_num{0};      // Number of contiguous pages
-
-    // --- Double linked list ---
-    Span* prev{nullptr};
-    Span* next{nullptr};
 
     // --- Central Cache Object Info ---
     size_t obj_size{0};// Size of objects allocated from this Span(if applicable)

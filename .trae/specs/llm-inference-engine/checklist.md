@@ -13,6 +13,15 @@
 - [ ] 任务粒度适中，没有过大或过小的任务
 - [ ] 所有验收标准都被至少一个任务覆盖
 
+## Task 0 验证：实现硬件抽象层 (HAL)
+- [ ] DeviceManager 类功能完整，支持设备枚举、属性查询和同步
+- [ ] Allocator 类功能完善，支持设备内存、主机内存和固定内存分配
+- [ ] Stream 和 StreamManager 类实现正确，支持异步执行流管理
+- [ ] Event 和 EventManager 类实现正确，支持事件记录、同步和时间测量
+- [ ] DataTransfer 类实现正确，支持 H2D/D2H/D2D 同步/异步传输
+- [ ] CPU 后端 HAL 完整实现
+- [ ] HAL 层相关单元测试全部通过
+
 ## Task 1 验证：完善 Dispatcher 和算子注册机制
 - [ ] OperatorSchema 类功能完整
 - [ ] 算子注册宏可用，API 简洁
@@ -68,9 +77,11 @@
 - [ ] API 设计符合 C++ 最佳实践
 
 ## Task 8 验证：CUDA 后端支持（可选）
+- [ ] CUDA HAL 后端完整实现（DeviceManager、Allocator、Stream、Event、DataTransfer）
 - [ ] 核心算子的 CUDA 后端实现
 - [ ] cuBLAS 集成正常，矩阵乘法性能提升
 - [ ] CUDA KV Cache 实现正确
+- [ ] CUDA HAL 后端测试通过
 - [ ] CUDA 算子测试通过
 - [ ] CUDA 后端性能显著优于 CPU
 

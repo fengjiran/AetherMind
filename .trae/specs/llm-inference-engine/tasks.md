@@ -1,8 +1,27 @@
 # AetherMind 大模型推理引擎 - 实现计划
 
-## [ ] Task 1: 完善 Dispatcher 和算子注册机制
+## [ ] Task 0: 实现硬件抽象层 (HAL)
 - **Priority**: P0
 - **Depends On**: None
+- **Description**: 
+  - 实现 DeviceManager：设备枚举、属性查询、设备同步
+  - 完善 Allocator：支持设备内存、主机内存、固定内存分配
+  - 实现 Stream 和 StreamManager：异步执行流管理
+  - 实现 Event 和 EventManager：事件记录、同步、时间测量
+  - 实现 DataTransfer：H2D/D2H/D2D 同步/异步传输
+  - 为 CPU 设备实现完整的 HAL 后端
+- **Acceptance Criteria Addressed**: [AC-0]
+- **Test Requirements**:
+  - `programmatic` TR-0.1: DeviceManager 可以正确枚举和查询 CPU 设备
+  - `programmatic` TR-0.2: Allocator 可以在 CPU 上正确分配/释放内存
+  - `programmatic` TR-0.3: Stream 可以正确创建、同步和查询
+  - `programmatic` TR-0.4: Event 可以正确记录、同步和测量时间
+  - `programmatic` TR-0.5: DataTransfer 可以正确执行内存拷贝
+- **Notes**: 先实现 CPU 后端，CUDA/CANN 后端后续扩展
+
+## [ ] Task 1: 完善 Dispatcher 和算子注册机制
+- **Priority**: P0
+- **Depends On**: [Task 0]
 - **Description**: 
   - 完善现有 Dispatcher 框架
   - 实现 OperatorSchema 的完整功能
@@ -102,15 +121,17 @@
 
 ## [ ] Task 8: CUDA 后端支持 (可选，第一阶段之后)
 - **Priority**: P2
-- **Depends On**: [Task 1, Task 2]
+- **Depends On**: [Task 0, Task 1, Task 2]
 - **Description**: 
+  - 为 HAL 层实现 CUDA 后端
   - 为核心算子实现 CUDA 后端
   - 集成 cuBLAS 用于矩阵乘法加速
   - 实现 CUDA KV Cache
-- **Acceptance Criteria Addressed**: [AC-4, AC-5]
+- **Acceptance Criteria Addressed**: [AC-0, AC-4, AC-5]
 - **Test Requirements**:
-  - `programmatic` TR-8.1: CUDA 算子测试通过
-  - `programmatic` TR-8.2: CUDA 后端性能显著优于 CPU
+  - `programmatic` TR-8.1: CUDA HAL 后端测试通过
+  - `programmatic` TR-8.2: CUDA 算子测试通过
+  - `programmatic` TR-8.3: CUDA 后端性能显著优于 CPU
 
 ## [ ] Task 9: 性能优化和基准测试
 - **Priority**: P2

@@ -6,6 +6,7 @@
 - **Target Users**: 深度学习研究人员、AI 应用开发者、需要在生产环境部署大模型的工程师。
 
 ## Goals
+- 完善硬件抽象层（HAL），统一设备、内存、流接口
 - 基于现有 AetherMind 张量系统，构建完整的计算图执行引擎
 - 实现 Transformer 系列模型的核心算子（如 Attention、FFN、LayerNorm 等）
 - 支持多设备（CPU、CUDA、CANN）的算子调度和执行
@@ -39,6 +40,15 @@ AetherMind 大模型推理引擎采用分层架构设计，从下到上分为以
 │                   算子分发层                                │
 │  (Dispatcher, Operator Registry, Dispatch Key)            │
 ├─────────────────────────────────────────────────────────────┤
+│              硬件抽象层 (HAL)                               │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
+│  │ Device   │ │ Memory   │ │  Stream  │ │  Event   │  │
+│  │ Manager  │ │ Allocator│ │  Manager │ │ Manager  │  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │              Data Transfer (H2D, D2H, D2D)       │    │
+│  └──────────────────────────────────────────────────┘    │
+├─────────────────────────────────────────────────────────────┤
 │              AetherMind 现有基础设施                      │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
 │  │  Tensor  │ │  Type    │ │  Device  │ │ Function │  │
@@ -52,13 +62,134 @@ AetherMind 大模型推理引擎采用分层架构设计，从下到上分为以
 
 ### 核心组件说明
 
-#### 1. 算子分发层 (Dispatcher Layer)
+#### 1. 硬件抽象层 (Hardware Abstraction Layer, HAL)
+
+HAL 层是整个推理引擎的基础，用于屏蔽不同硬件设备的差异，提供统一的设备、内存、流和事件管理接口。
+
+##### 1.1 Device Manager
+- **职责**: 设备管理和查询
+- **功能**:
+  - 枚举系统可用设备
+  - 获取设备属性（内存大小、计算能力等）
+  - 设置当前设备
+  - 设备同步
+- **API 设计**:
+  ```cpp
+  class DeviceManager {
+  public:
+      static DeviceManager& Instance();
+      size_t GetDeviceCount(DeviceType type) const;
+      Device GetDevice(DeviceType type, int8_t index) const;
+      void SetCurrentDevice(const Device& device);
+      Device GetCurrentDevice(DeviceType type) const;
+      void SynchronizeDevice(const Device& device);
+      DeviceProperties GetDeviceProperties(const Device& device) const;
+  };
+  ```
+
+##### 1.2 Memory Allocator
+- **职责**: 统一内存分配/释放接口
+- **功能**:
+  - 设备内存分配/释放
+  - 主机内存分配/释放
+  - 固定主机内存分配（用于高性能 H2D/D2H 传输）
+  - 内存使用统计
+- **API 设计**:
+  ```cpp
+  class Allocator {
+  public:
+      virtual ~Allocator() = default;
+      virtual DataPtr Allocate(size_t nbytes) = 0;
+      virtual void Deallocate(void* ptr) = 0;
+      virtual size_t GetAllocatedSize() const;
+      virtual size_t GetReservedSize() const;
+  };
+  ```
+
+##### 1.3 Stream Manager
+- **职责**: 异步执行流管理
+- **功能**:
+  - 创建/销毁计算流
+  - 流同步
+  - 流之间的依赖管理
+- **API 设计**:
+  ```cpp
+  class Stream {
+  public:
+      virtual ~Stream() = default;
+      virtual void Synchronize() = 0;
+      virtual bool Query() const;
+      virtual void* GetNativeHandle() const;
+  };
+
+  class StreamManager {
+  public:
+      static StreamManager& Instance();
+      std::shared_ptr<Stream> CreateStream(const Device& device, int priority = 0);
+      std::shared_ptr<Stream> GetDefaultStream(const Device& device);
+      void SetCurrentStream(const Device& device, const std::shared_ptr<Stream>& stream);
+      std::shared_ptr<Stream> GetCurrentStream(const Device& device);
+  };
+  ```
+
+##### 1.4 Event Manager
+- **职责**: 事件管理和同步
+- **功能**:
+  - 创建/销毁事件
+  - 事件记录（记录流上的某个时间点）
+  - 事件同步（等待事件完成）
+  - 事件查询
+  - 事件之间的依赖
+- **API 设计**:
+  ```cpp
+  class Event {
+  public:
+      virtual ~Event() = default;
+      virtual void Record(const std::shared_ptr<Stream>& stream) = 0;
+      virtual void Synchronize() = 0;
+      virtual bool Query() const;
+      virtual float ElapsedTime(const Event& other) const;
+      virtual void* GetNativeHandle() const;
+  };
+
+  class EventManager {
+  public:
+      static EventManager& Instance();
+      std::shared_ptr<Event> CreateEvent(const Device& device, bool enable_timing = false);
+      void WaitEvent(const std::shared_ptr<Event>& event, const std::shared_ptr<Stream>& stream);
+  };
+  ```
+
+##### 1.5 Data Transfer
+- **职责**: 统一数据传输接口
+- **功能**:
+  - Host 到 Device (H2D)
+  - Device 到 Host (D2H)
+  - Device 到 Device (D2D)
+  - 同步/异步传输
+- **API 设计**:
+  ```cpp
+  class DataTransfer {
+  public:
+      static DataTransfer& Instance();
+      void Copy(void* dst, const void* src, size_t nbytes,
+                const Device& dst_device, const Device& src_device);
+      void CopyAsync(void* dst, const void* src, size_t nbytes,
+                     const Device& dst_device, const Device& src_device,
+                     const std::shared_ptr<Stream>& stream);
+      void Fill(void* dst, int value, size_t nbytes, const Device& device);
+      void FillAsync(void* dst, int value, size_t nbytes, const Device& device,
+                     const std::shared_ptr<Stream>& stream);
+  };
+  ```
+
+#### 2. 算子分发层 (Dispatcher Layer)
 - **Dispatcher**: 全局单例算子调度器
 - **Operator Registry**: 算子注册表，存储所有已注册的算子
 - **Dispatch Key**: 分发键，包括设备类型（CPU/CUDA/CANN）、数据类型等
 - **职责**: 根据输入张量的属性自动选择并调用合适的算子实现
 
-#### 2. 算子层 (Operator Layer)
+#### 3. 算子层 (Operator Layer)
 - **核心张量算子**:
   - Element-wise: Add, Sub, Mul, Div, Exp, Log, Relu, Gelu, Silu
   - Reduction: Sum, Mean, Max, Min
@@ -71,13 +202,13 @@ AetherMind 大模型推理引擎采用分层架构设计，从下到上分为以
   - Multi-Head Attention (MHA)
   - Rotary Positional Embedding (RoPE)
 
-#### 3. 计算图执行层 (Graph Execution Layer)
+#### 4. 计算图执行层 (Graph Execution Layer)
 - **Graph Builder**: 计算图构建 API
 - **Graph IR**: 简单的中间表示
 - **Graph Executor**: 计算图执行引擎
 - **Memory Planner**: 内存规划和复用优化器（可选）
 
-#### 4. 高层 API 层 (High-level API Layer)
+#### 5. 高层 API 层 (High-level API Layer)
 - **Model API**: 模型构建和加载 API
 - **Generation API**: 文本生成 API
 - **KV Cache Manager**: KV Cache 管理器
@@ -113,9 +244,14 @@ Dispatcher 根据设备/数据类型分发
 ### 扩展点设计
 
 #### 新增设备后端
-1. 定义新的 DispatchKey
-2. 为现有算子注册该设备的实现
-3. 实现该设备的 Allocator
+1. 实现 HAL 层接口：
+   - 实现该设备的 `DeviceManager` 后端
+   - 实现该设备的 `Allocator`
+   - 实现该设备的 `Stream` 和 `StreamManager`
+   - 实现该设备的 `Event` 和 `EventManager`
+   - 实现该设备的 `DataTransfer` 后端
+2. 定义新的 DispatchKey
+3. 为现有算子注册该设备的实现
 4. 无需修改高层代码
 
 #### 新增算子
@@ -136,6 +272,12 @@ AetherMind 项目已经具备以下基础设施：
 在此基础上，我们需要构建完整的 LLM 推理引擎。
 
 ## Functional Requirements
+- **FR-0**: 完善硬件抽象层（HAL），统一设备、内存、流、事件和数据传输接口
+  - 实现 DeviceManager，支持设备枚举、属性查询和同步
+  - 完善 Allocator，支持设备内存、主机内存和固定内存分配
+  - 实现 Stream 和 StreamManager，支持异步执行流管理
+  - 实现 Event 和 EventManager，支持事件记录和同步
+  - 实现 DataTransfer，支持 H2D/D2H/D2D 同步/异步传输
 - **FR-1**: 实现核心张量算子库（Element-wise、Reduction、MatMul、Softmax 等）
 - **FR-2**: 实现 Transformer 专用算子（Multi-Head Attention、Feed-Forward Network、LayerNorm、RMSNorm 等）
 - **FR-3**: 实现 KV Cache 管理机制，支持增量生成
@@ -162,8 +304,20 @@ AetherMind 项目已经具备以下基础设施：
 
 ## Acceptance Criteria
 
+### AC-0: HAL 层实现
+- **Given**: 现有 Device 和 Allocator 框架已就绪
+- **When**: 实现 DeviceManager、Stream/StreamManager、Event/EventManager、DataTransfer
+- **Then**: HAL 层各组件功能完整，单元测试通过
+- **Verification**: `programmatic`
+- **Sub-ACs**:
+  - **AC-0.1**: DeviceManager 可以正确枚举和查询设备
+  - **AC-0.2**: Allocator 可以在各设备上正确分配/释放内存
+  - **AC-0.3**: Stream 可以正确创建、同步和查询
+  - **AC-0.4**: Event 可以正确记录、同步和测量时间
+  - **AC-0.5**: DataTransfer 可以正确执行 H2D/D2H/D2D 传输
+
 ### AC-1: 核心张量算子实现
-- **Given**: AetherMind 张量基础设施已就绪
+- **Given**: AetherMind 张量基础设施和 HAL 层已就绪
 - **When**: 实现 MatMul、Softmax、Element-wise Add/Mul 等核心算子
 - **Then**: 所有算子通过数值正确性测试（与 PyTorch 参考实现对比，误差在可接受范围内）
 - **Verification**: `programmatic`
@@ -183,13 +337,13 @@ AetherMind 项目已经具备以下基础设施：
 - **Notes**: 第二次推理时延应比第一次降低 > 50%
 
 ### AC-4: 算子分发机制
-- **Given**: Dispatcher 框架已就绪
+- **Given**: Dispatcher 框架和 HAL 层已就绪
 - **When**: 实现算子注册机制，支持为同一算子注册不同设备的实现
 - **Then**: 能根据输入张量的设备类型自动调度到对应的后端实现
 - **Verification**: `programmatic`
 
 ### AC-5: 设备抽象验证
-- **Given**: 算子分发机制已就绪
+- **Given**: 算子分发机制和 HAL 层已就绪
 - **When**: 在 CPU、CUDA（如可用）、CANN（如可用）设备上运行相同的计算图
 - **Then**: 所有设备上的计算结果一致
 - **Verification**: `programmatic`

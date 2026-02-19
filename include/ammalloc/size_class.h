@@ -9,6 +9,7 @@
 
 #include <array>
 #include <bit>
+#include <cstdint>
 #include <limits>
 
 namespace aethermind {

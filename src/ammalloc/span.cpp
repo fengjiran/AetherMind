@@ -64,7 +64,6 @@ void Span::Init(size_t object_size) {
         }
     }
 
-    // use_count.store(0, std::memory_order_relaxed);
     use_count = 0;
     scan_cursor = 0;
 }
@@ -81,12 +80,12 @@ void* Span::AllocObject() {
             cur_idx -= bitmap_num;
         }
 
-        uint64_t old_val = bitmap[cur_idx];
-        if (old_val == 0) {
+        uint64_t val = bitmap[cur_idx];
+        if (val == 0) {
             continue;
         }
 
-        int bit_pos = std::countr_zero(old_val);
+        int bit_pos = std::countr_zero(val);
         bitmap[cur_idx] &= ~(1ULL << bit_pos);
         ++use_count;
         scan_cursor = cur_idx;

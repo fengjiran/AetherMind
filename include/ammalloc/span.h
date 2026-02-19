@@ -13,8 +13,6 @@ namespace aethermind {
 
 /**
  * @brief Span represents a contiguous range of memory pages.
- * Optimized for 64-bit architectures to minimize padding.
- * Total size: 64 bytes(1 cache line) to prevent false sharing and optimize fetch
  */
 struct Span {
     // --- Double linked list ---
@@ -27,16 +25,13 @@ struct Span {
 
     // --- Central Cache Object Info ---
     size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
-    // std::atomic<size_t> use_count{0};
     size_t use_count{0};
     size_t capacity{0};// Object capacity
     void* data_base_ptr{nullptr};
 
     // --- bitmap info ---
-    // std::atomic<uint64_t>* bitmap{nullptr};
     uint64_t* bitmap{nullptr};
     size_t bitmap_num{0};
-    // std::atomic<size_t> scan_cursor{0};
     size_t scan_cursor{0};
 
     // --- Status & Meta (Packed) ---
@@ -48,7 +43,7 @@ struct Span {
     void* AllocObject();
     /**
      * @brief Release an object back to this Span.
-     * @note Can be called concurrently without locks.
+     * @note Must be called with the bucket lock held.
      */
     void FreeObject(void* ptr);
 

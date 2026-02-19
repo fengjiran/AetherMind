@@ -9,8 +9,6 @@
 #include "ammalloc/config.h"
 #include "utils/logging.h"
 
-#include <atomic>
-
 namespace aethermind {
 
 /**
@@ -29,14 +27,17 @@ struct Span {
 
     // --- Central Cache Object Info ---
     size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
-    std::atomic<size_t> use_count{0};
+    // std::atomic<size_t> use_count{0};
+    size_t use_count{0};
     size_t capacity{0};// Object capacity
     void* data_base_ptr{nullptr};
 
     // --- bitmap info ---
-    std::atomic<uint64_t>* bitmap{nullptr};
+    // std::atomic<uint64_t>* bitmap{nullptr};
+    uint64_t* bitmap{nullptr};
     size_t bitmap_num{0};
-    std::atomic<size_t> scan_cursor{0};
+    // std::atomic<size_t> scan_cursor{0};
+    size_t scan_cursor{0};
 
     // --- Status & Meta (Packed) ---
     bool is_used{false};// Is this span currently in CentralCache?
@@ -61,8 +62,6 @@ struct Span {
         return reinterpret_cast<void*>(start + (page_num << shift));
     }
 };
-// static_assert(sizeof(Span) == 64);
-
 
 /**
  * @brief A doubly linked list managing a collection of Spans.

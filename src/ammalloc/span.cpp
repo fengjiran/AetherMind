@@ -19,7 +19,7 @@ void Span::Init(size_t object_size) {
     size_t max_objs = (total_bytes * 8) / (obj_size * 8 + 1);
     bitmap_num = (max_objs + 64 - 1) >> 6;
     // Placement New: Create atomic array at page start
-    bitmap = new (start_ptr) std::atomic<uint64_t>[bitmap_num];
+    bitmap = new (start_ptr) uint64_t[bitmap_num];
 
     // 3. Calculate Data Start Address (Aligned)
     uintptr_t data_start = reinterpret_cast<uintptr_t>(bitmap) + bitmap_num * 8;
@@ -40,7 +40,7 @@ void Span::Init(size_t object_size) {
 
     // Part A: Set full blocks to ~0ULL(all free)
     for (size_t i = 0; i < full_bitmap_num; ++i) {
-        bitmap[i].store(~0ULL, std::memory_order_relaxed);
+        bitmap[i] = ~0ULL;
     }
 
     // Part B: Handle the tail block(if any)
@@ -49,61 +49,49 @@ void Span::Init(size_t object_size) {
             // If capacity is exact multiple of 64, this block is actually out of bounds
             // But if num_full_blocks == bitmap_num, we won't enter this branch unless i < bitmap_num
             // So this handles the case where capacity < bitmap_num * 64
-            bitmap[full_bitmap_num].store(0, std::memory_order_relaxed);
+            bitmap[full_bitmap_num] = 0;
         } else {
             // Set lower 'tail_bits' to 1, rest to 0
             uint64_t mask = (1ULL << tail_bits) - 1;
             // Relaxed is sufficient during initialization
-            bitmap[full_bitmap_num].store(mask, std::memory_order_relaxed);
+            bitmap[full_bitmap_num] = mask;
         }
 
         // Part C: Zero out remaining padding blocks
         for (size_t i = full_bitmap_num + 1; i < bitmap_num; ++i) {
             // Out of capacity range blocks (padding space)
-            bitmap[i].store(0, std::memory_order_relaxed);
+            bitmap[i] = 0;
         }
     }
 
-    use_count.store(0, std::memory_order_relaxed);
-    scan_cursor.store(0, std::memory_order_relaxed);
+    // use_count.store(0, std::memory_order_relaxed);
+    use_count = 0;
+    scan_cursor = 0;
 }
 
 void* Span::AllocObject() {
-    if (use_count.load(std::memory_order_relaxed) >= capacity) {
+    if (use_count >= capacity) {
         return nullptr;
     }
 
-    size_t idx = scan_cursor.load(std::memory_order_relaxed);
+    size_t idx = scan_cursor;
     for (size_t i = 0; i < bitmap_num; ++i) {
         size_t cur_idx = idx + i;
         if (cur_idx >= bitmap_num) {
             cur_idx -= bitmap_num;
         }
 
-        uint64_t old_val = bitmap[cur_idx].load(std::memory_order_relaxed);
+        uint64_t old_val = bitmap[cur_idx];
         if (old_val == 0) {
             continue;
         }
 
-        // CAS
-        // clang-format off
-        while (old_val != 0) {
-            int bit_pos = std::countr_zero(old_val);
-            uint64_t mask = 1ULL << bit_pos;
-            if (uint64_t new_val = old_val & ~mask;
-                bitmap[cur_idx].compare_exchange_weak(old_val, new_val,
-                                                      std::memory_order_acquire,
-                                                      std::memory_order_relaxed)) AM_LIKELY {
-                use_count.fetch_add(1, std::memory_order_relaxed);
-                if (cur_idx != idx) {
-                    scan_cursor.store(cur_idx, std::memory_order_relaxed);
-                }
-                size_t global_obj_idx = cur_idx * 64 + bit_pos;
-                return static_cast<char*>(data_base_ptr) + global_obj_idx * obj_size;
-            }
-            details::CPUPause();
-        }
-        // clang-format on
+        int bit_pos = std::countr_zero(old_val);
+        bitmap[cur_idx] &= ~(1ULL << bit_pos);
+        ++use_count;
+        scan_cursor = cur_idx;
+        size_t global_obj_idx = cur_idx * 64 + bit_pos;
+        return static_cast<char*>(data_base_ptr) + global_obj_idx * obj_size;
     }
     return nullptr;
 }
@@ -114,13 +102,8 @@ void Span::FreeObject(void* ptr) {
 
     size_t bitmap_idx = global_obj_idx >> 6;
     int bit_pos = global_obj_idx & (64 - 1);
-    // Release: Ensures all my writes to the object are visible
-    // before the bit is marked as free.
-    bitmap[bitmap_idx].fetch_or(1ULL << bit_pos, std::memory_order_release);
-    // Decrement use count.
-    // Release is needed if the logic checks use_count == 0 to return Span to PageCache.
-    // It ensures all memory accesses in this Span are done before Span destruction/moving.
-    use_count.fetch_sub(1, std::memory_order_release);
+    bitmap[bitmap_idx] |= (1ULL << bit_pos);
+    --use_count;
 }
 
 }// namespace aethermind

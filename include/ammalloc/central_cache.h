@@ -137,7 +137,7 @@ public:
             // If list is empty OR the current head span is fully allocated, get a new span.
             // Note: use_count check is a fast-path hint; AllocObject is the authority.
             if (span_list.empty() ||
-                span_list.begin()->use_count.load(std::memory_order_relaxed) >= span_list.begin()->capacity) {
+                span_list.begin()->use_count >= span_list.begin()->capacity) {
                 // GetOneSpan releases the bucket lock internally to avoid deadlock with PageCache.
                 if (!GetOneSpan(span_list, size)) {
                     break;
@@ -202,14 +202,14 @@ public:
 
             // 3. Heuristic: If a full span becomes non-full, move it to the front.
             // This allows FetchRange to immediately find this available slot.
-            if (span->use_count.load(std::memory_order_relaxed) == span->capacity - 1) {
+            if (span->use_count == span->capacity - 1) {
                 span_list.erase(span);
                 span_list.push_front(span);
             }
 
             // 4. Release to PageCache:
             // If the span becomes completely empty, return it to PageCache for coalescing.
-            if (span->use_count.load(std::memory_order_relaxed) == 0) {
+            if (span->use_count == 0) {
                 span_list.erase(span);
                 // Cleanup metadata pointers before returning.
                 span->bitmap = nullptr;

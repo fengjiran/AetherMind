@@ -90,7 +90,7 @@ void ThreadCache::ReleaseTooLongList(FreeList& list, size_t size) {
     // Use the same batch calculation for releasing.
     // We pop 'batch_num' items from the list and link them together.
     auto batch_num = SizeClass::CalculateBatchSize(size);
-    if (batch_num == 0) {
+    if (batch_num == 0 || list.empty()) {
         return;
     }
 

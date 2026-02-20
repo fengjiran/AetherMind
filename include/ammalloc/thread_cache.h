@@ -2,8 +2,8 @@
 // Created by richard on 2/6/26.
 //
 
-#ifndef AETHERMIND_AMMALLOC_MEMORY_POOL_H
-#define AETHERMIND_AMMALLOC_MEMORY_POOL_H
+#ifndef AETHERMIND_AMMALLOC_THREAD_CACHE_H
+#define AETHERMIND_AMMALLOC_THREAD_CACHE_H
 
 #include "ammalloc/central_cache.h"
 
@@ -56,4 +56,4 @@ private:
 };
 }// namespace aethermind
 
-#endif//AETHERMIND_AMMALLOC_MEMORY_POOL_H
+#endif//AETHERMIND_AMMALLOC_THREAD_CACHE_H

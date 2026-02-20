@@ -45,10 +45,6 @@ TEST_F(CentralCacheTest, BasicFetchRange) {
     EXPECT_GT(fetched, 0);
     EXPECT_EQ(list.size(), fetched);
 
-    // 验证取出的对象大小正确（通过地址对齐）
-    void* obj = list.pop();
-    EXPECT_NE(obj, nullptr);
-
     // 清理
     void* head = nullptr;
     while (!list.empty()) {
@@ -95,17 +91,11 @@ TEST_F(CentralCacheTest, BasicReleaseListToSpans) {
 
     // 构建释放链表
     void* head = nullptr;
-    void* tail = nullptr;
-    size_t count = 0;
     while (!list.empty()) {
         void* obj = list.pop();
-        if (!head) {
-            head = obj;
-        }
         auto* block = static_cast<FreeBlock*>(obj);
-        block->next = static_cast<FreeBlock*>(tail);
-        tail = obj;
-        ++count;
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
 
     // 释放回 CentralCache
@@ -115,9 +105,14 @@ TEST_F(CentralCacheTest, BasicReleaseListToSpans) {
     size_t fetched2 = central_cache_.FetchRange(list, batch_num, obj_size);
     EXPECT_GT(fetched2, 0);
 
+    head = nullptr;
     while (!list.empty()) {
-        list.pop();
+        void* obj = list.pop();
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
+    central_cache_.ReleaseListToSpans(head, obj_size);
 }
 
 // 测试点 4: 不同 Size Class 的分配
@@ -129,9 +124,14 @@ TEST_F(CentralCacheTest, DifferentSizeClasses) {
         size_t fetched = central_cache_.FetchRange(list, 5, size);
         EXPECT_GT(fetched, 0) << "Failed for size " << size;
 
+        void* head = nullptr;
         while (!list.empty()) {
-            list.pop();
+            void* obj = list.pop();
+            auto* block = static_cast<FreeBlock*>(obj);
+            block->next = static_cast<FreeBlock*>(head);
+            head = obj;
         }
+        central_cache_.ReleaseListToSpans(head, size);
     }
 }
 
@@ -145,12 +145,17 @@ TEST_F(CentralCacheTest, LargeBatchAllocation) {
     EXPECT_GT(fetched, 0);
 
     // 验证所有对象都是有效的
+    void* head = nullptr;
     size_t count = 0;
     while (!list.empty()) {
         void* obj = list.pop();
         EXPECT_NE(obj, nullptr);
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
         ++count;
     }
+    central_cache_.ReleaseListToSpans(head, obj_size);
     EXPECT_EQ(count, fetched);
 }
 
@@ -163,9 +168,14 @@ TEST_F(CentralCacheTest, Reset) {
     central_cache_.FetchRange(list, 10, obj_size);
 
     // 清空 list
+    void* head = nullptr;
     while (!list.empty()) {
-        list.pop();
+        void* obj = list.pop();
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
+    central_cache_.ReleaseListToSpans(head, obj_size);
 
     // Reset CentralCache
     central_cache_.Reset();
@@ -174,9 +184,15 @@ TEST_F(CentralCacheTest, Reset) {
     size_t fetched = central_cache_.FetchRange(list, 10, obj_size);
     EXPECT_GT(fetched, 0);
 
+    // 清理
+    head = nullptr;
     while (!list.empty()) {
-        list.pop();
+        void* obj = list.pop();
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
+    central_cache_.ReleaseListToSpans(head, obj_size);
 }
 
 // 测试点 7: 对象归还后再次分配
@@ -205,9 +221,14 @@ TEST_F(CentralCacheTest, ReallocateAfterRelease) {
     ASSERT_GT(fetched2, 0);
 
     // 清理
+    head = nullptr;
     while (!list.empty()) {
-        list.pop();
+        void* obj = list.pop();
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
+    central_cache_.ReleaseListToSpans(head, obj_size);
 }
 
 // 测试点 8: 压力测试
@@ -276,9 +297,15 @@ TEST_F(CentralCacheTest, MultiThreadedAllocation) {
                 if (fetched > 0) {
                     success_count.fetch_add(fetched);
                 }
+                // 清理
+                void* head = nullptr;
                 while (!list.empty()) {
-                    list.pop();
+                    void* obj = list.pop();
+                    auto* block = static_cast<FreeBlock*>(obj);
+                    block->next = static_cast<FreeBlock*>(head);
+                    head = obj;
                 }
+                CentralCache::GetInstance().ReleaseListToSpans(head, obj_size);
             }
         });
     }
@@ -375,9 +402,15 @@ TEST_F(CentralCacheTest, SmallObjectAllocation) {
     size_t fetched = central_cache_.FetchRange(list, 50, obj_size);
     EXPECT_GT(fetched, 0);
 
+    // 清理
+    void* head = nullptr;
     while (!list.empty()) {
-        list.pop();
+        void* obj = list.pop();
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
+    central_cache_.ReleaseListToSpans(head, obj_size);
 }
 
 // 测试点 14: 边界大小分配
@@ -389,9 +422,15 @@ TEST_F(CentralCacheTest, BoundarySizeAllocation) {
     size_t fetched = central_cache_.FetchRange(list, 10, max_size);
     EXPECT_GT(fetched, 0);
 
+    // 清理
+    void* head = nullptr;
     while (!list.empty()) {
-        list.pop();
+        void* obj = list.pop();
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
+    central_cache_.ReleaseListToSpans(head, max_size);
 }
 
 }// namespace

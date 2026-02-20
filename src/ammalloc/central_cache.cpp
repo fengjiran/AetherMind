@@ -5,7 +5,6 @@
 #include "ammalloc/central_cache.h"
 #include "ammalloc/page_cache.h"
 
-#include <cstddef>
 #include <vector>
 
 namespace aethermind {

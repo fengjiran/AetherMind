@@ -5,8 +5,9 @@
 #ifndef AETHERMIND_MALLOC_AMMALLOC_H
 #define AETHERMIND_MALLOC_AMMALLOC_H
 
-#include "ammalloc/memory_pool.h"
 #include "ammalloc/page_allocator.h"
+#include "ammalloc/page_cache.h"
+#include "ammalloc/thread_cache.h"
 
 namespace aethermind {
 

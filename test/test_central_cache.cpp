@@ -3,6 +3,7 @@
 //
 #include "ammalloc/central_cache.h"
 #include "ammalloc/page_cache.h"
+#include "macros.h"
 
 #include <cstring>
 #include <gtest/gtest.h>
@@ -14,15 +15,16 @@ namespace aethermind {
 
 class CentralCacheTest : public ::testing::Test {
 protected:
-    CentralCache& cache_ = CentralCache::GetInstance();
+    CentralCache& central_cache_ = CentralCache::GetInstance();
     PageCache& page_cache_ = PageCache::GetInstance();
 
     void SetUp() override {
+        central_cache_.Reset();
         page_cache_.Reset();
     }
 
     void TearDown() override {
-        cache_.Reset();
+        central_cache_.Reset();
         page_cache_.Reset();
     }
 };
@@ -38,7 +40,7 @@ TEST_F(CentralCacheTest, BasicFetchRange) {
     size_t obj_size = 16;
     size_t batch_num = 10;
 
-    size_t fetched = cache_.FetchRange(list, batch_num, obj_size);
+    size_t fetched = central_cache_.FetchRange(list, batch_num, obj_size);
 
     EXPECT_GT(fetched, 0);
     EXPECT_EQ(list.size(), fetched);
@@ -48,9 +50,14 @@ TEST_F(CentralCacheTest, BasicFetchRange) {
     EXPECT_NE(obj, nullptr);
 
     // 清理
+    void* head = nullptr;
     while (!list.empty()) {
-        list.pop();
+        void* obj = list.pop();
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
+    central_cache_.ReleaseListToSpans(head, obj_size);
 }
 
 // 测试点 2: FetchRange 多次调用
@@ -59,16 +66,21 @@ TEST_F(CentralCacheTest, MultipleFetchRange) {
     size_t obj_size = 32;
 
     for (int i = 0; i < 5; ++i) {
-        size_t fetched = cache_.FetchRange(list, 20, obj_size);
+        size_t fetched = central_cache_.FetchRange(list, 20, obj_size);
         EXPECT_GT(fetched, 0);
     }
 
     EXPECT_GE(list.size(), 50);
 
     // 清理
+    void* head = nullptr;
     while (!list.empty()) {
-        list.pop();
+        void* obj = list.pop();
+        auto* block = static_cast<FreeBlock*>(obj);
+        block->next = static_cast<FreeBlock*>(head);
+        head = obj;
     }
+    central_cache_.ReleaseListToSpans(head, obj_size);
 }
 
 // 测试点 3: ReleaseListToSpans 基本操作
@@ -78,7 +90,7 @@ TEST_F(CentralCacheTest, BasicReleaseListToSpans) {
     size_t batch_num = 10;
 
     // 先获取一些对象
-    size_t fetched = cache_.FetchRange(list, batch_num, obj_size);
+    size_t fetched = central_cache_.FetchRange(list, batch_num, obj_size);
     ASSERT_GT(fetched, 0);
 
     // 构建释放链表
@@ -97,10 +109,10 @@ TEST_F(CentralCacheTest, BasicReleaseListToSpans) {
     }
 
     // 释放回 CentralCache
-    cache_.ReleaseListToSpans(head, obj_size);
+    central_cache_.ReleaseListToSpans(head, obj_size);
 
     // 验证：再次获取应该能成功
-    size_t fetched2 = cache_.FetchRange(list, batch_num, obj_size);
+    size_t fetched2 = central_cache_.FetchRange(list, batch_num, obj_size);
     EXPECT_GT(fetched2, 0);
 
     while (!list.empty()) {
@@ -114,7 +126,7 @@ TEST_F(CentralCacheTest, DifferentSizeClasses) {
 
     for (size_t size: sizes) {
         FreeList list;
-        size_t fetched = cache_.FetchRange(list, 5, size);
+        size_t fetched = central_cache_.FetchRange(list, 5, size);
         EXPECT_GT(fetched, 0) << "Failed for size " << size;
 
         while (!list.empty()) {
@@ -129,7 +141,7 @@ TEST_F(CentralCacheTest, LargeBatchAllocation) {
     size_t obj_size = 128;
     size_t batch_num = 100;
 
-    size_t fetched = cache_.FetchRange(list, batch_num, obj_size);
+    size_t fetched = central_cache_.FetchRange(list, batch_num, obj_size);
     EXPECT_GT(fetched, 0);
 
     // 验证所有对象都是有效的
@@ -148,7 +160,7 @@ TEST_F(CentralCacheTest, Reset) {
     size_t obj_size = 256;
 
     // 分配一些对象
-    cache_.FetchRange(list, 10, obj_size);
+    central_cache_.FetchRange(list, 10, obj_size);
 
     // 清空 list
     while (!list.empty()) {
@@ -156,10 +168,10 @@ TEST_F(CentralCacheTest, Reset) {
     }
 
     // Reset CentralCache
-    cache_.Reset();
+    central_cache_.Reset();
 
     // 再次分配应该仍然正常工作
-    size_t fetched = cache_.FetchRange(list, 10, obj_size);
+    size_t fetched = central_cache_.FetchRange(list, 10, obj_size);
     EXPECT_GT(fetched, 0);
 
     while (!list.empty()) {
@@ -173,7 +185,7 @@ TEST_F(CentralCacheTest, ReallocateAfterRelease) {
     size_t obj_size = 512;
 
     // 第一次分配
-    size_t fetched1 = cache_.FetchRange(list, 20, obj_size);
+    size_t fetched1 = central_cache_.FetchRange(list, 20, obj_size);
     ASSERT_GT(fetched1, 0);
 
     // 构建释放链表
@@ -186,10 +198,10 @@ TEST_F(CentralCacheTest, ReallocateAfterRelease) {
     }
 
     // 释放
-    cache_.ReleaseListToSpans(head, obj_size);
+    central_cache_.ReleaseListToSpans(head, obj_size);
 
     // 第二次分配
-    size_t fetched2 = cache_.FetchRange(list, 20, obj_size);
+    size_t fetched2 = central_cache_.FetchRange(list, 20, obj_size);
     ASSERT_GT(fetched2, 0);
 
     // 清理
@@ -213,7 +225,7 @@ TEST_F(CentralCacheTest, StressTest) {
 
         FreeList list;
         size_t batch_num = batch_dis(g);
-        size_t fetched = cache_.FetchRange(list, batch_num, obj_size);
+        size_t fetched = central_cache_.FetchRange(list, batch_num, obj_size);
 
         while (!list.empty()) {
             void* obj = list.pop();
@@ -243,7 +255,7 @@ TEST_F(CentralCacheTest, StressTest) {
     }
 
     for (auto& [size, head]: release_lists) {
-        cache_.ReleaseListToSpans(head, size);
+        central_cache_.ReleaseListToSpans(head, size);
     }
 }
 
@@ -288,7 +300,7 @@ TEST_F(CentralCacheTest, FreeListOperations) {
     // 使用实际分配的内存来测试
     size_t obj_size = 64;
     FreeList source;
-    cache_.FetchRange(source, 5, obj_size);
+    central_cache_.FetchRange(source, 5, obj_size);
 
     // Push
     void* a = source.pop();
@@ -318,7 +330,7 @@ TEST_F(CentralCacheTest, FreeListPushRange) {
 
     // 从 CentralCache 获取对象
     FreeList source;
-    cache_.FetchRange(source, 5, obj_size);
+    central_cache_.FetchRange(source, 5, obj_size);
 
     void* a = source.pop();
     void* b = source.pop();
@@ -360,7 +372,7 @@ TEST_F(CentralCacheTest, SmallObjectAllocation) {
     FreeList list;
     size_t obj_size = 8;
 
-    size_t fetched = cache_.FetchRange(list, 50, obj_size);
+    size_t fetched = central_cache_.FetchRange(list, 50, obj_size);
     EXPECT_GT(fetched, 0);
 
     while (!list.empty()) {
@@ -374,7 +386,7 @@ TEST_F(CentralCacheTest, BoundarySizeAllocation) {
     size_t max_size = SizeConfig::MAX_TC_SIZE;
 
     FreeList list;
-    size_t fetched = cache_.FetchRange(list, 10, max_size);
+    size_t fetched = central_cache_.FetchRange(list, 10, max_size);
     EXPECT_GT(fetched, 0);
 
     while (!list.empty()) {

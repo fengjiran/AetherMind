@@ -78,8 +78,8 @@ public:
     }
 
     // Disable copy/move to prevent lock state corruption and pointer invalidation.
-    // SpanList(const SpanList&) = delete;
-    // SpanList& operator=(const SpanList&) = delete;
+    SpanList(const SpanList&) = delete;
+    SpanList& operator=(const SpanList&) = delete;
 
     /// @brief Returns a pointer to the first valid Span in the list.
     AM_NODISCARD Span* begin() noexcept {

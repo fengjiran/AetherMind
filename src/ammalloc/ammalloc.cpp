@@ -3,14 +3,20 @@
 //
 
 #include "ammalloc/ammalloc.h"
+#include "ammalloc/config.h"
 #include "ammalloc/page_allocator.h"
 #include "ammalloc/page_cache.h"
+#include "ammalloc/size_class.h"
 #include "ammalloc/thread_cache.h"
+#include <cstddef>
 
 namespace {
 
 using namespace aethermind;
 
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((tls_model("initial-exec")))
+#endif
 thread_local ThreadCache* pTLSThreadCache = nullptr;
 thread_local bool g_ThreadCacheAlreadyDestructed = false;
 
@@ -42,7 +48,6 @@ void ReleaseThreadCache(ThreadCache* tc) {
     PageAllocator::SystemFree(tc, page_num);
 }
 
-
 struct ThreadCacheCleaner {
     ~ThreadCacheCleaner() {
         g_ThreadCacheAlreadyDestructed = true;
@@ -56,11 +61,7 @@ struct ThreadCacheCleaner {
 
 thread_local ThreadCacheCleaner tc_cleaner;
 
-}// namespace
-
-namespace aethermind {
-
-void* am_malloc(size_t size) {
+void* am_malloc_slow_path(size_t size) {
     if (size > SizeConfig::MAX_TC_SIZE) {
         const auto align_size = (size + SystemConfig::PAGE_SIZE - 1) & ~(SystemConfig::PAGE_SIZE - 1);
         const size_t page_num = align_size >> SystemConfig::PAGE_SHIFT;
@@ -72,12 +73,24 @@ void* am_malloc(size_t size) {
         return span->GetStartAddr();
     }
 
-    // clang-format off
-    if (!pTLSThreadCache) AM_UNLIKELY {
+    if (!pTLSThreadCache) {
         pTLSThreadCache = CreateThreadCache();
         if (!pTLSThreadCache) {
             return nullptr;
         }
+    }
+
+    return pTLSThreadCache->Allocate(size);
+}
+
+}// namespace
+
+namespace aethermind {
+
+void* am_malloc(size_t size) {
+    // clang-format off
+    if (size > SizeConfig::MAX_TC_SIZE || pTLSThreadCache == nullptr) AM_UNLIKELY {
+        return am_malloc_slow_path(size);
     }
     // clang-format on
 

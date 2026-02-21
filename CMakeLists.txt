@@ -13,6 +13,7 @@ set(SPDLOG_BUILD_PIC ON CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
 
 option(BUILD_TESTS "Adding test targets." ON)
+option(BUILD_BENCHMARKS "Adding benchmark targets." ON)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
 option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
@@ -46,11 +47,15 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/google/benchmark
         GIT_TAG v1.9.5
 )
-FetchContent_MakeAvailable(spdlog)
-FetchContent_MakeAvailable(google_benchmark)
+FetchContent_MakeAvailable(spdlog google_benchmark)
 
 add_subdirectory(src)
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")
-    add_subdirectory(test)
+    add_subdirectory(tests/unit)
+endif ()
+
+if (BUILD_BENCHMARKS)
+    message(STATUS "Enable Benchmarks")
+    add_subdirectory(tests/benchmark)
 endif ()

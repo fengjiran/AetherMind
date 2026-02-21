@@ -2,7 +2,7 @@ set(TEST_TARGET aethermind_unit_tests)
 option(BUILD_WITH_TORCH "build target with torch" OFF)
 
 file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
-        ${PROJECT_SOURCE_DIR}/test/*.cpp
+        ${PROJECT_SOURCE_DIR}/tests/unit/*.cpp
 )
 
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})

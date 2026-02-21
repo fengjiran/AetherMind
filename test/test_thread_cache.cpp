@@ -18,6 +18,7 @@ protected:
     CentralCache& central_cache_ = CentralCache::GetInstance();
 
     void SetUp() override {
+        central_cache_.Reset();
         page_cache_.Reset();
     }
 
@@ -37,12 +38,10 @@ TEST_F(ThreadCacheTest, BasicAllocate) {
     thread_local ThreadCache cache;
 
     void* ptr = cache.Allocate(16);
-    EXPECT_NE(ptr, nullptr);
+    EXPECT_TRUE(ptr != nullptr);
 
-    // 释放回 CentralCache
-    void* head = ptr;
-    static_cast<FreeBlock*>(ptr)->next = nullptr;
-    central_cache_.ReleaseListToSpans(head, 16);
+    cache.Deallocate(ptr, 16);
+    cache.ReleaseAll();
 }
 
 // 测试点 2: Allocate(0) 返回有效指针（8字节块）
@@ -50,12 +49,10 @@ TEST_F(ThreadCacheTest, AllocateZero) {
     thread_local ThreadCache cache;
 
     void* ptr = cache.Allocate(0);
-    EXPECT_NE(ptr, nullptr);
+    EXPECT_TRUE(ptr != nullptr);
 
-    // 释放
-    void* head = ptr;
-    static_cast<FreeBlock*>(ptr)->next = nullptr;
-    central_cache_.ReleaseListToSpans(head, 8);
+    cache.Deallocate(ptr, 0);
+    cache.ReleaseAll();
 }
 
 // 测试点 3: 基本的 Deallocate 操作
@@ -63,12 +60,36 @@ TEST_F(ThreadCacheTest, BasicDeallocate) {
     thread_local ThreadCache cache;
 
     void* ptr = cache.Allocate(32);
-    EXPECT_NE(ptr, nullptr);
+    EXPECT_TRUE(ptr != nullptr);
 
     cache.Deallocate(ptr, 32);
 
     // ReleaseAll 清理
     cache.ReleaseAll();
+}
+
+TEST_F(ThreadCacheTest, EdgeCases) {
+    thread_local ThreadCache tc;
+
+    // 1. size == 0 (应该被提升为最小的 8 字节桶)
+    void* ptr_zero = tc.Allocate(0);
+    EXPECT_TRUE(ptr_zero != nullptr);
+    tc.Deallocate(ptr_zero, 0);
+
+    // 2. size == MAX_TC_SIZE (256KB)
+    size_t max_size = SizeConfig::MAX_TC_SIZE;
+    void* ptr_max = tc.Allocate(max_size);
+    EXPECT_TRUE(ptr_max != nullptr);
+
+    // 写入首尾验证
+    char* char_ptr = static_cast<char*>(ptr_max);
+    char_ptr[0] = 'A';
+    char_ptr[max_size - 1] = 'Z';
+    EXPECT_EQ(char_ptr[0], 'A');
+    EXPECT_EQ(char_ptr[max_size - 1], 'Z');
+
+    tc.Deallocate(ptr_max, max_size);
+    tc.ReleaseAll();
 }
 
 // 测试点 4: 多次分配和释放
@@ -79,7 +100,7 @@ TEST_F(ThreadCacheTest, MultipleAllocateDeallocate) {
 
     for (int i = 0; i < num_allocs; ++i) {
         void* ptr = cache.Allocate(64);
-        EXPECT_NE(ptr, nullptr);
+        EXPECT_TRUE(ptr != nullptr);
         ptrs.push_back(ptr);
     }
 
@@ -97,7 +118,7 @@ TEST_F(ThreadCacheTest, DifferentSizeClasses) {
 
     for (size_t size: sizes) {
         void* ptr = cache.Allocate(size);
-        EXPECT_NE(ptr, nullptr) << "Failed for size " << size;
+        EXPECT_TRUE(ptr != nullptr) << "Failed for size " << size;
         cache.Deallocate(ptr, size);
     }
 
@@ -111,7 +132,7 @@ TEST_F(ThreadCacheTest, ReleaseAll) {
     // 分配一些对象
     for (int i = 0; i < 50; ++i) {
         void* ptr = cache.Allocate(128);
-        EXPECT_NE(ptr, nullptr);
+        EXPECT_TRUE(ptr != nullptr);
         // 不释放，直接 ReleaseAll
     }
 
@@ -119,31 +140,40 @@ TEST_F(ThreadCacheTest, ReleaseAll) {
 
     // 再次分配应该正常工作
     void* ptr = cache.Allocate(128);
-    EXPECT_NE(ptr, nullptr);
+    EXPECT_TRUE(ptr != nullptr);
     cache.Deallocate(ptr, 128);
     cache.ReleaseAll();
 }
 
 // 测试点 7: 慢启动策略测试
-TEST_F(ThreadCacheTest, SlowStartStrategy) {
-    thread_local ThreadCache cache;
-    size_t size = 256;
+TEST_F(ThreadCacheTest, SlowStartAndScavenge) {
+    thread_local ThreadCache tc;
+    size_t size = 8;// 最小对象，batch_num 通常是 512
+    size_t batch_num = SizeClass::CalculateBatchSize(size);
 
-    // 第一次分配会触发 FetchFromCentralCache
-    void* ptr1 = cache.Allocate(size);
-    EXPECT_NE(ptr1, nullptr);
+    std::vector<void*> ptrs;
 
-    // 释放，触发慢启动增长 max_size
-    cache.Deallocate(ptr1, size);
-
-    // 再次分配和释放，观察 max_size 增长
-    for (int i = 0; i < 10; ++i) {
-        void* ptr = cache.Allocate(size);
-        EXPECT_NE(ptr, nullptr);
-        cache.Deallocate(ptr, size);
+    // 1. 持续分配，触发慢启动增长
+    // 分配 1500 个对象，必然触发多次 FetchFromCentralCache
+    for (size_t i = 0; i < 1500; ++i) {
+        void* ptr = tc.Allocate(size);
+        EXPECT_TRUE(ptr != nullptr);
+        ptrs.push_back(ptr);
     }
 
-    cache.ReleaseAll();
+    // 验证分配的指针互不相同
+    std::sort(ptrs.begin(), ptrs.end());
+    auto it = std::unique(ptrs.begin(), ptrs.end());
+    EXPECT_EQ(it, ptrs.end()) << "Duplicate pointers allocated!";
+
+    // 2. 持续释放，触发 ReleaseTooLongList
+    // 当释放数量超过 limit (1024) 时，会触发批量归还
+    for (void* ptr: ptrs) {
+        tc.Deallocate(ptr, size);
+    }
+
+    // 3. 清理残留
+    tc.ReleaseAll();
 }
 
 // 测试点 8: 触发 ReleaseTooLongList
@@ -156,7 +186,7 @@ TEST_F(ThreadCacheTest, TriggerReleaseTooLongList) {
     std::vector<void*> ptrs;
     for (size_t i = 0; i < batch_size * 4; ++i) {
         void* ptr = cache.Allocate(size);
-        EXPECT_NE(ptr, nullptr);
+        EXPECT_TRUE(ptr != nullptr);
         ptrs.push_back(ptr);
     }
 
@@ -193,6 +223,79 @@ TEST_F(ThreadCacheTest, StressTest) {
     }
 
     cache.ReleaseAll();
+}
+
+// 模拟单线程的随机分配/释放行为
+void ThreadRoutine(int thread_id, size_t iterations) {
+    thread_local ThreadCache tc;// 每个线程独享一个 ThreadCache 实例
+    std::vector<void*> allocated_ptrs;
+    allocated_ptrs.reserve(1000);
+
+    std::mt19937 gen(thread_id);
+    // 随机大小：1 字节 到 64KB
+    std::uniform_int_distribution<size_t> size_dist(1, 32 * 1024);
+    // 随机动作：70% 概率分配，30% 概率释放 (模拟内存增长期)
+    std::uniform_int_distribution<int> action_dist(1, 100);
+
+    for (size_t i = 0; i < iterations; ++i) {
+        if (allocated_ptrs.empty() || action_dist(gen) <= 70) {
+            // Allocate
+            size_t size = size_dist(gen);
+            void* ptr = tc.Allocate(size);
+            if (ptr) {
+                // 简单写入验证
+                *static_cast<size_t*>(ptr) = size;
+                allocated_ptrs.push_back(ptr);
+            }
+        } else {
+            // Deallocate
+            // 随机挑一个释放
+            size_t idx = gen() % allocated_ptrs.size();
+            void* ptr = allocated_ptrs[idx];
+            size_t size = *static_cast<size_t*>(ptr);// 读出大小
+
+            tc.Deallocate(ptr, SizeClass::RoundUp(size));
+
+            // 移除并替换最后一个元素
+            allocated_ptrs[idx] = allocated_ptrs.back();
+            allocated_ptrs.pop_back();
+        }
+    }
+
+    // 线程退出前，释放所有剩余内存
+    for (void* ptr: allocated_ptrs) {
+        size_t size = *static_cast<size_t*>(ptr);
+        tc.Deallocate(ptr, SizeClass::RoundUp(size));
+    }
+
+    // 归还 ThreadCache 缓存到 CentralCache
+    tc.ReleaseAll();
+}
+
+TEST_F(ThreadCacheTest, MultiThreadStress) {
+    const int num_threads = std::thread::hardware_concurrency();
+    // const int num_threads = 1;
+    const size_t iterations_per_thread = 50000;// 每个线程 5 万次操作
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    std::vector<std::thread> threads;
+    for (int i = 0; i < num_threads; ++i) {
+        threads.emplace_back(ThreadRoutine, i, iterations_per_thread);
+    }
+
+    for (auto& t: threads) {
+        t.join();
+    }
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff = end_time - start_time;
+
+    size_t total_ops = num_threads * iterations_per_thread;
+    std::cout << " " << num_threads << " threads executed "
+              << total_ops << " ops in " << diff.count() << " seconds.\n";
+    std::cout << " " << (total_ops / diff.count() / 1000000.0)
+              << " Million Ops/sec\n";
 }
 
 // 测试点 10: 多线程分配（每个线程有自己的 ThreadCache）
@@ -321,6 +424,41 @@ TEST_F(ThreadCacheTest, FetchFromCentralCacheTrigger) {
     }
 
     cache.ReleaseAll();
+}
+
+// 这是一个简单的对比测试，用于直观感受 ThreadCache 的威力
+TEST_F(ThreadCacheTest, BenchmarkVsStdMalloc) {
+    const size_t iterations = 1000000;// 100万次
+    const size_t alloc_size = 32;     // 32 字节小对象
+
+    // 1. 测试 std::malloc
+    auto start_std = std::chrono::high_resolution_clock::now();
+    for (size_t i = 0; i < iterations; ++i) {
+        void* p = std::malloc(alloc_size);
+        // benchmark::DoNotOptimize(p);// 防止被编译器优化掉 (需引入 benchmark 库，或用 volatile)
+        std::free(p);
+    }
+
+    auto end_std = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff_std = end_std - start_std;
+
+    // 2. 测试 ThreadCache
+    thread_local ThreadCache tc;
+    auto start_tc = std::chrono::high_resolution_clock::now();
+    for (size_t i = 0; i < iterations; ++i) {
+        void* p = tc.Allocate(alloc_size);
+        // benchmark::DoNotOptimize(p);
+        tc.Deallocate(p, alloc_size);
+    }
+    tc.ReleaseAll();
+    auto end_tc = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff_tc = end_tc - start_tc;
+
+    std::cout << " Time: " << diff_std.count() << " s\n";
+    std::cout << " Time: " << diff_tc.count() << " s\n";
+
+    // 通常 ThreadCache 会比 std::malloc 快得多，因为全是无锁的数组/链表操作
+    // EXPECT_LT(diff_tc.count(), diff_std.count());
 }
 
 }// namespace

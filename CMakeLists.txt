@@ -10,6 +10,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(USE_KALLOC_ALIGNMENT 64)
 set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_PIC ON CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
 
 option(BUILD_TESTS "Adding test targets." ON)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
@@ -40,7 +41,13 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
         GIT_TAG v1.17.0
 )
+FetchContent_Declare(
+        google_benchmark
+        GIT_REPOSITORY https://github.com/google/benchmark
+        GIT_TAG v1.9.5
+)
 FetchContent_MakeAvailable(spdlog)
+FetchContent_MakeAvailable(google_benchmark)
 
 add_subdirectory(src)
 if (BUILD_TESTS)

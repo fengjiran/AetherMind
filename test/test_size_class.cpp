@@ -1,7 +1,8 @@
 //
 // Created by richard on 2/4/26.
 //
-#include "ammalloc/ammalloc.h"
+#include "ammalloc/size_class.h"
+#include "ammalloc/common.h"
 
 #include <cstring>
 #include <gtest/gtest.h>

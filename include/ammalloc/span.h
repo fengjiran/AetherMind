@@ -68,7 +68,7 @@ struct Span {
  * 3. **External Locking**: Core operations (insert/erase) do NOT lock internally.
  *    The caller must use GetMutex() to protect critical sections.
  */
-class SpanList {
+class alignas(SystemConfig::CACHE_LINE_SIZE) SpanList {
 public:
     /// @brief Initializes an empty circular doubly linked list.
     /// The sentinel node's next and prev pointers point to itself.

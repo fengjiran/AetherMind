@@ -119,7 +119,7 @@ public:
      * @note This implementation is branch-prediction friendly and utilizes C++20
      *       bit-manipulation (std::bit_width) for O(1) performance without large tables.
      */
-    constexpr static size_t Index(size_t size) noexcept {
+    AM_ALWAYS_INLINE constexpr static size_t Index(size_t size) noexcept {
         // clang-format off
         if (size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
             return std::numeric_limits<size_t>::max();
@@ -161,7 +161,7 @@ public:
      * @param idx The size class index to be decoded.
      * @return The maximum byte size of the objects stored in this size class's FreeList.
      */
-    static constexpr size_t Size(size_t idx) noexcept {
+    AM_ALWAYS_INLINE static constexpr size_t Size(size_t idx) noexcept {
         // O(1) table lookup for all size classes
         return size_table_[idx];
     }
@@ -171,7 +171,7 @@ public:
      * @param size User requested size.
      * @return Aligned size.
      */
-    static constexpr size_t RoundUp(size_t size) noexcept {
+    AM_ALWAYS_INLINE static constexpr size_t RoundUp(size_t size) noexcept {
         if (size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
                 return size;
             }
@@ -194,9 +194,11 @@ public:
      * @return size_t Number of objects to move in one batch.
      */
     static constexpr size_t CalculateBatchSize(size_t size) noexcept {
+        // clang-format off
         if (size == 0) AM_UNLIKELY {
-                return 0;
-            }
+            return 0;
+        }
+        // clang-format on
 
         // Base strategy: Inverse proportion to size.
         // Example: 32KB / 8B = 4096 (Clamped to 512).

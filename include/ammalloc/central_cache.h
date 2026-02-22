@@ -8,6 +8,7 @@
 #include "ammalloc/size_class.h"
 #include "ammalloc/span.h"
 
+#include <cstdint>
 #include <mutex>
 
 namespace aethermind {
@@ -76,8 +77,8 @@ public:
 
 private:
     FreeBlock* head_;
-    size_t size_;
-    size_t max_size_;
+    uint32_t size_;
+    uint32_t max_size_;
 };
 
 

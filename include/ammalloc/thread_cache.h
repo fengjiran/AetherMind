@@ -17,7 +17,7 @@ namespace aethermind {
  * handles the vast majority of malloc/free requests (Fast Path).
  * Only communicates with CentralCache (Slow Path) when empty or full.
  */
-class alignas(64) ThreadCache {
+class alignas(SystemConfig::CACHE_LINE_SIZE) ThreadCache {
 public:
     ThreadCache() noexcept = default;
 
@@ -65,11 +65,6 @@ public:
         // clang-format off
         if (list.size() >= list.max_size()) AM_UNLIKELY {
             DeallocateSlowPath(list, size);
-            // if (list.max_size() < SizeClass::CalculateBatchSize(size) * 2) {
-            //     list.set_max_size(list.max_size() + 1);
-            // } else {
-            //     ReleaseTooLongList(list, size);
-            // }
         }
         // clang-format on
     }
@@ -89,8 +84,6 @@ private:
     /**
      * @brief Return objects to CentralCache when ThreadCache is full.
      */
-    AM_NOINLINE static void ReleaseTooLongList(FreeList& list, size_t size);
-
     AM_NOINLINE static void DeallocateSlowPath(FreeList& list, size_t size);
 };
 }// namespace aethermind

@@ -44,37 +44,8 @@ void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t size) {
     return list.pop();
 }
 
-void ThreadCache::ReleaseTooLongList(FreeList& list, size_t size) {
-    // Strategy: When full, release 'batch_num' objects back to CentralCache.
-    // This keeps 'batch_num' objects in ThreadCache (if limit is 2*batch),
-    // or empties it if limit == batch.
-
-    // Use the same batch calculation for releasing.
-    // We pop 'batch_num' items from the list and link them together.
-    auto batch_num = SizeClass::CalculateBatchSize(size);
-    if (batch_num == 0 || list.empty()) {
-        return;
-    }
-
-    void* start = nullptr;
-    // Construct a linked list of objects to return
-    // We assume FreeList::pop() returns the raw pointer.
-    // We use the object's memory to store the 'next' pointer (Embedded List).
-    for (size_t i = 0; i < batch_num; ++i) {
-        void* ptr = list.pop();
-        // Link node: ptr->next = start; start = ptr;
-        static_cast<FreeBlock*>(ptr)->next = static_cast<FreeBlock*>(start);
-        start = ptr;
-    }
-
-    // Send the list to CentralCache
-    CentralCache::GetInstance().ReleaseListToSpans(start, size);
-}
-
 void ThreadCache::DeallocateSlowPath(FreeList& list, size_t size) {
-    const auto batch_num = SizeClass::CalculateBatchSize(size);
-    const auto limit = batch_num * 2;
-    if (list.max_size() < limit) {
+    if (const auto batch_num = SizeClass::CalculateBatchSize(size); list.max_size() < batch_num * 2) {
         list.set_max_size(list.max_size() + 1);
     } else {
         void* start = nullptr;

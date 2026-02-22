@@ -6,7 +6,6 @@
 #include "ammalloc/config.h"
 #include "ammalloc/page_allocator.h"
 #include "ammalloc/page_cache.h"
-#include "ammalloc/size_class.h"
 #include "ammalloc/thread_cache.h"
 #include <cstddef>
 

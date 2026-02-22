@@ -44,7 +44,7 @@ FetchContent_Declare(
 )
 FetchContent_Declare(
         google_benchmark
-        GIT_REPOSITORY https://github.com/google/benchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
         GIT_TAG v1.9.5
 )
 FetchContent_MakeAvailable(spdlog google_benchmark)

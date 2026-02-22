@@ -61,7 +61,7 @@ struct ThreadCacheCleaner {
 
 thread_local ThreadCacheCleaner tc_cleaner;
 
-void* am_malloc_slow_path(size_t size) {
+AM_NOINLINE void* am_malloc_slow_path(size_t size) {
     if (size > SizeConfig::MAX_TC_SIZE) {
         const auto align_size = (size + SystemConfig::PAGE_SIZE - 1) & ~(SystemConfig::PAGE_SIZE - 1);
         const size_t page_num = align_size >> SystemConfig::PAGE_SHIFT;
@@ -83,31 +83,7 @@ void* am_malloc_slow_path(size_t size) {
     return pTLSThreadCache->Allocate(size);
 }
 
-}// namespace
-
-namespace aethermind {
-
-void* am_malloc(size_t size) {
-    // clang-format off
-    if (size > SizeConfig::MAX_TC_SIZE || pTLSThreadCache == nullptr) AM_UNLIKELY {
-        return am_malloc_slow_path(size);
-    }
-    // clang-format on
-
-    return pTLSThreadCache->Allocate(size);
-}
-
-void am_free(void* ptr) {
-    if (!ptr) {
-        return;
-    }
-
-    auto* span = PageMap::GetSpan(ptr);
-    if (!span) {
-        return;
-    }
-
-    auto size = span->obj_size;
+AM_NOINLINE void am_free_slow_path(void* ptr, Span* span, size_t size) {
     // If the size is 0, it means the span is allocated from the system(big object).
     if (size == 0) {
         PageCache::GetInstance().ReleaseSpan(span);
@@ -126,6 +102,44 @@ void am_free(void* ptr) {
     // clang-format on
 
     pTLSThreadCache->Deallocate(ptr, size);
+}
+
+}// namespace
+
+namespace aethermind {
+
+void* am_malloc(size_t size) {
+    // TLS variable is read only once.
+    auto* tc = pTLSThreadCache;
+    // clang-format off
+    if (size > SizeConfig::MAX_TC_SIZE || tc == nullptr) AM_UNLIKELY {
+        return am_malloc_slow_path(size);
+    }
+    // clang-format on
+
+    return tc->Allocate(size);
+}
+
+void am_free(void* ptr) {
+    // clang-format off
+    if (!ptr) AM_UNLIKELY {
+        return;
+    }
+
+    auto* span = PageMap::GetSpan(ptr);
+    if (!span) AM_UNLIKELY {
+        return;
+    }
+
+    auto size = span->obj_size;
+    auto* tc = pTLSThreadCache;
+    if (size == 0 || tc == nullptr) AM_UNLIKELY {
+        am_free_slow_path(ptr, span, size);
+        return;
+    }
+    // clang-format on
+
+    tc->Deallocate(ptr, size);
 }
 
 }// namespace aethermind

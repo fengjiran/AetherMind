@@ -6,6 +6,7 @@
 #define AETHERMIND_AMMALLOC_THREAD_CACHE_H
 
 #include "ammalloc/central_cache.h"
+#include <cstddef>
 
 namespace aethermind {
 
@@ -29,15 +30,51 @@ public:
      * @param size User requested size (must be <= MAX_TC_SIZE).
      * @return Pointer to the allocated memory.
      */
-    AM_NODISCARD void* Allocate(size_t size) noexcept;
+    AM_NODISCARD AM_ALWAYS_INLINE void* Allocate(size_t size) noexcept {
+        AM_DCHECK(size <= SizeConfig::MAX_TC_SIZE);
+        size_t idx = SizeClass::Index(size);
+        auto& list = free_lists_[idx];
+        // 1. Fast Path: Pop from local free list (Lock-Free)
+        // clang-format off
+        if (!list.empty()) AM_LIKELY {
+            return list.pop();
+        }
+        // clang-format on
+
+        // 2. Slow Path: Fetch from CentralCache
+        // Note: We must pass the aligned size to CentralCache/PageCache logic
+        return FetchFromCentralCache(list, SizeClass::RoundUp(size));
+    }
 
     /**
      * @brief Deallocate memory.
      * @param ptr Pointer to the memory.
      * @param size The size of the object (lookup via PageMap in global interface).
      */
-    void Deallocate(void* ptr, size_t size);
+    void AM_ALWAYS_INLINE Deallocate(void* ptr, size_t size) {
+        AM_DCHECK(ptr != nullptr);
+        AM_DCHECK(size <= SizeConfig::MAX_TC_SIZE);
 
+        size_t idx = SizeClass::Index(size);
+        auto& list = free_lists_[idx];
+        // 1. Fast Path: Push to local free list (Lock-Free)
+        list.push(ptr);
+
+        // 2. Slow Path: Return memory if cache is too large (Scavenging)
+        // If the list length exceeds the limit, return a batch to CentralCache.
+        // clang-format off
+        if (list.size() >= list.max_size()) AM_UNLIKELY {
+            DeallocateSlowPath(list, size);
+            // if (list.max_size() < SizeClass::CalculateBatchSize(size) * 2) {
+            //     list.set_max_size(list.max_size() + 1);
+            // } else {
+            //     ReleaseTooLongList(list, size);
+            // }
+        }
+        // clang-format on
+    }
+
+    // Release all memory in ThreadCache to CentralCache.
     void ReleaseAll();
 
 private:
@@ -47,12 +84,14 @@ private:
     /**
      * @brief Fetch objects from CentralCache when ThreadCache is empty.
      */
-    static void* FetchFromCentralCache(FreeList& list, size_t size);
+    AM_NOINLINE static void* FetchFromCentralCache(FreeList& list, size_t size);
 
     /**
      * @brief Return objects to CentralCache when ThreadCache is full.
      */
-    static void ReleaseTooLongList(FreeList& list, size_t size);
+    AM_NOINLINE static void ReleaseTooLongList(FreeList& list, size_t size);
+
+    AM_NOINLINE static void DeallocateSlowPath(FreeList& list, size_t size);
 };
 }// namespace aethermind
 

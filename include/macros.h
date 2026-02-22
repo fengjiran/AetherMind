@@ -93,6 +93,16 @@
 #define ATTRIBUTE_UNUSED
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+#define AM_NOINLINE __attribute__((noinline))
+#define AM_ALWAYS_INLINE __attribute__((always_inline)) inline
+#elif defined(_MSC_VER)
+#define AM_NOINLINE __declspec(noinline)
+#define AM_ALWAYS_INLINE __forceinline
+#else
+#define AM_NOINLINE
+#define AM_ALWAYS_INLINE inline
+#endif
 
 #define UNUSED(expr)   \
     do {               \

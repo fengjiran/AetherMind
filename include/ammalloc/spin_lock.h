@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_MALLOC_SPIN_LOCK_H
 #define AETHERMIND_MALLOC_SPIN_LOCK_H
 
+#include "ammalloc/common.h"
 #include "macros.h"
 
 #include <atomic>

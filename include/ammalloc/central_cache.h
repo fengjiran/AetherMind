@@ -8,7 +8,6 @@
 #include "ammalloc/size_class.h"
 #include "ammalloc/span.h"
 
-#include <cstdint>
 #include <mutex>
 
 namespace aethermind {

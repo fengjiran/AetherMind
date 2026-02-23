@@ -4,6 +4,7 @@
 
 #include "ammalloc/central_cache.h"
 #include "ammalloc/page_cache.h"
+#include "ammalloc/spin_lock.h"
 
 #include <vector>
 

@@ -26,14 +26,11 @@ void ThreadCache::ReleaseAll() {
 
 void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t size) {
     const auto batch_num = SizeClass::CalculateBatchSize(size);
-    auto fetch_num = list.max_size();
-    if (fetch_num > batch_num) {
-        fetch_num = batch_num;
-    }
 
     // Fetch from CentralCache (This involves locking in CentralCache)
     // 'list' is modified in-place by FetchRange.
-    if (CentralCache::GetInstance().FetchRange(list, fetch_num, size) == 0) {
+    if (const auto fetch_num = std::min(batch_num, list.max_size());
+        CentralCache::GetInstance().FetchRange(list, fetch_num, size) == 0) {
         return nullptr;// Out of memory
     }
 

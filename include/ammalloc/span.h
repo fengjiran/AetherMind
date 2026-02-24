@@ -170,12 +170,6 @@ public:
         return pos;
     }
 
-    /// @brief Accessor for the bucket lock.
-    /// @return Reference to the mutex, intended for `std::lock_guard`.
-    AM_NODISCARD std::mutex& GetMutex() noexcept {
-        return mutex_;
-    }
-
 private:
     /**
     * @brief Sentinel node (Dummy Head).
@@ -183,8 +177,6 @@ private:
     * same cache line as the SpanList object itself.
     */
     Span head_;
-    /// @brief Mutex protecting concurrent access to this specific list (Bucket Lock).
-    std::mutex mutex_;
 };
 
 

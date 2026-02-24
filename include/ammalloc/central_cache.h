@@ -135,19 +135,6 @@ public:
     CentralCache& operator=(const CentralCache&) = delete;
 
     /**
-     * @brief Fetches a batch of objects for a specific ThreadCache.
-     *
-     * This function pulls objects from the non-empty spans in the corresponding bucket.
-     * If the bucket is empty or exhausted, it requests a new Span from PageCache.
-     *
-     * @param block_list Output parameter. The fetched objects are pushed into this FreeList.
-     * @param batch_num The desired number of objects to fetch.
-     * @param size The size of the object (used to determine the bucket index).
-     * @return size_t The actual number of objects fetched (may be less than batch_num).
-     */
-    size_t FetchRange(FreeList& block_list, size_t batch_num, size_t size);
-
-    /**
      * @brief Fetches a batch of objects to refill a ThreadCache.
      *
      * Prioritizes fetching from the fast TransferCache. If insufficient, falls back
@@ -158,18 +145,7 @@ public:
      * @param size The size of the object (used to determine the bucket index).
      * @return size_t The actual number of objects fetched (may be less than batch_num if OOM).
      */
-    size_t FetchRange1(FreeList& block_list, size_t batch_num, size_t size);
-
-    /**
-    * @brief returns a batch of objects from ThreadCache to CentralCache.
-    *
-    * Iterates through the list, finds the owning Span for each object via PageMap,
-    * and releases the object. May trigger Span release to PageCache.
-    *
-    * @param start Head of the linked list of objects to release.
-    * @param size Size of the objects (must match the bucket).
-    */
-    void ReleaseListToSpans(void* start, size_t size);
+    size_t FetchRange(FreeList& block_list, size_t batch_num, size_t size);
 
     /**
      * @brief Returns a batch of objects from a ThreadCache back to the CentralCache.
@@ -180,10 +156,9 @@ public:
      * @param start Head of the linked list of objects to release.
      * @param size Size of the objects (must match the bucket).
      */
-    void ReleaseListToSpans1(void* start, size_t size);
+    void ReleaseListToSpans(void* start, size_t size);
 
     void Reset() noexcept;
-    void Reset1() noexcept;
 
 private:
     /**
@@ -201,19 +176,12 @@ private:
 
     /**
      * @brief Refills the SpanList by requesting a new Span from PageCache.
-     * @warning Must be called with the bucket lock HELD. Will temporarily release it.
-     */
-    static Span* GetOneSpan(SpanList& list, size_t size, std::unique_lock<std::mutex>& lock);
-
-    /**
-     * @brief Refills the SpanList by requesting a new Span from PageCache.
      * @warning Must be called with the `span_lock` HELD. Will temporarily release it
      *          to prevent deadlocks with the global PageCache lock.
      */
     static Span* GetOneSpan(Bucket& bucket, size_t size, std::unique_lock<std::mutex>& lock);
 
     constexpr static size_t kNumSizeClasses = SizeClass::Index(SizeConfig::MAX_TC_SIZE) + 1;
-    std::array<SpanList, kNumSizeClasses> span_lists_{};
     /// Array of Buckets (The Hash Table).
     std::array<Bucket, kNumSizeClasses> buckets_{};
 };

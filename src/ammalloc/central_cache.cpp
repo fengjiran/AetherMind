@@ -127,6 +127,30 @@ void CentralCache::Reset() noexcept {
     }
 }
 
+void CentralCache::InitTransferCache() {
+    // 1. 计算所有桶需要的指针总数
+    size_t total_ptrs = 0;
+    for (size_t i = 0; i < kNumSizeClasses; ++i) {
+        size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));
+        total_ptrs += 2 * batch_num;
+    }
+
+    // 2. 向系统申请一整块内存来存放这些指针
+    size_t total_bytes = total_ptrs * sizeof(void*);
+    size_t page_num = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
+    void* p = PageAllocator::SystemAlloc(page_num);
+    AM_DCHECK(p != nullptr);
+
+    // 3. 切分给各个 Bucket
+    auto** cur_ptr = static_cast<void**>(p);
+    for (size_t i = 0; i < kNumSizeClasses; ++i) {
+        size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));
+        buckets_[i].transfer_cache_capacity = batch_num * 2;
+        buckets_[i].transfer_cache = cur_ptr;
+        cur_ptr += buckets_[i].transfer_cache_capacity;
+    }
+}
+
 Span* CentralCache::GetOneSpan(SpanList& list, size_t size, std::unique_lock<std::mutex>& lock) {
     lock.unlock();
 

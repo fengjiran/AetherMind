@@ -95,11 +95,11 @@ private:
  * 3. **Concurrency**: Reduces lock contention using fine-grained bucket locks compared to the single global lock in PageCache.
  */
 class CentralCache {
-private:
-    struct Bucket {
+    struct alignas(SystemConfig::CACHE_LINE_SIZE) Bucket {
         // Transfer Cache (Fast Path)
         SpinLock transfer_cache_lock;
         size_t transfer_cache_size{0};
+        size_t transfer_cache_capacity{0};
         void** transfer_cache{nullptr};
 
         // Span List (Slow Path)
@@ -147,7 +147,11 @@ public:
     void Reset() noexcept;
 
 private:
-    CentralCache() = default;
+    CentralCache() {
+        InitTransferCache();
+    }
+
+    void InitTransferCache();
 
     /**
      * @brief Refills the SpanList by requesting a new Span from PageCache.
@@ -157,6 +161,7 @@ private:
 
     constexpr static size_t kNumSizeClasses = SizeClass::Index(SizeConfig::MAX_TC_SIZE) + 1;
     std::array<SpanList, kNumSizeClasses> span_lists_{};
+    std::array<Bucket, kNumSizeClasses> buckets_{};
 };
 
 

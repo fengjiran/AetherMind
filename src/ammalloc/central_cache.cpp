@@ -66,6 +66,70 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t s
     return i;
 }
 
+size_t CentralCache::FetchRange1(FreeList& block_list, size_t batch_num, size_t size) {
+    auto idx = SizeClass::Index(size);
+    auto& bucket = buckets_[idx];
+
+    size_t fetched = 0;
+    void* head = nullptr;
+    void* tail = nullptr;
+
+    // 1. Fast Path: Extract from TransferCache (SpinLock)
+    bucket.transfer_cache_lock.lock();
+    size_t grab_count = std::min(batch_num, bucket.transfer_cache_count);
+    for (size_t i = 0; i < grab_count; ++i) {
+        void* obj = bucket.transfer_cache[--bucket.transfer_cache_count];
+        auto* node = static_cast<FreeBlock*>(obj);
+        // Build a temporary linked list (LIFO / Head Insert)
+        if (!head) {
+            tail = obj;
+        }
+        node->next = static_cast<FreeBlock*>(head);
+        head = node;
+    }
+    fetched = grab_count;
+    bucket.transfer_cache_lock.unlock();
+
+    // 2. Slow Path: Extract from SpanList (Mutex + Bitmap Operations)
+    if (fetched < batch_num) {
+        std::unique_lock<std::mutex> lock(bucket.span_list_lock);
+        while (fetched < batch_num) {
+            // Refill SpanList if empty or current head span is fully utilized.
+            if (bucket.span_list.empty() ||
+                bucket.span_list.begin()->use_count >= bucket.span_list.begin()->capacity) {
+                if (!GetOneSpan(bucket, size, lock)) {
+                    break;// OOM
+                }
+            }
+
+            auto* span = bucket.span_list.begin();
+            while (fetched < batch_num) {
+                void* obj = span->AllocObject();// Heavy bitmap scanning
+                if (!obj) {
+                    // Span is full. Move it to the back (LRU strategy).
+                    bucket.span_list.erase(span);
+                    bucket.span_list.push_back(span);
+                    break;
+                }
+
+                auto* node = static_cast<FreeBlock*>(obj);
+                if (!head) {
+                    tail = obj;
+                }
+                node->next = static_cast<FreeBlock*>(head);
+                head = node;
+                ++fetched;
+            }
+        }
+    }
+
+    // 3. Deliver the constructed list to ThreadCache
+    if (fetched > 0) {
+        block_list.push_range(head, tail, fetched);
+    }
+    return fetched;
+}
+
 void CentralCache::ReleaseListToSpans(void* start, size_t size) {
     auto idx = SizeClass::Index(size);
     auto& span_list = span_lists_[idx];
@@ -107,6 +171,57 @@ void CentralCache::ReleaseListToSpans(void* start, size_t size) {
     }
 }
 
+void CentralCache::ReleaseListToSpans1(void* start, size_t size) {
+    auto idx = SizeClass::Index(size);
+    auto& bucket = buckets_[idx];
+
+    void* cur = start;
+    // 1. Fast Path: Push into TransferCache (SpinLock)
+    bucket.transfer_cache_lock.lock();
+    while (cur && bucket.transfer_cache_count < bucket.transfer_cache_capacity) {
+        void* next = static_cast<FreeBlock*>(cur)->next;
+        bucket.transfer_cache[bucket.transfer_cache_count++] = cur;
+        cur = next;
+    }
+    bucket.transfer_cache_lock.unlock();
+
+    // 2. Slow Path: Return to SpanList (Mutex + PageMap Lookups)
+    if (cur) {
+        std::unique_lock<std::mutex> lock(bucket.span_list_lock);
+        while (cur) {
+            void* next = static_cast<FreeBlock*>(cur)->next;
+            // Heavy operations: Radix Tree lookup and Bitmap modification
+            auto* span = PageMap::GetSpan(cur);
+            AM_DCHECK(span != nullptr);
+            AM_DCHECK(span->obj_size == size);
+            span->FreeObject(cur);
+
+            // If a full span becomes non-full, move it to the front.
+            // This allows FetchRange to immediately find this available slot.
+            if (span->use_count == span->capacity - 1) {
+                bucket.span_list.erase(span);
+                bucket.span_list.push_front(span);
+            }
+
+            // If the span becomes completely empty, return it to PageCache for coalescing.
+            if (span->use_count == 0) {
+                bucket.span_list.erase(span);
+                // Cleanup metadata pointers before returning.
+                span->bitmap = nullptr;
+                span->data_base_ptr = nullptr;
+                // CRITICAL: Unlock bucket lock before calling PageCache to avoid deadlocks.
+                // Lock Order: PageCache_Lock > Bucket_Lock (if held together).
+                // Here we break the hold.
+                lock.unlock();
+                PageCache::GetInstance().ReleaseSpan(span);
+                // Re-acquire lock to continue processing the list.
+                lock.lock();
+            }
+            cur = next;
+        }
+    }
+}
+
 void CentralCache::Reset() noexcept {
     for (size_t i = 0; i < kNumSizeClasses; ++i) {
         auto& span_list = span_lists_[i];
@@ -128,20 +243,25 @@ void CentralCache::Reset() noexcept {
 }
 
 void CentralCache::InitTransferCache() {
-    // 1. 计算所有桶需要的指针总数
+    // 1. Calculate the total number of pointers needed across all buckets.
     size_t total_ptrs = 0;
     for (size_t i = 0; i < kNumSizeClasses; ++i) {
         size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));
+        // Strategy: TransferCache capacity is 2x the batch size to provide a high-water mark buffer.
         total_ptrs += 2 * batch_num;
     }
 
-    // 2. 向系统申请一整块内存来存放这些指针
+    // 2. Request a single, large contiguous block from the system allocator.
+    // This avoids calling am_malloc during initialization (preventing infinite recursion).
     size_t total_bytes = total_ptrs * sizeof(void*);
     size_t page_num = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
     void* p = PageAllocator::SystemAlloc(page_num);
-    AM_DCHECK(p != nullptr);
+    if (!p) {
+        spdlog::critical("CentralCache failed to allocate memory for TransferCaches!");
+        std::abort();
+    }
 
-    // 3. 切分给各个 Bucket
+    // 3. Partition the allocated memory among the buckets.
     auto** cur_ptr = static_cast<void**>(p);
     for (size_t i = 0; i < kNumSizeClasses; ++i) {
         size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));
@@ -160,6 +280,17 @@ Span* CentralCache::GetOneSpan(SpanList& list, size_t size, std::unique_lock<std
     span->Init(size);
     lock.lock();
     list.push_front(span);
+    return span;
+}
+
+Span* CentralCache::GetOneSpan(Bucket& bucket, size_t size, std::unique_lock<std::mutex>& lock) {
+    lock.unlock();
+    auto page_num = SizeClass::GetMovePageNum(size);
+    auto* span = PageCache::GetInstance().AllocSpan(page_num, size);
+    AM_DCHECK(span != nullptr);
+    span->Init(size);
+    lock.lock();
+    bucket.span_list.push_front(span);
     return span;
 }
 

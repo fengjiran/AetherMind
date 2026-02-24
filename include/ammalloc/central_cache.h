@@ -82,28 +82,42 @@ private:
     uint32_t max_size_;
 };
 
-
 /**
  * @brief Central resource manager connecting ThreadCache and PageCache.
  *
- * CentralCache acts as a hub that balances memory resources among multiple threads.
- * It divides memory into different "Size Classes" (Buckets), each protected by a separate lock (Bucket Lock).
+ * CentralCache acts as a global hub that balances memory resources among multiple threads.
+ * It implements a highly optimized two-tier caching strategy per Size Class to minimize
+ * lock contention and maximize throughput during batch operations.
  *
- * Key Responsibilities:
- * 1. **Distribution**: Fetches large Spans from PageCache, slices them into objects, and serves ThreadCache in batches.
- * 2. **Recycling**: Receives returned objects from ThreadCache and releases Spans back to PageCache when they are completely empty.
- * 3. **Concurrency**: Reduces lock contention using fine-grained bucket locks compared to the single global lock in PageCache.
+ * ### Two-Tier Bucket Architecture:
+ * 1. **Transfer Cache (Fast Path)**: A lock-free/spin-locked array of pointers. It acts as a
+ *    buffer to quickly absorb released objects and serve allocation requests without touching
+ *    complex metadata (like Bitmaps or PageMaps).
+ * 2. **Span List (Slow Path)**: A mutex-locked doubly linked list of Spans. It is only accessed
+ *    when the Transfer Cache is exhausted or full, handling the actual slicing of Spans and
+ *    interacting with the global PageCache.
  */
 class CentralCache {
+    /**
+     * @brief Manages objects of a specific Size Class.
+     * @note Aligned to the cache line size (e.g., 64 bytes) to completely eliminate
+     *       False Sharing between threads accessing different buckets concurrently.
+     */
     struct alignas(SystemConfig::CACHE_LINE_SIZE) Bucket {
-        // Transfer Cache (Fast Path)
+        // --- Tier 1: Transfer Cache (Fast Path) ---
+        /// Lightweight spinlock protecting the pointer array.
         SpinLock transfer_cache_lock;
-        size_t transfer_cache_size{0};
+        /// Current number of cached object pointers.
+        size_t transfer_cache_count{0};
+        /// Dynamic capacity, usually configured as 2x the batch size.
         size_t transfer_cache_capacity{0};
+        /// Pointer to a dynamically allocated array of object pointers.
         void** transfer_cache{nullptr};
 
-        // Span List (Slow Path)
+        // --- Tier 2: Span List (Slow Path) ---
+        /// Heavyweight mutex protecting the Span list and bitmap operations.
         std::mutex span_list_lock;
+        /// Pure, lock-free doubly linked list of Spans.
         SpanList span_list;
     };
 
@@ -134,6 +148,19 @@ public:
     size_t FetchRange(FreeList& block_list, size_t batch_num, size_t size);
 
     /**
+     * @brief Fetches a batch of objects to refill a ThreadCache.
+     *
+     * Prioritizes fetching from the fast TransferCache. If insufficient, falls back
+     * to slicing objects from the SpanList.
+     *
+     * @param block_list Output parameter. The fetched objects are pushed into this FreeList.
+     * @param batch_num The desired number of objects to fetch.
+     * @param size The size of the object (used to determine the bucket index).
+     * @return size_t The actual number of objects fetched (may be less than batch_num if OOM).
+     */
+    size_t FetchRange1(FreeList& block_list, size_t batch_num, size_t size);
+
+    /**
     * @brief returns a batch of objects from ThreadCache to CentralCache.
     *
     * Iterates through the list, finds the owning Span for each object via PageMap,
@@ -144,13 +171,31 @@ public:
     */
     void ReleaseListToSpans(void* start, size_t size);
 
+    /**
+     * @brief Returns a batch of objects from a ThreadCache back to the CentralCache.
+     *
+     * Prioritizes pushing objects into the fast TransferCache. Any overflow is
+     * returned to their respective Spans, potentially triggering a release to PageCache.
+     *
+     * @param start Head of the linked list of objects to release.
+     * @param size Size of the objects (must match the bucket).
+     */
+    void ReleaseListToSpans1(void* start, size_t size);
+
     void Reset() noexcept;
 
 private:
+    /**
+     * @brief Private constructor. Initializes the dynamic TransferCache arrays.
+     */
     CentralCache() {
         InitTransferCache();
     }
 
+    /**
+     * @brief Allocates a contiguous block of memory from the OS to back all TransferCaches.
+     * @note Bypasses the standard am_malloc to prevent initialization deadlocks.
+     */
     void InitTransferCache();
 
     /**
@@ -159,8 +204,16 @@ private:
      */
     static Span* GetOneSpan(SpanList& list, size_t size, std::unique_lock<std::mutex>& lock);
 
+    /**
+     * @brief Refills the SpanList by requesting a new Span from PageCache.
+     * @warning Must be called with the `span_lock` HELD. Will temporarily release it
+     *          to prevent deadlocks with the global PageCache lock.
+     */
+    static Span* GetOneSpan(Bucket& bucket, size_t size, std::unique_lock<std::mutex>& lock);
+
     constexpr static size_t kNumSizeClasses = SizeClass::Index(SizeConfig::MAX_TC_SIZE) + 1;
     std::array<SpanList, kNumSizeClasses> span_lists_{};
+    /// Array of Buckets (The Hash Table).
     std::array<Bucket, kNumSizeClasses> buckets_{};
 };
 

@@ -47,10 +47,12 @@ public:
             // 如果自旋次数过多（说明持有锁的线程可能被 OS 调度走了），
             // 主动让出当前 CPU 时间片，防止死等。
             // 这里的 2000 可以作为 RuntimeConfig 的配置项 (spin_count)
+            // clang-format off
             if (spin_cnt > 2000) AM_UNLIKELY {
-                    std::this_thread::yield();
-                    spin_cnt = 0;
-                }
+                std::this_thread::yield();
+                spin_cnt = 0;
+            }
+            // clang-format on
         }
     }
 

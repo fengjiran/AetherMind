@@ -7,7 +7,9 @@
 
 #include "ammalloc/size_class.h"
 #include "ammalloc/span.h"
+#include "ammalloc/spin_lock.h"
 
+#include <cstddef>
 #include <mutex>
 
 namespace aethermind {
@@ -93,6 +95,18 @@ private:
  * 3. **Concurrency**: Reduces lock contention using fine-grained bucket locks compared to the single global lock in PageCache.
  */
 class CentralCache {
+private:
+    struct Bucket {
+        // Transfer Cache (Fast Path)
+        SpinLock transfer_cache_lock;
+        size_t transfer_cache_size{0};
+        void** transfer_cache{nullptr};
+
+        // Span List (Slow Path)
+        std::mutex span_list_lock;
+        SpanList span_list;
+    };
+
 public:
     /**
      * @brief Singleton Accessor.

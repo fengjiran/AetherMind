@@ -242,6 +242,14 @@ void CentralCache::Reset() noexcept {
     }
 }
 
+void CentralCache::Reset1() noexcept {
+    for (size_t i = 0; i < kNumSizeClasses; ++i) {
+        auto& bucket = buckets_[i];
+        // 1. Clear TransferCache(Fast Path)
+
+    }
+}
+
 void CentralCache::InitTransferCache() {
     // 1. Calculate the total number of pointers needed across all buckets.
     size_t total_ptrs = 0;

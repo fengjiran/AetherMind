@@ -183,6 +183,7 @@ public:
     void ReleaseListToSpans1(void* start, size_t size);
 
     void Reset() noexcept;
+    void Reset1() noexcept;
 
 private:
     /**

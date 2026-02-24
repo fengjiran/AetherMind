@@ -6,6 +6,7 @@
 #include "ammalloc/page_cache.h"
 #include "ammalloc/spin_lock.h"
 
+#include <cstddef>
 #include <vector>
 
 namespace aethermind {
@@ -245,8 +246,80 @@ void CentralCache::Reset() noexcept {
 void CentralCache::Reset1() noexcept {
     for (size_t i = 0; i < kNumSizeClasses; ++i) {
         auto& bucket = buckets_[i];
-        // 1. Clear TransferCache(Fast Path)
+        // ===================================================================
+        // 1. 清空 TransferCache (Fast Path 缓存)
+        // ===================================================================
+        // 使用栈上数组暂存指针，避免使用 std::vector 触发 malloc
+        // 最大的 tc_capacity 是 512 * 2 = 1024，1024 个指针占用 8KB 栈空间，非常安全
+        void* local_transfer_cache[1024];
+        size_t local_transfer_cache_count = 0;
+        bucket.transfer_cache_lock.lock();
+        local_transfer_cache_count = bucket.transfer_cache_count;
+        for (size_t j = 0; j < local_transfer_cache_count; ++j) {
+            local_transfer_cache[j] = bucket.transfer_cache[j];
+        }
+        bucket.transfer_cache_count = 0;
+        bucket.transfer_cache_lock.unlock();
 
+        // ===================================================================
+        // 2. 将对象还给 Span，并清空 SpanList
+        // ===================================================================
+        Span* span_list_head = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(bucket.span_list_lock);
+            // A. 恢复 Span 的使用计数 (将刚才从 TransferCache 拿出的对象还回去)
+            for (size_t j = 0; j < local_transfer_cache_count; ++j) {
+                void* obj = local_transfer_cache[j];
+                auto* span = PageMap::GetSpan(obj);
+                if (span) {
+                    span->FreeObject(obj);
+                }
+            }
+
+            // B. 掏空 SpanList
+            while (!bucket.span_list.empty()) {
+                auto* span = bucket.span_list.pop_front();
+                // 清理元数据
+                span->bitmap = nullptr;
+                span->data_base_ptr = nullptr;
+                // 利用 Span 自身的 next 指针串成临时链表，避免使用 std::vector
+                span->next = span_list_head;
+                span_list_head = span;
+            }
+        }// 解锁 span_lock
+
+        // ===================================================================
+        // 3. 将所有 Span 归还给 PageCache
+        // ===================================================================
+        while (span_list_head) {
+            auto* next_span = span_list_head->next;
+            PageCache::GetInstance().ReleaseSpan(span_list_head);
+            span_list_head = next_span;
+        }
+    }
+
+    // ===================================================================
+    // 4. 彻底释放 TransferCache 占用的底层物理内存
+    // ===================================================================
+    // buckets_[0].tc_objects 指向的是 InitTransferCaches 时申请的连续大块内存的起始位置
+    if (buckets_[0].transfer_cache) {
+        // 重新计算当时申请的页数
+        size_t total_ptrs = 0;
+        for (size_t i = 0; i < kNumSizeClasses; ++i) {
+            size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));
+            total_ptrs += 2 * batch_num;
+        }
+        size_t total_bytes = total_ptrs * sizeof(void*);
+        size_t page_num = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
+        PageAllocator::SystemFree(buckets_[0].transfer_cache, page_num);
+
+        // 重置所有桶的指针，防止 UAF
+        for (size_t i = 0; i < kNumSizeClasses; ++i) {
+            auto& bucket = buckets_[i];
+            bucket.transfer_cache = nullptr;
+            bucket.transfer_cache_capacity = 0;
+            bucket.transfer_cache_count = 0;
+        }
     }
 }
 

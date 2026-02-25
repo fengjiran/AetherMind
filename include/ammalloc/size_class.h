@@ -211,8 +211,8 @@ public:
 
         // At most 512, to prevent the central cache pool from being drained instantly
         // Upper bound: Cap at 512 to prevent CentralCache depletion and excessive ThreadCache footprint.
-        if (batch > 512) {
-            batch = 512;
+        if (batch > kMaxBatchSize) {
+            batch = kMaxBatchSize;
         }
 
         return batch;
@@ -263,6 +263,8 @@ public:
      * Calculated at compile-time to size the arrays in ThreadCache/CentralCache.
      */
     constexpr static size_t kNumSizeClasses = details::CalculateIndex(SizeConfig::MAX_TC_SIZE) + 1;
+
+    constexpr static size_t kMaxBatchSize = 512;
 
 private:
     // -----------------------------------------------------------------------

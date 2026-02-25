@@ -6,34 +6,35 @@
 #include "ammalloc/page_cache.h"
 #include "ammalloc/spin_lock.h"
 
-#include <cstddef>
-#include <vector>
-
 namespace aethermind {
 
 size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t size) {
     auto idx = SizeClass::Index(size);
     auto& bucket = buckets_[idx];
 
+    void* local_ptrs[SizeClass::kMaxBatchSize];
     size_t fetched = 0;
-    void* head = nullptr;
-    void* tail = nullptr;
 
     // 1. Fast Path: Extract from TransferCache (SpinLock)
     bucket.transfer_cache_lock.lock();
     size_t grab_count = std::min(batch_num, bucket.transfer_cache_count);
     for (size_t i = 0; i < grab_count; ++i) {
-        void* obj = bucket.transfer_cache[--bucket.transfer_cache_count];
-        auto* node = static_cast<FreeBlock*>(obj);
+        local_ptrs[i] = bucket.transfer_cache[--bucket.transfer_cache_count];
+    }
+    bucket.transfer_cache_lock.unlock();
+
+    fetched = grab_count;
+    void* head = nullptr;
+    void* tail = nullptr;
+    for (size_t i = 0; i < fetched; ++i) {
+        auto* node = static_cast<FreeBlock*>(local_ptrs[i]);
         // Build a temporary linked list (LIFO / Head Insert)
         if (!head) {
-            tail = obj;
+            tail = local_ptrs[i];
         }
         node->next = static_cast<FreeBlock*>(head);
         head = node;
     }
-    fetched = grab_count;
-    bucket.transfer_cache_lock.unlock();
 
     // 2. Slow Path: Extract from SpanList (Mutex + Bitmap Operations)
     if (fetched < batch_num) {
@@ -79,27 +80,31 @@ void CentralCache::ReleaseListToSpans(void* start, size_t size) {
     auto idx = SizeClass::Index(size);
     auto& bucket = buckets_[idx];
 
+    void* local_ptrs[SizeClass::kMaxBatchSize];
+    size_t local_count = 0;
     void* cur = start;
+    while (cur && local_count < SizeClass::kMaxBatchSize) {
+        local_ptrs[local_count++] = cur;
+        cur = static_cast<FreeBlock*>(cur)->next;
+    }
+    AM_DCHECK(cur == nullptr);
+
     // 1. Fast Path: Push into TransferCache (SpinLock)
+    size_t pushed = 0;
     bucket.transfer_cache_lock.lock();
-    while (cur && bucket.transfer_cache_count < bucket.transfer_cache_capacity) {
-        void* next = static_cast<FreeBlock*>(cur)->next;
-        bucket.transfer_cache[bucket.transfer_cache_count++] = cur;
-        cur = next;
+    while (pushed < local_count && bucket.transfer_cache_count < bucket.transfer_cache_capacity) {
+        bucket.transfer_cache[bucket.transfer_cache_count++] = local_ptrs[pushed++];
     }
     bucket.transfer_cache_lock.unlock();
 
     // 2. Slow Path: Return to SpanList (Mutex + PageMap Lookups)
-    if (cur) {
+    if (pushed < local_count) {
         std::unique_lock<std::mutex> lock(bucket.span_list_lock);
-        while (cur) {
-            void* next = static_cast<FreeBlock*>(cur)->next;
+        for (size_t i = pushed; i < local_count; ++i) {
+            //ProcessSingleRelease(bucket, local_ptrs[i], size, lock);
             // Heavy operations: Radix Tree lookup and Bitmap modification
-            auto* span = PageMap::GetSpan(cur);
-            AM_DCHECK(span != nullptr);
-            AM_DCHECK(span->obj_size == size);
-            span->FreeObject(cur);
-
+            auto* span = PageMap::GetSpan(local_ptrs[i]);
+            span->FreeObject(local_ptrs[i]);
             // If a full span becomes non-full, move it to the front.
             // This allows FetchRange to immediately find this available slot.
             if (span->use_count == span->capacity - 1) {
@@ -121,7 +126,6 @@ void CentralCache::ReleaseListToSpans(void* start, size_t size) {
                 // Re-acquire lock to continue processing the list.
                 lock.lock();
             }
-            cur = next;
         }
     }
 }

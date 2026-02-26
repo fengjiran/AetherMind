@@ -6,7 +6,6 @@
 #define AETHERMIND_AMMALLOC_THREAD_CACHE_H
 
 #include "ammalloc/central_cache.h"
-#include <cstddef>
 
 namespace aethermind {
 

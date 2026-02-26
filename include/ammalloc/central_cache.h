@@ -9,7 +9,6 @@
 #include "ammalloc/span.h"
 #include "ammalloc/spin_lock.h"
 
-#include <cstddef>
 #include <mutex>
 
 namespace aethermind {

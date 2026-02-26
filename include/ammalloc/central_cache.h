@@ -142,10 +142,10 @@ public:
      *
      * @param block_list Output parameter. The fetched objects are pushed into this FreeList.
      * @param batch_num The desired number of objects to fetch.
-     * @param size The size of the object (used to determine the bucket index).
+     * @param obj_size The size of the object (used to determine the bucket index).
      * @return size_t The actual number of objects fetched (may be less than batch_num if OOM).
      */
-    size_t FetchRange(FreeList& block_list, size_t batch_num, size_t size);
+    size_t FetchRange(FreeList& block_list, size_t batch_num, size_t obj_size);
 
     /**
      * @brief Returns a batch of objects from a ThreadCache back to the CentralCache.
@@ -154,9 +154,9 @@ public:
      * returned to their respective Spans, potentially triggering a release to PageCache.
      *
      * @param start Head of the linked list of objects to release.
-     * @param size Size of the objects (must match the bucket).
+     * @param obj_size Size of the objects (must match the bucket).
      */
-    void ReleaseListToSpans(void* start, size_t size);
+    void ReleaseListToSpans(void* start, size_t obj_size);
 
     void Reset() noexcept;
 
@@ -182,6 +182,7 @@ private:
     static Span* GetOneSpan(Bucket& bucket, size_t size, std::unique_lock<std::mutex>& lock);
 
     constexpr static size_t kNumSizeClasses = SizeClass::Index(SizeConfig::MAX_TC_SIZE) + 1;
+    constexpr static size_t kCapScale = 8;
     /// Array of Buckets (The Hash Table).
     std::array<Bucket, kNumSizeClasses> buckets_{};
 };

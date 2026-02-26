@@ -164,40 +164,112 @@ BENCHMARK(BM_std_malloc_free_pair_random_size);
 BENCHMARK_TEMPLATE(BM_Malloc_Deep_Churn, 8, 2000, am_malloc, am_free);
 BENCHMARK_TEMPLATE(BM_Malloc_Deep_Churn, 8, 2000, std::malloc, std::free);
 
-template<size_t Size, size_t NumThreads>
+// 模板参数：Size (分配大小), BatchSize (单线程一次循环分配的数量)
+template<size_t Size, size_t BatchSize>
 void BM_am_malloc_multithread(benchmark::State& state) {
-    std::vector<std::thread> threads;
-    threads.reserve(NumThreads);
+    // 这里的代码，Google Benchmark 会自动在 N 个线程中并发执行！
+    // 每个线程都有自己独立的 state 和局部变量。
+    // 注意：BatchSize 不能太大（例如超过 100,000），否则可能导致线程栈溢出 (Stack Overflow)。
+    // 对于 BatchSize = 1000，数组大小为 8KB，在栈上绝对安全。
+    std::array<void*, BatchSize> local_ptrs{};
+
+    // 核心测试循环
     for (auto _: state) {
-        state.PauseTiming();
-        threads.clear();
-        std::atomic<size_t> total_ops{0};
-        for (size_t t = 0; t < NumThreads; ++t) {
-            threads.emplace_back([&]() {
-                std::vector<void*> local_ptrs;
-                local_ptrs.reserve(1000);
-                for (size_t i = 0; i < 1000; ++i) {
-                    void* ptr = am_malloc(Size);
-                    local_ptrs.push_back(ptr);
-                }
-                total_ops.fetch_add(1000, std::memory_order_relaxed);
-                for (void* p: local_ptrs) {
-                    am_free(p);
-                }
-            });
+        // 1. 批量分配 (模拟潮汐并发)
+        for (size_t i = 0; i < BatchSize; ++i) {
+            local_ptrs[i] = am_malloc(Size);
+            benchmark::DoNotOptimize(local_ptrs[i]);// 防止被编译器优化掉
         }
-        state.ResumeTiming();
-        for (auto& t: threads) {
-            t.join();
+
+        // 2. 批量释放
+        for (void* p: local_ptrs) {
+            am_free(p);
+        }
+    }
+
+    // 告诉框架我们实际处理了多少字节，方便输出吞吐量 (MB/s)
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(BatchSize) * static_cast<int64_t>(Size));
+}
+
+template<size_t Size, size_t BatchSize>
+void BM_std_malloc_multithread(benchmark::State& state) {
+    std::array<void*, BatchSize> local_ptrs{};
+
+    for (auto _: state) {
+        for (size_t i = 0; i < BatchSize; ++i) {
+            local_ptrs[i] = std::malloc(Size);
+            benchmark::DoNotOptimize(local_ptrs[i]);
+        }
+        for (size_t i = 0; i < BatchSize; ++i) {
+            std::free(local_ptrs[i]);
+        }
+    }
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(BatchSize) * static_cast<int64_t>(Size));
+}
+
+// 真实世界模拟：多线程 + 随机大小
+template<size_t BatchSize>
+void BM_am_malloc_multithread_random(benchmark::State& state) {
+    constexpr size_t kNumSizes = 8192;
+    std::array<size_t, kNumSizes> sizes;
+    std::mt19937 rng(state.thread_index());             // 每个线程不同种子
+    std::uniform_int_distribution<size_t> dist(1, 1024);// 1B ~ 1KB 随机
+    for (size_t i = 0; i < kNumSizes; ++i) sizes[i] = dist(rng);
+
+    std::array<void*, BatchSize> local_ptrs{};
+    size_t s_idx = 0;
+
+    for (auto _: state) {
+        for (size_t i = 0; i < BatchSize; ++i) {
+            local_ptrs[i] = am_malloc(sizes[(s_idx++) & (kNumSizes - 1)]);
+            benchmark::DoNotOptimize(local_ptrs[i]);
+        }
+        for (size_t i = 0; i < BatchSize; ++i) {
+            am_free(local_ptrs[i]);
         }
     }
 }
 
-BENCHMARK_TEMPLATE(BM_am_malloc_multithread, 8, 2)->Iterations(10);
-BENCHMARK_TEMPLATE(BM_am_malloc_multithread, 8, 4)->Iterations(10);
-BENCHMARK_TEMPLATE(BM_am_malloc_multithread, 8, 8)->Iterations(10);
-BENCHMARK_TEMPLATE(BM_am_malloc_multithread, 64, 2)->Iterations(10);
-BENCHMARK_TEMPLATE(BM_am_malloc_multithread, 64, 4)->Iterations(10);
-BENCHMARK_TEMPLATE(BM_am_malloc_multithread, 64, 8)->Iterations(10);
+// ============================================================================
+// 注册测试用例 (使用 UseRealTime 获取真实的并发挂钟时间)
+// ============================================================================
+
+// 测试 8 字节，每次循环分配 1000 个
+// ->Threads(N) 表示启动 N 个线程同时执行这个函数
+// ->UseRealTime() 告诉框架使用挂钟时间(Wall Time)而不是 CPU 时间(会把多核时间累加)
+BENCHMARK_TEMPLATE(BM_am_malloc_multithread, 8, 1000)
+        ->Threads(1)
+        ->Threads(2)
+        ->Threads(4)
+        ->Threads(8)
+        ->Threads(16)
+        ->UseRealTime();
+
+BENCHMARK_TEMPLATE(BM_std_malloc_multithread, 8, 1000)
+        ->Threads(1)
+        ->Threads(2)
+        ->Threads(4)
+        ->Threads(8)
+        ->Threads(16)
+        ->UseRealTime();
+
+// 测试 64 字节
+BENCHMARK_TEMPLATE(BM_am_malloc_multithread, 64, 1000)
+        ->Threads(1)
+        ->Threads(2)
+        ->Threads(4)
+        ->Threads(8)
+        ->Threads(16)
+        ->UseRealTime();
+
+BENCHMARK_TEMPLATE(BM_std_malloc_multithread, 64, 1000)
+        ->Threads(1)
+        ->Threads(2)
+        ->Threads(4)
+        ->Threads(8)
+        ->Threads(16)
+        ->UseRealTime();
+
+BENCHMARK_TEMPLATE(BM_am_malloc_multithread_random, 1000)->Threads(16)->UseRealTime();
 
 }// namespace

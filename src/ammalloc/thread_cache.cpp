@@ -35,8 +35,8 @@ void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t size) {
     }
 
     // Dynamic Limit Strategy (Slow Start):
-    if (list.max_size() < batch_num * 2) {
-        list.set_max_size(list.max_size() + 1);
+    if (list.max_size() < batch_num * 16) {
+        list.set_max_size(list.max_size() + batch_num / 4);
     }
     return list.pop();
 }

@@ -10,6 +10,9 @@
 namespace {
 using namespace aethermind;
 
+// Helper to access private members for testing if needed,
+// but SizeClass interface is mostly static public.
+
 TEST(ConfigTest, ParseSize) {
     // 基础测试
     EXPECT_EQ(details::ParseSize("100"), 100);
@@ -77,29 +80,150 @@ TEST(ConfigUtilsTest, ParseBool) {
     EXPECT_FALSE(details::ParseBool("10"));        // 包含1但不完全是1
 }
 
-TEST(SizeClassTest, IndexAndSizeMapping) {
-    // 1. 验证 8 字节对齐区间 [1, 128]
+TEST(CommonUtilsTest, AlignUp) {
+    // 1. Power of two alignment (Fast path)
+    EXPECT_EQ(details::AlignUp(1, 8), 8);
+    EXPECT_EQ(details::AlignUp(7, 8), 8);
+    EXPECT_EQ(details::AlignUp(8, 8), 8);
+    EXPECT_EQ(details::AlignUp(9, 8), 16);
+    
+    EXPECT_EQ(details::AlignUp(4095, 4096), 4096);
+    EXPECT_EQ(details::AlignUp(4096, 4096), 4096);
+    EXPECT_EQ(details::AlignUp(4097, 4096), 8192);
+
+    // 2. Non-power of two alignment (Slow path fallback)
+    EXPECT_EQ(details::AlignUp(1, 7), 7);
+    EXPECT_EQ(details::AlignUp(6, 7), 7);
+    EXPECT_EQ(details::AlignUp(7, 7), 7);
+    EXPECT_EQ(details::AlignUp(8, 7), 14);
+
+    // 3. Edge cases
+    EXPECT_EQ(details::AlignUp(0, 8), 8); // Special handling in impl
+}
+
+TEST(CommonUtilsTest, PtrToPageId) {
+    if constexpr (SystemConfig::PAGE_SIZE == 4096) {
+        void* ptr1 = reinterpret_cast<void*>(0x0);
+        EXPECT_EQ(details::PtrToPageId(ptr1), 0);
+
+        void* ptr2 = reinterpret_cast<void*>(0xFFF); // 4095
+        EXPECT_EQ(details::PtrToPageId(ptr2), 0);
+
+        void* ptr3 = reinterpret_cast<void*>(0x1000); // 4096
+        EXPECT_EQ(details::PtrToPageId(ptr3), 1);
+        
+        // Inverse check
+        EXPECT_EQ(details::PageIDToPtr(1), ptr3);
+    }
+}
+
+TEST(SizeClassTest, SmallObjectMapping) {
+    // Range [0, 128] -> 8-byte alignment
+    // Index 0 -> 8
+    // ...
+    // Index 15 -> 128
+    
+    // Check 0 (Should map to 8)
+    EXPECT_EQ(SizeClass::Index(0), 0); // Logic handles 0
     EXPECT_EQ(SizeClass::Index(1), 0);
-    EXPECT_EQ(SizeClass::Size(0), 8);
     EXPECT_EQ(SizeClass::Index(8), 0);
-    EXPECT_EQ(SizeClass::Index(9), 1);
-    EXPECT_EQ(SizeClass::Size(1), 16);
+    EXPECT_EQ(SizeClass::Size(0), 8);
+
+    // Check 128 boundary
+    EXPECT_EQ(SizeClass::Index(120), 14);
+    EXPECT_EQ(SizeClass::Index(121), 15);
     EXPECT_EQ(SizeClass::Index(128), 15);
     EXPECT_EQ(SizeClass::Size(15), 128);
+}
 
-    // 2. 验证 16 字节对齐区间 [129, 1024]
-    // 129 -> 对齐到 144 -> Index 16
+TEST(SizeClassTest, LargeObjectMapping) {
+    // Range [129, ...]
+    // The first large group is [129, 256]. 
+    // It should have 4 steps (kStepsPerGroup = 4).
+    // Interval size = 256 - 128 = 128.
+    // Step size = 128 / 4 = 32.
+    // So the buckets are:
+    // Index 16: 128 + 32 = 160
+    // Index 17: 160 + 32 = 192
+    // Index 18: 192 + 32 = 224
+    // Index 19: 224 + 32 = 256
+
     EXPECT_EQ(SizeClass::Index(129), 16);
-    EXPECT_EQ(SizeClass::Size(16), 160);// 128 + 32
+    EXPECT_EQ(SizeClass::Index(160), 16);
+    EXPECT_EQ(SizeClass::Size(16), 160);
 
-    // 3. 验证互逆性 (RoundTrip)
-    // Size(Index(s)) 应该 >= s 且是对齐后的值
-    for (size_t size = 1; size <= SizeConfig::MAX_TC_SIZE; size += 7) {
-        size_t idx = SizeClass::Index(size);
+    EXPECT_EQ(SizeClass::Index(161), 17);
+    EXPECT_EQ(SizeClass::Index(192), 17);
+    EXPECT_EQ(SizeClass::Size(17), 192);
+
+    EXPECT_EQ(SizeClass::Index(256), 19);
+    EXPECT_EQ(SizeClass::Size(19), 256);
+
+    // Next group: [257, 512]
+    // Interval = 256. Step = 64.
+    // Index 20: 256 + 64 = 320
+    EXPECT_EQ(SizeClass::Index(257), 20);
+    EXPECT_EQ(SizeClass::Size(20), 320);
+}
+
+TEST(SizeClassTest, MaxSizeBoundary) {
+    // MAX_TC_SIZE is 32KB = 32768
+    size_t max_size = SizeConfig::MAX_TC_SIZE;
+    size_t last_idx = SizeClass::Index(max_size);
+    
+    EXPECT_NE(last_idx, std::numeric_limits<size_t>::max());
+    EXPECT_EQ(SizeClass::Size(last_idx), max_size);
+
+    // Verify out of bound
+    EXPECT_EQ(SizeClass::Index(max_size + 1), std::numeric_limits<size_t>::max());
+}
+
+TEST(SizeClassTest, RoundUp) {
+    EXPECT_EQ(SizeClass::RoundUp(1), 8);
+    EXPECT_EQ(SizeClass::RoundUp(8), 8);
+    EXPECT_EQ(SizeClass::RoundUp(129), 160);
+    EXPECT_EQ(SizeClass::RoundUp(SizeConfig::MAX_TC_SIZE), SizeConfig::MAX_TC_SIZE);
+}
+
+TEST(SizeClassTest, ComprehensiveRoundTrip) {
+    // Verify Size(Index(s)) >= s for ALL sizes up to MAX_TC_SIZE
+    // And ensure consistency: Index(Size(Index(s))) == Index(s)
+    
+    // We can iterate every single byte size since 32KB is small enough for a unit test
+    for (size_t s = 1; s <= SizeConfig::MAX_TC_SIZE; ++s) {
+        size_t idx = SizeClass::Index(s);
+        
+        // 1. Basic sanity
+        EXPECT_LT(idx, SizeClass::kNumSizeClasses) << "Index out of bounds for size " << s;
+        
+        // 2. Size coverage
         size_t aligned_size = SizeClass::Size(idx);
-        EXPECT_GE(aligned_size, size);
-        EXPECT_EQ(idx, SizeClass::Index(aligned_size));
+        EXPECT_GE(aligned_size, s) << "Aligned size smaller than requested for size " << s;
+        
+        // 3. Mapping consistency
+        // If we request the aligned size, we should get the same index
+        EXPECT_EQ(SizeClass::Index(aligned_size), idx) << "Inconsistent mapping for size " << s;
+
+        // 4. Check previous bucket (if not the first one)
+        // Ensure that 's' couldn't fit in the previous bucket
+        if (idx > 0) {
+            size_t prev_aligned_size = SizeClass::Size(idx - 1);
+            EXPECT_GT(s, prev_aligned_size) << "Size " << s << " should have fit in index " << (idx-1);
+        }
     }
+}
+
+TEST(SizeClassTest, BatchConfiguration) {
+    // Validate Batch Logic
+    // 1. Smallest object -> Max batch (512)
+    EXPECT_EQ(SizeClass::CalculateBatchSize(8), 512);
+
+    // 2. Largest object -> Min batch (2)
+    EXPECT_EQ(SizeClass::CalculateBatchSize(SizeConfig::MAX_TC_SIZE), 2);
+
+    // 3. Mid range check
+    // e.g., 1024 bytes. 32KB / 1KB = 32 objects.
+    EXPECT_EQ(SizeClass::CalculateBatchSize(1024), 32);
 }
 
 TEST(SizeClassTest, BatchStrategy) {
@@ -116,5 +240,35 @@ TEST(SizeClassTest, BatchStrategy) {
     EXPECT_GE(total_bytes, batch * 8 * size);
 }
 
+TEST(SizeClassTest, MovePageConfiguration) {
+    // Validate Page Allocation for CentralCache
+    // Key requirement: (PageNum * PAGE_SIZE) >= (BatchSize * ObjSize)
+    
+    for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
+        size_t obj_size = SizeClass::Size(idx);
+        size_t batch_num = SizeClass::CalculateBatchSize(obj_size);
+        size_t page_num = SizeClass::GetMovePageNum(obj_size);
+        
+        size_t total_alloc_bytes = page_num * SystemConfig::PAGE_SIZE;
+        size_t needed_bytes = batch_num * obj_size;
 
-}// namespace
+        EXPECT_GE(total_alloc_bytes, needed_bytes) 
+            << "Not enough pages allocated for batch! Index: " << idx << " Size: " << obj_size;
+        
+        // Also check upper bound (should not allocate excessively if not needed)
+        // This is a heuristic check, just ensuring we don't return 0 or crazy numbers
+        EXPECT_GE(page_num, 1);
+        EXPECT_LE(page_num, PageConfig::MAX_PAGE_NUM);
+    }
+}
+
+TEST(ConfigTest, LegacyParserTests) {
+    // Keep original parser tests to ensure no regression
+    EXPECT_EQ(details::ParseSize("100"), 100);
+    EXPECT_EQ(details::ParseSize("1k"), 1024);
+    EXPECT_EQ(details::ParseSize("1M"), 1024 * 1024);
+    EXPECT_TRUE(details::ParseBool("true"));
+    EXPECT_FALSE(details::ParseBool("false"));
+}
+
+} // namespace

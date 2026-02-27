@@ -36,14 +36,23 @@ void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t size) {
 
     // Dynamic Limit Strategy (Slow Start):
     if (list.max_size() < batch_num * 16) {
-        list.set_max_size(list.max_size() + batch_num / 4);
+        size_t inc = batch_num / 4;
+        if (inc == 0) {
+            inc = 1;
+        }
+        list.set_max_size(list.max_size() + inc);
     }
     return list.pop();
 }
 
 void ThreadCache::DeallocateSlowPath(FreeList& list, size_t size) {
-    if (const auto batch_num = SizeClass::CalculateBatchSize(size); list.max_size() < batch_num * 2) {
-        list.set_max_size(list.max_size() + 1);
+    if (const auto batch_num = SizeClass::CalculateBatchSize(size);
+        list.max_size() < batch_num * 16) {
+        size_t inc = batch_num / 4;
+        if (inc == 0) {
+            inc = 1;
+        }
+        list.set_max_size(list.max_size() + inc);
     } else {
         void* start = nullptr;
         // Construct a linked list of objects to return

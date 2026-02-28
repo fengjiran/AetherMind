@@ -42,6 +42,8 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t o
         size_t need_for_thread = batch_num - fetched;
         // 【核心】：预取目标，额外多拿一整个 batch 放进 TransferCache 中备用
         // 这样下个线程来就能直接命中 Fast Path
+        // TODO: Future Optimization - Dynamically adjust prefetch_target based on TransferCache's remaining capacity
+        // e.g., prefetch_target = std::min(batch_num, bucket.transfer_cache_capacity - bucket.transfer_cache_count);
         size_t prefetch_target = batch_num;
         size_t total_to_extract = need_for_thread + prefetch_target;
         // 用于暂存预取指针的栈数组

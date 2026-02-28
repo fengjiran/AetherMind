@@ -7,13 +7,13 @@ file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
 
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})
 
-target_include_directories(${TEST_TARGET}
-        PRIVATE
-        ${PROJECT_SOURCE_DIR}/include
-        ${PROJECT_SOURCE_DIR}/src
-)
+#target_include_directories(${TEST_TARGET}
+#        PRIVATE
+#        ${PROJECT_SOURCE_DIR}/include
+#        ${PROJECT_SOURCE_DIR}/src
+#)
 
-target_link_libraries(${TEST_TARGET}
+target_link_libraries(${TEST_TARGET} PRIVATE
         ${PROJECT_NAME}
         GTest::gtest_main
 )

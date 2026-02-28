@@ -13,8 +13,9 @@ target_include_directories(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME}
-        Threads::Threads
-        spdlog::spdlog
+        ammalloc
+#        Threads::Threads
+#        spdlog::spdlog
 )
 
 if (USE_LIBBACKTRACE)
@@ -45,6 +46,3 @@ else ()
     target_compile_definitions(${PROJECT_NAME} PRIVATE BACKTRACE_ON_SEGFAULT=0)
 endif (BACKTRACE_ON_SEGFAULT)
 
-if (BUILD_TESTS)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC AMMALLOC_TEST)
-endif()

@@ -1,7 +1,6 @@
 //
 // Created by richard on 2/17/26.
 //
-
 #include "ammalloc/central_cache.h"
 #include "ammalloc/page_cache.h"
 #include "ammalloc/spin_lock.h"
@@ -9,6 +8,7 @@
 namespace aethermind {
 
 size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t obj_size) {
+    AM_DCHECK(batch_num <= SizeClass::kMaxBatchSize);
     auto idx = SizeClass::Index(obj_size);
     auto& bucket = buckets_[idx];
 
@@ -37,10 +37,20 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t o
         head = node;
     }
 
-    // 2. Slow Path: Extract from SpanList (Mutex + Bitmap Operations)
+    // 2. Slow Path: Extract from SpanList (Mutex + Bitmap Operations) + Prefetching
     if (fetched < batch_num) {
+        size_t need_for_thread = batch_num - fetched;
+        // 【核心】：预取目标，额外多拿一整个 batch 放进 TransferCache 中备用
+        // 这样下个线程来就能直接命中 Fast Path
+        size_t prefetch_target = batch_num;
+        size_t total_to_extract = need_for_thread + prefetch_target;
+        // 用于暂存预取指针的栈数组
+        void* prefetch_ptrs[SizeClass::kMaxBatchSize];
+        size_t actual_prefetched = 0;
+        size_t total_extracted = 0;
+
         std::unique_lock<std::mutex> lock(bucket.span_list_lock);
-        while (fetched < batch_num) {
+        while (total_extracted < total_to_extract) {
             // Refill SpanList if empty or current head span is fully utilized.
             if (bucket.span_list.empty() ||
                 bucket.span_list.begin()->use_count >= bucket.span_list.begin()->capacity) {
@@ -50,7 +60,7 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t o
             }
 
             auto* span = bucket.span_list.begin();
-            while (fetched < batch_num) {
+            while (total_extracted < total_to_extract) {
                 void* obj = span->AllocObject();// Heavy bitmap scanning
                 if (!obj) {
                     // Span is full. Move it to the back (LRU strategy).
@@ -59,18 +69,57 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t o
                     break;
                 }
 
-                auto* node = static_cast<FreeBlock*>(obj);
-                if (!head) {
-                    tail = obj;
+                // dispatch
+                if (total_extracted < need_for_thread) {
+                    // 前半部分：直接交给请求的线程
+                    auto* node = static_cast<FreeBlock*>(obj);
+                    if (!head) {
+                        tail = obj;
+                    }
+                    node->next = static_cast<FreeBlock*>(head);
+                    head = node;
+                    ++fetched;
+                } else {
+                    // 后半部分：暂存起来，准备塞入 TransferCache
+                    prefetch_ptrs[actual_prefetched++] = obj;
                 }
-                node->next = static_cast<FreeBlock*>(head);
-                head = node;
-                ++fetched;
+                ++total_extracted;
+            }
+        }
+        // 【关键】释放重量级 Mutex
+        lock.unlock();
+
+        // 3. 将预取的对象推入 TransferCache
+        if (actual_prefetched > 0) {
+            size_t successfully_pushed = 0;
+            bucket.transfer_cache_lock.lock();
+            // 只要 TransferCache 还有空间，就塞进去
+            while (successfully_pushed < actual_prefetched &&
+                   bucket.transfer_cache_count < bucket.transfer_cache_capacity) {
+                bucket.transfer_cache[bucket.transfer_cache_count++] = prefetch_ptrs[successfully_pushed++];
+            }
+            bucket.transfer_cache_lock.unlock();
+
+            // 4. 并发极端情况兜底 (Fallback)
+            // 如果在我们拿 Mutex 期间，有别的线程把 TransferCache 还满了
+            // 导致我们预取的指针没塞完，需要把多余的安全退回去
+            if (successfully_pushed < actual_prefetched) {
+                void* leftover_head = nullptr;
+
+                // 串成链表
+                for (size_t i = successfully_pushed; i < actual_prefetched; ++i) {
+                    auto* node = static_cast<FreeBlock*>(prefetch_ptrs[i]);
+                    node->next = static_cast<FreeBlock*>(leftover_head);
+                    leftover_head = prefetch_ptrs[i];
+                }
+
+                // 复用成熟的还款逻辑，它会处理好一切
+                ReleaseListToSpans(leftover_head, obj_size);
             }
         }
     }
 
-    // 3. Deliver the constructed list to ThreadCache
+    // 5. Deliver the constructed list to ThreadCache
     if (fetched > 0) {
         block_list.push_range(head, tail, fetched);
     }

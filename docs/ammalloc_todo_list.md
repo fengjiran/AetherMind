@@ -26,9 +26,10 @@
   2. 将一部分返回给 ThreadCache，剩下的直接填入 TransferCache 数组。
 - 收益：大幅减少 Span Bitmap 的扫描频率和 span_lock (Mutex) 的争抢。
 
-- [ ] **优化 SizeClass 边界测试 [Test]**
+- [x] **优化 SizeClass 边界测试 [Test]**
 - 背景：确保索引计算逻辑在跨组边界（如 128B, 129B, 256B）时的绝对正确性。
 - 方案：增加针对 SizeClass::Index 和 SizeClass::Size 的互逆性单元测试，覆盖所有 Size Class 的边界值。
+- 状态：已完成，见 `tests/unit/test_size_class.cpp`。
 
 ### 🟡 P2: 功能对齐 (Feature Parity)
 *对齐 TCMalloc/Jemalloc 的核心功能，使其具备在生产环境长期运行的能力。*
@@ -71,7 +72,4 @@
 
 ### 📝 变更日志 (Changelog)
 
-2023-10-27: 初始化 TODO 列表。
-确认架构：ThreadCache (TLS) -> CentralCache (TransferCache+SpanList) -> PageCache (RadixTree)。
-确认已完成：无锁 Fast Path、编译期 SizeClass、TransferCache 重构、SpinLock 优化。
-新增 P0 级 Bug：ObjectPool 对齐问题。
+- 2026-2-27: 初始化 TODO 列表。修复 ObjectPool 内存对齐 Bug，增加 SizeClass 边界单元测试。

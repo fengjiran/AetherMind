@@ -2,13 +2,13 @@ file(GLOB_RECURSE AMMALLOC_SRC_FILES CONFIGURE_DEPENDS
         ${PROJECT_SOURCE_DIR}/ammalloc/src/*.cpp
 )
 
-add_library(ammalloc ${AMMALLOC_SRC_FILES})
+add_library(ammalloc STATIC ${AMMALLOC_SRC_FILES})
 
 target_include_directories(ammalloc
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${PROJECT_SOURCE_DIR}/include
         PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}
 )

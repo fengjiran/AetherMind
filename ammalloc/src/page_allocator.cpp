@@ -72,6 +72,15 @@ private:
 std::atomic<bool> g_mock_huge_alloc_fail{false};
 #endif
 
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
+#endif
+
+#ifndef MADV_HUGEPAGE
+#define MADV_HUGEPAGE 0
+#endif
+
+
 void PageAllocator::ResetStats() {
     stats_.normal_alloc_count.store(0, std::memory_order_relaxed);
     stats_.normal_alloc_success.store(0, std::memory_order_relaxed);

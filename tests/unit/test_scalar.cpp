@@ -3,6 +3,7 @@
 //
 #include "scalar.h"
 
+#include <cstdint>
 #include <gtest/gtest.h>
 
 using namespace aethermind;
@@ -393,7 +394,7 @@ TEST(ScalarTest, DefaultAndIntegralConstructors) {
     EXPECT_EQ(i32.toInt(), 123456);
     EXPECT_EQ(i32.type(), DataType::Int(32));
 
-    Scalar i64(-9876543210);
+    Scalar i64(int64_t(-9876543210));
     EXPECT_TRUE(i64.is_signed_integral());
     EXPECT_EQ(i64.toLong(), -9876543210);
     EXPECT_EQ(i64.type(), DataType::Int(64));
@@ -525,7 +526,7 @@ TEST(ScalarTest, CopyAndMoveSemantics) {
 // 测试Scalar类的类型转换方法
 TEST(ScalarTest, TypeConversionMethods) {
     // 整数类型转换
-    Scalar i64(123456789L);
+    Scalar i64((int64_t) 123456789L);
     EXPECT_THROW(i64.toChar(), Error);
     EXPECT_THROW(i64.toShort(), Error);
     EXPECT_EQ(i64.toInt(), static_cast<int32_t>(123456789L));

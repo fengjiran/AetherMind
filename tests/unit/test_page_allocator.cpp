@@ -7,6 +7,7 @@
 #include <cstring>
 #include <gtest/gtest.h>
 #include <sys/mman.h>
+#include <thread>
 
 namespace {
 using namespace aethermind;

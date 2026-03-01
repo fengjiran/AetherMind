@@ -1,5 +1,7 @@
 本文档记录了 AetherMind 内存池项目的已知缺陷修复计划、性能优化点以及未来向工业级功能对齐的演进路线。
 
+> **🔗 相关资源**: [📅 查看开发进度日志 (Development Log)](DEVELOPMENT_LOG.md)
+
 ### 🔴 P0: 紧急修复 (Critical Fixes)
 
 *涉及内存安全和核心正确性，必须立即修复。*

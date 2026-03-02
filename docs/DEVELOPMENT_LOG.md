@@ -37,7 +37,6 @@
 ### ⚠️ 遇到的问题与解决方案
 1. **[Issue] ObjectPool 内存对齐导致基数树错乱**
     - **解决方案**: 在 `ObjectPool::New` 中引入 `alignof(T)` 计算 Padding，确保 `RadixNode` 严格 4KB 对齐，避免跨页。
-    - **验证**: 通过 `tests/unit/test_alignment.cpp` 验证。
 
 ---
 [ 查看完整 TODO List ](ammalloc_todo_list.md)

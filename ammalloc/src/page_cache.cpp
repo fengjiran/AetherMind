@@ -6,6 +6,15 @@
 
 #include <limits>
 
+namespace {
+
+uint64_t GetCurrentTimeMs() {
+    auto now = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+}
+
+}// namespace
+
 namespace aethermind {
 
 Span* PageMap::GetSpan(size_t page_id) {
@@ -327,6 +336,8 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
     // 4. Insert back: Mark as unused and push to the appropriate bucket.
     span->is_used = false;
     span->obj_size = 0;
+    span->last_used_time_ms = GetCurrentTimeMs();
+    span->is_committed = true;
     span_lists_[span->page_num].push_front(span);
     // Update PageMap: Map ALL pages in this coalesced span to the span pointer.
     // This ensures subsequent merge operations can find this span via any of its pages.

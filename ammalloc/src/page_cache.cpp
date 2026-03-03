@@ -6,15 +6,6 @@
 
 #include <limits>
 
-namespace {
-
-uint64_t GetCurrentTimeMs() {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-}
-
-}// namespace
-
 namespace aethermind {
 
 Span* PageMap::GetSpan(size_t page_id) {

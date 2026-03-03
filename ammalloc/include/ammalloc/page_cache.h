@@ -13,6 +13,11 @@
 
 namespace aethermind {
 
+inline uint64_t GetCurrentTimeMs() {
+    auto now = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+}
+
 /**
  * @brief Node structure for the Radix Tree (PageMap).
  *
@@ -189,6 +194,7 @@ private:
     Span* AllocSpanLocked(size_t page_num, size_t obj_size);
 
     PAGE_CACHE_FRIENDS_TEST;
+    friend class PageHeapScavenger;
 };
 
 }// namespace aethermind

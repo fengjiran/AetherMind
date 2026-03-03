@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_AMMALLOC_PAGE_HEAP_SCAVENGER_H
 #define AETHERMIND_AMMALLOC_PAGE_HEAP_SCAVENGER_H
 
-#include <atomic>
-#include <chrono>
+#include <condition_variable>
+#include <stop_token>
 #include <thread>
 
 namespace aethermind {
@@ -31,11 +31,12 @@ public:
 private:
     PageHeapScavenger() = default;
 
-    void ScavengeLoop();
-    void ScavengeOnePass();
+    void ScavengeLoop(std::stop_token stoken);
+    static void ScavengeOnePass();
 
     std::jthread scavenge_thread_;
-    std::atomic<bool> is_running_{false};
+    std::condition_variable_any cv_;
+    std::mutex mutex_;
 
     // 清理间隔
     static constexpr uint64_t kScavengeIntervalMs = 500;

@@ -135,6 +135,58 @@ ammalloc 的设计遵循以下核心原则：
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+
+
+1.1 三层缓存架构概览
+┌─────────────────────────────────────────────────────────────────┐
+│                         am_malloc/am_free                        │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+    ┌─────────────────▼──────────────────┐
+    │       ThreadCache (TLS)            │  ← 完全无锁，Fast Path ~3.8ns
+    │  ┌─────────┐ ┌─────────┐          │
+    │  │FreeList │ │FreeList │ ...      │  LIFO 嵌入式链表
+    │  │ (8B)    │ │ (16B)   │          │
+    │  └─────────┘ └─────────┘          │
+    └─────────────────┬──────────────────┘
+                      │ Slow Path (空/满)
+    ┌─────────────────▼──────────────────┐
+    │       CentralCache (全局)          │  ← 细粒度桶锁
+    │  ┌─────────────────────────┐       │
+    │  │   Bucket[SizeClass]     │       │
+    │  │  ┌───────────────┐      │       │
+    │  │  │ TransferCache │ ←────┼───────┼── SpinLock，O(1) 数组
+    │  │  │ (指针数组)     │      │       │
+    │  │  └───────────────┘      │       │
+    │  │  ┌───────────────┐      │       │
+    │  │  │   SpanList    │ ←────┼───────┼── Mutex，Bitmap 扫描
+    │  │  │ (Span 双链表)  │      │       │
+    │  │  └───────────────┘      │       │
+    │  └─────────────────────────┘       │
+    └─────────────────┬──────────────────┘
+                      │ Slow Path (Span 耗尽)
+    ┌─────────────────▼──────────────────┐
+    │        PageCache (全局)            │  ← 全局大锁
+    │  ┌─────────────────────────┐       │
+    │  │   SpanList[1..128]      │       │  空闲 Span 按页数分类
+    │  │  (Span 双链表数组)       │       │
+    │  └─────────────────────────┘       │
+    │  ┌─────────────────────────┐       │
+    │  │      PageMap            │       │  4层 RadixTree
+    │  │   (PageID → Span*)      │       │  读无锁，写受保护
+    │  └─────────────────────────┘       │
+    └─────────────────┬──────────────────┘
+                      │
+    ┌─────────────────▼──────────────────┐
+    │      PageAllocator (OS 接口)        │
+    │   ┌─────────────┐ ┌─────────────┐   │
+    │   │ Normal Page │ │  Huge Page  │   │  mmap/munmap
+    │   │  (4KB)      │ │   (2MB)     │   │  HugePageCache
+    │   └─────────────┘ └─────────────┘   │
+    └─────────────────────────────────────┘
+
+
+
 ### 3.2 数据流向
 
 ```
@@ -751,6 +803,87 @@ am_free(ptr)
 ```
 
 ---
+
+1.3 分配/释放流程
+分配流程 (am_malloc)
+am_malloc(size)
+  ├── [Fast] size ≤ 32KB && TLS 存在?
+  │     └── ThreadCache::Allocate()
+  │           ├── SizeClass::Index(size) → O(1) 查表
+  │           └── FreeList::pop() → 无锁，~3.8ns
+  │
+  └── [Slow] 大块内存或 TLS 未初始化
+        └── am_malloc_slow_path()
+              ├── [大块] PageCache::AllocSpan() → 直接系统分配
+              └── [小块] 创建 ThreadCache → FetchFromCentralCache()
+                        └── CentralCache::FetchRange()
+                              ├── [Fast] TransferCache (SpinLock)
+                              └── [Slow] Span::AllocObject() (Mutex + Bitmap)
+                                    └── [需新 Span] PageCache::AllocSpan()
+                                          ├── 查找空闲列表
+                                          ├── 切分大 Span
+                                          └── 系统分配 (mmap)
+释放流程 (am_free)
+am_free(ptr)
+  ├── PageMap::GetSpan(ptr) → 无锁 RadixTree 查询
+  ├── [大块] span->obj_size == 0 → PageCache::ReleaseSpan()
+  │
+  └── [小块] ThreadCache::Deallocate()
+        ├── FreeList::push() → 无锁
+        └── [缓存满] DeallocateSlowPath()
+              └── CentralCache::ReleaseListToSpans()
+                    ├── [Fast] TransferCache (SpinLock)
+                    └── [满] Span::FreeObject()
+                          └── [Span 空] PageCache::ReleaseSpan()
+                                ├── 合并左邻居
+                                ├── 合并右邻居
+                                └── 插入空闲列表
+
+
+
+分配流程 (am_malloc)
+am_malloc(size)
+  ↓
+[pTLSThreadCache null?] ──Yes──→ am_malloc_slow_path()
+  ↓ No                                   ↓
+[size > MAX_TC_SIZE?] ──Yes──→ PageCache.AllocSpan() → PageAllocator.SystemAlloc()
+  ↓ No                                   ↓
+ThreadCache.Allocate(size)           CreateThreadCache()
+  ↓                                    ↓
+SizeClass.Index(size) ──→ free_lists_[idx].pop() [Fast Path, Lock-Free]
+  ↓
+[empty?] ──Yes──→ FetchFromCentralCache()
+                    ↓
+              CentralCache.FetchRange()
+                ├── Fast: TransferCache [SpinLock]
+                └── Slow: Span.AllocObject() [Mutex + Bitmap]
+                      ↓
+                [need new Span?] ──Yes──→ PageCache.AllocSpan()
+                                              ↓
+                                        [oversized?] ──Yes──→ SystemAlloc
+                                              ↓ No
+                                        SpanList 查找/切分
+释放流程 (am_free)
+am_free(ptr)
+  ↓
+[ptr == null?] ──Yes──→ Return
+  ↓
+PageMap.GetSpan(ptr) ──→ [not found?] ──Yes──→ Return
+  ↓
+span.obj_size == 0? ──Yes──→ PageCache.ReleaseSpan() [大块内存]
+  ↓
+[pTLSThreadCache null?] ──Yes──→ am_free_slow_path()
+  ↓                                ↓
+ThreadCache.Deallocate()      CreateThreadCache()
+  ↓                                ↓
+free_lists_[idx].push(ptr)    CentralCache.ReleaseListToSpans()
+  ↓                                ↓
+[size >= max_size?] ──Yes──→   TransferCache [Fast Path]
+DeallocateSlowPath()           Span.FreeObject() [Slow Path]
+  ↓                                ↓
+Return batch to CentralCache   [span empty?] ──Yes──→ PageCache.ReleaseSpan()
+                                    ↓
+                              [Coalescing: 合并左右邻居]
 
 ## 7. 性能优化策略
 

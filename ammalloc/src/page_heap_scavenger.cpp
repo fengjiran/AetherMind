@@ -68,6 +68,13 @@ void PageHeapScavenger::ScavengeOnePass() {
             auto* cur = page_cache.span_lists_[i].begin();
             while (cur != page_cache.span_lists_[i].end()) {
                 auto* next = cur->next;
+                if (cur->is_used) {
+                    spdlog::error("Scavenger: used span {} in free list.",
+                                  static_cast<void*>(cur));
+                    cur = next;
+                    continue;
+                }
+
                 if (!cur->is_committed) {
                     cur = next;
                     continue;
@@ -81,6 +88,7 @@ void PageHeapScavenger::ScavengeOnePass() {
                     } else {
                         tail->next = cur;// NOLINT
                         tail = cur;
+                        tail->next = nullptr;
                     }
                 }
                 cur = next;
@@ -90,11 +98,14 @@ void PageHeapScavenger::ScavengeOnePass() {
         // 在锁外执行耗时的 madvise
         auto* cur = head;
         while (cur) {
-            void* star_ptr = cur->GetStartAddr();
+            void* start_ptr = cur->GetStartAddr();
             size_t size = cur->page_num << SystemConfig::PAGE_SHIFT;
-            if (madvise(star_ptr, size, MADV_DONTNEED) == 0) {
+            if (madvise(start_ptr, size, MADV_DONTNEED) == 0) {
                 cur->is_committed = false;
                 release_bytes += size;
+            } else {
+                spdlog::warn("madvise MADV_DONTNEED failed for span {}",
+                             static_cast<void*>(cur));
             }
             cur = cur->next;
         }

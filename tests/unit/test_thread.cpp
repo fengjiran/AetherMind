@@ -172,6 +172,9 @@ TEST(JThreadBasicTest, AutoJoinOnDestruction) {
 TEST(JThreadStopTest, ExplicitStopRequest) {
     std::atomic<bool> stopped_gracefully{false};
 
+    std::jthread t1;
+    EXPECT_FALSE(t1.joinable());
+
     // 注意：lambda 的第一个参数接受 std::stop_token
     std::jthread t([&stopped_gracefully](std::stop_token stoken) {
         // 模拟一个循环任务

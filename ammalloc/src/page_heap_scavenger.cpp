@@ -7,26 +7,22 @@
 
 #include <sys/mman.h>
 
-#include <utility>
-
 namespace aethermind {
 
 void PageHeapScavenger::Start() {
-    // 确保不会重复启动
+    // Ensure it won't be started twice
     if (!scavenge_thread_.joinable()) {
-        // std::jthread 会自动将内部的 stop_token 传递给绑定的函数
-        scavenge_thread_ = std::jthread([this](std::stop_token stoken) {
-            ScavengeLoop(std::move(stoken));
-        });
+        // std::jthread automatically passes the internal stop_token to the bound function
+        scavenge_thread_ = std::jthread(&PageHeapScavenger::ScavengeLoop, this);
         spdlog::info("PageHeapScavenger thread started.");
     }
 }
 
 void PageHeapScavenger::Stop() {
     if (scavenge_thread_.joinable()) {
-        // 发送停止信号，这会唤醒正在 cv_.wait_for 中沉睡的线程
+        // Send stop signal, this will wake up the thread waiting in cv_.wait_for
         scavenge_thread_.request_stop();
-        // 显式等待线程结束 (虽然 jthread 析构时也会自动 join，但显式调用语义更清晰)
+        // Explicitly wait for the thread to stop, although jthread destructor will also join
         scavenge_thread_.join();
         spdlog::info("PageHeapScavenger thread stopped.");
     }
@@ -35,12 +31,13 @@ void PageHeapScavenger::Stop() {
 void PageHeapScavenger::ScavengeLoop(std::stop_token stoken) {
     std::unique_lock<std::mutex> lock(mutex_);
 
-    // 只要没有收到停止请求，就继续循环
+    // Keep running until stop signal is received
     while (!stoken.stop_requested()) {
-        // 【核心优化】：可中断的睡眠
-        // 使用 condition_variable_any 配合 stop_token。
-        // 如果在睡眠期间调用了 request_stop()，这个 wait_for 会立刻被唤醒并返回 true。
-        // 如果是正常超时醒来，返回 false。
+        // [Core Optimization]: Interruptible sleep
+        // Use condition_variable_any together with stop_token.
+        // If request_stop() is called during sleep, this wait_for
+        // will wake up immediately and return true.
+        // If it wakes up due to normal timeout, it returns false.
         bool stop_requested = cv_.wait_for(lock, stoken,
                                            std::chrono::milliseconds(kScavengeIntervalMs),
                                            [&stoken] { return stoken.stop_requested(); });
@@ -48,11 +45,12 @@ void PageHeapScavenger::ScavengeLoop(std::stop_token stoken) {
             break;
         }
 
-        // 睡眠结束，准备干活。先解锁，防止阻塞其他可能使用 cv_ 的逻辑
+        // Sleep end, ready to work.
+        // Unlock first to prevent blocking other threads using cv_
         lock.unlock();
         ScavengeOnePass();
 
-        // 干完活重新加锁，准备进入下一次睡眠
+        // After working, lock again to sleep again in the next round
         lock.lock();
     }
 }

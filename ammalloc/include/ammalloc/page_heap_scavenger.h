@@ -38,10 +38,10 @@ private:
     std::condition_variable_any cv_;
     std::mutex mutex_;
 
-    // 清理间隔
-    static constexpr uint64_t kScavengeIntervalMs = 500;
-    // 闲置阈值
-    static constexpr uint64_t kIdleThresholdMs = 5000;
+    // Clean-up interval
+    static constexpr uint64_t kScavengeIntervalMs = 1000;
+    // Idle threshold
+    static constexpr uint64_t kIdleThresholdMs = 10000;
 };
 
 }// namespace aethermind

@@ -1,0 +1,254 @@
+# PageHeapScavenger 启动时机设计方案
+
+## 背景
+
+PageHeapScavenger 后台清理线程需要在合适的时机启动，以平衡以下目标：
+1. **尽早启动**：确保长期运行的服务能有效控制 RSS
+2. **避免热路径开销**：不能在每次 malloc/free 中增加可感知的延迟
+3. **自举安全**：启动过程不能触发递归 malloc
+4. **可控性**：支持用户显式控制是否启用
+
+---
+
+## 方案对比
+
+### 方案 A：构造函数属性自动启动
+
+```cpp
+// 全局作用域
+__attribute__((constructor)) void start_scavenger() {
+    PageHeapScavenger::GetInstance().Start();
+}
+```
+
+**优点**：
+- 完全自动，用户无感知
+- 在 main() 之前启动，确保程序开始时线程已就绪
+
+**缺点**：
+- 启动时机过早，可能在分配器完全初始化之前
+- 静态初始化顺序不确定，可能与 PageCache 初始化产生竞态
+- 无法通过环境变量控制是否启用
+- 如果程序是动态链接库，可能在加载时就启动线程
+
+**适用性**：❌ 不推荐
+
+---
+
+### 方案 B：首次慢路径分配启动（推荐）
+
+在 `am_malloc_slow_path` 首次调用时，使用原子标志检查并启动：
+
+```cpp
+void EnsureScavengerStarted() {
+    static std::atomic<bool> started{false};
+    if (!started.load(std::memory_order_acquire)) {
+        if (!started.exchange(true, std::memory_order_acq_rel)) {
+            PageHeapScavenger::GetInstance().Start();
+        }
+    }
+}
+
+void* am_malloc_slow_path(size_t size) {
+    EnsureScavengerStarted();  // 仅首次有实际开销
+    // ... rest of slow path
+}
+```
+
+**优点**：
+- 启动时机合理：有实际内存压力时才启动
+- 避开快路径：小对象分配不触发检查
+- 无锁检查：原子 load 是 O(1) 且极快
+- ThreadCache 已就绪：此时分配器基础设施已初始化
+- 符合 C++20 内存模型
+
+**缺点**：
+- 首次慢路径有轻微开销（一次原子 CAS）
+- 如果程序只有小对象分配，永远不会启动（可接受）
+
+**适用性**：✅ **首选方案**
+
+---
+
+### 方案 C：PageCache 阈值触发
+
+在 `PageCache::ReleaseSpan` 中检查闲置内存总量，超过阈值时启动：
+
+```cpp
+void PageCache::ReleaseSpan(Span* span) noexcept {
+    // ... existing code ...
+    
+    // 每次释放都检查
+    if (total_idle_pages_.fetch_add(span->page_num) > kThreshold) {
+        EnsureScavengerStarted();
+    }
+}
+```
+
+**优点**：
+- 有实际内存囤积时才启动
+
+**缺点**：
+- **热路径污染**：每次 free 都要原子操作
+- **启动延迟不可预测**：首次触发时在线程内启动，可能卡顿
+- 启动时机过晚：早期积累的 idle spans 无法被清理
+- 阈值选择困难（太小频繁触发，太大延迟启动）
+
+**适用性**：❌ 不推荐作为主要启动策略
+
+---
+
+## 推荐方案：分层混合策略
+
+### 第一层：早期启动（First Slow Path）
+
+Scavenger 线程在**首次慢路径分配**时启动，但初始为**低频模式**：
+
+```cpp
+class PageHeapScavenger {
+    // 初始间隔 5 秒，低功耗模式
+    static constexpr uint64_t kInitialIntervalMs = 5000;
+    // 激进模式间隔 100ms
+    static constexpr uint64_t kAggressiveIntervalMs = 100;
+};
+```
+
+**优势**：
+- 线程早启动，但几乎无负载（99% 时间在 sleep）
+- 确保长期运行程序能控制 RSS
+- 不影响程序启动性能
+
+### 第二层：动态频率调整（在 Scavenger 内部）
+
+Scavenger 根据内存压力自适应调整扫描频率：
+
+```cpp
+void ScavengeLoop(std::stop_token stoken) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    
+    while (!stoken.stop_requested()) {
+        // 获取当前内存压力
+        size_t idle_pages = GetTotalIdlePages();
+        auto interval = idle_pages > kHighPressureThreshold 
+            ? kAggressiveIntervalMs 
+            : kInitialIntervalMs;
+        
+        cv_.wait_for(lock, stoken, std::chrono::milliseconds(interval));
+        if (stoken.stop_requested()) break;
+        
+        lock.unlock();
+        ScavengeOnePass();
+        lock.lock();
+    }
+}
+```
+
+**优势**：
+- 内存压力大时自动加速清理
+- 内存压力小时降低 CPU 占用
+- 无需热路径参与决策
+
+### 第三层：ReleaseSpan 轻量标记（无锁）
+
+PageCache 仅设置一个原子标志，提示 Scavenger 下次扫描时立即行动：
+
+```cpp
+class PageCache {
+    // 建议清理标志，ReleaseSpan 设置，Scavenger 读取
+    inline static std::atomic<bool> suggest_scavenge_{false};
+    
+    void ReleaseSpan(Span* span) noexcept {
+        // ... existing code ...
+        
+        // 大 span 释放时标记
+        if (span->page_num > 64) {
+            suggest_scavenge_.store(true, std::memory_order_relaxed);
+        }
+    }
+};
+
+// Scavenger 循环中检查
+void ScavengeOnePass() {
+    if (PageCache::suggest_scavenge_.exchange(false)) {
+        // 有人建议清理，本轮更积极
+        aggressive_mode = true;
+    }
+}
+```
+
+**优势**：
+- ReleaseSpan 仅需一个 relaxed store，无锁
+- 不影响 free 路径延迟
+- 给 Scavenger 提供 hint，但不强制
+
+---
+
+## 环境变量控制
+
+支持用户显式控制是否启用：
+
+```cpp
+void EnsureScavengerStarted() {
+    static std::atomic<bool> checked{false};
+    if (checked.load(std::memory_order_acquire)) return;
+    
+    // 检查环境变量（仅一次）
+    const char* env = std::getenv("AM_ENABLE_SCAVENGER");
+    if (!env || env[0] != '1') {
+        checked.store(true, std::memory_order_release);
+        return;
+    }
+    
+    // 实际启动逻辑...
+}
+```
+
+- `AM_ENABLE_SCAVENGER=1`：启用后台清理（默认可设为启用）
+- `AM_ENABLE_SCAVENGER=0` 或未设置：禁用（适合短生命周期程序）
+
+---
+
+## 实现要点
+
+### 1. 避免 std::call_once
+某些 libc 实现中 `std::call_once` 内部可能使用 `malloc`，导致自举递归。使用原子标志 + CAS 模式。
+
+### 2. 析构函数保护
+确保未启动时析构不会出错：
+
+```cpp
+~PageHeapScavenger() {
+    if (scavenge_thread_.joinable()) {
+        Stop();
+    }
+}
+```
+
+### 3. 线程启动延迟处理
+首次启动线程时可能耗时（线程创建），但这只发生在慢路径，且仅一次，可接受。
+
+---
+
+## 总结
+
+| 维度 | 策略 |
+|------|------|
+| **启动时机** | 首次慢路径分配 |
+| **初始模式** | 低频（5s 间隔） |
+| **压力响应** | 动态调整扫描频率 |
+| **ReleaseSpan** | 轻量标记，无锁 |
+| **用户控制** | 环境变量 `AM_ENABLE_SCAVENGER` |
+
+**预期效果**：
+- 短生命周期程序（< 5s）：Scavenger 不启动或低功耗，无感知
+- 长运行服务：自动生效，控制 RSS 峰值
+- 高压力场景：自动加速清理，保持内存健康
+
+---
+
+## 待决策问题
+
+1. 默认是否启用 Scavenger？（建议：启用）
+2. 高频/低频阈值如何设定？（建议：初始 5s，压力阈值动态计算）
+3. 是否需要提供 C API 让用户显式启动/停止？（建议：后期可选）
+4. Scavenger 线程优先级？（建议：默认，或提供配置）

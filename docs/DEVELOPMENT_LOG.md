@@ -7,6 +7,41 @@
 
 ---
 
+## 📅 2026-03-05 (Thursday)
+### 🚀 今日概要
+完成 `PageHeapScavenger` 后台清理线程的关键并发安全修复和生命周期管理重构，成功解决线程退出时的段错误问题。
+
+### 🧩 任务关联 (Task Linkage)
+- [x] **[TODO: PageHeapScavenger Integration]** - 已接入 `am_malloc_slow_path` 启动路径，支持环境变量 `AM_ENABLE_SCAVENGER` 控制开关。
+- [x] **[TODO: PageHeapScavenger 并发安全修复]** - Off-list Span 标记机制实现完成。
+- [x] **[TODO: PageHeapScavenger 生命周期修复]** - Leaky singleton 策略实施完成。
+
+### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
+1. **[Issue] Off-list Span 并发竞争导致段错误 (P0) - 已修复**
+    - **根因**: `ScavengeOnePass()` 将 Span 从 `span_lists_` 摘下后释放锁执行 `madvise`，期间 `ReleaseSpan()` 的合并逻辑通过 `PageMap` 找到该 Span 并尝试 `span_lists_[...].erase()`，造成对已 erase 节点的双重删除。
+    - **修复方案**: 在摘下 Span 前设置 `cur->is_used = true`，利用 `ReleaseSpan` 已有的 `is_used` 检查逻辑（第 291、312 行）阻止合并；挂回链表前恢复 `is_used = false`。该方案无需修改数据结构，最小侵入。
+    - **代码位置**: `ammalloc/src/page_heap_scavenger.cpp:86, 123`
+
+2. **[Issue] 静态析构顺序不确定导致 UAF/段错误 (P0) - 已修复**
+    - **根因**: `PageHeapScavenger` 和 `PageCache` 均为 Meyers 单例，C++ 不保证跨 TU 的析构顺序。后台线程可能在 `PageCache` 析构后仍尝试访问 `span_lists_`，或 `~PageHeapScavenger()` 的 `join()` 等待时 `PageCache` 已被销毁。
+    - **修复方案**: 采用 **Leaky Singleton** 模式，使用 placement new 在 BSS 段静态存储上构造对象，永远不调用析构函数。进程退出时依赖 OS 回收资源，避免静态析构顺序问题。
+    - **代码位置**: 
+        - `ammalloc/include/ammalloc/page_cache.h:127-132`
+        - `ammalloc/include/ammalloc/page_heap_scavenger.h:16-19`
+    - **关键技巧**: `alignas(alignof(T)) static char storage[sizeof(T)]` + `new (storage) T()`，确保不经过 `malloc`，避免自举递归。
+
+3. **[Issue] 启动时 getenv 可能触发 malloc 递归 (P1) - 已规避**
+    - **根因**: 最初设计在 `EnsureScavengerStarted()` 中直接调用 `std::getenv`，但某些 libc 实现可能内部使用 `malloc`。
+    - **解决方案**: 环境变量读取移至 `RuntimeConfig::InitFromEnv()`（程序早期初始化阶段），`EnsureScavengerStarted()` 仅读取已缓存的 `bool` 标志。
+    - **代码位置**: `ammalloc/src/config.cpp:27-29`, `ammalloc/src/ammalloc.cpp:66-92`
+
+### 💡 架构思考 (Architectural Insights)
+- **并发安全设计模式**: 对于"锁外操作共享数据"的场景，使用状态标记（`is_used`）比全程加锁更轻量。关键是确保状态转换的原子性和可观测性。
+- **Leaky Singleton 的适用边界**: 适用于进程级单例、生命周期与进程相同、不需要优雅释放资源的场景（如内存分配器）。代价是 Valgrind/ASan 会报告"内存泄漏"，需配合抑制规则使用。
+- **启动策略的权衡验证**: 首次慢路径启动（`am_malloc_slow_path`）在真实 workload 中表现良好：短生命周期程序（<1s 的单元测试）几乎不触发启动；长期运行服务在有实际内存压力时自动激活；小对象-only 程序不启动是可接受的（无大内存需求）。
+
+---
+
 ## 📅 2026-03-04 (Wednesday)
 ### 🚀 今日概要
 完成 `PageHeapScavenger` 后台清理线程的核心实现，通过独立后台线程周期性扫描 PageCache 的空闲 Span 列表，将长期闲置的物理内存通过 `MADV_DONTNEED` 归还给操作系统，同时保留虚拟地址映射以避免后续的 `mmap` 开销。

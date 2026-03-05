@@ -224,6 +224,7 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
             big_span->start_page_idx += page_num;
             big_span->page_num -= page_num;
             big_span->is_used = false;
+            big_span->last_used_time_ms = GetCurrentTimeMs();
             // Return the remainder to the appropriate free list.
             span_lists_[big_span->page_num].push_front(big_span);
 
@@ -252,6 +253,7 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
         span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
         span->page_num = alloc_page_nums;
         span->is_used = false;
+        span->last_used_time_ms = GetCurrentTimeMs();
         // Insert the new large span into the last bucket.
         span_lists_[alloc_page_nums].push_front(span);
         PageMap::SetSpan(span);

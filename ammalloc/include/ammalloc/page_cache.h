@@ -125,8 +125,11 @@ public:
     * @brief Retrieves the singleton instance of PageCache.
     */
     static PageCache& GetInstance() {
-        static PageCache instance;
-        return instance;
+        // Static storage (BSS segment), no malloc call
+        alignas(alignof(PageCache)) static char storage[sizeof(PageCache)];
+        // placement new in static storage, never destructed
+        static auto* instance = new (storage) PageCache();
+        return *instance;
     }
 
     // Disable copy and assignment to enforce singleton pattern.
@@ -186,6 +189,7 @@ private:
     ObjectPool<Span> span_pool_{};
 
     PageCache() = default;
+    ~PageCache() = default;
 
     /**
      * @brief Internal core logic for allocation (assumes lock is held).

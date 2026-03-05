@@ -37,8 +37,8 @@ struct Span {
     // --- Status & Meta (Packed) ---
     bool is_used{false};// Is this span currently in CentralCache?
 
-    uint64_t last_used_time_ms{0};  // 最后一次归还到 PageCache 的时间戳 (毫秒)
-    bool is_committed{true};  // 物理内存是否已提交 (false 表示已调用 MADV_DONTNEED)
+    uint64_t last_used_time_ms{0};// Last time this span was used in CentralCache (milliseconds since epoch)
+    bool is_committed{true};      // Whether physical memory is committed (false means MADV_DONTNEED)
 
     void Init(size_t object_size);
 

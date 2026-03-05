@@ -8,6 +8,7 @@
 #include "macros.h"
 
 #include <cstddef>
+#include <new>
 
 namespace aethermind {
 
@@ -57,8 +58,10 @@ struct PageConfig {
 class RuntimeConfig {
 public:
     static RuntimeConfig& GetInstance() {
-        static RuntimeConfig instance;
-        return instance;
+        // Static storage (BSS segment), no malloc call
+        alignas(alignof(RuntimeConfig)) static char storage[sizeof(RuntimeConfig)];
+        static auto* instance = new (storage) RuntimeConfig();
+        return *instance;
     }
 
     AM_NODISCARD size_t MaxTCSize() const {
@@ -66,11 +69,15 @@ public:
     }
 
     AM_NODISCARD bool UseMapPopulate() const {
-        return use_map_populate;
+        return use_map_populate_;
     }
 
     AM_NODISCARD size_t HugePageCacheSize() const {
         return huge_page_cache_size_;
+    }
+
+    AM_NODISCARD bool EnableScavenger() const {
+        return enable_scavenger_;
     }
 
 private:
@@ -82,7 +89,8 @@ private:
 
     size_t max_tc_size_ = SizeConfig::MAX_TC_SIZE;
     size_t huge_page_cache_size_ = 16;
-    bool use_map_populate = false;// default: Lazy Allocation
+    bool use_map_populate_ = false;// default: Lazy Allocation
+    bool enable_scavenger_ = false;
 };
 
 }// namespace aethermind

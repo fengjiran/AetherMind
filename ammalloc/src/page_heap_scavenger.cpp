@@ -82,6 +82,9 @@ void PageHeapScavenger::ScavengeOnePass() {
 
                 if (now - cur->last_used_time_ms >= kIdleThresholdMs) {
                     page_cache.span_lists_[i].erase(cur);
+                    // Mark as "in use" to prevent ReleaseSpan from merging
+                    cur->is_used = true;
+
                     if (!head) {
                         head = cur;
                         tail = cur;
@@ -95,7 +98,7 @@ void PageHeapScavenger::ScavengeOnePass() {
             }
         }// PageCache Unlock
 
-        // 在锁外执行耗时的 madvise
+        // Perform time-consuming madvise outside the lock
         auto* cur = head;
         while (cur) {
             void* start_ptr = cur->GetStartAddr();
@@ -110,12 +113,15 @@ void PageHeapScavenger::ScavengeOnePass() {
             cur = cur->next;
         }
 
-        // 再次加锁，挂回 PageCache
+        // Once again lock to put back to PageCache
         if (head) {
             std::lock_guard<std::mutex> lock(page_cache.GetMutex());
             cur = head;
             while (cur) {
                 auto* next = cur->next;
+                // Mark as unused to allow merging
+                cur->is_used = false;
+                cur->last_used_time_ms = GetCurrentTimeMs();
                 page_cache.span_lists_[i].push_back(cur);
                 cur = next;
             }

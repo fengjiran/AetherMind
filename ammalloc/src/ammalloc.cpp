@@ -6,7 +6,9 @@
 #include "ammalloc/config.h"
 #include "ammalloc/page_allocator.h"
 #include "ammalloc/page_cache.h"
+#include "ammalloc/page_heap_scavenger.h"
 #include "ammalloc/thread_cache.h"
+#include <atomic>
 #include <cstddef>
 
 namespace {
@@ -60,7 +62,40 @@ struct ThreadCacheCleaner {
 
 thread_local ThreadCacheCleaner tc_cleaner;
 
+// Minimal, safe and lock-free background scavenger thread starter
+void EnsureScavengerStarted() noexcept {
+    if (!RuntimeConfig::GetInstance().EnableScavenger()) {
+        return;
+    }
+
+    static std::atomic<bool> started{false};
+
+    // Most cases are fast path, just check if the thread is already started
+    // clang-format off
+    if (!started.load(std::memory_order_acquire)) AM_UNLIKELY {
+        bool expected = false;
+        if (started.compare_exchange_strong(expected, true,
+                                            std::memory_order_acq_rel)) {
+            try {
+                PageHeapScavenger::GetInstance().Start();
+            } catch (const std::exception& e) {
+                // If thread creation fails (e.g., system resources exhausted),
+                // log the error and swallow the exception.
+                // At this point 'started' remains true, so no retries will be attempted.
+                // The memory pool can still function without a background scavenger thread,
+                // but it will just won't proactively reduce RSS.
+                spdlog::warn("Failed to start PageHeapScavenger: {}. Continuing without background GC.", e.what());
+            } catch (...) {
+                spdlog::error("Unknown exception while starting PageHeapScavenger.");
+            }
+        }
+    }
+    // clang-format on
+}
+
 AM_NOINLINE void* am_malloc_slow_path(size_t size) {
+    EnsureScavengerStarted();
+
     if (size > SizeConfig::MAX_TC_SIZE) {
         const auto align_size = (size + SystemConfig::PAGE_SIZE - 1) & ~(SystemConfig::PAGE_SIZE - 1);
         const size_t page_num = align_size >> SystemConfig::PAGE_SHIFT;

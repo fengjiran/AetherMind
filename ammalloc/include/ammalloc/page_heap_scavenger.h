@@ -14,8 +14,9 @@ namespace aethermind {
 class PageHeapScavenger {
 public:
     static PageHeapScavenger& GetInstance() {
-        static PageHeapScavenger instance;
-        return instance;
+        alignas(alignof(PageHeapScavenger)) static char storage[sizeof(PageHeapScavenger)];
+        static PageHeapScavenger* instance = new (storage) PageHeapScavenger();
+        return *instance;
     }
 
     PageHeapScavenger(const PageHeapScavenger&) = delete;
@@ -23,10 +24,6 @@ public:
 
     void Start();
     void Stop();
-
-    ~PageHeapScavenger() {
-        Stop();
-    }
 
 private:
     PageHeapScavenger() = default;

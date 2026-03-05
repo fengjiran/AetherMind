@@ -113,23 +113,25 @@
   2. 定期扫描 PageCache 中闲置超过 `kIdleThresholdMs` (如 5s) 的 Span。
   3. 调用 `madvise(MADV_DONTNEED)` 释放物理内存（保留虚拟地址）。
   4. 维护 Span 的 `is_committed` 状态。
-- 状态：核心实现已完成（见 `page_heap_scavenger.cpp/h`）。**待修复 P0 并发安全问题**（Off-list Span 标记、析构顺序）后可用。
-- 关联 Review: [docs/review.md - P0 Item 1 & 2]
+- 状态：**已实现并修复所有 P0 问题**（启动集成、并发安全、析构顺序、时间戳语义）。详见下方关联条目。
 
-- [ ] #### **修复 PageHeapScavenger 并发安全风险 [Bug]**
+- [x] #### **修复 PageHeapScavenger 并发安全风险 [Bug]**
 - 背景：`ScavengeOnePass()` 将 Span 从 `span_lists_` 摘下后释放锁执行 `madvise`，此时 `ReleaseSpan()` 可能通过 `PageMap` 找到该 Span 并尝试 `erase`，导致链表损坏。
 - 方案：摘下 Span 前临时设置 `span->is_used = true` 使其对合并逻辑不可见，挂回后恢复 `false`。
 - 严重级：P0
+- 状态：已修复（见 `page_heap_scavenger.cpp:86, 123`）
 
-- [ ] #### **修复 PageHeapScavenger 析构顺序 UAF 风险 [Bug]**
+- [x] #### **修复 PageHeapScavenger 析构顺序 UAF 风险 [Bug]**
 - 背景：`PageHeapScavenger` 和 `PageCache` 均为函数内静态单例，析构顺序跨 TU 不确定。
 - 方案：改为显式生命周期管理（`ammalloc_init`/`ammalloc_shutdown` 钩子）或采用 leaky singleton 策略。
 - 严重级：P0
+- 状态：已修复（采用 placement new + 静态存储的 leaky singleton 模式，见 `page_cache.h:127-132`、`page_heap_scavenger.h:16-19`）
 
-- [ ] #### **修复 `last_used_time_ms` 语义不一致 [Bug]**
+- [x] #### **修复 `last_used_time_ms` 语义不一致 [Bug]**
 - 背景：新通过系统补货进入 PageCache 的 Span 未初始化 `last_used_time_ms`（默认 0），会被立即误判为 idle。
 - 方案：在所有 Span 进入 free list 的路径统一写入当前时间戳，或特判 0 为“不参与清理”。
 - 严重级：P2
+- 状态：已修复（在 `ReleaseSpan`、`AllocSpanLocked` 的切分路径和系统补货路径统一初始化，见 `page_cache.cpp:227, 256, 332`）
 
 - [ ] #### **实现 ThreadCache 垃圾回收 (GC) [Feature]**
 - 背景：线程如果从忙碌转为闲置，其 ThreadCache 中囤积的内存无法被其他线程复用。
@@ -162,6 +164,15 @@
 - 方案：提供 AddMallocHook / RemoveMallocHook 接口。
 
 ### 📝 变更日志 (Changelog)
+
+- 2026-3-5
+  - 完成 PageHeapScavenger 所有 P0 问题修复：
+    - Off-list Span 并发安全：`is_used` 标记保护（`page_heap_scavenger.cpp:86, 123`）
+    - 静态析构顺序 UAF：placement new + BSS 段静态存储的 leaky singleton（`page_cache.h`、`page_heap_scavenger.h`）
+    - `last_used_time_ms` 语义：在切分、系统补货、释放三处统一初始化（`page_cache.cpp:227, 256, 332`）
+  - 启动集成完成：`EnsureScavengerStarted()` 在 `am_malloc_slow_path` 中调用，支持 `AM_ENABLE_SCAVENGER` 环境变量控制
+  - 更新开发日志记录完整修复过程。
+  - **PageHeapScavenger 功能现在完整可用**。
 
 - 2026-3-4
   - 完成 `PageHeapScavenger` 核心实现，标记为完成（待修复并发安全问题后可用）。

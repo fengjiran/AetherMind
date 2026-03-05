@@ -94,6 +94,11 @@ void EnsureScavengerStarted() noexcept {
 }
 
 AM_NOINLINE void* am_malloc_slow_path(size_t size) {
+    // Note: Thread creation may take a few milliseconds.
+    // This is acceptable because:
+    // 1. It's on the slow path (already paying for mmap/munmap)
+    // 2. It only happens once per process lifetime
+    // 3. The alternative (early thread creation) impacts process startup time
     EnsureScavengerStarted();
 
     if (size > SizeConfig::MAX_TC_SIZE) {

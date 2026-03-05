@@ -90,7 +90,7 @@ private:
     size_t max_tc_size_ = SizeConfig::MAX_TC_SIZE;
     size_t huge_page_cache_size_ = 16;
     bool use_map_populate_ = false;// default: Lazy Allocation
-    bool enable_scavenger_ = false;
+    bool enable_scavenger_ = true;
 };
 
 }// namespace aethermind

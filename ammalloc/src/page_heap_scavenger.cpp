@@ -14,7 +14,7 @@ void PageHeapScavenger::Start() {
     if (!scavenge_thread_.joinable()) {
         // std::jthread automatically passes the internal stop_token to the bound function
         scavenge_thread_ = std::jthread(&PageHeapScavenger::ScavengeLoop, this);
-        spdlog::info("PageHeapScavenger thread started.");
+        spdlog::debug("PageHeapScavenger thread started.");
     }
 }
 
@@ -24,7 +24,7 @@ void PageHeapScavenger::Stop() {
         scavenge_thread_.request_stop();
         // Explicitly wait for the thread to stop, although jthread destructor will also join
         scavenge_thread_.join();
-        spdlog::info("PageHeapScavenger thread stopped.");
+        spdlog::debug("PageHeapScavenger thread stopped.");
     }
 }
 

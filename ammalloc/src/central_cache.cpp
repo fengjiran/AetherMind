@@ -301,7 +301,10 @@ Span* CentralCache::GetOneSpan(Bucket& bucket, size_t size, std::unique_lock<std
     lock.unlock();
     auto page_num = SizeClass::GetMovePageNum(size);
     auto* span = PageCache::GetInstance().AllocSpan(page_num, size);
-    AM_DCHECK(span != nullptr);
+    if (!span) {
+        return nullptr;
+    }
+
     span->Init(size);
     lock.lock();
     bucket.span_list.push_front(span);

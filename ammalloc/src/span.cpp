@@ -101,7 +101,9 @@ void Span::FreeObject(void* ptr) {
 
     size_t bitmap_idx = global_obj_idx >> 6;
     int bit_pos = global_obj_idx & (64 - 1);
-    bitmap[bitmap_idx] |= (1ULL << bit_pos);
+    uint64_t mask = 1ULL << bit_pos;
+    AM_DCHECK((bitmap[bitmap_idx] & mask) == 0, "double free detected.");
+    bitmap[bitmap_idx] |= mask;
     --use_count;
 }
 

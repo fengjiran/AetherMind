@@ -13,7 +13,9 @@ void PageHeapScavenger::Start() {
     // Ensure it won't be started twice
     if (!scavenge_thread_.joinable()) {
         // std::jthread automatically passes the internal stop_token to the bound function
-        scavenge_thread_ = std::jthread(&PageHeapScavenger::ScavengeLoop, this);
+        scavenge_thread_ = std::jthread([this](std::stop_token stoken) {
+            ScavengeLoop(stoken);
+        });
         spdlog::debug("PageHeapScavenger thread started.");
     }
 }

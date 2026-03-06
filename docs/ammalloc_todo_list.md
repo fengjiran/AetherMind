@@ -33,21 +33,22 @@
 - 文件位置：`ammalloc/src/page_allocator.cpp:12-59`
 - 状态：已修复（2026-03-06）
 
-- [ ] #### **Span::FreeObject 缺少 double-free 防护 [Bug/Safety]**
+- [x] #### **Span::FreeObject 缺少 double-free 防护 [Bug/Safety]**
 
 - 背景：当前实现直接设置 bitmap 位并递减 `use_count`，无重复释放检查。若用户 double-free，`use_count` 会下溢为 `SIZE_MAX`，此后 `AllocObject()` 永远返回 `nullptr`。
 
 - 方案：在 `FreeObject` 中检查 bitmap 位状态，若已释放则触发 `AM_DCHECK`：
   ```cpp
-  uint64_t bit = 1ULL << bit_pos;
-  AM_DCHECK(!(bitmap[bitmap_idx] & bit), "double free detected");
-  bitmap[bitmap_idx] |= bit;
+  uint64_t mask = 1ULL << bit_pos;
+  AM_DCHECK((bitmap[bitmap_idx] & mask) == 0, "double free detected.");
+  bitmap[bitmap_idx] |= mask;
   --use_count;
   ```
-- 文件位置：`ammalloc/src/span.cpp:98-106`
-- 相关测试：`test_span.cpp:DoubleFreeCorruption` 已证实此 bug。
+- 文件位置：`ammalloc/src/span.cpp:105-107`
+- 状态：已修复（2026-03-06）
+- 相关测试：`test_span.cpp:DoubleFreeCorruption`
 
-- [ ] #### **GetOneSpan Release 模式空指针解引用 [Bug/Safety]**
+- [x] #### **GetOneSpan Release 模式空指针解引用 [Bug/Safety]**
 
 - 背景：`AM_DCHECK(span != nullptr)` 在 Release 构建（`NDEBUG`）下编译为空。若 `AllocSpan` 返回 `nullptr`（OOM），下一行 `span->Init(size)` 直接崩溃。
 
@@ -57,7 +58,8 @@
   if (!span) return nullptr;
   span->Init(size);
   ```
-- 文件位置：`ammalloc/src/central_cache.cpp:303-305`
+- 文件位置：`ammalloc/src/central_cache.cpp:303-306`
+- 状态：已修复（2026-03-06）
 
 - [x] #### **修复 ObjectPool 内存对齐失效问题 [Bug]**
 

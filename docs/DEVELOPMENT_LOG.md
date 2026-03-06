@@ -7,65 +7,19 @@
 
 ---
 
-## 📅 2026-03-07 (Saturday)
-### 🚀 今日概要
-完成 `ammalloc` 最后两个 P0 级别安全漏洞修复：`Span::FreeObject` double-free 防护和 `GetOneSpan` Release 模式空指针解引用保护。至此，所有已识别的 P0 级内存安全问题均已解决，仅剩 Radix Tree 地址空间限制一项待修复。
-
-### 🧩 任务关联 (Task Linkage)
-- [x] **[TODO: Span::FreeObject 缺少 double-free 防护]** - 已修复，bitmap 位状态检查实现完成。
-- [x] **[TODO: GetOneSpan Release 模式空指针解引用]** - 已修复，运行时检查替代 DCHECK 完成。
-
-### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
-1. **[Issue] Span::FreeObject double-free 导致 use_count 下溢 (P0) - 已修复**
-    - **根因**: `FreeObject()` 直接设置 bitmap 位并递减 `use_count`，无重复释放检查。若用户 double-free，`use_count` 会下溢为 `SIZE_MAX`，此后 `AllocObject()` 因 `use_count >= capacity` 永远返回 `nullptr`。
-    - **修复方案**: 利用 bitmap 位状态作为分配/释放标记（`0=已分配`, `1=已释放`），在设置位之前检查：
-        ```cpp
-        uint64_t mask = 1ULL << bit_pos;
-        AM_DCHECK((bitmap[bitmap_idx] & mask) == 0, "double free detected.");
-        bitmap[bitmap_idx] |= mask;
-        --use_count;
-        ```
-    - **关键设计**: Debug-only 检查（`AM_DCHECK`），Release 模式零开销；与 `AllocObject` 的位清除逻辑（`bitmap &= ~mask`）形成完整状态机。
-    - **代码位置**: `ammalloc/src/span.cpp:104-107`
-
-2. **[Issue] GetOneSpan Release 模式 OOM 崩溃 (P0) - 已修复**
-    - **根因**: `PageCache::AllocSpan()` 在内存不足时返回 `nullptr`，原代码使用 `AM_DCHECK(span != nullptr)` 检查，但 `AM_DCHECK` 在 Release 构建（`NDEBUG`）下编译为空，导致 `span->Init(size)` 空指针解引用崩溃。
-    - **修复方案**: 将编译期断言替换为运行时检查，OOM 时优雅返回：
-        ```cpp
-        auto* span = PageCache::GetInstance().AllocSpan(page_num, size);
-        if (!span) {
-            return nullptr;  // 运行时检查，Release 也生效
-        }
-        span->Init(size);
-        ```
-    - **代码位置**: `ammalloc/src/central_cache.cpp:303-306`
-
-### 📊 P0 修复进度总览
-
-| # | 问题 | 状态 | 修复位置 |
-|---|------|------|----------|
-| 1 | HugePageCache std::vector 自举违反 | ✅ 已完成 | `page_allocator.cpp` |
-| 2 | Span::FreeObject double-free 防护 | ✅ **今日完成** | `span.cpp:105-106` |
-| 3 | GetOneSpan Release 空指针解引用 | ✅ **今日完成** | `central_cache.cpp:303-306` |
-| 4 | PageHeapScavenger 并发安全 | ✅ 已完成 | `page_heap_scavenger.cpp` |
-| 5 | PageHeapScavenger 析构顺序 UAF | ✅ 已完成 | `page_cache.h`, `page_heap_scavenger.h` |
-| 6 | `last_used_time_ms` 语义不一致 | ✅ 已完成 | `page_cache.cpp` |
-| 7 | Radix Tree 48-bit 限制 | ⏳ 待修复 | `page_map.h` |
-
-**结论**: 6/7 P0 问题已解决，仅剩 Radix Tree 地址空间限制。
-
-### 💡 架构思考 (Architectural Insights)
-- **AM_DCHECK vs AM_CHECK 的使用边界**: `AM_DCHECK` 适用于内部不变量（如 double-free 检测，Release 可容忍），`AM_CHECK` 或运行时检查适用于外部输入（如 OOM，必须处理）。本次两个修复体现了这一区分：double-free 是编程错误，Debug 检测即可；OOM 是资源限制，必须运行时处理。
-- **Bitmap 作为状态机的威力**: `Span` 的 bitmap 不仅是空闲列表，更是对象生命周期状态机（分配=0，释放=1）。通过位运算实现 O(1) 的分配/释放/检测，体现了位级优化的工程价值。
-
----
-
 ## 📅 2026-03-06 (Friday)
 ### 🚀 今日概要
-修复 `HugePageCache` 的自举约束违反问题（P0），移除 `std::vector` 改用定长原生数组，消除 `am_malloc` 替换系统 malloc 后的递归风险。同步统一了所有核心单例（PageCache、PageHeapScavenger、HugePageCache、RuntimeConfig）的 Leaky Singleton 实现模式。
+完成 `ammalloc` 三个 P0 级别安全漏洞修复：
+1. `HugePageCache` 自举约束违反（移除 `std::vector` 改用定长数组）
+2. `Span::FreeObject` double-free 防护
+3. `GetOneSpan` Release 模式空指针解引用保护
+
+至此，所有已识别的 P0 级内存安全问题均已解决，仅剩 Radix Tree 地址空间限制一项待修复。同步统一了所有核心单例的 Leaky Singleton 实现模式。
 
 ### 🧩 任务关联 (Task Linkage)
 - [x] **[TODO: HugePageCache 使用 std::vector 违反自举约束]** - 已修复，定长数组替换完成。
+- [x] **[TODO: Span::FreeObject 缺少 double-free 防护]** - 已修复，bitmap 位状态检查实现完成。
+- [x] **[TODO: GetOneSpan Release 模式空指针解引用]** - 已修复，运行时检查替代 DCHECK 完成。
 
 ### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
 1. **[Issue] HugePageCache std::vector 触发 malloc 递归 (P0) - 已修复**
@@ -86,9 +40,47 @@
         size_t cache_size_{0};              // 栈顶指针
         ```
 
-2. **[Issue] ReleaseAll 索引越界风险 (P2) - 已发现待修复**
+2. **[Issue] Span::FreeObject double-free 导致 use_count 下溢 (P0) - 已修复**
+    - **根因**: `FreeObject()` 直接设置 bitmap 位并递减 `use_count`，无重复释放检查。若用户 double-free，`use_count` 会下溢为 `SIZE_MAX`，此后 `AllocObject()` 因 `use_count >= capacity` 永远返回 `nullptr`。
+    - **修复方案**: 利用 bitmap 位状态作为分配/释放标记（`0=已分配`, `1=已释放`），在设置位之前检查：
+        ```cpp
+        uint64_t mask = 1ULL << bit_pos;
+        AM_DCHECK((bitmap[bitmap_idx] & mask) == 0, "double free detected.");
+        bitmap[bitmap_idx] |= mask;
+        --use_count;
+        ```
+    - **关键设计**: Debug-only 检查（`AM_DCHECK`），Release 模式零开销；与 `AllocObject` 的位清除逻辑（`bitmap &= ~mask`）形成完整状态机。
+    - **代码位置**: `ammalloc/src/span.cpp:104-107`
+
+3. **[Issue] GetOneSpan Release 模式 OOM 崩溃 (P0) - 已修复**
+    - **根因**: `PageCache::AllocSpan()` 在内存不足时返回 `nullptr`，原代码使用 `AM_DCHECK(span != nullptr)` 检查，但 `AM_DCHECK` 在 Release 构建（`NDEBUG`）下编译为空，导致 `span->Init(size)` 空指针解引用崩溃。
+    - **修复方案**: 将编译期断言替换为运行时检查，OOM 时优雅返回：
+        ```cpp
+        auto* span = PageCache::GetInstance().AllocSpan(page_num, size);
+        if (!span) {
+            return nullptr;  // 运行时检查，Release 也生效
+        }
+        span->Init(size);
+        ```
+    - **代码位置**: `ammalloc/src/central_cache.cpp:303-306`
+
+4. **[Issue] ReleaseAll 索引越界风险 (P2) - 已发现待修复**
     - **问题**: 第 51 行 `munmap(cache_[cache_size_--], ...)` 使用的是递减前的值，当 `cache_size_` 为 1 时，访问 `cache_[1]` 越界（有效索引只有 0）。
     - **建议修复**: 改为 `munmap(cache_[--cache_size_], ...)`，先减后用。
+
+### 📊 P0 修复进度总览
+
+| # | 问题 | 状态 | 修复位置 |
+|---|---|------|----------|
+| 1 | HugePageCache std::vector 自举违反 | ✅ 已完成 | `page_allocator.cpp` |
+| 2 | Span::FreeObject double-free 防护 | ✅ **今日完成** | `span.cpp:105-106` |
+| 3 | GetOneSpan Release 空指针解引用 | ✅ **今日完成** | `central_cache.cpp:303-306` |
+| 4 | PageHeapScavenger 并发安全 | ✅ 已完成 | `page_heap_scavenger.cpp` |
+| 5 | PageHeapScavenger 析构顺序 UAF | ✅ 已完成 | `page_cache.h`, `page_heap_scavenger.h` |
+| 6 | `last_used_time_ms` 语义不一致 | ✅ 已完成 | `page_cache.cpp` |
+| 7 | Radix Tree 48-bit 限制 | ⏳ 待修复 | `page_map.h` |
+
+**结论**: 6/7 P0 问题已解决，仅剩 Radix Tree 地址空间限制。
 
 ### 💡 架构思考 (Architectural Insights)
 - **自举安全的设计原则**: 在分配器内部，**绝对禁止**使用标准 STL 容器（`std::vector`、`std::string`、`std::map` 等）和 `new`/`delete`。所有数据结构必须是：
@@ -97,6 +89,8 @@
     3. 嵌入式链表（intrusive list）结构
     4. 使用 placement new 在静态存储上构造的自定义容器
 - **一致性优于多样性**: PageCache、PageHeapScavenger、HugePageCache、RuntimeConfig 现在统一使用 Leaky Singleton 模式（placement new + `alignas` 静态存储）。这种一致性降低了心智负担，便于后续维护和审计。
+- **AM_DCHECK vs AM_CHECK 的使用边界**: `AM_DCHECK` 适用于内部不变量（如 double-free 检测，Release 可容忍），`AM_CHECK` 或运行时检查适用于外部输入（如 OOM，必须处理）。本次修复体现了这一区分：double-free 是编程错误，Debug 检测即可；OOM 是资源限制，必须运行时处理。
+- **Bitmap 作为状态机的威力**: `Span` 的 bitmap 不仅是空闲列表，更是对象生命周期状态机（分配=0，释放=1）。通过位运算实现 O(1) 的分配/释放/检测，体现了位级优化的工程价值。
 
 ---
 

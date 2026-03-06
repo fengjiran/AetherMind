@@ -7,6 +7,46 @@
 
 ---
 
+## 📅 2026-03-06 (Friday)
+### 🚀 今日概要
+修复 `HugePageCache` 的自举约束违反问题（P0），移除 `std::vector` 改用定长原生数组，消除 `am_malloc` 替换系统 malloc 后的递归风险。同步统一了所有核心单例（PageCache、PageHeapScavenger、HugePageCache、RuntimeConfig）的 Leaky Singleton 实现模式。
+
+### 🧩 任务关联 (Task Linkage)
+- [x] **[TODO: HugePageCache 使用 std::vector 违反自举约束]** - 已修复，定长数组替换完成。
+
+### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
+1. **[Issue] HugePageCache std::vector 触发 malloc 递归 (P0) - 已修复**
+    - **根因**: `HugePageCache` 使用 `std::vector<void*>` 作为缓存容器。当 `am_malloc` 通过 `LD_PRELOAD` 或链接替换系统 `malloc` 后，`std::vector::reserve()` 和 `push_back()` 内部会调用 `malloc`，导致无限递归和栈溢出。
+    - **修复方案**: 
+        1. 将 `std::vector<void*>` 替换为定长原生数组 `void* cache_[kMaxCacheCapacity]`
+        2. 使用栈式 LIFO 操作（`cache_size_` 作为栈顶指针）替代 vector 的复杂扩容逻辑
+        3. 同步采用 Leaky Singleton 模式（placement new + BSS 段静态存储），与 PageCache、PageHeapScavenger 保持一致
+    - **代码位置**: `ammalloc/src/page_allocator.cpp:12-59`
+    - **关键改动**:
+        ```cpp
+        // 修复前
+        std::vector<void*> cache_;  // 危险：会调用 malloc
+        
+        // 修复后
+        static constexpr size_t kMaxCacheCapacity = 16;
+        void* cache_[kMaxCacheCapacity]{};  // 安全：编译期确定，无动态分配
+        size_t cache_size_{0};              // 栈顶指针
+        ```
+
+2. **[Issue] ReleaseAll 索引越界风险 (P2) - 已发现待修复**
+    - **问题**: 第 51 行 `munmap(cache_[cache_size_--], ...)` 使用的是递减前的值，当 `cache_size_` 为 1 时，访问 `cache_[1]` 越界（有效索引只有 0）。
+    - **建议修复**: 改为 `munmap(cache_[--cache_size_], ...)`，先减后用。
+
+### 💡 架构思考 (Architectural Insights)
+- **自举安全的设计原则**: 在分配器内部，**绝对禁止**使用标准 STL 容器（`std::vector`、`std::string`、`std::map` 等）和 `new`/`delete`。所有数据结构必须是：
+    1. 编译期确定大小的原生数组，或
+    2. 通过 `PageAllocator::SystemAlloc` 直接 mmap 的内存，或
+    3. 嵌入式链表（intrusive list）结构
+    4. 使用 placement new 在静态存储上构造的自定义容器
+- **一致性优于多样性**: PageCache、PageHeapScavenger、HugePageCache、RuntimeConfig 现在统一使用 Leaky Singleton 模式（placement new + `alignas` 静态存储）。这种一致性降低了心智负担，便于后续维护和审计。
+
+---
+
 ## 📅 2026-03-05 (Thursday)
 ### 🚀 今日概要
 完成 `PageHeapScavenger` 后台清理线程的关键并发安全修复和生命周期管理重构，成功解决线程退出时的段错误问题。

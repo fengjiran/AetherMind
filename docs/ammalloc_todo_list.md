@@ -19,16 +19,19 @@
    
 - 优先级：最高。这是实现 `PageHeapScavenger` (基于 `jthread`) 的先决条件。
 
-- [ ] #### **HugePageCache 使用 std::vector 违反自举约束 [Bug/Safety]**
+- [x] #### **HugePageCache 使用 std::vector 违反自举约束 [Bug/Safety]**
 
 - 背景：`PageAllocator` 底层 `HugePageCache` 使用 `std::vector` 作为缓存容器。若 `am_malloc` 已通过 `LD_PRELOAD` 替换系统 `malloc`，`std::vector` 的 `reserve/push_back` 会触发系统 `malloc`，导致无限递归 → 栈溢出。
 
-- 方案：将 `std::vector<void*>` 替换为定长栈数组：
+- 方案：将 `std::vector<void*>` 替换为定长原生数组，并采用 leaky singleton 模式：
   ```cpp
-  void* cache_[kMaxCacheSize];
-  size_t count_{0};
+  static constexpr size_t kMaxCacheCapacity = 16;
+  void* cache_[kMaxCacheCapacity]{};
+  size_t cache_size_{0};
   ```
-- 文件位置：`ammalloc/src/page_allocator.cpp:66`
+- 实现细节：使用 placement new + 静态存储避免静态析构顺序问题；LIFO 栈式操作（`cache_[--cache_size_]` 和 `cache_[cache_size_++]`）；提供 `ReleaseAllForTesting()` 接口供 ASan 使用。
+- 文件位置：`ammalloc/src/page_allocator.cpp:12-59`
+- 状态：已修复（2026-03-06）
 
 - [ ] #### **Span::FreeObject 缺少 double-free 防护 [Bug/Safety]**
 

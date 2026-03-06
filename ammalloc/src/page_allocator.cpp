@@ -7,66 +7,60 @@
 #include <cstring>
 #include <sys/mman.h>
 
-namespace aethermind {
-
 namespace {
 
 class HugePageCache {
 public:
     static HugePageCache& GetInstance() {
-        static HugePageCache instance;
-        return instance;
+        alignas(alignof(HugePageCache)) static char storage[sizeof(HugePageCache)];
+        static auto* instance = new (storage) HugePageCache();
+        return *instance;
     }
 
-    ~HugePageCache() {
-#ifdef AM_DEBUG
-        ReleaseAll();// 测试模式下清理，为了让 ASan 通过
-#endif
-        // 生产模式下什么都不做
-        // 依赖 OS 回收，避免析构顺序 crash
-    }
+    ~HugePageCache() = default;
 
     void* Get() {
         std::lock_guard lock(mtx_);
-        if (cache_.empty()) {
+        if (cache_size_ == 0) {
             return nullptr;
         }
 
-        void* ptr = cache_.back();
-        cache_.pop_back();
-        return ptr;
+        return cache_[--cache_size_];
     }
 
     bool Put(void* ptr) {
         std::lock_guard lock(mtx_);
-        static size_t huge_page_cache_size =
-                RuntimeConfig::GetInstance().HugePageCacheSize();
-        if (cache_.size() >= huge_page_cache_size) {
+        if (cache_size_ >= kMaxCacheCapacity) {
             return false;
         }
-        cache_.push_back(ptr);
+
+        cache_[cache_size_++] = ptr;
         return true;
     }
 
-    void ReleaseAll() {
-        std::lock_guard lock(mtx_);
-        while (!cache_.empty()) {
-            void* ptr = cache_.back();
-            cache_.pop_back();
-            munmap(ptr, SystemConfig::HUGE_PAGE_SIZE);
-        }
+    void ReleaseAllForTesting() {
+        ReleaseAll();
     }
 
 private:
-    HugePageCache() {
-        cache_.reserve(16);
+    HugePageCache() = default;
+
+    void ReleaseAll() {
+        std::lock_guard lock(mtx_);
+        while (cache_size_ > 0) {
+            munmap(cache_[--cache_size_], aethermind::SystemConfig::HUGE_PAGE_SIZE);
+        }
     }
 
     std::mutex mtx_;
-    std::vector<void*> cache_;
+    static constexpr size_t kMaxCacheCapacity = 16;
+    void* cache_[kMaxCacheCapacity]{};
+    size_t cache_size_{0};
 };
 
 }// namespace
+
+namespace aethermind {
 
 #ifdef AMMALLOC_TEST
 std::atomic<bool> g_mock_huge_alloc_fail{false};
@@ -309,7 +303,7 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
 }
 
 void PageAllocator::ReleaseHugePageCache() {
-    HugePageCache::GetInstance().ReleaseAll();
+    HugePageCache::GetInstance().ReleaseAllForTesting();
 }
 
 }// namespace aethermind

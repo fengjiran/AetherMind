@@ -273,7 +273,7 @@ void CentralCache::InitTransferCache() {
     size_t total_ptrs = 0;
     for (size_t i = 0; i < kNumSizeClasses; ++i) {
         size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));
-        // Strategy: TransferCache capacity is 2x the batch size to provide a high-water mark buffer.
+        // Strategy: TransferCache capacity is 8x the batch size to provide a high-water mark buffer.
         total_ptrs += kCapScale * batch_num;
     }
 

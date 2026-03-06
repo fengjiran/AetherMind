@@ -108,7 +108,7 @@ class CentralCache {
         SpinLock transfer_cache_lock;
         /// Current number of cached object pointers.
         size_t transfer_cache_count{0};
-        /// Dynamic capacity, usually configured as 2x the batch size.
+        /// Dynamic capacity, usually configured as 8x the batch size.
         size_t transfer_cache_capacity{0};
         /// Pointer to a dynamically allocated array of object pointers.
         void** transfer_cache{nullptr};

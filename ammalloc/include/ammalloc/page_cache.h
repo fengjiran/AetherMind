@@ -18,6 +18,16 @@ inline uint64_t GetCurrentTimeMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 }
 
+struct alignas(SystemConfig::PAGE_SIZE) RadixRootNode {
+    std::array<std::atomic<void*>, PageConfig::RADIX_ROOT_SIZE> children;
+
+    RadixRootNode() {
+        for (auto& child: children) {
+            child.store(nullptr, std::memory_order_relaxed);
+        }
+    }
+};
+
 /**
  * @brief Node structure for the Radix Tree (PageMap).
  *
@@ -95,7 +105,8 @@ public:
 
 private:
     // Atomic root pointer for double-checked locking / lazy initialization.
-    inline static std::atomic<RadixNode*> root_ = nullptr;
+    inline static std::atomic<RadixRootNode*> root_ = nullptr;
+    inline static ObjectPool<RadixRootNode> radix_root_pool_{};
     // radix node pool
     inline static ObjectPool<RadixNode> radix_node_pool_{};
 };

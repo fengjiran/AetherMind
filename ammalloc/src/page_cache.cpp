@@ -18,9 +18,9 @@ Span* PageMap::GetSpan(size_t page_id) {
     }
 
     // Calculate Radix Tree indices
-    const size_t i0 = page_id >> (PageConfig::RADIX_BITS * 3);
-    const size_t i1 = (page_id >> (PageConfig::RADIX_BITS * 2)) & PageConfig::RADIX_MASK;
-    const size_t i2 = (page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
+    const size_t i0 = page_id >> (PageConfig::RADIX_NODE_BITS * 3);
+    const size_t i1 = (page_id >> (PageConfig::RADIX_NODE_BITS * 2)) & PageConfig::RADIX_MASK;
+    const size_t i2 = (page_id >> PageConfig::RADIX_NODE_BITS) & PageConfig::RADIX_MASK;
     const size_t i3 = page_id & PageConfig::RADIX_MASK;
 
     auto* p1 = static_cast<RadixNode*>(curr->children[i0].load(std::memory_order_acquire));
@@ -51,7 +51,7 @@ Span* PageMap::GetSpan(size_t page_id) {
 void PageMap::SetSpan(Span* span) {
     auto* curr = root_.load(std::memory_order_relaxed);
     if (!curr) {
-        curr = radix_node_pool_.New();
+        curr = radix_root_pool_.New();
         AM_DCHECK((reinterpret_cast<uintptr_t>(curr) & (4096 - 1)) == 0);
         root_.store(curr, std::memory_order_release);
     }
@@ -62,9 +62,9 @@ void PageMap::SetSpan(Span* span) {
     // batch fill the leaf nodes
     while (start < end) {
         // Step 1: Ensure Level 2 Node exists
-        const size_t i0 = start >> (PageConfig::RADIX_BITS * 3);
-        const size_t i1 = (start >> (PageConfig::RADIX_BITS * 2)) & PageConfig::RADIX_MASK;
-        const size_t i2 = (start >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
+        const size_t i0 = start >> (PageConfig::RADIX_NODE_BITS * 3);
+        const size_t i1 = (start >> (PageConfig::RADIX_NODE_BITS * 2)) & PageConfig::RADIX_MASK;
+        const size_t i2 = (start >> PageConfig::RADIX_NODE_BITS) & PageConfig::RADIX_MASK;
         const size_t i3 = start & PageConfig::RADIX_MASK;
 
         auto* p1 = static_cast<RadixNode*>(curr->children[i0].load(std::memory_order_relaxed));
@@ -108,10 +108,10 @@ void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
     auto remaining_pages = page_num;
 
     while (remaining_pages > 0) {
-        const size_t i0 = cur_page_id >> (PageConfig::RADIX_BITS * 3);
+        const size_t i0 = cur_page_id >> (PageConfig::RADIX_NODE_BITS * 3);
         auto* p1 = static_cast<RadixNode*>(curr->children[i0].load(std::memory_order_relaxed));
         if (!p1) {
-            constexpr size_t l0_coverage = 1ULL << (PageConfig::RADIX_BITS * 3);
+            constexpr size_t l0_coverage = 1ULL << (PageConfig::RADIX_NODE_BITS * 3);
             size_t skip = l0_coverage - (cur_page_id & (l0_coverage - 1));
             size_t step = std::min(remaining_pages, skip);
             cur_page_id += step;
@@ -119,10 +119,10 @@ void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
             continue;
         }
 
-        const size_t i1 = (cur_page_id >> (PageConfig::RADIX_BITS * 2)) & PageConfig::RADIX_MASK;
+        const size_t i1 = (cur_page_id >> (PageConfig::RADIX_NODE_BITS * 2)) & PageConfig::RADIX_MASK;
         auto* p2 = static_cast<RadixNode*>(p1->children[i1].load(std::memory_order_relaxed));
         if (!p2) {
-            constexpr size_t l1_coverage = 1ULL << (PageConfig::RADIX_BITS * 2);
+            constexpr size_t l1_coverage = 1ULL << (PageConfig::RADIX_NODE_BITS * 2);
             size_t skip = l1_coverage - (cur_page_id & (l1_coverage - 1));
             size_t step = std::min(remaining_pages, skip);
             cur_page_id += step;
@@ -130,10 +130,10 @@ void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
             continue;
         }
 
-        const size_t i2 = (cur_page_id >> PageConfig::RADIX_BITS) & PageConfig::RADIX_MASK;
+        const size_t i2 = (cur_page_id >> PageConfig::RADIX_NODE_BITS) & PageConfig::RADIX_MASK;
         auto* p3 = static_cast<RadixNode*>(p2->children[i2].load(std::memory_order_relaxed));
         if (!p3) {
-            constexpr size_t l2_coverage = 1ULL << PageConfig::RADIX_BITS;
+            constexpr size_t l2_coverage = 1ULL << PageConfig::RADIX_NODE_BITS;
             size_t skip = l2_coverage - (cur_page_id & (l2_coverage - 1));
             size_t step = std::min(remaining_pages, skip);
             cur_page_id += step;
@@ -154,6 +154,7 @@ void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
 
 void PageMap::Reset() {
     root_.store(nullptr, std::memory_order_relaxed);
+    radix_root_pool_.ReleaseMemory();
     radix_node_pool_.ReleaseMemory();
 }
 

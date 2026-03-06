@@ -28,6 +28,14 @@ struct SystemConfig {
     constexpr static size_t BITMAP_BITS = 64;
     // alignment
     constexpr static size_t ALIGNMENT = 16;
+
+#ifdef AM_USE_57BIT_VA
+    static constexpr size_t VA_BITS = 57;
+#else
+    static constexpr size_t VA_BITS = 48;
+#endif
+
+    constexpr static size_t PAGE_ID_BITS = VA_BITS - PAGE_SHIFT;
 };
 
 // ===========================================================================
@@ -49,8 +57,10 @@ struct PageConfig {
     // Maximum number of consecutive pages managed by Page Cache
     // (to avoid excessively large Spans)
     constexpr static size_t MAX_PAGE_NUM = 128;
-    constexpr static size_t RADIX_BITS = 9;
-    constexpr static size_t RADIX_NODE_SIZE = 1 << RADIX_BITS;
+    constexpr static size_t RADIX_NODE_BITS = 9;
+    constexpr static size_t RADIX_NODE_SIZE = 1 << RADIX_NODE_BITS;
+    constexpr static size_t RADIX_ROOT_BITS = SystemConfig::PAGE_ID_BITS - 3 * RADIX_NODE_BITS;
+    constexpr static size_t RADIX_ROOT_SIZE = 1 << RADIX_ROOT_BITS;
     constexpr static size_t RADIX_MASK = RADIX_NODE_SIZE - 1;
     constexpr static size_t MAX_ALLOC_RETRIES = 3;
 };

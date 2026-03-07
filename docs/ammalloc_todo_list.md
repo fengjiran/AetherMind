@@ -16,7 +16,7 @@
      - 对策：此时直接走“最底层路径”，绕过 `PageCache`，直接通过 `PageAllocator::SystemAlloc (mmap) `返回内存，或者返回一个预先分配好的小静态缓冲区。
   2. 如果 `in_malloc == false`，将其设为 `true`，执行正常逻辑，结束后设为 `false`。
   3. 在递归路径（`in_malloc == true`）下，由于 `mmap` 分配的内存无法通过 `PageMap::GetSpan` 正常释放（因为我们还没把它封装成 `Span` 注册到树里），这会导致分配器内部泄露（虽然很少）。为了完美解决，可以在递归路径下使用一个简单的“静态紧急缓冲区”或者也将其注册为普通的 `SystemAlloc` 并在 `am_free` 中通过检查 `PageMap` 是否为空来处理。
-   
+  
 - 优先级：最高。这是实现 `PageHeapScavenger` (基于 `jthread`) 的先决条件。
 
 - [x] #### **HugePageCache 使用 std::vector 违反自举约束 [Bug/Safety]**
@@ -76,11 +76,32 @@
   
 - 状态：已完成，见 `ammallloc/page_allocator.h`。
 
-- [ ] ####   **修复 Radix Tree 地址空间限制 (48-bit vs 57-bit) [Bug]** 
+- [x] #### **修复 Radix Tree 地址空间限制 (48-bit vs 57-bit) [Bug]** 
 
 - 背景：当前 4 层基数树仅覆盖 48 位虚拟地址空间 (9 bits * 4 levels + 12 bits offset)。在支持 5-level paging (57-bit) 的现代 CPU (如 Intel Ice Lake+) 上，mmap 可能返回高位地址，导致 `PageMap::GetSpan` 数组越界崩溃。
 
-- 方案：在 `GetSpan` 和 `SetSpan` 中增加地址范围检查，拒绝超出 48-bit 的地址，或者实现动态层级调整。
+- 方案：实现"胖根节点"（Fat Root Node）：
+  1. 引入 `RadixRootNode` 结构，其大小根据虚拟地址位宽动态计算
+  2. 48-bit 模式：`RADIX_ROOT_SIZE = 512`（4KB 根节点）
+  3. 57-bit 模式：`RADIX_ROOT_SIZE = 262144`（2MB 根节点）
+  4. 通过 CMake 选项 `USE_57BIT_VA` 启用 57-bit 支持（默认 48-bit）
+  5. 保持原有的 4 层 9-bit 主树结构不变
+
+- 关键改动：
+  ```cpp
+  // config.h
+  #ifdef AM_USE_57BIT_VA
+      static constexpr size_t VA_BITS = 57;
+  #else
+      static constexpr size_t VA_BITS = 48;
+  #endif
+  constexpr static size_t RADIX_ROOT_BITS = PAGE_ID_BITS - 3 * RADIX_NODE_BITS;
+  constexpr static size_t RADIX_ROOT_SIZE = 1 << RADIX_ROOT_BITS;
+  ```
+
+- 文件位置：`ammalloc/include/ammalloc/config.h`, `ammalloc/include/ammalloc/page_cache.h`
+- 状态：**已修复（2026-03-07）**
+- 设计决策：选择胖根节点而非增加第 5 层，避免热路径多一次解引用；默认 48-bit 兼容绝大多数系统。
 
 ### 🟠 P1: 性能微调 (Performance Tuning)
 *基于 Benchmark 数据和 Review 意见的针对性优化，性价比极高。*

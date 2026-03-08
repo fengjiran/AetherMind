@@ -80,6 +80,15 @@ TEST(ConfigUtilsTest, ParseBool) {
     EXPECT_FALSE(details::ParseBool("10"));        // 包含1但不完全是1
 }
 
+TEST(ConfigTest, LegacyParserTests) {
+    // Keep original parser tests to ensure no regression
+    EXPECT_EQ(details::ParseSize("100"), 100);
+    EXPECT_EQ(details::ParseSize("1k"), 1024);
+    EXPECT_EQ(details::ParseSize("1M"), 1024 * 1024);
+    EXPECT_TRUE(details::ParseBool("true"));
+    EXPECT_FALSE(details::ParseBool("false"));
+}
+
 TEST(CommonUtilsTest, AlignUp) {
     // 1. Power of two alignment (Fast path)
     EXPECT_EQ(details::AlignUp(1, 8), 8);
@@ -262,13 +271,18 @@ TEST(SizeClassTest, MovePageConfiguration) {
     }
 }
 
-TEST(ConfigTest, LegacyParserTests) {
-    // Keep original parser tests to ensure no regression
-    EXPECT_EQ(details::ParseSize("100"), 100);
-    EXPECT_EQ(details::ParseSize("1k"), 1024);
-    EXPECT_EQ(details::ParseSize("1M"), 1024 * 1024);
-    EXPECT_TRUE(details::ParseBool("true"));
-    EXPECT_FALSE(details::ParseBool("false"));
+TEST(SizeClassTest, FragmentationAnalysis) {
+    double total_waste = 0;
+    size_t total_alloc = 0;
+
+    for (size_t sz = 1; sz <= 32768; ++sz) {
+        size_t bucket = SizeClass::RoundUp(sz);
+        total_waste += (bucket - sz);
+        total_alloc += bucket;
+    }
+
+    double avg_fragmentation = total_waste / total_alloc;
+    EXPECT_LT(avg_fragmentation, 0.125);  // < 12.5%
 }
 
 } // namespace

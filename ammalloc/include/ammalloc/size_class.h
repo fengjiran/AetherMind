@@ -10,6 +10,7 @@
 
 #include <array>
 #include <bit>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -48,9 +49,11 @@ constexpr static size_t CalculateIndex(size_t size) noexcept {
 
 constexpr static size_t CalculateSize(size_t idx) noexcept {
     // Fast path for small objects (0-128 bytes): Maps index 0..15 back to 8..128
+    // clang-format off
     if (idx < 16) AM_LIKELY {
-            return (idx + 1) << 3;
-        }
+        return (idx + 1) << 3;
+    }
+    // clang-format on
 
     // Decoding logarithmic stepped index
     size_t relative_idx = idx - 16;
@@ -176,10 +179,12 @@ public:
      * @return The maximum byte size, or 0 if idx is out of range.
      */
     AM_ALWAYS_INLINE static size_t SafeSize(size_t idx) noexcept {
+        // clang-format off
         if (idx >= kNumSizeClasses) AM_UNLIKELY {
             AM_CHECK(false, "SizeClass::Size index {} out of range [0, {})", idx, kNumSizeClasses);
             return 0;
         }
+        // clang-format on
         return size_table_[idx];
     }
 
@@ -189,11 +194,14 @@ public:
      * @return Aligned size.
      */
     AM_ALWAYS_INLINE static constexpr size_t RoundUp(size_t size) noexcept {
-        if (size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
-                return size;
-            }
+        size_t idx = Index(size);
+        // clang-format off
+        if (idx == std::numeric_limits<size_t>::max()) {
+            return size;
+        }
+        // clang-format on
 
-        return Size(Index(size));
+        return size_table_[idx];
     }
 
     // -----------------------------------------------------------------------

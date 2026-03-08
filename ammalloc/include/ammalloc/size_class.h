@@ -6,6 +6,7 @@
 #define AETHERMIND_AMMALLOC_SIZE_CLASS_H
 
 #include "ammalloc/config.h"
+#include "utils/logging.h"
 
 #include <array>
 #include <bit>
@@ -23,9 +24,11 @@ constexpr static size_t CalculateIndex(size_t size) noexcept {
 
     // Fast path for small objects: 8-byte alignment (0-128 bytes)
     // Maps [1, 8] -> 0, ..., [121, 128] -> 15
+    // clang-format off
     if (size <= 128) AM_LIKELY {
-            return (size - 1) >> 3;
-        }
+        return (size - 1) >> 3;
+    }
+    // clang-format on
 
     /*
      * Stepped Mapping for objects > 128B:
@@ -163,6 +166,20 @@ public:
      */
     AM_ALWAYS_INLINE static constexpr size_t Size(size_t idx) noexcept {
         // O(1) table lookup for all size classes
+        // Caller must ensure idx < kNumSizeClasses
+        return size_table_[idx];
+    }
+
+    /**
+     * @brief Safe version of Size() with bounds checking for debug/testing.
+     * @param idx The size class index.
+     * @return The maximum byte size, or 0 if idx is out of range.
+     */
+    AM_ALWAYS_INLINE static size_t SafeSize(size_t idx) noexcept {
+        if (idx >= kNumSizeClasses) AM_UNLIKELY {
+            AM_CHECK(false, "SizeClass::Size index {} out of range [0, {})", idx, kNumSizeClasses);
+            return 0;
+        }
         return size_table_[idx];
     }
 

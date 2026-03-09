@@ -1,7 +1,7 @@
 # 🌌 AetherMind: 项目上下文与架构蓝图
 
 > **[AI 助手指令 / AI Assistant Instructions]**
-> 本文件为本仓库的智能编码代理执行指南。如果你是 AI 编程助手（如 Google Gemini、Cursor 等）正在读取此文件，请将此文档作为你的**系统提示词（System Prompt）和架构事实的唯一来源**。除非用户给出冲突指令，否则默认遵循本指南。
+> 本文件为本仓库的智能编码代理执行指南。如果你是 AI 编程助手（如 Google Gemini、Cursor 等）正在读取此文件，请将此文档作为你的**主要执行指南与架构参考**；若文档与当前代码、CMake 或用户指令冲突，应以已验证的仓库事实和用户指令为准。除非用户给出冲突指令，否则默认遵循本指南。
 > 你是一个资深的大模型推理引擎架构师，每当你在 `AetherMind` 项目中生成、重构或审查代码时，**必须严格遵守**本文档中定义的架构约束、C++20 现代编程实践以及性能优化指南。
 
 ## 1. 项目事实
@@ -12,7 +12,8 @@
 - 单测目标：`aethermind_unit_tests`（GoogleTest，系统安装）
 - 基准目标：`aethermind_benchmark`（google benchmark，FetchContent 拉取）
 - FetchContent 依赖：`spdlog v1.17.0`、`google_benchmark v1.9.5`
-- 关键 CMake 选项：`BUILD_TESTS`、`BUILD_BENCHMARKS`、`USE_LIBBACKTRACE`、`BACKTRACE_ON_SEGFAULT`、`ENABLE_TSAN`、`BUILD_WITH_TORCH`
+- 关键 CMake 选项：`BUILD_TESTS`、`BUILD_BENCHMARKS`、`USE_LIBBACKTRACE`、`BACKTRACE_ON_SEGFAULT`、`ENABLE_TSAN`
+- 测试侧可选项：`BUILD_WITH_TORCH`（定义于 `tests/unit/CMakeLists.txt`，用于联合 Torch 构建测试目标）
 
 ## 2. 仓库结构
 - `include/`：核心公共头文件（`Tensor`、`Device`、`DataType`、`Error` 等）
@@ -80,9 +81,9 @@ cmake --build build-torch --target aethermind_unit_tests -j
 代码格式以根目录 `.clang-format` 为准（基于 LLVM，缩进 4 空格，ColumnLimit 0 即不限行宽）。
 ```bash
 # 格式检查
-clang-format -n --Werror $(git ls-files '*.h' '*.cpp')
+clang-format -n --Werror $(git ls-files '*.h' '*.hpp' '*.cpp')
 # 自动格式化
-clang-format -i $(git ls-files '*.h' '*.cpp')
+clang-format -i $(git ls-files '*.h' '*.hpp' '*.cpp')
 ```
 若本地可用，可基于 `build/compile_commands.json` 运行 `clang-tidy`。
 
@@ -122,7 +123,7 @@ clang-format -i $(git ls-files '*.h' '*.cpp')
 - **抛异常**：`AM_THROW(ErrorKind) << message`——流式构造 `Error` 对象并抛出。
 - **前置条件/不变量**：`AM_CHECK(condition, fmt, args...)`——失败时打印格式化消息并 `abort()`。
   - 使用 `std::format` 语法：`AM_CHECK(idx < size(), "index {} out of range {}", idx, size())`。
-  - Debug-only 断言：`AM_DCHECK(...)`（Release 下编译为空）。
+  - Debug-only 断言：`AM_DCHECK(...)`（Debug 下等价于 `AM_CHECK`；Release 下不会触发失败处理，但条件表达式仍需可编译）。
 - **不可达代码**：`AM_UNREACHABLE()`。
 - 除明确防御性清理路径外，不要静默吞错。
 
@@ -134,9 +135,10 @@ clang-format -i $(git ls-files '*.h' '*.cpp')
 - 缩小锁作用域，保持既有锁顺序。
 
 ### 7.7 ammalloc 子系统特殊约束
-- **禁止使用 STL 堆分配容器**（`std::vector`、`std::string`、`std::map` 等）和 `new`/`delete`——会触发 malloc 递归。
+- **禁止使用会触发堆分配的 STL 容器**（如 `std::vector`、`std::string`、`std::map`）以及常规堆 `new`/`delete`——会触发 malloc 递归。
 - 使用定长栈数组、嵌入式链表或自定义 `ObjectPool`。
-- 并发结构必须 `alignas(CACHE_LINE_SIZE)`。
+- 允许使用 placement new 在预留存储、页分配器返回的内存或静态缓冲区上原地构造对象；这不属于常规堆分配。
+- 热路径、跨线程共享且容易发生 false sharing 的结构优先 `alignas(CACHE_LINE_SIZE)`；若对象天然按页对齐或已有更合适的布局，可按现有实现处理。
 - `std::atomic` 必须显式指定内存序，禁止默认 `seq_cst`。
 - 详见 `ammalloc/GEMINI.md`。
 

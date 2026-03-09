@@ -285,4 +285,12 @@ TEST(SizeClassTest, FragmentationAnalysis) {
     EXPECT_LT(avg_fragmentation, 0.125);  // < 12.5%
 }
 
+TEST(SizeClassTest, SafeSizeBounds) {
+    EXPECT_EQ(SizeClass::SafeSize(0), 8);
+    EXPECT_EQ(SizeClass::SafeSize(15), 128);
+    EXPECT_EQ(SizeClass::SafeSize(16), 160);
+    EXPECT_EQ(SizeClass::SafeSize(SizeClass::kNumSizeClasses - 1), 
+              SizeConfig::MAX_TC_SIZE);
+}
+
 } // namespace

@@ -238,3 +238,4 @@ constexpr FreeList() noexcept : head_(nullptr), size_(0), max_size_(1) {}
 - TransferCache 预取策略设计精巧——摊还 mutex 开销
 - `static_assert` 广泛用于编译期验证 SizeClass 映射
 - 注释质量高，含设计理由、性能分析、数学公式
+

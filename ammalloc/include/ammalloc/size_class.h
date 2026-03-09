@@ -329,4 +329,4 @@ static_assert(SizeClass::Index(150) == 16);
 
 }// namespace aethermind
 
-#endif//AETHERMIND_AMMALLOC_SIZE_CLASS_H
+#endif// AETHERMIND_AMMALLOC_SIZE_CLASS_H

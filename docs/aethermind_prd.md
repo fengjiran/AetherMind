@@ -179,7 +179,7 @@ int am_session_generate(
 | attention | GQA, MQA, MHA | sliding window 报错 |
 | activation | SwiGLU | 其他报错 |
 | norm | RMSNorm | LayerNorm 报错 |
-| quantization | INT8/INT4 per-channel | 其他 scheme 报错 |
+| quantization | INT8 per-channel, INT4 group-wise (group_size=128) | 其他 scheme 报错 |
 
 ### 3.2 内存管理
 
@@ -191,7 +191,7 @@ int am_session_generate(
 │ Model Weights (INT4/INT8/FP16)          │
 │ ~3.5GB for 7B INT4                      │
 ├─────────────────────────────────────────┤
-│ KV Cache (Static)                       │
+│ KV Cache (Static,FP16/BF16 format)      │
 │ [layer][head][seq_len][head_dim]        │
 │ Max 4k tokens, pre-allocated            │
 ├─────────────────────────────────────────┤
@@ -230,7 +230,7 @@ Output Tokens
 ```
 
 **关键约束**：
-- 单线程执行（无线程池/并行解码）
+- **控制流单线程**（API 调用同步阻塞），但**算子层允许使用轻量级多线程**（如 OpenMP）加速 GEMM/GEMV 计算，以达成性能目标
 - 贪婪采样唯一：`next_token = argmax(logits)`
 - 确定性：相同输入必产生相同输出（跨平台、跨编译器）
 

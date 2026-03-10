@@ -4,16 +4,17 @@
 > 本文件为本仓库的智能编码代理执行指南。若文档与当前代码、CMake 或用户指令冲突，应以已验证的仓库事实和用户指令为准。
 > 你是资深大模型推理引擎架构师，在 `AetherMind` 项目中生成、重构或审查代码时，**必须严格遵守**本文档定义的架构约束、C++20 现代编程实践及性能优化指南。
 
-## 1. 项目事实
+## 1. 项目简介
+- 项目名称：AetherMind
+- 项目目标：分阶段构建大模型推理引擎
+  - Phase 1（当前）：CPU 嵌入式推理运行时，支持 Llama 家族模型，C/C++ API
+  - Phase 2+：服务化/分布式推理引擎（见 docs/aethermind_prd.md 附录）
 - 语言：C++20（`CMAKE_CXX_STANDARD 20`）
 - 构建系统：CMake >= 3.28
 - 核心库目标：`AetherMind`（shared）
-- 分配器目标：`ammalloc`（static）
-- 单测目标：`aethermind_unit_tests`（GoogleTest，系统安装）
-- 基准目标：`aethermind_benchmark`（google benchmark，FetchContent）
-- FetchContent 依赖：`spdlog v1.17.0`、`google_benchmark v1.9.5`
-- 关键 CMake 选项：`BUILD_TESTS`、`BUILD_BENCHMARKS`、`USE_LIBBACKTRACE`、`BACKTRACE_ON_SEGFAULT`、`ENABLE_TSAN`
-- 测试侧可选项：`BUILD_WITH_TORCH`（定义于 `tests/unit/CMakeLists.txt`）
+- 内存池目标：`ammalloc`（static）
+- 单元测试目标：`aethermind_unit_tests`（GoogleTest，系统安装）
+- 性能基准目标：`aethermind_benchmark`（Google Benchmark，FetchContent）
 
 ## 2. 仓库结构
 - `include/`：核心公共头文件（`Tensor`、`Device`、`DataType`、`Error` 等）
@@ -26,6 +27,19 @@
 - `docs/`：架构与开发文档
 - `tools/`：辅助工具
 - `3rdparty/`：第三方代码（非必要不要修改）
+
+## 2.5 Phase 1 快速开始
+```bash
+# 仅构建 Phase 1 运行时（CPU 嵌入式，最小依赖）
+cmake -S . -B build -DBUILD_TESTS=ON
+cmake --build build --target AetherMind -j
+cmake --build build --target aethermind_unit_tests -j
+
+# 运行 Phase 1 核心测试
+./build/tests/unit/aethermind_unit_tests --gtest_filter=InferenceRuntime.*
+./build/tests/unit/aethermind_unit_tests --gtest_filter=SafetensorsLoader.*
+./build/tests/unit/aethermind_unit_tests --gtest_filter=LlamaDecode.*
+```
 
 ## 3. 构建命令
 ```bash
@@ -138,12 +152,21 @@ clang-format -i $(git ls-files '*.h' '*.hpp' '*.cpp')
 - `std::atomic` 必须显式指定内存序，禁止默认 `seq_cst`。
 - 详见 `ammalloc/GEMINI.md`。
 
+### 7.8 C++20 特性支持矩阵
+| 特性 | 最低版本 | 状态 | 说明 |
+|------|----------|------|------|
+| Concepts | GCC 10+ / Clang 10+ | **必须使用** | 零开销静态多态 |
+| Coroutines | GCC 11+ / Clang 13+ | Phase 2+ 使用 | 异步调度 NCCL/GPU |
+| `std::expected` | GCC 12+ / Clang 16+ | **可选** | 不支持时用自定义 `Expected<T,E>` |
+| Ranges | GCC 10+ / Clang 16+ | 谨慎使用 | 避免编译膨胀，生产代码慎用 |
+
 ## 8. 额外 AI 指南
 - `.cursorrules`：不存在
 - `.cursor/rules/`：不存在
 - `.github/copilot-instructions.md`：不存在
-- `GEMINI.md`：项目架构蓝图与 C++20 编码指引（架构/性能敏感改动前必读）。
-- `ammalloc/GEMINI.md`：分配器子系统的 AI 上下文指南。
+- `GEMINI.md`：项目架构蓝图与 C++20 编码指引（架构/性能敏感改动前必读）
+- `ammalloc/GEMINI.md`：分配器子系统的 AI 上下文指南
+- `docs/aethermind_prd.md`：**Phase 1 产品需求与验收标准（必读）**
 
 ## 9. 推荐代理工作流
 1. 修改前先阅读相关 `CMakeLists.txt` 和 `GEMINI.md`（若涉及架构/性能）。

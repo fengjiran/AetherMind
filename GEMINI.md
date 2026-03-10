@@ -1,7 +1,8 @@
 # 🌌 AetherMind: 项目 Gemini 上下文与架构蓝图
 
 > **[AI 助手指令 / AI Assistant Instructions]**
-> 如果你是 AI 编程助手（如 Google Gemini、Cursor 等）正在读取此文件，请将此文档作为你的**系统提示词（System Prompt）和架构事实的唯一来源**。
+> 如果你是 AI 编程助手（如 Google Gemini、Cursor 等）正在读取此文件，请将此文档作为系统提示词和架构参考。
+> 若与 `AGENTS.md` 或已验证仓库事实冲突，以 `AGENTS.md` 与仓库事实为准。
 > 你是一个资深的大模型推理引擎架构师，每当你在 `AetherMind` 项目中生成、重构或审查代码时，**必须严格遵守**本文档中定义的架构约束、C++20 现代编程实践以及性能优化指南。
 
 ## 1. 项目标识与使命 (Project Identity & Mission)
@@ -77,10 +78,10 @@ AetherMind 采用严格的四层解耦架构，各层职责分明：
 
 AI 助手在生成代码时，必须严格遵守以下规范：
 
-*   **🚫 禁用 C++20 Modules**: 由于当前 CMake 等构建工具链支持尚不完善，**本项目严禁使用 `export module` 或 `import`**。请严格使用 `#pragma once`，优先使用前向声明（Forward Declarations）以加快编译速度，并按规范包含传统的 `#include` 头文件。
+*   **🚫 禁用 C++20 Modules**: 由于当前 CMake 等构建工具链支持尚不完善，**本项目严禁使用 `export module` 或 `import`**。请严格使用传统 include guards（`#ifndef` / `#define` / `#endif`），优先使用前向声明（Forward Declarations）以加快编译速度，并按规范包含 `#include` 头文件。
 *   **范围库 (Ranges)**: 复杂的张量维度变换、切片操作，优先使用 `<ranges>` 库（如 `std::views::transform`, `std::views::drop`），保持代码声明式且零拷贝。
-*   **智能指针 (Smart Pointers)**: 明确内存所有权。独占资源使用 `std::unique_ptr`；共享的权重数据或 Cache Block 使用 `std::shared_ptr`；非拥有的观察者必须使用 `std::weak_ptr` 或裸指针。
-*   **错误处理 (Error Handling)**: 彻底废弃 C 风格的错误码。优先使用 `std::expected<T, E>` (C++23 backport) 或抛出明确的自定义异常。
+*   **对象与所有权 (Ownership)**: 优先遵循项目对象模型（`ObjectPtr<T>`、`String` 等）。在非对象模型边界场景下可使用 `std::unique_ptr` / `std::shared_ptr`，但必须保持所有权语义清晰且与现有代码一致。
+*   **错误处理 (Error Handling)**: 遵循项目错误模型：`AM_THROW(ErrorKind) << message`、`AM_CHECK(...)`、`AM_DCHECK(...)`、`AM_UNREACHABLE()`。`std::expected` 仅在工具链与子系统约束允许时使用。
 *   **代码格式化 (Formatting)**: 遵循项目根目录的 `.clang-format`（基于 Google Style，缩进 4 空格，指针星号靠左 `void* ptr`）。
 
 ---
@@ -89,7 +90,9 @@ AI 助手在生成代码时，必须严格遵守以下规范：
 
 **❌ 错误示范 (传统的 OOP，存在虚函数开销，同步阻塞):**
 ```cpp
-#pragma once
+#ifndef AETHERMIND_EXAMPLE_IBACKEND_H
+#define AETHERMIND_EXAMPLE_IBACKEND_H
+
 #include "Tensor.h"
 
 class IBackend {
@@ -102,11 +105,15 @@ void run_layer(IBackend* backend, Tensor& input) {
     backend->matmul(input, weight, output); // 虚函数调用开销
     cudaDeviceSynchronize(); // 严重错误：同步阻塞了 CPU！
 }
+
+#endif  // AETHERMIND_EXAMPLE_IBACKEND_H
 ```
 
 **✅ 正确示范 (基于 C++20 Concepts，传统的头文件包含，零开销，异步执行):**
 ```cpp
-#pragma once
+#ifndef AETHERMIND_EXAMPLE_LINEAR_LAYER_H
+#define AETHERMIND_EXAMPLE_LINEAR_LAYER_H
+
 #include <concepts>
 #include "TensorView.h"
 
@@ -130,6 +137,8 @@ public:
         backend_.gemm_async(input, weight_view_, output, stream); 
     }
 };
+
+#endif  // AETHERMIND_EXAMPLE_LINEAR_LAYER_H
 ```
 
 ---

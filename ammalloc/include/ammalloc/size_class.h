@@ -1,5 +1,22 @@
 //
-// Created by richard on 2/6/26.
+// ammalloc/size_class.h
+//
+// Size Class grading system.
+//
+// Responsible for mapping arbitrary memory requests to fixed-size buckets,
+// controlling internal fragmentation to < 12.5%.
+// Uses TCMalloc-style size classing:
+//   - Small objects: Table lookup O(1)
+//   - Large objects: Bitwise operations O(1)
+//
+// Primary exports:
+//   - SizeClass::Index() - Size -> Index
+//   - SizeClass::Size() - Index -> Size
+//   - SizeClass::RoundUp() - Round up to bucket size
+//
+// Thread Safety: All methods are pure functions, thread-safe.
+// ABI Stability: Bucket sizes and counts are compile-time constants,
+//                do not affect ABI.
 //
 
 #ifndef AETHERMIND_AMMALLOC_SIZE_CLASS_H
@@ -18,7 +35,7 @@ namespace aethermind {
 
 namespace details {
 
-constexpr static size_t CalculateIndex(size_t size) noexcept {
+static constexpr size_t CalculateIndex(size_t size) noexcept {
     if (size == 0) {
         return 0;
     }
@@ -47,7 +64,7 @@ constexpr static size_t CalculateIndex(size_t size) noexcept {
     return base_idx + group_offset;
 }
 
-constexpr static size_t CalculateSize(size_t idx) noexcept {
+static constexpr size_t CalculateSize(size_t idx) noexcept {
     // Fast path for small objects (0-128 bytes): Maps index 0..15 back to 8..128
     // clang-format off
     if (idx < 16) AM_LIKELY {
@@ -89,7 +106,7 @@ static_assert(details::CalculateIndex(1) == 0);
 static_assert(details::CalculateIndex(8) == 0);
 static_assert(details::CalculateIndex(9) == 1);
 static_assert(details::CalculateIndex(128) == 15);
-static_assert(details::CalculateIndex(129) == 16);// 129 落在 160 的桶里
+static_assert(details::CalculateIndex(129) == 16);// Falls into 160-byte bucket
 static_assert(details::CalculateIndex(160) == 16);
 
 /**
@@ -125,7 +142,7 @@ public:
      * @note This implementation is branch-prediction friendly and utilizes C++20
      *       bit-manipulation (std::bit_width) for O(1) performance without large tables.
      */
-    AM_ALWAYS_INLINE constexpr static size_t Index(size_t size) noexcept {
+    AM_ALWAYS_INLINE static constexpr size_t Index(size_t size) noexcept {
         // clang-format off
         if (size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
             return std::numeric_limits<size_t>::max();
@@ -287,9 +304,9 @@ public:
      * @brief The total number of size classes (buckets) available.
      * Calculated at compile-time to size the arrays in ThreadCache/CentralCache.
      */
-    constexpr static size_t kNumSizeClasses = details::CalculateIndex(SizeConfig::MAX_TC_SIZE) + 1;
+    static constexpr size_t kNumSizeClasses = details::CalculateIndex(SizeConfig::MAX_TC_SIZE) + 1;
 
-    constexpr static size_t kMaxBatchSize = 512;
+    static constexpr size_t kMaxBatchSize = 512;
 
 private:
     // -----------------------------------------------------------------------
@@ -298,7 +315,7 @@ private:
 
     // Table for O(1) Index lookup (Size -> Index)
     // Only covers small objects up to kSmallSizeThreshold
-    constexpr static auto small_index_table_ = []() consteval {
+    static constexpr auto small_index_table_ = []() consteval {
         std::array<uint8_t, SizeConfig::kSmallSizeThreshold + 1> small_index_table{};
         for (size_t sz = 0; sz <= SizeConfig::kSmallSizeThreshold; ++sz) {
             small_index_table[sz] = static_cast<uint8_t>(details::CalculateIndex(sz));
@@ -308,7 +325,7 @@ private:
 
     // Table for O(1) Size lookup (Index -> Size)
     // Covers ALL indices
-    constexpr static auto size_table_ = []() consteval {
+    static constexpr auto size_table_ = []() consteval {
         std::array<uint32_t, kNumSizeClasses> size_table{};
         for (size_t idx = 0; idx < kNumSizeClasses; ++idx) {
             size_table[idx] = static_cast<uint32_t>(details::CalculateSize(idx));

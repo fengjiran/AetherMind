@@ -1,5 +1,12 @@
 # C++ Coding Style Guidelines
 
+Scope and precedence:
+
+- This document defines practical coding style guidance for AetherMind.
+- If this document conflicts with `AGENTS.md` or verified repository constraints, follow `AGENTS.md` and repository facts.
+- Product-scope constraints (for example, Phase 1 boundaries) are defined in `docs/aethermind_prd.md`.
+- Subsystem-specific constraints override generic guidance (for example, `ammalloc/GEMINI.md`).
+
 ## Goals
 
 Code must prioritize:
@@ -29,9 +36,10 @@ Optimize only when there is a concrete reason.
 
 ## Language Standard
 
-- Prefer modern C++ already adopted by the project, typically C++17 or C++20.
+- This repository uses C++20 (`CMAKE_CXX_STANDARD 20`).
 - Use newer language features only when they improve clarity, safety, or correctness.
 - Do not introduce modern features purely for style.
+- `std::expected` is optional and depends on toolchain support; use custom `Expected<T, E>` when unavailable (see `AGENTS.md`).
 
 ------
 
@@ -54,7 +62,8 @@ If no project convention exists, use:
 
 - `snake_case` for variables and functions
 - `PascalCase` for types
-- `kPascalCase` or `k_snake_case` for constants, depending on local style
+- `kPascalCase` for enum members
+- `AM_UPPER_SNAKE_CASE` for project macros/constants
 - trailing underscore for private data members if the project already uses it
 
 Example:
@@ -196,8 +205,10 @@ for (auto it = values.begin(); it != end; ++it) {
 
 ### Preferred Tools
 
-- `std::unique_ptr` for exclusive ownership
-- `std::shared_ptr` only when shared lifetime is genuinely required
+- `ObjectPtr<T>` for intrusive reference-counted object ownership in project object model
+- `String` (project type) instead of `std::string` where project APIs require it
+- `std::unique_ptr` for exclusive ownership in non-intrusive ownership paths
+- `std::shared_ptr` only when shared lifetime is genuinely required and `ObjectPtr<T>` is not applicable
 - raw pointer for nullable non-owning access
 - reference for non-null non-owning access
 
@@ -230,8 +241,8 @@ void attach(Session* session);  // non-owning, nullable
 ## Error Handling
 
 - Follow the project’s established error model consistently.
-- If the project uses exceptions, use them intentionally and document throwing behavior where relevant.
-- If the project uses status/result types, propagate them consistently and avoid mixing styles.
+- Prefer project macros for consistency: `AM_THROW`, `AM_CHECK`, `AM_DCHECK`, `AM_UNREACHABLE`.
+- Use status/result-style returns only where the subsystem API already uses that contract.
 - Error paths must be readable and explicit.
 - Do not swallow errors silently.
 
@@ -241,6 +252,15 @@ Good:
 auto config = load_config(path);
 if (!config.ok()) {
     return config.error();
+}
+```
+
+Project-style example:
+
+```cpp
+AM_CHECK(idx < size(), "index {} out of range {}", idx, size());
+if (bad_state) {
+    AM_THROW(ErrorKind::InvalidArgument) << "invalid runtime state";
 }
 ```
 
@@ -351,6 +371,11 @@ Examples:
 - `std::variant` for closed alternatives
 - `std::span` for borrowed contiguous ranges when available in the project standard
 
+Note:
+
+- The STL guidance above is general and does not override subsystem constraints.
+- In `ammalloc`, avoid heap-allocating STL containers and regular heap `new`/`delete` to prevent allocator recursion; follow `ammalloc/GEMINI.md` and `AGENTS.md`.
+
 ------
 
 ## Performance
@@ -407,6 +432,7 @@ In particular:
 - Follow the project formatter if one exists.
 - If the project uses `clang-format`, do not hand-format against it.
 - Use consistent indentation and spacing.
+- Align pointers with the type: `Type* ptr`.
 - Prefer line breaks that improve readability over dense one-line expressions.
 - Keep declarations and control flow visually simple.
 

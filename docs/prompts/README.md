@@ -1,22 +1,46 @@
 # Prompt 说明
 
-> 用途：说明 `docs/prompts/` 下四个提示词的职责、衔接关系和最小启动流程。
+> 用途：说明 `docs/prompts/` 下提示词的职责、衔接关系和启动流程。
 
 ## Prompt 列表
-- `docs/prompts/new_session_template.md`：新会话入口。先收敛目标，再决定需要加载哪些 memory 与 handoff。
+
+### 会话启动（二选一）
+- **`docs/prompts/quick_resume.md`（默认）**：一句话快速接续工作。  
+  适合日常恢复："继续 ammalloc thread_cache 的工作"
+  
+- **`docs/prompts/new_session_template.md`（显式）**：结构化正式启动。  
+  适合首次建档、跨模块任务、需要预填 ADR/回写项的场景。
+
+### 会话流转
 - `docs/prompts/handoff.md`：会话交接摘要模板。输出给下一位 agent 的最小必要上下文。
 - `docs/prompts/generate_module_memory.md`：生成完整主模块或子模块 memory 草案，适合首次建档或大规模重写。
 - `docs/prompts/memory_update_and_adr.md`：生成 memory 增量和 ADR 草案，适合任务结束后的稳定结论回写。
 
 ## 工作流
+
+### 快速恢复（默认）
 ```text
 旧会话结束
-    -> handoff.md
-    -> 新会话读取 new_session_template.md
-    -> 加载 project/module/submodule memory
+    -> handoff.md 生成摘要
+    -> git commit/push docs/handoff/
+    
+新会话启动（家庭电脑）
+    -> git pull
+    -> 用户说："继续 [模块] [子模块] 的工作"
+    -> Agent 按 quick_resume.md 加载完整记忆 + 最新 handoff
     -> 执行任务
-    -> 若需要完整重建 memory：generate_module_memory.md
-    -> 若只需增量回写或新增决策：memory_update_and_adr.md
+    -> memory_update_and_adr.md 回写稳定结论
+    -> 新一轮 handoff
+```
+
+### 显式启动（备选）
+```text
+新会话启动
+    -> 用户填充 new_session_template.md 变量
+    -> Agent 按模板加载 memory 与 handoff
+    -> 执行任务
+    -> generate_module_memory.md 或 memory_update_and_adr.md
+    -> handoff.md
 ```
 
 ## 关系说明

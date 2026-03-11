@@ -16,10 +16,170 @@
 - 全局层：`docs/memory/project.md`。记录跨模块稳定事实、目录约定和默认规则。
 - 模块层：`docs/memory/modules/<module>/module.md`。记录主模块职责、边界、接口、不变量和长期约束。
 - 子模块层：`docs/memory/modules/<module>/submodules/<submodule>.md`。只在父模块内存在独立边界时拆分；与主模块同属领域层。
-- handoff 层：按 `docs/prompts/handoff.md` 输出当前会话摘要，只服务交接，不替代稳定记忆；输出存储在任务记录/对话中，不作为长期文件保存。
-- 读取顺序：`AGENTS.md` -> `docs/memory/README.md` -> `project.md` -> `module.md` -> `submodule.md`（如存在）-> handoff。
+- handoff 层：按 `docs/prompts/handoff.md` 输出当前会话摘要，只服务交接，不替代稳定记忆；输出存储在 `docs/handoff/` 目录，通过 git 同步实现跨机器恢复。
+- 读取顺序：`AGENTS.md` -> `docs/memory/README.md` -> `project.md` -> `module.md` -> `submodule.md`（如存在）-> handoff（从任务系统或 `docs/handoff/` 目录）。
 - 冲突优先级：用户显式指令与已验证代码/测试事实 > `AGENTS.md` > `docs/aethermind_prd.md` > ADR > 模块/子模块记忆 > `docs/memory/project.md` > handoff > `GEMINI.md`。
 - handoff 与稳定记忆冲突时，先回到代码、测试或用户指令验证；未验证前不要直接覆盖 memory 文件。
+
+## Handoff 存储规范
+
+### 存储位置
+- **路径**：`docs/handoff/workstreams/<workstream_key>/`
+- **位置**：`docs/handoff/` 目录在 git 管理下，随仓库同步
+- **目的**：
+  - 本地 fallback（任务系统不可用时）
+  - 跨机器恢复（通过 git pull/push 同步）
+
+### Workstream 键
+
+**On-disk 键（目录名）**：固定使用 `<module>__<submodule-or-none>`
+- 格式：`ammalloc__thread_cache` 或 `ammalloc__none`（无子模块时）
+- 作用：确定 handoff 文件存储的目录路径
+
+**逻辑键（frontmatter 元数据）**：`task_id`
+- 作用：在 frontmatter 中记录关联的任务 ID，便于追踪
+- 不作为目录键，避免任务 ID 变化导致目录结构变动
+
+### 文件命名
+```
+YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
+```
+- 时间戳：UTC，ISO 8601 格式
+- 示例：`20260311T103000Z--ses_abc123--sisyphus.md`
+
+### 文件格式（v1.1）
+```yaml
+---
+kind: handoff
+schema_version: "1.1"
+created_at: 2026-03-11T10:30:00Z
+session_id: ses_abc123
+task_id: task_456
+module: ammalloc
+submodule: thread_cache
+agent: sisyphus
+status: active                    # active | superseded | closed
+memory_status: pending            # not_needed | pending | applied
+supersedes: null                  # 被本 handoff 取代的旧文件
+closed_at: null                   # 关闭时间（仅 status=closed）
+closed_reason: null               # 关闭原因（仅 status=closed）
+---
+
+[正文按 docs/prompts/handoff.md 格式]
+```
+
+**字段说明**：
+- `schema_version`: "1.1"（当前版本）
+- `status`: 生命周期状态（active 可恢复，superseded/closed 终态）
+- `memory_status`: memory 回写进度（not_needed | pending | applied）
+- `supersedes`: 如果是取代旧 handoff，填写旧文件名
+- `closed_at`/`closed_reason`: 工作完成时填写
+
+### 生成策略
+
+**主要方式：用户主动触发（默认）**
+
+用户明确告知 Agent 生成 handoff：
+- 显式指令："生成 handoff"、"保存当前进度"
+- 结束语："今天先到这里"、"结束工作"、"我去吃饭了"
+
+**辅助方式：Agent 提示（可选）**
+
+Agent 在以下情况**提示**用户是否生成 handoff：
+- 长时间无操作（如 30 分钟）
+- 检测到重大进展（完成了阻塞点）
+- 对话即将结束或超时
+
+**原则**：Agent **不自动**提交 git，需要用户确认后手动 `git commit/push`
+
+### 跨机器同步流程
+
+**在公司电脑结束工作：**
+```bash
+# 1. 用户说"生成 handoff"（Agent 按 handoff.md 生成文件）
+# 2. 用户确认后提交到 git
+git add docs/handoff/
+git commit -m "handoff: ammalloc thread_cache progress"
+git push
+```
+
+**在家庭电脑继续工作：**
+```bash
+# 1. 拉取最新 handoff
+git pull
+# 2. Agent 自动读取 docs/handoff/ 最新文件恢复上下文
+```
+
+### 文件排序与状态过滤规则
+1. **只读取** `status: active` 的 handoff（忽略 `superseded` 和 `closed`）
+2. 在 active handoff 中，按 `created_at` 降序排序
+3. 若 `created_at` 相同，按文件名字典序 tie-break
+4. 忽略 frontmatter 缺失或格式损坏的文件
+
+### 状态转换
+```
+创建 handoff
+    ↓
+status: active, memory_status: pending/not_needed
+    ↓
+├─[生成新 handoff] → 新: active + supersedes=旧, 旧: superseded
+├─[回写 memory] → memory_status: applied
+└─[工作完成] → status: closed, closed_at, closed_reason
+```
+
+**规则**：
+- 同一 workstream 同时只能有一个 `active` handoff
+- `superseded` 和 `closed` 是终态，不可回到 `active`
+- 新 handoff 取代旧 handoff 时，必须更新旧文件为 `status: superseded`
+
+### 并发处理（git 冲突）
+- **场景**：两台电脑同时生成 handoff，git push 时冲突
+- **策略**：git 会标记冲突，用户手动选择保留哪一个
+- **简化**：通常保留最新时间戳的文件即可
+- **注意**：Agent 读取时只取 `status: active`，不自动合并
+
+### 生命周期管理
+- **写入**：直接写入目标路径（无需临时文件，git 管理版本）
+- **状态更新**：修改旧 handoff 的 `status` 时，同步更新 git
+- **清理策略**：
+  - **本地**：保留最近 3 个 active handoff，自动删除超过 7 天的旧文件
+  - **远端（git）**：保留所有历史（包括 superseded 和 closed），供审计追溯
+- **读取顺序**：
+  1. 任务系统/对话中的 handoff（优先）
+  2. `docs/handoff/` 目录中 `status: active` 的最新文件（本地 + git 同步）
+  3. 如果没有 active，视为"无可恢复状态"，直接从 memory 开始
+
+### 约束
+- handoff 保持**语义临时**：不是真相源，只是会话上下文缓存
+- 稳定结论必须在会话结束前回写到 `docs/memory/` 或 ADR
+- 不要把 `docs/handoff/` 当作长期历史记录（虽然 git 会保留历史）
+
+## 快捷恢复规则
+
+使用 [`docs/prompts/quick_resume.md`](../prompts/quick_resume.md) 一句话接续工作。
+
+### 触发示例
+```
+"继续 ammalloc thread_cache 的工作"
+"加载 tensor 的完整记忆和最新 handoff"
+```
+
+### 解析规则
+1. **精确匹配优先**：直接对应 `docs/memory/modules/<module>/`
+2. **模糊匹配仅模块级**：`继续 ammalloc` 只加载模块，不自动扫所有子模块
+3. **歧义时询问**：无法唯一命中时列出所有候选，要求明确指定
+
+### 加载顺序（与详细模式一致）
+```
+AGENTS.md -> docs/memory/README.md -> project.md -> module.md -> submodule.md -> handoff
+```
+
+### 精简输出（5要点）
+- 已解析范围（模块/子模块/workstream）
+- 已加载文件（✅ 标记实际加载的文件）
+- 当前接续目标
+- 下一步动作
+- 阻塞点（如有）
 
 ## 文件路径规范
 ```text

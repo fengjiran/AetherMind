@@ -1,4 +1,4 @@
-# 🌌 AetherMind 开发进度与技术决策日志 (Development Log)
+# 🌌 AetherMind 开发日志 (Development Log)
 
 > **[AI 助手指令]**: 本文档是 AetherMind 项目的“开发黑匣子”。
 > 1. 每当完成重大 Commits、解决复杂 Bug 或进行架构重构时，**必须**在此同步更新。

@@ -31,15 +31,15 @@ status: active
 
 ## 已确认事实
 - 项目当前阶段是 Phase 1：CPU 嵌入式推理运行时，目标模型族为 Llama，主接口形态为 C/C++ API；产品边界见 `docs/aethermind_prd.md`。
-- 语言与构建基线：C++20、CMake >= 3.28；核心库目标为 `AetherMind`，分配器目标为 `ammalloc`。
+- 语言与构建基线：C++20、CMake >= 3.28；核心库目标为 `AetherMind`，内存池目标为 `ammalloc`。
 - 验证入口：`aethermind_unit_tests` 使用 GoogleTest，`aethermind_benchmark` 使用 Google Benchmark。
 - 目录约定以 `AGENTS.md` 为索引：公共头文件放在 `include/`，核心实现放在 `src/`，第三方代码放在 `3rdparty/` 且默认不改。
-- 稳定记忆统一放在 `docs/memory/`；会话交接统一遵循 `docs/prompts/handoff.md`。
+- 稳定记忆统一放在 `docs/memory/`；会话交接统一遵循 `docs/prompts/handoff.md`，并放在`docs/handoff/`。
 
 ## 核心抽象
 ### 关键抽象
 - `AetherMind`：项目主共享库，承载推理运行时对外能力。
-- `ammalloc`：项目独立分配器子系统，需单独关注所有权与性能约束。
+- `ammalloc`：项目独立内存池子系统，需单独关注所有权与性能约束。
 - `memory hierarchy`：`project.md`、`module.md`、`submodule.md` 与 handoff 组成的长期上下文体系。
 
 ### 数据流
@@ -50,7 +50,7 @@ status: active
 
 ## 对外接口
 - 公共 API 头文件：`include/`。
-- 分配器公共头文件：`ammalloc/include/ammalloc/`。
+- 内存池公共头文件：`ammalloc/include/ammalloc/`。
 - 构建与验证入口：`AetherMind`、`ammalloc`、`aethermind_unit_tests`、`aethermind_benchmark`。
 - 详细命令与非默认配置要求：见 `AGENTS.md` 的构建、测试、benchmark 与 TSAN 章节。
 
@@ -74,7 +74,7 @@ status: active
 
 ## 性能约束
 - 热路径优先约束常数项、分配次数、复制次数和锁竞争，而不是抽象上的“可能优化”。
-- allocator 或性能敏感改动需要运行聚焦 benchmark；普通改动先跑最小相关构建与测试。
+- 内存池或性能敏感改动需要运行聚焦 benchmark；普通改动先跑最小相关构建与测试。
 - 验证顺序遵循“先最小目标，再扩大范围”；没有执行的验证在 handoff 中必须明确标记。
 - 未涉及：无。
 

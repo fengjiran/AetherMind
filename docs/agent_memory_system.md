@@ -5,7 +5,7 @@
 >
 > 版本: 1.0  
 > 日期: 2026-03-10  
-> 适用范围: AetherMind C++ 推理引擎项目
+> 适用范围: AetherMind 大模型推理引擎项目
 
 ---
 
@@ -57,7 +57,7 @@ Agent Memory System 旨在解决以下问题：
 
 ## 2. 架构设计
 
-### 2.1 三层记忆模型
+### 2.1 三层记忆模型 + Handoff 临时层
 
 ```
 ┌─────────────────────────────────────────┐
@@ -83,16 +83,24 @@ Agent Memory System 旨在解决以下问题：
 │  - 独立边界子组件                        │
 │  - 详细实现约束                          │
 └─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│        Handoff 层 (临时状态)             │
+│        docs/handoff/workstreams/        │
+│  - 当前进度、阻塞点、下一步               │
+│  - 会话级上下文，通过 git 同步            │
+│  - 支持跨机器恢复                        │
+└─────────────────────────────────────────┘
 ```
 
 ### 2.2 记忆层级说明
 
-| 层级 | 范围 | 稳定性 | 适用内容 |
-|------|------|--------|----------|
-| **全局层** | 整个项目 | 高 | 构建约定、代码规范、验证流程 |
-| **模块层** | 单个主模块 | 高 | 职责边界、核心抽象、对外接口 |
-| **子模块层** | 子组件 | 中高 | 实现细节、内部不变量、优化策略 |
-| **handoff** | 单次会话 | 低 | 当前进度、阻塞点、下一步行动 |
+| 层级 | 范围 | 稳定性 | 适用内容 | 存储位置 |
+|------|------|--------|----------|----------|
+| **全局层** | 整个项目 | 高 | 构建约定、代码规范、验证流程 | `docs/memory/project.md` |
+| **模块层** | 单个主模块 | 高 | 职责边界、核心抽象、对外接口 | `docs/memory/modules/<module>/module.md` |
+| **子模块层** | 子组件 | 中高 | 实现细节、内部不变量、优化策略 | `docs/memory/modules/<module>/submodules/<submodule>.md` |
+| **handoff** | 单次会话 | 低 | 当前进度、阻塞点、下一步行动 | `docs/handoff/workstreams/<key>/` (git 同步) |
 
 ### 2.3 冲突优先级
 
@@ -125,7 +133,8 @@ docs/memory/
 
 docs/prompts/
 ├── README.md                    # Prompt 说明
-├── new_session_template.md      # 新会话启动
+├── quick_resume.md              # 快捷恢复（默认入口）
+├── new_session_template.md      # 显式启动（备选）
 ├── handoff.md                   # 会话交接
 ├── memory_update_and_adr.md     # 记忆更新
 └── generate_module_memory.md    # 生成完整记忆
@@ -135,8 +144,8 @@ docs/decisions/
 ```
 
 - `docs/agent_memory_system.md` 位于 `docs/` 根目录，作为记忆系统的架构设计说明。
-- handoff 输出存储在任务记录/对话中，不作为长期文件保存。
-- 新会话通过对话上下文或任务系统获取最近一次 handoff。
+- handoff 输出存储在任务记录/对话中，同时持久化到 `docs/handoff/workstreams/<workstream_key>/`。
+- 通过 git 同步实现跨机器恢复。
 
 ### 3.2 文件命名规范
 
@@ -175,14 +184,14 @@ docs/decisions/
     ↓
 ┌──────────────────┐
 │   handoff.md     │  生成交接摘要
-│  (临时状态)      │
+│   (临时状态)      │
 └──────────────────┘
     ↓
 新会话启动
     ↓
 ┌──────────────────────────────────────────────────────────┐
-│ AGENTS.md -> docs/memory/README.md -> project.md ->     │
-│ module.md -> submodule.md (如存在) -> handoff           │
+│  AGENTS.md -> docs/memory/README.md -> project.md ->     │
+│   module.md -> submodule.md (如存在) -> handoff           │
 └──────────────────────────────────────────────────────────┘
     ↓
 执行任务
@@ -195,15 +204,15 @@ docs/decisions/
     │   ↓
     │  ┌──────────────────────────────────┐
     │  │ memory_update_and_adr.md         │
-    │  │  - 增量更新记忆                   │
-    │  │  - 创建新 ADR (如需要)            │
+    │  │  - 增量更新记忆                    │
+    │  │  - 创建新 ADR (如需要)             │
     │  └──────────────────────────────────┘
     │
     └─ 首次建档 / 整体重写
         ↓
        ┌──────────────────────────────────┐
        │ generate_module_memory.md        │
-       │  - 生成完整模块记忆               │
+       │  - 生成完整模块记忆                 │
        └──────────────────────────────────┘
     ↓
 新一轮 handoff
@@ -344,14 +353,22 @@ status: active             # active | draft | deprecated
 2. **生成 handoff**
    - 使用 `docs/prompts/handoff.md` 结构输出
    - 包含：目标、当前状态、涉及文件、阻塞点、推荐下一步
-   - handoff 输出存储在任务记录/对话中，不作为长期文件保存
+   - 输出到任务记录/对话中
+   - **同时写入 `docs/handoff/workstreams/<workstream_key>/YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md`**
+   - 文件包含 YAML frontmatter（kind, schema_version, created_at, session_id, task_id, module, submodule, agent）
+   - 通过 `git add docs/handoff/` 和 `git commit` 提交，实现跨机器同步
 
 3. **新会话启动**
    - 先读取 `AGENTS.md`
    - 再读取 `docs/memory/README.md`（操作规范）
    - 然后读取 `docs/memory/project.md`
    - 定位并读取相关 `module.md` 和 `submodule.md`
-   - 最后通过对话上下文或任务系统获取并读取 handoff
+   - 最后通过以下顺序获取 handoff：
+      1. 任务系统/对话上下文（优先）
+      2. `docs/handoff/workstreams/<task_id>/` 中最新的 handoff 文件（如果 task_id 可用）
+      3. `docs/handoff/workstreams/<module>__<submodule-or-none>/` 中最新的 handoff 文件（fallback）
+      4. 按 `created_at` 排序，文件名 tie-break，取最新一份
+      5. 跨机器场景：先 `git pull` 同步最新 handoff
 
 ### 6.3 冲突处理流程
 
@@ -481,6 +498,7 @@ status: active
 - [ ] 更新 `project.md` 子模块索引
 - [ ] 废弃 ADR 时同步更新引用
 - [ ] 标记 `status: deprecated` 时更新相关链接
+- [ ] 清理 `docs/handoff/ 中超过 7 天的过期文件（自动或手动）
 
 ---
 

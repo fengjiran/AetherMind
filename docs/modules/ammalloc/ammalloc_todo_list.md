@@ -1,6 +1,6 @@
 本文档记录了 AetherMind 内存池项目的已知缺陷修复计划、性能优化点以及未来向工业级功能对齐的演进路线。
 
-> **🔗 相关资源**: [📅 查看开发进度日志 (Development Log)](DEVELOPMENT_LOG.md)
+> **🔗 相关资源**: [📅 查看开发进度日志 (Development Log)](../../logs/development_log.md)
 
 ### 🔴 P0: 紧急修复 (Critical Fixes)
 
@@ -202,11 +202,11 @@
 
 - 2026-3-4
   - 完成 `PageHeapScavenger` 核心实现，标记为完成（待修复并发安全问题后可用）。
-  - 同步 `docs/review.md` 中的 Code Review 问题到本 TODO 列表。
+  - 同步 `docs/reviews/code_review/` 中的 Code Review 问题到本 TODO 列表。
   - 新增 P0 级别问题：HugePageCache std::vector 自举违反、Span::FreeObject double-free 漏洞、GetOneSpan Release 空指针解引用。
   - 新增 P1 级别问题：ThreadCache 初始化锁、CentralCache unlock-relock 窗口、TLS 析构顺序。
   - 新增 P2/P3 级别功能需求：am_realloc/calloc/memalign、data 区域验证、ObjectPool 归属检查等。
-  - 更新开发日志 (`DEVELOPMENT_LOG.md`) 记录 PageHeapScavenger 架构决策。
+  - 更新开发日志 (`docs/logs/development_log.md`) 记录 PageHeapScavenger 架构决策。
 
 - 2026-3-1
   -  增加 Code Review 发现的 5 个新优化项 (Radix Tree Fix, CentralCache Lock, ThreadCache Pool, Safety)。

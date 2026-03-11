@@ -1,5 +1,31 @@
 开始新会话时，先按以下约束收敛上下文，再继续实现。
 
+## ⚠️ 强制约束（HARD CONSTRAINT）
+
+**加载记忆后，必须等待用户明确确认，禁止自动执行任何操作。**
+
+```
+Agent: 加载记忆 (AGENTS.md → README.md → project.md → module.md → submodule.md → handoff)
+    ↓
+Agent: 输出 "记忆已加载，本轮目标是..."
+    ↓
+⚠️ 检查点: 必须等待用户说"继续"、"执行"或"是"
+    ↓
+用户: "继续"  ← 必须显式确认
+    ↓
+Agent: 才能执行工具操作（扫描代码、编译、测试等）
+```
+
+**禁止行为（违反将导致错误）**：
+- ❌ 加载记忆后立即扫描代码/编译/测试
+- ❌ 假设"继续"等于自动执行
+- ❌ 未经确认就修改文件
+
+**正确流程**：
+- ✅ 加载记忆 → 输出状态 → **显式询问用户** → 等待确认 → 执行操作
+
+---
+
 > **本模板适用于**：
 > - 首次建档新模块
 > - 跨模块协调任务
@@ -82,3 +108,9 @@
 - 基准：`./build/tests/benchmark/aethermind_benchmark --benchmark_filter=[BenchmarkName]`
 - 如涉及 TSAN：`cmake -S . -B build-tsan -DENABLE_TSAN=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF && cmake --build build-tsan --target aethermind_unit_tests -j`
 - 没有执行的项必须明确写 `未执行`，不要省略。
+
+---
+
+## 边界约束
+
+1. **加载后需确认**：使用 new_session_template.md 时，Agent 完成记忆加载后，**必须等待用户确认**是否执行下一步操作，**禁止**在加载记忆后立即自动执行任何工具操作（如扫描代码、编译、测试等）。只有在用户明确说"继续"、"执行"或类似指令后，才能执行操作。

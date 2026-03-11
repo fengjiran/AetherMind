@@ -6,7 +6,7 @@
 - 项目名称：AetherMind
 - 项目目标：分阶段构建大模型推理引擎
   - Phase 1（当前）：CPU 嵌入式推理运行时，支持 Llama 家族模型，C/C++ API
-  - Phase 2+：服务化/分布式推理引擎（见 docs/aethermind_prd.md 附录）
+  - Phase 2+：服务化/分布式推理引擎（见 docs/products/aethermind_prd.md 附录）
 - 语言：C++20（`CMAKE_CXX_STANDARD 20`）
 - 构建系统：CMake >= 3.28
 - 核心库目标：`AetherMind`（shared）
@@ -100,7 +100,7 @@ clang-format -i $(git ls-files '*.h' '*.hpp' '*.cpp')
 
 See full coding style:
 
-- `docs/cpp_coding_style_guidelines.md`
+- `docs/guides/cpp_coding_style_guidelines.md`
 
 ## 8. 注释风格规范
 Write comments only when they add real value.
@@ -125,7 +125,7 @@ For non-trivial public APIs in headers, use documentation comments.
 For implementation details, use `//`.
 
 See full comment rules:
-- `docs/cpp_comment_guidelines.md`
+- `docs/guides/cpp_comment_guidelines.md`
 
 ## 9. 额外 AI 指南
 - `.cursorrules`：不存在
@@ -133,7 +133,7 @@ See full comment rules:
 - `.github/copilot-instructions.md`：不存在
 - `GEMINI.md`：项目架构蓝图与 C++20 编码指引（架构/性能敏感改动前必读）
 - `ammalloc/GEMINI.md`：分配器子系统的 AI 上下文指南
-- `docs/aethermind_prd.md`：**Phase 1 产品需求与验收标准（必读）**
+- `docs/products/aethermind_prd.md`：**Phase 1 产品需求与验收标准（必读）**
 
 ## 10. Agent Memory System 执行约束
 
@@ -145,12 +145,14 @@ See full comment rules:
 1. 先扫描代码/编译/测试，再加载记忆
 2. 假设"继续"等于立即执行默认操作（如编译+测试）
 3. 跳过记忆加载直接执行操作
+4. **加载记忆后未经用户确认就执行工具操作**（如扫描代码、编译、测试、文件修改等）
 
 **必须行为（✅）**：
 1. 严格按固定顺序加载记忆：  
    `AGENTS.md` → `docs/agent/memory/README.md` → `project.md` → `module.md` → `submodule.md` → `handoff`
 2. 输出"已加载文件"清单，明确列出实际加载了哪些文件
 3. 根据 memory/handoff 中的"推荐下一步"决定执行什么操作
+4. **加载完成后，必须显式询问用户**："记忆已加载，是否执行[推荐操作]？"，**等待用户明确说"继续"、"执行"或"是"后，才能执行任何工具操作**
 
 **为什么重要**：
 - 如果 handoff 显示"阻塞点是设计决策"，不应编译，而应先解决设计问题

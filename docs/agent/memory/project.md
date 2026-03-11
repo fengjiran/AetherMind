@@ -19,7 +19,7 @@ status: active
 - 不负责：单个模块实现细节、一次性会话状态、未验证讨论。
 
 ### 边界
-- 上游输入：`AGENTS.md`、`docs/aethermind_prd.md`、已验证代码/CMake/测试事实。
+- 上游输入：`AGENTS.md`、`docs/products/aethermind_prd.md`、已验证代码/CMake/测试事实。
 - 下游输出：模块记忆、子模块记忆、模块 ADR 与 handoff 的共识基线。
 - 不直接管理：模块内部私有接口、临时调试记录、局部试验方案。
 
@@ -30,7 +30,7 @@ status: active
 - `docs/`：架构文档、memory 体系与提示词。
 
 ## 已确认事实
-- 项目当前阶段是 Phase 1：CPU 嵌入式推理运行时，目标模型族为 Llama，主接口形态为 C/C++ API；产品边界见 `docs/aethermind_prd.md`。
+- 项目当前阶段是 Phase 1：CPU 嵌入式推理运行时，目标模型族为 Llama，主接口形态为 C/C++ API；产品边界见 `docs/products/aethermind_prd.md`。
 - 语言与构建基线：C++20、CMake >= 3.28；核心库目标为 `AetherMind`，内存池目标为 `ammalloc`。
 - 验证入口：`aethermind_unit_tests` 使用 GoogleTest，`aethermind_benchmark` 使用 Google Benchmark。
 - 目录约定以 `AGENTS.md` 为索引：公共头文件放在 `include/`，核心实现放在 `src/`，第三方代码放在 `3rdparty/` 且默认不改。
@@ -64,7 +64,7 @@ status: active
 - 项目默认遵循 RAII、标准库设施和显式所有权；避免 raw owning pointer。
 - 跨模块传递对象时，必须让拥有者和借用者可从接口语义中直接判断。
 - 稳定结论先验证再回写 memory；不要把生命周期假设直接留在 handoff 中长期漂移。
-- 细则见 `docs/cpp_coding_style_guidelines.md` 与 `docs/cpp_comment_guidelines.md`。
+- 细则见 `docs/guides/cpp_coding_style_guidelines.md` 与 `docs/guides/cpp_comment_guidelines.md`。
 
 ## 并发约束
 - 若模块存在线程亲和、锁顺序、原子语义或可重入性要求，必须下沉到对应模块或子模块记忆中维护。

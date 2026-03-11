@@ -171,7 +171,7 @@ docs/agent/decisions/
 |--------|------|
 | 1 | 用户显式指令与已验证代码/测试事实 |
 | 2 | `AGENTS.md` (项目执行指南) |
-| 3 | `docs/aethermind_prd.md` (Phase 1 产品需求) |
+| 3 | `docs/products/aethermind_prd.md` (Phase 1 产品需求) |
 | 4 | ADR (架构决策记录) |
 | 5 | 模块/子模块记忆文档 |
 | 6 | `docs/agent/memory/project.md` |

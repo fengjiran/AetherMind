@@ -18,7 +18,7 @@
 - 子模块层：`docs/agent/memory/modules/<module>/submodules/<submodule>.md`。只在父模块内存在独立边界时拆分；与主模块同属领域层。
 - handoff 层：按 `docs/agent/prompts/handoff.md` 输出当前会话摘要，只服务交接，不替代稳定记忆；输出存储在 `docs/agent/handoff/` 目录，通过 git 同步实现跨机器恢复。
 - 读取顺序：`AGENTS.md` -> `docs/agent/memory/README.md` -> `project.md` -> `module.md` -> `submodule.md`（如存在）-> handoff（从任务系统或 `docs/agent/handoff/` 目录）。
-- 冲突优先级：用户显式指令与已验证代码/测试事实 > `AGENTS.md` > `docs/aethermind_prd.md` > ADR > 模块/子模块记忆 > `docs/agent/memory/project.md` > handoff > `GEMINI.md`。
+- 冲突优先级：用户显式指令与已验证代码/测试事实 > `AGENTS.md` > `docs/products/aethermind_prd.md` > ADR > 模块/子模块记忆 > `docs/agent/memory/project.md` > handoff > `GEMINI.md`。
 - handoff 与稳定记忆冲突时，先回到代码、测试或用户指令验证；未验证前不要直接覆盖 memory 文件。
 
 ## Handoff 存储规范
@@ -248,8 +248,8 @@ docs/agent/memory/
 
 ## ADR 链接规范
 - 只有对架构、接口契约、并发模型或性能特征产生长期影响的决定才创建 ADR。
-- 主模块记忆通过 frontmatter `adr_refs` 维护索引；正文引用使用相对路径，例如 `[ADR-001](./adrs/ADR-001.md)`。
-- 子模块记忆优先复用父模块 `adrs/` 目录；正文引用使用相对路径，例如 `[ADR-001](../adrs/ADR-001.md)`。
+- 主模块记忆通过 frontmatter `adr_refs` 维护索引；正文引用使用相对路径，例如 `[ADR-001](./modules/ammalloc/adrs/ADR-001.md)`。
+- 子模块记忆优先复用父模块 `adrs/` 目录；正文引用使用相对路径，例如 `[ADR-001](./modules/ammalloc/adrs/ADR-001.md)`。
 - 项目级记忆只链接跨模块相关的 ADR，例如 `./modules/<module>/adrs/ADR-001.md`；不要把 ADR 原因大段复制回 memory。
 - ADR 若被替代或废弃，必须同步更新引用它的 `adr_refs` 与正文链接。
 

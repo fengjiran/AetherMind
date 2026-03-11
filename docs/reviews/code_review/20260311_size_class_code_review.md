@@ -4,7 +4,7 @@
 - 审查日期: 2026-03-11
 - 审查对象: `ammalloc/include/ammalloc/size_class.h`
 - 风险级别: 🔴 Deep
-- 审查依据: `docs/code_review/code_review_guide.md`
+- 审查依据: `docs/guides/code_review_guide.md`
 
 ## 快速门禁结果
 - [x] 聚焦单测通过: `./build/tests/unit/aethermind_unit_tests --gtest_filter="*SizeClass*"` (12/12)

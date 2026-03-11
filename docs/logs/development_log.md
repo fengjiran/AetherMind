@@ -2,7 +2,7 @@
 
 > **[AI 助手指令]**: 本文档是 AetherMind 项目的“开发黑匣子”。
 > 1. 每当完成重大 Commits、解决复杂 Bug 或进行架构重构时，**必须**在此同步更新。
-> 2. 任务引用请严格遵循 `[TODO: 任务简短描述]` 格式，并确保与 `docs/ammalloc_todo_list.md` 中的项对应。
+> 2. 任务引用请严格遵循 `[TODO: 任务简短描述]` 格式，并确保与 `docs/modules/ammalloc/ammalloc_todo_list.md` 中的项对应。
 > 3. 记录应侧重于“为什么这么做”而非“做了什么”。
 
 ---
@@ -52,7 +52,7 @@
     - **代码位置**: `ammalloc/include/ammalloc/size_class.h:96-109`
 
 ### 📊 新增文档
-- **SizeClass 性能基准测试报告**: `docs/size_class_benchmark_20260310.md`
+- **SizeClass 性能基准测试报告**: `docs/tests/size_class_benchmark_20260310.md`
 
 ### 💡 架构思考 (Architectural Insights)
 - **基准测试的可信性优先**: 随机输入方案增加了代码复杂度，但换来的是可信的纳秒级测量
@@ -287,7 +287,7 @@
 ### 💡 架构思考 (Architectural Insights)
 - **后台清理线程的并发模型**: 采用 `std::jthread` + `std::stop_token` + `std::condition_variable_any` 实现可中断的周期性扫描，符合 C++20 最佳实践。`madvise` 放在锁外的设计正确，但需配合 "in-flight span 标记" 机制避免并发合并冲突。
 - **锁策略权衡**: 当前 `PageCache` 的全局大锁在 scavenger 频繁遍历场景下成为瓶颈。P2 后期可考虑将 `PageCache` 分片 (Sharding) 以降低锁竞争。
-- **启动时机设计**: 经过对比 4 种启动方案（构造函数属性、首次 malloc、首次慢路径、阈值触发），确定采用**首次慢路径启动**作为主要策略。该方案避开热路径、延迟适中、无递归风险，且可通过环境变量 `AM_ENABLE_SCAVENGER` 控制开关。详见设计方案文档 [docs/page_heap_scavenger_start.md]。
+- **启动时机设计**: 经过对比 4 种启动方案（构造函数属性、首次 malloc、首次慢路径、阈值触发），确定采用**首次慢路径启动**作为主要策略。该方案避开热路径、延迟适中、无递归风险，且可通过环境变量 `AM_ENABLE_SCAVENGER` 控制开关。详见设计方案文档 [docs/modules/ammalloc/page_heap_scavenger_start.md](../modules/ammalloc/page_heap_scavenger_start.md)。
 
 ---
 
@@ -323,4 +323,4 @@
     - **解决方案**: 在 `ObjectPool::New` 中引入 `alignof(T)` 计算 Padding，确保 `RadixNode` 严格 4KB 对齐，避免跨页。
 
 ---
-[ 查看完整 TODO List ](ammalloc_todo_list.md)
+[ 查看完整 TODO List ](../modules/ammalloc/ammalloc_todo_list.md)

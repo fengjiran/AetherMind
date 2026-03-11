@@ -14,7 +14,7 @@
    submodule: [SUBMODULE_NAME|none]
    agent: [AGENT_NAME]
    status: active                    # active | superseded | closed
-   memory_status: pending            # not_needed | pending | applied
+    memory_status: not_needed        # not_needed | pending | applied（默认 not_needed）
    supersedes: null                  # 被本 handoff 取代的旧文件（首次创建时为 null）
    closed_at: null                   # 关闭时间（创建时为 null）
    closed_reason: null               # 关闭原因（创建时为 null）
@@ -23,7 +23,8 @@
    
    **状态字段说明**：
    - `status: active`：当前可继续的 handoff（默认创建时）
-   - `memory_status: pending`：有稳定结论待回写 memory（如果有）
+    - `memory_status: not_needed`：无需回写 stable memory（默认创建时）
+    - `memory_status: pending`：有稳定结论待回写 memory
    - `supersedes`：如果是取代旧 handoff，填写旧文件名；否则 null
 
 2. **正文结构**：在 frontmatter 后，按以下章节组织：

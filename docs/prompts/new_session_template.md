@@ -23,7 +23,7 @@
 7. 参考 `docs/prompts/handoff.md` 的输出结构规范
 8. 如本轮形成稳定结论，按 `docs/prompts/memory_update_and_adr.md` 准备 memory 增量；若 `[是否有 ADR 增量: 是/否]` 为 `是`，同步准备 ADR 草案
 
-**Workstream 键规则**：固定使用 `<module>__<submodule-or-none>` 作为目录键，`task_id` 只作为 frontmatter 元数据
+**Workstream 键规则**：详见 `docs/memory/README.md` "Handoff 存储规范"章节
 
 ## 本轮输入：
 

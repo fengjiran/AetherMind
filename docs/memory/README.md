@@ -75,6 +75,16 @@ closed_reason: null               # 关闭原因（仅 status=closed）
 - `supersedes`: 如果是取代旧 handoff，填写旧文件名
 - `closed_at`/`closed_reason`: 工作完成时填写
 
+### 向后兼容
+
+- Reader 必须接受 `schema_version: "1.0"` 和 `"1.1"`
+- 缺失字段使用默认值：
+  - `memory_status: not_needed`
+  - `status: active`
+  - `supersedes: null`
+  - `closed_at: null`
+  - `closed_reason: null`
+
 ### 生成策略
 
 **主要方式：用户主动触发（默认）**
@@ -148,6 +158,33 @@ status: active, memory_status: pending/not_needed
   1. 任务系统/对话中的 handoff（优先）
   2. `docs/handoff/` 目录中 `status: active` 的最新文件（本地 + git 同步）
   3. 如果没有 active，视为"无可恢复状态"，直接从 memory 开始
+
+### 边界情况处理
+
+#### 模块存在但子模块 memory 不存在
+**场景**：`docs/memory/modules/<module>/module.md` 存在，但 `submodules/<submodule>.md` 不存在。
+
+**处理**：
+- 加载 module.md 中的相关信息（子模块划分、待办事项）
+- 从 module.md 推断子模块职责和边界
+- 标记为 partial 恢复（非完整）
+- 提示用户考虑创建子模块 memory
+
+#### 无 handoff（从 memory 重新开始）
+**场景**：workstream 目录为空或没有 `status: active` 的 handoff。
+
+**处理**：
+- 从 module.md/submodule.md 的"待办事项"开始
+- 标记为 partial 恢复
+- 输出："无可恢复临时状态，从 memory 的待办事项开始"
+
+#### 多个 active handoff（异常）
+**场景**：同一 workstream 存在多个 `status: active` 的 handoff。
+
+**处理**：
+- 选择 `created_at` 最新的一个
+- 显式警告用户检查并收敛状态
+- 建议将旧的标记为 `superseded`
 
 ### 约束
 - handoff 保持**语义临时**：不是真相源，只是会话上下文缓存

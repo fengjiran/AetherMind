@@ -332,13 +332,20 @@ git push
 
 本地自动清理（按 README 策略）：
 ```bash
-# 策略：保留最近 3 个 active，删除超过 7 天的旧文件
-# 1. 删除超过 7 天的文件（保留最近 3 个，不管状态）
-find docs/handoff/workstreams/ammalloc__thread_cache/ -name "*.md" -mtime +7 | head -n -3 | xargs rm
+# 策略：保留所有 active，删除超过 7 天的 closed/superseded
+# 注意：需要手动检查状态，或保留最近 3 个文件作为保底
 
-# 2. 可选：手动删除 closed/superseded 的文件（git 历史仍保留）
-# 不自动删除 active 文件
+# 方法 1：保守策略 - 只删除超过 7 天的文件，保留最近 3 个（不区分状态）
+find docs/handoff/workstreams/ammalloc__thread_cache/ -name "*.md" -mtime +7 -exec ls -t {} + | tail -n +4 | xargs rm -f
+
+# 方法 2：手动清理 - 检查状态后删除 closed/superseded
+# 1. 查看文件状态
+# grep -l "status: closed" docs/handoff/workstreams/ammalloc__thread_cache/*.md
+# grep -l "status: superseded" docs/handoff/workstreams/ammalloc__thread_cache/*.md
+# 2. 手动删除超过 7 天的 closed/superseded 文件
 ```
+
+**原则**：宁可保留过多，不要误删 active。
 
 Git 历史保留所有记录用于审计。
 

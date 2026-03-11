@@ -43,7 +43,7 @@ Agent 应识别以下自然语言意图：
   - 模块: ammalloc
   - 子模块: 无
   - 检查: docs/memory/modules/ammalloc/module.md
-  - 检查: docs/handoff/workstreams/ammalloc__/ 或 ammalloc__none/
+   - 检查: docs/handoff/workstreams/ammalloc__none/
 ```
 
 ### 3. 歧义处理
@@ -78,9 +78,7 @@ Agent 响应:
 6. docs/handoff/workstreams/<workstream_key>/    → 最新 active handoff（临时状态）
 ```
 
-**Workstream 键规则**（与 `docs/memory/README.md` 一致）：
-- **On-disk 键（目录名）**：`<module>__<submodule-or-none>`（例如：`ammalloc__thread_cache`）
-- **逻辑键（frontmatter）**：`task_id` 作为元数据记录，不用于目录
+**Workstream 键与读取规则**：详见 `docs/memory/README.md` "Handoff 存储规范"章节
 
 **Handoff 状态过滤**：
 - **只读取** `status: active` 的 handoff
@@ -102,7 +100,27 @@ Agent 响应:
 
 ---
 
-## 精简输出格式（5要点）
+## Resume Gate（执行任何操作前的必经检查）
+
+在调用任何工具（扫描代码、编译、测试等）之前，必须完成以下检查并输出：
+
+```markdown
+## Resume Gate
+- [x] 解析范围：模块=[module], 子模块=[submodule]
+- [x] 命中文件：project.md ✅, module.md ✅, submodule.md ⚠️（如缺失）
+- [x] 缺失项：[列表或"无"]
+- [x] 选中 handoff：[文件名] ✅ 或 无 active handoff
+- [x] resume_status: complete | partial | blocked
+```
+
+**resume_status 定义**：
+- `complete`：所有文件加载成功，包括 handoff
+- `partial`：部分文件缺失（如缺子模块或 handoff），但可按 module 层恢复
+- `blocked`：模块不存在，需用户决策（创建新模块/指定其他模块）
+
+**规则**：
+- ⚠️ resume_status 为 `blocked` 时，禁止执行任何工具操作
+- ⚠️ 未完成 Resume Gate 输出，禁止执行任何工具操作
 
 Agent 确认上下文已加载后，输出：
 
@@ -148,6 +166,52 @@ Agent 确认上下文已加载后，输出：
 2. **不模糊匹配到多文件**：`继续 ammalloc` 只加载模块级，不自动扫所有子模块。
 3. **输出必须明确**：必须写出"实际加载了哪些文件"，避免用户误以为上下文已完整恢复。
 4. **handoff 不是必须**：如果 `docs/handoff/` 目录为空，说明没有未完成的临时状态，从 memory 重新开始即可。
+
+---
+
+## 边界情况处理
+
+### 1. 模块存在但子模块 memory 不存在
+
+**场景**：用户说"继续 ammalloc size_class"，但 `docs/memory/modules/ammalloc/submodules/size_class.md` 不存在。
+
+**Agent 处理**：
+```markdown
+## 加载结果
+- ✅ docs/memory/modules/ammalloc/module.md（已加载）
+- ❌ docs/memory/modules/ammalloc/submodules/size_class.md（不存在）
+- resume_status: partial
+
+## 决策选项
+1. **创建子模块 memory** - 首次开发 size_class，需要创建 submodule.md
+2. **仅按模块层继续** - 从 module.md 的"子模块划分"推断信息，继续工作
+3. **检查拼写** - 确认子模块名是否正确
+
+默认选项：2（仅按模块层继续，同时提示用户考虑创建子模块 memory）
+```
+
+**处理规则**：
+- 加载 module.md 中的相关信息（子模块划分、待办事项）
+- 标记 resume_status: partial（非完整恢复）
+- 不阻塞工作，但提示用户子模块 memory 缺失
+
+### 2. 无 handoff（从 memory 重新开始）
+
+**场景**：workstream 目录为空或没有 `status: active` 的 handoff。
+
+**Agent 处理**：
+- 从 module.md/submodule.md 的"待办事项"开始
+- 输出："无可恢复临时状态，从 memory 的待办事项开始"
+- resume_status: partial
+
+### 3. 多个 active handoff（异常）
+
+**场景**：同一 workstream 存在多个 `status: active` 的 handoff（如 git merge 导致）。
+
+**Agent 处理**：
+- 选择 `created_at` 最新的一个
+- ⚠️ 显式警告："发现多个 active handoff，选择最新一个，请检查并收敛状态"
+- 建议用户将旧的标记为 `superseded`
 
 ---
 

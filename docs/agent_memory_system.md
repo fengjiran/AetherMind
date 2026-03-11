@@ -363,12 +363,7 @@ status: active             # active | draft | deprecated
    - 再读取 `docs/memory/README.md`（操作规范）
    - 然后读取 `docs/memory/project.md`
    - 定位并读取相关 `module.md` 和 `submodule.md`
-   - 最后通过以下顺序获取 handoff：
-      1. 任务系统/对话上下文（优先）
-      2. `docs/handoff/workstreams/<task_id>/` 中最新的 handoff 文件（如果 task_id 可用）
-      3. `docs/handoff/workstreams/<module>__<submodule-or-none>/` 中最新的 handoff 文件（fallback）
-      4. 按 `created_at` 排序，文件名 tie-break，取最新一份
-      5. 跨机器场景：先 `git pull` 同步最新 handoff
+   - 最后按 `docs/memory/README.md` 的规范获取 handoff（详见该文档"Handoff 存储规范"章节）
 
 ### 6.3 冲突处理流程
 

@@ -393,4 +393,4 @@ git push
 > 更多细节见：
 > - `docs/agent/memory/README.md` - 完整规范
 > - `docs/agent/prompts/quick_resume.md` - 快捷恢复流程
-> - `docs/agent_memory_system.md` - 架构设计
+> - `docs/agent/memory_system.md` - 架构设计

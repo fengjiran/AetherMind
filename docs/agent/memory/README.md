@@ -1,13 +1,13 @@
 # 记忆系统操作规范
 
 > **本文档为记忆系统的操作规范**。  
-> 架构设计说明见: [`docs/agent_memory_system.md`](../agent_memory_system.md)
+> 架构设计说明见: [`docs/agent/memory_system.md`](../memory_system.md)
 >
 > 用途：定义 `docs/agent/memory/` 的唯一结构规则。稳定事实写入记忆文档；会话级临时状态保留在 handoff。
 
 ## 本文档范围
 - 本文档是 `docs/agent/memory/` 的操作规范，用于实际创建、读取、更新和维护 memory 文件；不承担架构总览说明。
-- 架构设计说明：[`docs/agent_memory_system.md`](../agent_memory_system.md)
+- 架构设计说明：[`docs/agent/memory_system.md`](../memory_system.md)
 - Prompt 入口与衔接：[`docs/agent/prompts/README.md`](../prompts/README.md)、[`docs/agent/prompts/new_session_template.md`](../prompts/new_session_template.md)
 - 需要理解分层模型、工作流全貌和示例时，优先阅读架构文档；需要执行路径、元数据、命名和冲突规则时，优先阅读本文档。
 - 实际使用或回写 memory 时，以本文档为最终操作依据。

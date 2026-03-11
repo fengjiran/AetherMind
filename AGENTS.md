@@ -148,7 +148,7 @@ See full comment rules:
 
 **必须行为（✅）**：
 1. 严格按固定顺序加载记忆：  
-   `AGENTS.md` → `docs/memory/README.md` → `project.md` → `module.md` → `submodule.md` → `handoff`
+   `AGENTS.md` → `docs/agent/memory/README.md` → `project.md` → `module.md` → `submodule.md` → `handoff`
 2. 输出"已加载文件"清单，明确列出实际加载了哪些文件
 3. 根据 memory/handoff 中的"推荐下一步"决定执行什么操作
 

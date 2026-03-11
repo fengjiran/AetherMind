@@ -150,7 +150,7 @@ docs/agent/decisions/
 └── template.md                  # ADR 模板
 ```
 
-- `docs/agent_memory_system.md` 位于 `docs/` 根目录，作为记忆系统的架构设计说明。
+- `docs/agent/memory_system.md` 位于 `docs/agent/` 目录，作为记忆系统的架构设计说明。
 - handoff 输出存储在任务记录/对话中，同时持久化到 `docs/agent/handoff/workstreams/<workstream_key>/`。
 - 通过 git 同步实现跨机器恢复。
 
@@ -489,7 +489,7 @@ status: active
 ### 8.3 相关文档
 
 - `AGENTS.md` - AI 助手执行指南
-- `docs/agent_memory_system.md` - 记忆系统架构设计说明
+- `docs/agent/memory_system.md` - 记忆系统架构设计说明
 - `docs/agent/memory/README.md` - 记忆系统操作规范
 - `docs/agent/prompts/README.md` - Prompt 说明
 - `GEMINI.md` - 项目架构蓝图
@@ -501,7 +501,7 @@ status: active
 - [ ] 更新 `project.md` 子模块索引
 - [ ] 废弃 ADR 时同步更新引用
 - [ ] 标记 `status: deprecated` 时更新相关链接
-- [ ] 清理 `docs/agent/handoff/ 中超过 7 天的过期文件（自动或手动）
+- [ ] 清理 `docs/agent/handoff/` 中超过 7 天的过期文件（自动或手动）
 
 ---
 

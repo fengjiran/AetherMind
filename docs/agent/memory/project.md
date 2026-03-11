@@ -34,7 +34,7 @@ status: active
 - 语言与构建基线：C++20、CMake >= 3.28；核心库目标为 `AetherMind`，内存池目标为 `ammalloc`。
 - 验证入口：`aethermind_unit_tests` 使用 GoogleTest，`aethermind_benchmark` 使用 Google Benchmark。
 - 目录约定以 `AGENTS.md` 为索引：公共头文件放在 `include/`，核心实现放在 `src/`，第三方代码放在 `3rdparty/` 且默认不改。
-- 稳定记忆统一放在 `docs/memory/`；会话交接统一遵循 `docs/prompts/handoff.md`，并放在`docs/handoff/`。
+- 稳定记忆统一放在 `docs/agent/memory/`；会话交接统一遵循 `docs/agent/prompts/handoff.md`，并放在`docs/agent/handoff/`。
 
 ## 核心抽象
 ### 关键抽象
@@ -56,7 +56,7 @@ status: active
 
 ## 不变量
 - 已验证代码事实与用户显式指令优先于任何 memory、prompt 或 ADR 草案。
-- 跨模块稳定结论写入 `docs/memory/`；handoff 只保留当前会话状态，不充当长期事实源。
+- 跨模块稳定结论写入 `docs/agent/memory/`；handoff 只保留当前会话状态，不充当长期事实源。
 - 公共接口与实现边界保持清晰：公共 API 进入头文件目录，测试与 benchmark 不混写。
 - 性能敏感路径必须显式避免隐藏 `O(N^2)`、不必要分配、复制和锁竞争。
 
@@ -88,6 +88,6 @@ status: active
 - 无。
 
 ## 待办事项
-- [ ] 为高频修改模块建立 `docs/memory/modules/<module>/module.md`。
+- [ ] 为高频修改模块建立 `docs/agent/memory/modules/<module>/module.md`。
 - [ ] 当主模块内部出现独立并发或性能边界时，再拆分 `submodules/<submodule>.md`。
 - 无。

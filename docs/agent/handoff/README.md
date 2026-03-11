@@ -5,7 +5,7 @@
 ## 目录结构
 
 ```
-docs/handoff/
+docs/agent/handoff/
 └── workstreams/
     └── <module>__<submodule-or-none>/
         └── YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
@@ -81,7 +81,7 @@ handoff 文件通过 git 同步实现跨机器恢复：
 
 ```bash
 # 结束工作时提交（Agent 辅助生成，用户确认后提交）
-git add docs/handoff/
+git add docs/agent/handoff/
 git commit -m "handoff: <module> <submodule> progress"
 git push
 
@@ -91,5 +91,5 @@ git pull
 
 ## 规范参考
 
-- 完整规范见 `docs/memory/README.md` 的 "Handoff 存储规范" 章节
-- 快捷恢复流程见 `docs/prompts/quick_resume.md`
+- 完整规范见 `docs/agent/memory/README.md` 的 "Handoff 存储规范" 章节
+- 快捷恢复流程见 `docs/agent/prompts/quick_resume.md`

@@ -9,21 +9,21 @@
 
 ## 前置检查（按此顺序执行）：
 
-按 `docs/memory/README.md` 的规范读取顺序：
+按 `docs/agent/memory/README.md` 的规范读取顺序：
 1. 阅读 `AGENTS.md`
-2. 阅读 `docs/memory/README.md`（操作规范）
-3. 阅读 `docs/memory/project.md`；不存在时明确记为 `无项目级 memory`
-4. 检查 `docs/memory/modules/[MODULE_NAME]/module.md`；存在则加载，不存在时明确记为 `无主模块 memory`
+2. 阅读 `docs/agent/memory/README.md`（操作规范）
+3. 阅读 `docs/agent/memory/project.md`；不存在时明确记为 `无项目级 memory`
+4. 检查 `docs/agent/memory/modules/[MODULE_NAME]/module.md`；存在则加载，不存在时明确记为 `无主模块 memory`
 5. 若 `[SUBMODULE_NAME|无]` 不为 `无`：
-   - 先加载父模块 `docs/memory/modules/[MODULE_NAME]/module.md`（如第4步未加载）
-   - 再检查 `docs/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`；不存在时明确记为 `无子模块 memory`
+   - 先加载父模块 `docs/agent/memory/modules/[MODULE_NAME]/module.md`（如第4步未加载）
+   - 再检查 `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`；不存在时明确记为 `无子模块 memory`
 6. 获取 handoff（临时状态）：
    - 从任务系统/对话上下文中获取（优先）
-   - 若不可用，从 `docs/handoff/workstreams/<workstream_key>/` 读取最新 handoff 文件（fallback）
-7. 参考 `docs/prompts/handoff.md` 的输出结构规范
-8. 如本轮形成稳定结论，按 `docs/prompts/memory_update_and_adr.md` 准备 memory 增量；若 `[是否有 ADR 增量: 是/否]` 为 `是`，同步准备 ADR 草案
+   - 若不可用，从 `docs/agent/handoff/workstreams/<workstream_key>/` 读取最新 handoff 文件（fallback）
+7. 参考 `docs/agent/prompts/handoff.md` 的输出结构规范
+8. 如本轮形成稳定结论，按 `docs/agent/prompts/memory_update_and_adr.md` 准备 memory 增量；若 `[是否有 ADR 增量: 是/否]` 为 `是`，同步准备 ADR 草案
 
-**Workstream 键规则**：详见 `docs/memory/README.md` "Handoff 存储规范"章节
+**Workstream 键规则**：详见 `docs/agent/memory/README.md` "Handoff 存储规范"章节
 
 ## 本轮输入：
 
@@ -43,16 +43,16 @@
 ### 当前状态
 - 已完成：[已落地内容；没有则写 `无`]
 - 未完成：[剩余工作；没有则写 `无`]
-- 已加载记忆：[ `docs/memory/project.md` / `docs/memory/modules/[MODULE_NAME]/module.md` / `docs/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md` 中实际存在的文件 ]
+- 已加载记忆：[ `docs/agent/memory/project.md` / `docs/agent/memory/modules/[MODULE_NAME]/module.md` / `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md` 中实际存在的文件 ]
 - 所有权与生命周期约束：[资源由谁拥有，谁只能借用，何时释放]
 - 线程安全预期：[单线程 / 多线程、可重入性、锁或原子要求]
 - 热路径注意事项：[哪些路径必须避免额外分配、复制、锁竞争或隐藏 O(N^2)]
 - 构建/测试/基准状态：`[构建/测试/基准状态]`
 
 ### 涉及文件
-- `docs/memory/project.md`：[已存在 / 不存在 / 本轮未修改 / 本轮已修改]
-- `docs/memory/modules/[MODULE_NAME]/module.md`：[已存在 / 不存在 / 本轮未修改 / 本轮已修改]
-- `docs/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`：[已存在 / 不存在 / 不适用 / 本轮未修改 / 本轮已修改]
+- `docs/agent/memory/project.md`：[已存在 / 不存在 / 本轮未修改 / 本轮已修改]
+- `docs/agent/memory/modules/[MODULE_NAME]/module.md`：[已存在 / 不存在 / 本轮未修改 / 本轮已修改]
+- `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`：[已存在 / 不存在 / 不适用 / 本轮未修改 / 本轮已修改]
 - `[精确文件路径]`：[用途或改动点]
 - 无
 

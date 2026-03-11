@@ -1,9 +1,9 @@
 # AetherMind Agent Memory System Architecture（架构设计说明）
 
 > 本文档描述 AetherMind 项目的智能代理（Agent）记忆系统架构设计，用于帮助读者理解系统设计原理、整体结构和工作流概览。
-> 操作规范见: `docs/memory/README.md`
+> 操作规范见: `docs/agent/memory/README.md`
 >
-> 版本: 1.0  
+> 版本: 1.1  
 > 日期: 2026-03-10  
 > 适用范围: AetherMind 大模型推理引擎项目
 
@@ -50,8 +50,8 @@ Agent Memory System 旨在解决以下问题：
 
 **与操作文档的关系**:
 - 本文档 ← **架构视角**: 设计原理、工作流概览、示例
-- `docs/memory/README.md` ← **操作规范**: 详细的规则、约束、元数据规范
-- 实际使用时，以 `docs/memory/README.md` 为最终操作依据
+- `docs/agent/memory/README.md` ← **操作规范**: 详细的规则、约束、元数据规范
+- 实际使用时，以 `docs/agent/memory/README.md` 为最终操作依据
 
 ---
 
@@ -62,14 +62,14 @@ Agent Memory System 旨在解决以下问题：
 ```
 ┌─────────────────────────────────────────┐
 │           全局层 (Global)                │
-│      docs/memory/project.md             │
+│      docs/agent/memory/project.md             │
 │  - 跨模块稳定事实                        │
 │  - 目录约定、默认规则                     │
 └───────────────────┬─────────────────────┘
                     │
 ┌───────────────────▼─────────────────────┐
 │           模块层 (Module)                │
-│   docs/memory/modules/<module>/         │
+│   docs/agent/memory/modules/<module>/         │
 │           module.md                     │
 │  - 主模块职责、边界                       │
 │  - 核心抽象、对外接口                     │
@@ -78,7 +78,7 @@ Agent Memory System 旨在解决以下问题：
                     │
 ┌───────────────────▼─────────────────────┐
 │          子模块层 (Submodule)            │
-│   docs/memory/modules/<module>/         │
+│   docs/agent/memory/modules/<module>/         │
 │        submodules/<submodule>.md        │
 │  - 独立边界子组件                        │
 │  - 详细实现约束                          │
@@ -86,7 +86,7 @@ Agent Memory System 旨在解决以下问题：
 
 ┌─────────────────────────────────────────┐
 │        Handoff 层 (临时状态)             │
-│        docs/handoff/workstreams/        │
+│        docs/agent/handoff/workstreams/        │
 │  - 当前进度、阻塞点、下一步               │
 │  - 会话级上下文，通过 git 同步            │
 │  - 支持跨机器恢复                        │
@@ -97,10 +97,10 @@ Agent Memory System 旨在解决以下问题：
 
 | 层级 | 范围 | 稳定性 | 适用内容 | 存储位置 |
 |------|------|--------|----------|----------|
-| **全局层** | 整个项目 | 高 | 构建约定、代码规范、验证流程 | `docs/memory/project.md` |
-| **模块层** | 单个主模块 | 高 | 职责边界、核心抽象、对外接口 | `docs/memory/modules/<module>/module.md` |
-| **子模块层** | 子组件 | 中高 | 实现细节、内部不变量、优化策略 | `docs/memory/modules/<module>/submodules/<submodule>.md` |
-| **handoff** | 单次会话 | 低 | 当前进度、阻塞点、下一步行动 | `docs/handoff/workstreams/<key>/` (git 同步) |
+| **全局层** | 整个项目 | 高 | 构建约定、代码规范、验证流程 | `docs/agent/memory/project.md` |
+| **模块层** | 单个主模块 | 高 | 职责边界、核心抽象、对外接口 | `docs/agent/memory/modules/<module>/module.md` |
+| **子模块层** | 子组件 | 中高 | 实现细节、内部不变量、优化策略 | `docs/agent/memory/modules/<module>/submodules/<submodule>.md` |
+| **handoff** | 单次会话 | 低 | 当前进度、阻塞点、下一步行动 | `docs/agent/handoff/workstreams/<key>/` (git 同步) |
 
 ### 2.3 冲突优先级
 
@@ -118,8 +118,9 @@ Agent Memory System 旨在解决以下问题：
 ### 3.1 目录布局
 
 ```
-docs/memory/
+docs/agent/memory/
 ├── README.md                    # 操作规范（最终操作依据）
+├── QUICKSTART.md                # 快速入门示例
 ├── project.md                   # 项目级记忆
 ├── mainmodule_memory_template.md    # 主模块模板
 ├── submodule_memory_template.md     # 子模块模板
@@ -131,7 +132,7 @@ docs/memory/
         └── adrs/                # ADR 目录
             └── ADR-XXX.md
 
-docs/prompts/
+docs/agent/prompts/
 ├── README.md                    # Prompt 说明
 ├── quick_resume.md              # 快捷恢复（默认入口）
 ├── new_session_template.md      # 显式启动（备选）
@@ -139,12 +140,18 @@ docs/prompts/
 ├── memory_update_and_adr.md     # 记忆更新
 └── generate_module_memory.md    # 生成完整记忆
 
-docs/decisions/
+docs/agent/handoff/
+├── README.md                    # handoff 存储说明
+└── workstreams/
+    └── <module>__<submodule-or-none>/
+        └── YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
+
+docs/agent/decisions/
 └── template.md                  # ADR 模板
 ```
 
 - `docs/agent_memory_system.md` 位于 `docs/` 根目录，作为记忆系统的架构设计说明。
-- handoff 输出存储在任务记录/对话中，同时持久化到 `docs/handoff/workstreams/<workstream_key>/`。
+- handoff 输出存储在任务记录/对话中，同时持久化到 `docs/agent/handoff/workstreams/<workstream_key>/`。
 - 通过 git 同步实现跨机器恢复。
 
 ### 3.2 文件命名规范
@@ -167,11 +174,11 @@ docs/decisions/
 | 3 | `docs/aethermind_prd.md` (Phase 1 产品需求) |
 | 4 | ADR (架构决策记录) |
 | 5 | 模块/子模块记忆文档 |
-| 6 | `docs/memory/project.md` |
+| 6 | `docs/agent/memory/project.md` |
 | 7 | handoff (临时状态) |
 | 8 | `GEMINI.md` (架构蓝图参考) |
 
-`docs/memory/README.md` 用于约束操作流程和文档结构；遇到与事实来源冲突的内容时，仍按上表回到更高优先级来源确认。
+`docs/agent/memory/README.md` 用于约束操作流程和文档结构；遇到与事实来源冲突的内容时，仍按上表回到更高优先级来源确认。
 
 ---
 
@@ -190,7 +197,7 @@ docs/decisions/
 新会话启动
     ↓
 ┌──────────────────────────────────────────────────────────┐
-│  AGENTS.md -> docs/memory/README.md -> project.md ->     │
+│  AGENTS.md -> docs/agent/memory/README.md -> project.md ->     │
 │   module.md -> submodule.md (如存在) -> handoff           │
 └──────────────────────────────────────────────────────────┘
     ↓
@@ -314,14 +321,14 @@ status: active             # active | draft | deprecated
 
 1. **创建目录结构**
    ```bash
-   mkdir -p docs/memory/modules/<module>/submodules
-   mkdir -p docs/memory/modules/<module>/adrs
+   mkdir -p docs/agent/memory/modules/<module>/submodules
+   mkdir -p docs/agent/memory/modules/<module>/adrs
    ```
 
 2. **复制模板**
    ```bash
-   cp docs/memory/mainmodule_memory_template.md \
-      docs/memory/modules/<module>/module.md
+   cp docs/agent/memory/mainmodule_memory_template.md \
+      docs/agent/memory/modules/<module>/module.md
    ```
 
 3. **填写 frontmatter**
@@ -331,47 +338,47 @@ status: active             # active | draft | deprecated
    - 填写 `last_verified` 和 `owner`
 
 4. **填充内容**
-   - 使用 `docs/prompts/generate_module_memory.md` 生成内容
+   - 使用 `docs/agent/prompts/generate_module_memory.md` 生成内容
    - 或手动填写，确保每个章节都有内容
 
 5. **创建 ADR (如需要)**
    ```bash
-   cp docs/decisions/template.md \
-      docs/memory/modules/<module>/adrs/ADR-001.md
+   cp docs/agent/decisions/template.md \
+      docs/agent/memory/modules/<module>/adrs/ADR-001.md
    ```
 
 6. **更新索引**
-   - 在 `docs/memory/project.md` 中添加子模块划分
+   - 在 `docs/agent/memory/project.md` 中添加子模块划分
    - 更新 `adr_refs` 字段
 
 ### 6.2 会话交接流程
 
 1. **结束当前会话**
-   - 使用 `docs/prompts/memory_update_and_adr.md` 回写稳定结论
+   - 使用 `docs/agent/prompts/memory_update_and_adr.md` 回写稳定结论
    - 如有新 ADR，创建到 `adrs/` 目录
 
 2. **生成 handoff**
-   - 使用 `docs/prompts/handoff.md` 结构输出
+   - 使用 `docs/agent/prompts/handoff.md` 结构输出
    - 包含：目标、当前状态、涉及文件、阻塞点、推荐下一步
    - 输出到任务记录/对话中
-   - **同时写入 `docs/handoff/workstreams/<workstream_key>/YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md`**
+   - **同时写入 `docs/agent/handoff/workstreams/<workstream_key>/YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md`**
    - 文件包含 YAML frontmatter（kind, schema_version, created_at, session_id, task_id, module, submodule, agent）
-   - 通过 `git add docs/handoff/` 和 `git commit` 提交，实现跨机器同步
+   - 通过 `git add docs/agent/handoff/` 和 `git commit` 提交，实现跨机器同步
 
 3. **新会话启动**
    - 先读取 `AGENTS.md`
-   - 再读取 `docs/memory/README.md`（操作规范）
-   - 然后读取 `docs/memory/project.md`
+   - 再读取 `docs/agent/memory/README.md`（操作规范）
+   - 然后读取 `docs/agent/memory/project.md`
    - 定位并读取相关 `module.md` 和 `submodule.md`
-   - 最后按 `docs/memory/README.md` 的规范获取 handoff（详见该文档"Handoff 存储规范"章节）
+   - 最后按 `docs/agent/memory/README.md` 的规范获取 handoff（详见该文档"Handoff 存储规范"章节）
 
 ### 6.3 冲突处理流程
 
 处理记忆文件冲突前，先按以下顺序完成上下文加载：
 
 - `AGENTS.md`
-- `docs/memory/README.md`
-- `docs/memory/project.md`
+- `docs/agent/memory/README.md`
+- `docs/agent/memory/project.md`
 - 相关 `module.md` 和 `submodule.md`
 - handoff（如有，最后读取）
 
@@ -396,7 +403,7 @@ status: active             # active | draft | deprecated
 ### 7.1 ammalloc 模块结构
 
 ```
-docs/memory/modules/ammalloc/
+docs/agent/memory/modules/ammalloc/
 ├── module.md                    # 主模块记忆
 ├── submodules/
 │   ├── thread_cache.md         # → ADR-005
@@ -465,6 +472,7 @@ status: active
 
 | Prompt | 使用时机 | 输出目标 |
 |--------|----------|----------|
+| `quick_resume.md` | 日常接续工作 | 快速恢复记忆与最新 handoff |
 | `new_session_template.md` | 启动新会话 | 收敛上下文、加载记忆 |
 | `handoff.md` | 会话结束 | 交接状态、阻塞点、下一步 |
 | `memory_update_and_adr.md` | 任务完成 | 记忆增量、新 ADR |
@@ -482,8 +490,8 @@ status: active
 
 - `AGENTS.md` - AI 助手执行指南
 - `docs/agent_memory_system.md` - 记忆系统架构设计说明
-- `docs/memory/README.md` - 记忆系统操作规范
-- `docs/prompts/README.md` - Prompt 说明
+- `docs/agent/memory/README.md` - 记忆系统操作规范
+- `docs/agent/prompts/README.md` - Prompt 说明
 - `GEMINI.md` - 项目架构蓝图
 
 ### 8.4 维护清单
@@ -493,7 +501,7 @@ status: active
 - [ ] 更新 `project.md` 子模块索引
 - [ ] 废弃 ADR 时同步更新引用
 - [ ] 标记 `status: deprecated` 时更新相关链接
-- [ ] 清理 `docs/handoff/ 中超过 7 天的过期文件（自动或手动）
+- [ ] 清理 `docs/agent/handoff/ 中超过 7 天的过期文件（自动或手动）
 
 ---
 

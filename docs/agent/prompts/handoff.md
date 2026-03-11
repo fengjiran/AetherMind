@@ -10,11 +10,11 @@
    created_at: 2026-03-11T10:30:00Z
    session_id: ses_xxx
    task_id: task_xxx
-   module: [MODULE_NAME]
-   submodule: [SUBMODULE_NAME|none]
-   agent: [AGENT_NAME]
+   module: "MODULE_NAME"
+   submodule: "SUBMODULE_NAME|none"
+   agent: "AGENT_NAME"
    status: active                    # active | superseded | closed
-    memory_status: not_needed        # not_needed | pending | applied（默认 not_needed）
+   memory_status: not_needed         # not_needed | pending | applied（默认 not_needed）
    supersedes: null                  # 被本 handoff 取代的旧文件（首次创建时为 null）
    closed_at: null                   # 关闭时间（创建时为 null）
    closed_reason: null               # 关闭原因（创建时为 null）
@@ -23,8 +23,8 @@
    
    **状态字段说明**：
    - `status: active`：当前可继续的 handoff（默认创建时）
-    - `memory_status: not_needed`：无需回写 stable memory（默认创建时）
-    - `memory_status: pending`：有稳定结论待回写 memory
+   - `memory_status: not_needed`：无需回写 stable memory（默认创建时）
+   - `memory_status: pending`：有稳定结论待回写 memory
    - `supersedes`：如果是取代旧 handoff，填写旧文件名；否则 null
 
 2. **正文结构**：在 frontmatter 后，按以下章节组织：
@@ -47,7 +47,7 @@
 8. 保持精炼，但不能丢失会影响接手判断的关键信息。
 
 存储与状态管理：
-- 保存到 `docs/handoff/workstreams/<module>__<submodule-or-none>/YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md`
+- 保存到 `docs/agent/handoff/workstreams/<module>__<submodule-or-none>/YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md`
 - 如果同一 workstream 已有 `active` handoff，新文件写 `supersedes: <旧文件名>`，并更新旧文件为 `status: superseded`
 - 工作完成时，将当前 `active` 改为 `status: closed`，填写 `closed_at` 和 `closed_reason`
 - 通过 git 提交同步

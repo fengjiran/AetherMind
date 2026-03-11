@@ -1,13 +1,13 @@
 请基于当前整个对话与已验证代码事实，输出一份“模块记忆文档草案”。
 
 保存路径：
-- 主模块：`docs/memory/modules/<module>/module.md`
-- 子模块：`docs/memory/modules/<module>/submodules/<submodule>.md`
+- 主模块：`docs/agent/memory/modules/<module>/module.md`
+- 子模块：`docs/agent/memory/modules/<module>/submodules/<submodule>.md`
 
 要求：
 1. 先判断当前输出作用范围是“主模块”还是“子模块”；不要混写两种范围。
 2. 若代码、用户指令与讨论内容冲突，优先采信已验证的代码事实和用户显式指令，不要自行推断缺失信息。
-3. 输出必须包含 YAML frontmatter，并分别对齐 `docs/memory/mainmodule_memory_template.md` 或 `docs/memory/submodule_memory_template.md`。
+3. 输出必须包含 YAML frontmatter，并分别对齐 `docs/agent/memory/mainmodule_memory_template.md` 或 `docs/agent/memory/submodule_memory_template.md`。
 4. 只保留已经确认的事实、约束、接口、设计决策；删除试验性讨论、失败尝试、重复内容、临时日志、情绪化描述。
 5. 严格区分“已确认事实”“未决问题”“已否决方案”，不要混写。
 6. 若某类信息在当前上下文中确实不存在，明确标注 `未涉及` 或 `无`，禁止编造。

@@ -11,8 +11,8 @@ status: active
 
 # [SUBMODULE_NAME] 子模块记忆模板
 
-> 保存路径：`docs/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`
-> 父模块：`docs/memory/modules/[MODULE_NAME]/module.md`
+> 保存路径：`docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`
+> 父模块：`docs/agent/memory/modules/[MODULE_NAME]/module.md`
 > 用途：记录子模块的长期稳定信息。只写已验证事实；缺失信息写 `无` 或 `未涉及`。
 
 ## 模块范围

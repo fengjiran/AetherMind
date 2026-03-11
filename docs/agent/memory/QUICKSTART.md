@@ -14,16 +14,16 @@
 
 ### 1. 创建目录结构
 ```bash
-mkdir -p docs/memory/modules/ammalloc/submodules
-mkdir -p docs/memory/modules/ammalloc/adrs
-mkdir -p docs/handoff/workstreams
+mkdir -p docs/agent/memory/modules/ammalloc/submodules
+mkdir -p docs/agent/memory/modules/ammalloc/adrs
+mkdir -p docs/agent/handoff/workstreams
 ```
 
 ### 2. 创建主模块记忆
 
-**文件**：`docs/memory/modules/ammalloc/module.md`
+**文件**：`docs/agent/memory/modules/ammalloc/module.md`
 
-```yaml
+```markdown
 ---
 scope: module
 module: ammalloc
@@ -63,9 +63,9 @@ status: active
 
 ### 3. 创建子模块记忆
 
-**文件**：`docs/memory/modules/ammalloc/submodules/thread_cache.md`
+**文件**：`docs/agent/memory/modules/ammalloc/submodules/thread_cache.md`
 
-```yaml
+```markdown
 ---
 scope: submodule
 module: thread_cache
@@ -94,7 +94,7 @@ status: active
 
 ### 4. 提交到 git
 ```bash
-git add docs/memory/
+git add docs/agent/memory/
 git commit -m "memory: init ammalloc thread_cache"
 git push
 ```
@@ -115,10 +115,10 @@ git push
 **2. 加载记忆**（按顺序）
 ```
 ✅ AGENTS.md
-✅ docs/memory/README.md
-✅ docs/memory/project.md
-✅ docs/memory/modules/ammalloc/module.md
-✅ docs/memory/modules/ammalloc/submodules/thread_cache.md
+✅ docs/agent/memory/README.md
+✅ docs/agent/memory/project.md
+✅ docs/agent/memory/modules/ammalloc/module.md
+✅ docs/agent/memory/modules/ammalloc/submodules/thread_cache.md
 ⚠️ 无 handoff（首次工作）
 ```
 
@@ -129,9 +129,9 @@ git push
 - 子模块：thread_cache
 
 ## 已加载文件
-- ✅ docs/memory/project.md
-- ✅ docs/memory/modules/ammalloc/module.md
-- ✅ docs/memory/modules/ammalloc/submodules/thread_cache.md
+- ✅ docs/agent/memory/project.md
+- ✅ docs/agent/memory/modules/ammalloc/module.md
+- ✅ docs/agent/memory/modules/ammalloc/submodules/thread_cache.md
 - ⚠️ 无 handoff（从 memory 的待办事项开始）
 
 ## 当前接续目标
@@ -154,13 +154,13 @@ git push
 > "生成 handoff" 或 "今天先到这里"
 
 **Agent 执行**：
-1. 按 `docs/prompts/handoff.md` 生成 handoff 文件
+1. 按 `docs/agent/prompts/handoff.md` 生成 handoff 文件
 2. 展示生成的文件内容供用户确认
 3. 提示用户提交到 git
 
-**生成的文件**：`docs/handoff/workstreams/ammalloc__thread_cache/20260311T103000Z--ses_001--sisyphus.md`
+**生成的文件**：`docs/agent/handoff/workstreams/ammalloc__thread_cache/20260311T103000Z--ses_001--sisyphus.md`
 
-```yaml
+```markdown
 ---
 kind: handoff
 schema_version: "1.1"
@@ -202,12 +202,12 @@ closed_reason: null
 3. 运行单测验证
 
 ## 验证方式
-./aethermind_unit_tests --gtest_filter=ThreadCache.*
+./build/tests/unit/aethermind_unit_tests --gtest_filter=ThreadCache.*
 ```
 
 ### 提交到 git
 ```bash
-git add docs/handoff/
+git add docs/agent/handoff/
 git commit -m "handoff: ammalloc thread_cache progress"
 git push
 ```
@@ -231,11 +231,11 @@ git pull
 
 ```
 ✅ AGENTS.md
-✅ docs/memory/README.md
-✅ docs/memory/project.md
-✅ docs/memory/modules/ammalloc/module.md
-✅ docs/memory/modules/ammalloc/submodules/thread_cache.md
-✅ docs/handoff/workstreams/ammalloc__thread_cache/20260311T103000Z--ses_001--sisyphus.md
+✅ docs/agent/memory/README.md
+✅ docs/agent/memory/project.md
+✅ docs/agent/memory/modules/ammalloc/module.md
+✅ docs/agent/memory/modules/ammalloc/submodules/thread_cache.md
+✅ docs/agent/handoff/workstreams/ammalloc__thread_cache/20260311T103000Z--ses_001--sisyphus.md
 ```
 
 **Agent 输出**：
@@ -245,9 +245,9 @@ git pull
 - 子模块：thread_cache
 
 ## 已加载文件
-- ✅ docs/memory/modules/ammalloc/module.md
-- ✅ docs/memory/modules/ammalloc/submodules/thread_cache.md
-- ✅ docs/handoff/workstreams/ammalloc__thread_cache/20260311T103000Z--ses_001--sisyphus.md
+- ✅ docs/agent/memory/modules/ammalloc/module.md
+- ✅ docs/agent/memory/modules/ammalloc/submodules/thread_cache.md
+- ✅ docs/agent/handoff/workstreams/ammalloc__thread_cache/20260311T103000Z--ses_001--sisyphus.md
 
 ## 当前接续目标
 从昨天的阻塞点继续：确认 TransferCache 容量查询接口线程安全性
@@ -271,7 +271,7 @@ git pull
 
 如果形成了稳定结论，先回写 memory：
 
-**更新**：`docs/memory/modules/ammalloc/submodules/thread_cache.md`
+**更新**：`docs/agent/memory/modules/ammalloc/submodules/thread_cache.md`
 ```yaml
 # 在已确认事实中添加：
 - 动态水位线算法：根据 TransferCache 剩余容量的 1/4 调节
@@ -289,7 +289,7 @@ closed_reason: completed
 ```
 
 ```bash
-git add docs/memory/ docs/handoff/
+git add docs/agent/memory/ docs/agent/handoff/
 git commit -m "memory: thread_cache 动态水位线设计; handoff: completed"
 git push
 ```
@@ -311,7 +311,7 @@ status: superseded
 ```
 
 ```bash
-git add docs/handoff/
+git add docs/agent/handoff/
 git commit -m "handoff: new progress, supersede old"
 git push
 ```
@@ -323,29 +323,26 @@ git push
 ### 定期更新 Memory
 ```bash
 # 每周或每个里程碑后
-git add docs/memory/
+git add docs/agent/memory/
 git commit -m "memory: update verification date and progress"
 git push
 ```
 
 ### 清理旧的 Handoff
 
-本地自动清理（按 README 策略）：
+本地清理策略（建议手动执行，与 README 一致）：
 ```bash
-# 策略：保留所有 active，删除超过 7 天的 closed/superseded
-# 注意：需要手动检查状态，或保留最近 3 个文件作为保底
+# 删除超过 7 天的 closed/superseded handoff
+# 始终保留最近 3 个文件（无论状态）
+# 永远不要删除 status: active 的 handoff
 
-# 方法 1：保守策略 - 只删除超过 7 天的文件，保留最近 3 个（不区分状态）
-find docs/handoff/workstreams/ammalloc__thread_cache/ -name "*.md" -mtime +7 -exec ls -t {} + | tail -n +4 | xargs rm -f
-
-# 方法 2：手动清理 - 检查状态后删除 closed/superseded
 # 1. 查看文件状态
-# grep -l "status: closed" docs/handoff/workstreams/ammalloc__thread_cache/*.md
-# grep -l "status: superseded" docs/handoff/workstreams/ammalloc__thread_cache/*.md
-# 2. 手动删除超过 7 天的 closed/superseded 文件
+# grep -l "status: closed" docs/agent/handoff/workstreams/ammalloc__thread_cache/*.md
+# grep -l "status: superseded" docs/agent/handoff/workstreams/ammalloc__thread_cache/*.md
+# 2. 手动删除超过 7 天的 closed/superseded 文件，同时保留最近 3 个文件
 ```
 
-**原则**：宁可保留过多，不要误删 active。
+**原则**：宁可保留过多，也不要误删 `active` handoff。
 
 Git 历史保留所有记录用于审计。
 
@@ -360,10 +357,10 @@ Git 历史保留所有记录用于审计。
 **A**: 选择 `created_at` 最新的一个，其他的标记为 `superseded`。
 
 ### Q: 如何查看历史 handoff？
-**A**: `git log docs/handoff/` 查看所有历史提交。
+**A**: `git log docs/agent/handoff/` 查看所有历史提交。
 
 ### Q: 可以删除 closed/superseded 的 handoff 吗？
-**A**: 本地可以删除，但 git 历史会保留。不建议主动删除，让自动清理处理。
+**A**: 本地可以删除，但 git 历史会保留。建议按 README 的手动清理策略处理。
 
 ---
 
@@ -380,13 +377,13 @@ git pull
 
 # 每天结束
 # 用户说："生成 handoff" → Agent 生成文件 → 用户确认
-git add docs/handoff/
+git add docs/agent/handoff/
 git commit -m "handoff: <module> <submodule> progress"
 git push
 
 # 里程碑完成
 # 用户说："工作完成，回写 memory" → Agent 更新文件 → 用户确认
-git add docs/memory/ docs/handoff/
+git add docs/agent/memory/ docs/agent/handoff/
 git commit -m "memory: <updates>; handoff: completed"
 git push
 ```
@@ -394,6 +391,6 @@ git push
 ---
 
 > 更多细节见：
-> - `docs/memory/README.md` - 完整规范
-> - `docs/prompts/quick_resume.md` - 快捷恢复流程
+> - `docs/agent/memory/README.md` - 完整规范
+> - `docs/agent/prompts/quick_resume.md` - 快捷恢复流程
 > - `docs/agent_memory_system.md` - 架构设计

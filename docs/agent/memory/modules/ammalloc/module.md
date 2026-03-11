@@ -16,7 +16,7 @@ status: active
 
 # ammalloc 主模块记忆
 
-> 保存路径：`docs/memory/modules/ammalloc/module.md`
+> 保存路径：`docs/agent/memory/modules/ammalloc/module.md`
 > 用途：记录 `ammalloc` 主模块的长期稳定信息。只写已验证事实；缺失信息写 `无` 或 `未涉及`。
 
 ## 模块范围
@@ -30,13 +30,13 @@ status: active
 - 不直接管理：推理张量、模型权重、tokenizer 资源，以及上层模块的生命周期状态。
 
 ### 子模块划分
-- `thread_cache`：线程局部前端缓存，维护各 SizeClass 的 `FreeList`，提供无锁快路径；文件：`docs/memory/modules/ammalloc/submodules/thread_cache.md`
-- `central_cache`：全局中端缓存，按 SizeClass 分桶，`TransferCache` 走 `SpinLock`，`SpanList` 走 `std::mutex`；文件：`docs/memory/modules/ammalloc/submodules/central_cache.md`
-- `page_cache`：全局后端页缓存，负责 `Span` 分配、切分、合并，并维护 `PageMap` 写路径；文件：`docs/memory/modules/ammalloc/submodules/page_cache.md`
-- `page_allocator`：OS 交互层，封装 `mmap` / `munmap` / `madvise` 与大页缓存；文件：`docs/memory/modules/ammalloc/submodules/page_allocator.md`
-- `size_class`：请求大小到桶索引、对齐尺寸和批量搬运参数的 O(1) 映射；文件：`docs/memory/modules/ammalloc/submodules/size_class.md`
-- `spin_lock`：TTAS 自旋锁，服务 `CentralCache` 快路径的短临界区；文件：`docs/memory/modules/ammalloc/submodules/spin_lock.md`
-- `page_heap_scavenger`：后台清理线程，周期性对空闲且长时间未使用的 `Span` 执行 `MADV_DONTNEED`；文件：`docs/memory/modules/ammalloc/submodules/page_heap_scavenger.md`
+- `thread_cache`：线程局部前端缓存，维护各 SizeClass 的 `FreeList`，提供无锁快路径；文件：`docs/agent/memory/modules/ammalloc/submodules/thread_cache.md`
+- `central_cache`：全局中端缓存，按 SizeClass 分桶，`TransferCache` 走 `SpinLock`，`SpanList` 走 `std::mutex`；文件：`docs/agent/memory/modules/ammalloc/submodules/central_cache.md`
+- `page_cache`：全局后端页缓存，负责 `Span` 分配、切分、合并，并维护 `PageMap` 写路径；文件：`docs/agent/memory/modules/ammalloc/submodules/page_cache.md`
+- `page_allocator`：OS 交互层，封装 `mmap` / `munmap` / `madvise` 与大页缓存；文件：`docs/agent/memory/modules/ammalloc/submodules/page_allocator.md`
+- `size_class`：请求大小到桶索引、对齐尺寸和批量搬运参数的 O(1) 映射；文件：`docs/agent/memory/modules/ammalloc/submodules/size_class.md`
+- `spin_lock`：TTAS 自旋锁，服务 `CentralCache` 快路径的短临界区；文件：`docs/agent/memory/modules/ammalloc/submodules/spin_lock.md`
+- `page_heap_scavenger`：后台清理线程，周期性对空闲且长时间未使用的 `Span` 执行 `MADV_DONTNEED`；文件：`docs/agent/memory/modules/ammalloc/submodules/page_heap_scavenger.md`
 - 未涉及：无
 
 ## 已确认事实

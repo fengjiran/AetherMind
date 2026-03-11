@@ -12,8 +12,8 @@ status: active
 
 # thread_cache 子模块记忆
 
-> 保存路径：`docs/memory/modules/ammalloc/submodules/thread_cache.md`
-> 父模块：`docs/memory/modules/ammalloc/module.md`
+> 保存路径：`docs/agent/memory/modules/ammalloc/submodules/thread_cache.md`
+> 父模块：`docs/agent/memory/modules/ammalloc/module.md`
 > 用途：记录 `thread_cache` 的长期稳定信息。只写已验证事实；缺失信息写 `无` 或 `未涉及`。
 
 ## 模块范围

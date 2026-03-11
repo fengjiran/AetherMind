@@ -11,7 +11,7 @@ status: active
 
 # [MODULE_NAME] 主模块记忆模板
 
-> 保存路径：`docs/memory/modules/[MODULE_NAME]/module.md`
+> 保存路径：`docs/agent/memory/modules/[MODULE_NAME]/module.md`
 > 用途：记录主模块的长期稳定信息。只写已验证事实；缺失信息写 `无` 或 `未涉及`。
 
 ## 模块范围
@@ -25,8 +25,8 @@ status: active
 - 不直接管理：[跨模块对象、资源或状态]
 
 ### 子模块划分
-- `[SUBMODULE_NAME_A]`：[职责一句话]；文件：`docs/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME_A].md`
-- `[SUBMODULE_NAME_B]`：[职责一句话]；文件：`docs/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME_B].md`
+- `[SUBMODULE_NAME_A]`：[职责一句话]；文件：`docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME_A].md`
+- `[SUBMODULE_NAME_B]`：[职责一句话]；文件：`docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME_B].md`
 - 未涉及：无
 
 ## 已确认事实

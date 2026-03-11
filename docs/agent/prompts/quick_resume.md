@@ -1,7 +1,8 @@
 # 快速恢复工作流（Quick Resume）
 
 > **默认入口**：一句话快速接续之前的工作  
-> **详细入口**：需要显式填写目标/ADR/回写项时，使用 [`new_session_template.md`](./new_session_template.md)
+> **详细入口**：需要显式填写目标/ADR/回写项时，使用 [`new_session_template.md`](./new_session_template.md)  
+> **跨模块任务**：请直接使用 [`new_session_template.md`](./new_session_template.md)，当前 quick resume 只面向单一 workstream
 
 ---
 
@@ -24,15 +25,15 @@ Agent 应识别以下自然语言意图：
 ## 解析规则（精确优先，模糊最少）
 
 ### 1. 精确匹配（优先）
-直接匹配 `docs/memory/modules/<module>/` 目录：
+直接匹配 `docs/agent/memory/modules/<module>/` 目录：
 ```
 用户: "继续 ammalloc thread_cache"
 解析:
   - 模块: ammalloc
   - 子模块: thread_cache
-  - 检查: docs/memory/modules/ammalloc/module.md
-  - 检查: docs/memory/modules/ammalloc/submodules/thread_cache.md
-  - 检查: docs/handoff/workstreams/ammalloc__thread_cache/
+  - 检查: docs/agent/memory/modules/ammalloc/module.md
+  - 检查: docs/agent/memory/modules/ammalloc/submodules/thread_cache.md
+  - 检查: docs/agent/handoff/workstreams/ammalloc__thread_cache/
 ```
 
 ### 2. 模糊匹配（仅模块级）
@@ -42,8 +43,8 @@ Agent 应识别以下自然语言意图：
 解析:
   - 模块: ammalloc
   - 子模块: 无
-  - 检查: docs/memory/modules/ammalloc/module.md
-   - 检查: docs/handoff/workstreams/ammalloc__none/
+  - 检查: docs/agent/memory/modules/ammalloc/module.md
+   - 检查: docs/agent/handoff/workstreams/ammalloc__none/
 ```
 
 ### 3. 歧义处理
@@ -67,18 +68,18 @@ Agent 响应:
 
 ## 加载顺序（按此固定顺序）
 
-按 `docs/memory/README.md` 的规范读取：
+按 `docs/agent/memory/README.md` 的规范读取：
 
 ```
 1. AGENTS.md                          → 项目执行指南
-2. docs/memory/README.md              → 操作规范（必须先读，明确读取顺序）
-3. docs/memory/project.md             → 全局层
-4. docs/memory/modules/<module>/module.md        → 模块层
-5. docs/memory/modules/<module>/submodules/<submodule>.md  → 子模块层（如指定）
-6. docs/handoff/workstreams/<workstream_key>/    → 最新 active handoff（临时状态）
+2. docs/agent/memory/README.md              → 操作规范（必须先读，明确读取顺序）
+3. docs/agent/memory/project.md             → 全局层
+4. docs/agent/memory/modules/<module>/module.md        → 模块层
+5. docs/agent/memory/modules/<module>/submodules/<submodule>.md  → 子模块层（如指定）
+6. docs/agent/handoff/workstreams/<workstream_key>/    → 最新 active handoff（临时状态）
 ```
 
-**Workstream 键与读取规则**：详见 `docs/memory/README.md` "Handoff 存储规范"章节
+**Workstream 键与读取规则**：详见 `docs/agent/memory/README.md` "Handoff 存储规范"章节
 
 **Handoff 状态过滤**：
 - **只读取** `status: active` 的 handoff
@@ -131,10 +132,10 @@ Agent 确认上下文已加载后，输出：
 - Workstream：`[module]__[submodule-or-none]`
 
 ## 已加载文件
-- ✅ `docs/memory/project.md`
-- ✅ `docs/memory/modules/[module]/module.md`
-- ✅ `docs/memory/modules/[module]/submodules/[submodule].md`（如适用）
-- ✅ `docs/handoff/workstreams/[key]/[latest].md`（如存在）
+- ✅ `docs/agent/memory/project.md`
+- ✅ `docs/agent/memory/modules/[module]/module.md`
+- ✅ `docs/agent/memory/modules/[module]/submodules/[submodule].md`（如适用）
+- ✅ `docs/agent/handoff/workstreams/[key]/[latest].md`（如存在）
 
 ## 当前接续目标
 [从 handoff 读取的目标，或从 memory 推断的默认目标]
@@ -162,10 +163,10 @@ Agent 确认上下文已加载后，输出：
 
 ## 边界约束
 
-1. **不跳过检查**：简化的是交互，不是校验。`AGENTS.md` 和 `docs/memory/README.md` 仍必须读取。
+1. **不跳过检查**：简化的是交互，不是校验。`AGENTS.md` 和 `docs/agent/memory/README.md` 仍必须读取。
 2. **不模糊匹配到多文件**：`继续 ammalloc` 只加载模块级，不自动扫所有子模块。
 3. **输出必须明确**：必须写出"实际加载了哪些文件"，避免用户误以为上下文已完整恢复。
-4. **handoff 不是必须**：如果 `docs/handoff/` 目录为空，说明没有未完成的临时状态，从 memory 重新开始即可。
+4. **handoff 不是必须**：如果 `docs/agent/handoff/` 目录为空，说明没有未完成的临时状态，从 memory 重新开始即可。
 
 ---
 
@@ -173,13 +174,13 @@ Agent 确认上下文已加载后，输出：
 
 ### 1. 模块存在但子模块 memory 不存在
 
-**场景**：用户说"继续 ammalloc size_class"，但 `docs/memory/modules/ammalloc/submodules/size_class.md` 不存在。
+**场景**：用户说"继续 ammalloc size_class"，但 `docs/agent/memory/modules/ammalloc/submodules/size_class.md` 不存在。
 
 **Agent 处理**：
 ```markdown
 ## 加载结果
-- ✅ docs/memory/modules/ammalloc/module.md（已加载）
-- ❌ docs/memory/modules/ammalloc/submodules/size_class.md（不存在）
+- ✅ docs/agent/memory/modules/ammalloc/module.md（已加载）
+- ❌ docs/agent/memory/modules/ammalloc/submodules/size_class.md（不存在）
 - resume_status: partial
 
 ## 决策选项
@@ -224,7 +225,7 @@ Agent 确认上下文已加载后，输出：
 
 ### 模块不存在时的智能回退
 
-如果解析出的模块 `docs/memory/modules/<module>/` 不存在：
+如果解析出的模块 `docs/agent/memory/modules/<module>/` 不存在：
 
 **Agent 响应：**
 ```markdown
@@ -241,7 +242,7 @@ Agent 确认上下文已加载后，输出：
 如果选择 **1. 创建新模块**：
 - Agent 将切换到 new_session_template.md 流程
 - 提示填写：模块名、目标、初始约束等
-- 自动创建 docs/memory/modules/[module]/module.md
+- 自动创建 docs/agent/memory/modules/[module]/module.md
 
 如果选择 **2. 指定现有模块**：
 - Agent 列出所有已有模块：

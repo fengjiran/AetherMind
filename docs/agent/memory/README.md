@@ -3,32 +3,33 @@
 > **本文档为记忆系统的操作规范**。  
 > 架构设计说明见: [`docs/agent_memory_system.md`](../agent_memory_system.md)
 >
-> 用途：定义 `docs/memory/` 的唯一结构规则。稳定事实写入记忆文档；会话级临时状态保留在 handoff。
+> 用途：定义 `docs/agent/memory/` 的唯一结构规则。稳定事实写入记忆文档；会话级临时状态保留在 handoff。
 
 ## 本文档范围
-- 本文档是 `docs/memory/` 的操作规范，用于实际创建、读取、更新和维护 memory 文件；不承担架构总览说明。
+- 本文档是 `docs/agent/memory/` 的操作规范，用于实际创建、读取、更新和维护 memory 文件；不承担架构总览说明。
 - 架构设计说明：[`docs/agent_memory_system.md`](../agent_memory_system.md)
-- Prompt 入口与衔接：[`docs/prompts/README.md`](../prompts/README.md)、[`docs/prompts/new_session_template.md`](../prompts/new_session_template.md)
+- Prompt 入口与衔接：[`docs/agent/prompts/README.md`](../prompts/README.md)、[`docs/agent/prompts/new_session_template.md`](../prompts/new_session_template.md)
 - 需要理解分层模型、工作流全貌和示例时，优先阅读架构文档；需要执行路径、元数据、命名和冲突规则时，优先阅读本文档。
 - 实际使用或回写 memory 时，以本文档为最终操作依据。
 
 ## 记忆层级模型
-- 全局层：`docs/memory/project.md`。记录跨模块稳定事实、目录约定和默认规则。
-- 模块层：`docs/memory/modules/<module>/module.md`。记录主模块职责、边界、接口、不变量和长期约束。
-- 子模块层：`docs/memory/modules/<module>/submodules/<submodule>.md`。只在父模块内存在独立边界时拆分；与主模块同属领域层。
-- handoff 层：按 `docs/prompts/handoff.md` 输出当前会话摘要，只服务交接，不替代稳定记忆；输出存储在 `docs/handoff/` 目录，通过 git 同步实现跨机器恢复。
-- 读取顺序：`AGENTS.md` -> `docs/memory/README.md` -> `project.md` -> `module.md` -> `submodule.md`（如存在）-> handoff（从任务系统或 `docs/handoff/` 目录）。
-- 冲突优先级：用户显式指令与已验证代码/测试事实 > `AGENTS.md` > `docs/aethermind_prd.md` > ADR > 模块/子模块记忆 > `docs/memory/project.md` > handoff > `GEMINI.md`。
+- 全局层：`docs/agent/memory/project.md`。记录跨模块稳定事实、目录约定和默认规则。
+- 模块层：`docs/agent/memory/modules/<module>/module.md`。记录主模块职责、边界、接口、不变量和长期约束。
+- 子模块层：`docs/agent/memory/modules/<module>/submodules/<submodule>.md`。只在父模块内存在独立边界时拆分；与主模块同属领域层。
+- handoff 层：按 `docs/agent/prompts/handoff.md` 输出当前会话摘要，只服务交接，不替代稳定记忆；输出存储在 `docs/agent/handoff/` 目录，通过 git 同步实现跨机器恢复。
+- 读取顺序：`AGENTS.md` -> `docs/agent/memory/README.md` -> `project.md` -> `module.md` -> `submodule.md`（如存在）-> handoff（从任务系统或 `docs/agent/handoff/` 目录）。
+- 冲突优先级：用户显式指令与已验证代码/测试事实 > `AGENTS.md` > `docs/aethermind_prd.md` > ADR > 模块/子模块记忆 > `docs/agent/memory/project.md` > handoff > `GEMINI.md`。
 - handoff 与稳定记忆冲突时，先回到代码、测试或用户指令验证；未验证前不要直接覆盖 memory 文件。
 
 ## Handoff 存储规范
 
 ### 存储位置
-- **路径**：`docs/handoff/workstreams/<workstream_key>/`
-- **位置**：`docs/handoff/` 目录在 git 管理下，随仓库同步
+- **路径**：`docs/agent/handoff/workstreams/<workstream_key>/`
+- **位置**：`docs/agent/handoff/` 目录在 git 管理下，随仓库同步
 - **目的**：
   - 本地 fallback（任务系统不可用时）
   - 跨机器恢复（通过 git pull/push 同步）
+- **当前限制**：handoff 按 workstream 单独存储；跨模块协调暂不支持通过单个 handoff 统一恢复，需改用 `docs/agent/prompts/new_session_template.md` 明确启动。
 
 ### Workstream 键
 
@@ -48,7 +49,7 @@ YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
 - 示例：`20260311T103000Z--ses_abc123--sisyphus.md`
 
 ### 文件格式（v1.1）
-```yaml
+```markdown
 ---
 kind: handoff
 schema_version: "1.1"
@@ -65,7 +66,7 @@ closed_at: null                   # 关闭时间（仅 status=closed）
 closed_reason: null               # 关闭原因（仅 status=closed）
 ---
 
-[正文按 docs/prompts/handoff.md 格式]
+[正文按 docs/agent/prompts/handoff.md 格式]
 ```
 
 **字段说明**：
@@ -108,7 +109,7 @@ Agent 在以下情况**提示**用户是否生成 handoff：
 ```bash
 # 1. 用户说"生成 handoff"（Agent 按 handoff.md 生成文件）
 # 2. 用户确认后提交到 git
-git add docs/handoff/
+git add docs/agent/handoff/
 git commit -m "handoff: ammalloc thread_cache progress"
 git push
 ```
@@ -117,7 +118,7 @@ git push
 ```bash
 # 1. 拉取最新 handoff
 git pull
-# 2. Agent 自动读取 docs/handoff/ 最新文件恢复上下文
+# 2. Agent 自动读取 docs/agent/handoff/ 最新文件恢复上下文
 ```
 
 ### 文件排序与状态过滤规则
@@ -152,17 +153,20 @@ status: active, memory_status: pending/not_needed
 - **写入**：直接写入目标路径（无需临时文件，git 管理版本）
 - **状态更新**：修改旧 handoff 的 `status` 时，同步更新 git
 - **清理策略**：
-  - **本地**：保留最近 3 个 active handoff，自动删除超过 7 天的旧文件
+  - 本地自动清理策略（建议手动执行）：
+    - 删除超过 7 天的 closed/superseded handoff
+    - 始终保留最近 3 个文件（无论状态）
+    - 永远不要删除 `status: active` 的 handoff
   - **远端（git）**：保留所有历史（包括 superseded 和 closed），供审计追溯
 - **读取顺序**：
   1. 任务系统/对话中的 handoff（优先）
-  2. `docs/handoff/` 目录中 `status: active` 的最新文件（本地 + git 同步）
+  2. `docs/agent/handoff/` 目录中 `status: active` 的最新文件（本地 + git 同步）
   3. 如果没有 active，视为"无可恢复状态"，直接从 memory 开始
 
 ### 边界情况处理
 
 #### 模块存在但子模块 memory 不存在
-**场景**：`docs/memory/modules/<module>/module.md` 存在，但 `submodules/<submodule>.md` 不存在。
+**场景**：`docs/agent/memory/modules/<module>/module.md` 存在，但 `submodules/<submodule>.md` 不存在。
 
 **处理**：
 - 加载 module.md 中的相关信息（子模块划分、待办事项）
@@ -188,12 +192,12 @@ status: active, memory_status: pending/not_needed
 
 ### 约束
 - handoff 保持**语义临时**：不是真相源，只是会话上下文缓存
-- 稳定结论必须在会话结束前回写到 `docs/memory/` 或 ADR
-- 不要把 `docs/handoff/` 当作长期历史记录（虽然 git 会保留历史）
+- 稳定结论必须在会话结束前回写到 `docs/agent/memory/` 或 ADR
+- 不要把 `docs/agent/handoff/` 当作长期历史记录（虽然 git 会保留历史）
 
 ## 快捷恢复规则
 
-使用 [`docs/prompts/quick_resume.md`](../prompts/quick_resume.md) 一句话接续工作。
+使用 [`docs/agent/prompts/quick_resume.md`](../prompts/quick_resume.md) 一句话接续工作。
 
 ### 触发示例
 ```
@@ -202,13 +206,13 @@ status: active, memory_status: pending/not_needed
 ```
 
 ### 解析规则
-1. **精确匹配优先**：直接对应 `docs/memory/modules/<module>/`
+1. **精确匹配优先**：直接对应 `docs/agent/memory/modules/<module>/`
 2. **模糊匹配仅模块级**：`继续 ammalloc` 只加载模块，不自动扫所有子模块
 3. **歧义时询问**：无法唯一命中时列出所有候选，要求明确指定
 
 ### 加载顺序（与详细模式一致）
 ```
-AGENTS.md -> docs/memory/README.md -> project.md -> module.md -> submodule.md -> handoff
+AGENTS.md -> docs/agent/memory/README.md -> project.md -> module.md -> submodule.md -> handoff
 ```
 
 ### 精简输出（5要点）
@@ -220,7 +224,7 @@ AGENTS.md -> docs/memory/README.md -> project.md -> module.md -> submodule.md ->
 
 ## 文件路径规范
 ```text
-docs/memory/
+docs/agent/memory/
 ├── README.md
 ├── project.md
 └── modules/
@@ -233,7 +237,7 @@ docs/memory/
 ```
 - `project.md` 只存跨模块稳定事实，不重复模块内部细节。
 - 每个主模块目录只保留一个 `module.md`，子模块统一放入 `submodules/`。
-- 模块级 ADR 默认放在对应模块的 `adrs/` 目录；模板来源见 `docs/decisions/template.md`。
+- 模块级 ADR 默认放在对应模块的 `adrs/` 目录；模板来源见 `docs/agent/decisions/template.md`。
 
 ## 何时创建记忆文档
 - 创建主模块记忆：某一能力域已经形成稳定边界，并且会跨多个文件、目标或会话反复维护。

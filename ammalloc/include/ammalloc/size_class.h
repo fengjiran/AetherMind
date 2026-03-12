@@ -182,9 +182,14 @@ public:
         return size_table_[idx];
     }
 
-    /// Safe version of Size() with bounds checking for debug/testing.
+    /// Debug/assertion version of Size() with bounds checking.
+    ///
+    /// This is a debugging/contract checking interface. If idx is out of range,
+    /// it triggers AM_CHECK(false) which aborts the process. The returned 0
+    /// is unreachable in practice.
+    ///
     /// @param idx The size class index.
-    /// @return The maximum byte size, or 0 if idx is out of range.
+    /// @return The maximum byte size (only returns on valid idx).
     AM_ALWAYS_INLINE static size_t SafeSize(size_t idx) noexcept {
         // clang-format off
         if (idx >= kNumSizeClasses) AM_UNLIKELY {

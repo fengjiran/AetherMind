@@ -83,4 +83,6 @@ status: active
 - 无
 
 ## 待办事项
-- 代码review
+- [x] 代码 review（2026-03-11 完成）
+  - P1: SafeSize() 契约注释修正（方案A）
+  - P2: 边界行为测试补充（4个用例）

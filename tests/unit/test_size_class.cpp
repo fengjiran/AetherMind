@@ -289,8 +289,43 @@ TEST(SizeClassTest, SafeSizeBounds) {
     EXPECT_EQ(SizeClass::SafeSize(0), 8);
     EXPECT_EQ(SizeClass::SafeSize(15), 128);
     EXPECT_EQ(SizeClass::SafeSize(16), 160);
-    EXPECT_EQ(SizeClass::SafeSize(SizeClass::kNumSizeClasses - 1), 
+    EXPECT_EQ(SizeClass::SafeSize(SizeClass::kNumSizeClasses - 1),
               SizeConfig::MAX_TC_SIZE);
+}
+
+// ============================================================================
+// Invalid Input Contract Tests
+// Purpose: Lock down boundary behavior to prevent future regressions
+// See: docs/reviews/code_review/20260311_size_class_code_review.md (P2)
+// ============================================================================
+
+TEST(SizeClassInvalidInput, RoundUpOverMaxTcSize) {
+    // RoundUp returns original size when size > MAX_TC_SIZE (no alignment needed)
+    size_t over_max = SizeConfig::MAX_TC_SIZE + 1;
+    EXPECT_EQ(SizeClass::RoundUp(over_max), over_max);
+
+    // Even larger values should return as-is
+    EXPECT_EQ(SizeClass::RoundUp(over_max + 1000), over_max + 1000);
+}
+
+TEST(SizeClassInvalidInput, CalculateBatchSizeWithZero) {
+    // size == 0 returns 0 batch size (invalid, no allocation possible)
+    EXPECT_EQ(SizeClass::CalculateBatchSize(0), 0);
+}
+
+TEST(SizeClassInvalidInput, GetMovePageNumWithZero) {
+    // size == 0: batch=0, but minimum allocation is 8 pages (32KB) due to
+    // metadata overhead protection in GetMovePageNum() implementation
+    EXPECT_EQ(SizeClass::GetMovePageNum(0), 8);  // 32KB / 4KB = 8 pages minimum
+}
+
+TEST(SizeClassInvalidInput, IndexReturnsMaxForInvalid) {
+    // size > MAX_TC_SIZE returns max() sentinel value
+    size_t over_max = SizeConfig::MAX_TC_SIZE + 1;
+    EXPECT_EQ(SizeClass::Index(over_max), std::numeric_limits<size_t>::max());
+
+    // Much larger values also return max()
+    EXPECT_EQ(SizeClass::Index(over_max * 2), std::numeric_limits<size_t>::max());
 }
 
 } // namespace

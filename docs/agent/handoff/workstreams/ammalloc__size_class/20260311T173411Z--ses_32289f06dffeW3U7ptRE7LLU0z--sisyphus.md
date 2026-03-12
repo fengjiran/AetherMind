@@ -6,8 +6,9 @@ session_id: ses_32289f06dffeW3U7ptRE7LLU0z
 task_id: T-e85b194c-2c9e-463e-b44c-761a9b6561df
 module: ammalloc
 submodule: size_class
+slug: null
 agent: sisyphus
-status: active
+status: superseded
 memory_status: not_needed
 supersedes: null
 closed_at: null

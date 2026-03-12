@@ -9,8 +9,8 @@ submodule: null
 slug: agent-memory-v1.1
 agent: sisyphus
 status: active
-memory_status: pending
-supersedes: 20260312T060000Z--ses_31f8f5b8affe1bnCOcehtKLLvq--sisyphus.md
+memory_status: applied
+supersedes: 20260312T060000Z--ses_31f8f5b8affe1bnCOcehtKLMvq--sisyphus.md
 closed_at: null
 closed_reason: null
 ---

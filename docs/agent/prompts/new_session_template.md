@@ -42,8 +42,7 @@ Agent: 才能执行工具操作（扫描代码、编译、测试等）
 2. 阅读 `docs/agent/memory/README.md`（操作规范，也是 workstream 键与 handoff frontmatter 的最终依据）
 3. 阅读 `docs/agent/memory/project.md`；
    - 若存在，正常加载
-   - 若缺失且 workstream 为显式 `project__<slug>`：标记为 `partial`，继续（项目级共识缺失但仍可恢复）
-   - 若缺失且需要依赖 project.md 推断 slug：标记为 `blocked`，停止并要求用户显式指定 workstream
+   - 若缺失：标记为 `blocked`，停止并要求先恢复该文件（或由用户显式确认采用无全局记忆模式）
 4. 若 `[WORKSTREAM_KEY]` 为 `project__<slug>`：
    - 使用 `module: project`、`submodule: null`、`slug: [SLUG]`
    - 跳过 `module.md` 和 `submodule.md`

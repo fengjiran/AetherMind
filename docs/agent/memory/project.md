@@ -90,7 +90,7 @@ status: active
 | Slug | 描述 | 状态 |
 |------|------|------|
 | `docs-reorg` | docs/ 目录结构重构 | active |
-| `agent-memory-v1.1` | Agent Memory System v1.1 设计冻结 | active |
+| `agent-memory-v1.1` | Agent Memory System v1.1 修复完成：区分项目级/模块级工作流，重命名 handoff.md → handoff_template.md | active |
 | `ci-setup` | CI/CD 配置迁移 | 待创建 |
 | `arch-migration` | 跨模块架构迁移 | 待创建 |
 

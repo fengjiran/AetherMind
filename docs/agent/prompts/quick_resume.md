@@ -208,7 +208,7 @@ Agent 响应:
 **resume_status 定义**：
 - `complete`：所有文件加载成功，包括 handoff
 - `partial`：部分文件缺失（如缺子模块或 handoff），但可按 module 层恢复
-- `blocked`：模块不存在，需用户决策（创建新模块/指定其他模块）
+- `blocked`：关键前置条件缺失（如模块不存在，或 `docs/agent/memory/project.md` 缺失）需用户决策
 
 **规则**：
 

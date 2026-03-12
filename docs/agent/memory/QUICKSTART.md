@@ -1,6 +1,8 @@
 # Agent Memory System 快速入门
 
 > 从零开始使用记忆系统的完整示例
+>
+> 路径规则、workstream 键和 handoff frontmatter 以 `docs/agent/memory/README.md` 为最终依据。
 
 ---
 
@@ -154,7 +156,7 @@ git push
 > "生成 handoff" 或 "今天先到这里"
 
 **Agent 执行**：
-1. 按 `docs/agent/prompts/handoff.md` 生成 handoff 文件
+1. 按 `docs/agent/prompts/handoff_template.md` 生成 handoff 文件
 2. 展示生成的文件内容供用户确认
 3. 提示用户提交到 git
 
@@ -169,6 +171,7 @@ session_id: ses_001
 task_id: task_tc_001
 module: ammalloc
 submodule: thread_cache
+slug: null
 agent: sisyphus
 status: active
 memory_status: pending
@@ -259,6 +262,66 @@ git pull
 1. 检查 central_cache.h 的 TransferCache 实现
 2. 确认容量查询是否需要加锁
 3. 实现 GetTransferCacheCapacity() 接口
+```
+
+---
+
+## 项目级最小示例（`project__<slug>`）
+
+当工作不归属单一模块时，直接按 `docs/agent/memory/README.md` 使用项目级 workstream。
+
+### 开始一个项目级 workstream
+
+**用户输入**：
+> "继续 project__docs-reorg 的工作"
+
+**Agent 加载**：
+```
+✅ AGENTS.md
+✅ docs/agent/memory/README.md
+✅ docs/agent/memory/project.md
+⚠️ 项目级 workstream：跳过 module.md/submodule.md
+⚠️ 无 handoff（首次工作）
+```
+
+### 生成项目级 handoff
+
+**文件**：`docs/agent/handoff/workstreams/project__docs-reorg/20260311T180000Z--ses_docs_001--sisyphus.md`
+
+```markdown
+---
+kind: handoff
+schema_version: "1.1"
+created_at: 2026-03-11T18:00:00Z
+session_id: ses_docs_001
+task_id: task_docs_001
+module: project
+submodule: null
+slug: docs-reorg
+agent: sisyphus
+status: active
+memory_status: not_needed
+supersedes: null
+closed_at: null
+closed_reason: null
+---
+```
+
+### 恢复项目级 workstream
+
+```bash
+git pull
+```
+
+**用户输入**：
+> "继续 project__docs-reorg 的工作"
+
+**Agent 加载**：
+```
+✅ AGENTS.md
+✅ docs/agent/memory/README.md
+✅ docs/agent/memory/project.md
+✅ docs/agent/handoff/workstreams/project__docs-reorg/20260311T180000Z--ses_docs_001--sisyphus.md
 ```
 
 ---
@@ -373,12 +436,12 @@ cd AetherMind
 
 # 每天开始
 git pull
-# 用户说："继续 <module> <submodule> 的工作"
+# 用户说："继续 <module> <submodule> 的工作" 或 "继续 project__<slug> 的工作"
 
 # 每天结束
 # 用户说："生成 handoff" → Agent 生成文件 → 用户确认
 git add docs/agent/handoff/
-git commit -m "handoff: <module> <submodule> progress"
+git commit -m "handoff: <workstream_key> progress"
 git push
 
 # 里程碑完成

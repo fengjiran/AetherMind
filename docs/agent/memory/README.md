@@ -16,8 +16,10 @@
 - 全局层：`docs/agent/memory/project.md`。记录跨模块稳定事实、目录约定和默认规则。
 - 模块层：`docs/agent/memory/modules/<module>/module.md`。记录主模块职责、边界、接口、不变量和长期约束。
 - 子模块层：`docs/agent/memory/modules/<module>/submodules/<submodule>.md`。只在父模块内存在独立边界时拆分；与主模块同属领域层。
-- handoff 层：按 `docs/agent/prompts/handoff.md` 输出当前会话摘要，只服务交接，不替代稳定记忆；输出存储在 `docs/agent/handoff/` 目录，通过 git 同步实现跨机器恢复。
-- 读取顺序：`AGENTS.md` -> `docs/agent/memory/README.md` -> `project.md` -> `module.md` -> `submodule.md`（如存在）-> handoff（从任务系统或 `docs/agent/handoff/` 目录）。
+- handoff 层：按 `docs/agent/prompts/handoff_template.md` 输出当前会话摘要，只服务交接，不替代稳定记忆；输出存储在 `docs/agent/handoff/` 目录，通过 git 同步实现跨机器恢复。
+- 读取顺序：`AGENTS.md` -> `docs/agent/memory/README.md` -> `docs/agent/memory/project.md` -> `docs/agent/memory/modules/<module>/module.md`（模块工作时）-> `docs/agent/memory/modules/<module>/submodules/<submodule>.md`（子模块工作时） -> `docs/agent/handoff/workstreams/<workstream_key>/`（从任务系统或实际存储目录）。
+  - **模块工作**：加载 `docs/agent/memory/modules/<module>/module.md` -> `docs/agent/memory/modules/<module>/submodules/<submodule>.md`（如存在）
+  - **项目级工作**：跳过 `docs/agent/memory/modules/<module>/module.md` 和 `docs/agent/memory/modules/<module>/submodules/<submodule>.md`，直接加载 `docs/agent/memory/project.md` -> `docs/agent/handoff/workstreams/project__<slug>/`
 - 冲突优先级：用户显式指令与已验证代码/测试事实 > `AGENTS.md` > `docs/products/aethermind_prd.md` > ADR > 模块/子模块记忆 > `docs/agent/memory/project.md` > handoff > `GEMINI.md`。
 - handoff 与稳定记忆冲突时，先回到代码、测试或用户指令验证；未验证前不要直接覆盖 memory 文件。
 
@@ -33,13 +35,40 @@
 
 ### Workstream 键
 
-**On-disk 键（目录名）**：固定使用 `<module>__<submodule-or-none>`
+#### 类型 1：模块工作（标准）
+**On-disk 键（目录名）**：`<module>__<submodule-or-none>`
 - 格式：`ammalloc__thread_cache` 或 `ammalloc__none`（无子模块时）
 - 作用：确定 handoff 文件存储的目录路径
+- 加载顺序：`docs/agent/memory/project.md` → `docs/agent/memory/modules/<module>/module.md` → `docs/agent/memory/modules/<module>/submodules/<submodule>.md` → `docs/agent/handoff/workstreams/<module>__<submodule>/`
 
-**逻辑键（frontmatter 元数据）**：`task_id`
-- 作用：在 frontmatter 中记录关联的任务 ID，便于追踪
-- 不作为目录键，避免任务 ID 变化导致目录结构变动
+**示例**：
+- `ammalloc__thread_cache` → ammalloc 模块的 thread_cache 子模块
+- `ammalloc__none` → ammalloc 模块（无特定子模块）
+
+#### 类型 2：项目级工作（新增）
+**On-disk 键（目录名）**：`project__<slug>`
+- 格式：`project__docs-reorg`、`project__ci-setup`
+- 作用：处理不归属特定模块的仓库级工作
+- 加载顺序：`docs/agent/memory/project.md` → `docs/agent/handoff/workstreams/project__<slug>/`（跳过 `docs/agent/memory/modules/<module>/module.md` 和 `docs/agent/memory/modules/<module>/submodules/<submodule>.md`）
+
+**何时使用**：
+- ✅ 仓库级、跨模块的工作（如目录重构、CI 配置）
+- ✅ 多步骤、有明确起止的任务
+- ✅ 没有自然模块归属者
+
+**何时不用**：
+- ❌ 已有明确模块归属（即使涉及配置文件）
+- ❌ 已 settled 的事实（直接写 project.md）
+- ❌ 一次性简单任务
+
+**示例**：
+- `project__docs-reorg` → docs/ 目录结构重构
+- `project__ci-setup` → CI/CD 配置迁移
+- `project__arch-migration` → 跨模块架构迁移
+
+**沉淀规则**：
+- **进行中**：handoff 保存临时状态（目标、进度、阻塞点）
+- **完成后**：稳定结论写入 `project.md`，handoff 标记为 `closed`
 
 ### 文件命名
 ```
@@ -49,7 +78,9 @@ YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
 - 示例：`20260311T103000Z--ses_abc123--sisyphus.md`
 
 ### 文件格式（v1.1）
-```markdown
+
+#### 模块工作 handoff
+```yaml
 ---
 kind: handoff
 schema_version: "1.1"
@@ -58,16 +89,51 @@ session_id: ses_abc123
 task_id: task_456
 module: ammalloc
 submodule: thread_cache
+slug: null                        # 模块工作：必须为 null
 agent: sisyphus
-status: active                    # active | superseded | closed
-memory_status: pending            # not_needed | pending | applied
+status: active
+memory_status: not_needed         # 默认 not_needed
 supersedes: null                  # 被本 handoff 取代的旧文件
 closed_at: null                   # 关闭时间（仅 status=closed）
 closed_reason: null               # 关闭原因（仅 status=closed）
 ---
-
-[正文按 docs/agent/prompts/handoff.md 格式]
 ```
+
+#### 项目级工作 handoff
+```yaml
+---
+kind: handoff
+schema_version: "1.1"
+created_at: 2026-03-11T10:30:00Z
+session_id: ses_abc123
+task_id: task_456
+module: project                   # 固定为 project
+submodule: null                   # 项目级工作：必须为 null
+slug: docs-reorg                  # workstream 标识（如 docs-reorg、ci-setup）
+agent: sisyphus
+status: active
+memory_status: not_needed         # 默认 not_needed
+supersedes: null
+closed_at: null
+closed_reason: null
+---
+```
+
+#### 决策表：何时用模块 vs 项目级
+
+| 场景 | 推荐类型 | Workstream 键示例 | 理由 |
+|------|---------|-------------------|------|
+| 开发 ammalloc 的 thread_cache | 模块 | `ammalloc__thread_cache` | 有明确模块归属 |
+| 重构 docs/ 目录结构 | 项目级 | `project__docs-reorg` | 跨模块、无单一归属 |
+| 配置 CI/CD | 项目级 | `project__ci-setup` | 影响整个仓库 |
+| 修复 ammalloc 的 bug（需改配置） | 模块 | `ammalloc__size_class` | 虽有配置改动，但属模块内 |
+| 添加项目级日志规范 | 项目级 | `project__logging-std` | 跨模块规范 |
+| 设计 review | 项目级 | `project__arch-review-2026q1` | 跨模块评审 |
+
+**核心原则**：
+- 如果工作可以问"这是哪个模块的事？"且有明确答案 → 用模块类型
+- 如果工作影响整个仓库或多个模块，无法归属单一模块 → 用项目级类型
+- 如果犹豫，先用项目级，后续可归一时再迁移
 
 **字段说明**：
 - `schema_version`: "1.1"（当前版本）
@@ -107,7 +173,7 @@ Agent 在以下情况**提示**用户是否生成 handoff：
 
 **在公司电脑结束工作：**
 ```bash
-# 1. 用户说"生成 handoff"（Agent 按 handoff.md 生成文件）
+# 1. 用户说"生成 handoff"（Agent 按 handoff_template.md 生成文件）
 # 2. 用户确认后提交到 git
 git add docs/agent/handoff/
 git commit -m "handoff: ammalloc thread_cache progress"
@@ -211,8 +277,15 @@ status: active, memory_status: pending/not_needed
 3. **歧义时询问**：无法唯一命中时列出所有候选，要求明确指定
 
 ### 加载顺序（与详细模式一致）
+
+**模块工作**：
 ```
-AGENTS.md -> docs/agent/memory/README.md -> project.md -> module.md -> submodule.md -> handoff
+AGENTS.md -> docs/agent/memory/README.md -> docs/agent/memory/project.md -> docs/agent/memory/modules/<module>/module.md -> docs/agent/memory/modules/<module>/submodules/<submodule>.md -> docs/agent/handoff/workstreams/<module>__<submodule>/
+```
+
+**项目级工作**：
+```
+AGENTS.md -> docs/agent/memory/README.md -> docs/agent/memory/project.md -> docs/agent/handoff/workstreams/project__<slug>/
 ```
 
 ### 精简输出（5要点）

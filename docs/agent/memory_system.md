@@ -62,34 +62,34 @@ Agent Memory System 旨在解决以下问题：
 ```
 ┌─────────────────────────────────────────┐
 │           全局层 (Global)                │
-│      docs/agent/memory/project.md             │
-│  - 跨模块稳定事实                        │
-│  - 目录约定、默认规则                     │
+│    docs/agent/memory/project.md         │
+│     - 跨模块稳定事实                      │
+│     - 目录约定、默认规则                   │
 └───────────────────┬─────────────────────┘
                     │
 ┌───────────────────▼─────────────────────┐
 │           模块层 (Module)                │
-│   docs/agent/memory/modules/<module>/         │
+│   docs/agent/memory/modules/<module>/   │
 │           module.md                     │
-│  - 主模块职责、边界                       │
-│  - 核心抽象、对外接口                     │
-│  - 不变量、并发/性能约束                   │
+│    - 主模块职责、边界                      │
+│    - 核心抽象、对外接口                    │
+│    - 不变量、并发/性能约束                 │
 └───────────────────┬─────────────────────┘
                     │
 ┌───────────────────▼─────────────────────┐
 │          子模块层 (Submodule)            │
-│   docs/agent/memory/modules/<module>/         │
+│   docs/agent/memory/modules/<module>/   │
 │        submodules/<submodule>.md        │
-│  - 独立边界子组件                        │
-│  - 详细实现约束                          │
+│     - 独立边界子组件                      │
+│     - 详细实现约束                        │
 └─────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────┐
-│        Handoff 层 (临时状态)             │
-│        docs/agent/handoff/workstreams/        │
-│  - 当前进度、阻塞点、下一步               │
-│  - 会话级上下文，通过 git 同步            │
-│  - 支持跨机器恢复                        │
+│        Handoff 层 (临时状态)              │
+│  docs/agent/handoff/workstreams/        │
+│    - 当前进度、阻塞点、下一步               │
+│    - 会话级上下文，通过 git 同步            │
+│    - 支持跨机器恢复                        │
 └─────────────────────────────────────────┘
 ```
 
@@ -100,13 +100,15 @@ Agent Memory System 旨在解决以下问题：
 | **全局层** | 整个项目 | 高 | 构建约定、代码规范、验证流程 | `docs/agent/memory/project.md` |
 | **模块层** | 单个主模块 | 高 | 职责边界、核心抽象、对外接口 | `docs/agent/memory/modules/<module>/module.md` |
 | **子模块层** | 子组件 | 中高 | 实现细节、内部不变量、优化策略 | `docs/agent/memory/modules/<module>/submodules/<submodule>.md` |
-| **handoff** | 单次会话 | 低 | 当前进度、阻塞点、下一步行动 | `docs/agent/handoff/workstreams/<key>/` (git 同步) |
+| **模块/子模块 workstream** | 单个模块任务 | 低 | 当前进度、阻塞点、下一步行动 | `docs/agent/handoff/workstreams/<module>__<submodule-or-none>/` |
+| **项目级 workstream** | 单个仓库级任务 | 低 | 跨模块临时目标、进度、阻塞点 | `docs/agent/handoff/workstreams/project__<slug>/` |
 
 ### 2.3 冲突优先级
 
 当不同来源信息冲突时，按源优先级与已验证事实处理；完整覆盖关系见 `3.3 源优先级与覆盖关系`。
 
 **处理规则**:
+
 - 优先回到用户显式指令、已验证代码/测试事实确认
 - handoff 与稳定记忆冲突时，先回到代码、测试或用户指令验证
 - 未验证前不要直接覆盖 memory 文件
@@ -136,14 +138,16 @@ docs/agent/prompts/
 ├── README.md                    # Prompt 说明
 ├── quick_resume.md              # 快捷恢复（默认入口）
 ├── new_session_template.md      # 显式启动（备选）
-├── handoff.md                   # 会话交接
+├── handoff_template.md           # 会话交接
 ├── memory_update_and_adr.md     # 记忆更新
 └── generate_module_memory.md    # 生成完整记忆
 
 docs/agent/handoff/
 ├── README.md                    # handoff 存储说明
 └── workstreams/
-    └── <module>__<submodule-or-none>/
+    ├── <module>__<submodule-or-none>/
+    │   └── YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
+    └── project__<slug>/
         └── YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
 
 docs/agent/decisions/
@@ -152,6 +156,7 @@ docs/agent/decisions/
 
 - `docs/agent/memory_system.md` 位于 `docs/agent/` 目录，作为记忆系统的架构设计说明。
 - handoff 输出存储在任务记录/对话中，同时持久化到 `docs/agent/handoff/workstreams/<workstream_key>/`。
+- workstream 键、目录规则和 handoff frontmatter 以 `docs/agent/memory/README.md` 为最终操作依据。
 - 通过 git 同步实现跨机器恢复。
 
 ### 3.2 文件命名规范
@@ -190,16 +195,16 @@ docs/agent/decisions/
 旧会话结束
     ↓
 ┌──────────────────┐
-│   handoff.md     │  生成交接摘要
+│   handoff_template.md │  生成交接摘要
 │   (临时状态)      │
 └──────────────────┘
     ↓
 新会话启动
     ↓
-┌──────────────────────────────────────────────────────────┐
+┌────────────────────────────────────────────────────────────────┐
 │  AGENTS.md -> docs/agent/memory/README.md -> project.md ->     │
-│   module.md -> submodule.md (如存在) -> handoff           │
-└──────────────────────────────────────────────────────────┘
+│   (module.md -> submodule.md, 如适用) -> handoff                │
+└────────────────────────────────────────────────────────────────┘
     ↓
 执行任务
     ↓
@@ -235,6 +240,20 @@ docs/agent/decisions/
 4. ✅ handoff 中出现会影响后续开发的稳定结论
 5. ❌ 纯试验、调试日志、临时 workaround
 6. ❌ 未定案讨论
+
+### 4.3 Workstream 工作流示例
+
+**模块工作（`ammalloc__thread_cache`）**
+1. 读取 `docs/agent/memory/project.md`
+2. 读取 `docs/agent/memory/modules/ammalloc/module.md`
+3. 读取 `docs/agent/memory/modules/ammalloc/submodules/thread_cache.md`
+4. 读取 `docs/agent/handoff/workstreams/ammalloc__thread_cache/` 中最新的 `active` handoff
+
+**项目级工作（`project__docs-reorg`）**
+1. 读取 `docs/agent/memory/project.md`
+2. 跳过 `module.md` 和 `submodule.md`
+3. 读取 `docs/agent/handoff/workstreams/project__docs-reorg/` 中最新的 `active` handoff
+4. 如需字段细节或默认值，回到 `docs/agent/memory/README.md`
 
 ---
 
@@ -358,18 +377,19 @@ status: active             # active | draft | deprecated
    - 如有新 ADR，创建到 `adrs/` 目录
 
 2. **生成 handoff**
-   - 使用 `docs/agent/prompts/handoff.md` 结构输出
+   - 使用 `docs/agent/prompts/handoff_template.md` 结构输出
    - 包含：目标、当前状态、涉及文件、阻塞点、推荐下一步
    - 输出到任务记录/对话中
    - **同时写入 `docs/agent/handoff/workstreams/<workstream_key>/YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md`**
-   - 文件包含 YAML frontmatter（kind, schema_version, created_at, session_id, task_id, module, submodule, agent）
+   - 文件 frontmatter 必须完整匹配 `docs/agent/memory/README.md` 的 v1.1 contract（含 `module`、`submodule`、`slug`、`status`、`memory_status` 等字段）
    - 通过 `git add docs/agent/handoff/` 和 `git commit` 提交，实现跨机器同步
 
 3. **新会话启动**
    - 先读取 `AGENTS.md`
-   - 再读取 `docs/agent/memory/README.md`（操作规范）
+   - 再读取 `docs/agent/memory/README.md`（操作规范，也是 workstream 规则与 frontmatter 的最终依据）
    - 然后读取 `docs/agent/memory/project.md`
-   - 定位并读取相关 `module.md` 和 `submodule.md`
+   - 若为模块 workstream，定位并读取相关 `module.md` 和 `submodule.md`
+   - 若为 `project__<slug>`，跳过 `module.md` 和 `submodule.md`
    - 最后按 `docs/agent/memory/README.md` 的规范获取 handoff（详见该文档"Handoff 存储规范"章节）
 
 ### 6.3 冲突处理流程
@@ -474,7 +494,7 @@ status: active
 |--------|----------|----------|
 | `quick_resume.md` | 日常接续工作 | 快速恢复记忆与最新 handoff |
 | `new_session_template.md` | 启动新会话 | 收敛上下文、加载记忆 |
-| `handoff.md` | 会话结束 | 交接状态、阻塞点、下一步 |
+| `handoff_template.md` | 会话结束 | 交接状态、阻塞点、下一步 |
 | `memory_update_and_adr.md` | 任务完成 | 记忆增量、新 ADR |
 | `generate_module_memory.md` | 首次建档/大修 | 完整模块记忆 |
 

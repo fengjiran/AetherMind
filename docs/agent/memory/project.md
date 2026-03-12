@@ -34,7 +34,7 @@ status: active
 - 语言与构建基线：C++20、CMake >= 3.28；核心库目标为 `AetherMind`，内存池目标为 `ammalloc`。
 - 验证入口：`aethermind_unit_tests` 使用 GoogleTest，`aethermind_benchmark` 使用 Google Benchmark。
 - 目录约定以 `AGENTS.md` 为索引：公共头文件放在 `include/`，核心实现放在 `src/`，第三方代码放在 `3rdparty/` 且默认不改。
-- 稳定记忆统一放在 `docs/agent/memory/`；会话交接统一遵循 `docs/agent/prompts/handoff.md`，并放在`docs/agent/handoff/`。
+- 稳定记忆统一放在 `docs/agent/memory/`；会话交接统一遵循 `docs/agent/prompts/handoff_template.md`，并放在`docs/agent/handoff/`。
 
 ## 核心抽象
 ### 关键抽象
@@ -82,6 +82,19 @@ status: active
 - 方案：把项目级事实、模块细节和 handoff 混写在同一记忆文件。
   - 原因：会扩大冲突面，降低可验证性，并让模块边界失真。
 - 无。
+
+## 项目级 Slug 映射表
+
+项目级 workstream 使用 `project__<slug>` 格式。以下是当前定义的 slug：
+
+| Slug | 描述 | 状态 |
+|------|------|------|
+| `docs-reorg` | docs/ 目录结构重构 | active |
+| `agent-memory-v1.1` | Agent Memory System v1.1 设计冻结 | active |
+| `ci-setup` | CI/CD 配置迁移 | 待创建 |
+| `arch-migration` | 跨模块架构迁移 | 待创建 |
+
+**添加新 slug**：当开始新的项目级工作时，先在此表中注册 slug，确保全局唯一。
 
 ## 未决问题
 - 哪些活跃能力域应优先补齐独立 `module.md`，仍需结合后续任务密度逐步确定。

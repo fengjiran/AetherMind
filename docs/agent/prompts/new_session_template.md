@@ -5,7 +5,7 @@
 **加载记忆后，必须等待用户明确确认，禁止自动执行任何操作。**
 
 ```
-Agent: 加载记忆 (AGENTS.md → README.md → project.md → module.md → submodule.md → handoff)
+Agent: 加载记忆 (AGENTS.md → docs/agent/memory/README.md → docs/agent/memory/project.md → [docs/agent/memory/modules/<module>/module.md → docs/agent/memory/modules/<module>/submodules/<submodule>.md，如适用] → docs/agent/handoff/workstreams/<workstream_key>/)
     ↓
 Agent: 输出 "记忆已加载，本轮目标是..."
     ↓
@@ -32,33 +32,66 @@ Agent: 才能执行工具操作（扫描代码、编译、测试等）
 > - 需要明确预填目标/ADR/回写项的正式启动
 > 
 > **日常快速接续**：使用 [`quick_resume.md`](./quick_resume.md)，一句话即可恢复工作。
+>
+> **workstream 键与 handoff frontmatter**：以 [`docs/agent/memory/README.md`](../memory/README.md) 为最终依据。
 
 ## 前置检查（按此顺序执行）：
 
 按 `docs/agent/memory/README.md` 的规范读取顺序：
 1. 阅读 `AGENTS.md`
-2. 阅读 `docs/agent/memory/README.md`（操作规范）
-3. 阅读 `docs/agent/memory/project.md`；不存在时明确记为 `无项目级 memory`
-4. 检查 `docs/agent/memory/modules/[MODULE_NAME]/module.md`；存在则加载，不存在时明确记为 `无主模块 memory`
-5. 若 `[SUBMODULE_NAME|无]` 不为 `无`：
-   - 先加载父模块 `docs/agent/memory/modules/[MODULE_NAME]/module.md`（如第4步未加载）
-   - 再检查 `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`；不存在时明确记为 `无子模块 memory`
+2. 阅读 `docs/agent/memory/README.md`（操作规范，也是 workstream 键与 handoff frontmatter 的最终依据）
+3. 阅读 `docs/agent/memory/project.md`；
+   - 若存在，正常加载
+   - 若缺失且 workstream 为显式 `project__<slug>`：标记为 `partial`，继续（项目级共识缺失但仍可恢复）
+   - 若缺失且需要依赖 project.md 推断 slug：标记为 `blocked`，停止并要求用户显式指定 workstream
+4. 若 `[WORKSTREAM_KEY]` 为 `project__<slug>`：
+   - 使用 `module: project`、`submodule: null`、`slug: [SLUG]`
+   - 跳过 `module.md` 和 `submodule.md`
+5. 若 `[WORKSTREAM_KEY]` 为 `<module>__<submodule-or-none>`：
+   - 检查 `docs/agent/memory/modules/[MODULE_NAME]/module.md`；存在则加载，不存在时明确记为 `无主模块 memory`
+   - 若 `[SUBMODULE_NAME|null]` 不为 `null`，再检查 `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`；不存在时明确记为 `无子模块 memory`
 6. 获取 handoff（临时状态）：
    - 从任务系统/对话上下文中获取（优先）
-   - 若不可用，从 `docs/agent/handoff/workstreams/<workstream_key>/` 读取最新 handoff 文件（fallback）
-7. 参考 `docs/agent/prompts/handoff.md` 的输出结构规范
+   - 若不可用，从 `docs/agent/handoff/workstreams/[WORKSTREAM_KEY]/` 读取最新 handoff 文件（fallback）
+7. 参考 `docs/agent/prompts/handoff_template.md` 的输出结构规范
 8. 如本轮形成稳定结论，按 `docs/agent/prompts/memory_update_and_adr.md` 准备 memory 增量；若 `[是否有 ADR 增量: 是/否]` 为 `是`，同步准备 ADR 草案
 
 **Workstream 键规则**：详见 `docs/agent/memory/README.md` "Handoff 存储规范"章节
 
 ## 本轮输入：
 
-- 主模块：`[MODULE_NAME]`
-- 子模块：`[SUBMODULE_NAME|无]`
+- Workstream：`[<module>__<submodule-or-none> | project__<slug>]`
+- 主模块：`[MODULE_NAME | project]`
+- 子模块：`[SUBMODULE_NAME | null]`
+- 项目级 slug：`[SLUG | null]`
 - 目标：`[本轮目标]`
 - 需要回写到 memory 的内容：`[需要回写到 memory 的内容]`
 - 是否有 ADR 增量：`[是否有 ADR 增量: 是/否]`
 - 构建/测试/基准状态：`[构建/测试/基准状态]`
+
+### 输入示例（模块工作）
+
+```yaml
+workstream: ammalloc__thread_cache
+module: ammalloc
+submodule: thread_cache
+slug: null
+goal: 实现 ThreadCache 动态水位线调节
+memory_writeback: 更新 thread_cache 的稳定约束
+has_adr_delta: 否
+```
+
+### 输入示例（项目级工作）
+
+```yaml
+workstream: project__docs-reorg
+module: project
+submodule: null
+slug: docs-reorg
+goal: 整理 docs/agent/ 文档入口与目录说明
+memory_writeback: 更新 project.md 中的文档约定
+has_adr_delta: 否
+```
 
 ## 输出要求：
 
@@ -69,7 +102,8 @@ Agent: 才能执行工具操作（扫描代码、编译、测试等）
 ### 当前状态
 - 已完成：[已落地内容；没有则写 `无`]
 - 未完成：[剩余工作；没有则写 `无`]
-- 已加载记忆：[ `docs/agent/memory/project.md` / `docs/agent/memory/modules/[MODULE_NAME]/module.md` / `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md` 中实际存在的文件 ]
+- Workstream：`[WORKSTREAM_KEY]`
+- 已加载记忆：[始终列出 `docs/agent/memory/project.md`；若为模块工作，再列出实际存在的 `docs/agent/memory/modules/[MODULE_NAME]/module.md` 和 `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`]
 - 所有权与生命周期约束：[资源由谁拥有，谁只能借用，何时释放]
 - 线程安全预期：[单线程 / 多线程、可重入性、锁或原子要求]
 - 热路径注意事项：[哪些路径必须避免额外分配、复制、锁竞争或隐藏 O(N^2)]
@@ -77,8 +111,9 @@ Agent: 才能执行工具操作（扫描代码、编译、测试等）
 
 ### 涉及文件
 - `docs/agent/memory/project.md`：[已存在 / 不存在 / 本轮未修改 / 本轮已修改]
-- `docs/agent/memory/modules/[MODULE_NAME]/module.md`：[已存在 / 不存在 / 本轮未修改 / 本轮已修改]
-- `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`：[已存在 / 不存在 / 不适用 / 本轮未修改 / 本轮已修改]
+- `docs/agent/memory/modules/[MODULE_NAME]/module.md`：[已存在 / 不存在 / 不适用（project__<slug>） / 本轮未修改 / 本轮已修改]
+- `docs/agent/memory/modules/[MODULE_NAME]/submodules/[SUBMODULE_NAME].md`：[已存在 / 不存在 / 不适用（项目级 workstream 或 submodule=null） / 本轮未修改 / 本轮已修改]
+- `docs/agent/handoff/workstreams/[WORKSTREAM_KEY]/[LATEST_HANDOFF].md`：[已存在 / 不存在 / 本轮未修改 / 本轮已修改]
 - `[精确文件路径]`：[用途或改动点]
 - 无
 

@@ -2,7 +2,7 @@
 
 > **默认入口**：一句话快速接续之前的工作  
 > **详细入口**：需要显式填写目标/ADR/回写项时，使用 [`new_session_template.md`](./new_session_template.md)  
-> **跨模块任务**：请直接使用 [`new_session_template.md`](./new_session_template.md)，当前 quick resume 只面向单一 workstream
+> **跨模块任务**：请直接使用 [`new_session_template.md`](./new_session_template.md)，当前 quick resume 只面向单一 workstream（包括单一 `project__<slug>` 项目级 workstream）
 
 ---
 
@@ -13,7 +13,7 @@
 ```
 用户: "继续 ammalloc thread_cache 的工作"
     ↓
-Agent: 加载记忆 (AGENTS.md → README.md → project.md → module.md → submodule.md → handoff)
+Agent: 加载记忆 (AGENTS.md → docs/agent/memory/README.md → docs/agent/memory/project.md → docs/agent/memory/modules/<module>/module.md → docs/agent/memory/modules/<module>/submodules/<submodule>.md → docs/agent/handoff/workstreams/<module>__<submodule>/)
     ↓
 Agent: 输出 "记忆已加载，推荐下一步是..."
     ↓
@@ -39,7 +39,7 @@ Agent: 才能执行工具操作（扫描代码、编译、测试等）
 Agent 应识别以下自然语言意图：
 
 ```
-继续/接续/恢复/加载 ... [模块名] [子模块名] ... 的完整记忆和最新 handoff
+继续/接续/恢复/加载 ... [模块名/项目 slug] ... 的完整记忆和最新 handoff
 ```
 
 **示例：**
@@ -72,10 +72,34 @@ Agent 应识别以下自然语言意图：
   - 模块: ammalloc
   - 子模块: 无
   - 检查: docs/agent/memory/modules/ammalloc/module.md
-   - 检查: docs/agent/handoff/workstreams/ammalloc__none/
+  - 检查: docs/agent/handoff/workstreams/ammalloc__none/
 ```
 
-### 3. 歧义处理
+### 3. 项目级工作匹配
+如果解析为 `project__<slug>` 格式：
+```
+用户: "继续 docs 目录重构"
+解析:
+  - workstream 类型: project
+  - slug: docs-reorg
+  - 检查: docs/agent/memory/project.md
+  - 检查: docs/agent/handoff/workstreams/project__docs-reorg/
+```
+
+**Slug 解析规则（Slug Resolution Rule）**：
+- **明确匹配**：只有在项目存在明确的 slug 映射表（如 `project.md` 中定义）或用户显式提供 `project__<slug>` 时，才允许自动映射自然语言到 slug。
+- **确认机制**：如果无法通过映射表确定唯一的 slug，Agent **必须**列出可能的 slug 供用户确认，或要求用户显式指定。
+- **禁止猜测**：禁止在没有证据的情况下自行发明 slug。
+
+**加载顺序:**
+```
+  1. AGENTS.md
+  2. docs/agent/memory/README.md
+  3. docs/agent/memory/project.md（跳过 module/submodule）
+  4. docs/agent/handoff/workstreams/project__docs-reorg/
+```
+
+### 4. 歧义处理
 如果模块名/子模块名无法唯一命中：
 ```
 用户: "继续 cache 的工作"
@@ -98,13 +122,24 @@ Agent 响应:
 
 按 `docs/agent/memory/README.md` 的规范读取：
 
+**模块工作**（`<module>__<submodule-or-none>`）：
 ```
 1. AGENTS.md                          → 项目执行指南
-2. docs/agent/memory/README.md              → 操作规范（必须先读，明确读取顺序）
-3. docs/agent/memory/project.md             → 全局层
+2. docs/agent/memory/README.md        → 操作规范（必须先读，明确读取顺序）
+3. docs/agent/memory/project.md       → 全局层
 4. docs/agent/memory/modules/<module>/module.md        → 模块层
 5. docs/agent/memory/modules/<module>/submodules/<submodule>.md  → 子模块层（如指定）
-6. docs/agent/handoff/workstreams/<workstream_key>/    → 最新 active handoff（临时状态）
+6. docs/agent/handoff/workstreams/<module>__<submodule>/ → 最新 active handoff
+```
+
+**项目级工作**（`project__<slug>`）：
+```
+1. AGENTS.md                          → 项目执行指南
+2. docs/agent/memory/README.md        → 操作规范
+3. docs/agent/memory/project.md       → 全局层
+   ⚠️ 注意：项目级工作跳过 module.md 和 submodule.md
+4. docs/agent/handoff/workstreams/project__<slug>/      → 最新 active handoff
+   ⚠️ 注意：不是 docs/agent/prompts/handoff_template.md（那是模板）
 ```
 
 **Workstream 键与读取规则**：详见 `docs/agent/memory/README.md` "Handoff 存储规范"章节
@@ -120,10 +155,13 @@ Agent 响应:
 
 ⚠️ **必须先加载记忆，后执行操作** —— 详见 `AGENTS.md` 第10节。
 
-**快速检查清单**：
-- ✅ 已按顺序加载：AGENTS.md → README.md → project.md → module.md → submodule.md → handoff
-- ✅ 已输出"已加载文件"清单
-- ✅ 根据 memory/handoff 的"推荐下一步"执行操作
+**快速检查清单（模块工作）**：
+- ✅ 已按顺序加载：`AGENTS.md → docs/agent/memory/README.md → docs/agent/memory/project.md → docs/agent/memory/modules/<module>/module.md → docs/agent/memory/modules/<module>/submodules/<submodule>.md → docs/agent/handoff/workstreams/<module>__<submodule>/`
+
+**快速检查清单（项目级工作）**：
+- ✅ 已按顺序加载：`AGENTS.md → docs/agent/memory/README.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/project__<slug>/`
+- ⚠️ **项目级工作跳过** `docs/agent/memory/modules/<module>/module.md` 和 `docs/agent/memory/modules/<module>/submodules/<submodule>.md`
+- ⚠️ **注意区分**：`docs/agent/prompts/handoff_template.md` 是模板，`docs/agent/handoff/workstreams/` 才是存储目录
 
 **禁止**：先扫描代码/编译/测试，再加载记忆。
 
@@ -133,12 +171,37 @@ Agent 响应:
 
 在调用任何工具（扫描代码、编译、测试等）之前，必须完成以下检查并输出：
 
+### 模块工作 Resume Gate
+
 ```markdown
-## Resume Gate
-- [x] 解析范围：模块=[module], 子模块=[submodule]
-- [x] 命中文件：project.md ✅, module.md ✅, submodule.md ⚠️（如缺失）
-- [x] 缺失项：[列表或"无"]
-- [x] 选中 handoff：[文件名] ✅ 或 无 active handoff
+## Resume Gate（模块工作）
+- [x] 工作流类型：模块工作
+- [x] resolved_workstream_key：[module]__[submodule-or-none]
+- [x] 预期加载文件：
+  - docs/agent/memory/README.md
+  - docs/agent/memory/project.md
+  - docs/agent/memory/modules/[module]/module.md
+  - docs/agent/memory/modules/[module]/submodules/[submodule].md（如适用）
+  - docs/agent/handoff/workstreams/[module]__[submodule-or-none]/（如存在）
+- [x] 实际加载文件：[列出实际加载的完整路径]
+- [x] 跳过/缺失项：[如有缺失文件，列出]
+- [x] resume_status: complete | partial | blocked
+```
+
+### 项目级工作 Resume Gate
+
+```markdown
+## Resume Gate（项目级工作）
+- [x] 工作流类型：项目级工作
+- [x] resolved_workstream_key：project__[slug]
+- [x] 预期加载文件：
+  - docs/agent/memory/README.md
+  - docs/agent/memory/project.md
+  - docs/agent/handoff/workstreams/project__[slug]/（如存在）
+- [x] 实际加载文件：[列出实际加载的完整路径]
+- [x] 跳过/缺失项：
+  - ❌ docs/agent/memory/modules/[module]/module.md（项目级工作跳过）
+  - ❌ docs/agent/memory/modules/[module]/submodules/[submodule].md（项目级工作跳过）
 - [x] resume_status: complete | partial | blocked
 ```
 
@@ -148,13 +211,17 @@ Agent 响应:
 - `blocked`：模块不存在，需用户决策（创建新模块/指定其他模块）
 
 **规则**：
+
 - ⚠️ resume_status 为 `blocked` 时，禁止执行任何工具操作
 - ⚠️ 未完成 Resume Gate 输出，禁止执行任何工具操作
 
-Agent 确认上下文已加载后，输出：
+Agent 确认上下文已加载后，按工作流类型输出：
+
+### 模块工作输出模板
 
 ```markdown
 ## 已解析范围
+- 工作流类型：模块工作
 - 模块：`[module]`
 - 子模块：`[submodule | 无]`
 - Workstream：`[module]__[submodule-or-none]`
@@ -162,11 +229,35 @@ Agent 确认上下文已加载后，输出：
 ## 已加载文件
 - ✅ `docs/agent/memory/project.md`
 - ✅ `docs/agent/memory/modules/[module]/module.md`
-- ✅ `docs/agent/memory/modules/[module]/submodules/[submodule].md`（如适用）
-- ✅ `docs/agent/handoff/workstreams/[key]/[latest].md`（如存在）
+- ✅ `docs/agent/memory/modules/[module]/submodules/[submodule].md`（子模块工作时）
+- ✅ `docs/agent/handoff/workstreams/[workstream_key]/[latest].md`（如存在）
 
 ## 当前接续目标
-[从 handoff 读取的目标，或从 memory 推断的默认目标]
+[从 handoff 读取的目标，或从 module.md "待办事项"推断]
+
+## 下一步动作
+- [具体的下一步操作]
+
+## 阻塞点（如有）
+- [从 handoff 读取的阻塞点，或 `无`]
+```
+
+### 项目级工作输出模板
+
+```markdown
+## 已解析范围
+- 工作流类型：项目级工作
+- Slug：`[slug]`
+- Workstream：`project__[slug]`
+
+## 已加载文件
+- ✅ `docs/agent/memory/project.md`
+- ⚠️ `module.md`：项目级工作跳过
+- ⚠️ `submodule.md`：项目级工作跳过
+- ✅ `docs/agent/handoff/workstreams/project__[slug]/[latest].md`（如存在）
+
+## 当前接续目标
+[从 handoff 读取的目标，或从 project.md "待办事项"推断]
 
 ## 下一步动作
 - [具体的下一步操作]
@@ -195,7 +286,7 @@ Agent 确认上下文已加载后，输出：
 2. **不模糊匹配到多文件**：`继续 ammalloc` 只加载模块级，不自动扫所有子模块。
 3. **输出必须明确**：必须写出"实际加载了哪些文件"，避免用户误以为上下文已完整恢复。
 4. **handoff 不是必须**：如果 `docs/agent/handoff/` 目录为空，说明没有未完成的临时状态，从 memory 重新开始即可。
-5. **加载后需确认**：使用 quick_resume.md 时，Agent 完成记忆加载后，**必须等待用户确认**是否执行下一步操作，**禁止**在加载记忆后立即自动执行任何工具操作（如扫描代码、编译、测试等）。只有在用户明确说"继续"、"执行"或类似指令后，才能执行操作。
+5. **加载后需确认**：使用 `quick_resume.md` 时，Agent 完成记忆加载后，**必须等待用户确认**是否执行下一步操作，**禁止**在加载记忆后立即自动执行任何工具操作（如扫描代码、编译、测试等）。只有在用户明确说"继续"、"执行"或类似指令后，才能执行操作。
 
 ---
 
@@ -206,6 +297,7 @@ Agent 确认上下文已加载后，输出：
 **场景**：用户说"继续 ammalloc size_class"，但 `docs/agent/memory/modules/ammalloc/submodules/size_class.md` 不存在。
 
 **Agent 处理**：
+
 ```markdown
 ## 加载结果
 - ✅ docs/agent/memory/modules/ammalloc/module.md（已加载）

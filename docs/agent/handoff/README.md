@@ -7,7 +7,9 @@
 ```
 docs/agent/handoff/
 └── workstreams/
-    └── <module>__<submodule-or-none>/
+    ├── <module>__<submodule-or-none>/
+    │   └── YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
+    └── project__<slug>/
         └── YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md
 ```
 
@@ -24,12 +26,33 @@ session_id: ses_xxx
 task_id: task_xxx
 module: ammalloc
 submodule: thread_cache
+slug: null                        # 模块工作：必须为 null
 agent: sisyphus
 status: active                    # active | superseded | closed
-memory_status: pending            # not_needed | pending | applied
+memory_status: not_needed         # not_needed | pending | applied（默认 not_needed）
 supersedes: null                  # 被本 handoff 取代的旧文件（可选）
 closed_at: null                   # 关闭时间（仅 status=closed）
 closed_reason: null               # 关闭原因（仅 status=closed）
+---
+```
+
+**项目级工作示例**：
+```yaml
+---
+kind: handoff
+schema_version: "1.1"
+created_at: 2026-03-11T10:30:00Z
+session_id: ses_xxx
+task_id: task_xxx
+module: project                   # 固定值
+submodule: null                   # 项目级工作：必须为 null
+slug: docs-reorg                  # 项目级工作：填写 slug
+agent: sisyphus
+status: active
+memory_status: not_needed
+supersedes: null
+closed_at: null
+closed_reason: null
 ---
 ```
 
@@ -48,7 +71,12 @@ closed_reason: null               # 关闭原因（仅 status=closed）
 ### 向后兼容
 
 - Reader 必须接受 `schema_version: "1.0"` 和 `"1.1"`
-- 缺失字段使用默认值：`memory_status: not_needed`，`status: active`
+- 缺失字段使用默认值：
+  - `memory_status: not_needed`
+  - `status: active`
+  - `supersedes: null`
+  - `closed_at: null`
+  - `closed_reason: null`
 
 ## 状态转换
 
@@ -82,7 +110,7 @@ handoff 文件通过 git 同步实现跨机器恢复：
 ```bash
 # 结束工作时提交（Agent 辅助生成，用户确认后提交）
 git add docs/agent/handoff/
-git commit -m "handoff: <module> <submodule> progress"
+git commit -m "handoff: <workstream_key> progress"
 git push
 
 # 新机器恢复时拉取

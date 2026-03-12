@@ -1,8 +1,10 @@
-请把当前对话压缩成一份"新对话导入摘要"，供新的 agent 立即接手当前大模型推理引擎模块工作。
+请把当前对话压缩成一份"新对话导入摘要"，供新的 agent 立即接手当前大模型推理引擎模块或项目级工作。
 
 输出格式要求：
 
 1. **YAML Frontmatter（必须）**：文件开头必须包含以下元数据
+
+   **模块工作示例**：
    ```yaml
    ---
    kind: handoff
@@ -10,14 +12,35 @@
    created_at: 2026-03-11T10:30:00Z
    session_id: ses_xxx
    task_id: task_xxx
-   module: "MODULE_NAME"
-   submodule: "SUBMODULE_NAME|none"
-   agent: "AGENT_NAME"
-   status: active                    # active | superseded | closed
-   memory_status: not_needed         # not_needed | pending | applied（默认 not_needed）
-   supersedes: null                  # 被本 handoff 取代的旧文件（首次创建时为 null）
-   closed_at: null                   # 关闭时间（创建时为 null）
-   closed_reason: null               # 关闭原因（创建时为 null）
+   module: ammalloc
+   submodule: thread_cache
+   slug: null                        # 模块工作：必须为 null
+   agent: sisyphus
+   status: active
+   memory_status: not_needed
+   supersedes: null
+   closed_at: null
+   closed_reason: null
+   ---
+   ```
+
+   **项目级工作示例**：
+   ```yaml
+   ---
+   kind: handoff
+   schema_version: "1.1"
+   created_at: 2026-03-11T10:30:00Z
+   session_id: ses_xxx
+   task_id: task_xxx
+   module: project                   # 固定值
+   submodule: null                   # 项目级工作：必须为 null
+   slug: docs-reorg                  # 项目级工作：填写 slug
+   agent: sisyphus
+   status: active
+   memory_status: not_needed
+   supersedes: null
+   closed_at: null
+   closed_reason: null
    ---
    ```
    
@@ -47,7 +70,9 @@
 8. 保持精炼，但不能丢失会影响接手判断的关键信息。
 
 存储与状态管理：
-- 保存到 `docs/agent/handoff/workstreams/<module>__<submodule-or-none>/YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md`
+- 保存到 `docs/agent/handoff/workstreams/<workstream_key>/YYYYMMDDTHHMMSSZ--<session_id>--<agent_id>.md`
+  - 模块工作：`<workstream_key>` 为 `<module>__<submodule-or-none>`
+  - 项目级工作：`<workstream_key>` 为 `project__<slug>`
 - 如果同一 workstream 已有 `active` handoff，新文件写 `supersedes: <旧文件名>`，并更新旧文件为 `status: superseded`
 - 工作完成时，将当前 `active` 改为 `status: closed`，填写 `closed_at` 和 `closed_reason`
 - 通过 git 提交同步

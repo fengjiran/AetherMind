@@ -148,11 +148,53 @@ See full comment rules:
 4. **加载记忆后未经用户确认就执行工具操作**（如扫描代码、编译、测试、文件修改等）
 
 **必须行为（✅）**：
-1. 严格按固定顺序加载记忆：  
-   `AGENTS.md` → `docs/agent/memory/README.md` → `project.md` → `module.md` → `submodule.md` → `handoff`
-2. 输出"已加载文件"清单，明确列出实际加载了哪些文件
-3. 根据 memory/handoff 中的"推荐下一步"决定执行什么操作
-4. **加载完成后，必须显式询问用户**："记忆已加载，是否执行[推荐操作]？"，**等待用户明确说"继续"、"执行"或"是"后，才能执行任何工具操作**
+1. **先解析工作流类型**（按优先级）：
+
+   **明确指令**（用户直接说明）：
+   - 用户说"项目级"或 `project__<slug>` → **项目级工作**
+   - 用户说"模块"或 `<module>__<submodule-or-none>` → **模块工作**
+
+   **默认推断**（用户未明确说明时）：
+   - 如果目标匹配 `project__<slug>` 格式（如 `project__docs-reorg`）→ **项目级工作**
+   - 如果目标匹配模块名（在 `docs/agent/memory/modules/` 中存在）→ **模块工作**
+   - 如果目标匹配 `<module>/<submodule>` 路径格式 → **模块工作**
+
+   **歧义处理**（无法唯一确定时）：
+   - **必须询问用户**："请明确指定工作流类型：1) 项目级 work 2) 模块 [module] 工作"
+   - **禁止猜测**：不得在歧义时自动选择
+
+2. **严格按工作流类型加载记忆**（使用完整路径）：
+
+   **模块工作**（`<module>__<submodule-or-none>`）：
+   ```
+   AGENTS.md → docs/agent/memory/README.md → docs/agent/memory/project.md → docs/agent/memory/modules/<module>/module.md → docs/agent/memory/modules/<module>/submodules/<submodule>.md → docs/agent/handoff/workstreams/<module>__<submodule-or-none>/
+   ```
+
+   **项目级工作**（`project__<slug>`）：
+   ```
+   AGENTS.md → docs/agent/memory/README.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/project__<slug>/
+   ```
+   ⚠️ **硬性约束**：项目级工作**必须跳过** `docs/agent/memory/modules/<module>/module.md` 和 `docs/agent/memory/modules/<module>/submodules/<submodule>.md`
+
+3. **Handoff 路径规则**：
+   - 模板文件：`docs/agent/prompts/handoff_template.md`（只读参考）
+   - 存储目录：`docs/agent/handoff/workstreams/<workstream_key>/`（实际 handoff 位置）
+   - **禁止**：把模板文件当成 handoff 读取
+
+4. **执行 Resume Gate 检查点**（任何工具操作前必须完成）：
+   ```markdown
+   ## Resume Gate
+   - [x] 工作流类型：[模块工作 | 项目级工作]
+   - [x] resolved_workstream_key：[<module>__<submodule-or-none> | project__<slug>]
+   - [x] 预期加载文件：[列出完整路径]
+   - [x] 实际加载文件：[列出完整路径]
+   - [x] 跳过/缺失项：[项目级时列出跳过的module/submodule，或缺失文件]
+   - [x] resume_status: complete | partial | blocked
+   - [x] handoff 路径：docs/agent/handoff/workstreams/<workstream_key>/（非 docs/agent/prompts/handoff_template.md）
+   ```
+
+5. 输出"已加载文件"清单，明确列出实际加载了哪些文件
+6. **加载完成后，必须显式询问用户**："记忆已加载，是否执行[推荐操作]？"，**等待用户明确说"继续"、"执行"或"是"后，才能执行任何工具操作**
 
 **为什么重要**：
 - 如果 handoff 显示"阻塞点是设计决策"，不应编译，而应先解决设计问题

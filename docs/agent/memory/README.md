@@ -20,7 +20,7 @@
 - 读取顺序：`AGENTS.md` -> `docs/agent/memory/README.md` -> `docs/agent/memory/project.md` -> `docs/agent/memory/modules/<module>/module.md`（模块工作时）-> `docs/agent/memory/modules/<module>/submodules/<submodule>.md`（子模块工作时） -> `docs/agent/handoff/workstreams/<workstream_key>/`（从任务系统或实际存储目录）。
   - **模块工作**：加载 `docs/agent/memory/modules/<module>/module.md` -> `docs/agent/memory/modules/<module>/submodules/<submodule>.md`（如存在）
   - **项目级工作**：跳过 `docs/agent/memory/modules/<module>/module.md` 和 `docs/agent/memory/modules/<module>/submodules/<submodule>.md`，直接加载 `docs/agent/memory/project.md` -> `docs/agent/handoff/workstreams/project__<slug>/`
-- 冲突优先级：用户显式指令与已验证代码/测试事实 > `AGENTS.md` > `docs/products/aethermind_prd.md` > ADR > 模块/子模块记忆 > `docs/agent/memory/project.md` > handoff > `GEMINI.md`。
+- 冲突优先级：用户显式指令与已验证代码/测试事实 > `AGENTS.md` > `docs/products/aethermind_prd.md` > ADR > 模块/子模块记忆 > `docs/agent/memory/project.md` > handoff。
 - handoff 与稳定记忆冲突时，先回到代码、测试或用户指令验证；未验证前不要直接覆盖 memory 文件。
 
 ## Handoff 存储规范

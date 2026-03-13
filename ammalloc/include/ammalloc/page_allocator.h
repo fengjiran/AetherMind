@@ -24,44 +24,61 @@ extern std::atomic<bool> g_mock_huge_alloc_fail;
 #endif
 
 struct PageAllocatorStats {
-    // 基础分配统计
+    // Statistics are best-effort telemetry only; all updates use relaxed atomics.
     // normal page
-    std::atomic<size_t> normal_alloc_count{0};  // 普通页分配请求数
-    std::atomic<size_t> normal_alloc_success{0};// 普通页分配成功数
-    std::atomic<size_t> normal_alloc_bytes{0};  // 普通页总分配字节数
+    std::atomic<size_t> normal_alloc_count{0};
+    std::atomic<size_t> normal_alloc_success{0};
+    std::atomic<size_t> normal_alloc_bytes{0};
 
     // huge page
-    std::atomic<size_t> huge_alloc_count{0};      // 大页分配请求数
-    std::atomic<size_t> huge_alloc_success{0};    // 大页分配成功数
-    std::atomic<size_t> huge_alloc_bytes{0};      // 大页总分配字节数
-    std::atomic<size_t> huge_align_waste_bytes{0};// 大页对齐浪费的内存字节数
-    std::atomic<size_t> huge_cache_hit_count{0};  // 大页缓存命中数
-    std::atomic<size_t> huge_cache_miss_count{0}; // 大页缓存未命中数
+    std::atomic<size_t> huge_alloc_count{0};
+    std::atomic<size_t> huge_alloc_success{0};
+    std::atomic<size_t> huge_alloc_bytes{0};
+    std::atomic<size_t> huge_align_waste_bytes{0};
+    std::atomic<size_t> huge_cache_hit_count{0};
+    std::atomic<size_t> huge_cache_miss_count{0};
 
-    // 释放统计
     std::atomic<size_t> free_count{0};
     std::atomic<size_t> free_bytes{0};
 
-    // 错误统计
-    std::atomic<size_t> normal_alloc_failed_count{0};    // 普通页分配失败次数
-    std::atomic<size_t> huge_alloc_failed_count{0};      // 大页分配失败次数
-    std::atomic<size_t> alloc_failed_count{0};           // 最终分配失败总数
-    std::atomic<size_t> huge_fallback_to_normal_count{0};// 大页降级到普通页的次数
-    std::atomic<size_t> mmap_enomem_count{0};            // mmap ENOMEM失败次数
-    std::atomic<size_t> mmap_other_error_count{0};       // mmap其他错误次数
-    std::atomic<size_t> munmap_failed_count{0};          // munmap失败次数
-    std::atomic<size_t> madvise_failed_count{0};         // madvise失败次数
+    std::atomic<size_t> normal_alloc_failed_count{0};
+    std::atomic<size_t> huge_alloc_failed_count{0};
+    std::atomic<size_t> alloc_failed_count{0};
+    std::atomic<size_t> huge_fallback_to_normal_count{0};
+    std::atomic<size_t> mmap_enomem_count{0};
+    std::atomic<size_t> mmap_other_error_count{0};
+    std::atomic<size_t> munmap_failed_count{0};
+    std::atomic<size_t> madvise_failed_count{0};
 };
 
+/// Page-level OS allocator used by PageCache/ObjectPool backends.
+///
+/// Thread-safety:
+/// - Public methods are thread-safe.
+/// - Huge-page cache is internally synchronized with a mutex.
+///
+/// Notes:
+/// - Calls can block in kernel (`mmap`/`munmap`/`madvise`).
+/// - Returns `nullptr` on allocation failure; does not throw.
 class PageAllocator {
 public:
     static const PageAllocatorStats& GetStats() {
         return stats_;
     }
 
+    /// Allocates `page_num` pages and returns a page-aligned pointer.
+    /// Returns nullptr on invalid input or system allocation failure.
     static void* SystemAlloc(size_t page_num);
+
+    /// Frees a mapping previously returned by `SystemAlloc`.
+    /// `ptr == nullptr` or `page_num == 0` is treated as a no-op.
     static void SystemFree(void* ptr, size_t page_num);
+
+    /// Resets all statistics counters to zero.
     static void ResetStats();
+
+    /// Releases all cached huge pages.
+    /// Intended for tests and controlled teardown paths.
     static void ReleaseHugePageCache();
 
 private:
@@ -79,10 +96,16 @@ private:
 
 template<typename T, size_t CHUNK_SIZE = 64 * 1024>
     requires(sizeof(T) >= sizeof(void*) && std::default_initializable<T>)
+/// Thread-safe object pool backed by `PageAllocator` pages.
+///
+/// The pool owns all allocated chunks until `ReleaseMemory()` or destruction.
+/// `New()` constructs `T` in-place and `Delete()` destroys `T` then recycles storage.
 class ObjectPool {
 public:
     ObjectPool() = default;
 
+    /// Allocates storage for one object and default-constructs `T` in-place.
+    /// Throws `std::bad_alloc` if the underlying page allocation fails.
     T* New() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (free_list_) {
@@ -122,6 +145,7 @@ public:
         return new (obj) T();
     }
 
+    /// Destroys `obj` and returns its storage to the pool free list.
     void Delete(T* obj) {
         std::lock_guard<std::mutex> lock(mutex_);
         obj->~T();
@@ -130,6 +154,8 @@ public:
         free_list_ = header;
     }
 
+    /// Releases all chunks owned by this pool.
+    /// Callers must ensure no outstanding objects are used afterwards.
     void ReleaseMemory() {
         std::lock_guard<std::mutex> lock(mutex_);
         auto* cur = chunk_list_;
@@ -172,4 +198,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_MALLOC_PAGE_ALLOCATOR_H
+#endif// AETHERMIND_MALLOC_PAGE_ALLOCATOR_H

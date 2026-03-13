@@ -181,7 +181,6 @@ docs/agent/decisions/
 | 5 | 模块/子模块记忆文档 |
 | 6 | `docs/agent/memory/project.md` |
 | 7 | handoff (临时状态) |
-| 8 | `GEMINI.md` (架构蓝图参考) |
 
 `docs/agent/memory/README.md` 用于约束操作流程和文档结构；遇到与事实来源冲突的内容时，仍按上表回到更高优先级来源确认。
 
@@ -512,7 +511,6 @@ status: active
 - `docs/agent/memory_system.md` - 记忆系统架构设计说明
 - `docs/agent/memory/README.md` - 记忆系统操作规范
 - `docs/agent/prompts/README.md` - Prompt 说明
-- `GEMINI.md` - 项目架构蓝图
 
 ### 8.4 维护清单
 

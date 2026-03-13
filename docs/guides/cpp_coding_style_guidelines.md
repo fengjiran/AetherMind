@@ -5,7 +5,7 @@ Scope and precedence:
 - This document defines practical coding style guidance for AetherMind.
 - If this document conflicts with `AGENTS.md` or verified repository constraints, follow `AGENTS.md` and repository facts.
 - Product-scope constraints (for example, Phase 1 boundaries) are defined in `docs/products/aethermind_prd.md`.
-- Subsystem-specific constraints override generic guidance (for example, `ammalloc/GEMINI.md`).
+- Subsystem-specific constraints override generic guidance (for example, `ammalloc/AGENTS.md`).
 
 ## Goals
 
@@ -374,7 +374,7 @@ Examples:
 Note:
 
 - The STL guidance above is general and does not override subsystem constraints.
-- In `ammalloc`, avoid heap-allocating STL containers and regular heap `new`/`delete` to prevent allocator recursion; follow `ammalloc/GEMINI.md` and `AGENTS.md`.
+- In `ammalloc`, avoid heap-allocating STL containers and regular heap `new`/`delete` to prevent allocator recursion; follow `ammalloc/AGENTS.md` and `AGENTS.md`.
 
 ------
 

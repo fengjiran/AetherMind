@@ -12,6 +12,8 @@ namespace {
 class HugePageCache {
 public:
     static HugePageCache& GetInstance() {
+        // Use static storage + placement new to avoid singleton destruction order issues
+        // and prevent recursive allocator calls during initialization.
         alignas(alignof(HugePageCache)) static char storage[sizeof(HugePageCache)];
         static auto* instance = new (storage) HugePageCache();
         return *instance;
@@ -120,6 +122,8 @@ void* PageAllocator::AllocWithRetry(size_t size, int flags) {
 
         if (errno == ENOMEM) {
             stats_.mmap_enomem_count.fetch_add(1, std::memory_order_relaxed);
+            // ENOMEM may be transient under memory pressure; back off briefly
+            // before retrying.
             spdlog::warn("mmap ENOMEM for size {}, retry {}/{}...",
                          size, i + 1, PageConfig::MAX_ALLOC_RETRIES);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -203,13 +207,10 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
     return res;
 }
 
-/**
- * @brief 乐观的大页分配策略
- * 策略：
- * 1. 先尝试直接申请 size 大小（赌它刚好对齐）。
- * 2. 如果不对齐，munmap 掉，再走 "Over-allocate" 流程。
- * 收益：在内存碎片较少或 OS 激进 THP 时，避免了 2MB 的 VMA 浪费和额外的 munmap 调用。
- */
+// Optimistic huge-page allocation strategy:
+// 1) First try exact-size mmap and accept it if already huge-page aligned.
+// 2) If misaligned, unmap it and retry with over-allocation + trimming.
+// This avoids extra VMA operations on the fast-success path.
 void* PageAllocator::AllocHugePage(size_t size) {
     stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
 
@@ -248,6 +249,7 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     }
 
     const size_t size = page_num << SystemConfig::PAGE_SHIFT;
+    // Requests below 1MB do not benefit enough from huge-page machinery.
     if (size < (SystemConfig::HUGE_PAGE_SIZE >> 1)) AM_LIKELY {
         void* ptr = AllocNormalPage(size);
         if (!ptr) {
@@ -257,8 +259,8 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     }
     // clang-format on
 
-    // 如果请求的大小正好是大页大小，尝试走缓存
-    // 只有标准大页大小才值得缓存，不定长的小内存直接走 mmap
+    // Cache only exact-size huge pages (2MB). Variable-sized large mappings are
+    // returned directly to the OS on free.
     if (size == SystemConfig::HUGE_PAGE_SIZE) {
         if (void* ptr = HugePageCache::GetInstance().Get()) {
             stats_.huge_cache_hit_count.fetch_add(1, std::memory_order_relaxed);
@@ -268,7 +270,8 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     }
 
     auto* ptr = AllocHugePage(size);
-    // 大页分配失败，统计降级次数并降级到普通页
+    // Keep availability-first semantics: fall back to normal pages when huge-page
+    // allocation fails.
     if (!ptr) {
         stats_.huge_fallback_to_normal_count.fetch_add(1, std::memory_order_relaxed);
         ptr = AllocNormalPage(size);
@@ -288,11 +291,8 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
     const size_t size = page_num << SystemConfig::PAGE_SHIFT;
     stats_.free_count.fetch_add(1, std::memory_order_relaxed);
     stats_.free_bytes.fetch_add(size, std::memory_order_relaxed);
-    // 如果释放的是标准大页，尝试放入缓存
-    // 调用 madvise(ptr, size, MADV_FREE / MADV_DONTNEED)
-    // 告诉 OS 这块物理内存暂时不用了，但在缓存期间保留虚拟地址
-    // 这样既节省物理内存，又避免了 munmap 的 VMA 销毁开销。
-    // 下次复用时只有缺页中断开销，没有 mmap 锁开销
+    // For exact-size huge pages, prefer caching the VMA and dropping physical
+    // backing (`MADV_DONTNEED`) to reduce future mmap/munmap overhead.
     if (size == SystemConfig::HUGE_PAGE_SIZE) {
         madvise(ptr, size, MADV_DONTNEED);
         if (HugePageCache::GetInstance().Put(ptr)) {

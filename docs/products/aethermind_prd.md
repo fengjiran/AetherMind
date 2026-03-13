@@ -435,7 +435,7 @@ void am_error_free(am_error_t error);
 
 - **Phase 1 详细实施计划**: `.sisyphus/plans/cpu-first-llama-runtime-v1.md`
 - **编码规范**: `AGENTS.md`
-- **分配器规范**: `ammalloc/GEMINI.md`
+- **分配器规范**: `ammalloc/AGENTS.md`
 
 ---
 

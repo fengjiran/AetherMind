@@ -11,26 +11,6 @@
 
 ---
 
-## 🏗️ 架构概览 (Architecture Overview)
-`ammalloc` 采用了深度借鉴 Google TCMalloc 的三层缓存架构：
-
-1. **ThreadCache (前端 / Frontend)**
-   - **类型**: 线程局部存储 (Thread Local Storage, TLS)。
-   - **锁机制**: **完全无锁 (Completely Lock-Free)**。
-   - **职责**: 处理绝大多数的内存分配和释放请求。使用嵌入式空闲链表 (`FreeList`, LIFO 顺序) 并配合**慢启动 (Slow-Start)** 和**高低水位线**的动态配额机制防抖动。
-2. **CentralCache (中端 / Middle-end)**
-   - **类型**: 全局单例，采用细粒度的桶锁 (Bucket Locks)。
-   - **锁机制**: 快速路径使用 `SpinLock` (TTAS自旋锁)，慢速路径使用 `std::mutex`。
-   - **职责**: 在多线程间均衡内存资源。每个桶分为两层：
-     - `TransferCache`: 指针数组，用于极速的批量对象流转（$O(1)$ 拷贝）。
-     - `SpanList`: 慢速路径，使用位图 (Bitmap) 扫描进行对象切分，包含**预取 (Prefetching)** 机制。
-3. **PageCache (后端 / Backend)**
-   - **类型**: 全局单例。
-   - **锁机制**: 全局大锁 (`std::mutex`)。
-   - **职责**: 管理物理页级别的内存。处理 `Span` 的切分与相邻空闲块的合并 (Coalescing)。通过 `PageAllocator` 与操作系统交互。
-
----
-
 ## 🚫 严格的工程约束 (Strict Engineering Constraints - NEVER VIOLATE)
 
 ### 1. 自举死锁问题 (The Bootstrapping Problem / No `malloc` recursion)
@@ -68,16 +48,5 @@
 *   **为什么释放大页缓存用 `MADV_DONTNEED` 而不是 `munmap`？**
     它释放了物理内存（降低了 RSS），但保留了虚拟内存区域 (VMA)。后续再次申请该地址时，可以绕过沉重的内核 `mmap_sem` 锁，只需处理缺页中断即可。
 
----
 
-## 📊 性能基准参考 (Performance Baselines)
-在提出优化建议时，请确保不会导致以下基准性能退化（基于 16 核 CPU 测试）：
-- **单线程极速路径 (Fast Path)**: ~3.8 ns
-- **随机大小分配 (Random Size)**: ~26.0 ns (得益于 O(1) 的编译期查表)
-- **16 线程极高压竞争 (64B)**: ~8.9 µs / 吞吐量突破 100+ GiB/s。
 
-## 🛠️ 技术栈与代码规约 (Tech Stack & Conventions)
-- **标准**: C++20 (广泛使用 `consteval`, `<bit>`, `std::bit_width`, `std::countr_zero`)。
-- **分支预测**: 核心热路径必须使用 `AM_LIKELY` 和 `AM_UNLIKELY` 宏进行标注。
-- **配置分离**: 硬限制（如决定数组大小的常量）必须定义在 `StaticConfig` (`constexpr`) 中；软限制（如容量阈值、开关）定义在 `RuntimeConfig` (单例) 中。
-- **头文件/源文件分离**: 核心复杂逻辑必须留在 `.cpp` 中。只有对性能极其敏感的极小函数（如 Fast Path）才允许在 `.h` 中使用 `AM_ALWAYS_INLINE` 强制内联。

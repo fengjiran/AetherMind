@@ -131,8 +131,7 @@ See full comment rules:
 - `.cursorrules`：不存在
 - `.cursor/rules/`：不存在
 - `.github/copilot-instructions.md`：不存在
-- `GEMINI.md`：项目架构蓝图与 C++20 编码指引（架构/性能敏感改动前必读）
-- `ammalloc/GEMINI.md`：分配器子系统的 AI 上下文指南
+- `ammalloc/AGENTS.md`：分配器子系统的 AI 上下文指南
 - `docs/products/aethermind_prd.md`：**Phase 1 产品需求与验收标准（必读）**
 
 ## 10. Agent Memory System 执行约束
@@ -202,7 +201,7 @@ See full comment rules:
 - 跨机器恢复时，必须先恢复上下文，再精准继续
 
 ## 11. 推荐代理工作流
-1. 修改前先阅读相关 `CMakeLists.txt` 和 `GEMINI.md`（若涉及架构/性能）。
+1. 修改前先阅读相关 `CMakeLists.txt` 和 `AGENTS.md`（若涉及架构/性能）。
 2. 进行最小化、风格一致的改动。
 3. 构建最小受影响目标（`--target <name>`）。
 4. 先跑单个聚焦测试（`--gtest_filter=Suite.Case`），再扩大范围。

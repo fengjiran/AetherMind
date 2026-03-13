@@ -1,11 +1,13 @@
 //
 // Created by richard on 2/9/26.
 //
+#include "ammalloc/config.h"
 #include "ammalloc/page_allocator.h"
 
 #include <atomic>
 #include <cstring>
 #include <gtest/gtest.h>
+#include <limits>
 #include <sys/mman.h>
 #include <thread>
 
@@ -132,7 +134,7 @@ TEST_F(PageAllocatorTest, HugePageAllocFail_FallbackToNormal) {
 TEST_F(PageAllocatorTest, HugeCacheCleanup) {
     size_t page_num = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
     std::vector<void*> ptrs;
-    for (int i = 0; i < RuntimeConfig::GetInstance().HugePageCacheSize(); ++i) {
+    for (int i = 0; i < PageConfig::HUGE_PAGE_CACHE_SIZE; ++i) {
         void* p = PageAllocator::SystemAlloc(page_num);
         ptrs.push_back(p);
         PageAllocator::SystemFree(p, page_num);
@@ -306,6 +308,71 @@ TEST_F(PageAllocatorTest, InvalidArgs) {
     // 3. 释放页数为 0 (不应崩溃)
     char dummy;
     PageAllocator::SystemFree(&dummy, 0);
+}
+
+TEST_F(PageAllocatorTest, OverflowGuard_SystemAlloc) {
+    constexpr size_t kTooManyPages = (std::numeric_limits<size_t>::max() >> SystemConfig::PAGE_SHIFT) + 1;
+    void* ptr = PageAllocator::SystemAlloc(kTooManyPages);
+    EXPECT_EQ(ptr, nullptr);
+
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.normal_alloc_count.load(), 0);
+    EXPECT_EQ(stats.huge_alloc_count.load(), 0);
+    EXPECT_EQ(stats.alloc_failed_count.load(), 0);
+}
+
+TEST_F(PageAllocatorTest, OverflowGuard_SystemFree) {
+    constexpr size_t kTooManyPages = (std::numeric_limits<size_t>::max() >> SystemConfig::PAGE_SHIFT) + 1;
+    char dummy = 0;
+
+    PageAllocator::SystemFree(&dummy, kTooManyPages);
+
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.free_count.load(), 0);
+    EXPECT_EQ(stats.free_bytes.load(), 0);
+    EXPECT_EQ(stats.munmap_failed_count.load(), 0);
+}
+
+TEST_F(PageAllocatorTest, NonHugeSizedFreeDoesNotPopulateHugeCache) {
+    constexpr size_t kNonHugePages =
+            (SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE) + 88;
+    constexpr size_t kHugePages = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
+
+    void* non_huge_ptr = PageAllocator::SystemAlloc(kNonHugePages);
+    ASSERT_TRUE(IsValidPtr(non_huge_ptr));
+    PageAllocator::SystemFree(non_huge_ptr, kNonHugePages);
+
+    void* huge_ptr = PageAllocator::SystemAlloc(kHugePages);
+    ASSERT_TRUE(IsValidPtr(huge_ptr));
+
+    const auto& stats = PageAllocator::GetStats();
+    EXPECT_EQ(stats.huge_cache_hit_count.load(), 0);
+    EXPECT_EQ(stats.huge_cache_miss_count.load(), 1);
+
+    PageAllocator::SystemFree(huge_ptr, kHugePages);
+}
+
+TEST_F(PageAllocatorTest, AdjacentHugeBoundaryDoesNotPopulateHugeCache) {
+    constexpr size_t kHugePages = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
+    const size_t kAdjacentPages[2] = {kHugePages - 1, kHugePages + 1};
+
+    for (size_t pages: kAdjacentPages) {
+        PageAllocator::ResetStats();
+        PageAllocator::ReleaseHugePageCache();
+
+        void* non_huge_ptr = PageAllocator::SystemAlloc(pages);
+        ASSERT_TRUE(IsValidPtr(non_huge_ptr));
+        PageAllocator::SystemFree(non_huge_ptr, pages);
+
+        void* huge_ptr = PageAllocator::SystemAlloc(kHugePages);
+        ASSERT_TRUE(IsValidPtr(huge_ptr));
+
+        const auto& stats = PageAllocator::GetStats();
+        EXPECT_EQ(stats.huge_cache_hit_count.load(), 0);
+        EXPECT_EQ(stats.huge_cache_miss_count.load(), 1);
+
+        PageAllocator::SystemFree(huge_ptr, kHugePages);
+    }
 }
 
 TEST_F(PageAllocatorTest, AllocWithPopulateConfig) {

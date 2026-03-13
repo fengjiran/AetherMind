@@ -1,10 +1,18 @@
-//
-// Created by richard on 2/7/26.
-//
+/// Implementation of PageAllocator and internal HugePageCache.
+///
+/// Optimistic huge-page allocation strategy:
+/// 1. Try exact-size mmap first; accept if already huge-page aligned.
+/// 2. If misaligned, unmap and retry with over-allocation + trimming.
+/// 3. Cache released 2MB huge pages to reduce future mmap overhead.
+
 #include "ammalloc/page_allocator.h"
+#include "ammalloc/config.h"
 #include "utils/logging.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <limits>
 #include <sys/mman.h>
 
 namespace {
@@ -32,7 +40,7 @@ public:
 
     bool Put(void* ptr) {
         std::lock_guard lock(mtx_);
-        if (cache_size_ >= kMaxCacheCapacity) {
+        if (cache_size_ >= aethermind::PageConfig::HUGE_PAGE_CACHE_SIZE) {
             return false;
         }
 
@@ -55,8 +63,7 @@ private:
     }
 
     std::mutex mtx_;
-    static constexpr size_t kMaxCacheCapacity = 16;
-    void* cache_[kMaxCacheCapacity]{};
+    void* cache_[aethermind::PageConfig::HUGE_PAGE_CACHE_SIZE]{};
     size_t cache_size_{0};
 };
 
@@ -171,6 +178,14 @@ void* PageAllocator::AllocNormalPage(size_t size) {
 }
 
 void* PageAllocator::AllocHugePageWithTrim(size_t size) {
+    // Overflow guard: size + HUGE_PAGE_SIZE must not wrap
+    // clang-format off
+    if (size > (std::numeric_limits<size_t>::max() - SystemConfig::HUGE_PAGE_SIZE)) AM_UNLIKELY {
+        spdlog::error("AllocHugePageWithTrim size overflow: {}", size);
+        return nullptr;
+    }
+    // clang-format on
+
     size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     void* ptr = AllocWithRetry(alloc_size, flags);
@@ -241,10 +256,15 @@ void* PageAllocator::AllocHugePage(size_t size) {
 }
 
 void* PageAllocator::SystemAlloc(size_t page_num) {
-    // AM_DCHECK(page_num > 0);
     // clang-format off
     if (page_num == 0) AM_UNLIKELY {
         spdlog::warn("SystemAlloc called with page_num = 0");
+        return nullptr;
+    }
+
+    // Overflow guard: ensure page_num << PAGE_SHIFT doesn't wrap
+    if (page_num > (std::numeric_limits<size_t>::max() >> SystemConfig::PAGE_SHIFT)) AM_UNLIKELY {
+        spdlog::error("SystemAlloc page_num overflow: {}", page_num);
         return nullptr;
     }
 
@@ -262,7 +282,9 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     // Cache only exact-size huge pages (2MB). Variable-sized large mappings are
     // returned directly to the OS on free.
     if (size == SystemConfig::HUGE_PAGE_SIZE) {
-        if (void* ptr = HugePageCache::GetInstance().Get()) {
+        void* ptr = HugePageCache::GetInstance().Get();
+        uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+        if (ptr && (addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
             stats_.huge_cache_hit_count.fetch_add(1, std::memory_order_relaxed);
             return ptr;
         }
@@ -288,12 +310,21 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
         return;
     }
 
+    // Overflow guard
+    // clang-format off
+    if (page_num > (std::numeric_limits<size_t>::max() >> SystemConfig::PAGE_SHIFT)) AM_UNLIKELY {
+        spdlog::error("SystemFree page_num overflow: {}", page_num);
+        return;
+    }
+    // clang-format on
+
+    auto addr = reinterpret_cast<uintptr_t>(ptr);
     const size_t size = page_num << SystemConfig::PAGE_SHIFT;
     stats_.free_count.fetch_add(1, std::memory_order_relaxed);
     stats_.free_bytes.fetch_add(size, std::memory_order_relaxed);
     // For exact-size huge pages, prefer caching the VMA and dropping physical
     // backing (`MADV_DONTNEED`) to reduce future mmap/munmap overhead.
-    if (size == SystemConfig::HUGE_PAGE_SIZE) {
+    if (size == SystemConfig::HUGE_PAGE_SIZE && (addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
         madvise(ptr, size, MADV_DONTNEED);
         if (HugePageCache::GetInstance().Put(ptr)) {
             return;

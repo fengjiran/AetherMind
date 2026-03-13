@@ -1,6 +1,18 @@
-//
-// Created by richard on 2/6/26.
-//
+/// Page-level OS allocator and object pool for the ammalloc subsystem.
+///
+/// This header defines:
+/// - PageAllocator: OS memory mapping facade (mmap/munmap/madvise) with huge-page support
+/// - ObjectPool: Thread-safe pool for fixed-size objects backed by PageAllocator pages
+///
+/// Thread-safety:
+/// - All public methods are thread-safe.
+/// - Huge-page cache uses internal mutex synchronization.
+///
+/// Constraints:
+/// - Core allocation paths avoid recursive malloc (no heap-allocating containers).
+/// - Allocation failures return nullptr; no exceptions thrown (except ObjectPool::New).
+///
+/// @see PageCache, am_malloc, am_free
 
 #ifndef AETHERMIND_MALLOC_PAGE_ALLOCATOR_H
 #define AETHERMIND_MALLOC_PAGE_ALLOCATOR_H

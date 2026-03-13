@@ -63,6 +63,7 @@ struct PageConfig {
     constexpr static size_t RADIX_ROOT_SIZE = 1 << RADIX_ROOT_BITS;
     constexpr static size_t RADIX_MASK = RADIX_NODE_SIZE - 1;
     constexpr static size_t MAX_ALLOC_RETRIES = 3;
+    static constexpr size_t HUGE_PAGE_CACHE_SIZE = 16;
 };
 
 class RuntimeConfig {
@@ -82,9 +83,9 @@ public:
         return use_map_populate_;
     }
 
-    AM_NODISCARD size_t HugePageCacheSize() const {
-        return huge_page_cache_size_;
-    }
+    // AM_NODISCARD size_t HugePageCacheSize() const {
+    //     return huge_page_cache_size_;
+    // }
 
     AM_NODISCARD bool EnableScavenger() const {
         return enable_scavenger_;
@@ -98,11 +99,11 @@ private:
     void InitFromEnv();
 
     size_t max_tc_size_ = SizeConfig::MAX_TC_SIZE;
-    size_t huge_page_cache_size_ = 16;
+    // size_t huge_page_cache_size_ = 16;
     bool use_map_populate_ = false;// default: Lazy Allocation
     bool enable_scavenger_ = true;
 };
 
 }// namespace aethermind
 
-#endif//AETHERMIND_AMMALLOC_CONFIG_H
+#endif// AETHERMIND_AMMALLOC_CONFIG_H

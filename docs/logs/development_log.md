@@ -9,6 +9,78 @@
 
 
 
+## 📅 2026-03-14 (Saturday)
+### 🚀 今日概要
+完成 `PageAllocator` 模块的 P0 级别安全漏洞修复和代码质量提升，包括 huge-page 缓存契约保护、溢出防护和完整的边界回归测试覆盖。
+
+**🎉 PageAllocator P0 修复完成：缓存契约安全，溢出防护到位，测试覆盖充分！**
+
+### 🧩 任务关联 (Task Linkage)
+- [x] **[TODO: PageAllocator 降级大页污染缓存修复]** - 完成，添加对齐校验防止降级路径污染 huge cache。
+- [x] **[TODO: PageAllocator 页数转换溢出保护]** - 完成，三处关键路径添加溢出 guard。
+- [x] **[TODO: PageAllocator 边界回归测试]** - 完成，新增 4 个测试用例覆盖溢出和缓存契约边界。
+- [x] **[TODO: PageAllocator 文件注释规范化]** - 完成，符合 cpp_comment_guidelines.md 规范。
+- [x] **[TODO: PageAllocator 缓存容量配置化]** - 完成，改用 PageConfig::HUGE_PAGE_CACHE_SIZE。
+
+### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
+1. **[Issue] 降级大页分配污染 huge-page 缓存 (P0) - 已修复**
+    - **根因**: 当 `AllocHugePage` 失败并降级到 `AllocNormalPage` 后，释放的 2MB 普通页可能进入 `HugePageCache`。这些页虽然不是 huge page 分配，但大小恰好等于 2MB，会被误缓存。后续请求 2MB 时可能返回非 huge page 对齐的地址，破坏 huge page 性能契约。
+    - **修复方案**: 
+        1. 在 `SystemFree` 添加入缓存门禁：只有当指针满足 `(addr & (HUGE_PAGE_SIZE - 1)) == 0`（2MB 对齐）时才允许缓存
+        2. 在 `SystemAlloc` 添加取出校验：`HugePageCache::Get()` 返回的指针必须非空且对齐才视为命中
+        3. 未对齐的 2MB 映射直接 `munmap`，不进入缓存
+    - **代码位置**: `ammalloc/src/page_allocator.cpp:285-290`, `ammalloc/src/page_allocator.cpp:327-332`
+    - **关键改动**:
+        ```cpp
+        // SystemAlloc 取出校验
+        void* ptr = HugePageCache::GetInstance().Get();
+        uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+        if (ptr && (addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
+            stats_.huge_cache_hit_count.fetch_add(1, std::memory_order_relaxed);
+            return ptr;
+        }
+        
+        // SystemFree 入缓存门禁
+        if (size == SystemConfig::HUGE_PAGE_SIZE && 
+            (addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
+            // 允许缓存
+        }
+        ```
+
+2. **[Issue] 页数位移操作溢出风险 (P0) - 已修复**
+    - **根因**: `page_num << PAGE_SHIFT` 在超大输入时会溢出，尤其在 32 位系统或恶意构造的输入下。`AllocHugePageWithTrim` 中的 `size + HUGE_PAGE_SIZE` 同样存在溢出风险。
+    - **修复方案**: 
+        1. `SystemAlloc` 和 `SystemFree` 添加前置溢出检查：`page_num > (SIZE_MAX >> PAGE_SHIFT)` 时直接返回
+        2. `AllocHugePageWithTrim` 添加 `size > (SIZE_MAX - HUGE_PAGE_SIZE)` 检查
+        3. 所有检查使用 `AM_UNLIKELY` 标记为异常路径，避免影响热路径性能
+    - **代码位置**: `ammalloc/src/page_allocator.cpp:264-268`, `ammalloc/src/page_allocator.cpp:181-186`, `ammalloc/src/page_allocator.cpp:315-319`
+
+3. **[Issue] nullptr cache-hit 回归 (P1) - 已修复**
+    - **根因**: 早期修复尝试中，`HugePageCache::Get()` 返回 `nullptr`（缓存为空）时，`reinterpret_cast<uintptr_t>(nullptr)` 得到 0，恰好满足对齐检查 `(0 & (HUGE_PAGE_SIZE - 1)) == 0`，导致空指针被当作有效缓存命中返回。
+    - **修复方案**: 在检查对齐之前先验证 `ptr != nullptr`，确保空缓存不被误判为命中。
+    - **代码位置**: `ammalloc/src/page_allocator.cpp:285`
+
+4. **[Issue] HugePageCache 容量硬编码 (P2) - 已修复**
+    - **根因**: 缓存容量 `kMaxCacheCapacity = 16` 是编译期常量，但 `PageConfig` 已提供 `HUGE_PAGE_CACHE_SIZE` 配置，两者不一致。
+    - **修复方案**: 将 `HugePageCache` 改为使用 `PageConfig::HUGE_PAGE_CACHE_SIZE`，使缓存容量可配置。
+    - **代码位置**: `ammalloc/src/page_allocator.cpp:43`, `ammalloc/src/page_allocator.cpp:66`
+
+### 📊 新增测试覆盖
+- **边界回归测试**: `tests/unit/test_page_allocator.cpp`
+    - `OverflowGuard_SystemAlloc`: 验证超大 page_num 触发溢出保护，返回 nullptr 且不统计为分配失败
+    - `OverflowGuard_SystemFree`: 验证超大 page_num 触发溢出保护，无副作用
+    - `NonHugeSizedFreeDoesNotPopulateHugeCache`: 验证非精确 2MB 大块释放不污染 huge cache
+    - `AdjacentHugeBoundaryDoesNotPopulateHugeCache`: 验证 `kHugePages ± 1` 临界边界不污染 cache
+- **测试结果**: 15/15 测试通过，包括原有 11 个 + 新增 4 个
+
+### 💡 架构思考 (Architectural Insights)
+- **缓存契约的双重校验**: 入缓存时检查对齐（防止降级污染），出缓存时再检查对齐（防御性编程）。这种"双保险"模式在关键路径上增加最小开销（一次位运算），但显著提升安全性。
+- **溢出保护的热路径友好设计**: 使用 `AM_UNLIKELY` 标记溢出检查分支，编译器会优化为冷路径，正常分配流程几乎零开销。
+- **边界测试的价值**: 新增测试不仅验证修复正确性，更重要的是形成回归防护网，防止未来重构引入类似问题。特别是 `AdjacentHugeBoundary` 测试捕获了"临界边界"这一易错场景。
+- **配置与实现的一致性**: 硬编码容量改为配置驱动，使代码与配置系统保持一致，减少维护者的心智负担。
+
+---
+
 ## 📅 2026-03-10 (Monday)
 ### 🚀 今日概要
 完成 SizeClass 模块的风格统一与性能基准测试方案改进，确保代码符合项目编码规范并获得可信的性能数据。

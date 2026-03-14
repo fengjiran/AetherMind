@@ -5,7 +5,8 @@ parent: ammalloc
 depends_on: []
 adr_refs:
   - ../adrs/ADR-003.md
-last_verified: 2026-03-10
+  - ../adrs/ADR-006.md
+last_verified: 2026-03-14
 owner: team
 status: active
 ---
@@ -32,13 +33,13 @@ status: active
 - 已验证约束：`SystemAlloc(page_num)` 以 `page_num << SystemConfig::PAGE_SHIFT` 计算字节数；`page_num == 0` 直接返回 `nullptr` 并告警；统计字段全部使用显式原子更新。
 - 已验证限制：小于 `SystemConfig::HUGE_PAGE_SIZE / 2` 的请求优先走普通页路径；仅当大小恰好等于 `SystemConfig::HUGE_PAGE_SIZE` 时才尝试命中 `HugePageCache`。
 - ADR 关联：[ADR-003: 乐观大页策略](../adrs/ADR-003.md)
-- 非阻塞注意事项：`HugePageCache` 是内部单例，最大容量固定为 `16`；`AllocWithRetry()` 最多重试 `PageConfig::MAX_ALLOC_RETRIES` 次；若大页路径失败会统计一次 `huge_fallback_to_normal_count` 后退化到普通页分配。
+- 非阻塞注意事项：`HugePageCache` 是内部单例，容量由 `PageConfig::HUGE_PAGE_CACHE_SIZE` 配置；`AllocWithRetry()` 最多重试 `PageConfig::MAX_ALLOC_RETRIES` 次；`SystemAlloc/SystemFree` 对页数执行边界检查防止溢出。
 - 未涉及：无
 
 ## 核心抽象
 ### 关键抽象
 - `PageAllocator`：页级系统接口门面；根据请求大小在普通页、大页和缓存路径之间做选择。
-- `HugePageCache`：仅缓存标准 `2MB` 大页地址的内部数组缓存；`Get()` / `Put()` / `ReleaseAll()` 均由内部 `std::mutex` 保护。
+- `HugePageCache`：仅缓存标准 `2MB` 大页地址的内部无锁双栈插槽缓存；使用 48-bit ABA 标签保护，`Get()` / `Put()` 路径完全无锁且零分配。
 - `PageAllocatorStats`：记录普通页、大页、缓存命中、失败与释放等统计计数。
 
 ### 数据流
@@ -66,8 +67,8 @@ status: active
 - 未涉及：无
 
 ## 并发约束
-- 并发模型：可被多线程并发调用；标准大页缓存通过内部 `std::mutex` 串行化访问。
-- 同步要求：统计使用原子变量；`HugePageCache::Get()` / `Put()` / `ReleaseAll()` 必须在其内部锁保护下执行。
+- 并发模型：可被多线程并发调用；标准大页缓存通过无锁双栈（Lock-Free Dual-Stack）实现高度并行化。
+- 同步要求：统计使用原子变量；`HugePageCache::Get()` / `Put()` 必须在原子 CAS 循环下执行以确保线程安全。
 - 禁止事项：禁止把非标准 `2MB` 块放入 `HugePageCache`；禁止假设释放缓存块后其虚拟地址已经被 `munmap`。
 - 未涉及：无
 

@@ -8,7 +8,7 @@ module: ammalloc
 submodule: page_allocator
 slug: null
 agent: sisyphus
-status: active
+status: superseded
 memory_status: not_needed
 supersedes: null
 closed_at: null

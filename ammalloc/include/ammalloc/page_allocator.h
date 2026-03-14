@@ -106,12 +106,12 @@ private:
     PAGEALLOCATOR_FRIEND_TEST;
 };
 
-template<typename T, size_t CHUNK_SIZE = 64 * 1024>
-    requires(sizeof(T) >= sizeof(void*) && std::default_initializable<T>)
 /// Thread-safe object pool backed by `PageAllocator` pages.
 ///
 /// The pool owns all allocated chunks until `ReleaseMemory()` or destruction.
 /// `New()` constructs `T` in-place and `Delete()` destroys `T` then recycles storage.
+template<typename T, size_t CHUNK_SIZE = 64 * 1024>
+    requires(sizeof(T) >= sizeof(void*) && std::default_initializable<T>)
 class ObjectPool {
 public:
     ObjectPool() = default;

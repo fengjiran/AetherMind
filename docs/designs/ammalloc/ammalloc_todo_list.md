@@ -124,6 +124,16 @@
 - 背景：`FetchRange` 持有 `span_list_lock` 调用 `AllocObject`。对于大 Span (128页)，`AllocObject` 内部的 Bitmap 扫描可能耗时较长，阻塞其他线程。
 - 方案：在 `Span` 中维护 `scan_cursor` 提示，记录上次扫描位置，避免每次从头扫描 Bitmap。
 
+- [ ] #### **补齐 OOM 错误处理与 `errno=ENOMEM` 语义 [Correctness]**
+
+- 背景：当前分配失败路径主要依赖返回 `nullptr`，但尚未系统性对齐 POSIX/`malloc` 家族的错误语义。调用方若依赖 `errno == ENOMEM` 判断内存不足，行为会与系统分配器不一致。
+- 方案：在 `am_malloc` 及后续补齐的 `am_calloc`/`am_realloc`/`am_memalign` 失败路径统一设置 `errno = ENOMEM`，并梳理参数校验与失败传播，避免遗漏慢路径和系统分配回退分支。
+
+- [ ] #### **移除 SpinLock 硬编码参数瓶颈 [Perf/Maintainability]**
+
+- 背景：当前 SpinLock 的自旋次数、退避策略或相关阈值依赖硬编码常量，难以针对不同核心数、负载和编译配置调优，容易在高并发场景形成隐藏瓶颈。
+- 方案：将 SpinLock 关键参数集中到 `config.h` 或独立调优配置，提供编译期/运行期可控入口，并用 benchmark 驱动默认值选择。
+
 #### **优化 ThreadCache 对象分配内存占用 [Mem]**
 
 - 背景：`ThreadCache` 对象本身约 1KB，当前直接使用 `SystemAlloc` 分配一个 4KB 页，每个线程浪费约 3KB 内存。在数千线程的高并发场景下浪费显著。
@@ -166,6 +176,18 @@
   2. 配合 Scavenger 线程，定期检查 ThreadCache 的使用活跃度。
   3. 强制回收闲置 ThreadCache 的 FreeList 到 CentralCache。
 
+- [ ] #### **补齐 POSIX API 对齐能力 (`calloc` / `realloc` / `memalign`) [Parity]**
+- 背景：当前 TODO 仍缺少对 `calloc`、`realloc`、`memalign` 的正式追踪，导致 `ammalloc` 与 POSIX/常见分配器接口能力存在缺口，难以作为通用替换器落地。
+- 方案：补齐零初始化分配、扩缩容重分配、显式对齐分配三类接口，并明确与现有 `PageCache`/`CentralCache`/大对象路径的交互语义及回退策略。
+
+- [ ] #### **增强内存安全特性（Poisoning / Double-Free 检测） [Safety]**
+- 背景：虽然 `Span::FreeObject` 已补上基础 double-free 防护，但 allocator 仍缺少面向调试和线上排障的系统化内存安全机制，例如释放后填毒、跨层级重复释放检测和非法归属校验。
+- 方案：为 debug/asan 友好场景增加 freed-object poisoning、重复释放检测和必要的 ownership 校验开关，在不显著拖慢热路径的前提下提升问题暴露能力。
+
+- [ ] #### **移除 Scavenger 硬编码策略与阈值 [Feature/Maintainability]**
+- 背景：`PageHeapScavenger` 的扫描周期、idle 阈值、批处理策略等若长期保持硬编码，会限制不同部署场景下的 RSS/延迟权衡，也不利于后续实验和回归验证。
+- 方案：将 Scavenger 的时间阈值、批量大小和启停策略收敛到统一配置层，支持通过编译选项或运行时参数调优。
+
 - [ ] #### **实现统计监控模块 (Statistics) [Observability]**
 - 背景：缺乏运行时观测手段，难以排查内存泄漏或碎片化问题。
 - 方案：
@@ -190,6 +212,17 @@
 - 方案：提供 AddMallocHook / RemoveMallocHook 接口。
 
 ### 📝 变更日志 (Changelog)
+
+- 2026-03-14
+  - 完成 PageAllocator P0 修复：
+    - 降级大页污染缓存：添加对齐校验门禁（`page_allocator.cpp:285-290, 327-332`）
+    - 页数转换溢出保护：三处溢出 guard（`page_allocator.cpp:181-186, 264-268, 315-319`）
+    - nullptr cache-hit 回归：添加 `ptr &&` 非空判断（`page_allocator.cpp:285`）
+    - 缓存容量配置化：改用 `PageConfig::HUGE_PAGE_CACHE_SIZE`（`page_allocator.cpp:43, 66`）
+  - 新增边界回归测试：`OverflowGuard_SystemAlloc`、`OverflowGuard_SystemFree`、`NonHugeSizedFreeDoesNotPopulateHugeCache`、`AdjacentHugeBoundaryDoesNotPopulateHugeCache`
+  - **TODO 列表扩展**：基于代码审查补充未记录的功能缺失与技术债：
+    - P1 新增：POSIX 错误处理 (`errno ENOMEM`)、SpinLock/TransferCache 硬编码参数移入 RuntimeConfig
+    - P2 新增：POSIX API 补齐 (`calloc`/`realloc`/`memalign`)、内存安全防护 (poisoning/red zones/quarantine)、Scavenger/MAX_TC_SIZE 硬编码消除
 
 - 2026-3-5
   - 完成 PageHeapScavenger 所有 P0 问题修复：

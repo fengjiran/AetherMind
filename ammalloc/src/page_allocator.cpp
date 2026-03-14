@@ -14,6 +14,7 @@
 #include <cstring>
 #include <limits>
 #include <sys/mman.h>
+#include <sys/stat.h>
 
 namespace {
 
@@ -27,44 +28,108 @@ public:
         return *instance;
     }
 
-    ~HugePageCache() = default;
-
-    void* Get() {
-        std::lock_guard lock(mtx_);
-        if (cache_size_ == 0) {
+    void* Get() noexcept {
+        uint16_t index = kInvalid;
+        if (!Pop(used_head_, index)) {
             return nullptr;
         }
 
-        return cache_[--cache_size_];
+        void* ptr = slots_[index].ptr;
+        Push(free_head_, index);
+        return ptr;
     }
 
-    bool Put(void* ptr) {
-        std::lock_guard lock(mtx_);
-        if (cache_size_ >= aethermind::PageConfig::HUGE_PAGE_CACHE_SIZE) {
+    bool Put(void* ptr) noexcept {
+        uint16_t index = kInvalid;
+        if (!Pop(free_head_, index)) {
             return false;
         }
 
-        cache_[cache_size_++] = ptr;
+        slots_[index].ptr = ptr;
+        Push(used_head_, index);
         return true;
     }
 
     void ReleaseAllForTesting() {
-        ReleaseAll();
-    }
-
-private:
-    HugePageCache() = default;
-
-    void ReleaseAll() {
-        std::lock_guard lock(mtx_);
-        while (cache_size_ > 0) {
-            munmap(cache_[--cache_size_], aethermind::SystemConfig::HUGE_PAGE_SIZE);
+        while (void* ptr = Get()) {
+            if (munmap(ptr, aethermind::SystemConfig::HUGE_PAGE_SIZE) != 0) {
+                aethermind::PageAllocator::RecordMunmapFailure();
+                spdlog::error("munmap failed in HugePageCache::ReleaseAll: ptr={}, errno={}",
+                              ptr, errno);
+            }
         }
     }
 
-    std::mutex mtx_;
-    void* cache_[aethermind::PageConfig::HUGE_PAGE_CACHE_SIZE]{};
-    size_t cache_size_{0};
+private:
+    struct Slot {
+        void* ptr{nullptr};
+        std::atomic<uint16_t> next{kInvalid};
+    };
+
+    static constexpr uint16_t kInvalid = 0xFFFF;
+    static constexpr size_t kCapacity = aethermind::PageConfig::HUGE_PAGE_CACHE_SIZE;
+    static_assert(kCapacity > 0 && kCapacity < kInvalid);
+    static_assert(std::atomic<uint64_t>::is_always_lock_free);
+
+    static constexpr uint64_t kIndexMask = 0xFFFFull;
+    static constexpr uint64_t kTagMask = (1ull << 48) - 1;
+
+    alignas(aethermind::SystemConfig::CACHE_LINE_SIZE) std::atomic<uint64_t> free_head_{0};
+    alignas(aethermind::SystemConfig::CACHE_LINE_SIZE) std::atomic<uint64_t> used_head_{0};
+    Slot slots_[kCapacity]{};
+
+    static constexpr uint64_t Pack(uint16_t index, uint64_t tag) noexcept {
+        return ((tag & kTagMask) << 16) | index;
+    }
+
+    static constexpr uint16_t Index(uint64_t head) noexcept {
+        return static_cast<uint16_t>(head & kIndexMask);
+    }
+
+    static constexpr uint64_t Tag(uint64_t head) noexcept {
+        return head >> 16;
+    }
+
+    HugePageCache() noexcept {
+        for (uint16_t i = 0; i < kCapacity - 1; ++i) {
+            slots_[i].next.store(i + 1, std::memory_order_relaxed);
+        }
+        slots_[kCapacity - 1].next.store(kInvalid, std::memory_order_relaxed);
+        free_head_.store(Pack(0, 0), std::memory_order_relaxed);
+        used_head_.store(Pack(kInvalid, 0), std::memory_order_relaxed);
+    }
+
+    bool Pop(std::atomic<uint64_t>& head, uint16_t& out) noexcept {
+        while (true) {
+            uint64_t expected = head.load(std::memory_order_acquire);
+            const uint16_t index = Index(expected);
+            if (index == kInvalid) {
+                return false;
+            }
+
+            const uint16_t next = slots_[index].next.load(std::memory_order_relaxed);
+            const uint64_t desired = Pack(next, Tag(expected) + 1);
+            if (head.compare_exchange_weak(expected, desired,
+                                           std::memory_order_acquire,
+                                           std::memory_order_relaxed)) {
+                out = index;
+                return true;
+            }
+        }
+    }
+
+    void Push(std::atomic<uint64_t>& head, uint16_t index) noexcept {
+        while (true) {
+            uint64_t expected = head.load(std::memory_order_relaxed);
+            slots_[index].next.store(Index(expected), std::memory_order_relaxed);
+            const uint64_t desired = Pack(index, Tag(expected) + 1);
+            if (head.compare_exchange_weak(expected, desired,
+                                           std::memory_order_release,
+                                           std::memory_order_relaxed)) {
+                return;
+            }
+        }
+    }
 };
 
 }// namespace
@@ -283,7 +348,7 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
     // returned directly to the OS on free.
     if (size == SystemConfig::HUGE_PAGE_SIZE) {
         void* ptr = HugePageCache::GetInstance().Get();
-        uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+        auto addr = reinterpret_cast<uintptr_t>(ptr);
         if (ptr && (addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
             stats_.huge_cache_hit_count.fetch_add(1, std::memory_order_relaxed);
             return ptr;
@@ -325,7 +390,10 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
     // For exact-size huge pages, prefer caching the VMA and dropping physical
     // backing (`MADV_DONTNEED`) to reduce future mmap/munmap overhead.
     if (size == SystemConfig::HUGE_PAGE_SIZE && (addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
-        madvise(ptr, size, MADV_DONTNEED);
+        if (madvise(ptr, size, MADV_DONTNEED) != 0) {
+            stats_.madvise_failed_count.fetch_add(1, std::memory_order_relaxed);
+            spdlog::debug("madvise MADV_DONTNEED failed in SystemFree: ptr={}, size={}", ptr, size);
+        }
         if (HugePageCache::GetInstance().Put(ptr)) {
             return;
         }

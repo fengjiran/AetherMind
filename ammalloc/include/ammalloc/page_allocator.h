@@ -93,6 +93,12 @@ public:
     /// Intended for tests and controlled teardown paths.
     static void ReleaseHugePageCache();
 
+    /// Records a munmap failure in statistics.
+    /// Used internally by HugePageCache during cache release.
+    static void RecordMunmapFailure() {
+        stats_.munmap_failed_count.fetch_add(1, std::memory_order_relaxed);
+    }
+
 private:
     inline static PageAllocatorStats stats_;
 

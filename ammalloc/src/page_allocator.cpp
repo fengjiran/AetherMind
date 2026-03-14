@@ -9,15 +9,22 @@
 #include "ammalloc/config.h"
 #include "utils/logging.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
 #include <sys/mman.h>
-#include <sys/stat.h>
 
 namespace {
 
+// Zero-allocation lock-free dual-stack cache for 2MB huge pages.
+//
+// This cache eliminates the std::mutex bottleneck under high concurrency while
+// strictly adhering to ammalloc's zero-allocation bootstrapping constraints
+// (no new/delete, no std::vector).
+//
+// It maintains two lock-free stacks (free_head_ and used_head_) over a fixed
+// array of Slots. ABA problem is prevented by packing a 16-bit index and a
+// 48-bit tag into a single 64-bit atomic head.
 class HugePageCache {
 public:
     static HugePageCache& GetInstance() {
@@ -28,6 +35,8 @@ public:
         return *instance;
     }
 
+    // Pops a cached 2MB huge page from the used stack.
+    // Returns nullptr if the cache is empty.
     void* Get() noexcept {
         uint16_t index = kInvalid;
         if (!Pop(used_head_, index)) {
@@ -39,6 +48,8 @@ public:
         return ptr;
     }
 
+    // Pushes a 2MB huge page into the cache.
+    // Returns false if the cache is full, in which case the caller must munmap.
     bool Put(void* ptr) noexcept {
         uint16_t index = kInvalid;
         if (!Pop(free_head_, index)) {
@@ -99,31 +110,34 @@ private:
         used_head_.store(Pack(kInvalid, 0), std::memory_order_relaxed);
     }
 
+    // Lock-free pop from the specified stack head.
+    // Returns true and sets `out` to the popped index, or false if empty.
     bool Pop(std::atomic<uint64_t>& head, uint16_t& out) noexcept {
+        uint64_t old_val = head.load(std::memory_order_acquire);
         while (true) {
-            uint64_t expected = head.load(std::memory_order_acquire);
-            const uint16_t index = Index(expected);
+            const uint16_t index = Index(old_val);
             if (index == kInvalid) {
                 return false;
             }
 
             const uint16_t next = slots_[index].next.load(std::memory_order_relaxed);
-            const uint64_t desired = Pack(next, Tag(expected) + 1);
-            if (head.compare_exchange_weak(expected, desired,
+            const uint64_t new_val = Pack(next, Tag(old_val) + 1);
+            if (head.compare_exchange_weak(old_val, new_val,
                                            std::memory_order_acquire,
-                                           std::memory_order_relaxed)) {
+                                           std::memory_order_acquire)) {
                 out = index;
                 return true;
             }
         }
     }
 
+    // Lock-free push of an index onto the specified stack head.
     void Push(std::atomic<uint64_t>& head, uint16_t index) noexcept {
+        uint64_t old_val = head.load(std::memory_order_relaxed);
         while (true) {
-            uint64_t expected = head.load(std::memory_order_relaxed);
-            slots_[index].next.store(Index(expected), std::memory_order_relaxed);
-            const uint64_t desired = Pack(index, Tag(expected) + 1);
-            if (head.compare_exchange_weak(expected, desired,
+            slots_[index].next.store(Index(old_val), std::memory_order_relaxed);
+            const uint64_t new_val = Pack(index, Tag(old_val) + 1);
+            if (head.compare_exchange_weak(old_val, new_val,
                                            std::memory_order_release,
                                            std::memory_order_relaxed)) {
                 return;

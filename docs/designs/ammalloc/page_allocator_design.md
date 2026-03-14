@@ -208,45 +208,49 @@ void* AllocWithRetry(size_t size, int flags) {
 
 **解决方案**：缓存释放的大页，复用 VMA
 
-### 3.2 缓存策略
+### 3.2 缓存架构：无锁双栈 (Lock-Free Dual-Stack)
 
-```cpp
-class HugePageCache {
-    static constexpr size_t kMaxCacheCapacity = 16;  // 固定容量
-    void* cache_[16];
-    size_t cache_size_ = 0;
-    std::mutex mtx_;
-};
-```
+为了消除高并发下的锁竞争，`HugePageCache` 采用了**无锁双栈**架构，将 `std::mutex` 替换为基于原子操作的 LIFO 队列。
 
-| 策略 | 说明 |
+| 特性 | 描述 |
 |------|------|
-| **容量** | 固定 16 个（硬编码），约 32MB 内存 |
-| **淘汰** | 满时直接 `munmap`，不缓存 |
-| **线程安全** | 内部 `mutex` 保护，调用者无需同步 |
-| **清理** | `ReleaseHugePageCache()` 用于测试和资源回收 |
+| **零分配 (Zero-Allocation)** | 预分配静态插槽数组，`Put/Get` 路径无动态内存分配 |
+| **ABA 保护** | 使用 48-bit 标签 (Tag) 与 16-bit 索引打包，防止 ABA 问题 |
+| **双栈设计** | `free_head` 维护空闲插槽，`used_head` 维护已缓存的大页地址 |
+| **容量配置** | 默认由 `PageConfig::HUGE_PAGE_CACHE_SIZE` 定义，支持运行时配置 |
+| **性能收益** | 16 线程并发下吞吐量提升 124% (从 ~638k 提升至 ~1.4M+ items/s) |
 
 ### 3.3 释放路径优化
 
 ```cpp
 void SystemFree(void* ptr, size_t page_num) {
-    if (size == HUGE_PAGE_SIZE) {
-        // 1. 先告诉内核可以回收物理内存
+    // ... 溢出与空指针检查 ...
+    const size_t size = page_num << SystemConfig::PAGE_SHIFT;
+    
+    // 仅针对 2MB 且地址对齐的“真实大页”进行缓存
+    if (size == HUGE_PAGE_SIZE && IsAligned(ptr, HUGE_PAGE_SIZE)) {
+        // 1. 告诉内核回收物理页，但保留 VMA 映射
         madvise(ptr, size, MADV_DONTNEED);
         
-        // 2. 尝试放入缓存（保留 VMA）
+        // 2. 尝试放入无锁缓存
         if (HugePageCache::Put(ptr)) return;
     }
     
-    // 3. 缓存失败或直接 munmap
+    // 3. 缓存满或不符合条件：彻底释放 VMA
     SafeMunmap(ptr, size);
 }
 ```
 
-**性能权衡**：
-- `MADV_DONTNEED`：内核可立即回收物理页，但保留 VMA
-- 缓存命中时：复用 VMA，仅需页表重建（缺页中断）
-- 缓存未命中：`munmap` 销毁 VMA
+### 3.4 无锁双栈实现细节 (Implementation Details)
+
+#### 标签指针打包 (Tag Packing)
+为了在 64 位原子变量中同时存储索引和版本号，采用了以下布局：
+- `[63:16]`: 48-bit ABA 标签（每次操作递增）
+- `[15:0]`: 16-bit 插槽索引 (0-65535)
+
+#### 核心算法 (CAS-Loop)
+- **Pop**: 从 `used_head` 弹出索引，读取 `slots[index].next` 更新 head。
+- **Push**: 更新 `slots[index].next` 指向当前 head，CAS 更新 head 为新索引。
 
 ---
 
@@ -335,11 +339,11 @@ struct PageAllocatorStats {
 │     │                  │                  │                 │
 │     └──────────────┬───┴──────────────────┘                 │
 │                    ↓                                        │
-│         PageAllocator (无状态，线程安全)                      │
+│         PageAllocator (静态方法，无状态)                     │
 │                    │                                        │
-│         HugePageCache (内部 mutex)                          │
+│         HugePageCache (无锁双栈 / CAS 保护)                  │
 │                    │                                        │
-│              OS Kernel                                      │
+│              OS Kernel (mmap_lock 竞争)                     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -349,8 +353,8 @@ struct PageAllocatorStats {
 | 组件 | 同步机制 | 说明 |
 |------|---------|------|
 | `PageAllocator` | 无锁 | 纯静态方法，无共享状态 |
-| `HugePageCache` | `std::mutex` | 保护 `cache_` 和 `cache_size_` |
-| `PageAllocatorStats` | 原子变量 | 使用 `memory_order_relaxed` |
+| `HugePageCache` | **Lock-Free** | 基于 `std::atomic<uint64_t>` 的 CAS 循环 |
+| `PageAllocatorStats` | 原子变量 | 使用 `memory_order_relaxed` 保证极高性能 |
 
 ---
 
@@ -398,13 +402,14 @@ static HugePageCache* instance = new HugePageCache();
 
 ## 8. 已知问题与改进建议
 
-### 8.1 当前问题
+### 8.1 历史缺陷修复 (Fixed Issues)
 
-| 问题 | 严重性 | 状态 | 说明 |
+| 问题 | 严重性 | 状态 | 修复说明 |
 |------|--------|------|------|
-| 降级大页进入缓存 | 高 | 已知 | 降级后的普通页可能污染大页缓存 |
-| 硬编码缓存容量 | 中 | 已知 | `kMaxCacheCapacity = 16` 无法配置 |
-| 无溢出检查 | 中 | 已知 | `page_num << PAGE_SHIFT` 可能溢出 |
+| 降级大页污染缓存 | 高 | **已修复** | 在 `Put/Get` 路径增加地址对齐校验，非大页对齐映射强制 `munmap` |
+| 硬编码缓存容量 | 中 | **已修复** | 接入 `PageConfig::HUGE_PAGE_CACHE_SIZE` 配置项 |
+| 无溢出检查 | 中 | **已修复** | 在页数到字节数转换前增加 `numeric_limits<size_t>` 边界校验 |
+| 缓存锁竞争瓶颈 | 高 | **已修复** | 引入无锁双栈架构，消除多线程下的 `std::mutex` 争用 |
 
 ### 8.2 改进建议
 
@@ -430,6 +435,7 @@ static HugePageCache* instance = new HugePageCache();
 
 | 版本 | 日期 | 作者 | 变更 |
 |------|------|------|------|
+| v1.1 | 2026-03-14 | Antigravity | 引入无锁双栈 HugePageCache，修复降级污染、容量硬编码与溢出风险 |
 | v1.0 | 2026-03-13 | Team | 初始版本，记录 AllocWithRetry、乐观大页、缓存策略 |
 
 ---

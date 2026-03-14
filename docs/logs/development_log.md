@@ -11,9 +11,9 @@
 
 ## 📅 2026-03-14 (Saturday)
 ### 🚀 今日概要
-完成 `PageAllocator` 模块的 P0 级别安全漏洞修复和代码质量提升，包括 huge-page 缓存契约保护、溢出防护和完整的边界回归测试覆盖。
+完成 `PageAllocator` 模块的全面重构：上午完成 P0 安全漏洞修复和代码质量提升；下午完成 **HugePageCache 无锁双栈架构重构**，彻底消除高并发下的锁争用瓶颈。
 
-**🎉 PageAllocator P0 修复完成：缓存契约安全，溢出防护到位，测试覆盖充分！**
+**🎉 PageAllocator 重构完成：缓存契约安全，无锁高性能，文档完备！**
 
 ### 🧩 任务关联 (Task Linkage)
 - [x] **[TODO: PageAllocator 降级大页污染缓存修复]** - 完成，添加对齐校验防止降级路径污染 huge cache。
@@ -21,13 +21,96 @@
 - [x] **[TODO: PageAllocator 边界回归测试]** - 完成，新增 4 个测试用例覆盖溢出和缓存契约边界。
 - [x] **[TODO: PageAllocator 文件注释规范化]** - 完成，符合 cpp_comment_guidelines.md 规范。
 - [x] **[TODO: PageAllocator 缓存容量配置化]** - 完成，改用 PageConfig::HUGE_PAGE_CACHE_SIZE。
+- [x] **[TODO: HugePageCache 无锁双栈重构]** - 完成，16 线程吞吐量提升 110-124%。
+- [x] **[TODO: ADR-006 生成]** - 完成，记录 HugePageCache 架构演进决策。
 
 ### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
-1. **[Issue] 降级大页分配污染 huge-page 缓存 (P0) - 已修复**
-    - **根因**: 当 `AllocHugePage` 失败并降级到 `AllocNormalPage` 后，释放的 2MB 普通页可能进入 `HugePageCache`。这些页虽然不是 huge page 分配，但大小恰好等于 2MB，会被误缓存。后续请求 2MB 时可能返回非 huge page 对齐的地址，破坏 huge page 性能契约。
-    - **修复方案**: 
-        1. 在 `SystemFree` 添加入缓存门禁：只有当指针满足 `(addr & (HUGE_PAGE_SIZE - 1)) == 0`（2MB 对齐）时才允许缓存
-        2. 在 `SystemAlloc` 添加取出校验：`HugePageCache::Get()` 返回的指针必须非空且对齐才视为命中
+
+#### 1. [P0] 降级大页分配污染 huge-page 缓存 - 已修复
+**根因**: 当 `AllocHugePage` 失败并降级到 `AllocNormalPage` 后，释放的 2MB 普通页可能进入 `HugePageCache`。后续请求 2MB 时可能返回非 huge page 对齐的地址，破坏性能契约。
+
+**修复方案**: 
+- 在 `SystemFree` 添加入缓存门禁：`(addr & (HUGE_PAGE_SIZE - 1)) == 0`
+- 在 `SystemAlloc` 添加取出校验：`ptr &&` 对齐检查
+
+**代码位置**: `ammalloc/src/page_allocator.cpp:285-290, 327-332`
+
+#### 2. [P1] 页数位移操作溢出风险 - 已修复
+**根因**: `page_num << PAGE_SHIFT` 在超大输入时会溢出。
+
+**修复方案**: 
+- 三处关键路径添加前置溢出检查
+- 使用 `AM_UNLIKELY` 标记异常路径
+
+**代码位置**: `ammalloc/src/page_allocator.cpp:181-186, 264-268, 315-319`
+
+#### 3. [架构重构] HugePageCache 锁争用瓶颈 - 已重构
+**根因**: 基于 `std::mutex` 的实现导致 16 线程吞吐量从 4.3M/s 骤降至 638k/s（4.8x 性能损失）。
+
+**重构方案** (零分配无锁双栈):
+1. **双栈结构**: `free_head_` (空闲槽位栈) + `used_head_` (已占用槽位栈)
+2. **ABA 防护**: 16-bit 索引 + 48-bit Tag 打包进 `std::atomic<uint64_t>`
+3. **数据竞争防护**: `Slot::next` 使用 `std::atomic<uint16_t>`
+4. **缓存对齐**: `free_head_` 和 `used_head_` 按 `CACHE_LINE_SIZE` 对齐
+5. **CAS 优化**: 将初始 `load` 移出 `while` 循环，遵循标准 C++ CAS idiom
+
+**性能对比**:
+| 线程数 | 旧版 (Mutex) | 新版 (Lock-Free) | 提升 |
+|--------|-------------|-----------------|------|
+| 16 | 1.07 M/s | 2.24-2.40 M/s | **+110-124%** |
+
+**关键设计决策**:
+- **为什么是双栈而非链表**: 链表需要动态分配节点，违反零分配约束
+- **为什么是 48-bit Tag**: $2^{48}$ 次操作才回绕，实际不可能触发
+- **内存序选择**: `Pop` 用 `acquire/acquire`，`Push` 用 `release/relaxed`
+
+**代码位置**: `ammalloc/src/page_allocator.cpp:19-146`
+
+#### 4. [代码审查] HugePageCache 数据竞争 - 已修复
+**根因**: 初始实现中 `Slot::next` 是 plain `uint16_t`，存在数据竞争。
+
+**修复方案**: 
+- 改为 `std::atomic<uint16_t> next`
+- `Pop` 中使用 `load(memory_order_relaxed)` 读取
+- `Push` 中使用 `store(memory_order_relaxed)` 写入
+
+**审查方**: Oracle 专家交叉审查确认安全
+
+### 📊 新增测试覆盖
+- **边界回归测试**: 4 个新测试用例
+  - `OverflowGuard_SystemAlloc`: 溢出保护无副作用
+  - `OverflowGuard_SystemFree`: 同上
+  - `NonHugeSizedFreeDoesNotPopulateHugeCache`: 非精确 2MB 不污染缓存
+  - `AdjacentHugeBoundaryDoesNotPopulateHugeCache`: 临界边界不污染缓存
+- **性能基准测试**: 16 线程吞吐量稳定在 2.24-2.40 M/s
+- **测试结果**: 15/15 单元测试通过
+
+### 📚 新增文档
+- **ADR-006**: `docs/agent/memory/modules/ammalloc/adrs/ADR-006.md`
+  - 记录 HugePageCache 从 Mutex 到 Lock-Free 的架构演进
+  - 对比其他方案（链表、TLS、分片）的取舍
+  - 验证结果和性能数据
+- **设计文档更新**: `docs/designs/ammalloc/page_allocator_design.md`
+  - 新增 3.4 节：无锁实现细节（CAS、ABA、内存序）
+  - 更新 6.1/6.2 节：并发模型改为 Lock-Free
+  - 更新 8.1 节：问题状态标记为已修复
+- **Handoff**: `docs/agent/handoff/workstreams/ammalloc__page_allocator/20260314T222700Z--ses_318bd5c17ffeP3CBYxVYXTJuAj--sisyphus.md`
+
+### 💡 架构思考 (Architectural Insights)
+- **缓存契约的双重校验**: 入缓存时检查对齐（防止降级污染），出缓存时再检查对齐（防御性编程）。这种"双保险"模式在关键路径上增加最小开销，但显著提升安全性。
+- **溢出保护的热路径友好设计**: 使用 `AM_UNLIKELY` 标记溢出检查分支，编译器会优化为冷路径，正常分配流程几乎零开销。
+- **无锁设计的权衡艺术**: 
+  - **优势**: 彻底消除锁争用，16 线程性能翻倍
+  - **代价**: 代码复杂度增加（ABA 防护、内存序、数据竞争）
+  - **关键**: 通过 48-bit Tag 和原子 `next` 保证正确性，通过缓存行对齐避免伪共享
+- **文档即契约**: ADR-006 不仅记录决策，更记录"为什么不是其他方案"，为未来架构评审提供上下文
+- **零分配的严格性**: 即使为了实现无锁，也不能违反自举约束（不能用 `new Node`），这迫使我们去探索更精巧的数据结构（双栈 vs 链表）
+
+### 🔗 相关提交
+- `ec7fa43`: `perf(ammalloc): replace HugePageCache mutex with zero-allocation lock-free dual-stack`
+- `73b6dac`: `docs(agent): add ADR-006 for HugePageCache lock-free architecture and update memory`
+
+---
         3. 未对齐的 2MB 映射直接 `munmap`，不进入缓存
     - **代码位置**: `ammalloc/src/page_allocator.cpp:285-290`, `ammalloc/src/page_allocator.cpp:327-332`
     - **关键改动**:

@@ -4,6 +4,9 @@
 #include <array>
 #include <benchmark/benchmark.h>
 
+#define PAGE_ALLOCATOR_BENCHMARK
+
+#ifdef PAGE_ALLOCATOR_BENCHMARK
 namespace {
 
 using namespace aethermind;
@@ -166,3 +169,5 @@ BENCHMARK(BM_PageAllocator_AllocFree_2M_MultiThreadContention)
         ->UseRealTime();
 
 }// namespace
+
+#endif

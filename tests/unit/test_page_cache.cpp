@@ -5,6 +5,7 @@
 
 #include <cstring>
 #include <gtest/gtest.h>
+#include <limits>
 #include <random>
 
 namespace aethermind {
@@ -33,6 +34,14 @@ protected:
             cur = cur->next;
         }
         return cnt;
+    }
+
+    AM_NODISCARD Span* GetBucketFrontOrNull(size_t page_num) {
+        auto* first = cache_.span_lists_[page_num].begin();
+        if (first == cache_.span_lists_[page_num].end()) {
+            return nullptr;
+        }
+        return first;
     }
 };
 
@@ -172,6 +181,129 @@ TEST_F(PageCacheTest, PageMapConsistency) {
     // 验证 is_used 状态
     Span* freed_span = PageMap::GetSpan(span->GetStartAddr());
     EXPECT_FALSE(freed_span->is_used);
+}
+
+TEST_F(PageCacheTest, ResetClearsMappingsAndIsIdempotent) {
+    Span* span = cache_.AllocSpan(4, 0);
+    ASSERT_NE(span, nullptr);
+
+    void* addr = span->GetStartAddr();
+    EXPECT_EQ(PageMap::GetSpan(addr), span);
+
+    cache_.Reset();
+    EXPECT_EQ(PageMap::GetSpan(addr), nullptr);
+
+    cache_.Reset();
+    EXPECT_EQ(PageMap::GetSpan(addr), nullptr);
+}
+
+TEST_F(PageCacheTest, ExactBucketReuseWhenNeighborsInUse) {
+    Span* span_a = cache_.AllocSpan(6, 32);
+    Span* span_b = cache_.AllocSpan(6, 32);
+    ASSERT_NE(span_a, nullptr);
+    ASSERT_NE(span_b, nullptr);
+
+    const size_t page_idx_a = span_a->start_page_idx;
+    cache_.ReleaseSpan(span_a);
+
+    Span* span_reuse = cache_.AllocSpan(6, 64);
+    ASSERT_NE(span_reuse, nullptr);
+    EXPECT_EQ(span_reuse->start_page_idx, page_idx_a);
+    EXPECT_TRUE(span_reuse->is_used);
+    EXPECT_EQ(span_reuse->obj_size, 64);
+
+    cache_.ReleaseSpan(span_reuse);
+    cache_.ReleaseSpan(span_b);
+}
+
+TEST_F(PageCacheTest, SplitRemainderIsMappedInPageMap) {
+    Span* span1 = cache_.AllocSpan(1, 8);
+    Span* span2 = cache_.AllocSpan(10, 16);
+    ASSERT_NE(span1, nullptr);
+    ASSERT_NE(span2, nullptr);
+
+    auto* remainder = GetBucketFrontOrNull(117);
+    ASSERT_NE(remainder, nullptr);
+    EXPECT_EQ(remainder->page_num, 117);
+    EXPECT_FALSE(remainder->is_used);
+
+    void* rem_start = remainder->GetStartAddr();
+    void* rem_end = static_cast<char*>(rem_start) + (remainder->page_num - 1) * SystemConfig::PAGE_SIZE;
+    EXPECT_EQ(PageMap::GetSpan(rem_start), remainder);
+    EXPECT_EQ(PageMap::GetSpan(rem_end), remainder);
+
+    cache_.ReleaseSpan(span1);
+    cache_.ReleaseSpan(span2);
+}
+
+TEST_F(PageCacheTest, ReleaseResetsSpanMetadataWithoutMerge) {
+    Span* span_a = cache_.AllocSpan(8, 128);
+    Span* span_b = cache_.AllocSpan(8, 128);
+    Span* span_c = cache_.AllocSpan(8, 128);
+    ASSERT_NE(span_a, nullptr);
+    ASSERT_NE(span_b, nullptr);
+    ASSERT_NE(span_c, nullptr);
+
+    cache_.ReleaseSpan(span_b);
+
+    auto* free_span = GetBucketFrontOrNull(8);
+    ASSERT_NE(free_span, nullptr);
+    EXPECT_EQ(free_span->page_num, 8);
+    EXPECT_FALSE(free_span->is_used);
+    EXPECT_EQ(free_span->obj_size, 0);
+    EXPECT_TRUE(free_span->is_committed);
+
+    Span* reused = cache_.AllocSpan(8, 256);
+    ASSERT_NE(reused, nullptr);
+    EXPECT_EQ(reused, free_span);
+    EXPECT_TRUE(reused->is_used);
+    EXPECT_EQ(reused->obj_size, 256);
+
+    cache_.ReleaseSpan(span_a);
+    cache_.ReleaseSpan(reused);
+    cache_.ReleaseSpan(span_c);
+}
+
+TEST_F(PageCacheTest, UnknownAddressReturnsNullFromPageMap) {
+    int stack_value = 42;
+    EXPECT_EQ(PageMap::GetSpan(&stack_value), nullptr);
+}
+
+TEST_F(PageCacheTest, OversizedOverflowRequestReturnsNullAndStateRemainsUsable) {
+    constexpr size_t too_many_pages = (std::numeric_limits<size_t>::max() >> SystemConfig::PAGE_SHIFT) + 1;
+    Span* failed = cache_.AllocSpan(too_many_pages, 0);
+    EXPECT_EQ(failed, nullptr);
+
+    Span* ok = cache_.AllocSpan(2, 32);
+    ASSERT_NE(ok, nullptr);
+    EXPECT_EQ(ok->page_num, 2);
+    EXPECT_EQ(PageMap::GetSpan(ok->GetStartAddr()), ok);
+    cache_.ReleaseSpan(ok);
+}
+
+TEST_F(PageCacheTest, ClearRangeOnEmptyPageMapKeepsLookupNull) {
+    cache_.Reset();
+
+    PageMap::ClearRange(123456, 64);
+    EXPECT_EQ(PageMap::GetSpan(static_cast<size_t>(123456)), nullptr);
+    EXPECT_EQ(PageMap::GetSpan(static_cast<size_t>(123456 + 63)), nullptr);
+}
+
+TEST_F(PageCacheTest, ClearRangeAfterUnmapMakesLookupNull) {
+    Span* span = cache_.AllocSpan(5, 0);
+    ASSERT_NE(span, nullptr);
+
+    const size_t start = span->start_page_idx;
+    EXPECT_EQ(PageMap::GetSpan(start), span);
+    EXPECT_EQ(PageMap::GetSpan(start + 4), span);
+
+    PageMap::ClearRange(start, 5);
+    EXPECT_EQ(PageMap::GetSpan(start), nullptr);
+    EXPECT_EQ(PageMap::GetSpan(start + 4), nullptr);
+
+    PageMap::SetSpan(span);
+    EXPECT_EQ(PageMap::GetSpan(start), span);
+    cache_.ReleaseSpan(span);
 }
 
 // 测试点 5: 压力测试 (随机分配释放)

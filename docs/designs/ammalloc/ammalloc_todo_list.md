@@ -103,6 +103,64 @@
 - 状态：**已修复（2026-03-07）**
 - 设计决策：选择胖根节点而非增加第 5 层，避免热路径多一次解引用；默认 48-bit 兼容绝大多数系统。
 
+- [ ] #### **Span v2 64B 重构 [Perf/Architecture]**
+- 背景：当前 `Span` 结构体 112 字节，跨越两个缓存行，多线程场景下导致 False Sharing 和 Cache Miss。
+- 方案：
+  1. **删除字段**: `bitmap`、`data_base_ptr`、`bitmap_num`、`is_used`、`is_committed` → 改为内联计算或位域打包
+  2. **类型降级**: `size_t` → `uint32_t` (page_num, obj_size, capacity, use_count, scan_cursor)
+  3. **新增字段**: `uint16_t flags` (打包状态位), `uint32_t obj_offset` (替代 data_base_ptr)
+  4. **布局优化**: 按 64B 缓存行对齐，分 4 个 16B 区域组织字段
+- 关键改动：
+  ```cpp
+  struct alignas(64) Span {
+      Span* next{nullptr};            // 8B
+      Span* prev{nullptr};            // 8B
+      uint64_t start_page_idx{0};     // 8B
+      uint32_t page_num{0};           // 4B
+      uint16_t flags{0};              // 2B: is_used, is_committed
+      uint16_t reserved_{0};          // 2B
+      uint32_t obj_size{0};           // 4B
+      uint32_t capacity{0};           // 4B
+      uint32_t use_count{0};          // 4B
+      uint32_t scan_cursor{0};        // 4B
+      uint32_t obj_offset{0};         // 4B: 替代 data_base_ptr
+      uint32_t padding{0};            // 4B
+      uint64_t last_used_time_ms{0};  // 8B
+      // 计算方法替代字段
+      [[nodiscard]] AM_ALWAYS_INLINE uint64_t* GetBitmap() const noexcept {
+          return static_cast<uint64_t*>(GetPageBaseAddr());
+      }
+      [[nodiscard]] AM_ALWAYS_INLINE void* GetDataBasePtr() const noexcept {
+          return static_cast<char*>(GetPageBaseAddr()) + obj_offset;
+      }
+  };
+  ```
+- 涉及文件：
+  - `ammalloc/include/ammalloc/span.h` - Span 结构体重写
+  - `ammalloc/src/span.cpp` - Init/AllocObject/FreeObject 适配
+  - `ammalloc/src/central_cache.cpp` - cleanup 逻辑适配
+  - `ammalloc/src/page_cache.cpp` - is_used/is_committed 访问适配
+  - `ammalloc/src/page_heap_scavenger.cpp` - 同上
+  - `ammalloc/src/ammalloc.cpp` - obj_size 类型适配
+  - `tests/unit/test_page_cache.cpp` - 测试断言适配
+- 性能预期：消除 False Sharing，多线程场景预期提升 10-20%
+- 验证：
+  - 单元测试：`--gtest_filter=PageCache.*` 13/13 通过
+  - 基准对比：`compare_benchmark_json.py span_v1.json span_v2.json`
+  - 门禁：单线程退化 >5% 或多线程 >8% 视为失败
+- 状态：设计方案已批准，等待实施 (Handoff: `ammalloc__page_cache/20260316T120000Z--ses_page_cache_v2--sisyphus.md`)
+- 优先级：P1
+
+- [x] #### **PageCache 代码审查与测试完善 [Code Quality]**
+- 背景：`PageCache` 作为 ammalloc 后端核心组件，需要全面的代码审查和测试覆盖。
+- 完成工作：
+  - 代码审查报告生成 (`docs/reviews/code_review/20260315_page_cache_code_review.md`)
+  - 修复 P0 问题：`PageMap::GetSpan` 边界检查缺失
+  - 新增 8 个测试用例（5 个增量 + 3 个失败路径）
+  - 性能基准测试建设（修复段错误，覆盖单线程/多线程）
+  - 注释规范改造 (`page_cache.h`)
+- 状态：**已完成 (2026-03-15 ~ 2026-03-16)**
+
 ### 🟠 P1: 性能微调 (Performance Tuning)
 *基于 Benchmark 数据和 Review 意见的针对性优化，性价比极高。*
 

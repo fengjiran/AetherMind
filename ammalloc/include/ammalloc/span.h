@@ -61,6 +61,67 @@ struct Span {
     }
 };
 
+struct alignas(SystemConfig::CACHE_LINE_SIZE) SpanV2 {
+    // --- 1. 链表指针 (16B) ---
+    SpanV2* next{nullptr};
+    SpanV2* prev{nullptr};
+    // --- 2. 核心寻址与状态 (16B) ---
+    uint64_t start_page_idx{0};// 8B: 保持全宽度，支持 sentinel (max)
+    uint32_t page_num{0};      // 4B: 最大 40 亿页，足够了
+    uint32_t flags{0};         // 2B: is_used, is_committed 等标志位
+    // --- 3. 对象分配元数据 (16B) ---
+    uint32_t obj_size{0};   // 4B: 最大 4GB 对象
+    uint32_t capacity{0};   // 4B: 最大 40 亿个对象
+    uint32_t use_count{0};  // 4B: 当前使用量
+    uint32_t scan_cursor{0};// 4B: 扫描游标
+    // --- 4. 杂项与冷数据 (16B) ---
+    uint32_t obj_offset{0};       // 4B: 替代 data_base_ptr，记录相对于 PageBase 的偏移
+    uint32_t padding{0};          // 4B: 对齐填充
+    uint64_t last_used_time_ms{0};// 8B: Scavenger 使用的时间戳
+
+    enum FlagBit : uint32_t {
+        kUsedMask = 1u << 0,
+        kCommittedMask = 1u << 1
+    };
+
+    AM_NODISCARD AM_ALWAYS_INLINE bool IsUsed() const noexcept {
+        return flags & kUsedMask;
+    }
+
+    AM_NODISCARD AM_ALWAYS_INLINE bool IsCommitted() const noexcept {
+        return flags & kCommittedMask;
+    }
+
+    AM_ALWAYS_INLINE void SetUsed(bool used) noexcept {
+        flags = (flags & ~kUsedMask) | (used ? kUsedMask : 0);
+    }
+
+    AM_ALWAYS_INLINE void SetCommitted(bool committed) noexcept {
+        flags = (flags & ~kCommittedMask) | (committed ? kCommittedMask : 0);
+    }
+
+    // ===================================================================
+    // 内联计算方法
+    // ===================================================================
+    AM_NODISCARD AM_ALWAYS_INLINE void* GetPageBaseAddr() const noexcept {
+        return reinterpret_cast<void*>(start_page_idx << SystemConfig::PAGE_SHIFT);
+    }
+
+    AM_NODISCARD AM_ALWAYS_INLINE uint64_t* GetBitmap() const noexcept {
+        return static_cast<uint64_t*>(GetPageBaseAddr());
+    }
+
+    AM_NODISCARD AM_ALWAYS_INLINE size_t GetBitmapNum() const noexcept {
+        return (capacity + 63) >> 6;
+    }
+
+    AM_NODISCARD AM_ALWAYS_INLINE void* GetDataBasePtr() const noexcept {
+        return static_cast<char*>(GetPageBaseAddr()) + obj_offset;
+    }
+};
+static_assert(sizeof(SpanV2) == SystemConfig::CACHE_LINE_SIZE, "SpanV2 must be exactly 64 bytes");
+static_assert(alignof(SpanV2) == SystemConfig::CACHE_LINE_SIZE, "SpanV2 alignment mismatch");
+
 /**
  * @brief A doubly linked list managing a collection of Spans.
  *
@@ -119,21 +180,21 @@ public:
     }
 
     /**
-    * @brief Inserts a Span at the beginning of the list.
-    *
-    * This is typically used when returning memory to the cache.
-    * LIFO (Last-In-First-Out) behavior improves CPU cache locality for hot data.
-    */
+     * @brief Inserts a Span at the beginning of the list.
+     *
+     * This is typically used when returning memory to the cache.
+     * LIFO (Last-In-First-Out) behavior improves CPU cache locality for hot data.
+     */
     void push_front(Span* span) noexcept {
         insert(begin(), span);
     }
 
     /**
-    * @brief Inserts a Span at the end of the list.
-    *
-    * This is typically used when returning memory to the cache.
-    * LIFO (Last-In-First-Out) behavior improves CPU cache locality for hot data.
-    */
+     * @brief Inserts a Span at the end of the list.
+     *
+     * This is typically used when returning memory to the cache.
+     * LIFO (Last-In-First-Out) behavior improves CPU cache locality for hot data.
+     */
     void push_back(Span* span) noexcept {
         insert(end(), span);
     }
@@ -175,14 +236,14 @@ public:
 
 private:
     /**
-    * @brief Sentinel node (Dummy Head).
-    * Stored as a member object (not a pointer) to ensure it resides in the
-    * same cache line as the SpanList object itself.
-    */
+     * @brief Sentinel node (Dummy Head).
+     * Stored as a member object (not a pointer) to ensure it resides in the
+     * same cache line as the SpanList object itself.
+     */
     Span head_;
 };
 
 
 }// namespace aethermind
 
-#endif//AETHERMIND_MALLOC_SPAN_H
+#endif// AETHERMIND_MALLOC_SPAN_H

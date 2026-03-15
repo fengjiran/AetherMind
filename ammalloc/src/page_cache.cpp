@@ -19,6 +19,9 @@ Span* PageMap::GetSpan(size_t page_id) {
 
     // Calculate Radix Tree indices
     const size_t i0 = page_id >> (PageConfig::RADIX_NODE_BITS * 3);
+    if (i0 >= PageConfig::RADIX_ROOT_SIZE) AM_UNLIKELY {
+        return nullptr;
+    }
     const size_t i1 = (page_id >> (PageConfig::RADIX_NODE_BITS * 2)) & PageConfig::RADIX_MASK;
     const size_t i2 = (page_id >> PageConfig::RADIX_NODE_BITS) & PageConfig::RADIX_MASK;
     const size_t i3 = page_id & PageConfig::RADIX_MASK;

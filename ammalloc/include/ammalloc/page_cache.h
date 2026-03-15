@@ -1,7 +1,19 @@
-//
-// Created by richard on 2/7/26.
-//
-
+/// Page-level memory cache and radix-tree page map.
+///
+/// PageCache manages Spans (contiguous page ranges) and serves as the backend
+/// for CentralCache. It handles span splitting, coalescing, and OS allocation.
+/// PageMap provides a lock-free read path for span lookup via a 4-level radix tree.
+///
+/// Architecture:
+/// - PageCache sits above PageAllocator (OS interaction) and below CentralCache.
+/// - Uses a global mutex for all mutable operations.
+/// - Span metadata is pooled to avoid recursive allocation.
+///
+/// Thread-safety:
+/// - PageCache: All public methods acquire the global mutex internally.
+/// - PageMap::GetSpan is lock-free; SetSpan/ClearRange require PageCache lock.
+///
+/// Dependencies: page_allocator.h, span.h
 #ifndef AETHERMIND_MALLOC_PAGE_CACHE_H
 #define AETHERMIND_MALLOC_PAGE_CACHE_H
 
@@ -18,96 +30,66 @@ inline uint64_t GetCurrentTimeMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 }
 
+/// Root node of the radix tree page map.
+/// Aligned to page size to prevent false sharing.
 struct alignas(SystemConfig::PAGE_SIZE) RadixRootNode {
     std::array<std::atomic<void*>, PageConfig::RADIX_ROOT_SIZE> children;
 
     RadixRootNode() {
-        for (auto& child: children) {
+        for (auto& child : children) {
             child.store(nullptr, std::memory_order_relaxed);
         }
     }
 };
 
-/**
- * @brief Node structure for the Radix Tree (PageMap).
- *
- * Maps Page IDs (keys) to Span pointers (values).
- *
- * @note **Alignment**: `alignas(PAGE_SIZE)` forces the structure to be 4KB aligned.
- * 1. Ensures that one node occupies exactly one physical OS page (assuming 4KB pages).
- * 2. Prevents False Sharing in multi-thread environments.
- * 3. Optimizes interaction with system allocators (like mmap).
- */
+/// Internal/leaf node of the radix tree page map.
+/// Leaf nodes store Span pointers; internal nodes store child node pointers.
+/// Aligned to page size to prevent false sharing.
 struct alignas(SystemConfig::PAGE_SIZE) RadixNode {
-    /**
-     * @brief Array of pointers to child nodes or Spans.
-     *
-     * - Size is typically 512 for 64-bit systems (9 bits stride).
-     * - In leaf nodes, these point to `Span` objects.
-     * - In internal nodes, these point to the next level `RadixNode`.
-     */
     std::array<std::atomic<void*>, PageConfig::RADIX_NODE_SIZE> children;
 
     RadixNode() {
-        for (auto& child: children) {
+        for (auto& child : children) {
             child.store(nullptr, std::memory_order_relaxed);
         }
     }
 };
 
+/// Maps page IDs to managing Spans via a radix tree.
+///
+/// Thread-safety:
+/// - GetSpan is lock-free (hot path in deallocation).
+/// - SetSpan, ClearRange, and Reset require PageCache::mutex_ held.
 class PageMap {
 public:
-    /**
-     * @brief Lookup the Span associated with a specific memory address.
-     *
-     * This function is lock-free and extremely hot in the deallocation path.
-     * It relies on the memory barriers established by SetSpan to ensure data visibility.
-     *
-     * @param page_id The page id being freed or looked up.
-     * @return Span* Pointer to the managing Span, or nullptr if not found.
-     */
+    /// Lock-free lookup of the Span managing a page.
+    ///
+    /// @warning Hot path; relies on release semantics in SetSpan.
     static Span* GetSpan(size_t page_id);
 
     static Span* GetSpan(void* ptr) {
-        const auto addr = reinterpret_cast<uintptr_t>(ptr);
-        const size_t page_id = addr >> SystemConfig::PAGE_SHIFT;
-        return GetSpan(page_id);
+        return GetSpan(reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT);
     }
 
-    /**
-    * @brief Register a Span into the PageMap.
-    *
-    * Associates all page IDs covered by the span with the span pointer.
-    * MUST be called with PageCache::mutex_ held to protect the tree structure.
-    *
-    * @param span The Span to register. Must have valid start_page_idx and page_num.
-    */
+    /// Registers all pages of a span in the radix tree.
+    ///
+    /// @pre PageCache::mutex_ held.
     static void SetSpan(Span* span);
 
-    /**
-    * @brief Clear a range of page mappings from the PageMap.
-    *
-    * Sets the span pointers for the specified page range to nullptr.
-    * MUST be called with PageCache::mutex_ held.
-    *
-    * @param start_page_id First page ID to clear.
-    * @param page_num Number of consecutive pages to clear.
-    */
+    /// Clears mappings for a page range.
+    ///
+    /// @pre PageCache::mutex_ held.
     static void ClearRange(size_t start_page_id, size_t page_num);
 
-    /**
-     * @brief Reset the entire PageMap.
-     *
-     * Clears all mappings and releases all RadixNode objects.
-     * MUST be called with PageCache::mutex_ held.
-     */
+    /// Resets the entire page map.
+    ///
+    /// @pre PageCache::mutex_ held.
     static void Reset();
 
 private:
-    // Atomic root pointer for double-checked locking / lazy initialization.
+    // Published with release semantics once initialized.
     inline static std::atomic<RadixRootNode*> root_ = nullptr;
     inline static ObjectPool<RadixRootNode> radix_root_pool_{};
-    // radix node pool
     inline static ObjectPool<RadixNode> radix_node_pool_{};
 };
 
@@ -119,66 +101,43 @@ private:
 #endif
 
 
-/**
- * @brief Global singleton managing page-level memory allocation and deallocation (leaky singleton).
- *
- * The PageCache is the central repository for Spans (contiguous memory pages).
- * It sits above the OS memory allocator (PageAllocator) and below the CentralCache.
- *
- * Key Responsibilities:
- * 1. **Distribution**: Slices large spans into smaller ones for CentralCache.
- * 2. **Coalescing**: Merges adjacent free spans returned by CentralCache to reduce external fragmentation.
- * 3. **System Interaction**: Requests large memory blocks from the OS when the cache is empty.
- */
+/// Global singleton managing page-level memory allocation.
+///
+/// PageCache manages Spans (contiguous page ranges) as the backend for
+/// CentralCache. It handles span splitting, coalescing, and OS allocation.
+/// Uses a leaky singleton pattern to avoid destruction order issues.
+///
+/// Thread-safety: All public methods acquire the global mutex internally.
 class PageCache {
 public:
-    /**
-    * @brief Retrieves the singleton instance of PageCache.
-    */
+    /// Returns the singleton instance.
     static PageCache& GetInstance() {
-        // Static storage (BSS segment), no malloc call
+        // Uses placement new in static storage to avoid recursive allocation.
         alignas(alignof(PageCache)) static char storage[sizeof(PageCache)];
-        // placement new in static storage, never destructed
         static auto* instance = new (storage) PageCache();
         return *instance;
     }
 
-    // Disable copy and assignment to enforce singleton pattern.
     PageCache(const PageCache&) = delete;
     PageCache& operator=(const PageCache&) = delete;
 
-    /**
-     * @brief Allocates a Span with at least `page_num` pages.
-     *
-     * Thread-safe wrapper that acquires the global lock.
-     *
-     * @param page_num Number of pages requested.
-     * @param obj_size Size of the objects this Span will manage (metadata for CentralCache).
-     * @return Pointer to the allocated Span.
-     */
+    /// Allocates a span with at least `page_num` pages.
+    ///
+    /// Thread-safe; acquires the global lock internally.
+    /// @return The allocated span, or nullptr if system allocation fails.
     Span* AllocSpan(size_t page_num, size_t obj_size) {
         std::lock_guard<std::mutex> lock(mutex_);
         return AllocSpanLocked(page_num, obj_size);
     }
 
-    /**
-     * @brief Returns a Span to the PageCache and attempts to merge it with neighbors.
-     *
-     * This function performs **Physical Coalescing**:
-     * 1. Checks left and right neighbors using the PageMap.
-     * 2. If neighbors are free and the total size is within limits, merges them.
-     * 3. Inserts the resulting (potentially larger) Span back into the free list.
-     *
-     * @param span The Span to be released.
-     */
+    /// Returns a span to the cache and attempts coalescing with neighbors.
+    ///
+    /// Thread-safe; acquires the global lock internally.
     void ReleaseSpan(Span* span) noexcept;
 
-    /**
-     * @brief Reset the PageCache to its initial state.
-     *
-     * Clears all cached spans, releases all allocated resources, and resets the PageMap.
-     * This is primarily used for test isolation.
-     */
+    /// Resets the cache to its initial state.
+    ///
+    /// Used for test isolation. Clears all spans and resets the page map.
     void Reset();
 
     AM_NODISCARD bool IsBucketEmpty(size_t bucket_idx) const noexcept {
@@ -191,21 +150,16 @@ public:
     }
 
 private:
-    /// Global lock protecting the span_lists_ structure.
+    // Protected by mutex_.
     std::mutex mutex_;
-    /// Array of free lists. Index `i` holds Spans of size `i` pages.
-    /// Range: [0, MAX_PAGE_NUM], supporting spans up to 128 pages.
+    /// Free lists indexed by span size in pages. Index 0 is unused.
     std::array<SpanList, PageConfig::MAX_PAGE_NUM + 1> span_lists_{};
-    // object pool for span
     ObjectPool<Span> span_pool_{};
 
     PageCache() = default;
     ~PageCache() = default;
 
-    /**
-     * @brief Internal core logic for allocation (assumes lock is held).
-     * Uses a loop to handle system refill and splitting.
-     */
+    /// Core allocation logic. Assumes lock is held.
     Span* AllocSpanLocked(size_t page_num, size_t obj_size);
 
     PAGE_CACHE_FRIENDS_TEST;
@@ -214,4 +168,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_MALLOC_PAGE_CACHE_H
+#endif// AETHERMIND_MALLOC_PAGE_CACHE_H

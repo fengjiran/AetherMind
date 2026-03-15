@@ -9,6 +9,100 @@
 
 
 
+## 📅 2026-03-16 (Monday)
+### 🚀 今日概要
+完成 `PageCache` 子模块的深度优化准备阶段，包括全面代码审查、测试用例补充、性能基准测试建设，以及 **Span v2 64B 重构设计方案的最终确定**。
+
+**🎉 PageCache 深度优化准备完成：代码审查通过，测试覆盖完备，设计方案已批准！**
+
+### 🧩 任务关联 (Task Linkage)
+- [x] **[TODO: PageCache 代码审查]** - 完成，生成详细审查报告。
+- [x] **[TODO: PageCache 测试用例补充]** - 完成，新增 8 个测试用例（5 个增量 + 3 个失败路径）。
+- [x] **[TODO: PageCache 性能基准测试]** - 完成，修复段错误，覆盖单线程/多线程场景。
+- [x] **[TODO: Span v2 64B 重构设计]** - 完成，设计方案审核通过，等待实施。
+
+### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
+
+#### 1. [P0] PageMap::GetSpan 边界检查缺失 - 已修复
+**根因**: `GetSpan` 函数中 `i0` 索引计算后未检查边界，在超大 page_id 输入时可能导致数组越界。
+
+**修复方案**: 
+- 添加边界检查：`if (i0 >= PageConfig::RADIX_ROOT_SIZE) return nullptr;`
+
+**代码位置**: `ammalloc/src/page_cache.cpp:22`
+
+#### 2. [架构设计] Span 112B → 64B 重构方案确定
+**根因**: 当前 `Span` 结构体 112 字节，跨越两个缓存行，导致多线程场景下的 False Sharing 和 Cache Miss。
+
+**设计方案**:
+1. **删除字段**: `bitmap`、`data_base_ptr`、`bitmap_num`、`is_used`、`is_committed` → 改为内联计算或位域打包
+2. **类型降级**: `size_t` → `uint32_t` (page_num, obj_size, capacity, use_count, scan_cursor)
+3. **新增字段**: `uint16_t flags` (打包状态位), `uint32_t obj_offset` (替代 data_base_ptr)
+4. **布局优化**: 按 64B 缓存行对齐，分 4 个 16B 区域组织字段
+
+**关键计算替代公式**:
+- `bitmap` → `reinterpret_cast<uint64_t*>(start_page_idx << PAGE_SHIFT)` (~1 周期)
+- `data_base_ptr` → `GetPageBaseAddr() + obj_offset` (~3-5 周期)
+- `bitmap_num` → `(capacity + 63) >> 6` (~2 周期)
+
+**性能预期**: 消除跨缓存行访问，减少 False Sharing，多线程场景预期提升 10-20%。
+
+**代码位置**: `ammalloc/include/ammalloc/span.h` (待实施)
+
+#### 3. [测试] Benchmark 段错误 - 已修复
+**根因**: `BM_PageCache_*` 每次迭代调用 `cache.Reset()`，多线程场景下导致 Use-After-Free。
+
+**修复方案**: 
+- 将 `Reset()` 移出迭代循环，改为 `SetUp`/`TearDown` 级别操作
+- 避免多线程并发访问被释放的内存
+
+**代码位置**: `tests/benchmark/benchmark_page_cache.cpp`
+
+#### 4. [架构决策] 拒绝 Bitfield+Union 方案
+**讨论**: 考虑过使用 C++ bitfield + union 将 flags 和 pointers 打包到更少空间。
+
+**拒绝原因**:
+- C++ bitfield 布局是实现相关的，不同编译器可能产生不同布局
+- 涉及指针和整数的 union 转换在并发场景下存在 RMW (Read-Modify-Write) 隐患
+- 违反了"显式优于隐式"的工程原则
+
+**决策**: 采用显式的 `uint16_t flags` 位域 + 内联计算函数替代被删除字段。
+
+### 📊 新增测试覆盖
+- **增量测试** (5 个):
+  - `ResetClearsMappingsAndIsIdempotent`
+  - `ExactBucketReuseWhenNeighborsInUse`
+  - `SplitRemainderIsMappedInPageMap`
+  - `ReleaseResetsSpanMetadataWithoutMerge`
+  - `UnknownAddressReturnsNullFromPageMap`
+- **失败路径测试** (3 个):
+  - `OversizedOverflowRequestReturnsNullAndStateRemainsUsable`
+  - `ClearRangeOnEmptyPageMapKeepsLookupNull`
+  - `ClearRangeAfterUnmapMakesLookupNull`
+- **性能基准测试**: 覆盖 8 个场景，包括单线程 Alloc/Release、PageMap 查询、多线程竞争
+- **测试结果**: 13/13 单元测试通过
+
+### 📚 新增文档
+- **代码审查报告**: `docs/reviews/code_review/20260315_page_cache_code_review.md`
+  - 5 项 P0 问题识别及修复状态
+  - 3 项 P1 优化建议
+  - 2 项 P2 功能建议
+- **Handoff**: `docs/agent/handoff/workstreams/ammalloc__page_cache/20260316T120000Z--ses_page_cache_v2--sisyphus.md`
+  - Span v2 完整设计方案
+  - 8 个需修改文件清单
+  - 详细实施步骤和验证计划
+
+### 💡 架构思考 (Architectural Insights)
+- **内联计算 vs 缓存存储**: 对于 bitmap/data_base_ptr/bitmap_num 这类可从其他字段推导的值，计算成本 (~1-5 周期) 远低于跨缓存行访问成本 (~100+ 周期)，空间换时间的权衡在此处反转。
+- **位域打包的边界**: `uint16_t flags` 打包 `is_used` 和 `is_committed` 是安全的，因为这些是互斥状态且访问频率相似。但将不相关字段强制打包可能增加 false sharing。
+- **测试即文档**: 新增的失败路径测试（如 `ClearRangeOnEmptyPageMap`）不仅验证正确性，更成为架构行为的活文档，说明空 PageMap 的行为契约。
+- **性能基准的门禁价值**: 建立 `compare_benchmark_json.py` 工具，使性能回归可量化、可自动化，防止"优化"变成"退化"。
+
+### 🔗 相关提交
+- 待实施：Span v2 重构 (已批准，等待用户"继续"指令)
+
+---
+
 ## 📅 2026-03-14 (Saturday)
 ### 🚀 今日概要
 完成 `PageAllocator` 模块的全面重构：上午完成 P0 安全漏洞修复和代码质量提升；下午完成 **HugePageCache 无锁双栈架构重构**，彻底消除高并发下的锁争用瓶颈。

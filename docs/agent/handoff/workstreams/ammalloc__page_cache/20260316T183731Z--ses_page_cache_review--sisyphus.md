@@ -7,11 +7,11 @@ module: ammalloc
 submodule: page_cache
 slug: null
 agent: sisyphus
-status: active
+status: superseded
 memory_status: not_needed
 supersedes: 20260316T120000Z--ses_page_cache_v2--sisyphus.md
-closed_at: null
-closed_reason: null
+closed_at: 2026-03-16T17:18:57Z
+closed_reason: Span v2 64B重构已完成，任务移交至新handoff
 ---
 
 # PageCache Span 重构审核 Handoff

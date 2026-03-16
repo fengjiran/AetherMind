@@ -162,6 +162,10 @@ void PageMap::Reset() {
 }
 
 Span* PageCache::AllocSpanLocked(size_t page_num) {
+    if (page_num > std::numeric_limits<uint32_t>::max()) {
+        return nullptr;
+    }
+
     while (true) {
         // 1. Oversized Allocation:
         // Requests larger than the max bucket (>128 pages) go directly to the OS.
@@ -179,7 +183,8 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
                 PageAllocator::SystemFree(ptr, page_num);
                 return nullptr;
             }
-            span->is_used = true;
+            span->SetUsed(true);
+            span->SetCommitted(true);
 
             // Register relationship in Radix Tree.
             PageMap::SetSpan(span);
@@ -192,7 +197,8 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
         AM_DCHECK(page_num >= 1 && page_num <= PageConfig::MAX_PAGE_NUM);
         if (!span_lists_[page_num].empty()) {
             auto* span = span_lists_[page_num].pop_front();
-            span->is_used = true;
+            span->SetUsed(true);
+            span->SetCommitted(true);
             return span;
         }
 
@@ -214,12 +220,13 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
                 span_lists_[i].push_front(big_span);
                 return nullptr;
             }
-            small_span->is_used = true;
+            small_span->SetUsed(true);
+            small_span->SetCommitted(true);
 
             // Adjust the remaining part of the big span (Tail).
             big_span->start_page_idx += page_num;
             big_span->page_num -= page_num;
-            big_span->is_used = false;
+            big_span->SetUsed(false);
             big_span->last_used_time_ms = GetCurrentTimeMs();
             // Return the remainder to the appropriate free list.
             span_lists_[big_span->page_num].push_front(big_span);
@@ -247,7 +254,8 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
             PageAllocator::SystemFree(ptr, alloc_page_nums);
             return nullptr;
         }
-        span->is_used = false;
+        span->SetUsed(false);
+        span->SetCommitted(true);
         span->last_used_time_ms = GetCurrentTimeMs();
         // Insert the new large span into the last bucket.
         span_lists_[alloc_page_nums].push_front(span);
@@ -265,7 +273,7 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
     // return it directly to the OS (PageAllocator).
     // clang-format off
     if (span->page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
-        auto* ptr = span->GetStartAddr();
+        auto* ptr = span->GetPageBaseAddr();
         PageMap::ClearRange(span->start_page_idx, span->page_num);
         PageAllocator::SystemFree(ptr, span->page_num);
         span_pool_.Delete(span);
@@ -285,7 +293,7 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
         // - Left page doesn't exist (not managed by us).
         // - Left span is currently in use (in CentralCache).
         // - Merged size would exceed the maximum bucket size.
-        if (!left_span || left_span->is_used ||
+        if (!left_span || left_span->IsUsed() ||
             span->page_num + left_span->page_num > PageConfig::MAX_PAGE_NUM) {
             break;
         }
@@ -297,7 +305,7 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
         // Corrupt metadata to safely detect dangling pointer access
         left_span->start_page_idx = std::numeric_limits<size_t>::max();
         left_span->page_num = 0;
-        left_span->is_used = true;
+        left_span->SetUsed(true);
         span_pool_.Delete(left_span);// Destroy metadata
     }
 
@@ -306,7 +314,7 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
         size_t right_id = span->start_page_idx + span->page_num;
         auto* right_span = PageMap::GetSpan(right_id);
         // Similar stop conditions as Merge Left.
-        if (!right_span || right_span->is_used ||
+        if (!right_span || right_span->IsUsed() ||
             span->page_num + right_span->page_num > PageConfig::MAX_PAGE_NUM) {
             break;
         }
@@ -317,15 +325,15 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
         // Corrupt metadata to safely detect dangling pointer access
         right_span->start_page_idx = std::numeric_limits<size_t>::max();
         right_span->page_num = 0;
-        right_span->is_used = true;
+        right_span->SetUsed(true);
         span_pool_.Delete(right_span);
     }
 
     // 4. Insert back: Mark as unused and push to the appropriate bucket.
-    span->is_used = false;
+    span->SetUsed(false);
     span->obj_size = 0;
     span->last_used_time_ms = GetCurrentTimeMs();
-    span->is_committed = true;
+    span->SetCommitted(true);
     span_lists_[span->page_num].push_front(span);
     // Update PageMap: Map ALL pages in this coalesced span to the span pointer.
     // This ensures subsequent merge operations can find this span via any of its pages.
@@ -337,8 +345,7 @@ void PageCache::Reset() {
     for (auto& list: span_lists_) {
         while (!list.empty()) {
             auto* span = list.pop_front();
-            // PageMap::ClearRange(span->start_page_idx, span->page_num);
-            PageAllocator::SystemFree(span->GetStartAddr(), span->page_num);
+            PageAllocator::SystemFree(span->GetPageBaseAddr(), span->page_num);
             span_pool_.Delete(span);
         }
     }

@@ -70,14 +70,14 @@ void PageHeapScavenger::ScavengeOnePass() {
             auto* cur = page_cache.span_lists_[i].begin();
             while (cur != page_cache.span_lists_[i].end()) {
                 auto* next = cur->next;
-                if (cur->is_used) {
+                if (cur->IsUsed()) {
                     spdlog::error("Scavenger: used span {} in free list.",
                                   static_cast<void*>(cur));
                     cur = next;
                     continue;
                 }
 
-                if (!cur->is_committed) {
+                if (!cur->IsCommitted()) {
                     cur = next;
                     continue;
                 }
@@ -85,7 +85,7 @@ void PageHeapScavenger::ScavengeOnePass() {
                 if (now - cur->last_used_time_ms >= kIdleThresholdMs) {
                     page_cache.span_lists_[i].erase(cur);
                     // Mark as "in use" to prevent ReleaseSpan from merging
-                    cur->is_used = true;
+                    cur->SetUsed(true);
 
                     if (!head) {
                         head = cur;
@@ -103,10 +103,10 @@ void PageHeapScavenger::ScavengeOnePass() {
         // Perform time-consuming madvise outside the lock
         auto* cur = head;
         while (cur) {
-            void* start_ptr = cur->GetStartAddr();
+            void* start_ptr = cur->GetPageBaseAddr();
             size_t size = cur->page_num << SystemConfig::PAGE_SHIFT;
             if (madvise(start_ptr, size, MADV_DONTNEED) == 0) {
-                cur->is_committed = false;
+                cur->SetCommitted(false);
                 release_bytes += size;
             } else {
                 spdlog::warn("madvise MADV_DONTNEED failed for span {}",
@@ -122,7 +122,7 @@ void PageHeapScavenger::ScavengeOnePass() {
             while (cur) {
                 auto* next = cur->next;
                 // Mark as unused to allow merging
-                cur->is_used = false;
+                cur->SetUsed(false);
                 cur->last_used_time_ms = GetCurrentTimeMs();
                 page_cache.span_lists_[i].push_back(cur);
                 cur = next;

@@ -57,10 +57,10 @@ TEST_F(PageCacheTest, OversizedAllocation) {
     auto* span = cache_.AllocSpan(huge_pages);
     EXPECT_TRUE(span != nullptr);
     EXPECT_EQ(span->page_num, huge_pages);
-    EXPECT_TRUE(span->is_used);
+    EXPECT_TRUE(span->IsUsed());
 
-    EXPECT_EQ(PageMap::GetSpan(span->GetStartAddr()), span);
-    void* last_page_ptr = static_cast<char*>(span->GetStartAddr()) + (huge_pages - 1) * SystemConfig::PAGE_SIZE;
+    EXPECT_EQ(PageMap::GetSpan(span->GetPageBaseAddr()), span);
+    void* last_page_ptr = static_cast<char*>(span->GetPageBaseAddr()) + (huge_pages - 1) * SystemConfig::PAGE_SIZE;
     EXPECT_EQ(PageMap::GetSpan(last_page_ptr), span);
 
     cache_.ReleaseSpan(span);
@@ -169,7 +169,7 @@ TEST_F(PageCacheTest, PageMapConsistency) {
 
     // 验证 span 覆盖的每一个页号，在 PageMap 中都指向该 span
     for (size_t i = 0; i < pages; ++i) {
-        void* addr = static_cast<char*>(span->GetStartAddr()) + i * SystemConfig::PAGE_SIZE;
+        void* addr = static_cast<char*>(span->GetPageBaseAddr()) + i * SystemConfig::PAGE_SIZE;
         EXPECT_EQ(PageMap::GetSpan(addr), span);
     }
 
@@ -178,15 +178,15 @@ TEST_F(PageCacheTest, PageMapConsistency) {
     // 但 SetSpan(span) 在 ReleaseSpan 内部被调用，
     // 此时 PageMap 指向的是已经在 FreeList 中的 span（虽然指针值没变，但状态变了）。
     // 验证 is_used 状态
-    Span* freed_span = PageMap::GetSpan(span->GetStartAddr());
-    EXPECT_FALSE(freed_span->is_used);
+    Span* freed_span = PageMap::GetSpan(span->GetPageBaseAddr());
+    EXPECT_FALSE(freed_span->IsUsed());
 }
 
 TEST_F(PageCacheTest, ResetClearsMappingsAndIsIdempotent) {
     Span* span = cache_.AllocSpan(4);
     ASSERT_NE(span, nullptr);
 
-    void* addr = span->GetStartAddr();
+    void* addr = span->GetPageBaseAddr();
     EXPECT_EQ(PageMap::GetSpan(addr), span);
 
     cache_.Reset();
@@ -208,7 +208,7 @@ TEST_F(PageCacheTest, ExactBucketReuseWhenNeighborsInUse) {
     Span* span_reuse = cache_.AllocSpan(6);
     ASSERT_NE(span_reuse, nullptr);
     EXPECT_EQ(span_reuse->start_page_idx, page_idx_a);
-    EXPECT_TRUE(span_reuse->is_used);
+    EXPECT_TRUE(span_reuse->IsUsed());
 
     cache_.ReleaseSpan(span_reuse);
     cache_.ReleaseSpan(span_b);
@@ -223,9 +223,9 @@ TEST_F(PageCacheTest, SplitRemainderIsMappedInPageMap) {
     auto* remainder = GetBucketFrontOrNull(117);
     ASSERT_NE(remainder, nullptr);
     EXPECT_EQ(remainder->page_num, 117);
-    EXPECT_FALSE(remainder->is_used);
+    EXPECT_FALSE(remainder->IsUsed());
 
-    void* rem_start = remainder->GetStartAddr();
+    void* rem_start = remainder->GetPageBaseAddr();
     void* rem_end = static_cast<char*>(rem_start) + (remainder->page_num - 1) * SystemConfig::PAGE_SIZE;
     EXPECT_EQ(PageMap::GetSpan(rem_start), remainder);
     EXPECT_EQ(PageMap::GetSpan(rem_end), remainder);
@@ -247,14 +247,14 @@ TEST_F(PageCacheTest, ReleaseResetsSpanMetadataWithoutMerge) {
     auto* free_span = GetBucketFrontOrNull(8);
     ASSERT_NE(free_span, nullptr);
     EXPECT_EQ(free_span->page_num, 8);
-    EXPECT_FALSE(free_span->is_used);
+    EXPECT_FALSE(free_span->IsUsed());
     // EXPECT_EQ(free_span->obj_size, 0);
-    EXPECT_TRUE(free_span->is_committed);
+    EXPECT_TRUE(free_span->IsCommitted());
 
     Span* reused = cache_.AllocSpan(8);
     ASSERT_NE(reused, nullptr);
     EXPECT_EQ(reused, free_span);
-    EXPECT_TRUE(reused->is_used);
+    EXPECT_TRUE(reused->IsUsed());
     // EXPECT_EQ(reused->obj_size, 256);
 
     cache_.ReleaseSpan(span_a);
@@ -275,7 +275,7 @@ TEST_F(PageCacheTest, OversizedOverflowRequestReturnsNullAndStateRemainsUsable) 
     Span* ok = cache_.AllocSpan(2);
     ASSERT_NE(ok, nullptr);
     EXPECT_EQ(ok->page_num, 2);
-    EXPECT_EQ(PageMap::GetSpan(ok->GetStartAddr()), ok);
+    EXPECT_EQ(PageMap::GetSpan(ok->GetPageBaseAddr()), ok);
     cache_.ReleaseSpan(ok);
 }
 

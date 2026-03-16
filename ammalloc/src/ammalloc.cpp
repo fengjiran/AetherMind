@@ -109,7 +109,7 @@ AM_NOINLINE void* am_malloc_slow_path(size_t size) {
             return nullptr;
         }
 
-        return span->GetStartAddr();
+        return span->GetPageBaseAddr();
     }
 
     if (!pTLSThreadCache) {

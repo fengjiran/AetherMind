@@ -11,15 +11,15 @@
 
 ## 📅 2026-03-16 (Monday)
 ### 🚀 今日概要
-完成 `PageCache` 子模块的深度优化准备阶段，包括全面代码审查、测试用例补充、性能基准测试建设，以及 **Span v2 64B 重构设计方案的最终确定**。
+完成 `PageCache` 子模块的深度优化准备阶段，包括全面代码审查、测试用例补充、性能基准测试建设，以及 **Span v2 64B 重构的全面实施**。
 
-**🎉 PageCache 深度优化准备完成：代码审查通过，测试覆盖完备，设计方案已批准！**
+**🎉 PageCache 深度优化准备完成：代码审查通过，测试覆盖完备，Span v2 重构已完成！**
 
 ### 🧩 任务关联 (Task Linkage)
 - [x] **[TODO: PageCache 代码审查]** - 完成，生成详细审查报告。
 - [x] **[TODO: PageCache 测试用例补充]** - 完成，新增 8 个测试用例（5 个增量 + 3 个失败路径）。
 - [x] **[TODO: PageCache 性能基准测试]** - 完成，修复段错误，覆盖单线程/多线程场景。
-- [x] **[TODO: Span v2 64B 重构设计]** - 完成，设计方案审核通过，等待实施。
+- [x] **[TODO: Span v2 64B 重构]** - **已完成实施**，包含结构体重构、API 迁移、测试适配和代码清理。
 
 ### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
 
@@ -31,32 +31,43 @@
 
 **代码位置**: `ammalloc/src/page_cache.cpp:22`
 
-#### 2. [架构设计] Span 112B → 64B 重构方案确定
+#### 2. [架构重构] Span 112B → 64B 重构 - **已完成**
 **根因**: 当前 `Span` 结构体 112 字节，跨越两个缓存行，导致多线程场景下的 False Sharing 和 Cache Miss。
 
-**设计方案**:
+**重构方案**:
 1. **删除字段**: `bitmap`、`data_base_ptr`、`bitmap_num`、`is_used`、`is_committed` → 改为内联计算或位域打包
 2. **类型降级**: `size_t` → `uint32_t` (page_num, obj_size, capacity, use_count, scan_cursor)
 3. **新增字段**: `uint16_t flags` (打包状态位), `uint32_t obj_offset` (替代 data_base_ptr)
 4. **布局优化**: 按 64B 缓存行对齐，分 4 个 16B 区域组织字段
+5. **API 迁移**: 所有 `is_used`/`is_committed` 直接访问改为 `IsUsed()`/`SetUsed()`/`IsCommitted()`/`SetCommitted()` 访问器方法
 
 **关键计算替代公式**:
-- `bitmap` → `reinterpret_cast<uint64_t*>(start_page_idx << PAGE_SHIFT)` (~1 周期)
-- `data_base_ptr` → `GetPageBaseAddr() + obj_offset` (~3-5 周期)
-- `bitmap_num` → `(capacity + 63) >> 6` (~2 周期)
+- `bitmap` → `GetBitmap()` = `reinterpret_cast<uint64_t*>(start_page_idx << PAGE_SHIFT)` (~1 周期)
+- `data_base_ptr` → `GetDataBasePtr()` = `GetPageBaseAddr() + obj_offset` (~3-5 周期)
+- `bitmap_num` → `GetBitmapNum()` = `(capacity + 63) >> 6` (~2 周期)
+
+**涉及文件**:
+- `ammalloc/include/ammalloc/span.h` - Span 结构体重构（112B → 64B）
+- `ammalloc/src/span.cpp` - Init/AllocObject/FreeObject 适配新结构
+- `ammalloc/src/page_cache.cpp` - is_used/is_committed 访问器适配
+- `ammalloc/src/central_cache.cpp` - 清理过时注释和字段访问
+- `ammalloc/src/page_heap_scavenger.cpp` - 访问器方法适配
+- `ammalloc/src/ammalloc.cpp` - GetStartAddr() → GetPageBaseAddr() 迁移
+- `tests/unit/test_page_cache.cpp` - 测试断言适配新 API
 
 **性能预期**: 消除跨缓存行访问，减少 False Sharing，多线程场景预期提升 10-20%。
 
-**代码位置**: `ammalloc/include/ammalloc/span.h` (待实施)
+**代码位置**: `ammalloc/include/ammalloc/span.h`, `ammalloc/src/span.cpp`
 
-#### 3. [测试] Benchmark 段错误 - 已修复
-**根因**: `BM_PageCache_*` 每次迭代调用 `cache.Reset()`，多线程场景下导致 Use-After-Free。
+#### 3. [审核发现] Span::is_committed 初始化语义回归 - 已修复
+**根因**: 重构后新 `Span` 默认 `flags=0`，导致 `IsCommitted()==false`。但 `PageAllocator` 分配的内存默认是 committed 的（除非被 Scavenger madvise），语义不一致。
 
-**修复方案**: 
-- 将 `Reset()` 移出迭代循环，改为 `SetUp`/`TearDown` 级别操作
-- 避免多线程并发访问被释放的内存
+**修复方案**:
+- 在 `AllocSpanLocked` 所有创建/复用 Span 的路径统一调用 `SetCommitted(true)`
+- 在 `AllocSpanLocked` 添加 `page_num` 上限防护（避免 `size_t → uint32_t` 截断）
+- 在 `Span::Init` 添加 `object_size` 范围 `AM_DCHECK`
 
-**代码位置**: `tests/benchmark/benchmark_page_cache.cpp`
+**代码位置**: `ammalloc/src/page_cache.cpp:187, 199, 223, 257`, `ammalloc/src/span.cpp:10`
 
 #### 4. [架构决策] 拒绝 Bitfield+Union 方案
 **讨论**: 考虑过使用 C++ bitfield + union 将 flags 和 pointers 打包到更少空间。
@@ -80,7 +91,7 @@
   - `ClearRangeOnEmptyPageMapKeepsLookupNull`
   - `ClearRangeAfterUnmapMakesLookupNull`
 - **性能基准测试**: 覆盖 8 个场景，包括单线程 Alloc/Release、PageMap 查询、多线程竞争
-- **测试结果**: 13/13 单元测试通过
+- **验证结果**: 46/46 单元测试通过（含 ThreadCache 多线程压力测试）
 
 ### 📚 新增文档
 - **代码审查报告**: `docs/reviews/code_review/20260315_page_cache_code_review.md`
@@ -91,15 +102,19 @@
   - Span v2 完整设计方案
   - 8 个需修改文件清单
   - 详细实施步骤和验证计划
+- **Handoff**: `docs/agent/handoff/workstreams/ammalloc__page_cache/20260316T183731Z--ses_page_cache_review--sisyphus.md`
+  - Span v2 重构审核记录
+  - 接口变更方案和实施状态
 
 ### 💡 架构思考 (Architectural Insights)
 - **内联计算 vs 缓存存储**: 对于 bitmap/data_base_ptr/bitmap_num 这类可从其他字段推导的值，计算成本 (~1-5 周期) 远低于跨缓存行访问成本 (~100+ 周期)，空间换时间的权衡在此处反转。
 - **位域打包的边界**: `uint16_t flags` 打包 `is_used` 和 `is_committed` 是安全的，因为这些是互斥状态且访问频率相似。但将不相关字段强制打包可能增加 false sharing。
 - **测试即文档**: 新增的失败路径测试（如 `ClearRangeOnEmptyPageMap`）不仅验证正确性，更成为架构行为的活文档，说明空 PageMap 的行为契约。
 - **性能基准的门禁价值**: 建立 `compare_benchmark_json.py` 工具，使性能回归可量化、可自动化，防止"优化"变成"退化"。
+- **访问器方法的必要性**: 使用 `IsUsed()`/`SetUsed()` 替代直接字段访问，允许未来修改内部表示（如改为原子操作或不同位域布局）而不影响调用方。
 
 ### 🔗 相关提交
-- 待实施：Span v2 重构 (已批准，等待用户"继续"指令)
+- Span v2 重构已完成实施（结构体重构、API 迁移、测试适配、代码清理）
 
 ---
 

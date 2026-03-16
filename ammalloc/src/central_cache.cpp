@@ -171,9 +171,6 @@ void CentralCache::ReleaseListToSpans(void* start, size_t obj_size) {
                 // If the span becomes completely empty, return it to PageCache for coalescing.
                 if (span->use_count == 0) {
                     bucket.span_list.erase(span);
-                    // Cleanup metadata pointers before returning.
-                    span->bitmap = nullptr;
-                    span->data_base_ptr = nullptr;
                     // CRITICAL: Unlock bucket lock before calling PageCache to avoid deadlocks.
                     // Lock Order: PageCache_Lock > Bucket_Lock (if held together).
                     // Here we break the hold.
@@ -183,7 +180,7 @@ void CentralCache::ReleaseListToSpans(void* start, size_t obj_size) {
                     lock.lock();
                 }
             }
-        }//
+        }
 
     }// end while(cur)
 }
@@ -224,9 +221,6 @@ void CentralCache::Reset() noexcept {
             // B. 掏空 SpanList
             while (!bucket.span_list.empty()) {
                 auto* span = bucket.span_list.pop_front();
-                // 清理元数据
-                span->bitmap = nullptr;
-                span->data_base_ptr = nullptr;
                 // 利用 Span 自身的 next 指针串成临时链表，避免使用 std::vector
                 span->next = span_list_head;
                 span_list_head = span;

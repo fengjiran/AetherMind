@@ -1,7 +1,3 @@
-//
-// Created by richard on 2/7/26.
-//
-
 #ifndef AETHERMIND_MALLOC_SPAN_H
 #define AETHERMIND_MALLOC_SPAN_H
 
@@ -11,89 +7,51 @@
 
 namespace aethermind {
 
-/**
- * @brief Span represents a contiguous range of memory pages.
- */
-struct Span {
-    // --- Double linked list ---
+/// Continuous page range metadata for ammalloc.
+///
+/// A Span represents a contiguous range of system pages allocated from the OS.
+/// It is used by PageCache for coarse-grained memory management and by
+/// CentralCache for fine-grained object allocation.
+///
+/// Memory layout is cache-line aligned (64B) to prevent false sharing
+/// between threads accessing different fields.
+///
+/// Thread-safety: Individual fields are not thread-safe. Concurrent access
+/// must be protected by the appropriate cache lock (PageCache::mutex_ or
+/// CentralCache bucket locks).
+struct alignas(SystemConfig::CACHE_LINE_SIZE) Span {
+    // Intrusive linked list pointers for PageCache/SpanList.
     Span* next{nullptr};
     Span* prev{nullptr};
 
-    // --- Page Cache Info ---
-    size_t start_page_idx{0};// Global start page index
-    size_t page_num{0};      // Number of contiguous pages
+    // Page-level addressing info.
+    uint64_t start_page_idx{0};// Supports sentinel values (e.g., max)
+    uint32_t page_num{0};
 
-    // --- Central Cache Object Info ---
-    size_t obj_size{0};// Size of objects allocated from this Span(if applicable)
-    size_t use_count{0};
-    size_t capacity{0};// Object capacity
-    void* data_base_ptr{nullptr};
+    // Packed status flags. Use IsUsed/SetUsed/IsCommitted/SetCommitted.
+    uint16_t flags{0};
+    uint16_t size_class_idx{0};// Index into CentralCache bucket array
 
-    // --- bitmap info ---
-    uint64_t* bitmap{nullptr};
-    size_t bitmap_num{0};
-    size_t scan_cursor{0};
+    // Object allocation metadata (valid when used by CentralCache).
+    uint32_t obj_size{0};
+    uint32_t capacity{0};   // Maximum objects storable in this span
+    uint32_t use_count{0};  // Currently allocated objects
+    uint32_t scan_cursor{0};// Bitmap search optimization
 
-    // --- Status & Meta (Packed) ---
-    bool is_used{false};// Is this span currently in CentralCache?
+    // Calculated data offset (avoids storing full pointer).
+    uint32_t obj_offset{0};// Offset from page base to first object
+    uint32_t padding{0};   // Cache line alignment
 
-    uint64_t last_used_time_ms{0};// Last time this span was used in CentralCache (milliseconds since epoch)
-    bool is_committed{true};      // Whether physical memory is committed (false means MADV_DONTNEED)
-
-    Span() = default;
-    Span(size_t start_page_idx_, size_t page_num_) noexcept
-        : start_page_idx(start_page_idx_), page_num(page_num_) {}
-
-    void Init(size_t object_size);
-
-    // allocate an object
-    void* AllocObject();
-    /**
-     * @brief Release an object back to this Span.
-     * @note Must be called with the bucket lock held.
-     */
-    void FreeObject(void* ptr);
-
-    AM_NODISCARD void* GetStartAddr() const noexcept {
-        return details::PageIDToPtr(start_page_idx);
-    }
-
-    AM_NODISCARD void* GetEndAddr() const noexcept {
-        const auto start = reinterpret_cast<uintptr_t>(GetStartAddr());
-        constexpr size_t shift = std::countr_zero(SystemConfig::PAGE_SIZE);
-        return reinterpret_cast<void*>(start + (page_num << shift));
-    }
-};
-
-struct alignas(SystemConfig::CACHE_LINE_SIZE) SpanV2 {
-    // --- 1. 链表指针 (16B) ---
-    SpanV2* next{nullptr};
-    SpanV2* prev{nullptr};
-
-    // --- 2. 核心寻址与状态 (16B) ---
-    uint64_t start_page_idx{0};// 8B: 保持全宽度，支持 sentinel (max)
-    uint32_t page_num{0};      // 4B: 最大 40 亿页，足够了
-    uint16_t flags{0};         // 2B: is_used, is_committed 等标志位
-    uint16_t size_class_idx{0};// 2B: ThreadCache/CentralCache 的数组索引
-
-    // --- 3. 对象分配元数据 (16B) ---
-    uint32_t obj_size{0};   // 4B: 最大 4GB 对象
-    uint32_t capacity{0};   // 4B: 最大 40 亿个对象
-    uint32_t use_count{0};  // 4B: 当前使用量
-    uint32_t scan_cursor{0};// 4B: 扫描游标
-
-    // --- 4. 杂项与冷数据 (16B) ---
-    uint32_t obj_offset{0};       // 4B: 替代 data_base_ptr，记录相对于 PageBase 的偏移
-    uint32_t padding{0};          // 4B: 对齐填充
-    uint64_t last_used_time_ms{0};// 8B: Scavenger 使用的时间戳
+    // Cold data: used by background scavenger thread.
+    uint64_t last_used_time_ms{0};
 
     enum FlagBit : uint16_t {
         kUsedMask = 1u << 0,
         kCommittedMask = 1u << 1
     };
 
-    SpanV2() = default;
-    SpanV2(uint64_t start_page_idx_, uint32_t page_num_) noexcept
+    Span() = default;
+    Span(uint64_t start_page_idx_, uint32_t page_num_) noexcept
         : start_page_idx(start_page_idx_), page_num(page_num_) {}
 
     AM_NODISCARD AM_ALWAYS_INLINE bool IsUsed() const noexcept {
@@ -112,9 +70,7 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) SpanV2 {
         flags = (flags & ~kCommittedMask) | (committed ? kCommittedMask : 0);
     }
 
-    // ===================================================================
-    // 内联计算方法
-    // ===================================================================
+    // Bitmap and data address are calculated from page base to save space.
     AM_NODISCARD AM_ALWAYS_INLINE void* GetPageBaseAddr() const noexcept {
         return reinterpret_cast<void*>(start_page_idx << SystemConfig::PAGE_SHIFT);
     }
@@ -131,136 +87,87 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) SpanV2 {
         return static_cast<char*>(GetPageBaseAddr()) + obj_offset;
     }
 
+    /// Initialize span for object allocation with the given size.
     void Init(size_t object_size);
-    // allocate an object
+
+    /// Allocate an object from this span.
+    /// @return nullptr if span is full.
     void* AllocObject();
-    /**
-     * @brief Release an object back to this Span.
-     * @note Must be called with the bucket lock held.
-     */
+
+    /// Release an object back to this span.
+    /// @pre Must be called with the CentralCache bucket lock held.
     void FreeObject(void* ptr);
 };
-static_assert(sizeof(SpanV2) == SystemConfig::CACHE_LINE_SIZE, "SpanV2 must be exactly 64 bytes");
-static_assert(alignof(SpanV2) == SystemConfig::CACHE_LINE_SIZE, "SpanV2 alignment mismatch");
+static_assert(sizeof(Span) == SystemConfig::CACHE_LINE_SIZE, "Span must be exactly 64 bytes");
+static_assert(alignof(Span) == SystemConfig::CACHE_LINE_SIZE, "Span alignment mismatch");
 
-/**
- * @brief A doubly linked list managing a collection of Spans.
- *
- * Design Highlights:
- * 1. **Sentinel Node**: Uses a circular structure with a dummy `head_` node. This simplifies
- *    boundary checks (no nullptr checks needed for insertion/removal).
- * 2. **Bucket Locking**: Contains a mutex for fine-grained locking (typically used in CentralCache).
- * 3. **External Locking**: Core operations (insert/erase) do NOT lock internally.
- *    The caller must use GetMutex() to protect critical sections.
- */
+/// Intrusive doubly linked list of Spans using a circular sentinel.
+///
+/// Thread-safety: Not thread-safe. External synchronization required.
+/// CentralCache uses SpanList with its own bucket lock.
+///
+/// Design notes:
+/// - Circular sentinel eliminates null checks in insert/erase
+/// - Cache-line aligned to prevent false sharing with adjacent data
+/// - Lifetime managed by PageCache (erase does not delete)
 class alignas(SystemConfig::CACHE_LINE_SIZE) SpanList {
 public:
-    /// @brief Initializes an empty circular doubly linked list.
-    /// The sentinel node's next and prev pointers point to itself.
+    /// Creates empty list with circular sentinel.
     SpanList() noexcept {
         head_.next = &head_;
         head_.prev = &head_;
     }
 
-    // Disable copy/move to prevent lock state corruption and pointer invalidation.
     SpanList(const SpanList&) = delete;
     SpanList& operator=(const SpanList&) = delete;
 
-    /// @brief Returns a pointer to the first valid Span in the list.
-    AM_NODISCARD Span* begin() noexcept {
-        return head_.next;
+    AM_NODISCARD Span* begin() noexcept { return head_.next; }
+    AM_NODISCARD Span* end() noexcept { return &head_; }
+    AM_NODISCARD bool empty() const noexcept { return head_.next == &head_; }
+
+    /// Inserts span before pos.
+    /// @pre Caller must hold the bucket lock.
+    /// @pre pos != nullptr, span != nullptr
+    static void insert(Span* pos, Span* span) noexcept {
+        AM_DCHECK(pos != nullptr && span != nullptr);
+        span->next = pos;
+        span->prev = pos->prev;
+        span->prev->next = span;
+        pos->prev = span;
     }
 
-    /// @brief Returns a pointer to the sentinel node (representing the end).
-    AM_NODISCARD Span* end() noexcept {
-        return &head_;
-    }
+    /// LIFO insert at front (improves cache locality).
+    void push_front(Span* span) noexcept { insert(begin(), span); }
 
-    /// @brief Checks if the list is empty.
-    AM_NODISCARD bool empty() const noexcept {
-        return head_.next == &head_;
-    }
+    /// LIFO insert at back.
+    void push_back(Span* span) noexcept { insert(end(), span); }
 
-    /**
-     * @brief Inserts a new Span before the specified position.
-     *
-     * @note Defined as `static` to avoid the overhead of passing the `this` pointer,
-     * reducing register pressure in hot paths.
-     *
-     * @warning **Thread Safety**: The caller MUST hold the lock associated with this list.
-     *
-     * @param pos The position before which the new Span will be inserted.
-     * @param new_span The Span to insert.
-     */
-    static void insert(Span* pos, Span* new_span) noexcept {
-        AM_DCHECK(pos != nullptr && new_span != nullptr);
-        new_span->next = pos;
-        new_span->prev = pos->prev;
-        new_span->prev->next = new_span;
-        pos->prev = new_span;
-    }
-
-    /**
-     * @brief Inserts a Span at the beginning of the list.
-     *
-     * This is typically used when returning memory to the cache.
-     * LIFO (Last-In-First-Out) behavior improves CPU cache locality for hot data.
-     */
-    void push_front(Span* span) noexcept {
-        insert(begin(), span);
-    }
-
-    /**
-     * @brief Inserts a Span at the end of the list.
-     *
-     * This is typically used when returning memory to the cache.
-     * LIFO (Last-In-First-Out) behavior improves CPU cache locality for hot data.
-     */
-    void push_back(Span* span) noexcept {
-        insert(end(), span);
-    }
-
-    /**
-     * @brief Unlinks a Span from the list.
-     *
-     * @note This function only detaches the node; it does NOT `delete` the memory.
-     * The Span's lifecycle is managed by the PageCache.
-     *
-     * @param pos The Span to remove. Must not be `nullptr` or the sentinel `head_`.
-     * @return Span* Pointer to the next node (useful for iteration).
-     */
-    Span* erase(Span* pos) noexcept {
-        AM_DCHECK(pos != nullptr && pos != &head_);
-        auto* prev = pos->prev;
-        auto* next = pos->next;
+    /// Removes span from list. Does NOT delete the Span.
+    /// @pre Caller must hold the bucket lock.
+    /// @return Next node in list.
+    Span* erase(Span* span) noexcept {
+        AM_DCHECK(span != nullptr && span != &head_);
+        auto* prev = span->prev;
+        auto* next = span->next;
         prev->next = next;
         next->prev = prev;
-        pos->prev = nullptr;
-        pos->next = nullptr;
+        span->prev = nullptr;
+        span->next = nullptr;
         return next;
     }
 
-    /**
-     * @brief Removes and returns the first Span in the list.
-     * @return Span* Pointer to the popped Span, or `nullptr` if the list is empty.
-     */
+    /// Removes first span. Returns nullptr if empty.
     Span* pop_front() noexcept {
-        // Hint to the compiler that an empty list is unlikely in the hot path.
         if (empty()) AM_UNLIKELY {
                 return nullptr;
             }
-
-        auto* pos = head_.next;
-        erase(pos);
-        return pos;
+        auto* span = head_.next;
+        erase(span);
+        return span;
     }
 
 private:
-    /**
-     * @brief Sentinel node (Dummy Head).
-     * Stored as a member object (not a pointer) to ensure it resides in the
-     * same cache line as the SpanList object itself.
-     */
+    // Sentinel node stored inline to ensure cache line locality.
     Span head_;
 };
 

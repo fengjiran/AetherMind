@@ -124,12 +124,13 @@ public:
 
     /// Allocates storage for one object and default-constructs `T` in-place.
     /// Throws `std::bad_alloc` if the underlying page allocation fails.
-    T* New() {
+    template<typename... Args>
+    T* New(Args&&... args) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (free_list_) {
             void* obj = free_list_;
             free_list_ = free_list_->next;
-            return new (obj) T();
+            return new (obj) T(std::forward<Args>(args)...);
         }
 
         if (remain_bytes_ < sizeof(T)) {
@@ -160,7 +161,7 @@ public:
         void* obj = data_;
         data_ += sizeof(T);
         remain_bytes_ -= sizeof(T);
-        return new (obj) T();
+        return new (obj) T(std::forward<Args>(args)...);
     }
 
     /// Destroys `obj` and returns its storage to the pool free list.

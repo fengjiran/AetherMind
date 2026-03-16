@@ -125,9 +125,9 @@ public:
     ///
     /// Thread-safe; acquires the global lock internally.
     /// @return The allocated span, or nullptr if system allocation fails.
-    Span* AllocSpan(size_t page_num, size_t obj_size) {
+    Span* AllocSpan(size_t page_num) {
         std::lock_guard<std::mutex> lock(mutex_);
-        return AllocSpanLocked(page_num, obj_size);
+        return AllocSpanLocked(page_num);
     }
 
     /// Returns a span to the cache and attempts coalescing with neighbors.
@@ -160,7 +160,7 @@ private:
     ~PageCache() = default;
 
     /// Core allocation logic. Assumes lock is held.
-    Span* AllocSpanLocked(size_t page_num, size_t obj_size);
+    Span* AllocSpanLocked(size_t page_num);
 
     PAGE_CACHE_FRIENDS_TEST;
     friend class PageHeapScavenger;

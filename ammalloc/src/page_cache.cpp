@@ -161,7 +161,7 @@ void PageMap::Reset() {
     radix_node_pool_.ReleaseMemory();
 }
 
-Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
+Span* PageCache::AllocSpanLocked(size_t page_num) {
     while (true) {
         // 1. Oversized Allocation:
         // Requests larger than the max bucket (>128 pages) go directly to the OS.
@@ -174,15 +174,11 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
 
             Span* span = nullptr;
             try {
-                span = span_pool_.New();
+                span = span_pool_.New(details::PtrToPageId(ptr), page_num);
             } catch (const std::bad_alloc&) {
                 PageAllocator::SystemFree(ptr, page_num);
                 return nullptr;
             }
-
-            span->start_page_idx = details::PtrToPageId(ptr);
-            span->page_num = page_num;
-            span->obj_size = obj_size;
             span->is_used = true;
 
             // Register relationship in Radix Tree.
@@ -196,7 +192,6 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
         AM_DCHECK(page_num >= 1 && page_num <= PageConfig::MAX_PAGE_NUM);
         if (!span_lists_[page_num].empty()) {
             auto* span = span_lists_[page_num].pop_front();
-            span->obj_size = obj_size;
             span->is_used = true;
             return span;
         }
@@ -213,15 +208,12 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
             // Create a new span for the requested `page_num` (Head Split).
             Span* small_span = nullptr;
             try {
-                small_span = span_pool_.New();
+                small_span = span_pool_.New(big_span->start_page_idx, page_num);
             } catch (const std::bad_alloc&) {
                 // Rollback: Return the big span to the list.
                 span_lists_[i].push_front(big_span);
                 return nullptr;
             }
-            small_span->start_page_idx = big_span->start_page_idx;
-            small_span->page_num = page_num;
-            small_span->obj_size = obj_size;
             small_span->is_used = true;
 
             // Adjust the remaining part of the big span (Tail).
@@ -249,13 +241,12 @@ Span* PageCache::AllocSpanLocked(size_t page_num, size_t obj_size) {
 
         Span* span = nullptr;
         try {
-            span = span_pool_.New();
+            span = span_pool_.New(reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT,
+                                  alloc_page_nums);
         } catch (const std::bad_alloc&) {
             PageAllocator::SystemFree(ptr, alloc_page_nums);
             return nullptr;
         }
-        span->start_page_idx = reinterpret_cast<uintptr_t>(ptr) >> SystemConfig::PAGE_SHIFT;
-        span->page_num = alloc_page_nums;
         span->is_used = false;
         span->last_used_time_ms = GetCurrentTimeMs();
         // Insert the new large span into the last bucket.

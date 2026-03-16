@@ -11,7 +11,7 @@ constexpr size_t kWarmSpanPages = PageConfig::MAX_PAGE_NUM;
 void PrimeBucket(size_t page_num) {
     auto& cache = PageCache::GetInstance();
 
-    Span* warm = cache.AllocSpan(page_num, 0);
+    Span* warm = cache.AllocSpan(page_num);
     if (warm != nullptr) {
         cache.ReleaseSpan(warm);
     }
@@ -30,7 +30,7 @@ void BM_PageCache_Alloc_ExactBucketHit(benchmark::State& state) {
         PrimeBucket(page_num);
         state.ResumeTiming();
 
-        Span* span = cache.AllocSpan(page_num, 64);
+        Span* span = cache.AllocSpan(page_num);
         benchmark::DoNotOptimize(span);
 
         state.PauseTiming();
@@ -56,7 +56,7 @@ void BM_PageCache_Alloc_SplitFromLarger(benchmark::State& state) {
         PrimeBucket(kWarmSpanPages);
         state.ResumeTiming();
 
-        Span* span = cache.AllocSpan(page_num, 64);
+        Span* span = cache.AllocSpan(page_num);
         benchmark::DoNotOptimize(span);
 
         state.PauseTiming();
@@ -79,9 +79,9 @@ void BM_PageCache_Release_NoMerge(benchmark::State& state) {
 
     for (auto _: state) {
         state.PauseTiming();
-        Span* span_a = cache.AllocSpan(page_num, 64);
-        Span* span_b = cache.AllocSpan(page_num, 64);
-        Span* span_c = cache.AllocSpan(page_num, 64);
+        Span* span_a = cache.AllocSpan(page_num);
+        Span* span_b = cache.AllocSpan(page_num);
+        Span* span_c = cache.AllocSpan(page_num);
         state.ResumeTiming();
 
         benchmark::DoNotOptimize(span_b);
@@ -112,9 +112,9 @@ void BM_PageCache_Release_MergeLeftRight(benchmark::State& state) {
 
     for (auto _: state) {
         state.PauseTiming();
-        Span* span_a = cache.AllocSpan(page_num, 64);
-        Span* span_b = cache.AllocSpan(page_num, 64);
-        Span* span_c = cache.AllocSpan(page_num, 64);
+        Span* span_a = cache.AllocSpan(page_num);
+        Span* span_b = cache.AllocSpan(page_num);
+        Span* span_c = cache.AllocSpan(page_num);
         if (span_a != nullptr) {
             cache.ReleaseSpan(span_a);
         }
@@ -135,7 +135,7 @@ void BM_PageCache_Release_MergeLeftRight(benchmark::State& state) {
 void BM_PageMap_GetSpan_Hit(benchmark::State& state) {
     auto& cache = PageCache::GetInstance();
     cache.Reset();
-    Span* span = cache.AllocSpan(8, 0);
+    Span* span = cache.AllocSpan(8);
     if (span == nullptr) {
         state.SkipWithError("failed to allocate span for hit benchmark");
         return;
@@ -165,7 +165,7 @@ void BM_PageMap_GetSpan_Miss(benchmark::State& state) {
 void BM_PageMap_GetSpan_Mixed90_10(benchmark::State& state) {
     auto& cache = PageCache::GetInstance();
     cache.Reset();
-    Span* span = cache.AllocSpan(8, 0);
+    Span* span = cache.AllocSpan(8);
     if (span == nullptr) {
         state.SkipWithError("failed to allocate span for mixed benchmark");
         return;
@@ -194,7 +194,7 @@ void BM_PageCache_AllocRelease_SameBucket_Contention(benchmark::State& state) {
     }
 
     for (auto _: state) {
-        Span* span = cache.AllocSpan(page_num, 64);
+        Span* span = cache.AllocSpan(page_num);
         benchmark::DoNotOptimize(span);
         if (span != nullptr) {
             cache.ReleaseSpan(span);
@@ -214,7 +214,7 @@ void BM_PageCache_AllocRelease_MixedBuckets_Contention(benchmark::State& state) 
 
     for (auto _: state) {
         const size_t page_num = (i % 32) + 1;
-        Span* span = cache.AllocSpan(page_num, 64);
+        Span* span = cache.AllocSpan(page_num);
         benchmark::DoNotOptimize(span);
         if (span != nullptr) {
             cache.ReleaseSpan(span);

@@ -23,11 +23,7 @@ TEST_F(SpanTest, DoubleFreeCorruption) {
     void* ptr = PageAllocator::SystemAlloc(page_num);
     ASSERT_NE(ptr, nullptr);
 
-    Span span;
-    span.start_page_idx = details::PtrToPageId(ptr);
-    span.page_num = page_num;
-
-    // Initialize span
+    Span span(details::PtrToPageId(ptr), page_num);
     span.Init(obj_size);
 
     // 2. Alloc one object

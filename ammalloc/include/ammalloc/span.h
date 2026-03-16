@@ -40,6 +40,10 @@ struct Span {
     uint64_t last_used_time_ms{0};// Last time this span was used in CentralCache (milliseconds since epoch)
     bool is_committed{true};      // Whether physical memory is committed (false means MADV_DONTNEED)
 
+    Span() = default;
+    Span(size_t start_page_idx_, size_t page_num_) noexcept
+        : start_page_idx(start_page_idx_), page_num(page_num_) {}
+
     void Init(size_t object_size);
 
     // allocate an object
@@ -65,24 +69,32 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) SpanV2 {
     // --- 1. 链表指针 (16B) ---
     SpanV2* next{nullptr};
     SpanV2* prev{nullptr};
+
     // --- 2. 核心寻址与状态 (16B) ---
     uint64_t start_page_idx{0};// 8B: 保持全宽度，支持 sentinel (max)
     uint32_t page_num{0};      // 4B: 最大 40 亿页，足够了
-    uint32_t flags{0};         // 2B: is_used, is_committed 等标志位
+    uint16_t flags{0};         // 2B: is_used, is_committed 等标志位
+    uint16_t size_class_idx{0};// 2B: ThreadCache/CentralCache 的数组索引
+
     // --- 3. 对象分配元数据 (16B) ---
     uint32_t obj_size{0};   // 4B: 最大 4GB 对象
     uint32_t capacity{0};   // 4B: 最大 40 亿个对象
     uint32_t use_count{0};  // 4B: 当前使用量
     uint32_t scan_cursor{0};// 4B: 扫描游标
+
     // --- 4. 杂项与冷数据 (16B) ---
     uint32_t obj_offset{0};       // 4B: 替代 data_base_ptr，记录相对于 PageBase 的偏移
     uint32_t padding{0};          // 4B: 对齐填充
     uint64_t last_used_time_ms{0};// 8B: Scavenger 使用的时间戳
 
-    enum FlagBit : uint32_t {
+    enum FlagBit : uint16_t {
         kUsedMask = 1u << 0,
         kCommittedMask = 1u << 1
     };
+
+    SpanV2() = default;
+    SpanV2(uint64_t start_page_idx_, uint32_t page_num_) noexcept
+        : start_page_idx(start_page_idx_), page_num(page_num_) {}
 
     AM_NODISCARD AM_ALWAYS_INLINE bool IsUsed() const noexcept {
         return flags & kUsedMask;
@@ -118,6 +130,15 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) SpanV2 {
     AM_NODISCARD AM_ALWAYS_INLINE void* GetDataBasePtr() const noexcept {
         return static_cast<char*>(GetPageBaseAddr()) + obj_offset;
     }
+
+    void Init(size_t object_size);
+    // allocate an object
+    void* AllocObject();
+    /**
+     * @brief Release an object back to this Span.
+     * @note Must be called with the bucket lock held.
+     */
+    void FreeObject(void* ptr);
 };
 static_assert(sizeof(SpanV2) == SystemConfig::CACHE_LINE_SIZE, "SpanV2 must be exactly 64 bytes");
 static_assert(alignof(SpanV2) == SystemConfig::CACHE_LINE_SIZE, "SpanV2 alignment mismatch");

@@ -54,10 +54,9 @@ using namespace aethermind;
 // 预期：不经过桶，直接向 PageAllocator 申请，释放时直接还给系统
 TEST_F(PageCacheTest, OversizedAllocation) {
     size_t huge_pages = PageConfig::MAX_PAGE_NUM + 10;
-    auto* span = cache_.AllocSpan(huge_pages, 0);
+    auto* span = cache_.AllocSpan(huge_pages);
     EXPECT_TRUE(span != nullptr);
     EXPECT_EQ(span->page_num, huge_pages);
-    EXPECT_EQ(span->obj_size, 0);
     EXPECT_TRUE(span->is_used);
 
     EXPECT_EQ(PageMap::GetSpan(span->GetStartAddr()), span);
@@ -72,13 +71,13 @@ TEST_F(PageCacheTest, OversizedAllocation) {
 TEST_F(PageCacheTest, RefillAndSplit) {
     // 1. 申请 1 页
     // 预期：PageCache 发现没内存 -> 申请 128 页 -> 切出 1 页给用户 -> 剩 127 页挂在 bucket[127]
-    Span* span1 = cache_.AllocSpan(1, 8);
+    Span* span1 = cache_.AllocSpan(1);
     ASSERT_NE(span1, nullptr);
     EXPECT_EQ(span1->page_num, 1);
 
     // 2. 再申请 10 页
     // 预期：从 bucket[127] 拿出 -> 切出 10 页 -> 剩 117 页挂在 bucket[117]
-    Span* span2 = cache_.AllocSpan(10, 16);
+    Span* span2 = cache_.AllocSpan(10);
     ASSERT_NE(span2, nullptr);
     EXPECT_EQ(span2->page_num, 10);
 
@@ -100,15 +99,15 @@ TEST_F(PageCacheTest, MergeLogic) {
     // 策略：为了确保地址连续，我们一次性申请一大块，然后手动切分释放来模拟碎片
 
     // 1. 申请 64 页 (占据半个最大块)
-    Span* spanA = cache_.AllocSpan(64, 0);
+    Span* spanA = cache_.AllocSpan(64);
     ASSERT_NE(spanA, nullptr);
 
     // 2. 申请 32 页
-    Span* spanB = cache_.AllocSpan(32, 0);
+    Span* spanB = cache_.AllocSpan(32);
     ASSERT_NE(spanB, nullptr);
 
     // 3. 申请 32 页
-    Span* spanC = cache_.AllocSpan(32, 0);
+    Span* spanC = cache_.AllocSpan(32);
     ASSERT_NE(spanC, nullptr);
 
     // 此时我们假设 spanA, spanB, spanC 在物理上是连续的
@@ -151,7 +150,7 @@ TEST_F(PageCacheTest, MergeLogic) {
     // 理论上 bucket[128] 应该增加了一个 Span。
     // 我们可以尝试申请一个 128 页的 Span，如果能申请到且不用系统调用（很难验证系统调用），说明合并成功。
 
-    Span* spanFull = cache_.AllocSpan(128, 0);
+    Span* spanFull = cache_.AllocSpan(128);
     ASSERT_NE(spanFull, nullptr);
 
     // 验证拿到的这个大块，是不是原来的 A 的起始地址
@@ -166,7 +165,7 @@ TEST_F(PageCacheTest, MergeLogic) {
 TEST_F(PageCacheTest, PageMapConsistency) {
     // GTEST_SKIP();
     size_t pages = 4;
-    Span* span = cache_.AllocSpan(pages, 0);
+    Span* span = cache_.AllocSpan(pages);
 
     // 验证 span 覆盖的每一个页号，在 PageMap 中都指向该 span
     for (size_t i = 0; i < pages; ++i) {
@@ -184,7 +183,7 @@ TEST_F(PageCacheTest, PageMapConsistency) {
 }
 
 TEST_F(PageCacheTest, ResetClearsMappingsAndIsIdempotent) {
-    Span* span = cache_.AllocSpan(4, 0);
+    Span* span = cache_.AllocSpan(4);
     ASSERT_NE(span, nullptr);
 
     void* addr = span->GetStartAddr();
@@ -198,27 +197,26 @@ TEST_F(PageCacheTest, ResetClearsMappingsAndIsIdempotent) {
 }
 
 TEST_F(PageCacheTest, ExactBucketReuseWhenNeighborsInUse) {
-    Span* span_a = cache_.AllocSpan(6, 32);
-    Span* span_b = cache_.AllocSpan(6, 32);
+    Span* span_a = cache_.AllocSpan(6);
+    Span* span_b = cache_.AllocSpan(6);
     ASSERT_NE(span_a, nullptr);
     ASSERT_NE(span_b, nullptr);
 
     const size_t page_idx_a = span_a->start_page_idx;
     cache_.ReleaseSpan(span_a);
 
-    Span* span_reuse = cache_.AllocSpan(6, 64);
+    Span* span_reuse = cache_.AllocSpan(6);
     ASSERT_NE(span_reuse, nullptr);
     EXPECT_EQ(span_reuse->start_page_idx, page_idx_a);
     EXPECT_TRUE(span_reuse->is_used);
-    EXPECT_EQ(span_reuse->obj_size, 64);
 
     cache_.ReleaseSpan(span_reuse);
     cache_.ReleaseSpan(span_b);
 }
 
 TEST_F(PageCacheTest, SplitRemainderIsMappedInPageMap) {
-    Span* span1 = cache_.AllocSpan(1, 8);
-    Span* span2 = cache_.AllocSpan(10, 16);
+    Span* span1 = cache_.AllocSpan(1);
+    Span* span2 = cache_.AllocSpan(10);
     ASSERT_NE(span1, nullptr);
     ASSERT_NE(span2, nullptr);
 
@@ -237,9 +235,9 @@ TEST_F(PageCacheTest, SplitRemainderIsMappedInPageMap) {
 }
 
 TEST_F(PageCacheTest, ReleaseResetsSpanMetadataWithoutMerge) {
-    Span* span_a = cache_.AllocSpan(8, 128);
-    Span* span_b = cache_.AllocSpan(8, 128);
-    Span* span_c = cache_.AllocSpan(8, 128);
+    Span* span_a = cache_.AllocSpan(8);
+    Span* span_b = cache_.AllocSpan(8);
+    Span* span_c = cache_.AllocSpan(8);
     ASSERT_NE(span_a, nullptr);
     ASSERT_NE(span_b, nullptr);
     ASSERT_NE(span_c, nullptr);
@@ -250,14 +248,14 @@ TEST_F(PageCacheTest, ReleaseResetsSpanMetadataWithoutMerge) {
     ASSERT_NE(free_span, nullptr);
     EXPECT_EQ(free_span->page_num, 8);
     EXPECT_FALSE(free_span->is_used);
-    EXPECT_EQ(free_span->obj_size, 0);
+    // EXPECT_EQ(free_span->obj_size, 0);
     EXPECT_TRUE(free_span->is_committed);
 
-    Span* reused = cache_.AllocSpan(8, 256);
+    Span* reused = cache_.AllocSpan(8);
     ASSERT_NE(reused, nullptr);
     EXPECT_EQ(reused, free_span);
     EXPECT_TRUE(reused->is_used);
-    EXPECT_EQ(reused->obj_size, 256);
+    // EXPECT_EQ(reused->obj_size, 256);
 
     cache_.ReleaseSpan(span_a);
     cache_.ReleaseSpan(reused);
@@ -271,10 +269,10 @@ TEST_F(PageCacheTest, UnknownAddressReturnsNullFromPageMap) {
 
 TEST_F(PageCacheTest, OversizedOverflowRequestReturnsNullAndStateRemainsUsable) {
     constexpr size_t too_many_pages = (std::numeric_limits<size_t>::max() >> SystemConfig::PAGE_SHIFT) + 1;
-    Span* failed = cache_.AllocSpan(too_many_pages, 0);
+    Span* failed = cache_.AllocSpan(too_many_pages);
     EXPECT_EQ(failed, nullptr);
 
-    Span* ok = cache_.AllocSpan(2, 32);
+    Span* ok = cache_.AllocSpan(2);
     ASSERT_NE(ok, nullptr);
     EXPECT_EQ(ok->page_num, 2);
     EXPECT_EQ(PageMap::GetSpan(ok->GetStartAddr()), ok);
@@ -290,7 +288,7 @@ TEST_F(PageCacheTest, ClearRangeOnEmptyPageMapKeepsLookupNull) {
 }
 
 TEST_F(PageCacheTest, ClearRangeAfterUnmapMakesLookupNull) {
-    Span* span = cache_.AllocSpan(5, 0);
+    Span* span = cache_.AllocSpan(5);
     ASSERT_NE(span, nullptr);
 
     const size_t start = span->start_page_idx;
@@ -317,7 +315,7 @@ TEST_F(PageCacheTest, RandomStress) {
     for (int i = 0; i < 1000; ++i) {
         // 随机申请 1 ~ 20 页
         size_t k = dis(g);
-        Span* s = cache_.AllocSpan(k, 0);
+        Span* s = cache_.AllocSpan(k);
         spans.push_back(s);
     }
 

@@ -8,7 +8,7 @@ submodule: page_cache
 slug: null
 agent: sisyphus
 status: closed
-memory_status: pending
+memory_status: completed
 supersedes: 20260316T183731Z--ses_page_cache_review--sisyphus.md
 closed_at: 2026-03-16T171857Z
 closed_reason: Span v2 64B重构已完成，代码已提交并推送

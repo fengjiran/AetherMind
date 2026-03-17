@@ -1,4 +1,5 @@
 #include "ammalloc/span.h"
+#include "ammalloc/size_class.h"
 
 #include <limits>
 
@@ -7,6 +8,7 @@ namespace aethermind {
 void Span::Init(size_t object_size) {
     AM_DCHECK(object_size > 0 && object_size <= std::numeric_limits<uint32_t>::max());
     obj_size = static_cast<uint32_t>(object_size);
+    size_class_idx = SizeClass::Index(obj_size);
     void* start_ptr = details::PageIDToPtr(start_page_idx);
     const size_t total_bytes = page_num << SystemConfig::PAGE_SHIFT;
 
@@ -33,7 +35,7 @@ void Span::Init(size_t object_size) {
     }
 
     if (full_bitmap_num < bitmap_num) {
-        bitmap[full_bitmap_num] = (tail_bits == 0) ? 0 : ((1ULL << tail_bits) - 1);
+        bitmap[full_bitmap_num] = tail_bits == 0 ? 0 : ((1ULL << tail_bits) - 1);
         for (size_t i = full_bitmap_num + 1; i < bitmap_num; ++i) {
             bitmap[i] = 0;
         }
@@ -44,45 +46,48 @@ void Span::Init(size_t object_size) {
 }
 
 void* Span::AllocObject() {
-    if (use_count >= capacity) {
+    // clang-format off
+    if (use_count >= capacity) AM_UNLIKELY {
         return nullptr;
     }
 
-    auto idx = scan_cursor;
     auto bitmap_num = GetBitmapNum();
     auto* bitmap = GetBitmap();
-    for (size_t i = 0; i < bitmap_num; ++i) {
-        size_t cur_idx = idx + i;
-        if (cur_idx >= bitmap_num) {
-            cur_idx -= bitmap_num;
-        }
-
-        uint64_t val = bitmap[cur_idx];
-        if (val == 0) {
+    for (size_t i = scan_cursor; i < bitmap_num; ++i) {
+        uint64_t val = bitmap[i];
+        if (val == 0) AM_UNLIKELY {
             continue;
         }
 
         int bit_pos = std::countr_zero(val);
-        bitmap[cur_idx] &= ~(1ULL << bit_pos);
+        val &= ~(1ull << bit_pos);
+        bitmap[i] = val;
         ++use_count;
-        scan_cursor = cur_idx;
-        size_t global_obj_idx = cur_idx * 64 + bit_pos;
+        scan_cursor = val == 0 ? static_cast<uint32_t>(i + 1) : static_cast<uint32_t>(i);
+
+        size_t global_obj_idx = i * 64 + bit_pos;
         return static_cast<char*>(GetDataBasePtr()) + global_obj_idx * obj_size;
     }
     return nullptr;
+    // clang-format on
 }
 
 void Span::FreeObject(void* ptr) {
-    size_t offset = static_cast<char*>(ptr) - static_cast<char*>(GetDataBasePtr());
+    const char* base_ptr = static_cast<char*>(GetDataBasePtr());
+    AM_DCHECK(static_cast<char*>(ptr) >= base_ptr, "Pointer underflow detected!");
+    size_t offset = static_cast<char*>(ptr) - base_ptr;
+    AM_DCHECK(offset % obj_size == 0);
     size_t global_obj_idx = offset / obj_size;
 
-    size_t bitmap_idx = global_obj_idx >> 6;
-    int bit_pos = global_obj_idx & (64 - 1);
-    uint64_t mask = 1ULL << bit_pos;
+    auto bitmap_idx = static_cast<uint32_t>(global_obj_idx >> 6);
+    AM_DCHECK(bitmap_idx < GetBitmapNum());
+    int bit_pos = static_cast<int>(global_obj_idx & 63);
+    uint64_t mask = 1ull << bit_pos;
     auto* bitmap = GetBitmap();
     AM_DCHECK((bitmap[bitmap_idx] & mask) == 0, "double free detected.");
     bitmap[bitmap_idx] |= mask;
     --use_count;
+    scan_cursor = std::min(scan_cursor, bitmap_idx);
 }
 
 }// namespace aethermind

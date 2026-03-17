@@ -8,6 +8,7 @@ adr_refs:
   - ../adrs/ADR-004.md
   - ../adrs/ADR-005.md
   - ../adrs/ADR-007.md
+last_verified: 2026-03-17
 last_verified: 2026-03-16
 owner: team
 status: active

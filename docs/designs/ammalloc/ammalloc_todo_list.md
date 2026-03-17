@@ -203,6 +203,18 @@
 - 背景：`ThreadCache` 对象本身约 1KB，当前直接使用 `SystemAlloc` 分配一个 4KB 页，每个线程浪费约 3KB 内存。在数千线程的高并发场景下浪费显著。
 - 方案：使用全局 `ObjectPool<ThreadCache>` 替代裸页分配。
 
+- [x] #### **PageMap Root 静态化 [Optimize]**
+- 背景：`PageMap` 的 radix tree root 节点通过 `ObjectPool<RadixRootNode>` 动态分配，但整个生命周期只会有一个 root 实例，使用对象池过于冗余。
+- 方案：
+  1. 移除 `radix_root_pool_`，改为静态 `RadixRootNode radix_root_storage_`
+  2. `SetSpan` 中初始化时直接使用 `&radix_root_storage_`，先清空 children 再 release store 到 `root_`
+  3. `Reset()` 不再释放 root pool，仅保留 `root_=nullptr` 和 `radix_node_pool_.ReleaseMemory()`
+- 涉及文件：
+  - `ammalloc/include/ammalloc/page_cache.h` - 字段声明变更
+  - `ammalloc/src/page_cache.cpp` - SetSpan/Reset 逻辑调整
+- 状态：**已完成 (2026-03-17)**
+- 验证：20/20 单测通过，PageCache 基准测试正常
+
 ### 🟡 P2: 功能对齐 (Feature Parity)
 *对齐 TCMalloc/Jemalloc 的核心功能，使其具备在生产环境长期运行的能力。*
 
@@ -276,6 +288,15 @@
 - 方案：提供 AddMallocHook / RemoveMallocHook 接口。
 
 ### 📝 变更日志 (Changelog)
+
+- 2026-03-17
+  - **PageMap Root 静态化优化**：
+    - 移除 `ObjectPool<RadixRootNode> radix_root_pool_`，改为静态 `RadixRootNode radix_root_storage_`
+    - 更新 `SetSpan` 初始化路径：先清空 children，再 release store 发布到 `root_`
+    - 更新 `Reset` 逻辑：不再调用 root pool 释放，仅保留 `root_=nullptr`
+    - 保持 `GetSpan` 无锁读路径与内存序语义不变
+    - 文件变更：`page_cache.h:91-93`, `page_cache.cpp:54-60, 158-161`
+    - 验证：20/20 单测通过，设计文档同步更新
 
 - 2026-03-14
   - 完成 PageAllocator P0 修复：

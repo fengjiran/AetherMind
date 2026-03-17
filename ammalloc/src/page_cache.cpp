@@ -54,7 +54,10 @@ Span* PageMap::GetSpan(size_t page_id) {
 void PageMap::SetSpan(Span* span) {
     auto* curr = root_.load(std::memory_order_relaxed);
     if (!curr) {
-        curr = radix_root_pool_.New();
+        curr = &root_storage_;
+        for (auto& child: curr->children) {
+            child.store(nullptr, std::memory_order_relaxed);
+        }
         AM_DCHECK((reinterpret_cast<uintptr_t>(curr) & (4096 - 1)) == 0);
         root_.store(curr, std::memory_order_release);
     }
@@ -157,7 +160,6 @@ void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
 
 void PageMap::Reset() {
     root_.store(nullptr, std::memory_order_relaxed);
-    radix_root_pool_.ReleaseMemory();
     radix_node_pool_.ReleaseMemory();
 }
 

@@ -36,7 +36,7 @@ struct alignas(SystemConfig::PAGE_SIZE) RadixRootNode {
     std::array<std::atomic<void*>, PageConfig::RADIX_ROOT_SIZE> children;
 
     RadixRootNode() {
-        for (auto& child : children) {
+        for (auto& child: children) {
             child.store(nullptr, std::memory_order_relaxed);
         }
     }
@@ -49,7 +49,7 @@ struct alignas(SystemConfig::PAGE_SIZE) RadixNode {
     std::array<std::atomic<void*>, PageConfig::RADIX_NODE_SIZE> children;
 
     RadixNode() {
-        for (auto& child : children) {
+        for (auto& child: children) {
             child.store(nullptr, std::memory_order_relaxed);
         }
     }
@@ -89,7 +89,7 @@ public:
 private:
     // Published with release semantics once initialized.
     inline static std::atomic<RadixRootNode*> root_ = nullptr;
-    inline static ObjectPool<RadixRootNode> radix_root_pool_{};
+    inline static RadixRootNode root_storage_{};
     inline static ObjectPool<RadixNode> radix_node_pool_{};
 };
 

@@ -9,6 +9,50 @@
 
 
 
+## 📅 2026-03-17 (Tuesday)
+### 🚀 今日概要
+完成 `PageMap` radix tree root 节点的静态化优化，移除冗余的对象池分配路径，简化初始化逻辑并降低管理开销。
+
+**🎉 PageMap Root 静态化已完成：简化架构，消除冗余对象池！**
+
+### 🧩 任务关联 (Task Linkage)
+- [x] **[TODO: PageMap Root 静态化]** - 已完成实施，测试验证通过。
+
+### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
+
+#### 1. [优化] PageMap Root 对象池冗余 - 已优化
+**根因**: `PageMap` 的 radix tree 在整个生命周期中只会有一个 root 节点，但当前通过 `ObjectPool<RadixRootNode>` 动态分配，引入不必要的池管理开销。
+
+**优化方案**:
+1. **移除对象池**: 删除 `radix_root_pool_` 字段
+2. **静态存储**: 新增 `RadixRootNode radix_root_storage_` 静态实例
+3. **更新初始化**: `SetSpan` 中直接使用 `&radix_root_storage_`，先清空 `children`，再 `release store` 到 `root_`
+4. **更新重置**: `Reset()` 不再调用 `radix_root_pool_.ReleaseMemory()`，仅保留 `root_=nullptr`
+
+**涉及文件**:
+- `ammalloc/include/ammalloc/page_cache.h:91-93` - 字段声明变更
+- `ammalloc/src/page_cache.cpp:54-60` - SetSpan 初始化路径
+- `ammalloc/src/page_cache.cpp:158-161` - Reset 逻辑调整
+
+**架构不变量保持**:
+- `GetSpan` 继续无锁读取（acquire load）
+- `SetSpan` 保持 release 发布语义
+- 不引入分配器递归（静态存储无堆分配）
+
+**验证结果**:
+- LSP 诊断：无错误
+- 构建：`cmake --build build --target ammalloc -j` 通过
+- 单测：`PageCacheTest.*:CentralCacheTest.*:SpanTest.*` 20/20 通过
+- 基准：`PageCache` 基准测试运行正常
+
+### 📚 文档同步
+- **设计文档**: `docs/designs/ammalloc/page_cache_design.md` 已更新 v1.1
+  - 新增"2.4 已落地实现变更"小节
+  - 版本历史记录本次变更
+- **TODO List**: `docs/designs/ammalloc/ammalloc_todo_list.md` 已标记完成
+
+---
+
 ## 📅 2026-03-16 (Monday)
 ### 🚀 今日概要
 完成 `PageCache` 子模块的深度优化准备阶段，包括全面代码审查、测试用例补充、性能基准测试建设，以及 **Span v2 64B 重构的全面实施**。

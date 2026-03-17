@@ -158,12 +158,14 @@ public:
 
     /// Removes first span. Returns nullptr if empty.
     Span* pop_front() noexcept {
+        // clang-format off
         if (empty()) AM_UNLIKELY {
-                return nullptr;
-            }
+            return nullptr;
+        }
         auto* span = head_.next;
         erase(span);
         return span;
+        // clang-format on
     }
 
 private:

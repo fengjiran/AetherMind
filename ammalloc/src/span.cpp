@@ -1,8 +1,6 @@
 #include "ammalloc/span.h"
 #include "ammalloc/size_class.h"
 
-#include <limits>
-
 namespace aethermind {
 
 void Span::Init(size_t object_size) {
@@ -77,7 +75,14 @@ void Span::FreeObject(void* ptr) {
     AM_DCHECK(static_cast<char*>(ptr) >= base_ptr, "Pointer underflow detected!");
     size_t offset = static_cast<char*>(ptr) - base_ptr;
     AM_DCHECK(offset % obj_size == 0);
-    size_t global_obj_idx = offset / obj_size;
+    size_t global_obj_idx = 0;
+    // clang-format off
+    if (std::has_single_bit(static_cast<size_t>(obj_size))) AM_LIKELY {
+        global_obj_idx = offset >> std::countr_zero(static_cast<size_t>(obj_size));
+    } else {
+        global_obj_idx = offset / obj_size;
+    }
+    // clang-format on
 
     auto bitmap_idx = static_cast<uint32_t>(global_obj_idx >> 6);
     AM_DCHECK(bitmap_idx < GetBitmapNum());

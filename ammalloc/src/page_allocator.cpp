@@ -16,6 +16,14 @@
 
 namespace {
 
+bool IsPageAligned(const void* ptr) noexcept {
+    return (reinterpret_cast<uintptr_t>(ptr) & (aethermind::SystemConfig::PAGE_SIZE - 1)) == 0;
+}
+
+bool IsHugePageAligned(const void* ptr) noexcept {
+    return (reinterpret_cast<uintptr_t>(ptr) & (aethermind::SystemConfig::HUGE_PAGE_SIZE - 1)) == 0;
+}
+
 // Zero-allocation lock-free dual-stack cache for 2MB huge pages.
 //
 // This cache eliminates the std::mutex bottleneck under high concurrency while
@@ -190,54 +198,79 @@ bool PageAllocator::SafeMunmap(void* ptr, size_t size) {
         return true;
     }
 
-    if (munmap(ptr, size) != 0) {
-        stats_.munmap_failed_count.fetch_add(1, std::memory_order_relaxed);
-        spdlog::error("munmap failed: ptr={}, size={}, errno={}, msg={}",
-                      ptr, size, errno, strerror(errno));
-        return false;
+    AM_DCHECK(IsPageAligned(ptr));
+    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+
+    // clang-format off
+    if (munmap(ptr, size) == 0) AM_LIKELY {
+        return true;
     }
-    return true;
+    // clang-format on
+
+    const int err = errno;
+    stats_.munmap_failed_count.fetch_add(1, std::memory_order_relaxed);
+
+    // Keep allocator backend logging conservative.
+    spdlog::error("munmap failed: ptr={}, size={}, errno={}", ptr, size, err);
+    return false;
 }
 
 void* PageAllocator::AllocWithRetry(size_t size, int flags) {
+    AM_DCHECK(size > 0);
+    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+
     for (size_t i = 0; i < PageConfig::MAX_ALLOC_RETRIES; ++i) {
         if (void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, -1, 0);
             ptr != MAP_FAILED) {
+            AM_DCHECK(IsPageAligned(ptr));
             return ptr;
         }
 
-        if (errno == ENOMEM) {
+        if (const int err = errno; err == ENOMEM) {
             stats_.mmap_enomem_count.fetch_add(1, std::memory_order_relaxed);
-            // ENOMEM may be transient under memory pressure; back off briefly
-            // before retrying.
-            spdlog::warn("mmap ENOMEM for size {}, retry {}/{}...",
-                         size, i + 1, PageConfig::MAX_ALLOC_RETRIES);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            // ENOMEM may be transient under memory pressure. Keep retry/backoff
+            // modest to avoid turning allocator failure paths into latency spikes.
+            if (i + 1 < PageConfig::MAX_ALLOC_RETRIES) {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
         } else {
             stats_.mmap_other_error_count.fetch_add(1, std::memory_order_relaxed);
-            spdlog::error("mmap fatal error: errno={}, msg={}", errno, strerror(errno));
-            break;
+            // Fatal/non-transient errors are not worth retrying.
+            spdlog::error("mmap failed: size={}, flags={}, errno={}", size, flags, err);
+            return nullptr;
         }
     }
 
-    return MAP_FAILED;
+    return nullptr;
 }
 
 void PageAllocator::ApplyHugePageHint(void* ptr, size_t size) {
+    AM_DCHECK(ptr != nullptr);
+    AM_DCHECK(IsPageAligned(ptr));
+    AM_DCHECK(size > 0);
+    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+
+    // Best-effort THP hint. Failure is expected on systems/configurations
+    // without THP support, so keep it quiet.
     if (madvise(ptr, size, MADV_HUGEPAGE) != 0) {
         stats_.madvise_failed_count.fetch_add(1, std::memory_order_relaxed);
-        spdlog::debug("madvise MADV_HUGEPAGE failed (expected on non-THP systems).");
     }
 
+    // Prefetch/populate strategy is configurable and independent of THP hint.
     if (RuntimeConfig::GetInstance().UseMapPopulate()) {
         if (madvise(ptr, size, MADV_WILLNEED) != 0) {
+            const int err = errno;
             stats_.madvise_failed_count.fetch_add(1, std::memory_order_relaxed);
-            spdlog::warn("madvise MADV_WILLNEED failed: ptr={}, size={}", ptr, size);
+            spdlog::debug("madvise MADV_WILLNEED failed: ptr={}, size={}, errno={}",
+                          ptr, size, err);
         }
     }
 }
 
 void* PageAllocator::AllocNormalPage(size_t size) {
+    AM_DCHECK(size > 0);
+    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+
     stats_.normal_alloc_count.fetch_add(1, std::memory_order_relaxed);
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     if (RuntimeConfig::GetInstance().UseMapPopulate()) {
@@ -245,7 +278,7 @@ void* PageAllocator::AllocNormalPage(size_t size) {
     }
 
     void* ptr = AllocWithRetry(size, flags);
-    if (ptr == MAP_FAILED) {
+    if (!ptr) {
         stats_.normal_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
@@ -257,6 +290,9 @@ void* PageAllocator::AllocNormalPage(size_t size) {
 }
 
 void* PageAllocator::AllocHugePageWithTrim(size_t size) {
+    AM_DCHECK(size > 0);
+    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+
     // Overflow guard: size + HUGE_PAGE_SIZE must not wrap
     // clang-format off
     if (size > (std::numeric_limits<size_t>::max() - SystemConfig::HUGE_PAGE_SIZE)) AM_UNLIKELY {
@@ -265,36 +301,50 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
     }
     // clang-format on
 
-    size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
+    const size_t alloc_size = size + SystemConfig::HUGE_PAGE_SIZE;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
-    void* ptr = AllocWithRetry(alloc_size, flags);
-    if (ptr == MAP_FAILED) {
+    void* raw_ptr = AllocWithRetry(alloc_size, flags);
+    if (!raw_ptr) {
         stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
 
-    const auto addr = reinterpret_cast<uintptr_t>(ptr);
-    const uintptr_t aligned_addr = (addr + SystemConfig::HUGE_PAGE_SIZE - 1) &
+    const auto raw_addr = reinterpret_cast<uintptr_t>(raw_ptr);
+    const uintptr_t aligned_addr = (raw_addr + SystemConfig::HUGE_PAGE_SIZE - 1) &
                                    ~(SystemConfig::HUGE_PAGE_SIZE - 1);
     AM_DCHECK((aligned_addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0);
-    AM_DCHECK(aligned_addr >= addr);
-    AM_DCHECK(aligned_addr + size <= addr + alloc_size);
+    AM_DCHECK(aligned_addr >= raw_addr);
+    AM_DCHECK(aligned_addr + size <= raw_addr + alloc_size);
 
     size_t waste = 0;
-    const size_t head_gap = aligned_addr - addr;
+    bool trim_ok = true;
+    const size_t head_gap = aligned_addr - raw_addr;
     if (head_gap > 0) {
-        SafeMunmap(ptr, head_gap);
-        waste += head_gap;
+        trim_ok = SafeMunmap(raw_ptr, head_gap) && trim_ok;
+        if (trim_ok) {
+            waste += head_gap;
+        }
     }
 
     if (const size_t tail_gap = alloc_size - head_gap - size; tail_gap > 0) {
-        SafeMunmap(reinterpret_cast<void*>(aligned_addr + size), tail_gap);
-        waste += tail_gap;
+        auto* tail_ptr = reinterpret_cast<void*>(aligned_addr + size);
+        trim_ok = SafeMunmap(tail_ptr, tail_gap) && trim_ok;
+        if (trim_ok) {
+            waste += tail_gap;
+        }
+    }
+
+    if (!trim_ok) {
+        // We failed to establish the intended aligned submapping cleanly.
+        // Best effort: release the full original mapping and fail.
+        SafeMunmap(raw_ptr, alloc_size);
+        stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
     }
 
     stats_.huge_align_waste_bytes.fetch_add(waste, std::memory_order_relaxed);
-
     auto* res = reinterpret_cast<void*>(aligned_addr);
+    AM_DCHECK(IsHugePageAligned(res));
     ApplyHugePageHint(res, size);
     stats_.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
     stats_.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
@@ -317,7 +367,7 @@ void* PageAllocator::AllocHugePage(size_t size) {
 
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
     void* ptr = AllocWithRetry(size, flags);
-    if (ptr == MAP_FAILED) {
+    if (!ptr) {
         stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }

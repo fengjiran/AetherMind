@@ -8,7 +8,7 @@ module: ammalloc
 submodule: page_allocator
 slug: null
 agent: sisyphus
-status: active
+status: superseded
 memory_status: pending
 supersedes: 20260314T222700Z--ses_318bd5c17ffeP3CBYxVYXTJuAj--sisyphus.md
 closed_at: null

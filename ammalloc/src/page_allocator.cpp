@@ -296,6 +296,7 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
     // Overflow guard: size + HUGE_PAGE_SIZE must not wrap
     // clang-format off
     if (size > (std::numeric_limits<size_t>::max() - SystemConfig::HUGE_PAGE_SIZE)) AM_UNLIKELY {
+        stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
         spdlog::error("AllocHugePageWithTrim size overflow: {}", size);
         return nullptr;
     }
@@ -316,39 +317,75 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
     AM_DCHECK(aligned_addr >= raw_addr);
     AM_DCHECK(aligned_addr + size <= raw_addr + alloc_size);
 
-    size_t waste = 0;
-    bool trim_ok = true;
     const size_t head_gap = aligned_addr - raw_addr;
+    const size_t tail_gap = alloc_size - head_gap - size;
+
+    void* head_ptr = raw_ptr;
+    void* body_ptr = reinterpret_cast<void*>(aligned_addr);
+    void* tail_ptr = reinterpret_cast<void*>(aligned_addr + size);
+
+    bool head_mapped = head_gap > 0;
+    bool body_mapped = true;
+    bool tail_mapped = tail_gap > 0;
+
+    auto cleanup_remaining_mappings = [&](bool skip_head, bool skip_tail) {
+        if (body_mapped && SafeMunmap(body_ptr, size)) {
+            body_mapped = false;
+        }
+
+        if (!skip_tail && tail_mapped && SafeMunmap(tail_ptr, tail_gap)) {
+            tail_mapped = false;
+        }
+
+        if (!skip_head && head_mapped && SafeMunmap(head_ptr, head_gap)) {
+            head_mapped = false;
+        }
+
+        if (head_mapped || body_mapped || tail_mapped) {
+            spdlog::error("AllocHugePageWithTrim cleanup incomplete: raw_ptr={}, alloc_size={}, "
+                          "head_mapped={}, body_mapped={}, tail_mapped={}",
+                          raw_ptr, alloc_size,
+                          static_cast<int>(head_mapped),
+                          static_cast<int>(body_mapped),
+                          static_cast<int>(tail_mapped));
+        }
+    };
+
     if (head_gap > 0) {
-        trim_ok = SafeMunmap(raw_ptr, head_gap) && trim_ok;
-        if (trim_ok) {
-            waste += head_gap;
+        if (!SafeMunmap(head_ptr, head_gap)) {
+            // Head trim already failed once; avoid immediate duplicate munmap on the same
+            // segment and reclaim the remaining still-mapped subranges first.
+            const bool skip_head = true;
+            const bool skip_tail = false;
+            cleanup_remaining_mappings(skip_head, skip_tail);
+
+            stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
+            return nullptr;
         }
+        head_mapped = false;
     }
 
-    if (const size_t tail_gap = alloc_size - head_gap - size; tail_gap > 0) {
-        auto* tail_ptr = reinterpret_cast<void*>(aligned_addr + size);
-        trim_ok = SafeMunmap(tail_ptr, tail_gap) && trim_ok;
-        if (trim_ok) {
-            waste += tail_gap;
+    if (tail_gap > 0) {
+        if (!SafeMunmap(tail_ptr, tail_gap)) {
+            const bool skip_head = false;
+            const bool skip_tail = true;
+            cleanup_remaining_mappings(skip_head, skip_tail);
+
+            stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
+            return nullptr;
         }
+        tail_mapped = false;
     }
 
-    if (!trim_ok) {
-        // We failed to establish the intended aligned submapping cleanly.
-        // Best effort: release the full original mapping and fail.
-        SafeMunmap(raw_ptr, alloc_size);
-        stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
-        return nullptr;
-    }
+    AM_DCHECK(!head_mapped);
+    AM_DCHECK(body_mapped);
+    AM_DCHECK(!tail_mapped);
 
-    stats_.huge_align_waste_bytes.fetch_add(waste, std::memory_order_relaxed);
-    auto* res = reinterpret_cast<void*>(aligned_addr);
-    AM_DCHECK(IsHugePageAligned(res));
-    ApplyHugePageHint(res, size);
+    stats_.huge_align_waste_bytes.fetch_add(head_gap + tail_gap, std::memory_order_relaxed);
+    ApplyHugePageHint(body_ptr, size);
     stats_.huge_alloc_success.fetch_add(1, std::memory_order_relaxed);
     stats_.huge_alloc_bytes.fetch_add(size, std::memory_order_relaxed);
-    return res;
+    return body_ptr;
 }
 
 // Optimistic huge-page allocation strategy:
@@ -356,6 +393,9 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
 // 2) If misaligned, unmap it and retry with over-allocation + trimming.
 // This avoids extra VMA operations on the fast-success path.
 void* PageAllocator::AllocHugePage(size_t size) {
+    AM_DCHECK(size > 0);
+    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+
     stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
 
 #ifdef AMMALLOC_TEST

@@ -6,7 +6,7 @@
 ///
 /// Thread-safety:
 /// - All public methods are thread-safe.
-/// - Huge-page cache uses internal mutex synchronization.
+/// - Huge-page cache uses internal lock-free synchronization.
 ///
 /// Constraints:
 /// - Core allocation paths avoid recursive malloc (no heap-allocating containers).

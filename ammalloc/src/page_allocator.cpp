@@ -10,7 +10,6 @@
 #include "utils/logging.h"
 
 #include <cstdint>
-#include <cstring>
 #include <limits>
 #include <sys/mman.h>
 
@@ -487,13 +486,12 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
     }
     // clang-format on
 
-    auto addr = reinterpret_cast<uintptr_t>(ptr);
     const size_t size = page_num << SystemConfig::PAGE_SHIFT;
     stats_.free_count.fetch_add(1, std::memory_order_relaxed);
     stats_.free_bytes.fetch_add(size, std::memory_order_relaxed);
     // For exact-size huge pages, prefer caching the VMA and dropping physical
     // backing (`MADV_DONTNEED`) to reduce future mmap/munmap overhead.
-    if (size == SystemConfig::HUGE_PAGE_SIZE && (addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
+    if (size == SystemConfig::HUGE_PAGE_SIZE && IsHugePageAligned(ptr)) {
         if (madvise(ptr, size, MADV_DONTNEED) != 0) {
             const int err = errno;
             stats_.madvise_failed_count.fetch_add(1, std::memory_order_relaxed);

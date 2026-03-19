@@ -382,6 +382,22 @@
 
 ### 📝 变更日志 (Changelog)
 
+- 2026-03-19
+  - **PageAllocator SystemFree 审查与大页策略演进**：
+    - 完成 `SystemFree` 代码审查，识别 4 个待修复问题：
+      - P1: madvise 失败后仍尝试缓存
+      - P1: madvise 失败未捕获 errno
+      - P2: 缺少 `huge_cache_put_*` 统计
+      - P3: huge cache 资格判断脆弱
+    - 完成 `HugePageCache` 实现审核，识别 3 个待修复问题：
+      - P1: Pop CAS success 内存序 (`acquire` → `acq_rel`)
+      - P2: ReleaseAllForTesting 缺少 errno 捕获
+      - P2: Put 缺少 debug 校验
+    - 完成 Code Review P2-2/P2-3 建议合理性评估
+    - 完成 MAP_HUGETLB vs THP 技术调研
+    - 新增 3 个演进条目（见 P1/P3 章节）
+    - 更新头文件注释：`page_allocator.h` SystemFree 接口文档
+
 - 2026-03-17
   - **PageMap Root 静态化优化**：
     - 移除 `ObjectPool<RadixRootNode> radix_root_pool_`，改为静态 `RadixRootNode radix_root_storage_`

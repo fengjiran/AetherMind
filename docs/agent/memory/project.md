@@ -91,6 +91,7 @@ status: active
 |------|------|------|
 | `docs-reorg` | docs/ 目录结构重构 | active |
 | `agent-memory-v1.1` | Agent Memory System v1.1 修复完成：区分项目级/模块级工作流，重命名 handoff.md → handoff_template.md | active |
+| `memory-optimization` | 记忆系统Token优化：精简 handoff/README.md（140行→20行），新增禁止读取多个handoff约束 | active |
 | `ci-setup` | CI/CD 配置迁移 | 待创建 |
 | `arch-migration` | 跨模块架构迁移 | 待创建 |
 

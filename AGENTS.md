@@ -149,6 +149,7 @@ See full comment rules:
 3. 跳过工作流解析与 Resume Gate，直接修改文件
 4. **加载完成后未经用户确认就执行工具操作**（如扫描代码、编译、测试、文件修改等）
 5. 把 `docs/agent/prompts/handoff_template.md` 当作真实 handoff 读取
+6. **读取多个 handoff 文件**（同一 workstream 只读一个 `status: active`，忽略 `superseded`/`closed`）
 
 #### **必须行为（✅）**：
 
@@ -169,6 +170,8 @@ See full comment rules:
 
 2. **默认启动路径只加载最小必要集合**：
 
+   **Token预算约束**：默认启动加载量 **≤ 15,000 tokens**（约6,000字符）。超出此预算时，必须降级为"仅AGENTS.md + 用户手动指定文件"。
+
    **项目级工作默认启动路径**：
    ```
    AGENTS.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/project__<slug>/
@@ -181,6 +184,13 @@ See full comment rules:
    AGENTS.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/<module>__<submodule-or-none>/
    ```
    默认启动只读取 `status: active` 的 handoff；按 `created_at` 降序排序，若相同则按文件名字典序 tie-break。
+
+   **默认启动禁止加载**（违反会导致token爆炸）：
+   - ❌ `docs/agent/memory/README.md` — 操作手册，**仅在按需升级时读取**
+   - ❌ `docs/agent/memory/modules/**/module.md` — 项目级工作时跳过
+   - ❌ `docs/agent/tests/**` — 测试文档，不参与恢复
+   - ❌ `docs/guides/**` — 指南文档，按需引用
+   - ❌ 历史 handoff（`status: superseded` 或 `status: closed`）— 只读 active
 
 3. **渐进式升级读取**（仅在以下情况触发）：
    

@@ -10,6 +10,15 @@ status: active
 ---
 
 # 记忆系统操作规范
+
+> ⚠️ **警告：本文件为按需升级读取操作手册，新对话默认不要求完整读取。**
+> 
+> **默认启动路径**：`AGENTS.md → docs/agent/memory/project.md → active handoff`
+> 
+> **何时读取本文件**：仅在需要处理 memory/handoff 的目录规则、命名、frontmatter 契约、兼容默认值、写回规则、冲突处理时按需升级读取。
+>
+> 详见 `AGENTS.md` 第10节"Agent Memory System 执行约束"。
+
 > 本文件是 Agent Memory System 的**按需升级读取操作手册**。
 > 默认启动契约、最小加载路径、Resume Gate 与确认闸门，统一以根目录 `AGENTS.md` 为准。
 > 新对话默认**不要求**完整读取本文件。

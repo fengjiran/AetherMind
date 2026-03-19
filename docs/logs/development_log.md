@@ -1,13 +1,75 @@
 # 🌌 AetherMind 开发日志 (Development Log)
 
-> **[AI 助手指令]**: 本文档是 AetherMind 项目的“开发黑匣子”。
+> **[AI 助手指令]**: 本文档是 AetherMind 项目的"开发黑匣子"。
 > 1. 每当完成重大 Commits、解决复杂 Bug 或进行架构重构时，**必须**在此同步更新。
 > 2. 任务引用请严格遵循 `[TODO: 任务简短描述]` 格式，并确保与 `docs/designs/ammalloc/ammalloc_todo_list.md` 中的项对应。
-> 3. 记录应侧重于“为什么这么做”而非“做了什么”。
+> 3. 记录应侧重于"为什么这么做"而非"做了什么"。
 
 ---
 
+## 📅 2026-03-19 (Thursday)
+### 🚀 今日概要
+完成 `PageAllocator::SystemFree` 代码审查、`HugePageCache` 实现审核，以及大页策略长期演进规划。
 
+**🎉 PageAllocator 审查完成：识别 4 个待修复问题，规划大页策略演进路线！**
+
+### 🧩 任务关联 (Task Linkage)
+- [x] **[TODO: SystemFree 代码审查]** - 完成，生成详细审查报告。
+- [x] **[TODO: HugePageCache 审核与 Code Review 建议]** - 完成，评估 9 条建议。
+- [x] **[TODO: 大页策略演进规划]** - 完成，新增 3 个演进条目到 TODO List。
+
+### ⚠️ 遇到的问题与解决方案 (Troubleshooting)
+
+#### 1. [P1] SystemFree madvise 失败处理不当 - 待修复
+**问题**: `madvise(MADV_DONTNEED)` 失败后仍尝试 `Put()`，可能缓存无效 VMA。
+
+**修复方案**:
+- madvise 失败时跳过缓存，直接 `SafeMunmap`
+- 第一时间捕获 `errno`
+- 新增统计：`huge_cache_put_success_count`、`huge_cache_put_reject_count`
+
+**状态**: 修改方案已设计，待实施。
+
+#### 2. [P1] HugePageCache Pop CAS 内存序不理想 - 待修复
+**问题**: Pop CAS success 使用 `memory_order_acquire`，RMW 语义不够完整。
+
+**修复方案**:
+```cpp
+// 修改前
+head.compare_exchange_weak(old_val, new_val,
+                           std::memory_order_acquire,
+                           std::memory_order_acquire);
+// 修改后
+head.compare_exchange_weak(old_val, new_val,
+                           std::memory_order_acq_rel,  // 更严谨
+                           std::memory_order_acquire);
+```
+
+**状态**: 待实施。
+
+#### 3. [P2] Code Review 建议评估 - 已完成
+| 建议 | 结论 | 优先级 |
+|------|------|--------|
+| P2-2: 乐观对齐命中率统计 | ✅ 合理 | P2 |
+| P2-3: MAP_POPULATE/MADV_WILLNEED 拆分 | ✅ 合理 | P2 |
+
+#### 4. [调研] MAP_HUGETLB vs THP - 已完成
+| 策略 | 特点 | 适用场景 |
+|------|------|---------|
+| THP (MADV_HUGEPAGE) | 零配置、异步合并 | **默认策略** |
+| MAP_HUGETLB | 严格延迟保证、需预留 | 可选后端（HFT/DPDK） |
+
+**结论**: 当前 THP 策略正确，MAP_HUGETLB 作为长期演进项。
+
+### 📚 文档同步
+- **TODO List**: `docs/designs/ammalloc/ammalloc_todo_list.md` 新增 3 个演进条目
+  - P3: Page 来源标记机制
+  - P3: 大页策略重构
+  - P2: 拆分 MAP_POPULATE 与 MADV_WILLNEED 配置
+- **头文件注释**: `ammalloc/include/ammalloc/page_allocator.h` 更新 SystemFree 文档
+- **Handoff**: `docs/agent/handoff/workstreams/ammalloc__page_allocator/` 更新至最新状态
+
+---
 
 ## 📅 2026-03-17 (Tuesday)
 ### 🚀 今日概要

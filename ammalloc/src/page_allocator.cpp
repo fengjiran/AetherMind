@@ -495,9 +495,17 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
     // backing (`MADV_DONTNEED`) to reduce future mmap/munmap overhead.
     if (size == SystemConfig::HUGE_PAGE_SIZE && (addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0) {
         if (madvise(ptr, size, MADV_DONTNEED) != 0) {
+            const int err = errno;
             stats_.madvise_failed_count.fetch_add(1, std::memory_order_relaxed);
-            spdlog::debug("madvise MADV_DONTNEED failed in SystemFree: ptr={}, size={}", ptr, size);
+            spdlog::debug("madvise MADV_DONTNEED failed in SystemFree: ptr={}, size={}, errno={}",
+                          ptr, size, err);
+            // madvise failure means physical pages are not released. Do not cache
+            // this VMA as Get() could return a mapping with stale physical pages,
+            // potentially causing SIGBUS on access
+            SafeMunmap(ptr, size);
+            return;
         }
+
         if (HugePageCache::GetInstance().Put(ptr)) {
             return;
         }

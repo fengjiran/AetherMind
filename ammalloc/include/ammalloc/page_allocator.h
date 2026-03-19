@@ -84,6 +84,14 @@ public:
 
     /// Frees a mapping previously returned by `SystemAlloc`.
     /// `ptr == nullptr` or `page_num == 0` is treated as a no-op.
+    ///
+    /// HugePageCache eligibility (temporary heuristic):
+    /// - Current strategy: `size == HUGE_PAGE_SIZE && IsHugePageAligned(ptr)`
+    /// - This is a fragile heuristic that cannot distinguish allocation source.
+    /// - Long-term: introduce source tagging (FreeFlags) or carry metadata from Span.
+    /// - See: docs/designs/ammalloc/ammalloc_todo_list.md P3 "实现 Page 来源标记机制"
+    ///
+    /// Thread-safety: Safe for concurrent calls from multiple threads.
     static void SystemFree(void* ptr, size_t page_num);
 
     /// Resets all statistics counters to zero.

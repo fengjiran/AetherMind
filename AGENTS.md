@@ -138,15 +138,20 @@ See full comment rules:
 
 使用记忆系统时必须遵守以下约束：
 
-### 核心原则：先加载记忆，后执行操作
+### 启动核心原则：先加载最小必要记忆，再渐进式升级读取其他所需文件
 
-**禁止行为（❌）**：
-1. 先扫描代码/编译/测试，再加载记忆
-2. 假设"继续"等于立即执行默认操作（如编译+测试）
-3. 跳过记忆加载直接执行操作
-4. **加载记忆后未经用户确认就执行工具操作**（如扫描代码、编译、测试、文件修改等）
+**规范地位**：本节是 Agent Memory System 的**唯一规范性启动契约**。其他文档只可引用本节，不得重新定义默认启动顺序。
 
-**必须行为（✅）**：
+#### **禁止行为（❌）**：
+
+1. 先扫描代码/编译/测试，再加载启动所需记忆
+2. 把"继续"默认解释成可立即执行工具操作
+3. 跳过工作流解析与 Resume Gate，直接修改文件
+4. **加载完成后未经用户确认就执行工具操作**（如扫描代码、编译、测试、文件修改等）
+5. 把 `docs/agent/prompts/handoff_template.md` 当作真实 handoff 读取
+
+#### **必须行为（✅）**：
+
 1. **先解析工作流类型**（按优先级）：
 
    **明确指令**（用户直接说明）：
@@ -159,45 +164,63 @@ See full comment rules:
    - 如果目标匹配 `<module>/<submodule>` 路径格式 → **模块工作**
 
    **歧义处理**（无法唯一确定时）：
-   - **必须询问用户**："请明确指定工作流类型：1) 项目级 work 2) 模块 [module] 工作"
+   - **必须询问用户**："请明确指定工作流类型：1) 项目级 2) 模块级"
    - **禁止猜测**：不得在歧义时自动选择
 
-2. **严格按工作流类型加载记忆**（使用完整路径）：
+2. **默认启动路径只加载最小必要集合**：
 
-   **模块工作**（`<module>__<submodule-or-none>`）：
+   **项目级工作默认启动路径**：
    ```
-   AGENTS.md → docs/agent/memory/README.md → docs/agent/memory/project.md → docs/agent/memory/modules/<module>/module.md → docs/agent/memory/modules/<module>/submodules/<submodule>.md → docs/agent/handoff/workstreams/<module>__<submodule-or-none>/
-   ```
-
-   **项目级工作**（`project__<slug>`）：
-   ```
-   AGENTS.md → docs/agent/memory/README.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/project__<slug>/
+   AGENTS.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/project__<slug>/
    ```
    ⚠️ **硬性约束**：项目级工作**必须跳过** `docs/agent/memory/modules/<module>/module.md` 和 `docs/agent/memory/modules/<module>/submodules/<submodule>.md`
 
-3. **Handoff 路径规则**：
+   **模块工作默认启动路径**：
+   
+   ```
+   AGENTS.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/<module>__<submodule-or-none>/
+   ```
+   默认启动只读取 `status: active` 的 handoff；按 `created_at` 降序排序，若相同则按文件名字典序 tie-break。
+
+3. **渐进式升级读取**（仅在以下情况触发）：
+   
+   - 目标 workstream 没有可用的 active handoff
+   - handoff 缺少恢复所需信息，或未明确可用于低上下文恢复（例如 `bootstrap_ready` 缺失或为 `false`）
+   - 任务触及模块边界、所有权/生命周期、线程安全、性能敏感约束
+   - 需要写回 memory、处理 handoff/frontmatter/schema、或排查冲突/兼容问题
+   - 需要理解模块内部不变量，且 handoff 无法覆盖
+   
+   **渐进式升级读取规则**：
+   
+   - `docs/agent/memory/README.md`：**只在按需升级时读取**，用于操作细则、schema、兼容与写回规则
+   - `docs/agent/memory/modules/<module>/module.md`：模块工作且需要模块级约束时读取
+   - `docs/agent/memory/modules/<module>/submodules/<submodule>.md`：需要子模块级不变量时读取
+   - `docs/agent/memory_system.md`：仅作架构参考，不属于默认启动路径
+
+4. **Handoff 路径规则**：
+   
    - 模板文件：`docs/agent/prompts/handoff_template.md`（只读参考）
    - 存储目录：`docs/agent/handoff/workstreams/<workstream_key>/`（实际 handoff 位置）
-   - **禁止**：把模板文件当成 handoff 读取
 
-4. **执行 Resume Gate 检查点**（任何工具操作前必须完成）：
+5. **执行 Resume Gate 检查点**（任何工具操作前必须完成）：
    ```markdown
    ## Resume Gate
-   - [x] 工作流类型：[模块工作 | 项目级工作]
+   - [x] 工作流类型：[模块级工作 | 项目级工作]
    - [x] resolved_workstream_key：[<module>__<submodule-or-none> | project__<slug>]
-   - [x] 预期加载文件：[列出完整路径]
-   - [x] 实际加载文件：[列出完整路径]
-   - [x] 跳过/缺失项：[项目级时列出跳过的module/submodule，或缺失文件]
+   - [x] 默认启动已加载文件：[列出完整路径]
+   - [x] 按需升级读取：[无 | 列出额外读取文件]
+   - [x] 跳过/缺失项：[项目级时列出跳过的 module/submodule，或列出缺失项]
    - [x] resume_status: complete | partial | blocked
    - [x] handoff 路径：docs/agent/handoff/workstreams/<workstream_key>/（非 docs/agent/prompts/handoff_template.md）
    ```
 
-5. 输出"已加载文件"清单，明确列出实际加载了哪些文件
-6. **加载完成后，必须显式询问用户**："记忆已加载，是否执行[推荐操作]？"，**等待用户明确说"继续"、"执行"或"是"后，才能执行任何工具操作**
+6. 输出"已加载文件"清单，明确列出实际加载了哪些文件
+
+7. **加载完成后，必须显式询问用户**："记忆已加载，是否执行[推荐操作]？"，**等待用户明确说"继续"、"执行"或"是"后，才能执行任何工具操作**
 
 **为什么重要**：
-- 如果 handoff 显示"阻塞点是设计决策"，不应编译，而应先解决设计问题
-- 如果 memory 规定"当前阶段不跑全量测试"，不应跑测试
+- 默认启动路径必须尽量小，避免新对话一开始就加载过量上下文
+- handoff 负责当前状态，memory/README 负责稳定规则；二者不能互相替代
 - 跨机器恢复时，必须先恢复上下文，再精准继续
 
 ## 11. 推荐代理工作流

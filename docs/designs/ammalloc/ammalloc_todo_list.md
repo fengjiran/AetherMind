@@ -204,16 +204,35 @@
 - 方案：使用全局 `ObjectPool<ThreadCache>` 替代裸页分配。
 
 - [x] #### **PageMap Root 静态化 [Optimize]**
-- 背景：`PageMap` 的 radix tree root 节点通过 `ObjectPool<RadixRootNode>` 动态分配，但整个生命周期只会有一个 root 实例，使用对象池过于冗余。
-- 方案：
-  1. 移除 `radix_root_pool_`，改为静态 `RadixRootNode radix_root_storage_`
-  2. `SetSpan` 中初始化时直接使用 `&radix_root_storage_`，先清空 children 再 release store 到 `root_`
-  3. `Reset()` 不再释放 root pool，仅保留 `root_=nullptr` 和 `radix_node_pool_.ReleaseMemory()`
-- 涉及文件：
-  - `ammalloc/include/ammalloc/page_cache.h` - 字段声明变更
-  - `ammalloc/src/page_cache.cpp` - SetSpan/Reset 逻辑调整
-- 状态：**已完成 (2026-03-17)**
-- 验证：20/20 单测通过，PageCache 基准测试正常
+  - 背景：`PageMap` 的 radix tree root 节点通过 `ObjectPool<RadixRootNode>` 动态分配，但整个生命周期只会有一个 root 实例，使用对象池过于冗余。
+  - 方案：
+    1. 移除 `radix_root_pool_`，改为静态 `RadixRootNode radix_root_storage_`
+    2. `SetSpan` 中初始化时直接使用 `&radix_root_storage_`，先清空 children 再 release store 到 `root_`
+    3. `Reset()` 不再释放 root pool，仅保留 `root_=nullptr` 和 `radix_node_pool_.ReleaseMemory()`
+  - 涉及文件：
+    - `ammalloc/include/ammalloc/page_cache.h` - 字段声明变更
+    - `ammalloc/src/page_cache.cpp` - SetSpan/Reset 逻辑调整
+  - 状态：**已完成 (2026-03-17)**
+  - 验证：20/20 单测通过，PageCache 基准测试正常
+
+- [ ] #### **拆分 MAP_POPULATE 与 MADV_WILLNEED 配置 [Config/Perf]**
+  - 背景：当前 `use_map_populate_` 同时控制：
+    - Normal Page 路径的 `MAP_POPULATE`（mmap 时预分配）
+    - Huge Page 路径的 `MADV_WILLNEED`（预取提示）
+  - 问题：
+    - 两者语义不同：`MAP_POPULATE` 是强制预分配，`MADV_WILLNEED` 是建议性提示
+    - 延迟影响不同：Normal Page 通常 4KB-1MB，Huge Page 可能 2MB-256MB+
+    - 无法独立控制不同路径的延迟策略
+  - 方案：
+    ```cpp
+    class RuntimeConfig {
+        bool use_map_populate_ = false;           // 兼容旧配置
+        std::optional<bool> populate_for_normal_; // 独立控制 Normal Page
+        std::optional<bool> willneed_for_huge_;   // 独立控制 Huge Page
+    };
+    ```
+  - 优先级：P2（当前共用配置够用，精细化调优场景需求不明确）
+  - 参考：Code Review P2-3
 
 ### 🟡 P2: 功能对齐 (Feature Parity)
 *对齐 TCMalloc/Jemalloc 的核心功能，使其具备在生产环境长期运行的能力。*
@@ -273,9 +292,83 @@
 ### 🔵 P3: 架构演进 (Architecture Evolution)
 *面向超大规模 NUMA 架构或特殊场景的长期规划。*
 
+- [ ] **实现 Page 来源标记机制 (Source Tagging) [Architecture/Correctness]**
+  - 背景：`SystemFree` 当前通过 `size == HUGE_PAGE_SIZE && IsHugePageAligned(ptr)` 判断是否可放入 HugePageCache。这个启发式规则过于脆弱：
+    - `AllocNormalPage` 理论上也可能返回 2MB 对齐地址
+    - 非大页路径分配的内存也可能满足条件
+    - 无法区分内存来源，可能错误缓存非大页来源的内存
+  - 方案：
+    1. **短期**：在 `page_allocator.h` 文档化当前策略是临时启发式，明确局限性
+    2. **中期**：引入 `FreeFlags` 参数区分来源：
+       ```cpp
+       enum class FreeFlags : uint8_t {
+           kNone = 0,
+           kFromHugePage = 1 << 0,    // 来自大页分配路径
+           kFromNormalPage = 1 << 1,  // 来自普通页分配路径
+       };
+       void SystemFree(void* ptr, size_t page_num, FreeFlags flags = FreeFlags::kNone);
+       ```
+    3. **长期**：由上层 `Span` 元数据携带来源标记，`PageCache` 在释放时传递给 `PageAllocator`
+  - 风险：不修复可能导致缓存污染，后续 `Get()` 返回的内存块不符合预期属性
+  - 优先级：P3（当前启发式在 v1 可用，但应在架构演进中解决）
+  - 相关文件：`ammalloc/include/ammalloc/page_allocator.h`、`ammalloc/src/page_allocator.cpp`
+  - 参考：Code Review P1-5、ADR-003 (乐观大页策略)
+
+- [ ] **大页策略重构 (Huge Page Strategy Overhaul) [Architecture/Perf]**
+  - 背景：当前大页策略存在多个可优化点：
+    - **乐观对齐命中率未知**：exact-size mmap 返回 2MB 对齐地址的概率极低（ASLR 下约 0.005%），但缺乏统计数据支撑
+    - **THP 合并延迟不可控**：`MADV_HUGEPAGE` 依赖 khugepaged 异步合并，可能存在 10ms+ 延迟尖刺
+    - **MAP_HUGETLB 未利用**：显式大页可提供严格延迟保证，但需要系统配置
+    - **缺少大页来源追踪**：无法区分内存块是来自 THP 还是预留大页
+  - 方案：
+    1. **短期（数据驱动）**：增加对齐命中率统计
+       ```cpp
+       // 在 AllocHugePage 中增加
+       if (IsHugePageAligned(ptr)) {
+           stats_.huge_exact_align_hit_count.fetch_add(1, ...);
+       } else {
+           stats_.huge_exact_align_miss_count.fetch_add(1, ...);
+       }
+       ```
+    2. **中期（可选 MAP_HUGETLB）**：作为可配置的后端选项
+       ```cpp
+       struct RuntimeConfig {
+           bool use_explicit_huge_pages_{false};  // 是否尝试 MAP_HUGETLB
+       };
+       // AllocHugePage 中：先尝试 MAP_HUGETLB（若启用），失败则 fallback 到 THP
+       ```
+    3. **长期（大页策略抽象层）**：
+       ```cpp
+       class HugePageBackend {
+       public:
+           virtual ~HugePageBackend() = default;
+           virtual void* Allocate(size_t size) = 0;
+           virtual void Deallocate(void* ptr, size_t size) = 0;
+       };
+       // 可插拔实现：THPBackend, HugeTLBBackend, HybridBackend
+       ```
+  - 技术对比：
+    | 策略 | 优点 | 缺点 | 适用场景 |
+    |------|------|------|---------|
+    | THP (MADV_HUGEPAGE) | 零配置、灵活 | 异步合并、延迟不可控 | 通用场景 |
+    | MAP_HUGETLB | 严格延迟保证、立即分配 | 需预留、不可换出、SIGBUS 风险 | HFT、DPDK |
+  - 风险：
+    - MAP_HUGETLB 需 root 预留大页，池耗尽时触发 SIGBUS
+    - 大页内存不可换出，可能导致其他进程 OOM
+    - 内部碎片：分配 2MB 但只用部分会浪费物理内存
+  - 优先级：P3（当前 THP 策略在 v1 可用，演进提升可配置性和延迟确定性）
+  - 相关文件：`ammalloc/src/page_allocator.cpp`、`ammalloc/include/ammalloc/config.h`
+  - 参考：Code Review P2-2、ADR-003、业界实践（TCMalloc Temeraire、Jemalloc HPA）
+  - 子任务：
+    - [ ] 增加对齐命中率统计（`huge_exact_align_hit_count`、`huge_exact_align_miss_count`）
+    - [ ] 评估是否保留乐观对齐策略或直接 over-allocate + trim
+    - [ ] 实现 MAP_HUGETLB 可选后端
+    - [ ] 设计大页来源追踪机制（THP vs HugeTLB）
+    - [ ] 文档化大页配置指南（Docker/Kubernetes 环境）
+
 - [ ] **PageCache 分片 (Sharding) [Scalability]**
-- 背景：在超多核（>64 Core）场景下，PageCache 的全局大锁可能成为瓶颈。
-- 方案：将 PageCache 拆分为多个独立的 PageHeap（例如按 CPU ID 取模），降低锁粒度。
+  - 背景：在超多核（>64 Core）场景下，PageCache 的全局大锁可能成为瓶颈。
+  - 方案：将 PageCache 拆分为多个独立的 PageHeap（例如按 CPU ID 取模），降低锁粒度。
 
 - [ ] **NUMA 感知 (NUMA Awareness) [Perf]**
 

@@ -17,6 +17,8 @@ docs/agent/handoff/
 
 每个 handoff 文件必须包含 YAML frontmatter：
 
+**模块级示例**：
+
 ```yaml
 ---
 kind: handoff
@@ -29,6 +31,7 @@ submodule: thread_cache
 slug: null                        # 模块工作：必须为 null
 agent: sisyphus
 status: active                    # active | superseded | closed
+bootstrap_ready: false            # 默认 false；仅当 handoff 足以支撑低上下文恢复时才写 true
 memory_status: not_needed         # not_needed | pending | applied（默认 not_needed）
 supersedes: null                  # 被本 handoff 取代的旧文件（可选）
 closed_at: null                   # 关闭时间（仅 status=closed）
@@ -36,7 +39,8 @@ closed_reason: null               # 关闭原因（仅 status=closed）
 ---
 ```
 
-**项目级工作示例**：
+**项目级示例**：
+
 ```yaml
 ---
 kind: handoff
@@ -49,6 +53,7 @@ submodule: null                   # 项目级工作：必须为 null
 slug: docs-reorg                  # 项目级工作：填写 slug
 agent: sisyphus
 status: active
+bootstrap_ready: false            # 默认 false；仅当 handoff 足以支撑低上下文恢复时才写 true
 memory_status: not_needed
 supersedes: null
 closed_at: null
@@ -68,10 +73,16 @@ closed_reason: null
 - `pending`：有稳定结论待回写
 - `applied`：已回写 stable memory 或 ADR
 
+**bootstrap_ready（低上下文恢复资格）**：
+- `false`：默认值；恢复时只可作为 handoff 候选，不能单独替代更深层 memory
+- `true`：该 handoff 已包含继续工作所需的最小恢复信息，可优先用于低上下文恢复
+- 缺失字段时，Reader **必须**按 `false` 处理，确保旧 handoff 走安全降级路径
+
 ### 向后兼容
 
 - Reader 必须接受 `schema_version: "1.0"` 和 `"1.1"`
 - 缺失字段使用默认值：
+  - `bootstrap_ready: false`
   - `memory_status: not_needed`
   - `status: active`
   - `supersedes: null`
@@ -102,6 +113,7 @@ status: active, memory_status: pending/not_needed
 2. **排序**：按 `created_at` 降序，文件名字典序 tie-break
 3. **忽略**：`superseded` 和 `closed`（保留用于审计和排查）
 4. **空结果**：如果没有 `active`，从 memory 重新开始
+5. **低上下文恢复**：只有 `bootstrap_ready: true` 的 handoff 才可直接支撑最小启动路径；否则必须按 Agent 规则升级读取 `module.md`、`submodule.md` 或 `docs/agent/memory/README.md`
 
 ## 同步机制
 
@@ -121,3 +133,8 @@ git pull
 
 - 完整规范见 `docs/agent/memory/README.md` 的 "Handoff 存储规范" 章节
 - 快捷恢复流程见 `docs/agent/prompts/quick_resume.md`
+
+## 设计约束
+
+- handoff 只保存**当前状态增量**，不重复长期稳定规则
+- 默认启动时优先使用最小可行上下文；但缺失 `bootstrap_ready` 或值为 `false` 时，必须安全降级为更完整的记忆加载路径

@@ -40,7 +40,7 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) Span {
 
     // Calculated data offset (avoids storing full pointer).
     uint32_t obj_offset{0};// Offset from page base to first object
-    uint32_t padding{0};   // Cache line alignment
+    uint32_t owner_shard_id{0};   // Cache line alignment
 
     // Cold data: used by background scavenger thread.
     uint64_t last_used_time_ms{0};

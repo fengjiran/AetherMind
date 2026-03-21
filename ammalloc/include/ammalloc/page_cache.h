@@ -100,6 +100,52 @@ private:
 #define PAGE_CACHE_FRIENDS_TEST
 #endif
 
+/// One shard of PageCache free-span state.
+///
+/// Minimal design:
+/// - One mutex per shard
+/// - One bucket array per shard
+/// - One Span metadata pool per shard
+///
+/// First-stage rule:
+/// - Allocation and release always happen through the owning shard
+/// - Coalescing is only allowed within the owner shard
+class alignas(SystemConfig::CACHE_LINE_SIZE) PageCacheShard {
+public:
+    PageCacheShard() = default;
+    ~PageCacheShard() = default;
+
+    PageCacheShard(const PageCacheShard&) = delete;
+    PageCacheShard& operator=(const PageCacheShard&) = delete;
+
+    AM_NODISCARD bool IsBucketEmpty(size_t bucket_idx) const noexcept {
+        AM_DCHECK(bucket_idx < span_lists_.size());
+        return span_lists_[bucket_idx].empty();
+    }
+
+    AM_NODISCARD std::mutex& GetMutex() noexcept {
+        return mutex_;
+    }
+
+
+private:
+    // Protected by mutex_.
+    std::mutex mutex_;
+    /// Free lists indexed by span size in pages. Index 0 is unused.
+    std::array<SpanList, PageConfig::MAX_PAGE_NUM + 1> span_lists_{};
+    ObjectPool<Span> span_pool_{};
+
+    /// Core allocation logic. Assumes lock is held.
+    Span* AllocSpanLocked(size_t page_num);
+
+    /// Core release path. Caller must hold mutex_.
+    void ReleaseSpanLocked(Span* span) noexcept;
+
+    friend class PageCache;
+    PAGE_CACHE_FRIENDS_TEST;
+    friend class PageHeapScavenger;
+};
+
 
 /// Global singleton managing page-level memory allocation.
 ///

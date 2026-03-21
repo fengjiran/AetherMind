@@ -141,19 +141,26 @@ private:
     /// Core release path. Caller must hold mutex_.
     void ReleaseSpanLocked(Span* span) noexcept;
 
+    /// Reset this shard only. Caller must hold mutex_ and ensure quiescent state.
+    void ResetLocked();
+
     friend class PageCache;
     PAGE_CACHE_FRIENDS_TEST;
     friend class PageHeapScavenger;
 };
 
-
-/// Global singleton managing page-level memory allocation.
+/// Global PageCache manager.
 ///
-/// PageCache manages Spans (contiguous page ranges) as the backend for
-/// CentralCache. It handles span splitting, coalescing, and OS allocation.
-/// Uses a leaky singleton pattern to avoid destruction order issues.
+/// External API remains close to the current single-instance design, but
+/// internal mutable state is partitioned into shards.
 ///
-/// Thread-safety: All public methods acquire the global mutex internally.
+/// Current rollout plan:
+/// - active_shard_count_ may remain 1 on single-NUMA/dev machines
+/// - later it can be increased for logical sharding or NUMA-aware sharding
+///
+/// Ownership rule:
+/// - Every Span has an owner_shard_id
+/// - Release always routes back to owner shard
 class PageCache {
 public:
     /// Returns the singleton instance.
@@ -169,16 +176,22 @@ public:
 
     /// Allocates a span with at least `page_num` pages.
     ///
-    /// Thread-safe; acquires the global lock internally.
+    /// Current policy:
+    /// - Select a shard
+    /// - Lock only that shard
+    /// - Allocate from that shard's free lists / pool
+    ///
     /// @return The allocated span, or nullptr if system allocation fails.
     Span* AllocSpan(size_t page_num) {
         std::lock_guard<std::mutex> lock(mutex_);
         return AllocSpanLocked(page_num);
     }
 
-    /// Returns a span to the cache and attempts coalescing with neighbors.
+    /// Return a span to its owner shard.
     ///
-    /// Thread-safe; acquires the global lock internally.
+    /// Current policy:
+    /// - Owner shard is recorded in Span::owner_shard_id
+    /// - Release/coalescing happens only inside owner shard
     void ReleaseSpan(Span* span) noexcept;
 
     /// Resets the cache to its initial state.

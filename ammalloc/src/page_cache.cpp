@@ -163,6 +163,39 @@ void PageMap::Reset() {
     radix_node_pool_.ReleaseMemory();
 }
 
+// Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
+//     if (page_num == 0 || page_num > std::numeric_limits<uint32_t>::max()) {
+//         return nullptr;
+//     }
+//
+//     while (true) {
+//         // 1. Oversized Allocation:
+//         // Requests larger than the max bucket (>128 pages) go directly to the OS.
+//         // clang-format off
+//         if (page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
+//             void* ptr = PageAllocator::SystemAlloc(page_num);
+//             if (!ptr) {
+//                 return nullptr;
+//             }
+//
+//             Span* span = nullptr;
+//             try {
+//                 span = span_pool_.New(details::PtrToPageId(ptr), page_num);
+//             } catch (const std::bad_alloc&) {
+//                 PageAllocator::SystemFree(ptr, page_num);
+//                 return nullptr;
+//             }
+//             span->SetUsed(true);
+//             span->SetCommitted(true);
+//
+//             // Register relationship in Radix Tree.
+//             PageMap::SetSpan(span);
+//             return span;
+//         }
+//         // clang-format on
+//     }
+// }
+
 Span* PageCache::AllocSpanLocked(size_t page_num) {
     if (page_num > std::numeric_limits<uint32_t>::max()) {
         return nullptr;
@@ -187,6 +220,7 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
             }
             span->SetUsed(true);
             span->SetCommitted(true);
+            span->owner_shard_id = 0;
 
             // Register relationship in Radix Tree.
             PageMap::SetSpan(span);

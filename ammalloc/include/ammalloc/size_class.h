@@ -4,7 +4,7 @@
 // Size Class grading system.
 //
 // Responsible for mapping arbitrary memory requests to fixed-size buckets,
-// controlling internal fragmentation to < 12.5%.
+// controlling internal fragmentation to ~12.5%-25% depending on kStepShift.
 // Uses TCMalloc-style size classing:
 //   - Small objects: Table lookup O(1)
 //   - Large objects: Bitwise operations O(1)
@@ -27,24 +27,22 @@
 
 #include <array>
 #include <bit>
-#include <cstddef>
-#include <cstdint>
 #include <limits>
 
 namespace aethermind {
 
 namespace details {
 
-static constexpr size_t CalculateIndex(size_t size) noexcept {
-    if (size == 0) {
+static constexpr size_t CalculateIndex(size_t orignal_size) noexcept {
+    if (orignal_size == 0) {
         return 0;
     }
 
     // Fast path for small objects: 8-byte alignment (0-128 bytes)
     // Maps [1, 8] -> 0, ..., [121, 128] -> 15
     // clang-format off
-    if (size <= 128) AM_LIKELY {
-        return (size - 1) >> 3;
+    if (orignal_size <= 128) AM_LIKELY {
+        return (orignal_size - 1) >> 3;
     }
     // clang-format on
 
@@ -53,11 +51,11 @@ static constexpr size_t CalculateIndex(size_t size) noexcept {
     // 2. group_idx: Normalize msb so that the first group starts at index 0.
     // 3. base_idx: Calculate the starting index of the group.
     // 4. group_offset: Subdivide each power-of-2 group into 2^kStepShift steps.
-    int msb = std::bit_width(size - 1) - 1;
+    int msb = std::bit_width(orignal_size - 1) - 1;
     int group_idx = msb - 7;
     size_t base_idx = 16 + (group_idx << SizeConfig::kStepShift);
     int shift = msb - SizeConfig::kStepShift;
-    size_t group_offset = ((size - 1) >> shift) & (SizeConfig::kStepsPerGroup - 1);
+    size_t group_offset = ((orignal_size - 1) >> shift) & (SizeConfig::kStepsPerGroup - 1);
 
     return base_idx + group_offset;
 }
@@ -117,45 +115,57 @@ static_assert(details::CalculateIndex(160) == 16);
 /// The alignment strategy follows the Google TCMalloc algorithm:
 /// - [1, 128] bytes: 8-byte alignment.
 /// - [129, ...] bytes: Exponentially increasing alignment granularity to keep
-///   internal fragmentation low (typically < 12.5%).
+///   internal fragmentation low (~12.5%-25% depending on kStepShift).
 class SizeClass {
 public:
     /// Maps a requested memory size to its corresponding size class index.
     ///
     /// This function implements a hybrid mapping strategy to balance memory overhead
     /// and lookup speed:
-    /// 1. Linear Mapping (0 - 128B): Precise 8-byte alignment for the most frequent
+    /// 1. Linear Mapping [1, 128] bytes: Precise 8-byte alignment for the most frequent
     ///    small allocations.
     /// 2. Logarithmic Stepped Mapping (128B+): Uses a geometric progression (groups)
     ///    to maintain a constant relative fragmentation (~12.5% to 25% depending on
     ///    kStepShift) while significantly reducing the number of FreeLists in ThreadCache.
     ///
-    /// @param size The requested allocation size in bytes.
+    /// Special case for size=0:
+    /// - `Index(0)` returns 0 (maps to the minimum 8-byte size class).
+    /// - This design allows mapping interfaces (Index, RoundUp) to handle size=0 gracefully,
+    ///   while strategy interfaces (CalculateBatchSize, GetMovePageNum) treat 0 as invalid input.
+    /// - Rationale: `am_malloc(0)` must return a valid pointer (C standard), so the mapping
+    ///   layer accommodates it; batch/page calculations don't make sense for zero-sized objects.
+    ///
+    /// @param original_size The requested allocation size in bytes.
     /// @return The zero-based index of the size class, or std::numeric_limits<size_t>::max()
-    ///         if the size is invalid or exceeds MAX_TC_SIZE.
+    ///         if the size exceeds MAX_TC_SIZE.
     ///
     /// @note This implementation is branch-prediction friendly and utilizes C++20
     ///       bit-manipulation (std::bit_width) for O(1) performance without large tables.
-    AM_ALWAYS_INLINE static constexpr size_t Index(size_t size) noexcept {
+    AM_ALWAYS_INLINE static constexpr size_t Index(size_t original_size) noexcept {
         // clang-format off
-        if (size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
+        if (original_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
             return std::numeric_limits<size_t>::max();
         }
 
         // Fast path: O(1) table lookup for small objects
-        if (size <= SizeConfig::kSmallSizeThreshold) AM_LIKELY {
-            return small_index_table_[size];
+        if (original_size <= SizeConfig::kSmallSizeThreshold) AM_LIKELY {
+            return small_index_table_[original_size];
         }
         // clang-format on
 
         // Slow path: Mathematical calculation for large objects
-        return details::CalculateIndex(size);
+        return details::CalculateIndex(original_size);
     }
 
-    /// Reconstructs the maximum object size for a given size class index.
+    /// Reconstructs the bucket size for a given size class index.
     ///
-    /// This function serves as the exact inverse of Index.
-    /// It decodes the logical index back into the actual byte size of the memory block.
+    /// This function decodes the logical index back into the actual byte size
+    /// of the memory block. It satisfies:
+    /// - `Index(Size(idx)) == idx` for all valid indices
+    /// - `Size(Index(s)) >= s` for all valid sizes (not strict equality)
+    ///
+    /// Thus Size is a left-inverse of Index, but not a strict bijection
+    /// because Index maps multiple sizes to the same class (e.g., 129→16, 160→16).
     ///
     /// ### Mathematical Inverse Model
     ///
@@ -200,14 +210,23 @@ public:
         return size_table_[idx];
     }
 
-    /// Rounds up the requested size to the nearest aligned size class.
-    /// @param size User requested size.
-    /// @return Aligned size.
-    AM_ALWAYS_INLINE static constexpr size_t RoundUp(size_t size) noexcept {
-        size_t idx = Index(size);
+    /// Rounds up the requested size to the nearest size class boundary.
+    ///
+    /// Behavior:
+    /// - For `size <= MAX_TC_SIZE`: Returns the smallest size class >= size.
+    /// - For `size > MAX_TC_SIZE`: Returns `size` unchanged (passthrough).
+    ///
+    /// The passthrough behavior for oversize values means this function does NOT
+    /// guarantee alignment for large allocations outside ThreadCache's scope.
+    /// Callers must handle oversize allocations separately (e.g., direct page allocation).
+    ///
+    /// @param original_size User requested size.
+    /// @return Aligned size class, or original size if exceeds MAX_TC_SIZE.
+    AM_ALWAYS_INLINE static constexpr size_t RoundUp(size_t original_size) noexcept {
+        size_t idx = Index(original_size);
         // clang-format off
-        if (idx == std::numeric_limits<size_t>::max()) {
-            return size;
+        if (idx == std::numeric_limits<size_t>::max()) AM_UNLIKELY {
+            return original_size;
         }
         // clang-format on
 
@@ -224,31 +243,16 @@ public:
     /// - Small objects: Move more objects (up to 512) to amortize the cost of locking CentralCache.
     /// - Large objects: Move fewer objects (down to 2) to prevent ThreadCache from hoarding memory.
     ///
-    /// @param size The size of the object.
+    /// @param orignal_size The original object size.
     /// @return Number of objects to move in one batch.
-    static constexpr size_t CalculateBatchSize(size_t size) noexcept {
+    static constexpr size_t CalculateBatchSize(size_t orignal_size) noexcept {
         // clang-format off
-        if (size == 0) AM_UNLIKELY {
+        if (orignal_size == 0 || orignal_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
             return 0;
         }
         // clang-format on
 
-        // Base strategy: Inverse proportion to size.
-        // Example: 32KB / 8B = 4096 (Clamped to 512).
-        // Example: 32KB / 32KB = 1 (Clamped to 2).
-        size_t batch = SizeConfig::MAX_TC_SIZE / size;
-        // Lower bound: Always move at least 2 objects to leverage cache locality.
-        if (batch < 2) {
-            batch = 2;
-        }
-
-        // At most 512, to prevent the central cache pool from being drained instantly
-        // Upper bound: Cap at 512 to prevent CentralCache depletion and excessive ThreadCache footprint.
-        if (batch > kMaxBatchSize) {
-            batch = kMaxBatchSize;
-        }
-
-        return batch;
+        return CalculateBatchSizeByNormSize(RoundUp(orignal_size));
     }
 
     /// Calculates the number of pages CentralCache should request from PageCache.
@@ -257,20 +261,25 @@ public:
     /// It ensures that a single Span can satisfy multiple batch requests from ThreadCache,
     /// reducing the frequency of accessing the global PageCache lock.
     ///
-    /// @param size The size of the object.
+    /// @param orignal_size The original size of the object.
     /// @return Number of pages to allocate (1 to MAX_PAGE_NUM).
-    static constexpr size_t GetMovePageNum(size_t size) noexcept {
+    static constexpr size_t GetMovePageNum(size_t orignal_size) noexcept {
+        // clang-format off
+        if (orignal_size == 0 || orignal_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
+            return 0;
+        }
+        // clang-format on
+
+        const auto norm_size = RoundUp(orignal_size);
+
         // 1. Get the batch size used by ThreadCache.
-        size_t batch_num = CalculateBatchSize(size);
-        if (batch_num == 0) AM_UNLIKELY {
-                return 0;
-            }
+        size_t batch_num = CalculateBatchSizeByNormSize(norm_size);
 
         // 2. Amortization Goal:
         // We want the Span to hold enough objects for approximately 8 batch transfers.
         size_t total_objs = batch_num << 3;
         // 3. Convert total bytes to pages.
-        size_t total_bytes = total_objs * size;
+        size_t total_bytes = total_objs * norm_size;
         // Optimization: For tiny objects, ensure we allocate at least 32KB (8 pages)
         // to minimize metadata overhead (Span structure + Bitmap) per object.
         if (total_bytes < 32 * 1024) {
@@ -278,10 +287,6 @@ public:
         }
 
         size_t page_num = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
-        // 4. Boundary Enforcement
-        if (page_num < 1) {
-            page_num = 1;
-        }
 
         if (page_num > PageConfig::MAX_PAGE_NUM) {
             page_num = PageConfig::MAX_PAGE_NUM;
@@ -299,6 +304,29 @@ public:
     static constexpr size_t kMaxBatchSize = 512;
 
 private:
+    /// Internal helper: input must already be normalized to a valid size class.
+    static constexpr size_t CalculateBatchSizeByNormSize(size_t norm_size) noexcept {
+        AM_DCHECK(norm_size != 0);
+        AM_DCHECK(norm_size <= SizeConfig::MAX_TC_SIZE);
+        AM_DCHECK(norm_size == RoundUp(norm_size));
+
+        // Base strategy: inversely proportional to object size.
+        size_t batch = SizeConfig::MAX_TC_SIZE / norm_size;
+
+        // Always move at least 2 objects to retain some spatial/cache locality.
+        if (batch < 2) {
+            batch = 2;
+        }
+
+        // Cap the refill burst to avoid draining CentralCache too aggressively
+        // and inflating ThreadCache footprint.
+        if (batch > kMaxBatchSize) {
+            batch = kMaxBatchSize;
+        }
+
+        return batch;
+    }
+
     // -----------------------------------------------------------------------
     // Compile-time Lookup Tables (IILE)
     // -----------------------------------------------------------------------
@@ -334,6 +362,96 @@ static_assert(SizeClass::Index(SizeClass::Size(20)) == 20);
 static_assert(SizeClass::Index(129) == 16);
 static_assert(SizeClass::Index(150) == 16);
 
+static_assert(SizeClass::Index(0) == 0);
+static_assert(SizeClass::RoundUp(0) == 8);
+static_assert(SizeClass::kNumSizeClasses <= std::numeric_limits<uint8_t>::max());
+
+// MAX_TC_SIZE must be a power of two to land exactly on a size class boundary.
+// With kStepsPerGroup=4, each power-of-2 interval is evenly divided,
+// so 2^n (n>=7) is always the upper bound of some size class.
+static_assert(std::has_single_bit(SizeConfig::MAX_TC_SIZE),
+              "MAX_TC_SIZE must be a power of two to ensure it lands on a size class boundary");
+static_assert(SizeClass::Size(SizeClass::kNumSizeClasses - 1) == SizeConfig::MAX_TC_SIZE);
+
+// ===========================================================================
+// Compile-time validation for SizeClass invariants
+// Uses sampling strategy to avoid constexpr step limit (32K iterations exceeds limit)
+// ===========================================================================
+
+namespace details {
+
+// Sample key boundaries: each size class boundary + 1
+consteval bool ValidateIndexInRangeSampled() {
+    for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
+        size_t class_size = SizeClass::Size(idx);
+        // Test the class boundary and the value just before it
+        if (idx > 0) {
+            size_t prev_class = SizeClass::Size(idx - 1);
+            // Value at previous class boundary
+            if (SizeClass::Index(prev_class) != idx - 1) return false;
+            // Value just inside this class
+            if (SizeClass::Index(prev_class + 1) != idx) return false;
+        }
+        // Value at this class boundary
+        if (SizeClass::Index(class_size) != idx) return false;
+    }
+    return true;
+}
+
+consteval bool ValidateSizeNotLessThanInputSampled() {
+    // Test at each class boundary
+    for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
+        size_t class_size = SizeClass::Size(idx);
+        // At boundary: Size(Index(s)) == s
+        if (SizeClass::Size(SizeClass::Index(class_size)) != class_size) return false;
+        // Just inside class: Size(Index(s)) > s
+        if (idx > 0) {
+            size_t prev_class = SizeClass::Size(idx - 1);
+            size_t mid = (prev_class + class_size) / 2;
+            if (SizeClass::Size(SizeClass::Index(mid)) < mid) return false;
+        }
+    }
+    return true;
+}
+
+consteval bool ValidateIndexIdempotentSampled() {
+    for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
+        size_t class_size = SizeClass::Size(idx);
+        // Index(Size(Index(s))) == Index(s) at boundaries
+        if (SizeClass::Index(SizeClass::Size(SizeClass::Index(class_size))) != SizeClass::Index(class_size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Full validation: only 48 indices, fits within constexpr limit
+consteval bool ValidateSizeMonotonic() {
+    for (size_t idx = 1; idx < SizeClass::kNumSizeClasses; ++idx) {
+        if (SizeClass::Size(idx) <= SizeClass::Size(idx - 1)) return false;
+    }
+    return true;
+}
+
+consteval bool ValidateRoundUpMonotonicSampled() {
+    // Test at each class boundary
+    size_t prev = SizeClass::RoundUp(1);
+    for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
+        size_t class_size = SizeClass::Size(idx);
+        size_t curr = SizeClass::RoundUp(class_size);
+        if (curr < prev) return false;
+        prev = curr;
+    }
+    return true;
+}
+
+}// namespace details
+
+static_assert(details::ValidateIndexInRangeSampled(), "Index(s) must map to valid class at boundaries");
+static_assert(details::ValidateSizeNotLessThanInputSampled(), "Size(Index(s)) must be >= s at class boundaries");
+static_assert(details::ValidateIndexIdempotentSampled(), "Index(Size(Index(s))) must equal Index(s) at boundaries");
+static_assert(details::ValidateSizeMonotonic(), "Size(idx) must be strictly increasing");
+static_assert(details::ValidateRoundUpMonotonicSampled(), "RoundUp(s) must be non-decreasing at class boundaries");
 }// namespace aethermind
 
 #endif// AETHERMIND_AMMALLOC_SIZE_CLASS_H

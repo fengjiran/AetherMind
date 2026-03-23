@@ -8,7 +8,7 @@ module: ammalloc
 submodule: thread_cache
 slug: null
 agent: sisyphus
-status: active
+status: superseded
 bootstrap_ready: true
 memory_status: not_needed
 supersedes: 20260311T103000Z--ses_example_001--sisyphus.md

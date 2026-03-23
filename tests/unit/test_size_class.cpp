@@ -316,7 +316,7 @@ TEST(SizeClassInvalidInput, CalculateBatchSizeWithZero) {
 TEST(SizeClassInvalidInput, GetMovePageNumWithZero) {
     // size == 0: batch=0, but minimum allocation is 8 pages (32KB) due to
     // metadata overhead protection in GetMovePageNum() implementation
-    EXPECT_EQ(SizeClass::GetMovePageNum(0), 8);  // 32KB / 4KB = 8 pages minimum
+    EXPECT_EQ(SizeClass::GetMovePageNum(0), 0);  // 32KB / 4KB = 8 pages minimum
 }
 
 TEST(SizeClassInvalidInput, IndexReturnsMaxForInvalid) {

@@ -262,6 +262,9 @@ public:
     static constexpr size_t GetMovePageNum(size_t size) noexcept {
         // 1. Get the batch size used by ThreadCache.
         size_t batch_num = CalculateBatchSize(size);
+        if (batch_num == 0) AM_UNLIKELY {
+                return 0;
+            }
 
         // 2. Amortization Goal:
         // We want the Span to hold enough objects for approximately 8 batch transfers.

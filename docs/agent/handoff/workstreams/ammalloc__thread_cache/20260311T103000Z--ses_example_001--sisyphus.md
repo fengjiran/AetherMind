@@ -8,11 +8,11 @@ module: ammalloc
 submodule: thread_cache
 slug: null
 agent: sisyphus
-status: active
+status: superseded
 memory_status: pending
 supersedes: null
-closed_at: null
-closed_reason: null
+closed_at: 2026-03-23T12:55:44Z
+closed_reason: "Superseded by new handoff: size=0 semantics analysis completed"
 ---
 
 # ThreadCache FreeList 动态水位线实现

@@ -1,8 +1,8 @@
 //
 // Created by richard on 2/4/26.
 //
-#include "ammalloc/size_class.h"
 #include "ammalloc/common.h"
+#include "ammalloc/size_class.h"
 
 #include <cstring>
 #include <gtest/gtest.h>
@@ -95,7 +95,7 @@ TEST(CommonUtilsTest, AlignUp) {
     EXPECT_EQ(details::AlignUp(7, 8), 8);
     EXPECT_EQ(details::AlignUp(8, 8), 8);
     EXPECT_EQ(details::AlignUp(9, 8), 16);
-    
+
     EXPECT_EQ(details::AlignUp(4095, 4096), 4096);
     EXPECT_EQ(details::AlignUp(4096, 4096), 4096);
     EXPECT_EQ(details::AlignUp(4097, 4096), 8192);
@@ -107,7 +107,7 @@ TEST(CommonUtilsTest, AlignUp) {
     EXPECT_EQ(details::AlignUp(8, 7), 14);
 
     // 3. Edge cases
-    EXPECT_EQ(details::AlignUp(0, 8), 8); // Special handling in impl
+    EXPECT_EQ(details::AlignUp(0, 8), 8);// Special handling in impl
 }
 
 TEST(CommonUtilsTest, PtrToPageId) {
@@ -115,12 +115,12 @@ TEST(CommonUtilsTest, PtrToPageId) {
         void* ptr1 = reinterpret_cast<void*>(0x0);
         EXPECT_EQ(details::PtrToPageId(ptr1), 0);
 
-        void* ptr2 = reinterpret_cast<void*>(0xFFF); // 4095
+        void* ptr2 = reinterpret_cast<void*>(0xFFF);// 4095
         EXPECT_EQ(details::PtrToPageId(ptr2), 0);
 
-        void* ptr3 = reinterpret_cast<void*>(0x1000); // 4096
+        void* ptr3 = reinterpret_cast<void*>(0x1000);// 4096
         EXPECT_EQ(details::PtrToPageId(ptr3), 1);
-        
+
         // Inverse check
         EXPECT_EQ(details::PageIDToPtr(1), ptr3);
     }
@@ -131,9 +131,9 @@ TEST(SizeClassTest, SmallObjectMapping) {
     // Index 0 -> 8
     // ...
     // Index 15 -> 128
-    
+
     // Check 0 (Should map to 8)
-    EXPECT_EQ(SizeClass::Index(0), 0); // Logic handles 0
+    EXPECT_EQ(SizeClass::Index(0), 0);// Logic handles 0
     EXPECT_EQ(SizeClass::Index(1), 0);
     EXPECT_EQ(SizeClass::Index(8), 0);
     EXPECT_EQ(SizeClass::Size(0), 8);
@@ -147,7 +147,7 @@ TEST(SizeClassTest, SmallObjectMapping) {
 
 TEST(SizeClassTest, LargeObjectMapping) {
     // Range [129, ...]
-    // The first large group is [129, 256]. 
+    // The first large group is [129, 256].
     // It should have 4 steps (kStepsPerGroup = 4).
     // Interval size = 256 - 128 = 128.
     // Step size = 128 / 4 = 32.
@@ -179,7 +179,7 @@ TEST(SizeClassTest, MaxSizeBoundary) {
     // MAX_TC_SIZE is 32KB = 32768
     size_t max_size = SizeConfig::MAX_TC_SIZE;
     size_t last_idx = SizeClass::Index(max_size);
-    
+
     EXPECT_NE(last_idx, std::numeric_limits<size_t>::max());
     EXPECT_EQ(SizeClass::Size(last_idx), max_size);
 
@@ -197,18 +197,18 @@ TEST(SizeClassTest, RoundUp) {
 TEST(SizeClassTest, ComprehensiveRoundTrip) {
     // Verify Size(Index(s)) >= s for ALL sizes up to MAX_TC_SIZE
     // And ensure consistency: Index(Size(Index(s))) == Index(s)
-    
+
     // We can iterate every single byte size since 32KB is small enough for a unit test
     for (size_t s = 1; s <= SizeConfig::MAX_TC_SIZE; ++s) {
         size_t idx = SizeClass::Index(s);
-        
+
         // 1. Basic sanity
         EXPECT_LT(idx, SizeClass::kNumSizeClasses) << "Index out of bounds for size " << s;
-        
+
         // 2. Size coverage
         size_t aligned_size = SizeClass::Size(idx);
         EXPECT_GE(aligned_size, s) << "Aligned size smaller than requested for size " << s;
-        
+
         // 3. Mapping consistency
         // If we request the aligned size, we should get the same index
         EXPECT_EQ(SizeClass::Index(aligned_size), idx) << "Inconsistent mapping for size " << s;
@@ -217,7 +217,7 @@ TEST(SizeClassTest, ComprehensiveRoundTrip) {
         // Ensure that 's' couldn't fit in the previous bucket
         if (idx > 0) {
             size_t prev_aligned_size = SizeClass::Size(idx - 1);
-            EXPECT_GT(s, prev_aligned_size) << "Size " << s << " should have fit in index " << (idx-1);
+            EXPECT_GT(s, prev_aligned_size) << "Size " << s << " should have fit in index " << (idx - 1);
         }
     }
 }
@@ -252,18 +252,18 @@ TEST(SizeClassTest, BatchStrategy) {
 TEST(SizeClassTest, MovePageConfiguration) {
     // Validate Page Allocation for CentralCache
     // Key requirement: (PageNum * PAGE_SIZE) >= (BatchSize * ObjSize)
-    
+
     for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
         size_t obj_size = SizeClass::Size(idx);
         size_t batch_num = SizeClass::CalculateBatchSize(obj_size);
         size_t page_num = SizeClass::GetMovePageNum(obj_size);
-        
+
         size_t total_alloc_bytes = page_num * SystemConfig::PAGE_SIZE;
         size_t needed_bytes = batch_num * obj_size;
 
-        EXPECT_GE(total_alloc_bytes, needed_bytes) 
-            << "Not enough pages allocated for batch! Index: " << idx << " Size: " << obj_size;
-        
+        EXPECT_GE(total_alloc_bytes, needed_bytes)
+                << "Not enough pages allocated for batch! Index: " << idx << " Size: " << obj_size;
+
         // Also check upper bound (should not allocate excessively if not needed)
         // This is a heuristic check, just ensuring we don't return 0 or crazy numbers
         EXPECT_GE(page_num, 1);
@@ -282,7 +282,7 @@ TEST(SizeClassTest, FragmentationAnalysis) {
     }
 
     double avg_fragmentation = total_waste / total_alloc;
-    EXPECT_LT(avg_fragmentation, 0.125);  // < 12.5%
+    EXPECT_LT(avg_fragmentation, 0.125);// < 12.5%
 }
 
 TEST(SizeClassTest, SafeSizeBounds) {
@@ -314,9 +314,7 @@ TEST(SizeClassInvalidInput, CalculateBatchSizeWithZero) {
 }
 
 TEST(SizeClassInvalidInput, GetMovePageNumWithZero) {
-    // size == 0: batch=0, but minimum allocation is 8 pages (32KB) due to
-    // metadata overhead protection in GetMovePageNum() implementation
-    EXPECT_EQ(SizeClass::GetMovePageNum(0), 0);  // 32KB / 4KB = 8 pages minimum
+    EXPECT_EQ(SizeClass::GetMovePageNum(0), 0);
 }
 
 TEST(SizeClassInvalidInput, IndexReturnsMaxForInvalid) {
@@ -328,4 +326,4 @@ TEST(SizeClassInvalidInput, IndexReturnsMaxForInvalid) {
     EXPECT_EQ(SizeClass::Index(over_max * 2), std::numeric_limits<size_t>::max());
 }
 
-} // namespace
+}// namespace

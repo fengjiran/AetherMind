@@ -27,22 +27,25 @@
 
 #include <array>
 #include <bit>
+#include <cstdint>
 #include <limits>
 
 namespace aethermind {
 
 namespace details {
 
-static constexpr size_t CalculateIndex(size_t orignal_size) noexcept {
-    if (orignal_size == 0) {
+static constexpr size_t CalculateIndex(size_t original_size) noexcept {
+    if (original_size == 0) {
         return 0;
     }
 
-    // Fast path for small objects: 8-byte alignment (0-128 bytes)
-    // Maps [1, 8] -> 0, ..., [121, 128] -> 15
+    // Linear mapping for the first size range: 8-byte alignment in [1, 128].
+    // Maps [1, 8] -> 0, ..., [121, 128] -> 15.
+    // Index() uses table lookup up to kSmallSizeThreshold; this helper only
+    // describes the underlying piecewise mapping formula.
     // clang-format off
-    if (orignal_size <= 128) AM_LIKELY {
-        return (orignal_size - 1) >> 3;
+    if (original_size <= 128) AM_LIKELY {
+        return (original_size - 1) >> 3;
     }
     // clang-format on
 
@@ -51,11 +54,11 @@ static constexpr size_t CalculateIndex(size_t orignal_size) noexcept {
     // 2. group_idx: Normalize msb so that the first group starts at index 0.
     // 3. base_idx: Calculate the starting index of the group.
     // 4. group_offset: Subdivide each power-of-2 group into 2^kStepShift steps.
-    int msb = std::bit_width(orignal_size - 1) - 1;
+    int msb = std::bit_width(original_size - 1) - 1;
     int group_idx = msb - 7;
     size_t base_idx = 16 + (group_idx << SizeConfig::kStepShift);
     int shift = msb - SizeConfig::kStepShift;
-    size_t group_offset = ((orignal_size - 1) >> shift) & (SizeConfig::kStepsPerGroup - 1);
+    size_t group_offset = ((original_size - 1) >> shift) & (SizeConfig::kStepsPerGroup - 1);
 
     return base_idx + group_offset;
 }
@@ -140,7 +143,9 @@ public:
     ///         if the size exceeds MAX_TC_SIZE.
     ///
     /// @note This implementation is branch-prediction friendly and utilizes C++20
-    ///       bit-manipulation (std::bit_width) for O(1) performance without large tables.
+    ///       bit-manipulation (std::bit_width) for O(1) performance. Index() uses
+    ///       a precomputed lookup table for sizes in [0, kSmallSizeThreshold], and
+    ///       falls back to the arithmetic mapping formula for larger in-range sizes.
     AM_ALWAYS_INLINE static constexpr size_t Index(size_t original_size) noexcept {
         // clang-format off
         if (original_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
@@ -239,60 +244,39 @@ public:
 
     /// Calculates the batch size for moving objects between ThreadCache and CentralCache.
     ///
-    /// This strategy balances lock contention and memory usage:
+    /// This strategy balances lock contention and memory usage.
+    /// The policy is defined per size class, not per raw request size: requests
+    /// that map to the same class always get the same batch size.
+    ///
     /// - Small objects: Move more objects (up to 512) to amortize the cost of locking CentralCache.
     /// - Large objects: Move fewer objects (down to 2) to prevent ThreadCache from hoarding memory.
     ///
-    /// @param orignal_size The original object size.
-    /// @return Number of objects to move in one batch.
-    static constexpr size_t CalculateBatchSize(size_t orignal_size) noexcept {
+    /// @param original_size Requested or already-rounded object size.
+    /// @return Number of objects to move in one batch, or 0 for invalid input.
+    static constexpr size_t CalculateBatchSize(size_t original_size) noexcept {
         // clang-format off
-        if (orignal_size == 0 || orignal_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
+        if (original_size == 0 || original_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
             return 0;
         }
         // clang-format on
 
-        return CalculateBatchSizeByNormSize(RoundUp(orignal_size));
+        return BatchByIndex(Index(original_size));
     }
 
     /// Calculates the number of pages CentralCache should request from PageCache.
     ///
     /// This strategy determines the size of the Span (in pages) allocated by CentralCache.
+    /// The policy is defined per size class, not per raw request size: requests
+    /// that map to the same class always get the same span size.
+    ///
     /// It ensures that a single Span can satisfy multiple batch requests from ThreadCache,
     /// reducing the frequency of accessing the global PageCache lock.
     ///
-    /// @param orignal_size The original size of the object.
-    /// @return Number of pages to allocate (1 to MAX_PAGE_NUM).
-    static constexpr size_t GetMovePageNum(size_t orignal_size) noexcept {
-        // clang-format off
-        if (orignal_size == 0 || orignal_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
-            return 0;
-        }
-        // clang-format on
-
-        const auto norm_size = RoundUp(orignal_size);
-
-        // 1. Get the batch size used by ThreadCache.
-        size_t batch_num = CalculateBatchSizeByNormSize(norm_size);
-
-        // 2. Amortization Goal:
-        // We want the Span to hold enough objects for approximately 8 batch transfers.
-        size_t total_objs = batch_num << 3;
-        // 3. Convert total bytes to pages.
-        size_t total_bytes = total_objs * norm_size;
-        // Optimization: For tiny objects, ensure we allocate at least 32KB (8 pages)
-        // to minimize metadata overhead (Span structure + Bitmap) per object.
-        if (total_bytes < 32 * 1024) {
-            total_bytes = 32 * 1024;
-        }
-
-        size_t page_num = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
-
-        if (page_num > PageConfig::MAX_PAGE_NUM) {
-            page_num = PageConfig::MAX_PAGE_NUM;
-        }
-
-        return page_num;
+    /// @param original_size Requested or already-rounded object size.
+    /// @return Number of pages to allocate, or 0 for invalid input.
+    AM_ALWAYS_INLINE static constexpr size_t GetMovePageNum(size_t original_size) noexcept {
+        if (original_size == 0 || original_size > SizeConfig::MAX_TC_SIZE) return 0;
+        return MovePagesByIndex(Index(original_size));
     }
 
     SizeClass() = delete;
@@ -304,27 +288,12 @@ public:
     static constexpr size_t kMaxBatchSize = 512;
 
 private:
-    /// Internal helper: input must already be normalized to a valid size class.
-    static constexpr size_t CalculateBatchSizeByNormSize(size_t norm_size) noexcept {
-        AM_DCHECK(norm_size != 0);
-        AM_DCHECK(norm_size <= SizeConfig::MAX_TC_SIZE);
-        AM_DCHECK(norm_size == RoundUp(norm_size));
+    AM_ALWAYS_INLINE static uint16_t BatchByIndex(size_t idx) noexcept {
+        return batch_table_[idx];
+    }
 
-        // Base strategy: inversely proportional to object size.
-        size_t batch = SizeConfig::MAX_TC_SIZE / norm_size;
-
-        // Always move at least 2 objects to retain some spatial/cache locality.
-        if (batch < 2) {
-            batch = 2;
-        }
-
-        // Cap the refill burst to avoid draining CentralCache too aggressively
-        // and inflating ThreadCache footprint.
-        if (batch > kMaxBatchSize) {
-            batch = kMaxBatchSize;
-        }
-
-        return batch;
+    AM_ALWAYS_INLINE static uint16_t MovePagesByIndex(size_t idx) noexcept {
+        return move_page_table_[idx];
     }
 
     // -----------------------------------------------------------------------
@@ -349,6 +318,43 @@ private:
             size_table[idx] = static_cast<uint32_t>(details::CalculateSize(idx));
         }
         return size_table;
+    }();
+
+    static constexpr auto batch_table_ = []() consteval {
+        std::array<uint16_t, kNumSizeClasses> t{};
+        for (size_t idx = 0; idx < kNumSizeClasses; ++idx) {
+            size_t norm = size_table_[idx];
+            size_t batch = SizeConfig::MAX_TC_SIZE / norm;
+            if (batch < 2) {
+                batch = 2;
+            }
+            if (batch > kMaxBatchSize) {
+                batch = kMaxBatchSize;
+            }
+            t[idx] = static_cast<uint16_t>(batch);
+        }
+        return t;
+    }();
+
+    static constexpr auto move_page_table_ = []() consteval {
+        std::array<uint16_t, kNumSizeClasses> t{};
+        for (size_t idx = 0; idx < kNumSizeClasses; ++idx) {
+            size_t norm = size_table_[idx];
+            size_t batch = batch_table_[idx];
+            size_t total_objs = batch << 3;
+            size_t total_bytes = total_objs * norm;
+            if (total_bytes < 32 * 1024) {
+                total_bytes = 32 * 1024;
+            }
+
+            size_t pages = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
+            if (pages > PageConfig::MAX_PAGE_NUM) {
+                pages = PageConfig::MAX_PAGE_NUM;
+            }
+
+            t[idx] = static_cast<uint16_t>(pages);
+        }
+        return t;
     }();
 };
 

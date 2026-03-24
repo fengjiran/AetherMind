@@ -8,11 +8,11 @@ module: ammalloc
 submodule: size_class
 slug: null
 agent: sisyphus
-status: active
+status: superseded
 memory_status: applied
 supersedes: 20260311T173411Z--ses_32289f06dffeW3U7ptRE7LLU0z--sisyphus.md
-closed_at: null
-closed_reason: null
+closed_at: 2026-03-24T10:32:36Z
+closed_reason: "Superseded by updated SizeClass implementation and design-doc sync handoff"
 ---
 
 # Handoff: ammalloc size_class Code Review Fixes

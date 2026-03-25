@@ -30,7 +30,7 @@ status: active
 - `docs/`：架构文档、memory 体系与提示词。
 
 ## 已确认事实
-- 项目当前阶段是 Phase 1：CPU 嵌入式推理运行时，目标模型族为 Llama，主接口形态为 C/C++ API；产品边界见 `docs/products/aethermind_prd.md`。
+- 项目当前阶段是 Phase 1：桌面/服务器 CPU 本地推理运行时，目标模型族为 Llama，主接口形态为 C/C++ API；产品边界见 `docs/products/aethermind_prd.md`。
 - 语言与构建基线：C++20、CMake >= 3.28；核心库目标为 `AetherMind`，内存池目标为 `ammalloc`。
 - 验证入口：`aethermind_unit_tests` 使用 GoogleTest，`aethermind_benchmark` 使用 Google Benchmark。
 - 目录约定以 `AGENTS.md` 为索引：公共头文件放在 `include/`，核心实现放在 `src/`，第三方代码放在 `3rdparty/` 且默认不改。

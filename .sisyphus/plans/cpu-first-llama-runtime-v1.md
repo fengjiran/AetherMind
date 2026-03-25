@@ -1,9 +1,9 @@
 # CPU-First Llama Runtime V1
 
 ## TL;DR
-> **Summary**: Build a narrow V1 embedded inference runtime for Llama-family decoder-only models in the existing AetherMind codebase, using CPU-first execution, HuggingFace Safetensors import, hybrid operator dispatch, and a stable C++/C ABI. The plan deliberately defers serving, multi-request scheduling, GPU backends, and a generic graph runtime until single-request end-to-end CPU generation is stable.
+> **Summary**: Build a narrow V1 desktop/server CPU local inference runtime for Llama-family decoder-only models in the existing AetherMind codebase, using CPU-first execution, HuggingFace Safetensors import, hybrid operator dispatch, and a stable C++/C ABI. The plan deliberately defers serving, multi-request scheduling, GPU backends, and a generic graph runtime until single-request end-to-end CPU generation is stable.
 > **Deliverables**:
-> - Embedded runtime module for single-process, single-model, single-request decode
+> - Local inference runtime module for single-process, single-model, single-request decode on desktop/server CPUs
 > - HuggingFace `config.json` + Safetensors loader and internal weight repack path
 > - CPU kernel registry/dispatch table for reference + quantized paths
 > - KV cache, prefill/decode loop, greedy sampling, and deterministic golden tests
@@ -18,7 +18,7 @@
 Design a detailed architecture and implementation plan for a large-model inference engine.
 
 ### Interview Summary
-- Product shape: embedded runtime first, not a serving system
+- Product shape: local runtime first for desktop/server CPUs, not a serving system
 - Model scope: Llama-family decoder-only first
 - Deployment target: CPU-first
 - Capacity target: up to 7B, with INT4/INT8 support under a shared runtime architecture
@@ -38,7 +38,7 @@ Design a detailed architecture and implementation plan for a large-model inferen
 
 ## Work Objectives
 ### Core Objective
-Ship a CPU-first embedded runtime inside AetherMind that can load one supported HuggingFace-style Llama-family checkpoint, repack weights into an internal CPU layout, execute deterministic single-request generation with KV cache, and expose that flow through both C++ and C ABI entry points.
+Ship a CPU-first local runtime inside AetherMind for desktop/server CPUs that can load one supported HuggingFace-style Llama-family checkpoint, repack weights into an internal CPU layout, execute deterministic single-request generation with KV cache, and expose that flow through both C++ and C ABI entry points.
 
 ### Deliverables
 - Runtime module layout under new inference/runtime-oriented headers and sources

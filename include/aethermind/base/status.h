@@ -201,20 +201,47 @@ private:
     std::string message_;
 };
 
-#define AM_RETURN_IF_ERROR(expr)         \
-    do {                                 \
-        auto _status = (expr);           \
-        if (!_status.ok()) AM_UNLIKELY { \
-                return _status;          \
-            }                            \
+/// Evaluates expr and returns its status if not OK.
+///
+/// Compatible with both Status and StatusOr<T> return types.
+/// The expression is evaluated exactly once.
+///
+/// Example:
+///   StatusOr<int> ParseInt(const std::string& s);
+///   Status Run() {
+///     AM_RETURN_IF_ERROR(ParseInt("42"));  // Returns StatusOr<int>, converted to Status on error
+///     return Status::Ok();
+///   }
+#define AM_RETURN_IF_ERROR(expr)                   \
+    do {                                           \
+        auto am_status_result_ = (expr);           \
+        if (!am_status_result_.ok()) AM_UNLIKELY { \
+                return am_status_result_;          \
+            }                                      \
     } while (false)
 
-#define AM_RETURN_IF_ERROR_WITH_MSG(expr, msg)                                              \
-    do {                                                                                    \
-        auto _status = (expr);                                                              \
-        if (!_status.ok()) AM_UNLIKELY {                                                    \
-                return Status(_status.code(), std::string(msg) + ": " + _status.message()); \
-            }                                                                               \
+/// Evaluates expr and returns an augmented error status if not OK.
+///
+/// @warning Only use in functions returning Status. For StatusOr<T> return types,
+///          this macro will fail to compile because Status cannot implicitly convert
+///          to StatusOr<T>. Use AM_RETURN_IF_ERROR and construct error separately.
+///
+/// @param expr Expression returning Status or StatusOr<T>.
+/// @param msg  Prefix message to prepend to the original error message.
+///
+/// Example:
+///   Status LoadModel(const std::string& path) {
+///     AM_RETURN_IF_ERROR_WITH_MSG(OpenFile(path), "Failed to load model");
+///     // On error, returns: Status(INTERNAL, "Failed to load model: file not found")
+///     return Status::Ok();
+///   }
+#define AM_RETURN_IF_ERROR_WITH_MSG(expr, msg)                                        \
+    do {                                                                              \
+        auto am_status_result_ = (expr);                                              \
+        if (!am_status_result_.ok()) AM_UNLIKELY {                                    \
+                return Status(am_status_result_.code(),                               \
+                              std::string(msg) + ": " + am_status_result_.message()); \
+            }                                                                         \
     } while (false)
 
 /// Represents either a value of type T or a Status error.

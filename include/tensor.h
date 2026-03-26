@@ -16,7 +16,7 @@ public:
     explicit Tensor(const std::vector<int64_t>& shape,
                     int64_t storage_offset = 0,
                     DataType dtype = DataType::Float32(),
-                    Device device = Device(kCPU));
+                    Device device = Device::CPU());
 
     explicit Tensor(ObjectPtr<TensorImpl> impl);
 
@@ -111,4 +111,4 @@ private:
 }// namespace aethermind
 
 
-#endif//AETHERMIND_TENSOR_H
+#endif// AETHERMIND_TENSOR_H

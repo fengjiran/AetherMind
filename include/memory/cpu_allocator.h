@@ -19,7 +19,7 @@ public:
 
     AM_NODISCARD DataPtr allocate(size_t nbytes) const override {
         void* data = alloc_cpu(nbytes);
-        return {data, deleter, Device(kCPU)};
+        return {data, deleter, Device::CPU()};
     }
 
     static void deleter(void* ptr) {
@@ -36,4 +36,4 @@ public:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_CPU_ALLOCATOR_H
+#endif// AETHERMIND_CPU_ALLOCATOR_H

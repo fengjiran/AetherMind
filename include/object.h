@@ -6,6 +6,7 @@
 #define AETHERMIND_OBJECT_H
 
 #include "c_api.h"
+#include "macros.h"
 #include "utils/logging.h"
 
 #include <memory>
@@ -43,13 +44,13 @@ enum DeleterFlag : uint8_t {
 class Object {
 public:
     /*!
-    * \brief Default constructor, initializes a reference-counted object.
-    *
-    * \note Creates a new Object instance with reference count initialized to 0
-    * and deleter set to nullptr.
-    * Newly created objects require manual reference count management,
-    * typically wrapped using ObjectPtr.
-    */
+     * \brief Default constructor, initializes a reference-counted object.
+     *
+     * \note Creates a new Object instance with reference count initialized to 0
+     * and deleter set to nullptr.
+     * Newly created objects require manual reference count management,
+     * typically wrapped using ObjectPtr.
+     */
     Object();
 
     virtual ~Object() = default;
@@ -137,9 +138,9 @@ private:
      * for scenarios where a thread releases a lock or a resource, and other
      * threads that depend on that resource need to see the effects of the
      * release.
-     * If the strong reference count reaches zero after decrementing and the 
-     * weak reference count is one,  and a deleter function is set, the deleter 
-     * function will be invoked to destroy the object and free its memory. If the 
+     * If the strong reference count reaches zero after decrementing and the
+     * weak reference count is one,  and a deleter function is set, the deleter
+     * function will be invoked to destroy the object and free its memory. If the
      * weak reference count is greater than one, the deleter function will be
      * invoked to destroy the object only.
      */
@@ -796,4 +797,4 @@ struct hash<aethermind::WeakObjectPtr<T>> {
 };
 }// namespace std
 
-#endif//AETHERMIND_OBJECT_H
+#endif// AETHERMIND_OBJECT_H

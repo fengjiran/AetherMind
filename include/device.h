@@ -5,10 +5,12 @@
 #ifndef AETHERMIND_DEVICE_H
 #define AETHERMIND_DEVICE_H
 
+#include "aethermind/base/status.h"
 #include "container/string.h"
 #include "macros.h"
 
 #include <cstdint>
+#include <string_view>
 
 namespace aethermind {
 
@@ -66,7 +68,12 @@ public:
         return type_ == kCANN;
     }
 
+    AM_NODISCARD String ToString() const;
+
     AM_NODISCARD String str() const;
+
+    AM_NODISCARD static StatusOr<Device> Make(DeviceType type, int8_t index = -1);
+    AM_NODISCARD static StatusOr<Device> FromString(std::string_view text);
 
     static Device CPU();
     static Device CUDA();
@@ -92,6 +99,7 @@ private:
 
 String DeviceType2Str(DeviceType device_type, bool lower_case = false);
 bool IsValidDeviceType(DeviceType device_type);
+bool IsDeviceKindSupported(DeviceType device_type);
 std::ostream& operator<<(std::ostream& os, DeviceType device_type);
 std::ostream& operator<<(std::ostream& os, const Device& device);
 
@@ -117,4 +125,4 @@ struct hash<aethermind::Device> {
 
 }// namespace std
 
-#endif//AETHERMIND_DEVICE_H
+#endif// AETHERMIND_DEVICE_H

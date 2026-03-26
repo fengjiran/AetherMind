@@ -2,10 +2,10 @@
 // Created by 赵丹 on 25-6-17.
 //
 #include "dispatch_key_set.h"
+#include "env.h"
 #include "error.h"
 #include "function_traits.h"
 #include "tensor.h"
-#include "env.h"
 
 // #include <fmt/format.h>
 #include <gtest/gtest.h>
@@ -135,4 +135,8 @@ TEST(Tensor, random) {
     EXPECT_EQ(t2.use_count(), 1);
 }
 
+TEST(Tensor, reject_undefined_device) {
+    EXPECT_DEATH(UNUSED(Tensor({2, 2}, 0, DataType::Float32(), Device(kUndefined))), "device should be initialized");
 }
+
+}// namespace

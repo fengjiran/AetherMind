@@ -177,7 +177,7 @@ Tensor Tensor::randn(const std::vector<int64_t>& shape) {
 }
 
 Tensor Tensor::randint(int64_t low, int64_t high, const std::vector<int64_t>& shape) {
-    Tensor t(shape, 0, {DLDataTypeCode::kInt, 64, 1}, Device(kCPU));
+    Tensor t(shape, 0, {DLDataTypeCode::kInt, 64, 1}, Device::CPU());
     AM_CHECK(t.numel() > 0);
     std::random_device rd;
     std::mt19937 gen(rd());

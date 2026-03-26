@@ -57,4 +57,11 @@ TEST(Storage, data_ptr_context) {
     EXPECT_TRUE(data_ptr.get_deleter() == deleter2);
 }
 
+TEST(Storage, data_ptr_undefined_sentinel) {
+    DataPtr data_ptr;
+    EXPECT_TRUE(data_ptr.device() == Device(kUndefined));
+    data_ptr.clear();
+    EXPECT_TRUE(data_ptr.device() == Device(kUndefined));
 }
+
+}// namespace

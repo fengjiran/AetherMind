@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_UNIQUE_VOID_PTR_H
 #define AETHERMIND_UNIQUE_VOID_PTR_H
 
-#include "macros.h"
 #include "device.h"
+#include "macros.h"
 #include <memory>
 
 namespace aethermind {
@@ -79,7 +79,7 @@ public:
     DataPtr(void* data, deleter_type deleter, Device device)
         : data_(data), ctx_(std::make_unique<DataPtrContext>(data, deleter)), device_(device) {}
 
-    DataPtr() : DataPtr(nullptr, delete_nothing, Device(kUndefined)) {}
+    DataPtr() : DataPtr(nullptr, delete_nothing, UndefinedDevice()) {}
 
     AM_NODISCARD Device device() const {
         return device_;
@@ -120,7 +120,7 @@ public:
     void clear() {
         data_ = nullptr;
         ctx_.reset();
-        device_ = Device(kUndefined);
+        device_ = UndefinedDevice();
     }
 
     void unsafe_set_device(Device device) {
@@ -138,6 +138,10 @@ public:
     }
 
 private:
+    static Device UndefinedDevice() {
+        return Device(kUndefined);
+    }
+
     void* data_;// The underlying data pointer.
     std::unique_ptr<DataPtrContext> ctx_;
     Device device_;
@@ -161,4 +165,4 @@ inline bool operator!=(std::nullptr_t, const DataPtr& dp) noexcept {
 
 }// namespace aethermind
 
-#endif//AETHERMIND_UNIQUE_VOID_PTR_H
+#endif// AETHERMIND_UNIQUE_VOID_PTR_H

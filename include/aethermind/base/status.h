@@ -23,12 +23,10 @@
 #include "c_api.h"
 #include "macros.h"
 
-#include <cstdint>
+#include <concepts>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <type_traits>
-#include <utility>
 #include <variant>
 
 namespace aethermind {
@@ -244,7 +242,7 @@ private:
             }                                                                         \
     } while (false)
 
-/// Represents either a value of type T or a Status error.
+/// Represents either a value of type T or an error Status.
 ///
 /// Used for operations that return a value on success. Never holds Status::Ok().
 /// Template type T must not be a reference type or Status.
@@ -261,10 +259,19 @@ public:
     /// Static assertions ensure T is a valid type for StatusOr.
     static_assert(!std::is_reference_v<T>, "StatusOr<T&> is not supported");
     static_assert(!std::is_same_v<std::remove_cv_t<T>, Status>, "StatusOr<Status> is not supported");
+    static_assert(std::is_nothrow_move_constructible_v<T>,
+                  "StatusOr<T> requires T to be nothrow move-constructible for noexcept guarantee");
 
-    StatusOr(const T& value) : storage_(value) {}
+    template<typename U = T>
+        requires(!std::same_as<std::decay_t<U>, Status>) &&
+                (!std::same_as<std::decay_t<U>, StatusOr>) &&
+                std::convertible_to<U, T>
+    StatusOr(U&& value) : storage_(std::in_place_type<T>, std::forward<U>(value)) {}// NOLINT
 
-    StatusOr(T&& value) : storage_(std::move(value)) {}
+    // inplace ctor
+    template<typename... Args>
+    StatusOr(std::in_place_t, Args&&... args)// NOLINT
+        : storage_(std::in_place_type<T>, std::forward<Args>(args)...) {}
 
     /// Constructs from an error status. Throws std::invalid_argument if status.ok().
     ///
@@ -275,7 +282,7 @@ public:
         }
     }
 
-    StatusOr(Status&& status) : storage_(std::move(status)) {
+    StatusOr(Status&& status) : storage_(std::move(status)) {// NOLINT
         if (std::get<Status>(storage_).ok()) {
             throw std::invalid_argument("StatusOr error constructor requires non-OK status");
         }
@@ -287,7 +294,7 @@ public:
     StatusOr& operator=(StatusOr&&) noexcept = default;
     ~StatusOr() = default;
 
-    AM_NODISCARD bool ok() const {
+    AM_NODISCARD bool ok() const noexcept {
         return std::holds_alternative<T>(storage_);
     }
 
@@ -374,6 +381,14 @@ public:
 
     AM_NODISCARD T* operator->() {
         return &value();
+    }
+
+    AM_NODISCARD bool operator==(StatusCode code) const {
+        return status().code() == code;
+    }
+
+    AM_NODISCARD bool operator!=(StatusCode code) const {
+        return status().code() != code;
     }
 
 private:

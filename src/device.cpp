@@ -50,12 +50,15 @@ StatusOr<Device> Device::Make(DeviceType type, int8_t index) {
     if (!IsValidDeviceType(type) || type == DeviceType::kUndefined) {
         return Status::InvalidArgument("Unsupported device type");
     }
+
     if (index < -1) {
         return Status::InvalidArgument("Device index must be greater than or equal to -1");
     }
+
     if (type == DeviceType::kCPU && index > 0) {
         return Status::InvalidArgument("CPU device index must be -1 or 0");
     }
+
     return Device(type, index);
 }
 

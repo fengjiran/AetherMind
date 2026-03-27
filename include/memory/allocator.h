@@ -54,8 +54,9 @@ public:
 class AllocatorTable {
 public:
     static AllocatorTable& Global() {
-        static AllocatorTable inst;
-        return inst;
+        alignas(alignof(AllocatorTable)) static char storage[sizeof(AllocatorTable)];
+        static auto* inst = new (storage) AllocatorTable();
+        return *inst;
     }
 
     void set_allocator(DeviceType device, std::unique_ptr<Allocator> allocator) {

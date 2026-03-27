@@ -47,7 +47,7 @@ bool IsDeviceKindSupported(DeviceType device_type) {
 }
 
 StatusOr<Device> Device::Make(DeviceType type, int8_t index) {
-    if (!IsValidDeviceType(type) || type == DeviceType::kUndefined) {
+    if (!IsValidDeviceType(type)) {
         return Status::InvalidArgument("Unsupported device type");
     }
 
@@ -68,13 +68,15 @@ StatusOr<Device> Device::FromString(std::string_view text) {
     }
 
     if (text == std::string_view("cpu")) {
-        return Device::Make(DeviceType::kCPU, -1);
+        return Make(DeviceType::kCPU, -1);
     }
+
     if (text == std::string_view("cuda")) {
-        return Device::Make(DeviceType::kCUDA, -1);
+        return Make(DeviceType::kCUDA, -1);
     }
+
     if (text == std::string_view("cann")) {
-        return Device::Make(DeviceType::kCANN, -1);
+        return Make(DeviceType::kCANN, -1);
     }
 
     size_t colon = text.find(':');
@@ -85,7 +87,7 @@ StatusOr<Device> Device::FromString(std::string_view text) {
     std::string_view kind_part = text.substr(0, colon);
     std::string_view index_part = text.substr(colon + 1);
 
-    DeviceType type = DeviceType::kUndefined;
+    DeviceType type;
     if (kind_part == std::string_view("cpu")) {
         type = DeviceType::kCPU;
     } else if (kind_part == std::string_view("cuda")) {
@@ -103,15 +105,16 @@ StatusOr<Device> Device::FromString(std::string_view text) {
     int parsed = 0;
     const char* begin = index_part.data();
     const char* end = index_part.data() + index_part.size();
-    std::from_chars_result result = std::from_chars(begin, end, parsed);
-    if (result.ec != std::errc() || result.ptr != end) {
+    auto [ptr, ec] = std::from_chars(begin, end, parsed);
+    if (ec != std::errc() || ptr != end) {
         return Status::InvalidArgument("Device index must be an integer");
     }
+
     if (parsed < -1 || parsed > std::numeric_limits<int8_t>::max()) {
         return Status::InvalidArgument("Device index is out of range");
     }
 
-    return Device::Make(type, static_cast<int8_t>(parsed));
+    return Make(type, static_cast<int8_t>(parsed));
 }
 
 String Device::ToString() const {

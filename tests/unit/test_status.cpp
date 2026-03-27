@@ -23,13 +23,13 @@ TEST(Status, ErrorCarriesCodeAndMessage) {
 }
 
 TEST(Status, CAbiCodeMappingRoundTrip) {
-    EXPECT_EQ(aethermind::ToAMStatusCode(StatusCode::kOk), ::AM_STATUS_OK);
-    EXPECT_EQ(aethermind::ToAMStatusCode(StatusCode::kInvalidArgument), ::AM_STATUS_INVALID_ARGUMENT);
-    EXPECT_EQ(aethermind::ToAMStatusCode(StatusCode::kInternal), ::AM_STATUS_INTERNAL);
+    EXPECT_EQ(aethermind::ToAMStatusCode(StatusCode::kOk), AM_STATUS_OK);
+    EXPECT_EQ(aethermind::ToAMStatusCode(StatusCode::kInvalidArgument), AM_STATUS_INVALID_ARGUMENT);
+    EXPECT_EQ(aethermind::ToAMStatusCode(StatusCode::kInternal), AM_STATUS_INTERNAL);
 
-    EXPECT_EQ(aethermind::FromAMStatusCode(::AM_STATUS_OK), StatusCode::kOk);
-    EXPECT_EQ(aethermind::FromAMStatusCode(::AM_STATUS_NOT_FOUND), StatusCode::kNotFound);
-    EXPECT_EQ(aethermind::FromAMStatusCode(::AM_STATUS_UNAUTHENTICATED), StatusCode::kUnauthenticated);
+    EXPECT_EQ(aethermind::FromAMStatusCode(AM_STATUS_OK), StatusCode::kOk);
+    EXPECT_EQ(aethermind::FromAMStatusCode(AM_STATUS_NOT_FOUND), StatusCode::kNotFound);
+    EXPECT_EQ(aethermind::FromAMStatusCode(AM_STATUS_UNAUTHENTICATED), StatusCode::kUnauthenticated);
 }
 
 TEST(StatusOr, HoldsValue) {

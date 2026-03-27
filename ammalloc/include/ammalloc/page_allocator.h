@@ -125,7 +125,7 @@ private:
 /// The pool owns all allocated chunks until `ReleaseMemory()` or destruction.
 /// `New()` constructs `T` in-place and `Delete()` destroys `T` then recycles storage.
 template<typename T, size_t CHUNK_SIZE = 64 * 1024>
-    requires(sizeof(T) >= sizeof(void*) && std::default_initializable<T>)
+    requires(sizeof(T) >= sizeof(void*))
 class ObjectPool {
 public:
     ObjectPool() = default;
@@ -133,6 +133,7 @@ public:
     /// Allocates storage for one object and default-constructs `T` in-place.
     /// Throws `std::bad_alloc` if the underlying page allocation fails.
     template<typename... Args>
+        requires std::is_constructible_v<T, Args...>
     T* New(Args&&... args) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (free_list_) {

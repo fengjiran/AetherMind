@@ -127,7 +127,6 @@ public:
         return mutex_;
     }
 
-
 private:
     // Protected by mutex_.
     std::mutex mutex_;
@@ -147,6 +146,108 @@ private:
     friend class PageCache;
     PAGE_CACHE_FRIENDS_TEST;
     friend class PageHeapScavenger;
+};
+
+class PageCacheManager {
+public:
+    static PageCacheManager& GetInstance() {
+        // Uses placement new in static storage to avoid recursive allocation.
+        alignas(alignof(PageCacheManager)) static char storage[sizeof(PageCacheManager)];
+        static auto* instance = new (storage) PageCacheManager();
+        return *instance;
+    }
+
+    PageCacheManager(const PageCacheManager&) = delete;
+    PageCacheManager& operator=(const PageCacheManager&) = delete;
+
+    /// Allocate a span with at least `page_num` pages.
+    ///
+    /// Current policy:
+    /// - Select a shard
+    /// - Lock only that shard
+    /// - Allocate from that shard's free lists / pool
+    ///
+    /// @return nullptr on failure.
+    Span* AllocSpan(size_t page_num);
+
+    /// Return a span to its owner shard.
+    ///
+    /// Current policy:
+    /// - Owner shard is recorded in Span::owner_shard_id
+    /// - Release/coalescing happens only inside owner shard
+    void ReleaseSpan(Span* span) noexcept;
+
+    /// Reset all shards and the global page map.
+    ///
+    /// @pre Test-only / global quiescent state.
+    void Reset();
+
+    AM_NODISCARD bool IsBucketEmpty(size_t shard_id,
+                                    size_t bucket_idx) const noexcept {
+        AM_DCHECK(shard_id < active_shard_count_);
+        return shards_[shard_id].IsBucketEmpty(bucket_idx);
+    }
+
+    AM_NODISCARD uint16_t GetActiveShardCount() const noexcept {
+        return active_shard_count_;
+    }
+
+#ifdef AMMALLOC_TEST
+    /// Test-only: adjust the number of active shards.
+    ///
+    /// @pre Must be called only in quiescent state before concurrent use.
+    void SetActiveShardCountForTest(uint16_t shard_count) noexcept {
+        AM_DCHECK(shard_count >= 1);
+        AM_DCHECK(shard_count <= kMaxShardCount);
+        active_shard_count_ = shard_count;
+    }
+#endif
+
+private:
+    PageCacheManager() = default;
+
+    static constexpr uint16_t kMaxShardCount = 8;
+
+    /// Number of shards currently enabled.
+    ///
+    /// Minimal rollout:
+    /// - default = 1
+    /// - can later be bumped to 2/4/8 for logical sharding experiments
+    uint16_t active_shard_count_{1};
+
+    /// All shard state lives here.
+    std::array<PageCacheShard, kMaxShardCount> shards_{};
+
+    /// Current shard-selection hook.
+    ///
+    /// Minimal first implementation can simply return 0.
+    /// Later options:
+    /// - thread-id hash
+    /// - CPU-id hash
+    /// - NUMA-local shard selection
+    AM_NODISCARD uint16_t SelectShardForAlloc(size_t page_num) noexcept;
+
+    AM_NODISCARD PageCacheShard& GetShard(uint16_t shard_id) noexcept {
+        AM_DCHECK(shard_id < active_shard_count_);
+        return shards_[shard_id];
+    }
+
+    AM_NODISCARD const PageCacheShard& GetShard(uint16_t shard_id) const noexcept {
+        AM_DCHECK(shard_id < active_shard_count_);
+        return shards_[shard_id];
+    }
+
+    AM_NODISCARD PageCacheShard& OwnerShard(Span* span) noexcept {
+        AM_DCHECK(span != nullptr);
+        AM_DCHECK(span->owner_shard_id < active_shard_count_);
+        return shards_[span->owner_shard_id];
+    }
+
+    AM_NODISCARD const PageCacheShard& OwnerShard(const Span* span) const noexcept {
+        AM_DCHECK(span != nullptr);
+        AM_DCHECK(span->owner_shard_id < active_shard_count_);
+        return shards_[span->owner_shard_id];
+    }
 };
 
 /// Global PageCache manager.

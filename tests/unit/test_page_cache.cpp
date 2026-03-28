@@ -23,13 +23,13 @@ protected:
     }
 
     AM_NODISCARD bool IsBucketEmpty(size_t page_num) const {
-        return cache_.span_lists_[page_num].empty();
+        return cache_.GetSpanList(page_num).empty();
     }
 
     AM_NODISCARD size_t GetBucketSize(size_t page_num) const {
         size_t cnt = 0;
-        auto* cur = cache_.span_lists_[page_num].begin();
-        while (cur != cache_.span_lists_[page_num].end()) {
+        auto* cur = cache_.GetSpanList(page_num).begin();
+        while (cur != cache_.GetSpanList(page_num).end()) {
             ++cnt;
             cur = cur->next;
         }
@@ -37,8 +37,8 @@ protected:
     }
 
     AM_NODISCARD Span* GetBucketFrontOrNull(size_t page_num) {
-        auto* first = cache_.span_lists_[page_num].begin();
-        if (first == cache_.span_lists_[page_num].end()) {
+        auto* first = cache_.GetSpanList(page_num).begin();
+        if (first == cache_.GetSpanList(page_num).end()) {
             return nullptr;
         }
         return first;

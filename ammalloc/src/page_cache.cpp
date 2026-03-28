@@ -8,6 +8,11 @@
 
 namespace aethermind {
 
+uint64_t GetCurrentTimeMs() {
+    auto now = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+}
+
 Span* PageMap::GetSpan(size_t page_id) {
     // clang-format off
     // Acquire semantics ensure we see the initialized data of the root node
@@ -151,7 +156,7 @@ void PageMap::ClearRange(size_t start_page_id, size_t page_num) {
         size_t cnt = std::min(remaining_pages, PageConfig::RADIX_NODE_SIZE - i3);
 
         for (size_t k = 0; k < cnt; ++k) {
-            p3->children[i3 + k].store(nullptr, std::memory_order_relaxed);
+            p3->children[i3 + k].store(nullptr, std::memory_order_release);
         }
         cur_page_id += cnt;
         remaining_pages -= cnt;
@@ -180,7 +185,7 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
 
             Span* span = nullptr;
             try {
-                span = span_pool_.New(details::PtrToPageId(ptr), page_num);
+                span = span_pool_.New(details::PtrToPageId(ptr), static_cast<uint32_t>(page_num));
             } catch (const std::bad_alloc&) {
                 PageAllocator::SystemFree(ptr, page_num);
                 return nullptr;
@@ -204,8 +209,198 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
             span->SetCommitted(true);
             return span;
         }
+
+        // 3. Splitting (Best Fit / First Fit):
+        // Iterate through larger buckets to find a span we can split.
+        for (size_t i = page_num + 1; i <= PageConfig::MAX_PAGE_NUM; ++i) {
+            if (span_lists_[i].empty()) {
+                continue;
+            }
+
+            // Found a larger span.
+            auto* big_span = span_lists_[i].pop_front();
+            AM_DCHECK(big_span != nullptr);
+            AM_DCHECK(big_span->page_num == i);
+            AM_DCHECK(!big_span->IsUsed());
+            // Create a new span for the requested `page_num` (Head Split).
+            Span* small_span = nullptr;
+            try {
+                small_span = span_pool_.New(big_span->start_page_idx, static_cast<uint32_t>(page_num));
+            } catch (const std::bad_alloc&) {
+                // Rollback: Return the big span to the list.
+                span_lists_[i].push_front(big_span);
+                return nullptr;
+            }
+            small_span->SetUsed(true);
+            small_span->SetCommitted(true);
+            small_span->owner_shard_id = big_span->owner_shard_id;
+
+            // Adjust the remaining part of the big span (Tail).
+            big_span->start_page_idx += page_num;
+            big_span->page_num -= static_cast<uint32_t>(page_num);
+            big_span->SetUsed(false);
+            big_span->SetCommitted(true);
+            big_span->last_used_time_ms = GetCurrentTimeMs();
+            // Return the remainder to the appropriate free list.
+            span_lists_[big_span->page_num].push_front(big_span);
+
+            // Register both parts in the PageMap.
+            PageMap::SetSpan(small_span);
+            PageMap::SetSpan(big_span);
+            return small_span;
+        }
+
+        // 4. System Refill:
+        // If no suitable spans exist in cache, allocate a large block (128 pages) from OS.
+        // We request the MAX_PAGE_NUM to maximize cache efficiency.
+        size_t alloc_page_nums = PageConfig::MAX_PAGE_NUM;
+        void* ptr = PageAllocator::SystemAlloc(alloc_page_nums);
+        if (!ptr) {
+            return nullptr;
+        }
+
+        Span* span = nullptr;
+        try {
+            span = span_pool_.New(details::PtrToPageId(ptr), static_cast<uint32_t>(alloc_page_nums));
+        } catch (const std::bad_alloc&) {
+            PageAllocator::SystemFree(ptr, alloc_page_nums);
+            return nullptr;
+        }
+        span->SetUsed(false);
+        span->SetCommitted(true);
+        span->last_used_time_ms = GetCurrentTimeMs();
+        span->owner_shard_id = 0;
+        // Insert the new large span into the last bucket.
+        span_lists_[alloc_page_nums].push_front(span);
+        PageMap::SetSpan(span);
+        // Continue the loop:
+        // The next iteration will jump to step 3 (Splitting), finding the
+        // 128-page span we just added, splitting it, and returning the result.
     }
 }
+
+void PageCacheShard::ReleaseSpanLocked(Span* span) noexcept {
+    AM_DCHECK(span != nullptr);
+    // 1. Direct Return: If the Span is larger than the cache can manage (>128 pages),
+    // return it directly to the OS (PageAllocator).
+    // clang-format off
+    if (span->page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
+        auto* ptr = span->GetPageBaseAddr();
+        PageMap::ClearRange(span->start_page_idx, span->page_num);
+        PageAllocator::SystemFree(ptr, span->page_num);
+        span_pool_.Delete(span);
+        return;
+    }
+    // clang-format on
+
+    // 2. Merge Left within the same owner shard only.
+    while (true) {
+        if (span->start_page_idx == 0) {
+            break;
+        }
+        size_t left_id = span->start_page_idx - 1;
+        // Retrieve the Span managing the left page from the global PageMap.
+        auto* left_span = PageMap::GetSpan(left_id);
+        // Stop merging if:
+        // - Left page doesn't exist (not managed by us).
+        // - Left span is currently in use (in CentralCache).
+        // - Left span is not the same owner shard
+        // - Merged size would exceed the maximum bucket size.
+        if (!left_span || left_span->IsUsed() ||
+            left_span->owner_shard_id != span->owner_shard_id ||
+            span->page_num + left_span->page_num > PageConfig::MAX_PAGE_NUM) {
+            break;
+        }
+
+        // Perform merge: Remove left_span from its list, absorb it into 'span'.
+        span_lists_[left_span->page_num].erase(left_span);
+        span->start_page_idx = left_span->start_page_idx;// Update start to left
+        span->page_num += left_span->page_num;           // Increase size
+        // Corrupt metadata to safely detect dangling pointer access
+        // left_span->start_page_idx = std::numeric_limits<size_t>::max();
+        // left_span->page_num = 0;
+        // left_span->SetUsed(true);
+        span_pool_.Delete(left_span);// Destroy metadata
+    }
+
+    // 3. Merge Right: Check the page ID immediately following this span.
+    while (true) {
+        size_t right_id = span->start_page_idx + span->page_num;
+        auto* right_span = PageMap::GetSpan(right_id);
+        // Similar stop conditions as Merge Left.
+        if (!right_span || right_span->IsUsed() ||
+            right_span->owner_shard_id != span->owner_shard_id ||
+            span->page_num + right_span->page_num > PageConfig::MAX_PAGE_NUM) {
+            break;
+        }
+
+        // Perform merge: Remove right_span, absorb it.
+        span_lists_[right_span->page_num].erase(right_span);
+        span->page_num += right_span->page_num;// Start index stays same, size increases
+        // Corrupt metadata to safely detect dangling pointer access
+        // right_span->start_page_idx = std::numeric_limits<size_t>::max();
+        // right_span->page_num = 0;
+        // right_span->SetUsed(true);
+        span_pool_.Delete(right_span);
+    }
+
+    // 4. Insert back: Mark as unused and push to the appropriate bucket.
+    span->SetUsed(false);
+    span->SetCommitted(true);
+    span->obj_size = 0;
+    span->use_count = 0;
+    span->obj_offset = 0;
+    span->capacity = 0;
+    span->last_used_time_ms = GetCurrentTimeMs();
+
+    span_lists_[span->page_num].push_front(span);
+    // Update PageMap: Map ALL pages in this coalesced span to the span pointer.
+    // This ensures subsequent merge operations can find this span via any of its pages.
+    PageMap::SetSpan(span);
+}
+
+void PageCacheShard::ResetLocked() {
+    for (auto& list: span_lists_) {
+        while (!list.empty()) {
+            auto* span = list.pop_front();
+            AM_DCHECK(span != nullptr);
+            PageAllocator::SystemFree(span->GetPageBaseAddr(), span->page_num);
+            span_pool_.Delete(span);
+        }
+    }
+    span_pool_.ReleaseMemory();
+    PageMap::Reset();
+}
+
+#ifdef USE_PAGECACHE_SHARD
+Span* PageCache::AllocSpan(size_t page_num) {
+    const uint16_t shard_id = SelectShardForAlloc(page_num);
+    auto& shard = GetShard(shard_id);
+    std::lock_guard<std::mutex> lock(shard.GetMutex());
+    auto* span = shard.AllocSpanLocked(page_num);
+    if (span) {
+        span->owner_shard_id = shard_id;
+    }
+    return span;
+}
+
+void PageCache::ReleaseSpan(Span* span) noexcept {
+    AM_DCHECK(span != nullptr);
+    auto& shard = OwnerShard(span);
+    std::lock_guard<std::mutex> lock(shard.GetMutex());
+    shard.ReleaseSpanLocked(span);
+}
+
+void PageCache::Reset() {
+    // Test-only / quiescent-state reset.
+    for (uint16_t i = 0; i < active_shard_count_; ++i) {
+        auto& shard = shards_[i];
+        std::lock_guard<std::mutex> lock(shard.GetMutex());
+        shard.ResetLocked();
+    }
+    PageMap::Reset();
+}
+#else
 
 Span* PageCache::AllocSpanLocked(size_t page_num) {
     if (page_num > std::numeric_limits<uint32_t>::max()) {
@@ -400,5 +595,9 @@ void PageCache::Reset() {
     span_pool_.ReleaseMemory();
     PageMap::Reset();
 }
+
+
+#endif
+
 
 }// namespace aethermind

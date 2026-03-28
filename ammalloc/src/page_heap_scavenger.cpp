@@ -65,10 +65,11 @@ void PageHeapScavenger::ScavengeOnePass() {
     for (size_t i = PageConfig::MAX_PAGE_NUM; i > 0; --i) {
         Span* head = nullptr;
         Span* tail = nullptr;
+        auto& span_list = page_cache.GetSpanList(i);
         {
             std::lock_guard<std::mutex> lock(page_cache.GetMutex());
-            auto* cur = page_cache.span_lists_[i].begin();
-            while (cur != page_cache.span_lists_[i].end()) {
+            auto* cur = span_list.begin();
+            while (cur != span_list.end()) {
                 auto* next = cur->next;
                 if (cur->IsUsed()) {
                     spdlog::error("Scavenger: used span {} in free list.",
@@ -83,7 +84,7 @@ void PageHeapScavenger::ScavengeOnePass() {
                 }
 
                 if (now - cur->last_used_time_ms >= kIdleThresholdMs) {
-                    page_cache.span_lists_[i].erase(cur);
+                    span_list.erase(cur);
                     // Mark as "in use" to prevent ReleaseSpan from merging
                     cur->SetUsed(true);
 
@@ -124,7 +125,7 @@ void PageHeapScavenger::ScavengeOnePass() {
                 // Mark as unused to allow merging
                 cur->SetUsed(false);
                 cur->last_used_time_ms = GetCurrentTimeMs();
-                page_cache.span_lists_[i].push_back(cur);
+                span_list.push_back(cur);
                 cur = next;
             }
         }

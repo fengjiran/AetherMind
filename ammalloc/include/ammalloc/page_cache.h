@@ -17,6 +17,8 @@
 #ifndef AETHERMIND_MALLOC_PAGE_CACHE_H
 #define AETHERMIND_MALLOC_PAGE_CACHE_H
 
+#define USE_PAGECACHE_SHARD
+
 #include "ammalloc/page_allocator.h"
 #include "ammalloc/span.h"
 #include "macros.h"
@@ -25,10 +27,7 @@
 
 namespace aethermind {
 
-inline uint64_t GetCurrentTimeMs() {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-}
+uint64_t GetCurrentTimeMs();
 
 /// Root node of the radix tree page map.
 /// Aligned to page size to prevent false sharing.
@@ -127,6 +126,10 @@ public:
         return mutex_;
     }
 
+    AM_NODISCARD const std::mutex& GetMutex() const noexcept {
+        return mutex_;
+    }
+
 private:
     // Protected by mutex_.
     std::mutex mutex_;
@@ -134,7 +137,7 @@ private:
     std::array<SpanList, PageConfig::MAX_PAGE_NUM + 1> span_lists_{};
     ObjectPool<Span> span_pool_{};
 
-    /// Core allocation logic. Assumes lock is held.
+    /// Core allocation logic. Caller must hold mutex_.
     Span* AllocSpanLocked(size_t page_num);
 
     /// Core release path. Caller must hold mutex_.
@@ -148,17 +151,19 @@ private:
     friend class PageHeapScavenger;
 };
 
-class PageCacheManager {
+#ifdef USE_PAGECACHE_SHARD
+
+class PageCache {
 public:
-    static PageCacheManager& GetInstance() {
+    static PageCache& GetInstance() {
         // Uses placement new in static storage to avoid recursive allocation.
-        alignas(alignof(PageCacheManager)) static char storage[sizeof(PageCacheManager)];
-        static auto* instance = new (storage) PageCacheManager();
+        alignas(alignof(PageCache)) static char storage[sizeof(PageCache)];
+        static auto* instance = new (storage) PageCache();
         return *instance;
     }
 
-    PageCacheManager(const PageCacheManager&) = delete;
-    PageCacheManager& operator=(const PageCacheManager&) = delete;
+    PageCache(const PageCache&) = delete;
+    PageCache& operator=(const PageCache&) = delete;
 
     /// Allocate a span with at least `page_num` pages.
     ///
@@ -185,11 +190,37 @@ public:
     AM_NODISCARD bool IsBucketEmpty(size_t shard_id,
                                     size_t bucket_idx) const noexcept {
         AM_DCHECK(shard_id < active_shard_count_);
-        return shards_[shard_id].IsBucketEmpty(bucket_idx);
+        return GetShard(shard_id).IsBucketEmpty(bucket_idx);
     }
 
     AM_NODISCARD uint16_t GetActiveShardCount() const noexcept {
         return active_shard_count_;
+    }
+
+    AM_NODISCARD SpanList& GetSpanList(size_t i) noexcept {
+        return GetShard(0).span_lists_[i];
+    }
+
+    AM_NODISCARD const SpanList& GetSpanList(size_t i) const noexcept {
+        return GetShard(0).span_lists_[i];
+    }
+
+    AM_NODISCARD std::mutex& GetMutex() noexcept {
+        AM_DCHECK(active_shard_count_ == 1);
+        return GetShard(0).GetMutex();
+    }
+
+    AM_NODISCARD const std::mutex& GetMutex() const noexcept {
+        AM_DCHECK(active_shard_count_ == 1);
+        return GetShard(0).GetMutex();
+    }
+
+    AM_NODISCARD std::mutex& GetShardMutex(uint16_t shard_id) noexcept {
+        return GetShard(shard_id).GetMutex();
+    }
+
+    AM_NODISCARD const std::mutex& GetShardMutex(uint16_t shard_id) const noexcept {
+        return GetShard(shard_id).GetMutex();
     }
 
 #ifdef AMMALLOC_TEST
@@ -204,9 +235,9 @@ public:
 #endif
 
 private:
-    PageCacheManager() = default;
+    PageCache() = default;
 
-    static constexpr uint16_t kMaxShardCount = 8;
+    static constexpr uint16_t kMaxShardCount = 4;
 
     /// Number of shards currently enabled.
     ///
@@ -225,7 +256,9 @@ private:
     /// - thread-id hash
     /// - CPU-id hash
     /// - NUMA-local shard selection
-    AM_NODISCARD uint16_t SelectShardForAlloc(size_t page_num) noexcept;
+    AM_NODISCARD uint16_t SelectShardForAlloc(size_t page_num) noexcept {
+        return 0;
+    }
 
     AM_NODISCARD PageCacheShard& GetShard(uint16_t shard_id) noexcept {
         AM_DCHECK(shard_id < active_shard_count_);
@@ -250,6 +283,7 @@ private:
     }
 };
 
+#else
 /// Global PageCache manager.
 ///
 /// External API remains close to the current single-instance design, but
@@ -309,6 +343,10 @@ public:
         return mutex_;
     }
 
+    AM_NODISCARD SpanList& GetSpanList(size_t i) noexcept {
+        return span_lists_[i];
+    }
+
 private:
     // Protected by mutex_.
     std::mutex mutex_;
@@ -325,6 +363,9 @@ private:
     PAGE_CACHE_FRIENDS_TEST;
     friend class PageHeapScavenger;
 };
+
+#endif
+
 
 }// namespace aethermind
 

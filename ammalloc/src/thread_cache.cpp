@@ -24,13 +24,13 @@ void ThreadCache::ReleaseAll() {
     }
 }
 
-void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t size) {
-    const auto batch_num = SizeClass::CalculateBatchSize(size);
+void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t aligned_size) {
+    const auto batch_num = SizeClass::CalculateBatchSize(aligned_size);
 
     // Fetch from CentralCache (This involves locking in CentralCache)
     // 'list' is modified in-place by FetchRange.
     if (const auto fetch_num = std::min(batch_num, list.max_size());
-        CentralCache::GetInstance().FetchRange(list, fetch_num, size) == 0) {
+        CentralCache::GetInstance().FetchRange(list, fetch_num, aligned_size) == 0) {
         return nullptr;// Out of memory
     }
 
@@ -45,8 +45,8 @@ void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t size) {
     return list.pop();
 }
 
-void ThreadCache::DeallocateSlowPath(FreeList& list, size_t size) {
-    if (const auto batch_num = SizeClass::CalculateBatchSize(size);
+void ThreadCache::DeallocateSlowPath(FreeList& list, size_t aligned_size) {
+    if (const auto batch_num = SizeClass::CalculateBatchSize(aligned_size);
         list.max_size() < batch_num * 16) {
         size_t inc = batch_num / 4;
         if (inc == 0) {
@@ -66,7 +66,7 @@ void ThreadCache::DeallocateSlowPath(FreeList& list, size_t size) {
         }
 
         // Send the list to CentralCache
-        CentralCache::GetInstance().ReleaseListToSpans(start, size);
+        CentralCache::GetInstance().ReleaseListToSpans(start, aligned_size);
     }
 }
 

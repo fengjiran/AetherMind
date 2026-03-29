@@ -26,12 +26,12 @@ public:
 
     /**
      * @brief Allocate memory of a specific size.
-     * @param size User requested size (must be <= MAX_TC_SIZE).
+     * @param aligned_size The aligned object size (from SizeClass::RoundUp, must be <= MAX_TC_SIZE).
      * @return Pointer to the allocated memory.
      */
-    AM_NODISCARD AM_ALWAYS_INLINE void* Allocate(size_t size) noexcept {
-        AM_DCHECK(size <= SizeConfig::MAX_TC_SIZE);
-        size_t idx = SizeClass::Index(size);
+    AM_NODISCARD AM_ALWAYS_INLINE void* Allocate(size_t aligned_size) noexcept {
+        AM_DCHECK(aligned_size <= SizeConfig::MAX_TC_SIZE);
+        size_t idx = SizeClass::Index(aligned_size);
         auto& list = free_lists_[idx];
         // 1. Fast Path: Pop from local free list (Lock-Free)
         // clang-format off
@@ -42,19 +42,19 @@ public:
 
         // 2. Slow Path: Fetch from CentralCache
         // Note: We must pass the aligned size to CentralCache/PageCache logic
-        return FetchFromCentralCache(list, SizeClass::RoundUp(size));
+        return FetchFromCentralCache(list, aligned_size);
     }
 
     /**
      * @brief Deallocate memory.
      * @param ptr Pointer to the memory.
-     * @param size The size of the object (lookup via PageMap in global interface).
+     * @param aligned_size The aligned object size (from span->aligned_obj_size).
      */
-    void AM_ALWAYS_INLINE Deallocate(void* ptr, size_t size) {
+    void AM_ALWAYS_INLINE Deallocate(void* ptr, size_t aligned_size) {
         AM_DCHECK(ptr != nullptr);
-        AM_DCHECK(size <= SizeConfig::MAX_TC_SIZE);
+        AM_DCHECK(aligned_size <= SizeConfig::MAX_TC_SIZE);
 
-        size_t idx = SizeClass::Index(size);
+        size_t idx = SizeClass::Index(aligned_size);
         auto& list = free_lists_[idx];
         // 1. Fast Path: Push to local free list (Lock-Free)
         list.push(ptr);
@@ -63,7 +63,7 @@ public:
         // If the list length exceeds the limit, return a batch to CentralCache.
         // clang-format off
         if (list.size() >= list.max_size()) AM_UNLIKELY {
-            DeallocateSlowPath(list, size);
+            DeallocateSlowPath(list, aligned_size);
         }
         // clang-format on
     }
@@ -78,12 +78,12 @@ private:
     /**
      * @brief Fetch objects from CentralCache when ThreadCache is empty.
      */
-    AM_NOINLINE static void* FetchFromCentralCache(FreeList& list, size_t size);
+    AM_NOINLINE static void* FetchFromCentralCache(FreeList& list, size_t aligned_size);
 
     /**
      * @brief Return objects to CentralCache when ThreadCache is full.
      */
-    AM_NOINLINE static void DeallocateSlowPath(FreeList& list, size_t size);
+    AM_NOINLINE static void DeallocateSlowPath(FreeList& list, size_t aligned_size);
 };
 }// namespace aethermind
 

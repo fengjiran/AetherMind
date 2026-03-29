@@ -9,7 +9,7 @@
 
 namespace aethermind {
 
-void* am_malloc(size_t size);
+void* am_malloc(size_t original_size);
 
 void am_free(void* ptr);
 

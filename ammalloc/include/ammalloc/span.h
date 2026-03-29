@@ -33,7 +33,7 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) Span {
     uint16_t size_class_idx{0};// Index into CentralCache bucket array
 
     // Object allocation metadata (valid when used by CentralCache).
-    uint32_t obj_size{0};
+    uint32_t aligned_obj_size{0};
     uint32_t capacity{0};   // Maximum objects storable in this span
     uint32_t use_count{0};  // Currently allocated objects
     uint32_t scan_cursor{0};// Bitmap search optimization
@@ -88,7 +88,7 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) Span {
     }
 
     /// Initialize span for object allocation with the given size.
-    void Init(size_t object_size);
+    void Init(size_t aligned_object_size);
 
     /// Allocate an object from this span.
     /// @return nullptr if span is full.

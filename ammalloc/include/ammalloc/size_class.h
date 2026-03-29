@@ -251,16 +251,16 @@ public:
     /// - Small objects: Move more objects (up to 512) to amortize the cost of locking CentralCache.
     /// - Large objects: Move fewer objects (down to 2) to prevent ThreadCache from hoarding memory.
     ///
-    /// @param original_size Requested or already-rounded object size.
+    /// @param aligned_size Requested or already-rounded object size.
     /// @return Number of objects to move in one batch, or 0 for invalid input.
-    static constexpr size_t CalculateBatchSize(size_t original_size) noexcept {
+    static constexpr size_t CalculateBatchSize(size_t aligned_size) noexcept {
         // clang-format off
-        if (original_size == 0 || original_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
+        if (aligned_size == 0 || aligned_size > SizeConfig::MAX_TC_SIZE) AM_UNLIKELY {
             return 0;
         }
         // clang-format on
 
-        return BatchByIndex(Index(original_size));
+        return BatchByIndex(Index(aligned_size));
     }
 
     /// Calculates the number of pages CentralCache should request from PageCache.
@@ -272,11 +272,11 @@ public:
     /// It ensures that a single Span can satisfy multiple batch requests from ThreadCache,
     /// reducing the frequency of accessing the global PageCache lock.
     ///
-    /// @param original_size Requested or already-rounded object size.
+    /// @param aligned_size Requested or already-rounded object size.
     /// @return Number of pages to allocate, or 0 for invalid input.
-    AM_ALWAYS_INLINE static constexpr size_t GetMovePageNum(size_t original_size) noexcept {
-        if (original_size == 0 || original_size > SizeConfig::MAX_TC_SIZE) return 0;
-        return MovePagesByIndex(Index(original_size));
+    AM_ALWAYS_INLINE static constexpr size_t GetMovePageNum(size_t aligned_size) noexcept {
+        if (aligned_size == 0 || aligned_size > SizeConfig::MAX_TC_SIZE) return 0;
+        return MovePagesByIndex(Index(aligned_size));
     }
 
     SizeClass() = delete;

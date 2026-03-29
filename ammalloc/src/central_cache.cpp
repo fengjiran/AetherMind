@@ -7,9 +7,9 @@
 
 namespace aethermind {
 
-size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t obj_size) {
+size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t aligned_size) {
     AM_DCHECK(batch_num <= SizeClass::kMaxBatchSize);
-    auto idx = SizeClass::Index(obj_size);
+    auto idx = SizeClass::Index(aligned_size);
     auto& bucket = buckets_[idx];
 
     void* local_ptrs[SizeClass::kMaxBatchSize];
@@ -56,7 +56,7 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t o
             // Refill SpanList if empty or current head span is fully utilized.
             if (bucket.span_list.empty() ||
                 bucket.span_list.begin()->use_count >= bucket.span_list.begin()->capacity) {
-                if (!GetOneSpan(bucket, obj_size, lock)) {
+                if (!GetOneSpan(bucket, aligned_size, lock)) {
                     break;// OOM
                 }
             }
@@ -116,7 +116,7 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t o
                 }
 
                 // 复用成熟的还款逻辑，它会处理好一切
-                ReleaseListToSpans(leftover_head, obj_size);
+                ReleaseListToSpans(leftover_head, aligned_size);
             }
         }
     }
@@ -128,8 +128,8 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t o
     return fetched;
 }
 
-void CentralCache::ReleaseListToSpans(void* start, size_t obj_size) {
-    auto idx = SizeClass::Index(obj_size);
+void CentralCache::ReleaseListToSpans(void* start, size_t aligned_size) {
+    auto idx = SizeClass::Index(aligned_size);
     auto& bucket = buckets_[idx];
     void* cur = start;
 
@@ -291,15 +291,15 @@ void CentralCache::InitTransferCache() {
     }
 }
 
-Span* CentralCache::GetOneSpan(Bucket& bucket, size_t size, std::unique_lock<std::mutex>& lock) {
+Span* CentralCache::GetOneSpan(Bucket& bucket, size_t aligned_size, std::unique_lock<std::mutex>& lock) {
     lock.unlock();
-    auto page_num = SizeClass::GetMovePageNum(size);
+    auto page_num = SizeClass::GetMovePageNum(aligned_size);
     auto* span = PageCache::GetInstance().AllocSpan(page_num);
     if (!span) {
         return nullptr;
     }
 
-    span->Init(size);
+    span->Init(aligned_size);
     lock.lock();
     bucket.span_list.push_front(span);
     return span;

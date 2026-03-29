@@ -93,7 +93,7 @@ void EnsureScavengerStarted() noexcept {
     // clang-format on
 }
 
-AM_NOINLINE void* am_malloc_slow_path(size_t size) {
+AM_NOINLINE void* am_malloc_slow_path(size_t original_size) {
     // Note: Thread creation may take a few milliseconds.
     // This is acceptable because:
     // 1. It's on the slow path (already paying for mmap/munmap)
@@ -101,8 +101,8 @@ AM_NOINLINE void* am_malloc_slow_path(size_t size) {
     // 3. The alternative (early thread creation) impacts process startup time
     EnsureScavengerStarted();
 
-    if (size > SizeConfig::MAX_TC_SIZE) {
-        const auto align_size = (size + SystemConfig::PAGE_SIZE - 1) & ~(SystemConfig::PAGE_SIZE - 1);
+    if (original_size > SizeConfig::MAX_TC_SIZE) {
+        const auto align_size = (original_size + SystemConfig::PAGE_SIZE - 1) & ~(SystemConfig::PAGE_SIZE - 1);
         const size_t page_num = align_size >> SystemConfig::PAGE_SHIFT;
         const auto* span = PageCache::GetInstance().AllocSpan(page_num);
         if (!span) {
@@ -119,12 +119,12 @@ AM_NOINLINE void* am_malloc_slow_path(size_t size) {
         }
     }
 
-    return pTLSThreadCache->Allocate(size);
+    return pTLSThreadCache->Allocate(SizeClass::RoundUp(original_size));
 }
 
-AM_NOINLINE void am_free_slow_path(void* ptr, Span* span, size_t size) {
+AM_NOINLINE void am_free_slow_path(void* ptr, Span* span, size_t aligned_size) {
     // If the size is 0, it means the span is allocated from the system(big object).
-    if (size == 0) {
+    if (aligned_size == 0) {
         PageCache::GetInstance().ReleaseSpan(span);
         return;
     }
@@ -134,29 +134,29 @@ AM_NOINLINE void am_free_slow_path(void* ptr, Span* span, size_t size) {
         pTLSThreadCache = CreateThreadCache();
         if (!pTLSThreadCache) {
             static_cast<FreeBlock*>(ptr)->next = nullptr;
-            CentralCache::GetInstance().ReleaseListToSpans(ptr, size);
+            CentralCache::GetInstance().ReleaseListToSpans(ptr, aligned_size);
             return;
         }
     }
     // clang-format on
 
-    pTLSThreadCache->Deallocate(ptr, size);
+    pTLSThreadCache->Deallocate(ptr, aligned_size);
 }
 
 }// namespace
 
 namespace aethermind {
 
-void* am_malloc(size_t size) {
+void* am_malloc(size_t original_size) {
     // TLS variable is read only once.
     auto* tc = pTLSThreadCache;
     // clang-format off
-    if (size > SizeConfig::MAX_TC_SIZE || tc == nullptr) AM_UNLIKELY {
-        return am_malloc_slow_path(size);
+    if (original_size > SizeConfig::MAX_TC_SIZE || tc == nullptr) AM_UNLIKELY {
+        return am_malloc_slow_path(original_size);
     }
     // clang-format on
 
-    return tc->Allocate(size);
+    return tc->Allocate(SizeClass::RoundUp(original_size));
 }
 
 void am_free(void* ptr) {
@@ -170,15 +170,15 @@ void am_free(void* ptr) {
         return;
     }
 
-    auto size = span->obj_size;
+    auto aligned_size = span->aligned_obj_size;
     auto* tc = pTLSThreadCache;
-    if (size == 0 || tc == nullptr) AM_UNLIKELY {
-        am_free_slow_path(ptr, span, size);
+    if (aligned_size == 0 || tc == nullptr) AM_UNLIKELY {
+        am_free_slow_path(ptr, span, aligned_size);
         return;
     }
     // clang-format on
 
-    tc->Deallocate(ptr, size);
+    tc->Deallocate(ptr, aligned_size);
 }
 
 }// namespace aethermind

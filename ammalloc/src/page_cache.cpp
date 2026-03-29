@@ -347,7 +347,7 @@ void PageCacheShard::ReleaseSpanLocked(Span* span) noexcept {
     // 4. Insert back: Mark as unused and push to the appropriate bucket.
     span->SetUsed(false);
     span->SetCommitted(true);
-    span->obj_size = 0;
+    span->aligned_obj_size = 0;
     span->use_count = 0;
     span->obj_offset = 0;
     span->capacity = 0;

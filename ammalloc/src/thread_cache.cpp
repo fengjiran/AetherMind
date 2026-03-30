@@ -1,6 +1,11 @@
+// Copyright 2026 The AetherMind Authors
+// SPDX-License-Identifier: Apache-2.0
 //
-// Created by richard on 2/6/26.
+// ThreadCache implementation.
 //
+// The hot path is intentionally tiny: one TLS FreeList pop/push plus a quota
+// check. More expensive policy decisions are deferred to the cold refill/trim
+// helpers below so the common case stays branch-light and lock-free.
 #include "ammalloc/thread_cache.h"
 
 namespace aethermind {
@@ -20,6 +25,9 @@ void ThreadCache::ReleaseAll() {
             static_cast<FreeBlock*>(ptr)->next = static_cast<FreeBlock*>(start);
             start = ptr;
         }
+
+        // Drain the entire per-class cache during teardown so ownership returns
+        // to CentralCache/PageCache before the TLS object disappears.
         CentralCache::GetInstance().ReleaseListToSpans(start, size);
     }
 }
@@ -27,46 +35,61 @@ void ThreadCache::ReleaseAll() {
 void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t aligned_size) {
     const auto batch_num = SizeClass::CalculateBatchSize(aligned_size);
 
-    // Fetch from CentralCache (This involves locking in CentralCache)
-    // 'list' is modified in-place by FetchRange.
+    // Refill only up to the current local quota. Slow-start intentionally keeps
+    // early refills small so cold size classes do not immediately hoard a full
+    // batch in every thread.
     if (const auto fetch_num = std::min(batch_num, list.max_size());
         CentralCache::GetInstance().FetchRange(list, fetch_num, aligned_size) == 0) {
         return nullptr;// Out of memory
     }
 
-    // Dynamic Limit Strategy (Slow Start):
-    if (list.max_size() < batch_num * 16) {
-        size_t inc = batch_num / 4;
-        if (inc == 0) {
-            inc = 1;
-        }
-        list.set_max_size(list.max_size() + inc);
+    // Two-stage growth policy:
+    // - below one batch: exponential warmup reduces refill churn quickly,
+    // - above one batch: linear growth keeps the high-water mark bounded.
+    if (list.max_size() < batch_num) {
+        const auto inc = std::max<size_t>(1, list.max_size());
+        list.set_max_size(std::min(batch_num, list.max_size() + inc));
+    } else if (list.max_size() < batch_num * 16) {
+        size_t inc = std::max<size_t>(1, batch_num / 8);
+        list.set_max_size(std::min(batch_num * 16, list.max_size() + inc));
     }
+
+    // Fresh allocation demand cancels any prior decay trend for this class.
+    list.set_overages(0);
     return list.pop();
 }
 
 void ThreadCache::DeallocateSlowPath(FreeList& list, size_t aligned_size) {
-    if (const auto batch_num = SizeClass::CalculateBatchSize(aligned_size);
-        list.max_size() < batch_num * 16) {
-        size_t inc = batch_num / 4;
-        if (inc == 0) {
-            inc = 1;
-        }
-        list.set_max_size(list.max_size() + inc);
-    } else {
-        void* start = nullptr;
-        // Construct a linked list of objects to return
-        // We assume FreeList::pop() returns the raw pointer.
-        // We use the object's memory to store the 'next' pointer (Embedded List).
-        for (size_t i = 0; i < batch_num; ++i) {
-            void* ptr = list.pop();
-            // Link node: ptr->next = start; start = ptr;
-            static_cast<FreeBlock*>(ptr)->next = static_cast<FreeBlock*>(start);
-            start = ptr;
-        }
+    const auto batch_num = SizeClass::CalculateBatchSize(aligned_size);
+    void* start = nullptr;
 
-        // Send the list to CentralCache
+    // Return at most one batch per overflow event. This bounds slow-path work
+    // and avoids draining the local cache completely on every trim.
+    for (size_t i = 0; i < batch_num && !list.empty(); ++i) {
+        void* ptr = list.pop();
+        static_cast<FreeBlock*>(ptr)->next = static_cast<FreeBlock*>(start);
+        start = ptr;
+    }
+
+    if (start) {
         CentralCache::GetInstance().ReleaseListToSpans(start, aligned_size);
+    }
+
+    // Repeated overflow without intervening refill demand indicates that the
+    // current high-water mark is larger than the thread's steady-state need.
+    // After a few such events, decay the quota by one batch and reset the
+    // counter. This keeps burst-era cache size from sticking forever.
+    constexpr size_t kMaxOverages = 3;
+    if (list.max_size() > batch_num) {
+        list.set_overages(list.overages() + 1);
+        if (list.overages() >= kMaxOverages) {
+            list.set_max_size(std::max(list.max_size() - batch_num, batch_num));
+            list.set_overages(0);
+        }
+    } else {
+        // Once the quota is back at its batch-sized floor, no additional decay
+        // state is needed.
+        list.set_overages(0);
     }
 }
 

@@ -20,13 +20,15 @@ namespace details {
  */
 AM_NODISCARD constexpr size_t AlignUp(size_t size,
                                       size_t align = SystemConfig::ALIGNMENT) noexcept {
+    // clang-format off
     if (size == 0) AM_UNLIKELY {
-            return align;
-        }
+        return align;
+    }
     // Optimization for power-of-two alignments (the most common case)
     if (std::has_single_bit(align)) AM_LIKELY {
-            return (size + align - 1) & ~(align - 1);
-        }
+        return (size + align - 1) & ~(align - 1);
+    }
+    // clang-format on
     // Fallback for non-power-of-two alignments
     return (size + align - 1) / align * align;
 }
@@ -114,4 +116,4 @@ bool ParseBool(const char* str);
 
 }// namespace aethermind
 
-#endif//AETHERMIND_MALLOC_COMMON_H
+#endif// AETHERMIND_MALLOC_COMMON_H

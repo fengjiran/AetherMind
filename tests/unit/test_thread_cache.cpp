@@ -201,6 +201,63 @@ TEST_F(ThreadCacheTest, TriggerReleaseTooLongList) {
     cache.ReleaseAll();
 }
 
+TEST_F(ThreadCacheTest, SlowStartGrowthThenOveragesShrinkMaxSize) {
+    thread_local ThreadCache cache;
+    const size_t size = SizeClass::RoundUp(4096);
+    const size_t idx = SizeClass::Index(size);
+    const size_t batch_num = SizeClass::CalculateBatchSize(size);
+
+    ASSERT_EQ(cache.GetMaxSizeForTest(idx), 1u);
+    ASSERT_EQ(cache.GetOveragesForTest(idx), 0u);
+
+    std::vector<void*> ptrs;
+    ptrs.reserve(512);
+
+    size_t peak_max_size = cache.GetMaxSizeForTest(idx);
+    size_t growth_allocations = 0;
+    const size_t target_peak_max_size = batch_num * 3;
+    for (; growth_allocations < 4096 && peak_max_size < target_peak_max_size; ++growth_allocations) {
+        void* ptr = cache.Allocate(size);
+        ASSERT_NE(ptr, nullptr);
+        ptrs.push_back(ptr);
+        peak_max_size = cache.GetMaxSizeForTest(idx);
+    }
+
+    ASSERT_GE(peak_max_size, target_peak_max_size)
+            << "max_size failed to grow far enough beyond batch size";
+
+    const size_t extra_allocations = batch_num * 8;
+    for (size_t i = 0; i < extra_allocations; ++i) {
+        void* ptr = cache.Allocate(size);
+        ASSERT_NE(ptr, nullptr);
+        ptrs.push_back(ptr);
+        peak_max_size = std::max(peak_max_size, cache.GetMaxSizeForTest(idx));
+    }
+
+    size_t max_observed_overages = 0;
+    size_t shrunk_max_size = peak_max_size;
+    bool observed_shrink = false;
+
+    for (void* ptr: ptrs) {
+        cache.Deallocate(ptr, size);
+        max_observed_overages = std::max(max_observed_overages, cache.GetOveragesForTest(idx));
+
+        const size_t current_max_size = cache.GetMaxSizeForTest(idx);
+        if (current_max_size < peak_max_size) {
+            shrunk_max_size = current_max_size;
+            observed_shrink = true;
+            break;
+        }
+    }
+
+    EXPECT_GT(max_observed_overages, 0u) << "overages never accumulated during overflow deallocation";
+    EXPECT_TRUE(observed_shrink) << "max_size never shrank after repeated overflow deallocations";
+    EXPECT_LT(shrunk_max_size, peak_max_size);
+    EXPECT_GE(shrunk_max_size, batch_num);
+
+    cache.ReleaseAll();
+}
+
 // 测试点 9: 压力测试
 TEST_F(ThreadCacheTest, StressTest) {
     thread_local ThreadCache cache;
@@ -434,7 +491,7 @@ TEST_F(ThreadCacheTest, FetchFromCentralCacheTrigger) {
 
 // 这是一个简单的对比测试，用于直观感受 ThreadCache 的威力
 TEST_F(ThreadCacheTest, BenchmarkVsStdMalloc) {
-    const size_t iterations = 1000000;// 100万次
+    const size_t iterations = 1000000;               // 100万次
     const size_t alloc_size = SizeClass::RoundUp(32);// 32 字节小对象
 
     // 1. 测试 std::malloc

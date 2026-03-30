@@ -17,9 +17,21 @@ struct FreeBlock {
     FreeBlock* next;
 };
 
+/// Intrusive LIFO cache used by ThreadCache and CentralCache transfer paths.
+///
+/// FreeList stores reclaimed objects by linking through the freed object body
+/// itself, so push/pop do not allocate metadata and remain constant-time.
+/// Besides the object chain, the list also carries per-class quota state used
+/// by ThreadCache slow-start and overages-based decay.
+///
+/// Thread-safety:
+/// - FreeList itself is not synchronized.
+/// - ThreadCache-owned instances are mutated only by the owning thread.
+/// - CentralCache uses external locks before mutating shared lists.
 class FreeList {
 public:
-    constexpr FreeList() noexcept : head_(nullptr), size_(0), max_size_(1) {}
+    constexpr FreeList() noexcept
+        : head_(nullptr), size_(0), max_size_(1), overages_(0) {}
 
     FreeList(const FreeList&) = delete;
     FreeList& operator=(const FreeList&) = delete;
@@ -75,10 +87,33 @@ public:
         max_size_ = n;
     }
 
+    AM_NODISCARD size_t overages() const noexcept {
+        return overages_;
+    }
+
+    void set_overages(size_t n) noexcept {
+        overages_ = n;
+    }
+
 private:
+    // Head of the intrusive LIFO chain.
     FreeBlock* head_;
+
+    // Number of cached objects currently held in this list.
     uint32_t size_;
+
+    // ThreadCache high-water mark for this size class.
+    //
+    // This starts at 1, grows under refill pressure, and decays in batch-sized
+    // steps after repeated overflow trims. CentralCache-owned temporary lists do
+    // not interpret this field as a policy knob.
     uint32_t max_size_;
+
+    // Counts consecutive overflow-trim events without intervening refill demand.
+    //
+    // ThreadCache uses this as a cheap decay signal: sustained free pressure
+    // means the current high-water mark is likely above steady-state demand.
+    uint32_t overages_;
 };
 
 /**
@@ -189,4 +224,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_MALLOC_CENTRAL_CACHE_H
+#endif// AETHERMIND_MALLOC_CENTRAL_CACHE_H

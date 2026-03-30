@@ -29,10 +29,12 @@ void ThreadCache::ReleaseAll() {
         // Drain the entire per-class cache during teardown so ownership returns
         // to CentralCache/PageCache before the TLS object disappears.
         CentralCache::GetInstance().ReleaseListToSpans(start, size);
+        list.set_max_size(1);
+        list.set_overages(0);
     }
 }
 
-void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t aligned_size) {
+void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t aligned_size) noexcept {
     const auto batch_num = SizeClass::CalculateBatchSize(aligned_size);
 
     // Refill only up to the current local quota. Slow-start intentionally keeps
@@ -49,9 +51,9 @@ void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t aligned_size) {
     if (list.max_size() < batch_num) {
         const auto inc = std::max<size_t>(1, list.max_size());
         list.set_max_size(std::min(batch_num, list.max_size() + inc));
-    } else if (list.max_size() < batch_num * 16) {
+    } else if (list.max_size() < batch_num * 8) {
         size_t inc = std::max<size_t>(1, batch_num / 8);
-        list.set_max_size(std::min(batch_num * 16, list.max_size() + inc));
+        list.set_max_size(std::min(batch_num * 8, list.max_size() + inc));
     }
 
     // Fresh allocation demand cancels any prior decay trend for this class.
@@ -59,7 +61,7 @@ void* ThreadCache::FetchFromCentralCache(FreeList& list, size_t aligned_size) {
     return list.pop();
 }
 
-void ThreadCache::DeallocateSlowPath(FreeList& list, size_t aligned_size) {
+void ThreadCache::DeallocateSlowPath(FreeList& list, size_t aligned_size) noexcept {
     const auto batch_num = SizeClass::CalculateBatchSize(aligned_size);
     void* start = nullptr;
 

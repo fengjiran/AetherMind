@@ -54,7 +54,9 @@ public:
     /// @pre `aligned_size <= SizeConfig::MAX_TC_SIZE`
     /// @note The fast path is a single FreeList pop with no locking.
     AM_NODISCARD AM_ALWAYS_INLINE void* Allocate(size_t aligned_size) noexcept {
+        AM_DCHECK(aligned_size > 0);
         AM_DCHECK(aligned_size <= SizeConfig::MAX_TC_SIZE);
+        AM_DCHECK(aligned_size == SizeClass::RoundUp(aligned_size));
         size_t idx = SizeClass::Index(aligned_size);
         auto& list = free_lists_[idx];
 
@@ -90,7 +92,7 @@ public:
 
         // Crossing the local quota triggers batched trim back to CentralCache.
         // clang-format off
-        if (list.size() >= list.max_size()) AM_UNLIKELY {
+        if (list.size() > list.max_size()) AM_UNLIKELY {
             DeallocateSlowPath(list, aligned_size);
         }
         // clang-format on
@@ -124,13 +126,13 @@ private:
     /// The quota follows a two-stage policy:
     /// - exponential warmup until one batch,
     /// - linear growth up to a bounded multiple of the batch size.
-    AM_NOINLINE static void* FetchFromCentralCache(FreeList& list, size_t aligned_size);
+    AM_NOINLINE static void* FetchFromCentralCache(FreeList& list, size_t aligned_size) noexcept;
 
     /// Trims one batch back to CentralCache and applies overages-based decay.
     ///
     /// Repeated overflow trims without intervening refill demand reduce
     /// `max_size`, preventing long-lived threads from pinning burst-era quotas.
-    AM_NOINLINE static void DeallocateSlowPath(FreeList& list, size_t aligned_size);
+    AM_NOINLINE static void DeallocateSlowPath(FreeList& list, size_t aligned_size) noexcept;
 };
 }// namespace aethermind
 

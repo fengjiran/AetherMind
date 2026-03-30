@@ -10,7 +10,6 @@
 #include "utils/logging.h"
 
 #include <memory>
-#include <type_traits>
 
 namespace aethermind {
 
@@ -262,15 +261,6 @@ public:
     ObjectPtr(std::nullptr_t) noexcept : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}// NOLINT
 
     /*!
-     * \brief Constructor from unique_ptr.
-     *
-     * \param other The unique_ptr to transfer ownership from.
-     *
-     * \note Initializes the ObjectPtr with the pointer from the unique_ptr and increments the reference count.
-     */
-    explicit ObjectPtr(std::unique_ptr<T> other) noexcept : ObjectPtr(other.release()) {}
-
-    /*!
      * \brief Constructor from raw pointer, do not increment reference count.
      */
     ObjectPtr(T* ptr, DoNotIncRefCountTag) noexcept : ptr_(ptr) {}
@@ -464,7 +454,7 @@ public:
      * \return The recreated ObjectPtr.
      */
     static ObjectPtr reclaim(T* ptr) {
-        return ObjectPtr(ptr, DoNotIncRefCountTag());
+        return ptr ? ObjectPtr(ptr, DoNotIncRefCountTag()) : ObjectPtr(nullptr);
     }
 
     /*!
@@ -736,12 +726,12 @@ bool operator==(const ObjectPtr<T1>& lhs, const ObjectPtr<T2>& rhs) noexcept {
 
 template<typename T>
 bool operator==(const ObjectPtr<T>& lhs, std::nullptr_t) noexcept {
-    return lhs.get() == nullptr;
+    return !lhs.defined();
 }
 
 template<typename T>
 bool operator==(std::nullptr_t, const ObjectPtr<T>& rhs) noexcept {
-    return nullptr == rhs.get();
+    return !rhs.defined();
 }
 
 template<typename T1, typename T2>
@@ -751,12 +741,12 @@ bool operator!=(const ObjectPtr<T1>& lhs, const ObjectPtr<T2>& rhs) noexcept {
 
 template<typename T>
 bool operator!=(const ObjectPtr<T>& lhs, std::nullptr_t) noexcept {
-    return lhs.get() != nullptr;
+    return lhs.defined();
 }
 
 template<typename T>
 bool operator!=(std::nullptr_t, const ObjectPtr<T>& rhs) noexcept {
-    return nullptr != rhs.get();
+    return rhs.defined();
 }
 
 template<typename T1, typename T2>

@@ -1,6 +1,9 @@
-//
-// Created by 赵丹 on 2025/8/19.
-//
+/// Intrusive object ownership primitives and smart-handle wrappers.
+///
+/// This header defines the refcounted `Object` base class together with the
+/// owning/non-owning handle types built on top of it. Empty handles are
+/// represented by a per-type sentinel so callers should use handle-level APIs
+/// such as `defined()` or `get_or_null()` instead of raw pointer null checks.
 
 #ifndef AETHERMIND_OBJECT_H
 #define AETHERMIND_OBJECT_H
@@ -9,13 +12,9 @@
 #include "macros.h"
 #include "utils/logging.h"
 
-#include <memory>
-
 namespace aethermind {
 
 namespace details {
-// Helper to perform
-// unsafe operations related to object
 struct ObjectUnsafe;
 
 template<typename Derived>
@@ -23,9 +22,7 @@ class ObjectAllocatorBase;
 
 }// namespace details
 
-/*!
- * \brief Flags to indicate the type of pointer that decremented the reference count.
- */
+/// Flags to indicate the type of pointer that decremented the reference count.
 enum DeleterFlag : uint8_t {
     kStrongPtrMask = 0x01,
     kWeakPtrMask = 0x02,
@@ -33,145 +30,71 @@ enum DeleterFlag : uint8_t {
 };
 
 
-/*!
- * \brief Base class for reference-counted objects.
- *
- * \note Objects of this class are reference-counted, meaning that each object
- * has a reference count that tracks the number of references to the object.
- * When the reference count reaches zero, the object is automatically destroyed.
- */
+/// Base class for intrusive strong/weak reference-counted objects.
+///
+/// `Object` stores the common refcount header used by `ObjectPtr` and
+/// `WeakObjectPtr`. Heap-allocated instances are expected to install a deleter
+/// through the allocator path. Sentinel instances such as
+/// `EmptyObjectSentinel<T>` are process-lifetime objects and intentionally do
+/// not participate in normal destruction.
 class Object {
 public:
-    /*!
-     * \brief Default constructor, initializes a reference-counted object.
-     *
-     * \note Creates a new Object instance with reference count initialized to 0
-     * and deleter set to nullptr.
-     * Newly created objects require manual reference count management,
-     * typically wrapped using ObjectPtr.
-     */
+    /// Initializes a detached object header.
+    ///
+    /// Newly constructed objects start with zero strong/weak references and no
+    /// deleter. Production objects are typically wrapped by `ObjectPtr` through
+    /// the allocator path, which installs the deleter and seeds the initial
+    /// weak reference.
     Object();
 
     virtual ~Object() = default;
 
-    /*!
-     * \brief Get the current reference count of the object.
-     *
-     * \note Uses atomic operation with relaxed memory ordering (__ATOMIC_RELAXED)
-     * to load the reference count value. Relaxed memory ordering is suitable
-     * for performance-sensitive scenarios where strict memory synchronization
-     * is not required.
-     *
-     * \return The current reference count value of the object
-     */
     AM_NODISCARD uint32_t use_count() const {
         return __atomic_load_n(&header_.strong_ref_count, __ATOMIC_RELAXED);
     }
 
-    /*!
-     * \brief Get the current weak reference count of the object.
-     *
-     * \note Uses atomic operation with relaxed memory ordering (__ATOMIC_RELAXED)
-     * to load the weak reference count value. Relaxed memory ordering is suitable
-     * for performance-sensitive scenarios where strict memory synchronization
-     * is not required.
-     *
-     * \return The current weak reference count value of the object
-     */
     AM_NODISCARD uint32_t weak_use_count() const {
         return __atomic_load_n(&header_.weak_ref_count, __ATOMIC_RELAXED);
     }
 
-    /*!
-     * \brief Check if the object has a unique reference count.
-     *
-     * \return true if the object has a reference count of 1, false otherwise.
-     */
     AM_NODISCARD bool unique() const {
         return use_count() == 1;
     }
 
-    /*!
-     * \brief Set the deleter function for the object.
-     *
-     * \param deleter The deleter function to be invoked when the reference count reaches zero.
-     */
     void SetDeleter(FObjectDeleter deleter) {
         header_.deleter = deleter;
     }
 
-    AM_NODISCARD virtual bool IsNullTypePtr() const {
+    AM_NODISCARD virtual bool IsEmptyObjectSentinel() const {
         return false;
     }
 
 private:
-    /*!
-     * \brief Increment the reference count of the object.
-     *
-     * \note Uses atomic operation with relaxed memory ordering (__ATOMIC_RELAXED)
-     * to increment the reference count. Relaxed memory ordering is suitable
-     * for performance-sensitive scenarios where strict memory synchronization
-     * is not required.
-     */
     void IncRef() {
         __atomic_fetch_add(&header_.strong_ref_count, 1, __ATOMIC_RELAXED);
     }
 
-    /*!
-     * \brief Increment the weak reference count of the object.
-     *
-     * \note Uses atomic operation with relaxed memory ordering (__ATOMIC_RELAXED)
-     * to increment the weak reference count. Relaxed memory ordering is suitable
-     * for performance-sensitive scenarios where strict memory synchronization
-     * is not required.
-     */
     void IncWeakRef() {
         __atomic_fetch_add(&header_.weak_ref_count, 1, __ATOMIC_RELAXED);
     }
 
-    /*!
-     * \brief Decrement the reference count of the object.
-     *
-     * \note Uses atomic operation with release memory ordering (__ATOMIC_RELEASE)
-     * to decrement the reference count. Release memory ordering is suitable
-     * for scenarios where a thread releases a lock or a resource, and other
-     * threads that depend on that resource need to see the effects of the
-     * release.
-     * If the strong reference count reaches zero after decrementing and the
-     * weak reference count is one,  and a deleter function is set, the deleter
-     * function will be invoked to destroy the object and free its memory. If the
-     * weak reference count is greater than one, the deleter function will be
-     * invoked to destroy the object only.
-     */
+    /// Decrements the strong reference count and runs the appropriate teardown.
+    ///
+    /// When the last strong reference drops, the deleter either destroys and
+    /// frees the object (`kBothPtrMask`) or performs a two-stage teardown when a
+    /// weak handle still keeps the control block alive.
     void DecRef();
 
-    /*!
-     * \brief Decrement the weak reference count of the object.
-     *
-     * \note Uses atomic operation with release memory ordering (__ATOMIC_RELEASE)
-     * to decrement the weak reference count. Release memory ordering is suitable
-     * for scenarios where a thread releases a lock or a resource, and other
-     * threads that depend on that resource need to see the effects of the
-     * release.
-     * If the weak reference count reaches zero after decrementing, and a deleter
-     * function is set, the deleter function will be invoked to free the memory of
-     * the object.
-     */
     void DecWeakRef();
 
-    /*! \brief Whether the weak pointer can be promoted to a strong pointer.
-     *
-     * \return true if the weak pointer can be promoted to a strong pointer, false otherwise.
-     *
-     * \note This method uses a compare-and-swap (CAS) operation to safely
-     * increment the strong reference count if it is greater than zero.
-     * This ensures that the promotion is thread-safe and avoids race conditions
-     * when multiple threads try to promote a weak pointer to a strong pointer
-     * at the same time.
-     */
+    /// Attempts to promote a weak handle to a new strong reference.
+    ///
+    /// Promotion succeeds only while the strong count is still non-zero. The CAS
+    /// loop prevents racing promotions from resurrecting an object after strong
+    /// teardown has begun.
     bool TryPromoteWeakPtr();
 
-    /*! \brief header field that is the common prefix of all objects */
+    /// Common intrusive refcount header shared by all object subtypes.
     ObjectHeader header_{};
 
     template<typename T>
@@ -183,33 +106,37 @@ private:
     friend struct details::ObjectUnsafe;
 };
 
-/*!
- * \brief Null type of the given type.
- *
- * \tparam T The type for which the null type is defined.
- */
-#ifdef CPP20
+/// Process-lifetime sentinel used as the internal empty state of `ObjectPtr<T>`.
+///
+/// This is not a business-level Null Object pattern. `ObjectPtr` and
+/// `WeakObjectPtr` store this singleton instead of raw `nullptr` so that empty
+/// handles keep a stable, type-correct sentinel address. Callers should use
+/// `defined()`, `operator bool()`, or `get_or_null()` instead of raw pointer
+/// non-null checks.
 template<typename T>
     requires std::default_initializable<T>
-#else
-template<typename T, typename = std::enable_if_t<std::is_constructible_v<T>>>
-#endif
-class NullTypeOf final : public T {
-    NullTypeOf() = default;
+class EmptyObjectSentinel final : public T {
+    EmptyObjectSentinel() = default;
 
 public:
     static T* singleton() noexcept {
-        static NullTypeOf inst;
+        static EmptyObjectSentinel inst;
         return &inst;
     }
 
-    AM_NODISCARD bool IsNullTypePtr() const override {
+    AM_NODISCARD bool IsEmptyObjectSentinel() const override {
         return true;
     }
 };
 
-inline bool IsNullTypePtr(const Object* ptr) {
-    return ptr == nullptr ? true : ptr->IsNullTypePtr();
+inline bool IsEmptyObjectSentinel(const Object* ptr) {
+    return ptr == nullptr ? true : ptr->IsEmptyObjectSentinel();
+}
+
+template<typename T>
+    requires std::derived_from<T, Object>
+bool IsDefinedObjectPtr(const T* ptr) noexcept {
+    return ptr != nullptr && !IsEmptyObjectSentinel(ptr);
 }
 
 template<typename T>
@@ -217,98 +144,55 @@ concept is_valid_object_type = requires {
     requires true;
     // requires std::is_base_of_v<Object, T>;
     requires std::derived_from<T, Object>;
-    typename NullTypeOf<T>;
-    { NullTypeOf<T>::singleton() } -> std::same_as<T*>;
+    typename EmptyObjectSentinel<T>;
+    { EmptyObjectSentinel<T>::singleton() } -> std::same_as<T*>;
 };
 
-/*!
- * \brief Tag type to indicate that reference count should not be incremented.
- */
+/// Tag type to indicate that reference count should not be incremented.
 struct DoNotIncRefCountTag final {};
 
-/*!
- * \brief Smart pointer for reference-counted objects.
- *
- * \tparam T The type of the object being managed.
- *
- * \note The ObjectPtr class provides a way to manage the lifetime of reference-counted objects.
- * It ensures that objects are properly reference-counted and destroyed when no longer needed.
- * The ObjectPtr class follows the RAII (Resource Acquisition Is Initialization) idiom,
- * guaranteeing that resources are released when the reference count goes to zero.
- *
- */
+/// Owning intrusive smart pointer for `Object`-derived instances.
+///
+/// Empty `ObjectPtr` values store `EmptyObjectSentinel<T>::singleton()` rather
+/// than raw `nullptr`. Sentinel-aware APIs such as `defined()`, `empty()`,
+/// `operator bool()`, and `get_or_null()` should be used to observe emptiness.
 template<typename T>
 class ObjectPtr final {
     using element_type = T;
-    using null_type = NullTypeOf<T>;
+    using empty_sentinel_type = EmptyObjectSentinel<T>;
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
-    static_assert(std::is_same_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
-                  "NullType::singleton() must return a element_type* pointer");
+    static_assert(std::is_same_v<T, std::remove_pointer_t<decltype(empty_sentinel_type::singleton())>>,
+                  "EmptyObjectSentinel::singleton() must return a element_type* pointer");
 
 public:
-    /*!
-     * \brief Default constructor.
-     *
-     * \note Initializes the ObjectPtr with a null pointer and does not increment the reference count.
-     */
-    ObjectPtr() noexcept : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}
+    ObjectPtr() noexcept : ObjectPtr(empty_sentinel_type::singleton(), DoNotIncRefCountTag()) {}
 
-    /*!
-     * \brief Constructor from nullptr.
-     *
-     * \note Initializes the ObjectPtr with a null pointer and does not increment the reference count.
-     */
-    ObjectPtr(std::nullptr_t) noexcept : ObjectPtr(null_type::singleton(), DoNotIncRefCountTag()) {}// NOLINT
+    ObjectPtr(std::nullptr_t) noexcept : ObjectPtr(empty_sentinel_type::singleton(), DoNotIncRefCountTag()) {}// NOLINT
 
-    /*!
-     * \brief Constructor from raw pointer, do not increment reference count.
-     */
     ObjectPtr(T* ptr, DoNotIncRefCountTag) noexcept : ptr_(ptr) {}
 
-    /*!
-     * \brief Copy constructor.
-     */
     ObjectPtr(const ObjectPtr& other) : ptr_(other.ptr_) {
         retain();
     }
 
-    /*!
-     * \brief Move constructor.
-     */
     ObjectPtr(ObjectPtr&& other) noexcept : ptr_(other.ptr_) {
-        other.ptr_ = null_type::singleton();
+        other.ptr_ = empty_sentinel_type::singleton();
     }
 
-    /*!
-     * \brief Copy constructor.
-     * \note Initializes the ObjectPtr with the pointer from the other type ObjectPtr.
-     * \param other The other ObjectPtr.
-     */
     template<typename Derived>
     ObjectPtr(const ObjectPtr<Derived>& other)// NOLINT
-        : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        : ptr_(RemapEmptyObjectSentinel(other.ptr_)) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         retain();
     }
 
-    /*!
-     * \brief Move constructor.
-     * \note Initializes the ObjectPtr with the pointer from the other type ObjectPtr.
-     * \param other The other ObjectPtr.
-     */
     template<typename Derived>
     ObjectPtr(ObjectPtr<Derived>&& other) noexcept// NOLINT
-        : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        : ptr_(RemapEmptyObjectSentinel(other.ptr_)) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
-        other.ptr_ = NullTypeOf<Derived>::singleton();
+        other.ptr_ = EmptyObjectSentinel<Derived>::singleton();
     }
 
-    /*!
-     * \brief Copy assignment operator.
-     * \note Uses the copy-and-swap idiom to provide strong exception safety.
-     * \param rhs The right-hand side ObjectPtr to copy from.
-     * \return A reference to this ObjectPtr.
-     */
     template<typename Derived>
     ObjectPtr& operator=(const ObjectPtr<Derived>& rhs) & {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
@@ -316,12 +200,6 @@ public:
         return *this;
     }
 
-    /*!
-     * \brief Move assignment operator.
-     * \note Uses the copy-and-swap idiom to provide strong exception safety.
-     * \param rhs The right-hand side ObjectPtr to move from.
-     * \return A reference to this ObjectPtr.
-     */
     template<typename Derived>
     ObjectPtr& operator=(ObjectPtr<Derived>&& rhs) & noexcept {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
@@ -329,130 +207,95 @@ public:
         return *this;
     }
 
-    /*!
-     * \brief Copy assignment operator.
-     * \note Uses the copy-and-swap idiom to provide strong exception safety.
-     * \param rhs The right-hand side ObjectPtr to copy from.
-     * \return A reference to this ObjectPtr.
-     */
     ObjectPtr& operator=(const ObjectPtr& rhs) & {
         ObjectPtr(rhs).swap(*this);
         return *this;
     }
 
-    /*!
-     * \brief Move assignment operator.
-     * \note Uses the copy-and-swap idiom to provide strong exception safety.
-     * \param rhs The right-hand side ObjectPtr to move from.
-     * \return A reference to this ObjectPtr.
-     */
     ObjectPtr& operator=(ObjectPtr&& rhs) & noexcept {
         ObjectPtr(std::move(rhs)).swap(*this);
         return *this;
     }
 
-    /*!
-     * \brief Destructor.
-     * \note Decrements the reference count of the underlying object.
-     */
     ~ObjectPtr() noexcept {
         reset();
     }
 
-    /*!
-     * \brief Resets the ObjectPtr to the null type pointer.
-     * \note Decrements the reference count of the underlying object if it is not the null type pointer.
-     */
     void reset() {
         if (defined()) {
             ptr_->DecRef();
         }
-        ptr_ = null_type::singleton();
+        ptr_ = empty_sentinel_type::singleton();
     }
 
-    /*!
-     * \brief Swaps the contents of this ObjectPtr with the contents of another ObjectPtr.
-     * \param other The other ObjectPtr to swap with.
-     */
     void swap(ObjectPtr& other) noexcept {
         std::swap(ptr_, other.ptr_);
     }
 
-    /*!
-     * \brief Returns whether the ObjectPtr is defined (i.e., not null type pointer).
-     * \return True if the ObjectPtr is defined, false otherwise.
-     */
     AM_NODISCARD bool defined() const noexcept {
-        return ptr_ != null_type::singleton();
+        return ptr_ != empty_sentinel_type::singleton();
     }
 
-    /*!
-     * \brief Returns a raw pointer to the underlying object.
-     * \return A raw pointer to the underlying object.
-     */
+    AM_NODISCARD bool empty() const noexcept {
+        return ptr_ == empty_sentinel_type::singleton();
+    }
+
+    AM_NODISCARD bool is_sentinel() const noexcept {
+        return ptr_ == empty_sentinel_type::singleton();
+    }
+
+    /// Returns the stored raw pointer.
+    ///
+    /// Empty handles return the sentinel pointer, not raw `nullptr`. Use
+    /// `get_or_null()` when raw-pointer null semantics are required.
     AM_NODISCARD T* get() const noexcept {
         return ptr_;
     }
 
-    /*!
-     * \brief Dereference operator.
-     * \return A reference to the underlying object.
-     */
+    AM_NODISCARD T* get_or_null() const noexcept {
+        return defined() ? ptr_ : nullptr;
+    }
+
     T& operator*() const noexcept {
         return *ptr_;
     }
 
-    /*!
-     * \brief Member access operator.
-     * \return A pointer to the underlying object.
-     */
     T* operator->() const noexcept {
         return ptr_;
     }
 
-    /*!
-     * \brief Boolean conversion operator.
-     * \return True if the ObjectPtr is defined, false otherwise.
-     */
     operator bool() const noexcept {// NOLINT
         return defined();
     }
 
-    /*!
-     * \brief Returns the reference count of the underlying object.
-     * \return The reference count of the underlying object.
-     */
     AM_NODISCARD uint32_t use_count() const noexcept {
         return ptr_->use_count();
     }
 
-    /*!
-     * \brief Returns whether the ObjectPtr has a unique reference to the underlying object.
-     * \return True if the ObjectPtr has a unique reference to the underlying object, false otherwise.
-     */
     AM_NODISCARD bool unique() const noexcept {
         return use_count() == 1;
     }
 
-    /*!
-     * \brief Returns an owning (!) pointer to the underlying object and makes the
-     * ObjectPtr instance invalid. That means the refcount is not decreased.
-     * Must put the returned pointer back into an ObjectPtr using
-     * ObjectPtr::reclaim(ptr) to properly destruct it.
-     * \return The underlying pointer.
-     */
+    /// Releases the handle without decrementing the strong reference count.
+    ///
+    /// The caller becomes responsible for eventually re-wrapping the returned
+    /// pointer with `reclaim()` or otherwise continuing intrusive ownership. An
+    /// empty handle returns `nullptr`.
     T* release() noexcept {
+        if (!defined()) {
+            ptr_ = empty_sentinel_type::singleton();
+            return nullptr;
+        }
+
         T* tmp = ptr_;
-        ptr_ = null_type::singleton();
+        ptr_ = empty_sentinel_type::singleton();
         return tmp;
     }
 
-    /*!
-     * \brief Recreates an ObjectPtr from a raw pointer.
-     * \note The refcount of the object is not incremented.
-     * \param ptr The raw pointer to recreate the ObjectPtr from.
-     * \return The recreated ObjectPtr.
-     */
+    /// Rebuilds an owning handle from a raw pointer returned by `release()`.
+    ///
+    /// This path assumes the caller already owns the outstanding strong
+    /// reference and therefore does not increment the refcount.
     static ObjectPtr reclaim(T* ptr) {
         return ptr ? ObjectPtr(ptr, DoNotIncRefCountTag()) : ObjectPtr(nullptr);
     }
@@ -476,26 +319,28 @@ public:
     }
 
 private:
-    /*!
-     * \brief Retains the underlying object by incrementing its reference count.
-     */
     void retain() {
         if (defined()) {
-            AM_CHECK(ptr_->use_count() > 0, "ObjectPtr must be copy constructed with an object with ref_count_ > 0");
+            AM_CHECK(ptr_->use_count() > 0,
+                     "ObjectPtr must be copy constructed with an object with ref_count_ > 0");
             ptr_->IncRef();
         }
     }
 
-    /*!
-     * \brief Constructor.
-     * \param ptr The raw pointer to construct the ObjectPtr from.
-     * \note The refcount of the object is not incremented if the pointer is null type pointer.
-     */
     explicit ObjectPtr(T* ptr) : ObjectPtr(ptr, DoNotIncRefCountTag()) {
         if (defined()) {
-            AM_CHECK(ptr_->use_count() == 0, "ObjectPtr must be constructed with a null_type or an object with ref_count_ == 0");
+            AM_CHECK(ptr_->use_count() == 0,
+                     "ObjectPtr must be constructed with a null_type or an object with ref_count_ == 0");
             ptr_->IncRef();
         }
+    }
+
+    template<typename Derived>
+    static T* RemapEmptyObjectSentinel(Derived* ptr) noexcept {
+        if (ptr == EmptyObjectSentinel<Derived>::singleton()) {
+            return empty_sentinel_type::singleton();
+        }
+        return ptr;
     }
 
     T* ptr_;
@@ -507,22 +352,22 @@ private:
     friend class ObjectPtr;
 };
 
-/*!
- * \brief WeakObjectPtr is a weak reference to an Object.
- * \note It does not affect the reference count of the Object.
- * \tparam T The type of the object to reference.
- */
+/// Weak intrusive handle for `Object`-derived instances.
+///
+/// Like `ObjectPtr`, the empty state is represented by `EmptyObjectSentinel<T>`.
+/// Weak handles do not contribute to the strong refcount and must be promoted
+/// through `lock()` before dereference.
 template<typename T>
 class WeakObjectPtr final {
     using element_type = T;
-    using null_type = NullTypeOf<T>;
+    using empty_sentinel_type = EmptyObjectSentinel<T>;
 
     static_assert(std::is_base_of_v<Object, T>, "T must be derived from Object");
-    static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(null_type::singleton())>>,
-                  "NullType::singleton() must return a element_type* pointer");
+    static_assert(std::is_base_of_v<T, std::remove_pointer_t<decltype(empty_sentinel_type::singleton())>>,
+                  "EmptyObjectSentinel::singleton() must return a element_type* pointer");
 
 public:
-    WeakObjectPtr() noexcept : ptr_(null_type::singleton()) {}
+    WeakObjectPtr() noexcept : ptr_(empty_sentinel_type::singleton()) {}
 
     explicit WeakObjectPtr(const ObjectPtr<T>& other) : WeakObjectPtr(other.get()) {
         retain();
@@ -533,21 +378,21 @@ public:
     }
 
     WeakObjectPtr(WeakObjectPtr&& other) noexcept : ptr_(other.ptr_) {
-        other.ptr_ = null_type::singleton();
+        other.ptr_ = empty_sentinel_type::singleton();
     }
 
     template<typename Derived>
     WeakObjectPtr(const WeakObjectPtr<Derived>& other)// NOLINT
-        : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        : ptr_(RemapEmptyObjectSentinel(other.ptr_)) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         retain();
     }
 
     template<typename Derived>
     WeakObjectPtr(WeakObjectPtr<Derived>&& other) noexcept// NOLINT
-        : ptr_(other.ptr_ == NullTypeOf<Derived>::singleton() ? null_type::singleton() : other.ptr_) {
+        : ptr_(RemapEmptyObjectSentinel(other.ptr_)) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
-        other.ptr_ = NullTypeOf<Derived>::singleton();
+        other.ptr_ = EmptyObjectSentinel<Derived>::singleton();
     }
 
     WeakObjectPtr& operator=(const WeakObjectPtr& rhs) & {
@@ -579,7 +424,19 @@ public:
     }
 
     AM_NODISCARD bool defined() const noexcept {
-        return ptr_ != null_type::singleton();
+        return ptr_ != empty_sentinel_type::singleton();
+    }
+
+    AM_NODISCARD bool empty() const noexcept {
+        return ptr_ == empty_sentinel_type::singleton();
+    }
+
+    AM_NODISCARD bool is_sentinel() const noexcept {
+        return ptr_ == empty_sentinel_type::singleton();
+    }
+
+    AM_NODISCARD T* get_or_null() const noexcept {
+        return defined() ? ptr_ : nullptr;
     }
 
     AM_NODISCARD uint32_t use_count() const noexcept {
@@ -594,6 +451,7 @@ public:
         return use_count() == 0;
     }
 
+    /// Promotes the weak handle when the target object is still alive.
     ObjectPtr<T> lock() const noexcept {
         if (ptr_->TryPromoteWeakPtr()) {
             return ObjectPtr<T>(ptr_, DoNotIncRefCountTag());
@@ -603,12 +461,12 @@ public:
 
     T* release() noexcept {
         auto* tmp = ptr_;
-        ptr_ = null_type::singleton();
+        ptr_ = empty_sentinel_type::singleton();
         return tmp;
     }
 
     static WeakObjectPtr reclaim(T* ptr) {
-        AM_CHECK(ptr == null_type::singleton() ||
+        AM_CHECK(ptr == empty_sentinel_type::singleton() ||
                  ptr->weak_use_count() > 1 ||
                  (ptr->use_count() == 0 && ptr->weak_use_count() > 0));
         return WeakObjectPtr(ptr);
@@ -622,7 +480,7 @@ public:
         if (defined()) {
             ptr_->DecWeakRef();
         }
-        ptr_ = null_type::singleton();
+        ptr_ = empty_sentinel_type::singleton();
     }
 
     T* unsafe_get() const noexcept {
@@ -637,6 +495,14 @@ private:
             AM_CHECK(ptr_->weak_use_count() > 0, "ObjectPtr must be copy constructed with an object with weak_ref_count_ > 0");
             ptr_->IncWeakRef();
         }
+    }
+
+    template<typename Derived>
+    static T* RemapEmptyObjectSentinel(Derived* ptr) noexcept {
+        if (ptr == EmptyObjectSentinel<Derived>::singleton()) {
+            return empty_sentinel_type::singleton();
+        }
+        return ptr;
     }
 
     T* ptr_;
@@ -698,14 +564,6 @@ struct ObjectUnsafe {
     }
 };
 
-/*!
- * \brief TypeTraits that removes const and reference keywords.
- * \tparam T the original type
- */
-// template<typename T>
-// using TypeTraitsNoCR = TypeTraits<std::remove_const_t<std::remove_reference_t<T>>>;
-
-
 }// namespace details
 
 template<typename T>
@@ -713,7 +571,6 @@ void swap(ObjectPtr<T>& lhs, ObjectPtr<T>& rhs) noexcept {
     lhs.swap(rhs);
 }
 
-// To allow ObjectPtr inside std::map or std::set, we need operator<
 template<typename T1, typename T2>
 bool operator<(const ObjectPtr<T1>& lhs, const ObjectPtr<T2>& rhs) noexcept {
     return lhs.get() < rhs.get();

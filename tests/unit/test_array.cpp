@@ -10,8 +10,8 @@ namespace {
 
 TEST(Array, init) {
     ObjectPtr<ArrayImpl> impl;
-    EXPECT_TRUE(impl.get() == NullTypeOf<ArrayImpl>::singleton());
-    EXPECT_TRUE(IsNullTypePtr(impl.get()));
+    EXPECT_TRUE(impl.get() == EmptyObjectSentinel<ArrayImpl>::singleton());
+    EXPECT_TRUE(IsEmptyObjectSentinel(impl.get()));
     Array<int> vec1(5, 42);
     auto it = vec1.begin();
     *it = 43;

@@ -22,12 +22,12 @@ TEST(object, ctors) {
     ObjectPtr<NumberObj> p1;
     EXPECT_TRUE(!p1.defined());
     EXPECT_EQ(p1.use_count(), 0);
-    EXPECT_TRUE(p1.get() == NullTypeOf<NumberObj>::singleton());
+    EXPECT_TRUE(p1.get() == EmptyObjectSentinel<NumberObj>::singleton());
 
     ObjectPtr<NumberObj> p2 = nullptr;
     EXPECT_TRUE(!p2.defined());
     EXPECT_EQ(p2.use_count(), 0);
-    EXPECT_TRUE(p2.get() == NullTypeOf<NumberObj>::singleton());
+    EXPECT_TRUE(p2.get() == EmptyObjectSentinel<NumberObj>::singleton());
 
     auto p3 = make_object<NumberObj>();
     EXPECT_TRUE(p3.defined());
@@ -55,6 +55,38 @@ TEST(object, ctors) {
     size_t align = 4;
     size_t res = (sz + (align - 1)) & ~(align - 1);
     std::cout << res;
+}
+
+TEST(object, get_or_null_reports_empty_and_defined_states) {
+    ObjectPtr<NumberObj> empty;
+    EXPECT_EQ(empty.get_or_null(), nullptr);
+    EXPECT_FALSE(IsDefinedObjectPtr(empty.get()));
+
+    auto obj = make_object<NumberObj>();
+    EXPECT_EQ(obj.get_or_null(), obj.get());
+    EXPECT_TRUE(IsDefinedObjectPtr(obj.get()));
+}
+
+TEST(object, release_returns_null_for_empty_handle) {
+    ObjectPtr<NumberObj> empty;
+    EXPECT_EQ(empty.release(), nullptr);
+    EXPECT_FALSE(empty.defined());
+    EXPECT_EQ(empty.get(), EmptyObjectSentinel<NumberObj>::singleton());
+}
+
+TEST(object, release_and_reclaim_preserve_ownership) {
+    auto obj = make_object<NumberObj>();
+    NumberObj* raw = obj.get();
+
+    NumberObj* released = obj.release();
+    EXPECT_EQ(released, raw);
+    EXPECT_FALSE(obj.defined());
+    EXPECT_EQ(released->use_count(), 1);
+
+    auto reclaimed = ObjectPtr<NumberObj>::reclaim(released);
+    EXPECT_TRUE(reclaimed.defined());
+    EXPECT_EQ(reclaimed.get(), raw);
+    EXPECT_EQ(reclaimed.use_count(), 1);
 }
 
 class Class0 : public Object {};
@@ -157,6 +189,15 @@ TEST(object, assign_to_base_class_ptr) {
     ObjectPtr<SomeBaseClass> var = make_object<SomeChildClass>(5);
     EXPECT_EQ(var->val_, 5);
     EXPECT_EQ(var->use_count(), 1);
+}
+
+TEST(object, empty_sentinel_remaps_when_copy_constructing_to_base_class) {
+    ObjectPtr<SomeChildClass> child;
+    ObjectPtr<SomeBaseClass> base = child;
+
+    EXPECT_FALSE(base.defined());
+    EXPECT_EQ(base.get(), EmptyObjectSentinel<SomeBaseClass>::singleton());
+    EXPECT_EQ(base.get_or_null(), nullptr);
 }
 
 TEST(object, move_assign_ptr_to_same_object) {
@@ -458,7 +499,7 @@ TEST(object, givenPtr_whenCopyConstructingToBaseClass_thenPointsToSameObject) {
     EXPECT_EQ(3, base->val_);
     EXPECT_EQ(objptr, base.get());
 }
-//546
+// 546
 
 TEST(weak_object_ptr, basic_construction) {
     // 默认构造函数
@@ -475,6 +516,16 @@ TEST(weak_object_ptr, basic_construction) {
     EXPECT_FALSE(weak2.expired());
     EXPECT_EQ(weak2.use_count(), 1);
     EXPECT_EQ(weak2.weak_use_count(), 2);
+}
+
+TEST(weak_object_ptr, empty_handle_reports_null_semantics) {
+    WeakObjectPtr<NumberObj> weak;
+    EXPECT_FALSE(weak.defined());
+    EXPECT_EQ(weak.get_or_null(), nullptr);
+
+    auto locked = weak.lock();
+    EXPECT_FALSE(locked.defined());
+    EXPECT_EQ(locked.get_or_null(), nullptr);
 }
 
 TEST(weak_object_ptr, copy_construction) {
@@ -582,6 +633,15 @@ TEST(weak_object_ptr, inheritance_conversion) {
     // 验证转换后的指针类型
     auto locked = weak_base.lock();
     EXPECT_TRUE(locked.get() == intObj.get());
+}
+
+TEST(weak_object_ptr, empty_sentinel_remaps_when_converting_to_base_class) {
+    WeakObjectPtr<SomeChildClass> child;
+    WeakObjectPtr<SomeBaseClass> base = child;
+
+    EXPECT_FALSE(base.defined());
+    EXPECT_EQ(base.get_or_null(), nullptr);
+    EXPECT_EQ(base.unsafe_get(), EmptyObjectSentinel<SomeBaseClass>::singleton());
 }
 
 TEST(weak_object_ptr, comparison_operators) {

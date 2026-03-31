@@ -17,8 +17,8 @@ namespace {
 // 测试Function默认构造函数
 TEST(FunctionTest, DefaultConstructor) {
     Function f;
-    EXPECT_TRUE(IsNullTypePtr(f.get_impl_ptr_unsafe()));
-    EXPECT_EQ(f.get_impl_ptr_unsafe(), NullTypeOf<FunctionImpl>::singleton());
+    EXPECT_TRUE(IsEmptyObjectSentinel(f.get_impl_ptr_unsafe()));
+    EXPECT_EQ(f.get_impl_ptr_unsafe(), EmptyObjectSentinel<FunctionImpl>::singleton());
 }
 
 // 测试Function从FunctionImpl创建
@@ -124,7 +124,7 @@ TEST(FunctionTest, ImplPointerMethods) {
     // 测试release_impl_unsafe
     FunctionImpl* released_impl = f.release_impl_unsafe();
     EXPECT_EQ(released_impl, impl_ptr);
-    EXPECT_EQ(f.get_impl_ptr_unsafe(), NullTypeOf<FunctionImpl>::singleton());
+    EXPECT_EQ(f.get_impl_ptr_unsafe(), EmptyObjectSentinel<FunctionImpl>::singleton());
 
     // 释放资源
     ObjectUnsafe::DecRefObjectHandle(released_impl);

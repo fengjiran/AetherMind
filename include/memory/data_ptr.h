@@ -179,7 +179,7 @@ public:
                  Device device,
                  size_t alignment = 0) noexcept
         : data_(data),
-          deleter_ctx_(deleter_ctx),
+          ctx_(deleter_ctx),
           deleter_(deleter),
           alignment_(alignment),
           device_(device) {}
@@ -216,8 +216,8 @@ public:
         return alignment_;
     }
 
-    AM_NODISCARD void* deleter_ctx() const noexcept {
-        return deleter_ctx_;
+    AM_NODISCARD void* context() const noexcept {
+        return ctx_;
     }
 
     AM_NODISCARD memory_deleter_fn deleter() const noexcept {
@@ -230,11 +230,11 @@ public:
 
     void reset() noexcept {
         if (data_ != nullptr && deleter_ != nullptr) {
-            deleter_(deleter_ctx_, data_);
+            deleter_(ctx_, data_);
         }
 
         data_ = nullptr;
-        deleter_ctx_ = nullptr;
+        ctx_ = nullptr;
         deleter_ = nullptr;
         device_ = Device(kUndefined);
         alignment_ = 0;
@@ -242,7 +242,7 @@ public:
 
     void swap(MemoryHandle& other) noexcept {
         std::swap(data_, other.data_);
-        std::swap(deleter_ctx_, other.deleter_ctx_);
+        std::swap(ctx_, other.ctx_);
         std::swap(deleter_, other.deleter_);
         std::swap(device_, other.device_);
         std::swap(alignment_, other.alignment_);
@@ -250,7 +250,7 @@ public:
 
 private:
     void* data_ = nullptr;
-    void* deleter_ctx_ = nullptr;
+    void* ctx_ = nullptr;
     memory_deleter_fn deleter_ = nullptr;
     size_t alignment_ = 0;
     Device device_{kUndefined};

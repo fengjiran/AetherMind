@@ -12,7 +12,14 @@ namespace aethermind {
 
 class BufferImpl : public Object {
 public:
+    BufferImpl() noexcept = default;
+
+    BufferImpl(size_t nbytes, MemoryHandle handle) noexcept
+        : nbytes_(nbytes), handle_(std::move(handle)) {}
+
 private:
+    size_t nbytes_{0};
+    MemoryHandle handle_{};
 };
 
 class Buffer : public ObjectRef {

@@ -1,6 +1,7 @@
+// Intrusive object lifetime primitives for strong/weak handle promotion and teardown.
 //
-// Created by richard on 9/29/25.
-//
+// This file contains the non-inline ownership transitions that must coordinate
+// destruction order, storage release, and weak-to-strong promotion races.
 #include "object.h"
 #include "object_allocator.h"
 
@@ -15,24 +16,21 @@ Object::Object() {
 void Object::DecRef() {
     if (__atomic_fetch_sub(&header_.strong_ref_count, 1, __ATOMIC_RELEASE) == 1) {
         if (weak_use_count() == 1) {
-            // only acquire when we need to call deleter
-            // in this case we need to ensure all previous writes are visible
+            // Acquire only on the final teardown path so the deleter sees prior writes.
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
             if (header_.deleter != nullptr) {
                 header_.deleter(this, kBothPtrMask);
             }
         } else {
-            // Slower path: there is still a weak reference left
+            // A weak handle still keeps the control block alive.
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
-            // call destructor first, release source
+            // Destroy the object payload first and leave storage reclamation to the weak path.
             if (header_.deleter != nullptr) {
                 header_.deleter(this, kStrongPtrMask);
             }
 
-            // decrease weak ref count
             if (__atomic_fetch_sub(&header_.weak_ref_count, 1, __ATOMIC_RELEASE) == 1) {
                 __atomic_thread_fence(__ATOMIC_ACQUIRE);
-                // free memory
                 if (header_.deleter != nullptr) {
                     header_.deleter(this, kWeakPtrMask);
                 }
@@ -44,7 +42,6 @@ void Object::DecRef() {
 void Object::DecWeakRef() {
     if (__atomic_fetch_sub(&header_.weak_ref_count, 1, __ATOMIC_RELEASE) == 1) {
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
-        // free memory
         if (header_.deleter != nullptr) {
             header_.deleter(this, kWeakPtrMask);
         }
@@ -53,9 +50,7 @@ void Object::DecWeakRef() {
 
 bool Object::TryPromoteWeakPtr() {
     uint32_t old_cnt = __atomic_load_n(&header_.strong_ref_count, __ATOMIC_RELAXED);
-    // must do CAS to ensure that we are the only one that increases the reference count
-    // avoid condition when two threads tries to promote weak to strong at same time
-    // or when strong deletion happens between the load and the CAS
+    // CAS promotion avoids racing with concurrent promotions and final strong teardown.
     while (old_cnt > 0) {
         uint32_t new_cnt = old_cnt + 1;
         if (__atomic_compare_exchange_n(&header_.strong_ref_count, &old_cnt, new_cnt, true,
@@ -66,7 +61,7 @@ bool Object::TryPromoteWeakPtr() {
     return false;
 }
 
-#ifdef  AETHERMIND_ALLOCATOR_DEBUG
+#ifdef AETHERMIND_ALLOCATOR_DEBUG
 namespace details {
 backtrace_state* AllocTracker::bt_state_ = nullptr;
 }

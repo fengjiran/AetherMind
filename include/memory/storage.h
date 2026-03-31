@@ -10,6 +10,17 @@
 
 namespace aethermind {
 
+class BufferImpl : public Object {
+public:
+private:
+};
+
+class Buffer : public ObjectRef {
+public:
+private:
+    ObjectPtr<BufferImpl> impl_;
+};
+
 class Storage : public ObjectRef {
 public:
     Storage() = default;
@@ -73,4 +84,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_STORAGE_H
+#endif// AETHERMIND_STORAGE_H

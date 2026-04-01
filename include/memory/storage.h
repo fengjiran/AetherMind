@@ -5,10 +5,13 @@
 #ifndef AETHERMIND_STORAGE_H
 #define AETHERMIND_STORAGE_H
 
-#include "container/array_view.h"
+#include "macros.h"
 #include "memory/data_ptr.h"
 #include "memory/storage_impl.h"
+#include "object.h"
 #include "object_allocator.h"
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 
 namespace aethermind {
@@ -20,7 +23,7 @@ public:
     BufferImpl(size_t nbytes, MemoryHandle handle) noexcept
         : nbytes_(nbytes), handle_(std::move(handle)) {}
 
-    AM_NODISCARD bool defined() const noexcept {
+    AM_NODISCARD bool is_initialized() const noexcept {
         return static_cast<bool>(handle_);
     }
 
@@ -39,10 +42,6 @@ public:
 
     AM_NODISCARD Device device() const noexcept {
         return handle_.device();
-    }
-
-    AM_NODISCARD DeviceType device_type() const noexcept {
-        return handle_.device().type();
     }
 
     AM_NODISCARD size_t alignment() const noexcept {
@@ -69,6 +68,43 @@ public:
 
     Buffer(size_t nbytes, MemoryHandle handle) noexcept
         : impl_(make_object<BufferImpl>(nbytes, std::move(handle))) {}
+
+    AM_NODISCARD bool defined() const noexcept {
+        return impl_;
+    }
+
+    AM_NODISCARD size_t nbytes() const noexcept {
+        return impl_->nbytes();
+    }
+
+    AM_NODISCARD void* mutable_data() noexcept {
+        return impl_->mutable_data();
+    }
+
+    AM_NODISCARD const void* data() const noexcept {
+        return impl_->data();
+    }
+
+    AM_NODISCARD Device device() const noexcept {
+        return impl_->device();
+    }
+
+    AM_NODISCARD size_t alignment() const noexcept {
+        return impl_->alignment();
+    }
+
+    AM_NODISCARD uint32_t use_count() const noexcept {
+        return impl_->use_count();
+    }
+
+    AM_NODISCARD bool unique() const noexcept {
+        return use_count() == 1;
+    }
+
+    AM_NODISCARD const ObjectPtr<BufferImpl>& impl() const noexcept {
+        return impl_;
+    }
+
 
 private:
     ObjectPtr<BufferImpl> impl_;

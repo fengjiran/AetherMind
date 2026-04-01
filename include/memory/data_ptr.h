@@ -272,8 +272,6 @@ inline bool operator!=(std::nullptr_t, const MemoryHandle& h) noexcept {
     return static_cast<bool>(h);
 }
 
-//-Dawt.toolkit.name=XToolkit
-
 }// namespace aethermind
 
 #endif// AETHERMIND_UNIQUE_VOID_PTR_H

@@ -6,7 +6,10 @@
 #define AETHERMIND_STORAGE_H
 
 #include "container/array_view.h"
+#include "memory/data_ptr.h"
 #include "memory/storage_impl.h"
+#include "object_allocator.h"
+#include <utility>
 
 namespace aethermind {
 
@@ -17,6 +20,40 @@ public:
     BufferImpl(size_t nbytes, MemoryHandle handle) noexcept
         : nbytes_(nbytes), handle_(std::move(handle)) {}
 
+    AM_NODISCARD bool defined() const noexcept {
+        return static_cast<bool>(handle_);
+    }
+
+    /// Visible buffer size in bytes from `data()` base pointer.
+    AM_NODISCARD size_t nbytes() const noexcept {
+        return nbytes_;
+    }
+
+    AM_NODISCARD void* mutable_data() noexcept {
+        return handle_.get();
+    }
+
+    AM_NODISCARD const void* data() const noexcept {
+        return handle_.get();
+    }
+
+    AM_NODISCARD Device device() const noexcept {
+        return handle_.device();
+    }
+
+    AM_NODISCARD DeviceType device_type() const noexcept {
+        return handle_.device().type();
+    }
+
+    AM_NODISCARD size_t alignment() const noexcept {
+        return handle_.alignment();
+    }
+
+    BufferImpl(const BufferImpl&) = delete;
+    BufferImpl(BufferImpl&&) noexcept = delete;
+    BufferImpl& operator=(const BufferImpl&) = delete;
+    BufferImpl& operator=(BufferImpl&&) noexcept = delete;
+
 private:
     size_t nbytes_{0};
     MemoryHandle handle_{};
@@ -24,6 +61,15 @@ private:
 
 class Buffer : public ObjectRef {
 public:
+    Buffer() noexcept = default;
+
+    /// Construct from a pre-created implementation object.
+    explicit Buffer(ObjectPtr<BufferImpl> impl) noexcept
+        : impl_(std::move(impl)) {}
+
+    Buffer(size_t nbytes, MemoryHandle handle) noexcept
+        : impl_(make_object<BufferImpl>(nbytes, std::move(handle))) {}
+
 private:
     ObjectPtr<BufferImpl> impl_;
 };

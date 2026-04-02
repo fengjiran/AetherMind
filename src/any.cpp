@@ -6,6 +6,7 @@
 #include "tensor.h"
 #include "type_system/tensor_type.h"
 #include "type_system/type.h"
+#include "backtrace.h"
 
 namespace aethermind {
 

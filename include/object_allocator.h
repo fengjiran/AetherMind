@@ -7,7 +7,6 @@
 
 // #define AETHERMIND_ALLOCATOR_DEBUG
 
-#include "backtrace.h"
 #include "object.h"
 
 #include <mutex>
@@ -189,4 +188,4 @@ ObjectPtr<T> make_array_object(size_t num_elems, Args&&... args) {
 
 }// namespace aethermind
 
-#endif//AETHERMIND_OBJECT_ALLOCATOR_H
+#endif// AETHERMIND_OBJECT_ALLOCATOR_H

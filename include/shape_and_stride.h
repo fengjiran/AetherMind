@@ -6,6 +6,7 @@
 #define AETHERMIND_SHAPE_AND_STRIDE_H
 
 #include "container/array_view.h"
+#include <cstring>
 
 #define MAX_INLINE_SIZE 5
 
@@ -216,7 +217,7 @@ public:
         if (new_size <= MAX_INLINE_SIZE && is_inline()) {
             if (old_size < new_size) {
                 const auto bytes_to_zero = (new_size - old_size) * sizeof(inline_storage_[0]);
-                memset(&inline_storage_[old_size], 0, bytes_to_zero);
+                std::memset(&inline_storage_[old_size], 0, bytes_to_zero);
                 memset(&inline_storage_[MAX_INLINE_SIZE + old_size], 0, bytes_to_zero);
             }
             size_ = new_size;
@@ -307,4 +308,4 @@ private:
 };
 
 }// namespace aethermind
-#endif//AETHERMIND_SHAPE_AND_STRIDE_H
+#endif// AETHERMIND_SHAPE_AND_STRIDE_H

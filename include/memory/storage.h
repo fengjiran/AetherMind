@@ -69,8 +69,8 @@ public:
     Buffer(size_t nbytes, MemoryHandle handle) noexcept
         : impl_(make_object<BufferImpl>(nbytes, std::move(handle))) {}
 
-    AM_NODISCARD bool defined() const noexcept {
-        return impl_;
+    AM_NODISCARD bool is_initialized() const noexcept {
+        return impl_ && impl_->is_initialized();
     }
 
     AM_NODISCARD size_t nbytes() const noexcept {

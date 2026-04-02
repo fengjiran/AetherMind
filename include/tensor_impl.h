@@ -12,7 +12,6 @@
 #include "memory_format.h"
 #include "scalar.h"
 #include "shape_and_stride.h"
-#include "tensor_utils.h"
 
 #include <memory>
 #include <vector>

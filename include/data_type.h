@@ -154,16 +154,13 @@ class DataType {
 public:
     DataType() : dtype_({DLDataTypeCode::Undefined, 0, 0}) {}
 
+    DataType(const DataType& other) : dtype_(other.dtype_) {}
+
     explicit DataType(DLDataType dtype) : dtype_(dtype) {}
 
     DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable = false);
 
-    DataType& operator=(const DataType& other) {
-        if (this != &other) {
-            dtype_ = other.dtype_;
-        }
-        return *this;
-    }
+    DataType& operator=(const DataType&) = default;
 
     operator DLDataType() const {// NOLINT
         return dtype_;
@@ -504,15 +501,15 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
     f(DLDataTypeCode::kComplex, 32, 1, complex<Half>, ComplexHalf);        \
     f(DLDataTypeCode::kComplex, 64, 1, complex<float>, ComplexFloat);      \
     f(DLDataTypeCode::kComplex, 128, 1, complex<double>, ComplexDouble);
-//f(DLDataTypeCode::kFloat8_e3m4, 8, 1, Float8_e3m4, Float8_e3m4);                      \
-//f(DLDataTypeCode::kFloat8_e4m3, 8, 1, Float8_e4m3, Float8_e4m3);                      \
-//f(DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, 1, Float8_e4m3b11fnuz, Float8_e4m3b11fnuz); \
-// f(DLDataTypeCode::kFloat8_e4m3fnuz, 8, 1, Float8_e4m3fnuz,Float8_e4m3fnuz);    \
-// f(DLDataTypeCode::kFloat8_e5m2fnuz, 8, 1, Float8_e5m2fnuz,Float8_e5m2fnuz);    \
-// f(DLDataTypeCode::kFloat8_e8m0fnu, 8, 1, Float8_e8m0fnu,Float8_e8m0fnu);     \
-// f(DLDataTypeCode::kFloat6_e2m3fn, 6, 1, Float6_e2m3fn,Float6_e2m3fn);      \
-// f(DLDataTypeCode::kFloat6_e3m2fn, 6, 1, Float6_e3m2fn,Float6_e3m2fn);      \
-// f(DLDataTypeCode::kFloat4_e2m1fn, 4, 1, Float4_e2m1fn,Float4_e2m1fn)
+// f(DLDataTypeCode::kFloat8_e3m4, 8, 1, Float8_e3m4, Float8_e3m4);                      \
+// f(DLDataTypeCode::kFloat8_e4m3, 8, 1, Float8_e4m3, Float8_e4m3);                      \
+// f(DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, 1, Float8_e4m3b11fnuz, Float8_e4m3b11fnuz); \
+//  f(DLDataTypeCode::kFloat8_e4m3fnuz, 8, 1, Float8_e4m3fnuz,Float8_e4m3fnuz);    \
+//  f(DLDataTypeCode::kFloat8_e5m2fnuz, 8, 1, Float8_e5m2fnuz,Float8_e5m2fnuz);    \
+//  f(DLDataTypeCode::kFloat8_e8m0fnu, 8, 1, Float8_e8m0fnu,Float8_e8m0fnu);     \
+//  f(DLDataTypeCode::kFloat6_e2m3fn, 6, 1, Float6_e2m3fn,Float6_e2m3fn);      \
+//  f(DLDataTypeCode::kFloat6_e3m2fn, 6, 1, Float6_e3m2fn,Float6_e3m2fn);      \
+//  f(DLDataTypeCode::kFloat4_e2m1fn, 4, 1, Float4_e2m1fn,Float4_e2m1fn)
 
 
 }// namespace aethermind
@@ -533,4 +530,4 @@ struct hash<aethermind::DataType> {
 
 }// namespace std
 
-#endif//AETHERMIND_DATA_TYPE_H
+#endif// AETHERMIND_DATA_TYPE_H

@@ -49,78 +49,77 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --build-dir)
-            BUILD_DIR="$2"
-            shift 2
-            ;;
-        --build-type)
-            BUILD_TYPE="$2"
-            shift 2
-            ;;
-        --debug)
-            BUILD_TYPE="Debug"
-            shift
-            ;;
-        --release)
-            BUILD_TYPE="Release"
-            shift
-            ;;
-        --relwithdebinfo)
-            BUILD_TYPE="RelWithDebInfo"
-            shift
-            ;;
-        --minsizerel)
-            BUILD_TYPE="MinSizeRel"
-            shift
-            ;;
-        --target)
-            TARGET="$2"
-            shift 2
-            ;;
-        --skip-tests)
-            BUILD_TESTS="OFF"
-            shift
-            ;;
-        --skip-benchmarks)
-            BUILD_BENCHMARKS="OFF"
-            shift
-            ;;
-        --disable-libbacktrace)
-            USE_LIBBACKTRACE="OFF"
-            shift
-            ;;
-        --disable-segfault-hook)
-            BACKTRACE_ON_SEGFAULT="OFF"
-            shift
-            ;;
-        --tsan)
-            ENABLE_TSAN="ON"
-            shift
-            ;;
-        --configure-only)
-            CONFIGURE_ONLY="true"
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1" >&2
-            usage
-            exit 1
-            ;;
+    --build-dir)
+        BUILD_DIR="$2"
+        shift 2
+        ;;
+    --build-type)
+        BUILD_TYPE="$2"
+        shift 2
+        ;;
+    --debug)
+        BUILD_TYPE="Debug"
+        shift
+        ;;
+    --release)
+        BUILD_TYPE="Release"
+        shift
+        ;;
+    --relwithdebinfo)
+        BUILD_TYPE="RelWithDebInfo"
+        shift
+        ;;
+    --minsizerel)
+        BUILD_TYPE="MinSizeRel"
+        shift
+        ;;
+    --target)
+        TARGET="$2"
+        shift 2
+        ;;
+    --skip-tests)
+        BUILD_TESTS="OFF"
+        shift
+        ;;
+    --skip-benchmarks)
+        BUILD_BENCHMARKS="OFF"
+        shift
+        ;;
+    --disable-libbacktrace)
+        USE_LIBBACKTRACE="OFF"
+        shift
+        ;;
+    --disable-segfault-hook)
+        BACKTRACE_ON_SEGFAULT="OFF"
+        shift
+        ;;
+    --tsan)
+        ENABLE_TSAN="ON"
+        shift
+        ;;
+    --configure-only)
+        CONFIGURE_ONLY="true"
+        shift
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
     esac
 done
 
 case "$BUILD_TYPE" in
-    Debug|Release|RelWithDebInfo|MinSizeRel)
-        ;;
-    *)
-        echo "Unsupported build type: $BUILD_TYPE" >&2
-        usage
-        exit 1
-        ;;
+Debug | Release | RelWithDebInfo | MinSizeRel) ;;
+*)
+    echo "Unsupported build type: $BUILD_TYPE" >&2
+    usage
+    exit 1
+    ;;
 esac
 
 echo "======================================"

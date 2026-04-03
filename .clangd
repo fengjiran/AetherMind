@@ -1,0 +1,25 @@
+# 项目根目录/.clangd
+CompileFlags:
+  Add: [-Wall, -Wextra, -Wpedantic]
+  # 需要时也可以移除项目里某些过于吵闹的 warning
+  # Remove: [-Wno-*, -Winvalid-pch]
+
+Diagnostics:
+  ClangTidy:
+    Add: [
+      bugprone-*,
+      performance-*,
+      modernize-*,
+      readability-*,
+    ]
+    Remove: [
+      modernize-use-trailing-return-type,
+      readability-identifier-length,
+    ]
+    CheckOptions:
+      readability-identifier-naming.VariableCase: camelBack
+      readability-identifier-naming.ClassCase: CamelCase
+
+  # 可选：让 include 诊断更严格
+  UnusedIncludes: Strict
+  MissingIncludes: Strict

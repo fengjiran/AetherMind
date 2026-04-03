@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_ALLOCATOR_H
 #define AETHERMIND_ALLOCATOR_H
 
+#include "../aethermind/memory/data_ptr.h"
 #include "container/map.h"
-#include "data_ptr.h"
 #include "device.h"
 #include "utils/thread_local_debug_info.h"
 

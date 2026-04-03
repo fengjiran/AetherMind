@@ -5,10 +5,10 @@
 #ifndef AETHERMIND_TENSOR_IMPL_H
 #define AETHERMIND_TENSOR_IMPL_H
 
+#include "aethermind/memory/buffer.h"
 #include "data_type.h"
 #include "layout.h"
 #include "memory/cpu_allocator.h"
-#include "memory/storage.h"
 #include "memory_format.h"
 #include "scalar.h"
 #include "shape_and_stride.h"

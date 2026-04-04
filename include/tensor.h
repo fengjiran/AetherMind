@@ -9,25 +9,25 @@
 
 namespace aethermind {
 
-class Tensor {
+class Tensor_BK {
 public:
-    Tensor() = default;
+    Tensor_BK() = default;
 
-    explicit Tensor(const std::vector<int64_t>& shape,
+    explicit Tensor_BK(const std::vector<int64_t>& shape,
                     int64_t storage_offset = 0,
                     DataType dtype = DataType::Float32(),
                     Device device = Device::CPU());
 
-    explicit Tensor(ObjectPtr<TensorImpl> impl);
+    explicit Tensor_BK(ObjectPtr<TensorImpl> impl);
 
-    Tensor(const Tensor&) = default;
-    Tensor(Tensor&&) = default;
+    Tensor_BK(const Tensor_BK&) = default;
+    Tensor_BK(Tensor_BK&&) = default;
 
-    Tensor& operator=(const Tensor&) & = default;
-    Tensor& operator=(Tensor&&) & noexcept = default;
+    Tensor_BK& operator=(const Tensor_BK&) & = default;
+    Tensor_BK& operator=(Tensor_BK&&) & noexcept = default;
 
-    Tensor& operator=(const Tensor&) && = default;
-    Tensor& operator=(Tensor&&) && noexcept = default;
+    Tensor_BK& operator=(const Tensor_BK&) && = default;
+    Tensor_BK& operator=(Tensor_BK&&) && noexcept = default;
 
     AM_NODISCARD bool defined() const;
 
@@ -94,13 +94,13 @@ public:
 
     // returns a tensor filled with random numbers from
     // a uniform distribution on the interval [0, 1)
-    static Tensor rand(const std::vector<int64_t>& shape);
+    static Tensor_BK rand(const std::vector<int64_t>& shape);
 
     // Returns a tensor filled with random numbers from
     // a normal distribution with mean 0 and variance 1
-    static Tensor randn(const std::vector<int64_t>& shape);
+    static Tensor_BK randn(const std::vector<int64_t>& shape);
 
-    static Tensor randint(int64_t low, int64_t high, const std::vector<int64_t>& shape);
+    static Tensor_BK randint(int64_t low, int64_t high, const std::vector<int64_t>& shape);
 
 private:
     ObjectPtr<TensorImpl> impl_;

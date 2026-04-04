@@ -9,8 +9,8 @@ using namespace aethermind::test_utils;
 namespace {
 
 TEST(TensorRandom, UniformDeterministicWithSameSeed) {
-    Tensor a = RandomUniform({128}, DataType::Float32(), -1.0, 1.0, 42);
-    Tensor b = RandomUniform({128}, DataType::Float32(), -1.0, 1.0, 42);
+    auto a = RandomUniform({128}, DataType::Float32(), -1.0, 1.0, 42);
+    auto b = RandomUniform({128}, DataType::Float32(), -1.0, 1.0, 42);
 
     ASSERT_EQ(a.numel(), b.numel());
     const float* ad = a.const_data_ptr<float>();
@@ -21,7 +21,7 @@ TEST(TensorRandom, UniformDeterministicWithSameSeed) {
 }
 
 TEST(TensorRandom, UniformHonorsRange) {
-    Tensor t = RandomUniform({256}, DataType::Float32(), -2.5, 3.5, 7);
+    auto t = RandomUniform({256}, DataType::Float32(), -2.5, 3.5, 7);
 
     const float* data = t.const_data_ptr<float>();
     for (int64_t i = 0; i < t.numel(); ++i) {
@@ -31,7 +31,7 @@ TEST(TensorRandom, UniformHonorsRange) {
 }
 
 TEST(TensorRandom, RandomIntHonorsRange) {
-    Tensor t = RandomInt({256}, 10, 20, 9, DataType::Int(64));
+    auto t = RandomInt({256}, 10, 20, 9, DataType::Int(64));
 
     const int64_t* data = t.const_data_ptr<int64_t>();
     for (int64_t i = 0; i < t.numel(); ++i) {
@@ -41,8 +41,8 @@ TEST(TensorRandom, RandomIntHonorsRange) {
 }
 
 TEST(TensorRandom, NormalDeterministicWithSameSeed) {
-    Tensor a = RandomNormal({128}, DataType::Double(), 0.5, 2.0, 123);
-    Tensor b = RandomNormal({128}, DataType::Double(), 0.5, 2.0, 123);
+    auto a = RandomNormal({128}, DataType::Double(), 0.5, 2.0, 123);
+    auto b = RandomNormal({128}, DataType::Double(), 0.5, 2.0, 123);
 
     ASSERT_EQ(a.numel(), b.numel());
     const double* ad = a.const_data_ptr<double>();
@@ -53,27 +53,27 @@ TEST(TensorRandom, NormalDeterministicWithSameSeed) {
 }
 
 TEST(TensorAllClose, PassesForCloseFloat32) {
-    Tensor a = RandomUniform({64}, DataType::Float32(), -1.0, 1.0, 1);
-    Tensor b = RandomUniform({64}, DataType::Float32(), -1.0, 1.0, 1);
+    auto a = RandomUniform({64}, DataType::Float32(), -1.0, 1.0, 1);
+    auto b = RandomUniform({64}, DataType::Float32(), -1.0, 1.0, 1);
     b.data_ptr<float>()[0] += 1e-7F;
     EXPECT_TRUE(aethermind::test_utils::ExpectTensorAllClose(a, b, 1e-6, 1e-6));
 }
 
 TEST(TensorAllClose, FailsForLargeDifferenceFloat32) {
-    Tensor a = RandomUniform({64}, DataType::Float32(), -1.0, 1.0, 2);
-    Tensor b = RandomUniform({64}, DataType::Float32(), -1.0, 1.0, 200);
+    auto a = RandomUniform({64}, DataType::Float32(), -1.0, 1.0, 2);
+    auto b = RandomUniform({64}, DataType::Float32(), -1.0, 1.0, 200);
     EXPECT_FALSE(aethermind::test_utils::ExpectTensorAllClose(a, b, 1e-6, 1e-6));
 }
 
 TEST(TensorAllClose, DetectsShapeMismatch) {
-    Tensor a = RandomUniform({4, 8}, DataType::Float32(), 0.0, 1.0, 3);
-    Tensor b = RandomUniform({8, 4}, DataType::Float32(), 0.0, 1.0, 3);
+    auto a = RandomUniform({4, 8}, DataType::Float32(), 0.0, 1.0, 3);
+    auto b = RandomUniform({8, 4}, DataType::Float32(), 0.0, 1.0, 3);
     EXPECT_FALSE(aethermind::test_utils::ExpectTensorAllClose(a, b, 1e-6, 1e-6));
 }
 
 TEST(TensorAllClose, SupportsHalf) {
-    Tensor a({8}, 0, DataType::Make<Half>(), Device::CPU());
-    Tensor b({8}, 0, DataType::Make<Half>(), Device::CPU());
+    Tensor_BK a({8}, 0, DataType::Make<Half>(), Device::CPU());
+    Tensor_BK b({8}, 0, DataType::Make<Half>(), Device::CPU());
 
     for (int64_t i = 0; i < a.numel(); ++i) {
         a.data_ptr<Half>()[i] = Half(static_cast<float>(i) * 0.1F);
@@ -84,8 +84,8 @@ TEST(TensorAllClose, SupportsHalf) {
 }
 
 TEST(TensorAllClose, SupportsBFloat16) {
-    Tensor a({8}, 0, DataType::Make<BFloat16>(), Device::CPU());
-    Tensor b({8}, 0, DataType::Make<BFloat16>(), Device::CPU());
+    Tensor_BK a({8}, 0, DataType::Make<BFloat16>(), Device::CPU());
+    Tensor_BK b({8}, 0, DataType::Make<BFloat16>(), Device::CPU());
 
     for (int64_t i = 0; i < a.numel(); ++i) {
         a.data_ptr<BFloat16>()[i] = BFloat16(static_cast<float>(i) * 0.2F);
@@ -96,17 +96,17 @@ TEST(TensorAllClose, SupportsBFloat16) {
 }
 
 TEST(TensorAllClose, SupportsExactIntComparison) {
-    Tensor a = RandomInt({64}, 0, 100, 99, DataType::Int(32));
-    Tensor b = RandomInt({64}, 0, 100, 99, DataType::Int(32));
+    auto a = RandomInt({64}, 0, 100, 99, DataType::Int(32));
+    auto b = RandomInt({64}, 0, 100, 99, DataType::Int(32));
     EXPECT_TRUE(aethermind::test_utils::ExpectTensorEqual(a, b));
 
-    Tensor c = RandomInt({64}, 0, 100, 100, DataType::Int(32));
+    auto c = RandomInt({64}, 0, 100, 100, DataType::Int(32));
     EXPECT_FALSE(aethermind::test_utils::ExpectTensorEqual(a, c));
 }
 
 TEST(TensorAllClose, ReportsMultipleMismatches) {
-    Tensor a = RandomInt({16}, 0, 4, 11, DataType::Int(64));
-    Tensor b = RandomInt({16}, 0, 4, 11, DataType::Int(64));
+    auto a = RandomInt({16}, 0, 4, 11, DataType::Int(64));
+    auto b = RandomInt({16}, 0, 4, 11, DataType::Int(64));
     b.data_ptr<int64_t>()[1] += 10;
     b.data_ptr<int64_t>()[3] += 10;
     b.data_ptr<int64_t>()[5] += 10;
@@ -116,8 +116,8 @@ TEST(TensorAllClose, ReportsMultipleMismatches) {
 }
 
 TEST(TensorAllClose, RejectsIntDtype) {
-    Tensor a = RandomInt({8}, 0, 10, 1, DataType::Int(32));
-    Tensor b = RandomInt({8}, 0, 10, 1, DataType::Int(32));
+    auto a = RandomInt({8}, 0, 10, 1, DataType::Int(32));
+    auto b = RandomInt({8}, 0, 10, 1, DataType::Int(32));
     EXPECT_FALSE(aethermind::test_utils::ExpectTensorAllClose(a, b, 1e-6, 1e-6));
 }
 

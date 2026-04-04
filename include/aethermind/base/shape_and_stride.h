@@ -151,7 +151,7 @@ public:
 
     /// Returns the i-th dimension size.
     /// \pre 0 <= i < size()
-    AM_NODISCARD int64_t dim(int32_t i) const noexcept {
+    AM_NODISCARD int64_t shape(int32_t i) const noexcept {
         AM_DCHECK(i >= 0 && i < size_);
         return shape_[i];
     }

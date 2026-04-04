@@ -491,7 +491,7 @@ static bool IsNullOrEqual(std::optional<T> a, IntArrayView b) {
     return !a.has_value() || a.value() == b;
 }
 
-bool TensorType::MatchTensor(const Tensor& t) const {
+bool TensorType::MatchTensor(const Tensor_BK& t) const {
     bool undef = undefined().value_or(!t.defined());
 
     // When the followings are true, we consider it's not a match:
@@ -615,7 +615,7 @@ TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
 }
 
 
-TensorTypePtr TensorType::Create(const Tensor& t) {
+TensorTypePtr TensorType::Create(const Tensor_BK& t) {
     VaryingShape<bool> contiguity;
     VaryingShape<size_t> stride_indices;
 

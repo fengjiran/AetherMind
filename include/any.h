@@ -415,7 +415,7 @@ public:
         return cast<String>();
     }
 
-    AM_NODISCARD Tensor ToTensor() const;
+    AM_NODISCARD Tensor_BK ToTensor() const;
 
     AM_NODISCARD uint32_t use_count() const noexcept {
         return has_value() ? GetHolderPtr()->use_count() : 0;

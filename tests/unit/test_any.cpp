@@ -27,7 +27,7 @@ TEST(Any, bool) {
     EXPECT_TRUE(!x1.cast<bool>());
 
     EXPECT_EQ(details::Type2Str<bool>::value(), "Bool");
-    EXPECT_EQ(details::Type2Str<Tensor>::value(), "Tensor");
+    EXPECT_EQ(details::Type2Str<Tensor_BK>::value(), "Tensor");
 }
 
 TEST(Any, null) {
@@ -188,7 +188,7 @@ TEST(Any, device) {
 }
 
 TEST(Any, tensor) {
-    Tensor t({3, 10});
+    Tensor_BK t({3, 10});
     Any x = t;
     EXPECT_TRUE(x.IsTensor());
     EXPECT_EQ(t.use_count(), 2);

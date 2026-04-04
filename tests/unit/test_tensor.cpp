@@ -35,7 +35,7 @@ TEST(Tensor, envs) {
 }
 
 TEST(Tensor, base1) {
-    Tensor t({3, 10});
+    Tensor_BK t({3, 10});
     auto t1 = t;
     EXPECT_TRUE(t.shape() == std::vector<int64_t>({3, 10}));
     EXPECT_EQ(t.use_count(), 2);
@@ -62,7 +62,7 @@ TEST(Tensor, init) {
     EXPECT_ANY_THROW(UNUSED(t1.itemsize()););
 #endif
 
-    Tensor t2;
+    Tensor_BK t2;
     EXPECT_FALSE(t2.defined());
     EXPECT_TRUE(t2.is_contiguous());
     EXPECT_TRUE(t2.dtype() == DataType());
@@ -105,7 +105,7 @@ TEST(Tensor, random) {
     auto t1 = torch::rand(shape);
 #endif
 
-    auto t2 = Tensor::rand(shape);
+    auto t2 = Tensor_BK::rand(shape);
     EXPECT_TRUE(t2.defined());
     EXPECT_TRUE(t2.is_cpu());
     EXPECT_FALSE(t2.is_cuda());
@@ -130,13 +130,13 @@ TEST(Tensor, random) {
     EXPECT_TRUE(t2.is_cpu());
     EXPECT_FLOAT_EQ(t2.const_data_ptr<float>()[0], static_cast<const float*>(t2.const_data_ptr())[0]);
     {
-        Tensor() = t2;
+        Tensor_BK() = t2;
     }
     EXPECT_EQ(t2.use_count(), 1);
 }
 
 TEST(Tensor, reject_undefined_device) {
-    EXPECT_DEATH(UNUSED(Tensor({2, 2}, 0, DataType::Float32(), Device(kUndefined))), "device should be initialized");
+    EXPECT_DEATH(UNUSED(Tensor_BK({2, 2}, 0, DataType::Float32(), Device(kUndefined))), "device should be initialized");
 }
 
 }// namespace

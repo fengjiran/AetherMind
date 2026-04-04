@@ -13,21 +13,21 @@ namespace aethermind::test_utils {
 inline constexpr uint64_t kDefaultTensorRandomSeed = 123456789ULL;
 
 template<typename T, typename Dist>
-void FillTensor(Tensor& tensor, Dist& dist, std::mt19937_64& rng) {
+void FillTensor(Tensor_BK& tensor, Dist& dist, std::mt19937_64& rng) {
     auto* data = tensor.data_ptr<T>();
     for (int64_t i = 0; i < tensor.numel(); ++i) {
         data[i] = static_cast<T>(dist(rng));
     }
 }
 
-inline Tensor RandomUniform(const std::vector<int64_t>& shape,
+inline Tensor_BK RandomUniform(const std::vector<int64_t>& shape,
                             DataType dtype = DataType::Float32(),
                             double low = 0.0,
                             double high = 1.0,
                             uint64_t seed = kDefaultTensorRandomSeed) {
     AM_CHECK(high > low, "RandomUniform requires high > low.");
 
-    Tensor tensor(shape, 0, dtype, Device::CPU());
+    Tensor_BK tensor(shape, 0, dtype, Device::CPU());
     std::mt19937_64 rng(seed);
 
     if (dtype == DataType::Float32()) {
@@ -63,17 +63,17 @@ inline Tensor RandomUniform(const std::vector<int64_t>& shape,
     }
 
     AM_THROW(runtime_error) << "RandomUniform supports float32, float64, int32, int64 only.";
-    return Tensor();
+    return Tensor_BK();
 }
 
-inline Tensor RandomNormal(const std::vector<int64_t>& shape,
+inline Tensor_BK RandomNormal(const std::vector<int64_t>& shape,
                            DataType dtype = DataType::Float32(),
                            double mean = 0.0,
                            double stddev = 1.0,
                            uint64_t seed = kDefaultTensorRandomSeed) {
     AM_CHECK(stddev > 0.0, "RandomNormal requires stddev > 0.");
 
-    Tensor tensor(shape, 0, dtype, Device::CPU());
+    Tensor_BK tensor(shape, 0, dtype, Device::CPU());
     std::mt19937_64 rng(seed);
 
     if (dtype == DataType::Float32()) {
@@ -89,10 +89,10 @@ inline Tensor RandomNormal(const std::vector<int64_t>& shape,
     }
 
     AM_THROW(runtime_error) << "RandomNormal supports float32 and float64 only.";
-    return Tensor();
+    return Tensor_BK();
 }
 
-inline Tensor RandomInt(const std::vector<int64_t>& shape,
+inline Tensor_BK RandomInt(const std::vector<int64_t>& shape,
                         int64_t low,
                         int64_t high,
                         uint64_t seed = kDefaultTensorRandomSeed,
@@ -101,7 +101,7 @@ inline Tensor RandomInt(const std::vector<int64_t>& shape,
     AM_CHECK(dtype == DataType::Int(32) || dtype == DataType::Int(64),
              "RandomInt supports int32 and int64 only.");
 
-    Tensor tensor(shape, 0, dtype, Device::CPU());
+    Tensor_BK tensor(shape, 0, dtype, Device::CPU());
     std::mt19937_64 rng(seed);
 
     if (dtype == DataType::Int(32)) {

@@ -118,12 +118,12 @@ std::type_index Any::type() const {
 }
 
 bool Any::IsTensor() const noexcept {
-    return CheckType<Tensor>();
+    return CheckType<Tensor_BK>();
 }
 
-Tensor Any::ToTensor() const {
+Tensor_BK Any::ToTensor() const {
     AM_CHECK(IsTensor(), "Expected Tensor.");
-    return cast<Tensor>();
+    return cast<Tensor_BK>();
 }
 
 SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {

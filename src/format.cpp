@@ -28,7 +28,7 @@ struct PrintFormat {
         : scale(s), width(w), type(t) {}
 };
 
-static PrintFormat get_print_format(const Tensor& t) {
+static PrintFormat get_print_format(const Tensor_BK& t) {
     // using data_type = DataType2CPPType<DLDataTypeCode::kFloat, 32, 1>::type;
     auto size = t.numel();
     if (size == 0) {

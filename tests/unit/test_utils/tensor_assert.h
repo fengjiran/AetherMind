@@ -124,8 +124,8 @@ template<typename T>
 
 }// namespace detail
 
-inline ::testing::AssertionResult ExpectTensorAllClose(const Tensor& actual,
-                                                       const Tensor& expected,
+inline ::testing::AssertionResult ExpectTensorAllClose(const Tensor_BK& actual,
+                                                       const Tensor_BK& expected,
                                                        double atol = 1e-6,
                                                        double rtol = 1e-6,
                                                        int64_t max_report = 5) {
@@ -173,8 +173,8 @@ inline ::testing::AssertionResult ExpectTensorAllClose(const Tensor& actual,
            << "ExpectTensorAllClose supports floating dtypes only, got " << actual.dtype();
 }
 
-inline ::testing::AssertionResult ExpectTensorEqual(const Tensor& actual,
-                                                    const Tensor& expected,
+inline ::testing::AssertionResult ExpectTensorEqual(const Tensor_BK& actual,
+                                                    const Tensor_BK& expected,
                                                     int64_t max_report = 5) {
     if (actual.dtype() != expected.dtype()) {
         return ::testing::AssertionFailure()

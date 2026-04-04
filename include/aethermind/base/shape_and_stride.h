@@ -18,6 +18,8 @@
 #include "utils/logging.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -66,8 +68,8 @@ public:
         }
 
         size_ = new_size;
-        std::copy(shape.begin(), shape.end(), shape_);
-        std::copy(strides.begin(), strides.end(), strides_);
+        std::copy(shape.begin(), shape.end(), shape_.begin());
+        std::copy(strides.begin(), strides.end(), strides_.begin());
 
         for (int32_t i = size_; i < kMaxRank; ++i) {
             shape_[i] = 0;
@@ -89,14 +91,14 @@ public:
 
         size_ = new_size;
         if (size_ == 0) {
-            for (int32_t i = 0; i < kMaxRank; ++i) {
+            for (uint32_t i = 0; i < kMaxRank; ++i) {
                 shape_[i] = 0;
                 strides_[i] = 0;
             }
             return;
         }
 
-        std::copy(shape.begin(), shape.end(), shape_);
+        std::copy(shape.begin(), shape.end(), shape_.begin());
 
         strides_[size_ - 1] = 1;
         for (int32_t i = size_ - 2; i >= 0; --i) {
@@ -104,7 +106,7 @@ public:
                      "Stride calculation overflow");
         }
 
-        for (int32_t i = size_; i < kMaxRank; ++i) {
+        for (uint32_t i = size_; i < kMaxRank; ++i) {
             shape_[i] = 0;
             strides_[i] = 0;
         }
@@ -118,35 +120,35 @@ public:
     /// Returns a view of the shape array.
     /// The view is valid only while this object is not modified or destroyed.
     AM_NODISCARD IntArrayView shape() const noexcept {
-        return IntArrayView(shape_, size_);
+        return {shape_.data(), static_cast<size_t>(size_)};
     }
 
     /// Returns a view of the strides array.
     /// The view is valid only while this object is not modified or destroyed.
     AM_NODISCARD IntArrayView strides() const noexcept {
-        return IntArrayView(strides_, size_);
+        return {strides_.data(), static_cast<size_t>(size_)};
     }
 
     /// Returns a pointer to the shape data (const).
     AM_NODISCARD const int64_t* shape_data() const noexcept {
-        return shape_;
+        return shape_.data();
     }
 
     /// Returns a pointer to the stride data (const).
     AM_NODISCARD const int64_t* stride_data() const noexcept {
-        return strides_;
+        return strides_.data();
     }
 
     /// Returns a mutable pointer to the shape data.
     /// \warning Caller is responsible for preserving invariants.
     AM_NODISCARD int64_t* mutable_shape_data() noexcept {
-        return shape_;
+        return shape_.data();
     }
 
     /// Returns a mutable pointer to the stride data.
     /// \warning Caller is responsible for preserving invariants.
     AM_NODISCARD int64_t* mutable_stride_data() noexcept {
-        return strides_;
+        return strides_.data();
     }
 
     /// Returns the i-th dimension size.
@@ -203,12 +205,36 @@ public:
         return true;
     }
 
-private:
+    AM_NODISCARD int64_t max_element_offset() const {
+        if (size_ == 0) {
+            return 0;
+        }
+
+        for (int32_t i = 0; i < size_; ++i) {
+            AM_CHECK(shape_[i] >= 0);
+            AM_CHECK(strides_[i] >= 0);
+            if (shape_[i] == 0) {
+                return 0;
+            }
+        }
+
+        int64_t offset = 0;
+        for (int32_t i = 0; i < size_; ++i) {
+            const auto term = (shape_[i] - 1) * strides_[i];
+            AM_CHECK(term >= 0);
+            AM_CHECK(offset <= std::numeric_limits<int64_t>::max() - term, "max_element_offset overflow.");
+            offset += term;
+        }
+
+        return offset;
+    }
+
     static constexpr uint32_t kMaxRank = 8;
 
+private:
     int32_t size_ = 0;
-    int64_t shape_[kMaxRank]{};
-    int64_t strides_[kMaxRank]{};
+    std::array<int64_t, kMaxRank> shape_{};
+    std::array<int64_t, kMaxRank> strides_{};
 };
 
 }// namespace aethermind

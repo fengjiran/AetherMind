@@ -76,7 +76,9 @@ public:
         return shape_and_strides_.numel();
     }
 
-    AM_NODISCARD size_t itersize() const noexcept;
+    AM_NODISCARD size_t itemsize() const noexcept {
+        return dtype_.nbytes();
+    }
 
 private:
     Buffer buffer_;

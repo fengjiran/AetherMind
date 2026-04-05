@@ -296,7 +296,7 @@ private:
     // spell "allocate a one-element array" for strides_).
     int64_t numel_ = 1;
     DataType dtype_;
-    ShapeAndStride shape_and_stride_;
+    ShapeAndStride_BK shape_and_stride_;
 
     // device_opt_ is only nullopt for undefined tensors which do not have a device.
     // When storage is not-null, this device must agree with the type meta in storage.

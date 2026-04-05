@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_TEST_UTILS_TENSOR_ASSERT_H
 #define AETHERMIND_TEST_UTILS_TENSOR_ASSERT_H
 
-#include "tensor.h"
+#include "tensor_bk.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>

@@ -2,7 +2,7 @@
 // Created by richard on 10/2/25.
 //
 #include "type_system/tensor_type.h"
-#include "tensor.h"
+#include "tensor_bk.h"
 
 #include <numeric>
 #include <utility>

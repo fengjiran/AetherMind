@@ -6,7 +6,7 @@
 #include "c_api.h"
 #include "container/array.h"
 #include "registry.h"
-#include "tensor.h"
+#include "tensor_bk.h"
 
 #include <unordered_map>
 

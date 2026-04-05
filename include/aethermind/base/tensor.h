@@ -4,6 +4,7 @@
 #include "aethermind/memory/buffer.h"
 #include "container/array_view.h"
 #include "data_type.h"
+#include "device.h"
 #include "macros.h"
 #include "shape_and_stride.h"
 
@@ -17,7 +18,7 @@ class Tensor {
 public:
     Tensor() noexcept = default;
 
-    Tensor(Buffer buffer, size_t byte_offset, const DataType& dtype, const ShapeAndStride_bk& shape_and_strides)
+    Tensor(Buffer buffer, size_t byte_offset, const DataType& dtype, const ShapeAndStride& shape_and_strides)
         : buffer_(std::move(buffer)), byte_offset_(byte_offset), dtype_(dtype), shape_and_strides_(shape_and_strides) {
         validate();
     }
@@ -46,6 +47,19 @@ public:
 
     AM_NODISCARD DataType dtype() const noexcept {
         return dtype_;
+    }
+
+    AM_NODISCARD Device device() const noexcept {
+        return buffer_.device();
+    }
+
+    AM_NODISCARD size_t alignment() const noexcept {
+        const size_t base_align = buffer_.alignment();
+        if (base_align == 0) {
+            return 0;
+        }
+
+        return byte_offset_ % base_align == 0 ? base_align : 1;
     }
 
     AM_NODISCARD int32_t rank() const noexcept {
@@ -80,11 +94,38 @@ public:
         return dtype_.nbytes();
     }
 
+    AM_NODISCARD size_t logical_nbytes() const noexcept {
+        return numel() * itemsize();
+    }
+
+    AM_NODISCARD const void* data() const noexcept {
+        if (!is_initialized()) {
+            return nullptr;
+        }
+
+        const auto* base = static_cast<const char*>(buffer_.data());
+        return base + byte_offset_;
+    }
+
+    AM_NODISCARD void* mutable_data() noexcept {
+        if (!is_initialized()) {
+            return nullptr;
+        }
+
+        auto* base = static_cast<char*>(buffer_.mutable_data());
+        return base + byte_offset_;
+    }
+
+    AM_NODISCARD int64_t max_touched_element_offset() const noexcept {
+        return shape_and_strides_.max_element_offset();
+    }
+
+
 private:
     Buffer buffer_;
     size_t byte_offset_{0};
     DataType dtype_;
-    ShapeAndStride_bk shape_and_strides_;
+    ShapeAndStride shape_and_strides_;
 
     void validate();
 };

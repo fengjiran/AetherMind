@@ -16,14 +16,14 @@ namespace aethermind {
 // 1 size_t for the size
 // 5 eightbytes of inline sizes and 5 eightbytes of inline strides, OR pointer
 // to out-of-line array
-class ShapeAndStride {
+class ShapeAndStride_BK {
 public:
-    ShapeAndStride() {
+    ShapeAndStride_BK() {
         shape_at_uncheck(0) = 0;
         stride_at_uncheck(0) = 1;
     }
 
-    ShapeAndStride(const ShapeAndStride& other) : size_(other.size_) {
+    ShapeAndStride_BK(const ShapeAndStride_BK& other) : size_(other.size_) {
         if (other.is_inline()) {
             copy_inline_data(other);
         } else {
@@ -32,7 +32,7 @@ public:
         }
     }
 
-    ShapeAndStride(ShapeAndStride&& other) noexcept : size_(other.size_) {
+    ShapeAndStride_BK(ShapeAndStride_BK&& other) noexcept : size_(other.size_) {
         if (other.is_inline()) {
             std::memcpy(inline_storage_, other.inline_storage_, sizeof(inline_storage_));
         } else {
@@ -42,7 +42,7 @@ public:
         other.size_ = 0;
     }
 
-    ShapeAndStride& operator=(const ShapeAndStride& rhs) {
+    ShapeAndStride_BK& operator=(const ShapeAndStride_BK& rhs) {
         if (this == &rhs) {
             return *this;
         }
@@ -64,7 +64,7 @@ public:
         return *this;
     }
 
-    ShapeAndStride& operator=(ShapeAndStride&& rhs) noexcept {
+    ShapeAndStride_BK& operator=(ShapeAndStride_BK&& rhs) noexcept {
         if (this == &rhs) {
             return *this;
         }
@@ -86,7 +86,7 @@ public:
         return *this;
     }
 
-    bool operator==(const ShapeAndStride& other) const {
+    bool operator==(const ShapeAndStride_BK& other) const {
         if (size_ != other.size_) {
             return false;
         }
@@ -96,7 +96,7 @@ public:
         return !res;
     }
 
-    ~ShapeAndStride() {
+    ~ShapeAndStride_BK() {
         if (!is_inline()) {
             free(outline_storage_);
         }
@@ -276,7 +276,7 @@ private:
         return size_ <= MAX_INLINE_SIZE;
     }
 
-    void copy_inline_data(const ShapeAndStride& other) {
+    void copy_inline_data(const ShapeAndStride_BK& other) {
         AM_CHECK(other.is_inline());
         memcpy(inline_storage_, other.inline_storage_, sizeof(inline_storage_));
     }
@@ -290,7 +290,7 @@ private:
         AM_CHECK(outline_storage_, "Could not allocate memory for Tensor ShapeAndStride.");
     }
 
-    void copy_outline_data(const ShapeAndStride& other) const noexcept {
+    void copy_outline_data(const ShapeAndStride_BK& other) const noexcept {
         memcpy(outline_storage_, other.outline_storage_, storage_bytes(other.size_));
     }
 

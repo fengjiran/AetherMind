@@ -4,7 +4,7 @@
 #include "any.h"
 #include "container/string.h"
 #include "device.h"
-#include "tensor.h"
+#include "tensor_bk.h"
 
 #include <gtest/gtest.h>
 

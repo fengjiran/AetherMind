@@ -6,19 +6,62 @@ CompileFlags:
 
 Diagnostics:
   ClangTidy:
-    Add: [
-      bugprone-*,
-      performance-*,
-      modernize-*,
-      readability-*,
-    ]
-    Remove: [
-      modernize-use-trailing-return-type,
-      readability-identifier-length,
-    ]
+    Add:
+      - readability-identifier-naming
+      - bugprone-*
+      - performance-*
+      - modernize-*
+      - cppcoreguidelines-special-member-functions
+      - cppcoreguidelines-explicit-virtual-functions
+
+    Remove: 
+      - modernize-use-trailing-return-type
+      - modernize-avoid-c-arrays
+      - cppcoreguidelines-avoid-c-arrays
+      - cppcoreguidelines-pro-bounds-array-to-pointer-decay
+      - readability-magic-numbers
+
     CheckOptions:
-      readability-identifier-naming.VariableCase: camelBack
+      # ---- variables / functions: snake_case ----
+      readability-identifier-naming.VariableCase: lower_case
+      readability-identifier-naming.LocalVariableCase: lower_case
+      readability-identifier-naming.GlobalVariableCase: lower_case
+      readability-identifier-naming.ParameterCase: lower_case
+      readability-identifier-naming.FunctionCase: lower_case
+      readability-identifier-naming.MethodCase: lower_case
+
+      # allow a few conventional short locals
+      readability-identifier-naming.LocalVariableIgnoredRegexp: '^(i|j|k|n|it|lhs|rhs)$'
+
+      # types -> PascalCase
       readability-identifier-naming.ClassCase: CamelCase
+      readability-identifier-naming.StructCase: CamelCase
+      readability-identifier-naming.UnionCase: CamelCase
+      readability-identifier-naming.EnumCase: CamelCase
+      readability-identifier-naming.TypedefCase: CamelCase
+      readability-identifier-naming.TypeAliasCase: CamelCase
+
+      # enum members -> kPascalCase
+      readability-identifier-naming.EnumConstantPrefix: k
+      readability-identifier-naming.EnumConstantCase: CamelCase
+
+      # private/protected members -> snake_case_
+      readability-identifier-naming.PrivateMemberCase: lower_case
+      readability-identifier-naming.PrivateMemberSuffix: _
+      readability-identifier-naming.ProtectedMemberCase: lower_case
+      readability-identifier-naming.ProtectedMemberSuffix: _
+
+      # current codebase-friendly constants -> kPascalCase
+      readability-identifier-naming.GlobalConstantPrefix: k
+      readability-identifier-naming.GlobalConstantCase: CamelCase
+      readability-identifier-naming.StaticConstantPrefix: k
+      readability-identifier-naming.StaticConstantCase: CamelCase
+      readability-identifier-naming.ConstexprVariablePrefix: k
+      readability-identifier-naming.ConstexprVariableCase: CamelCase
+
+      # macros -> AM_UPPER_SNAKE_CASE
+      readability-identifier-naming.MacroDefinitionPrefix: AM_
+      readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
 
   # 可选：让 include 诊断更严格
   UnusedIncludes: Strict

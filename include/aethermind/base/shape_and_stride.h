@@ -40,15 +40,15 @@ namespace aethermind {
 ///
 /// Warning: mutable_shape_data()/mutable_stride_data() expose raw mutable storage.
 /// Callers are responsible for preserving invariants when using these methods.
-class ShapeAndStride_bk {
+class ShapeAndStride {
 public:
-    ShapeAndStride_bk() noexcept = default;
+    ShapeAndStride() noexcept = default;
 
     /// Constructs from shape and strides arrays.
     /// \pre shape.size() == strides.size()
     /// \pre shape.size() <= kMaxRank
     /// \pre shape[i] >= 0 for all i
-    ShapeAndStride_bk(IntArrayView shape, IntArrayView strides) {
+    ShapeAndStride(IntArrayView shape, IntArrayView strides) {
         set(shape, strides);
     }
 
@@ -171,11 +171,11 @@ public:
     AM_NODISCARD int64_t numel() const noexcept {
         uint64_t numel = 1;
         bool overflow = safe_multiply_u64(shape(), &numel);
-        constexpr auto numel_max = std::min<uint64_t>(
+        constexpr auto kNumelMax = std::min<uint64_t>(
                 std::numeric_limits<int64_t>::max(),
                 std::numeric_limits<size_t>::max());
 
-        overflow |= numel > numel_max;
+        overflow |= numel > kNumelMax;
         AM_CHECK(!overflow, "Integer multiplication overflow when compute numel.");
         return static_cast<int64_t>(numel);
     }

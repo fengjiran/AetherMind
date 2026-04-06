@@ -94,9 +94,7 @@ public:
         return dtype_.nbytes();
     }
 
-    AM_NODISCARD size_t logical_nbytes() const noexcept {
-        return numel() * itemsize();
-    }
+    AM_NODISCARD size_t logical_nbytes() const noexcept;
 
     AM_NODISCARD const void* data() const noexcept {
         if (!is_initialized()) {
@@ -119,6 +117,8 @@ public:
     AM_NODISCARD int64_t max_touched_element_offset() const noexcept {
         return shape_and_strides_.max_element_offset();
     }
+
+    AM_NODISCARD size_t max_touched_span_bytes() const noexcept;
 
 
 private:

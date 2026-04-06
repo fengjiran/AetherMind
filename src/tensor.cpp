@@ -1,9 +1,35 @@
 #include "aethermind/base/tensor.h"
 #include "aethermind/base/shape_and_stride.h"
+#include "aethermind/utils/overflow_check.h"
 #include "utils/logging.h"
 #include <cstddef>
 
 namespace aethermind {
+
+size_t Tensor::logical_nbytes() const noexcept {
+    const auto n = numel();
+    AM_DCHECK(n >= 0);
+
+    size_t logical_nbytes = 0;
+    bool overflow = mul_overflow(static_cast<size_t>(n), itemsize(), &logical_nbytes);
+    AM_DCHECK(!overflow);
+    return logical_nbytes;
+}
+
+size_t Tensor::max_touched_span_bytes() const noexcept {
+    if (!is_initialized() || numel() == 0) {
+        return 0;
+    }
+
+    const auto max_elem_offset = max_touched_element_offset();
+    AM_DCHECK(max_elem_offset >= 0);
+    const auto touched_elems = static_cast<size_t>(max_elem_offset);
+    const auto elem_size = itemsize();
+    size_t span_bytes = 0;
+    bool overflow = mul_overflow(touched_elems, elem_size, &span_bytes);
+    AM_DCHECK(!overflow);
+    return span_bytes;
+}
 
 void Tensor::validate() {
     AM_CHECK(is_initialized(), "Tensor buffer is not initialized.");

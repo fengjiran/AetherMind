@@ -1,6 +1,9 @@
-//
-// Created by richard on 4/2/26.
-//
+/// \file
+/// Integer overflow checking utilities.
+///
+/// Provides checked arithmetic operations that detect overflow before it occurs.
+/// Uses compiler builtins when available (GCC/Clang), otherwise falls back to
+/// portable implementations.
 
 #ifndef AETHERMIND_UTILS_OVERFLOW_CHECK_H
 #define AETHERMIND_UTILS_OVERFLOW_CHECK_H
@@ -14,29 +17,50 @@
 namespace aethermind {
 
 #if defined(__GNUC__) || defined(__clang__)
-// Use compiler builtin for best performance
+
+/// Performs checked multiplication, detecting overflow.
+/// \param a First operand.
+/// \param b Second operand.
+/// \param out Pointer to store the result (may be truncated on overflow).
+/// \return true if overflow occurred, false otherwise.
+/// \pre out != nullptr
 template<typename T>
+    requires std::is_integral_v<T>
 inline bool mul_overflow(T a, T b, T* out) noexcept {
-    static_assert(std::is_integral_v<T>, "T must be an integral type");
     return __builtin_mul_overflow(a, b, out);
 }
 
+/// Performs checked addition, detecting overflow.
+/// \param a First operand.
+/// \param b Second operand.
+/// \param out Pointer to store the result (may be truncated on overflow).
+/// \return true if overflow occurred, false otherwise.
+/// \pre out != nullptr
 template<typename T>
+    requires std::is_integral_v<T>
 inline bool add_overflow(T a, T b, T* out) noexcept {
-    static_assert(std::is_integral_v<T>, "T must be an integral type");
     return __builtin_add_overflow(a, b, out);
 }
 
+/// Performs checked subtraction, detecting overflow.
+/// \param a First operand.
+/// \param b Second operand.
+/// \param out Pointer to store the result (may be truncated on overflow).
+/// \return true if overflow occurred, false otherwise.
+/// \pre out != nullptr
 template<typename T>
+    requires std::is_integral_v<T>
 inline bool sub_overflow(T a, T b, T* out) noexcept {
-    static_assert(std::is_integral_v<T>, "T must be an integral type");
     return __builtin_sub_overflow(a, b, out);
 }
+
 #else
-// Portable fallback
+
+// Portable fallback implementations.
+
 template<typename T>
+    requires std::is_integral_v<T>
 inline bool mul_overflow(T a, T b, T* out) noexcept {
-    static_assert(std::is_integral_v<T>, "T must be an integral type");
     using U = std::make_unsigned_t<T>;
     const U result = static_cast<U>(a) * static_cast<U>(b);
     *out = static_cast<T>(result);
@@ -48,8 +72,8 @@ inline bool mul_overflow(T a, T b, T* out) noexcept {
 }
 
 template<typename T>
+    requires std::is_integral_v<T>
 inline bool add_overflow(T a, T b, T* out) noexcept {
-    static_assert(std::is_integral_v<T>, "T must be an integral type");
     if constexpr (std::is_unsigned_v<T>) {
         const T result = a + b;
         *out = result;
@@ -67,8 +91,8 @@ inline bool add_overflow(T a, T b, T* out) noexcept {
 }
 
 template<typename T>
+    requires std::is_integral_v<T>
 inline bool sub_overflow(T a, T b, T* out) noexcept {
-    static_assert(std::is_integral_v<T>, "T must be an integral type");
     if constexpr (std::is_unsigned_v<T>) {
         const T result = a - b;
         *out = result;
@@ -84,21 +108,25 @@ inline bool sub_overflow(T a, T b, T* out) noexcept {
                (a < 0 && b > 0 && static_cast<T>(result) > 0);
     }
 }
+
 #endif
 
-/// Multiplies a range of non-negative integer values into `*out`.
+/// Multiplies a range of non-negative integers into `*out`.
 ///
-/// Requirements:
-/// - `out` must not be null.
-/// - every element in [first, last) must be non-negative and convertible to uint64_t.
+/// Iteratively multiplies all elements in [first, last), checking for overflow
+/// at each step.
 ///
-/// Returns:
-/// - true if any intermediate multiplication overflowed uint64_t.
-/// - false otherwise.
+/// \tparam Iter Input iterator type.
+/// \param first Start of range.
+/// \param last End of range.
+/// \param out Pointer to store the product.
+/// \return true if overflow occurred, false otherwise.
 ///
-/// Note:
-/// - when true is returned, `*out` contains the last intermediate value and must
-///   not be treated as a valid final product.
+/// \pre out != nullptr
+/// \pre All elements must be non-negative and convertible to uint64_t.
+///
+/// \note On overflow, `*out` contains the last intermediate value and must not
+/// be used as a valid result.
 template<typename Iter>
 bool safe_multiply_u64(Iter first, Iter last, uint64_t* out) noexcept {
     AM_DCHECK(out != nullptr);
@@ -117,6 +145,8 @@ bool safe_multiply_u64(Iter first, Iter last, uint64_t* out) noexcept {
     return overflowed;
 }
 
+/// Multiplies all elements in a container into `*out`.
+/// \overload
 template<typename Container>
 bool safe_multiply_u64(const Container& c, uint64_t* out) noexcept {
     return safe_multiply_u64(c.begin(), c.end(), out);

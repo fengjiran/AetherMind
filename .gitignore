@@ -130,7 +130,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-.vscode/
+#.vscode/
 .idea/
 .pkl_memoize_py3/
 cmake-build-debug/

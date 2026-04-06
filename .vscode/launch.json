@@ -1,0 +1,71 @@
+{
+  "version": "0.2.0",
+  "inputs": [
+    {
+      "id": "gtestFilter",
+      "type": "promptString",
+      "description": "GoogleTest filter",
+      "default": "StringFunctionalityTest.StringConstructorFill"
+    }
+  ],
+  "configurations": [
+    {
+      "name": "GTest: single test",
+      "type": "codelldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/tests/unit/aethermind_unit_tests",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--gtest_filter=${input:gtestFilter}"
+      ],
+      "stopOnEntry": false
+    },
+    {
+      "name": "GTest: single test + break on failure",
+      "type": "codelldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/tests/unit/aethermind_unit_tests",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--gtest_filter=${input:gtestFilter}",
+        "--gtest_break_on_failure"
+      ],
+      "stopOnEntry": false
+    },
+    {
+      "name": "GTest: single test + inspect throw site",
+      "type": "codelldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/tests/unit/aethermind_unit_tests",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--gtest_filter=${input:gtestFilter}",
+        "--gtest_catch_exceptions=0"
+      ],
+      "stopOnEntry": false
+    },
+    {
+      "name": "GTest: single test + ignore cpp_exception breakpoint",
+      "type": "codelldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/tests/unit/aethermind_unit_tests",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--gtest_filter=${input:gtestFilter}"
+      ],
+      "preRunCommands": [
+        "breakpoint name configure --disable cpp_exception"
+      ],
+      "stopOnEntry": false
+    },
+    {
+      "name": "GTest: whole suite",
+      "type": "codelldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/tests/unit/aethermind_unit_tests",
+      "cwd": "${workspaceFolder}",
+      "args": [],
+      "stopOnEntry": false
+    }
+  ]
+}

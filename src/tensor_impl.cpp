@@ -3,7 +3,7 @@
 //
 
 #include "tensor_impl.h"
-#include "aethermind/utils/safe_multiply.h"
+#include "aethermind/utils/overflow_check.h"
 #include "error.h"
 
 namespace aethermind {

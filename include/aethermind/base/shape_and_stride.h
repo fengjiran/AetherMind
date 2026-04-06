@@ -12,7 +12,7 @@
 #ifndef AETHERMIND_BASE_SHAPE_AND_STRIDE_H
 #define AETHERMIND_BASE_SHAPE_AND_STRIDE_H
 
-#include "aethermind/utils/safe_multiply.h"
+#include "aethermind/utils/overflow_check.h"
 #include "container/array_view.h"
 #include "macros.h"
 #include "utils/logging.h"

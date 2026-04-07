@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_CPU_ALLOCATOR_H
 #define AETHERMIND_CPU_ALLOCATOR_H
 
-#include "allocator.h"
+#include "../aethermind/memory/allocator.h"
 
 namespace aethermind {
 

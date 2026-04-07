@@ -5,14 +5,50 @@
 #ifndef AETHERMIND_ALLOCATOR_H
 #define AETHERMIND_ALLOCATOR_H
 
-#include "../aethermind/memory/data_ptr.h"
+#include "buffer.h"
 #include "container/map.h"
+#include "data_ptr.h"
 #include "device.h"
 #include "utils/thread_local_debug_info.h"
 
 #include <unordered_map>
 
 namespace aethermind {
+
+class IAllocator {
+public:
+    IAllocator() = default;
+    IAllocator(const IAllocator&) = default;
+    IAllocator(IAllocator&&) noexcept = default;
+
+    IAllocator& operator=(const IAllocator&) = default;
+    IAllocator& operator=(IAllocator&&) noexcept = default;
+
+    virtual ~IAllocator() = default;
+    virtual Buffer Allocate(size_t nbytes, size_t alignment) = 0;
+    AM_NODISCARD virtual Device device() const noexcept = 0;
+};
+
+class IAllocatorProvider {
+public:
+    virtual ~IAllocatorProvider() = default;
+    virtual std::shared_ptr<IAllocator> Get(Device device) = 0;
+};
+
+class AllocatorRegistry {
+public:
+    void Register(DeviceType type, std::unique_ptr<IAllocatorProvider> provider);
+    IAllocatorProvider& GetProvider(DeviceType type) const;
+private:
+    std::unordered_map<DeviceType, std::unique_ptr<IAllocatorProvider>> providers_;
+};
+
+class RuntimeContext {
+public:
+    IAllocator& GetAllocator(Device device);
+private:
+    AllocatorRegistry registry_;
+};
 
 // template<typename Rollback>
 // class ExceptionGuard {
@@ -142,4 +178,4 @@ bool memoryProfilingEnabled();
 
 }// namespace aethermind
 
-#endif//AETHERMIND_ALLOCATOR_H
+#endif// AETHERMIND_ALLOCATOR_H

@@ -132,6 +132,8 @@ class BufferImpl : public Object {
 public:
     BufferImpl() noexcept = default;
 
+    ~BufferImpl() override = default;
+
     BufferImpl(size_t nbytes, MemoryHandle handle) noexcept
         : nbytes_(nbytes), handle_(std::move(handle)) {}
 

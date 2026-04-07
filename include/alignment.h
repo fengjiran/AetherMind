@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_ALIGNMENT_H
 #define AETHERMIND_ALIGNMENT_H
 
+#include <cstdint>
+
 namespace aethermind {
 
 constexpr size_t gAlignment = 64;

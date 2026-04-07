@@ -7,9 +7,11 @@
 #include "device.h"
 #include "macros.h"
 #include "shape_and_stride.h"
+#include "utils/logging.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <utility>
 
 namespace aethermind {
@@ -59,7 +61,11 @@ public:
             return 0;
         }
 
-        return byte_offset_ % base_align == 0 ? base_align : 1;
+        if (byte_offset_ == 0) {
+            return base_align;
+        }
+
+        return std::gcd(base_align, byte_offset_);
     }
 
     AM_NODISCARD int32_t rank() const noexcept {
@@ -94,8 +100,6 @@ public:
         return dtype_.nbytes();
     }
 
-    AM_NODISCARD size_t logical_nbytes() const noexcept;
-
     AM_NODISCARD const void* data() const noexcept {
         if (!is_initialized()) {
             return nullptr;
@@ -118,8 +122,22 @@ public:
         return shape_and_strides_.max_element_offset();
     }
 
+    AM_NODISCARD size_t logical_nbytes() const noexcept;
+
     AM_NODISCARD size_t max_touched_span_bytes() const noexcept;
 
+    AM_NODISCARD bool storage_range_is_valid() const noexcept;
+
+    AM_NODISCARD Tensor slice(int32_t dim, int64_t start, int64_t end, int64_t step) const noexcept;
+
+    AM_NODISCARD Tensor slice(int32_t dim, int64_t start, int64_t end) const noexcept {
+        return slice(dim, start, end, 1);
+    }
+
+    AM_NODISCARD Tensor narrow(int32_t dim, int64_t start, int64_t length) const noexcept {
+        AM_CHECK(length >= 0);
+        return slice(dim, start, start + length);
+    }
 
 private:
     Buffer buffer_;
@@ -127,7 +145,7 @@ private:
     DataType dtype_;
     ShapeAndStride shape_and_strides_;
 
-    void validate();
+    void validate() const;
 };
 
 }// namespace aethermind

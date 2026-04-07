@@ -166,10 +166,13 @@ public:
     }
 
     /// Returns the total number of elements (product of shape).
-    /// Returns 1 for rank-0 tensors.
     /// \throws AM_CHECK failure on overflow
     AM_NODISCARD int64_t numel() const noexcept {
-        uint64_t numel = 1;
+        if (size_ == 0) {
+            return 0;
+        }
+
+        uint64_t numel = 0;
         bool overflow = safe_multiply_u64(shape(), &numel);
         constexpr auto kNumelMax = std::min<uint64_t>(
                 std::numeric_limits<int64_t>::max(),
@@ -220,7 +223,8 @@ public:
 
         int64_t offset = 0;
         for (int32_t i = 0; i < size_; ++i) {
-            const auto term = (shape_[i] - 1) * strides_[i];
+            int64_t term = 0;
+            AM_CHECK(!mul_overflow((shape_[i] - 1), strides_[i], &term));
             AM_CHECK(term >= 0);
             AM_CHECK(offset <= std::numeric_limits<int64_t>::max() - term, "max_element_offset overflow.");
             offset += term;

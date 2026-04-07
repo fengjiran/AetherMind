@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_TENSOR_IMPL_H
 #define AETHERMIND_TENSOR_IMPL_H
 
-#include "aethermind/memory/buffer.h"
+#include "memory/storage_impl.h"
 #include "data_type.h"
 #include "layout.h"
 #include "memory/cpu_allocator.h"

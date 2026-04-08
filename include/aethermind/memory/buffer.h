@@ -5,16 +5,13 @@
 #ifndef AETHERMIND_STORAGE_H
 #define AETHERMIND_STORAGE_H
 
-// #include "data_ptr.h"
 #include "device.h"
 #include "macros.h"
-// #include "memory/storage_impl.h"
 #include "object.h"
 #include "object_allocator.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 namespace aethermind {

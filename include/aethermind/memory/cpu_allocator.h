@@ -5,7 +5,9 @@
 #ifndef AETHERMIND_CPU_ALLOCATOR_H
 #define AETHERMIND_CPU_ALLOCATOR_H
 
-#include "../aethermind/memory/allocator.h"
+#include "aethermind/memory/buffer.h"
+#include "allocator.h"
+#include <cstddef>
 
 namespace aethermind {
 
@@ -15,7 +17,24 @@ void free_cpu(void* data);
 
 class CPUAllocator final : public Allocator {
 public:
-    CPUAllocator() = default;
+    explicit CPUAllocator(Device device) : device_(device) {}
+
+    Buffer Allocate(size_t nbytes) override;
+
+    AM_NODISCARD Device device() const noexcept override;
+
+private:
+    Device device_;
+};
+
+class CPUAllocatorProvider final : public AllocatorProvider {
+public:
+    std::unique_ptr<Allocator> CreateAllocator(Device device) override;
+};
+
+class CPUAllocatorBK final : public AllocatorBK {
+public:
+    CPUAllocatorBK() = default;
 
     AM_NODISCARD DataPtr allocate(size_t nbytes) const override {
         void* data = alloc_cpu(nbytes);

@@ -2,7 +2,7 @@
 // Created by 赵丹 on 25-6-25.
 //
 
-#include "memory/cpu_allocator.h"
+#include "aethermind/memory/cpu_allocator.h"
 #include "alignment.h"
 #include "env.h"
 
@@ -16,6 +16,10 @@
 namespace aethermind {
 
 namespace {
+
+void cpu_buffer_deleter(void*, void* ptr) noexcept {
+    free_cpu(ptr);
+}
 
 // Fill the data memory region of num bytes with a particular garbage pattern.
 // The garbage value is chosen to be NaN if interpreted as floating point value
@@ -88,6 +92,22 @@ void free_cpu(void* data) {
     free(data);
 }
 
-REGISTER_ALLOCATOR(DeviceType::kCPU, CPUAllocator);
+Buffer CPUAllocator::Allocate(size_t nbytes) {
+    const size_t bytes_to_allocate = nbytes == 0 ? 1 : nbytes;
+    void* data = alloc_cpu(bytes_to_allocate);
+    return {nbytes,
+            MemoryHandle(data, nullptr, &cpu_buffer_deleter, device_, get_alignment(bytes_to_allocate))};
+}
+
+Device CPUAllocator::device() const noexcept {
+    return device_;
+}
+
+std::unique_ptr<Allocator> CPUAllocatorProvider::CreateAllocator(Device device) {
+    AM_CHECK(device.type() == DeviceType::kCPU, "CPUAllocatorProvider only supports CPU devices.");
+    return std::make_unique<CPUAllocator>(device);
+}
+
+REGISTER_ALLOCATOR(DeviceType::kCPU, CPUAllocatorBK);
 
 }// namespace aethermind

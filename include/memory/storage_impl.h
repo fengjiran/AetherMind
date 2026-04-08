@@ -17,10 +17,10 @@ namespace aethermind {
  */
 class StorageImpl : public Object {
 public:
-    StorageImpl(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<Allocator>& alloc)
+    StorageImpl(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<AllocatorBK>& alloc)
         : nbytes_(nbytes), data_ptr_(std::move(data_ptr)), alloc_(alloc) {}
 
-    StorageImpl(size_t nbytes, const std::unique_ptr<Allocator>& alloc)
+    StorageImpl(size_t nbytes, const std::unique_ptr<AllocatorBK>& alloc)
         : StorageImpl(nbytes, alloc->allocate(nbytes), alloc) {}
 
     StorageImpl() : StorageImpl(0, AllocatorTable::Global().get_allocator(kUndefined)) {}
@@ -61,7 +61,7 @@ public:
 private:
     size_t nbytes_;
     DataPtr data_ptr_;
-    const std::unique_ptr<Allocator>& alloc_;
+    const std::unique_ptr<AllocatorBK>& alloc_;
 };
 
 class Storage : public ObjectRef {
@@ -69,11 +69,11 @@ public:
     Storage() = default;
 
     // Creates storage with pre-allocated memory buffer.
-    Storage(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<Allocator>& alloc)
+    Storage(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<AllocatorBK>& alloc)
         : impl_(make_object<StorageImpl>(nbytes, std::move(data_ptr), alloc)) {}
 
     // Allocates memory buffer using the given allocator and creates a storage with it
-    Storage(size_t nbytes, const std::unique_ptr<Allocator>& alloc)
+    Storage(size_t nbytes, const std::unique_ptr<AllocatorBK>& alloc)
         : Storage(nbytes, alloc->allocate(nbytes), alloc) {}
 
     explicit Storage(ObjectPtr<StorageImpl> ptr) : impl_(std::move(ptr)) {}

@@ -45,6 +45,8 @@ Diagnostics:
       readability-identifier-naming.TypeAliasCase: CamelCase
       readability-identifier-naming.FunctionCase: CamelCase
       readability-identifier-naming.MethodCase: CamelCase
+      readability-identifier-naming.PublicMethodCase: CamelCase
+      readability-identifier-naming.PublicMethodIgnoredRegexp: '^(size|data|capacity|empty|clear|begin|end|cbegin|cend|rbegin|rend|front|back|max_size|reserve|shrink_to_fit|device)$'
 
       # enum members -> kPascalCase
       readability-identifier-naming.EnumConstantPrefix: k
@@ -79,7 +81,7 @@ Diagnostics:
       readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
 
   UnusedIncludes: Strict
-  MissingIncludes: Strict
+  # MissingIncludes: Strict
 
   # 误报多时可按需补
   # Includes:

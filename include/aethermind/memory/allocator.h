@@ -6,81 +6,73 @@
 #define AETHERMIND_ALLOCATOR_H
 
 #include "buffer.h"
-#include "container/map.h"
 #include "data_ptr.h"
 #include "device.h"
 #include "utils/thread_local_debug_info.h"
 
+#include <memory>
 #include <unordered_map>
 
 namespace aethermind {
 
-class IAllocator {
+class Allocator {
 public:
-    IAllocator() = default;
-    IAllocator(const IAllocator&) = default;
-    IAllocator(IAllocator&&) noexcept = default;
+    Allocator() = default;
+    Allocator(const Allocator&) = default;
+    Allocator(Allocator&&) noexcept = default;
 
-    IAllocator& operator=(const IAllocator&) = default;
-    IAllocator& operator=(IAllocator&&) noexcept = default;
+    Allocator& operator=(const Allocator&) = default;
+    Allocator& operator=(Allocator&&) noexcept = default;
 
-    virtual ~IAllocator() = default;
-    virtual Buffer Allocate(size_t nbytes, size_t alignment) = 0;
+    virtual ~Allocator() = default;
+
+    virtual Buffer Allocate(size_t nbytes) = 0;
     AM_NODISCARD virtual Device device() const noexcept = 0;
 };
 
-class IAllocatorProvider {
+class AllocatorProvider {
 public:
-    virtual ~IAllocatorProvider() = default;
-    virtual std::shared_ptr<IAllocator> Get(Device device) = 0;
+    virtual ~AllocatorProvider() = default;
+    virtual std::unique_ptr<Allocator> CreateAllocator(Device device) = 0;
 };
 
 class AllocatorRegistry {
 public:
-    void Register(DeviceType type, std::unique_ptr<IAllocatorProvider> provider);
-    IAllocatorProvider& GetProvider(DeviceType type) const;
+    void RegisterProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider);
+    Allocator& GetAllocator(Device device);
+
 private:
-    std::unordered_map<DeviceType, std::unique_ptr<IAllocatorProvider>> providers_;
+    std::unordered_map<DeviceType, std::unique_ptr<AllocatorProvider>> providers_;
+    std::unordered_map<Device, std::unique_ptr<Allocator>> instances_;
 };
 
 class RuntimeContext {
 public:
-    IAllocator& GetAllocator(Device device);
+    RuntimeContext();
+
+    // Registers an allocator provider for a specific device type.
+    // RuntimeContext takes ownership of the provider.
+    void RegisterAllocatorProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider) {
+        registry_.RegisterProvider(type, std::move(provider));
+    }
+
+    Allocator& GetAllocator(Device device);
+
 private:
     AllocatorRegistry registry_;
 };
 
-// template<typename Rollback>
-// class ExceptionGuard {
-// public:
-//     ExceptionGuard(Rollback rollback) : rollback_(std::move(rollback)), complete_(false) {}
-//
-//     ExceptionGuard() = delete;
-//     ExceptionGuard(const ExceptionGuard&) = delete;
-//     ExceptionGuard(ExceptionGuard&&) noexcept = delete;
-//     ExceptionGuard& operator=(const ExceptionGuard&) = delete;
-//     ExceptionGuard& operator=(ExceptionGuard&&) noexcept = delete;
-//
-//     void complete() noexcept {
-//         complete_ = true;
-//     }
-//
-//     ~ExceptionGuard() {
-//         if (!complete_) {
-//             rollback_();
-//         }
-//     }
-//
-// private:
-//     bool complete_;
-//     Rollback rollback_;
-// };
+// =============================================================================
+// Legacy Allocator API (Migration Only)
+// =============================================================================
+// The following classes and macros are part of the legacy memory management
+// system and are maintained for backward compatibility during the migration
+// to the unified IAllocator/RuntimeContext design.
 
-
-class Allocator {
+class AllocatorBK {
 public:
-    Allocator() = default;
-    virtual ~Allocator() = default;
+    AllocatorBK() = default;
+    virtual ~AllocatorBK() = default;
 
     AM_NODISCARD virtual DataPtr allocate(size_t nbytes) const = 0;
 
@@ -95,22 +87,22 @@ public:
         return *inst;
     }
 
-    void set_allocator(DeviceType device, std::unique_ptr<Allocator> allocator) {
+    void set_allocator(DeviceType device, std::unique_ptr<AllocatorBK> allocator) {
         table_[device] = std::move(allocator);
     }
 
-    const std::unique_ptr<Allocator>& get_allocator(DeviceType device) {
+    const std::unique_ptr<AllocatorBK>& get_allocator(DeviceType device) {
         AM_CHECK(table_.contains(device), "Allocator not found");
         return table_[device];
     }
 
 private:
     AllocatorTable() = default;
-    std::unordered_map<DeviceType, std::unique_ptr<Allocator>> table_;
+    std::unordered_map<DeviceType, std::unique_ptr<AllocatorBK>> table_;
     // Map<DeviceType, std::unique_ptr<Allocator>> table_;
 };
 
-class UndefinedAllocator final : public Allocator {
+class UndefinedAllocator final : public AllocatorBK {
 public:
     UndefinedAllocator() = default;
 
@@ -121,7 +113,7 @@ public:
     void deallocate(void* p) const override {}
 };
 
-class CUDAAllocator final : public Allocator {
+class CUDAAllocator final : public AllocatorBK {
 public:
     CUDAAllocator() = default;
     // NODISCARD void* allocate(size_t n) const override {

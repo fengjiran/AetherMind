@@ -3,15 +3,9 @@
 //
 
 #include "aethermind/memory/allocator.h"
-#include "aethermind/memory/allocator_registration.h"
-#include "aethermind/memory/cpu_allocator.h"
 #include "utils/logging.h"
 
 namespace aethermind {
-
-RuntimeContext::RuntimeContext() {
-    internal::RegisterBuiltinAllocatorProviders(this);
-}
 
 void AllocatorRegistry::RegisterProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider) {
     AM_CHECK(provider != nullptr, "Allocator provider cannot be null");
@@ -38,10 +32,6 @@ Allocator& AllocatorRegistry::GetAllocator(Device device) {
 
     auto [new_it, inserted] = instances_.emplace(device, std::move(allocator));
     return *new_it->second;
-}
-
-Allocator& RuntimeContext::GetAllocator(Device device) {
-    return registry_.GetAllocator(device);
 }
 
 REGISTER_ALLOCATOR(DeviceType::kUndefined, UndefinedAllocator);

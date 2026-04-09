@@ -95,8 +95,8 @@ void free_cpu(void* data) {
 Buffer CPUAllocator::Allocate(size_t nbytes) {
     const size_t bytes_to_allocate = nbytes == 0 ? 1 : nbytes;
     void* data = alloc_cpu(bytes_to_allocate);
-    return {nbytes,
-            MemoryHandle(data, nullptr, &cpu_buffer_deleter, device_, get_alignment(bytes_to_allocate))};
+    return {nbytes, MemoryHandle(data, nullptr, &cpu_buffer_deleter,
+                                 device_, get_alignment(bytes_to_allocate))};
 }
 
 Device CPUAllocator::device() const noexcept {

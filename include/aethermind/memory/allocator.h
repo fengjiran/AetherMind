@@ -17,13 +17,6 @@ namespace aethermind {
 
 class Allocator {
 public:
-    Allocator() = default;
-    Allocator(const Allocator&) = default;
-    Allocator(Allocator&&) noexcept = default;
-
-    Allocator& operator=(const Allocator&) = default;
-    Allocator& operator=(Allocator&&) noexcept = default;
-
     virtual ~Allocator() = default;
 
     virtual Buffer Allocate(size_t nbytes) = 0;
@@ -46,21 +39,6 @@ private:
     std::unordered_map<Device, std::unique_ptr<Allocator>> instances_;
 };
 
-class RuntimeContext {
-public:
-    RuntimeContext();
-
-    // Registers an allocator provider for a specific device type.
-    // RuntimeContext takes ownership of the provider.
-    void RegisterAllocatorProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider) {
-        registry_.RegisterProvider(type, std::move(provider));
-    }
-
-    Allocator& GetAllocator(Device device);
-
-private:
-    AllocatorRegistry registry_;
-};
 
 // =============================================================================
 // Legacy Allocator API (Migration Only)
@@ -111,24 +89,6 @@ public:
     }
 
     void deallocate(void* p) const override {}
-};
-
-class CUDAAllocator final : public AllocatorBK {
-public:
-    CUDAAllocator() = default;
-    // NODISCARD void* allocate(size_t n) const override {
-    //     void* p = nullptr;
-    //     // CHECK_CUDA(cudaMalloc(&p, n));
-    //     return p;
-    // }
-
-    AM_NODISCARD DataPtr allocate(size_t nbytes) const override {
-        return {};
-    }
-
-    void deallocate(void* p) const override {
-        // CHECK_CUDA(cudaFree(p));
-    }
 };
 
 #define REGISTER_ALLOCATOR(device, allocator)                                          \

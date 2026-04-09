@@ -80,6 +80,8 @@ Diagnostics:
       readability-identifier-naming.MacroDefinitionPrefix: AM_
       readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
 
+      cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
+
   UnusedIncludes: Strict
   # MissingIncludes: Strict
 

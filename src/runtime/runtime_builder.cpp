@@ -1,22 +1,29 @@
 #include "aethermind/runtime/runtime_builder.h"
+#include "aethermind/memory/cann_allocator.h"
+#include "aethermind/memory/cpu_allocator.h"
+#include "aethermind/memory/cuda_allocator.h"
 #include "aethermind/runtime/runtime_options.h"
-#include "aethermind/runtime/runtime_registration.h"
 
 namespace aethermind {
 
-RuntimeBuilder& RuntimeBuilder::WithOptions(RuntimeOptions options) {
+RuntimeBuilder& RuntimeBuilder::WithOptions(const RuntimeOptions& options) {
     options_ = options;
     return *this;
 }
 
-RuntimeBuilder& RuntimeBuilder::RegisterAllocatorProvider(
+RuntimeContext RuntimeBuilder::Build() {
+    auto allocator_registry = BuildAllocatorRegistry();
+    return RuntimeContext(std::move(allocator_registry));
+}
+
+RuntimeBuilder& RuntimeBuilder::OverrideAllocatorProvider(
         DeviceType type,
         std::unique_ptr<AllocatorProvider> provider) {
     AM_CHECK(provider != nullptr, "Allocator provider cannot be null");
     AM_CHECK(type != DeviceType::kUndefined,
              "Cannot register allocator provider for undefined device type");
     allocator_state_.pending_registrations.push_back(
-            PendingAllocatorProviderRegistration{
+            PendingAllocatorProvider{
                     .type = type,
                     .provider = std::move(provider)});
     return *this;
@@ -24,15 +31,24 @@ RuntimeBuilder& RuntimeBuilder::RegisterAllocatorProvider(
 
 AllocatorRegistry RuntimeBuilder::BuildAllocatorRegistry() {
     AllocatorRegistry registry;
-    internal::RegisterAllocatorProviders(registry, options_.allocator);
-    for (auto& pending: allocator_state_.pending_registrations) {
-        registry.SetProvider(pending.type, std::move(pending.provider));
+    const auto& allocator_opts = options_.allocator;
+    if (allocator_opts.enable_cpu) {
+        registry.SetProvider(DeviceType::kCPU, std::make_unique<CPUAllocatorProvider>());
     }
-    return registry;
-}
 
-RuntimeContext RuntimeBuilder::Build() {
-    return RuntimeContext(BuildAllocatorRegistry());
+    if (allocator_opts.enable_cuda) {
+        registry.SetProvider(DeviceType::kCUDA, std::make_unique<CUDAAllocatorProvider>());
+    }
+
+    if (allocator_opts.enable_cann) {
+        registry.SetProvider(DeviceType::kCANN, std::make_unique<CANNAllocatorProvider>());
+    }
+
+    for (auto& [type, provider]: allocator_state_.pending_registrations) {
+        registry.SetProvider(type, std::move(provider));
+    }
+
+    return registry;
 }
 
 }// namespace aethermind

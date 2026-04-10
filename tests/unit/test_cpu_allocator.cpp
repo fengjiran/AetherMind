@@ -1,6 +1,7 @@
 #include "aethermind/memory/allocator.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/memory/cpu_allocator.h"
+#include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/runtime_context.h"
 
 #include <gtest/gtest.h>
@@ -36,7 +37,7 @@ TEST(CPUAllocator, ZeroByteAllocation) {
 }
 
 TEST(CPUAllocator, ProviderAndRegistry) {
-    RuntimeContext ctx;
+    auto ctx = RuntimeBuilder().Build();
 
     Device cpu_dev = Device::CPU();
     Allocator& alloc1 = ctx.GetAllocator(cpu_dev);
@@ -54,8 +55,7 @@ TEST(CPUAllocator, BufferReleaseAfterContextDestruction) {
     void* raw_ptr = nullptr;
 
     {
-        RuntimeContext ctx;
-
+        auto ctx = RuntimeBuilder().Build();
         Allocator& alloc = ctx.GetAllocator(Device::CPU());
         buffer = alloc.Allocate(128);
         raw_ptr = buffer.mutable_data();
@@ -107,7 +107,7 @@ TEST(CPUAllocator, RegistryNegativePath) {
 }
 
 TEST(CPUAllocator, DefaultRegistration) {
-    RuntimeContext ctx;
+    auto ctx = RuntimeBuilder().Build();
     Device cpu_dev = Device::CPU();
     EXPECT_NO_THROW(ctx.GetAllocator(cpu_dev));
 }

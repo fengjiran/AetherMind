@@ -32,6 +32,7 @@ public:
 class AllocatorRegistry {
 public:
     void RegisterProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider);
+    void SetProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider);
     Allocator& GetAllocator(Device device);
 
 private:

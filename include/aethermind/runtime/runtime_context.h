@@ -7,18 +7,14 @@ namespace aethermind {
 
 class RuntimeContext {
 public:
-    RuntimeContext();
-
-    // Registers an allocator provider for a specific device type.
-    // RuntimeContext takes ownership of the provider.
-    void RegisterAllocatorProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider) {
-        registry_.RegisterProvider(type, std::move(provider));
-    }
-
     Allocator& GetAllocator(Device device);
 
 private:
-    AllocatorRegistry registry_;
+    explicit RuntimeContext(AllocatorRegistry registry);
+
+    AllocatorRegistry allocator_registry_;
+
+    friend class RuntimeBuilder;
 };
 
 

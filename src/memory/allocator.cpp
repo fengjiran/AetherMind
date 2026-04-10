@@ -14,6 +14,21 @@ void AllocatorRegistry::RegisterProvider(DeviceType type, std::unique_ptr<Alloca
     providers_[type] = std::move(provider);
 }
 
+void AllocatorRegistry::SetProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider) {
+    AM_CHECK(provider != nullptr, "Allocator provider cannot be null");
+    AM_CHECK(type != DeviceType::kUndefined, "Cannot set provider for kUndefined device type");
+
+    providers_[type] = std::move(provider);
+
+    for (auto it = instances_.begin(); it != instances_.end();) {
+        if (it->first.type() == type) {
+            it = instances_.erase(it);
+            continue;
+        }
+        ++it;
+    }
+}
+
 Allocator& AllocatorRegistry::GetAllocator(Device device) {
     auto it = instances_.find(device);
     if (it != instances_.end()) {

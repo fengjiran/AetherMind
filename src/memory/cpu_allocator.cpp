@@ -108,6 +108,4 @@ std::unique_ptr<Allocator> CPUAllocatorProvider::CreateAllocator(Device device) 
     return std::make_unique<CPUAllocator>(device);
 }
 
-REGISTER_ALLOCATOR(DeviceType::kCPU, CPUAllocatorBK);
-
 }// namespace aethermind

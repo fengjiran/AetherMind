@@ -5,7 +5,7 @@
 #include "aethermind/memory/buffer.h"
 #include "aethermind/utils/overflow_check.h"
 #include "container/array_view.h"
-#include "tensor_bk.h"
+#include "shape_and_stride.h"
 #include "utils/logging.h"
 
 #include <array>
@@ -35,9 +35,9 @@ inline Buffer make_buffer(size_t nbytes, size_t alignment = 64) {
 }
 
 inline size_t compute_required_bytes(IntArrayView shape,
-                                     IntArrayView strides,
-                                     size_t itemsize,
-                                     size_t byte_offset = 0) {
+                                      IntArrayView strides,
+                                      size_t itemsize,
+                                      size_t byte_offset = 0) {
     ShapeAndStride shape_and_stride(shape, strides);
 
     size_t required = byte_offset;
@@ -69,8 +69,8 @@ inline Tensor MakeEmptyTensor(DataType dtype = DataType::Float32()) {
 }
 
 inline Tensor MakeContiguousTensor(IntArrayView shape,
-                                   DataType dtype = DataType::Float32(),
-                                   size_t byte_offset = 0) {
+                                    DataType dtype = DataType::Float32(),
+                                    size_t byte_offset = 0) {
     ShapeAndStride shape_and_stride;
     shape_and_stride.set_contiguous(shape);
 
@@ -88,17 +88,6 @@ inline Tensor MakeTensor(IntArrayView shape,
             shape, strides, static_cast<size_t>(dtype.nbytes()), byte_offset);
 
     return Tensor(detail::make_buffer(required_bytes), byte_offset, dtype, shape, strides);
-}
-
-// Legacy Tensor_BK overloads for backward compatibility
-inline Tensor_BK MakeEmptyTensorBK(DataType dtype = DataType::Float32()) {
-    return Tensor_BK(std::vector<int64_t>{0}, 0, dtype, Device::CPU());
-}
-
-inline Tensor_BK MakeContiguousTensorBK(const std::vector<int64_t>& shape,
-                                        DataType dtype = DataType::Float32(),
-                                        int64_t storage_offset = 0) {
-    return Tensor_BK(shape, storage_offset, dtype, Device::CPU());
 }
 
 }// namespace aethermind::test_utils

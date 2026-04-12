@@ -12,7 +12,6 @@
 namespace aethermind {
 
 class Tensor;
-class Tensor_BK;
 
 // shape placeholder
 class ShapeSymbol {
@@ -314,8 +313,6 @@ public:
 
     bool MatchTensor(const Tensor& t) const;
 
-    bool MatchTensor(const Tensor_BK& t) const;
-
     TensorTypePtr Merge(const TensorType& other, bool merge_shape = true) const;
 
     TensorTypePtr Contiguity() const;
@@ -345,8 +342,6 @@ public:
                                 std::optional<bool> requires_grad);
 
     static TensorTypePtr Create(const Tensor& t);
-
-    static TensorTypePtr Create(const Tensor_BK& t);
 
     static TensorTypePtr CreateContiguous(DataType dtype, Device device, IntArrayView shape);
 

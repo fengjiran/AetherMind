@@ -2,7 +2,6 @@
 // Created by 赵丹 on 25-6-19.
 //
 #include "aethermind/base/tensor.h"
-#include "tensor_bk.h"
 
 #include <format>
 #include <cmath>
@@ -103,10 +102,6 @@ static PrintFormat get_print_format(int64_t size, const double* data) {
 
     width = exp_max == 0 ? 7 : (static_cast<int>(exp_max) + 6);
     return {scale, width, FormatType::Fixed};
-}
-
-static PrintFormat get_print_format(const Tensor_BK& t) {
-    return get_print_format(t.numel(), t.const_data_ptr<double>());
 }
 
 static PrintFormat get_print_format(const Tensor& t) {

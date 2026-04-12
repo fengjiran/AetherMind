@@ -5,7 +5,6 @@
 #include "any.h"
 #include "container/string.h"
 #include "device.h"
-#include "tensor_bk.h"
 #include "test_utils/tensor_factory.h"
 #include "test_utils/tensor_random.h"
 
@@ -31,7 +30,7 @@ TEST(Any, bool) {
     EXPECT_TRUE(!x1.cast<bool>());
 
     EXPECT_EQ(details::Type2Str<bool>::value(), "Bool");
-    EXPECT_EQ(details::Type2Str<Tensor_BK>::value(), "Tensor");
+    EXPECT_EQ(details::Type2Str<Tensor>::value(), "Tensor");
 }
 
 TEST(Any, null) {
@@ -191,25 +190,6 @@ TEST(Any, device) {
     EXPECT_EQ(dev.index(), 1);
 }
 
-TEST(Any, tensor) {
-    Tensor_BK t({3, 10});
-    Any x = t;
-    EXPECT_TRUE(x.IsTensor());
-    EXPECT_EQ(t.use_count(), 2);
-    EXPECT_EQ(x.use_count(), 2);
-    auto t2 = x.ToTensor();
-    {
-        Any y = t2;
-        EXPECT_TRUE(y.IsTensor());
-        EXPECT_EQ(t2.use_count(), 4);
-        EXPECT_EQ(y.use_count(), 4);
-    }
-
-    EXPECT_EQ(t2.use_count(), 3);
-    auto t3 = Any(t2).ToTensor();
-    EXPECT_EQ(t3.use_count(), 4);
-}
-
 TEST(Any, new_tensor) {
     Tensor t = MakeContiguousTensor({3, 10}, DataType::Float32());
     Any x = t;
@@ -227,45 +207,28 @@ TEST(Any, new_tensor) {
 }
 
 TEST(Any, tensor_type_roundtrip) {
-    Tensor_BK legacy = RandomUniform({5, 5}, DataType::Float32());
-    Any any_legacy = legacy;
-    
-    EXPECT_TRUE(any_legacy.IsTensor());
-    EXPECT_FALSE(any_legacy.IsNewTensor());
-    
-    Tensor_BK recovered = any_legacy.ToTensor();
-    EXPECT_TRUE(recovered.defined());
-    EXPECT_EQ(recovered.shape(), legacy.shape());
-    
     Tensor new_tensor = RandomUniformTensor({5, 5}, DataType::Float32());
     Any any_new = new_tensor;
     
     EXPECT_TRUE(any_new.IsNewTensor());
-    EXPECT_FALSE(any_new.IsTensor());
     
     Tensor recovered_new = any_new.ToNewTensor();
     EXPECT_TRUE(recovered_new.is_initialized());
     EXPECT_EQ(recovered_new.shape(), new_tensor.shape());
 }
 
-// 测试空Any对象的比较
 TEST(AnyOperatorsTest, EmptyAnyComparison) {
-    // 创建两个空Any对象
     Any empty1;
     Any empty2;
 
-    // 空Any对象应该相等
     EXPECT_TRUE(empty1 == empty2);
     EXPECT_FALSE(empty1 != empty2);
 
-    // 与nullptr的比较
     EXPECT_TRUE(empty1 == nullptr);
     EXPECT_FALSE(empty1 != nullptr);
 }
 
-// 测试基本类型的相等比较
 TEST(AnyOperatorsTest, BasicTypeEquality) {
-    // 整数比较
     Any int1(42);
     Any int2(42);
     Any int3(43);
@@ -275,7 +238,6 @@ TEST(AnyOperatorsTest, BasicTypeEquality) {
     EXPECT_FALSE(int1 == int3);
     EXPECT_TRUE(int1 != int3);
 
-    // 浮点数比较
     Any float1(3.14);
     Any float2(3.14);
     Any float3(2.71);
@@ -285,7 +247,6 @@ TEST(AnyOperatorsTest, BasicTypeEquality) {
     EXPECT_FALSE(float1 == float3);
     EXPECT_TRUE(float1 != float3);
 
-    // 布尔值比较
     Any bool1(true);
     Any bool2(true);
     Any bool3(false);
@@ -295,7 +256,6 @@ TEST(AnyOperatorsTest, BasicTypeEquality) {
     EXPECT_FALSE(bool1 == bool3);
     EXPECT_TRUE(bool1 != bool3);
 
-    // 字符串比较
     Any str1(String("hello"));
     Any str2(String("hello"));
     Any str3(String("world"));
@@ -306,14 +266,12 @@ TEST(AnyOperatorsTest, BasicTypeEquality) {
     EXPECT_TRUE(str1 != str3);
 }
 
-// 测试不同类型之间的比较
 TEST(AnyOperatorsTest, DifferentTypeComparison) {
     Any int_any(42);
     Any float_any(42.0);
     Any bool_any(true);
     Any str_any(String("42"));
 
-    // 不同类型的Any对象应该不相等，即使它们的值在语义上可能相等
     EXPECT_FALSE(int_any == float_any);
     EXPECT_TRUE(int_any != float_any);
 
@@ -333,23 +291,18 @@ TEST(AnyOperatorsTest, DifferentTypeComparison) {
     EXPECT_TRUE(bool_any != str_any);
 }
 
-// 测试空与非空Any的比较
 TEST(AnyOperatorsTest, EmptyVsNonEmptyComparison) {
     Any empty;
     Any non_empty(42);
 
-    // 空Any与非空Any应该不相等
     EXPECT_FALSE(empty == non_empty);
     EXPECT_TRUE(empty != non_empty);
 
-    // 非空Any与nullptr的比较
     EXPECT_FALSE(non_empty == nullptr);
     EXPECT_TRUE(non_empty != nullptr);
 }
 
-// 测试Device类型的比较
 TEST(AnyOperatorsTest, DeviceTypeComparison) {
-    // 创建两个相同的Device对象
     Device device1(DeviceType::kCPU, 0);
     Device device2(DeviceType::kCPU, 0);
     Device device3(DeviceType::kCPU, -1);
@@ -358,19 +311,14 @@ TEST(AnyOperatorsTest, DeviceTypeComparison) {
     Any dev_any2(device2);
     Any dev_any3(device3);
 
-    // 相同的Device应该相等
     EXPECT_TRUE(dev_any1 == dev_any2);
     EXPECT_FALSE(dev_any1 != dev_any2);
 
-    // 不同的Device应该不相等
     EXPECT_FALSE(dev_any1 == dev_any3);
     EXPECT_TRUE(dev_any1 != dev_any3);
 }
 
-
-// 测试边界值比较
 TEST(AnyOperatorsTest, BoundaryValueComparison) {
-    // 整数边界值
     Any min_int(std::numeric_limits<int64_t>::min());
     Any min_int_copy(std::numeric_limits<int64_t>::min());
     Any max_int(std::numeric_limits<int64_t>::max());
@@ -378,39 +326,28 @@ TEST(AnyOperatorsTest, BoundaryValueComparison) {
     EXPECT_TRUE(min_int == min_int_copy);
     EXPECT_FALSE(min_int == max_int);
 
-    // 浮点数边界值
     Any zero_float(0.0);
     Any zero_float_copy(0.0);
     Any neg_zero_float(-0.0);
 
-    // 在大多数实现中，0.0和-0.0在==比较中应该相等
     EXPECT_TRUE(zero_float == zero_float_copy);
     EXPECT_TRUE(zero_float == neg_zero_float);
-
-    // 注意：由于浮点数的特性，这里不测试NaN值的比较
-    // 因为根据IEEE标准，NaN不等于任何值，包括它自己
 }
 
-// 测试通过赋值后的值比较
 TEST(AnyOperatorsTest, AssignmentAndComparison) {
     Any a(42);
     Any b(100);
 
     EXPECT_FALSE(a == b);
 
-    // 赋值后应该相等
     b = a;
     EXPECT_TRUE(a == b);
 
-    // 移动赋值后应该相等
     Any c;
     c = std::move(a);
     EXPECT_TRUE(b == c);
-
-    // 注意：a现在处于有效但未定义的状态，不应该再使用
 }
 
-// 测试AnyEqual函数对象的直接使用
 TEST(AnyOperatorsTest, AnyEqualFunctionObject) {
     AnyEqual equal;
 
@@ -419,7 +356,6 @@ TEST(AnyOperatorsTest, AnyEqualFunctionObject) {
     Any int3(43);
     Any empty;
 
-    // 测试各种比较场景
     EXPECT_TRUE(equal(int1, int2));
     EXPECT_FALSE(equal(int1, int3));
     EXPECT_FALSE(equal(int1, empty));
@@ -427,7 +363,6 @@ TEST(AnyOperatorsTest, AnyEqualFunctionObject) {
     EXPECT_TRUE(equal(empty, empty));
 }
 
-// 测试辅助函数，用于验证输出
 bool TestPrintOutput(const Any& any, AnyPrintFormat format, const String& expected) {
     std::ostringstream oss;
     PrintAny(oss, any, format);
@@ -445,20 +380,16 @@ bool TestPrintOutput(const Any& any, AnyPrintFormat format, const String& expect
 TEST(AnyPrintTest, TestBasicTypes) {
     std::cout << "=== Testing Basic Types ===\n";
 
-    // 整数类型
     Any any_int(42);
     TestPrintOutput(any_int, AnyPrintFormat::Default, "42");
     TestPrintOutput(any_int, AnyPrintFormat::Compact, "42");
 
-    // 浮点数类型
     Any any_float(3.14159);
     TestPrintOutput(any_float, AnyPrintFormat::Default, "3.14159");
 
-    // 布尔类型
     Any any_bool(true);
-    TestPrintOutput(any_bool, AnyPrintFormat::Default, "1");// 注意：C++中默认bool打印为1/0
+    TestPrintOutput(any_bool, AnyPrintFormat::Default, "1");
 
-    // 字符串类型
     Any any_string("Hello, World!");
     TestPrintOutput(any_string, AnyPrintFormat::Default, "Hello, World!");
 
@@ -471,17 +402,14 @@ TEST(AnyPrintTest, TestPrintFormats) {
 
     Any any_int(42);
 
-    // 默认格式和紧凑格式应该相同
     TestPrintOutput(any_int, AnyPrintFormat::Default, "42");
     TestPrintOutput(any_int, AnyPrintFormat::Compact, "42");
 
-    // 调试格式应该包含类型信息（具体输出取决于实现）
     std::ostringstream oss;
     PrintAny(oss, any_int, AnyPrintFormat::Debug);
     String debug_output = oss.str();
     std::cout << "Debug format output: " << debug_output << "\n";
 
-    // 验证调试格式包含必要信息
     if (debug_output.find("int") != String::npos && debug_output.find("42") != String::npos) {
         std::cout << "✓ Debug format contains type and value\n";
     } else {
@@ -517,7 +445,6 @@ TEST(AnyPrintTest, TestOperatorStream) {
     std::cout << "operator<<(42): " << oss1.str() << "\n";
     std::cout << "operator<<(\"Test\"): " << oss2.str() << "\n";
 
-    // 验证与PrintAny的默认格式相同
     std::ostringstream oss3, oss4;
     PrintAny(oss3, any_int, AnyPrintFormat::Default);
     PrintAny(oss4, any_string, AnyPrintFormat::Default);
@@ -539,7 +466,6 @@ TEST(AnyPrintTest, TestCustomType) {
         int y;
     };
 
-    // 自定义类型默认不可打印，测试其默认打印行为
     Point p = {10, 20};
     Any any_point(p);
 
@@ -548,78 +474,9 @@ TEST(AnyPrintTest, TestCustomType) {
     String output = oss.str();
     std::cout << "Custom type output: " << output << "\n";
 
-    // 验证输出包含类型信息或指针地址
     if (output.find("Point") != String::npos || output.find("@") != String::npos) {
         std::cout << "✓ Custom type output contains expected information\n";
     }
 }
 
 }// namespace
-
-#ifdef TEST_ANY_PRINT
-
-// 为Any类特化fmt::formatter
-template<>
-struct fmt::formatter<aethermind::Any> {
-    constexpr auto parse(format_parse_context& ctx) {
-        // 支持简单的格式说明符：d(debug)、c(compact)
-        auto it = ctx.begin(), end = ctx.end();
-        if (it != end && (*it == 'd' || *it == 'c')) {
-            format_ = *it;
-            ++it;
-        }
-        if (it != end && *it != '}') {
-            throw format_error("invalid format");
-        }
-        return it;
-    }
-
-    template<typename FormatContext>
-    auto format(const aethermind::Any& any, FormatContext& ctx) {
-        const auto* holder_ptr = any.GetHolderPtr();
-        if (holder_ptr) {
-            if (format_ == 'd') {
-                return fmt::format_to(ctx.out(), "{{type: {}, value: {}}}",
-                                      holder_ptr->type().name(), fmt::format("{}", any));
-            } else {
-                return fmt::format_to(ctx.out(), "{}", any);
-            }
-        } else {
-            return fmt::format_to(ctx.out(), "null");
-        }
-    }
-
-private:
-    char format_ = 'c';// 默认紧凑格式
-};
-
-// 在Any类的print方法中支持fmt
-template<typename T>
-class Holder final : public HolderBase {
-public:
-    // ... 其他方法 ...
-
-    bool print(std::ostream& os) const override {
-        // 检查自定义打印器
-        static const auto type_idx = std::type_index(typeid(T));
-        auto& printers = details::GetCustomPrinters();
-        auto it = printers.find(type_idx);
-        if (it != printers.end()) {
-            return it->second(os, &value_);
-        }
-
-        // 使用fmt进行格式化输出
-        try {
-            os << fmt::format("{}", value_);
-            return true;
-        } catch (const fmt::format_error&) {
-            // fmt格式化失败时回退到默认行为
-            os << "[" << typeid(T).name() << "@" << static_cast<const void*>(&value_) << "]";
-            return true;
-        }
-    }
-
-    // ... 其他成员 ...
-};
-
-#endif

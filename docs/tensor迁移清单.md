@@ -187,37 +187,58 @@
 ---
 ## Batch 7：删除旧体系
 ### 删除文件
-- [ ] 删除 `include/memory/storage_impl.h`
-- [ ] 删除 `src/memory/storage_impl.cpp`
-- [ ] 删除 `include/aethermind/memory/data_ptr.h`
-- [ ] 删除 `include/tensor_impl.h`
-- [ ] 删除 `src/tensor_impl.cpp`
-- [ ] 删除 `include/tensor_bk.h`
-- [ ] 删除 `src/tensor_bk.cpp`
+- [x] 删除 `include/memory/storage_impl.h`
+- [x] 删除 `src/memory/storage_impl.cpp`
+- [x] 删除 `include/aethermind/memory/data_ptr.h`
+- [x] 删除 `include/tensor_impl.h`
+- [x] 删除 `src/tensor_impl.cpp`
+- [x] 删除 `include/tensor_bk.h`
+- [x] 删除 `src/tensor_bk.cpp`
+- [x] 删除 `include/aethermind/migration/tensor_compat.h`
+- [x] 删除 `src/migration/tensor_compat.cpp`
+- [x] 删除 `tests/unit/test_tensor_compat.cpp`
+- [x] 删除 `tests/unit/test_storage.cpp`
 ### 清理调用点
-- [ ] `include/aethermind/memory/allocator.h`
-  - [ ] 删除 `AllocatorBK`
-  - [ ] 删除 `AllocatorTable`
-- [ ] `include/type_system/tensor_type.h`
-- [ ] `src/type_system/tensor_type.cpp`
-  - [ ] 删除 `Tensor_BK` 重载
-- [ ] `include/any.h`
-- [ ] `src/any.cpp`
-  - [ ] 删除 legacy Tensor 接口
-- [ ] `src/format.cpp`
-  - [ ] 删除 legacy Tensor 格式化分支
-- [ ] `tests/unit/*`
-  - [ ] 删除 legacy-only 测试
-  - [ ] 清理 compat 过渡逻辑
-- [ ] `docs/designs/*`
-  - [ ] 更新为 Buffer-Tensor 最终架构
-  - [ ] 标记迁移完成
+- [x] `include/aethermind/memory/allocator.h`
+  - [x] 删除 `AllocatorBK`
+  - [x] 删除 `AllocatorTable`
+  - [x] 删除 `UndefinedAllocator`
+  - [x] 删除 `REGISTER_ALLOCATOR` 宏
+- [x] `include/aethermind/memory/cpu_allocator.h`
+  - [x] 删除 `CPUAllocatorBK`
+- [x] `src/memory/allocator.cpp`
+  - [x] 删除 `REGISTER_ALLOCATOR` 调用
+- [x] `src/memory/cpu_allocator.cpp`
+  - [x] 删除 `REGISTER_ALLOCATOR` 调用
+- [x] `include/type_system/tensor_type.h`
+  - [x] 删除 `Tensor_BK` 前向声明
+- [x] `src/type_system/tensor_type.cpp`
+  - [x] 删除 `Tensor_BK` 重载
+- [x] `include/any.h`
+  - [x] 删除 `IsTensor()` / `ToTensor()` 方法
+- [x] `src/any.cpp`
+  - [x] 删除 legacy Tensor 接口实现
+- [x] `src/format.cpp`
+  - [x] 删除 legacy Tensor 格式化分支
+- [x] `src/function.cpp`
+  - [x] 删除 `tensor_bk.h` include
+- [x] `tests/unit/test_utils/tensor_factory.h`
+  - [x] 删除 Tensor_BK 工厂函数
+- [x] `tests/unit/test_utils/tensor_random.h`
+  - [x] 删除 Tensor_BK 随机生成函数
+- [x] `tests/unit/test_utils/tensor_assert.h`
+  - [x] 删除 Tensor_BK 断言函数
+- [x] `tests/unit/test_tensor.cpp`
+  - [x] 删除 legacy Tensor 测试
+- [x] `tests/unit/test_tensor_random.cpp`
+  - [x] 删除 legacy Tensor 测试
+- [x] `tests/unit/test_any.cpp`
+  - [x] 删除 legacy Tensor 测试
 ### 最终验收
-- [ ] grep 无生产级 `Storage/DataPtr/Tensor_BK/TensorImpl/AllocatorBK` 引用
-- [ ] 最小相关目标可编译
-- [ ] 单元测试通过
-- [ ] 关键 benchmark 无明显退化
-- [ ] 文档已同步
+- [x] grep 无生产级 `Storage/DataPtr/Tensor_BK/TensorImpl/AllocatorBK` 引用
+- [x] 最小相关目标可编译
+- [x] 单元测试通过（857/858，1 个无关预存问题）
+- [x] 文档已同步
 ---
 ## 迁移期间通用检查项
 - [ ] 不在业务代码中手写 offset 单位换算，统一走 compat

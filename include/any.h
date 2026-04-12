@@ -371,8 +371,6 @@ public:
         return CheckType<Device>();
     }
 
-    AM_NODISCARD bool IsTensor() const noexcept;
-
     AM_NODISCARD bool IsNewTensor() const noexcept;
 
     AM_NODISCARD bool IsObjectRef() const noexcept {
@@ -417,8 +415,6 @@ public:
         AM_CHECK(IsString(), "Expected String, but got {}", type().name());
         return cast<String>();
     }
-
-    AM_NODISCARD Tensor_BK ToTensor() const;
 
     AM_NODISCARD Tensor ToNewTensor() const;
 

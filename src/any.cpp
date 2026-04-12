@@ -5,7 +5,6 @@
 #include "aethermind/base/tensor.h"
 #include "backtrace.h"
 #include "container/string.h"
-#include "tensor_bk.h"
 #include "type_system/tensor_type.h"
 #include "type_system/type.h"
 
@@ -118,17 +117,8 @@ std::type_index Any::type() const {
     AM_UNREACHABLE();
 }
 
-bool Any::IsTensor() const noexcept {
-    return CheckType<Tensor_BK>();
-}
-
 bool Any::IsNewTensor() const noexcept {
     return CheckType<Tensor>();
-}
-
-Tensor_BK Any::ToTensor() const {
-    AM_CHECK(IsTensor(), "Expected Tensor.");
-    return cast<Tensor_BK>();
 }
 
 Tensor Any::ToNewTensor() const {
@@ -159,10 +149,6 @@ SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
 
     if (IsDevice()) {
         return DeviceObjType::Global();
-    }
-
-    if (IsTensor()) {
-        return TensorType::Create(ToTensor());
     }
 
     if (IsNewTensor()) {

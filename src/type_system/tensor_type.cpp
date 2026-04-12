@@ -3,7 +3,6 @@
 //
 #include "type_system/tensor_type.h"
 #include "aethermind/base/tensor.h"
-#include "tensor_bk.h"
 
 #include <numeric>
 #include <utility>
@@ -511,35 +510,6 @@ static bool IsNullOrEqual(std::optional<T> a, IntArrayView b) {
     return !a.has_value() || a.value() == b;
 }
 
-bool TensorType::MatchTensor(const Tensor_BK& t) const {
-    bool undef = undefined().value_or(!t.defined());
-
-    // When the followings are true, we consider it's not a match:
-    // - undefined().has_value() == true
-    // - undefined().value() != !t.defined()
-    if (undef != !t.defined()) {
-        return false;
-    }
-
-    // When the followings are true, we consider it's a match:
-    // - t is not defined
-    // - undefined() == null or undefined().value() == true
-    if (!t.defined()) {
-        return true;
-    }
-
-    // TODO
-    bool rg = t.requires_grad();
-    bool matched_strides = !GetStrideProperties().size() ||
-                           (!t.has_storage() && !GetStrideProperties().IsComplete()) ||
-                           GetStrideProperties() == ComputeStrideProps(t.shape(), t.strides(), t.is_contiguous());
-    return dtype().value_or(t.dtype()) == t.dtype() &&
-           device().value_or(t.device()) == t.device() &&
-           RequiresGrad().value_or(rg) == rg &&
-           matched_strides &&
-           IsNullOrEqual(shape().GetConcreteValue(), t.shape());
-}
-
 bool TensorType::MatchTensor(const Tensor& t) const {
     bool undef = undefined().value_or(!t.is_initialized());
 
@@ -672,21 +642,6 @@ TensorTypePtr TensorType::Create(const Tensor& t) {
                                            t.strides(),
                                            false,
                                            t.is_contiguous());
-}
-
-
-TensorTypePtr TensorType::Create(const Tensor_BK& t) {
-    if (t.layout() == kStrided && !t.is_nested()) {
-        return CreateFromStridedTensorMetadata(t.dtype(),
-                                               t.device(),
-                                               t.shape(),
-                                               t.strides(),
-                                               t.requires_grad(),
-                                               t.is_contiguous());
-    }
-
-    return Create(t.dtype(), t.device(), SymbolicShape(), VaryingShape<Stride>{},
-                  t.requires_grad(), false);
 }
 
 bool IsContiguousStride(IntArrayView shape, IntArrayView strides) {

@@ -51,8 +51,6 @@ Allocator& AllocatorRegistry::GetAllocator(Device device) {
     return *new_it->second;
 }
 
-REGISTER_ALLOCATOR(DeviceType::kUndefined, UndefinedAllocator);
-
 bool memoryProfilingEnabled() {
     auto* reporter_ptr = static_cast<MemoryReportingInfoBase*>(
             ThreadLocalDebugInfo::get(DebugInfoKind::PROFILER_STATE));

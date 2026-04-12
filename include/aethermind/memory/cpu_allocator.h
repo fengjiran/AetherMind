@@ -32,27 +32,6 @@ public:
     std::unique_ptr<Allocator> CreateAllocator(Device device) override;
 };
 
-class [[deprecated("Use CPUAllocator/CPUAllocatorProvider instead")]] CPUAllocatorBK final : public AllocatorBK {
-public:
-    CPUAllocatorBK() = default;
-
-    AM_NODISCARD DataPtr allocate(size_t nbytes) const override {
-        void* data = alloc_cpu(nbytes);
-        return {data, deleter, Device::CPU()};
-    }
-
-    static void deleter(void* ptr) {
-        if (ptr == nullptr) {
-            return;
-        }
-        free_cpu(ptr);
-    }
-
-    void deallocate(void* p) const override {
-        free_cpu(p);
-    }
-};
-
 }// namespace aethermind
 
 #endif// AETHERMIND_CPU_ALLOCATOR_H

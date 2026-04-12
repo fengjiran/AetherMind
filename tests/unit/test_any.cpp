@@ -1,14 +1,18 @@
 //
 // Created by 赵丹 on 2025/8/15.
 //
+#include "aethermind/base/tensor.h"
 #include "any.h"
 #include "container/string.h"
 #include "device.h"
 #include "tensor_bk.h"
+#include "test_utils/tensor_factory.h"
+#include "test_utils/tensor_random.h"
 
 #include <gtest/gtest.h>
 
 using namespace aethermind;
+using namespace aethermind::test_utils;
 
 namespace {
 
@@ -204,6 +208,44 @@ TEST(Any, tensor) {
     EXPECT_EQ(t2.use_count(), 3);
     auto t3 = Any(t2).ToTensor();
     EXPECT_EQ(t3.use_count(), 4);
+}
+
+TEST(Any, new_tensor) {
+    Tensor t = MakeContiguousTensor({3, 10}, DataType::Float32());
+    Any x = t;
+    EXPECT_TRUE(x.IsNewTensor());
+    
+    Tensor t2 = x.ToNewTensor();
+    EXPECT_EQ(t2.dtype(), t.dtype());
+    EXPECT_EQ(t2.shape(), t.shape());
+    EXPECT_EQ(t2.numel(), t.numel());
+    
+    {
+        Any y = t2;
+        EXPECT_TRUE(y.IsNewTensor());
+    }
+}
+
+TEST(Any, tensor_type_roundtrip) {
+    Tensor_BK legacy = RandomUniform({5, 5}, DataType::Float32());
+    Any any_legacy = legacy;
+    
+    EXPECT_TRUE(any_legacy.IsTensor());
+    EXPECT_FALSE(any_legacy.IsNewTensor());
+    
+    Tensor_BK recovered = any_legacy.ToTensor();
+    EXPECT_TRUE(recovered.defined());
+    EXPECT_EQ(recovered.shape(), legacy.shape());
+    
+    Tensor new_tensor = RandomUniformTensor({5, 5}, DataType::Float32());
+    Any any_new = new_tensor;
+    
+    EXPECT_TRUE(any_new.IsNewTensor());
+    EXPECT_FALSE(any_new.IsTensor());
+    
+    Tensor recovered_new = any_new.ToNewTensor();
+    EXPECT_TRUE(recovered_new.is_initialized());
+    EXPECT_EQ(recovered_new.shape(), new_tensor.shape());
 }
 
 // 测试空Any对象的比较

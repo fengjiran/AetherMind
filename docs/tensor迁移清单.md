@@ -111,10 +111,10 @@
 - [ ] `tests/unit/test_tensor_random.cpp`
   - [ ] 改用新 `tensor_random.h`
   - [ ] 校验 shape/dtype/device/数值分布
-- [ ] `tests/unit/test_any.cpp`
-  - [ ] 增加 `Tensor` 装箱/拆箱测试
-  - [ ] 保留 `Tensor_BK` 兼容测试
-  - [ ] 增加 compat round-trip 测试
+- [x] `tests/unit/test_any.cpp`
+  - [x] 增加 `Tensor` 装箱/拆箱测试
+  - [x] 保留 `Tensor_BK` 兼容测试
+  - [x] 增加 compat round-trip 测试
 ### 旧存储测试处理
 - [ ] `tests/unit/test_storage.cpp`
   - [ ] 区分 legacy-only 测试与可迁移测试
@@ -126,14 +126,14 @@
   - [ ] 测试 nbytes/device/alignment
   - [ ] 测试 shared ownership
   - [ ] 测试 deleter 调用
-- [ ] `tests/unit/test_tensor_compat.cpp`
-  - [ ] 测试 `Tensor_BK -> Tensor`
-  - [ ] 测试 `Tensor -> Tensor_BK`
-  - [ ] 测试 offset 换算
-  - [ ] 测试非法条件失败路径
+- [x] `tests/unit/test_tensor_compat.cpp`
+  - [x] 测试 `Tensor_BK -> Tensor`
+  - [x] 测试 `Tensor -> Tensor_BK`
+  - [x] 测试 offset 换算
+  - [x] 测试非法条件失败路径
 ### 验收
-- [ ] 新 Tensor 测试可独立运行
-- [ ] compat 测试覆盖关键桥接语义
+- [x] 新 Tensor 测试可独立运行（TensorCompat.* + Any.new_tensor + Any.tensor_type_roundtrip）
+- [x] compat 测试覆盖关键桥接语义
 - [ ] legacy 测试仅保留过渡价值
 ---
 ## Batch 5：切换分配主路径

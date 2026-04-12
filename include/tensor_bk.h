@@ -9,6 +9,8 @@
 
 namespace aethermind {
 
+// Legacy Tensor wrapper retained only for staged Storage-Tensor -> Buffer-Tensor
+// migration. New features should target aethermind::Tensor instead.
 class Tensor_BK {
 public:
     Tensor_BK() = default;
@@ -71,8 +73,14 @@ public:
 
     AM_NODISCARD bool is_cuda() const;
 
+    // Returns the underlying legacy impl without transferring ownership.
+    // Migration code may inspect it transiently but must not retain the raw
+    // pointer beyond the lifetime of this Tensor_BK.
     AM_NODISCARD TensorImpl* get_impl_ptr_unsafe() const noexcept;
 
+    // Releases ownership of the underlying legacy impl. This is migration-only
+    // escape hatch code and callers become responsible for rebuilding an
+    // owning ObjectPtr<TensorImpl> immediately.
     AM_NODISCARD TensorImpl* release_impl_unsafe();
 
     // NODISCARD Scalar item() const;

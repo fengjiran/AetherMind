@@ -10,7 +10,10 @@
 
 namespace aethermind {
 
-/*!
+// Legacy storage implementation retained only for staged Storage-Tensor ->
+// Buffer-Tensor migration. New code should use aethermind::Buffer.
+
+/*! 
  * \brief A storage represents the underlying backing data buffer for a tensor.
  *
  * \note
@@ -78,6 +81,7 @@ public:
 
     explicit Storage(ObjectPtr<StorageImpl> ptr) : impl_(std::move(ptr)) {}
 
+    // Read-only bridge surface used by migration compat code.
     AM_NODISCARD bool defined() const {
         return impl_;
     }

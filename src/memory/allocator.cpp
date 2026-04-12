@@ -5,6 +5,7 @@
 #include "aethermind/memory/allocator.h"
 #include "utils/logging.h"
 
+
 namespace aethermind {
 
 void AllocatorRegistry::RegisterProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider) {
@@ -30,6 +31,7 @@ void AllocatorRegistry::SetProvider(DeviceType type, std::unique_ptr<AllocatorPr
 }
 
 Allocator& AllocatorRegistry::GetAllocator(Device device) {
+    // std::lock_guard<std::mutex> lock(mutex_);
     auto it = instances_.find(device);
     if (it != instances_.end()) {
         return *it->second;

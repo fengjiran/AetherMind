@@ -13,23 +13,18 @@ namespace aethermind {
 class RuntimeBuilder {
 public:
     RuntimeBuilder& WithOptions(const RuntimeOptions& options);
-    RuntimeBuilder& OverrideAllocatorProvider(DeviceType type,
+    RuntimeBuilder& RegisterCustomAllocatorProvider(DeviceType type,
                                               std::unique_ptr<AllocatorProvider> provider);
     RuntimeContext Build();
 
 private:
-    struct PendingAllocatorProvider {
+    struct PendingCustomAllocatorProvider {
         DeviceType type;
         std::unique_ptr<AllocatorProvider> provider;
     };
 
-    struct AllocatorBuilderState {
-        std::vector<PendingAllocatorProvider> pending_registrations;
-    };
-
     RuntimeOptions options_;
-
-    AllocatorBuilderState allocator_state_;
+    std::vector<PendingCustomAllocatorProvider> pending_custom_allocator_providers_;
 
     AllocatorRegistry BuildAllocatorRegistry();
 };

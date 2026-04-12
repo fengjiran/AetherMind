@@ -1,5 +1,4 @@
 #include "aethermind/runtime/runtime_context.h"
-#include "aethermind/runtime/runtime_builder.h"
 
 namespace aethermind {
 

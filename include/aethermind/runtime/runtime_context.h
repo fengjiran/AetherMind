@@ -9,6 +9,9 @@ class RuntimeContext {
 public:
     Allocator& GetAllocator(Device device);
 
+    RuntimeContext(const RuntimeContext&) = delete;
+    RuntimeContext& operator=(const RuntimeContext&) = delete;
+
 private:
     explicit RuntimeContext(AllocatorRegistry registry);
 

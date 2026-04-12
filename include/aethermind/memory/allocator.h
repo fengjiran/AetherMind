@@ -2,8 +2,8 @@
 // Created by 赵丹 on 25-1-23.
 //
 
-#ifndef AETHERMIND_ALLOCATOR_H
-#define AETHERMIND_ALLOCATOR_H
+#ifndef AETHERMIND_MEMORY_ALLOCATOR_H
+#define AETHERMIND_MEMORY_ALLOCATOR_H
 
 #include "buffer.h"
 #include "data_ptr.h"
@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <unordered_map>
+// #include <mutex>
 
 namespace aethermind {
 
@@ -36,6 +37,7 @@ public:
     Allocator& GetAllocator(Device device);
 
 private:
+    // std::mutex mutex_;
     std::unordered_map<DeviceType, std::unique_ptr<AllocatorProvider>> providers_;
     std::unordered_map<Device, std::unique_ptr<Allocator>> instances_;
 };
@@ -131,4 +133,4 @@ bool memoryProfilingEnabled();
 
 }// namespace aethermind
 
-#endif// AETHERMIND_ALLOCATOR_H
+#endif// AETHERMIND_MEMORY_ALLOCATOR_H

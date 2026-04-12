@@ -16,14 +16,14 @@ RuntimeContext RuntimeBuilder::Build() {
     return RuntimeContext(std::move(allocator_registry));
 }
 
-RuntimeBuilder& RuntimeBuilder::OverrideAllocatorProvider(
+RuntimeBuilder& RuntimeBuilder::RegisterCustomAllocatorProvider(
         DeviceType type,
         std::unique_ptr<AllocatorProvider> provider) {
     AM_CHECK(provider != nullptr, "Allocator provider cannot be null");
     AM_CHECK(type != DeviceType::kUndefined,
              "Cannot register allocator provider for undefined device type");
-    allocator_state_.pending_registrations.push_back(
-            PendingAllocatorProvider{
+    pending_custom_allocator_providers_.push_back(
+            PendingCustomAllocatorProvider{
                     .type = type,
                     .provider = std::move(provider)});
     return *this;
@@ -31,20 +31,21 @@ RuntimeBuilder& RuntimeBuilder::OverrideAllocatorProvider(
 
 AllocatorRegistry RuntimeBuilder::BuildAllocatorRegistry() {
     AllocatorRegistry registry;
-    const auto& allocator_opts = options_.allocator;
-    if (allocator_opts.enable_cpu) {
+    const auto& [enable_cpu, enable_cuda, enable_cann] = options_.allocator;
+
+    if (enable_cpu) {
         registry.SetProvider(DeviceType::kCPU, std::make_unique<CPUAllocatorProvider>());
     }
 
-    if (allocator_opts.enable_cuda) {
+    if (enable_cuda) {
         registry.SetProvider(DeviceType::kCUDA, std::make_unique<CUDAAllocatorProvider>());
     }
 
-    if (allocator_opts.enable_cann) {
+    if (enable_cann) {
         registry.SetProvider(DeviceType::kCANN, std::make_unique<CANNAllocatorProvider>());
     }
 
-    for (auto& [type, provider]: allocator_state_.pending_registrations) {
+    for (auto& [type, provider]: pending_custom_allocator_providers_) {
         registry.SetProvider(type, std::move(provider));
     }
 

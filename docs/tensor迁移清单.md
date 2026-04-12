@@ -108,33 +108,35 @@
   - [ ] 覆盖 contiguous
   - [ ] 覆盖 alignment
   - [ ] 覆盖 range validity
-- [ ] `tests/unit/test_tensor_random.cpp`
-  - [ ] 改用新 `tensor_random.h`
-  - [ ] 校验 shape/dtype/device/数值分布
+- [x] `tests/unit/test_tensor_random.cpp`
+  - [x] 改用新 `tensor_random.h`
+  - [x] 校验 shape/dtype/device/数值分布
+  - [x] 新增 Tensor 版本的随机测试（TensorRandomNew.*）
+  - [x] 新增 Tensor 版本的断言测试（TensorAllCloseNew.*）
 - [x] `tests/unit/test_any.cpp`
   - [x] 增加 `Tensor` 装箱/拆箱测试
   - [x] 保留 `Tensor_BK` 兼容测试
   - [x] 增加 compat round-trip 测试
 ### 旧存储测试处理
-- [ ] `tests/unit/test_storage.cpp`
-  - [ ] 区分 legacy-only 测试与可迁移测试
-  - [ ] 可迁移内容迁到 Buffer 测试
-  - [ ] 保留内容显式标记 legacy
+- [x] `tests/unit/test_storage.cpp`
+  - [x] 区分 legacy-only 测试与可迁移测试
+  - [x] 可迁移内容迁到 Buffer 测试
+  - [x] 保留内容显式标记 legacy（文件头注释说明）
 ### 建议新增
-- [ ] `tests/unit/test_buffer.cpp`
-  - [ ] 测试 Buffer 构造
-  - [ ] 测试 nbytes/device/alignment
-  - [ ] 测试 shared ownership
-  - [ ] 测试 deleter 调用
+- [x] `tests/unit/test_buffer.cpp`
+  - [x] 测试 Buffer 构造
+  - [x] 测试 nbytes/device/alignment
+  - [x] 测试 shared ownership
+  - [x] 测试 deleter 调用
 - [x] `tests/unit/test_tensor_compat.cpp`
   - [x] 测试 `Tensor_BK -> Tensor`
   - [x] 测试 `Tensor -> Tensor_BK`
   - [x] 测试 offset 换算
   - [x] 测试非法条件失败路径
 ### 验收
-- [x] 新 Tensor 测试可独立运行（TensorCompat.* + Any.new_tensor + Any.tensor_type_roundtrip）
+- [x] 新 Tensor 测试可独立运行
 - [x] compat 测试覆盖关键桥接语义
-- [ ] legacy 测试仅保留过渡价值
+- [x] legacy 测试仅保留过渡价值
 ---
 ## Batch 5：切换分配主路径
 ### Allocator

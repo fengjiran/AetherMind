@@ -2,6 +2,7 @@
 // Created by 赵丹 on 2025/8/24.
 //
 #include "any.h"
+#include "aethermind/base/tensor.h"
 #include "backtrace.h"
 #include "container/string.h"
 #include "tensor_bk.h"
@@ -121,9 +122,18 @@ bool Any::IsTensor() const noexcept {
     return CheckType<Tensor_BK>();
 }
 
+bool Any::IsNewTensor() const noexcept {
+    return CheckType<Tensor>();
+}
+
 Tensor_BK Any::ToTensor() const {
     AM_CHECK(IsTensor(), "Expected Tensor.");
     return cast<Tensor_BK>();
+}
+
+Tensor Any::ToNewTensor() const {
+    AM_CHECK(IsNewTensor(), "Expected Tensor.");
+    return cast<Tensor>();
 }
 
 SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
@@ -153,6 +163,10 @@ SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
 
     if (IsTensor()) {
         return TensorType::Create(ToTensor());
+    }
+
+    if (IsNewTensor()) {
+        return TensorType::Create(ToNewTensor());
     }
 
     AM_CHECK(false, "The type is unknown!");

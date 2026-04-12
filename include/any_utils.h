@@ -19,6 +19,7 @@
 
 namespace aethermind {
 
+class Tensor;
 class Tensor_BK;
 class Function;
 template<typename FType>
@@ -171,6 +172,7 @@ struct TypeName {
 
 
 SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TYPE_NAME);
+DEFINE_TYPE_NAME(_, _, _, Tensor, Tensor);
 DEFINE_TYPE_NAME(_, _, _, Tensor_BK, Tensor);
 DEFINE_TYPE_NAME(_, _, _, Device, Device);
 DEFINE_TYPE_NAME(_, _, _, Any, Any);

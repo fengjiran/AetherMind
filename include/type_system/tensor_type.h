@@ -11,6 +11,7 @@
 
 namespace aethermind {
 
+class Tensor;
 class Tensor_BK;
 
 // shape placeholder
@@ -311,6 +312,8 @@ public:
         return dtype() && device() && shape_.IsComplete() && strides_.IsComplete();
     }
 
+    bool MatchTensor(const Tensor& t) const;
+
     bool MatchTensor(const Tensor_BK& t) const;
 
     TensorTypePtr Merge(const TensorType& other, bool merge_shape = true) const;
@@ -340,6 +343,8 @@ public:
                                 std::optional<Device> device,
                                 std::optional<size_t> dim,
                                 std::optional<bool> requires_grad);
+
+    static TensorTypePtr Create(const Tensor& t);
 
     static TensorTypePtr Create(const Tensor_BK& t);
 

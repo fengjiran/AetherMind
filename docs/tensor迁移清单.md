@@ -39,39 +39,39 @@
 ---
 ## Batch 2：外围双接口
 ### Type System
-- [ ] `include/type_system/tensor_type.h`
-  - [ ] 增加 `Create(const Tensor&)`
-  - [ ] 增加 `MatchTensor(const Tensor&)`
-  - [ ] 保留 `Tensor_BK` 版本接口
-  - [ ] 注释说明新接口是主方向
-- [ ] `src/type_system/tensor_type.cpp`
-  - [ ] 实现 `Tensor` 版本 metadata 抽取
-  - [ ] 对齐新旧逻辑的 dtype/shape/device 语义
-  - [ ] 避免把 offset 迁移逻辑散落到这里
+- [x] `include/type_system/tensor_type.h`
+  - [x] 增加 `Create(const Tensor&)`
+  - [x] 增加 `MatchTensor(const Tensor&)`
+  - [x] 保留 `Tensor_BK` 版本接口
+  - [x] 注释说明新接口是主方向
+- [x] `src/type_system/tensor_type.cpp`
+  - [x] 实现 `Tensor` 版本 metadata 抽取
+  - [x] 对齐新旧逻辑的 dtype/shape/device 语义
+  - [x] 避免把 offset 迁移逻辑散落到这里
 ### Any
-- [ ] `include/any.h`
-  - [ ] 保留 `Tensor_BK ToTensor()`
-  - [ ] 增加 `Tensor ToNewTensor()`（或确定的新命名）
-- [ ] `src/any.cpp`
-  - [ ] 实现 `Tensor` 装箱/拆箱
-  - [ ] 统一通过 compat 层做必要转换
-  - [ ] 校验 Any round-trip 行为
+- [x] `include/any.h`
+  - [x] 保留 `Tensor_BK ToTensor()`
+  - [x] 增加 `Tensor ToNewTensor()`（或确定的新命名）
+- [x] `src/any.cpp`
+  - [x] 实现 `Tensor` 装箱/拆箱
+  - [x] 统一通过 compat/type-system 层做必要分发
+  - [x] 校验 Any round-trip 行为
 ### Format / Traits / Utils
-- [ ] `src/format.cpp`
-  - [ ] 增加 `Tensor` 格式化支持
-  - [ ] 保留 `Tensor_BK` 格式化
-  - [ ] 尽量抽公共逻辑
-- [ ] `include/type_traits.h`
-  - [ ] 增加/调整 `Tensor` 相关 trait
-  - [ ] 暂不删除 legacy trait
-- [ ] `include/any_utils.h`
-  - [ ] 增加 `Tensor` 类型名映射
-  - [ ] 保留 `Tensor_BK` 类型名映射
+- [x] `src/format.cpp`
+  - [x] 增加 `Tensor` 格式化支持
+  - [x] 保留 `Tensor_BK` 格式化
+  - [x] 尽量抽公共逻辑
+- [x] `include/type_traits.h`
+  - [x] 增加/调整 `Tensor` 相关 trait（已核对，Batch 2 无需额外改动）
+  - [x] 暂不删除 legacy trait
+- [x] `include/any_utils.h`
+  - [x] 增加 `Tensor` 类型名映射
+  - [x] 保留 `Tensor_BK` 类型名映射
 ### 验收
-- [ ] type system 同时支持新旧 Tensor
-- [ ] Any 同时支持新旧 Tensor
-- [ ] format 支持新旧 Tensor
-- [ ] 无重载歧义
+- [x] type system 同时支持新旧 Tensor
+- [x] Any 同时支持新旧 Tensor
+- [x] format 支持新旧 Tensor
+- [x] 无重载歧义
 ---
 ## Batch 3：测试基础设施迁移
 ### 工厂与随机张量

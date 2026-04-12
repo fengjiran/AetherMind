@@ -119,6 +119,7 @@ private:
 template<typename>
 class SingletonOrSharedTypePtr;
 class Type;
+class Tensor;
 
 class Any {
 public:
@@ -372,6 +373,8 @@ public:
 
     AM_NODISCARD bool IsTensor() const noexcept;
 
+    AM_NODISCARD bool IsNewTensor() const noexcept;
+
     AM_NODISCARD bool IsObjectRef() const noexcept {
         return has_value() ? GetHolderPtr()->IsObjectRef() : false;
     }
@@ -416,6 +419,8 @@ public:
     }
 
     AM_NODISCARD Tensor_BK ToTensor() const;
+
+    AM_NODISCARD Tensor ToNewTensor() const;
 
     AM_NODISCARD uint32_t use_count() const noexcept {
         return has_value() ? GetHolderPtr()->use_count() : 0;

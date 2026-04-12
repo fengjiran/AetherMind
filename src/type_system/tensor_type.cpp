@@ -2,12 +2,32 @@
 // Created by richard on 10/2/25.
 //
 #include "type_system/tensor_type.h"
+#include "aethermind/base/tensor.h"
 #include "tensor_bk.h"
 
 #include <numeric>
 #include <utility>
 
 namespace aethermind {
+
+namespace {
+
+TensorTypePtr CreateFromStridedTensorMetadata(const DataType& dtype,
+                                             const Device& device,
+                                             IntArrayView shape,
+                                             IntArrayView strides,
+                                             std::optional<bool> requires_grad,
+                                             bool is_contiguous) {
+    return TensorType::Create(dtype,
+                              device,
+                              VaryingShape<int64_t>{shape},
+                              VaryingShape<int64_t>{strides},
+                              requires_grad,
+                              false,
+                              is_contiguous);
+}
+
+}// namespace
 
 std::atomic<size_t> ShapeSymbol::num_symbols_ = 1;
 
@@ -520,6 +540,27 @@ bool TensorType::MatchTensor(const Tensor_BK& t) const {
            IsNullOrEqual(shape().GetConcreteValue(), t.shape());
 }
 
+bool TensorType::MatchTensor(const Tensor& t) const {
+    bool undef = undefined().value_or(!t.is_initialized());
+
+    if (undef != !t.is_initialized()) {
+        return false;
+    }
+
+    if (!t.is_initialized()) {
+        return true;
+    }
+
+    constexpr bool requires_grad = false;
+    bool matched_strides = !GetStrideProperties().size() ||
+                           GetStrideProperties() == ComputeStrideProps(t.shape(), t.strides(), t.is_contiguous());
+    return dtype().value_or(t.dtype()) == t.dtype() &&
+           device().value_or(t.device()) == t.device() &&
+           RequiresGrad().value_or(requires_grad) == requires_grad &&
+           matched_strides &&
+           IsNullOrEqual(shape().GetConcreteValue(), t.shape());
+}
+
 
 TensorTypePtr TensorType::Merge(const TensorType& other, bool merge_shape) const {
     auto data_type = MergePrimitiveValue(dtype(), other.dtype());
@@ -615,15 +656,33 @@ TensorTypePtr TensorType::Create(std::optional<DataType> dtype,
 }
 
 
-TensorTypePtr TensorType::Create(const Tensor_BK& t) {
-    VaryingShape<bool> contiguity;
-    VaryingShape<size_t> stride_indices;
+TensorTypePtr TensorType::Create(const Tensor& t) {
+    if (!t.is_initialized()) {
+        return Create(std::optional<DataType>{},
+                      std::optional<Device>{},
+                      SymbolicShape(),
+                      VaryingShape<Stride>{},
+                      false,
+                      true);
+    }
 
+    return CreateFromStridedTensorMetadata(t.dtype(),
+                                           t.device(),
+                                           t.shape(),
+                                           t.strides(),
+                                           false,
+                                           t.is_contiguous());
+}
+
+
+TensorTypePtr TensorType::Create(const Tensor_BK& t) {
     if (t.layout() == kStrided && !t.is_nested()) {
-        auto shape = VaryingShape<int64_t>{t.shape().vec()};
-        auto strides = VaryingShape<int64_t>{t.strides().vec()};
-        return Create(t.dtype(), t.device(), shape, strides,
-                      t.requires_grad(), false, t.is_contiguous());
+        return CreateFromStridedTensorMetadata(t.dtype(),
+                                               t.device(),
+                                               t.shape(),
+                                               t.strides(),
+                                               t.requires_grad(),
+                                               t.is_contiguous());
     }
 
     return Create(t.dtype(), t.device(), SymbolicShape(), VaryingShape<Stride>{},

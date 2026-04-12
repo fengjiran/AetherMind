@@ -1,6 +1,7 @@
 //
 // Created by 赵丹 on 25-6-19.
 //
+#include "aethermind/base/tensor.h"
 #include "tensor_bk.h"
 
 #include <format>
@@ -28,15 +29,12 @@ struct PrintFormat {
         : scale(s), width(w), type(t) {}
 };
 
-static PrintFormat get_print_format(const Tensor_BK& t) {
-    // using data_type = DataType2CPPType<DLDataTypeCode::kFloat, 32, 1>::type;
-    auto size = t.numel();
+static PrintFormat get_print_format(int64_t size, const double* data) {
     if (size == 0) {
         return {1.0, 0};
     }
 
     bool int_mod = true;
-    auto data = t.const_data_ptr<double>();
     for (int64_t i = 0; i < size; ++i) {
         auto z = data[i];
         if (std::isfinite(z)) {
@@ -105,6 +103,14 @@ static PrintFormat get_print_format(const Tensor_BK& t) {
 
     width = exp_max == 0 ? 7 : (static_cast<int>(exp_max) + 6);
     return {scale, width, FormatType::Fixed};
+}
+
+static PrintFormat get_print_format(const Tensor_BK& t) {
+    return get_print_format(t.numel(), t.const_data_ptr<double>());
+}
+
+static PrintFormat get_print_format(const Tensor& t) {
+    return get_print_format(t.numel(), static_cast<const double*>(t.data()));
 }
 
 // Precompiled format specs

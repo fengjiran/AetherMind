@@ -16,7 +16,7 @@ size_t Tensor::logical_nbytes() const noexcept {
     AM_CHECK(n >= 0);
 
     size_t logical_nbytes = 0;
-    bool overflow = mul_overflow(static_cast<size_t>(n), itemsize(), &logical_nbytes);
+    bool overflow = CheckOverflowMul(static_cast<size_t>(n), itemsize(), &logical_nbytes);
     AM_CHECK(!overflow);
     return logical_nbytes;
 }
@@ -31,7 +31,7 @@ size_t Tensor::max_touched_span_bytes() const noexcept {
     const auto touched_elems = static_cast<size_t>(max_elem_offset) + 1;
     const auto elem_size = itemsize();
     size_t span_bytes = 0;
-    bool overflow = mul_overflow(touched_elems, elem_size, &span_bytes);
+    bool overflow = CheckOverflowMul(touched_elems, elem_size, &span_bytes);
     AM_CHECK(!overflow);
     return span_bytes;
 }
@@ -52,7 +52,7 @@ bool Tensor::storage_range_is_valid() const noexcept {
     }
 
     size_t res = 0;
-    if (add_overflow(byte_offset_, span, &res)) {
+    if (CheckOverflowAdd(byte_offset_, span, &res)) {
         return false;
     }
 
@@ -99,7 +99,7 @@ Tensor Tensor::slice(int32_t dim, int64_t start, int64_t end, int64_t step) cons
     const int64_t slice_extent = finish - begin;
     int64_t out_dim_size = 0;
     if (slice_extent > 0) {
-        AM_CHECK(!add_overflow(slice_extent, step - 1, &out_dim_size), "slice extent overflow.");
+        AM_CHECK(!CheckOverflowAdd(slice_extent, step - 1, &out_dim_size), "slice extent overflow.");
         out_dim_size /= step;
     }
 
@@ -114,14 +114,14 @@ Tensor Tensor::slice(int32_t dim, int64_t start, int64_t end, int64_t step) cons
     out_shape[static_cast<size_t>(normalized_dim)] = out_dim_size;
 
     int64_t stepped_stride = 0;
-    AM_CHECK(!mul_overflow(stride(normalized_dim), step, &stepped_stride), "slice stride overflow.");
+    AM_CHECK(!CheckOverflowMul(stride(normalized_dim), step, &stepped_stride), "slice stride overflow.");
     AM_CHECK(stepped_stride >= 0, "slice stride must be non-negative.");
     out_strides[static_cast<size_t>(normalized_dim)] = stepped_stride;
 
     size_t new_byte_offset = byte_offset_;
     if (begin > 0) {
         int64_t elem_delta_i64 = 0;
-        AM_CHECK(!mul_overflow(begin, stride(normalized_dim), &elem_delta_i64), "slice element offset overflow.");
+        AM_CHECK(!CheckOverflowMul(begin, stride(normalized_dim), &elem_delta_i64), "slice element offset overflow.");
         AM_CHECK(elem_delta_i64 >= 0, "slice expects non-negative element offset delta.");
 
         const auto elem_delta = static_cast<uint64_t>(elem_delta_i64);
@@ -129,10 +129,10 @@ Tensor Tensor::slice(int32_t dim, int64_t start, int64_t end, int64_t step) cons
                  "slice element offset exceeds size_t range.");
 
         size_t byte_delta = 0;
-        AM_CHECK(!mul_overflow(elem_delta, itemsize(), &byte_delta), "slice byte offset overflow.");
+        AM_CHECK(!CheckOverflowMul(elem_delta, itemsize(), &byte_delta), "slice byte offset overflow.");
 
         size_t updated_offset = 0;
-        AM_CHECK(!add_overflow(new_byte_offset, byte_delta, &updated_offset), "slice byte offset overflow.");
+        AM_CHECK(!CheckOverflowAdd(new_byte_offset, byte_delta, &updated_offset), "slice byte offset overflow.");
         new_byte_offset = updated_offset;
     }
 

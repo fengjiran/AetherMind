@@ -11,7 +11,6 @@
 #include "utils/logging.h"
 
 #include <cstdint>
-#include <limits>
 #include <type_traits>
 
 namespace aethermind {
@@ -21,12 +20,12 @@ namespace aethermind {
 /// Performs checked multiplication, detecting overflow.
 /// \param a First operand.
 /// \param b Second operand.
-/// \param out Pointer to store the result (may be truncated on overflow).
+/// \param out Pointer to store the result (maybe truncated on overflow).
 /// \return true if overflow occurred, false otherwise.
 /// \pre out != nullptr
 template<typename T>
     requires std::is_integral_v<T>
-inline bool mul_overflow(T a, T b, T* out) noexcept {
+bool CheckOverflowMul(T a, T b, T* out) noexcept {
     return __builtin_mul_overflow(a, b, out);
 }
 
@@ -38,7 +37,7 @@ inline bool mul_overflow(T a, T b, T* out) noexcept {
 /// \pre out != nullptr
 template<typename T>
     requires std::is_integral_v<T>
-inline bool add_overflow(T a, T b, T* out) noexcept {
+bool CheckOverflowAdd(T a, T b, T* out) noexcept {
     return __builtin_add_overflow(a, b, out);
 }
 
@@ -50,7 +49,7 @@ inline bool add_overflow(T a, T b, T* out) noexcept {
 /// \pre out != nullptr
 template<typename T>
     requires std::is_integral_v<T>
-inline bool sub_overflow(T a, T b, T* out) noexcept {
+bool CheckOverflowSub(T a, T b, T* out) noexcept {
     return __builtin_sub_overflow(a, b, out);
 }
 
@@ -60,7 +59,7 @@ inline bool sub_overflow(T a, T b, T* out) noexcept {
 
 template<typename T>
     requires std::is_integral_v<T>
-inline bool mul_overflow(T a, T b, T* out) noexcept {
+inline bool CheckOverflowMul(T a, T b, T* out) noexcept {
     using U = std::make_unsigned_t<T>;
     const U result = static_cast<U>(a) * static_cast<U>(b);
     *out = static_cast<T>(result);
@@ -73,7 +72,7 @@ inline bool mul_overflow(T a, T b, T* out) noexcept {
 
 template<typename T>
     requires std::is_integral_v<T>
-inline bool add_overflow(T a, T b, T* out) noexcept {
+inline bool CheckOverflowAdd(T a, T b, T* out) noexcept {
     if constexpr (std::is_unsigned_v<T>) {
         const T result = a + b;
         *out = result;
@@ -92,7 +91,7 @@ inline bool add_overflow(T a, T b, T* out) noexcept {
 
 template<typename T>
     requires std::is_integral_v<T>
-inline bool sub_overflow(T a, T b, T* out) noexcept {
+inline bool CheckOverflowSub(T a, T b, T* out) noexcept {
     if constexpr (std::is_unsigned_v<T>) {
         const T result = a - b;
         *out = result;
@@ -128,7 +127,7 @@ inline bool sub_overflow(T a, T b, T* out) noexcept {
 /// \note On overflow, `*out` contains the last intermediate value and must not
 /// be used as a valid result.
 template<typename Iter>
-bool safe_multiply_u64(Iter first, Iter last, uint64_t* out) noexcept {
+bool SafeMultiplyU64(Iter first, Iter last, uint64_t* out) noexcept {
     AM_DCHECK(out != nullptr);
 
     uint64_t prod = 1;
@@ -138,7 +137,7 @@ bool safe_multiply_u64(Iter first, Iter last, uint64_t* out) noexcept {
         if constexpr (std::is_signed_v<ValueType>) {
             AM_DCHECK(*first >= 0);
         }
-        overflowed |= mul_overflow(prod, static_cast<uint64_t>(*first), &prod);
+        overflowed |= CheckOverflowMul(prod, static_cast<uint64_t>(*first), &prod);
         ++first;
     }
     *out = prod;
@@ -148,8 +147,8 @@ bool safe_multiply_u64(Iter first, Iter last, uint64_t* out) noexcept {
 /// Multiplies all elements in a container into `*out`.
 /// \overload
 template<typename Container>
-bool safe_multiply_u64(const Container& c, uint64_t* out) noexcept {
-    return safe_multiply_u64(c.begin(), c.end(), out);
+bool SafeMultiplyU64(const Container& c, uint64_t* out) noexcept {
+    return SafeMultiplyU64(c.begin(), c.end(), out);
 }
 
 }// namespace aethermind

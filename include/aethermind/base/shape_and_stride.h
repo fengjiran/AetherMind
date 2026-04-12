@@ -102,7 +102,7 @@ public:
 
         strides_[size_ - 1] = 1;
         for (int32_t i = size_ - 2; i >= 0; --i) {
-            AM_CHECK(!mul_overflow(strides_[i + 1], shape_[i + 1], &strides_[i]),
+            AM_CHECK(!CheckOverflowMul(strides_[i + 1], shape_[i + 1], &strides_[i]),
                      "Stride calculation overflow");
         }
 
@@ -173,7 +173,7 @@ public:
         }
 
         uint64_t numel = 0;
-        bool overflow = safe_multiply_u64(shape(), &numel);
+        bool overflow = SafeMultiplyU64(shape(), &numel);
         constexpr auto kNumelMax = std::min<uint64_t>(
                 std::numeric_limits<int64_t>::max(),
                 std::numeric_limits<size_t>::max());
@@ -201,7 +201,7 @@ public:
             }
 
             int64_t next_expected_stride = 0;
-            AM_CHECK(!mul_overflow(expected_stride, shape_[i], &next_expected_stride),
+            AM_CHECK(!CheckOverflowMul(expected_stride, shape_[i], &next_expected_stride),
                      "Stride validation overflow");
             expected_stride = next_expected_stride;
         }
@@ -224,7 +224,7 @@ public:
         int64_t offset = 0;
         for (int32_t i = 0; i < size_; ++i) {
             int64_t term = 0;
-            AM_CHECK(!mul_overflow((shape_[i] - 1), strides_[i], &term));
+            AM_CHECK(!CheckOverflowMul((shape_[i] - 1), strides_[i], &term));
             AM_CHECK(term >= 0);
             AM_CHECK(offset <= std::numeric_limits<int64_t>::max() - term, "max_element_offset overflow.");
             offset += term;

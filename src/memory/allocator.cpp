@@ -1,6 +1,9 @@
-//
-// Created by 赵丹 on 25-1-23.
-//
+/// \file
+/// Implementation of AllocatorRegistry and memory profiling utilities.
+///
+/// Provides:
+/// - Provider registration and instance caching for AllocatorRegistry
+/// - Thread-local memory profiling state check via memoryProfilingEnabled()
 
 #include "aethermind/memory/allocator.h"
 #include "utils/logging.h"
@@ -21,6 +24,8 @@ void AllocatorRegistry::SetProvider(DeviceType type, std::unique_ptr<AllocatorPr
 
     providers_[type] = std::move(provider);
 
+    // Clear cached instances for the replaced provider's device type.
+    // New instances will be created on next GetAllocator call.
     for (auto it = instances_.begin(); it != instances_.end();) {
         if (it->first.type() == type) {
             it = instances_.erase(it);
@@ -31,6 +36,7 @@ void AllocatorRegistry::SetProvider(DeviceType type, std::unique_ptr<AllocatorPr
 }
 
 Allocator& AllocatorRegistry::GetAllocator(Device device) {
+    // TODO: Enable mutex for thread-safe access once multi-threaded runtime is supported.
     // std::lock_guard<std::mutex> lock(mutex_);
     auto it = instances_.find(device);
     if (it != instances_.end()) {

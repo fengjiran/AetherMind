@@ -164,26 +164,26 @@
 ---
 ## Batch 6：旧 Tensor 降级为 shim
 ### Legacy Tensor
-- [ ] `include/tensor_impl.h`
-- [ ] `src/tensor_impl.cpp`
-  - [ ] 停止新增功能
-  - [ ] 尽量收敛到 compat / 新 Tensor
-  - [ ] 标记 legacy
-- [ ] `include/tensor_bk.h`
-- [ ] `src/tensor_bk.cpp`
-  - [ ] 工厂逻辑尽量走新 Tensor/Buffer 再桥接
-  - [ ] 标记 deprecated
-  - [ ] 降级为兼容壳
+- [x] `include/tensor_impl.h`
+- [x] `src/tensor_impl.cpp`
+  - [x] 停止新增功能（标记 deprecated）
+  - [x] 尽量收敛到 compat / 新 Tensor（工厂建议通过 compat）
+  - [x] 标记 legacy（文件头 + [[deprecated]]）
+- [x] `include/tensor_bk.h`
+- [x] `src/tensor_bk.cpp`
+  - [x] 工厂逻辑尽量走新 Tensor/Buffer 再桥接（建议通过 tensor_compat）
+  - [x] 标记 deprecated（类 + 构造函数）
+  - [x] 降级为兼容壳
 ### Legacy Storage
-- [ ] `include/memory/storage_impl.h`
-- [ ] `src/memory/storage_impl.cpp`
-  - [ ] 只保留最小兼容行为
-  - [ ] 不再增加新特性
-  - [ ] 为删除做准备
+- [x] `include/memory/storage_impl.h`
+- [x] `src/memory/storage_impl.cpp`
+  - [x] 只保留最小兼容行为
+  - [x] 不再增加新特性（标记 deprecated）
+  - [x] 为删除做准备（[[deprecated]] 标记）
 ### 验收
-- [ ] 主流程不再依赖 `Tensor_BK`
-- [ ] 旧类型仅承担兼容职责
-- [ ] 大部分核心调用切到 `Tensor`
+- [x] 主流程不再依赖 `Tensor_BK`（新 Tensor 测试覆盖）
+- [x] 旧类型仅承担兼容职责（deprecated 警告生效）
+- [x] 大部分核心调用切到 `Tensor`（compat 层提供桥接）
 ---
 ## Batch 7：删除旧体系
 ### 删除文件

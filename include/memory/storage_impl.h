@@ -13,19 +13,25 @@ namespace aethermind {
 // Legacy storage implementation retained only for staged Storage-Tensor ->
 // Buffer-Tensor migration. New code should use aethermind::Buffer.
 
-/*! 
- * \brief A storage represents the underlying backing data buffer for a tensor.
+/*!
+ * \brief DEPRECATED: Legacy storage implementation for Storage-Tensor migration.
+ * Use aethermind::Buffer instead. New features will not be added here.
+ *
+ * A storage represents the underlying backing data buffer for a tensor.
  *
  * \note
  */
-class StorageImpl : public Object {
+class [[deprecated("Use aethermind::Buffer instead")]] StorageImpl : public Object {
 public:
+    [[deprecated("Use aethermind::Buffer instead")]]
     StorageImpl(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<AllocatorBK>& alloc)
         : nbytes_(nbytes), data_ptr_(std::move(data_ptr)), alloc_(alloc) {}
 
+    [[deprecated("Use aethermind::Buffer instead")]]
     StorageImpl(size_t nbytes, const std::unique_ptr<AllocatorBK>& alloc)
         : StorageImpl(nbytes, alloc->allocate(nbytes), alloc) {}
 
+    [[deprecated("Use aethermind::Buffer instead")]]
     StorageImpl() : StorageImpl(0, AllocatorTable::Global().get_allocator(kUndefined)) {}
 
     AM_NODISCARD size_t nbytes() const {
@@ -67,18 +73,19 @@ private:
     const std::unique_ptr<AllocatorBK>& alloc_;
 };
 
-class Storage : public ObjectRef {
+class [[deprecated("Use aethermind::Buffer instead")]] Storage : public ObjectRef {
 public:
     Storage() = default;
 
-    // Creates storage with pre-allocated memory buffer.
+    [[deprecated("Use aethermind::Buffer instead")]]
     Storage(size_t nbytes, DataPtr data_ptr, const std::unique_ptr<AllocatorBK>& alloc)
         : impl_(make_object<StorageImpl>(nbytes, std::move(data_ptr), alloc)) {}
 
-    // Allocates memory buffer using the given allocator and creates a storage with it
+    [[deprecated("Use aethermind::Buffer instead")]]
     Storage(size_t nbytes, const std::unique_ptr<AllocatorBK>& alloc)
         : Storage(nbytes, alloc->allocate(nbytes), alloc) {}
 
+    [[deprecated("Use aethermind::BufferFromLegacyStorage instead")]]
     explicit Storage(ObjectPtr<StorageImpl> ptr) : impl_(std::move(ptr)) {}
 
     // Read-only bridge surface used by migration compat code.

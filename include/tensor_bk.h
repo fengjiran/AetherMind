@@ -1,5 +1,7 @@
 //
 // Created by 赵丹 on 25-6-12.
+// DEPRECATED: Legacy Tensor wrapper for Storage-Tensor migration.
+// Use aethermind::Tensor (Buffer-based) instead.
 //
 
 #ifndef AETHERMIND_TENSOR_H
@@ -9,17 +11,17 @@
 
 namespace aethermind {
 
-// Legacy Tensor wrapper retained only for staged Storage-Tensor -> Buffer-Tensor
-// migration. New features should target aethermind::Tensor instead.
-class Tensor_BK {
+class [[deprecated("Use aethermind::Tensor (Buffer-based) instead")]] Tensor_BK {
 public:
     Tensor_BK() = default;
 
+    [[deprecated("Use aethermind::Tensor or tensor_compat::TensorFromLegacy instead")]]
     explicit Tensor_BK(const std::vector<int64_t>& shape,
-                    int64_t storage_offset = 0,
-                    DataType dtype = DataType::Float32(),
-                    Device device = Device::CPU());
+                     int64_t storage_offset = 0,
+                     DataType dtype = DataType::Float32(),
+                     Device device = Device::CPU());
 
+    [[deprecated("Use aethermind::Tensor instead")]]
     explicit Tensor_BK(ObjectPtr<TensorImpl> impl);
 
     Tensor_BK(const Tensor_BK&) = default;

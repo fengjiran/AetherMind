@@ -1,5 +1,7 @@
 //
 // Created by richard on 6/22/25.
+// DEPRECATED: Legacy tensor implementation for Storage-Tensor migration.
+// Use aethermind::Tensor (Buffer-based) instead. New features will not be added here.
 //
 
 #ifndef AETHERMIND_TENSOR_IMPL_H
@@ -66,6 +68,8 @@ bool _compute_contiguous(ArrayView<T> shape, ArrayView<T> strides) {
 }
 
 /**
+ * DEPRECATED: Legacy tensor implementation for Storage-Tensor migration.
+ * 
  * The low-level representation of a tensor, which contains a pointer to a
  * storage (which contains the actual data) and metadata (e.g., shape and
  * strides) describing this particular view of the data as a tensor.
@@ -84,17 +88,20 @@ bool _compute_contiguous(ArrayView<T> shape, ArrayView<T> strides) {
  *
  *
  **/
-class TensorImpl : public Object {
+class [[deprecated("Use aethermind::Tensor (Buffer-based) instead")]] TensorImpl : public Object {
 public:
     TensorImpl() : TensorImpl(DataType(), std::nullopt) {}
 
+    [[deprecated("Use aethermind::Tensor instead")]]
     TensorImpl(const std::vector<int64_t>& shape, int64_t storage_offset, DataType dtype, Device device);
 
+    [[deprecated("Use aethermind::Tensor instead")]]
     TensorImpl(Storage&& storage, DataType dtype, std::optional<Device> device_opt);
 
+    [[deprecated("Use aethermind::Tensor instead")]]
     TensorImpl(Storage&& storage, DataType dtype);
 
-    // Construct a 1-dim 0 size tensor that doesn't have a storage.
+    [[deprecated("Use aethermind::Tensor instead")]]
     TensorImpl(DataType dtype, std::optional<Device> device_opt);
 
     TensorImpl(const TensorImpl&) = delete;

@@ -32,7 +32,7 @@ public:
     std::unique_ptr<Allocator> CreateAllocator(Device device) override;
 };
 
-class CPUAllocatorBK final : public AllocatorBK {
+class [[deprecated("Use CPUAllocator/CPUAllocatorProvider instead")]] CPUAllocatorBK final : public AllocatorBK {
 public:
     CPUAllocatorBK() = default;
 

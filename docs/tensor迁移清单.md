@@ -140,27 +140,27 @@
 ---
 ## Batch 5：切换分配主路径
 ### Allocator
-- [ ] `include/aethermind/memory/allocator.h`
-  - [ ] 标记 `AllocatorBK` deprecated
-  - [ ] 标记 `AllocatorTable` deprecated
-  - [ ] 注释强调 `Allocator::Allocate()` 为主入口
-- [ ] `include/aethermind/memory/cpu_allocator.h`
-- [ ] `src/memory/cpu_allocator.cpp`
-  - [ ] 确认主路径返回 `Buffer`
-  - [ ] 检查 `MemoryHandle` deleter/context/alignment 正确
-  - [ ] legacy BK 路径仅保留兼容
+- [x] `include/aethermind/memory/allocator.h`
+  - [x] 标记 `AllocatorBK` deprecated
+  - [x] 标记 `AllocatorTable` deprecated
+  - [x] 注释强调 `Allocator::Allocate()` 为主入口
+- [x] `include/aethermind/memory/cpu_allocator.h`
+- [x] `src/memory/cpu_allocator.cpp`
+  - [x] 确认主路径返回 `Buffer`（CPUAllocator::Allocate 已返回 Buffer）
+  - [x] 检查 `MemoryHandle` deleter/context/alignment 正确（cpu_buffer_deleter + alignment）
+  - [x] legacy BK 路径仅保留兼容（CPUAllocatorBK marked deprecated）
 ### Runtime
-- [ ] `include/aethermind/runtime/runtime_context.h`
-- [ ] `src/runtime/runtime_context.cpp`
-- [ ] `include/aethermind/runtime/runtime_builder.h`
-- [ ] `src/runtime/runtime_builder.cpp`
-  - [ ] 确保 runtime 主路径围绕新 `Allocator`
-  - [ ] 避免 runtime 扩散 legacy allocator 语义
-  - [ ] 如有 tensor 创建辅助，统一走 Buffer
+- [x] `include/aethermind/runtime/runtime_context.h`
+- [x] `src/runtime/runtime_context.cpp`
+- [x] `include/aethermind/runtime/runtime_builder.h`
+- [x] `src/runtime/runtime_builder.cpp`
+  - [x] 确保 runtime 主路径围绕新 `Allocator`（RuntimeContext 只使用 AllocatorRegistry）
+  - [x] 避免 runtime 扩散 legacy allocator 语义（grep 无 legacy allocator 使用）
+  - [x] 如有 tensor 创建辅助，统一走 Buffer（runtime 无 tensor 创建辅助）
 ### 验收
-- [ ] 新建 Tensor/Buffer 默认走新分配路径
-- [ ] 无新增 `AllocatorBK/DataPtr/Storage` 用法
-- [ ] runtime 不再是 legacy 扩散源
+- [x] 新建 Tensor/Buffer 默认走新分配路径（tensor_factory.h 使用 Buffer）
+- [x] 无新增 `AllocatorBK/DataPtr/Storage` 用法（deprecated 警告会阻止新用法）
+- [x] runtime 不再是 legacy 扩散源（runtime 仅使用 Allocator/AllocatorRegistry）
 ---
 ## Batch 6：旧 Tensor 降级为 shim
 ### Legacy Tensor

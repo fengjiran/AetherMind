@@ -44,13 +44,15 @@ private:
 
 
 // =============================================================================
-// Legacy Allocator API (Migration Only)
+// Legacy Allocator API (Deprecated - Migration Only)
 // =============================================================================
-// The following classes and macros are part of the legacy memory management
-// system and are maintained for backward compatibility during the migration
-// to the unified IAllocator/RuntimeContext design.
+// The following classes are DEPRECATED and will be removed in a future release.
+// Use Allocator/AllocatorRegistry/AllocatorProvider instead.
+//
+// These are maintained only for backward compatibility during the Storage-Tensor
+// to Buffer-Tensor migration. New code MUST NOT use these APIs.
 
-class AllocatorBK {
+class [[deprecated("Use Allocator/AllocatorRegistry instead")]] AllocatorBK {
 public:
     AllocatorBK() = default;
     virtual ~AllocatorBK() = default;
@@ -60,18 +62,21 @@ public:
     virtual void deallocate(void* p) const = 0;
 };
 
-class AllocatorTable {
+class [[deprecated("Use AllocatorRegistry instead")]] AllocatorTable {
 public:
+    [[deprecated("Use AllocatorRegistry instead")]]
     static AllocatorTable& Global() {
         alignas(alignof(AllocatorTable)) static char storage[sizeof(AllocatorTable)];
         static auto* inst = new (storage) AllocatorTable();
         return *inst;
     }
 
+    [[deprecated("Use AllocatorRegistry::RegisterProvider instead")]]
     void set_allocator(DeviceType device, std::unique_ptr<AllocatorBK> allocator) {
         table_[device] = std::move(allocator);
     }
 
+    [[deprecated("Use AllocatorRegistry::GetAllocator instead")]]
     const std::unique_ptr<AllocatorBK>& get_allocator(DeviceType device) {
         AM_CHECK(table_.contains(device), "Allocator not found");
         return table_[device];
@@ -80,7 +85,6 @@ public:
 private:
     AllocatorTable() = default;
     std::unordered_map<DeviceType, std::unique_ptr<AllocatorBK>> table_;
-    // Map<DeviceType, std::unique_ptr<Allocator>> table_;
 };
 
 class UndefinedAllocator final : public AllocatorBK {
@@ -94,6 +98,8 @@ public:
     void deallocate(void* p) const override {}
 };
 
+// DEPRECATED: Use AllocatorRegistry::RegisterProvider instead.
+// This macro is retained only for legacy code during migration.
 #define REGISTER_ALLOCATOR(device, allocator)                                          \
     STR_CONCAT(REG_VAR_DEF, __COUNTER__) = [] {                                        \
         AllocatorTable::Global().set_allocator(device, std::make_unique<allocator>()); \

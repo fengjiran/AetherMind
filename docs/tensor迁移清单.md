@@ -75,25 +75,26 @@
 ---
 ## Batch 3：测试基础设施迁移
 ### 工厂与随机张量
-- [ ] `tests/unit/test_utils/tensor_factory.h`
-  - [ ] 确认为新 Tensor 官方测试构造入口
-  - [ ] 检查默认构造全部走 `Buffer`
-  - [ ] 覆盖 shape/stride/dtype/device/byte_offset
-- [ ] `tests/unit/test_utils/tensor_random.h`
-  - [ ] 新增 `RandomUniformTensor(...) -> Tensor`
-  - [ ] 新增 `RandomNormalTensor(...) -> Tensor`
-  - [ ] 新增 `RandomIntTensor(...) -> Tensor`
-  - [ ] 保留 legacy 版本一段时间
-  - [ ] 确保内部默认走新 Tensor 路径
+- [x] `tests/unit/test_utils/tensor_factory.h`
+  - [x] 确认为新 Tensor 官方测试构造入口
+  - [x] 检查默认构造全部走 `Buffer`
+  - [x] 覆盖 shape/stride/dtype/device/byte_offset
+  - [x] 新增 Tensor_BK 兼容层（MakeEmptyTensorBK / MakeContiguousTensorBK）
+- [x] `tests/unit/test_utils/tensor_random.h`
+  - [x] 新增 `RandomUniformTensor(...) -> Tensor`
+  - [x] 新增 `RandomNormalTensor(...) -> Tensor`
+  - [x] 新增 `RandomIntTensor(...) -> Tensor`
+  - [x] 保留 legacy 版本一段时间
+  - [x] 确保内部默认走新 Tensor 路径（使用 MakeContiguousTensor + mutable_data）
 ### 断言
-- [ ] `tests/unit/test_utils/tensor_assert.h`
-  - [ ] 增加 `ExpectTensorAllClose(const Tensor&, const Tensor&, ...)`
-  - [ ] 增加 `ExpectTensorEqual(const Tensor&, const Tensor&, ...)`
-  - [ ] 如需要，补 `Tensor` vs `Tensor_BK` 混合比较
+- [x] `tests/unit/test_utils/tensor_assert.h`
+  - [x] 增加 `ExpectTensorAllClose(const Tensor&, const Tensor&, ...)`
+  - [x] 增加 `ExpectTensorEqual(const Tensor&, const Tensor&, ...)`
+  - [x] Tensor_BK 版本完全保留
 ### 验收
-- [ ] 新测试工具默认服务 `Tensor`
-- [ ] 旧测试仍可继续运行
-- [ ] 新旧工具不冲突
+- [x] 新测试工具默认服务 `Tensor`
+- [x] 旧测试仍可继续运行
+- [x] 新旧工具不冲突
 ---
 ## Batch 4：迁移测试用例
 ### 核心测试

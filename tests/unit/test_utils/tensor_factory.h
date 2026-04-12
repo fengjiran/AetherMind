@@ -5,12 +5,14 @@
 #include "aethermind/memory/buffer.h"
 #include "aethermind/utils/overflow_check.h"
 #include "container/array_view.h"
+#include "tensor_bk.h"
 #include "utils/logging.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
 
 namespace aethermind::test_utils {
 
@@ -79,13 +81,24 @@ inline Tensor MakeContiguousTensor(IntArrayView shape,
 }
 
 inline Tensor MakeTensor(IntArrayView shape,
-                         IntArrayView strides,
-                         DataType dtype = DataType::Float32(),
-                         size_t byte_offset = 0) {
+                          IntArrayView strides,
+                          DataType dtype = DataType::Float32(),
+                          size_t byte_offset = 0) {
     const size_t required_bytes = detail::compute_required_bytes(
             shape, strides, static_cast<size_t>(dtype.nbytes()), byte_offset);
 
     return Tensor(detail::make_buffer(required_bytes), byte_offset, dtype, shape, strides);
+}
+
+// Legacy Tensor_BK overloads for backward compatibility
+inline Tensor_BK MakeEmptyTensorBK(DataType dtype = DataType::Float32()) {
+    return Tensor_BK(std::vector<int64_t>{0}, 0, dtype, Device::CPU());
+}
+
+inline Tensor_BK MakeContiguousTensorBK(const std::vector<int64_t>& shape,
+                                        DataType dtype = DataType::Float32(),
+                                        int64_t storage_offset = 0) {
+    return Tensor_BK(shape, storage_offset, dtype, Device::CPU());
 }
 
 }// namespace aethermind::test_utils

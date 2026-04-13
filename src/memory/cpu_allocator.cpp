@@ -3,10 +3,9 @@
 //
 
 #include "aethermind/memory/cpu_allocator.h"
+#include "aethermind/utils/memory_utils.h"
 #include "alignment.h"
 #include "env.h"
-
-#include <cstring>
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <sys/mman.h>
@@ -19,26 +18,6 @@ namespace {
 
 void cpu_buffer_deleter(void*, void* ptr) noexcept {
     free_cpu(ptr);
-}
-
-// Fill the data memory region of num bytes with a particular garbage pattern.
-// The garbage value is chosen to be NaN if interpreted as floating point value
-// or a very large integer.
-void memset_junk(void* data, size_t num) {
-    // This garbage pattern is NaN when interpreted as floating point values
-    // or as very large integer values.
-    static constexpr int32_t kJunkPattern = 0x7fedbeef;
-    static constexpr int64_t kJunkPattern64 = static_cast<int64_t>(kJunkPattern) << 32 | kJunkPattern;
-    auto int64_count = num / sizeof(kJunkPattern64);
-    auto remaining_bytes = num % sizeof(kJunkPattern64);
-    auto* data_i64 = static_cast<int64_t*>(data);
-    for (size_t i = 0; i < int64_count; ++i) {
-        data_i64[i] = kJunkPattern64;
-    }
-
-    if (remaining_bytes > 0) {
-        memcpy(data_i64 + int64_count, &kJunkPattern64, remaining_bytes);
-    }
 }
 
 bool is_thp_alloc_enabled() {
@@ -81,9 +60,7 @@ void* alloc_cpu(size_t nbytes) {
 #endif
     }
 
-    // TODO: set numa node
-
-    memset_junk(data, nbytes);
+    FillMemoryJunk(data, nbytes);
 
     return data;
 }

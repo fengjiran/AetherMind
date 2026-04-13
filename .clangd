@@ -46,7 +46,9 @@ Diagnostics:
       readability-identifier-naming.FunctionCase: CamelCase
       readability-identifier-naming.MethodCase: CamelCase
       readability-identifier-naming.PublicMethodCase: CamelCase
-      readability-identifier-naming.PublicMethodIgnoredRegexp: '^(size|data|capacity|empty|clear|begin|end|cbegin|cend|rbegin|rend|front|back|max_size|reserve|shrink_to_fit|device)$'
+      readability-identifier-naming.PublicMethodIgnoredRegexp:
+      '^(size|data|mutable_data|capacity|empty|clear|begin|end|cbegin|cend|rbegin|rend|
+      front|back|max_size|reserve|shrink_to_fit|device|nbytes)$'
 
       # enum members -> kPascalCase
       readability-identifier-naming.EnumConstantPrefix: k

@@ -7,7 +7,11 @@ project(AetherMind
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(USE_KALLOC_ALIGNMENT 64)
+
+# Memory allocation alignment configuration
+set(KALLOC_ALIGNMENT_DEFAULT 64 CACHE INTERNAL "Default alignment value")
+set(KALLOC_ALIGNMENT "${KALLOC_ALIGNMENT_DEFAULT}" CACHE STRING "Memory allocation alignment in bytes")
+
 set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_PIC ON CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
@@ -19,6 +23,7 @@ option(BUILD_BENCHMARKS "Adding benchmark targets." ON)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
 option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(USE_ALLOC_ALIGNMENT "Enable alloc alignment" ON)
 
 find_package(Threads REQUIRED)
 

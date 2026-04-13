@@ -68,10 +68,10 @@ public:
         }
 
         size_ = new_size;
-        std::copy(shape.begin(), shape.end(), shape_.begin());
-        std::copy(strides.begin(), strides.end(), strides_.begin());
+        std::ranges::copy(shape, shape_.begin());
+        std::ranges::copy(strides, strides_.begin());
 
-        for (int32_t i = size_; i < kMaxRank; ++i) {
+        for (uint32_t i = size_; i < kMaxRank; ++i) {
             shape_[i] = 0;
             strides_[i] = 0;
         }
@@ -98,7 +98,7 @@ public:
             return;
         }
 
-        std::copy(shape.begin(), shape.end(), shape_.begin());
+        std::ranges::copy(shape, shape_.begin());
 
         strides_[size_ - 1] = 1;
         for (int32_t i = size_ - 2; i >= 0; --i) {

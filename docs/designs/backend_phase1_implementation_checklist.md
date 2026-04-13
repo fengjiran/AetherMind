@@ -33,6 +33,7 @@
 - 每个 checkbox 只对应一个文件和一个主要职责
 - 优先先补测试，再补实现
 - 所有实现必须服从 `docs/designs/backend_design.md`
+- 实施顺序、串并行边界与推荐批次参考 `docs/designs/backend_phase1_implementation_plan.md`
 - 所有 checklist 项均应保持“可 review、可验证、可回归”
 
 单项格式：
@@ -49,6 +50,7 @@
 
 - `docs/designs/backend_design.md`
 - `docs/designs/backend_phase1_development_steps.md`
+- `docs/designs/backend_phase1_implementation_plan.md`
 - `docs/designs/executor_design.md`
 - `docs/designs/loaded_model_design.md`
 - `docs/designs/kv_cache_design.md`

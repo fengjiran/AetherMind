@@ -31,9 +31,14 @@
 - 每个阶段应如何验证
 - 哪些工作必须前置，哪些工作必须后置
 
+如需查看按 checklist 粒度展开的实施顺序、串行/并行边界与推荐批次，参考：
+
+- `docs/designs/backend_phase1_implementation_plan.md`
+
 本文档**不重新定义架构**，也不替代以下设计文档：
 
 - `docs/designs/backend_design.md`
+- `docs/designs/backend_phase1_implementation_plan.md`
 - `docs/designs/executor_design.md`
 - `docs/designs/loaded_model_design.md`
 - `docs/designs/kv_cache_design.md`

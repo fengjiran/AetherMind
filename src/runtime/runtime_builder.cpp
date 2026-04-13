@@ -48,6 +48,7 @@ AllocatorRegistry RuntimeBuilder::BuildAllocatorRegistry() {
     for (auto& [type, provider]: pending_custom_allocator_providers_) {
         registry.SetProvider(type, std::move(provider));
     }
+    pending_custom_allocator_providers_.clear();
 
     return registry;
 }

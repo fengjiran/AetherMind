@@ -4,7 +4,6 @@
 #include "aethermind/base/tensor.h"
 #include "tensor_factory.h"
 
-#include <cstdint>
 #include <limits>
 #include <random>
 #include <vector>
@@ -22,10 +21,10 @@ void FillTensor(Tensor& tensor, Dist& dist, std::mt19937_64& rng) {
 }
 
 inline Tensor RandomUniformTensor(const std::vector<int64_t>& shape,
-                                   DataType dtype = DataType::Float32(),
-                                   double low = 0.0,
-                                   double high = 1.0,
-                                   uint64_t seed = kDefaultTensorRandomSeed) {
+                                  const DataType& dtype = DataType::Float32(),
+                                  double low = 0.0,
+                                  double high = 1.0,
+                                  uint64_t seed = kDefaultTensorRandomSeed) {
     AM_CHECK(high > low, "RandomUniformTensor requires high > low.");
 
     Tensor tensor = MakeContiguousTensor(IntArrayView{shape.data(), shape.size()}, dtype);
@@ -64,14 +63,14 @@ inline Tensor RandomUniformTensor(const std::vector<int64_t>& shape,
     }
 
     AM_THROW(runtime_error) << "RandomUniformTensor supports float32, float64, int32, int64 only.";
-    return Tensor();
+    return {};
 }
 
 inline Tensor RandomNormalTensor(const std::vector<int64_t>& shape,
-                                  DataType dtype = DataType::Float32(),
-                                  double mean = 0.0,
-                                  double stddev = 1.0,
-                                  uint64_t seed = kDefaultTensorRandomSeed) {
+                                 DataType dtype = DataType::Float32(),
+                                 double mean = 0.0,
+                                 double stddev = 1.0,
+                                 uint64_t seed = kDefaultTensorRandomSeed) {
     AM_CHECK(stddev > 0.0, "RandomNormalTensor requires stddev > 0.");
 
     Tensor tensor = MakeContiguousTensor(IntArrayView{shape.data(), shape.size()}, dtype);
@@ -90,14 +89,14 @@ inline Tensor RandomNormalTensor(const std::vector<int64_t>& shape,
     }
 
     AM_THROW(runtime_error) << "RandomNormalTensor supports float32 and float64 only.";
-    return Tensor();
+    return {};
 }
 
 inline Tensor RandomIntTensor(const std::vector<int64_t>& shape,
-                               int64_t low,
-                               int64_t high,
-                               uint64_t seed = kDefaultTensorRandomSeed,
-                               DataType dtype = DataType::Int(64)) {
+                              int64_t low,
+                              int64_t high,
+                              uint64_t seed = kDefaultTensorRandomSeed,
+                              const DataType& dtype = DataType::Int(64)) {
     AM_CHECK(high > low, "RandomIntTensor requires high > low.");
     AM_CHECK(dtype == DataType::Int(32) || dtype == DataType::Int(64),
              "RandomIntTensor supports int32 and int64 only.");

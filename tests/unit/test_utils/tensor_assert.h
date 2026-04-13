@@ -2,11 +2,10 @@
 #define AETHERMIND_TEST_UTILS_TENSOR_ASSERT_H
 
 #include "aethermind/base/tensor.h"
-#include "gtest/gtest.h"
 
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
+#include <gtest/gtest.h>
 #include <sstream>
 
 namespace aethermind::test_utils {
@@ -15,11 +14,11 @@ namespace detail {
 
 template<typename T>
 ::testing::AssertionResult CompareAllCloseFloating(const T* actual,
-                                                    const T* expected,
-                                                    int64_t n,
-                                                    double atol,
-                                                    double rtol,
-                                                    int64_t max_report) {
+                                                   const T* expected,
+                                                   int64_t n,
+                                                   double atol,
+                                                   double rtol,
+                                                   int64_t max_report) {
     int64_t mismatch_count = 0;
     std::ostringstream report;
     for (int64_t i = 0; i < n; ++i) {
@@ -47,9 +46,9 @@ template<typename T>
 
 template<typename T>
 ::testing::AssertionResult CompareExact(const T* actual,
-                                         const T* expected,
-                                         int64_t n,
-                                         int64_t max_report) {
+                                        const T* expected,
+                                        int64_t n,
+                                        int64_t max_report) {
     int64_t mismatch_count = 0;
     std::ostringstream report;
     for (int64_t i = 0; i < n; ++i) {
@@ -72,9 +71,9 @@ template<typename T>
 }
 
 inline ::testing::AssertionResult CompareExactBool(const bool* actual,
-                                                    const bool* expected,
-                                                    int64_t n,
-                                                    int64_t max_report) {
+                                                   const bool* expected,
+                                                   int64_t n,
+                                                   int64_t max_report) {
     int64_t mismatch_count = 0;
     std::ostringstream report;
     for (int64_t i = 0; i < n; ++i) {
@@ -98,9 +97,9 @@ inline ::testing::AssertionResult CompareExactBool(const bool* actual,
 
 template<typename T>
 ::testing::AssertionResult CompareExactReducedFloatBits(const T* actual,
-                                                         const T* expected,
-                                                         int64_t n,
-                                                         int64_t max_report) {
+                                                        const T* expected,
+                                                        int64_t n,
+                                                        int64_t max_report) {
     int64_t mismatch_count = 0;
     std::ostringstream report;
     for (int64_t i = 0; i < n; ++i) {
@@ -125,10 +124,10 @@ template<typename T>
 }// namespace detail
 
 inline ::testing::AssertionResult ExpectTensorAllClose(const Tensor& actual,
-                                                         const Tensor& expected,
-                                                         double atol = 1e-6,
-                                                         double rtol = 1e-6,
-                                                         int64_t max_report = 5) {
+                                                       const Tensor& expected,
+                                                       double atol = 1e-6,
+                                                       double rtol = 1e-6,
+                                                       int64_t max_report = 5) {
     if (actual.dtype() != expected.dtype()) {
         return ::testing::AssertionFailure()
                << "dtype mismatch: actual=" << actual.dtype() << ", expected=" << expected.dtype();
@@ -178,8 +177,8 @@ inline ::testing::AssertionResult ExpectTensorAllClose(const Tensor& actual,
 }
 
 inline ::testing::AssertionResult ExpectTensorEqual(const Tensor& actual,
-                                                      const Tensor& expected,
-                                                      int64_t max_report = 5) {
+                                                    const Tensor& expected,
+                                                    int64_t max_report = 5) {
     if (actual.dtype() != expected.dtype()) {
         return ::testing::AssertionFailure()
                << "dtype mismatch: actual=" << actual.dtype() << ", expected=" << expected.dtype();

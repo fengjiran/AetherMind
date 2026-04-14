@@ -2,16 +2,12 @@
 
 namespace aethermind {
 
-CpuBackend::CpuBackend() {
-    capabilities_.device_type = DeviceType::kCPU;
-}
-
 DeviceType CpuBackend::device_type() const noexcept {
     return DeviceType::kCPU;
 }
 
 const BackendCapabilities& CpuBackend::capabilities() const noexcept {
-    return capabilities_;
+    return capabilities_.base;
 }
 
 KernelFn CpuBackend::ResolveKernel(const KernelKey&) const noexcept {

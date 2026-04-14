@@ -17,16 +17,10 @@ void BackendRegistry::SetFactory(DeviceType type, std::unique_ptr<BackendFactory
     AM_CHECK(factory != nullptr, "Backend factory cannot be null");
     factories_[type] = std::move(factory);
 
-    for (auto it = backends_.begin(); it != backends_.end();) {
-        if (it->first == type) {
-            it = backends_.erase(it);
-            continue;
-        }
-        ++it;
-    }
+    std::erase_if(backends_, [type](const auto& entry) { return entry.first == type; });
 }
 
-StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) {
+StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) noexcept {
     // TODO: Enable mutex for thread-safe access once multi-threaded runtime is supported.
     // std::lock_guard<std::mutex> lock(mutex_);
     if (const auto it = backends_.find(type); it != backends_.end()) {

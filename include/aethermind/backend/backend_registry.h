@@ -22,7 +22,7 @@ public:
 
     void RegisterFactory(DeviceType type, std::unique_ptr<BackendFactory> factory);
     void SetFactory(DeviceType type, std::unique_ptr<BackendFactory> factory);
-    StatusOr<Backend*> GetBackend(DeviceType type);
+    StatusOr<Backend*> GetBackend(DeviceType type) noexcept;
 
 private:
     std::unordered_map<DeviceType, std::unique_ptr<BackendFactory>> factories_;

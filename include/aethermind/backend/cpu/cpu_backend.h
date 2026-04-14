@@ -4,19 +4,22 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_capabilities.h"
+#include "aethermind/backend/kernel_registry.h"
 
 namespace aethermind {
 
 class CpuBackend final : public Backend {
 public:
-    CpuBackend() = default;
+    CpuBackend();
     AM_NODISCARD DeviceType device_type() const noexcept override;
     AM_NODISCARD const BackendCapabilities& capabilities() const noexcept override;
     AM_NODISCARD KernelFn ResolveKernel(const KernelKey& key) const noexcept override;
     AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override;
 
 private:
+    void RegisterBuiltinKernels();
     CpuCapabilities capabilities_{};
+    KernelRegistry kernel_registry_{};
 };
 
 class CpuBackendFactory final : public BackendFactory {

@@ -18,6 +18,7 @@ public:
     BackendRegistry& operator=(const BackendRegistry&) = delete;
     BackendRegistry(BackendRegistry&&) noexcept = default;
     BackendRegistry& operator=(BackendRegistry&&) noexcept = default;
+    ~BackendRegistry() = default;
 
     void RegisterFactory(DeviceType type, std::unique_ptr<BackendFactory> factory);
     void SetFactory(DeviceType type, std::unique_ptr<BackendFactory> factory);

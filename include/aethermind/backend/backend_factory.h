@@ -3,6 +3,8 @@
 
 #include "aethermind/backend/backend_fwd.h"
 #include "device.h"
+#include "macros.h"
+
 #include <memory>
 
 namespace aethermind {
@@ -10,8 +12,8 @@ namespace aethermind {
 class BackendFactory {
 public:
     virtual ~BackendFactory() = default;
-    virtual DeviceType device_type() const noexcept = 0;
-    virtual std::unique_ptr<Backend> Create() const = 0;
+    AM_NODISCARD virtual DeviceType device_type() const noexcept = 0;
+    AM_NODISCARD virtual std::unique_ptr<Backend> Create() const = 0;
 };
 
 }// namespace aethermind

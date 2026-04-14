@@ -62,15 +62,15 @@
 
 ### 文档与接口边界确认
 
-- [ ] `docs/designs/backend_design.md`: 复核术语与最新代码接口一致
-- [ ] `docs/designs/backend_phase1_development_steps.md`: 复核阶段顺序与当前实现计划一致
+- [x] `docs/designs/backend_design.md`: 复核术语与最新代码接口一致
+- [x] `docs/designs/backend_phase1_development_steps.md`: 复核阶段顺序与当前实现计划一致
 
 ### 目录结构
 
-- [ ] `include/aethermind/backend/`: 建立 backend 公共头目录
-- [ ] `src/backend/`: 建立 backend 实现目录
-- [ ] `include/aethermind/backend/cpu/`: 建立 CPU backend 公共头目录
-- [ ] `src/backend/cpu/`: 建立 CPU backend 实现目录
+- [x] `include/aethermind/backend/`: 建立 backend 公共头目录
+- [x] `src/backend/`: 建立 backend 实现目录
+- [x] `include/aethermind/backend/cpu/`: 建立 CPU backend 公共头目录
+- [x] `src/backend/cpu/`: 建立 CPU backend 实现目录
 
 ---
 
@@ -78,25 +78,31 @@
 
 ### 测试先行
 
-- [ ] `tests/unit/test_backend_registry.cpp`: 增加 factory 注册、lazy backend 创建、缓存行为测试
-- [ ] `tests/unit/test_runtime_backend_integration.cpp`: 增加 `RuntimeBuilder` / `RuntimeContext` backend 装配测试
+- [x] `tests/unit/test_backend_registry.cpp`: 增加 factory 注册、lazy backend 创建、缓存行为测试
+- [x] `tests/unit/test_runtime_backend_integration.cpp`: 增加 `RuntimeBuilder` / `RuntimeContext` backend 装配测试
 
 ### Backend 基础接口
 
-- [ ] `include/aethermind/backend/backend_fwd.h`: 声明 backend 相关前向声明
-- [ ] `include/aethermind/backend/kernel_types.h`: 声明 `KernelFn`、`KernelKey` 所需基础类型占位
-- [ ] `include/aethermind/backend/backend_capabilities.h`: 定义 `BackendCapabilities` 基础接口或基础结构
-- [ ] `include/aethermind/backend/backend.h`: 定义 `Backend` 接口，包括 `ResolveKernel(...)`
-- [ ] `include/aethermind/backend/backend_factory.h`: 定义 `BackendFactory` 接口
-- [ ] `include/aethermind/backend/backend_registry.h`: 定义 `BackendRegistry` 接口
-- [ ] `src/backend/backend_registry.cpp`: 实现 `BackendRegistry` 注册、覆盖、延迟实例化与缓存逻辑
+- [x] `include/aethermind/backend/backend_fwd.h`: 声明 backend 相关前向声明
+- [x] `include/aethermind/backend/kernel_types.h`: 声明 `KernelFn`、`KernelKey` 所需基础类型占位
+- [x] `include/aethermind/backend/backend_capabilities.h`: 定义 `BackendCapabilities` 基础接口或基础结构
+- [x] `include/aethermind/backend/backend.h`: 定义 `Backend` 接口，包括 `ResolveKernel(...)`
+- [x] `include/aethermind/backend/backend_factory.h`: 定义 `BackendFactory` 接口
+- [x] `include/aethermind/backend/backend_registry.h`: 定义 `BackendRegistry` 接口
+- [x] `src/backend/backend_registry.cpp`: 实现 `BackendRegistry` 注册、覆盖、延迟实例化与缓存逻辑
 
 ### Runtime 集成
 
-- [ ] `include/aethermind/runtime/runtime_context.h`: 增加 `BackendRegistry` 成员与 `GetBackend(DeviceType)`
-- [ ] `src/runtime/runtime_context.cpp`: 实现 `GetBackend(DeviceType)`
-- [ ] `include/aethermind/runtime/runtime_builder.h`: 增加 backend factory 注册入口与 build 钩子
-- [ ] `src/runtime/runtime_builder.cpp`: 实现 `BuildBackendRegistry()` 和默认 CPU backend 注册
+- [x] `include/aethermind/runtime/runtime_context.h`: 增加 `BackendRegistry` 成员与 `GetBackend(DeviceType)`
+- [x] `src/runtime/runtime_context.cpp`: 实现 `GetBackend(DeviceType)`
+- [x] `include/aethermind/runtime/runtime_builder.h`: 增加 backend factory 注册入口与 build 钩子
+- [x] `src/runtime/runtime_builder.cpp`: 实现 `BuildBackendRegistry()` 和默认 CPU backend 注册
+
+### Phase 1 退出条件验证
+
+- [x] `RuntimeContext` 正式持有 `BackendRegistry`
+- [x] `RuntimeContext::GetBackend(DeviceType::kCPU)` 可用
+- [x] 无全局 backend registry
 
 ---
 
@@ -104,21 +110,27 @@
 
 ### 测试先行
 
-- [ ] `tests/unit/test_cpu_backend.cpp`: 增加 `CpuBackend` 基础行为测试
-- [ ] `tests/unit/test_cpu_capabilities.cpp`: 增加 CPU capability 可见性测试
-- [ ] `tests/unit/test_cpu_workspace_arena.cpp`: 增加 workspace 绑定与 reset 测试
+- [x] `tests/unit/test_cpu_backend.cpp`: 增加 `CpuBackend` 基础行为测试
+- [x] `tests/unit/test_cpu_capabilities.cpp`: 增加 CPU capability 可见性测试
+- [x] `tests/unit/test_cpu_workspace_arena.cpp`: 增加 workspace 绑定与 reset 测试
 
 ### CPU Backend 核心类型
 
-- [ ] `include/aethermind/backend/cpu/cpu_capabilities.h`: 定义 `CpuCapabilities`
-- [ ] `src/backend/cpu/cpu_capabilities.cpp`: 实现 CPU ISA / capability 探测
-- [ ] `include/aethermind/backend/cpu/cpu_execution_resources.h`: 定义 `CpuExecutionResources`
-- [ ] `include/aethermind/backend/cpu/cpu_thread_pool.h`: 定义 CPU backend 所需线程池接口或适配层
-- [ ] `src/backend/cpu/cpu_thread_pool.cpp`: 实现最小线程池或线程池适配逻辑
-- [ ] `include/aethermind/backend/cpu/cpu_workspace_arena.h`: 定义 `CpuWorkspaceArena`
-- [ ] `src/backend/cpu/cpu_workspace_arena.cpp`: 实现 arena 绑定逻辑
-- [ ] `include/aethermind/backend/cpu/cpu_backend.h`: 定义 `CpuBackend` 与 `CpuBackendFactory`
-- [ ] `src/backend/cpu/cpu_backend.cpp`: 实现 `CpuBackend` 基础行为
+- [x] `include/aethermind/backend/cpu/cpu_capabilities.h`: 定义 `CpuCapabilities`
+- [x] `src/backend/cpu/cpu_capabilities.cpp`: 实现 CPU ISA / capability 探测（当前为占位实现，ISA 探测延后到优化阶段）
+- [x] `include/aethermind/backend/cpu/cpu_execution_resources.h`: 定义 `CpuExecutionResources`（空占位结构，Phase 1 同步执行不需要）
+- [ ] `include/aethermind/backend/cpu/cpu_thread_pool.h`: 定义 CPU backend 所需线程池接口或适配层（**延后**：Phase 1 同步执行，线程池属于后续优化阶段）
+- [ ] `src/backend/cpu/cpu_thread_pool.cpp`: 实现最小线程池或线程池适配逻辑（**延后**：同上）
+- [x] `include/aethermind/backend/cpu/cpu_workspace_arena.h`: 定义 `CpuWorkspaceArena`
+- [x] `src/backend/cpu/cpu_workspace_arena.cpp`: 实现 arena 绑定逻辑
+- [x] `include/aethermind/backend/cpu/cpu_backend.h`: 定义 `CpuBackend` 与 `CpuBackendFactory`
+- [x] `src/backend/cpu/cpu_backend.cpp`: 实现 `CpuBackend` 基础行为
+
+### Phase 2 退出条件验证
+
+- [x] `CpuBackend` 可从 runtime 正常获得（测试验证：`RuntimeBuilder().Build().GetBackend(kCPU)`）
+- [x] `capabilities()` 返回稳定结果（测试验证：`test_cpu_backend.cpp` + `test_cpu_capabilities.cpp`）
+- [x] `CpuWorkspaceArena` 可基于预分配区域完成运行期绑定（测试验证：`test_cpu_workspace_arena.cpp` 11 个测试）
 
 ---
 

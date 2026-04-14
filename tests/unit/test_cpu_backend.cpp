@@ -20,13 +20,16 @@ TEST(CpuBackend, CapabilitiesExposeCPUType) {
 
 TEST(CpuBackend, ResolveKernelReturnsNullptr) {
     CpuBackend backend;
-    KernelKey key;
+    const KernelKey key{
+            .device_type = DeviceType::kCPU,
+            .op_name = OperatorName("test::missing", ""),
+    };
     EXPECT_EQ(backend.ResolveKernel(key), nullptr);
 }
 
-TEST(CpuBackend, TryGetKernelRegistryForDebugReturnsNullptr) {
+TEST(CpuBackend, TryGetKernelRegistryForDebugReturnsRegistry) {
     CpuBackend backend;
-    EXPECT_EQ(backend.TryGetKernelRegistryForDebug(), nullptr);
+    EXPECT_NE(backend.TryGetKernelRegistryForDebug(), nullptr);
 }
 
 TEST(CpuBackendFactory, CreatesValidBackend) {

@@ -1,4 +1,5 @@
 #include "aethermind/runtime/runtime_builder.h"
+#include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/memory/cann_allocator.h"
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/memory/cuda_allocator.h"
@@ -13,7 +14,9 @@ RuntimeBuilder& RuntimeBuilder::WithOptions(const RuntimeOptions& options) {
 
 RuntimeContext RuntimeBuilder::Build() {
     auto allocator_registry = BuildAllocatorRegistry();
-    return RuntimeContext(std::move(allocator_registry));
+    auto backend_registry = BuildBackendRegistry();
+    return RuntimeContext(std::move(allocator_registry),
+                          std::move(backend_registry));
 }
 
 RuntimeBuilder& RuntimeBuilder::RegisterCustomAllocatorProvider(
@@ -26,6 +29,19 @@ RuntimeBuilder& RuntimeBuilder::RegisterCustomAllocatorProvider(
             PendingCustomAllocatorProvider{
                     .type = type,
                     .provider = std::move(provider)});
+    return *this;
+}
+
+RuntimeBuilder& RuntimeBuilder::RegisterBackendFactory(
+        DeviceType type,
+        std::unique_ptr<BackendFactory> factory) {
+    AM_CHECK(factory != nullptr, "Backend factory cannot be null");
+    AM_CHECK(type != DeviceType::kUndefined,
+             "Cannot register backend factory for undefined device type");
+    pending_backend_factories_.push_back(
+            PendingBackendFactory{
+                    .type = type,
+                    .factory = std::move(factory)});
     return *this;
 }
 
@@ -49,6 +65,20 @@ AllocatorRegistry RuntimeBuilder::BuildAllocatorRegistry() {
         registry.SetProvider(type, std::move(provider));
     }
     pending_custom_allocator_providers_.clear();
+
+    return registry;
+}
+
+BackendRegistry RuntimeBuilder::BuildBackendRegistry() {
+    BackendRegistry registry;
+    if (options_.backend.enable_cpu) {
+        registry.SetFactory(DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
+    }
+
+    for (auto& [type, factory]: pending_backend_factories_) {
+        registry.SetFactory(type, std::move(factory));
+    }
+    pending_backend_factories_.clear();
 
     return registry;
 }

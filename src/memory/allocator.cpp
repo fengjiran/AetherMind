@@ -8,7 +8,6 @@
 #include "aethermind/memory/allocator.h"
 #include "utils/logging.h"
 
-
 namespace aethermind {
 
 void AllocatorRegistry::RegisterProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider) {

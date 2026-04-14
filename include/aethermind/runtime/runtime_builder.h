@@ -13,8 +13,15 @@ namespace aethermind {
 class RuntimeBuilder {
 public:
     RuntimeBuilder& WithOptions(const RuntimeOptions& options);
-    RuntimeBuilder& RegisterCustomAllocatorProvider(DeviceType type,
-                                              std::unique_ptr<AllocatorProvider> provider);
+
+    RuntimeBuilder& RegisterCustomAllocatorProvider(
+            DeviceType type,
+            std::unique_ptr<AllocatorProvider> provider);
+
+    RuntimeBuilder& RegisterBackendFactory(
+            DeviceType type,
+            std::unique_ptr<BackendFactory> factory);
+
     RuntimeContext Build();
 
 private:
@@ -23,10 +30,17 @@ private:
         std::unique_ptr<AllocatorProvider> provider;
     };
 
+    struct PendingBackendFactory {
+        DeviceType type;
+        std::unique_ptr<BackendFactory> factory;
+    };
+
     RuntimeOptions options_;
     std::vector<PendingCustomAllocatorProvider> pending_custom_allocator_providers_;
+    std::vector<PendingBackendFactory> pending_backend_factories_;
 
     AllocatorRegistry BuildAllocatorRegistry();
+    BackendRegistry BuildBackendRegistry();
 };
 
 

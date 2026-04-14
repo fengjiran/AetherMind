@@ -1,53 +1,101 @@
+#include "aethermind/backend/backend.h"
+#include "aethermind/runtime/runtime_builder.h"
+#include "aethermind/runtime/runtime_context.h"
+#include "device.h"
 #include <gtest/gtest.h>
 
 namespace {
 
+using namespace aethermind;
+
 TEST(RuntimeBackendIntegration, BuildCreatesBackendRegistry) {
-    GTEST_SKIP() << "Phase 1 skeleton: enable after RuntimeContext owns BackendRegistry.";
-    // TODO:
-    // 1. Build RuntimeContext via RuntimeBuilder.
-    // 2. Verify backend registry is present through functional behavior.
+    RuntimeBuilder builder;
+    RuntimeContext context = builder.Build();
+
+    auto backend_or = context.GetBackend(DeviceType::kCPU);
+    EXPECT_TRUE(backend_or.ok());
 }
 
 TEST(RuntimeBackendIntegration, GetBackendCPUWorks) {
-    GTEST_SKIP() << "Phase 1 skeleton: enable after RuntimeContext::GetBackend(DeviceType) is added.";
-    // TODO:
-    // 1. Build runtime with default settings.
-    // 2. Query CPU backend.
-    // 3. Assert non-null backend and DeviceType::kCPU.
+    RuntimeBuilder builder;
+    RuntimeContext context = builder.Build();
+
+    auto backend_or = context.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(backend_or.ok());
+    Backend* backend = backend_or.value();
+    ASSERT_NE(backend, nullptr);
+    EXPECT_EQ(backend->device_type(), DeviceType::kCPU);
 }
 
 TEST(RuntimeBackendIntegration, GetBackendReturnsCachedInstance) {
-    GTEST_SKIP() << "Phase 1 skeleton: verify backend caching after RuntimeContext integrates BackendRegistry.";
-    // TODO:
-    // 1. Build runtime.
-    // 2. Query CPU backend twice.
-    // 3. Assert both references/pointers refer to the same instance.
+    RuntimeBuilder builder;
+    RuntimeContext context = builder.Build();
+
+    auto backend1_or = context.GetBackend(DeviceType::kCPU);
+    auto backend2_or = context.GetBackend(DeviceType::kCPU);
+
+    ASSERT_TRUE(backend1_or.ok());
+    ASSERT_TRUE(backend2_or.ok());
+    EXPECT_EQ(backend1_or.value(), backend2_or.value());
 }
 
 TEST(RuntimeBackendIntegration, DefaultCpuFactoryIsRegistered) {
-    GTEST_SKIP() << "Phase 1 skeleton: enable after RuntimeBuilder registers the default CPU backend factory.";
-    // TODO:
-    // 1. Build runtime without custom backend registration.
-    // 2. Query CPU backend.
-    // 3. Assert default CPU backend is available.
+    RuntimeBuilder builder;
+    RuntimeContext context = builder.Build();
+
+    auto backend_or = context.GetBackend(DeviceType::kCPU);
+
+    EXPECT_TRUE(backend_or.ok());
+    if (backend_or.ok()) {
+        EXPECT_EQ(backend_or.value()->device_type(), DeviceType::kCPU);
+    }
 }
 
 TEST(RuntimeBackendIntegration, GetBackendForUnregisteredDeviceFails) {
-    GTEST_SKIP() << "Phase 1 skeleton: define failure-path assertions after RuntimeContext::GetBackend error contract is finalized.";
-    // TODO:
-    // 1. Build runtime with only CPU backend enabled.
-    // 2. Query an unregistered backend such as CUDA.
-    // 3. Assert the agreed failure behavior (StatusOr or exception).
+    RuntimeOptions options;
+    options.backend.enable_cpu = true;
+    options.backend.enable_cuda = false;
+
+    RuntimeBuilder builder;
+    builder.WithOptions(options);
+    RuntimeContext context = builder.Build();
+
+    auto backend_or = context.GetBackend(DeviceType::kCUDA);
+
+    EXPECT_FALSE(backend_or.ok());
+    EXPECT_EQ(backend_or.status().code(), StatusCode::kNotFound);
 }
 
+class MockBackend : public Backend {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    const BackendCapabilities& capabilities() const noexcept override {
+        static BackendCapabilities caps;
+        return caps;
+    }
+    KernelFn ResolveKernel(const KernelKey&) const noexcept override { return nullptr; }
+    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
+};
+
+class MockBackendFactory : public BackendFactory {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    std::unique_ptr<Backend> Create() const override {
+        return std::make_unique<MockBackend>();
+    }
+};
+
 TEST(RuntimeBackendIntegration, CustomCpuFactoryOverridesDefault) {
-    GTEST_SKIP() << "Phase 1 skeleton: enable after RuntimeBuilder supports custom backend factory registration.";
-    // TODO:
-    // 1. Register a custom CPU backend factory on RuntimeBuilder.
-    // 2. Build runtime.
-    // 3. Query CPU backend.
-    // 4. Assert the resolved backend comes from the custom factory.
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU, std::make_unique<MockBackendFactory>());
+
+    RuntimeContext context = builder.Build();
+    auto backend_or = context.GetBackend(DeviceType::kCPU);
+
+    ASSERT_TRUE(backend_or.ok());
+    Backend* backend = backend_or.value();
+    ASSERT_NE(backend, nullptr);
+    EXPECT_NE(dynamic_cast<MockBackend*>(backend), nullptr);
 }
 
 }// namespace

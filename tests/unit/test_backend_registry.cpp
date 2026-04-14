@@ -1,55 +1,130 @@
+#include "aethermind/backend/backend.h"
+#include "aethermind/backend/backend_factory.h"
+#include "aethermind/backend/backend_registry.h"
+
 #include <gtest/gtest.h>
 
 namespace {
 
+using namespace aethermind;
+
+class FakeBackend : public Backend {
+public:
+    explicit FakeBackend(DeviceType type) : type_(type) {
+        caps_.device_type = type;
+    }
+
+    DeviceType device_type() const noexcept override { return type_; }
+    const BackendCapabilities& capabilities() const noexcept override { return caps_; }
+    KernelFn ResolveKernel(const KernelKey&) const noexcept override { return nullptr; }
+    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
+
+private:
+    DeviceType type_;
+    BackendCapabilities caps_;
+};
+
+class FakeFactory : public BackendFactory {
+public:
+    explicit FakeFactory(DeviceType type, int* create_count = nullptr)
+        : type_(type), create_count_(create_count) {}
+
+    DeviceType device_type() const noexcept override { return type_; }
+    std::unique_ptr<Backend> Create() const override {
+        if (create_count_) {
+            (*create_count_)++;
+        }
+        return std::make_unique<FakeBackend>(type_);
+    }
+
+private:
+    DeviceType type_;
+    int* create_count_;
+};
+
 TEST(BackendRegistry, RegisterFactoryStoresFactory) {
-    GTEST_SKIP() << "Phase 1 skeleton: add BackendRegistry/RegisterFactory assertions after backend interfaces land.";
-    // TODO:
-    // 1. Construct BackendRegistry.
-    // 2. Register a fake CPU BackendFactory.
-    // 3. Verify the first GetBackend(DeviceType::kCPU) succeeds.
+    BackendRegistry registry;
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU));
+
+    auto status_or_backend = registry.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(status_or_backend.ok());
+    ASSERT_NE(status_or_backend.value(), nullptr);
+    EXPECT_EQ(status_or_backend.value()->device_type(), DeviceType::kCPU);
 }
 
 TEST(BackendRegistry, GetBackendLazyCreatesInstance) {
-    GTEST_SKIP() << "Phase 1 skeleton: verify lazy backend instantiation once BackendRegistry is implemented.";
-    // TODO:
-    // 1. Register a counting fake factory.
-    // 2. Assert create_count == 0 before first GetBackend().
-    // 3. Assert create_count == 1 after first GetBackend().
+    BackendRegistry registry;
+    int create_count = 0;
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &create_count));
+
+    EXPECT_EQ(create_count, 0);
+
+    auto status_or_backend = registry.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(status_or_backend.ok());
+    EXPECT_EQ(create_count, 1);
 }
 
 TEST(BackendRegistry, GetBackendCachesInstance) {
-    GTEST_SKIP() << "Phase 1 skeleton: verify backend instance caching once BackendRegistry is implemented.";
-    // TODO:
-    // 1. Register a counting fake factory.
-    // 2. Call GetBackend(DeviceType::kCPU) twice.
-    // 3. Assert the returned backend identity is stable.
-    // 4. Assert create_count == 1.
+    BackendRegistry registry;
+    int create_count = 0;
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &create_count));
+
+    auto res1 = registry.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(res1.ok());
+    Backend* b1 = res1.value();
+
+    auto res2 = registry.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(res2.ok());
+    Backend* b2 = res2.value();
+
+    EXPECT_EQ(b1, b2);
+    EXPECT_EQ(create_count, 1);
 }
 
 TEST(BackendRegistry, GetBackendForUnregisteredDeviceFails) {
-    GTEST_SKIP() << "Phase 1 skeleton: define failure-path assertions after GetBackend error contract is finalized.";
-    // TODO:
-    // 1. Construct an empty BackendRegistry.
-    // 2. Call GetBackend() for an unregistered device.
-    // 3. Assert the agreed failure behavior (StatusOr or exception).
+    BackendRegistry registry;
+    auto status_or_backend = registry.GetBackend(DeviceType::kCPU);
+    EXPECT_FALSE(status_or_backend.ok());
+    EXPECT_EQ(status_or_backend.status().code(), StatusCode::kNotFound);
 }
 
 TEST(BackendRegistry, OverrideFactoryBeforeInstantiationUsesLatestFactory) {
-    GTEST_SKIP() << "Phase 1 skeleton: verify pre-instantiation factory override semantics after BackendRegistry is implemented.";
-    // TODO:
-    // 1. Register fake factory A for CPU.
-    // 2. Register fake factory B for CPU before first GetBackend().
-    // 3. Assert the created backend comes from factory B.
+    BackendRegistry registry;
+    int count1 = 0;
+    int count2 = 0;
+
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &count1));
+    registry.SetFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &count2));
+
+    auto status_or_backend = registry.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(status_or_backend.ok());
+    EXPECT_EQ(count1, 0);
+    EXPECT_EQ(count2, 1);
 }
 
-TEST(BackendRegistry, OverrideFactoryAfterInstantiationKeepsCachedInstance) {
-    GTEST_SKIP() << "Phase 1 skeleton: verify cached-instance semantics after BackendRegistry is implemented.";
-    // TODO:
+TEST(BackendRegistry, OverrideFactoryAfterInstantiationClearsCachedInstance) {
+    BackendRegistry registry;
+    int count1 = 0;
+    int count2 = 0;
+
     // 1. Register fake factory A and instantiate backend.
-    // 2. Register fake factory B for the same DeviceType.
-    // 3. Assert subsequent GetBackend() returns the original cached instance.
-    // 4. Assert factory B was not used to replace the live backend.
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &count1));
+    auto res1 = registry.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(res1.ok());
+    Backend* b1 = res1.value();
+    EXPECT_EQ(count1, 1);
+
+    // 2. Override with factory B.
+    // According to production code, SetFactory clears the cached backend for that DeviceType.
+    registry.SetFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &count2));
+
+    // 3. Assert subsequent GetBackend() returns a NEW instance from factory B.
+    auto res2 = registry.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(res2.ok());
+    Backend* b2 = res2.value();
+
+    EXPECT_NE(b1, b2);
+    EXPECT_EQ(count2, 1);
 }
 
 }// namespace

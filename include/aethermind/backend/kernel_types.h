@@ -5,8 +5,10 @@
 
 namespace aethermind {
 
-struct KernelKey {};
+struct KernelKey;
 
+// Phase 3 minimal placeholder.
+// Will be widened in later phases to include invocation/context/workspace.
 using KernelFn = Status (*)() noexcept;
 
 }// namespace aethermind

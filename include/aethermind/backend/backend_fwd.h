@@ -7,8 +7,10 @@ class Backend;
 class BackendFactory;
 class BackendRegistry;
 class KernelRegistry;
+
 struct BackendCapabilities;
 struct KernelKey;
+struct KernelInvocation;
 
 }// namespace aethermind
 #endif

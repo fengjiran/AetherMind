@@ -13,7 +13,7 @@ public:
     CpuBackend();
     AM_NODISCARD DeviceType device_type() const noexcept override;
     AM_NODISCARD const BackendCapabilities& capabilities() const noexcept override;
-    AM_NODISCARD KernelFn ResolveKernel(const KernelKey& key) const noexcept override;
+    AM_NODISCARD KernelFunc ResolveKernel(const KernelKey& key) const noexcept override;
     AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override;
 
 private:

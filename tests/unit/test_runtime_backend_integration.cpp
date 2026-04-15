@@ -73,7 +73,7 @@ public:
         static BackendCapabilities caps;
         return caps;
     }
-    KernelFn ResolveKernel(const KernelKey&) const noexcept override { return nullptr; }
+    KernelFunc ResolveKernel(const KernelKey&) const noexcept override { return nullptr; }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
 };
 

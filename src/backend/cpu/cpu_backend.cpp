@@ -34,7 +34,7 @@ const BackendCapabilities& CpuBackend::capabilities() const noexcept {
     return capabilities_.base;
 }
 
-KernelFn CpuBackend::ResolveKernel(const KernelKey& key) const noexcept {
+KernelFunc CpuBackend::ResolveKernel(const KernelKey& key) const noexcept {
     return kernel_registry_.Find(key);
 }
 

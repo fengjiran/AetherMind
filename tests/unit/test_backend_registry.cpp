@@ -16,7 +16,7 @@ public:
 
     DeviceType device_type() const noexcept override { return type_; }
     const BackendCapabilities& capabilities() const noexcept override { return caps_; }
-    KernelFn ResolveKernel(const KernelKey&) const noexcept override { return nullptr; }
+    KernelFunc ResolveKernel(const KernelKey&) const noexcept override { return nullptr; }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
 
 private:

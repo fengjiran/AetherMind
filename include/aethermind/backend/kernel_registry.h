@@ -15,11 +15,11 @@ namespace aethermind {
 
 class KernelRegistry {
 public:
-    void Register(const KernelKey& key, KernelFn fn);
-    AM_NODISCARD KernelFn Find(const KernelKey& key) const noexcept;
+    void Register(const KernelKey& key, KernelFunc fn);
+    AM_NODISCARD KernelFunc Find(const KernelKey& key) const noexcept;
 
 private:
-    std::unordered_map<KernelKey, KernelFn> kernels_;
+    std::unordered_map<KernelKey, KernelFunc> kernels_;
 };
 
 }// namespace aethermind

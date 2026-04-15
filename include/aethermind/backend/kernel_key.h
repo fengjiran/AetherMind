@@ -7,6 +7,9 @@
 
 namespace aethermind {
 
+// Migration-only key for the legacy OperatorName-based dispatch path.
+// The new dispatch mainline is centered on OpType + KernelSelector and is
+// intentionally introduced in parallel during the Batch 1 transition.
 struct KernelKey {
     DeviceType device_type = DeviceType::kUndefined;
     OperatorName op_name;

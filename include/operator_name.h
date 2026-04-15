@@ -15,6 +15,8 @@
 namespace aethermind {
 
 /// Unique identifier for an operator: name (e.g., "aethermind::add") + overload_name (e.g., "Tensor").
+/// Kept for schema/legacy-dispatch compatibility while the new backend-owned
+/// dispatch mainline gradually migrates to OpType-based resolution.
 class OperatorName final {
 public:
     OperatorName() = default;

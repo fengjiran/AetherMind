@@ -18,10 +18,9 @@ namespace aethermind {
 /// Unique identifier for an operator: name (e.g., "aethermind::add") + overload_name (e.g., "Tensor").
 class OperatorName final {
 public:
+    OperatorName() = default;
     OperatorName(std::string_view name, std::string_view overload_name)
         : name_(name), overload_name_(overload_name) {}
-
-    OperatorName() = default;
 
     AM_NODISCARD std::string_view name() const noexcept { return name_; }
     AM_NODISCARD std::string_view overload_name() const noexcept { return overload_name_; }
@@ -30,17 +29,17 @@ public:
     /// Returned view is valid only while this OperatorName exists.
     AM_NODISCARD std::optional<std::string_view> GetNamespace() const noexcept;
 
-    /// Prepends namespace if not already set. Returns false if namespace already present.
-    bool SetNamespaceIfNotSet(std::string_view ns);
-
     friend bool operator==(const OperatorName& lhs, const OperatorName& rhs) {
         return lhs.name_ == rhs.name_ && lhs.overload_name_ == rhs.overload_name_;
     }
 
-    friend bool operator!=(const OperatorName& lhs, const OperatorName& rhs) { return !(lhs == rhs); }
+    friend bool operator!=(const OperatorName& lhs, const OperatorName& rhs) {
+        return !(lhs == rhs);
+    }
 
     friend bool operator<(const OperatorName& lhs, const OperatorName& rhs) {
-        return lhs.name_ < rhs.name_ || (lhs.name_ == rhs.name_ && lhs.overload_name_ < rhs.overload_name_);
+        return lhs.name_ < rhs.name_ ||
+               (lhs.name_ == rhs.name_ && lhs.overload_name_ < rhs.overload_name_);
     }
 
 private:

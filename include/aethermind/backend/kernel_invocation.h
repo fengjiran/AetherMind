@@ -5,12 +5,14 @@
 #ifndef AETHERMIND_BACKEND_KERNEL_INVOCATION_H
 #define AETHERMIND_BACKEND_KERNEL_INVOCATION_H
 
-#include "operator_name.h"
+#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/operators/op_type.h"
 
 namespace aethermind {
 
 struct KernelInvocation {
-    OperatorName op_name;
+    OpType op_type = OpType::kUnknown;
+    KernelSelector selector{};
 };
 
 }// namespace aethermind

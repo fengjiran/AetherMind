@@ -3,6 +3,7 @@
 
 #include "device.h"
 #include "operator_name.h"
+#include "utils/hash.h"
 
 namespace aethermind {
 
@@ -25,8 +26,7 @@ namespace std {
 template<>
 struct hash<aethermind::KernelKey> {
     size_t operator()(const aethermind::KernelKey& key) const noexcept {
-        return std::hash<aethermind::DeviceType>()(key.device_type) ^
-               (std::hash<aethermind::OperatorName>()(key.op_name) << 1);
+        return aethermind::get_hash(key.device_type, key.op_name);
     }
 };
 }// namespace std

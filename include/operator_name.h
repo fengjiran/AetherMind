@@ -6,6 +6,7 @@
 #define AETHERMIND_OPERATOR_NAME_H
 
 #include "container/string.h"
+#include "utils/hash.h"
 
 namespace aethermind {
 
@@ -53,8 +54,8 @@ namespace std {
 template<>
 struct hash<aethermind::OperatorName> {
     size_t operator()(const aethermind::OperatorName& x) const noexcept {
-        return std::hash<aethermind::String>()(x.name()) ^ ~std::hash<aethermind::String>()(x.overload_name());
-    };
+        return aethermind::get_hash(x.name(), x.overload_name());
+    }
 };
 }// namespace std
-#endif//AETHERMIND_OPERATOR_NAME_H
+#endif// AETHERMIND_OPERATOR_NAME_H

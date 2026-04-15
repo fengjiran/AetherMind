@@ -207,21 +207,25 @@ Phase 1 中必须始终保持：
 
 ### 目标
 
-把 backend 和 operator/kernel 分发正式接起来。
+建立 backend-owned 的 kernel 注册与计划构建期解析机制，为后续 `ExecutionPlanBuilder` 冻结 `ResolvedKernel` / `OpExec` 做准备。
 
 ### 主要工作
 
-- 定义 `KernelKey`
-- 定义统一 `KernelFn`
+- 定义 `OpType`
+- 定义 `KernelSelector`
+- 定义 `KernelDescriptor`
 - 实现 backend 内部 `KernelRegistry`
 - 实现 `Backend::ResolveKernel(...)`
-- 明确 `Dispatcher` 与 `ResolveKernel(...)` 的职责分工
+- 定义 `ResolvedKernel`
+- 定义 `KernelResolver` 或等价的计划构建期 resolve 逻辑
 - 冻结 fallback 行为：只能在 plan-build 阶段决定，不能进入热路径
+- 冻结旧 `Dispatcher / DispatchKeySet`，不再作为新算子实现路径继续扩展
 
 ### 阶段退出条件
 
 - CPU kernel 可注册
-- `ResolveKernel(...)` 可根据 key 和 capability 返回正确 `KernelFn`
+- `ResolveKernel(...)` 可根据 selector 与 capability 返回正确 `KernelFn`
+- 计划构建期可冻结 `ResolvedKernel`
 - 执行期不再触碰 registry
 
 ---

@@ -141,22 +141,30 @@
 - [ ] `tests/unit/test_kernel_registry.cpp`: 增加 kernel 注册与查询测试
 - [ ] `tests/unit/test_cpu_resolve_kernel.cpp`: 增加 `ResolveKernel(...)` 解析测试
 
+### 设计基线冻结
+
+- [ ] `docs/designs/dispatch_design.md`: 冻结 backend-owned、plan-build-time dispatch 主线方案
+
 ### Kernel 解析核心
 
-- [ ] `include/aethermind/backend/kernel_key.h`: 定义 `KernelKey`
-- [ ] `include/aethermind/backend/kernel_registry.h`: 定义 `KernelRegistry`
+- [ ] `include/aethermind/backend/kernel_key.h`: 定义 `KernelKey`（迁移期保留）
+- [ ] `include/aethermind/backend/kernel_registry.h`: 定义 backend-owned `KernelRegistry`
 - [ ] `src/backend/kernel_registry.cpp`: 实现 backend 内部 kernel registry
 - [ ] `include/aethermind/backend/kernel_invocation.h`: 定义 `KernelInvocation` 基础结构
-- [ ] `include/aethermind/backend/dispatcher_bridge.h`: 定义 dispatcher metadata 与 backend resolve 的桥接约束
-- [ ] `src/backend/dispatcher_bridge.cpp`: 实现 dispatcher metadata 到 backend resolve 的桥接逻辑
+- [ ] `include/aethermind/backend/dispatcher_bridge.h`: 保留旧桥接时，明确其仅用于迁移辅助
+- [ ] `src/backend/dispatcher_bridge.cpp`: 实现迁移期桥接逻辑
+- [ ] `include/aethermind/backend/op_type.h`: 定义 `OpType`
+- [ ] `include/aethermind/backend/kernel_selector.h`: 定义 `KernelSelector`
+- [ ] `include/aethermind/backend/kernel_descriptor.h`: 定义 `KernelDescriptor`
+- [ ] `include/aethermind/backend/resolved_kernel.h`: 定义 `ResolvedKernel`
 - [ ] `src/backend/cpu/cpu_backend.cpp`: 接入 `ResolveKernel(...)`
 
-### 现有分发设施对齐
+### 旧分发设施冻结与迁移边界
 
-- [ ] `include/dispatcher.h`: 校验并补齐与 backend resolve 路径的职责边界说明
-- [ ] `src/dispatcher.cpp`: 如有必要，补齐静态 metadata 记录能力，避免侵入热路径
-- [ ] `include/dispatch_key.h`: 校验 `BackendComponent` / `DispatchKey` 是否满足 `KernelKey` 需要
-- [ ] `include/dispatch_key_set.h`: 如需要，补最小查询/表示能力用于注册期或计划期
+- [ ] `include/dispatcher.h`: 明确旧全局 dispatcher 不再作为新算子实现主线
+- [ ] `src/dispatcher.cpp`: 明确不承接 runtime resolve 职责
+- [ ] `include/dispatch_key.h`: 明确旧 `DispatchKey` 体系不再作为新主线基础
+- [ ] `include/dispatch_key_set.h`: 冻结/待退场，不再扩展
 
 ---
 
@@ -198,7 +206,7 @@
 ### 相邻集成
 
 - [ ] `include/aethermind/operator/op_kind.h`: 如需要，定义 `OpKind`
-- [ ] `include/operator_name.h`: 校验 `OperatorName` 是否可直接用于 `KernelKey`
+- [ ] `include/operator_name.h`: 过渡期提供 `OperatorName -> OpType` 映射，不再继续扩展旧 dispatcher 语义
 - [ ] `include/function_schema.h`: 如需要，补计划构建阶段所需 schema 查询入口
 
 ---
@@ -293,6 +301,7 @@ cmake --build build --target aethermind_unit_tests -j
 - [ ] `RuntimeContext` 正式持有 `BackendRegistry`
 - [ ] `CpuBackend` 可被 runtime 查询并返回稳定 capability
 - [ ] `ExecutionPlanBuilder` 是唯一 kernel resolve 发起方
+- [ ] `KernelRegistry` 由 backend 持有，而不是全局 singleton
 - [ ] `ExecutionPlan` 不包含 request/session 动态绑定
 - [ ] `PackedWeights` 由 `ModelInstance` backend sidecar 持有
 - [ ] `WorkspaceArena::Bind(...)` 不触发底层堆分配

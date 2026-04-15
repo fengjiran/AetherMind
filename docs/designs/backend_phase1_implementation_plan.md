@@ -266,7 +266,7 @@ Phase 0
 
 ### 目标
 
-把 backend 和 operator/kernel 分发正式接起来。
+建立 backend-owned 的 kernel 注册与计划构建期解析机制，并明确旧 `Dispatcher / DispatchKeySet` 不再作为新主线继续扩展。
 
 ### 建议顺序
 
@@ -275,36 +275,49 @@ Phase 0
 - `tests/unit/test_kernel_registry.cpp`
 - `tests/unit/test_cpu_resolve_kernel.cpp`
 
+#### 第一步补充：新主线设计收敛（建议串行）
+
+- 冻结 `docs/designs/dispatch_design.md` 作为 Phase 1 dispatch 主线基线
+- 明确旧 `dispatcher.h` / `dispatch_key*.h` 进入冻结态，不再承接新算子路径
+
 #### 第二步：Kernel 解析核心（建议串行）
 
-1. `include/aethermind/backend/kernel_key.h`
+1. `include/aethermind/backend/kernel_key.h`（迁移期保留；后续逐步让主线从 `OperatorName` 过渡到 `OpType`）
 2. `include/aethermind/backend/kernel_registry.h`
 3. `src/backend/kernel_registry.cpp`
 4. `include/aethermind/backend/kernel_invocation.h`
-5. `include/aethermind/backend/dispatcher_bridge.h`
+5. `include/aethermind/backend/dispatcher_bridge.h`（若保留旧桥接，仅作为迁移辅助，而非未来主线）
 6. `src/backend/dispatcher_bridge.cpp`
+7. 定义 `OpType`
+8. 定义 `KernelSelector`
+9. 定义 `KernelDescriptor`
+10. 定义 `ResolvedKernel`
 
-#### 第三步：现有分发设施对齐（小范围串行收敛）
-
-- `include/dispatcher.h`
-- `src/dispatcher.cpp`
-- `include/dispatch_key.h`
-- `include/dispatch_key_set.h`（如需新增或补齐）
-
-#### 第四步：CpuBackend 接入 ResolveKernel（串行）
+#### 第三步：Backend 内 resolve 路径收敛（小范围串行收敛）
 
 - `src/backend/cpu/cpu_backend.cpp`
+- `ExecutionPlanBuilder` 侧 resolve 入口设计（可先以文档/接口冻结，不要求本阶段完成全部执行计划实现）
+
+#### 第四步：旧分发设施冻结（建议串行）
+
+- `include/dispatcher.h`: 明确旧全局 dispatcher 不再作为未来主线
+- `src/dispatcher.cpp`: 不再增加 runtime resolve 责任
+- `include/dispatch_key.h`: 明确不再作为新 dispatch 主线基础
+- `include/dispatch_key_set.h`: 明确冻结/待退场，不再扩展
 
 ### 实施注意事项
 
-- 当前 dispatcher 已存在，但其职责必须收敛为静态 metadata 记录
 - backend 设计要求最终设备族内解析只能通过 `Backend::ResolveKernel(...)` 发起
+- `KernelRegistry` 应由具体 backend 持有，而不是退回全局 singleton
+- `ExecutionPlanBuilder` 是唯一正式 resolve 发起方
 - 不允许把 resolve 留到 executor 热路径
+- 不再继续扩展 `Dispatcher / DispatchKeySet` 作为新主线；旧设施可迁移期保留，但应冻结
 
 ### 阶段出口
 
 - CPU kernel 可注册
-- `ResolveKernel(...)` 可根据 key 与 capability 返回正确 `KernelFn`
+- `ResolveKernel(...)` 可根据 selector 与 capability 返回正确 `KernelFn`
+- 计划构建期可冻结 `ResolvedKernel`
 - 执行期不再触碰 registry
 
 ---
@@ -371,7 +384,7 @@ Phase 0
 #### 第三步：相邻接口对齐（可局部并行审视）
 
 - `include/aethermind/operator/op_kind.h`（如需新增）
-- `include/operator_name.h`
+- `include/operator_name.h`（过渡期可保留；建议提供 `OperatorName -> OpType` 映射而不是继续扩展旧 dispatcher 路线）
 - `include/function_schema.h`
 
 ### 为什么这是核心串行阶段
@@ -529,7 +542,7 @@ Phase 0
 |------|----------|----------|-----------|
 | **Batch A** | Phase 0 + Phase 1 | Runtime 正式持有 backend registry | `RuntimeContext::GetBackend(DeviceType::kCPU)` 可用 |
 | **Batch B** | Phase 2 | CPU backend 基础能力与资源站起来 | `CpuBackend` / `capabilities()` / `CpuWorkspaceArena` 可用 |
-| **Batch C** | Phase 3 | Kernel 注册与 resolve 跑通 | CPU kernel 可注册，`ResolveKernel(...)` 可返回稳定 `KernelFn` |
+| **Batch C** | Phase 3 | backend-owned kernel 注册与 plan-build resolve 基线跑通 | CPU kernel 可注册，`ResolveKernel(...)` 可基于 selector 返回稳定 `KernelFn`，旧 `Dispatcher / DispatchKeySet` 进入冻结态 |
 | **Batch D** | Phase 4 | packed weight sidecar 所有权冻结 | packed 数据与逻辑权重生命周期分离明确 |
 | **Batch E** | Phase 5 | `ExecutionPlanBuilder` 成为唯一 resolve 入口 | `OpExec` / `ExecutionPlan` / workspace planning 跑通 |
 | **Batch F** | Phase 6 | 动态绑定从 plan 中剥离 | `RuntimeBindingContext` 可提供运行期地址绑定 |
@@ -582,13 +595,14 @@ cmake --build build --target aethermind_unit_tests -j
 
 ## 9. 关键风险与实施注意事项
 
-### 9.1 Dispatcher 相关风险
+### 9.1 旧 Dispatcher 相关风险
 
-当前代码库中的 dispatcher 已存在，但 backend Phase 1 的设计要求它只承担静态 metadata 记录职责。实施时必须避免：
+当前代码库中的旧 dispatcher 已存在，但新版 dispatch 主线不再以它为核心。实施时必须避免：
 
-- 让 dispatcher 继续承担最终设备族内 resolve
+- 让旧 dispatcher 继续承担最终设备族内 resolve
 - 在 executor 热路径中直接访问 dispatcher 或 registry
 - 用 dispatcher 逃避 `ExecutionPlanBuilder` 作为唯一 resolve 发起方的约束
+- 继续扩展 `DispatchKeySet` 体系并把它重新变成新主线基础
 
 ### 9.2 ExecutionPlan 漂移风险
 

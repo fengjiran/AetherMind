@@ -1,6 +1,8 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/backend_registry.h"
+#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/operators/op_type.h"
 
 #include <gtest/gtest.h>
 
@@ -16,7 +18,7 @@ public:
 
     DeviceType device_type() const noexcept override { return type_; }
     const BackendCapabilities& capabilities() const noexcept override { return caps_; }
-    KernelFunc ResolveKernel(const KernelKey&) const noexcept override { return nullptr; }
+    KernelFunc ResolveKernel(OpType, const KernelSelector&) const noexcept override { return nullptr; }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
 
 private:

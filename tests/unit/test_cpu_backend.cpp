@@ -1,11 +1,23 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "data_type.h"
 #include "device.h"
 
 #include <gtest/gtest.h>
 
 namespace aethermind {
 namespace {
+
+KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth) {
+    return KernelSelector{
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .isa = IsaLevel::kScalar,
+            .phase = phase,
+    };
+}
 
 TEST(CpuBackend, DeviceTypeIsCPU) {
     CpuBackend backend;
@@ -20,11 +32,7 @@ TEST(CpuBackend, CapabilitiesExposeCPUType) {
 
 TEST(CpuBackend, ResolveKernelReturnsNullptr) {
     CpuBackend backend;
-    const KernelKey key{
-            .device_type = DeviceType::kCPU,
-            .op_name = OperatorName("test::missing", ""),
-    };
-    EXPECT_EQ(backend.ResolveKernel(key), nullptr);
+    EXPECT_EQ(backend.ResolveKernel(OpType::kLinear, MakeCpuSelector()), nullptr);
 }
 
 TEST(CpuBackend, TryGetKernelRegistryForDebugReturnsRegistry) {

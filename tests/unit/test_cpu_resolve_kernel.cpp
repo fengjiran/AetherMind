@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/dispatcher_bridge.h"
+
+#include "data_type.h"
 
 #include <gtest/gtest.h>
 
@@ -7,24 +8,28 @@ using namespace aethermind;
 
 namespace {
 
+KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth,
+                               IsaLevel isa = IsaLevel::kScalar) {
+    return KernelSelector{
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .isa = isa,
+            .phase = phase,
+    };
+}
+
 TEST(CpuResolveKernel, RegisteredKeyReturnsKernel) {
     CpuBackend backend;
 
-    const KernelKey key = MakeKernelKey(
-            DeviceType::kCPU,
-            OperatorName("test::fake_cpu_kernel", ""));
-
-    EXPECT_NE(backend.ResolveKernel(key), nullptr);
+    EXPECT_NE(backend.ResolveKernel(OpType::kRMSNorm, MakeCpuSelector()), nullptr);
 }
 
 TEST(CpuResolveKernel, MissingKeyReturnsNullptr) {
     CpuBackend backend;
 
-    const KernelKey key = MakeKernelKey(
-            DeviceType::kCPU,
-            OperatorName("test::missing", ""));
-
-    EXPECT_EQ(backend.ResolveKernel(key), nullptr);
+    EXPECT_EQ(backend.ResolveKernel(OpType::kLinear, MakeCpuSelector()), nullptr);
 }
 
 TEST(CpuResolveKernel, DebugRegistryIsExposedForInspection) {
@@ -35,11 +40,7 @@ TEST(CpuResolveKernel, DebugRegistryIsExposedForInspection) {
 TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     CpuBackend backend;
 
-    const KernelKey key = MakeKernelKey(
-            DeviceType::kCPU,
-            OperatorName("test::fake_cpu_kernel", ""));
-
-    const KernelFn fn = backend.ResolveKernel(key);
+    const KernelFunc fn = backend.ResolveKernel(OpType::kRMSNorm, MakeCpuSelector());
     ASSERT_NE(fn, nullptr);
 
     const Status status = fn();

@@ -1,4 +1,6 @@
 #include "aethermind/backend/backend.h"
+#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/runtime_context.h"
 #include "device.h"
@@ -73,7 +75,7 @@ public:
         static BackendCapabilities caps;
         return caps;
     }
-    KernelFunc ResolveKernel(const KernelKey&) const noexcept override { return nullptr; }
+    KernelFunc ResolveKernel(OpType, const KernelSelector&) const noexcept override { return nullptr; }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
 };
 

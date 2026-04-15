@@ -134,32 +134,37 @@
 
 ---
 
-## 6. Phase 3：Kernel 注册与解析
+## 6. Phase 3：Dispatch 主线建立（按 batch 推进）
+
+### Batch 1：设计基线与最小新类型
+
+- [x] `docs/designs/dispatch_design.md`: 冻结 backend-owned、plan-build-time dispatch 主线方案
+- [x] `docs/designs/backend_phase1_development_steps.md`: 对齐 dispatch batches 与 backend Phase 1 阶段边界
+- [x] `docs/designs/backend_phase1_implementation_plan.md`: 对齐 dispatch batches 与实施顺序
+- [x] `include/aethermind/operators/op_type.h`: 定义 `OpType` 与 `OperatorName -> OpType` 过渡入口声明
+- [x] `include/aethermind/backend/kernel_selector.h`: 定义 `KernelSelector`、`IsaLevel`、`ExecPhase`、`WeightFormat`
+- [x] `include/aethermind/backend/kernel_descriptor.h`: 定义 `KernelDescriptor`
+- [x] `include/aethermind/backend/resolved_kernel.h`: 定义 `ResolvedKernel`
+- [x] `include/aethermind/backend/kernel_key.h`: 标注为迁移期保留类型，而非未来主线核心
+- [x] `include/aethermind/backend/dispatcher_bridge.h`: 标注为迁移辅助，不再承接未来主线职责
+- [x] `include/operator_name.h`: 保持过渡兼容，并为 `OperatorName -> OpType` 映射预留入口
+
+### Batch 2：selector-based resolve
 
 ### 测试先行
 
-- [ ] `tests/unit/test_kernel_registry.cpp`: 增加 kernel 注册与查询测试
-- [ ] `tests/unit/test_cpu_resolve_kernel.cpp`: 增加 `ResolveKernel(...)` 解析测试
-
-### 设计基线冻结
-
-- [ ] `docs/designs/dispatch_design.md`: 冻结 backend-owned、plan-build-time dispatch 主线方案
+- [x] `tests/unit/test_kernel_registry.cpp`: 增加 kernel 注册与查询测试
+- [x] `tests/unit/test_cpu_resolve_kernel.cpp`: 增加 `ResolveKernel(...)` 解析测试
 
 ### Kernel 解析核心
 
-- [ ] `include/aethermind/backend/kernel_key.h`: 定义 `KernelKey`（迁移期保留）
-- [ ] `include/aethermind/backend/kernel_registry.h`: 定义 backend-owned `KernelRegistry`
-- [ ] `src/backend/kernel_registry.cpp`: 实现 backend 内部 kernel registry
-- [ ] `include/aethermind/backend/kernel_invocation.h`: 定义 `KernelInvocation` 基础结构
-- [ ] `include/aethermind/backend/dispatcher_bridge.h`: 保留旧桥接时，明确其仅用于迁移辅助
-- [ ] `src/backend/dispatcher_bridge.cpp`: 实现迁移期桥接逻辑
-- [ ] `include/aethermind/backend/op_type.h`: 定义 `OpType`
-- [ ] `include/aethermind/backend/kernel_selector.h`: 定义 `KernelSelector`
-- [ ] `include/aethermind/backend/kernel_descriptor.h`: 定义 `KernelDescriptor`
-- [ ] `include/aethermind/backend/resolved_kernel.h`: 定义 `ResolvedKernel`
-- [ ] `src/backend/cpu/cpu_backend.cpp`: 接入 `ResolveKernel(...)`
+- [x] `include/aethermind/backend/kernel_registry.h`: 定义 backend-owned `KernelRegistry`
+- [x] `src/backend/kernel_registry.cpp`: 实现 backend 内部 kernel registry
+- [x] `include/aethermind/backend/kernel_invocation.h`: 定义 `KernelInvocation` 基础结构
+- [x] `src/backend/dispatcher_bridge.cpp`: 实现迁移期桥接逻辑
+- [x] `src/backend/cpu/cpu_backend.cpp`: 接入 `ResolveKernel(...)`
 
-### 旧分发设施冻结与迁移边界
+### Batch 4：旧分发设施冻结与迁移边界
 
 - [ ] `include/dispatcher.h`: 明确旧全局 dispatcher 不再作为新算子实现主线
 - [ ] `src/dispatcher.cpp`: 明确不承接 runtime resolve 职责

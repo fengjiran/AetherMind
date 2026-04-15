@@ -262,48 +262,46 @@ Phase 0
 
 ---
 
-## 5.4 Phase 3：Kernel 注册与解析
+## 5.4 Phase 3：Dispatch 主线建立（按 batch 推进）
 
 ### 目标
 
-建立 backend-owned 的 kernel 注册与计划构建期解析机制，并明确旧 `Dispatcher / DispatchKeySet` 不再作为新主线继续扩展。
+按 dispatch 设计文档中预先冻结的 batches，逐步建立 backend-owned、plan-build-time 的 dispatch 主线。
 
 ### 建议顺序
 
-#### 第一步：测试先行（可并行）
+#### 第一步：设计基线与边界冻结（建议串行）
+
+- 冻结 `docs/designs/dispatch_design.md` 作为 Phase 1 dispatch 主线基线
+- 明确本阶段必须按 Batch 1 → Batch 2 → Batch 3 → Batch 4 推进，不跨 batch 混做
+
+#### 第二步：Batch 1 最小类型落地（建议串行）
+
+- `include/aethermind/operators/op_type.h`
+- `include/aethermind/backend/kernel_selector.h`
+- `include/aethermind/backend/kernel_descriptor.h`
+- `include/aethermind/backend/resolved_kernel.h`
+- `include/aethermind/backend/kernel_key.h`（迁移期保留；明确不再是未来主线核心）
+- `include/aethermind/backend/dispatcher_bridge.h`（迁移辅助；不承接未来主线职责）
+- `include/operator_name.h`（保留兼容，并为 `OperatorName -> OpType` 过渡映射预留入口）
+
+#### 第三步：测试先行（可并行）
 
 - `tests/unit/test_kernel_registry.cpp`
 - `tests/unit/test_cpu_resolve_kernel.cpp`
 
-#### 第一步补充：新主线设计收敛（建议串行）
+#### 第四步：Batch 2 selector-based resolve（建议串行）
 
-- 冻结 `docs/designs/dispatch_design.md` 作为 Phase 1 dispatch 主线基线
-- 明确旧 `dispatcher.h` / `dispatch_key*.h` 进入冻结态，不再承接新算子路径
+1. `include/aethermind/backend/kernel_registry.h`
+2. `src/backend/kernel_registry.cpp`
+3. `include/aethermind/backend/kernel_invocation.h`
+4. `src/backend/dispatcher_bridge.cpp`
+5. `src/backend/cpu/cpu_backend.cpp`
 
-#### 第二步：Kernel 解析核心（建议串行）
+#### 第五步：Batch 3 / Batch 4 的后续落点（本阶段只冻结边界）
 
-1. `include/aethermind/backend/kernel_key.h`（迁移期保留；后续逐步让主线从 `OperatorName` 过渡到 `OpType`）
-2. `include/aethermind/backend/kernel_registry.h`
-3. `src/backend/kernel_registry.cpp`
-4. `include/aethermind/backend/kernel_invocation.h`
-5. `include/aethermind/backend/dispatcher_bridge.h`（若保留旧桥接，仅作为迁移辅助，而非未来主线）
-6. `src/backend/dispatcher_bridge.cpp`
-7. 定义 `OpType`
-8. 定义 `KernelSelector`
-9. 定义 `KernelDescriptor`
-10. 定义 `ResolvedKernel`
-
-#### 第三步：Backend 内 resolve 路径收敛（小范围串行收敛）
-
-- `src/backend/cpu/cpu_backend.cpp`
-- `ExecutionPlanBuilder` 侧 resolve 入口设计（可先以文档/接口冻结，不要求本阶段完成全部执行计划实现）
-
-#### 第四步：旧分发设施冻结（建议串行）
-
-- `include/dispatcher.h`: 明确旧全局 dispatcher 不再作为未来主线
-- `src/dispatcher.cpp`: 不再增加 runtime resolve 责任
-- `include/dispatch_key.h`: 明确不再作为新 dispatch 主线基础
-- `include/dispatch_key_set.h`: 明确冻结/待退场，不再扩展
+- Batch 3 对齐 `ExecutionPlanBuilder` 阶段：把 resolve 明确拉进计划构建期，并冻结 `ResolvedKernel`
+- Batch 4 对齐 executor 接入阶段：切到 direct call，并冻结旧 `dispatcher.h` / `dispatch_key*.h` 体系
 
 ### 实施注意事项
 
@@ -311,14 +309,14 @@ Phase 0
 - `KernelRegistry` 应由具体 backend 持有，而不是退回全局 singleton
 - `ExecutionPlanBuilder` 是唯一正式 resolve 发起方
 - 不允许把 resolve 留到 executor 热路径
-- 不再继续扩展 `Dispatcher / DispatchKeySet` 作为新主线；旧设施可迁移期保留，但应冻结
+- 不再继续扩展 `Dispatcher / DispatchKeySet` 作为新主线；旧设施在 Batch 4 正式冻结前仅可维持兼容，不得承接新功能
 
 ### 阶段出口
 
-- CPU kernel 可注册
-- `ResolveKernel(...)` 可根据 selector 与 capability 返回正确 `KernelFn`
-- 计划构建期可冻结 `ResolvedKernel`
-- 执行期不再触碰 registry
+- Batch 1：新 dispatch 主线的最小类型与迁移边界完成落地，且不破坏现有编译/测试
+- Batch 2：CPU kernel 可注册，`ResolveKernel(...)` 可根据 selector 与 capability 返回正确 `KernelFn`
+- Batch 3：计划构建期可冻结 `ResolvedKernel`
+- Batch 4：执行期不再触碰 registry
 
 ---
 

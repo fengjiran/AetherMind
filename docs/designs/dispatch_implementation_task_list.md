@@ -73,7 +73,7 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 
 #### 新增核心类型
 
-- [ ] `include/aethermind/backend/op_type.h`: 定义 `OpType`
+- [ ] `include/aethermind/operators/op_type.h`: 定义 `OpType`
 - [ ] `include/aethermind/backend/kernel_selector.h`: 定义 `KernelSelector`、`IsaLevel`、`ExecPhase`、`WeightFormat`
 - [ ] `include/aethermind/backend/kernel_descriptor.h`: 定义 `KernelDescriptor`
 - [ ] `include/aethermind/backend/resolved_kernel.h`: 定义 `ResolvedKernel`

@@ -203,30 +203,27 @@ Phase 1 中必须始终保持：
 
 ---
 
-## 5.4 Phase 3：Kernel 注册与解析机制
+## 5.4 Phase 3：Dispatch 主线建立（按 batch 推进）
 
 ### 目标
 
-建立 backend-owned 的 kernel 注册与计划构建期解析机制，为后续 `ExecutionPlanBuilder` 冻结 `ResolvedKernel` / `OpExec` 做准备。
+建立 backend-owned 的 dispatch 主线基线，并按预先冻结的 batch 顺序推进新旧 dispatch 体系迁移。
 
 ### 主要工作
 
-- 定义 `OpType`
-- 定义 `KernelSelector`
-- 定义 `KernelDescriptor`
-- 实现 backend 内部 `KernelRegistry`
-- 实现 `Backend::ResolveKernel(...)`
-- 定义 `ResolvedKernel`
-- 定义 `KernelResolver` 或等价的计划构建期 resolve 逻辑
+- Batch 1：冻结 dispatch 新旧主线边界，并定义 `OpType`、`KernelSelector`、`KernelDescriptor`、`ResolvedKernel`
+- Batch 1：将 `KernelKey` / `dispatcher_bridge` / `OperatorName` 标注为迁移期保留，而非未来主线核心
+- Batch 2：把 backend 内部 `KernelRegistry` 演进为 selector-based resolve，并让 `CpuBackend` 收敛到 backend-owned registry
+- Batch 3（对齐 `ExecutionPlanBuilder` 阶段）：定义 `KernelResolver` 或等价的计划构建期 resolve 逻辑，并冻结 `ResolvedKernel` / `OpExec`
+- Batch 4（对齐 executor 接入阶段）：让执行期只消费已冻结 kernel，并正式冻结旧 `Dispatcher / DispatchKeySet` 体系
 - 冻结 fallback 行为：只能在 plan-build 阶段决定，不能进入热路径
-- 冻结旧 `Dispatcher / DispatchKeySet`，不再作为新算子实现路径继续扩展
 
 ### 阶段退出条件
 
-- CPU kernel 可注册
-- `ResolveKernel(...)` 可根据 selector 与 capability 返回正确 `KernelFn`
-- 计划构建期可冻结 `ResolvedKernel`
-- 执行期不再触碰 registry
+- Batch 1 完成后：新 dispatch 主线的最小类型与迁移边界已冻结，且不破坏现有编译/测试
+- Batch 2 完成后：CPU kernel 可按 selector 注册，`ResolveKernel(...)` 可根据 selector 与 capability 返回正确 `KernelFn`
+- Batch 3 完成后：计划构建期可冻结 `ResolvedKernel`
+- Batch 4 完成后：执行期不再触碰 registry，旧 `Dispatcher / DispatchKeySet` 不再承接新功能
 
 ---
 

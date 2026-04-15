@@ -5,7 +5,6 @@
 #ifndef AETHERMIND_OPERATOR_NAME_H
 #define AETHERMIND_OPERATOR_NAME_H
 
-#include "container/string.h"
 #include "macros.h"
 #include "utils/hash.h"
 

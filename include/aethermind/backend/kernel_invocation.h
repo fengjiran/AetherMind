@@ -10,7 +10,7 @@
 namespace aethermind {
 
 struct KernelInvocation {
-    OperatorName op_name{"", ""};
+    OperatorName op_name;
 };
 
 }// namespace aethermind

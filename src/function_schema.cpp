@@ -104,7 +104,7 @@ FunctionSchema::FunctionSchema(String name,
                                std::vector<Argument> returns,
                                bool is_var_args,
                                bool is_var_returns)
-    : name_({std::move(name), std::move(overload_name)}),
+    : name_(static_cast<std::string>(name), static_cast<std::string>(overload_name)),
       arguments_(std::move(arguments)),
       returns_(std::move(returns)),
       is_var_args_(is_var_args),

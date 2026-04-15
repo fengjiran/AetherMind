@@ -9,14 +9,14 @@ namespace aethermind {
 
 struct KernelKey {
     DeviceType device_type = DeviceType::kUndefined;
-    OperatorName op_name{"", ""};
+    OperatorName op_name;
 
     friend bool operator==(const KernelKey& lhs, const KernelKey& rhs) {
         return lhs.device_type == rhs.device_type && lhs.op_name == rhs.op_name;
     }
 
     friend bool operator!=(const KernelKey& lhs, const KernelKey& rhs) {
-        return !operator==(lhs, rhs);
+        return !(lhs == rhs);
     }
 };
 

@@ -16,7 +16,7 @@ namespace aethermind {
 class OperatorSchema {
 public:
     OperatorSchema(String name, String overload_name)
-        : name_({std::move(name), std::move(overload_name)}) {}
+        : name_(static_cast<std::string>(name), static_cast<std::string>(overload_name)) {}
 
 private:
     OperatorName name_;
@@ -45,4 +45,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_DISPATCHER_H
+#endif// AETHERMIND_DISPATCHER_H

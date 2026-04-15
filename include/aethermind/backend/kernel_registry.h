@@ -5,21 +5,23 @@
 #ifndef AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 #define AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 
-#include "aethermind/backend/kernel_key.h"
-#include "aethermind/backend/kernel_types.h"
-#include "macros.h"
+#include "aethermind/backend/kernel_descriptor.h"
+#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/base/status.h"
 
-#include <unordered_map>
+#include <vector>
 
 namespace aethermind {
 
 class KernelRegistry {
 public:
-    void Register(const KernelKey& key, KernelFunc fn);
-    AM_NODISCARD KernelFunc Find(const KernelKey& key) const noexcept;
+    Status Register(const KernelDescriptor& descriptor);
+    Status Resolve(OpType op_type,
+                   const KernelSelector& selector,
+                   const KernelDescriptor** out) const noexcept;
 
 private:
-    std::unordered_map<KernelKey, KernelFunc> kernels_;
+    std::vector<KernelDescriptor> kernels_{};
 };
 
 }// namespace aethermind

@@ -6,47 +6,50 @@
 #define AETHERMIND_OPERATOR_NAME_H
 
 #include "container/string.h"
+#include "macros.h"
 #include "utils/hash.h"
+
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace aethermind {
 
+/// Unique identifier for an operator: name (e.g., "aethermind::add") + overload_name (e.g., "Tensor").
 class OperatorName final {
 public:
-    OperatorName(String name, String overload_name)
-        : name_(std::move(name)), overload_name_(std::move(overload_name)) {}
+    OperatorName(std::string_view name, std::string_view overload_name)
+        : name_(name), overload_name_(overload_name) {}
 
-    AM_NODISCARD String name() const {
-        return name_;
-    }
+    OperatorName() = default;
 
-    AM_NODISCARD String overload_name() const {
-        return overload_name_;
-    }
+    AM_NODISCARD std::string_view name() const noexcept { return name_; }
+    AM_NODISCARD std::string_view overload_name() const noexcept { return overload_name_; }
 
-    // Return the namespace of this OperatorName, if it exists.  The
-    // returned string_view is only live as long as the OperatorName
-    // exists and name is not mutated
-    AM_NODISCARD std::optional<String> GetNamespace() const;
+    /// Extracts namespace from name if present ("aethermind::add" -> "aethermind").
+    /// Returned view is valid only while this OperatorName exists.
+    AM_NODISCARD std::optional<std::string_view> GetNamespace() const noexcept;
 
-    // Returns true if successfully set the namespace
-    bool SetNamespaceIfNotSet(const char* ns);
+    /// Prepends namespace if not already set. Returns false if namespace already present.
+    bool SetNamespaceIfNotSet(std::string_view ns);
 
     friend bool operator==(const OperatorName& lhs, const OperatorName& rhs) {
         return lhs.name_ == rhs.name_ && lhs.overload_name_ == rhs.overload_name_;
     }
 
-    friend bool operator!=(const OperatorName& lhs, const OperatorName& rhs) {
-        return !operator==(lhs, rhs);
+    friend bool operator!=(const OperatorName& lhs, const OperatorName& rhs) { return !(lhs == rhs); }
+
+    friend bool operator<(const OperatorName& lhs, const OperatorName& rhs) {
+        return lhs.name_ < rhs.name_ || (lhs.name_ == rhs.name_ && lhs.overload_name_ < rhs.overload_name_);
     }
 
 private:
-    String name_;
-    String overload_name_;
+    std::string name_;
+    std::string overload_name_;
 };
 
 std::ostream& operator<<(std::ostream& os, const OperatorName& opName);
-
-String ToString(const OperatorName& opName);
+std::string ToString(const OperatorName& opName);
 
 }// namespace aethermind
 
@@ -58,4 +61,5 @@ struct hash<aethermind::OperatorName> {
     }
 };
 }// namespace std
+
 #endif// AETHERMIND_OPERATOR_NAME_H

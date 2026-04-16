@@ -32,17 +32,25 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     std::vector<int> execution_order;
     g_execution_order = &execution_order;
 
-    ASSERT_TRUE(plan.AddStep(ResolvedKernel{
+    ASSERT_TRUE(plan.AddStep(ExecutionStep{
                                      .op_type = OpType::kRMSNorm,
                                      .fn = &FirstKernel,
-                                     .attrs = {},
+                                     .workspace_requirement = {
+                                             .bytes = 64,
+                                             .alignment = 64,
+                                             .offset = 0,
+                                     },
                                      .debug_name = "test::first_kernel",
                              })
                         .ok());
-    ASSERT_TRUE(plan.AddStep(ResolvedKernel{
+    ASSERT_TRUE(plan.AddStep(ExecutionStep{
                                      .op_type = OpType::kRoPE,
                                      .fn = &SecondKernel,
-                                     .attrs = {},
+                                     .workspace_requirement = {
+                                             .bytes = 128,
+                                             .alignment = 64,
+                                             .offset = 64,
+                                     },
                                      .debug_name = "test::second_kernel",
                              })
                         .ok());
@@ -56,10 +64,14 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
 
 TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
     ExecutionPlan plan;
-    ASSERT_TRUE(plan.AddStep(ResolvedKernel{
+    ASSERT_TRUE(plan.AddStep(ExecutionStep{
                                      .op_type = OpType::kRMSNorm,
                                      .fn = &FailingKernel,
-                                     .attrs = {},
+                                     .workspace_requirement = {
+                                             .bytes = 32,
+                                             .alignment = 32,
+                                             .offset = 0,
+                                     },
                                      .debug_name = "test::failing_kernel",
                              })
                         .ok());

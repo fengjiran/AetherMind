@@ -12,10 +12,10 @@ Status LayerRunner::Run(const ExecutionPlan& plan) noexcept {
 }
 
 Status LayerRunner::RunStep(const ExecutionStep& step) noexcept {
-    if (step.kernel.fn == nullptr) {
+    if (step.fn == nullptr) {
         return Status::InvalidArgument("Execution step kernel function cannot be null");
     }
-    return step.kernel.fn();
+    return step.fn();
 }
 
 }// namespace aethermind

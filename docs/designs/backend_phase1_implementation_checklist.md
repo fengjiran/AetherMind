@@ -136,40 +136,66 @@
 
 ## 6. Phase 3：Dispatch 主线建立（按 batch 推进）
 
-### Batch 1：设计基线与最小新类型
+### Batch 1：设计基线与最小新类型 ✅
 
 - [x] `docs/designs/dispatch_design.md`: 冻结 backend-owned、plan-build-time dispatch 主线方案
 - [x] `docs/designs/backend_phase1_development_steps.md`: 对齐 dispatch batches 与 backend Phase 1 阶段边界
 - [x] `docs/designs/backend_phase1_implementation_plan.md`: 对齐 dispatch batches 与实施顺序
-- [x] `include/aethermind/operators/op_type.h`: 定义 `OpType` 与 `OperatorName -> OpType` 过渡入口声明
+- [x] `include/aethermind/operators/op_type.h`: 定义 `OpType` 与 `ToOpType` 过渡映射（实现已挪回 operators 模块）
 - [x] `include/aethermind/backend/kernel_selector.h`: 定义 `KernelSelector`、`IsaLevel`、`ExecPhase`、`WeightFormat`
 - [x] `include/aethermind/backend/kernel_descriptor.h`: 定义 `KernelDescriptor`
 - [x] `include/aethermind/backend/resolved_kernel.h`: 定义 `ResolvedKernel`
-- [x] `include/aethermind/backend/kernel_key.h`: 标注为迁移期保留类型，而非未来主线核心
-- [x] `include/aethermind/backend/dispatcher_bridge.h`: 标注为迁移辅助，不再承接未来主线职责
-- [x] `include/operator_name.h`: 保持过渡兼容，并为 `OperatorName -> OpType` 映射预留入口
+- [x] ~~`include/aethermind/backend/kernel_key.h`~~: **已删除**
+- [x] ~~`include/aethermind/backend/dispatcher_bridge.h`~~: **已删除**
+- [x] `include/operator_name.h`: 保留过渡兼容，`ToOpType` 实现已挪回 `src/operators/op_type.cpp`
 
-### Batch 2：selector-based resolve
+### Batch 2：selector-based resolve ✅
 
 ### 测试先行
 
 - [x] `tests/unit/test_kernel_registry.cpp`: 增加 kernel 注册与查询测试
 - [x] `tests/unit/test_cpu_resolve_kernel.cpp`: 增加 `ResolveKernel(...)` 解析测试
 
-### Kernel 解析核心
+### Kernel 解析核心 ✅
 
 - [x] `include/aethermind/backend/kernel_registry.h`: 定义 backend-owned `KernelRegistry`
 - [x] `src/backend/kernel_registry.cpp`: 实现 backend 内部 kernel registry
 - [x] `include/aethermind/backend/kernel_invocation.h`: 定义 `KernelInvocation` 基础结构
-- [x] `src/backend/dispatcher_bridge.cpp`: 实现迁移期桥接逻辑
+- [x] ~~`src/backend/dispatcher_bridge.cpp`~~: **已删除**
 - [x] `src/backend/cpu/cpu_backend.cpp`: 接入 `ResolveKernel(...)`
 
-### Batch 4：旧分发设施冻结与迁移边界
+### Batch 3：计划构建期 resolve 与 ResolvedKernel 冻结 ✅
 
-- [ ] `include/dispatcher.h`: 明确旧全局 dispatcher 不再作为新算子实现主线
-- [ ] `src/dispatcher.cpp`: 明确不承接 runtime resolve 职责
-- [ ] `include/dispatch_key.h`: 明确旧 `DispatchKey` 体系不再作为新主线基础
-- [ ] `include/dispatch_key_set.h`: 冻结/待退场，不再扩展
+- [x] `include/aethermind/execution/execution_plan_builder.h`: 定义 `ExecutionPlanNodeSpec`（使用 `OpType`）与 `ExecutionPlanBuilder`
+- [x] `src/execution/execution_plan_builder.cpp`: 实现 plan-build-time resolve，直接使用 `OpType`
+- [x] `include/aethermind/execution/execution_plan.h`: 定义 `ExecutionPlan` 与 `ExecutionStep`（只存 `ResolvedKernel`）
+- [x] `src/execution/execution_plan.cpp`: 实现 `AddStep`，attrs 复制到 plan-owned storage
+- [x] `include/aethermind/backend/resolved_kernel.h`: 补齐 `attrs` / `debug_name` 生命周期约束说明
+- [x] `tests/unit/test_execution_plan_builder.cpp`: 覆盖 plan-build resolve
+- [x] `tests/unit/test_execution_plan.cpp`: 覆盖 `ResolvedKernel` 冻结结果
+
+### Batch 4：旧分发设施冻结与 Executor direct call ✅
+
+- [x] ~~`include/dispatcher.h`~~: **已删除**
+- [x] ~~`src/dispatcher.cpp`~~: **已删除**
+- [x] ~~`include/aethermind/backend/dispatcher_bridge.h`~~: **已删除**
+- [x] ~~`src/backend/dispatcher_bridge.cpp`~~: **已删除**
+- [x] ~~`include/aethermind/backend/kernel_key.h`~~: **已删除**
+- [x] ~~`tests/unit/test_dispatcher_bridge.cpp`~~: **已删除**
+- [x] `include/dispatch_key.h`: 标注冻结/待退场
+- [x] `include/dispatch_key_set.h`: 标注冻结/待退场
+
+#### Executor / LayerRunner
+
+- [x] `include/aethermind/execution/executor.h`: 定义 `Executor::Execute(ExecutionPlan)`
+- [x] `src/execution/executor.cpp`: 实现 direct call，委托 LayerRunner
+- [x] `include/aethermind/execution/layer_runner.h`: 定义 `LayerRunner::Run(ExecutionPlan)`
+- [x] `src/execution/layer_runner.cpp`: 遍历 steps 并 direct call `kernel.fn`
+
+#### 约束型测试
+
+- [x] `tests/unit/test_executor_backend_path.cpp`: 覆盖 executor direct call
+- [x] `tests/unit/test_no_hotpath_resolve.cpp`: 断言执行路径不做 registry lookup
 
 ---
 
@@ -192,26 +218,26 @@
 
 ---
 
-## 8. Phase 5：ExecutionPlan / OpExec / PlanBuilder
+## 8. Phase 5：ExecutionPlan / OpExec / PlanBuilder ✅（部分完成）
 
 ### 测试先行
 
-- [ ] `tests/unit/test_execution_plan_builder.cpp`: 增加计划构建与 resolve 唯一入口测试
-- [ ] `tests/unit/test_execution_plan.cpp`: 增加 plan 只读视图与 layer op 序列测试
+- [x] `tests/unit/test_execution_plan_builder.cpp`: 增加计划构建与 resolve 唯一入口测试
+- [x] `tests/unit/test_execution_plan.cpp`: 增加 plan 只读视图与 layer op 序列测试
 - [ ] `tests/unit/test_workspace_requirement_planning.cpp`: 增加 workspace requirement/offset 规划测试
 
 ### 计划构建核心
 
 - [ ] `include/aethermind/backend/workspace_types.h`: 定义 `WorkspaceRequirement` 与 `WorkspaceBinding`
-- [ ] `include/aethermind/backend/execution_plan.h`: 定义 `ExecutionPlan` 与 `OpExec`
-- [ ] `src/backend/execution_plan.cpp`: 实现 `ExecutionPlan` 存储与只读视图
-- [ ] `include/aethermind/backend/execution_plan_builder.h`: 定义 `ExecutionPlanBuilder`
-- [ ] `src/backend/execution_plan_builder.cpp`: 实现计划构建、resolve 与 workspace 规划
+- [x] `include/aethermind/execution/execution_plan.h`: 定义 `ExecutionPlan` 与 `ExecutionStep`
+- [x] `src/execution/execution_plan.cpp`: 实现 `ExecutionPlan` 存储与只读视图
+- [x] `include/aethermind/execution/execution_plan_builder.h`: 定义 `ExecutionPlanBuilder`
+- [x] `src/execution/execution_plan_builder.cpp`: 实现计划构建、resolve（workspace 规划待后续）
 
 ### 相邻集成
 
 - [ ] `include/aethermind/operator/op_kind.h`: 如需要，定义 `OpKind`
-- [ ] `include/operator_name.h`: 过渡期提供 `OperatorName -> OpType` 映射，不再继续扩展旧 dispatcher 语义
+- [x] `include/operator_name.h`: 过渡期提供 `OperatorName -> OpType` 映射
 - [ ] `include/function_schema.h`: 如需要，补计划构建阶段所需 schema 查询入口
 
 ---
@@ -237,27 +263,27 @@
 
 ---
 
-## 10. Phase 7：OpKernelContext 与执行接入
+## 10. Phase 7：OpKernelContext 与执行接入 ✅（部分完成）
 
 ### 测试先行
 
 - [ ] `tests/unit/test_op_kernel_context.cpp`: 增加窄上下文约束测试
-- [ ] `tests/unit/test_executor_backend_path.cpp`: 增加 executor 通过 plan direct-call 的最小路径测试
+- [x] `tests/unit/test_executor_backend_path.cpp`: 增加 executor 通过 plan direct-call 的最小路径测试
 
-### 执行上下文
+### 执行上下文（待后续）
 
 - [ ] `include/aethermind/backend/op_kernel_context.h`: 定义 `BackendExecutionResources` 与 `OpKernelContext`
 - [ ] `include/aethermind/backend/stream.h`: 定义最小 `Stream` 接口
 - [ ] `include/aethermind/backend/tracing_sink.h`: 定义最小 `TracingSink` 接口
 
-### Executor / LayerRunner 接入
+### Executor / LayerRunner 接入 ✅
 
-- [ ] `include/aethermind/execution/executor.h`: 接入 `ExecutionPlan` 与 `RuntimeBindingContext`
-- [ ] `src/execution/executor.cpp`: 实现基于 plan 的执行入口
-- [ ] `include/aethermind/execution/layer_runner.h`: 接入 `OpExec` 执行接口
-- [ ] `src/execution/layer_runner.cpp`: 遍历 `OpExec` 并 direct call `KernelFn`
+- [x] `include/aethermind/execution/executor.h`: 定义 `Executor`，接入 `ExecutionPlan`
+- [x] `src/execution/executor.cpp`: 实现基于 plan 的执行入口（当前为最小 direct-call）
+- [x] `include/aethermind/execution/layer_runner.h`: 定义 `LayerRunner`
+- [x] `src/execution/layer_runner.cpp`: 遍历 `ExecutionStep` 并 direct call `KernelFn`
 
-### CPU 最小闭环 Kernel
+### CPU 最小闭环 Kernel（待后续）
 
 - [ ] `include/aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h`: 定义一个最小 CPU kernel 示例
 - [ ] `src/backend/cpu/kernels/cpu_rmsnorm_kernel.cpp`: 实现最小 CPU kernel 示例
@@ -265,11 +291,11 @@
 
 ---
 
-## 11. Phase 8：测试与回归
+## 11. Phase 8：测试与回归 ✅（部分完成）
 
 ### 约束型测试
 
-- [ ] `tests/unit/test_no_hotpath_resolve.cpp`: 断言执行路径不做 registry 查找
+- [x] `tests/unit/test_no_hotpath_resolve.cpp`: 断言执行路径不做 registry 查找
 - [ ] `tests/unit/test_execution_plan_immutability.cpp`: 断言执行期不修改 `ExecutionPlan`
 - [ ] `tests/unit/test_decode_workspace_stability.cpp`: 断言 decode 稳态 workspace 地址稳定
 - [ ] `tests/unit/test_backend_resource_escape_hatch.cpp`: 断言 `opaque_backend_resources` 不回传宽对象指针

@@ -1,20 +1,9 @@
 #ifndef AETHERMIND_BACKEND_WORKSPACE_ARENA_H
 #define AETHERMIND_BACKEND_WORKSPACE_ARENA_H
 
-#include <cstddef>
+#include "aethermind/backend/workspace_types.h"
 
 namespace aethermind {
-
-struct WorkspaceRequirement {
-    size_t bytes = 0;
-    size_t alignment = 64;
-    size_t offset = 0;
-};
-
-struct WorkspaceBinding {
-    void* data = nullptr;
-    size_t size = 0;
-};
 
 class WorkspaceArena {
 public:

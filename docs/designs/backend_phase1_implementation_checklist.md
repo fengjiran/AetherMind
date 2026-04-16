@@ -203,18 +203,18 @@
 
 ### 测试先行
 
-- [ ] `tests/unit/test_cpu_weight_prepacker.cpp`: 增加 packed weight 构建测试
-- [ ] `tests/unit/test_backend_sidecar_ownership.cpp`: 增加 packed weight ownership 测试
+- [x] `tests/unit/test_cpu_weight_prepacker.cpp`: 增加 packed weight 构建测试
+- [x] `tests/unit/test_backend_sidecar_ownership.cpp`: 增加 packed weight ownership 测试
 
 ### Packed Weight 路径
 
-- [ ] `include/aethermind/backend/packed_weights.h`: 定义 packed weight 基础抽象或公共类型
-- [ ] `include/aethermind/backend/cpu/cpu_weight_prepacker.h`: 定义 `CpuWeightPrepacker`
-- [ ] `src/backend/cpu/cpu_weight_prepacker.cpp`: 实现逻辑权重到 packed 权重转换
-- [ ] `include/aethermind/model/backend_sidecar.h`: 定义 `ModelInstance` backend sidecar 类型
-- [ ] `src/model/backend_sidecar.cpp`: 实现 sidecar 生命周期与访问逻辑
-- [ ] `include/aethermind/model/model_instance.h`: 接入 backend sidecar 持有关系
-- [ ] `src/model/model_instance.cpp`: 落实 packed weight sidecar 生命周期管理
+- [x] `include/aethermind/backend/packed_weights.h`: 定义 packed weight 基础抽象或公共类型
+- [x] `include/aethermind/backend/cpu/cpu_weight_prepacker.h`: 定义 `CpuWeightPrepacker`
+- [x] `src/backend/cpu/cpu_weight_prepacker.cpp`: 实现逻辑权重到 packed 权重转换
+- [x] `include/aethermind/model/backend_sidecar.h`: 定义 `ModelInstance` backend sidecar 类型
+- [x] `src/model/backend_sidecar.cpp`: 实现 sidecar 生命周期与访问逻辑
+- [x] `include/aethermind/model/model_instance.h`: 接入 backend sidecar 持有关系
+- [x] `src/model/model_instance.cpp`: 落实 packed weight sidecar 生命周期管理
 
 ---
 
@@ -224,11 +224,11 @@
 
 - [x] `tests/unit/test_execution_plan_builder.cpp`: 增加计划构建与 resolve 唯一入口测试
 - [x] `tests/unit/test_execution_plan.cpp`: 增加 plan 只读视图与 layer op 序列测试
-- [ ] `tests/unit/test_workspace_requirement_planning.cpp`: 增加 workspace requirement/offset 规划测试
+- [x] `tests/unit/test_workspace_requirement_planning.cpp`: 增加 workspace requirement/offset 规划测试
 
 ### 计划构建核心
 
-- [ ] `include/aethermind/backend/workspace_types.h`: 定义 `WorkspaceRequirement` 与 `WorkspaceBinding`
+- [x] `include/aethermind/backend/workspace_types.h`: 定义 `WorkspaceRequirement` 与 `WorkspaceBinding`
 - [x] `include/aethermind/execution/execution_plan.h`: 定义 `ExecutionPlan` 与 `ExecutionStep`
 - [x] `src/execution/execution_plan.cpp`: 实现 `ExecutionPlan` 存储与只读视图
 - [x] `include/aethermind/execution/execution_plan_builder.h`: 定义 `ExecutionPlanBuilder`
@@ -296,7 +296,7 @@
 ### 约束型测试
 
 - [x] `tests/unit/test_no_hotpath_resolve.cpp`: 断言执行路径不做 registry 查找
-- [ ] `tests/unit/test_execution_plan_immutability.cpp`: 断言执行期不修改 `ExecutionPlan`
+- [x] `tests/unit/test_execution_plan_immutability.cpp`: 断言执行期不修改 `ExecutionPlan`
 - [ ] `tests/unit/test_decode_workspace_stability.cpp`: 断言 decode 稳态 workspace 地址稳定
 - [ ] `tests/unit/test_backend_resource_escape_hatch.cpp`: 断言 `opaque_backend_resources` 不回传宽对象指针
 
@@ -331,10 +331,10 @@ cmake --build build --target aethermind_unit_tests -j
 
 - [ ] `RuntimeContext` 正式持有 `BackendRegistry`
 - [ ] `CpuBackend` 可被 runtime 查询并返回稳定 capability
-- [ ] `ExecutionPlanBuilder` 是唯一 kernel resolve 发起方
+- [x] `ExecutionPlanBuilder` 是唯一 kernel resolve 发起方
 - [ ] `KernelRegistry` 由 backend 持有，而不是全局 singleton
-- [ ] `ExecutionPlan` 不包含 request/session 动态绑定
-- [ ] `PackedWeights` 由 `ModelInstance` backend sidecar 持有
+- [x] `ExecutionPlan` 不包含 request/session 动态绑定
+- [x] `PackedWeights` 由 `ModelInstance` backend sidecar 持有
 - [ ] `WorkspaceArena::Bind(...)` 不触发底层堆分配
 - [ ] `Executor` 只消费 plan，不做热路径 resolve
 - [ ] 至少一个 CPU kernel 完成 end-to-end direct call 闭环

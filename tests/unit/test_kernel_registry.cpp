@@ -45,20 +45,48 @@ TEST(KernelRegistry, RegisterAndLookupReturnsKernel) {
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
+    ASSERT_TRUE(registry.Freeze().ok());
 
-    const KernelDescriptor* resolved = nullptr;
-    ASSERT_TRUE(registry.Resolve(OpType::kRMSNorm, descriptor.selector, &resolved).ok());
-    ASSERT_NE(resolved, nullptr);
-    EXPECT_EQ(resolved->kernel_func, &FakeKernel);
+    const StatusOr<const KernelDescriptor*> resolved =
+            registry.Resolve(OpType::kRMSNorm, descriptor.selector);
+    ASSERT_TRUE(resolved.ok());
+    EXPECT_EQ((*resolved)->kernel_func, &FakeKernel);
 }
 
 TEST(KernelRegistry, LookupMissingKeyReturnsNullptr) {
     KernelRegistry registry;
-    const KernelDescriptor* resolved = nullptr;
+    ASSERT_TRUE(registry.Freeze().ok());
 
-    const Status status = registry.Resolve(OpType::kLinear, MakeMissingSelector(), &resolved);
-    EXPECT_EQ(status.code(), StatusCode::kNotFound);
-    EXPECT_EQ(resolved, nullptr);
+    const StatusOr<const KernelDescriptor*> resolved =
+            registry.Resolve(OpType::kLinear, MakeMissingSelector());
+    EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
+}
+
+TEST(KernelRegistry, ResolveBeforeFreezeFails) {
+    KernelRegistry registry;
+    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+
+    ASSERT_TRUE(registry.Register(descriptor).ok());
+
+    const StatusOr<const KernelDescriptor*> resolved =
+            registry.Resolve(OpType::kRMSNorm, descriptor.selector);
+    EXPECT_EQ(resolved.status().code(), StatusCode::kFailedPrecondition);
+}
+
+TEST(KernelRegistry, RegisterAfterFreezeFails) {
+    KernelRegistry registry;
+    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+
+    ASSERT_TRUE(registry.Register(descriptor).ok());
+    ASSERT_TRUE(registry.Freeze().ok());
+    EXPECT_TRUE(registry.frozen());
+
+    KernelDescriptor extra = descriptor;
+    extra.op_type = OpType::kLinear;
+    extra.name = "test::other_op";
+
+    const Status status = registry.Register(extra);
+    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
 }
 
 TEST(KernelRegistry, DuplicateRegistrationFails) {

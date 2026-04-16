@@ -16,11 +16,27 @@ namespace aethermind {
 class KernelRegistry {
 public:
     Status Register(const KernelDescriptor& descriptor);
-    Status Resolve(OpType op_type,
-                   const KernelSelector& selector,
-                   const KernelDescriptor** out) const noexcept;
+
+    StatusOr<const KernelDescriptor*> Resolve(
+            OpType op_type,
+            const KernelSelector& selector) const;
+
+    Status Freeze() noexcept;
+
+    AM_NODISCARD size_t size() const noexcept {
+        return kernels_.size();
+    }
+
+    AM_NODISCARD bool empty() const noexcept {
+        return kernels_.empty();
+    }
+
+    AM_NODISCARD bool frozen() const noexcept {
+        return frozen_;
+    }
 
 private:
+    bool frozen_ = false;
     std::vector<KernelDescriptor> kernels_{};
 };
 

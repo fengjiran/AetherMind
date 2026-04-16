@@ -23,6 +23,26 @@ AM_NODISCARD inline bool IsValidKernelDescriptor(
            desc.selector.device_type != kUndefined;
 }
 
+AM_NODISCARD inline Status ValidateKernelDescriptor(const KernelDescriptor& descriptor) noexcept {
+    if (descriptor.op_type == OpType::kUnknown) {
+        return Status::InvalidArgument("Kernel descriptor op_type cannot be kUnknown");
+    }
+
+    if (descriptor.kernel_func == nullptr) {
+        return Status::InvalidArgument("Kernel descriptor function cannot be null");
+    }
+
+    if (descriptor.name == nullptr) {
+        return Status::InvalidArgument("Kernel descriptor name cannot be null");
+    }
+
+    if (descriptor.selector.device_type == DeviceType::kUndefined) {
+        return Status::InvalidArgument("Kernel descriptor device_type cannot be kUndefined");
+    }
+
+    return Status::Ok();
+}
+
 }// namespace aethermind
 
 #endif

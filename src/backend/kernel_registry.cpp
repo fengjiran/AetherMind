@@ -1,6 +1,7 @@
 #include "aethermind/backend/kernel_registry.h"
 
-#include <algorithm>
+#include <string>
+#include <ranges>
 
 namespace aethermind {
 
@@ -15,8 +16,13 @@ bool IsDuplicateRegistration(const KernelDescriptor& lhs,
 }// namespace
 
 Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
-    if (!IsValidKernelDescriptor(descriptor)) {
-        return Status::InvalidArgument("Kernel function cannot be null");
+    if (frozen_) {
+        return Status(StatusCode::kFailedPrecondition,
+                      "Cannot register kernel after registry has been frozen");
+    }
+
+    if (auto status = ValidateKernelDescriptor(descriptor); !status.ok()) {
+        return status;
     }
 
     const auto duplicate = std::ranges::find_if(kernels_,
@@ -32,14 +38,18 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
     return Status::Ok();
 }
 
-Status KernelRegistry::Resolve(OpType op_type,
-                               const KernelSelector& selector,
-                               const KernelDescriptor** out) const noexcept {
-    if (out == nullptr) {
-        return Status::InvalidArgument("Output descriptor pointer cannot be null");
-    }
+Status KernelRegistry::Freeze() noexcept {
+    frozen_ = true;
+    return Status::Ok();
+}
 
-    *out = nullptr;
+StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(
+        OpType op_type,
+        const KernelSelector& selector) const {
+    if (!frozen_) {
+        return Status(StatusCode::kFailedPrecondition,
+                      "Cannot resolve kernel before registry has been frozen");
+    }
 
     const KernelDescriptor* best = nullptr;
     for (const KernelDescriptor& descriptor: kernels_) {
@@ -57,11 +67,13 @@ Status KernelRegistry::Resolve(OpType op_type,
     }
 
     if (best == nullptr) {
-        return Status::NotFound("No matching kernel registered");
+        return Status::NotFound(
+                "No matching kernel registered: op_type=" +
+                std::string(ToString(op_type)) +
+                ", selector=" + ToString(selector));
     }
 
-    *out = best;
-    return Status::Ok();
+    return best;
 }
 
 }// namespace aethermind

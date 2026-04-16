@@ -1,8 +1,6 @@
 #include "aethermind/backend/backend_registry.h"
 #include "aethermind/backend/backend.h"
 
-#include <format>
-
 namespace aethermind {
 
 void BackendRegistry::RegisterFactory(DeviceType type, std::unique_ptr<BackendFactory> factory) {
@@ -36,9 +34,8 @@ StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) noexcept {
 
     auto backend = factory_it->second->Create();
     if (!backend) {
-        return Status::Internal(
-                std::format("Failed to create backend for device type: {}",
-                            DeviceType2Str(type).c_str()));
+        return Status::Internal("Failed to create backend for device type: " +
+                                std::string(DeviceType2Str(type).c_str()));
     }
 
     Backend* backend_ptr = backend.get();

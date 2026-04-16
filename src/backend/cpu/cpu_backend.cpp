@@ -1,8 +1,8 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-
 #include "data_type.h"
 
 namespace aethermind {
+
 namespace {
 
 Status FakeCpuKernel() noexcept {
@@ -24,6 +24,10 @@ KernelSelector MakeDefaultCpuSelector() {
 
 CpuBackend::CpuBackend() {
     RegisterBuiltinKernels();
+    const Status freeze_status = kernel_registry_.Freeze();
+    AM_CHECK(freeze_status.ok(),
+             "Failed to freeze CPU kernel registry: {}",
+             freeze_status.ToString().c_str());
 }
 
 void CpuBackend::RegisterBuiltinKernels() {
@@ -47,12 +51,27 @@ const BackendCapabilities& CpuBackend::capabilities() const noexcept {
 
 KernelFunc CpuBackend::ResolveKernel(OpType op_type,
                                      const KernelSelector& selector) const noexcept {
-    const KernelDescriptor* descriptor = nullptr;
-    const Status status = kernel_registry_.Resolve(op_type, selector, &descriptor);
-    if (!status.ok()) {
+    const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(op_type, selector);
+    if (!descriptor.ok()) {
         return nullptr;
     }
-    return descriptor->kernel_func;
+    return (*descriptor)->kernel_func;
+}
+
+StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
+        OpType op_type,
+        const KernelSelector& selector) const noexcept {
+    const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(op_type, selector);
+    if (!descriptor.ok()) {
+        return descriptor.status();
+    }
+
+    return ResolvedKernel{
+            .op_type = op_type,
+            .fn = (*descriptor)->kernel_func,
+            .attrs = {},
+            .debug_name = (*descriptor)->name,
+    };
 }
 
 const KernelRegistry* CpuBackend::TryGetKernelRegistryForDebug() const noexcept {

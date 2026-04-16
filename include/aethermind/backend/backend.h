@@ -5,7 +5,7 @@
 #include "aethermind/backend/backend_fwd.h"
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/kernel_types.h"
-#include "aethermind/operators/op_type.h"
+#include "aethermind/backend/resolved_kernel.h"
 #include "macros.h"
 
 namespace aethermind {
@@ -16,8 +16,13 @@ public:
     AM_NODISCARD virtual DeviceType device_type() const noexcept = 0;
     AM_NODISCARD virtual const BackendCapabilities& capabilities() const noexcept = 0;
 
-    AM_NODISCARD virtual KernelFunc ResolveKernel(OpType op_type,
-                                                  const KernelSelector& selector) const noexcept = 0;
+    AM_NODISCARD virtual KernelFunc ResolveKernel(
+            OpType op_type,
+            const KernelSelector& selector) const noexcept = 0;
+
+    AM_NODISCARD virtual StatusOr<ResolvedKernel> ResolveKernelInfo(
+            OpType op_type,
+            const KernelSelector& selector) const noexcept;
 
     AM_NODISCARD virtual const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept = 0;
 };

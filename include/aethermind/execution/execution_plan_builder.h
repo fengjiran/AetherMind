@@ -3,6 +3,7 @@
 
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/execution/execution_plan.h"
+#include "aethermind/model/model_instance.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_context.h"
 #include "data_type.h"
@@ -20,6 +21,7 @@ struct ExecutionPlanNodeSpec {
     WeightFormat weight_format = WeightFormat::kPlain;
     IsaLevel isa = IsaLevel::kScalar;
     ExecPhase phase = ExecPhase::kBoth;
+    WorkspaceRequirement workspace_requirement{};
     std::span<const std::byte> attrs{};
 };
 
@@ -31,6 +33,11 @@ public:
 
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
+            const std::vector<ExecutionPlanNodeSpec>& nodes);
+
+    AM_NODISCARD static StatusOr<ExecutionPlan> Build(
+            RuntimeContext& runtime,
+            const ModelInstance& model_instance,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 };
 

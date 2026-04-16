@@ -29,6 +29,8 @@ enum class OpType : uint16_t {
 // OpType-centered dispatch mainline. Batch 1 only freezes the contract.
 AM_NODISCARD StatusOr<OpType> ToOpType(const OperatorName& op_name) noexcept;
 
+AM_NODISCARD const char* ToString(OpType op_type) noexcept;
+
 }// namespace aethermind
 
 #endif

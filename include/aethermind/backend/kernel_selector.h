@@ -28,6 +28,10 @@ enum class WeightFormat : uint8_t {
     kQuantizedInt4,
 };
 
+AM_NODISCARD const char* ToString(IsaLevel isa) noexcept;
+AM_NODISCARD const char* ToString(ExecPhase phase) noexcept;
+AM_NODISCARD const char* ToString(WeightFormat format) noexcept;
+
 AM_NODISCARD inline bool PhaseMatches(ExecPhase candidate,
                                       ExecPhase request) noexcept {
     return candidate == request || candidate == ExecPhase::kBoth;
@@ -64,6 +68,8 @@ AM_NODISCARD inline bool SelectorMatches(const KernelSelector& candidate,
            PhaseMatches(candidate.phase, request.phase) &&
            candidate.isa <= request.isa;
 }
+
+std::string ToString(const KernelSelector& selector);
 
 }// namespace aethermind
 

@@ -1,10 +1,7 @@
 //
 // Created by 赵丹 on 25-6-17.
 //
-#include "dispatch_key_set.h"
 #include "env.h"
-#include "error.h"
-#include "function_traits.h"
 
 #include <gtest/gtest.h>
 
@@ -19,6 +16,7 @@ namespace {
 
 TEST(Tensor, format) {
     std::string s1 = std::format("The answer is {}.", 42);
+    EXPECT_EQ(s1, "The answer is 42.");
 }
 
 TEST(Tensor, envs) {

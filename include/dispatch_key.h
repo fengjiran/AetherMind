@@ -5,9 +5,27 @@
 #ifndef AETHERMIND_DISPATCH_KEY_H
 #define AETHERMIND_DISPATCH_KEY_H
 
+// ============================================================================
+// FROZEN / DEPRECATED NOTICE
+// ============================================================================
+// This file is part of the legacy dispatch system and is NO LONGER the main
+// dispatch path for new operator implementations.
+//
+// New dispatch mainline (since Batch 1-3 of dispatch redesign):
+//   - OpType: operator semantic identity (include/aethermind/operators/op_type.h)
+//   - KernelSelector: capability-based matching (include/aethermind/backend/kernel_selector.h)
+//   - Backend-owned KernelRegistry with selector-based resolve
+//
+// This file is frozen and will NOT be extended. It is retained only for
+// migration compatibility during the transition from OperatorName-based
+// dispatch to OpType-centered dispatch.
+//
+// See: docs/designs/dispatch_design.md for the new mainline architecture.
+// ============================================================================
+
+#include <cstdint>
 #include <ostream>
 #include <string>
-#include <cstdint>
 
 namespace aethermind {
 
@@ -32,7 +50,7 @@ enum class BackendComponent : uint8_t {
     FORALL_BACKEND_COMPONENTS(DEFINE_BACKEND_COMPONENT, unused)
 #undef DEFINE_BACKEND_COMPONENT
 
-    EndOfBackendKeys = CUDABit
+            EndOfBackendKeys = CUDABit
 };
 
 enum class DispatchKey : uint16_t {
@@ -58,4 +76,4 @@ static_assert(
 
 }// namespace aethermind
 
-#endif//AETHERMIND_DISPATCH_KEY_H
+#endif// AETHERMIND_DISPATCH_KEY_H

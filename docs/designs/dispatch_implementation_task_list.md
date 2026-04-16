@@ -1,10 +1,10 @@
 # AetherMind Dispatch 设计执行任务清单
 
-**版本**: v1.0  
-**日期**: 2026-04-15  
+**版本**: v1.0\
+**日期**: 2026-04-15\
 **作者**: AetherMind Team
 
----
+***
 
 ## 1. 文档目的
 
@@ -17,7 +17,7 @@
 - 明确每一批的完成标准与验证重点；
 - 避免旧 `Dispatcher / DispatchKeySet` 在迁移期继续膨胀。
 
----
+***
 
 ## 2. 总体迁移目标
 
@@ -41,20 +41,20 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 - 执行期不做字符串查找 / hash dispatch / registry resolve
 - 旧 `Dispatcher / DispatchKeySet` 冻结，不再扩展
 
----
+***
 
 ## 3. 批次划分
 
 建议按 4 个 batch 推进：
 
-| Batch | 覆盖阶段 | 核心目标 |
-|------|----------|----------|
-| **Batch 1** | Phase A + Phase B | 冻结边界，落最小新类型 |
+| Batch       | 覆盖阶段              | 核心目标                                                 |
+| ----------- | ----------------- | ---------------------------------------------------- |
+| **Batch 1** | Phase A + Phase B | 冻结边界，落最小新类型                                          |
 | **Batch 2** | Phase C + Phase D | selector-based `KernelRegistry` + `CpuBackend` 注册/解析 |
-| **Batch 3** | Phase E | 计划构建期 resolve 与 `ResolvedKernel` 冻结 |
-| **Batch 4** | Phase F + Phase G | Executor direct call + 旧 dispatch 体系冻结 |
+| **Batch 3** | Phase E           | 计划构建期 resolve 与 `ResolvedKernel` 冻结                  |
+| **Batch 4** | Phase F + Phase G | Executor direct call + 旧 dispatch 体系冻结               |
 
----
+***
 
 ## 4. Batch 1：冻结边界 + 落最小新类型
 
@@ -90,7 +90,7 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 - 不破坏现有 Batch A / Batch B 测试
 - 文档口径统一为 backend-owned、plan-build-time dispatch
 
----
+***
 
 ## 5. Batch 2：selector-based KernelRegistry + CpuBackend 收敛
 
@@ -129,7 +129,7 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 - `priority` 只在“多个可用实现”中排序
 - `CpuBackend` 使用 backend-owned registry，不引入全局 singleton
 
----
+***
 
 ## 6. Batch 3：计划构建期 resolve 与 ResolvedKernel 冻结
 
@@ -166,7 +166,7 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 - attrs 生命周期覆盖整个 execution plan
 - 执行节点不再依赖 runtime lookup
 
----
+***
 
 ## 7. Batch 4：Executor direct call + 旧体系冻结
 
@@ -202,7 +202,7 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 - 无 hot-path registry access
 - 新功能全部走新主线
 
----
+***
 
 ## 8. 风险控制
 
@@ -221,8 +221,9 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 - [ ] attrs 生命周期明确
 - [ ] resolve 只发生在 plan-build time
 
----
+***
 
 ## 9. 一句话执行策略
 
 > **先立新主线，再迁移 resolve，最后冻结旧 dispatcher。**
+

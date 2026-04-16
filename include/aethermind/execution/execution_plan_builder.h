@@ -3,9 +3,9 @@
 
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/execution/execution_plan.h"
+#include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_context.h"
 #include "data_type.h"
-#include "operator_name.h"
 
 #include <span>
 #include <vector>
@@ -13,7 +13,7 @@
 namespace aethermind {
 
 struct ExecutionPlanNodeSpec {
-    OperatorName op_name{};
+    OpType op_type = OpType::kUnknown;
     DeviceType device_type = DeviceType::kCPU;
     DataType activation_dtype{};
     DataType weight_dtype{};

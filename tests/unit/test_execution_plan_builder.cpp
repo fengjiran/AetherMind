@@ -15,7 +15,7 @@ struct TestAttrs {
 
 ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {}) {
     return ExecutionPlanNodeSpec{
-            .op_name = OperatorName("aethermind::rms_norm", ""),
+            .op_type = OpType::kRMSNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -26,7 +26,7 @@ ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {})
     };
 }
 
-TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOperatorNameMapping) {
+TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
     CpuBackend backend;
     TestAttrs attrs{.epsilon = 42};
     const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
@@ -67,20 +67,20 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     EXPECT_STREQ(step.kernel.debug_name, "test::fake_cpu_kernel");
 }
 
-TEST(ExecutionPlanBuilder, ResolveKernelForNodeFailsForUnmappedOperatorName) {
+TEST(ExecutionPlanBuilder, ResolveKernelForNodeRejectsUnknownOpType) {
     CpuBackend backend;
 
     const StatusOr<ResolvedKernel> resolved =
             ExecutionPlanBuilder::ResolveKernelForNode(backend,
                                                        ExecutionPlanNodeSpec{
-                                                               .op_name = OperatorName("aethermind::unknown_op", ""),
-                                                               .device_type = DeviceType::kCPU,
-                                                               .activation_dtype = DataType::Float32(),
-                                                               .weight_dtype = DataType::Float32(),
-                                                       });
+                                                                .op_type = OpType::kUnknown,
+                                                                .device_type = DeviceType::kCPU,
+                                                                .activation_dtype = DataType::Float32(),
+                                                                .weight_dtype = DataType::Float32(),
+                                                        });
 
     EXPECT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
 }
 
 }// namespace

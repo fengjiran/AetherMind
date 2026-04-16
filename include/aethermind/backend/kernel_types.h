@@ -5,8 +5,6 @@
 
 namespace aethermind {
 
-struct KernelKey;
-
 // Phase 3 minimal placeholder.
 // Will be widened in later phases to include invocation/context/workspace.
 using KernelFunc = Status (*)() noexcept;

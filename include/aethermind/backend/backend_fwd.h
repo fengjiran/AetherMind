@@ -17,7 +17,6 @@ enum class WeightFormat : uint8_t;
 
 struct BackendCapabilities;
 struct KernelDescriptor;
-struct KernelKey;
 struct KernelInvocation;
 struct KernelSelector;
 struct ResolvedKernel;

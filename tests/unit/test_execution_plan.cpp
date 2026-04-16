@@ -20,8 +20,7 @@ TEST(ExecutionPlan, AddStepCopiesAttrsIntoPlanOwnedStorage) {
     TestAttrs attrs{.epsilon = 7, .axis = 3};
     const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
 
-    ASSERT_TRUE(plan.AddStep(OperatorName("aethermind::rms_norm", ""),
-                             ResolvedKernel{
+    ASSERT_TRUE(plan.AddStep(ResolvedKernel{
                                      .op_type = OpType::kRMSNorm,
                                      .fn = &FakeKernel,
                                      .attrs = attrs_bytes,
@@ -44,13 +43,12 @@ TEST(ExecutionPlan, AddStepCopiesAttrsIntoPlanOwnedStorage) {
 TEST(ExecutionPlan, AddStepAllowsEmptyAttrSpan) {
     ExecutionPlan plan;
 
-    const Status status = plan.AddStep(OperatorName("aethermind::rms_norm", ""),
-                                       ResolvedKernel{
-                                               .op_type = OpType::kRMSNorm,
-                                               .fn = &FakeKernel,
-                                               .attrs = {},
-                                               .debug_name = "test::fake_kernel",
-                                       });
+    const Status status = plan.AddStep(ResolvedKernel{
+            .op_type = OpType::kRMSNorm,
+            .fn = &FakeKernel,
+            .attrs = {},
+            .debug_name = "test::fake_kernel",
+    });
 
     EXPECT_TRUE(status.ok());
     ASSERT_EQ(plan.size(), 1U);

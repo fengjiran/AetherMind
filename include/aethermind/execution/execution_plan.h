@@ -3,7 +3,6 @@
 
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/status.h"
-#include "operator_name.h"
 
 #include <cstddef>
 #include <vector>
@@ -11,14 +10,12 @@
 namespace aethermind {
 
 struct ExecutionStep {
-    OperatorName op_name{};
     ResolvedKernel kernel{};
 };
 
 class ExecutionPlan {
 public:
-    Status AddStep(const OperatorName& op_name,
-                   const ResolvedKernel& kernel);
+    Status AddStep(const ResolvedKernel& kernel);
 
     AM_NODISCARD const std::vector<ExecutionStep>& steps() const noexcept;
     AM_NODISCARD size_t size() const noexcept;

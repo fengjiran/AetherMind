@@ -1,24 +1,24 @@
 #include "aethermind/execution/execution_plan_builder.h"
-#include "aethermind/backend/dispatcher_bridge.h"
 
 namespace aethermind {
 
 StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
         const Backend& backend,
         const ExecutionPlanNodeSpec& node) noexcept {
-    const StatusOr<OpType> op_type = ToOpType(node.op_name);
-    if (!op_type.ok()) {
-        return op_type.status();
+    if (node.op_type == OpType::kUnknown) {
+        return Status::InvalidArgument("ExecutionPlanNodeSpec.op_type cannot be kUnknown");
     }
 
-    const KernelSelector selector = MakeKernelSelector(node.device_type,
-                                                       node.activation_dtype,
-                                                       node.weight_dtype,
-                                                       node.weight_format,
-                                                       node.isa,
-                                                       node.phase);
+    const KernelSelector selector{
+            .device_type = node.device_type,
+            .activation_dtype = node.activation_dtype,
+            .weight_dtype = node.weight_dtype,
+            .weight_format = node.weight_format,
+            .isa = node.isa,
+            .phase = node.phase,
+    };
 
-    const StatusOr<ResolvedKernel> resolved = backend.ResolveKernelInfo(*op_type, selector);
+    const StatusOr<ResolvedKernel> resolved = backend.ResolveKernelInfo(node.op_type, selector);
     if (!resolved.ok()) {
         return resolved.status();
     }
@@ -43,7 +43,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
             return resolved.status();
         }
 
-        if (const Status status = plan.AddStep(node.op_name, resolved.value()); !status.ok()) {
+        if (const Status status = plan.AddStep(resolved.value()); !status.ok()) {
             return status;
         }
     }

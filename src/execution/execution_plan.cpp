@@ -4,8 +4,7 @@
 
 namespace aethermind {
 
-Status ExecutionPlan::AddStep(const OperatorName& op_name,
-                              const ResolvedKernel& kernel) {
+Status ExecutionPlan::AddStep(const ResolvedKernel& kernel) {
     if (kernel.fn == nullptr) {
         return Status::InvalidArgument("Resolved kernel function cannot be null");
     }
@@ -19,7 +18,6 @@ Status ExecutionPlan::AddStep(const OperatorName& op_name,
     }
 
     steps_.push_back(ExecutionStep{
-            .op_name = op_name,
             .kernel = stored_kernel,
     });
     return Status::Ok();

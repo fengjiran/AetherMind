@@ -1,8 +1,28 @@
 #include "aethermind/execution/layer_runner.h"
 
+#include "aethermind/backend/op_kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 
 namespace aethermind {
+namespace {
+
+OpKernelContext BuildKernelContext(const ExecutionStep& step,
+                                   RuntimeBindingContext& bindings) noexcept {
+    const DeviceType device_type = step.invocation.selector.device_type != DeviceType::kUndefined
+                                           ? step.invocation.selector.device_type
+                                           : DeviceType::kCPU;
+
+    return OpKernelContext{
+            .device = Device(device_type),
+            .stream = nullptr,
+            .workspace = bindings.GetWorkspaceArena(),
+            .tracing = nullptr,
+            .caps = nullptr,
+            .backend_resources = {},
+    };
+}
+
+}// namespace
 
 Status LayerRunner::Run(const ExecutionPlan& plan,
                         RuntimeBindingContext& bindings) noexcept {
@@ -26,7 +46,8 @@ Status LayerRunner::RunStep(const ExecutionStep& step,
         return workspace_binding.status();
     }
 
-    return step.fn();
+    const OpKernelContext op_ctx = BuildKernelContext(step, bindings);
+    return step.fn(step.invocation, op_ctx, workspace_binding.value());
 }
 
 }// namespace aethermind

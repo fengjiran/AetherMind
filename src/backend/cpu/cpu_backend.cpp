@@ -1,11 +1,25 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/kernel_invocation.h"
+#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/workspace_types.h"
 #include "data_type.h"
 
 namespace aethermind {
 
 namespace {
 
-Status FakeCpuKernel() noexcept {
+Status FakeCpuKernel(const KernelInvocation& invocation,
+                     const OpKernelContext& op_ctx,
+                     const WorkspaceBinding& workspace) noexcept {
+    if (invocation.op_type != OpType::kRMSNorm) {
+        return Status::InvalidArgument("CPU fake kernel expected RMSNorm invocation");
+    }
+    if (!op_ctx.device.is_cpu()) {
+        return Status::InvalidArgument("CPU fake kernel expected CPU OpKernelContext device");
+    }
+    if (workspace.size == 0 && workspace.data != nullptr) {
+        return Status::InvalidArgument("WorkspaceBinding with zero size must not carry data");
+    }
     return Status::Ok();
 }
 

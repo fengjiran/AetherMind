@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/op_kernel_context.h"
 #include "aethermind/backend/workspace_types.h"
@@ -7,21 +8,6 @@
 namespace aethermind {
 
 namespace {
-
-Status FakeCpuKernel(const KernelInvocation& invocation,
-                     const OpKernelContext& op_ctx,
-                     const WorkspaceBinding& workspace) noexcept {
-    if (invocation.op_type != OpType::kRMSNorm) {
-        return Status::InvalidArgument("CPU fake kernel expected RMSNorm invocation");
-    }
-    if (!op_ctx.device.is_cpu()) {
-        return Status::InvalidArgument("CPU fake kernel expected CPU OpKernelContext device");
-    }
-    if (workspace.size == 0 && workspace.data != nullptr) {
-        return Status::InvalidArgument("WorkspaceBinding with zero size must not carry data");
-    }
-    return Status::Ok();
-}
 
 KernelSelector MakeDefaultCpuSelector() {
     return KernelSelector{
@@ -48,8 +34,8 @@ void CpuBackend::RegisterBuiltinKernels() {
     const Status status = kernel_registry_.Register(KernelDescriptor{
             .op_type = OpType::kRMSNorm,
             .selector = MakeDefaultCpuSelector(),
-            .kernel_func = &FakeCpuKernel,
-            .name = "test::fake_cpu_kernel",
+            .kernel_func = &CpuRmsNormKernel,
+            .name = "cpu::rmsnorm_f32_scalar",
             .priority = 10,
     });
     AM_CHECK(status.ok(), "Failed to register builtin CPU kernels: {}", status.ToString().c_str());

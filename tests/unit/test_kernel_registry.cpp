@@ -1,4 +1,6 @@
 #include "aethermind/backend/kernel_registry.h"
+#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/workspace_types.h"
 
 #include "data_type.h"
 
@@ -8,7 +10,9 @@ using namespace aethermind;
 
 namespace {
 
-Status FakeKernel() noexcept {
+Status FakeKernel(const KernelInvocation&,
+                  const OpKernelContext&,
+                  const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
 

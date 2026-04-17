@@ -1,5 +1,7 @@
 #include "../../include/aethermind/execution/execution_plan.h"
 
+#include "aethermind/backend/op_kernel_context.h"
+
 #include <gtest/gtest.h>
 #include <span>
 
@@ -11,7 +13,9 @@ struct TestAttrs {
     int axis;
 };
 
-Status FakeKernel() noexcept {
+Status FakeKernel(const KernelInvocation&,
+                  const OpKernelContext&,
+                  const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
 
@@ -44,6 +48,7 @@ TEST(ExecutionPlan, AddStepCopiesAttrsIntoPlanOwnedStorage) {
     ASSERT_NE(stored_attrs, nullptr);
     EXPECT_NE(stored_attrs, &attrs);
     EXPECT_EQ(step.op_type, OpType::kRMSNorm);
+    EXPECT_EQ(step.invocation.op_type, OpType::kUnknown);
     EXPECT_EQ(step.packed_params, &packed_params);
     EXPECT_EQ(step.workspace_requirement.bytes, 128U);
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);

@@ -1,4 +1,7 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/kernel_invocation.h"
+#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/workspace_types.h"
 
 #include "data_type.h"
 
@@ -43,7 +46,10 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     const KernelFunc fn = backend.ResolveKernel(OpType::kRMSNorm, MakeCpuSelector());
     ASSERT_NE(fn, nullptr);
 
-    const Status status = fn();
+    const Status status = fn(KernelInvocation{.op_type = OpType::kRMSNorm,
+                                              .selector = MakeCpuSelector()},
+                             OpKernelContext{.device = Device::CPU()},
+                             WorkspaceBinding{});
     EXPECT_TRUE(status.ok());
 }
 

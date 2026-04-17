@@ -1,8 +1,9 @@
 #include "../../include/aethermind/execution/execution_plan_builder.h"
 
-#include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/backend.h"
+#include "aethermind/backend/backend_factory.h"
+#include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/op_kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/model_instance.h"
@@ -61,7 +62,9 @@ private:
     Buffer storage_{};
 };
 
-Status PackedTestKernel() noexcept {
+Status PackedTestKernel(const KernelInvocation&,
+                        const OpKernelContext&,
+                        const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
 
@@ -166,6 +169,8 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(step.attrs.data());
     ASSERT_NE(stored_attrs, nullptr);
     EXPECT_EQ(step.op_type, OpType::kRMSNorm);
+    EXPECT_EQ(step.invocation.op_type, OpType::kRMSNorm);
+    EXPECT_EQ(step.invocation.selector.device_type, DeviceType::kCPU);
     EXPECT_EQ(step.packed_params, nullptr);
     EXPECT_EQ(step.workspace_requirement.bytes, 0U);
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
@@ -224,9 +229,9 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedParamsFromModelInstanceSidecar) {
     };
 
     ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<TestPackedWeights>(
-                                          OpType::kRMSNorm,
-                                          selector,
-                                          MakeTestBuffer(128)))
+                                                          OpType::kRMSNorm,
+                                                          selector,
+                                                          MakeTestBuffer(128)))
                         .ok());
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -276,11 +281,11 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeRejectsUnknownOpType) {
     const StatusOr<ResolvedKernel> resolved =
             ExecutionPlanBuilder::ResolveKernelForNode(backend,
                                                        ExecutionPlanNodeSpec{
-                                                                .op_type = OpType::kUnknown,
-                                                                .device_type = DeviceType::kCPU,
-                                                                .activation_dtype = DataType::Float32(),
-                                                                .weight_dtype = DataType::Float32(),
-                                                        });
+                                                               .op_type = OpType::kUnknown,
+                                                               .device_type = DeviceType::kCPU,
+                                                               .activation_dtype = DataType::Float32(),
+                                                               .weight_dtype = DataType::Float32(),
+                                                       });
 
     EXPECT_FALSE(resolved.ok());
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);

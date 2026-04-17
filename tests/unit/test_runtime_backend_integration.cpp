@@ -1,5 +1,8 @@
 #include "aethermind/backend/backend.h"
+#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/kernel_selector.h"
+#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/workspace_types.h"
 #include "aethermind/execution/kv_cache_manager.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_builder.h"

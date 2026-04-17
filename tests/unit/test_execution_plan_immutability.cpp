@@ -1,4 +1,5 @@
 #include "aethermind/backend/backend_factory.h"
+#include "aethermind/backend/op_kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -29,7 +30,9 @@ Buffer MakeTestBuffer(size_t nbytes, size_t alignment = 64) {
     return Buffer{nbytes, MemoryHandle(ptr, nullptr, &FreeTestBuffer, Device::CPU(), alignment)};
 }
 
-Status ImmutableKernel() noexcept {
+Status ImmutableKernel(const KernelInvocation&,
+                       const OpKernelContext&,
+                       const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
 

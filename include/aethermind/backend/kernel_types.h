@@ -5,9 +5,13 @@
 
 namespace aethermind {
 
-// Phase 3 minimal placeholder.
-// Will be widened in later phases to include invocation/context/workspace.
-using KernelFunc = Status (*)() noexcept;
+struct KernelInvocation;
+struct OpKernelContext;
+struct WorkspaceBinding;
+
+using KernelFunc = Status (*)(const KernelInvocation&,
+                              const OpKernelContext&,
+                              const WorkspaceBinding&) noexcept;
 
 }// namespace aethermind
 

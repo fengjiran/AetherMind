@@ -22,7 +22,7 @@ public:
 
     AM_NODISCARD virtual StatusOr<ResolvedKernel> ResolveKernelInfo(
             OpType op_type,
-            const KernelSelector& selector) const noexcept;
+            const KernelSelector& selector) const noexcept = 0;
 
     AM_NODISCARD virtual const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept = 0;
 };

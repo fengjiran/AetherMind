@@ -35,8 +35,9 @@ namespace aethermind {
 ///
 /// Thread-safety: Not thread-safe. External synchronization required if shared.
 ///
-/// Rank-0 represents a scalar-like empty shape; numel() returns 1.
-/// Rank is capped at kMaxRank as a Phase 1 implementation constraint.
+/// Rank-0 is not a valid Tensor metadata state in Phase 1.
+/// A valid Tensor must have rank >= 1.
+/// numel() returns 0 when size_ == 0.
 ///
 /// Warning: mutable_shape_data()/mutable_stride_data() expose raw mutable storage.
 /// Callers are responsible for preserving invariants when using these methods.
@@ -153,7 +154,7 @@ public:
 
     /// Returns the i-th dimension size.
     /// \pre 0 <= i < size()
-    AM_NODISCARD int64_t shape(int32_t i) const noexcept {
+    AM_NODISCARD int64_t dim(int32_t i) const noexcept {
         AM_DCHECK(i >= 0 && i < size_);
         return shape_[i];
     }
@@ -187,7 +188,7 @@ public:
     /// Dimensions with shape[i] == 1 are ignored (broadcasting-friendly).
     AM_NODISCARD bool is_contiguous() const noexcept {
         if (size_ == 0) {
-            return true;
+            return false;
         }
 
         int64_t expected_stride = 1;

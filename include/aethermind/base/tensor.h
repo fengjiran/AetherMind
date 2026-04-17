@@ -20,13 +20,17 @@ class Tensor {
 public:
     Tensor() noexcept = default;
 
-    Tensor(Buffer buffer, size_t byte_offset, const DataType& dtype, const ShapeAndStride& shape_and_strides)
-        : buffer_(std::move(buffer)), byte_offset_(byte_offset), dtype_(dtype), shape_and_strides_(shape_and_strides) {
+    Tensor(Buffer buffer, size_t byte_offset, const DataType& dtype,
+           const ShapeAndStride& shape_and_strides)
+        : buffer_(std::move(buffer)), byte_offset_(byte_offset), dtype_(dtype),
+          shape_and_strides_(shape_and_strides) {
         validate();
     }
 
-    Tensor(Buffer buffer, size_t byte_offset, const DataType& dtype, IntArrayView shape, IntArrayView strides)
-        : buffer_(std::move(buffer)), byte_offset_(byte_offset), dtype_(dtype), shape_and_strides_(shape, strides) {
+    Tensor(Buffer buffer, size_t byte_offset, const DataType& dtype,
+           IntArrayView shape, IntArrayView strides)
+        : buffer_(std::move(buffer)), byte_offset_(byte_offset), dtype_(dtype),
+          shape_and_strides_(shape, strides) {
         validate();
     }
 
@@ -84,8 +88,8 @@ public:
         return shape_and_strides_.strides();
     }
 
-    AM_NODISCARD int64_t shape(int32_t i) const noexcept {
-        return shape_and_strides_.shape(i);
+    AM_NODISCARD int64_t dim(int32_t i) const noexcept {
+        return shape_and_strides_.dim(i);
     }
 
     AM_NODISCARD int64_t stride(int32_t i) const noexcept {
@@ -128,15 +132,15 @@ public:
 
     AM_NODISCARD bool storage_range_is_valid() const noexcept;
 
-    AM_NODISCARD Tensor slice(int32_t dim, int64_t start, int64_t end, int64_t step) const noexcept;
+    AM_NODISCARD Tensor slice(int32_t dim_idx, int64_t start, int64_t end, int64_t step) const noexcept;
 
-    AM_NODISCARD Tensor slice(int32_t dim, int64_t start, int64_t end) const noexcept {
-        return slice(dim, start, end, 1);
+    AM_NODISCARD Tensor slice(int32_t dim_idx, int64_t start, int64_t end) const noexcept {
+        return slice(dim_idx, start, end, 1);
     }
 
-    AM_NODISCARD Tensor narrow(int32_t dim, int64_t start, int64_t length) const noexcept {
+    AM_NODISCARD Tensor narrow(int32_t dim_idx, int64_t start, int64_t length) const noexcept {
         AM_CHECK(length >= 0);
-        return slice(dim, start, start + length);
+        return slice(dim_idx, start, start + length);
     }
 
 private:

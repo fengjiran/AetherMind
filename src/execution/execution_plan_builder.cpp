@@ -70,9 +70,18 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
             return packed_params.status();
         }
 
-        if (const Status status = plan.AddStep(resolved.value(),
-                                               workspace_requirements[index],
-                                               packed_params.value());
+        if (const Status status = plan.AddStep(ExecutionStep{
+                    .op_type = resolved->op_type,
+                    .invocation = {
+                            .op_type = node.op_type,
+                            .selector = MakeSelectorForNode(node),
+                    },
+                    .fn = resolved->fn,
+                    .packed_params = packed_params.value(),
+                    .workspace_requirement = workspace_requirements[index],
+                    .attrs = resolved->attrs,
+                    .debug_name = resolved->debug_name,
+            });
             !status.ok()) {
             return status;
         }

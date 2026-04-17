@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/op_kernel_context.h"
 #include "aethermind/backend/workspace_types.h"
@@ -46,11 +47,27 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     const KernelFunc fn = backend.ResolveKernel(OpType::kRMSNorm, MakeCpuSelector());
     ASSERT_NE(fn, nullptr);
 
+    const float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    const float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+    float output[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    const CpuRmsNormParams params{
+            .Input = input,
+            .Weight = weight,
+            .Output = output,
+            .HiddenSize = 4,
+    };
+    const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
+
     const Status status = fn(KernelInvocation{.op_type = OpType::kRMSNorm,
                                               .selector = MakeCpuSelector()},
-                             OpKernelContext{.device = Device::CPU()},
+                             OpKernelContext{
+                                     .device = Device::CPU(),
+                                     .packed_params = &params,
+                                     .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
+                             },
                              WorkspaceBinding{});
-    EXPECT_TRUE(status.ok());
+    EXPECT_TRUE(status.ok()) << status.ToString();
+    EXPECT_NEAR(output[0], 0.365148, 1e-5);
 }
 
 }// namespace

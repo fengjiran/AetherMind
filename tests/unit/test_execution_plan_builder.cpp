@@ -146,7 +146,7 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
     ASSERT_NE(resolved->fn, nullptr);
     EXPECT_EQ(resolved->attrs.data(), attrs_bytes.data());
     EXPECT_EQ(resolved->attrs.size(), sizeof(attrs));
-    EXPECT_STREQ(resolved->debug_name, "test::fake_cpu_kernel");
+    EXPECT_STREQ(resolved->debug_name, "cpu::rmsnorm_f32_scalar");
 }
 
 TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
@@ -176,7 +176,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
     EXPECT_EQ(step.workspace_requirement.offset, 0U);
     EXPECT_EQ(stored_attrs->epsilon, 11);
-    EXPECT_STREQ(step.debug_name, "test::fake_cpu_kernel");
+    EXPECT_STREQ(step.debug_name, "cpu::rmsnorm_f32_scalar");
 }
 
 TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {

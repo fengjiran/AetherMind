@@ -18,6 +18,9 @@ OpKernelContext BuildKernelContext(const ExecutionStep& step,
             .workspace = bindings.GetWorkspaceArena(),
             .tracing = nullptr,
             .caps = nullptr,
+            .packed_params = step.packed_params,
+            .attrs = step.attrs,
+            .debug_name = step.debug_name,
             .backend_resources = {},
     };
 }

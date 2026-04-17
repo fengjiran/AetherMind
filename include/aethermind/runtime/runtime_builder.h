@@ -1,6 +1,7 @@
 #ifndef AETHERMIND_RUNTIME_RUNTIME_BUILDER_H
 #define AETHERMIND_RUNTIME_RUNTIME_BUILDER_H
 
+#include "aethermind/execution/kv_cache_manager.h"
 #include "device.h"
 #include "runtime_context.h"
 #include "runtime_options.h"
@@ -41,6 +42,7 @@ private:
 
     AllocatorRegistry BuildAllocatorRegistry();
     BackendRegistry BuildBackendRegistry();
+    KVCacheManager BuildKVCacheManager();
 };
 
 

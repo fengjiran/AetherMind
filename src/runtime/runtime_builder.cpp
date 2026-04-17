@@ -15,8 +15,10 @@ RuntimeBuilder& RuntimeBuilder::WithOptions(const RuntimeOptions& options) {
 RuntimeContext RuntimeBuilder::Build() {
     auto allocator_registry = BuildAllocatorRegistry();
     auto backend_registry = BuildBackendRegistry();
+    auto kv_cache_manager = BuildKVCacheManager();
     return RuntimeContext(std::move(allocator_registry),
-                          std::move(backend_registry));
+                          std::move(backend_registry),
+                          std::move(kv_cache_manager));
 }
 
 RuntimeBuilder& RuntimeBuilder::RegisterCustomAllocatorProvider(
@@ -81,6 +83,25 @@ BackendRegistry RuntimeBuilder::BuildBackendRegistry() {
     pending_backend_factories_.clear();
 
     return registry;
+}
+
+KVCacheManager RuntimeBuilder::BuildKVCacheManager() {
+    KVCacheManager manager;
+    const KVCacheRuntimeOptions& options = options_.kv_cache;
+    if (!options.enable_manager) {
+        return manager;
+    }
+
+    const Status status = manager.Init(options.num_layers,
+                                       options.num_kv_heads,
+                                       options.max_tokens,
+                                       options.head_dim,
+                                       options.kv_dtype,
+                                       options.alignment);
+    AM_CHECK(status.ok(),
+             "Failed to initialize runtime KVCacheManager: {}",
+             status.ToString().c_str());
+    return manager;
 }
 
 }// namespace aethermind

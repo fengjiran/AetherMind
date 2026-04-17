@@ -1,5 +1,6 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_selector.h"
+#include "aethermind/execution/kv_cache_manager.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/runtime_context.h"
@@ -98,6 +99,38 @@ TEST(RuntimeBackendIntegration, CustomCpuFactoryOverridesDefault) {
     Backend* backend = backend_or.value();
     ASSERT_NE(backend, nullptr);
     EXPECT_NE(dynamic_cast<MockBackend*>(backend), nullptr);
+}
+
+TEST(RuntimeBackendIntegration, KVCacheManagerIsAbsentByDefault) {
+    RuntimeBuilder builder;
+    RuntimeContext context = builder.Build();
+
+    EXPECT_EQ(context.GetKVCacheManager(), nullptr);
+}
+
+TEST(RuntimeBackendIntegration, KVCacheManagerCanBeBuiltFromRuntimeOptions) {
+    RuntimeOptions options;
+    options.kv_cache.enable_manager = true;
+    options.kv_cache.num_layers = 2;
+    options.kv_cache.num_kv_heads = 4;
+    options.kv_cache.max_tokens = 32;
+    options.kv_cache.head_dim = 16;
+    options.kv_cache.kv_dtype = DataType(DLDataTypeCode::kFloat, 16, 1);
+    options.kv_cache.alignment = 64;
+
+    RuntimeBuilder builder;
+    builder.WithOptions(options);
+    RuntimeContext context = builder.Build();
+
+    KVCacheManager* manager = context.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    EXPECT_TRUE(manager->is_initialized());
+    EXPECT_EQ(manager->capacity_tokens(), 32U);
+
+    const StatusOr<KVCacheView> view = manager->ReserveForSession(8, 8);
+    ASSERT_TRUE(view.ok());
+    EXPECT_EQ(view->current_pos(), 8U);
+    EXPECT_EQ(view->token_capacity(), 16U);
 }
 
 }// namespace

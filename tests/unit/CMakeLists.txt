@@ -5,6 +5,7 @@ file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
         ${PROJECT_SOURCE_DIR}/tests/unit/*.cpp
 )
 
+find_package(GTest REQUIRED)
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})
 
 #target_include_directories(${TEST_TARGET}
@@ -17,8 +18,6 @@ target_link_libraries(${TEST_TARGET} PRIVATE
         ${PROJECT_NAME}
         GTest::gtest_main
 )
-
-find_package(GTest REQUIRED)
 
 if (BUILD_WITH_TORCH)
     message(STATUS "Setting C++ macro BUILD_WITH_TORCH - 1")

@@ -2,6 +2,7 @@
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
+#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
@@ -135,7 +136,8 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     EXPECT_EQ(counters->resolve_kernel_calls(), 0);
     EXPECT_EQ(counters->kernel_invocations(), 0);
 
-    const Status status = Executor::Execute(*plan);
+    RuntimeBindingContext bindings;
+    const Status status = Executor::Execute(*plan, bindings);
 
     g_resolve_counters = nullptr;
     ASSERT_TRUE(status.ok());

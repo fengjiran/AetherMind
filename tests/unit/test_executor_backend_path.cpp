@@ -1,4 +1,6 @@
+#include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/execution/executor.h"
+#include "aethermind/execution/runtime_binding_context.h"
 
 #include <gtest/gtest.h>
 
@@ -30,6 +32,9 @@ Status FailingKernel() noexcept {
 TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     ExecutionPlan plan;
     std::vector<int> execution_order;
+    alignas(64) std::byte workspace[256]{};
+    CpuWorkspaceArena arena(workspace, sizeof(workspace));
+    RuntimeBindingContext bindings(&arena);
     g_execution_order = &execution_order;
 
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
@@ -55,7 +60,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
                              })
                         .ok());
 
-    const Status status = Executor::Execute(plan);
+    const Status status = Executor::Execute(plan, bindings);
 
     g_execution_order = nullptr;
     ASSERT_TRUE(status.ok());
@@ -64,6 +69,9 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
 
 TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
     ExecutionPlan plan;
+    alignas(32) std::byte workspace[64]{};
+    CpuWorkspaceArena arena(workspace, sizeof(workspace));
+    RuntimeBindingContext bindings(&arena);
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
                                      .op_type = OpType::kRMSNorm,
                                      .fn = &FailingKernel,
@@ -76,9 +84,30 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
                              })
                         .ok());
 
-    const Status status = Executor::Execute(plan);
+    const Status status = Executor::Execute(plan, bindings);
 
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
+    ExecutionPlan plan;
+    RuntimeBindingContext bindings;
+
+    ASSERT_TRUE(plan.AddStep(ExecutionStep{
+                                     .op_type = OpType::kRMSNorm,
+                                     .fn = &FirstKernel,
+                                     .workspace_requirement = {
+                                             .bytes = 32,
+                                             .alignment = 32,
+                                             .offset = 0,
+                                     },
+                                     .debug_name = "test::workspace_required_kernel",
+                             })
+                        .ok());
+
+    const Status status = Executor::Execute(plan, bindings);
+
+    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
 }
 
 }// namespace

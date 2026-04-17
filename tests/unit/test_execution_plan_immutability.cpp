@@ -3,6 +3,7 @@
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
+#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -192,10 +193,10 @@ TEST(ExecutionPlanImmutability, PackedParamsLifetimeManagedByModelInstance) {
 
     ModelInstance model_instance;
     ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<ImmutablePackedWeights>(
-                                          OpType::kRMSNorm,
-                                          selector,
-                                          MakeTestBuffer(256),
-                                          &packed_destroyed))
+                                                          OpType::kRMSNorm,
+                                                          selector,
+                                                          MakeTestBuffer(256),
+                                                          &packed_destroyed))
                         .ok());
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -248,7 +249,8 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     const OpType original_op_type = plan->steps().front().op_type;
     const KernelFunc original_fn = plan->steps().front().fn;
 
-    const Status status = Executor::Execute(*plan);
+    RuntimeBindingContext bindings;
+    const Status status = Executor::Execute(*plan, bindings);
 
     ASSERT_TRUE(status.ok());
 
@@ -281,7 +283,7 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
 
     EXPECT_GT(step.workspace_requirement.alignment, 0U);
     EXPECT_TRUE((step.workspace_requirement.alignment &
-                (step.workspace_requirement.alignment - 1)) == 0);
+                 (step.workspace_requirement.alignment - 1)) == 0);
 }
 
 }// namespace

@@ -79,5 +79,20 @@ TEST(CpuWeightPrepacker, PackRejectsNonPackedWeightFormatRequests) {
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(CpuWeightPrepacker, PackAcceptsLogicalWeightTensorView) {
+    CpuWeightPrepacker prepacker;
+    const Tensor logical_weight = MakeLogicalWeightTensor(2, 4);
+    const KernelSelector selector = MakePackedCpuSelector();
+
+    const StatusOr<std::unique_ptr<PackedWeights>> packed =
+            prepacker.Pack(OpType::kLinear, logical_weight.view(), selector);
+
+    ASSERT_TRUE(packed.ok());
+    ASSERT_NE(*packed, nullptr);
+    EXPECT_EQ((*packed)->op_type(), OpType::kLinear);
+    EXPECT_EQ((*packed)->selector(), selector);
+    EXPECT_EQ((*packed)->storage().nbytes(), logical_weight.logical_nbytes());
+}
+
 }// namespace
 }// namespace aethermind

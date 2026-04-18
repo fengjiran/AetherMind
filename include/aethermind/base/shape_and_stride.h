@@ -12,16 +12,12 @@
 #ifndef AETHERMIND_BASE_SHAPE_AND_STRIDE_H
 #define AETHERMIND_BASE_SHAPE_AND_STRIDE_H
 
-#include "aethermind/utils/overflow_check.h"
 #include "container/array_view.h"
 #include "macros.h"
 #include "utils/logging.h"
 
 #include <algorithm>
 #include <array>
-#include <cstddef>
-#include <cstdint>
-#include <limits>
 
 namespace aethermind {
 
@@ -59,59 +55,14 @@ public:
     /// \pre shape.size() <= kMaxRank
     /// \pre shape[i] >= 0 for all i
     /// \post Unused slots are zero-initialized
-    void set(IntArrayView shape, IntArrayView strides) {
-        AM_CHECK(shape.size() == strides.size(), "shape/strides size mismatch");
-        AM_CHECK(shape.size() <= static_cast<size_t>(kMaxRank), "rank exceeds kMaxRank");
-
-        auto new_size = static_cast<int32_t>(shape.size());
-        for (int32_t i = 0; i < new_size; ++i) {
-            AM_CHECK(shape[i] >= 0, "shape dimensions must be non-negative");
-        }
-
-        size_ = new_size;
-        std::ranges::copy(shape, shape_.begin());
-        std::ranges::copy(strides, strides_.begin());
-
-        for (uint32_t i = size_; i < kMaxRank; ++i) {
-            shape_[i] = 0;
-            strides_[i] = 0;
-        }
-    }
+    void set(IntArrayView shape, IntArrayView strides);
 
     /// Sets shape and computes contiguous row-major strides.
     ///
     /// \pre shape.size() <= kMaxRank
     /// \pre shape[i] >= 0 for all i
     /// \throws AM_CHECK failure on stride overflow
-    void set_contiguous(IntArrayView shape) {
-        AM_CHECK(shape.size() <= static_cast<size_t>(kMaxRank), "rank exceeds kMaxRank");
-        auto new_size = static_cast<int32_t>(shape.size());
-        for (int32_t i = 0; i < new_size; ++i) {
-            AM_CHECK(shape[i] >= 0, "shape dimensions must be non-negative");
-        }
-
-        size_ = new_size;
-        if (size_ == 0) {
-            for (uint32_t i = 0; i < kMaxRank; ++i) {
-                shape_[i] = 0;
-                strides_[i] = 0;
-            }
-            return;
-        }
-
-        std::ranges::copy(shape, shape_.begin());
-
-        strides_[size_ - 1] = 1;
-        for (int32_t i = size_ - 2; i >= 0; --i) {
-            AM_CHECK(!CheckOverflowMul(strides_[i + 1], shape_[i + 1], &strides_[i]),
-                     "Stride calculation overflow");
-        }
-
-        for (uint32_t i = size_; i < kMaxRank; ++i) {
-            shape_[i] = 0;
-            strides_[i] = 0;
-        }
-    }
+    void set_contiguous(IntArrayView shape);
 
     /// Returns the number of dimensions (rank).
     AM_NODISCARD int32_t size() const noexcept {
@@ -168,71 +119,13 @@ public:
 
     /// Returns the total number of elements (product of shape).
     /// \throws AM_CHECK failure on overflow
-    AM_NODISCARD int64_t numel() const noexcept {
-        if (size_ == 0) {
-            return 0;
-        }
-
-        uint64_t numel = 0;
-        bool overflow = SafeMultiplyU64(shape(), &numel);
-        constexpr auto kNumelMax = std::min<uint64_t>(
-                std::numeric_limits<int64_t>::max(),
-                std::numeric_limits<size_t>::max());
-
-        overflow |= numel > kNumelMax;
-        AM_CHECK(!overflow, "Integer multiplication overflow when compute numel.");
-        return static_cast<int64_t>(numel);
-    }
+    AM_NODISCARD int64_t numel() const noexcept;
 
     /// Returns true if strides represent a contiguous row-major layout.
     /// Dimensions with shape[i] == 1 are ignored (broadcasting-friendly).
-    AM_NODISCARD bool is_contiguous() const noexcept {
-        if (size_ == 0) {
-            return false;
-        }
+    AM_NODISCARD bool is_contiguous() const noexcept;
 
-        int64_t expected_stride = 1;
-        for (int i = size_ - 1; i >= 0; --i) {
-            if (shape_[i] == 1) {
-                continue;
-            }
-
-            if (strides_[i] != expected_stride) {
-                return false;
-            }
-
-            int64_t next_expected_stride = 0;
-            AM_CHECK(!CheckOverflowMul(expected_stride, shape_[i], &next_expected_stride),
-                     "Stride validation overflow");
-            expected_stride = next_expected_stride;
-        }
-        return true;
-    }
-
-    AM_NODISCARD int64_t max_element_offset() const {
-        if (size_ == 0) {
-            return 0;
-        }
-
-        for (int32_t i = 0; i < size_; ++i) {
-            AM_CHECK(shape_[i] >= 0);
-            AM_CHECK(strides_[i] >= 0);
-            if (shape_[i] == 0) {
-                return 0;
-            }
-        }
-
-        int64_t offset = 0;
-        for (int32_t i = 0; i < size_; ++i) {
-            int64_t term = 0;
-            AM_CHECK(!CheckOverflowMul((shape_[i] - 1), strides_[i], &term));
-            AM_CHECK(term >= 0);
-            AM_CHECK(offset <= std::numeric_limits<int64_t>::max() - term, "max_element_offset overflow.");
-            offset += term;
-        }
-
-        return offset;
-    }
+    AM_NODISCARD int64_t max_element_offset() const;
 
     static constexpr uint32_t kMaxRank = 8;
 

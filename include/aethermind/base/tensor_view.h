@@ -57,6 +57,7 @@ public:
     explicit TensorView(const Tensor& tensor) noexcept;
 
     AM_NODISCARD bool is_valid() const noexcept;
+
     explicit operator bool() const noexcept {
         return is_valid();
     }
@@ -108,10 +109,97 @@ public:
     }
 
     AM_NODISCARD size_t logical_nbytes() const noexcept;
+
     AM_NODISCARD bool is_contiguous() const noexcept;
 
 private:
     const void* data_ = nullptr;
+    DataType dtype_{};
+    IntArrayView shape_{};
+    IntArrayView strides_{};
+    size_t alignment_ = 0;
+};
+
+/// Non-owning mutable tensor view.
+///
+/// Lifetime and metadata borrowing semantics match TensorView, but the data
+/// pointer is writable.
+class MutableTensorView {
+public:
+    MutableTensorView() noexcept = default;
+
+    /// Construct from borrowed raw parts.
+    ///
+    /// \pre `shape.size() == strides.size()`
+    /// \pre Borrowed data and metadata must outlive this view.
+    MutableTensorView(void* data,
+                      DataType dtype,
+                      IntArrayView shape,
+                      IntArrayView strides,
+                      size_t alignment = 0) noexcept;
+
+    /// Construct by borrowing metadata and writable data from an existing
+    /// Tensor.
+    explicit MutableTensorView(Tensor& tensor) noexcept;
+
+    AM_NODISCARD bool is_valid() const noexcept;
+
+    explicit operator bool() const noexcept {
+        return is_valid();
+    }
+
+    AM_NODISCARD void* data() const noexcept {
+        return data_;
+    }
+
+    template<typename T>
+    AM_NODISCARD T* data() const noexcept {
+        AM_DCHECK(DataType::Make<T>() == dtype_);
+        return static_cast<T*>(data_);
+    }
+
+    AM_NODISCARD DataType dtype() const noexcept {
+        return dtype_;
+    }
+
+    AM_NODISCARD IntArrayView shape() const noexcept {
+        return shape_;
+    }
+
+    AM_NODISCARD IntArrayView strides() const noexcept {
+        return strides_;
+    }
+
+    AM_NODISCARD size_t alignment() const noexcept {
+        return alignment_;
+    }
+
+    AM_NODISCARD int32_t rank() const noexcept {
+        return static_cast<int32_t>(shape_.size());
+    }
+
+    AM_NODISCARD int64_t dim(int32_t i) const noexcept {
+        AM_DCHECK(i >= 0 && i < rank());
+        return shape_[i];
+    }
+
+    AM_NODISCARD int64_t stride(int32_t i) const noexcept {
+        AM_DCHECK(i >= 0 && i < rank());
+        return strides_[i];
+    }
+
+    AM_NODISCARD int64_t numel() const noexcept;
+
+    AM_NODISCARD size_t itemsize() const noexcept {
+        return static_cast<size_t>(dtype_.nbytes());
+    }
+
+    AM_NODISCARD size_t logical_nbytes() const noexcept;
+
+    AM_NODISCARD bool is_contiguous() const noexcept;
+
+private:
+    void* data_ = nullptr;
     DataType dtype_{};
     IntArrayView shape_{};
     IntArrayView strides_{};

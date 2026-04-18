@@ -16,6 +16,9 @@
 
 namespace aethermind {
 
+class TensorView;
+class MutableTensorView;
+
 class Tensor {
 public:
     Tensor() noexcept = default;
@@ -121,6 +124,10 @@ public:
         auto* base = static_cast<char*>(buffer_.mutable_data());
         return base + byte_offset_;
     }
+
+    AM_NODISCARD TensorView view() const noexcept;
+
+    AM_NODISCARD MutableTensorView mutable_view() noexcept;
 
     AM_NODISCARD int64_t max_touched_element_offset() const noexcept {
         return shape_and_strides_.max_element_offset();

@@ -1,5 +1,6 @@
 #include "aethermind/base/tensor.h"
 #include "aethermind/base/shape_and_stride.h"
+#include "aethermind/base/tensor_view.h"
 #include "aethermind/utils/overflow_check.h"
 #include "container/array_view.h"
 #include "utils/logging.h"
@@ -10,6 +11,14 @@
 #include <limits>
 
 namespace aethermind {
+
+TensorView Tensor::view() const noexcept {
+    return TensorView(*this);
+}
+
+MutableTensorView Tensor::mutable_view() noexcept {
+    return MutableTensorView(*this);
+}
 
 size_t Tensor::logical_nbytes() const noexcept {
     const auto n = numel();

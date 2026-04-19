@@ -264,7 +264,7 @@ std::optional<TypePtr> UnionType::to_optional() const {
         return std::nullopt;
     }
 
-    std::vector<TypePtr> copied_types = this->GetContainedTypes().vec();
+    std::vector<TypePtr> copied_types = to_vector(this->GetContainedTypes());
     auto maybe_opt = Create(copied_types);
     if (maybe_opt->kind() == Kind) {
         return std::nullopt;

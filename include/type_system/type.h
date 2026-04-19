@@ -317,7 +317,7 @@ public:
     }
 
     ArrayView<TypePtr> GetContainedTypes() const override {
-        return ArrayView(elem_);
+        return make_array_view(elem_);
     }
 
     bool Equals(const Type& rhs) const override {

@@ -345,6 +345,11 @@ public:
 
     static TensorTypePtr CreateContiguous(DataType dtype, Device device, IntArrayView shape);
 
+static TensorTypePtr CreateContiguous(DataType dtype, Device device, std::initializer_list<int64_t> shape) {
+    std::vector<int64_t> vec_shape(shape);
+    return CreateContiguous(dtype, device, IntArrayView{vec_shape.data(), vec_shape.size()});
+}
+
     static TypePtr CreateFromBoolType();
 
     static TypePtr CreateFromNumberType(const Type& t);

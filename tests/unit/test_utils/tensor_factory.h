@@ -78,6 +78,13 @@ inline Tensor MakeContiguousTensor(IntArrayView shape,
     return {detail::MakeBuffer(required_bytes), byte_offset, dtype, shape_and_stride};
 }
 
+inline Tensor MakeContiguousTensor(std::initializer_list<int64_t> shape,
+                                   const DataType& dtype = DataType::Float32(),
+                                   size_t byte_offset = 0) {
+    std::vector<int64_t> vec_shape(shape);
+    return MakeContiguousTensor(IntArrayView{vec_shape.data(), vec_shape.size()}, dtype, byte_offset);
+}
+
 inline Tensor MakeTensor(IntArrayView shape,
                          IntArrayView strides,
                          const DataType& dtype = DataType::Float32(),

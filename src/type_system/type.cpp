@@ -41,7 +41,8 @@ ArrayView<TypePtr> Type::GetContainedTypes() const {
 }
 
 TypePtr Type::GetContainedType(size_t i) const {
-    return GetContainedTypes().at(i);
+    // return GetContainedTypes().at(i);
+    return *(GetContainedTypes().begin() + i);
 }
 
 size_t Type::GetContainedTypeSize() const {
@@ -56,7 +57,10 @@ TypePtr Type::CreateWithContainedTypes(const std::vector<TypePtr>&) const {
 TypePtr Type::WithContainedTypes(const std::vector<TypePtr>& contained_types) {
     auto cur_contained_types = GetContainedTypes();
     AM_CHECK(!cur_contained_types.empty() && cur_contained_types.size() == contained_types.size());
-    if (cur_contained_types.equals(contained_types)) {
+    // if (cur_contained_types.equals(contained_types)) {
+    //     return std::static_pointer_cast<Type>(static_cast<SharedType*>(this)->shared_from_this());
+    // }
+    if (std::ranges::equal(contained_types, cur_contained_types)) {
         return std::static_pointer_cast<Type>(static_cast<SharedType*>(this)->shared_from_this());
     }
     return CreateWithContainedTypes(contained_types);

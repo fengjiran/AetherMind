@@ -28,8 +28,9 @@ Buffer MakeTestBuffer(size_t nbytes, size_t alignment = 64) {
 }
 
 Tensor MakeLogicalWeightTensor(int64_t rows, int64_t cols) {
+    const std::array<int64_t, 2> shape = {rows, cols};
     ShapeAndStride shape_and_stride;
-    shape_and_stride.set_contiguous({rows, cols});
+    shape_and_stride.set_contiguous(shape);
 
     const size_t element_count = static_cast<size_t>(rows * cols);
     return Tensor(MakeTestBuffer(element_count * sizeof(float)),

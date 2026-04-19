@@ -119,8 +119,7 @@ private:
     void CacheAccessors() {
         qualified_name_ = join(delimiter_, atoms_);
         if (atoms_.size() > 1) {
-            ArrayView view(atoms_);
-            const auto prefix_view = view.slice(0, view.size() - 1);
+            const auto prefix_view = make_array_view(atoms_.data(), atoms_.size() - 1);
             prefix_ = join(delimiter_, prefix_view);
         }
 

@@ -2,6 +2,7 @@
 #define AETHERMIND_TEST_UTILS_TENSOR_ASSERT_H
 
 #include "aethermind/base/tensor.h"
+#include "container/array_view.h"
 
 #include <algorithm>
 #include <cmath>
@@ -133,7 +134,7 @@ inline ::testing::AssertionResult ExpectTensorAllClose(const Tensor& actual,
                << "dtype mismatch: actual=" << actual.dtype() << ", expected=" << expected.dtype();
     }
 
-    if (actual.shape() != expected.shape()) {
+    if (!std::ranges::equal(actual.shape(), expected.shape())) {
         return ::testing::AssertionFailure()
                << "shape mismatch: actual=" << actual.shape() << ", expected=" << expected.shape();
     }
@@ -184,7 +185,7 @@ inline ::testing::AssertionResult ExpectTensorEqual(const Tensor& actual,
                << "dtype mismatch: actual=" << actual.dtype() << ", expected=" << expected.dtype();
     }
 
-    if (actual.shape() != expected.shape()) {
+    if (!std::ranges::equal(actual.shape(), expected.shape())) {
         return ::testing::AssertionFailure()
                << "shape mismatch: actual=" << actual.shape() << ", expected=" << expected.shape();
     }

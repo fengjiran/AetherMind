@@ -3,12 +3,14 @@
 //
 #include "aethermind/base/tensor.h"
 #include "any.h"
+#include "container/array_view.h"
 #include "container/string.h"
 #include "device.h"
 #include "test_utils/tensor_factory.h"
 #include "test_utils/tensor_random.h"
 
 #include <gtest/gtest.h>
+#include <ranges>
 
 using namespace aethermind;
 using namespace aethermind::test_utils;
@@ -197,7 +199,7 @@ TEST(Any, new_tensor) {
     
     Tensor t2 = x.ToNewTensor();
     EXPECT_EQ(t2.dtype(), t.dtype());
-    EXPECT_EQ(t2.shape(), t.shape());
+    EXPECT_TRUE(std::ranges::equal(t2.shape(), t.shape()));
     EXPECT_EQ(t2.numel(), t.numel());
     
     {
@@ -214,7 +216,7 @@ TEST(Any, tensor_type_roundtrip) {
     
     Tensor recovered_new = any_new.ToNewTensor();
     EXPECT_TRUE(recovered_new.is_initialized());
-    EXPECT_EQ(recovered_new.shape(), new_tensor.shape());
+    EXPECT_TRUE(std::ranges::equal(recovered_new.shape(), new_tensor.shape()));
 }
 
 TEST(AnyOperatorsTest, EmptyAnyComparison) {

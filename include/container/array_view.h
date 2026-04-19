@@ -12,8 +12,86 @@
 #include <initializer_list>
 #include <iterator>
 #include <ostream>
+#include <ranges>
+#include <span>
 #include <type_traits>
 #include <vector>
+
+#define USE_SPAN_AS_ARRAY_VIEW
+
+#ifdef USE_SPAN_AS_ARRAY_VIEW
+
+namespace aethermind {
+
+template<typename T>
+using ArrayView = std::span<const T>;
+
+template<typename T>
+using MutableArrayView = std::span<T>;
+
+using IntArrayView = ArrayView<int64_t>;
+using MutableIntArrayView = MutableArrayView<int64_t>;
+
+template<typename T>
+std::ostream& print_array_view(std::ostream& os, ArrayView<T> array) {
+    os << "[";
+    auto i = array.size();
+    for (const auto& e: array) {
+        os << e << (--i > 0 ? ", " : "");
+    }
+    os << "]";
+    return os;
+}
+
+template<typename T>
+AM_NODISCARD constexpr ArrayView<T> make_array_view(const T& elem) noexcept {
+    return ArrayView<T>(&elem, 1);
+}
+
+template<typename T>
+AM_NODISCARD constexpr ArrayView<T> make_array_view(const T* data, size_t size) noexcept {
+    return ArrayView<T>(data, size);
+}
+
+template<typename T>
+AM_NODISCARD std::vector<std::remove_cv_t<T>> to_vector(ArrayView<T> array) {
+    return std::vector<std::remove_cv_t<T>>(array.begin(), array.end());
+}
+
+template<typename T>
+AM_NODISCARD bool operator==(ArrayView<T> a, ArrayView<T> b) noexcept {
+    return std::ranges::equal(a, b);
+}
+
+template<typename T>
+AM_NODISCARD bool operator!=(ArrayView<T> a, ArrayView<T> b) noexcept {
+    return !(a == b);
+}
+
+
+}// namespace aethermind
+
+// Global namespace operators for std::span-based ArrayView (ADL visibility)
+// template<typename T>
+// AM_NODISCARD bool operator==(std::span<const T> a, std::span<const T> b) noexcept {
+//     return std::ranges::equal(a, b);
+// }
+//
+// template<typename T>
+// AM_NODISCARD bool operator!=(std::span<const T> a, std::span<const T> b) noexcept {
+//     return !(a == b);
+// }
+//
+inline std::ostream& operator<<(std::ostream& os, aethermind::IntArrayView array) {
+    return aethermind::print_array_view(os, array);
+}
+
+template<typename T>
+std::ostream& operator<<(std::ostream& os, aethermind::ArrayView<T> array) {
+    return aethermind::print_array_view(os, array);
+}
+
+#else
 
 namespace aethermind {
 
@@ -164,7 +242,7 @@ private:
 };
 
 template<typename T>
-std::ostream& operator<<(std::ostream& os, ArrayView<T> array) {
+std::ostream& print_array_view(std::ostream& os, ArrayView<T> array) {
     os << "[";
     auto i = array.size();
     for (const auto& e: array) {
@@ -174,9 +252,16 @@ std::ostream& operator<<(std::ostream& os, ArrayView<T> array) {
     return os;
 }
 
+template<typename T>
+std::ostream& operator<<(std::ostream& os, ArrayView<T> array) {
+    return print_array_view(os, array);
+}
+
+using IntArrayView = ArrayView<int64_t>;
+
 // Returns an ArrayView of a single element.
 template<typename T>
-ArrayView<T> make_array_view(const T& elem) {
+AM_NODISCARD ArrayView<T> make_array_view(const T& elem) {
     return ArrayView<T>(elem);
 }
 
@@ -205,6 +290,11 @@ ArrayView<T> make_array_view(const std::array<T, N>& arr) {
 template<typename T, size_t N>
 ArrayView<T> make_array_view(const T (&arr)[N]) {
     return arr;
+}
+
+template<typename T>
+AM_NODISCARD std::vector<std::remove_cv_t<T>> to_vector(ArrayView<T> array) {
+    return std::vector<std::remove_cv_t<T>>(array.begin(), array.end());
 }
 
 template<typename T>
@@ -237,8 +327,6 @@ bool operator!=(ArrayView<T> a, const std::vector<T>& b) {
     return !a.equals(ArrayView<T>(b));
 }
 
-using IntArrayView = ArrayView<int64_t>;
-
 }// namespace aethermind
 
 namespace std {
@@ -256,4 +344,6 @@ struct hash<aethermind::ArrayView<T>> {
 
 }// namespace std
 
-#endif//AETHERMIND_ARRAY_REF_H
+#endif
+
+#endif// AETHERMIND_ARRAY_REF_H

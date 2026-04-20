@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_BACKEND_WORKSPACE_ARENA_H
 #define AETHERMIND_BACKEND_WORKSPACE_ARENA_H
 
-#include "aethermind/backend/workspace_types.h"
+#include "workspace_types.h"
 
 namespace aethermind {
 

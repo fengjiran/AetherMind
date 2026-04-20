@@ -42,9 +42,9 @@ private:
     BackendCapabilities caps_;
 };
 
-class FakeFactory : public BackendFactory {
+class FakeBackendFactory : public BackendFactory {
 public:
-    explicit FakeFactory(DeviceType type, int* create_count = nullptr)
+    explicit FakeBackendFactory(DeviceType type, int* create_count = nullptr)
         : type_(type), create_count_(create_count) {}
 
     DeviceType device_type() const noexcept override { return type_; }
@@ -62,7 +62,7 @@ private:
 
 TEST(BackendRegistry, RegisterFactoryStoresFactory) {
     BackendRegistry registry;
-    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU));
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU));
 
     auto status_or_backend = registry.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(status_or_backend.ok());
@@ -73,7 +73,7 @@ TEST(BackendRegistry, RegisterFactoryStoresFactory) {
 TEST(BackendRegistry, GetBackendLazyCreatesInstance) {
     BackendRegistry registry;
     int create_count = 0;
-    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &create_count));
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU, &create_count));
 
     EXPECT_EQ(create_count, 0);
 
@@ -85,7 +85,7 @@ TEST(BackendRegistry, GetBackendLazyCreatesInstance) {
 TEST(BackendRegistry, GetBackendCachesInstance) {
     BackendRegistry registry;
     int create_count = 0;
-    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &create_count));
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU, &create_count));
 
     auto res1 = registry.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(res1.ok());
@@ -111,8 +111,8 @@ TEST(BackendRegistry, OverrideFactoryBeforeInstantiationUsesLatestFactory) {
     int count1 = 0;
     int count2 = 0;
 
-    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &count1));
-    registry.SetFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &count2));
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU, &count1));
+    registry.SetFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU, &count2));
 
     auto status_or_backend = registry.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(status_or_backend.ok());
@@ -126,7 +126,7 @@ TEST(BackendRegistry, OverrideFactoryAfterInstantiationClearsCachedInstance) {
     int count2 = 0;
 
     // 1. Register fake factory A and instantiate backend.
-    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &count1));
+    registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU, &count1));
     auto res1 = registry.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(res1.ok());
     Backend* b1 = res1.value();
@@ -134,7 +134,7 @@ TEST(BackendRegistry, OverrideFactoryAfterInstantiationClearsCachedInstance) {
 
     // 2. Override with factory B.
     // According to production code, SetFactory clears the cached backend for that DeviceType.
-    registry.SetFactory(DeviceType::kCPU, std::make_unique<FakeFactory>(DeviceType::kCPU, &count2));
+    registry.SetFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU, &count2));
 
     // 3. Assert subsequent GetBackend() returns a NEW instance from factory B.
     auto res2 = registry.GetBackend(DeviceType::kCPU);

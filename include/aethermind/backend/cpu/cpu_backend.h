@@ -17,8 +17,9 @@ public:
 
     AM_NODISCARD const BackendCapabilities& capabilities() const noexcept override;
 
-    AM_NODISCARD KernelFunc ResolveKernel(OpType op_type,
-                                          const KernelSelector& selector) const noexcept override;
+    AM_NODISCARD KernelFunc ResolveKernel(
+            OpType op_type,
+            const KernelSelector& selector) const noexcept override;
 
     AM_NODISCARD StatusOr<ResolvedKernel> ResolveKernelInfo(
             OpType op_type,

@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_BACKEND_CPU_CPU_WORKSPACE_ARENA_H
 #define AETHERMIND_BACKEND_CPU_CPU_WORKSPACE_ARENA_H
 
-#include "aethermind/backend/workspace_arena.h"
+#include "aethermind/execution/workspace_arena.h"
 #include "macros.h"
 
 #include <cstddef>

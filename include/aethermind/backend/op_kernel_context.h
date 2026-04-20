@@ -4,7 +4,7 @@
 #include "aethermind/backend/backend_capabilities.h"
 #include "aethermind/backend/stream.h"
 #include "aethermind/backend/tracing_sink.h"
-#include "aethermind/backend/workspace_arena.h"
+#include "aethermind/execution/workspace_arena.h"
 #include "device.h"
 
 #include <cstddef>

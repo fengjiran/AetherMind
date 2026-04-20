@@ -1,8 +1,8 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "../../../include/aethermind/execution/workspace_types.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/op_kernel_context.h"
-#include "aethermind/backend/workspace_types.h"
 #include "data_type.h"
 
 namespace aethermind {

@@ -1,11 +1,11 @@
 #ifndef AETHERMIND_EXECUTION_RUNTIME_BINDING_CONTEXT_H
 #define AETHERMIND_EXECUTION_RUNTIME_BINDING_CONTEXT_H
 
-#include "aethermind/backend/workspace_arena.h"
-#include "aethermind/backend/workspace_types.h"
 #include "aethermind/base/status.h"
 #include "aethermind/execution/kv_cache_view.h"
 #include "macros.h"
+#include "workspace_arena.h"
+#include "workspace_types.h"
 
 #include <array>
 

@@ -3,8 +3,8 @@
 
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/resolved_kernel.h"
-#include "aethermind/backend/workspace_types.h"
 #include "aethermind/base/status.h"
+#include "workspace_types.h"
 
 #include <cstddef>
 #include <span>

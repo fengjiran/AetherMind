@@ -1,15 +1,10 @@
 #ifndef AETHERMIND_EXECUTION_KV_CACHE_VIEW_H
 #define AETHERMIND_EXECUTION_KV_CACHE_VIEW_H
 
-#include "aethermind/backend/workspace_types.h"
 #include "aethermind/base/status.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/utils/overflow_check.h"
 #include "data_type.h"
 #include "macros.h"
-
-#include <cstddef>
-#include <cstdint>
 
 namespace aethermind {
 

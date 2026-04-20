@@ -1,7 +1,7 @@
 #include "aethermind/backend/kernel_registry.h"
 
-#include <string>
 #include <ranges>
+#include <string>
 
 namespace aethermind {
 
@@ -53,11 +53,8 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(
 
     const KernelDescriptor* best = nullptr;
     for (const KernelDescriptor& descriptor: kernels_) {
-        if (descriptor.op_type != op_type) {
-            continue;
-        }
-
-        if (!SelectorMatches(descriptor.selector, selector)) {
+        if (descriptor.op_type != op_type ||
+            !SelectorMatches(descriptor.selector, selector)) {
             continue;
         }
 

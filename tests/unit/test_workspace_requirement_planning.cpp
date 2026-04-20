@@ -1,4 +1,4 @@
-#include "aethermind/backend/workspace_types.h"
+#include "aethermind/execution/workspace_types.h"
 
 #include <gtest/gtest.h>
 #include <limits>

@@ -1,11 +1,12 @@
-#include "aethermind/base/tensor_view.h"
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "aethermind/base/tensor_view.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 
 namespace aethermind {
+
 namespace {
 
 void FreePackedCpuBuffer(void*, void* ptr) noexcept {
@@ -64,15 +65,19 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
     if (op_type == OpType::kUnknown) {
         return Status::InvalidArgument("CpuWeightPrepacker requires a concrete op type");
     }
+
     if (selector.device_type != DeviceType::kCPU) {
         return Status::InvalidArgument("CpuWeightPrepacker only supports CPU selectors");
     }
+
     if (selector.weight_format != WeightFormat::kPacked) {
         return Status::InvalidArgument("CpuWeightPrepacker requires WeightFormat::kPacked");
     }
+
     if (!logical_weight.is_initialized()) {
         return Status::InvalidArgument("CpuWeightPrepacker requires initialized logical weights");
     }
+
     if (!logical_weight.device().is_cpu()) {
         return Status::InvalidArgument("CpuWeightPrepacker only supports CPU logical weights");
     }
@@ -87,12 +92,15 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
     if (op_type == OpType::kUnknown) {
         return Status::InvalidArgument("CpuWeightPrepacker requires a concrete op type");
     }
+
     if (selector.device_type != DeviceType::kCPU) {
         return Status::InvalidArgument("CpuWeightPrepacker only supports CPU selectors");
     }
+
     if (selector.weight_format != WeightFormat::kPacked) {
         return Status::InvalidArgument("CpuWeightPrepacker requires WeightFormat::kPacked");
     }
+
     if (!logical_weight.is_valid()) {
         return Status::InvalidArgument("CpuWeightPrepacker requires a valid logical weight TensorView");
     }

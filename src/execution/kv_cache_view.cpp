@@ -14,27 +14,31 @@ Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) n
 
 }// namespace
 
-size_t KVLayoutContract::ElementBytes() const noexcept {
+size_t KVCacheLayout::ElementBytes() const noexcept {
     return static_cast<size_t>(kv_dtype.nbytes());
 }
 
-Status KVLayoutContract::Validate() const noexcept {
+Status KVCacheLayout::Validate() const noexcept {
     if (num_layers == 0 || num_kv_heads == 0 || max_tokens == 0 || head_dim == 0) {
         return Status::InvalidArgument("KV layout dimensions must be non-zero");
     }
+
     if (!IsValidWorkspaceAlignment(alignment)) {
         return Status::InvalidArgument("KV layout alignment must be a non-zero power of two");
     }
+
     if (kv_dtype.bits() == 0 || kv_dtype.lanes() == 0) {
         return Status::InvalidArgument("KV layout dtype must be initialized");
     }
+
     if (head_dim_stride < head_dim) {
         return Status::InvalidArgument("KV head_dim_stride must be >= head_dim");
     }
+
     return Status::Ok();
 }
 
-StatusOr<size_t> KVLayoutContract::Offset(size_t layer_idx,
+StatusOr<size_t> KVCacheLayout::Offset(size_t layer_idx,
                                           size_t kv_head_idx,
                                           size_t seq_pos,
                                           size_t dim_idx) const noexcept {
@@ -70,7 +74,7 @@ StatusOr<size_t> KVLayoutContract::Offset(size_t layer_idx,
     return offset;
 }
 
-StatusOr<size_t> KVLayoutContract::BytesPerPlane() const noexcept {
+StatusOr<size_t> KVCacheLayout::BytesPerPlane() const noexcept {
     AM_RETURN_IF_ERROR(Validate());
     size_t bytes = 0;
     if (CheckOverflowMul(num_layers, layer_stride, &bytes)) {
@@ -83,10 +87,11 @@ bool KVCacheStorage::is_initialized() const noexcept {
     return key_buffer.is_initialized() && value_buffer.is_initialized();
 }
 
-KVCacheView::KVCacheView(const KVLayoutContract* layout,
+KVCacheView::KVCacheView(const KVCacheLayout* layout,
                          KVCacheStorage* storage,
                          SessionKVSlot* slot) noexcept
-    : layout_(layout), storage_(storage), slot_(slot), generation_(slot != nullptr ? slot->generation : 0) {}
+    : layout_(layout), storage_(storage), slot_(slot),
+      generation_(slot != nullptr ? slot->generation : 0) {}
 
 bool KVCacheView::IsSlotAlive() const noexcept {
     return slot_ != nullptr && slot_->in_use && slot_->generation == generation_;
@@ -96,24 +101,47 @@ bool KVCacheView::valid() const noexcept {
     return layout_ != nullptr && storage_ != nullptr && storage_->is_initialized() && IsSlotAlive();
 }
 
-size_t KVCacheView::max_tokens() const noexcept { return layout_ != nullptr ? layout_->max_tokens : 0; }
-size_t KVCacheView::current_pos() const noexcept { return valid() ? slot_->current_pos : 0; }
-size_t KVCacheView::num_layers() const noexcept { return layout_ != nullptr ? layout_->num_layers : 0; }
-size_t KVCacheView::num_kv_heads() const noexcept { return layout_ != nullptr ? layout_->num_kv_heads : 0; }
-size_t KVCacheView::head_dim() const noexcept { return layout_ != nullptr ? layout_->head_dim : 0; }
-size_t KVCacheView::token_capacity() const noexcept { return valid() ? slot_->capacity_tokens : 0; }
-size_t KVCacheView::committed_tokens() const noexcept { return current_pos(); }
+size_t KVCacheView::max_tokens() const noexcept {
+    return layout_ != nullptr ? layout_->max_tokens : 0;
+}
+
+size_t KVCacheView::current_pos() const noexcept {
+    return valid() ? slot_->current_pos : 0;
+}
+
+size_t KVCacheView::num_layers() const noexcept {
+    return layout_ != nullptr ? layout_->num_layers : 0;
+}
+
+size_t KVCacheView::num_kv_heads() const noexcept {
+    return layout_ != nullptr ? layout_->num_kv_heads : 0;
+}
+
+size_t KVCacheView::head_dim() const noexcept {
+    return layout_ != nullptr ? layout_->head_dim : 0;
+}
+
+size_t KVCacheView::token_capacity() const noexcept {
+    return valid() ? slot_->capacity_tokens : 0;
+}
+
+size_t KVCacheView::committed_tokens() const noexcept {
+    return current_pos();
+}
 
 Status KVCacheView::ValidateBaseState() const noexcept {
     if (layout_ == nullptr || storage_ == nullptr || slot_ == nullptr) {
         return Status(StatusCode::kFailedPrecondition, "KVCacheView is not bound to manager-owned state");
     }
+
     if (!storage_->is_initialized()) {
         return Status(StatusCode::kFailedPrecondition, "KVCacheView storage is not initialized");
     }
+
     if (!IsSlotAlive()) {
         return Status(StatusCode::kFailedPrecondition, "KVCacheView is stale or released");
     }
+
     return layout_->Validate();
 }
 
@@ -127,16 +155,20 @@ Status KVCacheView::ValidateWrite(size_t layer_idx,
     if (token_count == 0) {
         return Status::InvalidArgument("KV write token_count must be non-zero");
     }
+
     size_t seq_end = 0;
     if (CheckOverflowAdd(seq_pos, token_count, &seq_end)) {
         return Status(StatusCode::kOutOfRange, "KV write range overflowed size_t");
     }
+
     if (seq_end > slot_->capacity_tokens) {
         return Status(StatusCode::kOutOfRange, "KV write exceeds reserved session token capacity");
     }
+
     if (seq_end > layout_->max_tokens) {
         return Status(StatusCode::kOutOfRange, "KV write exceeds physical KV capacity");
     }
+
     return Status::Ok();
 }
 

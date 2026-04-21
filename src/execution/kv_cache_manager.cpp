@@ -154,7 +154,7 @@ Status KVCacheManager::ReleaseSession(KVCacheView& view) noexcept {
     return Status::Ok();
 }
 
-const KVLayoutContract& KVCacheManager::layout() const noexcept { return layout_; }
+const KVCacheLayout& KVCacheManager::layout() const noexcept { return layout_; }
 size_t KVCacheManager::capacity_tokens() const noexcept { return layout_.max_tokens; }
 size_t KVCacheManager::total_bytes() const noexcept { return total_bytes_; }
 bool KVCacheManager::is_initialized() const noexcept { return initialized_; }

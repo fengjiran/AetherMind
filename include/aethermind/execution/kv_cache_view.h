@@ -8,7 +8,7 @@
 
 namespace aethermind {
 
-struct KVLayoutContract {
+struct KVCacheLayout {
     size_t num_layers = 0;
     size_t num_kv_heads = 0;
     size_t max_tokens = 0;
@@ -49,7 +49,7 @@ struct SessionKVSlot {
 class KVCacheView {
 public:
     KVCacheView() = default;
-    KVCacheView(const KVLayoutContract* layout,
+    KVCacheView(const KVCacheLayout* layout,
                 KVCacheStorage* storage,
                 SessionKVSlot* slot) noexcept;
 
@@ -99,7 +99,7 @@ private:
                                          size_t seq_pos,
                                          size_t dim_idx) const noexcept;
 
-    const KVLayoutContract* layout_ = nullptr;
+    const KVCacheLayout* layout_ = nullptr;
     KVCacheStorage* storage_ = nullptr;
     SessionKVSlot* slot_ = nullptr;
     uint64_t generation_ = 0;

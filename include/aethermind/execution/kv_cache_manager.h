@@ -19,7 +19,7 @@ public:
     Status ResetSession(KVCacheView& view) noexcept;
     Status ReleaseSession(KVCacheView& view) noexcept;
 
-    AM_NODISCARD const KVLayoutContract& layout() const noexcept;
+    AM_NODISCARD const KVCacheLayout& layout() const noexcept;
     AM_NODISCARD size_t capacity_tokens() const noexcept;
     AM_NODISCARD size_t total_bytes() const noexcept;
     AM_NODISCARD bool is_initialized() const noexcept;
@@ -27,7 +27,7 @@ public:
 private:
     Status AllocateStorage(size_t bytes_per_plane, size_t alignment);
 
-    KVLayoutContract layout_{};
+    KVCacheLayout layout_{};
     KVCacheStorage storage_{};
     SessionKVSlot slot_{};
     size_t total_bytes_ = 0;

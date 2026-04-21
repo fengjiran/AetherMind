@@ -10,7 +10,7 @@ DataType MakeKVType() {
 }
 
 TEST(KVLayoutContract, ComputesOffsetsAndBytesPerPlane) {
-    KVLayoutContract layout{
+    KVCacheLayout layout{
             .num_layers = 2,
             .num_kv_heads = 3,
             .max_tokens = 4,

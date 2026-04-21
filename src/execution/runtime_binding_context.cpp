@@ -11,9 +11,10 @@ WorkspaceArena* RuntimeBindingContext::GetWorkspaceArena() const noexcept {
 }
 
 StatusOr<WorkspaceBinding> RuntimeBindingContext::BindWorkspace(
-        const WorkspaceRequirement& requirement) noexcept {
+        const WorkspaceRequirement& requirement) const noexcept {
     if (!IsValidWorkspaceAlignment(requirement.alignment)) {
-        return Status::InvalidArgument("Workspace requirement alignment must be a non-zero power of two");
+        return Status::InvalidArgument(
+                "Workspace requirement alignment must be a non-zero power of two");
     }
 
     if (requirement.bytes == 0) {
@@ -25,7 +26,7 @@ StatusOr<WorkspaceBinding> RuntimeBindingContext::BindWorkspace(
                       "RuntimeBindingContext requires a WorkspaceArena for non-zero workspace requirements");
     }
 
-    const WorkspaceBinding binding = workspace_arena_->Bind(requirement);
+    const auto binding = workspace_arena_->Bind(requirement);
     if (binding.data == nullptr || binding.size < requirement.bytes) {
         return Status(StatusCode::kFailedPrecondition,
                       "WorkspaceArena could not satisfy execution-time workspace binding");

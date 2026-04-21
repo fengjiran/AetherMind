@@ -42,25 +42,35 @@ public:
         : workspace_arena_(workspace_arena) {}
 
     void SetWorkspaceArena(WorkspaceArena* workspace_arena) noexcept;
+
     AM_NODISCARD WorkspaceArena* GetWorkspaceArena() const noexcept;
 
     AM_NODISCARD StatusOr<WorkspaceBinding> BindWorkspace(
-            const WorkspaceRequirement& requirement) noexcept;
+            const WorkspaceRequirement& requirement) const noexcept;
 
     void SetKVCacheView(const KVCacheView& kv_cache_view) noexcept;
+
     AM_NODISCARD const KVCacheView& kv_cache_view() const noexcept;
+
     AM_NODISCARD bool HasKVCacheView() const noexcept;
+
     void ClearKVCacheView() noexcept;
 
     void SetTempBufferBinding(TempBufferKind kind,
                               const TempBufferBinding& binding) noexcept;
+
     AM_NODISCARD const TempBufferBinding& GetTempBufferBinding(TempBufferKind kind) const noexcept;
+
     AM_NODISCARD bool HasTempBufferBinding(TempBufferKind kind) const noexcept;
+
     void ClearTempBufferBinding(TempBufferKind kind) noexcept;
+
     void ClearAllTempBufferBindings() noexcept;
 
     AM_NODISCARD RuntimeSequenceState& mutable_sequence_state() noexcept;
+
     AM_NODISCARD const RuntimeSequenceState& sequence_state() const noexcept;
+
     void ResetSequenceState() noexcept;
 
     void Reset() noexcept;

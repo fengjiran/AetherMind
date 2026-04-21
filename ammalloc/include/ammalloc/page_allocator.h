@@ -29,7 +29,7 @@ namespace aethermind {
 extern std::atomic<bool> g_mock_huge_alloc_fail;
 #define PAGEALLOCATOR_FRIEND_TEST   \
     friend class PageAllocatorTest; \
-    friend class PageAllocatorThreadSafeTest;
+    friend class PageAllocatorThreadSafeTest
 #else
 #define g_mock_huge_alloc_fail (false)
 #define PAGEALLOCATOR_FRIEND_TEST

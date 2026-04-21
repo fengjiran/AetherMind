@@ -7,11 +7,11 @@
 #include "aethermind/memory/buffer.h"
 #include "aethermind/operators/op_type.h"
 
+#include <cstdlib>
 #include <gtest/gtest.h>
 
-#include <cstdlib>
-
 namespace aethermind {
+
 namespace {
 
 void FreeTestBuffer(void*, void* ptr) noexcept {
@@ -55,8 +55,7 @@ TEST(CpuWeightPrepacker, PackBuildsPackedWeightsWithCpuStorageAndSelectorMetadat
     const Tensor logical_weight = MakeLogicalWeightTensor(4, 8);
     const KernelSelector selector = MakePackedCpuSelector();
 
-    const StatusOr<std::unique_ptr<PackedWeights>> packed =
-            prepacker.Pack(OpType::kLinear, logical_weight, selector);
+    const auto packed = prepacker.Pack(OpType::kLinear, logical_weight, selector);
 
     ASSERT_TRUE(packed.ok());
     ASSERT_NE(*packed, nullptr);
@@ -73,8 +72,7 @@ TEST(CpuWeightPrepacker, PackRejectsNonPackedWeightFormatRequests) {
     KernelSelector selector = MakePackedCpuSelector();
     selector.weight_format = WeightFormat::kPlain;
 
-    const StatusOr<std::unique_ptr<PackedWeights>> packed =
-            prepacker.Pack(OpType::kLinear, logical_weight, selector);
+    const auto packed = prepacker.Pack(OpType::kLinear, logical_weight, selector);
 
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
@@ -85,8 +83,7 @@ TEST(CpuWeightPrepacker, PackAcceptsLogicalWeightTensorView) {
     const Tensor logical_weight = MakeLogicalWeightTensor(2, 4);
     const KernelSelector selector = MakePackedCpuSelector();
 
-    const StatusOr<std::unique_ptr<PackedWeights>> packed =
-            prepacker.Pack(OpType::kLinear, logical_weight.view(), selector);
+    const auto packed = prepacker.Pack(OpType::kLinear, logical_weight.view(), selector);
 
     ASSERT_TRUE(packed.ok());
     ASSERT_NE(*packed, nullptr);

@@ -1,5 +1,4 @@
 #include "aethermind/execution/layer_runner.h"
-
 #include "aethermind/backend/op_kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 
@@ -8,9 +7,9 @@ namespace {
 
 OpKernelContext BuildKernelContext(const ExecutionStep& step,
                                    RuntimeBindingContext& bindings) noexcept {
-    const DeviceType device_type = step.invocation.selector.device_type != DeviceType::kUndefined
-                                           ? step.invocation.selector.device_type
-                                           : DeviceType::kCPU;
+    const auto device_type = step.invocation.selector.device_type != DeviceType::kUndefined
+                                     ? step.invocation.selector.device_type
+                                     : DeviceType::kCPU;
 
     return OpKernelContext{
             .device = Device(device_type),
@@ -29,8 +28,8 @@ OpKernelContext BuildKernelContext(const ExecutionStep& step,
 
 Status LayerRunner::Run(const ExecutionPlan& plan,
                         RuntimeBindingContext& bindings) noexcept {
-    for (const ExecutionStep& step: plan.steps()) {
-        if (const Status status = RunStep(step, bindings); !status.ok()) {
+    for (const auto& step: plan.steps()) {
+        if (const auto status = RunStep(step, bindings); !status.ok()) {
             return status;
         }
     }
@@ -43,8 +42,7 @@ Status LayerRunner::RunStep(const ExecutionStep& step,
         return Status::InvalidArgument("Execution step kernel function cannot be null");
     }
 
-    const StatusOr<WorkspaceBinding> workspace_binding =
-            bindings.BindWorkspace(step.workspace_requirement);
+    const auto workspace_binding = bindings.BindWorkspace(step.workspace_requirement);
     if (!workspace_binding.ok()) {
         return workspace_binding.status();
     }

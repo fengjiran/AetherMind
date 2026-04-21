@@ -26,12 +26,12 @@ StatusOr<const void*> ResolvePackedParamsForNode(const ModelInstance* model_inst
         return Status::NotFound("Packed-weight node requires a ModelInstance sidecar");
     }
 
-    const KernelSelector selector = MakeSelectorForNode(node);
-    const PackedWeights* packed_weights = model_instance->FindPackedWeights(node.op_type, selector);
+    const auto selector = MakeSelectorForNode(node);
+    const auto* packed_weights = model_instance->FindPackedWeights(node.op_type, selector);
     if (packed_weights == nullptr) {
         return Status::NotFound("Packed weights not found for ExecutionPlan node");
     }
-    return static_cast<const void*>(packed_weights->storage().data());
+    return packed_weights->storage().data();
 }
 
 StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
@@ -43,29 +43,27 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
         workspace_requirements.push_back(node.workspace_requirement);
     }
 
-    const StatusOr<WorkspacePlanLayout> layout =
-            PlanWorkspaceRequirements(std::span<WorkspaceRequirement>(workspace_requirements));
-    if (!layout.ok()) {
+    if (const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
+        !layout.ok()) {
         return layout.status();
     }
 
     ExecutionPlan plan;
     for (size_t index = 0; index < nodes.size(); ++index) {
-        const ExecutionPlanNodeSpec& node = nodes[index];
+        const auto& node = nodes[index];
 
-        StatusOr<Backend*> backend = runtime.GetBackend(node.device_type);
+        auto backend = runtime.GetBackend(node.device_type);
         if (!backend.ok()) {
             return backend.status();
         }
 
-        const StatusOr<ResolvedKernel> resolved =
+        const auto resolved =
                 ExecutionPlanBuilder::ResolveKernelForNode(*backend.value(), node);
         if (!resolved.ok()) {
             return resolved.status();
         }
 
-        const StatusOr<const void*> packed_params =
-                ResolvePackedParamsForNode(model_instance, node);
+        const auto packed_params = ResolvePackedParamsForNode(model_instance, node);
         if (!packed_params.ok()) {
             return packed_params.status();
         }
@@ -99,9 +97,8 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
         return Status::InvalidArgument("ExecutionPlanNodeSpec.op_type cannot be kUnknown");
     }
 
-    const KernelSelector selector = MakeSelectorForNode(node);
-
-    const StatusOr<ResolvedKernel> resolved = backend.ResolveKernelInfo(node.op_type, selector);
+    const auto selector = MakeSelectorForNode(node);
+    const auto resolved = backend.ResolveKernelInfo(node.op_type, selector);
     if (!resolved.ok()) {
         return resolved.status();
     }

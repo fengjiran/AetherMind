@@ -21,7 +21,7 @@
 推荐最终接口形式：
 
 ```cpp
-namespace am {
+namespace aethermind {
 
 template <
     class CharT,
@@ -36,17 +36,17 @@ using u16string = basic_string<char16_t>;
 using u32string = basic_string<char32_t>;
 using wstring   = basic_string<wchar_t>;
 
-} // namespace am
+} // namespace aethermind
 ```
 
 其中：
 
 ```text
-am::string    对标 std::string / folly::fbstring
-am::u8string  对标 std::u8string
-am::u16string 对标 std::u16string
-am::u32string 对标 std::u32string
-am::wstring   对标 std::wstring
+aethermind::string    对标 std::string / folly::fbstring
+aethermind::u8string  对标 std::u8string
+aethermind::u16string 对标 std::u16string
+aethermind::u32string 对标 std::u32string
+aethermind::wstring   对标 std::wstring
 ```
 
 ---
@@ -132,47 +132,70 @@ Large  : heap exclusive ownership，暂不区分
 
 ### 3.1 模块划分
 
-建议目录结构：
+建议目录结构（融入 AetherMind 项目）：
 
 ```text
-amstring/
+AetherMind/
 ├── include/
-│   └── amstring/
-│       ├── basic_string.hpp
-│       ├── string.hpp
-│       ├── config.hpp
-│       ├── string_fwd.hpp
-│       └── detail/
-│           ├── core.hpp
-│           ├── layout.hpp
-│           ├── category.hpp
-│           ├── storage_policy.hpp
-│           ├── growth_policy.hpp
-│           ├── char_algorithms.hpp
-│           ├── allocator_support.hpp
-│           ├── exception_safety.hpp
-│           └── invariant.hpp
+│   ├── container/              ← 现有目录（保留 string.h, array.h 等）
+│   └── amstring/               ← 新建：amstring 子系统头文件（扁平结构）
+│       ├── basic_string.hpp    ← 主模板（公共 API）
+│       ├── string.hpp          ← 类型别名（公共 API）
+│       ├── string_fwd.hpp      ← 前置声明（公共 API）
+│       ├── config.hpp          ← 配置宏（内部）
+│       ├── core.hpp            ← basic_string_core（内部）
+│       ├── layout.hpp          ← MediumLarge, Storage（内部）
+│       ├── category.hpp        ← Category enum（内部）
+│       ├── growth_policy.hpp   ← 容量增长策略（内部）
+│       ├── char_algorithms.hpp ← 字符操作辅助（内部）
+│       └── invariant.hpp       ← invariant 检查（内部）
+│
 ├── tests/
 │   ├── unit/
-│   ├── differential/
-│   ├── fuzz/
-│   ├── allocator/
-│   └── regression/
-├── benchmarks/
-│   ├── bench_construct.cpp
-│   ├── bench_copy_move.cpp
-│   ├── bench_append.cpp
-│   ├── bench_insert_erase.cpp
-│   ├── bench_find_compare.cpp
-│   └── bench_real_world.cpp
-└── docs/
-    ├── storage_layout.md
-    ├── api_compatibility.md
-    ├── exception_safety.md
-    ├── iterator_invalidation.md
-    ├── benchmark_policy.md
-    └── tdd_plan.md
+│   │   ├── amstring/           ← 新建：amstring 单元测试子目录
+│   │   │   ├── test_core_layout.cpp
+│   │   │   ├── test_core_lifecycle.cpp
+│   │   │   ├── test_api_basic.cpp
+│   │   │   ├── test_api_capacity.cpp
+│   │   │   ├── test_api_append.cpp
+│   │   │   ├── test_api_mutation.cpp
+│   │   │   ├── test_api_find_compare.cpp
+│   │   │   ├── test_multi_char.cpp
+│   │   │   ├── test_allocator.cpp
+│   │   │   ├── test_differential.cpp
+│   │   │   └── test_regression.cpp
+│   │   └── ...现有测试文件...
+│   │
+│   └── benchmark/
+│       ├── amstring/           ← 新建：amstring benchmark 子目录
+│       │   ├── benchmark_construct.cpp
+│       │   ├── benchmark_copy_move.cpp
+│       │   ├── benchmark_append.cpp
+│       │   ├── benchmark_insert_erase.cpp
+│       │   ├── benchmark_find_compare.cpp
+│       │   ├── benchmark_real_world.cpp
+│       │   └── benchmark_vs_std_string.cpp
+│       └ ...现有 benchmark 文件...
+│
+├── docs/
+│   └── designs/amstring/       ← 设计文档目录
+│       ├── amstring_development_plan.md
+│       ├── amstring_development_steps_checklist.md
+│       ├── storage_layout.md
+│       ├── api_compatibility.md
+│       ├── exception_safety.md
+│       ├── iterator_invalidation.md
+│       ├── benchmark_policy.md
+│       └── tdd_plan.md
 ```
+
+说明：
+- 头文件 `include/amstring/` 采用扁平结构，公共/内部通过命名约定区分
+- 公共 API：`basic_string.hpp`, `string.hpp`, `string_fwd.hpp`
+- 内部实现：`core.hpp`, `config.hpp`, `category.hpp` 等（用户不应直接 include）
+- 单元测试 `tests/unit/amstring/` 子目录，融入现有测试框架（GLOB_RECURSE 自动收集）
+- Benchmark `tests/benchmark/amstring/` 子目录，融入现有 benchmark 框架
+- 设计文档 `docs/designs/amstring/` 与其他设计文档统一管理
 
 ### 3.2 类型分层
 
@@ -186,14 +209,10 @@ basic_string_core   : 内部存储层
 示意：
 
 ```cpp
-namespace am::detail {
+namespace aethermind {
 
 template <class CharT, class Traits, class Allocator>
-class basic_string_core;
-
-} // namespace am::detail
-
-namespace am {
+class basic_string_core;  // 内部存储层
 
 template <
     class CharT,
@@ -202,10 +221,10 @@ template <
 >
 class basic_string {
 private:
-    detail::basic_string_core<CharT, Traits, Allocator> core_;
+    basic_string_core<CharT, Traits, Allocator> core_;
 };
 
-} // namespace am
+} // namespace aethermind
 ```
 
 这样做的好处：
@@ -215,6 +234,7 @@ private:
 内部可以独立测试 storage layout
 后续可替换 storage policy
 核心布局问题不会污染 public API
+采用扁平目录结构，避免向上引用问题
 ```
 
 ---
@@ -227,7 +247,7 @@ private:
 
 ```text
 64-bit 平台：
-sizeof(am::basic_string<char>) <= 24 或 32 bytes
+sizeof(aethermind::basic_string<char>) <= 24 或 32 bytes
 ```
 
 如果追求 fbstring 风格，优先目标是：
@@ -841,7 +861,7 @@ compare 结果一致
 
 ```text
 std::basic_string<CharT>
-am::basic_string<CharT>
+aethermind::basic_string<CharT>
 ```
 
 操作包括：
@@ -1055,7 +1075,7 @@ copy 深拷贝
 目标：
 
 ```text
-am::basic_string<char> 可作为简单字符串使用
+aethermind::basic_string<char> 可作为简单字符串使用
 ```
 
 完成：
@@ -1255,7 +1275,7 @@ formatter，可选
 ```text
 std::string
 folly::fbstring
-am::basic_string<char>
+aethermind::basic_string<char>
 ```
 
 核心 benchmark：
@@ -1602,7 +1622,7 @@ allocator propagation 单独作为里程碑
 第一版 MVP 建议定义为：
 
 ```text
-am::string MVP：
+aethermind::string MVP：
 
 1. 支持 char。
 2. 支持 Small + Heap exclusive ownership。

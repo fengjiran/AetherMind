@@ -58,40 +58,56 @@ MVP 阶段禁止提前引入：
 
 ### 1.1 目标
 
-建立工程骨架、测试框架和设计文档，冻结第一版实现边界。
+建立工程骨架、测试框架和设计文档，冻结第一版实现边界。  
+融入 AetherMind 项目现有结构，amstring 测试文件单独子目录管理。
 
 ### 1.2 目录结构
 
-- [ ] 创建 `include/amstring/`
-- [ ] 创建 `include/amstring/basic_string.hpp`
-- [ ] 创建 `include/amstring/string.hpp`
-- [ ] 创建 `include/amstring/config.hpp`
-- [ ] 创建 `include/amstring/string_fwd.hpp`
-- [ ] 创建 `include/amstring/detail/core.hpp`
-- [ ] 创建 `include/amstring/detail/layout.hpp`
-- [ ] 创建 `include/amstring/detail/category.hpp`
-- [ ] 创建 `include/amstring/detail/growth_policy.hpp`
-- [ ] 创建 `include/amstring/detail/char_algorithms.hpp`
-- [ ] 创建 `include/amstring/detail/allocator_support.hpp`
-- [ ] 创建 `include/amstring/detail/invariant.hpp`
-- [ ] 创建 `tests/unit/`
-- [ ] 创建 `tests/differential/`
-- [ ] 创建 `tests/fuzz/`
-- [ ] 创建 `tests/allocator/`
-- [ ] 创建 `tests/regression/`
-- [ ] 创建 `benchmarks/`
-- [ ] 创建 `docs/`
+头文件（扁平结构，公共/内部通过命名约定区分）：
+
+- [x] 创建 `include/amstring/`
+- [x] 创建 `include/amstring/basic_string.hpp`（公共 API）
+- [x] 创建 `include/amstring/string.hpp`（公共 API）
+- [x] 创建 `include/amstring/string_fwd.hpp`（公共 API）
+- [x] 创建 `include/amstring/config.hpp`（内部）
+- [x] 创建 `include/amstring/core.hpp`（内部）
+- [x] 创建 `include/amstring/layout.hpp`（内部）
+- [x] 创建 `include/amstring/category.hpp`（内部）
+- [x] 创建 `include/amstring/growth_policy.hpp`（内部）
+- [x] 创建 `include/amstring/char_algorithms.hpp`（内部）
+- [x] 创建 `include/amstring/invariant.hpp`（内部）
+
+单元测试（融入现有 `tests/unit/`，单独子目录）：
+
+- [x] 创建 `tests/unit/amstring/`
+- [x] 创建 `tests/unit/amstring/test_core_layout.cpp`（空测试，验证框架可编译）
+- [x] 创建 `tests/unit/amstring/test_core_lifecycle.cpp`（空测试，验证框架可编译）
+- [ ] 后续：`test_api_*.cpp`, `test_differential.cpp`
+
+Benchmark（融入现有 `tests/benchmark/`，单独子目录）：
+
+- [x] 创建 `tests/benchmark/amstring/`
+- [x] 创建 `tests/benchmark/amstring/benchmark_construct.cpp`（空 benchmark，验证框架可编译）
+- [x] 创建 `tests/benchmark/amstring/benchmark_vs_std_string.cpp`（空 benchmark）
+- [ ] 后续：`benchmark_copy_move.cpp`, `benchmark_append.cpp`
+
+设计文档（补充到 `docs/designs/amstring/`）：
+
+- [ ] 补充 `docs/designs/amstring/storage_layout.md`
+- [ ] 补充 `docs/designs/amstring/api_compatibility.md`
+- [ ] 补充 `docs/designs/amstring/tdd_plan.md`
+- [ ] 补充 `docs/designs/amstring/exception_safety.md`
+- [ ] 补充 `docs/designs/amstring/iterator_invalidation.md`
+- [ ] 补充 `docs/designs/amstring/benchmark_policy.md`
 
 ### 1.3 文档冻结
 
 创建并完成以下文档：
 
-- [ ] `docs/storage_layout.md`
-- [ ] `docs/api_compatibility.md`
-- [ ] `docs/tdd_plan.md`
-- [ ] `docs/exception_safety.md`
-- [ ] `docs/iterator_invalidation.md`
-- [ ] `docs/benchmark_policy.md`
+- [ ] `storage_layout.md`：对象大小目标、Small/Heap 布局图、Category 编码方案
+- [ ] `api_compatibility.md`：std::basic_string API 覆盖矩阵、已实现/未实现标记
+- [ ] `tdd_plan.md`：测试策略、差分测试框架设计、invariant 定义
+- [ ] `exception_safety.md`：strong/weak guarantee 定义、failing allocator 测试策略
 
 ### 1.4 第一版设计结论
 
@@ -107,30 +123,34 @@ MVP 阶段禁止提前引入：
 - [ ] `char` 性能优化后续通过 core 特化完成。
 - [ ] generic core 优先保证多 `CharT` 正确性。
 - [ ] allocator 模板参数保留，MVP 只完整测试 `std::allocator`。
+- [ ] Small metadata 用 CharT 存储，不用 byte-level trick（第一版简化）。
 
-### 1.5 工具链
+### 1.5 工具链（利用现有项目配置）
 
-- [ ] 配置 CMake。
-- [ ] 配置 C++20。
-- [ ] 配置 GoogleTest 或 Catch2。
-- [ ] 配置 Google Benchmark。
-- [ ] 配置 ASan。
-- [ ] 配置 UBSan。
-- [ ] 配置 LSan。
-- [ ] 配置 Debug build。
-- [ ] 配置 Release build。
-- [ ] 配置 RelWithDebInfo build。
-- [ ] 配置 benchmark build。
-- [ ] 配置 CI 或本地脚本。
+AetherMind 项目已有：
+
+- [x] CMake >= 3.28
+- [x] C++20
+- [x] GoogleTest（系统安装）
+- [x] Google Benchmark（FetchContent）
+- [x] ASan/UBSan/LSan 配置
+
+amstring 直接复用：
+
+- [ ] 验证 `tests/unit/amstring/*.cpp` 被 GLOB_RECURSE 收集
+- [ ] 验证 `tests/benchmark/amstring/*.cpp` 被 GLOB_RECURSE 收集
+- [ ] 验证 sanitizer build 可运行 amstring 测试
 
 ### 1.6 验收标准
 
-- [ ] 空项目可编译。
-- [ ] 单元测试框架可运行。
-- [ ] benchmark 框架可运行。
-- [ ] sanitizer build 可运行。
-- [ ] 文档中明确第一版边界。
-- [ ] 没有开始写复杂字符串 API。
+- [ ] `include/amstring/` 目录存在，含骨架头文件。
+- [ ] `tests/unit/amstring/` 目录存在，含空测试文件。
+- [ ] `tests/benchmark/amstring/` 目录存在，含空 benchmark 文件。
+- [ ] `storage_layout.md`, `api_compatibility.md`, `tdd_plan.md` 完成。
+- [ ] 第一版设计决策在文档中明确记录。
+- [ ] `cmake --build build --target aethermind_unit_tests` 通过。
+- [ ] `cmake --build build --target aethermind_benchmark` 通过。
+- [ ] 没有开始写复杂字符串 API（只骨架）。
 
 ---
 
@@ -315,12 +335,12 @@ Heap：
 
 ### 4.1 目标
 
-封装 `basic_string_core`，形成最小可用 `am::basic_string<char>`。
+封装 `basic_string_core`，形成最小可用 `aethermind::basic_string<char>`。
 
 ### 4.2 类型定义
 
-- [ ] 定义 `am::basic_string<CharT, Traits, Allocator>`
-- [ ] 定义 `am::string`
+- [ ] 定义 `aethermind::basic_string<CharT, Traits, Allocator>`
+- [ ] 定义 `aethermind::string`
 - [ ] 暂时不开放其他别名，或开放但不进入主测试。
 - [ ] public API 不暴露 core。
 - [ ] public API 风格对齐 `std::basic_string`。
@@ -440,7 +460,7 @@ Heap：
 
 ### 4.9 验收标准
 
-- [ ] `am::string` MVP 可独立使用。
+- [ ] `aethermind::string` MVP 可独立使用。
 - [ ] 所有 API 后 invariant 通过。
 - [ ] 与 `std::string` 基础行为一致。
 - [ ] ASan / UBSan / LSan 通过。
@@ -1048,7 +1068,7 @@ C++20/23 风格：
 
 实现：
 
-- [ ] `std::hash<am::basic_string<CharT, Traits, Allocator>>`
+- [ ] `std::hash<aethermind::basic_string<CharT, Traits, Allocator>>`
 
 测试：
 
@@ -1062,7 +1082,7 @@ C++20/23 风格：
 实现：
 
 - [ ] `std::swap`
-- [ ] `am::swap`
+- [ ] `aethermind::swap`
 
 测试：
 
@@ -1095,7 +1115,7 @@ C++20/23 风格：
 
 建立测试工具：
 
-- [ ] 定义 `StringPair<CharT>`，同时持有 `std::basic_string<CharT>` 和 `am::basic_string<CharT>`。
+- [ ] 定义 `StringPair<CharT>`，同时持有 `std::basic_string<CharT>` 和 `aethermind::basic_string<CharT>`。
 - [ ] 定义 `CheckEqual()`。
 - [ ] 定义 `CheckInvariant()`。
 - [ ] 每次操作后自动检查。
@@ -1172,7 +1192,7 @@ C++20/23 风格：
 
 - [ ] `std::string`
 - [ ] `folly::fbstring`
-- [ ] `am::string`
+- [ ] `aethermind::string`
 
 ### 13.2 Benchmark 分类
 
@@ -1274,14 +1294,14 @@ C++20/23 风格：
 
 ### 14.1 目标
 
-在 generic core 稳定后，为 `char` 做 fbstring-like 专用优化，使 `am::string` 性能对标 fbstring。
+在 generic core 稳定后，为 `char` 做 fbstring-like 专用优化，使 `aethermind::string` 性能对标 fbstring。
 
 ### 14.2 前置条件
 
 必须满足：
 
 - [ ] generic core 全部测试通过。
-- [ ] `am::string` 差分测试通过。
+- [ ] `aethermind::string` 差分测试通过。
 - [ ] mutation random test 稳定。
 - [ ] benchmark 基线已建立。
 - [ ] 已明确性能瓶颈。
@@ -1349,11 +1369,11 @@ C++20/23 风格：
 
 ### 15.2 API
 
-- [ ] `am::string` 可用。
-- [ ] `am::u8string` 可用。
-- [ ] `am::u16string` 可用。
-- [ ] `am::u32string` 可用。
-- [ ] `am::wstring` 可用。
+- [ ] `aethermind::string` 可用。
+- [ ] `aethermind::u8string` 可用。
+- [ ] `aethermind::u16string` 可用。
+- [ ] `aethermind::u32string` 可用。
+- [ ] `aethermind::wstring` 可用。
 - [ ] API compatibility matrix 已更新。
 - [ ] 未实现 API 在文档中明确标注。
 
@@ -1425,7 +1445,7 @@ C++20/23 风格：
 - [ ] generic core small / heap layout。
 - [ ] core invariant。
 - [ ] core lifecycle。
-- [ ] `am::string` MVP。
+- [ ] `aethermind::string` MVP。
 - [ ] ASan / UBSan / LSan。
 - [ ] 与 `std::string` 差分测试。
 
@@ -1461,57 +1481,63 @@ C++20/23 风格：
 
 ## 18. 建议的第一周执行计划
 
-### Day 1
+### Day 1（M0：骨架与规格冻结）
 
-- [ ] 建立目录结构。
-- [ ] 配置 CMake。
-- [ ] 接入测试框架。
-- [ ] 接入 sanitizer。
-- [ ] 编写 `storage_layout.md` 初版。
-- [ ] 编写 `api_compatibility.md` 初版。
+- [ ] 创建 `include/amstring/` 目录及骨架头文件。
+- [ ] 创建 `tests/unit/amstring/` 子目录及空测试文件。
+- [ ] 创建 `tests/benchmark/amstring/` 子目录及空 benchmark 文件。
+- [ ] 验证 GLOB_RECURSE 自动收集（编译 `aethermind_unit_tests`, `aethermind_benchmark`）。
+- [ ] 编写 `docs/designs/amstring/storage_layout.md`。
+- [ ] 编写 `docs/designs/amstring/api_compatibility.md`。
+- [ ] 编写 `docs/designs/amstring/tdd_plan.md`。
+- [ ] 在文档中明确第一版设计决策。
 
-### Day 2
+### Day 2（M1：Core Layout - 类型定义）
 
-- [ ] 实现 `Category`。
-- [ ] 实现 `MediumLarge<CharT>`。
-- [ ] 实现 `basic_string_core` 空对象。
+- [ ] 实现 `Category` enum（Small/Medium/Large）。
+- [ ] 实现 `MediumLarge<CharT>` struct。
+- [ ] 实现 `basic_string_core<CharT, Traits, Allocator>` 空对象。
 - [ ] 实现 default constructor。
 - [ ] 实现 `data / size / capacity / empty`。
-- [ ] 写 empty core 测试。
+- [ ] 写 empty core 测试（`tests/unit/amstring/test_core_layout.cpp`）。
 
-### Day 3
+### Day 3（M1：Small Layout）
 
-- [ ] 实现 `init_small`。
-- [ ] 实现 small metadata 编码。
+- [ ] 实现 `init_small(const CharT* src, size_type n)`。
+- [ ] 实现 small metadata 编码（用 CharT 存储，不用 byte trick）。
+- [ ] 实现 `kSmallCapacity`, `kSmallArraySize` 常量。
 - [ ] 实现 small invariant。
 - [ ] 写 small 测试。
 - [ ] 跑 ASan / UBSan。
 
-### Day 4
+### Day 4（M1：Heap Layout）
 
-- [ ] 实现 heap allocation。
-- [ ] 实现 `init_heap`。
+- [ ] 实现 heap allocation（使用 allocator_traits）。
+- [ ] 实现 `init_heap(const CharT* src, size_type n, size_type cap)`。
+- [ ] 实现 `destroy_heap()`。
+- [ ] 实现 heap capacity encoding（category bits）。
 - [ ] 实现 heap invariant。
 - [ ] 写 heap 测试。
 - [ ] 跑 LSan。
 
-### Day 5
+### Day 5（M2：Lifecycle - 析构与构造）
 
-- [ ] 实现 destructor。
-- [ ] 实现 copy constructor。
-- [ ] 实现 move constructor。
-- [ ] 写 lifecycle 测试。
+- [ ] 实现 `~basic_string_core()`。
+- [ ] 实现 copy constructor（small/heap）。
+- [ ] 实现 move constructor（small/heap）。
+- [ ] 写 lifecycle 测试（`tests/unit/amstring/test_core_lifecycle.cpp`）。
 
-### Day 6
+### Day 6（M2：Lifecycle - 赋值与交换）
 
-- [ ] 实现 copy assignment。
-- [ ] 实现 move assignment。
-- [ ] 实现 swap。
+- [ ] 实现 copy assignment（strong exception guarantee）。
+- [ ] 实现 move assignment（noexcept）。
+- [ ] 实现 `swap()`。
 - [ ] 写 assignment / swap 测试。
+- [ ] 验收：无泄漏、无 double free、无 use-after-free。
 
-### Day 7
+### Day 7（M3：basic_string MVP）
 
-- [ ] 封装 `am::basic_string<char>` MVP。
+- [ ] 封装 `aethermind::basic_string<char>` 公共 API。
 - [ ] 实现基础 constructor / accessor。
 - [ ] 写与 `std::string` 的基础差分测试。
 - [ ] 整理第一周问题清单。
@@ -1522,7 +1548,7 @@ C++20/23 风格：
 
 MVP 完成条件：
 
-- [ ] `am::string` 支持 default/cstr/pointer-length/string_view/count-char 构造。
+- [ ] `aethermind::string` 支持 default/cstr/pointer-length/string_view/count-char 构造。
 - [ ] 支持 copy/move/destructor。
 - [ ] 支持 data/c_str/size/capacity/empty。
 - [ ] 支持 begin/end/operator[]/at/front/back。

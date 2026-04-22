@@ -1,6 +1,8 @@
 #ifndef AMSTRING_CHAR_ALGORITHMS_HPP
 #define AMSTRING_CHAR_ALGORITHMS_HPP
 
+#include "macros.h"
+
 #include <cstring>
 #include <string>
 #include <type_traits>
@@ -13,25 +15,25 @@ namespace aethermind {
 // Copy characters from src to dst
 template<typename CharT, typename Traits>
 void char_copy(CharT* dst, const CharT* src, size_t n) {
-    if (n > 0) {
-        Traits::copy(dst, src, n);
-    }
+    if (n > 0) AM_LIKELY {
+            Traits::copy(dst, src, n);
+        }
 }
 
 // Move characters (handles overlapping ranges)
 template<typename CharT, typename Traits>
 void char_move(CharT* dst, const CharT* src, size_t n) {
-    if (n > 0) {
-        Traits::move(dst, src, n);
-    }
+    if (n > 0) AM_LIKELY {
+            Traits::move(dst, src, n);
+        }
 }
 
 // Fill characters
 template<typename CharT, typename Traits>
 void char_fill(CharT* dst, size_t n, CharT ch) {
-    if (n > 0) {
-        Traits::assign(dst, n, ch);
-    }
+    if (n > 0) AM_LIKELY {
+            Traits::assign(dst, n, ch);
+        }
 }
 
 // Compare characters

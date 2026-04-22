@@ -24,10 +24,9 @@ namespace aethermind {
 // - Allocator support
 // - char-optimized core
 
-template<
-        typename CharT,
-        typename Traits = std::char_traits<CharT>,
-        typename Allocator = std::allocator<CharT>>
+template<typename CharT,
+         typename Traits = std::char_traits<CharT>,
+         typename Allocator = std::allocator<CharT>>
 class basic_string {
 public:
     using value_type = CharT;

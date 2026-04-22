@@ -117,18 +117,18 @@ include/amstring/
 - [ ] 创建 `tests/allocator/`
 - [ ] 创建 `tests/regression/`
 - [ ] 创建 `tests/benchmark/amstring/`
-- [ ] 创建 `docs/`
+- [ ] 创建 `docs/designs/amstring/`
 
 ## 1.3 文档冻结
 
 创建并完成以下文档：
 
-- [ ] `docs/storage_layout.md`
-- [ ] `docs/api_compatibility.md`
-- [ ] `docs/tdd_plan.md`
-- [ ] `docs/exception_safety.md`
-- [ ] `docs/iterator_invalidation.md`
-- [ ] `docs/benchmark_policy.md`
+- [ ] `docs/designs/amstring/storage_layout.md`
+- [ ] `docs/designs/amstring/api_compatibility.md`
+- [ ] `docs/designs/amstring/tdd_plan.md`
+- [ ] `docs/designs/amstring/exception_safety.md`
+- [ ] `docs/designs/amstring/iterator_invalidation.md`
+- [ ] `docs/designs/amstring/benchmark_policy.md`
 
 ## 1.4 第一版设计结论
 

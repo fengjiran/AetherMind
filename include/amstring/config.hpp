@@ -1,10 +1,13 @@
 #ifndef AMSTRING_CONFIG_HPP
 #define AMSTRING_CONFIG_HPP
 
+#include <bit>
+
 // amstring configuration macros
 // First version: simple configuration, no advanced optimizations
 
 namespace aethermind {
+
 namespace config {
 
 // First version design decisions (frozen):
@@ -28,6 +31,8 @@ namespace config {
 #else
 #define AMSTRING_CHECK_INVARIANTS 1
 #endif
+
+constexpr static auto kIsLittleEndian = std::endian::native == std::endian::little;
 
 }// namespace config
 }// namespace aethermind

@@ -4,19 +4,29 @@
 // SPDX-License-Identifier: MIT
 
 #include <benchmark/benchmark.h>
-#include "amstring/string.hpp"
 #include <string>
 
-namespace aethermind {
-namespace benchmark {
+namespace {
 
-// Placeholder for Milestone 13 benchmarks
-// TODO: Implement comparative benchmarks
-
-static void BM_VsStdPlaceholder(benchmark::State& state) {
-    state.SkipWithMessage("Milestone 13: Implement vs std::string benchmarks");
+void BM_StdStringAppendSmall(benchmark::State& state) {
+    for (auto _ : state) {
+        std::string s;
+        s.reserve(64);
+        for (int i = 0; i < 10; ++i) {
+            s.append("abc");
+        }
+        benchmark::DoNotOptimize(s);
+    }
 }
-BENCHMARK(BM_VsStdPlaceholder);
+BENCHMARK(BM_StdStringAppendSmall);
 
-}// namespace benchmark
-}// namespace aethermind
+void BM_StdStringCopySmall(benchmark::State& state) {
+    std::string src("hello world");
+    for (auto _ : state) {
+        std::string dst(src);
+        benchmark::DoNotOptimize(dst);
+    }
+}
+BENCHMARK(BM_StdStringCopySmall);
+
+}// namespace

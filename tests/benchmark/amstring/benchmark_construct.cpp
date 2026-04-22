@@ -4,19 +4,33 @@
 // SPDX-License-Identifier: MIT
 
 #include <benchmark/benchmark.h>
-#include "amstring/string.hpp"
 #include <string>
 
-namespace aethermind {
-namespace benchmark {
+namespace {
 
-// Placeholder for Milestone 13 benchmarks
-// TODO: Implement construction benchmarks
-
-static void BM_ConstructPlaceholder(benchmark::State& state) {
-    state.SkipWithMessage("Milestone 13: Implement construction benchmarks");
+void BM_StdStringDefaultConstruct(benchmark::State& state) {
+    for (auto _ : state) {
+        std::string s;
+        benchmark::DoNotOptimize(s);
+    }
 }
-BENCHMARK(BM_ConstructPlaceholder);
+BENCHMARK(BM_StdStringDefaultConstruct);
 
-}// namespace benchmark
-}// namespace aethermind
+void BM_StdStringSmallLiteral(benchmark::State& state) {
+    for (auto _ : state) {
+        std::string s("hello");
+        benchmark::DoNotOptimize(s);
+    }
+}
+BENCHMARK(BM_StdStringSmallLiteral);
+
+void BM_StdStringHeapLiteral(benchmark::State& state) {
+    const std::string long_str(256, 'x');
+    for (auto _ : state) {
+        std::string s(long_str);
+        benchmark::DoNotOptimize(s);
+    }
+}
+BENCHMARK(BM_StdStringHeapLiteral);
+
+}// namespace

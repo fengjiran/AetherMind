@@ -22,7 +22,7 @@ namespace aethermind {
 // Phase 2: char switches to compact_layout_policy
 template<typename CharT>
 struct default_layout_policy {
-    using type = stable_layout_policy<CharT>;
+    using type = StableLayoutPolicy<CharT>;
 };
 
 // basic_string - public API layer

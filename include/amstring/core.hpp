@@ -27,7 +27,7 @@ template<
     typename CharT,
     typename Traits = std::char_traits<CharT>,
     typename Allocator = std::allocator<CharT>,
-    typename LayoutPolicy = stable_layout_policy<CharT>,
+    typename LayoutPolicy = StableLayoutPolicy<CharT>,
     typename GrowthPolicy = default_growth_policy
 >
 class basic_string_core {
@@ -43,7 +43,7 @@ public:
     using pointer = CharT*;
     using const_pointer = const CharT*;
 
-    using storage_type = typename LayoutPolicy::storage_type;
+    using storage_type = typename LayoutPolicy::StorageType;
     using alloc_helper = allocator_traits_helper<Allocator>;
     using char_algo = char_algorithms<CharT, Traits>;
 

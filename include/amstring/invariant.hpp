@@ -1,40 +1,46 @@
-#ifndef AMSTRING_INVARIANT_HPP
-#define AMSTRING_INVARIANT_HPP
+// invariant.hpp - Invariant checking utilities for amstring
+// Part of AetherMind project, licensed under MIT License.
+// See LICENSE.txt for details.
+// SPDX-License-Identifier: MIT
+
+#ifndef AETHERMIND_AMSTRING_INVARIANT_HPP
+#define AETHERMIND_AMSTRING_INVARIANT_HPP
 
 #include "config.hpp"
 
+#include <cassert>
+#include <cstddef>
+
 namespace aethermind {
 
-// Invariant checking for basic_string_core
-// Core invariants that must hold at all times:
-//
-// 1. data() != nullptr
-// 2. data()[size()] == CharT{}  (null terminator)
-// 3. size() <= capacity()
-// 4. begin() == data()
-// 5. end() == data() + size()
-// 6. moved-from object is valid empty string
-// 7. small/heap state is O(1) distinguishable
-// 8. heap: data() points to valid allocated region
-// 9. heap: capacity() returns character count (not byte count)
-// 10. capacity does not contain category bits
+// Invariant check helper
+// Only active in debug builds (kEnableInvariantCheck == true)
+template<typename CharT>
+inline void check_invariant_impl(
+    const CharT* data,
+    std::size_t size,
+    std::size_t capacity
+) noexcept {
+    if (!config::kEnableInvariantCheck) {
+        return;
+    }
 
-#if AMSTRING_CHECK_INVARIANTS
+    // Core invariants:
+    // 1. data() != nullptr (always valid, even for empty string)
+    assert(data != nullptr);
 
-template<typename Core>
-void check_invariants(const Core& core) {
-    // TODO: Implement actual invariant checks in Milestone 1
-    // This is a placeholder for now
+    // 2. data()[size()] == CharT{} (null terminator)
+    assert(data[size] == CharT{});
+
+    // 3. size() <= capacity()
+    assert(size <= capacity);
 }
 
-#define AMSTRING_INVARIANT_CHECK(core) check_invariants(core)
-
-#else
-
-#define AMSTRING_INVARIANT_CHECK(core) ((void) 0)
-
-#endif
+// Macro-style invariant check for development
+// Can be disabled globally via NDEBUG
+#define AM_STRING_INVARIANT_CHECK(expr) \
+    do { if (aethermind::config::kEnableInvariantCheck) { assert(expr); } } while (0)
 
 }// namespace aethermind
 
-#endif// AMSTRING_INVARIANT_HPP
+#endif// AETHERMIND_AMSTRING_INVARIANT_HPP

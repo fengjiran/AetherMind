@@ -1,62 +1,70 @@
-#ifndef AMSTRING_CHAR_ALGORITHMS_HPP
-#define AMSTRING_CHAR_ALGORITHMS_HPP
+// char_traits.hpp - Character traits helpers for amstring
+// Part of AetherMind project, licensed under MIT License.
+// See LICENSE.txt for details.
+// SPDX-License-Identifier: MIT
 
-#include "macros.h"
+#ifndef AETHERMIND_AMSTRING_CHAR_TRAITS_HPP
+#define AETHERMIND_AMSTRING_CHAR_TRAITS_HPP
 
+#include <cstddef>
 #include <cstring>
 #include <string>
-#include <type_traits>
 
 namespace aethermind {
 
-// Character algorithm helpers
-// First version: simple implementations using Traits
+// Char algorithms using std::char_traits
+// Encapsulates common operations for any CharT
+template<typename CharT, typename Traits = std::char_traits<CharT>>
+struct char_algorithms {
+    using char_type = CharT;
+    using traits_type = Traits;
+    using size_type = std::size_t;
 
-// Copy characters from src to dst
-template<typename CharT, typename Traits>
-void char_copy(CharT* dst, const CharT* src, size_t n) {
-    if (n > 0) AM_LIKELY {
-            Traits::copy(dst, src, n);
-        }
-}
+    static constexpr CharT null_char() noexcept {
+        return CharT{};
+    }
 
-// Move characters (handles overlapping ranges)
-template<typename CharT, typename Traits>
-void char_move(CharT* dst, const CharT* src, size_t n) {
-    if (n > 0) AM_LIKELY {
-            Traits::move(dst, src, n);
-        }
-}
+    static size_type length(const CharT* s) noexcept {
+        return Traits::length(s);
+    }
 
-// Fill characters
-template<typename CharT, typename Traits>
-void char_fill(CharT* dst, size_t n, CharT ch) {
-    if (n > 0) AM_LIKELY {
-            Traits::assign(dst, n, ch);
-        }
-}
+    static void copy(CharT* dst, const CharT* src, size_type n) noexcept {
+        Traits::copy(dst, src, n);
+    }
 
-// Compare characters
-template<typename CharT, typename Traits>
-int char_compare(const CharT* lhs, const CharT* rhs, size_t n) {
-    return Traits::compare(lhs, rhs, n);
-}
+    static void move(CharT* dst, const CharT* src, size_type n) noexcept {
+        Traits::move(dst, src, n);
+    }
 
-// Find character in range
-template<typename CharT, typename Traits>
-const CharT* char_find(const CharT* s, size_t n, CharT ch) {
-    return Traits::find(s, n, ch);
-}
+    static CharT* find(CharT* s, size_type n, CharT ch) noexcept {
+        return Traits::find(s, n, ch);
+    }
 
-// Length of null-terminated string
-template<typename CharT, typename Traits>
-size_t char_length(const CharT* s) {
-    return Traits::length(s);
-}
+    static const CharT* find(const CharT* s, size_type n, CharT ch) noexcept {
+        return Traits::find(s, n, ch);
+    }
 
-// Specialization for char using std::memcpy for efficiency
-// (Only used in char-optimized core later, not in first version generic core)
+    static int compare(const CharT* s1, const CharT* s2, size_type n) noexcept {
+        return Traits::compare(s1, s2, n);
+    }
+
+    static void assign(CharT* dst, size_type n, CharT ch) noexcept {
+        Traits::assign(dst, n, ch);
+    }
+
+    static void assign(CharT& dst, CharT ch) noexcept {
+        Traits::assign(dst, ch);
+    }
+
+    static bool eq(CharT a, CharT b) noexcept {
+        return Traits::eq(a, b);
+    }
+
+    static bool lt(CharT a, CharT b) noexcept {
+        return Traits::lt(a, b);
+    }
+};
 
 }// namespace aethermind
 
-#endif// AMSTRING_CHAR_ALGORITHMS_HPP
+#endif// AETHERMIND_AMSTRING_CHAR_TRAITS_HPP

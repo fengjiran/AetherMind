@@ -1,38 +1,44 @@
-#ifndef AMSTRING_GROWTH_POLICY_HPP
-#define AMSTRING_GROWTH_POLICY_HPP
+// growth_policy.hpp - GrowthPolicy for amstring capacity management
+// Part of AetherMind project, licensed under MIT License.
+// See LICENSE.txt for details.
+// SPDX-License-Identifier: MIT
 
+#ifndef AETHERMIND_AMSTRING_GROWTH_POLICY_HPP
+#define AETHERMIND_AMSTRING_GROWTH_POLICY_HPP
+
+#include "config.hpp"
+
+#include <algorithm>
 #include <cstddef>
 
 namespace aethermind {
 
-// Growth policy for heap capacity expansion
-// First version: simple geometric growth (1.5x or 2x)
-
-class DefaultGrowthPolicy {
-public:
-    // Calculate new capacity when current capacity is insufficient
-    // Strategy: grow by factor of 2 for small sizes, 1.5x for larger
-    static constexpr size_t grow(size_t current, size_t required) {
-        if (required <= current) {
-            return current;
-        }
-
-        // Minimum growth: at least required
-        if (current == 0) {
-            return required;
-        }
-
-        // Geometric growth
-        size_t geometric = current * 2;
-        return geometric > required ? geometric : required;
+// Default growth policy for capacity management
+// Determines how capacity grows when string exceeds current limit
+struct default_growth_policy {
+    // Minimum heap capacity when transitioning from small to heap
+    // Ensures reasonable initial allocation to avoid immediate re-allocation
+    static constexpr std::size_t min_heap_capacity(std::size_t required) noexcept {
+        return std::max(required, config::kMinHeapCapacity);
     }
 
-    // Maximum allowed capacity
-    static constexpr size_t max_capacity() {
-        return size_t(-1) / 2;// Conservative limit
+    // Calculate next capacity given old capacity and required size
+    // Growth strategy: 1.5x (old + old/2) with floor
+    static constexpr std::size_t next_capacity(
+        std::size_t old_cap,
+        std::size_t required
+    ) noexcept {
+        if (required <= old_cap) {
+            return old_cap;
+        }
+
+        const std::size_t growth = old_cap / config::kGrowthFactorDenominator;
+        const std::size_t candidate = old_cap + growth;
+
+        return std::max({required, candidate, config::kMinHeapCapacity});
     }
 };
 
 }// namespace aethermind
 
-#endif// AMSTRING_GROWTH_POLICY_HPP
+#endif// AETHERMIND_AMSTRING_GROWTH_POLICY_HPP

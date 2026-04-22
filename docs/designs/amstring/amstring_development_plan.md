@@ -1681,7 +1681,7 @@ stream / formatter
 template <class CharT, class Traits, class Allocator>
 class basic_string {
 private:
-    detail::basic_string_core<CharT, Traits, Allocator> core_;
+    basic_string_core<CharT, Traits, Allocator> core_;
 };
 ```
 

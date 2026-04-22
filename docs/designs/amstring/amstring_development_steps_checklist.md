@@ -163,12 +163,12 @@ amstring 直接复用：
 
 ### 2.2 类型设计
 
-- [ ] 定义 `detail::Category`
+- [ ] 定义 `Category`
 - [ ] 定义 `Category::Small`
 - [ ] 定义 `Category::Medium`
 - [ ] 定义 `Category::Large`
-- [ ] 定义 `detail::MediumLarge<CharT>`
-- [ ] 定义 `detail::basic_string_core<CharT, Traits, Allocator>`
+- [ ] 定义 `MediumLarge<CharT>`
+- [ ] 定义 `basic_string_core<CharT, Traits, Allocator>`
 - [ ] 定义 `size_type`
 - [ ] 定义 `value_type`
 - [ ] 定义 `allocator_type`

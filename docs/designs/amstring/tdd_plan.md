@@ -96,7 +96,7 @@ Operations:
 
 ```cpp
 TEST(CoreLayout, SmallEmpty) {
-    aethermind::detail::basic_string_core<char> core;
+    aethermind::basic_string_core<char> core;
     EXPECT_EQ(core.size(), 0);
     EXPECT_EQ(core.capacity(), kSmallCapacity);
     EXPECT_EQ(core.category(), Category::Small);

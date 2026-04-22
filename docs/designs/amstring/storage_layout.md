@@ -30,11 +30,18 @@ First version uses **CharT-level encoding** (not byte-level trick):
 
 ```
 Small:    Last CharT stores encoded metadata = kSmallCapacity - size
-Medium:   capacity_with_category stores category in lower bits
-Large:    capacity_with_category stores category in lower bits
+Medium:   capacity_with_category stores category in bits (endian-aware)
+Large:    capacity_with_category stores category in bits (endian-aware)
 ```
 
 This is simpler than fbstring byte-level marker and easier to support multiple CharT types.
+
+**Important**: Heap category encoding is **endian-aware**:
+
+| Endian | Category Location | categoryExtractMask |
+|--------|-------------------|---------------------|
+| Little | `cap_` high byte (byte 7, top 2 bits) | `0xC0` |
+| Big | `cap_` low byte (byte 0, low 2 bits) | `0x03` |
 
 ---
 
@@ -101,23 +108,77 @@ size_type small_size() const {
 
 ---
 
-## 5. Heap Capacity Encoding
+## 5. Heap Capacity Encoding（Endian-Aware）
 
-### 5.1 Capacity with Category
+### 5.1 Endian Constants
 
 ```cpp
-cap_ = actual_capacity | (category_bits << kCategoryShift)
+constexpr bool kIsLittleEndian = std::endian::native == std::endian::little;
+constexpr bool kIsBigEndian = std::endian::native == std::endian::big;
+constexpr size_t kCategoryShift = (sizeof(size_t) - 1) * 8;  // 56 on 64-bit
+
+// Category extraction mask (endian-aware)
+constexpr uint8_t kCategoryExtractMask = kIsLittleEndian ? 0xC0 : 0x03;
+
+// Capacity extraction mask (endian-aware)
+constexpr size_t kCapacityExtractMask = kIsLittleEndian 
+    ? ~(static_cast<size_t>(kCategoryExtractMask) << kCategoryShift)  // 0x3FFFFFFFFFFFFFF
+    : 0x0;  // Unused on big-endian (use shift instead)
 ```
 
-Where:
-- `kCategoryShift = (sizeof(size_t) - 1) * 8` (high byte for little-endian)
-- `category_bits = static_cast<size_t>(Category::Medium/Large)`
+### 5.2 Category Encoding in cap_
 
-### 5.2 Capacity Extraction
+**Little-Endian**: Category in high byte (byte 7, top 2 bits)
+```cpp
+cap_ = actual_capacity | (static_cast<size_t>(category) << kCategoryShift)
+// Example: cap = 100, category = Medium (1)
+// cap_ = 100 | (1 << 56) = 100 | 0x0100000000000000
+```
+
+**Big-Endian**: Category in low byte (byte 0, low 2 bits)
+```cpp
+cap_ = (actual_capacity << 2) | static_cast<size_t>(category)
+// Example: cap = 100, category = Medium (1)
+// cap_ = (100 << 2) | 1 = 400 | 1 = 401
+```
+
+### 5.3 Capacity Extraction（Endian-Aware）
 
 ```cpp
-size_type capacity() const {
-    return cap_ & kCapacityMask;  // Strip category bits
+size_type capacity() const noexcept {
+    if (is_small()) return kSmallCapacity;
+    
+    if (kIsLittleEndian) {
+        return ml_.cap_ & kCapacityExtractMask;
+    } else {
+        return ml_.cap_ >> 2;
+    }
+}
+```
+
+### 5.4 Category Extraction
+
+```cpp
+Category category() const noexcept {
+    if (is_small()) return Category::Small;
+    
+    if (kIsLittleEndian) {
+        return static_cast<Category>((ml_.cap_ >> kCategoryShift) & 0x03);
+    } else {
+        return static_cast<Category>(ml_.cap_ & 0x03);
+    }
+}
+```
+
+### 5.5 Set Capacity with Category（Endian-Aware）
+
+```cpp
+void set_capacity(size_type cap, Category cat) noexcept {
+    if (kIsLittleEndian) {
+        ml_.cap_ = cap | (static_cast<size_t>(cat) << kCategoryShift);
+    } else {
+        ml_.cap_ = (cap << 2) | static_cast<size_t>(cat);
+    }
 }
 ```
 
@@ -140,7 +201,8 @@ This ensures `c_str()` is always valid.
 |----------|-------|
 | Object size | 24 bytes target |
 | Small capacity | `sizeof(MediumLarge)/sizeof(CharT) - 1` |
-| Category encoding | CharT-level (no byte trick) |
+| Small encoding | CharT-level (no byte trick), shift=0/2 for endian |
+| Heap category | Endian-aware encoding in cap_ |
 | Large strategy | Reserved, same as Medium |
 | COW | Disabled |
 | safe over-read | Disabled |

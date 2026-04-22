@@ -1,17 +1,25 @@
-#ifndef AMSTRING_STRING_HPP
-#define AMSTRING_STRING_HPP
+// string.hpp - Convenience header for amstring type aliases
+// Part of AetherMind project, licensed under MIT License.
+// See LICENSE.txt for details.
+// SPDX-License-Identifier: MIT
 
-// Convenience header that includes all amstring types
+#ifndef AETHERMIND_AMSTRING_STRING_HPP
+#define AETHERMIND_AMSTRING_STRING_HPP
 
 #include "basic_string.hpp"
-#include "config.hpp"
 #include "string_fwd.hpp"
 
 namespace aethermind {
 
-// Export type aliases at namespace level
-// (Already defined in string_fwd.hpp and basic_string.hpp)
+// Type aliases at namespace level for convenience
+// These are the primary user-facing types
+
+using string    = basic_string<char>;
+using u8string  = basic_string<char8_t>;
+using u16string = basic_string<char16_t>;
+using u32string = basic_string<char32_t>;
+using wstring   = basic_string<wchar_t>;
 
 }// namespace aethermind
 
-#endif// AMSTRING_STRING_HPP
+#endif// AETHERMIND_AMSTRING_STRING_HPP

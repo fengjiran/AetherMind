@@ -1,14 +1,31 @@
-#ifndef AMSTRING_STRING_FWD_HPP
-#define AMSTRING_STRING_FWD_HPP
+// string_fwd.hpp - Forward declarations for amstring
+// Part of AetherMind project, licensed under MIT License.
+// See LICENSE.txt for details.
+// SPDX-License-Identifier: MIT
 
-// Forward declarations for amstring types
-// Note: Forward declarations cannot have default template arguments
+#ifndef AETHERMIND_AMSTRING_STRING_FWD_HPP
+#define AETHERMIND_AMSTRING_STRING_FWD_HPP
+
+#include <memory>
+#include <string>
 
 namespace aethermind {
 
-template<typename CharT, typename Traits, typename Allocator>
+// Forward declarations for basic_string
+template <
+    typename CharT,
+    typename Traits = std::char_traits<CharT>,
+    typename Allocator = std::allocator<CharT>
+>
 class basic_string;
+
+// Type aliases
+using string    = basic_string<char>;
+using u8string  = basic_string<char8_t>;
+using u16string = basic_string<char16_t>;
+using u32string = basic_string<char32_t>;
+using wstring   = basic_string<wchar_t>;
 
 }// namespace aethermind
 
-#endif// AMSTRING_STRING_FWD_HPP
+#endif// AETHERMIND_AMSTRING_STRING_FWD_HPP

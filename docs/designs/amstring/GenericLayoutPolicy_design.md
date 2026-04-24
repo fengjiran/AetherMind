@@ -11,6 +11,8 @@
 - 单元测试、差分测试与不变量检查
 - 后续 `CharLayoutPolicy` 特化设计的对照基线
 
+`GenericLayoutPolicy<CharT>` 的实现与验证遵循 `amstring` 总体架构文档定义的 TDD 工作流，即先以失败测试定义布局行为与不变量，再补最小实现使测试通过。
+
 ---
 
 ## 2. 设计定位

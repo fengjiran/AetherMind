@@ -6,13 +6,13 @@
 #ifndef AETHERMIND_AMSTRING_CORE_HPP
 #define AETHERMIND_AMSTRING_CORE_HPP
 
-#include "config.hpp"
-#include "growth_policy.hpp"
-#include "layout_policy.hpp"
-#include "stable_layout_policy.hpp"
 #include "allocator_support.hpp"
 #include "char_algorithms.hpp"
+#include "config.hpp"
+#include "growth_policy.hpp"
 #include "invariant.hpp"
+#include "layout_policy.hpp"
+#include "stable_layout_policy.hpp"
 
 #include <cstddef>
 #include <memory>
@@ -24,12 +24,11 @@ namespace aethermind {
 // basic_string_core - unified algorithm and lifecycle skeleton
 // Combines LayoutPolicy, GrowthPolicy, and Allocator to implement string semantics
 template<
-    typename CharT,
-    typename Traits = std::char_traits<CharT>,
-    typename Allocator = std::allocator<CharT>,
-    typename LayoutPolicy = StableLayoutPolicy<CharT>,
-    typename GrowthPolicy = default_growth_policy
->
+        typename CharT,
+        typename Traits = std::char_traits<CharT>,
+        typename Allocator = std::allocator<CharT>,
+        typename LayoutPolicy = StableLayoutPolicy<CharT>,
+        typename GrowthPolicy = default_growth_policy>
 class basic_string_core {
 public:
     using value_type = CharT;
@@ -43,7 +42,7 @@ public:
     using pointer = CharT*;
     using const_pointer = const CharT*;
 
-    using storage_type = typename LayoutPolicy::StorageType;
+    using storage_type = LayoutPolicy::Storage;
     using alloc_helper = allocator_traits_helper<Allocator>;
     using char_algo = char_algorithms<CharT, Traits>;
 
@@ -51,19 +50,19 @@ public:
 
 public:
     basic_string_core() noexcept {
-        LayoutPolicy::init_empty(storage_);
+        LayoutPolicy::InitEmpty(storage_);
     }
 
     explicit basic_string_core(const allocator_type& a) noexcept
         : alloc_(a) {
-        LayoutPolicy::init_empty(storage_);
+        LayoutPolicy::InitEmpty(storage_);
     }
 
     basic_string_core(const CharT* s, size_type n,
                       const allocator_type& a = allocator_type{})
         : alloc_(a) {
         if (n <= LayoutPolicy::kSmallCapacity) {
-            LayoutPolicy::init_small(storage_, s, n);
+            LayoutPolicy::InitSmall(storage_, s, n);
         } else {
             const size_type cap = GrowthPolicy::min_heap_capacity(n);
             pointer ptr = alloc_helper::traits::allocate(alloc_, cap + 1);
@@ -75,10 +74,10 @@ public:
 
     basic_string_core(const basic_string_core& other)
         : alloc_(alloc_helper::select_on_copy(other.alloc_)) {
-        if (LayoutPolicy::is_small(other.storage_)) {
-            LayoutPolicy::init_small(storage_,
-                LayoutPolicy::data(other.storage_),
-                LayoutPolicy::size(other.storage_));
+        if (LayoutPolicy::IsSmall(other.storage_)) {
+            LayoutPolicy::InitSmall(storage_,
+                                    LayoutPolicy::data(other.storage_),
+                                    LayoutPolicy::size(other.storage_));
         } else {
             const size_type sz = LayoutPolicy::size(other.storage_);
             const size_type cap = LayoutPolicy::capacity(other.storage_);
@@ -91,23 +90,23 @@ public:
 
     basic_string_core(basic_string_core&& other) noexcept
         : alloc_(std::move(other.alloc_)) {
-        if (LayoutPolicy::is_small(other.storage_)) {
-            LayoutPolicy::init_small(storage_,
-                LayoutPolicy::data(other.storage_),
-                LayoutPolicy::size(other.storage_));
-            LayoutPolicy::init_empty(other.storage_);
+        if (LayoutPolicy::IsSmall(other.storage_)) {
+            LayoutPolicy::InitSmall(storage_,
+                                    LayoutPolicy::data(other.storage_),
+                                    LayoutPolicy::size(other.storage_));
+            LayoutPolicy::InitEmpty(other.storage_);
         } else {
             LayoutPolicy::init_heap(storage_,
-                LayoutPolicy::heap_ptr(other.storage_),
-                LayoutPolicy::size(other.storage_),
-                LayoutPolicy::capacity(other.storage_));
+                                    LayoutPolicy::heap_ptr(other.storage_),
+                                    LayoutPolicy::size(other.storage_),
+                                    LayoutPolicy::capacity(other.storage_));
             LayoutPolicy::destroy_heap(other.storage_);
-            LayoutPolicy::init_empty(other.storage_);
+            LayoutPolicy::InitEmpty(other.storage_);
         }
     }
 
     ~basic_string_core() {
-        if (LayoutPolicy::is_heap(storage_)) {
+        if (LayoutPolicy::IsMedium(storage_) || LayoutPolicy::IsLarge(storage_)) {
             pointer ptr = LayoutPolicy::heap_ptr(storage_);
             const size_type cap = LayoutPolicy::capacity(storage_);
             alloc_helper::traits::deallocate(alloc_, ptr, cap + 1);
@@ -125,7 +124,7 @@ public:
 
         if (other_sz <= LayoutPolicy::kSmallCapacity) {
             destroy_heap_if_needed();
-            LayoutPolicy::init_small(storage_, other_data, other_sz);
+            LayoutPolicy::InitSmall(storage_, other_data, other_sz);
         } else {
             pointer new_ptr = alloc_helper::traits::allocate(alloc_, other_cap + 1);
             char_algo::copy(new_ptr, other_data, other_sz);
@@ -149,18 +148,18 @@ public:
 
         destroy_heap_if_needed();
 
-        if (LayoutPolicy::is_small(other.storage_)) {
-            LayoutPolicy::init_small(storage_,
-                LayoutPolicy::data(other.storage_),
-                LayoutPolicy::size(other.storage_));
-            LayoutPolicy::init_empty(other.storage_);
+        if (LayoutPolicy::IsSmall(other.storage_)) {
+            LayoutPolicy::InitSmall(storage_,
+                                    LayoutPolicy::data(other.storage_),
+                                    LayoutPolicy::size(other.storage_));
+            LayoutPolicy::InitEmpty(other.storage_);
         } else if (alloc_helper::is_always_equal || alloc_ == other.alloc_) {
             LayoutPolicy::init_heap(storage_,
-                LayoutPolicy::heap_ptr(other.storage_),
-                LayoutPolicy::size(other.storage_),
-                LayoutPolicy::capacity(other.storage_));
+                                    LayoutPolicy::heap_ptr(other.storage_),
+                                    LayoutPolicy::size(other.storage_),
+                                    LayoutPolicy::capacity(other.storage_));
             LayoutPolicy::destroy_heap(other.storage_);
-            LayoutPolicy::init_empty(other.storage_);
+            LayoutPolicy::InitEmpty(other.storage_);
         } else {
             const size_type sz = LayoutPolicy::size(other.storage_);
             const size_type cap = LayoutPolicy::capacity(other.storage_);
@@ -169,7 +168,7 @@ public:
             ptr[sz] = char_algo::null_char();
             LayoutPolicy::init_heap(storage_, ptr, sz, cap);
             other.destroy_heap_if_needed();
-            LayoutPolicy::init_empty(other.storage_);
+            LayoutPolicy::InitEmpty(other.storage_);
         }
 
         if (alloc_helper::propagate_on_move) {
@@ -205,7 +204,7 @@ public:
 
     void clear() noexcept {
         destroy_heap_if_needed();
-        LayoutPolicy::init_empty(storage_);
+        LayoutPolicy::InitEmpty(storage_);
     }
 
     void reserve(size_type new_cap) {
@@ -226,7 +225,7 @@ public:
         if (count < cur_sz) {
             pointer d = data();
             d[count] = char_algo::null_char();
-            LayoutPolicy::set_size(storage_, count);
+            LayoutPolicy::SetSize(storage_, count);
         } else if (count > cur_sz) {
             if (count > capacity()) {
                 reserve(count);
@@ -234,7 +233,7 @@ public:
             pointer d = data();
             char_algo::assign(d + cur_sz, count - cur_sz, ch);
             d[count] = char_algo::null_char();
-            LayoutPolicy::set_size(storage_, count);
+            LayoutPolicy::SetSize(storage_, count);
         }
     }
 
@@ -250,7 +249,7 @@ public:
             pointer old_ptr = LayoutPolicy::heap_ptr(storage_);
             const size_type old_cap = cap;
 
-            LayoutPolicy::init_small(storage_, old_ptr, sz);
+            LayoutPolicy::InitSmall(storage_, old_ptr, sz);
             alloc_helper::traits::deallocate(alloc_, old_ptr, old_cap + 1);
         } else {
             reallocate_and_copy(sz);
@@ -260,7 +259,7 @@ public:
     void assign(const CharT* s, size_type n) {
         if (n <= LayoutPolicy::kSmallCapacity) {
             destroy_heap_if_needed();
-            LayoutPolicy::init_small(storage_, s, n);
+            LayoutPolicy::InitSmall(storage_, s, n);
         } else {
             const size_type req_cap = GrowthPolicy::min_heap_capacity(n);
             if (req_cap > capacity()) {
@@ -272,7 +271,7 @@ public:
             } else {
                 char_algo::copy(data(), s, n);
                 data()[n] = char_algo::null_char();
-                LayoutPolicy::set_size(storage_, n);
+                LayoutPolicy::SetSize(storage_, n);
             }
         }
     }
@@ -297,7 +296,7 @@ public:
         } else {
             char_algo::copy(data() + cur_sz, s, n);
             data()[new_sz] = char_algo::null_char();
-            LayoutPolicy::set_size(storage_, new_sz);
+            LayoutPolicy::SetSize(storage_, new_sz);
         }
     }
 
@@ -315,7 +314,7 @@ public:
 
 private:
     void destroy_heap_if_needed() noexcept {
-        if (LayoutPolicy::is_heap(storage_)) {
+        if (LayoutPolicy::IsMedium(storage_) || LayoutPolicy::IsLarge(storage_)) {
             pointer ptr = LayoutPolicy::heap_ptr(storage_);
             const size_type cap = LayoutPolicy::capacity(storage_);
             alloc_helper::traits::deallocate(alloc_, ptr, cap + 1);

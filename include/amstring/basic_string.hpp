@@ -77,7 +77,7 @@ public:
             core_.reserve(count);
             traits_type::assign(core_.data(), count, ch);
             core_.data()[count] = CharT{};
-            core_type::layout_policy_type::set_size(core_.storage_, count);
+            core_type::layout_policy_type::SetSize(core_.storage_, count);
         }
     }
 
@@ -184,7 +184,7 @@ public:
             core_.reserve(core_.size() + count);
             traits_type::assign(core_.data() + core_.size(), count, ch);
             core_.data()[core_.size() + count] = CharT{};
-            core_type::layout_policy_type::set_size(core_.storage_, core_.size() + count);
+            core_type::layout_policy_type::SetSize(core_.storage_, core_.size() + count);
         }
         return *this;
     }

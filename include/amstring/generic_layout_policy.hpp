@@ -1,4 +1,4 @@
-// generic_layout_policy.hpp - Generic layout policy for multi-CharT amstring support
+// GenericLayoutPolicy - Multi-CharT correctness baseline for amstring storage layout.
 // Part of AetherMind project, licensed under MIT License.
 // See LICENSE.txt for details.
 // SPDX-License-Identifier: MIT
@@ -45,6 +45,27 @@ struct UIntOfSize<8> {
 template<typename CharT>
 using MetaWordT = UIntOfSize<sizeof(CharT)>::Type;
 
+/// Policy for 24-byte Small/External two-state storage layout across all CharT types.
+///
+/// Responsibilities:
+/// - Define storage layout (union of inline array and external representation)
+/// - Encode/decode Small size via inverted probe at the last byte
+/// - Pack/unpack External capacity with tag in capacity_with_tag field
+/// - Provide layout primitives: init, category detection, data/size/capacity access
+///
+/// Does NOT handle:
+/// - Allocation or deallocation (caller manages heap memory)
+/// - Growth capacity selection (GrowthPolicy)
+/// - Container algorithms (BasicStringCore)
+///
+/// Thread-safety: All methods are noexcept and operate only on the provided Storage.
+/// No internal state; safe to call from multiple threads on different Storage objects.
+///
+/// Invariants:
+/// - sizeof(Storage) == 24 on 64-bit platforms
+/// - Small: probe ∈ [0, kSmallCapacity]; data stored inline; terminator at small[size]
+/// - External: probe == kExternalTag; heap data; terminator at data[size]
+/// - InitExternal requires caller to provide at least capacity+1 writable CharT
 template<typename CharT>
 struct GenericLayoutPolicy {
     static_assert(std::is_trivial_v<CharT>, "CharT must be trivial.");
@@ -58,33 +79,27 @@ struct GenericLayoutPolicy {
     using SizeType = std::size_t;
     using ProbeWordType = MetaWordT<CharT>;
 
-    // capacity_with_tag layout (Little-Endian, e.g. CharT=char, kProbeBits=8):
-    //   [63 ... kPayloadBits | kPayloadBits-1 ... 0]
-    //   [      tag (8b)      |     capacity (56b)    ]
-    //
-    // capacity_with_tag layout (Big-Endian):
-    //   [63 ... kProbeBits | kProbeBits-1 ... 0]
-    //   [  capacity (56b)  |     tag (8b)       ]
+    // External heap representation.
+    // capacity_with_tag packs the tag (probe value) with capacity to avoid extra discriminator field.
+    // Layout depends on endianness: little-endian puts tag in high bits, big-endian in low bits.
     struct ExternalRep {
-        CharT* data;
-        SizeType size;
-        SizeType capacity_with_tag;
+        CharT* data;                // Borrowed; caller owns allocation and deallocation.
+        SizeType size;              // Current length, excluding null terminator.
+        SizeType capacity_with_tag; // Packed (capacity | tag) encoding.
     };
 
+    // 24-byte storage union. Small uses inline array; External uses heap pointer.
     union Storage {
-        CharT small[sizeof(ExternalRep) / sizeof(CharT)];
-        ExternalRep external;
-        std::byte raw[sizeof(ExternalRep)]{};
+        CharT small[sizeof(ExternalRep) / sizeof(CharT)]; // Inline buffer for Small state.
+        ExternalRep external;                              // Heap representation for External state.
+        std::byte raw[sizeof(ExternalRep)]{};              // Raw bytes for probe access.
     };
 
-    // Storage category determined by probe value:
-    //   kSmall    - probe ∈ [0, kSmallCapacity]; data stored inline in small[]
-    //   kExternal - probe == kExternalTag; data stored on heap
-    //   kInvalid  - probe value doesn't match any valid encoding (data corruption)
+    // Category determined by probe byte at kProbeByteOffset.
     enum class Category : std::uint8_t {
-        kSmall,
-        kExternal,
-        kInvalid
+        kSmall,    // probe ∈ [0, kSmallCapacity]; inline storage.
+        kExternal, // probe == kExternalTag; heap storage.
+        kInvalid,  // probe outside valid range; indicates corruption.
     };
 
     static_assert(sizeof(Storage) == sizeof(ExternalRep));
@@ -98,14 +113,17 @@ struct GenericLayoutPolicy {
     static constexpr SizeType kProbeByteOffset = kStorageBytes - sizeof(CharT);
     static constexpr ProbeWordType kExternalTag = static_cast<ProbeWordType>(kSmallCapacity + 1);
 
+    /// Returns true if storage uses inline Small buffer.
     AM_NODISCARD static bool is_small(const Storage& storage) noexcept {
         return GetProbe(storage) <= static_cast<ProbeWordType>(kSmallCapacity);
     }
 
+    /// Returns true if storage uses external heap buffer.
     AM_NODISCARD static bool is_external(const Storage& storage) noexcept {
         return GetProbe(storage) == kExternalTag;
     }
 
+    /// Returns category based on probe value; kInvalid indicates corruption.
     AM_NODISCARD static Category category(const Storage& storage) noexcept {
         const auto meta = GetProbe(storage);
         if (meta <= static_cast<ProbeWordType>(kSmallCapacity)) {
@@ -119,6 +137,7 @@ struct GenericLayoutPolicy {
         return Category::kInvalid;
     }
 
+    /// Maximum capacity that can be encoded in capacity_with_tag payload bits.
     AM_NODISCARD static constexpr SizeType max_external_capacity() noexcept {
         if constexpr (kPayloadBits == 0) {
             return 0;
@@ -129,14 +148,17 @@ struct GenericLayoutPolicy {
         }
     }
 
+    /// Returns pointer to character data (inline or heap).
     AM_NODISCARD static const CharT* data(const Storage& storage) noexcept {
         return is_small(storage) ? storage.small : storage.external.data;
     }
 
+    /// Returns mutable pointer to character data.
     AM_NODISCARD static CharT* data(Storage& storage) noexcept {
         return is_small(storage) ? storage.small : storage.external.data;
     }
 
+    /// Returns current size; decoded from probe for Small, from external.size for External.
     AM_NODISCARD static SizeType size(const Storage& storage) noexcept {
         const auto probe = GetProbe(storage);
         if (probe <= static_cast<ProbeWordType>(kSmallCapacity)) {
@@ -145,6 +167,7 @@ struct GenericLayoutPolicy {
         return storage.external.size;
     }
 
+    /// Returns capacity; fixed kSmallCapacity for Small, unpacked for External.
     AM_NODISCARD static SizeType capacity(const Storage& storage) noexcept {
         if (is_small(storage)) {
             return kSmallCapacity;
@@ -152,11 +175,14 @@ struct GenericLayoutPolicy {
         return UnpackCapacity(storage.external.capacity_with_tag);
     }
 
+    /// Initializes empty Small string (size=0, probe=kSmallCapacity).
     static void InitEmpty(Storage& storage) noexcept {
         ClearStorage(storage);
         SetSmallSize(storage, 0);
     }
 
+    /// Initializes Small string from source; copies up to kSmallCapacity chars.
+    /// Null terminator and probe are set automatically.
     static void InitSmall(Storage& storage, const CharT* src, SizeType size) noexcept {
         AM_CHECK(size <= kSmallCapacity);
         ClearStorage(storage);
@@ -166,6 +192,11 @@ struct GenericLayoutPolicy {
         SetSmallSize(storage, size);
     }
 
+    /// Initializes External string from pre-allocated heap buffer.
+    ///
+    /// @param ptr Heap buffer; caller owns allocation. Must have at least capacity+1 writable CharT.
+    /// @param size Initial content length; null terminator written at ptr[size].
+    /// @param capacity Capacity encoded in capacity_with_tag; must not exceed max_external_capacity().
     static void InitExternal(Storage& storage, CharT* ptr, SizeType size, SizeType capacity) noexcept {
         AM_CHECK(ptr != nullptr);
         AM_CHECK(size <= capacity);
@@ -176,11 +207,11 @@ struct GenericLayoutPolicy {
         ptr[size] = CharT{};
     }
 
-    // Design constraint: when size == kSmallCapacity, the null terminator
-    // at small[size] occupies the same memory as the probe byte.
-    // EncodeSmallSizeToProbe(kSmallCapacity) == 0 == CharT{}, so both
-    // writes produce the same value. This invariant must be preserved
-    // if the probe encoding scheme is ever changed.
+    /// Updates Small size; writes null terminator and encodes probe.
+    ///
+    /// Invariant: when size == kSmallCapacity, the null terminator at small[size]
+    /// aliases the probe byte. EncodeSmallSizeToProbe(kSmallCapacity) == 0 == CharT{},
+    /// so both writes produce the same value. This must be preserved if encoding changes.
     static void SetSmallSize(Storage& storage, SizeType size) noexcept {
         AM_CHECK(is_small(storage));
         AM_CHECK(size <= kSmallCapacity);
@@ -188,6 +219,7 @@ struct GenericLayoutPolicy {
         SetProbe(storage, EncodeSmallSizeToProbe(size));
     }
 
+    /// Updates External size; writes null terminator at data[size].
     static void SetExternalSize(Storage& storage, SizeType size) noexcept {
         AM_CHECK(is_external(storage));
         AM_CHECK(size <= capacity(storage));
@@ -195,6 +227,7 @@ struct GenericLayoutPolicy {
         storage.external.data[size] = CharT{};
     }
 
+    /// Updates External capacity in capacity_with_tag; preserves tag.
     static void SetExternalCapacity(Storage& storage, SizeType capacity) noexcept {
         AM_CHECK(is_external(storage));
         AM_CHECK(storage.external.size <= capacity);
@@ -202,6 +235,7 @@ struct GenericLayoutPolicy {
         storage.external.capacity_with_tag = PackCapacityWithTag(capacity, kExternalTag);
     }
 
+    /// Validates storage invariants; AM_DCHECK on corruption.
     static void CheckInvariants(const Storage& storage) noexcept {
         switch (category(storage)) {
             case Category::kSmall:
@@ -280,7 +314,7 @@ private:
         }
     }
 
-    // External-only helpers
+    // External-only: unpacks capacity from packed capacity_with_tag.
     AM_NODISCARD static SizeType UnpackCapacity(SizeType capacity_with_tag) noexcept {
         if constexpr (config::kIsLittleEndian) {
             return capacity_with_tag & CapacityMask();
@@ -289,7 +323,7 @@ private:
         }
     }
 
-    // External-only helpers
+    // External-only: unpacks tag from packed capacity_with_tag.
     AM_NODISCARD static ProbeWordType UnpackTag(SizeType capacity_with_tag) noexcept {
         if constexpr (config::kIsLittleEndian) {
             return static_cast<ProbeWordType>(capacity_with_tag >> kPayloadBits);
@@ -298,9 +332,9 @@ private:
         }
     }
 
-    // Inverted encoding: probe = kSmallCapacity - size
-    // This makes is_small() a single comparison (probe <= kSmallCapacity),
-    // and ensures InitEmpty produces probe == kSmallCapacity (within small range).
+    // Inverted encoding: probe = kSmallCapacity - size.
+    // Performance: is_small() becomes single comparison (probe <= kSmallCapacity).
+    // InitEmpty naturally produces probe == kSmallCapacity (valid Small state).
     AM_NODISCARD static constexpr SizeType EncodeSmallSizeToProbe(SizeType size) noexcept {
         return kSmallCapacity - size;
     }

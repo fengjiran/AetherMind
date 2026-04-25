@@ -26,7 +26,7 @@ template<typename CharT,
          typename GrowthPolicy = default_growth_policy>
 class BasicStringCore {
 public:
-    using value_type = CharT;
+    using ValueType = CharT;
     using traits_type = Traits;
     using allocator_type = Allocator;
     using LayoutPolicyType = LayoutPolicy;
@@ -192,6 +192,14 @@ public:
 
     bool empty() const noexcept {
         return size() == 0;
+    }
+
+    bool is_small() const noexcept {
+        return LayoutPolicy::is_small(storage_);
+    }
+
+    bool is_external() const noexcept {
+        return LayoutPolicy::is_external(storage_);
     }
 
     void clear() noexcept {

@@ -6,30 +6,52 @@
 #ifndef AETHERMIND_AMSTRING_LAYOUT_POLICY_HPP
 #define AETHERMIND_AMSTRING_LAYOUT_POLICY_HPP
 
+#include <concepts>
 #include <cstddef>
+#include <type_traits>
 
 namespace aethermind {
 
-// LayoutPolicy interface contract
-// All layout policies must implement these static methods
-//
-// Responsibilities:
-// - Define storage_type (union of small array and heap representation)
-// - Provide init_empty, init_small, init_heap
-// - Provide is_small, is_heap category detection
-// - Provide data, size, capacity extraction
-// - Provide set_size, set_capacity modification
-// - Provide destroy_heap cleanup
-// - Provide check_invariants validation
-//
-// LayoutPolicy does NOT handle:
-// - When to grow (that's GrowthPolicy)
-// - Algorithm flow (that's basic_string_core)
-// - Allocator calls (that's basic_string_core)
+// LayoutPolicy defines only storage layout primitives. It does not allocate,
+// deallocate, choose growth capacity, or implement container algorithms.
+template<typename Policy, typename CharT>
+concept AmStringLayoutPolicy = requires(typename Policy::Storage& storage,
+                                        const typename Policy::Storage& const_storage,
+                                        const CharT* const_ptr,
+                                        CharT* ptr,
+                                        typename Policy::SizeType size) {
+    typename Policy::ValueType;
+    typename Policy::Storage;
+    typename Policy::SizeType;
+    typename Policy::Category;
+
+    requires std::same_as<typename Policy::ValueType, CharT>;
+    requires std::integral<typename Policy::SizeType>;
+    requires std::convertible_to<decltype(Policy::kSmallCapacity), typename Policy::SizeType>;
+
+    { Policy::is_small(const_storage) } noexcept -> std::same_as<bool>;
+    { Policy::is_external(const_storage) } noexcept -> std::same_as<bool>;
+    { Policy::category(const_storage) } noexcept -> std::same_as<typename Policy::Category>;
+
+    { Policy::data(const_storage) } noexcept -> std::same_as<const CharT*>;
+    { Policy::data(storage) } noexcept -> std::same_as<CharT*>;
+
+    { Policy::size(const_storage) } noexcept -> std::same_as<typename Policy::SizeType>;
+    { Policy::capacity(const_storage) } noexcept -> std::same_as<typename Policy::SizeType>;
+    { Policy::max_external_capacity() } noexcept -> std::same_as<typename Policy::SizeType>;
+
+    { Policy::InitEmpty(storage) } noexcept -> std::same_as<void>;
+    { Policy::InitSmall(storage, const_ptr, size) } noexcept -> std::same_as<void>;
+    { Policy::InitExternal(storage, ptr, size, size) } noexcept -> std::same_as<void>;
+
+    { Policy::SetSmallSize(storage, size) } noexcept -> std::same_as<void>;
+    { Policy::SetExternalSize(storage, size) } noexcept -> std::same_as<void>;
+    { Policy::SetExternalCapacity(storage, size) } noexcept -> std::same_as<void>;
+
+    { Policy::CheckInvariants(const_storage) } noexcept -> std::same_as<void>;
+};
 
 // Default layout policy selector
-// Phase 1: All CharT use stable_layout_policy
-// Phase 2: char switches to compact_layout_policy
 template<typename CharT>
 struct default_layout_policy;
 

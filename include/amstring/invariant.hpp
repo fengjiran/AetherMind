@@ -7,39 +7,30 @@
 #define AETHERMIND_AMSTRING_INVARIANT_HPP
 
 #include "config.hpp"
+#include "utils/logging.h"
 
-#include <cassert>
 #include <cstddef>
 
 namespace aethermind {
 
-// Invariant check helper
-// Only active in debug builds (kEnableInvariantCheck == true)
+// Checks invariants that are common to every string data view.
+// This helper deliberately knows nothing about layout state, probe bytes,
+// capacity tags, allocator ownership, or Small/External classification.
 template<typename CharT>
-inline void check_invariant_impl(
-    const CharT* data,
-    std::size_t size,
-    std::size_t capacity
-) noexcept {
-    if (!config::kEnableInvariantCheck) {
-        return;
-    }
-
-    // Core invariants:
-    // 1. data() != nullptr (always valid, even for empty string)
-    assert(data != nullptr);
-
-    // 2. data()[size()] == CharT{} (null terminator)
-    assert(data[size] == CharT{});
-
-    // 3. size() <= capacity()
-    assert(size <= capacity);
+void CheckDataInvariants(const CharT* data,
+                         std::size_t size,
+                         std::size_t capacity) noexcept {
+    AM_DCHECK(data != nullptr);
+    AM_DCHECK(size <= capacity);
+    AM_DCHECK(data[size] == CharT{});
 }
 
 // Macro-style invariant check for development
 // Can be disabled globally via NDEBUG
 #define AM_STRING_INVARIANT_CHECK(expr) \
-    do { if (aethermind::config::kEnableInvariantCheck) { assert(expr); } } while (0)
+    do {                                \
+        AM_DCHECK(expr);                \
+    } while (false)
 
 }// namespace aethermind
 

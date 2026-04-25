@@ -266,7 +266,7 @@ struct StableLayoutPolicy {
 
     // Check invariants
     static void check_invariants(const Storage& storage) noexcept {
-        check_invariant_impl(data(storage), size(storage), capacity(storage));
+        CheckDataInvariants(data(storage), size(storage), capacity(storage));
     }
 };
 

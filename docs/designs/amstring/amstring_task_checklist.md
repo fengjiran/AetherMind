@@ -155,38 +155,38 @@
 
 ### TDD：先写失败测试
 
-- [ ] 编写默认构造得到 empty small string 的测试
-- [ ] 编写小字符串指针+长度构造测试
-- [ ] 编写大字符串指针+长度构造测试
-- [ ] 编写 copy small 测试
-- [ ] 编写 copy external 深拷贝测试
-- [ ] 编写 move small 后源对象恢复测试
-- [ ] 编写 move external 后源对象恢复测试
-- [ ] 编写析构 external 正确释放测试
-- [ ] 编写 `data()` / `c_str()` / `size()` / `capacity()` / `empty()` 测试
-- [ ] 编写 `select_on_container_copy_construction` 路径测试
+- [x] 编写默认构造得到 empty small string 的测试
+- [x] 编写小字符串指针+长度构造测试
+- [x] 编写大字符串指针+长度构造测试
+- [x] 编写 copy small 测试
+- [x] 编写 copy external 深拷贝测试
+- [x] 编写 move small 后源对象恢复测试
+- [x] 编写 move external 后源对象恢复测试
+- [x] 编写析构 external 正确释放测试
+- [x] 编写 `data()` / `c_str()` / `size()` / `capacity()` / `empty()` 测试
+- [x] 编写 `select_on_container_copy_construction` 路径测试
 
 ### 实现：成员与只读能力
 
-- [ ] 实现类型别名
-- [ ] 实现 `storage_`
-- [ ] 实现 `allocator_`
-- [ ] 实现默认构造
-- [ ] 实现指针+长度构造
-- [ ] 实现析构
-- [ ] 实现拷贝构造
-- [ ] 实现移动构造
-- [ ] 实现 `data()`
-- [ ] 实现 `c_str()`
-- [ ] 实现 `size()`
-- [ ] 实现 `capacity()`
-- [ ] 实现 `empty()`
+- [x] 实现类型别名
+- [x] 实现 `storage_`
+- [x] 实现 `allocator_`
+- [x] 实现默认构造
+- [x] 实现指针+长度构造
+- [x] 实现析构
+- [x] 实现拷贝构造
+- [x] 实现移动构造
+- [x] 实现 `data()`
+- [x] 实现 `c_str()`
+- [x] 实现 `size()`
+- [x] 实现 `capacity()`
+- [x] 实现 `empty()`
 
 ### 验证
 
-- [ ] 生命周期相关测试通过
-- [ ] moved-from 恢复测试通过
-- [ ] external buffer 分配大小满足 `capacity + 1`
+- [x] 生命周期相关测试通过
+- [x] moved-from 恢复测试通过
+- [x] external buffer 分配大小满足 `capacity + 1`
 
 ---
 

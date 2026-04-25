@@ -130,20 +130,20 @@
 
 ### TDD：先写失败测试
 
-- [ ] 编写 `DefaultLayoutPolicy<char>` 选择 generic 的测试
-- [ ] 编写其他 `CharT` 选择 generic 的测试
-- [ ] 编写 core 默认布局选择行为测试
+- [x] 编写 `DefaultLayoutPolicy<char>` 选择 generic 的测试
+- [x] 编写其他 `CharT` 选择 generic 的测试
+- [x] 编写 core 默认布局选择行为测试
 
 ### 实现
 
-- [ ] 实现 `DefaultLayoutPolicy<CharT>`
-- [ ] 将 `BasicStringCore` 的默认布局参数接入 selector
-- [ ] 确认 public 层不暴露 `LayoutPolicy`
+- [x] 实现 `DefaultLayoutPolicy<CharT>`
+- [x] 将 `BasicStringCore` 的默认布局参数接入 selector
+- [x] 确认 public 层不暴露 `LayoutPolicy`
 
 ### 验证
 
-- [ ] selector 测试通过
-- [ ] core 编译通过并使用正确布局类型
+- [x] selector 测试通过
+- [x] core 编译通过并使用正确布局类型
 
 ---
 

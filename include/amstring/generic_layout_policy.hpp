@@ -8,8 +8,9 @@
 
 #include "config.hpp"
 #include "invariant.hpp"
+#include "macros.h"
+#include "utils/logging.h"
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -48,13 +49,22 @@ template<typename CharT>
 struct GenericLayoutPolicy {
     static_assert(std::is_trivial_v<CharT>, "CharT must be trivial.");
     static_assert(std::is_standard_layout_v<CharT>, "CharT must be standard layout.");
-    static_assert(sizeof(CharT) == 1 || sizeof(CharT) == 2 || sizeof(CharT) == 4 || sizeof(CharT) == 8, "Unsupported CharT width.");
     static_assert(sizeof(std::size_t) >= sizeof(CharT), "CharT cannot be wider than size_t.");
+    static_assert(std::is_same_v<CharT, char> || std::is_same_v<CharT, char8_t> || std::is_same_v<CharT, char16_t> ||
+                          std::is_same_v<CharT, char32_t> || std::is_same_v<CharT, wchar_t>,
+                  "Unsupported CharT.");
 
     using ValueType = CharT;
     using SizeType = std::size_t;
-    using WordType = MetaWordT<CharT>;
+    using ProbeWordType = MetaWordT<CharT>;
 
+    // capacity_with_tag layout (Little-Endian, e.g. CharT=char, kProbeBits=8):
+    //   [63 ... kPayloadBits | kPayloadBits-1 ... 0]
+    //   [      tag (8b)      |     capacity (56b)    ]
+    //
+    // capacity_with_tag layout (Big-Endian):
+    //   [63 ... kProbeBits | kProbeBits-1 ... 0]
+    //   [  capacity (56b)  |     tag (8b)       ]
     struct ExternalRep {
         CharT* data;
         SizeType size;
@@ -67,86 +77,88 @@ struct GenericLayoutPolicy {
         std::byte raw[sizeof(ExternalRep)]{};
     };
 
-    using ExternalType = ExternalRep;
-    using StorageType = Storage;
-
+    // Storage category determined by probe value:
+    //   kSmall    - probe ∈ [0, kSmallCapacity]; data stored inline in small[]
+    //   kExternal - probe == kExternalTag; data stored on heap
+    //   kInvalid  - probe value doesn't match any valid encoding (data corruption)
     enum class Category : std::uint8_t {
-        Small,
-        External,
-        Invalid
+        kSmall,
+        kExternal,
+        kInvalid
     };
+
+    static_assert(sizeof(Storage) == sizeof(ExternalRep));
 
     static constexpr SizeType kStorageBytes = sizeof(ExternalRep);
     static constexpr SizeType kSmallSlots = kStorageBytes / sizeof(CharT);
-    static constexpr SizeType kMetaSlot = kSmallSlots - 1;
     static constexpr SizeType kSmallCapacity = kSmallSlots - 1;
     static constexpr SizeType kProbeBits = sizeof(CharT) * 8;
-    static constexpr SizeType kWordBits = sizeof(SizeType) * 8;
-    static constexpr SizeType kPayloadBits = kWordBits - kProbeBits;
+    static constexpr SizeType kSizeTypeBits = sizeof(SizeType) * 8;// 64
+    static constexpr SizeType kPayloadBits = kSizeTypeBits - kProbeBits;
     static constexpr SizeType kProbeByteOffset = kStorageBytes - sizeof(CharT);
-    static constexpr WordType kExternalTag = static_cast<WordType>(kSmallCapacity + 1);
-    static constexpr WordType kMaxSmallMeta = static_cast<WordType>(kSmallCapacity);
+    static constexpr ProbeWordType kExternalTag = static_cast<ProbeWordType>(kSmallCapacity + 1);
 
-    static_assert(sizeof(StorageType) == sizeof(ExternalType));
-
-    static bool is_small(const StorageType& storage) noexcept {
-        return ProbeMeta(storage) <= kMaxSmallMeta;
+    AM_NODISCARD static bool is_small(const Storage& storage) noexcept {
+        return GetProbe(storage) <= static_cast<ProbeWordType>(kSmallCapacity);
     }
 
-    static bool is_external(const StorageType& storage) noexcept {
-        return ProbeMeta(storage) == kExternalTag;
+    AM_NODISCARD static bool is_external(const Storage& storage) noexcept {
+        return GetProbe(storage) == kExternalTag;
     }
 
-    static Category category(const StorageType& storage) noexcept {
-        const WordType meta = ProbeMeta(storage);
-        if (meta <= kMaxSmallMeta) {
-            return Category::Small;
+    AM_NODISCARD static Category category(const Storage& storage) noexcept {
+        const auto meta = GetProbe(storage);
+        if (meta <= static_cast<ProbeWordType>(kSmallCapacity)) {
+            return Category::kSmall;
         }
+
         if (meta == kExternalTag) {
-            return Category::External;
+            return Category::kExternal;
         }
-        return Category::Invalid;
+
+        return Category::kInvalid;
     }
 
-    static constexpr SizeType max_external_capacity() noexcept {
+    AM_NODISCARD static constexpr SizeType max_external_capacity() noexcept {
         if constexpr (kPayloadBits == 0) {
             return 0;
-        } else if constexpr (kPayloadBits >= kWordBits) {
+        } else if constexpr (kPayloadBits >= kSizeTypeBits) {
             return std::numeric_limits<SizeType>::max();
         } else {
             return (SizeType{1} << kPayloadBits) - 1;
         }
     }
 
-    static const CharT* data(const StorageType& storage) noexcept {
+    AM_NODISCARD static const CharT* data(const Storage& storage) noexcept {
         return is_small(storage) ? storage.small : storage.external.data;
     }
 
-    static CharT* data(StorageType& storage) noexcept {
+    AM_NODISCARD static CharT* data(Storage& storage) noexcept {
         return is_small(storage) ? storage.small : storage.external.data;
     }
 
-    static SizeType size(const StorageType& storage) noexcept {
-        if (is_small(storage)) {
-            return DecodeSmallSizeFromMeta(ProbeMeta(storage));
+    AM_NODISCARD static SizeType size(const Storage& storage) noexcept {
+        const auto probe = GetProbe(storage);
+        if (probe <= static_cast<ProbeWordType>(kSmallCapacity)) {
+            return DecodeSmallSizeFromProbe(probe);
         }
         return storage.external.size;
     }
 
-    static SizeType capacity(const StorageType& storage) noexcept {
+    AM_NODISCARD static SizeType capacity(const Storage& storage) noexcept {
         if (is_small(storage)) {
             return kSmallCapacity;
         }
         return UnpackCapacity(storage.external.capacity_with_tag);
     }
 
-    static void InitEmpty(StorageType& storage) noexcept {
+    static void InitEmpty(Storage& storage) noexcept {
         ClearStorage(storage);
         SetSmallSize(storage, 0);
     }
 
-    static void InitSmall(StorageType& storage, const CharT* src, SizeType size) noexcept {
-        assert(size <= kSmallCapacity);
+    static void InitSmall(Storage& storage, const CharT* src, SizeType size) noexcept {
+        AM_CHECK(size <= kSmallCapacity);
         ClearStorage(storage);
         if (src != nullptr && size != 0) {
             std::memcpy(storage.small, src, size * sizeof(CharT));
@@ -154,65 +166,101 @@ struct GenericLayoutPolicy {
         SetSmallSize(storage, size);
     }
 
-    static void InitExternal(StorageType& storage, CharT* ptr, SizeType size, SizeType capacity) noexcept {
-        assert(ptr != nullptr);
-        assert(size <= capacity);
-        assert(capacity <= max_external_capacity());
+    static void InitExternal(Storage& storage, CharT* ptr, SizeType size, SizeType capacity) noexcept {
+        AM_CHECK(ptr != nullptr);
+        AM_CHECK(size <= capacity);
+        AM_CHECK(capacity <= max_external_capacity());
         storage.external.data = ptr;
         storage.external.size = size;
         storage.external.capacity_with_tag = PackCapacityWithTag(capacity, kExternalTag);
         ptr[size] = CharT{};
     }
 
-    static void SetSmallSize(StorageType& storage, SizeType size) noexcept {
-        assert(is_small(storage));
-        assert(size <= kSmallCapacity);
+    // Design constraint: when size == kSmallCapacity, the null terminator
+    // at small[size] occupies the same memory as the probe byte.
+    // EncodeSmallSizeToProbe(kSmallCapacity) == 0 == CharT{}, so both
+    // writes produce the same value. This invariant must be preserved
+    // if the probe encoding scheme is ever changed.
+    static void SetSmallSize(Storage& storage, SizeType size) noexcept {
+        AM_CHECK(is_small(storage));
+        AM_CHECK(size <= kSmallCapacity);
         storage.small[size] = CharT{};
-        SetProbeMeta(storage, EncodeSmallSizeToMeta(size));
+        SetProbe(storage, EncodeSmallSizeToProbe(size));
     }
 
-    static void SetExternalSize(StorageType& storage, SizeType size) noexcept {
-        assert(is_external(storage));
-        assert(size <= capacity(storage));
+    static void SetExternalSize(Storage& storage, SizeType size) noexcept {
+        AM_CHECK(is_external(storage));
+        AM_CHECK(size <= capacity(storage));
         storage.external.size = size;
         storage.external.data[size] = CharT{};
     }
 
-    static void SetExternalCapacity(StorageType& storage, SizeType capacity) noexcept {
-        assert(is_external(storage));
-        assert(storage.external.size <= capacity);
-        assert(capacity <= max_external_capacity());
+    static void SetExternalCapacity(Storage& storage, SizeType capacity) noexcept {
+        AM_CHECK(is_external(storage));
+        AM_CHECK(storage.external.size <= capacity);
+        AM_CHECK(capacity <= max_external_capacity());
         storage.external.capacity_with_tag = PackCapacityWithTag(capacity, kExternalTag);
     }
 
-    static void CheckInvariants(const StorageType& storage) noexcept {
-        assert(category(storage) != Category::Invalid);
-        check_invariant_impl(data(storage), size(storage), capacity(storage));
+    static void CheckInvariants(const Storage& storage) noexcept {
+        switch (category(storage)) {
+            case Category::kSmall:
+                CheckSmallInvariants(storage);
+                return;
+            case Category::kExternal:
+                CheckExternalInvariants(storage);
+                return;
+            case Category::kInvalid:
+                AM_DCHECK(false);
+                return;
+        }
+        AM_DCHECK(false);
+        AM_UNREACHABLE();
     }
 
-    static WordType ProbeMeta(const StorageType& storage) noexcept {
-        WordType meta{};
-        std::memcpy(&meta, storage.raw + kProbeByteOffset, sizeof(WordType));
-        return meta;
+private:
+    static void ClearStorage(Storage& storage) noexcept {
+        std::memset(storage.raw, 0, kStorageBytes);
     }
 
-    static void SetProbeMeta(StorageType& storage, WordType meta) noexcept {
-        StoreProbeMetaAsCharT(storage, meta);
+    AM_NODISCARD static ProbeWordType GetProbe(const Storage& storage) noexcept {
+        ProbeWordType probe{};
+        std::memcpy(&probe, storage.raw + kProbeByteOffset, sizeof(ProbeWordType));
+        return probe;
     }
 
-    static void StoreProbeMetaAsCharT(StorageType& storage, WordType meta) noexcept {
-        std::memcpy(storage.raw + kProbeByteOffset, &meta, sizeof(WordType));
+    static void SetProbe(Storage& storage, ProbeWordType probe) noexcept {
+        std::memcpy(storage.raw + kProbeByteOffset, &probe, sizeof(ProbeWordType));
     }
 
-    static constexpr SizeType EncodeSmallSizeToMeta(SizeType size) noexcept {
-        return kSmallCapacity - size;
+    AM_NODISCARD static SizeType PackCapacityWithTag(SizeType capacity, ProbeWordType tag) noexcept {
+        AM_CHECK(capacity <= max_external_capacity());
+        if constexpr (config::kIsLittleEndian) {
+            return (static_cast<SizeType>(tag) << kPayloadBits) | capacity;
+        } else {
+            return (capacity << kProbeBits) | static_cast<SizeType>(tag);
+        }
     }
 
-    static constexpr SizeType DecodeSmallSizeFromMeta(WordType meta) noexcept {
-        return kSmallCapacity - static_cast<SizeType>(meta);
+    static void CheckSmallInvariants(const Storage& storage) noexcept {
+        const auto probe = GetProbe(storage);
+        const auto decoded_size = DecodeSmallSizeFromProbe(probe);
+
+        AM_DCHECK(probe <= static_cast<ProbeWordType>(kSmallCapacity));
+        AM_DCHECK(decoded_size <= kSmallCapacity);
+        CheckDataInvariants(storage.small, decoded_size, kSmallCapacity);
     }
 
-    static constexpr SizeType TagMask() noexcept {
+    static void CheckExternalInvariants(const Storage& storage) noexcept {
+        const auto decoded_capacity = UnpackCapacity(storage.external.capacity_with_tag);
+
+        AM_DCHECK(GetProbe(storage) == kExternalTag);
+        AM_DCHECK(UnpackTag(storage.external.capacity_with_tag) == kExternalTag);
+        AM_DCHECK(storage.external.size <= decoded_capacity);
+        CheckDataInvariants(storage.external.data, storage.external.size, decoded_capacity);
+    }
+
+    AM_NODISCARD static constexpr SizeType TagMask() noexcept {
         if constexpr (kPayloadBits == 0) {
             return std::numeric_limits<SizeType>::max();
         } else if constexpr (config::kIsLittleEndian) {
@@ -222,7 +270,7 @@ struct GenericLayoutPolicy {
         }
     }
 
-    static constexpr SizeType CapacityMask() noexcept {
+    AM_NODISCARD static constexpr SizeType CapacityMask() noexcept {
         if constexpr (kPayloadBits == 0) {
             return 0;
         } else if constexpr (config::kIsLittleEndian) {
@@ -232,34 +280,33 @@ struct GenericLayoutPolicy {
         }
     }
 
-    static SizeType PackCapacityWithTag(SizeType capacity, WordType tag) noexcept {
-        assert(capacity <= max_external_capacity());
+    // External-only helpers
+    AM_NODISCARD static SizeType UnpackCapacity(SizeType capacity_with_tag) noexcept {
         if constexpr (config::kIsLittleEndian) {
-            return (static_cast<SizeType>(tag) << kPayloadBits) | capacity;
+            return capacity_with_tag & CapacityMask();
         } else {
-            return (capacity << kProbeBits) | static_cast<SizeType>(tag);
+            return capacity_with_tag >> kProbeBits;
         }
     }
 
-    static SizeType UnpackCapacity(SizeType packed) noexcept {
+    // External-only helpers
+    AM_NODISCARD static ProbeWordType UnpackTag(SizeType capacity_with_tag) noexcept {
         if constexpr (config::kIsLittleEndian) {
-            return packed & CapacityMask();
+            return static_cast<ProbeWordType>(capacity_with_tag >> kPayloadBits);
         } else {
-            return packed >> kProbeBits;
+            return static_cast<ProbeWordType>(capacity_with_tag & TagMask());
         }
     }
 
-    static WordType UnpackTag(SizeType packed) noexcept {
-        if constexpr (config::kIsLittleEndian) {
-            return static_cast<WordType>(packed >> kPayloadBits);
-        } else {
-            return static_cast<WordType>(packed & TagMask());
-        }
+    // Inverted encoding: probe = kSmallCapacity - size
+    // This makes is_small() a single comparison (probe <= kSmallCapacity),
+    // and ensures InitEmpty produces probe == kSmallCapacity (within small range).
+    AM_NODISCARD static constexpr SizeType EncodeSmallSizeToProbe(SizeType size) noexcept {
+        return kSmallCapacity - size;
     }
 
-private:
-    static void ClearStorage(StorageType& storage) noexcept {
-        std::memset(storage.raw, 0, kStorageBytes);
+    AM_NODISCARD static constexpr SizeType DecodeSmallSizeFromProbe(ProbeWordType probe) noexcept {
+        return kSmallCapacity - static_cast<SizeType>(probe);
     }
 };
 

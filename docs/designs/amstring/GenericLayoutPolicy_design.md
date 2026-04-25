@@ -106,7 +106,7 @@ struct GenericLayoutPolicy;
   - `CheckInvariants`
   - `PackCapacityWithTag`
   - `UnpackCapacity`
-  - `ProbeMeta`
+  - `GetProbe`
 
 - 结构体/union 成员变量使用 snake_case：
   - `ExternalRep`
@@ -401,22 +401,18 @@ Capacity = Packed >> ProbeBits
 
 - `ValueType`
 - `SizeType`
-- `WordType`
-- `ExternalType`
-- `StorageType`
+- `ProbeWordType`
 
 以及：
 
 - `kStorageBytes`
 - `kSmallSlots`
-- `kMetaSlot`
 - `kSmallCapacity`
 - `kProbeBits`
-- `kWordBits`
+- `kPackedWordBits`
 - `kPayloadBits`
 - `kProbeByteOffset`
 - `kExternalTag`
-- `kMaxSmallMeta`
 
 并提供：
 
@@ -429,31 +425,31 @@ Capacity = Packed >> ProbeBits
 `GenericLayoutPolicy<CharT>` 应提供以下接口：
 
 ```cpp
-static bool is_small(const StorageType&) noexcept;
-static bool is_external(const StorageType&) noexcept;
-static Category category(const StorageType&) noexcept;
+static bool is_small(const Storage&) noexcept;
+static bool is_external(const Storage&) noexcept;
+static Category category(const Storage&) noexcept;
 
 static constexpr SizeType max_external_capacity() noexcept;
 
-static const CharT* data(const StorageType&) noexcept;
-static CharT* data(StorageType&) noexcept;
+static const CharT* data(const Storage&) noexcept;
+static CharT* data(Storage&) noexcept;
 
-static SizeType size(const StorageType&) noexcept;
-static SizeType capacity(const StorageType&) noexcept;
+static SizeType size(const Storage&) noexcept;
+static SizeType capacity(const Storage&) noexcept;
 ```
 
 ## 11.3 CamelCase 内部接口
 
 ```cpp
-static void InitEmpty(StorageType&) noexcept;
-static void InitSmall(StorageType&, const CharT* src, SizeType size) noexcept;
-static void InitExternal(StorageType&, CharT* ptr, SizeType size, SizeType capacity) noexcept;
+static void InitEmpty(Storage&) noexcept;
+static void InitSmall(Storage&, const CharT* src, SizeType size) noexcept;
+static void InitExternal(Storage&, CharT* ptr, SizeType size, SizeType capacity) noexcept;
 
-static void SetSmallSize(StorageType&, SizeType size) noexcept;
-static void SetExternalSize(StorageType&, SizeType size) noexcept;
-static void SetExternalCapacity(StorageType&, SizeType capacity) noexcept;
+static void SetSmallSize(Storage&, SizeType size) noexcept;
+static void SetExternalSize(Storage&, SizeType size) noexcept;
+static void SetExternalCapacity(Storage&, SizeType capacity) noexcept;
 
-static void CheckInvariants(const StorageType&) noexcept;
+static void CheckInvariants(const Storage&) noexcept;
 ```
 
 上述 `SetSmallSize` / `SetExternalSize` / `SetExternalCapacity` 都是 **state-specific mutator**：
@@ -462,22 +458,22 @@ static void CheckInvariants(const StorageType&) noexcept;
 - 调用方必须在调用前已知当前状态
 - 这些接口只负责在既定状态下维护布局一致性与 terminator/invariant
 
-## 11.4 私有 helper
+## 11.4 Probe 访问与编解码 helper
 
 ```cpp
-static WordType ProbeMeta(const StorageType&) noexcept;
-static void SetProbeMeta(StorageType&, WordType) noexcept;
-static void StoreProbeMetaAsCharT(StorageType&, WordType) noexcept;
+static ProbeWordType GetProbe(const Storage&) noexcept;
+static void SetProbeMeta(Storage&, ProbeWordType) noexcept;
+static void StoreProbeMetaAsCharT(Storage&, ProbeWordType) noexcept;
 
 static constexpr SizeType EncodeSmallSizeToMeta(SizeType size) noexcept;
-static constexpr SizeType DecodeSmallSizeFromMeta(WordType meta) noexcept;
+static constexpr SizeType DecodeSmallSizeFromMeta(ProbeWordType meta) noexcept;
 
 static constexpr size_t TagMask() noexcept;
 static constexpr size_t CapacityMask() noexcept;
 
-static size_t PackCapacityWithTag(SizeType capacity, WordType tag) noexcept;
+static size_t PackCapacityWithTag(SizeType capacity, ProbeWordType tag) noexcept;
 static SizeType UnpackCapacity(size_t packed) noexcept;
-static WordType UnpackTag(size_t packed) noexcept;
+static ProbeWordType UnpackTag(size_t packed) noexcept;
 ```
 
 ---
@@ -561,7 +557,7 @@ static WordType UnpackTag(size_t packed) noexcept;
 
 ## 13.1 全局不变量
 
-任意 `StorageType` 必须满足：
+任意 `Storage` 必须满足：
 
 1. `category()` 可正确区分为 `Small / External / Invalid`
 2. `data() != nullptr`

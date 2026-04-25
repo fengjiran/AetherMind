@@ -226,26 +226,26 @@ class BasicStringCore;
 所有 layout policy 必须提供统一接口：
 
 ```cpp
-static bool is_small(const StorageType&) noexcept;
-static bool is_external(const StorageType&) noexcept;
-static Category category(const StorageType&) noexcept;
+static bool is_small(const Storage&) noexcept;
+static bool is_external(const Storage&) noexcept;
+static Category category(const Storage&) noexcept;
 
-static const CharT* data(const StorageType&) noexcept;
-static CharT* data(StorageType&) noexcept;
+static const CharT* data(const Storage&) noexcept;
+static CharT* data(Storage&) noexcept;
 
-static SizeType size(const StorageType&) noexcept;
-static SizeType capacity(const StorageType&) noexcept;
+static SizeType size(const Storage&) noexcept;
+static SizeType capacity(const Storage&) noexcept;
 static constexpr SizeType max_external_capacity() noexcept;
 
-static void InitEmpty(StorageType&) noexcept;
-static void InitSmall(StorageType&, const CharT* src, SizeType size) noexcept;
-static void InitExternal(StorageType&, CharT* ptr, SizeType size, SizeType capacity) noexcept;
+static void InitEmpty(Storage&) noexcept;
+static void InitSmall(Storage&, const CharT* src, SizeType size) noexcept;
+static void InitExternal(Storage&, CharT* ptr, SizeType size, SizeType capacity) noexcept;
 
-static void SetSmallSize(StorageType&, SizeType size) noexcept;
-static void SetExternalSize(StorageType&, SizeType size) noexcept;
-static void SetExternalCapacity(StorageType&, SizeType capacity) noexcept;
+static void SetSmallSize(Storage&, SizeType size) noexcept;
+static void SetExternalSize(Storage&, SizeType size) noexcept;
+static void SetExternalCapacity(Storage&, SizeType capacity) noexcept;
 
-static void CheckInvariants(const StorageType&) noexcept;
+static void CheckInvariants(const Storage&) noexcept;
 ```
 
 ## 7.3 LayoutPolicy 的正式实现

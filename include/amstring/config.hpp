@@ -16,14 +16,6 @@ namespace config {
 // Used for compact_layout_policy<char> encoding
 constexpr bool kIsLittleEndian = std::endian::native == std::endian::little;
 
-// Debug mode invariant checking
-// Enable in debug builds, disable in release
-#ifdef NDEBUG
-constexpr bool kEnableInvariantCheck = false;
-#else
-constexpr bool kEnableInvariantCheck = true;
-#endif
-
 // SSO threshold for stable_layout_policy
 // Computed as: sizeof(heap_rep) / sizeof(CharT) - 1
 // This is a template-based calculation, not a fixed constant

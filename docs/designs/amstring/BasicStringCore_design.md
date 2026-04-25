@@ -162,7 +162,7 @@ class BasicStringCore;
 - `SizeType`
 - `AllocatorType`
 - `LayoutPolicyType`
-- `StorageType`
+- `Storage`
 - `Pointer`
 - `ConstPointer`
 - `AllocatorTraits`
@@ -170,7 +170,7 @@ class BasicStringCore;
 推荐关系为：
 
 - `ValueType = CharT`
-- `StorageType` 由 `LayoutPolicy` 提供
+- `Storage` 由 `LayoutPolicy` 提供
 - `AllocatorTraits = std::allocator_traits<Allocator>`
 
 这些类型别名的目的，是让实现层、测试层与文档层对 core 的内部约定保持一致，避免在实现阶段重复拼接模板参数表达。
@@ -179,19 +179,19 @@ class BasicStringCore;
 
 `BasicStringCore` 的核心成员包括：
 
-1. `StorageType storage_`
+1. `typename LayoutPolicy::Storage storage_`
 2. `Allocator allocator_`
 
 其中：
 
-- `StorageType` 由 `LayoutPolicy` 提供
+- `Storage` 由 `LayoutPolicy` 提供
 - `storage_` 保存对象布局本体
 - `allocator_` 负责外部存储的分配与释放
 
 推荐形式：
 
 ```cpp
-StorageType storage_;
+typename LayoutPolicy::Storage storage_;
 [[no_unique_address]] Allocator allocator_;
 ```
 

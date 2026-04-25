@@ -7,9 +7,8 @@
 #define AETHERMIND_AMSTRING_BASIC_STRING_HPP
 
 #include "core.hpp"
-#include "string_fwd.hpp"
-#include "stable_layout_policy.hpp"
 #include "growth_policy.hpp"
+#include "string_fwd.hpp"
 
 #include <cstddef>
 #include <stdexcept>
@@ -17,22 +16,14 @@
 
 namespace aethermind {
 
-// Default layout policy selector
-// Phase 1: All CharT use stable_layout_policy
-// Phase 2: char switches to compact_layout_policy
-template<typename CharT>
-struct default_layout_policy {
-    using type = StableLayoutPolicy<CharT>;
-};
-
-// basic_string - public API layer
+// BasicString - public API layer
 // Standard-style interface with policy-based internal implementation
 template<
     typename CharT,
     typename Traits,
     typename Allocator
 >
-class basic_string {
+class BasicString {
 public:
     using value_type = CharT;
     using traits_type = Traits;
@@ -50,55 +41,50 @@ public:
     static constexpr size_type npos = static_cast<size_type>(-1);
 
 private:
-    using layout_policy = typename default_layout_policy<CharT>::type;
-    using growth_policy = default_growth_policy;
-    using core_type = basic_string_core<CharT, Traits, Allocator, layout_policy, growth_policy>;
+    using LayoutPolicy = DefaultLayoutPolicy<CharT>::type;
+    using GrowthPolicy = default_growth_policy;
+    using CoreType = BasicStringCore<CharT, Traits, Allocator, LayoutPolicy, GrowthPolicy>;
 
-    core_type core_;
+    CoreType core_;
 
 public:
-    basic_string() noexcept = default;
+    BasicString() noexcept = default;
 
-    explicit basic_string(const allocator_type& a) noexcept
+    explicit BasicString(const allocator_type& a) noexcept
         : core_(a) {}
 
-    basic_string(const CharT* s)
+    BasicString(const CharT* s)
         : core_(s, traits_type::length(s)) {}
 
-    basic_string(const CharT* s, size_type n)
+    BasicString(const CharT* s, size_type n)
         : core_(s, n) {}
 
-    basic_string(std::basic_string_view<CharT, Traits> sv)
+    BasicString(std::basic_string_view<CharT, Traits> sv)
         : core_(sv.data(), sv.size()) {}
 
-    basic_string(size_type count, CharT ch)
+    BasicString(size_type count, CharT ch)
         : core_() {
-        if (count > 0) {
-            core_.reserve(count);
-            traits_type::assign(core_.data(), count, ch);
-            core_.data()[count] = CharT{};
-            core_type::layout_policy_type::SetSize(core_.storage_, count);
-        }
+        core_.resize(count, ch);
     }
 
-    basic_string(const basic_string&) = default;
-    basic_string(basic_string&&) noexcept = default;
-    ~basic_string() = default;
+    BasicString(const BasicString&) = default;
+    BasicString(BasicString&&) noexcept = default;
+    ~BasicString() = default;
 
-    basic_string& operator=(const basic_string&) = default;
-    basic_string& operator=(basic_string&&) noexcept = default;
+    BasicString& operator=(const BasicString&) = default;
+    BasicString& operator=(BasicString&&) noexcept = default;
 
-    basic_string& operator=(const CharT* s) {
+    BasicString& operator=(const CharT* s) {
         core_.assign(s, traits_type::length(s));
         return *this;
     }
 
-    basic_string& operator=(std::basic_string_view<CharT, Traits> sv) {
+    BasicString& operator=(std::basic_string_view<CharT, Traits> sv) {
         core_.assign(sv.data(), sv.size());
         return *this;
     }
 
-    basic_string& operator=(CharT ch) {
+    BasicString& operator=(CharT ch) {
         core_.assign(&ch, 1);
         return *this;
     }
@@ -129,14 +115,14 @@ public:
 
     reference at(size_type pos) {
         if (pos >= core_.size()) {
-            throw std::out_of_range("basic_string::at");
+            throw std::out_of_range("BasicString::at");
         }
         return core_.data()[pos];
     }
 
     const_reference at(size_type pos) const {
         if (pos >= core_.size()) {
-            throw std::out_of_range("basic_string::at");
+            throw std::out_of_range("BasicString::at");
         }
         return core_.data()[pos];
     }
@@ -164,54 +150,49 @@ public:
         }
     }
 
-    basic_string& append(const basic_string& str) {
+    BasicString& append(const BasicString& str) {
         core_.append(str.data(), str.size());
         return *this;
     }
 
-    basic_string& append(const CharT* s) {
+    BasicString& append(const CharT* s) {
         core_.append(s, traits_type::length(s));
         return *this;
     }
 
-    basic_string& append(const CharT* s, size_type n) {
+    BasicString& append(const CharT* s, size_type n) {
         core_.append(s, n);
         return *this;
     }
 
-    basic_string& append(size_type count, CharT ch) {
-        if (count > 0) {
-            core_.reserve(core_.size() + count);
-            traits_type::assign(core_.data() + core_.size(), count, ch);
-            core_.data()[core_.size() + count] = CharT{};
-            core_type::layout_policy_type::SetSize(core_.storage_, core_.size() + count);
-        }
+    BasicString& append(size_type count, CharT ch) {
+        core_.resize(core_.size() + count, ch);
         return *this;
     }
 
-    basic_string& append(std::basic_string_view<CharT, Traits> sv) {
+    BasicString& append(std::basic_string_view<CharT, Traits> sv) {
         core_.append(sv.data(), sv.size());
         return *this;
     }
 
-    basic_string& operator+=(const basic_string& str) {
+    BasicString& operator+=(const BasicString& str) {
         return append(str);
     }
 
-    basic_string& operator+=(const CharT* s) {
+    BasicString& operator+=(const CharT* s) {
         return append(s);
     }
 
-    basic_string& operator+=(CharT ch) {
+    BasicString& operator+=(CharT ch) {
         push_back(ch);
         return *this;
     }
 
-    basic_string& operator+=(std::basic_string_view<CharT, Traits> sv) {
+    BasicString& operator+=(std::basic_string_view<CharT, Traits> sv) {
         return append(sv);
     }
 
-    void swap(basic_string& other) noexcept {
+    void swap(BasicString& other) noexcept {
         core_.swap(other.core_);
     }
 

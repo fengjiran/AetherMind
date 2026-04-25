@@ -11,20 +11,20 @@
 
 namespace aethermind {
 
-// Forward declarations for basic_string
+// Forward declarations for BasicString
 template <
     typename CharT,
     typename Traits = std::char_traits<CharT>,
     typename Allocator = std::allocator<CharT>
 >
-class basic_string;
+class BasicString;
 
 // Type aliases
-using string    = basic_string<char>;
-using u8string  = basic_string<char8_t>;
-using u16string = basic_string<char16_t>;
-using u32string = basic_string<char32_t>;
-using wstring   = basic_string<wchar_t>;
+using string    = BasicString<char>;
+using u8string  = BasicString<char8_t>;
+using u16string = BasicString<char16_t>;
+using u32string = BasicString<char32_t>;
+using wstring   = BasicString<wchar_t>;
 
 }// namespace aethermind
 

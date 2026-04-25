@@ -6,9 +6,10 @@
 #ifndef AETHERMIND_AMSTRING_LAYOUT_POLICY_HPP
 #define AETHERMIND_AMSTRING_LAYOUT_POLICY_HPP
 
+#include "generic_layout_policy.hpp"
+
 #include <concepts>
 #include <cstddef>
-#include <type_traits>
 
 namespace aethermind {
 
@@ -51,9 +52,10 @@ concept AmStringLayoutPolicy = requires(typename Policy::Storage& storage,
     { Policy::CheckInvariants(const_storage) } noexcept -> std::same_as<void>;
 };
 
-// Default layout policy selector
 template<typename CharT>
-struct default_layout_policy;
+struct DefaultLayoutPolicy {
+    using type = GenericLayoutPolicy<CharT>;
+};
 
 }// namespace aethermind
 

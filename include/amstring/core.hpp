@@ -1,4 +1,4 @@
-// core.hpp - basic_string_core implementation skeleton
+// core.hpp - BasicStringCore implementation skeleton
 // Part of AetherMind project, licensed under MIT License.
 // See LICENSE.txt for details.
 // SPDX-License-Identifier: MIT
@@ -8,58 +8,52 @@
 
 #include "allocator_support.hpp"
 #include "char_algorithms.hpp"
-#include "config.hpp"
 #include "growth_policy.hpp"
-#include "invariant.hpp"
 #include "layout_policy.hpp"
-#include "stable_layout_policy.hpp"
 
 #include <cstddef>
 #include <memory>
-#include <stdexcept>
 #include <type_traits>
 
 namespace aethermind {
 
-// basic_string_core - unified algorithm and lifecycle skeleton
+// BasicStringCore - unified algorithm and lifecycle skeleton
 // Combines LayoutPolicy, GrowthPolicy, and Allocator to implement string semantics
-template<
-        typename CharT,
-        typename Traits = std::char_traits<CharT>,
-        typename Allocator = std::allocator<CharT>,
-        typename LayoutPolicy = StableLayoutPolicy<CharT>,
-        typename GrowthPolicy = default_growth_policy>
-class basic_string_core {
+template<typename CharT,
+         typename Traits = std::char_traits<CharT>,
+         typename Allocator = std::allocator<CharT>,
+         typename LayoutPolicy = DefaultLayoutPolicy<CharT>::type,
+         typename GrowthPolicy = default_growth_policy>
+class BasicStringCore {
 public:
     using value_type = CharT;
     using traits_type = Traits;
     using allocator_type = Allocator;
-    using layout_policy_type = LayoutPolicy;
-    using growth_policy_type = GrowthPolicy;
+    using LayoutPolicyType = LayoutPolicy;
+    using GrowthPolicyType = GrowthPolicy;
 
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
     using pointer = CharT*;
     using const_pointer = const CharT*;
 
-    using storage_type = LayoutPolicy::Storage;
+    using Storage = LayoutPolicy::Storage;
     using alloc_helper = allocator_traits_helper<Allocator>;
     using char_algo = char_algorithms<CharT, Traits>;
 
     static constexpr size_type npos = static_cast<size_type>(-1);
 
-public:
-    basic_string_core() noexcept {
+    BasicStringCore() noexcept {
         LayoutPolicy::InitEmpty(storage_);
     }
 
-    explicit basic_string_core(const allocator_type& a) noexcept
+    explicit BasicStringCore(const allocator_type& a) noexcept
         : alloc_(a) {
         LayoutPolicy::InitEmpty(storage_);
     }
 
-    basic_string_core(const CharT* s, size_type n,
-                      const allocator_type& a = allocator_type{})
+    BasicStringCore(const CharT* s, size_type n,
+                    const allocator_type& a = allocator_type{})
         : alloc_(a) {
         if (n <= LayoutPolicy::kSmallCapacity) {
             LayoutPolicy::InitSmall(storage_, s, n);
@@ -68,13 +62,13 @@ public:
             pointer ptr = alloc_helper::traits::allocate(alloc_, cap + 1);
             char_algo::copy(ptr, s, n);
             ptr[n] = char_algo::null_char();
-            LayoutPolicy::init_heap(storage_, ptr, n, cap);
+            LayoutPolicy::InitExternal(storage_, ptr, n, cap);
         }
     }
 
-    basic_string_core(const basic_string_core& other)
+    BasicStringCore(const BasicStringCore& other)
         : alloc_(alloc_helper::select_on_copy(other.alloc_)) {
-        if (LayoutPolicy::IsSmall(other.storage_)) {
+        if (LayoutPolicy::is_small(other.storage_)) {
             LayoutPolicy::InitSmall(storage_,
                                     LayoutPolicy::data(other.storage_),
                                     LayoutPolicy::size(other.storage_));
@@ -84,36 +78,35 @@ public:
             pointer ptr = alloc_helper::traits::allocate(alloc_, cap + 1);
             char_algo::copy(ptr, LayoutPolicy::data(other.storage_), sz);
             ptr[sz] = char_algo::null_char();
-            LayoutPolicy::init_heap(storage_, ptr, sz, cap);
+            LayoutPolicy::InitExternal(storage_, ptr, sz, cap);
         }
     }
 
-    basic_string_core(basic_string_core&& other) noexcept
+    BasicStringCore(BasicStringCore&& other) noexcept
         : alloc_(std::move(other.alloc_)) {
-        if (LayoutPolicy::IsSmall(other.storage_)) {
+        if (LayoutPolicy::is_small(other.storage_)) {
             LayoutPolicy::InitSmall(storage_,
                                     LayoutPolicy::data(other.storage_),
                                     LayoutPolicy::size(other.storage_));
             LayoutPolicy::InitEmpty(other.storage_);
         } else {
-            LayoutPolicy::init_heap(storage_,
-                                    LayoutPolicy::heap_ptr(other.storage_),
-                                    LayoutPolicy::size(other.storage_),
-                                    LayoutPolicy::capacity(other.storage_));
-            LayoutPolicy::destroy_heap(other.storage_);
+            LayoutPolicy::InitExternal(storage_,
+                                       LayoutPolicy::data(other.storage_),
+                                       LayoutPolicy::size(other.storage_),
+                                       LayoutPolicy::capacity(other.storage_));
             LayoutPolicy::InitEmpty(other.storage_);
         }
     }
 
-    ~basic_string_core() {
-        if (LayoutPolicy::IsMedium(storage_) || LayoutPolicy::IsLarge(storage_)) {
-            pointer ptr = LayoutPolicy::heap_ptr(storage_);
+    ~BasicStringCore() {
+        if (LayoutPolicy::is_external(storage_)) {
+            pointer ptr = LayoutPolicy::data(storage_);
             const size_type cap = LayoutPolicy::capacity(storage_);
             alloc_helper::traits::deallocate(alloc_, ptr, cap + 1);
         }
     }
 
-    basic_string_core& operator=(const basic_string_core& other) {
+    BasicStringCore& operator=(const BasicStringCore& other) {
         if (this == &other) {
             return *this;
         }
@@ -131,7 +124,7 @@ public:
             new_ptr[other_sz] = char_algo::null_char();
 
             destroy_heap_if_needed();
-            LayoutPolicy::init_heap(storage_, new_ptr, other_sz, other_cap);
+            LayoutPolicy::InitExternal(storage_, new_ptr, other_sz, other_cap);
         }
 
         if (alloc_helper::propagate_on_copy) {
@@ -141,24 +134,23 @@ public:
         return *this;
     }
 
-    basic_string_core& operator=(basic_string_core&& other) noexcept {
+    BasicStringCore& operator=(BasicStringCore&& other) noexcept {
         if (this == &other) {
             return *this;
         }
 
         destroy_heap_if_needed();
 
-        if (LayoutPolicy::IsSmall(other.storage_)) {
+        if (LayoutPolicy::is_small(other.storage_)) {
             LayoutPolicy::InitSmall(storage_,
                                     LayoutPolicy::data(other.storage_),
                                     LayoutPolicy::size(other.storage_));
             LayoutPolicy::InitEmpty(other.storage_);
         } else if (alloc_helper::is_always_equal || alloc_ == other.alloc_) {
-            LayoutPolicy::init_heap(storage_,
-                                    LayoutPolicy::heap_ptr(other.storage_),
-                                    LayoutPolicy::size(other.storage_),
-                                    LayoutPolicy::capacity(other.storage_));
-            LayoutPolicy::destroy_heap(other.storage_);
+            LayoutPolicy::InitExternal(storage_,
+                                       LayoutPolicy::data(other.storage_),
+                                       LayoutPolicy::size(other.storage_),
+                                       LayoutPolicy::capacity(other.storage_));
             LayoutPolicy::InitEmpty(other.storage_);
         } else {
             const size_type sz = LayoutPolicy::size(other.storage_);
@@ -166,7 +158,7 @@ public:
             pointer ptr = alloc_helper::traits::allocate(alloc_, cap + 1);
             char_algo::copy(ptr, LayoutPolicy::data(other.storage_), sz);
             ptr[sz] = char_algo::null_char();
-            LayoutPolicy::init_heap(storage_, ptr, sz, cap);
+            LayoutPolicy::InitExternal(storage_, ptr, sz, cap);
             other.destroy_heap_if_needed();
             LayoutPolicy::InitEmpty(other.storage_);
         }
@@ -225,7 +217,7 @@ public:
         if (count < cur_sz) {
             pointer d = data();
             d[count] = char_algo::null_char();
-            LayoutPolicy::SetSize(storage_, count);
+            set_size(count);
         } else if (count > cur_sz) {
             if (count > capacity()) {
                 reserve(count);
@@ -233,7 +225,7 @@ public:
             pointer d = data();
             char_algo::assign(d + cur_sz, count - cur_sz, ch);
             d[count] = char_algo::null_char();
-            LayoutPolicy::SetSize(storage_, count);
+            set_size(count);
         }
     }
 
@@ -246,7 +238,7 @@ public:
         }
 
         if (sz <= LayoutPolicy::kSmallCapacity) {
-            pointer old_ptr = LayoutPolicy::heap_ptr(storage_);
+            pointer old_ptr = LayoutPolicy::data(storage_);
             const size_type old_cap = cap;
 
             LayoutPolicy::InitSmall(storage_, old_ptr, sz);
@@ -267,11 +259,11 @@ public:
                 pointer ptr = alloc_helper::traits::allocate(alloc_, req_cap + 1);
                 char_algo::copy(ptr, s, n);
                 ptr[n] = char_algo::null_char();
-                LayoutPolicy::init_heap(storage_, ptr, n, req_cap);
+                LayoutPolicy::InitExternal(storage_, ptr, n, req_cap);
             } else {
                 char_algo::copy(data(), s, n);
                 data()[n] = char_algo::null_char();
-                LayoutPolicy::SetSize(storage_, n);
+                set_size(n);
             }
         }
     }
@@ -292,15 +284,15 @@ public:
             new_ptr[new_sz] = char_algo::null_char();
 
             destroy_heap_if_needed();
-            LayoutPolicy::init_heap(storage_, new_ptr, new_sz, new_cap);
+            LayoutPolicy::InitExternal(storage_, new_ptr, new_sz, new_cap);
         } else {
             char_algo::copy(data() + cur_sz, s, n);
             data()[new_sz] = char_algo::null_char();
-            LayoutPolicy::SetSize(storage_, new_sz);
+            set_size(new_sz);
         }
     }
 
-    void swap(basic_string_core& other) noexcept {
+    void swap(BasicStringCore& other) noexcept {
         using std::swap;
         swap(storage_, other.storage_);
         if (alloc_helper::propagate_on_swap) {
@@ -309,16 +301,16 @@ public:
     }
 
     void check_invariants() const noexcept {
-        LayoutPolicy::check_invariants(storage_);
+        LayoutPolicy::CheckInvariants(storage_);
     }
 
 private:
     void destroy_heap_if_needed() noexcept {
-        if (LayoutPolicy::IsMedium(storage_) || LayoutPolicy::IsLarge(storage_)) {
-            pointer ptr = LayoutPolicy::heap_ptr(storage_);
+        if (LayoutPolicy::is_external(storage_)) {
+            pointer ptr = LayoutPolicy::data(storage_);
             const size_type cap = LayoutPolicy::capacity(storage_);
             alloc_helper::traits::deallocate(alloc_, ptr, cap + 1);
-            LayoutPolicy::destroy_heap(storage_);
+            LayoutPolicy::InitEmpty(storage_);
         }
     }
 
@@ -329,14 +321,21 @@ private:
         new_ptr[sz] = char_algo::null_char();
 
         destroy_heap_if_needed();
-        LayoutPolicy::init_heap(storage_, new_ptr, sz, new_cap);
+        LayoutPolicy::InitExternal(storage_, new_ptr, sz, new_cap);
+    }
+
+    void set_size(size_type new_size) noexcept {
+        if (LayoutPolicy::is_small(storage_)) {
+            LayoutPolicy::SetSmallSize(storage_, new_size);
+        } else {
+            LayoutPolicy::SetExternalSize(storage_, new_size);
+        }
     }
 
     allocator_type& alloc_ref() noexcept { return alloc_; }
     const allocator_type& alloc_ref() const noexcept { return alloc_; }
 
-private:
-    storage_type storage_;
+    Storage storage_;
     [[no_unique_address]] allocator_type alloc_;
 };
 

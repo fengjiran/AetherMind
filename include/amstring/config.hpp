@@ -16,10 +16,6 @@ namespace config {
 // Used for compact_layout_policy<char> encoding
 constexpr bool kIsLittleEndian = std::endian::native == std::endian::little;
 
-// SSO threshold for stable_layout_policy
-// Computed as: sizeof(heap_rep) / sizeof(CharT) - 1
-// This is a template-based calculation, not a fixed constant
-
 // Initial heap capacity floor
 // When transitioning from small to heap, minimum allocation
 constexpr size_t kMinHeapCapacity = 32;

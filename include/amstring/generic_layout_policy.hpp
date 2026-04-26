@@ -194,6 +194,7 @@ struct GenericLayoutPolicy {
 
     /// Initializes External string from pre-allocated heap buffer.
     ///
+    /// @param storage
     /// @param ptr Heap buffer; caller owns allocation. Must have at least capacity+1 writable CharT.
     /// @param size Initial content length; null terminator written at ptr[size].
     /// @param capacity Capacity encoded in capacity_with_tag; must not exceed max_external_capacity().

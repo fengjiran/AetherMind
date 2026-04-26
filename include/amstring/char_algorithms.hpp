@@ -15,7 +15,7 @@ namespace aethermind {
 // Char algorithms using std::char_traits
 // Encapsulates common operations for any CharT
 template<typename CharT, typename Traits = std::char_traits<CharT>>
-struct char_algorithms {
+struct CharAlgorithm {
     using char_type = CharT;
     using traits_type = Traits;
     using size_type = std::size_t;

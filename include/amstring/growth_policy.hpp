@@ -15,19 +15,17 @@ namespace aethermind {
 
 // Default growth policy for capacity management
 // Determines how capacity grows when string exceeds current limit
-struct default_growth_policy {
+struct DefaultGrowthPolicy {
     // Minimum heap capacity when transitioning from small to heap
     // Ensures reasonable initial allocation to avoid immediate re-allocation
-    static constexpr std::size_t min_heap_capacity(std::size_t required) noexcept {
+    static constexpr std::size_t MinHeapCapacity(std::size_t required) noexcept {
         return std::max(required, config::kMinHeapCapacity);
     }
 
     // Calculate next capacity given old capacity and required size
     // Growth strategy: 1.5x (old + old/2) with floor
-    static constexpr std::size_t next_capacity(
-        std::size_t old_cap,
-        std::size_t required
-    ) noexcept {
+    static constexpr std::size_t NextCapacity(std::size_t old_cap,
+                                              std::size_t required) noexcept {
         if (required <= old_cap) {
             return old_cap;
         }

@@ -18,11 +18,9 @@ namespace aethermind {
 
 // BasicString - public API layer
 // Standard-style interface with policy-based internal implementation
-template<
-    typename CharT,
-    typename Traits,
-    typename Allocator
->
+template<typename CharT,
+         typename Traits,
+         typename Allocator>
 class BasicString {
 public:
     using value_type = CharT;
@@ -42,7 +40,7 @@ public:
 
 private:
     using LayoutPolicy = DefaultLayoutPolicy<CharT>::type;
-    using GrowthPolicy = default_growth_policy;
+    using GrowthPolicy = DefaultGrowthPolicy;
     using CoreType = BasicStringCore<CharT, Traits, Allocator, LayoutPolicy, GrowthPolicy>;
 
     CoreType core_;

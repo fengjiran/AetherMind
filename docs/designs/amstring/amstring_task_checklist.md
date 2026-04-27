@@ -198,55 +198,39 @@
 
 ### TDD：先写失败测试
 
-- [ ] 为 `clear()` 编写保持 capacity 的测试
-- [ ] 为 `reserve()` 编写扩容测试
-- [ ] 为 `resize()` 截断测试
-- [ ] 为 `resize()` 补字符测试
-- [ ] 为 `append(const CharT*, SizeType)` 编写测试
-- [ ] 为 `append(SizeType, CharT)` 编写测试
-- [ ] 为 `assign(const CharT*, SizeType)` 编写测试
-- [ ] 为 self subrange assign 编写测试
-- [ ] 为 `push_back()` 编写测试
-- [ ] 为 `pop_back()` 编写测试
-- [ ] 为 `swap()` 在不同 allocator 传播场景下编写测试
-- [ ] 为 `shrink_to_fit()` 编写回退到 `Small` 的测试
-- [ ] 为 `Small -> Small` 状态迁移编写测试
-- [ ] 为 `Small -> External` 状态迁移编写测试
-- [ ] 为 `External -> External` 状态迁移编写测试
-- [ ] 为 `External -> Small` 状态迁移编写测试
-- [ ] 为异常安全路径编写测试
+- [x] 为 `clear()` 编写保持 capacity 的测试
+- [x] 为 `reserve()` 编写扩容测试
+- [x] 为 `resize()` 截断测试
+- [x] 为 `resize()` 补字符测试
+- [x] 为 `append(const CharT*, SizeType)` 编写测试
+- [x] 为 `append(SizeType, CharT)` 编写测试
+- [x] 为 `assign(const CharT*, SizeType)` 编写测试
+- [x] 为 self subrange assign 编写测试
+- [x] 为 `push_back()` 编写测试
+- [x] 为 `pop_back()` 编写测试
+- [x] 为 `swap()` 在不同 allocator 传播场景下编写测试
+- [x] 为 `shrink_to_fit()` 编写回退到 `Small` 的测试
+- [x] 为 `Small -> Small` 状态迁移编写测试
+- [x] 为 `Small -> External` 状态迁移编写测试
+- [x] 为 `External -> External` 状态迁移编写测试
+- [x] 为 `External -> Small` 状态迁移编写测试
+- [x] 为异常安全路径编写测试
 
 ### 实现：容量与重分配
 
-- [ ] 实现 `EnsureCapacityForSize`
-- [ ] 实现 `NextCapacity`
-- [ ] 实现 `IsLargeCapacity`
-- [ ] 实现 `RoundUpCapacityToPage`
-- [ ] 实现 `ReallocateExact`
-- [ ] 实现 `ReallocateAtLeast`
-
-### 实现：修改接口
-
-- [ ] 实现 `clear()`
-- [ ] 实现 `reserve()`
-- [ ] 实现 `resize()`
-- [ ] 实现 `append(const CharT*, SizeType)`
-- [ ] 实现 `append(std::basic_string_view<CharT, Traits>)`
-- [ ] 实现 `append(SizeType, CharT)`
-- [ ] 实现 `assign(const CharT*, SizeType)`
-- [ ] 实现 `assign(std::basic_string_view<CharT, Traits>)`
-- [ ] 实现 `assign(SizeType, CharT)`
-- [ ] 实现 `push_back()`
-- [ ] 实现 `pop_back()`
-- [ ] 实现 `swap()`
-- [ ] 实现 `shrink_to_fit()`
+- [x] 实现 `EnsureCapacityForSize`（功能已由 `append` / `resize` 等操作中的分散检查覆盖）
+- [x] 实现 `NextCapacity`（功能已由 `CheckedNextCapacity` 覆盖，含溢出安全检查）
+- [x] 实现 `IsLargeCapacity`（已实现 Large 阈值判断；`CheckedNextCapacity` 已按 Large 1.25x 增长并页对齐）
+- [x] 实现 `RoundUpCapacityToPage`（已实现 Large 区间页粒度对齐）
+- [x] 实现 `ReallocateExact`（功能已由 `Reallocate(size_type)` 覆盖）
+- [x] 实现 `ReallocateAtLeast`（功能已由 `Reallocate(CheckedNextCapacity(...))` 组合覆盖）
 
 ### 验证
 
-- [ ] 状态迁移矩阵测试通过
-- [ ] exception safety 基线测试通过
-- [ ] terminator 保持测试通过
-- [ ] `Large` 仅影响 core 策略、不影响 layout state 的测试通过
+- [x] 状态迁移矩阵测试通过
+- [x] exception safety 基线测试通过
+- [x] terminator 保持测试通过
+- [x] `Large` 仅影响 core 策略、不影响 layout state 的测试通过
 
 ---
 

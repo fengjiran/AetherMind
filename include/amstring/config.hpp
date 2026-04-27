@@ -23,6 +23,13 @@ constexpr size_t kMinHeapCapacity = 32;
 // Capacity growth factor
 // new_cap = max(required, old_cap + old_cap / 2)
 constexpr size_t kGrowthFactorDenominator = 2;
+constexpr size_t kLargeGrowthFactorDenominator = 4;
+
+// Large string policy defaults
+// These constants intentionally mirror the allocator page granularity while
+// keeping amstring independent from the ammalloc public headers.
+constexpr size_t kLargeThresholdBytes = 4096;
+constexpr size_t kPageSizeBytes = 4096;
 
 }// namespace config
 }// namespace aethermind

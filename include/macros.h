@@ -39,6 +39,12 @@
 #define AM_NODISCARD
 #endif
 
+#if AM_HAS_CPP_ATTRIBUTE(noreturn)
+#define AM_NORETURN [[noreturn]]
+#else
+#define AM_NORETURN
+#endif
+
 #if AM_HAS_CPP_ATTRIBUTE(maybe_unused)
 #define AM_MAYBE_UNUSED [[maybe_unused]]
 #else
@@ -144,4 +150,4 @@
     static void FuncName()
 
 #define DEFINE_STATIC_FUNCTION() DEFINE_STATIC_FUNCTION_(STR_CONCAT(_static_func_tid_, __COUNTER__))
-#endif//AETHERMIND_MACROS_H
+#endif// AETHERMIND_MACROS_H

@@ -6,13 +6,21 @@
 #ifndef AETHERMIND_AMSTRING_CORE_HPP
 #define AETHERMIND_AMSTRING_CORE_HPP
 
+#include "aethermind/utils/overflow_check.h"
 #include "allocator_support.hpp"
 #include "char_algorithms.hpp"
+#include "config.hpp"
+#include "error.h"
 #include "growth_policy.hpp"
 #include "layout_policy.hpp"
+#include "macros.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <memory>
+#include <string_view>
+#include <type_traits>
 #include <utility>
 
 namespace aethermind {
@@ -43,11 +51,12 @@ public:
 
     // static constexpr size_type npos = static_cast<size_type>(-1);
 
-    BasicStringCore() noexcept {
+    BasicStringCore() noexcept(std::is_nothrow_default_constructible_v<AllocType>) {
         LayoutPolicy::InitEmpty(storage_);
     }
 
-    explicit BasicStringCore(const AllocType& a) noexcept : alloc_(a) {
+    explicit BasicStringCore(const AllocType& a) noexcept(std::is_nothrow_copy_constructible_v<AllocType>)
+        : alloc_(a) {
         LayoutPolicy::InitEmpty(storage_);
     }
 
@@ -55,8 +64,8 @@ public:
         if (n <= LayoutPolicy::kSmallCapacity) {
             LayoutPolicy::InitSmall(storage_, src, n);
         } else {
-            const size_type cap = GrowthPolicy::MinHeapCapacity(n);
-            pointer ptr = alloc_helper::traits::allocate(alloc_, cap + 1);
+            const size_type cap = CheckedMinHeapCapacity(n);
+            pointer ptr = alloc_helper::traits::allocate(alloc_, AllocationCountForCapacity(cap));
             char_algo::copy(ptr, src, n);
             ptr[n] = char_algo::null_char();
             LayoutPolicy::InitExternal(storage_, ptr, n, cap);
@@ -70,7 +79,7 @@ public:
         } else {
             const size_type sz = LayoutPolicy::size(other.storage_);
             const size_type cap = LayoutPolicy::capacity(other.storage_);
-            pointer ptr = alloc_helper::traits::allocate(alloc_, cap + 1);
+            pointer ptr = alloc_helper::traits::allocate(alloc_, AllocationCountForCapacity(cap));
             char_algo::copy(ptr, LayoutPolicy::data(other.storage_), sz);
             ptr[sz] = char_algo::null_char();
             LayoutPolicy::InitExternal(storage_, ptr, sz, cap);
@@ -83,11 +92,7 @@ public:
     }
 
     ~BasicStringCore() {
-        if (LayoutPolicy::is_external(storage_)) {
-            pointer ptr = LayoutPolicy::data(storage_);
-            const size_type cap = LayoutPolicy::capacity(storage_);
-            alloc_helper::traits::deallocate(alloc_, ptr, cap + 1);
-        }
+        DestroyHeapIfNeeded();
     }
 
     BasicStringCore& operator=(const BasicStringCore& other) {
@@ -96,8 +101,9 @@ public:
         }
 
         if constexpr (alloc_helper::propagate_on_copy_assignment) {
-            BasicStringCore tmp(other);
+            BasicStringCore tmp(other.data(), other.size(), other.alloc_);
             DestroyHeapIfNeeded();
+            LayoutPolicy::InitEmpty(storage_);
             alloc_ = other.alloc_;
             MoveStorageFrom(std::move(tmp));
         } else {
@@ -108,10 +114,11 @@ public:
         return *this;
     }
 
-    BasicStringCore& operator=(BasicStringCore&& other) noexcept((alloc_helper::propagate_on_move_assignment &&
-                                                                  std::is_nothrow_move_assignable_v<Allocator>) ||
-                                                                 (!alloc_helper::propagate_on_move_assignment &&
-                                                                  alloc_helper::is_always_equal)) {
+    BasicStringCore& operator=(BasicStringCore&& other) noexcept(
+            (alloc_helper::propagate_on_move_assignment &&
+             std::is_nothrow_move_assignable_v<Allocator>) ||
+            (!alloc_helper::propagate_on_move_assignment &&
+             alloc_helper::is_always_equal)) {
         if (this == &other) {
             return *this;
         }
@@ -120,17 +127,20 @@ public:
             // Current external storage must be released by the current allocator
             // before allocator_ is replaced.
             DestroyHeapIfNeeded();
+            LayoutPolicy::InitEmpty(storage_);
             alloc_ = std::move(other.alloc_);
             MoveStorageFrom(std::move(other));
         } else if constexpr (alloc_helper::is_always_equal) {
             // Any allocator instance can release memory allocated by any other
             // equivalent instance, so stealing external storage is safe.
             DestroyHeapIfNeeded();
+            LayoutPolicy::InitEmpty(storage_);
             MoveStorageFrom(std::move(other));
         } else {
             // Equal non-propagating allocators can release each other's memory.
             if (alloc_ == other.alloc_) {
                 DestroyHeapIfNeeded();
+                LayoutPolicy::InitEmpty(storage_);
                 MoveStorageFrom(std::move(other));
             } else {
                 // Unequal non-propagating allocators cannot steal other's
@@ -140,20 +150,21 @@ public:
                 if (other_sz <= LayoutPolicy::kSmallCapacity) {
                     // No allocation needed for destination.
                     DestroyHeapIfNeeded();
-                    LayoutPolicy::InitSmall(storage_, other_sz, other_data);
+                    LayoutPolicy::InitSmall(storage_, other_data, other_sz);
 
                     // Source must become a valid empty string.
                     // If source was External, release its buffer with source allocator.
                     other.DestroyHeapIfNeeded();
                     LayoutPolicy::InitEmpty(other.storage_);
                 } else {
-                    const auto new_cap = GrowthPolicy::MinHeapCapacity(other_sz);
-                    pointer new_ptr = alloc_helper::traits::allocate(alloc_, new_cap + 1);
+                    const auto new_cap = CheckedMinHeapCapacity(other_sz);
+
+                    pointer new_ptr = alloc_helper::traits::allocate(alloc_, AllocationCountForCapacity(new_cap));
                     try {
                         char_algo::copy(new_ptr, other_data, other_sz);
                         new_ptr[other_sz] = char_algo::null_char();
                     } catch (...) {
-                        alloc_helper::traits::deallocate(alloc_, new_ptr, new_cap + 1);
+                        alloc_helper::traits::deallocate(alloc_, new_ptr, AllocationCountForCapacity(new_cap));
                         throw;
                     }
                     DestroyHeapIfNeeded();
@@ -254,77 +265,108 @@ public:
             LayoutPolicy::InitSmall(storage_, old_ptr, sz);
             alloc_helper::traits::deallocate(alloc_, old_ptr, old_cap + 1);
         } else {
-            Reallocate(sz);
-        }
-    }
-
-    void assign(const CharT* s, size_type n) {
-        if (n <= LayoutPolicy::kSmallCapacity) {
-            DestroyHeapIfNeeded();
-            LayoutPolicy::InitSmall(storage_, s, n);
-        } else {
-            const size_type req_cap = GrowthPolicy::MinHeapCapacity(n);
-            if (req_cap > capacity()) {
-                DestroyHeapIfNeeded();
-                pointer ptr = alloc_helper::traits::allocate(alloc_, req_cap + 1);
-                char_algo::copy(ptr, s, n);
-                ptr[n] = char_algo::null_char();
-                LayoutPolicy::InitExternal(storage_, ptr, n, req_cap);
-            } else {
-                char_algo::copy(data(), s, n);
-                data()[n] = char_algo::null_char();
-                SetSize(n);
+            const size_type target_cap = IsLargeCapacity(cap) || IsLargeCapacity(sz) ? RoundUpCapacityToPage(sz) : sz;
+            if (target_cap < cap) {
+                Reallocate(target_cap);
             }
         }
     }
 
-    void append(const CharT* s, size_type n) {
+    void assign(const CharT* src, size_type n) {
+        BasicStringCore(src, n, alloc_).swap(*this);
+    }
+
+    void assign(std::basic_string_view<CharT, Traits> sv) {
+        assign(sv.data(), sv.size());
+    }
+
+    void assign(size_type count, CharT ch) {
+        BasicStringCore tmp(alloc_);
+        tmp.append(count, ch);
+        tmp.swap(*this);
+    }
+
+    void append(const CharT* src, size_type n) {
         if (n == 0) {
             return;
         }
 
         const size_type cur_sz = size();
-        const size_type new_sz = cur_sz + n;
+        const size_type new_sz = CheckedAddSize(cur_sz, n);
+        pointer cur_data = data();
+        const bool src_is_self_range = PointerInRange(src, cur_data, cur_data + cur_sz);
+        const size_type src_offset = src_is_self_range ? static_cast<size_type>(src - cur_data) : 0;
 
         if (new_sz > capacity()) {
-            const size_type new_cap = GrowthPolicy::NextCapacity(capacity(), new_sz);
-            pointer new_ptr = alloc_helper::traits::allocate(alloc_, new_cap + 1);
-            char_algo::copy(new_ptr, data(), cur_sz);
-            char_algo::copy(new_ptr + cur_sz, s, n);
+            const size_type new_cap = CheckedNextCapacity(capacity(), new_sz);
+            pointer new_ptr = alloc_helper::traits::allocate(alloc_, AllocationCountForCapacity(new_cap));
+            char_algo::copy(new_ptr, cur_data, cur_sz);
+            const_pointer append_src = src_is_self_range ? new_ptr + src_offset : src;
+            char_algo::copy(new_ptr + cur_sz, append_src, n);
             new_ptr[new_sz] = char_algo::null_char();
 
             DestroyHeapIfNeeded();
             LayoutPolicy::InitExternal(storage_, new_ptr, new_sz, new_cap);
         } else {
-            char_algo::copy(data() + cur_sz, s, n);
-            data()[new_sz] = char_algo::null_char();
+            pointer append_dst = cur_data + cur_sz;
+            if (src_is_self_range) {
+                char_algo::move(append_dst, src, n);
+            } else {
+                char_algo::copy(append_dst, src, n);
+            }
+            cur_data[new_sz] = char_algo::null_char();
             SetSize(new_sz);
         }
     }
 
-    void swap(BasicStringCore& other) noexcept {
-        if (this == &other) {
+    void append(std::basic_string_view<CharT, Traits> sv) {
+        append(sv.data(), sv.size());
+    }
+
+    void append(size_type count, CharT ch) {
+        if (count == 0) {
             return;
         }
 
+        const size_type cur_sz = size();
+        const size_type new_sz = CheckedAddSize(cur_sz, count);
+        if (new_sz > capacity()) {
+            Reallocate(CheckedNextCapacity(capacity(), new_sz));
+        }
+
+        pointer d = data();
+        char_algo::assign(d + cur_sz, count, ch);
+        d[new_sz] = char_algo::null_char();
+        SetSize(new_sz);
+    }
+
+    void push_back(CharT ch) {
+        append(&ch, 1);
+    }
+
+    void pop_back() noexcept {
+        const size_type current_size = size();
+        if (current_size == 0) {
+            return;
+        }
+        SetSize(current_size - 1);
+    }
+
+    void swap(BasicStringCore& other) noexcept(SwapNoexcept()) {
         if constexpr (alloc_helper::propagate_on_swap) {
             using std::swap;
             swap(alloc_, other.alloc_);
             SwapStorage(storage_, other.storage_);
-        } else if constexpr (alloc_helper::is_always_equal) {
-            SwapStorage(storage_, other.storage_);
         } else {
-            if (alloc_ == other.alloc_) {
-                SwapStorage(storage_, other.storage_);
-            } else {
-                // Strong guarantee for unequal non-propagating allocator path.
-                // Each replacement is built using the destination object's allocator.
-                BasicStringCore this_replacement(other.data(), other.size(), alloc_);
-                BasicStringCore other_replacement(data(), size(), other.alloc_);
-                SwapStorage(storage_, this_replacement.storage_);
-                SwapStorage(other.storage_, other_replacement.storage_);
-            }
+            AM_CHECK(CanSwapStorageWith(other), "BasicStringCore::swap requires compatible allocators");
+            SwapStorage(storage_, other.storage_);
         }
+        CheckInvariants();
+        other.CheckInvariants();
+    }
+
+    AllocType get_allocator() const noexcept(std::is_nothrow_copy_constructible_v<AllocType>) {
+        return alloc_;
     }
 
     void CheckInvariants() const noexcept {
@@ -332,9 +374,142 @@ public:
     }
 
 private:
+    static constexpr bool SwapNoexcept() noexcept {
+        if constexpr (alloc_helper::propagate_on_swap) {
+            return std::is_nothrow_swappable_v<AllocType>;
+        } else {
+            // No allocation and no allocator swap.
+            // Runtime allocator inequality is treated as precondition violation,
+            // not as an allocating fallback path.
+            return true;
+        }
+    }
+
+    bool CanSwapStorageWith(const BasicStringCore& other) const noexcept {
+        if constexpr (alloc_helper::propagate_on_swap || alloc_helper::is_always_equal) {
+            return true;
+        } else {
+            return alloc_ == other.alloc_;
+        }
+    }
+
+    static bool PointerInRange(const_pointer ptr, const_pointer begin, const_pointer end) noexcept {
+        const std::less<const_pointer> less{};
+        return !less(ptr, begin) && less(ptr, end);
+    }
+
+    AM_NORETURN static void ThrowCapacityError(const char* operation) {
+        AM_THROW(out_of_range) << "BasicStringCore::" << operation << " exceeds maximum encodable capacity";
+        AM_UNREACHABLE();
+    }
+
+    static size_type CheckedAddSize(size_type lhs, size_type rhs) {
+        size_type result = 0;
+        if (CheckOverflowAdd(lhs, rhs, &result)) {
+            ThrowCapacityError("append");
+        }
+        EnsureExternalCapacity(result, "append");
+        return result;
+    }
+
+    static void EnsureExternalCapacity(size_type capacity, const char* operation) {
+        if (capacity > LayoutPolicy::max_external_capacity()) {
+            ThrowCapacityError(operation);
+        }
+    }
+
+    static size_type AllocationCountForCapacity(size_type capacity) {
+        EnsureExternalCapacity(capacity, "allocate");
+        size_type allocation_count = 0;
+        if (CheckOverflowAdd(capacity, size_type{1}, &allocation_count)) {
+            ThrowCapacityError("allocate");
+        }
+        return allocation_count;
+    }
+
+    static size_type CheckedMinHeapCapacity(size_type required) {
+        EnsureExternalCapacity(required, "construct");
+        const size_type capacity = GrowthPolicy::MinHeapCapacity(required);
+        if (capacity < required) {
+            ThrowCapacityError("construct");
+        }
+        EnsureExternalCapacity(capacity, "construct");
+        return capacity;
+    }
+
+    static size_type CheckedNextCapacity(size_type old_capacity, size_type required) {
+        EnsureExternalCapacity(required, "append");
+        size_type capacity = IsLargeCapacity(old_capacity) ? LargeNextCapacity(old_capacity, required)
+                                                           : GrowthPolicy::NextCapacity(old_capacity, required);
+        if (capacity < required) {
+            ThrowCapacityError("append");
+        }
+        EnsureExternalCapacity(capacity, "append");
+        if (IsLargeCapacity(capacity)) {
+            capacity = RoundUpCapacityToPage(capacity);
+        }
+        return capacity;
+    }
+
+    static size_type LargeNextCapacity(size_type old_capacity, size_type required) {
+        size_type growth = old_capacity / config::kLargeGrowthFactorDenominator;
+        if (growth == 0) {
+            growth = 1;
+        }
+
+        size_type candidate = 0;
+        if (CheckOverflowAdd(old_capacity, growth, &candidate)) {
+            ThrowCapacityError("append");
+        }
+
+        return std::max(required, candidate);
+    }
+
+    static constexpr size_type LargeCapacityThreshold() noexcept {
+        constexpr size_type kCharsForLargeThreshold = (config::kLargeThresholdBytes + sizeof(CharT) - 1) / sizeof(CharT);
+        if constexpr (kCharsForLargeThreshold == 0) {
+            return 0;
+        } else {
+            return kCharsForLargeThreshold - 1;
+        }
+    }
+
+    static constexpr bool IsLargeCapacity(size_type capacity) noexcept {
+        return capacity >= LargeCapacityThreshold();
+    }
+
+    static size_type RoundUpCapacityToPage(size_type capacity) {
+        static_assert(config::kPageSizeBytes % sizeof(CharT) == 0,
+                      "amstring page rounding requires page size to be divisible by CharT size");
+
+        const size_type allocation_count = AllocationCountForCapacity(capacity);
+        size_type allocation_bytes = 0;
+        if (CheckOverflowMul(allocation_count, sizeof(CharT), &allocation_bytes)) {
+            ThrowCapacityError("round_to_page");
+        }
+
+        const size_type remainder = allocation_bytes % config::kPageSizeBytes;
+        if (remainder == 0) {
+            return capacity;
+        }
+
+        size_type rounded_bytes = 0;
+        if (CheckOverflowAdd(allocation_bytes, config::kPageSizeBytes - remainder, &rounded_bytes)) {
+            ThrowCapacityError("round_to_page");
+        }
+
+        const size_type rounded_capacity = rounded_bytes / sizeof(CharT) - 1;
+        EnsureExternalCapacity(rounded_capacity, "round_to_page");
+        return rounded_capacity;
+    }
+
     static void SwapStorage(Storage& lhs, Storage& rhs) noexcept {
         static_assert(std::is_trivially_copyable_v<Storage>,
                       "StorageType must be trivially copyable for raw storage swap.");
+        if (std::addressof(lhs) == std::addressof(rhs)) {
+            return;
+        }
+
         alignas(Storage) std::byte tmp[sizeof(Storage)];
         std::memcpy(tmp, &lhs, sizeof(Storage));
         std::memcpy(&lhs, &rhs, sizeof(Storage));
@@ -372,8 +547,10 @@ private:
     }
 
     void Reallocate(size_type new_cap) {
+        EnsureExternalCapacity(new_cap, "reserve");
         const size_type sz = size();
-        pointer new_ptr = alloc_helper::traits::allocate(alloc_, new_cap + 1);
+        AM_CHECK(new_cap >= sz);
+        pointer new_ptr = alloc_helper::traits::allocate(alloc_, AllocationCountForCapacity(new_cap));
         char_algo::copy(new_ptr, data(), sz);
         new_ptr[sz] = char_algo::null_char();
 

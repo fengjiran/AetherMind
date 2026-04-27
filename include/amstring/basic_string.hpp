@@ -78,12 +78,12 @@ public:
     }
 
     BasicString& operator=(std::basic_string_view<CharT, Traits> sv) {
-        core_.assign(sv.data(), sv.size());
+        core_.assign(sv);
         return *this;
     }
 
     BasicString& operator=(CharT ch) {
-        core_.assign(&ch, 1);
+        core_.assign(1, ch);
         return *this;
     }
 
@@ -139,13 +139,25 @@ public:
 
     void shrink_to_fit() { core_.shrink_to_fit(); }
 
-    void push_back(CharT ch) { core_.append(&ch, 1); }
+    void push_back(CharT ch) { core_.push_back(ch); }
 
     void pop_back() {
-        const size_type sz = core_.size();
-        if (sz > 0) {
-            core_.resize(sz - 1);
-        }
+        core_.pop_back();
+    }
+
+    BasicString& assign(const CharT* s, size_type n) {
+        core_.assign(s, n);
+        return *this;
+    }
+
+    BasicString& assign(std::basic_string_view<CharT, Traits> sv) {
+        core_.assign(sv);
+        return *this;
+    }
+
+    BasicString& assign(size_type count, CharT ch) {
+        core_.assign(count, ch);
+        return *this;
     }
 
     BasicString& append(const BasicString& str) {
@@ -164,12 +176,12 @@ public:
     }
 
     BasicString& append(size_type count, CharT ch) {
-        core_.resize(core_.size() + count, ch);
+        core_.append(count, ch);
         return *this;
     }
 
     BasicString& append(std::basic_string_view<CharT, Traits> sv) {
-        core_.append(sv.data(), sv.size());
+        core_.append(sv);
         return *this;
     }
 
@@ -190,11 +202,11 @@ public:
         return append(sv);
     }
 
-    void swap(BasicString& other) noexcept {
+    void swap(BasicString& other) noexcept(noexcept(core_.swap(other.core_))) {
         core_.swap(other.core_);
     }
 
-    allocator_type get_allocator() const noexcept {
+    allocator_type get_allocator() const noexcept(noexcept(core_.get_allocator())) {
         return core_.get_allocator();
     }
 };

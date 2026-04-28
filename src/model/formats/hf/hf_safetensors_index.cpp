@@ -1,10 +1,10 @@
 #include "aethermind/model/formats/hf/hf_safetensors_index.h"
+#include "aethermind/utils/overflow_check.h"
 
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -90,7 +90,8 @@ StatusOr<std::vector<std::byte>> ReadFileBytes(const std::filesystem::path& path
 
 StatusOr<uint64_t> ParseLittleEndianU64(std::span<const std::byte> bytes) {
     if (bytes.size() < sizeof(uint64_t)) {
-        return Status::InvalidArgument("Safetensors file is too small to contain header length");
+        return Status::InvalidArgument(
+                "Safetensors file is too small to contain header length");
     }
 
     uint64_t value = 0;
@@ -100,59 +101,56 @@ StatusOr<uint64_t> ParseLittleEndianU64(std::span<const std::byte> bytes) {
     return value;
 }
 
-Status ParseSafetensorsDType(
-        std::string_view dtype_text,
-        DataType* dtype) {
+StatusOr<DataType> ParseSafetensorsDType(std::string_view dtype_text) {
     if (dtype_text.compare("F16") == 0) {
-        *dtype = DataType::Float(16);
-        return Status::Ok();
+        return DataType::Float(16);
     }
+
     if (dtype_text.compare("BF16") == 0) {
-        *dtype = DataType::BFloat(16);
-        return Status::Ok();
+        return DataType::BFloat(16);
     }
+
     if (dtype_text.compare("F32") == 0) {
-        *dtype = DataType::Float32();
-        return Status::Ok();
+        return DataType::Float32();
     }
+
     if (dtype_text.compare("I32") == 0) {
-        *dtype = DataType::Int(32);
-        return Status::Ok();
+        return DataType::Int(32);
     }
+
     if (dtype_text.compare("I64") == 0) {
-        *dtype = DataType::Int(64);
-        return Status::Ok();
+        return DataType::Int(64);
     }
-    return Status::InvalidArgument(std::string("Unsupported safetensors dtype: ") + std::string(dtype_text));
+
+    return Status::InvalidArgument(
+            std::string("Unsupported safetensors dtype: ") + std::string(dtype_text));
 }
 
 StatusOr<uint64_t> CheckedMultiply(uint64_t lhs, uint64_t rhs, std::string_view context) {
-    if (lhs == 0 || rhs == 0) {
-        return uint64_t{0};
-    }
-    if (lhs > std::numeric_limits<uint64_t>::max() / rhs) {
+    uint64_t product = 0;
+    if (CheckOverflowMul(lhs, rhs, &product)) {
         return Status(StatusCode::kOutOfRange,
                       std::string("Integer overflow while computing ") + std::string(context));
     }
-    return lhs * rhs;
+    return product;
 }
 
-class HeaderParser {
+class SafetensorsHeaderParser {
 public:
-    HeaderParser(
-            std::string_view input,
-            const std::shared_ptr<const RawTensorBacking>& backing,
-            const std::byte* data_base,
-            size_t data_size) noexcept
+    SafetensorsHeaderParser(std::string_view input,
+                 const std::shared_ptr<const RawTensorBacking>& backing,
+                 const std::byte* data_base,
+                 size_t data_size) noexcept
         : input_(input), backing_(backing), data_base_(data_base), data_size_(data_size) {}
 
-    StatusOr<std::vector<HfSafetensorEntry>> Parse() {
+    StatusOr<std::vector<HfSafetensorsEntry>> Parse() {
         SkipWhitespace();
         if (!Consume('{')) {
-            return Status::InvalidArgument("Safetensors header must start with a JSON object");
+            return Status::InvalidArgument(
+                    "Safetensors header must start with a JSON object");
         }
 
-        std::vector<HfSafetensorEntry> entries;
+        std::vector<HfSafetensorsEntry> entries;
         SkipWhitespace();
         if (Consume('}')) {
             return entries;
@@ -163,6 +161,7 @@ public:
             if (!key.ok()) {
                 return key.status();
             }
+
             if (!Expect(':', "Expected ':' after safetensors header key")) {
                 return Status::InvalidArgument("Expected ':' after safetensors header key");
             }
@@ -173,7 +172,7 @@ public:
                     return skip_status;
                 }
             } else {
-                HfSafetensorEntry entry;
+                HfSafetensorsEntry entry;
                 const Status entry_status = ParseTensorEntry(*key, &entry);
                 if (!entry_status.ok()) {
                     return entry_status;
@@ -192,15 +191,14 @@ public:
 
         SkipWhitespace();
         if (!AtEnd()) {
-            return Status::InvalidArgument("Safetensors header contains trailing JSON content");
+            return Status::InvalidArgument(
+                    "Safetensors header contains trailing JSON content");
         }
         return entries;
     }
 
 private:
-    Status ParseTensorEntry(
-            const std::string& name,
-            HfSafetensorEntry* entry) {
+    Status ParseTensorEntry(const std::string& name, HfSafetensorsEntry* entry) {
         if (!Expect('{', "Expected '{' at start of safetensors tensor entry")) {
             return Status::InvalidArgument("Expected '{' at start of safetensors tensor entry");
         }
@@ -225,12 +223,11 @@ private:
                     if (!dtype_text.ok()) {
                         return dtype_text.status();
                     }
-                    DataType parsed_dtype;
-                    const Status dtype_status = ParseSafetensorsDType(*dtype_text, &parsed_dtype);
-                    if (!dtype_status.ok()) {
-                        return dtype_status;
+                    const auto parsed_dtype = ParseSafetensorsDType(*dtype_text);
+                    if (!parsed_dtype.ok()) {
+                        return parsed_dtype.status();
                     }
-                    dtype = parsed_dtype;
+                    dtype = *parsed_dtype;
                 } else if (key->compare("shape") == 0) {
                     const auto parsed_shape = ParseInt64Array();
                     if (!parsed_shape.ok()) {
@@ -571,7 +568,8 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
 
     const auto backing = std::make_shared<OwnedBytesBacking>(std::move(*file_bytes));
     if (backing->size() < sizeof(uint64_t)) {
-        return Status::InvalidArgument(FormatPathMessage("Safetensors file is too small", safetensors_path));
+        return Status::InvalidArgument(
+                FormatPathMessage("Safetensors file is too small", safetensors_path));
     }
 
     const auto header_length = ParseLittleEndianU64(
@@ -581,7 +579,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
                       FormatPathMessage(header_length.status().message(), safetensors_path));
     }
 
-    const uint64_t header_begin = sizeof(uint64_t);
+    constexpr uint64_t header_begin = sizeof(uint64_t);
     const uint64_t header_end = header_begin + *header_length;
     if (header_end > backing->size()) {
         return Status::InvalidArgument(
@@ -589,12 +587,11 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
     }
 
     const auto* header_chars = reinterpret_cast<const char*>(backing->data() + header_begin);
-    const std::string_view header_json(header_chars, static_cast<size_t>(*header_length));
+    const std::string_view header_json(header_chars, *header_length);
     const std::byte* data_base = backing->data() + header_end;
     const size_t data_size = backing->size() - static_cast<size_t>(header_end);
 
-    HeaderParser parser(header_json, backing, data_base, data_size);
-    const auto parsed_entries = parser.Parse();
+    const auto parsed_entries = SafetensorsHeaderParser(header_json, backing, data_base, data_size).Parse();
     if (!parsed_entries.ok()) {
         return Status(parsed_entries.status().code(),
                       FormatPathMessage(parsed_entries.status().message(), safetensors_path));
@@ -606,7 +603,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
     return index;
 }
 
-const HfSafetensorEntry* HfSafetensorsIndex::Find(
+const HfSafetensorsEntry* HfSafetensorsIndex::Find(
         std::string_view tensor_name) const noexcept {
     for (const auto& entry: entries_) {
         if (entry.name.size() == tensor_name.size() &&

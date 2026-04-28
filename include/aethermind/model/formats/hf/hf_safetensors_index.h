@@ -21,7 +21,7 @@ struct HfSafetensorEntry {
     RawTensorView view{};
 
     AM_NODISCARD size_t ByteSize() const noexcept {
-        return static_cast<size_t>(data_offset_end - data_offset_begin);
+        return data_offset_end - data_offset_begin;
     }
 };
 

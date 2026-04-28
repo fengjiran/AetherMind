@@ -7,9 +7,8 @@ namespace aethermind {
 
 namespace {
 
-std::string FormatPathMessage(
-        std::string_view prefix,
-        const std::filesystem::path& path) {
+std::string FormatPathMessage(std::string_view prefix,
+                              const std::filesystem::path& path) {
     return std::string(prefix) + ": " + path.string();
 }
 
@@ -23,38 +22,49 @@ StatusOr<HfDirectoryLayoutInfo> HfDirectoryReader::DiscoverLayout(
 
     std::error_code error;
     if (!std::filesystem::exists(model_dir, error)) {
-        return Status::NotFound(FormatPathMessage("HF model directory not found", model_dir));
+        return Status::NotFound(
+                FormatPathMessage("HF model directory not found", model_dir));
     }
+
     if (error) {
-        return Status::Internal(FormatPathMessage("Failed to stat HF model directory", model_dir));
+        return Status::Internal(
+                FormatPathMessage("Failed to stat HF model directory", model_dir));
     }
 
     if (!std::filesystem::is_directory(model_dir, error)) {
-        return Status::InvalidArgument(FormatPathMessage("HF model path is not a directory", model_dir));
-    }
-    if (error) {
-        return Status::Internal(FormatPathMessage("Failed to inspect HF model directory type", model_dir));
+        return Status::InvalidArgument(
+                FormatPathMessage("HF model path is not a directory", model_dir));
     }
 
-    const std::filesystem::path config_path = model_dir / "config.json";
-    const std::filesystem::path safetensors_path = model_dir / "model.safetensors";
-    const std::filesystem::path safetensors_index_path = model_dir / "model.safetensors.index.json";
+    if (error) {
+        return Status::Internal(
+                FormatPathMessage("Failed to inspect HF model directory type", model_dir));
+    }
+
+    const auto config_path = model_dir / "config.json";
+    const auto safetensors_path = model_dir / "model.safetensors";
+    const auto safetensors_index_path = model_dir / "model.safetensors.index.json";
 
     if (!std::filesystem::exists(config_path, error)) {
-        return Status::NotFound(FormatPathMessage("HF model directory is missing config.json", config_path));
+        return Status::NotFound(
+                FormatPathMessage("HF model directory is missing config.json", config_path));
     }
+
     if (error) {
-        return Status::Internal(FormatPathMessage("Failed to stat config.json", config_path));
+        return Status::Internal(
+                FormatPathMessage("Failed to stat config.json", config_path));
     }
 
     const bool has_single_file = std::filesystem::exists(safetensors_path, error);
     if (error) {
-        return Status::Internal(FormatPathMessage("Failed to stat model.safetensors", safetensors_path));
+        return Status::Internal(
+                FormatPathMessage("Failed to stat model.safetensors", safetensors_path));
     }
 
     const bool has_sharded_index = std::filesystem::exists(safetensors_index_path, error);
     if (error) {
-        return Status::Internal(FormatPathMessage("Failed to stat model.safetensors.index.json", safetensors_index_path));
+        return Status::Internal(
+                FormatPathMessage("Failed to stat model.safetensors.index.json", safetensors_index_path));
     }
 
     if (has_single_file && has_sharded_index) {

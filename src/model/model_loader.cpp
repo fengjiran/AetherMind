@@ -1,5 +1,4 @@
 #include "aethermind/model/model_loader.h"
-
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/model_instance.h"
 #include "macros.h"

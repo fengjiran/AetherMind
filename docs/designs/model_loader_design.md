@@ -1,4 +1,4 @@
-# ModelLoader 与权重预打包设计文档（Phase 1 收敛版）
+# ModelLoader 与权重预打包设计文档
 
 ## 1. 文档目标
 

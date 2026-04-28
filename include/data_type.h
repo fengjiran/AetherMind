@@ -152,15 +152,18 @@ struct DLDataType {
 
 class DataType {
 public:
-    DataType() : dtype_({DLDataTypeCode::Undefined, 0, 0}) {}
+    DataType() noexcept : dtype_({DLDataTypeCode::Undefined, 0, 0}) {}
 
-    DataType(const DataType& other) : dtype_(other.dtype_) {}
+    DataType(const DataType& other) noexcept : dtype_(other.dtype_) {}
 
-    explicit DataType(DLDataType dtype) : dtype_(dtype) {}
+    DataType(DataType&& other) noexcept = default;
+
+    explicit DataType(DLDataType dtype) noexcept : dtype_(dtype) {}
 
     DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable = false);
 
     DataType& operator=(const DataType&) = default;
+    DataType& operator=(DataType&&) noexcept = default;
 
     operator DLDataType() const {// NOLINT
         return dtype_;

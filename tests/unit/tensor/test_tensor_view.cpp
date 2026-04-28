@@ -1,5 +1,5 @@
 #include "aethermind/base/tensor_view.h"
-#include "test_utils/tensor_random.h"
+#include "../test_utils/tensor_random.h"
 
 #include <array>
 #include <gtest/gtest.h>

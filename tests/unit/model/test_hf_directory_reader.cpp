@@ -14,7 +14,7 @@ public:
     TempDirectory() {
         static size_t counter = 0;
         const auto unique_id = std::to_string(
-                std::chrono::steady_clock::now().time_since_epoch().count()) +
+                                       std::chrono::steady_clock::now().time_since_epoch().count()) +
                                "_" + std::to_string(counter++);
         path_ = std::filesystem::temp_directory_path() /
                 ("aethermind_hf_directory_reader_" + unique_id);

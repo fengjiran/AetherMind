@@ -6,8 +6,8 @@
 #include "container/array_view.h"
 #include "container/string.h"
 #include "device.h"
-#include "test_utils/tensor_factory.h"
-#include "test_utils/tensor_random.h"
+#include "../test_utils/tensor_factory.h"
+#include "../test_utils/tensor_random.h"
 
 #include <gtest/gtest.h>
 #include <ranges>

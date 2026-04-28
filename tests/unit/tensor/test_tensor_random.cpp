@@ -1,6 +1,6 @@
 #include "aethermind/base/tensor.h"
-#include "test_utils/tensor_assert.h"
-#include "test_utils/tensor_random.h"
+#include "../test_utils/tensor_assert.h"
+#include "../test_utils/tensor_random.h"
 
 #include <gtest/gtest.h>
 

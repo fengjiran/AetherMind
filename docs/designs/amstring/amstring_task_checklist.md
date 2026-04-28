@@ -242,27 +242,27 @@
 
 ### TDD：先写失败测试
 
-- [ ] 编写默认构造 public 语义测试
-- [ ] 编写构造与赋值 public 语义测试
-- [ ] 编写 `data()` / `c_str()` / `size()` / `capacity()` / `empty()` public 测试
-- [ ] 编写 `clear()` / `reserve()` / `resize()` public 测试
-- [ ] 编写 `append()` / `assign()` public 测试
-- [ ] 编写 `push_back()` / `pop_back()` public 测试
-- [ ] 编写 `shrink_to_fit()` public 测试
-- [ ] 编写 small/external 对用户透明的测试
+- [x] 编写默认构造 public 语义测试
+- [x] 编写构造与赋值 public 语义测试
+- [x] 编写 `data()` / `c_str()` / `size()` / `capacity()` / `empty()` public 测试
+- [x] 编写 `clear()` / `reserve()` / `resize()` public 测试
+- [x] 编写 `append()` / `assign()` public 测试
+- [x] 编写 `push_back()` / `pop_back()` public 测试
+- [x] 编写 `shrink_to_fit()` public 测试
+- [x] 编写 small/external 对用户透明的测试
 
 ### 实现
 
-- [ ] 定义 `BasicString<CharT, Traits, Allocator>`
-- [ ] 接入 `BasicStringCore`
-- [ ] 实现第一阶段 public API
-- [ ] 补齐必要类型别名
-- [ ] 保持 public 层不暴露 `LayoutPolicy`
+- [x] 定义 `BasicString<CharT, Traits, Allocator>`
+- [x] 接入 `BasicStringCore`
+- [x] 实现第一阶段 public API
+- [x] 补齐必要类型别名
+- [x] 保持 public 层不暴露 `LayoutPolicy`
 
 ### 验证
 
-- [ ] public 语义测试通过
-- [ ] 与 core 行为保持一致
+- [x] public 语义测试通过（`BasicStringSkeletonTest*`：220/220）
+- [x] 与 core 行为保持一致（`*BasicString*`：430/430）
 
 ---
 

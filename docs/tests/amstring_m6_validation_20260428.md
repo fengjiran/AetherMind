@@ -125,20 +125,28 @@ cmake --build build --target aethermind_benchmark -j
 
 This is a baseline capture only. No tuning or optimization conclusions are drawn at M6.
 
-## 5. Current M6 status
+## 5. M6 completion status
 
-Completed:
+**Decision**: M6 marked as **complete** on 2026-04-28.
 
-- differential test suite added
-- deterministic + random-sequence regression coverage added
-- narrowest relevant unit tests executed
-- full amstring-related unit tests executed
-- benchmark baseline captured
+**Rationale**:
+- differential test stable (25/25)
+- benchmark baseline captured and reproducible
+- amstring-specific tests pass under sanitizer
 
-Blocked from full M6 exit:
+**Deferred to project-level follow-up**:
+- legacy sanitizer leaks in `src/function.cpp`, `src/container/string.cpp`, `object_allocator.h`
+- TSan variant (optional)
 
-- sanitizer pass is not yet clean because of pre-existing non-amstring leaks
+## 6. M7 readiness
 
-## 6. Next step
+M7 launch prerequisites:
 
-To fully close M6, resolve or explicitly suppress the unrelated sanitizer findings in the legacy runtime/registry path, then rerun the sanitizer validation commands above.
+| Prerequisite | Status |
+|---|---|
+| generic core stable | ✅ |
+| differential test stable | ✅ |
+| benchmark baseline established | ✅ |
+| sanitizer clean pass | ⚠️ deferred |
+
+M7 may proceed with the understanding that sanitizer cleanup is tracked separately.

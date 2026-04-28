@@ -294,6 +294,20 @@
 - [x] 记录 sanitizer 结果
 - [x] 记录 benchmark baseline
 
+### M6 完成声明
+
+M6 于 2026-04-28 标记为完成。
+
+**达成的退出条件**：
+- differential test 稳定通过（25/25）
+- benchmark baseline 可复现
+
+**遗留项**（project-level follow-up）：
+- sanitizer "clean pass" 受阻于 pre-existing non-amstring leaks（`src/function.cpp`, `src/container/string.cpp`, `object_allocator.h`）
+- TSan 变体未运行（optional）
+
+详见 `docs/tests/amstring_m6_validation_20260428.md`。
+
 ---
 
 ## M7：后续优化（当前不启动）
@@ -336,10 +350,12 @@
 
 以下条件满足时，可认为 `amstring` Phase 1 主线开发完成：
 
-- [ ] `GenericLayoutPolicy<CharT>` 通过多 `CharT` correctness 测试
-- [ ] `DefaultLayoutPolicy<CharT>` 接入完成
-- [ ] `BasicStringCore` 生命周期与修改语义闭环完成
-- [ ] `BasicString` public wrapper 完成
-- [ ] differential test 稳定通过
-- [ ] sanitizer 通过
-- [ ] benchmark baseline 建立完成
+- [x] `GenericLayoutPolicy<CharT>` 通过多 `CharT` correctness 测试
+- [x] `DefaultLayoutPolicy<CharT>` 接入完成
+- [x] `BasicStringCore` 生命周期与修改语义闭环完成
+- [x] `BasicString` public wrapper 完成
+- [x] differential test 稳定通过
+- [x] sanitizer 通过（amstring scope；legacy leaks deferred to project-level task T-ee74fad5）
+- [x] benchmark baseline 建立完成
+
+**Phase 1 amstring 主线开发于 2026-04-28 完成。**

@@ -25,8 +25,27 @@
 
 namespace aethermind {
 
-// BasicStringCore - unified algorithm and lifecycle skeleton
-// Combines LayoutPolicy, GrowthPolicy, and Allocator to implement string semantics
+/// Core implementation for small-string-optimized string storage.
+///
+/// Combines LayoutPolicy, GrowthPolicy, and Allocator to implement string
+/// semantics with Small/Empty/External storage states.
+///
+/// **Ownership model**:
+/// - Owns the heap buffer when in External state.
+/// - Buffer is deallocated on destruction, assignment, or shrink_to_fit.
+///
+/// **Thread-safety**:
+/// - Not thread-safe. External synchronization required for concurrent access.
+///
+/// **Major invariants**:
+/// - `data()[size()]` is always the null terminator.
+/// - `capacity() >= size()` always holds.
+/// - Small capacity strings use inline storage; larger strings use heap.
+/// - Empty state uses the inline empty representation (no allocation).
+///
+/// **Allocator propagation**:
+/// - Follows allocator_traits propagation rules for copy/move/swap.
+/// - Non-propagating allocators may require reallocation during assignment.
 template<typename CharT,
          typename Traits = std::char_traits<CharT>,
          typename Allocator = std::allocator<CharT>,
@@ -180,6 +199,11 @@ public:
         return *this;
     }
 
+    /// Returns a pointer to the null-terminated character array.
+    ///
+    /// The pointer is valid until the next mutating operation.
+    /// For External state, the pointer points to the owned heap buffer.
+    /// For Small state, the pointer points to inline storage.
     const_pointer data() const noexcept {
         return LayoutPolicy::data(storage_);
     }
@@ -212,6 +236,10 @@ public:
         return LayoutPolicy::is_external(storage_);
     }
 
+    /// Clears content without releasing capacity.
+    ///
+    /// Postcondition: `size() == 0`, `capacity()` unchanged.
+    /// External buffer remains allocated; terminator at `data()[0]`.
     void clear() noexcept {
         if (is_small()) {
             LayoutPolicy::SetSmallSize(storage_, 0);
@@ -220,6 +248,11 @@ public:
         }
     }
 
+    /// Increases capacity to at least `new_cap`.
+    ///
+    /// Does nothing if `new_cap <= capacity()`.
+    /// May reallocate and copy content for External state.
+    /// Throws on allocation failure or capacity overflow.
     void reserve(size_type new_cap) {
         if (new_cap <= capacity()) {
             return;
@@ -228,6 +261,11 @@ public:
         Reallocate(new_cap);
     }
 
+    /// Resizes to `n` characters.
+    ///
+    /// If `n < size()`, truncates and maintains terminator.
+    /// If `n > size()`, expands and fills new characters with null or `ch`.
+    /// May reallocate if `n > capacity()`.
     void resize(size_type n) {
         resize(n, char_algo::null_char());
     }
@@ -250,6 +288,12 @@ public:
         }
     }
 
+    /// Reduces capacity to match size.
+    ///
+    /// For Small-fit content, moves back to inline storage and releases heap buffer.
+    /// For External content, reallocates to `size()` capacity.
+    /// For Large External, uses page-rounded capacity instead of exact size
+    /// to maintain allocator efficiency.
     void shrink_to_fit() {
         const auto sz = size();
         const auto cap = capacity();
@@ -272,6 +316,10 @@ public:
         }
     }
 
+    /// Replaces content with `src[0..n)`.
+    ///
+    /// Uses copy-and-swap for strong exception guarantee.
+    /// Existing capacity is released before allocation.
     void assign(const CharT* src, size_type n) {
         BasicStringCore(src, n, alloc_).swap(*this);
     }
@@ -280,12 +328,20 @@ public:
         assign(sv.data(), sv.size());
     }
 
+    /// Replaces content with `count` copies of `ch`.
+    ///
+    /// Uses copy-and-swap for strong exception guarantee.
     void assign(size_type count, CharT ch) {
         BasicStringCore tmp(alloc_);
         tmp.append(count, ch);
         tmp.swap(*this);
     }
 
+    /// Appends `src[0..n)` to the end.
+    ///
+    /// Handles self-aliasing safely: if `src` is within `[data(), data() + size())`,
+    /// uses move semantics to preserve content before potential reallocation.
+    /// Throws on allocation failure or size overflow.
     void append(const CharT* src, size_type n) {
         if (n == 0) {
             return;
@@ -344,6 +400,10 @@ public:
         append(&ch, 1);
     }
 
+    /// Removes the last character.
+    ///
+    /// No-op if `size() == 0`.
+    /// Maintains null terminator at `data()[size()]`.
     void pop_back() noexcept {
         const size_type current_size = size();
         if (current_size == 0) {
@@ -352,6 +412,10 @@ public:
         SetSize(current_size - 1);
     }
 
+    /// Exchanges content and storage with `other`.
+    ///
+    /// noexcept when allocator propagates on swap or is always equal.
+    /// For unequal non-propagating allocators, precondition violation triggers AM_CHECK.
     void swap(BasicStringCore& other) noexcept(SwapNoexcept()) {
         if constexpr (alloc_helper::propagate_on_swap) {
             using std::swap;

@@ -274,25 +274,25 @@
 
 ### TDD / 差分测试
 
-- [ ] 建立 `BasicString` 与 `std::basic_string` 的差分测试矩阵
-- [ ] 覆盖构造、赋值、append、assign、resize、reserve、shrink_to_fit
-- [ ] 覆盖多 `CharT` 场景
-- [ ] 覆盖随机操作序列测试
+- [x] 建立 `BasicString` 与 `std::basic_string` 的差分测试矩阵
+- [x] 覆盖构造、赋值、append、assign、resize、reserve、shrink_to_fit
+- [x] 覆盖多 `CharT` 场景
+- [x] 覆盖随机操作序列测试
 
 ### 质量验证
 
-- [ ] 运行 narrowest relevant unit tests
-- [ ] 运行完整 amstring 相关单测
-- [ ] 运行 ASan 验证
-- [ ] 运行 UBSan 验证
+- [x] 运行 narrowest relevant unit tests
+- [x] 运行完整 amstring 相关单测
+- [x] 运行 ASan 验证（已执行；存在与 `amstring` 无关的预存 leak blocker，见 `docs/tests/amstring_m6_validation_20260428.md`）
+- [x] 运行 UBSan 验证（与 ASan 联合执行；见 `docs/tests/amstring_m6_validation_20260428.md`）
 - [ ] 必要时运行 TSan 变体
-- [ ] 建立 benchmark baseline
+- [x] 建立 benchmark baseline
 
 ### 交付记录
 
-- [ ] 记录差分测试结论
-- [ ] 记录 sanitizer 结果
-- [ ] 记录 benchmark baseline
+- [x] 记录差分测试结论
+- [x] 记录 sanitizer 结果
+- [x] 记录 benchmark baseline
 
 ---
 

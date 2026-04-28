@@ -12,7 +12,7 @@
 
 namespace aethermind {
 
-struct HfSafetensorEntry {
+struct HfSafetensorsEntry {
     std::string name{};
     DataType dtype{};
     std::vector<int64_t> shape{};
@@ -30,10 +30,10 @@ public:
     static StatusOr<HfSafetensorsIndex> LoadSingleFile(
             const std::filesystem::path& safetensors_path);
 
-    AM_NODISCARD const HfSafetensorEntry* Find(
+    AM_NODISCARD const HfSafetensorsEntry* Find(
             std::string_view tensor_name) const noexcept;
 
-    AM_NODISCARD const std::vector<HfSafetensorEntry>& Entries() const noexcept {
+    AM_NODISCARD const std::vector<HfSafetensorsEntry>& Entries() const noexcept {
         return entries_;
     }
 
@@ -43,7 +43,7 @@ public:
 
 private:
     std::filesystem::path path_{};
-    std::vector<HfSafetensorEntry> entries_{};
+    std::vector<HfSafetensorsEntry> entries_{};
 };
 
 }// namespace aethermind

@@ -18,9 +18,7 @@ namespace aethermind {
 
 // BasicString - public API layer
 // Standard-style interface with policy-based internal implementation
-template<typename CharT,
-         typename Traits,
-         typename Allocator>
+template<typename CharT, typename Traits, typename Allocator>
 class BasicString {
 public:
     using value_type = CharT;
@@ -47,31 +45,24 @@ private:
 
 public:
     BasicString() noexcept = default;
-
-    explicit BasicString(const allocator_type& a) noexcept
-        : core_(a) {}
-
-    BasicString(const CharT* s)
-        : core_(s, traits_type::length(s)) {}
-
-    BasicString(const CharT* s, size_type n)
-        : core_(s, n) {}
-
-    BasicString(std::basic_string_view<CharT, Traits> sv)
-        : core_(sv.data(), sv.size()) {}
-
-    BasicString(size_type count, CharT ch)
-        : core_() {
-        core_.resize(count, ch);
-    }
-
     BasicString(const BasicString&) = default;
     BasicString(BasicString&&) noexcept = default;
     ~BasicString() = default;
 
+    explicit BasicString(const allocator_type& a) noexcept : core_(a) {}
+
+    BasicString(const CharT* s) : core_(s, traits_type::length(s)) {}
+
+    BasicString(const CharT* s, size_type n) : core_(s, n) {}
+
+    BasicString(std::basic_string_view<CharT, Traits> sv) : core_(sv.data(), sv.size()) {}
+
+    BasicString(size_type count, CharT ch) {
+        core_.resize(count, ch);
+    }
+
     BasicString& operator=(const BasicString&) = default;
     BasicString& operator=(BasicString&&) noexcept = default;
-
     BasicString& operator=(const CharT* s) {
         core_.assign(s, traits_type::length(s));
         return *this;
@@ -87,21 +78,57 @@ public:
         return *this;
     }
 
-    const_pointer data() const noexcept { return core_.data(); }
-    pointer data() noexcept { return core_.data(); }
-    const_pointer c_str() const noexcept { return core_.c_str(); }
+    const_pointer data() const noexcept {
+        return core_.data();
+    }
 
-    size_type size() const noexcept { return core_.size(); }
-    size_type length() const noexcept { return core_.size(); }
-    size_type capacity() const noexcept { return core_.capacity(); }
-    bool empty() const noexcept { return core_.empty(); }
+    pointer data() noexcept {
+        return core_.data();
+    }
 
-    iterator begin() noexcept { return core_.data(); }
-    iterator end() noexcept { return core_.data() + core_.size(); }
-    const_iterator begin() const noexcept { return core_.data(); }
-    const_iterator end() const noexcept { return core_.data() + core_.size(); }
-    const_iterator cbegin() const noexcept { return begin(); }
-    const_iterator cend() const noexcept { return end(); }
+    const_pointer c_str() const noexcept {
+        return core_.c_str();
+    }
+
+    size_type size() const noexcept {
+        return core_.size();
+    }
+
+    size_type length() const noexcept {
+        return core_.size();
+    }
+
+    size_type capacity() const noexcept {
+        return core_.capacity();
+    }
+
+    bool empty() const noexcept {
+        return core_.empty();
+    }
+
+    iterator begin() noexcept {
+        return core_.data();
+    }
+
+    iterator end() noexcept {
+        return core_.data() + core_.size();
+    }
+
+    const_iterator begin() const noexcept {
+        return core_.data();
+    }
+
+    const_iterator end() const noexcept {
+        return core_.data() + core_.size();
+    }
+
+    const_iterator cbegin() const noexcept {
+        return begin();
+    }
+
+    const_iterator cend() const noexcept {
+        return end();
+    }
 
     reference operator[](size_type pos) noexcept {
         return core_.data()[pos];
@@ -125,21 +152,45 @@ public:
         return core_.data()[pos];
     }
 
-    reference front() noexcept { return *core_.data(); }
-    const_reference front() const noexcept { return *core_.data(); }
-    reference back() noexcept { return core_.data()[core_.size() - 1]; }
-    const_reference back() const noexcept { return core_.data()[core_.size() - 1]; }
+    reference front() noexcept {
+        return *core_.data();
+    }
 
-    void clear() noexcept { core_.clear(); }
+    const_reference front() const noexcept {
+        return *core_.data();
+    }
 
-    void reserve(size_type new_cap = 0) { core_.reserve(new_cap); }
+    reference back() noexcept {
+        return core_.data()[core_.size() - 1];
+    }
 
-    void resize(size_type count) { core_.resize(count); }
-    void resize(size_type count, CharT ch) { core_.resize(count, ch); }
+    const_reference back() const noexcept {
+        return core_.data()[core_.size() - 1];
+    }
 
-    void shrink_to_fit() { core_.shrink_to_fit(); }
+    void clear() noexcept {
+        core_.clear();
+    }
 
-    void push_back(CharT ch) { core_.push_back(ch); }
+    void reserve(size_type new_cap = 0) {
+        core_.reserve(new_cap);
+    }
+
+    void resize(size_type count) {
+        core_.resize(count);
+    }
+
+    void resize(size_type count, CharT ch) {
+        core_.resize(count, ch);
+    }
+
+    void shrink_to_fit() {
+        core_.shrink_to_fit();
+    }
+
+    void push_back(CharT ch) {
+        core_.push_back(ch);
+    }
 
     void pop_back() {
         core_.pop_back();

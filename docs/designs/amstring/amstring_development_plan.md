@@ -46,8 +46,8 @@
 
 第一阶段约束如下：
 
-- `char` 先走 `GenericLayoutPolicy<char>`
-- 暂不实现 `CharLayoutPolicy`
+- 在 generic baseline 稳定前，`char` 先走 `GenericLayoutPolicy<char>`
+- `CharLayoutPolicy` 作为 M6 之后再进入的优化路径（当前已在 M7 首轮实现中启动）
 - `Large` 只作为 `BasicStringCore` 内部计算型语义
 - `LayoutPolicy` 只表达 `Small / External` 两态
 - `BasicString` 不暴露 `LayoutPolicy` 模板参数
@@ -371,14 +371,16 @@ struct DefaultLayoutPolicy {
 
 ---
 
-## 12. Phase 8：后续优化阶段（非当前范围）
+## 12. Phase 8：后续优化阶段
 
-以下工作不属于当前实现闭环，但应作为后续演进方向保留：
+当前已进入该阶段的第一部分：`CharLayoutPolicy`。
 
-1. `CharLayoutPolicy`
-2. `AMMallocAllocator`
-3. 更细粒度的 `Large` 页对齐与容量规划
-4. `char` 专用 benchmark 优化
+当前状态：
+
+1. [x] `CharLayoutPolicy` 设计、首版实现、selector 切换与首轮验证
+2. [ ] `AMMallocAllocator`
+3. [ ] 更细粒度的 `Large` 页对齐与容量规划
+4. [ ] `char` 专用 benchmark 优化
 
 进入条件：
 
@@ -386,6 +388,8 @@ struct DefaultLayoutPolicy {
 - sanitizer 通过
 - differential test 稳定
 - benchmark 基线建立
+
+说明：上述进入条件已满足到足以启动 `CharLayoutPolicy` 路线；剩余优化项继续以后续验证与 benchmark 为门槛推进。
 
 ---
 

@@ -302,14 +302,19 @@ struct CharLayoutPolicy;
 5. 允许使用更激进的 byte-level 编码与 fast path
 6. 目标是逼近 `fbstring` 的 `char` 路径性能
 
-引入条件：
+引入前提（已满足并据此启动 M7 首轮实现）：
 
 - generic core 稳定
 - sanitizer 通过
 - differential test 稳定
 - benchmark 基线建立
 
-第一阶段可以暂不实现 `CharLayoutPolicy`，先让 `char` 也走 `GenericLayoutPolicy<char>`。
+当前状态：
+
+- `CharLayoutPolicy` 已在 M7 首轮实现中引入
+- `DefaultLayoutPolicy<char>` 已切换到 `CharLayoutPolicy`
+- 非 `char` 类型仍保持 `GenericLayoutPolicy<CharT>`
+- 首轮验证见 `docs/tests/amstring_charlayout_m7_validation_20260429.md`
 
 ---
 
@@ -326,7 +331,7 @@ struct DefaultLayoutPolicy {
 };
 ```
 
-在 `CharLayoutPolicy` 引入后：
+当前 selector 形式：
 
 ```cpp
 template<typename CharT>

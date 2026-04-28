@@ -216,13 +216,30 @@
 
 ---
 
-## M7：后续优化里程碑（当前不启动）
+## M7：后续优化里程碑
 
 ### Scope
 
 - `CharLayoutPolicy`
 - `AMMallocAllocator`
 - large/page 对齐优化
+
+### 当前状态
+
+M7 已启动。
+
+已完成：
+
+- `CharLayoutPolicy` 正式设计文档
+- `CharLayoutPolicy` 首版 2-bit marker 实现
+- `DefaultLayoutPolicy<char>` selector 切换
+- `BasicString<char>` 差分测试验证
+- CharLayoutPolicy 首轮 benchmark 记录
+
+未完成：
+
+- `AMMallocAllocator` 接入
+- `Large` / page 对齐进一步优化
 
 ### 启动前提
 
@@ -296,4 +313,4 @@ M0 -> M1 -> M2 -> M3 -> M4 -> M5 -> M6 -> M7
 5. 差分验证与质量收口
 6. 后续优化
 
-只有在 `M6` 达成后，才应启动 `CharLayoutPolicy` 与 `AMMallocAllocator` 路线。
+`M6` 达成后，已启动 `CharLayoutPolicy` 路线；`AMMallocAllocator` 与进一步容量规划优化仍处于后续阶段。

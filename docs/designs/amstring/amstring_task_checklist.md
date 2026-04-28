@@ -310,25 +310,38 @@ M6 于 2026-04-28 标记为完成。
 
 ---
 
-## M7：后续优化（当前不启动）
+## M7：后续优化
 
 ### 目标
 
-保留后续优化入口，但不在当前闭环中提前进入。
+在 M6 完成后进入 `char` 专用优化路径，先完成 `CharLayoutPolicy` 的首轮设计、实现、selector 接入与验证。
 
 ### 启动前提
 
-- [ ] generic core 稳定
-- [ ] sanitizer 通过
-- [ ] differential test 稳定
-- [ ] benchmark baseline 已建立
+- [x] generic core 稳定
+- [x] sanitizer 通过（amstring scope；legacy leaks deferred to project-level task `T-ee74fad5`）
+- [x] differential test 稳定
+- [x] benchmark baseline 已建立
 
 ### 后续任务
 
-- [ ] 设计并实现 `CharLayoutPolicy`
-- [ ] 为 `char` 接入专用高性能路径
+- [x] 完成 `CharLayoutPolicy` 正式设计文档（`docs/designs/amstring/CharLayoutPolicy_design.md`）
+- [x] 实现 `CharLayoutPolicy` 首版 2-bit marker 路径
+- [x] 将 `DefaultLayoutPolicy<char>` 切换到 `CharLayoutPolicy`
+- [x] 新增 `CharLayoutPolicy` TDD 测试并完成回归验证
+- [x] 记录 `BasicString<char>` 差分测试与 benchmark 首轮验证（`docs/tests/amstring_charlayout_m7_validation_20260429.md`）
 - [ ] 接入 `AMMallocAllocator`
 - [ ] 优化 `Large` 区间的页粒度容量规划
+
+### 当前状态
+
+M7 已启动并完成 `CharLayoutPolicy` 首轮落地。
+
+当前剩余工作聚焦于：
+
+- `AMMallocAllocator` 集成
+- `Large` 区间容量规划优化
+- 在相同环境下补充 Release benchmark / back-to-back selector 对比
 
 ---
 

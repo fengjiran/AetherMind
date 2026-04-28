@@ -287,12 +287,18 @@ Packed = (Capacity << ProbeBits) | ExternalTag
 - 允许使用更激进的 `byte-level` 编码与 fast path
 - 目标是逼近 `fbstring` 的 `char` 路径性能
 
-`CharLayoutPolicy` 仅在以下条件满足后引入：
+`CharLayoutPolicy` 的引入前提如下；这些条件已满足，并已据此进入 M7 首轮实现：
 
 - generic core 稳定
 - sanitizer 通过
 - differential test 稳定
 - benchmark 基线建立
+
+当前状态：
+
+- `CharLayoutPolicy` 已引入为 `char` 的专用 layout policy
+- 详细设计见 `docs/designs/amstring/CharLayoutPolicy_design.md`
+- 首轮差分 / benchmark 验证见 `docs/tests/amstring_charlayout_m7_validation_20260429.md`
 
 ---
 

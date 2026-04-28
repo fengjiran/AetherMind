@@ -23,11 +23,11 @@ public:
     explicit OwnedBytesBacking(std::vector<std::byte> bytes) noexcept
         : bytes_(std::move(bytes)) {}
 
-    AM_NODISCARD const std::byte* Data() const noexcept {
+    AM_NODISCARD const std::byte* data() const noexcept {
         return bytes_.data();
     }
 
-    AM_NODISCARD size_t Size() const noexcept {
+    AM_NODISCARD size_t size() const noexcept {
         return bytes_.size();
     }
 
@@ -35,45 +35,54 @@ private:
     std::vector<std::byte> bytes_{};
 };
 
-std::string FormatPathMessage(
-        std::string_view prefix,
-        const std::filesystem::path& path) {
+std::string FormatPathMessage(std::string_view prefix,
+                              const std::filesystem::path& path) {
     return std::string(prefix) + ": " + path.string();
 }
 
 StatusOr<std::vector<std::byte>> ReadFileBytes(const std::filesystem::path& path) {
     std::error_code error;
     if (!std::filesystem::exists(path, error)) {
-        return Status::NotFound(FormatPathMessage("Safetensors file not found", path));
+        return Status::NotFound(
+                FormatPathMessage("Safetensors file not found", path));
     }
+
     if (error) {
-        return Status::Internal(FormatPathMessage("Failed to stat safetensors file", path));
+        return Status::Internal(
+                FormatPathMessage("Failed to stat safetensors file", path));
     }
+
     if (!std::filesystem::is_regular_file(path, error)) {
-        return Status::InvalidArgument(FormatPathMessage("Safetensors path is not a regular file", path));
+        return Status::InvalidArgument(
+                FormatPathMessage("Safetensors path is not a regular file", path));
     }
+
     if (error) {
-        return Status::Internal(FormatPathMessage("Failed to inspect safetensors file type", path));
+        return Status::Internal(
+                FormatPathMessage("Failed to inspect safetensors file type", path));
     }
 
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream.is_open()) {
-        return Status::Internal(FormatPathMessage("Failed to open safetensors file", path));
+        return Status::Internal(
+                FormatPathMessage("Failed to open safetensors file", path));
     }
 
-    const std::streampos end_pos = stream.tellg();
+    const auto end_pos = stream.tellg();
     if (end_pos < 0) {
-        return Status::Internal(FormatPathMessage("Failed to determine safetensors file size", path));
+        return Status::Internal(
+                FormatPathMessage("Failed to determine safetensors file size", path));
     }
 
-    const size_t size = static_cast<size_t>(end_pos);
+    const size_t size = end_pos;
     stream.seekg(0, std::ios::beg);
 
     std::vector<std::byte> bytes(size);
     if (size > 0) {
         stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
         if (!stream) {
-            return Status::Internal(FormatPathMessage("Failed to read safetensors file bytes", path));
+            return Status::Internal(
+                    FormatPathMessage("Failed to read safetensors file bytes", path));
         }
     }
     return bytes;
@@ -269,7 +278,7 @@ private:
         }
 
         uint64_t numel = 1;
-        for (const int64_t dim : shape) {
+        for (const int64_t dim: shape) {
             if (dim < 0) {
                 return Status::InvalidArgument("Safetensors tensor entry has negative shape dimension");
             }
@@ -296,7 +305,7 @@ private:
         entry->data_offset_end = end;
         entry->view = RawTensorView{
                 .data = data_base_ + begin,
-                .byte_size = static_cast<size_t>(end - begin),
+                .bytes = static_cast<size_t>(end - begin),
                 .dtype = *dtype,
                 .shape = shape,
                 .backing = backing_,
@@ -561,12 +570,12 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
     }
 
     const auto backing = std::make_shared<OwnedBytesBacking>(std::move(*file_bytes));
-    if (backing->Size() < sizeof(uint64_t)) {
+    if (backing->size() < sizeof(uint64_t)) {
         return Status::InvalidArgument(FormatPathMessage("Safetensors file is too small", safetensors_path));
     }
 
     const auto header_length = ParseLittleEndianU64(
-            std::span<const std::byte>(backing->Data(), sizeof(uint64_t)));
+            std::span<const std::byte>(backing->data(), sizeof(uint64_t)));
     if (!header_length.ok()) {
         return Status(StatusCode::kInvalidArgument,
                       FormatPathMessage(header_length.status().message(), safetensors_path));
@@ -574,15 +583,15 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
 
     const uint64_t header_begin = sizeof(uint64_t);
     const uint64_t header_end = header_begin + *header_length;
-    if (header_end > backing->Size()) {
+    if (header_end > backing->size()) {
         return Status::InvalidArgument(
                 FormatPathMessage("Safetensors header length exceeds file size", safetensors_path));
     }
 
-    const auto* header_chars = reinterpret_cast<const char*>(backing->Data() + header_begin);
+    const auto* header_chars = reinterpret_cast<const char*>(backing->data() + header_begin);
     const std::string_view header_json(header_chars, static_cast<size_t>(*header_length));
-    const std::byte* data_base = backing->Data() + header_end;
-    const size_t data_size = backing->Size() - static_cast<size_t>(header_end);
+    const std::byte* data_base = backing->data() + header_end;
+    const size_t data_size = backing->size() - static_cast<size_t>(header_end);
 
     HeaderParser parser(header_json, backing, data_base, data_size);
     const auto parsed_entries = parser.Parse();
@@ -599,7 +608,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
 
 const HfSafetensorEntry* HfSafetensorsIndex::Find(
         std::string_view tensor_name) const noexcept {
-    for (const auto& entry : entries_) {
+    for (const auto& entry: entries_) {
         if (entry.name.size() == tensor_name.size() &&
             std::char_traits<char>::compare(entry.name.data(), tensor_name.data(), tensor_name.size()) == 0) {
             return &entry;

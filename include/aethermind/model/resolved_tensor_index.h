@@ -4,7 +4,6 @@
 #include "data_type.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -18,13 +17,13 @@ struct RawTensorBacking {
 
 struct RawTensorView {
     const std::byte* data = nullptr;
-    size_t byte_size = 0;
+    size_t bytes = 0;
     DataType dtype{};
     std::vector<int64_t> shape{};
     std::shared_ptr<const RawTensorBacking> backing{};
 
     AM_NODISCARD bool IsValid() const noexcept {
-        return backing != nullptr && dtype.bits() > 0 && (data != nullptr || byte_size == 0);
+        return backing != nullptr && dtype.bits() > 0 && (data != nullptr || bytes == 0);
     }
 };
 

@@ -14,11 +14,11 @@ namespace aethermind {
 // Type aliases at namespace level for convenience
 // These are the primary user-facing types
 
-using string    = BasicString<char>;
-using u8string  = BasicString<char8_t>;
+using string = BasicString<char>;
+using u8string = BasicString<char8_t>;
 using u16string = BasicString<char16_t>;
 using u32string = BasicString<char32_t>;
-using wstring   = BasicString<wchar_t>;
+using wstring = BasicString<wchar_t>;
 
 }// namespace aethermind
 

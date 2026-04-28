@@ -39,7 +39,7 @@ public:
 private:
     using LayoutPolicy = DefaultLayoutPolicy<CharT>::type;
     using GrowthPolicy = DefaultGrowthPolicy;
-    using CoreType = BasicStringCore<CharT, Traits, Allocator, LayoutPolicy, GrowthPolicy>;
+    using CoreType = BasicStringCore<CharT, Traits, Allocator>;
 
     CoreType core_;
 

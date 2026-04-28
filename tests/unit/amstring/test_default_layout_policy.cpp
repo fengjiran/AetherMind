@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "amstring/basic_string.hpp"
+#include "amstring/char_layout_policy.hpp"
 #include "amstring/core.hpp"
 #include "amstring/generic_layout_policy.hpp"
 #include "amstring/layout_policy.hpp"
@@ -19,13 +20,23 @@ concept HasPublicLayoutPolicyType = requires {
 template<typename CharT>
 class DefaultLayoutPolicyTest : public ::testing::Test {};
 
+template<typename CharT>
+struct ExpectedDefaultLayoutPolicy {
+    using type = GenericLayoutPolicy<CharT>;
+};
+
+template<>
+struct ExpectedDefaultLayoutPolicy<char> {
+    using type = CharLayoutPolicy;
+};
+
 using AmstringCharTypes = ::testing::Types<char, char8_t, char16_t, char32_t, wchar_t>;
 TYPED_TEST_SUITE(DefaultLayoutPolicyTest, AmstringCharTypes);
 
-TYPED_TEST(DefaultLayoutPolicyTest, SelectsGenericLayoutPolicy) {
+TYPED_TEST(DefaultLayoutPolicyTest, SelectsExpectedLayoutPolicy) {
     using CharT = TypeParam;
     using Selected = DefaultLayoutPolicy<CharT>::type;
-    using Expected = GenericLayoutPolicy<CharT>;
+    using Expected = ExpectedDefaultLayoutPolicy<CharT>::type;
 
     static_assert(std::is_same_v<Selected, Expected>);
 }

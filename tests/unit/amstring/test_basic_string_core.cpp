@@ -1,6 +1,5 @@
 #include "amstring/config.hpp"
 #include "amstring/core.hpp"
-#include "amstring/generic_layout_policy.hpp"
 
 #include <array>
 #include <cstddef>
@@ -111,7 +110,7 @@ template<typename CharT>
 class BasicStringCoreLifecycleTest : public ::testing::Test {
 protected:
     using Core = BasicStringCore<CharT>;
-    using Policy = GenericLayoutPolicy<CharT>;
+    using Policy = typename Core::LayoutPolicyType;
     using CharType = CharT;
 
     static std::basic_string<CharT> make_test_string(std::size_t len) {

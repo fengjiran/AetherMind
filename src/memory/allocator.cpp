@@ -10,6 +10,16 @@
 
 namespace aethermind {
 
+void MemoryReportingInfoBase::reportOutOfMemory(int64_t alloc_size,
+                                                size_t total_allocated,
+                                                size_t total_reserved,
+                                                Device device) {
+    (void) alloc_size;
+    (void) total_allocated;
+    (void) total_reserved;
+    (void) device;
+}
+
 void AllocatorRegistry::RegisterProvider(DeviceType type, std::unique_ptr<AllocatorProvider> provider) {
     AM_CHECK(provider != nullptr, "Allocator provider cannot be null");
     AM_CHECK(type != DeviceType::kUndefined, "Cannot register provider for kUndefined device type");

@@ -135,5 +135,6 @@ dmypy.json
 .pkl_memoize_py3/
 cmake-build-debug/
 build-asan/
+build-asan-ubsan/
 .DS_Store
 #3rdparty/

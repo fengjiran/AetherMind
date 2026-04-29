@@ -337,6 +337,48 @@ public:
         tmp.swap(*this);
     }
 
+    void replace_range(size_type pos, size_type erased, const CharT* src, size_type src_count) {
+        const size_type old_size = size();
+        AM_CHECK(pos <= old_size);
+        AM_CHECK(erased <= old_size - pos);
+        AM_CHECK(src_count == 0 || src != nullptr);
+
+        const size_type retained = old_size - erased;
+        size_type new_size = 0;
+        if (CheckOverflowAdd(retained, src_count, &new_size)) {
+            ThrowCapacityError("replace");
+        }
+        EnsureExternalCapacity(new_size, "replace");
+
+        if (erased == 0 && src_count == 0) {
+            return;
+        }
+
+        if (src_count == 0) {
+            EraseRangeFast(pos, erased);
+            return;
+        }
+
+        if (!PointerInRange(src, data(), data() + old_size)) {
+            if (src_count == erased) {
+                ReplaceSameSizeFast(pos, src, src_count);
+                return;
+            }
+
+            if (src_count < erased) {
+                ReplaceShrinkFast(pos, erased, src, src_count);
+                return;
+            }
+
+            if (new_size <= capacity()) {
+                ReplaceGrowInplaceFast(pos, erased, src, src_count);
+                return;
+            }
+        }
+
+        ReplaceReallocateSlow(pos, erased, src, src_count, new_size);
+    }
+
     /// Appends `src[0..n)` to the end.
     ///
     /// Handles self-aliasing safely: if `src` is within `[data(), data() + size())`,
@@ -620,6 +662,62 @@ private:
 
         DestroyHeapIfNeeded();
         LayoutPolicy::InitExternal(storage_, new_ptr, sz, new_cap);
+    }
+
+    void EraseRangeFast(size_type pos, size_type erased) noexcept {
+        if (erased == 0) {
+            return;
+        }
+
+        pointer d = data();
+        const size_type old_size = size();
+        const size_type erase_end = pos + erased;
+        const size_type tail_with_terminator = old_size - erase_end + 1;
+        char_algo::move(d + pos, d + erase_end, tail_with_terminator);
+        SetSize(old_size - erased);
+    }
+
+    void ReplaceSameSizeFast(size_type pos, const CharT* src, size_type src_count) noexcept {
+        if (src_count == 0) {
+            return;
+        }
+        char_algo::copy(data() + pos, src, src_count);
+    }
+
+    void ReplaceShrinkFast(size_type pos, size_type erased, const CharT* src, size_type src_count) noexcept {
+        pointer d = data();
+        const size_type old_size = size();
+        const size_type erase_end = pos + erased;
+        const size_type new_size = old_size - erased + src_count;
+
+        if (src_count != 0) {
+            char_algo::copy(d + pos, src, src_count);
+        }
+
+        const size_type tail_with_terminator = old_size - erase_end + 1;
+        char_algo::move(d + pos + src_count, d + erase_end, tail_with_terminator);
+        SetSize(new_size);
+    }
+
+    void ReplaceGrowInplaceFast(size_type pos, size_type erased, const CharT* src, size_type src_count) noexcept {
+        pointer d = data();
+        const size_type old_size = size();
+        const size_type erase_end = pos + erased;
+        const size_type new_size = old_size - erased + src_count;
+
+        const size_type tail_with_terminator = old_size - erase_end + 1;
+        char_algo::move(d + pos + src_count, d + erase_end, tail_with_terminator);
+        char_algo::copy(d + pos, src, src_count);
+        SetSize(new_size);
+    }
+
+    void ReplaceReallocateSlow(size_type pos, size_type erased, const CharT* src, size_type src_count, size_type new_size) {
+        BasicStringCore tmp(alloc_);
+        tmp.reserve(new_size);
+        tmp.append(data(), pos);
+        tmp.append(src, src_count);
+        tmp.append(data() + pos + erased, size() - pos - erased);
+        tmp.swap(*this);
     }
 
     void SetSize(size_type new_size) noexcept {

@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <iterator>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -103,6 +104,32 @@ TYPED_TEST(BasicStringSkeletonTest, StandardTypeAliasesAreAvailable) {
     static_assert(std::is_same_v<typename String::const_pointer, const CharT*>);
     static_assert(std::is_same_v<typename String::iterator, CharT*>);
     static_assert(std::is_same_v<typename String::const_iterator, const CharT*>);
+    static_assert(String::npos == static_cast<typename String::size_type>(-1));
+}
+
+TYPED_TEST(BasicStringSkeletonTest, CheckedElementAccessMatchesVisibleContent) {
+    using String = typename TestFixture::String;
+    using CharT = typename TestFixture::CharType;
+
+    const auto expected = TestFixture::make_string(5, 'a');
+    String string(expected.data(), expected.size());
+    const String& const_string = string;
+
+    EXPECT_EQ(string.at(1), expected[1]);
+    EXPECT_EQ(const_string.at(2), expected[2]);
+    EXPECT_EQ(string.front(), expected.front());
+    EXPECT_EQ(const_string.front(), expected.front());
+    EXPECT_EQ(string.back(), expected.back());
+    EXPECT_EQ(const_string.back(), expected.back());
+
+    string.at(1) = static_cast<CharT>('z');
+    string.front() = static_cast<CharT>('y');
+    string.back() = static_cast<CharT>('x');
+
+    EXPECT_EQ(string.data()[0], static_cast<CharT>('y'));
+    EXPECT_EQ(string.data()[1], static_cast<CharT>('z'));
+    EXPECT_EQ(string.data()[string.size() - 1], static_cast<CharT>('x'));
+    EXPECT_THROW((void) string.at(string.size()), std::out_of_range);
 }
 
 TYPED_TEST(BasicStringSkeletonTest, DefaultConstructedStringIsEmpty) {
@@ -573,6 +600,59 @@ TYPED_TEST(BasicStringSkeletonTest, PlusEqualAppendsContent) {
     string += ch;
 
     TestFixture::expect_content(string, expected);
+}
+
+TYPED_TEST(BasicStringSkeletonTest, PlusEqualCStringAndStringViewAppendContent) {
+    using String = typename TestFixture::String;
+    using CharT = typename TestFixture::CharType;
+
+    const auto first = TestFixture::make_string(2, 'a');
+    const auto second = TestFixture::make_string(3, 'm');
+    const auto third = TestFixture::make_string(2, 'q');
+    const auto expected = first + second + third;
+    String string(first.data(), first.size());
+    const std::basic_string_view<CharT> view(third.data(), third.size());
+
+    string += second.c_str();
+    string += view;
+
+    TestFixture::expect_content(string, expected);
+}
+
+TYPED_TEST(BasicStringSkeletonTest, InsertEraseReplaceSubstrAndFindExposeStdLikeSemantics) {
+    using String = typename TestFixture::String;
+    using CharT = typename TestFixture::CharType;
+
+    const auto initial = TestFixture::make_string(6, 'a');
+    const auto payload = TestFixture::make_string(4, 'm');
+    String string(initial.data(), initial.size());
+
+    auto inserted = string.insert(string.cbegin() + 2, 2, static_cast<CharT>('z'));
+    EXPECT_EQ(inserted, string.begin() + 2);
+    EXPECT_EQ(string.data()[2], static_cast<CharT>('z'));
+    EXPECT_EQ(string.data()[3], static_cast<CharT>('z'));
+
+    String& insert_result = string.insert(1, payload.data(), payload.size());
+    EXPECT_EQ(&insert_result, &string);
+    EXPECT_NE(string.find(payload.data(), 0, payload.size()), String::npos);
+
+    auto erased = string.erase(string.cbegin() + 1, string.cbegin() + 1 + static_cast<std::ptrdiff_t>(payload.size()));
+    EXPECT_EQ(erased, string.begin() + 1);
+
+    String& replace_result = string.replace(0, 2, string.data() + 1, 3);
+    EXPECT_EQ(&replace_result, &string);
+    EXPECT_EQ(string.find(std::basic_string_view<CharT>(string.data(), 2)), 0U);
+
+    const String sub = string.substr(1, 3);
+    TestFixture::expect_content(sub, std::basic_string_view<CharT>(string.data() + 1, 3));
+
+    EXPECT_EQ(string.find(static_cast<CharT>('~')), String::npos);
+    EXPECT_EQ(string.find(std::basic_string_view<CharT>(), string.size()), string.size());
+    EXPECT_EQ(string.find(std::basic_string_view<CharT>(), string.size() + 1), String::npos);
+    EXPECT_THROW((void) string.insert(string.size() + 1, payload.data(), payload.size()), std::out_of_range);
+    EXPECT_THROW((void) string.erase(string.size() + 1, 1), std::out_of_range);
+    EXPECT_THROW((void) string.replace(string.size() + 1, 1, payload.data(), payload.size()), std::out_of_range);
+    EXPECT_THROW((void) string.substr(string.size() + 1), std::out_of_range);
 }
 
 TYPED_TEST(BasicStringSkeletonTest, PushBackAppendsSingleCharacter) {

@@ -20,7 +20,7 @@ void WriteProbeByte(Policy::Storage& storage, std::uint8_t probe) noexcept {
 }
 
 std::uint8_t EncodedSmallProbe(Policy::SizeType size) noexcept {
-    const auto meta = Policy::EncodeSmallSizeToMeta(size);
+    const auto meta = Policy::EncodeSmallSizeToProbe(size);
     if constexpr (config::kIsLittleEndian) {
         return static_cast<std::uint8_t>(meta);
     } else {
@@ -39,14 +39,13 @@ TEST(CharLayoutPolicyTest, ExposesExpectedStorageConstants) {
     static_assert(Policy::kSmallCapacity == 23);
     static_assert(Policy::kCategoryBits == 2);
     static_assert(Policy::kSizeTypeBits == sizeof(std::size_t) * 8);
-    static_assert(Policy::kPackedWordBits == Policy::kSizeTypeBits);
     static_assert(Policy::kPayloadBits == Policy::kSizeTypeBits - Policy::kCategoryBits);
     static_assert(Policy::kProbeByteOffset == Policy::kStorageBytes - 1);
-    static_assert(Policy::kSmallMarker == 0x00U);
+    static_assert(Policy::kSmallTag == 0x00U);
 
     EXPECT_EQ(Policy::kCategoryMask, config::kIsLittleEndian ? 0xC0U : 0x03U);
     EXPECT_EQ(Policy::kSmallMetaMask, config::kIsLittleEndian ? 0x3FU : 0xFCU);
-    EXPECT_EQ(Policy::kExternalMarker, config::kIsLittleEndian ? 0x80U : 0x02U);
+    EXPECT_EQ(Policy::kExternalTag, config::kIsLittleEndian ? 0x80U : 0x02U);
 }
 
 TEST(CharLayoutPolicyTest, InitEmptyCreatesValidSmallString) {
@@ -61,7 +60,7 @@ TEST(CharLayoutPolicyTest, InitEmptyCreatesValidSmallString) {
     EXPECT_EQ(Policy::capacity(storage), Policy::kSmallCapacity);
     EXPECT_EQ(Policy::data(storage), storage.small);
     EXPECT_EQ(Policy::data(storage)[0], char{});
-    EXPECT_EQ(Policy::GetProbeByte(storage), EncodedSmallProbe(0));
+    EXPECT_EQ(Policy::GetProbe(storage), EncodedSmallProbe(0));
     Policy::CheckInvariants(storage);
 }
 
@@ -78,8 +77,14 @@ TEST(CharLayoutPolicyTest, InitSmallCopiesDataAndEncodesSize) {
     EXPECT_EQ(Policy::data(storage), storage.small);
     EXPECT_EQ(Policy::data(storage)[0], kSource[0]);
     EXPECT_EQ(Policy::data(storage)[kSource.size()], char{});
-    EXPECT_EQ(Policy::GetProbeByte(storage), EncodedSmallProbe(kSource.size()));
+    EXPECT_EQ(Policy::GetProbe(storage), EncodedSmallProbe(kSource.size()));
     Policy::CheckInvariants(storage);
+}
+
+TEST(CharLayoutPolicyTest, InitSmallRejectsNullSourceForNonEmptySize) {
+    Policy::Storage storage;
+
+    EXPECT_DEATH(Policy::InitSmall(storage, nullptr, 1), "Check failed");
 }
 
 TEST(CharLayoutPolicyTest, InitSmallMaxCapacityAliasesTerminatorAndProbe) {
@@ -94,8 +99,8 @@ TEST(CharLayoutPolicyTest, InitSmallMaxCapacityAliasesTerminatorAndProbe) {
     EXPECT_TRUE(Policy::is_small(storage));
     EXPECT_EQ(Policy::size(storage), Policy::kSmallCapacity);
     EXPECT_EQ(Policy::data(storage)[Policy::kSmallCapacity], char{});
-    EXPECT_EQ(Policy::GetProbeByte(storage), EncodedSmallProbe(Policy::kSmallCapacity));
-    EXPECT_EQ(Policy::GetProbeByte(storage), 0U);
+    EXPECT_EQ(Policy::GetProbe(storage), EncodedSmallProbe(Policy::kSmallCapacity));
+    EXPECT_EQ(Policy::GetProbe(storage), 0U);
     Policy::CheckInvariants(storage);
 }
 
@@ -109,7 +114,7 @@ TEST(CharLayoutPolicyTest, SetSmallSizeMaintainsTerminatorAndProbeMeta) {
     EXPECT_TRUE(Policy::is_small(storage));
     EXPECT_EQ(Policy::size(storage), 2U);
     EXPECT_EQ(Policy::data(storage)[2], char{});
-    EXPECT_EQ(Policy::GetProbeByte(storage), EncodedSmallProbe(2));
+    EXPECT_EQ(Policy::GetProbe(storage), EncodedSmallProbe(2));
     Policy::CheckInvariants(storage);
 }
 
@@ -132,8 +137,8 @@ TEST(CharLayoutPolicyTest, InitExternalPacksMarkerAndCapacity) {
     EXPECT_EQ(Policy::data(storage), buffer.data());
     EXPECT_EQ(buffer[kSize], char{});
     EXPECT_EQ(Policy::UnpackCapacity(storage.external.capacity_with_tag), kCapacity);
-    EXPECT_EQ(Policy::UnpackMarker(storage.external.capacity_with_tag), Policy::kExternalMarker);
-    EXPECT_EQ(Policy::GetProbeByte(storage) & Policy::kCategoryMask, Policy::kExternalMarker);
+    EXPECT_EQ(Policy::UnpackTag(storage.external.capacity_with_tag), Policy::kExternalTag);
+    EXPECT_EQ(Policy::GetProbe(storage) & Policy::kCategoryMask, Policy::kExternalTag);
     Policy::CheckInvariants(storage);
 }
 
@@ -150,7 +155,7 @@ TEST(CharLayoutPolicyTest, SetExternalSizeAndCapacityMaintainExternalState) {
     EXPECT_EQ(Policy::size(storage), 5U);
     EXPECT_EQ(Policy::capacity(storage), 16U);
     EXPECT_EQ(buffer[5], char{});
-    EXPECT_EQ(Policy::UnpackMarker(storage.external.capacity_with_tag), Policy::kExternalMarker);
+    EXPECT_EQ(Policy::UnpackTag(storage.external.capacity_with_tag), Policy::kExternalTag);
     Policy::CheckInvariants(storage);
 }
 
@@ -159,18 +164,18 @@ TEST(CharLayoutPolicyTest, SmallEncodingRoundTripsAllValidSizes) {
         const auto probe = EncodedSmallProbe(size);
 
         EXPECT_EQ(Policy::DecodeSmallSizeFromMeta(probe), size);
-        EXPECT_EQ(probe & Policy::kCategoryMask, Policy::kSmallMarker);
+        EXPECT_EQ(probe & Policy::kCategoryMask, Policy::kSmallTag);
     }
 }
 
 TEST(CharLayoutPolicyTest, PackCapacityRoundTripsMarkerAndCapacity) {
     constexpr std::array<std::size_t, 4> kCapacities{0, 1, 32, 4096};
 
-    for (const auto capacity : kCapacities) {
+    for (const auto capacity: kCapacities) {
         const auto packed = Policy::PackCapacityWithTag(capacity);
 
         EXPECT_EQ(Policy::UnpackCapacity(packed), capacity);
-        EXPECT_EQ(Policy::UnpackMarker(packed), Policy::kExternalMarker);
+        EXPECT_EQ(Policy::UnpackTag(packed), Policy::kExternalTag);
     }
 }
 

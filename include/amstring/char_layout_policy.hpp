@@ -62,34 +62,33 @@ struct CharLayoutPolicy {
     static constexpr SizeType kSmallSlots = kStorageBytes;
     static constexpr SizeType kSmallCapacity = kSmallSlots - 1;
     static constexpr SizeType kCategoryBits = 2;
-    static constexpr SizeType kSizeTypeBits = sizeof(SizeType) * 8;
-    static constexpr SizeType kPackedWordBits = kSizeTypeBits;
+    static constexpr SizeType kSizeTypeBits = sizeof(SizeType) * 8;// 64
     static constexpr SizeType kPayloadBits = kSizeTypeBits - kCategoryBits;
     static constexpr SizeType kProbeByteOffset = kStorageBytes - 1;
-    static constexpr SizeType kMarkerByteShift = (sizeof(SizeType) - 1) * 8;
+    static constexpr SizeType kTagBitShift = (sizeof(SizeType) - 1) * 8;
 
     static constexpr std::uint8_t kCategoryMask = config::kIsLittleEndian ? 0xC0U : 0x03U;
     static constexpr std::uint8_t kSmallMetaMask = config::kIsLittleEndian ? 0x3FU : 0xFCU;
-    static constexpr std::uint8_t kSmallMarker = 0x00U;
-    static constexpr std::uint8_t kExternalMarker = config::kIsLittleEndian ? 0x80U : 0x02U;
+    static constexpr std::uint8_t kSmallTag = 0x00U;
+    static constexpr std::uint8_t kExternalTag = config::kIsLittleEndian ? 0x80U : 0x02U;
 
     AM_NODISCARD static bool is_small(const Storage& storage) noexcept {
-        const auto probe = GetProbeByte(storage);
-        return MarkerFromProbe(probe) == kSmallMarker && DecodeSmallSizeFromMeta(probe) <= kSmallCapacity;
+        const auto probe = GetProbe(storage);
+        return TagFromProbe(probe) == kSmallTag && DecodeSmallSizeFromMeta(probe) <= kSmallCapacity;
     }
 
     AM_NODISCARD static bool is_external(const Storage& storage) noexcept {
-        return MarkerFromProbe(GetProbeByte(storage)) == kExternalMarker;
+        return TagFromProbe(GetProbe(storage)) == kExternalTag;
     }
 
     AM_NODISCARD static Category category(const Storage& storage) noexcept {
-        const auto probe = GetProbeByte(storage);
-        const auto marker = MarkerFromProbe(probe);
-        if (marker == kSmallMarker && DecodeSmallSizeFromMeta(probe) <= kSmallCapacity) {
+        const auto probe = GetProbe(storage);
+        const auto tag = TagFromProbe(probe);
+        if (tag == kSmallTag && DecodeSmallSizeFromMeta(probe) <= kSmallCapacity) {
             return Category::kSmall;
         }
 
-        if (marker == kExternalMarker) {
+        if (tag == kExternalTag) {
             return Category::kExternal;
         }
 
@@ -115,9 +114,12 @@ struct CharLayoutPolicy {
     }
 
     AM_NODISCARD static SizeType size(const Storage& storage) noexcept {
-        if (is_small(storage)) {
-            return DecodeSmallSizeFromMeta(GetProbeByte(storage));
+        if (const auto probe = GetProbe(storage); TagFromProbe(probe) == kSmallTag) {
+            if (const auto decoded = DecodeSmallSizeFromMeta(probe); decoded <= kSmallCapacity) {
+                return decoded;
+            }
         }
+
         return storage.external.size;
     }
 
@@ -135,6 +137,7 @@ struct CharLayoutPolicy {
 
     static void InitSmall(Storage& storage, const char* src, SizeType size) noexcept {
         AM_CHECK(size <= kSmallCapacity);
+        AM_CHECK(size == 0 || src != nullptr);
         ClearStorage(storage);
         if (src != nullptr && size != 0) {
             std::memcpy(storage.small, src, size);
@@ -156,7 +159,7 @@ struct CharLayoutPolicy {
         AM_CHECK(is_small(storage));
         AM_CHECK(size <= kSmallCapacity);
         storage.small[size] = char{};
-        SetSmallProbeByte(storage, EncodeSmallSizeToMeta(size));
+        SetSmallProbe(storage, EncodeSmallSizeToProbe(size));
     }
 
     static void SetExternalSize(Storage& storage, SizeType size) noexcept {
@@ -189,18 +192,19 @@ struct CharLayoutPolicy {
         AM_UNREACHABLE();
     }
 
-    AM_NODISCARD static std::uint8_t GetProbeByte(const Storage& storage) noexcept {
+    AM_NODISCARD static std::uint8_t GetProbe(const Storage& storage) noexcept {
         return std::to_integer<std::uint8_t>(storage.raw[kProbeByteOffset]);
     }
 
-    static void SetSmallProbeByte(Storage& storage, SizeType small_meta) noexcept {
+    static void SetSmallProbe(Storage& storage, SizeType small_meta) noexcept {
+        AM_CHECK(is_small(storage));
         AM_CHECK(small_meta <= kSmallCapacity);
         const auto encoded = config::kIsLittleEndian ? static_cast<std::uint8_t>(small_meta)
                                                      : static_cast<std::uint8_t>(small_meta << kCategoryBits);
         storage.raw[kProbeByteOffset] = static_cast<std::byte>(encoded);
     }
 
-    AM_NODISCARD static constexpr SizeType EncodeSmallSizeToMeta(SizeType size) noexcept {
+    AM_NODISCARD static constexpr SizeType EncodeSmallSizeToProbe(SizeType size) noexcept {
         return kSmallCapacity - size;
     }
 
@@ -214,7 +218,7 @@ struct CharLayoutPolicy {
 
     AM_NODISCARD static constexpr SizeType CapacityMask() noexcept {
         if constexpr (config::kIsLittleEndian) {
-            return ~(static_cast<SizeType>(kCategoryMask) << kMarkerByteShift);
+            return ~(static_cast<SizeType>(kCategoryMask) << kTagBitShift);
         } else {
             return ~static_cast<SizeType>(kCategoryMask);
         }
@@ -223,9 +227,9 @@ struct CharLayoutPolicy {
     AM_NODISCARD static SizeType PackCapacityWithTag(SizeType capacity) noexcept {
         AM_CHECK(capacity <= max_external_capacity());
         if constexpr (config::kIsLittleEndian) {
-            return capacity | (static_cast<SizeType>(kExternalMarker) << kMarkerByteShift);
+            return capacity | (static_cast<SizeType>(kExternalTag) << kTagBitShift);
         } else {
-            return (capacity << kCategoryBits) | static_cast<SizeType>(kExternalMarker);
+            return (capacity << kCategoryBits) | static_cast<SizeType>(kExternalTag);
         }
     }
 
@@ -237,10 +241,10 @@ struct CharLayoutPolicy {
         }
     }
 
-    AM_NODISCARD static std::uint8_t UnpackMarker(SizeType capacity_with_tag) noexcept {
+    AM_NODISCARD static std::uint8_t UnpackTag(SizeType capacity_with_tag) noexcept {
         if constexpr (config::kIsLittleEndian) {
-            const auto probe = static_cast<std::uint8_t>(capacity_with_tag >> kMarkerByteShift);
-            return MarkerFromProbe(probe);
+            const auto probe = static_cast<std::uint8_t>(capacity_with_tag >> kTagBitShift);
+            return TagFromProbe(probe);
         } else {
             return static_cast<std::uint8_t>(capacity_with_tag) & kCategoryMask;
         }
@@ -251,15 +255,15 @@ private:
         std::memset(storage.raw, 0, kStorageBytes);
     }
 
-    AM_NODISCARD static constexpr std::uint8_t MarkerFromProbe(std::uint8_t probe) noexcept {
+    AM_NODISCARD static constexpr std::uint8_t TagFromProbe(std::uint8_t probe) noexcept {
         return probe & kCategoryMask;
     }
 
     static void CheckSmallInvariants(const Storage& storage) noexcept {
-        const auto probe = GetProbeByte(storage);
+        const auto probe = GetProbe(storage);
         const auto decoded_size = DecodeSmallSizeFromMeta(probe);
 
-        AM_DCHECK(MarkerFromProbe(probe) == kSmallMarker);
+        AM_DCHECK(TagFromProbe(probe) == kSmallTag);
         AM_DCHECK(decoded_size <= kSmallCapacity);
         CheckDataInvariants(storage.small, decoded_size, kSmallCapacity);
     }
@@ -267,7 +271,7 @@ private:
     static void CheckExternalInvariants(const Storage& storage) noexcept {
         const auto decoded_capacity = UnpackCapacity(storage.external.capacity_with_tag);
 
-        AM_DCHECK(UnpackMarker(storage.external.capacity_with_tag) == kExternalMarker);
+        AM_DCHECK(UnpackTag(storage.external.capacity_with_tag) == kExternalTag);
         AM_DCHECK(storage.external.data != nullptr);
         AM_DCHECK(storage.external.size <= decoded_capacity);
         CheckDataInvariants(storage.external.data, storage.external.size, decoded_capacity);

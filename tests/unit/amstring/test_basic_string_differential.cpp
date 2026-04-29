@@ -1,15 +1,13 @@
-#include <gtest/gtest.h>
-
 #include "amstring/basic_string.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <gtest/gtest.h>
 #include <random>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -189,6 +187,100 @@ protected:
         expect_equivalent(actual, expected);
     }
 
+    static void expect_insert_erase_replace(std::size_t count) {
+        const StdString initial = make_string(std::max<std::size_t>(count, 5), 'h');
+        const StdString payload = make_string(count + 2, 'p');
+        const CharT fill = static_cast<CharT>('v');
+        const std::array<std::size_t, 3> positions = {0, initial.size() / 2, initial.size()};
+        const std::array<std::size_t, 4> erase_counts = {0, 1, initial.size() / 2, AmString::npos};
+
+        for (const std::size_t pos: positions) {
+            {
+                AmString actual(initial.data(), initial.size());
+                StdString expected = initial;
+                actual.insert(pos, payload.data(), payload.size());
+                expected.insert(pos, payload.data(), payload.size());
+                expect_equivalent(actual, expected);
+            }
+            {
+                AmString actual(initial.data(), initial.size());
+                StdString expected = initial;
+                actual.insert(pos, 3, fill);
+                expected.insert(pos, 3, fill);
+                expect_equivalent(actual, expected);
+            }
+            {
+                AmString actual(initial.data(), initial.size());
+                StdString expected = initial;
+                actual.insert(pos, actual.data(), actual.size());
+                expected.insert(pos, expected.data(), expected.size());
+                expect_equivalent(actual, expected);
+            }
+
+            for (const std::size_t erase_count: erase_counts) {
+                AmString actual(initial.data(), initial.size());
+                StdString expected = initial;
+                actual.erase(pos, erase_count);
+                expected.erase(pos, erase_count);
+                expect_equivalent(actual, expected);
+            }
+
+            for (const std::size_t erase_count: erase_counts) {
+                {
+                    AmString actual(initial.data(), initial.size());
+                    StdString expected = initial;
+                    actual.replace(pos, erase_count, payload.data(), payload.size());
+                    expected.replace(pos, erase_count, payload.data(), payload.size());
+                    expect_equivalent(actual, expected);
+                }
+                {
+                    AmString actual(initial.data(), initial.size());
+                    StdString expected = initial;
+                    actual.replace(pos, erase_count, 2, fill);
+                    expected.replace(pos, erase_count, 2, fill);
+                    expect_equivalent(actual, expected);
+                }
+                {
+                    AmString actual(initial.data(), initial.size());
+                    StdString expected = initial;
+                    const std::size_t source_pos = actual.size() > 1 ? 1 : 0;
+                    const std::size_t source_count = actual.size() - source_pos;
+                    actual.replace(pos, erase_count, actual.data() + source_pos, source_count);
+                    expected.replace(pos, erase_count, expected.data() + source_pos, source_count);
+                    expect_equivalent(actual, expected);
+                }
+            }
+        }
+    }
+
+    static void expect_substr_and_find(std::size_t count) {
+        const StdString initial = make_string(std::max<std::size_t>(count, 8), 'a');
+        const std::array<std::size_t, 4> positions = {0, 1, initial.size() / 2, initial.size()};
+        const std::array<std::size_t, 4> counts = {0, 1, initial.size() / 2, AmString::npos};
+
+        const AmString actual(initial.data(), initial.size());
+        const StdString expected = initial;
+
+        for (const std::size_t pos: positions) {
+            for (const std::size_t sub_count: counts) {
+                const AmString actual_sub = actual.substr(pos, sub_count);
+                const StdString expected_sub = expected.substr(pos, sub_count);
+                expect_equivalent(actual_sub, expected_sub);
+            }
+        }
+
+        const StdString needle = expected.substr(1, std::min<std::size_t>(3, expected.size() - 1));
+        const StdString missing = make_string(3, '~');
+        for (const std::size_t pos: positions) {
+            EXPECT_EQ(actual.find(needle.data(), pos, needle.size()), expected.find(needle.data(), pos, needle.size()));
+            EXPECT_EQ(actual.find(needle.c_str(), pos), expected.find(needle.c_str(), pos));
+            EXPECT_EQ(actual.find(std::basic_string_view<CharT>(needle.data(), needle.size()), pos), expected.find(needle.data(), pos, needle.size()));
+            EXPECT_EQ(actual.find(static_cast<CharT>('d'), pos), expected.find(static_cast<CharT>('d'), pos));
+            EXPECT_EQ(actual.find(missing.data(), pos, missing.size()), expected.find(missing.data(), pos, missing.size()));
+            EXPECT_EQ(actual.find(std::basic_string_view<CharT>(), pos), expected.find(StdString{}, pos));
+        }
+    }
+
     static void run_random_sequence(std::uint32_t seed, std::size_t steps) {
         std::mt19937 rng(seed);
         std::uniform_int_distribution<int> op_dist(0, 7);
@@ -277,6 +369,18 @@ TYPED_TEST(BasicStringDifferentialTest, ResizeReserveAndShrinkMatchStdBasicStrin
 TYPED_TEST(BasicStringDifferentialTest, PushPopAndClearMatchStdBasicString) {
     for (const std::size_t count: TestFixture::interesting_sizes()) {
         TestFixture::expect_push_pop_and_clear(count);
+    }
+}
+
+TYPED_TEST(BasicStringDifferentialTest, InsertEraseReplaceMatchStdBasicString) {
+    for (const std::size_t count: TestFixture::interesting_sizes()) {
+        TestFixture::expect_insert_erase_replace(count);
+    }
+}
+
+TYPED_TEST(BasicStringDifferentialTest, SubstrAndFindMatchStdBasicString) {
+    for (const std::size_t count: TestFixture::interesting_sizes()) {
+        TestFixture::expect_substr_and_find(count);
     }
 }
 

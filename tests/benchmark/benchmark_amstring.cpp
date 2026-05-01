@@ -1,8 +1,7 @@
 #include "amstring/string.hpp"
 
-#include <benchmark/benchmark.h>
-
 #include <algorithm>
+#include <benchmark/benchmark.h>
 #include <string>
 
 namespace {
@@ -22,7 +21,7 @@ void BM_AmString_Construct(benchmark::State& state) {
         aethermind::string value(payload.data(), payload.size());
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(payload.size()));
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
 void BM_StdString_Construct(benchmark::State& state) {
@@ -31,7 +30,7 @@ void BM_StdString_Construct(benchmark::State& state) {
         std::string value(payload.data(), payload.size());
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(payload.size()));
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
 void BM_AmString_Copy(benchmark::State& state) {
@@ -41,7 +40,7 @@ void BM_AmString_Copy(benchmark::State& state) {
         aethermind::string copy(original);
         benchmark::DoNotOptimize(copy.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(payload.size()));
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
 void BM_StdString_Copy(benchmark::State& state) {
@@ -51,7 +50,7 @@ void BM_StdString_Copy(benchmark::State& state) {
         std::string copy(original);
         benchmark::DoNotOptimize(copy.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(payload.size()));
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
 void BM_AmString_AppendReserved(benchmark::State& state) {
@@ -63,7 +62,7 @@ void BM_AmString_AppendReserved(benchmark::State& state) {
         value.append(suffix.data(), suffix.size());
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+    state.SetBytesProcessed(state.iterations() *
                             static_cast<int64_t>(prefix.size() + suffix.size()));
 }
 
@@ -76,7 +75,7 @@ void BM_StdString_AppendReserved(benchmark::State& state) {
         value.append(suffix.data(), suffix.size());
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+    state.SetBytesProcessed(state.iterations() *
                             static_cast<int64_t>(prefix.size() + suffix.size()));
 }
 
@@ -88,7 +87,7 @@ void BM_AmString_AppendGrow(benchmark::State& state) {
         value.append(suffix.data(), suffix.size());
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+    state.SetBytesProcessed(state.iterations() *
                             static_cast<int64_t>(prefix.size() + suffix.size()));
 }
 
@@ -100,7 +99,7 @@ void BM_StdString_AppendGrow(benchmark::State& state) {
         value.append(suffix.data(), suffix.size());
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+    state.SetBytesProcessed(state.iterations() *
                             static_cast<int64_t>(prefix.size() + suffix.size()));
 }
 
@@ -111,7 +110,7 @@ void BM_AmString_Assign(benchmark::State& state) {
         value.assign(payload.data(), payload.size());
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(payload.size()));
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
 void BM_StdString_Assign(benchmark::State& state) {
@@ -121,7 +120,7 @@ void BM_StdString_Assign(benchmark::State& state) {
         value.assign(payload.data(), payload.size());
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(payload.size()));
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
 void BM_AmString_ShrinkToFit(benchmark::State& state) {
@@ -134,7 +133,7 @@ void BM_AmString_ShrinkToFit(benchmark::State& state) {
         value.shrink_to_fit();
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(payload.size()));
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
 void BM_StdString_ShrinkToFit(benchmark::State& state) {
@@ -147,7 +146,7 @@ void BM_StdString_ShrinkToFit(benchmark::State& state) {
         value.shrink_to_fit();
         benchmark::DoNotOptimize(value.data());
     }
-    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(payload.size()));
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
 }// namespace

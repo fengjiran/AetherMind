@@ -151,15 +151,111 @@ void BM_StdString_ShrinkToFit(benchmark::State& state) {
 
 }// namespace
 
-BENCHMARK(BM_AmString_Construct)->Arg(8)->Arg(15)->Arg(16)->Arg(64)->Arg(256);
-BENCHMARK(BM_StdString_Construct)->Arg(8)->Arg(15)->Arg(16)->Arg(64)->Arg(256);
-BENCHMARK(BM_AmString_Copy)->Arg(8)->Arg(15)->Arg(16)->Arg(64)->Arg(256);
-BENCHMARK(BM_StdString_Copy)->Arg(8)->Arg(15)->Arg(16)->Arg(64)->Arg(256);
-BENCHMARK(BM_AmString_AppendReserved)->Args({8, 4})->Args({15, 1})->Args({16, 8})->Args({64, 32});
-BENCHMARK(BM_StdString_AppendReserved)->Args({8, 4})->Args({15, 1})->Args({16, 8})->Args({64, 32});
-BENCHMARK(BM_AmString_AppendGrow)->Args({8, 8})->Args({15, 8})->Args({16, 16})->Args({64, 64});
-BENCHMARK(BM_StdString_AppendGrow)->Args({8, 8})->Args({15, 8})->Args({16, 16})->Args({64, 64});
-BENCHMARK(BM_AmString_Assign)->Arg(8)->Arg(15)->Arg(16)->Arg(64)->Arg(256);
-BENCHMARK(BM_StdString_Assign)->Arg(8)->Arg(15)->Arg(16)->Arg(64)->Arg(256);
-BENCHMARK(BM_AmString_ShrinkToFit)->Arg(8)->Arg(15)->Arg(16)->Arg(64)->Arg(256);
-BENCHMARK(BM_StdString_ShrinkToFit)->Arg(8)->Arg(15)->Arg(16)->Arg(64)->Arg(256);
+BENCHMARK(BM_AmString_Construct)
+        ->Arg(8)
+        ->Arg(15)
+        ->Arg(16)
+        ->Arg(22)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(64)
+        ->Arg(256);
+BENCHMARK(BM_StdString_Construct)
+        ->Arg(8)
+        ->Arg(15)
+        ->Arg(16)
+        ->Arg(22)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(64)
+        ->Arg(256);
+BENCHMARK(BM_AmString_Copy)
+        ->Arg(8)
+        ->Arg(15)
+        ->Arg(16)
+        ->Arg(22)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(64)
+        ->Arg(256);
+BENCHMARK(BM_StdString_Copy)
+        ->Arg(8)
+        ->Arg(15)
+        ->Arg(16)
+        ->Arg(22)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(64)
+        ->Arg(256);
+BENCHMARK(BM_AmString_AppendReserved)
+        ->Args({8, 4})
+        ->Args({15, 1})
+        ->Args({16, 8})
+        ->Args({22, 1})
+        ->Args({23, 1})
+        ->Args({22, 2})
+        ->Args({24, 1})
+        ->Args({64, 32});
+BENCHMARK(BM_StdString_AppendReserved)
+        ->Args({8, 4})
+        ->Args({15, 1})
+        ->Args({16, 8})
+        ->Args({22, 1})
+        ->Args({23, 1})
+        ->Args({22, 2})
+        ->Args({24, 1})
+        ->Args({64, 32});
+BENCHMARK(BM_AmString_AppendGrow)
+        ->Args({8, 8})
+        ->Args({15, 8})
+        ->Args({16, 16})
+        ->Args({22, 1})
+        ->Args({23, 1})
+        ->Args({22, 2})
+        ->Args({24, 1})
+        ->Args({64, 64});
+BENCHMARK(BM_StdString_AppendGrow)
+        ->Args({8, 8})
+        ->Args({15, 8})
+        ->Args({16, 16})
+        ->Args({22, 1})
+        ->Args({23, 1})
+        ->Args({22, 2})
+        ->Args({24, 1})
+        ->Args({64, 64});
+BENCHMARK(BM_AmString_Assign)
+        ->Arg(8)
+        ->Arg(15)
+        ->Arg(16)
+        ->Arg(22)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(64)
+        ->Arg(256);
+BENCHMARK(BM_StdString_Assign)
+        ->Arg(8)
+        ->Arg(15)
+        ->Arg(16)
+        ->Arg(22)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(64)
+        ->Arg(256);
+BENCHMARK(BM_AmString_ShrinkToFit)
+        ->Arg(8)
+        ->Arg(15)
+        ->Arg(16)
+        ->Arg(22)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(64)
+        ->Arg(256);
+BENCHMARK(BM_StdString_ShrinkToFit)
+        ->Arg(8)
+        ->Arg(15)
+        ->Arg(16)
+        ->Arg(22)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(64)
+        ->Arg(256);

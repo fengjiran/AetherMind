@@ -47,6 +47,41 @@ struct StatefulAllocator {
     }
 };
 
+struct CaseInsensitiveCharTraits : std::char_traits<char> {
+    static char normalize(char ch) noexcept {
+        return ch >= 'A' && ch <= 'Z' ? static_cast<char>(ch - 'A' + 'a') : ch;
+    }
+
+    static bool eq(char lhs, char rhs) noexcept {
+        return normalize(lhs) == normalize(rhs);
+    }
+
+    static bool lt(char lhs, char rhs) noexcept {
+        return normalize(lhs) < normalize(rhs);
+    }
+
+    static int compare(const char* lhs, const char* rhs, std::size_t count) noexcept {
+        for (std::size_t i = 0; i < count; ++i) {
+            if (lt(lhs[i], rhs[i])) {
+                return -1;
+            }
+            if (lt(rhs[i], lhs[i])) {
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    static const char* find(const char* text, std::size_t count, const char& ch) noexcept {
+        for (std::size_t i = 0; i < count; ++i) {
+            if (eq(text[i], ch)) {
+                return text + i;
+            }
+        }
+        return nullptr;
+    }
+};
+
 template<typename CharT>
 class BasicStringSkeletonTest : public ::testing::Test {
 protected:
@@ -149,7 +184,6 @@ TYPED_TEST(BasicStringSkeletonTest, DefaultConstructedStringIsEmpty) {
 
 TYPED_TEST(BasicStringSkeletonTest, PointerAndLengthConstructorExposesPublicSemantics) {
     using String = typename TestFixture::String;
-    using CharT = typename TestFixture::CharType;
 
     const auto expected = TestFixture::make_string(5);
     String string(expected.data(), expected.size());
@@ -653,6 +687,51 @@ TYPED_TEST(BasicStringSkeletonTest, InsertEraseReplaceSubstrAndFindExposeStdLike
     EXPECT_THROW((void) string.erase(string.size() + 1, 1), std::out_of_range);
     EXPECT_THROW((void) string.replace(string.size() + 1, 1, payload.data(), payload.size()), std::out_of_range);
     EXPECT_THROW((void) string.substr(string.size() + 1), std::out_of_range);
+}
+
+TYPED_TEST(BasicStringSkeletonTest, FindHandlesPartialMatchHeavyNeedles) {
+    using String = typename TestFixture::String;
+    using CharT = typename TestFixture::CharType;
+
+    std::basic_string<CharT> text(512, static_cast<CharT>('a'));
+    std::basic_string<CharT> needle(16, static_cast<CharT>('a'));
+    needle.back() = static_cast<CharT>('b');
+    String string(text.data(), text.size());
+
+    EXPECT_EQ(string.find(needle.data(), 0, needle.size()), String::npos);
+
+    const std::size_t match_pos = 257;
+    text.replace(match_pos, needle.size(), needle);
+    String with_match(text.data(), text.size());
+
+    EXPECT_EQ(with_match.find(needle.data(), 0, needle.size()), match_pos);
+    EXPECT_EQ(with_match.find(needle.data(), match_pos + 1, needle.size()), String::npos);
+}
+
+TYPED_TEST(BasicStringSkeletonTest, FindHandlesOverlappingPeriodicNeedles) {
+    using String = typename TestFixture::String;
+    using CharT = typename TestFixture::CharType;
+
+    std::basic_string<CharT> text;
+    for (std::size_t i = 0; i < 64; ++i) {
+        text.push_back(static_cast<CharT>(i % 2 == 0 ? 'a' : 'b'));
+    }
+    const std::basic_string<CharT> needle{static_cast<CharT>('a'), static_cast<CharT>('b'), static_cast<CharT>('a'), static_cast<CharT>('b'), static_cast<CharT>('a'), static_cast<CharT>('b')};
+    String string(text.data(), text.size());
+
+    EXPECT_EQ(string.find(needle.data(), 0, needle.size()), 0U);
+    EXPECT_EQ(string.find(needle.data(), 1, needle.size()), 2U);
+    EXPECT_EQ(string.find(needle.data(), text.size() - needle.size(), needle.size()), text.size() - needle.size());
+}
+
+TEST(BasicStringCustomTraitsTest, FindUsesTraitsSemantics) {
+    using String = aethermind::BasicString<char, CaseInsensitiveCharTraits>;
+
+    const String string("prefixAAAAAAABsuffix", 20);
+    const char needle[] = "aaaaaaab";
+
+    EXPECT_EQ(string.find(needle, 0, 8), 6U);
+    EXPECT_EQ(string.find('B'), 13U);
 }
 
 TYPED_TEST(BasicStringSkeletonTest, PushBackAppendsSingleCharacter) {

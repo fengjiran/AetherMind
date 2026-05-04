@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 
 namespace aethermind {
 
@@ -83,19 +84,19 @@ public:
         return core_.c_str();
     }
 
-    size_type size() const noexcept {
+    AM_NODISCARD size_type size() const noexcept {
         return core_.size();
     }
 
-    size_type length() const noexcept {
+    AM_NODISCARD size_type length() const noexcept {
         return core_.size();
     }
 
-    size_type capacity() const noexcept {
+    AM_NODISCARD size_type capacity() const noexcept {
         return core_.capacity();
     }
 
-    bool empty() const noexcept {
+    AM_NODISCARD bool empty() const noexcept {
         return core_.empty();
     }
 
@@ -195,7 +196,8 @@ public:
 
     BasicString& insert(size_type pos, const BasicString& str, size_type subpos, size_type subcount = npos) {
         CheckPosition(subpos, str.size(), "BasicString::insert");
-        return insert(pos, str.data() + subpos, ClampCount(str.size(), subpos, subcount));
+        return insert(pos, str.data() + subpos,
+                      ClampCount(str.size(), subpos, subcount));
     }
 
     BasicString& insert(size_type pos, const CharT* s) {
@@ -416,6 +418,24 @@ private:
             return npos;
         }
 
+        if (needle_size == 1) {
+            const CharT* found = traits_type::find(haystack + pos, haystack_size - pos, needle[0]);
+            return found == nullptr ? npos : static_cast<size_type>(found - haystack);
+        }
+
+        const size_type remaining = haystack_size - pos;
+        if (needle_size < 8 || remaining < 128) {
+            return FindRangeNaive(haystack, haystack_size, needle, pos, needle_size);
+        }
+
+        return FindRangeHybrid(haystack, haystack_size, needle, pos, needle_size);
+    }
+
+    static size_type FindRangeNaive(const CharT* haystack, size_type haystack_size, const CharT* needle, size_type pos, size_type needle_size) noexcept {
+        AM_DCHECK(needle_size > 0);
+        AM_DCHECK(pos < haystack_size);
+        AM_DCHECK(needle_size <= haystack_size - pos);
+
         const CharT first = needle[0];
         const size_type last_start = haystack_size - needle_size;
         for (size_type current = pos; current <= last_start;) {
@@ -429,6 +449,141 @@ private:
                 return current;
             }
             ++current;
+        }
+        return npos;
+    }
+
+    static size_type FindRangeHybrid(const CharT* haystack, size_type haystack_size, const CharT* needle, size_type pos, size_type needle_size) noexcept {
+        AM_DCHECK(needle_size >= 2);
+        AM_DCHECK(pos < haystack_size);
+        AM_DCHECK(needle_size <= haystack_size - pos);
+
+        constexpr size_type kMaxNaiveCandidates = 16;
+        const CharT first = needle[0];
+        const size_type last_start = haystack_size - needle_size;
+        size_type failed_candidates = 0;
+        for (size_type current = pos; current <= last_start;) {
+            const CharT* found = traits_type::find(haystack + current, haystack_size - current - needle_size + 1, first);
+            if (found == nullptr) {
+                return npos;
+            }
+
+            current = static_cast<size_type>(found - haystack);
+            if (traits_type::compare(haystack + current, needle, needle_size) == 0) {
+                return current;
+            }
+
+            ++current;
+            ++failed_candidates;
+            if (failed_candidates == kMaxNaiveCandidates && current <= last_start) {
+                return FindRangeTwoWay(haystack, haystack_size, needle, current, needle_size);
+            }
+        }
+        return npos;
+    }
+
+    static std::pair<size_type, size_type> MaximalSuffix(const CharT* needle, size_type needle_size, bool reversed) noexcept {
+        size_type suffix = 0;
+        size_type candidate = 1;
+        size_type offset = 0;
+        size_type period = 1;
+
+        while (candidate + offset < needle_size) {
+            const CharT candidate_ch = needle[candidate + offset];
+            const CharT suffix_ch = needle[suffix + offset];
+
+            const bool candidate_is_smaller = reversed ? traits_type::lt(suffix_ch, candidate_ch)
+                                                       : traits_type::lt(candidate_ch, suffix_ch);
+            if (candidate_is_smaller) {
+                candidate += offset + 1;
+                offset = 0;
+                period = candidate - suffix;
+            } else if (traits_type::eq(candidate_ch, suffix_ch)) {
+                if (offset + 1 == period) {
+                    candidate += period;
+                    offset = 0;
+                } else {
+                    ++offset;
+                }
+            } else {
+                suffix = candidate;
+                ++candidate;
+                offset = 0;
+                period = 1;
+            }
+        }
+
+        return {suffix, period};
+    }
+
+    static std::pair<size_type, size_type> CriticalFactorization(const CharT* needle, size_type needle_size) noexcept {
+        const auto forward = MaximalSuffix(needle, needle_size, false);
+        const auto reverse = MaximalSuffix(needle, needle_size, true);
+        return forward.first > reverse.first ? forward : reverse;
+    }
+
+    static bool HasPeriodAtCriticalPosition(const CharT* needle, size_type needle_size, size_type period, size_type critical_position) noexcept {
+        return critical_position <= needle_size - period &&
+               traits_type::compare(needle, needle + period, critical_position) == 0;
+    }
+
+    static size_type FindRangeTwoWay(const CharT* haystack, size_type haystack_size, const CharT* needle, size_type pos, size_type needle_size) noexcept {
+        AM_DCHECK(needle_size >= 2);
+        AM_DCHECK(pos < haystack_size);
+        AM_DCHECK(needle_size <= haystack_size - pos);
+
+        const auto factorization = CriticalFactorization(needle, needle_size);
+        const size_type critical_position = factorization.first;
+        const size_type period = factorization.second;
+        const size_type last_start = haystack_size - needle_size;
+
+        if (HasPeriodAtCriticalPosition(needle, needle_size, period, critical_position)) {
+            size_type memory = 0;
+            for (size_type current = pos; current <= last_start;) {
+                size_type index = std::max(critical_position, memory);
+                while (index < needle_size && traits_type::eq(needle[index], haystack[current + index])) {
+                    ++index;
+                }
+                if (index < needle_size) {
+                    current += index - critical_position + 1;
+                    memory = 0;
+                    continue;
+                }
+
+                index = critical_position;
+                while (index > memory && traits_type::eq(needle[index - 1], haystack[current + index - 1])) {
+                    --index;
+                }
+                if (index == memory) {
+                    return current;
+                }
+
+                current += period;
+                memory = needle_size - period;
+            }
+            return npos;
+        }
+
+        const size_type shift = std::max(critical_position, needle_size - critical_position) + 1;
+        for (size_type current = pos; current <= last_start;) {
+            size_type index = critical_position;
+            while (index < needle_size && traits_type::eq(needle[index], haystack[current + index])) {
+                ++index;
+            }
+            if (index < needle_size) {
+                current += index - critical_position + 1;
+                continue;
+            }
+
+            index = critical_position;
+            while (index > 0 && traits_type::eq(needle[index - 1], haystack[current + index - 1])) {
+                --index;
+            }
+            if (index == 0) {
+                return current;
+            }
+
+            current += shift;
         }
         return npos;
     }

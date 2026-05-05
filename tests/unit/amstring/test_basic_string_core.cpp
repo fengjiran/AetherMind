@@ -515,11 +515,15 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AssignPointerAndLengthReplacesContent) 
     const auto initial = TestFixture::make_test_string(kInitialLen);
     const auto replacement = TestFixture::make_test_string(kReplacementLen);
     Core core(initial.data(), initial.size());
+    const CharT* original_ptr = core.data();
+    const std::size_t original_cap = core.capacity();
 
     core.assign(replacement.data(), replacement.size());
 
     EXPECT_EQ(core.size(), replacement.size());
-    EXPECT_TRUE(core.is_small());
+    EXPECT_TRUE(core.is_external());
+    EXPECT_EQ(core.data(), original_ptr);
+    EXPECT_EQ(core.capacity(), original_cap);
     for (std::size_t i = 0; i < replacement.size(); ++i) {
         EXPECT_EQ(core.data()[i], replacement[i]);
     }
@@ -545,6 +549,31 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AppendPointerAndLengthAppendsCharacters
         EXPECT_EQ(core.data()[i], expected[i]);
     }
     EXPECT_EQ(core.data()[expected.size()], CharT{});
+}
+
+TYPED_TEST(BasicStringCoreLifecycleTest, ReplaceRangeHandlesTerminatorSelfAlias) {
+    using Core = typename TestFixture::Core;
+    using Policy = typename TestFixture::Policy;
+    using CharT = typename TestFixture::CharType;
+
+    constexpr std::size_t kInitialLen = Policy::kSmallCapacity > 4 ? 4 : 1;
+    constexpr std::size_t kInsertPos = kInitialLen > 1 ? 1 : 0;
+    const auto initial = TestFixture::make_test_string(kInitialLen);
+    Core core(initial.data(), initial.size());
+    core.reserve(kInitialLen + 4);
+
+    const CharT* terminator = core.data() + core.size();
+    core.replace_range(kInsertPos, 0, terminator, 1);
+
+    ASSERT_EQ(core.size(), kInitialLen + 1);
+    for (std::size_t i = 0; i < kInsertPos; ++i) {
+        EXPECT_EQ(core.data()[i], initial[i]);
+    }
+    EXPECT_EQ(core.data()[kInsertPos], CharT{});
+    for (std::size_t i = kInsertPos; i < initial.size(); ++i) {
+        EXPECT_EQ(core.data()[i + 1], initial[i]);
+    }
+    EXPECT_EQ(core.data()[core.size()], CharT{});
 }
 
 TYPED_TEST(BasicStringCoreLifecycleTest, ShrinkToFitMovesSmallContentBackInline) {
@@ -686,10 +715,14 @@ TYPED_TEST(BasicStringCoreLifecycleTest, StateTransitionMatrixCoversMutatingOper
         constexpr std::size_t kInitialLen = Policy::kSmallCapacity + 2;
         const auto initial = TestFixture::make_test_string(kInitialLen);
         Core core(initial.data(), initial.size());
+        const CharT* original_ptr = core.data();
+        const std::size_t original_cap = core.capacity();
         core.assign(1, marker);
 
         EXPECT_EQ(core.size(), 1U);
-        EXPECT_TRUE(core.is_small());
+        EXPECT_TRUE(core.is_external());
+        EXPECT_EQ(core.data(), original_ptr);
+        EXPECT_EQ(core.capacity(), original_cap);
         EXPECT_EQ(core.data()[0], marker);
         EXPECT_EQ(core.data()[1], CharT{});
     }
@@ -741,12 +774,11 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AssignPreservesOriginalWhenAllocationFa
     using Core = BasicStringCore<CharT, std::char_traits<CharT>, Allocator>;
 
     constexpr std::size_t kInitialLen = Policy::kSmallCapacity + 4;
-    constexpr std::size_t kReplacementLen = Policy::kSmallCapacity + 6;
     const auto initial = TestFixture::make_test_string(kInitialLen);
-    const auto replacement = TestFixture::make_test_string(kReplacementLen);
     auto budget = std::make_shared<AllocationBudget>();
     budget->remaining_allocations = 1;
     Core core(initial.data(), initial.size(), Allocator(budget));
+    const auto replacement = TestFixture::make_test_string(core.capacity() + 1);
 
     budget->remaining_allocations = 0;
 
@@ -759,7 +791,7 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AssignPreservesOriginalWhenAllocationFa
     EXPECT_EQ(core.data()[initial.size()], CharT{});
 }
 
-TYPED_TEST(BasicStringCoreLifecycleTest, AssignSelfExternalSubrangeUsesSourceBeforeRelease) {
+TYPED_TEST(BasicStringCoreLifecycleTest, AssignSelfExternalSubrangeKeepsBufferWhenCapacityAllows) {
     using Core = typename TestFixture::Core;
     using Policy = typename TestFixture::Policy;
     using CharT = typename TestFixture::CharType;
@@ -767,6 +799,8 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AssignSelfExternalSubrangeUsesSourceBef
     constexpr std::size_t kLen = Policy::kSmallCapacity + 10;
     const auto test_str = TestFixture::make_test_string(kLen);
     Core core(test_str.data(), kLen);
+    const CharT* original_ptr = core.data();
+    const std::size_t original_cap = core.capacity();
 
     constexpr std::size_t kOffset = 2;
     constexpr std::size_t kAssignedLen = Policy::kSmallCapacity > 4 ? 4 : 1;
@@ -775,11 +809,38 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AssignSelfExternalSubrangeUsesSourceBef
     core.assign(core.data() + kOffset, kAssignedLen);
 
     EXPECT_EQ(core.size(), kAssignedLen);
-    EXPECT_TRUE(core.is_small());
+    EXPECT_TRUE(core.is_external());
+    EXPECT_EQ(core.data(), original_ptr);
+    EXPECT_EQ(core.capacity(), original_cap);
     for (std::size_t i = 0; i < kAssignedLen; ++i) {
         EXPECT_EQ(core.data()[i], expected[i]);
     }
     EXPECT_EQ(core.data()[kAssignedLen], CharT{});
+}
+
+TYPED_TEST(BasicStringCoreLifecycleTest, AssignPointerAndLengthKeepsBufferWhenCapacityAllows) {
+    using Core = typename TestFixture::Core;
+    using Policy = typename TestFixture::Policy;
+    using CharT = typename TestFixture::CharType;
+
+    constexpr std::size_t kInitialLen = Policy::kSmallCapacity + 10;
+    constexpr std::size_t kAssignedLen = Policy::kSmallCapacity > 4 ? 4 : 1;
+    const auto initial = TestFixture::make_test_string(kInitialLen);
+    const auto replacement = TestFixture::make_test_string(kAssignedLen);
+    Core core(initial.data(), initial.size());
+    const CharT* original_ptr = core.data();
+    const std::size_t original_cap = core.capacity();
+
+    core.assign(replacement.data(), replacement.size());
+
+    EXPECT_EQ(core.size(), replacement.size());
+    EXPECT_TRUE(core.is_external());
+    EXPECT_EQ(core.data(), original_ptr);
+    EXPECT_EQ(core.capacity(), original_cap);
+    for (std::size_t i = 0; i < replacement.size(); ++i) {
+        EXPECT_EQ(core.data()[i], replacement[i]);
+    }
+    EXPECT_EQ(core.data()[core.size()], CharT{});
 }
 
 TYPED_TEST(BasicStringCoreLifecycleTest, AssignSelfSmallWholeRangeKeepsContent) {
@@ -811,11 +872,15 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AssignStringViewReplacesContent) {
     const auto initial = TestFixture::make_test_string(kInitialLen);
     const auto replacement = TestFixture::make_test_string(kAssignedLen);
     Core core(initial.data(), initial.size());
+    const CharT* original_ptr = core.data();
+    const std::size_t original_cap = core.capacity();
 
     core.assign(std::basic_string_view<CharT>(replacement.data(), replacement.size()));
 
     EXPECT_EQ(core.size(), replacement.size());
-    EXPECT_TRUE(core.is_small());
+    EXPECT_TRUE(core.is_external());
+    EXPECT_EQ(core.data(), original_ptr);
+    EXPECT_EQ(core.capacity(), original_cap);
     for (std::size_t i = 0; i < replacement.size(); ++i) {
         EXPECT_EQ(core.data()[i], replacement[i]);
     }
@@ -843,7 +908,32 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AssignCountAndCharFillsReplacement) {
     EXPECT_EQ(core.data()[core.size()], CharT{});
 }
 
-TYPED_TEST(BasicStringCoreLifecycleTest, AssignCountZeroClearsToSmall) {
+TYPED_TEST(BasicStringCoreLifecycleTest, AssignCountAndCharKeepsBufferWhenCapacityAllows) {
+    using Core = typename TestFixture::Core;
+    using Policy = typename TestFixture::Policy;
+    using CharT = typename TestFixture::CharType;
+
+    constexpr std::size_t kInitialLen = Policy::kSmallCapacity + 10;
+    constexpr std::size_t kAssignedLen = Policy::kSmallCapacity > 4 ? 4 : 1;
+    const auto initial = TestFixture::make_test_string(kInitialLen);
+    const CharT fill = static_cast<CharT>('z');
+    Core core(initial.data(), initial.size());
+    const CharT* original_ptr = core.data();
+    const std::size_t original_cap = core.capacity();
+
+    core.assign(kAssignedLen, fill);
+
+    EXPECT_EQ(core.size(), kAssignedLen);
+    EXPECT_TRUE(core.is_external());
+    EXPECT_EQ(core.data(), original_ptr);
+    EXPECT_EQ(core.capacity(), original_cap);
+    for (std::size_t i = 0; i < kAssignedLen; ++i) {
+        EXPECT_EQ(core.data()[i], fill);
+    }
+    EXPECT_EQ(core.data()[core.size()], CharT{});
+}
+
+TYPED_TEST(BasicStringCoreLifecycleTest, AssignCountZeroKeepsBufferWhenCapacityAllows) {
     using Core = typename TestFixture::Core;
     using Policy = typename TestFixture::Policy;
     using CharT = typename TestFixture::CharType;
@@ -851,12 +941,16 @@ TYPED_TEST(BasicStringCoreLifecycleTest, AssignCountZeroClearsToSmall) {
     constexpr std::size_t kInitialLen = Policy::kSmallCapacity + 6;
     const auto initial = TestFixture::make_test_string(kInitialLen);
     Core core(initial.data(), initial.size());
+    const CharT* original_ptr = core.data();
+    const std::size_t original_cap = core.capacity();
 
     core.assign(0, static_cast<CharT>('q'));
 
     EXPECT_TRUE(core.empty());
     EXPECT_EQ(core.size(), 0U);
-    EXPECT_TRUE(core.is_small());
+    EXPECT_TRUE(core.is_external());
+    EXPECT_EQ(core.data(), original_ptr);
+    EXPECT_EQ(core.capacity(), original_cap);
     EXPECT_EQ(core.data()[0], CharT{});
 }
 
@@ -965,6 +1059,32 @@ TYPED_TEST(BasicStringCoreLifecycleTest, PushBackAppendsOneCharacter) {
 
     EXPECT_EQ(core.size(), kInitialLen + 1);
     EXPECT_TRUE(core.is_external());
+    for (std::size_t i = 0; i < kInitialLen; ++i) {
+        EXPECT_EQ(core.data()[i], initial[i]);
+    }
+    EXPECT_EQ(core.data()[kInitialLen], pushed);
+    EXPECT_EQ(core.data()[core.size()], CharT{});
+}
+
+TYPED_TEST(BasicStringCoreLifecycleTest, PushBackKeepsBufferWhenCapacityAllows) {
+    using Core = typename TestFixture::Core;
+    using Policy = typename TestFixture::Policy;
+    using CharT = typename TestFixture::CharType;
+
+    constexpr std::size_t kInitialLen = Policy::kSmallCapacity + 3;
+    const auto initial = TestFixture::make_test_string(kInitialLen);
+    const CharT pushed = static_cast<CharT>('z');
+    Core core(initial.data(), initial.size());
+    core.reserve(core.capacity() + 4);
+    const CharT* original_ptr = core.data();
+    const std::size_t original_cap = core.capacity();
+
+    core.push_back(pushed);
+
+    EXPECT_EQ(core.size(), kInitialLen + 1);
+    EXPECT_TRUE(core.is_external());
+    EXPECT_EQ(core.data(), original_ptr);
+    EXPECT_EQ(core.capacity(), original_cap);
     for (std::size_t i = 0; i < kInitialLen; ++i) {
         EXPECT_EQ(core.data()[i], initial[i]);
     }

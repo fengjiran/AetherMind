@@ -318,9 +318,26 @@ public:
 
     /// Replaces content with `src[0..n)`.
     ///
-    /// Uses copy-and-swap for strong exception guarantee.
-    /// Existing capacity is released before allocation.
+    /// Reuses existing capacity when possible.
+    /// Allocates a replacement buffer only when `n > capacity()`.
     void assign(const CharT* src, size_type n) {
+        AM_CHECK(n == 0 || src != nullptr);
+        EnsureExternalCapacity(n, "assign");
+
+        if (n <= capacity()) {
+            pointer d = data();
+            if (n != 0) {
+                if (PointerInRange(src, d, d + size())) {
+                    char_algo::move(d, src, n);
+                } else {
+                    char_algo::copy(d, src, n);
+                }
+            }
+            d[n] = char_algo::null_char();
+            SetSize(n);
+            return;
+        }
+
         BasicStringCore(src, n, alloc_).swap(*this);
     }
 
@@ -330,8 +347,20 @@ public:
 
     /// Replaces content with `count` copies of `ch`.
     ///
-    /// Uses copy-and-swap for strong exception guarantee.
+    /// Reuses existing capacity when possible.
     void assign(size_type count, CharT ch) {
+        EnsureExternalCapacity(count, "assign");
+
+        if (count <= capacity()) {
+            pointer d = data();
+            if (count != 0) {
+                char_algo::assign(d, count, ch);
+            }
+            d[count] = char_algo::null_char();
+            SetSize(count);
+            return;
+        }
+
         BasicStringCore tmp(alloc_);
         tmp.append(count, ch);
         tmp.swap(*this);
@@ -359,7 +388,7 @@ public:
             return;
         }
 
-        if (!PointerInRange(src, data(), data() + old_size)) {
+        if (!PointerInRange(src, data(), data() + old_size + 1)) {
             if (src_count == erased) {
                 ReplaceSameSizeFast(pos, src, src_count);
                 return;
@@ -377,6 +406,52 @@ public:
         }
 
         ReplaceReallocateSlow(pos, erased, src, src_count, new_size);
+    }
+
+    void replace_range(size_type pos, size_type erased, size_type fill_count, CharT ch) {
+        const size_type old_size = size();
+        AM_CHECK(pos <= old_size);
+        AM_CHECK(erased <= old_size - pos);
+
+        const size_type retained = old_size - erased;
+        size_type new_size = 0;
+        if (CheckOverflowAdd(retained, fill_count, &new_size)) {
+            ThrowCapacityError("replace");
+        }
+        EnsureExternalCapacity(new_size, "replace");
+
+        if (erased == 0 && fill_count == 0) {
+            return;
+        }
+
+        if (fill_count == 0) {
+            EraseRangeFast(pos, erased);
+            return;
+        }
+
+        if (new_size > capacity()) {
+            ReplaceFillReallocateSlow(pos, erased, fill_count, ch, new_size);
+            return;
+        }
+
+        pointer d = data();
+        if (fill_count == erased) {
+            char_algo::assign(d + pos, fill_count, ch);
+            return;
+        }
+
+        const size_type erase_end = pos + erased;
+        const size_type tail_with_terminator = old_size - erase_end + 1;
+        if (fill_count < erased) {
+            char_algo::assign(d + pos, fill_count, ch);
+            char_algo::move(d + pos + fill_count, d + erase_end, tail_with_terminator);
+            SetSize(new_size);
+            return;
+        }
+
+        char_algo::move(d + pos + fill_count, d + erase_end, tail_with_terminator);
+        char_algo::assign(d + pos, fill_count, ch);
+        SetSize(new_size);
     }
 
     /// Appends `src[0..n)` to the end.
@@ -439,7 +514,17 @@ public:
     }
 
     void push_back(CharT ch) {
-        append(&ch, 1);
+        const size_type cur_sz = size();
+        const size_type cap = capacity();
+        if (cur_sz < cap) AM_LIKELY {
+                pointer d = data();
+                d[cur_sz] = ch;
+                d[cur_sz + 1] = char_algo::null_char();
+                SetSize(cur_sz + 1);
+                return;
+            }
+
+        append(size_type{1}, ch);
     }
 
     /// Removes the last character.
@@ -716,6 +801,15 @@ private:
         tmp.reserve(new_size);
         tmp.append(data(), pos);
         tmp.append(src, src_count);
+        tmp.append(data() + pos + erased, size() - pos - erased);
+        tmp.swap(*this);
+    }
+
+    void ReplaceFillReallocateSlow(size_type pos, size_type erased, size_type fill_count, CharT ch, size_type new_size) {
+        BasicStringCore tmp(alloc_);
+        tmp.reserve(new_size);
+        tmp.append(data(), pos);
+        tmp.append(fill_count, ch);
         tmp.append(data() + pos + erased, size() - pos - erased);
         tmp.swap(*this);
     }

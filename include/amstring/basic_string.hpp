@@ -191,37 +191,39 @@ public:
     }
 
     BasicString& insert(size_type pos, const BasicString& str) {
-        return insert(pos, str.data(), str.size());
+        const_pointer source = str.data();
+        const size_type source_size = str.size();
+        return ReplaceRange(pos, 0, source, source_size, "BasicString::insert");
     }
 
     BasicString& insert(size_type pos, const BasicString& str, size_type subpos, size_type subcount = npos) {
-        CheckPosition(subpos, str.size(), "BasicString::insert");
-        return insert(pos, str.data() + subpos,
-                      ClampCount(str.size(), subpos, subcount));
+        const_pointer source = str.data();
+        const size_type source_size = str.size();
+        const size_type normalized_count = CheckedClampCount(source_size, subpos, subcount, "BasicString::insert");
+        return ReplaceRange(pos, 0, source + subpos, normalized_count, "BasicString::insert");
     }
 
     BasicString& insert(size_type pos, const CharT* s) {
-        return insert(pos, s, traits_type::length(s));
+        const size_type source_size = traits_type::length(s);
+        return ReplaceRange(pos, 0, s, source_size, "BasicString::insert");
     }
 
     BasicString& insert(size_type pos, const CharT* s, size_type count) {
-        CheckPosition(pos, size(), "BasicString::insert");
-        return ReplaceRange(pos, 0, s, count);
+        return ReplaceRange(pos, 0, s, count, "BasicString::insert");
     }
 
     BasicString& insert(size_type pos, size_type count, CharT ch) {
-        CheckPosition(pos, size(), "BasicString::insert");
-        BasicString tmp(count, ch);
-        return ReplaceRange(pos, 0, tmp.data(), tmp.size());
+        return ReplaceFillRange(pos, 0, count, ch, "BasicString::insert");
     }
 
     BasicString& insert(size_type pos, std::basic_string_view<CharT, Traits> sv) {
-        return insert(pos, sv.data(), sv.size());
+        return ReplaceRange(pos, 0, sv.data(), sv.size(), "BasicString::insert");
     }
 
     BasicString& insert(size_type pos, std::basic_string_view<CharT, Traits> sv, size_type subpos, size_type subcount = npos) {
-        CheckPosition(subpos, sv.size(), "BasicString::insert");
-        return insert(pos, sv.data() + subpos, ClampCount(sv.size(), subpos, subcount));
+        const size_type source_size = sv.size();
+        const size_type normalized_count = CheckedClampCount(source_size, subpos, subcount, "BasicString::insert");
+        return ReplaceRange(pos, 0, sv.data() + subpos, normalized_count, "BasicString::insert");
     }
 
     iterator insert(const_iterator pos, CharT ch) {
@@ -237,8 +239,7 @@ public:
     }
 
     BasicString& erase(size_type pos = 0, size_type count = npos) {
-        CheckPosition(pos, size(), "BasicString::erase");
-        return ReplaceRange(pos, count, nullptr, 0);
+        return ReplaceRange(pos, count, nullptr, 0, "BasicString::erase");
     }
 
     iterator erase(const_iterator pos) {
@@ -295,41 +296,47 @@ public:
     }
 
     BasicString& replace(size_type pos, size_type count, const BasicString& str) {
-        return replace(pos, count, str.data(), str.size());
+        const_pointer source = str.data();
+        const size_type source_size = str.size();
+        return ReplaceRange(pos, count, source, source_size, "BasicString::replace");
     }
 
     BasicString& replace(size_type pos, size_type count, const BasicString& str,
                          size_type subpos, size_type subcount = npos) {
-        CheckPosition(subpos, str.size(), "BasicString::replace");
-        return replace(pos, count, str.data() + subpos,
-                       ClampCount(str.size(), subpos, subcount));
+        const_pointer source = str.data();
+        const size_type source_size = str.size();
+        const size_type normalized_count = CheckedClampCount(source_size, subpos, subcount, "BasicString::replace");
+        return ReplaceRange(pos, count, source + subpos, normalized_count, "BasicString::replace");
     }
 
     BasicString& replace(size_type pos, size_type count, const CharT* s) {
-        return replace(pos, count, s, traits_type::length(s));
+        const size_type source_size = traits_type::length(s);
+        return ReplaceRange(pos, count, s, source_size, "BasicString::replace");
     }
 
     BasicString& replace(size_type pos, size_type count, const CharT* s, size_type count2) {
-        return ReplaceRange(pos, count, s, count2);
+        return ReplaceRange(pos, count, s, count2, "BasicString::replace");
     }
 
     BasicString& replace(size_type pos, size_type count, size_type count2, CharT ch) {
-        BasicString tmp(count2, ch);
-        return ReplaceRange(pos, count, tmp.data(), tmp.size());
+        return ReplaceFillRange(pos, count, count2, ch, "BasicString::replace");
     }
 
     BasicString& replace(size_type pos, size_type count, std::basic_string_view<CharT, Traits> sv) {
-        return replace(pos, count, sv.data(), sv.size());
+        return ReplaceRange(pos, count, sv.data(), sv.size(), "BasicString::replace");
     }
 
     BasicString& replace(size_type pos, size_type count, std::basic_string_view<CharT, Traits> sv, size_type subpos, size_type subcount = npos) {
-        CheckPosition(subpos, sv.size(), "BasicString::replace");
-        return replace(pos, count, sv.data() + subpos, ClampCount(sv.size(), subpos, subcount));
+        const size_type source_size = sv.size();
+        const size_type normalized_count = CheckedClampCount(source_size, subpos, subcount, "BasicString::replace");
+        return ReplaceRange(pos, count, sv.data() + subpos, normalized_count, "BasicString::replace");
     }
 
     BasicString substr(size_type pos = 0, size_type count = npos) const {
-        CheckPosition(pos, size(), "BasicString::substr");
-        return BasicString(data() + pos, ClampCount(size(), pos, count));
+        const_pointer d = core_.data();
+        const size_type sz = core_.size();
+        const size_type normalized_count = CheckedClampCount(sz, pos, count, "BasicString::substr");
+        return BasicString(d + pos, normalized_count);
     }
 
     size_type find(const BasicString& str, size_type pos = 0) const noexcept {
@@ -337,7 +344,9 @@ public:
     }
 
     size_type find(const CharT* s, size_type pos, size_type count) const noexcept {
-        return FindRange(data(), size(), s, pos, count);
+        const_pointer d = core_.data();
+        const size_type sz = core_.size();
+        return FindRange(d, sz, s, pos, count);
     }
 
     size_type find(const CharT* s, size_type pos = 0) const noexcept {
@@ -345,11 +354,14 @@ public:
     }
 
     size_type find(CharT ch, size_type pos = 0) const noexcept {
-        if (pos >= size()) {
+        const size_type sz = core_.size();
+        if (pos >= sz) {
             return npos;
         }
-        const CharT* found = traits_type::find(data() + pos, size() - pos, ch);
-        return found == nullptr ? npos : static_cast<size_type>(found - data());
+
+        const_pointer d = core_.data();
+        const_pointer found = traits_type::find(d + pos, sz - pos, ch);
+        return found == nullptr ? npos : static_cast<size_type>(found - d);
     }
 
     size_type find(std::basic_string_view<CharT, Traits> sv, size_type pos = 0) const noexcept {
@@ -393,6 +405,11 @@ private:
         return count == npos ? remaining : std::min(count, remaining);
     }
 
+    static size_type CheckedClampCount(size_type total, size_type pos, size_type count, const char* operation) {
+        CheckPosition(pos, total, operation);
+        return ClampCount(total, pos, count);
+    }
+
     static void CheckPosition(size_type pos, size_type total, const char* operation) {
         if (pos > total) {
             throw std::out_of_range(operation);
@@ -403,10 +420,17 @@ private:
         return static_cast<size_type>(it - cbegin());
     }
 
-    BasicString& ReplaceRange(size_type pos, size_type count, const CharT* src, size_type src_count) {
-        CheckPosition(pos, size(), "BasicString::replace");
-        const size_type erased = ClampCount(size(), pos, count);
+    BasicString& ReplaceRange(size_type pos, size_type count, const CharT* src, size_type src_count, const char* operation) {
+        const size_type current_size = core_.size();
+        const size_type erased = CheckedClampCount(current_size, pos, count, operation);
         core_.replace_range(pos, erased, src, src_count);
+        return *this;
+    }
+
+    BasicString& ReplaceFillRange(size_type pos, size_type count, size_type fill_count, CharT ch, const char* operation) {
+        const size_type current_size = core_.size();
+        const size_type erased = CheckedClampCount(current_size, pos, count, operation);
+        core_.replace_range(pos, erased, fill_count, ch);
         return *this;
     }
 
@@ -431,7 +455,8 @@ private:
         return FindRangeHybrid(haystack, haystack_size, needle, pos, needle_size);
     }
 
-    static size_type FindRangeNaive(const CharT* haystack, size_type haystack_size, const CharT* needle, size_type pos, size_type needle_size) noexcept {
+    static size_type FindRangeNaive(const CharT* haystack, size_type haystack_size,
+                                    const CharT* needle, size_type pos, size_type needle_size) noexcept {
         AM_DCHECK(needle_size > 0);
         AM_DCHECK(pos < haystack_size);
         AM_DCHECK(needle_size <= haystack_size - pos);

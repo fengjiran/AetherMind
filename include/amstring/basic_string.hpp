@@ -343,14 +343,12 @@ public:
         return find(str.data(), pos, str.size());
     }
 
-    size_type find(const CharT* s, size_type pos, size_type count) const noexcept {
-        const_pointer d = core_.data();
-        const size_type sz = core_.size();
-        return FindRange(d, sz, s, pos, count);
+    size_type find(const CharT* needle, size_type pos, size_type count) const noexcept {
+        return FindRange(core_.data(), core_.size(), needle, pos, count);
     }
 
-    size_type find(const CharT* s, size_type pos = 0) const noexcept {
-        return find(s, pos, traits_type::length(s));
+    size_type find(const CharT* needle, size_type pos = 0) const noexcept {
+        return find(needle, pos, traits_type::length(needle));
     }
 
     size_type find(CharT ch, size_type pos = 0) const noexcept {
@@ -434,10 +432,12 @@ private:
         return *this;
     }
 
-    static size_type FindRange(const CharT* haystack, size_type haystack_size, const CharT* needle, size_type pos, size_type needle_size) noexcept {
+    static size_type FindRange(const CharT* haystack, size_type haystack_size,
+                               const CharT* needle, size_type pos, size_type needle_size) noexcept {
         if (needle_size == 0) {
             return pos <= haystack_size ? pos : npos;
         }
+
         if (pos >= haystack_size || needle_size > haystack_size - pos) {
             return npos;
         }
@@ -447,8 +447,7 @@ private:
             return found == nullptr ? npos : static_cast<size_type>(found - haystack);
         }
 
-        const size_type remaining = haystack_size - pos;
-        if (needle_size < 8 || remaining < 128) {
+        if (const size_type remaining = haystack_size - pos; needle_size < 8 || remaining < 128) {
             return FindRangeNaive(haystack, haystack_size, needle, pos, needle_size);
         }
 
@@ -463,22 +462,24 @@ private:
 
         const CharT first = needle[0];
         const size_type last_start = haystack_size - needle_size;
-        for (size_type current = pos; current <= last_start;) {
-            const CharT* found = traits_type::find(haystack + current, haystack_size - current - needle_size + 1, first);
+        size_type cur = pos;
+        while (cur <= last_start) {
+            const CharT* found = traits_type::find(haystack + cur, haystack_size - cur - needle_size + 1, first);
             if (found == nullptr) {
                 return npos;
             }
 
-            current = static_cast<size_type>(found - haystack);
-            if (traits_type::compare(haystack + current, needle, needle_size) == 0) {
-                return current;
+            cur = static_cast<size_type>(found - haystack);
+            if (traits_type::compare(haystack + cur, needle, needle_size) == 0) {
+                return cur;
             }
-            ++current;
+            ++cur;
         }
         return npos;
     }
 
-    static size_type FindRangeHybrid(const CharT* haystack, size_type haystack_size, const CharT* needle, size_type pos, size_type needle_size) noexcept {
+    static size_type FindRangeHybrid(const CharT* haystack, size_type haystack_size,
+                                     const CharT* needle, size_type pos, size_type needle_size) noexcept {
         AM_DCHECK(needle_size >= 2);
         AM_DCHECK(pos < haystack_size);
         AM_DCHECK(needle_size <= haystack_size - pos);
@@ -487,21 +488,22 @@ private:
         const CharT first = needle[0];
         const size_type last_start = haystack_size - needle_size;
         size_type failed_candidates = 0;
-        for (size_type current = pos; current <= last_start;) {
-            const CharT* found = traits_type::find(haystack + current, haystack_size - current - needle_size + 1, first);
+        size_type cur = pos;
+        while (cur <= last_start) {
+            const CharT* found = traits_type::find(haystack + cur, haystack_size - cur - needle_size + 1, first);
             if (found == nullptr) {
                 return npos;
             }
 
-            current = static_cast<size_type>(found - haystack);
-            if (traits_type::compare(haystack + current, needle, needle_size) == 0) {
-                return current;
+            cur = static_cast<size_type>(found - haystack);
+            if (traits_type::compare(haystack + cur, needle, needle_size) == 0) {
+                return cur;
             }
 
-            ++current;
+            ++cur;
             ++failed_candidates;
-            if (failed_candidates == kMaxNaiveCandidates && current <= last_start) {
-                return FindRangeTwoWay(haystack, haystack_size, needle, current, needle_size);
+            if (failed_candidates == kMaxNaiveCandidates && cur <= last_start) {
+                return FindRangeTwoWay(haystack, haystack_size, needle, cur, needle_size);
             }
         }
         return npos;

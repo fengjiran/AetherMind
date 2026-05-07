@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <span>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -509,8 +510,9 @@ private:
         return npos;
     }
 
-    static constexpr std::pair<size_type, size_type> MaximalSuffix(const CharT* needle, size_type needle_size,
-                                                                   bool reversed) noexcept {
+    static constexpr std::pair<size_type, size_type> MaximalSuffix(std::span<const CharT> needle, bool reversed) noexcept {
+        size_type needle_size = needle.size();
+
         size_type ms = 0;
         size_type j = 1;
         size_type k = 1;
@@ -521,8 +523,7 @@ private:
 
         while (j < needle_size) {
             CharT cur = needle[j];
-            CharT expected = needle[j - k];
-            if (traits_type::eq(cur, expected)) {
+            if (CharT expected = needle[j - k]; traits_type::eq(cur, expected)) {
                 ++j;
             } else if (cmp(expected, cur)) {
                 ms = j - k + 1;
@@ -536,15 +537,16 @@ private:
         return {ms, k};
     }
 
-    static std::pair<size_type, size_type> CriticalFactorization(const CharT* needle, size_type needle_size) noexcept {
-        const auto forward = MaximalSuffix(needle, needle_size, false);
-        const auto reverse = MaximalSuffix(needle, needle_size, true);
+    static std::pair<size_type, size_type> CriticalFactorization(std::span<const CharT> needle) noexcept {
+        const auto forward = MaximalSuffix(needle, false);
+        const auto reverse = MaximalSuffix(needle, true);
         return forward.first > reverse.first ? forward : reverse;
     }
 
-    static bool HasPeriodAtCriticalPosition(const CharT* needle, size_type needle_size, size_type period, size_type critical_position) noexcept {
+    static bool HasPeriodAtCriticalPosition(std::span<const CharT> needle, size_type period, size_type critical_position) noexcept {
+        size_type needle_size = needle.size();
         return critical_position <= needle_size - period &&
-               traits_type::compare(needle, needle + period, critical_position) == 0;
+               traits_type::compare(needle.data(), needle.data() + period, critical_position) == 0;
     }
 
     static size_type FindRangeTwoWay(const CharT* haystack, size_type haystack_size, const CharT* needle, size_type pos, size_type needle_size) noexcept {
@@ -552,12 +554,14 @@ private:
         AM_DCHECK(pos < haystack_size);
         AM_DCHECK(needle_size <= haystack_size - pos);
 
-        const auto factorization = CriticalFactorization(needle, needle_size);
+        std::span<const CharT> pattern{needle, needle_size};
+
+        const auto factorization = CriticalFactorization(pattern);
         const size_type critical_position = factorization.first;
         const size_type period = factorization.second;
         const size_type last_start = haystack_size - needle_size;
 
-        if (HasPeriodAtCriticalPosition(needle, needle_size, period, critical_position)) {
+        if (HasPeriodAtCriticalPosition(pattern, period, critical_position)) {
             size_type memory = 0;
             for (size_type current = pos; current <= last_start;) {
                 size_type index = std::max(critical_position, memory);

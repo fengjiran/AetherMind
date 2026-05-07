@@ -132,6 +132,7 @@ dmypy.json
 
 #.vscode/
 .idea/
+.sisyphus/
 .pkl_memoize_py3/
 cmake-build-debug/
 build-asan/

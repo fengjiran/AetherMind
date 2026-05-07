@@ -509,38 +509,31 @@ private:
         return npos;
     }
 
-    static std::pair<size_type, size_type> MaximalSuffix(const CharT* needle, size_type needle_size, bool reversed) noexcept {
-        size_type suffix = 0;
-        size_type candidate = 1;
-        size_type offset = 0;
-        size_type period = 1;
+    static constexpr std::pair<size_type, size_type> MaximalSuffix(const CharT* needle, size_type needle_size,
+                                                                   bool reversed) noexcept {
+        size_type ms = 0;
+        size_type j = 1;
+        size_type k = 1;
 
-        while (candidate + offset < needle_size) {
-            const CharT candidate_ch = needle[candidate + offset];
-            const CharT suffix_ch = needle[suffix + offset];
+        auto cmp = [reversed](CharT lhs, CharT rhs) noexcept {
+            return reversed ? traits_type::lt(rhs, lhs) : traits_type::lt(lhs, rhs);
+        };
 
-            const bool candidate_is_smaller = reversed ? traits_type::lt(suffix_ch, candidate_ch)
-                                                       : traits_type::lt(candidate_ch, suffix_ch);
-            if (candidate_is_smaller) {
-                candidate += offset + 1;
-                offset = 0;
-                period = candidate - suffix;
-            } else if (traits_type::eq(candidate_ch, suffix_ch)) {
-                if (offset + 1 == period) {
-                    candidate += period;
-                    offset = 0;
-                } else {
-                    ++offset;
-                }
+        while (j < needle_size) {
+            CharT cur = needle[j];
+            CharT expected = needle[j - k];
+            if (traits_type::eq(cur, expected)) {
+                ++j;
+            } else if (cmp(expected, cur)) {
+                ms = j - k + 1;
+                j = ms + 1;
+                k = 1;
             } else {
-                suffix = candidate;
-                ++candidate;
-                offset = 0;
-                period = 1;
+                ++j;
+                k = j - ms;
             }
         }
-
-        return {suffix, period};
+        return {ms, k};
     }
 
     static std::pair<size_type, size_type> CriticalFactorization(const CharT* needle, size_type needle_size) noexcept {

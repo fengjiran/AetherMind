@@ -83,23 +83,23 @@ struct GenericLayoutPolicy {
     // capacity_with_tag packs the tag (probe value) with capacity to avoid extra discriminator field.
     // Layout depends on endianness: little-endian puts tag in high bits, big-endian in low bits.
     struct ExternalRep {
-        CharT* data;                // Borrowed; caller owns allocation and deallocation.
-        SizeType size;              // Current length, excluding null terminator.
-        SizeType capacity_with_tag; // Packed (capacity | tag) encoding.
+        CharT* data;               // Borrowed; caller owns allocation and deallocation.
+        SizeType size;             // Current length, excluding null terminator.
+        SizeType capacity_with_tag;// Packed (capacity | tag) encoding.
     };
 
     // 24-byte storage union. Small uses inline array; External uses heap pointer.
     union Storage {
-        CharT small[sizeof(ExternalRep) / sizeof(CharT)]; // Inline buffer for Small state.
-        ExternalRep external;                              // Heap representation for External state.
-        std::byte raw[sizeof(ExternalRep)]{};              // Raw bytes for probe access.
+        CharT small[sizeof(ExternalRep) / sizeof(CharT)];// Inline buffer for Small state.
+        ExternalRep external;                            // Heap representation for External state.
+        std::byte raw[sizeof(ExternalRep)]{};            // Raw bytes for probe access.
     };
 
     // Category determined by probe byte at kProbeByteOffset.
     enum class Category : std::uint8_t {
-        kSmall,    // probe ∈ [0, kSmallCapacity]; inline storage.
-        kExternal, // probe == kExternalTag; heap storage.
-        kInvalid,  // probe outside valid range; indicates corruption.
+        kSmall,   // probe ∈ [0, kSmallCapacity]; inline storage.
+        kExternal,// probe == kExternalTag; heap storage.
+        kInvalid, // probe outside valid range; indicates corruption.
     };
 
     static_assert(sizeof(Storage) == sizeof(ExternalRep));
@@ -234,6 +234,36 @@ struct GenericLayoutPolicy {
         AM_CHECK(storage.external.size <= capacity);
         AM_CHECK(capacity <= max_external_capacity());
         storage.external.capacity_with_tag = PackCapacityWithTag(capacity, kExternalTag);
+    }
+
+    static bool TryPushBackInplace(Storage& storage, CharT ch) noexcept {
+        const auto probe = GetProbe(storage);
+        if (probe <= static_cast<ProbeWordType>(kSmallCapacity)) {
+            const SizeType size = DecodeSmallSizeFromProbe(probe);
+            if (size >= kSmallCapacity) {
+                return false;
+            }
+
+            storage.small[size] = ch;
+            storage.small[size + 1] = CharT{};
+            SetProbe(storage, static_cast<ProbeWordType>(EncodeSmallSizeToProbe(size + 1)));
+            return true;
+        }
+
+        if (probe != kExternalTag) {
+            return false;
+        }
+
+        const SizeType size = storage.external.size;
+        if (size >= UnpackCapacity(storage.external.capacity_with_tag)) {
+            return false;
+        }
+
+        CharT* data = storage.external.data;
+        data[size] = ch;
+        data[size + 1] = CharT{};
+        storage.external.size = size + 1;
+        return true;
     }
 
     /// Validates storage invariants; AM_DCHECK on corruption.

@@ -514,13 +514,7 @@ public:
     }
 
     void push_back(CharT ch) {
-        const size_type cur_sz = size();
-        const size_type cap = capacity();
-        if (cur_sz < cap) AM_LIKELY {
-                pointer d = data();
-                d[cur_sz] = ch;
-                d[cur_sz + 1] = char_algo::null_char();
-                SetSize(cur_sz + 1);
+        if (LayoutPolicy::TryPushBackInplace(storage_, ch)) AM_LIKELY {
                 return;
             }
 

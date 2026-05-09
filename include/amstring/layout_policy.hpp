@@ -49,6 +49,7 @@ concept AmStringLayoutPolicy = requires(typename Policy::Storage& storage,
     { Policy::SetSmallSize(storage, size) } noexcept -> std::same_as<void>;
     { Policy::SetExternalSize(storage, size) } noexcept -> std::same_as<void>;
     { Policy::SetExternalCapacity(storage, size) } noexcept -> std::same_as<void>;
+    { Policy::TryPushBackInplace(storage, *const_ptr) } noexcept -> std::same_as<bool>;
 
     { Policy::CheckInvariants(const_storage) } noexcept -> std::same_as<void>;
 };

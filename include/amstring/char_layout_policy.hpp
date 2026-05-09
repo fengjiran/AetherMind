@@ -176,6 +176,36 @@ struct CharLayoutPolicy {
         storage.external.capacity_with_tag = PackCapacityWithTag(capacity);
     }
 
+    static bool TryPushBackInplace(Storage& storage, char ch) noexcept {
+        const auto probe = GetProbe(storage);
+        if (TagFromProbe(probe) == kSmallTag) {
+            const SizeType size = DecodeSmallSizeFromMeta(probe);
+            if (size >= kSmallCapacity) {
+                return false;
+            }
+
+            storage.small[size] = ch;
+            storage.small[size + 1] = char{};
+            SetSmallProbe(storage, EncodeSmallSizeToProbe(size + 1));
+            return true;
+        }
+
+        if (TagFromProbe(probe) != kExternalTag) {
+            return false;
+        }
+
+        const SizeType size = storage.external.size;
+        if (size >= UnpackCapacity(storage.external.capacity_with_tag)) {
+            return false;
+        }
+
+        char* data = storage.external.data;
+        data[size] = ch;
+        data[size + 1] = char{};
+        storage.external.size = size + 1;
+        return true;
+    }
+
     static void CheckInvariants(const Storage& storage) noexcept {
         switch (category(storage)) {
             case Category::kSmall:

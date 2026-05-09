@@ -178,7 +178,8 @@ struct CharLayoutPolicy {
 
     static bool TryPushBackInplace(Storage& storage, char ch) noexcept {
         const auto probe = GetProbe(storage);
-        if (TagFromProbe(probe) == kSmallTag) {
+        const auto tag = TagFromProbe(probe);
+        if (tag == kSmallTag) {
             const SizeType size = DecodeSmallSizeFromMeta(probe);
             if (size >= kSmallCapacity) {
                 return false;
@@ -190,7 +191,7 @@ struct CharLayoutPolicy {
             return true;
         }
 
-        if (TagFromProbe(probe) != kExternalTag) {
+        if (tag != kExternalTag) {
             return false;
         }
 
@@ -199,9 +200,8 @@ struct CharLayoutPolicy {
             return false;
         }
 
-        char* data = storage.external.data;
-        data[size] = ch;
-        data[size + 1] = char{};
+        storage.external.data[size] = ch;
+        storage.external.data[size + 1] = char{};
         storage.external.size = size + 1;
         return true;
     }

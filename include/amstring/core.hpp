@@ -514,11 +514,25 @@ public:
     }
 
     void push_back(CharT ch) {
-        if (LayoutPolicy::TryPushBackInplace(storage_, ch)) AM_LIKELY {
-                return;
-            }
+        // clang-format off
+        // if (LayoutPolicy::is_external(storage_)) AM_LIKELY {
+        //     const auto sz = LayoutPolicy::size(storage_);
+        //     if (sz < LayoutPolicy::capacity(storage_)) AM_LIKELY {
+        //         CharT* d = LayoutPolicy::data(storage_);
+        //         d[sz] = ch;
+        //         d[sz + 1] = CharT{};
+        //         LayoutPolicy::SetExternalSize(storage_, sz + 1);
+        //         return;
+        //     }
+        // }
 
-        append(size_type{1}, ch);
+        // Fallback: Small path or slow path
+        if (LayoutPolicy::TryPushBackInplace(storage_, ch)) AM_LIKELY {
+            return;
+        }
+        // clang-format on
+
+        PushBackSlowPath(ch);
     }
 
     /// Removes the last character.
@@ -559,6 +573,28 @@ public:
     }
 
 private:
+    void PushBackSlowPath(CharT ch) {
+        const auto cur_sz = LayoutPolicy::size(storage_);
+        const auto new_sz = cur_sz + 1;
+        if (new_sz > LayoutPolicy::capacity(storage_)) {
+            if (LayoutPolicy::is_small(storage_)) {
+                const size_type new_cap = GrowthPolicy::MinHeapCapacity(new_sz);
+                pointer new_ptr = alloc_helper::traits::allocate(alloc_, AllocationCountForCapacity(new_cap));
+                char_algo::copy(new_ptr, LayoutPolicy::data(storage_), cur_sz);
+                new_ptr[cur_sz] = ch;
+                new_ptr[new_sz] = char_algo::null_char();
+                LayoutPolicy::InitExternal(storage_, new_ptr, new_sz, new_cap);
+                return;
+            }
+            Reallocate(CheckedNextCapacity(capacity(), new_sz));
+        }
+
+        pointer d = LayoutPolicy::data(storage_);
+        d[cur_sz] = ch;
+        d[new_sz] = CharT{};
+        LayoutPolicy::SetExternalSize(storage_, new_sz);
+    }
+
     static constexpr bool SwapNoexcept() noexcept {
         if constexpr (alloc_helper::propagate_on_swap) {
             return std::is_nothrow_swappable_v<AllocType>;

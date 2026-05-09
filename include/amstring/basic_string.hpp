@@ -492,12 +492,22 @@ private:
         size_type failed_candidates = 0;
         size_type cur = pos;
         while (cur <= last_start) {
-            const CharT* found = traits_type::find(haystack + cur, haystack_size - cur - needle_size + 1, first);
+            const CharT* found = traits_type::find(haystack + cur,
+                                                   haystack_size - cur - needle_size + 1, first);
             if (found == nullptr) {
                 return npos;
             }
 
             cur = static_cast<size_type>(found - haystack);
+            if (!traits_type::eq(haystack[cur + needle_size - 1], needle[needle_size - 1])) {
+                ++cur;
+                ++failed_candidates;
+                if (failed_candidates == kMaxNaiveCandidates && cur <= last_start) {
+                    return FindRangeTwoWay(haystack, haystack_size, needle, cur, needle_size);
+                }
+                continue;
+            }
+
             if (traits_type::compare(haystack + cur, needle, needle_size) == 0) {
                 return cur;
             }
@@ -581,7 +591,7 @@ private:
                     --j;
                 }
 
-                if (j == memory) {
+                if (j <= memory) {
                     return cur;
                 }
 
@@ -593,25 +603,28 @@ private:
         }
 
         const size_type shift = std::max(critical_pos, needle_size - critical_pos) + 1;
-        for (size_type current = pos; current <= last_start;) {
-            size_type index = critical_pos;
-            while (index < needle_size && traits_type::eq(needle[index], haystack[current + index])) {
-                ++index;
+        size_type cur = pos;
+        while (cur <= last_start) {
+            size_type j = critical_pos;
+            while (j < needle_size && traits_type::eq(needle[j], haystack[cur + j])) {
+                ++j;
             }
-            if (index < needle_size) {
-                current += index - critical_pos + 1;
+
+            if (j < needle_size) {
+                cur += j - critical_pos + 1;
                 continue;
             }
 
-            index = critical_pos;
-            while (index > 0 && traits_type::eq(needle[index - 1], haystack[current + index - 1])) {
-                --index;
-            }
-            if (index == 0) {
-                return current;
+            j = critical_pos;
+            while (j > 0 && traits_type::eq(needle[j - 1], haystack[cur + j - 1])) {
+                --j;
             }
 
-            current += shift;
+            if (j == 0) {
+                return cur;
+            }
+
+            cur += shift;
         }
         return npos;
     }

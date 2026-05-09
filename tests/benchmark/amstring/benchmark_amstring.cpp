@@ -294,6 +294,36 @@ void BM_StdString_GrowthStaircase(benchmark::State& state) {
     state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
+void BM_AmString_PushBackReserved(benchmark::State& state) {
+    const auto target_size = static_cast<std::size_t>(state.range(0));
+    const std::string payload = MakePayload(target_size);
+    for (auto _: state) {
+        amstring value;
+        value.reserve(target_size);
+        for (const char ch: payload) {
+            value.push_back(ch);
+        }
+        benchmark::DoNotOptimize(value.data());
+        benchmark::DoNotOptimize(value.capacity());
+    }
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
+}
+
+void BM_StdString_PushBackReserved(benchmark::State& state) {
+    const auto target_size = static_cast<std::size_t>(state.range(0));
+    const std::string payload = MakePayload(target_size);
+    for (auto _: state) {
+        std::string value;
+        value.reserve(target_size);
+        for (const char ch: payload) {
+            value.push_back(ch);
+        }
+        benchmark::DoNotOptimize(value.data());
+        benchmark::DoNotOptimize(value.capacity());
+    }
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
+}
+
 void BM_AmString_Insert(benchmark::State& state) {
     const auto base_size = static_cast<std::size_t>(state.range(0));
     const auto insert_size = static_cast<std::size_t>(state.range(1));
@@ -648,6 +678,42 @@ BENCHMARK(BM_AmString_GrowthStaircase)
         ->Arg(12288)
         ->Arg(16384);
 BENCHMARK(BM_StdString_GrowthStaircase)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(35)
+        ->Arg(52)
+        ->Arg(77)
+        ->Arg(115)
+        ->Arg(172)
+        ->Arg(257)
+        ->Arg(385)
+        ->Arg(577)
+        ->Arg(865)
+        ->Arg(1297)
+        ->Arg(1945)
+        ->Arg(2917)
+        ->Arg(8192)
+        ->Arg(12288)
+        ->Arg(16384);
+BENCHMARK(BM_AmString_PushBackReserved)
+        ->Arg(23)
+        ->Arg(24)
+        ->Arg(35)
+        ->Arg(52)
+        ->Arg(77)
+        ->Arg(115)
+        ->Arg(172)
+        ->Arg(257)
+        ->Arg(385)
+        ->Arg(577)
+        ->Arg(865)
+        ->Arg(1297)
+        ->Arg(1945)
+        ->Arg(2917)
+        ->Arg(8192)
+        ->Arg(12288)
+        ->Arg(16384);
+BENCHMARK(BM_StdString_PushBackReserved)
         ->Arg(23)
         ->Arg(24)
         ->Arg(35)

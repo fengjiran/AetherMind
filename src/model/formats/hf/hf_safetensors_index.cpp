@@ -42,24 +42,22 @@ std::string FormatPathMessage(std::string_view prefix,
 
 StatusOr<std::vector<std::byte>> ReadFileBytes(const std::filesystem::path& path) {
     std::error_code error;
-    if (!std::filesystem::exists(path, error)) {
+    if (!std::filesystem::exists(path, error) || error) {
+        if (error) {
+            return Status::Internal(
+                    FormatPathMessage("Failed to stat safetensors file", path));
+        }
         return Status::NotFound(
                 FormatPathMessage("Safetensors file not found", path));
     }
 
-    if (error) {
-        return Status::Internal(
-                FormatPathMessage("Failed to stat safetensors file", path));
-    }
-
-    if (!std::filesystem::is_regular_file(path, error)) {
+    if (!std::filesystem::is_regular_file(path, error) || error) {
+        if (error) {
+            return Status::Internal(
+                    FormatPathMessage("Failed to inspect safetensors file type", path));
+        }
         return Status::InvalidArgument(
                 FormatPathMessage("Safetensors path is not a regular file", path));
-    }
-
-    if (error) {
-        return Status::Internal(
-                FormatPathMessage("Failed to inspect safetensors file type", path));
     }
 
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
@@ -138,9 +136,9 @@ StatusOr<uint64_t> CheckedMultiply(uint64_t lhs, uint64_t rhs, std::string_view 
 class SafetensorsHeaderParser {
 public:
     SafetensorsHeaderParser(std::string_view input,
-                 const std::shared_ptr<const RawTensorBacking>& backing,
-                 const std::byte* data_base,
-                 size_t data_size) noexcept
+                            const std::shared_ptr<const RawTensorBacking>& backing,
+                            const std::byte* data_base,
+                            size_t data_size) noexcept
         : input_(input), backing_(backing), data_base_(data_base), data_size_(data_size) {}
 
     StatusOr<std::vector<HfSafetensorsEntry>> Parse() {

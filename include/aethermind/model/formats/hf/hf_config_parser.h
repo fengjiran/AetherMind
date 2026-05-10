@@ -15,8 +15,7 @@ struct HfRawConfig {
 
 class HfConfigParser {
 public:
-    static StatusOr<HfRawConfig> ParseMinimal(
-            const std::filesystem::path& config_path);
+    static StatusOr<HfRawConfig> ParseMinimal(const std::filesystem::path& config_path);
 };
 
 }// namespace aethermind

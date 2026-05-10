@@ -27,11 +27,9 @@ struct HfSafetensorsEntry {
 
 class HfSafetensorsIndex {
 public:
-    static StatusOr<HfSafetensorsIndex> LoadSingleFile(
-            const std::filesystem::path& safetensors_path);
+    static StatusOr<HfSafetensorsIndex> LoadSingleFile(const std::filesystem::path& safetensors_path);
 
-    AM_NODISCARD const HfSafetensorsEntry* Find(
-            std::string_view tensor_name) const noexcept;
+    AM_NODISCARD const HfSafetensorsEntry* Find(std::string_view tensor_name) const noexcept;
 
     AM_NODISCARD const std::vector<HfSafetensorsEntry>& Entries() const noexcept {
         return entries_;

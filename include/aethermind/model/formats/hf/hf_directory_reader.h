@@ -29,11 +29,9 @@ struct HfDirectoryLayoutInfo {
     }
 };
 
-class HfDirectoryReader {
-public:
-    static StatusOr<HfDirectoryLayoutInfo> DiscoverLayout(
-            const std::filesystem::path& model_dir);
-};
+namespace hf {
+StatusOr<HfDirectoryLayoutInfo> DiscoverLayout(const std::filesystem::path& model_dir);
+}// namespace hf
 
 }// namespace aethermind
 

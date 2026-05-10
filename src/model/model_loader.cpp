@@ -12,7 +12,7 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
     UNUSED(backend);
     UNUSED(registry);
 
-    const auto layout = HfDirectoryReader::DiscoverLayout(options.model_dir);
+    const auto layout = hf::DiscoverLayout(options.model_dir);
     if (!layout.ok()) {
         return layout.status();
     }

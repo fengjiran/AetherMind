@@ -14,45 +14,42 @@ std::string FormatPathMessage(std::string_view prefix,
 
 }// namespace
 
-StatusOr<HfDirectoryLayoutInfo> HfDirectoryReader::DiscoverLayout(
+StatusOr<HfDirectoryLayoutInfo> hf::DiscoverLayout(
         const std::filesystem::path& model_dir) {
     if (model_dir.empty()) {
         return Status::InvalidArgument("HF model directory path must not be empty");
     }
 
     std::error_code error;
-    if (!std::filesystem::exists(model_dir, error)) {
+    if (!std::filesystem::exists(model_dir, error) || error) {
+        if (error) {
+            return Status::Internal(
+                    FormatPathMessage("Failed to stat HF model directory", model_dir));
+        }
         return Status::NotFound(
                 FormatPathMessage("HF model directory not found", model_dir));
     }
 
-    if (error) {
-        return Status::Internal(
-                FormatPathMessage("Failed to stat HF model directory", model_dir));
-    }
-
-    if (!std::filesystem::is_directory(model_dir, error)) {
+    if (!std::filesystem::is_directory(model_dir, error) || error) {
+        if (error) {
+            return Status::Internal(
+                    FormatPathMessage("Failed to inspect HF model directory type", model_dir));
+        }
         return Status::InvalidArgument(
                 FormatPathMessage("HF model path is not a directory", model_dir));
-    }
-
-    if (error) {
-        return Status::Internal(
-                FormatPathMessage("Failed to inspect HF model directory type", model_dir));
     }
 
     const auto config_path = model_dir / "config.json";
     const auto safetensors_path = model_dir / "model.safetensors";
     const auto safetensors_index_path = model_dir / "model.safetensors.index.json";
 
-    if (!std::filesystem::exists(config_path, error)) {
+    if (!std::filesystem::exists(config_path, error) || error) {
+        if (error) {
+            return Status::Internal(
+                    FormatPathMessage("Failed to stat config.json", config_path));
+        }
         return Status::NotFound(
                 FormatPathMessage("HF model directory is missing config.json", config_path));
-    }
-
-    if (error) {
-        return Status::Internal(
-                FormatPathMessage("Failed to stat config.json", config_path));
     }
 
     const bool has_single_file = std::filesystem::exists(safetensors_path, error);

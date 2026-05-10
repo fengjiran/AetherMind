@@ -1,4 +1,5 @@
 #include "aethermind/model/formats/hf/hf_safetensors_index.h"
+#include "aethermind/model/formats/hf/hf_format_utils.h"
 #include "aethermind/utils/overflow_check.h"
 
 #include <charconv>
@@ -35,41 +36,36 @@ private:
     std::vector<std::byte> bytes_{};
 };
 
-std::string FormatPathMessage(std::string_view prefix,
-                              const std::filesystem::path& path) {
-    return std::string(prefix) + ": " + path.string();
-}
-
 StatusOr<std::vector<std::byte>> ReadFileBytes(const std::filesystem::path& path) {
     std::error_code error;
     if (!std::filesystem::exists(path, error) || error) {
         if (error) {
             return Status::Internal(
-                    FormatPathMessage("Failed to stat safetensors file", path));
+                    hf::FormatPathMessage("Failed to stat safetensors file", path));
         }
         return Status::NotFound(
-                FormatPathMessage("Safetensors file not found", path));
+                hf::FormatPathMessage("Safetensors file not found", path));
     }
 
     if (!std::filesystem::is_regular_file(path, error) || error) {
         if (error) {
             return Status::Internal(
-                    FormatPathMessage("Failed to inspect safetensors file type", path));
+                    hf::FormatPathMessage("Failed to inspect safetensors file type", path));
         }
         return Status::InvalidArgument(
-                FormatPathMessage("Safetensors path is not a regular file", path));
+                hf::FormatPathMessage("Safetensors path is not a regular file", path));
     }
 
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream.is_open()) {
         return Status::Internal(
-                FormatPathMessage("Failed to open safetensors file", path));
+                hf::FormatPathMessage("Failed to open safetensors file", path));
     }
 
     const auto end_pos = stream.tellg();
     if (end_pos < 0) {
         return Status::Internal(
-                FormatPathMessage("Failed to determine safetensors file size", path));
+                hf::FormatPathMessage("Failed to determine safetensors file size", path));
     }
 
     const size_t size = end_pos;
@@ -80,7 +76,7 @@ StatusOr<std::vector<std::byte>> ReadFileBytes(const std::filesystem::path& path
         stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
         if (!stream) {
             return Status::Internal(
-                    FormatPathMessage("Failed to read safetensors file bytes", path));
+                    hf::FormatPathMessage("Failed to read safetensors file bytes", path));
         }
     }
     return bytes;
@@ -110,6 +106,10 @@ StatusOr<DataType> ParseSafetensorsDType(std::string_view dtype_text) {
 
     if (dtype_text.compare("F32") == 0) {
         return DataType::Float32();
+    }
+
+    if (dtype_text.compare("F64") == 0) {
+        return DataType::Float(64);
     }
 
     if (dtype_text.compare("I32") == 0) {
@@ -567,21 +567,21 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
     const auto backing = std::make_shared<OwnedBytesBacking>(std::move(*file_bytes));
     if (backing->size() < sizeof(uint64_t)) {
         return Status::InvalidArgument(
-                FormatPathMessage("Safetensors file is too small", safetensors_path));
+                hf::FormatPathMessage("Safetensors file is too small", safetensors_path));
     }
 
     const auto header_length = ParseLittleEndianU64(
             std::span<const std::byte>(backing->data(), sizeof(uint64_t)));
     if (!header_length.ok()) {
         return Status(StatusCode::kInvalidArgument,
-                      FormatPathMessage(header_length.status().message(), safetensors_path));
+                      hf::FormatPathMessage(header_length.status().message(), safetensors_path));
     }
 
     constexpr uint64_t header_begin = sizeof(uint64_t);
     const uint64_t header_end = header_begin + *header_length;
     if (header_end > backing->size()) {
         return Status::InvalidArgument(
-                FormatPathMessage("Safetensors header length exceeds file size", safetensors_path));
+                hf::FormatPathMessage("Safetensors header length exceeds file size", safetensors_path));
     }
 
     const auto* header_chars = reinterpret_cast<const char*>(backing->data() + header_begin);
@@ -592,7 +592,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
     const auto parsed_entries = SafetensorsHeaderParser(header_json, backing, data_base, data_size).Parse();
     if (!parsed_entries.ok()) {
         return Status(parsed_entries.status().code(),
-                      FormatPathMessage(parsed_entries.status().message(), safetensors_path));
+                      hf::FormatPathMessage(parsed_entries.status().message(), safetensors_path));
     }
 
     HfSafetensorsIndex index;

@@ -1,20 +1,13 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
+#include "aethermind/model/formats/hf/hf_format_utils.h"
 
 #include <string>
 #include <system_error>
 
 namespace aethermind {
+namespace hf {
 
-namespace {
-
-std::string FormatPathMessage(std::string_view prefix,
-                              const std::filesystem::path& path) {
-    return std::string(prefix) + ": " + path.string();
-}
-
-}// namespace
-
-StatusOr<HfDirectoryLayoutInfo> hf::DiscoverLayout(
+StatusOr<HfDirectoryLayoutInfo> DiscoverLayout(
         const std::filesystem::path& model_dir) {
     if (model_dir.empty()) {
         return Status::InvalidArgument("HF model directory path must not be empty");
@@ -90,4 +83,5 @@ StatusOr<HfDirectoryLayoutInfo> hf::DiscoverLayout(
                               model_dir));
 }
 
+}// namespace hf
 }// namespace aethermind

@@ -514,25 +514,10 @@ public:
     }
 
     void push_back(CharT ch) {
-        // clang-format off
-        // if (LayoutPolicy::is_external(storage_)) AM_LIKELY {
-        //     const auto sz = LayoutPolicy::size(storage_);
-        //     if (sz < LayoutPolicy::capacity(storage_)) AM_LIKELY {
-        //         CharT* d = LayoutPolicy::data(storage_);
-        //         d[sz] = ch;
-        //         d[sz + 1] = CharT{};
-        //         LayoutPolicy::SetExternalSize(storage_, sz + 1);
-        //         return;
-        //     }
-        // }
-
-        // Fallback: Small path or slow path
         if (LayoutPolicy::TryPushBackInplace(storage_, ch)) AM_LIKELY {
-            return;
-        }
-        // clang-format on
-
-        PushBackSlowPath(ch);
+                return;
+            }
+        PushBackAfterInplaceFailed(ch);
     }
 
     /// Removes the last character.
@@ -573,26 +558,37 @@ public:
     }
 
 private:
-    void PushBackSlowPath(CharT ch) {
-        const auto cur_sz = LayoutPolicy::size(storage_);
-        const auto new_sz = cur_sz + 1;
-        if (new_sz > LayoutPolicy::capacity(storage_)) {
-            if (LayoutPolicy::is_small(storage_)) {
+    void PushBackAfterInplaceFailed(CharT ch) {
+        switch (LayoutPolicy::category(storage_)) {
+            case LayoutPolicy::Category::kSmall: {
+                constexpr size_type size = LayoutPolicy::kSmallCapacity;
+                const size_type new_sz = size + 1;
                 const size_type new_cap = GrowthPolicy::MinHeapCapacity(new_sz);
                 pointer new_ptr = alloc_helper::traits::allocate(alloc_, AllocationCountForCapacity(new_cap));
-                char_algo::copy(new_ptr, LayoutPolicy::data(storage_), cur_sz);
-                new_ptr[cur_sz] = ch;
+                char_algo::copy(new_ptr, LayoutPolicy::data(storage_), size);
+                new_ptr[size] = ch;
                 new_ptr[new_sz] = char_algo::null_char();
                 LayoutPolicy::InitExternal(storage_, new_ptr, new_sz, new_cap);
                 return;
             }
-            Reallocate(CheckedNextCapacity(capacity(), new_sz));
+            case LayoutPolicy::Category::kExternal: {
+                const size_type size = LayoutPolicy::size(storage_);
+                const size_type cap = LayoutPolicy::capacity(storage_);
+                Reallocate(CheckedNextCapacity(cap, size + 1));
+                pointer d = LayoutPolicy::data(storage_);
+                d[size] = ch;
+                d[size + 1] = CharT{};
+                LayoutPolicy::SetExternalSize(storage_, size + 1);
+                return;
+            }
+            default:
+                break;
         }
-
+        const auto cur_sz = LayoutPolicy::size(storage_);
         pointer d = LayoutPolicy::data(storage_);
         d[cur_sz] = ch;
-        d[new_sz] = CharT{};
-        LayoutPolicy::SetExternalSize(storage_, new_sz);
+        d[cur_sz + 1] = CharT{};
+        LayoutPolicy::SetExternalSize(storage_, cur_sz + 1);
     }
 
     static constexpr bool SwapNoexcept() noexcept {

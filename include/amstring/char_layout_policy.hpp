@@ -71,6 +71,9 @@ struct CharLayoutPolicy {
     static constexpr std::uint8_t kSmallMetaMask = config::kIsLittleEndian ? 0x3FU : 0xFCU;
     static constexpr std::uint8_t kSmallTag = 0x00U;
     static constexpr std::uint8_t kExternalTag = config::kIsLittleEndian ? 0x80U : 0x02U;
+    static constexpr SizeType kCapacityMask = config::kIsLittleEndian
+                                                      ? ~(static_cast<SizeType>(kCategoryMask) << kTagBitShift)
+                                                      : ~static_cast<SizeType>(kCategoryMask);
 
     AM_NODISCARD static bool is_small(const Storage& storage) noexcept {
         const auto probe = GetProbe(storage);
@@ -179,30 +182,72 @@ struct CharLayoutPolicy {
     static bool TryPushBackInplace(Storage& storage, char ch) noexcept {
         const auto probe = GetProbe(storage);
         const auto tag = TagFromProbe(probe);
-        if (tag == kSmallTag) {
-            const SizeType size = DecodeSmallSizeFromMeta(probe);
-            if (size >= kSmallCapacity) {
+        // clang-format off
+        if (tag == kExternalTag) AM_LIKELY {
+            const SizeType size = storage.external.size;
+            if (size >= UnpackCapacity(storage.external.capacity_with_tag)) AM_UNLIKELY {
                 return false;
             }
 
-            storage.small[size] = ch;
-            storage.small[size + 1] = char{};
-            SetSmallProbe(storage, EncodeSmallSizeToProbe(size + 1));
+            storage.external.data[size] = ch;
+            storage.external.data[size + 1] = char{};
+            storage.external.size = size + 1;
             return true;
         }
 
-        if (tag != kExternalTag) {
+        if (tag != kSmallTag) AM_UNLIKELY {
             return false;
         }
 
-        const SizeType size = storage.external.size;
-        if (size >= UnpackCapacity(storage.external.capacity_with_tag)) {
+        const SizeType size = DecodeSmallSizeFromMeta(probe);
+        if (size >= kSmallCapacity) AM_UNLIKELY {
+            return false;
+        }
+        // clang-format on
+
+        storage.small[size] = ch;
+        storage.small[size + 1] = char{};
+        SetSmallProbeUnchecked(storage, EncodeSmallSizeToProbe(size + 1));
+        return true;
+    }
+
+    static bool TryPushBackInplace(Storage& storage, char ch,
+                                   SizeType& out_size, SizeType& out_capacity) noexcept {
+        const auto probe = GetProbe(storage);
+        const auto tag = TagFromProbe(probe);
+        // clang-format off
+        if (tag == kExternalTag) AM_LIKELY {
+            const SizeType size = storage.external.size;
+            const SizeType cap = UnpackCapacity(storage.external.capacity_with_tag);
+            if (size >= cap) AM_UNLIKELY {
+                out_size = size;
+                out_capacity = cap;
+                return false;
+            }
+
+            storage.external.data[size] = ch;
+            storage.external.data[size + 1] = char{};
+            storage.external.size = size + 1;
+            return true;
+        }
+
+        if (tag != kSmallTag) AM_UNLIKELY {
+            out_size = 0;
+            out_capacity = 0;
             return false;
         }
 
-        storage.external.data[size] = ch;
-        storage.external.data[size + 1] = char{};
-        storage.external.size = size + 1;
+        const SizeType size = DecodeSmallSizeFromMeta(probe);
+        if (size >= kSmallCapacity) AM_UNLIKELY {
+            out_size = size;
+            out_capacity = kSmallCapacity;
+            return false;
+        }
+        // clang-format on
+
+        storage.small[size] = ch;
+        storage.small[size + 1] = char{};
+        SetSmallProbeUnchecked(storage, EncodeSmallSizeToProbe(size + 1));
         return true;
     }
 
@@ -229,6 +274,10 @@ struct CharLayoutPolicy {
     static void SetSmallProbe(Storage& storage, SizeType small_meta) noexcept {
         AM_CHECK(is_small(storage));
         AM_CHECK(small_meta <= kSmallCapacity);
+        SetSmallProbeUnchecked(storage, small_meta);
+    }
+
+    static void SetSmallProbeUnchecked(Storage& storage, SizeType small_meta) noexcept {
         const auto encoded = config::kIsLittleEndian ? static_cast<std::uint8_t>(small_meta)
                                                      : static_cast<std::uint8_t>(small_meta << kCategoryBits);
         storage.raw[kProbeByteOffset] = static_cast<std::byte>(encoded);
@@ -247,11 +296,7 @@ struct CharLayoutPolicy {
     }
 
     AM_NODISCARD static constexpr SizeType CapacityMask() noexcept {
-        if constexpr (config::kIsLittleEndian) {
-            return ~(static_cast<SizeType>(kCategoryMask) << kTagBitShift);
-        } else {
-            return ~static_cast<SizeType>(kCategoryMask);
-        }
+        return kCapacityMask;
     }
 
     AM_NODISCARD static SizeType PackCapacityWithTag(SizeType capacity) noexcept {
@@ -265,7 +310,7 @@ struct CharLayoutPolicy {
 
     AM_NODISCARD static SizeType UnpackCapacity(SizeType capacity_with_tag) noexcept {
         if constexpr (config::kIsLittleEndian) {
-            return capacity_with_tag & CapacityMask();
+            return capacity_with_tag & kCapacityMask;
         } else {
             return capacity_with_tag >> kCategoryBits;
         }

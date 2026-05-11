@@ -514,9 +514,11 @@ public:
     }
 
     void push_back(CharT ch) {
+        // clang-format off
         if (LayoutPolicy::TryPushBackInplace(storage_, ch)) AM_LIKELY {
-                return;
-            }
+            return;
+        }
+        // clang-format on
         PushBackAfterInplaceFailed(ch);
     }
 

@@ -37,6 +37,10 @@ bool HfJsonReader::Expect(char expected) noexcept {
 
 bool HfJsonReader::ConsumeLiteral(std::string_view literal) noexcept {
     SkipWhitespace();
+    if (position_ + literal.size() > input_.size()) {
+        return false;
+    }
+
     if (input_.substr(position_, literal.size()) == literal) {
         position_ += literal.size();
         return true;
@@ -183,16 +187,14 @@ Status HfJsonReader::SkipValueInternal(uint32_t depth) {
     }
 
     if (cur == '"') {
-        const auto string_value = ParseString();
-        if (!string_value.ok()) {
+        if (const auto string_value = ParseString(); !string_value.ok()) {
             return string_value.status();
         }
         return Status::Ok();
     }
 
     if (std::isdigit(static_cast<unsigned char>(cur)) || cur == '-' || cur == '+') {
-        const auto number = ParseInt64();
-        if (!number.ok()) {
+        if (const auto number = ParseInt64(); !number.ok()) {
             return number.status();
         }
         return Status::Ok();

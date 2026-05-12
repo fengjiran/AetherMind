@@ -1,0 +1,37 @@
+#ifndef AETHERMIND_MODEL_FORMATS_HF_HF_JSON_READER_H
+#define AETHERMIND_MODEL_FORMATS_HF_HF_JSON_READER_H
+
+#include "aethermind/base/status.h"
+
+#include <cstdint>
+#include <string>
+#include <string_view>
+
+namespace aethermind {
+namespace hf {
+
+class HfJsonReader {
+public:
+    explicit HfJsonReader(std::string_view input) noexcept;
+
+    void SkipWhitespace() noexcept;
+
+    AM_NODISCARD bool AtEnd() const noexcept;
+
+    bool Consume(char expected) noexcept;
+    bool Expect(char expected) noexcept;
+    bool ConsumeLiteral(std::string_view literal) noexcept;
+
+    StatusOr<std::string> ParseString();
+    StatusOr<int64_t> ParseInt64();
+    Status SkipValue();
+
+protected:
+    std::string_view input_;
+    size_t position_ = 0;
+};
+
+}// namespace hf
+}// namespace aethermind
+
+#endif

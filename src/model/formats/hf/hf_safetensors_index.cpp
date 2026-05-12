@@ -1,8 +1,8 @@
 #include "aethermind/model/formats/hf/hf_safetensors_index.h"
 #include "aethermind/model/formats/hf/hf_format_utils.h"
+#include "aethermind/model/formats/hf/hf_json_reader.h"
 #include "aethermind/utils/overflow_check.h"
 
-#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -95,28 +95,28 @@ StatusOr<uint64_t> ParseLittleEndianU64(std::span<const std::byte> bytes) {
     return value;
 }
 
-StatusOr<DataType> ParseSafetensorsDType(std::string_view dtype_text) {
-    if (dtype_text.compare("F16") == 0) {
+StatusOr<DataType> ParseSafetensorsDType(const std::string& dtype_text) {
+    if (dtype_text == "F16") {
         return DataType::Float(16);
     }
 
-    if (dtype_text.compare("BF16") == 0) {
+    if (dtype_text == "BF16") {
         return DataType::BFloat(16);
     }
 
-    if (dtype_text.compare("F32") == 0) {
+    if (dtype_text == "F32") {
         return DataType::Float32();
     }
 
-    if (dtype_text.compare("F64") == 0) {
+    if (dtype_text == "F64") {
         return DataType::Float(64);
     }
 
-    if (dtype_text.compare("I32") == 0) {
+    if (dtype_text == "I32") {
         return DataType::Int(32);
     }
 
-    if (dtype_text.compare("I64") == 0) {
+    if (dtype_text == "I64") {
         return DataType::Int(64);
     }
 
@@ -133,19 +133,22 @@ StatusOr<uint64_t> CheckedMultiply(uint64_t lhs, uint64_t rhs, std::string_view 
     return product;
 }
 
-class SafetensorsHeaderParser {
+}// namespace
+
+namespace hf {
+
+class SafetensorsHeaderParser : public HfJsonReader {
 public:
     SafetensorsHeaderParser(std::string_view input,
                             const std::shared_ptr<const RawTensorBacking>& backing,
                             const std::byte* data_base,
                             size_t data_size) noexcept
-        : input_(input), backing_(backing), data_base_(data_base), data_size_(data_size) {}
+        : HfJsonReader(input), backing_(backing), data_base_(data_base), data_size_(data_size) {}
 
     StatusOr<std::vector<HfSafetensorsEntry>> Parse() {
         SkipWhitespace();
         if (!Consume('{')) {
-            return Status::InvalidArgument(
-                    "Safetensors header must start with a JSON object");
+            return Status::InvalidArgument("Safetensors header must start with a JSON object");
         }
 
         std::vector<HfSafetensorsEntry> entries;
@@ -160,7 +163,7 @@ public:
                 return key.status();
             }
 
-            if (!Expect(':', "Expected ':' after safetensors header key")) {
+            if (!Expect(':')) {
                 return Status::InvalidArgument("Expected ':' after safetensors header key");
             }
 
@@ -173,7 +176,8 @@ public:
                 HfSafetensorsEntry entry;
                 const Status entry_status = ParseTensorEntry(*key, &entry);
                 if (!entry_status.ok()) {
-                    return entry_status;
+                    return Status(entry_status.code(),
+                                  std::string("Safetensors tensor '") + *key + "': " + entry_status.message());
                 }
                 entries.push_back(std::move(entry));
             }
@@ -182,7 +186,7 @@ public:
             if (Consume('}')) {
                 break;
             }
-            if (!Expect(',', "Expected ',' between safetensors header entries")) {
+            if (!Expect(',')) {
                 return Status::InvalidArgument("Expected ',' between safetensors header entries");
             }
         }
@@ -197,7 +201,7 @@ public:
 
 private:
     Status ParseTensorEntry(const std::string& name, HfSafetensorsEntry* entry) {
-        if (!Expect('{', "Expected '{' at start of safetensors tensor entry")) {
+        if (!Expect('{')) {
             return Status::InvalidArgument("Expected '{' at start of safetensors tensor entry");
         }
 
@@ -212,7 +216,7 @@ private:
                 if (!key.ok()) {
                     return key.status();
                 }
-                if (!Expect(':', "Expected ':' after safetensors tensor field name")) {
+                if (!Expect(':')) {
                     return Status::InvalidArgument("Expected ':' after safetensors tensor field name");
                 }
 
@@ -249,7 +253,7 @@ private:
                 if (Consume('}')) {
                     break;
                 }
-                if (!Expect(',', "Expected ',' between safetensors tensor fields")) {
+                if (!Expect(',')) {
                     return Status::InvalidArgument("Expected ',' between safetensors tensor fields");
                 }
             }
@@ -309,7 +313,7 @@ private:
     }
 
     StatusOr<std::vector<int64_t>> ParseInt64Array() {
-        if (!Expect('[', "Expected '[' at start of integer array")) {
+        if (!Expect('[')) {
             return Status::InvalidArgument("Expected '[' at start of integer array");
         }
 
@@ -330,7 +334,7 @@ private:
             if (Consume(']')) {
                 break;
             }
-            if (!Expect(',', "Expected ',' between integer array elements")) {
+            if (!Expect(',')) {
                 return Status::InvalidArgument("Expected ',' between integer array elements");
             }
         }
@@ -338,7 +342,7 @@ private:
     }
 
     StatusOr<std::pair<uint64_t, uint64_t>> ParseOffsetPair() {
-        if (!Expect('[', "Expected '[' at start of data_offsets")) {
+        if (!Expect('[')) {
             return Status::InvalidArgument("Expected '[' at start of data_offsets");
         }
 
@@ -346,7 +350,7 @@ private:
         if (!first.ok()) {
             return first.status();
         }
-        if (!Expect(',', "Expected ',' between data_offsets values")) {
+        if (!Expect(',')) {
             return Status::InvalidArgument("Expected ',' between data_offsets values");
         }
         const auto second = ParseUInt64();
@@ -361,77 +365,6 @@ private:
         return std::make_pair(*first, *second);
     }
 
-    StatusOr<std::string> ParseString() {
-        SkipWhitespace();
-        if (AtEnd() || input_[position_] != '"') {
-            return Status::InvalidArgument("Expected JSON string");
-        }
-        ++position_;
-
-        std::string result;
-        while (!AtEnd()) {
-            const char current = input_[position_++];
-            if (current == '"') {
-                return result;
-            }
-            if (current == '\\') {
-                if (AtEnd()) {
-                    return Status::InvalidArgument("Unexpected end of JSON escape sequence");
-                }
-                const char escaped = input_[position_++];
-                switch (escaped) {
-                    case '"':
-                    case '\\':
-                    case '/':
-                        result.push_back(escaped);
-                        break;
-                    case 'b':
-                        result.push_back('\b');
-                        break;
-                    case 'f':
-                        result.push_back('\f');
-                        break;
-                    case 'n':
-                        result.push_back('\n');
-                        break;
-                    case 'r':
-                        result.push_back('\r');
-                        break;
-                    case 't':
-                        result.push_back('\t');
-                        break;
-                    default:
-                        return Status::InvalidArgument("Unsupported JSON escape sequence in safetensors header");
-                }
-                continue;
-            }
-            result.push_back(current);
-        }
-        return Status::InvalidArgument("Unterminated JSON string in safetensors header");
-    }
-
-    StatusOr<int64_t> ParseInt64() {
-        SkipWhitespace();
-        const size_t start = position_;
-        if (!AtEnd() && (input_[position_] == '-' || input_[position_] == '+')) {
-            ++position_;
-        }
-        while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
-            ++position_;
-        }
-        if (start == position_ || (position_ == start + 1 && (input_[start] == '-' || input_[start] == '+'))) {
-            return Status::InvalidArgument("Expected integer value in safetensors header");
-        }
-
-        int64_t value = 0;
-        const auto token = input_.substr(start, position_ - start);
-        const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
-        if (ec != std::errc{} || ptr != token.data() + token.size()) {
-            return Status::InvalidArgument("Invalid integer value in safetensors header");
-        }
-        return value;
-    }
-
     StatusOr<uint64_t> ParseUInt64() {
         const auto parsed = ParseInt64();
         if (!parsed.ok()) {
@@ -443,119 +376,12 @@ private:
         return static_cast<uint64_t>(*parsed);
     }
 
-    Status SkipValue() {
-        SkipWhitespace();
-        if (AtEnd()) {
-            return Status::InvalidArgument("Unexpected end of JSON while skipping value");
-        }
-
-        const char current = input_[position_];
-        if (current == '{') {
-            ++position_;
-            SkipWhitespace();
-            if (Consume('}')) {
-                return Status::Ok();
-            }
-            while (true) {
-                const auto key = ParseString();
-                if (!key.ok()) {
-                    return key.status();
-                }
-                if (!Expect(':', "Expected ':' inside JSON object while skipping value")) {
-                    return Status::InvalidArgument("Expected ':' inside JSON object while skipping value");
-                }
-                AM_RETURN_IF_ERROR(SkipValue());
-                SkipWhitespace();
-                if (Consume('}')) {
-                    return Status::Ok();
-                }
-                if (!Expect(',', "Expected ',' inside JSON object while skipping value")) {
-                    return Status::InvalidArgument("Expected ',' inside JSON object while skipping value");
-                }
-            }
-        }
-
-        if (current == '[') {
-            ++position_;
-            SkipWhitespace();
-            if (Consume(']')) {
-                return Status::Ok();
-            }
-            while (true) {
-                AM_RETURN_IF_ERROR(SkipValue());
-                SkipWhitespace();
-                if (Consume(']')) {
-                    return Status::Ok();
-                }
-                if (!Expect(',', "Expected ',' inside JSON array while skipping value")) {
-                    return Status::InvalidArgument("Expected ',' inside JSON array while skipping value");
-                }
-            }
-        }
-
-        if (current == '"') {
-            const auto string_value = ParseString();
-            if (!string_value.ok()) {
-                return string_value.status();
-            }
-            return Status::Ok();
-        }
-
-        if (std::isdigit(static_cast<unsigned char>(current)) || current == '-' || current == '+') {
-            const auto number = ParseInt64();
-            if (!number.ok()) {
-                return number.status();
-            }
-            return Status::Ok();
-        }
-
-        if (ConsumeLiteral("true") || ConsumeLiteral("false") || ConsumeLiteral("null")) {
-            return Status::Ok();
-        }
-
-        return Status::InvalidArgument("Unsupported JSON value while skipping safetensors metadata");
-    }
-
-    void SkipWhitespace() noexcept {
-        while (!AtEnd() && std::isspace(static_cast<unsigned char>(input_[position_]))) {
-            ++position_;
-        }
-    }
-
-    AM_NODISCARD bool AtEnd() const noexcept {
-        return position_ >= input_.size();
-    }
-
-    bool Consume(char expected) noexcept {
-        SkipWhitespace();
-        if (!AtEnd() && input_[position_] == expected) {
-            ++position_;
-            return true;
-        }
-        return false;
-    }
-
-    bool Expect(char expected, std::string_view) noexcept {
-        return Consume(expected);
-    }
-
-    bool ConsumeLiteral(std::string_view literal) noexcept {
-        SkipWhitespace();
-        if (input_.substr(position_, literal.size()) == literal) {
-            position_ += literal.size();
-            return true;
-        }
-        return false;
-    }
-
-    std::string_view input_;
     std::shared_ptr<const RawTensorBacking> backing_{};
     const std::byte* data_base_ = nullptr;
     size_t data_size_ = 0;
-    size_t position_ = 0;
 };
 
-}// namespace
+}// namespace hf
 
 StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
         const std::filesystem::path& safetensors_path) {
@@ -589,7 +415,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
     const std::byte* data_base = backing->data() + header_end;
     const size_t data_size = backing->size() - static_cast<size_t>(header_end);
 
-    const auto parsed_entries = SafetensorsHeaderParser(header_json, backing, data_base, data_size).Parse();
+    const auto parsed_entries = hf::SafetensorsHeaderParser(header_json, backing, data_base, data_size).Parse();
     if (!parsed_entries.ok()) {
         return Status(parsed_entries.status().code(),
                       hf::FormatPathMessage(parsed_entries.status().message(), safetensors_path));

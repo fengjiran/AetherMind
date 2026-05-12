@@ -136,6 +136,30 @@ StatusOr<DataType> ParseSafetensorsDType(const std::string& dtype_text) {
         return DataType::UInt(8);
     }
 
+    if (dtype_text == "U16") {
+        return DataType::UInt(16);
+    }
+
+    if (dtype_text == "U32") {
+        return DataType::UInt(32);
+    }
+
+    if (dtype_text == "U64") {
+        return DataType::UInt(64);
+    }
+
+    if (dtype_text == "BOOL") {
+        return DataType::Bool();
+    }
+
+    if (dtype_text == "F8_E5M2") {
+        return DataType::Float8E5M2();
+    }
+
+    if (dtype_text == "F8_E4M3") {
+        return DataType::Float8E4M3();
+    }
+
     return Status::InvalidArgument(
             std::string("Unsupported safetensors dtype: ") + std::string(dtype_text));
 }
@@ -160,8 +184,8 @@ public:
                             const std::byte* data_base,
                             size_t data_size) noexcept
         : HfJsonReader(input), backing_(backing), data_base_(data_base), data_size_(data_size) {
-        AM_DCHECK(data_base_ != nullptr || data_size_ == 0,
-                  "data_base_ is null but data_size_ is non-zero");
+        AM_CHECK(data_base_ != nullptr || data_size_ == 0,
+                 "data_base_ is null but data_size_ is non-zero");
     }
 
     StatusOr<std::vector<HfSafetensorsEntry>> Parse() {
@@ -221,24 +245,29 @@ public:
         }
 
         if (data_size_ > 0 || !entries.empty()) {
-            std::ranges::sort(entries,
-                              [](const HfSafetensorsEntry& a, const HfSafetensorsEntry& b) noexcept {
-                                  return a.data_offset_begin < b.data_offset_begin;
+            std::vector<const HfSafetensorsEntry*> sorted;
+            sorted.reserve(entries.size());
+            for (const auto& e: entries) {
+                sorted.push_back(&e);
+            }
+            std::ranges::sort(sorted,
+                              [](const HfSafetensorsEntry* a, const HfSafetensorsEntry* b) noexcept {
+                                  return a->data_offset_begin < b->data_offset_begin;
                               });
 
-            for (size_t i = 0; i < entries.size(); ++i) {
-                if (i == 0 && entries[i].data_offset_begin != 0) {
+            for (size_t i = 0; i < sorted.size(); ++i) {
+                if (i == 0 && sorted[i]->data_offset_begin != 0) {
                     return Status::InvalidArgument(
                             "First safetensors tensor data_offset_begin is not 0");
                 }
 
-                if (i > 0 && entries[i].data_offset_begin != entries[i - 1].data_offset_end) {
+                if (i > 0 && sorted[i]->data_offset_begin != sorted[i - 1]->data_offset_end) {
                     return Status::InvalidArgument(
                             "Safetensors tensor data_offsets overlap or contain gaps");
                 }
             }
 
-            if (entries.back().data_offset_end != data_size_) {
+            if (sorted.back()->data_offset_end != data_size_) {
                 return Status::InvalidArgument(
                         "Last safetensors tensor data_offset_end does not cover entire data region");
             }
@@ -334,14 +363,16 @@ private:
                 return Status::InvalidArgument("Safetensors tensor entry has negative shape dimension");
             }
 
-            const auto updated_numel = CheckedMultiply(numel, static_cast<uint64_t>(dim), "safetensors shape");
+            const auto updated_numel = CheckedMultiply(numel,
+                                                       static_cast<uint64_t>(dim), "safetensors shape");
             if (!updated_numel.ok()) {
                 return updated_numel.status();
             }
             numel = *updated_numel;
         }
 
-        const auto expected_nbytes = CheckedMultiply(numel, static_cast<uint64_t>(dtype->nbytes()), "safetensors tensor byte size");
+        const auto expected_nbytes = CheckedMultiply(numel,
+                                                     static_cast<uint64_t>(dtype->nbytes()), "safetensors tensor byte size");
         if (!expected_nbytes.ok()) {
             return expected_nbytes.status();
         }
@@ -465,7 +496,12 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
     }
 
     constexpr uint64_t header_begin = sizeof(uint64_t);
-    const uint64_t header_end = header_begin + *header_length;
+    uint64_t header_end = 0;
+    if (CheckOverflowAdd(header_begin, *header_length, &header_end)) {
+        return Status::InvalidArgument(
+                hf::FormatPathMessage("Safetensors header length overflow", safetensors_path));
+    }
+
     if (header_end > backing->size()) {
         return Status::InvalidArgument(
                 hf::FormatPathMessage("Safetensors header length exceeds file size", safetensors_path));
@@ -474,7 +510,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
     const auto* header_chars = reinterpret_cast<const char*>(backing->data() + header_begin);
     const std::string_view header_json(header_chars, *header_length);
     const std::byte* data_base = backing->data() + header_end;
-    const size_t data_size = backing->size() - static_cast<size_t>(header_end);
+    const size_t data_size = backing->size() - header_end;
 
     const auto parsed_entries = hf::SafetensorsHeaderParser(header_json, backing, data_base, data_size).Parse();
     if (!parsed_entries.ok()) {

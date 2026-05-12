@@ -193,7 +193,7 @@ Status HfJsonReader::SkipValueInternal(uint32_t depth) {
         return Status::Ok();
     }
 
-    if (std::isdigit(static_cast<unsigned char>(cur)) || cur == '-' || cur == '+') {
+    if (std::isdigit(static_cast<unsigned char>(cur)) || cur == '-') {
         if (const auto number = ParseInt64(); !number.ok()) {
             return number.status();
         }

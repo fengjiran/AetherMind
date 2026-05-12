@@ -102,6 +102,12 @@ struct GenericLayoutPolicy {
         kInvalid, // probe outside valid range; indicates corruption.
     };
 
+    struct DecodedProbe {
+        Category category;
+        SizeType size;
+        SizeType capacity;
+    };
+
     static_assert(sizeof(Storage) == sizeof(ExternalRep));
 
     static constexpr SizeType kStorageBytes = sizeof(ExternalRep);
@@ -127,9 +133,25 @@ struct GenericLayoutPolicy {
         return GetProbe(storage) <= static_cast<ProbeWordType>(kSmallCapacity);
     }
 
+    AM_NODISCARD static bool is_small(ProbeWordType probe) noexcept {
+        return probe <= static_cast<ProbeWordType>(kSmallCapacity);
+    }
+
+    AM_NODISCARD static bool is_small(DecodedProbe decoded) noexcept {
+        return decoded.category == Category::kSmall;
+    }
+
     /// Returns true if storage uses external heap buffer.
     AM_NODISCARD static bool is_external(const Storage& storage) noexcept {
         return GetProbe(storage) == kExternalTag;
+    }
+
+    AM_NODISCARD static bool is_external(ProbeWordType probe) noexcept {
+        return probe == kExternalTag;
+    }
+
+    AM_NODISCARD static bool is_external(DecodedProbe decoded) noexcept {
+        return decoded.category == Category::kExternal;
     }
 
     /// Returns category based on probe value; kInvalid indicates corruption.
@@ -144,6 +166,22 @@ struct GenericLayoutPolicy {
         }
 
         return Category::kInvalid;
+    }
+
+    AM_NODISCARD static DecodedProbe DecodeProbe(const Storage& storage) noexcept {
+        const auto probe = GetProbe(storage);
+        if (probe <= static_cast<ProbeWordType>(kSmallCapacity)) {
+            // NOLINTNEXTLINE(modernize-use-designated-initializers)
+            return DecodedProbe{Category::kSmall, DecodeSmallSizeFromProbe(probe), kSmallCapacity};
+        }
+
+        if (probe == kExternalTag) {
+            // NOLINTNEXTLINE(modernize-use-designated-initializers)
+            return DecodedProbe{Category::kExternal, storage.external.size, UnpackCapacity(storage.external.capacity_with_tag)};
+        }
+
+        // NOLINTNEXTLINE(modernize-use-designated-initializers)
+        return DecodedProbe{Category::kInvalid, 0, 0};
     }
 
     /// Maximum capacity that can be encoded in capacity_with_tag payload bits.
@@ -162,9 +200,29 @@ struct GenericLayoutPolicy {
         return is_small(storage) ? storage.small : storage.external.data;
     }
 
+    AM_NODISCARD static const CharT* data(const Storage& storage, DecodedProbe decoded) noexcept {
+        if (decoded.category == Category::kSmall) {
+            return storage.small;
+        }
+        if (decoded.category == Category::kExternal) {
+            return storage.external.data;
+        }
+        return nullptr;
+    }
+
     /// Returns mutable pointer to character data.
     AM_NODISCARD static CharT* data(Storage& storage) noexcept {
         return is_small(storage) ? storage.small : storage.external.data;
+    }
+
+    AM_NODISCARD static CharT* data(Storage& storage, DecodedProbe decoded) noexcept {
+        if (decoded.category == Category::kSmall) {
+            return storage.small;
+        }
+        if (decoded.category == Category::kExternal) {
+            return storage.external.data;
+        }
+        return nullptr;
     }
 
     /// Returns current size; decoded from probe for Small, from external.size for External.
@@ -176,12 +234,20 @@ struct GenericLayoutPolicy {
         return storage.external.size;
     }
 
+    AM_NODISCARD static SizeType size(DecodedProbe decoded) noexcept {
+        return decoded.size;
+    }
+
     /// Returns capacity; fixed kSmallCapacity for Small, unpacked for External.
     AM_NODISCARD static SizeType capacity(const Storage& storage) noexcept {
         if (is_small(storage)) {
             return kSmallCapacity;
         }
         return UnpackCapacity(storage.external.capacity_with_tag);
+    }
+
+    AM_NODISCARD static SizeType capacity(DecodedProbe decoded) noexcept {
+        return decoded.capacity;
     }
 
     /// Initializes empty Small string (size=0, probe=kSmallCapacity).
@@ -266,6 +332,37 @@ struct GenericLayoutPolicy {
         }
 
         const SizeType size = DecodeSmallSizeFromProbe(probe);
+        if (size >= kSmallCapacity) AM_UNLIKELY {
+            return false;
+        }
+        // clang-format on
+
+        storage.small[size] = ch;
+        storage.small[size + 1] = CharT{};
+        SetProbe(storage, static_cast<ProbeWordType>(EncodeSmallSizeToProbe(size + 1)));
+        return true;
+    }
+
+    static bool TryPushBackInplace(Storage& storage, CharT ch, DecodedProbe decoded) noexcept {
+        // clang-format off
+        if (decoded.category == Category::kExternal) AM_LIKELY {
+            const SizeType size = decoded.size;
+            if (size >= decoded.capacity) AM_UNLIKELY {
+                return false;
+            }
+
+            CharT* data = storage.external.data;
+            data[size] = ch;
+            data[size + 1] = CharT{};
+            storage.external.size = size + 1;
+            return true;
+        }
+
+        if (decoded.category != Category::kSmall) AM_UNLIKELY {
+            return false;
+        }
+
+        const SizeType size = decoded.size;
         if (size >= kSmallCapacity) AM_UNLIKELY {
             return false;
         }

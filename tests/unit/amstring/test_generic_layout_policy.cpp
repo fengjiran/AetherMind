@@ -83,6 +83,31 @@ TYPED_TEST(GenericLayoutPolicyTest, InitSmallCopiesDataAndEncodesSize) {
     Policy::CheckInvariants(storage);
 }
 
+TYPED_TEST(GenericLayoutPolicyTest, DecodeProbeReturnsSmallState) {
+    using CharT = TypeParam;
+    using Policy = GenericLayoutPolicy<CharT>;
+    typename Policy::Storage storage;
+    constexpr std::size_t kSize = Policy::kSmallCapacity > 2 ? 2 : 1;
+    const std::array<CharT, 2> source{static_cast<CharT>(1), static_cast<CharT>(2)};
+
+    Policy::InitSmall(storage, source.data(), kSize);
+
+    const auto decoded = Policy::DecodeProbe(storage);
+    EXPECT_EQ(decoded.category, Policy::Category::kSmall);
+    EXPECT_EQ(decoded.size, kSize);
+    EXPECT_EQ(decoded.capacity, Policy::kSmallCapacity);
+    EXPECT_TRUE(Policy::is_small(decoded));
+    EXPECT_FALSE(Policy::is_external(decoded));
+    EXPECT_EQ(Policy::size(decoded), kSize);
+    EXPECT_EQ(Policy::capacity(decoded), Policy::kSmallCapacity);
+    EXPECT_EQ(Policy::data(storage, decoded), storage.small);
+
+    EXPECT_TRUE(Policy::TryPushBackInplace(storage, static_cast<CharT>(3), decoded));
+    EXPECT_EQ(Policy::size(storage), kSize + 1);
+    EXPECT_EQ(Policy::data(storage)[kSize], static_cast<CharT>(3));
+    EXPECT_EQ(Policy::data(storage)[kSize + 1], CharT{});
+}
+
 TYPED_TEST(GenericLayoutPolicyTest, SetSmallSizeMaintainsTerminatorAndProbeMeta) {
     using CharT = TypeParam;
     using Policy = GenericLayoutPolicy<CharT>;
@@ -124,6 +149,32 @@ TYPED_TEST(GenericLayoutPolicyTest, InitExternalPacksTagAndCapacity) {
     Policy::CheckInvariants(storage);
 }
 
+TYPED_TEST(GenericLayoutPolicyTest, DecodeProbeReturnsExternalState) {
+    using CharT = TypeParam;
+    using Policy = GenericLayoutPolicy<CharT>;
+    typename Policy::Storage storage;
+    std::array<CharT, 9> buffer{};
+    constexpr std::size_t kSize = 3;
+    constexpr std::size_t kCapacity = 8;
+
+    Policy::InitExternal(storage, buffer.data(), kSize, kCapacity);
+
+    const auto decoded = Policy::DecodeProbe(storage);
+    EXPECT_EQ(decoded.category, Policy::Category::kExternal);
+    EXPECT_EQ(decoded.size, kSize);
+    EXPECT_EQ(decoded.capacity, kCapacity);
+    EXPECT_FALSE(Policy::is_small(decoded));
+    EXPECT_TRUE(Policy::is_external(decoded));
+    EXPECT_EQ(Policy::size(decoded), kSize);
+    EXPECT_EQ(Policy::capacity(decoded), kCapacity);
+    EXPECT_EQ(Policy::data(storage, decoded), buffer.data());
+
+    EXPECT_TRUE(Policy::TryPushBackInplace(storage, static_cast<CharT>(14), decoded));
+    EXPECT_EQ(Policy::size(storage), kSize + 1);
+    EXPECT_EQ(buffer[kSize], static_cast<CharT>(14));
+    EXPECT_EQ(buffer[kSize + 1], CharT{});
+}
+
 TYPED_TEST(GenericLayoutPolicyTest, SetExternalSizeAndCapacityMaintainExternalState) {
     using CharT = TypeParam;
     using Policy = GenericLayoutPolicy<CharT>;
@@ -162,6 +213,17 @@ TYPED_TEST(GenericLayoutPolicyTest, InvalidProbeMetaProducesInvalidCategory) {
     EXPECT_FALSE(Policy::is_small(storage));
     EXPECT_FALSE(Policy::is_external(storage));
     EXPECT_EQ(Policy::category(storage), Policy::Category::kInvalid);
+
+    const auto decoded = Policy::DecodeProbe(storage);
+    EXPECT_EQ(decoded.category, Policy::Category::kInvalid);
+    EXPECT_EQ(decoded.size, 0U);
+    EXPECT_EQ(decoded.capacity, 0U);
+    EXPECT_FALSE(Policy::is_small(decoded));
+    EXPECT_FALSE(Policy::is_external(decoded));
+    EXPECT_EQ(Policy::size(decoded), 0U);
+    EXPECT_EQ(Policy::capacity(decoded), 0U);
+    EXPECT_EQ(Policy::data(storage, decoded), nullptr);
+    EXPECT_FALSE(Policy::TryPushBackInplace(storage, static_cast<TypeParam>(1), decoded));
 }
 
 TYPED_TEST(GenericLayoutPolicyTest, CheckInvariantsRejectsInvalidCategory) {

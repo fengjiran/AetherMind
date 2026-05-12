@@ -81,6 +81,28 @@ TEST(CharLayoutPolicyTest, InitSmallCopiesDataAndEncodesSize) {
     Policy::CheckInvariants(storage);
 }
 
+TEST(CharLayoutPolicyTest, DecodeProbeReturnsSmallState) {
+    Policy::Storage storage;
+    constexpr std::array<char, 5> kSource{'a', 'm', 's', 't', 'r'};
+
+    Policy::InitSmall(storage, kSource.data(), kSource.size());
+
+    const auto decoded = Policy::DecodeProbe(storage);
+    EXPECT_EQ(decoded.category, Policy::Category::kSmall);
+    EXPECT_EQ(decoded.size, kSource.size());
+    EXPECT_EQ(decoded.capacity, Policy::kSmallCapacity);
+    EXPECT_TRUE(Policy::is_small(decoded));
+    EXPECT_FALSE(Policy::is_external(decoded));
+    EXPECT_EQ(Policy::size(decoded), kSource.size());
+    EXPECT_EQ(Policy::capacity(decoded), Policy::kSmallCapacity);
+    EXPECT_EQ(Policy::data(storage, decoded), storage.small);
+
+    EXPECT_TRUE(Policy::TryPushBackInplace(storage, 'x', decoded));
+    EXPECT_EQ(Policy::size(storage), kSource.size() + 1);
+    EXPECT_EQ(Policy::data(storage)[kSource.size()], 'x');
+    EXPECT_EQ(Policy::data(storage)[kSource.size() + 1], char{});
+}
+
 TEST(CharLayoutPolicyTest, InitSmallRejectsNullSourceForNonEmptySize) {
     Policy::Storage storage;
 
@@ -142,6 +164,30 @@ TEST(CharLayoutPolicyTest, InitExternalPacksMarkerAndCapacity) {
     Policy::CheckInvariants(storage);
 }
 
+TEST(CharLayoutPolicyTest, DecodeProbeReturnsExternalState) {
+    Policy::Storage storage;
+    std::array<char, 9> buffer{};
+    constexpr std::size_t kSize = 3;
+    constexpr std::size_t kCapacity = 8;
+
+    Policy::InitExternal(storage, buffer.data(), kSize, kCapacity);
+
+    const auto decoded = Policy::DecodeProbe(storage);
+    EXPECT_EQ(decoded.category, Policy::Category::kExternal);
+    EXPECT_EQ(decoded.size, kSize);
+    EXPECT_EQ(decoded.capacity, kCapacity);
+    EXPECT_FALSE(Policy::is_small(decoded));
+    EXPECT_TRUE(Policy::is_external(decoded));
+    EXPECT_EQ(Policy::size(decoded), kSize);
+    EXPECT_EQ(Policy::capacity(decoded), kCapacity);
+    EXPECT_EQ(Policy::data(storage, decoded), buffer.data());
+
+    EXPECT_TRUE(Policy::TryPushBackInplace(storage, 'x', decoded));
+    EXPECT_EQ(Policy::size(storage), kSize + 1);
+    EXPECT_EQ(buffer[kSize], 'x');
+    EXPECT_EQ(buffer[kSize + 1], char{});
+}
+
 TEST(CharLayoutPolicyTest, SetExternalSizeAndCapacityMaintainExternalState) {
     Policy::Storage storage;
     std::array<char, 17> buffer{};
@@ -186,13 +232,25 @@ TEST(CharLayoutPolicyTest, MaxExternalCapacityMatchesPayloadBits) {
 
 TEST(CharLayoutPolicyTest, InvalidMarkerProducesInvalidCategory) {
     Policy::Storage storage;
+    std::array<char, 2> buffer{};
 
-    Policy::InitEmpty(storage);
+    Policy::InitExternal(storage, buffer.data(), 0, 1);
     WriteProbeByte(storage, config::kIsLittleEndian ? 0x40U : 0x01U);
 
     EXPECT_FALSE(Policy::is_small(storage));
     EXPECT_FALSE(Policy::is_external(storage));
     EXPECT_EQ(Policy::category(storage), Policy::Category::kInvalid);
+
+    const auto decoded = Policy::DecodeProbe(storage);
+    EXPECT_EQ(decoded.category, Policy::Category::kInvalid);
+    EXPECT_EQ(decoded.size, 0U);
+    EXPECT_EQ(decoded.capacity, 0U);
+    EXPECT_FALSE(Policy::is_small(decoded));
+    EXPECT_FALSE(Policy::is_external(decoded));
+    EXPECT_EQ(Policy::size(decoded), 0U);
+    EXPECT_EQ(Policy::capacity(decoded), 0U);
+    EXPECT_EQ(Policy::data(storage, decoded), nullptr);
+    EXPECT_FALSE(Policy::TryPushBackInplace(storage, 'x', decoded));
 }
 
 TEST(CharLayoutPolicyTest, InvalidSmallMetaProducesInvalidCategory) {
@@ -204,6 +262,11 @@ TEST(CharLayoutPolicyTest, InvalidSmallMetaProducesInvalidCategory) {
     EXPECT_FALSE(Policy::is_small(storage));
     EXPECT_FALSE(Policy::is_external(storage));
     EXPECT_EQ(Policy::category(storage), Policy::Category::kInvalid);
+
+    const auto decoded = Policy::DecodeProbe(storage);
+    EXPECT_EQ(decoded.category, Policy::Category::kInvalid);
+    EXPECT_EQ(decoded.size, 0U);
+    EXPECT_EQ(decoded.capacity, 0U);
 }
 
 TEST(CharLayoutPolicyTest, CheckInvariantsRejectsInvalidCategory) {

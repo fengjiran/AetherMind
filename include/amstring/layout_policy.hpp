@@ -26,6 +26,7 @@ concept AmStringLayoutPolicy = requires(typename Policy::Storage& storage,
     typename Policy::Storage;
     typename Policy::SizeType;
     typename Policy::Category;
+    typename Policy::DecodedProbe;
 
     requires std::same_as<typename Policy::ValueType, CharT>;
     requires std::integral<typename Policy::SizeType>;
@@ -34,6 +35,7 @@ concept AmStringLayoutPolicy = requires(typename Policy::Storage& storage,
     { Policy::is_small(const_storage) } noexcept -> std::same_as<bool>;
     { Policy::is_external(const_storage) } noexcept -> std::same_as<bool>;
     { Policy::category(const_storage) } noexcept -> std::same_as<typename Policy::Category>;
+    { Policy::DecodeProbe(const_storage) } noexcept -> std::same_as<typename Policy::DecodedProbe>;
 
     { Policy::data(const_storage) } noexcept -> std::same_as<const CharT*>;
     { Policy::data(storage) } noexcept -> std::same_as<CharT*>;
@@ -53,6 +55,21 @@ concept AmStringLayoutPolicy = requires(typename Policy::Storage& storage,
 
     { Policy::CheckInvariants(const_storage) } noexcept -> std::same_as<void>;
 };
+
+template<typename Policy, typename CharT>
+concept AmStringDecodedLayoutPolicy = AmStringLayoutPolicy<Policy, CharT> &&
+                                      requires(typename Policy::Storage& storage,
+                                               const typename Policy::Storage& const_storage,
+                                               const CharT* const_ptr,
+                                               const typename Policy::DecodedProbe& decoded) {
+                                          { Policy::is_small(decoded) } noexcept -> std::same_as<bool>;
+                                          { Policy::is_external(decoded) } noexcept -> std::same_as<bool>;
+                                          { Policy::data(const_storage, decoded) } noexcept -> std::same_as<const CharT*>;
+                                          { Policy::data(storage, decoded) } noexcept -> std::same_as<CharT*>;
+                                          { Policy::size(decoded) } noexcept -> std::same_as<typename Policy::SizeType>;
+                                          { Policy::capacity(decoded) } noexcept -> std::same_as<typename Policy::SizeType>;
+                                          { Policy::TryPushBackInplace(storage, *const_ptr, decoded) } noexcept -> std::same_as<bool>;
+                                      };
 
 template<typename CharT>
 struct DefaultLayoutPolicy {

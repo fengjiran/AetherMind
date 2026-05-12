@@ -51,6 +51,7 @@ template<typename CharT,
          typename Allocator = std::allocator<CharT>,
          typename LayoutPolicy = DefaultLayoutPolicy<CharT>::type,
          typename GrowthPolicy = DefaultGrowthPolicy>
+    requires AmStringDecodedLayoutPolicy<LayoutPolicy, CharT>
 class BasicStringCore {
 public:
     using ValueType = CharT;

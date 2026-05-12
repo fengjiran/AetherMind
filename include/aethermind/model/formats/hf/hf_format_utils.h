@@ -13,7 +13,7 @@ inline std::string FormatPathMessage(std::string_view prefix,
     return std::string(prefix) + ": " + path.string();
 }
 
-}  // namespace hf
-}  // namespace aethermind
+}// namespace hf
+}// namespace aethermind
 
 #endif

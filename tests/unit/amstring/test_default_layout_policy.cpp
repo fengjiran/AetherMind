@@ -46,6 +46,7 @@ TYPED_TEST(DefaultLayoutPolicyTest, SelectedPolicySatisfiesLayoutConcept) {
     using Selected = DefaultLayoutPolicy<CharT>::type;
 
     static_assert(AmStringLayoutPolicy<Selected, CharT>);
+    static_assert(AmStringDecodedLayoutPolicy<Selected, CharT>);
 }
 
 TYPED_TEST(DefaultLayoutPolicyTest, CoreUsesSelectorByDefault) {

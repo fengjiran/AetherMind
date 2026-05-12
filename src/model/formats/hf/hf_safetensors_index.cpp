@@ -1,4 +1,5 @@
 #include "aethermind/model/formats/hf/hf_safetensors_index.h"
+#include "aethermind/base/mmap_file.h"
 #include "aethermind/model/formats/hf/hf_format_utils.h"
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 #include "aethermind/utils/overflow_check.h"
@@ -38,6 +39,23 @@ public:
 
 private:
     std::vector<std::byte> bytes_{};
+};
+
+class MmapBacking final : public RawTensorBacking {
+public:
+    explicit MmapBacking(MemoryMappedFile mmap) noexcept
+        : mmap_(std::move(mmap)) {}
+
+    AM_NODISCARD const std::byte* data() const noexcept {
+        return mmap_.ByteData();
+    }
+
+    AM_NODISCARD size_t size() const noexcept {
+        return mmap_.size();
+    }
+
+private:
+    MemoryMappedFile mmap_;
 };
 
 StatusOr<std::vector<std::byte>> ReadFileBytes(const std::filesystem::path& path) {

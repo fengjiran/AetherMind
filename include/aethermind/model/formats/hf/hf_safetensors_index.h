@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace aethermind {
@@ -29,7 +30,7 @@ class HfSafetensorsIndex {
 public:
     static StatusOr<HfSafetensorsIndex> LoadSingleFile(const std::filesystem::path& safetensors_path);
 
-    AM_NODISCARD const HfSafetensorsEntry* Find(std::string_view tensor_name) const noexcept;
+    AM_NODISCARD const HfSafetensorsEntry* Find(std::string_view tensor_name) const;
 
     AM_NODISCARD const std::vector<HfSafetensorsEntry>& Entries() const noexcept {
         return entries_;
@@ -42,6 +43,7 @@ public:
 private:
     std::filesystem::path path_{};
     std::vector<HfSafetensorsEntry> entries_{};
+    std::unordered_map<std::string, size_t> name_index_{};
 };
 
 }// namespace aethermind

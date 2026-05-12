@@ -495,6 +495,12 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
                       hf::FormatPathMessage(header_length.status().message(), safetensors_path));
     }
 
+    constexpr uint64_t kMaxHeaderSize = 16ULL * 1024 * 1024;
+    if (*header_length > kMaxHeaderSize) {
+        return Status::InvalidArgument(
+                hf::FormatPathMessage("Safetensors header exceeds maximum size (16MB)", safetensors_path));
+    }
+
     constexpr uint64_t header_begin = sizeof(uint64_t);
     uint64_t header_end = 0;
     if (CheckOverflowAdd(header_begin, *header_length, &header_end)) {
@@ -520,16 +526,17 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
 
     HfSafetensorsIndex index;
     index.path_ = safetensors_path;
-    index.entries_ = *parsed_entries;
+    index.entries_ = std::move(*parsed_entries);
+    for (size_t i = 0; i < index.entries_.size(); ++i) {
+        index.name_index_[index.entries_[i].name] = i;
+    }
     return index;
 }
 
-const HfSafetensorsEntry* HfSafetensorsIndex::Find(std::string_view tensor_name) const noexcept {
-    for (const auto& entry: entries_) {
-        if (entry.name.size() == tensor_name.size() &&
-            std::char_traits<char>::compare(entry.name.data(), tensor_name.data(), tensor_name.size()) == 0) {
-            return &entry;
-        }
+const HfSafetensorsEntry* HfSafetensorsIndex::Find(std::string_view tensor_name) const {
+    const auto it = name_index_.find(std::string(tensor_name));
+    if (it != name_index_.end()) {
+        return &entries_[it->second];
     }
     return nullptr;
 }

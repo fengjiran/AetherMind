@@ -13,6 +13,7 @@ namespace hf {
 class HfJsonReader {
 public:
     explicit HfJsonReader(std::string_view input) noexcept;
+    virtual ~HfJsonReader() = default;
 
     void SkipWhitespace() noexcept;
 

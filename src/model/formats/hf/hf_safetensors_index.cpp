@@ -3,6 +3,7 @@
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 #include "aethermind/utils/overflow_check.h"
 
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -12,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -112,12 +114,24 @@ StatusOr<DataType> ParseSafetensorsDType(const std::string& dtype_text) {
         return DataType::Float(64);
     }
 
+    if (dtype_text == "I16") {
+        return DataType::Int(16);
+    }
+
     if (dtype_text == "I32") {
         return DataType::Int(32);
     }
 
     if (dtype_text == "I64") {
         return DataType::Int(64);
+    }
+
+    if (dtype_text == "I8") {
+        return DataType::Int(8);
+    }
+
+    if (dtype_text == "U8") {
+        return DataType::UInt(8);
     }
 
     return Status::InvalidArgument(
@@ -167,12 +181,16 @@ public:
                 return Status::InvalidArgument("Expected ':' after safetensors header key");
             }
 
-            if (key->compare("__metadata__") == 0) {
-                const Status skip_status = SkipValue();
-                if (!skip_status.ok()) {
+            if (*key == "__metadata__") {
+                if (const Status skip_status = SkipValue(); !skip_status.ok()) {
                     return skip_status;
                 }
             } else {
+                if (!seen_names_.insert(*key).second) {
+                    return Status::InvalidArgument(
+                            std::string("Duplicate safetensors tensor name: '") + *key + "'");
+                }
+
                 HfSafetensorsEntry entry;
                 const Status entry_status = ParseTensorEntry(*key, &entry);
                 if (!entry_status.ok()) {
@@ -216,27 +234,29 @@ private:
                 if (!key.ok()) {
                     return key.status();
                 }
+
                 if (!Expect(':')) {
                     return Status::InvalidArgument("Expected ':' after safetensors tensor field name");
                 }
 
-                if (key->compare("dtype") == 0) {
+                if (*key == "dtype") {
                     const auto dtype_text = ParseString();
                     if (!dtype_text.ok()) {
                         return dtype_text.status();
                     }
+
                     const auto parsed_dtype = ParseSafetensorsDType(*dtype_text);
                     if (!parsed_dtype.ok()) {
                         return parsed_dtype.status();
                     }
                     dtype = *parsed_dtype;
-                } else if (key->compare("shape") == 0) {
-                    const auto parsed_shape = ParseInt64Array();
+                } else if (*key == "shape") {
+                    auto parsed_shape = ParseInt64Array();
                     if (!parsed_shape.ok()) {
                         return parsed_shape.status();
                     }
                     shape = std::move(*parsed_shape);
-                } else if (key->compare("data_offsets") == 0) {
+                } else if (*key == "data_offsets") {
                     const auto parsed_offsets = ParseOffsetPair();
                     if (!parsed_offsets.ok()) {
                         return parsed_offsets.status();
@@ -262,6 +282,7 @@ private:
         if (!dtype.has_value()) {
             return Status::InvalidArgument("Safetensors tensor entry is missing required 'dtype' field");
         }
+
         if (!data_offsets.has_value()) {
             return Status::InvalidArgument("Safetensors tensor entry is missing required 'data_offsets' field");
         }
@@ -271,6 +292,7 @@ private:
         if (begin > end) {
             return Status::InvalidArgument("Safetensors tensor entry has data_offsets begin > end");
         }
+
         if (end > data_size_) {
             return Status(StatusCode::kOutOfRange,
                           "Safetensors tensor entry points outside the raw data region");
@@ -281,6 +303,7 @@ private:
             if (dim < 0) {
                 return Status::InvalidArgument("Safetensors tensor entry has negative shape dimension");
             }
+
             const auto updated_numel = CheckedMultiply(numel, static_cast<uint64_t>(dim), "safetensors shape");
             if (!updated_numel.ok()) {
                 return updated_numel.status();
@@ -292,6 +315,7 @@ private:
         if (!expected_nbytes.ok()) {
             return expected_nbytes.status();
         }
+
         if (*expected_nbytes != end - begin) {
             return Status::InvalidArgument(
                     "Safetensors tensor shape and dtype do not match data_offsets byte size");
@@ -304,7 +328,7 @@ private:
         entry->data_offset_end = end;
         entry->view = RawTensorView{
                 .data = data_base_ + begin,
-                .bytes = static_cast<size_t>(end - begin),
+                .bytes = end - begin,
                 .dtype = *dtype,
                 .shape = shape,
                 .backing = backing_,
@@ -366,16 +390,25 @@ private:
     }
 
     StatusOr<uint64_t> ParseUInt64() {
-        const auto parsed = ParseInt64();
-        if (!parsed.ok()) {
-            return parsed.status();
+        SkipWhitespace();
+        const size_t start = position_;
+        while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
+            ++position_;
         }
-        if (*parsed < 0) {
+        if (start == position_) {
             return Status::InvalidArgument("Expected non-negative integer value in safetensors header");
         }
-        return static_cast<uint64_t>(*parsed);
+
+        uint64_t value = 0;
+        const auto token = input_.substr(start, position_ - start);
+        if (const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+            ec != std::errc{} || ptr != token.data() + token.size()) {
+            return Status::InvalidArgument("Invalid unsigned integer value in safetensors header");
+        }
+        return value;
     }
 
+    std::unordered_set<std::string> seen_names_{};
     std::shared_ptr<const RawTensorBacking> backing_{};
     const std::byte* data_base_ = nullptr;
     size_t data_size_ = 0;
@@ -383,9 +416,8 @@ private:
 
 }// namespace hf
 
-StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
-        const std::filesystem::path& safetensors_path) {
-    const auto file_bytes = ReadFileBytes(safetensors_path);
+StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::filesystem::path& safetensors_path) {
+    auto file_bytes = ReadFileBytes(safetensors_path);
     if (!file_bytes.ok()) {
         return file_bytes.status();
     }
@@ -396,8 +428,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
                 hf::FormatPathMessage("Safetensors file is too small", safetensors_path));
     }
 
-    const auto header_length = ParseLittleEndianU64(
-            std::span<const std::byte>(backing->data(), sizeof(uint64_t)));
+    const auto header_length = ParseLittleEndianU64({backing->data(), sizeof(uint64_t)});
     if (!header_length.ok()) {
         return Status(StatusCode::kInvalidArgument,
                       hf::FormatPathMessage(header_length.status().message(), safetensors_path));
@@ -423,12 +454,11 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
 
     HfSafetensorsIndex index;
     index.path_ = safetensors_path;
-    index.entries_ = std::move(*parsed_entries);
+    index.entries_ = *parsed_entries;
     return index;
 }
 
-const HfSafetensorsEntry* HfSafetensorsIndex::Find(
-        std::string_view tensor_name) const noexcept {
+const HfSafetensorsEntry* HfSafetensorsIndex::Find(std::string_view tensor_name) const noexcept {
     for (const auto& entry: entries_) {
         if (entry.name.size() == tensor_name.size() &&
             std::char_traits<char>::compare(entry.name.data(), tensor_name.data(), tensor_name.size()) == 0) {

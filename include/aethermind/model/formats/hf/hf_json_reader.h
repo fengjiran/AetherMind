@@ -26,9 +26,14 @@ public:
     StatusOr<int64_t> ParseInt64();
     Status SkipValue();
 
+    static constexpr uint32_t kMaxSkipDepth = 32;
+
 protected:
     std::string_view input_;
     size_t position_ = 0;
+
+private:
+    Status SkipValueInternal(uint32_t depth);
 };
 
 }// namespace hf

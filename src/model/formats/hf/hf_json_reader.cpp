@@ -53,12 +53,12 @@ StatusOr<std::string> HfJsonReader::ParseString() {
 
     std::string result;
     while (!AtEnd()) {
-        const char current = input_[position_++];
-        if (current == '"') {
+        const char cur = input_[position_++];
+        if (cur == '"') {
             return result;
         }
 
-        if (current == '\\') {
+        if (cur == '\\') {
             if (AtEnd()) {
                 return Status::InvalidArgument("Unexpected end of JSON escape sequence");
             }
@@ -67,29 +67,29 @@ StatusOr<std::string> HfJsonReader::ParseString() {
                 case '"':
                 case '\\':
                 case '/':
-                    result.push_back(escaped);
+                    result += escaped;
                     break;
                 case 'b':
-                    result.push_back('\b');
+                    result += '\b';
                     break;
                 case 'f':
-                    result.push_back('\f');
+                    result += '\f';
                     break;
                 case 'n':
-                    result.push_back('\n');
+                    result += '\n';
                     break;
                 case 'r':
-                    result.push_back('\r');
+                    result += '\r';
                     break;
                 case 't':
-                    result.push_back('\t');
+                    result += '\t';
                     break;
                 default:
                     return Status::InvalidArgument("Unsupported JSON escape sequence");
             }
             continue;
         }
-        result.push_back(current);
+        result += cur;
     }
     return Status::InvalidArgument("Unterminated JSON string");
 }
@@ -97,76 +97,92 @@ StatusOr<std::string> HfJsonReader::ParseString() {
 StatusOr<int64_t> HfJsonReader::ParseInt64() {
     SkipWhitespace();
     const size_t start = position_;
-    if (!AtEnd() && (input_[position_] == '-' || input_[position_] == '+')) {
+    if (!AtEnd() && input_[position_] == '-') {
         ++position_;
     }
+
     while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
         ++position_;
     }
-    if (start == position_ || (position_ == start + 1 && (input_[start] == '-' || input_[start] == '+'))) {
+
+    if (start == position_ || (position_ == start + 1 && input_[start] == '-')) {
         return Status::InvalidArgument("Expected integer value");
     }
 
     int64_t value = 0;
     const auto token = input_.substr(start, position_ - start);
-    const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
-    if (ec != std::errc{} || ptr != token.data() + token.size()) {
+    if (const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+        ec != std::errc{} || ptr != token.data() + token.size()) {
         return Status::InvalidArgument("Invalid integer value");
     }
     return value;
 }
 
 Status HfJsonReader::SkipValue() {
+    return SkipValueInternal(0);
+}
+
+Status HfJsonReader::SkipValueInternal(uint32_t depth) {
+    if (depth > kMaxSkipDepth) {
+        return Status::InvalidArgument("JSON nesting depth exceeds maximum");
+    }
+
     SkipWhitespace();
     if (AtEnd()) {
         return Status::InvalidArgument("Unexpected end of JSON while skipping value");
     }
 
-    const char current = input_[position_];
-    if (current == '{') {
+    const char cur = input_[position_];
+    if (cur == '{') {
         ++position_;
         SkipWhitespace();
         if (Consume('}')) {
             return Status::Ok();
         }
+
         while (true) {
             const auto key = ParseString();
             if (!key.ok()) {
                 return key.status();
             }
+
             if (!Expect(':')) {
                 return Status::InvalidArgument("Expected ':' inside JSON object while skipping value");
             }
-            AM_RETURN_IF_ERROR(SkipValue());
+
+            AM_RETURN_IF_ERROR(SkipValueInternal(depth + 1));
             SkipWhitespace();
             if (Consume('}')) {
                 return Status::Ok();
             }
+
             if (!Expect(',')) {
                 return Status::InvalidArgument("Expected ',' inside JSON object while skipping value");
             }
         }
     }
 
-    if (current == '[') {
+    if (cur == '[') {
         ++position_;
         SkipWhitespace();
         if (Consume(']')) {
             return Status::Ok();
         }
+
         while (true) {
-            AM_RETURN_IF_ERROR(SkipValue());
+            AM_RETURN_IF_ERROR(SkipValueInternal(depth + 1));
             SkipWhitespace();
             if (Consume(']')) {
                 return Status::Ok();
             }
+
             if (!Expect(',')) {
                 return Status::InvalidArgument("Expected ',' inside JSON array while skipping value");
             }
         }
     }
 
-    if (current == '"') {
+    if (cur == '"') {
         const auto string_value = ParseString();
         if (!string_value.ok()) {
             return string_value.status();
@@ -174,7 +190,7 @@ Status HfJsonReader::SkipValue() {
         return Status::Ok();
     }
 
-    if (std::isdigit(static_cast<unsigned char>(current)) || current == '-' || current == '+') {
+    if (std::isdigit(static_cast<unsigned char>(cur)) || cur == '-' || cur == '+') {
         const auto number = ParseInt64();
         if (!number.ok()) {
             return number.status();

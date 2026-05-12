@@ -3,6 +3,7 @@
 //
 
 #include "aethermind/base/mmap_file.h"
+#include "utils/logging.h"
 
 #include <cerrno>
 #include <cstdint>
@@ -26,7 +27,8 @@ std::string ErrnoMessage(const char* operation, const std::filesystem::path& pat
 
 MemoryMappedFile::~MemoryMappedFile() {
     if (data_ != nullptr) {
-        munmap(data_, size_);
+        const int ret = munmap(data_, size_);
+        AM_DCHECK(ret == 0, "munmap failed");
     }
 }
 
@@ -52,6 +54,14 @@ MemoryMappedFile& MemoryMappedFile::operator=(MemoryMappedFile&& other) noexcept
 StatusOr<MemoryMappedFile> MemoryMappedFile::Map(const std::filesystem::path& path) {
     const int fd = open(path.c_str(), O_RDONLY);
     if (fd < 0) {
+        if (errno == ENOENT) {
+            return Status::NotFound(ErrnoMessage("open", path, errno));
+        }
+
+        if (errno == EACCES || errno == EPERM) {
+            return Status::PermissionDenied(ErrnoMessage("open", path, errno));
+        }
+
         return Status::Internal(ErrnoMessage("open", path, errno));
     }
 
@@ -87,7 +97,7 @@ StatusOr<MemoryMappedFile> MemoryMappedFile::Map(const std::filesystem::path& pa
         return Status::Internal(ErrnoMessage("mmap", path, error_number));
     }
 
-    close(fd);// mmap 成功后，fd 可以安全关闭
+    close(fd);// fd is no longer needed once the mapping is established; the kernel holds the reference.
 
     return MemoryMappedFile(data, size);
 }

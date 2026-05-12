@@ -23,7 +23,7 @@ public:
     MemoryMappedFile(const MemoryMappedFile&) = delete;
     MemoryMappedFile& operator=(const MemoryMappedFile&) = delete;
 
-    static StatusOr<MemoryMappedFile> Map(const std::filesystem::path& path);
+    AM_NODISCARD static StatusOr<MemoryMappedFile> Map(const std::filesystem::path& path);
 
     AM_NODISCARD const void* data() const noexcept {
         return data_;
@@ -39,6 +39,10 @@ public:
 
     AM_NODISCARD size_t size() const noexcept {
         return size_;
+    }
+
+    AM_NODISCARD bool valid() const noexcept {
+        return data_ != nullptr;
     }
 
 private:

@@ -158,6 +158,14 @@ public:
         return Status(StatusCode::kInternal, std::string(message));
     }
 
+    AM_NODISCARD static Status PermissionDenied(std::string_view message) {
+        return Status(StatusCode::kPermissionDenied, std::string(message));
+    }
+
+    AM_NODISCARD static Status AlreadyExists(std::string_view message) {
+        return Status(StatusCode::kAlreadyExists, std::string(message));
+    }
+
     AM_NODISCARD bool ok() const {
         return code_ == StatusCode::kOk;
     }

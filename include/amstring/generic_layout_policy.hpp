@@ -374,53 +374,15 @@ struct GenericLayoutPolicy {
         return true;
     }
 
-    static bool TryPushBackInplace(Storage& storage, CharT ch, SizeType& out_size, SizeType& out_capacity) noexcept {
-        const auto probe = GetProbe(storage);
-        // clang-format off
-        if (probe == kExternalTag) AM_LIKELY {
-            const SizeType size = storage.external.size;
-            const SizeType cap = UnpackCapacity(storage.external.capacity_with_tag);
-            if (size >= cap) AM_UNLIKELY {
-                out_size = size;
-                out_capacity = cap;
-                return false;
-            }
-
-            CharT* data = storage.external.data;
-            data[size] = ch;
-            data[size + 1] = CharT{};
-            storage.external.size = size + 1;
-            return true;
-        }
-
-        if (probe > static_cast<ProbeWordType>(kSmallCapacity)) AM_UNLIKELY {
-            out_size = 0;
-            out_capacity = 0;
-            return false;
-        }
-
-        const SizeType size = DecodeSmallSizeFromProbe(probe);
-        if (size >= kSmallCapacity) AM_UNLIKELY {
-            out_size = size;
-            out_capacity = kSmallCapacity;
-            return false;
-        }
-        // clang-format on
-
-        storage.small[size] = ch;
-        storage.small[size + 1] = CharT{};
-        SetProbe(storage, static_cast<ProbeWordType>(EncodeSmallSizeToProbe(size + 1)));
-        return true;
-    }
-
     /// Validates storage invariants; AM_DCHECK on corruption.
     static void CheckInvariants(const Storage& storage) noexcept {
-        switch (category(storage)) {
+        const DecodedProbe decoded = DecodeProbe(storage);
+        switch (decoded.category) {
             case Category::kSmall:
-                CheckSmallInvariants(storage);
+                CheckSmallInvariants(storage, decoded);
                 return;
             case Category::kExternal:
-                CheckExternalInvariants(storage);
+                CheckExternalInvariants(storage, decoded);
                 return;
             case Category::kInvalid:
                 AM_DCHECK(false);
@@ -454,22 +416,18 @@ private:
         }
     }
 
-    static void CheckSmallInvariants(const Storage& storage) noexcept {
-        const auto probe = GetProbe(storage);
-        const auto decoded_size = DecodeSmallSizeFromProbe(probe);
-
-        AM_DCHECK(probe <= static_cast<ProbeWordType>(kSmallCapacity));
-        AM_DCHECK(decoded_size <= kSmallCapacity);
-        CheckDataInvariants(storage.small, decoded_size, kSmallCapacity);
+    static void CheckSmallInvariants(const Storage& storage, const DecodedProbe& decoded) noexcept {
+        AM_DCHECK(decoded.category == Category::kSmall);
+        AM_DCHECK(decoded.size <= kSmallCapacity);
+        AM_DCHECK(decoded.capacity == kSmallCapacity);
+        CheckDataInvariants(storage.small, decoded.size, decoded.capacity);
     }
 
-    static void CheckExternalInvariants(const Storage& storage) noexcept {
-        const auto decoded_capacity = UnpackCapacity(storage.external.capacity_with_tag);
-
-        AM_DCHECK(GetProbe(storage) == kExternalTag);
+    static void CheckExternalInvariants(const Storage& storage, const DecodedProbe& decoded) noexcept {
+        AM_DCHECK(decoded.category == Category::kExternal);
         AM_DCHECK(UnpackTag(storage.external.capacity_with_tag) == kExternalTag);
-        AM_DCHECK(storage.external.size <= decoded_capacity);
-        CheckDataInvariants(storage.external.data, storage.external.size, decoded_capacity);
+        AM_DCHECK(decoded.size <= decoded.capacity);
+        CheckDataInvariants(storage.external.data, decoded.size, decoded.capacity);
     }
 
     AM_NODISCARD static constexpr SizeType TagMask() noexcept {

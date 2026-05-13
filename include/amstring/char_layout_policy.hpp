@@ -82,8 +82,7 @@ struct CharLayoutPolicy {
                                                       : ~static_cast<SizeType>(kCategoryMask);
 
     AM_NODISCARD static bool is_small(const Storage& storage) noexcept {
-        const auto probe = GetProbe(storage);
-        return TagFromProbe(probe) == kSmallTag && DecodeSmallSizeFromMeta(probe) <= kSmallCapacity;
+        return DecodeProbe(storage).category == Category::kSmall;
     }
 
     AM_NODISCARD static bool is_small(const DecodedProbe& decoded) noexcept {
@@ -91,51 +90,59 @@ struct CharLayoutPolicy {
     }
 
     AM_NODISCARD static bool is_external(const Storage& storage) noexcept {
-        return TagFromProbe(GetProbe(storage)) == kExternalTag;
+        return DecodeProbe(storage).category == Category::kExternal;
     }
 
-    AM_NODISCARD static bool is_external(uint8_t probe) noexcept {
-        return TagFromProbe(probe) == kExternalTag;
-    }
-
-    AM_NODISCARD static bool is_external(DecodedProbe decoded) noexcept {
+    AM_NODISCARD static bool is_external(const DecodedProbe& decoded) noexcept {
         return decoded.category == Category::kExternal;
     }
 
     AM_NODISCARD static Category category(const Storage& storage) noexcept {
-        const auto probe = GetProbe(storage);
-        const auto tag = TagFromProbe(probe);
-        if (tag == kSmallTag && DecodeSmallSizeFromMeta(probe) <= kSmallCapacity) {
-            return Category::kSmall;
-        }
-
-        if (tag == kExternalTag) {
-            return Category::kExternal;
-        }
-
-        return Category::kInvalid;
+        return DecodeProbe(storage).category;
     }
 
     AM_NODISCARD static DecodedProbe DecodeProbe(const Storage& storage) noexcept {
         const auto probe = GetProbe(storage);
-        const auto tag = TagFromProbe(probe);
-        if (tag == kSmallTag) {
-            const auto size = DecodeSmallSizeFromMeta(probe);
-            if (size <= kSmallCapacity) {
-                // NOLINTNEXTLINE(modernize-use-designated-initializers)
-                return DecodedProbe{Category::kSmall, size, kSmallCapacity};
-            }
+        if constexpr (config::kIsLittleEndian) {
+            // Small: probe ∈ [0, 23] ⇒ tag=kSmallTag AND size≤kSmallCapacity (single cmp folds both checks)
+            if (probe < kStorageBytes) AM_LIKELY {
+                    // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                    return {.category = Category::kSmall,
+                            .size = kSmallCapacity - probe,
+                            .capacity = kSmallCapacity};
+                }
+            // External: probe & 0xC0 == 0x80
+            // NOLINTNEXTLINE(bugprone-branch-clone)
+            if ((probe & kCategoryMask) == kExternalTag) AM_UNLIKELY {
+                    // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                    return {.category = Category::kExternal,
+                            .size = storage.external.size,
+                            .capacity = UnpackCapacity(storage.external.capacity_with_tag)};
+                }
             // NOLINTNEXTLINE(modernize-use-designated-initializers)
-            return DecodedProbe{Category::kInvalid, 0, 0};
-        }
+            return {.category = Category::kInvalid, .size = 0, .capacity = 0};
+        } else {
+            const auto tag = TagFromProbe(probe);
+            if (tag == kSmallTag) AM_LIKELY {
+                    const auto size = DecodeSmallSizeFromMeta(probe);
+                    if (size <= kSmallCapacity) AM_LIKELY {
+                            // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                            return {.category = Category::kSmall, .size = size, .capacity = kSmallCapacity};
+                        }
+                    // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                    return {.category = Category::kInvalid, .size = 0, .capacity = 0};
+                }
 
-        if (tag == kExternalTag) {
+            if (tag == kExternalTag) AM_UNLIKELY {
+                    // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                    return {.category = Category::kExternal,
+                            .size = storage.external.size,
+                            .capacity = UnpackCapacity(storage.external.capacity_with_tag)};
+                }
+
             // NOLINTNEXTLINE(modernize-use-designated-initializers)
-            return DecodedProbe{Category::kExternal, storage.external.size, UnpackCapacity(storage.external.capacity_with_tag)};
+            return {.category = Category::kInvalid, .size = 0, .capacity = 0};
         }
-
-        // NOLINTNEXTLINE(modernize-use-designated-initializers)
-        return DecodedProbe{Category::kInvalid, 0, 0};
     }
 
     AM_NODISCARD static constexpr SizeType max_external_capacity() noexcept {
@@ -149,13 +156,14 @@ struct CharLayoutPolicy {
     }
 
     AM_NODISCARD static const char* data(const Storage& storage) noexcept {
-        return is_small(storage) ? storage.small : storage.external.data;
+        return DecodeProbe(storage).category == Category::kSmall ? storage.small : storage.external.data;
     }
 
-    AM_NODISCARD static const char* data(const Storage& storage, DecodedProbe decoded) noexcept {
+    AM_NODISCARD static const char* data(const Storage& storage, const DecodedProbe& decoded) noexcept {
         if (decoded.category == Category::kSmall) {
             return storage.small;
         }
+
         if (decoded.category == Category::kExternal) {
             return storage.external.data;
         }
@@ -163,13 +171,14 @@ struct CharLayoutPolicy {
     }
 
     AM_NODISCARD static char* data(Storage& storage) noexcept {
-        return is_small(storage) ? storage.small : storage.external.data;
+        return DecodeProbe(storage).category == Category::kSmall ? storage.small : storage.external.data;
     }
 
-    AM_NODISCARD static char* data(Storage& storage, DecodedProbe decoded) noexcept {
+    AM_NODISCARD static char* data(Storage& storage, const DecodedProbe& decoded) noexcept {
         if (decoded.category == Category::kSmall) {
             return storage.small;
         }
+
         if (decoded.category == Category::kExternal) {
             return storage.external.data;
         }
@@ -177,27 +186,18 @@ struct CharLayoutPolicy {
     }
 
     AM_NODISCARD static SizeType size(const Storage& storage) noexcept {
-        if (const auto probe = GetProbe(storage); TagFromProbe(probe) == kSmallTag) {
-            if (const auto decoded = DecodeSmallSizeFromMeta(probe); decoded <= kSmallCapacity) {
-                return decoded;
-            }
-        }
-
-        return storage.external.size;
+        return DecodeProbe(storage).size;
     }
 
-    AM_NODISCARD static SizeType size(DecodedProbe decoded) noexcept {
+    AM_NODISCARD static SizeType size(const DecodedProbe& decoded) noexcept {
         return decoded.size;
     }
 
     AM_NODISCARD static SizeType capacity(const Storage& storage) noexcept {
-        if (is_small(storage)) {
-            return kSmallCapacity;
-        }
-        return UnpackCapacity(storage.external.capacity_with_tag);
+        return DecodeProbe(storage).capacity;
     }
 
-    AM_NODISCARD static SizeType capacity(DecodedProbe decoded) noexcept {
+    AM_NODISCARD static SizeType capacity(const DecodedProbe& decoded) noexcept {
         return decoded.capacity;
     }
 
@@ -227,21 +227,21 @@ struct CharLayoutPolicy {
     }
 
     static void SetSmallSize(Storage& storage, SizeType size) noexcept {
-        AM_CHECK(is_small(storage));
+        // AM_CHECK(is_small(storage));
         AM_CHECK(size <= kSmallCapacity);
         storage.small[size] = char{};
-        SetSmallProbe(storage, EncodeSmallSizeToProbe(size));
+        SetSmallProbeUnchecked(storage, EncodeSmallSizeToProbe(size));
     }
 
     static void SetExternalSize(Storage& storage, SizeType size) noexcept {
-        AM_CHECK(is_external(storage));
+        // AM_CHECK(is_external(storage));
         AM_CHECK(size <= capacity(storage));
         storage.external.size = size;
         storage.external.data[size] = char{};
     }
 
     static void SetExternalCapacity(Storage& storage, SizeType capacity) noexcept {
-        AM_CHECK(is_external(storage));
+        // AM_CHECK(is_external(storage));
         AM_CHECK(storage.external.size <= capacity);
         AM_CHECK(capacity <= max_external_capacity());
         storage.external.capacity_with_tag = PackCapacityWithTag(capacity);

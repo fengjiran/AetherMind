@@ -1,10 +1,12 @@
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 
+#include <cctype>
 #include <charconv>
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 namespace aethermind {
 namespace hf {
@@ -120,6 +122,133 @@ StatusOr<int64_t> HfJsonReader::ParseInt64() {
         return Status::InvalidArgument("Invalid integer value");
     }
     return value;
+}
+
+StatusOr<uint64_t> HfJsonReader::ParseUInt64() {
+    SkipWhitespace();
+    const size_t start = position_;
+    while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
+        ++position_;
+    }
+    if (start == position_) {
+        return Status::InvalidArgument("Expected non-negative integer value");
+    }
+
+    uint64_t value = 0;
+    const auto token = input_.substr(start, position_ - start);
+    if (const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+        ec != std::errc{} || ptr != token.data() + token.size()) {
+        return Status::InvalidArgument("Invalid unsigned integer value");
+    }
+    return value;
+}
+
+StatusOr<double> HfJsonReader::ParseDouble() {
+    SkipWhitespace();
+    const size_t start = position_;
+    if (!AtEnd() && input_[position_] == '-') {
+        ++position_;
+    }
+
+    while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
+        ++position_;
+    }
+    if (!AtEnd() && input_[position_] == '.') {
+        ++position_;
+        while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
+            ++position_;
+        }
+    }
+
+    if (!AtEnd() && (input_[position_] == 'e' || input_[position_] == 'E')) {
+        ++position_;
+        if (!AtEnd() && (input_[position_] == '+' || input_[position_] == '-')) {
+            ++position_;
+        }
+        while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
+            ++position_;
+        }
+    }
+
+    if (start == position_ || (position_ == start + 1 && input_[start] == '-')) {
+        return Status::InvalidArgument("Expected floating point value");
+    }
+
+    double value = 0.0;
+    const auto token = input_.substr(start, position_ - start);
+    if (const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+        ec != std::errc{} || ptr != token.data() + token.size()) {
+        return Status::InvalidArgument("Invalid floating point value");
+    }
+    return value;
+}
+
+StatusOr<bool> HfJsonReader::ParseBool() {
+    if (ConsumeLiteral("true")) {
+        return true;
+    }
+    if (ConsumeLiteral("false")) {
+        return false;
+    }
+    return Status::InvalidArgument("Expected boolean value");
+}
+
+StatusOr<std::vector<std::string>> HfJsonReader::ParseStringArray() {
+    if (!Expect('[')) {
+        return Status::InvalidArgument("Expected '[' at start of string array");
+    }
+
+    std::vector<std::string> values;
+    SkipWhitespace();
+    if (Consume(']')) {
+        return values;
+    }
+
+    while (true) {
+        auto value = ParseString();
+        if (!value.ok()) {
+            return value.status();
+        }
+        values.push_back(std::move(*value));
+
+        SkipWhitespace();
+        if (Consume(']')) {
+            break;
+        }
+        if (!Expect(',')) {
+            return Status::InvalidArgument("Expected ',' between string array elements");
+        }
+    }
+    return values;
+}
+
+StatusOr<std::vector<int64_t>> HfJsonReader::ParseInt64Array() {
+    if (!Expect('[')) {
+        return Status::InvalidArgument("Expected '[' at start of integer array");
+    }
+
+    std::vector<int64_t> values;
+    SkipWhitespace();
+    if (Consume(']')) {
+        return values;
+    }
+
+    while (true) {
+        const auto value = ParseInt64();
+        if (!value.ok()) {
+            return value.status();
+        }
+        values.push_back(*value);
+
+        SkipWhitespace();
+        if (Consume(']')) {
+            break;
+        }
+        if (!Expect(',')) {
+            return Status::InvalidArgument("Expected ',' between integer array elements");
+        }
+    }
+    return values;
 }
 
 Status HfJsonReader::SkipValue() {

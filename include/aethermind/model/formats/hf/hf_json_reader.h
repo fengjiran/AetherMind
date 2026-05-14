@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace aethermind {
 namespace hf {
@@ -25,6 +26,11 @@ public:
 
     StatusOr<std::string> ParseString();
     StatusOr<int64_t> ParseInt64();
+    StatusOr<uint64_t> ParseUInt64();
+    StatusOr<double> ParseDouble();
+    StatusOr<bool> ParseBool();
+    StatusOr<std::vector<std::string>> ParseStringArray();
+    StatusOr<std::vector<int64_t>> ParseInt64Array();
     Status SkipValue();
 
     static constexpr uint32_t kMaxSkipDepth = 32;

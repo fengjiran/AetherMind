@@ -6,6 +6,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -75,6 +76,52 @@ void WriteTextFile(const std::filesystem::path& path, std::string_view content) 
     stream << content;
 }
 
+std::string MakeMinimalLlamaConfigJson() {
+    return R"({
+        "architectures": ["LlamaForCausalLM"],
+        "model_type": "llama",
+        "hidden_size": 64,
+        "intermediate_size": 256,
+        "num_hidden_layers": 1,
+        "num_attention_heads": 8,
+        "num_key_value_heads": 4,
+        "vocab_size": 1000,
+        "rms_norm_eps": 1e-6,
+        "tie_word_embeddings": false
+    })";
+}
+
+std::string MakeCompleteTensorHeader(int64_t num_layers) {
+    std::string header = "{";
+    header += R"("model.embed_tokens.weight":{"dtype":"F32","shape":[1],"data_offsets":[0,4]},)";
+    header += R"("model.norm.weight":{"dtype":"F32","shape":[1],"data_offsets":[4,8]})";
+
+    size_t offset = 8;
+    for (int64_t layer = 0; layer < num_layers; ++layer) {
+        const std::string prefix = "model.layers." + std::to_string(layer);
+        const std::string suffixes[] = {
+                ".self_attn.q_proj.weight",
+                ".self_attn.k_proj.weight",
+                ".self_attn.v_proj.weight",
+                ".self_attn.o_proj.weight",
+                ".mlp.gate_proj.weight",
+                ".mlp.up_proj.weight",
+                ".mlp.down_proj.weight",
+                ".input_layernorm.weight",
+                ".post_attention_layernorm.weight",
+        };
+        for (const auto& suffix: suffixes) {
+            header += ",";
+            header += "\"" + prefix + suffix + "\":";
+            header += "{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[" +
+                      std::to_string(offset) + "," + std::to_string(offset + 4) + "]}";
+            offset += 4;
+        }
+    }
+    header += "}";
+    return header;
+}
+
 void WriteRawFile(const std::filesystem::path& path, std::span<const std::byte> bytes) {
     std::ofstream stream(path, std::ios::binary);
     ASSERT_TRUE(stream.is_open()) << path.string();
@@ -100,11 +147,11 @@ void WriteSafetensorsFile(
 
 TEST(ModelLoaderTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
     TempDirectory temp_dir;
-    WriteTextFile(temp_dir.Path() / "config.json", "{}");
-    const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
+    WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
+    const auto raw_bytes = FloatArrayToBytes(std::array<float, 11>{});
     WriteSafetensorsFile(
             temp_dir.Path() / "model.safetensors",
-            R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
+            MakeCompleteTensorHeader(1),
             raw_bytes);
 
     CpuBackend backend;
@@ -113,14 +160,53 @@ TEST(ModelLoaderTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kUnimplemented);
-    EXPECT_NE(model.status().message().find("reader tensor table"), std::string::npos);
+    EXPECT_NE(model.status().message().find("validated config and tensor table"), std::string::npos);
+}
+
+TEST(ModelLoaderTest, RejectsUnsupportedModelFamily) {
+    TempDirectory temp_dir;
+    WriteTextFile(temp_dir.Path() / "config.json", R"({
+        "architectures": ["GPTNeoXForCausalLM"],
+        "model_type": "gpt_neox",
+        "hidden_size": 64,
+        "intermediate_size": 256,
+        "num_hidden_layers": 1,
+        "num_attention_heads": 8,
+        "vocab_size": 1000,
+        "rms_norm_eps": 1e-6
+    })");
+    WriteTextFile(temp_dir.Path() / "model.safetensors", "dummy");
+
+    CpuBackend backend;
+    KernelRegistry registry;
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.Path()}, backend, registry);
+
+    ASSERT_FALSE(model.ok());
+    EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoaderTest, PropagatesSafetensorsArtifactError) {
     TempDirectory temp_dir;
-    WriteTextFile(temp_dir.Path() / "config.json", "{}");
+    WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
     const auto prefix = EncodeLittleEndianU64(1024);
     WriteRawFile(temp_dir.Path() / "model.safetensors", prefix);
+
+    CpuBackend backend;
+    KernelRegistry registry;
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.Path()}, backend, registry);
+
+    ASSERT_FALSE(model.ok());
+    EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelLoaderTest, RejectsIncompleteTensorSet) {
+    TempDirectory temp_dir;
+    WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
+    const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{});
+    WriteSafetensorsFile(
+            temp_dir.Path() / "model.safetensors",
+            R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
+            raw_bytes);
 
     CpuBackend backend;
     KernelRegistry registry;

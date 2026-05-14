@@ -15,7 +15,7 @@ enum class HfDirectoryLayout {
     kShardedSafetensors,
 };
 
-struct HfDirectoryLayoutInfo {
+struct HfDirectoryDescriptor {
     HfDirectoryLayout layout = HfDirectoryLayout::kUnknown;
     std::filesystem::path model_dir{};
     std::filesystem::path config_path{};
@@ -35,21 +35,21 @@ class HfDirectoryReader {
 public:
     AM_NODISCARD static StatusOr<HfDirectoryReader> Open(const std::filesystem::path& model_dir);
 
-    AM_NODISCARD const HfDirectoryLayoutInfo& Layout() const noexcept {
-        return layout_;
+    AM_NODISCARD const HfDirectoryDescriptor& Layout() const noexcept {
+        return dir_desc_;
     }
 
-    AM_NODISCARD StatusOr<RawTensorMap> LoadTensorTable() const;
+    AM_NODISCARD StatusOr<RawTensorTable> LoadTensorTable() const;
 
 private:
-    explicit HfDirectoryReader(HfDirectoryLayoutInfo layout) noexcept
-        : layout_(std::move(layout)) {}
+    explicit HfDirectoryReader(HfDirectoryDescriptor dir_desc) noexcept
+        : dir_desc_(std::move(dir_desc)) {}
 
-    HfDirectoryLayoutInfo layout_{};
+    HfDirectoryDescriptor dir_desc_{};
 };
 
 namespace hf {
-StatusOr<HfDirectoryLayoutInfo> DiscoverLayout(const std::filesystem::path& model_dir);
+StatusOr<HfDirectoryDescriptor> InspectDirectory(const std::filesystem::path& model_dir);
 }// namespace hf
 
 }// namespace aethermind

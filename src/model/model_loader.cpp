@@ -19,7 +19,7 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
         return reader.status();
     }
 
-    auto config = HfConfigParser::ParseConfigFile(reader->Layout().config_path);
+    auto config = hf::ParseConfigFile(reader->Layout().config_path);
     if (!config.ok()) {
         return config.status();
     }

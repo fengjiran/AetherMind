@@ -22,12 +22,12 @@ ModelConfig MakeValidLlamaConfig() {
     };
 }
 
-void AddTensor(RawTensorMap* tensors, std::string name) {
+void AddTensor(RawTensorTable* tensors, std::string name) {
     tensors->emplace(std::move(name), RawTensorView{});
 }
 
-RawTensorMap MakeCompleteTensorSet(const ModelConfig& config) {
-    RawTensorMap tensors;
+RawTensorTable MakeCompleteTensorSet(const ModelConfig& config) {
+    RawTensorTable tensors;
     AddTensor(&tensors, "model.embed_tokens.weight");
     AddTensor(&tensors, "model.norm.weight");
 
@@ -118,7 +118,7 @@ TEST(ModelValidatorTest, RejectsTooManyKeyValueHeads) {
 TEST(ModelValidatorTest, AcceptsCompleteTensorSet) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
-    const RawTensorMap tensors = MakeCompleteTensorSet(config);
+    const RawTensorTable tensors = MakeCompleteTensorSet(config);
 
     const Status status = ModelValidator::ValidateTensorSet(config, tensors);
 
@@ -128,7 +128,7 @@ TEST(ModelValidatorTest, AcceptsCompleteTensorSet) {
 TEST(ModelValidatorTest, RejectsMissingEmbeddingTensor) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
-    RawTensorMap tensors = MakeCompleteTensorSet(config);
+    RawTensorTable tensors = MakeCompleteTensorSet(config);
     tensors.erase("model.embed_tokens.weight");
 
     const Status status = ModelValidator::ValidateTensorSet(config, tensors);
@@ -141,7 +141,7 @@ TEST(ModelValidatorTest, RejectsMissingEmbeddingTensor) {
 TEST(ModelValidatorTest, RejectsMissingFinalNormTensor) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
-    RawTensorMap tensors = MakeCompleteTensorSet(config);
+    RawTensorTable tensors = MakeCompleteTensorSet(config);
     tensors.erase("model.norm.weight");
 
     const Status status = ModelValidator::ValidateTensorSet(config, tensors);
@@ -154,7 +154,7 @@ TEST(ModelValidatorTest, RejectsMissingFinalNormTensor) {
 TEST(ModelValidatorTest, RejectsMissingLayerAttentionTensor) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
-    RawTensorMap tensors = MakeCompleteTensorSet(config);
+    RawTensorTable tensors = MakeCompleteTensorSet(config);
     tensors.erase("model.layers.1.self_attn.q_proj.weight");
 
     const Status status = ModelValidator::ValidateTensorSet(config, tensors);
@@ -167,7 +167,7 @@ TEST(ModelValidatorTest, RejectsMissingLayerAttentionTensor) {
 TEST(ModelValidatorTest, RejectsMissingLayerMlpTensor) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
-    RawTensorMap tensors = MakeCompleteTensorSet(config);
+    RawTensorTable tensors = MakeCompleteTensorSet(config);
     tensors.erase("model.layers.0.mlp.down_proj.weight");
 
     const Status status = ModelValidator::ValidateTensorSet(config, tensors);
@@ -180,7 +180,7 @@ TEST(ModelValidatorTest, RejectsMissingLayerMlpTensor) {
 TEST(ModelValidatorTest, RejectsMissingLayerNormTensor) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
-    RawTensorMap tensors = MakeCompleteTensorSet(config);
+    RawTensorTable tensors = MakeCompleteTensorSet(config);
     tensors.erase("model.layers.0.post_attention_layernorm.weight");
 
     const Status status = ModelValidator::ValidateTensorSet(config, tensors);
@@ -194,7 +194,7 @@ TEST(ModelValidatorTest, RejectsTensorSetWithInvalidLayerCount) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 0;
 
-    const Status status = ModelValidator::ValidateTensorSet(config, RawTensorMap{});
+    const Status status = ModelValidator::ValidateTensorSet(config, RawTensorTable{});
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);

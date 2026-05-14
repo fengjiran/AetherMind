@@ -7,26 +7,26 @@
 namespace aethermind {
 
 StatusOr<HfDirectoryReader> HfDirectoryReader::Open(const std::filesystem::path& model_dir) {
-    auto layout = hf::DiscoverLayout(model_dir);
-    if (!layout.ok()) {
-        return layout.status();
+    auto dir_desc = hf::InspectDirectory(model_dir);
+    if (!dir_desc.ok()) {
+        return dir_desc.status();
     }
 
-    return HfDirectoryReader(std::move(*layout));
+    return HfDirectoryReader(std::move(*dir_desc));
 }
 
-StatusOr<RawTensorMap> HfDirectoryReader::LoadTensorTable() const {
-    if (!layout_.IsSingleFile()) {
+StatusOr<RawTensorTable> HfDirectoryReader::LoadTensorTable() const {
+    if (!dir_desc_.IsSingleFile()) {
         return Status(StatusCode::kUnimplemented,
-                      hf::FormatPathMessage("Only single-file HF safetensors layout is implemented", layout_.model_dir));
+                      hf::FormatPathMessage("Only single-file HF safetensors layout is implemented", dir_desc_.model_dir));
     }
 
-    auto index = HfSafetensorsIndex::LoadSingleFile(layout_.safetensors_path);
+    auto index = HfSafetensorsIndex::LoadSingleFile(dir_desc_.safetensors_path);
     if (!index.ok()) {
         return index.status();
     }
 
-    RawTensorMap tensor_table;
+    RawTensorTable tensor_table;
     tensor_table.reserve(index->Entries().size());
     for (const auto& entry: index->Entries()) {
         tensor_table.emplace(entry.name, entry.view);
@@ -36,7 +36,7 @@ StatusOr<RawTensorMap> HfDirectoryReader::LoadTensorTable() const {
 
 namespace hf {
 
-StatusOr<HfDirectoryLayoutInfo> DiscoverLayout(const std::filesystem::path& model_dir) {
+StatusOr<HfDirectoryDescriptor> InspectDirectory(const std::filesystem::path& model_dir) {
     if (model_dir.empty()) {
         return Status::InvalidArgument("HF model directory path must not be empty");
     }
@@ -92,7 +92,7 @@ StatusOr<HfDirectoryLayoutInfo> DiscoverLayout(const std::filesystem::path& mode
     }
 
     if (has_single_file) {
-        return HfDirectoryLayoutInfo{
+        return HfDirectoryDescriptor{
                 .layout = HfDirectoryLayout::kSingleSafetensors,
                 .model_dir = model_dir,
                 .config_path = config_path,

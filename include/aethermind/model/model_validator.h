@@ -10,7 +10,7 @@ namespace aethermind {
 class ModelValidator {
 public:
     static Status ValidateConfig(const ModelConfig& config);
-    static Status ValidateTensorSet(const ModelConfig& config, const RawTensorMap& tensors);
+    static Status ValidateTensorSet(const ModelConfig& config, const RawTensorTable& tensors);
 };
 
 }// namespace aethermind

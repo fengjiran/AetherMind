@@ -21,7 +21,7 @@ Status RequirePositive(int64_t value, std::string_view field_name) {
     return Status::Ok();
 }
 
-Status RequireTensor(const RawTensorMap& tensors, std::string_view tensor_name) {
+Status RequireTensor(const RawTensorTable& tensors, std::string_view tensor_name) {
     if (!tensors.contains(std::string(tensor_name))) {
         return Status::InvalidArgument(std::string("Model tensor set is missing required tensor '") +
                                        std::string(tensor_name) + "'");
@@ -29,7 +29,7 @@ Status RequireTensor(const RawTensorMap& tensors, std::string_view tensor_name) 
     return Status::Ok();
 }
 
-Status RequireLayerTensor(const RawTensorMap& tensors,
+Status RequireLayerTensor(const RawTensorTable& tensors,
                           int64_t layer_index,
                           std::string_view suffix) {
     return RequireTensor(tensors, "model.layers." + std::to_string(layer_index) + std::string(suffix));
@@ -64,7 +64,7 @@ Status ModelValidator::ValidateConfig(const ModelConfig& config) {
     return Status::Ok();
 }
 
-Status ModelValidator::ValidateTensorSet(const ModelConfig& config, const RawTensorMap& tensors) {
+Status ModelValidator::ValidateTensorSet(const ModelConfig& config, const RawTensorTable& tensors) {
     AM_RETURN_IF_ERROR(RequirePositive(config.num_hidden_layers, "num_hidden_layers"));
 
     AM_RETURN_IF_ERROR(RequireTensor(tensors, "model.embed_tokens.weight"));

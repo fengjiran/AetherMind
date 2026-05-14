@@ -8,10 +8,11 @@
 
 namespace aethermind {
 
-class HfConfigParser {
-public:
-    static StatusOr<ModelConfig> ParseConfigFile(const std::filesystem::path& config_path);
-};
+namespace hf {
+
+StatusOr<ModelConfig> ParseConfigFile(const std::filesystem::path& config_path);
+
+}// namespace hf
 
 }// namespace aethermind
 

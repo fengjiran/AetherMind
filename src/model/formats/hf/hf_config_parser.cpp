@@ -1,5 +1,4 @@
 #include "aethermind/model/formats/hf/hf_config_parser.h"
-
 #include "aethermind/model/formats/hf/hf_format_utils.h"
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 
@@ -210,7 +209,9 @@ public:
 
 }// namespace
 
-StatusOr<ModelConfig> HfConfigParser::ParseConfigFile(const std::filesystem::path& config_path) {
+namespace hf {
+
+StatusOr<ModelConfig> ParseConfigFile(const std::filesystem::path& config_path) {
     auto text = ReadConfigText(config_path);
     if (!text.ok()) {
         return text.status();
@@ -223,5 +224,7 @@ StatusOr<ModelConfig> HfConfigParser::ParseConfigFile(const std::filesystem::pat
     }
     return config;
 }
+
+}// namespace hf
 
 }// namespace aethermind

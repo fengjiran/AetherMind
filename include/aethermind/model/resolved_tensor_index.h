@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -33,7 +34,40 @@ struct RawTensorView {
     }
 };
 
-using RawTensorMap = std::unordered_map<std::string, RawTensorView>;
+using RawTensorTable = std::unordered_map<std::string, RawTensorView>;
+
+struct ResolvedAttentionRawWeights {
+    RawTensorView q_proj{};
+    RawTensorView k_proj{};
+    RawTensorView v_proj{};
+    RawTensorView o_proj{};
+};
+
+struct ResolvedFfnRawWeights {
+    RawTensorView gate_proj{};
+    RawTensorView up_proj{};
+    RawTensorView down_proj{};
+};
+
+struct ResolvedNormRawWeights {
+    RawTensorView input_rmsnorm{};
+    RawTensorView post_attn_rmsnorm{};
+};
+
+struct ResolvedDecoderLayerRaw {
+    ResolvedNormRawWeights norm{};
+    ResolvedAttentionRawWeights attn{};
+    ResolvedFfnRawWeights ffn{};
+};
+
+struct ResolvedTensorIndex {
+    RawTensorView embed_tokens{};
+    RawTensorView final_norm{};
+    std::optional<RawTensorView> lm_head{};
+    std::vector<ResolvedDecoderLayerRaw> layers{};
+
+    AM_NODISCARD size_t NumLayers() const noexcept;
+};
 
 }// namespace aethermind
 

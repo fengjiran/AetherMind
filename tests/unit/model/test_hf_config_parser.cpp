@@ -49,7 +49,40 @@ std::filesystem::path WriteConfig(TempDirectory& temp_dir, std::string_view cont
     return path;
 }
 
-TEST(HfConfigParserTest, ParsesMinimalLlamaConfig) {
+std::string MakeConfigWithoutRequiredField(std::string_view omitted_field) {
+    std::string config = "{\n";
+    bool first = true;
+
+    const auto append_field = [&](std::string_view field, std::string_view value) {
+        if (field == omitted_field) {
+            return;
+        }
+        if (!first) {
+            config += ",\n";
+        }
+        first = false;
+        config += "        \"";
+        config += field;
+        config += "\": ";
+        config += value;
+    };
+
+    append_field("architectures", R"(["LlamaForCausalLM"])");
+    append_field("model_type", R"("llama")");
+    append_field("hidden_size", "4096");
+    append_field("intermediate_size", "11008");
+    append_field("num_hidden_layers", "32");
+    append_field("num_attention_heads", "32");
+    append_field("vocab_size", "32000");
+    append_field("rms_norm_eps", "1e-6");
+
+    config += "\n    }";
+    return config;
+}
+
+class HfConfigMissingRequiredFieldTest : public ::testing::TestWithParam<const char*> {};
+
+TEST(HfConfigTest, ParsesMinimalLlamaConfig) {
     TempDirectory temp_dir;
     const auto path = WriteConfig(temp_dir, R"({
         "architectures": ["LlamaForCausalLM"],
@@ -65,7 +98,7 @@ TEST(HfConfigParserTest, ParsesMinimalLlamaConfig) {
         "unused_field": {"nested": true}
     })");
 
-    const auto config = HfConfigParser::ParseConfigFile(path);
+    const auto config = hf::ParseConfigFile(path);
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_EQ(config->model_type, "llama");
@@ -80,7 +113,7 @@ TEST(HfConfigParserTest, ParsesMinimalLlamaConfig) {
     EXPECT_FALSE(config->tie_word_embeddings);
 }
 
-TEST(HfConfigParserTest, DefaultsOptionalFields) {
+TEST(HfConfigTest, DefaultsOptionalFields) {
     TempDirectory temp_dir;
     const auto path = WriteConfig(temp_dir, R"({
         "architectures": ["LlamaForCausalLM"],
@@ -93,42 +126,52 @@ TEST(HfConfigParserTest, DefaultsOptionalFields) {
         "rms_norm_eps": 0.000001
     })");
 
-    const auto config = HfConfigParser::ParseConfigFile(path);
+    const auto config = hf::ParseConfigFile(path);
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_EQ(config->num_key_value_heads, config->num_attention_heads);
     EXPECT_FALSE(config->tie_word_embeddings);
 }
 
-TEST(HfConfigParserTest, RejectsMissingRequiredField) {
+TEST_P(HfConfigMissingRequiredFieldTest, RejectsMissingRequiredField) {
     TempDirectory temp_dir;
-    const auto path = WriteConfig(temp_dir, R"({
-        "architectures": ["LlamaForCausalLM"],
-        "model_type": "llama",
-        "intermediate_size": 11008,
-        "num_hidden_layers": 32,
-        "num_attention_heads": 32,
-        "vocab_size": 32000,
-        "rms_norm_eps": 1e-6
-    })");
+    const auto* const missing_field = GetParam();
+    const auto path = WriteConfig(temp_dir, MakeConfigWithoutRequiredField(missing_field));
 
-    const auto config = HfConfigParser::ParseConfigFile(path);
+    const auto config = hf::ParseConfigFile(path);
 
     ASSERT_FALSE(config.ok());
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(config.status().message().find(missing_field), std::string::npos);
 }
 
-TEST(HfConfigParserTest, RejectsMalformedJson) {
+INSTANTIATE_TEST_SUITE_P(
+        RequiredFields,
+        HfConfigMissingRequiredFieldTest,
+        ::testing::Values(
+                "model_type",
+                "architectures",
+                "hidden_size",
+                "intermediate_size",
+                "num_hidden_layers",
+                "num_attention_heads",
+                "vocab_size",
+                "rms_norm_eps"),
+        [](const ::testing::TestParamInfo<HfConfigMissingRequiredFieldTest::ParamType>& info) {
+            return std::string(info.param);
+        });
+
+TEST(HfConfigTest, RejectsMalformedJson) {
     TempDirectory temp_dir;
     const auto path = WriteConfig(temp_dir, R"({"model_type": )");
 
-    const auto config = HfConfigParser::ParseConfigFile(path);
+    const auto config = hf::ParseConfigFile(path);
 
     ASSERT_FALSE(config.ok());
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfConfigParserTest, RejectsWrongFieldType) {
+TEST(HfConfigTest, RejectsWrongFieldType) {
     TempDirectory temp_dir;
     const auto path = WriteConfig(temp_dir, R"({
         "architectures": ["LlamaForCausalLM"],
@@ -141,16 +184,16 @@ TEST(HfConfigParserTest, RejectsWrongFieldType) {
         "rms_norm_eps": 1e-6
     })");
 
-    const auto config = HfConfigParser::ParseConfigFile(path);
+    const auto config = hf::ParseConfigFile(path);
 
     ASSERT_FALSE(config.ok());
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfConfigParserTest, RejectsMissingFile) {
+TEST(HfConfigTest, RejectsMissingFile) {
     TempDirectory temp_dir;
 
-    const auto config = HfConfigParser::ParseConfigFile(temp_dir.Path() / "config.json");
+    const auto config = hf::ParseConfigFile(temp_dir.Path() / "config.json");
 
     ASSERT_FALSE(config.ok());
     EXPECT_EQ(config.status().code(), StatusCode::kNotFound);

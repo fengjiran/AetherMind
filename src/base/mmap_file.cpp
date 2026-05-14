@@ -60,6 +60,22 @@ Status CloseBeforeReturn(ScopedFd& fd, const std::filesystem::path& path, const 
                             "; original status: " + status.ToString());
 }
 
+int ToPosixAdvice(MemoryMappedFile::Advice advice) noexcept {
+    switch (advice) {
+        case MemoryMappedFile::Advice::kNormal:
+            return POSIX_MADV_NORMAL;
+        case MemoryMappedFile::Advice::kRandom:
+            return POSIX_MADV_RANDOM;
+        case MemoryMappedFile::Advice::kSequential:
+            return POSIX_MADV_SEQUENTIAL;
+        case MemoryMappedFile::Advice::kWillNeed:
+            return POSIX_MADV_WILLNEED;
+        case MemoryMappedFile::Advice::kDontNeed:
+            return POSIX_MADV_DONTNEED;
+    }
+    return POSIX_MADV_NORMAL;
+}
+
 }// namespace
 
 MemoryMappedFile::~MemoryMappedFile() {
@@ -87,6 +103,18 @@ MemoryMappedFile& MemoryMappedFile::operator=(MemoryMappedFile&& other) noexcept
         other.size_ = 0;
     }
     return *this;
+}
+
+Status MemoryMappedFile::Advise(Advice advice) const {
+    if (data_ == nullptr || size_ == 0) {
+        return Status::InvalidArgument("Cannot advise an invalid memory mapping");
+    }
+
+    if (const int error_number = posix_madvise(data_, size_, ToPosixAdvice(advice)); error_number != 0) {
+        return Status::Internal(std::string("posix_madvise failed: ") +
+                                std::error_code(error_number, std::generic_category()).message());
+    }
+    return Status::Ok();
 }
 
 StatusOr<MemoryMappedFile> MemoryMappedFile::Map(const std::filesystem::path& path) {

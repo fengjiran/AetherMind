@@ -18,7 +18,7 @@ public:
     TempDirectory() {
         static size_t counter = 0;
         const auto unique_id = std::to_string(
-                std::chrono::steady_clock::now().time_since_epoch().count()) +
+                                       std::chrono::steady_clock::now().time_since_epoch().count()) +
                                "_" + std::to_string(counter++);
         path_ = std::filesystem::temp_directory_path() /
                 ("aethermind_mmap_test_" + unique_id);
@@ -170,6 +170,30 @@ TEST(MemoryMappedFile, DefaultConstructedIsInvalid) {
     EXPECT_EQ(mmap.ByteData(), nullptr);
     EXPECT_EQ(mmap.size(), 0U);
     EXPECT_TRUE(mmap.Bytes().empty());
+}
+
+TEST(MemoryMappedFile, AdviseRejectsInvalidMapping) {
+    MemoryMappedFile mmap;
+
+    const Status status = mmap.Advise(MemoryMappedFile::Advice::kNormal);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(MemoryMappedFile, AdvisesMappedFileAccessPattern) {
+    TempDirectory temp_dir;
+    const auto path = temp_dir.path() / "advise.bin";
+    WriteFile(path, "advise_data");
+
+    auto mmap = MemoryMappedFile::Map(path);
+    ASSERT_TRUE(mmap.ok()) << mmap.status().ToString();
+
+    EXPECT_TRUE(mmap->Advise(MemoryMappedFile::Advice::kNormal).ok());
+    EXPECT_TRUE(mmap->Advise(MemoryMappedFile::Advice::kRandom).ok());
+    EXPECT_TRUE(mmap->Advise(MemoryMappedFile::Advice::kSequential).ok());
+    EXPECT_TRUE(mmap->Advise(MemoryMappedFile::Advice::kWillNeed).ok());
+    EXPECT_TRUE(mmap->Advise(MemoryMappedFile::Advice::kDontNeed).ok());
 }
 
 TEST(MemoryMappedFile, MoveConstructionTransfersOwnership) {
@@ -785,11 +809,11 @@ TEST(MemoryMappedFile, MapFileWithNullBytes) {
     TempDirectory temp_dir;
     const auto path = temp_dir.path() / "nulls.bin";
     std::vector<std::byte> bytes = {
-        static_cast<std::byte>(0x00),
-        static_cast<std::byte>(0xFF),
-        static_cast<std::byte>(0x00),
-        static_cast<std::byte>(0x01),
-        static_cast<std::byte>(0x00),
+            static_cast<std::byte>(0x00),
+            static_cast<std::byte>(0xFF),
+            static_cast<std::byte>(0x00),
+            static_cast<std::byte>(0x01),
+            static_cast<std::byte>(0x00),
     };
     WriteFile(path, bytes);
 

@@ -15,6 +15,14 @@ namespace aethermind {
 
 class MemoryMappedFile {
 public:
+    enum class Advice {
+        kNormal,
+        kRandom,
+        kSequential,
+        kWillNeed,
+        kDontNeed,
+    };
+
     MemoryMappedFile() noexcept = default;
     ~MemoryMappedFile();
 
@@ -24,6 +32,12 @@ public:
     MemoryMappedFile& operator=(const MemoryMappedFile&) = delete;
 
     AM_NODISCARD static StatusOr<MemoryMappedFile> Map(const std::filesystem::path& path);
+
+    /// Applies an OS-level access-pattern hint to the entire mapped range.
+    ///
+    /// This is an optimization hint only; callers should choose advice based on the
+    /// expected access pattern and must not rely on it for correctness.
+    AM_NODISCARD Status Advise(Advice advice) const;
 
     AM_NODISCARD const void* data() const noexcept {
         return data_;

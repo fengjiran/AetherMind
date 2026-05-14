@@ -1,6 +1,7 @@
-#include "aethermind/model/formats/hf/hf_config_parser.h"
+#include "aethermind/model/formats/hf/hf_directory_reader.h"
 
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -41,12 +42,28 @@ private:
     std::filesystem::path path_{};
 };
 
-std::filesystem::path WriteConfig(TempDirectory& temp_dir, std::string_view content) {
-    const auto path = temp_dir.Path() / "config.json";
+void WriteConfig(const std::filesystem::path& dir, std::string_view content) {
+    const auto path = dir / "config.json";
     std::ofstream stream(path, std::ios::binary);
-    EXPECT_TRUE(stream.is_open()) << path.string();
+    ASSERT_TRUE(stream.is_open()) << path.string();
     stream << content;
-    return path;
+}
+
+void WriteMinimalSafetensors(const std::filesystem::path& dir) {
+    const auto path = dir / "model.safetensors";
+    std::ofstream stream(path, std::ios::binary);
+    ASSERT_TRUE(stream.is_open()) << path.string();
+    const std::string header = "{}";
+    const std::array<std::byte, 8> len_bytes = []() {
+        const uint64_t len = 2;
+        std::array<std::byte, 8> bytes{};
+        for (size_t i = 0; i < 8; ++i) {
+            bytes[i] = static_cast<std::byte>((len >> (8U * i)) & 0xFFU);
+        }
+        return bytes;
+    }();
+    stream.write(reinterpret_cast<const char*>(len_bytes.data()), static_cast<std::streamsize>(len_bytes.size()));
+    stream << header;
 }
 
 std::string MakeConfigWithoutRequiredField(std::string_view omitted_field) {
@@ -80,11 +97,15 @@ std::string MakeConfigWithoutRequiredField(std::string_view omitted_field) {
     return config;
 }
 
+StatusOr<HfDirectoryReader> OpenTempDir(TempDirectory& temp_dir) {
+    return HfDirectoryReader::Open(temp_dir.Path());
+}
+
 class HfConfigMissingRequiredFieldTest : public ::testing::TestWithParam<const char*> {};
 
 TEST(HfConfigTest, ParsesMinimalLlamaConfig) {
     TempDirectory temp_dir;
-    const auto path = WriteConfig(temp_dir, R"({
+    WriteConfig(temp_dir.Path(), R"({
         "architectures": ["LlamaForCausalLM"],
         "model_type": "llama",
         "hidden_size": 4096,
@@ -97,8 +118,11 @@ TEST(HfConfigTest, ParsesMinimalLlamaConfig) {
         "tie_word_embeddings": false,
         "unused_field": {"nested": true}
     })");
+    WriteMinimalSafetensors(temp_dir.Path());
 
-    const auto config = hf::ParseConfigFile(path);
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_EQ(config->model_type, "llama");
@@ -115,7 +139,7 @@ TEST(HfConfigTest, ParsesMinimalLlamaConfig) {
 
 TEST(HfConfigTest, DefaultsOptionalFields) {
     TempDirectory temp_dir;
-    const auto path = WriteConfig(temp_dir, R"({
+    WriteConfig(temp_dir.Path(), R"({
         "architectures": ["LlamaForCausalLM"],
         "model_type": "llama",
         "hidden_size": 4096,
@@ -125,8 +149,11 @@ TEST(HfConfigTest, DefaultsOptionalFields) {
         "vocab_size": 32000,
         "rms_norm_eps": 0.000001
     })");
+    WriteMinimalSafetensors(temp_dir.Path());
 
-    const auto config = hf::ParseConfigFile(path);
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_EQ(config->num_key_value_heads, config->num_attention_heads);
@@ -136,9 +163,12 @@ TEST(HfConfigTest, DefaultsOptionalFields) {
 TEST_P(HfConfigMissingRequiredFieldTest, RejectsMissingRequiredField) {
     TempDirectory temp_dir;
     const auto* const missing_field = GetParam();
-    const auto path = WriteConfig(temp_dir, MakeConfigWithoutRequiredField(missing_field));
+    WriteConfig(temp_dir.Path(), MakeConfigWithoutRequiredField(missing_field));
+    WriteMinimalSafetensors(temp_dir.Path());
 
-    const auto config = hf::ParseConfigFile(path);
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
 
     ASSERT_FALSE(config.ok());
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
@@ -163,9 +193,12 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(HfConfigTest, RejectsMalformedJson) {
     TempDirectory temp_dir;
-    const auto path = WriteConfig(temp_dir, R"({"model_type": )");
+    WriteConfig(temp_dir.Path(), R"({"model_type": )");
+    WriteMinimalSafetensors(temp_dir.Path());
 
-    const auto config = hf::ParseConfigFile(path);
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
 
     ASSERT_FALSE(config.ok());
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
@@ -173,7 +206,7 @@ TEST(HfConfigTest, RejectsMalformedJson) {
 
 TEST(HfConfigTest, RejectsWrongFieldType) {
     TempDirectory temp_dir;
-    const auto path = WriteConfig(temp_dir, R"({
+    WriteConfig(temp_dir.Path(), R"({
         "architectures": ["LlamaForCausalLM"],
         "model_type": "llama",
         "hidden_size": "4096",
@@ -183,20 +216,14 @@ TEST(HfConfigTest, RejectsWrongFieldType) {
         "vocab_size": 32000,
         "rms_norm_eps": 1e-6
     })");
+    WriteMinimalSafetensors(temp_dir.Path());
 
-    const auto config = hf::ParseConfigFile(path);
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
 
     ASSERT_FALSE(config.ok());
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
-}
-
-TEST(HfConfigTest, RejectsMissingFile) {
-    TempDirectory temp_dir;
-
-    const auto config = hf::ParseConfigFile(temp_dir.Path() / "config.json");
-
-    ASSERT_FALSE(config.ok());
-    EXPECT_EQ(config.status().code(), StatusCode::kNotFound);
 }
 
 }// namespace

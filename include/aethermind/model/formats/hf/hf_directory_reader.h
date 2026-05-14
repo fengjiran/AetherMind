@@ -2,6 +2,7 @@
 #define AETHERMIND_MODEL_FORMATS_HF_HF_DIRECTORY_READER_H
 
 #include "aethermind/base/status.h"
+#include "aethermind/model/model_config.h"
 #include "aethermind/model/resolved_tensor_index.h"
 
 #include <filesystem>
@@ -40,6 +41,8 @@ public:
     }
 
     AM_NODISCARD StatusOr<RawTensorTable> LoadTensorTable() const;
+
+    AM_NODISCARD StatusOr<ModelConfig> ParseConfig() const;
 
 private:
     explicit HfDirectoryReader(HfDirectoryDescriptor dir_desc) noexcept

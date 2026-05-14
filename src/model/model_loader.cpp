@@ -1,5 +1,4 @@
 #include "aethermind/model/model_loader.h"
-#include "aethermind/model/formats/hf/hf_config_parser.h"
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/model/model_validator.h"
@@ -19,7 +18,7 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
         return reader.status();
     }
 
-    auto config = hf::ParseConfigFile(reader->Layout().config_path);
+    auto config = reader->ParseConfig();
     if (!config.ok()) {
         return config.status();
     }

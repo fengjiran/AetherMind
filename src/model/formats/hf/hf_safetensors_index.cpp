@@ -9,13 +9,11 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -23,23 +21,6 @@
 namespace aethermind {
 
 namespace {
-
-class OwnedBytesBacking final : public RawTensorBacking {
-public:
-    explicit OwnedBytesBacking(std::vector<std::byte> bytes) noexcept
-        : bytes_(std::move(bytes)) {}
-
-    AM_NODISCARD const std::byte* data() const noexcept {
-        return bytes_.data();
-    }
-
-    AM_NODISCARD size_t size() const noexcept {
-        return bytes_.size();
-    }
-
-private:
-    std::vector<std::byte> bytes_{};
-};
 
 class MmapBacking final : public RawTensorBacking {
 public:
@@ -54,55 +35,15 @@ public:
         return mmap_.size();
     }
 
+    AM_NODISCARD Status Advise(MemoryMappedFile::Advice advice) const {
+        return mmap_.Advise(advice);
+    }
+
 private:
+    // RawTensorView instances may keep this mapping alive after LoadSingleFile returns.
+    // The checkpoint file must not be truncated while mapped; later reads could SIGBUS.
     MemoryMappedFile mmap_;
 };
-
-StatusOr<std::vector<std::byte>> ReadFileBytes(const std::filesystem::path& path) {
-    std::error_code error;
-    if (!std::filesystem::exists(path, error) || error) {
-        if (error) {
-            return Status::Internal(
-                    hf::FormatPathMessage("Failed to stat safetensors file", path));
-        }
-        return Status::NotFound(
-                hf::FormatPathMessage("Safetensors file not found", path));
-    }
-
-    if (!std::filesystem::is_regular_file(path, error) || error) {
-        if (error) {
-            return Status::Internal(
-                    hf::FormatPathMessage("Failed to inspect safetensors file type", path));
-        }
-        return Status::InvalidArgument(
-                hf::FormatPathMessage("Safetensors path is not a regular file", path));
-    }
-
-    std::ifstream stream(path, std::ios::binary | std::ios::ate);
-    if (!stream.is_open()) {
-        return Status::Internal(
-                hf::FormatPathMessage("Failed to open safetensors file", path));
-    }
-
-    const auto end_pos = stream.tellg();
-    if (end_pos < 0) {
-        return Status::Internal(
-                hf::FormatPathMessage("Failed to determine safetensors file size", path));
-    }
-
-    const size_t size = end_pos;
-    stream.seekg(0, std::ios::beg);
-
-    std::vector<std::byte> bytes(size);
-    if (size > 0) {
-        stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
-        if (!stream) {
-            return Status::Internal(
-                    hf::FormatPathMessage("Failed to read safetensors file bytes", path));
-        }
-    }
-    return bytes;
-}
 
 StatusOr<uint64_t> ParseLittleEndianU64(std::span<const std::byte> bytes) {
     if (bytes.size() < sizeof(uint64_t)) {
@@ -229,7 +170,8 @@ public:
             }
 
             if (*key == "__metadata__") {
-                if (const Status skip_status = SkipValue(); !skip_status.ok()) {
+                Status skip_status = SkipValue();
+                if (!skip_status.ok()) {
                     return skip_status;
                 }
             } else {
@@ -340,7 +282,7 @@ private:
                     }
                     data_offsets = *parsed_offsets;
                 } else {
-                    const Status skip_status = SkipValue();
+                    Status skip_status = SkipValue();
                     if (!skip_status.ok()) {
                         return skip_status;
                     }
@@ -495,13 +437,17 @@ private:
 
 }// namespace hf
 
-StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::filesystem::path& safetensors_path) {
-    auto file_bytes = ReadFileBytes(safetensors_path);
-    if (!file_bytes.ok()) {
-        return file_bytes.status();
+StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
+        const std::filesystem::path& safetensors_path) {
+    auto mmap = MemoryMappedFile::Map(safetensors_path);
+    if (!mmap.ok()) {
+        return mmap.status();
     }
 
-    const auto backing = std::make_shared<OwnedBytesBacking>(std::move(*file_bytes));
+    const auto backing = std::make_shared<MmapBacking>(std::move(*mmap));
+    // Safetensors views are retained for later tensor-level access. The random-access hint
+    // avoids aggressive whole-file readahead, but remains best-effort and non-fatal.
+    (void) backing->Advise(MemoryMappedFile::Advice::kRandom);
     if (backing->size() < sizeof(uint64_t)) {
         return Status::InvalidArgument(
                 hf::FormatPathMessage("Safetensors file is too small", safetensors_path));
@@ -519,9 +465,9 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
                 hf::FormatPathMessage("Safetensors header exceeds maximum size (16MB)", safetensors_path));
     }
 
-    constexpr uint64_t header_begin = sizeof(uint64_t);
+    constexpr uint64_t kHeaderBegin = sizeof(uint64_t);
     uint64_t header_end = 0;
-    if (CheckOverflowAdd(header_begin, *header_length, &header_end)) {
+    if (CheckOverflowAdd(kHeaderBegin, *header_length, &header_end)) {
         return Status::InvalidArgument(
                 hf::FormatPathMessage("Safetensors header length overflow", safetensors_path));
     }
@@ -531,7 +477,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
                 hf::FormatPathMessage("Safetensors header length exceeds file size", safetensors_path));
     }
 
-    const auto* header_chars = reinterpret_cast<const char*>(backing->data() + header_begin);
+    const auto* header_chars = reinterpret_cast<const char*>(backing->data() + kHeaderBegin);
     const std::string_view header_json(header_chars, *header_length);
     const std::byte* data_base = backing->data() + header_end;
     const size_t data_size = backing->size() - header_end;
@@ -544,6 +490,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
 
     HfSafetensorsIndex index;
     index.path_ = safetensors_path;
+    index.backing_ = backing;
     index.entries_ = std::move(*parsed_entries);
     for (size_t i = 0; i < index.entries_.size(); ++i) {
         index.name_index_[index.entries_[i].name] = i;
@@ -552,8 +499,8 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
 }
 
 const HfSafetensorsEntry* HfSafetensorsIndex::Find(std::string_view tensor_name) const {
-    const auto it = name_index_.find(std::string(tensor_name));
-    if (it != name_index_.end()) {
+    if (const auto it = name_index_.find(std::string(tensor_name));
+        it != name_index_.end()) {
         return &entries_[it->second];
     }
     return nullptr;

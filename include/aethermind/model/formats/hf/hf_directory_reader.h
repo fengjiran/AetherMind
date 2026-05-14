@@ -2,8 +2,10 @@
 #define AETHERMIND_MODEL_FORMATS_HF_HF_DIRECTORY_READER_H
 
 #include "aethermind/base/status.h"
+#include "aethermind/model/resolved_tensor_index.h"
 
 #include <filesystem>
+#include <utility>
 
 namespace aethermind {
 
@@ -27,6 +29,23 @@ struct HfDirectoryLayoutInfo {
     AM_NODISCARD bool IsSharded() const noexcept {
         return layout == HfDirectoryLayout::kShardedSafetensors;
     }
+};
+
+class HfDirectoryReader {
+public:
+    AM_NODISCARD static StatusOr<HfDirectoryReader> Open(const std::filesystem::path& model_dir);
+
+    AM_NODISCARD const HfDirectoryLayoutInfo& Layout() const noexcept {
+        return layout_;
+    }
+
+    AM_NODISCARD StatusOr<RawTensorMap> LoadTensorTable() const;
+
+private:
+    explicit HfDirectoryReader(HfDirectoryLayoutInfo layout) noexcept
+        : layout_(std::move(layout)) {}
+
+    HfDirectoryLayoutInfo layout_{};
 };
 
 namespace hf {

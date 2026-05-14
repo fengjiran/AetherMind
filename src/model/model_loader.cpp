@@ -12,13 +12,18 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
     UNUSED(backend);
     UNUSED(registry);
 
-    const auto layout = hf::DiscoverLayout(options.model_dir);
-    if (!layout.ok()) {
-        return layout.status();
+    auto reader = HfDirectoryReader::Open(options.model_dir);
+    if (!reader.ok()) {
+        return reader.status();
+    }
+
+    auto tensor_table = reader->LoadTensorTable();
+    if (!tensor_table.ok()) {
+        return tensor_table.status();
     }
 
     return Status(StatusCode::kUnimplemented,
-                  "ModelLoader::Load is not implemented yet after layout discovery");
+                  "ModelLoader::Load reached reader tensor table; ModelInstance build is not implemented yet");
 }
 
 }// namespace aethermind

@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -28,6 +29,12 @@ struct HfSafetensorsEntry {
 
 class HfSafetensorsIndex {
 public:
+    /// Loads a single-file safetensors checkpoint using the default mmap zero-copy path.
+    ///
+    /// The checkpoint file is treated as immutable for the full lifetime of the returned
+    /// index and any RawTensorView copied from it. Writers must publish updates by writing
+    /// a new file and atomically renaming it into place; truncating or modifying the mapped
+    /// file in place can make later view access fault with SIGBUS.
     static StatusOr<HfSafetensorsIndex> LoadSingleFile(const std::filesystem::path& safetensors_path);
 
     AM_NODISCARD const HfSafetensorsEntry* Find(std::string_view tensor_name) const;
@@ -42,6 +49,7 @@ public:
 
 private:
     std::filesystem::path path_{};
+    std::shared_ptr<const RawTensorBacking> backing_{};
     std::vector<HfSafetensorsEntry> entries_{};
     std::unordered_map<std::string, size_t> name_index_{};
 };

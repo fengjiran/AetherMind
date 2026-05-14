@@ -1,14 +1,42 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/formats/hf/hf_format_utils.h"
+#include "aethermind/model/formats/hf/hf_safetensors_index.h"
 
-#include <string>
 #include <system_error>
 
 namespace aethermind {
+
+StatusOr<HfDirectoryReader> HfDirectoryReader::Open(const std::filesystem::path& model_dir) {
+    auto layout = hf::DiscoverLayout(model_dir);
+    if (!layout.ok()) {
+        return layout.status();
+    }
+
+    return HfDirectoryReader(std::move(*layout));
+}
+
+StatusOr<RawTensorMap> HfDirectoryReader::LoadTensorTable() const {
+    if (!layout_.IsSingleFile()) {
+        return Status(StatusCode::kUnimplemented,
+                      hf::FormatPathMessage("Only single-file HF safetensors layout is implemented", layout_.model_dir));
+    }
+
+    auto index = HfSafetensorsIndex::LoadSingleFile(layout_.safetensors_path);
+    if (!index.ok()) {
+        return index.status();
+    }
+
+    RawTensorMap tensor_table;
+    tensor_table.reserve(index->Entries().size());
+    for (const auto& entry: index->Entries()) {
+        tensor_table.emplace(entry.name, entry.view);
+    }
+    return tensor_table;
+}
+
 namespace hf {
 
-StatusOr<HfDirectoryLayoutInfo> DiscoverLayout(
-        const std::filesystem::path& model_dir) {
+StatusOr<HfDirectoryLayoutInfo> DiscoverLayout(const std::filesystem::path& model_dir) {
     if (model_dir.empty()) {
         return Status::InvalidArgument("HF model directory path must not be empty");
     }

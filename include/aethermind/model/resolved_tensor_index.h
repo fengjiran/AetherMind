@@ -4,6 +4,7 @@
 #include "data_type.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,11 @@ struct RawTensorView {
 
     AM_NODISCARD bool IsValid() const noexcept {
         return backing != nullptr && dtype.bits() > 0 && (data != nullptr || bytes == 0);
+    }
+
+    AM_NODISCARD bool IsAligned(size_t alignment) const noexcept {
+        return alignment != 0 && data != nullptr &&
+               reinterpret_cast<std::uintptr_t>(data) % alignment == 0;
     }
 };
 

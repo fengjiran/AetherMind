@@ -18,9 +18,46 @@ namespace aethermind {
 
 namespace {
 
+class ScopedFd {
+public:
+    explicit ScopedFd(int fd) noexcept : fd_(fd) {}
+    ~ScopedFd() {
+        (void) Close();
+    }
+
+    ScopedFd(const ScopedFd&) = delete;
+    ScopedFd& operator=(const ScopedFd&) = delete;
+
+    AM_NODISCARD int get() const noexcept {
+        return fd_;
+    }
+
+    AM_NODISCARD int Close() noexcept {
+        if (fd_ < 0) {
+            return 0;
+        }
+
+        const int fd = fd_;
+        fd_ = -1;
+        return close(fd);
+    }
+
+private:
+    int fd_ = -1;
+};
+
 std::string ErrnoMessage(const char* operation, const std::filesystem::path& path, int error_number) {
     return std::string(operation) + " failed for file '" + path.string() + "': " +
            std::error_code(error_number, std::generic_category()).message();
+}
+
+Status CloseBeforeReturn(ScopedFd& fd, const std::filesystem::path& path, const Status& status) {
+    if (fd.Close() == 0) {
+        return status;
+    }
+
+    return Status::Internal(ErrnoMessage("close", path, errno) +
+                            "; original status: " + status.ToString());
 }
 
 }// namespace
@@ -41,7 +78,8 @@ MemoryMappedFile::MemoryMappedFile(MemoryMappedFile&& other) noexcept
 MemoryMappedFile& MemoryMappedFile::operator=(MemoryMappedFile&& other) noexcept {
     if (this != &other) {
         if (data_ != nullptr) {
-            munmap(data_, size_);
+            const int ret = munmap(data_, size_);
+            AM_DCHECK(ret == 0, "munmap failed");
         }
         data_ = other.data_;
         size_ = other.size_;
@@ -52,8 +90,8 @@ MemoryMappedFile& MemoryMappedFile::operator=(MemoryMappedFile&& other) noexcept
 }
 
 StatusOr<MemoryMappedFile> MemoryMappedFile::Map(const std::filesystem::path& path) {
-    const int fd = open(path.c_str(), O_RDONLY);
-    if (fd < 0) {
+    ScopedFd fd(open(path.c_str(), O_RDONLY | O_CLOEXEC));
+    if (fd.get() < 0) {
         if (errno == ENOENT) {
             return Status::NotFound(ErrnoMessage("open", path, errno));
         }
@@ -66,38 +104,40 @@ StatusOr<MemoryMappedFile> MemoryMappedFile::Map(const std::filesystem::path& pa
     }
 
     struct stat sb;
-    if (fstat(fd, &sb) == -1) {
+    if (fstat(fd.get(), &sb) == -1) {
         const int error_number = errno;
-        close(fd);
-        return Status::Internal(ErrnoMessage("fstat", path, error_number));
+        return CloseBeforeReturn(fd, path,
+                                 Status::Internal(ErrnoMessage("fstat", path, error_number)));
     }
 
     if (!S_ISREG(sb.st_mode)) {
-        close(fd);
-        return Status::InvalidArgument("Path is not a regular file: " + path.string());
+        return CloseBeforeReturn(fd, path,
+                                 Status::InvalidArgument("Path is not a regular file: " + path.string()));
     }
 
     if (sb.st_size <= 0) {
-        close(fd);
-        return Status::InvalidArgument("File is empty: " + path.string());
+        return CloseBeforeReturn(fd, path,
+                                 Status::InvalidArgument("File is empty: " + path.string()));
     }
 
     const auto file_size = static_cast<std::uintmax_t>(sb.st_size);
     if (file_size > std::numeric_limits<size_t>::max()) {
-        close(fd);
-        return Status::InvalidArgument("File is too large to map into this process: " + path.string());
+        return CloseBeforeReturn(fd, path,
+                                 Status::InvalidArgument("File is too large to map into this process: " + path.string()));
     }
 
     const auto size = static_cast<size_t>(file_size);
-    void* data = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    void* data = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd.get(), 0);
 
     if (data == MAP_FAILED) {
         const int error_number = errno;
-        close(fd);
-        return Status::Internal(ErrnoMessage("mmap", path, error_number));
+        return CloseBeforeReturn(fd, path,
+                                 Status::Internal(ErrnoMessage("mmap", path, error_number)));
     }
 
-    close(fd);// fd is no longer needed once the mapping is established; the kernel holds the reference.
+    // Once a read-only mmap succeeds, the kernel holds the file reference needed by the mapping.
+    // close() only releases this descriptor, so a late close error is intentionally non-fatal.
+    (void) fd.Close();
 
     return MemoryMappedFile(data, size);
 }

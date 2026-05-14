@@ -536,7 +536,7 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(const std::files
     const std::byte* data_base = backing->data() + header_end;
     const size_t data_size = backing->size() - header_end;
 
-    const auto parsed_entries = hf::SafetensorsHeaderParser(header_json, backing, data_base, data_size).Parse();
+    auto parsed_entries = hf::SafetensorsHeaderParser(header_json, backing, data_base, data_size).Parse();
     if (!parsed_entries.ok()) {
         return Status(parsed_entries.status().code(),
                       hf::FormatPathMessage(parsed_entries.status().message(), safetensors_path));

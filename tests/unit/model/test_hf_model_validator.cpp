@@ -1,4 +1,4 @@
-#include "aethermind/model/model_validator.h"
+#include "aethermind/model/formats/hf/hf_model_validator.h"
 
 #include <gtest/gtest.h>
 
@@ -22,179 +22,179 @@ ModelConfig MakeValidLlamaConfig() {
     };
 }
 
-void AddTensor(RawTensorTable* tensors, std::string name) {
-    tensors->emplace(std::move(name), RawTensorView{});
+void AddWeight(RawWeightTable* weights, std::string name) {
+    weights->emplace(std::move(name), RawWeightView{});
 }
 
-RawTensorTable MakeCompleteTensorSet(const ModelConfig& config) {
-    RawTensorTable tensors;
-    AddTensor(&tensors, "model.embed_tokens.weight");
-    AddTensor(&tensors, "model.norm.weight");
+RawWeightTable MakeCompleteWeightSet(const ModelConfig& config) {
+    RawWeightTable weights;
+    AddWeight(&weights, "model.embed_tokens.weight");
+    AddWeight(&weights, "model.norm.weight");
 
     for (int64_t layer = 0; layer < config.num_hidden_layers; ++layer) {
         const std::string prefix = "model.layers." + std::to_string(layer);
-        AddTensor(&tensors, prefix + ".self_attn.q_proj.weight");
-        AddTensor(&tensors, prefix + ".self_attn.k_proj.weight");
-        AddTensor(&tensors, prefix + ".self_attn.v_proj.weight");
-        AddTensor(&tensors, prefix + ".self_attn.o_proj.weight");
-        AddTensor(&tensors, prefix + ".mlp.gate_proj.weight");
-        AddTensor(&tensors, prefix + ".mlp.up_proj.weight");
-        AddTensor(&tensors, prefix + ".mlp.down_proj.weight");
-        AddTensor(&tensors, prefix + ".input_layernorm.weight");
-        AddTensor(&tensors, prefix + ".post_attention_layernorm.weight");
+        AddWeight(&weights, prefix + ".self_attn.q_proj.weight");
+        AddWeight(&weights, prefix + ".self_attn.k_proj.weight");
+        AddWeight(&weights, prefix + ".self_attn.v_proj.weight");
+        AddWeight(&weights, prefix + ".self_attn.o_proj.weight");
+        AddWeight(&weights, prefix + ".mlp.gate_proj.weight");
+        AddWeight(&weights, prefix + ".mlp.up_proj.weight");
+        AddWeight(&weights, prefix + ".mlp.down_proj.weight");
+        AddWeight(&weights, prefix + ".input_layernorm.weight");
+        AddWeight(&weights, prefix + ".post_attention_layernorm.weight");
     }
 
-    return tensors;
+    return weights;
 }
 
-TEST(ModelValidatorTest, AcceptsValidLlamaConfig) {
+TEST(HfModelValidatorTest, AcceptsValidLlamaConfig) {
     const ModelConfig config = MakeValidLlamaConfig();
 
-    const Status status = ModelValidator::ValidateConfig(config);
+    const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(ModelValidatorTest, AcceptsLlamaArchitectureWhenModelTypeIsDifferent) {
+TEST(HfModelValidatorTest, AcceptsLlamaArchitectureWhenModelTypeIsDifferent) {
     ModelConfig config = MakeValidLlamaConfig();
     config.model_type = "unknown";
 
-    const Status status = ModelValidator::ValidateConfig(config);
+    const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(ModelValidatorTest, RejectsUnsupportedModelFamily) {
+TEST(HfModelValidatorTest, RejectsUnsupportedModelFamily) {
     ModelConfig config = MakeValidLlamaConfig();
     config.model_type = "gpt_neox";
     config.architectures = {"GPTNeoXForCausalLM"};
 
-    const Status status = ModelValidator::ValidateConfig(config);
+    const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
+TEST(HfModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
     ModelConfig config = MakeValidLlamaConfig();
     config.hidden_size = 0;
 
-    const Status status = ModelValidator::ValidateConfig(config);
+    const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelValidatorTest, RejectsNonPositiveRmsNormEps) {
+TEST(HfModelValidatorTest, RejectsNonPositiveRmsNormEps) {
     ModelConfig config = MakeValidLlamaConfig();
     config.rms_norm_eps = 0.0;
 
-    const Status status = ModelValidator::ValidateConfig(config);
+    const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
+TEST(HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
     ModelConfig config = MakeValidLlamaConfig();
     config.hidden_size = 4097;
 
-    const Status status = ModelValidator::ValidateConfig(config);
+    const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelValidatorTest, RejectsTooManyKeyValueHeads) {
+TEST(HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_key_value_heads = 33;
 
-    const Status status = ModelValidator::ValidateConfig(config);
+    const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelValidatorTest, AcceptsCompleteTensorSet) {
+TEST(HfModelValidatorTest, AcceptsCompleteWeightSet) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
-    const RawTensorTable tensors = MakeCompleteTensorSet(config);
+    const RawWeightTable weights = MakeCompleteWeightSet(config);
 
-    const Status status = ModelValidator::ValidateTensorSet(config, tensors);
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(ModelValidatorTest, RejectsMissingEmbeddingTensor) {
+TEST(HfModelValidatorTest, RejectsMissingEmbeddingWeight) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
-    RawTensorTable tensors = MakeCompleteTensorSet(config);
-    tensors.erase("model.embed_tokens.weight");
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    weights.erase("model.embed_tokens.weight");
 
-    const Status status = ModelValidator::ValidateTensorSet(config, tensors);
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.embed_tokens.weight"), std::string::npos);
 }
 
-TEST(ModelValidatorTest, RejectsMissingFinalNormTensor) {
+TEST(HfModelValidatorTest, RejectsMissingFinalNormWeight) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
-    RawTensorTable tensors = MakeCompleteTensorSet(config);
-    tensors.erase("model.norm.weight");
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    weights.erase("model.norm.weight");
 
-    const Status status = ModelValidator::ValidateTensorSet(config, tensors);
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.norm.weight"), std::string::npos);
 }
 
-TEST(ModelValidatorTest, RejectsMissingLayerAttentionTensor) {
+TEST(HfModelValidatorTest, RejectsMissingLayerAttentionWeight) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
-    RawTensorTable tensors = MakeCompleteTensorSet(config);
-    tensors.erase("model.layers.1.self_attn.q_proj.weight");
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    weights.erase("model.layers.1.self_attn.q_proj.weight");
 
-    const Status status = ModelValidator::ValidateTensorSet(config, tensors);
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.1.self_attn.q_proj.weight"), std::string::npos);
 }
 
-TEST(ModelValidatorTest, RejectsMissingLayerMlpTensor) {
+TEST(HfModelValidatorTest, RejectsMissingLayerMlpWeight) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
-    RawTensorTable tensors = MakeCompleteTensorSet(config);
-    tensors.erase("model.layers.0.mlp.down_proj.weight");
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    weights.erase("model.layers.0.mlp.down_proj.weight");
 
-    const Status status = ModelValidator::ValidateTensorSet(config, tensors);
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.0.mlp.down_proj.weight"), std::string::npos);
 }
 
-TEST(ModelValidatorTest, RejectsMissingLayerNormTensor) {
+TEST(HfModelValidatorTest, RejectsMissingLayerNormWeight) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
-    RawTensorTable tensors = MakeCompleteTensorSet(config);
-    tensors.erase("model.layers.0.post_attention_layernorm.weight");
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    weights.erase("model.layers.0.post_attention_layernorm.weight");
 
-    const Status status = ModelValidator::ValidateTensorSet(config, tensors);
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.0.post_attention_layernorm.weight"), std::string::npos);
 }
 
-TEST(ModelValidatorTest, RejectsTensorSetWithInvalidLayerCount) {
+TEST(HfModelValidatorTest, RejectsWeightSetWithInvalidLayerCount) {
     ModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 0;
 
-    const Status status = ModelValidator::ValidateTensorSet(config, RawTensorTable{});
+    const Status status = HfModelValidator::ValidateWeightSet(config, RawWeightTable{});
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);

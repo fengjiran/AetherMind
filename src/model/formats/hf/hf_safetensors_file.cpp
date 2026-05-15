@@ -1,7 +1,7 @@
 #include "aethermind/model/formats/hf/hf_safetensors_file.h"
 #include "aethermind/base/mmap_file.h"
-#include "aethermind/model/formats/hf/hf_format_utils.h"
 #include "aethermind/model/formats/hf/hf_json_reader.h"
+#include "aethermind/model/formats/hf/hf_utils.h"
 #include "aethermind/utils/overflow_check.h"
 #include "utils/logging.h"
 
@@ -39,7 +39,7 @@ public:
     }
 
 private:
-    // RawTensorView instances may keep this mapping alive after Open returns.
+    // RawWeightView instances may keep this mapping alive after Open returns.
     // The checkpoint file must not be truncated while mapped; later reads could SIGBUS.
     MemoryMappedFile mmap_;
 };
@@ -55,71 +55,6 @@ StatusOr<uint64_t> ParseLittleEndianU64(std::span<const std::byte> bytes) {
         value |= static_cast<uint64_t>(std::to_integer<uint8_t>(bytes[i])) << (i * 8U);
     }
     return value;
-}
-
-StatusOr<DataType> ParseSafetensorsDType(const std::string& dtype_text) {
-    if (dtype_text == "F16") {
-        return DataType::Float(16);
-    }
-
-    if (dtype_text == "BF16") {
-        return DataType::BFloat(16);
-    }
-
-    if (dtype_text == "F32") {
-        return DataType::Float32();
-    }
-
-    if (dtype_text == "F64") {
-        return DataType::Float(64);
-    }
-
-    if (dtype_text == "I16") {
-        return DataType::Int(16);
-    }
-
-    if (dtype_text == "I32") {
-        return DataType::Int(32);
-    }
-
-    if (dtype_text == "I64") {
-        return DataType::Int(64);
-    }
-
-    if (dtype_text == "I8") {
-        return DataType::Int(8);
-    }
-
-    if (dtype_text == "U8") {
-        return DataType::UInt(8);
-    }
-
-    if (dtype_text == "U16") {
-        return DataType::UInt(16);
-    }
-
-    if (dtype_text == "U32") {
-        return DataType::UInt(32);
-    }
-
-    if (dtype_text == "U64") {
-        return DataType::UInt(64);
-    }
-
-    if (dtype_text == "BOOL") {
-        return DataType::Bool();
-    }
-
-    if (dtype_text == "F8_E5M2") {
-        return DataType::Float8E5M2();
-    }
-
-    if (dtype_text == "F8_E4M3") {
-        return DataType::Float8E4M3();
-    }
-
-    return Status::InvalidArgument(
-            std::string("Unsupported safetensors dtype: ") + std::string(dtype_text));
 }
 
 StatusOr<uint64_t> CheckedMultiply(uint64_t lhs, uint64_t rhs, std::string_view context) {
@@ -262,7 +197,7 @@ private:
                         return dtype_text.status();
                     }
 
-                    const auto parsed_dtype = ParseSafetensorsDType(*dtype_text);
+                    const auto parsed_dtype = hf::ParseSafetensorsDType(*dtype_text);
                     if (!parsed_dtype.ok()) {
                         return parsed_dtype.status();
                     }
@@ -345,7 +280,7 @@ private:
         entry->shape = shape;
         entry->data_offset_begin = begin;
         entry->data_offset_end = end;
-        entry->view = RawTensorView{
+        entry->view = RawWeightView{
                 .data = data_base_ + begin,
                 .bytes = end - begin,
                 .dtype = *dtype,
@@ -402,7 +337,8 @@ StatusOr<HfSafetensorsFile> HfSafetensorsFile::Open(const std::filesystem::path&
                 hf::FormatPathMessage("Safetensors file is too small", safetensors_path));
     }
 
-    const auto header_length = ParseLittleEndianU64({storage->data(), sizeof(uint64_t)});
+    const auto header_length = ParseLittleEndianU64(
+            {storage->data(), sizeof(uint64_t)});
     if (!header_length.ok()) {
         return Status(StatusCode::kInvalidArgument,
                       hf::FormatPathMessage(header_length.status().message(), safetensors_path));

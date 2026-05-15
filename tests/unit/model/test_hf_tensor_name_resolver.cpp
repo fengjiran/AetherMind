@@ -26,16 +26,16 @@ ModelConfig MakeLlamaConfig(int64_t num_layers) {
     };
 }
 
-void AddTensor(RawTensorTable* tensors, std::string name, size_t marker_index) {
+void AddTensor(RawWeightTable* tensors, std::string name, size_t marker_index) {
     AM_CHECK(marker_index < kTensorMarkers.size());
-    tensors->emplace(std::move(name), RawTensorView{
+    tensors->emplace(std::move(name), RawWeightView{
                                               .data = &kTensorMarkers[marker_index],
                                               .bytes = marker_index + 1,
                                       });
 }
 
-RawTensorTable MakeCompleteTensorSet(int64_t num_layers, bool include_lm_head = false) {
-    RawTensorTable tensors;
+RawWeightTable MakeCompleteTensorSet(int64_t num_layers, bool include_lm_head = false) {
+    RawWeightTable tensors;
     size_t marker_index = 0;
     AddTensor(&tensors, "model.embed_tokens.weight", marker_index++);
     AddTensor(&tensors, "model.norm.weight", marker_index++);
@@ -58,14 +58,14 @@ RawTensorTable MakeCompleteTensorSet(int64_t num_layers, bool include_lm_head = 
     return tensors;
 }
 
-void ExpectSameView(const RawTensorView& actual, const RawTensorView& expected) {
+void ExpectSameView(const RawWeightView& actual, const RawWeightView& expected) {
     EXPECT_EQ(actual.data, expected.data);
     EXPECT_EQ(actual.bytes, expected.bytes);
 }
 
 TEST(HfTensorNameResolveTest, ResolvesSingleLayerDenseLlamaWeights) {
     const ModelConfig config = MakeLlamaConfig(1);
-    const RawTensorTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
+    const RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
 
     const auto resolved = hf::Resolve(config, tensors);
 
@@ -87,7 +87,7 @@ TEST(HfTensorNameResolveTest, ResolvesSingleLayerDenseLlamaWeights) {
 
 TEST(HfTensorNameResolveTest, ResolvesTwoLayerDenseLlamaWeights) {
     const ModelConfig config = MakeLlamaConfig(2);
-    const RawTensorTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
+    const RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
 
     const auto resolved = hf::Resolve(config, tensors);
 
@@ -101,7 +101,7 @@ TEST(HfTensorNameResolveTest, ResolvesTwoLayerDenseLlamaWeights) {
 
 TEST(HfTensorNameResolveTest, RejectsMissingLayerAttentionTensor) {
     const ModelConfig config = MakeLlamaConfig(2);
-    RawTensorTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
+    RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
     tensors.erase("model.layers.1.self_attn.q_proj.weight");
 
     const auto resolved = hf::Resolve(config, tensors);
@@ -113,7 +113,7 @@ TEST(HfTensorNameResolveTest, RejectsMissingLayerAttentionTensor) {
 
 TEST(HfTensorNameResolveTest, RejectsIncompleteLayerCount) {
     const ModelConfig config = MakeLlamaConfig(2);
-    const RawTensorTable tensors = MakeCompleteTensorSet(1);
+    const RawWeightTable tensors = MakeCompleteTensorSet(1);
 
     const auto resolved = hf::Resolve(config, tensors);
 
@@ -124,7 +124,7 @@ TEST(HfTensorNameResolveTest, RejectsIncompleteLayerCount) {
 
 TEST(HfTensorNameResolveTest, TreatsLmHeadAsOptional) {
     const ModelConfig config = MakeLlamaConfig(1);
-    RawTensorTable tensors = MakeCompleteTensorSet(config.num_hidden_layers, true);
+    RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers, true);
 
     auto resolved = hf::Resolve(config, tensors);
 

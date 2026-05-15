@@ -1,5 +1,5 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
-#include "aethermind/model/formats/hf/hf_format_utils.h"
+#include "aethermind/model/formats/hf/hf_utils.h"
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 #include "aethermind/model/formats/hf/hf_safetensors_file.h"
 
@@ -233,7 +233,7 @@ StatusOr<ModelConfig> HfDirectoryReader::ParseConfig() const {
     return config;
 }
 
-StatusOr<RawTensorTable> HfDirectoryReader::LoadTensorTable() const {
+StatusOr<RawWeightTable> HfDirectoryReader::LoadRawWeightTable() const {
     if (!dir_desc_.IsSingleFile()) {
         return Status(StatusCode::kUnimplemented,
                       hf::FormatPathMessage("Only single-file HF safetensors layout is implemented", dir_desc_.model_dir));
@@ -244,12 +244,12 @@ StatusOr<RawTensorTable> HfDirectoryReader::LoadTensorTable() const {
         return safetensors_file.status();
     }
 
-    RawTensorTable tensor_table;
-    tensor_table.reserve(safetensors_file->Entries().size());
+    RawWeightTable raw_weights;
+    raw_weights.reserve(safetensors_file->Entries().size());
     for (const auto& entry: safetensors_file->Entries()) {
-        tensor_table.emplace(entry.name, entry.view);
+        raw_weights.emplace(entry.name, entry.view);
     }
-    return tensor_table;
+    return raw_weights;
 }
 
 StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::filesystem::path& model_dir) {

@@ -3,14 +3,14 @@
 
 #include "aethermind/base/status.h"
 #include "aethermind/model/model_config.h"
-#include "aethermind/model/resolved_tensor_index.h"
+#include "aethermind/model/model_weight_index.h"
 
 namespace aethermind {
 
 namespace hf {
 
-StatusOr<ResolvedTensorIndex> Resolve(const ModelConfig& config,
-                                     const RawTensorTable& tensors);
+StatusOr<ModelWeightIndex> Resolve(const ModelConfig& config,
+                                   const RawWeightTable& tensors);
 
 }// namespace hf
 

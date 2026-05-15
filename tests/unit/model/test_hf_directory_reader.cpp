@@ -132,7 +132,7 @@ TEST(HfDirectoryReaderTest, OpensSingleFileReader) {
     EXPECT_EQ(reader->GetDirDesc().safetensors_path, temp_dir.path() / "model.safetensors");
 }
 
-TEST(HfDirectoryReaderTest, LoadsSingleFileTensorTable) {
+TEST(HfDirectoryReaderTest, LoadsSingleFileRawWeightTable) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
@@ -144,12 +144,12 @@ TEST(HfDirectoryReaderTest, LoadsSingleFileTensorTable) {
     auto reader = HfDirectoryReader::Open(temp_dir.path());
     ASSERT_TRUE(reader.ok()) << reader.status().ToString();
 
-    const auto tensor_table = reader->LoadTensorTable();
+    const auto raw_weights = reader->LoadRawWeightTable();
 
-    ASSERT_TRUE(tensor_table.ok()) << tensor_table.status().ToString();
-    ASSERT_EQ(tensor_table->size(), 1U);
-    const auto it = tensor_table->find("weight");
-    ASSERT_NE(it, tensor_table->end());
+    ASSERT_TRUE(raw_weights.ok()) << raw_weights.status().ToString();
+    ASSERT_EQ(raw_weights->size(), 1U);
+    const auto it = raw_weights->find("weight");
+    ASSERT_NE(it, raw_weights->end());
     EXPECT_TRUE(it->second.IsValid());
     EXPECT_EQ(it->second.dtype, DataType::Float32());
     EXPECT_EQ(it->second.shape, (std::vector<int64_t>{2}));

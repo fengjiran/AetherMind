@@ -1,4 +1,4 @@
-#include "aethermind/model/model_validator.h"
+#include "aethermind/model/formats/hf/hf_model_validator.h"
 
 #include <algorithm>
 #include <array>
@@ -16,28 +16,29 @@ bool ContainsLlamaArchitecture(const std::vector<std::string>& architectures) {
 
 Status RequirePositive(int64_t value, std::string_view field_name) {
     if (value <= 0) {
-        return Status::InvalidArgument(std::string("Model config field '") + std::string(field_name) + "' must be positive");
+        return Status::InvalidArgument(std::string("Model config field '") +
+                                       std::string(field_name) + "' must be positive");
     }
     return Status::Ok();
 }
 
-Status RequireTensor(const RawTensorTable& tensors, std::string_view tensor_name) {
-    if (!tensors.contains(std::string(tensor_name))) {
-        return Status::InvalidArgument(std::string("Model tensor set is missing required tensor '") +
-                                       std::string(tensor_name) + "'");
+Status RequireWeight(const RawWeightTable& weights, std::string_view weight_name) {
+    if (!weights.contains(std::string(weight_name))) {
+        return Status::InvalidArgument(std::string("Model weight set is missing required weight '") +
+                                       std::string(weight_name) + "'");
     }
     return Status::Ok();
 }
 
-Status RequireLayerTensor(const RawTensorTable& tensors,
+Status RequireLayerWeight(const RawWeightTable& weights,
                           int64_t layer_index,
                           std::string_view suffix) {
-    return RequireTensor(tensors, "model.layers." + std::to_string(layer_index) + std::string(suffix));
+    return RequireWeight(weights, "model.layers." + std::to_string(layer_index) + std::string(suffix));
 }
 
 }// namespace
 
-Status ModelValidator::ValidateConfig(const ModelConfig& config) {
+Status HfModelValidator::ValidateConfig(const ModelConfig& config) {
     if (config.model_type != "llama" && !ContainsLlamaArchitecture(config.architectures)) {
         return Status::InvalidArgument("Only Llama-family dense decoder-only models are supported");
     }
@@ -64,13 +65,12 @@ Status ModelValidator::ValidateConfig(const ModelConfig& config) {
     return Status::Ok();
 }
 
-Status ModelValidator::ValidateTensorSet(const ModelConfig& config, const RawTensorTable& tensors) {
+Status HfModelValidator::ValidateWeightSet(const ModelConfig& config, const RawWeightTable& weights) {
     AM_RETURN_IF_ERROR(RequirePositive(config.num_hidden_layers, "num_hidden_layers"));
+    AM_RETURN_IF_ERROR(RequireWeight(weights, "model.embed_tokens.weight"));
+    AM_RETURN_IF_ERROR(RequireWeight(weights, "model.norm.weight"));
 
-    AM_RETURN_IF_ERROR(RequireTensor(tensors, "model.embed_tokens.weight"));
-    AM_RETURN_IF_ERROR(RequireTensor(tensors, "model.norm.weight"));
-
-    constexpr std::array<std::string_view, 9> kRequiredLayerTensorSuffixes{
+    constexpr std::array<std::string_view, 9> kRequiredLayerWeightSuffixes{
             ".self_attn.q_proj.weight",
             ".self_attn.k_proj.weight",
             ".self_attn.v_proj.weight",
@@ -83,8 +83,8 @@ Status ModelValidator::ValidateTensorSet(const ModelConfig& config, const RawTen
     };
 
     for (int64_t layer = 0; layer < config.num_hidden_layers; ++layer) {
-        for (const std::string_view suffix: kRequiredLayerTensorSuffixes) {
-            AM_RETURN_IF_ERROR(RequireLayerTensor(tensors, layer, suffix));
+        for (const std::string_view suffix: kRequiredLayerWeightSuffixes) {
+            AM_RETURN_IF_ERROR(RequireLayerWeight(weights, layer, suffix));
         }
     }
 

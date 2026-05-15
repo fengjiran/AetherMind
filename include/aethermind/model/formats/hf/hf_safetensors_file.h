@@ -2,7 +2,7 @@
 #define AETHERMIND_MODEL_FORMATS_HF_HF_SAFETENSORS_FILE_H
 
 #include "aethermind/base/status.h"
-#include "aethermind/model/resolved_tensor_index.h"
+#include "aethermind/model/raw_weight.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -20,7 +20,7 @@ struct HfSafetensorsEntry {
     std::vector<int64_t> shape{};
     uint64_t data_offset_begin = 0;
     uint64_t data_offset_end = 0;
-    RawTensorView view{};
+    RawWeightView view{};
 
     AM_NODISCARD size_t ByteSize() const noexcept {
         return data_offset_end - data_offset_begin;
@@ -32,7 +32,7 @@ public:
     /// Loads a single-file safetensors checkpoint using the default mmap zero-copy path.
     ///
     /// The checkpoint file is treated as immutable for the full lifetime of the returned
-    /// file object and any RawTensorView copied from it. Writers must publish updates by writing
+    /// file object and any RawWeightView copied from it. Writers must publish updates by writing
     /// a new file and atomically renaming it into place; truncating or modifying the mapped
     /// file in place can make later view access fault with SIGBUS.
     static StatusOr<HfSafetensorsFile> Open(const std::filesystem::path& safetensors_path);

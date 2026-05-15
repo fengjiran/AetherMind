@@ -160,7 +160,7 @@ TEST(ModelLoaderTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kUnimplemented);
-    EXPECT_NE(model.status().message().find("validated config and tensor table"), std::string::npos);
+    EXPECT_NE(model.status().message().find("validated config and raw weights"), std::string::npos);
 }
 
 TEST(ModelLoaderTest, RejectsUnsupportedModelFamily) {
@@ -199,7 +199,7 @@ TEST(ModelLoaderTest, PropagatesSafetensorsArtifactError) {
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelLoaderTest, RejectsIncompleteTensorSet) {
+TEST(ModelLoaderTest, RejectsIncompleteWeightSet) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{});

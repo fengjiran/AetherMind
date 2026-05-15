@@ -232,7 +232,7 @@ TEST(HfSafetensorsFileTest, KeepsStorageAliveThroughViews) {
             R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
             raw_bytes);
 
-    RawTensorView view;
+    RawWeightView view;
     {
         const auto file = HfSafetensorsFile::Open(path);
         ASSERT_TRUE(file.ok()) << file.status().ToString();
@@ -259,7 +259,7 @@ TEST(HfSafetensorsFileTest, KeepsMappedViewAliveAfterFileIsRemoved) {
     ASSERT_TRUE(file.ok()) << file.status().ToString();
     const auto* entry = file->Find("weight");
     ASSERT_NE(entry, nullptr);
-    const RawTensorView view = entry->view;
+    const RawWeightView view = entry->view;
 
     std::error_code error;
     ASSERT_TRUE(std::filesystem::remove(path, error));

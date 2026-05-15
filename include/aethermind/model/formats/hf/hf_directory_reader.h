@@ -3,7 +3,7 @@
 
 #include "aethermind/base/status.h"
 #include "aethermind/model/model_config.h"
-#include "aethermind/model/resolved_tensor_index.h"
+#include "aethermind/model/raw_weight.h"
 
 #include <filesystem>
 #include <utility>
@@ -46,7 +46,7 @@ public:
 
     AM_NODISCARD StatusOr<ModelConfig> ParseConfig() const;
 
-    AM_NODISCARD StatusOr<RawTensorTable> LoadTensorTable() const;
+    AM_NODISCARD StatusOr<RawWeightTable> LoadRawWeightTable() const;
 
 private:
     explicit HfDirectoryReader(HfDirectoryDescriptor dir_desc) noexcept

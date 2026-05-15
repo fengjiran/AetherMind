@@ -7,7 +7,7 @@ namespace aethermind {
 
 namespace {
 
-StatusOr<RawTensorView> FindRequiredTensor(const RawTensorTable& tensors, const std::string& tensor_name) {
+StatusOr<RawWeightView> FindRequiredTensor(const RawWeightTable& tensors, const std::string& tensor_name) {
     const auto it = tensors.find(tensor_name);
     if (it == tensors.end()) {
         return Status::InvalidArgument("HF tensor resolver missing required tensor '" + tensor_name + "'");
@@ -23,13 +23,13 @@ std::string LayerTensorName(int64_t layer_index, std::string_view suffix) {
 
 namespace hf {
 
-StatusOr<ResolvedTensorIndex> Resolve(const ModelConfig& config,
-                                     const RawTensorTable& tensors) {
+StatusOr<ModelWeightIndex> Resolve(const ModelConfig& config,
+                                   const RawWeightTable& tensors) {
     if (config.num_hidden_layers <= 0) {
         return Status::InvalidArgument("Model config field 'num_hidden_layers' must be positive");
     }
 
-    ResolvedTensorIndex index;
+    ModelWeightIndex index;
 
     auto embed_tokens = FindRequiredTensor(tensors, "model.embed_tokens.weight");
     if (!embed_tokens.ok()) {
@@ -49,7 +49,7 @@ StatusOr<ResolvedTensorIndex> Resolve(const ModelConfig& config,
 
     index.layers.reserve(static_cast<size_t>(config.num_hidden_layers));
     for (int64_t layer_index = 0; layer_index < config.num_hidden_layers; ++layer_index) {
-        ResolvedDecoderLayerRaw layer;
+        DecoderLayerRawWeights layer;
 
         auto input_rmsnorm = FindRequiredTensor(tensors, LayerTensorName(layer_index, ".input_layernorm.weight"));
         if (!input_rmsnorm.ok()) {

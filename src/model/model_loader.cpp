@@ -1,7 +1,7 @@
 #include "aethermind/model/model_loader.h"
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
+#include "aethermind/model/formats/hf/hf_model_validator.h"
 #include "aethermind/model/model_instance.h"
-#include "aethermind/model/model_validator.h"
 #include "macros.h"
 
 namespace aethermind {
@@ -23,17 +23,17 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
         return config.status();
     }
 
-    AM_RETURN_IF_ERROR(ModelValidator::ValidateConfig(*config));
+    AM_RETURN_IF_ERROR(HfModelValidator::ValidateConfig(*config));
 
-    auto tensor_table = reader->LoadTensorTable();
-    if (!tensor_table.ok()) {
-        return tensor_table.status();
+    auto raw_weights = reader->LoadRawWeightTable();
+    if (!raw_weights.ok()) {
+        return raw_weights.status();
     }
 
-    AM_RETURN_IF_ERROR(ModelValidator::ValidateTensorSet(*config, *tensor_table));
+    AM_RETURN_IF_ERROR(HfModelValidator::ValidateWeightSet(*config, *raw_weights));
 
     return Status(StatusCode::kUnimplemented,
-                  "ModelLoader::Load reached validated config and tensor table; ModelInstance build is not implemented yet");
+                  "ModelLoader::Load reached validated config and raw weights; ModelInstance build is not implemented yet");
 }
 
 }// namespace aethermind

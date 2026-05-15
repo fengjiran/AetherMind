@@ -34,15 +34,19 @@ struct HfDirectoryDescriptor {
 
 class HfDirectoryReader {
 public:
-    AM_NODISCARD static StatusOr<HfDirectoryReader> Open(const std::filesystem::path& model_dir);
+    AM_NODISCARD static StatusOr<HfDirectoryReader> Open(
+            const std::filesystem::path& model_dir);
 
-    AM_NODISCARD const HfDirectoryDescriptor& Layout() const noexcept {
+    AM_NODISCARD static StatusOr<HfDirectoryDescriptor> InspectDirectory(
+            const std::filesystem::path& model_dir);
+
+    AM_NODISCARD const HfDirectoryDescriptor& GetDirDesc() const noexcept {
         return dir_desc_;
     }
 
-    AM_NODISCARD StatusOr<RawTensorTable> LoadTensorTable() const;
-
     AM_NODISCARD StatusOr<ModelConfig> ParseConfig() const;
+
+    AM_NODISCARD StatusOr<RawTensorTable> LoadTensorTable() const;
 
 private:
     explicit HfDirectoryReader(HfDirectoryDescriptor dir_desc) noexcept
@@ -50,10 +54,6 @@ private:
 
     HfDirectoryDescriptor dir_desc_{};
 };
-
-namespace hf {
-StatusOr<HfDirectoryDescriptor> InspectDirectory(const std::filesystem::path& model_dir);
-}// namespace hf
 
 }// namespace aethermind
 

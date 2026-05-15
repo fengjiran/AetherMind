@@ -1,4 +1,4 @@
-#include "aethermind/model/formats/hf/hf_safetensors_index.h"
+#include "aethermind/model/formats/hf/hf_safetensors_file.h"
 #include "aethermind/base/mmap_file.h"
 #include "aethermind/model/formats/hf/hf_format_utils.h"
 #include "aethermind/model/formats/hf/hf_json_reader.h"
@@ -21,9 +21,9 @@ namespace aethermind {
 
 namespace {
 
-class MmapBacking final : public RawTensorBacking {
+class MmapRawStorage final : public RawStorage {
 public:
-    explicit MmapBacking(MemoryMappedFile mmap) noexcept
+    explicit MmapRawStorage(MemoryMappedFile mmap) noexcept
         : mmap_(std::move(mmap)) {}
 
     AM_NODISCARD const std::byte* data() const noexcept {
@@ -39,7 +39,7 @@ public:
     }
 
 private:
-    // RawTensorView instances may keep this mapping alive after LoadSingleFile returns.
+    // RawTensorView instances may keep this mapping alive after Open returns.
     // The checkpoint file must not be truncated while mapped; later reads could SIGBUS.
     MemoryMappedFile mmap_;
 };
@@ -138,10 +138,10 @@ namespace hf {
 class SafetensorsHeaderParser : public HfJsonReader {
 public:
     SafetensorsHeaderParser(std::string_view input,
-                            const std::shared_ptr<const RawTensorBacking>& backing,
+                            const std::shared_ptr<const RawStorage>& storage,
                             const std::byte* data_base,
                             size_t data_size) noexcept
-        : HfJsonReader(input), backing_(backing), data_base_(data_base), data_size_(data_size) {
+        : HfJsonReader(input), storage_(storage), data_base_(data_base), data_size_(data_size) {
         AM_CHECK(data_base_ != nullptr || data_size_ == 0,
                  "data_base_ is null but data_size_ is non-zero");
     }
@@ -350,7 +350,7 @@ private:
                 .bytes = end - begin,
                 .dtype = *dtype,
                 .shape = shape,
-                .backing = backing_,
+                .storage = storage_,
         };
         return Status::Ok();
     }
@@ -380,30 +380,29 @@ private:
     }
 
     std::unordered_set<std::string> seen_names_{};
-    std::shared_ptr<const RawTensorBacking> backing_{};
+    std::shared_ptr<const RawStorage> storage_{};
     const std::byte* data_base_ = nullptr;
     size_t data_size_ = 0;
 };
 
 }// namespace hf
 
-StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
-        const std::filesystem::path& safetensors_path) {
+StatusOr<HfSafetensorsFile> HfSafetensorsFile::Open(const std::filesystem::path& safetensors_path) {
     auto mmap = MemoryMappedFile::Map(safetensors_path);
     if (!mmap.ok()) {
         return mmap.status();
     }
 
-    const auto backing = std::make_shared<MmapBacking>(std::move(*mmap));
+    const auto storage = std::make_shared<MmapRawStorage>(std::move(*mmap));
     // Safetensors views are retained for later tensor-level access. The random-access hint
     // avoids aggressive whole-file readahead, but remains best-effort and non-fatal.
-    (void) backing->Advise(MemoryMappedFile::Advice::kRandom);
-    if (backing->size() < sizeof(uint64_t)) {
+    (void) storage->Advise(MemoryMappedFile::Advice::kRandom);
+    if (storage->size() < sizeof(uint64_t)) {
         return Status::InvalidArgument(
                 hf::FormatPathMessage("Safetensors file is too small", safetensors_path));
     }
 
-    const auto header_length = ParseLittleEndianU64({backing->data(), sizeof(uint64_t)});
+    const auto header_length = ParseLittleEndianU64({storage->data(), sizeof(uint64_t)});
     if (!header_length.ok()) {
         return Status(StatusCode::kInvalidArgument,
                       hf::FormatPathMessage(header_length.status().message(), safetensors_path));
@@ -422,33 +421,33 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::LoadSingleFile(
                 hf::FormatPathMessage("Safetensors header length overflow", safetensors_path));
     }
 
-    if (header_end > backing->size()) {
+    if (header_end > storage->size()) {
         return Status::InvalidArgument(
                 hf::FormatPathMessage("Safetensors header length exceeds file size", safetensors_path));
     }
 
-    const auto* header_chars = reinterpret_cast<const char*>(backing->data() + kHeaderBegin);
+    const auto* header_chars = reinterpret_cast<const char*>(storage->data() + kHeaderBegin);
     const std::string_view header_json(header_chars, *header_length);
-    const std::byte* data_base = backing->data() + header_end;
-    const size_t data_size = backing->size() - header_end;
+    const std::byte* data_base = storage->data() + header_end;
+    const size_t data_size = storage->size() - header_end;
 
-    auto parsed_entries = hf::SafetensorsHeaderParser(header_json, backing, data_base, data_size).Parse();
+    auto parsed_entries = hf::SafetensorsHeaderParser(header_json, storage, data_base, data_size).Parse();
     if (!parsed_entries.ok()) {
         return Status(parsed_entries.status().code(),
                       hf::FormatPathMessage(parsed_entries.status().message(), safetensors_path));
     }
 
-    HfSafetensorsIndex index;
-    index.path_ = safetensors_path;
-    index.backing_ = backing;
-    index.entries_ = std::move(*parsed_entries);
-    for (size_t i = 0; i < index.entries_.size(); ++i) {
-        index.name_index_[index.entries_[i].name] = i;
+    HfSafetensorsFile file;
+    file.path_ = safetensors_path;
+    file.storage_ = storage;
+    file.entries_ = std::move(*parsed_entries);
+    for (size_t i = 0; i < file.entries_.size(); ++i) {
+        file.name_index_[file.entries_[i].name] = i;
     }
-    return index;
+    return file;
 }
 
-const HfSafetensorsEntry* HfSafetensorsIndex::Find(std::string_view tensor_name) const {
+const HfSafetensorsEntry* HfSafetensorsFile::Find(std::string_view tensor_name) const {
     if (const auto it = name_index_.find(std::string(tensor_name));
         it != name_index_.end()) {
         return &entries_[it->second];

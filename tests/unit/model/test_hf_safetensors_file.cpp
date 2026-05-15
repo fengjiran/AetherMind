@@ -1,4 +1,4 @@
-#include "aethermind/model/formats/hf/hf_safetensors_index.h"
+#include "aethermind/model/formats/hf/hf_safetensors_file.h"
 
 #include <array>
 #include <chrono>
@@ -98,7 +98,7 @@ std::filesystem::path WriteSafetensorsFile(
     return path;
 }
 
-TEST(HfSafetensorsIndexTest, LoadsSingleTensorFile) {
+TEST(HfSafetensorsFileTest, LoadsSingleTensorFile) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 4>{1.0f, 2.0f, 3.0f, 4.0f});
     const auto path = WriteSafetensorsFile(
@@ -106,11 +106,11 @@ TEST(HfSafetensorsIndexTest, LoadsSingleTensorFile) {
             R"({"weight":{"dtype":"F32","shape":[2,2],"data_offsets":[0,16]}})",
             raw_bytes);
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
+    const auto file = HfSafetensorsFile::Open(path);
 
-    ASSERT_TRUE(index.ok()) << index.status().ToString();
-    ASSERT_EQ(index->Entries().size(), 1U);
-    const auto* entry = index->Find("weight");
+    ASSERT_TRUE(file.ok()) << file.status().ToString();
+    ASSERT_EQ(file->Entries().size(), 1U);
+    const auto* entry = file->Find("weight");
     ASSERT_NE(entry, nullptr);
     EXPECT_EQ(entry->dtype, DataType::Float32());
     EXPECT_EQ(entry->shape, (std::vector<int64_t>{2, 2}));
@@ -121,7 +121,7 @@ TEST(HfSafetensorsIndexTest, LoadsSingleTensorFile) {
     EXPECT_FLOAT_EQ(ReadFloat(entry->view.data + 3 * sizeof(float)), 4.0f);
 }
 
-TEST(HfSafetensorsIndexTest, LoadsMultipleTensorEntries) {
+TEST(HfSafetensorsFileTest, LoadsMultipleTensorEntries) {
     TempDirectory temp_dir;
     const auto w1_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto w2_bytes = FloatArrayToBytes(std::array<float, 2>{3.0f, 4.0f});
@@ -134,15 +134,15 @@ TEST(HfSafetensorsIndexTest, LoadsMultipleTensorEntries) {
             R"({"w1":{"dtype":"F32","shape":[2],"data_offsets":[0,8]},"w2":{"dtype":"F32","shape":[1,2],"data_offsets":[8,16]}})",
             raw_bytes);
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
+    const auto file = HfSafetensorsFile::Open(path);
 
-    ASSERT_TRUE(index.ok()) << index.status().ToString();
-    EXPECT_EQ(index->Entries().size(), 2U);
-    ASSERT_NE(index->Find("w1"), nullptr);
-    ASSERT_NE(index->Find("w2"), nullptr);
+    ASSERT_TRUE(file.ok()) << file.status().ToString();
+    EXPECT_EQ(file->Entries().size(), 2U);
+    ASSERT_NE(file->Find("w1"), nullptr);
+    ASSERT_NE(file->Find("w2"), nullptr);
 }
 
-TEST(HfSafetensorsIndexTest, RejectsInvalidHeaderLength) {
+TEST(HfSafetensorsFileTest, RejectsInvalidHeaderLength) {
     TempDirectory temp_dir;
     std::vector<std::byte> bytes;
     const auto prefix = EncodeLittleEndianU64(1024);
@@ -151,24 +151,24 @@ TEST(HfSafetensorsIndexTest, RejectsInvalidHeaderLength) {
     const auto path = temp_dir.Path() / "model.safetensors";
     WriteRawFile(path, bytes);
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
+    const auto file = HfSafetensorsFile::Open(path);
 
-    ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfSafetensorsIndexTest, RejectsMalformedHeaderJson) {
+TEST(HfSafetensorsFileTest, RejectsMalformedHeaderJson) {
     TempDirectory temp_dir;
     const auto header = R"({"weight":)";
     const auto path = WriteSafetensorsFile(temp_dir.Path(), header, {});
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
+    const auto file = HfSafetensorsFile::Open(path);
 
-    ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfSafetensorsIndexTest, RejectsUnknownDType) {
+TEST(HfSafetensorsFileTest, RejectsUnknownDType) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto path = WriteSafetensorsFile(
@@ -176,13 +176,13 @@ TEST(HfSafetensorsIndexTest, RejectsUnknownDType) {
             R"({"weight":{"dtype":"F128","shape":[2],"data_offsets":[0,8]}})",
             raw_bytes);
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
+    const auto file = HfSafetensorsFile::Open(path);
 
-    ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfSafetensorsIndexTest, RejectsOutOfRangeTensorOffsets) {
+TEST(HfSafetensorsFileTest, RejectsOutOfRangeTensorOffsets) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto path = WriteSafetensorsFile(
@@ -190,13 +190,13 @@ TEST(HfSafetensorsIndexTest, RejectsOutOfRangeTensorOffsets) {
             R"({"weight":{"dtype":"F32","shape":[2,2],"data_offsets":[0,16]}})",
             raw_bytes);
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
+    const auto file = HfSafetensorsFile::Open(path);
 
-    ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kOutOfRange);
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kOutOfRange);
 }
 
-TEST(HfSafetensorsIndexTest, RejectsShapeByteSizeMismatch) {
+TEST(HfSafetensorsFileTest, RejectsShapeByteSizeMismatch) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto path = WriteSafetensorsFile(
@@ -204,13 +204,13 @@ TEST(HfSafetensorsIndexTest, RejectsShapeByteSizeMismatch) {
             R"({"weight":{"dtype":"F32","shape":[2,2],"data_offsets":[0,8]}})",
             raw_bytes);
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
+    const auto file = HfSafetensorsFile::Open(path);
 
-    ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfSafetensorsIndexTest, FindReturnsNullptrForUnknownTensor) {
+TEST(HfSafetensorsFileTest, FindReturnsNullptrForUnknownTensor) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto path = WriteSafetensorsFile(
@@ -218,13 +218,13 @@ TEST(HfSafetensorsIndexTest, FindReturnsNullptrForUnknownTensor) {
             R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
             raw_bytes);
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
+    const auto file = HfSafetensorsFile::Open(path);
 
-    ASSERT_TRUE(index.ok()) << index.status().ToString();
-    EXPECT_EQ(index->Find("missing"), nullptr);
+    ASSERT_TRUE(file.ok()) << file.status().ToString();
+    EXPECT_EQ(file->Find("missing"), nullptr);
 }
 
-TEST(HfSafetensorsIndexTest, KeepsBackingAliveThroughViews) {
+TEST(HfSafetensorsFileTest, KeepsStorageAliveThroughViews) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{5.0f, 6.0f});
     const auto path = WriteSafetensorsFile(
@@ -234,20 +234,20 @@ TEST(HfSafetensorsIndexTest, KeepsBackingAliveThroughViews) {
 
     RawTensorView view;
     {
-        const auto index = HfSafetensorsIndex::LoadSingleFile(path);
-        ASSERT_TRUE(index.ok()) << index.status().ToString();
-        const auto* entry = index->Find("weight");
+        const auto file = HfSafetensorsFile::Open(path);
+        ASSERT_TRUE(file.ok()) << file.status().ToString();
+        const auto* entry = file->Find("weight");
         ASSERT_NE(entry, nullptr);
         view = entry->view;
     }
 
     ASSERT_TRUE(view.IsValid());
-    ASSERT_NE(view.backing, nullptr);
+    ASSERT_NE(view.storage, nullptr);
     EXPECT_FLOAT_EQ(ReadFloat(view.data), 5.0f);
     EXPECT_FLOAT_EQ(ReadFloat(view.data + sizeof(float)), 6.0f);
 }
 
-TEST(HfSafetensorsIndexTest, KeepsMappedViewAliveAfterFileIsRemoved) {
+TEST(HfSafetensorsFileTest, KeepsMappedViewAliveAfterFileIsRemoved) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{7.0f, 8.0f});
     const auto path = WriteSafetensorsFile(
@@ -255,9 +255,9 @@ TEST(HfSafetensorsIndexTest, KeepsMappedViewAliveAfterFileIsRemoved) {
             R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
             raw_bytes);
 
-    const auto index = HfSafetensorsIndex::LoadSingleFile(path);
-    ASSERT_TRUE(index.ok()) << index.status().ToString();
-    const auto* entry = index->Find("weight");
+    const auto file = HfSafetensorsFile::Open(path);
+    ASSERT_TRUE(file.ok()) << file.status().ToString();
+    const auto* entry = file->Find("weight");
     ASSERT_NE(entry, nullptr);
     const RawTensorView view = entry->view;
 

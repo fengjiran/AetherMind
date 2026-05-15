@@ -13,8 +13,8 @@
 
 namespace aethermind {
 
-struct RawTensorBacking {
-    virtual ~RawTensorBacking() = default;
+struct RawStorage {
+    virtual ~RawStorage() = default;
 };
 
 struct RawTensorView {
@@ -22,10 +22,10 @@ struct RawTensorView {
     size_t bytes = 0;
     DataType dtype{};
     std::vector<int64_t> shape{};
-    std::shared_ptr<const RawTensorBacking> backing{};
+    std::shared_ptr<const RawStorage> storage{};
 
     AM_NODISCARD bool IsValid() const noexcept {
-        return backing != nullptr && dtype.bits() > 0 && (data != nullptr || bytes == 0);
+        return storage != nullptr && dtype.bits() > 0 && (data != nullptr || bytes == 0);
     }
 
     AM_NODISCARD bool IsAligned(size_t alignment) const noexcept {

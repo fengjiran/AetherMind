@@ -3,6 +3,7 @@
 #include "aethermind/model/formats/hf/hf_model_validator.h"
 #include "aethermind/model/formats/hf/hf_weight_resolver.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/model/model_instance_builder.h"
 #include "macros.h"
 
 namespace aethermind {
@@ -37,10 +38,7 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
     if (!resolved_weights.ok()) {
         return resolved_weights.status();
     }
-    UNUSED(*resolved_weights);
-
-    return Status(StatusCode::kUnimplemented,
-                  "ModelLoader::Load reached resolved model weights; ModelInstance build is not implemented yet");
+    return ModelInstanceBuilder::Create(std::move(*config), std::move(*resolved_weights));
 }
 
 }// namespace aethermind

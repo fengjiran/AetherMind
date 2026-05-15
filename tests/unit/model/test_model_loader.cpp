@@ -158,9 +158,29 @@ TEST(ModelLoaderTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
     KernelRegistry registry;
     const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.Path()}, backend, registry);
 
-    ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kUnimplemented);
-    EXPECT_NE(model.status().message().find("resolved model weights"), std::string::npos);
+    ASSERT_TRUE(model.ok()) << model.status().message();
+    ASSERT_NE(*model, nullptr);
+
+    const auto& config = (*model)->GetConfig();
+    EXPECT_EQ(config.hidden_size, 64);
+    EXPECT_EQ(config.num_hidden_layers, 1);
+    EXPECT_EQ(config.num_attention_heads, 8);
+    EXPECT_EQ(config.num_key_value_heads, 4);
+    EXPECT_EQ(config.vocab_size, 1000);
+
+    const auto& weight_index = (*model)->GetRawWeightIndex();
+    ASSERT_EQ(weight_index.layers.size(), 1);
+    EXPECT_TRUE(weight_index.embed_tokens.IsValid());
+    EXPECT_TRUE(weight_index.final_norm.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].attn.q_proj.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].attn.k_proj.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].attn.v_proj.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].attn.o_proj.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].ffn.gate_proj.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].ffn.up_proj.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].ffn.down_proj.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].norm.input_rmsnorm.IsValid());
+    EXPECT_TRUE(weight_index.layers[0].norm.post_attn_rmsnorm.IsValid());
 }
 
 TEST(ModelLoaderTest, RejectsUnsupportedModelFamily) {

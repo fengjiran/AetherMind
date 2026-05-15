@@ -8,14 +8,14 @@
 
 namespace aethermind {
 
-struct AttentionRawWeights {
+struct AttnRawWeights {
     RawWeightView q_proj{};
     RawWeightView k_proj{};
     RawWeightView v_proj{};
     RawWeightView o_proj{};
 };
 
-struct FfnRawWeights {
+struct FFNRawWeights {
     RawWeightView gate_proj{};
     RawWeightView up_proj{};
     RawWeightView down_proj{};
@@ -28,8 +28,8 @@ struct NormRawWeights {
 
 struct DecoderLayerRawWeights {
     NormRawWeights norm{};
-    AttentionRawWeights attn{};
-    FfnRawWeights ffn{};
+    AttnRawWeights attn{};
+    FFNRawWeights ffn{};
 };
 
 struct ModelWeightIndex {

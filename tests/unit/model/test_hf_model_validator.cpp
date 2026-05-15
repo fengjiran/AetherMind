@@ -7,8 +7,8 @@
 namespace aethermind {
 namespace {
 
-ModelConfig MakeValidLlamaConfig() {
-    return ModelConfig{
+HfModelConfig MakeValidLlamaConfig() {
+    return HfModelConfig{
             .model_type = "llama",
             .architectures = {"LlamaForCausalLM"},
             .hidden_size = 4096,
@@ -26,7 +26,7 @@ void AddWeight(RawWeightTable* weights, std::string name) {
     weights->emplace(std::move(name), RawWeightView{});
 }
 
-RawWeightTable MakeCompleteWeightSet(const ModelConfig& config) {
+RawWeightTable MakeCompleteWeightSet(const HfModelConfig& config) {
     RawWeightTable weights;
     AddWeight(&weights, "model.embed_tokens.weight");
     AddWeight(&weights, "model.norm.weight");
@@ -48,7 +48,7 @@ RawWeightTable MakeCompleteWeightSet(const ModelConfig& config) {
 }
 
 TEST(HfModelValidatorTest, AcceptsValidLlamaConfig) {
-    const ModelConfig config = MakeValidLlamaConfig();
+    const HfModelConfig config = MakeValidLlamaConfig();
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
@@ -56,7 +56,7 @@ TEST(HfModelValidatorTest, AcceptsValidLlamaConfig) {
 }
 
 TEST(HfModelValidatorTest, AcceptsLlamaArchitectureWhenModelTypeIsDifferent) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.model_type = "unknown";
 
     const Status status = HfModelValidator::ValidateConfig(config);
@@ -65,7 +65,7 @@ TEST(HfModelValidatorTest, AcceptsLlamaArchitectureWhenModelTypeIsDifferent) {
 }
 
 TEST(HfModelValidatorTest, RejectsUnsupportedModelFamily) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.model_type = "gpt_neox";
     config.architectures = {"GPTNeoXForCausalLM"};
 
@@ -76,7 +76,7 @@ TEST(HfModelValidatorTest, RejectsUnsupportedModelFamily) {
 }
 
 TEST(HfModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_size = 0;
 
     const Status status = HfModelValidator::ValidateConfig(config);
@@ -86,7 +86,7 @@ TEST(HfModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
 }
 
 TEST(HfModelValidatorTest, RejectsNonPositiveRmsNormEps) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.rms_norm_eps = 0.0;
 
     const Status status = HfModelValidator::ValidateConfig(config);
@@ -96,7 +96,7 @@ TEST(HfModelValidatorTest, RejectsNonPositiveRmsNormEps) {
 }
 
 TEST(HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_size = 4097;
 
     const Status status = HfModelValidator::ValidateConfig(config);
@@ -106,7 +106,7 @@ TEST(HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
 }
 
 TEST(HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.num_key_value_heads = 33;
 
     const Status status = HfModelValidator::ValidateConfig(config);
@@ -116,7 +116,7 @@ TEST(HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
 }
 
 TEST(HfModelValidatorTest, AcceptsCompleteWeightSet) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
     const RawWeightTable weights = MakeCompleteWeightSet(config);
 
@@ -126,7 +126,7 @@ TEST(HfModelValidatorTest, AcceptsCompleteWeightSet) {
 }
 
 TEST(HfModelValidatorTest, RejectsMissingEmbeddingWeight) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     RawWeightTable weights = MakeCompleteWeightSet(config);
     weights.erase("model.embed_tokens.weight");
@@ -139,7 +139,7 @@ TEST(HfModelValidatorTest, RejectsMissingEmbeddingWeight) {
 }
 
 TEST(HfModelValidatorTest, RejectsMissingFinalNormWeight) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     RawWeightTable weights = MakeCompleteWeightSet(config);
     weights.erase("model.norm.weight");
@@ -152,7 +152,7 @@ TEST(HfModelValidatorTest, RejectsMissingFinalNormWeight) {
 }
 
 TEST(HfModelValidatorTest, RejectsMissingLayerAttentionWeight) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
     RawWeightTable weights = MakeCompleteWeightSet(config);
     weights.erase("model.layers.1.self_attn.q_proj.weight");
@@ -165,7 +165,7 @@ TEST(HfModelValidatorTest, RejectsMissingLayerAttentionWeight) {
 }
 
 TEST(HfModelValidatorTest, RejectsMissingLayerMlpWeight) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     RawWeightTable weights = MakeCompleteWeightSet(config);
     weights.erase("model.layers.0.mlp.down_proj.weight");
@@ -178,7 +178,7 @@ TEST(HfModelValidatorTest, RejectsMissingLayerMlpWeight) {
 }
 
 TEST(HfModelValidatorTest, RejectsMissingLayerNormWeight) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     RawWeightTable weights = MakeCompleteWeightSet(config);
     weights.erase("model.layers.0.post_attention_layernorm.weight");
@@ -191,7 +191,7 @@ TEST(HfModelValidatorTest, RejectsMissingLayerNormWeight) {
 }
 
 TEST(HfModelValidatorTest, RejectsWeightSetWithInvalidLayerCount) {
-    ModelConfig config = MakeValidLlamaConfig();
+    HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 0;
 
     const Status status = HfModelValidator::ValidateWeightSet(config, RawWeightTable{});

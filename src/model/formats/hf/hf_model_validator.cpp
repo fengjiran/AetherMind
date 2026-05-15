@@ -38,7 +38,7 @@ Status RequireLayerWeight(const RawWeightTable& weights,
 
 }// namespace
 
-Status HfModelValidator::ValidateConfig(const ModelConfig& config) {
+Status HfModelValidator::ValidateConfig(const HfModelConfig& config) {
     if (config.model_type != "llama" && !ContainsLlamaArchitecture(config.architectures)) {
         return Status::InvalidArgument("Only Llama-family dense decoder-only models are supported");
     }
@@ -65,7 +65,7 @@ Status HfModelValidator::ValidateConfig(const ModelConfig& config) {
     return Status::Ok();
 }
 
-Status HfModelValidator::ValidateWeightSet(const ModelConfig& config, const RawWeightTable& weights) {
+Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config, const RawWeightTable& weights) {
     AM_RETURN_IF_ERROR(RequirePositive(config.num_hidden_layers, "num_hidden_layers"));
     AM_RETURN_IF_ERROR(RequireWeight(weights, "model.embed_tokens.weight"));
     AM_RETURN_IF_ERROR(RequireWeight(weights, "model.norm.weight"));

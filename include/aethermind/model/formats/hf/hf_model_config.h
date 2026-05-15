@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_MODEL_MODEL_CONFIG_H
-#define AETHERMIND_MODEL_MODEL_CONFIG_H
+#ifndef AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_CONFIG_H
+#define AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_CONFIG_H
 
 #include <cstdint>
 #include <string>
@@ -8,7 +8,7 @@
 namespace aethermind {
 
 // NOLINTBEGIN(readability-identifier-naming)
-struct ModelConfig {
+struct HfModelConfig {
     std::string model_type{};
     std::vector<std::string> architectures{};
 
@@ -26,4 +26,4 @@ struct ModelConfig {
 
 }// namespace aethermind
 
-#endif// AETHERMIND_MODEL_MODEL_CONFIG_H
+#endif// AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_CONFIG_H

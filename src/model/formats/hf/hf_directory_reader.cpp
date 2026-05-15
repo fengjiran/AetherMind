@@ -1,7 +1,7 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
-#include "aethermind/model/formats/hf/hf_utils.h"
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 #include "aethermind/model/formats/hf/hf_safetensors_file.h"
+#include "aethermind/model/formats/hf/hf_utils.h"
 
 #include <fstream>
 #include <optional>
@@ -54,12 +54,12 @@ public:
     explicit ConfigJsonParser(std::string_view input) noexcept
         : HfJsonReader(input) {}
 
-    StatusOr<ModelConfig> Parse() {
+    StatusOr<HfModelConfig> Parse() {
         if (!Consume('{')) {
             return Status::InvalidArgument("HF config must be a JSON object");
         }
 
-        ModelConfig config;
+        HfModelConfig config;
         std::optional<std::string> model_type;
         std::optional<std::vector<std::string>> architectures;
         std::optional<int64_t> hidden_size;
@@ -219,7 +219,7 @@ StatusOr<HfDirectoryReader> HfDirectoryReader::Open(const std::filesystem::path&
     return HfDirectoryReader(std::move(*dir_desc));
 }
 
-StatusOr<ModelConfig> HfDirectoryReader::ParseConfig() const {
+StatusOr<HfModelConfig> HfDirectoryReader::ParseConfig() const {
     auto text = ReadConfigText(dir_desc_.config_path);
     if (!text.ok()) {
         return text.status();

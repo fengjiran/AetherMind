@@ -1,4 +1,4 @@
-#include "aethermind/model/formats/hf/hf_tensor_name_resolver.h"
+#include "aethermind/model/formats/hf/hf_weight_resolver.h"
 
 #include <array>
 #include <cstddef>
@@ -11,8 +11,8 @@ namespace {
 constexpr size_t kMaxTestTensors = 64;
 const std::array<std::byte, kMaxTestTensors> kTensorMarkers{};
 
-ModelConfig MakeLlamaConfig(int64_t num_layers) {
-    return ModelConfig{
+HfModelConfig MakeLlamaConfig(int64_t num_layers) {
+    return HfModelConfig{
             .model_type = "llama",
             .architectures = {"LlamaForCausalLM"},
             .hidden_size = 64,
@@ -63,11 +63,11 @@ void ExpectSameView(const RawWeightView& actual, const RawWeightView& expected) 
     EXPECT_EQ(actual.bytes, expected.bytes);
 }
 
-TEST(HfTensorNameResolveTest, ResolvesSingleLayerDenseLlamaWeights) {
-    const ModelConfig config = MakeLlamaConfig(1);
+TEST(HfWeightResolverTest, ResolvesSingleLayerDenseLlamaWeights) {
+    const HfModelConfig config = MakeLlamaConfig(1);
     const RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
 
-    const auto resolved = hf::Resolve(config, tensors);
+    const auto resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
     EXPECT_EQ(resolved->NumLayers(), 1);
@@ -85,11 +85,11 @@ TEST(HfTensorNameResolveTest, ResolvesSingleLayerDenseLlamaWeights) {
     ExpectSameView(resolved->layers[0].norm.post_attn_rmsnorm, tensors.at("model.layers.0.post_attention_layernorm.weight"));
 }
 
-TEST(HfTensorNameResolveTest, ResolvesTwoLayerDenseLlamaWeights) {
-    const ModelConfig config = MakeLlamaConfig(2);
+TEST(HfWeightResolverTest, ResolvesTwoLayerDenseLlamaWeights) {
+    const HfModelConfig config = MakeLlamaConfig(2);
     const RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
 
-    const auto resolved = hf::Resolve(config, tensors);
+    const auto resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
     EXPECT_EQ(resolved->NumLayers(), 2);
@@ -99,41 +99,41 @@ TEST(HfTensorNameResolveTest, ResolvesTwoLayerDenseLlamaWeights) {
     ExpectSameView(resolved->layers[1].norm.post_attn_rmsnorm, tensors.at("model.layers.1.post_attention_layernorm.weight"));
 }
 
-TEST(HfTensorNameResolveTest, RejectsMissingLayerAttentionTensor) {
-    const ModelConfig config = MakeLlamaConfig(2);
+TEST(HfWeightResolverTest, RejectsMissingLayerAttentionWeight) {
+    const HfModelConfig config = MakeLlamaConfig(2);
     RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
     tensors.erase("model.layers.1.self_attn.q_proj.weight");
 
-    const auto resolved = hf::Resolve(config, tensors);
+    const auto resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_FALSE(resolved.ok());
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(resolved.status().message().find("model.layers.1.self_attn.q_proj.weight"), std::string::npos);
 }
 
-TEST(HfTensorNameResolveTest, RejectsIncompleteLayerCount) {
-    const ModelConfig config = MakeLlamaConfig(2);
+TEST(HfWeightResolverTest, RejectsIncompleteLayerCount) {
+    const HfModelConfig config = MakeLlamaConfig(2);
     const RawWeightTable tensors = MakeCompleteTensorSet(1);
 
-    const auto resolved = hf::Resolve(config, tensors);
+    const auto resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_FALSE(resolved.ok());
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(resolved.status().message().find("model.layers.1"), std::string::npos);
 }
 
-TEST(HfTensorNameResolveTest, TreatsLmHeadAsOptional) {
-    const ModelConfig config = MakeLlamaConfig(1);
+TEST(HfWeightResolverTest, TreatsLmHeadAsOptional) {
+    const HfModelConfig config = MakeLlamaConfig(1);
     RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers, true);
 
-    auto resolved = hf::Resolve(config, tensors);
+    auto resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
     ASSERT_TRUE(resolved->lm_head.has_value());
     ExpectSameView(*resolved->lm_head, tensors.at("lm_head.weight"));
 
     tensors.erase("lm_head.weight");
-    resolved = hf::Resolve(config, tensors);
+    resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
     EXPECT_FALSE(resolved->lm_head.has_value());

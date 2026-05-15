@@ -2,7 +2,7 @@
 #define AETHERMIND_MODEL_FORMATS_HF_HF_DIRECTORY_READER_H
 
 #include "aethermind/base/status.h"
-#include "aethermind/model/model_config.h"
+#include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/raw_weight.h"
 
 #include <filesystem>
@@ -44,7 +44,7 @@ public:
         return dir_desc_;
     }
 
-    AM_NODISCARD StatusOr<ModelConfig> ParseConfig() const;
+    AM_NODISCARD StatusOr<HfModelConfig> ParseConfig() const;
 
     AM_NODISCARD StatusOr<RawWeightTable> LoadRawWeightTable() const;
 

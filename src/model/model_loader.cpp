@@ -4,6 +4,7 @@
 #include "aethermind/model/formats/hf/hf_weight_resolver.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/model/model_instance_builder.h"
+#include "aethermind/model/weight_prepack_planner.h"
 #include "macros.h"
 
 namespace aethermind {
@@ -12,9 +13,6 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
         const ModelLoadOptions& options,
         const Backend& backend,
         const KernelRegistry& registry) {
-    UNUSED(backend);
-    UNUSED(registry);
-
     auto reader = HfDirectoryReader::Open(options.model_dir);
     if (!reader.ok()) {
         return reader.status();
@@ -38,7 +36,21 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
     if (!resolved_weights.ok()) {
         return resolved_weights.status();
     }
-    return ModelInstanceBuilder::Create(std::move(*config), std::move(*resolved_weights));
+
+    auto model = ModelInstanceBuilder::Create(std::move(*config), std::move(*resolved_weights));
+    if (!model.ok()) {
+        return model.status();
+    }
+
+    auto requests = WeightPrepackPlanner::BuildRequests(
+            (*model)->GetConfig(), (*model)->GetRawWeightIndex(), backend, registry);
+    if (!requests.ok()) {
+        return requests.status();
+    }
+
+    AM_RETURN_IF_ERROR(WeightPrepackPlanner::PrepackAndStore(**model, *requests));
+
+    return model;
 }
 
 }// namespace aethermind

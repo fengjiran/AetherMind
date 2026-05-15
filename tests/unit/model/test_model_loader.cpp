@@ -2,6 +2,7 @@
 
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/kernel_registry.h"
+#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/model/model_instance.h"
 
 #include <array>
@@ -181,6 +182,22 @@ TEST(ModelLoaderTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
     EXPECT_TRUE(weight_index.layers[0].ffn.down_proj.IsValid());
     EXPECT_TRUE(weight_index.layers[0].norm.input_rmsnorm.IsValid());
     EXPECT_TRUE(weight_index.layers[0].norm.post_attn_rmsnorm.IsValid());
+
+    const KernelSelector expected_selector{
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPacked,
+            .isa = IsaLevel::kAVX2,
+            .phase = ExecPhase::kBoth,
+    };
+    const PackedWeights* packed = (*model)->FindPackedWeights(
+            OpType::kLinear, expected_selector);
+    ASSERT_NE(packed, nullptr);
+    EXPECT_EQ(packed->op_type(), OpType::kLinear);
+    EXPECT_EQ(packed->selector(), expected_selector);
+    EXPECT_TRUE(packed->storage().is_initialized());
+    EXPECT_GT(packed->storage().nbytes(), 0U);
 }
 
 TEST(ModelLoaderTest, RejectsUnsupportedModelFamily) {

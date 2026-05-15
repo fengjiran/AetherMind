@@ -160,7 +160,7 @@ TEST(ModelLoaderTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kUnimplemented);
-    EXPECT_NE(model.status().message().find("validated config and raw weights"), std::string::npos);
+    EXPECT_NE(model.status().message().find("resolved model weights"), std::string::npos);
 }
 
 TEST(ModelLoaderTest, RejectsUnsupportedModelFamily) {

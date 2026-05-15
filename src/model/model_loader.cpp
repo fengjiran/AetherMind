@@ -1,6 +1,7 @@
 #include "aethermind/model/model_loader.h"
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
+#include "aethermind/model/formats/hf/hf_weight_resolver.h"
 #include "aethermind/model/model_instance.h"
 #include "macros.h"
 
@@ -32,8 +33,14 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
 
     AM_RETURN_IF_ERROR(HfModelValidator::ValidateWeightSet(*config, *raw_weights));
 
+    auto resolved_weights = hf::ResolveWeights(*config, *raw_weights);
+    if (!resolved_weights.ok()) {
+        return resolved_weights.status();
+    }
+    UNUSED(*resolved_weights);
+
     return Status(StatusCode::kUnimplemented,
-                  "ModelLoader::Load reached validated config and raw weights; ModelInstance build is not implemented yet");
+                  "ModelLoader::Load reached resolved model weights; ModelInstance build is not implemented yet");
 }
 
 }// namespace aethermind

@@ -168,6 +168,17 @@ TEST(HfDirectoryReaderTest, RejectsMissingConfigJson) {
     EXPECT_EQ(layout.status().code(), StatusCode::kNotFound);
 }
 
+TEST(HfDirectoryReaderTest, RejectsConfigJsonThatIsNotARegularFile) {
+    TempDirectory temp_dir;
+    WriteBinaryFile(temp_dir.path() / "model.safetensors");
+    std::filesystem::create_directory(temp_dir.path() / "config.json");
+
+    const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
+
+    ASSERT_FALSE(layout.ok());
+    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+}
+
 TEST(HfDirectoryReaderTest, RejectsMissingSafetensorsFile) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");

@@ -18,6 +18,8 @@ inline std::string FormatPathMessage(std::string_view prefix,
 
 AM_NODISCARD StatusOr<DataType> ParseSafetensorsDType(std::string_view dtype_text);
 
+AM_NODISCARD StatusOr<std::string> ReadFileText(const std::filesystem::path& path);
+
 }// namespace hf
 }// namespace aethermind
 

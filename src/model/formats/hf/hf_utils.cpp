@@ -1,12 +1,14 @@
 #include "aethermind/model/formats/hf/hf_utils.h"
 
+#include <fstream>
 #include <string>
+#include <system_error>
 
 namespace aethermind::hf {
 
 StatusOr<DataType> ParseSafetensorsDType(std::string_view dtype_text) {
     const auto equals = [dtype_text](std::string_view expected) noexcept {
-        return dtype_text.compare(expected) == 0;
+        return dtype_text == expected;
     };
 
     if (equals("F16")) {
@@ -71,6 +73,49 @@ StatusOr<DataType> ParseSafetensorsDType(std::string_view dtype_text) {
 
     return Status::InvalidArgument(
             std::string("Unsupported safetensors dtype: ") + std::string(dtype_text));
+}
+
+StatusOr<std::string> ReadFileText(const std::filesystem::path& path) {
+    std::error_code error;
+    if (!std::filesystem::exists(path, error) || error) {
+        if (error) {
+            return Status::Internal(FormatPathMessage("Failed to stat file", path));
+        }
+        return Status::NotFound(FormatPathMessage("File not found", path));
+    }
+
+    if (!std::filesystem::is_regular_file(path, error) || error) {
+        if (error) {
+            return Status::Internal(FormatPathMessage("Failed to inspect file type", path));
+        }
+        return Status::InvalidArgument(FormatPathMessage("Path is not a regular file", path));
+    }
+
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
+    if (!stream.is_open()) {
+        return Status::Internal(FormatPathMessage("Failed to open file", path));
+    }
+
+    const auto end_pos = stream.tellg();
+    if (end_pos < 0) {
+        return Status::Internal(FormatPathMessage("Failed to determine file size", path));
+    }
+
+    constexpr size_t kMaxConfigSize = 16 * 1024 * 1024;// 16MB
+    if (static_cast<size_t>(end_pos) > kMaxConfigSize) {
+        return Status::InvalidArgument(
+                FormatPathMessage("File exceeds maximum size", path));
+    }
+
+    std::string text(end_pos, '\0');
+    stream.seekg(0, std::ios::beg);
+    if (!text.empty()) {
+        stream.read(text.data(), static_cast<std::streamsize>(text.size()));
+        if (!stream) {
+            return Status::Internal(FormatPathMessage("Failed to read file", path));
+        }
+    }
+    return text;
 }
 
 }// namespace aethermind::hf

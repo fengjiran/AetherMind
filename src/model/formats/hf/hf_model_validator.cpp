@@ -103,7 +103,7 @@ Status ValidateLayerWeight(const RawWeightTable& weights,
 
 }// namespace
 
-Status HfModelValidator::ValidateConfig(const HfModelConfig& config) {
+Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const ModelValidationOptions&) {
     if (config.model_type != "llama" && !ContainsLlamaArchitecture(config.architectures)) {
         return Status::InvalidArgument("Only Llama-family dense decoder-only models are supported");
     }
@@ -130,7 +130,9 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config) {
     return Status::Ok();
 }
 
-Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config, const RawWeightTable& weights) {
+Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config,
+                                           const RawWeightTable& weights,
+                                           const ModelValidationOptions&) {
     AM_RETURN_IF_ERROR(RequirePositive(config.num_hidden_layers, "num_hidden_layers"));
     AM_RETURN_IF_ERROR(ValidateWeight(weights, "model.embed_tokens.weight"));
     AM_RETURN_IF_ERROR(ValidateWeight(weights, "model.norm.weight"));
@@ -154,6 +156,13 @@ Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config, const Ra
     }
 
     return Status::Ok();
+}
+
+Status HfModelValidator::ValidateResolvedModel(const HfModelConfig&,
+                                               const ModelWeightIndex&,
+                                               const ModelValidationOptions&) {
+    return Status(StatusCode::kUnimplemented,
+                  "HfModelValidator::ValidateResolvedModel is not implemented yet");
 }
 
 }// namespace aethermind

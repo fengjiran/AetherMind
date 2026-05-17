@@ -86,6 +86,15 @@ TEST(HfModelValidatorTest, AcceptsValidLlamaConfig) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
+TEST(HfModelValidatorTest, AcceptsValidLlamaConfigWithOptions) {
+    const HfModelConfig config = MakeValidLlamaConfig();
+    const ModelValidationOptions options{};
+
+    const Status status = HfModelValidator::ValidateConfig(config, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
 TEST(HfModelValidatorTest, AcceptsLlamaArchitectureWhenModelTypeIsDifferent) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.model_type = "unknown";
@@ -154,6 +163,26 @@ TEST(HfModelValidatorTest, AcceptsCompleteWeightSet) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(HfModelValidatorTest, AcceptsCompleteWeightSetWithOptions) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 2;
+    const RawWeightTable weights = MakeCompleteWeightSet(config);
+    const ModelValidationOptions options{};
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(HfModelValidatorTest, ValidateResolvedModelApiExistsButIsNotImplemented) {
+    const HfModelConfig config = MakeValidLlamaConfig();
+    const ModelWeightIndex resolved{};
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
 }
 
 TEST(HfModelValidatorTest, RejectsMissingEmbeddingWeight) {

@@ -24,7 +24,7 @@ bool HfJsonReader::AtEnd() const noexcept {
     return position_ >= input_.size();
 }
 
-bool HfJsonReader::Consume(char expected) noexcept {
+bool HfJsonReader::TryConsume(char expected) noexcept {
     SkipWhitespace();
     if (!AtEnd() && input_[position_] == expected) {
         ++position_;
@@ -33,11 +33,15 @@ bool HfJsonReader::Consume(char expected) noexcept {
     return false;
 }
 
-bool HfJsonReader::Expect(char expected) noexcept {
-    return Consume(expected);
+Status HfJsonReader::Expect(char expected, std::string_view context) {
+    if (TryConsume(expected)) {
+        return Status::Ok();
+    }
+    return Status::InvalidArgument(
+            "Expected '" + std::string(1, expected) + "' " + std::string(context));
 }
 
-bool HfJsonReader::ConsumeLiteral(std::string_view literal) noexcept {
+bool HfJsonReader::TryConsumeLiteral(std::string_view literal) noexcept {
     SkipWhitespace();
     if (position_ + literal.size() > input_.size()) {
         return false;
@@ -184,23 +188,21 @@ StatusOr<double> HfJsonReader::ParseDouble() {
 }
 
 StatusOr<bool> HfJsonReader::ParseBool() {
-    if (ConsumeLiteral("true")) {
+    if (TryConsumeLiteral("true")) {
         return true;
     }
-    if (ConsumeLiteral("false")) {
+    if (TryConsumeLiteral("false")) {
         return false;
     }
     return Status::InvalidArgument("Expected boolean value");
 }
 
 StatusOr<std::vector<std::string>> HfJsonReader::ParseStringArray() {
-    if (!Expect('[')) {
-        return Status::InvalidArgument("Expected '[' at start of string array");
-    }
+    AM_RETURN_IF_ERROR(Expect('[', "at start of string array"));
 
     std::vector<std::string> values;
     SkipWhitespace();
-    if (Consume(']')) {
+    if (TryConsume(']')) {
         return values;
     }
 
@@ -212,24 +214,20 @@ StatusOr<std::vector<std::string>> HfJsonReader::ParseStringArray() {
         values.push_back(std::move(*value));
 
         SkipWhitespace();
-        if (Consume(']')) {
+        if (TryConsume(']')) {
             break;
         }
-        if (!Expect(',')) {
-            return Status::InvalidArgument("Expected ',' between string array elements");
-        }
+        AM_RETURN_IF_ERROR(Expect(',', "between string array elements"));
     }
     return values;
 }
 
 StatusOr<std::vector<int64_t>> HfJsonReader::ParseInt64Array() {
-    if (!Expect('[')) {
-        return Status::InvalidArgument("Expected '[' at start of integer array");
-    }
+    AM_RETURN_IF_ERROR(Expect('[', "at start of integer array"));
 
     std::vector<int64_t> values;
     SkipWhitespace();
-    if (Consume(']')) {
+    if (TryConsume(']')) {
         return values;
     }
 
@@ -241,12 +239,10 @@ StatusOr<std::vector<int64_t>> HfJsonReader::ParseInt64Array() {
         values.push_back(*value);
 
         SkipWhitespace();
-        if (Consume(']')) {
+        if (TryConsume(']')) {
             break;
         }
-        if (!Expect(',')) {
-            return Status::InvalidArgument("Expected ',' between integer array elements");
-        }
+        AM_RETURN_IF_ERROR(Expect(',', "between integer array elements"));
     }
     return values;
 }
@@ -269,7 +265,7 @@ Status HfJsonReader::SkipValueInternal(uint32_t depth) {
     if (cur == '{') {
         ++position_;
         SkipWhitespace();
-        if (Consume('}')) {
+        if (TryConsume('}')) {
             return Status::Ok();
         }
 
@@ -279,39 +275,33 @@ Status HfJsonReader::SkipValueInternal(uint32_t depth) {
                 return key.status();
             }
 
-            if (!Expect(':')) {
-                return Status::InvalidArgument("Expected ':' inside JSON object while skipping value");
-            }
+            AM_RETURN_IF_ERROR(Expect(':', "inside JSON object while skipping value"));
 
             AM_RETURN_IF_ERROR(SkipValueInternal(depth + 1));
             SkipWhitespace();
-            if (Consume('}')) {
+            if (TryConsume('}')) {
                 return Status::Ok();
             }
 
-            if (!Expect(',')) {
-                return Status::InvalidArgument("Expected ',' inside JSON object while skipping value");
-            }
+            AM_RETURN_IF_ERROR(Expect(',', "inside JSON object while skipping value"));
         }
     }
 
     if (cur == '[') {
         ++position_;
         SkipWhitespace();
-        if (Consume(']')) {
+        if (TryConsume(']')) {
             return Status::Ok();
         }
 
         while (true) {
             AM_RETURN_IF_ERROR(SkipValueInternal(depth + 1));
             SkipWhitespace();
-            if (Consume(']')) {
+            if (TryConsume(']')) {
                 return Status::Ok();
             }
 
-            if (!Expect(',')) {
-                return Status::InvalidArgument("Expected ',' inside JSON array while skipping value");
-            }
+            AM_RETURN_IF_ERROR(Expect(',', "inside JSON array while skipping value"));
         }
     }
 
@@ -329,7 +319,7 @@ Status HfJsonReader::SkipValueInternal(uint32_t depth) {
         return Status::Ok();
     }
 
-    if (ConsumeLiteral("true") || ConsumeLiteral("false") || ConsumeLiteral("null")) {
+    if (TryConsumeLiteral("true") || TryConsumeLiteral("false") || TryConsumeLiteral("null")) {
         return Status::Ok();
     }
 

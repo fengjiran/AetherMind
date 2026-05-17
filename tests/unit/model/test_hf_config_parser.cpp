@@ -1,4 +1,5 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
+#include "aethermind/model/formats/hf/hf_model_validator.h"
 
 #include <chrono>
 #include <cstddef>
@@ -160,7 +161,7 @@ TEST(HfConfigTest, DefaultsOptionalFields) {
     EXPECT_FALSE(config->tie_word_embeddings);
 }
 
-TEST_P(HfConfigMissingRequiredFieldTest, RejectsMissingRequiredField) {
+TEST_P(HfConfigMissingRequiredFieldTest, DefersMissingRequiredFieldToValidator) {
     TempDirectory temp_dir;
     const auto* const missing_field = GetParam();
     WriteConfig(temp_dir.Path(), MakeConfigWithoutRequiredField(missing_field));
@@ -170,9 +171,13 @@ TEST_P(HfConfigMissingRequiredFieldTest, RejectsMissingRequiredField) {
     ASSERT_TRUE(reader.ok()) << reader.status().ToString();
     const auto config = reader->ParseConfig();
 
-    ASSERT_FALSE(config.ok());
-    EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(config.status().message().find(missing_field), std::string::npos);
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+
+    const Status status = HfModelValidator::ValidateConfig(*config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find(missing_field), std::string::npos);
 }
 
 INSTANTIATE_TEST_SUITE_P(

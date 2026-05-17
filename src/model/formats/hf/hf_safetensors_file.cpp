@@ -83,13 +83,13 @@ public:
 
     StatusOr<std::vector<HfSafetensorsEntry>> Parse() {
         SkipWhitespace();
-        if (!Consume('{')) {
+        if (!TryConsume('{')) {
             return Status::InvalidArgument("Safetensors header must start with a JSON object");
         }
 
         std::vector<HfSafetensorsEntry> entries;
         SkipWhitespace();
-        if (Consume('}')) {
+        if (TryConsume('}')) {
             return entries;
         }
 
@@ -99,9 +99,7 @@ public:
                 return key.status();
             }
 
-            if (!Expect(':')) {
-                return Status::InvalidArgument("Expected ':' after safetensors header key");
-            }
+            AM_RETURN_IF_ERROR(Expect(':', "after safetensors header key"));
 
             if (*key == "__metadata__") {
                 Status skip_status = SkipValue();
@@ -123,12 +121,10 @@ public:
             }
 
             SkipWhitespace();
-            if (Consume('}')) {
+            if (TryConsume('}')) {
                 break;
             }
-            if (!Expect(',')) {
-                return Status::InvalidArgument("Expected ',' between safetensors header entries");
-            }
+            AM_RETURN_IF_ERROR(Expect(',', "between safetensors header entries"));
         }
 
         SkipWhitespace();
@@ -171,25 +167,21 @@ public:
 
 private:
     Status ParseTensorEntry(const std::string& name, HfSafetensorsEntry* entry) {
-        if (!Expect('{')) {
-            return Status::InvalidArgument("Expected '{' at start of safetensors tensor entry");
-        }
+        AM_RETURN_IF_ERROR(Expect('{', "at start of safetensors tensor entry"));
 
         std::optional<DataType> dtype;
         std::vector<int64_t> shape;
         std::optional<std::pair<uint64_t, uint64_t>> data_offsets;
 
         SkipWhitespace();
-        if (!Consume('}')) {
+        if (!TryConsume('}')) {
             while (true) {
                 const auto key = ParseString();
                 if (!key.ok()) {
                     return key.status();
                 }
 
-                if (!Expect(':')) {
-                    return Status::InvalidArgument("Expected ':' after safetensors tensor field name");
-                }
+                AM_RETURN_IF_ERROR(Expect(':', "after safetensors tensor field name"));
 
                 if (*key == "dtype") {
                     const auto dtype_text = ParseString();
@@ -222,12 +214,10 @@ private:
                 }
 
                 SkipWhitespace();
-                if (Consume('}')) {
+            if (TryConsume('}')) {
                     break;
                 }
-                if (!Expect(',')) {
-                    return Status::InvalidArgument("Expected ',' between safetensors tensor fields");
-                }
+                AM_RETURN_IF_ERROR(Expect(',', "between safetensors tensor fields"));
             }
         }
 
@@ -291,24 +281,20 @@ private:
     }
 
     StatusOr<std::pair<uint64_t, uint64_t>> ParseOffsetPair() {
-        if (!Expect('[')) {
-            return Status::InvalidArgument("Expected '[' at start of data_offsets");
-        }
+        AM_RETURN_IF_ERROR(Expect('[', "at start of data_offsets"));
 
         const auto first = ParseUInt64();
         if (!first.ok()) {
             return first.status();
         }
-        if (!Expect(',')) {
-            return Status::InvalidArgument("Expected ',' between data_offsets values");
-        }
+        AM_RETURN_IF_ERROR(Expect(',', "between data_offsets values"));
         const auto second = ParseUInt64();
         if (!second.ok()) {
             return second.status();
         }
 
         SkipWhitespace();
-        if (!Consume(']')) {
+        if (!TryConsume(']')) {
             return Status::InvalidArgument("Expected closing ']' after data_offsets values");
         }
         return std::make_pair(*first, *second);

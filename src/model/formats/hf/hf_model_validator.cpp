@@ -104,6 +104,13 @@ Status ValidateLayerWeight(const RawWeightTable& weights,
 }// namespace
 
 Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const ModelValidationOptions&) {
+    if (config.model_type.empty()) {
+        return Status::InvalidArgument("Model config field 'model_type' must be provided");
+    }
+    if (config.architectures.empty()) {
+        return Status::InvalidArgument("Model config field 'architectures' must be provided");
+    }
+
     if (config.model_type != "llama" && !ContainsLlamaArchitecture(config.architectures)) {
         return Status::InvalidArgument("Only Llama-family dense decoder-only models are supported");
     }

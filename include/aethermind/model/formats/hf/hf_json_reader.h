@@ -20,9 +20,9 @@ public:
 
     AM_NODISCARD bool AtEnd() const noexcept;
 
-    bool Consume(char expected) noexcept;
-    bool Expect(char expected) noexcept;
-    bool ConsumeLiteral(std::string_view literal) noexcept;
+    bool TryConsume(char expected) noexcept;
+    Status Expect(char expected, std::string_view context);
+    bool TryConsumeLiteral(std::string_view literal) noexcept;
 
     StatusOr<std::string> ParseString();
     StatusOr<int64_t> ParseInt64();

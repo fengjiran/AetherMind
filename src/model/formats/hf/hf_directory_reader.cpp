@@ -16,29 +16,26 @@ public:
         : HfJsonReader(input) {}
 
     StatusOr<HfModelConfig> Parse() {
-        if (!Consume('{')) {
+        if (!TryConsume('{')) {
             return Status::InvalidArgument("HF config must be a JSON object");
         }
 
         HfModelConfig config{};
         SkipWhitespace();
-        if (!Consume('}')) {
+        if (!TryConsume('}')) {
             while (true) {
                 const auto key = ParseString();
                 if (!key.ok()) {
                     return key.status();
                 }
-                if (!Expect(':')) {
-                    return Status::InvalidArgument("Expected ':' after HF config key");
-                }
+
+                AM_RETURN_IF_ERROR(Expect(':', "after HF config key"));
                 AM_RETURN_IF_ERROR(ParseField(*key, config));
                 SkipWhitespace();
-                if (Consume('}')) {
+                if (TryConsume('}')) {
                     break;
                 }
-                if (!Expect(',')) {
-                    return Status::InvalidArgument("Expected ',' between HF config fields");
-                }
+                AM_RETURN_IF_ERROR(Expect(',', "between HF config fields"));
             }
         }
 
@@ -47,81 +44,59 @@ public:
             return Status::InvalidArgument("HF config contains trailing JSON content");
         }
 
-        AM_RETURN_IF_ERROR(ValidateRequiredFields(config));
         ApplyDefaults(config);
         return config;
     }
 
 private:
     Status ParseField(const std::string& key, HfModelConfig& config) {
-        if (key == "model_type") {
-            auto v = ParseString();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.model_type = std::move(*v);
+        const auto parse_into = [&](auto parse, auto& out) -> Status {
+            auto value = parse();
+            if (!value.ok()) {
+                return FieldParseError(key, value.status());
+            }
+            out = std::move(*value);
             return Status::Ok();
+        };
+
+        if (key == "model_type") {
+            return parse_into([&] { return ParseString(); }, config.model_type);
         }
 
         if (key == "architectures") {
-            auto v = ParseStringArray();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.architectures = std::move(*v);
-            return Status::Ok();
+            return parse_into([&] { return ParseStringArray(); }, config.architectures);
         }
 
         if (key == "hidden_size") {
-            auto v = ParseInt64();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.hidden_size = *v;
-            return Status::Ok();
+            return parse_into([&] { return ParseInt64(); }, config.hidden_size);
         }
 
         if (key == "intermediate_size") {
-            auto v = ParseInt64();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.intermediate_size = *v;
-            return Status::Ok();
+            return parse_into([&] { return ParseInt64(); }, config.intermediate_size);
         }
 
         if (key == "num_hidden_layers") {
-            auto v = ParseInt64();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.num_hidden_layers = *v;
-            return Status::Ok();
+            return parse_into([&] { return ParseInt64(); }, config.num_hidden_layers);
         }
 
         if (key == "num_attention_heads") {
-            auto v = ParseInt64();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.num_attention_heads = *v;
-            return Status::Ok();
+            return parse_into([&] { return ParseInt64(); }, config.num_attention_heads);
         }
 
         if (key == "num_key_value_heads") {
-            auto v = ParseInt64();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.num_key_value_heads = *v;
-            return Status::Ok();
+            return parse_into([&] { return ParseInt64(); }, config.num_key_value_heads);
         }
 
         if (key == "vocab_size") {
-            auto v = ParseInt64();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.vocab_size = *v;
-            return Status::Ok();
+            return parse_into([&] { return ParseInt64(); }, config.vocab_size);
         }
 
         if (key == "rms_norm_eps") {
-            auto v = ParseDouble();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.rms_norm_eps = *v;
-            return Status::Ok();
+            return parse_into([&] { return ParseDouble(); }, config.rms_norm_eps);
         }
 
         if (key == "tie_word_embeddings") {
-            auto v = ParseBool();
-            if (!v.ok()) return FieldParseError(key, v.status());
-            config.tie_word_embeddings = *v;
-            return Status::Ok();
+            return parse_into([&] { return ParseBool(); }, config.tie_word_embeddings);
         }
         return SkipValue();
     }
@@ -130,34 +105,6 @@ private:
         return Status(parse_status.code(),
                       "Failed to parse HF config field '" + key +
                               "': " + parse_status.message());
-    }
-
-    static Status ValidateRequiredFields(const HfModelConfig& config) {
-        if (config.model_type.empty()) {
-            return Status::InvalidArgument("HF config is missing required 'model_type' field");
-        }
-        if (config.architectures.empty()) {
-            return Status::InvalidArgument("HF config is missing required 'architectures' field");
-        }
-        if (config.hidden_size <= 0) {
-            return Status::InvalidArgument("HF config is missing required 'hidden_size' field");
-        }
-        if (config.intermediate_size <= 0) {
-            return Status::InvalidArgument("HF config is missing required 'intermediate_size' field");
-        }
-        if (config.num_hidden_layers <= 0) {
-            return Status::InvalidArgument("HF config is missing required 'num_hidden_layers' field");
-        }
-        if (config.num_attention_heads <= 0) {
-            return Status::InvalidArgument("HF config is missing required 'num_attention_heads' field");
-        }
-        if (config.vocab_size <= 0) {
-            return Status::InvalidArgument("HF config is missing required 'vocab_size' field");
-        }
-        if (config.rms_norm_eps <= 0.0) {
-            return Status::InvalidArgument("HF config is missing required 'rms_norm_eps' field");
-        }
-        return Status::Ok();
     }
 
     static void ApplyDefaults(HfModelConfig& config) {

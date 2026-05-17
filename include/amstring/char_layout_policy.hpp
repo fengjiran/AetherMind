@@ -103,46 +103,49 @@ struct CharLayoutPolicy {
 
     AM_NODISCARD static DecodedProbe DecodeProbe(const Storage& storage) noexcept {
         const auto probe = GetProbe(storage);
+        // clang-format off
         if constexpr (config::kIsLittleEndian) {
             // Small: probe ∈ [0, 23] ⇒ tag=kSmallTag AND size≤kSmallCapacity (single cmp folds both checks)
             if (probe < kStorageBytes) AM_LIKELY {
-                    // NOLINTNEXTLINE(modernize-use-designated-initializers)
-                    return {.category = Category::kSmall,
-                            .size = kSmallCapacity - probe,
-                            .capacity = kSmallCapacity};
-                }
+                // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                return {.category = Category::kSmall,
+                        .size = kSmallCapacity - probe,
+                        .capacity = kSmallCapacity};
+            }
+
             // External: probe & 0xC0 == 0x80
             // NOLINTNEXTLINE(bugprone-branch-clone)
             if ((probe & kCategoryMask) == kExternalTag) AM_UNLIKELY {
-                    // NOLINTNEXTLINE(modernize-use-designated-initializers)
-                    return {.category = Category::kExternal,
-                            .size = storage.external.size,
-                            .capacity = UnpackCapacity(storage.external.capacity_with_tag)};
-                }
+                // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                return {.category = Category::kExternal,
+                        .size = storage.external.size,
+                        .capacity = UnpackCapacity(storage.external.capacity_with_tag)};
+            }
             // NOLINTNEXTLINE(modernize-use-designated-initializers)
             return {.category = Category::kInvalid, .size = 0, .capacity = 0};
         } else {
             const auto tag = TagFromProbe(probe);
             if (tag == kSmallTag) AM_LIKELY {
-                    const auto size = DecodeSmallSizeFromMeta(probe);
-                    if (size <= kSmallCapacity) AM_LIKELY {
-                            // NOLINTNEXTLINE(modernize-use-designated-initializers)
-                            return {.category = Category::kSmall, .size = size, .capacity = kSmallCapacity};
-                        }
+                const auto size = DecodeSmallSizeFromMeta(probe);
+                if (size <= kSmallCapacity) AM_LIKELY {
                     // NOLINTNEXTLINE(modernize-use-designated-initializers)
-                    return {.category = Category::kInvalid, .size = 0, .capacity = 0};
+                    return {.category = Category::kSmall, .size = size, .capacity = kSmallCapacity};
                 }
+                // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                return {.category = Category::kInvalid, .size = 0, .capacity = 0};
+            }
 
             if (tag == kExternalTag) AM_UNLIKELY {
-                    // NOLINTNEXTLINE(modernize-use-designated-initializers)
-                    return {.category = Category::kExternal,
-                            .size = storage.external.size,
-                            .capacity = UnpackCapacity(storage.external.capacity_with_tag)};
-                }
+                // NOLINTNEXTLINE(modernize-use-designated-initializers)
+                return {.category = Category::kExternal,
+                        .size = storage.external.size,
+                        .capacity = UnpackCapacity(storage.external.capacity_with_tag)};
+            }
 
             // NOLINTNEXTLINE(modernize-use-designated-initializers)
             return {.category = Category::kInvalid, .size = 0, .capacity = 0};
         }
+        // clang-format on
     }
 
     AM_NODISCARD static constexpr SizeType max_external_capacity() noexcept {

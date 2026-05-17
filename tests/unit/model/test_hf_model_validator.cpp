@@ -24,6 +24,8 @@ HfModelConfig MakeValidLlamaConfig() {
             .num_attention_heads = 32,
             .num_key_value_heads = 8,
             .vocab_size = 32000,
+            .max_position_embeddings = 4096,
+            .head_dim = 128,
             .rms_norm_eps = 1e-6,
             .tie_word_embeddings = false,
     };
@@ -95,9 +97,19 @@ TEST(HfModelValidatorTest, AcceptsValidLlamaConfigWithOptions) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, AcceptsLlamaArchitectureWhenModelTypeIsDifferent) {
+TEST(HfModelValidatorTest, RejectsNonLlamaModelTypeEvenWithLlamaArchitecture) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.model_type = "unknown";
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, AcceptsMissingArchitecturesWhenModelTypeIsLlama) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.architectures.clear();
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
@@ -148,6 +160,167 @@ TEST(HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
 TEST(HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_key_value_heads = 33;
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsAttentionHeadsNotDivisibleByKeyValueHeads) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_key_value_heads = 7;
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsIntermediateSizeSmallerThanHiddenSize) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.intermediate_size = config.hidden_size - 1;
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsNonPositiveMaxPositionEmbeddings) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.max_position_embeddings = 0;
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsMismatchedHeadDim) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.head_dim = 64;
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsUnsupportedHiddenActivation) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.hidden_act = "gelu";
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsBiasByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.attention_bias = true;
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, AcceptsBiasWhenAllowed) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.mlp_bias = true;
+    ModelValidationOptions options{};
+    options.allow_bias = true;
+
+    const Status status = HfModelValidator::ValidateConfig(config, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(HfModelValidatorTest, RejectsNonPositiveRopeTheta) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.rope.theta = 0.0;
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsRopeScalingByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.rope.scaling_factor = 2.0;
+    config.rope.scaling_type = "linear";
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.rope.scaling_factor = 2.0;
+    config.rope.scaling_type = "linear";
+    ModelValidationOptions options{};
+    options.allow_rope_scaling = true;
+
+    const Status status = HfModelValidator::ValidateConfig(config, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(HfModelValidatorTest, RejectsUnsupportedRopeScalingTypeWhenAllowed) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.rope.scaling_factor = 2.0;
+    config.rope.scaling_type = "unknown";
+    ModelValidationOptions options{};
+    options.allow_rope_scaling = true;
+
+    const Status status = HfModelValidator::ValidateConfig(config, options);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.rope.scaling_type = "linear";
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsPartialRopeScalingWhenAllowed) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.rope.scaling_type = "linear";
+    ModelValidationOptions options{};
+    options.allow_rope_scaling = true;
+
+    const Status status = HfModelValidator::ValidateConfig(config, options);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsQuantizedDTypeHint) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.weight_dtype_hint_name = "int8";
+    config.weight_dtype_hint = DataType::Int(8);
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, RejectsUnknownNamedDTypeHint) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.weight_dtype_hint_name = "float8_e4m3fn";
+    config.weight_dtype_hint = DataType{};
 
     const Status status = HfModelValidator::ValidateConfig(config);
 

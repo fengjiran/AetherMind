@@ -1,7 +1,6 @@
 #include "aethermind/model/formats/hf/hf_model_validator.h"
 #include "aethermind/utils/overflow_check.h"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -11,18 +10,38 @@
 namespace aethermind {
 namespace {
 
-bool ContainsLlamaArchitecture(const std::vector<std::string>& architectures) {
-    return std::ranges::any_of(architectures, [](const std::string& architecture) {
-        return architecture.find("Llama") != std::string::npos;
-    });
-}
-
 Status RequirePositive(int64_t value, std::string_view field_name) {
     if (value <= 0) {
         return Status::InvalidArgument(std::string("Model config field '") +
                                        std::string(field_name) + "' must be positive");
     }
     return Status::Ok();
+}
+
+bool IsUnknownDType(const DataType& dtype) {
+    return dtype == DataType{};
+}
+
+bool IsSupportedDenseWeightDTypeHint(const DataType& dtype) {
+    return IsUnknownDType(dtype) || dtype.IsFloat32() || dtype.IsFloat16() || dtype.IsBFloat16();
+}
+
+bool HasUnsupportedNamedDTypeHint(const HfModelConfig& config) {
+    return !config.weight_dtype_hint_name.empty() &&
+           config.weight_dtype_hint_name != "auto" &&
+           IsUnknownDType(config.weight_dtype_hint);
+}
+
+bool IsSupportedRopeScalingType(std::string_view type) {
+    const auto is = [&](std::string_view value) noexcept {
+        return type == value;
+    };
+    
+    return is("linear") || is("dynamic") || is("yarn") || is("llama3") || is("longrope");
+}
+
+bool HasRopeScaling(const HfRopeConfig& rope) {
+    return rope.scaling_factor.has_value() || !rope.scaling_type.empty();
 }
 
 std::string ShapeToString(const std::vector<int64_t>& shape) {
@@ -103,16 +122,13 @@ Status ValidateLayerWeight(const RawWeightTable& weights,
 
 }// namespace
 
-Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const ModelValidationOptions&) {
+Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const ModelValidationOptions& options) {
     if (config.model_type.empty()) {
         return Status::InvalidArgument("Model config field 'model_type' must be provided");
     }
-    if (config.architectures.empty()) {
-        return Status::InvalidArgument("Model config field 'architectures' must be provided");
-    }
-
-    if (config.model_type != "llama" && !ContainsLlamaArchitecture(config.architectures)) {
-        return Status::InvalidArgument("Only Llama-family dense decoder-only models are supported");
+    
+    if (config.model_type != "llama") {
+        return Status::InvalidArgument("Only model_type=llama is supported in AetherMind Phase 1");
     }
 
     AM_RETURN_IF_ERROR(RequirePositive(config.hidden_size, "hidden_size"));
@@ -121,17 +137,66 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
     AM_RETURN_IF_ERROR(RequirePositive(config.num_attention_heads, "num_attention_heads"));
     AM_RETURN_IF_ERROR(RequirePositive(config.num_key_value_heads, "num_key_value_heads"));
     AM_RETURN_IF_ERROR(RequirePositive(config.vocab_size, "vocab_size"));
+    AM_RETURN_IF_ERROR(RequirePositive(config.max_position_embeddings, "max_position_embeddings"));
 
     if (config.rms_norm_eps <= 0.0) {
         return Status::InvalidArgument("Model config field 'rms_norm_eps' must be positive");
+    }
+
+    if (config.rope.theta <= 0.0) {
+        return Status::InvalidArgument("Model config field 'rope.theta' must be positive");
     }
 
     if (config.hidden_size % config.num_attention_heads != 0) {
         return Status::InvalidArgument("Model config hidden_size must be divisible by num_attention_heads");
     }
 
+    const int64_t inferred_head_dim = config.hidden_size / config.num_attention_heads;
+    if (config.head_dim != 0 && config.head_dim != inferred_head_dim) {
+        return Status::InvalidArgument("Model config head_dim must match hidden_size / num_attention_heads");
+    }
+
+    if (config.num_attention_heads % config.num_key_value_heads != 0) {
+        return Status::InvalidArgument("Model config num_attention_heads must be divisible by num_key_value_heads");
+    }
+
     if (config.num_key_value_heads > config.num_attention_heads) {
         return Status::InvalidArgument("Model config num_key_value_heads must not exceed num_attention_heads");
+    }
+
+    if (config.intermediate_size < config.hidden_size) {
+        return Status::InvalidArgument("Model config intermediate_size must be greater than or equal to hidden_size");
+    }
+
+    if (config.hidden_act != "silu") {
+        return Status::InvalidArgument("Only hidden_act=silu is supported for Llama MLP");
+    }
+
+    if (!options.allow_bias && (config.attention_bias || config.mlp_bias)) {
+        return Status::InvalidArgument("Bias linear is not supported in AetherMind Phase 1");
+    }
+
+    const bool has_rope_scaling = HasRopeScaling(config.rope);
+    if (!options.allow_rope_scaling && has_rope_scaling) {
+        return Status::InvalidArgument("RoPE scaling is not supported in AetherMind Phase 1");
+    }
+
+    if (options.allow_rope_scaling && has_rope_scaling) {
+        if (!config.rope.scaling_factor.has_value()) {
+            return Status::InvalidArgument("Model config field 'rope.scaling_factor' must be provided when RoPE scaling is configured");
+        }
+
+        if (*config.rope.scaling_factor <= 0.0) {
+            return Status::InvalidArgument("Model config field 'rope.scaling_factor' must be positive");
+        }
+
+        if (!IsSupportedRopeScalingType(config.rope.scaling_type)) {
+            return Status::InvalidArgument("Unsupported RoPE scaling type in model config");
+        }
+    }
+
+    if (HasUnsupportedNamedDTypeHint(config) || !IsSupportedDenseWeightDTypeHint(config.weight_dtype_hint)) {
+        return Status::InvalidArgument("Only dense float torch_dtype hints are supported in AetherMind Phase 1");
     }
 
     return Status::Ok();

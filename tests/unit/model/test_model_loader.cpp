@@ -86,6 +86,7 @@ std::string MakeMinimalLlamaConfigJson() {
         "num_hidden_layers": 1,
         "num_attention_heads": 8,
         "num_key_value_heads": 4,
+        "max_position_embeddings": 128,
         "vocab_size": 1000,
         "rms_norm_eps": 1e-6,
         "tie_word_embeddings": false
@@ -209,6 +210,7 @@ TEST(ModelLoaderTest, RejectsUnsupportedModelFamily) {
         "intermediate_size": 256,
         "num_hidden_layers": 1,
         "num_attention_heads": 8,
+        "max_position_embeddings": 128,
         "vocab_size": 1000,
         "rms_norm_eps": 1e-6
     })");

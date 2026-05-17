@@ -4,6 +4,7 @@
 #include "aethermind/model/formats/hf/hf_utils.h"
 
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -91,14 +92,132 @@ private:
             return parse_into([&] { return ParseInt64(); }, config.vocab_size);
         }
 
+        if (key == "max_position_embeddings") {
+            return parse_into([&] { return ParseInt64(); }, config.max_position_embeddings);
+        }
+
+        if (key == "head_dim") {
+            return parse_into([&] { return ParseInt64(); }, config.head_dim);
+        }
+
         if (key == "rms_norm_eps") {
             return parse_into([&] { return ParseDouble(); }, config.rms_norm_eps);
+        }
+
+        if (key == "hidden_act") {
+            return parse_into([&] { return ParseString(); }, config.hidden_act);
         }
 
         if (key == "tie_word_embeddings") {
             return parse_into([&] { return ParseBool(); }, config.tie_word_embeddings);
         }
+
+        if (key == "attention_bias") {
+            return parse_into([&] { return ParseBool(); }, config.attention_bias);
+        }
+
+        if (key == "mlp_bias") {
+            return parse_into([&] { return ParseBool(); }, config.mlp_bias);
+        }
+
+        if (key == "rope_theta") {
+            return parse_into([&] { return ParseDouble(); }, config.rope.theta);
+        }
+
+        if (key == "rope_scaling" || key == "rope_parameters") {
+            auto value = ParseRopeScaling();
+            if (!value.ok()) {
+                return FieldParseError(key, value.status());
+            }
+            config.rope.scaling_factor = value->scaling_factor;
+            config.rope.scaling_type = std::move(value->scaling_type);
+            return Status::Ok();
+        }
+
+        if (key == "torch_dtype" || key == "dtype") {
+            auto value = ParseString();
+            if (!value.ok()) {
+                return FieldParseError(key, value.status());
+            }
+            config.weight_dtype_hint_name = *value;
+            config.weight_dtype_hint = ParseTorchDType(*value);
+            return Status::Ok();
+        }
         return SkipValue();
+    }
+
+    StatusOr<HfRopeConfig> ParseRopeScaling() {
+        if (TryConsumeLiteral("null")) {
+            return HfRopeConfig{};
+        }
+
+        if (!TryConsume('{')) {
+            return Status::InvalidArgument("Expected RoPE scaling object");
+        }
+
+        HfRopeConfig rope_scaling{};
+        SkipWhitespace();
+        if (!TryConsume('}')) {
+            while (true) {
+                const auto key = ParseString();
+                if (!key.ok()) {
+                    return key.status();
+                }
+
+                AM_RETURN_IF_ERROR(Expect(':', "after RoPE scaling key"));
+                if (*key == "factor") {
+                    auto factor = ParseDouble();
+                    if (!factor.ok()) {
+                        return factor.status();
+                    }
+                    rope_scaling.scaling_factor = *factor;
+                } else if (*key == "type" || *key == "rope_type") {
+                    auto type = ParseString();
+                    if (!type.ok()) {
+                        return type.status();
+                    }
+                    rope_scaling.scaling_type = std::move(*type);
+                } else {
+                    AM_RETURN_IF_ERROR(SkipValue());
+                }
+
+                SkipWhitespace();
+                if (TryConsume('}')) {
+                    break;
+                }
+                AM_RETURN_IF_ERROR(Expect(',', "between RoPE scaling fields"));
+            }
+        }
+        return rope_scaling;
+    }
+
+    static DataType ParseTorchDType(std::string_view dtype) {
+        const auto is = [&](std::string_view value) noexcept {
+            return dtype.compare(value) == 0;
+        };
+
+        if (is("auto")) {
+            return DataType{};
+        }
+        if (is("float32") || is("float")) {
+            return DataType::Float32();
+        }
+        if (is("float16") || is("half")) {
+            return DataType::Float(16);
+        }
+        if (is("bfloat16")) {
+            return DataType::BFloat(16);
+        }
+        if (is("float64") || is("double")) {
+            return DataType::Double();
+        }
+        if (is("int8")) {
+            return DataType::Int(8);
+        }
+        if (is("int4")) {
+            return DataType::Int(4);
+        }
+        return DataType{};
     }
 
     static Status FieldParseError(const std::string& key, const Status& parse_status) {

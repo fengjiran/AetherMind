@@ -91,6 +91,7 @@ std::string MakeConfigWithoutRequiredField(std::string_view omitted_field) {
     append_field("intermediate_size", "11008");
     append_field("num_hidden_layers", "32");
     append_field("num_attention_heads", "32");
+    append_field("max_position_embeddings", "4096");
     append_field("vocab_size", "32000");
     append_field("rms_norm_eps", "1e-6");
 
@@ -115,8 +116,16 @@ TEST(HfConfigTest, ParsesMinimalLlamaConfig) {
         "num_attention_heads": 32,
         "num_key_value_heads": 8,
         "vocab_size": 32000,
+        "max_position_embeddings": 4096,
+        "head_dim": 128,
         "rms_norm_eps": 1e-6,
+        "hidden_act": "silu",
         "tie_word_embeddings": false,
+        "attention_bias": false,
+        "mlp_bias": false,
+        "rope_theta": 10000.0,
+        "rope_scaling": {"type": "linear", "factor": 2.0},
+        "torch_dtype": "bfloat16",
         "unused_field": {"nested": true}
     })");
     WriteMinimalSafetensors(temp_dir.Path());
@@ -134,8 +143,19 @@ TEST(HfConfigTest, ParsesMinimalLlamaConfig) {
     EXPECT_EQ(config->num_attention_heads, 32);
     EXPECT_EQ(config->num_key_value_heads, 8);
     EXPECT_EQ(config->vocab_size, 32000);
+    EXPECT_EQ(config->max_position_embeddings, 4096);
+    EXPECT_EQ(config->head_dim, 128);
     EXPECT_DOUBLE_EQ(config->rms_norm_eps, 1e-6);
+    EXPECT_EQ(config->hidden_act, "silu");
     EXPECT_FALSE(config->tie_word_embeddings);
+    EXPECT_FALSE(config->attention_bias);
+    EXPECT_FALSE(config->mlp_bias);
+    EXPECT_DOUBLE_EQ(config->rope.theta, 10000.0);
+    ASSERT_TRUE(config->rope.scaling_factor.has_value());
+    EXPECT_DOUBLE_EQ(*config->rope.scaling_factor, 2.0);
+    EXPECT_EQ(config->rope.scaling_type, "linear");
+    EXPECT_EQ(config->weight_dtype_hint_name, "bfloat16");
+    EXPECT_EQ(config->weight_dtype_hint, DataType::BFloat(16));
 }
 
 TEST(HfConfigTest, DefaultsOptionalFields) {
@@ -147,6 +167,7 @@ TEST(HfConfigTest, DefaultsOptionalFields) {
         "intermediate_size": 11008,
         "num_hidden_layers": 32,
         "num_attention_heads": 32,
+        "max_position_embeddings": 4096,
         "vocab_size": 32000,
         "rms_norm_eps": 0.000001
     })");
@@ -158,7 +179,15 @@ TEST(HfConfigTest, DefaultsOptionalFields) {
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_EQ(config->num_key_value_heads, config->num_attention_heads);
+    EXPECT_EQ(config->head_dim, 0);
+    EXPECT_EQ(config->hidden_act, "silu");
     EXPECT_FALSE(config->tie_word_embeddings);
+    EXPECT_FALSE(config->attention_bias);
+    EXPECT_FALSE(config->mlp_bias);
+    EXPECT_DOUBLE_EQ(config->rope.theta, 10000.0);
+    EXPECT_FALSE(config->rope.scaling_factor.has_value());
+    EXPECT_TRUE(config->weight_dtype_hint_name.empty());
+    EXPECT_EQ(config->weight_dtype_hint, DataType{});
 }
 
 TEST_P(HfConfigMissingRequiredFieldTest, DefersMissingRequiredFieldToValidator) {
@@ -185,11 +214,11 @@ INSTANTIATE_TEST_SUITE_P(
         HfConfigMissingRequiredFieldTest,
         ::testing::Values(
                 "model_type",
-                "architectures",
                 "hidden_size",
                 "intermediate_size",
                 "num_hidden_layers",
                 "num_attention_heads",
+                "max_position_embeddings",
                 "vocab_size",
                 "rms_norm_eps"),
         [](const ::testing::TestParamInfo<HfConfigMissingRequiredFieldTest::ParamType>& info) {
@@ -229,6 +258,108 @@ TEST(HfConfigTest, RejectsWrongFieldType) {
 
     ASSERT_FALSE(config.ok());
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfConfigTest, ParsesNullRopeScalingAsAbsent) {
+    TempDirectory temp_dir;
+    WriteConfig(temp_dir.Path(), R"({
+        "model_type": "llama",
+        "hidden_size": 4096,
+        "intermediate_size": 11008,
+        "num_hidden_layers": 32,
+        "num_attention_heads": 32,
+        "vocab_size": 32000,
+        "max_position_embeddings": 4096,
+        "rms_norm_eps": 1e-6,
+        "rope_scaling": null
+    })");
+    WriteMinimalSafetensors(temp_dir.Path());
+
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    EXPECT_FALSE(config->rope.scaling_factor.has_value());
+    EXPECT_TRUE(config->rope.scaling_type.empty());
+}
+
+TEST(HfConfigTest, ParsesDTypeAndRopeParametersAliases) {
+    TempDirectory temp_dir;
+    WriteConfig(temp_dir.Path(), R"({
+        "model_type": "llama",
+        "hidden_size": 4096,
+        "intermediate_size": 11008,
+        "num_hidden_layers": 32,
+        "num_attention_heads": 32,
+        "vocab_size": 32000,
+        "max_position_embeddings": 4096,
+        "rms_norm_eps": 1e-6,
+        "dtype": "float16",
+        "rope_parameters": {"rope_type": "llama3", "factor": 8.0}
+    })");
+    WriteMinimalSafetensors(temp_dir.Path());
+
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    EXPECT_TRUE(config->weight_dtype_hint.IsFloat16());
+    EXPECT_EQ(config->weight_dtype_hint_name, "float16");
+    ASSERT_TRUE(config->rope.scaling_factor.has_value());
+    EXPECT_DOUBLE_EQ(*config->rope.scaling_factor, 8.0);
+    EXPECT_EQ(config->rope.scaling_type, "llama3");
+}
+
+TEST(HfConfigTest, DefersUnsupportedDTypeToValidator) {
+    TempDirectory temp_dir;
+    WriteConfig(temp_dir.Path(), R"({
+        "model_type": "llama",
+        "hidden_size": 4096,
+        "intermediate_size": 11008,
+        "num_hidden_layers": 32,
+        "num_attention_heads": 32,
+        "vocab_size": 32000,
+        "max_position_embeddings": 4096,
+        "rms_norm_eps": 1e-6,
+        "torch_dtype": "float8_e4m3fn"
+    })");
+    WriteMinimalSafetensors(temp_dir.Path());
+
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    EXPECT_EQ(config->weight_dtype_hint_name, "float8_e4m3fn");
+    EXPECT_EQ(config->weight_dtype_hint, DataType{});
+
+    const Status status = HfModelValidator::ValidateConfig(*config);
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfConfigTest, SkipsUnknownFloatingJsonValue) {
+    TempDirectory temp_dir;
+    WriteConfig(temp_dir.Path(), R"({
+        "model_type": "llama",
+        "hidden_size": 4096,
+        "intermediate_size": 11008,
+        "num_hidden_layers": 32,
+        "num_attention_heads": 32,
+        "vocab_size": 32000,
+        "max_position_embeddings": 4096,
+        "rms_norm_eps": 1e-6,
+        "unused_float": 3.14159
+    })");
+    WriteMinimalSafetensors(temp_dir.Path());
+
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
 }
 
 }// namespace

@@ -209,12 +209,30 @@ TEST(HfModelValidatorTest, RejectsMismatchedHeadDim) {
 
 TEST(HfModelValidatorTest, RejectsUnsupportedHiddenActivation) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.hidden_act = "gelu";
+    config.hidden_act = "linear";
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(HfModelValidatorTest, AcceptsGeluActivation) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.hidden_act = "gelu";
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(HfModelValidatorTest, AcceptsReluActivation) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.hidden_act = "relu";
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
 TEST(HfModelValidatorTest, RejectsBiasByDefault) {

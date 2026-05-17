@@ -1,6 +1,7 @@
 #include "aethermind/model/formats/hf/hf_model_validator.h"
 #include "aethermind/utils/overflow_check.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +14,8 @@ namespace {
 Status RequirePositive(int64_t value, std::string_view field_name) {
     if (value <= 0) {
         return Status::InvalidArgument(std::string("Model config field '") +
-                                       std::string(field_name) + "' must be positive");
+                                       std::string(field_name) +
+                                       "' must be positive, got " + std::to_string(value));
     }
     return Status::Ok();
 }
@@ -36,8 +38,18 @@ bool IsSupportedRopeScalingType(std::string_view type) {
     const auto is = [&](std::string_view value) noexcept {
         return type == value;
     };
-    
+
     return is("linear") || is("dynamic") || is("yarn") || is("llama3") || is("longrope");
+}
+
+bool IsSupportedActivation(std::string_view act) {
+    constexpr std::string_view kSupported[] = {
+            "silu",
+            "gelu",
+            "relu",
+    };
+
+    return std::ranges::any_of(kSupported, [act](std::string_view s) { return act == s; });
 }
 
 bool HasRopeScaling(const HfRopeConfig& rope) {
@@ -126,7 +138,7 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
     if (config.model_type.empty()) {
         return Status::InvalidArgument("Model config field 'model_type' must be provided");
     }
-    
+
     if (config.model_type != "llama") {
         return Status::InvalidArgument("Only model_type=llama is supported in AetherMind Phase 1");
     }
@@ -168,8 +180,9 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
         return Status::InvalidArgument("Model config intermediate_size must be greater than or equal to hidden_size");
     }
 
-    if (config.hidden_act != "silu") {
-        return Status::InvalidArgument("Only hidden_act=silu is supported for Llama MLP");
+    if (!IsSupportedActivation(config.hidden_act)) {
+        return Status::InvalidArgument(
+                "Model config field 'hidden_act' must be one of: silu, gelu, relu");
     }
 
     if (!options.allow_bias && (config.attention_bias || config.mlp_bias)) {

@@ -125,12 +125,13 @@ private:
         }
 
         if (key == "rope_scaling" || key == "rope_parameters") {
-            auto value = ParseRopeScaling();
+            auto value = ParseRopeConfig();
             if (!value.ok()) {
                 return FieldParseError(key, value.status());
             }
             config.rope.scaling_factor = value->scaling_factor;
             config.rope.scaling_type = std::move(value->scaling_type);
+            config.rope.theta = value->theta;
             return Status::Ok();
         }
 
@@ -146,16 +147,16 @@ private:
         return SkipValue();
     }
 
-    StatusOr<HfRopeConfig> ParseRopeScaling() {
+    StatusOr<HfRopeConfig> ParseRopeConfig() {
         if (TryConsumeLiteral("null")) {
             return HfRopeConfig{};
         }
 
         if (!TryConsume('{')) {
-            return Status::InvalidArgument("Expected RoPE scaling object");
+            return Status::InvalidArgument("Expected RoPE config object");
         }
 
-        HfRopeConfig rope_scaling{};
+        HfRopeConfig rope_config{};
         SkipWhitespace();
         if (!TryConsume('}')) {
             while (true) {
@@ -164,19 +165,27 @@ private:
                     return key.status();
                 }
 
-                AM_RETURN_IF_ERROR(Expect(':', "after RoPE scaling key"));
+                AM_RETURN_IF_ERROR(Expect(':', "after RoPE config key"));
                 if (*key == "factor") {
                     auto factor = ParseDouble();
                     if (!factor.ok()) {
                         return factor.status();
                     }
-                    rope_scaling.scaling_factor = *factor;
+                    rope_config.scaling_factor = *factor;
                 } else if (*key == "type" || *key == "rope_type") {
                     auto type = ParseString();
                     if (!type.ok()) {
                         return type.status();
                     }
-                    rope_scaling.scaling_type = std::move(*type);
+                    if (*type != "default") {
+                        rope_config.scaling_type = std::move(*type);
+                    }
+                } else if (*key == "rope_theta") {
+                    auto theta = ParseDouble();
+                    if (!theta.ok()) {
+                        return theta.status();
+                    }
+                    rope_config.theta = *theta;
                 } else {
                     AM_RETURN_IF_ERROR(SkipValue());
                 }
@@ -185,10 +194,10 @@ private:
                 if (TryConsume('}')) {
                     break;
                 }
-                AM_RETURN_IF_ERROR(Expect(',', "between RoPE scaling fields"));
+                AM_RETURN_IF_ERROR(Expect(',', "between RoPE config fields"));
             }
         }
-        return rope_scaling;
+        return rope_config;
     }
 
     static DataType ParseTorchDType(std::string_view dtype) {

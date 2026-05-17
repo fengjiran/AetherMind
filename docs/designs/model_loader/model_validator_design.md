@@ -354,10 +354,12 @@ intermediate_size >= hidden_size
 
 ### 7.5 激活函数支持范围
 
-Phase 1 若只实现 Llama SwiGLU，则 `hidden_act` 应只接受：
+Phase 1 主要实现 Llama SwiGLU（使用 silu），但 `hidden_act` 校验应接受以下激活函数：
 
 ```text
-silu
+silu    — Llama 默认（SiLU/Swish）
+gelu    — 常见替代（GPT-2、BERT 等）
+relu    — 基础支持（原始 Transformer）
 ```
 
 注意：HF Llama 配置中通常写的是 `"silu"`，但实际 MLP 结构是：
@@ -367,6 +369,8 @@ down_proj(silu(gate_proj(x)) * up_proj(x))
 ```
 
 不要要求 config 中必须出现 `"swiglu"`。
+
+若后续需要扩展更多激活函数（如 gelu_pytorch_tanh、gelu_fast、quick_gelu），只需在 `IsSupportedActivation` 的列表中追加即可。
 
 ---
 
@@ -1076,8 +1080,10 @@ Status HfModelValidator::ValidateConfig(
         return Unsupported("intermediate_size < hidden_size is not supported for Llama dense MLP");
     }
 
-    if (config.hidden_act != "silu") {
-        return Unsupported("Only hidden_act=silu is supported for Llama MLP");
+    if (config.hidden_act != "silu" &&
+        config.hidden_act != "gelu" &&
+        config.hidden_act != "relu") {
+        return Unsupported("hidden_act must be one of: silu, gelu, relu");
     }
 
     if (!options.allow_bias && (config.attention_bias || config.mlp_bias)) {

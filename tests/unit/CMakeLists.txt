@@ -19,6 +19,10 @@ target_link_libraries(${TEST_TARGET} PRIVATE
         GTest::gtest_main
 )
 
+target_compile_definitions(${TEST_TARGET} PRIVATE
+        AETHERMIND_TEST_MODELS_DIR="${PROJECT_SOURCE_DIR}/.models"
+)
+
 if (BUILD_WITH_TORCH)
     message(STATUS "Setting C++ macro BUILD_WITH_TORCH - 1")
     find_package(Torch REQUIRED)

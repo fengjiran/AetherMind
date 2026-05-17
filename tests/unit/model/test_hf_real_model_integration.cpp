@@ -1,7 +1,6 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
-#include "aethermind/model/model_validation_options.h"
 #include "aethermind/model/raw_weight.h"
 
 #include <filesystem>
@@ -17,7 +16,7 @@ fs::path TestModelDir() {
     return fs::path(AETHERMIND_TEST_MODELS_DIR) / "tiny-random-LlamaForCausalLM";
 }
 
-TEST(HfRealModelIntegrationTest, InspectFindsSingleSafetensorsLayout) {
+TEST(ModelLoader_HfRealModelIntegrationTest, InspectFindsSingleSafetensorsLayout) {
     const auto layout = HfDirectoryReader::InspectDirectory(TestModelDir());
 
     ASSERT_TRUE(layout.ok()) << layout.status().ToString();
@@ -27,7 +26,7 @@ TEST(HfRealModelIntegrationTest, InspectFindsSingleSafetensorsLayout) {
     EXPECT_TRUE(layout->safetensors_index_path.empty());
 }
 
-TEST(HfRealModelIntegrationTest, ParsesRealConfigCorrectly) {
+TEST(ModelLoader_HfRealModelIntegrationTest, ParsesRealConfigCorrectly) {
     auto reader = HfDirectoryReader::Open(TestModelDir());
     ASSERT_TRUE(reader.ok()) << reader.status().ToString();
 
@@ -61,7 +60,7 @@ TEST(HfRealModelIntegrationTest, ParsesRealConfigCorrectly) {
     EXPECT_TRUE(config->rope.scaling_type.empty());
 }
 
-TEST(HfRealModelIntegrationTest, LoadsRealWeightTable) {
+TEST(ModelLoader_HfRealModelIntegrationTest, LoadsRealWeightTable) {
     auto reader = HfDirectoryReader::Open(TestModelDir());
     ASSERT_TRUE(reader.ok()) << reader.status().ToString();
 
@@ -101,7 +100,7 @@ TEST(HfRealModelIntegrationTest, LoadsRealWeightTable) {
     EXPECT_EQ(norm.shape, (std::vector<int64_t>{16}));
 }
 
-TEST(HfRealModelIntegrationTest, ValidatesConfigAndWeightSet) {
+TEST(ModelLoader_HfRealModelIntegrationTest, ValidatesConfigAndWeightSet) {
     auto reader = HfDirectoryReader::Open(TestModelDir());
     ASSERT_TRUE(reader.ok()) << reader.status().ToString();
 

@@ -61,7 +61,7 @@ DecoderLayerRawWeights MakeTestLayer(const std::shared_ptr<TestStorage>& storage
     return layer;
 }
 
-TEST(ModelInstanceBuilderTest, CreatesModelInstanceWithConfigAndWeights) {
+TEST(ModelLoader_ModelInstanceBuilderTest, CreatesModelInstanceWithConfigAndWeights) {
     auto storage = std::make_shared<TestStorage>(128);
     for (size_t i = 0; i < storage->data.size(); ++i) {
         storage->data[i] = static_cast<std::byte>(i);
@@ -89,7 +89,7 @@ TEST(ModelInstanceBuilderTest, CreatesModelInstanceWithConfigAndWeights) {
     EXPECT_TRUE(weight_index.layers[0].norm.input_rmsnorm.IsValid());
 }
 
-TEST(ModelInstanceBuilderTest, ViewsPointToCorrectData) {
+TEST(ModelLoader_ModelInstanceBuilderTest, ViewsPointToCorrectData) {
     auto storage = std::make_shared<TestStorage>(64);
     for (size_t i = 0; i < storage->data.size(); ++i) {
         storage->data[i] = static_cast<std::byte>(i + 1);
@@ -111,7 +111,7 @@ TEST(ModelInstanceBuilderTest, ViewsPointToCorrectData) {
     EXPECT_EQ(weight_index.layers[0].norm.post_attn_rmsnorm.data, storage->data.data() + 62);
 }
 
-TEST(ModelInstanceBuilderTest, BackingStorageLifetime) {
+TEST(ModelLoader_ModelInstanceBuilderTest, BackingStorageLifetime) {
     bool backing_destroyed = false;
 
     {
@@ -148,7 +148,7 @@ TEST(ModelInstanceBuilderTest, BackingStorageLifetime) {
             << "Backing storage was not destroyed after ModelInstance went out of scope";
 }
 
-TEST(ModelInstanceBuilderTest, ResolvedWeightsIntegratedCorrectly) {
+TEST(ModelLoader_ModelInstanceBuilderTest, ResolvedWeightsIntegratedCorrectly) {
     auto storage = std::make_shared<TestStorage>(256);
 
     RawWeightTable raw_table;

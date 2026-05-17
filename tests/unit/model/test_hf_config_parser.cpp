@@ -55,15 +55,15 @@ void WriteMinimalSafetensors(const std::filesystem::path& dir) {
     std::ofstream stream(path, std::ios::binary);
     ASSERT_TRUE(stream.is_open()) << path.string();
     const std::string header = "{}";
-    const std::array<std::byte, 8> len_bytes = []() {
-        const uint64_t len = 2;
+    constexpr std::array<std::byte, 8> len_bytes = [] {
         std::array<std::byte, 8> bytes{};
         for (size_t i = 0; i < 8; ++i) {
+            constexpr uint64_t len = 2;
             bytes[i] = static_cast<std::byte>((len >> (8U * i)) & 0xFFU);
         }
         return bytes;
     }();
-    stream.write(reinterpret_cast<const char*>(len_bytes.data()), static_cast<std::streamsize>(len_bytes.size()));
+    stream.write(reinterpret_cast<const char*>(len_bytes.data()), len_bytes.size());
     stream << header;
 }
 
@@ -99,13 +99,13 @@ std::string MakeConfigWithoutRequiredField(std::string_view omitted_field) {
     return config;
 }
 
-StatusOr<HfDirectoryReader> OpenTempDir(TempDirectory& temp_dir) {
+StatusOr<HfDirectoryReader> OpenTempDir(const TempDirectory& temp_dir) {
     return HfDirectoryReader::Open(temp_dir.Path());
 }
 
 class HfConfigMissingRequiredFieldTest : public ::testing::TestWithParam<const char*> {};
 
-TEST(HfConfigTest, ParsesMinimalLlamaConfig) {
+TEST(ModelLoader_HfConfigTest, ParsesMinimalLlamaConfig) {
     TempDirectory temp_dir;
     WriteConfig(temp_dir.Path(), R"({
         "architectures": ["LlamaForCausalLM"],
@@ -158,7 +158,7 @@ TEST(HfConfigTest, ParsesMinimalLlamaConfig) {
     EXPECT_EQ(config->weight_dtype_hint, DataType::BFloat(16));
 }
 
-TEST(HfConfigTest, DefaultsOptionalFields) {
+TEST(ModelLoader_HfConfigTest, DefaultsOptionalFields) {
     TempDirectory temp_dir;
     WriteConfig(temp_dir.Path(), R"({
         "architectures": ["LlamaForCausalLM"],
@@ -225,7 +225,7 @@ INSTANTIATE_TEST_SUITE_P(
             return std::string(info.param);
         });
 
-TEST(HfConfigTest, RejectsMalformedJson) {
+TEST(ModelLoader_HfConfigTest, RejectsMalformedJson) {
     TempDirectory temp_dir;
     WriteConfig(temp_dir.Path(), R"({"model_type": )");
     WriteMinimalSafetensors(temp_dir.Path());
@@ -238,7 +238,7 @@ TEST(HfConfigTest, RejectsMalformedJson) {
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfConfigTest, RejectsWrongFieldType) {
+TEST(ModelLoader_HfConfigTest, RejectsWrongFieldType) {
     TempDirectory temp_dir;
     WriteConfig(temp_dir.Path(), R"({
         "architectures": ["LlamaForCausalLM"],
@@ -260,7 +260,7 @@ TEST(HfConfigTest, RejectsWrongFieldType) {
     EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfConfigTest, ParsesNullRopeScalingAsAbsent) {
+TEST(ModelLoader_HfConfigTest, ParsesNullRopeScalingAsAbsent) {
     TempDirectory temp_dir;
     WriteConfig(temp_dir.Path(), R"({
         "model_type": "llama",
@@ -284,7 +284,7 @@ TEST(HfConfigTest, ParsesNullRopeScalingAsAbsent) {
     EXPECT_TRUE(config->rope.scaling_type.empty());
 }
 
-TEST(HfConfigTest, ParsesDTypeAndRopeParametersAliases) {
+TEST(ModelLoader_HfConfigTest, ParsesDTypeAndRopeParametersAliases) {
     TempDirectory temp_dir;
     WriteConfig(temp_dir.Path(), R"({
         "model_type": "llama",
@@ -312,7 +312,7 @@ TEST(HfConfigTest, ParsesDTypeAndRopeParametersAliases) {
     EXPECT_EQ(config->rope.scaling_type, "llama3");
 }
 
-TEST(HfConfigTest, DefersUnsupportedDTypeToValidator) {
+TEST(ModelLoader_HfConfigTest, DefersUnsupportedDTypeToValidator) {
     TempDirectory temp_dir;
     WriteConfig(temp_dir.Path(), R"({
         "model_type": "llama",
@@ -340,7 +340,7 @@ TEST(HfConfigTest, DefersUnsupportedDTypeToValidator) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfConfigTest, SkipsUnknownFloatingJsonValue) {
+TEST(ModelLoader_HfConfigTest, SkipsUnknownFloatingJsonValue) {
     TempDirectory temp_dir;
     WriteConfig(temp_dir.Path(), R"({
         "model_type": "llama",

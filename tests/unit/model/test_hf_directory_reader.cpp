@@ -40,9 +40,8 @@ private:
     std::filesystem::path path_{};
 };
 
-void WriteTextFile(
-        const std::filesystem::path& path,
-        std::string_view content) {
+void WriteTextFile(const std::filesystem::path& path,
+                   std::string_view content) {
     std::ofstream stream(path, std::ios::binary);
     ASSERT_TRUE(stream.is_open()) << path.string();
     stream << content;
@@ -51,7 +50,7 @@ void WriteTextFile(
 void WriteBinaryFile(const std::filesystem::path& path) {
     std::ofstream stream(path, std::ios::binary);
     ASSERT_TRUE(stream.is_open()) << path.string();
-    const char zero = 0;
+    constexpr char zero = 0;
     stream.write(&zero, 1);
 }
 
@@ -89,10 +88,9 @@ void WriteRawFile(const std::filesystem::path& path, std::span<const std::byte> 
     }
 }
 
-void WriteSafetensorsFile(
-        const std::filesystem::path& path,
-        std::string_view header_json,
-        std::span<const std::byte> raw_bytes) {
+void WriteSafetensorsFile(const std::filesystem::path& path,
+                          std::string_view header_json,
+                          std::span<const std::byte> raw_bytes) {
     const auto prefix = EncodeLittleEndianU64(header_json.size());
     const auto header_bytes = ToBytes(header_json);
 
@@ -104,7 +102,7 @@ void WriteSafetensorsFile(
     WriteRawFile(path, file_bytes);
 }
 
-TEST(HfDirectoryReaderTest, InspectSingleFileDirectory) {
+TEST(ModelLoader_HfDirectoryReaderTest, InspectSingleFileDirectory) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
     WriteBinaryFile(temp_dir.path() / "model.safetensors");
@@ -119,7 +117,7 @@ TEST(HfDirectoryReaderTest, InspectSingleFileDirectory) {
     EXPECT_TRUE(layout->safetensors_index_path.empty());
 }
 
-TEST(HfDirectoryReaderTest, OpensSingleFileReader) {
+TEST(ModelLoader_HfDirectoryReaderTest, OpensSingleFileReader) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
     WriteBinaryFile(temp_dir.path() / "model.safetensors");
@@ -132,14 +130,13 @@ TEST(HfDirectoryReaderTest, OpensSingleFileReader) {
     EXPECT_EQ(reader->GetDirDesc().safetensors_path, temp_dir.path() / "model.safetensors");
 }
 
-TEST(HfDirectoryReaderTest, LoadsSingleFileRawWeightTable) {
+TEST(ModelLoader_HfDirectoryReaderTest, LoadsSingleFileRawWeightTable) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
-    WriteSafetensorsFile(
-            temp_dir.path() / "model.safetensors",
-            R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
-            raw_bytes);
+    WriteSafetensorsFile(temp_dir.path() / "model.safetensors",
+                         R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
+                         raw_bytes);
 
     auto reader = HfDirectoryReader::Open(temp_dir.path());
     ASSERT_TRUE(reader.ok()) << reader.status().ToString();
@@ -158,7 +155,7 @@ TEST(HfDirectoryReaderTest, LoadsSingleFileRawWeightTable) {
     EXPECT_FLOAT_EQ(ReadFloat(it->second.data + sizeof(float)), 2.0f);
 }
 
-TEST(HfDirectoryReaderTest, RejectsMissingConfigJson) {
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingConfigJson) {
     TempDirectory temp_dir;
     WriteBinaryFile(temp_dir.path() / "model.safetensors");
 
@@ -168,7 +165,7 @@ TEST(HfDirectoryReaderTest, RejectsMissingConfigJson) {
     EXPECT_EQ(layout.status().code(), StatusCode::kNotFound);
 }
 
-TEST(HfDirectoryReaderTest, RejectsConfigJsonThatIsNotARegularFile) {
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsConfigJsonThatIsNotARegularFile) {
     TempDirectory temp_dir;
     WriteBinaryFile(temp_dir.path() / "model.safetensors");
     std::filesystem::create_directory(temp_dir.path() / "config.json");
@@ -179,7 +176,7 @@ TEST(HfDirectoryReaderTest, RejectsConfigJsonThatIsNotARegularFile) {
     EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfDirectoryReaderTest, RejectsMissingSafetensorsFile) {
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingSafetensorsFile) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
 
@@ -189,7 +186,7 @@ TEST(HfDirectoryReaderTest, RejectsMissingSafetensorsFile) {
     EXPECT_EQ(layout.status().code(), StatusCode::kNotFound);
 }
 
-TEST(HfDirectoryReaderTest, RejectsNonDirectoryPath) {
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsNonDirectoryPath) {
     TempDirectory temp_dir;
     const auto file_path = temp_dir.path() / "config.json";
     WriteTextFile(file_path, "{}");
@@ -200,7 +197,7 @@ TEST(HfDirectoryReaderTest, RejectsNonDirectoryPath) {
     EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfDirectoryReaderTest, RejectsConflictingSingleAndShardedLayout) {
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsConflictingSingleAndShardedLayout) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
     WriteBinaryFile(temp_dir.path() / "model.safetensors");
@@ -212,7 +209,7 @@ TEST(HfDirectoryReaderTest, RejectsConflictingSingleAndShardedLayout) {
     EXPECT_EQ(layout.status().code(), StatusCode::kFailedPrecondition);
 }
 
-TEST(HfDirectoryReaderTest, ReportsShardedLayoutAsUnimplemented) {
+TEST(ModelLoader_HfDirectoryReaderTest, ReportsShardedLayoutAsUnimplemented) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
     WriteTextFile(temp_dir.path() / "model.safetensors.index.json", "{}");

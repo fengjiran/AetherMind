@@ -72,7 +72,7 @@ KernelSelector MakeExpectedSelector() {
     };
 }
 
-TEST(WeightPrepackPlannerTest, BuildRequestsEnumeratesAllLinearWeightsPerLayer) {
+TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsEnumeratesAllLinearWeightsPerLayer) {
     auto storage = std::make_shared<TestStorage>(256);
 
     ModelWeightIndex index;
@@ -97,7 +97,7 @@ TEST(WeightPrepackPlannerTest, BuildRequestsEnumeratesAllLinearWeightsPerLayer) 
     }
 }
 
-TEST(WeightPrepackPlannerTest, BuildRequestsExcludesNormsAndEmbeddings) {
+TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsExcludesNormsAndEmbeddings) {
     auto storage = std::make_shared<TestStorage>(256);
     ModelWeightIndex index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
@@ -118,7 +118,7 @@ TEST(WeightPrepackPlannerTest, BuildRequestsExcludesNormsAndEmbeddings) {
     }
 }
 
-TEST(WeightPrepackPlannerTest, BuildRequestsIncludesLmHeadWhenPresent) {
+TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsIncludesLmHeadWhenPresent) {
     auto storage = std::make_shared<TestStorage>(256);
     ModelWeightIndex index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
@@ -145,7 +145,7 @@ TEST(WeightPrepackPlannerTest, BuildRequestsIncludesLmHeadWhenPresent) {
     EXPECT_TRUE(found_lm_head);
 }
 
-TEST(WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) {
+TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) {
     auto storage = std::make_shared<TestStorage>(256);
     // Fill with zeros so Pack can safely memcpy.
     for (auto& b : storage->data) b = std::byte{0};
@@ -176,7 +176,7 @@ TEST(WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) {
     EXPECT_TRUE(found->storage().is_initialized());
 }
 
-TEST(WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
+TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b : storage->data) b = std::byte{0};
 
@@ -208,7 +208,7 @@ TEST(WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelectorWithoutError
     ASSERT_NE(found, nullptr);
 }
 
-TEST(WeightPrepackPlannerTest, RawViewsStillAccessibleAfterPrepack) {
+TEST(ModelLoader_WeightPrepackPlannerTest, RawViewsStillAccessibleAfterPrepack) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b : storage->data) b = std::byte{0};
 

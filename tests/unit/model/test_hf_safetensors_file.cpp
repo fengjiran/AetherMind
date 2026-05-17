@@ -98,7 +98,7 @@ std::filesystem::path WriteSafetensorsFile(
     return path;
 }
 
-TEST(HfSafetensorsFileTest, LoadsSingleTensorFile) {
+TEST(ModelLoader_HfSafetensorsFileTest, LoadsSingleTensorFile) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 4>{1.0f, 2.0f, 3.0f, 4.0f});
     const auto path = WriteSafetensorsFile(
@@ -121,7 +121,7 @@ TEST(HfSafetensorsFileTest, LoadsSingleTensorFile) {
     EXPECT_FLOAT_EQ(ReadFloat(entry->view.data + 3 * sizeof(float)), 4.0f);
 }
 
-TEST(HfSafetensorsFileTest, LoadsMultipleTensorEntries) {
+TEST(ModelLoader_HfSafetensorsFileTest, LoadsMultipleTensorEntries) {
     TempDirectory temp_dir;
     const auto w1_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto w2_bytes = FloatArrayToBytes(std::array<float, 2>{3.0f, 4.0f});
@@ -142,7 +142,7 @@ TEST(HfSafetensorsFileTest, LoadsMultipleTensorEntries) {
     ASSERT_NE(file->Find("w2"), nullptr);
 }
 
-TEST(HfSafetensorsFileTest, RejectsInvalidHeaderLength) {
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsInvalidHeaderLength) {
     TempDirectory temp_dir;
     std::vector<std::byte> bytes;
     const auto prefix = EncodeLittleEndianU64(1024);
@@ -157,7 +157,7 @@ TEST(HfSafetensorsFileTest, RejectsInvalidHeaderLength) {
     EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfSafetensorsFileTest, RejectsMalformedHeaderJson) {
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsMalformedHeaderJson) {
     TempDirectory temp_dir;
     const auto header = R"({"weight":)";
     const auto path = WriteSafetensorsFile(temp_dir.Path(), header, {});
@@ -168,7 +168,7 @@ TEST(HfSafetensorsFileTest, RejectsMalformedHeaderJson) {
     EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfSafetensorsFileTest, RejectsUnknownDType) {
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsUnknownDType) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto path = WriteSafetensorsFile(
@@ -182,7 +182,7 @@ TEST(HfSafetensorsFileTest, RejectsUnknownDType) {
     EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfSafetensorsFileTest, RejectsOutOfRangeTensorOffsets) {
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsOutOfRangeTensorOffsets) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto path = WriteSafetensorsFile(
@@ -196,7 +196,7 @@ TEST(HfSafetensorsFileTest, RejectsOutOfRangeTensorOffsets) {
     EXPECT_EQ(file.status().code(), StatusCode::kOutOfRange);
 }
 
-TEST(HfSafetensorsFileTest, RejectsShapeByteSizeMismatch) {
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsShapeByteSizeMismatch) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto path = WriteSafetensorsFile(
@@ -210,7 +210,7 @@ TEST(HfSafetensorsFileTest, RejectsShapeByteSizeMismatch) {
     EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfSafetensorsFileTest, FindReturnsNullptrForUnknownTensor) {
+TEST(ModelLoader_HfSafetensorsFileTest, FindReturnsNullptrForUnknownTensor) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{1.0f, 2.0f});
     const auto path = WriteSafetensorsFile(
@@ -224,7 +224,7 @@ TEST(HfSafetensorsFileTest, FindReturnsNullptrForUnknownTensor) {
     EXPECT_EQ(file->Find("missing"), nullptr);
 }
 
-TEST(HfSafetensorsFileTest, KeepsStorageAliveThroughViews) {
+TEST(ModelLoader_HfSafetensorsFileTest, KeepsStorageAliveThroughViews) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{5.0f, 6.0f});
     const auto path = WriteSafetensorsFile(
@@ -247,7 +247,7 @@ TEST(HfSafetensorsFileTest, KeepsStorageAliveThroughViews) {
     EXPECT_FLOAT_EQ(ReadFloat(view.data + sizeof(float)), 6.0f);
 }
 
-TEST(HfSafetensorsFileTest, KeepsMappedViewAliveAfterFileIsRemoved) {
+TEST(ModelLoader_HfSafetensorsFileTest, KeepsMappedViewAliveAfterFileIsRemoved) {
     TempDirectory temp_dir;
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{7.0f, 8.0f});
     const auto path = WriteSafetensorsFile(

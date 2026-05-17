@@ -80,7 +80,7 @@ RawWeightTable MakeCompleteWeightSet(const HfModelConfig& config) {
     return weights;
 }
 
-TEST(HfModelValidatorTest, AcceptsValidLlamaConfig) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsValidLlamaConfig) {
     const HfModelConfig config = MakeValidLlamaConfig();
 
     const Status status = HfModelValidator::ValidateConfig(config);
@@ -88,7 +88,7 @@ TEST(HfModelValidatorTest, AcceptsValidLlamaConfig) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, AcceptsValidLlamaConfigWithOptions) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsValidLlamaConfigWithOptions) {
     const HfModelConfig config = MakeValidLlamaConfig();
     const ModelValidationOptions options{};
 
@@ -97,7 +97,7 @@ TEST(HfModelValidatorTest, AcceptsValidLlamaConfigWithOptions) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, RejectsNonLlamaModelTypeEvenWithLlamaArchitecture) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsNonLlamaModelTypeEvenWithLlamaArchitecture) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.model_type = "unknown";
 
@@ -107,7 +107,7 @@ TEST(HfModelValidatorTest, RejectsNonLlamaModelTypeEvenWithLlamaArchitecture) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, AcceptsMissingArchitecturesWhenModelTypeIsLlama) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsMissingArchitecturesWhenModelTypeIsLlama) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.architectures.clear();
 
@@ -116,7 +116,7 @@ TEST(HfModelValidatorTest, AcceptsMissingArchitecturesWhenModelTypeIsLlama) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, RejectsUnsupportedModelFamily) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedModelFamily) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.model_type = "gpt_neox";
     config.architectures = {"GPTNeoXForCausalLM"};
@@ -127,7 +127,7 @@ TEST(HfModelValidatorTest, RejectsUnsupportedModelFamily) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_size = 0;
 
@@ -137,7 +137,7 @@ TEST(HfModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsNonPositiveRmsNormEps) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRmsNormEps) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rms_norm_eps = 0.0;
 
@@ -147,7 +147,7 @@ TEST(HfModelValidatorTest, RejectsNonPositiveRmsNormEps) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_size = 4097;
 
@@ -157,7 +157,7 @@ TEST(HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_key_value_heads = 33;
 
@@ -167,7 +167,7 @@ TEST(HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsAttentionHeadsNotDivisibleByKeyValueHeads) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsAttentionHeadsNotDivisibleByKeyValueHeads) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_key_value_heads = 7;
 
@@ -177,7 +177,7 @@ TEST(HfModelValidatorTest, RejectsAttentionHeadsNotDivisibleByKeyValueHeads) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsIntermediateSizeSmallerThanHiddenSize) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsIntermediateSizeSmallerThanHiddenSize) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.intermediate_size = config.hidden_size - 1;
 
@@ -187,7 +187,7 @@ TEST(HfModelValidatorTest, RejectsIntermediateSizeSmallerThanHiddenSize) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsNonPositiveMaxPositionEmbeddings) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveMaxPositionEmbeddings) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.max_position_embeddings = 0;
 
@@ -197,7 +197,7 @@ TEST(HfModelValidatorTest, RejectsNonPositiveMaxPositionEmbeddings) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsMismatchedHeadDim) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsMismatchedHeadDim) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.head_dim = 64;
 
@@ -207,7 +207,7 @@ TEST(HfModelValidatorTest, RejectsMismatchedHeadDim) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsUnsupportedHiddenActivation) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedHiddenActivation) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_act = "linear";
 
@@ -217,7 +217,7 @@ TEST(HfModelValidatorTest, RejectsUnsupportedHiddenActivation) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, AcceptsGeluActivation) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsGeluActivation) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_act = "gelu";
 
@@ -226,7 +226,7 @@ TEST(HfModelValidatorTest, AcceptsGeluActivation) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, AcceptsReluActivation) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsReluActivation) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_act = "relu";
 
@@ -235,7 +235,7 @@ TEST(HfModelValidatorTest, AcceptsReluActivation) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, RejectsBiasByDefault) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsBiasByDefault) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.attention_bias = true;
 
@@ -245,7 +245,7 @@ TEST(HfModelValidatorTest, RejectsBiasByDefault) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, AcceptsBiasWhenAllowed) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsBiasWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.mlp_bias = true;
     ModelValidationOptions options{};
@@ -256,7 +256,7 @@ TEST(HfModelValidatorTest, AcceptsBiasWhenAllowed) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, RejectsNonPositiveRopeTheta) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRopeTheta) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.theta = 0.0;
 
@@ -266,7 +266,7 @@ TEST(HfModelValidatorTest, RejectsNonPositiveRopeTheta) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsRopeScalingByDefault) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingByDefault) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;
     config.rope.scaling_type = "linear";
@@ -277,7 +277,7 @@ TEST(HfModelValidatorTest, RejectsRopeScalingByDefault) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;
     config.rope.scaling_type = "linear";
@@ -289,7 +289,7 @@ TEST(HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, RejectsUnsupportedRopeScalingTypeWhenAllowed) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedRopeScalingTypeWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;
     config.rope.scaling_type = "unknown";
@@ -302,7 +302,7 @@ TEST(HfModelValidatorTest, RejectsUnsupportedRopeScalingTypeWhenAllowed) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_type = "linear";
 
@@ -312,7 +312,7 @@ TEST(HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsPartialRopeScalingWhenAllowed) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_type = "linear";
     ModelValidationOptions options{};
@@ -324,7 +324,7 @@ TEST(HfModelValidatorTest, RejectsPartialRopeScalingWhenAllowed) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsQuantizedDTypeHint) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsQuantizedDTypeHint) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.weight_dtype_hint_name = "int8";
     config.weight_dtype_hint = DataType::Int(8);
@@ -335,7 +335,7 @@ TEST(HfModelValidatorTest, RejectsQuantizedDTypeHint) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsUnknownNamedDTypeHint) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsUnknownNamedDTypeHint) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.weight_dtype_hint_name = "float8_e4m3fn";
     config.weight_dtype_hint = DataType{};
@@ -346,7 +346,7 @@ TEST(HfModelValidatorTest, RejectsUnknownNamedDTypeHint) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, AcceptsCompleteWeightSet) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsCompleteWeightSet) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
     const RawWeightTable weights = MakeCompleteWeightSet(config);
@@ -356,7 +356,7 @@ TEST(HfModelValidatorTest, AcceptsCompleteWeightSet) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, AcceptsCompleteWeightSetWithOptions) {
+TEST(ModelLoader_HfModelValidatorTest, AcceptsCompleteWeightSetWithOptions) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
     const RawWeightTable weights = MakeCompleteWeightSet(config);
@@ -367,7 +367,7 @@ TEST(HfModelValidatorTest, AcceptsCompleteWeightSetWithOptions) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(HfModelValidatorTest, ValidateResolvedModelApiExistsButIsNotImplemented) {
+TEST(ModelLoader_HfModelValidatorTest, ValidateResolvedModelApiExistsButIsNotImplemented) {
     const HfModelConfig config = MakeValidLlamaConfig();
     const ModelWeightIndex resolved{};
 
@@ -376,7 +376,7 @@ TEST(HfModelValidatorTest, ValidateResolvedModelApiExistsButIsNotImplemented) {
     EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
 }
 
-TEST(HfModelValidatorTest, RejectsMissingEmbeddingWeight) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsMissingEmbeddingWeight) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     RawWeightTable weights = MakeCompleteWeightSet(config);
@@ -389,7 +389,7 @@ TEST(HfModelValidatorTest, RejectsMissingEmbeddingWeight) {
     EXPECT_NE(status.message().find("model.embed_tokens.weight"), std::string::npos);
 }
 
-TEST(HfModelValidatorTest, RejectsMissingFinalNormWeight) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsMissingFinalNormWeight) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     RawWeightTable weights = MakeCompleteWeightSet(config);
@@ -402,7 +402,7 @@ TEST(HfModelValidatorTest, RejectsMissingFinalNormWeight) {
     EXPECT_NE(status.message().find("model.norm.weight"), std::string::npos);
 }
 
-TEST(HfModelValidatorTest, RejectsMissingLayerAttentionWeight) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLayerAttentionWeight) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 2;
     RawWeightTable weights = MakeCompleteWeightSet(config);
@@ -415,7 +415,7 @@ TEST(HfModelValidatorTest, RejectsMissingLayerAttentionWeight) {
     EXPECT_NE(status.message().find("model.layers.1.self_attn.q_proj.weight"), std::string::npos);
 }
 
-TEST(HfModelValidatorTest, RejectsMissingLayerMlpWeight) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLayerMlpWeight) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     RawWeightTable weights = MakeCompleteWeightSet(config);
@@ -428,7 +428,7 @@ TEST(HfModelValidatorTest, RejectsMissingLayerMlpWeight) {
     EXPECT_NE(status.message().find("model.layers.0.mlp.down_proj.weight"), std::string::npos);
 }
 
-TEST(HfModelValidatorTest, RejectsMissingLayerNormWeight) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLayerNormWeight) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     RawWeightTable weights = MakeCompleteWeightSet(config);
@@ -441,7 +441,7 @@ TEST(HfModelValidatorTest, RejectsMissingLayerNormWeight) {
     EXPECT_NE(status.message().find("model.layers.0.post_attention_layernorm.weight"), std::string::npos);
 }
 
-TEST(HfModelValidatorTest, RejectsWeightSetWithInvalidLayerCount) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsWeightSetWithInvalidLayerCount) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 0;
 
@@ -451,7 +451,7 @@ TEST(HfModelValidatorTest, RejectsWeightSetWithInvalidLayerCount) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(HfModelValidatorTest, RejectsWeightWithMismatchedByteSize) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithMismatchedByteSize) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     auto storage = std::make_shared<TestStorage>(4);
@@ -491,7 +491,7 @@ TEST(HfModelValidatorTest, RejectsWeightWithMismatchedByteSize) {
     EXPECT_NE(status.message().find("byte size mismatch"), std::string::npos);
 }
 
-TEST(HfModelValidatorTest, RejectsWeightWithNonPositiveShapeDimension) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithNonPositiveShapeDimension) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
     auto storage = std::make_shared<TestStorage>(4);
@@ -530,7 +530,7 @@ TEST(HfModelValidatorTest, RejectsWeightWithNonPositiveShapeDimension) {
     EXPECT_NE(status.message().find("non-positive shape dimension"), std::string::npos);
 }
 
-TEST(HfModelValidatorTest, RejectsWeightWithNullStorage) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithNullStorage) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;
 

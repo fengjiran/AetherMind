@@ -8,7 +8,6 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
-#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -132,10 +131,9 @@ void WriteRawFile(const std::filesystem::path& path, std::span<const std::byte> 
     }
 }
 
-void WriteSafetensorsFile(
-        const std::filesystem::path& path,
-        std::string_view header_json,
-        std::span<const std::byte> raw_bytes) {
+void WriteSafetensorsFile(const std::filesystem::path& path,
+                          std::string_view header_json,
+                          std::span<const std::byte> raw_bytes) {
     const auto prefix = EncodeLittleEndianU64(header_json.size());
     const auto header_bytes = ToBytes(header_json);
 
@@ -147,14 +145,13 @@ void WriteSafetensorsFile(
     WriteRawFile(path, file_bytes);
 }
 
-TEST(ModelLoaderTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
+TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 11>{});
-    WriteSafetensorsFile(
-            temp_dir.Path() / "model.safetensors",
-            MakeCompleteTensorHeader(1),
-            raw_bytes);
+    WriteSafetensorsFile(temp_dir.Path() / "model.safetensors",
+                         MakeCompleteTensorHeader(1),
+                         raw_bytes);
 
     CpuBackend backend;
     KernelRegistry registry;
@@ -201,7 +198,7 @@ TEST(ModelLoaderTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
     EXPECT_GT(packed->storage().nbytes(), 0U);
 }
 
-TEST(ModelLoaderTest, RejectsUnsupportedModelFamily) {
+TEST(ModelLoader_PipelineTest, RejectsUnsupportedModelFamily) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.Path() / "config.json", R"({
         "architectures": ["GPTNeoXForCausalLM"],
@@ -224,7 +221,7 @@ TEST(ModelLoaderTest, RejectsUnsupportedModelFamily) {
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelLoaderTest, PropagatesSafetensorsArtifactError) {
+TEST(ModelLoader_PipelineTest, PropagatesSafetensorsArtifactError) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
     const auto prefix = EncodeLittleEndianU64(1024);
@@ -238,14 +235,13 @@ TEST(ModelLoaderTest, PropagatesSafetensorsArtifactError) {
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelLoaderTest, RejectsIncompleteWeightSet) {
+TEST(ModelLoader_PipelineTest, RejectsIncompleteWeightSet) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 2>{});
-    WriteSafetensorsFile(
-            temp_dir.Path() / "model.safetensors",
-            R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
-            raw_bytes);
+    WriteSafetensorsFile(temp_dir.Path() / "model.safetensors",
+                         R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
+                         raw_bytes);
 
     CpuBackend backend;
     KernelRegistry registry;

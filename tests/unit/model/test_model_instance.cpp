@@ -75,7 +75,7 @@ private:
     bool* destroyed_flag_ = nullptr;
 };
 
-TEST(ModelInstance, StoresPackedWeightsInBackendSidecar) {
+TEST(ModelLoader_ModelInstance, StoresPackedWeightsInBackendSidecar) {
     ModelInstance model_instance;
     const KernelSelector selector = MakePackedCpuSelector();
 
@@ -93,7 +93,7 @@ TEST(ModelInstance, StoresPackedWeightsInBackendSidecar) {
     EXPECT_TRUE(found->storage().is_initialized());
 }
 
-TEST(ModelInstance, PackedWeightsRemainAliveWhileModelInstanceLives) {
+TEST(ModelLoader_ModelInstance, PackedWeightsRemainAliveWhileModelInstanceLives) {
     bool destroyed = false;
     const KernelSelector selector = MakePackedCpuSelector();
 
@@ -116,7 +116,7 @@ TEST(ModelInstance, PackedWeightsRemainAliveWhileModelInstanceLives) {
     EXPECT_TRUE(found->storage().device().is_cpu());
 }
 
-TEST(ModelInstance, DestroyingModelInstanceReleasesPackedWeights) {
+TEST(ModelLoader_ModelInstance, DestroyingModelInstanceReleasesPackedWeights) {
     bool destroyed = false;
     const KernelSelector selector = MakePackedCpuSelector();
 

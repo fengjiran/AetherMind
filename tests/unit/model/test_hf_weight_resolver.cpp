@@ -63,7 +63,7 @@ void ExpectSameView(const RawWeightView& actual, const RawWeightView& expected) 
     EXPECT_EQ(actual.bytes, expected.bytes);
 }
 
-TEST(HfWeightResolverTest, ResolvesSingleLayerDenseLlamaWeights) {
+TEST(ModelLoader_HfWeightResolverTest, ResolvesSingleLayerDenseLlamaWeights) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
 
@@ -85,7 +85,7 @@ TEST(HfWeightResolverTest, ResolvesSingleLayerDenseLlamaWeights) {
     ExpectSameView(resolved->layers[0].norm.post_attn_rmsnorm, tensors.at("model.layers.0.post_attention_layernorm.weight"));
 }
 
-TEST(HfWeightResolverTest, ResolvesTwoLayerDenseLlamaWeights) {
+TEST(ModelLoader_HfWeightResolverTest, ResolvesTwoLayerDenseLlamaWeights) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
 
@@ -99,7 +99,7 @@ TEST(HfWeightResolverTest, ResolvesTwoLayerDenseLlamaWeights) {
     ExpectSameView(resolved->layers[1].norm.post_attn_rmsnorm, tensors.at("model.layers.1.post_attention_layernorm.weight"));
 }
 
-TEST(HfWeightResolverTest, RejectsMissingLayerAttentionWeight) {
+TEST(ModelLoader_HfWeightResolverTest, RejectsMissingLayerAttentionWeight) {
     const HfModelConfig config = MakeLlamaConfig(2);
     RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers);
     tensors.erase("model.layers.1.self_attn.q_proj.weight");
@@ -111,7 +111,7 @@ TEST(HfWeightResolverTest, RejectsMissingLayerAttentionWeight) {
     EXPECT_NE(resolved.status().message().find("model.layers.1.self_attn.q_proj.weight"), std::string::npos);
 }
 
-TEST(HfWeightResolverTest, RejectsIncompleteLayerCount) {
+TEST(ModelLoader_HfWeightResolverTest, RejectsIncompleteLayerCount) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const RawWeightTable tensors = MakeCompleteTensorSet(1);
 
@@ -122,7 +122,7 @@ TEST(HfWeightResolverTest, RejectsIncompleteLayerCount) {
     EXPECT_NE(resolved.status().message().find("model.layers.1"), std::string::npos);
 }
 
-TEST(HfWeightResolverTest, TreatsLmHeadAsOptional) {
+TEST(ModelLoader_HfWeightResolverTest, TreatsLmHeadAsOptional) {
     const HfModelConfig config = MakeLlamaConfig(1);
     RawWeightTable tensors = MakeCompleteTensorSet(config.num_hidden_layers, true);
 

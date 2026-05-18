@@ -22,6 +22,7 @@ struct RawWeightView {
     DataType dtype{};
     std::vector<int64_t> shape{};
     std::shared_ptr<const RawStorage> storage{};
+    bool is_contiguous = true;
 
     AM_NODISCARD bool IsValid() const noexcept {
         return storage != nullptr && dtype.bits() > 0 && (data != nullptr || bytes == 0);

@@ -34,42 +34,48 @@ HfModelConfig MakeValidLlamaConfig() {
 void AddWeight(RawWeightTable* weights,
                std::string name,
                const std::shared_ptr<TestStorage>& storage,
-               size_t offset) {
+               size_t offset,
+               std::vector<int64_t> shape = {1}) {
     weights->emplace(std::move(name),
                      RawWeightView{
                              .data = storage->data.data() + offset,
                              .bytes = 4,
                              .dtype = DataType::Float32(),
-                             .shape = {1},
+                             .shape = std::move(shape),
                              .storage = storage,
                      });
 }
 
-RawWeightTable MakeCompleteWeightSet(const HfModelConfig& config) {
-    auto storage = std::make_shared<TestStorage>((config.num_hidden_layers * 9 + 2) * 4);
+RawWeightTable MakeCompleteWeightSet(const HfModelConfig& config, bool include_lm_head = true) {
+    auto storage = std::make_shared<TestStorage>((config.num_hidden_layers * 9 + 2 + (include_lm_head ? 1 : 0)) * 4);
 
     RawWeightTable weights;
     size_t offset = 0;
-    AddWeight(&weights, "model.embed_tokens.weight", storage, offset);
+    AddWeight(&weights, "model.embed_tokens.weight", storage, offset, {1, 1});
     offset += 4;
     AddWeight(&weights, "model.norm.weight", storage, offset);
     offset += 4;
 
+    if (include_lm_head) {
+        AddWeight(&weights, "lm_head.weight", storage, offset, {1, 1});
+        offset += 4;
+    }
+
     for (int64_t layer = 0; layer < config.num_hidden_layers; ++layer) {
         const std::string prefix = "model.layers." + std::to_string(layer);
-        AddWeight(&weights, prefix + ".self_attn.q_proj.weight", storage, offset);
+        AddWeight(&weights, prefix + ".self_attn.q_proj.weight", storage, offset, {1, 1});
         offset += 4;
-        AddWeight(&weights, prefix + ".self_attn.k_proj.weight", storage, offset);
+        AddWeight(&weights, prefix + ".self_attn.k_proj.weight", storage, offset, {1, 1});
         offset += 4;
-        AddWeight(&weights, prefix + ".self_attn.v_proj.weight", storage, offset);
+        AddWeight(&weights, prefix + ".self_attn.v_proj.weight", storage, offset, {1, 1});
         offset += 4;
-        AddWeight(&weights, prefix + ".self_attn.o_proj.weight", storage, offset);
+        AddWeight(&weights, prefix + ".self_attn.o_proj.weight", storage, offset, {1, 1});
         offset += 4;
-        AddWeight(&weights, prefix + ".mlp.gate_proj.weight", storage, offset);
+        AddWeight(&weights, prefix + ".mlp.gate_proj.weight", storage, offset, {1, 1});
         offset += 4;
-        AddWeight(&weights, prefix + ".mlp.up_proj.weight", storage, offset);
+        AddWeight(&weights, prefix + ".mlp.up_proj.weight", storage, offset, {1, 1});
         offset += 4;
-        AddWeight(&weights, prefix + ".mlp.down_proj.weight", storage, offset);
+        AddWeight(&weights, prefix + ".mlp.down_proj.weight", storage, offset, {1, 1});
         offset += 4;
         AddWeight(&weights, prefix + ".input_layernorm.weight", storage, offset);
         offset += 4;
@@ -460,7 +466,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithMismatchedByteSize) {
     weights.emplace("model.embed_tokens.weight",
                     RawWeightView{
                             .data = storage->data.data(),
-                            .bytes = 8,  // shape [1] × Float32 = 4, not 8
+                            .bytes = 8,// shape [1] × Float32 = 4, not 8
                             .dtype = DataType::Float32(),
                             .shape = {1},
                             .storage = storage,
@@ -502,7 +508,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithNonPositiveShapeDimensio
                             .data = storage->data.data(),
                             .bytes = 0,
                             .dtype = DataType::Float32(),
-                            .shape = {0},  // non-positive
+                            .shape = {0},// non-positive
                             .storage = storage,
                     });
     weights.emplace("model.norm.weight",
@@ -576,6 +582,460 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithNullStorage) {
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("invalid RawWeightView"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsEmptyWeightTensor) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    auto storage = std::make_shared<TestStorage>(4);
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    weights.at("model.layers.0.self_attn.q_proj.weight") = RawWeightView{
+            .data = storage->data.data(),
+            .bytes = 0,
+            .dtype = DataType::Float32(),
+            .shape = {1, 1},
+            .storage = storage,
+    };
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("empty tensor"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsNonContiguousWeight) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    weights.at("model.layers.0.self_attn.q_proj.weight").is_contiguous = false;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("non-contiguous"), std::string::npos);
+}
+
+// --- P0-1: Unsupported tensor detection (§8.4) ---
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsMoeTensor) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.mlp.experts.0.up_proj.weight", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("experts"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsRouterTensor) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.mlp.router.weight", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("router"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsBiasTensorByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.self_attn.q_proj.bias", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("bias"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsLmHeadBiasByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "lm_head.bias", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("bias"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AllowsBiasTensorWhenOptionEnabled) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.self_attn.q_proj.bias", storage, 0);
+
+    ModelValidationOptions options;
+    options.allow_bias = true;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsLoraTensorByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.self_attn.q_proj.lora_A.weight", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("lora_A"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AllowsLoraTensorWhenOptionEnabled) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.self_attn.q_proj.lora_A.weight", storage, 0);
+
+    ModelValidationOptions options;
+    options.allow_lora_or_adapter = true;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsQuantizedTensorByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.self_attn.q_proj.qweight", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("qweight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AllowsQuantizedTensorWhenOptionEnabled) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.self_attn.q_proj.qweight", storage, 0);
+
+    ModelValidationOptions options;
+    options.allow_quantized_tensors = true;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsScalesQuantizedTensor) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.mlp.gate_proj.scales", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("scales"), std::string::npos);
+}
+
+// --- P0-2: lm_head.weight / tie_word_embeddings linkage (§8.1) ---
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLmHeadWhenNotTied) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    config.tie_word_embeddings = false;
+    RawWeightTable weights = MakeCompleteWeightSet(config, false);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("lm_head.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AcceptsMissingLmHeadWhenTied) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    config.tie_word_embeddings = true;
+    RawWeightTable weights = MakeCompleteWeightSet(config, false);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AcceptsPresentLmHeadWhenTied) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    config.tie_word_embeddings = true;
+    RawWeightTable weights = MakeCompleteWeightSet(config, true);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLmHeadWhenRequireLmHeadWhenTiedIsEnabled) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    config.tie_word_embeddings = true;
+    RawWeightTable weights = MakeCompleteWeightSet(config, false);
+
+    ModelValidationOptions options;
+    options.require_lm_head_when_tied = true;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("lm_head.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsOutOfRangeLayerIndex) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.1.self_attn.q_proj.weight", storage, 0, {1, 1});
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("layer index 1"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsNonNumericLayerIndex) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.bad.self_attn.q_proj.weight", storage, 0, {1, 1});
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("not numeric"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsOutOfRangeNumericLayerIndex) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.9223372036854775808.self_attn.q_proj.weight", storage, 0, {1, 1});
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("out of range"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedRequiredWeightDType) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto& q_proj = weights.at("model.layers.0.self_attn.q_proj.weight");
+    q_proj.dtype = DataType::Int(8);
+    q_proj.bytes = 1;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("Invalid tensor dtype"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AcceptsFloat16RequiredWeightDType) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto& q_proj = weights.at("model.layers.0.self_attn.q_proj.weight");
+    q_proj.dtype = DataType::Float(16);
+    q_proj.bytes = 2;
+    ModelValidationOptions options;
+    options.require_uniform_linear_dtype = false;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AcceptsBFloat16RequiredWeightDType) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto& q_proj = weights.at("model.layers.0.self_attn.q_proj.weight");
+    q_proj.dtype = DataType::BFloat(16);
+    q_proj.bytes = 2;
+    ModelValidationOptions options;
+    options.require_uniform_linear_dtype = false;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsLinearWeightRankOne) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto& q_proj = weights.at("model.layers.0.self_attn.q_proj.weight");
+    q_proj.shape = {1};
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("Invalid tensor rank"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsNormWeightRankTwo) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto& norm = weights.at("model.layers.0.input_layernorm.weight");
+    norm.shape = {1, 1};
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("Invalid tensor rank"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AllowsUnknownTensorByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.extra_metadata.weight", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsUnknownTensorWhenUnknownTensorsAreDisabled) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.extra_metadata.weight", storage, 0);
+    ModelValidationOptions options;
+    options.allow_unknown_tensors = false;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("model.extra_metadata.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsUnknownTensorWhenStrictTensorNamesIsEnabled) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.extra_metadata.weight", storage, 0);
+    ModelValidationOptions options;
+    options.strict_tensor_names = true;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("model.extra_metadata.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AllowsKnownIgnorableRotaryTensorByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.self_attn.rotary_emb.inv_freq", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsKnownIgnorableRotaryTensorWhenStrictTensorNamesIsEnabled) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.self_attn.rotary_emb.inv_freq", storage, 0);
+    ModelValidationOptions options;
+    options.strict_tensor_names = true;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("rotary_emb.inv_freq"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsMixedLinearDTypeByDefault) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto& q_proj = weights.at("model.layers.0.self_attn.q_proj.weight");
+    q_proj.dtype = DataType::Float(16);
+    q_proj.bytes = 2;
+    auto& k_proj = weights.at("model.layers.0.self_attn.k_proj.weight");
+    k_proj.dtype = DataType::BFloat(16);
+    k_proj.bytes = 2;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("Mixed linear tensor dtype"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AllowsMixedLinearDTypeWhenUniformDTypeIsDisabled) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto& q_proj = weights.at("model.layers.0.self_attn.q_proj.weight");
+    q_proj.dtype = DataType::Float(16);
+    q_proj.bytes = 2;
+    auto& k_proj = weights.at("model.layers.0.self_attn.k_proj.weight");
+    k_proj.dtype = DataType::BFloat(16);
+    k_proj.bytes = 2;
+    ModelValidationOptions options;
+    options.require_uniform_linear_dtype = false;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
 }// namespace

@@ -94,10 +94,11 @@ std::string MakeMinimalLlamaConfigJson() {
 
 std::string MakeCompleteTensorHeader(int64_t num_layers) {
     std::string header = "{";
-    header += R"("model.embed_tokens.weight":{"dtype":"F32","shape":[1],"data_offsets":[0,4]},)";
-    header += R"("model.norm.weight":{"dtype":"F32","shape":[1],"data_offsets":[4,8]})";
+    header += R"("model.embed_tokens.weight":{"dtype":"F32","shape":[1,1],"data_offsets":[0,4]},)";
+    header += R"("model.norm.weight":{"dtype":"F32","shape":[1],"data_offsets":[4,8]},)";
+    header += R"("lm_head.weight":{"dtype":"F32","shape":[1,1],"data_offsets":[8,12]})";
 
-    size_t offset = 8;
+    size_t offset = 12;
     for (int64_t layer = 0; layer < num_layers; ++layer) {
         const std::string prefix = "model.layers." + std::to_string(layer);
         const std::string suffixes[] = {
@@ -114,7 +115,11 @@ std::string MakeCompleteTensorHeader(int64_t num_layers) {
         for (const auto& suffix: suffixes) {
             header += ",";
             header += "\"" + prefix + suffix + "\":";
-            header += "{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[" +
+            const bool is_norm = suffix.compare(".input_layernorm.weight") == 0 ||
+                                 suffix.compare(".post_attention_layernorm.weight") == 0;
+            header += "{\"dtype\":\"F32\",\"shape\":";
+            header += is_norm ? "[1]" : "[1,1]";
+            header += ",\"data_offsets\":[" +
                       std::to_string(offset) + "," + std::to_string(offset + 4) + "]}";
             offset += 4;
         }
@@ -148,7 +153,7 @@ void WriteSafetensorsFile(const std::filesystem::path& path,
 TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
-    const auto raw_bytes = FloatArrayToBytes(std::array<float, 11>{});
+    const auto raw_bytes = FloatArrayToBytes(std::array<float, 12>{});
     WriteSafetensorsFile(temp_dir.Path() / "model.safetensors",
                          MakeCompleteTensorHeader(1),
                          raw_bytes);

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -78,6 +79,11 @@ Status ValidateWeightViewIntegrity(const RawWeightView& view, std::string_view w
                                        "' has empty shape");
     }
 
+    if (!view.is_contiguous) {
+        return Status::InvalidArgument(std::string("Weight '") + std::string(weight_name) +
+                                       "' is non-contiguous; non-contiguous weights are not supported");
+    }
+
     for (int64_t dim: view.shape) {
         if (dim <= 0) {
             return Status::InvalidArgument(
@@ -92,6 +98,11 @@ Status ValidateWeightViewIntegrity(const RawWeightView& view, std::string_view w
                                        "' shape element count overflows uint64_t");
     }
 
+    if (numel == 0) {
+        return Status::InvalidArgument(std::string("Weight '") + std::string(weight_name) +
+                                       "' is an empty tensor");
+    }
+
     const auto itemsize = static_cast<size_t>(view.dtype.nbytes());
     if (itemsize == 0) {
         return Status::InvalidArgument(std::string("Weight '") + std::string(weight_name) +
@@ -102,6 +113,11 @@ Status ValidateWeightViewIntegrity(const RawWeightView& view, std::string_view w
     if (CheckOverflowMul(numel, itemsize, &expected_bytes)) {
         return Status::InvalidArgument(std::string("Weight '") + std::string(weight_name) +
                                        "' byte size overflows size_t");
+    }
+
+    if (view.bytes == 0) {
+        return Status::InvalidArgument(std::string("Weight '") + std::string(weight_name) +
+                                       "' is an empty tensor");
     }
 
     if (view.bytes != expected_bytes) {
@@ -130,6 +146,287 @@ Status ValidateLayerWeight(const RawWeightTable& weights,
                            std::string_view suffix) {
     const std::string name = "model.layers." + std::to_string(layer_index) + std::string(suffix);
     return ValidateWeight(weights, name);
+}
+
+constexpr std::array<std::string_view, 9> kRequiredLayerWeightSuffixes{
+        ".self_attn.q_proj.weight",
+        ".self_attn.k_proj.weight",
+        ".self_attn.v_proj.weight",
+        ".self_attn.o_proj.weight",
+        ".mlp.gate_proj.weight",
+        ".mlp.up_proj.weight",
+        ".mlp.down_proj.weight",
+        ".input_layernorm.weight",
+        ".post_attention_layernorm.weight",
+};
+
+constexpr std::string_view kInputNormSuffix = ".input_layernorm.weight";
+constexpr std::string_view kPostAttnNormSuffix = ".post_attention_layernorm.weight";
+
+bool IsLayerNormSuffix(std::string_view suffix) {
+    return suffix == kInputNormSuffix || suffix == kPostAttnNormSuffix;
+}
+
+bool ContainsAnyOf(std::string_view name, std::string_view pattern) {
+    return name.find(pattern) != std::string_view::npos;
+}
+
+Status DetectUnsupportedTensors(const RawWeightTable& weights,
+                                const ModelValidationOptions& options) {
+    // MoE tensors are always rejected regardless of options.
+    constexpr std::string_view kMoePatterns[] = {
+            "experts",
+            "router",
+            "moe",
+            "shared_experts",
+    };
+
+    constexpr std::string_view kBiasPatterns[] = {
+            ".q_proj.bias",
+            ".k_proj.bias",
+            ".v_proj.bias",
+            ".o_proj.bias",
+            ".gate_proj.bias",
+            ".up_proj.bias",
+            ".down_proj.bias",
+            "lm_head.bias",
+    };
+
+    constexpr std::string_view kLoraPatterns[] = {
+            "lora_A",
+            "lora_B",
+            "adapter",
+            "peft",
+    };
+
+    constexpr std::string_view kQuantizedPatterns[] = {
+            "qweight",
+            "qzeros",
+            "scales",
+            "g_idx",
+            "bits",
+            "group_size",
+    };
+
+    for (const auto& [name, view]: weights) {
+        for (const auto& pattern: kMoePatterns) {
+            if (ContainsAnyOf(name, pattern)) {
+                return Status::InvalidArgument(
+                        "Unsupported tensor found: tensor=" + name +
+                        ", reason=MoE weights are not supported in AetherMind Phase 1");
+            }
+        }
+
+        if (!options.allow_bias) {
+            for (const auto& pattern: kBiasPatterns) {
+                if (ContainsAnyOf(name, pattern)) {
+                    return Status::InvalidArgument(
+                            "Unsupported tensor found: tensor=" + name +
+                            ", reason=Bias weights are not supported in AetherMind Phase 1");
+                }
+            }
+        }
+
+        if (!options.allow_lora_or_adapter) {
+            for (const auto& pattern: kLoraPatterns) {
+                if (ContainsAnyOf(name, pattern)) {
+                    return Status::InvalidArgument(
+                            "Unsupported tensor found: tensor=" + name +
+                            ", reason=LoRA/adapter weights are not supported in AetherMind Phase 1");
+                }
+            }
+        }
+
+        if (!options.allow_quantized_tensors) {
+            for (const auto& pattern: kQuantizedPatterns) {
+                if (ContainsAnyOf(name, pattern)) {
+                    return Status::InvalidArgument(
+                            "Unsupported tensor found: tensor=" + name +
+                            ", reason=Quantized weights are not supported in AetherMind Phase 1");
+                }
+            }
+        }
+    }
+
+    return Status::Ok();
+}
+
+Status ValidateLmHeadRequirement(const HfModelConfig& config,
+                                 const RawWeightTable& weights,
+                                 const ModelValidationOptions& options) {
+    const bool has_lm_head = weights.find("lm_head.weight") != weights.end();
+
+    if (!has_lm_head && !config.tie_word_embeddings) {
+        return Status::InvalidArgument(
+                "Required weight 'lm_head.weight' is missing and "
+                "tie_word_embeddings is false");
+    }
+
+    if (!has_lm_head && options.require_lm_head_when_tied) {
+        return Status::InvalidArgument(
+                "Required weight 'lm_head.weight' is missing; "
+                "require_lm_head_when_tied is enabled");
+    }
+
+    return Status::Ok();
+}
+
+// --- §8.3: Layer index completeness ---
+
+bool IsLayerWeightName(std::string_view key) {
+    constexpr std::string_view kPrefix = "model.layers.";
+    return key.size() > kPrefix.size() && key.substr(0, kPrefix.size()) == kPrefix;
+}
+
+StatusOr<int64_t> ExtractLayerIndex(std::string_view key) {
+    constexpr std::string_view kPrefix = "model.layers.";
+    const auto rest = key.substr(kPrefix.size());
+    const auto dot = rest.find('.');
+    if (dot == std::string_view::npos) {
+        return Status::InvalidArgument("Invalid layer weight name '" + std::string(key) + "': missing suffix after layer index");
+    }
+    const auto digits = rest.substr(0, dot);
+    if (digits.empty()) {
+        return Status::InvalidArgument("Invalid layer weight name '" + std::string(key) + "': missing layer index");
+    }
+    int64_t index = 0;
+    const auto* begin = digits.data();
+    const auto* end = begin + digits.size();
+    const auto [ptr, error] = std::from_chars(begin, end, index);
+    if (error == std::errc::result_out_of_range) {
+        return Status::InvalidArgument("Invalid layer weight name '" + std::string(key) + "': layer index is out of range");
+    }
+    if (error != std::errc{} || ptr != end) {
+        return Status::InvalidArgument("Invalid layer weight name '" + std::string(key) + "': layer index is not numeric");
+    }
+    return index;
+}
+
+Status ValidateLayerIndexCompleteness(const RawWeightTable& weights,
+                                      int64_t num_hidden_layers) {
+    for (const auto& [name, _]: weights) {
+        if (!IsLayerWeightName(name)) {
+            continue;
+        }
+        const auto index = ExtractLayerIndex(name);
+        if (!index.ok()) {
+            return index.status();
+        }
+        if (*index >= num_hidden_layers) {
+            return Status::InvalidArgument(
+                    "Weight '" + name + "' has layer index " + std::to_string(*index) +
+                    " but num_hidden_layers is " + std::to_string(num_hidden_layers));
+        }
+    }
+    return Status::Ok();
+}
+
+std::string_view ExtractLayerSuffix(std::string_view key) {
+    constexpr std::string_view kPrefix = "model.layers.";
+    const auto rest = key.substr(kPrefix.size());
+    const auto dot = rest.find('.');
+    return rest.substr(dot);
+}
+
+bool IsKnownLayerWeight(const HfModelConfig& config, std::string_view name) {
+    if (!IsLayerWeightName(name)) {
+        return false;
+    }
+    const auto index = ExtractLayerIndex(name);
+    if (!index.ok() || *index >= config.num_hidden_layers) {
+        return false;
+    }
+    const auto suffix = ExtractLayerSuffix(name);
+    return std::ranges::any_of(kRequiredLayerWeightSuffixes,
+                               [suffix](std::string_view required) { return suffix == required; });
+}
+
+bool IsKnownIgnorableTensor(const HfModelConfig& config, std::string_view name) {
+    constexpr std::string_view kGlobalRotaryInvFreq = "model.rotary_emb.inv_freq";
+    constexpr std::string_view kLayerRotaryInvFreq = ".self_attn.rotary_emb.inv_freq";
+    if (name == kGlobalRotaryInvFreq) {
+        return true;
+    }
+    if (!IsLayerWeightName(name)) {
+        return false;
+    }
+    const auto index = ExtractLayerIndex(name);
+    if (!index.ok() || *index >= config.num_hidden_layers) {
+        return false;
+    }
+    return ExtractLayerSuffix(name) == kLayerRotaryInvFreq;
+}
+
+bool IsKnownWeightTensor(const HfModelConfig& config, std::string_view name) {
+    constexpr std::string_view kEmbedTokens = "model.embed_tokens.weight";
+    constexpr std::string_view kFinalNorm = "model.norm.weight";
+    constexpr std::string_view kLmHead = "lm_head.weight";
+    return name == kEmbedTokens ||
+           name == kFinalNorm ||
+           name == kLmHead ||
+           IsKnownLayerWeight(config, name);
+}
+
+Status ValidateUnknownTensorPolicy(const HfModelConfig& config,
+                                   const RawWeightTable& weights,
+                                   const ModelValidationOptions& options) {
+    for (const auto& [name, _]: weights) {
+        if (IsKnownWeightTensor(config, name)) {
+            continue;
+        }
+        if (!options.strict_tensor_names && options.allow_unknown_tensors && IsKnownIgnorableTensor(config, name)) {
+            continue;
+        }
+        if (options.strict_tensor_names || !options.allow_unknown_tensors) {
+            return Status::InvalidArgument("Unexpected tensor found: tensor=" + name);
+        }
+    }
+    return Status::Ok();
+}
+
+// --- §8.5: dtype coarse validation ---
+
+bool IsSupportedWeightDType(const DataType& dtype) {
+    return dtype.IsFloat32() || dtype.IsFloat16() || dtype.IsBFloat16();
+}
+
+Status ValidateWeightDType(const RawWeightView& view, std::string_view weight_name) {
+    if (!IsSupportedWeightDType(view.dtype)) {
+        return Status::InvalidArgument(
+                "Invalid tensor dtype: tensor=" + std::string(weight_name) +
+                ", expected one of [F32, F16, BF16], actual=" + std::string(DataTypeToString(view.dtype)));
+    }
+    return Status::Ok();
+}
+
+// --- §8.6: rank coarse validation ---
+
+Status ExpectRank(const RawWeightView& view, int64_t expected_rank, std::string_view weight_name) {
+    if (static_cast<int64_t>(view.shape.size()) != expected_rank) {
+        return Status::InvalidArgument(
+                "Invalid tensor rank: tensor=" + std::string(weight_name) +
+                ", expected=" + std::to_string(expected_rank) +
+                ", actual=" + std::to_string(view.shape.size()));
+    }
+    return Status::Ok();
+}
+
+Status ValidateUniformLinearDType(std::string_view weight_name,
+                                  const RawWeightView& view,
+                                  bool* has_linear_dtype,
+                                  DataType* linear_dtype) {
+    if (!*has_linear_dtype) {
+        *linear_dtype = view.dtype;
+        *has_linear_dtype = true;
+        return Status::Ok();
+    }
+    if (view.dtype != *linear_dtype) {
+        return Status::InvalidArgument(
+                "Mixed linear tensor dtype: tensor=" + std::string(weight_name) +
+                ", expected=" + std::string(DataTypeToString(*linear_dtype)) +
+                ", actual=" + std::string(DataTypeToString(view.dtype)));
+    }
+    return Status::Ok();
 }
 
 }// namespace
@@ -217,28 +514,49 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
 
 Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config,
                                            const RawWeightTable& weights,
-                                           const ModelValidationOptions&) {
+                                           const ModelValidationOptions& options) {
     AM_RETURN_IF_ERROR(RequirePositive(config.num_hidden_layers, "num_hidden_layers"));
+    AM_RETURN_IF_ERROR(DetectUnsupportedTensors(weights, options));
+    AM_RETURN_IF_ERROR(ValidateLayerIndexCompleteness(weights, config.num_hidden_layers));
+    AM_RETURN_IF_ERROR(ValidateUnknownTensorPolicy(config, weights, options));
+
+    bool has_linear_dtype = false;
+    DataType linear_dtype{};
+
     AM_RETURN_IF_ERROR(ValidateWeight(weights, "model.embed_tokens.weight"));
+    AM_RETURN_IF_ERROR(ValidateWeightDType(weights.at("model.embed_tokens.weight"), "model.embed_tokens.weight"));
+    AM_RETURN_IF_ERROR(ExpectRank(weights.at("model.embed_tokens.weight"), 2, "model.embed_tokens.weight"));
+
     AM_RETURN_IF_ERROR(ValidateWeight(weights, "model.norm.weight"));
+    AM_RETURN_IF_ERROR(ValidateWeightDType(weights.at("model.norm.weight"), "model.norm.weight"));
+    AM_RETURN_IF_ERROR(ExpectRank(weights.at("model.norm.weight"), 1, "model.norm.weight"));
 
     for (int64_t layer = 0; layer < config.num_hidden_layers; ++layer) {
-        constexpr std::array<std::string_view, 9> kRequiredLayerWeightSuffixes{
-                ".self_attn.q_proj.weight",
-                ".self_attn.k_proj.weight",
-                ".self_attn.v_proj.weight",
-                ".self_attn.o_proj.weight",
-                ".mlp.gate_proj.weight",
-                ".mlp.up_proj.weight",
-                ".mlp.down_proj.weight",
-                ".input_layernorm.weight",
-                ".post_attention_layernorm.weight",
-        };
-
         for (const std::string_view suffix: kRequiredLayerWeightSuffixes) {
             AM_RETURN_IF_ERROR(ValidateLayerWeight(weights, layer, suffix));
+            const std::string name = "model.layers." + std::to_string(layer) + std::string(suffix);
+            const auto& view = weights.at(name);
+            AM_RETURN_IF_ERROR(ValidateWeightDType(view, name));
+
+            const bool is_norm = IsLayerNormSuffix(suffix);
+            AM_RETURN_IF_ERROR(ExpectRank(view, is_norm ? 1 : 2, name));
+            if (options.require_uniform_linear_dtype && !is_norm) {
+                AM_RETURN_IF_ERROR(ValidateUniformLinearDType(name, view, &has_linear_dtype, &linear_dtype));
+            }
         }
     }
+
+    const auto lm_head_it = weights.find("lm_head.weight");
+    if (lm_head_it != weights.end()) {
+        AM_RETURN_IF_ERROR(ValidateWeightViewIntegrity(lm_head_it->second, "lm_head.weight"));
+        AM_RETURN_IF_ERROR(ValidateWeightDType(lm_head_it->second, "lm_head.weight"));
+        AM_RETURN_IF_ERROR(ExpectRank(lm_head_it->second, 2, "lm_head.weight"));
+        if (options.require_uniform_linear_dtype) {
+            AM_RETURN_IF_ERROR(ValidateUniformLinearDType("lm_head.weight", lm_head_it->second, &has_linear_dtype, &linear_dtype));
+        }
+    }
+
+    AM_RETURN_IF_ERROR(ValidateLmHeadRequirement(config, weights, options));
 
     return Status::Ok();
 }

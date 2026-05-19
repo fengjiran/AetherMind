@@ -86,6 +86,75 @@ RawWeightTable MakeCompleteWeightSet(const HfModelConfig& config, bool include_l
     return weights;
 }
 
+HfModelConfig MakeResolvedShapeConfig() {
+    return HfModelConfig{
+            .model_type = "llama",
+            .architectures = {"LlamaForCausalLM"},
+            .hidden_size = 16,
+            .intermediate_size = 64,
+            .num_hidden_layers = 2,
+            .num_attention_heads = 4,
+            .num_key_value_heads = 2,
+            .vocab_size = 32,
+            .max_position_embeddings = 128,
+            .head_dim = 4,
+            .rms_norm_eps = 1e-6,
+            .tie_word_embeddings = false,
+    };
+}
+
+size_t ByteSizeForShape(const std::vector<int64_t>& shape) {
+    size_t numel = 1;
+    for (const int64_t dim: shape) {
+        numel *= static_cast<size_t>(dim);
+    }
+    return numel * sizeof(float);
+}
+
+ResolvedModelWeights MakeResolvedModelWeights(const HfModelConfig& config, bool include_lm_head = true) {
+    auto storage = std::make_shared<TestStorage>(65536);
+    size_t offset = 0;
+    const auto make = [&](std::vector<int64_t> shape) {
+        const size_t bytes = ByteSizeForShape(shape);
+        RawWeightView view{
+                .data = storage->data.data() + offset,
+                .bytes = bytes,
+                .dtype = DataType::Float32(),
+                .shape = std::move(shape),
+                .storage = storage,
+        };
+        offset += bytes;
+        return view;
+    };
+
+    const int64_t head_dim = config.hidden_size / config.num_attention_heads;
+    const int64_t kv_hidden = config.num_key_value_heads * head_dim;
+
+    ResolvedModelWeights index;
+    index.embed_tokens = make({config.vocab_size, config.hidden_size});
+    index.final_norm = make({config.hidden_size});
+    if (include_lm_head) {
+        index.lm_head = make({config.vocab_size, config.hidden_size});
+    }
+
+    index.layers.reserve(static_cast<size_t>(config.num_hidden_layers));
+    for (int64_t layer = 0; layer < config.num_hidden_layers; ++layer) {
+        DecoderLayerRawWeights resolved_layer;
+        resolved_layer.norm.input_rmsnorm = make({config.hidden_size});
+        resolved_layer.norm.post_attn_rmsnorm = make({config.hidden_size});
+        resolved_layer.attn.q_proj = make({config.hidden_size, config.hidden_size});
+        resolved_layer.attn.k_proj = make({kv_hidden, config.hidden_size});
+        resolved_layer.attn.v_proj = make({kv_hidden, config.hidden_size});
+        resolved_layer.attn.o_proj = make({config.hidden_size, config.hidden_size});
+        resolved_layer.mlp.gate_proj = make({config.intermediate_size, config.hidden_size});
+        resolved_layer.mlp.up_proj = make({config.intermediate_size, config.hidden_size});
+        resolved_layer.mlp.down_proj = make({config.hidden_size, config.intermediate_size});
+        index.layers.push_back(std::move(resolved_layer));
+    }
+
+    return index;
+}
+
 TEST(ModelLoader_HfModelValidatorTest, AcceptsValidLlamaConfig) {
     const HfModelConfig config = MakeValidLlamaConfig();
 
@@ -373,13 +442,83 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsCompleteWeightSetWithOptions) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(ModelLoader_HfModelValidatorTest, ValidateResolvedModelApiExistsButIsNotImplemented) {
-    const HfModelConfig config = MakeValidLlamaConfig();
-    const ModelWeightIndex resolved{};
+TEST(ModelLoader_HfModelValidatorTest, AcceptsResolvedModelWithExpectedShapes) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    const ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
 
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedModelLayerCountMismatch) {
+    HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.layers.pop_back();
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("layer count"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedEmbeddingShapeMismatch) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.embed_tokens.shape = {config.vocab_size, config.hidden_size + 1};
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("model.embed_tokens.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedKvProjectionShapeMismatch) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.layers[0].attn.k_proj.shape = {config.hidden_size, config.hidden_size};
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("model.layers.0.self_attn.k_proj.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedMlpDownProjectionShapeMismatch) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.layers[1].mlp.down_proj.shape = {config.intermediate_size, config.hidden_size};
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("model.layers.1.mlp.down_proj.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedMissingLmHeadWhenNotTied) {
+    HfModelConfig config = MakeResolvedShapeConfig();
+    config.tie_word_embeddings = false;
+    const ResolvedModelWeights resolved = MakeResolvedModelWeights(config, false);
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("lm_head.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AcceptsResolvedMissingLmHeadWhenTied) {
+    HfModelConfig config = MakeResolvedShapeConfig();
+    config.tie_word_embeddings = true;
+    const ResolvedModelWeights resolved = MakeResolvedModelWeights(config, false);
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsMissingEmbeddingWeight) {

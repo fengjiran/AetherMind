@@ -6,6 +6,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -410,11 +411,32 @@ Status ValidateWeightDType(const RawWeightView& view, std::string_view weight_na
 
 Status ExpectRank(const RawWeightView& view, int64_t expected_rank, std::string_view weight_name) {
     if (static_cast<int64_t>(view.shape.size()) != expected_rank) {
-        return Status::InvalidArgument(
-                "Invalid tensor rank: tensor=" + std::string(weight_name) +
-                ", expected=" + std::to_string(expected_rank) +
-                ", actual=" + std::to_string(view.shape.size()));
+        return Status::InvalidArgument("Invalid tensor rank: tensor=" + std::string(weight_name) +
+                                       ", expected=" + std::to_string(expected_rank) +
+                                       ", actual=" + std::to_string(view.shape.size()));
     }
+    return Status::Ok();
+}
+
+Status ExpectShape(const RawWeightView& view,
+                   std::initializer_list<int64_t> expected_shape,
+                   std::string_view weight_name) {
+    if (const auto actual_size = view.shape.size(); actual_size != expected_shape.size()) {
+        return Status::InvalidArgument("Invalid tensor shape: tensor=" + std::string(weight_name) +
+                                       ", expected=" + ShapeToString(std::vector<int64_t>(expected_shape)) +
+                                       ", actual=" + ShapeToString(view.shape));
+    }
+
+    size_t i = 0;
+    for (const int64_t expected_dim: expected_shape) {
+        if (view.shape[i] != expected_dim) {
+            return Status::InvalidArgument("Invalid tensor shape: tensor=" + std::string(weight_name) +
+                                           ", expected=" + ShapeToString(std::vector<int64_t>(expected_shape)) +
+                                           ", actual=" + ShapeToString(view.shape));
+        }
+        ++i;
+    }
+
     return Status::Ok();
 }
 
@@ -579,11 +601,74 @@ Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config,
     return Status::Ok();
 }
 
-Status HfModelValidator::ValidateResolvedModel(const HfModelConfig&,
-                                               const ModelWeightIndex&,
-                                               const ModelValidationOptions&) {
-    return Status(StatusCode::kUnimplemented,
-                  "HfModelValidator::ValidateResolvedModel is not implemented yet");
+Status HfModelValidator::ValidateResolvedModel(const HfModelConfig& config,
+                                               const ResolvedModelWeights& resolved,
+                                               AM_MAYBE_UNUSED const ModelValidationOptions& options) {
+    AM_RETURN_IF_ERROR(RequirePositive(config.num_attention_heads, "num_attention_heads"));
+    AM_RETURN_IF_ERROR(RequirePositive(config.num_hidden_layers, "num_hidden_layers"));
+
+    const int64_t hidden = config.hidden_size;
+    const int64_t vocab = config.vocab_size;
+    const int64_t intermediate = config.intermediate_size;
+    const int64_t head_dim = config.hidden_size / config.num_attention_heads;
+    const int64_t kv_hidden = config.num_key_value_heads * head_dim;
+
+    if (resolved.layers.size() != static_cast<size_t>(config.num_hidden_layers)) {
+        return Status::InvalidArgument("Resolved model layer count mismatch: expected=" +
+                                       std::to_string(config.num_hidden_layers) +
+                                       ", actual=" + std::to_string(resolved.layers.size()));
+    }
+
+    AM_RETURN_IF_ERROR(ExpectShape(resolved.embed_tokens,
+                                   {vocab, hidden},
+                                   "model.embed_tokens.weight"));
+    AM_RETURN_IF_ERROR(ExpectShape(resolved.final_norm,
+                                   {hidden},
+                                   "model.norm.weight"));
+
+    if (resolved.lm_head.has_value()) {
+        AM_RETURN_IF_ERROR(ExpectShape(*resolved.lm_head,
+                                       {vocab, hidden},
+                                       "lm_head.weight"));
+    } else if (!config.tie_word_embeddings) {
+        return Status::InvalidArgument(
+                "Required weight 'lm_head.weight' is missing and tie_word_embeddings is false");
+    }
+
+    for (size_t i = 0; i < resolved.layers.size(); ++i) {
+        const auto& layer = resolved.layers[i];
+        const std::string prefix = "model.layers." + std::to_string(i);
+
+        AM_RETURN_IF_ERROR(ExpectShape(layer.norm.input_rmsnorm,
+                                       {hidden},
+                                       prefix + ".input_layernorm.weight"));
+        AM_RETURN_IF_ERROR(ExpectShape(layer.norm.post_attn_rmsnorm,
+                                       {hidden},
+                                       prefix + ".post_attention_layernorm.weight"));
+        AM_RETURN_IF_ERROR(ExpectShape(layer.attn.q_proj,
+                                       {hidden, hidden},
+                                       prefix + ".self_attn.q_proj.weight"));
+        AM_RETURN_IF_ERROR(ExpectShape(layer.attn.k_proj,
+                                       {kv_hidden, hidden},
+                                       prefix + ".self_attn.k_proj.weight"));
+        AM_RETURN_IF_ERROR(ExpectShape(layer.attn.v_proj,
+                                       {kv_hidden, hidden},
+                                       prefix + ".self_attn.v_proj.weight"));
+        AM_RETURN_IF_ERROR(ExpectShape(layer.attn.o_proj,
+                                       {hidden, hidden},
+                                       prefix + ".self_attn.o_proj.weight"));
+        AM_RETURN_IF_ERROR(ExpectShape(layer.mlp.gate_proj,
+                                       {intermediate, hidden},
+                                       prefix + ".mlp.gate_proj.weight"));
+        AM_RETURN_IF_ERROR(ExpectShape(layer.mlp.up_proj,
+                                       {intermediate, hidden},
+                                       prefix + ".mlp.up_proj.weight"));
+        AM_RETURN_IF_ERROR(ExpectShape(layer.mlp.down_proj,
+                                       {hidden, intermediate},
+                                       prefix + ".mlp.down_proj.weight"));
+    }
+
+    return Status::Ok();
 }
 
 }// namespace aethermind

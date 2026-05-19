@@ -5,8 +5,8 @@ namespace aethermind {
 ModelInstance::ModelInstance(BackendSidecar backend_sidecar) noexcept
     : backend_sidecar_(std::move(backend_sidecar)) {}
 
-ModelInstance::ModelInstance(HfModelConfig config, ModelWeightIndex raw_weight_index) noexcept
-    : config_(std::move(config)), raw_weight_index_(std::move(raw_weight_index)) {}
+ModelInstance::ModelInstance(HfModelConfig config, ResolvedModelWeights resolved_weights) noexcept
+    : config_(std::move(config)), resolved_weights_(std::move(resolved_weights)) {}
 
 const BackendSidecar& ModelInstance::GetBackendSidecar() const noexcept {
     return backend_sidecar_;
@@ -16,8 +16,8 @@ const HfModelConfig& ModelInstance::GetConfig() const noexcept {
     return config_;
 }
 
-const ModelWeightIndex& ModelInstance::GetRawWeightIndex() const noexcept {
-    return raw_weight_index_;
+const ResolvedModelWeights& ModelInstance::GetResolvedWeights() const noexcept {
+    return resolved_weights_;
 }
 
 BackendSidecar& ModelInstance::GetMutableBackendSidecar() noexcept {

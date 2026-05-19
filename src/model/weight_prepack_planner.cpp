@@ -28,17 +28,17 @@ KernelSelector MakePackedSelector(const Backend& backend, const DataType& weight
 
 StatusOr<std::vector<WeightPrepackPlanner::Request>> WeightPrepackPlanner::BuildRequests(
         const HfModelConfig& config,
-        const ModelWeightIndex& weight_index,
+        const ResolvedModelWeights& resolved_weights,
         const Backend& backend,
         const KernelRegistry& registry) {
     UNUSED(config);
     UNUSED(registry);
 
     std::vector<Request> requests;
-    const size_t num_layers = weight_index.layers.size();
-    requests.reserve(num_layers * 7 + (weight_index.lm_head.has_value() ? 1 : 0));
+    const size_t num_layers = resolved_weights.layers.size();
+    requests.reserve(num_layers * 7 + (resolved_weights.lm_head.has_value() ? 1 : 0));
 
-    for (const auto& layer: weight_index.layers) {
+    for (const auto& layer: resolved_weights.layers) {
         const auto add = [&](const RawWeightView& weight) {
             requests.push_back(Request{
                     .op_type = OpType::kLinear,
@@ -50,16 +50,16 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> WeightPrepackPlanner::Build
         add(layer.attn.k_proj);
         add(layer.attn.v_proj);
         add(layer.attn.o_proj);
-        add(layer.ffn.gate_proj);
-        add(layer.ffn.up_proj);
-        add(layer.ffn.down_proj);
+        add(layer.mlp.gate_proj);
+        add(layer.mlp.up_proj);
+        add(layer.mlp.down_proj);
     }
 
-    if (weight_index.lm_head.has_value()) {
+    if (resolved_weights.lm_head.has_value()) {
         requests.push_back(Request{
                 .op_type = OpType::kLinear,
-                .raw_weight = *weight_index.lm_head,
-                .selector = MakePackedSelector(backend, weight_index.lm_head->dtype),
+                .raw_weight = *resolved_weights.lm_head,
+                .selector = MakePackedSelector(backend, resolved_weights.lm_head->dtype),
         });
     }
 

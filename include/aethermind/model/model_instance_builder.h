@@ -3,7 +3,7 @@
 
 #include "aethermind/base/status.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"
-#include "aethermind/model/model_weight_index.h"
+#include "aethermind/model/resolved_model_weights.h"
 
 #include <memory>
 
@@ -19,7 +19,7 @@ public:
     // returned ModelInstance exists.
     static StatusOr<std::unique_ptr<ModelInstance>> Create(
             HfModelConfig config,
-            ModelWeightIndex raw_weight_index);
+            ResolvedModelWeights resolved_weights);
 };
 
 }// namespace aethermind

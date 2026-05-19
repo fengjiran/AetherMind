@@ -53,9 +53,9 @@ DecoderLayerRawWeights MakeTestLayer(const std::shared_ptr<TestStorage>& storage
     layer.attn.k_proj = MakeWeightView(storage, base_offset + 8, 8, DataType::Float32(), {2, 1});
     layer.attn.v_proj = MakeWeightView(storage, base_offset + 16, 8, DataType::Float32(), {2, 1});
     layer.attn.o_proj = MakeWeightView(storage, base_offset + 24, 8, DataType::Float32(), {2, 1});
-    layer.ffn.gate_proj = MakeWeightView(storage, base_offset + 32, 8, DataType::Float32(), {2, 1});
-    layer.ffn.up_proj = MakeWeightView(storage, base_offset + 40, 8, DataType::Float32(), {2, 1});
-    layer.ffn.down_proj = MakeWeightView(storage, base_offset + 48, 8, DataType::Float32(), {2, 1});
+    layer.mlp.gate_proj = MakeWeightView(storage, base_offset + 32, 8, DataType::Float32(), {2, 1});
+    layer.mlp.up_proj = MakeWeightView(storage, base_offset + 40, 8, DataType::Float32(), {2, 1});
+    layer.mlp.down_proj = MakeWeightView(storage, base_offset + 48, 8, DataType::Float32(), {2, 1});
     layer.norm.input_rmsnorm = MakeWeightView(storage, base_offset + 56, 8, DataType::Float32(), {2, 1});
     layer.norm.post_attn_rmsnorm = MakeWeightView(storage, base_offset + 64, 8, DataType::Float32(), {2, 1});
     return layer;
@@ -75,7 +75,7 @@ KernelSelector MakeExpectedSelector() {
 TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsEnumeratesAllLinearWeightsPerLayer) {
     auto storage = std::make_shared<TestStorage>(256);
 
-    ModelWeightIndex index;
+    ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
     index.layers.push_back(MakeTestLayer(storage, 16));
@@ -99,7 +99,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsEnumeratesAllLinearWeigh
 
 TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsExcludesNormsAndEmbeddings) {
     auto storage = std::make_shared<TestStorage>(256);
-    ModelWeightIndex index;
+    ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
     index.layers.push_back(MakeTestLayer(storage, 16));
@@ -120,7 +120,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsExcludesNormsAndEmbeddin
 
 TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsIncludesLmHeadWhenPresent) {
     auto storage = std::make_shared<TestStorage>(256);
-    ModelWeightIndex index;
+    ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
     index.lm_head = MakeWeightView(storage, 16, 8, DataType::Float32(), {2, 1});
@@ -150,7 +150,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) 
     // Fill with zeros so Pack can safely memcpy.
     for (auto& b : storage->data) b = std::byte{0};
 
-    ModelWeightIndex index;
+    ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
     index.layers.push_back(MakeTestLayer(storage, 16));
@@ -161,7 +161,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) 
     CpuBackend backend;
     KernelRegistry registry;
     auto requests = WeightPrepackPlanner::BuildRequests(
-            (*model)->GetConfig(), (*model)->GetRawWeightIndex(), backend, registry);
+            (*model)->GetConfig(), (*model)->GetResolvedWeights(), backend, registry);
     ASSERT_TRUE(requests.ok());
 
     Status status = WeightPrepackPlanner::PrepackAndStore(**model, *requests);
@@ -180,7 +180,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelector
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b : storage->data) b = std::byte{0};
 
-    ModelWeightIndex index;
+    ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
     // Two layers — all linear weights share the same (op_type, selector).
@@ -193,7 +193,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelector
     CpuBackend backend;
     KernelRegistry registry;
     auto requests = WeightPrepackPlanner::BuildRequests(
-            (*model)->GetConfig(), (*model)->GetRawWeightIndex(), backend, registry);
+            (*model)->GetConfig(), (*model)->GetResolvedWeights(), backend, registry);
     ASSERT_TRUE(requests.ok());
     EXPECT_EQ(requests->size(), 14);
 
@@ -212,7 +212,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, RawViewsStillAccessibleAfterPrepack) 
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b : storage->data) b = std::byte{0};
 
-    ModelWeightIndex index;
+    ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
     index.layers.push_back(MakeTestLayer(storage, 16));
@@ -223,17 +223,17 @@ TEST(ModelLoader_WeightPrepackPlannerTest, RawViewsStillAccessibleAfterPrepack) 
     CpuBackend backend;
     KernelRegistry registry;
     auto requests = WeightPrepackPlanner::BuildRequests(
-            (*model)->GetConfig(), (*model)->GetRawWeightIndex(), backend, registry);
+            (*model)->GetConfig(), (*model)->GetResolvedWeights(), backend, registry);
     ASSERT_TRUE(requests.ok());
 
     ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(**model, *requests).ok());
 
-    const auto& weight_index = (*model)->GetRawWeightIndex();
-    EXPECT_TRUE(weight_index.embed_tokens.IsValid());
-    EXPECT_TRUE(weight_index.final_norm.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].attn.q_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].ffn.down_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].norm.input_rmsnorm.IsValid());
+    const auto& resolved_weights = (*model)->GetResolvedWeights();
+    EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());
+    EXPECT_TRUE(resolved_weights.final_norm.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].mlp.down_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].norm.input_rmsnorm.IsValid());
 }
 
 }  // namespace

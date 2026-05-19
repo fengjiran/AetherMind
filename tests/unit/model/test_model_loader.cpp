@@ -172,19 +172,19 @@ TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBound
     EXPECT_EQ(config.num_key_value_heads, 4);
     EXPECT_EQ(config.vocab_size, 1000);
 
-    const auto& weight_index = (*model)->GetRawWeightIndex();
-    ASSERT_EQ(weight_index.layers.size(), 1);
-    EXPECT_TRUE(weight_index.embed_tokens.IsValid());
-    EXPECT_TRUE(weight_index.final_norm.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].attn.q_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].attn.k_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].attn.v_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].attn.o_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].ffn.gate_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].ffn.up_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].ffn.down_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].norm.input_rmsnorm.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].norm.post_attn_rmsnorm.IsValid());
+    const auto& resolved_weights = (*model)->GetResolvedWeights();
+    ASSERT_EQ(resolved_weights.layers.size(), 1);
+    EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());
+    EXPECT_TRUE(resolved_weights.final_norm.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].attn.k_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].attn.v_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].attn.o_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].mlp.gate_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].mlp.up_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].mlp.down_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].norm.input_rmsnorm.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].norm.post_attn_rmsnorm.IsValid());
 
     const KernelSelector expected_selector{
             .device_type = DeviceType::kCPU,

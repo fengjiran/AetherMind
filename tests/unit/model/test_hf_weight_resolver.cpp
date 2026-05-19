@@ -78,9 +78,9 @@ TEST(ModelLoader_HfWeightResolverTest, ResolvesSingleLayerDenseLlamaWeights) {
     ExpectSameView(resolved->layers[0].attn.k_proj, tensors.at("model.layers.0.self_attn.k_proj.weight"));
     ExpectSameView(resolved->layers[0].attn.v_proj, tensors.at("model.layers.0.self_attn.v_proj.weight"));
     ExpectSameView(resolved->layers[0].attn.o_proj, tensors.at("model.layers.0.self_attn.o_proj.weight"));
-    ExpectSameView(resolved->layers[0].ffn.gate_proj, tensors.at("model.layers.0.mlp.gate_proj.weight"));
-    ExpectSameView(resolved->layers[0].ffn.up_proj, tensors.at("model.layers.0.mlp.up_proj.weight"));
-    ExpectSameView(resolved->layers[0].ffn.down_proj, tensors.at("model.layers.0.mlp.down_proj.weight"));
+    ExpectSameView(resolved->layers[0].mlp.gate_proj, tensors.at("model.layers.0.mlp.gate_proj.weight"));
+    ExpectSameView(resolved->layers[0].mlp.up_proj, tensors.at("model.layers.0.mlp.up_proj.weight"));
+    ExpectSameView(resolved->layers[0].mlp.down_proj, tensors.at("model.layers.0.mlp.down_proj.weight"));
     ExpectSameView(resolved->layers[0].norm.input_rmsnorm, tensors.at("model.layers.0.input_layernorm.weight"));
     ExpectSameView(resolved->layers[0].norm.post_attn_rmsnorm, tensors.at("model.layers.0.post_attention_layernorm.weight"));
 }
@@ -95,7 +95,7 @@ TEST(ModelLoader_HfWeightResolverTest, ResolvesTwoLayerDenseLlamaWeights) {
     EXPECT_EQ(resolved->NumLayers(), 2);
     ExpectSameView(resolved->layers[0].attn.q_proj, tensors.at("model.layers.0.self_attn.q_proj.weight"));
     ExpectSameView(resolved->layers[1].attn.q_proj, tensors.at("model.layers.1.self_attn.q_proj.weight"));
-    ExpectSameView(resolved->layers[1].ffn.down_proj, tensors.at("model.layers.1.mlp.down_proj.weight"));
+    ExpectSameView(resolved->layers[1].mlp.down_proj, tensors.at("model.layers.1.mlp.down_proj.weight"));
     ExpectSameView(resolved->layers[1].norm.post_attn_rmsnorm, tensors.at("model.layers.1.post_attention_layernorm.weight"));
 }
 

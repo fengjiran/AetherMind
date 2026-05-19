@@ -4,7 +4,7 @@
 #include "aethermind/base/status.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/model_validation_options.h"
-#include "aethermind/model/model_weight_index.h"
+#include "aethermind/model/resolved_model_weights.h"
 #include "aethermind/model/raw_weight.h"
 
 namespace aethermind {
@@ -19,7 +19,7 @@ public:
                                     const ModelValidationOptions& options = {});
 
     static Status ValidateResolvedModel(const HfModelConfig& config,
-                                        const ModelWeightIndex& resolved,
+                                        const ResolvedModelWeights& resolved,
                                         const ModelValidationOptions& options = {});
 };
 

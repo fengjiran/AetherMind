@@ -9,10 +9,9 @@
 
 namespace aethermind {
 
-StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
-        const ModelLoadOptions& options,
-        const Backend& backend,
-        const KernelRegistry& registry) {
+StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(const ModelLoadOptions& options,
+                                                           const Backend& backend,
+                                                           const KernelRegistry& registry) {
     auto reader = HfDirectoryReader::Open(options.model_dir);
     if (!reader.ok()) {
         return reader.status();
@@ -43,7 +42,7 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
     }
 
     auto requests = WeightPrepackPlanner::BuildRequests(
-            (*model)->GetConfig(), (*model)->GetRawWeightIndex(), backend, registry);
+            (*model)->GetConfig(), (*model)->GetResolvedWeights(), backend, registry);
     if (!requests.ok()) {
         return requests.status();
     }

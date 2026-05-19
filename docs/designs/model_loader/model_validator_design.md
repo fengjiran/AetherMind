@@ -72,7 +72,7 @@ WeightPrepackPlanner::PrepackAndStore
 
 ## 3. 总体校验分层
 
-当前 `HfModelValidator` 暴露两层接口；后续如果需要在 `ModelWeightIndex` 层做强语义校验，可再补充 `ValidateResolvedModel`：
+当前 `HfModelValidator` 暴露两层接口；后续如果需要在 `ResolvedModelWeights` 层做强语义校验，可再补充 `ValidateResolvedModel`：
 
 ```cpp
 class HfModelValidator {
@@ -86,7 +86,7 @@ public:
     // Future extension, not present in the current implementation.
     static Status ValidateResolvedModel(
         const HfModelConfig& config,
-        const ModelWeightIndex& resolved);
+        const ResolvedModelWeights& resolved);
 };
 ```
 
@@ -96,7 +96,7 @@ public:
 |---|---|---|
 | `ValidateConfig` | `HfModelConfig` | config 参数是否处于 Phase 1 支持范围内 |
 | `ValidateWeightSet` | 原始 `RawWeightTable` | tensor 是否完整、命名是否合法、是否存在不支持 tensor |
-| `ValidateResolvedModel` | `ModelWeightIndex` | 后续扩展：每个强类型权重的 shape、rank、dtype 是否严格匹配 config |
+| `ValidateResolvedModel` | `ResolvedModelWeights` | 后续扩展：每个强类型权重的 shape、rank、dtype 是否严格匹配 config |
 
 ---
 
@@ -111,7 +111,7 @@ aethermind/model/
 ├── formats/hf/hf_model_config.h
 ├── formats/hf/hf_weight_resolver.h
 ├── raw_weight.h
-└── model_weight_index.h
+└── resolved_model_weights.h
 ```
 
 也可以先合并为较少文件，待模块变大后拆分。
@@ -185,7 +185,7 @@ struct RawWeightView {
 
 ---
 
-### 5.3 `ModelWeightIndex`
+### 5.3 `ResolvedModelWeights`
 
 `hf::ResolveWeights` 将字符串 tensor name 解析为强类型结构：
 
@@ -197,7 +197,7 @@ struct AttnRawWeights {
     RawWeightView o_proj;
 };
 
-struct FFNRawWeights {
+struct MLPRawWeights {
     RawWeightView gate_proj;
     RawWeightView up_proj;
     RawWeightView down_proj;
@@ -211,10 +211,10 @@ struct NormRawWeights {
 struct DecoderLayerRawWeights {
     NormRawWeights norm;
     AttnRawWeights attn;
-    FFNRawWeights ffn;
+    MLPRawWeights mlp;
 };
 
-struct ModelWeightIndex {
+struct ResolvedModelWeights {
     RawWeightView embed_tokens;
     RawWeightView final_norm;
     std::optional<RawWeightView> lm_head;
@@ -1113,7 +1113,7 @@ Status HfModelValidator::ValidateConfig(
 ```cpp
 Status HfModelValidator::ValidateResolvedModel(
     const HfModelConfig& config,
-    const ModelWeightIndex& resolved,
+    const ResolvedModelWeights& resolved,
     const ModelValidationOptions& options) {
     const int64_t hidden = config.hidden_size;
     const int64_t vocab = config.vocab_size;
@@ -1147,9 +1147,9 @@ Status HfModelValidator::ValidateResolvedModel(
         RETURN_IF_ERROR(ExpectShape(layer.attn.v_proj, {kv_hidden, hidden}));
         RETURN_IF_ERROR(ExpectShape(layer.attn.o_proj, {hidden, hidden}));
 
-        RETURN_IF_ERROR(ExpectShape(layer.ffn.gate_proj, {intermediate, hidden}));
-        RETURN_IF_ERROR(ExpectShape(layer.ffn.up_proj, {intermediate, hidden}));
-        RETURN_IF_ERROR(ExpectShape(layer.ffn.down_proj, {hidden, intermediate}));
+        RETURN_IF_ERROR(ExpectShape(layer.mlp.gate_proj, {intermediate, hidden}));
+        RETURN_IF_ERROR(ExpectShape(layer.mlp.up_proj, {intermediate, hidden}));
+        RETURN_IF_ERROR(ExpectShape(layer.mlp.down_proj, {hidden, intermediate}));
     }
 
     RETURN_IF_ERROR(ValidateDTypeConsistency(config, resolved, options));
@@ -1274,7 +1274,7 @@ gemma
 
 - `ModelValidationOptions::allow_bias = true`
 - 解析 bias tensor；
-- 修改 `ModelWeightIndex`；
+- 修改 `ResolvedModelWeights`；
 - 修改 Linear kernel / prepack path；
 - 更新 shape 校验。
 

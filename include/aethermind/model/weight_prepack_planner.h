@@ -4,7 +4,7 @@
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"
-#include "aethermind/model/model_weight_index.h"
+#include "aethermind/model/resolved_model_weights.h"
 #include "aethermind/operators/op_type.h"
 
 #include <vector>
@@ -28,7 +28,7 @@ public:
     // only linear projection weights (q/k/v/o/gate/up/down/lm_head) are requested.
     static StatusOr<std::vector<Request>> BuildRequests(
             const HfModelConfig& config,
-            const ModelWeightIndex& weight_index,
+            const ResolvedModelWeights& resolved_weights,
             const Backend& backend,
             const KernelRegistry& registry);
 

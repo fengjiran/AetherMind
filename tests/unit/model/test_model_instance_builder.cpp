@@ -53,9 +53,9 @@ DecoderLayerRawWeights MakeTestLayer(const std::shared_ptr<TestStorage>& storage
     layer.attn.k_proj = MakeWeightView(storage, base_offset + 4, 4, DataType::Float32(), {1});
     layer.attn.v_proj = MakeWeightView(storage, base_offset + 8, 4, DataType::Float32(), {1});
     layer.attn.o_proj = MakeWeightView(storage, base_offset + 12, 4, DataType::Float32(), {1});
-    layer.ffn.gate_proj = MakeWeightView(storage, base_offset + 16, 4, DataType::Float32(), {1});
-    layer.ffn.up_proj = MakeWeightView(storage, base_offset + 20, 4, DataType::Float32(), {1});
-    layer.ffn.down_proj = MakeWeightView(storage, base_offset + 24, 4, DataType::Float32(), {1});
+    layer.mlp.gate_proj = MakeWeightView(storage, base_offset + 16, 4, DataType::Float32(), {1});
+    layer.mlp.up_proj = MakeWeightView(storage, base_offset + 20, 4, DataType::Float32(), {1});
+    layer.mlp.down_proj = MakeWeightView(storage, base_offset + 24, 4, DataType::Float32(), {1});
     layer.norm.input_rmsnorm = MakeWeightView(storage, base_offset + 28, 4, DataType::Float32(), {1});
     layer.norm.post_attn_rmsnorm = MakeWeightView(storage, base_offset + 32, 4, DataType::Float32(), {1});
     return layer;
@@ -67,7 +67,7 @@ TEST(ModelLoader_ModelInstanceBuilderTest, CreatesModelInstanceWithConfigAndWeig
         storage->data[i] = static_cast<std::byte>(i);
     }
 
-    ModelWeightIndex index;
+    ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 4, DataType::Float32(), {1});
     index.final_norm = MakeWeightView(storage, 4, 4, DataType::Float32(), {1});
     index.layers.push_back(MakeTestLayer(storage, 8));
@@ -80,13 +80,13 @@ TEST(ModelLoader_ModelInstanceBuilderTest, CreatesModelInstanceWithConfigAndWeig
     EXPECT_EQ(config.hidden_size, 64);
     EXPECT_EQ(config.num_hidden_layers, 1);
 
-    const auto& weight_index = (*model)->GetRawWeightIndex();
-    ASSERT_EQ(weight_index.layers.size(), 1);
-    EXPECT_TRUE(weight_index.embed_tokens.IsValid());
-    EXPECT_TRUE(weight_index.final_norm.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].attn.q_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].ffn.gate_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].norm.input_rmsnorm.IsValid());
+    const auto& resolved_weights = (*model)->GetResolvedWeights();
+    ASSERT_EQ(resolved_weights.layers.size(), 1);
+    EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());
+    EXPECT_TRUE(resolved_weights.final_norm.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].mlp.gate_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].norm.input_rmsnorm.IsValid());
 }
 
 TEST(ModelLoader_ModelInstanceBuilderTest, ViewsPointToCorrectData) {
@@ -95,7 +95,7 @@ TEST(ModelLoader_ModelInstanceBuilderTest, ViewsPointToCorrectData) {
         storage->data[i] = static_cast<std::byte>(i + 1);
     }
 
-    ModelWeightIndex index;
+    ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 10, 4, DataType::Float32(), {1});
     index.final_norm = MakeWeightView(storage, 20, 4, DataType::Float32(), {1});
     index.layers.push_back(MakeTestLayer(storage, 30));
@@ -103,12 +103,12 @@ TEST(ModelLoader_ModelInstanceBuilderTest, ViewsPointToCorrectData) {
     auto model = ModelInstanceBuilder::Create(MakeLlamaConfig(1), std::move(index));
     ASSERT_TRUE(model.ok());
 
-    const auto& weight_index = (*model)->GetRawWeightIndex();
-    EXPECT_EQ(weight_index.embed_tokens.data, storage->data.data() + 10);
-    EXPECT_EQ(weight_index.embed_tokens.bytes, 4);
-    EXPECT_EQ(weight_index.final_norm.data, storage->data.data() + 20);
-    EXPECT_EQ(weight_index.layers[0].attn.q_proj.data, storage->data.data() + 30);
-    EXPECT_EQ(weight_index.layers[0].norm.post_attn_rmsnorm.data, storage->data.data() + 62);
+    const auto& resolved_weights = (*model)->GetResolvedWeights();
+    EXPECT_EQ(resolved_weights.embed_tokens.data, storage->data.data() + 10);
+    EXPECT_EQ(resolved_weights.embed_tokens.bytes, 4);
+    EXPECT_EQ(resolved_weights.final_norm.data, storage->data.data() + 20);
+    EXPECT_EQ(resolved_weights.layers[0].attn.q_proj.data, storage->data.data() + 30);
+    EXPECT_EQ(resolved_weights.layers[0].norm.post_attn_rmsnorm.data, storage->data.data() + 62);
 }
 
 TEST(ModelLoader_ModelInstanceBuilderTest, BackingStorageLifetime) {
@@ -120,7 +120,7 @@ TEST(ModelLoader_ModelInstanceBuilderTest, BackingStorageLifetime) {
         // Store a weak_ptr to observe when the last shared_ptr is released.
         std::weak_ptr<const RawStorage> weak_storage = storage;
 
-        ModelWeightIndex index;
+        ResolvedModelWeights index;
         index.embed_tokens = MakeWeightView(storage, 0, 4, DataType::Float32(), {1});
         index.final_norm = MakeWeightView(storage, 4, 4, DataType::Float32(), {1});
         index.layers.push_back(MakeTestLayer(storage, 8));
@@ -134,10 +134,10 @@ TEST(ModelLoader_ModelInstanceBuilderTest, BackingStorageLifetime) {
                 << "Backing storage was destroyed while ModelInstance still references it";
 
         // Views inside ModelInstance must still be valid and point to live memory.
-        const auto& weight_index = (*model)->GetRawWeightIndex();
-        EXPECT_TRUE(weight_index.embed_tokens.IsValid());
-        EXPECT_EQ(weight_index.embed_tokens.data[0], std::byte{0});
-        EXPECT_TRUE(weight_index.layers[0].attn.q_proj.IsValid());
+        const auto& resolved_weights = (*model)->GetResolvedWeights();
+        EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());
+        EXPECT_EQ(resolved_weights.embed_tokens.data[0], std::byte{0});
+        EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());
 
         // Destroy the ModelInstance; this should release the last shared_ptr.
         model.value().reset();
@@ -177,12 +177,12 @@ TEST(ModelLoader_ModelInstanceBuilderTest, ResolvedWeightsIntegratedCorrectly) {
     auto model = ModelInstanceBuilder::Create(MakeLlamaConfig(1), std::move(*resolved));
     ASSERT_TRUE(model.ok());
 
-    const auto& weight_index = (*model)->GetRawWeightIndex();
-    ASSERT_EQ(weight_index.layers.size(), 1);
-    EXPECT_TRUE(weight_index.embed_tokens.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].attn.q_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].ffn.down_proj.IsValid());
-    EXPECT_TRUE(weight_index.layers[0].norm.input_rmsnorm.IsValid());
+    const auto& resolved_weights = (*model)->GetResolvedWeights();
+    ASSERT_EQ(resolved_weights.layers.size(), 1);
+    EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].mlp.down_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].norm.input_rmsnorm.IsValid());
 }
 
 }// namespace

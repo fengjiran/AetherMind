@@ -3,7 +3,7 @@
 
 #include "aethermind/model/backend_sidecar.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"
-#include "aethermind/model/model_weight_index.h"
+#include "aethermind/model/resolved_model_weights.h"
 
 namespace aethermind {
 
@@ -11,13 +11,13 @@ class ModelInstance {
 public:
     ModelInstance() = default;
     explicit ModelInstance(BackendSidecar backend_sidecar) noexcept;
-    ModelInstance(HfModelConfig config, ModelWeightIndex raw_weight_index) noexcept;
+    ModelInstance(HfModelConfig config, ResolvedModelWeights resolved_weights) noexcept;
 
     AM_NODISCARD const BackendSidecar& GetBackendSidecar() const noexcept;
     AM_NODISCARD BackendSidecar& GetMutableBackendSidecar() noexcept;
 
     AM_NODISCARD const HfModelConfig& GetConfig() const noexcept;
-    AM_NODISCARD const ModelWeightIndex& GetRawWeightIndex() const noexcept;
+    AM_NODISCARD const ResolvedModelWeights& GetResolvedWeights() const noexcept;
 
     AM_NODISCARD const PackedWeights* FindPackedWeights(
             OpType op_type,
@@ -28,7 +28,7 @@ public:
 private:
     BackendSidecar backend_sidecar_{};
     HfModelConfig config_{};
-    ModelWeightIndex raw_weight_index_{};
+    ResolvedModelWeights resolved_weights_{};
 };
 
 }// namespace aethermind

@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_MODEL_MODEL_WEIGHT_INDEX_H
-#define AETHERMIND_MODEL_MODEL_WEIGHT_INDEX_H
+#ifndef AETHERMIND_MODEL_RESOLVED_MODEL_WEIGHTS_H
+#define AETHERMIND_MODEL_RESOLVED_MODEL_WEIGHTS_H
 
 #include "aethermind/model/raw_weight.h"
 
@@ -15,7 +15,7 @@ struct AttnRawWeights {
     RawWeightView o_proj{};
 };
 
-struct FFNRawWeights {
+struct MLPRawWeights {
     RawWeightView gate_proj{};
     RawWeightView up_proj{};
     RawWeightView down_proj{};
@@ -29,10 +29,10 @@ struct NormRawWeights {
 struct DecoderLayerRawWeights {
     NormRawWeights norm{};
     AttnRawWeights attn{};
-    FFNRawWeights ffn{};
+    MLPRawWeights mlp{};
 };
 
-struct ModelWeightIndex {
+struct ResolvedModelWeights {
     RawWeightView embed_tokens{};
     RawWeightView final_norm{};
     std::optional<RawWeightView> lm_head{};

@@ -762,6 +762,18 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsScalesQuantizedTensor) {
     EXPECT_NE(status.message().find("scales"), std::string::npos);
 }
 
+TEST(ModelLoader_HfModelValidatorTest, AllowsNonQuantizedTensorNameContainingScales) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto storage = std::make_shared<TestStorage>(4);
+    AddWeight(&weights, "model.layers.0.mlp.gate_proj.scales.weight", storage, 0);
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
 // --- P0-2: lm_head.weight / tie_word_embeddings linkage (§8.1) ---
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLmHeadWhenNotTied) {
@@ -1034,6 +1046,30 @@ TEST(ModelLoader_HfModelValidatorTest, AllowsMixedLinearDTypeWhenUniformDTypeIsD
     options.require_uniform_linear_dtype = false;
 
     const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsEmbedTokensDTypeMismatchWithLinear) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    auto& embed = weights.at("model.embed_tokens.weight");
+    embed.dtype = DataType::Float(16);
+    embed.bytes = 2;
+
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("Mixed linear tensor dtype"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AcceptsEmbedTokensDTypeMatchWithLinear) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.num_hidden_layers = 1;
+    RawWeightTable weights = MakeCompleteWeightSet(config);
+    const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_TRUE(status.ok()) << status.ToString();
 }

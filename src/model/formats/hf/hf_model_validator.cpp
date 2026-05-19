@@ -6,6 +6,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <ranges>
 #include <string>
 #include <string_view>
 
@@ -36,11 +37,15 @@ bool HasUnsupportedNamedDTypeHint(const HfModelConfig& config) {
 }
 
 bool IsSupportedRopeScalingType(std::string_view type) {
-    const auto is = [&](std::string_view value) noexcept {
-        return type == value;
+    constexpr std::string_view kSupported[] = {
+            "linear",
+            "dynamic",
+            "yarn",
+            "llama3",
+            "longrope",
     };
 
-    return is("linear") || is("dynamic") || is("yarn") || is("llama3") || is("longrope");
+    return std::ranges::any_of(kSupported, [type](std::string_view s) { return type == s; });
 }
 
 bool IsSupportedActivation(std::string_view act) {
@@ -141,13 +146,6 @@ Status ValidateWeight(const RawWeightTable& weights, std::string_view weight_nam
     return ValidateWeightViewIntegrity(it->second, weight_name);
 }
 
-Status ValidateLayerWeight(const RawWeightTable& weights,
-                           int64_t layer_index,
-                           std::string_view suffix) {
-    const std::string name = "model.layers." + std::to_string(layer_index) + std::string(suffix);
-    return ValidateWeight(weights, name);
-}
-
 constexpr std::array<std::string_view, 9> kRequiredLayerWeightSuffixes{
         ".self_attn.q_proj.weight",
         ".self_attn.k_proj.weight",
@@ -169,6 +167,13 @@ bool IsLayerNormSuffix(std::string_view suffix) {
 
 bool ContainsAnyOf(std::string_view name, std::string_view pattern) {
     return name.find(pattern) != std::string_view::npos;
+}
+
+bool EndsWithComponent(std::string_view name, std::string_view component) {
+    if (name.size() < component.size()) return false;
+    if (!name.ends_with(component)) return false;
+    if (name.size() == component.size()) return true;
+    return name[name.size() - component.size() - 1] == '.';
 }
 
 Status DetectUnsupportedTensors(const RawWeightTable& weights,
@@ -208,7 +213,7 @@ Status DetectUnsupportedTensors(const RawWeightTable& weights,
             "group_size",
     };
 
-    for (const auto& [name, view]: weights) {
+    for (const auto& name: (weights | std::views::keys)) {
         for (const auto& pattern: kMoePatterns) {
             if (ContainsAnyOf(name, pattern)) {
                 return Status::InvalidArgument(
@@ -239,7 +244,7 @@ Status DetectUnsupportedTensors(const RawWeightTable& weights,
 
         if (!options.allow_quantized_tensors) {
             for (const auto& pattern: kQuantizedPatterns) {
-                if (ContainsAnyOf(name, pattern)) {
+                if (EndsWithComponent(name, pattern)) {
                     return Status::InvalidArgument(
                             "Unsupported tensor found: tensor=" + name +
                             ", reason=Quantized weights are not supported in AetherMind Phase 1");
@@ -254,7 +259,7 @@ Status DetectUnsupportedTensors(const RawWeightTable& weights,
 Status ValidateLmHeadRequirement(const HfModelConfig& config,
                                  const RawWeightTable& weights,
                                  const ModelValidationOptions& options) {
-    const bool has_lm_head = weights.find("lm_head.weight") != weights.end();
+    const bool has_lm_head = weights.contains("lm_head.weight");
 
     if (!has_lm_head && !config.tie_word_embeddings) {
         return Status::InvalidArgument(
@@ -271,8 +276,6 @@ Status ValidateLmHeadRequirement(const HfModelConfig& config,
     return Status::Ok();
 }
 
-// --- §8.3: Layer index completeness ---
-
 bool IsLayerWeightName(std::string_view key) {
     constexpr std::string_view kPrefix = "model.layers.";
     return key.size() > kPrefix.size() && key.substr(0, kPrefix.size()) == kPrefix;
@@ -285,10 +288,12 @@ StatusOr<int64_t> ExtractLayerIndex(std::string_view key) {
     if (dot == std::string_view::npos) {
         return Status::InvalidArgument("Invalid layer weight name '" + std::string(key) + "': missing suffix after layer index");
     }
+
     const auto digits = rest.substr(0, dot);
     if (digits.empty()) {
         return Status::InvalidArgument("Invalid layer weight name '" + std::string(key) + "': missing layer index");
     }
+
     int64_t index = 0;
     const auto* begin = digits.data();
     const auto* end = begin + digits.size();
@@ -296,22 +301,24 @@ StatusOr<int64_t> ExtractLayerIndex(std::string_view key) {
     if (error == std::errc::result_out_of_range) {
         return Status::InvalidArgument("Invalid layer weight name '" + std::string(key) + "': layer index is out of range");
     }
+
     if (error != std::errc{} || ptr != end) {
         return Status::InvalidArgument("Invalid layer weight name '" + std::string(key) + "': layer index is not numeric");
     }
     return index;
 }
 
-Status ValidateLayerIndexCompleteness(const RawWeightTable& weights,
-                                      int64_t num_hidden_layers) {
-    for (const auto& [name, _]: weights) {
+Status ValidateLayerIndexCompleteness(const RawWeightTable& weights, int64_t num_hidden_layers) {
+    for (const auto& name: (weights | std::views::keys)) {
         if (!IsLayerWeightName(name)) {
             continue;
         }
+
         const auto index = ExtractLayerIndex(name);
         if (!index.ok()) {
             return index.status();
         }
+
         if (*index >= num_hidden_layers) {
             return Status::InvalidArgument(
                     "Weight '" + name + "' has layer index " + std::to_string(*index) +
@@ -332,10 +339,12 @@ bool IsKnownLayerWeight(const HfModelConfig& config, std::string_view name) {
     if (!IsLayerWeightName(name)) {
         return false;
     }
-    const auto index = ExtractLayerIndex(name);
-    if (!index.ok() || *index >= config.num_hidden_layers) {
+
+    if (const auto index = ExtractLayerIndex(name);
+        !index.ok() || *index >= config.num_hidden_layers) {
         return false;
     }
+
     const auto suffix = ExtractLayerSuffix(name);
     return std::ranges::any_of(kRequiredLayerWeightSuffixes,
                                [suffix](std::string_view required) { return suffix == required; });
@@ -347,11 +356,13 @@ bool IsKnownIgnorableTensor(const HfModelConfig& config, std::string_view name) 
     if (name == kGlobalRotaryInvFreq) {
         return true;
     }
+
     if (!IsLayerWeightName(name)) {
         return false;
     }
-    const auto index = ExtractLayerIndex(name);
-    if (!index.ok() || *index >= config.num_hidden_layers) {
+
+    if (const auto index = ExtractLayerIndex(name);
+        !index.ok() || *index >= config.num_hidden_layers) {
         return false;
     }
     return ExtractLayerSuffix(name) == kLayerRotaryInvFreq;
@@ -361,30 +372,28 @@ bool IsKnownWeightTensor(const HfModelConfig& config, std::string_view name) {
     constexpr std::string_view kEmbedTokens = "model.embed_tokens.weight";
     constexpr std::string_view kFinalNorm = "model.norm.weight";
     constexpr std::string_view kLmHead = "lm_head.weight";
-    return name == kEmbedTokens ||
-           name == kFinalNorm ||
-           name == kLmHead ||
-           IsKnownLayerWeight(config, name);
+    return name == kEmbedTokens || name == kFinalNorm ||
+           name == kLmHead || IsKnownLayerWeight(config, name);
 }
 
 Status ValidateUnknownTensorPolicy(const HfModelConfig& config,
                                    const RawWeightTable& weights,
                                    const ModelValidationOptions& options) {
-    for (const auto& [name, _]: weights) {
+    for (const auto& name: (weights | std::views::keys)) {
         if (IsKnownWeightTensor(config, name)) {
             continue;
         }
+
         if (!options.strict_tensor_names && options.allow_unknown_tensors && IsKnownIgnorableTensor(config, name)) {
             continue;
         }
+
         if (options.strict_tensor_names || !options.allow_unknown_tensors) {
             return Status::InvalidArgument("Unexpected tensor found: tensor=" + name);
         }
     }
     return Status::Ok();
 }
-
-// --- §8.5: dtype coarse validation ---
 
 bool IsSupportedWeightDType(const DataType& dtype) {
     return dtype.IsFloat32() || dtype.IsFloat16() || dtype.IsBFloat16();
@@ -398,8 +407,6 @@ Status ValidateWeightDType(const RawWeightView& view, std::string_view weight_na
     }
     return Status::Ok();
 }
-
-// --- §8.6: rank coarse validation ---
 
 Status ExpectRank(const RawWeightView& view, int64_t expected_rank, std::string_view weight_name) {
     if (static_cast<int64_t>(view.shape.size()) != expected_rank) {
@@ -420,6 +427,7 @@ Status ValidateUniformLinearDType(std::string_view weight_name,
         *has_linear_dtype = true;
         return Status::Ok();
     }
+
     if (view.dtype != *linear_dtype) {
         return Status::InvalidArgument(
                 "Mixed linear tensor dtype: tensor=" + std::string(weight_name) +
@@ -460,8 +468,8 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
         return Status::InvalidArgument("Model config hidden_size must be divisible by num_attention_heads");
     }
 
-    const int64_t inferred_head_dim = config.hidden_size / config.num_attention_heads;
-    if (config.head_dim != 0 && config.head_dim != inferred_head_dim) {
+    if (const int64_t inferred_head_dim = config.hidden_size / config.num_attention_heads;
+        config.head_dim != 0 && config.head_dim != inferred_head_dim) {
         return Status::InvalidArgument("Model config head_dim must match hidden_size / num_attention_heads");
     }
 
@@ -492,16 +500,22 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
     }
 
     if (options.allow_rope_scaling && has_rope_scaling) {
-        if (!config.rope.scaling_factor.has_value()) {
-            return Status::InvalidArgument("Model config field 'rope.scaling_factor' must be provided when RoPE scaling is configured");
-        }
-
-        if (*config.rope.scaling_factor <= 0.0) {
-            return Status::InvalidArgument("Model config field 'rope.scaling_factor' must be positive");
+        if (config.rope.scaling_type.empty()) {
+            return Status::InvalidArgument(
+                    "Model config field 'rope.scaling_type' must be provided when RoPE scaling is configured");
         }
 
         if (!IsSupportedRopeScalingType(config.rope.scaling_type)) {
             return Status::InvalidArgument("Unsupported RoPE scaling type in model config");
+        }
+
+        if (!config.rope.scaling_factor.has_value()) {
+            return Status::InvalidArgument(
+                    "Model config field 'rope.scaling_factor' must be provided when RoPE scaling is configured");
+        }
+
+        if (*config.rope.scaling_factor <= 0.0) {
+            return Status::InvalidArgument("Model config field 'rope.scaling_factor' must be positive");
         }
     }
 
@@ -526,15 +540,20 @@ Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config,
     AM_RETURN_IF_ERROR(ValidateWeight(weights, "model.embed_tokens.weight"));
     AM_RETURN_IF_ERROR(ValidateWeightDType(weights.at("model.embed_tokens.weight"), "model.embed_tokens.weight"));
     AM_RETURN_IF_ERROR(ExpectRank(weights.at("model.embed_tokens.weight"), 2, "model.embed_tokens.weight"));
+    if (options.require_uniform_linear_dtype) {
+        AM_RETURN_IF_ERROR(ValidateUniformLinearDType("model.embed_tokens.weight",
+                                                      weights.at("model.embed_tokens.weight"),
+                                                      &has_linear_dtype, &linear_dtype));
+    }
 
     AM_RETURN_IF_ERROR(ValidateWeight(weights, "model.norm.weight"));
     AM_RETURN_IF_ERROR(ValidateWeightDType(weights.at("model.norm.weight"), "model.norm.weight"));
     AM_RETURN_IF_ERROR(ExpectRank(weights.at("model.norm.weight"), 1, "model.norm.weight"));
 
-    for (int64_t layer = 0; layer < config.num_hidden_layers; ++layer) {
+    for (int64_t i = 0; i < config.num_hidden_layers; ++i) {
         for (const std::string_view suffix: kRequiredLayerWeightSuffixes) {
-            AM_RETURN_IF_ERROR(ValidateLayerWeight(weights, layer, suffix));
-            const std::string name = "model.layers." + std::to_string(layer) + std::string(suffix);
+            const std::string name = "model.layers." + std::to_string(i) + std::string(suffix);
+            AM_RETURN_IF_ERROR(ValidateWeight(weights, name));
             const auto& view = weights.at(name);
             AM_RETURN_IF_ERROR(ValidateWeightDType(view, name));
 
@@ -546,8 +565,7 @@ Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config,
         }
     }
 
-    const auto lm_head_it = weights.find("lm_head.weight");
-    if (lm_head_it != weights.end()) {
+    if (const auto lm_head_it = weights.find("lm_head.weight"); lm_head_it != weights.end()) {
         AM_RETURN_IF_ERROR(ValidateWeightViewIntegrity(lm_head_it->second, "lm_head.weight"));
         AM_RETURN_IF_ERROR(ValidateWeightDType(lm_head_it->second, "lm_head.weight"));
         AM_RETURN_IF_ERROR(ExpectRank(lm_head_it->second, 2, "lm_head.weight"));

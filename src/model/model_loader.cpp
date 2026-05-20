@@ -36,6 +36,8 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(const ModelLoadOption
         return resolved_weights.status();
     }
 
+    AM_RETURN_IF_ERROR(HfModelValidator::ValidateResolvedModel(*config, *resolved_weights));
+
     auto model = ModelInstanceBuilder::Create(std::move(*config), std::move(*resolved_weights));
     if (!model.ok()) {
         return model.status();

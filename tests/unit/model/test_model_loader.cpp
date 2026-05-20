@@ -22,13 +22,13 @@ std::string MakeMinimalLlamaConfigJson() {
     return R"({
         "architectures": ["LlamaForCausalLM"],
         "model_type": "llama",
-        "hidden_size": 64,
-        "intermediate_size": 256,
+        "hidden_size": 1,
+        "intermediate_size": 1,
         "num_hidden_layers": 1,
-        "num_attention_heads": 8,
-        "num_key_value_heads": 4,
-        "max_position_embeddings": 128,
-        "vocab_size": 1000,
+        "num_attention_heads": 1,
+        "num_key_value_heads": 1,
+        "max_position_embeddings": 1,
+        "vocab_size": 1,
         "rms_norm_eps": 1e-6,
         "tie_word_embeddings": false
     })";
@@ -135,11 +135,11 @@ TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBound
     ASSERT_NE(*model, nullptr);
 
     const auto& config = (*model)->GetConfig();
-    EXPECT_EQ(config.hidden_size, 64);
+    EXPECT_EQ(config.hidden_size, 1);
     EXPECT_EQ(config.num_hidden_layers, 1);
-    EXPECT_EQ(config.num_attention_heads, 8);
-    EXPECT_EQ(config.num_key_value_heads, 4);
-    EXPECT_EQ(config.vocab_size, 1000);
+    EXPECT_EQ(config.num_attention_heads, 1);
+    EXPECT_EQ(config.num_key_value_heads, 1);
+    EXPECT_EQ(config.vocab_size, 1);
 
     const auto& resolved_weights = (*model)->GetResolvedWeights();
     ASSERT_EQ(resolved_weights.layers.size(), 1);

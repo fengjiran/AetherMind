@@ -375,3 +375,47 @@ Batch 0 + Batch 1
 
 ---
 
+
+
+
+P0：Prepack 实际只存了一个 kLinear + selector packed artifact
+WeightPrepackPlanner::BuildRequests() 会枚举所有 linear 权重：q/k/v/o/gate/up/down/lm_head。
+但 PrepackAndStore() 用 (OpType, KernelSelector) 去重：
+if (key.op_type == req.op_type && key.selector == req.selector) {
+    duplicate = true;
+    break;
+}
+if (duplicate) {
+    continue;
+}
+当前所有 linear 权重大概率都是同一个 OpType::kLinear + 同一个 packed selector，所以实际只有第一个 linear weight 被 pack 并存入 BackendSidecar。这与文档“所有需要 prepack 的矩阵权重在加载期完成 prepack”不一致。
+需要设计修正：要么 packed artifact 聚合多个 tensor，并能按 tensor/role 取 offset；要么 sidecar key 必须包含 tensor identity；不能只用 (OpType, KernelSelector) 表示所有线性权重。
+P1：缺少文档要求的 WeightPrepackPlanner::Plan() / arena 规划
+设计文档要求两阶段：
+collect requests -> compute packed size/alignment -> allocate once -> pack all
+当前实现是逐个 CpuWeightPrepacker::Pack()，没有统一计算 total bytes / max alignment，也没有 arena 一次性分配。
+缺失点：
+
+- WeightPrepackPlanner::Plan()
+- packed arena size / alignment 计算
+- 多权重 packed layout/offset 表达
+这个问题和 P0 的“只存一个 packed artifact”其实是同一设计缺口的两面。
+P1：loader 到 execution 的端到端验证不足
+已有 ExecutionPlanBuilder 单独测试可以从 ModelInstance::FindPackedWeights() 绑定 packed_params，但缺少：
+ModelLoader::Load(...) -> ModelInstance -> ExecutionPlanBuilder
+的端到端测试。
+考虑到当前 prepack 存储模型仍有问题，这个测试很可能能暴露 P0。
+P2：测试覆盖弱点
+当前测试很多，但几个断言偏弱：
+- test_model_loader.cpp 只验证 packed storage 存在，没有验证每个 linear 权重都被 prepack。
+- test_weight_prepack_planner.cpp 验证 request 数量，但没有逐一验证 q/k/v/o/gate/up/down/lm_head 的身份。
+- ValidateResolvedModel 缺少 dtype 一致性、tied embedding shape/dtype mismatch 的测试。
+- sharded lifetime 只间接覆盖，建议补多 storage backing 的 ModelInstance 生命周期测试。
+P2 / 未来项：文档提到但当前可视为未实现或延期
+- ModelLoadOptions 只有 model_dir，还没有 strict validation、prepack toggle、backend hint。
+- lazy packing / alternative selector 支持未实现。
+- prepack 后释放 raw backing 的内存优化未实现。
+- 量化权重支持未实现；validator 当前默认拒绝 quantized tensors。
+- 多架构支持未实现；当前明确只支持 model_type == "llama"，这符合 Phase 1 收敛目标。
+结论
+最关键的不是 reader 或 safetensors 分片，目前这些已基本完成；真正缺的是 ResolvedModel 级精确校验接入 和 packed 权重存储模型。建议下一步先修 P0 两项，否则 loader 现在能“加载成功”的模型不一定满足文档定义的可执行不变量。

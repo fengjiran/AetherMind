@@ -28,6 +28,15 @@ public:
 
     AM_NODISCARD std::vector<std::string> UniqueShardFilenames() const;
 
+    // Rule of 0: no resource-managing members, but explicit to document intent
+    // against the private-constructor + static-factory pattern.
+    HfSafetensorsIndex(const HfSafetensorsIndex&) = default;
+    HfSafetensorsIndex(HfSafetensorsIndex&&) = default;
+    HfSafetensorsIndex& operator=(const HfSafetensorsIndex&) = default;
+    HfSafetensorsIndex& operator=(HfSafetensorsIndex&&) = default;
+
+    ~HfSafetensorsIndex() = default;
+
 private:
     HfSafetensorsIndex(std::unordered_map<std::string, std::string> weight_map,
                        std::optional<uint64_t> total_size) noexcept

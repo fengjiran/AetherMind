@@ -6,6 +6,7 @@
 #include <charconv>
 #include <filesystem>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -53,10 +54,10 @@ public:
 
         Result result;
         bool has_weight_map = false;
-        bool has_metadata = false;
 
         SkipWhitespace();
         if (!TryConsume('}')) {
+            bool has_metadata = false;
             while (true) {
                 const auto key = ParseString();
                 if (!key.ok()) {
@@ -68,6 +69,7 @@ public:
                     if (has_weight_map) {
                         return Status::InvalidArgument("Safetensors index contains duplicate weight_map field");
                     }
+
                     has_weight_map = true;
                     auto parsed_weight_map = ParseWeightMap();
                     if (!parsed_weight_map.ok()) {
@@ -78,6 +80,7 @@ public:
                     if (has_metadata) {
                         return Status::InvalidArgument("Safetensors index contains duplicate metadata field");
                     }
+
                     has_metadata = true;
                     auto total_size = ParseMetadata();
                     if (!total_size.ok()) {
@@ -220,7 +223,7 @@ std::vector<std::string> HfSafetensorsIndex::UniqueShardFilenames() const {
     std::unordered_set<std::string> seen;
     std::vector<std::string> shards;
     shards.reserve(weight_map_.size());
-    for (const auto& [_, shard]: weight_map_) {
+    for (const auto& shard: weight_map_ | std::views::values) {
         if (seen.insert(shard).second) {
             shards.push_back(shard);
         }

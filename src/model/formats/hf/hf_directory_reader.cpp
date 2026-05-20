@@ -282,9 +282,11 @@ Status EnsureShardFileExists(const std::filesystem::path& shard_path) {
 
 bool IsPathWithinDirectory(const std::filesystem::path& child,
                            const std::filesystem::path& parent) {
+    // Lexically checks that `parent` is a prefix of `child`.
+    // Returns true when child == parent (a directory is trivially "within" itself).
+    // Callers that intend sub-path-only checks should verify child != parent separately.
     auto child_it = child.begin();
-    auto parent_it = parent.begin();
-    for (; parent_it != parent.end(); ++parent_it, ++child_it) {
+    for (auto parent_it = parent.begin(); parent_it != parent.end(); ++parent_it, ++child_it) {
         if (child_it == child.end() || *child_it != *parent_it) {
             return false;
         }
@@ -292,7 +294,7 @@ bool IsPathWithinDirectory(const std::filesystem::path& child,
     return true;
 }
 
-Status ValidateShardPathIsContained(const std::filesystem::path& model_dir,
+Status ValidateShardPathIsContained(const std::filesystem::path& canonical_model_dir,
                                     const std::filesystem::path& shard_path) {
     std::error_code error;
     const auto symlink_status = std::filesystem::symlink_status(shard_path, error);
@@ -304,12 +306,6 @@ Status ValidateShardPathIsContained(const std::filesystem::path& model_dir,
     if (std::filesystem::is_symlink(symlink_status)) {
         return Status::InvalidArgument(
                 hf::FormatPathMessage("Safetensors shard path must not be a symlink", shard_path));
-    }
-
-    const auto canonical_model_dir = std::filesystem::canonical(model_dir, error);
-    if (error) {
-        return Status::Internal(
-                hf::FormatPathMessage("Failed to canonicalize HF model directory", model_dir));
     }
 
     const auto canonical_shard_path = std::filesystem::canonical(shard_path, error);
@@ -332,13 +328,21 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
     }
 
     const auto& weight_map = index->WeightMap();
+
+    std::error_code canonical_error;
+    const auto canonical_model_dir = std::filesystem::canonical(dir_desc.model_dir, canonical_error);
+    if (canonical_error) {
+        return Status::Internal(
+                hf::FormatPathMessage("Failed to canonicalize HF model directory", dir_desc.model_dir));
+    }
+
     RawWeightTable raw_weights;
     raw_weights.reserve(weight_map.size());
 
     for (const auto& shard_filename: index->UniqueShardFilenames()) {
         const auto shard_path = dir_desc.model_dir / shard_filename;
         AM_RETURN_IF_ERROR(EnsureShardFileExists(shard_path));
-        AM_RETURN_IF_ERROR(ValidateShardPathIsContained(dir_desc.model_dir, shard_path));
+        AM_RETURN_IF_ERROR(ValidateShardPathIsContained(canonical_model_dir, shard_path));
 
         auto shard_file = HfSafetensorsFile::Open(shard_path);
         if (!shard_file.ok()) {
@@ -371,17 +375,29 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
     }
 
     if (raw_weights.size() != weight_map.size()) {
+        std::vector<std::string> missing;
+        missing.reserve(weight_map.size() - raw_weights.size());
         for (const auto& [tensor_name, shard_filename]: weight_map) {
             if (!raw_weights.contains(tensor_name)) {
-                std::string message = "Safetensors index tensor is missing from assigned shard: '";
-                message += tensor_name;
-                message += "' in shard '";
-                message += shard_filename;
-                message += "'";
-                return Status::NotFound(
-                        hf::FormatPathMessage(message, dir_desc.model_dir / shard_filename));
+                std::string entry = "'";
+                entry += tensor_name;
+                entry += "' (assigned to shard '";
+                entry += shard_filename;
+                entry += "')";
+                missing.push_back(std::move(entry));
             }
         }
+        std::string message = "Safetensors index contains " +
+                              std::to_string(missing.size()) +
+                              " tensor(s) missing from their assigned shards: ";
+        for (size_t i = 0; i < missing.size(); ++i) {
+            if (i > 0) {
+                message += ", ";
+            }
+            message += missing[i];
+        }
+        return Status::NotFound(
+                hf::FormatPathMessage(message, dir_desc.model_dir));
     }
     return raw_weights;
 }

@@ -1,6 +1,7 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 #include "aethermind/model/formats/hf/hf_safetensors_file.h"
+#include "aethermind/model/formats/hf/hf_safetensors_index.h"
 #include "aethermind/model/formats/hf/hf_utils.h"
 
 #include <string>
@@ -242,6 +243,149 @@ private:
     }
 };
 
+StatusOr<RawWeightTable> LoadSingleFileRawWeightTable(const HfDirectoryDescriptor& dir_desc) {
+    auto safetensors_file = HfSafetensorsFile::Open(dir_desc.safetensors_path);
+    if (!safetensors_file.ok()) {
+        return Status(safetensors_file.status().code(),
+                      hf::FormatPathMessage(safetensors_file.status().message(), dir_desc.model_dir));
+    }
+
+    RawWeightTable raw_weights;
+    raw_weights.reserve(safetensors_file->Entries().size());
+    for (const auto& entry: safetensors_file->Entries()) {
+        raw_weights.emplace(entry.name, entry.view);
+    }
+    return raw_weights;
+}
+
+Status EnsureShardFileExists(const std::filesystem::path& shard_path) {
+    std::error_code error;
+    if (!std::filesystem::exists(shard_path, error) || error) {
+        if (error) {
+            return Status::Internal(
+                    hf::FormatPathMessage("Failed to stat safetensors shard file", shard_path));
+        }
+        return Status::NotFound(
+                hf::FormatPathMessage("Safetensors shard file not found", shard_path));
+    }
+
+    if (!std::filesystem::is_regular_file(shard_path, error) || error) {
+        if (error) {
+            return Status::Internal(
+                    hf::FormatPathMessage("Failed to inspect safetensors shard file type", shard_path));
+        }
+        return Status::InvalidArgument(
+                hf::FormatPathMessage("Safetensors shard path is not a regular file", shard_path));
+    }
+    return Status::Ok();
+}
+
+bool IsPathWithinDirectory(const std::filesystem::path& child,
+                           const std::filesystem::path& parent) {
+    auto child_it = child.begin();
+    auto parent_it = parent.begin();
+    for (; parent_it != parent.end(); ++parent_it, ++child_it) {
+        if (child_it == child.end() || *child_it != *parent_it) {
+            return false;
+        }
+    }
+    return true;
+}
+
+Status ValidateShardPathIsContained(const std::filesystem::path& model_dir,
+                                    const std::filesystem::path& shard_path) {
+    std::error_code error;
+    const auto symlink_status = std::filesystem::symlink_status(shard_path, error);
+    if (error) {
+        return Status::Internal(
+                hf::FormatPathMessage("Failed to inspect safetensors shard symlink status", shard_path));
+    }
+
+    if (std::filesystem::is_symlink(symlink_status)) {
+        return Status::InvalidArgument(
+                hf::FormatPathMessage("Safetensors shard path must not be a symlink", shard_path));
+    }
+
+    const auto canonical_model_dir = std::filesystem::canonical(model_dir, error);
+    if (error) {
+        return Status::Internal(
+                hf::FormatPathMessage("Failed to canonicalize HF model directory", model_dir));
+    }
+
+    const auto canonical_shard_path = std::filesystem::canonical(shard_path, error);
+    if (error) {
+        return Status::Internal(
+                hf::FormatPathMessage("Failed to canonicalize safetensors shard path", shard_path));
+    }
+
+    if (!IsPathWithinDirectory(canonical_shard_path, canonical_model_dir)) {
+        return Status::InvalidArgument(
+                hf::FormatPathMessage("Safetensors shard path escapes HF model directory", shard_path));
+    }
+    return Status::Ok();
+}
+
+StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& dir_desc) {
+    auto index = HfSafetensorsIndex::Load(dir_desc.safetensors_index_path);
+    if (!index.ok()) {
+        return index.status();
+    }
+
+    const auto& weight_map = index->WeightMap();
+    RawWeightTable raw_weights;
+    raw_weights.reserve(weight_map.size());
+
+    for (const auto& shard_filename: index->UniqueShardFilenames()) {
+        const auto shard_path = dir_desc.model_dir / shard_filename;
+        AM_RETURN_IF_ERROR(EnsureShardFileExists(shard_path));
+        AM_RETURN_IF_ERROR(ValidateShardPathIsContained(dir_desc.model_dir, shard_path));
+
+        auto shard_file = HfSafetensorsFile::Open(shard_path);
+        if (!shard_file.ok()) {
+            return Status(shard_file.status().code(),
+                          hf::FormatPathMessage(shard_file.status().message(), shard_path));
+        }
+
+        for (const auto& entry: shard_file->Entries()) {
+            const auto expected_shard = weight_map.find(entry.name);
+            if (expected_shard == weight_map.end()) {
+                return Status::InvalidArgument(
+                        hf::FormatPathMessage("Safetensors shard contains tensor not listed in index: '" + entry.name + "'",
+                                              shard_path));
+            }
+
+            if (expected_shard->second != shard_filename) {
+                return Status(StatusCode::kFailedPrecondition,
+                              hf::FormatPathMessage("Safetensors index assigns tensor '" + entry.name +
+                                                            "' to shard '" + expected_shard->second +
+                                                            "' but it was found in shard '" + shard_filename + "'",
+                                                    shard_path));
+            }
+
+            if (!raw_weights.emplace(entry.name, entry.view).second) {
+                return Status::AlreadyExists(
+                        hf::FormatPathMessage("Duplicate safetensors tensor across shards: '" + entry.name + "'",
+                                              shard_path));
+            }
+        }
+    }
+
+    if (raw_weights.size() != weight_map.size()) {
+        for (const auto& [tensor_name, shard_filename]: weight_map) {
+            if (!raw_weights.contains(tensor_name)) {
+                std::string message = "Safetensors index tensor is missing from assigned shard: '";
+                message += tensor_name;
+                message += "' in shard '";
+                message += shard_filename;
+                message += "'";
+                return Status::NotFound(
+                        hf::FormatPathMessage(message, dir_desc.model_dir / shard_filename));
+            }
+        }
+    }
+    return raw_weights;
+}
+
 }// namespace
 
 StatusOr<HfDirectoryReader> HfDirectoryReader::Open(const std::filesystem::path& model_dir) {
@@ -268,23 +412,16 @@ StatusOr<HfModelConfig> HfDirectoryReader::ParseConfig() const {
 }
 
 StatusOr<RawWeightTable> HfDirectoryReader::LoadRawWeightTable() const {
-    if (!dir_desc_.IsSingleFile()) {
-        return Status(StatusCode::kUnimplemented,
-                      hf::FormatPathMessage("Only single-file HF safetensors layout is implemented", dir_desc_.model_dir));
+    if (dir_desc_.IsSingleFile()) {
+        return LoadSingleFileRawWeightTable(dir_desc_);
     }
 
-    auto safetensors_file = HfSafetensorsFile::Open(dir_desc_.safetensors_path);
-    if (!safetensors_file.ok()) {
-        return Status(safetensors_file.status().code(),
-                      hf::FormatPathMessage(safetensors_file.status().message(), dir_desc_.model_dir));
+    if (dir_desc_.IsSharded()) {
+        return LoadShardedRawWeightTable(dir_desc_);
     }
 
-    RawWeightTable raw_weights;
-    raw_weights.reserve(safetensors_file->Entries().size());
-    for (const auto& entry: safetensors_file->Entries()) {
-        raw_weights.emplace(entry.name, entry.view);
-    }
-    return raw_weights;
+    return Status(StatusCode::kFailedPrecondition,
+                  hf::FormatPathMessage("Unknown HF safetensors directory layout", dir_desc_.model_dir));
 }
 
 StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::filesystem::path& model_dir) {
@@ -351,6 +488,15 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
                                             model_dir));
     }
 
+    if (has_sharded_index && (!std::filesystem::is_regular_file(safetensors_index_path, error) || error)) {
+        if (error) {
+            return Status::Internal(
+                    hf::FormatPathMessage("Failed to inspect model.safetensors.index.json type", safetensors_index_path));
+        }
+        return Status::InvalidArgument(
+                hf::FormatPathMessage("model.safetensors.index.json path is not a regular file", safetensors_index_path));
+    }
+
     if (has_single_file) {
         return HfDirectoryDescriptor{
                 .layout = HfDirectoryLayout::kSingleSafetensors,
@@ -362,8 +508,13 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
     }
 
     if (has_sharded_index) {
-        return Status(StatusCode::kUnimplemented,
-                      hf::FormatPathMessage("Sharded HF safetensors layout is not implemented yet", model_dir));
+        return HfDirectoryDescriptor{
+                .layout = HfDirectoryLayout::kShardedSafetensors,
+                .model_dir = model_dir,
+                .config_path = config_path,
+                .safetensors_path = {},
+                .safetensors_index_path = safetensors_index_path,
+        };
     }
 
     return Status::NotFound(

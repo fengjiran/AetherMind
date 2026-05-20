@@ -92,13 +92,12 @@ std::string MakeMinimalLlamaConfigJson() {
     })";
 }
 
-std::string MakeCompleteTensorHeader(int64_t num_layers) {
-    std::string header = "{";
-    header += R"("model.embed_tokens.weight":{"dtype":"F32","shape":[1,1],"data_offsets":[0,4]},)";
-    header += R"("model.norm.weight":{"dtype":"F32","shape":[1],"data_offsets":[4,8]},)";
-    header += R"("lm_head.weight":{"dtype":"F32","shape":[1,1],"data_offsets":[8,12]})";
-
-    size_t offset = 12;
+std::vector<std::string> MakeCompleteTensorNames(int64_t num_layers) {
+    std::vector<std::string> names{
+            "model.embed_tokens.weight",
+            "model.norm.weight",
+            "lm_head.weight",
+    };
     for (int64_t layer = 0; layer < num_layers; ++layer) {
         const std::string prefix = "model.layers." + std::to_string(layer);
         const std::string suffixes[] = {
@@ -113,19 +112,69 @@ std::string MakeCompleteTensorHeader(int64_t num_layers) {
                 ".post_attention_layernorm.weight",
         };
         for (const auto& suffix: suffixes) {
-            header += ",";
-            header += "\"" + prefix + suffix + "\":";
-            const bool is_norm = suffix.compare(".input_layernorm.weight") == 0 ||
-                                 suffix.compare(".post_attention_layernorm.weight") == 0;
-            header += "{\"dtype\":\"F32\",\"shape\":";
-            header += is_norm ? "[1]" : "[1,1]";
-            header += ",\"data_offsets\":[" +
-                      std::to_string(offset) + "," + std::to_string(offset + 4) + "]}";
-            offset += 4;
+            names.push_back(prefix + suffix);
         }
+    }
+    return names;
+}
+
+bool IsNormTensorName(std::string_view name) {
+    return name == std::string_view("model.norm.weight") ||
+           name.find("layernorm.weight") != std::string_view::npos;
+}
+
+std::string MakeTensorHeaderForNames(std::span<const std::string> names) {
+    std::string header = "{";
+    size_t offset = 0;
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) {
+            header += ",";
+        }
+        header += "\"" + names[i] + "\":";
+        header += R"({"dtype":"F32","shape":)";
+        header += IsNormTensorName(names[i]) ? "[1]" : "[1,1]";
+        header += ",\"data_offsets\":[" +
+                  std::to_string(offset) + "," + std::to_string(offset + 4) + "]}";
+        offset += 4;
     }
     header += "}";
     return header;
+}
+
+std::string MakeCompleteTensorHeader(int64_t num_layers) {
+    const auto names = MakeCompleteTensorNames(num_layers);
+    return MakeTensorHeaderForNames(names);
+}
+
+struct ShardTensorNames {
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    std::span<const std::string> names;
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    std::string_view filename;
+};
+
+std::string MakeShardedWeightMapJson(const ShardTensorNames& first_shard,
+                                     const ShardTensorNames& second_shard) {
+    std::string json = R"({"metadata":{"total_size":48},"weight_map":{)";
+    bool first = true;
+    const auto append = [&](const ShardTensorNames& shard) {
+        for (const auto& name: shard.names) {
+            if (!first) {
+                json += ",";
+            }
+            first = false;
+            json += "\"" + name + "\":\"" + std::string(shard.filename) + "\"";
+        }
+    };
+    append(first_shard);
+    append(second_shard);
+    json += "}}";
+    return json;
+}
+
+std::vector<std::byte> ZeroFloatBytes(size_t count) {
+    std::vector<float> values(count, 0.0f);
+    return FloatArrayToBytes(values);
 }
 
 void WriteRawFile(const std::filesystem::path& path, std::span<const std::byte> bytes) {
@@ -199,6 +248,58 @@ TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBound
     ASSERT_NE(packed, nullptr);
     EXPECT_EQ(packed->op_type(), OpType::kLinear);
     EXPECT_EQ(packed->selector(), expected_selector);
+    EXPECT_TRUE(packed->storage().is_initialized());
+    EXPECT_GT(packed->storage().nbytes(), 0U);
+}
+
+TEST(ModelLoader_PipelineTest, ValidShardedDirectoryReachesModelInstanceBoundary) {
+    TempDirectory temp_dir;
+    WriteTextFile(temp_dir.Path() / "config.json", MakeMinimalLlamaConfigJson());
+
+    const auto names = MakeCompleteTensorNames(1);
+    const auto split = names.begin() + static_cast<std::ptrdiff_t>(names.size() / 2);
+    const std::vector<std::string> first_shard_names(names.begin(), split);
+    const std::vector<std::string> second_shard_names(split, names.end());
+
+    WriteTextFile(temp_dir.Path() / "model.safetensors.index.json",
+                  MakeShardedWeightMapJson(
+                          ShardTensorNames{.names = first_shard_names,
+                                           .filename = "model-00001-of-00002.safetensors"},
+                          ShardTensorNames{.names = second_shard_names,
+                                           .filename = "model-00002-of-00002.safetensors"}));
+    WriteSafetensorsFile(temp_dir.Path() / "model-00001-of-00002.safetensors",
+                         MakeTensorHeaderForNames(first_shard_names),
+                         ZeroFloatBytes(first_shard_names.size()));
+    WriteSafetensorsFile(temp_dir.Path() / "model-00002-of-00002.safetensors",
+                         MakeTensorHeaderForNames(second_shard_names),
+                         ZeroFloatBytes(second_shard_names.size()));
+
+    CpuBackend backend;
+    KernelRegistry registry;
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.Path()}, backend, registry);
+
+    ASSERT_TRUE(model.ok()) << model.status().message();
+    ASSERT_NE(*model, nullptr);
+
+    const auto& resolved_weights = (*model)->GetResolvedWeights();
+    ASSERT_EQ(resolved_weights.layers.size(), 1);
+    EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());
+    EXPECT_TRUE(resolved_weights.final_norm.IsValid());
+    ASSERT_TRUE(resolved_weights.lm_head.has_value());
+    EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());
+    EXPECT_TRUE(resolved_weights.layers[0].mlp.down_proj.IsValid());
+
+    const KernelSelector expected_selector{
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPacked,
+            .isa = IsaLevel::kAVX2,
+            .phase = ExecPhase::kBoth,
+    };
+    const PackedWeights* packed = (*model)->FindPackedWeights(
+            OpType::kLinear, expected_selector);
+    ASSERT_NE(packed, nullptr);
     EXPECT_TRUE(packed->storage().is_initialized());
     EXPECT_GT(packed->storage().nbytes(), 0U);
 }

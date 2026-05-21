@@ -16,6 +16,10 @@ namespace {
 bool HasValidMetadata(const DataType& dtype,
                       const IntArrayView shape,
                       const IntArrayView strides) noexcept {
+    if (dtype.IsScalableVector()) {
+        return false;
+    }
+
     if (dtype.nbytes() <= 0) {
         return false;
     }

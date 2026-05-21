@@ -156,6 +156,9 @@ TEST(DataTypeTest, HelperMethods) {
     DataType bool_type = DataType::Bool();
     EXPECT_EQ(bool_type.nbytes(), 1);// 1 bit is stored as 1 byte
 
+    DataType scalable_float32 = DataType::ScalableFloat(32, 4);
+    EXPECT_DEATH(static_cast<void>(scalable_float32.nbytes()), "Scalable vector DataType");
+
     // 测试with_lanes方法
     DataType float32x4 = float32.WithLanes(4);
     EXPECT_EQ(float32x4.lanes(), 4);
@@ -336,15 +339,19 @@ TEST(DataTypeToStringTest, FixedLengthVectorTypes) {
 // 测试DataTypeToString函数对可缩放向量类型的转换
 TEST(DataTypeToStringTest, ScalableVectorTypes) {
     // GTEST_SKIP();
-    // 创建可缩放向量类型（通过直接设置lanes为负值）
-    DataType scalable_int{DLDataTypeCode::kInt, 32, -4};
+    // 创建可缩放向量类型
+    DataType scalable_int = DataType::ScalableInt(32, 4);
     EXPECT_EQ(DataTypeToString(scalable_int), "Intxvscalex4");
 
-    DataType scalable_float(DLDataTypeCode::kFloat, 32, -8);
+    DataType scalable_float = DataType::ScalableFloat(32, 8);
     EXPECT_EQ(DataTypeToString(scalable_float), "Floatxvscalex8");
 
-    DataType scalable_bool(DLDataTypeCode::kUInt, 1, -2);
+    DataType scalable_bool = DataType::ScalableBool(2);
     EXPECT_EQ(DataTypeToString(scalable_bool), "Boolxvscalex2");
+}
+
+TEST(DataTypeTest, ScalableVectorRequiresExplicitFactory) {
+    EXPECT_DEATH(DataType(DLDataTypeCode::kFloat, 32, -4), "Fixed-length DataType lanes");
 }
 
 // 测试DataTypeToString函数对边界情况的处理
@@ -368,7 +375,7 @@ TEST(DataTypeToStringTest, EdgeCases) {
     DataType large_vector(DLDataTypeCode::kFloat, 32, 1024);
     EXPECT_TRUE(std::string(DataTypeToString(large_vector)).find("Floatx") == 0);
 
-    DataType large_scalable(DLDataTypeCode::kFloat, 32, -1024);
+    DataType large_scalable = DataType::ScalableFloat(32, 1024);
     EXPECT_TRUE(std::string(DataTypeToString(large_scalable)).find("Floatxvscalex") == 0);
 }
 

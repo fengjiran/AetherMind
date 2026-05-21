@@ -61,6 +61,8 @@ DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
 
     if (is_scalable) {
         AM_CHECK(lanes > 1, "Invalid value for vscale factor {}", lanes);
+    } else {
+        AM_CHECK(lanes >= 0, "Fixed-length DataType lanes must be non-negative, got {}", lanes);
     }
 
     dtype_.lanes = is_scalable ? static_cast<uint16_t>(-lanes) : static_cast<uint16_t>(lanes);

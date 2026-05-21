@@ -71,7 +71,8 @@ struct DLDataType {
     // For example, 8 for int8_t, 32 for float.
     uint8_t bits;
 
-    // Number of lanes per data element, for vector.
+    // Number of lanes per data element. Values that decode to int16_t < -1 are reserved for
+    // experimental scalable-vector types and must not enter tensor storage paths.
     uint16_t lanes;
 };
 
@@ -113,6 +114,7 @@ public:
     }
 
     AM_NODISCARD int nbytes() const {
+        AM_CHECK(!IsScalableVector(), "Scalable vector DataType has runtime-dependent byte size.");
         return (bits() + 7) / 8;
     }
 
@@ -251,7 +253,7 @@ public:
     }
 
     AM_NODISCARD bool IsVector() const {
-        return lanes() > 1;
+        return IsFixedLengthVector();
     }
 
     AM_NODISCARD bool IsFixedLengthVector() const {
@@ -276,11 +278,14 @@ public:
     }
 
     AM_NODISCARD DataType WithBits(int bits) const {
-        return {code(), bits, dtype_.lanes};
+        if (IsScalableVector()) {
+            return {code(), bits, GetScaleFactor(), true};
+        }
+        return {code(), bits, lanes()};
     }
 
     AM_NODISCARD DataType WithScalableVscaleFactor(int vscale_factor) const {
-        return {code(), bits(), -vscale_factor};
+        return {code(), bits(), vscale_factor, true};
     }
 
     AM_NODISCARD DataType ElementOf() const {
@@ -291,12 +296,24 @@ public:
         return {DLDataTypeCode::kInt, bits, lanes};
     }
 
-    static DataType UInt(int bits, int lanes = 1, bool is_scalable = false) {
-        return {DLDataTypeCode::kUInt, bits, lanes, is_scalable};
+    static DataType UInt(int bits, int lanes = 1) {
+        return {DLDataTypeCode::kUInt, bits, lanes};
+    }
+
+    static DataType ScalableInt(int bits, int vscale_factor) {
+        return {DLDataTypeCode::kInt, bits, vscale_factor, true};
+    }
+
+    static DataType ScalableUInt(int bits, int vscale_factor) {
+        return {DLDataTypeCode::kUInt, bits, vscale_factor, true};
     }
 
     static DataType Float(int bits, int lanes = 1) {
         return {DLDataTypeCode::kFloat, bits, lanes};
+    }
+
+    static DataType ScalableFloat(int bits, int vscale_factor) {
+        return {DLDataTypeCode::kFloat, bits, vscale_factor, true};
     }
 
     static DataType Double() {
@@ -355,9 +372,12 @@ public:
         return {DLDataTypeCode::kFloat4_e2m1fn, 4, lanes};
     }
 
-    static DataType Bool(int lanes = 1, bool is_scalable = false) {
-        return UInt(1, lanes, is_scalable);
-        // return {DLDataTypeCode::kBool, 1, lanes, is_scalable};
+    static DataType Bool(int lanes = 1) {
+        return UInt(1, lanes);
+    }
+
+    static DataType ScalableBool(int vscale_factor) {
+        return ScalableUInt(1, vscale_factor);
     }
 
     static DataType Handle(int bits = 64, int lanes = 1) {

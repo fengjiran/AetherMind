@@ -162,6 +162,7 @@ void Tensor::validate() const {
     AM_CHECK(byte_offset_ <= buffer_.nbytes(), "Tensor byte_offset out of buffer range.");
     const auto r = shape_and_strides_.size();
     AM_CHECK(r >= 1 && r <= ShapeAndStride::kMaxRank, "Invalid tensor rank.");
+    AM_CHECK(!dtype_.IsScalableVector(), "Tensor storage does not support scalable vector DataType.");
     AM_CHECK(itemsize() > 0, "Tensor dtype itemsize must be positive.");
 
     for (int i = 0; i < r; ++i) {

@@ -1,5 +1,5 @@
-#include "aethermind/base/tensor_view.h"
 #include "../test_utils/tensor_random.h"
+#include "aethermind/base/tensor_view.h"
 
 #include <array>
 #include <gtest/gtest.h>
@@ -77,6 +77,19 @@ TEST(TensorView, MutableTensorViewSupportsBorrowedRawParts) {
 
     view.data<float>()[4] = 99.0F;
     EXPECT_FLOAT_EQ(storage[4], 99.0F);
+}
+
+TEST(TensorView, RejectsScalableVectorDataType) {
+    alignas(64) std::array<float, 6> storage{};
+    constexpr std::array<int64_t, 2> kShape{2, 3};
+    constexpr std::array<int64_t, 2> kStrides{3, 1};
+
+    EXPECT_DEATH(TensorView(storage.data(),
+                            DataType::ScalableFloat(32, 4),
+                            IntArrayView{kShape.data(), kShape.size()},
+                            IntArrayView{kStrides.data(), kStrides.size()},
+                            64),
+                 "TensorView must borrow a valid Tensor-like state");
 }
 
 }// namespace

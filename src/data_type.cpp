@@ -14,6 +14,47 @@ namespace aethermind {
 SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_MAKE);
 #undef DEFINE_MAKE
 
+namespace {
+
+void ValidateCodeBitsConsistency(DLDataTypeCode code, int bits) {
+    if (code == DLDataTypeCode::Undefined) {
+        AM_CHECK(bits == 0, "Undefined type code requires bits==0, got bits={}", bits);
+        return;
+    }
+
+    AM_CHECK(bits > 0 || code == DLDataTypeCode::kOpaqueHandle,
+             "DataType bits must be positive except for void/opaque handles, got bits={}",
+             bits);
+
+    if (code == DLDataTypeCode::kBFloat) {
+        AM_CHECK(bits == 16, "kBFloat requires bits==16, got bits={}", bits);
+        return;
+    }
+
+    if (code == DLDataTypeCode::kFloat8_e3m4 || code == DLDataTypeCode::kFloat8_e4m3 ||
+        code == DLDataTypeCode::kFloat8_e4m3b11fnuz || code == DLDataTypeCode::kFloat8_e4m3fn ||
+        code == DLDataTypeCode::kFloat8_e4m3fnuz || code == DLDataTypeCode::kFloat8_e5m2 ||
+        code == DLDataTypeCode::kFloat8_e5m2fnuz || code == DLDataTypeCode::kFloat8_e8m0fnu) {
+        AM_CHECK(bits == 8, "Float8 type codes require bits==8, got bits={}", bits);
+        return;
+    }
+
+    if (code == DLDataTypeCode::kFloat6_e2m3fn || code == DLDataTypeCode::kFloat6_e3m2fn) {
+        AM_CHECK(bits == 6, "Float6 type codes require bits==6, got bits={}", bits);
+        return;
+    }
+
+    if (code == DLDataTypeCode::kFloat4_e2m1fn) {
+        AM_CHECK(bits == 4, "kFloat4_e2m1fn requires bits==4, got bits={}", bits);
+    }
+}
+
+}// namespace
+
+DataType::DataType(DLDataType dtype) : dtype_(dtype) {
+    ValidateCodeBitsConsistency(dtype.code, dtype.bits);
+}
+
 DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
     dtype_.code = code;
     dtype_.bits = static_cast<uint8_t>(bits);
@@ -24,24 +65,7 @@ DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
 
     dtype_.lanes = is_scalable ? static_cast<uint16_t>(-lanes) : static_cast<uint16_t>(lanes);
 
-    if (code == DLDataTypeCode::kBFloat) {
-        AM_CHECK(bits == 16);
-    }
-
-    if (code == DLDataTypeCode::kFloat8_e3m4 || code == DLDataTypeCode::kFloat8_e4m3 ||
-        code == DLDataTypeCode::kFloat8_e4m3b11fnuz || code == DLDataTypeCode::kFloat8_e4m3fn ||
-        code == DLDataTypeCode::kFloat8_e4m3fnuz || code == DLDataTypeCode::kFloat8_e5m2 ||
-        code == DLDataTypeCode::kFloat8_e5m2fnuz || code == DLDataTypeCode::kFloat8_e8m0fnu) {
-        AM_CHECK(bits == 8);
-    }
-
-    if (code == DLDataTypeCode::kFloat6_e2m3fn || code == DLDataTypeCode::kFloat6_e3m2fn) {
-        AM_CHECK(bits == 6);
-    }
-
-    if (code == DLDataTypeCode::kFloat4_e2m1fn) {
-        AM_CHECK(bits == 4);
-    }
+    ValidateCodeBitsConsistency(code, bits);
 }
 
 String DataTypeToString(const DataType& dtype) {

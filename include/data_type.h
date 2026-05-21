@@ -15,8 +15,6 @@
 #include "utils/half.h"
 
 #include <cstdint>
-#include <spdlog/spdlog.h>
-// #include <glog/logging.h>
 
 namespace aethermind {
 
@@ -77,79 +75,6 @@ struct DLDataType {
     uint16_t lanes;
 };
 
-// inline std::string TypeCode2Str(const DLDataType& dtype) {
-//     switch (dtype.code) {
-//         case DLDataTypeCode::kInt: {
-//             return "int";
-//         }
-//
-//         case DLDataTypeCode::kUInt: {
-//             return "uint";
-//         }
-//
-//         case DLDataTypeCode::kFloat: {
-//             return "float";
-//         }
-//
-//         case DLDataTypeCode::kHalf: {
-//             return "half";
-//         }
-//
-//         case DLDataTypeCode::kBfloat: {
-//             return "bfloat16";
-//         }
-//
-//         case DLDataTypeCode::kFloat8_e3m4: {
-//             return "float8_e3m4";
-//         }
-//
-//         case DLDataTypeCode::kFloat8_e4m3: {
-//             return "float8_e4m3";
-//         }
-//
-//         case DLDataTypeCode::kFloat8_e4m3b11fnuz: {
-//             return "float8_e4m3b11fnuz";
-//         }
-//
-//         case DLDataTypeCode::kFloat8_e4m3fn: {
-//             return "float8_e4m3fn";
-//         }
-//
-//         case DLDataTypeCode::kFloat8_e4m3fnuz: {
-//             return "float8_e4m3fnuz";
-//         }
-//
-//         case DLDataTypeCode::kFloat8_e5m2: {
-//             return "float8_e5m2";
-//         }
-//
-//         case DLDataTypeCode::kFloat8_e5m2fnuz: {
-//             return "float8_e5m2fnuz";
-//         }
-//
-//         case DLDataTypeCode::kFloat8_e8m0fnu: {
-//             return "float8_e8m0fnu";
-//         }
-//
-//         case DLDataTypeCode::kFloat6_e2m3fn: {
-//             return "float6_e2m3fn";
-//         }
-//
-//         case DLDataTypeCode::kFloat6_e3m2fn: {
-//             return "float6_e3m2fn";
-//         }
-//
-//         case DLDataTypeCode::kFloat4_e2m1fn: {
-//             return "float4_e2m1fn";
-//         }
-//
-//         default: {
-//             AETHERMIND_THROW(runtime_error) << "Unsupported data type";
-//             AETHERMIND_UNREACHABLE();
-//         }
-//     }
-// }
-
 class DataType {
 public:
     DataType() noexcept : dtype_({DLDataTypeCode::Undefined, 0, 0}) {}
@@ -158,7 +83,7 @@ public:
 
     DataType(DataType&& other) noexcept = default;
 
-    explicit DataType(DLDataType dtype) noexcept : dtype_(dtype) {}
+    explicit DataType(DLDataType dtype);
 
     DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable = false);
 
@@ -239,68 +164,66 @@ public:
     }
 
     AM_NODISCARD bool IsBFloat16() const {
-        return code() == DLDataTypeCode::kBFloat && bits() == 16;
+        return code() == DLDataTypeCode::kBFloat;
     }
 
     AM_NODISCARD bool IsFloat8() const {
-        return bits() == 8 &&
-               (code() == DLDataTypeCode::kFloat8_e3m4 || code() == DLDataTypeCode::kFloat8_e4m3 ||
-                code() == DLDataTypeCode::kFloat8_e4m3b11fnuz || code() == DLDataTypeCode::kFloat8_e4m3fn ||
-                code() == DLDataTypeCode::kFloat8_e4m3fnuz || code() == DLDataTypeCode::kFloat8_e5m2 ||
-                code() == DLDataTypeCode::kFloat8_e5m2fnuz || code() == DLDataTypeCode::kFloat8_e8m0fnu);
+        return code() == DLDataTypeCode::kFloat8_e3m4 || code() == DLDataTypeCode::kFloat8_e4m3 ||
+               code() == DLDataTypeCode::kFloat8_e4m3b11fnuz || code() == DLDataTypeCode::kFloat8_e4m3fn ||
+               code() == DLDataTypeCode::kFloat8_e4m3fnuz || code() == DLDataTypeCode::kFloat8_e5m2 ||
+               code() == DLDataTypeCode::kFloat8_e5m2fnuz || code() == DLDataTypeCode::kFloat8_e8m0fnu;
     }
 
     AM_NODISCARD bool IsFloat6() const {
-        return bits() == 6 &&
-               (code() == DLDataTypeCode::kFloat6_e2m3fn || code() == DLDataTypeCode::kFloat6_e3m2fn);
+        return code() == DLDataTypeCode::kFloat6_e2m3fn || code() == DLDataTypeCode::kFloat6_e3m2fn;
     }
 
     AM_NODISCARD bool IsFloat4() const {
-        return bits() == 4 && code() == DLDataTypeCode::kFloat4_e2m1fn;
+        return code() == DLDataTypeCode::kFloat4_e2m1fn;
     }
 
     AM_NODISCARD bool IsFloat8E3M4() const {
-        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e3m4;
+        return code() == DLDataTypeCode::kFloat8_e3m4;
     }
 
     AM_NODISCARD bool IsFloat8E4M3() const {
-        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3;
+        return code() == DLDataTypeCode::kFloat8_e4m3;
     }
 
     AM_NODISCARD bool IsFloat8E4M3b11fnuz() const {
-        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3b11fnuz;
+        return code() == DLDataTypeCode::kFloat8_e4m3b11fnuz;
     }
 
     AM_NODISCARD bool IsFloat8E4M3fn() const {
-        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3fn;
+        return code() == DLDataTypeCode::kFloat8_e4m3fn;
     }
 
     AM_NODISCARD bool IsFloat8E4M3fnuz() const {
-        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e4m3fnuz;
+        return code() == DLDataTypeCode::kFloat8_e4m3fnuz;
     }
 
     AM_NODISCARD bool IsFloat8E5M2() const {
-        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e5m2;
+        return code() == DLDataTypeCode::kFloat8_e5m2;
     }
 
     AM_NODISCARD bool IsFloat8E5M2fnuz() const {
-        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e5m2fnuz;
+        return code() == DLDataTypeCode::kFloat8_e5m2fnuz;
     }
 
     AM_NODISCARD bool IsFloat8E8M0fnu() const {
-        return bits() == 8 && code() == DLDataTypeCode::kFloat8_e8m0fnu;
+        return code() == DLDataTypeCode::kFloat8_e8m0fnu;
     }
 
     AM_NODISCARD bool IsFloat6E2M3fn() const {
-        return bits() == 6 && code() == DLDataTypeCode::kFloat6_e2m3fn;
+        return code() == DLDataTypeCode::kFloat6_e2m3fn;
     }
 
     AM_NODISCARD bool IsFloat6E3M2fn() const {
-        return bits() == 6 && code() == DLDataTypeCode::kFloat6_e3m2fn;
+        return code() == DLDataTypeCode::kFloat6_e3m2fn;
     }
 
     AM_NODISCARD bool IsFloat4E2M1fn() const {
-        return bits() == 4 && code() == DLDataTypeCode::kFloat4_e2m1fn;
+        return code() == DLDataTypeCode::kFloat4_e2m1fn;
     }
 
     AM_NODISCARD bool IsHandle() const {
@@ -308,7 +231,7 @@ public:
     }
 
     AM_NODISCARD bool IsVoid() const {
-        return code() == DLDataTypeCode::kOpaqueHandle && bits() == 0 && lanes() == 0;
+        return code() == DLDataTypeCode::kOpaqueHandle && bits() == 0 && raw_lanes() == 0;
     }
 
     AM_NODISCARD bool IsComplexHalf() const {
@@ -521,13 +444,12 @@ namespace std {
 
 template<>
 struct hash<aethermind::DataType> {
-    AM_NODISCARD static int cantor_pairing_function(int a, int b) { return (a + b) * (a + b + 1) / 2 + b; }
     std::size_t operator()(aethermind::DataType const& dtype) const noexcept {
-        int a = static_cast<int>(dtype.code());
-        int b = dtype.bits();
-        int c = dtype.lanes();
-        int d = cantor_pairing_function(a, b);
-        return cantor_pairing_function(c, d);
+        // code fits in 8 bits, bits in 8 bits, raw_lanes in 16 bits — pack into size_t.
+        auto h = static_cast<std::size_t>(dtype.code());
+        h |= static_cast<std::size_t>(dtype.bits()) << 8;
+        h |= static_cast<std::size_t>(dtype.raw_lanes()) << 16;
+        return h;
     }
 };
 

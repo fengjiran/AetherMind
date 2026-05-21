@@ -14,9 +14,7 @@ namespace aethermind {
 SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_MAKE);
 #undef DEFINE_MAKE
 
-namespace {
-
-void ValidateCodeBitsConsistency(DLDataTypeCode code, int bits) {
+void DataType::ValidateCodeBitsConsistency(DLDataTypeCode code, int bits) {
     if (code == DLDataTypeCode::Undefined) {
         AM_CHECK(bits == 0, "Undefined type code requires bits==0, got bits={}", bits);
         return;
@@ -31,10 +29,7 @@ void ValidateCodeBitsConsistency(DLDataTypeCode code, int bits) {
         return;
     }
 
-    if (code == DLDataTypeCode::kFloat8_e3m4 || code == DLDataTypeCode::kFloat8_e4m3 ||
-        code == DLDataTypeCode::kFloat8_e4m3b11fnuz || code == DLDataTypeCode::kFloat8_e4m3fn ||
-        code == DLDataTypeCode::kFloat8_e4m3fnuz || code == DLDataTypeCode::kFloat8_e5m2 ||
-        code == DLDataTypeCode::kFloat8_e5m2fnuz || code == DLDataTypeCode::kFloat8_e8m0fnu) {
+    if (IsFloat8Code(code)) {
         AM_CHECK(bits == 8, "Float8 type codes require bits==8, got bits={}", bits);
         return;
     }
@@ -49,10 +44,18 @@ void ValidateCodeBitsConsistency(DLDataTypeCode code, int bits) {
     }
 }
 
-}// namespace
-
 DataType::DataType(DLDataType dtype) : dtype_(dtype) {
     ValidateCodeBitsConsistency(dtype.code, dtype.bits);
+
+    auto lanes_signed = static_cast<int16_t>(dtype.lanes);
+    if (lanes_signed < -1) {
+        auto vscale = -lanes_signed;
+        AM_CHECK(vscale > 1, "Invalid vscale factor {} for scalable vector", vscale);
+    } else {
+        AM_CHECK(lanes_signed >= 0,
+                 "Fixed-length DataType lanes must be non-negative, got {}",
+                 lanes_signed);
+    }
 }
 
 DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {

@@ -143,6 +143,12 @@ TEST(DataTypeTest, VectorChecks) {
     // 测试向量布尔类型
     DataType vector_bool = DataType::Bool(4);
     EXPECT_TRUE(vector_bool.IsVectorBool());
+
+    DataType int1_vector = DataType::Int(1, 4);
+    EXPECT_FALSE(int1_vector.IsVectorBool());
+
+    DataType float1_vector = DataType::Float(1, 4);
+    EXPECT_FALSE(float1_vector.IsVectorBool());
 }
 
 // 测试DataType的辅助方法
@@ -252,6 +258,9 @@ TEST(DataTypeTest, EdgeCases) {
     DataType vector_bool_2 = DataType::Bool(2);
     EXPECT_TRUE(vector_bool_2.IsVectorBool());
     EXPECT_EQ(vector_bool_2.lanes(), 2);
+
+    DataType scalable_bool = DataType::ScalableBool(2);
+    EXPECT_TRUE(scalable_bool.IsVectorBool());
 
     // 测试多种浮点类型变体
     DataType f8_e3m4 = DataType::Float8E3M4();

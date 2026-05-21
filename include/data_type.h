@@ -80,16 +80,16 @@ class DataType {
 public:
     DataType() noexcept : dtype_({DLDataTypeCode::Undefined, 0, 0}) {}
 
-    DataType(const DataType& other) noexcept : dtype_(other.dtype_) {}
-
-    DataType(DataType&& other) noexcept = default;
+    // DataType(const DataType& other) noexcept = default;
+    //
+    // DataType(DataType&& other) noexcept = default;
 
     explicit DataType(DLDataType dtype);
 
     DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable = false);
 
-    DataType& operator=(const DataType&) = default;
-    DataType& operator=(DataType&&) noexcept = default;
+    // DataType& operator=(const DataType&) = default;
+    // DataType& operator=(DataType&&) noexcept = default;
 
     operator DLDataType() const {// NOLINT
         return dtype_;
@@ -170,10 +170,7 @@ public:
     }
 
     AM_NODISCARD bool IsFloat8() const {
-        return code() == DLDataTypeCode::kFloat8_e3m4 || code() == DLDataTypeCode::kFloat8_e4m3 ||
-               code() == DLDataTypeCode::kFloat8_e4m3b11fnuz || code() == DLDataTypeCode::kFloat8_e4m3fn ||
-               code() == DLDataTypeCode::kFloat8_e4m3fnuz || code() == DLDataTypeCode::kFloat8_e5m2 ||
-               code() == DLDataTypeCode::kFloat8_e5m2fnuz || code() == DLDataTypeCode::kFloat8_e8m0fnu;
+        return IsFloat8Code(code());
     }
 
     AM_NODISCARD bool IsFloat6() const {
@@ -270,7 +267,7 @@ public:
     }
 
     AM_NODISCARD bool IsVectorBool() const {
-        return IsScalableOrFixedLengthVector() && bits() == 1;
+        return IsScalableOrFixedLengthVector() && IsBool();
     }
 
     AM_NODISCARD DataType WithLanes(int lanes) const {
@@ -420,6 +417,24 @@ public:
     }
 
 private:
+    static constexpr bool IsFloat8Code(DLDataTypeCode code) {
+        switch (code) {
+            case DLDataTypeCode::kFloat8_e3m4:
+            case DLDataTypeCode::kFloat8_e4m3:
+            case DLDataTypeCode::kFloat8_e4m3b11fnuz:
+            case DLDataTypeCode::kFloat8_e4m3fn:
+            case DLDataTypeCode::kFloat8_e4m3fnuz:
+            case DLDataTypeCode::kFloat8_e5m2:
+            case DLDataTypeCode::kFloat8_e5m2fnuz:
+            case DLDataTypeCode::kFloat8_e8m0fnu:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static void ValidateCodeBitsConsistency(DLDataTypeCode code, int bits);
+
     DLDataType dtype_{};
 };
 
@@ -465,6 +480,11 @@ namespace std {
 template<>
 struct hash<aethermind::DataType> {
     std::size_t operator()(aethermind::DataType const& dtype) const noexcept {
+        // Undefined is equal to any other Undefined regardless of bits/lanes;
+        // must hash to a fixed value to satisfy hash == equality contract.
+        if (dtype.code() == aethermind::DLDataTypeCode::Undefined) {
+            return 0;
+        }
         // code fits in 8 bits, bits in 8 bits, raw_lanes in 16 bits — pack into size_t.
         auto h = static_cast<std::size_t>(dtype.code());
         h |= static_cast<std::size_t>(dtype.bits()) << 8;

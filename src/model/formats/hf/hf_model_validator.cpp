@@ -459,6 +459,60 @@ Status ValidateUniformLinearDType(std::string_view weight_name,
     return Status::Ok();
 }
 
+Status ValidateResolvedModelDTypes(const HfModelConfig& config,
+                                   const ResolvedModelWeights& resolved,
+                                   const ModelValidationOptions& options) {
+    bool has_linear_dtype = false;
+    DataType linear_dtype{};
+
+    const auto validate_linear = [&](std::string_view weight_name, const RawWeightView& view) -> Status {
+        AM_RETURN_IF_ERROR(ValidateWeightDType(view, weight_name));
+        if (options.require_uniform_linear_dtype) {
+            AM_RETURN_IF_ERROR(ValidateUniformLinearDType(weight_name, view, &has_linear_dtype, &linear_dtype));
+        }
+        return Status::Ok();
+    };
+
+    const auto validate_norm = [](std::string_view weight_name, const RawWeightView& view) -> Status {
+        return ValidateWeightDType(view, weight_name);
+    };
+
+    AM_RETURN_IF_ERROR(validate_linear("model.embed_tokens.weight", resolved.embed_tokens));
+    AM_RETURN_IF_ERROR(validate_norm("model.norm.weight", resolved.final_norm));
+
+    if (resolved.lm_head.has_value()) {
+        AM_RETURN_IF_ERROR(ValidateWeightDType(*resolved.lm_head, "lm_head.weight"));
+        if (config.tie_word_embeddings && resolved.lm_head->dtype != resolved.embed_tokens.dtype) {
+            return Status::InvalidArgument(
+                    "Tied embedding dtype mismatch: tensor=lm_head.weight, expected=" +
+                    std::string(DataTypeToString(resolved.embed_tokens.dtype)) +
+                    ", actual=" + std::string(DataTypeToString(resolved.lm_head->dtype)));
+        }
+        if (options.require_uniform_linear_dtype) {
+            AM_RETURN_IF_ERROR(ValidateUniformLinearDType("lm_head.weight", *resolved.lm_head, &has_linear_dtype, &linear_dtype));
+        }
+    }
+
+    for (size_t i = 0; i < resolved.layers.size(); ++i) {
+        const auto& layer = resolved.layers[i];
+        const std::string prefix = "model.layers." + std::to_string(i);
+
+        AM_RETURN_IF_ERROR(validate_norm(prefix + ".input_layernorm.weight", layer.norm.input_rmsnorm));
+        AM_RETURN_IF_ERROR(validate_norm(prefix + ".post_attention_layernorm.weight", layer.norm.post_attn_rmsnorm));
+
+        AM_RETURN_IF_ERROR(validate_linear(prefix + ".self_attn.q_proj.weight", layer.attn.q_proj));
+        AM_RETURN_IF_ERROR(validate_linear(prefix + ".self_attn.k_proj.weight", layer.attn.k_proj));
+        AM_RETURN_IF_ERROR(validate_linear(prefix + ".self_attn.v_proj.weight", layer.attn.v_proj));
+        AM_RETURN_IF_ERROR(validate_linear(prefix + ".self_attn.o_proj.weight", layer.attn.o_proj));
+
+        AM_RETURN_IF_ERROR(validate_linear(prefix + ".mlp.gate_proj.weight", layer.mlp.gate_proj));
+        AM_RETURN_IF_ERROR(validate_linear(prefix + ".mlp.up_proj.weight", layer.mlp.up_proj));
+        AM_RETURN_IF_ERROR(validate_linear(prefix + ".mlp.down_proj.weight", layer.mlp.down_proj));
+    }
+
+    return Status::Ok();
+}
+
 }// namespace
 
 Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const ModelValidationOptions& options) {
@@ -603,7 +657,7 @@ Status HfModelValidator::ValidateWeightSet(const HfModelConfig& config,
 
 Status HfModelValidator::ValidateResolvedModel(const HfModelConfig& config,
                                                const ResolvedModelWeights& resolved,
-                                               AM_MAYBE_UNUSED const ModelValidationOptions& options) {
+                                               const ModelValidationOptions& options) {
     AM_RETURN_IF_ERROR(RequirePositive(config.num_attention_heads, "num_attention_heads"));
     AM_RETURN_IF_ERROR(RequirePositive(config.num_hidden_layers, "num_hidden_layers"));
 
@@ -667,6 +721,8 @@ Status HfModelValidator::ValidateResolvedModel(const HfModelConfig& config,
                                        {hidden, intermediate},
                                        prefix + ".mlp.down_proj.weight"));
     }
+
+    AM_RETURN_IF_ERROR(ValidateResolvedModelDTypes(config, resolved, options));
 
     return Status::Ok();
 }

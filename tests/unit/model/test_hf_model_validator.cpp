@@ -521,6 +521,97 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsResolvedMissingLmHeadWhenTied) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedUnsupportedLinearDType) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.layers[0].attn.q_proj.dtype = DataType::Int(8);
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("model.layers.0.self_attn.q_proj.weight"), std::string::npos);
+    EXPECT_NE(status.message().find("Invalid tensor dtype"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedUnsupportedNormDType) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.final_norm.dtype = DataType::Int(8);
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("model.norm.weight"), std::string::npos);
+    EXPECT_NE(status.message().find("Invalid tensor dtype"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AcceptsResolvedSupportedNonFloat32NormDType) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.final_norm.dtype = DataType::Float(16);
+    resolved.layers[0].norm.input_rmsnorm.dtype = DataType::BFloat(16);
+    resolved.layers[0].norm.post_attn_rmsnorm.dtype = DataType::Float(16);
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedMixedLinearDTypeByDefault) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.layers[0].attn.q_proj.dtype = DataType::Float(16);
+    resolved.layers[0].attn.k_proj.dtype = DataType::BFloat(16);
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("Mixed linear tensor dtype"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, AllowsResolvedMixedLinearDTypeWhenUniformDTypeIsDisabled) {
+    const HfModelConfig config = MakeResolvedShapeConfig();
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.layers[0].attn.q_proj.dtype = DataType::Float(16);
+    resolved.layers[0].attn.k_proj.dtype = DataType::BFloat(16);
+    ModelValidationOptions options;
+    options.require_uniform_linear_dtype = false;
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved, options);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedEmbedTokensDTypeMismatchWithLinear) {
+    HfModelConfig config = MakeResolvedShapeConfig();
+    config.tie_word_embeddings = true;
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config, false);
+    resolved.embed_tokens.dtype = DataType::Float(16);
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("Mixed linear tensor dtype"), std::string::npos);
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedTiedLmHeadDTypeMismatch) {
+    HfModelConfig config = MakeResolvedShapeConfig();
+    config.tie_word_embeddings = true;
+    ResolvedModelWeights resolved = MakeResolvedModelWeights(config);
+    resolved.lm_head->dtype = DataType::Float(16);
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("Tied embedding dtype mismatch"), std::string::npos);
+    EXPECT_NE(status.message().find("lm_head.weight"), std::string::npos);
+}
+
 TEST(ModelLoader_HfModelValidatorTest, RejectsMissingEmbeddingWeight) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.num_hidden_layers = 1;

@@ -154,13 +154,25 @@ TEST(DataTypeTest, VectorChecks) {
 // 测试DataType的辅助方法
 TEST(DataTypeTest, HelperMethods) {
     DataType float32 = DataType::Float(32);
-    EXPECT_EQ(float32.nbytes(), 4);// 32 bits = 4 bytes
+    EXPECT_EQ(float32.nbytes(), 4);// scalar: 32 bits = 4 bytes
+
+    DataType float32_vec = DataType::Float(32, 4);
+    EXPECT_EQ(float32_vec.nbytes(), 16);// vector: 4 × 32 bits = 16 bytes
 
     DataType int8 = DataType::Int(8);
-    EXPECT_EQ(int8.nbytes(), 1);// 8 bits = 1 byte
+    EXPECT_EQ(int8.nbytes(), 1);// scalar: 8 bits = 1 byte
 
     DataType bool_type = DataType::Bool();
-    EXPECT_EQ(bool_type.nbytes(), 1);// 1 bit is stored as 1 byte
+    EXPECT_EQ(bool_type.nbytes(), 1);// scalar bool: 1 bit → 1 byte
+
+    DataType boolx4 = DataType::Bool(4);
+    EXPECT_EQ(boolx4.nbytes(), 1);// packed sub-byte: 4 × 1 bit = 1 byte
+
+    DataType f6x2 = DataType::Float6E2M3FN(2);
+    EXPECT_EQ(f6x2.nbytes(), 2);// packed sub-byte: 2 × 6 bits = 2 bytes
+
+    DataType f4x2 = DataType::Float4E2M1FN(2);
+    EXPECT_EQ(f4x2.nbytes(), 1);// packed sub-byte: 2 × 4 bits = 1 byte
 
     DataType scalable_float32 = DataType::ScalableFloat(32, 4);
     EXPECT_DEATH(static_cast<void>(scalable_float32.nbytes()), "Scalable vector DataType");
@@ -363,14 +375,23 @@ TEST(DataTypeTest, ScalableVectorRequiresExplicitFactory) {
     EXPECT_DEATH(DataType(DLDataTypeCode::kFloat, 32, -4), "Fixed-length DataType lanes");
 }
 
+TEST(DataTypeTest, LanesZeroOnlyValidForVoidOrUndefined) {
+    EXPECT_DEATH(DataType(DLDataTypeCode::kFloat, 32, 0), "lanes=0 is only valid");
+    EXPECT_DEATH(DataType(DLDataType{DLDataTypeCode::kInt, 32, 0}), "lanes=0 is only valid");
+
+    DataType void_type = DataType::Void();
+    EXPECT_TRUE(void_type.IsVoid());
+    EXPECT_EQ(void_type.lanes(), 0);
+
+    DataType undefined;
+    EXPECT_EQ(undefined.lanes(), 0);
+}
+
 // 测试DataTypeToString函数对边界情况的处理
 TEST(DataTypeToStringTest, EdgeCases) {
     // 测试默认构造的DataType
     DataType undefined;
-    // 根据函数实现，未定义类型可能不会在SCALAR_TYPE_TO_CPP_TYPE_AND_NAME中匹配到
-    // 因此结果可能是空字符串或其他值，这里使用EXPECT_FALSE来验证它不是任何已知类型
-    EXPECT_FALSE(DataTypeToString(undefined) == "bool");
-    EXPECT_FALSE(DataTypeToString(undefined) == "void");
+    EXPECT_EQ(DataTypeToString(undefined), "undefined");
 
     // 测试非标准但有效的组合
     DataType custom_int(DLDataTypeCode::kInt, 24, 1);

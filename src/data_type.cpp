@@ -47,13 +47,16 @@ void DataType::ValidateCodeBitsConsistency(DLDataTypeCode code, int bits) {
 DataType::DataType(DLDataType dtype) : dtype_(dtype) {
     ValidateCodeBitsConsistency(dtype.code, dtype.bits);
 
-    auto lanes_signed = static_cast<int16_t>(dtype.lanes);
-    if (lanes_signed < -1) {
+    if (auto lanes_signed = static_cast<int16_t>(dtype.lanes); lanes_signed < -1) {
         auto vscale = -lanes_signed;
         AM_CHECK(vscale > 1, "Invalid vscale factor {} for scalable vector", vscale);
+    } else if (lanes_signed == 0) {
+        AM_CHECK(dtype.code == DLDataTypeCode::kOpaqueHandle || dtype.code == DLDataTypeCode::Undefined,
+                 "lanes=0 is only valid for Void or Undefined, got code={}",
+                 static_cast<int>(dtype.code));
     } else {
-        AM_CHECK(lanes_signed >= 0,
-                 "Fixed-length DataType lanes must be non-negative, got {}",
+        AM_CHECK(lanes_signed > 0,
+                 "Fixed-length DataType lanes must be positive, got {}",
                  lanes_signed);
     }
 }
@@ -64,8 +67,12 @@ DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
 
     if (is_scalable) {
         AM_CHECK(lanes > 1, "Invalid value for vscale factor {}", lanes);
+    } else if (lanes == 0) {
+        AM_CHECK(code == DLDataTypeCode::kOpaqueHandle || code == DLDataTypeCode::Undefined,
+                 "lanes=0 is only valid for Void or Undefined, got code={}",
+                 static_cast<int>(code));
     } else {
-        AM_CHECK(lanes >= 0, "Fixed-length DataType lanes must be non-negative, got {}", lanes);
+        AM_CHECK(lanes > 0, "Fixed-length DataType lanes must be positive, got {}", lanes);
     }
 
     dtype_.lanes = is_scalable ? static_cast<uint16_t>(-lanes) : static_cast<uint16_t>(lanes);
@@ -74,6 +81,10 @@ DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
 }
 
 String DataTypeToString(const DataType& dtype) {
+    if (dtype.code() == DLDataTypeCode::Undefined) {
+        return "undefined";
+    }
+
     if (dtype.code() == DLDataTypeCode::kUInt && dtype.bits() == 1 && dtype.raw_lanes() == 1) {
         return "bool";
     }

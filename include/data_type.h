@@ -115,7 +115,7 @@ public:
 
     AM_NODISCARD int nbytes() const {
         AM_CHECK(!IsScalableVector(), "Scalable vector DataType has runtime-dependent byte size.");
-        return (bits() + 7) / 8;
+        return (bits() * lanes() + 7) / 8;
     }
 
     AM_NODISCARD int GetScaleFactor() const {

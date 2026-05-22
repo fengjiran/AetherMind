@@ -1,11 +1,13 @@
+// Implements DataType validation, C++ type mapping, and debug string formatting.
 //
-// Created by 赵丹 on 25-7-2.
-//
+// The implementation keeps all code/bits and raw lane encoding checks in one place so that
+// DataType construction remains consistent whether callers pass a raw DLDataType or use a factory.
 
 #include "data_type.h"
 
 namespace aethermind {
 
+// Keep the C++ scalar mapping table as the single source for DataType::Make specializations.
 #define DEFINE_MAKE(code, bits, lanes, T, name) \
     template<>                                  \
     DataType DataType::Make<T>() {              \
@@ -47,6 +49,7 @@ void DataType::ValidateCodeBitsConsistency(DLDataTypeCode code, int bits) {
 DataType::DataType(DLDataType dtype) : dtype_(dtype) {
     ValidateCodeBitsConsistency(dtype.code, dtype.bits);
 
+    // Raw DLDataType input carries the already-encoded lane field, including scalable vectors.
     if (auto lanes_signed = static_cast<int16_t>(dtype.lanes); lanes_signed < -1) {
         auto vscale = -lanes_signed;
         AM_CHECK(vscale > 1, "Invalid vscale factor {} for scalable vector", vscale);

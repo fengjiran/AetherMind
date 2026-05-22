@@ -1,6 +1,7 @@
+// Defines tensor element data type metadata and its validated C++ wrapper.
 //
-// Created by richard on 6/30/25.
-//
+// This header keeps the DLPack-style `bits`/`lanes` layout visible for interop while
+// `DataType` centralizes validation and byte-size semantics used by tensor storage.
 
 #ifndef AETHERMIND_DATA_TYPE_H
 #define AETHERMIND_DATA_TYPE_H
@@ -45,37 +46,29 @@ enum class DLDataTypeCode : uint8_t {
     Undefined,
 };
 
-/*!
- * \brief The data type the tensor can hold. The data type is assumed to follow the
- * native endian-ness. An explicit error message should be raised when attempting to
- * export an array with non-native endianness
- *
- *  Examples
- *   - float: type_code = 2, bits = 32, lanes = 1
- *   - float4(vectorized 4 float): type_code = 2, bits = 32, lanes = 4
- *   - int8: type_code = 0, bits = 8, lanes = 1
- *   - std::complex<float>: type_code = 5, bits = 64, lanes = 1
- *   - bool: type_code = 6, bits = 8, lanes = 1 (as per common array library convention, the underlying storage size of bool is 8 bits)
- *   - float8_e4m3: type_code = 8, bits = 8, lanes = 1 (packed in memory)
- *   - float6_e3m2fn: type_code = 16, bits = 6, lanes = 1 (packed in memory)
- *   - float4_e2m1fn: type_code = 17, bits = 4, lanes = 1 (packed in memory)
- *
- *  When a sub-byte type is packed, DLPack requires the data to be in little bit-endian, i.e.,
- *  for a packed data set D ((D >> (i * bits)) && bit_mask) stores the i-th element.
- */
+/// Raw tensor element type metadata.
+///
+/// `bits` is the width of one lane. `lanes` is encoded as an unsigned field for ABI and
+/// interop compatibility, but values are interpreted through `int16_t`: non-negative values are
+/// fixed-length lanes, values less than `-1` encode scalable-vector vscale factors, and `-1` is
+/// reserved. Sub-byte lanes are packed little bit-endian when materialized in tensor buffers.
 struct DLDataType {
-    // Data type code.
     DLDataTypeCode code;
 
-    // Number of bits per data element.
-    // For example, 8 for int8_t, 32 for float.
     uint8_t bits;
 
-    // Number of lanes per data element. Values that decode to int16_t < -1 are reserved for
-    // experimental scalable-vector types and must not enter tensor storage paths.
     uint16_t lanes;
 };
 
+/// Validated value type for one complete tensor element type.
+///
+/// `DataType` preserves the DLPack-style model where `bits` describes one lane and `lanes` is part
+/// of the type. For example, `Float(32, 4)` is one 4-lane tensor element, not four independent
+/// tensor elements; `nbytes()` therefore returns the byte size of the whole type, including fixed
+/// lanes and packed sub-byte lanes.
+///
+/// Constructors validate the code/bits pairing and the lane encoding. Scalable-vector types have
+/// runtime-dependent storage size, so APIs that require a compile-time lane count reject them.
 class DataType {
 public:
     DataType() noexcept : dtype_({DLDataTypeCode::Undefined, 0, 0}) {}

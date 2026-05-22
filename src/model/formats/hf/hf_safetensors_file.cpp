@@ -309,6 +309,8 @@ private:
 }// namespace hf
 
 StatusOr<HfSafetensorsFile> HfSafetensorsFile::Open(const std::filesystem::path& safetensors_path) {
+    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(safetensors_path, "HF safetensors file"));
+
     auto mmap = MemoryMappedFile::Map(safetensors_path);
     if (!mmap.ok()) {
         return mmap.status();

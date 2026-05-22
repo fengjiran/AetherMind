@@ -76,6 +76,8 @@ StatusOr<DataType> ParseSafetensorsDType(std::string_view dtype_text) {
 }
 
 StatusOr<std::string> ReadFileText(const std::filesystem::path& path) {
+    AM_RETURN_IF_ERROR(RejectExistingPathIfSymlink(path, "HF text file"));
+
     std::error_code error;
     if (!std::filesystem::exists(path, error) || error) {
         if (error) {
@@ -101,14 +103,17 @@ StatusOr<std::string> ReadFileText(const std::filesystem::path& path) {
         return Status::Internal(FormatPathMessage("Failed to determine file size", path));
     }
 
-    constexpr size_t kMaxConfigSize = 16 * 1024 * 1024;// 16MB
-    if (static_cast<size_t>(end_pos) > kMaxConfigSize) {
+    if (constexpr size_t kMaxTextFileSize = 16ULL * 1024 * 1024; static_cast<size_t>(end_pos) > kMaxTextFileSize) {
         return Status::InvalidArgument(
                 FormatPathMessage("File exceeds maximum size", path));
     }
 
     std::string text(end_pos, '\0');
     stream.seekg(0, std::ios::beg);
+    if (!stream) {
+        return Status::Internal(FormatPathMessage("Failed to seek file", path));
+    }
+
     if (!text.empty()) {
         stream.read(text.data(), static_cast<std::streamsize>(text.size()));
         if (!stream) {
@@ -116,6 +121,30 @@ StatusOr<std::string> ReadFileText(const std::filesystem::path& path) {
         }
     }
     return text;
+}
+
+Status RejectExistingPathIfSymlink(const std::filesystem::path& path,
+                                std::string_view file_role) {
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(path, error);
+    if (error) {
+        if (error == std::errc::no_such_file_or_directory ||
+            error == std::errc::not_a_directory) {
+            return Status::Ok();
+        }
+        std::string message = "Failed to inspect ";
+        message += file_role;
+        message += " symlink status";
+        return Status::Internal(FormatPathMessage(message, path));
+    }
+
+    if (std::filesystem::is_symlink(status)) {
+        std::string message(file_role);
+        message += " must not be a symlink";
+        return Status::InvalidArgument(FormatPathMessage(message, path));
+    }
+
+    return Status::Ok();
 }
 
 }// namespace aethermind::hf

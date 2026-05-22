@@ -468,10 +468,8 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
 
 }// namespace aethermind
 
-namespace std {
-
 template<>
-struct hash<aethermind::DataType> {
+struct std::hash<aethermind::DataType> {
     std::size_t operator()(aethermind::DataType const& dtype) const noexcept {
         // Undefined is equal to any other Undefined regardless of bits/lanes;
         // must hash to a fixed value to satisfy hash == equality contract.
@@ -484,8 +482,6 @@ struct hash<aethermind::DataType> {
         h |= static_cast<std::size_t>(dtype.raw_lanes()) << 16;
         return h;
     }
-};
-
-}// namespace std
+};// namespace std
 
 #endif// AETHERMIND_DATA_TYPE_H

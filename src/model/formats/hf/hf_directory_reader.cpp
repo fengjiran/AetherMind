@@ -9,9 +9,17 @@
 #include <system_error>
 #include <vector>
 
+// Implements the HF directory front-end for Phase 1 model loading.
+// The reader accepts only local safetensors layouts and keeps path validation
+// close to weight loading so sharded indexes cannot redirect tensor reads
+// outside the model directory.
 namespace aethermind {
 namespace {
 
+// Parses the small subset of Hugging Face `config.json` required by the runtime.
+// Unknown fields are intentionally skipped because upstream model configs often
+// contain tokenizer, training, or architecture-specific metadata that Phase 1
+// does not consume.
 class ConfigJsonParser final : public hf::HfJsonReader {
 public:
     explicit ConfigJsonParser(std::string_view input) noexcept
@@ -52,6 +60,8 @@ public:
 
 private:
     Status ParseField(const std::string& key, HfModelConfig& config) {
+        // Keep field-level diagnostics tied to the HF key that failed instead
+        // of exposing only the low-level JSON parser error.
         const auto parse_into = [&](auto parse, auto& out) -> Status {
             auto value = parse();
             if (!value.ok()) {
@@ -296,18 +306,11 @@ bool IsPathWithinDirectory(const std::filesystem::path& child,
 
 Status ValidateShardPathIsContained(const std::filesystem::path& canonical_model_dir,
                                     const std::filesystem::path& shard_path) {
+    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(shard_path, "HF safetensors shard file"));
+
+    // Canonicalize after rejecting symlinks so an index entry cannot escape the
+    // model directory through either `..` components or symlink traversal.
     std::error_code error;
-    const auto symlink_status = std::filesystem::symlink_status(shard_path, error);
-    if (error) {
-        return Status::Internal(
-                hf::FormatPathMessage("Failed to inspect safetensors shard symlink status", shard_path));
-    }
-
-    if (std::filesystem::is_symlink(symlink_status)) {
-        return Status::InvalidArgument(
-                hf::FormatPathMessage("Safetensors shard path must not be a symlink", shard_path));
-    }
-
     const auto canonical_shard_path = std::filesystem::canonical(shard_path, error);
     if (error) {
         return Status::Internal(
@@ -441,11 +444,16 @@ StatusOr<RawWeightTable> HfDirectoryReader::LoadRawWeightTable() const {
 }
 
 StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::filesystem::path& model_dir) {
+    // Reject an empty path before filesystem probing so the caller gets a usage
+    // error instead of a platform-dependent filesystem diagnostic.
     if (model_dir.empty()) {
         return Status::InvalidArgument("HF model directory path must not be empty");
     }
 
     std::error_code error;
+    // First validate the root directory. All later paths are interpreted relative
+    // to this directory, so missing or non-directory roots fail before checking
+    // any HF-specific files.
     if (!std::filesystem::exists(model_dir, error) || error) {
         if (error) {
             return Status::Internal(
@@ -468,6 +476,9 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
     const auto safetensors_path = model_dir / "model.safetensors";
     const auto safetensors_index_path = model_dir / "model.safetensors.index.json";
 
+    // `config.json` is required for every supported HF layout because it provides
+    // the architecture and tensor-shape metadata used before weight materialization.
+    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(config_path, "HF config file"));
     if (!std::filesystem::exists(config_path, error) || error) {
         if (error) {
             return Status::Internal(
@@ -486,24 +497,40 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
                 hf::FormatPathMessage("config.json path is not a regular file", config_path));
     }
 
+    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(safetensors_path, "HF safetensors file"));
     const bool has_single_file = std::filesystem::exists(safetensors_path, error);
     if (error) {
         return Status::Internal(
                 hf::FormatPathMessage("Failed to stat model.safetensors", safetensors_path));
     }
 
+    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(safetensors_index_path, "HF safetensors index file"));
     const bool has_sharded_index = std::filesystem::exists(safetensors_index_path, error);
     if (error) {
         return Status::Internal(
                 hf::FormatPathMessage("Failed to stat model.safetensors.index.json", safetensors_index_path));
     }
 
+    // Treat simultaneous single-file and sharded layouts as ambiguous instead of
+    // choosing one implicitly; otherwise stale files could silently change which
+    // weights are loaded.
     if (has_single_file && has_sharded_index) {
         return Status(StatusCode::kFailedPrecondition,
                       hf::FormatPathMessage("HF model directory has conflicting single-file and sharded safetensors layouts",
                                             model_dir));
     }
 
+    if (has_single_file && (!std::filesystem::is_regular_file(safetensors_path, error) || error)) {
+        if (error) {
+            return Status::Internal(
+                    hf::FormatPathMessage("Failed to inspect model.safetensors type", safetensors_path));
+        }
+        return Status::InvalidArgument(
+                hf::FormatPathMessage("model.safetensors path is not a regular file", safetensors_path));
+    }
+
+    // The sharded path is only an index descriptor at this layer. Individual
+    // shard files are validated later against the index before loading.
     if (has_sharded_index && (!std::filesystem::is_regular_file(safetensors_index_path, error) || error)) {
         if (error) {
             return Status::Internal(
@@ -533,6 +560,8 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
         };
     }
 
+    // A directory without either supported weight entry point is not a loadable
+    // Phase 1 HF safetensors model, even if other HF files are present.
     return Status::NotFound(
             hf::FormatPathMessage("HF model directory is missing both model.safetensors and model.safetensors.index.json",
                                   model_dir));

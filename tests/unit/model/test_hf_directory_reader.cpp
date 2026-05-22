@@ -84,6 +84,26 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsConfigJsonThatIsNotARegularFile) 
     EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsConfigJsonSymlink) {
+    TempDirectory temp_dir;
+    TempDirectory outside_dir;
+    WriteTextFile(outside_dir.path() / "config.json", "{}");
+    WriteBinaryFile(temp_dir.path() / "model.safetensors");
+
+    std::error_code error;
+    std::filesystem::create_symlink(outside_dir.path() / "config.json",
+                                    temp_dir.path() / "config.json",
+                                    error);
+    if (error) {
+        GTEST_SKIP() << "Unable to create symlink: " << error.message();
+    }
+
+    const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
+
+    ASSERT_FALSE(layout.ok());
+    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+}
+
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingSafetensorsFile) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
@@ -117,6 +137,26 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsConflictingSingleAndShardedLayout
     EXPECT_EQ(layout.status().code(), StatusCode::kFailedPrecondition);
 }
 
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsSingleSafetensorsSymlink) {
+    TempDirectory temp_dir;
+    TempDirectory outside_dir;
+    WriteTextFile(temp_dir.path() / "config.json", "{}");
+    WriteBinaryFile(outside_dir.path() / "model.safetensors");
+
+    std::error_code error;
+    std::filesystem::create_symlink(outside_dir.path() / "model.safetensors",
+                                    temp_dir.path() / "model.safetensors",
+                                    error);
+    if (error) {
+        GTEST_SKIP() << "Unable to create symlink: " << error.message();
+    }
+
+    const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
+
+    ASSERT_FALSE(layout.ok());
+    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+}
+
 TEST(ModelLoader_HfDirectoryReaderTest, InspectShardedDirectory) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
@@ -146,10 +186,50 @@ TEST(ModelLoader_HfDirectoryReaderTest, ParsesSafetensorsIndexMetadataTotalSize)
     EXPECT_EQ(index->WeightMap().at("tensor_a"), "model-00001-of-00001.safetensors");
 }
 
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsSafetensorsIndexLoadFromSymlink) {
+    TempDirectory temp_dir;
+    TempDirectory outside_dir;
+    WriteTextFile(outside_dir.path() / "model.safetensors.index.json",
+                  R"({"weight_map":{"tensor_a":"model-00001-of-00001.safetensors"}})");
+
+    std::error_code error;
+    std::filesystem::create_symlink(outside_dir.path() / "model.safetensors.index.json",
+                                    temp_dir.path() / "model.safetensors.index.json",
+                                    error);
+    if (error) {
+        GTEST_SKIP() << "Unable to create symlink: " << error.message();
+    }
+
+    const auto index = HfSafetensorsIndex::Load(temp_dir.path() / "model.safetensors.index.json");
+
+    ASSERT_FALSE(index.ok());
+    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+}
+
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardedIndexPathThatIsNotARegularFile) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", "{}");
     std::filesystem::create_directory(temp_dir.path() / "model.safetensors.index.json");
+
+    const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
+
+    ASSERT_FALSE(layout.ok());
+    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardedIndexSymlink) {
+    TempDirectory temp_dir;
+    TempDirectory outside_dir;
+    WriteTextFile(temp_dir.path() / "config.json", "{}");
+    WriteTextFile(outside_dir.path() / "model.safetensors.index.json", "{}");
+
+    std::error_code error;
+    std::filesystem::create_symlink(outside_dir.path() / "model.safetensors.index.json",
+                                    temp_dir.path() / "model.safetensors.index.json",
+                                    error);
+    if (error) {
+        GTEST_SKIP() << "Unable to create symlink: " << error.message();
+    }
 
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 

@@ -32,7 +32,7 @@ CpuBackend::CpuBackend() {
 
 void CpuBackend::RegisterBuiltinKernels() {
     const Status status = kernel_registry_.Register(KernelDescriptor{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .selector = MakeDefaultCpuSelector(),
             .kernel_func = &CpuRmsNormKernel,
             .name = "cpu::rmsnorm_f32_scalar",

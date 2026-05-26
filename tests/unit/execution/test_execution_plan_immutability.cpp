@@ -125,7 +125,7 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -137,7 +137,7 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
 
     const std::vector<ExecutionStep>& steps = plan->steps();
     EXPECT_EQ(steps.size(), 1U);
-    EXPECT_EQ(steps.front().op_type, OpType::kRMSNorm);
+    EXPECT_EQ(steps.front().op_type, OpType::kRmsNorm);
     EXPECT_NE(steps.front().fn, nullptr);
 }
 
@@ -149,14 +149,14 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {.bytes = 64, .alignment = 32, .offset = 999},
     });
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -196,7 +196,7 @@ TEST(ExecutionPlanImmutability, PackedParamsLifetimeManagedByModelInstance) {
 
     ModelInstance model_instance;
     ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<ImmutablePackedWeights>(
-                                                          OpType::kRMSNorm,
+                                                          OpType::kRmsNorm,
                                                           selector,
                                                           MakeTestBuffer(256),
                                                           &packed_destroyed))
@@ -204,7 +204,7 @@ TEST(ExecutionPlanImmutability, PackedParamsLifetimeManagedByModelInstance) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -239,7 +239,7 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -270,7 +270,7 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),

@@ -26,7 +26,7 @@ TEST(ExecutionPlan, AddStepCopiesAttrsIntoPlanOwnedStorage) {
     int packed_params = 17;
 
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRMSNorm,
+                                     .op_type = OpType::kRmsNorm,
                                      .fn = &FakeKernel,
                                      .packed_params = &packed_params,
                                      .workspace_requirement = {
@@ -47,7 +47,7 @@ TEST(ExecutionPlan, AddStepCopiesAttrsIntoPlanOwnedStorage) {
     const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(step.attrs.data());
     ASSERT_NE(stored_attrs, nullptr);
     EXPECT_NE(stored_attrs, &attrs);
-    EXPECT_EQ(step.op_type, OpType::kRMSNorm);
+    EXPECT_EQ(step.op_type, OpType::kRmsNorm);
     EXPECT_EQ(step.invocation.op_type, OpType::kUnknown);
     EXPECT_EQ(step.packed_params, &packed_params);
     EXPECT_EQ(step.workspace_requirement.bytes, 128U);
@@ -62,7 +62,7 @@ TEST(ExecutionPlan, AddStepAllowsEmptyAttrSpan) {
     ExecutionPlan plan;
 
     const Status status = plan.AddStep(ExecutionStep{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .fn = &FakeKernel,
             .attrs = {},
             .debug_name = "test::fake_kernel",
@@ -78,7 +78,7 @@ TEST(ExecutionPlan, AddStepRejectsInvalidWorkspaceAlignment) {
     ExecutionPlan plan;
 
     const Status status = plan.AddStep(ExecutionStep{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .fn = &FakeKernel,
             .workspace_requirement = {
                     .bytes = 64,

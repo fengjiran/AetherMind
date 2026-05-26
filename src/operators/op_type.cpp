@@ -12,24 +12,28 @@ const char* ToString(OpType op_type) noexcept {
             return "Unknown";
         case OpType::kEmbedding:
             return "Embedding";
+        case OpType::kRmsNorm:
+            return "RmsNorm";
         case OpType::kLinear:
             return "Linear";
         case OpType::kMatMul:
             return "MatMul";
-        case OpType::kRMSNorm:
-            return "RMSNorm";
         case OpType::kRoPE:
             return "RoPE";
-        case OpType::kAttentionPrefill:
-            return "AttentionPrefill";
-        case OpType::kAttentionDecode:
-            return "AttentionDecode";
+        case OpType::kAttention:
+            return "Attention";
+        case OpType::kSilu:
+            return "Silu";
         case OpType::kSiluMul:
             return "SiluMul";
+        case OpType::kElementwiseMul:
+            return "ElementwiseMul";
+        case OpType::kAdd:
+            return "Add";
         case OpType::kSoftmax:
             return "Softmax";
-        case OpType::kArgMax:
-            return "ArgMax";
+        case OpType::kArgmax:
+            return "Argmax";
         default:
             return "Unknown";
     }

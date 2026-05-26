@@ -65,7 +65,7 @@ KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth,
 TEST(CpuResolveKernel, RegisteredKeyReturnsKernel) {
     CpuBackend backend;
 
-    EXPECT_NE(backend.ResolveKernel(OpType::kRMSNorm, MakeCpuSelector()), nullptr);
+    EXPECT_NE(backend.ResolveKernel(OpType::kRmsNorm, MakeCpuSelector()), nullptr);
 }
 
 TEST(CpuResolveKernel, MissingKeyReturnsNullptr) {
@@ -82,7 +82,7 @@ TEST(CpuResolveKernel, DebugRegistryIsExposedForInspection) {
 TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     CpuBackend backend;
 
-    const KernelFunc fn = backend.ResolveKernel(OpType::kRMSNorm, MakeCpuSelector());
+    const KernelFunc fn = backend.ResolveKernel(OpType::kRmsNorm, MakeCpuSelector());
     ASSERT_NE(fn, nullptr);
 
     const float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
@@ -93,7 +93,7 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     const CpuRmsNormParams params = MakeCpuRmsNormParams(input, weight, output, shape, strides);
     const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
 
-    const Status status = fn(KernelInvocation{.op_type = OpType::kRMSNorm,
+    const Status status = fn(KernelInvocation{.op_type = OpType::kRmsNorm,
                                               .selector = MakeCpuSelector()},
                              OpKernelContext{
                                      .device = Device::CPU(),

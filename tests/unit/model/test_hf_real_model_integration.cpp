@@ -1,6 +1,7 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
+#include "aethermind/model/formats/hf/hf_weight_resolver.h"
 #include "aethermind/model/raw_weight.h"
 
 #include <filesystem>
@@ -115,6 +116,39 @@ TEST(ModelLoader_HfRealModelIntegrationTest, ValidatesConfigAndWeightSet) {
 
     auto weight_status = HfModelValidator::ValidateWeightSet(*config, *raw_weights);
     EXPECT_TRUE(weight_status.ok()) << weight_status.ToString();
+}
+
+TEST(ModelLoader_HfRealModelIntegrationTest, ResolvesAndValidatesResolvedModelWeights) {
+    auto reader = HfDirectoryReader::Open(TestModelDir());
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+
+    auto config = reader->ParseConfig();
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+
+    auto raw_weights = reader->LoadRawWeightTable();
+    ASSERT_TRUE(raw_weights.ok()) << raw_weights.status().ToString();
+
+    ASSERT_TRUE(HfModelValidator::ValidateConfig(*config).ok());
+    ASSERT_TRUE(HfModelValidator::ValidateWeightSet(*config, *raw_weights).ok());
+
+    auto resolved = hf::ResolveWeights(*config, *raw_weights);
+    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+
+    EXPECT_EQ(resolved->layers.size(), static_cast<size_t>(config->num_hidden_layers));
+    EXPECT_EQ(resolved->embed_tokens.shape, (std::vector<int64_t>{config->vocab_size, config->hidden_size}));
+    EXPECT_EQ(resolved->final_norm.shape, (std::vector<int64_t>{config->hidden_size}));
+    ASSERT_TRUE(resolved->lm_head.has_value());
+    EXPECT_EQ(resolved->lm_head->shape, (std::vector<int64_t>{config->vocab_size, config->hidden_size}));
+
+    ASSERT_FALSE(resolved->layers.empty());
+    const auto& first_layer = resolved->layers.front();
+    EXPECT_EQ(first_layer.attn.q_proj.shape, (std::vector<int64_t>{config->hidden_size, config->hidden_size}));
+    EXPECT_EQ(first_layer.attn.k_proj.shape, (std::vector<int64_t>{config->hidden_size, config->hidden_size}));
+    EXPECT_EQ(first_layer.mlp.gate_proj.shape, (std::vector<int64_t>{config->intermediate_size, config->hidden_size}));
+    EXPECT_EQ(first_layer.norm.input_rmsnorm.shape, (std::vector<int64_t>{config->hidden_size}));
+
+    const Status resolved_status = HfModelValidator::ValidateResolvedModel(*config, *resolved);
+    EXPECT_TRUE(resolved_status.ok()) << resolved_status.ToString();
 }
 
 }// namespace

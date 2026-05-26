@@ -18,7 +18,7 @@ Status FakeKernel(const KernelInvocation&,
 
 KernelDescriptor MakeTestKernelDescriptor() {
     return KernelDescriptor{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .selector = KernelSelector{
                     .device_type = DeviceType::kCPU,
                     .activation_dtype = DataType::Float32(),
@@ -52,7 +52,7 @@ TEST(KernelRegistry, RegisterAndLookupReturnsKernel) {
     ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> resolved =
-            registry.Resolve(OpType::kRMSNorm, descriptor.selector);
+            registry.Resolve(OpType::kRmsNorm, descriptor.selector);
     ASSERT_TRUE(resolved.ok());
     EXPECT_EQ((*resolved)->kernel_func, &FakeKernel);
 }
@@ -73,7 +73,7 @@ TEST(KernelRegistry, ResolveBeforeFreezeFails) {
     ASSERT_TRUE(registry.Register(descriptor).ok());
 
     const StatusOr<const KernelDescriptor*> resolved =
-            registry.Resolve(OpType::kRMSNorm, descriptor.selector);
+            registry.Resolve(OpType::kRmsNorm, descriptor.selector);
     EXPECT_EQ(resolved.status().code(), StatusCode::kFailedPrecondition);
 }
 

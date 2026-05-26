@@ -54,9 +54,9 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     g_execution_order = &execution_order;
 
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRMSNorm,
+                                     .op_type = OpType::kRmsNorm,
                                      .invocation = {
-                                             .op_type = OpType::kRMSNorm,
+                                             .op_type = OpType::kRmsNorm,
                                              .selector = {
                                                      .device_type = DeviceType::kCPU,
                                                      .activation_dtype = DataType::Float32(),
@@ -117,9 +117,9 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
     CpuWorkspaceArena arena(workspace, sizeof(workspace));
     RuntimeBindingContext bindings(&arena);
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRMSNorm,
+                                     .op_type = OpType::kRmsNorm,
                                      .invocation = {
-                                             .op_type = OpType::kRMSNorm,
+                                             .op_type = OpType::kRmsNorm,
                                              .selector = {
                                                      .device_type = DeviceType::kCPU,
                                                      .activation_dtype = DataType::Float32(),
@@ -149,9 +149,9 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
     RuntimeBindingContext bindings;
 
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRMSNorm,
+                                     .op_type = OpType::kRmsNorm,
                                      .invocation = {
-                                             .op_type = OpType::kRMSNorm,
+                                             .op_type = OpType::kRmsNorm,
                                              .selector = {
                                                      .device_type = DeviceType::kCPU,
                                                      .activation_dtype = DataType::Float32(),

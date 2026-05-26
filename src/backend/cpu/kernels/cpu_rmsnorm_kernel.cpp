@@ -25,8 +25,8 @@ const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
 Status CpuRmsNormKernel(const KernelInvocation& invocation,
                         const OpKernelContext& op_ctx,
                         const WorkspaceBinding&) noexcept {
-    if (invocation.op_type != OpType::kRMSNorm) {
-        return Status::InvalidArgument("CpuRmsNormKernel only supports OpType::kRMSNorm");
+    if (invocation.op_type != OpType::kRmsNorm) {
+        return Status::InvalidArgument("CpuRmsNormKernel only supports OpType::kRmsNorm");
     }
     if (!op_ctx.device.is_cpu()) {
         return Status::InvalidArgument("CpuRmsNormKernel requires CPU device");

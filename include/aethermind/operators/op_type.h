@@ -10,15 +10,17 @@ namespace aethermind {
 enum class OpType : uint16_t {
     kUnknown = 0,
     kEmbedding,
+    kRmsNorm,
     kLinear,
     kMatMul,
-    kRMSNorm,
     kRoPE,
-    kAttentionPrefill,
-    kAttentionDecode,
+    kAttention,
+    kSilu,
     kSiluMul,
+    kElementwiseMul,
+    kAdd,
     kSoftmax,
-    kArgMax,
+    kArgmax,
 };
 
 AM_NODISCARD const char* ToString(OpType op_type) noexcept;

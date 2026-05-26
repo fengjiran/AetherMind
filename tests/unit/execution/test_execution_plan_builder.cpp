@@ -121,7 +121,7 @@ public:
 
 ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {}) {
     return ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -142,7 +142,7 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
                                                        MakeRmsNormNodeSpec(attrs_bytes));
 
     ASSERT_TRUE(resolved.ok());
-    EXPECT_EQ(resolved->op_type, OpType::kRMSNorm);
+    EXPECT_EQ(resolved->op_type, OpType::kRmsNorm);
     ASSERT_NE(resolved->fn, nullptr);
     EXPECT_EQ(resolved->attrs.data(), attrs_bytes.data());
     EXPECT_EQ(resolved->attrs.size(), sizeof(attrs));
@@ -168,8 +168,8 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     ASSERT_EQ(step.attrs.size(), sizeof(TestAttrs));
     const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(step.attrs.data());
     ASSERT_NE(stored_attrs, nullptr);
-    EXPECT_EQ(step.op_type, OpType::kRMSNorm);
-    EXPECT_EQ(step.invocation.op_type, OpType::kRMSNorm);
+    EXPECT_EQ(step.op_type, OpType::kRmsNorm);
+    EXPECT_EQ(step.invocation.op_type, OpType::kRmsNorm);
     EXPECT_EQ(step.invocation.selector.device_type, DeviceType::kCPU);
     EXPECT_EQ(step.packed_params, nullptr);
     EXPECT_EQ(step.workspace_requirement.bytes, 0U);
@@ -185,7 +185,7 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -195,7 +195,7 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
             .workspace_requirement = {.bytes = 32, .alignment = 16, .offset = 999},
     });
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -229,14 +229,14 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedParamsFromModelInstanceSidecar) {
     };
 
     ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<TestPackedWeights>(
-                                                          OpType::kRMSNorm,
+                                                          OpType::kRmsNorm,
                                                           selector,
                                                           MakeTestBuffer(128)))
                         .ok());
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -251,7 +251,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedParamsFromModelInstanceSidecar) {
     ASSERT_EQ(plan->size(), 1U);
     ASSERT_NE(plan->steps().front().packed_params, nullptr);
     EXPECT_EQ(plan->steps().front().packed_params,
-              model_instance.FindPackedWeights(OpType::kRMSNorm, selector)->storage().data());
+              model_instance.FindPackedWeights(OpType::kRmsNorm, selector)->storage().data());
 }
 
 TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutModelInstanceSidecar) {
@@ -260,7 +260,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutModelInstanceSidec
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),

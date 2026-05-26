@@ -43,7 +43,7 @@ KernelSelector MakeSelector(ExecPhase phase = ExecPhase::kBoth,
 TEST(KernelRegistryResolve, BothPhaseMatchesDecodeRequest) {
     KernelRegistry registry;
     ASSERT_TRUE(registry.Register(KernelDescriptor{
-                                          .op_type = OpType::kRMSNorm,
+                                          .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kBoth),
                                           .kernel_func = &ScalarKernel,
                                           .name = "scalar",
@@ -53,7 +53,7 @@ TEST(KernelRegistryResolve, BothPhaseMatchesDecodeRequest) {
     ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> descriptor =
-            registry.Resolve(OpType::kRMSNorm, MakeSelector(ExecPhase::kDecode));
+            registry.Resolve(OpType::kRmsNorm, MakeSelector(ExecPhase::kDecode));
 
     ASSERT_TRUE(descriptor.ok());
     EXPECT_EQ((*descriptor)->kernel_func, &ScalarKernel);
@@ -62,7 +62,7 @@ TEST(KernelRegistryResolve, BothPhaseMatchesDecodeRequest) {
 TEST(KernelRegistryResolve, IsaCompatibilityPrefersHigherPriorityMatch) {
     KernelRegistry registry;
     ASSERT_TRUE(registry.Register(KernelDescriptor{
-                                          .op_type = OpType::kRMSNorm,
+                                          .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kBoth, IsaLevel::kScalar),
                                           .kernel_func = &ScalarKernel,
                                           .name = "scalar",
@@ -70,7 +70,7 @@ TEST(KernelRegistryResolve, IsaCompatibilityPrefersHigherPriorityMatch) {
                                   })
                         .ok());
     ASSERT_TRUE(registry.Register(KernelDescriptor{
-                                          .op_type = OpType::kRMSNorm,
+                                          .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kBoth, IsaLevel::kAVX2),
                                           .kernel_func = &Avx2Kernel,
                                           .name = "avx2",
@@ -80,7 +80,7 @@ TEST(KernelRegistryResolve, IsaCompatibilityPrefersHigherPriorityMatch) {
     ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> descriptor =
-            registry.Resolve(OpType::kRMSNorm, MakeSelector(ExecPhase::kPrefill, IsaLevel::kAVX512));
+            registry.Resolve(OpType::kRmsNorm, MakeSelector(ExecPhase::kPrefill, IsaLevel::kAVX512));
 
     ASSERT_TRUE(descriptor.ok());
     EXPECT_EQ((*descriptor)->kernel_func, &Avx2Kernel);
@@ -89,7 +89,7 @@ TEST(KernelRegistryResolve, IsaCompatibilityPrefersHigherPriorityMatch) {
 TEST(KernelRegistryResolve, IncompatibleIsaReturnsNotFound) {
     KernelRegistry registry;
     ASSERT_TRUE(registry.Register(KernelDescriptor{
-                                          .op_type = OpType::kRMSNorm,
+                                          .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kBoth, IsaLevel::kAVX512),
                                           .kernel_func = &Avx2Kernel,
                                           .name = "avx512-only",
@@ -99,7 +99,7 @@ TEST(KernelRegistryResolve, IncompatibleIsaReturnsNotFound) {
     ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> descriptor =
-            registry.Resolve(OpType::kRMSNorm, MakeSelector(ExecPhase::kPrefill, IsaLevel::kAVX2));
+            registry.Resolve(OpType::kRmsNorm, MakeSelector(ExecPhase::kPrefill, IsaLevel::kAVX2));
 
     EXPECT_EQ(descriptor.status().code(), StatusCode::kNotFound);
 }
@@ -107,7 +107,7 @@ TEST(KernelRegistryResolve, IncompatibleIsaReturnsNotFound) {
 TEST(KernelRegistryResolve, ExactPhaseBeatsMissingPhaseMatch) {
     KernelRegistry registry;
     ASSERT_TRUE(registry.Register(KernelDescriptor{
-                                          .op_type = OpType::kRMSNorm,
+                                          .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kDecode),
                                           .kernel_func = &DecodeOnlyKernel,
                                           .name = "decode-only",
@@ -117,7 +117,7 @@ TEST(KernelRegistryResolve, ExactPhaseBeatsMissingPhaseMatch) {
     ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> descriptor =
-            registry.Resolve(OpType::kRMSNorm, MakeSelector(ExecPhase::kPrefill));
+            registry.Resolve(OpType::kRmsNorm, MakeSelector(ExecPhase::kPrefill));
 
     EXPECT_EQ(descriptor.status().code(), StatusCode::kNotFound);
 }

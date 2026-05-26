@@ -125,7 +125,7 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRMSNorm,
+            .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .activation_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),

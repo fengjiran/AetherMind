@@ -9,15 +9,17 @@ namespace {
 TEST(OpTypeToString, AllKnownTypesHaveStringRepresentation) {
     EXPECT_STREQ(ToString(OpType::kUnknown), "Unknown");
     EXPECT_STREQ(ToString(OpType::kEmbedding), "Embedding");
+    EXPECT_STREQ(ToString(OpType::kRmsNorm), "RmsNorm");
     EXPECT_STREQ(ToString(OpType::kLinear), "Linear");
     EXPECT_STREQ(ToString(OpType::kMatMul), "MatMul");
-    EXPECT_STREQ(ToString(OpType::kRMSNorm), "RMSNorm");
     EXPECT_STREQ(ToString(OpType::kRoPE), "RoPE");
-    EXPECT_STREQ(ToString(OpType::kAttentionPrefill), "AttentionPrefill");
-    EXPECT_STREQ(ToString(OpType::kAttentionDecode), "AttentionDecode");
+    EXPECT_STREQ(ToString(OpType::kAttention), "Attention");
+    EXPECT_STREQ(ToString(OpType::kSilu), "Silu");
     EXPECT_STREQ(ToString(OpType::kSiluMul), "SiluMul");
+    EXPECT_STREQ(ToString(OpType::kElementwiseMul), "ElementwiseMul");
+    EXPECT_STREQ(ToString(OpType::kAdd), "Add");
     EXPECT_STREQ(ToString(OpType::kSoftmax), "Softmax");
-    EXPECT_STREQ(ToString(OpType::kArgMax), "ArgMax");
+    EXPECT_STREQ(ToString(OpType::kArgmax), "Argmax");
 }
 
 TEST(OpTypeToString, InvalidValueReturnsUnknown) {
@@ -28,7 +30,7 @@ TEST(OpTypeToString, InvalidValueReturnsUnknown) {
 TEST(OpTypeToString, ResultIsNotNull) {
     EXPECT_NE(ToString(OpType::kUnknown), nullptr);
     EXPECT_NE(ToString(OpType::kLinear), nullptr);
-    EXPECT_NE(ToString(OpType::kRMSNorm), nullptr);
+    EXPECT_NE(ToString(OpType::kRmsNorm), nullptr);
 }
 
 }// namespace

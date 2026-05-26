@@ -59,7 +59,7 @@ TEST(CpuRmsNormKernel, ComputesExpectedValues) {
     const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
 
     const Status status = CpuRmsNormKernel(KernelInvocation{
-                                                   .op_type = OpType::kRMSNorm,
+                                                   .op_type = OpType::kRmsNorm,
                                                    .selector = {.device_type = DeviceType::kCPU},
                                            },
                                            OpKernelContext{
@@ -79,7 +79,7 @@ TEST(CpuRmsNormKernel, ComputesExpectedValues) {
 TEST(CpuRmsNormKernel, CpuBackendResolvedKernelExecutesThroughExecutor) {
     CpuBackend backend;
     const StatusOr<ResolvedKernel> resolved = backend.ResolveKernelInfo(
-            OpType::kRMSNorm,
+            OpType::kRmsNorm,
             KernelSelector{
                     .device_type = DeviceType::kCPU,
                     .activation_dtype = DataType::Float32(),
@@ -102,7 +102,7 @@ TEST(CpuRmsNormKernel, CpuBackendResolvedKernelExecutesThroughExecutor) {
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
                                      .op_type = resolved->op_type,
                                      .invocation = {
-                                             .op_type = OpType::kRMSNorm,
+                                             .op_type = OpType::kRmsNorm,
                                              .selector = {
                                                      .device_type = DeviceType::kCPU,
                                                      .activation_dtype = DataType::Float32(),

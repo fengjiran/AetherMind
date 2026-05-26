@@ -6,6 +6,7 @@
 #define AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 
 #include "aethermind/backend/kernel_descriptor.h"
+#include "aethermind/backend/kernel_request.h"
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
 
@@ -20,6 +21,8 @@ public:
     StatusOr<const KernelDescriptor*> Resolve(
             OpType op_type,
             const KernelSelector& selector) const;
+
+    StatusOr<const KernelDescriptor*> Resolve(const KernelRequest& request) const;
 
     Status Freeze() noexcept;
 

@@ -46,15 +46,23 @@ Status KernelRegistry::Freeze() noexcept {
 StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(
         OpType op_type,
         const KernelSelector& selector) const {
+    return Resolve(KernelRequest{.op_type = op_type, .selector = selector});
+}
+
+StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(const KernelRequest& request) const {
     if (!frozen_) {
         return Status(StatusCode::kFailedPrecondition,
                       "Cannot resolve kernel before registry has been frozen");
     }
 
+    if (auto status = ValidateKernelRequest(request); !status.ok()) {
+        return status;
+    }
+
     const KernelDescriptor* best = nullptr;
     for (const KernelDescriptor& descriptor: kernels_) {
-        if (descriptor.op_type != op_type ||
-            !SelectorMatches(descriptor.selector, selector)) {
+        if (descriptor.op_type != request.op_type ||
+            !SelectorMatches(descriptor.selector, request.selector)) {
             continue;
         }
 
@@ -65,9 +73,7 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(
 
     if (best == nullptr) {
         return Status::NotFound(
-                "No matching kernel registered: op_type=" +
-                std::string(ToString(op_type)) +
-                ", selector=" + ToString(selector));
+                "No matching kernel registered: " + ToString(request));
     }
 
     return best;

@@ -5,7 +5,7 @@
 namespace aethermind {
 namespace {
 
-TEST(OpKernelContext, DefaultsAreNarrowAndNull) {
+TEST(Operators_OpKernelContext, DefaultsAreNarrowAndNull) {
     OpKernelContext ctx;
 
     EXPECT_TRUE(ctx.device.is_cpu());
@@ -19,7 +19,7 @@ TEST(OpKernelContext, DefaultsAreNarrowAndNull) {
     EXPECT_EQ(ctx.backend_resources.opaque_backend_resources, nullptr);
 }
 
-TEST(OpKernelContext, CanCarryMinimalExecutionHandles) {
+TEST(Operators_OpKernelContext, CanCarryMinimalExecutionHandles) {
     CpuInlineStream stream;
     WorkspaceArena* workspace = nullptr;
     BackendCapabilities caps{.device_type = DeviceType::kCPU};

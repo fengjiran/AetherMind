@@ -6,7 +6,7 @@ using namespace aethermind;
 
 namespace {
 
-TEST(OpTypeToString, AllKnownTypesHaveStringRepresentation) {
+TEST(Operators_OpType, AllKnownTypesHaveStringRepresentation) {
     EXPECT_STREQ(ToString(OpType::kUnknown), "Unknown");
     EXPECT_STREQ(ToString(OpType::kEmbedding), "Embedding");
     EXPECT_STREQ(ToString(OpType::kRmsNorm), "RmsNorm");
@@ -22,12 +22,12 @@ TEST(OpTypeToString, AllKnownTypesHaveStringRepresentation) {
     EXPECT_STREQ(ToString(OpType::kArgmax), "Argmax");
 }
 
-TEST(OpTypeToString, InvalidValueReturnsUnknown) {
-    const OpType invalid = static_cast<OpType>(999);
+TEST(Operators_OpType, InvalidValueReturnsUnknown) {
+    constexpr auto invalid = static_cast<OpType>(999);
     EXPECT_STREQ(ToString(invalid), "Unknown");
 }
 
-TEST(OpTypeToString, ResultIsNotNull) {
+TEST(Operators_OpType, ResultIsNotNull) {
     EXPECT_NE(ToString(OpType::kUnknown), nullptr);
     EXPECT_NE(ToString(OpType::kLinear), nullptr);
     EXPECT_NE(ToString(OpType::kRmsNorm), nullptr);

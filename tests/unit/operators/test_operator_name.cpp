@@ -17,7 +17,7 @@ namespace {
 
 // === Basic Construction Tests ===
 
-TEST(OperatorName, DefaultConstructor) {
+TEST(Operators_OperatorName, DefaultConstructor) {
     OperatorName op;
     EXPECT_EQ(op.name(), "");
     EXPECT_EQ(op.overload_name(), "");
@@ -25,20 +25,20 @@ TEST(OperatorName, DefaultConstructor) {
     EXPECT_EQ(ToString(op), "");
 }
 
-TEST(OperatorName, BasicConstruction) {
+TEST(Operators_OperatorName, BasicConstruction) {
     OperatorName op("aethermind::add", "Tensor");
     EXPECT_EQ(op.name(), "aethermind::add");
     EXPECT_EQ(op.overload_name(), "Tensor");
 }
 
-TEST(OperatorName, EmptyOverloadName) {
+TEST(Operators_OperatorName, EmptyOverloadName) {
     OperatorName op("aethermind::add", "");
     EXPECT_EQ(op.name(), "aethermind::add");
     EXPECT_EQ(op.overload_name(), "");
     EXPECT_EQ(ToString(op), "aethermind::add");
 }
 
-TEST(OperatorName, EmptyNames) {
+TEST(Operators_OperatorName, EmptyNames) {
     OperatorName op("", "");
     EXPECT_EQ(op.name(), "");
     EXPECT_EQ(op.overload_name(), "");
@@ -47,45 +47,45 @@ TEST(OperatorName, EmptyNames) {
 
 // === GetNamespace Tests ===
 
-TEST(OperatorName, GetNamespace_SingleNamespace) {
+TEST(Operators_OperatorName, GetNamespace_SingleNamespace) {
     OperatorName op("aethermind::add", "Tensor");
     auto ns = op.GetNamespace();
     ASSERT_TRUE(ns.has_value());
     EXPECT_EQ(ns.value(), "aethermind");
 }
 
-TEST(OperatorName, GetNamespace_MultiLevelNamespace) {
+TEST(Operators_OperatorName, GetNamespace_MultiLevelNamespace) {
     OperatorName op("aethermind::nn::linear", "Tensor");
     auto ns = op.GetNamespace();
     ASSERT_TRUE(ns.has_value());
     EXPECT_EQ(ns.value(), "aethermind");// Only returns first namespace
 }
 
-TEST(OperatorName, GetNamespace_NoNamespace) {
+TEST(Operators_OperatorName, GetNamespace_NoNamespace) {
     OperatorName op("add", "Tensor");
     EXPECT_FALSE(op.GetNamespace().has_value());
 }
 
-TEST(OperatorName, GetNamespace_EmptyName) {
+TEST(Operators_OperatorName, GetNamespace_EmptyName) {
     OperatorName op("", "Tensor");
     EXPECT_FALSE(op.GetNamespace().has_value());
 }
 
-TEST(OperatorName, GetNamespace_OnlyDoubleColon) {
+TEST(Operators_OperatorName, GetNamespace_OnlyDoubleColon) {
     OperatorName op("::", "Tensor");
     auto ns = op.GetNamespace();
     ASSERT_TRUE(ns.has_value());
     EXPECT_EQ(ns.value(), "");// Namespace before :: is empty
 }
 
-TEST(OperatorName, GetNamespace_TrailingDoubleColon) {
+TEST(Operators_OperatorName, GetNamespace_TrailingDoubleColon) {
     OperatorName op("add::", "Tensor");
     auto ns = op.GetNamespace();
     ASSERT_TRUE(ns.has_value());
     EXPECT_EQ(ns.value(), "add");
 }
 
-TEST(OperatorName, GetNamespace_ViewLifetime) {
+TEST(Operators_OperatorName, GetNamespace_ViewLifetime) {
     OperatorName op("aethermind::add", "Tensor");
     std::string_view name_copy = op.name();
     auto ns = op.GetNamespace();
@@ -97,27 +97,27 @@ TEST(OperatorName, GetNamespace_ViewLifetime) {
 
 // === ToString Tests ===
 
-TEST(OperatorName, ToString_WithOverload) {
+TEST(Operators_OperatorName, ToString_WithOverload) {
     OperatorName op("aethermind::add", "Tensor");
     EXPECT_EQ(ToString(op), "aethermind::add.Tensor");
 }
 
-TEST(OperatorName, ToString_WithoutOverload) {
+TEST(Operators_OperatorName, ToString_WithoutOverload) {
     OperatorName op("aethermind::add", "");
     EXPECT_EQ(ToString(op), "aethermind::add");
 }
 
-TEST(OperatorName, ToString_Empty) {
+TEST(Operators_OperatorName, ToString_Empty) {
     OperatorName op("", "");
     EXPECT_EQ(ToString(op), "");
 }
 
-TEST(OperatorName, ToString_EmptyNameWithOverload) {
+TEST(Operators_OperatorName, ToString_EmptyNameWithOverload) {
     OperatorName op("", "Tensor");
     EXPECT_EQ(ToString(op), ".Tensor");
 }
 
-TEST(OperatorName, OstreamOperator) {
+TEST(Operators_OperatorName, OstreamOperator) {
     OperatorName op("aethermind::add", "Tensor");
     std::ostringstream oss;
     oss << op;
@@ -126,7 +126,7 @@ TEST(OperatorName, OstreamOperator) {
 
 // === Comparison Tests ===
 
-TEST(OperatorName, Equality) {
+TEST(Operators_OperatorName, Equality) {
     OperatorName op1("aethermind::add", "Tensor");
     OperatorName op2("aethermind::add", "Tensor");
     OperatorName op3("aethermind::add", "Scalar");
@@ -140,7 +140,7 @@ TEST(OperatorName, Equality) {
     EXPECT_FALSE(op1 != op2);
 }
 
-TEST(OperatorName, EqualityEmpty) {
+TEST(Operators_OperatorName, EqualityEmpty) {
     OperatorName op1("", "");
     OperatorName op2("", "");
     OperatorName op3("", "Tensor");
@@ -151,7 +151,7 @@ TEST(OperatorName, EqualityEmpty) {
 
 // === Ordering Tests ===
 
-TEST(OperatorName, LessThan_NameOnly) {
+TEST(Operators_OperatorName, LessThan_NameOnly) {
     OperatorName op1("a", "");
     OperatorName op2("b", "");
 
@@ -160,7 +160,7 @@ TEST(OperatorName, LessThan_NameOnly) {
     EXPECT_FALSE(op1 < op1);
 }
 
-TEST(OperatorName, LessThan_OverloadOnly) {
+TEST(Operators_OperatorName, LessThan_OverloadOnly) {
     OperatorName op1("add", "A");
     OperatorName op2("add", "B");
 
@@ -168,7 +168,7 @@ TEST(OperatorName, LessThan_OverloadOnly) {
     EXPECT_FALSE(op2 < op1);
 }
 
-TEST(OperatorName, LessThan_BothDifferent) {
+TEST(Operators_OperatorName, LessThan_BothDifferent) {
     OperatorName op1("a", "B");
     OperatorName op2("b", "A");
 
@@ -177,7 +177,7 @@ TEST(OperatorName, LessThan_BothDifferent) {
     EXPECT_FALSE(op2 < op1);
 }
 
-TEST(OperatorName, LessThan_EmptyHandling) {
+TEST(Operators_OperatorName, LessThan_EmptyHandling) {
     OperatorName op1("", "");
     OperatorName op2("a", "");
 
@@ -185,7 +185,7 @@ TEST(OperatorName, LessThan_EmptyHandling) {
     EXPECT_FALSE(op2 < op1);
 }
 
-TEST(OperatorName, Sorting) {
+TEST(Operators_OperatorName, Sorting) {
     std::vector<OperatorName> ops = {
             OperatorName("c", "B"),
             OperatorName("a", "B"),
@@ -210,7 +210,7 @@ TEST(OperatorName, Sorting) {
     }
 }
 
-TEST(OperatorName, SetUsage) {
+TEST(Operators_OperatorName, SetUsage) {
     std::set<OperatorName> ops;
     ops.emplace("aethermind::add", "Tensor");
     ops.emplace("aethermind::add", "Scalar");
@@ -232,7 +232,7 @@ TEST(OperatorName, SetUsage) {
 
 // === Hash Tests ===
 
-TEST(OperatorName, Hash_DifferentNamesDifferentHash) {
+TEST(Operators_OperatorName, Hash_DifferentNamesDifferentHash) {
     OperatorName op1("a", "x");
     OperatorName op2("b", "x");
 
@@ -242,7 +242,7 @@ TEST(OperatorName, Hash_DifferentNamesDifferentHash) {
     EXPECT_NE(h1, h2);
 }
 
-TEST(OperatorName, Hash_DifferentOverloadsDifferentHash) {
+TEST(Operators_OperatorName, Hash_DifferentOverloadsDifferentHash) {
     OperatorName op1("a", "x");
     OperatorName op2("a", "y");
 
@@ -252,14 +252,14 @@ TEST(OperatorName, Hash_DifferentOverloadsDifferentHash) {
     EXPECT_NE(h1, h2);
 }
 
-TEST(OperatorName, Hash_SameOperatorSameHash) {
+TEST(Operators_OperatorName, Hash_SameOperatorSameHash) {
     OperatorName op1("aethermind::add", "Tensor");
     OperatorName op2("aethermind::add", "Tensor");
 
     EXPECT_EQ(std::hash<OperatorName>()(op1), std::hash<OperatorName>()(op2));
 }
 
-TEST(OperatorName, Hash_SwappedNamesLikelyDifferent) {
+TEST(Operators_OperatorName, Hash_SwappedNamesLikelyDifferent) {
     // This test verifies that hash is not simply XOR which would cause collision
     // for swapped values: hash(a,x) XOR ~hash(x,a) could equal hash(x,a) XOR ~hash(a,x)
     OperatorName op1("alpha", "beta");
@@ -272,7 +272,7 @@ TEST(OperatorName, Hash_SwappedNamesLikelyDifferent) {
     EXPECT_NE(h1, h2) << "Hash collision for swapped name/overload_name";
 }
 
-TEST(OperatorName, Hash_Consistency) {
+TEST(Operators_OperatorName, Hash_Consistency) {
     // Hash should be consistent across multiple calls
     OperatorName op("test::op", "Tensor");
     auto h1 = std::hash<OperatorName>()(op);
@@ -283,7 +283,7 @@ TEST(OperatorName, Hash_Consistency) {
     EXPECT_EQ(h2, h3);
 }
 
-TEST(OperatorName, UnorderedMapUsage) {
+TEST(Operators_OperatorName, UnorderedMapUsage) {
     std::unordered_map<OperatorName, int> map;
 
     map[OperatorName("aethermind::add", "Tensor")] = 1;
@@ -302,7 +302,7 @@ TEST(OperatorName, UnorderedMapUsage) {
     EXPECT_EQ(it, map.end());
 }
 
-TEST(OperatorName, UnorderedSetUsage) {
+TEST(Operators_OperatorName, UnorderedSetUsage) {
     std::unordered_set<OperatorName> set;
 
     set.emplace("aethermind::add", "Tensor");
@@ -318,7 +318,7 @@ TEST(OperatorName, UnorderedSetUsage) {
 
 // === String Conversion Tests ===
 
-TEST(OperatorName, StringViewConversion) {
+TEST(Operators_OperatorName, StringViewConversion) {
     OperatorName op("test", "Tensor");
 
     std::string_view name_view = op.name();
@@ -332,7 +332,7 @@ TEST(OperatorName, StringViewConversion) {
     EXPECT_EQ(name_copy, "test");
 }
 
-TEST(OperatorName, ImplicitStringViewConversion) {
+TEST(Operators_OperatorName, ImplicitStringViewConversion) {
     OperatorName op("test::op", "Tensor");
 
     // Should work with functions expecting string_view
@@ -346,13 +346,13 @@ TEST(OperatorName, ImplicitStringViewConversion) {
 
 // === Edge Cases ===
 
-TEST(OperatorName, SpecialCharactersInName) {
+TEST(Operators_OperatorName, SpecialCharactersInName) {
     OperatorName op("namespace::operator_with_underscore", "Type<int>");
     EXPECT_EQ(op.name(), "namespace::operator_with_underscore");
     EXPECT_EQ(op.overload_name(), "Type<int>");
 }
 
-TEST(OperatorName, UnicodeInName) {
+TEST(Operators_OperatorName, UnicodeInName) {
     // UTF-8 encoded Chinese characters
     OperatorName op("命名空间::操作", "类型");
     EXPECT_EQ(op.name(), "命名空间::操作");
@@ -362,7 +362,7 @@ TEST(OperatorName, UnicodeInName) {
     EXPECT_EQ(ns.value(), "命名空间");
 }
 
-TEST(OperatorName, LongNames) {
+TEST(Operators_OperatorName, LongNames) {
     std::string long_name(1000, 'a');
     long_name.insert(500, "::");
     OperatorName op(long_name, "Tensor");
@@ -375,7 +375,7 @@ TEST(OperatorName, LongNames) {
 
 // === Copy/Move Tests ===
 
-TEST(OperatorName, CopyConstruction) {
+TEST(Operators_OperatorName, CopyConstruction) {
     OperatorName op1("test::op", "Tensor");
     OperatorName op2(op1);
 
@@ -384,7 +384,7 @@ TEST(OperatorName, CopyConstruction) {
     EXPECT_TRUE(op1 == op2);
 }
 
-TEST(OperatorName, MoveConstruction) {
+TEST(Operators_OperatorName, MoveConstruction) {
     OperatorName op1("test::op", "Tensor");
     OperatorName op2(std::move(op1));
 
@@ -392,7 +392,7 @@ TEST(OperatorName, MoveConstruction) {
     EXPECT_EQ(op2.overload_name(), "Tensor");
 }
 
-TEST(OperatorName, Assignment) {
+TEST(Operators_OperatorName, Assignment) {
     OperatorName op1("test::op", "Tensor");
     OperatorName op2;
 

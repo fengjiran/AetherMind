@@ -1,5 +1,5 @@
 #include "aethermind/execution/kv_cache_view.h"
-#include "aethermind/execution/workspace_types.h"
+#include "aethermind/runtime/workspace.h"
 
 namespace aethermind {
 namespace {

@@ -1,4 +1,4 @@
-#include "../../include/aethermind/execution/workspace_types.h"
+#include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/kernel_selector.h"

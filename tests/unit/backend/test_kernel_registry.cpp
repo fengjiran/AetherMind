@@ -1,4 +1,4 @@
-#include "../../include/aethermind/execution/workspace_types.h"
+#include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/kernel_registry.h"
 #include "aethermind/backend/op_kernel_context.h"
 
@@ -57,6 +57,20 @@ TEST(KernelRegistry, RegisterAndLookupReturnsKernel) {
     EXPECT_EQ((*resolved)->kernel_func, &FakeKernel);
 }
 
+TEST(KernelRegistry, RequestBasedResolveReturnsKernel) {
+    KernelRegistry registry;
+    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+
+    ASSERT_TRUE(registry.Register(descriptor).ok());
+    ASSERT_TRUE(registry.Freeze().ok());
+
+    const KernelRequest request{.op_type = OpType::kRmsNorm, .selector = descriptor.selector};
+    const StatusOr<const KernelDescriptor*> resolved = registry.Resolve(request);
+
+    ASSERT_TRUE(resolved.ok());
+    EXPECT_EQ((*resolved)->kernel_func, &FakeKernel);
+}
+
 TEST(KernelRegistry, LookupMissingKeyReturnsNullptr) {
     KernelRegistry registry;
     ASSERT_TRUE(registry.Freeze().ok());
@@ -64,6 +78,17 @@ TEST(KernelRegistry, LookupMissingKeyReturnsNullptr) {
     const StatusOr<const KernelDescriptor*> resolved =
             registry.Resolve(OpType::kLinear, MakeMissingSelector());
     EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
+}
+
+TEST(KernelRegistry, RequestRejectsUnknownOpType) {
+    KernelRegistry registry;
+    ASSERT_TRUE(registry.Freeze().ok());
+
+    const StatusOr<const KernelDescriptor*> resolved = registry.Resolve(
+            KernelRequest{.op_type = OpType::kUnknown, .selector = MakeMissingSelector()});
+
+    ASSERT_FALSE(resolved.ok());
+    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, ResolveBeforeFreezeFails) {

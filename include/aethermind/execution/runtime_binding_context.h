@@ -3,9 +3,9 @@
 
 #include "aethermind/base/status.h"
 #include "aethermind/execution/kv_cache_view.h"
+#include "aethermind/runtime/workspace.h"
 #include "macros.h"
 #include "workspace_arena.h"
-#include "workspace_types.h"
 
 #include <array>
 

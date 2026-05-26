@@ -1,6 +1,6 @@
 #include "aethermind/execution/kv_cache_manager.h"
 
-#include "aethermind/execution/workspace_types.h"
+#include "aethermind/runtime/workspace.h"
 
 #include <cstdlib>
 

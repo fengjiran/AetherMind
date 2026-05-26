@@ -4,7 +4,7 @@
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/status.h"
-#include "workspace_types.h"
+#include "aethermind/runtime/workspace.h"
 
 #include <cstddef>
 #include <span>

@@ -1,5 +1,6 @@
 #include "aethermind/execution/execution_plan_builder.h"
 
+#include "aethermind/backend/kernel_request.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/model/model_instance.h"
 
@@ -98,7 +99,8 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
     }
 
     const auto selector = MakeSelectorForNode(node);
-    const auto resolved = backend.ResolveKernelInfo(node.op_type, selector);
+    const KernelRequest request{.op_type = node.op_type, .selector = selector};
+    const auto resolved = backend.ResolveKernelInfo(request);
     if (!resolved.ok()) {
         return resolved.status();
     }

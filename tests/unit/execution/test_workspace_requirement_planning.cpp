@@ -1,4 +1,4 @@
-#include "aethermind/execution/workspace_types.h"
+#include "aethermind/runtime/workspace.h"
 
 #include <gtest/gtest.h>
 #include <limits>
@@ -41,6 +41,30 @@ TEST(WorkspaceRequirementPlanning, ZeroByteRequirementDoesNotConsumeWorkspace) {
     EXPECT_EQ(requirements[2].offset, 32U);
     EXPECT_EQ(layout->total_bytes, 48U);
     EXPECT_EQ(layout->required_alignment, 64U);
+}
+
+TEST(WorkspaceRequirementPlanning, RequirementDefaultsMatchOperatorContract) {
+    const WorkspaceRequirement requirement;
+
+    EXPECT_EQ(requirement.bytes, 0U);
+    EXPECT_EQ(requirement.alignment, 64U);
+    EXPECT_EQ(requirement.lifetime, WorkspaceLifetime::kNone);
+    EXPECT_TRUE(requirement.reusable);
+    EXPECT_EQ(requirement.offset, 0U);
+    EXPECT_TRUE(requirement.empty());
+}
+
+TEST(WorkspaceRequirementPlanning, RequirementCanDescribeLifetimeAndReuse) {
+    const WorkspaceRequirement requirement{
+            .bytes = 128,
+            .alignment = 64,
+            .lifetime = WorkspaceLifetime::kPerLayer,
+            .reusable = false,
+    };
+
+    EXPECT_FALSE(requirement.empty());
+    EXPECT_EQ(requirement.lifetime, WorkspaceLifetime::kPerLayer);
+    EXPECT_FALSE(requirement.reusable);
 }
 
 TEST(WorkspaceRequirementPlanning, RejectsInvalidAlignment) {

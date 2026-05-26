@@ -1,4 +1,4 @@
-#include "../../include/aethermind/execution/workspace_types.h"
+#include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_invocation.h"

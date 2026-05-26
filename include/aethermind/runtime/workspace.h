@@ -1,51 +1,75 @@
 /// \file
-/// Workspace planning and binding types for execution-time scratch memory.
+/// Shared runtime workspace planning and binding types.
 ///
-/// Workspace provides temporary scratch memory for kernel execution.
-/// Unlike model weights (long-lived) or activations (request-scoped),
-/// workspace is execution-scoped: allocated once per inference request
-/// and shared across all execution steps via offset-based slicing.
+/// Workspace provides temporary scratch memory for operator and kernel execution.
+/// Unlike model weights (long-lived) or activations (request-scoped), workspace
+/// is runtime scratch storage that can be planned once and reused via
+/// offset-based slicing.
 ///
 /// Architecture:
-/// - `WorkspaceRequirement`: Describes what a single step needs (bytes + alignment)
-/// - `PlanWorkspaceRequirements()`: Plans offsets for all steps into a unified layout
+/// - `WorkspaceRequirement`: Describes what a step or operator needs
+/// - `PlanWorkspaceRequirements()`: Plans offsets for all requirements into a unified layout
 /// - `WorkspaceBinding`: Actual slice handed to a kernel at execution time
 /// - `WorkspacePlanLayout`: Summary of the total workspace size and alignment needs
 ///
-/// The planning phase (PlanWorkspaceRequirements) is done once per ExecutionPlan build.
-/// The binding phase (via WorkspaceArena::Bind) happens at each step execution.
+/// The planning phase is done before execution. The binding phase happens when
+/// a runtime workspace arena provides the slice for one execution step.
 ///
 /// \see WorkspaceArena, RuntimeBindingContext, ExecutionPlanBuilder
 
-#ifndef AETHERMIND_EXECUTION_WORKSPACE_TYPES_H
-#define AETHERMIND_EXECUTION_WORKSPACE_TYPES_H
+#ifndef AETHERMIND_RUNTIME_WORKSPACE_TYPES_H
+#define AETHERMIND_RUNTIME_WORKSPACE_TYPES_H
 
 #include "aethermind/base/status.h"
 #include "aethermind/utils/overflow_check.h"
 #include "macros.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <span>
 
 namespace aethermind {
 
-/// Describes workspace requirements for a single execution step.
+enum class WorkspaceLifetime {
+    /// No workspace is required.
+    kNone = 0,
+    /// Scratch space is needed only during one operator invocation.
+    kPerOperator,
+    /// Scratch space may be reused across operators within one model layer.
+    kPerLayer,
+    /// Scratch space is scoped to one token step, such as decode-time temporary buffers.
+    kPerToken,
+    /// Scratch space is scoped to one request sequence, such as prefill/decode shared buffers.
+    kPerSequence,
+    /// Workspace must remain valid for the owning runtime object's lifetime.
+    kPersistent,
+};
+
+/// Describes workspace requirements for a single runtime step or operator.
 ///
-/// Used during execution plan building to compute unified workspace layout.
-/// The `offset` field is an output: filled by PlanWorkspaceRequirements().
+/// Operators should set `bytes`, `alignment`, `lifetime`, and `reusable`.
+/// The `offset` field is a planning result filled by PlanWorkspaceRequirements().
 struct WorkspaceRequirement {
-    /// Number of scratch bytes this step needs.
+    /// Number of scratch bytes this requirement needs.
     /// Zero-byte requirements consume no space but still receive an offset marker.
     size_t bytes = 0;
 
-    /// Alignment constraint for this step's workspace slice.
+    /// Alignment constraint for this workspace slice.
     /// Must be a non-zero power of two. Default 64-byte cache-line alignment.
     size_t alignment = 64;
+
+    /// Lifetime scope for this workspace requirement.
+    WorkspaceLifetime lifetime = WorkspaceLifetime::kNone;
+
+    /// Whether this workspace slice may be reused by later compatible requirements.
+    bool reusable = true;
 
     /// Computed offset into the unified workspace (output field).
     /// Filled by PlanWorkspaceRequirements(). Measured from workspace base.
     size_t offset = 0;
+
+    AM_NODISCARD bool empty() const noexcept {
+        return bytes == 0;
+    }
 };
 
 /// Actual workspace slice bound to a kernel at execution time.
@@ -121,11 +145,11 @@ AM_NODISCARD inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
     return t & ~(alignment - 1);
 }
 
-/// Plans workspace offsets for a sequence of execution steps.
+/// Plans workspace offsets for a sequence of runtime requirements.
 ///
-/// Given a list of WorkspaceRequirements, computes offsets so each step's
-/// workspace slice is properly aligned within a unified buffer. This allows
-/// allocating one contiguous scratch buffer and slicing it per-step.
+/// Given a list of WorkspaceRequirements, computes offsets so each workspace
+/// slice is properly aligned within a unified buffer. This allows allocating one
+/// contiguous scratch buffer and slicing it per requirement.
 ///
 /// Algorithm:
 /// - Validate all alignments first (early exit if any invalid)
@@ -140,7 +164,7 @@ AM_NODISCARD inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
 /// - If the function returns error, all offsets remain unchanged
 ///   (validation happens before any mutation)
 ///
-/// \param requirements List of step workspace needs. `offset` field is filled.
+/// \param requirements List of workspace needs. `offset` field is filled.
 /// \return WorkspacePlanLayout with total size and alignment, or error.
 ///
 /// \pre All requirements.alignment must be valid powers of two
@@ -157,30 +181,30 @@ AM_NODISCARD inline StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
     WorkspacePlanLayout layout;
 
     // Validate all alignments first to avoid partial modification on failure.
-    for (const auto& [bytes, alignment, offset]: requirements) {
-        if (!IsValidWorkspaceAlignment(alignment)) {
+    for (const WorkspaceRequirement& requirement: requirements) {
+        if (!IsValidWorkspaceAlignment(requirement.alignment)) {
             return Status::InvalidArgument(
                     "Workspace requirement alignment must be a non-zero power of two");
         }
     }
 
-    for (auto& [bytes, alignment, offset]: requirements) {
-        layout.required_alignment = std::max(layout.required_alignment, alignment);
+    for (WorkspaceRequirement& requirement: requirements) {
+        layout.required_alignment = std::max(layout.required_alignment, requirement.alignment);
 
-        if (bytes == 0) {
-            offset = layout.total_bytes;
+        if (requirement.empty()) {
+            requirement.offset = layout.total_bytes;
             continue;
         }
 
-        const StatusOr<size_t> aligned_offset = AlignWorkspaceOffset(layout.total_bytes, alignment);
+        const StatusOr<size_t> aligned_offset = AlignWorkspaceOffset(layout.total_bytes, requirement.alignment);
         if (!aligned_offset.ok()) {
             return aligned_offset.status();
         }
 
-        offset = aligned_offset.value();
+        requirement.offset = aligned_offset.value();
 
         size_t next_total = 0;
-        if (CheckOverflowAdd(offset, bytes, &next_total)) {
+        if (CheckOverflowAdd(requirement.offset, requirement.bytes, &next_total)) {
             return Status(StatusCode::kOutOfRange,
                           "Workspace planning exceeded size_t capacity");
         }

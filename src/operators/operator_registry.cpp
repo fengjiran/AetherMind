@@ -13,9 +13,7 @@ bool OperatorRegistry::Register(OpType op_type, FactoryFunc factory) {
     return registry.emplace(op_type, std::move(factory)).second;
 }
 
-StatusOr<std::unique_ptr<Operator>> OperatorRegistry::Create(
-        OpType op_type,
-        const std::any& params) {
+StatusOr<std::unique_ptr<Operator>> OperatorRegistry::Create(OpType op_type, const std::any& params) {
     if (op_type == OpType::kUnknown) {
         return Status::InvalidArgument("OperatorRegistry cannot create kUnknown operator");
     }
@@ -23,7 +21,8 @@ StatusOr<std::unique_ptr<Operator>> OperatorRegistry::Create(
     const auto& registry = Registry();
     const auto it = registry.find(op_type);
     if (it == registry.end()) {
-        return Status::NotFound("No operator factory registered for " + std::string(ToString(op_type)));
+        return Status::NotFound(
+                "No operator factory registered for " + std::string(ToString(op_type)));
     }
 
     return it->second(params);

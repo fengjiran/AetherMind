@@ -3,8 +3,11 @@
 #include "aethermind/backend/op_kernel_context.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
+#include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/operators/rms_norm_op.h"
+#include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
 
@@ -122,6 +125,49 @@ TEST(CpuRmsNormKernel, CpuBackendResolvedKernelExecutesThroughExecutor) {
 
     RuntimeBindingContext bindings;
     const Status status = Executor::Execute(plan, bindings);
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_NEAR(output[0], 0.365148, 1e-5);
+    EXPECT_NEAR(output[1], 0.365148, 1e-5);
+    EXPECT_NEAR(output[2], 1.643168, 1e-5);
+    EXPECT_NEAR(output[3], 2.921186, 1e-5);
+}
+
+TEST(CpuRmsNormKernel, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    std::vector<ExecutionPlanNodeSpec> nodes;
+    nodes.push_back(ExecutionPlanNodeSpec{
+            .op_type = OpType::kRmsNorm,
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .isa = IsaLevel::kScalar,
+            .phase = ExecPhase::kBoth,
+            .op_params = RmsNormOp::Params{.epsilon_ = 1.0e-5F},
+    });
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->size(), 1U);
+    ASSERT_NE(plan->steps().front().op, nullptr);
+
+    const float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    const float weight[4] = {1.0F, 0.5F, 1.5F, 2.0F};
+    float output[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+    const int64_t shape[1] = {4};
+    const int64_t strides[1] = {1};
+    const CpuRmsNormParams params = MakeCpuRmsNormParams(input, weight, output, shape, strides);
+
+    ExecutionStep step = plan->steps().front();
+    step.packed_params = &params;
+    ExecutionPlan executable_plan;
+    ASSERT_TRUE(executable_plan.AddStep(step).ok());
+
+    RuntimeBindingContext bindings;
+    const Status status = Executor::Execute(executable_plan, bindings);
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_NEAR(output[0], 0.365148, 1e-5);

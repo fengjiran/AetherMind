@@ -88,7 +88,7 @@ public:
     /// \param inputs  Input tensor shapes (for size-dependent estimation).
     AM_NODISCARD virtual WorkspaceRequirement ComputeWorkspaceRequirement(
             std::span<const ShapeInfo> inputs) const noexcept {
-        (void) inputs;
+        UNUSED(inputs);
         return {};
     }
 

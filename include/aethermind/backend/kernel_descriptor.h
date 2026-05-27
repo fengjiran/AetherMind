@@ -12,7 +12,7 @@ struct KernelDescriptor {
     KernelSelector selector{};
     KernelFunc kernel_func = nullptr;
     const char* name = nullptr;
-    int priority = 0;
+    int priority = 0; // Higher value wins; first-registered wins on tie.
 };
 
 AM_NODISCARD inline bool IsValidKernelDescriptor(

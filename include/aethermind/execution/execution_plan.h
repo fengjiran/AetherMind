@@ -4,6 +4,7 @@
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/status.h"
+#include "aethermind/operators/operator.h"
 #include "aethermind/runtime/workspace.h"
 
 #include <cstddef>
@@ -15,6 +16,7 @@ namespace aethermind {
 struct ExecutionStep {
     OpType op_type = OpType::kUnknown;
     KernelInvocation invocation{};
+    OperatorPtr op{};
     KernelFunc fn = nullptr;
     const void* packed_params = nullptr;
     WorkspaceRequirement workspace_requirement{};

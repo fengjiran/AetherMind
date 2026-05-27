@@ -7,6 +7,7 @@ namespace {
 
 OpKernelContext BuildKernelContext(const ExecutionStep& step,
                                    RuntimeBindingContext& bindings) noexcept {
+    const ResolvedKernel resolved = step.op != nullptr ? step.op->GetResolvedKernel() : ResolvedKernel{};
     const auto device_type = step.invocation.selector.device_type != DeviceType::kUndefined
                                      ? step.invocation.selector.device_type
                                      : DeviceType::kCPU;
@@ -18,8 +19,8 @@ OpKernelContext BuildKernelContext(const ExecutionStep& step,
             .tracing = nullptr,
             .caps = nullptr,
             .packed_params = step.packed_params,
-            .attrs = step.attrs,
-            .debug_name = step.debug_name,
+            .attrs = step.attrs.empty() ? resolved.attrs : step.attrs,
+            .debug_name = step.debug_name != nullptr ? step.debug_name : resolved.debug_name,
             .backend_resources = {},
     };
 }
@@ -38,8 +39,8 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
 
 Status LayerRunner::RunStep(const ExecutionStep& step,
                             RuntimeBindingContext& bindings) noexcept {
-    if (step.fn == nullptr) {
-        return Status::InvalidArgument("Execution step kernel function cannot be null");
+    if (step.op == nullptr && step.fn == nullptr) {
+        return Status::InvalidArgument("Execution step operator and kernel function cannot both be null");
     }
 
     const auto workspace_binding = bindings.BindWorkspace(step.workspace_requirement);
@@ -48,6 +49,9 @@ Status LayerRunner::RunStep(const ExecutionStep& step,
     }
 
     const OpKernelContext op_ctx = BuildKernelContext(step, bindings);
+    if (step.op != nullptr) {
+        return step.op->Run(step.invocation, op_ctx, workspace_binding.value());
+    }
     return step.fn(step.invocation, op_ctx, workspace_binding.value());
 }
 

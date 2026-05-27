@@ -5,8 +5,8 @@
 namespace aethermind {
 
 Status ExecutionPlan::AddStep(const ExecutionStep& step) {
-    if (step.fn == nullptr) {
-        return Status::InvalidArgument("Execution step kernel function cannot be null");
+    if (step.op == nullptr && step.fn == nullptr) {
+        return Status::InvalidArgument("Execution step operator and kernel function cannot both be null");
     }
     if (!IsValidWorkspaceAlignment(step.workspace_requirement.alignment)) {
         return Status::InvalidArgument("Execution step workspace alignment must be a non-zero power of two");

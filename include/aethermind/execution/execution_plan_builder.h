@@ -8,6 +8,7 @@
 #include "aethermind/runtime/runtime_context.h"
 #include "data_type.h"
 
+#include <any>
 #include <span>
 #include <vector>
 
@@ -23,6 +24,7 @@ struct ExecutionPlanNodeSpec {
     ExecPhase phase = ExecPhase::kBoth;
     WorkspaceRequirement workspace_requirement{};
     std::span<const std::byte> attrs{};
+    std::any op_params{};
 };
 
 class ExecutionPlanBuilder {

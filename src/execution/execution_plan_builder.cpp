@@ -3,6 +3,8 @@
 #include "aethermind/backend/kernel_request.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/rms_norm_op.h"
 
 namespace aethermind {
 namespace {
@@ -35,6 +37,42 @@ StatusOr<const void*> ResolvePackedParamsForNode(const ModelInstance* model_inst
     return packed_weights->storage().data();
 }
 
+std::any MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
+    if (node.op_params.has_value()) {
+        return node.op_params;
+    }
+    if (node.op_type == OpType::kRmsNorm) {
+        return RmsNormOp::Params{};
+    }
+    return {};
+}
+
+StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
+                                               const ExecutionPlanNodeSpec& node) {
+    StatusOr<std::unique_ptr<Operator>> created = OperatorRegistry::Create(
+            node.op_type,
+            MakeOperatorParamsForNode(node));
+    if (!created.ok()) {
+        if (created.status().code() == StatusCode::kNotFound) {
+            return OperatorPtr{};
+        }
+        return created.status();
+    }
+
+    std::unique_ptr<Operator> op = std::move(created).value();
+    AM_RETURN_IF_ERROR(op->Validate());
+
+    OperatorContext op_ctx{
+            .backend = &backend,
+            .kernel_registry = backend.TryGetKernelRegistryForDebug(),
+            .workspace = nullptr,
+            .selector = MakeSelectorForNode(node),
+    };
+    AM_RETURN_IF_ERROR(op->Prepare(op_ctx));
+
+    return OperatorPtr(std::move(op));
+}
+
 StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
                                            const ModelInstance* model_instance,
                                            const std::vector<ExecutionPlanNodeSpec>& nodes) {
@@ -58,10 +96,22 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
             return backend.status();
         }
 
-        const auto resolved =
-                ExecutionPlanBuilder::ResolveKernelForNode(*backend.value(), node);
-        if (!resolved.ok()) {
-            return resolved.status();
+        const auto prepared_operator = CreateAndPrepareOperator(*backend.value(), node);
+        if (!prepared_operator.ok()) {
+            return prepared_operator.status();
+        }
+
+        OperatorPtr op = prepared_operator.value();
+        StatusOr<ResolvedKernel> resolved = Status::Internal("unresolved execution plan node");
+        if (op != nullptr) {
+            ResolvedKernel kernel = op->GetResolvedKernel();
+            kernel.attrs = node.attrs;
+            resolved = kernel;
+        } else {
+            resolved = ExecutionPlanBuilder::ResolveKernelForNode(*backend.value(), node);
+            if (!resolved.ok()) {
+                return resolved.status();
+            }
         }
 
         const auto packed_params = ResolvePackedParamsForNode(model_instance, node);
@@ -75,6 +125,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
                             .op_type = node.op_type,
                             .selector = MakeSelectorForNode(node),
                     },
+                    .op = std::move(op),
                     .fn = resolved->fn,
                     .packed_params = packed_params.value(),
                     .workspace_requirement = workspace_requirements[index],

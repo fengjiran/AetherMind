@@ -3,38 +3,52 @@
 
 #include "aethermind/operators/operator.h"
 
-#include <array>
-#include <cstddef>
-
 namespace aethermind {
-
-struct RmsNormOpParams {
-    float epsilon_ = 1.0e-5F;
-};
 
 class RmsNormOp final : public Operator {
 public:
-    using Params = RmsNormOpParams;
+    struct Params {
+        float epsilon_ = 1.0e-5F;
+    };
 
-    explicit RmsNormOp(RmsNormOpParams params) noexcept;
+    explicit RmsNormOp(Params params) noexcept : params_(params) {}
 
-    AM_NODISCARD OpType Type() const noexcept override;
-    AM_NODISCARD const char* Name() const noexcept override;
+    AM_NODISCARD OpType Type() const noexcept override {
+        return OpType::kRmsNorm;
+    }
+
+    AM_NODISCARD const char* Name() const noexcept override {
+        return "RmsNorm";
+    }
+
     AM_NODISCARD Status Validate() const override;
     AM_NODISCARD Status ValidateInputs(std::span<const TensorView> inputs) const override;
     AM_NODISCARD StatusOr<std::vector<ShapeInfo>> InferOutputShapes(
             std::span<const ShapeInfo> inputs) const override;
+
     AM_NODISCARD WorkspaceRequirement ComputeWorkspaceRequirement(
-            std::span<const ShapeInfo> inputs) const noexcept override;
+            std::span<const ShapeInfo> inputs) const noexcept override {
+        UNUSED(inputs);
+        return {};
+    }
+
     AM_NODISCARD Status Prepare(OperatorContext& ctx) override;
+
     AM_NODISCARD Status Run(const KernelInvocation& invocation,
                             const OpKernelContext& op_ctx,
-                            const WorkspaceBinding& workspace) const noexcept override;
-    AM_NODISCARD ResolvedKernel GetResolvedKernel() const noexcept override;
+                            const WorkspaceBinding& workspace) const noexcept override {
+        if (resolved_kernel_.fn == nullptr) {
+            return Status(StatusCode::kFailedPrecondition, "RmsNorm Run called before Prepare");
+        }
+        return resolved_kernel_.fn(invocation, op_ctx, workspace);
+    }
+
+    AM_NODISCARD ResolvedKernel GetResolvedKernel() const noexcept override {
+        return resolved_kernel_;
+    }
 
 private:
-    RmsNormOpParams params_{};
-    alignas(float) std::array<std::byte, sizeof(float)> attrs_{};
+    Params params_{};
     ResolvedKernel resolved_kernel_{};
 };
 

@@ -9,6 +9,8 @@ namespace aethermind {
 struct CpuRmsNormAttrs {
     float Epsilon = 1e-5F;
 };
+static_assert(sizeof(CpuRmsNormAttrs) == sizeof(float));
+static_assert(alignof(CpuRmsNormAttrs) <= alignof(float));
 
 struct CpuRmsNormParams {
     TensorView Input{};

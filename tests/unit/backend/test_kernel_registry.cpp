@@ -49,7 +49,7 @@ TEST(KernelRegistry, RegisterAndLookupReturnsKernel) {
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
-    ASSERT_TRUE(registry.Freeze().ok());
+    registry.Freeze();
 
     const StatusOr<const KernelDescriptor*> resolved =
             registry.Resolve(OpType::kRmsNorm, descriptor.selector);
@@ -62,7 +62,7 @@ TEST(KernelRegistry, RequestBasedResolveReturnsKernel) {
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
-    ASSERT_TRUE(registry.Freeze().ok());
+    registry.Freeze();
 
     const KernelRequest request{.op_type = OpType::kRmsNorm, .selector = descriptor.selector};
     const StatusOr<const KernelDescriptor*> resolved = registry.Resolve(request);
@@ -73,7 +73,7 @@ TEST(KernelRegistry, RequestBasedResolveReturnsKernel) {
 
 TEST(KernelRegistry, LookupMissingKeyReturnsNullptr) {
     KernelRegistry registry;
-    ASSERT_TRUE(registry.Freeze().ok());
+    registry.Freeze();
 
     const StatusOr<const KernelDescriptor*> resolved =
             registry.Resolve(OpType::kLinear, MakeMissingSelector());
@@ -82,7 +82,7 @@ TEST(KernelRegistry, LookupMissingKeyReturnsNullptr) {
 
 TEST(KernelRegistry, RequestRejectsUnknownOpType) {
     KernelRegistry registry;
-    ASSERT_TRUE(registry.Freeze().ok());
+    registry.Freeze();
 
     const StatusOr<const KernelDescriptor*> resolved = registry.Resolve(
             KernelRequest{.op_type = OpType::kUnknown, .selector = MakeMissingSelector()});
@@ -107,7 +107,7 @@ TEST(KernelRegistry, RegisterAfterFreezeFails) {
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
-    ASSERT_TRUE(registry.Freeze().ok());
+    registry.Freeze();
     EXPECT_TRUE(registry.frozen());
 
     KernelDescriptor extra = descriptor;
@@ -124,6 +124,41 @@ TEST(KernelRegistry, DuplicateRegistrationFails) {
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
     EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kAlreadyExists);
+}
+
+TEST(KernelRegistry, FindByOpTypeReturnsMatchingDescriptors) {
+    KernelRegistry registry;
+    const KernelDescriptor rms = MakeTestKernelDescriptor();
+
+    KernelDescriptor linear = rms;
+    linear.op_type = OpType::kLinear;
+    linear.name = "test::linear";
+
+    ASSERT_TRUE(registry.Register(rms).ok());
+    ASSERT_TRUE(registry.Register(linear).ok());
+    registry.Freeze();
+
+    const auto rms_kernels = registry.FindByOpType(OpType::kRmsNorm);
+    ASSERT_EQ(rms_kernels.size(), 1u);
+    EXPECT_EQ(rms_kernels[0]->op_type, OpType::kRmsNorm);
+
+    const auto linear_kernels = registry.FindByOpType(OpType::kLinear);
+    ASSERT_EQ(linear_kernels.size(), 1u);
+    EXPECT_EQ(linear_kernels[0]->op_type, OpType::kLinear);
+
+    const auto none = registry.FindByOpType(OpType::kSoftmax);
+    EXPECT_TRUE(none.empty());
+}
+
+TEST(KernelRegistry, DebugDumpContainsRegisteredEntries) {
+    KernelRegistry registry;
+    ASSERT_TRUE(registry.Register(MakeTestKernelDescriptor()).ok());
+    registry.Freeze();
+
+    const std::string dump = registry.DebugDump();
+    EXPECT_FALSE(dump.empty());
+    EXPECT_NE(dump.find("RmsNorm"), std::string::npos);
+    EXPECT_NE(dump.find("test::op"), std::string::npos);
 }
 
 }// namespace

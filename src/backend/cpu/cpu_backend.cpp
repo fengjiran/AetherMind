@@ -24,10 +24,7 @@ KernelSelector MakeDefaultCpuSelector() {
 
 CpuBackend::CpuBackend() {
     RegisterBuiltinKernels();
-    const Status freeze_status = kernel_registry_.Freeze();
-    AM_CHECK(freeze_status.ok(),
-             "Failed to freeze CPU kernel registry: {}",
-             freeze_status.ToString().c_str());
+    kernel_registry_.Freeze();
 }
 
 void CpuBackend::RegisterBuiltinKernels() {

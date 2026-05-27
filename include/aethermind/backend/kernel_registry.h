@@ -10,6 +10,9 @@
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
 
+#include <atomic>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace aethermind {
@@ -18,13 +21,12 @@ class KernelRegistry {
 public:
     Status Register(const KernelDescriptor& descriptor);
 
-    StatusOr<const KernelDescriptor*> Resolve(
-            OpType op_type,
-            const KernelSelector& selector) const;
+    AM_NODISCARD StatusOr<const KernelDescriptor*> Resolve(OpType op_type,
+                                                           const KernelSelector& selector) const;
 
-    StatusOr<const KernelDescriptor*> Resolve(const KernelRequest& request) const;
+    AM_NODISCARD StatusOr<const KernelDescriptor*> Resolve(const KernelRequest& request) const;
 
-    Status Freeze() noexcept;
+    void Freeze() noexcept;
 
     AM_NODISCARD size_t size() const noexcept {
         return kernels_.size();
@@ -35,12 +37,19 @@ public:
     }
 
     AM_NODISCARD bool frozen() const noexcept {
-        return frozen_;
+        return frozen_.load(std::memory_order_acquire);
     }
 
+    AM_NODISCARD std::vector<const KernelDescriptor*> FindByOpType(OpType op_type) const;
+
+    AM_NODISCARD std::string DebugDump() const;
+
 private:
-    bool frozen_ = false;
+    void BuildBucketIndex() noexcept;
+
+    std::atomic<bool> frozen_{false};
     std::vector<KernelDescriptor> kernels_{};
+    std::unordered_map<OpType, std::vector<size_t>> buckets_{};
 };
 
 }// namespace aethermind

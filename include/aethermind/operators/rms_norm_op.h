@@ -21,8 +21,8 @@ public:
         return "RmsNorm";
     }
 
-    AM_NODISCARD Status Validate() const override;
-    AM_NODISCARD Status ValidateInputs(std::span<const TensorView> inputs) const override;
+    AM_NODISCARD Status ValidateParams() const override;
+    AM_NODISCARD Status CheckShapes(std::span<const ShapeInfo> inputs) const override;
     AM_NODISCARD StatusOr<std::vector<ShapeInfo>> InferOutputShapes(
             std::span<const ShapeInfo> inputs) const override;
 

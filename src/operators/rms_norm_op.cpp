@@ -1,7 +1,7 @@
 #include "aethermind/operators/rms_norm_op.h"
 #include "aethermind/backend/backend.h"
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/operators/operator_registry.h"
 
 #include <span>
@@ -9,7 +9,7 @@
 
 namespace aethermind {
 
-Status RmsNormOp::Validate() const {
+Status RmsNormOp::ValidateParams() const {
     if (params_.epsilon_ <= 0.0F) {
         return Status::InvalidArgument(
                 "RmsNorm epsilon must be positive, got " + std::to_string(params_.epsilon_));
@@ -17,7 +17,7 @@ Status RmsNormOp::Validate() const {
     return Status::Ok();
 }
 
-Status RmsNormOp::ValidateInputs(std::span<const TensorView> inputs) const {
+Status RmsNormOp::CheckShapes(std::span<const ShapeInfo> inputs) const {
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
                 "RmsNorm expects exactly 2 inputs, got " + std::to_string(inputs.size()));
@@ -25,36 +25,25 @@ Status RmsNormOp::ValidateInputs(std::span<const TensorView> inputs) const {
 
     const auto& input = inputs[0];
     const auto& weight = inputs[1];
-    if (!input.is_valid()) {
-        return Status::InvalidArgument("RmsNorm input TensorView must be valid");
-    }
 
-    if (!weight.is_valid()) {
-        return Status::InvalidArgument("RmsNorm weight TensorView must be valid");
-    }
-
-    if (input.dtype() != DataType::Float32() || weight.dtype() != DataType::Float32()) {
+    if (input.dtype_ != DataType::Float32() || weight.dtype_ != DataType::Float32()) {
         return Status::InvalidArgument("RmsNorm only supports float32 inputs in Phase 1");
     }
 
-    if (input.rank() < 1) {
+    if (input.shape_.size() < 1) {
         return Status::InvalidArgument("RmsNorm input rank must be at least 1");
     }
 
-    if (weight.rank() != 1) {
+    if (weight.shape_.size() != 1) {
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
     }
 
-    if (!input.is_contiguous() || !weight.is_contiguous()) {
-        return Status::InvalidArgument("RmsNorm requires contiguous input and weight");
-    }
-
-    const int64_t hidden_size = input.dim(input.rank() - 1);
+    const int64_t hidden_size = input.shape_.back();
     if (hidden_size <= 0) {
         return Status::InvalidArgument("RmsNorm hidden size must be positive");
     }
 
-    if (weight.numel() != hidden_size) {
+    if (weight.shape_[0] != hidden_size) {
         return Status::InvalidArgument(
                 "RmsNorm weight length must equal input last dimension");
     }
@@ -70,7 +59,7 @@ StatusOr<std::vector<ShapeInfo>> RmsNormOp::InferOutputShapes(
 }
 
 Status RmsNormOp::Prepare(OperatorContext& ctx) {
-    AM_RETURN_IF_ERROR(Validate());
+    AM_RETURN_IF_ERROR(ValidateParams());
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("RmsNorm Prepare requires OperatorContext.backend");
     }

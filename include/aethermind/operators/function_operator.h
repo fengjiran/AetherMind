@@ -28,11 +28,11 @@ public:
         return debug_name_ != nullptr ? debug_name_ : "FunctionOperator";
     }
 
-    AM_NODISCARD Status Validate() const override {
+    AM_NODISCARD Status ValidateParams() const override {
         return Status::Ok();
     }
 
-    AM_NODISCARD Status ValidateInputs(std::span<const TensorView>) const override {
+    AM_NODISCARD Status CheckShapes(std::span<const ShapeInfo>) const override {
         return Status::Ok();
     }
 

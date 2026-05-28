@@ -34,7 +34,7 @@ struct ShapeInfo {
 /// - Kernel resolution and preparation
 /// - Runtime execution dispatch
 ///
-/// Lifecycle: Construct → Validate → Prepare → Run (repeated) → Destroy
+/// Lifecycle: Construct → ValidateParams → Prepare → Run (repeated) → Destroy
 ///
 /// Thread safety: Prepare and Run are NOT thread-safe by default.
 /// Each invocation should use its own Operator instance or external
@@ -59,15 +59,16 @@ public:
     /// and consistent (e.g., epsilon > 0 for RmsNorm, hidden_size > 0).
     ///
     /// Returns Ok if valid; otherwise returns a Status describing the error.
-    AM_NODISCARD virtual Status Validate() const = 0;
+    AM_NODISCARD virtual Status ValidateParams() const = 0;
 
-    /// Validates that input tensors are compatible with this operator.
+    /// Validates that input shapes are compatible with this operator.
     ///
     /// Called during plan building. Checks shape compatibility, dtype
-    /// constraints, contiguity requirements, etc.
+    /// constraints, and dimension consistency — anything computable from
+    /// ShapeInfo alone. Data/contiguity/null checks happen in the kernel.
     ///
     /// Returns Ok if compatible; otherwise returns a descriptive error Status.
-    AM_NODISCARD virtual Status ValidateInputs(std::span<const TensorView> inputs) const = 0;
+    AM_NODISCARD virtual Status CheckShapes(std::span<const ShapeInfo> inputs) const = 0;
 
     /// Infers output shapes from input shapes without executing.
     ///
@@ -99,6 +100,7 @@ public:
     /// - Resolve the kernel from OperatorContext::backend
     /// - Cache the resolved KernelFunc and attrs
     /// - Validate the resolved kernel matches expectations
+    /// - ValidateParams() must have returned Ok before Prepare() is called
     ///
     /// After successful Prepare(), the operator is ready for repeated Run() calls.
     ///

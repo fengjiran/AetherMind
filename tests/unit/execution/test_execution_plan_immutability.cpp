@@ -137,7 +137,7 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
 
     const std::vector<ExecutionStep>& steps = plan->steps();
     EXPECT_EQ(steps.size(), 1U);
-    EXPECT_EQ(steps.front().op_type, OpType::kRmsNorm);
+    EXPECT_EQ(steps.front().op->Type(), OpType::kRmsNorm);
     ASSERT_NE(steps.front().op, nullptr);
     EXPECT_NE(steps.front().op->GetResolvedKernel().fn, nullptr);
 }
@@ -250,7 +250,7 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     ASSERT_TRUE(plan.ok());
 
     const size_t original_size = plan->size();
-    const OpType original_op_type = plan->steps().front().op_type;
+    const OpType original_op_type = plan->steps().front().op->Type();
     ASSERT_NE(plan->steps().front().op, nullptr);
     const KernelFunc original_fn = plan->steps().front().op->GetResolvedKernel().fn;
 
@@ -260,7 +260,7 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     ASSERT_TRUE(status.ok());
 
     EXPECT_EQ(plan->size(), original_size);
-    EXPECT_EQ(plan->steps().front().op_type, original_op_type);
+    EXPECT_EQ(plan->steps().front().op->Type(), original_op_type);
     EXPECT_EQ(plan->steps().front().op->GetResolvedKernel().fn, original_fn);
 }
 

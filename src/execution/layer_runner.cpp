@@ -1,5 +1,6 @@
 #include "aethermind/execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/execution/runtime_binding_context.h"
 
 namespace aethermind {
@@ -8,8 +9,8 @@ namespace {
 KernelContext BuildKernelContext(const ExecutionStep& step,
                                    RuntimeBindingContext& bindings) noexcept {
     const ResolvedKernel resolved = step.op->GetResolvedKernel();
-    const auto device_type = step.invocation.selector.device_type != DeviceType::kUndefined
-                                     ? step.invocation.selector.device_type
+    const auto device_type = step.selector.device_type != DeviceType::kUndefined
+                                     ? step.selector.device_type
                                      : DeviceType::kCPU;
 
     return KernelContext{
@@ -49,7 +50,11 @@ Status LayerRunner::RunStep(const ExecutionStep& step,
     }
 
     const KernelContext op_ctx = BuildKernelContext(step, bindings);
-    return step.op->Run(step.invocation, op_ctx, workspace_binding.value());
+    const KernelInvocation invocation{
+            .op_type = step.op->Type(),
+            .selector = step.selector,
+    };
+    return step.op->Run(invocation, op_ctx, workspace_binding.value());
 }
 
 }// namespace aethermind

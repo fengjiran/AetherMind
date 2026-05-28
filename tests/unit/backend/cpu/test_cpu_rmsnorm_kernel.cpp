@@ -1,6 +1,7 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -105,19 +106,15 @@ TEST(CpuRmsNormKernel, CpuBackendResolvedKernelExecutesThroughExecutor) {
 
     ExecutionPlan plan;
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = resolved->op_type,
-                                     .invocation = {
-                                             .op_type = OpType::kRmsNorm,
-                                             .selector = {
-                                                     .device_type = DeviceType::kCPU,
-                                                     .activation_dtype = DataType::Float32(),
-                                                     .weight_dtype = DataType::Float32(),
-                                                     .weight_format = WeightFormat::kPlain,
-                                                     .isa = IsaLevel::kScalar,
-                                                      .phase = ExecPhase::kBoth,
-                                              },
-                                      },
-                                      .op = std::make_shared<FunctionOperator>(
+                                     .selector = {
+                                             .device_type = DeviceType::kCPU,
+                                             .activation_dtype = DataType::Float32(),
+                                             .weight_dtype = DataType::Float32(),
+                                             .weight_format = WeightFormat::kPlain,
+                                             .isa = IsaLevel::kScalar,
+                                             .phase = ExecPhase::kBoth,
+                                     },
+                                     .op = std::make_shared<FunctionOperator>(
                                               resolved->op_type,
                                               resolved->fn,
                                               attrs_bytes,

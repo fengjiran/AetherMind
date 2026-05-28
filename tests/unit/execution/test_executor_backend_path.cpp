@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/function_operator.h"
@@ -55,19 +56,15 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     g_execution_order = &execution_order;
 
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRmsNorm,
-                                     .invocation = {
-                                             .op_type = OpType::kRmsNorm,
-                                             .selector = {
-                                                     .device_type = DeviceType::kCPU,
-                                                     .activation_dtype = DataType::Float32(),
-                                                     .weight_dtype = DataType::Float32(),
-                                                     .weight_format = WeightFormat::kPlain,
-                                                     .isa = IsaLevel::kScalar,
-                                                     .phase = ExecPhase::kBoth,
-                                             },
-                                      },
-                                      .op = std::make_shared<FunctionOperator>(
+                                     .selector = {
+                                             .device_type = DeviceType::kCPU,
+                                             .activation_dtype = DataType::Float32(),
+                                             .weight_dtype = DataType::Float32(),
+                                             .weight_format = WeightFormat::kPlain,
+                                             .isa = IsaLevel::kScalar,
+                                             .phase = ExecPhase::kBoth,
+                                     },
+                                     .op = std::make_shared<FunctionOperator>(
                                               OpType::kRmsNorm,
                                               &FirstKernel,
                                               std::span<const std::byte>{},
@@ -81,19 +78,15 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
                              })
                         .ok());
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRoPE,
-                                     .invocation = {
-                                             .op_type = OpType::kRoPE,
-                                             .selector = {
-                                                     .device_type = DeviceType::kCPU,
-                                                     .activation_dtype = DataType::Float32(),
-                                                     .weight_dtype = DataType::Float32(),
-                                                     .weight_format = WeightFormat::kPlain,
-                                                     .isa = IsaLevel::kScalar,
-                                                     .phase = ExecPhase::kBoth,
-                                             },
-                                      },
-                                      .op = std::make_shared<FunctionOperator>(
+                                     .selector = {
+                                             .device_type = DeviceType::kCPU,
+                                             .activation_dtype = DataType::Float32(),
+                                             .weight_dtype = DataType::Float32(),
+                                             .weight_format = WeightFormat::kPlain,
+                                             .isa = IsaLevel::kScalar,
+                                             .phase = ExecPhase::kBoth,
+                                     },
+                                     .op = std::make_shared<FunctionOperator>(
                                               OpType::kRoPE,
                                               &SecondKernel,
                                               std::span<const std::byte>{},
@@ -126,19 +119,15 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
     CpuWorkspaceArena arena(workspace, sizeof(workspace));
     RuntimeBindingContext bindings(&arena);
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRmsNorm,
-                                     .invocation = {
-                                             .op_type = OpType::kRmsNorm,
-                                             .selector = {
-                                                     .device_type = DeviceType::kCPU,
-                                                     .activation_dtype = DataType::Float32(),
-                                                     .weight_dtype = DataType::Float32(),
-                                                     .weight_format = WeightFormat::kPlain,
-                                                     .isa = IsaLevel::kScalar,
-                                                     .phase = ExecPhase::kBoth,
-                                             },
-                                      },
-                                      .op = std::make_shared<FunctionOperator>(
+                                     .selector = {
+                                             .device_type = DeviceType::kCPU,
+                                             .activation_dtype = DataType::Float32(),
+                                             .weight_dtype = DataType::Float32(),
+                                             .weight_format = WeightFormat::kPlain,
+                                             .isa = IsaLevel::kScalar,
+                                             .phase = ExecPhase::kBoth,
+                                     },
+                                     .op = std::make_shared<FunctionOperator>(
                                               OpType::kRmsNorm,
                                               &FailingKernel,
                                               std::span<const std::byte>{},
@@ -162,19 +151,15 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
     RuntimeBindingContext bindings;
 
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRmsNorm,
-                                     .invocation = {
-                                             .op_type = OpType::kRmsNorm,
-                                             .selector = {
-                                                     .device_type = DeviceType::kCPU,
-                                                     .activation_dtype = DataType::Float32(),
-                                                     .weight_dtype = DataType::Float32(),
-                                                     .weight_format = WeightFormat::kPlain,
-                                                     .isa = IsaLevel::kScalar,
-                                                     .phase = ExecPhase::kBoth,
-                                             },
-                                      },
-                                      .op = std::make_shared<FunctionOperator>(
+                                     .selector = {
+                                             .device_type = DeviceType::kCPU,
+                                             .activation_dtype = DataType::Float32(),
+                                             .weight_dtype = DataType::Float32(),
+                                             .weight_format = WeightFormat::kPlain,
+                                             .isa = IsaLevel::kScalar,
+                                             .phase = ExecPhase::kBoth,
+                                     },
+                                     .op = std::make_shared<FunctionOperator>(
                                               OpType::kRmsNorm,
                                               &FirstKernel,
                                               std::span<const std::byte>{},

@@ -169,9 +169,8 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     ASSERT_EQ(step_kernel.attrs.size(), sizeof(float));
     const auto* stored_epsilon = reinterpret_cast<const float*>(step_kernel.attrs.data());
     ASSERT_NE(stored_epsilon, nullptr);
-    EXPECT_EQ(step.op_type, OpType::kRmsNorm);
-    EXPECT_EQ(step.invocation.op_type, OpType::kRmsNorm);
-    EXPECT_EQ(step.invocation.selector.device_type, DeviceType::kCPU);
+    EXPECT_EQ(step.op->Type(), OpType::kRmsNorm);
+    EXPECT_EQ(step.selector.device_type, DeviceType::kCPU);
     EXPECT_EQ(step.packed_params, nullptr);
     EXPECT_EQ(step.workspace_requirement.bytes, 0U);
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);

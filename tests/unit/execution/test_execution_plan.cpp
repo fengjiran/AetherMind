@@ -27,7 +27,6 @@ TEST(ExecutionPlan, AddStepStoresOperatorResolvedAttrs) {
     int packed_params = 17;
 
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op_type = OpType::kRmsNorm,
                                      .op = std::make_shared<FunctionOperator>(
                                              OpType::kRmsNorm,
                                              &FakeKernel,
@@ -52,8 +51,8 @@ TEST(ExecutionPlan, AddStepStoresOperatorResolvedAttrs) {
     const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(resolved.attrs.data());
     ASSERT_NE(stored_attrs, nullptr);
     EXPECT_NE(stored_attrs, &attrs);
-    EXPECT_EQ(step.op_type, OpType::kRmsNorm);
-    EXPECT_EQ(step.invocation.op_type, OpType::kUnknown);
+    EXPECT_EQ(step.op->Type(), OpType::kRmsNorm);
+    EXPECT_EQ(step.selector.device_type, DeviceType::kUndefined);
     EXPECT_EQ(step.packed_params, &packed_params);
     EXPECT_EQ(step.workspace_requirement.bytes, 128U);
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
@@ -67,7 +66,6 @@ TEST(ExecutionPlan, AddStepAllowsEmptyAttrSpan) {
     ExecutionPlan plan;
 
     const Status status = plan.AddStep(ExecutionStep{
-            .op_type = OpType::kRmsNorm,
             .op = std::make_shared<FunctionOperator>(
                     OpType::kRmsNorm,
                     &FakeKernel,
@@ -86,7 +84,6 @@ TEST(ExecutionPlan, AddStepRejectsInvalidWorkspaceAlignment) {
     ExecutionPlan plan;
 
     const Status status = plan.AddStep(ExecutionStep{
-            .op_type = OpType::kRmsNorm,
             .op = std::make_shared<FunctionOperator>(
                     OpType::kRmsNorm,
                     &FakeKernel,

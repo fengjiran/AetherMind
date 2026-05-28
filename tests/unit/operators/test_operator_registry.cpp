@@ -22,14 +22,14 @@ public:
         return OpType::kAdd;
     }
 
-    AM_NODISCARD Status Validate() const override {
+    AM_NODISCARD Status ValidateParams() const override {
         if (params_.value_ <= 0) {
             return Status::InvalidArgument("RegistryTestOperator value must be positive");
         }
         return Status::Ok();
     }
 
-    AM_NODISCARD Status ValidateInputs(std::span<const TensorView> inputs) const override {
+    AM_NODISCARD Status CheckShapes(std::span<const ShapeInfo> inputs) const override {
         if (!inputs.empty()) {
             return Status::InvalidArgument("RegistryTestOperator expects no inputs");
         }
@@ -90,7 +90,7 @@ TEST(OperatorRegistry, RegisterAndCreateOperator) {
     ASSERT_NE(op.value(), nullptr);
     EXPECT_EQ(op.value()->Type(), OpType::kAdd);
     EXPECT_STREQ(op.value()->Name(), ToString(OpType::kAdd));
-    EXPECT_TRUE(op.value()->Validate().ok());
+    EXPECT_TRUE(op.value()->ValidateParams().ok());
 }
 
 TEST(OperatorRegistry, RejectsDuplicateFactory) {

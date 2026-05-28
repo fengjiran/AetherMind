@@ -2,6 +2,7 @@
 
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/embedding_op.h"
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/operator_registry.h"
 #include "aethermind/operators/rms_norm_op.h"
@@ -41,6 +42,9 @@ std::any MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
     if (node.op_params.has_value()) {
         return node.op_params;
     }
+    if (node.op_type == OpType::kEmbedding) {
+        return EmbeddingOp::Params{};
+    }
     if (node.op_type == OpType::kRmsNorm) {
         return RmsNormOp::Params{};
     }
@@ -48,7 +52,8 @@ std::any MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
 }
 
 StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
-                                               const ExecutionPlanNodeSpec& node) {
+                                               const ExecutionPlanNodeSpec& node,
+                                               std::span<const ShapeInfo> input_shapes) {
     StatusOr<std::unique_ptr<Operator>> created = OperatorRegistry::Create(
             node.op_type,
             MakeOperatorParamsForNode(node));
@@ -65,7 +70,13 @@ StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
     }
 
     std::unique_ptr<Operator> op = std::move(created).value();
-    AM_RETURN_IF_ERROR(op->Validate());
+    AM_RETURN_IF_ERROR(op->ValidateParams());
+    // CheckShapes requires input shape metadata. When shapes are available
+    // (e.g., from model graph compilation), plumb them here instead of {}.  The
+    // kernel is the final validation layer and handles data/contiguity checks.
+    if (!input_shapes.empty()) {
+        AM_RETURN_IF_ERROR(op->CheckShapes(input_shapes));
+    }
 
     OperatorContext op_ctx{
             .backend = &backend,
@@ -87,7 +98,8 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
         workspace_requirements.push_back(node.workspace_requirement);
     }
 
-    if (const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
+    if (const auto layout = PlanWorkspaceRequirements(
+                std::span(workspace_requirements));
         !layout.ok()) {
         return layout.status();
     }
@@ -101,7 +113,10 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
             return backend.status();
         }
 
-        const auto prepared_operator = CreateAndPrepareOperator(*backend.value(), node);
+        // TODO: plumb actual input shapes from model graph once shape tracking
+        // is available in ExecutionPlanNodeSpec. For now, pass empty shapes to
+        // maintain forward compatibility with the CheckShapes(ShapeInfo) contract.
+        const auto prepared_operator = CreateAndPrepareOperator(*backend.value(), node, {});
         if (!prepared_operator.ok()) {
             return prepared_operator.status();
         }
@@ -125,11 +140,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
         }
 
         if (auto status = plan.AddStep(ExecutionStep{
-                    .op_type = node.op_type,
-                    .invocation = {
-                            .op_type = node.op_type,
-                            .selector = MakeSelectorForNode(node),
-                    },
+                    .selector = MakeSelectorForNode(node),
                     .op = std::move(op),
                     .packed_params = packed_params.value(),
                     .workspace_requirement = workspace_requirements[index],

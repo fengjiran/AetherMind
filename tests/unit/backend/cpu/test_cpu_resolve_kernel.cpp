@@ -2,7 +2,7 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_invocation.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/tensor_view.h"
 
 #include "data_type.h"
@@ -95,7 +95,7 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
 
     const Status status = fn(KernelInvocation{.op_type = OpType::kRmsNorm,
                                               .selector = MakeCpuSelector()},
-                             OpKernelContext{
+                             KernelContext{
                                      .device = Device::CPU(),
                                      .packed_params = &params,
                                      .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),

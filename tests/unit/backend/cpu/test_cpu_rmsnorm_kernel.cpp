@@ -1,11 +1,12 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/rms_norm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
@@ -65,7 +66,7 @@ TEST(CpuRmsNormKernel, ComputesExpectedValues) {
                                                    .op_type = OpType::kRmsNorm,
                                                    .selector = {.device_type = DeviceType::kCPU},
                                            },
-                                           OpKernelContext{
+                                           KernelContext{
                                                    .device = Device::CPU(),
                                                    .packed_params = &params,
                                                    .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
@@ -100,6 +101,7 @@ TEST(CpuRmsNormKernel, CpuBackendResolvedKernelExecutesThroughExecutor) {
     const int64_t strides[1] = {1};
     const CpuRmsNormParams params = MakeCpuRmsNormParams(input, weight, output, shape, strides);
     const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
+    const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
 
     ExecutionPlan plan;
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
@@ -112,15 +114,18 @@ TEST(CpuRmsNormKernel, CpuBackendResolvedKernelExecutesThroughExecutor) {
                                                      .weight_dtype = DataType::Float32(),
                                                      .weight_format = WeightFormat::kPlain,
                                                      .isa = IsaLevel::kScalar,
-                                                     .phase = ExecPhase::kBoth,
-                                             },
-                                     },
-                                     .fn = resolved->fn,
-                                     .packed_params = &params,
-                                     .workspace_requirement = {},
-                                     .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
-                                     .debug_name = resolved->debug_name,
-                             })
+                                                      .phase = ExecPhase::kBoth,
+                                              },
+                                      },
+                                      .op = std::make_shared<FunctionOperator>(
+                                              resolved->op_type,
+                                              resolved->fn,
+                                              attrs_bytes,
+                                              resolved->debug_name),
+                                      .packed_params = &params,
+                                      .workspace_requirement = {},
+                                      .debug_name = resolved->debug_name,
+                              })
                         .ok());
 
     RuntimeBindingContext bindings;

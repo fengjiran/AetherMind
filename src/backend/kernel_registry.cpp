@@ -13,6 +13,19 @@ bool IsDuplicateRegistration(const KernelDescriptor& lhs,
            lhs.selector == rhs.selector;
 }
 
+AM_NODISCARD inline Status ValidateResolveArgs(OpType op_type,
+                                               const KernelSelector& selector) noexcept {
+    if (op_type == OpType::kUnknown) {
+        return Status::InvalidArgument("op_type cannot be kUnknown");
+    }
+
+    if (selector.device_type == DeviceType::kUndefined) {
+        return Status::InvalidArgument("device_type cannot be kUndefined");
+    }
+
+    return Status::Ok();
+}
+
 }// namespace
 
 Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
@@ -51,25 +64,21 @@ void KernelRegistry::BuildBucketIndex() noexcept {
 
 StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
                                                           const KernelSelector& selector) const {
-    return Resolve(KernelRequest{.op_type = op_type, .selector = selector});
-}
-
-StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(const KernelRequest& request) const {
     if (!frozen_.load(std::memory_order_acquire)) {
         return Status(StatusCode::kFailedPrecondition,
                       "Cannot resolve kernel before registry has been frozen");
     }
 
-    if (auto status = ValidateKernelRequest(request); !status.ok()) {
+    if (auto status = ValidateResolveArgs(op_type, selector); !status.ok()) {
         return status;
     }
 
     const KernelDescriptor* best = nullptr;
 
-    if (const auto it = buckets_.find(request.op_type); it != buckets_.end()) {
+    if (const auto it = buckets_.find(op_type); it != buckets_.end()) {
         for (size_t idx: it->second) {
             const KernelDescriptor& descriptor = kernels_[idx];
-            if (!SelectorMatches(descriptor.selector, request.selector)) {
+            if (!SelectorMatches(descriptor.selector, selector)) {
                 continue;
             }
 
@@ -81,7 +90,9 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(const KernelRequest& r
 
     if (best == nullptr) {
         return Status::NotFound(
-                "No matching kernel registered: " + ToString(request));
+                "No matching kernel registered for op_type=" +
+                std::string(ToString(op_type)) +
+                ", selector=" + ToString(selector));
     }
 
     return best;

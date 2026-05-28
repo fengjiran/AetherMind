@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_BACKEND_OP_KERNEL_CONTEXT_H
-#define AETHERMIND_BACKEND_OP_KERNEL_CONTEXT_H
+#ifndef AETHERMIND_BACKEND_KERNEL_CONTEXT_H
+#define AETHERMIND_BACKEND_KERNEL_CONTEXT_H
 
 #include "aethermind/backend/backend_capabilities.h"
 #include "aethermind/backend/stream.h"
@@ -16,7 +16,7 @@ struct BackendExecutionResources {
     void* opaque_backend_resources = nullptr;
 };
 
-struct OpKernelContext {
+struct KernelContext {
     Device device{};
     Stream* stream = nullptr;
     WorkspaceArena* workspace = nullptr;

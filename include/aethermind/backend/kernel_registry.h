@@ -6,7 +6,6 @@
 #define AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 
 #include "aethermind/backend/kernel_descriptor.h"
-#include "aethermind/backend/kernel_request.h"
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
 
@@ -23,8 +22,6 @@ public:
 
     AM_NODISCARD StatusOr<const KernelDescriptor*> Resolve(OpType op_type,
                                                            const KernelSelector& selector) const;
-
-    AM_NODISCARD StatusOr<const KernelDescriptor*> Resolve(const KernelRequest& request) const;
 
     void Freeze() noexcept;
 

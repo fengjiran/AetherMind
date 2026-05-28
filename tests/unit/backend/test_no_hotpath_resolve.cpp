@@ -1,7 +1,7 @@
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
@@ -49,7 +49,7 @@ private:
 ResolveCounters* g_resolve_counters = nullptr;
 
 Status CountingKernel(const KernelInvocation&,
-                      const OpKernelContext&,
+                      const KernelContext&,
                       const WorkspaceBinding&) noexcept {
     if (g_resolve_counters != nullptr) {
         g_resolve_counters->IncrementKernelInvocations();

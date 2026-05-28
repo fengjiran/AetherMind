@@ -21,15 +21,9 @@ public:
             OpType op_type,
             const KernelSelector& selector) const noexcept override;
 
-    AM_NODISCARD KernelFunc ResolveKernel(
-            const KernelRequest& request) const noexcept;
-
     AM_NODISCARD StatusOr<ResolvedKernel> ResolveKernelInfo(
             OpType op_type,
             const KernelSelector& selector) const noexcept override;
-
-    AM_NODISCARD StatusOr<ResolvedKernel> ResolveKernelInfo(
-            const KernelRequest& request) const noexcept;
 
     AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override;
 

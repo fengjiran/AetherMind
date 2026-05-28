@@ -1,8 +1,7 @@
 #include "aethermind/operators/rms_norm_op.h"
-
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_invocation.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/operators/operator_registry.h"
 
 #include <span>
@@ -76,16 +75,16 @@ Status RmsNormOp::Prepare(OperatorContext& ctx) {
         return Status::InvalidArgument("RmsNorm Prepare requires OperatorContext.backend");
     }
 
-    const auto resolved = ctx.backend->ResolveKernelInfo(KernelRequest{
-            .op_type = OpType::kRmsNorm,
-            .selector = ctx.selector,
-    });
+    const auto resolved = ctx.backend->ResolveKernelInfo(
+            OpType::kRmsNorm,
+            ctx.selector);
+
     if (!resolved.ok()) {
         return resolved.status();
     }
 
     resolved_kernel_ = resolved.value();
-    resolved_kernel_.attrs = std::span<const std::byte>(
+    resolved_kernel_.attrs = std::span(
             reinterpret_cast<const std::byte*>(&params_.epsilon_), sizeof(float));
     return Status::Ok();
 }

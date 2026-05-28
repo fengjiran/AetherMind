@@ -1,6 +1,6 @@
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/kernel_registry.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 
 #include "data_type.h"
 
@@ -11,7 +11,7 @@ using namespace aethermind;
 namespace {
 
 Status FakeKernel(const KernelInvocation&,
-                  const OpKernelContext&,
+                  const KernelContext&,
                   const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
@@ -64,8 +64,8 @@ TEST(KernelRegistry, RequestBasedResolveReturnsKernel) {
     ASSERT_TRUE(registry.Register(descriptor).ok());
     registry.Freeze();
 
-    const KernelRequest request{.op_type = OpType::kRmsNorm, .selector = descriptor.selector};
-    const StatusOr<const KernelDescriptor*> resolved = registry.Resolve(request);
+    const StatusOr<const KernelDescriptor*> resolved =
+            registry.Resolve(OpType::kRmsNorm, descriptor.selector);
 
     ASSERT_TRUE(resolved.ok());
     EXPECT_EQ((*resolved)->kernel_func, &FakeKernel);
@@ -84,8 +84,8 @@ TEST(KernelRegistry, RequestRejectsUnknownOpType) {
     KernelRegistry registry;
     registry.Freeze();
 
-    const StatusOr<const KernelDescriptor*> resolved = registry.Resolve(
-            KernelRequest{.op_type = OpType::kUnknown, .selector = MakeMissingSelector()});
+    const StatusOr<const KernelDescriptor*> resolved =
+            registry.Resolve(OpType::kUnknown, MakeMissingSelector());
 
     ASSERT_FALSE(resolved.ok());
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);

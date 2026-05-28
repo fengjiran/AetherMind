@@ -1,7 +1,7 @@
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 
 #include "aethermind/backend/kernel_invocation.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/operators/op_type.h"
 
 #include <cmath>
@@ -23,7 +23,7 @@ const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
 }// namespace
 
 Status CpuRmsNormKernel(const KernelInvocation& invocation,
-                        const OpKernelContext& op_ctx,
+                        const KernelContext& op_ctx,
                         const WorkspaceBinding&) noexcept {
     if (invocation.op_type != OpType::kRmsNorm) {
         return Status::InvalidArgument("CpuRmsNormKernel only supports OpType::kRmsNorm");
@@ -34,12 +34,12 @@ Status CpuRmsNormKernel(const KernelInvocation& invocation,
 
     const CpuRmsNormAttrs* attrs = GetAttrs(op_ctx.attrs);
     if (attrs == nullptr) {
-        return Status::InvalidArgument("CpuRmsNormKernel requires CpuRmsNormAttrs in OpKernelContext.attrs");
+        return Status::InvalidArgument("CpuRmsNormKernel requires CpuRmsNormAttrs in KernelContext.attrs");
     }
 
     const CpuRmsNormParams* params = GetParams(op_ctx.packed_params);
     if (params == nullptr) {
-        return Status::InvalidArgument("CpuRmsNormKernel requires CpuRmsNormParams in OpKernelContext.packed_params");
+        return Status::InvalidArgument("CpuRmsNormKernel requires CpuRmsNormParams in KernelContext.packed_params");
     }
 
     const TensorView& input = params->Input;

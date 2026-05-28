@@ -35,7 +35,7 @@ public:
     AM_NODISCARD Status Prepare(OperatorContext& ctx) override;
 
     AM_NODISCARD Status Run(const KernelInvocation& invocation,
-                            const OpKernelContext& op_ctx,
+                            const KernelContext& op_ctx,
                             const WorkspaceBinding& workspace) const noexcept override {
         if (resolved_kernel_.fn == nullptr) {
             return Status(StatusCode::kFailedPrecondition, "RmsNorm Run called before Prepare");

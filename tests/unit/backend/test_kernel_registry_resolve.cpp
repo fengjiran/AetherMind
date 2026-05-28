@@ -1,6 +1,6 @@
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/kernel_registry.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 
 #include "data_type.h"
 
@@ -11,19 +11,19 @@ using namespace aethermind;
 namespace {
 
 Status ScalarKernel(const KernelInvocation&,
-                    const OpKernelContext&,
+                    const KernelContext&,
                     const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
 
 Status Avx2Kernel(const KernelInvocation&,
-                  const OpKernelContext&,
+                  const KernelContext&,
                   const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
 
 Status DecodeOnlyKernel(const KernelInvocation&,
-                        const OpKernelContext&,
+                        const KernelContext&,
                         const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }

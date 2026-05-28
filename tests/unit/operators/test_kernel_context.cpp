@@ -1,12 +1,12 @@
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 
 #include <gtest/gtest.h>
 
 namespace aethermind {
 namespace {
 
-TEST(Operators_OpKernelContext, DefaultsAreNarrowAndNull) {
-    OpKernelContext ctx;
+TEST(KernelContext, DefaultsAreNarrowAndNull) {
+    KernelContext ctx;
 
     EXPECT_TRUE(ctx.device.is_cpu());
     EXPECT_EQ(ctx.stream, nullptr);
@@ -19,7 +19,7 @@ TEST(Operators_OpKernelContext, DefaultsAreNarrowAndNull) {
     EXPECT_EQ(ctx.backend_resources.opaque_backend_resources, nullptr);
 }
 
-TEST(Operators_OpKernelContext, CanCarryMinimalExecutionHandles) {
+TEST(KernelContext, CanCarryMinimalExecutionHandles) {
     CpuInlineStream stream;
     WorkspaceArena* workspace = nullptr;
     BackendCapabilities caps{.device_type = DeviceType::kCPU};
@@ -27,7 +27,7 @@ TEST(Operators_OpKernelContext, CanCarryMinimalExecutionHandles) {
     int fake_params = 11;
     const std::byte attrs_storage[4]{};
 
-    OpKernelContext ctx{
+    KernelContext ctx{
             .device = Device::CPU(),
             .stream = &stream,
             .workspace = workspace,

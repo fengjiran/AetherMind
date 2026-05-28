@@ -2,7 +2,7 @@
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_invocation.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "data_type.h"
 
 namespace aethermind {
@@ -48,11 +48,7 @@ const BackendCapabilities& CpuBackend::capabilities() const noexcept {
 
 KernelFunc CpuBackend::ResolveKernel(OpType op_type,
                                       const KernelSelector& selector) const noexcept {
-    return ResolveKernel(KernelRequest{.op_type = op_type, .selector = selector});
-}
-
-KernelFunc CpuBackend::ResolveKernel(const KernelRequest& request) const noexcept {
-    const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(request);
+    const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(op_type, selector);
     if (!descriptor.ok()) {
         return nullptr;
     }
@@ -62,17 +58,13 @@ KernelFunc CpuBackend::ResolveKernel(const KernelRequest& request) const noexcep
 StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
         OpType op_type,
         const KernelSelector& selector) const noexcept {
-    return ResolveKernelInfo(KernelRequest{.op_type = op_type, .selector = selector});
-}
-
-StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(const KernelRequest& request) const noexcept {
-    const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(request);
+    const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(op_type, selector);
     if (!descriptor.ok()) {
         return descriptor.status();
     }
 
     return ResolvedKernel{
-            .op_type = request.op_type,
+            .op_type = op_type,
             .fn = (*descriptor)->kernel_func,
             .attrs = {},
             .debug_name = (*descriptor)->name,

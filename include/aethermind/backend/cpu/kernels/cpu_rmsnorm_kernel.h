@@ -19,7 +19,7 @@ struct CpuRmsNormParams {
 };
 
 AM_NODISCARD Status CpuRmsNormKernel(const KernelInvocation& invocation,
-                                     const OpKernelContext& op_ctx,
+                                     const KernelContext& op_ctx,
                                      const WorkspaceBinding& workspace) noexcept;
 
 }// namespace aethermind

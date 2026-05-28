@@ -17,8 +17,8 @@
 
 namespace aethermind {
 
+struct KernelContext;
 struct KernelInvocation;
-struct OpKernelContext;
 struct WorkspaceBinding;
 
 struct ShapeInfo {
@@ -113,7 +113,7 @@ public:
     /// successful Prepare().
     ///
     /// Implementations should:
-    /// - Construct an OpKernelContext using cached kernel metadata
+    /// - Construct a KernelContext using cached kernel metadata
     /// - Invoke the cached KernelFunc with inputs, outputs, and workspace
     ///
     /// \param invocation  Kernel invocation descriptor (op_type + selector).
@@ -121,7 +121,7 @@ public:
     /// \param workspace   Pre-bound workspace slice from unified plan.
     /// \return Ok on success; Status error if execution fails.
     AM_NODISCARD virtual Status Run(const KernelInvocation& invocation,
-                                    const OpKernelContext& op_ctx,
+                                    const KernelContext& op_ctx,
                                     const WorkspaceBinding& workspace) const noexcept = 0;
 
     /// Returns the resolved kernel info for debugging and logging.

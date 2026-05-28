@@ -1,8 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/kernel_invocation.h"
-#include "aethermind/backend/kernel_context.h"
 #include "data_type.h"
 
 namespace aethermind {
@@ -28,7 +26,16 @@ CpuBackend::CpuBackend() {
 }
 
 void CpuBackend::RegisterBuiltinKernels() {
-    const Status status = kernel_registry_.Register(KernelDescriptor{
+    Status status = kernel_registry_.Register(KernelDescriptor{
+            .op_type = OpType::kEmbedding,
+            .selector = MakeDefaultCpuSelector(),
+            .kernel_func = &CpuEmbeddingKernel,
+            .name = "cpu::embedding_f32_scalar",
+            .priority = 10,
+    });
+    AM_CHECK(status.ok(), "Failed to register builtin CPU kernels: {}", status.ToString().c_str());
+
+    status = kernel_registry_.Register(KernelDescriptor{
             .op_type = OpType::kRmsNorm,
             .selector = MakeDefaultCpuSelector(),
             .kernel_func = &CpuRmsNormKernel,
@@ -47,7 +54,7 @@ const BackendCapabilities& CpuBackend::capabilities() const noexcept {
 }
 
 KernelFunc CpuBackend::ResolveKernel(OpType op_type,
-                                      const KernelSelector& selector) const noexcept {
+                                     const KernelSelector& selector) const noexcept {
     const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(op_type, selector);
     if (!descriptor.ok()) {
         return nullptr;

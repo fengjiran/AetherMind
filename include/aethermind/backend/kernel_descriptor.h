@@ -12,11 +12,10 @@ struct KernelDescriptor {
     KernelSelector selector{};
     KernelFunc kernel_func = nullptr;
     const char* name = nullptr;
-    int priority = 0; // Higher value wins; first-registered wins on tie.
+    int priority = 0;// Higher value wins; first-registered wins on tie.
 };
 
-AM_NODISCARD inline bool IsValidKernelDescriptor(
-        const KernelDescriptor& desc) noexcept {
+AM_NODISCARD inline bool IsValidKernelDescriptor(const KernelDescriptor& desc) noexcept {
     return desc.op_type != OpType::kUnknown &&
            desc.kernel_func != nullptr &&
            desc.name != nullptr &&

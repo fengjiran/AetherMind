@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_BACKEND_EXECUTION_PLAN_H
 #define AETHERMIND_BACKEND_EXECUTION_PLAN_H
 
-#include "aethermind/backend/kernel_invocation.h"
+#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/operators/operator.h"
 #include "aethermind/runtime/workspace.h"
@@ -12,8 +12,7 @@
 namespace aethermind {
 
 struct ExecutionStep {
-    OpType op_type = OpType::kUnknown;
-    KernelInvocation invocation{};
+    KernelSelector selector{};
     OperatorPtr op{};
     const void* packed_params = nullptr;
     WorkspaceRequirement workspace_requirement{};

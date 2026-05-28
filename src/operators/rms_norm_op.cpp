@@ -30,15 +30,15 @@ Status RmsNormOp::CheckShapes(std::span<const ShapeInfo> inputs) const {
         return Status::InvalidArgument("RmsNorm only supports float32 inputs in Phase 1");
     }
 
-    if (input.shape_.size() < 1) {
-        return Status::InvalidArgument("RmsNorm input rank must be at least 1");
+    if (input.shape_.size() != 2) {
+        return Status::InvalidArgument("RmsNorm input must be rank-2 [seq_len, hidden]");
     }
 
     if (weight.shape_.size() != 1) {
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
     }
 
-    const int64_t hidden_size = input.shape_.back();
+    const int64_t hidden_size = input.shape_[1];
     if (hidden_size <= 0) {
         return Status::InvalidArgument("RmsNorm hidden size must be positive");
     }

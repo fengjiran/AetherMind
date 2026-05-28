@@ -88,9 +88,15 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     const float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     const float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[4] = {0.0F, 0.0F, 0.0F, 0.0F};
-    const int64_t shape[1] = {4};
-    const int64_t strides[1] = {1};
-    const CpuRmsNormParams params = MakeCpuRmsNormParams(input, weight, output, shape, strides);
+    const int64_t io_shape[2] = {1, 4};
+    const int64_t io_strides[2] = {4, 1};
+    const int64_t w_shape[1] = {4};
+    const int64_t w_strides[1] = {1};
+    const CpuRmsNormParams params{
+            .Input = TensorView{input, DataType::Float32(), io_shape, io_strides},
+            .Weight = TensorView{weight, DataType::Float32(), w_shape, w_strides},
+            .Output = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+    };
     const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
 
     const Status status = fn(KernelInvocation{.op_type = OpType::kRmsNorm,

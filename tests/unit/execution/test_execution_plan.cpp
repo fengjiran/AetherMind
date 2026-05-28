@@ -1,6 +1,7 @@
 #include "../../include/aethermind/execution/execution_plan.h"
 
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
+#include "aethermind/operators/function_operator.h"
 
 #include <gtest/gtest.h>
 #include <span>
@@ -14,12 +15,12 @@ struct TestAttrs {
 };
 
 Status FakeKernel(const KernelInvocation&,
-                  const OpKernelContext&,
+                  const KernelContext&,
                   const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
 
-TEST(ExecutionPlan, AddStepCopiesAttrsIntoPlanOwnedStorage) {
+TEST(ExecutionPlan, AddStepStoresOperatorResolvedAttrs) {
     ExecutionPlan plan;
     TestAttrs attrs{.epsilon = 7, .axis = 3};
     const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
@@ -27,14 +28,17 @@ TEST(ExecutionPlan, AddStepCopiesAttrsIntoPlanOwnedStorage) {
 
     ASSERT_TRUE(plan.AddStep(ExecutionStep{
                                      .op_type = OpType::kRmsNorm,
-                                     .fn = &FakeKernel,
+                                     .op = std::make_shared<FunctionOperator>(
+                                             OpType::kRmsNorm,
+                                             &FakeKernel,
+                                             attrs_bytes,
+                                             "test::fake_kernel"),
                                      .packed_params = &packed_params,
                                      .workspace_requirement = {
                                              .bytes = 128,
                                              .alignment = 64,
                                              .offset = 256,
                                      },
-                                     .attrs = attrs_bytes,
                                      .debug_name = "test::fake_kernel",
                              })
                         .ok());
@@ -43,8 +47,9 @@ TEST(ExecutionPlan, AddStepCopiesAttrsIntoPlanOwnedStorage) {
 
     ASSERT_EQ(plan.size(), 1U);
     const auto& step = plan.steps().front();
-    ASSERT_EQ(step.attrs.size(), sizeof(TestAttrs));
-    const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(step.attrs.data());
+    const ResolvedKernel resolved = step.op->GetResolvedKernel();
+    ASSERT_EQ(resolved.attrs.size(), sizeof(TestAttrs));
+    const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(resolved.attrs.data());
     ASSERT_NE(stored_attrs, nullptr);
     EXPECT_NE(stored_attrs, &attrs);
     EXPECT_EQ(step.op_type, OpType::kRmsNorm);
@@ -63,14 +68,17 @@ TEST(ExecutionPlan, AddStepAllowsEmptyAttrSpan) {
 
     const Status status = plan.AddStep(ExecutionStep{
             .op_type = OpType::kRmsNorm,
-            .fn = &FakeKernel,
-            .attrs = {},
+            .op = std::make_shared<FunctionOperator>(
+                    OpType::kRmsNorm,
+                    &FakeKernel,
+                    std::span<const std::byte>{},
+                    "test::fake_kernel"),
             .debug_name = "test::fake_kernel",
     });
 
     EXPECT_TRUE(status.ok());
     ASSERT_EQ(plan.size(), 1U);
-    EXPECT_TRUE(plan.steps().front().attrs.empty());
+    EXPECT_TRUE(plan.steps().front().op->GetResolvedKernel().attrs.empty());
     EXPECT_EQ(plan.steps().front().packed_params, nullptr);
 }
 
@@ -79,7 +87,11 @@ TEST(ExecutionPlan, AddStepRejectsInvalidWorkspaceAlignment) {
 
     const Status status = plan.AddStep(ExecutionStep{
             .op_type = OpType::kRmsNorm,
-            .fn = &FakeKernel,
+            .op = std::make_shared<FunctionOperator>(
+                    OpType::kRmsNorm,
+                    &FakeKernel,
+                    std::span<const std::byte>{},
+                    "test::fake_kernel"),
             .workspace_requirement = {
                     .bytes = 64,
                     .alignment = 24,

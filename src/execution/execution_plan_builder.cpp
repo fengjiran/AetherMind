@@ -1,8 +1,8 @@
 #include "aethermind/execution/execution_plan_builder.h"
 
-#include "aethermind/backend/kernel_request.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/operator_registry.h"
 #include "aethermind/operators/rms_norm_op.h"
 
@@ -59,6 +59,11 @@ StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
         return created.status();
     }
 
+    if (!node.attrs.empty()) {
+        return Status::InvalidArgument(
+                "ExecutionPlanNodeSpec.attrs is only supported by raw kernel fallback; use op_params for registered operators");
+    }
+
     std::unique_ptr<Operator> op = std::move(created).value();
     AM_RETURN_IF_ERROR(op->Validate());
 
@@ -102,16 +107,16 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
         }
 
         OperatorPtr op = prepared_operator.value();
-        StatusOr<ResolvedKernel> resolved = Status::Internal("unresolved execution plan node");
-        if (op != nullptr) {
-            ResolvedKernel kernel = op->GetResolvedKernel();
-            kernel.attrs = node.attrs;
-            resolved = kernel;
-        } else {
-            resolved = ExecutionPlanBuilder::ResolveKernelForNode(*backend.value(), node);
+        if (op == nullptr) {
+            const auto resolved = ExecutionPlanBuilder::ResolveKernelForNode(*backend.value(), node);
             if (!resolved.ok()) {
                 return resolved.status();
             }
+            op = std::make_shared<FunctionOperator>(
+                    resolved->op_type,
+                    resolved->fn,
+                    resolved->attrs,
+                    resolved->debug_name);
         }
 
         const auto packed_params = ResolvePackedParamsForNode(model_instance, node);
@@ -119,18 +124,16 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
             return packed_params.status();
         }
 
-        if (const Status status = plan.AddStep(ExecutionStep{
-                    .op_type = resolved->op_type,
+        if (auto status = plan.AddStep(ExecutionStep{
+                    .op_type = node.op_type,
                     .invocation = {
                             .op_type = node.op_type,
                             .selector = MakeSelectorForNode(node),
                     },
                     .op = std::move(op),
-                    .fn = resolved->fn,
                     .packed_params = packed_params.value(),
                     .workspace_requirement = workspace_requirements[index],
-                    .attrs = resolved->attrs,
-                    .debug_name = resolved->debug_name,
+                    .debug_name = nullptr,
             });
             !status.ok()) {
             return status;
@@ -150,8 +153,7 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
     }
 
     const auto selector = MakeSelectorForNode(node);
-    const KernelRequest request{.op_type = node.op_type, .selector = selector};
-    const auto resolved = backend.ResolveKernelInfo(request);
+    const auto resolved = backend.ResolveKernelInfo(node.op_type, selector);
     if (!resolved.ok()) {
         return resolved.status();
     }

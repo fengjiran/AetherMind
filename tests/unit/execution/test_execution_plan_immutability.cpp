@@ -1,5 +1,5 @@
 #include "aethermind/backend/backend_factory.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -31,7 +31,7 @@ Buffer MakeTestBuffer(size_t nbytes, size_t alignment = 64) {
 }
 
 Status ImmutableKernel(const KernelInvocation&,
-                       const OpKernelContext&,
+                       const KernelContext&,
                        const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
@@ -138,7 +138,8 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
     const std::vector<ExecutionStep>& steps = plan->steps();
     EXPECT_EQ(steps.size(), 1U);
     EXPECT_EQ(steps.front().op_type, OpType::kRmsNorm);
-    EXPECT_NE(steps.front().fn, nullptr);
+    ASSERT_NE(steps.front().op, nullptr);
+    EXPECT_NE(steps.front().op->GetResolvedKernel().fn, nullptr);
 }
 
 TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
@@ -250,7 +251,8 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
 
     const size_t original_size = plan->size();
     const OpType original_op_type = plan->steps().front().op_type;
-    const KernelFunc original_fn = plan->steps().front().fn;
+    ASSERT_NE(plan->steps().front().op, nullptr);
+    const KernelFunc original_fn = plan->steps().front().op->GetResolvedKernel().fn;
 
     RuntimeBindingContext bindings;
     const Status status = Executor::Execute(*plan, bindings);
@@ -259,7 +261,7 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
 
     EXPECT_EQ(plan->size(), original_size);
     EXPECT_EQ(plan->steps().front().op_type, original_op_type);
-    EXPECT_EQ(plan->steps().front().fn, original_fn);
+    EXPECT_EQ(plan->steps().front().op->GetResolvedKernel().fn, original_fn);
 }
 
 TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {

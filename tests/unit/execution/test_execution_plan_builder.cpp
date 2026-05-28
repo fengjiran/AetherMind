@@ -3,10 +3,11 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/rms_norm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
@@ -63,7 +64,7 @@ private:
 };
 
 Status PackedTestKernel(const KernelInvocation&,
-                        const OpKernelContext&,
+                        const KernelContext&,
                         const WorkspaceBinding&) noexcept {
     return Status::Ok();
 }
@@ -152,22 +153,22 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
 TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
-    TestAttrs attrs{.epsilon = 11};
-    const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
 
     std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(MakeRmsNormNodeSpec(attrs_bytes));
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = RmsNormOp::Params{.epsilon_ = 11.0F};
+    nodes.push_back(node);
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
 
-    attrs.epsilon = 99;
-
     const auto& step = plan->steps().front();
-    ASSERT_EQ(step.attrs.size(), sizeof(TestAttrs));
-    const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(step.attrs.data());
-    ASSERT_NE(stored_attrs, nullptr);
+    ASSERT_NE(step.op, nullptr);
+    const ResolvedKernel step_kernel = step.op->GetResolvedKernel();
+    ASSERT_EQ(step_kernel.attrs.size(), sizeof(float));
+    const auto* stored_epsilon = reinterpret_cast<const float*>(step_kernel.attrs.data());
+    ASSERT_NE(stored_epsilon, nullptr);
     EXPECT_EQ(step.op_type, OpType::kRmsNorm);
     EXPECT_EQ(step.invocation.op_type, OpType::kRmsNorm);
     EXPECT_EQ(step.invocation.selector.device_type, DeviceType::kCPU);
@@ -175,8 +176,24 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     EXPECT_EQ(step.workspace_requirement.bytes, 0U);
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
     EXPECT_EQ(step.workspace_requirement.offset, 0U);
-    EXPECT_EQ(stored_attrs->epsilon, 11);
-    EXPECT_STREQ(step.debug_name, "cpu::rmsnorm_f32_scalar");
+    EXPECT_FLOAT_EQ(*stored_epsilon, 11.0F);
+    EXPECT_EQ(step.debug_name, nullptr);
+    EXPECT_STREQ(step_kernel.debug_name, "cpu::rmsnorm_f32_scalar");
+}
+
+TEST(ExecutionPlanBuilder, BuildRejectsRawAttrsForRegisteredOperator) {
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+    TestAttrs attrs{.epsilon = 11};
+    const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
+
+    std::vector<ExecutionPlanNodeSpec> nodes;
+    nodes.push_back(MakeRmsNormNodeSpec(attrs_bytes));
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {

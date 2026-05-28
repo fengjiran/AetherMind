@@ -1,7 +1,8 @@
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
-#include "aethermind/backend/op_kernel_context.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/operators/function_operator.h"
 
 #include <gtest/gtest.h>
 
@@ -12,11 +13,11 @@ namespace {
 
 std::vector<int>* g_execution_order = nullptr;
 WorkspaceBinding g_last_workspace_binding{};
-OpKernelContext g_last_kernel_context{};
+KernelContext g_last_kernel_context{};
 KernelInvocation g_last_invocation{};
 
 Status FirstKernel(const KernelInvocation& invocation,
-                   const OpKernelContext& op_ctx,
+                   const KernelContext& op_ctx,
                    const WorkspaceBinding& workspace) noexcept {
     g_last_invocation = invocation;
     g_last_kernel_context = op_ctx;
@@ -28,7 +29,7 @@ Status FirstKernel(const KernelInvocation& invocation,
 }
 
 Status SecondKernel(const KernelInvocation& invocation,
-                    const OpKernelContext& op_ctx,
+                    const KernelContext& op_ctx,
                     const WorkspaceBinding& workspace) noexcept {
     g_last_invocation = invocation;
     g_last_kernel_context = op_ctx;
@@ -40,7 +41,7 @@ Status SecondKernel(const KernelInvocation& invocation,
 }
 
 Status FailingKernel(const KernelInvocation&,
-                     const OpKernelContext&,
+                     const KernelContext&,
                      const WorkspaceBinding&) noexcept {
     return Status::InvalidArgument("kernel failure");
 }
@@ -65,9 +66,13 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
                                                      .isa = IsaLevel::kScalar,
                                                      .phase = ExecPhase::kBoth,
                                              },
-                                     },
-                                     .fn = &FirstKernel,
-                                     .workspace_requirement = {
+                                      },
+                                      .op = std::make_shared<FunctionOperator>(
+                                              OpType::kRmsNorm,
+                                              &FirstKernel,
+                                              std::span<const std::byte>{},
+                                              "test::first_kernel"),
+                                      .workspace_requirement = {
                                              .bytes = 64,
                                              .alignment = 64,
                                              .offset = 0,
@@ -87,9 +92,13 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
                                                      .isa = IsaLevel::kScalar,
                                                      .phase = ExecPhase::kBoth,
                                              },
-                                     },
-                                     .fn = &SecondKernel,
-                                     .workspace_requirement = {
+                                      },
+                                      .op = std::make_shared<FunctionOperator>(
+                                              OpType::kRoPE,
+                                              &SecondKernel,
+                                              std::span<const std::byte>{},
+                                              "test::second_kernel"),
+                                      .workspace_requirement = {
                                              .bytes = 128,
                                              .alignment = 64,
                                              .offset = 64,
@@ -128,9 +137,13 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
                                                      .isa = IsaLevel::kScalar,
                                                      .phase = ExecPhase::kBoth,
                                              },
-                                     },
-                                     .fn = &FailingKernel,
-                                     .workspace_requirement = {
+                                      },
+                                      .op = std::make_shared<FunctionOperator>(
+                                              OpType::kRmsNorm,
+                                              &FailingKernel,
+                                              std::span<const std::byte>{},
+                                              "test::failing_kernel"),
+                                      .workspace_requirement = {
                                              .bytes = 32,
                                              .alignment = 32,
                                              .offset = 0,
@@ -160,9 +173,13 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
                                                      .isa = IsaLevel::kScalar,
                                                      .phase = ExecPhase::kBoth,
                                              },
-                                     },
-                                     .fn = &FirstKernel,
-                                     .workspace_requirement = {
+                                      },
+                                      .op = std::make_shared<FunctionOperator>(
+                                              OpType::kRmsNorm,
+                                              &FirstKernel,
+                                              std::span<const std::byte>{},
+                                              "test::workspace_required_kernel"),
+                                      .workspace_requirement = {
                                              .bytes = 32,
                                              .alignment = 32,
                                              .offset = 0,

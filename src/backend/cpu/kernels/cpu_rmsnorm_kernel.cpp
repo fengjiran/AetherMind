@@ -89,9 +89,9 @@ Status CpuRmsNormKernel(const KernelInvocation& invocation,
     }
 
     const auto hidden_size = static_cast<size_t>(hidden_size_i64);
-    const float* const input_data = input.data<float>();
-    const float* const weight_data = weight.data<float>();
-    float* const output_data = output.data<float>();
+    const auto* const input_data = input.data<float>();
+    const auto* const weight_data = weight.data<float>();
+    auto* const output_data = output.data<float>();
 
     for (int64_t s = 0; s < seq_len; ++s) {
         const float* const row_in = input_data + s * hidden_size;

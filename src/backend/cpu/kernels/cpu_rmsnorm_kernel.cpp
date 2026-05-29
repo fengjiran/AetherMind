@@ -4,6 +4,7 @@
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/operators/op_type.h"
 
+#include <cstdint>
 #include <immintrin.h>
 
 namespace aethermind {
@@ -101,15 +102,13 @@ Status CpuRmsNormKernel(const KernelInvocation& invocation,
     const auto* const input_data = input.data<float>();
     const auto* const weight_data = weight.data<float>();
     auto* const output_data = output.data<float>();
+    const float epsilon = attrs->Epsilon;
 
-#pragma omp parallel for schedule(static)
-    for (int64_t i = 0; i < seq_len; ++i) {
-        const float* const row_in = input_data + i * hidden_size;
-        float* const row_out = output_data + i * hidden_size;
+    auto process_row = [input_data, output_data, weight_data, hidden_size, epsilon](int64_t row_idx) noexcept {
+        const float* const row_in = input_data + row_idx * hidden_size;
+        float* const row_out = output_data + row_idx * hidden_size;
 
-        // ==========================================
-        // 第一阶段：计算平方和 (Sum of Squares)
-        // ==========================================
+        // Phase1: sum of squares
         __m256 vsum0 = _mm256_setzero_ps();
         __m256 vsum1 = _mm256_setzero_ps();
         __m256 vsum2 = _mm256_setzero_ps();
@@ -139,16 +138,12 @@ Status CpuRmsNormKernel(const KernelInvocation& invocation,
             sum_sq += row_in[j] * row_in[j];
         }
 
-        // ==========================================
-        // 第二阶段：计算 InvRMS
-        // ==========================================
+        // Phase2: InvRms
         float mean_sq = sum_sq / hidden_size;
-        float inv_rms = 1.0f / std::sqrt(mean_sq + attrs->Epsilon);
+        float inv_rms = 1.0f / std::sqrt(mean_sq + epsilon);
         __m256 inv_rms_vec = _mm256_set1_ps(inv_rms);
 
-        // ==========================================
-        // 第三阶段：归一化并乘以 Weight
-        // ==========================================
+        // Phase3: Normalize + Scale
         j = 0;
         for (; j + 32 <= hidden_size; j += 32) {
             __m256 x0 = _mm256_loadu_ps(row_in + j);
@@ -186,6 +181,17 @@ Status CpuRmsNormKernel(const KernelInvocation& invocation,
 
         for (; j < hidden_size; ++j) {
             row_out[j] = row_in[j] * inv_rms * weight_data[j];
+        }
+    };
+
+    if (constexpr int64_t kOmpParallelThreshold = 4; seq_len < kOmpParallelThreshold) {
+        for (int64_t i = 0; i < seq_len; ++i) {
+            process_row(i);
+        }
+    } else {
+#pragma omp parallel for schedule(static)
+        for (int64_t i = 0; i < seq_len; ++i) {
+            process_row(i);
         }
     }
 

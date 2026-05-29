@@ -1,24 +1,9 @@
 #include "aethermind/backend/cpu/kernels/cpu_dot_product_avx2.h"
+#include "aethermind/backend/cpu/kernels/cpu_simd_utils.h"
 
-#if defined(__AVX2__) && defined(__FMA__)
 #include <immintrin.h>
-#endif
 
 namespace aethermind {
-namespace {
-
-#if defined(__AVX2__) && defined(__FMA__)
-float HorizontalSumAvx2(__m256 v) noexcept {
-    const __m128 low = _mm256_castps256_ps128(v);
-    const __m128 high = _mm256_extractf128_ps(v, 1);
-    __m128 sum = _mm_add_ps(high, low);
-    sum = _mm_hadd_ps(sum, sum);
-    sum = _mm_hadd_ps(sum, sum);
-    return _mm_cvtss_f32(sum);
-}
-#endif
-
-}// namespace
 
 float DotProductAvx2Unroll(const float* a, const float* b, std::size_t n) noexcept {
 #if defined(__AVX2__) && defined(__FMA__)

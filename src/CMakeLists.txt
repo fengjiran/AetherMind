@@ -14,8 +14,8 @@ target_include_directories(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
         ammalloc
-#        Threads::Threads
-#        spdlog::spdlog
+        #        Threads::Threads
+        #        spdlog::spdlog
 )
 
 if (USE_LIBBACKTRACE)
@@ -54,12 +54,13 @@ check_cxx_compiler_flag("-mavx2" CXX_SUPPORTS_AVX2)
 check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
 if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
     set_source_files_properties(
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/cpu_dot_product_avx2.cpp
-        PROPERTIES COMPILE_FLAGS "-mavx2 -mfma"
+            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/cpu_dot_product_avx2.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/cpu_rmsnorm_kernel.cpp
+            PROPERTIES COMPILE_FLAGS "-mavx2 -mfma"
     )
     message(STATUS "AVX2/FMA enabled")
-else()
+else ()
     message(STATUS
-        "AVX2/FMA not supported by compiler — "
+            "AVX2/FMA not supported by compiler"
     )
-endif()
+endif ()

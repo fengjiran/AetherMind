@@ -114,7 +114,7 @@ void AVX2FMAdd(const float* a, const float* b, const float* c, float* out, std::
 // 1. Load / Store — 加载 8 个 float，做向量加法，再写回
 // =========================================================================
 #if defined(__AVX2__)
-TEST(AvxLearning, LoadStoreAdd) {
+TEST(CPUKernelAvxLearning, LoadStoreAdd) {
     alignas(32) constexpr float a[8] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F};
     alignas(32) constexpr float b[8] = {8.0F, 7.0F, 6.0F, 5.0F, 4.0F, 3.0F, 2.0F, 1.0F};
     alignas(32) float expected[8] = {};
@@ -129,7 +129,7 @@ TEST(AvxLearning, LoadStoreAdd) {
 }
 
 // AVX2Add 也应处理非 8 倍数的长度，验证尾部标量回退的正确性。
-TEST(AvxLearning, LoadStoreAddTail) {
+TEST(CPUKernelAvxLearning, LoadStoreAddTail) {
     alignas(32) constexpr float a[10] = {0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F, 9.0F};
     alignas(32) constexpr float b[10] = {9.0F, 8.0F, 7.0F, 6.0F, 5.0F, 4.0F, 3.0F, 2.0F, 1.0F, 0.0F};
     alignas(32) float expected[10] = {};
@@ -143,7 +143,7 @@ TEST(AvxLearning, LoadStoreAddTail) {
     }
 }
 #else
-TEST(AvxLearning, LoadStoreAdd) {
+TEST(CPUKernelAvxLearning, LoadStoreAdd) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -154,7 +154,7 @@ TEST(AvxLearning, LoadStoreAdd) {
 // _mm256_fmadd_ps 需要 FMA ISA (通常与 AVX2 一起启用，但 feature flag 独立)。
 #if defined(__AVX2__) && defined(__FMA__)
 
-TEST(AvxLearning, Fma) {
+TEST(CPUKernelAvxLearning, Fma) {
     alignas(32) constexpr float a[8] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F};
     alignas(32) constexpr float b[8] = {2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F};
     alignas(32) constexpr float c[8] = {1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F};
@@ -169,7 +169,7 @@ TEST(AvxLearning, Fma) {
     }
 }
 
-TEST(AvxLearning, FmaTail) {
+TEST(CPUKernelAvxLearning, FmaTail) {
     alignas(32) constexpr float a[10] = {0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F, 9.0F};
     alignas(32) constexpr float b[10] = {2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F};
     alignas(32) constexpr float c[10] = {1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F};
@@ -184,7 +184,7 @@ TEST(AvxLearning, FmaTail) {
     }
 }
 
-TEST(AvxLearning, DotProduct) {
+TEST(CPUKernelAvxLearning, DotProduct) {
     alignas(32) constexpr float a[10] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F, 9.0F, 10.0F};
     alignas(32) constexpr float b[10] = {10.0F, 9.0F, 8.0F, 7.0F, 6.0F, 5.0F, 4.0F, 3.0F, 2.0F, 1.0F};
 
@@ -194,7 +194,7 @@ TEST(AvxLearning, DotProduct) {
     EXPECT_FLOAT_EQ(actual, expected);
 }
 
-TEST(AvxLearning, DotProductLargeVectorAligned32) {
+TEST(CPUKernelAvxLearning, DotProductLargeVectorAligned32) {
     constexpr size_t kSize = 1024;
     alignas(32) std::vector<float> a(kSize);
     alignas(32) std::vector<float> b(kSize);
@@ -208,7 +208,7 @@ TEST(AvxLearning, DotProductLargeVectorAligned32) {
     aethermind::ExpectClose(actual, expected);
 }
 
-TEST(AvxLearning, DotProductVeryLargeVector) {
+TEST(CPUKernelAvxLearning, DotProductVeryLargeVector) {
     constexpr size_t kSize = 1 << 20;// 1,048,576 elements
     std::vector<float> a(kSize);
     std::vector<float> b(kSize);
@@ -223,7 +223,7 @@ TEST(AvxLearning, DotProductVeryLargeVector) {
 }
 
 #else
-TEST(AvxLearning, Fma) {
+TEST(CPUKernelAvxLearning, Fma) {
     GTEST_SKIP() << "FMA not supported by compiler (add -mfma)";
 }
 #endif
@@ -234,7 +234,7 @@ TEST(AvxLearning, Fma) {
 // _mm256_set1_ps: 将标量 "广播" 到 8 个 float 位置。
 // 在 RMSNorm 中用于将 inv_rms 广播后与 row 相乘。
 #if defined(__AVX2__)
-TEST(AvxLearning, Broadcast) {
+TEST(CPUKernelAvxLearning, Broadcast) {
     alignas(32) float simd_out[8] = {};
 
     // SIMD: 把 3.14F 复制到所有 8 个 lane
@@ -246,7 +246,7 @@ TEST(AvxLearning, Broadcast) {
     }
 }
 #else
-TEST(AvxLearning, Broadcast) {
+TEST(CPUKernelAvxLearning, Broadcast) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -257,7 +257,7 @@ TEST(AvxLearning, Broadcast) {
 // _mm256_hadd_ps + extract: 将 8 个 float 加成一个标量。
 // 这是 RMSNorm 第一阶段 sum(x²) 的 SIMD 实现基础。
 #if defined(__AVX2__)
-TEST(AvxLearning, HorizontalSum) {
+TEST(CPUKernelAvxLearning, HorizontalSum) {
     alignas(32) const float data[8] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F};
 
     // SIMD horizontal sum
@@ -279,7 +279,7 @@ TEST(AvxLearning, HorizontalSum) {
     EXPECT_FLOAT_EQ(simd_sum, ref_sum);
 }
 #else
-TEST(AvxLearning, HorizontalSum) {
+TEST(CPUKernelAvxLearning, HorizontalSum) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -289,7 +289,7 @@ TEST(AvxLearning, HorizontalSum) {
 // =========================================================================
 // 思路同 sum，把加法换成取 max。
 #if defined(__AVX2__)
-TEST(AvxLearning, HorizontalMax) {
+TEST(CPUKernelAvxLearning, HorizontalMax) {
     alignas(32) const float data[8] = {1.0F, 2.0F, 15.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F};
 
     // SIMD horizontal max
@@ -309,7 +309,7 @@ TEST(AvxLearning, HorizontalMax) {
     EXPECT_FLOAT_EQ(simd_max, ref_max);
 }
 #else
-TEST(AvxLearning, HorizontalMax) {
+TEST(CPUKernelAvxLearning, HorizontalMax) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -320,7 +320,7 @@ TEST(AvxLearning, HorizontalMax) {
 // _mm256_shuffle_ps: 每个 128-bit lane 内按 mask 重排。
 // 跨 lane 重排需用 _mm256_permutevar8x32_ps (AVX2)。
 #if defined(__AVX2__)
-TEST(AvxLearning, ShuffleWithinLane) {
+TEST(CPUKernelAvxLearning, ShuffleWithinLane) {
     alignas(32) const float data[8] = {0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F};
     alignas(32) float simd_out[8] = {};
 
@@ -346,7 +346,7 @@ TEST(AvxLearning, ShuffleWithinLane) {
     EXPECT_FLOAT_EQ(simd_out[7], 6.0F);// dst[3] = v[6]
 }
 #else
-TEST(AvxLearning, ShuffleWithinLane) {
+TEST(CPUKernelAvxLearning, ShuffleWithinLane) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -356,7 +356,7 @@ TEST(AvxLearning, ShuffleWithinLane) {
 // =========================================================================
 // _mm256_permutevar8x32_ps (AVX2): 以 32-bit 粒度的任意排列。
 #if defined(__AVX2__)
-TEST(AvxLearning, CrossLanePermute) {
+TEST(CPUKernelAvxLearning, CrossLanePermute) {
     alignas(32) const float data[8] = {0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F};
     alignas(32) float simd_out[8] = {};
 
@@ -372,7 +372,7 @@ TEST(AvxLearning, CrossLanePermute) {
     }
 }
 #else
-TEST(AvxLearning, CrossLanePermute) {
+TEST(CPUKernelAvxLearning, CrossLanePermute) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -382,7 +382,7 @@ TEST(AvxLearning, CrossLanePermute) {
 // =========================================================================
 // _mm256_cmp_ps + _mm256_blendv_ps: 比较后将负值替换为 0。
 #if defined(__AVX2__)
-TEST(AvxLearning, CompareBlend) {
+TEST(CPUKernelAvxLearning, CompareBlend) {
     alignas(32) const float data[8] = {1.0F, -2.0F, 3.0F, -4.0F, 5.0F, -6.0F, 7.0F, -8.0F};
     alignas(32) float simd_out[8] = {};
     alignas(32) float ref_out[8] = {};
@@ -405,7 +405,7 @@ TEST(AvxLearning, CompareBlend) {
     }
 }
 #else
-TEST(AvxLearning, CompareBlend) {
+TEST(CPUKernelAvxLearning, CompareBlend) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -416,7 +416,7 @@ TEST(AvxLearning, CompareBlend) {
 // 演示如何用 SIMD 实现 RMSNorm 第一阶段: sum(x[i]²)。
 // 处理 hidden_size = 8 的情形；实际 kernel 在循环中累加。
 #if defined(__AVX2__)
-TEST(AvxLearning, RmsNormSumSq) {
+TEST(CPUKernelAvxLearning, RmsNormSumSq) {
     alignas(32) const float row[8] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F};
 
     // SIMD: row[i]² 向量化，再 horizontal sum
@@ -438,7 +438,7 @@ TEST(AvxLearning, RmsNormSumSq) {
     EXPECT_FLOAT_EQ(simd_sum_sq, ref_sum_sq);
 }
 #else
-TEST(AvxLearning, RmsNormSumSq) {
+TEST(CPUKernelAvxLearning, RmsNormSumSq) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -449,7 +449,7 @@ TEST(AvxLearning, RmsNormSumSq) {
 // 演示如何用 SIMD 实现 RMSNorm 第二阶段: output[i] = row[i] * inv_rms * weight[i]。
 // 其中 inv_rms 是标量，weight 是向量。
 #if defined(__AVX2__)
-TEST(AvxLearning, RmsNormScale) {
+TEST(CPUKernelAvxLearning, RmsNormScale) {
     alignas(32) const float row[8] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F};
     alignas(32) const float weight[8] = {1.0F, 0.5F, 1.5F, 2.0F, 1.0F, 0.5F, 1.5F, 2.0F};
     alignas(32) float simd_out[8] = {};
@@ -474,7 +474,7 @@ TEST(AvxLearning, RmsNormScale) {
     }
 }
 #else
-TEST(AvxLearning, RmsNormScale) {
+TEST(CPUKernelAvxLearning, RmsNormScale) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -485,7 +485,7 @@ TEST(AvxLearning, RmsNormScale) {
 // _mm256_i32gather_ps: 从基地址按 int32 索引收集 float。
 // 适用于 embedding lookup、权重解包等场景。
 #if defined(__AVX2__)
-TEST(AvxLearning, Gather) {
+TEST(CPUKernelAvxLearning, Gather) {
     alignas(32) const float table[16] = {
             0.0F,
             1.0F,
@@ -523,7 +523,7 @@ TEST(AvxLearning, Gather) {
     }
 }
 #else
-TEST(AvxLearning, Gather) {
+TEST(CPUKernelAvxLearning, Gather) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif
@@ -536,7 +536,7 @@ TEST(AvxLearning, Gather) {
 //   方案 A: 用标量处理尾部
 //   方案 B: 用 _mm256_maskload_ps (AVX2, 需要 sign mask)
 #if defined(__AVX2__)
-TEST(AvxLearning, TailHandling) {
+TEST(CPUKernelAvxLearning, TailHandling) {
     // 假设 hidden_size = 10, 需要 8 + 2 两段处理
     alignas(32) const float data[10] = {0.0F, 1.0F, 2.0F, 3.0F, 4.0F,
                                         5.0F, 6.0F, 7.0F, 8.0F, 9.0F};
@@ -572,7 +572,7 @@ TEST(AvxLearning, TailHandling) {
     }
 }
 #else
-TEST(AvxLearning, TailHandling) {
+TEST(CPUKernelAvxLearning, TailHandling) {
     GTEST_SKIP() << "AVX2 not supported by compiler (add -mavx2)";
 }
 #endif

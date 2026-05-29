@@ -12,7 +12,7 @@
 
 namespace {
 
-void BM_CpuRmsNormKernel(benchmark::State& state) {
+void BM_CPUKernel_RmsNorm(benchmark::State& state) {
     const auto seq_len = state.range(0);
     const auto hidden = state.range(1);
     const auto numel = static_cast<std::size_t>(seq_len * hidden);
@@ -61,7 +61,7 @@ void BM_CpuRmsNormKernel(benchmark::State& state) {
     state.SetBytesProcessed(elements * static_cast<std::int64_t>(sizeof(float) * 4));
 }
 
-BENCHMARK(BM_CpuRmsNormKernel)
+BENCHMARK(BM_CPUKernel_RmsNorm)
         ->Args({1, 4096})
         ->Args({1, 8192})
         ->Args({16, 4096})

@@ -53,7 +53,7 @@ void ReferenceRmsNorm(const float* input,
 
 }// namespace
 
-TEST(CpuRmsNormKernel, ComputesExpectedValues) {
+TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
     constexpr float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[4] = {0.0F, 0.0F, 0.0F, 0.0F};
@@ -87,7 +87,7 @@ TEST(CpuRmsNormKernel, ComputesExpectedValues) {
     EXPECT_NEAR(output[3], 1.460593, 1e-5);
 }
 
-TEST(CpuRmsNormKernel, CpuBackendResolvedKernelExecutesThroughExecutor) {
+TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesThroughExecutor) {
     CpuBackend backend;
     const StatusOr<ResolvedKernel> resolved = backend.ResolveKernelInfo(
             OpType::kRmsNorm,
@@ -143,7 +143,7 @@ TEST(CpuRmsNormKernel, CpuBackendResolvedKernelExecutesThroughExecutor) {
     EXPECT_NEAR(output[3], 2.921186, 1e-5);
 }
 
-TEST(CpuRmsNormKernel, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
+TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
@@ -192,7 +192,7 @@ TEST(CpuRmsNormKernel, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
     EXPECT_NEAR(output[3], 2.921186, 1e-5);
 }
 
-TEST(CpuRmsNormKernel, MultiTokenRmsNorm) {
+TEST(CPUKernelRmsNorm, MultiTokenRmsNorm) {
     // [seq_len=3, hidden=4] — three rows, each independently normalized.
     constexpr float input[12] = {
             1.0F,
@@ -256,7 +256,7 @@ TEST(CpuRmsNormKernel, MultiTokenRmsNorm) {
     EXPECT_NEAR(output[11], 0.365148, 1e-5);
 }
 
-TEST(CpuRmsNormKernel, MatchesReference) {
+TEST(CPUKernelRmsNorm, MatchesReference) {
     // Setup: 3 tokens, hidden=4, non-uniform values + non-uniform weight.
     constexpr int64_t kSeqLen = 3;
     constexpr int64_t kHidden = 4;

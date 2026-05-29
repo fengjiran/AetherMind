@@ -8,7 +8,7 @@
 
 namespace {
 
-void BM_DotProductAvx2Unroll(benchmark::State& state) {
+void BM_CPUKernel_DotProductAvx2Unroll(benchmark::State& state) {
     const auto n = static_cast<std::size_t>(state.range(0));
     std::vector<float> a(n);
     std::vector<float> b(n);
@@ -27,7 +27,7 @@ void BM_DotProductAvx2Unroll(benchmark::State& state) {
     state.SetBytesProcessed(state.iterations() * static_cast<std::int64_t>(n) * static_cast<std::int64_t>(sizeof(float) * 2));
 }
 
-BENCHMARK(BM_DotProductAvx2Unroll)
+BENCHMARK(BM_CPUKernel_DotProductAvx2Unroll)
         ->Arg(128)
         ->Arg(1024)
         ->Arg(8192)

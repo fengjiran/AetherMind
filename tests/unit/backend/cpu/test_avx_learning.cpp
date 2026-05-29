@@ -16,7 +16,10 @@
 //   运行时 GTEST_SKIP() 避免在不支持的机器上执行。
 // ═══════════════════════════════════════════════════════════════════════════
 
+#include <algorithm>
+#include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 
 // ---- SIMD 概念 1: Load / Store ─────────────────────────────────────────
 // _mm256_loadu_ps / _mm256_storeu_ps: 从内存加载 / 写回 8 个 float。
@@ -27,27 +30,53 @@
 namespace aethermind {
 namespace {
 
+/// Approximate float equality suitable for reduction results.
+///
+/// Floating-point addition is not associative, so SIMD and scalar
+/// accumulation produce slightly different results for large vectors.
+/// This helper checks that the relative error is within a small epsilon
+/// (1e-4 by default) rather than requiring exact ULP-level match.
+void ExpectClose(float actual, float expected, float rel_eps = 1.0e-3F) {
+    const float max_abs = std::max({std::abs(actual), std::abs(expected),
+                                    std::numeric_limits<float>::min()});
+    if (const float abs_err = std::abs(actual - expected); abs_err > rel_eps * max_abs) {
+        ADD_FAILURE() << "Expected: " << expected << " (±" << (rel_eps * 100.0F)
+                      << "%), actual: " << actual
+                      << ", abs_err: " << abs_err
+                      << ", rel_err: " << (abs_err / max_abs);
+    }
+}
+
 /// 标量 add: 逐元素相加，验证 SIMD Load + Add + Store 的正确性。
-void ReferenceAdd(const float* a, const float* b, float* out, int n) noexcept {
-    for (int i = 0; i < n; ++i) {
+void ReferenceAdd(const float* a, const float* b, float* out, std::size_t n) noexcept {
+    for (std::size_t i = 0; i < n; ++i) {
         out[i] = a[i] + b[i];
     }
 }
 
-void ReferenceFMAdd(const float* a, const float* b, const float* c, float* out, int n) noexcept {
-    for (int i = 0; i < n; ++i) {
+void ReferenceFMAdd(const float* a, const float* b, const float* c, float* out, std::size_t n) noexcept {
+    for (std::size_t i = 0; i < n; ++i) {
         out[i] = a[i] * b[i] + c[i];
     }
 }
 
-void AVX2Add(const float* a, const float* b, float* out, int n) noexcept {
-    int i = 0;
-    while (i + 8 <= n) {
+float ReferenceDotProduct(const float* a, const float* b, std::size_t n) noexcept {
+    float result = 0.0F;
+    for (std::size_t i = 0; i < n; ++i) {
+        result += a[i] * b[i];
+    }
+    return result;
+}
+
+void AVX2Add(const float* a, const float* b, float* out, std::size_t n) noexcept {
+    constexpr std::size_t kStep = 8;
+    std::size_t i = 0;
+    while (i + kStep <= n) {
         __m256 va = _mm256_loadu_ps(a + i);
         __m256 vb = _mm256_loadu_ps(b + i);
         __m256 vsum = _mm256_add_ps(va, vb);
         _mm256_storeu_ps(out + i, vsum);
-        i += 8;
+        i += kStep;
     }
 
     while (i < n) {
@@ -56,21 +85,66 @@ void AVX2Add(const float* a, const float* b, float* out, int n) noexcept {
     }
 }
 
-void AVX2FMAdd(const float* a, const float* b, const float* c, float* out, int n) noexcept {
-    int i = 0;
-    while (i + 8 <= n) {
+void AVX2FMAdd(const float* a, const float* b, const float* c, float* out, std::size_t n) noexcept {
+    std::size_t i = 0;
+    constexpr std::size_t kStep = 8;
+    while (i + kStep <= n) {
         __m256 va = _mm256_loadu_ps(a + i);
         __m256 vb = _mm256_loadu_ps(b + i);
         __m256 vc = _mm256_loadu_ps(c + i);
         __m256 vres = _mm256_fmadd_ps(va, vb, vc);
         _mm256_storeu_ps(out + i, vres);
-        i += 8;
+        i += kStep;
     }
 
     while (i < n) {
         out[i] = a[i] * b[i] + c[i];
         ++i;
     }
+}
+
+// Horizontal Sum
+float hsum_ps256(__m256 v) {
+    __m128 vlow = _mm256_castps256_ps128(v);
+    __m128 vhign = _mm256_extractf128_ps(v, 1);
+    __m128 v128 = _mm_add_ps(vhign, vlow);
+
+    v128 = _mm_hadd_ps(v128, v128);
+    v128 = _mm_hadd_ps(v128, v128);
+    return _mm_cvtss_f32(v128);
+}
+
+float dot_product_avx2_unroll(const float* a, const float* b, std::size_t n) noexcept {
+    __m256 vsum0 = _mm256_setzero_ps();
+    __m256 vsum1 = _mm256_setzero_ps();
+    __m256 vsum2 = _mm256_setzero_ps();
+    __m256 vsum3 = _mm256_setzero_ps();
+
+    std::size_t i = 0;
+    while (i + 32 <= n) {
+        vsum0 = _mm256_fmadd_ps(_mm256_loadu_ps(a + i), _mm256_loadu_ps(b + i), vsum0);
+        vsum1 = _mm256_fmadd_ps(_mm256_loadu_ps(a + i + 8), _mm256_loadu_ps(b + i + 8), vsum1);
+        vsum2 = _mm256_fmadd_ps(_mm256_loadu_ps(a + i + 16), _mm256_loadu_ps(b + i + 16), vsum2);
+        vsum3 = _mm256_fmadd_ps(_mm256_loadu_ps(a + i + 24), _mm256_loadu_ps(b + i + 24), vsum3);
+        i += 32;
+    }
+
+    __m256 vres = _mm256_add_ps(_mm256_add_ps(vsum0, vsum1), _mm256_add_ps(vsum2, vsum3));
+
+    while (i + 8 <= n) {
+        __m256 va = _mm256_loadu_ps(a + i);
+        __m256 vb = _mm256_loadu_ps(b + i);
+        vres = _mm256_add_ps(vres, _mm256_mul_ps(va, vb));
+        i += 8;
+    }
+
+    float res = hsum_ps256(vres);
+    while (i < n) {
+        res += a[i] * b[i];
+        ++i;
+    }
+
+    return res;
 }
 
 }// namespace
@@ -150,6 +224,45 @@ TEST(AvxLearning, FmaTail) {
         EXPECT_FLOAT_EQ(actual[i], expected[i]) << "index " << i;
     }
 }
+
+TEST(AvxLearning, DotProduct) {
+    alignas(32) constexpr float a[10] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F, 9.0F, 10.0F};
+    alignas(32) constexpr float b[10] = {10.0F, 9.0F, 8.0F, 7.0F, 6.0F, 5.0F, 4.0F, 3.0F, 2.0F, 1.0F};
+
+    const float actual = aethermind::dot_product_avx2_unroll(a, b, 10);
+    const float expected = aethermind::ReferenceDotProduct(a, b, 10);
+
+    EXPECT_FLOAT_EQ(actual, expected);
+}
+
+TEST(AvxLearning, DotProductLargeVectorAligned32) {
+    constexpr size_t kSize = 1024;
+    alignas(32) std::vector<float> a(kSize);
+    alignas(32) std::vector<float> b(kSize);
+    for (size_t i = 0; i < kSize; ++i) {
+        a[i] = i * 0.5F;
+        b[i] = i * 0.25F;
+    }
+
+    const float actual = aethermind::dot_product_avx2_unroll(a.data(), b.data(), kSize);
+    const float expected = aethermind::ReferenceDotProduct(a.data(), b.data(), kSize);
+    aethermind::ExpectClose(actual, expected);
+}
+
+TEST(AvxLearning, DotProductVeryLargeVector) {
+    constexpr size_t kSize = 1 << 20;// 1,048,576 elements
+    std::vector<float> a(kSize);
+    std::vector<float> b(kSize);
+    for (size_t i = 0; i < kSize; ++i) {
+        a[i] = static_cast<float>(i & 0xFF) * 0.1F;
+        b[i] = static_cast<float>(255 - (i & 0xFF)) * 0.1F;
+    }
+
+    const float actual = aethermind::dot_product_avx2_unroll(a.data(), b.data(), kSize);
+    const float expected = aethermind::ReferenceDotProduct(a.data(), b.data(), kSize);
+    aethermind::ExpectClose(actual, expected);
+}
+
 #else
 TEST(AvxLearning, Fma) {
     GTEST_SKIP() << "FMA not supported by compiler (add -mfma)";

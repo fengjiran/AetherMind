@@ -46,3 +46,21 @@ else ()
     target_compile_definitions(${PROJECT_NAME} PRIVATE BACKTRACE_ON_SEGFAULT=0)
 endif (BACKTRACE_ON_SEGFAULT)
 
+# AVX2+FMA flags for SIMD-optimized translation units.
+# The source file uses #ifdef guards to fall back to scalar code when these
+# flags are unavailable, so a missing flag simply degrades performance.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-mavx2" CXX_SUPPORTS_AVX2)
+check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
+if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/cpu_dot_product.cpp
+        PROPERTIES COMPILE_FLAGS "-mavx2 -mfma"
+    )
+    message(STATUS "AVX2/FMA enabled")
+else()
+    message(STATUS
+        "AVX2/FMA not supported by compiler — "
+    )
+endif()
+

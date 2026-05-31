@@ -4,3 +4,6 @@
 [submodule "3rdparty/libbacktrace"]
 	path = 3rdparty/libbacktrace
 	url = git@github.com:tlc-pack/libbacktrace.git
+[submodule "3rdparty/cpufp"]
+	path = 3rdparty/cpufp
+	url = git@github.com:pigirons/cpufp.git

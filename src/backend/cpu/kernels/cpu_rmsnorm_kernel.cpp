@@ -116,10 +116,10 @@ Status CpuRmsNormKernel(const KernelInvocation& invocation,
 
         size_t j = 0;
         for (; j + 32 <= hidden_size; j += 32) {
-            __m256 x0 = _mm256_loadu_ps(row_in + j);
-            __m256 x1 = _mm256_loadu_ps(row_in + j + 8);
-            __m256 x2 = _mm256_loadu_ps(row_in + j + 16);
-            __m256 x3 = _mm256_loadu_ps(row_in + j + 24);
+            const __m256 x0 = _mm256_loadu_ps(row_in + j);
+            const __m256 x1 = _mm256_loadu_ps(row_in + j + 8);
+            const __m256 x2 = _mm256_loadu_ps(row_in + j + 16);
+            const __m256 x3 = _mm256_loadu_ps(row_in + j + 24);
 
             vsum0 = _mm256_fmadd_ps(x0, x0, vsum0);
             vsum1 = _mm256_fmadd_ps(x1, x1, vsum1);
@@ -184,7 +184,7 @@ Status CpuRmsNormKernel(const KernelInvocation& invocation,
         }
     };
 
-    if (constexpr int64_t kOmpParallelThreshold = 4; seq_len < kOmpParallelThreshold) {
+    if (constexpr int64_t kOmpParallelThreshold = 16; seq_len <= kOmpParallelThreshold) {
         for (int64_t i = 0; i < seq_len; ++i) {
             process_row(i);
         }

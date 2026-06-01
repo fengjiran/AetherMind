@@ -12,6 +12,17 @@
 
 namespace {
 
+constexpr double kRmsNormFlopsPerElement = 4.0;
+
+void SetRmsNormThroughputCounters(benchmark::State& state, std::int64_t seq_len, std::int64_t hidden) {
+    const auto elements = state.iterations() * (seq_len * hidden);
+    state.SetItemsProcessed(elements);
+    state.SetBytesProcessed(elements * static_cast<std::int64_t>(sizeof(float) * 4));
+
+    const double flops = static_cast<double>(elements) * kRmsNormFlopsPerElement;
+    state.counters["GFLOP/s"] = benchmark::Counter(flops, benchmark::Counter::kIsRate, benchmark::Counter::OneK::kIs1000);
+}
+
 void ReferenceRmsNorm(const float* input,
                       const float* weight,
                       float* output,
@@ -79,9 +90,7 @@ void BM_CPUKernel_RmsNorm(benchmark::State& state) {
         benchmark::DoNotOptimize(output.data());
     }
 
-    const auto elements = state.iterations() * (seq_len * hidden);
-    state.SetItemsProcessed(elements);
-    state.SetBytesProcessed(elements * static_cast<std::int64_t>(sizeof(float) * 4));
+    SetRmsNormThroughputCounters(state, seq_len, hidden);
 }
 
 void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
@@ -100,16 +109,13 @@ void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
         weight[static_cast<std::size_t>(i)] = 1.0F;
     }
 
-    constexpr float kEpsilon = 1.0e-5F;
-
     for (auto _: state) {
+        constexpr float kEpsilon = 1.0e-5F;
         ReferenceRmsNorm(input.data(), weight.data(), output.data(), seq_len, hidden, kEpsilon);
         benchmark::DoNotOptimize(output.data());
     }
 
-    const auto elements = state.iterations() * (seq_len * hidden);
-    state.SetItemsProcessed(elements);
-    state.SetBytesProcessed(elements * static_cast<std::int64_t>(sizeof(float) * 4));
+    SetRmsNormThroughputCounters(state, seq_len, hidden);
 }
 
 BENCHMARK(BM_CPUKernel_ReferenceRmsNorm)

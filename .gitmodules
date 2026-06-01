@@ -4,3 +4,6 @@
 [submodule "3rdparty/cpufp"]
 	path = 3rdparty/cpufp
 	url = git@github.com:pigirons/cpufp.git
+[submodule "3rdparty/STREAM"]
+	path = 3rdparty/STREAM
+	url = git@github.com:jeffhammond/STREAM.git

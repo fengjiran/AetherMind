@@ -14,33 +14,29 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
 namespace aethermind {
 TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
     constexpr float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[4] = {0.0F, 0.0F, 0.0F, 0.0F};
-    constexpr int64_t io_shape[2] = {1, 4};
-    constexpr int64_t io_strides[2] = {4, 1};
-    constexpr int64_t w_shape[1] = {4};
-    constexpr int64_t w_strides[1] = {1};
-
-    const CpuRmsNormParams params{
-            .Input = TensorView{input, DataType::Float32(), io_shape, io_strides},
-            .Weight = TensorView{weight, DataType::Float32(), w_shape, w_strides},
-            .Output = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
-    };
-    const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
-
-    const Status status = CpuRmsNormKernel(KernelInvocation{
-                                                   .op_type = OpType::kRmsNorm,
-                                                   .selector = {.device_type = DeviceType::kCPU},
-                                           },
-                                           KernelContext{
-                                                   .device = Device::CPU(),
-                                                   .packed_params = &params,
-                                                   .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
-                                           },
-                                           WorkspaceBinding{});
+    const Status status = CpuRmsNormKernel(CpuRmsNormKernelArgs{
+            .input_ = input,
+            .weight_ = weight,
+            .output_ = output,
+            .seq_len_ = 1,
+            .hidden_size_ = 4,
+            .input_row_stride_ = 4,
+            .input_col_stride_ = 1,
+            .weight_stride_ = 1,
+            .output_row_stride_ = 4,
+            .output_col_stride_ = 1,
+            .epsilon_ = 1.0e-5F,
+    });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_NEAR(output[0], 0.365148, 1e-5);
@@ -172,28 +168,19 @@ TEST(CPUKernelRmsNorm, MultiTokenRmsNorm) {
     };
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[12] = {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
-    constexpr int64_t io_shape[2] = {3, 4};
-    constexpr int64_t io_strides[2] = {4, 1};
-    constexpr int64_t w_shape[1] = {4};
-    constexpr int64_t w_strides[1] = {1};
-
-    const CpuRmsNormParams params{
-            .Input = TensorView{input, DataType::Float32(), io_shape, io_strides},
-            .Weight = TensorView{weight, DataType::Float32(), w_shape, w_strides},
-            .Output = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
-    };
-    const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
-
-    const Status status = CpuRmsNormKernel(KernelInvocation{
-                                                   .op_type = OpType::kRmsNorm,
-                                                   .selector = {.device_type = DeviceType::kCPU},
-                                           },
-                                           KernelContext{
-                                                   .device = Device::CPU(),
-                                                   .packed_params = &params,
-                                                   .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
-                                           },
-                                           WorkspaceBinding{});
+    const Status status = CpuRmsNormKernel(CpuRmsNormKernelArgs{
+            .input_ = input,
+            .weight_ = weight,
+            .output_ = output,
+            .seq_len_ = 3,
+            .hidden_size_ = 4,
+            .input_row_stride_ = 4,
+            .input_col_stride_ = 1,
+            .weight_stride_ = 1,
+            .output_row_stride_ = 4,
+            .output_col_stride_ = 1,
+            .epsilon_ = 1.0e-5F,
+    });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
 
@@ -239,43 +226,107 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
     constexpr float weight[4] = {1.0F, 0.5F, 1.5F, 2.0F};
     float kernel_output[12] = {};
     float ref_output[12] = {};
-    constexpr int64_t io_shape[2] = {kSeqLen, kHidden};
-    constexpr int64_t io_strides[2] = {kHidden, 1};
-    constexpr int64_t w_shape[1] = {kHidden};
-    constexpr int64_t w_strides[1] = {1};
     constexpr float kEpsilon = 1.0e-5F;
 
-    const CpuRmsNormParams params{
-            .Input = TensorView{input, DataType::Float32(), io_shape, io_strides},
-            .Weight = TensorView{weight, DataType::Float32(), w_shape, w_strides},
-            .Output = MutableTensorView{kernel_output, DataType::Float32(), io_shape, io_strides},
-    };
-    const CpuRmsNormAttrs attrs{.Epsilon = kEpsilon};
-
-    const Status status = CpuRmsNormKernel(KernelInvocation{
-                                                   .op_type = OpType::kRmsNorm,
-                                                   .selector = {.device_type = DeviceType::kCPU},
-                                           },
-                                           KernelContext{
-                                                   .device = Device::CPU(),
-                                                   .packed_params = &params,
-                                                   .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
-                                           },
-                                           WorkspaceBinding{});
-    ASSERT_TRUE(status.ok()) << status.ToString();
-
-    ReferenceRmsNorm(ReferenceRmsNormArgs{
+    const CpuRmsNormKernelArgs args{
             .input_ = input,
             .weight_ = weight,
-            .output_ = ref_output,
+            .output_ = kernel_output,
             .seq_len_ = kSeqLen,
             .hidden_size_ = kHidden,
+            .input_row_stride_ = kHidden,
+            .input_col_stride_ = 1,
+            .weight_stride_ = 1,
+            .output_row_stride_ = kHidden,
+            .output_col_stride_ = 1,
             .epsilon_ = kEpsilon,
+    };
+
+    const Status status = CpuRmsNormKernel(args);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+
+    ReferenceRmsNorm(CpuRmsNormKernelArgs{
+            .input_ = args.input_,
+            .weight_ = args.weight_,
+            .output_ = ref_output,
+            .seq_len_ = args.seq_len_,
+            .hidden_size_ = args.hidden_size_,
+            .input_row_stride_ = args.input_row_stride_,
+            .input_col_stride_ = args.input_col_stride_,
+            .weight_stride_ = args.weight_stride_,
+            .output_row_stride_ = args.output_row_stride_,
+            .output_col_stride_ = args.output_col_stride_,
+            .epsilon_ = args.epsilon_,
     });
 
     for (int i = 0; i < kSeqLen * kHidden; ++i) {
         EXPECT_NEAR(kernel_output[i], ref_output[i], 1e-6)
                 << "mismatch at index " << i;
+    }
+}
+
+TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
+    constexpr int64_t kSeqLen = 2;
+    constexpr int64_t kHidden = 3;
+    constexpr int64_t kInputRowStride = 7;
+    constexpr int64_t kInputColStride = 2;
+    constexpr int64_t kWeightStride = 2;
+    constexpr int64_t kOutputRowStride = 8;
+    constexpr int64_t kOutputColStride = 2;
+    constexpr float kEpsilon = 1.0e-5F;
+
+    std::array<float, 12> input{};
+    std::array<float, 5> weight{};
+    std::array<float, 14> kernel_output{};
+    std::array<float, 14> ref_output{};
+
+    input[0] = 1.0F;
+    input[2] = 2.0F;
+    input[4] = 3.0F;
+    input[7] = -1.0F;
+    input[9] = 0.5F;
+    input[11] = 4.0F;
+    weight[0] = 1.0F;
+    weight[2] = 0.5F;
+    weight[4] = 1.5F;
+
+    const CpuRmsNormKernelArgs args{
+            .input_ = input.data(),
+            .weight_ = weight.data(),
+            .output_ = kernel_output.data(),
+            .seq_len_ = kSeqLen,
+            .hidden_size_ = kHidden,
+            .input_row_stride_ = kInputRowStride,
+            .input_col_stride_ = kInputColStride,
+            .weight_stride_ = kWeightStride,
+            .output_row_stride_ = kOutputRowStride,
+            .output_col_stride_ = kOutputColStride,
+            .epsilon_ = kEpsilon,
+    };
+
+    const Status status = CpuRmsNormKernel(args);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+
+    ReferenceRmsNorm(CpuRmsNormKernelArgs{
+            .input_ = args.input_,
+            .weight_ = args.weight_,
+            .output_ = ref_output.data(),
+            .seq_len_ = args.seq_len_,
+            .hidden_size_ = args.hidden_size_,
+            .input_row_stride_ = args.input_row_stride_,
+            .input_col_stride_ = args.input_col_stride_,
+            .weight_stride_ = args.weight_stride_,
+            .output_row_stride_ = args.output_row_stride_,
+            .output_col_stride_ = args.output_col_stride_,
+            .epsilon_ = args.epsilon_,
+    });
+
+    for (int64_t row = 0; row < kSeqLen; ++row) {
+        for (int64_t col = 0; col < kHidden; ++col) {
+            const int64_t offset = row * kOutputRowStride + col * kOutputColStride;
+            EXPECT_NEAR(kernel_output[static_cast<size_t>(offset)], ref_output[static_cast<size_t>(offset)], 1e-6)
+                    << "mismatch at row " << row << ", col " << col;
+        }
     }
 }
 

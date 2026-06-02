@@ -1,14 +1,9 @@
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel_reference.h"
-#include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_invocation.h"
-#include "aethermind/base/tensor_view.h"
-#include "aethermind/operators/op_type.h"
 
 #include <benchmark/benchmark.h>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <vector>
 
 namespace {
@@ -40,31 +35,23 @@ void BM_CPUKernel_RmsNorm(benchmark::State& state) {
         weight[static_cast<std::size_t>(i)] = 1.0F;
     }
 
-    const std::int64_t io_shape[2] = {seq_len, hidden};
-    const std::int64_t io_strides[2] = {hidden, 1};
-    const std::int64_t w_shape[1] = {hidden};
-    const std::int64_t w_strides[1] = {1};
-
-    const aethermind::CpuRmsNormParams params{
-            .Input = aethermind::TensorView{input.data(), aethermind::DataType::Float32(), io_shape, io_strides},
-            .Weight = aethermind::TensorView{weight.data(), aethermind::DataType::Float32(), w_shape, w_strides},
-            .Output = aethermind::MutableTensorView{output.data(), aethermind::DataType::Float32(), io_shape, io_strides},
-    };
-
-    constexpr aethermind::CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
-    const aethermind::KernelInvocation invocation{
-            .op_type = aethermind::OpType::kRmsNorm,
-            .selector = {.device_type = aethermind::DeviceType::kCPU},
-    };
-    const aethermind::KernelContext context{
-            .device = aethermind::Device::CPU(),
-            .packed_params = &params,
-            .attrs = std::as_bytes(std::span{&attrs, std::size_t{1}}),
+    const aethermind::CpuRmsNormKernelArgs args{
+            .input_ = input.data(),
+            .weight_ = weight.data(),
+            .output_ = output.data(),
+            .seq_len_ = seq_len,
+            .hidden_size_ = hidden,
+            .input_row_stride_ = hidden,
+            .input_col_stride_ = 1,
+            .weight_stride_ = 1,
+            .output_row_stride_ = hidden,
+            .output_col_stride_ = 1,
+            .epsilon_ = 1.0e-5F,
     };
 
     for (auto _: state) {
-        auto status = aethermind::CpuRmsNormKernel(invocation, context, aethermind::WorkspaceBinding{});
-        benchmark::DoNotOptimize(status);
+        bool ok = aethermind::CpuRmsNormKernel(args).ok();
+        benchmark::DoNotOptimize(ok);
         benchmark::DoNotOptimize(output.data());
     }
 
@@ -89,12 +76,17 @@ void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
 
     for (auto _: state) {
         constexpr float kEpsilon = 1.0e-5F;
-        aethermind::ReferenceRmsNorm(aethermind::ReferenceRmsNormArgs{
+        aethermind::ReferenceRmsNorm(aethermind::CpuRmsNormKernelArgs{
                 .input_ = input.data(),
                 .weight_ = weight.data(),
                 .output_ = output.data(),
                 .seq_len_ = seq_len,
                 .hidden_size_ = hidden,
+                .input_row_stride_ = hidden,
+                .input_col_stride_ = 1,
+                .weight_stride_ = 1,
+                .output_row_stride_ = hidden,
+                .output_col_stride_ = 1,
                 .epsilon_ = kEpsilon,
         });
         benchmark::DoNotOptimize(output.data());

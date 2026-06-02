@@ -53,7 +53,7 @@ std::any MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
 
 StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
                                                const ExecutionPlanNodeSpec& node,
-                                               std::span<const ShapeInfo> input_shapes) {
+                                               std::span<const TensorSpec> shapes) {
     StatusOr<std::unique_ptr<Operator>> created = OperatorRegistry::Create(
             node.op_type,
             MakeOperatorParamsForNode(node));
@@ -71,11 +71,11 @@ StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
 
     std::unique_ptr<Operator> op = std::move(created).value();
     AM_RETURN_IF_ERROR(op->ValidateParams());
-    // CheckShapes requires input shape metadata. When shapes are available
+    // CheckInputSpecs requires input TensorSpec metadata. When specs are available
     // (e.g., from model graph compilation), plumb them here instead of {}.  The
     // kernel is the final validation layer and handles data/contiguity checks.
-    if (!input_shapes.empty()) {
-        AM_RETURN_IF_ERROR(op->CheckShapes(input_shapes));
+    if (!shapes.empty()) {
+        AM_RETURN_IF_ERROR(op->CheckInputSpecs(shapes));
     }
 
     OperatorContext op_ctx{
@@ -115,7 +115,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
 
         // TODO: plumb actual input shapes from model graph once shape tracking
         // is available in ExecutionPlanNodeSpec. For now, pass empty shapes to
-        // maintain forward compatibility with the CheckShapes(ShapeInfo) contract.
+        // maintain forward compatibility with the CheckInputSpecs contract.
         const auto prepared_operator = CreateAndPrepareOperator(*backend.value(), node, {});
         if (!prepared_operator.ok()) {
             return prepared_operator.status();

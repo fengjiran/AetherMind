@@ -99,9 +99,6 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
 
     const Status status = fn(KernelContext{
-            .op_type = OpType::kRmsNorm,
-            .selector = MakeCpuSelector(),
-            .device = Device::CPU(),
             .workspace_binding = {},
             .packed_params = &params,
             .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),

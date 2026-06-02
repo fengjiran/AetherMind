@@ -1,7 +1,6 @@
 #include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
 
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/operators/op_type.h"
 
 #include "aethermind/utils/overflow_check.h"
 
@@ -32,13 +31,6 @@ int64_t ReadTokenId(const TensorView& token_ids, size_t index) noexcept {
 }// namespace
 
 Status CpuEmbeddingKernel(const KernelContext& ctx) noexcept {
-    if (ctx.op_type != OpType::kEmbedding) {
-        return Status::InvalidArgument("CpuEmbeddingKernel only supports OpType::kEmbedding");
-    }
-    if (!ctx.device.is_cpu()) {
-        return Status::InvalidArgument("CpuEmbeddingKernel requires CPU device");
-    }
-
     const CpuEmbeddingParams* params = GetParams(ctx.packed_params);
     if (params == nullptr) {
         return Status::InvalidArgument("CpuEmbeddingKernel requires CpuEmbeddingParams in KernelContext.packed_params");

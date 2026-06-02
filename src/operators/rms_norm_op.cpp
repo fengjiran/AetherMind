@@ -1,7 +1,6 @@
 #include "aethermind/operators/rms_norm_op.h"
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/operators/operator_registry.h"
 
 #include <span>
@@ -17,45 +16,45 @@ Status RmsNormOp::ValidateParams() const {
     return Status::Ok();
 }
 
-Status RmsNormOp::CheckShapes(std::span<const ShapeInfo> inputs) const {
+Status RmsNormOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
                 "RmsNorm expects exactly 2 inputs, got " + std::to_string(inputs.size()));
     }
 
-    const auto& input = inputs[0];
-    const auto& weight = inputs[1];
+    const auto& input_spec = inputs[0];
+    const auto& weight_spec = inputs[1];
 
-    if (input.dtype_ != DataType::Float32() || weight.dtype_ != DataType::Float32()) {
+    if (input_spec.dtype_ != DataType::Float32() || weight_spec.dtype_ != DataType::Float32()) {
         return Status::InvalidArgument("RmsNorm only supports float32 inputs in Phase 1");
     }
 
-    if (input.shape_.size() != 2) {
+    if (input_spec.shape_.size() != 2) {
         return Status::InvalidArgument("RmsNorm input must be rank-2 [seq_len, hidden]");
     }
 
-    if (weight.shape_.size() != 1) {
+    if (weight_spec.shape_.size() != 1) {
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
     }
 
-    const int64_t hidden_size = input.shape_[1];
+    const int64_t hidden_size = input_spec.shape_[1];
     if (hidden_size <= 0) {
         return Status::InvalidArgument("RmsNorm hidden size must be positive");
     }
 
-    if (weight.shape_[0] != hidden_size) {
+    if (weight_spec.shape_[0] != hidden_size) {
         return Status::InvalidArgument(
                 "RmsNorm weight length must equal input last dimension");
     }
     return Status::Ok();
 }
 
-StatusOr<std::vector<ShapeInfo>> RmsNormOp::InferOutputShapes(
-        std::span<const ShapeInfo> inputs) const {
+StatusOr<std::vector<TensorSpec>> RmsNormOp::InferOutputShapes(
+        std::span<const TensorSpec> inputs) const {
     if (inputs.empty()) {
         return Status::InvalidArgument("RmsNorm requires input shape metadata");
     }
-    return std::vector<ShapeInfo>{inputs[0]};
+    return std::vector<TensorSpec>{inputs[0]};
 }
 
 Status RmsNormOp::Prepare(OperatorContext& ctx) {

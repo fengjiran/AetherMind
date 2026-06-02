@@ -32,13 +32,13 @@ public:
         return Status::Ok();
     }
 
-    AM_NODISCARD Status CheckShapes(std::span<const ShapeInfo>) const override {
+    AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec>) const override {
         return Status::Ok();
     }
 
-    AM_NODISCARD StatusOr<std::vector<ShapeInfo>> InferOutputShapes(
-            std::span<const ShapeInfo>) const override {
-        return std::vector<ShapeInfo>{};
+    AM_NODISCARD StatusOr<std::vector<TensorSpec>> InferOutputShapes(
+            std::span<const TensorSpec>) const override {
+        return std::vector<TensorSpec>{};
     }
 
     AM_NODISCARD Status Prepare(OperatorContext&) override {

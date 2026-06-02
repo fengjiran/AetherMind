@@ -20,9 +20,9 @@ public:
     }
 
     AM_NODISCARD Status ValidateParams() const override;
-    AM_NODISCARD Status CheckShapes(std::span<const ShapeInfo> inputs) const override;
-    AM_NODISCARD StatusOr<std::vector<ShapeInfo>> InferOutputShapes(
-            std::span<const ShapeInfo> inputs) const override;
+    AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec> inputs) const override;
+    AM_NODISCARD StatusOr<std::vector<TensorSpec>> InferOutputShapes(
+            std::span<const TensorSpec> inputs) const override;
 
     AM_NODISCARD Status Prepare(OperatorContext& ctx) override;
 

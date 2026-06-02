@@ -8,20 +8,11 @@ namespace {
 KernelContext BuildKernelContext(const ExecutionStep& step,
                                    RuntimeBindingContext& bindings) noexcept {
     const ResolvedKernel resolved = step.op->GetResolvedKernel();
-    const auto device_type = step.selector.device_type != DeviceType::kUndefined
-                                     ? step.selector.device_type
-                                     : DeviceType::kCPU;
-
     return KernelContext{
-            .device = Device(device_type),
             .stream = nullptr,
             .workspace = bindings.GetWorkspaceArena(),
-            .tracing = nullptr,
-            .caps = nullptr,
             .packed_params = step.packed_params,
             .attrs = resolved.attrs,
-            .debug_name = step.debug_name != nullptr ? step.debug_name : resolved.debug_name,
-            .backend_resources = {},
     };
 }
 
@@ -49,8 +40,6 @@ Status LayerRunner::RunStep(const ExecutionStep& step,
     }
 
     KernelContext ctx = BuildKernelContext(step, bindings);
-    ctx.op_type = step.op->Type();
-    ctx.selector = step.selector;
     ctx.workspace_binding = workspace_binding.value();
     return step.op->Run(ctx);
 }

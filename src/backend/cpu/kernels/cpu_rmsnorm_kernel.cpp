@@ -1,7 +1,6 @@
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/cpu/kernels/cpu_simd_utils.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/operators/op_type.h"
 
 #include <cmath>
 #include <cstddef>
@@ -171,14 +170,6 @@ Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept {
 }
 
 Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
-    if (ctx.op_type != OpType::kRmsNorm) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry only supports OpType::kRmsNorm");
-    }
-
-    if (!ctx.device.is_cpu()) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires CPU device");
-    }
-
     const CpuRmsNormAttrs* attrs = GetAttrs(ctx.attrs);
     if (attrs == nullptr) {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires CpuRmsNormAttrs in KernelContext.attrs");
@@ -205,42 +196,22 @@ Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires a valid output MutableTensorView");
     }
 
-    if (input.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires input TensorView to have float dtype");
+    if (!input.is_contiguous()) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires contiguous input TensorView");
     }
 
-    if (weight.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires weight TensorView to have float dtype");
+    if (!weight.is_contiguous()) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires contiguous weight TensorView");
     }
 
-    if (output.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires output MutableTensorView to have float dtype");
-    }
-
-    if (input.rank() != 2 || !input.is_contiguous()) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires input TensorView to be contiguous 2D [seq_len, hidden]");
-    }
-
-    if (weight.rank() != 1 || !weight.is_contiguous()) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires weight TensorView to be contiguous 1D");
-    }
-
-    if (output.rank() != 2 || !output.is_contiguous()) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires output MutableTensorView to be contiguous 2D [seq_len, hidden]");
+    if (!output.is_contiguous()) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires contiguous output MutableTensorView");
     }
 
     const int64_t seq_len = input.dim(0);
-    const int64_t hidden_size_i64 = input.dim(1);
-    if (seq_len <= 0 || hidden_size_i64 <= 0) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive seq_len and hidden_size");
-    }
-
-    if (output.dim(0) != seq_len || output.dim(1) != hidden_size_i64) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry output shape must match input [seq_len, hidden]");
-    }
-
-    if (weight.numel() != hidden_size_i64) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires weight length to match hidden_size");
+    const int64_t hidden_size = input.dim(1);
+    if (seq_len <= 0) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive seq_len");
     }
 
     return CpuRmsNormKernel(CpuRmsNormKernelArgs{
@@ -248,7 +219,7 @@ Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
             .weight_ = weight.data<float>(),
             .output_ = output.data<float>(),
             .seq_len_ = seq_len,
-            .hidden_size_ = hidden_size_i64,
+            .hidden_size_ = hidden_size,
             .input_row_stride_ = input.stride(0),
             .input_col_stride_ = input.stride(1),
             .weight_stride_ = weight.stride(0),

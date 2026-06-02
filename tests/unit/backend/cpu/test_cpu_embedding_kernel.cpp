@@ -78,9 +78,6 @@ TEST(CpuEmbeddingKernel, ComputesExpectedRows) {
             output_shape, output_strides);
 
     const Status status = CpuEmbeddingKernel(KernelContext{
-            .op_type = OpType::kEmbedding,
-            .selector = {.device_type = DeviceType::kCPU},
-            .device = Device::CPU(),
             .workspace_binding = {},
             .packed_params = &params,
     });
@@ -117,9 +114,6 @@ TEST(CpuEmbeddingKernel, ComputesExpectedRowsWithUint32Tokens) {
     };
 
     const Status status = CpuEmbeddingKernel(KernelContext{
-            .op_type = OpType::kEmbedding,
-            .selector = {.device_type = DeviceType::kCPU},
-            .device = Device::CPU(),
             .workspace_binding = {},
             .packed_params = &params,
     });
@@ -164,9 +158,6 @@ TEST(CpuEmbeddingKernel, RejectsOutOfRangeTokenId) {
             output_shape, output_strides);
 
     const Status status = CpuEmbeddingKernel(KernelContext{
-            .op_type = OpType::kEmbedding,
-            .selector = {.device_type = DeviceType::kCPU},
-            .device = Device::CPU(),
             .workspace_binding = {},
             .packed_params = &params,
     });

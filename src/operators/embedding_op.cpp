@@ -20,7 +20,7 @@ Status EmbeddingOp::ValidateParams() const {
     return Status::Ok();
 }
 
-Status EmbeddingOp::CheckShapes(std::span<const ShapeInfo> inputs) const {
+Status EmbeddingOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
                 "Embedding expects exactly 2 inputs, got " + std::to_string(inputs.size()));
@@ -51,7 +51,7 @@ Status EmbeddingOp::CheckShapes(std::span<const ShapeInfo> inputs) const {
     return Status::Ok();
 }
 
-StatusOr<std::vector<ShapeInfo>> EmbeddingOp::InferOutputShapes(std::span<const ShapeInfo> inputs) const {
+StatusOr<std::vector<TensorSpec>> EmbeddingOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
                 "Embedding expects exactly 2 shape inputs, got " + std::to_string(inputs.size()));
@@ -74,7 +74,7 @@ StatusOr<std::vector<ShapeInfo>> EmbeddingOp::InferOutputShapes(std::span<const 
         return Status::InvalidArgument("Embedding token, vocab, and hidden sizes must be positive");
     }
 
-    return std::vector<ShapeInfo>{ShapeInfo{
+    return std::vector<TensorSpec>{TensorSpec{
             .dtype_ = weight.dtype_,
             .shape_ = {token_count, hidden_size},
     }};

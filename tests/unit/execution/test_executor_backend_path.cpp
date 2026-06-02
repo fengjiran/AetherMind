@@ -92,8 +92,6 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     g_execution_order = nullptr;
     ASSERT_TRUE(status.ok());
     EXPECT_EQ(execution_order, (std::vector<int>{1, 2}));
-    EXPECT_EQ(g_last_kernel_context.op_type, OpType::kRoPE);
-    EXPECT_TRUE(g_last_kernel_context.device.is_cpu());
     EXPECT_EQ(g_last_kernel_context.workspace, &arena);
     EXPECT_EQ(g_last_kernel_context.workspace_binding.size, 128U);
     EXPECT_EQ(g_last_kernel_context.workspace_binding.data,

@@ -19,7 +19,7 @@ namespace aethermind {
 
 struct KernelContext;
 
-struct ShapeInfo {
+struct TensorSpec {
     DataType dtype_{};
     std::vector<int64_t> shape_{};
 };
@@ -59,23 +59,23 @@ public:
     /// Returns Ok if valid; otherwise returns a Status describing the error.
     AM_NODISCARD virtual Status ValidateParams() const = 0;
 
-    /// Validates that input shapes are compatible with this operator.
+    /// Validates that input TensorSpecs are compatible with this operator.
     ///
-    /// Called during plan building. Checks shape compatibility, dtype
-    /// constraints, and dimension consistency — anything computable from
-    /// ShapeInfo alone. Data/contiguity/null checks happen in the kernel.
+    /// Called during plan building. Checks dtype constraints,
+    /// rank and dimension consistency — anything computable from
+    /// TensorSpec alone. Data/contiguity/null checks happen in the kernel.
     ///
     /// Returns Ok if compatible; otherwise returns a descriptive error Status.
-    AM_NODISCARD virtual Status CheckShapes(std::span<const ShapeInfo> inputs) const = 0;
+    AM_NODISCARD virtual Status CheckInputSpecs(std::span<const TensorSpec> inputs) const = 0;
 
     /// Infers output shapes from input shapes without executing.
     ///
     /// Used during graph construction and workspace planning.
     ///
-    /// \return A vector of ShapeInfo descriptors (one per output),
+    /// \return A vector of TensorSpec descriptors (one per output),
     ///         or a Status error if inference fails.
-    AM_NODISCARD virtual StatusOr<std::vector<ShapeInfo>> InferOutputShapes(
-            std::span<const ShapeInfo> inputs) const = 0;
+    AM_NODISCARD virtual StatusOr<std::vector<TensorSpec>> InferOutputShapes(
+            std::span<const TensorSpec> inputs) const = 0;
 
     /// Computes the workspace requirement for this operator.
     ///
@@ -86,7 +86,7 @@ public:
     ///
     /// \param inputs  Input tensor shapes (for size-dependent estimation).
     AM_NODISCARD virtual WorkspaceRequirement ComputeWorkspaceRequirement(
-            std::span<const ShapeInfo> inputs) const noexcept {
+            std::span<const TensorSpec> inputs) const noexcept {
         UNUSED(inputs);
         return {};
     }

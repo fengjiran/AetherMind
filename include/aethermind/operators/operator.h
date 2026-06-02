@@ -18,8 +18,6 @@
 namespace aethermind {
 
 struct KernelContext;
-struct KernelInvocation;
-struct WorkspaceBinding;
 
 struct ShapeInfo {
     DataType dtype_{};
@@ -122,9 +120,7 @@ public:
     /// \param op_ctx      Kernel execution context (device, workspace, etc.).
     /// \param workspace   Pre-bound workspace slice from unified plan.
     /// \return Ok on success; Status error if execution fails.
-    AM_NODISCARD virtual Status Run(const KernelInvocation& invocation,
-                                    const KernelContext& op_ctx,
-                                    const WorkspaceBinding& workspace) const noexcept = 0;
+    AM_NODISCARD virtual Status Run(const KernelContext& ctx) const noexcept = 0;
 
     /// Returns the resolved kernel info for debugging and logging.
     /// Only valid after successful Prepare().

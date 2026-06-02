@@ -30,9 +30,7 @@ Buffer MakeTestBuffer(size_t nbytes, size_t alignment = 64) {
     return Buffer{nbytes, MemoryHandle(ptr, nullptr, &FreeTestBuffer, Device::CPU(), alignment)};
 }
 
-Status ImmutableKernel(const KernelInvocation&,
-                       const KernelContext&,
-                       const WorkspaceBinding&) noexcept {
+Status ImmutableKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 

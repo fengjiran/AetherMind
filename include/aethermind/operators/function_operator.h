@@ -45,13 +45,11 @@ public:
         return Status::Ok();
     }
 
-    AM_NODISCARD Status Run(const KernelInvocation& invocation,
-                            const KernelContext& op_ctx,
-                            const WorkspaceBinding& workspace) const noexcept override {
+    AM_NODISCARD Status Run(const KernelContext& ctx) const noexcept override {
         if (fn_ == nullptr) {
             return Status(StatusCode::kFailedPrecondition, "FunctionOperator kernel function cannot be null");
         }
-        return fn_(invocation, op_ctx, workspace);
+        return fn_(ctx);
     }
 
     AM_NODISCARD ResolvedKernel GetResolvedKernel() const noexcept override {

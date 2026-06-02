@@ -12,9 +12,7 @@ struct CpuEmbeddingParams {
     MutableTensorView output_{};
 };
 
-AM_NODISCARD Status CpuEmbeddingKernel(const KernelInvocation& invocation,
-                                       const KernelContext& op_ctx,
-                                       const WorkspaceBinding& workspace) noexcept;
+AM_NODISCARD Status CpuEmbeddingKernel(const KernelContext& ctx) noexcept;
 
 }// namespace aethermind
 

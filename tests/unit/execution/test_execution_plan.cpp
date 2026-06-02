@@ -14,9 +14,7 @@ struct TestAttrs {
     int axis;
 };
 
-Status FakeKernel(const KernelInvocation&,
-                  const KernelContext&,
-                  const WorkspaceBinding&) noexcept {
+Status FakeKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 

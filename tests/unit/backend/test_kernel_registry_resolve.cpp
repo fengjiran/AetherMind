@@ -10,21 +10,15 @@ using namespace aethermind;
 
 namespace {
 
-Status ScalarKernel(const KernelInvocation&,
-                    const KernelContext&,
-                    const WorkspaceBinding&) noexcept {
+Status ScalarKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 
-Status Avx2Kernel(const KernelInvocation&,
-                  const KernelContext&,
-                  const WorkspaceBinding&) noexcept {
+Status Avx2Kernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 
-Status DecodeOnlyKernel(const KernelInvocation&,
-                        const KernelContext&,
-                        const WorkspaceBinding&) noexcept {
+Status DecodeOnlyKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 

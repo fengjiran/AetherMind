@@ -1,6 +1,5 @@
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/function_operator.h"
@@ -13,37 +12,25 @@ namespace aethermind {
 namespace {
 
 std::vector<int>* g_execution_order = nullptr;
-WorkspaceBinding g_last_workspace_binding{};
 KernelContext g_last_kernel_context{};
-KernelInvocation g_last_invocation{};
 
-Status FirstKernel(const KernelInvocation& invocation,
-                   const KernelContext& op_ctx,
-                   const WorkspaceBinding& workspace) noexcept {
-    g_last_invocation = invocation;
-    g_last_kernel_context = op_ctx;
-    g_last_workspace_binding = workspace;
+Status FirstKernel(const KernelContext& ctx) noexcept {
+    g_last_kernel_context = ctx;
     if (g_execution_order != nullptr) {
         g_execution_order->push_back(1);
     }
     return Status::Ok();
 }
 
-Status SecondKernel(const KernelInvocation& invocation,
-                    const KernelContext& op_ctx,
-                    const WorkspaceBinding& workspace) noexcept {
-    g_last_invocation = invocation;
-    g_last_kernel_context = op_ctx;
-    g_last_workspace_binding = workspace;
+Status SecondKernel(const KernelContext& ctx) noexcept {
+    g_last_kernel_context = ctx;
     if (g_execution_order != nullptr) {
         g_execution_order->push_back(2);
     }
     return Status::Ok();
 }
 
-Status FailingKernel(const KernelInvocation&,
-                     const KernelContext&,
-                     const WorkspaceBinding&) noexcept {
+Status FailingKernel(const KernelContext&) noexcept {
     return Status::InvalidArgument("kernel failure");
 }
 
@@ -105,11 +92,11 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     g_execution_order = nullptr;
     ASSERT_TRUE(status.ok());
     EXPECT_EQ(execution_order, (std::vector<int>{1, 2}));
-    EXPECT_EQ(g_last_invocation.op_type, OpType::kRoPE);
+    EXPECT_EQ(g_last_kernel_context.op_type, OpType::kRoPE);
     EXPECT_TRUE(g_last_kernel_context.device.is_cpu());
     EXPECT_EQ(g_last_kernel_context.workspace, &arena);
-    EXPECT_EQ(g_last_workspace_binding.size, 128U);
-    EXPECT_EQ(g_last_workspace_binding.data,
+    EXPECT_EQ(g_last_kernel_context.workspace_binding.size, 128U);
+    EXPECT_EQ(g_last_kernel_context.workspace_binding.data,
               static_cast<void*>(workspace + 64));
 }
 

@@ -2,7 +2,6 @@
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel_reference.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"

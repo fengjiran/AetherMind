@@ -6,12 +6,8 @@
 namespace aethermind {
 
 struct KernelContext;
-struct KernelInvocation;
-struct WorkspaceBinding;
 
-using KernelFunc = Status (*)(const KernelInvocation&,
-                              const KernelContext&,
-                              const WorkspaceBinding&) noexcept;
+using KernelFunc = Status (*)(const KernelContext&) noexcept;
 
 }// namespace aethermind
 

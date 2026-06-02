@@ -48,9 +48,7 @@ private:
 
 ResolveCounters* g_resolve_counters = nullptr;
 
-Status CountingKernel(const KernelInvocation&,
-                      const KernelContext&,
-                      const WorkspaceBinding&) noexcept {
+Status CountingKernel(const KernelContext&) noexcept {
     if (g_resolve_counters != nullptr) {
         g_resolve_counters->IncrementKernelInvocations();
     }

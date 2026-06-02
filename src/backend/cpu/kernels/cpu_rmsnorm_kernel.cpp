@@ -1,7 +1,6 @@
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/cpu/kernels/cpu_simd_utils.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/operators/op_type.h"
 
 #include <cmath>
@@ -171,23 +170,21 @@ Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept {
     return Status::Ok();
 }
 
-Status CpuRmsNormKernelEntry(const KernelInvocation& invocation,
-                             const KernelContext& op_ctx,
-                             const WorkspaceBinding&) noexcept {
-    if (invocation.op_type != OpType::kRmsNorm) {
+Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
+    if (ctx.op_type != OpType::kRmsNorm) {
         return Status::InvalidArgument("CpuRmsNormKernelEntry only supports OpType::kRmsNorm");
     }
 
-    if (!op_ctx.device.is_cpu()) {
+    if (!ctx.device.is_cpu()) {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires CPU device");
     }
 
-    const CpuRmsNormAttrs* attrs = GetAttrs(op_ctx.attrs);
+    const CpuRmsNormAttrs* attrs = GetAttrs(ctx.attrs);
     if (attrs == nullptr) {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires CpuRmsNormAttrs in KernelContext.attrs");
     }
 
-    const CpuRmsNormParams* params = GetParams(op_ctx.packed_params);
+    const CpuRmsNormParams* params = GetParams(ctx.packed_params);
     if (params == nullptr) {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires CpuRmsNormParams in KernelContext.packed_params");
     }

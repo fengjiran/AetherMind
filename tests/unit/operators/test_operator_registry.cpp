@@ -1,6 +1,5 @@
 #include "aethermind/operators/operator_registry.h"
 
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/runtime/workspace.h"
 
@@ -52,9 +51,7 @@ public:
         return Status::Ok();
     }
 
-    AM_NODISCARD Status Run(const KernelInvocation&,
-                            const KernelContext&,
-                            const WorkspaceBinding&) const noexcept override {
+    AM_NODISCARD Status Run(const KernelContext&) const noexcept override {
         return prepared_ ? Status::Ok() : Status(StatusCode::kFailedPrecondition, "not prepared");
     }
 

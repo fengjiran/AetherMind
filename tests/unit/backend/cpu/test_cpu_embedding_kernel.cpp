@@ -1,6 +1,5 @@
 #include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -78,15 +77,13 @@ TEST(CpuEmbeddingKernel, ComputesExpectedRows) {
             token_ids, weight, output, token_shape, token_strides, weight_shape, weight_strides,
             output_shape, output_strides);
 
-    const Status status = CpuEmbeddingKernel(KernelInvocation{
-                                                     .op_type = OpType::kEmbedding,
-                                                     .selector = {.device_type = DeviceType::kCPU},
-                                             },
-                                             KernelContext{
-                                                     .device = Device::CPU(),
-                                                     .packed_params = &params,
-                                             },
-                                             WorkspaceBinding{});
+    const Status status = CpuEmbeddingKernel(KernelContext{
+            .op_type = OpType::kEmbedding,
+            .selector = {.device_type = DeviceType::kCPU},
+            .device = Device::CPU(),
+            .workspace_binding = {},
+            .packed_params = &params,
+    });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_FLOAT_EQ(output[0], 7.0F);
@@ -119,15 +116,13 @@ TEST(CpuEmbeddingKernel, ComputesExpectedRowsWithUint32Tokens) {
             .output_ = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     };
 
-    const Status status = CpuEmbeddingKernel(KernelInvocation{
-                                                     .op_type = OpType::kEmbedding,
-                                                     .selector = {.device_type = DeviceType::kCPU},
-                                             },
-                                             KernelContext{
-                                                     .device = Device::CPU(),
-                                                     .packed_params = &params,
-                                             },
-                                             WorkspaceBinding{});
+    const Status status = CpuEmbeddingKernel(KernelContext{
+            .op_type = OpType::kEmbedding,
+            .selector = {.device_type = DeviceType::kCPU},
+            .device = Device::CPU(),
+            .workspace_binding = {},
+            .packed_params = &params,
+    });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_FLOAT_EQ(output[0], 7.0F);
@@ -168,15 +163,13 @@ TEST(CpuEmbeddingKernel, RejectsOutOfRangeTokenId) {
             token_ids, weight, output, token_shape, token_strides, weight_shape, weight_strides,
             output_shape, output_strides);
 
-    const Status status = CpuEmbeddingKernel(KernelInvocation{
-                                                     .op_type = OpType::kEmbedding,
-                                                     .selector = {.device_type = DeviceType::kCPU},
-                                             },
-                                             KernelContext{
-                                                     .device = Device::CPU(),
-                                                     .packed_params = &params,
-                                             },
-                                             WorkspaceBinding{});
+    const Status status = CpuEmbeddingKernel(KernelContext{
+            .op_type = OpType::kEmbedding,
+            .selector = {.device_type = DeviceType::kCPU},
+            .device = Device::CPU(),
+            .workspace_binding = {},
+            .packed_params = &params,
+    });
 
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kOutOfRange);

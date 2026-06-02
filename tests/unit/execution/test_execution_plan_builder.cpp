@@ -63,9 +63,7 @@ private:
     Buffer storage_{};
 };
 
-Status PackedTestKernel(const KernelInvocation&,
-                        const KernelContext&,
-                        const WorkspaceBinding&) noexcept {
+Status PackedTestKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 

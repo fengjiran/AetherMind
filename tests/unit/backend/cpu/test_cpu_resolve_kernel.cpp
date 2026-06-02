@@ -1,7 +1,6 @@
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/tensor_view.h"
 
@@ -99,14 +98,14 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     };
     const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
 
-    const Status status = fn(KernelInvocation{.op_type = OpType::kRmsNorm,
-                                              .selector = MakeCpuSelector()},
-                             KernelContext{
-                                     .device = Device::CPU(),
-                                     .packed_params = &params,
-                                     .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
-                             },
-                             WorkspaceBinding{});
+    const Status status = fn(KernelContext{
+            .op_type = OpType::kRmsNorm,
+            .selector = MakeCpuSelector(),
+            .device = Device::CPU(),
+            .workspace_binding = {},
+            .packed_params = &params,
+            .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
+    });
     EXPECT_TRUE(status.ok()) << status.ToString();
     EXPECT_NEAR(output[0], 0.365148, 1e-5);
 }

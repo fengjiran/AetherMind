@@ -240,6 +240,8 @@ const char* AetherMindTraceback(AM_MAYBE_UNUSED const char* filename,
 
 #else
 
+}// namespace aethermind
+
 const char* AetherMindTraceback(const char* filename,
                                 int lineno,
                                 const char* func,

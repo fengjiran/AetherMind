@@ -1,6 +1,5 @@
 #include "aethermind/execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/execution/runtime_binding_context.h"
 
 namespace aethermind {
@@ -49,12 +48,11 @@ Status LayerRunner::RunStep(const ExecutionStep& step,
         return workspace_binding.status();
     }
 
-    const KernelContext op_ctx = BuildKernelContext(step, bindings);
-    const KernelInvocation invocation{
-            .op_type = step.op->Type(),
-            .selector = step.selector,
-    };
-    return step.op->Run(invocation, op_ctx, workspace_binding.value());
+    KernelContext ctx = BuildKernelContext(step, bindings);
+    ctx.op_type = step.op->Type();
+    ctx.selector = step.selector;
+    ctx.workspace_binding = workspace_binding.value();
+    return step.op->Run(ctx);
 }
 
 }// namespace aethermind

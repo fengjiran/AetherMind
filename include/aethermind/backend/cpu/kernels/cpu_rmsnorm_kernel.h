@@ -38,6 +38,8 @@ AM_NODISCARD Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept;
 
 AM_NODISCARD Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept;
 
+void ProcessStridedRmsNormRowScalar(const CpuRmsNormKernelArgs& args, int64_t row_idx) noexcept;
+
 }// namespace aethermind
 
 #endif

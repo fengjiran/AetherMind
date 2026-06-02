@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
+#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel_reference.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/base/tensor_view.h"
@@ -14,45 +15,6 @@
 #include <gtest/gtest.h>
 
 namespace aethermind {
-namespace {
-
-/// Reference RMSNorm implementation for validating optimized kernels.
-///
-/// Computes RMSNorm independently for each row of a [seq_len, hidden] input.
-/// This is the numerical oracle — all optimized kernel implementations must
-/// produce results indistinguishable from this function.
-///
-/// \param input    Input data, layout [seq_len][hidden] row-major.
-/// \param weight   Weight vector, length hidden_size.
-/// \param output   Output buffer, same layout as input.
-/// \param seq_len  Number of token rows.
-/// \param hidden_size  Hidden dimension size.
-/// \param epsilon  Small constant added before rsqrt for numerical stability.
-void ReferenceRmsNorm(const float* input,
-                      const float* weight,
-                      float* output,
-                      int64_t seq_len,
-                      int64_t hidden_size,
-                      float epsilon) noexcept {
-    for (int64_t s = 0; s < seq_len; ++s) {
-        const float* row_in = input + s * hidden_size;
-        float* row_out = output + s * hidden_size;
-
-        double mean_square = 0.0F;
-        for (int64_t i = 0; i < hidden_size; ++i) {
-            mean_square += row_in[i] * row_in[i];
-        }
-        mean_square /= static_cast<float>(hidden_size);
-
-        const float inv_rms = 1.0F / std::sqrt(mean_square + epsilon);
-        for (int64_t i = 0; i < hidden_size; ++i) {
-            row_out[i] = row_in[i] * inv_rms * weight[i];
-        }
-    }
-}
-
-}// namespace
-
 TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
     constexpr float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
@@ -302,7 +264,14 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
                                            WorkspaceBinding{});
     ASSERT_TRUE(status.ok()) << status.ToString();
 
-    ReferenceRmsNorm(input, weight, ref_output, kSeqLen, kHidden, kEpsilon);
+    ReferenceRmsNorm(ReferenceRmsNormArgs{
+            .input_ = input,
+            .weight_ = weight,
+            .output_ = ref_output,
+            .seq_len_ = kSeqLen,
+            .hidden_size_ = kHidden,
+            .epsilon_ = kEpsilon,
+    });
 
     for (int i = 0; i < kSeqLen * kHidden; ++i) {
         EXPECT_NEAR(kernel_output[i], ref_output[i], 1e-6)

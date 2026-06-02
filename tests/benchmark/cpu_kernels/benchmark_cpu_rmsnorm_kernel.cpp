@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
+#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel_reference.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/base/tensor_view.h"
@@ -21,29 +22,6 @@ void SetRmsNormThroughputCounters(benchmark::State& state, std::int64_t seq_len,
 
     const double flops = static_cast<double>(elements) * kRmsNormFlopsPerElement;
     state.counters["GFLOP/s"] = benchmark::Counter(flops, benchmark::Counter::kIsRate, benchmark::Counter::OneK::kIs1000);
-}
-
-void ReferenceRmsNorm(const float* input,
-                      const float* weight,
-                      float* output,
-                      int64_t seq_len,
-                      int64_t hidden_size,
-                      float epsilon) noexcept {
-    for (int64_t s = 0; s < seq_len; ++s) {
-        const float* row_in = input + s * hidden_size;
-        float* row_out = output + s * hidden_size;
-
-        double mean_square = 0.0F;
-        for (int64_t i = 0; i < hidden_size; ++i) {
-            mean_square += row_in[i] * row_in[i];
-        }
-        mean_square /= static_cast<float>(hidden_size);
-
-        const float inv_rms = 1.0F / std::sqrt(mean_square + epsilon);
-        for (int64_t i = 0; i < hidden_size; ++i) {
-            row_out[i] = row_in[i] * inv_rms * weight[i];
-        }
-    }
 }
 
 void BM_CPUKernel_RmsNorm(benchmark::State& state) {
@@ -111,7 +89,14 @@ void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
 
     for (auto _: state) {
         constexpr float kEpsilon = 1.0e-5F;
-        ReferenceRmsNorm(input.data(), weight.data(), output.data(), seq_len, hidden, kEpsilon);
+        aethermind::ReferenceRmsNorm(aethermind::ReferenceRmsNormArgs{
+                .input_ = input.data(),
+                .weight_ = weight.data(),
+                .output_ = output.data(),
+                .seq_len_ = seq_len,
+                .hidden_size_ = hidden,
+                .epsilon_ = kEpsilon,
+        });
         benchmark::DoNotOptimize(output.data());
     }
 

@@ -133,7 +133,7 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
-            .op_params = RmsNormOp::Params{.epsilon_ = 1.0e-5F},
+            .op_params = RmsNormOp::Params{.epsilon = 1.0e-5F},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

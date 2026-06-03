@@ -6,7 +6,7 @@ namespace aethermind {
 namespace {
 
 KernelContext BuildKernelContext(const ExecutionStep& step,
-                                   RuntimeBindingContext& bindings) noexcept {
+                                 RuntimeBindingContext& bindings) noexcept {
     const ResolvedKernel resolved = step.op->GetResolvedKernel();
     return KernelContext{
             .stream = nullptr,

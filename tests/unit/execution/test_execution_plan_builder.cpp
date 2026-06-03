@@ -154,7 +154,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
-    node.op_params = RmsNormOp::Params{.epsilon_ = 11.0F};
+    node.op_params = RmsNormOp::Params{.epsilon = 11.0F};
     nodes.push_back(node);
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

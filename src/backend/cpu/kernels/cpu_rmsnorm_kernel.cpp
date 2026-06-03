@@ -5,17 +5,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <immintrin.h>
 
 namespace aethermind {
 namespace {
-
-const CpuRmsNormAttrs* GetAttrs(std::span<const std::byte> attrs) noexcept {
-    if (attrs.size() != sizeof(CpuRmsNormAttrs)) {
-        return nullptr;
-    }
-    return reinterpret_cast<const CpuRmsNormAttrs*>(attrs.data());
-}
 
 const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
     return static_cast<const CpuRmsNormParams*>(packed_params);
@@ -127,26 +121,6 @@ void ProcessStridedRmsNormRowScalar(const CpuRmsNormKernelArgs& args, int64_t ro
 }
 
 Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept {
-    if (args.input_ == nullptr) {
-        return Status::InvalidArgument("CpuRmsNormKernel requires non-null input pointer");
-    }
-
-    if (args.weight_ == nullptr) {
-        return Status::InvalidArgument("CpuRmsNormKernel requires non-null weight pointer");
-    }
-
-    if (args.output_ == nullptr) {
-        return Status::InvalidArgument("CpuRmsNormKernel requires non-null output pointer");
-    }
-
-    if (args.seq_len_ <= 0 || args.hidden_size_ <= 0) {
-        return Status::InvalidArgument("CpuRmsNormKernel requires positive seq_len and hidden_size");
-    }
-
-    if (args.input_row_stride_ <= 0 || args.input_col_stride_ <= 0 || args.weight_stride_ <= 0 || args.output_row_stride_ <= 0 || args.output_col_stride_ <= 0) {
-        return Status::InvalidArgument("CpuRmsNormKernel requires positive strides");
-    }
-
     const bool use_avx2 = HasUnitColumnStrides(args);
     auto process_row = [&args, use_avx2](int64_t row_idx) noexcept {
         if (use_avx2) {
@@ -171,9 +145,14 @@ Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept {
 }
 
 Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
-    const CpuRmsNormAttrs* attrs = GetAttrs(ctx.attrs);
-    if (attrs == nullptr) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires CpuRmsNormAttrs in KernelContext.attrs");
+    float epsilon;
+    if (ctx.attrs.size() != sizeof(float)) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires epsilon in KernelContext.attrs");
+    }
+    std::memcpy(&epsilon, ctx.attrs.data(), sizeof(float));
+
+    if (!std::isfinite(epsilon) || epsilon <= 0.0f) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires finite positive epsilon");
     }
 
     const CpuRmsNormParams* params = GetParams(ctx.packed_params);
@@ -181,9 +160,9 @@ Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires CpuRmsNormParams in KernelContext.packed_params");
     }
 
-    const TensorView& input = params->Input;
-    const TensorView& weight = params->Weight;
-    const MutableTensorView& output = params->Output;
+    const TensorView& input = params->input_tensor;
+    const TensorView& weight = params->weight_tensor;
+    const MutableTensorView& output = params->output_tensor;
 
     if (!input.is_valid()) {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires a valid input TensorView");
@@ -195,6 +174,30 @@ Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
 
     if (!output.is_valid()) {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires a valid output MutableTensorView");
+    }
+
+    if (input.dtype() != DataType::Make<float>()) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires float32 input TensorView");
+    }
+
+    if (weight.dtype() != DataType::Make<float>()) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires float32 weight TensorView");
+    }
+
+    if (output.dtype() != DataType::Make<float>()) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires float32 output MutableTensorView");
+    }
+
+    if (input.rank() != 2) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires rank-2 input TensorView");
+    }
+
+    if (weight.rank() != 1) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires rank-1 weight TensorView");
+    }
+
+    if (output.rank() != 2) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires rank-2 output MutableTensorView");
     }
 
     if (!input.is_contiguous()) {
@@ -215,6 +218,42 @@ Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive seq_len");
     }
 
+    if (hidden_size <= 0) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive hidden_size");
+    }
+
+    if (weight.dim(0) != hidden_size) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires weight length to match hidden_size");
+    }
+
+    if (output.dim(0) != seq_len || output.dim(1) != hidden_size) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires output shape to match input shape");
+    }
+
+    if (input.data() == nullptr) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires non-null input data pointer");
+    }
+
+    if (weight.data() == nullptr) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires non-null weight data pointer");
+    }
+
+    if (output.data() == nullptr) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires non-null output data pointer");
+    }
+
+    if (input.stride(0) <= 0 || input.stride(1) <= 0) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive input strides");
+    }
+
+    if (weight.stride(0) <= 0) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive weight stride");
+    }
+
+    if (output.stride(0) <= 0 || output.stride(1) <= 0) {
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive output strides");
+    }
+
     return CpuRmsNormKernel(CpuRmsNormKernelArgs{
             .input_ = input.data<float>(),
             .weight_ = weight.data<float>(),
@@ -226,7 +265,7 @@ Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
             .weight_stride_ = weight.stride(0),
             .output_row_stride_ = output.stride(0),
             .output_col_stride_ = output.stride(1),
-            .epsilon_ = attrs->Epsilon,
+            .epsilon_ = epsilon,
     });
 }
 

@@ -8,16 +8,10 @@
 
 namespace aethermind {
 
-struct CpuRmsNormAttrs {
-    float Epsilon = 1e-5F;
-};
-static_assert(sizeof(CpuRmsNormAttrs) == sizeof(float));
-static_assert(alignof(CpuRmsNormAttrs) <= alignof(float));
-
 struct CpuRmsNormParams {
-    TensorView Input{};
-    TensorView Weight{};
-    MutableTensorView Output{};
+    TensorView input_tensor{};
+    TensorView weight_tensor{};
+    MutableTensorView output_tensor{};
 };
 
 struct CpuRmsNormKernelArgs {
@@ -31,9 +25,14 @@ struct CpuRmsNormKernelArgs {
     int64_t weight_stride_{1};
     int64_t output_row_stride_{};
     int64_t output_col_stride_{1};
-    float epsilon_{1.0e-5F};
+    float epsilon_{1.0e-5f};
 };
 
+/// Executes RMSNorm on already-validated low-level arguments.
+///
+/// Callers must guarantee non-null data pointers, positive dimensions, positive
+/// strides, finite positive epsilon, and sufficient backing storage for every
+/// addressed element. Runtime validation belongs in CpuRmsNormKernelEntry.
 AM_NODISCARD Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept;
 
 AM_NODISCARD Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept;

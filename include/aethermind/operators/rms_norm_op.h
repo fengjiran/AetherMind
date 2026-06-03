@@ -8,7 +8,7 @@ namespace aethermind {
 class RmsNormOp final : public Operator {
 public:
     struct Params {
-        float epsilon_ = 1.0e-5F;
+        float epsilon_ = 1.0e-5f;
     };
 
     explicit RmsNormOp(Params params) noexcept : params_(params) {}

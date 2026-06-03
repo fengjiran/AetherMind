@@ -5,7 +5,7 @@
 #include "aethermind/operators/embedding_op.h"
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/rms_norm_op.h"
+#include "aethermind/operators/rmsnorm_op.h"
 
 namespace aethermind {
 namespace {

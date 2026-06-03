@@ -8,6 +8,10 @@
 
 namespace aethermind {
 
+namespace cpu {
+//
+}
+
 struct CpuRmsNormParams {
     TensorView input_tensor{};
     TensorView weight_tensor{};

@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
-#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
+#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
 #include "data_type.h"
 
 namespace aethermind {

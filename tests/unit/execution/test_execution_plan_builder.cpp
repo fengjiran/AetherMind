@@ -7,7 +7,7 @@
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/model_instance.h"
-#include "aethermind/operators/rms_norm_op.h"
+#include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>

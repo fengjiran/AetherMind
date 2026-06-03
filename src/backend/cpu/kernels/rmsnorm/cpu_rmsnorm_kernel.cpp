@@ -1,10 +1,9 @@
-#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/cpu/kernels/cpu_simd_utils.h"
+#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
+#include "aethermind/backend/cpu/kernels/common/cpu_simd_utils.h"
 #include "aethermind/backend/kernel_context.h"
+#include "cpu_rmsnorm_internal.h"
 
 #include <cmath>
-#include <cstddef>
-#include <cstdint>
 #include <cstring>
 
 #if defined(__AVX2__) && defined(__FMA__)
@@ -49,7 +48,7 @@ AM_ALWAYS_INLINE void rmsnorm_micro_kernel_avx2(float* __restrict__ output,
     __m256 vsum2 = _mm256_setzero_ps();
     __m256 vsum3 = _mm256_setzero_ps();
 
-    size_t j = 0;
+    int64_t j = 0;
     for (; j + 32 <= hidden_size; j += 32) {
         const __m256 x0 = _mm256_loadu_ps(input + j);
         const __m256 x1 = _mm256_loadu_ps(input + j + 8);

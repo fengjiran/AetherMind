@@ -55,7 +55,7 @@ check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
 if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
     set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/cpu_dot_product_avx2.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/cpu_rmsnorm_kernel.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.cpp
             PROPERTIES COMPILE_FLAGS "-mavx2 -mfma"
     )
     message(STATUS "AVX2/FMA enabled")

@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel_reference.h"
+#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
+#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel_reference.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
@@ -8,13 +8,12 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/function_operator.h"
-#include "aethermind/operators/rms_norm_op.h"
+#include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -151,14 +150,14 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
 
     RuntimeBindingContext bindings;
     bindings.SetStepTensorBinding(0, StepTensorBinding{
-            .inputs = {
-                    TensorView{input, DataType::Float32(), io_shape, io_strides},
-                    TensorView{weight, DataType::Float32(), w_shape, w_strides},
-            },
-            .outputs = {
-                    MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
-            },
-    });
+                                             .inputs = {
+                                                     TensorView{input, DataType::Float32(), io_shape, io_strides},
+                                                     TensorView{weight, DataType::Float32(), w_shape, w_strides},
+                                             },
+                                             .outputs = {
+                                                     MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+                                             },
+                                     });
 
     const Status status = Executor::Execute(*plan, bindings);
 

@@ -1,9 +1,9 @@
-#include "aethermind/operators/rms_norm_op.h"
 #include "aethermind/backend/backend.h"
-#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
+#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/rmsnorm_op.h"
 
 #include <span>
 #include <string>

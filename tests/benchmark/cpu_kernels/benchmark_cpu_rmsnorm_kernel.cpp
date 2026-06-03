@@ -1,9 +1,8 @@
-#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel_reference.h"
+#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
+#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel_reference.h"
 
 #include <benchmark/benchmark.h>
 #include <cstddef>
-#include <cstdint>
 #include <vector>
 
 namespace {

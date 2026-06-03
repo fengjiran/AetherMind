@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/kernels/cpu_dot_product_avx2.h"
-#include "aethermind/backend/cpu/kernels/cpu_simd_utils.h"
+#include "aethermind/backend/cpu/kernels/common/cpu_simd_utils.h"
 
 #include <immintrin.h>
 

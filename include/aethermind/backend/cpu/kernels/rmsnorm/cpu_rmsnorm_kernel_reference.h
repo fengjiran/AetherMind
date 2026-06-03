@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_CPU_RMSNORM_KERNEL_REFERENCE_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_CPU_RMSNORM_KERNEL_REFERENCE_H
 
-#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
+#include "cpu_rmsnorm_kernel.h"
 
 namespace aethermind {
 

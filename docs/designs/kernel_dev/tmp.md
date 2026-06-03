@@ -18,12 +18,9 @@ mean_square += row_in[i] * row_in[i];
 const double x = static_cast<double>(row_in[i]);
 mean_square += x * x;
 并且 inv_rms 也应保持 double 到最终 cast。
-3. epsilon 校验边界不完整
-Operator 层确实校验了：
-params_.epsilon_ <= 0.0F
-但 CpuRmsNormKernel 可被直接调用，当前 kernel 不校验 attrs->Epsilon。契约应二选一：
-- 推荐：Kernel 层也校验 std::isfinite(epsilon) && epsilon > 0
-- 或明确写成：Kernel 假设 Operator 已校验，不保证直接调用非法 attrs 的行为
+3. epsilon 校验边界已移动到 entry
+Operator 层校验 `params_.epsilon_ <= 0.0F`，`CpuRmsNormKernelEntry` 负责从 attrs 解码并校验 `std::isfinite(epsilon) && epsilon > 0`。
+`CpuRmsNormKernel` 是已验证 `CpuRmsNormKernelArgs` 上的 typed compute primitive；直接调用方必须保证 `epsilon_` 有效。
 4. benchmark correctness 契约与当前 benchmark 不一致
 文档 2.3.3 / 2.7.2 要求 benchmark 记录：
 max_abs_diff, max_rel_diff

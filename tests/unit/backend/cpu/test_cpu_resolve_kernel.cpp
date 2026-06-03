@@ -29,9 +29,9 @@ MutableTensorView MakeContiguousMutableFloatTensorView(float (&data)[N],
 template<size_t N>
     requires requires(CpuRmsNormParams params, TensorView input_view, TensorView weight_view,
                       MutableTensorView output_view) {
-        params.Input = input_view;
-        params.Weight = weight_view;
-        params.Output = output_view;
+        params.input_tensor = input_view;
+        params.weight_tensor = weight_view;
+        params.output_tensor = output_view;
     }
 CpuRmsNormParams MakeCpuRmsNormParams(const float (&input)[N],
                                       const float (&weight)[N],
@@ -43,9 +43,9 @@ CpuRmsNormParams MakeCpuRmsNormParams(const float (&input)[N],
     const MutableTensorView output_view = MakeContiguousMutableFloatTensorView(output, shape, strides);
 
     return CpuRmsNormParams{
-            .Input = input_view,
-            .Weight = weight_view,
-            .Output = output_view,
+            .input_tensor = input_view,
+            .weight_tensor = weight_view,
+            .output_tensor = output_view,
     };
 }
 
@@ -92,16 +92,16 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     const int64_t w_shape[1] = {4};
     const int64_t w_strides[1] = {1};
     const CpuRmsNormParams params{
-            .Input = TensorView{input, DataType::Float32(), io_shape, io_strides},
-            .Weight = TensorView{weight, DataType::Float32(), w_shape, w_strides},
-            .Output = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+            .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
+            .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
     };
-    const CpuRmsNormAttrs attrs{.Epsilon = 1.0e-5F};
+    const float epsilon = 1.0e-5F;
 
     const Status status = fn(KernelContext{
             .workspace_binding = {},
             .packed_params = &params,
-            .attrs = std::as_bytes(std::span{&attrs, size_t{1}}),
+            .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
     });
     EXPECT_TRUE(status.ok()) << status.ToString();
     EXPECT_NEAR(output[0], 0.365148, 1e-5);

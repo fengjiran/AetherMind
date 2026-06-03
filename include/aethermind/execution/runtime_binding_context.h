@@ -2,12 +2,14 @@
 #define AETHERMIND_EXECUTION_RUNTIME_BINDING_CONTEXT_H
 
 #include "aethermind/base/status.h"
+#include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/kv_cache_view.h"
 #include "aethermind/runtime/workspace.h"
 #include "macros.h"
 #include "workspace_arena.h"
 
 #include <array>
+#include <vector>
 
 namespace aethermind {
 
@@ -33,6 +35,15 @@ struct RuntimeSequenceState {
     size_t prompt_len = 0;
     size_t generated_len = 0;
     size_t current_pos = 0;
+};
+
+/// Per-step tensor binding passed to the executor before Execute().
+///
+/// TensorViews borrow data/stride pointers that must remain valid for the
+/// entire duration of the Execute() call.
+struct StepTensorBinding {
+    std::vector<TensorView> inputs;
+    std::vector<MutableTensorView> outputs;
 };
 
 class RuntimeBindingContext {
@@ -73,6 +84,11 @@ public:
 
     void ResetSequenceState() noexcept;
 
+    void SetStepTensorBinding(size_t step_index, StepTensorBinding binding);
+
+    AM_NODISCARD StatusOr<const StepTensorBinding*> GetStepTensorBinding(
+            size_t step_index) const noexcept;
+
     void Reset() noexcept;
 
 private:
@@ -84,6 +100,7 @@ private:
     KVCacheView kv_cache_view_{};
     std::array<TempBufferBinding, static_cast<size_t>(TempBufferKind::kCount)> temp_buffers_{};
     RuntimeSequenceState sequence_state_{};
+    std::vector<StepTensorBinding> step_tensor_bindings_{};
 };
 
 }// namespace aethermind

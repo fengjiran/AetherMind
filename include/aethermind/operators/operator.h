@@ -18,6 +18,7 @@
 namespace aethermind {
 
 struct KernelContext;
+class RuntimeBindingContext;
 
 struct TensorSpec {
     DataType dtype_{};
@@ -116,11 +117,15 @@ public:
     /// - Construct a KernelContext using cached kernel metadata
     /// - Invoke the cached KernelFunc with inputs, outputs, and workspace
     ///
-    /// \param invocation  Kernel invocation descriptor (op_type + selector).
-    /// \param op_ctx      Kernel execution context (device, workspace, etc.).
-    /// \param workspace   Pre-bound workspace slice from unified plan.
+    /// \param ctx          Mutable kernel context. Operators may set
+    ///                     ctx.packed_params before invoking the kernel.
+    /// \param bindings     Per-step runtime tensor bindings.
+    /// \param step_index   Index of the current execution step in the plan,
+    ///                     used to retrieve per-step tensor bindings.
     /// \return Ok on success; Status error if execution fails.
-    AM_NODISCARD virtual Status Run(const KernelContext& ctx) const noexcept = 0;
+    AM_NODISCARD virtual Status Run(KernelContext& ctx,
+                                    const RuntimeBindingContext& bindings,
+                                    size_t step_index) const noexcept = 0;
 
     /// Returns the resolved kernel info for debugging and logging.
     /// Only valid after successful Prepare().

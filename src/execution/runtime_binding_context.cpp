@@ -1,5 +1,7 @@
 #include "aethermind/execution/runtime_binding_context.h"
 
+#include <string>
+
 namespace aethermind {
 
 void RuntimeBindingContext::SetWorkspaceArena(WorkspaceArena* workspace_arena) noexcept {
@@ -83,6 +85,30 @@ const RuntimeSequenceState& RuntimeBindingContext::sequence_state() const noexce
 
 void RuntimeBindingContext::ResetSequenceState() noexcept {
     sequence_state_ = {};
+}
+
+void RuntimeBindingContext::SetStepTensorBinding(size_t step_index,
+                                                 StepTensorBinding binding) {
+    if (step_index >= step_tensor_bindings_.size()) {
+        step_tensor_bindings_.resize(step_index + 1);
+    }
+    step_tensor_bindings_[step_index] = std::move(binding);
+}
+
+StatusOr<const StepTensorBinding*> RuntimeBindingContext::GetStepTensorBinding(
+        size_t step_index) const noexcept {
+    if (step_index >= step_tensor_bindings_.size()) {
+        return Status::InvalidArgument(
+                "RuntimeBindingContext has no tensor binding for step " +
+                std::to_string(step_index));
+    }
+    const auto& binding = step_tensor_bindings_[step_index];
+    if (binding.inputs.empty() && binding.outputs.empty()) {
+        return Status::InvalidArgument(
+                "RuntimeBindingContext tensor binding for step " +
+                std::to_string(step_index) + " is empty");
+    }
+    return &binding;
 }
 
 void RuntimeBindingContext::Reset() noexcept {

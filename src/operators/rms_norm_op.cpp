@@ -1,6 +1,8 @@
 #include "aethermind/operators/rms_norm_op.h"
 #include "aethermind/backend/backend.h"
+#include "aethermind/backend/cpu/kernels/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_registry.h"
 
 #include <span>
@@ -75,6 +77,39 @@ Status RmsNormOp::Prepare(OperatorContext& ctx) {
     resolved_kernel_.attrs = std::span(
             reinterpret_cast<const std::byte*>(&params_.epsilon), sizeof(float));
     return Status::Ok();
+}
+
+Status RmsNormOp::Run(KernelContext& ctx,
+                      const RuntimeBindingContext& bindings,
+                      size_t step_index) const noexcept {
+    if (resolved_kernel_.fn == nullptr) {
+        return Status(StatusCode::kFailedPrecondition, "RmsNorm Run called before Prepare");
+    }
+
+    const auto binding = bindings.GetStepTensorBinding(step_index);
+    if (!binding.ok()) {
+        return binding.status();
+    }
+
+    const auto* b = binding.value();
+    if (b->inputs.size() != 2) {
+        return Status::InvalidArgument(
+                "RMSNorm requires 2 input tensor bindings, got " +
+                std::to_string(b->inputs.size()));
+    }
+    if (b->outputs.size() != 1) {
+        return Status::InvalidArgument(
+                "RMSNorm requires 1 output tensor binding, got " +
+                std::to_string(b->outputs.size()));
+    }
+
+    CpuRmsNormParams params{
+            .input_tensor = b->inputs[0],
+            .weight_tensor = b->inputs[1],
+            .output_tensor = b->outputs[0],
+    };
+    ctx.packed_params = &params;
+    return resolved_kernel_.fn(ctx);
 }
 
 AM_REGISTER_OPERATOR(OpType::kRmsNorm, RmsNormOp)

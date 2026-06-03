@@ -252,7 +252,24 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     ASSERT_NE(plan->steps().front().op, nullptr);
     const KernelFunc original_fn = plan->steps().front().op->GetResolvedKernel().fn;
 
+    float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+    float output[4] = {};
+    constexpr int64_t io_shape[2] = {1, 4};
+    constexpr int64_t io_strides[2] = {4, 1};
+    constexpr int64_t w_shape[1] = {4};
+    constexpr int64_t w_strides[1] = {1};
+
     RuntimeBindingContext bindings;
+    bindings.SetStepTensorBinding(0, StepTensorBinding{
+                                             .inputs = {
+                                                     TensorView{input, DataType::Float32(), io_shape, io_strides},
+                                                     TensorView{weight, DataType::Float32(), w_shape, w_strides},
+                                             },
+                                             .outputs = {
+                                                     MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+                                             },
+                                     });
     const Status status = Executor::Execute(*plan, bindings);
 
     ASSERT_TRUE(status.ok());

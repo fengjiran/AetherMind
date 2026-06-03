@@ -20,15 +20,17 @@ KernelContext BuildKernelContext(const ExecutionStep& step,
 
 Status LayerRunner::Run(const ExecutionPlan& plan,
                         RuntimeBindingContext& bindings) noexcept {
-    for (const auto& step: plan.steps()) {
-        if (const auto status = RunStep(step, bindings); !status.ok()) {
+    const auto& steps = plan.steps();
+    for (size_t i = 0; i < steps.size(); ++i) {
+        if (const auto status = RunStep(i, steps[i], bindings); !status.ok()) {
             return status;
         }
     }
     return Status::Ok();
 }
 
-Status LayerRunner::RunStep(const ExecutionStep& step,
+Status LayerRunner::RunStep(size_t step_index,
+                            const ExecutionStep& step,
                             RuntimeBindingContext& bindings) noexcept {
     if (step.op == nullptr) {
         return Status::InvalidArgument("Execution step operator cannot be null");
@@ -41,7 +43,7 @@ Status LayerRunner::RunStep(const ExecutionStep& step,
 
     KernelContext ctx = BuildKernelContext(step, bindings);
     ctx.workspace_binding = workspace_binding.value();
-    return step.op->Run(ctx);
+    return step.op->Run(ctx, bindings, step_index);
 }
 
 }// namespace aethermind

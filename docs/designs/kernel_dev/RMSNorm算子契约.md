@@ -179,10 +179,17 @@ Phase 1 correctness 以 double reference 为基准：
 
 ### 6.2 Kernel 层职责
 
+执行期参数绑定：
+
+- `ExecutionPlanBuilder::Build` 产生 `RmsNormOp` 并完成 `Prepare`（kernel 解析 + epsilon attrs 缓存），但不绑定 tensor view。
+- 调用方通过 `RuntimeBindingContext::SetStepTensorBinding` 注册 per-step 的输入/输出 tensor views。
+- `LayerRunner::RunStep` 检查 `OpType::kRmsNorm`，从 `RuntimeBindingContext` 取出 tensor binding，构造 `CpuRmsNormParams` 并写入 `KernelContext.packed_params`。
+- `CpuRmsNormParams` 的生命周期由 `RunStep` 栈帧保证，覆盖同步 `Operator::Run` 的完整调用。
+
 `CpuRmsNormKernelEntry` 负责：
 
-- 校验 `CpuRmsNormAttrs` 和 `CpuRmsNormParams` 存在且大小正确。
-- 校验 `epsilon` 有限且大于 0。
+- 校验 `ctx.packed_params` 非空。
+- 校验 `epsilon`（从 `ctx.attrs` 解码）有限且大于 0。
 - 校验 `TensorView` / `MutableTensorView` 有效、dtype 正确、rank 正确、contiguous。
 - 校验 `seq_len`、`hidden_size`、shape、data pointer 和 stride 满足 CPU kernel 的低层参数前置条件。
 - 构造 `CpuRmsNormKernelArgs` 并调用 `CpuRmsNormKernel`。

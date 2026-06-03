@@ -13,7 +13,8 @@ public:
                                    RuntimeBindingContext& bindings) noexcept;
 
 private:
-    AM_NODISCARD static Status RunStep(const ExecutionStep& step,
+    AM_NODISCARD static Status RunStep(size_t step_index,
+                                       const ExecutionStep& step,
                                        RuntimeBindingContext& bindings) noexcept;
 };
 

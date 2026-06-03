@@ -148,25 +148,50 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
     constexpr int64_t io_strides[2] = {4, 1};
     constexpr int64_t w_shape[1] = {4};
     constexpr int64_t w_strides[1] = {1};
-    const CpuRmsNormParams params{
-            .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
-            .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
-            .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
-    };
-
-    ExecutionStep step = plan->steps().front();
-    step.packed_params = &params;
-    ExecutionPlan executable_plan;
-    ASSERT_TRUE(executable_plan.AddStep(step).ok());
 
     RuntimeBindingContext bindings;
-    const Status status = Executor::Execute(executable_plan, bindings);
+    bindings.SetStepTensorBinding(0, StepTensorBinding{
+            .inputs = {
+                    TensorView{input, DataType::Float32(), io_shape, io_strides},
+                    TensorView{weight, DataType::Float32(), w_shape, w_strides},
+            },
+            .outputs = {
+                    MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+            },
+    });
+
+    const Status status = Executor::Execute(*plan, bindings);
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_NEAR(output[0], 0.365148, 1e-5);
     EXPECT_NEAR(output[1], 0.365148, 1e-5);
     EXPECT_NEAR(output[2], 1.643168, 1e-5);
     EXPECT_NEAR(output[3], 2.921186, 1e-5);
+}
+
+TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRmsNormFailsWithoutTensorBinding) {
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    std::vector<ExecutionPlanNodeSpec> nodes;
+    nodes.push_back(ExecutionPlanNodeSpec{
+            .op_type = OpType::kRmsNorm,
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .isa = IsaLevel::kScalar,
+            .phase = ExecPhase::kBoth,
+            .op_params = RmsNormOp::Params{.epsilon = 1.0e-5F},
+    });
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+
+    RuntimeBindingContext bindings;
+    const Status status = Executor::Execute(*plan, bindings);
+
+    EXPECT_FALSE(status.ok());
 }
 
 TEST(CPUKernelRmsNorm, MultiTokenRmsNorm) {
@@ -323,8 +348,9 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
             .epsilon_ = kEpsilon,
     };
 
-    const Status status = CpuRmsNormKernel(args);
-    ASSERT_TRUE(status.ok()) << status.ToString();
+    for (int64_t row = 0; row < kSeqLen; ++row) {
+        ProcessStridedRmsNormRowScalar(args, row);
+    }
 
     ReferenceRmsNorm(CpuRmsNormKernelArgs{
             .input_ = args.input_,

@@ -31,8 +31,10 @@ struct CpuRmsNormKernelArgs {
 /// Executes RMSNorm on already-validated low-level arguments.
 ///
 /// Callers must guarantee non-null data pointers, positive dimensions, positive
-/// strides, finite positive epsilon, and sufficient backing storage for every
-/// addressed element. Runtime validation belongs in CpuRmsNormKernelEntry.
+/// strides, unit column strides (input_col_stride_, weight_stride_,
+/// output_col_stride_ all equal 1), finite positive epsilon, and sufficient
+/// backing storage for every addressed element. Runtime validation belongs in
+/// CpuRmsNormKernelEntry.
 AM_NODISCARD Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept;
 
 AM_NODISCARD Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept;

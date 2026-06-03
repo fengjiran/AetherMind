@@ -1,10 +1,15 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_CPU_SIMD_UTILS_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_CPU_SIMD_UTILS_H
 
+#include "macros.h"
+
+#if defined(__AVX2__)
 #include <immintrin.h>
+#endif
 
 namespace aethermind {
 
+#if defined(__AVX2__)
 AM_NODISCARD inline float HorizontalSumAvx2(__m256 v) noexcept {
     const __m128 vlow = _mm256_castps256_ps128(v);
     const __m128 vhigh = _mm256_extractf128_ps(v, 1);
@@ -13,6 +18,7 @@ AM_NODISCARD inline float HorizontalSumAvx2(__m256 v) noexcept {
     vsum = _mm_hadd_ps(vsum, vsum);
     return _mm_cvtss_f32(vsum);
 }
+#endif
 
 }// namespace aethermind
 

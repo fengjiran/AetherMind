@@ -6,98 +6,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+
+#if defined(__AVX2__) && defined(__FMA__)
 #include <immintrin.h>
+#endif
 
 namespace aethermind {
 namespace {
 
 const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
     return static_cast<const CpuRmsNormParams*>(packed_params);
-}
-
-bool HasUnitColumnStrides(const CpuRmsNormKernelArgs& args) noexcept {
-    return args.input_col_stride_ == 1 && args.weight_stride_ == 1 && args.output_col_stride_ == 1;
-}
-
-void ProcessContiguousRmsNormRowAvx2(const CpuRmsNormKernelArgs& args, int64_t row_idx) noexcept {
-    const auto hidden_size = static_cast<size_t>(args.hidden_size_);
-    const float* const row_in = args.input_ + row_idx * args.input_row_stride_;
-    float* const row_out = args.output_ + row_idx * args.output_row_stride_;
-
-    // Phase1: sum of squares
-    __m256 vsum0 = _mm256_setzero_ps();
-    __m256 vsum1 = _mm256_setzero_ps();
-    __m256 vsum2 = _mm256_setzero_ps();
-    __m256 vsum3 = _mm256_setzero_ps();
-
-    size_t j = 0;
-    for (; j + 32 <= hidden_size; j += 32) {
-        const __m256 x0 = _mm256_loadu_ps(row_in + j);
-        const __m256 x1 = _mm256_loadu_ps(row_in + j + 8);
-        const __m256 x2 = _mm256_loadu_ps(row_in + j + 16);
-        const __m256 x3 = _mm256_loadu_ps(row_in + j + 24);
-
-        vsum0 = _mm256_fmadd_ps(x0, x0, vsum0);
-        vsum1 = _mm256_fmadd_ps(x1, x1, vsum1);
-        vsum2 = _mm256_fmadd_ps(x2, x2, vsum2);
-        vsum3 = _mm256_fmadd_ps(x3, x3, vsum3);
-    }
-
-    __m256 vres = _mm256_add_ps(_mm256_add_ps(vsum0, vsum1), _mm256_add_ps(vsum2, vsum3));
-    for (; j + 8 <= hidden_size; j += 8) {
-        __m256 x0 = _mm256_loadu_ps(row_in + j);
-        vres = _mm256_fmadd_ps(x0, x0, vres);
-    }
-
-    float sum_sq = HorizontalSumAvx2(vres);
-    for (; j < hidden_size; ++j) {
-        sum_sq += row_in[j] * row_in[j];
-    }
-
-    // Phase2: InvRms
-    const float mean_sq = sum_sq / static_cast<float>(hidden_size);
-    const float inv_rms = 1.0F / std::sqrt(mean_sq + args.epsilon_);
-    const __m256 inv_rms_vec = _mm256_set1_ps(inv_rms);
-
-    // Phase3: Normalize + Scale
-    j = 0;
-    for (; j + 32 <= hidden_size; j += 32) {
-        __m256 x0 = _mm256_loadu_ps(row_in + j);
-        __m256 x1 = _mm256_loadu_ps(row_in + j + 8);
-        __m256 x2 = _mm256_loadu_ps(row_in + j + 16);
-        __m256 x3 = _mm256_loadu_ps(row_in + j + 24);
-
-        x0 = _mm256_mul_ps(x0, inv_rms_vec);
-        x1 = _mm256_mul_ps(x1, inv_rms_vec);
-        x2 = _mm256_mul_ps(x2, inv_rms_vec);
-        x3 = _mm256_mul_ps(x3, inv_rms_vec);
-
-        const __m256 w0 = _mm256_loadu_ps(args.weight_ + j);
-        const __m256 w1 = _mm256_loadu_ps(args.weight_ + j + 8);
-        const __m256 w2 = _mm256_loadu_ps(args.weight_ + j + 16);
-        const __m256 w3 = _mm256_loadu_ps(args.weight_ + j + 24);
-
-        const __m256 out0 = _mm256_mul_ps(x0, w0);
-        const __m256 out1 = _mm256_mul_ps(x1, w1);
-        const __m256 out2 = _mm256_mul_ps(x2, w2);
-        const __m256 out3 = _mm256_mul_ps(x3, w3);
-
-        _mm256_storeu_ps(row_out + j, out0);
-        _mm256_storeu_ps(row_out + j + 8, out1);
-        _mm256_storeu_ps(row_out + j + 16, out2);
-        _mm256_storeu_ps(row_out + j + 24, out3);
-    }
-
-    for (; j + 8 <= hidden_size; j += 8) {
-        __m256 x0 = _mm256_loadu_ps(row_in + j);
-        const __m256 w0 = _mm256_loadu_ps(args.weight_ + j);
-        x0 = _mm256_mul_ps(x0, inv_rms_vec);
-        _mm256_storeu_ps(row_out + j, _mm256_mul_ps(x0, w0));
-    }
-
-    for (; j < hidden_size; ++j) {
-        row_out[j] = row_in[j] * inv_rms * args.weight_[j];
-    }
 }
 
 }// namespace
@@ -120,15 +38,100 @@ void ProcessStridedRmsNormRowScalar(const CpuRmsNormKernelArgs& args, int64_t ro
     }
 }
 
+#if defined(__AVX2__) && defined(__FMA__)
+AM_ALWAYS_INLINE void rmsnorm_micro_kernel_avx2(float* __restrict__ output,
+                                                const float* __restrict__ input,
+                                                const float* __restrict__ weight,
+                                                int64_t hidden_size,
+                                                float epsilon) {
+    __m256 vsum0 = _mm256_setzero_ps();
+    __m256 vsum1 = _mm256_setzero_ps();
+    __m256 vsum2 = _mm256_setzero_ps();
+    __m256 vsum3 = _mm256_setzero_ps();
+
+    size_t j = 0;
+    for (; j + 32 <= hidden_size; j += 32) {
+        const __m256 x0 = _mm256_loadu_ps(input + j);
+        const __m256 x1 = _mm256_loadu_ps(input + j + 8);
+        const __m256 x2 = _mm256_loadu_ps(input + j + 16);
+        const __m256 x3 = _mm256_loadu_ps(input + j + 24);
+
+        vsum0 = _mm256_fmadd_ps(x0, x0, vsum0);
+        vsum1 = _mm256_fmadd_ps(x1, x1, vsum1);
+        vsum2 = _mm256_fmadd_ps(x2, x2, vsum2);
+        vsum3 = _mm256_fmadd_ps(x3, x3, vsum3);
+    }
+
+    __m256 vres = _mm256_add_ps(_mm256_add_ps(vsum0, vsum1), _mm256_add_ps(vsum2, vsum3));
+    for (; j + 8 <= hidden_size; j += 8) {
+        __m256 x0 = _mm256_loadu_ps(input + j);
+        vres = _mm256_fmadd_ps(x0, x0, vres);
+    }
+
+    float sum_sq = HorizontalSumAvx2(vres);
+    for (; j < hidden_size; ++j) {
+        sum_sq += input[j] * input[j];
+    }
+
+    const float mean_sq = sum_sq / static_cast<float>(hidden_size);
+    const float inv_rms = 1.0F / std::sqrt(mean_sq + epsilon);
+    const __m256 inv_rms_vec = _mm256_set1_ps(inv_rms);
+
+    j = 0;
+    for (; j + 32 <= hidden_size; j += 32) {
+        __m256 x0 = _mm256_loadu_ps(input + j);
+        __m256 x1 = _mm256_loadu_ps(input + j + 8);
+        __m256 x2 = _mm256_loadu_ps(input + j + 16);
+        __m256 x3 = _mm256_loadu_ps(input + j + 24);
+
+        x0 = _mm256_mul_ps(x0, inv_rms_vec);
+        x1 = _mm256_mul_ps(x1, inv_rms_vec);
+        x2 = _mm256_mul_ps(x2, inv_rms_vec);
+        x3 = _mm256_mul_ps(x3, inv_rms_vec);
+
+        const __m256 w0 = _mm256_loadu_ps(weight + j);
+        const __m256 w1 = _mm256_loadu_ps(weight + j + 8);
+        const __m256 w2 = _mm256_loadu_ps(weight + j + 16);
+        const __m256 w3 = _mm256_loadu_ps(weight + j + 24);
+
+        const __m256 out0 = _mm256_mul_ps(x0, w0);
+        const __m256 out1 = _mm256_mul_ps(x1, w1);
+        const __m256 out2 = _mm256_mul_ps(x2, w2);
+        const __m256 out3 = _mm256_mul_ps(x3, w3);
+
+        _mm256_storeu_ps(output + j, out0);
+        _mm256_storeu_ps(output + j + 8, out1);
+        _mm256_storeu_ps(output + j + 16, out2);
+        _mm256_storeu_ps(output + j + 24, out3);
+    }
+
+    for (; j + 8 <= hidden_size; j += 8) {
+        __m256 x0 = _mm256_loadu_ps(input + j);
+        const __m256 w0 = _mm256_loadu_ps(weight + j);
+        x0 = _mm256_mul_ps(x0, inv_rms_vec);
+        _mm256_storeu_ps(output + j, _mm256_mul_ps(x0, w0));
+    }
+
+    for (; j < hidden_size; ++j) {
+        output[j] = input[j] * inv_rms * weight[j];
+    }
+}
+#endif
+
 Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept {
-    const bool use_avx2 = HasUnitColumnStrides(args);
-    auto process_row = [&args, use_avx2](int64_t row_idx) noexcept {
-        if (use_avx2) {
-            ProcessContiguousRmsNormRowAvx2(args, row_idx);
-            return;
-        }
+#if defined(__AVX2__) && defined(__FMA__)
+    auto process_row = [&args](int64_t row_idx) noexcept {
+        rmsnorm_micro_kernel_avx2(args.output_ + row_idx * args.output_row_stride_,
+                                  args.input_ + row_idx * args.input_row_stride_,
+                                  args.weight_,
+                                  args.hidden_size_,
+                                  args.epsilon_);
+    };
+#else
+    auto process_row = [&args](int64_t row_idx) noexcept {
         ProcessStridedRmsNormRowScalar(args, row_idx);
     };
+#endif
 
     if (constexpr int64_t kOmpParallelThreshold = 16; args.seq_len_ <= kOmpParallelThreshold) {
         for (int64_t i = 0; i < args.seq_len_; ++i) {

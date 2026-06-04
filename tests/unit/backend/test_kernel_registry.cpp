@@ -1,10 +1,13 @@
-#include "aethermind/runtime/workspace.h"
-#include "aethermind/backend/kernel_registry.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_registry.h"
+#include "aethermind/runtime/workspace.h"
 
 #include "data_type.h"
 
 #include <gtest/gtest.h>
+
+#include <thread>
+#include <vector>
 
 using namespace aethermind;
 
@@ -157,6 +160,29 @@ TEST(KernelRegistry, DebugDumpContainsRegisteredEntries) {
     EXPECT_FALSE(dump.empty());
     EXPECT_NE(dump.find("RmsNorm"), std::string::npos);
     EXPECT_NE(dump.find("test::op"), std::string::npos);
+}
+
+TEST(KernelRegistry, ConcurrentFreezeIsIdempotent) {
+    KernelRegistry registry;
+    ASSERT_TRUE(registry.Register(MakeTestKernelDescriptor()).ok());
+
+    std::vector<std::thread> threads;
+    threads.reserve(8);
+    for (int i = 0; i < 8; ++i) {
+        threads.emplace_back([&registry] {
+            registry.Freeze();
+        });
+    }
+
+    for (std::thread& thread: threads) {
+        thread.join();
+    }
+
+    EXPECT_TRUE(registry.frozen());
+    const StatusOr<const KernelDescriptor*> resolved =
+            registry.Resolve(OpType::kRmsNorm, MakeTestKernelDescriptor().selector);
+    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+    EXPECT_EQ((*resolved)->kernel_func, &FakeKernel);
 }
 
 }// namespace

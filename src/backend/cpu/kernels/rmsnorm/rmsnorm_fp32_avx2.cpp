@@ -1,7 +1,7 @@
-#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/cpu/kernels/common/cpu_simd_utils.h"
+#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_context.h"
-#include "cpu_rmsnorm_internal.h"
+#include "aethermind/backend/kernel_registration.h"
 
 #include <cmath>
 #include <cstring>
@@ -17,6 +17,7 @@ const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
     return static_cast<const CpuRmsNormParams*>(packed_params);
 }
 
+#if !defined(__AVX2__) || !defined(__FMA__)
 void ProcessStridedRmsNormRowScalar(const CpuRmsNormKernelArgs& args, int64_t row_idx) noexcept {
     const float* const row_in = args.input_ + row_idx * args.input_row_stride_;
     float* const row_out = args.output_ + row_idx * args.output_row_stride_;
@@ -34,6 +35,7 @@ void ProcessStridedRmsNormRowScalar(const CpuRmsNormKernelArgs& args, int64_t ro
                                                                   inv_rms * static_cast<double>(args.weight_[j * args.weight_stride_]));
     }
 }
+#endif
 
 }// namespace
 
@@ -270,5 +272,21 @@ Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept {
             .epsilon_ = epsilon,
     });
 }
+
+AM_REGISTER_KERNEL(CpuRmsNormFp32Avx2,
+                   KernelDescriptor{
+                           .op_type = OpType::kRmsNorm,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .activation_dtype = DataType::Float32(),
+                                   .weight_dtype = DataType::Float32(),
+                                   .weight_format = WeightFormat::kPlain,
+                                   .isa = IsaLevel::kAVX2,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .kernel_func = &CpuRmsNormKernelEntry_FP32_AVX2,
+                           .name = "cpu::rmsnorm_f32_avx2",
+                           .priority = 20,
+                   })
 
 }// namespace aethermind

@@ -1,48 +1,9 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
-#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
-#include "data_type.h"
 
 namespace aethermind {
 
-namespace {
-
-KernelSelector MakeDefaultCpuSelector() {
-    return KernelSelector{
-            .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
-    };
-}
-
-}// namespace
-
 CpuBackend::CpuBackend() {
-    RegisterBuiltinKernels();
-    kernel_registry_.Freeze();
-}
-
-void CpuBackend::RegisterBuiltinKernels() {
-    Status status = kernel_registry_.Register(KernelDescriptor{
-            .op_type = OpType::kEmbedding,
-            .selector = MakeDefaultCpuSelector(),
-            .kernel_func = &CpuEmbeddingKernel,
-            .name = "cpu::embedding_f32_scalar",
-            .priority = 10,
-    });
-    AM_CHECK(status.ok(), "Failed to register builtin CPU kernels: {}", status.ToString().c_str());
-
-    status = kernel_registry_.Register(KernelDescriptor{
-            .op_type = OpType::kRmsNorm,
-            .selector = MakeDefaultCpuSelector(),
-            .kernel_func = &CpuRmsNormKernelEntry_FP32_AVX2,
-            .name = "cpu::rmsnorm_f32_scalar",
-            .priority = 10,
-    });
-    AM_CHECK(status.ok(), "Failed to register builtin CPU kernels: {}", status.ToString().c_str());
+    KernelRegistry::Global().Freeze();
 }
 
 DeviceType CpuBackend::device_type() const noexcept {
@@ -55,7 +16,11 @@ const BackendCapabilities& CpuBackend::capabilities() const noexcept {
 
 KernelFunc CpuBackend::ResolveKernel(OpType op_type,
                                      const KernelSelector& selector) const noexcept {
-    const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(op_type, selector);
+    if (selector.device_type != DeviceType::kCPU) {
+        return nullptr;
+    }
+
+    const StatusOr<const KernelDescriptor*> descriptor = KernelRegistry::Global().Resolve(op_type, selector);
     if (!descriptor.ok()) {
         return nullptr;
     }
@@ -65,7 +30,11 @@ KernelFunc CpuBackend::ResolveKernel(OpType op_type,
 StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
         OpType op_type,
         const KernelSelector& selector) const noexcept {
-    const StatusOr<const KernelDescriptor*> descriptor = kernel_registry_.Resolve(op_type, selector);
+    if (selector.device_type != DeviceType::kCPU) {
+        return Status::InvalidArgument("CpuBackend cannot resolve non-CPU kernel selector");
+    }
+
+    const StatusOr<const KernelDescriptor*> descriptor = KernelRegistry::Global().Resolve(op_type, selector);
     if (!descriptor.ok()) {
         return descriptor.status();
     }
@@ -79,7 +48,7 @@ StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
 }
 
 const KernelRegistry* CpuBackend::TryGetKernelRegistryForDebug() const noexcept {
-    return &kernel_registry_;
+    return &KernelRegistry::Global();
 }
 
 DeviceType CpuBackendFactory::device_type() const noexcept {

@@ -28,7 +28,18 @@ AM_NODISCARD inline Status ValidateResolveArgs(OpType op_type,
 
 }// namespace
 
+KernelRegistry& KernelRegistry::Global() noexcept {
+    static KernelRegistry registry;
+    return registry;
+}
+
+Status KernelRegistry::RegisterGlobal(const KernelDescriptor& descriptor) {
+    return Global().Register(descriptor);
+}
+
 Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     if (frozen_.load(std::memory_order_acquire)) {
         return Status(StatusCode::kFailedPrecondition,
                       "Cannot register kernel after registry has been frozen");
@@ -52,11 +63,17 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
 }
 
 void KernelRegistry::Freeze() noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (frozen_.load(std::memory_order_acquire)) {
+        return;
+    }
     BuildBucketIndex();
     frozen_.store(true, std::memory_order_release);
 }
 
 void KernelRegistry::BuildBucketIndex() noexcept {
+    buckets_.clear();
     for (size_t i = 0; i < kernels_.size(); ++i) {
         buckets_[kernels_[i].op_type].push_back(i);
     }
@@ -64,6 +81,8 @@ void KernelRegistry::BuildBucketIndex() noexcept {
 
 StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
                                                           const KernelSelector& selector) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     if (!frozen_.load(std::memory_order_acquire)) {
         return Status(StatusCode::kFailedPrecondition,
                       "Cannot resolve kernel before registry has been frozen");
@@ -99,6 +118,8 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
 }
 
 std::vector<const KernelDescriptor*> KernelRegistry::FindByOpType(OpType op_type) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     std::vector<const KernelDescriptor*> result;
     if (const auto it = buckets_.find(op_type); it != buckets_.end()) {
         result.reserve(it->second.size());
@@ -110,6 +131,8 @@ std::vector<const KernelDescriptor*> KernelRegistry::FindByOpType(OpType op_type
 }
 
 std::string KernelRegistry::DebugDump() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     std::string out;
     for (size_t i = 0; i < kernels_.size(); ++i) {
         const auto& d = kernels_[i];

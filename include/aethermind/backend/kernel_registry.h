@@ -10,6 +10,7 @@
 #include "aethermind/base/status.h"
 
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -18,6 +19,10 @@ namespace aethermind {
 
 class KernelRegistry {
 public:
+    static KernelRegistry& Global() noexcept;
+
+    static Status RegisterGlobal(const KernelDescriptor& descriptor);
+
     Status Register(const KernelDescriptor& descriptor);
 
     AM_NODISCARD StatusOr<const KernelDescriptor*> Resolve(OpType op_type,
@@ -44,6 +49,7 @@ public:
 private:
     void BuildBucketIndex() noexcept;
 
+    mutable std::mutex mutex_{};
     std::atomic<bool> frozen_{false};
     std::vector<KernelDescriptor> kernels_{};
     std::unordered_map<OpType, std::vector<size_t>> buckets_{};

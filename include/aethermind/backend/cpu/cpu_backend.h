@@ -28,9 +28,7 @@ public:
     AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override;
 
 private:
-    void RegisterBuiltinKernels();
     CpuCapabilities capabilities_{};
-    KernelRegistry kernel_registry_{};
 };
 
 class CpuBackendFactory final : public BackendFactory {

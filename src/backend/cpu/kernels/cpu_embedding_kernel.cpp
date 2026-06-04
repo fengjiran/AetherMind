@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_registration.h"
 #include "aethermind/utils/overflow_check.h"
 
 #include <algorithm>
@@ -117,5 +118,21 @@ Status CpuEmbeddingKernel(const KernelContext& ctx) noexcept {
 
     return Status::Ok();
 }
+
+AM_REGISTER_KERNEL(CpuEmbeddingFp32Scalar,
+                   KernelDescriptor{
+                           .op_type = OpType::kEmbedding,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .activation_dtype = DataType::Float32(),
+                                   .weight_dtype = DataType::Float32(),
+                                   .weight_format = WeightFormat::kPlain,
+                                   .isa = IsaLevel::kScalar,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .kernel_func = &CpuEmbeddingKernel,
+                           .name = "cpu::embedding_f32_scalar",
+                           .priority = 10,
+                   })
 
 }// namespace aethermind

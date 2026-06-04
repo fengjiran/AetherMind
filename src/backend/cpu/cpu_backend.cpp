@@ -38,7 +38,7 @@ void CpuBackend::RegisterBuiltinKernels() {
     status = kernel_registry_.Register(KernelDescriptor{
             .op_type = OpType::kRmsNorm,
             .selector = MakeDefaultCpuSelector(),
-            .kernel_func = &CpuRmsNormKernelEntry,
+            .kernel_func = &CpuRmsNormKernelEntry_FP32_AVX2,
             .name = "cpu::rmsnorm_f32_scalar",
             .priority = 10,
     });

@@ -41,9 +41,7 @@ struct CpuRmsNormKernelArgs {
 /// CpuRmsNormKernelEntry.
 AM_NODISCARD Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept;
 
-AM_NODISCARD Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept;
-
-void ProcessStridedRmsNormRowScalar(const CpuRmsNormKernelArgs& args, int64_t row_idx) noexcept;
+AM_NODISCARD Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept;
 
 }// namespace aethermind
 

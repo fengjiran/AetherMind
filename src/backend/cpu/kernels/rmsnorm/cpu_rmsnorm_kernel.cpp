@@ -17,8 +17,6 @@ const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
     return static_cast<const CpuRmsNormParams*>(packed_params);
 }
 
-}// namespace
-
 void ProcessStridedRmsNormRowScalar(const CpuRmsNormKernelArgs& args, int64_t row_idx) noexcept {
     const float* const row_in = args.input_ + row_idx * args.input_row_stride_;
     float* const row_out = args.output_ + row_idx * args.output_row_stride_;
@@ -36,6 +34,8 @@ void ProcessStridedRmsNormRowScalar(const CpuRmsNormKernelArgs& args, int64_t ro
                                                                   inv_rms * static_cast<double>(args.weight_[j * args.weight_stride_]));
     }
 }
+
+}// namespace
 
 #if defined(__AVX2__) && defined(__FMA__)
 AM_ALWAYS_INLINE void rmsnorm_micro_kernel_avx2(float* __restrict__ output,
@@ -146,7 +146,7 @@ Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept {
     return Status::Ok();
 }
 
-Status CpuRmsNormKernelEntry(const KernelContext& ctx) noexcept {
+Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept {
     float epsilon;
     if (ctx.attrs.size() != sizeof(float)) {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires epsilon in KernelContext.attrs");

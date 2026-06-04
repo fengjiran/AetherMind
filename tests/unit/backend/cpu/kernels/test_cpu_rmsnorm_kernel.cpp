@@ -21,7 +21,7 @@ namespace aethermind {
 namespace {
 
 Status RunRmsNormEntry(const CpuRmsNormParams& params, float epsilon) noexcept {
-    return CpuRmsNormKernelEntry(KernelContext{
+    return CpuRmsNormKernelEntry_FP32_AVX2(KernelContext{
             .packed_params = &params,
             .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
     });
@@ -348,7 +348,22 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
     };
 
     for (int64_t row = 0; row < kSeqLen; ++row) {
-        ProcessStridedRmsNormRowScalar(args, row);
+        const float* const row_in = args.input_ + row * args.input_row_stride_;
+        float* const row_out = args.output_ + row * args.output_row_stride_;
+
+        double sum_sq = 0.0;
+        for (int64_t j = 0; j < kHidden; ++j) {
+            const auto x = static_cast<double>(row_in[j * kInputColStride]);
+            sum_sq += x * x;
+        }
+
+        const double mean_sq = sum_sq / static_cast<double>(kHidden);
+        const double inv_rms = 1.0 / std::sqrt(mean_sq + static_cast<double>(kEpsilon));
+        for (int64_t j = 0; j < kHidden; ++j) {
+            row_out[j * kOutputColStride] = static_cast<float>(
+                    static_cast<double>(row_in[j * kInputColStride]) * inv_rms *
+                    static_cast<double>(args.weight_[j * kWeightStride]));
+        }
     }
 
     ReferenceRmsNorm(CpuRmsNormKernelArgs{

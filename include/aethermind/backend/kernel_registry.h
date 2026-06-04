@@ -13,22 +13,38 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace aethermind {
 
+struct RegistrationKey {
+    OpType op_type;
+    KernelSelector selector;
+
+    friend bool operator==(const RegistrationKey& lhs, const RegistrationKey& rhs) noexcept {
+        return lhs.op_type == rhs.op_type && lhs.selector == rhs.selector;
+    }
+};
+
+struct RegistrationKeyHash {
+    std::size_t operator()(const RegistrationKey& key) const noexcept {
+        const auto h1 = std::hash<OpType>{}(key.op_type);
+        const auto h2 = std::hash<KernelSelector>{}(key.selector);
+        return h1 ^ (h2 << 1);
+    }
+};
+
 class KernelRegistry {
 public:
     static KernelRegistry& Global() noexcept;
-
-    static Status RegisterGlobal(const KernelDescriptor& descriptor);
 
     Status Register(const KernelDescriptor& descriptor);
 
     AM_NODISCARD StatusOr<const KernelDescriptor*> Resolve(OpType op_type,
                                                            const KernelSelector& selector) const;
 
-    void Freeze() noexcept;
+    void Freeze();
 
     AM_NODISCARD size_t size() const noexcept {
         return kernels_.size();
@@ -47,12 +63,13 @@ public:
     AM_NODISCARD std::string DebugDump() const;
 
 private:
-    void BuildBucketIndex() noexcept;
+    void BuildBucketIndex();
 
     mutable std::mutex mutex_{};
     std::atomic<bool> frozen_{false};
     std::vector<KernelDescriptor> kernels_{};
     std::unordered_map<OpType, std::vector<size_t>> buckets_{};
+    std::unordered_set<RegistrationKey, RegistrationKeyHash> registration_keys_{};
 };
 
 }// namespace aethermind

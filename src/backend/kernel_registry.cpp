@@ -1,20 +1,13 @@
 #include "aethermind/backend/kernel_registry.h"
 
-#include <ranges>
 #include <string>
 
 namespace aethermind {
 
 namespace {
 
-bool IsDuplicateRegistration(const KernelDescriptor& lhs,
-                             const KernelDescriptor& rhs) noexcept {
-    return lhs.op_type == rhs.op_type &&
-           lhs.selector == rhs.selector;
-}
-
-AM_NODISCARD inline Status ValidateResolveArgs(OpType op_type,
-                                               const KernelSelector& selector) noexcept {
+AM_NODISCARD Status ValidateResolveArgs(OpType op_type,
+                                        const KernelSelector& selector) noexcept {
     if (op_type == OpType::kUnknown) {
         return Status::InvalidArgument("op_type cannot be kUnknown");
     }
@@ -33,28 +26,18 @@ KernelRegistry& KernelRegistry::Global() noexcept {
     return registry;
 }
 
-Status KernelRegistry::RegisterGlobal(const KernelDescriptor& descriptor) {
-    return Global().Register(descriptor);
-}
-
 Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (frozen_.load(std::memory_order_acquire)) {
-        return Status(StatusCode::kFailedPrecondition,
-                      "Cannot register kernel after registry has been frozen");
+        return Status(StatusCode::kFailedPrecondition, "Cannot register kernel after registry has been frozen");
     }
 
     if (auto status = ValidateKernelDescriptor(descriptor); !status.ok()) {
         return status;
     }
 
-    const auto duplicate = std::ranges::find_if(kernels_,
-                                                [&](const KernelDescriptor& existing) {
-                                                    return IsDuplicateRegistration(existing, descriptor);
-                                                });
-
-    if (duplicate != kernels_.end()) {
+    if (const RegistrationKey key{descriptor.op_type, descriptor.selector}; !registration_keys_.insert(key).second) {
         return Status(StatusCode::kAlreadyExists, "Duplicate kernel registration");
     }
 
@@ -62,7 +45,7 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
     return Status::Ok();
 }
 
-void KernelRegistry::Freeze() noexcept {
+void KernelRegistry::Freeze() {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (frozen_.load(std::memory_order_acquire)) {
@@ -72,7 +55,7 @@ void KernelRegistry::Freeze() noexcept {
     frozen_.store(true, std::memory_order_release);
 }
 
-void KernelRegistry::BuildBucketIndex() noexcept {
+void KernelRegistry::BuildBucketIndex() {
     buckets_.clear();
     for (size_t i = 0; i < kernels_.size(); ++i) {
         buckets_[kernels_[i].op_type].push_back(i);
@@ -81,8 +64,8 @@ void KernelRegistry::BuildBucketIndex() noexcept {
 
 StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
                                                           const KernelSelector& selector) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-
+    // Register/Freeze use mutex + release-store on frozen_; the acquire-load here
+    // synchronizes-with that release, guaranteeing we see a fully-constructed buckets_.
     if (!frozen_.load(std::memory_order_acquire)) {
         return Status(StatusCode::kFailedPrecondition,
                       "Cannot resolve kernel before registry has been frozen");
@@ -93,7 +76,6 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
     }
 
     const KernelDescriptor* best = nullptr;
-
     if (const auto it = buckets_.find(op_type); it != buckets_.end()) {
         for (size_t idx: it->second) {
             const KernelDescriptor& descriptor = kernels_[idx];
@@ -108,18 +90,16 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
     }
 
     if (best == nullptr) {
-        return Status::NotFound(
-                "No matching kernel registered for op_type=" +
-                std::string(ToString(op_type)) +
-                ", selector=" + ToString(selector));
+        return Status::NotFound("No matching kernel registered for op_type=" +
+                                std::string(ToString(op_type)) +
+                                ", selector=" + ToString(selector));
     }
 
     return best;
 }
 
 std::vector<const KernelDescriptor*> KernelRegistry::FindByOpType(OpType op_type) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-
+    // Thread-safe via freeze-time release/acquire on frozen_; see Resolve().
     std::vector<const KernelDescriptor*> result;
     if (const auto it = buckets_.find(op_type); it != buckets_.end()) {
         result.reserve(it->second.size());

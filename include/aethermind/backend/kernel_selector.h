@@ -73,4 +73,19 @@ std::string ToString(const KernelSelector& selector);
 
 }// namespace aethermind
 
+template<>
+struct std::hash<aethermind::KernelSelector> {
+    std::size_t operator()(const aethermind::KernelSelector& s) const noexcept {
+        // Pack small fields into a single size_t on 64-bit platforms.
+        // device_type(8) | isa(8) | phase(8) | weight_format(8) = 32 bits
+        const auto lo = static_cast<std::size_t>(s.device_type) |
+                        (static_cast<std::size_t>(s.isa) << 8) |
+                        (static_cast<std::size_t>(s.phase) << 16) |
+                        (static_cast<std::size_t>(s.weight_format) << 24);
+        const auto hi = std::hash<aethermind::DataType>{}(s.activation_dtype) ^
+                        (std::hash<aethermind::DataType>{}(s.weight_dtype) << 1);
+        return lo ^ (hi << 32);
+    }
+};
+
 #endif

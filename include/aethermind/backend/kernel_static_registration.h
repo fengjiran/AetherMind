@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_BACKEND_KERNEL_REGISTRATION_H
-#define AETHERMIND_BACKEND_KERNEL_REGISTRATION_H
+#ifndef AETHERMIND_BACKEND_KERNEL_STATIC_REGISTRATION_H
+#define AETHERMIND_BACKEND_KERNEL_STATIC_REGISTRATION_H
 
 #include "aethermind/backend/kernel_registry.h"
 #include "utils/logging.h"
@@ -7,7 +7,7 @@
 namespace aethermind::kernel_registration_detail {
 
 inline Status RegisterKernel(const KernelDescriptor& descriptor) {
-    return KernelRegistry::RegisterGlobal(descriptor);
+    return KernelRegistry::Global().Register(descriptor);
 }
 
 }// namespace aethermind::kernel_registration_detail

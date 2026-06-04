@@ -278,7 +278,7 @@ private:
 ### 静态注册宏
 
 ```cpp
-// include/aethermind/backend/kernel_registration.h
+// include/aethermind/backend/kernel_static_registration.h
 #define AM_REGISTER_KERNEL(unique_name, ...)                              \
     static bool unique_name = []() noexcept {                              \
         ::aethermind::RegisterKernel(__VA_ARGS__);                         \

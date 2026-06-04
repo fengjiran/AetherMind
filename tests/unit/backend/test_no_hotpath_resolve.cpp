@@ -138,7 +138,24 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     EXPECT_EQ(counters->resolve_kernel_calls(), 0);
     EXPECT_EQ(counters->kernel_invocations(), 0);
 
+    // Create dummy tensor data for RmsNormOp::Run (CountingKernel ignores data).
+    float dummy_data[4]{};
+    const std::array<int64_t, 2> shape_2d{1, 2};
+    const std::array<int64_t, 2> strides_2d{2, 1};
+    const std::array<int64_t, 1> shape_1d{2};
+    const std::array<int64_t, 1> strides_1d{1};
+
     RuntimeBindingContext bindings;
+    StepTensorBinding step0_binding;
+    step0_binding.inputs = {
+            TensorView(dummy_data, DataType::Float32(), shape_2d, strides_2d),
+            TensorView(dummy_data, DataType::Float32(), shape_1d, strides_1d),
+    };
+    step0_binding.outputs = {
+            MutableTensorView(dummy_data, DataType::Float32(), shape_2d, strides_2d),
+    };
+    bindings.SetStepTensorBinding(0, std::move(step0_binding));
+
     const Status status = Executor::Execute(*plan, bindings);
 
     g_resolve_counters = nullptr;

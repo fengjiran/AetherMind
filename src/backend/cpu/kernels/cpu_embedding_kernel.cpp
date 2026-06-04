@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_registration.h"
+#include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/utils/overflow_check.h"
 
 #include <algorithm>

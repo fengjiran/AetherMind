@@ -30,7 +30,7 @@ KernelKey + OperatorName + old Dispatcher / DispatchKeySet
 迁移到：
 
 ```text
-OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
+OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry（AM_REGISTER_KERNEL 静态注册）
 + plan-build-time resolve + ResolvedKernel
 ```
 
@@ -126,8 +126,8 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 
 - `KernelRegistry` 可按 selector resolve
 - `ExecPhase::kBoth` 可匹配 `kPrefill` / `kDecode`
-- `priority` 只在“多个可用实现”中排序
-- `CpuBackend` 使用 backend-owned registry，不引入全局 singleton
+- `priority` 只在"多个可用实现"中排序
+- ~~`CpuBackend` 使用 backend-owned registry，不引入全局 singleton~~ **（设计偏离：实际采用全局 singleton + `AM_REGISTER_KERNEL`，见 dispatch_design.md 7.1 节）**
 
 ***
 
@@ -217,13 +217,13 @@ OpType + KernelSelector + KernelDescriptor + backend-owned KernelRegistry
 
 - [x] 不要一次性删除 `OperatorName` — `ToOpType` 仍保留过渡映射
 - [x] 不要先删旧 dispatcher 再补新主线 — Batch 1-3 先立新主线，Batch 4 再冻结删除
-- [x] 不要把全局 singleton registry 引回来 — `KernelRegistry` 由 Backend 持有
+- [x] ~~不要把全局 singleton registry 引回来~~ **（设计偏离：实际采用了全局 singleton；通过 `KernelSelector.device` 硬匹配保证跨 backend 隔离，未出现预期风险）**
 - [x] 不要把 `RuntimeContext*` 直接传给 kernel — `KernelFunc` 保持窄签名
 - [x] 不要让 executor 在迁移期继续做 hash/string lookup — Executor 只消费冻结 kernel
 
 ### 8.2 必须守住的约束（已守住）
 
-- [x] backend-owned ownership
+- [x] ~~backend-owned ownership~~ **（设计偏离：实际为全局 singleton，见 dispatch_design.md 7.1 节）**
 - [x] attrs 生命周期明确（plan-owned storage）
 - [x] resolve 只发生在 plan-build time
 

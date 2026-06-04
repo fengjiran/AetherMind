@@ -5,8 +5,17 @@ namespace aethermind {
 
 namespace cpu {
 
-void micro_kernel_fp32_scalar(float* out, const float* in, const float* w, int d, float eps);
-void micro_kernel_fp32_avx2(float* out, const float* in, const float* w, int d, float eps);
+AM_ALWAYS_INLINE void micro_kernel_fp32_scalar(float* __restrict__ output,
+                                               const float* __restrict__ input,
+                                               const float* __restrict__ weight,
+                                               int hidden_size,
+                                               float eps);
+
+void micro_kernel_fp32_avx2(float* __restrict__ output,
+                            const float* __restrict__ input,
+                            const float* __restrict__ weight,
+                            int hidden_size,
+                            float eps);
 
 }// namespace cpu
 

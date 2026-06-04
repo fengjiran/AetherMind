@@ -306,7 +306,7 @@ Phase 0
 ### 实施注意事项
 
 - backend 设计要求最终设备族内解析只能通过 `Backend::ResolveKernel(...)` 发起
-- `KernelRegistry` 应由具体 backend 持有，而不是退回全局 singleton
+- ~~`KernelRegistry` 应由具体 backend 持有，而不是退回全局 singleton~~ **（设计偏离：实际实现为全局 singleton + AM_REGISTER_KERNEL，kernel 自注册到 `KernelRegistry::Global()`，参见 dispatch_design.md 7.1 节；CpuBackend 不再持有本地 registry）**
 - `ExecutionPlanBuilder` 是唯一正式 resolve 发起方
 - 不允许把 resolve 留到 executor 热路径
 - 不再继续扩展 `Dispatcher / DispatchKeySet` 作为新主线；旧设施在 Batch 4 正式冻结前仅可维持兼容，不得承接新功能
@@ -593,7 +593,7 @@ cmake --build build --target aethermind_unit_tests -j
 
 ## 9. 关键风险与实施注意事项
 
-### 9.1 旧 Dispatcher 相关风险
+### 9.1 旧 Dispatcher 与 KernelRegistry 所有权风险
 
 当前代码库中的旧 dispatcher 已存在，但新版 dispatch 主线不再以它为核心。实施时必须避免：
 
@@ -601,6 +601,8 @@ cmake --build build --target aethermind_unit_tests -j
 - 在 executor 热路径中直接访问 dispatcher 或 registry
 - 用 dispatcher 逃避 `ExecutionPlanBuilder` 作为唯一 resolve 发起方的约束
 - 继续扩展 `DispatchKeySet` 体系并把它重新变成新主线基础
+
+**设计偏离备注**：原始设计将 "全局 singleton registry" 列为风险，但实际采用了全局 singleton + `AM_REGISTER_KERNEL`。该偏离通过 `KernelSelector.device` 硬匹配保证跨 backend 隔离，并通过 `std::mutex` 保证并发安全，未出现预期风险。详见 `dispatch_design.md` 7.1 节。
 
 ### 9.2 ExecutionPlan 漂移风险
 

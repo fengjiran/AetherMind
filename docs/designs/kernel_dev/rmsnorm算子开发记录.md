@@ -252,7 +252,7 @@ correctness 以 double reference 为基准：
 ### 9. 当前开放问题
 
 1. 是否将 `output == input` in-place 从"允许"提升为 Operator 层显式能力，需要 Tensor alias 检查支持。
-2. 是否需要 scalar reference kernel 与 AVX2 optimized kernel 拆分注册，避免非 AVX2 平台编译或运行风险。
+2. ~~是否需要 scalar reference kernel 与 AVX2 optimized kernel 拆分注册，避免非 AVX2 平台编译或运行风险。~~ **（已解决：scalar 与 AVX2 路径已拆分为两个独立注册入口，通过 `IsaLevel::kScalar` / `kAVX2` 区分注册，详见 RMSNorm算子契约.md 第 8 节。）**
 3. BF16 / FP16 输入的累加精度、输出 dtype 和误差阈值尚未定义。
 4. Approx rsqrt 是否作为独立 fast path 引入，需要端到端 logits/token 回归后决定。
 5. 多线程阈值需要按目标硬件和 workload 通过 benchmark 固化，而不是写死为永久策略。

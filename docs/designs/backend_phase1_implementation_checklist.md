@@ -158,11 +158,11 @@
 
 ### Kernel 解析核心 ✅
 
-- [x] `include/aethermind/backend/kernel_registry.h`: 定义 backend-owned `KernelRegistry`
-- [x] `src/backend/kernel_registry.cpp`: 实现 backend 内部 kernel registry
+- [x] `include/aethermind/backend/kernel_registry.h`: 定义全局 singleton `KernelRegistry`（设计偏离：原始设计为 backend-owned）
+- [x] `src/backend/kernel_registry.cpp`: 实现全局 singleton KernelRegistry（设计偏离：原始设计为 backend 内部 registry）
 - [x] `include/aethermind/backend/kernel_invocation.h`: 定义 `KernelInvocation` 基础结构
 - [x] ~~`src/backend/dispatcher_bridge.cpp`~~: **已删除**
-- [x] `src/backend/cpu/cpu_backend.cpp`: 接入 `ResolveKernel(...)`
+- [x] `src/backend/cpu/cpu_backend.cpp`: 移除 `RegisterBuiltinKernels()`，通过 `KernelRegistry::Global()` 查询（kernel 已由 `AM_REGISTER_KERNEL` 自注册）
 
 ### Batch 3：计划构建期 resolve 与 ResolvedKernel 冻结 ✅
 
@@ -332,7 +332,7 @@ cmake --build build --target aethermind_unit_tests -j
 - [ ] `RuntimeContext` 正式持有 `BackendRegistry`
 - [ ] `CpuBackend` 可被 runtime 查询并返回稳定 capability
 - [x] `ExecutionPlanBuilder` 是唯一 kernel resolve 发起方
-- [ ] `KernelRegistry` 由 backend 持有，而不是全局 singleton
+- [ ] ~~`KernelRegistry` 由 backend 持有，而不是全局 singleton~~ **（设计偏离：实际为全局 singleton + AM_REGISTER_KERNEL，见 dispatch_design.md 7.1 节）**
 - [x] `ExecutionPlan` 不包含 request/session 动态绑定
 - [x] `PackedWeights` 由 `ModelInstance` backend sidecar 持有
 - [ ] `WorkspaceArena::Bind(...)` 不触发底层堆分配

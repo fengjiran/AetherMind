@@ -213,7 +213,7 @@ Phase 1 中必须始终保持：
 
 - Batch 1：冻结 dispatch 新旧主线边界，并定义 `OpType`、`KernelSelector`、`KernelDescriptor`、`ResolvedKernel`
 - Batch 1：将 `KernelKey` / `dispatcher_bridge` / `OperatorName` 标注为迁移期保留，而非未来主线核心
-- Batch 2：把 backend 内部 `KernelRegistry` 演进为 selector-based resolve，并让 `CpuBackend` 收敛到 backend-owned registry
+- Batch 2：把 `KernelRegistry` 演进为 selector-based resolve 并增加全局 singleton 模式（设计偏离：原始设计为 backend-owned，实际采用全局 singleton + `AM_REGISTER_KERNEL` 宏；`CpuBackend` 不再持有本地 registry）
 - Batch 3（对齐 `ExecutionPlanBuilder` 阶段）：定义 `KernelResolver` 或等价的计划构建期 resolve 逻辑，并冻结 `ResolvedKernel` / `OpExec`
 - Batch 4（对齐 executor 接入阶段）：让执行期只消费已冻结 kernel，并正式冻结旧 `Dispatcher / DispatchKeySet` 体系
 - 冻结 fallback 行为：只能在 plan-build 阶段决定，不能进入热路径

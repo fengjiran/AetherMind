@@ -192,11 +192,11 @@ Phase 1 correctness 以 double reference 为基准：
 - 校验 `epsilon`（从 `ctx.attrs` 解码）有限且大于 0。
 - 校验 `TensorView` / `MutableTensorView` 有效、dtype 正确、rank 正确、contiguous。
 - 校验 `seq_len`、`hidden_size`、shape、data pointer 和 stride 满足 CPU kernel 的低层参数前置条件。
-- 构造 `CpuRmsNormKernelArgs` 并调用 `CpuRmsNormKernel`。
+- 构造 `RmsNormFp32KernelArgs` 并调用 `CpuRmsNormKernel`。
 
 `CpuRmsNormKernel` 是已验证参数上的 typed compute primitive：
 
-- 调用方必须保证 `CpuRmsNormKernelArgs` 中的指针非空、维度为正、stride 为正、`epsilon` 有限且大于 0，并且 backing storage 覆盖所有访问元素。
+- 调用方必须保证 `RmsNormFp32KernelArgs` 中的指针非空、维度为正、stride 为正、`epsilon` 有限且大于 0，并且 backing storage 覆盖所有访问元素。
 - 执行数值计算并写入预分配 output。
 - 不拥有输入、权重、输出内存；不延长任何指针生命周期。
 

@@ -20,7 +20,7 @@ mean_square += x * x;
 并且 inv_rms 也应保持 double 到最终 cast。
 3. epsilon 校验边界已移动到 entry
 Operator 层校验 `params_.epsilon_ <= 0.0F`，`CpuRmsNormKernelEntry` 负责从 attrs 解码并校验 `std::isfinite(epsilon) && epsilon > 0`。
-`CpuRmsNormKernel` 是已验证 `CpuRmsNormKernelArgs` 上的 typed compute primitive；直接调用方必须保证 `epsilon_` 有效。
+`CpuRmsNormKernel` 是已验证 `RmsNormFp32KernelArgs` 上的 typed compute primitive；直接调用方必须保证 `epsilon_` 有效。
 4. benchmark correctness 契约与当前 benchmark 不一致
 文档 2.3.3 / 2.7.2 要求 benchmark 记录：
 max_abs_diff, max_rel_diff

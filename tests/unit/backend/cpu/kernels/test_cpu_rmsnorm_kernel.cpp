@@ -42,18 +42,19 @@ TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
     constexpr float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[4] = {0.0F, 0.0F, 0.0F, 0.0F};
-    const Status status = LaunchRmsNorm(RmsNormFp32KernelArgs{
-            .input_ = input,
-            .weight_ = weight,
-            .output_ = output,
-            .seq_len_ = 1,
-            .hidden_size_ = 4,
-            .input_row_stride_ = 4,
-            .input_col_stride_ = 1,
-            .weight_stride_ = 1,
-            .output_row_stride_ = 4,
-            .output_col_stride_ = 1,
-            .epsilon_ = 1.0e-5F,
+    const Status status = LaunchRmsNorm(RmsNormArgs{
+            .input = input,
+            .weight = weight,
+            .output = output,
+            .seq_len = 1,
+            .hidden_size = 4,
+            .input_row_stride = 4,
+            .input_col_stride = 1,
+            .weight_stride = 1,
+            .output_row_stride = 4,
+            .output_col_stride = 1,
+            .epsilon = 1.0e-5F,
+            .dtype = DataType::Float32(),
     });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
@@ -211,18 +212,19 @@ TEST(CPUKernelRmsNorm, MultiTokenRmsNorm) {
     };
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[12] = {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
-    const Status status = LaunchRmsNorm(RmsNormFp32KernelArgs{
-            .input_ = input,
-            .weight_ = weight,
-            .output_ = output,
-            .seq_len_ = 3,
-            .hidden_size_ = 4,
-            .input_row_stride_ = 4,
-            .input_col_stride_ = 1,
-            .weight_stride_ = 1,
-            .output_row_stride_ = 4,
-            .output_col_stride_ = 1,
-            .epsilon_ = 1.0e-5F,
+    const Status status = LaunchRmsNorm(RmsNormArgs{
+            .input = input,
+            .weight = weight,
+            .output = output,
+            .seq_len = 3,
+            .hidden_size = 4,
+            .input_row_stride = 4,
+            .input_col_stride = 1,
+            .weight_stride = 1,
+            .output_row_stride = 4,
+            .output_col_stride = 1,
+            .epsilon = 1.0e-5F,
+            .dtype = DataType::Float32(),
     });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
@@ -271,35 +273,37 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
     float ref_output[12] = {};
     constexpr float kEpsilon = 1.0e-5F;
 
-    const RmsNormFp32KernelArgs args{
-            .input_ = input,
-            .weight_ = weight,
-            .output_ = kernel_output,
-            .seq_len_ = kSeqLen,
-            .hidden_size_ = kHidden,
-            .input_row_stride_ = kHidden,
-            .input_col_stride_ = 1,
-            .weight_stride_ = 1,
-            .output_row_stride_ = kHidden,
-            .output_col_stride_ = 1,
-            .epsilon_ = kEpsilon,
+    const RmsNormArgs args{
+            .input = input,
+            .weight = weight,
+            .output = kernel_output,
+            .seq_len = kSeqLen,
+            .hidden_size = kHidden,
+            .input_row_stride = kHidden,
+            .input_col_stride = 1,
+            .weight_stride = 1,
+            .output_row_stride = kHidden,
+            .output_col_stride = 1,
+            .epsilon = kEpsilon,
+            .dtype = DataType::Float32(),
     };
 
     const Status status = LaunchRmsNorm(args);
     ASSERT_TRUE(status.ok()) << status.ToString();
 
-    ReferenceRmsNorm(RmsNormFp32KernelArgs{
-            .input_ = args.input_,
-            .weight_ = args.weight_,
-            .output_ = ref_output,
-            .seq_len_ = args.seq_len_,
-            .hidden_size_ = args.hidden_size_,
-            .input_row_stride_ = args.input_row_stride_,
-            .input_col_stride_ = args.input_col_stride_,
-            .weight_stride_ = args.weight_stride_,
-            .output_row_stride_ = args.output_row_stride_,
-            .output_col_stride_ = args.output_col_stride_,
-            .epsilon_ = args.epsilon_,
+    ReferenceRmsNorm(RmsNormArgs{
+            .input = args.input,
+            .weight = args.weight,
+            .output = ref_output,
+            .seq_len = args.seq_len,
+            .hidden_size = args.hidden_size,
+            .input_row_stride = args.input_row_stride,
+            .input_col_stride = args.input_col_stride,
+            .weight_stride = args.weight_stride,
+            .output_row_stride = args.output_row_stride,
+            .output_col_stride = args.output_col_stride,
+            .epsilon = args.epsilon,
+            .dtype = DataType::Float32(),
     });
 
     for (int i = 0; i < kSeqLen * kHidden; ++i) {
@@ -333,23 +337,24 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
     weight[2] = 0.5F;
     weight[4] = 1.5F;
 
-    const RmsNormFp32KernelArgs args{
-            .input_ = input.data(),
-            .weight_ = weight.data(),
-            .output_ = kernel_output.data(),
-            .seq_len_ = kSeqLen,
-            .hidden_size_ = kHidden,
-            .input_row_stride_ = kInputRowStride,
-            .input_col_stride_ = kInputColStride,
-            .weight_stride_ = kWeightStride,
-            .output_row_stride_ = kOutputRowStride,
-            .output_col_stride_ = kOutputColStride,
-            .epsilon_ = kEpsilon,
+    const RmsNormArgs args{
+            .input = input.data(),
+            .weight = weight.data(),
+            .output = kernel_output.data(),
+            .seq_len = kSeqLen,
+            .hidden_size = kHidden,
+            .input_row_stride = kInputRowStride,
+            .input_col_stride = kInputColStride,
+            .weight_stride = kWeightStride,
+            .output_row_stride = kOutputRowStride,
+            .output_col_stride = kOutputColStride,
+            .epsilon = kEpsilon,
+            .dtype = DataType::Float32(),
     };
 
     for (int64_t row = 0; row < kSeqLen; ++row) {
-        const float* const row_in = args.input_ + row * args.input_row_stride_;
-        float* const row_out = args.output_ + row * args.output_row_stride_;
+        const float* const row_in = static_cast<const float*>(args.input) + row * args.input_row_stride;
+        float* const row_out = static_cast<float*>(args.output) + row * args.output_row_stride;
 
         double sum_sq = 0.0;
         for (int64_t j = 0; j < kHidden; ++j) {
@@ -362,22 +367,23 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
         for (int64_t j = 0; j < kHidden; ++j) {
             row_out[j * kOutputColStride] = static_cast<float>(
                     static_cast<double>(row_in[j * kInputColStride]) * inv_rms *
-                    static_cast<double>(args.weight_[j * kWeightStride]));
+                    static_cast<double>(static_cast<const float*>(args.weight)[j * kWeightStride]));
         }
     }
 
-    ReferenceRmsNorm(RmsNormFp32KernelArgs{
-            .input_ = args.input_,
-            .weight_ = args.weight_,
-            .output_ = ref_output.data(),
-            .seq_len_ = args.seq_len_,
-            .hidden_size_ = args.hidden_size_,
-            .input_row_stride_ = args.input_row_stride_,
-            .input_col_stride_ = args.input_col_stride_,
-            .weight_stride_ = args.weight_stride_,
-            .output_row_stride_ = args.output_row_stride_,
-            .output_col_stride_ = args.output_col_stride_,
-            .epsilon_ = args.epsilon_,
+    ReferenceRmsNorm(RmsNormArgs{
+            .input = args.input,
+            .weight = args.weight,
+            .output = ref_output.data(),
+            .seq_len = args.seq_len,
+            .hidden_size = args.hidden_size,
+            .input_row_stride = args.input_row_stride,
+            .input_col_stride = args.input_col_stride,
+            .weight_stride = args.weight_stride,
+            .output_row_stride = args.output_row_stride,
+            .output_col_stride = args.output_col_stride,
+            .epsilon = args.epsilon,
+            .dtype = DataType::Float32(),
     });
 
     for (int64_t row = 0; row < kSeqLen; ++row) {

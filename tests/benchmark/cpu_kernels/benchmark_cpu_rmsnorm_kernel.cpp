@@ -34,18 +34,19 @@ void BM_CPUKernel_RmsNorm(benchmark::State& state) {
         weight[static_cast<std::size_t>(i)] = 1.0F;
     }
 
-    const aethermind::RmsNormFp32KernelArgs args{
-            .input_ = input.data(),
-            .weight_ = weight.data(),
-            .output_ = output.data(),
-            .seq_len_ = seq_len,
-            .hidden_size_ = hidden,
-            .input_row_stride_ = hidden,
-            .input_col_stride_ = 1,
-            .weight_stride_ = 1,
-            .output_row_stride_ = hidden,
-            .output_col_stride_ = 1,
-            .epsilon_ = 1.0e-5F,
+    const aethermind::RmsNormArgs args{
+            .input = input.data(),
+            .weight = weight.data(),
+            .output = output.data(),
+            .seq_len = seq_len,
+            .hidden_size = hidden,
+            .input_row_stride = hidden,
+            .input_col_stride = 1,
+            .weight_stride = 1,
+            .output_row_stride = hidden,
+            .output_col_stride = 1,
+            .epsilon = 1.0e-5F,
+            .dtype = aethermind::DataType::Float32(),
     };
 
     for (auto _: state) {
@@ -75,18 +76,19 @@ void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
 
     for (auto _: state) {
         constexpr float kEpsilon = 1.0e-5F;
-    aethermind::ReferenceRmsNorm(aethermind::RmsNormFp32KernelArgs{
-                .input_ = input.data(),
-                .weight_ = weight.data(),
-                .output_ = output.data(),
-                .seq_len_ = seq_len,
-                .hidden_size_ = hidden,
-                .input_row_stride_ = hidden,
-                .input_col_stride_ = 1,
-                .weight_stride_ = 1,
-                .output_row_stride_ = hidden,
-                .output_col_stride_ = 1,
-                .epsilon_ = kEpsilon,
+        aethermind::ReferenceRmsNorm(aethermind::RmsNormArgs{
+                .input = input.data(),
+                .weight = weight.data(),
+                .output = output.data(),
+                .seq_len = seq_len,
+                .hidden_size = hidden,
+                .input_row_stride = hidden,
+                .input_col_stride = 1,
+                .weight_stride = 1,
+                .output_row_stride = hidden,
+                .output_col_stride = 1,
+                .epsilon = kEpsilon,
+                .dtype = aethermind::DataType::Float32(),
         });
         benchmark::DoNotOptimize(output.data());
     }

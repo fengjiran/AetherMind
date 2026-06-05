@@ -124,18 +124,18 @@ Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive output strides");
     }
 
-    return CpuRmsNormKernel(RmsNormFp32KernelArgs{
-            .input_ = input.data<float>(),
-            .weight_ = weight.data<float>(),
-            .output_ = output.data<float>(),
-            .seq_len_ = seq_len,
-            .hidden_size_ = hidden_size,
-            .input_row_stride_ = input.stride(0),
-            .input_col_stride_ = input.stride(1),
-            .weight_stride_ = weight.stride(0),
-            .output_row_stride_ = output.stride(0),
-            .output_col_stride_ = output.stride(1),
-            .epsilon_ = epsilon,
+    return RmsNormKernel_CPU_FP32_AVX2(RmsNormFp32KernelArgs{
+            .input = input.data<float>(),
+            .weight = weight.data<float>(),
+            .output = output.data<float>(),
+            .seq_len = seq_len,
+            .hidden_size = hidden_size,
+            .input_row_stride = input.stride(0),
+            .input_col_stride = input.stride(1),
+            .weight_stride = weight.stride(0),
+            .output_row_stride = output.stride(0),
+            .output_col_stride = output.stride(1),
+            .epsilon = epsilon,
     });
 }
 
@@ -229,18 +229,18 @@ Status CpuRmsNormKernelEntry_FP32_Scalar(const KernelContext& ctx) noexcept {
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires positive output strides");
     }
 
-    return CpuRmsNormKernelScalar(RmsNormFp32KernelArgs{
-            .input_ = input.data<float>(),
-            .weight_ = weight.data<float>(),
-            .output_ = output.data<float>(),
-            .seq_len_ = seq_len,
-            .hidden_size_ = hidden_size,
-            .input_row_stride_ = input.stride(0),
-            .input_col_stride_ = input.stride(1),
-            .weight_stride_ = weight.stride(0),
-            .output_row_stride_ = output.stride(0),
-            .output_col_stride_ = output.stride(1),
-            .epsilon_ = epsilon,
+    return RmsNormKernel_CPU_FP32_Scalar(RmsNormFp32KernelArgs{
+            .input = input.data<float>(),
+            .weight = weight.data<float>(),
+            .output = output.data<float>(),
+            .seq_len = seq_len,
+            .hidden_size = hidden_size,
+            .input_row_stride = input.stride(0),
+            .input_col_stride = input.stride(1),
+            .weight_stride = weight.stride(0),
+            .output_row_stride = output.stride(0),
+            .output_col_stride = output.stride(1),
+            .epsilon = epsilon,
     });
 }
 

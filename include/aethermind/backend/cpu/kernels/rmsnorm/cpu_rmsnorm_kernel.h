@@ -18,7 +18,7 @@ struct CpuRmsNormParams {
     MutableTensorView output_tensor{};
 };
 
-struct CpuRmsNormKernelArgs {
+struct RmsNormFp32KernelArgs {
     const float* input_{};
     const float* weight_{};
     float* output_{};
@@ -32,6 +32,17 @@ struct CpuRmsNormKernelArgs {
     float epsilon_{1.0e-5f};
 };
 
+struct RmsNormArgs {
+    void* input;
+    void* weight;
+    void* output;
+    int seq_len;
+    int hidden_size;
+    float epsilon;
+};
+
+Status LaunchRmsNorm(const RmsNormFp32KernelArgs& args) noexcept;
+
 /// Executes RMSNorm on already-validated low-level arguments.
 ///
 /// Callers must guarantee non-null data pointers, positive dimensions, positive
@@ -39,7 +50,7 @@ struct CpuRmsNormKernelArgs {
 /// output_col_stride_ all equal 1), finite positive epsilon, and sufficient
 /// backing storage for every addressed element. Runtime validation belongs in
 /// CpuRmsNormKernelEntry.
-AM_NODISCARD Status CpuRmsNormKernel(const CpuRmsNormKernelArgs& args) noexcept;
+// AM_NODISCARD Status CpuRmsNormKernel(const RmsNormFp32KernelArgs& args) noexcept;
 
 AM_NODISCARD Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept;
 

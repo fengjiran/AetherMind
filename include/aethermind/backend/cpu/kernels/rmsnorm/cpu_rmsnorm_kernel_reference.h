@@ -5,7 +5,7 @@
 
 namespace aethermind {
 
-inline void ReferenceRmsNorm(const CpuRmsNormKernelArgs& args) noexcept {
+inline void ReferenceRmsNorm(const RmsNormFp32KernelArgs& args) noexcept {
     for (int64_t s = 0; s < args.seq_len_; ++s) {
         const float* const row_in = args.input_ + s * args.input_row_stride_;
         float* const row_out = args.output_ + s * args.output_row_stride_;

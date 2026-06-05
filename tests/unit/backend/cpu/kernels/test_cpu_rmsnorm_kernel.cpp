@@ -42,7 +42,7 @@ TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
     constexpr float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[4] = {0.0F, 0.0F, 0.0F, 0.0F};
-    const Status status = CpuRmsNormKernel(CpuRmsNormKernelArgs{
+    const Status status = LaunchRmsNorm(RmsNormFp32KernelArgs{
             .input_ = input,
             .weight_ = weight,
             .output_ = output,
@@ -211,7 +211,7 @@ TEST(CPUKernelRmsNorm, MultiTokenRmsNorm) {
     };
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[12] = {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
-    const Status status = CpuRmsNormKernel(CpuRmsNormKernelArgs{
+    const Status status = LaunchRmsNorm(RmsNormFp32KernelArgs{
             .input_ = input,
             .weight_ = weight,
             .output_ = output,
@@ -271,7 +271,7 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
     float ref_output[12] = {};
     constexpr float kEpsilon = 1.0e-5F;
 
-    const CpuRmsNormKernelArgs args{
+    const RmsNormFp32KernelArgs args{
             .input_ = input,
             .weight_ = weight,
             .output_ = kernel_output,
@@ -285,10 +285,10 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
             .epsilon_ = kEpsilon,
     };
 
-    const Status status = CpuRmsNormKernel(args);
+    const Status status = LaunchRmsNorm(args);
     ASSERT_TRUE(status.ok()) << status.ToString();
 
-    ReferenceRmsNorm(CpuRmsNormKernelArgs{
+    ReferenceRmsNorm(RmsNormFp32KernelArgs{
             .input_ = args.input_,
             .weight_ = args.weight_,
             .output_ = ref_output,
@@ -333,7 +333,7 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
     weight[2] = 0.5F;
     weight[4] = 1.5F;
 
-    const CpuRmsNormKernelArgs args{
+    const RmsNormFp32KernelArgs args{
             .input_ = input.data(),
             .weight_ = weight.data(),
             .output_ = kernel_output.data(),
@@ -366,7 +366,7 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
         }
     }
 
-    ReferenceRmsNorm(CpuRmsNormKernelArgs{
+    ReferenceRmsNorm(RmsNormFp32KernelArgs{
             .input_ = args.input_,
             .weight_ = args.weight_,
             .output_ = ref_output.data(),

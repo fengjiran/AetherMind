@@ -34,7 +34,7 @@ void BM_CPUKernel_RmsNorm(benchmark::State& state) {
         weight[static_cast<std::size_t>(i)] = 1.0F;
     }
 
-    const aethermind::CpuRmsNormKernelArgs args{
+    const aethermind::RmsNormFp32KernelArgs args{
             .input_ = input.data(),
             .weight_ = weight.data(),
             .output_ = output.data(),
@@ -49,7 +49,7 @@ void BM_CPUKernel_RmsNorm(benchmark::State& state) {
     };
 
     for (auto _: state) {
-        bool ok = aethermind::CpuRmsNormKernel(args).ok();
+        bool ok = aethermind::LaunchRmsNorm(args).ok();
         benchmark::DoNotOptimize(ok);
         benchmark::DoNotOptimize(output.data());
     }
@@ -75,7 +75,7 @@ void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
 
     for (auto _: state) {
         constexpr float kEpsilon = 1.0e-5F;
-        aethermind::ReferenceRmsNorm(aethermind::CpuRmsNormKernelArgs{
+    aethermind::ReferenceRmsNorm(aethermind::RmsNormFp32KernelArgs{
                 .input_ = input.data(),
                 .weight_ = weight.data(),
                 .output_ = output.data(),

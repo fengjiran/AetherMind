@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel_reference.h"
+#include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
 #include <benchmark/benchmark.h>
 #include <cstddef>
@@ -58,7 +58,7 @@ void BM_CPUKernel_RmsNorm(benchmark::State& state) {
     SetRmsNormThroughputCounters(state, seq_len, hidden);
 }
 
-void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
+void BM_CPUKernel_RmsNormScalar(benchmark::State& state) {
     const auto seq_len = state.range(0);
     const auto hidden = state.range(1);
     const auto numel = static_cast<std::size_t>(seq_len * hidden);
@@ -76,7 +76,7 @@ void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
 
     for (auto _: state) {
         constexpr float kEpsilon = 1.0e-5F;
-        aethermind::ReferenceRmsNorm(aethermind::RmsNormArgs{
+        const aethermind::Status status = aethermind::RmsNormKernel_CPU_FP32_Scalar(aethermind::RmsNormFp32KernelArgs{
                 .input = input.data(),
                 .weight = weight.data(),
                 .output = output.data(),
@@ -88,15 +88,15 @@ void BM_CPUKernel_ReferenceRmsNorm(benchmark::State& state) {
                 .output_row_stride = hidden,
                 .output_col_stride = 1,
                 .epsilon = kEpsilon,
-                .dtype = aethermind::DataType::Float32(),
         });
+        benchmark::DoNotOptimize(status.ok());
         benchmark::DoNotOptimize(output.data());
     }
 
     SetRmsNormThroughputCounters(state, seq_len, hidden);
 }
 
-BENCHMARK(BM_CPUKernel_ReferenceRmsNorm)
+BENCHMARK(BM_CPUKernel_RmsNormScalar)
         ->Args({1, 4096})
         ->Args({1, 8192})
         ->Args({16, 4096})

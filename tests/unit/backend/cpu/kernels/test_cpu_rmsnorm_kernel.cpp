@@ -1,6 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel_reference.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
@@ -333,24 +332,9 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
     weight[2] = 0.5F;
     weight[4] = 1.5F;
 
-    const RmsNormArgs args{
-            .input = input.data(),
-            .weight = weight.data(),
-            .output = kernel_output.data(),
-            .seq_len = kSeqLen,
-            .hidden_size = kHidden,
-            .input_row_stride = kInputRowStride,
-            .input_col_stride = kInputColStride,
-            .weight_stride = kWeightStride,
-            .output_row_stride = kOutputRowStride,
-            .output_col_stride = kOutputColStride,
-            .epsilon = kEpsilon,
-            .dtype = DataType::Float32(),
-    };
-
     for (int64_t row = 0; row < kSeqLen; ++row) {
-        const float* const row_in = static_cast<const float*>(args.input) + row * args.input_row_stride;
-        float* const row_out = static_cast<float*>(args.output) + row * args.output_row_stride;
+        const float* const row_in = input.data() + row * kInputRowStride;
+        float* const row_out = kernel_output.data() + row * kOutputRowStride;
 
         double sum_sq = 0.0;
         for (int64_t j = 0; j < kHidden; ++j) {
@@ -363,24 +347,24 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
         for (int64_t j = 0; j < kHidden; ++j) {
             row_out[j * kOutputColStride] = static_cast<float>(
                     static_cast<double>(row_in[j * kInputColStride]) * inv_rms *
-                    static_cast<double>(static_cast<const float*>(args.weight)[j * kWeightStride]));
+                    static_cast<double>(weight[j * kWeightStride]));
         }
     }
 
-    ReferenceRmsNorm(RmsNormArgs{
-            .input = args.input,
-            .weight = args.weight,
+    const Status status = RmsNormKernel_CPU_FP32_Scalar(RmsNormFp32KernelArgs{
+            .input = input.data(),
+            .weight = weight.data(),
             .output = ref_output.data(),
-            .seq_len = args.seq_len,
-            .hidden_size = args.hidden_size,
-            .input_row_stride = args.input_row_stride,
-            .input_col_stride = args.input_col_stride,
-            .weight_stride = args.weight_stride,
-            .output_row_stride = args.output_row_stride,
-            .output_col_stride = args.output_col_stride,
-            .epsilon = args.epsilon,
-            .dtype = DataType::Float32(),
+            .seq_len = kSeqLen,
+            .hidden_size = kHidden,
+            .input_row_stride = kInputRowStride,
+            .input_col_stride = kInputColStride,
+            .weight_stride = kWeightStride,
+            .output_row_stride = kOutputRowStride,
+            .output_col_stride = kOutputColStride,
+            .epsilon = kEpsilon,
     });
+    ASSERT_TRUE(status.ok()) << status.ToString();
 
     for (int64_t row = 0; row < kSeqLen; ++row) {
         for (int64_t col = 0; col < kHidden; ++col) {

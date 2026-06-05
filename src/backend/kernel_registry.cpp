@@ -29,15 +29,17 @@ KernelRegistry& KernelRegistry::Global() noexcept {
 Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (frozen_.load(std::memory_order_acquire)) {
-        return Status(StatusCode::kFailedPrecondition, "Cannot register kernel after registry has been frozen");
+    if (frozen_.load(std::memory_order_relaxed)) {
+        return Status(StatusCode::kFailedPrecondition,
+                      "Cannot register kernel after registry has been frozen");
     }
 
     if (auto status = ValidateKernelDescriptor(descriptor); !status.ok()) {
         return status;
     }
 
-    if (const RegistrationKey key{descriptor.op_type, descriptor.selector}; !registration_keys_.insert(key).second) {
+    if (const RegistrationKey key{descriptor.op_type, descriptor.selector};
+        !registration_keys_.insert(key).second) {
         return Status(StatusCode::kAlreadyExists, "Duplicate kernel registration");
     }
 
@@ -48,7 +50,7 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
 void KernelRegistry::Freeze() {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (frozen_.load(std::memory_order_acquire)) {
+    if (frozen_.load(std::memory_order_relaxed)) {
         return;
     }
     BuildBucketIndex();
@@ -98,8 +100,12 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
     return best;
 }
 
-std::vector<const KernelDescriptor*> KernelRegistry::FindByOpType(OpType op_type) const {
-    // Thread-safe via freeze-time release/acquire on frozen_; see Resolve().
+StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindByOpType(OpType op_type) const {
+    if (!frozen_.load(std::memory_order_acquire)) {
+        return Status(StatusCode::kFailedPrecondition,
+                      "Cannot find kernels by op_type before registry has been frozen");
+    }
+
     std::vector<const KernelDescriptor*> result;
     if (const auto it = buckets_.find(op_type); it != buckets_.end()) {
         result.reserve(it->second.size());

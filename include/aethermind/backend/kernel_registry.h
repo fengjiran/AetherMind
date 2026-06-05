@@ -8,6 +8,7 @@
 #include "aethermind/backend/kernel_descriptor.h"
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
+#include "utils/hash.h"
 
 #include <atomic>
 #include <mutex>
@@ -19,8 +20,8 @@
 namespace aethermind {
 
 struct RegistrationKey {
-    OpType op_type;
-    KernelSelector selector;
+    OpType op_type = OpType::kUnknown;
+    KernelSelector selector{};
 
     friend bool operator==(const RegistrationKey& lhs, const RegistrationKey& rhs) noexcept {
         return lhs.op_type == rhs.op_type && lhs.selector == rhs.selector;
@@ -29,9 +30,10 @@ struct RegistrationKey {
 
 struct RegistrationKeyHash {
     std::size_t operator()(const RegistrationKey& key) const noexcept {
-        const auto h1 = std::hash<OpType>{}(key.op_type);
-        const auto h2 = std::hash<KernelSelector>{}(key.selector);
-        return h1 ^ (h2 << 1);
+        std::size_t seed = 0;
+        seed = hash_combine(seed, std::hash<OpType>{}(key.op_type));
+        seed = hash_combine(seed, std::hash<KernelSelector>{}(key.selector));
+        return seed;
     }
 };
 
@@ -58,7 +60,7 @@ public:
         return frozen_.load(std::memory_order_acquire);
     }
 
-    AM_NODISCARD std::vector<const KernelDescriptor*> FindByOpType(OpType op_type) const;
+    AM_NODISCARD StatusOr<std::vector<const KernelDescriptor*>> FindByOpType(OpType op_type) const;
 
     AM_NODISCARD std::string DebugDump() const;
 

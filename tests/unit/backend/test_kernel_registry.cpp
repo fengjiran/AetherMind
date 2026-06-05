@@ -103,6 +103,16 @@ TEST(KernelRegistry, ResolveBeforeFreezeFails) {
     EXPECT_EQ(resolved.status().code(), StatusCode::kFailedPrecondition);
 }
 
+TEST(KernelRegistry, FindByOpTypeBeforeFreezeFails) {
+    KernelRegistry registry;
+    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+
+    ASSERT_TRUE(registry.Register(descriptor).ok());
+
+    const auto found = registry.FindByOpType(OpType::kRmsNorm);
+    EXPECT_EQ(found.status().code(), StatusCode::kFailedPrecondition);
+}
+
 TEST(KernelRegistry, RegisterAfterFreezeFails) {
     KernelRegistry registry;
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();
@@ -140,15 +150,18 @@ TEST(KernelRegistry, FindByOpTypeReturnsMatchingDescriptors) {
     registry.Freeze();
 
     const auto rms_kernels = registry.FindByOpType(OpType::kRmsNorm);
-    ASSERT_EQ(rms_kernels.size(), 1u);
-    EXPECT_EQ(rms_kernels[0]->op_type, OpType::kRmsNorm);
+    ASSERT_TRUE(rms_kernels.ok());
+    ASSERT_EQ(rms_kernels->size(), 1u);
+    EXPECT_EQ((*rms_kernels)[0]->op_type, OpType::kRmsNorm);
 
     const auto linear_kernels = registry.FindByOpType(OpType::kLinear);
-    ASSERT_EQ(linear_kernels.size(), 1u);
-    EXPECT_EQ(linear_kernels[0]->op_type, OpType::kLinear);
+    ASSERT_TRUE(linear_kernels.ok());
+    ASSERT_EQ(linear_kernels->size(), 1u);
+    EXPECT_EQ((*linear_kernels)[0]->op_type, OpType::kLinear);
 
     const auto none = registry.FindByOpType(OpType::kSoftmax);
-    EXPECT_TRUE(none.empty());
+    ASSERT_TRUE(none.ok());
+    EXPECT_TRUE(none->empty());
 }
 
 TEST(KernelRegistry, DebugDumpContainsRegisteredEntries) {

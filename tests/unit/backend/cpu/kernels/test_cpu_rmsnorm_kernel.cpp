@@ -10,11 +10,11 @@
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
-
-#include <gtest/gtest.h>
+#include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
 #include <array>
 #include <cstdint>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace aethermind {
@@ -273,42 +273,38 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
     float ref_output[12] = {};
     constexpr float kEpsilon = 1.0e-5F;
 
-    const RmsNormArgs args{
-            .input = input,
-            .weight = weight,
-            .output = kernel_output,
-            .seq_len = kSeqLen,
-            .hidden_size = kHidden,
-            .input_row_stride = kHidden,
-            .input_col_stride = 1,
-            .weight_stride = 1,
-            .output_row_stride = kHidden,
-            .output_col_stride = 1,
-            .epsilon = kEpsilon,
-            .dtype = DataType::Float32(),
-    };
+    const Status status1 = RmsNormKernel_CPU_FP32_AVX2(
+            RmsNormFp32KernelArgs{
+                    .input = input,
+                    .weight = weight,
+                    .output = kernel_output,
+                    .seq_len = kSeqLen,
+                    .hidden_size = kHidden,
+                    .input_row_stride = kHidden,
+                    .input_col_stride = 1,
+                    .weight_stride = 1,
+                    .output_row_stride = kHidden,
+                    .output_col_stride = 1,
+                    .epsilon = kEpsilon});
+    ASSERT_TRUE(status1.ok()) << status1.ToString();
 
-    const Status status = LaunchRmsNorm(args);
-    ASSERT_TRUE(status.ok()) << status.ToString();
-
-    ReferenceRmsNorm(RmsNormArgs{
-            .input = args.input,
-            .weight = args.weight,
-            .output = ref_output,
-            .seq_len = args.seq_len,
-            .hidden_size = args.hidden_size,
-            .input_row_stride = args.input_row_stride,
-            .input_col_stride = args.input_col_stride,
-            .weight_stride = args.weight_stride,
-            .output_row_stride = args.output_row_stride,
-            .output_col_stride = args.output_col_stride,
-            .epsilon = args.epsilon,
-            .dtype = DataType::Float32(),
-    });
+    const Status status2 = RmsNormKernel_CPU_FP32_Scalar(
+            RmsNormFp32KernelArgs{
+                    .input = input,
+                    .weight = weight,
+                    .output = ref_output,
+                    .seq_len = kSeqLen,
+                    .hidden_size = kHidden,
+                    .input_row_stride = kHidden,
+                    .input_col_stride = 1,
+                    .weight_stride = 1,
+                    .output_row_stride = kHidden,
+                    .output_col_stride = 1,
+                    .epsilon = kEpsilon});
+    ASSERT_TRUE(status2.ok()) << status2.ToString();
 
     for (int i = 0; i < kSeqLen * kHidden; ++i) {
-        EXPECT_NEAR(kernel_output[i], ref_output[i], 1e-6)
-                << "mismatch at index " << i;
+        EXPECT_NEAR(kernel_output[i], ref_output[i], 1e-6) << "mismatch at index " << i;
     }
 }
 

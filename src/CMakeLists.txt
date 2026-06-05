@@ -60,7 +60,5 @@ if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
     )
     message(STATUS "AVX2/FMA enabled")
 else ()
-    message(STATUS
-            "AVX2/FMA not supported by compiler"
-    )
+    message(STATUS "AVX2/FMA not supported by compiler")
 endif ()

@@ -8,11 +8,11 @@ file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
 find_package(GTest REQUIRED)
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})
 
-#target_include_directories(${TEST_TARGET}
-#        PRIVATE
-#        ${PROJECT_SOURCE_DIR}/include
-#        ${PROJECT_SOURCE_DIR}/src
-#)
+target_include_directories(${TEST_TARGET}
+        PRIVATE
+        #        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
 
 target_link_libraries(${TEST_TARGET} PRIVATE
         ${PROJECT_NAME}
@@ -33,9 +33,9 @@ check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
 if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
     target_compile_options(${TEST_TARGET} PRIVATE -mavx2 -mfma)
     message(STATUS "AVX2/FMA enabled for unit tests")
-else()
+else ()
     message(STATUS "AVX2/FMA not supported by compiler — SIMD learning tests will GTEST_SKIP")
-endif()
+endif ()
 
 if (BUILD_WITH_TORCH)
     message(STATUS "Setting C++ macro BUILD_WITH_TORCH - 1")

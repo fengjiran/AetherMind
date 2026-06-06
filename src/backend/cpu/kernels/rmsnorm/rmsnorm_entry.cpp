@@ -9,7 +9,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace aethermind {
+namespace aethermind::cpu {
 
 namespace {
 const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
@@ -186,4 +186,4 @@ AM_REGISTER_KERNEL(CpuRmsNormFp32Avx2,
                            .priority = 20,
                    });
 
-}// namespace aethermind
+}// namespace aethermind::cpu

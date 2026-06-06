@@ -18,33 +18,35 @@
 
 namespace aethermind {
 
+namespace cpu {
 Status CpuRmsNormKernelEntry_FP32_Scalar(const KernelContext& ctx) noexcept;
+}// namespace cpu
 
 namespace {
 
-Status RunRmsNormEntry(const CpuRmsNormParams& params, float epsilon) noexcept {
-    return CpuRmsNormKernelEntry_FP32_AVX2(KernelContext{
+Status RunRmsNormEntry(const cpu::CpuRmsNormParams& params, float epsilon) noexcept {
+    return cpu::CpuRmsNormKernelEntry_FP32_AVX2(KernelContext{
             .packed_params = &params,
             .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
     });
 }
 
-Status RunRmsNormEntry(const CpuRmsNormParams& params) noexcept {
+Status RunRmsNormEntry(const cpu::CpuRmsNormParams& params) noexcept {
     return RunRmsNormEntry(params, 1.0e-5F);
 }
 
-Status RunScalarRmsNormEntry(const CpuRmsNormParams& params, float epsilon) noexcept {
-    return CpuRmsNormKernelEntry_FP32_Scalar(KernelContext{
+Status RunScalarRmsNormEntry(const cpu::CpuRmsNormParams& params, float epsilon) noexcept {
+    return cpu::CpuRmsNormKernelEntry_FP32_Scalar(KernelContext{
             .packed_params = &params,
             .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
     });
 }
 
-Status RunScalarRmsNormEntry(const CpuRmsNormParams& params) noexcept {
+Status RunScalarRmsNormEntry(const cpu::CpuRmsNormParams& params) noexcept {
     return RunScalarRmsNormEntry(params, 1.0e-5F);
 }
 
-void ExpectInvalidRmsNormEntry(const CpuRmsNormParams& params) {
+void ExpectInvalidRmsNormEntry(const cpu::CpuRmsNormParams& params) {
     const Status status = RunRmsNormEntry(params);
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
 }
@@ -98,7 +100,7 @@ TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesThroughExecutor) {
     constexpr int64_t io_strides[2] = {4, 1};
     constexpr int64_t w_shape[1] = {4};
     constexpr int64_t w_strides[1] = {1};
-    const CpuRmsNormParams params{
+    const cpu::CpuRmsNormParams params{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
@@ -286,8 +288,8 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
     float ref_output[12] = {};
     constexpr float kEpsilon = 1.0e-5F;
 
-    const Status status1 = RmsNormKernel_CPU_FP32_AVX2(
-            RmsNormFp32KernelArgs{
+    const Status status1 = cpu::RmsNormKernel_CPU_FP32_AVX2(
+            cpu::RmsNormFp32KernelArgs{
                     .input = input,
                     .weight = weight,
                     .output = kernel_output,
@@ -301,8 +303,8 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
                     .eps = kEpsilon});
     ASSERT_TRUE(status1.ok()) << status1.ToString();
 
-    const Status status2 = RmsNormKernel_CPU_FP32_Scalar(
-            RmsNormFp32KernelArgs{
+    const Status status2 = cpu::RmsNormKernel_CPU_FP32_Scalar(
+            cpu::RmsNormFp32KernelArgs{
                     .input = input,
                     .weight = weight,
                     .output = ref_output,
@@ -365,7 +367,7 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
         }
     }
 
-    const Status status = RmsNormKernel_CPU_FP32_Scalar(RmsNormFp32KernelArgs{
+    const Status status = cpu::RmsNormKernel_CPU_FP32_Scalar(cpu::RmsNormFp32KernelArgs{
             .input = input.data(),
             .weight = weight.data(),
             .output = ref_output.data(),
@@ -398,19 +400,19 @@ TEST(CPUKernelRmsNormEntry, RejectsNullDataPointers) {
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
     });
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{nullptr, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
     });
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
@@ -442,7 +444,7 @@ TEST(CPUKernelRmsNormEntry, ScalarAcceptsStridedViews) {
     weight[2] = 0.5F;
     weight[4] = 1.5F;
 
-    const Status status = RunScalarRmsNormEntry(CpuRmsNormParams{
+    const Status status = RunScalarRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{input.data(), DataType::Float32(), kInputShape, kInputStrides},
             .weight_tensor = TensorView{weight.data(), DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output.data(), DataType::Float32(), kOutputShape, kOutputStrides},
@@ -480,7 +482,7 @@ TEST(CPUKernelRmsNormEntry, Avx2RejectsNonUnitColumnStrides) {
     constexpr int64_t kWeightShape[1] = {3};
     constexpr int64_t kWeightStrides[1] = {2};
 
-    const Status status = RunRmsNormEntry(CpuRmsNormParams{
+    const Status status = RunRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kInputStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kOutputStrides},
@@ -497,19 +499,19 @@ TEST(CPUKernelRmsNormEntry, RejectsNonFloat32Dtypes) {
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Double(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
     });
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Double(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
     });
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Double(), kIoShape, kIoStrides},
@@ -525,7 +527,7 @@ TEST(CPUKernelRmsNormEntry, RejectsZeroHiddenSize) {
     constexpr int64_t kWeightShape[1] = {0};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
@@ -541,7 +543,7 @@ TEST(CPUKernelRmsNormEntry, RejectsZeroStrides) {
     constexpr int64_t kWeightShape[1] = {1};
     constexpr int64_t kWeightStrides[1] = {0};
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
@@ -559,7 +561,7 @@ TEST(CPUKernelRmsNormEntry, RejectsMismatchedOutputShape) {
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    ExpectInvalidRmsNormEntry(CpuRmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kInputShape, kInputStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kOutputShape, kOutputStrides},
@@ -574,7 +576,7 @@ TEST(CPUKernelRmsNormEntry, RejectsInvalidEpsilon) {
     constexpr int64_t kIoStrides[2] = {4, 1};
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
-    const CpuRmsNormParams params{
+    const cpu::CpuRmsNormParams params{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},

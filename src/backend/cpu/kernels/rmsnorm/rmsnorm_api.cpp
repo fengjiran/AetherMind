@@ -12,7 +12,7 @@ Status LaunchRmsNorm(const RmsNormArgs& args) noexcept {
     }
 
     if (args.dtype.IsFloat32()) {
-        RmsNormFp32KernelArgs kernel_args;
+        cpu::RmsNormFp32KernelArgs kernel_args;
         kernel_args.input = static_cast<const float*>(args.input);
         kernel_args.weight = static_cast<const float*>(args.weight);
         kernel_args.output = static_cast<float*>(args.output);
@@ -24,7 +24,7 @@ Status LaunchRmsNorm(const RmsNormArgs& args) noexcept {
         kernel_args.output_row_stride = args.output_row_stride;
         kernel_args.output_col_stride = args.output_col_stride;
         kernel_args.eps = args.eps;
-        return RmsNormKernel_CPU_FP32_AVX2(kernel_args);
+        return cpu::RmsNormKernel_CPU_FP32_AVX2(kernel_args);
     }
 
     return Status(StatusCode::kUnimplemented, "Not implemented");

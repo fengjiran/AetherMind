@@ -7,9 +7,6 @@ namespace aethermind {
 
 namespace cpu {
 
-}// namespace cpu
-
-
 struct RmsNormFp32KernelArgs {
     const float* input{};
     const float* weight{};
@@ -26,6 +23,8 @@ struct RmsNormFp32KernelArgs {
 
 Status RmsNormKernel_CPU_FP32_Scalar(const RmsNormFp32KernelArgs& args) noexcept;
 Status RmsNormKernel_CPU_FP32_AVX2(const RmsNormFp32KernelArgs& args) noexcept;
+
+}// namespace cpu
 
 }// namespace aethermind
 

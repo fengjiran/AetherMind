@@ -9,7 +9,7 @@
 #include <immintrin.h>
 #endif
 
-namespace aethermind {
+namespace aethermind::cpu {
 
 #if defined(__AVX2__) && defined(__FMA__)
 AM_ALWAYS_INLINE void micro_kernel_fp32_avx2(float* __restrict__ output,
@@ -121,4 +121,4 @@ Status RmsNormKernel_CPU_FP32_AVX2(const RmsNormFp32KernelArgs& args) noexcept {
     return Status::Ok();
 }
 
-}// namespace aethermind
+}// namespace aethermind::cpu

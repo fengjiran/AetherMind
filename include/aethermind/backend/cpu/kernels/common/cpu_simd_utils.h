@@ -10,7 +10,7 @@
 namespace aethermind {
 
 #if defined(__AVX2__)
-AM_NODISCARD inline float HorizontalSumAvx2(__m256 v) noexcept {
+AM_NODISCARD AM_ALWAYS_INLINE float HorizontalSumAvx2(__m256 v) noexcept {
     const __m128 vlow = _mm256_castps256_ps128(v);
     const __m128 vhigh = _mm256_extractf128_ps(v, 1);
     __m128 vsum = _mm_add_ps(vhigh, vlow);

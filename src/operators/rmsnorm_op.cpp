@@ -103,7 +103,7 @@ Status RmsNormOp::Run(KernelContext& ctx,
                 std::to_string(b->outputs.size()));
     }
 
-    CpuRmsNormParams params{
+    cpu::CpuRmsNormParams params{
             .input_tensor = b->inputs[0],
             .weight_tensor = b->inputs[1],
             .output_tensor = b->outputs[0],

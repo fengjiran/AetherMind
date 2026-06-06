@@ -9,14 +9,16 @@
 namespace aethermind {
 
 namespace cpu {
-//
-}
 
 struct CpuRmsNormParams {
     TensorView input_tensor{};
     TensorView weight_tensor{};
     MutableTensorView output_tensor{};
 };
+
+AM_NODISCARD Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept;
+
+}// namespace cpu
 
 
 /**
@@ -64,8 +66,6 @@ struct RmsNormArgs {
 };
 
 Status LaunchRmsNorm(const RmsNormArgs& args) noexcept;
-
-AM_NODISCARD Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept;
 
 }// namespace aethermind
 

@@ -23,7 +23,7 @@ Status LaunchRmsNorm(const RmsNormArgs& args) noexcept {
         kernel_args.weight_stride = args.weight_stride;
         kernel_args.output_row_stride = args.output_row_stride;
         kernel_args.output_col_stride = args.output_col_stride;
-        kernel_args.epsilon = args.epsilon;
+        kernel_args.eps = args.eps;
         return RmsNormKernel_CPU_FP32_AVX2(kernel_args);
     }
 

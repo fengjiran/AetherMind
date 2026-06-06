@@ -1,6 +1,8 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_RMSNORM_CPU_RMSNORM_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_RMSNORM_CPU_RMSNORM_INTERNAL_H
 
+#include "aethermind/base/status.h"
+
 namespace aethermind {
 
 namespace cpu {
@@ -19,7 +21,7 @@ struct RmsNormFp32KernelArgs {
     int64_t weight_stride{1};
     int64_t output_row_stride{};
     int64_t output_col_stride{1};
-    float epsilon{1.0e-5f};
+    float eps{1.0e-5f};
 };
 
 Status RmsNormKernel_CPU_FP32_Scalar(const RmsNormFp32KernelArgs& args) noexcept;

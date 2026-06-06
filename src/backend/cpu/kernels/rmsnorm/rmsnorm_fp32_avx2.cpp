@@ -10,40 +10,13 @@
 #endif
 
 namespace aethermind {
-namespace {
-
-const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
-    return static_cast<const CpuRmsNormParams*>(packed_params);
-}
-
-#if !defined(__AVX2__) || !defined(__FMA__)
-void ProcessStridedRmsNormRowScalar(const RmsNormFp32KernelArgs& args, int64_t row_idx) noexcept {
-    const float* const row_in = args.input + row_idx * args.input_row_stride;
-    float* const row_out = args.output + row_idx * args.output_row_stride;
-
-    double sum_sq = 0.0;
-    for (int64_t j = 0; j < args.hidden_size; ++j) {
-        const auto x = static_cast<double>(row_in[j * args.input_col_stride]);
-        sum_sq += x * x;
-    }
-
-    const double mean_sq = sum_sq / static_cast<double>(args.hidden_size);
-    const double inv_rms = 1.0 / std::sqrt(mean_sq + static_cast<double>(args.epsilon));
-    for (int64_t j = 0; j < args.hidden_size; ++j) {
-        row_out[j * args.output_col_stride] = static_cast<float>(static_cast<double>(row_in[j * args.input_col_stride]) *
-                                                                 inv_rms * static_cast<double>(args.weight[j * args.weight_stride]));
-    }
-}
-#endif
-
-}// namespace
 
 #if defined(__AVX2__) && defined(__FMA__)
-AM_ALWAYS_INLINE void rmsnorm_micro_kernel_avx2(float* __restrict__ output,
-                                                const float* __restrict__ input,
-                                                const float* __restrict__ weight,
-                                                int64_t hidden_size,
-                                                float epsilon) {
+AM_ALWAYS_INLINE void micro_kernel_fp32_avx2(float* __restrict__ output,
+                                             const float* __restrict__ input,
+                                             const float* __restrict__ weight,
+                                             int64_t hidden_size,
+                                             float eps) {
     __m256 vsum0 = _mm256_setzero_ps();
     __m256 vsum1 = _mm256_setzero_ps();
     __m256 vsum2 = _mm256_setzero_ps();
@@ -74,7 +47,7 @@ AM_ALWAYS_INLINE void rmsnorm_micro_kernel_avx2(float* __restrict__ output,
     }
 
     const float mean_sq = sum_sq / static_cast<float>(hidden_size);
-    const float inv_rms = 1.0F / std::sqrt(mean_sq + epsilon);
+    const float inv_rms = 1.0F / std::sqrt(mean_sq + eps);
     const __m256 inv_rms_vec = _mm256_set1_ps(inv_rms);
 
     j = 0;
@@ -126,28 +99,22 @@ AM_ALWAYS_INLINE void rmsnorm_micro_kernel_avx2(float* __restrict__ output,
 /// backing storage for every addressed element. Runtime validation belongs in
 /// CpuRmsNormKernelEntry.
 Status RmsNormKernel_CPU_FP32_AVX2(const RmsNormFp32KernelArgs& args) noexcept {
-#if defined(__AVX2__) && defined(__FMA__)
-    auto process_row = [&args](int64_t row_idx) noexcept {
-        rmsnorm_micro_kernel_avx2(args.output + row_idx * args.output_row_stride,
-                                  args.input + row_idx * args.input_row_stride,
-                                  args.weight,
-                                  args.hidden_size,
-                                  args.epsilon);
-    };
-#else
-    auto process_row = [&args](int64_t row_idx) noexcept {
-        ProcessStridedRmsNormRowScalar(args, row_idx);
-    };
-#endif
-
     if (constexpr int64_t kOmpParallelThreshold = 16; args.seq_len <= kOmpParallelThreshold) {
         for (int64_t i = 0; i < args.seq_len; ++i) {
-            process_row(i);
+            micro_kernel_fp32_avx2(args.output + i * args.output_row_stride,
+                                   args.input + i * args.input_row_stride,
+                                   args.weight,
+                                   args.hidden_size,
+                                   args.eps);
         }
     } else {
 #pragma omp parallel for schedule(static)
         for (int64_t i = 0; i < args.seq_len; ++i) {
-            process_row(i);
+            micro_kernel_fp32_avx2(args.output + i * args.output_row_stride,
+                                   args.input + i * args.input_row_stride,
+                                   args.weight,
+                                   args.hidden_size,
+                                   args.eps);
         }
     }
 

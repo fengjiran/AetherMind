@@ -17,6 +17,9 @@
 #include <vector>
 
 namespace aethermind {
+
+Status CpuRmsNormKernelEntry_FP32_Scalar(const KernelContext& ctx) noexcept;
+
 namespace {
 
 Status RunRmsNormEntry(const CpuRmsNormParams& params, float epsilon) noexcept {
@@ -28,6 +31,17 @@ Status RunRmsNormEntry(const CpuRmsNormParams& params, float epsilon) noexcept {
 
 Status RunRmsNormEntry(const CpuRmsNormParams& params) noexcept {
     return RunRmsNormEntry(params, 1.0e-5F);
+}
+
+Status RunScalarRmsNormEntry(const CpuRmsNormParams& params, float epsilon) noexcept {
+    return CpuRmsNormKernelEntry_FP32_Scalar(KernelContext{
+            .packed_params = &params,
+            .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
+    });
+}
+
+Status RunScalarRmsNormEntry(const CpuRmsNormParams& params) noexcept {
+    return RunScalarRmsNormEntry(params, 1.0e-5F);
 }
 
 void ExpectInvalidRmsNormEntry(const CpuRmsNormParams& params) {
@@ -52,7 +66,7 @@ TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
             .weight_stride = 1,
             .output_row_stride = 4,
             .output_col_stride = 1,
-            .epsilon = 1.0e-5F,
+            .eps = 1.0e-5F,
             .dtype = DataType::Float32(),
     });
 
@@ -222,7 +236,7 @@ TEST(CPUKernelRmsNorm, MultiTokenRmsNorm) {
             .weight_stride = 1,
             .output_row_stride = 4,
             .output_col_stride = 1,
-            .epsilon = 1.0e-5F,
+            .eps = 1.0e-5F,
             .dtype = DataType::Float32(),
     });
 
@@ -284,7 +298,7 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
                     .weight_stride = 1,
                     .output_row_stride = kHidden,
                     .output_col_stride = 1,
-                    .epsilon = kEpsilon});
+                    .eps = kEpsilon});
     ASSERT_TRUE(status1.ok()) << status1.ToString();
 
     const Status status2 = RmsNormKernel_CPU_FP32_Scalar(
@@ -299,7 +313,7 @@ TEST(CPUKernelRmsNorm, MatchesReference) {
                     .weight_stride = 1,
                     .output_row_stride = kHidden,
                     .output_col_stride = 1,
-                    .epsilon = kEpsilon});
+                    .eps = kEpsilon});
     ASSERT_TRUE(status2.ok()) << status2.ToString();
 
     for (int i = 0; i < kSeqLen * kHidden; ++i) {
@@ -362,7 +376,7 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
             .weight_stride = kWeightStride,
             .output_row_stride = kOutputRowStride,
             .output_col_stride = kOutputColStride,
-            .epsilon = kEpsilon,
+            .eps = kEpsilon,
     });
     ASSERT_TRUE(status.ok()) << status.ToString();
 
@@ -401,6 +415,77 @@ TEST(CPUKernelRmsNormEntry, RejectsNullDataPointers) {
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
     });
+}
+
+TEST(CPUKernelRmsNormEntry, ScalarAcceptsStridedViews) {
+    constexpr int64_t kSeqLen = 2;
+    constexpr int64_t kHidden = 3;
+    constexpr int64_t kInputShape[2] = {kSeqLen, kHidden};
+    constexpr int64_t kInputStrides[2] = {7, 2};
+    constexpr int64_t kOutputShape[2] = {kSeqLen, kHidden};
+    constexpr int64_t kOutputStrides[2] = {8, 2};
+    constexpr int64_t kWeightShape[1] = {kHidden};
+    constexpr int64_t kWeightStrides[1] = {2};
+    constexpr float kEpsilon = 1.0e-5F;
+
+    std::array<float, 12> input{};
+    std::array<float, 5> weight{};
+    std::array<float, 14> output{};
+
+    input[0] = 1.0F;
+    input[2] = 2.0F;
+    input[4] = 3.0F;
+    input[7] = -1.0F;
+    input[9] = 0.5F;
+    input[11] = 4.0F;
+    weight[0] = 1.0F;
+    weight[2] = 0.5F;
+    weight[4] = 1.5F;
+
+    const Status status = RunScalarRmsNormEntry(CpuRmsNormParams{
+            .input_tensor = TensorView{input.data(), DataType::Float32(), kInputShape, kInputStrides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), kWeightShape, kWeightStrides},
+            .output_tensor = MutableTensorView{output.data(), DataType::Float32(), kOutputShape, kOutputStrides},
+    },
+                                                 kEpsilon);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+
+    for (int64_t row = 0; row < kSeqLen; ++row) {
+        const float* const row_in = input.data() + row * kInputStrides[0];
+
+        double sum_sq = 0.0;
+        for (int64_t col = 0; col < kHidden; ++col) {
+            const double x = row_in[col * kInputStrides[1]];
+            sum_sq += x * x;
+        }
+
+        const double inv_rms = 1.0 / std::sqrt(sum_sq / static_cast<double>(kHidden) + static_cast<double>(kEpsilon));
+        for (int64_t col = 0; col < kHidden; ++col) {
+            const int64_t offset = row * kOutputStrides[0] + col * kOutputStrides[1];
+            const double x = row_in[col * kInputStrides[1]];
+            const double w = weight[col * kWeightStrides[0]];
+            EXPECT_NEAR(output[static_cast<size_t>(offset)], static_cast<float>(x * inv_rms * w), 1.0e-6F)
+                    << "mismatch at row " << row << ", col " << col;
+        }
+    }
+}
+
+TEST(CPUKernelRmsNormEntry, Avx2RejectsNonUnitColumnStrides) {
+    constexpr float kInput[12] = {1.0F, 0.0F, 2.0F, 0.0F, 3.0F, 0.0F, 0.0F, -1.0F, 0.0F, 0.5F, 0.0F, 4.0F};
+    constexpr float kWeight[5] = {1.0F, 0.0F, 0.5F, 0.0F, 1.5F};
+    float output[14] = {};
+    constexpr int64_t kIoShape[2] = {2, 3};
+    constexpr int64_t kInputStrides[2] = {7, 2};
+    constexpr int64_t kOutputStrides[2] = {8, 2};
+    constexpr int64_t kWeightShape[1] = {3};
+    constexpr int64_t kWeightStrides[1] = {2};
+
+    const Status status = RunRmsNormEntry(CpuRmsNormParams{
+            .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kInputStrides},
+            .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
+            .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kOutputStrides},
+    });
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsNonFloat32Dtypes) {

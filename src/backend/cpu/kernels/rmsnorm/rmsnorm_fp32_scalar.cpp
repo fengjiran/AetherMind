@@ -7,7 +7,7 @@
 namespace aethermind {
 namespace {
 
-AM_ALWAYS_INLINE void process_row(float* __restrict__ output,
+AM_ALWAYS_INLINE void micro_kernel_fp32_scalar(float* __restrict__ output,
                                   const float* __restrict__ input,
                                   const float* __restrict__ weight,
                                   int64_t hidden_size,
@@ -36,26 +36,26 @@ AM_ALWAYS_INLINE void process_row(float* __restrict__ output,
 Status RmsNormKernel_CPU_FP32_Scalar(const RmsNormFp32KernelArgs& args) noexcept {
     if (constexpr int64_t kOmpParallelThreshold = 16; args.seq_len <= kOmpParallelThreshold) {
         for (int64_t i = 0; i < args.seq_len; ++i) {
-            process_row(args.output + i * args.output_row_stride,
+            micro_kernel_fp32_scalar(args.output + i * args.output_row_stride,
                         args.input + i * args.input_row_stride,
                         args.weight,
                         args.hidden_size,
                         args.input_col_stride,
                         args.weight_stride,
                         args.output_col_stride,
-                        args.epsilon);
+                        args.eps);
         }
     } else {
 #pragma omp parallel for schedule(static)
         for (int64_t i = 0; i < args.seq_len; ++i) {
-            process_row(args.output + i * args.output_row_stride,
+            micro_kernel_fp32_scalar(args.output + i * args.output_row_stride,
                         args.input + i * args.input_row_stride,
                         args.weight,
                         args.hidden_size,
                         args.input_col_stride,
                         args.weight_stride,
                         args.output_col_stride,
-                        args.epsilon);
+                        args.eps);
         }
     }
 

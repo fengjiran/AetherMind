@@ -45,7 +45,7 @@ void BM_CPUKernel_RmsNorm(benchmark::State& state) {
             .weight_stride = 1,
             .output_row_stride = hidden,
             .output_col_stride = 1,
-            .epsilon = 1.0e-5F,
+            .eps = 1.0e-5F,
             .dtype = aethermind::DataType::Float32(),
     };
 
@@ -75,7 +75,7 @@ void BM_CPUKernel_RmsNormScalar(benchmark::State& state) {
     }
 
     for (auto _: state) {
-        constexpr float kEpsilon = 1.0e-5F;
+        constexpr float kEps = 1.0e-5F;
         const aethermind::Status status = aethermind::RmsNormKernel_CPU_FP32_Scalar(aethermind::RmsNormFp32KernelArgs{
                 .input = input.data(),
                 .weight = weight.data(),
@@ -87,7 +87,7 @@ void BM_CPUKernel_RmsNormScalar(benchmark::State& state) {
                 .weight_stride = 1,
                 .output_row_stride = hidden,
                 .output_col_stride = 1,
-                .epsilon = kEpsilon,
+                .eps = kEps,
         });
         benchmark::DoNotOptimize(status.ok());
         benchmark::DoNotOptimize(output.data());

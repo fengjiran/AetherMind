@@ -8,7 +8,7 @@ namespace aethermind {
 class RmsNormOp final : public Operator {
 public:
     struct Params {
-        float epsilon = 1.0e-5f;
+        float eps = 1.0e-5f;
     };
 
     explicit RmsNormOp(Params params) noexcept : params_(params) {}
@@ -38,7 +38,7 @@ public:
                             const RuntimeBindingContext& bindings,
                             size_t step_index) const noexcept override;
 
-    AM_NODISCARD ResolvedKernel GetResolvedKernel() const noexcept override {
+    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
         return resolved_kernel_;
     }
 

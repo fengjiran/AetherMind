@@ -5,7 +5,7 @@
 #include "aethermind/operators/op_type.h"
 
 #include <cstddef>
-#include <span>
+#include <vector>
 
 namespace aethermind {
 
@@ -13,10 +13,9 @@ struct ResolvedKernel {
     OpType op_type = OpType::kUnknown;
     KernelFunc fn = nullptr;
 
-    // attrs is immutable kernel metadata. Its lifetime must be owned by the
-    // resolved kernel provider (for example an Operator or FunctionOperator)
-    // and must cover every execution step that references it.
-    std::span<const std::byte> attrs{};
+    // attrs is immutable kernel metadata owned by the resolved kernel. Runtime
+    // KernelContext instances borrow a span from this storage for each call.
+    std::vector<std::byte> attrs{};
 
     // debug_name should refer to backend-owned stable storage (for example a
     // registered kernel descriptor string literal) and must stay valid for the

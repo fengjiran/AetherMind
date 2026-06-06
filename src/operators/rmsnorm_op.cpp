@@ -11,9 +11,9 @@
 namespace aethermind {
 
 Status RmsNormOp::ValidateParams() const {
-    if (params_.epsilon <= 0.0f) {
+    if (params_.eps <= 0.0f) {
         return Status::InvalidArgument(
-                "RmsNorm epsilon must be positive, got " + std::to_string(params_.epsilon));
+                "RmsNorm epsilon must be positive, got " + std::to_string(params_.eps));
     }
     return Status::Ok();
 }
@@ -74,8 +74,8 @@ Status RmsNormOp::Prepare(OperatorContext& ctx) {
     }
 
     resolved_kernel_ = resolved.value();
-    resolved_kernel_.attrs = std::span(
-            reinterpret_cast<const std::byte*>(&params_.epsilon), sizeof(float));
+    const auto eps_bytes = std::as_bytes(std::span{&params_.eps, size_t{1}});
+    resolved_kernel_.attrs.assign(eps_bytes.begin(), eps_bytes.end());
     return Status::Ok();
 }
 

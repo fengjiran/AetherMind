@@ -15,17 +15,19 @@ public:
                      KernelFunc fn,
                      std::span<const std::byte> attrs = {},
                      const char* debug_name = nullptr)
-        : op_type_(op_type),
-          fn_(fn),
-          attrs_(attrs.begin(), attrs.end()),
-          debug_name_(debug_name) {}
+        : resolved_kernel_{
+                  .op_type = op_type,
+                  .fn = fn,
+                  .attrs = std::vector<std::byte>(attrs.begin(), attrs.end()),
+                  .debug_name = debug_name,
+          } {}
 
     AM_NODISCARD OpType Type() const noexcept override {
-        return op_type_;
+        return resolved_kernel_.op_type;
     }
 
     AM_NODISCARD const char* Name() const noexcept override {
-        return debug_name_ != nullptr ? debug_name_ : "FunctionOperator";
+        return resolved_kernel_.debug_name != nullptr ? resolved_kernel_.debug_name : "FunctionOperator";
     }
 
     AM_NODISCARD Status ValidateParams() const override {
@@ -50,26 +52,18 @@ public:
                             size_t step_index) const noexcept override {
         UNUSED(bindings);
         UNUSED(step_index);
-        if (fn_ == nullptr) {
+        if (resolved_kernel_.fn == nullptr) {
             return Status(StatusCode::kFailedPrecondition, "FunctionOperator kernel function cannot be null");
         }
-        return fn_(ctx);
+        return resolved_kernel_.fn(ctx);
     }
 
-    AM_NODISCARD ResolvedKernel GetResolvedKernel() const noexcept override {
-        return ResolvedKernel{
-                .op_type = op_type_,
-                .fn = fn_,
-                .attrs = attrs_,
-                .debug_name = debug_name_,
-        };
+    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
+        return resolved_kernel_;
     }
 
 private:
-    OpType op_type_;
-    KernelFunc fn_;
-    std::vector<std::byte> attrs_;
-    const char* debug_name_;
+    ResolvedKernel resolved_kernel_{};
 };
 
 }// namespace aethermind

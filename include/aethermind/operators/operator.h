@@ -127,9 +127,9 @@ public:
                                     const RuntimeBindingContext& bindings,
                                     size_t step_index) const noexcept = 0;
 
-    /// Returns the resolved kernel info for debugging and logging.
+    /// Returns the resolved kernel info for execution, debugging, and logging.
     /// Only valid after successful Prepare().
-    AM_NODISCARD virtual ResolvedKernel GetResolvedKernel() const noexcept = 0;
+    AM_NODISCARD virtual const ResolvedKernel& GetResolvedKernel() const noexcept = 0;
 };
 
 /// Shared pointer alias for operator lifetime management.

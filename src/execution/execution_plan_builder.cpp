@@ -130,7 +130,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
             op = std::make_shared<FunctionOperator>(
                     resolved->op_type,
                     resolved->fn,
-                    resolved->attrs,
+                    std::span<const std::byte>(resolved->attrs),
                     resolved->debug_name);
         }
 
@@ -170,7 +170,7 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
     }
 
     ResolvedKernel frozen = resolved.value();
-    frozen.attrs = node.attrs;
+    frozen.attrs.assign(node.attrs.begin(), node.attrs.end());
     return frozen;
 }
 

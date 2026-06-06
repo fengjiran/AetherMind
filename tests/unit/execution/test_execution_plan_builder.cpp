@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <memory>
 #include <span>
+#include <vector>
 
 namespace aethermind {
 namespace {
@@ -143,8 +144,9 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
     ASSERT_TRUE(resolved.ok());
     EXPECT_EQ(resolved->op_type, OpType::kRmsNorm);
     ASSERT_NE(resolved->fn, nullptr);
-    EXPECT_EQ(resolved->attrs.data(), attrs_bytes.data());
+    EXPECT_NE(resolved->attrs.data(), attrs_bytes.data());
     EXPECT_EQ(resolved->attrs.size(), sizeof(attrs));
+    EXPECT_EQ(resolved->attrs, std::vector<std::byte>(attrs_bytes.begin(), attrs_bytes.end()));
     EXPECT_STREQ(resolved->debug_name, "cpu::rmsnorm_f32_scalar");
 }
 
@@ -154,7 +156,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
-    node.op_params = RmsNormOp::Params{.epsilon = 11.0F};
+    node.op_params = RmsNormOp::Params{.eps = 11.0F};
     nodes.push_back(node);
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

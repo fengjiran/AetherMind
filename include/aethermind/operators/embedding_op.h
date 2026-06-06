@@ -37,7 +37,7 @@ public:
         return resolved_kernel_.fn(ctx);
     }
 
-    AM_NODISCARD ResolvedKernel GetResolvedKernel() const noexcept override {
+    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
         return resolved_kernel_;
     }
 

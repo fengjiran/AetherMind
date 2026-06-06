@@ -7,7 +7,7 @@ namespace {
 
 KernelContext BuildKernelContext(const ExecutionStep& step,
                                  RuntimeBindingContext& bindings) noexcept {
-    const ResolvedKernel resolved = step.op->GetResolvedKernel();
+    const ResolvedKernel& resolved = step.op->GetResolvedKernel();
     return KernelContext{
             .stream = nullptr,
             .workspace = bindings.GetWorkspaceArena(),

@@ -57,7 +57,7 @@ public:
         return prepared_ ? Status::Ok() : Status(StatusCode::kFailedPrecondition, "not prepared");
     }
 
-    AM_NODISCARD ResolvedKernel GetResolvedKernel() const noexcept override {
+    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
         return resolved_;
     }
 

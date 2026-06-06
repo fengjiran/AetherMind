@@ -2,10 +2,17 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_RMSNORM_CPU_RMSNORM_INTERNAL_H
 
 #include "aethermind/base/status.h"
+#include "aethermind/base/tensor_view.h"
 
 namespace aethermind {
 
 namespace cpu {
+
+struct CpuRmsNormParams {
+    TensorView input_tensor{};
+    TensorView weight_tensor{};
+    MutableTensorView output_tensor{};
+};
 
 struct RmsNormFp32KernelArgs {
     const float* input{};

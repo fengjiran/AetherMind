@@ -2,24 +2,11 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_CPU_RMSNORM_KERNEL_H
 
 #include "aethermind/backend/kernel_types.h"
-#include "aethermind/base/tensor_view.h"
+#include "data_type.h"
 
 #include <cstdint>
 
 namespace aethermind {
-
-namespace cpu {
-
-struct CpuRmsNormParams {
-    TensorView input_tensor{};
-    TensorView weight_tensor{};
-    MutableTensorView output_tensor{};
-};
-
-AM_NODISCARD Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept;
-
-}// namespace cpu
-
 
 /**
  * @brief RMSNorm 算子的对外公有参数结构体

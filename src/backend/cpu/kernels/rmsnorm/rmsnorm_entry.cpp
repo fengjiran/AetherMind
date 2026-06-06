@@ -1,7 +1,6 @@
 //
 // Created by richard on 6/5/26.
 //
-#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "rmsnorm_internal.h"

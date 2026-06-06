@@ -1,8 +1,8 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/runtime/workspace.h"
+#include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
 #include "data_type.h"
 

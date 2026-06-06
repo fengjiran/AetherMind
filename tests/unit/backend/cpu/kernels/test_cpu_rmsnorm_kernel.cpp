@@ -18,14 +18,28 @@
 
 namespace aethermind {
 
-namespace cpu {
-Status CpuRmsNormKernelEntry_FP32_Scalar(const KernelContext& ctx) noexcept;
-}// namespace cpu
-
 namespace {
 
+KernelFunc ResolveAvx2RmsNormEntry() {
+    CpuBackend backend;
+    return backend.ResolveKernel(OpType::kRmsNorm,
+                                 KernelSelector{
+                                         .device_type = DeviceType::kCPU,
+                                         .activation_dtype = DataType::Float32(),
+                                         .weight_dtype = DataType::Float32(),
+                                         .weight_format = WeightFormat::kPlain,
+                                         .isa = IsaLevel::kAVX2,
+                                         .phase = ExecPhase::kBoth,
+                                 });
+}
+
 Status RunRmsNormEntry(const cpu::CpuRmsNormParams& params, float epsilon) noexcept {
-    return cpu::CpuRmsNormKernelEntry_FP32_AVX2(KernelContext{
+    const KernelFunc fn = ResolveAvx2RmsNormEntry();
+    if (fn == nullptr) {
+        return Status::NotFound("AVX2 RMSNorm kernel entry is not registered");
+    }
+
+    return fn(KernelContext{
             .packed_params = &params,
             .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
     });
@@ -33,17 +47,6 @@ Status RunRmsNormEntry(const cpu::CpuRmsNormParams& params, float epsilon) noexc
 
 Status RunRmsNormEntry(const cpu::CpuRmsNormParams& params) noexcept {
     return RunRmsNormEntry(params, 1.0e-5F);
-}
-
-Status RunScalarRmsNormEntry(const cpu::CpuRmsNormParams& params, float epsilon) noexcept {
-    return cpu::CpuRmsNormKernelEntry_FP32_Scalar(KernelContext{
-            .packed_params = &params,
-            .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
-    });
-}
-
-Status RunScalarRmsNormEntry(const cpu::CpuRmsNormParams& params) noexcept {
-    return RunScalarRmsNormEntry(params, 1.0e-5F);
 }
 
 void ExpectInvalidRmsNormEntry(const cpu::CpuRmsNormParams& params) {
@@ -444,12 +447,19 @@ TEST(CPUKernelRmsNormEntry, ScalarAcceptsStridedViews) {
     weight[2] = 0.5F;
     weight[4] = 1.5F;
 
-    const Status status = RunScalarRmsNormEntry(cpu::CpuRmsNormParams{
-            .input_tensor = TensorView{input.data(), DataType::Float32(), kInputShape, kInputStrides},
-            .weight_tensor = TensorView{weight.data(), DataType::Float32(), kWeightShape, kWeightStrides},
-            .output_tensor = MutableTensorView{output.data(), DataType::Float32(), kOutputShape, kOutputStrides},
-    },
-                                                 kEpsilon);
+    const Status status = cpu::RmsNormKernel_CPU_FP32_Scalar(cpu::RmsNormFp32KernelArgs{
+            .input = input.data(),
+            .weight = weight.data(),
+            .output = output.data(),
+            .seq_len = kSeqLen,
+            .hidden_size = kHidden,
+            .input_row_stride = kInputStrides[0],
+            .input_col_stride = kInputStrides[1],
+            .weight_stride = kWeightStrides[0],
+            .output_row_stride = kOutputStrides[0],
+            .output_col_stride = kOutputStrides[1],
+            .eps = kEpsilon,
+    });
     ASSERT_TRUE(status.ok()) << status.ToString();
 
     for (int64_t row = 0; row < kSeqLen; ++row) {

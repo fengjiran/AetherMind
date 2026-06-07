@@ -28,7 +28,7 @@ TensorTypePtr CreateFromStridedTensorMetadata(const DataType& dtype,
 
 }// namespace
 
-std::atomic<size_t> ShapeSymbol::num_symbols_ = 1;
+// std::atomic<size_t> ShapeSymbol::num_symbols_ = 1;
 
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
     if (s.IsStatic()) {

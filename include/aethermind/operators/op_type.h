@@ -8,6 +8,14 @@
 
 namespace aethermind {
 
+/// Type tag for operator dispatch and kernel resolution.
+///
+/// Each operator in the execution graph is identified by its OpType.
+/// The type is used by OperatorRegistry for factory lookup, by
+/// KernelRegistry for kernel selection, and by ExecutionPlanBuilder
+/// for constructing execution steps.
+///
+/// `kUnknown` is reserved as an invalid sentinel.
 enum class OpType : uint16_t {
     kUnknown = 0,
     kEmbedding,
@@ -24,6 +32,10 @@ enum class OpType : uint16_t {
     kArgmax,
 };
 
+/// Returns a human-readable name for the given operator type.
+///
+/// Returns "Unknown" for `kUnknown` and for any out-of-range value
+/// (the function is safe to call with arbitrary uint16_t casts).
 AM_NODISCARD const char* ToString(OpType op_type) noexcept;
 
 }// namespace aethermind

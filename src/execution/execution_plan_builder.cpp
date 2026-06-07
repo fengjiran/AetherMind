@@ -174,14 +174,14 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return ExecutionPlanBuilder::BuildExecutionPlan(runtime, nullptr, nodes);
+    return BuildExecutionPlan(runtime, nullptr, nodes);
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const ModelInstance& model_instance,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return ExecutionPlanBuilder::BuildExecutionPlan(runtime, &model_instance, nodes);
+    return BuildExecutionPlan(runtime, &model_instance, nodes);
 }
 
 }// namespace aethermind

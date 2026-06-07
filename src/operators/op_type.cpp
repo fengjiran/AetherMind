@@ -1,12 +1,10 @@
-//
-// Created by Richard on 4/16/26.
-//
-
 #include "aethermind/operators/op_type.h"
 
 namespace aethermind {
 
 const char* ToString(OpType op_type) noexcept {
+    // The default case handles kUnknown and any out-of-range values
+    // produced by static_cast<OpType>(arbitrary_uint16_t).
     switch (op_type) {
         case OpType::kUnknown:
             return "Unknown";

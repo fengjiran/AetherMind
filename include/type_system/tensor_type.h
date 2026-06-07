@@ -52,7 +52,7 @@ private:
     explicit ShapeSymbol(int64_t val) : value_(val) {}
 
     int64_t value_;
-    static std::atomic<size_t> num_symbols_;
+    inline static std::atomic<size_t> num_symbols_ = 1;
 };
 
 // Shape of a Tensor represented with ShapeSymbol's. Unranked, ranked unknown

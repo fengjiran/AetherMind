@@ -9,9 +9,11 @@ KernelContext BuildKernelContext(const ExecutionStep& step,
                                  RuntimeBindingContext& bindings) noexcept {
     const ResolvedKernel& resolved = step.op->GetResolvedKernel();
     return KernelContext{
+            .device_type = step.selector.device_type,
             .stream = nullptr,
             .workspace = bindings.GetWorkspaceArena(),
-            .packed_params = step.packed_params,
+            .packed_weights = step.packed_weights,
+            .kernel_params = nullptr,
             .attrs = resolved.attrs,
     };
 }

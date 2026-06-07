@@ -2,10 +2,8 @@
 
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/model/model_instance.h"
-#include "aethermind/operators/embedding_op.h"
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/rmsnorm_op.h"
 
 namespace aethermind {
 namespace {
@@ -21,8 +19,8 @@ KernelSelector MakeSelectorForNode(const ExecutionPlanNodeSpec& node) noexcept {
     };
 }
 
-StatusOr<const void*> ResolvePackedParamsForNode(const ModelInstance* model_instance,
-                                                 const ExecutionPlanNodeSpec& node) noexcept {
+StatusOr<const void*> ResolvePackedWeightsForNode(const ModelInstance* model_instance,
+                                                  const ExecutionPlanNodeSpec& node) noexcept {
     if (node.weight_format != WeightFormat::kPacked) {
         return nullptr;
     }
@@ -42,11 +40,10 @@ std::any MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
     if (node.op_params.has_value()) {
         return node.op_params;
     }
-    if (node.op_type == OpType::kEmbedding) {
-        return EmbeddingOp::Params{};
-    }
-    if (node.op_type == OpType::kRmsNorm) {
-        return RmsNormOp::Params{};
+
+    const auto default_params = OperatorRegistry::CreateDefaultParams(node.op_type);
+    if (default_params.ok()) {
+        return default_params.value();
     }
     return {};
 }
@@ -89,9 +86,11 @@ StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
     return OperatorPtr(std::move(op));
 }
 
-StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
-                                           const ModelInstance* model_instance,
-                                           const std::vector<ExecutionPlanNodeSpec>& nodes) {
+}// namespace
+
+StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(RuntimeContext& runtime,
+                                                                  const ModelInstance* model_instance,
+                                                                  const std::vector<ExecutionPlanNodeSpec>& nodes) {
     std::vector<WorkspaceRequirement> workspace_requirements;
     workspace_requirements.reserve(nodes.size());
     for (const ExecutionPlanNodeSpec& node: nodes) {
@@ -134,15 +133,15 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
                     resolved->debug_name);
         }
 
-        const auto packed_params = ResolvePackedParamsForNode(model_instance, node);
-        if (!packed_params.ok()) {
-            return packed_params.status();
+        const auto packed_weights = ResolvePackedWeightsForNode(model_instance, node);
+        if (!packed_weights.ok()) {
+            return packed_weights.status();
         }
 
         if (auto status = plan.AddStep(ExecutionStep{
                     .selector = MakeSelectorForNode(node),
                     .op = std::move(op),
-                    .packed_params = packed_params.value(),
+                    .packed_weights = packed_weights.value(),
                     .workspace_requirement = workspace_requirements[index],
                     .debug_name = nullptr,
             });
@@ -153,8 +152,6 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
 
     return plan;
 }
-
-}// namespace
 
 StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
         const Backend& backend,
@@ -177,14 +174,14 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, nullptr, nodes);
+    return ExecutionPlanBuilder::BuildExecutionPlan(runtime, nullptr, nodes);
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const ModelInstance& model_instance,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, &model_instance, nodes);
+    return ExecutionPlanBuilder::BuildExecutionPlan(runtime, &model_instance, nodes);
 }
 
 }// namespace aethermind

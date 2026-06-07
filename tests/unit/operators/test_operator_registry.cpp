@@ -70,16 +70,10 @@ private:
 }// namespace
 
 TEST(OperatorRegistry, RegisterAndCreateOperator) {
-    ASSERT_TRUE(OperatorRegistry::Register(
+    const Status registered = OperatorRegistry::Register(
             OpType::kAdd,
-            [](const std::any& params) -> StatusOr<std::unique_ptr<Operator>> {
-                try {
-                    return std::make_unique<RegistryTestOperator>(
-                            std::any_cast<RegistryTestOperator::Params>(params));
-                } catch (const std::bad_any_cast&) {
-                    return Status::InvalidArgument("Wrong params type for RegistryTestOperator");
-                }
-            }));
+            &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
+    ASSERT_TRUE(registered.ok()) << registered.ToString();
 
     StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(
             OpType::kAdd,
@@ -93,24 +87,68 @@ TEST(OperatorRegistry, RegisterAndCreateOperator) {
 }
 
 TEST(OperatorRegistry, RejectsDuplicateFactory) {
-    ASSERT_TRUE(OperatorRegistry::Register(
+    const Status first = OperatorRegistry::Register(
             OpType::kElementwiseMul,
-            [](const std::any& params) -> StatusOr<std::unique_ptr<Operator>> {
-                try {
-                    return std::make_unique<RegistryTestOperator>(
-                            std::any_cast<RegistryTestOperator::Params>(params));
-                } catch (const std::bad_any_cast&) {
-                    return Status::InvalidArgument("Wrong params type for RegistryTestOperator");
-                }
-            }));
+            &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
+    ASSERT_TRUE(first.ok()) << first.ToString();
 
-    const bool registered = OperatorRegistry::Register(
+    const Status duplicate = OperatorRegistry::Register(
             OpType::kElementwiseMul,
             [](const std::any&) -> StatusOr<std::unique_ptr<Operator>> {
                 return Status::Internal("duplicate factory should not be used");
             });
 
-    EXPECT_FALSE(registered);
+    EXPECT_EQ(duplicate.code(), StatusCode::kAlreadyExists);
+}
+
+TEST(OperatorRegistry, RegisterRejectsInvalidArguments) {
+    const Status unknown = OperatorRegistry::Register(
+            OpType::kUnknown,
+            [](const std::any&) -> StatusOr<std::unique_ptr<Operator>> {
+                return Status::Internal("unknown op factory should not be used");
+            });
+    EXPECT_EQ(unknown.code(), StatusCode::kInvalidArgument);
+
+    const Status missing_factory = OperatorRegistry::Register(OpType::kSoftmax, OperatorRegistry::FactoryFunc{});
+    EXPECT_EQ(missing_factory.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(OperatorRegistry, CreateDefaultParamsReturnsRegisteredDefaults) {
+    const Status registered = OperatorRegistry::Register(
+            OpType::kLinear,
+            OperatorRegistry::Descriptor{
+                    .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
+                    .make_default_params_ = []() -> StatusOr<std::any> {
+                        return std::any{RegistryTestOperator::Params{.value_ = 123}};
+                    },
+            });
+    ASSERT_TRUE(registered.ok()) << registered.ToString();
+
+    const StatusOr<std::any> params = OperatorRegistry::CreateDefaultParams(OpType::kLinear);
+
+    ASSERT_TRUE(params.ok()) << params.status().ToString();
+    const auto* typed_params = std::any_cast<RegistryTestOperator::Params>(&params.value());
+    ASSERT_NE(typed_params, nullptr);
+    EXPECT_EQ(typed_params->value_, 123);
+}
+
+TEST(OperatorRegistry, CreateDefaultParamsFailsForFactoryOnlyRegistration) {
+    const Status registered = OperatorRegistry::Register(
+            OpType::kMatMul,
+            &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
+    ASSERT_TRUE(registered.ok()) << registered.ToString();
+
+    const StatusOr<std::any> params = OperatorRegistry::CreateDefaultParams(OpType::kMatMul);
+
+    ASSERT_FALSE(params.ok());
+    EXPECT_EQ(params.status().code(), StatusCode::kNotFound);
+}
+
+TEST(OperatorRegistry, CreateDefaultParamsFailsForUnregisteredOperator) {
+    const StatusOr<std::any> params = OperatorRegistry::CreateDefaultParams(OpType::kArgmax);
+
+    ASSERT_FALSE(params.ok());
+    EXPECT_EQ(params.status().code(), StatusCode::kNotFound);
 }
 
 TEST(OperatorRegistry, CreateMissingFactoryFails) {
@@ -128,16 +166,10 @@ TEST(OperatorRegistry, CreateUnknownOperatorFails) {
 }
 
 TEST(OperatorRegistry, WrongParamsTypeFails) {
-    ASSERT_TRUE(OperatorRegistry::Register(
+    const Status registered = OperatorRegistry::Register(
             OpType::kSilu,
-            [](const std::any& params) -> StatusOr<std::unique_ptr<Operator>> {
-                try {
-                    return std::make_unique<RegistryTestOperator>(
-                            std::any_cast<RegistryTestOperator::Params>(params));
-                } catch (const std::bad_any_cast&) {
-                    return Status::InvalidArgument("Wrong params type for RegistryTestOperator");
-                }
-            }));
+            &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
+    ASSERT_TRUE(registered.ok()) << registered.ToString();
 
     StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kSilu, 7);
 

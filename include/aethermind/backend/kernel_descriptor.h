@@ -5,20 +5,22 @@
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/operators/op_type.h"
 
+#include <string>
+
 namespace aethermind {
 
 struct KernelDescriptor {
     OpType op_type = OpType::kUnknown;
     KernelSelector selector{};
     KernelFunc kernel_func = nullptr;
-    const char* name = nullptr;
+    std::string name{};
     int priority = 0;// Higher value wins; first-registered wins on tie.
 };
 
 AM_NODISCARD inline bool IsValidKernelDescriptor(const KernelDescriptor& desc) noexcept {
     return desc.op_type != OpType::kUnknown &&
            desc.kernel_func != nullptr &&
-           desc.name != nullptr &&
+           !desc.name.empty() &&
            desc.selector.device_type != kUndefined;
 }
 
@@ -31,8 +33,8 @@ AM_NODISCARD inline Status ValidateKernelDescriptor(const KernelDescriptor& desc
         return Status::InvalidArgument("Kernel descriptor function cannot be null");
     }
 
-    if (descriptor.name == nullptr) {
-        return Status::InvalidArgument("Kernel descriptor name cannot be null");
+    if (descriptor.name.empty()) {
+        return Status::InvalidArgument("Kernel descriptor name cannot be empty");
     }
 
     if (descriptor.selector.device_type == DeviceType::kUndefined) {

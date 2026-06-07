@@ -1,7 +1,9 @@
-#include "../../include/aethermind/execution/execution_plan.h"
-
+#include "aethermind/backend/backend.h"
+#include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/operators/function_operator.h"
+#include "aethermind/execution/execution_plan.h"
+#include "aethermind/execution/execution_plan_builder.h"
+#include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
 #include <span>
@@ -18,86 +20,150 @@ Status FakeKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 
-TEST(ExecutionPlan, AddStepStoresOperatorResolvedAttrs) {
-    ExecutionPlan plan;
+class StubTestBackend final : public Backend {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    const BackendCapabilities& capabilities() const noexcept override { return caps_; }
+
+    KernelFunc ResolveKernel(OpType, const KernelSelector&) const noexcept override {
+        return &FakeKernel;
+    }
+
+    StatusOr<ResolvedKernel> ResolveKernelInfo(
+            OpType op_type,
+            const KernelSelector&) const noexcept override {
+        return ResolvedKernel{
+                .op_type = op_type,
+                .fn = op_type == OpType::kMatMul ? nullptr : &FakeKernel,
+                .attrs = {},
+                .debug_name = "test::stub_kernel",
+        };
+    }
+
+    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
+        return nullptr;
+    }
+
+private:
+    BackendCapabilities caps_{};
+};
+
+class StubTestBackendFactory final : public BackendFactory {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    std::unique_ptr<Backend> Create() const override {
+        return std::make_unique<StubTestBackend>();
+    }
+};
+
+TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<StubTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+
     TestAttrs attrs{.epsilon = 7, .axis = 3};
     const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
-    int packed_params = 17;
 
-    ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .op = std::make_shared<FunctionOperator>(
-                                             OpType::kRmsNorm,
-                                             &FakeKernel,
-                                             attrs_bytes,
-                                             "test::fake_kernel"),
-                                     .packed_params = &packed_params,
-                                     .workspace_requirement = {
-                                             .bytes = 128,
-                                             .alignment = 64,
-                                             .offset = 256,
-                                     },
-                                     .debug_name = "test::fake_kernel",
-                             })
-                        .ok());
+    std::vector<ExecutionPlanNodeSpec> nodes;
+    nodes.push_back(ExecutionPlanNodeSpec{
+            .op_type = OpType::kLinear,
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .workspace_requirement = {
+                    .bytes = 128,
+                    .alignment = 64,
+            },
+            .attrs = attrs_bytes,
+    });
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
+    ASSERT_TRUE(plan.ok());
 
     attrs.epsilon = 99;
 
-    ASSERT_EQ(plan.size(), 1U);
-    const auto& step = plan.steps().front();
+    ASSERT_EQ(plan->size(), 1U);
+    const auto& step = plan->steps().front();
     const ResolvedKernel resolved = step.op->GetResolvedKernel();
     ASSERT_EQ(resolved.attrs.size(), sizeof(TestAttrs));
     const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(resolved.attrs.data());
     ASSERT_NE(stored_attrs, nullptr);
     EXPECT_NE(stored_attrs, &attrs);
-    EXPECT_EQ(step.op->Type(), OpType::kRmsNorm);
-    EXPECT_EQ(step.selector.device_type, DeviceType::kUndefined);
-    EXPECT_EQ(step.packed_params, &packed_params);
+    EXPECT_EQ(step.op->Type(), OpType::kLinear);
+    EXPECT_EQ(step.selector.device_type, DeviceType::kCPU);
+    EXPECT_EQ(step.packed_weights, nullptr);
     EXPECT_EQ(step.workspace_requirement.bytes, 128U);
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
-    EXPECT_EQ(step.workspace_requirement.offset, 256U);
+    EXPECT_EQ(step.workspace_requirement.offset, 0U);
     EXPECT_EQ(stored_attrs->epsilon, 7);
     EXPECT_EQ(stored_attrs->axis, 3);
-    EXPECT_STREQ(step.debug_name, "test::fake_kernel");
+    EXPECT_STREQ(resolved.debug_name, "test::stub_kernel");
 }
 
-TEST(ExecutionPlan, AddStepAllowsEmptyAttrSpan) {
-    ExecutionPlan plan;
+TEST(ExecutionPlan, BuildAllowsEmptyAttrs) {
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<StubTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
 
-    const Status status = plan.AddStep(ExecutionStep{
-            .op = std::make_shared<FunctionOperator>(
-                    OpType::kRmsNorm,
-                    &FakeKernel,
-                    std::span<const std::byte>{},
-                    "test::fake_kernel"),
-            .debug_name = "test::fake_kernel",
+    std::vector<ExecutionPlanNodeSpec> nodes;
+    nodes.push_back(ExecutionPlanNodeSpec{
+            .op_type = OpType::kLinear,
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .attrs = {},
     });
 
-    EXPECT_TRUE(status.ok());
-    ASSERT_EQ(plan.size(), 1U);
-    EXPECT_TRUE(plan.steps().front().op->GetResolvedKernel().attrs.empty());
-    EXPECT_EQ(plan.steps().front().packed_params, nullptr);
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
+    ASSERT_TRUE(plan.ok());
+    ASSERT_EQ(plan->size(), 1U);
+    EXPECT_TRUE(plan->steps().front().op->GetResolvedKernel().attrs.empty());
+    EXPECT_EQ(plan->steps().front().packed_weights, nullptr);
 }
 
-TEST(ExecutionPlan, AddStepRejectsInvalidWorkspaceAlignment) {
-    ExecutionPlan plan;
+TEST(ExecutionPlan, BuildRejectsInvalidWorkspaceAlignment) {
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<StubTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
 
-    const Status status = plan.AddStep(ExecutionStep{
-            .op = std::make_shared<FunctionOperator>(
-                    OpType::kRmsNorm,
-                    &FakeKernel,
-                    std::span<const std::byte>{},
-                    "test::fake_kernel"),
+    std::vector<ExecutionPlanNodeSpec> nodes;
+    nodes.push_back(ExecutionPlanNodeSpec{
+            .op_type = OpType::kLinear,
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
             .workspace_requirement = {
                     .bytes = 64,
                     .alignment = 24,
-                    .offset = 0,
             },
-            .debug_name = "test::fake_kernel",
     });
 
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
+    EXPECT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
-}// namespace
-}// namespace aethermind
+TEST(ExecutionPlan, BuildRejectsNullResolvedKernelFunction) {
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<StubTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+
+    std::vector<ExecutionPlanNodeSpec> nodes;
+    nodes.push_back(ExecutionPlanNodeSpec{
+            .op_type = OpType::kMatMul,
+            .device_type = DeviceType::kCPU,
+            .activation_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+    });
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
+    EXPECT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+}
+
+}  // namespace
+}  // namespace aethermind

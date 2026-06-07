@@ -14,20 +14,22 @@ namespace aethermind {
 struct ExecutionStep {
     KernelSelector selector{};
     OperatorPtr op{};
-    const void* packed_params = nullptr;
+    const void* packed_weights = nullptr;
     WorkspaceRequirement workspace_requirement{};
     const char* debug_name = nullptr;
 };
 
 class ExecutionPlan {
 public:
-    Status AddStep(const ExecutionStep& step);
-
     AM_NODISCARD const std::vector<ExecutionStep>& steps() const noexcept;
     AM_NODISCARD size_t size() const noexcept;
 
 private:
+    Status AddStep(const ExecutionStep& step);
+
     std::vector<ExecutionStep> steps_{};
+
+    friend class ExecutionPlanBuilder;
 };
 
 }// namespace aethermind

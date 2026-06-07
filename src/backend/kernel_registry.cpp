@@ -1,5 +1,6 @@
 #include "aethermind/backend/kernel_registry.h"
 
+#include <new>
 #include <string>
 
 namespace aethermind {
@@ -47,21 +48,31 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
     return Status::Ok();
 }
 
-void KernelRegistry::Freeze() {
+Status KernelRegistry::Freeze() {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (frozen_.load(std::memory_order_relaxed)) {
-        return;
+        return Status::Ok();
     }
-    BuildBucketIndex();
+
+    AM_RETURN_IF_ERROR(BuildBucketIndex());
     frozen_.store(true, std::memory_order_release);
+    return Status::Ok();
 }
 
-void KernelRegistry::BuildBucketIndex() {
-    buckets_.clear();
-    for (size_t i = 0; i < kernels_.size(); ++i) {
-        buckets_[kernels_[i].op_type].push_back(i);
+Status KernelRegistry::BuildBucketIndex() {
+    std::unordered_map<OpType, std::vector<size_t>> buckets;
+    try {
+        for (size_t i = 0; i < kernels_.size(); ++i) {
+            buckets[kernels_[i].op_type].push_back(i);
+        }
+    } catch (const std::bad_alloc&) {
+        return Status(StatusCode::kResourceExhausted,
+                      "Failed to build kernel registry bucket index");
     }
+
+    buckets_.swap(buckets);
+    return Status::Ok();
 }
 
 StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
@@ -118,13 +129,12 @@ StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindByOpType(OpTy
 
 std::string KernelRegistry::DebugDump() const {
     std::lock_guard<std::mutex> lock(mutex_);
-
     std::string out;
     for (size_t i = 0; i < kernels_.size(); ++i) {
         const auto& d = kernels_[i];
         if (i > 0) out += '\n';
         out += std::string(ToString(d.op_type)) + " | " +
-               (d.name ? d.name : "<null>") + " | " +
+               d.name + " | " +
                ToString(d.selector) + " | priority=" +
                std::to_string(d.priority);
     }

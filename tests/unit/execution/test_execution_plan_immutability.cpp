@@ -17,6 +17,15 @@
 namespace aethermind {
 namespace {
 
+template<typename T>
+concept HasPublicAddStep = requires(T& t, const ExecutionStep& s) {
+    t.AddStep(s);
+};
+
+static_assert(!HasPublicAddStep<ExecutionPlan>,
+              "External code must not be able to call AddStep. "
+              "ExecutionPlan is immutable after builder construction.");
+
 void FreeTestBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
 }
@@ -177,7 +186,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
     EXPECT_EQ(step1.workspace_requirement.bytes, 128U);
 }
 
-TEST(ExecutionPlanImmutability, PackedParamsLifetimeManagedByModelInstance) {
+TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<ImmutableTestBackendFactory>());
@@ -216,15 +225,15 @@ TEST(ExecutionPlanImmutability, PackedParamsLifetimeManagedByModelInstance) {
     ASSERT_EQ(plan->size(), 1U);
 
     const ExecutionStep& step = plan->steps().front();
-    ASSERT_NE(step.packed_params, nullptr);
+    ASSERT_NE(step.packed_weights, nullptr);
 
-    const void* packed_ptr = step.packed_params;
+    const void* packed_ptr = step.packed_weights;
     EXPECT_FALSE(packed_destroyed);
 
     {
         ExecutionPlan local_plan = plan.value();
         const ExecutionStep& local_step = local_plan.steps().front();
-        EXPECT_EQ(local_step.packed_params, packed_ptr);
+        EXPECT_EQ(local_step.packed_weights, packed_ptr);
     }
 
     EXPECT_FALSE(packed_destroyed);
@@ -299,7 +308,7 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
 
     const ExecutionStep& step = plan->steps().front();
 
-    EXPECT_EQ(step.packed_params, nullptr);
+    EXPECT_EQ(step.packed_weights, nullptr);
 
     EXPECT_GT(step.workspace_requirement.alignment, 0U);
     EXPECT_TRUE((step.workspace_requirement.alignment &

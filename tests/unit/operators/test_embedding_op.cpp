@@ -10,8 +10,8 @@ namespace {
 TEST(EmbeddingOp, ValidatesInputContract) {
     const EmbeddingOp op{EmbeddingOp::Params{}};
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype_ = DataType::Int(64), .shape_ = {2}},
-            TensorSpec{.dtype_ = DataType::Float32(), .shape_ = {3, 2}},
+            TensorSpec{.dtype = DataType::Int(64), .shape = {2}},
+            TensorSpec{.dtype = DataType::Float32(), .shape = {3, 2}},
     };
 
     EXPECT_TRUE(op.ValidateParams().ok());
@@ -21,25 +21,25 @@ TEST(EmbeddingOp, ValidatesInputContract) {
 TEST(EmbeddingOp, InfersOutputShapeFromTokenIdsAndWeight) {
     const EmbeddingOp op{EmbeddingOp::Params{}};
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype_ = DataType::Int(64), .shape_ = {5}},
-            TensorSpec{.dtype_ = DataType::Float32(), .shape_ = {32000, 4096}},
+            TensorSpec{.dtype = DataType::Int(64), .shape = {5}},
+            TensorSpec{.dtype = DataType::Float32(), .shape = {32000, 4096}},
     };
 
     const StatusOr<std::vector<TensorSpec>> shapes = op.InferOutputShapes(inputs);
 
     ASSERT_TRUE(shapes.ok()) << shapes.status().ToString();
     ASSERT_EQ(shapes->size(), 1U);
-    EXPECT_EQ((*shapes)[0].dtype_, DataType::Float32());
-    ASSERT_EQ((*shapes)[0].shape_.size(), 2U);
-    EXPECT_EQ((*shapes)[0].shape_[0], 5);
-    EXPECT_EQ((*shapes)[0].shape_[1], 4096);
+    EXPECT_EQ((*shapes)[0].dtype, DataType::Float32());
+    ASSERT_EQ((*shapes)[0].shape.size(), 2U);
+    EXPECT_EQ((*shapes)[0].shape[0], 5);
+    EXPECT_EQ((*shapes)[0].shape[1], 4096);
 }
 
 TEST(EmbeddingOp, AcceptsUint32TokenIds) {
     const EmbeddingOp op{EmbeddingOp::Params{}};
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype_ = DataType::UInt(32), .shape_ = {2}},
-            TensorSpec{.dtype_ = DataType::Float32(), .shape_ = {3, 2}},
+            TensorSpec{.dtype = DataType::UInt(32), .shape = {2}},
+            TensorSpec{.dtype = DataType::Float32(), .shape = {3, 2}},
     };
 
     EXPECT_TRUE(op.ValidateParams().ok());
@@ -49,18 +49,18 @@ TEST(EmbeddingOp, AcceptsUint32TokenIds) {
 TEST(EmbeddingOp, InfersOutputShapeWithUint32Tokens) {
     const EmbeddingOp op{EmbeddingOp::Params{}};
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype_ = DataType::UInt(32), .shape_ = {5}},
-            TensorSpec{.dtype_ = DataType::Float32(), .shape_ = {32000, 4096}},
+            TensorSpec{.dtype = DataType::UInt(32), .shape = {5}},
+            TensorSpec{.dtype = DataType::Float32(), .shape = {32000, 4096}},
     };
 
     const StatusOr<std::vector<TensorSpec>> shapes = op.InferOutputShapes(inputs);
 
     ASSERT_TRUE(shapes.ok()) << shapes.status().ToString();
     ASSERT_EQ(shapes->size(), 1U);
-    EXPECT_EQ((*shapes)[0].dtype_, DataType::Float32());
-    ASSERT_EQ((*shapes)[0].shape_.size(), 2U);
-    EXPECT_EQ((*shapes)[0].shape_[0], 5);
-    EXPECT_EQ((*shapes)[0].shape_[1], 4096);
+    EXPECT_EQ((*shapes)[0].dtype, DataType::Float32());
+    ASSERT_EQ((*shapes)[0].shape.size(), 2U);
+    EXPECT_EQ((*shapes)[0].shape[0], 5);
+    EXPECT_EQ((*shapes)[0].shape[1], 4096);
 }
 
 TEST(EmbeddingOp, RegistryCreatesDefaultEmbeddingOperator) {

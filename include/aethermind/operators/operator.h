@@ -3,14 +3,12 @@
 
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/status.h"
-#include "aethermind/base/tensor_view.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator_context.h"
 #include "aethermind/runtime/workspace.h"
 #include "data_type.h"
 #include "macros.h"
 
-#include <cstdint>
 #include <memory>
 #include <span>
 #include <vector>
@@ -21,8 +19,8 @@ struct KernelContext;
 class RuntimeBindingContext;
 
 struct TensorSpec {
-    DataType dtype_{};
-    std::vector<int64_t> shape_{};
+    DataType dtype{};
+    std::vector<int64_t> shape{};
 };
 
 /// Abstract base class for all semantic-layer operators.
@@ -114,11 +112,11 @@ public:
     /// successful Prepare().
     ///
     /// Implementations should:
-    /// - Construct a KernelContext using cached kernel metadata
+    /// - Construct per-call kernel params from runtime bindings when needed
     /// - Invoke the cached KernelFunc with inputs, outputs, and workspace
     ///
     /// \param ctx          Mutable kernel context. Operators may set
-    ///                     ctx.packed_params before invoking the kernel.
+    ///                     ctx.kernel_params before invoking the kernel.
     /// \param bindings     Per-step runtime tensor bindings.
     /// \param step_index   Index of the current execution step in the plan,
     ///                     used to retrieve per-step tensor bindings.

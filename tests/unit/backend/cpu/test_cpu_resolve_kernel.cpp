@@ -100,7 +100,7 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
 
     const Status status = fn(KernelContext{
             .workspace_binding = {},
-            .packed_params = &params,
+            .kernel_params = &params,
             .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
     });
     EXPECT_TRUE(status.ok()) << status.ToString();

@@ -27,24 +27,24 @@ Status RmsNormOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
     const auto& input_spec = inputs[0];
     const auto& weight_spec = inputs[1];
 
-    if (input_spec.dtype_ != DataType::Float32() || weight_spec.dtype_ != DataType::Float32()) {
+    if (input_spec.dtype != DataType::Float32() || weight_spec.dtype != DataType::Float32()) {
         return Status::InvalidArgument("RmsNorm only supports float32 inputs in Phase 1");
     }
 
-    if (input_spec.shape_.size() != 2) {
+    if (input_spec.shape.size() != 2) {
         return Status::InvalidArgument("RmsNorm input must be rank-2 [seq_len, hidden]");
     }
 
-    if (weight_spec.shape_.size() != 1) {
+    if (weight_spec.shape.size() != 1) {
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
     }
 
-    const int64_t hidden_size = input_spec.shape_[1];
+    const int64_t hidden_size = input_spec.shape[1];
     if (hidden_size <= 0) {
         return Status::InvalidArgument("RmsNorm hidden size must be positive");
     }
 
-    if (weight_spec.shape_[0] != hidden_size) {
+    if (weight_spec.shape[0] != hidden_size) {
         return Status::InvalidArgument(
                 "RmsNorm weight length must equal input last dimension");
     }
@@ -108,7 +108,7 @@ Status RmsNormOp::Run(KernelContext& ctx,
             .weight_tensor = b->inputs[1],
             .output_tensor = b->outputs[0],
     };
-    ctx.packed_params = &params;
+    ctx.kernel_params = &params;
     return resolved_kernel_.fn(ctx);
 }
 

@@ -46,13 +46,15 @@ public:
     AM_NODISCARD StatusOr<const KernelDescriptor*> Resolve(OpType op_type,
                                                            const KernelSelector& selector) const;
 
-    void Freeze();
+    AM_NODISCARD Status Freeze();
 
-    AM_NODISCARD size_t size() const noexcept {
+    AM_NODISCARD size_t size() const {
+        std::lock_guard<std::mutex> lock(mutex_);
         return kernels_.size();
     }
 
-    AM_NODISCARD bool empty() const noexcept {
+    AM_NODISCARD bool empty() const {
+        std::lock_guard<std::mutex> lock(mutex_);
         return kernels_.empty();
     }
 
@@ -65,7 +67,7 @@ public:
     AM_NODISCARD std::string DebugDump() const;
 
 private:
-    void BuildBucketIndex();
+    AM_NODISCARD Status BuildBucketIndex();
 
     mutable std::mutex mutex_{};
     std::atomic<bool> frozen_{false};

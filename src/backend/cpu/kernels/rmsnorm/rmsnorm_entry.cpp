@@ -11,8 +11,8 @@
 namespace aethermind::cpu {
 
 namespace {
-const CpuRmsNormParams* GetParams(const void* packed_params) noexcept {
-    return static_cast<const CpuRmsNormParams*>(packed_params);
+const CpuRmsNormParams* GetParams(const void* kernel_params) noexcept {
+    return static_cast<const CpuRmsNormParams*>(kernel_params);
 }
 
 bool HasUnitColumnStrides(const RmsNormFp32KernelArgs& args) noexcept {
@@ -30,9 +30,9 @@ Status ValidateRmsNormEntry(const KernelContext& ctx, RmsNormFp32KernelArgs& arg
         return Status::InvalidArgument("CpuRmsNormKernelEntry requires finite positive epsilon");
     }
 
-    const CpuRmsNormParams* params = GetParams(ctx.packed_params);
+    const CpuRmsNormParams* params = GetParams(ctx.kernel_params);
     if (params == nullptr) {
-        return Status::InvalidArgument("CpuRmsNormKernelEntry requires CpuRmsNormParams in KernelContext.packed_params");
+        return Status::InvalidArgument("CpuRmsNormKernelEntry requires CpuRmsNormParams in KernelContext.kernel_params");
     }
 
     const TensorView& input = params->input_tensor;

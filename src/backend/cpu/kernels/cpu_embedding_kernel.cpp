@@ -9,8 +9,8 @@
 namespace aethermind {
 namespace {
 
-const CpuEmbeddingParams* GetParams(const void* packed_params) noexcept {
-    return static_cast<const CpuEmbeddingParams*>(packed_params);
+const CpuEmbeddingParams* GetParams(const void* kernel_params) noexcept {
+    return static_cast<const CpuEmbeddingParams*>(kernel_params);
 }
 
 bool IsSupportedTokenIdDType(const DataType& dtype) noexcept {
@@ -30,9 +30,9 @@ int64_t ReadTokenId(const TensorView& token_ids, size_t index) noexcept {
 }// namespace
 
 Status CpuEmbeddingKernel(const KernelContext& ctx) noexcept {
-    const CpuEmbeddingParams* params = GetParams(ctx.packed_params);
+    const CpuEmbeddingParams* params = GetParams(ctx.kernel_params);
     if (params == nullptr) {
-        return Status::InvalidArgument("CpuEmbeddingKernel requires CpuEmbeddingParams in KernelContext.packed_params");
+        return Status::InvalidArgument("CpuEmbeddingKernel requires CpuEmbeddingParams in KernelContext.kernel_params");
     }
 
     const TensorView& token_ids = params->token_ids_;

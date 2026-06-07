@@ -17,9 +17,8 @@ struct ResolvedKernel {
     // KernelContext instances borrow a span from this storage for each call.
     std::vector<std::byte> attrs{};
 
-    // debug_name should refer to backend-owned stable storage (for example a
-    // registered kernel descriptor string literal) and must stay valid for the
-    // lifetime of the frozen execution plan.
+    // debug_name borrows backend-owned stable storage and must stay valid for
+    // the lifetime of the frozen execution plan.
     const char* debug_name = nullptr;
 };
 

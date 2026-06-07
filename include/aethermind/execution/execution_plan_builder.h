@@ -41,6 +41,12 @@ public:
             RuntimeContext& runtime,
             const ModelInstance& model_instance,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
+
+private:
+    static StatusOr<ExecutionPlan> BuildExecutionPlan(
+            RuntimeContext& runtime,
+            const ModelInstance* model_instance,
+            const std::vector<ExecutionPlanNodeSpec>& nodes);
 };
 
 }// namespace aethermind

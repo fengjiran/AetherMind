@@ -8,6 +8,7 @@
 #include <any>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 namespace aethermind {
@@ -20,10 +21,29 @@ namespace aethermind {
 class OperatorRegistry {
 public:
     using FactoryFunc = std::function<StatusOr<std::unique_ptr<Operator>>(const std::any& params)>;
+    using ParamFactoryFunc = std::function<StatusOr<std::any>()>;
 
-    /// Register a factory for an OpType. Called at static init.
-    /// Returns false if a factory already exists for this OpType.
-    static bool Register(OpType op_type, FactoryFunc factory);
+    struct Descriptor {
+        FactoryFunc factory_{};
+        ParamFactoryFunc make_default_params_{};
+    };
+
+    /// Register a factory for an OpType.
+    AM_NODISCARD static Status Register(OpType op_type, FactoryFunc factory);
+    AM_NODISCARD static Status Register(OpType op_type, Descriptor descriptor);
+
+    static bool RegisterOrAbort(OpType op_type, FactoryFunc factory, const char* op_name);
+    static bool RegisterOrAbort(OpType op_type, Descriptor descriptor, const char* op_name);
+
+    template<typename OpClass>
+    static StatusOr<std::unique_ptr<Operator>> CreateTypedOperator(const std::any& params) {
+        using Params = typename OpClass::Params;
+        const auto* typed_params = std::any_cast<Params>(&params);
+        if (typed_params == nullptr) {
+            return Status::InvalidArgument("Wrong params type for operator");
+        }
+        return std::make_unique<OpClass>(*typed_params);
+    }
 
     /// Create an Operator instance for the given OpType with the given params.
     /// The params must contain the correct Params struct for this OpType.
@@ -31,24 +51,26 @@ public:
             OpType op_type,
             const std::any& params);
 
+    AM_NODISCARD static StatusOr<std::any> CreateDefaultParams(OpType op_type);
+
 private:
-    static std::unordered_map<OpType, FactoryFunc>& Registry();
+    static std::unordered_map<OpType, Descriptor>& Registry();
+    static std::mutex& Mutex();
 };
 
 /// Helper macro for registering an operator.
 /// Usage: AM_REGISTER_OPERATOR(OpType::kRmsNorm, RmsNormOp)
-#define AM_REGISTER_OPERATOR(op_type, OpClass)                                         \
-    namespace {                                                                        \
-    static const bool _am_reg_##OpClass = OperatorRegistry::Register(                  \
-            op_type,                                                                   \
-            [](const std::any& params) -> StatusOr<std::unique_ptr<Operator>> {        \
-                try {                                                                  \
-                    auto p = std::any_cast<typename OpClass::Params>(params);          \
-                    return std::make_unique<OpClass>(p);                               \
-                } catch (const std::bad_any_cast&) {                                   \
-                    return Status::InvalidArgument("Wrong params type for " #OpClass); \
-                }                                                                      \
-            });                                                                        \
+#define AM_REGISTER_OPERATOR(op_type, OpClass)                               \
+    namespace {                                                              \
+    static const bool _am_reg_##OpClass = OperatorRegistry::RegisterOrAbort( \
+            op_type,                                                         \
+            OperatorRegistry::Descriptor{                                    \
+                    .factory_ = &OperatorRegistry::CreateTypedOperator<OpClass>, \
+                    .make_default_params_ = []() -> StatusOr<std::any> {     \
+                        return std::any{typename OpClass::Params{}};         \
+                    },                                                       \
+            },                                                               \
+            #OpClass);                                                       \
     }
 
 }// namespace aethermind

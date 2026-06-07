@@ -44,7 +44,7 @@ TEST(KernelRegistryResolve, BothPhaseMatchesDecodeRequest) {
                                           .priority = 1,
                                   })
                         .ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> descriptor =
             registry.Resolve(OpType::kRmsNorm, MakeSelector(ExecPhase::kDecode));
@@ -71,7 +71,7 @@ TEST(KernelRegistryResolve, IsaCompatibilityPrefersHigherPriorityMatch) {
                                           .priority = 10,
                                   })
                         .ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> descriptor =
             registry.Resolve(OpType::kRmsNorm, MakeSelector(ExecPhase::kPrefill, IsaLevel::kAVX512));
@@ -90,7 +90,7 @@ TEST(KernelRegistryResolve, IncompatibleIsaReturnsNotFound) {
                                           .priority = 10,
                                   })
                         .ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> descriptor =
             registry.Resolve(OpType::kRmsNorm, MakeSelector(ExecPhase::kPrefill, IsaLevel::kAVX2));
@@ -108,7 +108,7 @@ TEST(KernelRegistryResolve, ExactPhaseBeatsMissingPhaseMatch) {
                                           .priority = 5,
                                   })
                         .ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> descriptor =
             registry.Resolve(OpType::kRmsNorm, MakeSelector(ExecPhase::kPrefill));

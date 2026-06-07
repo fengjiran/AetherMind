@@ -171,7 +171,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     ASSERT_NE(stored_epsilon, nullptr);
     EXPECT_EQ(step.op->Type(), OpType::kRmsNorm);
     EXPECT_EQ(step.selector.device_type, DeviceType::kCPU);
-    EXPECT_EQ(step.packed_params, nullptr);
+    EXPECT_EQ(step.packed_weights, nullptr);
     EXPECT_EQ(step.workspace_requirement.bytes, 0U);
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
     EXPECT_EQ(step.workspace_requirement.offset, 0U);
@@ -229,7 +229,7 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
     EXPECT_EQ(plan->steps()[1].workspace_requirement.offset, 64U);
 }
 
-TEST(ExecutionPlanBuilder, BuildBindsPackedParamsFromModelInstanceSidecar) {
+TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<PackedTestBackendFactory>());
@@ -265,8 +265,8 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedParamsFromModelInstanceSidecar) {
 
     ASSERT_TRUE(plan.ok());
     ASSERT_EQ(plan->size(), 1U);
-    ASSERT_NE(plan->steps().front().packed_params, nullptr);
-    EXPECT_EQ(plan->steps().front().packed_params,
+    ASSERT_NE(plan->steps().front().packed_weights, nullptr);
+    EXPECT_EQ(plan->steps().front().packed_weights,
               model_instance.FindPackedWeights(OpType::kRmsNorm, selector)->storage().data());
 }
 

@@ -1,9 +1,12 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 
+#include "utils/logging.h"
+
 namespace aethermind {
 
 CpuBackend::CpuBackend() {
-    KernelRegistry::Global().Freeze();
+    const Status status = KernelRegistry::Global().Freeze();
+    AM_CHECK(status.ok(), "Failed to freeze CPU kernel registry: {}", status.ToString().c_str());
 }
 
 DeviceType CpuBackend::device_type() const noexcept {
@@ -43,7 +46,7 @@ StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
             .op_type = op_type,
             .fn = (*descriptor)->kernel_func,
             .attrs = {},
-            .debug_name = (*descriptor)->name,
+            .debug_name = (*descriptor)->name.c_str(),
     };
 }
 

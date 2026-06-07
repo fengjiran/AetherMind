@@ -40,7 +40,7 @@ Status RunRmsNormEntry(const cpu::CpuRmsNormParams& params, float epsilon) noexc
     }
 
     return fn(KernelContext{
-            .packed_params = &params,
+            .kernel_params = &params,
             .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
     });
 }
@@ -82,7 +82,7 @@ TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
     EXPECT_NEAR(output[3], 1.460593, 1e-5);
 }
 
-TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesThroughExecutor) {
+TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesWithKernelParams) {
     CpuBackend backend;
     const StatusOr<ResolvedKernel> resolved = backend.ResolveKernelInfo(
             OpType::kRmsNorm,
@@ -111,25 +111,10 @@ TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesThroughExecutor) {
     const float epsilon = 1.0e-5F;
     const auto attrs_bytes = std::as_bytes(std::span{&epsilon, size_t{1}});
 
-    ExecutionPlan plan;
-    ASSERT_TRUE(plan.AddStep(ExecutionStep{
-                                     .selector = {
-                                             .device_type = DeviceType::kCPU,
-                                             .activation_dtype = DataType::Float32(),
-                                             .weight_dtype = DataType::Float32(),
-                                             .weight_format = WeightFormat::kPlain,
-                                             .isa = IsaLevel::kScalar,
-                                             .phase = ExecPhase::kBoth,
-                                     },
-                                     .op = std::make_shared<FunctionOperator>(resolved->op_type, resolved->fn, attrs_bytes, resolved->debug_name),
-                                     .packed_params = &params,
-                                     .workspace_requirement = {},
-                                     .debug_name = resolved->debug_name,
-                             })
-                        .ok());
-
-    RuntimeBindingContext bindings;
-    const Status status = Executor::Execute(plan, bindings);
+    const Status status = resolved->fn(KernelContext{
+            .kernel_params = &params,
+            .attrs = attrs_bytes,
+    });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_NEAR(output[0], 0.365148, 1e-5);

@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <thread>
 #include <vector>
 
@@ -50,7 +52,7 @@ TEST(KernelRegistry, RegisterAndLookupReturnsKernel) {
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> resolved =
             registry.Resolve(OpType::kRmsNorm, descriptor.selector);
@@ -63,7 +65,7 @@ TEST(KernelRegistry, RequestBasedResolveReturnsKernel) {
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> resolved =
             registry.Resolve(OpType::kRmsNorm, descriptor.selector);
@@ -74,7 +76,7 @@ TEST(KernelRegistry, RequestBasedResolveReturnsKernel) {
 
 TEST(KernelRegistry, LookupMissingKeyReturnsNullptr) {
     KernelRegistry registry;
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> resolved =
             registry.Resolve(OpType::kLinear, MakeMissingSelector());
@@ -83,7 +85,7 @@ TEST(KernelRegistry, LookupMissingKeyReturnsNullptr) {
 
 TEST(KernelRegistry, RequestRejectsUnknownOpType) {
     KernelRegistry registry;
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const StatusOr<const KernelDescriptor*> resolved =
             registry.Resolve(OpType::kUnknown, MakeMissingSelector());
@@ -118,7 +120,7 @@ TEST(KernelRegistry, RegisterAfterFreezeFails) {
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
     EXPECT_TRUE(registry.frozen());
 
     KernelDescriptor extra = descriptor;
@@ -137,6 +139,16 @@ TEST(KernelRegistry, DuplicateRegistrationFails) {
     EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kAlreadyExists);
 }
 
+TEST(KernelRegistry, RegisterRejectsEmptyKernelName) {
+    KernelRegistry registry;
+    KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    descriptor.name.clear();
+
+    const Status status = registry.Register(descriptor);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 TEST(KernelRegistry, FindByOpTypeReturnsMatchingDescriptors) {
     KernelRegistry registry;
     const KernelDescriptor rms = MakeTestKernelDescriptor();
@@ -147,7 +159,7 @@ TEST(KernelRegistry, FindByOpTypeReturnsMatchingDescriptors) {
 
     ASSERT_TRUE(registry.Register(rms).ok());
     ASSERT_TRUE(registry.Register(linear).ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const auto rms_kernels = registry.FindByOpType(OpType::kRmsNorm);
     ASSERT_TRUE(rms_kernels.ok());
@@ -167,7 +179,7 @@ TEST(KernelRegistry, FindByOpTypeReturnsMatchingDescriptors) {
 TEST(KernelRegistry, DebugDumpContainsRegisteredEntries) {
     KernelRegistry registry;
     ASSERT_TRUE(registry.Register(MakeTestKernelDescriptor()).ok());
-    registry.Freeze();
+    ASSERT_TRUE(registry.Freeze().ok());
 
     const std::string dump = registry.DebugDump();
     EXPECT_FALSE(dump.empty());
@@ -175,15 +187,34 @@ TEST(KernelRegistry, DebugDumpContainsRegisteredEntries) {
     EXPECT_NE(dump.find("test::op"), std::string::npos);
 }
 
+TEST(KernelRegistry, RegisterCopiesKernelNameStorage) {
+    KernelRegistry registry;
+    KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    std::array<char, 15> mutable_name{};
+    const char original_name[] = "test::mutable";
+    std::copy_n(original_name, sizeof(original_name), mutable_name.data());
+    descriptor.name = mutable_name.data();
+
+    ASSERT_TRUE(registry.Register(descriptor).ok());
+    mutable_name.fill('x');
+    ASSERT_TRUE(registry.Freeze().ok());
+
+    const StatusOr<const KernelDescriptor*> resolved =
+            registry.Resolve(OpType::kRmsNorm, descriptor.selector);
+    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+    EXPECT_EQ((*resolved)->name, original_name);
+}
+
 TEST(KernelRegistry, ConcurrentFreezeIsIdempotent) {
     KernelRegistry registry;
     ASSERT_TRUE(registry.Register(MakeTestKernelDescriptor()).ok());
 
     std::vector<std::thread> threads;
+    std::vector<Status> statuses(8);
     threads.reserve(8);
     for (int i = 0; i < 8; ++i) {
-        threads.emplace_back([&registry] {
-            registry.Freeze();
+        threads.emplace_back([&registry, &statuses, i] {
+            statuses[i] = registry.Freeze();
         });
     }
 
@@ -191,6 +222,9 @@ TEST(KernelRegistry, ConcurrentFreezeIsIdempotent) {
         thread.join();
     }
 
+    for (const Status& status: statuses) {
+        EXPECT_TRUE(status.ok()) << status.ToString();
+    }
     EXPECT_TRUE(registry.frozen());
     const StatusOr<const KernelDescriptor*> resolved =
             registry.Resolve(OpType::kRmsNorm, MakeTestKernelDescriptor().selector);

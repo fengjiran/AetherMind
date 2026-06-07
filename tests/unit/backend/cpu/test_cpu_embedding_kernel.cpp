@@ -79,7 +79,7 @@ TEST(CpuEmbeddingKernel, ComputesExpectedRows) {
 
     const Status status = CpuEmbeddingKernel(KernelContext{
             .workspace_binding = {},
-            .packed_params = &params,
+            .kernel_params = &params,
     });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
@@ -115,7 +115,7 @@ TEST(CpuEmbeddingKernel, ComputesExpectedRowsWithUint32Tokens) {
 
     const Status status = CpuEmbeddingKernel(KernelContext{
             .workspace_binding = {},
-            .packed_params = &params,
+            .kernel_params = &params,
     });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
@@ -159,7 +159,7 @@ TEST(CpuEmbeddingKernel, RejectsOutOfRangeTokenId) {
 
     const Status status = CpuEmbeddingKernel(KernelContext{
             .workspace_binding = {},
-            .packed_params = &params,
+            .kernel_params = &params,
     });
 
     ASSERT_FALSE(status.ok());
@@ -210,17 +210,17 @@ TEST(CpuEmbeddingKernel, ExecutionPlanBuilderRunsThroughEmbeddingOperator) {
     const int64_t weight_strides[2] = {3, 1};
     const int64_t output_shape[2] = {3, 3};
     const int64_t output_strides[2] = {3, 1};
-    const CpuEmbeddingParams params = MakeCpuEmbeddingParams(
-            token_ids, weight, output, token_shape, token_strides, weight_shape, weight_strides,
-            output_shape, output_strides);
-
-    ExecutionStep step = plan->steps().front();
-    step.packed_params = &params;
-    ExecutionPlan executable_plan;
-    ASSERT_TRUE(executable_plan.AddStep(step).ok());
-
     RuntimeBindingContext bindings;
-    const Status status = Executor::Execute(executable_plan, bindings);
+    bindings.SetStepTensorBinding(0, StepTensorBinding{
+                                             .inputs = {
+                                                     TensorView{token_ids, DataType::Int(64), token_shape, token_strides},
+                                                     TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+                                             },
+                                             .outputs = {
+                                                     MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
+                                             },
+                                     });
+    const Status status = Executor::Execute(*plan, bindings);
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_FLOAT_EQ(output[0], 4.0F);

@@ -14,56 +14,6 @@ namespace aethermind {
 
 class Tensor;
 
-// Shape of a Tensor represented with ShapeSymbol's. Unranked, ranked unknown
-// dims, partially known and fully known shapes are all supported.
-class SymbolicShape {
-public:
-    SymbolicShape() = default;
-
-    // Known rank but unknown dimensions
-    explicit SymbolicShape(std::optional<size_t> rank);
-
-    // Mix of known and unknown ranks
-    explicit SymbolicShape(const std::vector<std::optional<int64_t>>& shape);
-
-    explicit SymbolicShape(std::vector<ShapeSymbol> shape) : symbolic_shape_(std::move(shape)) {}
-
-    explicit SymbolicShape(IntArrayView shape);
-
-    // Returns rank or nullopt in case of unranked shape.
-    AM_NODISCARD std::optional<size_t> rank() const;
-
-    AM_NODISCARD const std::optional<std::vector<ShapeSymbol>>& shape() const;
-
-    ShapeSymbol operator[](size_t i) const;
-
-    AM_NODISCARD ShapeSymbol at(size_t i) const;
-
-    AM_NODISCARD std::optional<std::vector<bool>> GetSymbolicDims() const;
-
-    // Checks whether the shape is fully static, i.e. rank and shape
-    // of every dimension are known.
-    AM_NODISCARD bool IsComplete() const;
-
-    void Dump() const;
-
-    // Generate a new SymbolicShape through merging itself with another SymbolicShape.
-    // Only dimensions that are both static and identical will be retained.
-    // If either shape has an unknown rank, or if their ranks differ,
-    // the resulting shape will be unranked.
-    AM_NODISCARD SymbolicShape Merge(const SymbolicShape& other) const;
-
-    friend bool operator==(const SymbolicShape& lhs, const SymbolicShape& rhs) {
-        return lhs.symbolic_shape_ == rhs.symbolic_shape_;
-    }
-
-    friend bool operator!=(const SymbolicShape& lhs, const SymbolicShape& rhs) {
-        return !(lhs == rhs);
-    }
-
-private:
-    std::optional<std::vector<ShapeSymbol>> symbolic_shape_{std::nullopt};
-};
 
 class Stride {
 public:
@@ -157,7 +107,6 @@ private:
     std::optional<ListOfOptionalElements> shape_;
 };
 
-std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
 std::ostream& operator<<(std::ostream& os, const Stride& s);
 template<typename T>
 std::ostream& operator<<(std::ostream& os, const VaryingShape<T>& t);

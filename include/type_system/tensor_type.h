@@ -208,7 +208,7 @@ public:
     // in the type-hierarchy. Excluding require_grad and undefined allows
     // this to match the old behavior.
     bool IsComplete() const {
-        return dtype() && device() && shape_.IsComplete() && strides_.IsComplete();
+        return dtype() && device() && shape_.IsStatic() && strides_.IsComplete();
     }
 
     bool MatchTensor(const Tensor& t) const;

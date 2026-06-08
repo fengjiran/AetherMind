@@ -92,7 +92,7 @@ inline ShapeSymbol MergePrimitiveValue(const ShapeSymbol& a, const ShapeSymbol& 
 // dims, partially known and fully known shapes are all supported.
 class SymbolicShape {
 public:
-    SymbolicShape() = default;
+    SymbolicShape() noexcept = default;
 
     // Known rank but unknown dimensions
     explicit SymbolicShape(std::optional<size_t> rank);
@@ -100,20 +100,33 @@ public:
     // Mix of known and unknown ranks
     explicit SymbolicShape(const std::vector<std::optional<int64_t>>& shape);
 
-    explicit SymbolicShape(std::vector<ShapeSymbol> shape) : symbolic_shape_(std::move(shape)) {}
+    explicit SymbolicShape(std::vector<ShapeSymbol> shape) noexcept : symbolic_shape_(std::move(shape)) {}
 
     explicit SymbolicShape(IntArrayView shape);
 
+    AM_NODISCARD bool IsRanked() const noexcept {
+        return symbolic_shape_.has_value();
+    }
+
     // Returns rank or nullopt in case of unranked shape.
-    AM_NODISCARD std::optional<size_t> rank() const;
+    AM_NODISCARD std::optional<size_t> rank() const noexcept;
 
     AM_NODISCARD const std::optional<std::vector<ShapeSymbol>>& shape() const noexcept {
         return symbolic_shape_;
     }
 
-    ShapeSymbol operator[](size_t i) const;
+    auto begin() const {
+        AM_CHECK(IsRanked());
+        return symbolic_shape_->begin();
+    }
 
-    AM_NODISCARD ShapeSymbol at(size_t i) const;
+    auto end() const {
+        AM_CHECK(IsRanked());
+        return symbolic_shape_->end();
+    }
+
+    AM_NODISCARD const ShapeSymbol& operator[](size_t i) const;
+    AM_NODISCARD ShapeSymbol& operator[](size_t i);
 
     AM_NODISCARD std::optional<std::vector<bool>> GetSymbolicDims() const;
 
@@ -123,7 +136,7 @@ public:
 
     // Checks whether the shape is fully static, i.e. rank and shape
     // of every dimension are known.
-    AM_NODISCARD bool IsComplete() const;
+    AM_NODISCARD bool IsStatic() const noexcept;
 
     void Dump() const;
 
@@ -133,13 +146,7 @@ public:
     // the resulting shape will be unranked.
     AM_NODISCARD SymbolicShape Merge(const SymbolicShape& other) const;
 
-    friend bool operator==(const SymbolicShape& lhs, const SymbolicShape& rhs) {
-        return lhs.symbolic_shape_ == rhs.symbolic_shape_;
-    }
-
-    friend bool operator!=(const SymbolicShape& lhs, const SymbolicShape& rhs) {
-        return !(lhs == rhs);
-    }
+    auto operator<=>(const SymbolicShape&) const noexcept = default;
 
 private:
     std::optional<std::vector<ShapeSymbol>> symbolic_shape_{std::nullopt};

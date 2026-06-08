@@ -19,87 +19,71 @@ std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
     return os << "S" << -s.value();
 }
 
-
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
     const auto rank_opt = s.rank();
     if (!rank_opt.has_value()) {
-        os << "(*)";
-        return os;
+        return os << "[?]";
     }
 
-    const auto& shape = s.shape().value();
-    os << "(";
-    for (size_t i = 0; i < rank_opt.value(); ++i) {
-        if (i > 0) {
+    const auto& shape = *s.shape();
+    const auto rank = *rank_opt;
+    os << "[";
+    for (size_t i = 0; i < rank; ++i) {
+        os << shape[i];
+        if (i != rank - 1) {
             os << ", ";
         }
-
-        if (shape[i].IsStatic()) {
-            os << shape[i];
-        } else {
-            os << "*";
-        }
     }
-    os << ")";
+    os << "]";
     return os;
 }
 
 SymbolicShape::SymbolicShape(std::optional<size_t> rank) {
     if (rank.has_value()) {
-        std::vector<ShapeSymbol> symbolic_shape(rank.value());
-        for (size_t i = 0; i < rank.value(); ++i) {
-            symbolic_shape[i] = ShapeSymbol::Create();
-        }
-        symbolic_shape_ = symbolic_shape;
+        symbolic_shape_ = std::vector<ShapeSymbol>(*rank);
     }
 }
 
 SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& shape) {
-    std::vector<ShapeSymbol> symbolic_shape(shape.size());
+    std::vector<ShapeSymbol> symbolic_shape;
+    symbolic_shape.reserve(shape.size());
     for (size_t i = 0; i < shape.size(); ++i) {
         if (shape[i].has_value()) {
-            symbolic_shape[i] = ShapeSymbol::CreateFromValue(shape[i].value());
+            symbolic_shape.emplace_back(ShapeSymbol::CreateFromValue(*shape[i]));
         } else {
-            symbolic_shape[i] = ShapeSymbol::Create();
+            symbolic_shape.emplace_back(ShapeSymbol::Unknown());
         }
     }
-    symbolic_shape_ = symbolic_shape;
+    symbolic_shape_ = std::move(symbolic_shape);
 }
 
 SymbolicShape::SymbolicShape(IntArrayView shape) {
-    std::vector<ShapeSymbol> symbolic_shape(shape.size());
+    std::vector<ShapeSymbol> symbolic_shape;
+    symbolic_shape.reserve(shape.size());
     for (size_t i = 0; i < shape.size(); ++i) {
-        symbolic_shape[i] = ShapeSymbol::CreateFromValue(shape[i]);
+        symbolic_shape.emplace_back(ShapeSymbol::CreateFromValue(shape[i]));
     }
-    symbolic_shape_ = symbolic_shape;
+    symbolic_shape_ = std::move(symbolic_shape);
 }
 
-ShapeSymbol SymbolicShape::operator[](size_t i) const {
-    if (!symbolic_shape_.has_value()) {
-        AM_THROW(RuntimeError) << "Rank isn't fixed";
-    }
-    return symbolic_shape_.value()[i];
+const ShapeSymbol& SymbolicShape::operator[](size_t i) const {
+    AM_CHECK(IsRanked(), "Cannot access dimensions of an Unranked shape.");
+    AM_CHECK(i < symbolic_shape_->size(), "Dimension index out of bounds.");
+    return (*symbolic_shape_)[i];
 }
 
-
-ShapeSymbol SymbolicShape::at(size_t i) const {
-    if (!symbolic_shape_.has_value()) {
-        AM_THROW(RuntimeError) << "Rank isn't fixed";
-    }
-
-    if (i >= symbolic_shape_->size()) {
-        AM_THROW(OutOfRangeError) << "Out of range";
-    }
-    return symbolic_shape_.value()[i];
+ShapeSymbol& SymbolicShape::operator[](size_t i) {
+    AM_CHECK(IsRanked(), "Cannot access dimensions of an Unranked shape.");
+    AM_CHECK(i < symbolic_shape_->size(), "Dimension index out of bounds.");
+    return (*symbolic_shape_)[i];
 }
 
-std::optional<size_t> SymbolicShape::rank() const {
-    if (symbolic_shape_.has_value()) {
+std::optional<size_t> SymbolicShape::rank() const noexcept {
+    if (IsRanked()) {
         return symbolic_shape_->size();
     }
     return std::nullopt;
 }
-
 
 std::optional<std::vector<bool>> SymbolicShape::GetSymbolicDims() const {
     const auto rank_opt = rank();
@@ -107,36 +91,32 @@ std::optional<std::vector<bool>> SymbolicShape::GetSymbolicDims() const {
         return std::nullopt;
     }
 
-    const auto n = rank_opt.value();
     std::vector<bool> is_symbolic_dims;
-    is_symbolic_dims.reserve(n);
-    for (const auto& s: symbolic_shape_.value()) {
+    is_symbolic_dims.reserve(*rank_opt);
+    for (const auto& s: *symbolic_shape_) {
         is_symbolic_dims.push_back(!s.IsStatic());
     }
     return is_symbolic_dims;
 }
 
-bool SymbolicShape::IsComplete() const {
-    if (!symbolic_shape_.has_value()) {
+bool SymbolicShape::IsStatic() const noexcept {
+    if (!IsRanked()) {
         return false;
     }
-
-    auto shape = symbolic_shape_.value();
-    return std::ranges::all_of(shape,
-                               [](const ShapeSymbol& s) { return s.IsStatic(); });
+    return std::ranges::all_of(*symbolic_shape_, [](const ShapeSymbol& s) { return s.IsStatic(); });
 }
 
 SymbolicShape SymbolicShape::Merge(const SymbolicShape& other) const {
-    if (!symbolic_shape_.has_value() ||
-        !other.symbolic_shape_.has_value() ||
+    if (!IsRanked() || !other.IsRanked() ||
         symbolic_shape_->size() != other.symbolic_shape_->size()) {
         return {};
     }
 
     const auto n = symbolic_shape_->size();
-    std::vector<ShapeSymbol> dims(n);
+    std::vector<ShapeSymbol> dims;
+    dims.reserve(n);
     for (size_t i = 0; i < n; ++i) {
-        dims[i] = MergePrimitiveValue(symbolic_shape_.value()[i], other.symbolic_shape_.value()[i]);
+        dims.emplace_back(MergePrimitiveValue((*symbolic_shape_)[i], (*other.symbolic_shape_)[i]));
     }
     return SymbolicShape(std::move(dims));
 }

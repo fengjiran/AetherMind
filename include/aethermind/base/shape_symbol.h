@@ -5,7 +5,6 @@
 #include "utils/logging.h"
 
 #include <atomic>
-#include <iosfwd>
 
 namespace aethermind {
 
@@ -18,14 +17,22 @@ namespace aethermind {
 /// symbolic identity. Instances are value types and thread-safe.
 class ShapeSymbol {
 public:
-    ShapeSymbol() : value_(-1) {}
+    ShapeSymbol() noexcept : value_(kUnknown) {}
 
-    AM_NODISCARD int64_t value() const {
+    AM_NODISCARD int64_t value() const noexcept {
         return value_;
     }
 
-    AM_NODISCARD bool IsStatic() const {
+    AM_NODISCARD bool IsStatic() const noexcept {
         return value_ >= 0;
+    }
+
+    AM_NODISCARD bool IsUnknown() const noexcept {
+        return value_ == kUnknown;
+    }
+
+    AM_NODISCARD bool IsSymbolic() const noexcept {
+        return value_ < kUnknown;
     }
 
     AM_NODISCARD int64_t GetStaticValue() const {
@@ -33,29 +40,39 @@ public:
         return value_;
     }
 
-    bool operator==(const ShapeSymbol& other) const {
-        return value_ == other.value_;
-    }
+    auto operator<=>(const ShapeSymbol&) const noexcept = default;
 
-    bool operator<(const ShapeSymbol& other) const {
-        return value_ < other.value_;
+    /// Creates a fully unconstrained unknown dimension.
+    ///
+    /// Prefer `Create()` for dimensions that participate in symbolic
+    /// inference. Use `Unknown()` only when the dimension carries no
+    /// constraints at all, such as the output length of a NonZero operator.
+    static ShapeSymbol Unknown() noexcept {
+        return ShapeSymbol();
     }
 
     static ShapeSymbol CreateFromValue(int64_t val) {
+        AM_CHECK(val >= 0 && "CreateFromValue must take a non-negative value.");
         return ShapeSymbol(val);
     }
 
-    static ShapeSymbol Create() {
-        return CreateFromValue(-static_cast<int64_t>(++num_symbols_));
+    /// Creates a fresh symbolic dimension that participates in shape inference.
+    ///
+    /// Each call returns a distinct symbol, so two `Create()` results are
+    /// never equal. Use this for dimensions whose value must be deduced
+    /// from context during type unification.
+    static ShapeSymbol Create() noexcept {
+        return ShapeSymbol(next_symbol_.fetch_sub(1, std::memory_order_relaxed));
     }
 
 private:
-    explicit ShapeSymbol(int64_t val) : value_(val) {}
+    explicit ShapeSymbol(int64_t val) noexcept : value_(val) {}
+
+    static constexpr int64_t kUnknown = -1;
+
+    static std::atomic<int64_t> next_symbol_;
 
     int64_t value_;
-    // Atomic counter for generating unique symbolic IDs.
-    // Thread-safe without external synchronization.
-    inline static std::atomic<size_t> num_symbols_ = 1;
 };
 
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s);

@@ -5,6 +5,7 @@
 #ifndef AETHERMIND_TYPE_SYSTEM_TENSOR_TYPE_H
 #define AETHERMIND_TYPE_SYSTEM_TENSOR_TYPE_H
 
+#include "aethermind/base/shape_symbol.h"
 #include "device.h"
 #include "memory_format.h"
 #include "type_system/type.h"
@@ -12,48 +13,6 @@
 namespace aethermind {
 
 class Tensor;
-
-// shape placeholder
-class ShapeSymbol {
-public:
-    ShapeSymbol() : value_(-1) {}
-
-    AM_NODISCARD int64_t value() const {
-        return value_;
-    }
-
-    // is this symbol a fixed/static dimension
-    AM_NODISCARD bool IsStatic() const {
-        return value_ >= 0;
-    }
-
-    AM_NODISCARD int64_t GetStaticValue() const {
-        AM_CHECK(IsStatic());
-        return value_;
-    }
-
-    bool operator==(const ShapeSymbol& other) const {
-        return value_ == other.value_;
-    }
-
-    bool operator<(const ShapeSymbol& other) const {
-        return value_ < other.value_;
-    }
-
-    static ShapeSymbol CreateFromValue(int64_t val) {
-        return ShapeSymbol(val);
-    }
-
-    static ShapeSymbol Create() {
-        return CreateFromValue(-static_cast<int64_t>(++num_symbols_));
-    }
-
-private:
-    explicit ShapeSymbol(int64_t val) : value_(val) {}
-
-    int64_t value_;
-    inline static std::atomic<size_t> num_symbols_ = 1;
-};
 
 // Shape of a Tensor represented with ShapeSymbol's. Unranked, ranked unknown
 // dims, partially known and fully known shapes are all supported.
@@ -198,7 +157,6 @@ private:
     std::optional<ListOfOptionalElements> shape_;
 };
 
-std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s);
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
 std::ostream& operator<<(std::ostream& os, const Stride& s);
 template<typename T>
@@ -226,13 +184,6 @@ inline std::optional<Stride> MergePrimitiveValue(const std::optional<Stride>& a,
     }
 
     return Stride(merged_idx, merged_contiguous, merged_stride);
-}
-
-inline ShapeSymbol MergePrimitiveValue(const ShapeSymbol& a, const ShapeSymbol& b) {
-    if (a.IsStatic() && b.IsStatic() && a == b) {
-        return a;
-    }
-    return ShapeSymbol::Create();
 }
 
 namespace details {
@@ -345,10 +296,10 @@ public:
 
     static TensorTypePtr CreateContiguous(DataType dtype, Device device, IntArrayView shape);
 
-static TensorTypePtr CreateContiguous(DataType dtype, Device device, std::initializer_list<int64_t> shape) {
-    std::vector<int64_t> vec_shape(shape);
-    return CreateContiguous(dtype, device, IntArrayView{vec_shape.data(), vec_shape.size()});
-}
+    static TensorTypePtr CreateContiguous(DataType dtype, Device device, std::initializer_list<int64_t> shape) {
+        std::vector<int64_t> vec_shape(shape);
+        return CreateContiguous(dtype, device, IntArrayView{vec_shape.data(), vec_shape.size()});
+    }
 
     static TypePtr CreateFromBoolType();
 
@@ -409,4 +360,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_TYPE_SYSTEM_TENSOR_TYPE_H
+#endif// AETHERMIND_TYPE_SYSTEM_TENSOR_TYPE_H

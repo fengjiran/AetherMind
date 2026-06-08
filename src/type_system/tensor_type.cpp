@@ -28,17 +28,6 @@ TensorTypePtr CreateFromStridedTensorMetadata(const DataType& dtype,
 
 }// namespace
 
-// std::atomic<size_t> ShapeSymbol::num_symbols_ = 1;
-
-std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
-    if (s.IsStatic()) {
-        os << s.value();
-    } else {
-        os << "SS(" << s.value() << ')';
-    }
-    return os;
-}
-
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
     const auto rank_opt = s.rank();
     if (!rank_opt.has_value()) {

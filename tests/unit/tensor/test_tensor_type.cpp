@@ -47,23 +47,23 @@ TEST(ShapeSymbolTest, MergePrimitive) {
     // 测试合并相同的静态符号
     ShapeSymbol s1 = ShapeSymbol::CreateFromValue(42);
     ShapeSymbol s2 = ShapeSymbol::CreateFromValue(42);
-    ShapeSymbol merged = MergePrimitiveValue(s1, s2);
+    ShapeSymbol merged = JoinShapeSymbol(s1, s2);
     EXPECT_TRUE(merged.IsStatic());
     EXPECT_EQ(merged.GetStaticValue(), 42);
 
     // 测试合并不同的静态符号
     ShapeSymbol s3 = ShapeSymbol::CreateFromValue(10);
-    ShapeSymbol merged2 = MergePrimitiveValue(s1, s3);
+    ShapeSymbol merged2 = JoinShapeSymbol(s1, s3);
     EXPECT_FALSE(merged2.IsStatic());
 
     // 测试合并静态和动态符号
     ShapeSymbol dyn = ShapeSymbol::Create();
-    ShapeSymbol merged3 = MergePrimitiveValue(s1, dyn);
+    ShapeSymbol merged3 = JoinShapeSymbol(s1, dyn);
     EXPECT_FALSE(merged3.IsStatic());
 
     // 测试合并两个动态符号
     ShapeSymbol dyn2 = ShapeSymbol::Create();
-    ShapeSymbol merged4 = MergePrimitiveValue(dyn, dyn2);
+    ShapeSymbol merged4 = JoinShapeSymbol(dyn, dyn2);
     EXPECT_FALSE(merged4.IsStatic());
 }
 

@@ -1,6 +1,7 @@
 #ifndef AETHERMIND_SHAPE_SYMBOL_H
 #define AETHERMIND_SHAPE_SYMBOL_H
 
+#include "aethermind/base/status.h"
 #include "container/array_view.h"
 #include "macros.h"
 #include "utils/logging.h"
@@ -49,9 +50,11 @@ public:
     /// inference. Use `Unknown()` only when the dimension carries no
     /// constraints at all, such as the output length of a NonZero operator.
     static ShapeSymbol Unknown() noexcept {
-        return ShapeSymbol();
+        return {};
     }
 
+    /// Creates a ShapeSymbol from a known static dimension value.
+    /// @param val A non-negative static dimension value.
     static ShapeSymbol CreateFromValue(int64_t val) {
         AM_CHECK(val >= 0 && "CreateFromValue must take a non-negative value.");
         return ShapeSymbol(val);
@@ -78,29 +81,28 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s);
 
-/// Merges two shape symbols: identical static values stay static;
-/// any mismatch or dynamic input produces a new dynamic symbol.
-/// Used during symbolic shape unification in type inference.
-inline ShapeSymbol MergePrimitiveValue(const ShapeSymbol& a, const ShapeSymbol& b) {
-    if (a.IsStatic() && b.IsStatic() && a == b) {
-        return a;
-    }
-    return ShapeSymbol::Create();
-}
+/// @brief Joins two shape symbols, typically used for control-flow branches.
+/// @return The identical symbol if they match, or a fresh new symbol if they differ.
+ShapeSymbol JoinShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& b);
 
-// Shape of a Tensor represented with ShapeSymbol's. Unranked, ranked unknown
-// dims, partially known and fully known shapes are all supported.
+StatusOr<ShapeSymbol> UnifyShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& b);
+
+/// Shape of a tensor represented with ShapeSymbol objects. Unranked, ranked
+/// unknown dimensions, partially known, and fully known shapes are all supported.
 class SymbolicShape {
 public:
     SymbolicShape() noexcept = default;
 
-    // Known rank but unknown dimensions
+    /// Constructs a SymbolicShape with known rank but all dimensions unknown.
     explicit SymbolicShape(std::optional<size_t> rank);
 
-    // Mix of known and unknown ranks
+    /// Constructs a SymbolicShape from a mix of known and unknown dimensions.
+    /// Each element is a concrete value for a static dimension, or std::nullopt
+    /// for an unknown dimension.
     explicit SymbolicShape(const std::vector<std::optional<int64_t>>& shape);
 
-    explicit SymbolicShape(std::vector<ShapeSymbol> shape) noexcept : symbolic_shape_(std::move(shape)) {}
+    explicit SymbolicShape(std::vector<ShapeSymbol> shape) noexcept
+        : symbolic_shape_(std::move(shape)) {}
 
     explicit SymbolicShape(IntArrayView shape);
 
@@ -108,19 +110,19 @@ public:
         return symbolic_shape_.has_value();
     }
 
-    // Returns rank or nullopt in case of unranked shape.
+    /// Returns rank or nullopt in case of unranked shape.
     AM_NODISCARD std::optional<size_t> rank() const noexcept;
 
     AM_NODISCARD const std::optional<std::vector<ShapeSymbol>>& shape() const noexcept {
         return symbolic_shape_;
     }
 
-    auto begin() const {
+    AM_NODISCARD auto begin() const {
         AM_CHECK(IsRanked());
         return symbolic_shape_->begin();
     }
 
-    auto end() const {
+    AM_NODISCARD auto end() const {
         AM_CHECK(IsRanked());
         return symbolic_shape_->end();
     }
@@ -134,16 +136,15 @@ public:
         return !symbolic_shape_.has_value();
     }
 
-    // Checks whether the shape is fully static, i.e. rank and shape
-    // of every dimension are known.
+    /// Checks whether the shape is fully static, i.e. both rank and every
+    /// dimension are known.
     AM_NODISCARD bool IsStatic() const noexcept;
 
     void Dump() const;
 
-    // Generate a new SymbolicShape through merging itself with another SymbolicShape.
-    // Only dimensions that are both static and identical will be retained.
-    // If either shape has an unknown rank, or if their ranks differ,
-    // the resulting shape will be unranked.
+    /// Merges this SymbolicShape with another. Only dimensions that are both
+    /// static and identical are retained. If either shape has an unknown rank,
+    /// or if their ranks differ, the result is unranked.
     AM_NODISCARD SymbolicShape Merge(const SymbolicShape& other) const;
 
     auto operator<=>(const SymbolicShape&) const noexcept = default;
@@ -151,7 +152,6 @@ public:
 private:
     std::optional<std::vector<ShapeSymbol>> symbolic_shape_{std::nullopt};
 };
-
 
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
 

@@ -7,37 +7,6 @@ namespace aethermind {
 
 std::atomic<int64_t> ShapeSymbol::next_symbol_ = -2;
 
-std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
-    if (s.IsStatic()) {
-        return os << s.GetStaticValue();
-    }
-
-    if (s.IsUnknown()) {
-        return os << "?";
-    }
-
-    return os << "S" << -s.value();
-}
-
-std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
-    const auto rank_opt = s.rank();
-    if (!rank_opt.has_value()) {
-        return os << "[?]";
-    }
-
-    const auto& shape = *s.shape();
-    const auto rank = *rank_opt;
-    os << "[";
-    for (size_t i = 0; i < rank; ++i) {
-        os << shape[i];
-        if (i != rank - 1) {
-            os << ", ";
-        }
-    }
-    os << "]";
-    return os;
-}
-
 SymbolicShape::SymbolicShape(std::optional<size_t> rank) {
     if (rank.has_value()) {
         symbolic_shape_ = std::vector<ShapeSymbol>(*rank);
@@ -47,9 +16,9 @@ SymbolicShape::SymbolicShape(std::optional<size_t> rank) {
 SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& shape) {
     std::vector<ShapeSymbol> symbolic_shape;
     symbolic_shape.reserve(shape.size());
-    for (size_t i = 0; i < shape.size(); ++i) {
-        if (shape[i].has_value()) {
-            symbolic_shape.emplace_back(ShapeSymbol::CreateFromValue(*shape[i]));
+    for (auto i: shape) {
+        if (i.has_value()) {
+            symbolic_shape.emplace_back(ShapeSymbol::CreateFromValue(*i));
         } else {
             symbolic_shape.emplace_back(ShapeSymbol::Unknown());
         }
@@ -60,8 +29,8 @@ SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& shape) {
 SymbolicShape::SymbolicShape(IntArrayView shape) {
     std::vector<ShapeSymbol> symbolic_shape;
     symbolic_shape.reserve(shape.size());
-    for (size_t i = 0; i < shape.size(); ++i) {
-        symbolic_shape.emplace_back(ShapeSymbol::CreateFromValue(shape[i]));
+    for (long i: shape) {
+        symbolic_shape.emplace_back(ShapeSymbol::CreateFromValue(i));
     }
     symbolic_shape_ = std::move(symbolic_shape);
 }
@@ -116,12 +85,98 @@ SymbolicShape SymbolicShape::Merge(const SymbolicShape& other) const {
     std::vector<ShapeSymbol> dims;
     dims.reserve(n);
     for (size_t i = 0; i < n; ++i) {
-        dims.emplace_back(MergePrimitiveValue((*symbolic_shape_)[i], (*other.symbolic_shape_)[i]));
+        dims.emplace_back(JoinShapeSymbol((*symbolic_shape_)[i], (*other.symbolic_shape_)[i]));
     }
     return SymbolicShape(std::move(dims));
 }
 
 void SymbolicShape::Dump() const {
     std::cout << *this << std::endl;
+}
+
+ShapeSymbol JoinShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& b) {
+    if (a == b) {
+        // Handles all three identity cases uniformly:
+        // 1. Same static dimension (4096 == 4096)
+        // 2. Same dynamic constraint (S2 == S2) — preserves symbolic identity
+        // 3. Same fully-unknown placeholder (? == ?)
+        return a;
+    }
+    // Any divergence (e.g. 16 vs 32, S2 vs S3, 16 vs ?) means the dimension
+    // is shape-inconsistent across branches. Relax the constraint by
+    // assigning a fresh tracking symbol.
+    return ShapeSymbol::Create();
+}
+
+StatusOr<ShapeSymbol> UnifyShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& b) {
+    // 1. Fast path: identical values (Static==Static, Sym==Sym, Unknown==Unknown)
+    if (a == b) {
+        return a;
+    }
+
+    // 2. Hard conflict: both are static but with different values.
+    if (a.IsStatic() && b.IsStatic()) {
+        return Status(StatusCode::kInvalidArgument,
+                      "Shape Unification Failed: incompatible static dimensions.");
+    }
+
+    // 3. Static overrides: if exactly one is static, it is the concrete value
+    //    and the other is either symbolic or unknown.
+    if (a.IsStatic()) {
+        return a;
+    }
+    if (b.IsStatic()) {
+        return b;
+    }
+
+    // 4. Unknown has the lowest priority — resolve to the other symbol.
+    if (a.IsUnknown()) {
+        return b;
+    }
+    if (b.IsUnknown()) {
+        return a;
+    }
+
+    // 5. Symbolic collision: both are symbolic but distinct (e.g. S2 vs S3).
+    // TODO(Future): Introduce SymbolConstraintSolver to record a == b
+    // as an equality constraint.
+    //
+    // Without a solver, the safest behaviour is to degrade to Unknown.
+    // This signals that the engine can no longer track the equality
+    // precisely at compile time and will rely on runtime checks.
+    // (Returning a or b would preserve the local link but is misleading
+    // under strict semantics.)
+    return ShapeSymbol::Unknown();
+}
+
+std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s) {
+    if (s.IsStatic()) {
+        return os << s.GetStaticValue();
+    }
+
+    if (s.IsUnknown()) {
+        return os << "?";
+    }
+
+    return os << "S" << -s.value();
+}
+
+std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
+    const auto rank_opt = s.rank();
+    if (!rank_opt.has_value()) {
+        return os << "[?]";
+    }
+
+    const auto& shape = *s.shape();
+    const auto rank = *rank_opt;
+    os << "[";
+    for (size_t i = 0; i < rank; ++i) {
+        os << shape[i];
+        if (i != rank - 1) {
+            os << ", ";
+        }
+    }
+    os << "]";
+    return os;
 }
 }// namespace aethermind

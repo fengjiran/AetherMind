@@ -85,6 +85,8 @@ std::ostream& operator<<(std::ostream& os, const ShapeSymbol& s);
 /// @return The identical symbol if they match, or a fresh new symbol if they differ.
 ShapeSymbol JoinShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& b);
 
+/// @brief Strictly unifies two shape symbols for operator constraints.
+/// @return The unified symbol (highest knowledge), or Error if they hard-conflict.
 StatusOr<ShapeSymbol> UnifyShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& b);
 
 /// Shape of a tensor represented with ShapeSymbol objects. Unranked, ranked
@@ -142,10 +144,16 @@ public:
 
     void Dump() const;
 
+    /// @brief Relaxed shape merging for control flow paths (e.g., If/Else, Loops).
     /// Merges this SymbolicShape with another. Only dimensions that are both
     /// static and identical are retained. If either shape has an unknown rank,
     /// or if their ranks differ, the result is unranked.
-    AM_NODISCARD SymbolicShape Merge(const SymbolicShape& other) const;
+    /// Always succeeds, potentially returning unranked or shapes with fresh symbols.
+    AM_NODISCARD SymbolicShape Join(const SymbolicShape& other) const;
+
+    /// @brief Strict shape unification for operator inputs (e.g., Add, MatMul).
+    /// Fails with a Status if the shapes are mathematically incompatible.
+    AM_NODISCARD StatusOr<SymbolicShape> Unify(const SymbolicShape& other) const;
 
     auto operator<=>(const SymbolicShape&) const noexcept = default;
 

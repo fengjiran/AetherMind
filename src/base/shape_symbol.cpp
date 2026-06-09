@@ -75,17 +75,38 @@ bool SymbolicShape::IsStatic() const noexcept {
     return std::ranges::all_of(*symbolic_shape_, [](const ShapeSymbol& s) { return s.IsStatic(); });
 }
 
-SymbolicShape SymbolicShape::Merge(const SymbolicShape& other) const {
-    if (!IsRanked() || !other.IsRanked() ||
-        symbolic_shape_->size() != other.symbolic_shape_->size()) {
+SymbolicShape SymbolicShape::Join(const SymbolicShape& other) const {
+    if (!IsRanked() || !other.IsRanked() || rank() != other.rank()) {
         return {};
     }
 
-    const auto n = symbolic_shape_->size();
+    const auto n = rank();
     std::vector<ShapeSymbol> dims;
-    dims.reserve(n);
+    dims.reserve(*n);
     for (size_t i = 0; i < n; ++i) {
-        dims.emplace_back(JoinShapeSymbol((*symbolic_shape_)[i], (*other.symbolic_shape_)[i]));
+        dims.emplace_back(JoinShapeSymbol((*this)[i], other[i]));
+    }
+    return SymbolicShape(std::move(dims));
+}
+
+StatusOr<SymbolicShape> SymbolicShape::Unify(const SymbolicShape& other) const {
+    if (IsUnranked()) return other;
+    if (other.IsUnranked()) return *this;
+
+    if (rank() != other.rank()) {
+        return Status(StatusCode::kInvalidArgument, "Unification Failed: Rank mismatch.");
+    }
+
+    const auto n = rank();
+    std::vector<ShapeSymbol> dims;
+    dims.reserve(*n);
+    for (size_t i = 0; i < n; ++i) {
+        auto unified_dim_or = UnifyShapeSymbol((*this)[i], other[i]);
+        if (!unified_dim_or.ok()) {
+            return unified_dim_or.status();
+        }
+
+        dims.emplace_back(unified_dim_or.value());
     }
     return SymbolicShape(std::move(dims));
 }
@@ -125,6 +146,7 @@ StatusOr<ShapeSymbol> UnifyShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& 
     if (a.IsStatic()) {
         return a;
     }
+
     if (b.IsStatic()) {
         return b;
     }
@@ -133,6 +155,7 @@ StatusOr<ShapeSymbol> UnifyShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& 
     if (a.IsUnknown()) {
         return b;
     }
+
     if (b.IsUnknown()) {
         return a;
     }

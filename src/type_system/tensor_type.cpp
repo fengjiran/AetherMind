@@ -397,7 +397,7 @@ bool TensorType::MatchTensor(const Tensor& t) const {
 
 TensorTypePtr TensorType::Merge(const TensorType& other, bool merge_shape) const {
     auto data_type = MergePrimitiveValue(dtype(), other.dtype());
-    auto shape = merge_shape ? GetSymbolicShape().Merge(other.GetSymbolicShape()) : GetSymbolicShape();
+    auto shape = merge_shape ? GetSymbolicShape().Join(other.GetSymbolicShape()) : GetSymbolicShape();
     auto stride_props = GetStrideProperties().Merge(other.GetStrideProperties());
     auto dev = MergePrimitiveValue(device(), other.device());
     auto gr = MergePrimitiveValue(RequiresGrad(), other.RequiresGrad());

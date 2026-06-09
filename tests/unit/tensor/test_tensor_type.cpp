@@ -140,7 +140,7 @@ TEST(SymbolicShapeTest, Merge) {
     // 测试合并两个相同的具体形状
     SymbolicShape shape1(IntArrayView({2, 3, 4}));
     SymbolicShape shape2(IntArrayView({2, 3, 4}));
-    SymbolicShape merged = shape1.Merge(shape2);
+    SymbolicShape merged = shape1.Join(shape2);
     EXPECT_TRUE(merged.IsStatic());
     EXPECT_TRUE(merged.rank().has_value());
     EXPECT_EQ(merged.rank().value(), 3);
@@ -148,19 +148,19 @@ TEST(SymbolicShapeTest, Merge) {
 
     // 测试合并不同的具体形状
     SymbolicShape shape3(IntArrayView({2, 4, 4}));
-    SymbolicShape merged2 = shape1.Merge(shape3);
+    SymbolicShape merged2 = shape1.Join(shape3);
     EXPECT_FALSE(merged2.IsStatic());
     EXPECT_TRUE(merged2.rank().has_value());
     EXPECT_EQ(merged2.rank().value(), 3);
 
     // 测试合并无秩和有秩形状
     SymbolicShape unranked;
-    SymbolicShape merged3 = shape1.Merge(unranked);
+    SymbolicShape merged3 = shape1.Join(unranked);
     EXPECT_FALSE(merged3.rank().has_value());
 
     // 测试合并不同秩的形状
     SymbolicShape rank_2(2);
-    SymbolicShape merged4 = shape1.Merge(rank_2);
+    SymbolicShape merged4 = shape1.Join(rank_2);
     EXPECT_FALSE(merged4.rank().has_value());
 }
 

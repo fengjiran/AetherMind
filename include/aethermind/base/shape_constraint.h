@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_SHAPE_CONSTRAINT_H
-#define AETHERMIND_SHAPE_CONSTRAINT_H
+#ifndef AETHERMIND_BASE_SHAPE_CONSTRAINT_H
+#define AETHERMIND_BASE_SHAPE_CONSTRAINT_H
 
 #include <cstddef>
 #include <cstdint>
@@ -9,17 +9,27 @@
 
 namespace aethermind {
 
-///  Identifies whether a port is an input or an output of an operator.
+/// Identifies whether a port is an input or an output of an operator.
 ///
 /// 'Port' is the standard graph theory term for node interfaces.
-enum class PortType : std::uint8_t {
+enum class TensorPortType : std::uint8_t {
     kInput,
     kOutput
 };
 
+/// Result of evaluating a shape constraint against currently known shape facts.
+///
+/// Evaluators should return kDeferred when a constraint is neither proven nor
+/// disproven because rank or dimension values are still symbolic or runtime-only.
+enum class ShapeConstraintEvaluationResult : std::uint8_t {
+    kSatisfied,
+    kViolated,
+    kDeferred
+};
+
 /// Uniquely identifies a specific input or output port of an operator.
 struct TensorPort {
-    PortType direction{PortType::kInput};
+    TensorPortType direction{TensorPortType::kInput};
     size_t tensor_idx{0};
 
     auto operator<=>(const TensorPort&) const noexcept = default;
@@ -82,6 +92,10 @@ using ConstraintVariant = std::variant<
         RankAtLeastConstraint>;
 
 /// The unified shape constraint object emitted by AOT inference.
+///
+/// ShapeConstraint is a data-only contract. Evaluation is performed by a
+/// separate checker that returns ShapeConstraintEvaluationResult: satisfied,
+/// violated, or deferred until concrete runtime shapes are available.
 struct ShapeConstraint {
     ConstraintVariant condition;
     std::string error_context;
@@ -93,4 +107,4 @@ using ShapeConstraintList = std::vector<ShapeConstraint>;
 
 }// namespace aethermind
 
-#endif// AETHERMIND_SHAPE_CONSTRAINT_H
+#endif// AETHERMIND_BASE_SHAPE_CONSTRAINT_H

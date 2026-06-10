@@ -88,7 +88,6 @@ StatusOr<InferenceResult> EmbeddingOp::InferOutputShapes(std::span<const TensorS
 }
 
 Status EmbeddingOp::Prepare(OperatorContext& ctx) {
-    AM_RETURN_IF_ERROR(ValidateParams());
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("Embedding Prepare requires OperatorContext.backend");
     }

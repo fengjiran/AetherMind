@@ -51,7 +51,22 @@ Status RmsNormOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
 }
 
 StatusOr<InferenceResult> RmsNormOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    AM_RETURN_IF_ERROR(CheckInputSpecs(inputs));
+    if (inputs.size() != 2) {
+        return Status::InvalidArgument(
+                "RmsNorm expects exactly 2 shape inputs, got " + std::to_string(inputs.size()));
+    }
+
+    if (!HasRank(inputs[0].shape, 2)) {
+        return Status::InvalidArgument("RmsNorm input shape must be rank-2 [seq_len, hidden]");
+    }
+
+    if (!HasRank(inputs[1].shape, 1)) {
+        return Status::InvalidArgument("RmsNorm weight shape must be rank-1");
+    }
+
+    if (!IsPositiveIfStatic(inputs[0].shape[1]) || !IsPositiveIfStatic(inputs[1].shape[0])) {
+        return Status::InvalidArgument("RmsNorm hidden size and weight length must be positive");
+    }
 
     std::vector<ShapeConstraint> runtime_checks;
     if (inputs[0].shape[1] != inputs[1].shape[0]) {
@@ -77,7 +92,6 @@ StatusOr<InferenceResult> RmsNormOp::InferOutputShapes(std::span<const TensorSpe
 }
 
 Status RmsNormOp::Prepare(OperatorContext& ctx) {
-    AM_RETURN_IF_ERROR(ValidateParams());
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("RmsNorm Prepare requires OperatorContext.backend");
     }

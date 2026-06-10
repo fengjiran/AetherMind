@@ -2,6 +2,8 @@
 #define AETHERMIND_OPERATORS_OPERATOR_H
 
 #include "aethermind/backend/resolved_kernel.h"
+#include "aethermind/base/shape_constraint.h"
+#include "aethermind/base/shape_symbol.h"
 #include "aethermind/base/status.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator_context.h"
@@ -20,7 +22,17 @@ class RuntimeBindingContext;
 
 struct TensorSpec {
     DataType dtype{};
-    std::vector<int64_t> shape{};
+    SymbolicShape shape{};
+};
+
+/// Result of operator-level shape inference.
+///
+/// `outputs` carries the inferred output tensor specs. `runtime_checks` carries
+/// shape constraints that cannot be fully proven until concrete runtime shapes
+/// are known.
+struct InferenceResult {
+    std::vector<TensorSpec> outputs{};
+    std::vector<ShapeConstraint> runtime_checks{};
 };
 
 /// Abstract base class for all semantic-layer operators.
@@ -71,9 +83,9 @@ public:
     ///
     /// Used during graph construction and workspace planning.
     ///
-    /// \return A vector of TensorSpec descriptors (one per output),
+    /// \return Inferred output specs and deferred runtime shape checks,
     ///         or a Status error if inference fails.
-    AM_NODISCARD virtual StatusOr<std::vector<TensorSpec>> InferOutputShapes(
+    AM_NODISCARD virtual StatusOr<InferenceResult> InferOutputShapes(
             std::span<const TensorSpec> inputs) const = 0;
 
     /// Computes the workspace requirement for this operator.

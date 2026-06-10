@@ -1,15 +1,14 @@
+#include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/rmsnorm_op.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
 #include <span>
 #include <string>
 
 namespace aethermind {
-
 Status RmsNormOp::ValidateParams() const {
     if (params_.eps <= 0.0f) {
         return Status::InvalidArgument(
@@ -31,32 +30,50 @@ Status RmsNormOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
         return Status::InvalidArgument("RmsNorm only supports float32 inputs in Phase 1");
     }
 
-    if (input_spec.shape.size() != 2) {
+    if (!HasRank(input_spec.shape, 2)) {
         return Status::InvalidArgument("RmsNorm input must be rank-2 [seq_len, hidden]");
     }
 
-    if (weight_spec.shape.size() != 1) {
+    if (!HasRank(weight_spec.shape, 1)) {
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
     }
 
-    const int64_t hidden_size = input_spec.shape[1];
-    if (hidden_size <= 0) {
+    const ShapeSymbol& hidden_size = input_spec.shape[1];
+    if (!IsPositiveIfStatic(hidden_size)) {
         return Status::InvalidArgument("RmsNorm hidden size must be positive");
     }
 
-    if (weight_spec.shape[0] != hidden_size) {
+    if (!UnifyShapeSymbol(hidden_size, weight_spec.shape[0]).ok()) {
         return Status::InvalidArgument(
                 "RmsNorm weight length must equal input last dimension");
     }
     return Status::Ok();
 }
 
-StatusOr<std::vector<TensorSpec>> RmsNormOp::InferOutputShapes(
-        std::span<const TensorSpec> inputs) const {
-    if (inputs.empty()) {
-        return Status::InvalidArgument("RmsNorm requires input shape metadata");
+StatusOr<InferenceResult> RmsNormOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
+    AM_RETURN_IF_ERROR(CheckInputSpecs(inputs));
+
+    std::vector<ShapeConstraint> runtime_checks;
+    if (inputs[0].shape[1] != inputs[1].shape[0]) {
+        runtime_checks.push_back(ShapeConstraint{
+                .condition = DimEqualConstraint{
+                        .lhs = DimLocator{
+                                .tensor_port = TensorPort{.direction = TensorPortType::kInput,
+                                                          .tensor_idx = 0},
+                                .dim_index = 1,
+                        },
+                        .rhs = DimLocator{
+                                .tensor_port = TensorPort{.direction = TensorPortType::kInput, .tensor_idx = 1},
+                                .dim_index = 0,
+                        }},
+                .error_context = "RmsNorm hidden dimension must match weight length",
+        });
     }
-    return std::vector<TensorSpec>{inputs[0]};
+
+    return InferenceResult{
+            .outputs = {inputs[0]},
+            .runtime_checks = std::move(runtime_checks),
+    };
 }
 
 Status RmsNormOp::Prepare(OperatorContext& ctx) {

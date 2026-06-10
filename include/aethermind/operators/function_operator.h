@@ -38,9 +38,9 @@ public:
         return Status::Ok();
     }
 
-    AM_NODISCARD StatusOr<std::vector<TensorSpec>> InferOutputShapes(
+    AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
             std::span<const TensorSpec>) const override {
-        return std::vector<TensorSpec>{};
+        return InferenceResult{};
     }
 
     AM_NODISCARD Status Prepare(OperatorContext&) override {

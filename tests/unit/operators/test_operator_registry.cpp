@@ -35,12 +35,12 @@ public:
         return Status::Ok();
     }
 
-    AM_NODISCARD StatusOr<std::vector<TensorSpec>> InferOutputShapes(
+    AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
             std::span<const TensorSpec> inputs) const override {
         if (!inputs.empty()) {
             return Status::InvalidArgument("RegistryTestOperator expects no shape inputs");
         }
-        return std::vector<TensorSpec>{};
+        return InferenceResult{};
     }
 
     AM_NODISCARD Status Prepare(OperatorContext& ctx) override {

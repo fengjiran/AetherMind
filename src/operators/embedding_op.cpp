@@ -40,21 +40,23 @@ Status EmbeddingOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
         return Status::InvalidArgument("Embedding only supports float32 weights in Phase 1");
     }
 
-    if (token_ids.shape.size() != 1) {
+    if (!HasRank(token_ids.shape, 1)) {
         return Status::InvalidArgument("Embedding token ids must be rank-1");
     }
 
-    if (weight.shape.size() != 2) {
+    if (!HasRank(weight.shape, 2)) {
         return Status::InvalidArgument("Embedding weight must be rank-2");
     }
 
-    if (token_ids.shape[0] <= 0 || weight.shape[0] <= 0 || weight.shape[1] <= 0) {
+    if (!IsPositiveIfStatic(token_ids.shape[0]) ||
+        !IsPositiveIfStatic(weight.shape[0]) ||
+        !IsPositiveIfStatic(weight.shape[1])) {
         return Status::InvalidArgument("Embedding token, vocab, and hidden sizes must be positive");
     }
     return Status::Ok();
 }
 
-StatusOr<std::vector<TensorSpec>> EmbeddingOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
+StatusOr<InferenceResult> EmbeddingOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
                 "Embedding expects exactly 2 shape inputs, got " + std::to_string(inputs.size()));
@@ -62,25 +64,27 @@ StatusOr<std::vector<TensorSpec>> EmbeddingOp::InferOutputShapes(std::span<const
     const auto& token_ids = inputs[0];
     const auto& weight = inputs[1];
 
-    if (token_ids.shape.size() != 1) {
+    if (!HasRank(token_ids.shape, 1)) {
         return Status::InvalidArgument("Embedding token id shape must be rank-1");
     }
 
-    if (weight.shape.size() != 2) {
+    if (!HasRank(weight.shape, 2)) {
         return Status::InvalidArgument("Embedding weight shape must be rank-2");
     }
 
-    const int64_t token_count = token_ids.shape[0];
-    const int64_t vocab_size = weight.shape[0];
-    const int64_t hidden_size = weight.shape[1];
-    if (token_count <= 0 || vocab_size <= 0 || hidden_size <= 0) {
+    if (!IsPositiveIfStatic(token_ids.shape[0]) ||
+        !IsPositiveIfStatic(weight.shape[0]) ||
+        !IsPositiveIfStatic(weight.shape[1])) {
         return Status::InvalidArgument("Embedding token, vocab, and hidden sizes must be positive");
     }
 
-    return std::vector<TensorSpec>{TensorSpec{
-            .dtype = weight.dtype,
-            .shape = {token_count, hidden_size},
-    }};
+    return InferenceResult{
+            .outputs = {TensorSpec{
+                    .dtype = weight.dtype,
+                    .shape = SymbolicShape(std::vector<ShapeSymbol>{token_ids.shape[0], weight.shape[1]}),
+            }},
+            .runtime_checks = {},
+    };
 }
 
 Status EmbeddingOp::Prepare(OperatorContext& ctx) {

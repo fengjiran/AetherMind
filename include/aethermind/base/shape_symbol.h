@@ -161,6 +161,15 @@ private:
     std::optional<std::vector<ShapeSymbol>> symbolic_shape_{std::nullopt};
 };
 
+AM_NODISCARD inline bool HasRank(const SymbolicShape& shape, size_t rank) noexcept {
+    const auto shape_rank = shape.rank();
+    return shape_rank.has_value() && *shape_rank == rank;
+}
+
+AM_NODISCARD inline bool IsPositiveIfStatic(const ShapeSymbol& dim) {
+    return !dim.IsStatic() || dim.GetStaticValue() > 0;
+}
+
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
 
 }// namespace aethermind

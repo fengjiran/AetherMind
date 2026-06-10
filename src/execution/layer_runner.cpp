@@ -52,10 +52,9 @@ Status LayerRunner::RunStep(size_t step_index,
         if (!tensor_binding.ok()) {
             return tensor_binding.status();
         }
-        AM_RETURN_IF_ERROR(ValidateShapeConstraints(
-                step.runtime_checks,
-                (*tensor_binding)->inputs,
-                (*tensor_binding)->outputs));
+        AM_RETURN_IF_ERROR(ValidateShapeConstraints(step.runtime_checks,
+                                                    (*tensor_binding)->inputs,
+                                                    (*tensor_binding)->outputs));
     }
 
     return step.op->Run(ctx, bindings, step_index);

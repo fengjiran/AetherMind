@@ -421,11 +421,12 @@ StatusOr<ShapeConstraintEvaluationResult> EvaluateShapeConstraint(const ShapeCon
 Status ValidateShapeConstraints(const std::span<const ShapeConstraint> constraints,
                                 const std::span<const TensorView> inputs,
                                 const std::span<const MutableTensorView> outputs) {
-    for (const ShapeConstraint& constraint: constraints) {
+    for (const auto& constraint: constraints) {
         const auto result = EvaluateShapeConstraint(constraint, inputs, outputs);
         if (!result.ok()) {
             return result.status();
         }
+
         if (*result == ShapeConstraintEvaluationResult::kViolated) {
             return Status::InvalidArgument(constraint.error_context.empty()
                                                    ? "Runtime shape constraint violated"

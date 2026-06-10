@@ -28,7 +28,6 @@ Diagnostics:
       readability-identifier-naming.ParameterCase: lower_case
       readability-identifier-naming.NamespaceCase: lower_case
       readability-identifier-naming.MemberCase: lower_case
-      readability-identifier-naming.MemberSuffix: _
 
       # 可选：把 static 变量也显式钉住
       readability-identifier-naming.StaticVariableCase: lower_case
@@ -57,6 +56,10 @@ Diagnostics:
       # 如果大量使用 enum class，建议显式补齐
       readability-identifier-naming.ScopedEnumConstantPrefix: k
       readability-identifier-naming.ScopedEnumConstantCase: CamelCase
+
+      # public members -> snake_case, no suffix
+      # This covers aggregate-style struct fields.
+      readability-identifier-naming.PublicMemberCase: lower_case
 
       # private/protected members -> snake_case_
       readability-identifier-naming.PrivateMemberCase: lower_case

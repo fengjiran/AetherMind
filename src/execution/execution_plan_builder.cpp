@@ -131,7 +131,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(RuntimeContext&
         PreparedOperator prepared = prepared_operator.value();
         OperatorPtr op = std::move(prepared.op);
         if (op == nullptr) {
-            const auto resolved = ExecutionPlanBuilder::ResolveKernelForNode(*backend.value(), node);
+            const auto resolved = ResolveKernelForNode(*backend.value(), node);
             if (!resolved.ok()) {
                 return resolved.status();
             }

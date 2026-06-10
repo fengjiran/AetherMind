@@ -95,8 +95,7 @@ void RuntimeBindingContext::SetStepTensorBinding(size_t step_index,
     step_tensor_bindings_[step_index] = std::move(binding);
 }
 
-StatusOr<const StepTensorBinding*> RuntimeBindingContext::GetStepTensorBinding(
-        size_t step_index) const noexcept {
+StatusOr<const StepTensorBinding*> RuntimeBindingContext::GetStepTensorBinding(size_t step_index) const noexcept {
     if (step_index >= step_tensor_bindings_.size()) {
         return Status::InvalidArgument(
                 "RuntimeBindingContext has no tensor binding for step " +

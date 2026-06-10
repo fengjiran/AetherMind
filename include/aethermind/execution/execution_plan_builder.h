@@ -23,6 +23,7 @@ struct ExecutionPlanNodeSpec {
     IsaLevel isa = IsaLevel::kScalar;
     ExecPhase phase = ExecPhase::kBoth;
     WorkspaceRequirement workspace_requirement{};
+    std::vector<TensorSpec> input_specs{};
     std::span<const std::byte> attrs{};
     std::any op_params{};
 };

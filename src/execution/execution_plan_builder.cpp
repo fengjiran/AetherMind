@@ -48,15 +48,19 @@ std::any MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
     return {};
 }
 
-StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
-                                               const ExecutionPlanNodeSpec& node,
-                                               std::span<const TensorSpec> shapes) {
+struct PreparedOperator {
+    OperatorPtr op{};
+    InferenceResult inference{};
+};
+
+StatusOr<PreparedOperator> CreateAndPrepareOperator(Backend& backend,
+                                                    const ExecutionPlanNodeSpec& node) {
     StatusOr<std::unique_ptr<Operator>> created = OperatorRegistry::Create(
             node.op_type,
             MakeOperatorParamsForNode(node));
     if (!created.ok()) {
         if (created.status().code() == StatusCode::kNotFound) {
-            return OperatorPtr{};
+            return PreparedOperator{};
         }
         return created.status();
     }
@@ -68,11 +72,15 @@ StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
 
     std::unique_ptr<Operator> op = std::move(created).value();
     AM_RETURN_IF_ERROR(op->ValidateParams());
-    // CheckInputSpecs requires input TensorSpec metadata. When specs are available
-    // (e.g., from model graph compilation), plumb them here instead of {}.  The
-    // kernel is the final validation layer and handles data/contiguity checks.
-    if (!shapes.empty()) {
-        AM_RETURN_IF_ERROR(op->CheckInputSpecs(shapes));
+
+    InferenceResult inference;
+    if (!node.input_specs.empty()) {
+        AM_RETURN_IF_ERROR(op->CheckInputSpecs(node.input_specs));
+        auto inferred = op->InferOutputShapes(node.input_specs);
+        if (!inferred.ok()) {
+            return inferred.status();
+        }
+        inference = std::move(inferred).value();
     }
 
     OperatorContext op_ctx{
@@ -83,14 +91,17 @@ StatusOr<OperatorPtr> CreateAndPrepareOperator(Backend& backend,
     };
     AM_RETURN_IF_ERROR(op->Prepare(op_ctx));
 
-    return OperatorPtr(std::move(op));
+    return PreparedOperator{
+            .op = OperatorPtr(std::move(op)),
+            .inference = std::move(inference),
+    };
 }
 
 }// namespace
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(RuntimeContext& runtime,
-                                                                  const ModelInstance* model_instance,
-                                                                  const std::vector<ExecutionPlanNodeSpec>& nodes) {
+                                                                 const ModelInstance* model_instance,
+                                                                 const std::vector<ExecutionPlanNodeSpec>& nodes) {
     std::vector<WorkspaceRequirement> workspace_requirements;
     workspace_requirements.reserve(nodes.size());
     for (const ExecutionPlanNodeSpec& node: nodes) {
@@ -112,15 +123,13 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(RuntimeContext&
             return backend.status();
         }
 
-        // TODO: plumb actual input shapes from model graph once shape tracking
-        // is available in ExecutionPlanNodeSpec. For now, pass empty shapes to
-        // maintain forward compatibility with the CheckInputSpecs contract.
-        const auto prepared_operator = CreateAndPrepareOperator(*backend.value(), node, {});
+        auto prepared_operator = CreateAndPrepareOperator(*backend.value(), node);
         if (!prepared_operator.ok()) {
             return prepared_operator.status();
         }
 
-        OperatorPtr op = prepared_operator.value();
+        PreparedOperator prepared = prepared_operator.value();
+        OperatorPtr op = std::move(prepared.op);
         if (op == nullptr) {
             const auto resolved = ExecutionPlanBuilder::ResolveKernelForNode(*backend.value(), node);
             if (!resolved.ok()) {
@@ -143,6 +152,8 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(RuntimeContext&
                     .op = std::move(op),
                     .packed_weights = packed_weights.value(),
                     .workspace_requirement = workspace_requirements[index],
+                    .output_specs = std::move(prepared.inference.outputs),
+                    .runtime_checks = std::move(prepared.inference.runtime_checks),
                     .debug_name = nullptr,
             });
             !status.ok()) {

@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <memory>
 #include <span>
+#include <variant>
 #include <vector>
 
 namespace aethermind {
@@ -132,6 +133,11 @@ ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {})
     };
 }
 
+SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
+    const std::vector<int64_t> shape(dims);
+    return SymbolicShape(IntArrayView{shape});
+}
+
 TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
     CpuBackend backend;
     TestAttrs attrs{.epsilon = 42};
@@ -178,6 +184,57 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     EXPECT_FLOAT_EQ(*stored_epsilon, 11.0F);
     EXPECT_EQ(step.debug_name, nullptr);
     EXPECT_STREQ(step_kernel.debug_name, "cpu::rmsnorm_f32_scalar");
+}
+
+TEST(ExecutionPlanBuilder, BuildStoresInferredOutputSpecsAndRuntimeChecks) {
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    const ShapeSymbol seq_len = ShapeSymbol::Create();
+    const ShapeSymbol input_hidden = ShapeSymbol::Create();
+    const ShapeSymbol weight_hidden = ShapeSymbol::Create();
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, input_hidden})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_hidden})},
+    };
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->size(), 1U);
+    const ExecutionStep& step = plan->steps().front();
+    ASSERT_EQ(step.output_specs.size(), 1U);
+    EXPECT_EQ(step.output_specs[0].dtype, DataType::Float32());
+    ASSERT_EQ(step.output_specs[0].shape.rank(), 2U);
+    EXPECT_EQ(step.output_specs[0].shape[0], seq_len);
+    EXPECT_EQ(step.output_specs[0].shape[1], input_hidden);
+
+    ASSERT_EQ(step.runtime_checks.size(), 1U);
+    ASSERT_TRUE(std::holds_alternative<DimEqualConstraint>(step.runtime_checks[0].condition));
+    const auto& equal = std::get<DimEqualConstraint>(step.runtime_checks[0].condition);
+    EXPECT_EQ(equal.lhs.tensor_port.direction, TensorPortType::kInput);
+    EXPECT_EQ(equal.lhs.tensor_port.tensor_idx, 0U);
+    EXPECT_EQ(equal.lhs.dim_index, 1U);
+    EXPECT_EQ(equal.rhs.tensor_port.direction, TensorPortType::kInput);
+    EXPECT_EQ(equal.rhs.tensor_port.tensor_idx, 1U);
+    EXPECT_EQ(equal.rhs.dim_index, 0U);
+}
+
+TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16})},
+    };
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlanBuilder, BuildRejectsRawAttrsForRegisteredOperator) {

@@ -205,6 +205,30 @@ TEST(ShapeConstraintEvaluator, EvaluatesSymbolicDimensionEqualityStates) {
               ShapeConstraintEvaluationResult::kDeferred);
 }
 
+TEST(ShapeConstraintEvaluator, SatisfiesIdenticalSymbolicVolumeDimensions) {
+    const ShapeSymbol batch = ShapeSymbol::Create();
+    const ShapeSymbol hidden = ShapeSymbol::Create();
+    std::vector<SymbolicShape> inputs{
+            SymbolicShape(std::vector<ShapeSymbol>{batch, ShapeSymbol::CreateFromValue(4), hidden}),
+            SymbolicShape(std::vector<ShapeSymbol>{batch, ShapeSymbol::CreateFromValue(4), hidden}),
+    };
+    const ShapeConstraint identical_volume{
+            .condition = VolumeEqualConstraint{.lhs_dims = {InputDim(0, 0), InputDim(0, 1), InputDim(0, 2)},
+                                               .rhs_dims = {InputDim(1, 0), InputDim(1, 1), InputDim(1, 2)}},
+            .error_context = "volume mismatch",
+    };
+    const ShapeConstraint permuted_volume{
+            .condition = VolumeEqualConstraint{.lhs_dims = {InputDim(0, 0), InputDim(0, 1), InputDim(0, 2)},
+                                               .rhs_dims = {InputDim(1, 2), InputDim(1, 1), InputDim(1, 0)}},
+            .error_context = "volume mismatch",
+    };
+
+    EXPECT_EQ(*EvaluateShapeConstraint(identical_volume, std::span<const SymbolicShape>(inputs), std::span<const SymbolicShape>()),
+              ShapeConstraintEvaluationResult::kSatisfied);
+    EXPECT_EQ(*EvaluateShapeConstraint(permuted_volume, std::span<const SymbolicShape>(inputs), std::span<const SymbolicShape>()),
+              ShapeConstraintEvaluationResult::kDeferred);
+}
+
 TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsReturnsConstraintContext) {
     RuntimeTensorStorage input{std::vector<int64_t>{2, 8}};
     RuntimeTensorStorage weight{std::vector<int64_t>{16}};

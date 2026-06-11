@@ -2,7 +2,6 @@
 #include "aethermind/utils/overflow_check.h"
 #include "utils/variant_utils.h"
 
-#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -10,37 +9,34 @@ namespace aethermind {
 namespace {
 
 AM_NODISCARD Status InvalidPortIndex(const TensorPort& port) {
-    return Status::InvalidArgument(
-            std::string("Shape constraint references missing ") +
-            (port.direction == TensorPortType::kInput ? "input" : "output") +
-            " tensor " + std::to_string(port.tensor_idx));
+    return Status::InvalidArgument(std::string("Shape constraint references missing ") +
+                                   (port.direction == TensorPortType::kInput ? "input" : "output") +
+                                   " tensor " + std::to_string(port.tensor_idx));
 }
 
 AM_NODISCARD Status InvalidDimIndex(const DimLocator& locator) {
-    return Status::InvalidArgument(
-            "Shape constraint references missing dimension " +
-            std::to_string(locator.dim_index));
+    return Status::InvalidArgument("Shape constraint references missing dimension " +
+                                   std::to_string(locator.dim_index));
 }
 
-AM_NODISCARD StatusOr<const SymbolicShape*> ResolveShape(
-        const TensorPort& port,
-        const std::span<const SymbolicShape> inputs,
-        const std::span<const SymbolicShape> outputs) {
+AM_NODISCARD StatusOr<const SymbolicShape*> ResolveShape(const TensorPort& port,
+                                                         const std::span<const SymbolicShape> inputs,
+                                                         const std::span<const SymbolicShape> outputs) {
     if (port.direction == TensorPortType::kInput) {
         if (port.tensor_idx >= inputs.size()) {
             return InvalidPortIndex(port);
         }
         return &inputs[port.tensor_idx];
     }
+
     if (port.tensor_idx >= outputs.size()) {
         return InvalidPortIndex(port);
     }
     return &outputs[port.tensor_idx];
 }
 
-AM_NODISCARD StatusOr<const TensorView*> ResolveTensor(
-        const TensorPort& port,
-        const std::span<const TensorView> inputs) {
+AM_NODISCARD StatusOr<const TensorView*> ResolveTensor(const TensorPort& port,
+                                                       const std::span<const TensorView> inputs) {
     if (port.direction != TensorPortType::kInput || port.tensor_idx >= inputs.size()) {
         return InvalidPortIndex(port);
     }
@@ -69,6 +65,7 @@ AM_NODISCARD StatusOr<std::optional<ShapeSymbol>> ResolveSymbolicDim(
     if (!rank.has_value()) {
         return std::optional<ShapeSymbol>{};
     }
+
     if (locator.dim_index >= *rank) {
         return InvalidDimIndex(locator);
     }
@@ -84,6 +81,7 @@ AM_NODISCARD StatusOr<int64_t> ResolveRuntimeDim(
         if (!tensor.ok()) {
             return tensor.status();
         }
+
         if (locator.dim_index >= (*tensor)->shape().size()) {
             return InvalidDimIndex(locator);
         }
@@ -94,6 +92,7 @@ AM_NODISCARD StatusOr<int64_t> ResolveRuntimeDim(
     if (!tensor.ok()) {
         return tensor.status();
     }
+
     if (locator.dim_index >= (*tensor)->shape().size()) {
         return InvalidDimIndex(locator);
     }
@@ -122,6 +121,7 @@ AM_NODISCARD StatusOr<size_t> ResolveRuntimeRank(
         }
         return (*tensor)->shape().size();
     }
+
     const auto tensor = ResolveMutableTensor(port, outputs);
     if (!tensor.ok()) {
         return tensor.status();
@@ -135,6 +135,7 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicDimEqual(
     if (lhs == rhs) {
         return ShapeConstraintEvaluationResult::kSatisfied;
     }
+
     if (lhs.IsStatic() && rhs.IsStatic()) {
         return ShapeConstraintEvaluationResult::kViolated;
     }
@@ -147,12 +148,15 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicDimBroadcastable(
     if (lhs == rhs) {
         return ShapeConstraintEvaluationResult::kSatisfied;
     }
+
     if (lhs.IsStatic() && lhs.GetStaticValue() == 1) {
         return ShapeConstraintEvaluationResult::kSatisfied;
     }
+
     if (rhs.IsStatic() && rhs.GetStaticValue() == 1) {
         return ShapeConstraintEvaluationResult::kSatisfied;
     }
+
     if (lhs.IsStatic() && rhs.IsStatic()) {
         return ShapeConstraintEvaluationResult::kViolated;
     }
@@ -167,10 +171,12 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateSymbolicDimEqualC
     if (!lhs.ok()) {
         return lhs.status();
     }
+
     const auto rhs = ResolveSymbolicDim(constraint.rhs, inputs, outputs);
     if (!rhs.ok()) {
         return rhs.status();
     }
+
     if (!*lhs || !*rhs) {
         return ShapeConstraintEvaluationResult::kDeferred;
     }
@@ -185,20 +191,58 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateSymbolicBroadcast
     if (!lhs.ok()) {
         return lhs.status();
     }
+
     const auto rhs = ResolveSymbolicDim(constraint.rhs, inputs, outputs);
     if (!rhs.ok()) {
         return rhs.status();
     }
+
     if (!*lhs || !*rhs) {
         return ShapeConstraintEvaluationResult::kDeferred;
     }
     return EvaluateSymbolicDimBroadcastable(**lhs, **rhs);
 }
 
+AM_NODISCARD StatusOr<bool> HaveIdenticalSymbolicDims(const std::span<const DimLocator> lhs_dims,
+                                                      const std::span<const DimLocator> rhs_dims,
+                                                      const std::span<const SymbolicShape> inputs,
+                                                      const std::span<const SymbolicShape> outputs) {
+    if (lhs_dims.size() != rhs_dims.size()) {
+        return false;
+    }
+
+    for (size_t i = 0; i < lhs_dims.size(); ++i) {
+        const auto lhs = ResolveSymbolicDim(lhs_dims[i], inputs, outputs);
+        if (!lhs.ok()) {
+            return lhs.status();
+        }
+        const auto rhs = ResolveSymbolicDim(rhs_dims[i], inputs, outputs);
+        if (!rhs.ok()) {
+            return rhs.status();
+        }
+        if (!*lhs || !*rhs || **lhs != **rhs) {
+            return false;
+        }
+    }
+    return true;
+}
+
 AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateSymbolicVolumeConstraint(
         const VolumeEqualConstraint& constraint,
         const std::span<const SymbolicShape> inputs,
         const std::span<const SymbolicShape> outputs) {
+    const auto identical_dims = HaveIdenticalSymbolicDims(
+            constraint.lhs_dims,
+            constraint.rhs_dims,
+            inputs,
+            outputs);
+    if (!identical_dims.ok()) {
+        return identical_dims.status();
+    }
+    if (*identical_dims) {
+        return ShapeConstraintEvaluationResult::kSatisfied;
+    }
+
     uint64_t lhs_product = 1;
     for (const DimLocator& locator: constraint.lhs_dims) {
         const auto dim = ResolveSymbolicDim(locator, inputs, outputs);

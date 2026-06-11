@@ -33,6 +33,7 @@ Status SymbolConstraintSolver::AddEqual(ShapeSymbol lhs, ShapeSymbol rhs) {
     if (lhs.IsStatic()) {
         return AddEqual(rhs, lhs.GetStaticValue());
     }
+
     if (rhs.IsStatic()) {
         return AddEqual(lhs, rhs.GetStaticValue());
     }
@@ -109,6 +110,7 @@ ShapeConstraintEvaluationResult SymbolConstraintSolver::EvaluateEqual(ShapeSymbo
         return rhs_static.has_value() ? CompareStaticValues(lhs.GetStaticValue(), *rhs_static)
                                       : ShapeConstraintEvaluationResult::kDeferred;
     }
+
     if (rhs.IsStatic()) {
         const std::optional<int64_t> lhs_static = GetStaticBinding(lhs);
         return lhs_static.has_value() ? CompareStaticValues(*lhs_static, rhs.GetStaticValue())
@@ -157,13 +159,10 @@ void SymbolConstraintSolver::EnsureSymbol(int64_t symbol_value) {
 }
 
 int64_t SymbolConstraintSolver::FindRoot(int64_t symbol_value) {
-    int64_t parent = parents_[symbol_value];
-    if (parent == symbol_value) {
-        return symbol_value;
+    if (symbol_value != parents_[symbol_value]) {
+        parents_[symbol_value] = FindRoot(parents_[symbol_value]);
     }
-    parent = FindRoot(parent);
-    parents_[symbol_value] = parent;
-    return parent;
+    return parents_[symbol_value];
 }
 
 std::optional<int64_t> SymbolConstraintSolver::FindRootIfPresent(int64_t symbol_value) const {

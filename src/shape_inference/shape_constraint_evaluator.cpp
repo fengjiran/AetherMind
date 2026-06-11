@@ -469,9 +469,8 @@ Status ValidateShapeConstraints(const std::span<const ShapeConstraint> constrain
         }
 
         if (*result == ShapeConstraintEvaluationResult::kViolated) {
-            return Status::InvalidArgument(constraint.error_context.empty()
-                                                   ? "Runtime shape constraint violated"
-                                                   : constraint.error_context);
+            return Status::InvalidArgument(constraint.error_context.empty() ? "Runtime shape constraint violated"
+                                                                            : constraint.error_context);
         }
     }
     return Status::Ok();

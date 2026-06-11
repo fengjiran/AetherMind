@@ -213,8 +213,8 @@ StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::Load(const std::filesystem::pat
 
     auto parsed = SafetensorsIndexParser(*text).Parse();
     if (!parsed.ok()) {
-        return Status(parsed.status().code(),
-                      hf::FormatPathMessage(parsed.status().message(), index_path));
+        return parsed.status().WithMessage(
+                hf::FormatPathMessage(parsed.status().message(), index_path));
     }
     return HfSafetensorsIndex(std::move(parsed->weight_map), parsed->total_size);
 }

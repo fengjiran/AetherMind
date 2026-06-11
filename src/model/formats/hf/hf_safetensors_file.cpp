@@ -114,8 +114,8 @@ public:
 
                 HfSafetensorsEntry entry;
                 if (const Status entry_status = ParseTensorEntry(*key, &entry); !entry_status.ok()) {
-                    return Status(entry_status.code(),
-                                  std::string("Safetensors tensor '") + *key + "': " + entry_status.message());
+                    return entry_status.WithMessage(
+                            std::string("Safetensors tensor '") + *key + "': " + entry_status.message());
                 }
                 entries.push_back(std::move(entry));
             }
@@ -328,8 +328,8 @@ StatusOr<HfSafetensorsFile> HfSafetensorsFile::Open(const std::filesystem::path&
     const auto header_length = ParseLittleEndianU64(
             {storage->data(), sizeof(uint64_t)});
     if (!header_length.ok()) {
-        return Status(StatusCode::kInvalidArgument,
-                      hf::FormatPathMessage(header_length.status().message(), safetensors_path));
+        return Status::InvalidArgument(
+                hf::FormatPathMessage(header_length.status().message(), safetensors_path));
     }
 
     constexpr uint64_t kMaxHeaderSize = 16ULL * 1024 * 1024;
@@ -357,8 +357,8 @@ StatusOr<HfSafetensorsFile> HfSafetensorsFile::Open(const std::filesystem::path&
 
     auto parsed_entries = hf::SafetensorsHeaderParser(header_json, storage, data_base, data_size).Parse();
     if (!parsed_entries.ok()) {
-        return Status(parsed_entries.status().code(),
-                      hf::FormatPathMessage(parsed_entries.status().message(), safetensors_path));
+        return parsed_entries.status().WithMessage(
+                hf::FormatPathMessage(parsed_entries.status().message(), safetensors_path));
     }
 
     HfSafetensorsFile file;

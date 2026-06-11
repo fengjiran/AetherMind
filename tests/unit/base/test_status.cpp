@@ -22,6 +22,13 @@ TEST(Status, ErrorCarriesCodeAndMessage) {
     EXPECT_EQ(status.ToString(), "INVALID_ARGUMENT: token ids must not be empty");
 }
 
+TEST(Status, EqualityComparesCodeAndMessage) {
+    EXPECT_EQ(Status::Ok(), Status::Ok());
+    EXPECT_EQ(Status::InvalidArgument("bad input"), Status::InvalidArgument("bad input"));
+    EXPECT_NE(Status::InvalidArgument("bad input"), Status::InvalidArgument("different input"));
+    EXPECT_NE(Status::InvalidArgument("bad input"), Status::Internal("bad input"));
+}
+
 TEST(Status, CAbiCodeMappingRoundTrip) {
     EXPECT_EQ(aethermind::ToAMStatusCode(StatusCode::kOk), AM_STATUS_OK);
     EXPECT_EQ(aethermind::ToAMStatusCode(StatusCode::kInvalidArgument), AM_STATUS_INVALID_ARGUMENT);
@@ -30,6 +37,11 @@ TEST(Status, CAbiCodeMappingRoundTrip) {
     EXPECT_EQ(aethermind::FromAMStatusCode(AM_STATUS_OK), StatusCode::kOk);
     EXPECT_EQ(aethermind::FromAMStatusCode(AM_STATUS_NOT_FOUND), StatusCode::kNotFound);
     EXPECT_EQ(aethermind::FromAMStatusCode(AM_STATUS_UNAUTHENTICATED), StatusCode::kUnauthenticated);
+}
+
+TEST(Status, CAbiCodeMappingRejectsOutOfRangeInput) {
+    EXPECT_EQ(aethermind::FromAMStatusCode(static_cast<am_status_code>(-1)), StatusCode::kUnknown);
+    EXPECT_EQ(aethermind::FromAMStatusCode(static_cast<am_status_code>(99)), StatusCode::kUnknown);
 }
 
 TEST(StatusOr, HoldsValue) {
@@ -74,6 +86,25 @@ TEST(StatusOr, MoveOutValue) {
     std::unique_ptr<int> moved = std::move(result).value();
     ASSERT_NE(moved, nullptr);
     EXPECT_EQ(*moved, 9);
+}
+
+TEST(StatusOr, MoveOutValueViaRvalueDereference) {
+    static_assert(std::is_same_v<decltype(*std::declval<StatusOr<std::unique_ptr<int>>&&>()),
+                                 std::unique_ptr<int>&&>);
+
+    StatusOr<std::unique_ptr<int>> result(std::make_unique<int>(13));
+    std::unique_ptr<int> moved = std::move(*std::move(result));
+    ASSERT_NE(moved, nullptr);
+    EXPECT_EQ(*moved, 13);
+}
+
+TEST(StatusOr, RvalueArrowAccessesContainedValue) {
+    struct Box {
+        int value;
+    };
+
+    StatusOr<Box> result(Box{17});
+    EXPECT_EQ(std::move(result)->value, 17);
 }
 
 TEST(StatusOr, RejectsOkStatusInErrorCtor) {

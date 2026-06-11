@@ -241,9 +241,8 @@ private:
     }
 
     static Status FieldParseError(const std::string& key, const Status& parse_status) {
-        return Status(parse_status.code(),
-                      "Failed to parse HF config field '" + key +
-                              "': " + parse_status.message());
+        return parse_status.WithMessage("Failed to parse HF config field '" + key +
+                                        "': " + parse_status.message());
     }
 
     static void ApplyDefaults(HfModelConfig& config) {
@@ -256,8 +255,8 @@ private:
 StatusOr<RawWeightTable> LoadSingleFileRawWeightTable(const HfDirectoryDescriptor& dir_desc) {
     auto safetensors_file = HfSafetensorsFile::Open(dir_desc.safetensors_path);
     if (!safetensors_file.ok()) {
-        return Status(safetensors_file.status().code(),
-                      hf::FormatPathMessage(safetensors_file.status().message(), dir_desc.model_dir));
+        return safetensors_file.status().WithMessage(
+                hf::FormatPathMessage(safetensors_file.status().message(), dir_desc.model_dir));
     }
 
     RawWeightTable raw_weights;
@@ -349,8 +348,8 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
 
         auto shard_file = HfSafetensorsFile::Open(shard_path);
         if (!shard_file.ok()) {
-            return Status(shard_file.status().code(),
-                          hf::FormatPathMessage(shard_file.status().message(), shard_path));
+            return shard_file.status().WithMessage(
+                    hf::FormatPathMessage(shard_file.status().message(), shard_path));
         }
 
         for (const auto& entry: shard_file->Entries()) {
@@ -424,8 +423,8 @@ StatusOr<HfModelConfig> HfDirectoryReader::ParseConfig() const {
 
     auto config = ConfigJsonParser(*text).Parse();
     if (!config.ok()) {
-        return Status(config.status().code(),
-                      hf::FormatPathMessage(config.status().message(), dir_desc_.config_path));
+        return config.status().WithMessage(
+                hf::FormatPathMessage(config.status().message(), dir_desc_.config_path));
     }
     return config;
 }

@@ -216,10 +216,12 @@ AM_NODISCARD StatusOr<bool> HaveIdenticalSymbolicDims(const std::span<const DimL
         if (!lhs.ok()) {
             return lhs.status();
         }
+
         const auto rhs = ResolveSymbolicDim(rhs_dims[i], inputs, outputs);
         if (!rhs.ok()) {
             return rhs.status();
         }
+
         if (!*lhs || !*rhs || **lhs != **rhs) {
             return false;
         }
@@ -232,48 +234,49 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateSymbolicVolumeCon
         const std::span<const SymbolicShape> inputs,
         const std::span<const SymbolicShape> outputs) {
     const auto identical_dims = HaveIdenticalSymbolicDims(
-            constraint.lhs_dims,
-            constraint.rhs_dims,
-            inputs,
-            outputs);
+            constraint.lhs_dims, constraint.rhs_dims, inputs, outputs);
     if (!identical_dims.ok()) {
         return identical_dims.status();
     }
+
     if (*identical_dims) {
         return ShapeConstraintEvaluationResult::kSatisfied;
     }
 
+    auto compute_volume = [&](const std::span<const DimLocator> dims,
+                              uint64_t& product,
+                              bool& deferred) -> Status {
+        for (const DimLocator& locator: dims) {
+            const auto dim = ResolveSymbolicDim(locator, inputs, outputs);
+            if (!dim.ok()) {
+                return dim.status();
+            }
+
+            if (!*dim || !(*dim)->IsStatic()) {
+                deferred = true;
+                break;
+            }
+
+            if (CheckOverflowMul(product, static_cast<uint64_t>((*dim)->GetStaticValue()), &product)) {
+                return Status::InvalidArgument("Shape constraint volume overflows uint64_t");
+            }
+        }
+        return Status::Ok();
+    };
+
     uint64_t lhs_product = 1;
-    for (const DimLocator& locator: constraint.lhs_dims) {
-        const auto dim = ResolveSymbolicDim(locator, inputs, outputs);
-        if (!dim.ok()) {
-            return dim.status();
-        }
-        if (!*dim || !(**dim).IsStatic()) {
-            return ShapeConstraintEvaluationResult::kDeferred;
-        }
-        if (CheckOverflowMul(lhs_product, static_cast<uint64_t>((**dim).GetStaticValue()), &lhs_product)) {
-            return Status::InvalidArgument("Shape constraint volume overflows uint64_t");
-        }
-    }
-
     uint64_t rhs_product = 1;
-    for (const DimLocator& locator: constraint.rhs_dims) {
-        const auto dim = ResolveSymbolicDim(locator, inputs, outputs);
-        if (!dim.ok()) {
-            return dim.status();
-        }
-        if (!*dim || !(**dim).IsStatic()) {
-            return ShapeConstraintEvaluationResult::kDeferred;
-        }
-        if (CheckOverflowMul(rhs_product, static_cast<uint64_t>((**dim).GetStaticValue()), &rhs_product)) {
-            return Status::InvalidArgument("Shape constraint volume overflows uint64_t");
-        }
+    bool lhs_deferred = false;
+    bool rhs_deferred = false;
+    AM_RETURN_IF_ERROR(compute_volume(constraint.lhs_dims, lhs_product, lhs_deferred));
+    AM_RETURN_IF_ERROR(compute_volume(constraint.rhs_dims, rhs_product, rhs_deferred));
+
+    if (lhs_deferred || rhs_deferred) {
+        return ShapeConstraintEvaluationResult::kDeferred;
     }
 
-    return lhs_product == rhs_product
-                   ? ShapeConstraintEvaluationResult::kSatisfied
-                   : ShapeConstraintEvaluationResult::kViolated;
+    return lhs_product == rhs_product ? ShapeConstraintEvaluationResult::kSatisfied
+                                      : ShapeConstraintEvaluationResult::kViolated;
 }
 
 AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateSymbolicRankEqualConstraint(
@@ -284,12 +287,12 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateSymbolicRankEqual
     if (!rank.ok()) {
         return rank.status();
     }
+
     if (!*rank) {
         return ShapeConstraintEvaluationResult::kDeferred;
     }
-    return **rank == constraint.target_rank
-                   ? ShapeConstraintEvaluationResult::kSatisfied
-                   : ShapeConstraintEvaluationResult::kViolated;
+    return **rank == constraint.target_rank ? ShapeConstraintEvaluationResult::kSatisfied
+                                            : ShapeConstraintEvaluationResult::kViolated;
 }
 
 AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateSymbolicRankAtLeastConstraint(
@@ -300,28 +303,24 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateSymbolicRankAtLea
     if (!rank.ok()) {
         return rank.status();
     }
+
     if (!*rank) {
         return ShapeConstraintEvaluationResult::kDeferred;
     }
-    return **rank >= constraint.min_rank
-                   ? ShapeConstraintEvaluationResult::kSatisfied
-                   : ShapeConstraintEvaluationResult::kViolated;
+    return **rank >= constraint.min_rank ? ShapeConstraintEvaluationResult::kSatisfied
+                                         : ShapeConstraintEvaluationResult::kViolated;
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimEqual(
-        const int64_t lhs,
-        const int64_t rhs) noexcept {
-    return lhs == rhs
-                   ? ShapeConstraintEvaluationResult::kSatisfied
-                   : ShapeConstraintEvaluationResult::kViolated;
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimEqual(const int64_t lhs,
+                                                                     const int64_t rhs) noexcept {
+    return lhs == rhs ? ShapeConstraintEvaluationResult::kSatisfied
+                      : ShapeConstraintEvaluationResult::kViolated;
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeBroadcastable(
-        const int64_t lhs,
-        const int64_t rhs) noexcept {
-    return (lhs == rhs || lhs == 1 || rhs == 1)
-                   ? ShapeConstraintEvaluationResult::kSatisfied
-                   : ShapeConstraintEvaluationResult::kViolated;
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeBroadcastable(const int64_t lhs,
+                                                                          const int64_t rhs) noexcept {
+    return lhs == rhs || lhs == 1 || rhs == 1 ? ShapeConstraintEvaluationResult::kSatisfied
+                                              : ShapeConstraintEvaluationResult::kViolated;
 }
 
 AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeDimEqualConstraint(
@@ -332,6 +331,7 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeDimEqualCo
     if (!lhs.ok()) {
         return lhs.status();
     }
+
     const auto rhs = ResolveRuntimeDim(constraint.rhs, inputs, outputs);
     if (!rhs.ok()) {
         return rhs.status();
@@ -347,6 +347,7 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeBroadcasta
     if (!lhs.ok()) {
         return lhs.status();
     }
+
     const auto rhs = ResolveRuntimeDim(constraint.rhs, inputs, outputs);
     if (!rhs.ok()) {
         return rhs.status();
@@ -354,38 +355,36 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeBroadcasta
     return EvaluateRuntimeBroadcastable(*lhs, *rhs);
 }
 
-AM_NODISCARD StatusOr<uint64_t> RuntimeVolume(
-        const std::span<const DimLocator> locators,
-        const std::span<const TensorView> inputs,
-        const std::span<const MutableTensorView> outputs) {
-    uint64_t product = 1;
-    for (const DimLocator& locator: locators) {
-        const auto dim = ResolveRuntimeDim(locator, inputs, outputs);
-        if (!dim.ok()) {
-            return dim.status();
-        }
-        if (CheckOverflowMul(product, static_cast<uint64_t>(*dim), &product)) {
-            return Status::InvalidArgument("Shape constraint volume overflows uint64_t");
-        }
-    }
-    return product;
-}
-
 AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeVolumeConstraint(
         const VolumeEqualConstraint& constraint,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    const auto lhs = RuntimeVolume(constraint.lhs_dims, inputs, outputs);
+    auto compute_volume = [&](const std::span<const DimLocator> dims) -> StatusOr<uint64_t> {
+        uint64_t product = 1;
+        for (const DimLocator& locator: dims) {
+            const auto dim = ResolveRuntimeDim(locator, inputs, outputs);
+            if (!dim.ok()) {
+                return dim.status();
+            }
+
+            if (CheckOverflowMul(product, static_cast<uint64_t>(*dim), &product)) {
+                return Status::InvalidArgument("Shape constraint volume overflows uint64_t");
+            }
+        }
+        return product;
+    };
+
+    const auto lhs = compute_volume(constraint.lhs_dims);
     if (!lhs.ok()) {
         return lhs.status();
     }
-    const auto rhs = RuntimeVolume(constraint.rhs_dims, inputs, outputs);
+
+    const auto rhs = compute_volume(constraint.rhs_dims);
     if (!rhs.ok()) {
         return rhs.status();
     }
-    return *lhs == *rhs
-                   ? ShapeConstraintEvaluationResult::kSatisfied
-                   : ShapeConstraintEvaluationResult::kViolated;
+    return *lhs == *rhs ? ShapeConstraintEvaluationResult::kSatisfied
+                        : ShapeConstraintEvaluationResult::kViolated;
 }
 
 AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeRankEqualConstraint(
@@ -396,9 +395,8 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeRankEqualC
     if (!rank.ok()) {
         return rank.status();
     }
-    return *rank == constraint.target_rank
-                   ? ShapeConstraintEvaluationResult::kSatisfied
-                   : ShapeConstraintEvaluationResult::kViolated;
+    return *rank == constraint.target_rank ? ShapeConstraintEvaluationResult::kSatisfied
+                                           : ShapeConstraintEvaluationResult::kViolated;
 }
 
 AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeRankAtLeastConstraint(
@@ -409,9 +407,8 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeRankAtLeas
     if (!rank.ok()) {
         return rank.status();
     }
-    return *rank >= constraint.min_rank
-                   ? ShapeConstraintEvaluationResult::kSatisfied
-                   : ShapeConstraintEvaluationResult::kViolated;
+    return *rank >= constraint.min_rank ? ShapeConstraintEvaluationResult::kSatisfied
+                                        : ShapeConstraintEvaluationResult::kViolated;
 }
 
 }// namespace
@@ -419,47 +416,47 @@ AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeRankAtLeas
 StatusOr<ShapeConstraintEvaluationResult> EvaluateShapeConstraint(const ShapeConstraint& constraint,
                                                                   const std::span<const SymbolicShape> inputs,
                                                                   const std::span<const SymbolicShape> outputs) {
-    return std::visit(overloaded{
-                              [&](const DimEqualConstraint& dim_equal) {
-                                  return EvaluateSymbolicDimEqualConstraint(dim_equal, inputs, outputs);
-                              },
-                              [&](const DimBroadcastableConstraint& broadcastable) {
-                                  return EvaluateSymbolicBroadcastableConstraint(broadcastable, inputs, outputs);
-                              },
-                              [&](const VolumeEqualConstraint& volume_equal) {
-                                  return EvaluateSymbolicVolumeConstraint(volume_equal, inputs, outputs);
-                              },
-                              [&](const RankEqualConstraint& rank_equal) {
-                                  return EvaluateSymbolicRankEqualConstraint(rank_equal, inputs, outputs);
-                              },
-                              [&](const RankAtLeastConstraint& rank_at_least) {
-                                  return EvaluateSymbolicRankAtLeastConstraint(rank_at_least, inputs, outputs);
-                              },
-                      },
-                      constraint.condition);
+    auto visitor = overloaded{
+            [&](const DimEqualConstraint& dim_equal) {
+                return EvaluateSymbolicDimEqualConstraint(dim_equal, inputs, outputs);
+            },
+            [&](const DimBroadcastableConstraint& broadcastable) {
+                return EvaluateSymbolicBroadcastableConstraint(broadcastable, inputs, outputs);
+            },
+            [&](const VolumeEqualConstraint& volume_equal) {
+                return EvaluateSymbolicVolumeConstraint(volume_equal, inputs, outputs);
+            },
+            [&](const RankEqualConstraint& rank_equal) {
+                return EvaluateSymbolicRankEqualConstraint(rank_equal, inputs, outputs);
+            },
+            [&](const RankAtLeastConstraint& rank_at_least) {
+                return EvaluateSymbolicRankAtLeastConstraint(rank_at_least, inputs, outputs);
+            },
+    };
+    return std::visit(visitor, constraint.condition);
 }
 
 StatusOr<ShapeConstraintEvaluationResult> EvaluateShapeConstraint(const ShapeConstraint& constraint,
                                                                   const std::span<const TensorView> inputs,
                                                                   const std::span<const MutableTensorView> outputs) {
-    return std::visit(overloaded{
-                              [&](const DimEqualConstraint& dim_equal) {
-                                  return EvaluateRuntimeDimEqualConstraint(dim_equal, inputs, outputs);
-                              },
-                              [&](const DimBroadcastableConstraint& broadcastable) {
-                                  return EvaluateRuntimeBroadcastableConstraint(broadcastable, inputs, outputs);
-                              },
-                              [&](const VolumeEqualConstraint& volume_equal) {
-                                  return EvaluateRuntimeVolumeConstraint(volume_equal, inputs, outputs);
-                              },
-                              [&](const RankEqualConstraint& rank_equal) {
-                                  return EvaluateRuntimeRankEqualConstraint(rank_equal, inputs, outputs);
-                              },
-                              [&](const RankAtLeastConstraint& rank_at_least) {
-                                  return EvaluateRuntimeRankAtLeastConstraint(rank_at_least, inputs, outputs);
-                              },
-                      },
-                      constraint.condition);
+    auto visitor = overloaded{
+            [&](const DimEqualConstraint& dim_equal) {
+                return EvaluateRuntimeDimEqualConstraint(dim_equal, inputs, outputs);
+            },
+            [&](const DimBroadcastableConstraint& broadcastable) {
+                return EvaluateRuntimeBroadcastableConstraint(broadcastable, inputs, outputs);
+            },
+            [&](const VolumeEqualConstraint& volume_equal) {
+                return EvaluateRuntimeVolumeConstraint(volume_equal, inputs, outputs);
+            },
+            [&](const RankEqualConstraint& rank_equal) {
+                return EvaluateRuntimeRankEqualConstraint(rank_equal, inputs, outputs);
+            },
+            [&](const RankAtLeastConstraint& rank_at_least) {
+                return EvaluateRuntimeRankAtLeastConstraint(rank_at_least, inputs, outputs);
+            },
+    };
+    return std::visit(visitor, constraint.condition);
 }
 
 Status ValidateShapeConstraints(const std::span<const ShapeConstraint> constraints,

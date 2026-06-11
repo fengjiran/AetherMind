@@ -536,7 +536,7 @@ if (!status.ok()) {
 | 执行 | 24 | `RunStep` | `src/execution/layer_runner.cpp` |
 | 执行 | 25 | `bindings.BindWorkspace` | `src/execution/runtime_binding_context.cpp` |
 | 执行 | 26 | `BuildKernelContext` | `src/execution/layer_runner.cpp` |
-| 执行 | 27 | `ValidateShapeConstraints` | `src/base/shape_constraint_evaluator.cpp` |
+| 执行 | 27 | `ValidateShapeConstraints` | `src/shape_inference/shape_constraint_evaluator.cpp` |
 | 执行 | 28 | `step.op->Run` | 各算子实现 |
 | 执行 | 29 | `resolved_kernel_.fn` | 各 kernel 实现 |
 

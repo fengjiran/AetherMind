@@ -1,7 +1,7 @@
 # Shape Constraint 系统全面审核报告
 
 > **审核日期**：2026-05-30
-> **审核范围**：`include/aethermind/base/shape_constraint.h`、`include/aethermind/base/shape_constraint_evaluator.h` 及其实现文件、测试文件、以及与算子系统的集成代码
+> **审核范围**：`include/aethermind/shape_inference/shape_constraint.h`、`include/aethermind/shape_inference/shape_constraint_evaluator.h` 及其实现文件、测试文件、以及与算子系统的集成代码
 
 ---
 
@@ -36,13 +36,13 @@ Shape Constraint 系统是 AetherMind 推理引擎中 **形状安全校验** 的
 
 | 文件 | 类型 | 职责 |
 |------|------|------|
-| `include/aethermind/base/shape_constraint.h` | 头文件 | 纯数据约束类型定义 |
-| `include/aethermind/base/shape_constraint_evaluator.h` | 头文件 | 求值器接口声明 |
-| `src/base/shape_constraint_evaluator.cpp` | 实现文件 | 符号求值与运行时求值实现 |
-| `include/aethermind/base/shape_symbol.h` | 头文件 | 符号维度基础类型 |
-| `src/base/shape_symbol.cpp` | 实现文件 | `ShapeSymbol` 运算与 `Unify`/`Join` 逻辑 |
+| `include/aethermind/shape_inference/shape_constraint.h` | 头文件 | 纯数据约束类型定义 |
+| `include/aethermind/shape_inference/shape_constraint_evaluator.h` | 头文件 | 求值器接口声明 |
+| `src/shape_inference/shape_constraint_evaluator.cpp` | 实现文件 | 符号求值与运行时求值实现 |
+| `include/aethermind/shape_inference/shape_symbol.h` | 头文件 | 符号维度基础类型 |
+| `src/shape_inference/shape_symbol.cpp` | 实现文件 | `ShapeSymbol` 运算与 `Unify`/`Join` 逻辑 |
 | `include/utils/variant_utils.h` | 工具头文件 | `overloaded` 工具（`std::visit` 多 lambda 分派） |
-| `tests/unit/base/test_shape_constraint.cpp` | 测试文件 | 约束系统单元测试 |
+| `tests/unit/shape_inference/test_shape_constraint.cpp` | 测试文件 | 约束系统单元测试 |
 
 ### 1.3 端到端数据流
 
@@ -311,7 +311,7 @@ Shape Constraint 系统在推理热路径中的开销主要来自 `LayerRunner::
 
 ### 🔴 P1：VolumeEqualConstraint 符号求值过于保守
 
-**文件**：`src/base/shape_constraint_evaluator.cpp`，`EvaluateSymbolicVolumeConstraint` 函数
+**文件**：`src/shape_inference/shape_constraint_evaluator.cpp`，`EvaluateSymbolicVolumeConstraint` 函数
 
 **现象**：当任一维度是符号维度时，立即返回 `kDeferred`，即使 lhs 和 rhs 的符号维度列表完全相同。
 
@@ -342,7 +342,7 @@ if (lhs_dims.size() == rhs_dims.size()) {
 
 ### 🔴 P1：DimEqualConstraint 符号求值缺少传递性推理
 
-**文件**：`src/base/shape_constraint_evaluator.cpp`，`EvaluateSymbolicDimEqual` 函数
+**文件**：`src/shape_inference/shape_constraint_evaluator.cpp`，`EvaluateSymbolicDimEqual` 函数
 
 **现象**：当 `lhs = S1`（符号）且 `rhs = S2`（另一个符号）时，即使 S1 和 S2 通过之前的 `UnifyShapeSymbol` 已被证明相等，此函数也无法识别。
 
@@ -363,7 +363,7 @@ Step 2: Evaluate(DimEqual{S1, S2}) → kDeferred  （无法证明 S1 == S2）
 
 ### 🟡 P1：ShapeConstraint 的 `operator<=>` 含字符串比较
 
-**文件**：`include/aethermind/base/shape_constraint.h`，第 103 行
+**文件**：`include/aethermind/shape_inference/shape_constraint.h`，第 103 行
 
 **现象**：
 
@@ -394,7 +394,7 @@ friend auto operator<=>(const ShapeConstraint& a, const ShapeConstraint& b) noex
 
 ### 🟠 P2：EvaluateShapeConstraint 返回 StatusOr 混合了两种错误语义
 
-**文件**：`include/aethermind/base/shape_constraint_evaluator.h`
+**文件**：`include/aethermind/shape_inference/shape_constraint_evaluator.h`
 
 **现象**：返回 `StatusOr<ShapeConstraintEvaluationResult>` 意味着有两种"失败"路径：
 
@@ -435,7 +435,7 @@ struct DimLessThanConstraint {
 
 ### 🟠 P2：运行时求值的 kDeferred 静默放行
 
-**文件**：`src/base/shape_constraint_evaluator.cpp`，`ValidateShapeConstraints` 函数
+**文件**：`src/shape_inference/shape_constraint_evaluator.cpp`，`ValidateShapeConstraints` 函数
 
 **现象**：
 
@@ -461,7 +461,7 @@ if (*result == ShapeConstraintEvaluationResult::kDeferred) {
 
 ### 🟠 P2：evaluator.h 编译依赖过重
 
-**文件**：`include/aethermind/base/shape_constraint_evaluator.h`
+**文件**：`include/aethermind/shape_inference/shape_constraint_evaluator.h`
 
 **现象**：头文件同时声明了符号求值和运行时求值两个重载，导致：
 
@@ -481,7 +481,7 @@ shape_constraint_symbolic_evaluator.h → 依赖 shape_symbol.h
 
 ### 🟢 P3：ShapeConstraintList 类型别名未被使用
 
-**文件**：`include/aethermind/base/shape_constraint.h`，第 106 行
+**文件**：`include/aethermind/shape_inference/shape_constraint.h`，第 106 行
 
 ```cpp
 using ShapeConstraintList = std::vector<ShapeConstraint>;

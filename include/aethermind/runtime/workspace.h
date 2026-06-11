@@ -139,7 +139,7 @@ AM_NODISCARD inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
 
     size_t t = 0;
     if (CheckOverflowAdd(offset, alignment - 1, &t)) {
-        return Status(StatusCode::kOutOfRange, "Workspace offset alignment overflowed size_t");
+        return Status::OutOfRange("Workspace offset alignment overflowed size_t");
     }
 
     return t & ~(alignment - 1);
@@ -205,8 +205,8 @@ AM_NODISCARD inline StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
 
         size_t next_total = 0;
         if (CheckOverflowAdd(requirement.offset, requirement.bytes, &next_total)) {
-            return Status(StatusCode::kOutOfRange,
-                          "Workspace planning exceeded size_t capacity");
+            return Status::OutOfRange(
+                    "Workspace planning exceeded size_t capacity");
         }
 
         layout.total_bytes = next_total;

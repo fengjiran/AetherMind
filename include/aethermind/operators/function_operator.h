@@ -53,7 +53,7 @@ public:
         UNUSED(bindings);
         UNUSED(step_index);
         if (resolved_kernel_.fn == nullptr) {
-            return Status(StatusCode::kFailedPrecondition, "FunctionOperator kernel function cannot be null");
+            return Status::FailedPrecondition("FunctionOperator kernel function cannot be null");
         }
         return resolved_kernel_.fn(ctx);
     }

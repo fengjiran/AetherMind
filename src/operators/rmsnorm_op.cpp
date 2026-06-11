@@ -114,7 +114,7 @@ Status RmsNormOp::Run(KernelContext& ctx,
                       const RuntimeBindingContext& bindings,
                       size_t step_index) const noexcept {
     if (resolved_kernel_.fn == nullptr) {
-        return Status(StatusCode::kFailedPrecondition, "RmsNorm Run called before Prepare");
+        return Status::FailedPrecondition("RmsNorm Run called before Prepare");
     }
 
     const auto binding = bindings.GetStepTensorBinding(step_index);

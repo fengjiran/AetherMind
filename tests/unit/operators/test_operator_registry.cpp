@@ -54,7 +54,7 @@ public:
     AM_NODISCARD Status Run(KernelContext&,
                             const RuntimeBindingContext&,
                             size_t) const noexcept override {
-        return prepared_ ? Status::Ok() : Status(StatusCode::kFailedPrecondition, "not prepared");
+        return prepared_ ? Status::Ok() : Status::FailedPrecondition("not prepared");
     }
 
     AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {

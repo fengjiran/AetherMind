@@ -24,14 +24,14 @@ StatusOr<WorkspaceBinding> RuntimeBindingContext::BindWorkspace(
     }
 
     if (workspace_arena_ == nullptr) {
-        return Status(StatusCode::kFailedPrecondition,
-                      "RuntimeBindingContext requires a WorkspaceArena for non-zero workspace requirements");
+        return Status::FailedPrecondition(
+                "RuntimeBindingContext requires a WorkspaceArena for non-zero workspace requirements");
     }
 
     const auto binding = workspace_arena_->Bind(requirement);
     if (binding.data == nullptr || binding.size < requirement.bytes) {
-        return Status(StatusCode::kFailedPrecondition,
-                      "WorkspaceArena could not satisfy execution-time workspace binding");
+        return Status::FailedPrecondition(
+                "WorkspaceArena could not satisfy execution-time workspace binding");
     }
     return binding;
 }

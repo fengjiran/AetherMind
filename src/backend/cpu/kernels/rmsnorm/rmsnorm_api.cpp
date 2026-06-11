@@ -27,7 +27,7 @@ Status LaunchRmsNorm(const RmsNormArgs& args) noexcept {
         return cpu::RmsNormKernel_CPU_FP32_AVX2(kernel_args);
     }
 
-    return Status(StatusCode::kUnimplemented, "Not implemented");
+    return Status::Unimplemented("Not implemented");
 }
 
 }// namespace aethermind

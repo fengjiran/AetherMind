@@ -108,7 +108,7 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
     const size_t packed_nbytes = logical_weight.logical_nbytes();
     Buffer packed_storage = AllocateCpuPackedBuffer(packed_nbytes, logical_weight.alignment());
     if (!packed_storage.is_initialized()) {
-        return Status(StatusCode::kResourceExhausted, "Failed to allocate packed CPU weight storage");
+        return Status::ResourceExhausted("Failed to allocate packed CPU weight storage");
     }
 
     if (packed_nbytes > 0) {

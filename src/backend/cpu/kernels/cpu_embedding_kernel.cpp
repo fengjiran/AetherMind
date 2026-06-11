@@ -108,7 +108,7 @@ Status CpuEmbeddingKernel(const KernelContext& ctx) noexcept {
     for (int64_t token = 0; token < token_count; ++token) {
         const int64_t token_id = ReadTokenId(token_ids, static_cast<size_t>(token));
         if (token_id < 0 || token_id >= vocab_size) {
-            return Status(StatusCode::kOutOfRange, "CpuEmbeddingKernel token id is out of vocabulary range");
+            return Status::OutOfRange("CpuEmbeddingKernel token id is out of vocabulary range");
         }
 
         const auto source_offset = static_cast<size_t>(token_id) * hidden;

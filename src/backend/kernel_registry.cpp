@@ -31,8 +31,8 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (frozen_.load(std::memory_order_relaxed)) {
-        return Status(StatusCode::kFailedPrecondition,
-                      "Cannot register kernel after registry has been frozen");
+        return Status::FailedPrecondition(
+                "Cannot register kernel after registry has been frozen");
     }
 
     if (auto status = ValidateKernelDescriptor(descriptor); !status.ok()) {
@@ -67,8 +67,8 @@ Status KernelRegistry::BuildBucketIndex() {
             buckets[kernels_[i].op_type].push_back(i);
         }
     } catch (const std::bad_alloc&) {
-        return Status(StatusCode::kResourceExhausted,
-                      "Failed to build kernel registry bucket index");
+        return Status::ResourceExhausted(
+                "Failed to build kernel registry bucket index");
     }
 
     buckets_.swap(buckets);
@@ -80,8 +80,8 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
     // Register/Freeze use mutex + release-store on frozen_; the acquire-load here
     // synchronizes-with that release, guaranteeing we see a fully-constructed buckets_.
     if (!frozen_.load(std::memory_order_acquire)) {
-        return Status(StatusCode::kFailedPrecondition,
-                      "Cannot resolve kernel before registry has been frozen");
+        return Status::FailedPrecondition(
+                "Cannot resolve kernel before registry has been frozen");
     }
 
     if (auto status = ValidateResolveArgs(op_type, selector); !status.ok()) {
@@ -113,8 +113,8 @@ StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
 
 StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindByOpType(OpType op_type) const {
     if (!frozen_.load(std::memory_order_acquire)) {
-        return Status(StatusCode::kFailedPrecondition,
-                      "Cannot find kernels by op_type before registry has been frozen");
+        return Status::FailedPrecondition(
+                "Cannot find kernels by op_type before registry has been frozen");
     }
 
     std::vector<const KernelDescriptor*> result;

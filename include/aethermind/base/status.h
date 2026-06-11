@@ -27,6 +27,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <variant>
 
 namespace aethermind {
@@ -76,7 +78,7 @@ static_assert(static_cast<uint8_t>(StatusCode::kUnauthenticated) == AM_STATUS_UN
 ///
 /// For example, StatusCode::kNotFound returns "NOT_FOUND".
 /// Guaranteed to return a valid string_view for all defined StatusCode values.
-AM_NODISCARD constexpr std::string_view StatusCodeName(StatusCode code) {
+AM_NODISCARD constexpr std::string_view StatusCodeName(StatusCode code) noexcept {
     switch (code) {
         case StatusCode::kOk:
             return "OK";
@@ -116,11 +118,11 @@ AM_NODISCARD constexpr std::string_view StatusCodeName(StatusCode code) {
     return "UNKNOWN";
 }
 
-AM_NODISCARD constexpr am_status_code ToAMStatusCode(StatusCode code) {
+AM_NODISCARD constexpr am_status_code ToAMStatusCode(StatusCode code) noexcept {
     return static_cast<am_status_code>(code);
 }
 
-AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) {
+AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) noexcept {
     return static_cast<StatusCode>(code);
 }
 
@@ -133,16 +135,16 @@ AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) {
 class Status {
 public:
     /// Creates an OK status.
-    Status() : code_(StatusCode::kOk) {}
+    Status() noexcept : code_(StatusCode::kOk) {}
 
-    explicit Status(StatusCode code, std::string message = "")
+    explicit Status(StatusCode code, std::string message = "") noexcept
         : code_(code), message_(std::move(message)) {
         if (code_ == StatusCode::kOk) {
             message_.clear();
         }
     }
 
-    AM_NODISCARD static Status Ok() {
+    AM_NODISCARD static Status Ok() noexcept {
         return {};
     }
 
@@ -166,19 +168,35 @@ public:
         return Status(StatusCode::kAlreadyExists, std::string(message));
     }
 
-    AM_NODISCARD bool ok() const {
+    AM_NODISCARD static Status OutOfRange(std::string_view message) {
+        return Status(StatusCode::kOutOfRange, std::string(message));
+    }
+
+    AM_NODISCARD static Status FailedPrecondition(std::string_view message) {
+        return Status(StatusCode::kFailedPrecondition, std::string(message));
+    }
+
+    AM_NODISCARD static Status Unimplemented(std::string_view message) {
+        return Status(StatusCode::kUnimplemented, std::string(message));
+    }
+
+    AM_NODISCARD static Status ResourceExhausted(std::string_view message) {
+        return Status(StatusCode::kResourceExhausted, std::string(message));
+    }
+
+    AM_NODISCARD bool ok() const noexcept {
         return code_ == StatusCode::kOk;
     }
 
-    AM_NODISCARD explicit operator bool() const {
+    AM_NODISCARD explicit operator bool() const noexcept {
         return ok();
     }
 
-    AM_NODISCARD StatusCode code() const {
+    AM_NODISCARD StatusCode code() const noexcept {
         return code_;
     }
 
-    AM_NODISCARD const std::string& message() const {
+    AM_NODISCARD const std::string& message() const noexcept {
         return message_;
     }
 
@@ -194,11 +212,11 @@ public:
         return std::string(StatusCodeName(code_)) + ": " + message_;
     }
 
-    AM_NODISCARD bool operator==(StatusCode code) const {
+    AM_NODISCARD bool operator==(StatusCode code) const noexcept {
         return code_ == code;
     }
 
-    AM_NODISCARD bool operator!=(StatusCode code) const {
+    AM_NODISCARD bool operator!=(StatusCode code) const noexcept {
         return code_ != code;
     }
 
@@ -274,11 +292,12 @@ public:
         requires(!std::same_as<std::decay_t<U>, Status>) &&
                 (!std::same_as<std::decay_t<U>, StatusOr>) &&
                 std::convertible_to<U, T>
-    StatusOr(U&& value) : storage_(std::in_place_type<T>, std::forward<U>(value)) {}// NOLINT
+    StatusOr(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>)
+        : storage_(std::in_place_type<T>, std::forward<U>(value)) {}// NOLINT
 
     // inplace ctor
     template<typename... Args>
-    StatusOr(std::in_place_t, Args&&... args)// NOLINT
+    StatusOr(std::in_place_t, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)// NOLINT
         : storage_(std::in_place_type<T>, std::forward<Args>(args)...) {}
 
     /// Constructs from an error status. Throws std::invalid_argument if status.ok().
@@ -314,7 +333,7 @@ public:
         return ok() ? &std::get<T>(storage_) : nullptr;
     }
 
-    AM_NODISCARD const Status& status() const& {
+    AM_NODISCARD const Status& status() const& noexcept {
         static const Status kOkStatus = Status::Ok();
         if (ok()) {
             return kOkStatus;
@@ -322,7 +341,7 @@ public:
         return std::get<Status>(storage_);
     }
 
-    AM_NODISCARD Status status() && {
+    AM_NODISCARD Status status() && noexcept {
         if (ok()) {
             return Status::Ok();
         }
@@ -375,27 +394,27 @@ public:
         return static_cast<T>(std::forward<U>(fallback));
     }
 
-    AM_NODISCARD const T& operator*() const& {
-        return value();
+    AM_NODISCARD const T& operator*() const& noexcept {
+        return std::get<T>(storage_);
     }
 
-    AM_NODISCARD T& operator*() & {
-        return value();
+    AM_NODISCARD T& operator*() & noexcept {
+        return std::get<T>(storage_);
     }
 
-    AM_NODISCARD const T* operator->() const {
-        return &value();
+    AM_NODISCARD const T* operator->() const noexcept {
+        return &std::get<T>(storage_);
     }
 
-    AM_NODISCARD T* operator->() {
-        return &value();
+    AM_NODISCARD T* operator->() noexcept {
+        return &std::get<T>(storage_);
     }
 
-    AM_NODISCARD bool operator==(StatusCode code) const {
+    AM_NODISCARD bool operator==(StatusCode code) const noexcept {
         return status().code() == code;
     }
 
-    AM_NODISCARD bool operator!=(StatusCode code) const {
+    AM_NODISCARD bool operator!=(StatusCode code) const noexcept {
         return status().code() != code;
     }
 

@@ -8,8 +8,8 @@ Status BackendSidecar::Store(std::unique_ptr<PackedWeights> packed_weights) noex
     }
 
     if (Find(packed_weights->op_type(), packed_weights->selector()) != nullptr) {
-        return Status(StatusCode::kAlreadyExists,
-                      "Packed weights already exist for the requested op/selector");
+        return Status::AlreadyExists(
+                "Packed weights already exist for the requested op/selector");
     }
 
     packed_weights_.push_back(std::move(packed_weights));

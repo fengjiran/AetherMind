@@ -94,7 +94,7 @@ StatusOr<SymbolicShape> SymbolicShape::Unify(const SymbolicShape& other) const {
     if (other.IsUnranked()) return *this;
 
     if (rank() != other.rank()) {
-        return Status(StatusCode::kInvalidArgument, "Unification Failed: Rank mismatch.");
+        return Status::InvalidArgument("Unification Failed: Rank mismatch.");
     }
 
     const auto n = rank();
@@ -137,8 +137,8 @@ StatusOr<ShapeSymbol> UnifyShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& 
 
     // 2. Hard conflict: both are static but with different values.
     if (a.IsStatic() && b.IsStatic()) {
-        return Status(StatusCode::kInvalidArgument,
-                      "Shape Unification Failed: incompatible static dimensions.");
+        return Status::InvalidArgument(
+                "Shape Unification Failed: incompatible static dimensions.");
     }
 
     // 3. Static overrides: if exactly one is static, it is the concrete value

@@ -41,7 +41,7 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
 
     if (const RegistrationKey key{descriptor.op_type, descriptor.selector};
         !registration_keys_.insert(key).second) {
-        return Status(StatusCode::kAlreadyExists, "Duplicate kernel registration");
+        return Status::AlreadyExists("Duplicate kernel registration");
     }
 
     kernels_.push_back(descriptor);

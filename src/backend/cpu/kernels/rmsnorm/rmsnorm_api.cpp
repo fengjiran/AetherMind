@@ -8,7 +8,7 @@ namespace aethermind {
 
 Status LaunchRmsNorm(const RmsNormArgs& args) noexcept {
     if (!args.input || !args.weight || !args.output) {
-        return Status(StatusCode::kInvalidArgument, "Pointers cannot be null");
+        return Status::InvalidArgument("Pointers cannot be null");
     }
 
     if (args.dtype.IsFloat32()) {

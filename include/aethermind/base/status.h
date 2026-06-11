@@ -123,6 +123,9 @@ AM_NODISCARD constexpr am_status_code ToAMStatusCode(StatusCode code) noexcept {
 }
 
 AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) noexcept {
+    if (code < AM_STATUS_OK || code > AM_STATUS_UNAUTHENTICATED) {
+        return StatusCode::kUnknown;
+    }
     return static_cast<StatusCode>(code);
 }
 
@@ -136,13 +139,6 @@ class Status {
 public:
     /// Creates an OK status.
     Status() noexcept : code_(StatusCode::kOk) {}
-
-    explicit Status(StatusCode code, std::string message = "") noexcept
-        : code_(code), message_(std::move(message)) {
-        if (code_ == StatusCode::kOk) {
-            message_.clear();
-        }
-    }
 
     AM_NODISCARD static Status Ok() noexcept {
         return {};
@@ -200,6 +196,13 @@ public:
         return message_;
     }
 
+    AM_NODISCARD Status WithMessage(std::string message) const noexcept {
+        if (ok()) {
+            return Ok();
+        }
+        return Status(code_, std::move(message));
+    }
+
     AM_NODISCARD std::string ToString() const {
         if (ok()) {
             return std::string(StatusCodeName(StatusCode::kOk));
@@ -212,6 +215,14 @@ public:
         return std::string(StatusCodeName(code_)) + ": " + message_;
     }
 
+    AM_NODISCARD bool operator==(const Status& other) const {
+        return code_ == other.code_ && message_ == other.message_;
+    }
+
+    AM_NODISCARD bool operator!=(const Status& other) const {
+        return !(*this == other);
+    }
+
     AM_NODISCARD bool operator==(StatusCode code) const noexcept {
         return code_ == code;
     }
@@ -221,6 +232,9 @@ public:
     }
 
 private:
+    explicit Status(StatusCode code, std::string message) noexcept
+        : code_(code), message_(std::move(message)) {}
+
     StatusCode code_;
     std::string message_;
 };
@@ -259,13 +273,13 @@ private:
 ///     // On error, returns: Status(INTERNAL, "Failed to load model: file not found")
 ///     return Status::Ok();
 ///   }
-#define AM_RETURN_IF_ERROR_WITH_MSG(expr, msg)                                        \
-    do {                                                                              \
-        auto am_status_result_ = (expr);                                              \
-        if (!am_status_result_.ok()) AM_UNLIKELY {                                    \
-                return Status(am_status_result_.code(),                               \
-                              std::string(msg) + ": " + am_status_result_.message()); \
-            }                                                                         \
+#define AM_RETURN_IF_ERROR_WITH_MSG(expr, msg)                                  \
+    do {                                                                        \
+        auto am_status_result_ = (expr);                                        \
+        if (!am_status_result_.ok()) AM_UNLIKELY {                              \
+                return am_status_result_.WithMessage(                           \
+                        std::string(msg) + ": " + am_status_result_.message()); \
+            }                                                                   \
     } while (false)
 
 /// Represents either a value of type T or an error Status.
@@ -383,7 +397,7 @@ public:
         if (ok()) {
             return std::get<T>(storage_);
         }
-        return static_cast<T>(std::forward<U>(fallback));
+        return T(std::forward<U>(fallback));
     }
 
     template<typename U>
@@ -391,7 +405,7 @@ public:
         if (ok()) {
             return std::move(std::get<T>(storage_));
         }
-        return static_cast<T>(std::forward<U>(fallback));
+        return T(std::forward<U>(fallback));
     }
 
     AM_NODISCARD const T& operator*() const& noexcept {
@@ -402,11 +416,27 @@ public:
         return std::get<T>(storage_);
     }
 
-    AM_NODISCARD const T* operator->() const noexcept {
+    AM_NODISCARD const T&& operator*() const&& noexcept {
+        return std::move(std::get<T>(storage_));
+    }
+
+    AM_NODISCARD T&& operator*() && noexcept {
+        return std::move(std::get<T>(storage_));
+    }
+
+    AM_NODISCARD const T* operator->() const& noexcept {
         return &std::get<T>(storage_);
     }
 
-    AM_NODISCARD T* operator->() noexcept {
+    AM_NODISCARD T* operator->() & noexcept {
+        return &std::get<T>(storage_);
+    }
+
+    AM_NODISCARD const T* operator->() const&& noexcept {
+        return &std::get<T>(storage_);
+    }
+
+    AM_NODISCARD T* operator->() && noexcept {
         return &std::get<T>(storage_);
     }
 

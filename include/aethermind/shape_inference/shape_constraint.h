@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_BASE_SHAPE_CONSTRAINT_H
-#define AETHERMIND_BASE_SHAPE_CONSTRAINT_H
+#ifndef AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_H
+#define AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_H
 
 #include <cstddef>
 #include <cstdint>
@@ -107,4 +107,4 @@ using ShapeConstraintList = std::vector<ShapeConstraint>;
 
 }// namespace aethermind
 
-#endif// AETHERMIND_BASE_SHAPE_CONSTRAINT_H
+#endif// AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_H

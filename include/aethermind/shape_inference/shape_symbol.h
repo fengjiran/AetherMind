@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_SHAPE_SYMBOL_H
-#define AETHERMIND_SHAPE_SYMBOL_H
+#ifndef AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H
+#define AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H
 
 #include "aethermind/base/status.h"
 #include "container/array_view.h"
@@ -174,4 +174,4 @@ std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
 
 }// namespace aethermind
 
-#endif// AETHERMIND_SHAPE_SYMBOL_H
+#endif// AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H

@@ -1,10 +1,10 @@
-#ifndef AETHERMIND_BASE_SHAPE_CONSTRAINT_EVALUATOR_H
-#define AETHERMIND_BASE_SHAPE_CONSTRAINT_EVALUATOR_H
+#ifndef AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_EVALUATOR_H
+#define AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_EVALUATOR_H
 
-#include "aethermind/base/shape_constraint.h"
-#include "aethermind/base/shape_symbol.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
+#include "aethermind/shape_inference/shape_constraint.h"
+#include "aethermind/shape_inference/shape_symbol.h"
 
 #include <span>
 
@@ -33,4 +33,4 @@ AM_NODISCARD Status ValidateShapeConstraints(
 
 }// namespace aethermind
 
-#endif// AETHERMIND_BASE_SHAPE_CONSTRAINT_EVALUATOR_H
+#endif// AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_EVALUATOR_H

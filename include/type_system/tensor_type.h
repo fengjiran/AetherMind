@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_TYPE_SYSTEM_TENSOR_TYPE_H
 #define AETHERMIND_TYPE_SYSTEM_TENSOR_TYPE_H
 
-#include "aethermind/base/shape_symbol.h"
+#include "aethermind/shape_inference/shape_symbol.h"
 #include "device.h"
 #include "memory_format.h"
 #include "type_system/type.h"

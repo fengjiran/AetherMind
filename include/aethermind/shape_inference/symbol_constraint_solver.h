@@ -1,9 +1,9 @@
-#ifndef AETHERMIND_BASE_SYMBOL_CONSTRAINT_SOLVER_H
-#define AETHERMIND_BASE_SYMBOL_CONSTRAINT_SOLVER_H
+#ifndef AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H
+#define AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H
 
-#include "aethermind/base/shape_constraint.h"
-#include "aethermind/base/shape_symbol.h"
 #include "aethermind/base/status.h"
+#include "aethermind/shape_inference/shape_constraint.h"
+#include "aethermind/shape_inference/shape_symbol.h"
 #include "macros.h"
 
 #include <cstdint>
@@ -36,4 +36,4 @@ private:
 
 }// namespace aethermind
 
-#endif
+#endif// AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H

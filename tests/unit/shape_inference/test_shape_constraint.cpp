@@ -1,6 +1,6 @@
-#include "aethermind/base/shape_constraint.h"
+#include "aethermind/shape_inference/shape_constraint.h"
 
-#include "aethermind/base/shape_constraint_evaluator.h"
+#include "aethermind/shape_inference/shape_constraint_evaluator.h"
 
 #include <gtest/gtest.h>
 

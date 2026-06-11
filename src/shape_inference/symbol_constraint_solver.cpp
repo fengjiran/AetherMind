@@ -1,4 +1,4 @@
-#include "aethermind/base/symbol_constraint_solver.h"
+#include "aethermind/shape_inference/symbol_constraint_solver.h"
 
 #include <string>
 

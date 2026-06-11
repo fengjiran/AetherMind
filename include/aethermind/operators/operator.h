@@ -2,8 +2,8 @@
 #define AETHERMIND_OPERATORS_OPERATOR_H
 
 #include "aethermind/backend/resolved_kernel.h"
-#include "aethermind/base/shape_constraint.h"
-#include "aethermind/base/shape_symbol.h"
+#include "aethermind/shape_inference/shape_constraint.h"
+#include "aethermind/shape_inference/shape_symbol.h"
 #include "aethermind/base/status.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator_context.h"

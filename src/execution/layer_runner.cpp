@@ -1,6 +1,6 @@
 #include "aethermind/execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/base/shape_constraint_evaluator.h"
+#include "aethermind/shape_inference/shape_constraint_evaluator.h"
 #include "aethermind/execution/runtime_binding_context.h"
 
 namespace aethermind {

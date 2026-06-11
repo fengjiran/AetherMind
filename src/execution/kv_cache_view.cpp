@@ -6,8 +6,8 @@ namespace {
 
 Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) noexcept {
     if (index >= upper_bound) {
-        return Status(StatusCode::kOutOfRange,
-                      std::string(label) + " index out of range");
+        return Status::OutOfRange(
+                std::string(label) + " index out of range");
     }
     return Status::Ok();
 }
@@ -39,9 +39,9 @@ Status KVCacheLayout::Validate() const noexcept {
 }
 
 StatusOr<size_t> KVCacheLayout::Offset(size_t layer_idx,
-                                          size_t kv_head_idx,
-                                          size_t seq_pos,
-                                          size_t dim_idx) const noexcept {
+                                       size_t kv_head_idx,
+                                       size_t seq_pos,
+                                       size_t dim_idx) const noexcept {
     AM_RETURN_IF_ERROR(Validate());
     AM_RETURN_IF_ERROR(ValidateIndexRange(layer_idx, num_layers, "layer"));
     AM_RETURN_IF_ERROR(ValidateIndexRange(kv_head_idx, num_kv_heads, "kv_head"));
@@ -50,25 +50,25 @@ StatusOr<size_t> KVCacheLayout::Offset(size_t layer_idx,
 
     size_t offset = 0;
     if (CheckOverflowMul(layer_idx, layer_stride, &offset)) {
-        return Status(StatusCode::kOutOfRange, "KV layer offset overflowed size_t");
+        return Status::OutOfRange("KV layer offset overflowed size_t");
     }
 
     size_t head_offset = 0;
     if (CheckOverflowMul(kv_head_idx, head_stride, &head_offset) ||
         CheckOverflowAdd(offset, head_offset, &offset)) {
-        return Status(StatusCode::kOutOfRange, "KV head offset overflowed size_t");
+        return Status::OutOfRange("KV head offset overflowed size_t");
     }
 
     size_t token_offset = 0;
     if (CheckOverflowMul(seq_pos, token_stride, &token_offset) ||
         CheckOverflowAdd(offset, token_offset, &offset)) {
-        return Status(StatusCode::kOutOfRange, "KV token offset overflowed size_t");
+        return Status::OutOfRange("KV token offset overflowed size_t");
     }
 
     size_t dim_offset = 0;
     if (CheckOverflowMul(dim_idx, ElementBytes(), &dim_offset) ||
         CheckOverflowAdd(offset, dim_offset, &offset)) {
-        return Status(StatusCode::kOutOfRange, "KV dim offset overflowed size_t");
+        return Status::OutOfRange("KV dim offset overflowed size_t");
     }
 
     return offset;
@@ -78,7 +78,7 @@ StatusOr<size_t> KVCacheLayout::BytesPerPlane() const noexcept {
     AM_RETURN_IF_ERROR(Validate());
     size_t bytes = 0;
     if (CheckOverflowMul(num_layers, layer_stride, &bytes)) {
-        return Status(StatusCode::kOutOfRange, "KV bytes-per-plane overflowed size_t");
+        return Status::OutOfRange("KV bytes-per-plane overflowed size_t");
     }
     return bytes;
 }
@@ -131,15 +131,15 @@ size_t KVCacheView::committed_tokens() const noexcept {
 
 Status KVCacheView::ValidateBaseState() const noexcept {
     if (layout_ == nullptr || storage_ == nullptr || slot_ == nullptr) {
-        return Status(StatusCode::kFailedPrecondition, "KVCacheView is not bound to manager-owned state");
+        return Status::FailedPrecondition("KVCacheView is not bound to manager-owned state");
     }
 
     if (!storage_->is_initialized()) {
-        return Status(StatusCode::kFailedPrecondition, "KVCacheView storage is not initialized");
+        return Status::FailedPrecondition("KVCacheView storage is not initialized");
     }
 
     if (!IsSlotAlive()) {
-        return Status(StatusCode::kFailedPrecondition, "KVCacheView is stale or released");
+        return Status::FailedPrecondition("KVCacheView is stale or released");
     }
 
     return layout_->Validate();
@@ -158,15 +158,15 @@ Status KVCacheView::ValidateWrite(size_t layer_idx,
 
     size_t seq_end = 0;
     if (CheckOverflowAdd(seq_pos, token_count, &seq_end)) {
-        return Status(StatusCode::kOutOfRange, "KV write range overflowed size_t");
+        return Status::OutOfRange("KV write range overflowed size_t");
     }
 
     if (seq_end > slot_->capacity_tokens) {
-        return Status(StatusCode::kOutOfRange, "KV write exceeds reserved session token capacity");
+        return Status::OutOfRange("KV write exceeds reserved session token capacity");
     }
 
     if (seq_end > layout_->max_tokens) {
-        return Status(StatusCode::kOutOfRange, "KV write exceeds physical KV capacity");
+        return Status::OutOfRange("KV write exceeds physical KV capacity");
     }
 
     return Status::Ok();
@@ -183,7 +183,7 @@ Status KVCacheView::ValidateRead(size_t layer_idx,
         return Status::InvalidArgument("KV read seq_begin must be <= seq_end");
     }
     if (seq_end > slot_->current_pos) {
-        return Status(StatusCode::kOutOfRange, "KV read exceeds committed token range");
+        return Status::OutOfRange("KV read exceeds committed token range");
     }
     return Status::Ok();
 }
@@ -250,7 +250,7 @@ Status KVCacheView::CommitUntil(size_t new_pos) noexcept {
         return Status::InvalidArgument("KV commit position cannot move backwards");
     }
     if (new_pos > slot_->capacity_tokens) {
-        return Status(StatusCode::kOutOfRange, "KV commit exceeds reserved session token capacity");
+        return Status::OutOfRange("KV commit exceeds reserved session token capacity");
     }
     slot_->current_pos = new_pos;
     return Status::Ok();

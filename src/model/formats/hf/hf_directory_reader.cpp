@@ -362,11 +362,11 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
             }
 
             if (expected_shard->second != shard_filename) {
-                return Status(StatusCode::kFailedPrecondition,
-                              hf::FormatPathMessage("Safetensors index assigns tensor '" + entry.name +
-                                                            "' to shard '" + expected_shard->second +
-                                                            "' but it was found in shard '" + shard_filename + "'",
-                                                    shard_path));
+                return Status::FailedPrecondition(
+                        hf::FormatPathMessage("Safetensors index assigns tensor '" + entry.name +
+                                                      "' to shard '" + expected_shard->second +
+                                                      "' but it was found in shard '" + shard_filename + "'",
+                                              shard_path));
             }
 
             if (!raw_weights.emplace(entry.name, entry.view).second) {
@@ -439,8 +439,8 @@ StatusOr<RawWeightTable> HfDirectoryReader::LoadRawWeightTable() const {
         return LoadShardedRawWeightTable(dir_desc_);
     }
 
-    return Status(StatusCode::kFailedPrecondition,
-                  hf::FormatPathMessage("Unknown HF safetensors directory layout", dir_desc_.model_dir));
+    return Status::FailedPrecondition(
+            hf::FormatPathMessage("Unknown HF safetensors directory layout", dir_desc_.model_dir));
 }
 
 StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::filesystem::path& model_dir) {
@@ -515,9 +515,9 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
     // choosing one implicitly; otherwise stale files could silently change which
     // weights are loaded.
     if (has_single_file && has_sharded_index) {
-        return Status(StatusCode::kFailedPrecondition,
-                      hf::FormatPathMessage("HF model directory has conflicting single-file and sharded safetensors layouts",
-                                            model_dir));
+        return Status::FailedPrecondition(
+                hf::FormatPathMessage("HF model directory has conflicting single-file and sharded safetensors layouts",
+                                      model_dir));
     }
 
     if (has_single_file && (!std::filesystem::is_regular_file(safetensors_path, error) || error)) {

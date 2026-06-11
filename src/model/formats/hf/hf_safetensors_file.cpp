@@ -60,8 +60,8 @@ StatusOr<uint64_t> ParseLittleEndianU64(std::span<const std::byte> bytes) {
 StatusOr<uint64_t> CheckedMultiply(uint64_t lhs, uint64_t rhs, std::string_view context) {
     uint64_t product = 0;
     if (CheckOverflowMul(lhs, rhs, &product)) {
-        return Status(StatusCode::kOutOfRange,
-                      std::string("Integer overflow while computing ") + std::string(context));
+        return Status::OutOfRange(
+                std::string("Integer overflow while computing ") + std::string(context));
     }
     return product;
 }
@@ -214,7 +214,7 @@ private:
                 }
 
                 SkipWhitespace();
-            if (TryConsume('}')) {
+                if (TryConsume('}')) {
                     break;
                 }
                 AM_RETURN_IF_ERROR(Expect(',', "between safetensors tensor fields"));
@@ -236,8 +236,8 @@ private:
         }
 
         if (end > data_size_) {
-            return Status(StatusCode::kOutOfRange,
-                          "Safetensors tensor entry points outside the raw data region");
+            return Status::OutOfRange(
+                    "Safetensors tensor entry points outside the raw data region");
         }
 
         uint64_t numel = 1;

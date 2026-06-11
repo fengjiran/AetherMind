@@ -19,7 +19,7 @@ StatusOr<Buffer> AllocateAlignedCpuBuffer(size_t nbytes, size_t alignment) noexc
     void* ptr = nullptr;
     const int rc = posix_memalign(&ptr, alignment, nbytes == 0 ? 1 : nbytes);
     if (rc != 0 || ptr == nullptr) {
-        return Status(StatusCode::kResourceExhausted, "Failed to allocate aligned KV buffer");
+        return Status::ResourceExhausted("Failed to allocate aligned KV buffer");
     }
 
     return Buffer{nbytes,
@@ -74,7 +74,7 @@ Status KVCacheManager::Init(size_t num_layers,
     if (CheckOverflowMul(layout_.head_dim_stride, element_bytes, &layout_.token_stride) ||
         CheckOverflowMul(layout_.max_tokens, layout_.token_stride, &layout_.head_stride) ||
         CheckOverflowMul(layout_.num_kv_heads, layout_.head_stride, &layout_.layer_stride)) {
-        return Status(StatusCode::kOutOfRange, "KV layout stride computation overflowed size_t");
+        return Status::OutOfRange("KV layout stride computation overflowed size_t");
     }
 
     AM_RETURN_IF_ERROR(layout_.Validate());
@@ -86,7 +86,7 @@ Status KVCacheManager::Init(size_t num_layers,
 
     size_t total_bytes = 0;
     if (CheckOverflowMul(bytes_per_plane.value(), size_t{2}, &total_bytes)) {
-        return Status(StatusCode::kOutOfRange, "KV total bytes overflowed size_t");
+        return Status::OutOfRange("KV total bytes overflowed size_t");
     }
 
     AM_RETURN_IF_ERROR(AllocateStorage(bytes_per_plane.value(), alignment));
@@ -99,21 +99,21 @@ Status KVCacheManager::Init(size_t num_layers,
 StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
                                                         size_t max_new_tokens) noexcept {
     if (!initialized_) {
-        return Status(StatusCode::kFailedPrecondition, "KVCacheManager is not initialized");
+        return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
     if (slot_.in_use) {
-        return Status(StatusCode::kFailedPrecondition, "KVCacheManager already has an active session reservation");
+        return Status::FailedPrecondition("KVCacheManager already has an active session reservation");
     }
 
     size_t requested_tokens = 0;
     if (CheckOverflowAdd(prompt_len, max_new_tokens, &requested_tokens)) {
-        return Status(StatusCode::kOutOfRange, "KV session reservation overflowed size_t");
+        return Status::OutOfRange("KV session reservation overflowed size_t");
     }
     if (requested_tokens == 0) {
         return Status::InvalidArgument("KV session reservation must request at least one token");
     }
     if (requested_tokens > layout_.max_tokens) {
-        return Status(StatusCode::kOutOfRange, "KV session reservation exceeds physical KV capacity");
+        return Status::OutOfRange("KV session reservation exceeds physical KV capacity");
     }
 
     ++slot_.generation;
@@ -127,10 +127,10 @@ StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
 
 Status KVCacheManager::ResetSession(KVCacheView& view) noexcept {
     if (!initialized_) {
-        return Status(StatusCode::kFailedPrecondition, "KVCacheManager is not initialized");
+        return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
     if (!view.valid()) {
-        return Status(StatusCode::kFailedPrecondition, "Cannot reset an invalid or stale KVCacheView");
+        return Status::FailedPrecondition("Cannot reset an invalid or stale KVCacheView");
     }
 
     slot_.current_pos = slot_.prompt_len;
@@ -139,10 +139,10 @@ Status KVCacheManager::ResetSession(KVCacheView& view) noexcept {
 
 Status KVCacheManager::ReleaseSession(KVCacheView& view) noexcept {
     if (!initialized_) {
-        return Status(StatusCode::kFailedPrecondition, "KVCacheManager is not initialized");
+        return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
     if (!view.valid()) {
-        return Status(StatusCode::kFailedPrecondition, "Cannot release an invalid or stale KVCacheView");
+        return Status::FailedPrecondition("Cannot release an invalid or stale KVCacheView");
     }
 
     slot_.in_use = false;

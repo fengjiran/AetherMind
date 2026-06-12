@@ -65,7 +65,7 @@ struct VolumeEqualConstraint {
     std::vector<DimLocator> lhs_dims;
     std::vector<DimLocator> rhs_dims;
 
-    auto operator<=>(const VolumeEqualConstraint&) const noexcept = default;
+    auto operator<=>(const VolumeEqualConstraint&) const = default;
 };
 
 /// Constrains the rank of a tensor to an exact value.
@@ -100,7 +100,13 @@ struct ShapeConstraint {
     ConstraintVariant condition;
     std::string error_context;
 
-    auto operator<=>(const ShapeConstraint&) const noexcept = default;
+    friend bool operator==(const ShapeConstraint& lhs, const ShapeConstraint& rhs) noexcept(noexcept(lhs.condition == rhs.condition)) {
+        return lhs.condition == rhs.condition;
+    }
+
+    friend auto operator<=>(const ShapeConstraint& lhs, const ShapeConstraint& rhs) noexcept(noexcept(lhs.condition <=> rhs.condition)) {
+        return lhs.condition <=> rhs.condition;
+    }
 };
 
 using ShapeConstraintList = std::vector<ShapeConstraint>;

@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
 #include <vector>
 
 using namespace aethermind;
@@ -127,22 +128,16 @@ TEST(ShapeConstraintEvaluator, EvaluatesRuntimeDimensionEquality) {
     };
 
     std::vector<TensorView> matching_inputs{input.View(), matching_weight.View()};
-    const StatusOr<ShapeConstraintEvaluationResult> satisfied = EvaluateShapeConstraint(
-            constraint,
-            std::span<const TensorView>(matching_inputs),
-            std::span<const MutableTensorView>());
-
-    ASSERT_TRUE(satisfied.ok()) << satisfied.status().ToString();
-    EXPECT_EQ(*satisfied, ShapeConstraintEvaluationResult::kSatisfied);
+    EXPECT_EQ(EvaluateShapeConstraint(constraint,
+                                     std::span<const TensorView>(matching_inputs),
+                                     std::span<const MutableTensorView>()),
+              ShapeConstraintEvaluationResult::kSatisfied);
 
     std::vector<TensorView> mismatching_inputs{input.View(), mismatching_weight.View()};
-    const StatusOr<ShapeConstraintEvaluationResult> violated = EvaluateShapeConstraint(
-            constraint,
-            std::span<const TensorView>(mismatching_inputs),
-            std::span<const MutableTensorView>());
-
-    ASSERT_TRUE(violated.ok()) << violated.status().ToString();
-    EXPECT_EQ(*violated, ShapeConstraintEvaluationResult::kViolated);
+    EXPECT_EQ(EvaluateShapeConstraint(constraint,
+                                     std::span<const TensorView>(mismatching_inputs),
+                                     std::span<const MutableTensorView>()),
+              ShapeConstraintEvaluationResult::kViolated);
 }
 
 TEST(ShapeConstraintEvaluator, EvaluatesRuntimeBroadcastVolumeAndRankConstraints) {
@@ -168,13 +163,13 @@ TEST(ShapeConstraintEvaluator, EvaluatesRuntimeBroadcastVolumeAndRankConstraints
             .error_context = "rank mismatch",
     };
 
-    EXPECT_EQ(*EvaluateShapeConstraint(broadcastable, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
+    EXPECT_EQ(EvaluateShapeConstraint(broadcastable, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
               ShapeConstraintEvaluationResult::kSatisfied);
-    EXPECT_EQ(*EvaluateShapeConstraint(volume_equal, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
+    EXPECT_EQ(EvaluateShapeConstraint(volume_equal, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
               ShapeConstraintEvaluationResult::kSatisfied);
-    EXPECT_EQ(*EvaluateShapeConstraint(rank_at_least, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
+    EXPECT_EQ(EvaluateShapeConstraint(rank_at_least, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
               ShapeConstraintEvaluationResult::kSatisfied);
-    EXPECT_EQ(*EvaluateShapeConstraint(rank_equal, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
+    EXPECT_EQ(EvaluateShapeConstraint(rank_equal, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
               ShapeConstraintEvaluationResult::kViolated);
 }
 
@@ -197,11 +192,11 @@ TEST(ShapeConstraintEvaluator, EvaluatesSymbolicDimensionEqualityStates) {
             .error_context = "hidden size mismatch",
     };
 
-    EXPECT_EQ(*EvaluateShapeConstraint(constraint, std::span<const SymbolicShape>(shared_inputs), std::span<const SymbolicShape>()),
+    EXPECT_EQ(EvaluateShapeConstraint(constraint, std::span<const SymbolicShape>(shared_inputs), std::span<const SymbolicShape>()),
               ShapeConstraintEvaluationResult::kSatisfied);
-    EXPECT_EQ(*EvaluateShapeConstraint(constraint, std::span<const SymbolicShape>(conflicting_inputs), std::span<const SymbolicShape>()),
+    EXPECT_EQ(EvaluateShapeConstraint(constraint, std::span<const SymbolicShape>(conflicting_inputs), std::span<const SymbolicShape>()),
               ShapeConstraintEvaluationResult::kViolated);
-    EXPECT_EQ(*EvaluateShapeConstraint(constraint, std::span<const SymbolicShape>(deferred_inputs), std::span<const SymbolicShape>()),
+    EXPECT_EQ(EvaluateShapeConstraint(constraint, std::span<const SymbolicShape>(deferred_inputs), std::span<const SymbolicShape>()),
               ShapeConstraintEvaluationResult::kDeferred);
 }
 
@@ -223,9 +218,9 @@ TEST(ShapeConstraintEvaluator, SatisfiesIdenticalSymbolicVolumeDimensions) {
             .error_context = "volume mismatch",
     };
 
-    EXPECT_EQ(*EvaluateShapeConstraint(identical_volume, std::span<const SymbolicShape>(inputs), std::span<const SymbolicShape>()),
+    EXPECT_EQ(EvaluateShapeConstraint(identical_volume, std::span<const SymbolicShape>(inputs), std::span<const SymbolicShape>()),
               ShapeConstraintEvaluationResult::kSatisfied);
-    EXPECT_EQ(*EvaluateShapeConstraint(permuted_volume, std::span<const SymbolicShape>(inputs), std::span<const SymbolicShape>()),
+    EXPECT_EQ(EvaluateShapeConstraint(permuted_volume, std::span<const SymbolicShape>(inputs), std::span<const SymbolicShape>()),
               ShapeConstraintEvaluationResult::kDeferred);
 }
 
@@ -245,6 +240,73 @@ TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsReturnsConstraintContext)
 
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_EQ(status.message(), "hidden size mismatch");
+}
+
+TEST(ShapeConstraint, EqualityIgnoresErrorContext) {
+    ShapeConstraint a{
+            .condition = DimEqualConstraint{.lhs = InputDim(0, 1), .rhs = InputDim(1, 0)},
+            .error_context = "hidden size mismatch",
+    };
+    ShapeConstraint b{
+            .condition = DimEqualConstraint{.lhs = InputDim(0, 1), .rhs = InputDim(1, 0)},
+            .error_context = "different message",
+    };
+
+    EXPECT_EQ(a, b);
+    EXPECT_TRUE(a == b);
+    EXPECT_FALSE(a != b);
+}
+
+TEST(ShapeConstraint, OrderingIgnoresErrorContext) {
+    ShapeConstraint a{
+            .condition = DimEqualConstraint{.lhs = InputDim(0, 1), .rhs = InputDim(1, 0)},
+            .error_context = "hidden size mismatch",
+    };
+    ShapeConstraint b{
+            .condition = DimEqualConstraint{.lhs = InputDim(0, 1), .rhs = InputDim(1, 0)},
+            .error_context = "different message",
+    };
+
+    EXPECT_FALSE(a < b);
+    EXPECT_FALSE(b < a);
+    EXPECT_TRUE(a <= b);
+    EXPECT_TRUE(a >= b);
+}
+
+TEST(ShapeConstraint, DifferentConditionsAreNotEqual) {
+    ShapeConstraint dim_equal{
+            .condition = DimEqualConstraint{.lhs = InputDim(0, 1), .rhs = InputDim(1, 0)},
+            .error_context = "dim equal",
+    };
+    ShapeConstraint rank_equal{
+            .condition = RankEqualConstraint{.port = InputPort(0), .target_rank = 2},
+            .error_context = "rank equal",
+    };
+
+    EXPECT_NE(dim_equal, rank_equal);
+    EXPECT_FALSE(dim_equal == rank_equal);
+}
+
+TEST(ShapeConstraint, SetDeduplicatesByConditionOnly) {
+    ShapeConstraint a{
+            .condition = DimEqualConstraint{.lhs = InputDim(0, 1), .rhs = InputDim(1, 0)},
+            .error_context = "msg a",
+    };
+    ShapeConstraint b{
+            .condition = DimEqualConstraint{.lhs = InputDim(0, 1), .rhs = InputDim(1, 0)},
+            .error_context = "msg b",
+    };
+    ShapeConstraint c{
+            .condition = DimBroadcastableConstraint{.lhs = InputDim(0, 0), .rhs = InputDim(1, 0)},
+            .error_context = "msg c",
+    };
+
+    std::set<ShapeConstraint> s;
+    s.insert(a);
+    s.insert(b);
+    s.insert(c);
+
+    EXPECT_EQ(s.size(), 2U);
 }
 
 }// namespace

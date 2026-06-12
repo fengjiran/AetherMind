@@ -25,8 +25,7 @@ TEST(ShapeInferenceIncludes, ExposePublicTypes) {
             constraint,
             std::span<const SymbolicShape>(inputs),
             std::span<const SymbolicShape>());
-    ASSERT_TRUE(result.ok()) << result.status().ToString();
-    EXPECT_EQ(*result, ShapeConstraintEvaluationResult::kSatisfied);
+    EXPECT_EQ(result, ShapeConstraintEvaluationResult::kSatisfied);
 }
 
 }// namespace

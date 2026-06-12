@@ -14,13 +14,13 @@ namespace aethermind {
 ///
 /// Returns kDeferred when the current symbolic facts cannot prove or disprove
 /// the constraint.
-AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateShapeConstraint(
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateShapeConstraint(
         const ShapeConstraint& constraint,
         std::span<const SymbolicShape> inputs,
         std::span<const SymbolicShape> outputs);
 
 /// Evaluates a shape constraint against concrete runtime tensor views.
-AM_NODISCARD StatusOr<ShapeConstraintEvaluationResult> EvaluateShapeConstraint(
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateShapeConstraint(
         const ShapeConstraint& constraint,
         std::span<const TensorView> inputs,
         std::span<const MutableTensorView> outputs);

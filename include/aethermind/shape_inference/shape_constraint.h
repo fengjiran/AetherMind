@@ -109,8 +109,6 @@ struct ShapeConstraint {
     }
 };
 
-using ShapeConstraintList = std::vector<ShapeConstraint>;
-
 }// namespace aethermind
 
 #endif// AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_H

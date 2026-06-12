@@ -355,9 +355,15 @@ Status ValidateShapeConstraints(const std::span<const ShapeConstraint> constrain
                                 const std::span<const TensorView> inputs,
                                 const std::span<const MutableTensorView> outputs) {
     for (const auto& constraint: constraints) {
-        if (EvaluateShapeConstraint(constraint, inputs, outputs) == ShapeConstraintEvaluationResult::kViolated) {
+        const auto result = EvaluateShapeConstraint(constraint, inputs, outputs);
+        if (result == ShapeConstraintEvaluationResult::kViolated) {
             return Status::InvalidArgument(constraint.error_context.empty() ? "Runtime shape constraint violated"
-                                                                            : constraint.error_context);
+                                                                             : constraint.error_context);
+        }
+
+        if (result == ShapeConstraintEvaluationResult::kDeferred) {
+            return Status::Internal("Runtime shape constraint evaluation returned kDeferred; "
+                                    "all dimensions are concrete at runtime, this indicates a bug");
         }
     }
     return Status::Ok();

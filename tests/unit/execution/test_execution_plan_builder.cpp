@@ -129,7 +129,7 @@ ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {})
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
-            .attrs = attrs,
+            .attrs = std::vector<std::byte>(attrs.begin(), attrs.end()),
     };
 }
 

@@ -9,7 +9,7 @@
 #include "data_type.h"
 
 #include <any>
-#include <span>
+#include <cstddef>
 #include <vector>
 
 namespace aethermind {
@@ -24,7 +24,7 @@ struct ExecutionPlanNodeSpec {
     ExecPhase phase = ExecPhase::kBoth;
     WorkspaceRequirement workspace_requirement{};
     std::vector<TensorSpec> input_specs{};
-    std::span<const std::byte> attrs{};
+    std::vector<std::byte> attrs{};
     std::any op_params{};
 };
 

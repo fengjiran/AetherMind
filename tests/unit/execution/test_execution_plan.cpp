@@ -75,7 +75,7 @@ TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
                     .bytes = 128,
                     .alignment = 64,
             },
-            .attrs = attrs_bytes,
+            .attrs = std::vector<std::byte>(attrs_bytes.begin(), attrs_bytes.end()),
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

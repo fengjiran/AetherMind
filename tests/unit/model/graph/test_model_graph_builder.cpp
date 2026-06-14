@@ -79,7 +79,7 @@ ResolvedModelWeights MakeWeights(const HfModelConfig& config) {
     return weights;
 }
 
-const TensorSpec& OnlyOutput(const ModelGraphNode& node) {
+const TensorSpec& OnlyOutput(const GraphNode& node) {
     EXPECT_EQ(node.outputs.size(), 1U);
     return node.outputs.front();
 }
@@ -144,7 +144,7 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     EXPECT_TRUE(nodes[0].attrs.bytes.empty());
     EXPECT_NE(std::any_cast<EmbeddingOp::Params>(&nodes[0].op_params), nullptr);
 
-    const ModelGraphNode& input_norm = nodes[1];
+    const GraphNode& input_norm = nodes[1];
     ASSERT_EQ(input_norm.weights.size(), 1U);
     EXPECT_EQ(input_norm.weights[0].role, ModelWeightRole::kInputNorm);
     EXPECT_EQ(input_norm.weights[0].layer_index, 0U);
@@ -152,16 +152,16 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     ASSERT_NE(rms_params, nullptr);
     EXPECT_FLOAT_EQ(rms_params->eps, static_cast<float>(config.rms_norm_eps));
 
-    const ModelGraphNode& q_proj = nodes[2];
+    const GraphNode& q_proj = nodes[2];
     ASSERT_EQ(q_proj.weights.size(), 1U);
     EXPECT_EQ(q_proj.weights[0].role, ModelWeightRole::kAttentionQ);
     EXPECT_EQ(q_proj.weights[0].layer_index, 0U);
 
-    const ModelGraphNode& final_norm = nodes[17];
+    const GraphNode& final_norm = nodes[17];
     ASSERT_EQ(final_norm.weights.size(), 1U);
     EXPECT_EQ(final_norm.weights[0].role, ModelWeightRole::kFinalNorm);
 
-    const ModelGraphNode& lm_head = nodes[18];
+    const GraphNode& lm_head = nodes[18];
     ASSERT_EQ(lm_head.weights.size(), 1U);
     EXPECT_EQ(lm_head.weights[0].role, ModelWeightRole::kLmHead);
 }

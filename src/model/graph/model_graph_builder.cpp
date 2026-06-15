@@ -36,10 +36,10 @@ ModelWeightBinding Bind(ModelWeightRole role, uint32_t layer_index = 0) noexcept
 }
 
 GraphNode MakeWeightedNode(OpType op_type,
-                                uint32_t layer_index,
-                                std::vector<TensorSpec> inputs,
-                                TensorSpec output,
-                                ModelWeightBinding weight) {
+                           uint32_t layer_index,
+                           std::vector<TensorSpec> inputs,
+                           TensorSpec output,
+                           ModelWeightBinding weight) {
     return GraphNode{
             .op_type = op_type,
             .layer_index = layer_index,
@@ -50,9 +50,9 @@ GraphNode MakeWeightedNode(OpType op_type,
 }
 
 GraphNode MakePureNode(OpType op_type,
-                            uint32_t layer_index,
-                            std::vector<TensorSpec> inputs,
-                            std::vector<TensorSpec> outputs) {
+                       uint32_t layer_index,
+                       std::vector<TensorSpec> inputs,
+                       std::vector<TensorSpec> outputs) {
     return GraphNode{
             .op_type = op_type,
             .layer_index = layer_index,
@@ -62,15 +62,15 @@ GraphNode MakePureNode(OpType op_type,
 }
 
 GraphNode MakeRmsNormNode(uint32_t layer_index,
-                               ModelWeightRole role,
-                               std::vector<TensorSpec> inputs,
-                               TensorSpec output,
-                               float eps) {
+                          ModelWeightRole role,
+                          std::vector<TensorSpec> inputs,
+                          TensorSpec output,
+                          float eps) {
     GraphNode node = MakeWeightedNode(OpType::kRmsNorm,
-                                           layer_index,
-                                           std::move(inputs),
-                                           std::move(output),
-                                           Bind(role, layer_index));
+                                      layer_index,
+                                      std::move(inputs),
+                                      std::move(output),
+                                      Bind(role, layer_index));
     node.op_params = RmsNormOp::Params{.eps = eps};
     return node;
 }
@@ -104,10 +104,10 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(
     nodes.reserve(1 + static_cast<size_t>(config.num_hidden_layers) * 16 + 3);
 
     GraphNode embedding = MakeWeightedNode(OpType::kEmbedding,
-                                                0,
-                                                {token_ids, WeightTensor(weights.embed_tokens)},
-                                                hidden,
-                                                Bind(ModelWeightRole::kTokenEmbedding));
+                                           0,
+                                           {token_ids, WeightTensor(weights.embed_tokens)},
+                                           hidden,
+                                           Bind(ModelWeightRole::kTokenEmbedding));
     embedding.op_params = EmbeddingOp::Params{};
     nodes.push_back(std::move(embedding));
 

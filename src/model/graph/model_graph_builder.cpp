@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 namespace aethermind {
@@ -39,18 +40,18 @@ TensorSpec ActivationTensor(DataType dtype, ShapeSymbol seq_len, int64_t feature
     return SymbolicTensorSpec(dtype, {seq_len, ShapeSymbol::CreateFromValue(feature_dim)});
 }
 
-ModelWeightBinding Bind(ModelWeightRole role, uint32_t layer_index = 0) noexcept {
-    return ModelWeightBinding{.role = role, .layer_index = layer_index};
+ModelWeightBinding Bind(ModelWeightRole role, std::optional<uint32_t> decoder_layer_index = std::nullopt) noexcept {
+    return ModelWeightBinding{.role = role, .decoder_layer_index = decoder_layer_index};
 }
 
 GraphNode MakeWeightedNode(OpType op_type,
-                           uint32_t layer_index,
+                           std::optional<uint32_t> decoder_layer_index,
                            std::vector<TensorSpec> inputs,
                            TensorSpec output,
                            ModelWeightBinding weight) {
     return GraphNode{
             .op_type = op_type,
-            .layer_index = layer_index,
+            .decoder_layer_index = decoder_layer_index,
             .inputs = std::move(inputs),
             .outputs = {std::move(output)},
             .weights = {weight},
@@ -58,27 +59,27 @@ GraphNode MakeWeightedNode(OpType op_type,
 }
 
 GraphNode MakePureNode(OpType op_type,
-                       uint32_t layer_index,
+                       std::optional<uint32_t> decoder_layer_index,
                        std::vector<TensorSpec> inputs,
                        std::vector<TensorSpec> outputs) {
     return GraphNode{
             .op_type = op_type,
-            .layer_index = layer_index,
+            .decoder_layer_index = decoder_layer_index,
             .inputs = std::move(inputs),
             .outputs = std::move(outputs),
     };
 }
 
-GraphNode MakeRmsNormNode(uint32_t layer_index,
-                          ModelWeightRole role,
+GraphNode MakeRmsNormNode(std::optional<uint32_t> decoder_layer_index,
                           std::vector<TensorSpec> inputs,
                           TensorSpec output,
-                          float eps) {
+                          float eps,
+                          ModelWeightBinding weight) {
     GraphNode node = MakeWeightedNode(OpType::kRmsNorm,
-                                      layer_index,
+                                      decoder_layer_index,
                                       std::move(inputs),
                                       std::move(output),
-                                      Bind(role, layer_index));
+                                      weight);
     node.op_params = RmsNormOp::Params{.eps = eps};
     return node;
 }
@@ -94,10 +95,10 @@ void AppendDenseLlamaLayerNodes(std::vector<GraphNode>& nodes,
     const size_t layer_begin = nodes.size();
 
     nodes.push_back(MakeRmsNormNode(layer_index,
-                                    ModelWeightRole::kInputNorm,
                                     {hidden, WeightTensor(layer.norm.input_rmsnorm)},
                                     hidden,
-                                    rms_norm_eps));
+                                    rms_norm_eps,
+                                    Bind(ModelWeightRole::kInputNorm, layer_index)));
     nodes.push_back(MakeWeightedNode(OpType::kLinear,
                                      layer_index,
                                      {hidden, WeightTensor(layer.attn.q_proj)},
@@ -139,10 +140,10 @@ void AppendDenseLlamaLayerNodes(std::vector<GraphNode>& nodes,
                                  {hidden, hidden},
                                  {hidden}));
     nodes.push_back(MakeRmsNormNode(layer_index,
-                                    ModelWeightRole::kPostAttentionNorm,
                                     {hidden, WeightTensor(layer.norm.post_attn_rmsnorm)},
                                     hidden,
-                                    rms_norm_eps));
+                                    rms_norm_eps,
+                                    Bind(ModelWeightRole::kPostAttentionNorm, layer_index)));
     nodes.push_back(MakeWeightedNode(OpType::kLinear,
                                      layer_index,
                                      {hidden, WeightTensor(layer.mlp.gate_proj)},
@@ -203,7 +204,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                   kTailNodeCount);
 
     GraphNode embedding = MakeWeightedNode(OpType::kEmbedding,
-                                           0,
+                                           std::nullopt,
                                            {token_ids, WeightTensor(weights.embed_tokens)},
                                            hidden,
                                            Bind(ModelWeightRole::kTokenEmbedding));
@@ -222,20 +223,20 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                                    rms_norm_eps);
     }
 
-    nodes.push_back(MakeRmsNormNode(0,
-                                    ModelWeightRole::kFinalNorm,
+    nodes.push_back(MakeRmsNormNode(std::nullopt,
                                     {hidden, WeightTensor(weights.final_norm)},
                                     hidden,
-                                    rms_norm_eps));
+                                    rms_norm_eps,
+                                    Bind(ModelWeightRole::kFinalNorm)));
 
     const RawWeightView& lm_head_weight = weights.lm_head.has_value() ? *weights.lm_head : weights.embed_tokens;
     nodes.push_back(MakeWeightedNode(OpType::kLinear,
-                                     0,
+                                     std::nullopt,
                                      {hidden, WeightTensor(lm_head_weight)},
                                      logits,
                                      Bind(ModelWeightRole::kLmHead)));
     nodes.push_back(MakePureNode(OpType::kArgmax,
-                                 0,
+                                 std::nullopt,
                                  {logits},
                                  {token_ids}));
 

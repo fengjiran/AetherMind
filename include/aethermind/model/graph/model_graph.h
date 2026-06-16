@@ -8,6 +8,7 @@
 #include <any>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -30,7 +31,7 @@ enum class ModelWeightRole : uint8_t {
 
 struct ModelWeightBinding {
     ModelWeightRole role{};
-    uint32_t layer_index = 0;
+    std::optional<uint32_t> decoder_layer_index{};
 };
 
 struct ModelGraphAttrs {
@@ -39,7 +40,7 @@ struct ModelGraphAttrs {
 
 struct GraphNode {
     OpType op_type = OpType::kUnknown;
-    uint32_t layer_index = 0;
+    std::optional<uint32_t> decoder_layer_index{};
     std::vector<TensorSpec> inputs{};
     std::vector<TensorSpec> outputs{};
     std::vector<ModelWeightBinding> weights{};

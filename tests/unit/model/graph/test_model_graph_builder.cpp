@@ -120,14 +120,20 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
         const size_t offset = 1 + layer * std::size(kLayerOps);
         for (size_t i = 0; i < std::size(kLayerOps); ++i) {
             EXPECT_EQ(nodes[offset + i].op_type, kLayerOps[i]) << "layer=" << layer << ", node=" << i;
-            EXPECT_EQ(nodes[offset + i].layer_index, layer);
+            ASSERT_TRUE(nodes[offset + i].decoder_layer_index.has_value());
+            EXPECT_EQ(*nodes[offset + i].decoder_layer_index, layer);
         }
     }
+
+    EXPECT_FALSE(nodes[0].decoder_layer_index.has_value());
 
     const size_t tail = 1 + 2U * 16U;
     EXPECT_EQ(nodes[tail].op_type, OpType::kRmsNorm);
     EXPECT_EQ(nodes[tail + 1].op_type, OpType::kLinear);
     EXPECT_EQ(nodes[tail + 2].op_type, OpType::kArgmax);
+    EXPECT_FALSE(nodes[tail].decoder_layer_index.has_value());
+    EXPECT_FALSE(nodes[tail + 1].decoder_layer_index.has_value());
+    EXPECT_FALSE(nodes[tail + 2].decoder_layer_index.has_value());
 }
 
 TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
@@ -141,13 +147,15 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
 
     ASSERT_EQ(nodes[0].weights.size(), 1U);
     EXPECT_EQ(nodes[0].weights[0].role, ModelWeightRole::kTokenEmbedding);
+    EXPECT_FALSE(nodes[0].weights[0].decoder_layer_index.has_value());
     EXPECT_TRUE(nodes[0].attrs.bytes.empty());
     EXPECT_NE(std::any_cast<EmbeddingOp::Params>(&nodes[0].op_params), nullptr);
 
     const GraphNode& input_norm = nodes[1];
     ASSERT_EQ(input_norm.weights.size(), 1U);
     EXPECT_EQ(input_norm.weights[0].role, ModelWeightRole::kInputNorm);
-    EXPECT_EQ(input_norm.weights[0].layer_index, 0U);
+    ASSERT_TRUE(input_norm.weights[0].decoder_layer_index.has_value());
+    EXPECT_EQ(*input_norm.weights[0].decoder_layer_index, 0U);
     const auto* rms_params = std::any_cast<RmsNormOp::Params>(&input_norm.op_params);
     ASSERT_NE(rms_params, nullptr);
     EXPECT_FLOAT_EQ(rms_params->eps, static_cast<float>(config.rms_norm_eps));
@@ -155,15 +163,18 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     const GraphNode& q_proj = nodes[2];
     ASSERT_EQ(q_proj.weights.size(), 1U);
     EXPECT_EQ(q_proj.weights[0].role, ModelWeightRole::kAttentionQ);
-    EXPECT_EQ(q_proj.weights[0].layer_index, 0U);
+    ASSERT_TRUE(q_proj.weights[0].decoder_layer_index.has_value());
+    EXPECT_EQ(*q_proj.weights[0].decoder_layer_index, 0U);
 
     const GraphNode& final_norm = nodes[17];
     ASSERT_EQ(final_norm.weights.size(), 1U);
     EXPECT_EQ(final_norm.weights[0].role, ModelWeightRole::kFinalNorm);
+    EXPECT_FALSE(final_norm.weights[0].decoder_layer_index.has_value());
 
     const GraphNode& lm_head = nodes[18];
     ASSERT_EQ(lm_head.weights.size(), 1U);
     EXPECT_EQ(lm_head.weights[0].role, ModelWeightRole::kLmHead);
+    EXPECT_FALSE(lm_head.weights[0].decoder_layer_index.has_value());
 }
 
 TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
@@ -213,5 +224,5 @@ TEST(ModelGraphBuilder, RejectsResolvedLayerCountMismatch) {
     EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
 }
 
-}
-}
+}// namespace
+}// namespace aethermind

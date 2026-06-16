@@ -196,7 +196,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     const TensorSpec intermediate = ActivationTensor(act_dtype, seq_len, config.intermediate_size);
     const TensorSpec scores = SymbolicTensorSpec(act_dtype, {seq_len, seq_len});
     const TensorSpec logits = ActivationTensor(act_dtype, seq_len, config.vocab_size);
-    const float rms_norm_eps = static_cast<float>(config.rms_norm_eps);
+    const auto rms_norm_eps = static_cast<float>(config.rms_norm_eps);
 
     std::vector<GraphNode> nodes;
     nodes.reserve(kEmbeddingNodeCount +

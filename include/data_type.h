@@ -125,6 +125,10 @@ public:
         return !IsScalableVector() && lanes() == 1;
     }
 
+    AM_NODISCARD bool IsUndefined() const {
+        return code() == DLDataTypeCode::Undefined;
+    }
+
     AM_NODISCARD bool IsInt() const {
         return code() == DLDataTypeCode::kInt;
     }

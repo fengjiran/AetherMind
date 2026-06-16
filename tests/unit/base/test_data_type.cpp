@@ -18,6 +18,7 @@ TEST(DataTypeTest, BasicConstruction) {
     EXPECT_EQ(dtype_default.code(), DLDataTypeCode::Undefined);
     EXPECT_EQ(dtype_default.bits(), 0);
     EXPECT_EQ(dtype_default.lanes(), 0);
+    EXPECT_TRUE(dtype_default.IsUndefined());
 
     // 从DLDataType构造
     DLDataType dl_dtype = {DLDataTypeCode::kFloat, 32, 1};
@@ -25,6 +26,7 @@ TEST(DataTypeTest, BasicConstruction) {
     EXPECT_EQ(dtype_from_dl.code(), DLDataTypeCode::kFloat);
     EXPECT_EQ(dtype_from_dl.bits(), 32);
     EXPECT_EQ(dtype_from_dl.lanes(), 1);
+    EXPECT_FALSE(dtype_from_dl.IsUndefined());
 
     // 从code、bits、lanes构造
     DataType dtype_manual(DLDataTypeCode::kInt, 64, 1);

@@ -4,6 +4,7 @@
 #include "aethermind/model/formats/hf/hf_safetensors_index.h"
 #include "aethermind/model/formats/hf/hf_utils.h"
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -15,6 +16,12 @@
 // outside the model directory.
 namespace aethermind {
 namespace {
+
+struct ParsedRopeConfig {
+    std::optional<double> scaling_factor{};
+    HfRopeScalingType scaling_type = HfRopeScalingType::kNone;
+    std::optional<double> theta{};
+};
 
 // Parses the small subset of Hugging Face `config.json` required by the runtime.
 // Unknown fields are intentionally skipped because upstream model configs often
@@ -141,8 +148,10 @@ private:
                 return FieldParseError(key, value.status());
             }
             config.rope.scaling_factor = value->scaling_factor;
-            config.rope.scaling_type = std::move(value->scaling_type);
-            config.rope.theta = value->theta;
+            config.rope.scaling_type = value->scaling_type;
+            if (value->theta.has_value()) {
+                config.rope.theta = *value->theta;
+            }
             return Status::Ok();
         }
 
@@ -158,16 +167,16 @@ private:
         return SkipValue();
     }
 
-    StatusOr<HfRopeConfig> ParseRopeConfig() {
+    StatusOr<ParsedRopeConfig> ParseRopeConfig() {
         if (TryConsumeLiteral("null")) {
-            return HfRopeConfig{};
+            return ParsedRopeConfig{};
         }
 
         if (!TryConsume('{')) {
             return Status::InvalidArgument("Expected RoPE config object");
         }
 
-        HfRopeConfig rope_config{};
+        ParsedRopeConfig rope_config{};
         SkipWhitespace();
         if (!TryConsume('}')) {
             while (true) {
@@ -188,9 +197,7 @@ private:
                     if (!type.ok()) {
                         return type.status();
                     }
-                    if (*type != "default") {
-                        rope_config.scaling_type = std::move(*type);
-                    }
+                    rope_config.scaling_type = ParseRopeScalingType(*type);
                 } else if (*key == "rope_theta") {
                     auto theta = ParseDouble();
                     if (!theta.ok()) {

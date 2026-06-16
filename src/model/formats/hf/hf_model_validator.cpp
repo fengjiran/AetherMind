@@ -37,16 +37,20 @@ bool HasUnsupportedNamedDTypeHint(const HfModelConfig& config) {
            IsUnknownDType(config.weight_dtype_hint);
 }
 
-bool IsSupportedRopeScalingType(std::string_view type) {
-    constexpr std::string_view kSupported[] = {
-            "linear",
-            "dynamic",
-            "yarn",
-            "llama3",
-            "longrope",
-    };
-
-    return std::ranges::any_of(kSupported, [type](std::string_view s) { return type == s; });
+bool IsSupportedRopeScalingType(HfRopeScalingType type) noexcept {
+    switch (type) {
+        case HfRopeScalingType::kLinear:
+        case HfRopeScalingType::kDynamicNtk:
+        case HfRopeScalingType::kYarn:
+        case HfRopeScalingType::kLlama3:
+        case HfRopeScalingType::kLongRope:
+        case HfRopeScalingType::kSu:
+            return true;
+        case HfRopeScalingType::kNone:
+        case HfRopeScalingType::kUnknown:
+            return false;
+    }
+    return false;
 }
 
 bool IsSupportedActivation(std::string_view act) {
@@ -60,7 +64,7 @@ bool IsSupportedActivation(std::string_view act) {
 }
 
 bool HasRopeScaling(const HfRopeConfig& rope) {
-    return rope.scaling_factor.has_value() || !rope.scaling_type.empty();
+    return rope.scaling_factor.has_value() || rope.scaling_type != HfRopeScalingType::kNone;
 }
 
 std::string ShapeToString(const std::vector<int64_t>& shape) {
@@ -576,13 +580,15 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
     }
 
     if (options.allow_rope_scaling && has_rope_scaling) {
-        if (config.rope.scaling_type.empty()) {
+        if (config.rope.scaling_type == HfRopeScalingType::kNone) {
             return Status::InvalidArgument(
                     "Model config field 'rope.scaling_type' must be provided when RoPE scaling is configured");
         }
 
         if (!IsSupportedRopeScalingType(config.rope.scaling_type)) {
-            return Status::InvalidArgument("Unsupported RoPE scaling type in model config");
+            return Status::InvalidArgument(
+                    std::string("Unsupported RoPE scaling type in model config: ") +
+                    std::string(ToString(config.rope.scaling_type)));
         }
 
         if (!config.rope.scaling_factor.has_value()) {

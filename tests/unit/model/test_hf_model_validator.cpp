@@ -344,7 +344,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRopeTheta) {
 TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingByDefault) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;
-    config.rope.scaling_type = "linear";
+    config.rope.scaling_type = HfRopeScalingType::kLinear;
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
@@ -355,7 +355,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingByDefault) {
 TEST(ModelLoader_HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;
-    config.rope.scaling_type = "linear";
+    config.rope.scaling_type = HfRopeScalingType::kLinear;
     ModelValidationOptions options{};
     options.allow_rope_scaling = true;
 
@@ -367,7 +367,7 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
 TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedRopeScalingTypeWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;
-    config.rope.scaling_type = "unknown";
+    config.rope.scaling_type = HfRopeScalingType::kUnknown;
     ModelValidationOptions options{};
     options.allow_rope_scaling = true;
 
@@ -379,7 +379,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedRopeScalingTypeWhenAllo
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_type = "linear";
+    config.rope.scaling_type = HfRopeScalingType::kLinear;
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
@@ -389,7 +389,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_type = "linear";
+    config.rope.scaling_type = HfRopeScalingType::kLinear;
     ModelValidationOptions options{};
     options.allow_rope_scaling = true;
 

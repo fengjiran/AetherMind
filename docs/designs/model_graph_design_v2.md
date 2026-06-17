@@ -1,4 +1,4 @@
-# ModelGraph 语义 DAG IR 设计方案
+# ModelGraph 设计方案
 
 ## 1. 目标定位
 

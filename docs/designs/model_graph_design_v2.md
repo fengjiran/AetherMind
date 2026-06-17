@@ -195,12 +195,33 @@ struct ConstantBinding {
     std::vector<std::byte> inline_data{};
 };
 
+enum class StateKind : uint8_t {
+    kUnknown,
+    kKvCache,
+    kDecodeState,
+    kStreamingState,
+};
+
 struct StateBinding {
-    std::string name{};
+    std::string logical_id{};
+    StateKind kind = StateKind::kUnknown;
+    std::optional<uint32_t> decoder_layer_index{};
+    std::string slot{};
+    std::string debug_name{};
+};
+
+enum class ResourceKind : uint8_t {
+    kUnknown,
+    kPagedAttentionHandle,
+    kExternalBuffer,
+    kAllocatorArena,
 };
 
 struct ResourceBinding {
-    std::string name{};
+    std::string logical_id{};
+    ResourceKind kind = ResourceKind::kUnknown;
+    std::optional<uint32_t> decoder_layer_index{};
+    std::string debug_name{};
 };
 
 enum class QuantizationKind : uint8_t {
@@ -220,9 +241,21 @@ struct QuantizationSpec {
 语义边界：
 
 - `ConstantBinding` 是逻辑常量引用，可携带小型 inline 常量；大型常量可以通过 `name` / external id 解析；
-- `StateBinding` 是 KV cache、decode state、streaming state 的逻辑身份，不描述具体 cache layout；
-- `ResourceBinding` 是 runtime resource 的逻辑身份，不持有设备句柄；它不是早期 KV cache 建模的默认选择，应等 lowering / runtime 出现真实外部资源句柄需求后再落地；
+- `StateBinding` 是 KV cache、decode state、streaming state 的结构化逻辑身份，不描述具体 cache layout；`logical_id` / `kind` / `decoder_layer_index` / `slot` 共同构成 lowering/runtime 解析 state handle 的 key，`debug_name` 只用于诊断；
+- `ResourceBinding` 是 runtime resource 的结构化逻辑身份，不持有设备句柄；`logical_id` / `kind` / `decoder_layer_index` 共同构成 lowering/runtime 解析 resource handle 的 key，`debug_name` 只用于诊断；它不是早期 KV cache 建模的默认选择，应等 lowering / runtime 出现真实外部资源句柄需求后再落地；
 - `QuantizationSpec` 描述模型语义量化，例如 int4/int8、group size、scale dtype、zero point policy，不描述 packed weight 格式。
+
+`name` / `debug_name` 不应作为唯一绑定键。State / resource binding 的解析流程应依赖结构化 logical key：
+
+```text
+GraphValue(StateValue{StateBinding{logical_id="kv_cache", kind=kKvCache, decoder_layer_index=3, slot="kv"}})
+        ↓ lowering
+RuntimeStateRegistry::Resolve(binding)
+        ↓
+ExecutionPlan state handle / buffer alias group
+```
+
+对于 `state_kv_in -> KVCacheUpdate -> state_kv_out`，输入和输出 state value 可以是不同 `GraphValueId`，但它们的 `StateBinding` 应解析到同一个 logical state family；lowering 再通过 must-alias 约束绑定到同一物理 buffer / state handle。
 
 ## 7. GraphNode
 

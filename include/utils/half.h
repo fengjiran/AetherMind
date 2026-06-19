@@ -5,15 +5,10 @@
 #ifndef AETHERMIND_HALF_H
 #define AETHERMIND_HALF_H
 
-#include "macros.h"
-#include "utils/floating_point_utils.h"
-
 #include <cstdint>
-#include <cstring>
 #include <iosfwd>
 #include <limits>
 #include <ostream>
-
 
 #ifdef __CUDACC__
 #include <cuda_fp16.h>
@@ -150,10 +145,8 @@ Half operator/(int64_t lhs, Half rhs);
 
 }// namespace aethermind
 
-namespace std {
 template<>
-class numeric_limits<aethermind::Half> {
-public:
+struct std::numeric_limits<aethermind::Half> {
     static constexpr bool is_specialized = true;
     static constexpr bool is_signed = true;
     static constexpr bool is_integer = false;
@@ -205,7 +198,6 @@ public:
     static constexpr aethermind::Half denorm_min() {
         return {0x0001, aethermind::Half::from_bits()};
     }
-};
-}// namespace std
+};// namespace std
 
-#endif//AETHERMIND_HALF_H
+#endif// AETHERMIND_HALF_H

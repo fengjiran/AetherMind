@@ -235,6 +235,27 @@ TEST(BFloat16Test, NumericLimits) {
     EXPECT_EQ(std::numeric_limits<BFloat16>::denorm_min().x, 0x0001);
 }
 
+TEST(BFloat16Test, SignalingNaN) {
+    // Regression: signaling_NaN() must not collide with +infinity (0x7F80).
+    // BF16 layout: 1 sign | 8 exponent | 7 mantissa.
+    //   infinity       : exp=0xFF, mantissa=0
+    //   signaling NaN  : exp=0xFF, mantissa!=0, mantissa MSB=0
+    //   quiet NaN      : exp=0xFF, mantissa!=0, mantissa MSB=1
+    constexpr uint16_t snan_bits = std::numeric_limits<BFloat16>::signaling_NaN().x;
+    constexpr uint16_t inf_bits = std::numeric_limits<BFloat16>::infinity().x;
+    constexpr uint16_t qnan_bits = std::numeric_limits<BFloat16>::quiet_NaN().x;
+
+    EXPECT_NE(snan_bits, inf_bits);
+    EXPECT_NE(snan_bits, qnan_bits);
+
+    // exponent all-ones => NaN/Inf class
+    EXPECT_EQ(static_cast<uint16_t>(snan_bits & 0x7F80), 0x7F80);
+    // mantissa non-zero => not infinity
+    EXPECT_NE(static_cast<uint16_t>(snan_bits & 0x007F), 0x0000);
+    // mantissa MSB (quiet bit) clear => signaling, not quiet
+    EXPECT_EQ(static_cast<uint16_t>(snan_bits & 0x0040), 0x0000);
+}
+
 TEST(BFloat16Test, RoundTripAccuracy) {
     // 测试往返转换精度
     constexpr float test_values[] = {

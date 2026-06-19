@@ -2,6 +2,8 @@
 // Created by 赵丹 on 2025/9/11.
 //
 #include "utils/half.h"
+#include "macros.h"
+#include "utils/floating_point_utils.h"
 
 namespace aethermind {
 namespace details {

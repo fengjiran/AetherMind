@@ -18,6 +18,7 @@
 ///
 /// Implementation based on the paper https://arxiv.org/pdf/2209.05433.pdf
 
+#include "macros.h"
 #include "utils/half.h"
 
 namespace aethermind {
@@ -179,4 +180,4 @@ public:
 
 }// namespace std
 
-#endif//AETHERMIND_FLOAT8_E5M2_H
+#endif// AETHERMIND_FLOAT8_E5M2_H

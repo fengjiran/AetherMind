@@ -1,8 +1,8 @@
 //
 // Created by 赵丹 on 2025/9/9.
 //
+#include "utils/floating_point_utils.h"
 #include "utils/half.h"
-
 #include <cmath>
 #include <gtest/gtest.h>
 

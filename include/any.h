@@ -8,6 +8,7 @@
 #include "any_utils.h"
 #include "object.h"
 
+#include <cstring>
 #include <optional>
 #include <typeindex>
 #include <variant>
@@ -137,7 +138,7 @@ public:
              typename U = std::decay_t<T>,
              typename TargetType = std::conditional_t<details::is_plain_type<U>, select_plain_type<U>, U>>
         requires(!std::is_same_v<U, Any>)
-    Any(T&& value) : type_info_cache_(std::type_index(typeid(TargetType))) {//NOLINT
+    Any(T&& value) : type_info_cache_(std::type_index(typeid(TargetType))) {// NOLINT
         if constexpr (details::is_plain_type<U>) {
             if constexpr (sizeof(Holder<TargetType>) <= kSmallObjectSize) {
                 // small object, construct at local buffer
@@ -288,7 +289,7 @@ public:
     }
 
     template<typename T>
-    operator T() {//NOLINT
+    operator T() {// NOLINT
         return cast<T>();
     }
 
@@ -628,4 +629,4 @@ struct hash<aethermind::Any> {
 };
 }// namespace std
 
-#endif//AETHERMIND_ANY_H
+#endif// AETHERMIND_ANY_H

@@ -5,13 +5,11 @@
 #ifndef AETHERMIND_BFLOAT16_H
 #define AETHERMIND_BFLOAT16_H
 
-#include "macros.h"
 #include "utils/floating_point_utils.h"
 #include "utils/half.h"
 
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <iosfwd>
 #include <ostream>
 
@@ -34,8 +32,8 @@ struct alignas(2) BFloat16 {
 
     BFloat16() : x(0) {}
     constexpr BFloat16(uint16_t bits, from_bits_t) : x(bits) {}
-    BFloat16(float);       //NOLINT
-    operator float() const;//NOLINT
+    BFloat16(float);       // NOLINT
+    operator float() const;// NOLINT
 };
 
 std::ostream& operator<<(std::ostream& os, const BFloat16& value);
@@ -118,8 +116,7 @@ constexpr bool is_reduced_floating_point_v = is_reduced_floating_point<T>::value
 namespace std {
 
 template<>
-class numeric_limits<aethermind::BFloat16> {
-public:
+struct numeric_limits<aethermind::BFloat16> {
     static constexpr bool is_signed = true;
     static constexpr bool is_specialized = true;
     static constexpr bool is_integer = false;
@@ -173,7 +170,8 @@ public:
     }
 
     static constexpr aethermind::BFloat16 signaling_NaN() {
-        return {0x7F80, aethermind::BFloat16::from_bits()};
+        // Need exponent=0xFF, mantissa!=0, mantissa MSB=0. 0x7F80 is +infinity.
+        return {0x7F81, aethermind::BFloat16::from_bits()};
     }
 
     static constexpr aethermind::BFloat16 denorm_min() {
@@ -323,4 +321,4 @@ T fmod(T a, T b) {
 
 }// namespace std
 
-#endif//AETHERMIND_BFLOAT16_H
+#endif// AETHERMIND_BFLOAT16_H

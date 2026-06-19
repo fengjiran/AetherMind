@@ -1,7 +1,7 @@
 //
 // Created by richard on 9/23/25.
 //
-
+#include "macros.h"
 #include "utils/bfloat16.h"
 
 namespace aethermind {

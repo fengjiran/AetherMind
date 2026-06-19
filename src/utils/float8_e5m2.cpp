@@ -1,8 +1,9 @@
 //
 // Created by 赵丹 on 2025/9/17.
 //
-
+#include "macros.h"
 #include "utils/float8_e5m2.h"
+#include "utils/floating_point_utils.h"
 
 namespace aethermind {
 namespace details {

@@ -1,6 +1,10 @@
-//
-// Created by richard on 9/7/25.
-//
+/// \file
+/// Software IEEE 754 half-precision (binary16) floating-point type.
+///
+/// Provides `Half` — a C++ type wrapping a 16-bit binary16 bit pattern — and
+/// bit-exact conversion functions between binary16 and binary32. On x86-64
+/// with F16C support, conversions use hardware intrinsics via `X86_F16`;
+/// otherwise they fall back to portable integer bit manipulation.
 
 #ifndef AETHERMIND_HALF_H
 #define AETHERMIND_HALF_H
@@ -26,60 +30,56 @@
         !(defined(__CUDA_ARCH__) || defined(__CUDACC__) || \
           defined(__HIP_DEVICE_COMPILE__))
 #define X86_F16 1
-#include <immintrin.h>// import conversion ops from f16cintrin.h
-#endif                // defined(__F16C__) && !(defined(__CUDA_ARCH__) || defined(__CUDACC__) \
-                      // || defined(__HIP_DEVICE_COMPILE__))
-#endif                // __x86_64__ || _M_X64 || __i386 || _M_IX86
-#endif                // __GNUC__ || __clang__
+#include <immintrin.h>
+#endif// defined(__F16C__) && !(defined(__CUDA_ARCH__) || defined(__CUDACC__) \
+      // || defined(__HIP_DEVICE_COMPILE__))
+#endif// __x86_64__ || _M_X64 || __i386 || _M_IX86
+#endif// __GNUC__ || __clang__
 
 namespace aethermind {
 namespace details {
 
-/*!
- * \brief Converts a 16-bit floating-point number in IEEE half-precision format, in bit
- * representation, to a 32-bit floating-point number in IEEE single-precision
- * format, in a bit representation.
- *
- * @note The implementation doesn't use any floating-point operations.
- * \param h The 16-bit floating-point number in IEEE half-precision format, in bit representation.
- * \return The 32-bit floating-point number in IEEE single-precision format, in bit representation.
- */
+/// Converts an IEEE half-precision value (bit representation) to an IEEE
+/// single-precision value (bit representation).
+///
+/// Implemented with integer bit manipulation only; no floating-point operations.
 uint32_t half_to_fp32_bits_ieee(uint16_t h);
 
-/*!
- * \brief Converts a 16-bit floating-point number in IEEE half-precision format, in bit
- * representation, to a 32-bit floating-point number in IEEE single-precision format.
- *
- * @note The implementation relies on IEEE-like (no assumption about rounding
- * mode and no operations on denormals) floating-point operations and bitcasts
- * between integer and floating-point variables.
- * \param h The 16-bit floating-point number in IEEE half-precision format, in bit representation.
- * \return The 32-bit floating-point number in IEEE single-precision format.
- */
+/// Converts an IEEE half-precision value (bit representation) to an IEEE
+/// single-precision `float`.
+///
+/// Uses IEEE-like floating-point operations and int/float bitcasts; makes no
+/// assumption about the current rounding mode and performs no operations on
+/// denormals.
 float half_to_fp32_value_ieee(uint16_t h);
 
-/*!
- * \brief Converts a 32-bit floating-point number in IEEE single-precision format, in bit
- * representation, to a 16-bit floating-point number in IEEE half-precision format, in bit
- * representation.
- *
- * @note The implementation doesn't use any floating-point operations.
- * \param f The 32-bit floating-point number in IEEE single-precision format, in bit representation.
- * \return The 16-bit floating-point number in IEEE half-precision format, in bit representation.
- */
+/// Converts an IEEE single-precision `float` to an IEEE half-precision value
+/// (bit representation).
+///
+/// Implemented with integer bit manipulation only; no floating-point operations.
+/// Rounding mode is round-to-nearest-even.
 uint16_t half_from_fp32_value_ieee(float f);
 
 }// namespace details
 
+/// IEEE 754 half-precision (binary16) floating-point value.
+///
+/// Stores the raw 16-bit binary16 bit pattern in `x`. Arithmetic and
+/// comparisons go through implicit conversion to `float`, so results follow
+/// IEEE 754 binary32 rounding and NaN semantics. `is_iec559` is true.
+/// Use `from_bits()` to construct from a raw bit pattern without conversion.
 struct alignas(2) Half {
+    /// IEEE 754 binary16 bit pattern: 1 sign | 5 exponent | 10 mantissa.
     uint16_t x;
 
+    /// Tag type for constructing a `Half` from raw bits without conversion.
     struct from_bits_t {};
     static constexpr from_bits_t from_bits() {
         return {};
     }
 
     Half() : x(0) {}
+    /// Constructs from raw binary16 bits; no floating-point conversion.
     constexpr Half(uint16_t bits, from_bits_t) : x(bits) {}
     Half(float value);// NOLINT
 
@@ -133,7 +133,7 @@ Half operator-(int lhs, Half rhs);
 Half operator*(int lhs, Half rhs);
 Half operator/(int lhs, Half rhs);
 
-//// Arithmetic with int64_t
+/// Arithmetic with int64_t
 Half operator+(Half lhs, int64_t rhs);
 Half operator-(Half lhs, int64_t rhs);
 Half operator*(Half lhs, int64_t rhs);
@@ -145,6 +145,11 @@ Half operator/(int64_t lhs, Half rhs);
 
 }// namespace aethermind
 
+/// std::numeric_limits specialization for IEEE 754 binary16.
+///
+/// Bit constants follow the binary16 format (1 sign | 5 exponent | 10 mantissa,
+/// bias 15). `is_iec559` is true: Half follows IEEE 754 NaN and denormal
+/// semantics.
 template<>
 struct std::numeric_limits<aethermind::Half> {
     static constexpr bool is_specialized = true;

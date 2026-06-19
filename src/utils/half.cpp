@@ -1,6 +1,10 @@
-//
-// Created by 赵丹 on 2025/9/11.
-//
+/// \file
+/// Software IEEE 754 half-precision conversion implementations.
+///
+/// Contains the portable integer bit-manipulation paths for binary16 ↔ binary32
+/// conversion. When `X86_F16` is defined, these are replaced by hardware
+/// intrinsics at the call site.
+
 #include "utils/half.h"
 #include "macros.h"
 #include "utils/floating_point_utils.h"
@@ -25,6 +29,11 @@ uint32_t half_to_fp32_bits_ieee(uint16_t h) {
         return sign | 0x7F800000 | mantissa >> 3;
     }
 
+    // Renormalize denormalized half values into the normalized fp32 range.
+    // __builtin_clz finds the position of the leading 1 bit; we shift the
+    // mantissa into the normalized position and adjust the exponent bias
+    // accordingly. The `> 5` guard accounts for the 5-bit exponent field
+    // (fp32 mantissa is 23 bits vs half's 10).
     const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
     uint32_t renorm_shift = __builtin_clz(nonsign);
     renorm_shift = renorm_shift > 5 ? renorm_shift - 5 : 0;
@@ -53,17 +62,17 @@ uint16_t half_from_fp32_value_ieee(float f) {
             return static_cast<uint16_t>(sign >> 16 | 0x7C00);
         }
 
-        // nan case: preserve mantissa bits and set exponent to max
-        // return static_cast<uint16_t>(sign >> 16 | 0x7C00 | mantissa >> 13);
+        // NaN: canonicalize to quiet NaN (0x7E00), discarding the payload.
+        // IEEE 754 requires at least one NaN; preserving the payload would
+        // increase implementation complexity with no known use case.
         return static_cast<uint16_t>(sign >> 16 | 0x7E00);
     }
 
     // normalize the exponent from fp32 bias(127) to fp16 bias(15)
     auto exp32 = static_cast<int32_t>((exponent >> 23) - 127);
 
-    // handle denorm numbers(exponent underflow)
+    // Handle values too small to represent even as half denormals: flush to zero.
     if (exp32 < -14) {
-        // underflow to zero
         return static_cast<uint16_t>(sign >> 16);
     }
 
@@ -78,10 +87,14 @@ uint16_t half_from_fp32_value_ieee(float f) {
     // add fp16 bias (15) to exponent
     res |= static_cast<uint32_t>(exp32 + 15) << 10;
 
-    // add mantissa (round to the nearest even)
+    // add mantissa (truncated from fp32; rounding is handled below)
     res |= mantissa >> 13;
 
-    // handle rounding
+    // IEEE 754 round-to-nearest-even.
+    // rounding_bit is the first bit lost in truncation (bit 12 of mantissa).
+    // sticky_bits are the remaining lost bits (bits 0-11).
+    // Round up when rounding_bit is set AND (any sticky bits are set OR the
+    // result is odd) — the `res & 1` check implements the "even" tie-break.
     const uint32_t rounding_bit = mantissa & UINT32_C(0x00001000);
     const uint32_t sticky_bits = mantissa & UINT32_C(0x00000FFF);
 
@@ -116,7 +129,10 @@ Half operator*(const Half& lhs, const Half& rhs) {
     return static_cast<float>(lhs) * static_cast<float>(rhs);
 }
 
-Half operator/(const Half& lhs, const Half& rhs) __ubsan_ignore_float_divide_by_zero__ {
+Half operator/(const Half& lhs, const Half& rhs)
+        // IEEE 754 defines float division by zero as ±inf; suppress UBSan
+        // which treats it as undefined behavior.
+        __ubsan_ignore_float_divide_by_zero__ {
     return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 

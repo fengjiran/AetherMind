@@ -43,6 +43,7 @@ TEST(HalfToFP32Test, HalfToFp32Bits_Normalized) {
 
     EXPECT_EQ(half_to_fp32_bits_ieee(0x3555), 0x3EAAA000);// ~0.33325
     EXPECT_EQ(half_to_fp32_bits_ieee(0x48CD), 0x4119A000);// ~9.6016
+    EXPECT_EQ(half_to_fp32_bits_ieee(0x4D12), 0x41A24000);// ~20.28125
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Infinity) {
@@ -70,15 +71,9 @@ TEST(HalfToFP32Test, HalfToFp32Bits_EdgeCases) {
 
     // Min normal: 0x0400 -> 2^-14 ≈ 6.1035e-5
     EXPECT_EQ(half_to_fp32_bits_ieee(0x0400), 0x38800000);
-
-    // Max denormal: 0x03FF -> ~6.0976e-5
-    EXPECT_EQ(half_to_fp32_bits_ieee(0x03FF), 0x387FC000);
-
-    // Min denormal: 0x0001 -> 2^-24 ≈ 5.9605e-8
-    EXPECT_EQ(half_to_fp32_bits_ieee(0x0001), 0x33800000);
 }
 
-TEST(HalfToFP32Test, HalfToFp32Bits_RoundTrip) {
+TEST(HalfToFP32Test, HalfToFp32Bits_SignAndExponent) {
     const uint16_t test_values[] = {
             0x0000, 0x0001, 0x03FF, 0x0400, 0x3C00, 0x4000,
             0x7C00, 0x7E00, 0x7FFF, 0x8000, 0xBC00, 0xFC00};
@@ -98,17 +93,6 @@ TEST(HalfToFP32Test, HalfToFp32Bits_RoundTrip) {
     }
 }
 
-TEST(HalfToFP32Test, HalfToFp32Bits_SpecialValues) {
-    // PI approximation
-    EXPECT_EQ(half_to_fp32_bits_ieee(0x4248), 0x40490000);// ~3.140625
-
-    // E approximation
-    EXPECT_EQ(half_to_fp32_bits_ieee(0x4170), 0x402E0000);// ~2.71875
-
-    // Golden ratio
-    EXPECT_EQ(half_to_fp32_bits_ieee(0x3FCF), 0x3FF9E000);// ~1.618
-}
-
 TEST(HalfToFP32Test, HalfToFp32Bits_ExhaustiveSmallValues) {
     for (uint16_t i = 0; i < 0x0400; ++i) {
         uint32_t result = half_to_fp32_bits_ieee(i);
@@ -121,7 +105,7 @@ TEST(HalfToFP32Test, HalfToFp32Bits_ExhaustiveSmallValues) {
     }
 }
 
-TEST(HalfToFP32Test, Zero) {
+TEST(HalfToFP32Test, HalfToFp32Value_Zero) {
     EXPECT_EQ(half_to_fp32_value_ieee(0x0000), 0.0f); // +0
     EXPECT_EQ(half_to_fp32_value_ieee(0x8000), -0.0f);// -0
 
@@ -130,7 +114,7 @@ TEST(HalfToFP32Test, Zero) {
     EXPECT_FALSE(std::signbit(half_to_fp32_value_ieee(0x0000)));
 }
 
-TEST(HalfToFP32Test, Denormalized) {
+TEST(HalfToFP32Test, HalfToFp32Value_Denormalized) {
     // Smallest positive denormal: 0x0001 -> 2^-24 ≈ 5.96046e-08
     float min_denormal = half_to_fp32_value_ieee(0x0001);
     EXPECT_GT(min_denormal, 0.0f);
@@ -142,7 +126,7 @@ TEST(HalfToFP32Test, Denormalized) {
     EXPECT_LT(max_denormal, 6.5e-5f);
 }
 
-TEST(HalfToFP32Test, Normalized) {
+TEST(HalfToFP32Test, HalfToFp32Value_Normalized) {
     // Min normal: 0x0400 -> 2^-14
     EXPECT_FLOAT_EQ(6.10351562e-5f, half_to_fp32_value_ieee(0x0400));
 
@@ -165,7 +149,7 @@ TEST(HalfToFP32Test, Normalized) {
     EXPECT_NEAR(half_to_fp32_value_ieee(0x48CD), 9.6016f, 1e-3f); // ~9.6
 }
 
-TEST(HalfToFP32Test, Infinity) {
+TEST(HalfToFP32Test, HalfToFp32Value_Infinity) {
     EXPECT_TRUE(std::isinf(half_to_fp32_value_ieee(0x7C00)));// +inf
     EXPECT_GT(half_to_fp32_value_ieee(0x7C00), 0);
 
@@ -173,7 +157,7 @@ TEST(HalfToFP32Test, Infinity) {
     EXPECT_LT(half_to_fp32_value_ieee(0xFC00), 0);
 }
 
-TEST(HalfToFP32Test, NaN) {
+TEST(HalfToFP32Test, HalfToFp32Value_NaN) {
     float nan1 = half_to_fp32_value_ieee(0x7C01);// quiet NaN
     float nan2 = half_to_fp32_value_ieee(0x7FFF);// quiet NaN
     float nan3 = half_to_fp32_value_ieee(0x7E00);// signaling NaN
@@ -189,7 +173,7 @@ TEST(HalfToFP32Test, NaN) {
     EXPECT_TRUE(std::isnan(nan1 * 2.0f));
 }
 
-TEST(HalfToFP32Test, EdgeCases) {
+TEST(HalfToFP32Test, HalfToFp32Value_EdgeCases) {
     // Max normal: 0x7BFF -> ~65504.0, must be finite.
     float max_normal = half_to_fp32_value_ieee(0x7BFF);
     EXPECT_NEAR(max_normal, 65504.0f, 1e-3f);
@@ -206,7 +190,7 @@ TEST(HalfToFP32Test, EdgeCases) {
     EXPECT_LT(last_denormal, first_normal);
 }
 
-TEST(HalfToFP32Test, SpecialValues) {
+TEST(HalfToFP32Test, HalfToFp32Value_SpecialValues) {
     // PI approximation: 0x4248 -> ~3.140625
     EXPECT_NEAR(half_to_fp32_value_ieee(0x4248), 3.140625f, 1e-6f);
 
@@ -217,12 +201,7 @@ TEST(HalfToFP32Test, SpecialValues) {
     EXPECT_NEAR(half_to_fp32_value_ieee(0x3FCF), 1.95215f, 1e-3f);
 }
 
-TEST(HalfToFP32Test, RandomValues) {
-    EXPECT_FLOAT_EQ(0.333251953125f, std::bit_cast<float>(half_to_fp32_bits_ieee(0x3555)));
-    EXPECT_FLOAT_EQ(20.28125f, std::bit_cast<float>(half_to_fp32_bits_ieee(0x4D12)));
-}
-
-TEST(HalfToFP32Test, RoundTripConsistency) {
+TEST(HalfToFP32Test, HalfToFp32Value_RoundTripConsistency) {
     // `half_to_fp32_value_ieee` must match `fp32_from_bits(half_to_fp32_bits_ieee(...))`.
     const uint16_t test_values[] = {
             0x0000, 0x0001, 0x03FF, 0x0400, 0x3C00, 0x4000,
@@ -241,7 +220,7 @@ TEST(HalfToFP32Test, RoundTripConsistency) {
     }
 }
 
-TEST(HalfToFP32Test, Precision) {
+TEST(HalfToFP32Test, HalfToFp32Value_FiniteRange) {
     for (int exp = -14; exp <= 15; ++exp) {
         for (int mantissa = 0; mantissa < 1024; mantissa += 128) {
             uint16_t exponent = (exp + 15) << 10;// biased exponent
@@ -422,8 +401,7 @@ TEST(HalfTest, EdgeCases) {
 
     // Overflow saturates to infinity.
     Half large(1.0e8f);
-    EXPECT_TRUE(std::isinf(static_cast<float>(large)) ||
-                static_cast<float>(large) == std::numeric_limits<float>::infinity());
+    EXPECT_TRUE(std::isinf(static_cast<float>(large)));
 }
 
 TEST(HalfTest, OutputOperator) {

@@ -40,12 +40,6 @@ namespace aethermind {
 namespace details {
 
 /// Converts an IEEE half-precision value (bit representation) to an IEEE
-/// single-precision value (bit representation).
-///
-/// Implemented with integer bit manipulation only; no floating-point operations.
-uint32_t fp16_to_fp32_bits(uint16_t h);
-
-/// Converts an IEEE half-precision value (bit representation) to an IEEE
 /// single-precision `float`.
 ///
 /// Uses IEEE-like floating-point operations and int/float bitcasts; makes no

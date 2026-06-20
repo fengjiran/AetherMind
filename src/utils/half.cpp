@@ -4,14 +4,16 @@
 /// Contains the portable integer bit-manipulation paths for binary16 ↔ binary32
 /// conversion. When `X86_F16` is defined, these are replaced by hardware
 /// intrinsics at the call site.
-
 #include "utils/half.h"
 #include "macros.h"
 #include "utils/floating_point_utils.h"
 
 namespace aethermind {
-namespace details {
+namespace {
 
+// Converts an IEEE half-precision value bit pattern to an IEEE single-precision
+// bit pattern. Implemented with integer bit manipulation only; no floating-point
+// operations.
 uint32_t fp16_to_fp32_bits(uint16_t h) {
     const uint32_t w = static_cast<uint32_t>(h) << 16;
 
@@ -38,6 +40,14 @@ uint32_t fp16_to_fp32_bits(uint16_t h) {
     uint32_t renorm_shift = __builtin_clz(nonsign);
     renorm_shift = renorm_shift > 5 ? renorm_shift - 5 : 0;
     return sign | (nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23);
+}
+
+}// namespace
+
+namespace details {
+
+uint32_t fp16_to_fp32_bits_for_testing(uint16_t h) {
+    return fp16_to_fp32_bits(h);
 }
 
 float fp16_to_fp32_value(uint16_t h) {

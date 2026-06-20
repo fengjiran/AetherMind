@@ -1,10 +1,9 @@
 /// \file
 /// Unit tests for IEEE 754 half-precision conversion functions and the Half type.
 ///
-/// Covers bit-exact conversion (`fp16_to_fp32_bits`,
+/// Covers bit-exact conversion (`fp16_to_fp32_bits_for_testing`,
 /// `fp16_from_fp32_value`), value conversion (`fp16_to_fp32_value`),
 /// and the `Half` class API.
-
 #include "utils/floating_point_utils.h"
 #include "utils/half.h"
 #include <cmath>
@@ -14,64 +13,68 @@
 using namespace aethermind;
 using namespace aethermind::details;
 
+namespace aethermind::details {
+uint32_t fp16_to_fp32_bits_for_testing(uint16_t h);
+}
+
 namespace {
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Zero) {
-    EXPECT_EQ(fp16_to_fp32_bits(0x0000), 0x00000000);// +0
-    EXPECT_EQ(fp16_to_fp32_bits(0x8000), 0x80000000);// -0
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x0000), 0x00000000);// +0
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x8000), 0x80000000);// -0
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Denormalized) {
     // Smallest positive denormal: 0x0001 -> 2^-14 * 2^-10 = 2^-24
-    EXPECT_EQ(fp16_to_fp32_bits(0x0001), 0x33800000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x0001), 0x33800000);
 
     // Largest denormal: 0x03FF
-    EXPECT_EQ(fp16_to_fp32_bits(0x03FF), 0x387FC000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x03FF), 0x387FC000);
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Normalized) {
     // 1.0 in half: 0x3C00 -> 1.0 in float: 0x3F800000
-    EXPECT_EQ(fp16_to_fp32_bits(0x3C00), 0x3F800000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x3C00), 0x3F800000);
 
     // -1.0 in half: 0xBC00 -> -1.0 in float: 0xBF800000
-    EXPECT_EQ(fp16_to_fp32_bits(0xBC00), 0xBF800000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xBC00), 0xBF800000);
 
     // 2.0 in half: 0x4000 -> 2.0 in float: 0x40000000
-    EXPECT_EQ(fp16_to_fp32_bits(0x4000), 0x40000000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x4000), 0x40000000);
 
     // 0.5 in half: 0x3800 -> 0.5 in float: 0x3F000000
-    EXPECT_EQ(fp16_to_fp32_bits(0x3800), 0x3F000000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x3800), 0x3F000000);
 
-    EXPECT_EQ(fp16_to_fp32_bits(0x3555), 0x3EAAA000);// ~0.33325
-    EXPECT_EQ(fp16_to_fp32_bits(0x48CD), 0x4119A000);// ~9.6016
-    EXPECT_EQ(fp16_to_fp32_bits(0x4D12), 0x41A24000);// ~20.28125
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x3555), 0x3EAAA000);// ~0.33325
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x48CD), 0x4119A000);// ~9.6016
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x4D12), 0x41A24000);// ~20.28125
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Infinity) {
-    EXPECT_EQ(fp16_to_fp32_bits(0x7C00), 0x7F800000);// +inf
-    EXPECT_EQ(fp16_to_fp32_bits(0xFC00), 0xFF800000);// -inf
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7C00), 0x7F800000);// +inf
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xFC00), 0xFF800000);// -inf
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_NaN) {
     // Quiet NaN
-    EXPECT_EQ(fp16_to_fp32_bits(0x7C01), 0x7F802000);
-    EXPECT_EQ(fp16_to_fp32_bits(0x7FFF), 0x7FFFE000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7C01), 0x7F802000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7FFF), 0x7FFFE000);
 
     // Signaling NaN
-    EXPECT_EQ(fp16_to_fp32_bits(0x7E00), 0x7FC00000);
-    EXPECT_EQ(fp16_to_fp32_bits(0x7F00), 0x7FE00000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7E00), 0x7FC00000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7F00), 0x7FE00000);
 
     // Negative NaN
-    EXPECT_EQ(fp16_to_fp32_bits(0xFC01), 0xFF802000);
-    EXPECT_EQ(fp16_to_fp32_bits(0xFFFF), 0xFFFFE000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xFC01), 0xFF802000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xFFFF), 0xFFFFE000);
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_EdgeCases) {
     // Max normal: 0x7BFF -> ~65504.0
-    EXPECT_EQ(fp16_to_fp32_bits(0x7BFF), 0x477FE000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7BFF), 0x477FE000);
 
     // Min normal: 0x0400 -> 2^-14 ≈ 6.1035e-5
-    EXPECT_EQ(fp16_to_fp32_bits(0x0400), 0x38800000);
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x0400), 0x38800000);
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_SignAndExponent) {
@@ -80,7 +83,7 @@ TEST(HalfToFP32Test, HalfToFp32Bits_SignAndExponent) {
             0x7C00, 0x7E00, 0x7FFF, 0x8000, 0xBC00, 0xFC00};
 
     for (auto half_val: test_values) {
-        uint32_t fp32_bits = fp16_to_fp32_bits(half_val);
+        uint32_t fp32_bits = fp16_to_fp32_bits_for_testing(half_val);
 
         // Sign bit must be preserved.
         bool half_sign = (half_val & 0x8000) != 0;
@@ -96,7 +99,7 @@ TEST(HalfToFP32Test, HalfToFp32Bits_SignAndExponent) {
 
 TEST(HalfToFP32Test, HalfToFp32Bits_ExhaustiveSmallValues) {
     for (uint16_t i = 0; i < 0x0400; ++i) {
-        uint32_t result = fp16_to_fp32_bits(i);
+        uint32_t result = fp16_to_fp32_bits_for_testing(i);
 
         // Result must be a valid fp32 bit pattern (exponent ≤ all-ones).
         EXPECT_TRUE((result & 0x7F800000) <= 0x7F800000);
@@ -203,13 +206,13 @@ TEST(HalfToFP32Test, HalfToFp32Value_SpecialValues) {
 }
 
 TEST(HalfToFP32Test, HalfToFp32Value_RoundTripConsistency) {
-    // `fp16_to_fp32_value` must match `fp32_from_bits(fp16_to_fp32_bits(...))`.
+    // `fp16_to_fp32_value` must match `fp32_from_bits(fp16_to_fp32_bits_for_testing(...))`.
     const uint16_t test_values[] = {
             0x0000, 0x0001, 0x03FF, 0x0400, 0x3C00, 0x4000,
             0x7C00, 0x7E00, 0x7FFF, 0x8000, 0xBC00, 0xFC00};
 
     for (auto half_val: test_values) {
-        uint32_t bits = fp16_to_fp32_bits(half_val);
+        uint32_t bits = fp16_to_fp32_bits_for_testing(half_val);
         float value_from_bits = fp32_from_bits(bits);
         float direct_value = fp16_to_fp32_value(half_val);
 

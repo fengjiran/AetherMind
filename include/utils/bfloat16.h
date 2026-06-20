@@ -1,6 +1,11 @@
-//
-// Created by richard on 9/23/25.
-//
+/// \file
+/// Brain floating-point (bfloat16) type.
+///
+/// Provides `BFloat16` — a C++ type wrapping a 16-bit bfloat16 bit pattern —
+/// and conversion functions between bfloat16 and IEEE 754 binary32. The
+/// bfloat16 format (1 sign | 8 exponent | 7 mantissa) shares its exponent
+/// range with binary32 but has a 7-bit mantissa, so conversion to/from float
+/// is a bit truncation/extension at the mantissa boundary.
 
 #ifndef AETHERMIND_BFLOAT16_H
 #define AETHERMIND_BFLOAT16_H
@@ -16,21 +21,41 @@
 namespace aethermind {
 namespace details {
 
+/// Converts a bfloat16 bit pattern to an IEEE 754 binary32 `float`.
+///
+/// bfloat16 occupies the high 16 bits of a binary32; the conversion left-shifts
+/// the input by 16 and reinterprets as `float`. Bit-exact: NaN payloads, sign,
+/// and exponent are preserved.
 float bf16_to_fp32_value(uint16_t input);
 
+/// Converts an IEEE 754 binary32 `float` to a bfloat16 bit pattern.
+///
+/// Uses round-to-nearest-even on the truncated 16 mantissa LSBs. NaN inputs
+/// are canonicalized to the quiet NaN bit pattern `0x7FC0`.
 uint16_t bf16_from_fp32_value(float);
 
 }// namespace details
 
+/// Brain floating-point (bfloat16) value.
+///
+/// Stores the raw 16-bit bfloat16 bit pattern in `x`. The format is
+/// 1 sign | 8 exponent | 7 mantissa, which shares the exponent range of
+/// binary32 but has lower precision. Arithmetic and comparisons go through
+/// implicit conversion to `float` and follow IEEE 754 binary32 rounding and
+/// NaN semantics. Use `from_bits()` to construct from a raw bit pattern
+/// without conversion.
 struct alignas(2) BFloat16 {
+    /// bfloat16 bit pattern: 1 sign | 8 exponent | 7 mantissa.
     uint16_t x;
 
+    /// Tag type for constructing a `BFloat16` from raw bits without conversion.
     struct from_bits_t {};
     static constexpr from_bits_t from_bits() {
         return {};
     }
 
     BFloat16() : x(0) {}
+    /// Constructs from raw bfloat16 bits; no floating-point conversion.
     constexpr BFloat16(uint16_t bits, from_bits_t) : x(bits) {}
     BFloat16(float);       // NOLINT
     operator float() const;// NOLINT
@@ -99,6 +124,9 @@ BFloat16 operator/(int64_t lhs, BFloat16 rhs);
 bool operator>(BFloat16& lhs, BFloat16& rhs);
 bool operator<(BFloat16& lhs, BFloat16& rhs);
 
+/// Trait identifying reduced-precision floating-point types (`Half`,
+/// `BFloat16`). Used to gate `std::` math overloads that route through
+/// `float` for these types.
 template<typename T>
 struct is_reduced_floating_point : std::false_type {};
 
@@ -115,6 +143,11 @@ constexpr bool is_reduced_floating_point_v = is_reduced_floating_point<T>::value
 
 namespace std {
 
+/// std::numeric_limits specialization for bfloat16.
+///
+/// Bit constants follow the bfloat16 format (1 sign | 8 exponent | 7 mantissa,
+/// bias 127). `is_iec559` is false because bfloat16 is not an IEEE 754
+/// standard format, even though it uses IEEE-like semantics.
 template<>
 struct numeric_limits<aethermind::BFloat16> {
     static constexpr bool is_signed = true;

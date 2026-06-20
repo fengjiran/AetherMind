@@ -1,22 +1,18 @@
-//
-// Created by 赵丹 on 2025/9/17.
-//
+/// \file
+/// 8-bit floating-point type with 5 exponent bits and 2 mantissa bits (E5M2).
+///
+/// Bit layout: `s eeeee mm` (1 sign | 5 exponent | 2 mantissa, bias 15).
+/// E5M2 shares the binary16 exponent range (5 bits, bias 15) but keeps only
+/// 2 mantissa bits, so the high 8 bits of a binary16 value and the
+/// corresponding E5M2 value are bit-identical. This relationship lets the
+/// E5M2 → fp32 conversion reuse the binary16 conversion path.
+///
+/// Arithmetic is performed by converting to `float`, computing in binary32,
+/// and converting back. See https://arxiv.org/pdf/2209.05433.pdf for the
+/// reference format definition.
 
 #ifndef AETHERMIND_FLOAT8_E5M2_H
 #define AETHERMIND_FLOAT8_E5M2_H
-
-/// Defines the Float8_e5m2 type (8-bit floating-point) including conversions
-/// to standard C types and basic arithmetic operations. Note that arithmetic
-/// operations are implemented by converting to floating point and
-/// performing the operation in float32.
-/// Binary configuration:
-/// s eeeee mm
-/// 1 sign bit
-/// 5 exponent bits
-/// 2 mantissa bits
-/// bias = 15
-///
-/// Implementation based on the paper https://arxiv.org/pdf/2209.05433.pdf
 
 #include "macros.h"
 #include "utils/half.h"
@@ -24,36 +20,55 @@
 namespace aethermind {
 namespace details {
 
-/*
- * Convert a 8-bit floating-point number in fp8 E5M2 format, in bit
- * representation, to a 32-bit floating-point number in IEEE single-precision
- * format, in bit representation.
- *
- * @note The implementation doesn't use any floating-point operations.
- */
+/// Reinterprets an E5M2 bit pattern as an IEEE 754 binary32 `float`.
+///
+/// E5M2 and binary16 share the same exponent encoding, so this routes the
+/// input through `fp16_to_fp32_value` after left-shifting it into the
+/// high 8 bits of a 16-bit half. NaN payloads, sign, and exponent are
+/// preserved.
 float fp8e5m2_to_fp32_value(uint8_t input);
 
-/*
- * Convert a 32-bit floating-point number in IEEE single-precision format to a
- * 8-bit floating-point number in fp8 E5M2 format, in bit representation.
- */
+/// Converts an IEEE 754 binary32 `float` to an E5M2 bit pattern.
+///
+/// Uses round-to-nearest-even on the truncated mantissa. Values exceeding
+/// the E5M2 normal range saturate to ±infinity; values smaller than the
+/// minimum normal (2^-14) are encoded as subnormals; NaN inputs are
+/// canonicalized to a single quiet-NaN bit pattern.
 uint8_t fp8e5m2_from_fp32_value(float f);
 
 }// namespace details
 
+/// E5M2 8-bit floating-point value.
+///
+/// Stores the raw 8-bit E5M2 bit pattern in `x`. The format is
+/// 1 sign | 5 exponent | 2 mantissa (bias 15), which shares the exponent
+/// range of binary16 but has lower precision. Arithmetic and comparisons go
+/// through implicit conversion to `float` and follow IEEE 754 binary32
+/// rounding and NaN semantics. `is_iec559` is false: E5M2 is not an IEEE 754
+/// standard format. Use `from_bits()` to construct from a raw bit pattern
+/// without conversion.
 struct alignas(1) Float8_e5m2 {
+    /// E5M2 bit pattern: 1 sign | 5 exponent | 2 mantissa.
     uint8_t x;
 
+    /// Tag type for constructing a `Float8_e5m2` from raw bits without conversion.
     struct from_bits_t {};
     static constexpr from_bits_t from_bits() {
         return {};
     }
 
     Float8_e5m2() : x(0) {}
+    /// Constructs from raw E5M2 bits; no floating-point conversion.
     constexpr Float8_e5m2(uint8_t bits, from_bits_t) : x(bits) {}
     Float8_e5m2(float value);// NOLINT
     operator float() const;  // NOLINT
+
+    /// Returns true if the value is positive or negative infinity.
+    /// Inf is encoded as exponent=11111 with mantissa=00.
     AM_NODISCARD bool isinf() const;
+
+    /// Returns true if the value is a NaN.
+    /// NaN is encoded as exponent=11111 with any non-zero mantissa.
     AM_NODISCARD bool isnan() const;
 };
 
@@ -118,6 +133,14 @@ Float8_e5m2 operator/(int64_t lhs, Float8_e5m2 rhs);
 
 namespace std {
 
+/// std::numeric_limits specialization for E5M2.
+///
+/// Bit constants follow the E5M2 format (1 sign | 5 exponent | 2 mantissa,
+/// bias 15). `is_iec559` is false — E5M2 is not an IEEE 754 standard format.
+/// `has_signaling_NaN` is false — E5M2 reserves all `exp=11111, mantissa≠0`
+/// patterns for quiet NaN; there is no signaling-NaN encoding.
+/// `has_denorm_loss` is true — converting from binary32 routes through a
+/// rounding step that can lose denormal precision.
 template<>
 class numeric_limits<aethermind::Float8_e5m2> {
 public:

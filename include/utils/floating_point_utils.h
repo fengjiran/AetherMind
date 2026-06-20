@@ -1,6 +1,10 @@
-//
-// Created by richard on 9/6/25.
-//
+/// \file
+/// Bit-preserving casts between `float` and `uint32_t`.
+///
+/// Used by the half-precision and bfloat16 code paths to manipulate IEEE 754
+/// binary32 bit patterns without invoking floating-point arithmetic. Each
+/// helper dispatches to the vendor-preferred intrinsic on OpenCL, CUDA/HIP,
+/// and Intel ICC, and falls back to `std::bit_cast` elsewhere.
 
 #ifndef AETHERMIND_FLOATING_POINT_UTILS_H
 #define AETHERMIND_FLOATING_POINT_UTILS_H
@@ -11,11 +15,8 @@
 namespace aethermind {
 namespace details {
 
-/*!
- * \brief Converts a uint32_t value to a float.
- * \param value The uint32_t value to convert.
- * \return The converted float value.
- */
+/// Reinterprets a 32-bit unsigned integer as an IEEE 754 binary32 `float`.
+/// The bit pattern is preserved verbatim; no rounding or normalization occurs.
 inline float fp32_from_bits(uint32_t value) {
 #if defined(__OPENCL_VERSION__)
     return as_float(value);
@@ -28,11 +29,9 @@ inline float fp32_from_bits(uint32_t value) {
 #endif
 }
 
-/*!
- * \brief Converts a float value to a uint32_t.
- * \param value The float value to convert.
- * \return The converted uint32_t value.
- */
+/// Reinterprets an IEEE 754 binary32 `float` as a 32-bit unsigned integer.
+/// The bit pattern is preserved verbatim; NaN payloads and signaling bits are
+/// not canonicalized.
 inline uint32_t fp32_to_bits(float value) {
 #if defined(__OPENCL_VERSION__)
     return as_uint(value);
@@ -48,4 +47,4 @@ inline uint32_t fp32_to_bits(float value) {
 }// namespace details
 }// namespace aethermind
 
-#endif//AETHERMIND_FLOATING_POINT_UTILS_H
+#endif// AETHERMIND_FLOATING_POINT_UTILS_H

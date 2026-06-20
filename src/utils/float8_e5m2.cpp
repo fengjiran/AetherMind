@@ -1,17 +1,21 @@
-//
-// Created by 赵丹 on 2025/9/17.
-//
-#include "macros.h"
+/// \file
+/// Implementation of `Float8_e5m2` and E5M2 ↔ binary32 conversion.
+
 #include "utils/float8_e5m2.h"
+
+#include "macros.h"
 #include "utils/floating_point_utils.h"
 
 namespace aethermind {
 namespace details {
 
 float fp8e5m2_to_fp32_value(uint8_t input) {
+    // E5M2 and binary16 share the same exponent encoding (5 bits, bias 15),
+    // so an E5M2 value placed in the high 8 bits of a uint16 is bit-equivalent
+    // to the corresponding binary16 value. Defer to the binary16 conversion.
     uint16_t h = input;
     h <<= 8;
-    return half_to_fp32_value_ieee(h);
+    return fp16_to_fp32_value(h);
 }
 
 uint8_t fp8e5m2_from_fp32_value(float f) {
@@ -20,12 +24,13 @@ uint8_t fp8e5m2_from_fp32_value(float f) {
     const uint32_t exponent = x & UINT32_C(0x7F800000);
     const uint32_t mantissa = x & UINT32_C(0x007FFFFF);
 
-    // zero
+    // ±0: preserve sign bit, clear everything else.
     if (exponent == 0 && mantissa == 0) {
         return static_cast<uint8_t>(sign >> 24);
     }
 
-    // inf and nan case
+    // Inf and NaN have fp32 exponent = all-ones. E5M2 encodes them as
+    // exp=11111 with mantissa=00 (inf, 0x7C) or mantissa≠00 (NaN, 0x7E).
     if (exponent == UINT32_C(0x7F800000)) {
         if (mantissa == 0) {
             return static_cast<uint8_t>(sign >> 24 | 0x7C);
@@ -33,32 +38,46 @@ uint8_t fp8e5m2_from_fp32_value(float f) {
         return static_cast<uint8_t>(sign >> 24 | 0x7E);
     }
 
+    // 0x47800000 = 2^16, the smallest fp32 magnitude that exceeds E5M2's
+    // representable range. Saturate to ±inf for finite overflow; preserve
+    // NaN bit pattern (sign | 0x7F) for fp32 NaNs that slipped past the
+    // exponent==0xFF check above (they cannot — but the branch is kept
+    // defensive).
     uint32_t nonsign = exponent | mantissa;
     if (nonsign >= UINT32_C(0x47800000)) {
         return nonsign > UINT32_C(0x7F800000) ? static_cast<uint8_t>(sign >> 24 | 0x7F) : static_cast<uint8_t>(sign >> 24 | 0x7C);
     }
 
+    // 113 << 23 = 2^-14, the smallest E5M2 normal. Smaller values must be
+    // encoded as subnormals.
     if (nonsign < UINT32_C(113) << 23) {
-        // The input number is smaller than 2^(-14), which is the smallest
-        // fp8e5m2 normal number, convert to denormal number
+        // Denormalization-via-FP-add trick: adding the magic constant
+        // 2^7 (134 << 23) to a tiny value `t` (t < 2^-14) yields a fp32
+        // number whose low bits encode the E5M2 subnormal mantissa with
+        // correct round-to-nearest-even rounding (the fp32 hardware does
+        // the rounding for us at the LSB of the fp32 mantissa, which is
+        // aligned with the LSB of the E5M2 subnormal mantissa). Subtract
+        // the bit pattern of 2^7 to recover the E5M2 mantissa bits, then
+        // OR in the sign.
         uint32_t denorm_mask = UINT32_C(134) << 23;
         nonsign = fp32_to_bits(fp32_from_bits(nonsign) + fp32_from_bits(denorm_mask));
         return static_cast<uint8_t>(nonsign - denorm_mask) | static_cast<uint8_t>(sign >> 24);
     }
 
-    // normalize the exponent from fp32 bias(127) to fp8 bias(15)
+    // Normal path: rebias exponent fp32(127) → E5M2(15), truncate mantissa
+    // from 23 bits to 2 bits, then round-to-nearest-even on the dropped bits.
     auto exp32 = static_cast<int32_t>((exponent >> 23) - 127);
 
-    // convert to fp8 format
     uint32_t res = sign >> 24;
-
-    // add fp8 bias (15) to exponent
     res |= static_cast<uint32_t>(exp32 + 15) << 2;
-
-    // add mantissa (round to the nearest even)
     res |= mantissa >> 21;
 
-    // handle rounding
+    // Round-to-nearest-even: the 21 dropped mantissa bits split into the
+    // round bit (bit 20, mask 0x00100000) and the sticky bits (bits 0..19,
+    // mask 0x000FFFFF). Round up iff the round bit is set AND
+    // (any sticky bit is set OR the result LSB is 1) — this is the standard
+    // RNE rule: round half away from zero only when the result LSB would
+    // otherwise be odd (tie-breaks to even).
     const uint32_t rounding_bit = mantissa & UINT32_C(0x00100000);
     const uint32_t sticky_bits = mantissa & UINT32_C(0x000FFFFF);
 
@@ -78,10 +97,14 @@ Float8_e5m2::operator float() const {
 }
 
 bool Float8_e5m2::isinf() const {
+    // exp=11111, mantissa=00 (after masking out the sign bit).
     return (x & 0x7F) == 0x7C;
 }
 
 bool Float8_e5m2::isnan() const {
+    // exp=11111, mantissa≠00. Bit patterns 0x7D, 0x7E, 0x7F (and signed
+    // counterparts) all qualify; comparing against 0x7C as a strict upper
+    // bound captures all three with a single comparison.
     return (x & 0x7F) > 0x7C;
 }
 
@@ -102,7 +125,10 @@ Float8_e5m2 operator*(const Float8_e5m2& lhs, const Float8_e5m2& rhs) {
     return static_cast<float>(lhs) * static_cast<float>(rhs);
 }
 
-Float8_e5m2 operator/(const Float8_e5m2& lhs, const Float8_e5m2& rhs) __ubsan_ignore_float_divide_by_zero__ {
+Float8_e5m2 operator/(const Float8_e5m2& lhs, const Float8_e5m2& rhs)
+        // IEEE 754 defines float division by zero as ±inf; suppress UBSan
+        // which treats it as undefined behavior.
+        __ubsan_ignore_float_divide_by_zero__ {
     return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 

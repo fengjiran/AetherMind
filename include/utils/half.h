@@ -43,7 +43,7 @@ namespace details {
 /// single-precision value (bit representation).
 ///
 /// Implemented with integer bit manipulation only; no floating-point operations.
-uint32_t half_to_fp32_bits_ieee(uint16_t h);
+uint32_t fp16_to_fp32_bits(uint16_t h);
 
 /// Converts an IEEE half-precision value (bit representation) to an IEEE
 /// single-precision `float`.
@@ -51,14 +51,14 @@ uint32_t half_to_fp32_bits_ieee(uint16_t h);
 /// Uses IEEE-like floating-point operations and int/float bitcasts; makes no
 /// assumption about the current rounding mode and performs no operations on
 /// denormals.
-float half_to_fp32_value_ieee(uint16_t h);
+float fp16_to_fp32_value(uint16_t h);
 
 /// Converts an IEEE single-precision `float` to an IEEE half-precision value
 /// (bit representation).
 ///
 /// Implemented with integer bit manipulation only; no floating-point operations.
 /// Rounding mode is round-to-nearest-even.
-uint16_t half_from_fp32_value_ieee(float f);
+uint16_t fp16_from_fp32_value(float f);
 
 }// namespace details
 

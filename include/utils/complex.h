@@ -1,6 +1,19 @@
-//
-// Created by richard on 10/6/25.
-//
+/// \file
+/// \brief Constexpr-friendly complex number type with custom scalar support.
+///
+/// AetherMind ships its own `complex<T>` instead of relying on `std::complex<T>`
+/// for two reasons:
+///   1. Most `std::complex` operations are not `constexpr` before C++26, which
+///      blocks compile-time tensor metadata computations.
+///   2. `std::complex` is only required to support `float`, `double`, and
+///      `long double`; instantiating it on reduced-precision types such as
+///      `Half` is implementation-defined and not portable across toolchains.
+///
+/// This file mirrors the API surface of `std::complex` and provides
+/// interoperability through explicit conversion constructors and operators,
+/// plus an injection of `complex_math::*` into `namespace std` so that generic
+/// code calling `std::sin(z)` / `std::log(z)` etc. resolves correctly for
+/// `aethermind::complex` values.
 
 #ifndef AETHERMIND_COMPLEX_H
 #define AETHERMIND_COMPLEX_H
@@ -12,6 +25,17 @@
 
 namespace aethermind {
 
+/// \brief Constexpr complex number with arbitrary scalar `T`.
+///
+/// All non-conversion operations are `constexpr`, allowing `complex<T>` values
+/// to participate in compile-time evaluation. Memory layout is `{real, imag}`
+/// in declaration order, matching the layout of `std::complex<T>` so that a
+/// `complex<T>*` can be reinterpreted as `std::complex<T>*` for interop with
+/// libraries that expect `std::complex` storage.
+///
+/// Alignment is set to `2 * sizeof(T)` so a single `complex<float>` occupies
+/// an 8-byte aligned slot, matching the natural granularity of paired-float
+/// SIMD loads (e.g. `_mm_loadl_pi`).
 template<typename T>
 class alignas(sizeof(T) * 2) complex {
 public:
@@ -23,7 +47,9 @@ public:
     template<typename U>
     explicit constexpr complex(const std::complex<U>& other) : complex(other.real(), other.imag()) {}
 
-    // ctors for complex<float> and complex<double>
+    // Cross-precision conversions between complex<float> and complex<double>.
+    // Narrowing (double -> float) is explicit; widening (float -> double) is
+    // implicit, matching the behaviour of the underlying scalar conversions.
     template<typename U = T,
              typename = std::enable_if_t<std::is_same_v<U, float>>>
     explicit constexpr complex(const complex<double>& other) : real_(other.real_), imag_(other.imag_) {}
@@ -108,6 +134,15 @@ public:
         return *this;
     }
 
+    // Smith's algorithm for complex division (Smith, "Algorithm 116", 1962).
+    //
+    // The textbook formula (a+bi)/(c+di) = ((ac+bd) + (bc-ad)i) / (c^2+d^2)
+    // overflows whenever c or d is near sqrt(T_max), even when the true result
+    // is representable. Smith's method scales by the larger of |c|,|d| so the
+    // intermediate `rat` is always in [-1, 1] and the denominator never
+    // overflows. ubsan is suppressed because the explicit `abs_c == 0 &&
+    // abs_d == 0` branch intentionally divides by zero to produce IEEE-754
+    // complex infinity/NaN, matching std::complex semantics.
     template<typename U>
     constexpr complex& operator/=(const complex<U>& other) __ubsan_ignore_float_divide_by_zero__ {
         T a = real_;
@@ -119,7 +154,7 @@ public:
         auto abs_d = std::abs(d);
         if (abs_c >= abs_d) {
             if (abs_c == U(0) && abs_d == U(0)) {
-                // divide by zeros should yield a complex inf or nan
+                // Division by zero yields complex inf/nan per IEEE 754.
                 real_ = a / abs_c;
                 imag_ = b / abs_d;
             } else {
@@ -321,11 +356,20 @@ constexpr bool operator!=(const T& lhs, const complex<T>& rhs) {
     return !(lhs == rhs);
 }
 
+/// \brief Builds a complex number from polar form `r * exp(i*theta)`.
 template<typename T>
 complex<T> polar(const T& r, const T& theta = T()) {
     return complex<T>(r * std::cos(theta), r * std::sin(theta));
 }
 
+/// \brief Partial specialization for half-precision complex numbers.
+///
+/// `complex<Half>` is intentionally a thin storage type: it provides only
+/// `+=`, `-=`, `*=` plus round-trip conversions to and from `complex<float>`.
+/// Operations not defined here (division, comparison, free-function operators,
+/// `complex_math::*`) are reached by implicit promotion to `complex<float>`,
+/// which avoids the precision pitfalls of arithmetic in `Half` while keeping
+/// 4-byte storage for tensors of half-precision complex values.
 template<>
 class alignas(4) complex<Half> {
 public:
@@ -378,6 +422,7 @@ std::ostream& operator<<(std::ostream& os, const complex<T>& val) {
     return os;
 }
 
+/// \brief Type trait: `true` if `T` is either `std::complex` or `aethermind::complex`.
 template<typename T>
 struct is_complex : std::false_type {};
 
@@ -390,6 +435,12 @@ struct is_complex<complex<T>> : std::true_type {};
 template<typename T>
 constexpr static bool is_complex_v = is_complex<T>::value;
 
+/// \brief Extracts the underlying scalar type of a (possibly complex) `T`.
+///
+/// Identity for non-complex types; yields the element type for both
+/// `std::complex<U>` and `aethermind::complex<U>`. Used by generic numeric
+/// code that needs to operate on the real component regardless of whether
+/// the input is real- or complex-valued.
 template<typename T>
 struct scalar_value_type {
     using type = T;
@@ -405,6 +456,13 @@ struct scalar_value_type<complex<T>> {
     using type = T;
 };
 
+/// \brief Complex-valued math functions.
+///
+/// Each entry routes through the corresponding `std::` overload on
+/// `std::complex<T>` so the implementation stays consistent with the standard
+/// library's branch-cut and special-value choices. The functions are injected
+/// into `namespace std` further below so generic code that calls `std::sin(z)`
+/// resolves to these overloads via ordinary lookup.
 namespace complex_math {
 
 template<typename T>
@@ -561,11 +619,18 @@ constexpr aethermind::complex<T> conj(const aethermind::complex<T>& x) {
 template<typename T>
 class numeric_limits<aethermind::complex<T>> : public numeric_limits<T> {};
 
+/// \brief A complex number is NaN if either component is NaN.
+///
+/// Matches the convention used by `std::norm` / `std::abs(std::complex)`,
+/// which treat `(NaN, finite)` and `(finite, NaN)` as NaN.
 template<typename T>
 bool isnan(const aethermind::complex<T>& v) {
     return std::isnan(v.real()) || std::isnan(v.imag());
 }
 
+// Inject complex math overloads into `namespace std` so generic numeric code
+// that calls `std::sin(z)` / `std::log(z)` / etc. resolves through ordinary
+// (non-ADL) lookup for `aethermind::complex` arguments.
 using aethermind::complex_math::acos;
 using aethermind::complex_math::acosh;
 using aethermind::complex_math::asin;

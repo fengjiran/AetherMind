@@ -1,6 +1,17 @@
-//
-// Created by richard on 9/6/25.
-//
+/// \file
+/// 8-bit floating-point type with 4 exponent bits and 3 mantissa bits (E4M3FN).
+///
+/// Bit layout: `s eeee mmm` (1 sign | 4 exponent | 3 mantissa, bias 7).
+/// The "FN" suffix means Finite-and-NaN-only: unlike standard IEEE 754
+/// formats, E4M3FN has no infinity encoding. The bit pattern that would
+/// represent infinity is repurposed to extend the finite range; only the
+/// all-ones-mantissa pattern at maximum exponent (`0x7F` and `0xFF`) is NaN.
+/// This gives a wider representable magnitude range than IEEE-style 8-bit
+/// floats at the cost of saturation semantics on overflow.
+///
+/// Arithmetic is performed by converting to `float`, computing in binary32,
+/// and converting back. See https://arxiv.org/pdf/2209.05433.pdf for the
+/// reference format definition.
 
 #ifndef AETHERMIND_FLOAT8_E4M3FN_H
 #define AETHERMIND_FLOAT8_E4M3FN_H
@@ -13,32 +24,24 @@
 #include <cstdint>
 #include <iostream>
 
-/// Defines the Float8_e4m3fn type (8-bit floating-point) including conversions
-/// to standard C types and basic arithmetic operations. Note that arithmetic
-/// operations are implemented by converting to floating point and
-/// performing the operation in float32.
-/// Binary configuration:
-/// s eeee mmm
-/// 1 sign bit
-/// 4 exponent bits
-/// 3 mantissa bits
-/// bias = 7
-///
-/// Implementation based on the paper https://arxiv.org/pdf/2209.05433.pdf
-
 namespace aethermind {
 
 namespace details {
 
-/*
- * Convert a 8-bit floating-point number in fp8 E4M3FN format, in bit
- * representation, to a 32-bit floating-point number in IEEE single-precision
- * format, in bit representation.
- *
- * @note The implementation doesn't use any floating-point operations.
- */
+/// Reinterprets an E4M3FN bit pattern as an IEEE 754 binary32 `float`.
+///
+/// Implemented with integer bit manipulation only; the only floating-point
+/// step is the final bit-cast to `float`. Subnormals are renormalized into
+/// binary32 normal range during the conversion so the returned `float` is
+/// always either zero, finite normal, or NaN — never an fp32 subnormal.
 float fp8e4m3fn_to_fp32_value(uint8_t input);
 
+/// Converts an IEEE 754 binary32 `float` to an E4M3FN bit pattern.
+///
+/// Uses round-to-nearest-even on the truncated mantissa. Values whose
+/// magnitude meets or exceeds 480.0 (the first non-representable value
+/// above E4M3FN's max normal of 448.0) are mapped to NaN. Values smaller
+/// than the minimum normal (2^-6) are encoded as subnormals.
 uint8_t fp8e4m3fn_from_fp32_value(float f);
 
 inline float fp8e4m3fn_to_fp32_value_bk(uint8_t input) {
@@ -204,18 +207,36 @@ inline uint8_t fp8e4m3fn_from_fp32_value_bk(float f) {
 
 }// namespace details
 
+/// E4M3FN 8-bit floating-point value.
+///
+/// Stores the raw 8-bit E4M3FN bit pattern in `x`. The format is
+/// 1 sign | 4 exponent | 3 mantissa (bias 7). Unlike standard IEEE 754,
+/// E4M3FN has no infinity: the all-ones-mantissa-with-max-exponent pattern
+/// is reserved for NaN, and other values that would overflow saturate to
+/// NaN as well. Arithmetic and comparisons go through implicit conversion
+/// to `float` and follow IEEE 754 binary32 rounding and NaN semantics.
+/// `is_iec559` is false. Use `from_bits()` to construct from a raw bit
+/// pattern without conversion.
 struct alignas(1) Float8_e4m3fn {
+    /// E4M3FN bit pattern: 1 sign | 4 exponent | 3 mantissa.
     uint8_t x;
 
+    /// Tag type for constructing a `Float8_e4m3fn` from raw bits without conversion.
     struct from_bits_t {};
     static constexpr from_bits_t from_bits() {
         return {};
     }
 
     Float8_e4m3fn() : x(0) {}
+    /// Constructs from raw E4M3FN bits; no floating-point conversion.
     constexpr Float8_e4m3fn(uint8_t bits, from_bits_t) : x(bits) {}
     Float8_e4m3fn(float value);// NOLINT
     operator float() const;    // NOLINT
+
+    /// Returns true if the value is a NaN.
+    /// NaN is encoded as exponent=1111 with mantissa=111 (the unique
+    /// pattern `0x7F` or its negative `0xFF`); E4M3FN has no infinity
+    /// representation so there is no `isinf()` member.
     AM_NODISCARD bool isnan() const;
 };
 
@@ -280,6 +301,17 @@ Float8_e4m3fn operator/(int64_t lhs, Float8_e4m3fn rhs);
 
 namespace std {
 
+/// std::numeric_limits specialization for E4M3FN.
+///
+/// Bit constants follow the E4M3FN format (1 sign | 4 exponent | 3 mantissa,
+/// bias 7). Several traits diverge from the IEEE 754 norm:
+/// - `is_iec559` is false — E4M3FN is not an IEEE 754 standard format.
+/// - `has_infinity` is false — E4M3FN has no infinity encoding; values
+///   that would overflow are mapped to NaN.
+/// - `has_signaling_NaN` is false — E4M3FN has only one NaN bit pattern.
+/// - `has_denorm_loss` is true — fp32 → E4M3FN conversion can lose
+///   precision in the subnormal range.
+/// No `infinity()` static is provided; consumers should use `quiet_NaN()`.
 template<>
 class numeric_limits<aethermind::Float8_e4m3fn> {
 public:

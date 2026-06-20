@@ -5,15 +5,44 @@
 #include "utils/floating_point_utils.h"
 
 namespace aethermind {
+namespace {
+
+// Converts an E5M2 bit pattern to an IEEE 754 binary32 bit pattern.
+// E5M2 layout (1 sign | 5 exponent (bias 15) | 2 mantissa) is bit-equivalent
+// to binary16 with the low 8 mantissa bits zeroed. Left-shifting by 24 puts
+// the E5M2 byte at the same bit positions a binary16 occupies after a 16-bit
+// left shift, so the binary16 algorithm applies verbatim with identical
+// masks and shift counts.
+uint32_t fp8e5m2_to_fp32_bits(uint8_t input) {
+    const uint32_t w = static_cast<uint32_t>(input) << 24;
+
+    const uint32_t sign = w & UINT32_C(0x80000000);
+    const uint32_t exponent = w & UINT32_C(0x7C000000);
+    const uint32_t mantissa = w & UINT32_C(0x03FF0000);
+
+    // zero
+    if (exponent == 0 && mantissa == 0) {
+        return sign;
+    }
+
+    // inf or nan
+    if (exponent == 0x7C000000) {
+        return sign | 0x7F800000 | mantissa >> 3;
+    }
+
+    // Renormalize subnormal values into the binary32 normal range.
+    const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
+    uint32_t renorm_shift = __builtin_clz(nonsign);
+    renorm_shift = renorm_shift > 5 ? renorm_shift - 5 : 0;
+    return sign | (nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23);
+}
+
+}// namespace
+
 namespace details {
 
 float fp8e5m2_to_fp32_value(uint8_t input) {
-    // E5M2 and binary16 share the same exponent encoding (5 bits, bias 15),
-    // so an E5M2 value placed in the high 8 bits of a uint16 is bit-equivalent
-    // to the corresponding binary16 value. Defer to the binary16 conversion.
-    uint16_t h = input;
-    h <<= 8;
-    return fp16_to_fp32_value(h);
+    return fp32_from_bits(fp8e5m2_to_fp32_bits(input));
 }
 
 uint8_t fp8e5m2_from_fp32_value(float f) {
@@ -159,7 +188,7 @@ float operator+(Float8_e5m2 lhs, float rhs) {
 }
 
 float operator-(Float8_e5m2 lhs, float rhs) {
-    return static_cast<float>(lhs) + rhs;
+    return static_cast<float>(lhs) - rhs;
 }
 
 float operator*(Float8_e5m2 lhs, float rhs) {

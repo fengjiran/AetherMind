@@ -191,26 +191,51 @@ TEST(Float8E5M2Test, CompoundAssignmentOperators) {
 }
 
 TEST(Float8E5M2Test, MixedTypeArithmetic) {
-    Float8_e5m2 a(2.0f);
+    // Operand pair (8, 2) chosen so each of {+, -, *, /} yields a distinct
+    // exactly-representable E5M2 value (10, 6, 16, 4). This ensures a
+    // copy-paste bug in any operator (e.g. `-` returning `+`) cannot pass
+    // by coincidence — every assertion is sensitive to the operator used.
+    const Float8_e5m2 a(8.0f);
 
-    // 与float运算
-    float result1 = a + 3.0f;
-    EXPECT_FLOAT_EQ(result1, 5.0f);
+    EXPECT_FLOAT_EQ(a + 2.0f, 10.0f);
+    EXPECT_FLOAT_EQ(a - 2.0f, 6.0f);
+    EXPECT_FLOAT_EQ(a * 2.0f, 16.0f);
+    EXPECT_FLOAT_EQ(a / 2.0f, 4.0f);
 
-    float result2 = 3.0f + a;
-    EXPECT_FLOAT_EQ(result2, 5.0f);
+    EXPECT_FLOAT_EQ(2.0f + a, 10.0f);
+    EXPECT_FLOAT_EQ(2.0f - a, -6.0f);
+    EXPECT_FLOAT_EQ(2.0f * a, 16.0f);
+    EXPECT_FLOAT_EQ(2.0f / a, 0.25f);
 
-    // 与double运算
-    double result3 = a + 3.0;
-    EXPECT_DOUBLE_EQ(result3, 5.0);
+    EXPECT_DOUBLE_EQ(a + 2.0, 10.0);
+    EXPECT_DOUBLE_EQ(a - 2.0, 6.0);
+    EXPECT_DOUBLE_EQ(a * 2.0, 16.0);
+    EXPECT_DOUBLE_EQ(a / 2.0, 4.0);
 
-    // 与int运算
-    Float8_e5m2 result4 = a + 3;
-    EXPECT_FLOAT_EQ(result4, 5.0f);
+    EXPECT_DOUBLE_EQ(2.0 + a, 10.0);
+    EXPECT_DOUBLE_EQ(2.0 - a, -6.0);
+    EXPECT_DOUBLE_EQ(2.0 * a, 16.0);
+    EXPECT_DOUBLE_EQ(2.0 / a, 0.25);
 
-    // 与int64_t运算
-    Float8_e5m2 result5 = a + static_cast<int64_t>(3);
-    EXPECT_FLOAT_EQ(result5, 5.0f);
+    EXPECT_FLOAT_EQ(a + 2, 10.0f);
+    EXPECT_FLOAT_EQ(a - 2, 6.0f);
+    EXPECT_FLOAT_EQ(a * 2, 16.0f);
+    EXPECT_FLOAT_EQ(a / 2, 4.0f);
+
+    EXPECT_FLOAT_EQ(2 + a, 10.0f);
+    EXPECT_FLOAT_EQ(2 - a, -6.0f);
+    EXPECT_FLOAT_EQ(2 * a, 16.0f);
+    EXPECT_FLOAT_EQ(2 / a, 0.25f);
+
+    EXPECT_FLOAT_EQ(a + static_cast<int64_t>(2), 10.0f);
+    EXPECT_FLOAT_EQ(a - static_cast<int64_t>(2), 6.0f);
+    EXPECT_FLOAT_EQ(a * static_cast<int64_t>(2), 16.0f);
+    EXPECT_FLOAT_EQ(a / static_cast<int64_t>(2), 4.0f);
+
+    EXPECT_FLOAT_EQ(static_cast<int64_t>(2) + a, 10.0f);
+    EXPECT_FLOAT_EQ(static_cast<int64_t>(2) - a, -6.0f);
+    EXPECT_FLOAT_EQ(static_cast<int64_t>(2) * a, 16.0f);
+    EXPECT_FLOAT_EQ(static_cast<int64_t>(2) / a, 0.25f);
 }
 
 TEST(Float8E5M2Test, EdgeCasesAndRounding) {

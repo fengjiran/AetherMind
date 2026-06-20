@@ -278,7 +278,7 @@ Float8_e4m3fn operator+(int lhs, Float8_e4m3fn rhs) {
 }
 
 Float8_e4m3fn operator-(int lhs, Float8_e4m3fn rhs) {
-    return static_cast<Float8_e4m3fn>(lhs) / rhs;
+    return static_cast<Float8_e4m3fn>(lhs) - rhs;
 }
 
 Float8_e4m3fn operator*(int lhs, Float8_e4m3fn rhs) {

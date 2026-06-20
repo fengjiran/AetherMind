@@ -2,7 +2,7 @@
 /// Unit tests for IEEE 754 half-precision conversion functions and the Half type.
 ///
 /// Covers bit-exact conversion (`fp16_to_fp32_bits_for_testing`,
-/// `fp16_from_fp32_value`), value conversion (`fp16_to_fp32_value`),
+/// `fp16_from_fp32_value_for_testing`), value conversion (`fp16_to_fp32_value`),
 /// and the `Half` class API.
 #include "utils/floating_point_utils.h"
 #include "utils/half.h"
@@ -15,7 +15,8 @@ using namespace aethermind::details;
 
 namespace aethermind::details {
 uint32_t fp16_to_fp32_bits_for_testing(uint16_t h);
-}
+uint16_t fp16_from_fp32_value_for_testing(float f);
+}// namespace aethermind::details
 
 namespace {
 
@@ -243,80 +244,80 @@ TEST(HalfToFP32Test, HalfToFp32Value_FiniteRange) {
 
 
 TEST(HalfFromFP32Test, ZeroValues) {
-    EXPECT_EQ(fp16_from_fp32_value(0.0f), 0x0000); // +0
-    EXPECT_EQ(fp16_from_fp32_value(-0.0f), 0x8000);// -0
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(0.0f), 0x0000); // +0
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-0.0f), 0x8000);// -0
 }
 
 TEST(HalfFromFP32Test, DenormalizedNumbers) {
     // Values below the half-precision minimum normal flush to zero.
     float smallest_denormal = std::numeric_limits<float>::denorm_min();
-    EXPECT_EQ(fp16_from_fp32_value(smallest_denormal), 0x0000);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(smallest_denormal), 0x0000);
 
     float max_denormal = 1.1754942e-38f;// ~2^-126 * (1 - 2^-23)
-    EXPECT_EQ(fp16_from_fp32_value(max_denormal), 0x0000);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(max_denormal), 0x0000);
 }
 
 TEST(HalfFromFP32Test, NormalizedNumbers) {
-    EXPECT_EQ(fp16_from_fp32_value(1.0f), 0x3C00);
-    EXPECT_EQ(fp16_from_fp32_value(2.0f), 0x4000);
-    EXPECT_EQ(fp16_from_fp32_value(0.5f), 0x3800);
-    EXPECT_EQ(fp16_from_fp32_value(-1.0f), 0xBC00);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(1.0f), 0x3C00);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(2.0f), 0x4000);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(0.5f), 0x3800);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-1.0f), 0xBC00);
 
     // Float denormals flush to zero in half.
     float smallest_normal = 1.17549435e-38f;// 2^-126
-    EXPECT_EQ(fp16_from_fp32_value(smallest_normal), 0);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(smallest_normal), 0);
 
     // Max half-precision normal.
-    EXPECT_EQ(fp16_from_fp32_value(65504.0f), 0x7BFF);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(65504.0f), 0x7BFF);
 }
 
 TEST(HalfFromFP32Test, Infinity) {
-    EXPECT_EQ(fp16_from_fp32_value(std::numeric_limits<float>::infinity()), 0x7C00);
-    EXPECT_EQ(fp16_from_fp32_value(-std::numeric_limits<float>::infinity()), 0xFC00);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(std::numeric_limits<float>::infinity()), 0x7C00);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-std::numeric_limits<float>::infinity()), 0xFC00);
 }
 
 TEST(HalfFromFP32Test, NaN) {
     // Quiet NaN: exponent all-ones, mantissa non-zero.
     float quiet_nan = std::numeric_limits<float>::quiet_NaN();
-    uint16_t half_nan = fp16_from_fp32_value(quiet_nan);
+    uint16_t half_nan = fp16_from_fp32_value_for_testing(quiet_nan);
     EXPECT_TRUE((half_nan & 0x7C00) == 0x7C00);
     EXPECT_TRUE((half_nan & 0x03FF) != 0);
 
     // Signaling NaN: same exponent/mantissa invariants.
     float signaling_nan = std::numeric_limits<float>::signaling_NaN();
-    half_nan = fp16_from_fp32_value(signaling_nan);
+    half_nan = fp16_from_fp32_value_for_testing(signaling_nan);
     EXPECT_TRUE((half_nan & 0x7C00) == 0x7C00);
     EXPECT_TRUE((half_nan & 0x03FF) != 0);
 }
 
 TEST(HalfFromFP32Test, Overflow) {
     // Values exceeding the half-precision max saturate to ±inf.
-    EXPECT_EQ(fp16_from_fp32_value(70000.0f), 0x7C00);
-    EXPECT_EQ(fp16_from_fp32_value(-70000.0f), 0xFC00);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(70000.0f), 0x7C00);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-70000.0f), 0xFC00);
 }
 
 TEST(HalfFromFP32Test, Underflow) {
     // Values too small to represent flush to zero.
-    EXPECT_EQ(fp16_from_fp32_value(1e-10f), 0x0000);
-    EXPECT_EQ(fp16_from_fp32_value(-1e-10f), 0x8000);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(1e-10f), 0x0000);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-1e-10f), 0x8000);
 }
 
 TEST(HalfFromFP32Test, Rounding) {
     // Round-to-nearest-even: tie breaks to even.
-    EXPECT_EQ(fp16_from_fp32_value(1.0009765625f), 0x3C01);
-    EXPECT_EQ(fp16_from_fp32_value(1.001953125f), 0x3C02);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(1.0009765625f), 0x3C01);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(1.001953125f), 0x3C02);
 }
 
 TEST(HalfFromFP32Test, SpecialValues) {
-    EXPECT_EQ(fp16_from_fp32_value(3.141592653589793f), 0x4248);// PI
-    EXPECT_EQ(fp16_from_fp32_value(2.718281828459045f), 0x4170);// E
-    EXPECT_EQ(fp16_from_fp32_value(1.618033988749895f), 0x3E79);// Golden ratio
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(3.141592653589793f), 0x4248);// PI
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(2.718281828459045f), 0x4170);// E
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(1.618033988749895f), 0x3E79);// Golden ratio
 }
 
 TEST(HalfFromFP32Test, RoundTrip) {
     // fp32 -> fp16 -> fp32 must recover the original within half-precision error.
     float original = 1.2345f;
-    uint16_t half_val = fp16_from_fp32_value(original);
+    uint16_t half_val = fp16_from_fp32_value_for_testing(original);
     float reconstructed = fp16_to_fp32_value(half_val);
     EXPECT_NEAR(original, reconstructed, 1e-3);
 }

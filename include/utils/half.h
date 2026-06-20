@@ -47,13 +47,6 @@ namespace details {
 /// denormals.
 float fp16_to_fp32_value(uint16_t h);
 
-/// Converts an IEEE single-precision `float` to an IEEE half-precision value
-/// (bit representation).
-///
-/// Implemented with integer bit manipulation only; no floating-point operations.
-/// Rounding mode is round-to-nearest-even.
-uint16_t fp16_from_fp32_value(float f);
-
 }// namespace details
 
 /// IEEE 754 half-precision (binary16) floating-point value.

@@ -1,8 +1,6 @@
 /// \file
 /// Implementation of `Float8_e5m2` and E5M2 ↔ binary32 conversion.
-
 #include "utils/float8_e5m2.h"
-
 #include "macros.h"
 #include "utils/floating_point_utils.h"
 

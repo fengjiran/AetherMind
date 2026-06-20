@@ -37,17 +37,6 @@
 #endif// __GNUC__ || __clang__
 
 namespace aethermind {
-namespace details {
-
-/// Converts an IEEE half-precision value (bit representation) to an IEEE
-/// single-precision `float`.
-///
-/// Uses IEEE-like floating-point operations and int/float bitcasts; makes no
-/// assumption about the current rounding mode and performs no operations on
-/// denormals.
-float fp16_to_fp32_value(uint16_t h);
-
-}// namespace details
 
 /// IEEE 754 half-precision (binary16) floating-point value.
 ///

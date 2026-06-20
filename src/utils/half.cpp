@@ -106,6 +106,13 @@ uint16_t fp16_from_fp32_value(float f) {
     return static_cast<uint16_t>(res);
 }
 
+// Converts an IEEE half-precision bit pattern to an IEEE single-precision
+// `float`. Uses int/float bitcasts; makes no assumption about the current
+// rounding mode and performs no operations on denormals.
+float fp16_to_fp32_value(uint16_t h) {
+    return details::fp32_from_bits(fp16_to_fp32_bits(h));
+}
+
 }// namespace
 
 namespace details {
@@ -114,8 +121,8 @@ uint32_t fp16_to_fp32_bits_for_testing(uint16_t h) {
     return fp16_to_fp32_bits(h);
 }
 
-float fp16_to_fp32_value(uint16_t h) {
-    return fp32_from_bits(fp16_to_fp32_bits(h));
+float fp16_to_fp32_value_for_testing(uint16_t h) {
+    return fp16_to_fp32_value(h);
 }
 
 uint16_t fp16_from_fp32_value_for_testing(float f) {
@@ -127,7 +134,7 @@ uint16_t fp16_from_fp32_value_for_testing(float f) {
 Half::Half(float value) : x(fp16_from_fp32_value(value)) {}
 
 Half::operator float() const {
-    return details::fp16_to_fp32_value(x);
+    return fp16_to_fp32_value(x);
 }
 
 std::ostream& operator<<(std::ostream& os, const Half& value) {

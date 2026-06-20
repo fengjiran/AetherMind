@@ -15,17 +15,18 @@
 #define AETHERMIND_FLOAT8_E5M2_H
 
 #include "macros.h"
-#include "utils/half.h"
+
+#include <cstdint>
+#include <limits>
+#include <ostream>
 
 namespace aethermind {
 namespace details {
 
 /// Reinterprets an E5M2 bit pattern as an IEEE 754 binary32 `float`.
 ///
-/// E5M2 and binary16 share the same exponent encoding, so this routes the
-/// input through `fp16_to_fp32_value` after left-shifting it into the
-/// high 8 bits of a 16-bit half. NaN payloads, sign, and exponent are
-/// preserved.
+/// Sign and exponent are preserved exactly. NaN inputs map to a binary32
+/// NaN (payload bits placed in the high mantissa positions).
 float fp8e5m2_to_fp32_value(uint8_t input);
 
 /// Converts an IEEE 754 binary32 `float` to an E5M2 bit pattern.

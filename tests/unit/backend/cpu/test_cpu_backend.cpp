@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/runtime/runtime_builder.h"
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 #include "device.h"
 
 #include <gtest/gtest.h>

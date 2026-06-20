@@ -15,10 +15,10 @@
 /// code calling `std::sin(z)` / `std::log(z)` etc. resolves correctly for
 /// `aethermind::complex` values.
 
-#ifndef AETHERMIND_COMPLEX_H
-#define AETHERMIND_COMPLEX_H
+#ifndef AETHERMIND_DTYPES_COMPLEX_H
+#define AETHERMIND_DTYPES_COMPLEX_H
 
-#include "utils/half.h"
+#include "aethermind/dtypes/half.h"
 #include "utils/hash.h"
 
 #include <complex>
@@ -660,4 +660,4 @@ struct hash<aethermind::complex<T>> {
 
 }// namespace std
 
-#endif//AETHERMIND_COMPLEX_H
+#endif// AETHERMIND_DTYPES_COMPLEX_H

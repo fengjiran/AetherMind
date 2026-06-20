@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_MODEL_RAW_WEIGHT_H
 #define AETHERMIND_MODEL_RAW_WEIGHT_H
 
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <cstddef>
 #include <cstdint>

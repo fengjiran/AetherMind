@@ -15,7 +15,7 @@
 #define AETHERMIND_TENSOR_VIEW_H
 
 #include "container/array_view.h"
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 #include "macros.h"
 
 #include <cstddef>

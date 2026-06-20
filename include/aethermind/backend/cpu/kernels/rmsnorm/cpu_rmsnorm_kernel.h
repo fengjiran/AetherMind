@@ -2,7 +2,7 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_CPU_RMSNORM_KERNEL_H
 
 #include "aethermind/backend/kernel_types.h"
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <cstdint>
 

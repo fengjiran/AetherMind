@@ -1,7 +1,7 @@
 //
 // Created by richard on 9/23/25.
 //
-#include "utils/bfloat16.h"
+#include "aethermind/dtypes/bfloat16.h"
 
 #include <bitset>
 #include <cmath>

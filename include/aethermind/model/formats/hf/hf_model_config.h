@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_CONFIG_H
 #define AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_CONFIG_H
 
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <cstdint>
 #include <optional>

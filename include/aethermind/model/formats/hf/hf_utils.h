@@ -2,7 +2,7 @@
 #define AETHERMIND_MODEL_FORMATS_HF_HF_UTILS_H
 
 #include "aethermind/base/status.h"
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <filesystem>
 #include <string>

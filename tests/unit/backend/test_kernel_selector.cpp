@@ -1,6 +1,6 @@
 #include "aethermind/backend/kernel_selector.h"
 
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <gtest/gtest.h>
 

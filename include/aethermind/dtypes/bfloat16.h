@@ -7,11 +7,11 @@
 /// range with binary32 but has a 7-bit mantissa, so conversion to/from float
 /// is a bit truncation/extension at the mantissa boundary.
 
-#ifndef AETHERMIND_BFLOAT16_H
-#define AETHERMIND_BFLOAT16_H
+#ifndef AETHERMIND_DTYPES_BFLOAT16_H
+#define AETHERMIND_DTYPES_BFLOAT16_H
 
-#include "utils/floating_point_utils.h"
-#include "utils/half.h"
+#include "aethermind/dtypes/detail/floating_point_bits.h"
+#include "aethermind/dtypes/half.h"
 
 #include <cmath>
 #include <cstdint>
@@ -354,4 +354,4 @@ T fmod(T a, T b) {
 
 }// namespace std
 
-#endif// AETHERMIND_BFLOAT16_H
+#endif// AETHERMIND_DTYPES_BFLOAT16_H

@@ -6,8 +6,8 @@
 /// with F16C support, conversions use hardware intrinsics via `X86_F16`;
 /// otherwise they fall back to portable integer bit manipulation.
 
-#ifndef AETHERMIND_HALF_H
-#define AETHERMIND_HALF_H
+#ifndef AETHERMIND_DTYPES_HALF_H
+#define AETHERMIND_DTYPES_HALF_H
 
 #include <cstdint>
 #include <iosfwd>
@@ -181,4 +181,4 @@ struct std::numeric_limits<aethermind::Half> {
     }
 };// namespace std
 
-#endif// AETHERMIND_HALF_H
+#endif// AETHERMIND_DTYPES_HALF_H

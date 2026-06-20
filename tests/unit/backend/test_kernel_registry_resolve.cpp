@@ -2,7 +2,7 @@
 #include "aethermind/backend/kernel_registry.h"
 #include "aethermind/runtime/workspace.h"
 
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <gtest/gtest.h>
 

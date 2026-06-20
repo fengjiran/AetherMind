@@ -1,8 +1,8 @@
 /// \file
 /// Implementation of `Float8_e5m2` and E5M2 ↔ binary32 conversion.
-#include "utils/float8_e5m2.h"
+#include "aethermind/dtypes/float8_e5m2.h"
+#include "aethermind/dtypes/detail/floating_point_bits.h"
 #include "macros.h"
-#include "utils/floating_point_utils.h"
 
 namespace aethermind {
 namespace {

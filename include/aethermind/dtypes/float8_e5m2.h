@@ -11,8 +11,8 @@
 /// and converting back. See https://arxiv.org/pdf/2209.05433.pdf for the
 /// reference format definition.
 
-#ifndef AETHERMIND_FLOAT8_E5M2_H
-#define AETHERMIND_FLOAT8_E5M2_H
+#ifndef AETHERMIND_DTYPES_FLOAT8_E5M2_H
+#define AETHERMIND_DTYPES_FLOAT8_E5M2_H
 
 #include "macros.h"
 
@@ -204,4 +204,4 @@ public:
 
 }// namespace std
 
-#endif// AETHERMIND_FLOAT8_E5M2_H
+#endif// AETHERMIND_DTYPES_FLOAT8_E5M2_H

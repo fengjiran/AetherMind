@@ -6,8 +6,8 @@
 /// helper dispatches to the vendor-preferred intrinsic on OpenCL, CUDA/HIP,
 /// and Intel ICC, and falls back to `std::bit_cast` elsewhere.
 
-#ifndef AETHERMIND_FLOATING_POINT_UTILS_H
-#define AETHERMIND_FLOATING_POINT_UTILS_H
+#ifndef AETHERMIND_DTYPES_DETAIL_FLOATING_POINT_BITS_H
+#define AETHERMIND_DTYPES_DETAIL_FLOATING_POINT_BITS_H
 
 #include <bit>
 #include <cstdint>
@@ -47,4 +47,4 @@ inline uint32_t fp32_to_bits(float value) {
 }// namespace details
 }// namespace aethermind
 
-#endif// AETHERMIND_FLOATING_POINT_UTILS_H
+#endif// AETHERMIND_DTYPES_DETAIL_FLOATING_POINT_BITS_H

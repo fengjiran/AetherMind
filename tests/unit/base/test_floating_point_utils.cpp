@@ -1,10 +1,11 @@
 //
 // Created by 赵丹 on 2025/9/9.
 //
-#include "utils/floating_point_utils.h"
+#include "aethermind/dtypes/detail/floating_point_bits.h"
+
+#include <cmath>
 
 #include <gtest/gtest.h>
-#include <cmath>
 
 using namespace aethermind::details;
 

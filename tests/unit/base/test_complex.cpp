@@ -1,8 +1,8 @@
 //
 // Created by richard on 10/7/25.
 //
-#include "utils/complex.h"
-#include "utils/float8_e4m3fn.h"
+#include "aethermind/dtypes/complex.h"
+#include "aethermind/dtypes/float8_e4m3fn.h"
 
 #include <cmath>
 #include <gtest/gtest.h>

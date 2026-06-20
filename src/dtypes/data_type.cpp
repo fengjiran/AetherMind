@@ -3,7 +3,7 @@
 // The implementation keeps all code/bits and raw lane encoding checks in one place so that
 // DataType construction remains consistent whether callers pass a raw DLDataType or use a factory.
 
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 namespace aethermind {
 

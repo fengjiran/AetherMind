@@ -13,11 +13,11 @@
 /// and converting back. See https://arxiv.org/pdf/2209.05433.pdf for the
 /// reference format definition.
 
-#ifndef AETHERMIND_FLOAT8_E4M3FN_H
-#define AETHERMIND_FLOAT8_E4M3FN_H
+#ifndef AETHERMIND_DTYPES_FLOAT8_E4M3FN_H
+#define AETHERMIND_DTYPES_FLOAT8_E4M3FN_H
 
+#include "aethermind/dtypes/detail/floating_point_bits.h"
 #include "macros.h"
-#include "utils/floating_point_utils.h"
 
 #include <climits>
 #include <cmath>
@@ -371,4 +371,4 @@ public:
 }// namespace std
 
 
-#endif//AETHERMIND_FLOAT8_E4M3FN_H
+#endif// AETHERMIND_DTYPES_FLOAT8_E4M3FN_H

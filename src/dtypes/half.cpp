@@ -4,9 +4,9 @@
 /// Contains the portable integer bit-manipulation paths for binary16 ↔ binary32
 /// conversion. When `X86_F16` is defined, these are replaced by hardware
 /// intrinsics at the call site.
-#include "utils/half.h"
+#include "aethermind/dtypes/half.h"
+#include "aethermind/dtypes/detail/floating_point_bits.h"
 #include "macros.h"
-#include "utils/floating_point_utils.h"
 
 namespace aethermind {
 namespace {

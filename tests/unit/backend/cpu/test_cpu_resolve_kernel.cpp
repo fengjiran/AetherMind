@@ -4,7 +4,7 @@
 #include "aethermind/runtime/workspace.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <gtest/gtest.h>
 

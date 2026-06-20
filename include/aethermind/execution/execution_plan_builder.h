@@ -6,7 +6,7 @@
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_context.h"
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <any>
 #include <cstddef>

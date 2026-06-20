@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_SCALAR_H
 #define AETHERMIND_SCALAR_H
 
+#include "aethermind/dtypes/data_type.h"
 #include "cast.h"
-#include "data_type.h"
 
 namespace aethermind {
 

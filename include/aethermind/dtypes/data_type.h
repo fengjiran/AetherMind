@@ -3,17 +3,17 @@
 // This header keeps the DLPack-style `bits`/`lanes` layout visible for interop while
 // `DataType` centralizes validation and byte-size semantics used by tensor storage.
 
-#ifndef AETHERMIND_DATA_TYPE_H
-#define AETHERMIND_DATA_TYPE_H
+#ifndef AETHERMIND_DTYPES_DATA_TYPE_H
+#define AETHERMIND_DTYPES_DATA_TYPE_H
 
+#include "aethermind/dtypes/bfloat16.h"
+#include "aethermind/dtypes/complex.h"
+#include "aethermind/dtypes/float8_e4m3fn.h"
+#include "aethermind/dtypes/float8_e5m2.h"
+#include "aethermind/dtypes/half.h"
 #include "error.h"
 #include "macros.h"
-#include "utils/bfloat16.h"
 #include "utils/bits.h"
-#include "utils/complex.h"
-#include "utils/float8_e4m3fn.h"
-#include "utils/float8_e5m2.h"
-#include "utils/half.h"
 
 #include <cstdint>
 
@@ -488,4 +488,4 @@ struct std::hash<aethermind::DataType> {
     }
 };// namespace std
 
-#endif// AETHERMIND_DATA_TYPE_H
+#endif// AETHERMIND_DTYPES_DATA_TYPE_H

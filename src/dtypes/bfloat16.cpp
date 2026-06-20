@@ -1,7 +1,7 @@
 /// \file
 /// Implementation of `BFloat16` and bfloat16 ↔ binary32 conversion.
 
-#include "utils/bfloat16.h"
+#include "aethermind/dtypes/bfloat16.h"
 
 #include "macros.h"
 

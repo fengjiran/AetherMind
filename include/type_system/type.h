@@ -5,9 +5,9 @@
 #ifndef AETHERMIND_TYPE_SYSTEM_TYPE_H
 #define AETHERMIND_TYPE_SYSTEM_TYPE_H
 
+#include "aethermind/dtypes/data_type.h"
 #include "container/array_view.h"
 #include "container/string.h"
-#include "data_type.h"
 #include "error.h"
 #include "function.h"
 #include "type_ptr.h"

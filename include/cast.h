@@ -5,12 +5,12 @@
 #ifndef AETHERMIND_CAST_H
 #define AETHERMIND_CAST_H
 
+#include "aethermind/dtypes/bfloat16.h"
+#include "aethermind/dtypes/complex.h"
+#include "aethermind/dtypes/float8_e4m3fn.h"
+#include "aethermind/dtypes/float8_e5m2.h"
 #include "error.h"
 #include "macros.h"
-#include "utils/bfloat16.h"
-#include "utils/complex.h"
-#include "utils/float8_e4m3fn.h"
-#include "utils/float8_e5m2.h"
 
 namespace aethermind {
 

@@ -4,8 +4,8 @@
 /// Covers bit-exact conversion (`fp16_to_fp32_bits_for_testing`,
 /// `fp16_from_fp32_value_for_testing`), value conversion (`fp16_to_fp32_value_for_testing`),
 /// and the `Half` class API.
-#include "utils/floating_point_utils.h"
-#include "utils/half.h"
+#include "aethermind/dtypes/detail/floating_point_bits.h"
+#include "aethermind/dtypes/half.h"
 #include <cmath>
 #include <gtest/gtest.h>
 #include <sstream>

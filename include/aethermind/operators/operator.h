@@ -8,7 +8,7 @@
 #include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator_context.h"
 #include "aethermind/runtime/workspace.h"
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 #include "macros.h"
 
 #include <memory>

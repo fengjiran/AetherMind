@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_RUNTIME_RUNTIME_OPTIONS_H
 #define AETHERMIND_RUNTIME_RUNTIME_OPTIONS_H
 
-#include "data_type.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <cstddef>
 

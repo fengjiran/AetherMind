@@ -72,9 +72,10 @@ uint16_t fp16_from_fp32_value(float f) {
     }
 
     // normalize the exponent from fp32 bias(127) to fp16 bias(15)
-    auto exp32 = static_cast<int32_t>((exponent >> 23) - 127);
+    const auto exp32 = static_cast<int32_t>((exponent >> 23) - 127);
 
-    // Handle values too small to represent even as half denormals: flush to zero.
+    // We do not support FP16 denormals. Values smaller than the minimum
+    // normal FP16 (exp32 < -14) are flushed to zero.
     if (exp32 < -14) {
         return static_cast<uint16_t>(sign >> 16);
     }

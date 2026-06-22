@@ -369,18 +369,26 @@ TEST(HalfTest, MixedTypeArithmetic) {
     Half h(2.0f);
 
     // With float.
+    static_assert(std::is_same_v<decltype(h + 3.0f), float>);
+    static_assert(std::is_same_v<decltype(3.0f + h), float>);
     EXPECT_FLOAT_EQ(h + 3.0f, 5.0f);
     EXPECT_FLOAT_EQ(3.0f + h, 5.0f);
 
     // With double.
+    static_assert(std::is_same_v<decltype(h + 3.0), double>);
+    static_assert(std::is_same_v<decltype(3.0 + h), double>);
     EXPECT_DOUBLE_EQ(h + 3.0, 5.0);
     EXPECT_DOUBLE_EQ(3.0 + h, 5.0);
 
-    // With int.
+    // With int (promoted to float, matching Half-with-float semantics).
+    static_assert(std::is_same_v<decltype(h + 3), float>);
+    static_assert(std::is_same_v<decltype(3 + h), float>);
     EXPECT_FLOAT_EQ(h + 3, 5.0f);
     EXPECT_FLOAT_EQ(3 + h, 5.0f);
 
-    // With int64_t.
+    // With int64_t (promoted to float).
+    static_assert(std::is_same_v<decltype(h + int64_t(3)), float>);
+    static_assert(std::is_same_v<decltype(int64_t(3) + h), float>);
     EXPECT_FLOAT_EQ(h + int64_t(3), 5.0f);
     EXPECT_FLOAT_EQ(int64_t(3) + h, 5.0f);
 }
@@ -483,8 +491,14 @@ TEST(HalfTest, MixedTypeSubtraction) {
     EXPECT_FLOAT_EQ(7.0f - h, 2.0f);
     EXPECT_DOUBLE_EQ(h - 2.0, 3.0);
     EXPECT_DOUBLE_EQ(7.0 - h, 2.0);
+
+    static_assert(std::is_same_v<decltype(h - 2), float>);
+    static_assert(std::is_same_v<decltype(7 - h), float>);
     EXPECT_FLOAT_EQ(h - 2, 3.0f);
     EXPECT_FLOAT_EQ(7 - h, 2.0f);
+
+    static_assert(std::is_same_v<decltype(h - int64_t(2)), float>);
+    static_assert(std::is_same_v<decltype(int64_t(7) - h), float>);
     EXPECT_FLOAT_EQ(h - int64_t(2), 3.0f);
     EXPECT_FLOAT_EQ(int64_t(7) - h, 2.0f);
 }
@@ -496,8 +510,14 @@ TEST(HalfTest, MixedTypeMultiplication) {
     EXPECT_FLOAT_EQ(2.0f * h, 6.0f);
     EXPECT_DOUBLE_EQ(h * 2.0, 6.0);
     EXPECT_DOUBLE_EQ(2.0 * h, 6.0);
+
+    static_assert(std::is_same_v<decltype(h * 2), float>);
+    static_assert(std::is_same_v<decltype(2 * h), float>);
     EXPECT_FLOAT_EQ(h * 2, 6.0f);
     EXPECT_FLOAT_EQ(2 * h, 6.0f);
+
+    static_assert(std::is_same_v<decltype(h * int64_t(2)), float>);
+    static_assert(std::is_same_v<decltype(int64_t(2) * h), float>);
     EXPECT_FLOAT_EQ(h * int64_t(2), 6.0f);
     EXPECT_FLOAT_EQ(int64_t(2) * h, 6.0f);
 }
@@ -509,8 +529,14 @@ TEST(HalfTest, MixedTypeDivision) {
     EXPECT_FLOAT_EQ(12.0f / h, 2.0f);
     EXPECT_DOUBLE_EQ(h / 2.0, 3.0);
     EXPECT_DOUBLE_EQ(12.0 / h, 2.0);
+
+    static_assert(std::is_same_v<decltype(h / 2), float>);
+    static_assert(std::is_same_v<decltype(12 / h), float>);
     EXPECT_FLOAT_EQ(h / 2, 3.0f);
     EXPECT_FLOAT_EQ(12 / h, 2.0f);
+
+    static_assert(std::is_same_v<decltype(h / int64_t(2)), float>);
+    static_assert(std::is_same_v<decltype(int64_t(12) / h), float>);
     EXPECT_FLOAT_EQ(h / int64_t(2), 3.0f);
     EXPECT_FLOAT_EQ(int64_t(12) / h, 2.0f);
 }

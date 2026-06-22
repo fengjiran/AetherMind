@@ -268,68 +268,68 @@ double operator/(double lhs, Half rhs) __ubsan_ignore_float_divide_by_zero__ {
     return lhs / static_cast<double>(rhs);
 }
 
-Half operator+(Half lhs, int rhs) {
-    return lhs + static_cast<Half>(rhs);
+float operator+(Half lhs, int rhs) {
+    return static_cast<float>(lhs) + static_cast<float>(rhs);
 }
 
-Half operator-(Half lhs, int rhs) {
-    return lhs - static_cast<Half>(rhs);
+float operator-(Half lhs, int rhs) {
+    return static_cast<float>(lhs) - static_cast<float>(rhs);
 }
 
-Half operator*(Half lhs, int rhs) {
-    return lhs * static_cast<Half>(rhs);
+float operator*(Half lhs, int rhs) {
+    return static_cast<float>(lhs) * static_cast<float>(rhs);
 }
 
-Half operator/(Half lhs, int rhs) {
-    return lhs / static_cast<Half>(rhs);
+float operator/(Half lhs, int rhs) {
+    return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 
-Half operator+(int lhs, Half rhs) {
-    return static_cast<Half>(lhs) + rhs;
+float operator+(int lhs, Half rhs) {
+    return static_cast<float>(lhs) + static_cast<float>(rhs);
 }
 
-Half operator-(int lhs, Half rhs) {
-    return static_cast<Half>(lhs) - rhs;
+float operator-(int lhs, Half rhs) {
+    return static_cast<float>(lhs) - static_cast<float>(rhs);
 }
 
-Half operator*(int lhs, Half rhs) {
-    return static_cast<Half>(lhs) * rhs;
+float operator*(int lhs, Half rhs) {
+    return static_cast<float>(lhs) * static_cast<float>(rhs);
 }
 
-Half operator/(int lhs, Half rhs) {
-    return static_cast<Half>(lhs) / rhs;
+float operator/(int lhs, Half rhs) {
+    return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 
-Half operator+(Half lhs, int64_t rhs) {
-    return lhs + static_cast<Half>(rhs);
+float operator+(Half lhs, int64_t rhs) {
+    return static_cast<float>(lhs) + static_cast<float>(rhs);
 }
 
-Half operator-(Half lhs, int64_t rhs) {
-    return lhs - static_cast<Half>(rhs);
+float operator-(Half lhs, int64_t rhs) {
+    return static_cast<float>(lhs) - static_cast<float>(rhs);
 }
 
-Half operator*(Half lhs, int64_t rhs) {
-    return lhs * static_cast<Half>(rhs);
+float operator*(Half lhs, int64_t rhs) {
+    return static_cast<float>(lhs) * static_cast<float>(rhs);
 }
 
-Half operator/(Half lhs, int64_t rhs) {
-    return lhs / static_cast<Half>(rhs);
+float operator/(Half lhs, int64_t rhs) {
+    return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 
-Half operator+(int64_t lhs, Half rhs) {
-    return static_cast<Half>(lhs) + rhs;
+float operator+(int64_t lhs, Half rhs) {
+    return static_cast<float>(lhs) + static_cast<float>(rhs);
 }
 
-Half operator-(int64_t lhs, Half rhs) {
-    return static_cast<Half>(lhs) - rhs;
+float operator-(int64_t lhs, Half rhs) {
+    return static_cast<float>(lhs) - static_cast<float>(rhs);
 }
 
-Half operator*(int64_t lhs, Half rhs) {
-    return static_cast<Half>(lhs) * rhs;
+float operator*(int64_t lhs, Half rhs) {
+    return static_cast<float>(lhs) * static_cast<float>(rhs);
 }
 
-Half operator/(int64_t lhs, Half rhs) {
-    return static_cast<Half>(lhs) / rhs;
+float operator/(int64_t lhs, Half rhs) {
+    return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 
 }// namespace aethermind

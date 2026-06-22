@@ -128,25 +128,25 @@ double operator-(double lhs, Half rhs);
 double operator*(double lhs, Half rhs);
 double operator/(double lhs, Half rhs);
 
-/// Arithmetic with int
-Half operator+(Half lhs, int rhs);
-Half operator-(Half lhs, int rhs);
-Half operator*(Half lhs, int rhs);
-Half operator/(Half lhs, int rhs);
-Half operator+(int lhs, Half rhs);
-Half operator-(int lhs, Half rhs);
-Half operator*(int lhs, Half rhs);
-Half operator/(int lhs, Half rhs);
+/// Arithmetic with int (result is float, matching Half-with-float promotion).
+float operator+(Half lhs, int rhs);
+float operator-(Half lhs, int rhs);
+float operator*(Half lhs, int rhs);
+float operator/(Half lhs, int rhs);
+float operator+(int lhs, Half rhs);
+float operator-(int lhs, Half rhs);
+float operator*(int lhs, Half rhs);
+float operator/(int lhs, Half rhs);
 
-/// Arithmetic with int64_t
-Half operator+(Half lhs, int64_t rhs);
-Half operator-(Half lhs, int64_t rhs);
-Half operator*(Half lhs, int64_t rhs);
-Half operator/(Half lhs, int64_t rhs);
-Half operator+(int64_t lhs, Half rhs);
-Half operator-(int64_t lhs, Half rhs);
-Half operator*(int64_t lhs, Half rhs);
-Half operator/(int64_t lhs, Half rhs);
+/// Arithmetic with int64_t (result is float, matching Half-with-float promotion).
+float operator+(Half lhs, int64_t rhs);
+float operator-(Half lhs, int64_t rhs);
+float operator*(Half lhs, int64_t rhs);
+float operator/(Half lhs, int64_t rhs);
+float operator+(int64_t lhs, Half rhs);
+float operator-(int64_t lhs, Half rhs);
+float operator*(int64_t lhs, Half rhs);
+float operator/(int64_t lhs, Half rhs);
 
 /// Comparison operators based on IEEE 754 binary32 value ordering.
 ///

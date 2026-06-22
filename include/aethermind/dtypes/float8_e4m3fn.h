@@ -65,7 +65,7 @@ inline float fp8e4m3fn_to_fp32_value_bk(uint8_t input) {
    *      +---+----------------------------------+
    * Bits  31                 0-31
    */
-    const uint32_t sign = w & UINT32_C(0x80000000);
+    const uint32_t sign = w & 0x80000000U;
     /*
    * Extract mantissa and biased exponent of the input number into the bits 0-30
    * of the 32-bit word:
@@ -75,7 +75,7 @@ inline float fp8e4m3fn_to_fp32_value_bk(uint8_t input) {
    *      +---+----+---+-----------------------------+
    * Bits  31  27-30 24-26      0-23
    */
-    const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
+    const uint32_t nonsign = w & 0x7FFFFFFFU;
     /*
    * Renorm shift is the number of bits to shift mantissa left to make the
    * half-precision number normalized. If the initial number is normalized, some
@@ -149,14 +149,14 @@ inline uint8_t fp8e4m3fn_from_fp32_value_bk(float f) {
      * 0 1111 111 - fp8e4m3fn
      * 0 10000111 11100000000000000000000 - fp32
      */
-    constexpr uint32_t fp8_max = UINT32_C(1087) << 20;
+    constexpr uint32_t fp8_max = 1087U << 20;
 
     /*
      * A mask for converting fp32 numbers lower than fp8e4m3fn normal range
      * into denorm representation
      * magic number: ((127 - 7) + (23 - 3) + 1)
      */
-    constexpr uint32_t denorm_mask = UINT32_C(141) << 23;
+    constexpr uint32_t denorm_mask = 141U << 23;
 
     uint32_t f_bits = fp32_to_bits(f);
 
@@ -170,7 +170,7 @@ inline uint8_t fp8e4m3fn_from_fp32_value_bk(float f) {
      *      +---+----------------------------------+
      * Bits  31                 0-31
      */
-    const uint32_t sign = f_bits & UINT32_C(0x80000000);
+    const uint32_t sign = f_bits & 0x80000000U;
 
     /*
      * Set sign bit to 0
@@ -181,7 +181,7 @@ inline uint8_t fp8e4m3fn_from_fp32_value_bk(float f) {
         // NaN - all exponent and mantissa bits set to 1
         result = 0x7f;
     } else {
-        if (f_bits < (UINT32_C(121) << 23)) {
+        if (f_bits < (121U << 23)) {
             // Input number is smaller than 2^(-6), which is the smallest
             // fp8e4m3fn normal number
             f_bits = fp32_to_bits(fp32_from_bits(f_bits) + fp32_from_bits(denorm_mask));

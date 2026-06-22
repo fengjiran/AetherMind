@@ -3,6 +3,8 @@
 
 #include "aethermind/dtypes/float8_e4m3fn.h"
 
+#include <bit>
+
 namespace aethermind {
 namespace detail {
 
@@ -14,10 +16,10 @@ static uint32_t fp8e4m3fn_to_fp32_bits(uint8_t input) {
     //   bits 24-26 = 3-bit mantissa
     const uint32_t w = static_cast<uint32_t>(input) << 24;
 
-    const uint32_t sign = w & UINT32_C(0x80000000);
+    const uint32_t sign = w & 0x80000000U;
 
-    const uint32_t exponent = w & UINT32_C(0x78000000);
-    const uint32_t mantissa = w & UINT32_C(0x07000000);
+    const uint32_t exponent = w & 0x78000000U;
+    const uint32_t mantissa = w & 0x07000000U;
 
     // ±0: preserve sign bit, clear everything else.
     if (exponent == 0 && mantissa == 0) {
@@ -35,10 +37,11 @@ static uint32_t fp8e4m3fn_to_fp32_bits(uint8_t input) {
     // Renormalize subnormals via count-leading-zeros: shifting `nonsign`
     // left by `renorm_shift` brings the implicit leading 1 of the mantissa
     // into the exponent field, turning the value into a normal binary32.
-    // For already-normal inputs `__builtin_clz(nonsign)` returns 4 and
+    // For already-normal inputs `std::countl_zero(nonsign)` returns 4 and
     // `renorm_shift` becomes 0 (no shift).
-    const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
-    uint32_t renorm_shift = __builtin_clz(nonsign);
+    const uint32_t nonsign = w & 0x7FFFFFFFU;
+    // Zero and NaN cases returned above, so nonsign is non-zero here.
+    uint32_t renorm_shift = std::countl_zero(nonsign);
     renorm_shift = renorm_shift > 4 ? renorm_shift - 4 : 0;
 
     // Compose the fp32 result: shift mantissa into position (>> 4 places
@@ -46,7 +49,7 @@ static uint32_t fp8e4m3fn_to_fp32_bits(uint8_t input) {
     // then add the rebiased exponent. fp32 bias is 127 vs E4M3FN bias 7,
     // so the bias correction is +120 (= 0x78), minus `renorm_shift` to
     // account for the leftward shift performed on subnormals.
-    return sign | (nonsign << renorm_shift >> 4) + ((0x78 - renorm_shift) << 23);
+    return sign | ((nonsign << renorm_shift >> 4) + ((0x78 - renorm_shift) << 23));
 }
 
 float fp8e4m3fn_to_fp32_value(uint8_t input) {
@@ -55,9 +58,9 @@ float fp8e4m3fn_to_fp32_value(uint8_t input) {
 
 uint8_t fp8e4m3fn_from_fp32_value(float f) {
     uint32_t x = fp32_to_bits(f);
-    const uint32_t sign = x & UINT32_C(0x80000000);
-    const uint32_t exponent = x & UINT32_C(0x7F800000);
-    const uint32_t mantissa = x & UINT32_C(0x007FFFFF);
+    const uint32_t sign = x & 0x80000000U;
+    const uint32_t exponent = x & 0x7F800000U;
+    const uint32_t mantissa = x & 0x007FFFFFU;
 
     // ±0: preserve sign bit, clear everything else.
     if (exponent == 0 && mantissa == 0) {
@@ -71,13 +74,13 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
     // pattern 0x7F is reserved for NaN. Values >= 480 — and all fp32
     // inf/NaN inputs — collapse to E4M3FN NaN since the format has no
     // infinity encoding.
-    if (exponent == UINT32_C(0x7F800000) || nonsign >= UINT32_C(0x43F00000)) {
+    if (exponent == 0x7F800000U || nonsign >= 0x43F00000U) {
         return static_cast<uint8_t>(sign >> 24 | 0x7F);
     }
 
     // 121 << 23 = 2^-6, the smallest E4M3FN normal. Smaller values must
     // be encoded as subnormals.
-    if (nonsign < UINT32_C(121) << 23) {
+    if (nonsign < (121U << 23)) {
         // Denormalization-via-FP-add trick: adding the magic constant
         // 2^14 (= 141 << 23) to a tiny value `t` (t < 2^-6) yields an
         // fp32 number whose low bits encode the E4M3FN subnormal mantissa
@@ -86,7 +89,7 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
         // is aligned with the LSB of the E4M3FN subnormal mantissa).
         // Subtract the bit pattern of 2^14 to recover the E4M3FN mantissa
         // bits, then OR in the sign.
-        uint32_t denorm_mask = UINT32_C(141) << 23;
+        uint32_t denorm_mask = 141U << 23;
         nonsign = fp32_to_bits(fp32_from_bits(nonsign) + fp32_from_bits(denorm_mask));
         return static_cast<uint8_t>(nonsign - denorm_mask) | static_cast<uint8_t>(sign >> 24);
     }
@@ -105,8 +108,8 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
     // (any sticky bit is set OR the result LSB is 1) — the standard RNE
     // rule: round half away from zero only when the result LSB would
     // otherwise be odd (tie-breaks to even).
-    const uint32_t rounding_bit = mantissa & UINT32_C(0x00080000);
-    const uint32_t sticky_bits = mantissa & UINT32_C(0x0007FFFF);
+    const uint32_t rounding_bit = mantissa & 0x00080000U;
+    const uint32_t sticky_bits = mantissa & 0x0007FFFFU;
 
     if (rounding_bit && (sticky_bits || (res & 1))) {
         res += 1;

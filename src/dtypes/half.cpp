@@ -16,40 +16,42 @@ namespace {
 // operations.
 uint32_t fp16_to_fp32_bits(uint16_t h) {
     const uint32_t w = static_cast<uint32_t>(h) << 16;
-
-    const uint32_t sign = w & UINT32_C(0x80000000);
-    const uint32_t exponent = w & UINT32_C(0x7C000000);
-    const uint32_t mantissa = w & UINT32_C(0x03FF0000);
+    const uint32_t sign = w & 0x80000000U;
+    const uint32_t exponent = w & 0x7C000000U;
+    const uint32_t mantissa = w & 0x03FF0000U;
 
     // zero
     if (exponent == 0 && mantissa == 0) {
         return sign;
     }
 
+    // clang-format off
     // inf or nan
-    if (exponent == 0x7C000000) {
-        return sign | 0x7F800000 | mantissa >> 3;
+    if (exponent == 0x7C000000U) AM_UNLIKELY {
+        return sign | 0x7F800000U | (mantissa >> 3);
     }
+    // clang-format on
 
     // Renormalize denormalized half values into the normalized fp32 range.
-    // __builtin_clz finds the position of the leading 1 bit; we shift the
+    // std::countl_zero finds the position of the leading 1 bit; we shift the
     // mantissa into the normalized position and adjust the exponent bias
     // accordingly. The `> 5` guard accounts for the 5-bit exponent field
     // (fp32 mantissa is 23 bits vs half's 10).
-    const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
-    uint32_t renorm_shift = __builtin_clz(nonsign);
+    const uint32_t nonsign = w & 0x7FFFFFFFU;
+    // Zero, inf, and NaN cases returned above, so nonsign is non-zero here.
+    uint32_t renorm_shift = std::countl_zero(nonsign);
     renorm_shift = renorm_shift > 5 ? renorm_shift - 5 : 0;
-    return sign | (nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23);
+    return sign | ((nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23));
 }
 
 // Converts an IEEE single-precision `float` to an IEEE half-precision value
 // (bit representation). Implemented with integer bit manipulation only; no
 // floating-point operations. Rounding mode is round-to-nearest-even.
 uint16_t fp16_from_fp32_value(float f) {
-    uint32_t x = detail::fp32_to_bits(f);
-    const uint32_t sign = x & UINT32_C(0x80000000);
-    const uint32_t exponent = x & UINT32_C(0x7F800000);
-    const uint32_t mantissa = x & UINT32_C(0x007FFFFF);
+    const uint32_t x = detail::fp32_to_bits(f);
+    const uint32_t sign = x & 0x80000000U;
+    const uint32_t exponent = x & 0x7F800000U;
+    const uint32_t mantissa = x & 0x007FFFFFU;
 
     // zero case
     if (exponent == 0 && mantissa == 0) {
@@ -57,16 +59,16 @@ uint16_t fp16_from_fp32_value(float f) {
     }
 
     // inf and nan case
-    if (exponent == UINT32_C(0x7F800000)) {
+    if (exponent == 0x7F800000U) {
         // inf case: set exponent to max and mantissa to zero
         if (mantissa == 0) {
-            return static_cast<uint16_t>(sign >> 16 | 0x7C00);
+            return static_cast<uint16_t>(sign >> 16 | 0x7C00U);
         }
 
-        // NaN: canonicalize to quiet NaN (0x7E00), discarding the payload.
+        // NaN: canonicalize to quiet NaN (0x7E00U), discarding the payload.
         // IEEE 754 requires at least one NaN; preserving the payload would
         // increase implementation complexity with no known use case.
-        return static_cast<uint16_t>(sign >> 16 | 0x7E00);
+        return static_cast<uint16_t>(sign >> 16 | 0x7E00U);
     }
 
     // normalize the exponent from fp32 bias(127) to fp16 bias(15)
@@ -79,7 +81,7 @@ uint16_t fp16_from_fp32_value(float f) {
 
     if (exp32 > 15) {
         // overflow to inf
-        return static_cast<uint16_t>(sign >> 16 | 0x7C00);
+        return static_cast<uint16_t>(sign >> 16 | 0x7C00U);
     }
 
     // convert to fp16 format
@@ -96,8 +98,8 @@ uint16_t fp16_from_fp32_value(float f) {
     // sticky_bits are the remaining lost bits (bits 0-11).
     // Round up when rounding_bit is set AND (any sticky bits are set OR the
     // result is odd) — the `res & 1` check implements the "even" tie-break.
-    const uint32_t rounding_bit = mantissa & UINT32_C(0x00001000);
-    const uint32_t sticky_bits = mantissa & UINT32_C(0x00000FFF);
+    const uint32_t rounding_bit = mantissa & 0x00001000U;
+    const uint32_t sticky_bits = mantissa & 0x00000FFFU;
 
     if (rounding_bit && (sticky_bits || (res & 1))) {
         res += 1;

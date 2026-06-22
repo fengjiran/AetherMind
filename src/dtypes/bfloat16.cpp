@@ -20,7 +20,7 @@ uint16_t bf16_from_fp32_value(float value) {
     // Canonicalize all NaNs to a single quiet-NaN bit pattern. 0x7FC0 has
     // sign=0, exponent=0xFF, mantissa MSB=1 (quiet), other mantissa bits=0.
     if (std::isnan(value)) {
-        return UINT16_C(0x7FC0);
+        return 0x7FC0U;
     }
 
     // Round-to-nearest-even via rounding bias: bias the lower 16 bits before
@@ -28,7 +28,7 @@ uint16_t bf16_from_fp32_value(float value) {
     // on the LSB of the surviving high half — when that LSB is 1, ties round
     // up; when 0, ties round down. This makes ties round to the even value.
     uint32_t x = fp32_to_bits(value);
-    uint32_t rounding_bias = (x >> 16 & 1) + UINT32_C(0x7FFF);
+    uint32_t rounding_bias = (x >> 16 & 1) + 0x7FFFU;
     return static_cast<uint16_t>((x + rounding_bias) >> 16);
 }
 

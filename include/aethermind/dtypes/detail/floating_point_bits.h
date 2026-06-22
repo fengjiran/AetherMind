@@ -12,8 +12,7 @@
 #include <bit>
 #include <cstdint>
 
-namespace aethermind {
-namespace detail {
+namespace aethermind::detail {
 
 /// Reinterprets a 32-bit unsigned integer as an IEEE 754 binary32 `float`.
 /// The bit pattern is preserved verbatim; no rounding or normalization occurs.
@@ -40,7 +39,7 @@ inline uint32_t fp32_to_bits(float value) {
 #endif
 }
 
-}// namespace detail
-}// namespace aethermind
+} // namespace aethermind::detail
+
 
 #endif// AETHERMIND_DTYPES_DETAIL_FLOATING_POINT_BITS_H

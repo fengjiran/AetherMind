@@ -291,6 +291,27 @@ TEST(HalfFromFP32Test, NaN) {
     EXPECT_TRUE((half_nan & 0x03FF) != 0);
 }
 
+TEST(HalfFromFP32Test, NaNPayloadPreserved) {
+    // Construct a quiet NaN with a deterministic payload in the top 10 mantissa bits.
+    constexpr uint32_t qnan_payload = 0x2AAU << 13;  // bits 22-13
+    constexpr uint32_t qnan_bits = 0x7FC00000U | qnan_payload;
+    const float qnan = std::bit_cast<float>(qnan_bits);
+    const uint16_t half_nan = fp16_from_fp32_value_for_testing(qnan);
+
+    // Sign preserved as positive, exponent is all-ones (NaN), payload is preserved.
+    EXPECT_EQ(half_nan & 0x8000U, 0x0000U);
+    EXPECT_EQ(half_nan & 0x7C00U, 0x7C00U);
+    EXPECT_EQ(half_nan & 0x03FFU, 0x2AAU | 0x0200U);
+
+    // A NaN whose payload is too small to survive the 13-bit right shift still
+    // produces a non-zero quiet-NaN payload.
+    constexpr uint32_t tiny_payload_bits = 0x7FC00001U;
+    const float tiny_qnan = std::bit_cast<float>(tiny_payload_bits);
+    const uint16_t tiny_half_nan = fp16_from_fp32_value_for_testing(tiny_qnan);
+    EXPECT_EQ(tiny_half_nan & 0x7C00U, 0x7C00U);
+    EXPECT_EQ(tiny_half_nan & 0x03FFU, 0x0200U);
+}
+
 TEST(HalfFromFP32Test, Overflow) {
     // Values exceeding the half-precision max saturate to ±inf.
     EXPECT_EQ(fp16_from_fp32_value_for_testing(70000.0f), 0x7C00);

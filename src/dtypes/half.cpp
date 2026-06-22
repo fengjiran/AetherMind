@@ -65,10 +65,17 @@ uint16_t fp16_from_fp32_value(float f) {
             return static_cast<uint16_t>(sign >> 16 | 0x7C00U);
         }
 
-        // NaN: canonicalize to quiet NaN (0x7E00U), discarding the payload.
-        // IEEE 754 requires at least one NaN; preserving the payload would
-        // increase implementation complexity with no known use case.
-        return static_cast<uint16_t>(sign >> 16 | 0x7E00U);
+        // NaN: preserve the top 10 mantissa bits of the binary32 payload
+        // and force the quiet-NaN bit so we never propagate a signaling NaN.
+        // If the payload rounds to zero, substitute the smallest non-zero
+        // quiet payload to keep the result a NaN.
+        auto nan_payload = static_cast<uint16_t>(mantissa >> 13);
+        if (nan_payload == 0) {
+            nan_payload = 0x0200U;
+        } else {
+            nan_payload |= 0x0200U;
+        }
+        return static_cast<uint16_t>(sign >> 16 | 0x7C00U | nan_payload);
     }
 
     // normalize the exponent from fp32 bias(127) to fp16 bias(15)

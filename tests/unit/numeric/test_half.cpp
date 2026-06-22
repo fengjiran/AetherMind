@@ -604,4 +604,31 @@ TEST(HalfTest, NaNComparisons) {
     EXPECT_FALSE(nan >= one);
 }
 
+TEST(HalfTest, SpaceshipOperator) {
+    Half a(1.5f);
+    Half b(2.5f);
+    Half c(1.5f);
+
+    EXPECT_EQ(a <=> b, std::partial_ordering::less);
+    EXPECT_EQ(b <=> a, std::partial_ordering::greater);
+    EXPECT_EQ(a <=> c, std::partial_ordering::equivalent);
+
+    // +0.0 and -0.0 are equivalent under IEEE 754 value comparison.
+    Half pos_zero(0.0f);
+    Half neg_zero(-0.0f);
+    EXPECT_EQ(pos_zero <=> neg_zero, std::partial_ordering::equivalent);
+
+    // NaN is unordered, including relative to itself.
+    Half nan = std::numeric_limits<Half>::quiet_NaN();
+    EXPECT_EQ(nan <=> a, std::partial_ordering::unordered);
+    EXPECT_EQ(a <=> nan, std::partial_ordering::unordered);
+    EXPECT_EQ(nan <=> nan, std::partial_ordering::unordered);
+
+    // Ordering-derived operators still work as before.
+    EXPECT_TRUE(a < b);
+    EXPECT_TRUE(a <= c);
+    EXPECT_TRUE(b > a);
+    EXPECT_TRUE(b >= a);
+}
+
 }// namespace

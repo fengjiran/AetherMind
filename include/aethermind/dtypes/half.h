@@ -11,10 +11,12 @@
 
 #include "macros.h"
 
+#include <compare>
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
 #include <ostream>
+#include <type_traits>
 
 #ifdef __CUDACC__
 #include <cuda_fp16.h>
@@ -145,6 +147,28 @@ Half operator+(int64_t lhs, Half rhs);
 Half operator-(int64_t lhs, Half rhs);
 Half operator*(int64_t lhs, Half rhs);
 Half operator/(int64_t lhs, Half rhs);
+
+/// Comparison operators based on IEEE 754 binary32 value ordering.
+///
+/// These are constrained templates so that only operands whose actual type
+/// is exactly `Half` participate in overload resolution. This avoids ambiguity
+/// with built-in comparisons such as `long < Half`, where `Half` could otherwise
+/// be reached through both its implicit `float` conversion and a user-defined
+/// conversion from the other operand.
+///
+/// NaN is unordered relative to any value, including itself.
+/// +0.0 and -0.0 compare equivalent.
+template<typename T, typename U>
+    requires(std::same_as<std::remove_cvref_t<T>, Half> && std::same_as<std::remove_cvref_t<U>, Half>)
+AM_NODISCARD std::partial_ordering operator<=>(T&& lhs, U&& rhs) {
+    return static_cast<float>(lhs) <=> static_cast<float>(rhs);
+}
+
+template<typename T, typename U>
+    requires(std::same_as<std::remove_cvref_t<T>, Half> && std::same_as<std::remove_cvref_t<U>, Half>)
+AM_NODISCARD bool operator==(T&& lhs, U&& rhs) {
+    return static_cast<float>(lhs) == static_cast<float>(rhs);
+}
 
 }// namespace aethermind
 

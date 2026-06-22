@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 using namespace aethermind;
-using namespace aethermind::details;
+using namespace aethermind::detail;
 
 namespace {
 

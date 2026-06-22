@@ -11,13 +11,13 @@
 #include <sstream>
 
 using namespace aethermind;
-using namespace aethermind::details;
+using namespace aethermind::detail;
 
-namespace aethermind::details {
+namespace aethermind::detail {
 uint32_t fp16_to_fp32_bits_for_testing(uint16_t h);
 float fp16_to_fp32_value_for_testing(uint16_t h);
 uint16_t fp16_from_fp32_value_for_testing(float f);
-}// namespace aethermind::details
+}// namespace aethermind::detail
 
 namespace {
 

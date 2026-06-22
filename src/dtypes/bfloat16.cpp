@@ -6,7 +6,7 @@
 #include "macros.h"
 
 namespace aethermind {
-namespace details {
+namespace detail {
 
 float bf16_to_fp32_value(uint16_t input) {
     // bfloat16 occupies the high 16 bits of a binary32: shifting left by 16
@@ -32,12 +32,12 @@ uint16_t bf16_from_fp32_value(float value) {
     return static_cast<uint16_t>((x + rounding_bias) >> 16);
 }
 
-}// namespace details
+}// namespace detail
 
-BFloat16::BFloat16(float value) : x(details::bf16_from_fp32_value(value)) {}
+BFloat16::BFloat16(float value) : x(detail::bf16_from_fp32_value(value)) {}
 
 BFloat16::operator float() const {
-    return details::bf16_to_fp32_value(x);
+    return detail::bf16_to_fp32_value(x);
 }
 
 std::ostream& operator<<(std::ostream& os, const BFloat16& value) {

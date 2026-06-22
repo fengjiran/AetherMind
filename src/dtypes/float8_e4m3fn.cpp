@@ -4,7 +4,7 @@
 #include "aethermind/dtypes/float8_e4m3fn.h"
 
 namespace aethermind {
-namespace details {
+namespace detail {
 
 static uint32_t fp8e4m3fn_to_fp32_bits(uint8_t input) {
     // Place the E4M3FN byte in the high 8 bits of a 32-bit word so the
@@ -114,12 +114,12 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
 
     return static_cast<uint8_t>(res);
 }
-}// namespace details
+}// namespace detail
 
-Float8_e4m3fn::Float8_e4m3fn(float value) : x(details::fp8e4m3fn_from_fp32_value(value)) {}
+Float8_e4m3fn::Float8_e4m3fn(float value) : x(detail::fp8e4m3fn_from_fp32_value(value)) {}
 
 Float8_e4m3fn::operator float() const {
-    return details::fp8e4m3fn_to_fp32_value(x);
+    return detail::fp8e4m3fn_to_fp32_value(x);
 }
 
 bool Float8_e4m3fn::isnan() const {

@@ -46,7 +46,7 @@ uint32_t fp16_to_fp32_bits(uint16_t h) {
 // (bit representation). Implemented with integer bit manipulation only; no
 // floating-point operations. Rounding mode is round-to-nearest-even.
 uint16_t fp16_from_fp32_value(float f) {
-    uint32_t x = details::fp32_to_bits(f);
+    uint32_t x = detail::fp32_to_bits(f);
     const uint32_t sign = x & UINT32_C(0x80000000);
     const uint32_t exponent = x & UINT32_C(0x7F800000);
     const uint32_t mantissa = x & UINT32_C(0x007FFFFF);
@@ -110,12 +110,12 @@ uint16_t fp16_from_fp32_value(float f) {
 // `float`. Uses int/float bitcasts; makes no assumption about the current
 // rounding mode and performs no operations on denormals.
 float fp16_to_fp32_value(uint16_t h) {
-    return details::fp32_from_bits(fp16_to_fp32_bits(h));
+    return detail::fp32_from_bits(fp16_to_fp32_bits(h));
 }
 
 }// namespace
 
-namespace details {
+namespace detail {
 
 uint32_t fp16_to_fp32_bits_for_testing(uint16_t h) {
     return fp16_to_fp32_bits(h);
@@ -129,7 +129,7 @@ uint16_t fp16_from_fp32_value_for_testing(float f) {
     return fp16_from_fp32_value(f);
 }
 
-}// namespace details
+}// namespace detail
 
 Half::Half(float value) : x(fp16_from_fp32_value(value)) {}
 

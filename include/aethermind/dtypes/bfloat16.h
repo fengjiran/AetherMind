@@ -19,7 +19,7 @@
 #include <ostream>
 
 namespace aethermind {
-namespace details {
+namespace detail {
 
 /// Converts a bfloat16 bit pattern to an IEEE 754 binary32 `float`.
 ///
@@ -34,7 +34,7 @@ float bf16_to_fp32_value(uint16_t input);
 /// are canonicalized to the quiet NaN bit pattern `0x7FC0`.
 uint16_t bf16_from_fp32_value(float);
 
-}// namespace details
+}// namespace detail
 
 /// Brain floating-point (bfloat16) value.
 ///

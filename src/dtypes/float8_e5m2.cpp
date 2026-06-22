@@ -39,7 +39,7 @@ uint32_t fp8e5m2_to_fp32_bits(uint8_t input) {
 
 }// namespace
 
-namespace details {
+namespace detail {
 
 float fp8e5m2_to_fp32_value(uint8_t input) {
     return fp32_from_bits(fp8e5m2_to_fp32_bits(input));
@@ -115,12 +115,12 @@ uint8_t fp8e5m2_from_fp32_value(float f) {
     return static_cast<uint8_t>(res);
 }
 
-}// namespace details
+}// namespace detail
 
-Float8_e5m2::Float8_e5m2(float value) : x(details::fp8e5m2_from_fp32_value(value)) {}
+Float8_e5m2::Float8_e5m2(float value) : x(detail::fp8e5m2_from_fp32_value(value)) {}
 
 Float8_e5m2::operator float() const {
-    return details::fp8e5m2_to_fp32_value(x);
+    return detail::fp8e5m2_to_fp32_value(x);
 }
 
 bool Float8_e5m2::isinf() const {

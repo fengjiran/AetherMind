@@ -21,7 +21,7 @@
 #include <ostream>
 
 namespace aethermind {
-namespace details {
+namespace detail {
 
 /// Reinterprets an E5M2 bit pattern as an IEEE 754 binary32 `float`.
 ///
@@ -37,7 +37,7 @@ float fp8e5m2_to_fp32_value(uint8_t input);
 /// canonicalized to a single quiet-NaN bit pattern.
 uint8_t fp8e5m2_from_fp32_value(float f);
 
-}// namespace details
+}// namespace detail
 
 /// E5M2 8-bit floating-point value.
 ///

@@ -26,7 +26,7 @@
 
 namespace aethermind {
 
-namespace details {
+namespace detail {
 
 /// Reinterprets an E4M3FN bit pattern as an IEEE 754 binary32 `float`.
 ///
@@ -205,7 +205,7 @@ inline uint8_t fp8e4m3fn_from_fp32_value_bk(float f) {
     return result;
 }
 
-}// namespace details
+}// namespace detail
 
 /// E4M3FN 8-bit floating-point value.
 ///

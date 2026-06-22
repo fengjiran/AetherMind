@@ -46,7 +46,9 @@ namespace aethermind {
 ///
 /// Wraps a 16-bit binary16 bit pattern. Arithmetic and comparisons go through
 /// implicit conversion to `float`, so results follow IEEE 754 binary32 rounding
-/// and NaN semantics.
+/// and NaN semantics. This carries more intermediate precision than strict
+/// binary16 arithmetic and matches the behavior of common reduced-precision
+/// libraries (e.g., PyTorch c10::Half).
 ///
 /// `is_iec559` is false: `fp16_from_fp32_value` flushes subnormals to zero.
 /// Subnormals stored via `from_bits()` are preserved and round-trip correctly

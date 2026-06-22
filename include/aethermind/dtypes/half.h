@@ -9,6 +9,8 @@
 #ifndef AETHERMIND_DTYPES_HALF_H
 #define AETHERMIND_DTYPES_HALF_H
 
+#include "macros.h"
+
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
@@ -40,14 +42,15 @@ namespace aethermind {
 
 /// IEEE 754 half-precision (binary16) floating-point value.
 ///
-/// Stores the raw 16-bit binary16 bit pattern in `x`. Arithmetic and
-/// comparisons go through implicit conversion to `float`, so results follow
-/// IEEE 754 binary32 rounding and NaN semantics. `is_iec559` is true.
+/// Wraps a 16-bit binary16 bit pattern. Arithmetic and comparisons go through
+/// implicit conversion to `float`, so results follow IEEE 754 binary32 rounding
+/// and NaN semantics.
+///
+/// `is_iec559` is false: `fp16_from_fp32_value` flushes subnormals to zero.
+/// Subnormals stored via `from_bits()` are preserved and round-trip correctly
+/// through `fp16_to_fp32_value`.
 /// Use `from_bits()` to construct from a raw bit pattern without conversion.
 struct alignas(2) Half {
-    /// IEEE 754 binary16 bit pattern: 1 sign | 5 exponent | 10 mantissa.
-    uint16_t x;
-
     /// Tag type for constructing a `Half` from raw bits without conversion.
     struct from_bits_t {};
     static constexpr from_bits_t from_bits() {
@@ -55,11 +58,35 @@ struct alignas(2) Half {
     }
 
     Half() : x(0) {}
+
     /// Constructs from raw binary16 bits; no floating-point conversion.
     constexpr Half(uint16_t bits, from_bits_t) : x(bits) {}
+
+    /// Constructs from a binary32 `float`, rounding to binary16.
+    ///
+    /// Implicit conversion is intentional: it lets `Half` flow through
+    /// float-based APIs (literals, arithmetic expressions, printf-style
+    /// formatting) with minimal friction. NOLINT suppresses the implicit
+    /// conversion warning; callers should still be explicit when ambiguity
+    /// matters.
     Half(float value);// NOLINT
 
+    /// Converts to binary32 `float` for arithmetic and comparisons.
+    ///
+    /// Implicit conversion is intentional: it makes `Half` usable in
+    /// float expressions and with the standard library without wrapping
+    /// every use site in `static_cast`. NOLINT suppresses the implicit
+    /// conversion warning.
     operator float() const;// NOLINT
+
+    /// Returns the raw IEEE 754 binary16 bit pattern.
+    AM_NODISCARD constexpr uint16_t bits() const {
+        return x;
+    }
+
+private:
+    /// IEEE 754 binary16 bit pattern: 1 sign | 5 exponent | 10 mantissa.
+    uint16_t x;
 };
 
 std::ostream& operator<<(std::ostream& os, const Half& value);
@@ -124,8 +151,10 @@ Half operator/(int64_t lhs, Half rhs);
 /// std::numeric_limits specialization for IEEE 754 binary16.
 ///
 /// Bit constants follow the binary16 format (1 sign | 5 exponent | 10 mantissa,
-/// bias 15). `is_iec559` is true: Half follows IEEE 754 NaN and denormal
-/// semantics.
+/// bias 15). `is_iec559` is false: `fp16_from_fp32_value` flushes subnormals to
+/// zero, so the type does not provide gradual underflow. Subnormals stored via
+/// `from_bits()` are preserved and round-trip correctly through
+/// `fp16_to_fp32_value`.
 template<>
 struct std::numeric_limits<aethermind::Half> {
     static constexpr bool is_specialized = true;
@@ -135,10 +164,10 @@ struct std::numeric_limits<aethermind::Half> {
     static constexpr bool has_infinity = true;
     static constexpr bool has_quiet_NaN = true;
     static constexpr bool has_signaling_NaN = true;
-    static constexpr auto has_denorm = numeric_limits<float>::has_denorm;
-    static constexpr auto has_denorm_loss = numeric_limits<float>::has_denorm_loss;
+    static constexpr auto has_denorm = denorm_present;
+    static constexpr auto has_denorm_loss = true;
     static constexpr auto round_style = numeric_limits<float>::round_style;
-    static constexpr bool is_iec559 = true;
+    static constexpr bool is_iec559 = false;
     static constexpr bool is_bounded = true;
     static constexpr bool is_modulo = false;
     static constexpr int digits = 11;

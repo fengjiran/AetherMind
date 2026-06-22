@@ -104,11 +104,26 @@ template<typename T>
     int64_t mismatch_count = 0;
     std::ostringstream report;
     for (int64_t i = 0; i < n; ++i) {
-        if (actual[i].x != expected[i].x) {
+        const uint16_t actual_bits = []<typename U>(const U& v) -> uint16_t {
+            if constexpr (requires { v.bits(); }) {
+                return v.bits();
+            } else {
+                return v.x;
+            }
+        }(actual[i]);
+        const uint16_t expected_bits = []<typename U>(const U& v) -> uint16_t {
+            if constexpr (requires { v.bits(); }) {
+                return v.bits();
+            } else {
+                return v.x;
+            }
+        }(expected[i]);
+
+        if (actual_bits != expected_bits) {
             ++mismatch_count;
             if (mismatch_count <= max_report) {
-                report << " idx=" << i << " actual_bits=" << actual[i].x
-                       << " expected_bits=" << expected[i].x;
+                report << " idx=" << i << " actual_bits=" << actual_bits
+                       << " expected_bits=" << expected_bits;
             }
         }
     }

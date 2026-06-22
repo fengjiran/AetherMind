@@ -326,11 +326,11 @@ TEST(HalfFromFP32Test, RoundTrip) {
 TEST(HalfTest, ConstructorAndConversion) {
     // Default constructor: zero.
     Half h1;
-    EXPECT_EQ(h1.x, 0);
+    EXPECT_EQ(h1.bits(), 0);
 
     // from_bits constructor: raw bit pattern, no conversion.
     Half h2(0x3C00, Half::from_bits());// 1.0 in half precision
-    EXPECT_EQ(h2.x, 0x3C00);
+    EXPECT_EQ(h2.bits(), 0x3C00);
 
     // Float constructor and conversion.
     Half h3(1.0f);
@@ -386,14 +386,14 @@ TEST(HalfTest, MixedTypeArithmetic) {
 }
 
 TEST(HalfTest, NumericLimits) {
-    EXPECT_EQ(std::numeric_limits<Half>::min().x, 0x0400);
-    EXPECT_EQ(std::numeric_limits<Half>::max().x, 0x7BFF);
-    EXPECT_EQ(std::numeric_limits<Half>::lowest().x, 0xFBFF);
-    EXPECT_EQ(std::numeric_limits<Half>::epsilon().x, 0x1400);
-    EXPECT_EQ(std::numeric_limits<Half>::infinity().x, 0x7C00);
-    EXPECT_EQ(std::numeric_limits<Half>::quiet_NaN().x, 0x7E00);
-    EXPECT_EQ(std::numeric_limits<Half>::signaling_NaN().x, 0x7D00);
-    EXPECT_EQ(std::numeric_limits<Half>::denorm_min().x, 0x0001);
+    EXPECT_EQ(std::numeric_limits<Half>::min().bits(), 0x0400);
+    EXPECT_EQ(std::numeric_limits<Half>::max().bits(), 0x7BFF);
+    EXPECT_EQ(std::numeric_limits<Half>::lowest().bits(), 0xFBFF);
+    EXPECT_EQ(std::numeric_limits<Half>::epsilon().bits(), 0x1400);
+    EXPECT_EQ(std::numeric_limits<Half>::infinity().bits(), 0x7C00);
+    EXPECT_EQ(std::numeric_limits<Half>::quiet_NaN().bits(), 0x7E00);
+    EXPECT_EQ(std::numeric_limits<Half>::signaling_NaN().bits(), 0x7D00);
+    EXPECT_EQ(std::numeric_limits<Half>::denorm_min().bits(), 0x0001);
 }
 
 TEST(HalfTest, EdgeCases) {

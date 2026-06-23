@@ -79,9 +79,14 @@ ResolvedModelWeights MakeWeights(const HfModelConfig& config) {
     return weights;
 }
 
-const TensorSpec& OnlyOutput(const GraphNode& node) {
+const TensorSpec& OnlyOutput(const ModelGraph& graph, const GraphNode& node) {
     EXPECT_EQ(node.outputs.size(), 1U);
-    return node.outputs.front();
+    return graph.GetValue(node.outputs.front()).spec;
+}
+
+const ModelWeightBinding& WeightBindingAt(const ModelGraph& graph, const GraphNode& node, size_t input_index) {
+    const GraphValue& value = graph.GetValue(node.inputs[input_index]);
+    return std::get<WeightValue>(value.payload).binding;
 }
 
 TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
@@ -92,6 +97,14 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     ASSERT_EQ(graph->GetNodes().size(), 1U + 2U * 16U + 3U);
+    ASSERT_EQ(graph->GetInputs().size(), 1U);
+    EXPECT_EQ(graph->GetInputs()[0].name, "token_ids");
+    ASSERT_EQ(graph->GetOutputs().size(), 1U);
+    EXPECT_EQ(graph->GetOutputs()[0].name, "output_token_ids");
+    EXPECT_TRUE(graph->Validate().ok());
+    const StatusOr<std::vector<GraphNodeId>> order = graph->TopologicalOrder();
+    ASSERT_TRUE(order.ok()) << order.status().ToString();
+    ASSERT_EQ(order->size(), graph->GetNodes().size());
     EXPECT_EQ(graph->GetConfig().hidden_size, config.hidden_size);
 
     const auto nodes = graph->GetNodes();
@@ -145,36 +158,36 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
 
-    ASSERT_EQ(nodes[0].weights.size(), 1U);
-    EXPECT_EQ(nodes[0].weights[0].role, ModelWeightRole::kTokenEmbedding);
-    EXPECT_FALSE(nodes[0].weights[0].decoder_layer_index.has_value());
+    const ModelWeightBinding& token_embedding = WeightBindingAt(*graph, nodes[0], 1);
+    EXPECT_EQ(token_embedding.role, ModelWeightRole::kTokenEmbedding);
+    EXPECT_FALSE(token_embedding.decoder_layer_index.has_value());
     EXPECT_TRUE(nodes[0].attrs.bytes.empty());
     EXPECT_NE(std::any_cast<EmbeddingOp::Params>(&nodes[0].op_params), nullptr);
 
     const GraphNode& input_norm = nodes[1];
-    ASSERT_EQ(input_norm.weights.size(), 1U);
-    EXPECT_EQ(input_norm.weights[0].role, ModelWeightRole::kInputNorm);
-    ASSERT_TRUE(input_norm.weights[0].decoder_layer_index.has_value());
-    EXPECT_EQ(*input_norm.weights[0].decoder_layer_index, 0U);
+    const ModelWeightBinding& input_norm_weight = WeightBindingAt(*graph, input_norm, 1);
+    EXPECT_EQ(input_norm_weight.role, ModelWeightRole::kInputNorm);
+    ASSERT_TRUE(input_norm_weight.decoder_layer_index.has_value());
+    EXPECT_EQ(*input_norm_weight.decoder_layer_index, 0U);
     const auto* rms_params = std::any_cast<RmsNormOp::Params>(&input_norm.op_params);
     ASSERT_NE(rms_params, nullptr);
     EXPECT_FLOAT_EQ(rms_params->eps, static_cast<float>(config.rms_norm_eps));
 
     const GraphNode& q_proj = nodes[2];
-    ASSERT_EQ(q_proj.weights.size(), 1U);
-    EXPECT_EQ(q_proj.weights[0].role, ModelWeightRole::kAttentionQ);
-    ASSERT_TRUE(q_proj.weights[0].decoder_layer_index.has_value());
-    EXPECT_EQ(*q_proj.weights[0].decoder_layer_index, 0U);
+    const ModelWeightBinding& q_proj_weight = WeightBindingAt(*graph, q_proj, 1);
+    EXPECT_EQ(q_proj_weight.role, ModelWeightRole::kAttentionQ);
+    ASSERT_TRUE(q_proj_weight.decoder_layer_index.has_value());
+    EXPECT_EQ(*q_proj_weight.decoder_layer_index, 0U);
 
     const GraphNode& final_norm = nodes[17];
-    ASSERT_EQ(final_norm.weights.size(), 1U);
-    EXPECT_EQ(final_norm.weights[0].role, ModelWeightRole::kFinalNorm);
-    EXPECT_FALSE(final_norm.weights[0].decoder_layer_index.has_value());
+    const ModelWeightBinding& final_norm_weight = WeightBindingAt(*graph, final_norm, 1);
+    EXPECT_EQ(final_norm_weight.role, ModelWeightRole::kFinalNorm);
+    EXPECT_FALSE(final_norm_weight.decoder_layer_index.has_value());
 
     const GraphNode& lm_head = nodes[18];
-    ASSERT_EQ(lm_head.weights.size(), 1U);
-    EXPECT_EQ(lm_head.weights[0].role, ModelWeightRole::kLmHead);
-    EXPECT_FALSE(lm_head.weights[0].decoder_layer_index.has_value());
+    const ModelWeightBinding& lm_head_weight = WeightBindingAt(*graph, lm_head, 1);
+    EXPECT_EQ(lm_head_weight.role, ModelWeightRole::kLmHead);
+    EXPECT_FALSE(lm_head_weight.decoder_layer_index.has_value());
 }
 
 TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
@@ -186,17 +199,25 @@ TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
 
+    ASSERT_EQ(graph->GetInputs().size(), 1U);
+    const TensorSpec& token_ids = graph->GetValue(graph->GetInputs()[0].value).spec;
     ASSERT_EQ(nodes[0].inputs.size(), 2U);
-    ASSERT_EQ(nodes[0].inputs[0].shape.rank(), 1U);
-    const ShapeSymbol seq_len = nodes[0].inputs[0].shape[0];
+    EXPECT_EQ(nodes[0].inputs[0], graph->GetInputs()[0].value);
+    ASSERT_EQ(token_ids.shape.rank(), 1U);
+    const ShapeSymbol seq_len = token_ids.shape[0];
     EXPECT_TRUE(seq_len.IsSymbolic());
 
-    const TensorSpec& embedding_output = OnlyOutput(nodes[0]);
+    const TensorSpec& embedding_output = OnlyOutput(*graph, nodes[0]);
     ASSERT_EQ(embedding_output.shape.rank(), 2U);
     EXPECT_EQ(embedding_output.shape[0], seq_len);
     EXPECT_EQ(embedding_output.shape[1].GetStaticValue(), config.hidden_size);
 
-    const TensorSpec& logits = OnlyOutput(nodes[18]);
+    const GraphNode& attention_o = nodes[9];
+    const TensorSpec& attention_o_input = graph->GetValue(attention_o.inputs[0]).spec;
+    ASSERT_EQ(attention_o_input.shape.rank(), 2U);
+    EXPECT_EQ(attention_o_input.shape[1].GetStaticValue(), config.hidden_size);
+
+    const TensorSpec& logits = OnlyOutput(*graph, nodes[18]);
     ASSERT_EQ(logits.shape.rank(), 2U);
     EXPECT_EQ(logits.shape[0], seq_len);
     EXPECT_EQ(logits.shape[1].GetStaticValue(), config.vocab_size);

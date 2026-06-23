@@ -26,6 +26,8 @@ const char* ToString(OpType op_type) noexcept {
             return "SiluMul";
         case OpType::kElementwiseMul:
             return "ElementwiseMul";
+        case OpType::kKVCacheUpdate:
+            return "KVCacheUpdate";
         case OpType::kAdd:
             return "Add";
         case OpType::kSoftmax:

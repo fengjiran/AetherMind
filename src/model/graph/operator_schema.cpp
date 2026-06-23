@@ -9,11 +9,19 @@ OperatorInputPort Input(uint32_t index, const char* name, OperatorPortKind kind)
     return OperatorInputPort{.index = index, .name = name, .kind = kind};
 }
 
+OperatorInputPort Input(uint32_t index, const char* name, OperatorPortKind kind, bool contributes_tensor_spec) {
+    return OperatorInputPort{.index = index, .name = name, .kind = kind, .contributes_tensor_spec = contributes_tensor_spec};
+}
+
 OperatorOutputPort Output(uint32_t index, const char* name) {
     return OperatorOutputPort{.index = index, .name = name, .kind = OperatorPortKind::kActivation};
 }
 
-const std::array<OperatorSchema, 9> kOperatorSchemas{
+OperatorOutputPort Output(uint32_t index, const char* name, OperatorPortKind kind) {
+    return OperatorOutputPort{.index = index, .name = name, .kind = kind};
+}
+
+const std::array<OperatorSchema, 11> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kEmbedding,
                 .input_ports = {Input(0, "tokens", OperatorPortKind::kModelInput),
@@ -64,6 +72,19 @@ const std::array<OperatorSchema, 9> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kArgmax,
                 .input_ports = {Input(0, "logits", OperatorPortKind::kActivation)},
+                .output_ports = {Output(0, "output")},
+        },
+        OperatorSchema{
+                .op_type = OpType::kKVCacheUpdate,
+                .input_ports = {Input(0, "k", OperatorPortKind::kActivation),
+                                Input(1, "v", OperatorPortKind::kActivation),
+                                Input(2, "kv_cache_in", OperatorPortKind::kState, false)},
+                .output_ports = {Output(0, "kv_cache_out", OperatorPortKind::kState)},
+        },
+        OperatorSchema{
+                .op_type = OpType::kAttention,
+                .input_ports = {Input(0, "q", OperatorPortKind::kActivation),
+                                Input(1, "kv_cache", OperatorPortKind::kState, false)},
                 .output_ports = {Output(0, "output")},
         },
 };

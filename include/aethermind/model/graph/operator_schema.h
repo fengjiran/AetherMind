@@ -15,6 +15,7 @@ enum class OperatorPortKind : uint8_t {
     kModelInput,
     kActivation,
     kWeight,
+    kState,
 };
 
 struct OperatorInputPort {

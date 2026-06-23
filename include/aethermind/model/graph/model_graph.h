@@ -44,6 +44,21 @@ struct ModelWeightBinding {
     std::optional<uint32_t> decoder_layer_index{};
 };
 
+enum class StateKind : uint8_t {
+    kUnknown,
+    kKvCache,
+    kDecodeState,
+    kStreamingState,
+};
+
+struct StateBinding {
+    std::string logical_id{};
+    StateKind kind = StateKind::kUnknown;
+    std::optional<uint32_t> decoder_layer_index{};
+    std::string slot{};
+    std::string debug_name{};
+};
+
 struct ModelGraphAttrs {
     std::vector<std::byte> bytes{};
 };
@@ -71,10 +86,16 @@ struct WeightValue {
     ModelWeightBinding binding{};
 };
 
+/// Payload tag for persistent state values that survive across execution steps.
+struct StateValue {
+    StateBinding binding{};
+};
+
 using GraphValuePayload = std::variant<std::monostate,
                                        ModelInputValue,
                                        ActivationValue,
-                                       WeightValue>;
+                                       WeightValue,
+                                       StateValue>;
 
 struct GraphValue {
     GraphValuePayload payload{std::monostate{}};
@@ -136,6 +157,10 @@ public:
     AM_NODISCARD GraphValueId AddWeight(TensorSpec spec, ModelWeightBinding binding,
                                         std::string debug_name = "");
 
+    /// Registers a persistent state tensor and returns its value id.
+    AM_NODISCARD GraphValueId AddState(TensorSpec spec, StateBinding binding,
+                                       std::string debug_name = "");
+
     /// Adds an operator node with the given input and output declarations.
     ///
     /// Output declarations with a monostate payload are implicitly treated
@@ -157,7 +182,8 @@ public:
     /// producer consistency, and acyclicity.
     AM_NODISCARD Status Validate() const;
 
-    /// Returns nodes in topological order following activation data edges.
+    /// Returns nodes in topological order following activation edges and
+    /// produced state edges.
     /// Returns an error if the graph contains a cycle.
     AM_NODISCARD StatusOr<std::vector<GraphNodeId>> TopologicalOrder() const;
     AM_NODISCARD std::span<const GraphNode> GetNodes() const noexcept;

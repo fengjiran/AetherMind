@@ -39,6 +39,14 @@ struct AddParams {};
 
 struct SiluMulParams {};
 
+struct KVCacheUpdateParams {};
+
+struct AttentionParams {
+    int64_t num_attention_heads = 0;
+    int64_t num_key_value_heads = 0;
+    int64_t head_dim = 0;
+};
+
 struct ArgmaxParams {
     int64_t axis = -1;
 };
@@ -52,6 +60,8 @@ using OpParams = std::variant<std::monostate,
                               SoftmaxParams,
                               AddParams,
                               SiluMulParams,
+                              KVCacheUpdateParams,
+                              AttentionParams,
                               ArgmaxParams>;
 
 }// namespace aethermind

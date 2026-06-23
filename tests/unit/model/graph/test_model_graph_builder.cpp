@@ -86,6 +86,11 @@ const ModelWeightBinding& WeightBindingAt(const ModelGraph& graph, const GraphNo
     return std::get<WeightValue>(value.payload).binding;
 }
 
+const StateBinding& StateBindingForValue(const ModelGraph& graph, GraphValueId value_id) {
+    const GraphValue& value = graph.GetValue(value_id);
+    return std::get<StateValue>(value.payload).binding;
+}
+
 void ExpectLayerWeightBinding(const ModelGraph& graph,
                               const GraphNode& node,
                               ModelWeightRole role,
@@ -103,7 +108,7 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
     const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
-    ASSERT_EQ(graph->GetNodes().size(), 1U + 2U * 16U + 3U);
+    ASSERT_EQ(graph->GetNodes().size(), 1U + 2U * 15U + 3U);
     ASSERT_EQ(graph->GetInputs().size(), 1U);
     EXPECT_EQ(graph->GetInputs()[0].name, "token_ids");
     ASSERT_EQ(graph->GetOutputs().size(), 1U);
@@ -123,9 +128,8 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
             OpType::kLinear,
             OpType::kLinear,
             OpType::kRoPE,
-            OpType::kMatMul,
-            OpType::kSoftmax,
-            OpType::kMatMul,
+            OpType::kKVCacheUpdate,
+            OpType::kAttention,
             OpType::kLinear,
             OpType::kAdd,
             OpType::kRmsNorm,
@@ -147,7 +151,7 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
 
     EXPECT_FALSE(nodes[0].decoder_layer_index.has_value());
 
-    const size_t tail = 1 + 2U * 16U;
+    const size_t tail = 1 + 2U * 15U;
     EXPECT_EQ(nodes[tail].op_type, OpType::kRmsNorm);
     EXPECT_EQ(nodes[tail + 1].op_type, OpType::kLinear);
     EXPECT_EQ(nodes[tail + 2].op_type, OpType::kArgmax);
@@ -180,18 +184,18 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     ExpectLayerWeightBinding(*graph, nodes[2], ModelWeightRole::kAttentionQ, 0U);
     ExpectLayerWeightBinding(*graph, nodes[3], ModelWeightRole::kAttentionK, 0U);
     ExpectLayerWeightBinding(*graph, nodes[4], ModelWeightRole::kAttentionV, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[9], ModelWeightRole::kAttentionO, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[11], ModelWeightRole::kPostAttentionNorm, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[12], ModelWeightRole::kMlpGate, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[13], ModelWeightRole::kMlpUp, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[15], ModelWeightRole::kMlpDown, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[8], ModelWeightRole::kAttentionO, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[10], ModelWeightRole::kPostAttentionNorm, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[11], ModelWeightRole::kMlpGate, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[12], ModelWeightRole::kMlpUp, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[14], ModelWeightRole::kMlpDown, 0U);
 
-    const GraphNode& final_norm = nodes[17];
+    const GraphNode& final_norm = nodes[16];
     const ModelWeightBinding& final_norm_weight = WeightBindingAt(*graph, final_norm, 1);
     EXPECT_EQ(final_norm_weight.role, ModelWeightRole::kFinalNorm);
     EXPECT_FALSE(final_norm_weight.decoder_layer_index.has_value());
 
-    const GraphNode& lm_head = nodes[18];
+    const GraphNode& lm_head = nodes[17];
     const ModelWeightBinding& lm_head_weight = WeightBindingAt(*graph, lm_head, 1);
     EXPECT_EQ(lm_head_weight.role, ModelWeightRole::kLmHead);
     EXPECT_FALSE(lm_head_weight.decoder_layer_index.has_value());
@@ -219,21 +223,19 @@ TEST(ModelGraphBuilder, RecordsTypedParamsForAllGraphOps) {
     EXPECT_EQ(rope_params->max_position_embeddings, config.max_position_embeddings);
     EXPECT_DOUBLE_EQ(rope_params->theta, config.rope.theta);
 
-    const auto* score_params = std::get_if<MatMulParams>(&nodes[6].op_params);
-    ASSERT_NE(score_params, nullptr);
-    EXPECT_TRUE(score_params->transpose_rhs);
-    const auto* attn_params = std::get_if<MatMulParams>(&nodes[8].op_params);
-    ASSERT_NE(attn_params, nullptr);
-    EXPECT_FALSE(attn_params->transpose_rhs);
+    EXPECT_NE(std::get_if<KVCacheUpdateParams>(&nodes[6].op_params), nullptr);
 
-    const auto* softmax_params = std::get_if<SoftmaxParams>(&nodes[7].op_params);
-    ASSERT_NE(softmax_params, nullptr);
-    EXPECT_EQ(softmax_params->axis, -1);
-    EXPECT_NE(std::get_if<AddParams>(&nodes[10].op_params), nullptr);
-    EXPECT_NE(std::get_if<SiluMulParams>(&nodes[14].op_params), nullptr);
-    EXPECT_NE(std::get_if<AddParams>(&nodes[16].op_params), nullptr);
-    EXPECT_NE(std::get_if<LinearParams>(&nodes[18].op_params), nullptr);
-    const auto* argmax_params = std::get_if<ArgmaxParams>(&nodes[19].op_params);
+    const auto* attention_params = std::get_if<AttentionParams>(&nodes[7].op_params);
+    ASSERT_NE(attention_params, nullptr);
+    EXPECT_EQ(attention_params->head_dim, config.head_dim);
+    EXPECT_EQ(attention_params->num_attention_heads, config.num_attention_heads);
+    EXPECT_EQ(attention_params->num_key_value_heads, config.num_key_value_heads);
+
+    EXPECT_NE(std::get_if<AddParams>(&nodes[9].op_params), nullptr);
+    EXPECT_NE(std::get_if<SiluMulParams>(&nodes[13].op_params), nullptr);
+    EXPECT_NE(std::get_if<AddParams>(&nodes[15].op_params), nullptr);
+    EXPECT_NE(std::get_if<LinearParams>(&nodes[17].op_params), nullptr);
+    const auto* argmax_params = std::get_if<ArgmaxParams>(&nodes[18].op_params);
     ASSERT_NE(argmax_params, nullptr);
     EXPECT_EQ(argmax_params->axis, -1);
 }
@@ -247,8 +249,8 @@ TEST(ModelGraphBuilder, TracesResidualDataflowInAttention) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
     const GraphNode& embedding = nodes[0];
-    const GraphNode& attention_o = nodes[9];
-    const GraphNode& residual_add = nodes[10];
+    const GraphNode& attention_o = nodes[8];
+    const GraphNode& residual_add = nodes[9];
     ASSERT_EQ(residual_add.inputs.size(), 2U);
     EXPECT_EQ(residual_add.inputs[0], embedding.outputs[0]);
     EXPECT_EQ(residual_add.inputs[1], attention_o.outputs[0]);
@@ -258,7 +260,7 @@ TEST(ModelGraphBuilder, TracesResidualDataflowInAttention) {
     const std::span<const GraphNodeId> hidden_consumers = GetConsumers(*index, embedding.outputs[0]);
     ASSERT_EQ(hidden_consumers.size(), 2U);
     EXPECT_EQ(hidden_consumers[0], GraphNodeId{1});
-    EXPECT_EQ(hidden_consumers[1], GraphNodeId{10});
+    EXPECT_EQ(hidden_consumers[1], GraphNodeId{9});
 }
 
 TEST(ModelGraphBuilder, TracesRopeDualOutputDataflow) {
@@ -270,16 +272,17 @@ TEST(ModelGraphBuilder, TracesRopeDualOutputDataflow) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
     const GraphNode& rope = nodes[5];
-    const GraphNode& score_matmul = nodes[6];
+    const GraphNode& kv_cache_update = nodes[6];
+    const GraphNode& attention = nodes[7];
     ASSERT_EQ(rope.outputs.size(), 2U);
-    ASSERT_EQ(score_matmul.inputs.size(), 2U);
-    EXPECT_EQ(score_matmul.inputs[0], rope.outputs[0]);
-    EXPECT_EQ(score_matmul.inputs[1], rope.outputs[1]);
+    ASSERT_EQ(kv_cache_update.inputs.size(), 3U);
+    EXPECT_EQ(kv_cache_update.inputs[0], rope.outputs[1]);
+    EXPECT_EQ(attention.inputs[0], rope.outputs[0]);
 
     const StatusOr<std::vector<std::vector<GraphNodeId>>> index = BuildConsumerIndex(*graph);
     ASSERT_TRUE(index.ok()) << index.status().ToString();
     ASSERT_EQ(GetConsumers(*index, rope.outputs[0]).size(), 1U);
-    EXPECT_EQ(GetConsumers(*index, rope.outputs[0])[0], GraphNodeId{6});
+    EXPECT_EQ(GetConsumers(*index, rope.outputs[0])[0], GraphNodeId{7});
     ASSERT_EQ(GetConsumers(*index, rope.outputs[1]).size(), 1U);
     EXPECT_EQ(GetConsumers(*index, rope.outputs[1])[0], GraphNodeId{6});
 
@@ -287,6 +290,68 @@ TEST(ModelGraphBuilder, TracesRopeDualOutputDataflow) {
     const TensorSpec& k_rope = graph->GetValue(rope.outputs[1]).spec;
     EXPECT_EQ(q_rope.shape[1].GetStaticValue(), config.hidden_size);
     EXPECT_EQ(k_rope.shape[1].GetStaticValue(), config.num_key_value_heads * config.head_dim);
+}
+
+TEST(ModelGraphBuilder, TracesKvCacheStateDataflow) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const auto nodes = graph->GetNodes();
+    const GraphNode& kv_cache_update = nodes[6];
+    const GraphNode& attention = nodes[7];
+
+    ASSERT_EQ(kv_cache_update.outputs.size(), 1U);
+    ASSERT_EQ(attention.inputs.size(), 2U);
+    EXPECT_EQ(attention.inputs[1], kv_cache_update.outputs[0]);
+
+    const GraphValue& updated_cache = graph->GetValue(kv_cache_update.outputs[0]);
+    ASSERT_TRUE(std::holds_alternative<StateValue>(updated_cache.payload));
+    EXPECT_EQ(std::get<StateValue>(updated_cache.payload).binding.kind, StateKind::kKvCache);
+    ASSERT_TRUE(std::get<StateValue>(updated_cache.payload).binding.decoder_layer_index.has_value());
+    EXPECT_EQ(*std::get<StateValue>(updated_cache.payload).binding.decoder_layer_index, 0U);
+    ASSERT_TRUE(updated_cache.producer.has_value());
+    EXPECT_EQ(updated_cache.producer->index, 6U);
+
+    const GraphValue& consumed_cache = graph->GetValue(attention.inputs[1]);
+    ASSERT_TRUE(std::holds_alternative<StateValue>(consumed_cache.payload));
+    EXPECT_EQ(std::get<StateValue>(consumed_cache.payload).binding.kind, StateKind::kKvCache);
+}
+
+TEST(ModelGraphBuilder, TracesCrossLayerKvCacheStateChaining) {
+    const HfModelConfig config = MakeLlamaConfig(2);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const auto nodes = graph->GetNodes();
+    const GraphNode& layer0_kv_cache_update = nodes[6];
+    const GraphNode& layer0_attention = nodes[7];
+    const GraphNode& layer1_kv_cache_update = nodes[21];
+    const GraphNode& layer1_attention = nodes[22];
+
+    ASSERT_EQ(layer0_kv_cache_update.outputs.size(), 1U);
+    ASSERT_EQ(layer0_attention.inputs.size(), 2U);
+    ASSERT_EQ(layer1_kv_cache_update.inputs.size(), 3U);
+    ASSERT_EQ(layer1_kv_cache_update.outputs.size(), 1U);
+    ASSERT_EQ(layer1_attention.inputs.size(), 2U);
+
+    EXPECT_EQ(layer0_attention.inputs[1], layer0_kv_cache_update.outputs[0]);
+    EXPECT_EQ(layer1_kv_cache_update.inputs[2], layer0_kv_cache_update.outputs[0]);
+    EXPECT_EQ(layer1_attention.inputs[1], layer1_kv_cache_update.outputs[0]);
+
+    const StateBinding& layer0_binding = StateBindingForValue(*graph, layer0_kv_cache_update.outputs[0]);
+    const StateBinding& layer1_binding = StateBindingForValue(*graph, layer1_kv_cache_update.outputs[0]);
+    ASSERT_TRUE(layer0_binding.decoder_layer_index.has_value());
+    ASSERT_TRUE(layer1_binding.decoder_layer_index.has_value());
+    EXPECT_EQ(*layer0_binding.decoder_layer_index, 0U);
+    EXPECT_EQ(*layer1_binding.decoder_layer_index, 1U);
+    EXPECT_EQ(layer0_binding.logical_id, layer1_binding.logical_id);
+    EXPECT_EQ(layer0_binding.kind, layer1_binding.kind);
+    EXPECT_EQ(layer0_binding.slot, layer1_binding.slot);
 }
 
 TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
@@ -311,12 +376,12 @@ TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
     EXPECT_EQ(embedding_output.shape[0], seq_len);
     EXPECT_EQ(embedding_output.shape[1].GetStaticValue(), config.hidden_size);
 
-    const GraphNode& attention_o = nodes[9];
+    const GraphNode& attention_o = nodes[8];
     const TensorSpec& attention_o_input = graph->GetValue(attention_o.inputs[0]).spec;
     ASSERT_EQ(attention_o_input.shape.rank(), 2U);
     EXPECT_EQ(attention_o_input.shape[1].GetStaticValue(), config.hidden_size);
 
-    const TensorSpec& logits = OnlyOneOutput(*graph, nodes[18]);
+    const TensorSpec& logits = OnlyOneOutput(*graph, nodes[17]);
     ASSERT_EQ(logits.shape.rank(), 2U);
     EXPECT_EQ(logits.shape[0], seq_len);
     EXPECT_EQ(logits.shape[1].GetStaticValue(), config.vocab_size);

@@ -2,7 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -28,6 +30,26 @@ TensorSpec TokenSpec() {
 
 TensorSpec WeightSpec() {
     return Spec(DataType::Float32(), {8});
+}
+
+StateBinding KvStateBinding(std::optional<uint32_t> decoder_layer_index = std::nullopt) {
+    return StateBinding{
+            .logical_id = "kv_cache",
+            .kind = StateKind::kKvCache,
+            .decoder_layer_index = decoder_layer_index,
+            .slot = "kv"};
+}
+
+GraphValueId AddEmbeddingOutput(ModelGraph& graph, std::string input_name) {
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), std::move(input_name));
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), ModelWeightBinding{.role = ModelWeightRole::kTokenEmbedding});
+    return graph.AddNode(
+                        OpType::kEmbedding,
+                        std::nullopt,
+                        {tokens, weight},
+                        {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                        EmbeddingParams{})
+            .outputs.front();
 }
 
 ModelGraph BuildValidEmbeddingGraph() {
@@ -192,6 +214,168 @@ TEST(ModelGraph, ValidateRejectsExternalValueWithProducer) {
             GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .producer = GraphNodeId{0}},
     };
     ModelGraph graph({}, {}, std::move(values));
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, PublicApiCreatesStateValues) {
+    ModelGraph graph;
+
+    const GraphValueId state = graph.AddState(
+            ActivationSpec(),
+            KvStateBinding(),
+            "kv_cache");
+
+    ASSERT_EQ(graph.GetValues().size(), 1U);
+    const GraphValue& value = graph.GetValue(state);
+    ASSERT_TRUE(std::holds_alternative<StateValue>(value.payload));
+    EXPECT_EQ(std::get<StateValue>(value.payload).binding.logical_id, "kv_cache");
+    EXPECT_EQ(std::get<StateValue>(value.payload).binding.kind, StateKind::kKvCache);
+    EXPECT_FALSE(value.producer.has_value());
+}
+
+TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "tokens");
+    const GraphValueId embedding_weight = graph.AddWeight(
+            Spec(DataType::Float32(), {32, 8}),
+            ModelWeightBinding{.role = ModelWeightRole::kTokenEmbedding});
+    const GraphValueId hidden = graph.AddNode(
+                                        OpType::kEmbedding,
+                                        std::nullopt,
+                                        {tokens, embedding_weight},
+                                        {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                                        EmbeddingParams{})
+                                        .outputs.front();
+    const GraphValueId k_weight = graph.AddWeight(WeightSpec(), ModelWeightBinding{.role = ModelWeightRole::kAttentionK});
+    const GraphValueId v_weight = graph.AddWeight(WeightSpec(), ModelWeightBinding{.role = ModelWeightRole::kAttentionV});
+    const GraphValueId k = graph.AddNode(
+                                     OpType::kLinear,
+                                     std::nullopt,
+                                     {hidden, k_weight},
+                                     {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                                     LinearParams{})
+                                     .outputs.front();
+    const GraphValueId v = graph.AddNode(
+                                     OpType::kLinear,
+                                     std::nullopt,
+                                     {hidden, v_weight},
+                                     {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                                     LinearParams{})
+                                     .outputs.front();
+    const GraphValueId kv_cache_in = graph.AddState(
+            ActivationSpec(),
+            KvStateBinding(),
+            "kv_cache_in");
+
+    const ModelGraph::AddedNode update = graph.AddNode(
+            OpType::kKVCacheUpdate,
+            0U,
+            {k, v, kv_cache_in},
+            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = StateValue{.binding = KvStateBinding(0U)}}},
+            KVCacheUpdateParams{});
+
+    const Status status = graph.Validate();
+    EXPECT_TRUE(status.ok()) << status.ToString();
+    EXPECT_NE(kv_cache_in, update.outputs[0]);
+    const GraphValue& kv_cache_out = graph.GetValue(update.outputs[0]);
+    ASSERT_TRUE(std::holds_alternative<StateValue>(kv_cache_out.payload));
+    ASSERT_TRUE(kv_cache_out.producer.has_value());
+    EXPECT_EQ(*kv_cache_out.producer, update.node);
+}
+
+TEST(ModelGraph, ValidateRejectsStateValueWithInvalidProducer) {
+    std::vector<GraphValue> values = {
+            GraphValue{.payload = StateValue{.binding = KvStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{0}},
+    };
+    ModelGraph graph({}, {}, std::move(values));
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsEmptyStateBindingLogicalId) {
+    ModelGraph graph;
+    const GraphValueId state = graph.AddState(ActivationSpec(), StateBinding{.kind = StateKind::kKvCache, .slot = "kv"});
+    EXPECT_EQ(state.index, 0U);
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsUnknownStateBindingKind) {
+    ModelGraph graph;
+    const GraphValueId state = graph.AddState(ActivationSpec(), StateBinding{.logical_id = "kv_cache", .slot = "kv"});
+    EXPECT_EQ(state.index, 0U);
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsEmptyKvCacheStateBindingSlot) {
+    ModelGraph graph;
+    const GraphValueId state = graph.AddState(ActivationSpec(), StateBinding{.logical_id = "kv_cache", .kind = StateKind::kKvCache});
+    EXPECT_EQ(state.index, 0U);
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsStateValueAsGraphOutput) {
+    ModelGraph graph;
+    const GraphValueId state = graph.AddState(ActivationSpec(), KvStateBinding(), "kv_cache");
+    graph.MarkOutput(state, "bad_state_output");
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithActivationOutput) {
+    ModelGraph graph;
+    const GraphValueId k = AddEmbeddingOutput(graph, "tokens_k");
+    const GraphValueId v = AddEmbeddingOutput(graph, "tokens_v");
+    const GraphValueId kv_cache_in = graph.AddState(ActivationSpec(), KvStateBinding(), "kv_cache_in");
+
+    [[maybe_unused]] const ModelGraph::AddedNode update = graph.AddNode(
+            OpType::kKVCacheUpdate,
+            0U,
+            {k, v, kv_cache_in},
+            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec()}},
+            KVCacheUpdateParams{});
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsNodeOutputReusingInputValue) {
+    std::vector<GraphValue> values = {
+            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec()},
+            GraphValue{.payload = WeightValue{.binding = ModelWeightBinding{.role = ModelWeightRole::kTokenEmbedding}}, .spec = Spec(DataType::Float32(), {32, 8})},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{1}},
+            GraphValue{.payload = StateValue{.binding = KvStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{2}},
+    };
+    std::vector<GraphNode> nodes = {
+            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = EmbeddingParams{}},
+            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{3}}, .op_params = EmbeddingParams{}},
+            GraphNode{.op_type = OpType::kKVCacheUpdate, .inputs = {GraphValueId{2}, GraphValueId{3}, GraphValueId{4}}, .outputs = {GraphValueId{4}}, .op_params = KVCacheUpdateParams{}},
+    };
+    ModelGraph graph({}, std::move(nodes), std::move(values));
 
     const Status status = graph.Validate();
 

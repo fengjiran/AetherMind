@@ -27,6 +27,7 @@ enum class OpType : uint16_t {
     kSilu,
     kSiluMul,
     kElementwiseMul,
+    kKVCacheUpdate,
     kAdd,
     kSoftmax,
     kArgmax,

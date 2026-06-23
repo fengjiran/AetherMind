@@ -8,7 +8,7 @@ namespace {
 TEST(OperatorSchema, ContainsAllM1Ops) {
     const auto schemas = GetOperatorSchemas();
 
-    ASSERT_EQ(schemas.size(), 9U);
+    ASSERT_EQ(schemas.size(), 11U);
     EXPECT_TRUE(GetOperatorSchema(OpType::kEmbedding).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kRmsNorm).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kLinear).ok());
@@ -17,6 +17,8 @@ TEST(OperatorSchema, ContainsAllM1Ops) {
     EXPECT_TRUE(GetOperatorSchema(OpType::kSoftmax).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kAdd).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSiluMul).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kKVCacheUpdate).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kAttention).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kArgmax).ok());
 }
 
@@ -63,6 +65,41 @@ TEST(OperatorSchema, WeightedUnaryOpsUseActivationAndWeight) {
         ASSERT_EQ(schema->output_ports.size(), 1U) << ToString(op_type);
         EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kActivation) << ToString(op_type);
     }
+}
+
+TEST(OperatorSchema, KVCacheUpdateSchemaUsesStateInputAndOutput) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kKVCacheUpdate);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    ASSERT_EQ(schema->input_ports.size(), 3U);
+    EXPECT_EQ(schema->input_ports[0].name, "k");
+    EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
+    EXPECT_TRUE(schema->input_ports[0].contributes_tensor_spec);
+    EXPECT_EQ(schema->input_ports[1].name, "v");
+    EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kActivation);
+    EXPECT_TRUE(schema->input_ports[1].contributes_tensor_spec);
+    EXPECT_EQ(schema->input_ports[2].name, "kv_cache_in");
+    EXPECT_EQ(schema->input_ports[2].kind, OperatorPortKind::kState);
+    EXPECT_FALSE(schema->input_ports[2].contributes_tensor_spec);
+    ASSERT_EQ(schema->output_ports.size(), 1U);
+    EXPECT_EQ(schema->output_ports[0].name, "kv_cache_out");
+    EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kState);
+}
+
+TEST(OperatorSchema, AttentionSchemaUsesActivationAndState) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kAttention);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    ASSERT_EQ(schema->input_ports.size(), 2U);
+    EXPECT_EQ(schema->input_ports[0].name, "q");
+    EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
+    EXPECT_TRUE(schema->input_ports[0].contributes_tensor_spec);
+    EXPECT_EQ(schema->input_ports[1].name, "kv_cache");
+    EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kState);
+    EXPECT_FALSE(schema->input_ports[1].contributes_tensor_spec);
+    ASSERT_EQ(schema->output_ports.size(), 1U);
+    EXPECT_EQ(schema->output_ports[0].name, "output");
+    EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kActivation);
 }
 
 TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {

@@ -39,8 +39,32 @@ bool PayloadMatchesPort(const GraphValuePayload& payload, OperatorPortKind kind)
             return std::holds_alternative<ActivationValue>(payload);
         case OperatorPortKind::kWeight:
             return std::holds_alternative<WeightValue>(payload);
+        case OperatorPortKind::kState:
+            return std::holds_alternative<StateValue>(payload);
     }
     return false;
+}
+
+Status ValidateStateBinding(const StateBinding& binding) {
+    if (binding.logical_id.empty()) {
+        return Status::InvalidArgument("State binding logical_id must not be empty");
+    }
+    if (binding.kind == StateKind::kUnknown) {
+        return Status::InvalidArgument("State binding kind must not be unknown");
+    }
+    if (binding.kind == StateKind::kKvCache && binding.slot.empty()) {
+        return Status::InvalidArgument("KV cache state binding slot must not be empty");
+    }
+    return Status::Ok();
+}
+
+bool SameStateFamily(const StateBinding& lhs, const StateBinding& rhs) {
+    return lhs.logical_id == rhs.logical_id && lhs.kind == rhs.kind && lhs.slot == rhs.slot;
+}
+
+bool CarriesProducerDependency(const GraphValue& value) {
+    return std::holds_alternative<ActivationValue>(value.payload) ||
+           (std::holds_alternative<StateValue>(value.payload) && value.producer.has_value());
 }
 
 bool NodeListsOutput(const GraphNode& node, GraphValueId value) {
@@ -115,9 +139,12 @@ Status ValidateOpParams(OpType op_type, const OpParams& params) {
             return RequireParams<AddParams>(params, "Add node requires AddParams");
         case OpType::kSiluMul:
             return RequireParams<SiluMulParams>(params, "SiluMul node requires SiluMulParams");
+        case OpType::kKVCacheUpdate:
+            return RequireParams<KVCacheUpdateParams>(params, "KVCacheUpdate node requires KVCacheUpdateParams");
+        case OpType::kAttention:
+            return RequireParams<AttentionParams>(params, "Attention node requires AttentionParams");
         case OpType::kArgmax:
             return RequireParams<ArgmaxParams>(params, "Argmax node requires ArgmaxParams");
-        case OpType::kAttention:
         case OpType::kSilu:
         case OpType::kElementwiseMul:
             return Status::InvalidArgument("Op type is not registered for ModelGraph typed params");
@@ -147,6 +174,15 @@ GraphValueId ModelGraph::AddInput(TensorSpec spec, std::string name) {
 GraphValueId ModelGraph::AddWeight(TensorSpec spec, ModelWeightBinding binding, std::string debug_name) {
     GraphValueId value{NextValueIndex(values_)};
     values_.push_back(GraphValue{.payload = WeightValue{.binding = binding},
+                                 .spec = std::move(spec),
+                                 .debug_name = std::move(debug_name)});
+    return value;
+}
+
+GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string debug_name) {
+    GraphValueId value{NextValueIndex(values_)};
+    StateValue state_value{.binding = std::move(binding)};
+    values_.push_back(GraphValue{.payload = std::move(state_value),
                                  .spec = std::move(spec),
                                  .debug_name = std::move(debug_name)});
     return value;
@@ -216,7 +252,7 @@ Status ModelGraph::Validate() const {
         }
     }
 
-    // -- Validate each value: no uninitialized payload, activation producers are consistent --
+    // -- Validate each value: no uninitialized payload, producers are consistent --
     for (size_t value_index = 0; value_index < values_.size(); ++value_index) {
         const GraphValue& value = values_[value_index];
         if (std::holds_alternative<std::monostate>(value.payload)) {
@@ -231,6 +267,20 @@ Status ModelGraph::Validate() const {
             // Verify the producer's output list includes this value.
             if (!NodeListsOutput(nodes_[value.producer->index], GraphValueId{static_cast<uint32_t>(value_index)})) {
                 return Status::InvalidArgument("Activation producer does not list produced value");
+            }
+        } else if (std::holds_alternative<StateValue>(value.payload)) {
+            const StateBinding& binding = std::get<StateValue>(value.payload).binding;
+            AM_RETURN_IF_ERROR(ValidateStateBinding(binding));
+
+            // State values may be external entry points (no producer) or produced by
+            // a state-update node. When produced, the producer must list them.
+            if (value.producer.has_value()) {
+                if (!IsValidNodeId(*value.producer, nodes_)) {
+                    return Status::InvalidArgument("State value has an invalid producer");
+                }
+                if (!NodeListsOutput(nodes_[value.producer->index], GraphValueId{static_cast<uint32_t>(value_index)})) {
+                    return Status::InvalidArgument("State producer does not list produced value");
+                }
             }
         } else if (value.producer.has_value()) {
             return Status::InvalidArgument("External graph value must not have a producer");
@@ -285,6 +335,22 @@ Status ModelGraph::Validate() const {
                 return Status::InvalidArgument("Graph node output payload kind does not match operator schema");
             }
         }
+
+        for (const GraphValueId output: node.outputs) {
+            if (std::ranges::find(node.inputs, output) != node.inputs.end()) {
+                return Status::InvalidArgument("Graph node output must not reuse an input value");
+            }
+        }
+
+        if (node.op_type == OpType::kKVCacheUpdate) {
+            const GraphValue& state_input = values_[node.inputs[2].index];
+            const GraphValue& state_output = values_[node.outputs[0].index];
+            const StateBinding& input_binding = std::get<StateValue>(state_input.payload).binding;
+            const StateBinding& output_binding = std::get<StateValue>(state_output.payload).binding;
+            if (!SameStateFamily(input_binding, output_binding)) {
+                return Status::InvalidArgument("KVCacheUpdate state input and output must share a state family");
+            }
+        }
     }
 
     // -- Final pass: verify the graph is acyclic via topological sort --
@@ -306,7 +372,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::TopologicalOrder() const {
             }
 
             const GraphValue& value = values_[input.index];
-            if (!std::holds_alternative<ActivationValue>(value.payload)) {
+            if (!CarriesProducerDependency(value)) {
                 continue;
             }
 

@@ -3,6 +3,7 @@
 #include "utils/logging.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <deque>
 #include <limits>
@@ -46,6 +47,86 @@ bool NodeListsOutput(const GraphNode& node, GraphValueId value) {
     return std::ranges::find(node.outputs, value) != node.outputs.end();
 }
 
+bool IsFinitePositive(double value) noexcept {
+    return std::isfinite(value) && value > 0.0;
+}
+
+template<typename Params>
+Status RequireParams(const OpParams& params, const char* message) {
+    if (!std::holds_alternative<Params>(params)) {
+        return Status::InvalidArgument(message);
+    }
+    return Status::Ok();
+}
+
+Status ValidateRmsNormParams(const OpParams& params) {
+    const auto* typed = std::get_if<RmsNormParams>(&params);
+    if (typed == nullptr) {
+        return Status::InvalidArgument("RmsNorm node requires RmsNormParams");
+    }
+    if (!std::isfinite(typed->eps) || typed->eps <= 0.0F) {
+        return Status::InvalidArgument("RmsNormParams eps must be finite and positive");
+    }
+    return Status::Ok();
+}
+
+Status ValidateRoPEParams(const OpParams& params) {
+    const auto* typed = std::get_if<RoPEParams>(&params);
+    if (typed == nullptr) {
+        return Status::InvalidArgument("RoPE node requires RoPEParams");
+    }
+    if (typed->head_dim <= 0 || typed->num_attention_heads <= 0 ||
+        typed->num_key_value_heads <= 0 || typed->max_position_embeddings <= 0) {
+        return Status::InvalidArgument("RoPEParams dimensions must be positive");
+    }
+    if (!IsFinitePositive(typed->theta)) {
+        return Status::InvalidArgument("RoPEParams theta must be finite and positive");
+    }
+    if (typed->scaling_type == HfRopeScalingType::kUnknown) {
+        return Status::InvalidArgument("RoPEParams scaling type must be known");
+    }
+    if (typed->scaling_type == HfRopeScalingType::kNone) {
+        if (typed->scaling_factor.has_value()) {
+            return Status::InvalidArgument("RoPEParams default scaling must not set a scaling factor");
+        }
+        return Status::Ok();
+    }
+    if (!typed->scaling_factor.has_value() || !IsFinitePositive(*typed->scaling_factor)) {
+        return Status::InvalidArgument("RoPEParams scaled modes require a finite positive scaling factor");
+    }
+    return Status::Ok();
+}
+
+Status ValidateOpParams(OpType op_type, const OpParams& params) {
+    switch (op_type) {
+        case OpType::kEmbedding:
+            return RequireParams<EmbeddingParams>(params, "Embedding node requires EmbeddingParams");
+        case OpType::kRmsNorm:
+            return ValidateRmsNormParams(params);
+        case OpType::kLinear:
+            return RequireParams<LinearParams>(params, "Linear node requires LinearParams");
+        case OpType::kRoPE:
+            return ValidateRoPEParams(params);
+        case OpType::kMatMul:
+            return RequireParams<MatMulParams>(params, "MatMul node requires MatMulParams");
+        case OpType::kSoftmax:
+            return RequireParams<SoftmaxParams>(params, "Softmax node requires SoftmaxParams");
+        case OpType::kAdd:
+            return RequireParams<AddParams>(params, "Add node requires AddParams");
+        case OpType::kSiluMul:
+            return RequireParams<SiluMulParams>(params, "SiluMul node requires SiluMulParams");
+        case OpType::kArgmax:
+            return RequireParams<ArgmaxParams>(params, "Argmax node requires ArgmaxParams");
+        case OpType::kAttention:
+        case OpType::kSilu:
+        case OpType::kElementwiseMul:
+            return Status::InvalidArgument("Op type is not registered for ModelGraph typed params");
+        case OpType::kUnknown:
+            return Status::InvalidArgument("Unknown op type cannot have validated graph params");
+    }
+    return Status::InvalidArgument("Unsupported op type cannot have validated graph params");
+}
+
 }// namespace
 
 ModelGraph::ModelGraph(HfModelConfig config) noexcept : config_(std::move(config)) {}
@@ -75,7 +156,7 @@ ModelGraph::AddedNode ModelGraph::AddNode(OpType op_type,
                                           std::optional<uint32_t> decoder_layer_index,
                                           std::vector<GraphValueId> inputs,
                                           std::vector<NodeOutputDecl> outputs,
-                                          std::any op_params,
+                                          OpParams op_params,
                                           ModelGraphAttrs attrs,
                                           std::string debug_name) {
     GraphNodeId node_id{NextNodeIndex(nodes_)};
@@ -102,7 +183,7 @@ ModelGraph::AddedNode ModelGraph::AddNode(OpType op_type,
             .inputs = std::move(inputs),
             .outputs = output_ids,
             .attrs = std::move(attrs),
-            .op_params = std::move(op_params),
+            .op_params = op_params,
     });
 
     return AddedNode{.node = node_id, .outputs = std::move(output_ids)};
@@ -162,6 +243,11 @@ Status ModelGraph::Validate() const {
         StatusOr<OperatorSchema> schema_or = GetOperatorSchema(node.op_type);
         if (!schema_or.ok()) {
             return schema_or.status();
+        }
+
+        AM_RETURN_IF_ERROR(ValidateOpParams(node.op_type, node.op_params));
+        if (!node.attrs.bytes.empty()) {
+            return Status::InvalidArgument("Registered ModelGraph operators must use typed op params, not attrs");
         }
 
         const OperatorSchema& schema = *schema_or;

@@ -76,7 +76,7 @@ ResolvedModelWeights MakeWeights(const HfModelConfig& config) {
     return weights;
 }
 
-const TensorSpec& OnlyOutput(const ModelGraph& graph, const GraphNode& node) {
+const TensorSpec& OnlyOneOutput(const ModelGraph& graph, const GraphNode& node) {
     EXPECT_EQ(node.outputs.size(), 1U);
     return graph.GetValue(node.outputs.front()).spec;
 }
@@ -306,7 +306,7 @@ TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
     const ShapeSymbol seq_len = token_ids.shape[0];
     EXPECT_TRUE(seq_len.IsSymbolic());
 
-    const TensorSpec& embedding_output = OnlyOutput(*graph, nodes[0]);
+    const TensorSpec& embedding_output = OnlyOneOutput(*graph, nodes[0]);
     ASSERT_EQ(embedding_output.shape.rank(), 2U);
     EXPECT_EQ(embedding_output.shape[0], seq_len);
     EXPECT_EQ(embedding_output.shape[1].GetStaticValue(), config.hidden_size);
@@ -316,7 +316,7 @@ TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
     ASSERT_EQ(attention_o_input.shape.rank(), 2U);
     EXPECT_EQ(attention_o_input.shape[1].GetStaticValue(), config.hidden_size);
 
-    const TensorSpec& logits = OnlyOutput(*graph, nodes[18]);
+    const TensorSpec& logits = OnlyOneOutput(*graph, nodes[18]);
     ASSERT_EQ(logits.shape.rank(), 2U);
     EXPECT_EQ(logits.shape[0], seq_len);
     EXPECT_EQ(logits.shape[1].GetStaticValue(), config.vocab_size);

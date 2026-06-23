@@ -64,7 +64,7 @@ RoPEParams MakeRoPEParams(const HfModelConfig& config, int64_t head_dim) {
     };
 }
 
-GraphValueId OnlyOutput(const ModelGraph::AddedNode& added_node) {
+GraphValueId OnlyOneOutput(const ModelGraph::AddedNode& added_node) {
     AM_CHECK(added_node.outputs.size() == 1U, "Expected node to have exactly one output");
     return added_node.outputs.front();
 }
@@ -76,7 +76,7 @@ ModelGraph::AddedNode AddWeightedNode(ModelGraph& graph,
                                       WeightedNodeSpecs specs,
                                       ModelWeightBinding weight,
                                       OpParams op_params,
-                                      std::string debug_name = {}) {
+                                      std::string debug_name = "") {
     inputs.push_back(graph.AddWeight(std::move(specs.weight), weight));
     return graph.AddNode(op_type,
                          decoder_layer_index,
@@ -93,7 +93,7 @@ ModelGraph::AddedNode AddPureNode(ModelGraph& graph,
                                   std::vector<GraphValueId> inputs,
                                   std::vector<TensorSpec> outputs,
                                   OpParams op_params,
-                                  std::string debug_name = {}) {
+                                  std::string debug_name = "") {
     std::vector<ModelGraph::NodeOutputDecl> output_decls;
     output_decls.reserve(outputs.size());
     for (TensorSpec& output: outputs) {
@@ -114,12 +114,13 @@ ModelGraph::AddedNode AddRmsNormNode(ModelGraph& graph,
                                      WeightedNodeSpecs specs,
                                      float eps,
                                      ModelWeightBinding weight) {
-    GraphValueId weight_value = graph.AddWeight(std::move(specs.weight), weight);
-    return graph.AddNode(OpType::kRmsNorm,
-                         decoder_layer_index,
-                         {input, weight_value},
-                         {ModelGraph::NodeOutputDecl{.spec = std::move(specs.output), .payload = ActivationValue{}}},
-                         RmsNormParams{.eps = eps});
+    return AddWeightedNode(graph,
+                           OpType::kRmsNorm,
+                           decoder_layer_index,
+                           {input},
+                           std::move(specs),
+                           weight,
+                           RmsNormParams{.eps = eps});
 }
 
 GraphValueId AppendDenseLlamaLayerNodes(ModelGraph& graph,
@@ -131,27 +132,27 @@ GraphValueId AppendDenseLlamaLayerNodes(ModelGraph& graph,
                                         RoPEParams rope_params) {
     const size_t layer_begin = graph.GetNodes().size();
 
-    const GraphValueId normed = OnlyOutput(AddRmsNormNode(graph,
+    const GraphValueId normed = OnlyOneOutput(AddRmsNormNode(graph,
                                                           layer_index,
                                                           hidden,
                                                           WeightedNodeSpecs{.weight = WeightTensor(layer.norm.input_rmsnorm), .output = specs.hidden},
                                                           rms_norm_eps,
                                                           Bind(ModelWeightRole::kInputNorm, layer_index)));
-    const GraphValueId q = OnlyOutput(AddWeightedNode(graph,
+    const GraphValueId q = OnlyOneOutput(AddWeightedNode(graph,
                                                       OpType::kLinear,
                                                       layer_index,
                                                       {normed},
                                                       WeightedNodeSpecs{.weight = WeightTensor(layer.attn.q_proj), .output = specs.hidden},
                                                       Bind(ModelWeightRole::kAttentionQ, layer_index),
                                                       LinearParams{}));
-    const GraphValueId k = OnlyOutput(AddWeightedNode(graph,
+    const GraphValueId k = OnlyOneOutput(AddWeightedNode(graph,
                                                       OpType::kLinear,
                                                       layer_index,
                                                       {normed},
                                                       WeightedNodeSpecs{.weight = WeightTensor(layer.attn.k_proj), .output = specs.kv_hidden},
                                                       Bind(ModelWeightRole::kAttentionK, layer_index),
                                                       LinearParams{}));
-    const GraphValueId v = OnlyOutput(AddWeightedNode(graph,
+    const GraphValueId v = OnlyOneOutput(AddWeightedNode(graph,
                                                       OpType::kLinear,
                                                       layer_index,
                                                       {normed},
@@ -161,46 +162,46 @@ GraphValueId AppendDenseLlamaLayerNodes(ModelGraph& graph,
     const ModelGraph::AddedNode rope = AddPureNode(graph, OpType::kRoPE, layer_index, {q, k}, {specs.hidden, specs.kv_hidden}, rope_params);
     const GraphValueId q_rope = rope.outputs[0];
     const GraphValueId k_rope = rope.outputs[1];
-    const GraphValueId scores = OnlyOutput(AddPureNode(graph, OpType::kMatMul, layer_index, {q_rope, k_rope}, {specs.scores}, MatMulParams{.transpose_rhs = true}));
-    const GraphValueId probs = OnlyOutput(AddPureNode(graph, OpType::kSoftmax, layer_index, {scores}, {specs.scores}, SoftmaxParams{.axis = -1}));
-    const GraphValueId attn = OnlyOutput(AddPureNode(graph, OpType::kMatMul, layer_index, {probs, v}, {specs.hidden}, MatMulParams{}));
-    const GraphValueId attn_out = OnlyOutput(AddWeightedNode(graph,
+    const GraphValueId scores = OnlyOneOutput(AddPureNode(graph, OpType::kMatMul, layer_index, {q_rope, k_rope}, {specs.scores}, MatMulParams{.transpose_rhs = true}));
+    const GraphValueId probs = OnlyOneOutput(AddPureNode(graph, OpType::kSoftmax, layer_index, {scores}, {specs.scores}, SoftmaxParams{.axis = -1}));
+    const GraphValueId attn = OnlyOneOutput(AddPureNode(graph, OpType::kMatMul, layer_index, {probs, v}, {specs.hidden}, MatMulParams{}));
+    const GraphValueId attn_out = OnlyOneOutput(AddWeightedNode(graph,
                                                              OpType::kLinear,
                                                              layer_index,
                                                              {attn},
                                                              WeightedNodeSpecs{.weight = WeightTensor(layer.attn.o_proj), .output = specs.hidden},
                                                              Bind(ModelWeightRole::kAttentionO, layer_index),
                                                              LinearParams{}));
-    const GraphValueId post_attn = OnlyOutput(AddPureNode(graph, OpType::kAdd, layer_index, {hidden, attn_out}, {specs.hidden}, AddParams{}));
-    const GraphValueId mlp_normed = OnlyOutput(AddRmsNormNode(graph,
+    const GraphValueId post_attn = OnlyOneOutput(AddPureNode(graph, OpType::kAdd, layer_index, {hidden, attn_out}, {specs.hidden}, AddParams{}));
+    const GraphValueId mlp_normed = OnlyOneOutput(AddRmsNormNode(graph,
                                                               layer_index,
                                                               post_attn,
                                                               WeightedNodeSpecs{.weight = WeightTensor(layer.norm.post_attn_rmsnorm), .output = specs.hidden},
                                                               rms_norm_eps,
                                                               Bind(ModelWeightRole::kPostAttentionNorm, layer_index)));
-    const GraphValueId gate = OnlyOutput(AddWeightedNode(graph,
+    const GraphValueId gate = OnlyOneOutput(AddWeightedNode(graph,
                                                          OpType::kLinear,
                                                          layer_index,
                                                          {mlp_normed},
                                                          WeightedNodeSpecs{.weight = WeightTensor(layer.mlp.gate_proj), .output = specs.intermediate},
                                                          Bind(ModelWeightRole::kMlpGate, layer_index),
                                                          LinearParams{}));
-    const GraphValueId up = OnlyOutput(AddWeightedNode(graph,
+    const GraphValueId up = OnlyOneOutput(AddWeightedNode(graph,
                                                        OpType::kLinear,
                                                        layer_index,
                                                        {mlp_normed},
                                                        WeightedNodeSpecs{.weight = WeightTensor(layer.mlp.up_proj), .output = specs.intermediate},
                                                        Bind(ModelWeightRole::kMlpUp, layer_index),
                                                        LinearParams{}));
-    const GraphValueId mlp_act = OnlyOutput(AddPureNode(graph, OpType::kSiluMul, layer_index, {gate, up}, {specs.intermediate}, SiluMulParams{}));
-    const GraphValueId mlp_out = OnlyOutput(AddWeightedNode(graph,
+    const GraphValueId mlp_act = OnlyOneOutput(AddPureNode(graph, OpType::kSiluMul, layer_index, {gate, up}, {specs.intermediate}, SiluMulParams{}));
+    const GraphValueId mlp_out = OnlyOneOutput(AddWeightedNode(graph,
                                                             OpType::kLinear,
                                                             layer_index,
                                                             {mlp_act},
                                                             WeightedNodeSpecs{.weight = WeightTensor(layer.mlp.down_proj), .output = specs.hidden},
                                                             Bind(ModelWeightRole::kMlpDown, layer_index),
                                                             LinearParams{}));
-    const GraphValueId hidden_out = OnlyOutput(AddPureNode(graph, OpType::kAdd, layer_index, {post_attn, mlp_out}, {specs.hidden}, AddParams{}));
+    const GraphValueId hidden_out = OnlyOneOutput(AddPureNode(graph, OpType::kAdd, layer_index, {post_attn, mlp_out}, {specs.hidden}, AddParams{}));
 
     AM_CHECK(graph.GetNodes().size() - layer_begin == kDenseLlamaLayerNodeCount,
              "Dense Llama layer node count changed unexpectedly");
@@ -242,7 +243,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
             {input_tokens, graph.AddWeight(WeightTensor(weights.embed_tokens), Bind(ModelWeightRole::kTokenEmbedding))},
             {ModelGraph::NodeOutputDecl{.spec = hidden, .payload = ActivationValue{}}},
             EmbeddingParams{});
-    GraphValueId hidden_value = OnlyOutput(embedding);
+    GraphValueId hidden_value = OnlyOneOutput(embedding);
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
         const DecoderLayerRawWeights& layer = weights.layers[layer_index];
@@ -260,7 +261,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                                                   MakeRoPEParams(config, head_dim));
     }
 
-    const GraphValueId final_hidden = OnlyOutput(AddRmsNormNode(graph,
+    const GraphValueId final_hidden = OnlyOneOutput(AddRmsNormNode(graph,
                                                                 std::nullopt,
                                                                 hidden_value,
                                                                 WeightedNodeSpecs{.weight = WeightTensor(weights.final_norm), .output = hidden},
@@ -268,14 +269,14 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                                                                 Bind(ModelWeightRole::kFinalNorm)));
 
     const RawWeightView& lm_head_weight = weights.lm_head.has_value() ? *weights.lm_head : weights.embed_tokens;
-    const GraphValueId logits_value = OnlyOutput(AddWeightedNode(graph,
+    const GraphValueId logits_value = OnlyOneOutput(AddWeightedNode(graph,
                                                                  OpType::kLinear,
                                                                  std::nullopt,
                                                                  {final_hidden},
                                                                  WeightedNodeSpecs{.weight = WeightTensor(lm_head_weight), .output = logits},
                                                                  Bind(ModelWeightRole::kLmHead),
                                                                  LinearParams{}));
-    const GraphValueId output_tokens = OnlyOutput(AddPureNode(graph,
+    const GraphValueId output_tokens = OnlyOneOutput(AddPureNode(graph,
                                                               OpType::kArgmax,
                                                               std::nullopt,
                                                               {logits_value},

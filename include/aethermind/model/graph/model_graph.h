@@ -134,7 +134,7 @@ public:
 
     /// Registers a model weight tensor and returns its value id.
     AM_NODISCARD GraphValueId AddWeight(TensorSpec spec, ModelWeightBinding binding,
-                                        std::string debug_name = {});
+                                        std::string debug_name = "");
 
     /// Adds an operator node with the given input and output declarations.
     ///

@@ -32,10 +32,25 @@ TEST(OperatorSchema, EmbeddingSchemaUsesModelInputAndWeight) {
 
     ASSERT_TRUE(schema.ok()) << schema.status().ToString();
     ASSERT_EQ(schema->input_ports.size(), 2U);
+    EXPECT_EQ(schema->input_ports[0].name, "tokens");
     EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kModelInput);
+    EXPECT_EQ(schema->input_ports[1].name, "weight");
     EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kWeight);
     ASSERT_EQ(schema->output_ports.size(), 1U);
+    EXPECT_EQ(schema->output_ports[0].name, "output");
     EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kActivation);
+}
+
+TEST(OperatorSchema, RopeSchemaUsesNamedDualInputsAndOutputs) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kRoPE);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    ASSERT_EQ(schema->input_ports.size(), 2U);
+    EXPECT_EQ(schema->input_ports[0].name, "q");
+    EXPECT_EQ(schema->input_ports[1].name, "k");
+    ASSERT_EQ(schema->output_ports.size(), 2U);
+    EXPECT_EQ(schema->output_ports[0].name, "q_rope");
+    EXPECT_EQ(schema->output_ports[1].name, "k_rope");
 }
 
 TEST(OperatorSchema, WeightedUnaryOpsUseActivationAndWeight) {
@@ -57,12 +72,12 @@ TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {
         size_t outputs = 0;
     };
     constexpr ExpectedArity kExpected[] = {
-            {OpType::kRoPE, 2, 2},
-            {OpType::kMatMul, 2, 1},
-            {OpType::kSoftmax, 1, 1},
-            {OpType::kAdd, 2, 1},
-            {OpType::kSiluMul, 2, 1},
-            {OpType::kArgmax, 1, 1},
+            ExpectedArity{.op_type = OpType::kRoPE, .inputs = 2, .outputs = 2},
+            ExpectedArity{.op_type = OpType::kMatMul, .inputs = 2, .outputs = 1},
+            ExpectedArity{.op_type = OpType::kSoftmax, .inputs = 1, .outputs = 1},
+            ExpectedArity{.op_type = OpType::kAdd, .inputs = 2, .outputs = 1},
+            ExpectedArity{.op_type = OpType::kSiluMul, .inputs = 2, .outputs = 1},
+            ExpectedArity{.op_type = OpType::kArgmax, .inputs = 1, .outputs = 1},
     };
 
     for (const ExpectedArity expected: kExpected) {

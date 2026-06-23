@@ -9,7 +9,7 @@
 namespace aethermind {
 namespace {
 
-TensorSpec Spec(DataType dtype, std::vector<int64_t> dims) {
+TensorSpec Spec(DataType dtype, const std::vector<int64_t>& dims) {
     std::vector<ShapeSymbol> symbols;
     symbols.reserve(dims.size());
     for (const int64_t dim: dims) {
@@ -38,7 +38,8 @@ ModelGraph BuildValidEmbeddingGraph() {
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            EmbeddingParams{});
     graph.MarkOutput(embedding.outputs[0], "hidden");
     return graph;
 }
@@ -53,7 +54,7 @@ TEST(ModelGraph, PublicApiCreatesInputsWeightsNodesAndOutputs) {
             0U,
             {input, weight},
             {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}, .debug_name = "normed"}},
-            {},
+            RmsNormParams{},
             {},
             "rms_norm_0");
     graph.MarkOutput(node.outputs[0], "normed_output");
@@ -79,6 +80,93 @@ TEST(ModelGraph, ValidateAcceptsValidGraph) {
     const ModelGraph graph = BuildValidEmbeddingGraph();
 
     EXPECT_TRUE(graph.Validate().ok());
+}
+
+TEST(ModelGraph, OpParamsRoundTripThroughAddNode) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
+    const GraphValueId weight = graph.AddWeight(WeightSpec(), ModelWeightBinding{.role = ModelWeightRole::kInputNorm});
+
+    const ModelGraph::AddedNode node = graph.AddNode(
+            OpType::kRmsNorm,
+            0U,
+            {input, weight},
+            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            RmsNormParams{.eps = 2.5e-3F});
+
+    const auto* params = std::get_if<RmsNormParams>(&graph.GetNode(node.node).op_params);
+    ASSERT_NE(params, nullptr);
+    EXPECT_FLOAT_EQ(params->eps, 2.5e-3F);
+}
+
+TEST(ModelGraph, ValidateRejectsMissingOpParams) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), ModelWeightBinding{.role = ModelWeightRole::kTokenEmbedding});
+    [[maybe_unused]] const ModelGraph::AddedNode node = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsWrongOpParamsForOpType) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), ModelWeightBinding{.role = ModelWeightRole::kTokenEmbedding});
+    [[maybe_unused]] const ModelGraph::AddedNode node = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            RmsNormParams{});
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsInvalidRmsNormEps) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
+    const GraphValueId weight = graph.AddWeight(WeightSpec(), ModelWeightBinding{.role = ModelWeightRole::kInputNorm});
+    [[maybe_unused]] const ModelGraph::AddedNode node = graph.AddNode(
+            OpType::kRmsNorm,
+            0U,
+            {input, weight},
+            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            RmsNormParams{.eps = 0.0F});
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsInvalidRoPEParams) {
+    ModelGraph graph;
+    const GraphValueId q = graph.AddInput(ActivationSpec(), "q");
+    const GraphValueId k = graph.AddInput(ActivationSpec(), "k");
+    [[maybe_unused]] const ModelGraph::AddedNode node = graph.AddNode(
+            OpType::kRoPE,
+            0U,
+            {q, k},
+            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}},
+             ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            RoPEParams{.head_dim = 0,
+                       .num_attention_heads = 4,
+                       .num_key_value_heads = 2,
+                       .max_position_embeddings = 128});
+
+    const Status status = graph.Validate();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsMonostatePayload) {

@@ -13,7 +13,7 @@ OperatorOutputPort Output(uint32_t index, const char* name) {
     return OperatorOutputPort{.index = index, .name = name, .kind = OperatorPortKind::kActivation};
 }
 
-const std::array<OperatorSchema, 9> kM1OperatorSchemas{
+const std::array<OperatorSchema, 9> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kEmbedding,
                 .input_ports = {Input(0, "tokens", OperatorPortKind::kModelInput),
@@ -71,7 +71,7 @@ const std::array<OperatorSchema, 9> kM1OperatorSchemas{
 }// namespace
 
 StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type) {
-    for (const OperatorSchema& schema: kM1OperatorSchemas) {
+    for (const OperatorSchema& schema: kOperatorSchemas) {
         if (schema.op_type == op_type) {
             return schema;
         }
@@ -80,7 +80,7 @@ StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type) {
 }
 
 std::span<const OperatorSchema> GetOperatorSchemas() noexcept {
-    return kM1OperatorSchemas;
+    return kOperatorSchemas;
 }
 
 }// namespace aethermind

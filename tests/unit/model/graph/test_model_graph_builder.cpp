@@ -1,12 +1,9 @@
 #include "aethermind/model/graph/model_graph_builder.h"
 
-#include "aethermind/operators/embedding_op.h"
-#include "aethermind/operators/rmsnorm_op.h"
-
 #include <gtest/gtest.h>
 
-#include <any>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace aethermind {
@@ -89,6 +86,16 @@ const ModelWeightBinding& WeightBindingAt(const ModelGraph& graph, const GraphNo
     return std::get<WeightValue>(value.payload).binding;
 }
 
+void ExpectLayerWeightBinding(const ModelGraph& graph,
+                              const GraphNode& node,
+                              ModelWeightRole role,
+                              uint32_t layer_index) {
+    const ModelWeightBinding& binding = WeightBindingAt(graph, node, 1);
+    EXPECT_EQ(binding.role, role);
+    ASSERT_TRUE(binding.decoder_layer_index.has_value());
+    EXPECT_EQ(*binding.decoder_layer_index, layer_index);
+}
+
 TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);
@@ -162,22 +169,22 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     EXPECT_EQ(token_embedding.role, ModelWeightRole::kTokenEmbedding);
     EXPECT_FALSE(token_embedding.decoder_layer_index.has_value());
     EXPECT_TRUE(nodes[0].attrs.bytes.empty());
-    EXPECT_NE(std::any_cast<EmbeddingOp::Params>(&nodes[0].op_params), nullptr);
+    EXPECT_NE(std::get_if<EmbeddingParams>(&nodes[0].op_params), nullptr);
 
     const GraphNode& input_norm = nodes[1];
-    const ModelWeightBinding& input_norm_weight = WeightBindingAt(*graph, input_norm, 1);
-    EXPECT_EQ(input_norm_weight.role, ModelWeightRole::kInputNorm);
-    ASSERT_TRUE(input_norm_weight.decoder_layer_index.has_value());
-    EXPECT_EQ(*input_norm_weight.decoder_layer_index, 0U);
-    const auto* rms_params = std::any_cast<RmsNormOp::Params>(&input_norm.op_params);
+    ExpectLayerWeightBinding(*graph, input_norm, ModelWeightRole::kInputNorm, 0U);
+    const auto* rms_params = std::get_if<RmsNormParams>(&input_norm.op_params);
     ASSERT_NE(rms_params, nullptr);
     EXPECT_FLOAT_EQ(rms_params->eps, static_cast<float>(config.rms_norm_eps));
 
-    const GraphNode& q_proj = nodes[2];
-    const ModelWeightBinding& q_proj_weight = WeightBindingAt(*graph, q_proj, 1);
-    EXPECT_EQ(q_proj_weight.role, ModelWeightRole::kAttentionQ);
-    ASSERT_TRUE(q_proj_weight.decoder_layer_index.has_value());
-    EXPECT_EQ(*q_proj_weight.decoder_layer_index, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[2], ModelWeightRole::kAttentionQ, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[3], ModelWeightRole::kAttentionK, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[4], ModelWeightRole::kAttentionV, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[9], ModelWeightRole::kAttentionO, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[11], ModelWeightRole::kPostAttentionNorm, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[12], ModelWeightRole::kMlpGate, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[13], ModelWeightRole::kMlpUp, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[15], ModelWeightRole::kMlpDown, 0U);
 
     const GraphNode& final_norm = nodes[17];
     const ModelWeightBinding& final_norm_weight = WeightBindingAt(*graph, final_norm, 1);
@@ -188,6 +195,98 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     const ModelWeightBinding& lm_head_weight = WeightBindingAt(*graph, lm_head, 1);
     EXPECT_EQ(lm_head_weight.role, ModelWeightRole::kLmHead);
     EXPECT_FALSE(lm_head_weight.decoder_layer_index.has_value());
+}
+
+TEST(ModelGraphBuilder, RecordsTypedParamsForAllGraphOps) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const auto nodes = graph->GetNodes();
+
+    EXPECT_NE(std::get_if<EmbeddingParams>(&nodes[0].op_params), nullptr);
+    EXPECT_NE(std::get_if<LinearParams>(&nodes[2].op_params), nullptr);
+    EXPECT_NE(std::get_if<LinearParams>(&nodes[3].op_params), nullptr);
+    EXPECT_NE(std::get_if<LinearParams>(&nodes[4].op_params), nullptr);
+
+    const auto* rope_params = std::get_if<RoPEParams>(&nodes[5].op_params);
+    ASSERT_NE(rope_params, nullptr);
+    EXPECT_EQ(rope_params->head_dim, config.head_dim);
+    EXPECT_EQ(rope_params->num_attention_heads, config.num_attention_heads);
+    EXPECT_EQ(rope_params->num_key_value_heads, config.num_key_value_heads);
+    EXPECT_EQ(rope_params->max_position_embeddings, config.max_position_embeddings);
+    EXPECT_DOUBLE_EQ(rope_params->theta, config.rope.theta);
+
+    const auto* score_params = std::get_if<MatMulParams>(&nodes[6].op_params);
+    ASSERT_NE(score_params, nullptr);
+    EXPECT_TRUE(score_params->transpose_rhs);
+    const auto* attn_params = std::get_if<MatMulParams>(&nodes[8].op_params);
+    ASSERT_NE(attn_params, nullptr);
+    EXPECT_FALSE(attn_params->transpose_rhs);
+
+    const auto* softmax_params = std::get_if<SoftmaxParams>(&nodes[7].op_params);
+    ASSERT_NE(softmax_params, nullptr);
+    EXPECT_EQ(softmax_params->axis, -1);
+    EXPECT_NE(std::get_if<AddParams>(&nodes[10].op_params), nullptr);
+    EXPECT_NE(std::get_if<SiluMulParams>(&nodes[14].op_params), nullptr);
+    EXPECT_NE(std::get_if<AddParams>(&nodes[16].op_params), nullptr);
+    EXPECT_NE(std::get_if<LinearParams>(&nodes[18].op_params), nullptr);
+    const auto* argmax_params = std::get_if<ArgmaxParams>(&nodes[19].op_params);
+    ASSERT_NE(argmax_params, nullptr);
+    EXPECT_EQ(argmax_params->axis, -1);
+}
+
+TEST(ModelGraphBuilder, TracesResidualDataflowInAttention) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const auto nodes = graph->GetNodes();
+    const GraphNode& embedding = nodes[0];
+    const GraphNode& attention_o = nodes[9];
+    const GraphNode& residual_add = nodes[10];
+    ASSERT_EQ(residual_add.inputs.size(), 2U);
+    EXPECT_EQ(residual_add.inputs[0], embedding.outputs[0]);
+    EXPECT_EQ(residual_add.inputs[1], attention_o.outputs[0]);
+
+    const StatusOr<std::vector<std::vector<GraphNodeId>>> index = BuildConsumerIndex(*graph);
+    ASSERT_TRUE(index.ok()) << index.status().ToString();
+    const std::span<const GraphNodeId> hidden_consumers = GetConsumers(*index, embedding.outputs[0]);
+    ASSERT_EQ(hidden_consumers.size(), 2U);
+    EXPECT_EQ(hidden_consumers[0], GraphNodeId{1});
+    EXPECT_EQ(hidden_consumers[1], GraphNodeId{10});
+}
+
+TEST(ModelGraphBuilder, TracesRopeDualOutputDataflow) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const auto nodes = graph->GetNodes();
+    const GraphNode& rope = nodes[5];
+    const GraphNode& score_matmul = nodes[6];
+    ASSERT_EQ(rope.outputs.size(), 2U);
+    ASSERT_EQ(score_matmul.inputs.size(), 2U);
+    EXPECT_EQ(score_matmul.inputs[0], rope.outputs[0]);
+    EXPECT_EQ(score_matmul.inputs[1], rope.outputs[1]);
+
+    const StatusOr<std::vector<std::vector<GraphNodeId>>> index = BuildConsumerIndex(*graph);
+    ASSERT_TRUE(index.ok()) << index.status().ToString();
+    ASSERT_EQ(GetConsumers(*index, rope.outputs[0]).size(), 1U);
+    EXPECT_EQ(GetConsumers(*index, rope.outputs[0])[0], GraphNodeId{6});
+    ASSERT_EQ(GetConsumers(*index, rope.outputs[1]).size(), 1U);
+    EXPECT_EQ(GetConsumers(*index, rope.outputs[1])[0], GraphNodeId{6});
+
+    const TensorSpec& q_rope = graph->GetValue(rope.outputs[0]).spec;
+    const TensorSpec& k_rope = graph->GetValue(rope.outputs[1]).spec;
+    EXPECT_EQ(q_rope.shape[1].GetStaticValue(), config.hidden_size);
+    EXPECT_EQ(k_rope.shape[1].GetStaticValue(), config.num_key_value_heads * config.head_dim);
 }
 
 TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {

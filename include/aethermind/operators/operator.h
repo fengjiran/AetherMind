@@ -2,13 +2,14 @@
 #define AETHERMIND_OPERATORS_OPERATOR_H
 
 #include "aethermind/backend/resolved_kernel.h"
-#include "aethermind/shape_inference/shape_constraint.h"
-#include "aethermind/shape_inference/shape_symbol.h"
 #include "aethermind/base/status.h"
+#include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator_context.h"
 #include "aethermind/runtime/workspace.h"
-#include "aethermind/dtypes/data_type.h"
+#include "aethermind/shape_inference/shape_constraint.h"
+#include "aethermind/shape_inference/shape_symbol.h"
+#include "aethermind/shape_inference/tensor_spec.h"
 #include "macros.h"
 
 #include <memory>
@@ -19,11 +20,6 @@ namespace aethermind {
 
 struct KernelContext;
 class RuntimeBindingContext;
-
-struct TensorSpec {
-    DataType dtype{};
-    SymbolicShape shape{};
-};
 
 /// Result of operator-level shape inference.
 ///

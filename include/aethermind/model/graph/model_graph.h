@@ -24,7 +24,7 @@
 namespace aethermind {
 
 /// Identifies the logical role of a weight tensor in a model architecture.
-enum class ModelWeightRole : uint8_t {
+enum class WeightRole : uint8_t {
     kTokenEmbedding,
     kAttentionQ,
     kAttentionK,
@@ -39,9 +39,9 @@ enum class ModelWeightRole : uint8_t {
     kLmHead,
 };
 
-struct ModelWeightBinding {
-    ModelWeightRole role{};
+struct WeightBinding {
     std::optional<uint32_t> decoder_layer_index{};
+    WeightRole role{};
 };
 
 enum class StateKind : uint8_t {
@@ -83,7 +83,7 @@ struct ActivationValue {};
 
 /// Payload tag for model weight values with a logical binding.
 struct WeightValue {
-    ModelWeightBinding binding{};
+    WeightBinding binding{};
 };
 
 /// Payload tag for persistent state values that survive across execution steps.
@@ -154,7 +154,7 @@ public:
     AM_NODISCARD GraphValueId AddInput(TensorSpec spec, std::string name);
 
     /// Registers a model weight tensor and returns its value id.
-    AM_NODISCARD GraphValueId AddWeight(TensorSpec spec, ModelWeightBinding binding,
+    AM_NODISCARD GraphValueId AddWeight(TensorSpec spec, WeightBinding binding,
                                         std::string debug_name = "");
 
     /// Registers a persistent state tensor and returns its value id.

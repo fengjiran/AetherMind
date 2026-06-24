@@ -81,7 +81,7 @@ const TensorSpec& OnlyOneOutput(const ModelGraph& graph, const GraphNode& node) 
     return graph.GetValue(node.outputs.front()).spec;
 }
 
-const ModelWeightBinding& WeightBindingAt(const ModelGraph& graph, const GraphNode& node, size_t input_index) {
+const WeightBinding& WeightBindingAt(const ModelGraph& graph, const GraphNode& node, size_t input_index) {
     const GraphValue& value = graph.GetValue(node.inputs[input_index]);
     return std::get<WeightValue>(value.payload).binding;
 }
@@ -93,9 +93,9 @@ const StateBinding& StateBindingForValue(const ModelGraph& graph, GraphValueId v
 
 void ExpectLayerWeightBinding(const ModelGraph& graph,
                               const GraphNode& node,
-                              ModelWeightRole role,
+                              WeightRole role,
                               uint32_t layer_index) {
-    const ModelWeightBinding& binding = WeightBindingAt(graph, node, 1);
+    const WeightBinding& binding = WeightBindingAt(graph, node, 1);
     EXPECT_EQ(binding.role, role);
     ASSERT_TRUE(binding.decoder_layer_index.has_value());
     EXPECT_EQ(*binding.decoder_layer_index, layer_index);
@@ -169,35 +169,35 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
 
-    const ModelWeightBinding& token_embedding = WeightBindingAt(*graph, nodes[0], 1);
-    EXPECT_EQ(token_embedding.role, ModelWeightRole::kTokenEmbedding);
+    const WeightBinding& token_embedding = WeightBindingAt(*graph, nodes[0], 1);
+    EXPECT_EQ(token_embedding.role, WeightRole::kTokenEmbedding);
     EXPECT_FALSE(token_embedding.decoder_layer_index.has_value());
     EXPECT_TRUE(nodes[0].attrs.bytes.empty());
     EXPECT_NE(std::get_if<EmbeddingParams>(&nodes[0].op_params), nullptr);
 
     const GraphNode& input_norm = nodes[1];
-    ExpectLayerWeightBinding(*graph, input_norm, ModelWeightRole::kInputNorm, 0U);
+    ExpectLayerWeightBinding(*graph, input_norm, WeightRole::kInputNorm, 0U);
     const auto* rms_params = std::get_if<RmsNormParams>(&input_norm.op_params);
     ASSERT_NE(rms_params, nullptr);
     EXPECT_FLOAT_EQ(rms_params->eps, static_cast<float>(config.rms_norm_eps));
 
-    ExpectLayerWeightBinding(*graph, nodes[2], ModelWeightRole::kAttentionQ, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[3], ModelWeightRole::kAttentionK, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[4], ModelWeightRole::kAttentionV, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[8], ModelWeightRole::kAttentionO, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[10], ModelWeightRole::kPostAttentionNorm, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[11], ModelWeightRole::kMlpGate, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[12], ModelWeightRole::kMlpUp, 0U);
-    ExpectLayerWeightBinding(*graph, nodes[14], ModelWeightRole::kMlpDown, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[2], WeightRole::kAttentionQ, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[3], WeightRole::kAttentionK, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[4], WeightRole::kAttentionV, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[8], WeightRole::kAttentionO, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[10], WeightRole::kPostAttentionNorm, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[11], WeightRole::kMlpGate, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[12], WeightRole::kMlpUp, 0U);
+    ExpectLayerWeightBinding(*graph, nodes[14], WeightRole::kMlpDown, 0U);
 
     const GraphNode& final_norm = nodes[16];
-    const ModelWeightBinding& final_norm_weight = WeightBindingAt(*graph, final_norm, 1);
-    EXPECT_EQ(final_norm_weight.role, ModelWeightRole::kFinalNorm);
+    const WeightBinding& final_norm_weight = WeightBindingAt(*graph, final_norm, 1);
+    EXPECT_EQ(final_norm_weight.role, WeightRole::kFinalNorm);
     EXPECT_FALSE(final_norm_weight.decoder_layer_index.has_value());
 
     const GraphNode& lm_head = nodes[17];
-    const ModelWeightBinding& lm_head_weight = WeightBindingAt(*graph, lm_head, 1);
-    EXPECT_EQ(lm_head_weight.role, ModelWeightRole::kLmHead);
+    const WeightBinding& lm_head_weight = WeightBindingAt(*graph, lm_head, 1);
+    EXPECT_EQ(lm_head_weight.role, WeightRole::kLmHead);
     EXPECT_FALSE(lm_head_weight.decoder_layer_index.has_value());
 }
 

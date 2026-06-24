@@ -632,7 +632,7 @@ ModelGraph
          ├─ op_type: OpType
          ├─ layer_index: uint32_t
          ├─ inputs/outputs: vector<ModelTensorSpec>
-         ├─ weights: vector<ModelWeightBinding>
+         ├─ weights: vector<WeightBinding>
          ├─ attrs: ModelGraphAttrs (owned bytes)
          ├─ op_params: std::any
          └─ workspace_requirement: WorkspaceRequirement

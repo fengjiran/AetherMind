@@ -28,7 +28,7 @@
 | `op_params` (std::any) | `op_params` (std::any) | 移动/复制 | ✅ |
 | `workspace_requirement` | `workspace_requirement` | 直接复制 | ⚠️ 见 P1-4 |
 | `outputs` (vector\<TensorSpec\>) | **不存在** | 丢弃 | ⚠️ 见 P1-2 |
-| `weights` (vector\<ModelWeightBinding\>) | **不存在** | lowering 解析为 packed_weights | ✅ |
+| `weights` (vector\<WeightBinding\>) | **不存在** | lowering 解析为 packed_weights | ✅ |
 | `layer_index` (uint32_t) | **不存在** | 用于权重解析，不传入 spec | ✅ |
 | — | `device_type` | 来自 GraphLoweringOptions | ✅ |
 | — | `activation_dtype` | 来自 GraphLoweringOptions | ✅ |
@@ -39,11 +39,11 @@
 
 **结论**：字段映射基本完整，6 个 KernelSelector 字段正确地从 GraphLoweringOptions 填充而非存储在 ModelGraphNode 中。
 
-### 2.2 ModelWeightBinding 解析可行性
+### 2.2 WeightBinding 解析可行性
 
 `(role, layer_index)` → `RawWeightView` 的映射逻辑：
 
-| ModelWeightRole | ResolvedModelWeights 路径 |
+| WeightRole | ResolvedModelWeights 路径 |
 |----------------|-------------------------|
 | `kTokenEmbedding` | `.embed_tokens` |
 | `kInputNorm` + layer=i | `.layers[i].norm.input_rmsnorm` |
@@ -79,7 +79,7 @@
 
 §7.5 明确声明 "不包含 KernelSelector，因为 selector 中的 device、ISA、phase 是 lowering 时结合 runtime/backend 决策产生的"。这是正确的关注点分离——同一个 ModelGraph 可以搭配不同的 GraphLoweringOptions 生成不同后端的 spec，无需重建 graph。
 
-### 2. ModelWeightBinding 使用查找键而非裸指针
+### 2. WeightBinding 使用查找键而非裸指针
 
 §7.3 的 `(role, layer_index)` 设计消除了悬垂指针风险，且与 `ResolvedModelWeights` 的层级结构天然对齐。
 
@@ -151,9 +151,9 @@ for (const auto& node : graph.GetNodes()) {
 
 或者更轻量的方案：在 `ExecutionPlanNodeSpec` 中添加 `expected_output_specs`，`ExecutionPlanBuilder` 在 `InferOutputShapes` 后与之比较。
 
-### 🟡 P1-3：ModelWeightBinding 解析逻辑未指定归属
+### 🟡 P1-3：WeightBinding 解析逻辑未指定归属
 
-§8.4 lowering 职责第 4 条声明 "根据 ModelWeightBinding 的 (role, layer_index) 从 ModelInstance::GetResolvedWeights() 解析实际权重引用"，但 **解析函数的归属未明确**：
+§8.4 lowering 职责第 4 条声明 "根据 WeightBinding 的 (role, layer_index) 从 ModelInstance::GetResolvedWeights() 解析实际权重引用"，但 **解析函数的归属未明确**：
 
 - 是 `GraphToExecutionPlanLowering` 的内部实现细节？
 - 还是 `ModelInstance` 或 `ResolvedModelWeights` 应提供公共 API？
@@ -164,7 +164,7 @@ for (const auto& node : graph.GetNodes()) {
 
 ```cpp
 // resolved_model_weights.h
-AM_NODISCARD const RawWeightView* FindWeight(ModelWeightRole role, uint32_t layer_index) const noexcept;
+AM_NODISCARD const RawWeightView* FindWeight(WeightRole role, uint32_t layer_index) const noexcept;
 ```
 
 这样 lowering 只需调用 `model_instance.GetResolvedWeights().FindWeight(binding.role, binding.layer_index)`。
@@ -219,11 +219,11 @@ if (!node.attrs.bytes.empty() && node.op_params.has_value()) {
 
 这些对调试和测试有价值，但不影响核心功能。
 
-### 🟢 P3-2：ModelWeightRole 枚举缺少 kBias 角色
+### 🟢 P3-2：WeightRole 枚举缺少 kBias 角色
 
-当前 `ModelWeightRole` 只覆盖了权重角色，没有 `kBias`（线性层偏置）。`HfModelConfig::attention_bias` 和 `mlp_bias` 字段表明部分模型使用偏置，但 `ModelWeightRole` 未预留。
+当前 `WeightRole` 只覆盖了权重角色，没有 `kBias`（线性层偏置）。`HfModelConfig::attention_bias` 和 `mlp_bias` 字段表明部分模型使用偏置，但 `WeightRole` 未预留。
 
-**影响**：Phase 1 Llama 模型无偏置，不影响。但 `HfModelConfig` 已预留了 bias 字段，建议在 `ModelWeightRole` 中同步预留。
+**影响**：Phase 1 Llama 模型无偏置，不影响。但 `HfModelConfig` 已预留了 bias 字段，建议在 `WeightRole` 中同步预留。
 
 ---
 
@@ -240,7 +240,7 @@ if (!node.attrs.bytes.empty() && node.op_params.has_value()) {
        layer_index = 0,
        inputs = [TensorSpec{float32, [S, H]}, TensorSpec{float32, [H]}],
        outputs = [TensorSpec{float32, [S, H]}],
-       weights = [ModelWeightBinding{kInputNorm, 0}],
+       weights = [WeightBinding{kInputNorm, 0}],
        attrs = {},
        op_params = RmsNormOp::Params{eps = 1e-6},
        workspace_requirement = {},
@@ -288,7 +288,7 @@ if (!node.attrs.bytes.empty() && node.op_params.has_value()) {
 以 "Q Projection, layer=3" 为例：
 
 ```
-1. ModelGraphNode.weights = [ModelWeightBinding{kAttentionQ, 3}]
+1. ModelGraphNode.weights = [WeightBinding{kAttentionQ, 3}]
 
 2. Lowering 解析:
    model_instance.GetResolvedWeights().layers[3].attn.q_proj → RawWeightView
@@ -360,13 +360,13 @@ if (!node.attrs.bytes.empty() && node.op_params.has_value()) {
 | 🟠 P2-3 | ModelGraph 不可变性未类型强制 | 修改方法设为 private + friend builder | 防止误修改 |
 | 🟠 P2-4 | GraphLoweringShapeContext 扩展性 | 文档中声明 Phase 2 扩展计划 | 前瞻性 |
 | 🟢 P3-1 | 缺少调试接口 | 添加 DebugDump/NodeCount/FindNodesByType | 开发体验 |
-| 🟢 P3-2 | ModelWeightRole 缺少 kBias | 预留 kBias 角色 | 与 HfModelConfig 对齐 |
+| 🟢 P3-2 | WeightRole 缺少 kBias | 预留 kBias 角色 | 与 HfModelConfig 对齐 |
 
 ---
 
 ## 十、总结
 
-ModelGraph 数据结构设计整体合理，核心决策——**ModelGraphNode 不含 KernelSelector**、**ModelWeightBinding 使用查找键**、**允许未实现 OpType**、**GraphLoweringShapeContext 分离请求级 shape**——都是正确的架构选择。与现有代码库的兼容性良好，字段映射完整，端到端数据流验证通过。
+ModelGraph 数据结构设计整体合理，核心决策——**ModelGraphNode 不含 KernelSelector**、**WeightBinding 使用查找键**、**允许未实现 OpType**、**GraphLoweringShapeContext 分离请求级 shape**——都是正确的架构选择。与现有代码库的兼容性良好，字段映射完整，端到端数据流验证通过。
 
 最关键的缺陷是 **无显式数据流边**（P1-1），这导致 lowering 必须硬编码拓扑知识来处理残差连接，违反了 graph 与 lowering 解耦的设计原则。建议通过 `input_sources` 字段解决，实现成本极低（Phase 1 顺序拓扑的 input_sources 可由 builder 自动推导），但收益显著——lowering 逻辑与拓扑完全解耦。
 

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <variant>
 
 namespace aethermind {
 namespace {
@@ -36,9 +37,9 @@ TensorSpec ActivationTensor(DataType dtype, ShapeSymbol seq_len, int64_t feature
     return SymbolicTensorSpec(dtype, {seq_len, ShapeSymbol::CreateFromValue(feature_dim)});
 }
 
-TensorSpec KVCacheTensor(DataType dtype, int64_t num_kv_heads, ShapeSymbol seq_len, int64_t head_dim) {
+TensorSpec KVCacheTensor(DataType dtype, int64_t num_kv_heads, ShapeSymbol cache_len, int64_t head_dim) {
     return SymbolicTensorSpec(dtype, {ShapeSymbol::CreateFromValue(num_kv_heads),
-                                      seq_len,
+                                      cache_len,
                                       ShapeSymbol::CreateFromValue(head_dim)});
 }
 
@@ -181,33 +182,36 @@ GraphValueId AppendDenseLlamaLayerNodes(ModelGraph& graph,
                                               .output = specs.kv_hidden_spec},
                             Bind(WeightRole::kAttentionV, layer_index),
                             LinearParams{}));
-    const auto rope = AddPureNode(
-            graph,
-            OpType::kRoPE,
-            layer_index,
-            {q, k, layer_inputs.position_ids},
-            {specs.hidden_spec, specs.kv_hidden_spec},
-            rope_params);
+    const auto rope = AddPureNode(graph,
+                                  OpType::kRoPE,
+                                  layer_index,
+                                  {q, k, layer_inputs.position_ids},
+                                  {specs.hidden_spec, specs.kv_hidden_spec},
+                                  rope_params);
     const GraphValueId q_rope = rope.outputs[0];
     const GraphValueId k_rope = rope.outputs[1];
 
-    StateBinding kv_cache_binding = std::get<StateValue>(
-                                            graph.GetValue(layer_inputs.kv_cache).payload)
-                                            .binding;
-    kv_cache_binding.decoder_layer_index = layer_index;
-    const GraphValueId kv_cache_out = OnlyOneOutput(AddPureNode(graph,
-                                                                OpType::kKVCacheUpdate,
-                                                                layer_index,
-                                                                {k_rope, v, layer_inputs.kv_cache},
-                                                                {specs.kv_cache_spec},
-                                                                KVCacheUpdateParams{},
-                                                                StateValue{.binding = kv_cache_binding}));
-    const GraphValueId attn = OnlyOneOutput(AddPureNode(graph,
-                                                        OpType::kAttention,
-                                                        layer_index,
-                                                        {q_rope, kv_cache_out},
-                                                        {specs.hidden_spec},
-                                                        attention_params));
+    const GraphValue& kv_cache_value = graph.GetValue(layer_inputs.kv_cache);
+    const auto* kv_cache_state = std::get_if<StateValue>(&kv_cache_value.payload);
+    AM_CHECK(kv_cache_state != nullptr, "KV cache input must be a StateValue");
+    const StateBinding& kv_cache_binding = kv_cache_state->binding;// NOLINT
+    AM_CHECK(kv_cache_binding.decoder_layer_index.has_value(), "KV cache input must carry a decoder layer index");
+    AM_CHECK(*kv_cache_binding.decoder_layer_index == layer_index, "KV cache input layer index must match the layer being built");
+    const GraphValueId kv_cache_out = OnlyOneOutput(
+            AddPureNode(graph,
+                        OpType::kKVCacheUpdate,
+                        layer_index,
+                        {k_rope, v, layer_inputs.kv_cache},
+                        {specs.kv_cache_spec},
+                        KVCacheUpdateParams{},
+                        StateValue{.binding = kv_cache_binding}));
+    const GraphValueId attn = OnlyOneOutput(
+            AddPureNode(graph,
+                        OpType::kAttention,
+                        layer_index,
+                        {q_rope, kv_cache_out},
+                        {specs.hidden_spec},
+                        attention_params));
     const GraphValueId attn_out = OnlyOneOutput(AddWeightedNode(graph,
                                                                 OpType::kLinear,
                                                                 layer_index,
@@ -264,6 +268,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     const DataType act_dtype = !config.weight_dtype_hint.IsUndefined() ? config.weight_dtype_hint
                                                                        : DataType::Float32();
     const ShapeSymbol seq_len = ShapeSymbol::Create();
+    const ShapeSymbol kv_len = ShapeSymbol::Create();
     const int64_t hidden_size = config.hidden_size;
     const int64_t head_dim = config.head_dim != 0 ? config.head_dim
                                                   : config.hidden_size / config.num_attention_heads;
@@ -274,7 +279,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     const TensorSpec hidden_spec = ActivationTensor(act_dtype, seq_len, hidden_size);
     const TensorSpec kv_hidden_spec = ActivationTensor(act_dtype, seq_len, kv_hidden_size);
     const TensorSpec intermediate_spec = ActivationTensor(act_dtype, seq_len, config.intermediate_size);
-    const TensorSpec kv_cache_spec = KVCacheTensor(act_dtype, config.num_key_value_heads, seq_len, head_dim);
+    const TensorSpec kv_cache_spec = KVCacheTensor(act_dtype, config.num_key_value_heads, kv_len, head_dim);
     const TensorSpec logits_spec = ActivationTensor(act_dtype, seq_len, config.vocab_size);
     const auto rms_norm_eps = static_cast<float>(config.rms_norm_eps);
 

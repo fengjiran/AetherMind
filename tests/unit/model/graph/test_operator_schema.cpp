@@ -47,9 +47,11 @@ TEST(OperatorSchema, RopeSchemaUsesNamedDualInputsAndOutputs) {
     const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kRoPE);
 
     ASSERT_TRUE(schema.ok()) << schema.status().ToString();
-    ASSERT_EQ(schema->input_ports.size(), 2U);
+    ASSERT_EQ(schema->input_ports.size(), 3U);
     EXPECT_EQ(schema->input_ports[0].name, "q");
     EXPECT_EQ(schema->input_ports[1].name, "k");
+    EXPECT_EQ(schema->input_ports[2].name, "position_ids");
+    EXPECT_EQ(schema->input_ports[2].kind, OperatorPortKind::kModelInput);
     ASSERT_EQ(schema->output_ports.size(), 2U);
     EXPECT_EQ(schema->output_ports[0].name, "q_rope");
     EXPECT_EQ(schema->output_ports[1].name, "k_rope");
@@ -109,7 +111,7 @@ TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {
         size_t outputs = 0;
     };
     constexpr ExpectedArity kExpected[] = {
-            ExpectedArity{.op_type = OpType::kRoPE, .inputs = 2, .outputs = 2},
+            ExpectedArity{.op_type = OpType::kRoPE, .inputs = 3, .outputs = 2},
             ExpectedArity{.op_type = OpType::kMatMul, .inputs = 2, .outputs = 1},
             ExpectedArity{.op_type = OpType::kSoftmax, .inputs = 1, .outputs = 1},
             ExpectedArity{.op_type = OpType::kAdd, .inputs = 2, .outputs = 1},
@@ -124,7 +126,14 @@ TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {
         ASSERT_EQ(schema->output_ports.size(), expected.outputs) << ToString(expected.op_type);
         for (size_t index = 0; index < schema->input_ports.size(); ++index) {
             EXPECT_EQ(schema->input_ports[index].index, index) << ToString(expected.op_type);
-            EXPECT_EQ(schema->input_ports[index].kind, OperatorPortKind::kActivation) << ToString(expected.op_type);
+        }
+        EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation) << ToString(expected.op_type);
+        if (schema->input_ports.size() > 1) {
+            EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kActivation) << ToString(expected.op_type);
+        }
+        if (expected.op_type == OpType::kRoPE) {
+            EXPECT_EQ(schema->input_ports[2].kind, OperatorPortKind::kModelInput) << ToString(expected.op_type);
+            EXPECT_EQ(schema->input_ports[2].name, "position_ids") << ToString(expected.op_type);
         }
         for (size_t index = 0; index < schema->output_ports.size(); ++index) {
             EXPECT_EQ(schema->output_ports[index].index, index) << ToString(expected.op_type);

@@ -109,8 +109,9 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     ASSERT_EQ(graph->GetNodes().size(), 1U + 2U * 15U + 3U);
-    ASSERT_EQ(graph->GetInputs().size(), 1U);
+    ASSERT_EQ(graph->GetInputs().size(), 2U);
     EXPECT_EQ(graph->GetInputs()[0].name, "token_ids");
+    EXPECT_EQ(graph->GetInputs()[1].name, "position_ids");
     ASSERT_EQ(graph->GetOutputs().size(), 1U);
     EXPECT_EQ(graph->GetOutputs()[0].name, "output_token_ids");
     EXPECT_TRUE(graph->Validate().ok());
@@ -275,6 +276,8 @@ TEST(ModelGraphBuilder, TracesRopeDualOutputDataflow) {
     const GraphNode& kv_cache_update = nodes[6];
     const GraphNode& attention = nodes[7];
     ASSERT_EQ(rope.outputs.size(), 2U);
+    ASSERT_EQ(rope.inputs.size(), 3U);
+    EXPECT_EQ(rope.inputs[2], graph->GetInputs()[1].value);
     ASSERT_EQ(kv_cache_update.inputs.size(), 3U);
     EXPECT_EQ(kv_cache_update.inputs[0], rope.outputs[1]);
     EXPECT_EQ(attention.inputs[0], rope.outputs[0]);
@@ -378,13 +381,16 @@ TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
 
-    ASSERT_EQ(graph->GetInputs().size(), 1U);
+    ASSERT_EQ(graph->GetInputs().size(), 2U);
     const TensorSpec& token_ids = graph->GetValue(graph->GetInputs()[0].value).spec;
+    const TensorSpec& position_ids = graph->GetValue(graph->GetInputs()[1].value).spec;
     ASSERT_EQ(nodes[0].inputs.size(), 2U);
     EXPECT_EQ(nodes[0].inputs[0], graph->GetInputs()[0].value);
     ASSERT_EQ(token_ids.shape.rank(), 1U);
     const ShapeSymbol seq_len = token_ids.shape[0];
     EXPECT_TRUE(seq_len.IsSymbolic());
+    ASSERT_EQ(position_ids.shape.rank(), 1U);
+    EXPECT_EQ(position_ids.shape[0], seq_len);
 
     const TensorSpec& embedding_output = OnlyOneOutput(*graph, nodes[0]);
     ASSERT_EQ(embedding_output.shape.rank(), 2U);

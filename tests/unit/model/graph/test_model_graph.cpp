@@ -175,10 +175,11 @@ TEST(ModelGraph, ValidateRejectsInvalidRoPEParams) {
     ModelGraph graph;
     const GraphValueId q = graph.AddInput(ActivationSpec(), "q");
     const GraphValueId k = graph.AddInput(ActivationSpec(), "k");
+    const GraphValueId position_ids = graph.AddInput(ActivationSpec(), "position_ids");
     [[maybe_unused]] const ModelGraph::AddedNode node = graph.AddNode(
             OpType::kRoPE,
             0U,
-            {q, k},
+            {q, k, position_ids},
             {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}},
              ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
             RoPEParams{.head_dim = 0,

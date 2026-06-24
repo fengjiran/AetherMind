@@ -775,7 +775,7 @@ Linear(v_normed, w_q) → v_q
 Linear(v_normed, w_k) → v_k
 Linear(v_normed, w_v) → v_v
 
-RoPE(v_q, v_k, state_position) → v_q_rope, v_k_rope
+RoPE(v_q, v_k, position_ids) → v_q_rope, v_k_rope
 
 MatMul(v_q_rope, v_k_rope) → v_scores
 Softmax(v_scores) → v_probs
@@ -796,7 +796,7 @@ Add(v_post_attn, v_mlp_out) → v_hidden_out
 如果显式建模 KV cache，attention 相关数据流可以扩展为：
 
 ```text
-RoPE(v_q, v_k, state_position) → v_q_rope, v_k_rope
+RoPE(v_q, v_k, position_ids) → v_q_rope, v_k_rope
 KVCacheUpdate(v_k_rope, v_v, state_kv_cache_in) → state_kv_cache_out
 Attention(v_q_rope, state_kv_cache_out, mask_or_metadata) → v_attn
 ```

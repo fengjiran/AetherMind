@@ -56,6 +56,7 @@ struct LayerTensorSpecs {
 struct LayerInputs {
     GraphValueId hidden;
     GraphValueId kv_cache;
+    GraphValueId position_ids;
 };
 
 struct WeightedNodeSpecs {
@@ -184,7 +185,7 @@ GraphValueId AppendDenseLlamaLayerNodes(ModelGraph& graph,
             graph,
             OpType::kRoPE,
             layer_index,
-            {q, k},
+            {q, k, layer_inputs.position_ids},
             {specs.hidden_spec, specs.kv_hidden_spec},
             rope_params);
     const GraphValueId q_rope = rope.outputs[0];
@@ -269,6 +270,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     const int64_t kv_hidden_size = config.num_key_value_heads * head_dim;
 
     const TensorSpec token_ids_spec = SymbolicTensorSpec(DataType::Int(64), {seq_len});
+    const TensorSpec position_ids_spec = SymbolicTensorSpec(DataType::Int(64), {seq_len});
     const TensorSpec hidden_spec = ActivationTensor(act_dtype, seq_len, hidden_size);
     const TensorSpec kv_hidden_spec = ActivationTensor(act_dtype, seq_len, kv_hidden_size);
     const TensorSpec intermediate_spec = ActivationTensor(act_dtype, seq_len, config.intermediate_size);
@@ -278,6 +280,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
 
     ModelGraph graph(config);
     const GraphValueId input_tokens = graph.AddInput(token_ids_spec, "token_ids");
+    const GraphValueId position_ids = graph.AddInput(position_ids_spec, "position_ids");
     const auto embedding = AddWeightedNode(
             graph,
             OpType::kEmbedding,
@@ -308,7 +311,8 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                 layer_index,
                 layer_raw_weights,
                 LayerInputs{.hidden = hidden_value,
-                            .kv_cache = kv_cache_value},
+                            .kv_cache = kv_cache_value,
+                            .position_ids = position_ids},
                 LayerTensorSpecs{
                         .hidden_spec = hidden_spec,
                         .kv_hidden_spec = kv_hidden_spec,

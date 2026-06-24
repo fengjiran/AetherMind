@@ -73,32 +73,40 @@ TEST(OperatorSchema, KVCacheUpdateSchemaUsesStateInputAndOutput) {
     const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kKVCacheUpdate);
 
     ASSERT_TRUE(schema.ok()) << schema.status().ToString();
-    ASSERT_EQ(schema->input_ports.size(), 3U);
+    ASSERT_EQ(schema->input_ports.size(), 4U);
     EXPECT_EQ(schema->input_ports[0].name, "k");
     EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
     EXPECT_TRUE(schema->input_ports[0].contributes_tensor_spec);
     EXPECT_EQ(schema->input_ports[1].name, "v");
     EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kActivation);
     EXPECT_TRUE(schema->input_ports[1].contributes_tensor_spec);
-    EXPECT_EQ(schema->input_ports[2].name, "kv_cache_in");
+    EXPECT_EQ(schema->input_ports[2].name, "k_cache_in");
     EXPECT_EQ(schema->input_ports[2].kind, OperatorPortKind::kState);
     EXPECT_FALSE(schema->input_ports[2].contributes_tensor_spec);
-    ASSERT_EQ(schema->output_ports.size(), 1U);
-    EXPECT_EQ(schema->output_ports[0].name, "kv_cache_out");
+    EXPECT_EQ(schema->input_ports[3].name, "v_cache_in");
+    EXPECT_EQ(schema->input_ports[3].kind, OperatorPortKind::kState);
+    EXPECT_FALSE(schema->input_ports[3].contributes_tensor_spec);
+    ASSERT_EQ(schema->output_ports.size(), 2U);
+    EXPECT_EQ(schema->output_ports[0].name, "k_cache_out");
     EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kState);
+    EXPECT_EQ(schema->output_ports[1].name, "v_cache_out");
+    EXPECT_EQ(schema->output_ports[1].kind, OperatorPortKind::kState);
 }
 
 TEST(OperatorSchema, AttentionSchemaUsesActivationAndState) {
     const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kAttention);
 
     ASSERT_TRUE(schema.ok()) << schema.status().ToString();
-    ASSERT_EQ(schema->input_ports.size(), 2U);
+    ASSERT_EQ(schema->input_ports.size(), 3U);
     EXPECT_EQ(schema->input_ports[0].name, "q");
     EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
     EXPECT_TRUE(schema->input_ports[0].contributes_tensor_spec);
-    EXPECT_EQ(schema->input_ports[1].name, "kv_cache");
+    EXPECT_EQ(schema->input_ports[1].name, "k_cache");
     EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kState);
     EXPECT_FALSE(schema->input_ports[1].contributes_tensor_spec);
+    EXPECT_EQ(schema->input_ports[2].name, "v_cache");
+    EXPECT_EQ(schema->input_ports[2].kind, OperatorPortKind::kState);
+    EXPECT_FALSE(schema->input_ports[2].contributes_tensor_spec);
     ASSERT_EQ(schema->output_ports.size(), 1U);
     EXPECT_EQ(schema->output_ports[0].name, "output");
     EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kActivation);

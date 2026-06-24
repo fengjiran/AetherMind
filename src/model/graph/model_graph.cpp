@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <deque>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -63,6 +64,34 @@ Status ValidateStateBinding(const StateBinding& binding) {
 bool SameStateFamily(const StateBinding& lhs, const StateBinding& rhs) {
     return lhs.logical_id == rhs.logical_id && lhs.kind == rhs.kind &&
            lhs.decoder_layer_index == rhs.decoder_layer_index && lhs.slot == rhs.slot;
+}
+
+bool SameStateCollection(const StateBinding& lhs, const StateBinding& rhs) {
+    return lhs.logical_id == rhs.logical_id && lhs.kind == rhs.kind &&
+           lhs.decoder_layer_index == rhs.decoder_layer_index;
+}
+
+Status RequireStateCollection(const StateBinding& lhs, const StateBinding& rhs, const char* message) {
+    if (!SameStateCollection(lhs, rhs)) {
+        return Status::InvalidArgument(message);
+    }
+    return Status::Ok();
+}
+
+Status RequireStateLayerMatchesNode(const StateBinding& binding,
+                                    std::optional<uint32_t> decoder_layer_index,
+                                    const char* message) {
+    if (decoder_layer_index.has_value() && binding.decoder_layer_index != decoder_layer_index) {
+        return Status::InvalidArgument(message);
+    }
+    return Status::Ok();
+}
+
+Status RequireStateSlot(const StateBinding& binding, char expected_slot, const char* message) {
+    if (binding.slot.size() != 1U || binding.slot.front() != expected_slot) {
+        return Status::InvalidArgument(message);
+    }
+    return Status::Ok();
 }
 
 bool CarriesProducerDependency(const GraphValue& value) {
@@ -350,13 +379,36 @@ Status ModelGraph::Validate() const {
         }
 
         if (node.op_type == OpType::kKVCacheUpdate) {
-            const GraphValue& state_input = values_[node.inputs[2].index];
-            const GraphValue& state_output = values_[node.outputs[0].index];
-            const StateBinding& input_binding = std::get<StateValue>(state_input.payload).binding;
-            const StateBinding& output_binding = std::get<StateValue>(state_output.payload).binding;
-            if (!SameStateFamily(input_binding, output_binding)) {
-                return Status::InvalidArgument("KVCacheUpdate state input and output must share a state family");
+            const GraphValue& k_state_input = values_[node.inputs[2].index];
+            const GraphValue& k_state_output = values_[node.outputs[0].index];
+            const StateBinding& k_input_binding = std::get<StateValue>(k_state_input.payload).binding;
+            const StateBinding& k_output_binding = std::get<StateValue>(k_state_output.payload).binding;
+            AM_RETURN_IF_ERROR(RequireStateSlot(k_input_binding, 'k', "KVCacheUpdate K state input must use slot k"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(k_output_binding, 'k', "KVCacheUpdate K state output must use slot k"));
+            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(k_input_binding, node.decoder_layer_index, "KVCacheUpdate K state layer must match the node layer"));
+            if (!SameStateFamily(k_input_binding, k_output_binding)) {
+                return Status::InvalidArgument("KVCacheUpdate K state input and output must share a state family");
             }
+
+            const GraphValue& v_state_input = values_[node.inputs[3].index];
+            const GraphValue& v_state_output = values_[node.outputs[1].index];
+            const StateBinding& v_input_binding = std::get<StateValue>(v_state_input.payload).binding;
+            const StateBinding& v_output_binding = std::get<StateValue>(v_state_output.payload).binding;
+            AM_RETURN_IF_ERROR(RequireStateSlot(v_input_binding, 'v', "KVCacheUpdate V state input must use slot v"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(v_output_binding, 'v', "KVCacheUpdate V state output must use slot v"));
+            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(v_input_binding, node.decoder_layer_index, "KVCacheUpdate V state layer must match the node layer"));
+            AM_RETURN_IF_ERROR(RequireStateCollection(k_input_binding, v_input_binding, "KVCacheUpdate K and V state inputs must share a state collection"));
+            if (!SameStateFamily(v_input_binding, v_output_binding)) {
+                return Status::InvalidArgument("KVCacheUpdate V state input and output must share a state family");
+            }
+        } else if (node.op_type == OpType::kAttention) {
+            const StateBinding& k_cache_binding = std::get<StateValue>(values_[node.inputs[1].index].payload).binding;
+            const StateBinding& v_cache_binding = std::get<StateValue>(values_[node.inputs[2].index].payload).binding;
+            AM_RETURN_IF_ERROR(RequireStateSlot(k_cache_binding, 'k', "Attention K cache input must use slot k"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(v_cache_binding, 'v', "Attention V cache input must use slot v"));
+            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(k_cache_binding, node.decoder_layer_index, "Attention K cache layer must match the node layer"));
+            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(v_cache_binding, node.decoder_layer_index, "Attention V cache layer must match the node layer"));
+            AM_RETURN_IF_ERROR(RequireStateCollection(k_cache_binding, v_cache_binding, "Attention K and V cache inputs must share a state collection"));
         }
     }
 

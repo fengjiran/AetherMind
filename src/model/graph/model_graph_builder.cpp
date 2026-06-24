@@ -56,7 +56,8 @@ struct LayerTensorSpecs {
 
 struct LayerInputs {
     GraphValueId hidden;
-    GraphValueId kv_cache;
+    GraphValueId k_cache;
+    GraphValueId v_cache;
     GraphValueId position_ids;
 };
 
@@ -191,25 +192,35 @@ GraphValueId AppendDenseLlamaLayerNodes(ModelGraph& graph,
     const GraphValueId q_rope = rope.outputs[0];
     const GraphValueId k_rope = rope.outputs[1];
 
-    const GraphValue& kv_cache_value = graph.GetValue(layer_inputs.kv_cache);
-    const auto* kv_cache_state = std::get_if<StateValue>(&kv_cache_value.payload);
-    AM_CHECK(kv_cache_state != nullptr, "KV cache input must be a StateValue");
-    const StateBinding& kv_cache_binding = kv_cache_state->binding;// NOLINT
-    AM_CHECK(kv_cache_binding.decoder_layer_index.has_value(), "KV cache input must carry a decoder layer index");
-    AM_CHECK(*kv_cache_binding.decoder_layer_index == layer_index, "KV cache input layer index must match the layer being built");
-    const GraphValueId kv_cache_out = OnlyOneOutput(
-            AddPureNode(graph,
-                        OpType::kKVCacheUpdate,
-                        layer_index,
-                        {k_rope, v, layer_inputs.kv_cache},
-                        {specs.kv_cache_spec},
-                        KVCacheUpdateParams{},
-                        StateValue{.binding = kv_cache_binding}));
+    const GraphValue& k_cache_value = graph.GetValue(layer_inputs.k_cache);
+    const auto* k_cache_state = std::get_if<StateValue>(&k_cache_value.payload);
+    AM_CHECK(k_cache_state != nullptr, "K cache input must be a StateValue");
+    AM_CHECK(k_cache_state->binding.decoder_layer_index.has_value(), "K cache input must carry a decoder layer index");
+    AM_CHECK(*k_cache_state->binding.decoder_layer_index == layer_index, "K cache input layer index must match the layer being built");
+    AM_CHECK(k_cache_state->binding.slot == "k", "K cache input must use slot k");
+
+    const GraphValue& v_cache_value = graph.GetValue(layer_inputs.v_cache);
+    const auto* v_cache_state = std::get_if<StateValue>(&v_cache_value.payload);
+    AM_CHECK(v_cache_state != nullptr, "V cache input must be a StateValue");
+    AM_CHECK(v_cache_state->binding.decoder_layer_index.has_value(), "V cache input must carry a decoder layer index");
+    AM_CHECK(*v_cache_state->binding.decoder_layer_index == layer_index, "V cache input layer index must match the layer being built");
+    AM_CHECK(v_cache_state->binding.slot == "v", "V cache input must use slot v");
+
+    const auto kv_cache_update = graph.AddNode(
+            OpType::kKVCacheUpdate,
+            layer_index,
+            {k_rope, v, layer_inputs.k_cache, layer_inputs.v_cache},
+            {ModelGraph::NodeOutputDesc{.spec = specs.kv_cache_spec, .payload = StateValue{.binding = k_cache_state->binding}},
+             ModelGraph::NodeOutputDesc{.spec = specs.kv_cache_spec, .payload = StateValue{.binding = v_cache_state->binding}}},
+            KVCacheUpdateParams{});
+    const GraphValueId k_cache_out = kv_cache_update.outputs[0];
+    const GraphValueId v_cache_out = kv_cache_update.outputs[1];
+
     const GraphValueId attn = OnlyOneOutput(
             AddPureNode(graph,
                         OpType::kAttention,
                         layer_index,
-                        {q_rope, kv_cache_out},
+                        {q_rope, k_cache_out, v_cache_out},
                         {specs.hidden_spec},
                         attention_params));
     const GraphValueId attn_out = OnlyOneOutput(AddWeightedNode(graph,
@@ -304,19 +315,27 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
         const DecoderLayerRawWeights& layer_raw_weights = weights.layers[layer_index];
-        const GraphValueId kv_cache_value = graph.AddState(
+        const GraphValueId k_cache_value = graph.AddState(
                 kv_cache_spec,
                 StateBinding{.logical_id = "kv_cache",
                              .kind = StateKind::kKvCache,
                              .decoder_layer_index = layer_index,
-                             .slot = "kv"},
-                "kv_cache");
+                             .slot = "k"},
+                "k_cache");
+        const GraphValueId v_cache_value = graph.AddState(
+                kv_cache_spec,
+                StateBinding{.logical_id = "kv_cache",
+                             .kind = StateKind::kKvCache,
+                             .decoder_layer_index = layer_index,
+                             .slot = "v"},
+                "v_cache");
         hidden_value = AppendDenseLlamaLayerNodes(
                 graph,
                 layer_index,
                 layer_raw_weights,
                 LayerInputs{.hidden = hidden_value,
-                            .kv_cache = kv_cache_value,
+                            .k_cache = k_cache_value,
+                            .v_cache = v_cache_value,
                             .position_ids = position_ids},
                 LayerTensorSpecs{
                         .hidden_spec = hidden_spec,

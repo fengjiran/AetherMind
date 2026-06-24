@@ -101,17 +101,17 @@ struct GraphValue {
     GraphValuePayload payload{std::monostate{}};
     TensorSpec spec{};
     std::optional<GraphNodeId> producer{};
-    std::string debug_name{};
+    std::string debug_name;
 };
 
 struct GraphNode {
     OpType op_type = OpType::kUnknown;
     std::optional<uint32_t> decoder_layer_index{};
-    std::string debug_name{};
     std::vector<GraphValueId> inputs{};
     std::vector<GraphValueId> outputs{};
     ModelGraphAttrs attrs{};
     OpParams op_params{};
+    std::string debug_name;
 };
 
 /// Directed acyclic graph of operators and tensor values.
@@ -131,7 +131,7 @@ public:
         std::string name{};
     };
 
-    struct NodeOutputDecl {
+    struct NodeOutputDesc {
         TensorSpec spec{};
         GraphValuePayload payload{std::monostate{}};
         std::string debug_name{};
@@ -170,8 +170,8 @@ public:
     AM_NODISCARD AddedNode AddNode(OpType op_type,
                                    std::optional<uint32_t> decoder_layer_index,
                                    std::vector<GraphValueId> inputs,
-                                   std::vector<NodeOutputDecl> outputs,
-                                   OpParams op_params = std::monostate{},
+                                   std::vector<NodeOutputDesc> outputs,
+                                   const OpParams& op_params = std::monostate{},
                                    ModelGraphAttrs attrs = {},
                                    std::string debug_name = "");
 

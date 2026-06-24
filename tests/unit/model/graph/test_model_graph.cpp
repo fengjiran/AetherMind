@@ -47,7 +47,7 @@ GraphValueId AddEmbeddingOutput(ModelGraph& graph, std::string input_name) {
                         OpType::kEmbedding,
                         std::nullopt,
                         {tokens, weight},
-                        {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                        {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
                         EmbeddingParams{})
             .outputs.front();
 }
@@ -60,7 +60,7 @@ ModelGraph BuildValidEmbeddingGraph() {
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
             EmbeddingParams{});
     graph.MarkOutput(embedding.outputs[0], "hidden");
     return graph;
@@ -75,7 +75,7 @@ TEST(ModelGraph, PublicApiCreatesInputsWeightsNodesAndOutputs) {
             OpType::kRmsNorm,
             0U,
             {input, weight},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}, .debug_name = "normed"}},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}, .debug_name = "normed"}},
             RmsNormParams{},
             {},
             "rms_norm_0");
@@ -113,7 +113,7 @@ TEST(ModelGraph, OpParamsRoundTripThroughAddNode) {
             OpType::kRmsNorm,
             0U,
             {input, weight},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
             RmsNormParams{.eps = 2.5e-3F});
 
     const auto* params = std::get_if<RmsNormParams>(&graph.GetNode(node.node).op_params);
@@ -129,7 +129,7 @@ TEST(ModelGraph, ValidateRejectsMissingOpParams) {
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
 
     const Status status = graph.Validate();
 
@@ -145,7 +145,7 @@ TEST(ModelGraph, ValidateRejectsWrongOpParamsForOpType) {
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
             RmsNormParams{});
 
     const Status status = graph.Validate();
@@ -162,7 +162,7 @@ TEST(ModelGraph, ValidateRejectsInvalidRmsNormEps) {
             OpType::kRmsNorm,
             0U,
             {input, weight},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
             RmsNormParams{.eps = 0.0F});
 
     const Status status = graph.Validate();
@@ -179,8 +179,8 @@ TEST(ModelGraph, ValidateRejectsInvalidRoPEParams) {
             OpType::kRoPE,
             0U,
             {q, k},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}},
-             ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}},
+             ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
             RoPEParams{.head_dim = 0,
                        .num_attention_heads = 4,
                        .num_key_value_heads = 2,
@@ -244,38 +244,38 @@ TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
             Spec(DataType::Float32(), {32, 8}),
             WeightBinding{.role = WeightRole::kTokenEmbedding});
     const GraphValueId hidden = graph.AddNode(
-                                        OpType::kEmbedding,
-                                        std::nullopt,
-                                        {tokens, embedding_weight},
-                                        {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
-                                        EmbeddingParams{})
+                                             OpType::kEmbedding,
+                                             std::nullopt,
+                                             {tokens, embedding_weight},
+                                             {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                                             EmbeddingParams{})
                                         .outputs.front();
     const GraphValueId k_weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kAttentionK});
     const GraphValueId v_weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kAttentionV});
     const GraphValueId k = graph.AddNode(
-                                     OpType::kLinear,
-                                     std::nullopt,
-                                     {hidden, k_weight},
-                                     {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
-                                     LinearParams{})
-                                     .outputs.front();
+                                        OpType::kLinear,
+                                        std::nullopt,
+                                        {hidden, k_weight},
+                                        {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                                        LinearParams{})
+                                   .outputs.front();
     const GraphValueId v = graph.AddNode(
-                                     OpType::kLinear,
-                                     std::nullopt,
-                                     {hidden, v_weight},
-                                     {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}},
-                                     LinearParams{})
-                                     .outputs.front();
+                                        OpType::kLinear,
+                                        std::nullopt,
+                                        {hidden, v_weight},
+                                        {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                                        LinearParams{})
+                                   .outputs.front();
     const GraphValueId kv_cache_in = graph.AddState(
             ActivationSpec(),
-            KvStateBinding(),
+            KvStateBinding(0U),
             "kv_cache_in");
 
     const ModelGraph::AddedNode update = graph.AddNode(
             OpType::kKVCacheUpdate,
             0U,
             {k, v, kv_cache_in},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = StateValue{.binding = KvStateBinding(0U)}}},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = StateValue{.binding = KvStateBinding(0U)}}},
             KVCacheUpdateParams{});
 
     const Status status = graph.Validate();
@@ -285,6 +285,25 @@ TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
     ASSERT_TRUE(std::holds_alternative<StateValue>(kv_cache_out.payload));
     ASSERT_TRUE(kv_cache_out.producer.has_value());
     EXPECT_EQ(*kv_cache_out.producer, update.node);
+}
+
+TEST(ModelGraph, ValidateRejectsKVCacheUpdateAcrossDecoderLayerStateFamilies) {
+    ModelGraph graph;
+    const GraphValueId k = AddEmbeddingOutput(graph, "tokens_k");
+    const GraphValueId v = AddEmbeddingOutput(graph, "tokens_v");
+    const GraphValueId layer0_cache = graph.AddState(ActivationSpec(), KvStateBinding(0U), "layer0_kv_cache");
+
+    [[maybe_unused]] const ModelGraph::AddedNode update = graph.AddNode(
+            OpType::kKVCacheUpdate,
+            1U,
+            {k, v, layer0_cache},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = StateValue{.binding = KvStateBinding(1U)}}},
+            KVCacheUpdateParams{});
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsStateValueWithInvalidProducer) {
@@ -353,7 +372,7 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithActivationOutput) {
             OpType::kKVCacheUpdate,
             0U,
             {k, v, kv_cache_in},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec()}},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec()}},
             KVCacheUpdateParams{});
 
     const Status status = graph.Validate();
@@ -424,7 +443,7 @@ TEST(ModelGraph, ValidateRejectsOutputOnExternalValue) {
             OpType::kRmsNorm,
             0U,
             {input, weight},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
     graph.MarkOutput(input, "bad_output");
 
     const Status status = graph.Validate();
@@ -440,17 +459,17 @@ TEST(ModelGraph, BuildConsumerIndexMapsConsumers) {
             OpType::kSoftmax,
             std::nullopt,
             {input},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
     const ModelGraph::AddedNode argmax = graph.AddNode(
             OpType::kArgmax,
             std::nullopt,
             {softmax.outputs[0]},
-            {ModelGraph::NodeOutputDecl{.spec = TokenSpec(), .payload = ActivationValue{}}});
+            {ModelGraph::NodeOutputDesc{.spec = TokenSpec(), .payload = ActivationValue{}}});
     const ModelGraph::AddedNode another = graph.AddNode(
             OpType::kSoftmax,
             std::nullopt,
             {softmax.outputs[0]},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
 
     const StatusOr<std::vector<std::vector<GraphNodeId>>> index = BuildConsumerIndex(graph);
 
@@ -478,12 +497,12 @@ TEST(ModelGraph, TopologicalOrderReturnsStableProducerBeforeConsumerOrder) {
             OpType::kSoftmax,
             std::nullopt,
             {input},
-            {ModelGraph::NodeOutputDecl{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
     const ModelGraph::AddedNode argmax = graph.AddNode(
             OpType::kArgmax,
             std::nullopt,
             {softmax.outputs[0]},
-            {ModelGraph::NodeOutputDecl{.spec = TokenSpec(), .payload = ActivationValue{}}});
+            {ModelGraph::NodeOutputDesc{.spec = TokenSpec(), .payload = ActivationValue{}}});
 
     const StatusOr<std::vector<GraphNodeId>> order = graph.TopologicalOrder();
 

@@ -49,9 +49,11 @@ Status ValidateStateBinding(const StateBinding& binding) {
     if (binding.logical_id.empty()) {
         return Status::InvalidArgument("State binding logical_id must not be empty");
     }
+
     if (binding.kind == StateKind::kUnknown) {
         return Status::InvalidArgument("State binding kind must not be unknown");
     }
+
     if (binding.kind == StateKind::kKvCache && binding.slot.empty()) {
         return Status::InvalidArgument("KV cache state binding slot must not be empty");
     }
@@ -59,7 +61,8 @@ Status ValidateStateBinding(const StateBinding& binding) {
 }
 
 bool SameStateFamily(const StateBinding& lhs, const StateBinding& rhs) {
-    return lhs.logical_id == rhs.logical_id && lhs.kind == rhs.kind && lhs.slot == rhs.slot;
+    return lhs.logical_id == rhs.logical_id && lhs.kind == rhs.kind &&
+           lhs.decoder_layer_index == rhs.decoder_layer_index && lhs.slot == rhs.slot;
 }
 
 bool CarriesProducerDependency(const GraphValue& value) {
@@ -88,6 +91,7 @@ Status ValidateRmsNormParams(const OpParams& params) {
     if (typed == nullptr) {
         return Status::InvalidArgument("RmsNorm node requires RmsNormParams");
     }
+
     if (!std::isfinite(typed->eps) || typed->eps <= 0.0F) {
         return Status::InvalidArgument("RmsNormParams eps must be finite and positive");
     }
@@ -99,22 +103,27 @@ Status ValidateRoPEParams(const OpParams& params) {
     if (typed == nullptr) {
         return Status::InvalidArgument("RoPE node requires RoPEParams");
     }
+
     if (typed->head_dim <= 0 || typed->num_attention_heads <= 0 ||
         typed->num_key_value_heads <= 0 || typed->max_position_embeddings <= 0) {
         return Status::InvalidArgument("RoPEParams dimensions must be positive");
     }
+
     if (!IsFinitePositive(typed->theta)) {
         return Status::InvalidArgument("RoPEParams theta must be finite and positive");
     }
+
     if (typed->scaling_type == HfRopeScalingType::kUnknown) {
         return Status::InvalidArgument("RoPEParams scaling type must be known");
     }
+
     if (typed->scaling_type == HfRopeScalingType::kNone) {
         if (typed->scaling_factor.has_value()) {
             return Status::InvalidArgument("RoPEParams default scaling must not set a scaling factor");
         }
         return Status::Ok();
     }
+
     if (!typed->scaling_factor.has_value() || !IsFinitePositive(*typed->scaling_factor)) {
         return Status::InvalidArgument("RoPEParams scaled modes require a finite positive scaling factor");
     }
@@ -181,8 +190,7 @@ GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::
 
 GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string debug_name) {
     GraphValueId value{NextValueIndex(values_)};
-    StateValue state_value{.binding = std::move(binding)};
-    values_.push_back(GraphValue{.payload = std::move(state_value),
+    values_.push_back(GraphValue{.payload = StateValue{.binding = std::move(binding)},
                                  .spec = std::move(spec),
                                  .debug_name = std::move(debug_name)});
     return value;
@@ -191,36 +199,34 @@ GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::st
 ModelGraph::AddedNode ModelGraph::AddNode(OpType op_type,
                                           std::optional<uint32_t> decoder_layer_index,
                                           std::vector<GraphValueId> inputs,
-                                          std::vector<NodeOutputDecl> outputs,
-                                          OpParams op_params,
+                                          std::vector<NodeOutputDesc> outputs,
+                                          const OpParams& op_params,
                                           ModelGraphAttrs attrs,
                                           std::string debug_name) {
     GraphNodeId node_id{NextNodeIndex(nodes_)};
     std::vector<GraphValueId> output_ids;
     output_ids.reserve(outputs.size());
     for (auto& output: outputs) {
-        GraphValuePayload payload = std::holds_alternative<std::monostate>(output.payload)
-                                            ? GraphValuePayload{ActivationValue{}}
-                                            : output.payload;
-        GraphValueId value{NextValueIndex(values_)};
+        auto payload = std::holds_alternative<std::monostate>(output.payload)
+                               ? GraphValuePayload{ActivationValue{}}
+                               : output.payload;
+        output_ids.push_back(GraphValueId{NextValueIndex(values_)});
         values_.push_back(GraphValue{
                 .payload = payload,
                 .spec = std::move(output.spec),
                 .producer = node_id,
                 .debug_name = std::move(output.debug_name),
         });
-        output_ids.push_back(value);
     }
 
     nodes_.push_back(GraphNode{
             .op_type = op_type,
             .decoder_layer_index = decoder_layer_index,
-            .debug_name = std::move(debug_name),
             .inputs = std::move(inputs),
             .outputs = output_ids,
             .attrs = std::move(attrs),
             .op_params = op_params,
-    });
+            .debug_name = std::move(debug_name)});
 
     return AddedNode{.node = node_id, .outputs = std::move(output_ids)};
 }
@@ -278,6 +284,7 @@ Status ModelGraph::Validate() const {
                 if (!IsValidNodeId(*value.producer, nodes_)) {
                     return Status::InvalidArgument("State value has an invalid producer");
                 }
+
                 if (!NodeListsOutput(nodes_[value.producer->index], GraphValueId{static_cast<uint32_t>(value_index)})) {
                     return Status::InvalidArgument("State producer does not list produced value");
                 }

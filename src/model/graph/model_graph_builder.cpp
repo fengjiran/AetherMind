@@ -37,7 +37,9 @@ TensorSpec ActivationTensor(DataType dtype, ShapeSymbol seq_len, int64_t feature
 }
 
 TensorSpec KVCacheTensor(DataType dtype, int64_t num_kv_heads, ShapeSymbol seq_len, int64_t head_dim) {
-    return SymbolicTensorSpec(dtype, {ShapeSymbol::CreateFromValue(num_kv_heads), seq_len, ShapeSymbol::CreateFromValue(head_dim)});
+    return SymbolicTensorSpec(dtype, {ShapeSymbol::CreateFromValue(num_kv_heads),
+                                      seq_len,
+                                      ShapeSymbol::CreateFromValue(head_dim)});
 }
 
 WeightBinding Bind(WeightRole role, std::optional<uint32_t> decoder_layer_index = std::nullopt) noexcept {
@@ -95,7 +97,7 @@ ModelGraph::AddedNode AddWeightedNode(ModelGraph& graph,
     return graph.AddNode(op_type,
                          decoder_layer_index,
                          std::move(inputs),
-                         {ModelGraph::NodeOutputDecl{.spec = std::move(specs.output), .payload = ActivationValue{}}},
+                         {ModelGraph::NodeOutputDesc{.spec = std::move(specs.output), .payload = ActivationValue{}}},
                          op_params,
                          {},
                          std::move(debug_name));
@@ -109,10 +111,10 @@ ModelGraph::AddedNode AddPureNode(ModelGraph& graph,
                                   OpParams op_params,
                                   const GraphValuePayload& output_payload = ActivationValue{},
                                   std::string debug_name = "") {
-    std::vector<ModelGraph::NodeOutputDecl> output_decls;
+    std::vector<ModelGraph::NodeOutputDesc> output_decls;
     output_decls.reserve(outputs.size());
     for (TensorSpec& output: outputs) {
-        output_decls.push_back(ModelGraph::NodeOutputDecl{.spec = std::move(output), .payload = output_payload});
+        output_decls.push_back(ModelGraph::NodeOutputDesc{.spec = std::move(output), .payload = output_payload});
     }
     return graph.AddNode(op_type,
                          decoder_layer_index,
@@ -255,32 +257,26 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                                                   : config.hidden_size / config.num_attention_heads;
     const int64_t kv_hidden_size = config.num_key_value_heads * head_dim;
 
-    const TensorSpec token_ids = SymbolicTensorSpec(DataType::Int(64), {seq_len});
-    const TensorSpec hidden = ActivationTensor(act_dtype, seq_len, hidden_size);
-    const TensorSpec kv_hidden = ActivationTensor(act_dtype, seq_len, kv_hidden_size);
-    const TensorSpec intermediate = ActivationTensor(act_dtype, seq_len, config.intermediate_size);
-    const TensorSpec kv_cache = KVCacheTensor(act_dtype, config.num_key_value_heads, seq_len, head_dim);
-    const TensorSpec logits = ActivationTensor(act_dtype, seq_len, config.vocab_size);
+    const TensorSpec token_ids_spec = SymbolicTensorSpec(DataType::Int(64), {seq_len});
+    const TensorSpec hidden_spec = ActivationTensor(act_dtype, seq_len, hidden_size);
+    const TensorSpec kv_hidden_spec = ActivationTensor(act_dtype, seq_len, kv_hidden_size);
+    const TensorSpec intermediate_spec = ActivationTensor(act_dtype, seq_len, config.intermediate_size);
+    const TensorSpec kv_cache_spec = KVCacheTensor(act_dtype, config.num_key_value_heads, seq_len, head_dim);
+    const TensorSpec logits_spec = ActivationTensor(act_dtype, seq_len, config.vocab_size);
     const auto rms_norm_eps = static_cast<float>(config.rms_norm_eps);
 
     ModelGraph graph(config);
-
-    const GraphValueId input_tokens = graph.AddInput(token_ids, "token_ids");
-    const ModelGraph::AddedNode embedding = graph.AddNode(
+    const GraphValueId input_tokens = graph.AddInput(token_ids_spec, "token_ids");
+    const auto embedding = AddWeightedNode(
+            graph,
             OpType::kEmbedding,
             std::nullopt,
-            {input_tokens, graph.AddWeight(WeightTensor(weights.embed_tokens), Bind(WeightRole::kTokenEmbedding))},
-            {ModelGraph::NodeOutputDecl{.spec = hidden, .payload = ActivationValue{}}},
+            {input_tokens},
+            WeightedNodeSpecs{.weight = WeightTensor(weights.embed_tokens),
+                              .output = hidden_spec},
+            Bind(WeightRole::kTokenEmbedding),
             EmbeddingParams{});
     GraphValueId hidden_value = OnlyOneOutput(embedding);
-    GraphValueId kv_cache_value = graph.AddState(
-            kv_cache,
-            StateBinding{
-                    .logical_id = "kv_cache",
-                    .kind = StateKind::kKvCache,
-                    .slot = "kv"},
-            "kv_cache");
-
     const AttentionParams attention_params{
             .num_attention_heads = config.num_attention_heads,
             .num_key_value_heads = config.num_key_value_heads,
@@ -289,43 +285,54 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
         const DecoderLayerRawWeights& layer = weights.layers[layer_index];
-        const LayerOutputs layer_outputs = AppendDenseLlamaLayerNodes(graph,
-                                                                      layer_index,
-                                                                      layer,
-                                                                      LayerInputs{.hidden = hidden_value, .kv_cache = kv_cache_value},
-                                                                      LayerTensorSpecs{
-                                                                              .hidden = hidden,
-                                                                              .kv_hidden = kv_hidden,
-                                                                              .intermediate = intermediate,
-                                                                              .kv_cache = kv_cache,
-                                                                      },
-                                                                      rms_norm_eps,
-                                                                      MakeRoPEParams(config, head_dim),
-                                                                      attention_params);
+        const GraphValueId kv_cache_value = graph.AddState(
+                kv_cache_spec,
+                StateBinding{.logical_id = "kv_cache",
+                             .kind = StateKind::kKvCache,
+                             .decoder_layer_index = layer_index,
+                             .slot = "kv"},
+                "kv_cache");
+        const LayerOutputs layer_outputs = AppendDenseLlamaLayerNodes(
+                graph,
+                layer_index,
+                layer,
+                LayerInputs{
+                        .hidden = hidden_value,
+                        .kv_cache = kv_cache_value},
+                LayerTensorSpecs{
+                        .hidden = hidden_spec,
+                        .kv_hidden = kv_hidden_spec,
+                        .intermediate = intermediate_spec,
+                        .kv_cache = kv_cache_spec,
+                },
+                rms_norm_eps,
+                MakeRoPEParams(config, head_dim),
+                attention_params);
         hidden_value = layer_outputs.hidden;
-        kv_cache_value = layer_outputs.kv_cache;
     }
 
-    const GraphValueId final_hidden = OnlyOneOutput(AddRmsNormNode(graph,
-                                                                   std::nullopt,
-                                                                   hidden_value,
-                                                                   WeightedNodeSpecs{.weight = WeightTensor(weights.final_norm), .output = hidden},
-                                                                   rms_norm_eps,
-                                                                   Bind(WeightRole::kFinalNorm)));
+    const GraphValueId final_hidden = OnlyOneOutput(
+            AddRmsNormNode(graph,
+                           std::nullopt,
+                           hidden_value,
+                           WeightedNodeSpecs{.weight = WeightTensor(weights.final_norm), .output = hidden_spec},
+                           rms_norm_eps,
+                           Bind(WeightRole::kFinalNorm)));
 
     const RawWeightView& lm_head_weight = weights.lm_head.has_value() ? *weights.lm_head : weights.embed_tokens;
-    const GraphValueId logits_value = OnlyOneOutput(AddWeightedNode(graph,
-                                                                    OpType::kLinear,
-                                                                    std::nullopt,
-                                                                    {final_hidden},
-                                                                    WeightedNodeSpecs{.weight = WeightTensor(lm_head_weight), .output = logits},
-                                                                    Bind(WeightRole::kLmHead),
-                                                                    LinearParams{}));
+    const GraphValueId logits_value = OnlyOneOutput(
+            AddWeightedNode(graph,
+                            OpType::kLinear,
+                            std::nullopt,
+                            {final_hidden},
+                            WeightedNodeSpecs{.weight = WeightTensor(lm_head_weight), .output = logits_spec},
+                            Bind(WeightRole::kLmHead),
+                            LinearParams{}));
     const GraphValueId output_tokens = OnlyOneOutput(AddPureNode(graph,
                                                                  OpType::kArgmax,
                                                                  std::nullopt,
                                                                  {logits_value},
-                                                                 {token_ids},
+                                                                 {token_ids_spec},
                                                                  ArgmaxParams{.axis = -1}));
     graph.MarkOutput(output_tokens, "output_token_ids");
 

@@ -320,7 +320,7 @@ TEST(ModelGraphBuilder, TracesKvCacheStateDataflow) {
     EXPECT_EQ(std::get<StateValue>(consumed_cache.payload).binding.kind, StateKind::kKvCache);
 }
 
-TEST(ModelGraphBuilder, TracesCrossLayerKvCacheStateChaining) {
+TEST(ModelGraphBuilder, TracesPerLayerKvCacheStateFamilies) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);
 
@@ -334,24 +334,39 @@ TEST(ModelGraphBuilder, TracesCrossLayerKvCacheStateChaining) {
     const GraphNode& layer1_attention = nodes[22];
 
     ASSERT_EQ(layer0_kv_cache_update.outputs.size(), 1U);
+    ASSERT_EQ(layer0_kv_cache_update.inputs.size(), 3U);
     ASSERT_EQ(layer0_attention.inputs.size(), 2U);
     ASSERT_EQ(layer1_kv_cache_update.inputs.size(), 3U);
     ASSERT_EQ(layer1_kv_cache_update.outputs.size(), 1U);
     ASSERT_EQ(layer1_attention.inputs.size(), 2U);
 
     EXPECT_EQ(layer0_attention.inputs[1], layer0_kv_cache_update.outputs[0]);
-    EXPECT_EQ(layer1_kv_cache_update.inputs[2], layer0_kv_cache_update.outputs[0]);
+    EXPECT_NE(layer1_kv_cache_update.inputs[2], layer0_kv_cache_update.outputs[0]);
     EXPECT_EQ(layer1_attention.inputs[1], layer1_kv_cache_update.outputs[0]);
 
-    const StateBinding& layer0_binding = StateBindingForValue(*graph, layer0_kv_cache_update.outputs[0]);
-    const StateBinding& layer1_binding = StateBindingForValue(*graph, layer1_kv_cache_update.outputs[0]);
-    ASSERT_TRUE(layer0_binding.decoder_layer_index.has_value());
-    ASSERT_TRUE(layer1_binding.decoder_layer_index.has_value());
-    EXPECT_EQ(*layer0_binding.decoder_layer_index, 0U);
-    EXPECT_EQ(*layer1_binding.decoder_layer_index, 1U);
-    EXPECT_EQ(layer0_binding.logical_id, layer1_binding.logical_id);
-    EXPECT_EQ(layer0_binding.kind, layer1_binding.kind);
-    EXPECT_EQ(layer0_binding.slot, layer1_binding.slot);
+    const GraphValue& layer0_input_state = graph->GetValue(layer0_kv_cache_update.inputs[2]);
+    const GraphValue& layer1_input_state = graph->GetValue(layer1_kv_cache_update.inputs[2]);
+    EXPECT_FALSE(layer0_input_state.producer.has_value());
+    EXPECT_FALSE(layer1_input_state.producer.has_value());
+
+    const StateBinding& layer0_input_binding = StateBindingForValue(*graph, layer0_kv_cache_update.inputs[2]);
+    const StateBinding& layer0_output_binding = StateBindingForValue(*graph, layer0_kv_cache_update.outputs[0]);
+    const StateBinding& layer1_input_binding = StateBindingForValue(*graph, layer1_kv_cache_update.inputs[2]);
+    const StateBinding& layer1_output_binding = StateBindingForValue(*graph, layer1_kv_cache_update.outputs[0]);
+    ASSERT_TRUE(layer0_input_binding.decoder_layer_index.has_value());
+    ASSERT_TRUE(layer0_output_binding.decoder_layer_index.has_value());
+    ASSERT_TRUE(layer1_input_binding.decoder_layer_index.has_value());
+    ASSERT_TRUE(layer1_output_binding.decoder_layer_index.has_value());
+    EXPECT_EQ(*layer0_input_binding.decoder_layer_index, 0U);
+    EXPECT_EQ(*layer0_output_binding.decoder_layer_index, 0U);
+    EXPECT_EQ(*layer1_input_binding.decoder_layer_index, 1U);
+    EXPECT_EQ(*layer1_output_binding.decoder_layer_index, 1U);
+    EXPECT_EQ(layer0_input_binding.logical_id, layer0_output_binding.logical_id);
+    EXPECT_EQ(layer0_input_binding.kind, layer0_output_binding.kind);
+    EXPECT_EQ(layer0_input_binding.slot, layer0_output_binding.slot);
+    EXPECT_EQ(layer1_input_binding.logical_id, layer1_output_binding.logical_id);
+    EXPECT_EQ(layer1_input_binding.kind, layer1_output_binding.kind);
+    EXPECT_EQ(layer1_input_binding.slot, layer1_output_binding.slot);
 }
 
 TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {

@@ -44,7 +44,8 @@ const std::array<OperatorSchema, 11> kOperatorSchemas{
                 .op_type = OpType::kRoPE,
                 .input_ports = {Input(0, "q", OperatorPortKind::kActivation),
                                 Input(1, "k", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "q_rope"), Output(1, "k_rope")},
+                .output_ports = {Output(0, "q_rope"),
+                                 Output(1, "k_rope")},
         },
         OperatorSchema{
                 .op_type = OpType::kMatMul,

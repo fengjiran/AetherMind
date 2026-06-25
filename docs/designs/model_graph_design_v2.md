@@ -195,20 +195,28 @@ struct ConstantBinding {
     std::vector<std::byte> inline_data{};
 };
 
-enum class StateKind : uint8_t {
-    kUnknown,
-    kKvCache,
-    kDecodeState,
-    kStreamingState,
+enum class KVCacheSlot : uint8_t {
+    kKey,
+    kValue,
 };
 
-struct StateBinding {
-    std::string logical_id{};
-    StateKind kind = StateKind::kUnknown;
-    std::optional<uint32_t> decoder_layer_index{};
-    std::string slot{};
-    std::string debug_name{};
+struct KVCacheStateBinding {
+    uint32_t decoder_layer_index = 0;
+    KVCacheSlot slot = KVCacheSlot::kKey;
 };
+
+struct DecodeStateBinding {
+    // Milestone 1 placeholder. Add fields only when decode-state semantics land.
+};
+
+struct StreamingStateBinding {
+    // Milestone 1 placeholder. Add fields only when streaming-state semantics land.
+};
+
+using StateBinding = std::variant<
+        KVCacheStateBinding,
+        DecodeStateBinding,
+        StreamingStateBinding>;
 
 enum class ResourceKind : uint8_t {
     kUnknown,
@@ -241,21 +249,21 @@ struct QuantizationSpec {
 语义边界：
 
 - `ConstantBinding` 是逻辑常量引用，可携带小型 inline 常量；大型常量可以通过 `name` / external id 解析；
-- `StateBinding` 是 KV cache、decode state、streaming state 的结构化逻辑身份，不描述具体 cache layout；`logical_id` / `kind` / `decoder_layer_index` / `slot` 共同构成 lowering/runtime 解析 state handle 的 key，`debug_name` 只用于诊断；
+- `StateBinding` 是 KV cache、decode state、streaming state 的结构化逻辑身份，不描述具体 cache layout；variant alternative 是 state 类型标签。KV cache 由 `KVCacheStateBinding{decoder_layer_index, slot}` 构成 lowering/runtime 解析 state handle 的 key，其中 `slot` 是强类型 `KVCacheSlot::kKey` / `KVCacheSlot::kValue`，不是字符串；`GraphValue::debug_name` 只用于诊断，不参与绑定解析；
 - `ResourceBinding` 是 runtime resource 的结构化逻辑身份，不持有设备句柄；`logical_id` / `kind` / `decoder_layer_index` 共同构成 lowering/runtime 解析 resource handle 的 key，`debug_name` 只用于诊断；它不是早期 KV cache 建模的默认选择，应等 lowering / runtime 出现真实外部资源句柄需求后再落地；
 - `QuantizationSpec` 描述模型语义量化，例如 int4/int8、group size、scale dtype、zero point policy，不描述 packed weight 格式。
 
 `name` / `debug_name` 不应作为唯一绑定键。State / resource binding 的解析流程应依赖结构化 logical key：
 
 ```text
-GraphValue(StateValue{StateBinding{logical_id="kv_cache", kind=kKvCache, decoder_layer_index=3, slot="kv"}})
+GraphValue(StateValue{KVCacheStateBinding{decoder_layer_index=3, slot=KVCacheSlot::kKey}})
         ↓ lowering
 RuntimeStateRegistry::Resolve(binding)
         ↓
 ExecutionPlan state handle / buffer alias group
 ```
 
-对于 `state_kv_in -> KVCacheUpdate -> state_kv_out`，输入和输出 state value 可以是不同 `GraphValueId`，但它们的 `StateBinding` 应解析到同一个 logical state family；lowering 再通过 must-alias 约束绑定到同一物理 buffer / state handle。
+对于 `state_k_cache_in, state_v_cache_in -> KVCacheUpdate -> state_k_cache_out, state_v_cache_out`，输入和输出 state value 可以是不同 `GraphValueId`，但同一 layer、同一 `KVCacheSlot` 的输入/输出 `StateBinding` 应解析到同一个 logical state family；同一 layer 的 K/V state 属于同一个 state collection。lowering 再通过 must-alias 约束绑定到对应物理 buffer / state handle。
 
 ## 7. GraphNode
 
@@ -797,15 +805,15 @@ Add(v_post_attn, v_mlp_out) → v_hidden_out
 
 ```text
 RoPE(v_q, v_k, position_ids) → v_q_rope, v_k_rope
-KVCacheUpdate(v_k_rope, v_v, state_kv_cache_in) → state_kv_cache_out
-Attention(v_q_rope, state_kv_cache_out, mask_or_metadata) → v_attn
+KVCacheUpdate(v_k_rope, v_v, state_k_cache_in, state_v_cache_in) → state_k_cache_out, state_v_cache_out
+Attention(v_q_rope, state_k_cache_out, state_v_cache_out, mask_or_metadata) → v_attn
 ```
 
 这使 prefill / decode / paged attention 的状态语义在 graph 中可见，但具体 cache layout、page table、device buffer 仍留给 lowering / runtime。
 
 KV cache state 建模规则：
 
-1. `StateValue` 表达逻辑状态身份和版本，例如 `kv_cache.layer_3.before_update` 与 `kv_cache.layer_3.after_update`；
+1. `StateValue` 表达逻辑状态身份和版本，例如 `kv_cache.layer_3.key.before_update` 与 `kv_cache.layer_3.key.after_update`；K/V 分别用强类型 `KVCacheSlot::kKey` / `KVCacheSlot::kValue` 表达，不使用字符串 slot；
 2. 状态更新必须产生新的 `StateValue`，不能原地修改或复用同一个 value 表示更新前后两个版本；
 3. state edge 只表达语义依赖顺序，不描述 cache layout、page table、device buffer、paged cache handle；
 4. `ResourceValue` 不用于早期 KV cache 建模；paged cache handle、外部分配 buffer、backend resource 属于 lowering / runtime，等有实际 runtime resource use case 后再进入 ModelGraph；
@@ -827,7 +835,7 @@ KV cache state 建模规则：
 10. 输入输出 `TensorSpec` dtype / shape / rank 兼容；
 11. dynamic shape 符号和约束一致；
 12. 对普通 activation 数据流，DAG 必须无环；
-13. 对 state token，如需表达跨 step 状态更新，应通过显式 state input/output 建模，不能制造隐式环；state update node 的 state input / state output 必须符合 operator schema。
+13. 对 state token，如需表达跨 step 状态更新，应通过显式 state input/output 建模，不能制造隐式环；state update node 的 state input / state output 必须符合 operator schema；KV cache state binding 必须使用 `KVCacheStateBinding`，K/V 槽位必须分别匹配 `KVCacheSlot::kKey` / `KVCacheSlot::kValue`，且 `decoder_layer_index` 必须与对应 decoder layer node 一致。
 
 注：payload 与 binding 的一致性由 `GraphValuePayload` variant 类型在编译期保证，无需额外的运行时一致性校验。
 

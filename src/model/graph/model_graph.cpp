@@ -46,29 +46,33 @@ bool PayloadMatchesPort(const GraphValuePayload& payload, OperatorPortKind kind)
     return false;
 }
 
+const KVCacheStateBinding* AsKVCacheBinding(const StateBinding& binding) noexcept {
+    return std::get_if<KVCacheStateBinding>(&binding);
+}
+
 Status ValidateStateBinding(const StateBinding& binding) {
-    if (binding.logical_id.empty()) {
-        return Status::InvalidArgument("State binding logical_id must not be empty");
-    }
-
-    if (binding.kind == StateKind::kUnknown) {
-        return Status::InvalidArgument("State binding kind must not be unknown");
-    }
-
-    if (binding.kind == StateKind::kKvCache && binding.slot.empty()) {
-        return Status::InvalidArgument("KV cache state binding slot must not be empty");
+    if (const auto* kv_cache = AsKVCacheBinding(binding); kv_cache != nullptr) {
+        switch (kv_cache->slot) {
+            case KVCacheSlot::kKey:
+            case KVCacheSlot::kValue:
+                return Status::Ok();
+        }
+        return Status::InvalidArgument("KV cache state binding slot must be known");
     }
     return Status::Ok();
 }
 
 bool SameStateFamily(const StateBinding& lhs, const StateBinding& rhs) {
-    return lhs.logical_id == rhs.logical_id && lhs.kind == rhs.kind &&
-           lhs.decoder_layer_index == rhs.decoder_layer_index && lhs.slot == rhs.slot;
+    return lhs == rhs;
 }
 
 bool SameStateCollection(const StateBinding& lhs, const StateBinding& rhs) {
-    return lhs.logical_id == rhs.logical_id && lhs.kind == rhs.kind &&
-           lhs.decoder_layer_index == rhs.decoder_layer_index;
+    const auto* lhs_kv_cache = AsKVCacheBinding(lhs);
+    const auto* rhs_kv_cache = AsKVCacheBinding(rhs);
+    if (lhs_kv_cache == nullptr || rhs_kv_cache == nullptr) {
+        return false;
+    }
+    return lhs_kv_cache->decoder_layer_index == rhs_kv_cache->decoder_layer_index;
 }
 
 Status RequireStateCollection(const StateBinding& lhs, const StateBinding& rhs, const char* message) {
@@ -81,14 +85,20 @@ Status RequireStateCollection(const StateBinding& lhs, const StateBinding& rhs, 
 Status RequireStateLayerMatchesNode(const StateBinding& binding,
                                     std::optional<uint32_t> decoder_layer_index,
                                     const char* message) {
-    if (decoder_layer_index.has_value() && binding.decoder_layer_index != decoder_layer_index) {
+    const auto* kv_cache = AsKVCacheBinding(binding);
+    if (kv_cache == nullptr) {
+        return Status::InvalidArgument(message);
+    }
+
+    if (!decoder_layer_index.has_value() || kv_cache->decoder_layer_index != *decoder_layer_index) {
         return Status::InvalidArgument(message);
     }
     return Status::Ok();
 }
 
-Status RequireStateSlot(const StateBinding& binding, char expected_slot, const char* message) {
-    if (binding.slot.size() != 1U || binding.slot.front() != expected_slot) {
+Status RequireStateSlot(const StateBinding& binding, KVCacheSlot expected_slot, const char* message) {
+    if (const auto* kv_cache = AsKVCacheBinding(binding);
+        kv_cache == nullptr || kv_cache->slot != expected_slot) {
         return Status::InvalidArgument(message);
     }
     return Status::Ok();
@@ -300,7 +310,8 @@ Status ModelGraph::Validate() const {
             }
 
             // Verify the producer's output list includes this value.
-            if (!NodeListsOutput(nodes_[value.producer->index], GraphValueId{static_cast<uint32_t>(value_index)})) {
+            if (!NodeListsOutput(nodes_[value.producer->index],
+                                 GraphValueId{static_cast<uint32_t>(value_index)})) {
                 return Status::InvalidArgument("Activation producer does not list produced value");
             }
         } else if (std::holds_alternative<StateValue>(value.payload)) {
@@ -314,7 +325,8 @@ Status ModelGraph::Validate() const {
                     return Status::InvalidArgument("State value has an invalid producer");
                 }
 
-                if (!NodeListsOutput(nodes_[value.producer->index], GraphValueId{static_cast<uint32_t>(value_index)})) {
+                if (!NodeListsOutput(nodes_[value.producer->index],
+                                     GraphValueId{static_cast<uint32_t>(value_index)})) {
                     return Status::InvalidArgument("State producer does not list produced value");
                 }
             }
@@ -333,33 +345,40 @@ Status ModelGraph::Validate() const {
 
         AM_RETURN_IF_ERROR(ValidateOpParams(node.op_type, node.op_params));
         if (!node.attrs.bytes.empty()) {
-            return Status::InvalidArgument("Registered ModelGraph operators must use typed op params, not attrs");
+            return Status::InvalidArgument(
+                    "Registered ModelGraph operators must use typed op params, not attrs");
         }
 
         const OperatorSchema& schema = *schema_or;
         if (node.inputs.size() != schema.input_ports.size()) {
-            return Status::InvalidArgument("Graph node input count does not match operator schema");
+            return Status::InvalidArgument(
+                    "Graph node input count does not match operator schema");
         }
 
         if (node.outputs.size() != schema.output_ports.size()) {
-            return Status::InvalidArgument("Graph node output count does not match operator schema");
+            return Status::InvalidArgument(
+                    "Graph node output count does not match operator schema");
         }
 
         for (size_t input_index = 0; input_index < node.inputs.size(); ++input_index) {
             const GraphValueId input = node.inputs[input_index];
             if (!IsValidValueId(input, values_)) {
-                return Status::InvalidArgument("Graph node input references an invalid value id");
+                return Status::InvalidArgument(
+                        "Graph node input references an invalid value id");
             }
 
-            if (!PayloadMatchesPort(values_[input.index].payload, schema.input_ports[input_index].kind)) {
-                return Status::InvalidArgument("Graph node input payload kind does not match operator schema");
+            if (!PayloadMatchesPort(values_[input.index].payload,
+                                    schema.input_ports[input_index].kind)) {
+                return Status::InvalidArgument(
+                        "Graph node input payload kind does not match operator schema");
             }
         }
 
         for (size_t output_index = 0; output_index < node.outputs.size(); ++output_index) {
             const GraphValueId output = node.outputs[output_index];
             if (!IsValidValueId(output, values_)) {
-                return Status::InvalidArgument("Graph node output references an invalid value id");
+                return Status::InvalidArgument(
+                        "Graph node output references an invalid value id");
             }
 
             const GraphValue& output_value = values_[output.index];
@@ -368,13 +387,15 @@ Status ModelGraph::Validate() const {
             }
 
             if (!PayloadMatchesPort(output_value.payload, schema.output_ports[output_index].kind)) {
-                return Status::InvalidArgument("Graph node output payload kind does not match operator schema");
+                return Status::InvalidArgument(
+                        "Graph node output payload kind does not match operator schema");
             }
         }
 
         for (const GraphValueId output: node.outputs) {
             if (std::ranges::find(node.inputs, output) != node.inputs.end()) {
-                return Status::InvalidArgument("Graph node output must not reuse an input value");
+                return Status::InvalidArgument(
+                        "Graph node output must not reuse an input value");
             }
         }
 
@@ -383,32 +404,70 @@ Status ModelGraph::Validate() const {
             const GraphValue& k_state_output = values_[node.outputs[0].index];
             const StateBinding& k_input_binding = std::get<StateValue>(k_state_input.payload).binding;
             const StateBinding& k_output_binding = std::get<StateValue>(k_state_output.payload).binding;
-            AM_RETURN_IF_ERROR(RequireStateSlot(k_input_binding, 'k', "KVCacheUpdate K state input must use slot k"));
-            AM_RETURN_IF_ERROR(RequireStateSlot(k_output_binding, 'k', "KVCacheUpdate K state output must use slot k"));
-            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(k_input_binding, node.decoder_layer_index, "KVCacheUpdate K state layer must match the node layer"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(
+                    k_input_binding,
+                    KVCacheSlot::kKey,
+                    "KVCacheUpdate K state input must use slot k"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(
+                    k_output_binding,
+                    KVCacheSlot::kKey,
+                    "KVCacheUpdate K state output must use slot k"));
+            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(
+                    k_input_binding,
+                    node.decoder_layer_index,
+                    "KVCacheUpdate K state layer must match the node layer"));
             if (!SameStateFamily(k_input_binding, k_output_binding)) {
-                return Status::InvalidArgument("KVCacheUpdate K state input and output must share a state family");
+                return Status::InvalidArgument(
+                        "KVCacheUpdate K state input and output must share a state family");
             }
 
             const GraphValue& v_state_input = values_[node.inputs[3].index];
             const GraphValue& v_state_output = values_[node.outputs[1].index];
             const StateBinding& v_input_binding = std::get<StateValue>(v_state_input.payload).binding;
             const StateBinding& v_output_binding = std::get<StateValue>(v_state_output.payload).binding;
-            AM_RETURN_IF_ERROR(RequireStateSlot(v_input_binding, 'v', "KVCacheUpdate V state input must use slot v"));
-            AM_RETURN_IF_ERROR(RequireStateSlot(v_output_binding, 'v', "KVCacheUpdate V state output must use slot v"));
-            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(v_input_binding, node.decoder_layer_index, "KVCacheUpdate V state layer must match the node layer"));
-            AM_RETURN_IF_ERROR(RequireStateCollection(k_input_binding, v_input_binding, "KVCacheUpdate K and V state inputs must share a state collection"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(
+                    v_input_binding,
+                    KVCacheSlot::kValue,
+                    "KVCacheUpdate V state input must use slot v"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(
+                    v_output_binding,
+                    KVCacheSlot::kValue,
+                    "KVCacheUpdate V state output must use slot v"));
+            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(
+                    v_input_binding,
+                    node.decoder_layer_index,
+                    "KVCacheUpdate V state layer must match the node layer"));
+            AM_RETURN_IF_ERROR(RequireStateCollection(
+                    k_input_binding,
+                    v_input_binding,
+                    "KVCacheUpdate K and V state inputs must share a state collection"));
             if (!SameStateFamily(v_input_binding, v_output_binding)) {
-                return Status::InvalidArgument("KVCacheUpdate V state input and output must share a state family");
+                return Status::InvalidArgument(
+                        "KVCacheUpdate V state input and output must share a state family");
             }
         } else if (node.op_type == OpType::kAttention) {
             const StateBinding& k_cache_binding = std::get<StateValue>(values_[node.inputs[1].index].payload).binding;
             const StateBinding& v_cache_binding = std::get<StateValue>(values_[node.inputs[2].index].payload).binding;
-            AM_RETURN_IF_ERROR(RequireStateSlot(k_cache_binding, 'k', "Attention K cache input must use slot k"));
-            AM_RETURN_IF_ERROR(RequireStateSlot(v_cache_binding, 'v', "Attention V cache input must use slot v"));
-            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(k_cache_binding, node.decoder_layer_index, "Attention K cache layer must match the node layer"));
-            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(v_cache_binding, node.decoder_layer_index, "Attention V cache layer must match the node layer"));
-            AM_RETURN_IF_ERROR(RequireStateCollection(k_cache_binding, v_cache_binding, "Attention K and V cache inputs must share a state collection"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(
+                    k_cache_binding,
+                    KVCacheSlot::kKey,
+                    "Attention K cache input must use slot k"));
+            AM_RETURN_IF_ERROR(RequireStateSlot(
+                    v_cache_binding,
+                    KVCacheSlot::kValue,
+                    "Attention V cache input must use slot v"));
+            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(
+                    k_cache_binding,
+                    node.decoder_layer_index,
+                    "Attention K cache layer must match the node layer"));
+            AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(
+                    v_cache_binding,
+                    node.decoder_layer_index,
+                    "Attention V cache layer must match the node layer"));
+            AM_RETURN_IF_ERROR(RequireStateCollection(
+                    k_cache_binding,
+                    v_cache_binding,
+                    "Attention K and V cache inputs must share a state collection"));
         }
     }
 
@@ -420,8 +479,9 @@ Status ModelGraph::Validate() const {
 }
 
 StatusOr<std::vector<GraphNodeId>> ModelGraph::TopologicalOrder() const {
-    // Kahn's algorithm over activation edges. Weight and input edges are
-    // excluded because they do not carry execution-order dependencies.
+    // Kahn's algorithm over activation and produced-state edges.
+    // Weight and input edges are excluded because they do not carry
+    // execution-order dependencies.
     std::vector<std::vector<GraphNodeId>> outgoing(nodes_.size());
     std::vector<size_t> indegree(nodes_.size(), 0);
     for (size_t node_index = 0; node_index < nodes_.size(); ++node_index) {

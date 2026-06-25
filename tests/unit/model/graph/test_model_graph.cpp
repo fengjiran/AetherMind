@@ -32,31 +32,19 @@ TensorSpec WeightSpec() {
     return Spec(DataType::Float32(), {8});
 }
 
-StateBinding KvStateBinding(std::optional<uint32_t> decoder_layer_index = std::nullopt) {
-    return StateBinding{
-            .logical_id = "kv_cache",
-            .kind = StateKind::kKvCache,
-            .decoder_layer_index = decoder_layer_index,
-            .slot = "kv",
-            .debug_name = ""};
+StateBinding KvStateBinding(uint32_t decoder_layer_index = 0U) {
+    return KVCacheStateBinding{.decoder_layer_index = decoder_layer_index,
+                               .slot = KVCacheSlot::kKey};
 }
 
-StateBinding KStateBinding(std::optional<uint32_t> decoder_layer_index = std::nullopt) {
-    return StateBinding{
-            .logical_id = "kv_cache",
-            .kind = StateKind::kKvCache,
-            .decoder_layer_index = decoder_layer_index,
-            .slot = "k",
-            .debug_name = ""};
+StateBinding KStateBinding(uint32_t decoder_layer_index = 0U) {
+    return KVCacheStateBinding{.decoder_layer_index = decoder_layer_index,
+                               .slot = KVCacheSlot::kKey};
 }
 
-StateBinding VStateBinding(std::optional<uint32_t> decoder_layer_index = std::nullopt) {
-    return StateBinding{
-            .logical_id = "kv_cache",
-            .kind = StateKind::kKvCache,
-            .decoder_layer_index = decoder_layer_index,
-            .slot = "v",
-            .debug_name = ""};
+StateBinding VStateBinding(uint32_t decoder_layer_index = 0U) {
+    return KVCacheStateBinding{.decoder_layer_index = decoder_layer_index,
+                               .slot = KVCacheSlot::kValue};
 }
 
 GraphValueId AddEmbeddingOutput(ModelGraph& graph, std::string input_name) {
@@ -252,8 +240,10 @@ TEST(ModelGraph, PublicApiCreatesStateValues) {
     ASSERT_EQ(graph.GetValues().size(), 1U);
     const GraphValue& value = graph.GetValue(state);
     ASSERT_TRUE(std::holds_alternative<StateValue>(value.payload));
-    EXPECT_EQ(std::get<StateValue>(value.payload).binding.logical_id, "kv_cache");
-    EXPECT_EQ(std::get<StateValue>(value.payload).binding.kind, StateKind::kKvCache);
+    const auto* binding = std::get_if<KVCacheStateBinding>(&std::get<StateValue>(value.payload).binding);
+    ASSERT_NE(binding, nullptr);
+    EXPECT_EQ(binding->decoder_layer_index, 0U);
+    EXPECT_EQ(binding->slot, KVCacheSlot::kKey);
     EXPECT_FALSE(value.producer.has_value());
 }
 
@@ -472,31 +462,13 @@ TEST(ModelGraph, ValidateRejectsStateValueWithInvalidProducer) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelGraph, ValidateRejectsEmptyStateBindingLogicalId) {
+TEST(ModelGraph, ValidateRejectsInvalidKvCacheStateBindingSlot) {
     ModelGraph graph;
-    const GraphValueId state = graph.AddState(ActivationSpec(), StateBinding{.kind = StateKind::kKvCache, .slot = "kv", .debug_name = ""});
-    EXPECT_EQ(state.index, 0U);
-
-    const Status status = graph.Validate();
-
-    ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(ModelGraph, ValidateRejectsUnknownStateBindingKind) {
-    ModelGraph graph;
-    const GraphValueId state = graph.AddState(ActivationSpec(), StateBinding{.logical_id = "kv_cache", .slot = "kv", .debug_name = ""});
-    EXPECT_EQ(state.index, 0U);
-
-    const Status status = graph.Validate();
-
-    ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(ModelGraph, ValidateRejectsEmptyKvCacheStateBindingSlot) {
-    ModelGraph graph;
-    const GraphValueId state = graph.AddState(ActivationSpec(), StateBinding{.logical_id = "kv_cache", .kind = StateKind::kKvCache, .debug_name = ""});
+    const GraphValueId state = graph.AddState(
+            ActivationSpec(),
+            KVCacheStateBinding{.decoder_layer_index = 0U,
+                                .slot = static_cast<KVCacheSlot>(255)},
+            "kv_cache");
     EXPECT_EQ(state.index, 0U);
 
     const Status status = graph.Validate();

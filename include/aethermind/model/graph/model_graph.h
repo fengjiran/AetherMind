@@ -44,20 +44,32 @@ struct WeightBinding {
     WeightRole role{};
 };
 
-enum class StateKind : uint8_t {
-    kUnknown,
-    kKvCache,
-    kDecodeState,
-    kStreamingState,
+enum class KVCacheSlot : uint8_t {
+    kKey,
+    kValue,
 };
 
-struct StateBinding {
-    std::string logical_id{};
-    StateKind kind = StateKind::kUnknown;
-    std::optional<uint32_t> decoder_layer_index{};
-    std::string slot{};
-    std::string debug_name{};
+struct KVCacheStateBinding {
+    uint32_t decoder_layer_index = 0;
+    KVCacheSlot slot = KVCacheSlot::kKey;
+
+    AM_NODISCARD friend constexpr bool operator==(const KVCacheStateBinding& lhs,
+                                                  const KVCacheStateBinding& rhs) noexcept = default;
 };
+
+struct DecodeStateBinding {
+    AM_NODISCARD friend constexpr bool operator==(const DecodeStateBinding& lhs,
+                                                  const DecodeStateBinding& rhs) noexcept = default;
+};
+
+struct StreamingStateBinding {
+    AM_NODISCARD friend constexpr bool operator==(const StreamingStateBinding& lhs,
+                                                  const StreamingStateBinding& rhs) noexcept = default;
+};
+
+using StateBinding = std::variant<KVCacheStateBinding,
+                                  DecodeStateBinding,
+                                  StreamingStateBinding>;
 
 struct ModelGraphAttrs {
     std::vector<std::byte> bytes{};

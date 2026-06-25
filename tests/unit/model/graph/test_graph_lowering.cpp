@@ -283,7 +283,7 @@ TEST(GraphLowering, ResolveStateAliasesProducesCorrectEntries) {
     const GraphValueId v = AddActivation(graph, KVSpec(), "v");
     const GraphValueId k_state_in = graph.AddState(KVSpec(), KStateBinding(), "k_cache_in");
     const GraphValueId v_state_in = graph.AddState(KVSpec(), VStateBinding(), "v_cache_in");
-    graph.AddNode(
+    (void)graph.AddNode(
             OpType::kKVCacheUpdate,
             0U,
             {k, v, k_state_in, v_state_in},
@@ -317,7 +317,7 @@ TEST(GraphLowering, ResolveStateAliasesReturnsEmptyPlanForGraphWithoutState) {
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
                                                 WeightBinding{.role = WeightRole::kTokenEmbedding});
-    graph.AddNode(
+    (void)graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
@@ -338,7 +338,7 @@ TEST(GraphLowering, StateAliasPlanForStepReturnsEmptySpanForUnknownStep) {
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
                                                 WeightBinding{.role = WeightRole::kTokenEmbedding});
-    graph.AddNode(
+    (void)graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
@@ -361,7 +361,7 @@ TEST(GraphLowering, ResolveStateAliasesFailsOnOrphanAlias) {
     const GraphValueId v = AddActivation(graph, KVSpec(), "v");
     const GraphValueId k_state_in = graph.AddState(KVSpec(), KStateBinding(), "k_cache_in");
     const GraphValueId v_state_in = graph.AddState(KVSpec(), VStateBinding(), "v_cache_in");
-    graph.AddNode(
+    (void)graph.AddNode(
             OpType::kKVCacheUpdate,
             0U,
             {k, v, k_state_in, v_state_in},

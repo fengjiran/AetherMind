@@ -81,7 +81,7 @@ struct RuntimeTensorStorage {
 
 class RuntimeConstraintTestOperator final : public Operator {
 public:
-    struct Params {};
+    using Params = AttentionParams;
 
     explicit RuntimeConstraintTestOperator(Params) noexcept {}
 
@@ -147,8 +147,8 @@ const bool kRuntimeConstraintTestOperatorRegistered = OperatorRegistry::Register
         OpType::kAttention,
         OperatorRegistry::Descriptor{
                 .factory_ = &OperatorRegistry::CreateTypedOperator<RuntimeConstraintTestOperator>,
-                .make_default_params_ = []() -> StatusOr<std::any> {
-                    return std::any{RuntimeConstraintTestOperator::Params{}};
+                .make_default_params_ = []() -> StatusOr<OpParams> {
+                    return OpParams{RuntimeConstraintTestOperator::Params{}};
                 },
         },
         "RuntimeConstraintTestOperator");

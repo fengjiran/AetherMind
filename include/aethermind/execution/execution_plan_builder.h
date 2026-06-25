@@ -2,13 +2,13 @@
 #define AETHERMIND_BACKEND_EXECUTION_PLAN_BUILDER_H
 
 #include "aethermind/backend/kernel_selector.h"
+#include "aethermind/dtypes/data_type.h"
 #include "aethermind/execution/execution_plan.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_context.h"
-#include "aethermind/dtypes/data_type.h"
 
-#include <any>
 #include <cstddef>
 #include <vector>
 
@@ -25,7 +25,7 @@ struct ExecutionPlanNodeSpec {
     WorkspaceRequirement workspace_requirement{};
     std::vector<TensorSpec> input_specs{};
     std::vector<std::byte> attrs{};
-    std::any op_params{};
+    OpParams op_params{};
 };
 
 class ExecutionPlanBuilder {

@@ -1,6 +1,6 @@
 # 当前图编译流程实现梳理
 
-本文按当前代码事实梳理 AetherMind 中图编译相关实现。结论先说：当前仓库还没有真正的 `ModelGraph -> ExecutionPlanNodeSpec` 生产级图编译模块；现在已实现的是 `std::vector<ExecutionPlanNodeSpec> -> ExecutionPlan` 的计划构建流程。`ModelGraph` 目前主要存在于 `docs/designs/model_graph_design.md` 设计文档中，实际代码路径里尚未落地。
+本文按当前代码事实梳理 AetherMind 中图编译相关实现。结论先说：当前仓库已经具备 `ModelGraph -> LoweredGraph -> ExecutionPlanNodeSpec` 的语义图 lowering bridge，以及 `std::vector<ExecutionPlanNodeSpec> -> ExecutionPlan` 的计划构建流程；生产加载路径仍主要围绕手工/测试构造的 node spec，尚未形成完整的模型加载到执行计划自动编译入口。
 
 ## 1. 当前实际入口
 
@@ -27,16 +27,16 @@ struct ExecutionPlanNodeSpec {
     WorkspaceRequirement workspace_requirement;
     std::vector<TensorSpec> input_specs;
     std::span<const std::byte> attrs;
-    std::any op_params;
+    OpParams op_params;
 };
 ```
 
-也就是说，当前“图编译”的初始输入不是 `ModelGraph`，而是已经线性化好的 node spec 列表。
+也就是说，`ExecutionPlanBuilder` 的直接输入是已经线性化好的 node spec 列表；`ModelGraph` 通过 `LowerModelGraph()` 先转换为 `LoweredGraph::steps`，再进入该构建流程。
 
 ## 2. 当前完整流程图
 
 ```text
-调用方 / 测试 / 未来 Graph Lowering
+调用方 / 测试 / ModelGraph Lowering
         │
         ▼
 std::vector<ExecutionPlanNodeSpec>
@@ -233,7 +233,7 @@ MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node)
 
 规则：
 
-1. 如果 `node.op_params.has_value()`：
+1. 如果 `node.op_params` 不是 `std::monostate`：
 
 ```cpp
 return node.op_params;
@@ -248,7 +248,7 @@ OperatorRegistry::CreateDefaultParams(node.op_type)
 3. 如果没有默认参数：
 
 ```cpp
-return {};
+return OpParams{};
 ```
 
 因此注册算子一般从 `op_params` 或默认参数构造。
@@ -524,21 +524,21 @@ ctx.kernel_params = &params;
 resolved_kernel_.fn(ctx)
 ```
 
-## 6. 当前缺失的真正 Graph Compile 阶段
+## 6. 当前 Graph Compile 阶段边界
 
-设计文档里规划的是：
+当前代码已经落地的边界是：
 
 ```text
 ModelInstance
   → ModelGraphBuilder
   → ModelGraph
-  → GraphToExecutionPlanLowering
+  → LowerModelGraph
   → std::vector<ExecutionPlanNodeSpec>
   → ExecutionPlanBuilder::Build
   → ExecutionPlan
 ```
 
-但当前代码实际只有：
+执行计划构建本身仍只消费：
 
 ```text
 std::vector<ExecutionPlanNodeSpec>
@@ -546,15 +546,13 @@ std::vector<ExecutionPlanNodeSpec>
   → ExecutionPlan
 ```
 
-缺失部分包括：
+仍待补齐的生产化部分包括：
 
-- `ModelGraph`
-- `ModelGraphBuilder`
-- `GraphToExecutionPlanLowering`
-- 从 `ModelInstance` / HF config / resolved weights 自动生成 node specs 的生产路径
-- 真正的拓扑解析、边关系建模、Llama layer 展开逻辑
+- 从 `ModelInstance` / HF config / resolved weights 自动生成并 lowering 到可执行 node specs 的生产入口
+- 更完整的 runtime tensor/state binding 接线
+- 更完整的 Llama layer 执行覆盖与后续优化 pass
 
-所以目前 `ExecutionPlanNodeSpec` 主要由测试手工构造。当前没有完整的“从模型输入自动生成图结构再 lowering”的实现。
+所以目前 `ExecutionPlanNodeSpec` 仍主要由测试或 lowering bridge 产出，完整的“模型加载后自动生成图结构、lowering 并构建可执行计划”的端到端生产入口还未完成。
 
 ## 7. 当前最终编译产物
 

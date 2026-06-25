@@ -1,15 +1,14 @@
 #ifndef AETHERMIND_OPERATORS_RMS_NORM_OP_H
 #define AETHERMIND_OPERATORS_RMS_NORM_OP_H
 
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator.h"
 
 namespace aethermind {
 
 class RmsNormOp final : public Operator {
 public:
-    struct Params {
-        float eps = 1.0e-5f;
-    };
+    using Params = RmsNormParams;
 
     explicit RmsNormOp(Params params) noexcept : params_(params) {}
 

@@ -25,7 +25,7 @@
 | `op_type` | `op_type` | 直接复制 | ✅ |
 | `inputs` (vector\<TensorSpec\>) | `input_specs` (vector\<TensorSpec\>) | 直接复制 | ✅ 复用同一类型 |
 | `attrs` (ModelGraphAttrs) | `attrs` (vector\<byte\>) | 复制 bytes | ✅ owned storage |
-| `op_params` (std::any) | `op_params` (std::any) | 移动/复制 | ✅ |
+| `op_params` (`OpParams`) | `op_params` (`OpParams`) | 移动/复制 | ✅ |
 | `workspace_requirement` | `workspace_requirement` | 直接复制 | ⚠️ 见 P1-4 |
 | `outputs` (vector\<TensorSpec\>) | **不存在** | 丢弃 | ⚠️ 见 P1-2 |
 | `weights` (vector\<WeightBinding\>) | **不存在** | lowering 解析为 packed_weights | ✅ |
@@ -190,7 +190,7 @@ AM_NODISCARD const RawWeightView* FindWeight(WeightRole role, uint32_t layer_ind
 **改进方案**：添加运行时校验（在 lowering 中）：
 
 ```cpp
-if (!node.attrs.bytes.empty() && node.op_params.has_value()) {
+if (!node.attrs.bytes.empty() && !std::holds_alternative<std::monostate>(node.op_params)) {
     return Status::InvalidArgument(
         "ModelGraphNode cannot have both attrs and op_params");
 }

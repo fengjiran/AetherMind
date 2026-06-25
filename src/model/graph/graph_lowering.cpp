@@ -1,14 +1,10 @@
 #include "aethermind/model/graph/graph_lowering.h"
 
 #include "aethermind/model/graph/operator_schema.h"
-#include "aethermind/operators/embedding_op.h"
-#include "aethermind/operators/rmsnorm_op.h"
 
-#include <any>
 #include <optional>
 #include <string_view>
 #include <utility>
-#include <variant>
 
 namespace aethermind {
 namespace {
@@ -29,23 +25,6 @@ StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema, std::string
         }
     }
     return Status::InvalidArgument("Operator schema output port not found during graph lowering");
-}
-
-std::any ToExecutionOpParams(const OpParams& params) {
-    return std::visit(
-            [](const auto& typed_params) -> std::any {
-                using Params = std::decay_t<decltype(typed_params)>;
-                if constexpr (std::is_same_v<Params, std::monostate>) {
-                    return {};
-                } else if constexpr (std::is_same_v<Params, EmbeddingParams>) {
-                    return std::any{EmbeddingOp::Params{}};
-                } else if constexpr (std::is_same_v<Params, RmsNormParams>) {
-                    return std::any{RmsNormOp::Params{.eps = typed_params.eps}};
-                } else {
-                    return std::any{typed_params};
-                }
-            },
-            params);
 }
 
 bool IsActivationDTypePort(OperatorPortKind kind) noexcept {
@@ -150,7 +129,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                 .isa = config.isa,
                 .phase = config.phase,
                 .attrs = node.attrs.bytes,
-                .op_params = ToExecutionOpParams(node.op_params),
+                .op_params = node.op_params,
         };
 
         LoweredStepBinding binding{.node = node_id};

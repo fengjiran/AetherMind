@@ -160,7 +160,7 @@ struct ModelGraphNode {
     std::vector<TensorSpec> outputs{};
     std::vector<WeightBinding> weights{};
     ModelGraphAttrs attrs{};
-    std::any op_params{};
+    OpParams op_params{};
     WorkspaceRequirement workspace_requirement{};
 };
 ```

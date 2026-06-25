@@ -1,13 +1,14 @@
 #ifndef AETHERMIND_OPERATORS_EMBEDDING_OP_H
 #define AETHERMIND_OPERATORS_EMBEDDING_OP_H
 
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator.h"
 
 namespace aethermind {
 
 class EmbeddingOp final : public Operator {
 public:
-    struct Params {};
+    using Params = EmbeddingParams;
 
     explicit EmbeddingOp(Params params) noexcept : params_(params) {}
 

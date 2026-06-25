@@ -1,8 +1,5 @@
 #include "aethermind/operators/operator_registry.h"
 
-#include "aethermind/backend/kernel_context.h"
-#include "aethermind/runtime/workspace.h"
-
 #include <gtest/gtest.h>
 
 using namespace aethermind;
@@ -11,9 +8,7 @@ namespace {
 
 class RegistryTestOperator final : public Operator {
 public:
-    struct Params {
-        int value_ = 0;
-    };
+    using Params = RmsNormParams;
 
     explicit RegistryTestOperator(Params params) noexcept : params_(params) {}
 
@@ -22,8 +17,8 @@ public:
     }
 
     AM_NODISCARD Status ValidateParams() const override {
-        if (params_.value_ <= 0) {
-            return Status::InvalidArgument("RegistryTestOperator value must be positive");
+        if (params_.eps <= 0.0F) {
+            return Status::InvalidArgument("RegistryTestOperator eps must be positive");
         }
         return Status::Ok();
     }
@@ -77,7 +72,7 @@ TEST(OperatorRegistry, RegisterAndCreateOperator) {
 
     StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(
             OpType::kAdd,
-            RegistryTestOperator::Params{.value_ = 7});
+            OpParams{RegistryTestOperator::Params{.eps = 7.0F}});
 
     ASSERT_TRUE(op.ok());
     ASSERT_NE(op.value(), nullptr);
@@ -94,7 +89,7 @@ TEST(OperatorRegistry, RejectsDuplicateFactory) {
 
     const Status duplicate = OperatorRegistry::Register(
             OpType::kElementwiseMul,
-            [](const std::any&) -> StatusOr<std::unique_ptr<Operator>> {
+            [](const OpParams&) -> StatusOr<std::unique_ptr<Operator>> {
                 return Status::Internal("duplicate factory should not be used");
             });
 
@@ -104,7 +99,7 @@ TEST(OperatorRegistry, RejectsDuplicateFactory) {
 TEST(OperatorRegistry, RegisterRejectsInvalidArguments) {
     const Status unknown = OperatorRegistry::Register(
             OpType::kUnknown,
-            [](const std::any&) -> StatusOr<std::unique_ptr<Operator>> {
+            [](const OpParams&) -> StatusOr<std::unique_ptr<Operator>> {
                 return Status::Internal("unknown op factory should not be used");
             });
     EXPECT_EQ(unknown.code(), StatusCode::kInvalidArgument);
@@ -118,18 +113,18 @@ TEST(OperatorRegistry, CreateDefaultParamsReturnsRegisteredDefaults) {
             OpType::kLinear,
             OperatorRegistry::Descriptor{
                     .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
-                    .make_default_params_ = []() -> StatusOr<std::any> {
-                        return std::any{RegistryTestOperator::Params{.value_ = 123}};
+                    .make_default_params_ = []() -> StatusOr<OpParams> {
+                        return OpParams{RegistryTestOperator::Params{.eps = 123.0F}};
                     },
             });
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
-    const StatusOr<std::any> params = OperatorRegistry::CreateDefaultParams(OpType::kLinear);
+    const StatusOr<OpParams> params = OperatorRegistry::CreateDefaultParams(OpType::kLinear);
 
     ASSERT_TRUE(params.ok()) << params.status().ToString();
-    const auto* typed_params = std::any_cast<RegistryTestOperator::Params>(&params.value());
+    const auto* typed_params = std::get_if<RegistryTestOperator::Params>(&params.value());
     ASSERT_NE(typed_params, nullptr);
-    EXPECT_EQ(typed_params->value_, 123);
+    EXPECT_FLOAT_EQ(typed_params->eps, 123.0F);
 }
 
 TEST(OperatorRegistry, CreateDefaultParamsFailsForFactoryOnlyRegistration) {
@@ -138,28 +133,28 @@ TEST(OperatorRegistry, CreateDefaultParamsFailsForFactoryOnlyRegistration) {
             &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
-    const StatusOr<std::any> params = OperatorRegistry::CreateDefaultParams(OpType::kMatMul);
+    const StatusOr<OpParams> params = OperatorRegistry::CreateDefaultParams(OpType::kMatMul);
 
     ASSERT_FALSE(params.ok());
     EXPECT_EQ(params.status().code(), StatusCode::kNotFound);
 }
 
 TEST(OperatorRegistry, CreateDefaultParamsFailsForUnregisteredOperator) {
-    const StatusOr<std::any> params = OperatorRegistry::CreateDefaultParams(OpType::kArgmax);
+    const StatusOr<OpParams> params = OperatorRegistry::CreateDefaultParams(OpType::kArgmax);
 
     ASSERT_FALSE(params.ok());
     EXPECT_EQ(params.status().code(), StatusCode::kNotFound);
 }
 
 TEST(OperatorRegistry, CreateMissingFactoryFails) {
-    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kArgmax, std::any{});
+    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kArgmax, OpParams{});
 
     ASSERT_FALSE(op.ok());
     EXPECT_EQ(op.status().code(), StatusCode::kNotFound);
 }
 
 TEST(OperatorRegistry, CreateUnknownOperatorFails) {
-    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kUnknown, std::any{});
+    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kUnknown, OpParams{});
 
     ASSERT_FALSE(op.ok());
     EXPECT_EQ(op.status().code(), StatusCode::kInvalidArgument);
@@ -171,7 +166,7 @@ TEST(OperatorRegistry, WrongParamsTypeFails) {
             &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
-    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kSilu, 7);
+    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kSilu, OpParams{ArgmaxParams{}});
 
     ASSERT_FALSE(op.ok());
     EXPECT_EQ(op.status().code(), StatusCode::kInvalidArgument);

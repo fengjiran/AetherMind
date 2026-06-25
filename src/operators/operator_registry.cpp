@@ -41,7 +41,7 @@ bool OperatorRegistry::RegisterOrAbort(OpType op_type, Descriptor descriptor, co
     std::abort();
 }
 
-StatusOr<std::unique_ptr<Operator>> OperatorRegistry::Create(OpType op_type, const std::any& params) {
+StatusOr<std::unique_ptr<Operator>> OperatorRegistry::Create(OpType op_type, const OpParams& params) {
     if (op_type == OpType::kUnknown) {
         return Status::InvalidArgument("OperatorRegistry cannot create kUnknown operator");
     }
@@ -61,7 +61,7 @@ StatusOr<std::unique_ptr<Operator>> OperatorRegistry::Create(OpType op_type, con
     return factory(params);
 }
 
-StatusOr<std::any> OperatorRegistry::CreateDefaultParams(OpType op_type) {
+StatusOr<OpParams> OperatorRegistry::CreateDefaultParams(OpType op_type) {
     if (op_type == OpType::kUnknown) {
         return Status::InvalidArgument("OperatorRegistry cannot create default params for kUnknown operator");
     }

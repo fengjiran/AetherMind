@@ -5,6 +5,8 @@
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/operator_registry.h"
 
+#include <variant>
+
 namespace aethermind {
 namespace {
 
@@ -36,8 +38,8 @@ StatusOr<const void*> ResolvePackedWeightsForNode(const ModelInstance* model_ins
     return packed_weights->storage().data();
 }
 
-std::any MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
-    if (node.op_params.has_value()) {
+OpParams MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
+    if (!std::holds_alternative<std::monostate>(node.op_params)) {
         return node.op_params;
     }
 
@@ -45,7 +47,7 @@ std::any MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
     if (default_params.ok()) {
         return default_params.value();
     }
-    return {};
+    return std::monostate{};
 }
 
 struct PreparedOperator {

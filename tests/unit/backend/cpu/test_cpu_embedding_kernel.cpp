@@ -179,7 +179,7 @@ TEST(CpuEmbeddingKernel, ExecutionPlanBuilderRunsThroughEmbeddingOperator) {
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
-            .op_params = EmbeddingOp::Params{},
+            .op_params = OpParams{EmbeddingOp::Params{}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

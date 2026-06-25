@@ -2,30 +2,13 @@
 
 #include "aethermind/model/graph/operator_schema.h"
 
+#include <algorithm>
 #include <optional>
 #include <string_view>
 #include <utility>
 
 namespace aethermind {
 namespace {
-
-StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema, std::string_view name) {
-    for (const OperatorInputPort& port: schema.input_ports) {
-        if (std::string_view(port.name) == name) {
-            return port.index;
-        }
-    }
-    return Status::InvalidArgument("Operator schema input port not found during graph lowering");
-}
-
-StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema, std::string_view name) {
-    for (const OperatorOutputPort& port: schema.output_ports) {
-        if (std::string_view(port.name) == name) {
-            return port.index;
-        }
-    }
-    return Status::InvalidArgument("Operator schema output port not found during graph lowering");
-}
 
 bool IsActivationDTypePort(OperatorPortKind kind) noexcept {
     return kind == OperatorPortKind::kActivation;
@@ -162,6 +145,53 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
     }
 
     return lowered;
+}
+
+StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
+    StateAliasPlan plan;
+    plan.aliases.reserve(lowered.state_aliases.size());
+
+    for (const LoweredStateAlias& alias: lowered.state_aliases) {
+        bool found = false;
+        for (size_t s = 0; s < lowered.step_bindings.size(); ++s) {
+            const LoweredStepBinding& binding = lowered.step_bindings[s];
+
+            auto input_it = std::find(binding.input_values.begin(),
+                                      binding.input_values.end(),
+                                      alias.input);
+            auto output_it = std::find(binding.output_values.begin(),
+                                       binding.output_values.end(),
+                                       alias.output);
+
+            if (input_it != binding.input_values.end() &&
+                output_it != binding.output_values.end()) {
+                plan.aliases.push_back(ResolvedStateAlias{
+                        .step_index = s,
+                        .input_port = static_cast<uint32_t>(
+                                input_it - binding.input_values.begin()),
+                        .output_port = static_cast<uint32_t>(
+                                output_it - binding.output_values.begin()),
+                });
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            return Status::InvalidArgument(
+                    "ResolveStateAliases: aliased GraphValueId not found in "
+                    "any step binding");
+        }
+    }
+
+    // Sort by step_index so that ForStep() can use binary search.
+    std::sort(plan.aliases.begin(), plan.aliases.end(),
+              [](const ResolvedStateAlias& a,
+                 const ResolvedStateAlias& b) noexcept {
+                  return a.step_index < b.step_index;
+              });
+
+    return plan;
 }
 
 }// namespace aethermind

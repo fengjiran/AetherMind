@@ -25,4 +25,8 @@ size_t ExecutionPlan::size() const noexcept {
     return steps_.size();
 }
 
+const StateAliasPlan& ExecutionPlan::state_alias_plan() const noexcept {
+    return state_alias_plan_;
+}
+
 }// namespace aethermind

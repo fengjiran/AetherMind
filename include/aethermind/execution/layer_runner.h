@@ -4,6 +4,7 @@
 #include "aethermind/base/status.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/state_alias_plan.h"
 
 namespace aethermind {
 
@@ -15,7 +16,14 @@ public:
 private:
     AM_NODISCARD static Status RunStep(size_t step_index,
                                        const ExecutionStep& step,
-                                       RuntimeBindingContext& bindings) noexcept;
+                                       RuntimeBindingContext& bindings,
+                                       const StateAliasPlan& alias_plan) noexcept;
+
+    AM_NODISCARD static Status ValidateStateAliasesForStep(
+            size_t step_index,
+            const ExecutionStep& step,
+            const StateAliasPlan& alias_plan,
+            const RuntimeBindingContext& bindings) noexcept;
 };
 
 }// namespace aethermind

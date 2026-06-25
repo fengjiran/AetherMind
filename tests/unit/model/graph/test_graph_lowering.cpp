@@ -277,5 +277,111 @@ TEST(GraphLowering, LowersFullLlamaDenseGraph) {
     EXPECT_EQ(lowered->state_aliases.size(), static_cast<size_t>(config.num_hidden_layers) * 2U);
 }
 
+TEST(GraphLowering, ResolveStateAliasesProducesCorrectEntries) {
+    ModelGraph graph;
+    const GraphValueId k = AddActivation(graph, KVSpec(), "k");
+    const GraphValueId v = AddActivation(graph, KVSpec(), "v");
+    const GraphValueId k_state_in = graph.AddState(KVSpec(), KStateBinding(), "k_cache_in");
+    const GraphValueId v_state_in = graph.AddState(KVSpec(), VStateBinding(), "v_cache_in");
+    graph.AddNode(
+            OpType::kKVCacheUpdate,
+            0U,
+            {k, v, k_state_in, v_state_in},
+            {ModelGraph::NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
+             ModelGraph::NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = VStateBinding()}}},
+            KVCacheUpdateParams{});
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok());
+
+    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(*lowered);
+    ASSERT_TRUE(alias_plan.ok()) << alias_plan.status().ToString();
+    EXPECT_FALSE(alias_plan->empty());
+    ASSERT_EQ(alias_plan->size(), 2U);
+
+    // The KVCacheUpdate step is the 3rd step (index 2) because k and v
+    // are created via AddActivation which adds an Embedding step each.
+    const auto kvcache_aliases = alias_plan->ForStep(2);
+    ASSERT_EQ(kvcache_aliases.size(), 2U);
+
+    // K cache alias: port 2 in (k_state_in) → port 0 out (k_cache_out)
+    EXPECT_EQ(kvcache_aliases[0].input_port, 2U);
+    EXPECT_EQ(kvcache_aliases[0].output_port, 0U);
+    // V cache alias: port 3 in (v_state_in) → port 1 out (v_cache_out)
+    EXPECT_EQ(kvcache_aliases[1].input_port, 3U);
+    EXPECT_EQ(kvcache_aliases[1].output_port, 1U);
+}
+
+TEST(GraphLowering, ResolveStateAliasesReturnsEmptyPlanForGraphWithoutState) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
+                                                WeightBinding{.role = WeightRole::kTokenEmbedding});
+    graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {ModelGraph::NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            EmbeddingParams{});
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok());
+
+    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(*lowered);
+    ASSERT_TRUE(alias_plan.ok());
+    EXPECT_TRUE(alias_plan->empty());
+    EXPECT_EQ(alias_plan->size(), 0U);
+}
+
+TEST(GraphLowering, StateAliasPlanForStepReturnsEmptySpanForUnknownStep) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
+                                                WeightBinding{.role = WeightRole::kTokenEmbedding});
+    graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {ModelGraph::NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            EmbeddingParams{});
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok());
+
+    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(*lowered);
+    ASSERT_TRUE(alias_plan.ok());
+
+    const auto aliases = alias_plan->ForStep(999);
+    EXPECT_TRUE(aliases.empty());
+}
+
+TEST(GraphLowering, ResolveStateAliasesFailsOnOrphanAlias) {
+    ModelGraph graph;
+    const GraphValueId k = AddActivation(graph, KVSpec(), "k");
+    const GraphValueId v = AddActivation(graph, KVSpec(), "v");
+    const GraphValueId k_state_in = graph.AddState(KVSpec(), KStateBinding(), "k_cache_in");
+    const GraphValueId v_state_in = graph.AddState(KVSpec(), VStateBinding(), "v_cache_in");
+    graph.AddNode(
+            OpType::kKVCacheUpdate,
+            0U,
+            {k, v, k_state_in, v_state_in},
+            {ModelGraph::NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
+             ModelGraph::NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = VStateBinding()}}},
+            KVCacheUpdateParams{});
+
+    StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok());
+
+    // Inject a bogus alias referencing a non-existent GraphValueId.
+    lowered->state_aliases.push_back(LoweredStateAlias{
+            .input = GraphValueId{.index = 99999},
+            .output = k_state_in,
+    });
+
+    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(*lowered);
+    ASSERT_FALSE(alias_plan.ok());
+    EXPECT_EQ(alias_plan.status().code(), StatusCode::kInvalidArgument);
+}
+
 }// namespace
 }// namespace aethermind

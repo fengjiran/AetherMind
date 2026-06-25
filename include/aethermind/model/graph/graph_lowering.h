@@ -5,6 +5,7 @@
 #include "aethermind/base/status.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/model/graph/model_graph.h"
+#include "aethermind/model/graph/state_alias_plan.h"
 #include "macros.h"
 
 #include <vector>
@@ -51,6 +52,21 @@ struct LoweredGraph {
 AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
         const ModelGraph& graph,
         const GraphLoweringConfig& config = {});
+
+/// Resolves graph-value-based state aliases into step/port-index-based
+/// resolved aliases by cross-referencing LoweredGraph::step_bindings.
+///
+/// state_aliases[i] = {input GraphValueId, output GraphValueId}
+/// is resolved to ResolvedStateAlias{
+///   .step_index  = step whose bindings contain both values,
+///   .input_port  = port index of input in that step's input_values,
+///   .output_port = port index of output in that step's output_values,
+/// }.
+///
+/// Returns an error if an alias references a GraphValueId that cannot
+/// be found in any step binding.
+AM_NODISCARD StatusOr<StateAliasPlan> ResolveStateAliases(
+        const LoweredGraph& lowered);
 
 }// namespace aethermind
 

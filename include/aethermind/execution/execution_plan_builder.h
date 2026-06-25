@@ -14,6 +14,8 @@
 
 namespace aethermind {
 
+struct LoweredGraph;
+
 struct ExecutionPlanNodeSpec {
     OpType op_type = OpType::kUnknown;
     DeviceType device_type = DeviceType::kCPU;
@@ -43,11 +45,24 @@ public:
             const ModelInstance& model_instance,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
+    /// Builds an ExecutionPlan from a LoweredGraph, resolving state
+    /// aliases into the resulting plan so that the runtime executor
+    /// can enforce must-alias semantics.
+    AM_NODISCARD static StatusOr<ExecutionPlan> Build(
+            RuntimeContext& runtime,
+            const LoweredGraph& lowered);
+
+    AM_NODISCARD static StatusOr<ExecutionPlan> Build(
+            RuntimeContext& runtime,
+            const ModelInstance& model_instance,
+            const LoweredGraph& lowered);
+
 private:
     static StatusOr<ExecutionPlan> BuildExecutionPlan(
             RuntimeContext& runtime,
             const ModelInstance* model_instance,
-            const std::vector<ExecutionPlanNodeSpec>& nodes);
+            const std::vector<ExecutionPlanNodeSpec>& nodes,
+            const StateAliasPlan& state_alias_plan);
 };
 
 }// namespace aethermind

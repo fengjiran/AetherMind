@@ -1,6 +1,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 
 #include "aethermind/backend/packed_weights.h"
+#include "aethermind/model/graph/graph_lowering.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/operator_registry.h"
@@ -101,9 +102,11 @@ StatusOr<PreparedOperator> CreateAndPrepareOperator(Backend& backend,
 
 }// namespace
 
-StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(RuntimeContext& runtime,
-                                                                 const ModelInstance* model_instance,
-                                                                 const std::vector<ExecutionPlanNodeSpec>& nodes) {
+StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(
+        RuntimeContext& runtime,
+        const ModelInstance* model_instance,
+        const std::vector<ExecutionPlanNodeSpec>& nodes,
+        const StateAliasPlan& state_alias_plan) {
     std::vector<WorkspaceRequirement> workspace_requirements;
     workspace_requirements.reserve(nodes.size());
     for (const ExecutionPlanNodeSpec& node: nodes) {
@@ -117,6 +120,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(RuntimeContext&
     }
 
     ExecutionPlan plan;
+    plan.state_alias_plan_ = state_alias_plan;
     for (size_t index = 0; index < nodes.size(); ++index) {
         const auto& node = nodes[index];
 
@@ -187,14 +191,33 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, nullptr, nodes);
+    return BuildExecutionPlan(runtime, nullptr, nodes, StateAliasPlan{});
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const ModelInstance& model_instance,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, &model_instance, nodes);
+    return BuildExecutionPlan(runtime, &model_instance, nodes, StateAliasPlan{});
+}
+
+StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
+        RuntimeContext& runtime,
+        const LoweredGraph& lowered) {
+    StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(lowered);
+    AM_RETURN_IF_ERROR(alias_plan.status());
+    return BuildExecutionPlan(runtime, nullptr, lowered.steps,
+                              std::move(alias_plan).value());
+}
+
+StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
+        RuntimeContext& runtime,
+        const ModelInstance& model_instance,
+        const LoweredGraph& lowered) {
+    StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(lowered);
+    AM_RETURN_IF_ERROR(alias_plan.status());
+    return BuildExecutionPlan(runtime, &model_instance, lowered.steps,
+                              std::move(alias_plan).value());
 }
 
 }// namespace aethermind

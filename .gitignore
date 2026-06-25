@@ -139,5 +139,6 @@ dmypy.json
 cmake-build-debug/
 build-asan/
 build-asan-ubsan/
+build-tsan/
 .DS_Store
 3rdparty/

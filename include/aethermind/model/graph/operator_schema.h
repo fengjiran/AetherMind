@@ -51,6 +51,14 @@ inline constexpr std::string_view kCache = "k_cache";
 inline constexpr std::string_view vCache = "v_cache";
 }// namespace kv_cache_ports
 
+/// Finds the index of an input port by name. Returns kInvalidArgument if not found.
+AM_NODISCARD StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema,
+                                                   std::string_view name) noexcept;
+
+/// Finds the index of an output port by name. Returns kInvalidArgument if not found.
+AM_NODISCARD StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema,
+                                                    std::string_view name) noexcept;
+
 AM_NODISCARD StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type);
 AM_NODISCARD std::span<const OperatorSchema> GetOperatorSchemas() noexcept;
 

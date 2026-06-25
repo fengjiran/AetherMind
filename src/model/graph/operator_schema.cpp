@@ -115,4 +115,22 @@ std::span<const OperatorSchema> GetOperatorSchemas() noexcept {
     return kOperatorSchemas;
 }
 
+StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema, std::string_view name) noexcept {
+    for (const OperatorInputPort& port: schema.input_ports) {
+        if (std::string_view(port.name) == name) {
+            return port.index;
+        }
+    }
+    return Status::InvalidArgument("Operator schema input port not found");
+}
+
+StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema, std::string_view name) noexcept {
+    for (const OperatorOutputPort& port: schema.output_ports) {
+        if (std::string_view(port.name) == name) {
+            return port.index;
+        }
+    }
+    return Status::InvalidArgument("Operator schema output port not found");
+}
+
 }// namespace aethermind

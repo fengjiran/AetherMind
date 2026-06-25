@@ -6,6 +6,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/memory/buffer.h"
+#include "aethermind/model/graph/graph_lowering.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -362,6 +363,77 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeRejectsUnknownOpType) {
 
     EXPECT_FALSE(resolved.ok());
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresResolvedStateAliasPlan) {
+    // Construct a LoweredGraph manually with a valid Embedding step
+    // and injected aliases so that the alias plan is threaded through
+    // ExecutionPlan without requiring KVCacheUpdate kernels.
+    LoweredGraph lowered;
+    lowered.steps.push_back(MakeRmsNormNodeSpec());
+    lowered.step_bindings.push_back(LoweredStepBinding{
+            .node = GraphNodeId{.index = 0},
+            .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
+            .output_values = {GraphValueId{.index = 2}},
+    });
+    lowered.state_aliases.push_back(LoweredStateAlias{
+            .input = GraphValueId{.index = 0},
+            .output = GraphValueId{.index = 2},
+    });
+
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(
+            runtime, lowered);
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_EQ(plan->state_alias_plan().size(), 1U);
+    EXPECT_FALSE(plan->state_alias_plan().empty());
+}
+
+TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    std::vector<ExecutionPlanNodeSpec> nodes;
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = OpParams{RmsNormOp::Params{.eps = 11.0F}};
+    nodes.push_back(node);
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(
+            runtime, nodes);
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_TRUE(plan->state_alias_plan().empty());
+    EXPECT_EQ(plan->state_alias_plan().size(), 0U);
+}
+
+TEST(ExecutionPlanBuilder, BuildFromEmptyLoweredGraphHasEmptyStateAliasPlan) {
+    const ModelGraph graph(
+            HfModelConfig{.model_type = "llama",
+                          .hidden_size = 8,
+                          .num_hidden_layers = 1,
+                          .num_attention_heads = 4,
+                          .num_key_value_heads = 2,
+                          .vocab_size = 32,
+                          .max_position_embeddings = 128,
+                          .head_dim = 2,
+                          .rms_norm_eps = 1.0e-5,
+                          .hidden_act = "silu"});
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    EXPECT_TRUE(lowered->steps.empty());
+
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(
+            runtime, *lowered);
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_TRUE(plan->state_alias_plan().empty());
 }
 
 }// namespace

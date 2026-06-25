@@ -3,6 +3,7 @@
 
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
+#include "aethermind/model/graph/state_alias_plan.h"
 #include "aethermind/operators/operator.h"
 #include "aethermind/runtime/workspace.h"
 
@@ -26,10 +27,13 @@ public:
     AM_NODISCARD const std::vector<ExecutionStep>& steps() const noexcept;
     AM_NODISCARD size_t size() const noexcept;
 
+    AM_NODISCARD const StateAliasPlan& state_alias_plan() const noexcept;
+
 private:
     Status AddStep(const ExecutionStep& step);
 
     std::vector<ExecutionStep> steps_{};
+    StateAliasPlan state_alias_plan_{};
 
     friend class ExecutionPlanBuilder;
 };

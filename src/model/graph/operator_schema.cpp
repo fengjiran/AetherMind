@@ -5,20 +5,26 @@
 namespace aethermind {
 namespace {
 
-OperatorInputPort Input(uint32_t index, const char* name, OperatorPortKind kind) {
-    return OperatorInputPort{.index = index, .name = name, .kind = kind};
+OperatorInputPort Input(uint32_t index, std::string_view name, OperatorPortKind kind) {
+    return OperatorInputPort{.index = index, .name = std::string(name), .kind = kind};
 }
 
-OperatorInputPort Input(uint32_t index, const char* name, OperatorPortKind kind, bool contributes_tensor_spec) {
-    return OperatorInputPort{.index = index, .name = name, .kind = kind, .contributes_tensor_spec = contributes_tensor_spec};
+OperatorInputPort Input(uint32_t index, std::string_view name, OperatorPortKind kind,
+                        bool contributes_tensor_spec) {
+    return OperatorInputPort{.index = index,
+                             .name = std::string(name),
+                             .kind = kind,
+                             .contributes_tensor_spec = contributes_tensor_spec};
 }
 
-OperatorOutputPort Output(uint32_t index, const char* name) {
-    return OperatorOutputPort{.index = index, .name = name, .kind = OperatorPortKind::kActivation};
+OperatorOutputPort Output(uint32_t index, std::string_view name) {
+    return OperatorOutputPort{.index = index,
+                              .name = std::string(name),
+                              .kind = OperatorPortKind::kActivation};
 }
 
-OperatorOutputPort Output(uint32_t index, const char* name, OperatorPortKind kind) {
-    return OperatorOutputPort{.index = index, .name = name, .kind = kind};
+OperatorOutputPort Output(uint32_t index, std::string_view name, OperatorPortKind kind) {
+    return OperatorOutputPort{.index = index, .name = std::string(name), .kind = kind};
 }
 
 const std::array<OperatorSchema, 11> kOperatorSchemas{
@@ -80,16 +86,16 @@ const std::array<OperatorSchema, 11> kOperatorSchemas{
                 .op_type = OpType::kKVCacheUpdate,
                 .input_ports = {Input(0, "k", OperatorPortKind::kActivation),
                                 Input(1, "v", OperatorPortKind::kActivation),
-                                Input(2, "k_cache_in", OperatorPortKind::kState, false),
-                                Input(3, "v_cache_in", OperatorPortKind::kState, false)},
-                .output_ports = {Output(0, "k_cache_out", OperatorPortKind::kState),
-                                 Output(1, "v_cache_out", OperatorPortKind::kState)},
+                                Input(2, kv_cache_ports::kCacheIn, OperatorPortKind::kState, false),
+                                Input(3, kv_cache_ports::vCacheIn, OperatorPortKind::kState, false)},
+                .output_ports = {Output(0, kv_cache_ports::kCacheOut, OperatorPortKind::kState),
+                                 Output(1, kv_cache_ports::vCacheOut, OperatorPortKind::kState)},
         },
         OperatorSchema{
                 .op_type = OpType::kAttention,
                 .input_ports = {Input(0, "q", OperatorPortKind::kActivation),
-                                Input(1, "k_cache", OperatorPortKind::kState, false),
-                                Input(2, "v_cache", OperatorPortKind::kState, false)},
+                                Input(1, kv_cache_ports::kCache, OperatorPortKind::kState, false),
+                                Input(2, kv_cache_ports::vCache, OperatorPortKind::kState, false)},
                 .output_ports = {Output(0, "output")},
         },
 };

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace aethermind {
@@ -36,6 +37,19 @@ struct OperatorSchema {
     std::vector<OperatorInputPort> input_ports{};
     std::vector<OperatorOutputPort> output_ports{};
 };
+
+/// Port name constants for KV cache operators.
+/// Schema definitions in operator_schema.cpp and validation logic in
+/// model_graph.cpp both reference these constants so that the port name
+/// contract is enforced at compile time.
+namespace kv_cache_ports {
+inline constexpr std::string_view kCacheIn = "k_cache_in";
+inline constexpr std::string_view vCacheIn = "v_cache_in";
+inline constexpr std::string_view kCacheOut = "k_cache_out";
+inline constexpr std::string_view vCacheOut = "v_cache_out";
+inline constexpr std::string_view kCache = "k_cache";
+inline constexpr std::string_view vCache = "v_cache";
+}// namespace kv_cache_ports
 
 AM_NODISCARD StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type);
 AM_NODISCARD std::span<const OperatorSchema> GetOperatorSchemas() noexcept;

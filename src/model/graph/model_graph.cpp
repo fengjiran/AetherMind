@@ -104,6 +104,24 @@ Status RequireStateSlot(const StateBinding& binding, KVCacheSlot expected_slot, 
     return Status::Ok();
 }
 
+StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema, std::string_view name) {
+    for (const auto& port: schema.input_ports) {
+        if (std::string_view(port.name) == name) {
+            return port.index;
+        }
+    }
+    return Status::InvalidArgument("Operator schema input port not found");
+}
+
+StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema, std::string_view name) {
+    for (const auto& port: schema.output_ports) {
+        if (std::string_view(port.name) == name) {
+            return port.index;
+        }
+    }
+    return Status::InvalidArgument("Operator schema output port not found");
+}
+
 bool CarriesProducerDependency(const GraphValue& value) {
     return std::holds_alternative<ActivationValue>(value.payload) ||
            (std::holds_alternative<StateValue>(value.payload) && value.producer.has_value());
@@ -400,8 +418,24 @@ Status ModelGraph::Validate() const {
         }
 
         if (node.op_type == OpType::kKVCacheUpdate) {
-            const GraphValue& k_state_input = values_[node.inputs[2].index];
-            const GraphValue& k_state_output = values_[node.outputs[0].index];
+            StatusOr<uint32_t> k_in_idx_or = FindInputPortIndex(schema, kv_cache_ports::kCacheIn);
+            AM_RETURN_IF_ERROR(k_in_idx_or.status());
+            const uint32_t k_in_idx = k_in_idx_or.value();
+
+            StatusOr<uint32_t> v_in_idx_or = FindInputPortIndex(schema, kv_cache_ports::vCacheIn);
+            AM_RETURN_IF_ERROR(v_in_idx_or.status());
+            const uint32_t v_in_idx = v_in_idx_or.value();
+
+            StatusOr<uint32_t> k_out_idx_or = FindOutputPortIndex(schema, kv_cache_ports::kCacheOut);
+            AM_RETURN_IF_ERROR(k_out_idx_or.status());
+            const uint32_t k_out_idx = k_out_idx_or.value();
+
+            StatusOr<uint32_t> v_out_idx_or = FindOutputPortIndex(schema, kv_cache_ports::vCacheOut);
+            AM_RETURN_IF_ERROR(v_out_idx_or.status());
+            const uint32_t v_out_idx = v_out_idx_or.value();
+
+            const GraphValue& k_state_input = values_[node.inputs[k_in_idx].index];
+            const GraphValue& k_state_output = values_[node.outputs[k_out_idx].index];
             const StateBinding& k_input_binding = std::get<StateValue>(k_state_input.payload).binding;
             const StateBinding& k_output_binding = std::get<StateValue>(k_state_output.payload).binding;
             AM_RETURN_IF_ERROR(RequireStateSlot(
@@ -421,8 +455,8 @@ Status ModelGraph::Validate() const {
                         "KVCacheUpdate K state input and output must share a state family");
             }
 
-            const GraphValue& v_state_input = values_[node.inputs[3].index];
-            const GraphValue& v_state_output = values_[node.outputs[1].index];
+            const GraphValue& v_state_input = values_[node.inputs[v_in_idx].index];
+            const GraphValue& v_state_output = values_[node.outputs[v_out_idx].index];
             const StateBinding& v_input_binding = std::get<StateValue>(v_state_input.payload).binding;
             const StateBinding& v_output_binding = std::get<StateValue>(v_state_output.payload).binding;
             AM_RETURN_IF_ERROR(RequireStateSlot(
@@ -446,8 +480,16 @@ Status ModelGraph::Validate() const {
                         "KVCacheUpdate V state input and output must share a state family");
             }
         } else if (node.op_type == OpType::kAttention) {
-            const StateBinding& k_cache_binding = std::get<StateValue>(values_[node.inputs[1].index].payload).binding;
-            const StateBinding& v_cache_binding = std::get<StateValue>(values_[node.inputs[2].index].payload).binding;
+            StatusOr<uint32_t> k_cache_idx_or = FindInputPortIndex(schema, kv_cache_ports::kCache);
+            AM_RETURN_IF_ERROR(k_cache_idx_or.status());
+            const uint32_t k_cache_idx = k_cache_idx_or.value();
+
+            StatusOr<uint32_t> v_cache_idx_or = FindInputPortIndex(schema, kv_cache_ports::vCache);
+            AM_RETURN_IF_ERROR(v_cache_idx_or.status());
+            const uint32_t v_cache_idx = v_cache_idx_or.value();
+
+            const StateBinding& k_cache_binding = std::get<StateValue>(values_[node.inputs[k_cache_idx].index].payload).binding;
+            const StateBinding& v_cache_binding = std::get<StateValue>(values_[node.inputs[v_cache_idx].index].payload).binding;
             AM_RETURN_IF_ERROR(RequireStateSlot(
                     k_cache_binding,
                     KVCacheSlot::kKey,

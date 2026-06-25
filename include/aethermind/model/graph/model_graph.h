@@ -198,6 +198,12 @@ public:
     /// produced state edges.
     /// Returns an error if the graph contains a cycle.
     AM_NODISCARD StatusOr<std::vector<GraphNodeId>> TopologicalOrder() const;
+
+    /// Combines Validate() and TopologicalOrder() into a single pass.
+    /// Performs full semantic validation and returns the topological order
+    /// on success, avoiding the redundant traversal that results from
+    /// calling Validate() followed by TopologicalOrder().
+    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> ValidateAndTopologicalOrder() const;
     AM_NODISCARD std::span<const GraphNode> GetNodes() const noexcept;
     AM_NODISCARD std::span<const GraphValue> GetValues() const noexcept;
     AM_NODISCARD std::span<const Input> GetInputs() const noexcept;

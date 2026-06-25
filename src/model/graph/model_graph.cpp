@@ -275,6 +275,10 @@ void ModelGraph::MarkOutput(GraphValueId value, std::string name) {
 }
 
 Status ModelGraph::Validate() const {
+    return ValidateAndTopologicalOrder().status();
+}
+
+StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() const {
     // -- Validate graph inputs and outputs --
     for (const auto& input: inputs_) {
         if (!IsValidValueId(input.value, values_)) {
@@ -495,11 +499,8 @@ Status ModelGraph::Validate() const {
         }
     }
 
-    // -- Final pass: verify the graph is acyclic via topological sort --
-    if (StatusOr<std::vector<GraphNodeId>> order = TopologicalOrder(); !order.ok()) {
-        return order.status();
-    }
-    return Status::Ok();
+    // -- Final pass: verify the graph is acyclic and return the order --
+    return TopologicalOrder();
 }
 
 StatusOr<std::vector<GraphNodeId>> ModelGraph::TopologicalOrder() const {

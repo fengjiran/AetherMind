@@ -1,5 +1,4 @@
 #include "aethermind/model/graph/graph_lowering.h"
-
 #include "aethermind/model/graph/operator_schema.h"
 
 #include <algorithm>
@@ -69,6 +68,7 @@ Status AddKVCacheAliases(const OperatorSchema& schema,
             .input = node.inputs[k_in.value()],
             .output = node.outputs[k_out.value()],
     });
+    
     lowered.state_aliases.push_back(LoweredStateAlias{
             .input = node.inputs[v_in.value()],
             .output = node.outputs[v_out.value()],
@@ -80,9 +80,7 @@ Status AddKVCacheAliases(const OperatorSchema& schema,
 
 StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                                        const GraphLoweringConfig& config) {
-    AM_RETURN_IF_ERROR(graph.Validate());
-
-    StatusOr<std::vector<GraphNodeId>> order_or = graph.TopologicalOrder();
+    StatusOr<std::vector<GraphNodeId>> order_or = graph.ValidateAndTopologicalOrder();
     AM_RETURN_IF_ERROR(order_or.status());
 
     LoweredGraph lowered;
@@ -91,10 +89,11 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
     lowered.model_inputs.reserve(graph.GetInputs().size());
     lowered.model_outputs.reserve(graph.GetOutputs().size());
 
-    for (const ModelGraph::Input& input: graph.GetInputs()) {
+    for (const auto& input: graph.GetInputs()) {
         lowered.model_inputs.push_back(input.value);
     }
-    for (const ModelGraph::Output& output: graph.GetOutputs()) {
+
+    for (const auto& output: graph.GetOutputs()) {
         lowered.model_outputs.push_back(output.value);
     }
 
@@ -156,12 +155,10 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
         for (size_t s = 0; s < lowered.step_bindings.size(); ++s) {
             const LoweredStepBinding& binding = lowered.step_bindings[s];
 
-            auto input_it = std::find(binding.input_values.begin(),
-                                      binding.input_values.end(),
-                                      alias.input);
-            auto output_it = std::find(binding.output_values.begin(),
-                                       binding.output_values.end(),
-                                       alias.output);
+            auto input_it = std::ranges::find(binding.input_values,
+                                              alias.input);
+            auto output_it = std::ranges::find(binding.output_values,
+                                               alias.output);
 
             if (input_it != binding.input_values.end() &&
                 output_it != binding.output_values.end()) {
@@ -185,11 +182,11 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
     }
 
     // Sort by step_index so that ForStep() can use binary search.
-    std::sort(plan.aliases.begin(), plan.aliases.end(),
-              [](const ResolvedStateAlias& a,
-                 const ResolvedStateAlias& b) noexcept {
-                  return a.step_index < b.step_index;
-              });
+    std::ranges::sort(plan.aliases,
+                      [](const ResolvedStateAlias& a,
+                         const ResolvedStateAlias& b) noexcept {
+                          return a.step_index < b.step_index;
+                      });
 
     return plan;
 }

@@ -25,7 +25,7 @@ KernelFunc ResolveAvx2RmsNormEntry() {
     return backend.ResolveKernel(OpType::kRmsNorm,
                                  KernelSelector{
                                          .device_type = DeviceType::kCPU,
-                                         .activation_dtype = DataType::Float32(),
+                                         .act_dtype = DataType::Float32(),
                                          .weight_dtype = DataType::Float32(),
                                          .weight_format = WeightFormat::kPlain,
                                          .isa = IsaLevel::kAVX2,
@@ -88,7 +88,7 @@ TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesWithKernelParams) {
             OpType::kRmsNorm,
             KernelSelector{
                     .device_type = DeviceType::kCPU,
-                    .activation_dtype = DataType::Float32(),
+                    .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
                     .isa = IsaLevel::kScalar,
@@ -131,7 +131,7 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
@@ -180,7 +180,7 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRmsNormFailsWithoutTensorBinding) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,

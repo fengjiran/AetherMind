@@ -27,6 +27,18 @@ OperatorOutputPort Output(uint32_t index, std::string_view name, OperatorPortKin
     return OperatorOutputPort{.index = index, .name = std::string(name), .kind = kind};
 }
 
+template<typename Port>
+StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
+                                 std::string_view name,
+                                 const char* not_found_message) noexcept {
+    for (const Port& port: ports) {
+        if (std::string_view(port.name) == name) {
+            return port.index;
+        }
+    }
+    return Status::InvalidArgument(not_found_message);
+}
+
 const std::array<OperatorSchema, 11> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kEmbedding,
@@ -116,21 +128,15 @@ std::span<const OperatorSchema> GetOperatorSchemas() noexcept {
 }
 
 StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema, std::string_view name) noexcept {
-    for (const OperatorInputPort& port: schema.input_ports) {
-        if (std::string_view(port.name) == name) {
-            return port.index;
-        }
-    }
-    return Status::InvalidArgument("Operator schema input port not found");
+    return FindPortIndex<OperatorInputPort>(schema.input_ports,
+                                            name,
+                                            "Operator schema input port not found");
 }
 
 StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema, std::string_view name) noexcept {
-    for (const OperatorOutputPort& port: schema.output_ports) {
-        if (std::string_view(port.name) == name) {
-            return port.index;
-        }
-    }
-    return Status::InvalidArgument("Operator schema output port not found");
+    return FindPortIndex<OperatorOutputPort>(schema.output_ports,
+                                             name,
+                                             "Operator schema output port not found");
 }
 
 }// namespace aethermind

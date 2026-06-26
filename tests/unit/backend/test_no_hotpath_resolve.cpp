@@ -125,7 +125,7 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,

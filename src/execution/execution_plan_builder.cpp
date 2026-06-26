@@ -14,7 +14,7 @@ namespace {
 KernelSelector MakeSelectorForNode(const ExecutionPlanNodeSpec& node) noexcept {
     return KernelSelector{
             .device_type = node.device_type,
-            .activation_dtype = node.activation_dtype,
+            .act_dtype = node.act_dtype,
             .weight_dtype = node.weight_dtype,
             .weight_format = node.weight_format,
             .isa = node.isa,
@@ -100,13 +100,11 @@ StatusOr<PreparedOperator> CreateAndPrepareOperator(Backend& backend,
     };
 }
 
-}// namespace
-
-StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(
+StatusOr<ExecutionPlan> BuildExecutionPlan(
         RuntimeContext& runtime,
         const ModelInstance* model_instance,
         const std::vector<ExecutionPlanNodeSpec>& nodes,
-        const StateAliasPlan& state_alias_plan) {
+        StateAliasPlan state_alias_plan) {
     std::vector<WorkspaceRequirement> workspace_requirements;
     workspace_requirements.reserve(nodes.size());
     for (const ExecutionPlanNodeSpec& node: nodes) {
@@ -119,8 +117,8 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(
         return layout.status();
     }
 
-    ExecutionPlan plan;
-    plan.state_alias_plan_ = state_alias_plan;
+    std::vector<ExecutionStep> steps;
+    steps.reserve(nodes.size());
     for (size_t index = 0; index < nodes.size(); ++index) {
         const auto& node = nodes[index];
 
@@ -137,7 +135,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(
         PreparedOperator prepared = prepared_operator.value();
         OperatorPtr op = std::move(prepared.op);
         if (op == nullptr) {
-            const auto resolved = ResolveKernelForNode(*backend.value(), node);
+            const auto resolved = ExecutionPlanBuilder::ResolveKernelForNode(*backend.value(), node);
             if (!resolved.ok()) {
                 return resolved.status();
             }
@@ -153,22 +151,21 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::BuildExecutionPlan(
             return packed_weights.status();
         }
 
-        if (auto status = plan.AddStep(ExecutionStep{
-                    .selector = MakeSelectorForNode(node),
-                    .op = std::move(op),
-                    .packed_weights = packed_weights.value(),
-                    .workspace_requirement = workspace_requirements[index],
-                    .output_specs = std::move(prepared.inference.outputs),
-                    .runtime_checks = std::move(prepared.inference.runtime_checks),
-                    .debug_name = nullptr,
-            });
-            !status.ok()) {
-            return status;
-        }
+        steps.push_back(ExecutionStep{
+                .selector = MakeSelectorForNode(node),
+                .op = std::move(op),
+                .packed_weights = packed_weights.value(),
+                .workspace_requirement = workspace_requirements[index],
+                .output_specs = std::move(prepared.inference.outputs),
+                .runtime_checks = std::move(prepared.inference.runtime_checks),
+                .debug_name = nullptr,
+        });
     }
 
-    return plan;
+    return ExecutionPlan::Create(std::move(steps), std::move(state_alias_plan));
 }
+
+}// namespace
 
 StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
         const Backend& backend,

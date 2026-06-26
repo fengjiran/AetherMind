@@ -264,7 +264,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
 
     const KernelSelector packed_selector{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kScalar,
@@ -283,7 +283,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kLinear,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {
                     .bytes = 64,
@@ -293,7 +293,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRoPE,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .workspace_requirement = {
@@ -330,7 +330,7 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kMatMul,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {
                     .bytes = 32,
@@ -355,7 +355,7 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kLinear,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {
                     .bytes = 32,
@@ -381,7 +381,7 @@ TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun)
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kAttention,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .input_specs = {
                     TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create(), ShapeSymbol::Create()})},
@@ -415,7 +415,7 @@ TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kAttention,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .input_specs = {
                     TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create(), ShapeSymbol::Create()})},

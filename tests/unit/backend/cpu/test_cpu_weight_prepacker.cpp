@@ -42,7 +42,7 @@ Tensor MakeLogicalWeightTensor(int64_t rows, int64_t cols) {
 KernelSelector MakePackedCpuSelector() {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kAVX2,

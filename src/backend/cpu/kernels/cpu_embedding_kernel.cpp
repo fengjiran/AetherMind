@@ -124,7 +124,7 @@ AM_REGISTER_KERNEL(CpuEmbeddingFp32Scalar,
                            .op_type = OpType::kEmbedding,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
-                                   .activation_dtype = DataType::Float32(),
+                                   .act_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::Float32(),
                                    .weight_format = WeightFormat::kPlain,
                                    .isa = IsaLevel::kScalar,

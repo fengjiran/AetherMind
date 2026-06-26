@@ -24,18 +24,20 @@ struct ExecutionStep {
 
 class ExecutionPlan {
 public:
+    AM_NODISCARD static StatusOr<ExecutionPlan> Create(
+            std::vector<ExecutionStep> steps,
+            StateAliasPlan state_alias_plan = {});
+
     AM_NODISCARD const std::vector<ExecutionStep>& steps() const noexcept;
     AM_NODISCARD size_t size() const noexcept;
 
     AM_NODISCARD const StateAliasPlan& state_alias_plan() const noexcept;
 
 private:
-    Status AddStep(const ExecutionStep& step);
+    Status AddStep(ExecutionStep step);
 
     std::vector<ExecutionStep> steps_{};
     StateAliasPlan state_alias_plan_{};
-
-    friend class ExecutionPlanBuilder;
 };
 
 }// namespace aethermind

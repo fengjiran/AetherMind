@@ -9,20 +9,16 @@
 namespace aethermind {
 namespace {
 
-bool IsActivationDTypePort(OperatorPortKind kind) noexcept {
-    return kind == OperatorPortKind::kActivation;
-}
-
 void MaybeSetSelectorDTypes(const OperatorInputPort& port,
                             const TensorSpec& spec,
-                            std::optional<DataType>& activation_dtype,
+                            std::optional<DataType>& act_dtype,
                             std::optional<DataType>& weight_dtype) {
     if (!port.contributes_tensor_spec) {
         return;
     }
 
-    if (IsActivationDTypePort(port.kind) && !activation_dtype.has_value()) {
-        activation_dtype = spec.dtype;
+    if (port.kind == OperatorPortKind::kActivation && !act_dtype.has_value()) {
+        act_dtype = spec.dtype;
         return;
     }
 
@@ -33,24 +29,24 @@ void MaybeSetSelectorDTypes(const OperatorInputPort& port,
 
 void MaybeSetActivationDTypeFromOutputs(const OperatorSchema& schema,
                                         const GraphNode& node,
-                                        std::span<const GraphValue> values,
-                                        std::optional<DataType>& activation_dtype) {
-    if (activation_dtype.has_value()) {
+                                        const std::span<const GraphValue> values,
+                                        std::optional<DataType>& act_dtype) {
+    if (act_dtype.has_value()) {
         return;
     }
 
-    for (const OperatorOutputPort& port: schema.output_ports) {
+    for (const auto& port: schema.output_ports) {
         if (port.kind != OperatorPortKind::kActivation) {
             continue;
         }
-        activation_dtype = values[node.outputs[port.index].index].spec.dtype;
+        act_dtype = values[node.outputs[port.index].index].spec.dtype;
         return;
     }
 }
 
-Status AddKVCacheAliases(const OperatorSchema& schema,
-                         const GraphNode& node,
-                         LoweredGraph& lowered) {
+Status AddKVCacheLoweringTimeAliases(const OperatorSchema& schema,
+                                     const GraphNode& node,
+                                     LoweredGraph& lowered) {
     if (node.op_type != OpType::kKVCacheUpdate) {
         return Status::Ok();
     }
@@ -68,7 +64,7 @@ Status AddKVCacheAliases(const OperatorSchema& schema,
             .input = node.inputs[k_in.value()],
             .output = node.outputs[k_out.value()],
     });
-    
+
     lowered.state_aliases.push_back(LoweredStateAlias{
             .input = node.inputs[v_in.value()],
             .output = node.outputs[v_out.value()],
@@ -118,27 +114,27 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         binding.input_values.reserve(node.inputs.size());
         binding.output_values.reserve(node.outputs.size());
 
-        std::optional<DataType> activation_dtype;
+        std::optional<DataType> act_dtype;
         std::optional<DataType> weight_dtype;
-        for (const OperatorInputPort& port: schema.input_ports) {
+        for (const auto& port: schema.input_ports) {
             const GraphValueId value_id = node.inputs[port.index];
             const GraphValue& value = values[value_id.index];
             binding.input_values.push_back(value_id);
-            MaybeSetSelectorDTypes(port, value.spec, activation_dtype, weight_dtype);
+            MaybeSetSelectorDTypes(port, value.spec, act_dtype, weight_dtype);
             if (port.contributes_tensor_spec) {
                 step.input_specs.push_back(value.spec);
             }
         }
 
-        for (const OperatorOutputPort& port: schema.output_ports) {
+        for (const auto& port: schema.output_ports) {
             binding.output_values.push_back(node.outputs[port.index]);
         }
-        MaybeSetActivationDTypeFromOutputs(schema, node, values, activation_dtype);
+        MaybeSetActivationDTypeFromOutputs(schema, node, values, act_dtype);
 
-        step.activation_dtype = activation_dtype.value_or(DataType{});
+        step.act_dtype = act_dtype.value_or(DataType{});
         step.weight_dtype = weight_dtype.value_or(DataType{});
 
-        AM_RETURN_IF_ERROR(AddKVCacheAliases(schema, node, lowered));
+        AM_RETURN_IF_ERROR(AddKVCacheLoweringTimeAliases(schema, node, lowered));
         lowered.steps.push_back(std::move(step));
         lowered.step_bindings.push_back(std::move(binding));
     }

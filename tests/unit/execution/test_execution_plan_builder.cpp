@@ -125,7 +125,7 @@ ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {})
     return ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
@@ -261,7 +261,7 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
@@ -271,7 +271,7 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
@@ -295,7 +295,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
     ModelInstance model_instance;
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kScalar,
@@ -312,7 +312,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kScalar,
@@ -336,7 +336,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutModelInstanceSidec
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kScalar,
@@ -357,7 +357,7 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeRejectsUnknownOpType) {
                                                        ExecutionPlanNodeSpec{
                                                                .op_type = OpType::kUnknown,
                                                                .device_type = DeviceType::kCPU,
-                                                               .activation_dtype = DataType::Float32(),
+                                                               .act_dtype = DataType::Float32(),
                                                                .weight_dtype = DataType::Float32(),
                                                        });
 
@@ -365,10 +365,9 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeRejectsUnknownOpType) {
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresResolvedStateAliasPlan) {
-    // Construct a LoweredGraph manually with a valid Embedding step
-    // and injected aliases so that the alias plan is threaded through
-    // ExecutionPlan without requiring KVCacheUpdate kernels.
+TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
+    // Construct a LoweredGraph manually with a valid RmsNorm step and one
+    // lowering-time alias record, avoiding any dependency on KVCacheUpdate kernels.
     LoweredGraph lowered;
     lowered.steps.push_back(MakeRmsNormNodeSpec());
     lowered.step_bindings.push_back(LoweredStepBinding{

@@ -10,24 +10,18 @@
 
 namespace aethermind {
 
-/// Runtime-ready resolved form of a state alias constraint.
-///
-/// Uses step indices and port indices instead of GraphValueId,
-/// making it directly usable by the execution runtime.
-/// For intra-step aliases (KVCacheUpdate), input and output
-/// belong to the same step_index. Cross-step aliases can be
-/// added by splitting step_index in a future extension.
+/// Runtime resolved state alias record.
+/// It uses step/port coordinates rather than GraphValueId, so the executor can
+/// query aliases without depending on ModelGraph lowering artifacts.
 struct ResolvedStateAlias {
     size_t step_index = 0;
     uint32_t input_port = 0;
     uint32_t output_port = 0;
 };
 
-/// Lightweight plan for state aliasing, carried alongside
-/// ExecutionPlan and enforced at runtime by the executor.
-///
-/// Aliases are sorted by step_index during construction so
-/// that ForStep() can locate the relevant range in O(log N).
+/// Runtime state alias plan carried by ExecutionPlan and queried by step.
+/// Aliases are sorted by step_index during construction so that ForStep() can
+/// locate the relevant range in O(log N).
 struct StateAliasPlan {
     std::vector<ResolvedStateAlias> aliases{};
 

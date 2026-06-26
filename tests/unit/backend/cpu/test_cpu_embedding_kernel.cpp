@@ -174,7 +174,7 @@ TEST(CpuEmbeddingKernel, ExecutionPlanBuilderRunsThroughEmbeddingOperator) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kEmbedding,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,

@@ -51,7 +51,7 @@ std::string ToString(const KernelSelector& selector) {
     return std::string("KernelSelector{device=") +
            DeviceType2Str(selector.device_type) +
            ", activation_dtype=" +
-           std::to_string(selector.activation_dtype.bits()) +
+           std::to_string(selector.act_dtype.bits()) +
            "bit" +
            ", weight_dtype=" +
            std::to_string(selector.weight_dtype.bits()) +

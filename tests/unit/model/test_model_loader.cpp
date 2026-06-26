@@ -157,7 +157,7 @@ TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBound
 
     const KernelSelector expected_selector{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kAVX2,
@@ -211,7 +211,7 @@ TEST(ModelLoader_PipelineTest, ValidShardedDirectoryReachesModelInstanceBoundary
 
     const KernelSelector expected_selector{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kAVX2,

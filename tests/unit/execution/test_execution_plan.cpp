@@ -69,7 +69,7 @@ TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kLinear,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {
                     .bytes = 128,
@@ -111,7 +111,7 @@ TEST(ExecutionPlan, BuildAllowsEmptyAttrs) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kLinear,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .attrs = {},
     });
@@ -133,7 +133,7 @@ TEST(ExecutionPlan, BuildRejectsInvalidWorkspaceAlignment) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kLinear,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {
                     .bytes = 64,
@@ -156,7 +156,7 @@ TEST(ExecutionPlan, BuildRejectsNullResolvedKernelFunction) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kMatMul,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
     });
 

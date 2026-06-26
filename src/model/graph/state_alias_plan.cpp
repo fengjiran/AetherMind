@@ -12,8 +12,7 @@ size_t StateAliasPlan::size() const noexcept {
     return aliases.size();
 }
 
-std::span<const ResolvedStateAlias> StateAliasPlan::ForStep(
-        size_t step_index) const noexcept {
+std::span<const ResolvedStateAlias> StateAliasPlan::ForStep(size_t step_index) const noexcept {
     if (aliases.empty()) {
         return {};
     }

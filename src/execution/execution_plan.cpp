@@ -1,8 +1,23 @@
 #include "aethermind/execution/execution_plan.h"
 
+#include <utility>
+
 namespace aethermind {
 
-Status ExecutionPlan::AddStep(const ExecutionStep& step) {
+StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionStep> steps,
+                                              StateAliasPlan state_alias_plan) {
+    ExecutionPlan plan;
+    plan.state_alias_plan_ = std::move(state_alias_plan);
+    plan.steps_.reserve(steps.size());
+
+    for (ExecutionStep& step: steps) {
+        AM_RETURN_IF_ERROR(plan.AddStep(std::move(step)));
+    }
+
+    return plan;
+}
+
+Status ExecutionPlan::AddStep(ExecutionStep step) {
     if (step.op == nullptr) {
         return Status::InvalidArgument("Execution step operator cannot be null");
     }
@@ -13,7 +28,7 @@ Status ExecutionPlan::AddStep(const ExecutionStep& step) {
         return Status::InvalidArgument("Execution step workspace alignment must be a non-zero power of two");
     }
 
-    steps_.push_back(step);
+    steps_.push_back(std::move(step));
     return Status::Ok();
 }
 

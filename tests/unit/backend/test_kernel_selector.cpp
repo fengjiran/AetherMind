@@ -11,7 +11,7 @@ namespace {
 TEST(KernelSelector, EqualityMatchesIdenticalSelectors) {
     const KernelSelector lhs{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kAVX2,
@@ -25,7 +25,7 @@ TEST(KernelSelector, EqualityMatchesIdenticalSelectors) {
 TEST(KernelSelector, EqualityDetectsDifferentPhase) {
     const KernelSelector lhs{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kAVX2,
@@ -33,7 +33,7 @@ TEST(KernelSelector, EqualityDetectsDifferentPhase) {
     };
     const KernelSelector rhs{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kAVX2,
@@ -81,7 +81,7 @@ TEST(WeightFormatToString, InvalidValueReturnsUnknown) {
 TEST(KernelSelectorToString, ReturnsDescriptiveString) {
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float(16),
             .weight_format = WeightFormat::kQuantizedInt8,
             .isa = IsaLevel::kAVX2,
@@ -100,7 +100,7 @@ TEST(KernelSelectorToString, ReturnsDescriptiveString) {
 TEST(KernelSelectorToString, ContainsAllFieldNames) {
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,

@@ -19,7 +19,7 @@ struct LoweredGraph;
 struct ExecutionPlanNodeSpec {
     OpType op_type = OpType::kUnknown;
     DeviceType device_type = DeviceType::kCPU;
-    DataType activation_dtype{};
+    DataType act_dtype{};
     DataType weight_dtype{};
     WeightFormat weight_format = WeightFormat::kPlain;
     IsaLevel isa = IsaLevel::kScalar;
@@ -45,9 +45,8 @@ public:
             const ModelInstance& model_instance,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
-    /// Builds an ExecutionPlan from a LoweredGraph, resolving state
-    /// aliases into the resulting plan so that the runtime executor
-    /// can enforce must-alias semantics.
+    /// Builds an ExecutionPlan from a LoweredGraph by resolving lowering-time
+    /// state aliases into the runtime StateAliasPlan.
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const LoweredGraph& lowered);
@@ -56,13 +55,6 @@ public:
             RuntimeContext& runtime,
             const ModelInstance& model_instance,
             const LoweredGraph& lowered);
-
-private:
-    static StatusOr<ExecutionPlan> BuildExecutionPlan(
-            RuntimeContext& runtime,
-            const ModelInstance* model_instance,
-            const std::vector<ExecutionPlanNodeSpec>& nodes,
-            const StateAliasPlan& state_alias_plan);
 };
 
 }// namespace aethermind

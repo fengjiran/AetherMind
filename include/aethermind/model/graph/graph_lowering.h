@@ -30,9 +30,9 @@ struct LoweredStepBinding {
     std::vector<GraphValueId> output_values{};
 };
 
-/// Records a state update that must alias the same physical runtime buffer.
-/// KVCacheUpdate produces a new graph state version, but lowering must preserve
-/// that the input and output values are versions of the same KV cache family.
+/// Unresolved lowering-time state alias record.
+/// The input/output GraphValueIds are distinct graph values, but they must map
+/// to the same physical runtime state buffer after execution planning.
 struct LoweredStateAlias {
     GraphValueId input{};
     GraphValueId output{};
@@ -41,6 +41,9 @@ struct LoweredStateAlias {
 /// Direct 1:1 lowering artifact from semantic ModelGraph to execution planning.
 /// `steps` can be passed to ExecutionPlanBuilder; the parallel binding vectors
 /// retain graph-value identity for later runtime tensor/state binding.
+/// `state_aliases` is the only lowering-time collection of unresolved state
+/// alias records. ResolveStateAliases() converts it into the runtime
+/// StateAliasPlan consumed by ExecutionPlan and the executor.
 struct LoweredGraph {
     std::vector<ExecutionPlanNodeSpec> steps{};
     std::vector<LoweredStepBinding> step_bindings{};
@@ -53,8 +56,8 @@ AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
         const ModelGraph& graph,
         const GraphLoweringConfig& config = {});
 
-/// Resolves graph-value-based state aliases into step/port-index-based
-/// resolved aliases by cross-referencing LoweredGraph::step_bindings.
+/// The only conversion point from lowering-time GraphValueId aliases to the
+/// runtime step/port aliases stored in StateAliasPlan.
 ///
 /// state_aliases[i] = {input GraphValueId, output GraphValueId}
 /// is resolved to ResolvedStateAlias{

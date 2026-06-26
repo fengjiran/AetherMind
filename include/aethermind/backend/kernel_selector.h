@@ -40,7 +40,7 @@ AM_NODISCARD inline bool PhaseMatches(ExecPhase candidate,
 
 struct KernelSelector {
     DeviceType device_type = DeviceType::kUndefined;
-    DataType activation_dtype{};
+    DataType act_dtype{};
     DataType weight_dtype{};
     WeightFormat weight_format = WeightFormat::kPlain;
     IsaLevel isa = IsaLevel::kScalar;
@@ -48,7 +48,7 @@ struct KernelSelector {
 
     friend bool operator==(const KernelSelector& lhs, const KernelSelector& rhs) noexcept {
         return lhs.device_type == rhs.device_type &&
-               lhs.activation_dtype == rhs.activation_dtype &&
+               lhs.act_dtype == rhs.act_dtype &&
                lhs.weight_dtype == rhs.weight_dtype &&
                lhs.weight_format == rhs.weight_format &&
                lhs.isa == rhs.isa &&
@@ -63,7 +63,7 @@ struct KernelSelector {
 AM_NODISCARD inline bool SelectorMatches(const KernelSelector& candidate,
                                          const KernelSelector& request) noexcept {
     return candidate.device_type == request.device_type &&
-           candidate.activation_dtype == request.activation_dtype &&
+           candidate.act_dtype == request.act_dtype &&
            candidate.weight_dtype == request.weight_dtype &&
            candidate.weight_format == request.weight_format &&
            PhaseMatches(candidate.phase, request.phase) &&
@@ -79,7 +79,7 @@ struct std::hash<aethermind::KernelSelector> {
     std::size_t operator()(const aethermind::KernelSelector& s) const noexcept {
         std::size_t seed = 0;
         seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.device_type));
-        seed = aethermind::hash_combine(seed, std::hash<aethermind::DataType>{}(s.activation_dtype));
+        seed = aethermind::hash_combine(seed, std::hash<aethermind::DataType>{}(s.act_dtype));
         seed = aethermind::hash_combine(seed, std::hash<aethermind::DataType>{}(s.weight_dtype));
         seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.weight_format));
         seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.isa));

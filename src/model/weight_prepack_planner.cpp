@@ -16,7 +16,7 @@ namespace {
 KernelSelector MakePackedSelector(const Backend& backend, const DataType& weight_dtype) {
     return KernelSelector{
             .device_type = backend.device_type(),
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = weight_dtype,
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kAVX2,

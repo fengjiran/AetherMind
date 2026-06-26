@@ -134,7 +134,7 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
     });
 
@@ -159,14 +159,14 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {.bytes = 64, .alignment = 32, .offset = 999},
     });
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {.bytes = 128, .alignment = 64, .offset = 123},
     });
@@ -195,7 +195,7 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
     bool packed_destroyed = false;
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kScalar,
@@ -214,7 +214,7 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
     });
@@ -249,7 +249,7 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
     });
 
@@ -298,7 +298,7 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
-            .activation_dtype = DataType::Float32(),
+            .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
     });
 

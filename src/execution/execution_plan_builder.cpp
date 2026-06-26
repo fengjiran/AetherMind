@@ -86,6 +86,11 @@ StatusOr<PreparedOperator> CreateAndPrepareOperator(Backend& backend,
         inference = std::move(inferred).value();
     }
 
+    if (!node.output_specs.empty() && inference.outputs != node.output_specs) {
+        return Status::InvalidArgument(
+                "Inferred output specs do not match ExecutionPlanNodeSpec.output_specs");
+    }
+
     OperatorContext op_ctx{
             .backend = &backend,
             .kernel_registry = backend.TryGetKernelRegistryForDebug(),
@@ -156,6 +161,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(
                 .op = std::move(op),
                 .packed_weights = packed_weights.value(),
                 .workspace_requirement = workspace_requirements[index],
+                .input_specs = node.input_specs,
                 .output_specs = std::move(prepared.inference.outputs),
                 .runtime_checks = std::move(prepared.inference.runtime_checks),
                 .debug_name = nullptr,

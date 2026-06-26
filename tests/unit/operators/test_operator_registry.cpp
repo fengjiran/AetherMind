@@ -67,7 +67,9 @@ private:
 TEST(OperatorRegistry, RegisterAndCreateOperator) {
     const Status registered = OperatorRegistry::Register(
             OpType::kAdd,
-            &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
+            OperatorRegistry::Descriptor{
+                    .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
+            });
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
     StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(
@@ -84,13 +86,17 @@ TEST(OperatorRegistry, RegisterAndCreateOperator) {
 TEST(OperatorRegistry, RejectsDuplicateFactory) {
     const Status first = OperatorRegistry::Register(
             OpType::kElementwiseMul,
-            &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
+            OperatorRegistry::Descriptor{
+                    .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
+            });
     ASSERT_TRUE(first.ok()) << first.ToString();
 
     const Status duplicate = OperatorRegistry::Register(
             OpType::kElementwiseMul,
-            [](const OpParams&) -> StatusOr<std::unique_ptr<Operator>> {
-                return Status::Internal("duplicate factory should not be used");
+            OperatorRegistry::Descriptor{
+                    .factory_ = [](const OpParams&) -> StatusOr<std::unique_ptr<Operator>> {
+                        return Status::Internal("duplicate factory should not be used");
+                    },
             });
 
     EXPECT_EQ(duplicate.code(), StatusCode::kAlreadyExists);
@@ -99,12 +105,14 @@ TEST(OperatorRegistry, RejectsDuplicateFactory) {
 TEST(OperatorRegistry, RegisterRejectsInvalidArguments) {
     const Status unknown = OperatorRegistry::Register(
             OpType::kUnknown,
-            [](const OpParams&) -> StatusOr<std::unique_ptr<Operator>> {
-                return Status::Internal("unknown op factory should not be used");
+            OperatorRegistry::Descriptor{
+                    .factory_ = [](const OpParams&) -> StatusOr<std::unique_ptr<Operator>> {
+                        return Status::Internal("unknown op factory should not be used");
+                    },
             });
     EXPECT_EQ(unknown.code(), StatusCode::kInvalidArgument);
 
-    const Status missing_factory = OperatorRegistry::Register(OpType::kSoftmax, OperatorRegistry::FactoryFunc{});
+    const Status missing_factory = OperatorRegistry::Register(OpType::kSoftmax, OperatorRegistry::Descriptor{});
     EXPECT_EQ(missing_factory.code(), StatusCode::kInvalidArgument);
 }
 
@@ -130,7 +138,9 @@ TEST(OperatorRegistry, CreateDefaultParamsReturnsRegisteredDefaults) {
 TEST(OperatorRegistry, CreateDefaultParamsFailsForFactoryOnlyRegistration) {
     const Status registered = OperatorRegistry::Register(
             OpType::kMatMul,
-            &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
+            OperatorRegistry::Descriptor{
+                    .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
+            });
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
     const StatusOr<OpParams> params = OperatorRegistry::CreateDefaultParams(OpType::kMatMul);
@@ -163,7 +173,9 @@ TEST(OperatorRegistry, CreateUnknownOperatorFails) {
 TEST(OperatorRegistry, WrongParamsTypeFails) {
     const Status registered = OperatorRegistry::Register(
             OpType::kSilu,
-            &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>);
+            OperatorRegistry::Descriptor{
+                    .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
+            });
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
     StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kSilu, OpParams{ArgmaxParams{}});

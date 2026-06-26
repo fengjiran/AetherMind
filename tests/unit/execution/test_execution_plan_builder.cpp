@@ -7,6 +7,7 @@
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/graph/graph_lowering.h"
+#include "aethermind/model/graph/model_graph.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -199,12 +200,18 @@ TEST(ExecutionPlanBuilder, BuildStoresInferredOutputSpecsAndRuntimeChecks) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, input_hidden})},
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_hidden})},
     };
+    node.output_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, input_hidden})},
+    };
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
     const ExecutionStep& step = plan->steps().front();
+    ASSERT_EQ(step.input_specs.size(), 2U);
+    EXPECT_EQ(step.input_specs[0], node.input_specs[0]);
+    EXPECT_EQ(step.input_specs[1], node.input_specs[1]);
     ASSERT_EQ(step.output_specs.size(), 1U);
     EXPECT_EQ(step.output_specs[0].dtype, DataType::Float32());
     ASSERT_EQ(step.output_specs[0].shape.rank(), 2U);
@@ -220,6 +227,25 @@ TEST(ExecutionPlanBuilder, BuildStoresInferredOutputSpecsAndRuntimeChecks) {
     EXPECT_EQ(equal.rhs.tensor_port.direction, TensorPortType::kInput);
     EXPECT_EQ(equal.rhs.tensor_port.tensor_idx, 1U);
     EXPECT_EQ(equal.rhs.dim_index, 0U);
+}
+
+TEST(ExecutionPlanBuilder, BuildRejectsMismatchedOutputSpecs) {
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+    };
+    node.output_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 16})},
+    };
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
@@ -389,6 +415,41 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     EXPECT_EQ(plan->state_alias_plan().size(), 1U);
     EXPECT_FALSE(plan->state_alias_plan().empty());
+}
+
+TEST(ExecutionPlanBuilder, BuildFromLoweredGraphValidatesPreservedOutputSpecs) {
+    ModelGraph graph;
+    const TensorSpec tokens{.dtype = DataType::Int(64), .shape = StaticShape({4})};
+    const TensorSpec embedding_weight{.dtype = DataType::Float32(), .shape = StaticShape({32, 8})};
+    const TensorSpec hidden{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})};
+    const GraphValueId token_ids = graph.AddInput(tokens, "token_ids");
+    const GraphValueId weight = graph.AddWeight(embedding_weight, WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const ModelGraph::AddedNode embedding = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {token_ids, weight},
+            {ModelGraph::NodeOutputDesc{.spec = hidden, .payload = ActivationValue{}}},
+            EmbeddingParams{});
+    graph.MarkOutput(embedding.outputs[0], "hidden");
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_EQ(lowered->steps.size(), 1U);
+    ASSERT_EQ(lowered->steps[0].output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps[0].output_specs[0], hidden);
+
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, *lowered);
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->steps().size(), 1U);
+    ASSERT_EQ(plan->steps()[0].input_specs.size(), 2U);
+    EXPECT_EQ(plan->steps()[0].input_specs[0], tokens);
+    EXPECT_EQ(plan->steps()[0].input_specs[1], embedding_weight);
+    ASSERT_EQ(plan->steps()[0].output_specs.size(), 1U);
+    EXPECT_EQ(plan->steps()[0].output_specs[0], hidden);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {

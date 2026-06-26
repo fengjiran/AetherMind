@@ -26,6 +26,7 @@ struct ExecutionPlanNodeSpec {
     ExecPhase phase = ExecPhase::kBoth;
     WorkspaceRequirement workspace_requirement{};
     std::vector<TensorSpec> input_specs{};
+    std::vector<TensorSpec> output_specs{};
     std::vector<std::byte> attrs{};
     OpParams op_params{};
 };

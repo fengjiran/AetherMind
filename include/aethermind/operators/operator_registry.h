@@ -29,10 +29,8 @@ public:
     };
 
     /// Register a factory for an OpType.
-    AM_NODISCARD static Status Register(OpType op_type, FactoryFunc factory);
     AM_NODISCARD static Status Register(OpType op_type, Descriptor descriptor);
 
-    static bool RegisterOrAbort(OpType op_type, FactoryFunc factory, const char* op_name);
     static bool RegisterOrAbort(OpType op_type, Descriptor descriptor, const char* op_name);
 
     template<typename OpClass>

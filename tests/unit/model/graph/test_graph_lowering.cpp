@@ -151,6 +151,8 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
     ASSERT_EQ(lowered->steps[0].input_specs.size(), 2U);
     EXPECT_EQ(lowered->steps[0].input_specs[0].dtype, DataType::Int(64));
     EXPECT_EQ(lowered->steps[0].input_specs[1].dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps[0].output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps[0].output_specs[0], HiddenSpec());
     ASSERT_EQ(lowered->step_bindings.size(), 1U);
     EXPECT_EQ(lowered->step_bindings[0].node, embedding.node);
     ASSERT_EQ(lowered->step_bindings[0].input_values.size(), 2U);
@@ -193,6 +195,8 @@ TEST(GraphLowering, PreservesTopologicalOrderAndRmsNormParams) {
     ASSERT_EQ(lowered->step_bindings[1].input_values.size(), 2U);
     EXPECT_EQ(lowered->step_bindings[1].input_values[0], embedding.outputs[0]);
     EXPECT_EQ(lowered->step_bindings[1].input_values[1], norm_weight);
+    ASSERT_EQ(lowered->steps[1].output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps[1].output_specs[0], HiddenSpec());
 }
 
 TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
@@ -218,6 +222,9 @@ TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
     ASSERT_EQ(lowered->step_bindings[2].input_values.size(), 4U);
     EXPECT_EQ(lowered->step_bindings[2].input_values[2], k_state_in);
     EXPECT_EQ(lowered->step_bindings[2].input_values[3], v_state_in);
+    ASSERT_EQ(lowered->steps[2].output_specs.size(), 2U);
+    EXPECT_EQ(lowered->steps[2].output_specs[0], KVSpec());
+    EXPECT_EQ(lowered->steps[2].output_specs[1], KVSpec());
     ASSERT_EQ(lowered->state_aliases.size(), 2U);
     EXPECT_EQ(lowered->state_aliases[0].input, k_state_in);
     EXPECT_EQ(lowered->state_aliases[0].output, update.outputs[0]);
@@ -245,6 +252,8 @@ TEST(GraphLowering, LowersAttentionStatePortsWithoutTensorSpecs) {
     EXPECT_EQ(lowered->steps[1].op_type, OpType::kAttention);
     ASSERT_EQ(lowered->steps[1].input_specs.size(), 1U);
     EXPECT_EQ(lowered->steps[1].input_specs[0].dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps[1].output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps[1].output_specs[0], HiddenSpec());
     ASSERT_EQ(lowered->step_bindings[1].input_values.size(), 3U);
     EXPECT_EQ(lowered->step_bindings[1].input_values[1], k_cache);
     EXPECT_EQ(lowered->step_bindings[1].input_values[2], v_cache);
@@ -275,6 +284,9 @@ TEST(GraphLowering, LowersFullLlamaDenseGraph) {
     EXPECT_EQ(lowered->model_inputs.size(), graph->GetInputs().size());
     EXPECT_EQ(lowered->model_outputs.size(), graph->GetOutputs().size());
     EXPECT_EQ(lowered->state_aliases.size(), static_cast<size_t>(config.num_hidden_layers) * 2U);
+    for (size_t i = 0; i < lowered->steps.size(); ++i) {
+        EXPECT_EQ(lowered->steps[i].output_specs.size(), lowered->step_bindings[i].output_values.size());
+    }
 }
 
 TEST(GraphLowering, ResolveStateAliasesConvertsLoweringTimeRecordsToRuntimePlan) {

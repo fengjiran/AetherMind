@@ -35,6 +35,8 @@ void MaybeSetActivationDTypeFromOutputs(const OperatorSchema& schema,
         return;
     }
 
+    // Lowering stores one activation dtype selector per op. Operator schemas are expected to keep
+    // all activation outputs at the same dtype, so the first activation output is representative.
     for (const auto& port: schema.output_ports) {
         if (port.kind != OperatorPortKind::kActivation) {
             continue;
@@ -113,6 +115,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         LoweredStepBinding binding{.node = node_id};
         binding.input_values.reserve(node.inputs.size());
         binding.output_values.reserve(node.outputs.size());
+        step.output_specs.reserve(schema.output_ports.size());
 
         std::optional<DataType> act_dtype;
         std::optional<DataType> weight_dtype;
@@ -127,7 +130,9 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         }
 
         for (const auto& port: schema.output_ports) {
-            binding.output_values.push_back(node.outputs[port.index]);
+            const GraphValueId value_id = node.outputs[port.index];
+            binding.output_values.push_back(value_id);
+            step.output_specs.push_back(values[value_id.index].spec);
         }
         MaybeSetActivationDTypeFromOutputs(schema, node, values, act_dtype);
 
@@ -150,20 +155,16 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
         bool found = false;
         for (size_t s = 0; s < lowered.step_bindings.size(); ++s) {
             const LoweredStepBinding& binding = lowered.step_bindings[s];
+            auto input_it =
+                    std::ranges::find(binding.input_values, alias.input);
+            auto output_it =
+                    std::ranges::find(binding.output_values, alias.output);
 
-            auto input_it = std::ranges::find(binding.input_values,
-                                              alias.input);
-            auto output_it = std::ranges::find(binding.output_values,
-                                               alias.output);
-
-            if (input_it != binding.input_values.end() &&
-                output_it != binding.output_values.end()) {
+            if (input_it != binding.input_values.end() && output_it != binding.output_values.end()) {
                 plan.aliases.push_back(ResolvedStateAlias{
                         .step_index = s,
-                        .input_port = static_cast<uint32_t>(
-                                input_it - binding.input_values.begin()),
-                        .output_port = static_cast<uint32_t>(
-                                output_it - binding.output_values.begin()),
+                        .input_port = static_cast<uint32_t>(input_it - binding.input_values.begin()),
+                        .output_port = static_cast<uint32_t>(output_it - binding.output_values.begin()),
                 });
                 found = true;
                 break;
@@ -179,8 +180,7 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
 
     // Sort by step_index so that ForStep() can use binary search.
     std::ranges::sort(plan.aliases,
-                      [](const ResolvedStateAlias& a,
-                         const ResolvedStateAlias& b) noexcept {
+                      [](const ResolvedStateAlias& a, const ResolvedStateAlias& b) noexcept {
                           return a.step_index < b.step_index;
                       });
 

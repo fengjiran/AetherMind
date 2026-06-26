@@ -6,10 +6,6 @@
 
 namespace aethermind {
 
-Status OperatorRegistry::Register(OpType op_type, FactoryFunc factory) {
-    return Register(op_type, Descriptor{.factory_ = std::move(factory)});
-}
-
 Status OperatorRegistry::Register(OpType op_type, Descriptor descriptor) {
     if (op_type == OpType::kUnknown || !descriptor.factory_) {
         return Status::InvalidArgument("OperatorRegistry requires a known OpType and non-null factory");
@@ -22,10 +18,6 @@ Status OperatorRegistry::Register(OpType op_type, Descriptor descriptor) {
                 "Operator factory already registered for " + std::string(ToString(op_type)));
     }
     return Status::Ok();
-}
-
-bool OperatorRegistry::RegisterOrAbort(OpType op_type, FactoryFunc factory, const char* op_name) {
-    return RegisterOrAbort(op_type, Descriptor{.factory_ = std::move(factory)}, op_name);
 }
 
 bool OperatorRegistry::RegisterOrAbort(OpType op_type, Descriptor descriptor, const char* op_name) {

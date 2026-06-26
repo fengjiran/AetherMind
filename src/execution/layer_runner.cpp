@@ -1,7 +1,7 @@
 #include "aethermind/execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/shape_inference/shape_constraint_evaluator.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/shape_inference/shape_constraint_evaluator.h"
 
 namespace aethermind {
 namespace {
@@ -76,7 +76,7 @@ Status LayerRunner::ValidateStateAliasesForStep(
         return Status::Ok();
     }
 
-    (void)step_index;
+    (void) step_index;
 
     // State aliases require a valid KVCacheView so that the operator
     // reads and writes the same physical KV cache storage.

@@ -9,6 +9,10 @@ namespace aethermind {
 struct TensorSpec {
     DataType dtype{};
     SymbolicShape shape{};
+
+    AM_NODISCARD bool operator==(const TensorSpec& other) const {
+        return dtype == other.dtype && shape == other.shape;
+    }
 };
 
 }// namespace aethermind

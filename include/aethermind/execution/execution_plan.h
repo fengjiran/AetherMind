@@ -17,6 +17,7 @@ struct ExecutionStep {
     OperatorPtr op{};
     const void* packed_weights = nullptr;
     WorkspaceRequirement workspace_requirement{};
+    std::vector<TensorSpec> input_specs{};
     std::vector<TensorSpec> output_specs{};
     std::vector<ShapeConstraint> runtime_checks{};
     const char* debug_name = nullptr;

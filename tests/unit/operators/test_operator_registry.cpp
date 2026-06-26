@@ -118,7 +118,7 @@ TEST(OperatorRegistry, RegisterRejectsInvalidArguments) {
 
 TEST(OperatorRegistry, CreateDefaultParamsReturnsRegisteredDefaults) {
     const Status registered = OperatorRegistry::Register(
-            OpType::kLinear,
+            OpType::kRoPE,
             OperatorRegistry::Descriptor{
                     .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
                     .make_default_params_ = []() -> StatusOr<OpParams> {
@@ -127,7 +127,7 @@ TEST(OperatorRegistry, CreateDefaultParamsReturnsRegisteredDefaults) {
             });
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
-    const StatusOr<OpParams> params = OperatorRegistry::CreateDefaultParams(OpType::kLinear);
+    const StatusOr<OpParams> params = OperatorRegistry::CreateDefaultParams(OpType::kRoPE);
 
     ASSERT_TRUE(params.ok()) << params.status().ToString();
     const auto* typed_params = std::get_if<RegistryTestOperator::Params>(&params.value());

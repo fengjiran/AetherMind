@@ -187,7 +187,7 @@ public:
 
     AM_NODISCARD KernelFunc ResolveKernel(OpType op_type, const KernelSelector&) const noexcept override {
         switch (op_type) {
-            case OpType::kLinear:
+            case OpType::kSilu:
                 return &FirstKernel;
             case OpType::kRoPE:
                 return &SecondKernel;
@@ -222,7 +222,7 @@ public:
 private:
     static const char* GetDebugName(OpType op_type) noexcept {
         switch (op_type) {
-            case OpType::kLinear:
+            case OpType::kSilu:
                 return "test::first_kernel";
             case OpType::kRoPE:
                 return "test::second_kernel";
@@ -281,7 +281,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kLinear,
+            .op_type = OpType::kSilu,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -353,7 +353,7 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kLinear,
+            .op_type = OpType::kSilu,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),

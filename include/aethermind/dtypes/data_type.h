@@ -16,6 +16,8 @@
 #include "utils/bits.h"
 
 #include <cstdint>
+#include <iosfwd>
+#include <string>
 
 namespace aethermind {
 
@@ -435,7 +437,7 @@ private:
     DLDataType dtype_{};
 };
 
-String DataTypeToString(const DataType& dtype);
+AM_NODISCARD std::string ToString(const DataType& dtype);
 
 std::ostream& operator<<(std::ostream& os, const DataType& dtype);
 

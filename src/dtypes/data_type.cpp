@@ -5,6 +5,8 @@
 
 #include "aethermind/dtypes/data_type.h"
 
+#include <sstream>
+
 namespace aethermind {
 
 // Keep the C++ scalar mapping table as the single source for DataType::Make specializations.
@@ -83,7 +85,7 @@ DataType::DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable) {
     ValidateCodeBitsConsistency(code, bits);
 }
 
-String DataTypeToString(const DataType& dtype) {
+std::string ToString(const DataType& dtype) {
     if (dtype.code() == DLDataTypeCode::Undefined) {
         return "undefined";
     }
@@ -113,7 +115,7 @@ String DataTypeToString(const DataType& dtype) {
 }
 
 std::ostream& operator<<(std::ostream& os, const DataType& dtype) {
-    os << DataTypeToString(dtype);
+    os << ToString(dtype);
     return os;
 }
 

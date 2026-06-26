@@ -18,7 +18,7 @@ void DumpGraphNodeId(GraphNodeId id, std::ostream& os) {
 }
 
 void DumpShape(const TensorSpec& spec, std::ostream& os) {
-    os << DataTypeToString(spec.dtype) << spec.shape;
+    os << ToString(spec.dtype) << spec.shape;
 }
 
 void DumpWeightBinding(const WeightBinding& binding, std::ostream& os) {

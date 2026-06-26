@@ -408,7 +408,7 @@ Status ValidateWeightDType(const RawWeightView& view, std::string_view weight_na
     if (!IsSupportedWeightDType(view.dtype)) {
         return Status::InvalidArgument(
                 "Invalid tensor dtype: tensor=" + std::string(weight_name) +
-                ", expected one of [F32, F16, BF16], actual=" + std::string(DataTypeToString(view.dtype)));
+                ", expected one of [F32, F16, BF16], actual=" + ToString(view.dtype));
     }
     return Status::Ok();
 }
@@ -457,8 +457,8 @@ Status ValidateUniformLinearDType(std::string_view weight_name,
     if (view.dtype != *linear_dtype) {
         return Status::InvalidArgument(
                 "Mixed linear tensor dtype: tensor=" + std::string(weight_name) +
-                ", expected=" + std::string(DataTypeToString(*linear_dtype)) +
-                ", actual=" + std::string(DataTypeToString(view.dtype)));
+                ", expected=" + ToString(*linear_dtype) +
+                ", actual=" + ToString(view.dtype));
     }
     return Status::Ok();
 }
@@ -489,8 +489,8 @@ Status ValidateResolvedModelDTypes(const HfModelConfig& config,
         if (config.tie_word_embeddings && resolved.lm_head->dtype != resolved.embed_tokens.dtype) {
             return Status::InvalidArgument(
                     "Tied embedding dtype mismatch: tensor=lm_head.weight, expected=" +
-                    std::string(DataTypeToString(resolved.embed_tokens.dtype)) +
-                    ", actual=" + std::string(DataTypeToString(resolved.lm_head->dtype)));
+                    ToString(resolved.embed_tokens.dtype) +
+                    ", actual=" + ToString(resolved.lm_head->dtype));
         }
         if (options.require_uniform_linear_dtype) {
             AM_RETURN_IF_ERROR(ValidateUniformLinearDType("lm_head.weight", *resolved.lm_head, &has_linear_dtype, &linear_dtype));

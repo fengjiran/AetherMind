@@ -295,9 +295,9 @@ TEST(DataTypeTest, EdgeCases) {
 
 // 测试DataType的字符串转换
 TEST(DataTypeTest, StringConversion) {
-    // 测试DataTypeToString函数（假设已实现）
+    // 测试ToString函数（假设已实现）
     DataType float32 = DataType::Float(32);
-    std::string float32_str = DataTypeToString(float32);
+    std::string float32_str = ToString(float32);
     EXPECT_EQ(float32_str, "Float");
 
     // 测试流输出运算符
@@ -307,70 +307,70 @@ TEST(DataTypeTest, StringConversion) {
     EXPECT_FALSE(streamed_str.empty());
 }
 
-// 测试DataTypeToString函数对基本标量类型的转换
-TEST(DataTypeToStringTest, BasicScalarTypes) {
+// 测试ToString函数对基本标量类型的转换
+TEST(ToStringDataTypeValueTest, BasicScalarTypes) {
     // 测试布尔类型
-    EXPECT_EQ(DataTypeToString(DataType::Bool()), "bool");
+    EXPECT_EQ(ToString(DataType::Bool()), "bool");
 
     // 测试有符号整数类型
-    EXPECT_EQ(DataTypeToString(DataType::Int(8)), "Char");
-    EXPECT_EQ(DataTypeToString(DataType::Int(16)), "Short");
-    EXPECT_EQ(DataTypeToString(DataType::Int(32)), "Int");
-    EXPECT_EQ(DataTypeToString(DataType::Int(64)), "Long");
+    EXPECT_EQ(ToString(DataType::Int(8)), "Char");
+    EXPECT_EQ(ToString(DataType::Int(16)), "Short");
+    EXPECT_EQ(ToString(DataType::Int(32)), "Int");
+    EXPECT_EQ(ToString(DataType::Int(64)), "Long");
 
     // 测试无符号整数类型
-    EXPECT_EQ(DataTypeToString(DataType::UInt(8)), "Byte");
-    EXPECT_EQ(DataTypeToString(DataType::UInt(16)), "UInt16");
-    EXPECT_EQ(DataTypeToString(DataType::UInt(32)), "UInt32");
-    EXPECT_EQ(DataTypeToString(DataType::UInt(64)), "UInt64");
+    EXPECT_EQ(ToString(DataType::UInt(8)), "Byte");
+    EXPECT_EQ(ToString(DataType::UInt(16)), "UInt16");
+    EXPECT_EQ(ToString(DataType::UInt(32)), "UInt32");
+    EXPECT_EQ(ToString(DataType::UInt(64)), "UInt64");
 
     // 测试浮点类型
-    EXPECT_EQ(DataTypeToString(DataType::Float(16)), "Half");
-    EXPECT_EQ(DataTypeToString(DataType::Float(32)), "Float");
-    EXPECT_EQ(DataTypeToString(DataType::Float(64)), "Double");
+    EXPECT_EQ(ToString(DataType::Float(16)), "Half");
+    EXPECT_EQ(ToString(DataType::Float(32)), "Float");
+    EXPECT_EQ(ToString(DataType::Float(64)), "Double");
 
     // 测试BFloat16类型
-    EXPECT_EQ(DataTypeToString(DataType::BFloat(16)), "BFloat16");
+    EXPECT_EQ(ToString(DataType::BFloat(16)), "BFloat16");
 
     // 测试Float8类型变体
-    EXPECT_EQ(DataTypeToString(DataType::Float8E4M3FN()), "Float8_e4m3fn");
-    EXPECT_EQ(DataTypeToString(DataType::Float8E5M2()), "Float8_e5m2");
+    EXPECT_EQ(ToString(DataType::Float8E4M3FN()), "Float8_e4m3fn");
+    EXPECT_EQ(ToString(DataType::Float8E5M2()), "Float8_e5m2");
 }
 
-// 测试DataTypeToString函数对void类型的转换
-TEST(DataTypeToStringTest, VoidType) {
-    EXPECT_EQ(DataTypeToString(DataType::Void()), "void");
+// 测试ToString函数对void类型的转换
+TEST(ToStringDataTypeValueTest, VoidType) {
+    EXPECT_EQ(ToString(DataType::Void()), "void");
 }
 
-// 测试DataTypeToString函数对固定长度向量类型的转换
-TEST(DataTypeToStringTest, FixedLengthVectorTypes) {
+// 测试ToString函数对固定长度向量类型的转换
+TEST(ToStringDataTypeValueTest, FixedLengthVectorTypes) {
     // 测试整数向量
-    EXPECT_EQ(DataTypeToString(DataType::Int(32, 2)), "Intx2");
-    EXPECT_EQ(DataTypeToString(DataType::Int(32, 4)), "Intx4");
-    EXPECT_EQ(DataTypeToString(DataType::UInt(8, 8)), "Bytex8");
+    EXPECT_EQ(ToString(DataType::Int(32, 2)), "Intx2");
+    EXPECT_EQ(ToString(DataType::Int(32, 4)), "Intx4");
+    EXPECT_EQ(ToString(DataType::UInt(8, 8)), "Bytex8");
 
     // 测试浮点向量
-    EXPECT_EQ(DataTypeToString(DataType::Float(32, 2)), "Floatx2");
-    EXPECT_EQ(DataTypeToString(DataType::Float(32, 4)), "Floatx4");
-    EXPECT_EQ(DataTypeToString(DataType::Float(64, 2)), "Doublex2");
+    EXPECT_EQ(ToString(DataType::Float(32, 2)), "Floatx2");
+    EXPECT_EQ(ToString(DataType::Float(32, 4)), "Floatx4");
+    EXPECT_EQ(ToString(DataType::Float(64, 2)), "Doublex2");
 
     // 测试布尔向量
-    EXPECT_EQ(DataTypeToString(DataType::Bool(2)), "Boolx2");
-    EXPECT_EQ(DataTypeToString(DataType::Bool(4)), "Boolx4");
+    EXPECT_EQ(ToString(DataType::Bool(2)), "Boolx2");
+    EXPECT_EQ(ToString(DataType::Bool(4)), "Boolx4");
 }
 
-// 测试DataTypeToString函数对可缩放向量类型的转换
-TEST(DataTypeToStringTest, ScalableVectorTypes) {
+// 测试ToString函数对可缩放向量类型的转换
+TEST(ToStringDataTypeValueTest, ScalableVectorTypes) {
     // GTEST_SKIP();
     // 创建可缩放向量类型
     DataType scalable_int = DataType::ScalableInt(32, 4);
-    EXPECT_EQ(DataTypeToString(scalable_int), "Intxvscalex4");
+    EXPECT_EQ(ToString(scalable_int), "Intxvscalex4");
 
     DataType scalable_float = DataType::ScalableFloat(32, 8);
-    EXPECT_EQ(DataTypeToString(scalable_float), "Floatxvscalex8");
+    EXPECT_EQ(ToString(scalable_float), "Floatxvscalex8");
 
     DataType scalable_bool = DataType::ScalableBool(2);
-    EXPECT_EQ(DataTypeToString(scalable_bool), "Boolxvscalex2");
+    EXPECT_EQ(ToString(scalable_bool), "Boolxvscalex2");
 }
 
 TEST(DataTypeTest, ScalableVectorRequiresExplicitFactory) {
@@ -389,42 +389,42 @@ TEST(DataTypeTest, LanesZeroOnlyValidForVoidOrUndefined) {
     EXPECT_EQ(undefined.lanes(), 0);
 }
 
-// 测试DataTypeToString函数对边界情况的处理
-TEST(DataTypeToStringTest, EdgeCases) {
+// 测试ToString函数对边界情况的处理
+TEST(ToStringDataTypeValueTest, EdgeCases) {
     // 测试默认构造的DataType
     DataType undefined;
-    EXPECT_EQ(DataTypeToString(undefined), "undefined");
+    EXPECT_EQ(ToString(undefined), "undefined");
 
     // 测试非标准但有效的组合
     DataType custom_int(DLDataTypeCode::kInt, 24, 1);
     // 由于24位整数不在SCALAR_TYPE_TO_CPP_TYPE_AND_NAME中定义，结果可能为空
     // 这里使用EXPECT_FALSE验证它不是标准名称
-    EXPECT_FALSE(DataTypeToString(custom_int) == "Int");
-    EXPECT_FALSE(DataTypeToString(custom_int) == "Char");
-    EXPECT_FALSE(DataTypeToString(custom_int) == "Short");
+    EXPECT_FALSE(ToString(custom_int) == "Int");
+    EXPECT_FALSE(ToString(custom_int) == "Char");
+    EXPECT_FALSE(ToString(custom_int) == "Short");
 
     // 测试向量和可缩放向量的最大合理值
     DataType large_vector(DLDataTypeCode::kFloat, 32, 1024);
-    EXPECT_TRUE(std::string(DataTypeToString(large_vector)).find("Floatx") == 0);
+    EXPECT_TRUE(ToString(large_vector).find("Floatx") == 0);
 
     DataType large_scalable = DataType::ScalableFloat(32, 1024);
-    EXPECT_TRUE(std::string(DataTypeToString(large_scalable)).find("Floatxvscalex") == 0);
+    EXPECT_TRUE(ToString(large_scalable).find("Floatxvscalex") == 0);
 }
 
-// 测试DataTypeToString函数与DataType的其他方法结合使用
-TEST(DataTypeToStringTest, CombinedWithOtherMethods) {
+// 测试ToString函数与DataType的其他方法结合使用
+TEST(ToStringDataTypeValueTest, CombinedWithOtherMethods) {
     // 测试通过with_lanes方法创建的向量
     DataType float32 = DataType::Float(32);
     DataType float32x4 = float32.WithLanes(4);
-    EXPECT_EQ(DataTypeToString(float32x4), "Floatx4");
+    EXPECT_EQ(ToString(float32x4), "Floatx4");
 
     // 测试element_of方法获取元素类型
     DataType element = float32x4.ElementOf();
-    EXPECT_EQ(DataTypeToString(element), "Float");
+    EXPECT_EQ(ToString(element), "Float");
 
     // 测试不同位宽的转换
     DataType float16 = float32.WithBits(16);
-    EXPECT_EQ(DataTypeToString(float16), "Half");
+    EXPECT_EQ(ToString(float16), "Half");
 }
 
 }// namespace

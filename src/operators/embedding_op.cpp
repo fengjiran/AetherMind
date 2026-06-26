@@ -100,6 +100,9 @@ Status EmbeddingOp::Prepare(OperatorContext& ctx) {
     }
 
     resolved_kernel_ = resolved.value();
+    if (resolved_kernel_.fn == nullptr) {
+        return Status::Internal("Embedding Prepare resolved a kernel with null fn");
+    }
     return Status::Ok();
 }
 
@@ -127,6 +130,8 @@ Status EmbeddingOp::Run(KernelContext& ctx,
                 std::to_string(b->outputs.size()));
     }
 
+    // Phase 1 CPU-first: construct CPU-specific params directly. Phase 2 should
+    // inject params construction via Backend to support multiple backends.
     CpuEmbeddingParams params{
             .token_ids_ = b->inputs[0],
             .weight_ = b->inputs[1],

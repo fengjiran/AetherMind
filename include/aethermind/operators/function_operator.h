@@ -34,10 +34,14 @@ public:
         return Status::Ok();
     }
 
+    /// No-op: FunctionOperator wraps a raw KernelFunc and does not perform
+    /// input spec validation. Callers must ensure inputs are valid before Run.
     AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec>) const override {
         return Status::Ok();
     }
 
+    /// No-op: FunctionOperator does not perform shape inference. Returns an
+    /// empty InferenceResult. Callers must handle output shapes externally.
     AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
             std::span<const TensorSpec>) const override {
         return InferenceResult{};

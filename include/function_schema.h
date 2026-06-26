@@ -7,7 +7,7 @@
 
 #include "alias_info.h"
 #include "container/string.h"
-#include "operator_name.h"
+#include "aethermind/operators/operator_name.h"
 #include "type_system/tensor_type.h"
 #include "type_system/type.h"
 

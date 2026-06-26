@@ -1,7 +1,3 @@
-//
-// Created by 赵丹 on 2025/8/12.
-//
-
 #ifndef AETHERMIND_OPERATOR_NAME_H
 #define AETHERMIND_OPERATOR_NAME_H
 
@@ -53,13 +49,11 @@ std::string ToString(const OperatorName& opName);
 
 }// namespace aethermind
 
-namespace std {
 template<>
-struct hash<aethermind::OperatorName> {
+struct std::hash<aethermind::OperatorName> {
     size_t operator()(const aethermind::OperatorName& x) const noexcept {
         return aethermind::get_hash(x.name(), x.overload_name());
     }
-};
-}// namespace std
+};// namespace std
 
-#endif// AETHERMIND_OPERATOR_NAME_H
+#endif//AETHERMIND_OPERATOR_NAME_H

@@ -105,6 +105,9 @@ Status RmsNormOp::Prepare(OperatorContext& ctx) {
     }
 
     resolved_kernel_ = resolved.value();
+    if (resolved_kernel_.fn == nullptr) {
+        return Status::Internal("RmsNorm Prepare resolved a kernel with null fn");
+    }
     const auto eps_bytes = std::as_bytes(std::span{&params_.eps, size_t{1}});
     resolved_kernel_.attrs.assign(eps_bytes.begin(), eps_bytes.end());
     return Status::Ok();
@@ -125,15 +128,18 @@ Status RmsNormOp::Run(KernelContext& ctx,
     const auto* b = binding.value();
     if (b->inputs.size() != 2) {
         return Status::InvalidArgument(
-                "RMSNorm requires 2 input tensor bindings, got " +
+                "RmsNorm requires 2 input tensor bindings, got " +
                 std::to_string(b->inputs.size()));
     }
+
     if (b->outputs.size() != 1) {
         return Status::InvalidArgument(
-                "RMSNorm requires 1 output tensor binding, got " +
+                "RmsNorm requires 1 output tensor binding, got " +
                 std::to_string(b->outputs.size()));
     }
 
+    // Phase 1 CPU-first: construct CPU-specific params directly. Phase 2 should
+    // inject params construction via Backend to support multiple backends.
     cpu::CpuRmsNormParams params{
             .input_tensor = b->inputs[0],
             .weight_tensor = b->inputs[1],

@@ -99,9 +99,8 @@ TEST(GraphDump, DumpsMinimalGraph) {
     graph.MarkOutput(embedding.outputs[0], "hidden_out");
 
     std::ostringstream os;
-    const Status status = DumpGraph(graph, os);
+    DumpGraph(graph, os);
 
-    ASSERT_TRUE(status.ok()) << status.ToString();
     const std::string dump = os.str();
     EXPECT_NE(dump.find("ModelGraph"), std::string::npos);
     EXPECT_NE(dump.find("op=Embedding"), std::string::npos);
@@ -117,9 +116,8 @@ TEST(GraphDump, DumpsLlamaDenseGraph) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
 
     std::ostringstream os;
-    const Status status = DumpGraph(*graph, os);
+    DumpGraph(*graph, os);
 
-    ASSERT_TRUE(status.ok()) << status.ToString();
     const std::string dump = os.str();
     EXPECT_NE(dump.find("op=RmsNorm"), std::string::npos);
     EXPECT_NE(dump.find("op=KVCacheUpdate"), std::string::npos);
@@ -151,8 +149,7 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
 
     std::ostringstream os;
     for (const OpParams& param: params) {
-        const Status status = DumpOpParams(param, os);
-        ASSERT_TRUE(status.ok()) << status.ToString();
+        DumpOpParams(param, os);
         os << '\n';
     }
 

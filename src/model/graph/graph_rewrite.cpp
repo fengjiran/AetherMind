@@ -1,17 +1,10 @@
 #include "aethermind/model/graph/graph_rewrite.h"
+#include "utils/variant_utils.h"
 
 #include <variant>
 
 namespace aethermind {
 namespace {
-
-template<typename... Ts>
-struct Overloaded : Ts... {
-    using Ts::operator()...;
-};
-
-template<typename... Ts>
-Overloaded(Ts...) -> Overloaded<Ts...>;
 
 std::optional<std::string> FindInputName(const ModelGraph& graph, GraphValueId value) {
     for (const ModelGraph::Input& input: graph.GetInputs()) {
@@ -40,7 +33,7 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
 
 Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
     for (const GraphMutation& mutation: mutations) {
-        Status status = std::visit(Overloaded{
+        Status status = std::visit(overloaded{
                                            [&](const ReplaceNodeMutation& replace) {
                                                return ReplaceNode(replace.old_node, replace.replacement_nodes);
                                            },

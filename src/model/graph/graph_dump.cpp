@@ -1,6 +1,6 @@
 #include "aethermind/model/graph/graph_dump.h"
-
 #include "aethermind/dtypes/data_type.h"
+#include "utils/variant_utils.h"
 
 #include <ostream>
 #include <string_view>
@@ -8,14 +8,6 @@
 
 namespace aethermind {
 namespace {
-
-template<typename... Ts>
-struct Overloaded : Ts... {
-    using Ts::operator()...;
-};
-
-template<typename... Ts>
-Overloaded(Ts...) -> Overloaded<Ts...>;
 
 void DumpGraphValueId(GraphValueId id, std::ostream& os) {
     os << 'v' << id.index;
@@ -26,20 +18,7 @@ void DumpGraphNodeId(GraphNodeId id, std::ostream& os) {
 }
 
 void DumpShape(const TensorSpec& spec, std::ostream& os) {
-    os << DataTypeToString(spec.dtype) << '[';
-    if (spec.shape.IsUnranked()) {
-        os << '?';
-    } else {
-        bool first = true;
-        for (const ShapeSymbol& dim: spec.shape) {
-            if (!first) {
-                os << ',';
-            }
-            first = false;
-            os << dim;
-        }
-    }
-    os << ']';
+    os << DataTypeToString(spec.dtype) << spec.shape;
 }
 
 void DumpWeightBinding(const WeightBinding& binding, std::ostream& os) {
@@ -52,7 +31,7 @@ void DumpWeightBinding(const WeightBinding& binding, std::ostream& os) {
 }
 
 void DumpStateBinding(const StateBinding& binding, std::ostream& os) {
-    std::visit(Overloaded{
+    std::visit(overloaded{
                        [&](const KVCacheStateBinding& kv) {
                            os << "kv_cache(layer=" << kv.decoder_layer_index
                               << " slot=" << ToString(kv.slot) << ')';
@@ -68,7 +47,7 @@ void DumpStateBinding(const StateBinding& binding, std::ostream& os) {
 }
 
 void DumpPayload(const GraphValuePayload& payload, std::ostream& os) {
-    std::visit(Overloaded{
+    std::visit(overloaded{
                        [&](const std::monostate&) {
                            os << "monostate";
                        },
@@ -150,51 +129,51 @@ const char* ToString(KVCacheSlot slot) noexcept {
 }
 
 const char* GraphValuePayloadKindName(const GraphValuePayload& payload) noexcept {
-    return std::visit(Overloaded{
-                              [](const std::monostate&) noexcept { return "monostate"; },
-                              [](const ModelInputValue&) noexcept { return "model_input"; },
-                              [](const ActivationValue&) noexcept { return "activation"; },
-                              [](const WeightValue&) noexcept { return "weight"; },
-                              [](const StateValue&) noexcept { return "state"; },
-                      },
-                      payload);
+    auto visitor = overloaded{
+            [](const std::monostate&) noexcept { return "monostate"; },
+            [](const ModelInputValue&) noexcept { return "model_input"; },
+            [](const ActivationValue&) noexcept { return "activation"; },
+            [](const WeightValue&) noexcept { return "weight"; },
+            [](const StateValue&) noexcept { return "state"; },
+    };
+    return std::visit(visitor, payload);
 }
 
 Status DumpOpParams(const OpParams& params, std::ostream& os) {
-    std::visit(Overloaded{
-                       [&](const std::monostate&) { os << "monostate{}"; },
-                       [&](const EmbeddingParams&) { DumpCommonEmptyParams("EmbeddingParams", os); },
-                       [&](const RmsNormParams& p) { os << "RmsNormParams{eps=" << p.eps << '}'; },
-                       [&](const LinearParams&) { DumpCommonEmptyParams("LinearParams", os); },
-                       [&](const RoPEParams& p) {
-                           os << "RoPEParams{head_dim=" << p.head_dim
-                              << " num_attention_heads=" << p.num_attention_heads
-                              << " num_key_value_heads=" << p.num_key_value_heads
-                              << " max_position_embeddings=" << p.max_position_embeddings
-                              << " theta=" << p.theta
-                              << " scaling_factor=";
-                           if (p.scaling_factor.has_value()) {
-                               os << *p.scaling_factor;
-                           } else {
-                               os << "<none>";
-                           }
-                           os << " scaling_type=" << ToString(p.scaling_type) << '}';
-                       },
-                       [&](const MatMulParams& p) {
-                           os << "MatMulParams{transpose_rhs=" << (p.transpose_rhs ? "true" : "false") << '}';
-                       },
-                       [&](const SoftmaxParams& p) { os << "SoftmaxParams{axis=" << p.axis << '}'; },
-                       [&](const AddParams&) { DumpCommonEmptyParams("AddParams", os); },
-                       [&](const SiluMulParams&) { DumpCommonEmptyParams("SiluMulParams", os); },
-                       [&](const KVCacheUpdateParams&) { DumpCommonEmptyParams("KVCacheUpdateParams", os); },
-                       [&](const AttentionParams& p) {
-                           os << "AttentionParams{num_attention_heads=" << p.num_attention_heads
-                              << " num_key_value_heads=" << p.num_key_value_heads
-                              << " head_dim=" << p.head_dim << '}';
-                       },
-                       [&](const ArgmaxParams& p) { os << "ArgmaxParams{axis=" << p.axis << '}'; },
-               },
-               params);
+    auto visitor = overloaded{
+            [&](const std::monostate&) { os << "monostate{}"; },
+            [&](const EmbeddingParams&) { DumpCommonEmptyParams("EmbeddingParams", os); },
+            [&](const RmsNormParams& p) { os << "RmsNormParams{eps=" << p.eps << '}'; },
+            [&](const LinearParams&) { DumpCommonEmptyParams("LinearParams", os); },
+            [&](const RoPEParams& p) {
+                os << "RoPEParams{head_dim=" << p.head_dim
+                   << " num_attention_heads=" << p.num_attention_heads
+                   << " num_key_value_heads=" << p.num_key_value_heads
+                   << " max_position_embeddings=" << p.max_position_embeddings
+                   << " theta=" << p.theta
+                   << " scaling_factor=";
+                if (p.scaling_factor.has_value()) {
+                    os << *p.scaling_factor;
+                } else {
+                    os << "<none>";
+                }
+                os << " scaling_type=" << ToString(p.scaling_type) << '}';
+            },
+            [&](const MatMulParams& p) {
+                os << "MatMulParams{transpose_rhs=" << (p.transpose_rhs ? "true" : "false") << '}';
+            },
+            [&](const SoftmaxParams& p) { os << "SoftmaxParams{axis=" << p.axis << '}'; },
+            [&](const AddParams&) { DumpCommonEmptyParams("AddParams", os); },
+            [&](const SiluMulParams&) { DumpCommonEmptyParams("SiluMulParams", os); },
+            [&](const KVCacheUpdateParams&) { DumpCommonEmptyParams("KVCacheUpdateParams", os); },
+            [&](const AttentionParams& p) {
+                os << "AttentionParams{num_attention_heads=" << p.num_attention_heads
+                   << " num_key_value_heads=" << p.num_key_value_heads
+                   << " head_dim=" << p.head_dim << '}';
+            },
+            [&](const ArgmaxParams& p) { os << "ArgmaxParams{axis=" << p.axis << '}'; },
+    };
+    std::visit(visitor, params);
     return Status::Ok();
 }
 

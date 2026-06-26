@@ -104,8 +104,7 @@ String DataTypeToString(const DataType& dtype) {
     SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(GET_NAME)
 #undef GET_NAME
 
-    auto lanes = static_cast<int16_t>(dtype.raw_lanes());
-    if (lanes > 1) {
+    if (auto lanes = static_cast<int16_t>(dtype.raw_lanes()); lanes > 1) {
         os << 'x' << lanes;
     } else if (lanes < -1) {
         os << "xvscalex" << -lanes;

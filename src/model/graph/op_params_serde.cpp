@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/op_params_serde.h"
+#include "utils/variant_utils.h"
 
 #include <charconv>
 #include <ostream>
@@ -10,14 +11,6 @@
 
 namespace aethermind {
 namespace {
-
-template<typename... Ts>
-struct Overloaded : Ts... {
-    using Ts::operator()...;
-};
-
-template<typename... Ts>
-Overloaded(Ts...) -> Overloaded<Ts...>;
 
 using FieldMap = std::unordered_map<std::string, std::string>;
 
@@ -144,7 +137,7 @@ Status EnsureNoExtraFields(const FieldMap& fields, size_t expected_count) {
 }// namespace
 
 const char* OpParamsKindName(const OpParams& params) noexcept {
-    return std::visit(Overloaded{
+    return std::visit(overloaded{
                               [](const std::monostate&) noexcept { return "monostate"; },
                               [](const EmbeddingParams&) noexcept { return "Embedding"; },
                               [](const RmsNormParams&) noexcept { return "RmsNorm"; },
@@ -162,7 +155,7 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
 }
 
 Status SerializeOpParams(const OpParams& params, std::ostream& os) {
-    std::visit(Overloaded{
+    std::visit(overloaded{
                        [&](const std::monostate&) { os << "monostate"; },
                        [&](const EmbeddingParams&) { os << "Embedding"; },
                        [&](const RmsNormParams& p) { os << "RmsNorm eps=" << p.eps; },

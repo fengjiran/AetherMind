@@ -1,4 +1,4 @@
-#include "aethermind/model/graph/graph_pass_pipeline.h"
+#include "aethermind/model/graph/graph_pass_manager.h"
 
 #include <gtest/gtest.h>
 
@@ -74,9 +74,9 @@ public:
     }
 };
 
-TEST(GraphPassPipeline, EmptyPipelineReturnsValidGraph) {
+TEST(GraphPassManager, EmptyPipelineReturnsValidGraph) {
     const ModelGraph graph = BuildGraph();
-    GraphPassPipeline pipeline;
+    GraphPassManager pipeline;
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
@@ -85,9 +85,9 @@ TEST(GraphPassPipeline, EmptyPipelineReturnsValidGraph) {
     EXPECT_TRUE(result->Validate().ok());
 }
 
-TEST(GraphPassPipeline, RunsSinglePass) {
+TEST(GraphPassManager, RunsSinglePass) {
     const ModelGraph graph = BuildGraph();
-    GraphPassPipeline pipeline;
+    GraphPassManager pipeline;
     pipeline.Add(std::make_unique<RedirectFirstNodeInputPass>());
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
@@ -97,9 +97,9 @@ TEST(GraphPassPipeline, RunsSinglePass) {
     EXPECT_EQ(first_node.inputs[0], result->GetInputs()[1].value);
 }
 
-TEST(GraphPassPipeline, StopsOnFirstError) {
+TEST(GraphPassManager, StopsOnFirstError) {
     const ModelGraph graph = BuildGraph();
-    GraphPassPipeline pipeline;
+    GraphPassManager pipeline;
     pipeline.Add(std::make_unique<FailingPass>())
             .Add(std::make_unique<RedirectFirstNodeInputPass>());
 
@@ -109,9 +109,9 @@ TEST(GraphPassPipeline, StopsOnFirstError) {
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(GraphPassPipeline, CheckpointCommitsIntermediateSnapshot) {
+TEST(GraphPassManager, CheckpointCommitsIntermediateSnapshot) {
     const ModelGraph graph = BuildGraph();
-    GraphPassPipeline pipeline;
+    GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(1)
             .Add(std::make_unique<RedirectFirstNodeInputPass>())
             .Add(std::make_unique<RemoveUnusedSecondNodePass>());

@@ -19,10 +19,18 @@ public:
     OperatorName(std::string_view name, std::string_view overload_name)
         : name_(name), overload_name_(overload_name) {}
 
-    AM_NODISCARD std::string_view name() const noexcept { return name_; }
-    AM_NODISCARD std::string_view overload_name() const noexcept { return overload_name_; }
+    AM_NODISCARD std::string_view name() const noexcept {
+        return name_;
+    }
 
-    /// Extracts namespace from name if present ("aethermind::add" -> "aethermind").
+    AM_NODISCARD std::string_view overload_name() const noexcept {
+        return overload_name_;
+    }
+
+    /// Extracts the first-level namespace from name if present.
+    /// Examples: "aethermind::add" -> "aethermind",
+    ///           "aethermind::nn::linear" -> "aethermind" (first segment only),
+    ///           "::add" -> nullopt (global namespace, no qualifier).
     /// Returned view is valid only while this OperatorName exists.
     AM_NODISCARD std::optional<std::string_view> GetNamespace() const noexcept;
 
@@ -30,13 +38,14 @@ public:
         return lhs.name_ == rhs.name_ && lhs.overload_name_ == rhs.overload_name_;
     }
 
-    friend bool operator!=(const OperatorName& lhs, const OperatorName& rhs) {
-        return !(lhs == rhs);
-    }
-
-    friend bool operator<(const OperatorName& lhs, const OperatorName& rhs) {
-        return lhs.name_ < rhs.name_ ||
-               (lhs.name_ == rhs.name_ && lhs.overload_name_ < rhs.overload_name_);
+    // C++20: operator!= is synthesized from operator==, and </>/<=/>=
+    // are synthesized from operator<=>. Defines a total order over
+    // (name_, overload_name_) consistent with the former operator<.
+    friend auto operator<=>(const OperatorName& lhs, const OperatorName& rhs) {
+        if (auto cmp = lhs.name_ <=> rhs.name_; cmp != 0) {
+            return cmp;
+        }
+        return lhs.overload_name_ <=> rhs.overload_name_;
     }
 
 private:
@@ -54,6 +63,6 @@ struct std::hash<aethermind::OperatorName> {
     size_t operator()(const aethermind::OperatorName& x) const noexcept {
         return aethermind::get_hash(x.name(), x.overload_name());
     }
-};// namespace std
+};// std::hash<OperatorName>
 
-#endif//AETHERMIND_OPERATOR_NAME_H
+#endif// AETHERMIND_OPERATOR_NAME_H

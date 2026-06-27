@@ -1,26 +1,26 @@
-#include "aethermind/model/graph/graph_pass_pipeline.h"
+#include "aethermind/model/graph/graph_pass_manager.h"
 
 #include <utility>
 
 namespace aethermind {
 
-GraphPassPipeline& GraphPassPipeline::Add(std::unique_ptr<GraphPass> pass) {
+GraphPassManager& GraphPassManager::Add(std::unique_ptr<GraphPass> pass) {
     passes_.push_back(std::move(pass));
     return *this;
 }
 
-GraphPassPipeline& GraphPassPipeline::SetCheckpointEvery(size_t pass_count) noexcept {
+GraphPassManager& GraphPassManager::SetCheckpointEvery(size_t pass_count) noexcept {
     checkpoint_every_ = pass_count;
     return *this;
 }
 
-StatusOr<ModelGraph> GraphPassPipeline::Run(const ModelGraph& graph) const {
+StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
     ModelGraph current = graph;
     std::unique_ptr<GraphRewriteSession> session = std::make_unique<GraphRewriteSession>(current);
 
     for (size_t i = 0; i < passes_.size(); ++i) {
         if (passes_[i] == nullptr) {
-            return Status::InvalidArgument("GraphPassPipeline: pass cannot be null");
+            return Status::InvalidArgument("GraphPassManager: pass cannot be null");
         }
         AM_RETURN_IF_ERROR(passes_[i]->Run(*session));
 

@@ -6,7 +6,9 @@ namespace aethermind {
 
 std::optional<std::string_view> OperatorName::GetNamespace() const noexcept {
     auto pos = name_.find("::");
-    if (pos == std::string::npos) {
+    // A leading "::" (e.g., "::add") denotes the global namespace with no
+    // qualifier; treat it the same as having no namespace separator.
+    if (pos == std::string::npos || pos == 0) {
         return std::nullopt;
     }
     return std::string_view(name_).substr(0, pos);

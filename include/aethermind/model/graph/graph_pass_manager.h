@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_MODEL_GRAPH_GRAPH_PASS_PIPELINE_H
-#define AETHERMIND_MODEL_GRAPH_GRAPH_PASS_PIPELINE_H
+#ifndef AETHERMIND_MODEL_GRAPH_GRAPH_PASS_MANAGER_H
+#define AETHERMIND_MODEL_GRAPH_GRAPH_PASS_MANAGER_H
 
 #include "aethermind/model/graph/graph_rewrite.h"
 
@@ -17,10 +17,10 @@ public:
     AM_NODISCARD virtual Status Run(GraphRewriteSession& session) = 0;
 };
 
-class GraphPassPipeline {
+class GraphPassManager {
 public:
-    GraphPassPipeline& Add(std::unique_ptr<GraphPass> pass);
-    GraphPassPipeline& SetCheckpointEvery(size_t pass_count) noexcept;
+    GraphPassManager& Add(std::unique_ptr<GraphPass> pass);
+    GraphPassManager& SetCheckpointEvery(size_t pass_count) noexcept;
 
     AM_NODISCARD StatusOr<ModelGraph> Run(const ModelGraph& graph) const;
 

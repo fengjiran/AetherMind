@@ -73,9 +73,12 @@ TEST(Operators_OperatorName, GetNamespace_EmptyName) {
 
 TEST(Operators_OperatorName, GetNamespace_OnlyDoubleColon) {
     OperatorName op("::", "Tensor");
-    auto ns = op.GetNamespace();
-    ASSERT_TRUE(ns.has_value());
-    EXPECT_EQ(ns.value(), "");// Namespace before :: is empty
+    EXPECT_FALSE(op.GetNamespace().has_value());// Leading :: denotes global namespace
+}
+
+TEST(Operators_OperatorName, GetNamespace_LeadingGlobalQualifier) {
+    OperatorName op("::add", "Tensor");
+    EXPECT_FALSE(op.GetNamespace().has_value());// Leading :: denotes global namespace
 }
 
 TEST(Operators_OperatorName, GetNamespace_TrailingDoubleColon) {

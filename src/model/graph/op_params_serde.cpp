@@ -137,56 +137,58 @@ Status EnsureNoExtraFields(const FieldMap& fields, size_t expected_count) {
 }// namespace
 
 const char* OpParamsKindName(const OpParams& params) noexcept {
-    return std::visit(overloaded{
-                              [](const std::monostate&) noexcept { return "monostate"; },
-                              [](const EmbeddingParams&) noexcept { return "Embedding"; },
-                              [](const RmsNormParams&) noexcept { return "RmsNorm"; },
-                              [](const LinearParams&) noexcept { return "Linear"; },
-                              [](const RoPEParams&) noexcept { return "RoPE"; },
-                              [](const MatMulParams&) noexcept { return "MatMul"; },
-                              [](const SoftmaxParams&) noexcept { return "Softmax"; },
-                              [](const AddParams&) noexcept { return "Add"; },
-                              [](const SiluMulParams&) noexcept { return "SiluMul"; },
-                              [](const KVCacheUpdateParams&) noexcept { return "KVCacheUpdate"; },
-                              [](const AttentionParams&) noexcept { return "Attention"; },
-                              [](const ArgmaxParams&) noexcept { return "Argmax"; },
-                      },
-                      params);
+    auto visitor = overloaded{
+            [](const std::monostate&) noexcept { return "monostate"; },
+            [](const EmbeddingParams&) noexcept { return "Embedding"; },
+            [](const RmsNormParams&) noexcept { return "RmsNorm"; },
+            [](const LinearParams&) noexcept { return "Linear"; },
+            [](const RoPEParams&) noexcept { return "RoPE"; },
+            [](const MatMulParams&) noexcept { return "MatMul"; },
+            [](const SoftmaxParams&) noexcept { return "Softmax"; },
+            [](const AddParams&) noexcept { return "Add"; },
+            [](const SiluMulParams&) noexcept { return "SiluMul"; },
+            [](const KVCacheUpdateParams&) noexcept { return "KVCacheUpdate"; },
+            [](const AttentionParams&) noexcept { return "Attention"; },
+            [](const ArgmaxParams&) noexcept { return "Argmax"; },
+    };
+    return std::visit(visitor, params);
 }
 
 Status SerializeOpParams(const OpParams& params, std::ostream& os) {
-    std::visit(overloaded{
-                       [&](const std::monostate&) { os << "monostate"; },
-                       [&](const EmbeddingParams&) { os << "Embedding"; },
-                       [&](const RmsNormParams& p) { os << "RmsNorm eps=" << p.eps; },
-                       [&](const LinearParams&) { os << "Linear"; },
-                       [&](const RoPEParams& p) {
-                           os << "RoPE head_dim=" << p.head_dim
-                              << " num_attention_heads=" << p.num_attention_heads
-                              << " num_key_value_heads=" << p.num_key_value_heads
-                              << " max_position_embeddings=" << p.max_position_embeddings
-                              << " theta=" << p.theta
-                              << " scaling_factor=";
-                           if (p.scaling_factor.has_value()) {
-                               os << *p.scaling_factor;
-                           } else {
-                               os << "none";
-                           }
-                           os << " scaling_type=" << ToString(p.scaling_type);
-                       },
-                       [&](const MatMulParams& p) { os << "MatMul transpose_rhs=" << (p.transpose_rhs ? "true" : "false"); },
-                       [&](const SoftmaxParams& p) { os << "Softmax axis=" << p.axis; },
-                       [&](const AddParams&) { os << "Add"; },
-                       [&](const SiluMulParams&) { os << "SiluMul"; },
-                       [&](const KVCacheUpdateParams&) { os << "KVCacheUpdate"; },
-                       [&](const AttentionParams& p) {
-                           os << "Attention num_attention_heads=" << p.num_attention_heads
-                              << " num_key_value_heads=" << p.num_key_value_heads
-                              << " head_dim=" << p.head_dim;
-                       },
-                       [&](const ArgmaxParams& p) { os << "Argmax axis=" << p.axis; },
-               },
-               params);
+    auto visitor = overloaded{
+            [&](const std::monostate&) { os << "monostate"; },
+            [&](const EmbeddingParams&) { os << "Embedding"; },
+            [&](const RmsNormParams& p) { os << "RmsNorm eps=" << p.eps; },
+            [&](const LinearParams&) { os << "Linear"; },
+            [&](const RoPEParams& p) {
+                os << "RoPE head_dim=" << p.head_dim
+                   << " num_attention_heads=" << p.num_attention_heads
+                   << " num_key_value_heads=" << p.num_key_value_heads
+                   << " max_position_embeddings=" << p.max_position_embeddings
+                   << " theta=" << p.theta
+                   << " scaling_factor=";
+                if (p.scaling_factor.has_value()) {
+                    os << *p.scaling_factor;
+                } else {
+                    os << "none";
+                }
+                os << " scaling_type=" << ToString(p.scaling_type);
+            },
+            [&](const MatMulParams& p) {
+                os << "MatMul transpose_rhs=" << (p.transpose_rhs ? "true" : "false");
+            },
+            [&](const SoftmaxParams& p) { os << "Softmax axis=" << p.axis; },
+            [&](const AddParams&) { os << "Add"; },
+            [&](const SiluMulParams&) { os << "SiluMul"; },
+            [&](const KVCacheUpdateParams&) { os << "KVCacheUpdate"; },
+            [&](const AttentionParams& p) {
+                os << "Attention num_attention_heads=" << p.num_attention_heads
+                   << " num_key_value_heads=" << p.num_key_value_heads
+                   << " head_dim=" << p.head_dim;
+            },
+            [&](const ArgmaxParams& p) { os << "Argmax axis=" << p.axis; },
+    };
+    std::visit(visitor, params);
     return Status::Ok();
 }
 
@@ -202,20 +204,24 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{std::monostate{}};
     }
+
     if (kind == "Embedding") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{EmbeddingParams{}};
     }
+
     if (kind == "RmsNorm") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
         StatusOr<float> eps = ParseFloat(fields, "eps");
         AM_RETURN_IF_ERROR(eps.status());
         return OpParams{RmsNormParams{.eps = *eps}};
     }
+
     if (kind == "Linear") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{LinearParams{}};
     }
+
     if (kind == "RoPE") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 7));
         StatusOr<int64_t> head_dim = ParseInt64(fields, "head_dim");
@@ -240,30 +246,36 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
                                    .scaling_factor = *scaling_factor,
                                    .scaling_type = *scaling_type}};
     }
+
     if (kind == "MatMul") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
         StatusOr<bool> transpose_rhs = ParseBool(fields, "transpose_rhs");
         AM_RETURN_IF_ERROR(transpose_rhs.status());
         return OpParams{MatMulParams{.transpose_rhs = *transpose_rhs}};
     }
+
     if (kind == "Softmax") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
         StatusOr<int64_t> axis = ParseInt64(fields, "axis");
         AM_RETURN_IF_ERROR(axis.status());
         return OpParams{SoftmaxParams{.axis = *axis}};
     }
+
     if (kind == "Add") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{AddParams{}};
     }
+
     if (kind == "SiluMul") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{SiluMulParams{}};
     }
+
     if (kind == "KVCacheUpdate") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{KVCacheUpdateParams{}};
     }
+
     if (kind == "Attention") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 3));
         StatusOr<int64_t> num_attention_heads = ParseInt64(fields, "num_attention_heads");
@@ -276,6 +288,7 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
                                         .num_key_value_heads = *num_key_value_heads,
                                         .head_dim = *head_dim}};
     }
+
     if (kind == "Argmax") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
         StatusOr<int64_t> axis = ParseInt64(fields, "axis");

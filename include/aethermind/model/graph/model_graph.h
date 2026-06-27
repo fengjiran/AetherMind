@@ -211,6 +211,23 @@ public:
     ModelGraph(HfModelConfig config, std::vector<GraphNode> nodes,
                std::vector<GraphValue> values) noexcept;
 
+
+    AM_NODISCARD std::span<const GraphNode> GetNodes() const noexcept {
+        return nodes_;
+    }
+
+    AM_NODISCARD std::span<const GraphValue> GetValues() const noexcept {
+        return values_;
+    }
+
+    AM_NODISCARD std::span<const Input> GetInputs() const noexcept {
+        return inputs_;
+    }
+
+    AM_NODISCARD std::span<const Output> GetOutputs() const noexcept {
+        return outputs_;
+    }
+
     /// Registers an external input tensor and returns its value id.
     AM_NODISCARD GraphValueId AddInput(TensorSpec spec, std::string name);
 
@@ -221,12 +238,6 @@ public:
     /// Registers a compile-time constant value and returns its value id.
     AM_NODISCARD GraphValueId AddConstant(TensorSpec spec, ConstantBinding binding,
                                           std::string debug_name = "");
-
-    /// Attaches a semantic quantization scheme to a value. Applies to any
-    /// payload kind (weights, activations, constants). Per design §15,
-    /// this only records the model-level scheme; backend packed weight
-    /// formats are produced during lowering.
-    void SetQuantization(GraphValueId value, QuantizationSpec quantization);
 
     /// Registers a persistent state tensor and returns its value id.
     AM_NODISCARD GraphValueId AddState(TensorSpec spec, StateBinding binding,
@@ -241,13 +252,43 @@ public:
     AM_NODISCARD AddedNode AddNode(OpType op_type,
                                    std::optional<uint32_t> decoder_layer_index,
                                    std::vector<GraphValueId> inputs,
-                                   std::vector<NodeOutputDesc> outputs,
+                                   std::vector<NodeOutputDesc> outputs_desc,
                                    const OpParams& op_params = std::monostate{},
                                    ModelGraphAttrs attrs = {},
                                    std::string debug_name = "");
 
+    AM_NODISCARD const GraphNode& GetNode(GraphNodeId id) const {
+        AM_CHECK(id.index < nodes_.size(), "Invalid GraphNodeId");
+        return nodes_[id.index];
+    }
+
+    AM_NODISCARD const GraphValue& GetValue(GraphValueId id) const {
+        AM_CHECK(id.index < values_.size(), "Invalid GraphValueId");
+        return values_[id.index];
+    }
+
+    AM_NODISCARD const HfModelConfig& GetConfig() const noexcept {
+        return config_;
+    }
+
     /// Designates a value as a graph output with a user-facing name.
-    void MarkOutput(GraphValueId value, std::string name);
+    void MarkOutput(GraphValueId value, std::string name) {
+        outputs_.push_back(Output{.value = value, .name = std::move(name)});
+    }
+
+    /// Attaches a semantic quantization scheme to a value. Applies to any
+    /// payload kind (weights, activations, constants). Per design §15,
+    /// this only records the model-level scheme; backend packed weight
+    /// formats are produced during lowering.
+    void SetQuantization(GraphValueId value, QuantizationSpec quantization) {
+        values_.at(value.index).quantization = quantization;
+    }
+
+    /// Returns the ids of all nodes whose op_type matches `op_type`, in
+    /// ascending node-index order. Performs a linear scan; suitable for
+    /// graph-pass usage where query frequency is low. Callers that need the
+    /// node contents can resolve each id via GetNode(id).
+    AM_NODISCARD std::vector<GraphNodeId> FindNodesByOpType(OpType op_type) const;
 
     /// Checks graph invariants: valid value ids, schema compliance,
     /// producer consistency, and acyclicity.
@@ -263,13 +304,6 @@ public:
     /// on success, avoiding the redundant traversal that results from
     /// calling Validate() followed by TopologicalOrder().
     AM_NODISCARD StatusOr<std::vector<GraphNodeId>> ValidateAndTopologicalOrder() const;
-    AM_NODISCARD std::span<const GraphNode> GetNodes() const noexcept;
-    AM_NODISCARD std::span<const GraphValue> GetValues() const noexcept;
-    AM_NODISCARD std::span<const Input> GetInputs() const noexcept;
-    AM_NODISCARD std::span<const Output> GetOutputs() const noexcept;
-    AM_NODISCARD const GraphNode& GetNode(GraphNodeId id) const;
-    AM_NODISCARD const GraphValue& GetValue(GraphValueId id) const;
-    AM_NODISCARD const HfModelConfig& GetConfig() const noexcept;
 
 private:
     HfModelConfig config_{};

@@ -733,5 +733,54 @@ TEST(ModelGraph, TopologicalOrderRejectsActivationCycle) {
     EXPECT_EQ(order.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(ModelGraph, FindNodesByOpTypeReturnsMatchingIdsInIndexOrder) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
+    const ModelGraph::AddedNode softmax_a = graph.AddNode(
+            OpType::kSoftmax,
+            std::nullopt,
+            {input},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+    const ModelGraph::AddedNode argmax = graph.AddNode(
+            OpType::kArgmax,
+            std::nullopt,
+            {softmax_a.outputs[0]},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+    const ModelGraph::AddedNode softmax_b = graph.AddNode(
+            OpType::kSoftmax,
+            std::nullopt,
+            {argmax.outputs[0]},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+
+    const std::vector<GraphNodeId> softmax_ids = graph.FindNodesByOpType(OpType::kSoftmax);
+
+    ASSERT_EQ(softmax_ids.size(), 2U);
+    EXPECT_EQ(softmax_ids[0], softmax_a.node);
+    EXPECT_EQ(softmax_ids[1], softmax_b.node);
+    EXPECT_EQ(graph.GetNode(softmax_ids[0]).op_type, OpType::kSoftmax);
+}
+
+TEST(ModelGraph, FindNodesByOpTypeReturnsEmptyWhenNoMatch) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
+    (void) graph.AddNode(
+            OpType::kSoftmax,
+            std::nullopt,
+            {input},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}});
+
+    const std::vector<GraphNodeId> ids = graph.FindNodesByOpType(OpType::kAttention);
+
+    EXPECT_TRUE(ids.empty());
+}
+
+TEST(ModelGraph, FindNodesByOpTypeReturnsEmptyForEmptyGraph) {
+    ModelGraph graph;
+
+    const std::vector<GraphNodeId> ids = graph.FindNodesByOpType(OpType::kSoftmax);
+
+    EXPECT_TRUE(ids.empty());
+}
+
 }// namespace
 }// namespace aethermind

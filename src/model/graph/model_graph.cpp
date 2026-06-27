@@ -213,53 +213,49 @@ ModelGraph::ModelGraph(HfModelConfig config, std::vector<GraphNode> nodes,
     : config_(std::move(config)), nodes_(std::move(nodes)), values_(std::move(values)) {}
 
 GraphValueId ModelGraph::AddInput(TensorSpec spec, std::string name) {
-    GraphValueId value{NextValueIndex(values_)};
+    GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back(GraphValue{.payload = ModelInputValue{},
                                  .spec = std::move(spec),
                                  .debug_name = name});
-    inputs_.push_back(Input{.value = value, .name = std::move(name)});
-    return value;
+    inputs_.push_back(Input{.value = value_id, .name = std::move(name)});
+    return value_id;
 }
 
 GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::string debug_name) {
-    GraphValueId value{NextValueIndex(values_)};
+    GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back(GraphValue{.payload = WeightValue{.binding = binding},
                                  .spec = std::move(spec),
                                  .debug_name = std::move(debug_name)});
-    return value;
+    return value_id;
 }
 
 GraphValueId ModelGraph::AddConstant(TensorSpec spec, ConstantBinding binding, std::string debug_name) {
-    GraphValueId value{NextValueIndex(values_)};
+    GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back(GraphValue{.payload = ConstantValue{.binding = std::move(binding)},
                                  .spec = std::move(spec),
                                  .debug_name = std::move(debug_name)});
-    return value;
-}
-
-void ModelGraph::SetQuantization(GraphValueId value, QuantizationSpec quantization) {
-    values_.at(value.index).quantization = quantization;
+    return value_id;
 }
 
 GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string debug_name) {
-    GraphValueId value{NextValueIndex(values_)};
+    GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back(GraphValue{.payload = StateValue{.binding = binding},
                                  .spec = std::move(spec),
                                  .debug_name = std::move(debug_name)});
-    return value;
+    return value_id;
 }
 
 ModelGraph::AddedNode ModelGraph::AddNode(OpType op_type,
                                           std::optional<uint32_t> decoder_layer_index,
                                           std::vector<GraphValueId> inputs,
-                                          std::vector<NodeOutputDesc> outputs,
+                                          std::vector<NodeOutputDesc> outputs_desc,
                                           const OpParams& op_params,
                                           ModelGraphAttrs attrs,
                                           std::string debug_name) {
     GraphNodeId node_id{NextNodeIndex(nodes_)};
     std::vector<GraphValueId> output_ids;
-    output_ids.reserve(outputs.size());
-    for (auto& output: outputs) {
+    output_ids.reserve(outputs_desc.size());
+    for (auto& output: outputs_desc) {
         auto payload = std::holds_alternative<std::monostate>(output.payload)
                                ? GraphValuePayload{ActivationValue{}}
                                : output.payload;
@@ -282,10 +278,6 @@ ModelGraph::AddedNode ModelGraph::AddNode(OpType op_type,
             .debug_name = std::move(debug_name)});
 
     return AddedNode{.node = node_id, .outputs = std::move(output_ids)};
-}
-
-void ModelGraph::MarkOutput(GraphValueId value, std::string name) {
-    outputs_.push_back(Output{.value = value, .name = std::move(name)});
 }
 
 Status ModelGraph::Validate() const {
@@ -579,34 +571,14 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::TopologicalOrder() const {
     return order;
 }
 
-std::span<const GraphNode> ModelGraph::GetNodes() const noexcept {
-    return nodes_;
-}
-
-std::span<const GraphValue> ModelGraph::GetValues() const noexcept {
-    return values_;
-}
-
-std::span<const ModelGraph::Input> ModelGraph::GetInputs() const noexcept {
-    return inputs_;
-}
-
-std::span<const ModelGraph::Output> ModelGraph::GetOutputs() const noexcept {
-    return outputs_;
-}
-
-const GraphNode& ModelGraph::GetNode(GraphNodeId id) const {
-    AM_CHECK(id.index < nodes_.size(), "Invalid GraphNodeId");
-    return nodes_[id.index];
-}
-
-const GraphValue& ModelGraph::GetValue(GraphValueId id) const {
-    AM_CHECK(id.index < values_.size(), "Invalid GraphValueId");
-    return values_[id.index];
-}
-
-const HfModelConfig& ModelGraph::GetConfig() const noexcept {
-    return config_;
+std::vector<GraphNodeId> ModelGraph::FindNodesByOpType(OpType op_type) const {
+    std::vector<GraphNodeId> result;
+    for (uint32_t i = 0; i < nodes_.size(); ++i) {
+        if (nodes_[i].op_type == op_type) {
+            result.push_back(GraphNodeId{.index = i});
+        }
+    }
+    return result;
 }
 
 // Builds a per-value list of nodes that consume that value as an input.

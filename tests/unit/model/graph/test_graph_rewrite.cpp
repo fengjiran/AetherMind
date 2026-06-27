@@ -97,5 +97,96 @@ TEST(GraphRewriteSession, RejectsInvalidRedirectInput) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
+TEST(GraphRewriteSession, ReplaceNodeWithSingleReplacement) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    // Graph layout:
+    //   v0=tokens_a, v1=tokens_b, v2=weight
+    //   n0=Embedding(v0,v2) → v3=hidden_a
+    //   n1=Embedding(v1,v2) → v4=hidden_b
+    //   output: v3
+
+    GraphRewriteSession session(graph);
+
+    // Replace n0 with a single Embedding node using different inputs
+    GraphNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {GraphValueId{.index = 3}},// references old n0 output for spec/payload
+            .op_params = EmbeddingParams{},
+    };
+    ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(replacement)}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    EXPECT_EQ(committed->GetNodes().size(), 2U);
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).op_type, OpType::kEmbedding);
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).inputs[0],
+              committed->GetInputs()[1].value);// tokens_b
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, ReplaceNodeWithMultipleReplacements) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    // Graph layout:
+    //   v0=tokens_a, v1=tokens_b, v2=weight
+    //   n0=Embedding(v0,v2) → v3=hidden_a
+    //   n1=Embedding(v1,v2) → v4=hidden_b
+    //   output: v3
+
+    GraphRewriteSession session(graph);
+
+    // Replace n0 with two independent Embedding nodes
+    // Both reference v0 and v2 as inputs; the second one's output replaces v3
+    GraphNode r1{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {GraphValueId{.index = 4}},// references old v4 for spec (intermediate)
+            .op_params = EmbeddingParams{},
+            .debug_name = "r1",
+    };
+    GraphNode r2{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {GraphValueId{.index = 3}},// final output replaces v3
+            .op_params = EmbeddingParams{},
+            .debug_name = "r2",
+    };
+    ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(r1), std::move(r2)}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    EXPECT_EQ(committed->GetNodes().size(), 3U);// r1 + r2 + n1
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "r1");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).debug_name, "r2");
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, ReplaceNodeWithEmptyReplacementsActsAsRemove) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 1}, {}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    EXPECT_EQ(committed->GetNodes().size(), 1U);
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, ReplaceNodeRejectsInvalidInputId) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    GraphNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 999}},// invalid
+            .outputs = {GraphValueId{.index = 3}},
+            .op_params = EmbeddingParams{},
+    };
+    const Status status = session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(replacement)});
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 }// namespace
 }// namespace aethermind

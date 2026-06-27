@@ -30,7 +30,8 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
     : graph_(graph),
       removed_nodes_(graph.GetNodes().size(), false),
       value_replacements_(graph.GetValues().size(), std::nullopt),
-      input_overrides_(graph.GetNodes().size(), std::nullopt) {}
+      input_overrides_(graph.GetNodes().size(), std::nullopt),
+      node_replacements_(graph.GetNodes().size(), std::nullopt) {}
 
 Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
     for (const GraphMutation& mutation: mutations) {
@@ -59,8 +60,20 @@ Status GraphRewriteSession::ReplaceNode(GraphNodeId node,
     if (replacement_nodes.empty()) {
         return RemoveNode(node);
     }
-    return Status::Unimplemented(
-            "GraphRewriteSession::ReplaceNode is not implemented in the minimal M4.3 session");
+
+    // Validate: all input/output IDs must reference existing values in the original graph
+    for (const GraphNode& replacement: replacement_nodes) {
+        for (GraphValueId input: replacement.inputs) {
+            AM_RETURN_IF_ERROR(CheckValueId(input));
+        }
+        for (GraphValueId output: replacement.outputs) {
+            AM_RETURN_IF_ERROR(CheckValueId(output));
+        }
+    }
+
+    removed_nodes_[node.index] = true;
+    node_replacements_[node.index] = replacement_nodes;
+    return Status::Ok();
 }
 
 Status GraphRewriteSession::RemoveNode(GraphNodeId node) {
@@ -69,12 +82,14 @@ Status GraphRewriteSession::RemoveNode(GraphNodeId node) {
     return Status::Ok();
 }
 
-Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value) {
+Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
+                                          GraphValueId new_value) {
     AM_RETURN_IF_ERROR(CheckNodeId(node));
     AM_RETURN_IF_ERROR(CheckValueId(new_value));
     const GraphNode& original = graph_.GetNode(node);
     if (input_index >= original.inputs.size()) {
-        return Status::InvalidArgument("GraphRewriteSession::RedirectInput input index out of range");
+        return Status::InvalidArgument(
+                "GraphRewriteSession::RedirectInput input index out of range");
     }
 
     if (!input_overrides_[node.index].has_value()) {
@@ -99,18 +114,19 @@ Status GraphRewriteSession::ReplaceAllUses(GraphValueId old_value, GraphValueId 
 }
 
 GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
-    GraphValueId current = value;
+    GraphValueId cur = value;
     for (size_t depth = 0; depth < value_replacements_.size(); ++depth) {
-        if (current.index >= value_replacements_.size()) {
-            return current;
+        if (cur.index >= value_replacements_.size()) {
+            return cur;
         }
-        const std::optional<GraphValueId>& next = value_replacements_[current.index];
+
+        const std::optional<GraphValueId>& next = value_replacements_[cur.index];
         if (!next.has_value()) {
-            return current;
+            return cur;
         }
-        current = *next;
+        cur = *next;
     }
-    return current;
+    return cur;
 }
 
 StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const {
@@ -130,6 +146,7 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
             .op_params = original.op_params,
             .debug_name = original.debug_name,
     };
+
     for (GraphValueId& input: view.inputs) {
         input = GetResolvedValue(input);
     }
@@ -141,10 +158,12 @@ Status GraphRewriteSession::ValidateEdits() const {
         if (!input_overrides_[node_index].has_value()) {
             continue;
         }
+
         for (GraphValueId input: *input_overrides_[node_index]) {
             AM_RETURN_IF_ERROR(CheckValueId(input));
         }
     }
+
     for (const std::optional<GraphValueId>& replacement: value_replacements_) {
         if (replacement.has_value()) {
             AM_RETURN_IF_ERROR(CheckValueId(*replacement));
@@ -187,6 +206,50 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
     AM_RETURN_IF_ERROR(order.status());
     for (GraphNodeId old_node_id: *order) {
         if (removed_nodes_[old_node_id.index]) {
+            const auto& replacements = node_replacements_[old_node_id.index];
+            if (!replacements.has_value()) {
+                continue;
+            }
+
+            // Add replacement nodes in caller-provided order
+            for (const GraphNode& replacement: *replacements) {
+                std::vector<GraphValueId> new_inputs;
+                new_inputs.reserve(replacement.inputs.size());
+                for (GraphValueId old_input: replacement.inputs) {
+                    const GraphValueId resolved_input = GetResolvedValue(old_input);
+                    StatusOr<GraphValueId> mapped_input = MapResolvedValue(resolved_input, value_map);
+                    AM_RETURN_IF_ERROR(mapped_input.status());
+                    new_inputs.push_back(*mapped_input);
+                }
+
+                // Look up output specs/payloads from the original graph values
+                // referenced by the replacement node's outputs field
+                std::vector<ModelGraph::NodeOutputDesc> output_descs;
+                output_descs.reserve(replacement.outputs.size());
+                for (GraphValueId output_id: replacement.outputs) {
+                    const GraphValue& old_value = graph_.GetValue(output_id);
+                    output_descs.push_back(ModelGraph::NodeOutputDesc{
+                            .spec = old_value.spec,
+                            .payload = old_value.payload,
+                            .debug_name = old_value.debug_name,
+                    });
+                }
+
+                const ModelGraph::AddedNode added = committed.AddNode(
+                        replacement.op_type,
+                        replacement.decoder_layer_index,
+                        std::move(new_inputs),
+                        std::move(output_descs),
+                        replacement.op_params,
+                        replacement.attrs,
+                        replacement.debug_name);
+
+                // Map old value IDs to new output IDs so downstream consumers
+                // of the replaced node's outputs are redirected to the replacement's outputs
+                for (size_t i = 0; i < replacement.outputs.size(); ++i) {
+                    value_map[replacement.outputs[i].index] = added.outputs[i];
+                }
+            }
             continue;
         }
 

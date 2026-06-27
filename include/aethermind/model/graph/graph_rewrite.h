@@ -72,6 +72,7 @@ private:
     std::vector<bool> removed_nodes_{};
     std::vector<std::optional<GraphValueId>> value_replacements_{};
     std::vector<std::optional<std::vector<GraphValueId>>> input_overrides_{};
+    std::vector<std::optional<std::vector<GraphNode>>> node_replacements_{};
 };
 
 }// namespace aethermind

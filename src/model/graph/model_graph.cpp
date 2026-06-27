@@ -237,6 +237,10 @@ GraphValueId ModelGraph::AddConstant(TensorSpec spec, ConstantBinding binding, s
     return value;
 }
 
+void ModelGraph::SetQuantization(GraphValueId value, QuantizationSpec quantization) {
+    values_.at(value.index).quantization = quantization;
+}
+
 GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string debug_name) {
     GraphValueId value{NextValueIndex(values_)};
     values_.push_back(GraphValue{.payload = StateValue{.binding = binding},

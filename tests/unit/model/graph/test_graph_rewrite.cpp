@@ -359,7 +359,8 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                 WeightBinding{.role = WeightRole::kTokenEmbedding},
                                                 "embed.weight");
-    std::vector<std::byte> inline_data{std::byte{0x01}, std::byte{0x02}};
+    auto inline_data = std::make_shared<const std::vector<std::byte>>(
+            std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}});
     const GraphValueId constant = graph.AddConstant(
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.name = "scalar.one", .inline_data = std::move(inline_data)},
@@ -386,7 +387,8 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
         if (const auto* c = std::get_if<ConstantValue>(&value.payload)) {
             found_constant = true;
             EXPECT_EQ(c->binding.name, "scalar.one");
-            EXPECT_EQ(c->binding.inline_data.size(), 2U);
+            ASSERT_TRUE(c->binding.inline_data != nullptr);
+            EXPECT_EQ(c->binding.inline_data->size(), 2U);
             EXPECT_EQ(value.debug_name, "one");
         }
     }

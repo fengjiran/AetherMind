@@ -9,6 +9,18 @@
 namespace aethermind {
 namespace {
 
+const char* QuantizationKindName(QuantizationKind kind) noexcept {
+    switch (kind) {
+        case QuantizationKind::kNone:
+            return "none";
+        case QuantizationKind::kInt8:
+            return "int8";
+        case QuantizationKind::kInt4:
+            return "int4";
+    }
+    return "unknown";
+}
+
 void DumpGraphValueId(GraphValueId id, std::ostream& os) {
     os << 'v' << id.index;
 }
@@ -48,7 +60,8 @@ void DumpStateBinding(const StateBinding& binding, std::ostream& os) {
 
 void DumpConstantBinding(const ConstantBinding& binding, std::ostream& os) {
     os << "name=" << binding.name;
-    os << ", inline_data=" << binding.inline_data.size() << "B";
+    const std::size_t bytes = binding.inline_data ? binding.inline_data->size() : 0U;
+    os << ", inline_data=" << bytes << "B";
 }
 
 void DumpPayload(const GraphValuePayload& payload, std::ostream& os) {
@@ -250,6 +263,10 @@ void DumpGraph(const ModelGraph& graph, std::ostream& os) {
         }
         if (!value.debug_name.empty()) {
             os << ", debug_name=" << value.debug_name;
+        }
+        if (value.quantization.kind != QuantizationKind::kNone) {
+            os << ", quant=" << QuantizationKindName(value.quantization.kind)
+               << ", group_size=" << value.quantization.group_size;
         }
         os << '\n';
     }

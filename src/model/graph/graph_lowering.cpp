@@ -1,5 +1,6 @@
 #include "aethermind/model/graph/graph_lowering.h"
 #include "aethermind/model/graph/operator_schema.h"
+#include "utils/variant_utils.h"
 
 #include <algorithm>
 #include <optional>
@@ -127,6 +128,21 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
             if (port.contributes_tensor_spec) {
                 step.input_specs.push_back(value.spec);
             }
+            // Record ConstantValue payloads so backend lowering can resolve
+            // inline data or named external constants without revisiting the
+            // graph. Other payload kinds (weight/state/input/activation) are
+            // resolved through their bindings at execution-planning time.
+            std::visit(overloaded{
+                               [&](const ConstantValue& cv) {
+                                   binding.constant_bindings.push_back(
+                                           LoweredConstantBinding{
+                                                   .input_port = port.index,
+                                                   .binding = cv.binding,
+                                           });
+                               },
+                               [](const auto&) {},
+                       },
+                       value.payload);
         }
 
         for (const auto& port: schema.output_ports) {

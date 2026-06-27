@@ -114,7 +114,8 @@ TEST(GraphDump, DumpsMinimalGraph) {
 
 TEST(GraphDump, DumpsConstantValue) {
     ModelGraph graph;
-    std::vector<std::byte> inline_data{std::byte{0xAA}, std::byte{0xBB}};
+    auto inline_data = std::make_shared<const std::vector<std::byte>>(
+            std::vector<std::byte>{std::byte{0xAA}, std::byte{0xBB}});
     const GraphValueId constant = graph.AddConstant(
             Spec(DataType::Float32(), {4}),
             ConstantBinding{.name = "rope.sin_cos_table", .inline_data = std::move(inline_data)},
@@ -128,6 +129,27 @@ TEST(GraphDump, DumpsConstantValue) {
     EXPECT_NE(dump.find("kind=constant"), std::string::npos);
     EXPECT_NE(dump.find("constant(name=rope.sin_cos_table, inline_data=2B)"), std::string::npos);
     EXPECT_NE(dump.find("debug_name=rope_table"), std::string::npos);
+}
+
+TEST(GraphDump, DumpsQuantizationWhenSet) {
+    ModelGraph graph;
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.role = WeightRole::kTokenEmbedding},
+            "embed.weight");
+    graph.SetQuantization(weight, QuantizationSpec{
+                                          .kind = QuantizationKind::kInt4,
+                                          .group_size = 64,
+                                          .scale_dtype = DataType::Float32(),
+                                          .has_zero_point = true,
+                                  });
+
+    std::ostringstream os;
+    DumpGraph(graph, os);
+
+    const std::string dump = os.str();
+    EXPECT_NE(dump.find("quant=int4"), std::string::npos);
+    EXPECT_NE(dump.find("group_size=64"), std::string::npos);
 }
 
 // --- Issue Q: DumpGraph on empty graph ---

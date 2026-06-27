@@ -1178,6 +1178,29 @@ M3 验收：execution plan 构建不再依赖旧 `GraphNode.weights` / `GraphNod
 
 这些能力不应提前阻塞 M1 / M2 的核心结构迁移。
 
+##### M4 实际完成范围与延迟项
+
+已交付：
+
+- `GraphRewriteSession`：含 `ReplaceNode` / `RemoveNode` / `RedirectInput` / `ReplaceValue` / `Apply` / `Commit`，支持不可变快照 + 事务式重写；`ReplaceValue` 内置环检测；
+- `GraphMutation`：typed variant（`ReplaceNodeCmd` / `RemoveNodeCmd` / `RedirectInputCmd` / `ReplaceValueCmd`），由 `Apply()` 批量提交；
+- `GraphPass` / `GraphPassManager`：含 `SetCheckpointEvery(N)` phase checkpoint，最后一个 pass 落在 checkpoint 边界时正确 materialize；`SetCheckpointEvery(0)` 禁用 checkpoint；`Run()` 避免初始图深拷贝；
+- graph dump：`DumpGraph` / `DumpOpParams`，覆盖全部 payload kind、OpParams variant、QuantizationSpec；
+- `OpParams` serialization / round-trip：`SerializeOpParams` / `ParseOpParams`，使用 `std::from_chars` 替代 `std::stod`；
+- `QuantizationSpec`：类型定义 + `GraphValue::quantization` 字段 + `ModelGraph::SetQuantization` API + dump 输出；
+- `ConstantValue` payload：`ConstantBinding` 用 `shared_ptr<const vector<byte>>` 实现 interning，避免 `Commit` 深拷贝；
+- lowering `ConstantValue` visit 分支：`LoweredStepBinding::constant_bindings` 记录 ConstantValue input 的 binding，供 backend 解析。
+
+延迟项（不阻塞 M4 验收，留待后续 milestone 或 use case 驱动）：
+
+- session 内 consumers / use-list 临时索引：当前 `ReplaceValue` 已有环检测，但缺少高效 consumer 反查索引；按需实现；
+- 完整图 serialization：当前仅 `OpParams` 序列化完成，图级序列化留待 use case 出现；
+- round-trip validation：依赖完整图序列化；
+- pattern matcher：待 graph rewrite 用例驱动；
+- `QuantizationSpec` lowering 集成：当前仅记录语义 scheme，不参与 dtype 推断 / packed weight 生成；
+- `ConstantBinding` 外部存储解析：`inline_data` 已 intern，但大型常量通过 `name` 引用外部存储的解析机制未实现；
+- 算子注册 `kConstant` 输入端口：当前无算子声明 `kConstant` 输入端口；lowering visit 分支已就位，待 use case（如常量 attention mask）驱动时注册。
+
 推荐执行顺序：
 
 ```text

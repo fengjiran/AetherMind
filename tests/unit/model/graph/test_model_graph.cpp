@@ -250,7 +250,8 @@ TEST(ModelGraph, PublicApiCreatesStateValues) {
 TEST(ModelGraph, PublicApiCreatesConstantValues) {
     ModelGraph graph;
 
-    std::vector<std::byte> inline_data{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
+    auto inline_data = std::make_shared<const std::vector<std::byte>>(
+            std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}});
     const GraphValueId constant = graph.AddConstant(
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.name = "rope.sin_cos_table", .inline_data = std::move(inline_data)},
@@ -261,9 +262,30 @@ TEST(ModelGraph, PublicApiCreatesConstantValues) {
     ASSERT_TRUE(std::holds_alternative<ConstantValue>(value.payload));
     const ConstantBinding& binding = std::get<ConstantValue>(value.payload).binding;
     EXPECT_EQ(binding.name, "rope.sin_cos_table");
-    EXPECT_EQ(binding.inline_data.size(), 3U);
+    ASSERT_TRUE(binding.inline_data != nullptr);
+    EXPECT_EQ(binding.inline_data->size(), 3U);
     EXPECT_FALSE(value.producer.has_value());
     EXPECT_EQ(value.debug_name, "rope_table");
+}
+
+TEST(ModelGraph, SetQuantizationAttachesSchemeToValue) {
+    ModelGraph graph;
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.role = WeightRole::kTokenEmbedding},
+            "embed.weight");
+
+    graph.SetQuantization(weight, QuantizationSpec{
+                                          .kind = QuantizationKind::kInt4,
+                                          .group_size = 64,
+                                          .scale_dtype = DataType::Float32(),
+                                          .has_zero_point = true,
+                                  });
+
+    const GraphValue& value = graph.GetValue(weight);
+    EXPECT_EQ(value.quantization.kind, QuantizationKind::kInt4);
+    EXPECT_EQ(value.quantization.group_size, 64U);
+    EXPECT_TRUE(value.quantization.has_zero_point);
 }
 
 TEST(ModelGraph, ValidateAcceptsExternalConstantValue) {

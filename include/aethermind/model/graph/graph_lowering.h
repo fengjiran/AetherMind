@@ -21,13 +21,24 @@ struct GraphLoweringConfig {
     ExecPhase phase = ExecPhase::kBoth;
 };
 
+/// Records a constant binding discovered during lowering for one input port.
+/// Backend-specific lowering passes can use this to resolve inline data or
+/// named external constants without re-walking the semantic graph.
+struct LoweredConstantBinding {
+    uint32_t input_port = 0;
+    ConstantBinding binding{};
+};
+
 /// Records the graph values bound to one lowered execution step. The order of
 /// each vector follows the operator schema port order, including state ports
 /// that do not contribute tensor specs to ExecutionPlanNodeSpec::input_specs.
+/// `constant_bindings` captures ConstantValue payloads encountered on input
+/// ports so backend lowering can resolve them without revisiting the graph.
 struct LoweredStepBinding {
     GraphNodeId node{};
     std::vector<GraphValueId> input_values{};
     std::vector<GraphValueId> output_values{};
+    std::vector<LoweredConstantBinding> constant_bindings{};
 };
 
 /// Unresolved lowering-time state alias record.

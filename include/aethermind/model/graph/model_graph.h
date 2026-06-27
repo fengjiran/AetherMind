@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -47,12 +48,41 @@ struct WeightBinding {
 /// Compile-time constant binding: carries a small inline payload or resolves
 /// a named external constant. Large constants should be referenced by `name`
 /// rather than copied into `inline_data`.
+///
+/// `inline_data` uses `shared_ptr<const ...>` so that `ModelGraph` copy
+/// (e.g. `GraphRewriteSession::Commit`) only bumps a refcount instead of
+/// deep-copying the payload. Interning is transparent: callers that do not
+/// need inline data leave the pointer null.
 struct ConstantBinding {
     std::string name{};
-    std::vector<std::byte> inline_data{};
+    std::shared_ptr<const std::vector<std::byte>> inline_data{};
 
-    AM_NODISCARD friend constexpr bool operator==(const ConstantBinding& lhs,
-                                                  const ConstantBinding& rhs) noexcept = default;
+    AM_NODISCARD friend bool operator==(const ConstantBinding& lhs,
+                                        const ConstantBinding& rhs) noexcept {
+        if (lhs.name != rhs.name) return false;
+        if (lhs.inline_data == rhs.inline_data) return true;// same pointer or both null
+        if (!lhs.inline_data || !rhs.inline_data) return false;
+        return *lhs.inline_data == *rhs.inline_data;
+    }
+};
+
+/// Semantic quantization scheme: describes the model-level quantization
+/// (int4/int8, group size, scale dtype, zero-point policy) without
+/// prescribing backend-specific packed weight formats.
+enum class QuantizationKind : uint8_t {
+    kNone,
+    kInt8,
+    kInt4,
+};
+
+struct QuantizationSpec {
+    QuantizationKind kind = QuantizationKind::kNone;
+    uint32_t group_size = 0;
+    DataType scale_dtype{};
+    bool has_zero_point = false;
+
+    AM_NODISCARD friend bool operator==(const QuantizationSpec& lhs,
+                                        const QuantizationSpec& rhs) noexcept = default;
 };
 
 enum class KVCacheSlot : uint8_t {
@@ -131,6 +161,7 @@ struct GraphValue {
     GraphValuePayload payload{std::monostate{}};
     TensorSpec spec{};
     std::optional<GraphNodeId> producer{};
+    QuantizationSpec quantization{};
     std::string debug_name;
 };
 
@@ -190,6 +221,12 @@ public:
     /// Registers a compile-time constant value and returns its value id.
     AM_NODISCARD GraphValueId AddConstant(TensorSpec spec, ConstantBinding binding,
                                           std::string debug_name = "");
+
+    /// Attaches a semantic quantization scheme to a value. Applies to any
+    /// payload kind (weights, activations, constants). Per design §15,
+    /// this only records the model-level scheme; backend packed weight
+    /// formats are produced during lowering.
+    void SetQuantization(GraphValueId value, QuantizationSpec quantization);
 
     /// Registers a persistent state tensor and returns its value id.
     AM_NODISCARD GraphValueId AddState(TensorSpec spec, StateBinding binding,

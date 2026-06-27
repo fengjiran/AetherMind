@@ -76,17 +76,18 @@ Status LayerRunner::ValidateStateAliasesForStep(
         return Status::Ok();
     }
 
-    (void) step_index;
-
-    // State aliases require a valid KVCacheView so that the operator
-    // reads and writes the same physical KV cache storage.
+    // Phase 1: all state aliases are KV cache updates. The KVCacheView is the
+    // shared physical storage that the operator reads and writes in place, so
+    // its presence is the runtime invariant for must-alias state updates.
     if (!bindings.HasKVCacheView()) {
         return Status::InvalidArgument(
                 "State alias requires a valid KVCacheView");
     }
 
-    // Future: for activation-port aliases, add pointer-comparison
-    // checks against StepTensorBinding here.
+    // TODO: when non-KV-cache state aliases land (decode/streaming state) or
+    // activation-port aliases are introduced, extend validation here with
+    // StepTensorBinding pointer-comparison checks against aliases[i].
+    // input_port/output_port. The `step` parameter is reserved for that path.
 
     return Status::Ok();
 }

@@ -40,6 +40,8 @@ bool PayloadMatchesPort(const GraphValuePayload& payload, OperatorPortKind kind)
             return std::holds_alternative<ActivationValue>(payload);
         case OperatorPortKind::kWeight:
             return std::holds_alternative<WeightValue>(payload);
+        case OperatorPortKind::kConstant:
+            return std::holds_alternative<ConstantValue>(payload);
         case OperatorPortKind::kState:
             return std::holds_alternative<StateValue>(payload);
     }
@@ -227,9 +229,17 @@ GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::
     return value;
 }
 
+GraphValueId ModelGraph::AddConstant(TensorSpec spec, ConstantBinding binding, std::string debug_name) {
+    GraphValueId value{NextValueIndex(values_)};
+    values_.push_back(GraphValue{.payload = ConstantValue{.binding = std::move(binding)},
+                                 .spec = std::move(spec),
+                                 .debug_name = std::move(debug_name)});
+    return value;
+}
+
 GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string debug_name) {
     GraphValueId value{NextValueIndex(values_)};
-    values_.push_back(GraphValue{.payload = StateValue{.binding = std::move(binding)},
+    values_.push_back(GraphValue{.payload = StateValue{.binding = binding},
                                  .spec = std::move(spec),
                                  .debug_name = std::move(debug_name)});
     return value;
@@ -333,6 +343,12 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                                      GraphValueId{static_cast<uint32_t>(value_index)})) {
                     return Status::InvalidArgument("State producer does not list produced value");
                 }
+            }
+        } else if (std::holds_alternative<ConstantValue>(value.payload)) {
+            // Constants are external entry points: they must not have a producer.
+            // Producers can only emit activation or state-update outputs.
+            if (value.producer.has_value()) {
+                return Status::InvalidArgument("Constant value must not have a producer");
             }
         } else if (value.producer.has_value()) {
             return Status::InvalidArgument("External graph value must not have a producer");

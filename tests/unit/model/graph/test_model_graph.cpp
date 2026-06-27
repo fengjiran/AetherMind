@@ -247,6 +247,59 @@ TEST(ModelGraph, PublicApiCreatesStateValues) {
     EXPECT_FALSE(value.producer.has_value());
 }
 
+TEST(ModelGraph, PublicApiCreatesConstantValues) {
+    ModelGraph graph;
+
+    std::vector<std::byte> inline_data{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
+    const GraphValueId constant = graph.AddConstant(
+            Spec(DataType::Float32(), {1}),
+            ConstantBinding{.name = "rope.sin_cos_table", .inline_data = std::move(inline_data)},
+            "rope_table");
+
+    ASSERT_EQ(graph.GetValues().size(), 1U);
+    const GraphValue& value = graph.GetValue(constant);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(value.payload));
+    const ConstantBinding& binding = std::get<ConstantValue>(value.payload).binding;
+    EXPECT_EQ(binding.name, "rope.sin_cos_table");
+    EXPECT_EQ(binding.inline_data.size(), 3U);
+    EXPECT_FALSE(value.producer.has_value());
+    EXPECT_EQ(value.debug_name, "rope_table");
+}
+
+TEST(ModelGraph, ValidateAcceptsExternalConstantValue) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "tokens");
+    const GraphValueId weight = graph.AddWeight(
+            WeightSpec(), WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId bias = graph.AddConstant(
+            Spec(DataType::Float32(), {8}),
+            ConstantBinding{.name = "embed.bias"});
+    (void) bias;
+    const ModelGraph::AddedNode embedding = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {ModelGraph::NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            EmbeddingParams{});
+    graph.MarkOutput(embedding.outputs[0], "hidden");
+
+    EXPECT_TRUE(graph.Validate().ok());
+}
+
+TEST(ModelGraph, ValidateRejectsConstantValueWithProducer) {
+    std::vector<GraphValue> values = {
+            GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.name = "c"}},
+                       .spec = Spec(DataType::Float32(), {1}),
+                       .producer = GraphNodeId{0}},
+    };
+    ModelGraph graph({}, {}, std::move(values));
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "tokens");

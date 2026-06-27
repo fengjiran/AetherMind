@@ -16,6 +16,7 @@ enum class OperatorPortKind : uint8_t {
     kModelInput,
     kActivation,
     kWeight,
+    kConstant,
     kState,
 };
 

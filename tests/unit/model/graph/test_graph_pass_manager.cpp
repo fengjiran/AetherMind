@@ -74,6 +74,17 @@ public:
     }
 };
 
+class NoopPass final : public GraphPass {
+public:
+    AM_NODISCARD std::string_view Name() const noexcept override {
+        return "Noop";
+    }
+
+    Status Run(GraphRewriteSession&) override {
+        return Status::Ok();
+    }
+};
+
 TEST(GraphPassManager, EmptyPipelineReturnsValidGraph) {
     const ModelGraph graph = BuildGraph();
     GraphPassManager pipeline;
@@ -115,6 +126,72 @@ TEST(GraphPassManager, CheckpointCommitsIntermediateSnapshot) {
     pipeline.SetCheckpointEvery(1)
             .Add(std::make_unique<RedirectFirstNodeInputPass>())
             .Add(std::make_unique<RemoveUnusedSecondNodePass>());
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->GetNodes().size(), 1U);
+    EXPECT_EQ(result->GetNode(GraphNodeId{.index = 0}).inputs[0], result->GetInputs()[1].value);
+    EXPECT_TRUE(result->Validate().ok());
+}
+
+// --- Issue P: SetCheckpointEvery(0) disables checkpointing ---
+
+TEST(GraphPassManager, DisabledCheckpointStillProducesCorrectResult) {
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline;
+    pipeline.SetCheckpointEvery(0)// explicitly disable checkpointing
+            .Add(std::make_unique<RedirectFirstNodeInputPass>())
+            .Add(std::make_unique<RemoveUnusedSecondNodePass>());
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    // Both passes should still take effect via the final Commit()
+    EXPECT_EQ(result->GetNodes().size(), 1U);
+    EXPECT_EQ(result->GetNode(GraphNodeId{.index = 0}).inputs[0], result->GetInputs()[1].value);
+    EXPECT_TRUE(result->Validate().ok());
+}
+
+// --- Issue I: checkpoint materializes on the last pass when it lands on
+// a checkpoint boundary, instead of being skipped via a `!is_last` guard ---
+
+TEST(GraphPassManager, CheckpointOnLastPassProducesCorrectResult) {
+    // 3 passes with SetCheckpointEvery(3):
+    //   pass 1 -> RedirectFirstNodeInput (mutates n0)
+    //   pass 2 -> RemoveUnusedSecondNode (removes n1)
+    //   pass 3 -> Noop (no mutation)
+    // After pass 3, (i+1) % 3 == 0 lands on a checkpoint boundary AND pass 3
+    // is the last pass. The pipeline must still materialize the snapshot
+    // without relying on a redundant trailing Commit on the unchanged session.
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline;
+    pipeline.SetCheckpointEvery(3)
+            .Add(std::make_unique<RedirectFirstNodeInputPass>())
+            .Add(std::make_unique<RemoveUnusedSecondNodePass>())
+            .Add(std::make_unique<NoopPass>());
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->GetNodes().size(), 1U);
+    EXPECT_EQ(result->GetNode(GraphNodeId{.index = 0}).inputs[0], result->GetInputs()[1].value);
+    EXPECT_TRUE(result->Validate().ok());
+}
+
+TEST(GraphPassManager, CheckpointBoundaryNotOnLastPassStillCommitsTrailing) {
+    // 3 passes with SetCheckpointEvery(2):
+    //   pass 1 -> RedirectFirstNodeInput
+    //   pass 2 -> RemoveUnusedSecondNode (checkpoint fires here, i+1=2)
+    //   pass 3 -> RedirectFirstNodeInput (trailing non-checkpoint pass)
+    // Pass 3's mutation must be committed by the trailing Commit() call,
+    // since (3 % 2) != 0 means pass 3 is not a checkpoint boundary.
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline;
+    pipeline.SetCheckpointEvery(2)
+            .Add(std::make_unique<RedirectFirstNodeInputPass>())
+            .Add(std::make_unique<RemoveUnusedSecondNodePass>())
+            .Add(std::make_unique<RedirectFirstNodeInputPass>());
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 

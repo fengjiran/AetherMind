@@ -46,6 +46,11 @@ void DumpStateBinding(const StateBinding& binding, std::ostream& os) {
     std::visit(visitor, binding);
 }
 
+void DumpConstantBinding(const ConstantBinding& binding, std::ostream& os) {
+    os << "name=" << binding.name;
+    os << ", inline_data=" << binding.inline_data.size() << "B";
+}
+
 void DumpPayload(const GraphValuePayload& payload, std::ostream& os) {
     auto visitor = overloaded{
             [&](const std::monostate&) {
@@ -60,6 +65,11 @@ void DumpPayload(const GraphValuePayload& payload, std::ostream& os) {
             [&](const WeightValue& weight) {
                 os << "weight(";
                 DumpWeightBinding(weight.binding, os);
+                os << ')';
+            },
+            [&](const ConstantValue& constant) {
+                os << "constant(";
+                DumpConstantBinding(constant.binding, os);
                 os << ')';
             },
             [&](const StateValue& state) {
@@ -141,6 +151,9 @@ const char* GraphValuePayloadKindName(const GraphValuePayload& payload) noexcept
             },
             [](const WeightValue&) noexcept {
                 return "weight";
+            },
+            [](const ConstantValue&) noexcept {
+                return "constant";
             },
             [](const StateValue&) noexcept {
                 return "state";

@@ -16,7 +16,7 @@ AM_NODISCARD const char* ToString(WeightRole role) noexcept;
 AM_NODISCARD const char* ToString(KVCacheSlot slot) noexcept;
 
 /// Returns a lowercase string label identifying the active alternative
-/// of a GraphValuePayload variant (e.g. "activation", "weight", "state").
+/// of a GraphValuePayload variant (e.g. "activation", "weight", "constant", "state").
 AM_NODISCARD const char* GraphValuePayloadKindName(const GraphValuePayload& payload) noexcept;
 
 /// Writes a human-readable representation of an OpParams variant to `os`.

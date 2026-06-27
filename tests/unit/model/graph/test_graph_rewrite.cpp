@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <vector>
 
 namespace aethermind {
@@ -61,11 +62,11 @@ TEST(GraphRewriteSession, RedirectInputIsVisibleInNodeView) {
     EXPECT_EQ(view->inputs[0], GraphValueId{.index = 1});
 }
 
-TEST(GraphRewriteSession, ReplaceAllUsesAffectsCommit) {
+TEST(GraphRewriteSession, ReplaceValueAffectsCommit) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_TRUE(session.ReplaceAllUses(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
     const StatusOr<ModelGraph> committed = session.Commit();
 
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -186,6 +187,253 @@ TEST(GraphRewriteSession, ReplaceNodeRejectsInvalidInputId) {
     const Status status = session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(replacement)});
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, ApplyBatchOfMixedMutations) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    // Graph layout:
+    //   v0=tokens_a, v1=tokens_b, v2=weight
+    //   n0=Embedding(v0,v2) → v3=hidden_a
+    //   n1=Embedding(v1,v2) → v4=hidden_b
+    //   output: v3
+
+    GraphRewriteSession session(graph);
+
+    const std::array<GraphMutation, 2> mutations{
+            RemoveNodeCmd{.node = GraphNodeId{.index = 1}},
+            RedirectInputCmd{.node = GraphNodeId{.index = 0},
+                             .input_index = 0,
+                             .new_value = GraphValueId{.index = 1}},
+    };
+
+    ASSERT_TRUE(session.Apply(std::span<const GraphMutation>{mutations}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+
+    // n1 was removed
+    EXPECT_EQ(committed->GetNodes().size(), 1U);
+
+    // n0's first input was redirected from tokens_a(v0) to tokens_b(v1)
+    const GraphNode& node = committed->GetNode(GraphNodeId{.index = 0});
+    ASSERT_EQ(node.inputs.size(), 2U);
+    EXPECT_EQ(node.inputs[0], committed->GetInputs()[1].value);// tokens_b
+
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+// --- Issue L: GetResolvedValue boundary behavior ---
+
+TEST(GraphRewriteSession, GetResolvedValueReturnsIdentityForUnreplacedValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    // No replacements recorded; every value resolves to itself
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 0});
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 4}), GraphValueId{.index = 4});
+}
+
+TEST(GraphRewriteSession, GetResolvedValueHandlesOutOfRangeId) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    // Out-of-range ID should return itself, not crash
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 9999}), GraphValueId{.index = 9999});
+}
+
+// --- Issue M: Commit() for graph with StateValue ---
+
+ModelGraph BuildGraphWithState() {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
+                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+                                                "embed.weight");
+    const GraphValueId k_cache = graph.AddState(
+            Spec(DataType::Float32(), {2, 4, 8}),
+            KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
+            "kv_cache.layer_0.k");
+    const ModelGraph::AddedNode embed = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                        .payload = ActivationValue{},
+                                        .debug_name = "hidden"}},
+            EmbeddingParams{});
+    graph.MarkOutput(embed.outputs[0], "output");
+    return graph;
+}
+
+TEST(GraphRewriteSession, CommitsGraphWithStateValue) {
+    const ModelGraph graph = BuildGraphWithState();
+    GraphRewriteSession session(graph);
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    EXPECT_TRUE(committed->Validate().ok());
+
+    // State value should be present in committed graph
+    bool found_state = false;
+    for (const GraphValue& value: committed->GetValues()) {
+        if (std::holds_alternative<StateValue>(value.payload)) {
+            found_state = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_state);
+}
+
+// --- Issue N: Commit() for graph with decoder_layer_index ---
+
+TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
+                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+                                                "embed.weight");
+    const ModelGraph::AddedNode embed = graph.AddNode(
+            OpType::kEmbedding,
+            3U,// decoder_layer_index = 3
+            {tokens, weight},
+            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                        .payload = ActivationValue{},
+                                        .debug_name = "hidden"}},
+            EmbeddingParams{});
+    graph.MarkOutput(embed.outputs[0], "output");
+
+    GraphRewriteSession session(graph);
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+    EXPECT_TRUE(committed->GetNode(GraphNodeId{.index = 0}).decoder_layer_index.has_value());
+    EXPECT_EQ(*committed->GetNode(GraphNodeId{.index = 0}).decoder_layer_index, 3U);
+}
+
+// --- Issue O: ValidateEdits() tested separately ---
+
+TEST(GraphRewriteSession, ValidateEditsSucceedsOnCleanSession) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    EXPECT_TRUE(session.ValidateEdits().ok());
+}
+
+TEST(GraphRewriteSession, ValidateEditsSucceedsAfterValidMutations) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1}).ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 2}).ok());
+
+    EXPECT_TRUE(session.ValidateEdits().ok());
+}
+
+// --- Issue H: Commit() rejects monostate external value with specific error ---
+
+TEST(GraphRewriteSession, RejectsMonostateExternalValueOnCommit) {
+    // Build a graph with a single monostate external value (no producer).
+    // This requires the test-only escape hatch constructor; the public API
+    // (AddInput/AddWeight/AddState) never produces monostate values.
+    ModelGraph graph(HfModelConfig{},
+                     std::vector<GraphNode>{},
+                     std::vector<GraphValue>{
+                             GraphValue{.payload = std::monostate{},
+                                        .spec = Spec(DataType::Float32(), {1})},
+                     });
+
+    GraphRewriteSession session(graph);
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_FALSE(committed.ok());
+    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+    // Error message must distinguish monostate from a generic payload failure
+    EXPECT_NE(committed.status().message().find("monostate"), std::string::npos);
+}
+
+// --- ConstantValue: Commit preserves external constant value ---
+
+TEST(GraphRewriteSession, CommitPreservesConstantValue) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
+                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+                                                "embed.weight");
+    std::vector<std::byte> inline_data{std::byte{0x01}, std::byte{0x02}};
+    const GraphValueId constant = graph.AddConstant(
+            Spec(DataType::Float32(), {1}),
+            ConstantBinding{.name = "scalar.one", .inline_data = std::move(inline_data)},
+            "one");
+    const ModelGraph::AddedNode embed = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                        .payload = ActivationValue{},
+                                        .debug_name = "hidden"}},
+            EmbeddingParams{});
+    graph.MarkOutput(embed.outputs[0], "output");
+    (void) constant;
+
+    GraphRewriteSession session(graph);
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    // The constant value should survive Commit with its binding intact.
+    bool found_constant = false;
+    for (const GraphValue& value: committed->GetValues()) {
+        if (const auto* c = std::get_if<ConstantValue>(&value.payload)) {
+            found_constant = true;
+            EXPECT_EQ(c->binding.name, "scalar.one");
+            EXPECT_EQ(c->binding.inline_data.size(), 2U);
+            EXPECT_EQ(value.debug_name, "one");
+        }
+    }
+    EXPECT_TRUE(found_constant);
+}
+
+// --- Issue G: ReplaceValue rejects cycles that would make GetResolvedValue
+// silently return an arbitrary value along the cycle ---
+
+TEST(GraphRewriteSession, ReplaceValueRejectsDirectCycle) {
+    // ReplaceValue(v0, v1) then ReplaceValue(v1, v0) would close a 2-cycle.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
+
+    const Status status = session.ReplaceValue(GraphValueId{.index = 1}, GraphValueId{.index = 0});
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("cycle"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, ReplaceValueRejectsIndirectCycle) {
+    // Build a chain v0 -> v1 -> v2, then attempt v2 -> v0 to close a 3-cycle.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 1}, GraphValueId{.index = 2}).ok());
+
+    const Status status = session.ReplaceValue(GraphValueId{.index = 2}, GraphValueId{.index = 0});
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("cycle"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, ReplaceValueAllowsNonCyclicChain) {
+    // A linear chain v0 -> v1 -> v2 is fine; GetResolvedValue should walk it.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 1}, GraphValueId{.index = 2}).ok());
+
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 2});
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 1}), GraphValueId{.index = 2});
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 2}), GraphValueId{.index = 2});
 }
 
 }// namespace

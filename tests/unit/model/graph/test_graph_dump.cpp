@@ -110,6 +110,40 @@ TEST(GraphDump, DumpsMinimalGraph) {
     EXPECT_NE(dump.find("debug_name=embedding"), std::string::npos);
 }
 
+// --- ConstantValue dump coverage ---
+
+TEST(GraphDump, DumpsConstantValue) {
+    ModelGraph graph;
+    std::vector<std::byte> inline_data{std::byte{0xAA}, std::byte{0xBB}};
+    const GraphValueId constant = graph.AddConstant(
+            Spec(DataType::Float32(), {4}),
+            ConstantBinding{.name = "rope.sin_cos_table", .inline_data = std::move(inline_data)},
+            "rope_table");
+    (void) constant;
+
+    std::ostringstream os;
+    DumpGraph(graph, os);
+
+    const std::string dump = os.str();
+    EXPECT_NE(dump.find("kind=constant"), std::string::npos);
+    EXPECT_NE(dump.find("constant(name=rope.sin_cos_table, inline_data=2B)"), std::string::npos);
+    EXPECT_NE(dump.find("debug_name=rope_table"), std::string::npos);
+}
+
+// --- Issue Q: DumpGraph on empty graph ---
+
+TEST(GraphDump, DumpsEmptyGraphWithoutCrash) {
+    ModelGraph graph;
+
+    std::ostringstream os;
+    DumpGraph(graph, os);
+
+    const std::string dump = os.str();
+    EXPECT_NE(dump.find("ModelGraph"), std::string::npos);
+    // Empty graph has no inputs, values, or nodes
+    EXPECT_EQ(dump.find("op="), std::string::npos);
+}
+
 TEST(GraphDump, DumpsLlamaDenseGraph) {
     const HfModelConfig config = MakeConfig();
     const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, MakeWeights(config));

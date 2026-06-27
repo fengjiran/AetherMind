@@ -44,6 +44,17 @@ struct WeightBinding {
     WeightRole role{};
 };
 
+/// Compile-time constant binding: carries a small inline payload or resolves
+/// a named external constant. Large constants should be referenced by `name`
+/// rather than copied into `inline_data`.
+struct ConstantBinding {
+    std::string name{};
+    std::vector<std::byte> inline_data{};
+
+    AM_NODISCARD friend constexpr bool operator==(const ConstantBinding& lhs,
+                                                  const ConstantBinding& rhs) noexcept = default;
+};
+
 enum class KVCacheSlot : uint8_t {
     kKey,
     kValue,
@@ -98,6 +109,12 @@ struct WeightValue {
     WeightBinding binding{};
 };
 
+/// Payload tag for compile-time constant values (e.g. scalar constants,
+/// fixed masks, RoPE sin/cos tables). Carries a logical ConstantBinding.
+struct ConstantValue {
+    ConstantBinding binding{};
+};
+
 /// Payload tag for persistent state values that survive across execution steps.
 struct StateValue {
     StateBinding binding{};
@@ -107,6 +124,7 @@ using GraphValuePayload = std::variant<std::monostate,
                                        ModelInputValue,
                                        ActivationValue,
                                        WeightValue,
+                                       ConstantValue,
                                        StateValue>;
 
 struct GraphValue {
@@ -168,6 +186,10 @@ public:
     /// Registers a model weight tensor and returns its value id.
     AM_NODISCARD GraphValueId AddWeight(TensorSpec spec, WeightBinding binding,
                                         std::string debug_name = "");
+
+    /// Registers a compile-time constant value and returns its value id.
+    AM_NODISCARD GraphValueId AddConstant(TensorSpec spec, ConstantBinding binding,
+                                          std::string debug_name = "");
 
     /// Registers a persistent state tensor and returns its value id.
     AM_NODISCARD GraphValueId AddState(TensorSpec spec, StateBinding binding,

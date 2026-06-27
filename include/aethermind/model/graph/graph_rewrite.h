@@ -55,7 +55,6 @@ public:
     AM_NODISCARD Status RemoveNode(GraphNodeId node);
     AM_NODISCARD Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
     AM_NODISCARD Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
-    AM_NODISCARD Status ReplaceAllUses(GraphValueId old_value, GraphValueId new_value);
 
     AM_NODISCARD GraphValueId GetResolvedValue(GraphValueId value) const;
     AM_NODISCARD StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;

@@ -1,5 +1,6 @@
 #include "aethermind/model/graph/graph_pass_manager.h"
 
+#include <optional>
 #include <utility>
 
 namespace aethermind {
@@ -15,25 +16,46 @@ GraphPassManager& GraphPassManager::SetCheckpointEvery(size_t pass_count) noexce
 }
 
 StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
-    ModelGraph current = graph;
-    std::unique_ptr<GraphRewriteSession> session = std::make_unique<GraphRewriteSession>(current);
+    // Reference the caller's graph directly to avoid an initial deep copy.
+    // GraphRewriteSession only holds a const reference, so this is safe as
+    // long as `graph` outlives the call. When a checkpoint fires, ownership
+    // of the materialized snapshot transfers to `checkpointed`, which keeps
+    // the next session's reference alive.
+    auto session = std::make_unique<GraphRewriteSession>(graph);
+    std::optional<ModelGraph> checkpointed;
 
+    // Track whether the most recent pass already materialized a snapshot, so
+    // the trailing return can skip a redundant Commit on an unchanged session.
+    bool last_was_checkpoint = false;
     for (size_t i = 0; i < passes_.size(); ++i) {
         if (passes_[i] == nullptr) {
             return Status::InvalidArgument("GraphPassManager: pass cannot be null");
         }
         AM_RETURN_IF_ERROR(passes_[i]->Run(*session));
 
+        // Materialize at phase checkpoints per SetCheckpointEvery(N).
+        // Includes the last pass when it lands on a checkpoint boundary,
+        // matching the immutable-snapshot + phase-checkpoint contract in
+        // model_graph_design_v2.md §10. The trailing return below handles
+        // any accumulated mutations from non-checkpoint passes.
         const bool is_checkpoint = checkpoint_every_ != 0 && ((i + 1) % checkpoint_every_ == 0);
-        const bool is_last = i + 1 == passes_.size();
-        if (is_checkpoint && !is_last) {
+        if (is_checkpoint) {
             StatusOr<ModelGraph> checkpoint = session->Commit();
             AM_RETURN_IF_ERROR(checkpoint.status());
-            current = std::move(checkpoint).value();
-            session = std::make_unique<GraphRewriteSession>(current);
+            checkpointed = std::move(checkpoint).value();
+            session = std::make_unique<GraphRewriteSession>(*checkpointed);
+            last_was_checkpoint = true;
+        } else {
+            last_was_checkpoint = false;
         }
     }
 
+    // If the last pass was a checkpoint, `checkpointed` already holds the
+    // final snapshot and another Commit would only deep-copy it. Otherwise
+    // commit the accumulated changes from trailing non-checkpoint passes.
+    if (last_was_checkpoint) {
+        return std::move(*checkpointed);
+    }
     return session->Commit();
 }
 

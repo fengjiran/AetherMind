@@ -95,6 +95,7 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
     if (!input_overrides_[node.index].has_value()) {
         input_overrides_[node.index] = original.inputs;
     }
+
     (*input_overrides_[node.index])[input_index] = new_value;
     return Status::Ok();
 }
@@ -105,12 +106,28 @@ Status GraphRewriteSession::ReplaceValue(GraphValueId old_value, GraphValueId ne
     if (old_value == new_value) {
         return Status::Ok();
     }
+    // Detect replacement cycle: if new_value's resolution chain already
+    // reaches old_value, setting old_value -> new_value would close a cycle.
+    // Without this check, GetResolvedValue would iterate the cycle up to
+    // value_replacements_.size() times and silently return an arbitrary
+    // value along the cycle instead of a stable terminal value.
+    GraphValueId cur = new_value;
+    for (size_t depth = 0; depth < value_replacements_.size(); ++depth) {
+        if (cur.index >= value_replacements_.size()) {
+            break;
+        }
+        const std::optional<GraphValueId>& next = value_replacements_[cur.index];
+        if (!next.has_value()) {
+            break;
+        }
+        cur = *next;
+        if (cur == old_value) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession::ReplaceValue would create a replacement cycle");
+        }
+    }
     value_replacements_[old_value.index] = new_value;
     return Status::Ok();
-}
-
-Status GraphRewriteSession::ReplaceAllUses(GraphValueId old_value, GraphValueId new_value) {
-    return ReplaceValue(old_value, new_value);
 }
 
 GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
@@ -154,17 +171,17 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
 }
 
 Status GraphRewriteSession::ValidateEdits() const {
-    for (size_t node_index = 0; node_index < input_overrides_.size(); ++node_index) {
-        if (!input_overrides_[node_index].has_value()) {
+    for (const auto& input_override: input_overrides_) {
+        if (!input_override.has_value()) {
             continue;
         }
 
-        for (GraphValueId input: *input_overrides_[node_index]) {
+        for (GraphValueId input: *input_override) {
             AM_RETURN_IF_ERROR(CheckValueId(input));
         }
     }
 
-    for (const std::optional<GraphValueId>& replacement: value_replacements_) {
+    for (const auto& replacement: value_replacements_) {
         if (replacement.has_value()) {
             AM_RETURN_IF_ERROR(CheckValueId(*replacement));
         }
@@ -176,7 +193,8 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
     AM_RETURN_IF_ERROR(ValidateEdits());
 
     ModelGraph committed(graph_.GetConfig());
-    std::vector<std::optional<GraphValueId>> value_map(graph_.GetValues().size(), std::nullopt);
+    std::vector<std::optional<GraphValueId>> value_map(
+            graph_.GetValues().size(), std::nullopt);
 
     const std::span<const GraphValue> values = graph_.GetValues();
     for (size_t i = 0; i < values.size(); ++i) {
@@ -186,19 +204,31 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
             continue;
         }
 
-        if (const auto* model_input = std::get_if<ModelInputValue>(&value.payload)) {
-            (void) model_input;
+        if (std::get_if<ModelInputValue>(&value.payload)) {
             const std::optional<std::string> input_name = FindInputName(graph_, old_id);
             if (!input_name.has_value()) {
-                return Status::InvalidArgument("GraphRewriteSession::Commit model input name not found");
+                return Status::InvalidArgument(
+                        "GraphRewriteSession::Commit model input name not found");
             }
             value_map[i] = committed.AddInput(value.spec, *input_name);
         } else if (const auto* weight = std::get_if<WeightValue>(&value.payload)) {
             value_map[i] = committed.AddWeight(value.spec, weight->binding, value.debug_name);
+        } else if (const auto* constant = std::get_if<ConstantValue>(&value.payload)) {
+            value_map[i] = committed.AddConstant(value.spec, constant->binding, value.debug_name);
         } else if (const auto* state = std::get_if<StateValue>(&value.payload)) {
             value_map[i] = committed.AddState(value.spec, state->binding, value.debug_name);
+        } else if (std::holds_alternative<std::monostate>(value.payload)) {
+            // External values must be input, weight, constant, or state.
+            // A monostate payload indicates an uninitialized value: the source
+            // graph is not a valid snapshot and cannot be committed.
+            return Status::InvalidArgument(
+                    "GraphRewriteSession::Commit external value has unspecified "
+                    "(monostate) payload; ModelGraph values must be input, "
+                    "weight, constant, or state");
         } else {
-            return Status::InvalidArgument("GraphRewriteSession::Commit external value has invalid payload");
+            return Status::InvalidArgument(
+                    "GraphRewriteSession::Commit external value has unsupported "
+                    "payload variant");
         }
     }
 
@@ -276,19 +306,20 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
             });
         }
 
-        const ModelGraph::AddedNode added = committed.AddNode(view->op_type,
-                                                              view->decoder_layer_index,
-                                                              std::move(new_inputs),
-                                                              std::move(output_descs),
-                                                              view->op_params,
-                                                              view->attrs,
-                                                              view->debug_name);
+        const ModelGraph::AddedNode added = committed.AddNode(
+                view->op_type,
+                view->decoder_layer_index,
+                std::move(new_inputs),
+                std::move(output_descs),
+                view->op_params,
+                view->attrs,
+                view->debug_name);
         for (size_t i = 0; i < view->outputs.size(); ++i) {
             value_map[view->outputs[i].index] = added.outputs[i];
         }
     }
 
-    for (const ModelGraph::Output& output: graph_.GetOutputs()) {
+    for (const auto& output: graph_.GetOutputs()) {
         const GraphValueId resolved_output = GetResolvedValue(output.value);
         StatusOr<GraphValueId> mapped_output = MapResolvedValue(resolved_output, value_map);
         AM_RETURN_IF_ERROR(mapped_output.status());

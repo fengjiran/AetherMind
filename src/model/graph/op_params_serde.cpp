@@ -30,24 +30,18 @@ StatusOr<int64_t> ParseInt64(const FieldMap& fields, std::string_view name) {
 }
 
 StatusOr<float> ParseFloat(const FieldMap& fields, std::string_view name) {
-    const StatusOr<double> parsed = [&]() -> StatusOr<double> {
-        const auto it = fields.find(std::string(name));
-        if (it == fields.end()) {
-            return Status::InvalidArgument("ParseOpParams: missing float field");
-        }
-        try {
-            size_t consumed = 0;
-            const double value = std::stod(it->second, &consumed);
-            if (consumed != it->second.size()) {
-                return Status::InvalidArgument("ParseOpParams: invalid float field");
-            }
-            return value;
-        } catch (const std::exception&) {
-            return Status::InvalidArgument("ParseOpParams: invalid float field");
-        }
-    }();
-    AM_RETURN_IF_ERROR(parsed.status());
-    return static_cast<float>(*parsed);
+    const auto it = fields.find(std::string(name));
+    if (it == fields.end()) {
+        return Status::InvalidArgument("ParseOpParams: missing float field");
+    }
+
+    float value = 0.0F;
+    const std::string& text = it->second;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
+        return Status::InvalidArgument("ParseOpParams: invalid float field");
+    }
+    return value;
 }
 
 StatusOr<double> ParseDouble(const FieldMap& fields, std::string_view name) {
@@ -55,16 +49,14 @@ StatusOr<double> ParseDouble(const FieldMap& fields, std::string_view name) {
     if (it == fields.end()) {
         return Status::InvalidArgument("ParseOpParams: missing double field");
     }
-    try {
-        size_t consumed = 0;
-        const double value = std::stod(it->second, &consumed);
-        if (consumed != it->second.size()) {
-            return Status::InvalidArgument("ParseOpParams: invalid double field");
-        }
-        return value;
-    } catch (const std::exception&) {
+
+    double value = 0.0;
+    const std::string& text = it->second;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
         return Status::InvalidArgument("ParseOpParams: invalid double field");
     }
+    return value;
 }
 
 StatusOr<bool> ParseBool(const FieldMap& fields, std::string_view name) {
@@ -72,9 +64,11 @@ StatusOr<bool> ParseBool(const FieldMap& fields, std::string_view name) {
     if (it == fields.end()) {
         return Status::InvalidArgument("ParseOpParams: missing bool field");
     }
+
     if (it->second == "true") {
         return true;
     }
+
     if (it->second == "false") {
         return false;
     }
@@ -100,6 +94,7 @@ StatusOr<HfRopeScalingType> ParseRopeScalingField(const FieldMap& fields) {
     if (it == fields.end()) {
         return Status::InvalidArgument("ParseOpParams: missing scaling_type field");
     }
+
     const HfRopeScalingType scaling_type = ParseRopeScalingType(it->second);
     if (scaling_type == HfRopeScalingType::kUnknown && it->second != "unknown") {
         return Status::InvalidArgument("ParseOpParams: invalid scaling_type field");
@@ -112,19 +107,17 @@ StatusOr<std::optional<double>> ParseOptionalDouble(const FieldMap& fields, std:
     if (it == fields.end()) {
         return Status::InvalidArgument("ParseOpParams: missing optional double field");
     }
+
     if (it->second == "none") {
         return std::optional<double>{};
     }
-    try {
-        size_t consumed = 0;
-        const double value = std::stod(it->second, &consumed);
-        if (consumed != it->second.size()) {
-            return Status::InvalidArgument("ParseOpParams: invalid optional double field");
-        }
-        return std::optional<double>{value};
-    } catch (const std::exception&) {
+    double value = 0.0;
+    const std::string& text = it->second;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
         return Status::InvalidArgument("ParseOpParams: invalid optional double field");
     }
+    return std::optional<double>{value};
 }
 
 Status EnsureNoExtraFields(const FieldMap& fields, size_t expected_count) {

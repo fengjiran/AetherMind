@@ -7,7 +7,7 @@ namespace aethermind {
 namespace {
 
 std::optional<std::string> FindInputName(const ModelGraph& graph, GraphValueId value) {
-    for (const ModelGraph::Input& input: graph.GetInputs()) {
+    for (const auto& input: graph.GetInputs()) {
         if (input.value == value) {
             return input.name;
         }
@@ -18,7 +18,8 @@ std::optional<std::string> FindInputName(const ModelGraph& graph, GraphValueId v
 StatusOr<GraphValueId> MapResolvedValue(GraphValueId old_value,
                                         const std::vector<std::optional<GraphValueId>>& value_map) {
     if (old_value.index >= value_map.size() || !value_map[old_value.index].has_value()) {
-        return Status::InvalidArgument("GraphRewriteSession: value cannot be mapped during commit");
+        return Status::InvalidArgument(
+                "GraphRewriteSession: value cannot be mapped during commit");
     }
     return *value_map[old_value.index];
 }
@@ -33,32 +34,33 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
 
 Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
     for (const GraphMutation& mutation: mutations) {
-        Status status = std::visit(overloaded{
-                                           [&](const ReplaceNodeMutation& replace) {
-                                               return ReplaceNode(replace.old_node, replace.replacement_nodes);
-                                           },
-                                           [&](const RemoveNodeMutation& remove) {
-                                               return RemoveNode(remove.node);
-                                           },
-                                           [&](const RedirectInputMutation& redirect) {
-                                               return RedirectInput(redirect.node, redirect.input_index, redirect.new_value);
-                                           },
-                                           [&](const ReplaceValueMutation& replace) {
-                                               return ReplaceValue(replace.old_value, replace.new_value);
-                                           },
-                                   },
-                                   mutation);
-        AM_RETURN_IF_ERROR(status);
+        auto visitor = overloaded{
+                [&](const ReplaceNodeCmd& replace) {
+                    return ReplaceNode(replace.old_node, replace.replacement_nodes);
+                },
+                [&](const RemoveNodeCmd& remove) {
+                    return RemoveNode(remove.node);
+                },
+                [&](const RedirectInputCmd& redirect) {
+                    return RedirectInput(redirect.node, redirect.input_index, redirect.new_value);
+                },
+                [&](const ReplaceValueCmd& replace) {
+                    return ReplaceValue(replace.old_value, replace.new_value);
+                },
+        };
+        AM_RETURN_IF_ERROR(std::visit(visitor, mutation));
     }
     return Status::Ok();
 }
 
-Status GraphRewriteSession::ReplaceNode(GraphNodeId node, std::vector<GraphNode> replacement_nodes) {
+Status GraphRewriteSession::ReplaceNode(GraphNodeId node,
+                                        const std::vector<GraphNode>& replacement_nodes) {
     AM_RETURN_IF_ERROR(CheckNodeId(node));
     if (replacement_nodes.empty()) {
         return RemoveNode(node);
     }
-    return Status::Unimplemented("GraphRewriteSession::ReplaceNode is not implemented in the minimal M4.3 session");
+    return Status::Unimplemented(
+            "GraphRewriteSession::ReplaceNode is not implemented in the minimal M4.3 session");
 }
 
 Status GraphRewriteSession::RemoveNode(GraphNodeId node) {

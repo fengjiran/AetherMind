@@ -255,6 +255,9 @@ void DumpGraph(const ModelGraph& graph, std::ostream& os) {
         DumpValueIdList(node.outputs, os);
         os << ", params=";
         DumpOpParams(node.op_params, os);
+        if (!node.attrs.bytes.empty()) {
+            os << ", attrs=" << node.attrs.bytes.size() << "B";
+        }
         if (!node.debug_name.empty()) {
             os << ", debug_name=" << node.debug_name;
         }

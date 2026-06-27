@@ -9,30 +9,30 @@
 
 namespace aethermind {
 
-struct ReplaceNodeMutation {
+struct ReplaceNodeCmd {
     GraphNodeId old_node{};
     std::vector<GraphNode> replacement_nodes{};
 };
 
-struct RemoveNodeMutation {
+struct RemoveNodeCmd {
     GraphNodeId node{};
 };
 
-struct RedirectInputMutation {
+struct RedirectInputCmd {
     GraphNodeId node{};
     size_t input_index = 0;
     GraphValueId new_value{};
 };
 
-struct ReplaceValueMutation {
+struct ReplaceValueCmd {
     GraphValueId old_value{};
     GraphValueId new_value{};
 };
 
-using GraphMutation = std::variant<ReplaceNodeMutation,
-                                   RemoveNodeMutation,
-                                   RedirectInputMutation,
-                                   ReplaceValueMutation>;
+using GraphMutation = std::variant<ReplaceNodeCmd,
+                                   RemoveNodeCmd,
+                                   RedirectInputCmd,
+                                   ReplaceValueCmd>;
 
 struct GraphNodeView {
     GraphNodeId node{};
@@ -51,7 +51,7 @@ public:
 
     AM_NODISCARD Status Apply(std::span<const GraphMutation> mutations);
 
-    AM_NODISCARD Status ReplaceNode(GraphNodeId node, std::vector<GraphNode> replacement_nodes);
+    AM_NODISCARD Status ReplaceNode(GraphNodeId node, const std::vector<GraphNode>& replacement_nodes);
     AM_NODISCARD Status RemoveNode(GraphNodeId node);
     AM_NODISCARD Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
     AM_NODISCARD Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);

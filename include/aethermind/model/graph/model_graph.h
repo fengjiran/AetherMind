@@ -195,6 +195,7 @@ public:
     struct NodeOutputDesc {
         TensorSpec spec{};
         GraphValuePayload payload{std::monostate{}};
+        QuantizationSpec quantization{};
         std::string debug_name{};
     };
 

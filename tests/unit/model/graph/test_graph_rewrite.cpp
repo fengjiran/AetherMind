@@ -114,6 +114,7 @@ TEST(GraphRewriteSession, ReplaceNodeWithSingleReplacement) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {GraphValueId{.index = 3}},// references old n0 output for spec/payload
             .op_params = EmbeddingParams{},
+            .debug_name = "replacement",
     };
     ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(replacement)}).ok());
 
@@ -183,6 +184,7 @@ TEST(GraphRewriteSession, ReplaceNodeRejectsInvalidInputId) {
             .inputs = {GraphValueId{.index = 999}},// invalid
             .outputs = {GraphValueId{.index = 3}},
             .op_params = EmbeddingParams{},
+            .debug_name = "invalid_replacement",
     };
     const Status status = session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(replacement)});
     ASSERT_FALSE(status.ok());
@@ -253,6 +255,7 @@ ModelGraph BuildGraphWithState() {
             Spec(DataType::Float32(), {2, 4, 8}),
             KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
             "kv_cache.layer_0.k");
+    (void) k_cache;
     const ModelGraph::AddedNode embed = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
@@ -339,7 +342,8 @@ TEST(GraphRewriteSession, RejectsMonostateExternalValueOnCommit) {
                      std::vector<GraphNode>{},
                      std::vector<GraphValue>{
                              GraphValue{.payload = std::monostate{},
-                                        .spec = Spec(DataType::Float32(), {1})},
+                                        .spec = Spec(DataType::Float32(), {1}),
+                                        .debug_name = "invalid"},
                      });
 
     GraphRewriteSession session(graph);
@@ -393,6 +397,46 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
         }
     }
     EXPECT_TRUE(found_constant);
+}
+
+TEST(GraphRewriteSession, CommitPreservesExternalValueQuantization) {
+    ModelGraph graph = BuildTwoEmbeddingGraph();
+    const QuantizationSpec quantization{.kind = QuantizationKind::kInt4,
+                                        .group_size = 32,
+                                        .scale_dtype = DataType::Float32(),
+                                        .has_zero_point = true};
+    graph.SetQuantization(GraphValueId{.index = 2}, quantization);
+
+    GraphRewriteSession session(graph);
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+    bool found_quantized_weight = false;
+    for (const GraphValue& value: committed->GetValues()) {
+        if (std::holds_alternative<WeightValue>(value.payload)) {
+            found_quantized_weight = true;
+            EXPECT_EQ(value.quantization, quantization);
+        }
+    }
+    EXPECT_TRUE(found_quantized_weight);
+}
+
+TEST(GraphRewriteSession, CommitPreservesNodeOutputQuantization) {
+    ModelGraph graph = BuildTwoEmbeddingGraph();
+    const QuantizationSpec quantization{.kind = QuantizationKind::kInt8,
+                                        .group_size = 64,
+                                        .scale_dtype = DataType::Float32(),
+                                        .has_zero_point = false};
+    graph.SetQuantization(GraphValueId{.index = 3}, quantization);
+
+    GraphRewriteSession session(graph);
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+    ASSERT_EQ(committed->GetOutputs().size(), 1U);
+    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).quantization, quantization);
 }
 
 // --- Issue G: ReplaceValue rejects cycles that would make GetResolvedValue

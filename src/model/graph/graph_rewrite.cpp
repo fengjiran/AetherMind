@@ -230,6 +230,8 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
                     "GraphRewriteSession::Commit external value has unsupported "
                     "payload variant");
         }
+
+        committed.SetQuantization(*value_map[i], value.quantization);
     }
 
     StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
@@ -261,6 +263,7 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
                     output_descs.push_back(ModelGraph::NodeOutputDesc{
                             .spec = old_value.spec,
                             .payload = old_value.payload,
+                            .quantization = old_value.quantization,
                             .debug_name = old_value.debug_name,
                     });
                 }
@@ -302,6 +305,7 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
             output_descs.push_back(ModelGraph::NodeOutputDesc{
                     .spec = old_value.spec,
                     .payload = old_value.payload,
+                    .quantization = old_value.quantization,
                     .debug_name = old_value.debug_name,
             });
         }

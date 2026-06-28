@@ -264,6 +264,7 @@ ModelGraph::AddedNode ModelGraph::AddNode(OpType op_type,
                 .payload = payload,
                 .spec = std::move(output.spec),
                 .producer = node_id,
+                .quantization = output.quantization,
                 .debug_name = std::move(output.debug_name),
         });
     }

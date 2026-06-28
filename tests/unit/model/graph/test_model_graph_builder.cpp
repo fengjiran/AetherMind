@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace aethermind {
@@ -93,6 +94,15 @@ const StateBinding& StateBindingForValue(const ModelGraph& graph, GraphValueId v
 
 const KVCacheStateBinding& KVCacheBindingForValue(const ModelGraph& graph, GraphValueId value_id) {
     return std::get<KVCacheStateBinding>(StateBindingForValue(graph, value_id));
+}
+
+const GraphNode* FindNodeByDebugName(const ModelGraph& graph, std::string_view debug_name) {
+    for (const GraphNode& node: graph.GetNodes()) {
+        if (std::string_view(node.debug_name) == debug_name) {
+            return &node;
+        }
+    }
+    return nullptr;
 }
 
 void ExpectLayerWeightBinding(const ModelGraph& graph,
@@ -486,6 +496,70 @@ TEST(ModelGraphBuilder, RejectsResolvedLayerCountMismatch) {
 
     ASSERT_FALSE(graph.ok());
     EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraphBuilder, AssignsPyTorchStyleDebugNames) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    constexpr std::string_view kExpectedNames[] = {
+            "embed_tokens",
+            "layers.0.input_layernorm",
+            "layers.0.self_attn.q_proj",
+            "layers.0.self_attn.k_proj",
+            "layers.0.self_attn.v_proj",
+            "layers.0.self_attn.rotary_emb",
+            "layers.0.self_attn.kv_cache_update",
+            "layers.0.self_attn.attention",
+            "layers.0.self_attn.o_proj",
+            "layers.0.post_attention_add",
+            "layers.0.post_attention_layernorm",
+            "layers.0.mlp.gate_proj",
+            "layers.0.mlp.up_proj",
+            "layers.0.mlp.act",
+            "layers.0.mlp.down_proj",
+            "layers.0.mlp_add",
+            "norm",
+            "lm_head",
+            "argmax",
+    };
+
+    for (std::string_view name: kExpectedNames) {
+        EXPECT_NE(FindNodeByDebugName(*graph, name), nullptr) << name;
+    }
+}
+
+TEST(ModelGraphBuilder, AssignsLayerScopedKvCacheStateDebugNames) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const auto nodes = graph->GetNodes();
+    const GraphNode& kv_cache_update = nodes[6];
+    ASSERT_EQ(kv_cache_update.inputs.size(), 4U);
+    EXPECT_EQ(graph->GetValue(kv_cache_update.inputs[2]).debug_name, "layers.0.self_attn.k_cache");
+    EXPECT_EQ(graph->GetValue(kv_cache_update.inputs[3]).debug_name, "layers.0.self_attn.v_cache");
+}
+
+TEST(ModelGraphBuilder, TracesMlpResidualDataflow) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const auto nodes = graph->GetNodes();
+    const GraphNode& post_attn_add = nodes[9];
+    const GraphNode& mlp_down = nodes[14];
+    const GraphNode& mlp_add = nodes[15];
+    ASSERT_EQ(mlp_add.inputs.size(), 2U);
+    EXPECT_EQ(mlp_add.inputs[0], post_attn_add.outputs[0]);
+    EXPECT_EQ(mlp_add.inputs[1], mlp_down.outputs[0]);
 }
 
 }// namespace

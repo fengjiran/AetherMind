@@ -89,13 +89,15 @@ ModelGraph::AddedNode AddWeightedNode(ModelGraph& graph,
                                       std::vector<GraphValueId> inputs,
                                       WeightedNodeSpecs specs,
                                       WeightBinding weight,
-                                      OpParams op_params,
+                                      const OpParams& op_params,
                                       std::string debug_name = "") {
     inputs.push_back(graph.AddWeight(std::move(specs.weight), weight));
     return graph.AddNode(op_type,
                          decoder_layer_index,
                          std::move(inputs),
-                         {ModelGraph::NodeOutputDesc{.spec = std::move(specs.output), .payload = ActivationValue{}}},
+                         {ModelGraph::NodeOutputDesc{
+                                 .spec = std::move(specs.output),
+                                 .payload = ActivationValue{}}},
                          op_params,
                          {},
                          std::move(debug_name));
@@ -106,7 +108,7 @@ ModelGraph::AddedNode AddPureNode(ModelGraph& graph,
                                   std::optional<uint32_t> decoder_layer_index,
                                   std::vector<GraphValueId> inputs,
                                   std::vector<TensorSpec> outputs,
-                                  OpParams op_params,
+                                  const OpParams& op_params,
                                   const GraphValuePayload& output_payload = ActivationValue{},
                                   std::string debug_name = "") {
     std::vector<ModelGraph::NodeOutputDesc> output_decls;
@@ -310,8 +312,9 @@ Status ValidateInputs(const HfModelConfig& config, const ResolvedModelWeights& w
 StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& config,
                                                         const ResolvedModelWeights& weights) {
     AM_RETURN_IF_ERROR(ValidateInputs(config, weights));
-    const DataType act_dtype = !config.weight_dtype_hint.IsUndefined() ? config.weight_dtype_hint
-                                                                       : DataType::Float32();
+    const DataType act_dtype = config.weight_dtype_hint.IsUndefined()
+                                       ? DataType::Float32()
+                                       : config.weight_dtype_hint;
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol kv_len = ShapeSymbol::Create();
     const int64_t hidden_size = config.hidden_size;
@@ -327,6 +330,11 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     const TensorSpec kv_cache_spec = KVCacheTensor(act_dtype, config.num_key_value_heads, kv_len, head_dim);
     const TensorSpec logits_spec = ActivationTensor(act_dtype, seq_len, config.vocab_size);
     const auto rms_norm_eps = static_cast<float>(config.rms_norm_eps);
+    const AttentionParams attn_params{
+            .num_attention_heads = config.num_attention_heads,
+            .num_key_value_heads = config.num_key_value_heads,
+            .head_dim = head_dim,
+    };
 
     ModelGraph graph(config);
     const GraphValueId input_tokens = graph.AddInput(token_ids_spec, "token_ids");
@@ -339,13 +347,9 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
             WeightedNodeSpecs{.weight = WeightTensor(weights.embed_tokens),
                               .output = hidden_spec},
             Bind(WeightRole::kTokenEmbedding),
-            EmbeddingParams{});
+            EmbeddingParams{},
+            "Embedding");
     GraphValueId hidden_value = OnlyOneOutput(embedding);
-    const AttentionParams attention_params{
-            .num_attention_heads = config.num_attention_heads,
-            .num_key_value_heads = config.num_key_value_heads,
-            .head_dim = head_dim,
-    };
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
         const DecoderLayerRawWeights& layer_raw_weights = weights.layers[layer_index];
@@ -375,7 +379,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                 },
                 rms_norm_eps,
                 MakeRoPEParams(config, head_dim),
-                attention_params);
+                attn_params);
     }
 
     const GraphValueId final_hidden = OnlyOneOutput(

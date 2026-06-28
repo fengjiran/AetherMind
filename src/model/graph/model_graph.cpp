@@ -280,6 +280,16 @@ ModelGraph::AddedNode ModelGraph::AddNode(OpType op_type,
     return AddedNode{.node = node_id, .outputs = std::move(output_ids)};
 }
 
+std::vector<GraphNodeId> ModelGraph::FindNodesByOpType(OpType op_type) const {
+    std::vector<GraphNodeId> result;
+    for (uint32_t i = 0; i < nodes_.size(); ++i) {
+        if (nodes_[i].op_type == op_type) {
+            result.push_back(GraphNodeId{.index = i});
+        }
+    }
+    return result;
+}
+
 Status ModelGraph::Validate() const {
     return ValidateAndTopologicalOrder().status();
 }
@@ -569,16 +579,6 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::TopologicalOrder() const {
         return Status::InvalidArgument("Graph contains a cycle");
     }
     return order;
-}
-
-std::vector<GraphNodeId> ModelGraph::FindNodesByOpType(OpType op_type) const {
-    std::vector<GraphNodeId> result;
-    for (uint32_t i = 0; i < nodes_.size(); ++i) {
-        if (nodes_[i].op_type == op_type) {
-            result.push_back(GraphNodeId{.index = i});
-        }
-    }
-    return result;
 }
 
 // Builds a per-value list of nodes that consume that value as an input.

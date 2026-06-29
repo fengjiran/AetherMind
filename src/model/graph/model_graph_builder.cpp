@@ -1,5 +1,6 @@
 #include "aethermind/model/graph/model_graph_builder.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
+#include "aethermind/model/graph/graph_op_builder.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -89,11 +90,6 @@ struct QkvProjectionResult {
     GraphValueId v;
 };
 
-struct RoPEResult {
-    GraphValueId q;
-    GraphValueId k;
-};
-
 struct KVCacheResult {
     GraphValueId k;
     GraphValueId v;
@@ -144,101 +140,43 @@ RoPEParams MakeRoPEParams(const HfModelConfig& config, int64_t head_dim) {
     };
 }
 
-GraphValueId OnlyOneOutput(const ModelGraph::AddedNode& added_node) {
-    AM_CHECK(added_node.outputs.size() == 1U, "Expected node to have exactly one output");
-    return added_node.outputs.front();
+GraphValueId AddLlamaLinear(LlamaBuildContext& ctx,
+                            std::optional<uint32_t> layer,
+                            GraphValueId input,
+                            const RawWeightView& weight,
+                            TensorSpec output,
+                            WeightRole role) {
+    const std::string debug_name = WeightDebugName(role, layer);
+    const GraphValueId weight_value = ctx.graph.AddWeight(
+            WeightTensorSpec(weight),
+            WeightBinding{.decoder_layer_index = layer, .role = role});
+    return AddLinear(ctx.graph, layer, input, weight_value, std::move(output), debug_name);
 }
 
-struct WeightedNodeSpecs {
-    TensorSpec weight;
-    TensorSpec output;
-};
-
-ModelGraph::AddedNode AddWeightedNode(ModelGraph& graph,
-                                      OpType op_type,
-                                      std::optional<uint32_t> decoder_layer_index,
-                                      std::vector<GraphValueId> inputs,
-                                      WeightedNodeSpecs specs,
-                                      WeightBinding weight,
-                                      const OpParams& op_params,
-                                      std::string debug_name = "") {
-    inputs.push_back(graph.AddWeight(std::move(specs.weight), weight));
-    return graph.AddNode(op_type,
-                         decoder_layer_index,
-                         std::move(inputs),
-                         {ModelGraph::NodeOutputDesc{
-                                 .spec = std::move(specs.output),
-                                 .payload = ActivationValue{}}},
-                         op_params,
-                         {},
-                         std::move(debug_name));
+GraphValueId AddLlamaRmsNorm(LlamaBuildContext& ctx,
+                             std::optional<uint32_t> layer,
+                             GraphValueId input,
+                             const RawWeightView& weight,
+                             WeightRole role) {
+    const std::string debug_name = WeightDebugName(role, layer);
+    const GraphValueId weight_value = ctx.graph.AddWeight(
+            WeightTensorSpec(weight),
+            WeightBinding{.decoder_layer_index = layer, .role = role});
+    return AddRmsNorm(ctx.graph,
+                      layer,
+                      input,
+                      weight_value,
+                      ctx.specs.hidden,
+                      ctx.params.rms_norm_eps,
+                      debug_name);
 }
 
-ModelGraph::AddedNode AddPureNode(ModelGraph& graph,
-                                  OpType op_type,
-                                  std::optional<uint32_t> decoder_layer_index,
-                                  std::vector<GraphValueId> inputs,
-                                  std::vector<TensorSpec> outputs,
-                                  const OpParams& op_params,
-                                  const GraphValuePayload& output_payload = ActivationValue{},
-                                  std::string debug_name = "") {
-    std::vector<ModelGraph::NodeOutputDesc> output_decls;
-    output_decls.reserve(outputs.size());
-    for (TensorSpec& output: outputs) {
-        output_decls.push_back(ModelGraph::NodeOutputDesc{.spec = std::move(output), .payload = output_payload});
-    }
-    return graph.AddNode(op_type,
-                         decoder_layer_index,
-                         std::move(inputs),
-                         std::move(output_decls),
-                         op_params,
-                         {},
-                         std::move(debug_name));
-}
-
-GraphValueId AddLinear(LlamaBuildContext& ctx,
-                       std::optional<uint32_t> layer,
-                       GraphValueId input,
-                       const RawWeightView& weight,
-                       TensorSpec output,
-                       WeightRole role) {
-    return OnlyOneOutput(AddWeightedNode(
-            ctx.graph,
-            OpType::kLinear,
-            layer,
-            {input},
-            WeightedNodeSpecs{.weight = WeightTensorSpec(weight), .output = std::move(output)},
-            WeightBinding{.decoder_layer_index = layer, .role = role},
-            LinearParams{},
-            WeightDebugName(role, layer)));
-}
-
-GraphValueId AddRmsNorm(LlamaBuildContext& ctx,
-                        std::optional<uint32_t> layer,
-                        GraphValueId input,
-                        const RawWeightView& weight,
-                        WeightRole role) {
-    return OnlyOneOutput(AddWeightedNode(
-            ctx.graph,
-            OpType::kRmsNorm,
-            layer,
-            {input},
-            WeightedNodeSpecs{.weight = WeightTensorSpec(weight), .output = ctx.specs.hidden},
-            WeightBinding{.decoder_layer_index = layer, .role = role},
-            RmsNormParams{.eps = ctx.params.rms_norm_eps},
-            WeightDebugName(role, layer)));
-}
-
-GraphValueId AddEmbedding(LlamaBuildContext& ctx, GraphValueId input) {
-    return OnlyOneOutput(AddWeightedNode(
-            ctx.graph,
-            OpType::kEmbedding,
-            std::nullopt,
-            {input},
-            WeightedNodeSpecs{.weight = WeightTensorSpec(ctx.weights.embed_tokens), .output = ctx.specs.hidden},
-            WeightBinding{.role = WeightRole::kTokenEmbedding},
-            EmbeddingParams{},
-            WeightDebugName(WeightRole::kTokenEmbedding, std::nullopt)));
+GraphValueId AddLlamaEmbedding(LlamaBuildContext& ctx, GraphValueId input) {
+    const std::string debug_name = WeightDebugName(WeightRole::kTokenEmbedding, std::nullopt);
+    const GraphValueId weight_value = ctx.graph.AddWeight(
+            WeightTensorSpec(ctx.weights.embed_tokens),
+            WeightBinding{.role = WeightRole::kTokenEmbedding});
+    return AddEmbedding(ctx.graph, input, weight_value, ctx.specs.hidden, debug_name);
 }
 
 QkvProjectionResult AddQkvProjections(LlamaBuildContext& ctx,
@@ -246,34 +184,17 @@ QkvProjectionResult AddQkvProjections(LlamaBuildContext& ctx,
                                       GraphValueId input,
                                       const AttnRawWeights& attn_weights) {
     return QkvProjectionResult{
-            .q = AddLinear(ctx, layer, input, attn_weights.q_proj, ctx.specs.hidden, WeightRole::kAttentionQ),
-            .k = AddLinear(ctx, layer, input, attn_weights.k_proj, ctx.specs.kv_hidden, WeightRole::kAttentionK),
-            .v = AddLinear(ctx, layer, input, attn_weights.v_proj, ctx.specs.kv_hidden, WeightRole::kAttentionV),
+            .q = AddLlamaLinear(ctx, layer, input, attn_weights.q_proj, ctx.specs.hidden, WeightRole::kAttentionQ),
+            .k = AddLlamaLinear(ctx, layer, input, attn_weights.k_proj, ctx.specs.kv_hidden, WeightRole::kAttentionK),
+            .v = AddLlamaLinear(ctx, layer, input, attn_weights.v_proj, ctx.specs.kv_hidden, WeightRole::kAttentionV),
     };
 }
 
-RoPEResult AddRoPE(LlamaBuildContext& ctx,
-                   uint32_t layer,
-                   GraphValueId q,
-                   GraphValueId k,
-                   GraphValueId position_ids) {
-    const ModelGraph::AddedNode node = AddPureNode(
-            ctx.graph,
-            OpType::kRoPE,
-            layer,
-            {q, k, position_ids},
-            {ctx.specs.hidden, ctx.specs.kv_hidden},
-            ctx.params.rope,
-            ActivationValue{},
-            LayerPrefix(layer) + "self_attn.rotary_emb");
-    return RoPEResult{.q = node.outputs[0], .k = node.outputs[1]};
-}
-
-KVCacheResult AddKVCacheUpdate(LlamaBuildContext& ctx,
-                               uint32_t layer,
-                               GraphValueId k_new,
-                               GraphValueId v_new,
-                               KVCacheResult cache_in) {
+KVCacheResult AddLlamaKVCacheUpdate(LlamaBuildContext& ctx,
+                                    uint32_t layer,
+                                    GraphValueId k_new,
+                                    GraphValueId v_new,
+                                    KVCacheResult cache_in) {
     const GraphValue& k_cache_value = ctx.graph.GetValue(cache_in.k);
     const auto* k_cache_state = std::get_if<StateValue>(&k_cache_value.payload);
     AM_CHECK(k_cache_state != nullptr, "K cache input must be a StateValue");
@@ -281,64 +202,19 @@ KVCacheResult AddKVCacheUpdate(LlamaBuildContext& ctx,
     const auto* v_cache_state = std::get_if<StateValue>(&v_cache_value.payload);
     AM_CHECK(v_cache_state != nullptr, "V cache input must be a StateValue");
 
-    const ModelGraph::AddedNode node = ctx.graph.AddNode(
-            OpType::kKVCacheUpdate,
+    const KVCacheUpdateOutputs cache = AddKVCacheUpdate(
+            ctx.graph,
             layer,
-            {k_new, v_new, cache_in.k, cache_in.v},
-            {ModelGraph::NodeOutputDesc{.spec = ctx.specs.kv_cache,
-                                        .payload = StateValue{.binding = k_cache_state->binding}},// NOLINT
-             ModelGraph::NodeOutputDesc{.spec = ctx.specs.kv_cache,
-                                        .payload = StateValue{.binding = v_cache_state->binding}}},// NOLINT
-            KVCacheUpdateParams{},
-            {},
+            k_new,
+            v_new,
+            cache_in.k,
+            cache_in.v,
+            ctx.specs.kv_cache,
+            ctx.specs.kv_cache,
+            k_cache_state->binding,
+            v_cache_state->binding,
             LayerPrefix(layer) + "self_attn.kv_cache_update");
-    return KVCacheResult{.k = node.outputs[0], .v = node.outputs[1]};
-}
-
-GraphValueId AddAttention(LlamaBuildContext& ctx,
-                          uint32_t layer,
-                          GraphValueId q,
-                          KVCacheResult cache) {
-    return OnlyOneOutput(AddPureNode(
-            ctx.graph,
-            OpType::kAttention,
-            layer,
-            {q, cache.k, cache.v},
-            {ctx.specs.hidden},
-            ctx.params.attention,
-            ActivationValue{},
-            LayerPrefix(layer) + "self_attn.attention"));
-}
-
-GraphValueId AddResidualAdd(LlamaBuildContext& ctx,
-                            std::optional<uint32_t> layer,
-                            GraphValueId lhs,
-                            GraphValueId rhs,
-                            std::string debug_name) {
-    return OnlyOneOutput(AddPureNode(
-            ctx.graph,
-            OpType::kAdd,
-            layer,
-            {lhs, rhs},
-            {ctx.specs.hidden},
-            AddParams{},
-            ActivationValue{},
-            std::move(debug_name)));
-}
-
-GraphValueId AddSiluMul(LlamaBuildContext& ctx,
-                        uint32_t layer,
-                        GraphValueId gate,
-                        GraphValueId up) {
-    return OnlyOneOutput(AddPureNode(
-            ctx.graph,
-            OpType::kSiluMul,
-            layer,
-            {gate, up},
-            {ctx.specs.intermediate},
-            SiluMulParams{},
-            ActivationValue{},
-            LayerPrefix(layer) + "mlp.act"));
+    return KVCacheResult{.k = cache.k, .v = cache.v};
 }
 
 AttentionBlockResult BuildLlamaAttentionBlock(LlamaBuildContext& ctx,
@@ -346,19 +222,38 @@ AttentionBlockResult BuildLlamaAttentionBlock(LlamaBuildContext& ctx,
                                               AttentionBlockInput input) {
     const size_t block_begin = ctx.graph.GetNodes().size();
 
-    const GraphValueId normed = AddRmsNorm(ctx, layer, input.hidden,
-                                           ctx.weights.layers[layer].norm.input_rmsnorm,
-                                           WeightRole::kInputNorm);
+    const GraphValueId normed = AddLlamaRmsNorm(ctx, layer, input.hidden,
+                                                ctx.weights.layers[layer].norm.input_rmsnorm,
+                                                WeightRole::kInputNorm);
     const QkvProjectionResult qkv = AddQkvProjections(ctx, layer, normed,
                                                       ctx.weights.layers[layer].attn);
-    const RoPEResult rope = AddRoPE(ctx, layer, qkv.q, qkv.k, input.position_ids);
-    const KVCacheResult cache_out = AddKVCacheUpdate(ctx, layer, rope.k, qkv.v, input.cache);
-    const GraphValueId attn = AddAttention(ctx, layer, rope.q, cache_out);
-    const GraphValueId o_proj = AddLinear(ctx, layer, attn,
-                                          ctx.weights.layers[layer].attn.o_proj,
-                                          ctx.specs.hidden, WeightRole::kAttentionO);
-    const GraphValueId residual = AddResidualAdd(ctx, layer, input.hidden, o_proj,
-                                                 LayerPrefix(layer) + "post_attention_add");
+    const RoPEOutputs rope = AddRoPE(ctx.graph,
+                                     layer,
+                                     qkv.q,
+                                     qkv.k,
+                                     input.position_ids,
+                                     ctx.specs.hidden,
+                                     ctx.specs.kv_hidden,
+                                     ctx.params.rope,
+                                     LayerPrefix(layer) + "self_attn.rotary_emb");
+    const KVCacheResult cache_out = AddLlamaKVCacheUpdate(ctx, layer, rope.k, qkv.v, input.cache);
+    const GraphValueId attn = AddAttention(ctx.graph,
+                                           layer,
+                                           rope.q,
+                                           cache_out.k,
+                                           cache_out.v,
+                                           ctx.specs.hidden,
+                                           ctx.params.attention,
+                                           LayerPrefix(layer) + "self_attn.attention");
+    const GraphValueId o_proj = AddLlamaLinear(ctx, layer, attn,
+                                               ctx.weights.layers[layer].attn.o_proj,
+                                               ctx.specs.hidden, WeightRole::kAttentionO);
+    const GraphValueId residual = AddElementwiseAdd(ctx.graph,
+                                                    layer,
+                                                    input.hidden,
+                                                    o_proj,
+                                                    ctx.specs.hidden,
+                                                    LayerPrefix(layer) + "post_attention_add");
 
     AM_CHECK(ctx.graph.GetNodes().size() - block_begin == kAttentionBlockNodeCount,
              "Attention block node count changed unexpectedly");
@@ -370,21 +265,30 @@ GraphValueId BuildLlamaMlpBlock(LlamaBuildContext& ctx,
                                 GraphValueId hidden) {
     const size_t block_begin = ctx.graph.GetNodes().size();
 
-    const GraphValueId normed = AddRmsNorm(ctx, layer, hidden,
-                                           ctx.weights.layers[layer].norm.post_attn_rmsnorm,
-                                           WeightRole::kPostAttentionNorm);
-    const GraphValueId gate = AddLinear(ctx, layer, normed,
-                                        ctx.weights.layers[layer].mlp.gate_proj,
-                                        ctx.specs.intermediate, WeightRole::kMlpGate);
-    const GraphValueId up = AddLinear(ctx, layer, normed,
-                                      ctx.weights.layers[layer].mlp.up_proj,
-                                      ctx.specs.intermediate, WeightRole::kMlpUp);
-    const GraphValueId act = AddSiluMul(ctx, layer, gate, up);
-    const GraphValueId down = AddLinear(ctx, layer, act,
-                                        ctx.weights.layers[layer].mlp.down_proj,
-                                        ctx.specs.hidden, WeightRole::kMlpDown);
-    const GraphValueId residual = AddResidualAdd(ctx, layer, hidden, down,
-                                                 LayerPrefix(layer) + "mlp_add");
+    const GraphValueId normed = AddLlamaRmsNorm(ctx, layer, hidden,
+                                                ctx.weights.layers[layer].norm.post_attn_rmsnorm,
+                                                WeightRole::kPostAttentionNorm);
+    const GraphValueId gate = AddLlamaLinear(ctx, layer, normed,
+                                             ctx.weights.layers[layer].mlp.gate_proj,
+                                             ctx.specs.intermediate, WeightRole::kMlpGate);
+    const GraphValueId up = AddLlamaLinear(ctx, layer, normed,
+                                           ctx.weights.layers[layer].mlp.up_proj,
+                                           ctx.specs.intermediate, WeightRole::kMlpUp);
+    const GraphValueId act = AddSiluMul(ctx.graph,
+                                        layer,
+                                        gate,
+                                        up,
+                                        ctx.specs.intermediate,
+                                        LayerPrefix(layer) + "mlp.act");
+    const GraphValueId down = AddLlamaLinear(ctx, layer, act,
+                                             ctx.weights.layers[layer].mlp.down_proj,
+                                             ctx.specs.hidden, WeightRole::kMlpDown);
+    const GraphValueId residual = AddElementwiseAdd(ctx.graph,
+                                                    layer,
+                                                    hidden,
+                                                    down,
+                                                    ctx.specs.hidden,
+                                                    LayerPrefix(layer) + "mlp_add");
 
     AM_CHECK(ctx.graph.GetNodes().size() - block_begin == kMlpBlockNodeCount,
              "MLP block node count changed unexpectedly");
@@ -455,7 +359,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     const GraphValueId input_tokens = ctx.graph.AddInput(specs.token_ids, "token_ids");
     const GraphValueId position_ids = ctx.graph.AddInput(specs.position_ids, "position_ids");
 
-    GraphValueId hidden = AddEmbedding(ctx, input_tokens);
+    GraphValueId hidden = AddLlamaEmbedding(ctx, input_tokens);
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
         const GraphValueId k_cache = ctx.graph.AddState(
@@ -471,22 +375,19 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                 KVCacheResult{.k = k_cache, .v = v_cache});
     }
 
-    const GraphValueId final_hidden = AddRmsNorm(ctx, std::nullopt, hidden,
-                                                 ctx.weights.final_norm, WeightRole::kFinalNorm);
+    const GraphValueId final_hidden = AddLlamaRmsNorm(ctx, std::nullopt, hidden,
+                                                      ctx.weights.final_norm, WeightRole::kFinalNorm);
     const RawWeightView& lm_head_weight = ctx.weights.lm_head.has_value()
                                                   ? *ctx.weights.lm_head
                                                   : ctx.weights.embed_tokens;
-    const GraphValueId logits = AddLinear(ctx, std::nullopt, final_hidden, lm_head_weight,
-                                          specs.logits, WeightRole::kLmHead);
-    const GraphValueId output_tokens = OnlyOneOutput(AddPureNode(
-            ctx.graph,
-            OpType::kArgmax,
-            std::nullopt,
-            {logits},
-            {specs.token_ids},
-            ArgmaxParams{.axis = -1},
-            ActivationValue{},
-            "argmax"));
+    const GraphValueId logits = AddLlamaLinear(ctx, std::nullopt, final_hidden, lm_head_weight,
+                                               specs.logits, WeightRole::kLmHead);
+    const GraphValueId output_tokens = aethermind::AddArgmax(ctx.graph,
+                                                             std::nullopt,
+                                                             logits,
+                                                             specs.token_ids,
+                                                             -1,
+                                                             "argmax");
     ctx.graph.MarkOutput(output_tokens, "output_token_ids");
 
     AM_RETURN_IF_ERROR(ctx.graph.Validate());

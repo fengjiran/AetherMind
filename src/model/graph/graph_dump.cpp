@@ -40,6 +40,9 @@ void DumpWeightBinding(const WeightBinding& binding, std::ostream& os) {
     } else {
         os << ", layer=<none>";
     }
+    if (!binding.logical_name.empty()) {
+        os << ", logical_name=" << binding.logical_name;
+    }
 }
 
 void DumpStateBinding(const StateBinding& binding, std::ostream& os) {

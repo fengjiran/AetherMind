@@ -41,6 +41,7 @@ enum class WeightRole : uint8_t {
 };
 
 struct WeightBinding {
+    std::string logical_name{};
     std::optional<uint32_t> decoder_layer_index{};
     WeightRole role{};
 };

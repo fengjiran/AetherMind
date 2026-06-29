@@ -145,20 +145,20 @@ GraphValueId AddLlamaLinear(LlamaBuildContext& ctx,
                             GraphValueId input,
                             const RawWeightView& weight,
                             TensorSpec output,
-                            WeightRole role) {
-    const std::string debug_name = WeightDebugName(role, layer);
+                            WeightRole role,
+                            std::string debug_name) {
     const GraphValueId weight_value = ctx.graph.AddWeight(
             WeightTensorSpec(weight),
             WeightBinding{.decoder_layer_index = layer, .role = role});
-    return AddLinear(ctx.graph, layer, input, weight_value, std::move(output), debug_name);
+    return AddLinear(ctx.graph, layer, input, weight_value, std::move(output), std::move(debug_name));
 }
 
 GraphValueId AddLlamaRmsNorm(LlamaBuildContext& ctx,
                              std::optional<uint32_t> layer,
                              GraphValueId input,
                              const RawWeightView& weight,
-                             WeightRole role) {
-    const std::string debug_name = WeightDebugName(role, layer);
+                             WeightRole role,
+                             std::string debug_name) {
     const GraphValueId weight_value = ctx.graph.AddWeight(
             WeightTensorSpec(weight),
             WeightBinding{.decoder_layer_index = layer, .role = role});
@@ -168,15 +168,14 @@ GraphValueId AddLlamaRmsNorm(LlamaBuildContext& ctx,
                       weight_value,
                       ctx.specs.hidden,
                       ctx.params.rms_norm_eps,
-                      debug_name);
+                      std::move(debug_name));
 }
 
-GraphValueId AddLlamaEmbedding(LlamaBuildContext& ctx, GraphValueId input) {
-    const std::string debug_name = WeightDebugName(WeightRole::kTokenEmbedding, std::nullopt);
+GraphValueId AddLlamaEmbedding(LlamaBuildContext& ctx, GraphValueId input, std::string debug_name) {
     const GraphValueId weight_value = ctx.graph.AddWeight(
             WeightTensorSpec(ctx.weights.embed_tokens),
             WeightBinding{.role = WeightRole::kTokenEmbedding});
-    return AddEmbedding(ctx.graph, input, weight_value, ctx.specs.hidden, debug_name);
+    return AddEmbedding(ctx.graph, input, weight_value, ctx.specs.hidden, std::move(debug_name));
 }
 
 QkvProjectionResult AddQkvProjections(LlamaBuildContext& ctx,
@@ -184,9 +183,12 @@ QkvProjectionResult AddQkvProjections(LlamaBuildContext& ctx,
                                       GraphValueId input,
                                       const AttnRawWeights& attn_weights) {
     return QkvProjectionResult{
-            .q = AddLlamaLinear(ctx, layer, input, attn_weights.q_proj, ctx.specs.hidden, WeightRole::kAttentionQ),
-            .k = AddLlamaLinear(ctx, layer, input, attn_weights.k_proj, ctx.specs.kv_hidden, WeightRole::kAttentionK),
-            .v = AddLlamaLinear(ctx, layer, input, attn_weights.v_proj, ctx.specs.kv_hidden, WeightRole::kAttentionV),
+            .q = AddLlamaLinear(ctx, layer, input, attn_weights.q_proj, ctx.specs.hidden,
+                                WeightRole::kAttentionQ, WeightDebugName(WeightRole::kAttentionQ, layer)),
+            .k = AddLlamaLinear(ctx, layer, input, attn_weights.k_proj, ctx.specs.kv_hidden,
+                                WeightRole::kAttentionK, WeightDebugName(WeightRole::kAttentionK, layer)),
+            .v = AddLlamaLinear(ctx, layer, input, attn_weights.v_proj, ctx.specs.kv_hidden,
+                                WeightRole::kAttentionV, WeightDebugName(WeightRole::kAttentionV, layer)),
     };
 }
 
@@ -224,7 +226,8 @@ AttentionBlockResult BuildLlamaAttentionBlock(LlamaBuildContext& ctx,
 
     const GraphValueId normed = AddLlamaRmsNorm(ctx, layer, input.hidden,
                                                 ctx.weights.layers[layer].norm.input_rmsnorm,
-                                                WeightRole::kInputNorm);
+                                                WeightRole::kInputNorm,
+                                                WeightDebugName(WeightRole::kInputNorm, layer));
     const QkvProjectionResult qkv = AddQkvProjections(ctx, layer, normed,
                                                       ctx.weights.layers[layer].attn);
     const RoPEOutputs rope = AddRoPE(ctx.graph,
@@ -247,7 +250,8 @@ AttentionBlockResult BuildLlamaAttentionBlock(LlamaBuildContext& ctx,
                                            LayerPrefix(layer) + "self_attn.attention");
     const GraphValueId o_proj = AddLlamaLinear(ctx, layer, attn,
                                                ctx.weights.layers[layer].attn.o_proj,
-                                               ctx.specs.hidden, WeightRole::kAttentionO);
+                                               ctx.specs.hidden, WeightRole::kAttentionO,
+                                               WeightDebugName(WeightRole::kAttentionO, layer));
     const GraphValueId residual = AddElementwiseAdd(ctx.graph,
                                                     layer,
                                                     input.hidden,
@@ -267,13 +271,16 @@ GraphValueId BuildLlamaMlpBlock(LlamaBuildContext& ctx,
 
     const GraphValueId normed = AddLlamaRmsNorm(ctx, layer, hidden,
                                                 ctx.weights.layers[layer].norm.post_attn_rmsnorm,
-                                                WeightRole::kPostAttentionNorm);
+                                                WeightRole::kPostAttentionNorm,
+                                                WeightDebugName(WeightRole::kPostAttentionNorm, layer));
     const GraphValueId gate = AddLlamaLinear(ctx, layer, normed,
                                              ctx.weights.layers[layer].mlp.gate_proj,
-                                             ctx.specs.intermediate, WeightRole::kMlpGate);
+                                             ctx.specs.intermediate, WeightRole::kMlpGate,
+                                             WeightDebugName(WeightRole::kMlpGate, layer));
     const GraphValueId up = AddLlamaLinear(ctx, layer, normed,
                                            ctx.weights.layers[layer].mlp.up_proj,
-                                           ctx.specs.intermediate, WeightRole::kMlpUp);
+                                           ctx.specs.intermediate, WeightRole::kMlpUp,
+                                           WeightDebugName(WeightRole::kMlpUp, layer));
     const GraphValueId act = AddSiluMul(ctx.graph,
                                         layer,
                                         gate,
@@ -282,7 +289,8 @@ GraphValueId BuildLlamaMlpBlock(LlamaBuildContext& ctx,
                                         LayerPrefix(layer) + "mlp.act");
     const GraphValueId down = AddLlamaLinear(ctx, layer, act,
                                              ctx.weights.layers[layer].mlp.down_proj,
-                                             ctx.specs.hidden, WeightRole::kMlpDown);
+                                             ctx.specs.hidden, WeightRole::kMlpDown,
+                                             WeightDebugName(WeightRole::kMlpDown, layer));
     const GraphValueId residual = AddElementwiseAdd(ctx.graph,
                                                     layer,
                                                     hidden,
@@ -356,32 +364,37 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
             .params = params,
     };
 
-    const GraphValueId input_tokens = ctx.graph.AddInput(specs.token_ids, "token_ids");
-    const GraphValueId position_ids = ctx.graph.AddInput(specs.position_ids, "position_ids");
+    const GraphValueId input_tokens = AddInput(ctx.graph, specs.token_ids, "token_ids");
+    const GraphValueId position_ids = AddInput(ctx.graph, specs.position_ids, "position_ids");
 
-    GraphValueId hidden = AddLlamaEmbedding(ctx, input_tokens);
+    GraphValueId hidden = AddLlamaEmbedding(ctx, input_tokens,
+                                            WeightDebugName(WeightRole::kTokenEmbedding, std::nullopt));
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
-        const GraphValueId k_cache = ctx.graph.AddState(
-                specs.kv_cache,
-                KVCacheStateBinding{.decoder_layer_index = layer_index, .slot = KVCacheSlot::kKey},
-                LayerPrefix(layer_index) + "self_attn.k_cache");
-        const GraphValueId v_cache = ctx.graph.AddState(
-                specs.kv_cache,
-                KVCacheStateBinding{.decoder_layer_index = layer_index, .slot = KVCacheSlot::kValue},
-                LayerPrefix(layer_index) + "self_attn.v_cache");
+        const GraphValueId k_cache = AddState(ctx.graph,
+                                              specs.kv_cache,
+                                              KVCacheStateBinding{.decoder_layer_index = layer_index,
+                                                                  .slot = KVCacheSlot::kKey},
+                                              LayerPrefix(layer_index) + "self_attn.k_cache");
+        const GraphValueId v_cache = AddState(ctx.graph,
+                                              specs.kv_cache,
+                                              KVCacheStateBinding{.decoder_layer_index = layer_index,
+                                                                  .slot = KVCacheSlot::kValue},
+                                              LayerPrefix(layer_index) + "self_attn.v_cache");
         hidden = BuildLlamaDecoderLayer(
                 ctx, layer_index, hidden, position_ids,
                 KVCacheResult{.k = k_cache, .v = v_cache});
     }
 
     const GraphValueId final_hidden = AddLlamaRmsNorm(ctx, std::nullopt, hidden,
-                                                      ctx.weights.final_norm, WeightRole::kFinalNorm);
+                                                      ctx.weights.final_norm, WeightRole::kFinalNorm,
+                                                      WeightDebugName(WeightRole::kFinalNorm, std::nullopt));
     const RawWeightView& lm_head_weight = ctx.weights.lm_head.has_value()
                                                   ? *ctx.weights.lm_head
                                                   : ctx.weights.embed_tokens;
     const GraphValueId logits = AddLlamaLinear(ctx, std::nullopt, final_hidden, lm_head_weight,
-                                               specs.logits, WeightRole::kLmHead);
+                                               specs.logits, WeightRole::kLmHead,
+                                               WeightDebugName(WeightRole::kLmHead, std::nullopt));
     const GraphValueId output_tokens = aethermind::AddArgmax(ctx.graph,
                                                              std::nullopt,
                                                              logits,

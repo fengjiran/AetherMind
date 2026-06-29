@@ -18,6 +18,17 @@ struct KVCacheUpdateOutputs {
     GraphValueId v{};
 };
 
+/// Registers an external input tensor and returns its value id.
+AM_NODISCARD GraphValueId AddInput(ModelGraph& graph,
+                                   TensorSpec spec,
+                                   std::string debug_name = {});
+
+/// Registers a persistent state tensor and returns its value id.
+AM_NODISCARD GraphValueId AddState(ModelGraph& graph,
+                                   TensorSpec spec,
+                                   StateBinding binding,
+                                   std::string debug_name = {});
+
 AM_NODISCARD GraphValueId AddLinear(ModelGraph& graph,
                                     std::optional<uint32_t> decoder_layer_index,
                                     GraphValueId input,

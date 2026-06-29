@@ -109,5 +109,24 @@ TEST(GraphOpBuilder, AddsMultiOutputOperatorHelpers) {
     EXPECT_TRUE(std::holds_alternative<StateValue>(graph.GetValue(cache.v).payload));
 }
 
+TEST(GraphOpBuilder, AddInputAndAddStateRegisterExternalValues) {
+    ModelGraph graph;
+    const TensorSpec input_spec = Spec(DataType::Int(64), {4});
+    const TensorSpec cache_spec = Spec(DataType::Float32(), {2, 4, 2});
+
+    const GraphValueId tokens = AddInput(graph, input_spec, "tokens");
+    const StateBinding k_binding = KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey};
+    const GraphValueId k_cache = AddState(graph, cache_spec, k_binding, "k_cache");
+
+    ASSERT_EQ(graph.GetInputs().size(), 1U);
+    EXPECT_EQ(graph.GetInputs().front().name, "tokens");
+    EXPECT_EQ(graph.GetInputs().front().value, tokens);
+    EXPECT_TRUE(std::holds_alternative<StateValue>(graph.GetValue(k_cache).payload));
+    const auto& state = std::get<StateValue>(graph.GetValue(k_cache).payload);
+    const auto& kv_binding = std::get<KVCacheStateBinding>(state.binding);
+    EXPECT_EQ(kv_binding.decoder_layer_index, 0U);
+    EXPECT_EQ(kv_binding.slot, KVCacheSlot::kKey);
+}
+
 }// namespace
 }// namespace aethermind

@@ -17,6 +17,17 @@ ModelGraph::NodeOutputDesc ActivationOutput(TensorSpec spec) {
 
 }// namespace
 
+GraphValueId AddInput(ModelGraph& graph, TensorSpec spec, std::string debug_name) {
+    return graph.AddInput(std::move(spec), std::move(debug_name));
+}
+
+GraphValueId AddState(ModelGraph& graph,
+                      TensorSpec spec,
+                      StateBinding binding,
+                      std::string debug_name) {
+    return graph.AddState(std::move(spec), binding, std::move(debug_name));
+}
+
 GraphValueId AddLinear(ModelGraph& graph,
                        std::optional<uint32_t> decoder_layer_index,
                        GraphValueId input,

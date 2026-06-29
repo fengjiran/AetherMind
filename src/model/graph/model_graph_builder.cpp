@@ -19,35 +19,22 @@ constexpr size_t kAttentionBlockNodeCount = 9;
 // mlp_add.
 constexpr size_t kMlpBlockNodeCount = 6;
 
-TensorSpec SymbolicTensorSpec(DataType dtype, std::vector<ShapeSymbol> dims) {
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(std::move(dims))};
+TensorSpec WeightTensorSpec(const RawWeightView& weight) {
+    return TensorSpec{.dtype = weight.dtype,
+                      .shape = SymbolicShape(IntArrayView(weight.shape))};
 }
 
-std::vector<ShapeSymbol> SymbolicDims(const std::vector<int64_t>& shape) {
-    std::vector<ShapeSymbol> dims;
-    dims.reserve(shape.size());
-    for (const int64_t dim: shape) {
-        dims.push_back(ShapeSymbol::CreateFromValue(dim));
-    }
-    return dims;
+TensorSpec ActivationTensorSpec(DataType dtype, ShapeSymbol seq_len, int64_t feature_dim) {
+    return TensorSpec{.dtype = dtype,
+                      .shape = SymbolicShape({seq_len, ShapeSymbol::CreateFromValue(feature_dim)})};
 }
 
-TensorSpec WeightTensor(const RawWeightView& weight) {
-    return SymbolicTensorSpec(weight.dtype, SymbolicDims(weight.shape));
-}
-
-TensorSpec ActivationTensor(DataType dtype, ShapeSymbol seq_len, int64_t feature_dim) {
-    return SymbolicTensorSpec(dtype, {seq_len, ShapeSymbol::CreateFromValue(feature_dim)});
-}
-
-TensorSpec KVCacheTensor(DataType dtype, int64_t num_kv_heads, ShapeSymbol cache_len, int64_t head_dim) {
-    return SymbolicTensorSpec(dtype, {ShapeSymbol::CreateFromValue(num_kv_heads),
-                                      cache_len,
-                                      ShapeSymbol::CreateFromValue(head_dim)});
-}
-
-WeightBinding Bind(WeightRole role, std::optional<uint32_t> decoder_layer_index = std::nullopt) noexcept {
-    return WeightBinding{.decoder_layer_index = decoder_layer_index, .role = role};
+TensorSpec KVCacheTensorSpec(DataType dtype, int64_t num_kv_heads,
+                             ShapeSymbol cache_len, int64_t head_dim) {
+    return TensorSpec{.dtype = dtype,
+                      .shape = SymbolicShape({ShapeSymbol::CreateFromValue(num_kv_heads),
+                                              cache_len,
+                                              ShapeSymbol::CreateFromValue(head_dim)})};
 }
 
 std::string LayerPrefix(uint32_t layer) {
@@ -220,8 +207,8 @@ GraphValueId AddLinear(LlamaBuildContext& ctx,
             OpType::kLinear,
             layer,
             {input},
-            WeightedNodeSpecs{.weight = WeightTensor(weight), .output = std::move(output)},
-            Bind(role, layer),
+            WeightedNodeSpecs{.weight = WeightTensorSpec(weight), .output = std::move(output)},
+            WeightBinding{.decoder_layer_index = layer, .role = role},
             LinearParams{},
             WeightDebugName(role, layer)));
 }
@@ -236,8 +223,8 @@ GraphValueId AddRmsNorm(LlamaBuildContext& ctx,
             OpType::kRmsNorm,
             layer,
             {input},
-            WeightedNodeSpecs{.weight = WeightTensor(weight), .output = ctx.specs.hidden},
-            Bind(role, layer),
+            WeightedNodeSpecs{.weight = WeightTensorSpec(weight), .output = ctx.specs.hidden},
+            WeightBinding{.decoder_layer_index = layer, .role = role},
             RmsNormParams{.eps = ctx.params.rms_norm_eps},
             WeightDebugName(role, layer)));
 }
@@ -248,8 +235,8 @@ GraphValueId AddEmbedding(LlamaBuildContext& ctx, GraphValueId input) {
             OpType::kEmbedding,
             std::nullopt,
             {input},
-            WeightedNodeSpecs{.weight = WeightTensor(ctx.weights.embed_tokens), .output = ctx.specs.hidden},
-            Bind(WeightRole::kTokenEmbedding),
+            WeightedNodeSpecs{.weight = WeightTensorSpec(ctx.weights.embed_tokens), .output = ctx.specs.hidden},
+            WeightBinding{.role = WeightRole::kTokenEmbedding},
             EmbeddingParams{},
             WeightDebugName(WeightRole::kTokenEmbedding, std::nullopt)));
 }
@@ -439,13 +426,13 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     const int64_t kv_hidden_size = config.num_key_value_heads * head_dim;
 
     const LlamaBuildSpecs specs{
-            .token_ids = SymbolicTensorSpec(DataType::Int(64), {seq_len}),
-            .position_ids = SymbolicTensorSpec(DataType::Int(64), {seq_len}),
-            .hidden = ActivationTensor(act_dtype, seq_len, hidden_size),
-            .kv_hidden = ActivationTensor(act_dtype, seq_len, kv_hidden_size),
-            .intermediate = ActivationTensor(act_dtype, seq_len, config.intermediate_size),
-            .kv_cache = KVCacheTensor(act_dtype, config.num_key_value_heads, kv_len, head_dim),
-            .logits = ActivationTensor(act_dtype, seq_len, config.vocab_size),
+            .token_ids = TensorSpec{.dtype = DataType::Int(64), .shape = SymbolicShape({seq_len})},
+            .position_ids = TensorSpec{.dtype = DataType::Int(64), .shape = SymbolicShape({seq_len})},
+            .hidden = ActivationTensorSpec(act_dtype, seq_len, hidden_size),
+            .kv_hidden = ActivationTensorSpec(act_dtype, seq_len, kv_hidden_size),
+            .intermediate = ActivationTensorSpec(act_dtype, seq_len, config.intermediate_size),
+            .kv_cache = KVCacheTensorSpec(act_dtype, config.num_key_value_heads, kv_len, head_dim),
+            .logits = ActivationTensorSpec(act_dtype, seq_len, config.vocab_size),
     };
     const LlamaBuildParams params{
             .rms_norm_eps = static_cast<float>(config.rms_norm_eps),

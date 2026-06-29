@@ -29,7 +29,7 @@ SymbolicShape::SymbolicShape(const std::vector<std::optional<int64_t>>& shape) {
 SymbolicShape::SymbolicShape(IntArrayView shape) {
     std::vector<ShapeSymbol> symbolic_shape;
     symbolic_shape.reserve(shape.size());
-    for (long i: shape) {
+    for (const auto i: shape) {
         symbolic_shape.emplace_back(ShapeSymbol::CreateFromValue(i));
     }
     symbolic_shape_ = std::move(symbolic_shape);

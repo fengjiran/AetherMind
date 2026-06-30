@@ -5,14 +5,14 @@
 namespace aethermind {
 namespace {
 
-GraphValueId OnlyOneOutput(const ModelGraph::AddedNode& added_node) {
+GraphValueId OnlyOneOutput(const AddedNode& added_node) {
     AM_CHECK(added_node.outputs.size() == 1U,
              "Expected graph op builder helper to create exactly one output");
     return added_node.outputs.front();
 }
 
-ModelGraph::NodeOutputDesc ActivationOutput(TensorSpec spec) {
-    return ModelGraph::NodeOutputDesc{.spec = std::move(spec), .payload = ActivationValue{}};
+NodeOutputDesc ActivationOutput(TensorSpec spec) {
+    return NodeOutputDesc{.spec = std::move(spec), .payload = ActivationValue{}};
 }
 
 }// namespace
@@ -116,9 +116,9 @@ KVCacheUpdateOutputs AddKVCacheUpdate(ModelGraph& graph,
             OpType::kKVCacheUpdate,
             decoder_layer_index,
             {k_new, v_new, k_cache, v_cache},
-            {ModelGraph::NodeOutputDesc{.spec = std::move(k_output_spec),
+            {NodeOutputDesc{.spec = std::move(k_output_spec),
                                         .payload = StateValue{.binding = k_binding}},
-             ModelGraph::NodeOutputDesc{.spec = std::move(v_output_spec),
+             NodeOutputDesc{.spec = std::move(v_output_spec),
                                         .payload = StateValue{.binding = v_binding}}},
             KVCacheUpdateParams{},
             {},

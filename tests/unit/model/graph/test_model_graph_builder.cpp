@@ -1,4 +1,4 @@
-#include "aethermind/model/graph/model_graph_builder.h"
+#include "aethermind/model/graph/graph_builder.h"
 
 #include <gtest/gtest.h>
 

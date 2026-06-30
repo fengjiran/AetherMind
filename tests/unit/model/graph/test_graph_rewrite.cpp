@@ -19,19 +19,19 @@ ModelGraph BuildTwoEmbeddingGraph() {
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                 WeightBinding{.role = WeightRole::kTokenEmbedding},
                                                 "embed.weight");
-    const ModelGraph::AddedNode embed_a = graph.AddNode(
+    const AddedNode embed_a = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_a, weight},
-            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                         .payload = ActivationValue{},
                                         .debug_name = "hidden_a"}},
             EmbeddingParams{});
-    const ModelGraph::AddedNode embed_b = graph.AddNode(
+    const AddedNode embed_b = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_b, weight},
-            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                         .payload = ActivationValue{},
                                         .debug_name = "hidden_b"}},
             EmbeddingParams{});
@@ -256,11 +256,11 @@ ModelGraph BuildGraphWithState() {
             KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
             "kv_cache.layer_0.k");
     (void) k_cache;
-    const ModelGraph::AddedNode embed = graph.AddNode(
+    const AddedNode embed = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                         .payload = ActivationValue{},
                                         .debug_name = "hidden"}},
             EmbeddingParams{});
@@ -295,11 +295,11 @@ TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                 WeightBinding{.role = WeightRole::kTokenEmbedding},
                                                 "embed.weight");
-    const ModelGraph::AddedNode embed = graph.AddNode(
+    const AddedNode embed = graph.AddNode(
             OpType::kEmbedding,
             3U,// decoder_layer_index = 3
             {tokens, weight},
-            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                         .payload = ActivationValue{},
                                         .debug_name = "hidden"}},
             EmbeddingParams{});
@@ -369,11 +369,11 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.name = "scalar.one", .inline_data = std::move(inline_data)},
             "one");
-    const ModelGraph::AddedNode embed = graph.AddNode(
+    const AddedNode embed = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                         .payload = ActivationValue{},
                                         .debug_name = "hidden"}},
             EmbeddingParams{});

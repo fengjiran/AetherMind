@@ -1,4 +1,4 @@
-#include "aethermind/model/graph/model_graph_builder.h"
+#include "aethermind/model/graph/graph_builder.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
 #include "aethermind/model/graph/graph_op_builder.h"
 

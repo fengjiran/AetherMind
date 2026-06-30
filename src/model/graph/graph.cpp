@@ -1,4 +1,4 @@
-#include "aethermind/model/graph/model_graph.h"
+#include "aethermind/model/graph/graph.h"
 #include "aethermind/model/graph/operator_schema.h"
 #include "utils/logging.h"
 
@@ -217,13 +217,13 @@ GraphValueId ModelGraph::AddInput(TensorSpec spec, std::string name) {
     values_.push_back(GraphValue{.payload = ModelInputValue{},
                                  .spec = std::move(spec),
                                  .debug_name = name});
-    inputs_.push_back(Input{.value = value_id, .name = std::move(name)});
+    inputs_.push_back(GraphInput{.value = value_id, .name = std::move(name)});
     return value_id;
 }
 
 GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::string debug_name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back(GraphValue{.payload = WeightValue{.binding = std::move(binding)},
+    values_.push_back(GraphValue{.payload = WeightValue{.binding = binding},
                                  .spec = std::move(spec),
                                  .debug_name = std::move(debug_name)});
     return value_id;
@@ -245,13 +245,13 @@ GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::st
     return value_id;
 }
 
-ModelGraph::AddedNode ModelGraph::AddNode(OpType op_type,
-                                          std::optional<uint32_t> decoder_layer_index,
-                                          std::vector<GraphValueId> inputs,
-                                          std::vector<NodeOutputDesc> outputs_desc,
-                                          const OpParams& op_params,
-                                          ModelGraphAttrs attrs,
-                                          std::string debug_name) {
+AddedNode ModelGraph::AddNode(OpType op_type,
+                              std::optional<uint32_t> decoder_layer_index,
+                              std::vector<GraphValueId> inputs,
+                              std::vector<NodeOutputDesc> outputs_desc,
+                              const OpParams& op_params,
+                              ModelGraphAttrs attrs,
+                              std::string debug_name) {
     GraphNodeId node_id{NextNodeIndex(nodes_)};
     std::vector<GraphValueId> output_ids;
     output_ids.reserve(outputs_desc.size());

@@ -7,7 +7,7 @@
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/graph/graph_lowering.h"
-#include "aethermind/model/graph/model_graph.h"
+#include "aethermind/model/graph/graph.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -424,11 +424,11 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphValidatesPreservedOutputSpecs) {
     const TensorSpec hidden{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})};
     const GraphValueId token_ids = graph.AddInput(tokens, "token_ids");
     const GraphValueId weight = graph.AddWeight(embedding_weight, WeightBinding{.role = WeightRole::kTokenEmbedding});
-    const ModelGraph::AddedNode embedding = graph.AddNode(
+    const AddedNode embedding = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {token_ids, weight},
-            {ModelGraph::NodeOutputDesc{.spec = hidden, .payload = ActivationValue{}}},
+            {NodeOutputDesc{.spec = hidden, .payload = ActivationValue{}}},
             EmbeddingParams{});
     graph.MarkOutput(embedding.outputs[0], "hidden");
 

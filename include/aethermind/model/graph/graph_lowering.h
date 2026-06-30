@@ -4,7 +4,7 @@
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/execution/execution_plan_builder.h"
-#include "aethermind/model/graph/model_graph.h"
+#include "aethermind/model/graph/graph.h"
 #include "aethermind/model/graph/state_alias_plan.h"
 #include "macros.h"
 

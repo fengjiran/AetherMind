@@ -256,11 +256,11 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
                 // Look up output specs/payloads from the original graph values
                 // referenced by the replacement node's outputs field
-                std::vector<ModelGraph::NodeOutputDesc> output_descs;
+                std::vector<NodeOutputDesc> output_descs;
                 output_descs.reserve(replacement.outputs.size());
                 for (GraphValueId output_id: replacement.outputs) {
                     const GraphValue& old_value = graph_.GetValue(output_id);
-                    output_descs.push_back(ModelGraph::NodeOutputDesc{
+                    output_descs.push_back(NodeOutputDesc{
                             .spec = old_value.spec,
                             .payload = old_value.payload,
                             .quantization = old_value.quantization,
@@ -268,7 +268,7 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
                     });
                 }
 
-                const ModelGraph::AddedNode added = committed.AddNode(
+                const AddedNode added = committed.AddNode(
                         replacement.op_type,
                         replacement.decoder_layer_index,
                         std::move(new_inputs),
@@ -298,11 +298,11 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
             new_inputs.push_back(*mapped_input);
         }
 
-        std::vector<ModelGraph::NodeOutputDesc> output_descs;
+        std::vector<NodeOutputDesc> output_descs;
         output_descs.reserve(view->outputs.size());
         for (GraphValueId old_output: view->outputs) {
             const GraphValue& old_value = graph_.GetValue(old_output);
-            output_descs.push_back(ModelGraph::NodeOutputDesc{
+            output_descs.push_back(NodeOutputDesc{
                     .spec = old_value.spec,
                     .payload = old_value.payload,
                     .quantization = old_value.quantization,
@@ -310,7 +310,7 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
             });
         }
 
-        const ModelGraph::AddedNode added = committed.AddNode(
+        const AddedNode added = committed.AddNode(
                 view->op_type,
                 view->decoder_layer_index,
                 std::move(new_inputs),

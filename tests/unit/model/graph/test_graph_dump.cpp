@@ -1,6 +1,6 @@
 #include "aethermind/model/graph/graph_dump.h"
 
-#include "aethermind/model/graph/model_graph_builder.h"
+#include "aethermind/model/graph/graph_builder.h"
 
 #include <gtest/gtest.h>
 
@@ -86,11 +86,11 @@ TEST(GraphDump, DumpsMinimalGraph) {
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
                                                 WeightBinding{.role = WeightRole::kTokenEmbedding},
                                                 "tok_embeddings.weight");
-    const ModelGraph::AddedNode embedding = graph.AddNode(
+    const AddedNode embedding = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 4, 8}),
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 4, 8}),
                                         .payload = ActivationValue{},
                                         .debug_name = "hidden"}},
             EmbeddingParams{},

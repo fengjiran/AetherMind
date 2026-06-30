@@ -20,19 +20,19 @@ ModelGraph BuildGraph() {
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                 WeightBinding{.role = WeightRole::kTokenEmbedding},
                                                 "embed.weight");
-    const ModelGraph::AddedNode embed_a = graph.AddNode(
+    const AddedNode embed_a = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_a, weight},
-            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                         .payload = ActivationValue{},
                                         .debug_name = "hidden_a"}},
             EmbeddingParams{});
-    const ModelGraph::AddedNode embed_b = graph.AddNode(
+    const AddedNode embed_b = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_b, weight},
-            {ModelGraph::NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                         .payload = ActivationValue{},
                                         .debug_name = "hidden_b"}},
             EmbeddingParams{});

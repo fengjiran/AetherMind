@@ -1,7 +1,8 @@
 #ifndef AETHERMIND_MODEL_GRAPH_GRAPH_DUMP_H
 #define AETHERMIND_MODEL_GRAPH_GRAPH_DUMP_H
 
-#include "aethermind/model/graph/model_graph.h"
+#include "aethermind/model/graph/graph.h"
+#include "aethermind/model/graph/graph_types.h"
 
 #include <iosfwd>
 

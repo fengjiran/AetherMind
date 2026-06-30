@@ -121,29 +121,6 @@ std::optional<ParameterSlot> ExpectedWeightSlotForOp(OpType op_type) noexcept {
     }
 }
 
-// ParameterSlot implied by a TransformerWeightRole.
-ParameterSlot SlotForTransformerRole(TransformerWeightRole role) noexcept {
-    switch (role) {
-        case TransformerWeightRole::kTokenEmbedding:
-            return ParameterSlot::kEmbeddingTable;
-        case TransformerWeightRole::kInputNorm:
-        case TransformerWeightRole::kPostAttentionNorm:
-        case TransformerWeightRole::kFinalNorm:
-            return ParameterSlot::kScale;
-        case TransformerWeightRole::kAttentionQ:
-        case TransformerWeightRole::kAttentionK:
-        case TransformerWeightRole::kAttentionV:
-        case TransformerWeightRole::kAttentionO:
-        case TransformerWeightRole::kMlpGate:
-        case TransformerWeightRole::kMlpUp:
-        case TransformerWeightRole::kMlpDown:
-        case TransformerWeightRole::kLmHead:
-        case TransformerWeightRole::kMoERouter:
-            return ParameterSlot::kKernel;
-    }
-    return ParameterSlot::kKernel;
-}
-
 // Whether a TransformerWeightRole is per-layer (requires decoder_layer_index)
 // or model-level (forbids it).
 bool TransformerRoleRequiresLayer(TransformerWeightRole role) noexcept {

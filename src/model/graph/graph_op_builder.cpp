@@ -53,7 +53,7 @@ GraphValueId AddLinear(ModelGraph& graph,
             {.dtype = weight_dtype,
              .shape = {out_features_symbol, in_features_symbol}},
             binding,
-            debug_name + ".weight");
+            debug_name);
 
     input_shape.back() = out_features_symbol;
     const auto node = graph.AddNode(
@@ -88,7 +88,7 @@ GraphValueId AddRmsNorm(ModelGraph& graph,
             {.dtype = weight_dtype,
              .shape = {in_features_symbol}},
             binding,
-            debug_name + ".weight");
+            debug_name);
 
     const auto node = graph.AddNode(
             OpType::kRmsNorm,
@@ -121,7 +121,7 @@ GraphValueId AddEmbedding(ModelGraph& graph,
              .shape = {ShapeSymbol::CreateFromValue(vocab_size),
                        ShapeSymbol::CreateFromValue(embedding_dim)}},
             binding,
-            debug_name + ".weight");
+            debug_name);
 
     const auto node = graph.AddNode(
             OpType::kEmbedding,
@@ -158,7 +158,7 @@ RoPEOutputs AddRoPE(ModelGraph& graph,
     return RoPEOutputs{.q = node.outputs[0], .k = node.outputs[1]};
 }
 
-KVCacheUpdateOutputs AddKVCacheUpdate(ModelGraph& graph,
+KVCachePair AddKVCacheUpdate(ModelGraph& graph,
                                       std::optional<uint32_t> decoder_layer_index,
                                       GraphValueId k_new,
                                       GraphValueId v_new,
@@ -182,7 +182,7 @@ KVCacheUpdateOutputs AddKVCacheUpdate(ModelGraph& graph,
             std::move(debug_name));
     AM_CHECK(node.outputs.size() == 2U,
              "Expected KV cache update helper to create exactly two outputs");
-    return KVCacheUpdateOutputs{.k = node.outputs[0], .v = node.outputs[1]};
+    return KVCachePair{.k = node.outputs[0], .v = node.outputs[1]};
 }
 
 GraphValueId AddAttention(ModelGraph& graph,

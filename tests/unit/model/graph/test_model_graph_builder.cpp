@@ -586,18 +586,18 @@ TEST(ModelGraphBuilder, AssignsPyTorchStyleWeightDebugNames) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
 
-    EXPECT_EQ(graph->GetValue(nodes[0].inputs[1]).debug_name, "embed_tokens.weight");
-    EXPECT_EQ(graph->GetValue(nodes[1].inputs[1]).debug_name, "layers.0.input_layernorm.weight");
-    EXPECT_EQ(graph->GetValue(nodes[2].inputs[1]).debug_name, "layers.0.self_attn.q_proj.weight");
-    EXPECT_EQ(graph->GetValue(nodes[3].inputs[1]).debug_name, "layers.0.self_attn.k_proj.weight");
-    EXPECT_EQ(graph->GetValue(nodes[4].inputs[1]).debug_name, "layers.0.self_attn.v_proj.weight");
-    EXPECT_EQ(graph->GetValue(nodes[8].inputs[1]).debug_name, "layers.0.self_attn.o_proj.weight");
-    EXPECT_EQ(graph->GetValue(nodes[10].inputs[1]).debug_name, "layers.0.post_attention_layernorm.weight");
-    EXPECT_EQ(graph->GetValue(nodes[11].inputs[1]).debug_name, "layers.0.mlp.gate_proj.weight");
-    EXPECT_EQ(graph->GetValue(nodes[12].inputs[1]).debug_name, "layers.0.mlp.up_proj.weight");
-    EXPECT_EQ(graph->GetValue(nodes[14].inputs[1]).debug_name, "layers.0.mlp.down_proj.weight");
-    EXPECT_EQ(graph->GetValue(nodes[16].inputs[1]).debug_name, "norm.weight");
-    EXPECT_EQ(graph->GetValue(nodes[17].inputs[1]).debug_name, "lm_head.weight");
+    EXPECT_EQ(graph->GetValue(nodes[0].inputs[1]).debug_name, "embed_tokens");
+    EXPECT_EQ(graph->GetValue(nodes[1].inputs[1]).debug_name, "layers.0.input_layernorm");
+    EXPECT_EQ(graph->GetValue(nodes[2].inputs[1]).debug_name, "layers.0.self_attn.q_proj");
+    EXPECT_EQ(graph->GetValue(nodes[3].inputs[1]).debug_name, "layers.0.self_attn.k_proj");
+    EXPECT_EQ(graph->GetValue(nodes[4].inputs[1]).debug_name, "layers.0.self_attn.v_proj");
+    EXPECT_EQ(graph->GetValue(nodes[8].inputs[1]).debug_name, "layers.0.self_attn.o_proj");
+    EXPECT_EQ(graph->GetValue(nodes[10].inputs[1]).debug_name, "layers.0.post_attention_layernorm");
+    EXPECT_EQ(graph->GetValue(nodes[11].inputs[1]).debug_name, "layers.0.mlp.gate_proj");
+    EXPECT_EQ(graph->GetValue(nodes[12].inputs[1]).debug_name, "layers.0.mlp.up_proj");
+    EXPECT_EQ(graph->GetValue(nodes[14].inputs[1]).debug_name, "layers.0.mlp.down_proj");
+    EXPECT_EQ(graph->GetValue(nodes[16].inputs[1]).debug_name, "norm");
+    EXPECT_EQ(graph->GetValue(nodes[17].inputs[1]).debug_name, "lm_head");
 }
 
 }// namespace

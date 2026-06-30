@@ -9,16 +9,6 @@
 
 namespace aethermind {
 
-struct RoPEOutputs {
-    GraphValueId q{};
-    GraphValueId k{};
-};
-
-struct KVCacheUpdateOutputs {
-    GraphValueId k{};
-    GraphValueId v{};
-};
-
 /// Registers an external input tensor and returns its value id.
 AM_NODISCARD GraphValueId AddInput(ModelGraph& graph,
                                    TensorSpec spec,
@@ -79,7 +69,7 @@ AM_NODISCARD RoPEOutputs AddRoPE(ModelGraph& graph,
 
 /// Builds a KVCacheUpdate node appending new K/V tensors to the persistent
 /// cache, returning the updated cache state values.
-AM_NODISCARD KVCacheUpdateOutputs AddKVCacheUpdate(ModelGraph& graph,
+AM_NODISCARD KVCachePair AddKVCacheUpdate(ModelGraph& graph,
                                                    std::optional<uint32_t> decoder_layer_index,
                                                    GraphValueId k_new,
                                                    GraphValueId v_new,

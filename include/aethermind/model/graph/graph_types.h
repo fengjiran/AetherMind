@@ -60,6 +60,32 @@ struct WeightBinding {
                                         const WeightBinding& rhs) noexcept = default;
 };
 
+/// ParameterSlot implied by a TransformerWeightRole. This is the single source
+/// of truth for the slot↔role mapping; WeightBinding construction and
+/// Validate() both rely on it, so callers building a TransformerWeightRole
+/// binding need not (and should not) specify the slot separately.
+constexpr ParameterSlot SlotForTransformerRole(TransformerWeightRole role) noexcept {
+    switch (role) {
+        case TransformerWeightRole::kTokenEmbedding:
+            return ParameterSlot::kEmbeddingTable;
+        case TransformerWeightRole::kInputNorm:
+        case TransformerWeightRole::kPostAttentionNorm:
+        case TransformerWeightRole::kFinalNorm:
+            return ParameterSlot::kScale;
+        case TransformerWeightRole::kAttentionQ:
+        case TransformerWeightRole::kAttentionK:
+        case TransformerWeightRole::kAttentionV:
+        case TransformerWeightRole::kAttentionO:
+        case TransformerWeightRole::kMlpGate:
+        case TransformerWeightRole::kMlpUp:
+        case TransformerWeightRole::kMlpDown:
+        case TransformerWeightRole::kLmHead:
+        case TransformerWeightRole::kMoERouter:
+            return ParameterSlot::kKernel;
+    }
+    return ParameterSlot::kKernel;
+}
+
 /// Compile-time constant binding: carries a small inline payload or resolves
 /// a named external constant. Large constants should be referenced by `name`
 /// rather than copied into `inline_data`.
@@ -204,6 +230,20 @@ struct NodeOutputDesc {
 struct AddedNode {
     GraphNodeId node{};
     std::vector<GraphValueId> outputs{};
+};
+
+/// Result of AddRoPE: the rotated q and k value ids.
+struct RoPEOutputs {
+    GraphValueId q{};
+    GraphValueId k{};
+};
+
+/// A pair of (key, value) value ids representing a KV cache slot. Returned by
+/// AddKVCacheUpdate and threaded through transformer builders as the flowing
+/// cache state (attention block input/output, cross-layer cache).
+struct KVCachePair {
+    GraphValueId k{};
+    GraphValueId v{};
 };
 
 /// Input port binding: a named value that enters the graph from outside.

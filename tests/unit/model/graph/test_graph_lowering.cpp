@@ -54,7 +54,7 @@ StateBinding VStateBinding(uint32_t decoder_layer_index = 0U) {
 
 GraphValueId AddActivation(ModelGraph& graph, TensorSpec spec, std::string name) {
     const GraphValueId tokens = graph.AddInput(TokenSpec(), name + "_tokens");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     return graph.AddNode(
                         OpType::kEmbedding,
                         std::nullopt,
@@ -132,7 +132,7 @@ ResolvedModelWeights MakeWeights(const HfModelConfig& config) {
 TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     const AddedNode embedding = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
@@ -167,14 +167,14 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
 TEST(GraphLowering, PreservesTopologicalOrderAndRmsNormParams) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
-    const GraphValueId embedding_weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId embedding_weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     const AddedNode embedding = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, embedding_weight},
             {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
             EmbeddingParams{});
-    const GraphValueId norm_weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kFinalNorm});
+    const GraphValueId norm_weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kFinalNorm});
     const AddedNode rms_norm = graph.AddNode(
             OpType::kRmsNorm,
             std::nullopt,
@@ -328,7 +328,7 @@ TEST(GraphLowering, ResolveStateAliasesReturnsEmptyRuntimePlanForGraphWithoutSta
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
-                                                WeightBinding{.role = WeightRole::kTokenEmbedding});
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     (void) graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
@@ -349,7 +349,7 @@ TEST(GraphLowering, StateAliasPlanForStepReturnsEmptySpanForUnknownStep) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
-                                                WeightBinding{.role = WeightRole::kTokenEmbedding});
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     (void) graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,

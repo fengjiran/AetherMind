@@ -14,10 +14,13 @@ TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
 }
 
 GraphValueId AddWeightValue(ModelGraph& graph,
-                            TensorSpec spec,
-                            WeightRole role,
-                            std::optional<uint32_t> layer = std::nullopt) {
-    return graph.AddWeight(std::move(spec), WeightBinding{.decoder_layer_index = layer, .role = role});
+                             TensorSpec spec,
+                             ParameterSlot slot,
+                             TransformerWeightRole role,
+                             std::optional<uint32_t> layer = std::nullopt) {
+    return graph.AddWeight(std::move(spec), WeightBinding{.slot = slot,
+                                                          .decoder_layer_index = layer,
+                                                          .semantic_role = role});
 }
 
 TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
@@ -28,10 +31,10 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     const TensorSpec logits_spec = Spec(DataType::Float32(), {2, 16});
     const TensorSpec cache_spec = Spec(DataType::Float32(), {2, 8, 2});
     const GraphValueId tokens = graph.AddInput(token_spec, "tokens");
-    const GraphValueId embedding_weight = AddWeightValue(graph, Spec(DataType::Float32(), {16, 4}), WeightRole::kTokenEmbedding);
-    const GraphValueId norm_weight = AddWeightValue(graph, Spec(DataType::Float32(), {4}), WeightRole::kInputNorm, 0);
-    const GraphValueId linear_weight = AddWeightValue(graph, Spec(DataType::Float32(), {4, 4}), WeightRole::kAttentionQ, 0);
-    const GraphValueId lm_head_weight = AddWeightValue(graph, Spec(DataType::Float32(), {16, 8}), WeightRole::kLmHead);
+    const GraphValueId embedding_weight = AddWeightValue(graph, Spec(DataType::Float32(), {16, 4}), ParameterSlot::kEmbeddingTable, TransformerWeightRole::kTokenEmbedding);
+    const GraphValueId norm_weight = AddWeightValue(graph, Spec(DataType::Float32(), {4}), ParameterSlot::kScale, TransformerWeightRole::kInputNorm, 0);
+    const GraphValueId linear_weight = AddWeightValue(graph, Spec(DataType::Float32(), {4, 4}), ParameterSlot::kKernel, TransformerWeightRole::kAttentionQ, 0);
+    const GraphValueId lm_head_weight = AddWeightValue(graph, Spec(DataType::Float32(), {16, 8}), ParameterSlot::kKernel, TransformerWeightRole::kLmHead);
     const GraphValueId k_cache = graph.AddState(cache_spec,
                                                 KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
                                                 "k_cache");

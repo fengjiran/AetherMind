@@ -17,7 +17,8 @@ ModelGraph BuildTwoEmbeddingGraph() {
     const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
     const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     const AddedNode embed_a = graph.AddNode(
             OpType::kEmbedding,
@@ -249,7 +250,8 @@ ModelGraph BuildGraphWithState() {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     const GraphValueId k_cache = graph.AddState(
             Spec(DataType::Float32(), {2, 4, 8}),
@@ -293,7 +295,8 @@ TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     const AddedNode embed = graph.AddNode(
             OpType::kEmbedding,
@@ -361,7 +364,8 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     auto inline_data = std::make_shared<const std::vector<std::byte>>(
             std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}});

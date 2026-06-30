@@ -59,15 +59,15 @@ public:
 
     /// Registers a model weight tensor and returns its value id.
     AM_NODISCARD GraphValueId AddWeight(TensorSpec spec, WeightBinding binding,
-                                        std::string debug_name = "");
+                                        std::string debug_name = {});
 
     /// Registers a compile-time constant value and returns its value id.
     AM_NODISCARD GraphValueId AddConstant(TensorSpec spec, ConstantBinding binding,
-                                          std::string debug_name = "");
+                                          std::string debug_name = {});
 
     /// Registers a persistent state tensor and returns its value id.
     AM_NODISCARD GraphValueId AddState(TensorSpec spec, StateBinding binding,
-                                       std::string debug_name = "");
+                                       std::string debug_name = {});
 
     /// Adds an operator node with the given input and output declarations.
     ///
@@ -81,7 +81,7 @@ public:
                                    std::vector<NodeOutputDesc> outputs_desc,
                                    const OpParams& op_params = std::monostate{},
                                    ModelGraphAttrs attrs = {},
-                                   std::string debug_name = "");
+                                   std::string debug_name = {});
 
     AM_NODISCARD const GraphNode& GetNode(GraphNodeId id) const {
         AM_CHECK(id.index < nodes_.size(), "Invalid GraphNodeId");

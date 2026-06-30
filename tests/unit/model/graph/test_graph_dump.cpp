@@ -84,7 +84,8 @@ TEST(GraphDump, DumpsMinimalGraph) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 4}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
-                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "tok_embeddings.weight");
     const AddedNode embedding = graph.AddNode(
             OpType::kEmbedding,
@@ -105,7 +106,7 @@ TEST(GraphDump, DumpsMinimalGraph) {
     EXPECT_NE(dump.find("ModelGraph"), std::string::npos);
     EXPECT_NE(dump.find("op=Embedding"), std::string::npos);
     EXPECT_NE(dump.find("kind=weight"), std::string::npos);
-    EXPECT_NE(dump.find("role=TokenEmbedding"), std::string::npos);
+    EXPECT_NE(dump.find("slot=EmbeddingTable, semantic=TokenEmbedding"), std::string::npos);
     EXPECT_NE(dump.find("EmbeddingParams{}"), std::string::npos);
     EXPECT_NE(dump.find("debug_name=embedding"), std::string::npos);
 }
@@ -135,7 +136,8 @@ TEST(GraphDump, DumpsQuantizationWhenSet) {
     ModelGraph graph;
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.role = WeightRole::kTokenEmbedding},
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
             "embed.weight");
     graph.SetQuantization(weight, QuantizationSpec{
                                           .kind = QuantizationKind::kInt4,
@@ -178,7 +180,34 @@ TEST(GraphDump, DumpsLlamaDenseGraph) {
     EXPECT_NE(dump.find("op=RmsNorm"), std::string::npos);
     EXPECT_NE(dump.find("op=KVCacheUpdate"), std::string::npos);
     EXPECT_NE(dump.find("state(kv_cache"), std::string::npos);
+    EXPECT_NE(dump.find("slot=Kernel, semantic=AttentionQ"), std::string::npos);
+    EXPECT_NE(dump.find("slot=Scale, semantic=InputNorm"), std::string::npos);
     EXPECT_NE(dump.find("RoPEParams{"), std::string::npos);
+}
+
+TEST(GraphDump, DumpsParameterSlotsAndSemanticRoles) {
+    EXPECT_STREQ(ToString(ParameterSlot::kKernel), "Kernel");
+    EXPECT_STREQ(ToString(ParameterSlot::kBias), "Bias");
+    EXPECT_STREQ(ToString(ParameterSlot::kScale), "Scale");
+    EXPECT_STREQ(ToString(ParameterSlot::kShift), "Shift");
+    EXPECT_STREQ(ToString(ParameterSlot::kEmbeddingTable), "EmbeddingTable");
+
+    EXPECT_STREQ(ToString(TransformerWeightRole::kTokenEmbedding), "TokenEmbedding");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kInputNorm), "InputNorm");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kAttentionQ), "AttentionQ");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kAttentionK), "AttentionK");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kAttentionV), "AttentionV");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kAttentionO), "AttentionO");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kMlpGate), "MlpGate");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kMlpUp), "MlpUp");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kMlpDown), "MlpDown");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kPostAttentionNorm), "PostAttentionNorm");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kFinalNorm), "FinalNorm");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kLmHead), "LmHead");
+    EXPECT_STREQ(ToString(TransformerWeightRole::kMoERouter), "MoERouter");
+
+    EXPECT_STREQ(ToString(ModelSemanticRole{}), "<none>");
+    EXPECT_STREQ(ToString(ModelSemanticRole{TransformerWeightRole::kLmHead}), "LmHead");
 }
 
 TEST(GraphDump, DumpsEveryOpParamsVariant) {

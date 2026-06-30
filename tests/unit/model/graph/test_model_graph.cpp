@@ -49,7 +49,7 @@ StateBinding VStateBinding(uint32_t decoder_layer_index = 0U) {
 
 GraphValueId AddEmbeddingOutput(ModelGraph& graph, std::string input_name) {
     const GraphValueId tokens = graph.AddInput(TokenSpec(), std::move(input_name));
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     return graph.AddNode(
                         OpType::kEmbedding,
                         std::nullopt,
@@ -62,7 +62,7 @@ GraphValueId AddEmbeddingOutput(ModelGraph& graph, std::string input_name) {
 ModelGraph BuildValidEmbeddingGraph() {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     const AddedNode embedding = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
@@ -77,7 +77,7 @@ TEST(ModelGraph, PublicApiCreatesInputsWeightsNodesAndOutputs) {
     ModelGraph graph;
 
     const GraphValueId input = graph.AddInput(TokenSpec(), "token_ids");
-    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kInputNorm});
+    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm});
     const AddedNode node = graph.AddNode(
             OpType::kRmsNorm,
             0U,
@@ -114,7 +114,7 @@ TEST(ModelGraph, ValidateAcceptsValidGraph) {
 TEST(ModelGraph, OpParamsRoundTripThroughAddNode) {
     ModelGraph graph;
     const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
-    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kInputNorm});
+    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm});
 
     const AddedNode node = graph.AddNode(
             OpType::kRmsNorm,
@@ -131,7 +131,7 @@ TEST(ModelGraph, OpParamsRoundTripThroughAddNode) {
 TEST(ModelGraph, ValidateRejectsMissingOpParams) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     [[maybe_unused]] const AddedNode node = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
@@ -147,7 +147,7 @@ TEST(ModelGraph, ValidateRejectsMissingOpParams) {
 TEST(ModelGraph, ValidateRejectsWrongOpParamsForOpType) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     [[maybe_unused]] const AddedNode node = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
@@ -164,7 +164,7 @@ TEST(ModelGraph, ValidateRejectsWrongOpParamsForOpType) {
 TEST(ModelGraph, ValidateRejectsInvalidRmsNormEps) {
     ModelGraph graph;
     const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
-    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kInputNorm});
+    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm});
     [[maybe_unused]] const AddedNode node = graph.AddNode(
             OpType::kRmsNorm,
             0U,
@@ -272,7 +272,8 @@ TEST(ModelGraph, SetQuantizationAttachesSchemeToValue) {
     ModelGraph graph;
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.role = WeightRole::kTokenEmbedding},
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
             "embed.weight");
 
     graph.SetQuantization(weight, QuantizationSpec{
@@ -292,7 +293,7 @@ TEST(ModelGraph, ValidateAcceptsExternalConstantValue) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "tokens");
     const GraphValueId weight = graph.AddWeight(
-            WeightSpec(), WeightBinding{.role = WeightRole::kTokenEmbedding});
+            WeightSpec(), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
     const GraphValueId bias = graph.AddConstant(
             Spec(DataType::Float32(), {8}),
             ConstantBinding{.name = "embed.bias"});
@@ -327,7 +328,8 @@ TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "tokens");
     const GraphValueId embedding_weight = graph.AddWeight(
             Spec(DataType::Float32(), {32, 8}),
-            WeightBinding{.role = WeightRole::kTokenEmbedding});
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding});
     const GraphValueId hidden = graph.AddNode(
                                              OpType::kEmbedding,
                                              std::nullopt,
@@ -335,8 +337,8 @@ TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
                                              {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
                                              EmbeddingParams{})
                                         .outputs.front();
-    const GraphValueId k_weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kAttentionK});
-    const GraphValueId v_weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kAttentionV});
+    const GraphValueId k_weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kKernel, .semantic_role = TransformerWeightRole::kAttentionK});
+    const GraphValueId v_weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kKernel, .semantic_role = TransformerWeightRole::kAttentionV});
     const GraphValueId k = graph.AddNode(
                                         OpType::kLinear,
                                         std::nullopt,
@@ -587,7 +589,7 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithActivationOutput) {
 TEST(ModelGraph, ValidateRejectsNodeOutputReusingInputValue) {
     std::vector<GraphValue> values = {
             GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .debug_name = ""},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.role = WeightRole::kTokenEmbedding}}, .spec = Spec(DataType::Float32(), {32, 8}), .debug_name = ""},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding}}, .spec = Spec(DataType::Float32(), {32, 8}), .debug_name = ""},
             GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = ""},
             GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{1}, .debug_name = ""},
             GraphValue{.payload = StateValue{.binding = KStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{2}, .debug_name = ""},
@@ -642,7 +644,7 @@ TEST(ModelGraph, ValidateRejectsSchemaArityMismatch) {
 TEST(ModelGraph, ValidateRejectsOutputOnExternalValue) {
     ModelGraph graph;
     const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
-    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.role = WeightRole::kInputNorm});
+    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm});
     const AddedNode node = graph.AddNode(
             OpType::kRmsNorm,
             0U,

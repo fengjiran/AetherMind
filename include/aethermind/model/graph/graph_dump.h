@@ -8,9 +8,16 @@
 
 namespace aethermind {
 
-/// Returns a stable string label for a WeightRole enumerator.
-/// If the enumerator is not handled, returns "UnknownWeightRole".
-AM_NODISCARD const char* ToString(WeightRole role) noexcept;
+/// Returns a stable string label for a ParameterSlot enumerator.
+/// If the enumerator is not handled, returns "UnknownParameterSlot".
+AM_NODISCARD const char* ToString(ParameterSlot slot) noexcept;
+
+/// Returns a stable string label for a TransformerWeightRole enumerator.
+/// If the enumerator is not handled, returns "UnknownTransformerWeightRole".
+AM_NODISCARD const char* ToString(TransformerWeightRole role) noexcept;
+
+/// Returns a stable string label for an optional model semantic role.
+AM_NODISCARD const char* ToString(const ModelSemanticRole& role) noexcept;
 
 /// Returns a stable string label for a KVCacheSlot enumerator.
 /// If the enumerator is not handled, returns "UnknownKVCacheSlot".

@@ -423,7 +423,9 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphValidatesPreservedOutputSpecs) {
     const TensorSpec embedding_weight{.dtype = DataType::Float32(), .shape = StaticShape({32, 8})};
     const TensorSpec hidden{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})};
     const GraphValueId token_ids = graph.AddInput(tokens, "token_ids");
-    const GraphValueId weight = graph.AddWeight(embedding_weight, WeightBinding{.role = WeightRole::kTokenEmbedding});
+    const GraphValueId weight = graph.AddWeight(embedding_weight,
+                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding});
     const AddedNode embedding = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,

@@ -18,7 +18,8 @@ ModelGraph BuildGraph() {
     const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
     const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.role = WeightRole::kTokenEmbedding},
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     const AddedNode embed_a = graph.AddNode(
             OpType::kEmbedding,

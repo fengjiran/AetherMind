@@ -34,7 +34,8 @@ void DumpTensorSpec(const TensorSpec& spec, std::ostream& os) {
 }
 
 void DumpWeightBinding(const WeightBinding& binding, std::ostream& os) {
-    os << "role=" << ToString(binding.role);
+    os << "slot=" << ToString(binding.slot)
+       << ", semantic=" << ToString(binding.semantic_role);
     if (binding.decoder_layer_index.has_value()) {
         os << ", layer=" << *binding.decoder_layer_index;
     } else {
@@ -111,34 +112,64 @@ void DumpEmptyParams(std::string_view name, std::ostream& os) {
 
 }// namespace
 
-const char* ToString(WeightRole role) noexcept {
-    switch (role) {
-        case WeightRole::kTokenEmbedding:
-            return "TokenEmbedding";
-        case WeightRole::kAttentionQ:
-            return "AttentionQ";
-        case WeightRole::kAttentionK:
-            return "AttentionK";
-        case WeightRole::kAttentionV:
-            return "AttentionV";
-        case WeightRole::kAttentionO:
-            return "AttentionO";
-        case WeightRole::kMlpGate:
-            return "MlpGate";
-        case WeightRole::kMlpUp:
-            return "MlpUp";
-        case WeightRole::kMlpDown:
-            return "MlpDown";
-        case WeightRole::kInputNorm:
-            return "InputNorm";
-        case WeightRole::kPostAttentionNorm:
-            return "PostAttentionNorm";
-        case WeightRole::kFinalNorm:
-            return "FinalNorm";
-        case WeightRole::kLmHead:
-            return "LmHead";
+const char* ToString(ParameterSlot slot) noexcept {
+    switch (slot) {
+        case ParameterSlot::kKernel:
+            return "Kernel";
+        case ParameterSlot::kBias:
+            return "Bias";
+        case ParameterSlot::kScale:
+            return "Scale";
+        case ParameterSlot::kShift:
+            return "Shift";
+        case ParameterSlot::kEmbeddingTable:
+            return "EmbeddingTable";
     }
-    return "UnknownWeightRole";
+    return "UnknownParameterSlot";
+}
+
+const char* ToString(TransformerWeightRole role) noexcept {
+    switch (role) {
+        case TransformerWeightRole::kTokenEmbedding:
+            return "TokenEmbedding";
+        case TransformerWeightRole::kInputNorm:
+            return "InputNorm";
+        case TransformerWeightRole::kAttentionQ:
+            return "AttentionQ";
+        case TransformerWeightRole::kAttentionK:
+            return "AttentionK";
+        case TransformerWeightRole::kAttentionV:
+            return "AttentionV";
+        case TransformerWeightRole::kAttentionO:
+            return "AttentionO";
+        case TransformerWeightRole::kMlpGate:
+            return "MlpGate";
+        case TransformerWeightRole::kMlpUp:
+            return "MlpUp";
+        case TransformerWeightRole::kMlpDown:
+            return "MlpDown";
+        case TransformerWeightRole::kPostAttentionNorm:
+            return "PostAttentionNorm";
+        case TransformerWeightRole::kFinalNorm:
+            return "FinalNorm";
+        case TransformerWeightRole::kLmHead:
+            return "LmHead";
+        case TransformerWeightRole::kMoERouter:
+            return "MoERouter";
+    }
+    return "UnknownTransformerWeightRole";
+}
+
+const char* ToString(const ModelSemanticRole& role) noexcept {
+    auto visitor = overloaded{
+            [](const std::monostate&) noexcept {
+                return "<none>";
+            },
+            [](TransformerWeightRole transformer_role) noexcept {
+                return ToString(transformer_role);
+            },
+    };
+    return std::visit(visitor, role);
 }
 
 const char* ToString(KVCacheSlot slot) noexcept {

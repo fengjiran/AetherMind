@@ -23,9 +23,19 @@
 
 namespace aethermind {
 
-/// Identifies the logical role of a weight tensor in a model architecture.
-enum class WeightRole : uint8_t {
-    kTokenEmbedding,
+/// Describes the parameter's functional position in a low-level operator.
+enum class ParameterSlot : uint8_t {
+    kKernel,
+    kBias,
+    kScale,
+    kShift,
+    kEmbeddingTable,
+};
+
+/// Describes the parameter's semantic role in Transformer-family models.
+enum class TransformerWeightRole : uint8_t {
+    kTokenEmbedding = 0,
+    kInputNorm,
     kAttentionQ,
     kAttentionK,
     kAttentionV,
@@ -33,15 +43,21 @@ enum class WeightRole : uint8_t {
     kMlpGate,
     kMlpUp,
     kMlpDown,
-    kInputNorm,
     kPostAttentionNorm,
     kFinalNorm,
     kLmHead,
+    kMoERouter,
 };
 
+using ModelSemanticRole = std::variant<std::monostate, TransformerWeightRole>;
+
 struct WeightBinding {
+    ParameterSlot slot = ParameterSlot::kKernel;
     std::optional<uint32_t> decoder_layer_index{};
-    WeightRole role{};
+    ModelSemanticRole semantic_role{};
+
+    AM_NODISCARD friend bool operator==(const WeightBinding& lhs,
+                                        const WeightBinding& rhs) noexcept = default;
 };
 
 /// Compile-time constant binding: carries a small inline payload or resolves
@@ -202,6 +218,6 @@ struct GraphOutput {
     std::string name{};
 };
 
-} // namespace aethermind
+}// namespace aethermind
 
 #endif

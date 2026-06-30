@@ -149,9 +149,8 @@ GraphValueId AddLlamaLinear(LlamaBuildContext& ctx,
                             std::string debug_name) {
     const GraphValueId weight_value = ctx.graph.AddWeight(
             WeightTensorSpec(weight),
-            WeightBinding{.logical_name = debug_name + ".weight",
-                          .decoder_layer_index = layer,
-                          .role = role});
+            WeightBinding{.decoder_layer_index = layer, .role = role},
+            debug_name + ".weight");
     return AddLinear(ctx.graph, layer, input, weight_value, std::move(output), std::move(debug_name));
 }
 
@@ -163,9 +162,8 @@ GraphValueId AddLlamaRmsNorm(LlamaBuildContext& ctx,
                              std::string debug_name) {
     const GraphValueId weight_value = ctx.graph.AddWeight(
             WeightTensorSpec(weight),
-            WeightBinding{.logical_name = debug_name + ".weight",
-                          .decoder_layer_index = layer,
-                          .role = role});
+            WeightBinding{.decoder_layer_index = layer, .role = role},
+            debug_name + ".weight");
     return AddRmsNorm(ctx.graph,
                       layer,
                       input,
@@ -178,8 +176,8 @@ GraphValueId AddLlamaRmsNorm(LlamaBuildContext& ctx,
 GraphValueId AddLlamaEmbedding(LlamaBuildContext& ctx, GraphValueId input, std::string debug_name) {
     const GraphValueId weight_value = ctx.graph.AddWeight(
             WeightTensorSpec(ctx.weights.embed_tokens),
-            WeightBinding{.logical_name = debug_name + ".weight",
-                          .role = WeightRole::kTokenEmbedding});
+            WeightBinding{.role = WeightRole::kTokenEmbedding},
+            debug_name + ".weight");
     return AddEmbedding(ctx.graph, input, weight_value, ctx.specs.hidden, std::move(debug_name));
 }
 

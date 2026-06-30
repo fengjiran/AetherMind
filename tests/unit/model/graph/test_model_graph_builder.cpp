@@ -562,7 +562,7 @@ TEST(ModelGraphBuilder, TracesMlpResidualDataflow) {
     EXPECT_EQ(mlp_add.inputs[1], mlp_down.outputs[0]);
 }
 
-TEST(ModelGraphBuilder, AssignsPyTorchStyleLogicalNamesToWeights) {
+TEST(ModelGraphBuilder, AssignsPyTorchStyleWeightDebugNames) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
@@ -570,18 +570,18 @@ TEST(ModelGraphBuilder, AssignsPyTorchStyleLogicalNamesToWeights) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
 
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[0], 1).logical_name, "embed_tokens.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[1], 1).logical_name, "layers.0.input_layernorm.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[2], 1).logical_name, "layers.0.self_attn.q_proj.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[3], 1).logical_name, "layers.0.self_attn.k_proj.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[4], 1).logical_name, "layers.0.self_attn.v_proj.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[8], 1).logical_name, "layers.0.self_attn.o_proj.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[10], 1).logical_name, "layers.0.post_attention_layernorm.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[11], 1).logical_name, "layers.0.mlp.gate_proj.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[12], 1).logical_name, "layers.0.mlp.up_proj.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[14], 1).logical_name, "layers.0.mlp.down_proj.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[16], 1).logical_name, "norm.weight");
-    EXPECT_EQ(WeightBindingAt(*graph, nodes[17], 1).logical_name, "lm_head.weight");
+    EXPECT_EQ(graph->GetValue(nodes[0].inputs[1]).debug_name, "embed_tokens.weight");
+    EXPECT_EQ(graph->GetValue(nodes[1].inputs[1]).debug_name, "layers.0.input_layernorm.weight");
+    EXPECT_EQ(graph->GetValue(nodes[2].inputs[1]).debug_name, "layers.0.self_attn.q_proj.weight");
+    EXPECT_EQ(graph->GetValue(nodes[3].inputs[1]).debug_name, "layers.0.self_attn.k_proj.weight");
+    EXPECT_EQ(graph->GetValue(nodes[4].inputs[1]).debug_name, "layers.0.self_attn.v_proj.weight");
+    EXPECT_EQ(graph->GetValue(nodes[8].inputs[1]).debug_name, "layers.0.self_attn.o_proj.weight");
+    EXPECT_EQ(graph->GetValue(nodes[10].inputs[1]).debug_name, "layers.0.post_attention_layernorm.weight");
+    EXPECT_EQ(graph->GetValue(nodes[11].inputs[1]).debug_name, "layers.0.mlp.gate_proj.weight");
+    EXPECT_EQ(graph->GetValue(nodes[12].inputs[1]).debug_name, "layers.0.mlp.up_proj.weight");
+    EXPECT_EQ(graph->GetValue(nodes[14].inputs[1]).debug_name, "layers.0.mlp.down_proj.weight");
+    EXPECT_EQ(graph->GetValue(nodes[16].inputs[1]).debug_name, "norm.weight");
+    EXPECT_EQ(graph->GetValue(nodes[17].inputs[1]).debug_name, "lm_head.weight");
 }
 
 }// namespace

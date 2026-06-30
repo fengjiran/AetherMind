@@ -223,7 +223,7 @@ GraphValueId ModelGraph::AddInput(TensorSpec spec, std::string name) {
 
 GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::string debug_name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back(GraphValue{.payload = WeightValue{.binding = binding},
+    values_.push_back(GraphValue{.payload = WeightValue{.binding = std::move(binding)},
                                  .spec = std::move(spec),
                                  .debug_name = std::move(debug_name)});
     return value_id;

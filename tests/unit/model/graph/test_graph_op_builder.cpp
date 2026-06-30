@@ -13,16 +13,6 @@ TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
     return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
 }
 
-GraphValueId AddWeightValue(ModelGraph& graph,
-                             TensorSpec spec,
-                             ParameterSlot slot,
-                             TransformerWeightRole role,
-                             std::optional<uint32_t> layer = std::nullopt) {
-    return graph.AddWeight(std::move(spec), WeightBinding{.slot = slot,
-                                                          .decoder_layer_index = layer,
-                                                          .semantic_role = role});
-}
-
 TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ModelGraph graph;
     const TensorSpec token_spec = Spec(DataType::Int(64), {2});
@@ -31,8 +21,6 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     const TensorSpec logits_spec = Spec(DataType::Float32(), {2, 16});
     const TensorSpec cache_spec = Spec(DataType::Float32(), {2, 8, 2});
     const GraphValueId tokens = graph.AddInput(token_spec, "tokens");
-    const GraphValueId embedding_weight = AddWeightValue(graph, Spec(DataType::Float32(), {16, 4}), ParameterSlot::kEmbeddingTable, TransformerWeightRole::kTokenEmbedding);
-    const GraphValueId norm_weight = AddWeightValue(graph, Spec(DataType::Float32(), {4}), ParameterSlot::kScale, TransformerWeightRole::kInputNorm, 0);
     const GraphValueId k_cache = graph.AddState(cache_spec,
                                                  KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
                                                  "k_cache");
@@ -40,8 +28,22 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
                                                 KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kValue},
                                                 "v_cache");
 
-    const GraphValueId hidden = AddEmbedding(graph, tokens, embedding_weight, hidden_spec, "embedding");
-    const GraphValueId normed = AddRmsNorm(graph, 0, hidden, norm_weight, hidden_spec, 1.0e-5F, "norm");
+    const GraphValueId hidden = AddEmbedding(graph,
+                                             tokens,
+                                             16,
+                                             4,
+                                             DataType::Float32(),
+                                             WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                           .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                             "embedding");
+    const GraphValueId normed = AddRmsNorm(graph,
+                                           hidden,
+                                           DataType::Float32(),
+                                           WeightBinding{.slot = ParameterSlot::kScale,
+                                                         .decoder_layer_index = 0,
+                                                         .semantic_role = TransformerWeightRole::kInputNorm},
+                                           1.0e-5F,
+                                           "norm");
     const GraphValueId q = AddLinear(graph,
                                      normed,
                                      4,
@@ -74,6 +76,32 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
 
     const Status validation = graph.Validate();
     ASSERT_TRUE(validation.ok()) << validation.ToString();
+
+    ASSERT_TRUE(graph.GetValue(hidden).producer.has_value());
+    const GraphNode& embedding_node = graph.GetNode(*graph.GetValue(hidden).producer);
+    ASSERT_EQ(embedding_node.inputs.size(), 2U);
+    const GraphValue& embedding_weight = graph.GetValue(embedding_node.inputs[1]);
+    EXPECT_EQ(embedding_weight.spec, Spec(DataType::Float32(), {16, 4}));
+    EXPECT_EQ(embedding_weight.debug_name, "embedding.weight");
+    ASSERT_TRUE(std::holds_alternative<WeightValue>(embedding_weight.payload));
+    const WeightBinding& embedding_binding = std::get<WeightValue>(embedding_weight.payload).binding;
+    EXPECT_EQ(embedding_binding.slot, ParameterSlot::kEmbeddingTable);
+    EXPECT_FALSE(embedding_binding.decoder_layer_index.has_value());
+    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(embedding_binding.semantic_role));
+    EXPECT_EQ(std::get<TransformerWeightRole>(embedding_binding.semantic_role), TransformerWeightRole::kTokenEmbedding);
+
+    ASSERT_TRUE(graph.GetValue(normed).producer.has_value());
+    const GraphNode& norm_node = graph.GetNode(*graph.GetValue(normed).producer);
+    ASSERT_EQ(norm_node.inputs.size(), 2U);
+    const GraphValue& norm_weight = graph.GetValue(norm_node.inputs[1]);
+    EXPECT_EQ(norm_weight.spec, Spec(DataType::Float32(), {4}));
+    EXPECT_EQ(norm_weight.debug_name, "norm.weight");
+    ASSERT_TRUE(std::holds_alternative<WeightValue>(norm_weight.payload));
+    const WeightBinding& norm_binding = std::get<WeightValue>(norm_weight.payload).binding;
+    EXPECT_EQ(norm_binding.slot, ParameterSlot::kScale);
+    EXPECT_EQ(norm_binding.decoder_layer_index, std::optional<uint32_t>{0});
+    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(norm_binding.semantic_role));
+    EXPECT_EQ(std::get<TransformerWeightRole>(norm_binding.semantic_role), TransformerWeightRole::kInputNorm);
 
     ASSERT_TRUE(graph.GetValue(q).producer.has_value());
     const GraphNode& q_node = graph.GetNode(*graph.GetValue(q).producer);
@@ -128,6 +156,54 @@ TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
     const GraphValue& weight = graph.GetValue(linear_node.inputs[1]);
     EXPECT_EQ(weight.spec, Spec(DataType::Float32(), {8, 4}));
     EXPECT_EQ(weight.debug_name, "linear.weight");
+}
+
+TEST(GraphOpBuilder, AddLinearDerivesSpecsForHigherRankInput) {
+    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{},
+                                                       .spec = Spec(DataType::Float32(), {2, 3, 4}),
+                                                       .debug_name = "input"}});
+    const GraphValueId input{.index = 0};
+
+    const GraphValueId output = AddLinear(graph,
+                                          input,
+                                          8,
+                                          DataType::Float32(),
+                                          WeightBinding{.slot = ParameterSlot::kKernel,
+                                                        .semantic_role = TransformerWeightRole::kLmHead},
+                                          "linear");
+
+    EXPECT_EQ(graph.GetValue(output).spec, Spec(DataType::Float32(), {2, 3, 8}));
+
+    ASSERT_TRUE(graph.GetValue(output).producer.has_value());
+    const GraphNode& linear_node = graph.GetNode(*graph.GetValue(output).producer);
+    ASSERT_EQ(linear_node.inputs.size(), 2U);
+    const GraphValue& weight = graph.GetValue(linear_node.inputs[1]);
+    EXPECT_EQ(weight.spec, Spec(DataType::Float32(), {8, 4}));
+    EXPECT_EQ(weight.debug_name, "linear.weight");
+}
+
+TEST(GraphOpBuilder, AddRmsNormDerivesSpecsForHigherRankInput) {
+    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{},
+                                                       .spec = Spec(DataType::Float32(), {2, 3, 4}),
+                                                       .debug_name = "input"}});
+    const GraphValueId input{.index = 0};
+
+    const GraphValueId output = AddRmsNorm(graph,
+                                           input,
+                                           DataType::Float32(),
+                                           WeightBinding{.slot = ParameterSlot::kScale,
+                                                         .semantic_role = TransformerWeightRole::kFinalNorm},
+                                           1.0e-5F,
+                                           "norm");
+
+    EXPECT_EQ(graph.GetValue(output).spec, Spec(DataType::Float32(), {2, 3, 4}));
+
+    ASSERT_TRUE(graph.GetValue(output).producer.has_value());
+    const GraphNode& norm_node = graph.GetNode(*graph.GetValue(output).producer);
+    ASSERT_EQ(norm_node.inputs.size(), 2U);
+    const GraphValue& weight = graph.GetValue(norm_node.inputs[1]);
+    EXPECT_EQ(weight.spec, Spec(DataType::Float32(), {4}));
+    EXPECT_EQ(weight.debug_name, "norm.weight");
 }
 
 TEST(GraphOpBuilder, AddsMultiOutputOperatorHelpers) {

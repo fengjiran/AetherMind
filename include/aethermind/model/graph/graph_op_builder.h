@@ -34,8 +34,8 @@ AM_NODISCARD GraphValueId AddState(ModelGraph& graph,
 /// internally. The weight is created with shape [out_features, in_features]
 /// and dtype `weight_dtype`, bound via `binding`, and named
 /// `debug_name + ".weight"`. The node's decoder_layer_index is sourced from
-/// `binding.decoder_layer_index`. In Phase 1, input rank must be 1 or 2 with
-/// a static, positive last dimension.
+/// `binding.decoder_layer_index`. Input must be ranked with a static, positive
+/// last dimension.
 AM_NODISCARD GraphValueId AddLinear(ModelGraph& graph,
                                     GraphValueId input,
                                     int64_t out_features,
@@ -43,22 +43,26 @@ AM_NODISCARD GraphValueId AddLinear(ModelGraph& graph,
                                     WeightBinding binding,
                                     std::string debug_name = {});
 
-/// Builds an RmsNorm node consuming a pre-registered weight value. The caller
-/// is responsible for registering `weight` (typically via ModelGraph::AddWeight).
+/// Builds an RmsNorm node and registers its scale weight tensor internally.
+/// The weight is created with shape [in_features] and dtype `weight_dtype`,
+/// bound via `binding`, and named `debug_name + ".weight"`. The node's
+/// decoder_layer_index is sourced from `binding.decoder_layer_index`.
 AM_NODISCARD GraphValueId AddRmsNorm(ModelGraph& graph,
-                                     std::optional<uint32_t> decoder_layer_index,
                                      GraphValueId input,
-                                     GraphValueId weight,
-                                     TensorSpec output_spec,
+                                     DataType weight_dtype,
+                                     WeightBinding binding,
                                      float eps,
                                      std::string debug_name = {});
 
-/// Builds an Embedding lookup node consuming a pre-registered weight value.
-/// The caller is responsible for registering `weight`.
+/// Builds an Embedding lookup node and registers its embedding table internally.
+/// The weight is created with shape [vocab_size, embedding_dim] and dtype
+/// `weight_dtype`, bound via `binding`, and named `debug_name + ".weight"`.
 AM_NODISCARD GraphValueId AddEmbedding(ModelGraph& graph,
                                        GraphValueId token_ids,
-                                       GraphValueId weight,
-                                       TensorSpec output_spec,
+                                       int64_t vocab_size,
+                                       int64_t embedding_dim,
+                                       DataType weight_dtype,
+                                       WeightBinding binding,
                                        std::string debug_name = {});
 
 /// Builds a RoPE node applying rotary position embeddings to Q and K,

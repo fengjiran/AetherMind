@@ -667,9 +667,9 @@ TEST(ModelGraph, ValidateRejectsWeightSlotMismatchWithOperator) {
             WeightBinding{.slot = ParameterSlot::kScale,
                           .decoder_layer_index = 0U,
                           .semantic_role = TransformerWeightRole::kInputNorm});
-    graph.AddNode(OpType::kLinear, 0U, {input, weight},
-                  {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
-                  LinearParams{});
+    (void) graph.AddNode(OpType::kLinear, 0U, {input, weight},
+                         {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                         LinearParams{});
 
     const Status status = graph.Validate();
 

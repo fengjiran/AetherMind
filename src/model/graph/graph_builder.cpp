@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <utility>
 #include <variant>
 
 namespace aethermind {
@@ -19,11 +18,6 @@ constexpr size_t kAttentionBlockNodeCount = 9;
 // MLP block: post_attention_layernorm, gate_proj, up_proj, act, down_proj,
 // mlp_add.
 constexpr size_t kMlpBlockNodeCount = 6;
-
-TensorSpec WeightTensorSpec(const RawWeightView& weight) {
-    return TensorSpec{.dtype = weight.dtype,
-                      .shape = SymbolicShape(IntArrayView(weight.shape))};
-}
 
 TensorSpec ActivationTensorSpec(DataType dtype, ShapeSymbol seq_len, int64_t feature_dim) {
     return TensorSpec{.dtype = dtype,
@@ -151,35 +145,6 @@ RoPEParams MakeRoPEParams(const HfModelConfig& config, int64_t head_dim) {
     };
 }
 
-GraphValueId AddLlamaRmsNorm(LlamaBuildContext& ctx,
-                              std::optional<uint32_t> layer,
-                              GraphValueId input,
-                              const RawWeightView& weight,
-                              TransformerWeightRole role,
-                              std::string debug_name) {
-    const GraphValueId weight_value = ctx.graph.AddWeight(
-            WeightTensorSpec(weight),
-            MakeTransformerWeightBinding(ParameterSlot::kScale, layer, role),
-            debug_name + ".weight");
-    return AddRmsNorm(ctx.graph,
-                      layer,
-                      input,
-                      weight_value,
-                      ctx.specs.hidden,
-                      ctx.params.rms_norm_eps,
-                      std::move(debug_name));
-}
-
-GraphValueId AddLlamaEmbedding(LlamaBuildContext& ctx, GraphValueId input, std::string debug_name) {
-    const GraphValueId weight_value = ctx.graph.AddWeight(
-            WeightTensorSpec(ctx.weights.embed_tokens),
-            MakeTransformerWeightBinding(ParameterSlot::kEmbeddingTable,
-                                         std::nullopt,
-                                         TransformerWeightRole::kTokenEmbedding),
-            debug_name + ".weight");
-    return AddEmbedding(ctx.graph, input, weight_value, ctx.specs.hidden, std::move(debug_name));
-}
-
 QkvProjectionResult AddQkvProjections(LlamaBuildContext& ctx,
                                       uint32_t layer,
                                       GraphValueId input,
@@ -229,10 +194,13 @@ AttentionBlockResult BuildLlamaAttentionBlock(LlamaBuildContext& ctx,
                                               AttentionBlockInput input) {
     const size_t block_begin = ctx.graph.GetNodes().size();
 
-    const GraphValueId normed = AddLlamaRmsNorm(ctx, layer, input.hidden,
-                                                ctx.weights.layers[layer].norm.input_rmsnorm,
-                                                TransformerWeightRole::kInputNorm,
-                                                WeightDebugName(TransformerWeightRole::kInputNorm, layer));
+    const RawWeightView& input_norm_weight = ctx.weights.layers[layer].norm.input_rmsnorm;
+    const GraphValueId normed = AddRmsNorm(ctx.graph,
+                                           input.hidden,
+                                           input_norm_weight.dtype,
+                                           MakeTransformerWeightBinding(ParameterSlot::kScale, layer, TransformerWeightRole::kInputNorm),
+                                           ctx.params.rms_norm_eps,
+                                           WeightDebugName(TransformerWeightRole::kInputNorm, layer));
     const QkvProjectionResult qkv = AddQkvProjections(ctx, layer, normed,
                                                       ctx.weights.layers[layer].attn);
     const RoPEOutputs rope = AddRoPE(ctx.graph,
@@ -277,10 +245,13 @@ GraphValueId BuildLlamaMlpBlock(LlamaBuildContext& ctx,
                                 GraphValueId hidden) {
     const size_t block_begin = ctx.graph.GetNodes().size();
 
-    const GraphValueId normed = AddLlamaRmsNorm(ctx, layer, hidden,
-                                                ctx.weights.layers[layer].norm.post_attn_rmsnorm,
-                                                TransformerWeightRole::kPostAttentionNorm,
-                                                WeightDebugName(TransformerWeightRole::kPostAttentionNorm, layer));
+    const RawWeightView& post_attn_norm_weight = ctx.weights.layers[layer].norm.post_attn_rmsnorm;
+    const GraphValueId normed = AddRmsNorm(ctx.graph,
+                                           hidden,
+                                           post_attn_norm_weight.dtype,
+                                           MakeTransformerWeightBinding(ParameterSlot::kScale, layer, TransformerWeightRole::kPostAttentionNorm),
+                                           ctx.params.rms_norm_eps,
+                                           WeightDebugName(TransformerWeightRole::kPostAttentionNorm, layer));
     const RawWeightView& gate_weight = ctx.weights.layers[layer].mlp.gate_proj;
     const GraphValueId gate = AddLinear(ctx.graph,
                                         normed,
@@ -384,8 +355,15 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     const GraphValueId input_tokens = AddInput(ctx.graph, specs.token_ids, "token_ids");
     const GraphValueId position_ids = AddInput(ctx.graph, specs.position_ids, "position_ids");
 
-    GraphValueId hidden = AddLlamaEmbedding(ctx, input_tokens,
-                                            WeightDebugName(TransformerWeightRole::kTokenEmbedding, std::nullopt));
+    GraphValueId hidden = AddEmbedding(ctx.graph,
+                                       input_tokens,
+                                       ctx.weights.embed_tokens.shape[0],
+                                       ctx.weights.embed_tokens.shape[1],
+                                       ctx.weights.embed_tokens.dtype,
+                                       MakeTransformerWeightBinding(ParameterSlot::kEmbeddingTable,
+                                                                    std::nullopt,
+                                                                    TransformerWeightRole::kTokenEmbedding),
+                                       WeightDebugName(TransformerWeightRole::kTokenEmbedding, std::nullopt));
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
         const GraphValueId k_cache = AddState(ctx.graph,
@@ -403,9 +381,12 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                 KVCacheResult{.k = k_cache, .v = v_cache});
     }
 
-    const GraphValueId final_hidden = AddLlamaRmsNorm(ctx, std::nullopt, hidden,
-                                                      ctx.weights.final_norm, TransformerWeightRole::kFinalNorm,
-                                                      WeightDebugName(TransformerWeightRole::kFinalNorm, std::nullopt));
+    const GraphValueId final_hidden = AddRmsNorm(ctx.graph,
+                                                 hidden,
+                                                 ctx.weights.final_norm.dtype,
+                                                 MakeTransformerWeightBinding(ParameterSlot::kScale, std::nullopt, TransformerWeightRole::kFinalNorm),
+                                                 ctx.params.rms_norm_eps,
+                                                 WeightDebugName(TransformerWeightRole::kFinalNorm, std::nullopt));
     const RawWeightView& lm_head_weight = ctx.weights.lm_head.has_value()
                                                   ? *ctx.weights.lm_head
                                                   : ctx.weights.embed_tokens;

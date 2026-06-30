@@ -42,8 +42,7 @@ GraphValueId AddLinear(ModelGraph& graph,
     const TensorSpec input_spec = graph.GetValue(input).spec;
     AM_CHECK(input_spec.shape.IsRanked(), "Linear input shape must be ranked");
     std::vector<ShapeSymbol> input_shape = *input_spec.shape.shape();
-    AM_CHECK(!input_shape.empty() && input_shape.size() <= 2,
-             "Linear input rank must be 1 or 2 in Phase 1");
+    AM_CHECK(!input_shape.empty(), "Linear input rank must be at least 1");
 
     const ShapeSymbol in_features_symbol = input_shape.back();
     AM_CHECK(in_features_symbol.IsStatic(), "Linear input last dimension must be static");
@@ -71,17 +70,31 @@ GraphValueId AddLinear(ModelGraph& graph,
 }
 
 GraphValueId AddRmsNorm(ModelGraph& graph,
-                        std::optional<uint32_t> decoder_layer_index,
                         GraphValueId input,
-                        GraphValueId weight,
-                        TensorSpec output_spec,
+                        DataType weight_dtype,
+                        WeightBinding binding,
                         float eps,
                         std::string debug_name) {
+    const TensorSpec input_spec = graph.GetValue(input).spec;
+    AM_CHECK(input_spec.shape.IsRanked(), "RmsNorm input shape must be ranked");
+    const std::vector<ShapeSymbol> input_shape = *input_spec.shape.shape();
+    AM_CHECK(!input_shape.empty(), "RmsNorm input rank must be at least 1");
+
+    const ShapeSymbol in_features_symbol = input_shape.back();
+    AM_CHECK(in_features_symbol.IsStatic(), "RmsNorm input last dimension must be static");
+    AM_CHECK(in_features_symbol.GetStaticValue() > 0, "RmsNorm input last dimension must be positive");
+
+    const GraphValueId weight = graph.AddWeight(
+            {.dtype = weight_dtype,
+             .shape = {in_features_symbol}},
+            binding,
+            debug_name + ".weight");
+
     const auto node = graph.AddNode(
             OpType::kRmsNorm,
-            decoder_layer_index,
+            binding.decoder_layer_index,
             {input, weight},
-            {ActivationOutput(std::move(output_spec))},
+            {ActivationOutput(input_spec)},
             RmsNormParams{.eps = eps},
             {},
             std::move(debug_name));
@@ -90,14 +103,33 @@ GraphValueId AddRmsNorm(ModelGraph& graph,
 
 GraphValueId AddEmbedding(ModelGraph& graph,
                           GraphValueId token_ids,
-                          GraphValueId weight,
-                          TensorSpec output_spec,
+                          int64_t vocab_size,
+                          int64_t embedding_dim,
+                          DataType weight_dtype,
+                          WeightBinding binding,
                           std::string debug_name) {
+    AM_CHECK(vocab_size > 0, "Embedding vocab_size must be positive");
+    AM_CHECK(embedding_dim > 0, "Embedding embedding_dim must be positive");
+
+    const TensorSpec token_spec = graph.GetValue(token_ids).spec;
+    AM_CHECK(token_spec.shape.IsRanked(), "Embedding token_ids shape must be ranked");
+    std::vector<ShapeSymbol> output_shape = *token_spec.shape.shape();
+    output_shape.push_back(ShapeSymbol::CreateFromValue(embedding_dim));
+
+    const GraphValueId weight = graph.AddWeight(
+            {.dtype = weight_dtype,
+             .shape = {ShapeSymbol::CreateFromValue(vocab_size),
+                       ShapeSymbol::CreateFromValue(embedding_dim)}},
+            binding,
+            debug_name + ".weight");
+
     const auto node = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {token_ids, weight},
-            {ActivationOutput(std::move(output_spec))},
+            {ActivationOutput(
+                    {.dtype = weight_dtype,
+                     .shape = SymbolicShape(std::move(output_shape))})},
             EmbeddingParams{},
             {},
             std::move(debug_name));

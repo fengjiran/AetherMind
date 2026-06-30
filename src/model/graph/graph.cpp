@@ -106,6 +106,94 @@ Status RequireStateSlot(const StateBinding& binding, KVCacheSlot expected_slot, 
     return Status::Ok();
 }
 
+// Expected ParameterSlot for a weight consumed by op_type.
+// Returns nullopt for ops that don't have a weight-specific slot constraint.
+std::optional<ParameterSlot> ExpectedWeightSlotForOp(OpType op_type) noexcept {
+    switch (op_type) {
+        case OpType::kEmbedding:
+            return ParameterSlot::kEmbeddingTable;
+        case OpType::kRmsNorm:
+            return ParameterSlot::kScale;
+        case OpType::kLinear:
+            return ParameterSlot::kKernel;
+        default:
+            return std::nullopt;
+    }
+}
+
+// ParameterSlot implied by a TransformerWeightRole.
+ParameterSlot SlotForTransformerRole(TransformerWeightRole role) noexcept {
+    switch (role) {
+        case TransformerWeightRole::kTokenEmbedding:
+            return ParameterSlot::kEmbeddingTable;
+        case TransformerWeightRole::kInputNorm:
+        case TransformerWeightRole::kPostAttentionNorm:
+        case TransformerWeightRole::kFinalNorm:
+            return ParameterSlot::kScale;
+        case TransformerWeightRole::kAttentionQ:
+        case TransformerWeightRole::kAttentionK:
+        case TransformerWeightRole::kAttentionV:
+        case TransformerWeightRole::kAttentionO:
+        case TransformerWeightRole::kMlpGate:
+        case TransformerWeightRole::kMlpUp:
+        case TransformerWeightRole::kMlpDown:
+        case TransformerWeightRole::kLmHead:
+        case TransformerWeightRole::kMoERouter:
+            return ParameterSlot::kKernel;
+    }
+    return ParameterSlot::kKernel;
+}
+
+// Whether a TransformerWeightRole is per-layer (requires decoder_layer_index)
+// or model-level (forbids it).
+bool TransformerRoleRequiresLayer(TransformerWeightRole role) noexcept {
+    switch (role) {
+        case TransformerWeightRole::kTokenEmbedding:
+        case TransformerWeightRole::kFinalNorm:
+        case TransformerWeightRole::kLmHead:
+            return false;
+        case TransformerWeightRole::kInputNorm:
+        case TransformerWeightRole::kPostAttentionNorm:
+        case TransformerWeightRole::kAttentionQ:
+        case TransformerWeightRole::kAttentionK:
+        case TransformerWeightRole::kAttentionV:
+        case TransformerWeightRole::kAttentionO:
+        case TransformerWeightRole::kMlpGate:
+        case TransformerWeightRole::kMlpUp:
+        case TransformerWeightRole::kMlpDown:
+        case TransformerWeightRole::kMoERouter:
+            return true;
+    }
+    return true;
+}
+
+// Validates WeightBinding self-consistency: slot vs semantic_role pairing,
+// and semantic_role vs decoder_layer_index constraints. When semantic_role is
+// monostate (generic computation graph), only the slot field is trusted as-is.
+Status ValidateWeightBindingSelfConsistency(const WeightBinding& binding) {
+    if (std::holds_alternative<std::monostate>(binding.semantic_role)) {
+        return Status::Ok();
+    }
+
+    const auto role = std::get<TransformerWeightRole>(binding.semantic_role);
+    if (binding.slot != SlotForTransformerRole(role)) {
+        return Status::InvalidArgument(
+                "WeightBinding slot does not match the semantic_role");
+    }
+
+    const bool requires_layer = TransformerRoleRequiresLayer(role);
+    if (requires_layer && !binding.decoder_layer_index.has_value()) {
+        return Status::InvalidArgument(
+                "WeightBinding semantic_role requires decoder_layer_index");
+    }
+
+    if (!requires_layer && binding.decoder_layer_index.has_value()) {
+        return Status::InvalidArgument(
+                "WeightBinding semantic_role must not carry decoder_layer_index");
+    }
+    return Status::Ok();
+}
+
 bool CarriesProducerDependency(const GraphValue& value) {
     return std::holds_alternative<ActivationValue>(value.payload) ||
            (std::holds_alternative<StateValue>(value.payload) && value.producer.has_value());
@@ -357,6 +445,12 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
             if (value.producer.has_value()) {
                 return Status::InvalidArgument("Constant value must not have a producer");
             }
+        } else if (std::holds_alternative<WeightValue>(value.payload)) {
+            if (value.producer.has_value()) {
+                return Status::InvalidArgument("Weight value must not have a producer");
+            }
+            const WeightBinding& binding = std::get<WeightValue>(value.payload).binding;
+            AM_RETURN_IF_ERROR(ValidateWeightBindingSelfConsistency(binding));
         } else if (value.producer.has_value()) {
             return Status::InvalidArgument("External graph value must not have a producer");
         }
@@ -398,6 +492,15 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                                     schema.input_ports[input_index].kind)) {
                 return Status::InvalidArgument(
                         "Graph node input payload kind does not match operator schema");
+            }
+
+            if (schema.input_ports[input_index].kind == OperatorPortKind::kWeight) {
+                const WeightBinding& binding = std::get<WeightValue>(values_[input.index].payload).binding;
+                const std::optional<ParameterSlot> expected_slot = ExpectedWeightSlotForOp(node.op_type);
+                if (expected_slot.has_value() && binding.slot != *expected_slot) {
+                    return Status::InvalidArgument(
+                            "Weight slot does not match the consuming operator");
+                }
             }
         }
 

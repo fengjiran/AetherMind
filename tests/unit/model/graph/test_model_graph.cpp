@@ -337,8 +337,8 @@ TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
                                              {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
                                              EmbeddingParams{})
                                         .outputs.front();
-    const GraphValueId k_weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kKernel, .semantic_role = TransformerWeightRole::kAttentionK});
-    const GraphValueId v_weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kKernel, .semantic_role = TransformerWeightRole::kAttentionV});
+    const GraphValueId k_weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kKernel, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kAttentionK});
+    const GraphValueId v_weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kKernel, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kAttentionV});
     const GraphValueId k = graph.AddNode(
                                         OpType::kLinear,
                                         std::nullopt,
@@ -644,7 +644,7 @@ TEST(ModelGraph, ValidateRejectsSchemaArityMismatch) {
 TEST(ModelGraph, ValidateRejectsOutputOnExternalValue) {
     ModelGraph graph;
     const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
-    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm});
+    const GraphValueId weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm});
     const AddedNode node = graph.AddNode(
             OpType::kRmsNorm,
             0U,
@@ -656,6 +656,89 @@ TEST(ModelGraph, ValidateRejectsOutputOnExternalValue) {
 
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsWeightSlotMismatchWithOperator) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddInput(ActivationSpec(), "input");
+    // kLinear expects kKernel, but the weight is registered as kScale.
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {8, 8}),
+            WeightBinding{.slot = ParameterSlot::kScale,
+                          .decoder_layer_index = 0U,
+                          .semantic_role = TransformerWeightRole::kInputNorm});
+    graph.AddNode(OpType::kLinear, 0U, {input, weight},
+                  {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+                  LinearParams{});
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsWeightSlotMismatchWithSemanticRole) {
+    ModelGraph graph;
+    // kAttentionQ implies kKernel, but slot is kScale.
+    const GraphValueId weight = graph.AddWeight(
+            WeightSpec(),
+            WeightBinding{.slot = ParameterSlot::kScale,
+                          .decoder_layer_index = 0U,
+                          .semantic_role = TransformerWeightRole::kAttentionQ});
+    (void) weight;
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsPerLayerRoleWithoutDecoderLayerIndex) {
+    ModelGraph graph;
+    const GraphValueId weight = graph.AddWeight(
+            WeightSpec(),
+            WeightBinding{.slot = ParameterSlot::kKernel,
+                          .semantic_role = TransformerWeightRole::kAttentionQ});
+    (void) weight;
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateRejectsModelLevelRoleWithDecoderLayerIndex) {
+    ModelGraph graph;
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {32, 8}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .decoder_layer_index = 0U,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding});
+    (void) weight;
+
+    const Status status = graph.Validate();
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateAcceptsMonostateSemanticRoleForGenericGraph) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "tokens");
+    // Generic weight with no transformer semantics: slot is trusted as-is,
+    // and no role-vs-layer constraints apply.
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {32, 8}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable});
+    const AddedNode embedding = graph.AddNode(
+            OpType::kEmbedding, std::nullopt, {tokens, weight},
+            {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            EmbeddingParams{});
+    graph.MarkOutput(embedding.outputs[0], "hidden");
+
+    const Status status = graph.Validate();
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
 TEST(ModelGraph, BuildConsumerIndexMapsConsumers) {

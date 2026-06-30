@@ -108,8 +108,15 @@ public:
 
     explicit SymbolicShape(IntArrayView shape);
 
+    SymbolicShape(std::initializer_list<ShapeSymbol> shape) noexcept
+        : symbolic_shape_(shape) {}
+
     AM_NODISCARD bool IsRanked() const noexcept {
         return symbolic_shape_.has_value();
+    }
+
+    AM_NODISCARD bool IsUnranked() const noexcept {
+        return !symbolic_shape_.has_value();
     }
 
     /// Returns rank or nullopt in case of unranked shape.
@@ -131,12 +138,7 @@ public:
 
     AM_NODISCARD const ShapeSymbol& operator[](size_t i) const;
     AM_NODISCARD ShapeSymbol& operator[](size_t i);
-
     AM_NODISCARD std::optional<std::vector<bool>> GetSymbolicDims() const;
-
-    AM_NODISCARD bool IsUnranked() const noexcept {
-        return !symbolic_shape_.has_value();
-    }
 
     /// Checks whether the shape is fully static, i.e. both rank and every
     /// dimension are known.

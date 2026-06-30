@@ -1,6 +1,7 @@
 #include "aethermind/model/graph/graph_op_builder.h"
 
 #include <utility>
+#include <vector>
 
 namespace aethermind {
 namespace {
@@ -29,16 +30,40 @@ GraphValueId AddState(ModelGraph& graph,
 }
 
 GraphValueId AddLinear(ModelGraph& graph,
-                       std::optional<uint32_t> decoder_layer_index,
                        GraphValueId input,
-                       GraphValueId weight,
-                       TensorSpec output_spec,
+                       int64_t out_features,
+                       DataType weight_dtype,
+                       WeightBinding binding,
                        std::string debug_name) {
+    AM_CHECK(out_features > 0, "Linear out_features must be positive");
+
+    // Snapshot input specs BEFORE graph mutation — graph.AddWeight/AddNode may
+    // reallocate the graph's value storage and invalidate references into it.
+    const TensorSpec input_spec = graph.GetValue(input).spec;
+    AM_CHECK(input_spec.shape.IsRanked(), "Linear input shape must be ranked");
+    std::vector<ShapeSymbol> input_shape = *input_spec.shape.shape();
+    AM_CHECK(!input_shape.empty() && input_shape.size() <= 2,
+             "Linear input rank must be 1 or 2 in Phase 1");
+
+    const ShapeSymbol in_features_symbol = input_shape.back();
+    AM_CHECK(in_features_symbol.IsStatic(), "Linear input last dimension must be static");
+    AM_CHECK(in_features_symbol.GetStaticValue() > 0, "Linear input last dimension must be positive");
+
+    const ShapeSymbol out_features_symbol = ShapeSymbol::CreateFromValue(out_features);
+    const GraphValueId weight = graph.AddWeight(
+            {.dtype = weight_dtype,
+             .shape = {out_features_symbol, in_features_symbol}},
+            binding,
+            debug_name + ".weight");
+
+    input_shape.back() = out_features_symbol;
     const auto node = graph.AddNode(
             OpType::kLinear,
-            decoder_layer_index,
+            binding.decoder_layer_index,
             {input, weight},
-            {ActivationOutput(std::move(output_spec))},
+            {ActivationOutput(
+                    {.dtype = input_spec.dtype,
+                     .shape = SymbolicShape(std::move(input_shape))})},
             LinearParams{},
             {},
             std::move(debug_name));
@@ -117,9 +142,9 @@ KVCacheUpdateOutputs AddKVCacheUpdate(ModelGraph& graph,
             decoder_layer_index,
             {k_new, v_new, k_cache, v_cache},
             {NodeOutputDesc{.spec = std::move(k_output_spec),
-                                        .payload = StateValue{.binding = k_binding}},
+                            .payload = StateValue{.binding = k_binding}},
              NodeOutputDesc{.spec = std::move(v_output_spec),
-                                        .payload = StateValue{.binding = v_binding}}},
+                            .payload = StateValue{.binding = v_binding}}},
             KVCacheUpdateParams{},
             {},
             std::move(debug_name));

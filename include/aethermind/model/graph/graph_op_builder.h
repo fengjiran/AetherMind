@@ -30,13 +30,21 @@ AM_NODISCARD GraphValueId AddState(ModelGraph& graph,
                                    StateBinding binding,
                                    std::string debug_name = {});
 
+/// Builds a Linear (matmul, no bias) node and registers its weight tensor
+/// internally. The weight is created with shape [out_features, in_features]
+/// and dtype `weight_dtype`, bound via `binding`, and named
+/// `debug_name + ".weight"`. The node's decoder_layer_index is sourced from
+/// `binding.decoder_layer_index`. In Phase 1, input rank must be 1 or 2 with
+/// a static, positive last dimension.
 AM_NODISCARD GraphValueId AddLinear(ModelGraph& graph,
-                                    std::optional<uint32_t> decoder_layer_index,
                                     GraphValueId input,
-                                    GraphValueId weight,
-                                    TensorSpec output_spec,
+                                    int64_t out_features,
+                                    DataType weight_dtype,
+                                    WeightBinding binding,
                                     std::string debug_name = {});
 
+/// Builds an RmsNorm node consuming a pre-registered weight value. The caller
+/// is responsible for registering `weight` (typically via ModelGraph::AddWeight).
 AM_NODISCARD GraphValueId AddRmsNorm(ModelGraph& graph,
                                      std::optional<uint32_t> decoder_layer_index,
                                      GraphValueId input,
@@ -45,12 +53,16 @@ AM_NODISCARD GraphValueId AddRmsNorm(ModelGraph& graph,
                                      float eps,
                                      std::string debug_name = {});
 
+/// Builds an Embedding lookup node consuming a pre-registered weight value.
+/// The caller is responsible for registering `weight`.
 AM_NODISCARD GraphValueId AddEmbedding(ModelGraph& graph,
                                        GraphValueId token_ids,
                                        GraphValueId weight,
                                        TensorSpec output_spec,
                                        std::string debug_name = {});
 
+/// Builds a RoPE node applying rotary position embeddings to Q and K,
+/// returning both rotated outputs.
 AM_NODISCARD RoPEOutputs AddRoPE(ModelGraph& graph,
                                  std::optional<uint32_t> decoder_layer_index,
                                  GraphValueId q,
@@ -61,6 +73,8 @@ AM_NODISCARD RoPEOutputs AddRoPE(ModelGraph& graph,
                                  RoPEParams params,
                                  std::string debug_name = {});
 
+/// Builds a KVCacheUpdate node appending new K/V tensors to the persistent
+/// cache, returning the updated cache state values.
 AM_NODISCARD KVCacheUpdateOutputs AddKVCacheUpdate(ModelGraph& graph,
                                                    std::optional<uint32_t> decoder_layer_index,
                                                    GraphValueId k_new,
@@ -73,6 +87,7 @@ AM_NODISCARD KVCacheUpdateOutputs AddKVCacheUpdate(ModelGraph& graph,
                                                    StateBinding v_binding,
                                                    std::string debug_name = {});
 
+/// Builds an Attention node computing scaled dot-product attention over Q, K, V.
 AM_NODISCARD GraphValueId AddAttention(ModelGraph& graph,
                                        std::optional<uint32_t> decoder_layer_index,
                                        GraphValueId q,
@@ -82,6 +97,7 @@ AM_NODISCARD GraphValueId AddAttention(ModelGraph& graph,
                                        AttentionParams params,
                                        std::string debug_name = {});
 
+/// Builds an elementwise Add node, typically used for residual connections.
 AM_NODISCARD GraphValueId AddElementwiseAdd(ModelGraph& graph,
                                             std::optional<uint32_t> decoder_layer_index,
                                             GraphValueId lhs,
@@ -89,6 +105,7 @@ AM_NODISCARD GraphValueId AddElementwiseAdd(ModelGraph& graph,
                                             TensorSpec output_spec,
                                             std::string debug_name = {});
 
+/// Builds a SiLU-mul node computing silu(gate) * up.
 AM_NODISCARD GraphValueId AddSiluMul(ModelGraph& graph,
                                      std::optional<uint32_t> decoder_layer_index,
                                      GraphValueId gate,
@@ -96,6 +113,7 @@ AM_NODISCARD GraphValueId AddSiluMul(ModelGraph& graph,
                                      TensorSpec output_spec,
                                      std::string debug_name = {});
 
+/// Builds an Argmax node selecting the index of the maximum value along `axis`.
 AM_NODISCARD GraphValueId AddArgmax(ModelGraph& graph,
                                     std::optional<uint32_t> decoder_layer_index,
                                     GraphValueId input,

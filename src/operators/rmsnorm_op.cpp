@@ -57,7 +57,8 @@ StatusOr<InferenceResult> RmsNormOp::InferOutputShapes(std::span<const TensorSpe
     }
 
     if (!HasRank(inputs[0].shape, 2)) {
-        return Status::InvalidArgument("RmsNorm input shape must be rank-2 [seq_len, hidden]");
+        return Status::InvalidArgument(
+                "RmsNorm input shape must be rank-2 [seq_len, hidden]");
     }
 
     if (!HasRank(inputs[1].shape, 1)) {
@@ -65,7 +66,8 @@ StatusOr<InferenceResult> RmsNormOp::InferOutputShapes(std::span<const TensorSpe
     }
 
     if (!IsPositiveIfStatic(inputs[0].shape[1]) || !IsPositiveIfStatic(inputs[1].shape[0])) {
-        return Status::InvalidArgument("RmsNorm hidden size and weight length must be positive");
+        return Status::InvalidArgument(
+                "RmsNorm hidden size and weight length must be positive");
     }
 
     std::vector<ShapeConstraint> runtime_checks;

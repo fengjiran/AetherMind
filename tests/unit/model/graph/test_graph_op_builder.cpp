@@ -226,22 +226,55 @@ TEST(GraphOpBuilder, AddsMultiOutputOperatorHelpers) {
                                                 .max_position_embeddings = 128},
                                      "rope");
     const KVCachePair cache = AddKVCacheUpdate(graph,
-                                                        0,
-                                                        rope.k,
-                                                        v,
-                                                        k_cache,
-                                                        v_cache,
-                                                        cache_spec,
-                                                        cache_spec,
-                                                        k_binding,
-                                                        v_binding,
-                                                        "kv_cache_update");
+                                               0,
+                                               rope.k,
+                                               v,
+                                               k_cache,
+                                               v_cache,
+                                               "kv_cache_update");
 
     EXPECT_EQ(graph.GetNode(GraphNodeId{.index = 0}).outputs.size(), 2U);
     EXPECT_EQ(graph.GetNode(GraphNodeId{.index = 1}).outputs.size(), 2U);
     EXPECT_TRUE(std::holds_alternative<ActivationValue>(graph.GetValue(rope.q).payload));
     EXPECT_TRUE(std::holds_alternative<StateValue>(graph.GetValue(cache.k).payload));
     EXPECT_TRUE(std::holds_alternative<StateValue>(graph.GetValue(cache.v).payload));
+    EXPECT_EQ(graph.GetValue(cache.k).spec, cache_spec);
+    EXPECT_EQ(graph.GetValue(cache.v).spec, cache_spec);
+    const auto& k_state = std::get<StateValue>(graph.GetValue(cache.k).payload);
+    const auto& v_state = std::get<StateValue>(graph.GetValue(cache.v).payload);
+    EXPECT_EQ(std::get<KVCacheStateBinding>(k_state.binding).slot, KVCacheSlot::kKey);
+    EXPECT_EQ(std::get<KVCacheStateBinding>(v_state.binding).slot, KVCacheSlot::kValue);
+}
+
+TEST(GraphOpBuilder, KVCacheUpdateRequiresStateCacheInputs) {
+    ModelGraph graph;
+    const TensorSpec cache_spec = Spec(DataType::Float32(), {2, 4, 2});
+    const GraphValueId k_new = graph.AddInput(cache_spec, "k_new");
+    const GraphValueId v_new = graph.AddInput(cache_spec, "v_new");
+    const GraphValueId activation_cache = graph.AddInput(cache_spec, "activation_cache");
+    const GraphValueId k_cache = graph.AddState(cache_spec,
+                                                KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
+                                                "k_cache");
+    const GraphValueId v_cache = graph.AddState(cache_spec,
+                                                KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kValue},
+                                                "v_cache");
+
+    EXPECT_DEATH(static_cast<void>(AddKVCacheUpdate(graph,
+                                                    0,
+                                                    k_new,
+                                                    v_new,
+                                                    activation_cache,
+                                                    v_cache,
+                                                    "bad_k_cache")),
+                 "K cache input must be a StateValue");
+    EXPECT_DEATH(static_cast<void>(AddKVCacheUpdate(graph,
+                                                    0,
+                                                    k_new,
+                                                    v_new,
+                                                    k_cache,
+                                                    activation_cache,
+                                                    "bad_v_cache")),
+                 "V cache input must be a StateValue");
 }
 
 TEST(GraphOpBuilder, AddInputAndAddStateRegisterExternalValues) {

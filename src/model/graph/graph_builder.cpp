@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <variant>
 
 namespace aethermind {
 namespace {
@@ -21,15 +20,15 @@ constexpr size_t kMlpBlockNodeCount = 6;
 
 TensorSpec ActivationTensorSpec(DataType dtype, ShapeSymbol seq_len, int64_t feature_dim) {
     return TensorSpec{.dtype = dtype,
-                      .shape = SymbolicShape({seq_len, ShapeSymbol::CreateFromValue(feature_dim)})};
+                      .shape = {seq_len, ShapeSymbol::CreateFromValue(feature_dim)}};
 }
 
 TensorSpec KVCacheTensorSpec(DataType dtype, int64_t num_kv_heads,
                              ShapeSymbol cache_len, int64_t head_dim) {
     return TensorSpec{.dtype = dtype,
-                      .shape = SymbolicShape({ShapeSymbol::CreateFromValue(num_kv_heads),
-                                              cache_len,
-                                              ShapeSymbol::CreateFromValue(head_dim)})};
+                      .shape = {ShapeSymbol::CreateFromValue(num_kv_heads),
+                                cache_len,
+                                ShapeSymbol::CreateFromValue(head_dim)}};
 }
 
 std::string LayerPrefix(uint32_t layer) {
@@ -133,32 +132,6 @@ RoPEParams MakeRoPEParams(const HfModelConfig& config, int64_t head_dim) {
     };
 }
 
-KVCachePair AddLlamaKVCacheUpdate(LlamaBuildContext& ctx,
-                                    uint32_t layer,
-                                    GraphValueId k_new,
-                                    GraphValueId v_new,
-                                    KVCachePair cache_in) {
-    const GraphValue& k_cache_value = ctx.graph.GetValue(cache_in.k);
-    const auto* k_cache_state = std::get_if<StateValue>(&k_cache_value.payload);
-    AM_CHECK(k_cache_state != nullptr, "K cache input must be a StateValue");
-    const GraphValue& v_cache_value = ctx.graph.GetValue(cache_in.v);
-    const auto* v_cache_state = std::get_if<StateValue>(&v_cache_value.payload);
-    AM_CHECK(v_cache_state != nullptr, "V cache input must be a StateValue");
-
-    return AddKVCacheUpdate(
-            ctx.graph,
-            layer,
-            k_new,
-            v_new,
-            cache_in.k,
-            cache_in.v,
-            ctx.specs.kv_cache,
-            ctx.specs.kv_cache,
-            k_cache_state->binding,// NOLINT
-            v_cache_state->binding,// NOLINT
-            LayerPrefix(layer) + "self_attn.kv_cache_update");
-}
-
 AttentionBlockResult BuildLlamaAttentionBlock(LlamaBuildContext& ctx,
                                               uint32_t layer,
                                               AttentionBlockInput input) {
@@ -201,7 +174,13 @@ AttentionBlockResult BuildLlamaAttentionBlock(LlamaBuildContext& ctx,
                                      ctx.specs.kv_hidden,
                                      ctx.params.rope,
                                      LayerPrefix(layer) + "self_attn.rotary_emb");
-    const KVCachePair cache_out = AddLlamaKVCacheUpdate(ctx, layer, rope.k, v, input.cache);
+    const KVCachePair cache_out = AddKVCacheUpdate(ctx.graph,
+                                                   layer,
+                                                   rope.k,
+                                                   v,
+                                                   input.cache.k,
+                                                   input.cache.v,
+                                                   LayerPrefix(layer) + "self_attn.kv_cache_update");
     const GraphValueId attn = AddAttention(ctx.graph,
                                            layer,
                                            rope.q,

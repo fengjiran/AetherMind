@@ -70,16 +70,12 @@ AM_NODISCARD RoPEOutputs AddRoPE(ModelGraph& graph,
 /// Builds a KVCacheUpdate node appending new K/V tensors to the persistent
 /// cache, returning the updated cache state values.
 AM_NODISCARD KVCachePair AddKVCacheUpdate(ModelGraph& graph,
-                                                   std::optional<uint32_t> decoder_layer_index,
-                                                   GraphValueId k_new,
-                                                   GraphValueId v_new,
-                                                   GraphValueId k_cache,
-                                                   GraphValueId v_cache,
-                                                   TensorSpec k_output_spec,
-                                                   TensorSpec v_output_spec,
-                                                   StateBinding k_binding,
-                                                   StateBinding v_binding,
-                                                   std::string debug_name = {});
+                                          std::optional<uint32_t> decoder_layer_index,
+                                          GraphValueId k_new,
+                                          GraphValueId v_new,
+                                          GraphValueId k_cache,
+                                          GraphValueId v_cache,
+                                          std::string debug_name = {});
 
 /// Builds an Attention node computing scaled dot-product attention over Q, K, V.
 AM_NODISCARD GraphValueId AddAttention(ModelGraph& graph,

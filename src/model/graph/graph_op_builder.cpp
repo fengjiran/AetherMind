@@ -1,6 +1,7 @@
 #include "aethermind/model/graph/graph_op_builder.h"
 
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace aethermind {
@@ -159,16 +160,24 @@ RoPEOutputs AddRoPE(ModelGraph& graph,
 }
 
 KVCachePair AddKVCacheUpdate(ModelGraph& graph,
-                                      std::optional<uint32_t> decoder_layer_index,
-                                      GraphValueId k_new,
-                                      GraphValueId v_new,
-                                      GraphValueId k_cache,
-                                      GraphValueId v_cache,
-                                      TensorSpec k_output_spec,
-                                      TensorSpec v_output_spec,
-                                      StateBinding k_binding,
-                                      StateBinding v_binding,
-                                      std::string debug_name) {
+                             std::optional<uint32_t> decoder_layer_index,
+                             GraphValueId k_new,
+                             GraphValueId v_new,
+                             GraphValueId k_cache,
+                             GraphValueId v_cache,
+                             std::string debug_name) {
+    const GraphValue& k_cache_value = graph.GetValue(k_cache);
+    const auto* k_cache_state = std::get_if<StateValue>(&k_cache_value.payload);
+    AM_CHECK(k_cache_state != nullptr, "K cache input must be a StateValue");
+    TensorSpec k_output_spec = k_cache_value.spec;
+    StateBinding k_binding = k_cache_state->binding;// NOLINT
+
+    const GraphValue& v_cache_value = graph.GetValue(v_cache);
+    const auto* v_cache_state = std::get_if<StateValue>(&v_cache_value.payload);
+    AM_CHECK(v_cache_state != nullptr, "V cache input must be a StateValue");
+    TensorSpec v_output_spec = v_cache_value.spec;
+    StateBinding v_binding = v_cache_state->binding;// NOLINT
+
     const auto node = graph.AddNode(
             OpType::kKVCacheUpdate,
             decoder_layer_index,

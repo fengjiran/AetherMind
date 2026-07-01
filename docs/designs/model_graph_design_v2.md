@@ -884,11 +884,122 @@ Runtime ShapeEnv: batch = 1
 - pattern marking，例如 attention pattern、MLP pattern；
 - semantic fusion rewrite，例如把一组节点标记为可 fusion 的 high-level op。
 
-Semantic pass 默认采用第 10 节定义的 immutable snapshot + rewrite transaction 模式：pass 读取合法 graph snapshot 或 `GraphRewriteSession` virtual view，输出 `GraphMutation` 列表或调用 session 受控 API；`PassManager` 在 phase checkpoint 统一 commit 新的 `ModelGraph`。
+Semantic pass 默认采用第 10 节定义的 immutable snapshot + rewrite transaction 模式：pass 读取合法 graph snapshot 或 `GraphRewriteSession` virtual view，输出 `GraphMutation` 列表或调用 session 受控 API；`GraphPassManager` 在 phase checkpoint 统一 commit 新的 `ModelGraph`。
 
 注意：semantic fusion rewrite 可以发生在 `ModelGraph`，但具体 fused kernel、workspace、launch config 仍属于 lowering / backend plan。
 
-### 16.1 TVM / Relax 参考原则与非目标
+### 16.1 GraphPass 当前接口
+
+当前实现中，所有语义 pass 继承 `GraphPass`。Pass 不接收裸 `ModelGraph&`，而是通过 `GraphRewriteSession` 读取 virtual view 并记录 mutation：
+
+```cpp
+class GraphPass {
+public:
+    virtual ~GraphPass() = default;
+
+    virtual std::string_view Name() const noexcept = 0;
+
+    /// 所有图读取和 mutation 记录都通过 session 完成。
+    /// 返回非 OK Status 时，GraphPassManager 必须立即终止 pipeline。
+    AM_NODISCARD virtual Status Run(GraphRewriteSession& session) = 0;
+};
+```
+
+设计约束：
+
+1. `Run()` 必须返回 `Status`，不能降级为 `bool`；`bool` 无法区分“未修改”和“非法图结构”。
+2. Pass 在 transaction 内必须通过 `GetNodeView()` / `GetResolvedValue()` 读取逻辑图，不能直接读取原始 `ModelGraph::GetNode()` 后自行解释 inputs。
+3. Pass 是否产生 mutation 不应通过返回值表达；如未来需要，可在 `GraphRewriteSession` 上增加 `HasMutations()` 或 mutation 计数查询。
+
+### 16.2 GraphPassManager 与 checkpoint 策略
+
+`GraphPassManager` 按注册顺序运行 pass，并通过 `SetCheckpointEvery(N)` 控制 materialization 频率：
+
+```cpp
+class GraphPassManager {
+public:
+    GraphPassManager() = default;
+
+    GraphPassManager& Add(std::unique_ptr<GraphPass> pass);
+
+    // pass_count == 0: 禁用中间 checkpoint，只在 pipeline 末尾 commit。
+    // pass_count == 1: 每个 pass 后 commit。
+    // pass_count == N: 每 N 个 pass 后 commit。
+    GraphPassManager& SetCheckpointEvery(size_t pass_count) noexcept;
+
+    AM_NODISCARD StatusOr<ModelGraph> Run(const ModelGraph& graph) const;
+};
+```
+
+`SetCheckpointEvery(N)` 比 production/debug 二元开关更通用：
+
+| 场景 | 推荐配置 |
+|---|---|
+| 生产模式，最少重建 | `SetCheckpointEvery(0)` |
+| CI / 调试，每个 pass 后验证 | `SetCheckpointEvery(1)` |
+| 大 pipeline 折中排查 | `SetCheckpointEvery(N)` |
+
+`GraphPassManager::Run()` 必须遵守：
+
+1. 任一 pass 返回非 OK `Status` 时立即停止并向上传播错误；
+2. checkpoint 后的新图作为后续 pass group 的 immutable snapshot；
+3. pipeline 末尾避免对刚 checkpoint 过的图重复 commit；
+4. dump / instrumentation 只能增加可观测性，不能改变优化语义。
+
+### 16.3 PassContext 扩展方向
+
+当前代码尚未引入 `PassContext`。如需集中管理优化级别、feature flags 和 dump 行为，应将 `PassContext` 作为 `GraphPassManager` 的增量配置层，而不是替代现有 checkpoint 机制。
+
+建议目标形态：
+
+```cpp
+struct PassContext {
+    // 0: 禁用优化；1: 基础清理；2: 语义融合；3: 激进优化。
+    uint32_t opt_level = 2;
+
+    // 继承当前 GraphPassManager 的 checkpoint 语义。
+    // 0 表示仅 pipeline 末尾 commit。
+    size_t checkpoint_every = 0;
+
+    // Debug 与可观测性。第一版复用文本 DumpGraph；DOT/JSON 可后续扩展。
+    bool dump_after_checkpoint = false;
+    std::filesystem::path dump_dir{};
+
+    bool enable_qkv_fusion = true;
+    bool enable_swiglu_fusion = true;
+    bool enable_flash_attention_rewrite = true;
+    bool enable_fused_add_rms_norm = true;
+};
+```
+
+引入 `PassContext` 后可以将 pass 接口演进为：
+
+```cpp
+AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
+                                const PassContext& ctx) = 0;
+```
+
+兼容策略：`SetCheckpointEvery()` 可保留为便捷 API，内部写入 `ctx_.checkpoint_every`；所有错误仍通过 `Status` 传播，不能改成 `bool`。
+
+### 16.4 Pass 路线图
+
+当前仓库已有 pass framework 和 rewrite session，但 production optimization pass 仍按 use case 推进。推荐顺序如下。
+
+#### Phase 1：基础清理
+
+- **`ConstantFoldingPass`**：仅折叠纯函数、compile-time constant 输入的安全子图；不得折叠 runtime input、state 或外部权重依赖。
+- **`DeadCodeEliminationPass`**：以 graph outputs、stateful update 和必要 side-effect 节点为 roots，通过 `BuildConsumerIndex()` 或等价机制删除不可达节点；DCE 后必须 commit 生成一致新图。
+
+#### Phase 2：LLM 语义融合
+
+- **`QkvFusionPass`**：匹配同一输入上的 Q/K/V 三个 `Linear`，验证 layer、dtype、shape 与 downstream consumer 后提升为 QKV 语义节点。
+- **`SwiGLUFusionPass`**：匹配 `gate -> silu -> mul(up)`，验证 shape/dtype 与中间 activation consumer 后合并为 `SiluMul` 或更高阶语义节点。
+- **`FlashAttentionRewritePass`**：将 attention softmax 子图提升为 `FlashAttention` 语义节点；是否使用具体 fused kernel 由 lowering / backend plan 决定。
+- **`FusedAddRmsNormPass`**：融合 residual add 与后续 RMSNorm，必须明确 residual 输入顺序、aliasing 语义、weight binding 与 lowering fallback。
+
+每个真实 pass 至少需要覆盖匹配成功、匹配失败、安全跳过、非法输入四类测试；fusion 后的图必须通过 `Validate()`，并保持可 lowering。
+
+### 16.5 TVM / Relax 参考原则与非目标
 
 `ModelGraph` rewrite 设计可以参考 Apache TVM / Relax 的工程思想，但不能照搬 TVM 的对象模型或编译栈。AetherMind 的目标是借鉴成熟的 pass 组织与 pattern matching 思路，同时保持 ID-based、扁平、轻量的推理引擎 IR。
 
@@ -1194,6 +1305,7 @@ M3 验收：execution plan 构建不再依赖旧 `GraphNode.weights` / `GraphNod
 延迟项（不阻塞 M4 验收，留待后续 milestone 或 use case 驱动）：
 
 - session 内 consumers / use-list 临时索引：当前 `ReplaceValue` 已有环检测，但缺少高效 consumer 反查索引；按需实现；
+- `PassContext`：当前 `GraphPassManager` 已有 checkpoint 机制，统一 opt level、feature flags、dump 配置的 context 层按需引入；
 - 完整图 serialization：当前仅 `OpParams` 序列化完成，图级序列化留待 use case 出现；
 - round-trip validation：依赖完整图序列化；
 - pattern matcher：待 graph rewrite 用例驱动；
@@ -1225,7 +1337,10 @@ ID / GraphValue 类型
 5. 不把裸指针、backend handle、kernel config、lambda、opaque context 或 runtime resource 塞进 `OpParams`；
 6. 不依赖 `decoder_layer_index` 表达数据依赖；
 7. 不在 graph builder 中根据已有 kernel 覆盖率裁剪拓扑；
-8. 不因起步范围较小而过早实现完整 compiler framework。
+8. 不因起步范围较小而过早实现完整 compiler framework；
+9. 不把 `GraphPass::Run()` 的错误通道降级为 `bool`；pass 发现非法图结构必须返回 `Status`；
+10. 不在 semantic pass 中绕过 `GraphRewriteSession::GetNodeView()` 直接解释原始 `ModelGraph` inputs；
+11. 不让 debug dump / instrumentation 改变 pass 匹配结果或 checkpoint 之外的 materialization 语义。
 
 ## 21. 总结
 

@@ -5,13 +5,16 @@
 
 namespace aethermind {
 
+GraphPassManager::GraphPassManager(PassContext ctx) noexcept
+    : ctx_(ctx) {}
+
 GraphPassManager& GraphPassManager::Add(std::unique_ptr<GraphPass> pass) {
     passes_.push_back(std::move(pass));
     return *this;
 }
 
 GraphPassManager& GraphPassManager::SetCheckpointEvery(size_t pass_count) noexcept {
-    checkpoint_every_ = pass_count;
+    ctx_.checkpoint_every = pass_count;
     return *this;
 }
 
@@ -31,15 +34,14 @@ StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
         if (passes_[i] == nullptr) {
             return Status::InvalidArgument("GraphPassManager: pass cannot be null");
         }
-        AM_RETURN_IF_ERROR(passes_[i]->Run(*session));
+        AM_RETURN_IF_ERROR(passes_[i]->Run(*session, ctx_));
 
         // Materialize at phase checkpoints per SetCheckpointEvery(N).
         // Includes the last pass when it lands on a checkpoint boundary,
         // matching the immutable-snapshot + phase-checkpoint contract in
         // model_graph_design_v2.md §10. The trailing return below handles
         // any accumulated mutations from non-checkpoint passes.
-        const bool is_checkpoint = checkpoint_every_ != 0 && ((i + 1) % checkpoint_every_ == 0);
-        if (is_checkpoint) {
+        if (ctx_.checkpoint_every != 0 && ((i + 1) % ctx_.checkpoint_every == 0)) {
             StatusOr<ModelGraph> checkpoint = session->Commit();
             AM_RETURN_IF_ERROR(checkpoint.status());
             checkpointed = std::move(checkpoint).value();

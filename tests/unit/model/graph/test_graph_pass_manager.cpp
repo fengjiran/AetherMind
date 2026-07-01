@@ -18,24 +18,24 @@ ModelGraph BuildGraph() {
     const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
     const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     const AddedNode embed_a = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_a, weight},
             {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                        .payload = ActivationValue{},
-                                        .debug_name = "hidden_a"}},
+                            .payload = ActivationValue{},
+                            .debug_name = "hidden_a"}},
             EmbeddingParams{});
     const AddedNode embed_b = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_b, weight},
             {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                        .payload = ActivationValue{},
-                                        .debug_name = "hidden_b"}},
+                            .payload = ActivationValue{},
+                            .debug_name = "hidden_b"}},
             EmbeddingParams{});
     (void) embed_b;
     graph.MarkOutput(embed_a.outputs[0], "output");
@@ -48,7 +48,7 @@ public:
         return "RedirectFirstNodeInput";
     }
 
-    Status Run(GraphRewriteSession& session) override {
+    Status Run(GraphRewriteSession& session, const PassContext&) override {
         return session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1});
     }
 };
@@ -59,7 +59,7 @@ public:
         return "RemoveUnusedSecondNode";
     }
 
-    Status Run(GraphRewriteSession& session) override {
+    Status Run(GraphRewriteSession& session, const PassContext&) override {
         return session.RemoveNode(GraphNodeId{.index = 1});
     }
 };
@@ -70,7 +70,7 @@ public:
         return "Failing";
     }
 
-    Status Run(GraphRewriteSession&) override {
+    Status Run(GraphRewriteSession&, const PassContext&) override {
         return Status::InvalidArgument("intentional failure");
     }
 };
@@ -81,9 +81,43 @@ public:
         return "Noop";
     }
 
-    Status Run(GraphRewriteSession&) override {
+    Status Run(GraphRewriteSession&, const PassContext&) override {
         return Status::Ok();
     }
+};
+
+class ContextAwarePass final : public GraphPass {
+public:
+    AM_NODISCARD std::string_view Name() const noexcept override {
+        return "ContextAware";
+    }
+
+    Status Run(GraphRewriteSession& session, const PassContext& ctx) override {
+        if (!ctx.enable_qkv_fusion) {
+            return Status::Ok();
+        }
+        return session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1});
+    }
+};
+
+class ExpectCheckpointEveryPass final : public GraphPass {
+public:
+    explicit ExpectCheckpointEveryPass(size_t expected) noexcept
+        : expected_(expected) {}
+
+    AM_NODISCARD std::string_view Name() const noexcept override {
+        return "ExpectCheckpointEvery";
+    }
+
+    Status Run(GraphRewriteSession&, const PassContext& ctx) override {
+        if (ctx.checkpoint_every != expected_) {
+            return Status::InvalidArgument("unexpected checkpoint_every");
+        }
+        return Status::Ok();
+    }
+
+private:
+    size_t expected_ = 0;
 };
 
 TEST(GraphPassManager, EmptyPipelineReturnsValidGraph) {
@@ -200,6 +234,43 @@ TEST(GraphPassManager, CheckpointBoundaryNotOnLastPassStillCommitsTrailing) {
     EXPECT_EQ(result->GetNodes().size(), 1U);
     EXPECT_EQ(result->GetNode(GraphNodeId{.index = 0}).inputs[0], result->GetInputs()[1].value);
     EXPECT_TRUE(result->Validate().ok());
+}
+
+TEST(GraphPassManager, ConstructorUsesCheckpointFromContext) {
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline(PassContext{.checkpoint_every = 1});
+    pipeline.Add(std::make_unique<RedirectFirstNodeInputPass>())
+            .Add(std::make_unique<RemoveUnusedSecondNodePass>());
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->GetNodes().size(), 1U);
+    EXPECT_EQ(result->GetNode(GraphNodeId{.index = 0}).inputs[0], result->GetInputs()[1].value);
+    EXPECT_TRUE(result->Validate().ok());
+}
+
+TEST(GraphPassManager, SetCheckpointEveryOverridesContext) {
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline(PassContext{.checkpoint_every = 3});
+    pipeline.SetCheckpointEvery(1)
+            .Add(std::make_unique<ExpectCheckpointEveryPass>(1));
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+}
+
+TEST(GraphPassManager, PassReceivesContext) {
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline(PassContext{.enable_qkv_fusion = false});
+    pipeline.Add(std::make_unique<ContextAwarePass>());
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const GraphNode& first_node = result->GetNode(GraphNodeId{.index = 0});
+    EXPECT_EQ(first_node.inputs[0], result->GetInputs()[0].value);
 }
 
 }// namespace

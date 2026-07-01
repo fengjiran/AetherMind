@@ -18,11 +18,6 @@ constexpr size_t kAttentionBlockNodeCount = 9;
 // mlp_add.
 constexpr size_t kMlpBlockNodeCount = 6;
 
-TensorSpec ActivationTensorSpec(DataType dtype, ShapeSymbol seq_len, int64_t feature_dim) {
-    return TensorSpec{.dtype = dtype,
-                      .shape = {seq_len, ShapeSymbol::CreateFromValue(feature_dim)}};
-}
-
 TensorSpec KVCacheTensorSpec(DataType dtype, int64_t num_kv_heads,
                              ShapeSymbol cache_len, int64_t head_dim) {
     return TensorSpec{.dtype = dtype,
@@ -93,15 +88,6 @@ struct AttentionBlockInput {
     KVCachePair cache;
 };
 
-struct LlamaBuildSpecs {
-    TensorSpec token_ids;
-    TensorSpec position_ids;
-    TensorSpec hidden;
-    TensorSpec kv_hidden;
-    TensorSpec kv_cache;
-    TensorSpec logits;
-};
-
 struct LlamaBuildParams {
     float rms_norm_eps = 0.0F;
     RoPEParams rope;
@@ -121,10 +107,10 @@ RoPEParams MakeRoPEParams(const HfModelConfig& config, int64_t head_dim) {
 }
 
 GraphValueId BuildAttentionBlock(ModelGraph& graph,
-                                 const DecoderLayerRawWeights& layer_weights,
-                                 const LlamaBuildParams& params,
                                  uint32_t layer,
-                                 AttentionBlockInput input) {
+                                 AttentionBlockInput input,
+                                 const DecoderLayerRawWeights& layer_weights,
+                                 const LlamaBuildParams& params) {
     const size_t block_begin = graph.GetNodes().size();
     const RawWeightView& q_proj_weight = layer_weights.attn.q_proj;
     const RawWeightView& k_proj_weight = layer_weights.attn.k_proj;
@@ -204,10 +190,10 @@ GraphValueId BuildAttentionBlock(ModelGraph& graph,
 }
 
 GraphValueId BuildMlpBlock(ModelGraph& graph,
-                           const DecoderLayerRawWeights& layer_weights,
-                           const LlamaBuildParams& params,
                            uint32_t layer,
-                           GraphValueId hidden) {
+                           GraphValueId input,
+                           const DecoderLayerRawWeights& layer_weights,
+                           const LlamaBuildParams& params) {
     const size_t block_begin = graph.GetNodes().size();
     const RawWeightView& post_attn_norm_weight = layer_weights.norm.post_attn_rmsnorm;
     const RawWeightView& gate_weight = layer_weights.mlp.gate_proj;
@@ -216,7 +202,7 @@ GraphValueId BuildMlpBlock(ModelGraph& graph,
 
     const GraphValueId normed = AddRmsNorm(
             graph,
-            hidden,
+            input,
             post_attn_norm_weight.dtype,
             MakeTransformerWeightBinding(layer, TransformerWeightRole::kPostAttentionNorm),
             params.rms_norm_eps,
@@ -252,7 +238,7 @@ GraphValueId BuildMlpBlock(ModelGraph& graph,
     const GraphValueId residual = AddElementwiseAdd(
             graph,
             layer,
-            hidden,
+            input,
             down,
             LayerPrefix(layer) + "mlp_add");
 
@@ -270,13 +256,13 @@ GraphValueId BuildDecoderLayer(ModelGraph& graph,
                                KVCachePair cache_in) {
     const GraphValueId attn = BuildAttentionBlock(
             graph,
-            layer_weights,
-            params,
             layer,
             AttentionBlockInput{.hidden = hidden,
                                 .position_ids = position_ids,
-                                .cache = cache_in});
-    return BuildMlpBlock(graph, layer_weights, params, layer, attn);
+                                .cache = cache_in},
+            layer_weights,
+            params);
+    return BuildMlpBlock(graph, layer, attn, layer_weights, params);
 }
 
 Status ValidateInputs(const HfModelConfig& config, const ResolvedModelWeights& weights) {
@@ -294,19 +280,15 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                                        : config.weight_dtype_hint;
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol kv_len = ShapeSymbol::Create();
-    const int64_t hidden_size = config.hidden_size;
     const int64_t head_dim = config.head_dim != 0 ? config.head_dim
                                                   : config.hidden_size / config.num_attention_heads;
-    const int64_t kv_hidden_size = config.num_key_value_heads * head_dim;
 
-    const LlamaBuildSpecs specs{
-            .token_ids = TensorSpec{.dtype = DataType::Int(64), .shape = SymbolicShape({seq_len})},
-            .position_ids = TensorSpec{.dtype = DataType::Int(64), .shape = SymbolicShape({seq_len})},
-            .hidden = ActivationTensorSpec(act_dtype, seq_len, hidden_size),
-            .kv_hidden = ActivationTensorSpec(act_dtype, seq_len, kv_hidden_size),
-            .kv_cache = KVCacheTensorSpec(act_dtype, config.num_key_value_heads, kv_len, head_dim),
-            .logits = ActivationTensorSpec(act_dtype, seq_len, config.vocab_size),
-    };
+    const TensorSpec token_ids_spec{.dtype = DataType::Int(64),
+                                    .shape = SymbolicShape({seq_len})};
+    const TensorSpec position_ids_spec{.dtype = DataType::Int(64),
+                                       .shape = SymbolicShape({seq_len})};
+    const TensorSpec kv_cache_spec = KVCacheTensorSpec(
+            act_dtype, config.num_key_value_heads, kv_len, head_dim);
     const LlamaBuildParams params{
             .rms_norm_eps = static_cast<float>(config.rms_norm_eps),
             .rope = MakeRoPEParams(config, head_dim),
@@ -318,27 +300,27 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     };
 
     ModelGraph graph(config);
+    const GraphValueId input_tokens = AddInput(graph, token_ids_spec, "token_ids");
+    const GraphValueId position_ids = AddInput(graph, position_ids_spec, "position_ids");
 
-    const GraphValueId input_tokens = AddInput(graph, specs.token_ids, "token_ids");
-    const GraphValueId position_ids = AddInput(graph, specs.position_ids, "position_ids");
-
-    GraphValueId hidden = AddEmbedding(graph,
-                                       input_tokens,
-                                       weights.embed_tokens.shape[0],
-                                       weights.embed_tokens.shape[1],
-                                       weights.embed_tokens.dtype,
-                                       MakeTransformerWeightBinding(std::nullopt,
-                                                                    TransformerWeightRole::kTokenEmbedding),
-                                       WeightDebugName(TransformerWeightRole::kTokenEmbedding, std::nullopt));
+    GraphValueId hidden = AddEmbedding(
+            graph,
+            input_tokens,
+            weights.embed_tokens.shape[0],
+            weights.embed_tokens.shape[1],
+            weights.embed_tokens.dtype,
+            MakeTransformerWeightBinding(std::nullopt,
+                                         TransformerWeightRole::kTokenEmbedding),
+            WeightDebugName(TransformerWeightRole::kTokenEmbedding, std::nullopt));
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
         const GraphValueId k_cache = AddState(graph,
-                                              specs.kv_cache,
+                                              kv_cache_spec,
                                               KVCacheStateBinding{.decoder_layer_index = layer_index,
                                                                   .slot = KVCacheSlot::kKey},
                                               LayerPrefix(layer_index) + "self_attn.k_cache");
         const GraphValueId v_cache = AddState(graph,
-                                              specs.kv_cache,
+                                              kv_cache_spec,
                                               KVCacheStateBinding{.decoder_layer_index = layer_index,
                                                                   .slot = KVCacheSlot::kValue},
                                               LayerPrefix(layer_index) + "self_attn.v_cache");
@@ -348,27 +330,29 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                 KVCachePair{.k = k_cache, .v = v_cache});
     }
 
-    const GraphValueId final_hidden = AddRmsNorm(graph,
-                                                 hidden,
-                                                 weights.final_norm.dtype,
-                                                 MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kFinalNorm),
-                                                 params.rms_norm_eps,
-                                                 WeightDebugName(TransformerWeightRole::kFinalNorm, std::nullopt));
+    const GraphValueId final_hidden = AddRmsNorm(
+            graph,
+            hidden,
+            weights.final_norm.dtype,
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kFinalNorm),
+            params.rms_norm_eps,
+            WeightDebugName(TransformerWeightRole::kFinalNorm, std::nullopt));
     const RawWeightView& lm_head_weight = weights.lm_head.has_value()
                                                   ? *weights.lm_head
                                                   : weights.embed_tokens;
-    const GraphValueId logits = AddLinear(graph,
-                                          final_hidden,
-                                          lm_head_weight.shape[0],
-                                          lm_head_weight.dtype,
-                                          MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kLmHead),
-                                          WeightDebugName(TransformerWeightRole::kLmHead, std::nullopt));
-    const GraphValueId output_tokens = aethermind::AddArgmax(graph,
-                                                             std::nullopt,
-                                                             logits,
-                                                             specs.token_ids,
-                                                             -1,
-                                                             "argmax");
+    const GraphValueId logits = AddLinear(
+            graph,
+            final_hidden,
+            lm_head_weight.shape[0],
+            lm_head_weight.dtype,
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kLmHead),
+            WeightDebugName(TransformerWeightRole::kLmHead, std::nullopt));
+    const GraphValueId output_tokens = AddArgmax(graph,
+                                                 std::nullopt,
+                                                 logits,
+                                                 token_ids_spec,
+                                                 -1,
+                                                 "argmax");
     graph.MarkOutput(output_tokens, "output_token_ids");
 
     AM_RETURN_IF_ERROR(graph.Validate());

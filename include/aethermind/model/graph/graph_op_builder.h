@@ -62,8 +62,6 @@ AM_NODISCARD RoPEOutputs AddRoPE(ModelGraph& graph,
                                  GraphValueId q,
                                  GraphValueId k,
                                  GraphValueId position_ids,
-                                 TensorSpec q_output_spec,
-                                 TensorSpec k_output_spec,
                                  RoPEParams params,
                                  std::string debug_name = {});
 
@@ -83,7 +81,6 @@ AM_NODISCARD GraphValueId AddAttention(ModelGraph& graph,
                                        GraphValueId q,
                                        GraphValueId k,
                                        GraphValueId v,
-                                       TensorSpec output_spec,
                                        AttentionParams params,
                                        std::string debug_name = {});
 
@@ -92,7 +89,6 @@ AM_NODISCARD GraphValueId AddElementwiseAdd(ModelGraph& graph,
                                             std::optional<uint32_t> decoder_layer_index,
                                             GraphValueId lhs,
                                             GraphValueId rhs,
-                                            TensorSpec output_spec,
                                             std::string debug_name = {});
 
 /// Builds a SiLU-mul node computing silu(gate) * up.
@@ -100,7 +96,6 @@ AM_NODISCARD GraphValueId AddSiluMul(ModelGraph& graph,
                                      std::optional<uint32_t> decoder_layer_index,
                                      GraphValueId gate,
                                      GraphValueId up,
-                                     TensorSpec output_spec,
                                      std::string debug_name = {});
 
 /// Builds an Argmax node selecting the index of the maximum value along `axis`.

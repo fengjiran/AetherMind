@@ -87,10 +87,6 @@ WeightBinding MakeTransformerWeightBinding(std::optional<uint32_t> layer,
                          .semantic_role = role};
 }
 
-struct AttentionBlockResult {
-    GraphValueId hidden;
-};
-
 struct AttentionBlockInput {
     GraphValueId hidden;
     GraphValueId position_ids;
@@ -102,7 +98,6 @@ struct LlamaBuildSpecs {
     TensorSpec position_ids;
     TensorSpec hidden;
     TensorSpec kv_hidden;
-    TensorSpec intermediate;
     TensorSpec kv_cache;
     TensorSpec logits;
 };
@@ -111,13 +106,6 @@ struct LlamaBuildParams {
     float rms_norm_eps = 0.0F;
     RoPEParams rope;
     AttentionParams attention;
-};
-
-struct LlamaBuildContext {
-    ModelGraph& graph;
-    const ResolvedModelWeights& weights;
-    const LlamaBuildSpecs& specs;
-    const LlamaBuildParams& params;
 };
 
 RoPEParams MakeRoPEParams(const HfModelConfig& config, int64_t head_dim) {
@@ -132,145 +120,163 @@ RoPEParams MakeRoPEParams(const HfModelConfig& config, int64_t head_dim) {
     };
 }
 
-AttentionBlockResult BuildLlamaAttentionBlock(LlamaBuildContext& ctx,
-                                              uint32_t layer,
-                                              AttentionBlockInput input) {
-    const size_t block_begin = ctx.graph.GetNodes().size();
+GraphValueId BuildAttentionBlock(ModelGraph& graph,
+                                 const DecoderLayerRawWeights& layer_weights,
+                                 const LlamaBuildParams& params,
+                                 uint32_t layer,
+                                 AttentionBlockInput input) {
+    const size_t block_begin = graph.GetNodes().size();
+    const RawWeightView& q_proj_weight = layer_weights.attn.q_proj;
+    const RawWeightView& k_proj_weight = layer_weights.attn.k_proj;
+    const RawWeightView& v_proj_weight = layer_weights.attn.v_proj;
+    const RawWeightView& o_proj_weight = layer_weights.attn.o_proj;
+    const auto norm_dtype = layer_weights.norm.input_rmsnorm.dtype;
 
-    const RawWeightView& input_norm_weight = ctx.weights.layers[layer].norm.input_rmsnorm;
-    const GraphValueId normed = AddRmsNorm(ctx.graph,
-                                           input.hidden,
-                                           input_norm_weight.dtype,
-                                           MakeTransformerWeightBinding(layer, TransformerWeightRole::kInputNorm),
-                                           ctx.params.rms_norm_eps,
-                                           WeightDebugName(TransformerWeightRole::kInputNorm, layer));
-    const RawWeightView& q_proj_weight = ctx.weights.layers[layer].attn.q_proj;
-    const GraphValueId q = AddLinear(ctx.graph,
-                                     normed,
-                                     q_proj_weight.shape[0],
-                                     q_proj_weight.dtype,
-                                     MakeTransformerWeightBinding(layer, TransformerWeightRole::kAttentionQ),
-                                     WeightDebugName(TransformerWeightRole::kAttentionQ, layer));
-    const RawWeightView& k_proj_weight = ctx.weights.layers[layer].attn.k_proj;
-    const GraphValueId k = AddLinear(ctx.graph,
-                                     normed,
-                                     k_proj_weight.shape[0],
-                                     k_proj_weight.dtype,
-                                     MakeTransformerWeightBinding(layer, TransformerWeightRole::kAttentionK),
-                                     WeightDebugName(TransformerWeightRole::kAttentionK, layer));
-    const RawWeightView& v_proj_weight = ctx.weights.layers[layer].attn.v_proj;
-    const GraphValueId v = AddLinear(ctx.graph,
-                                     normed,
-                                     v_proj_weight.shape[0],
-                                     v_proj_weight.dtype,
-                                     MakeTransformerWeightBinding(layer, TransformerWeightRole::kAttentionV),
-                                     WeightDebugName(TransformerWeightRole::kAttentionV, layer));
-    const RoPEOutputs rope = AddRoPE(ctx.graph,
-                                     layer,
-                                     q,
-                                     k,
-                                     input.position_ids,
-                                     ctx.specs.hidden,
-                                     ctx.specs.kv_hidden,
-                                     ctx.params.rope,
-                                     LayerPrefix(layer) + "self_attn.rotary_emb");
-    const KVCachePair cache_out = AddKVCacheUpdate(ctx.graph,
-                                                   layer,
-                                                   rope.k,
-                                                   v,
-                                                   input.cache.k,
-                                                   input.cache.v,
-                                                   LayerPrefix(layer) + "self_attn.kv_cache_update");
-    const GraphValueId attn = AddAttention(ctx.graph,
-                                           layer,
-                                           rope.q,
-                                           cache_out.k,
-                                           cache_out.v,
-                                           ctx.specs.hidden,
-                                           ctx.params.attention,
-                                           LayerPrefix(layer) + "self_attn.attention");
-    const RawWeightView& o_proj_weight = ctx.weights.layers[layer].attn.o_proj;
-    const GraphValueId o_proj = AddLinear(ctx.graph,
-                                          attn,
-                                          o_proj_weight.shape[0],
-                                          o_proj_weight.dtype,
-                                          MakeTransformerWeightBinding(layer, TransformerWeightRole::kAttentionO),
-                                          WeightDebugName(TransformerWeightRole::kAttentionO, layer));
-    const GraphValueId residual = AddElementwiseAdd(ctx.graph,
-                                                    layer,
-                                                    input.hidden,
-                                                    o_proj,
-                                                    ctx.specs.hidden,
-                                                    LayerPrefix(layer) + "post_attention_add");
+    const GraphValueId normed = AddRmsNorm(
+            graph,
+            input.hidden,
+            norm_dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kInputNorm),
+            params.rms_norm_eps,
+            WeightDebugName(TransformerWeightRole::kInputNorm, layer));
+    const GraphValueId q = AddLinear(
+            graph,
+            normed,
+            q_proj_weight.shape[0],
+            q_proj_weight.dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kAttentionQ),
+            WeightDebugName(TransformerWeightRole::kAttentionQ, layer));
+    const GraphValueId k = AddLinear(
+            graph,
+            normed,
+            k_proj_weight.shape[0],
+            k_proj_weight.dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kAttentionK),
+            WeightDebugName(TransformerWeightRole::kAttentionK, layer));
+    const GraphValueId v = AddLinear(
+            graph,
+            normed,
+            v_proj_weight.shape[0],
+            v_proj_weight.dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kAttentionV),
+            WeightDebugName(TransformerWeightRole::kAttentionV, layer));
+    const RoPEOutputs rope = AddRoPE(
+            graph,
+            layer,
+            q,
+            k,
+            input.position_ids,
+            params.rope,
+            LayerPrefix(layer) + "self_attn.rotary_emb");
+    const KVCachePair cache_out = AddKVCacheUpdate(
+            graph,
+            layer,
+            rope.k,
+            v,
+            input.cache.k,
+            input.cache.v,
+            LayerPrefix(layer) + "self_attn.kv_cache_update");
+    const GraphValueId attn = AddAttention(
+            graph,
+            layer,
+            rope.q,
+            cache_out.k,
+            cache_out.v,
+            params.attention,
+            LayerPrefix(layer) + "self_attn.attention");
+    const GraphValueId o_proj = AddLinear(
+            graph,
+            attn,
+            o_proj_weight.shape[0],
+            o_proj_weight.dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kAttentionO),
+            WeightDebugName(TransformerWeightRole::kAttentionO, layer));
+    const GraphValueId residual = AddElementwiseAdd(
+            graph,
+            layer,
+            input.hidden,
+            o_proj,
+            LayerPrefix(layer) + "post_attention_add");
 
-    AM_CHECK(ctx.graph.GetNodes().size() - block_begin == kAttentionBlockNodeCount,
+    AM_CHECK(graph.GetNodes().size() - block_begin == kAttentionBlockNodeCount,
              "Attention block node count changed unexpectedly");
-    return AttentionBlockResult{.hidden = residual};
+    return residual;
 }
 
-GraphValueId BuildLlamaMlpBlock(LlamaBuildContext& ctx,
-                                uint32_t layer,
-                                GraphValueId hidden) {
-    const size_t block_begin = ctx.graph.GetNodes().size();
+GraphValueId BuildMlpBlock(ModelGraph& graph,
+                           const DecoderLayerRawWeights& layer_weights,
+                           const LlamaBuildParams& params,
+                           uint32_t layer,
+                           GraphValueId hidden) {
+    const size_t block_begin = graph.GetNodes().size();
+    const RawWeightView& post_attn_norm_weight = layer_weights.norm.post_attn_rmsnorm;
+    const RawWeightView& gate_weight = layer_weights.mlp.gate_proj;
+    const RawWeightView& up_weight = layer_weights.mlp.up_proj;
+    const RawWeightView& down_weight = layer_weights.mlp.down_proj;
 
-    const RawWeightView& post_attn_norm_weight = ctx.weights.layers[layer].norm.post_attn_rmsnorm;
-    const GraphValueId normed = AddRmsNorm(ctx.graph,
-                                           hidden,
-                                           post_attn_norm_weight.dtype,
-                                           MakeTransformerWeightBinding(layer, TransformerWeightRole::kPostAttentionNorm),
-                                           ctx.params.rms_norm_eps,
-                                           WeightDebugName(TransformerWeightRole::kPostAttentionNorm, layer));
-    const RawWeightView& gate_weight = ctx.weights.layers[layer].mlp.gate_proj;
-    const GraphValueId gate = AddLinear(ctx.graph,
-                                        normed,
-                                        gate_weight.shape[0],
-                                        gate_weight.dtype,
-                                        MakeTransformerWeightBinding(layer, TransformerWeightRole::kMlpGate),
-                                        WeightDebugName(TransformerWeightRole::kMlpGate, layer));
-    const RawWeightView& up_weight = ctx.weights.layers[layer].mlp.up_proj;
-    const GraphValueId up = AddLinear(ctx.graph,
-                                      normed,
-                                      up_weight.shape[0],
-                                      up_weight.dtype,
-                                      MakeTransformerWeightBinding(layer, TransformerWeightRole::kMlpUp),
-                                      WeightDebugName(TransformerWeightRole::kMlpUp, layer));
-    const GraphValueId act = AddSiluMul(ctx.graph,
-                                        layer,
-                                        gate,
-                                        up,
-                                        ctx.specs.intermediate,
-                                        LayerPrefix(layer) + "mlp.act");
-    const RawWeightView& down_weight = ctx.weights.layers[layer].mlp.down_proj;
-    const GraphValueId down = AddLinear(ctx.graph,
-                                        act,
-                                        down_weight.shape[0],
-                                        down_weight.dtype,
-                                        MakeTransformerWeightBinding(layer, TransformerWeightRole::kMlpDown),
-                                        WeightDebugName(TransformerWeightRole::kMlpDown, layer));
-    const GraphValueId residual = AddElementwiseAdd(ctx.graph,
-                                                    layer,
-                                                    hidden,
-                                                    down,
-                                                    ctx.specs.hidden,
-                                                    LayerPrefix(layer) + "mlp_add");
+    const GraphValueId normed = AddRmsNorm(
+            graph,
+            hidden,
+            post_attn_norm_weight.dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kPostAttentionNorm),
+            params.rms_norm_eps,
+            WeightDebugName(TransformerWeightRole::kPostAttentionNorm, layer));
+    const GraphValueId gate = AddLinear(
+            graph,
+            normed,
+            gate_weight.shape[0],
+            gate_weight.dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kMlpGate),
+            WeightDebugName(TransformerWeightRole::kMlpGate, layer));
 
-    AM_CHECK(ctx.graph.GetNodes().size() - block_begin == kMlpBlockNodeCount,
+    const GraphValueId up = AddLinear(
+            graph,
+            normed,
+            up_weight.shape[0],
+            up_weight.dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kMlpUp),
+            WeightDebugName(TransformerWeightRole::kMlpUp, layer));
+    const GraphValueId act = AddSiluMul(
+            graph,
+            layer,
+            gate,
+            up,
+            LayerPrefix(layer) + "mlp.act");
+    const GraphValueId down = AddLinear(
+            graph,
+            act,
+            down_weight.shape[0],
+            down_weight.dtype,
+            MakeTransformerWeightBinding(layer, TransformerWeightRole::kMlpDown),
+            WeightDebugName(TransformerWeightRole::kMlpDown, layer));
+    const GraphValueId residual = AddElementwiseAdd(
+            graph,
+            layer,
+            hidden,
+            down,
+            LayerPrefix(layer) + "mlp_add");
+
+    AM_CHECK(graph.GetNodes().size() - block_begin == kMlpBlockNodeCount,
              "MLP block node count changed unexpectedly");
     return residual;
 }
 
-GraphValueId BuildLlamaDecoderLayer(LlamaBuildContext& ctx,
-                                    uint32_t layer,
-                                    GraphValueId hidden,
-                                    GraphValueId position_ids,
-                                    KVCachePair cache_in) {
-    const AttentionBlockResult attn = BuildLlamaAttentionBlock(
-            ctx,
+GraphValueId BuildDecoderLayer(ModelGraph& graph,
+                               const DecoderLayerRawWeights& layer_weights,
+                               const LlamaBuildParams& params,
+                               uint32_t layer,
+                               GraphValueId hidden,
+                               GraphValueId position_ids,
+                               KVCachePair cache_in) {
+    const GraphValueId attn = BuildAttentionBlock(
+            graph,
+            layer_weights,
+            params,
             layer,
             AttentionBlockInput{.hidden = hidden,
                                 .position_ids = position_ids,
                                 .cache = cache_in});
-    return BuildLlamaMlpBlock(ctx, layer, attn.hidden);
+    return BuildMlpBlock(graph, layer_weights, params, layer, attn);
 }
 
 Status ValidateInputs(const HfModelConfig& config, const ResolvedModelWeights& weights) {
@@ -298,7 +304,6 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
             .position_ids = TensorSpec{.dtype = DataType::Int(64), .shape = SymbolicShape({seq_len})},
             .hidden = ActivationTensorSpec(act_dtype, seq_len, hidden_size),
             .kv_hidden = ActivationTensorSpec(act_dtype, seq_len, kv_hidden_size),
-            .intermediate = ActivationTensorSpec(act_dtype, seq_len, config.intermediate_size),
             .kv_cache = KVCacheTensorSpec(act_dtype, config.num_key_value_heads, kv_len, head_dim),
             .logits = ActivationTensorSpec(act_dtype, seq_len, config.vocab_size),
     };
@@ -313,65 +318,60 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     };
 
     ModelGraph graph(config);
-    LlamaBuildContext ctx{
-            .graph = graph,
-            .weights = weights,
-            .specs = specs,
-            .params = params,
-    };
 
-    const GraphValueId input_tokens = AddInput(ctx.graph, specs.token_ids, "token_ids");
-    const GraphValueId position_ids = AddInput(ctx.graph, specs.position_ids, "position_ids");
+    const GraphValueId input_tokens = AddInput(graph, specs.token_ids, "token_ids");
+    const GraphValueId position_ids = AddInput(graph, specs.position_ids, "position_ids");
 
-    GraphValueId hidden = AddEmbedding(ctx.graph,
+    GraphValueId hidden = AddEmbedding(graph,
                                        input_tokens,
-                                       ctx.weights.embed_tokens.shape[0],
-                                       ctx.weights.embed_tokens.shape[1],
-                                       ctx.weights.embed_tokens.dtype,
+                                       weights.embed_tokens.shape[0],
+                                       weights.embed_tokens.shape[1],
+                                       weights.embed_tokens.dtype,
                                        MakeTransformerWeightBinding(std::nullopt,
                                                                     TransformerWeightRole::kTokenEmbedding),
                                        WeightDebugName(TransformerWeightRole::kTokenEmbedding, std::nullopt));
 
     for (uint32_t layer_index = 0; layer_index < static_cast<uint32_t>(config.num_hidden_layers); ++layer_index) {
-        const GraphValueId k_cache = AddState(ctx.graph,
+        const GraphValueId k_cache = AddState(graph,
                                               specs.kv_cache,
                                               KVCacheStateBinding{.decoder_layer_index = layer_index,
                                                                   .slot = KVCacheSlot::kKey},
                                               LayerPrefix(layer_index) + "self_attn.k_cache");
-        const GraphValueId v_cache = AddState(ctx.graph,
+        const GraphValueId v_cache = AddState(graph,
                                               specs.kv_cache,
                                               KVCacheStateBinding{.decoder_layer_index = layer_index,
                                                                   .slot = KVCacheSlot::kValue},
                                               LayerPrefix(layer_index) + "self_attn.v_cache");
-        hidden = BuildLlamaDecoderLayer(
-                ctx, layer_index, hidden, position_ids,
+        const DecoderLayerRawWeights& layer_weights = weights.layers[layer_index];
+        hidden = BuildDecoderLayer(
+                graph, layer_weights, params, layer_index, hidden, position_ids,
                 KVCachePair{.k = k_cache, .v = v_cache});
     }
 
-    const GraphValueId final_hidden = AddRmsNorm(ctx.graph,
+    const GraphValueId final_hidden = AddRmsNorm(graph,
                                                  hidden,
-                                                 ctx.weights.final_norm.dtype,
+                                                 weights.final_norm.dtype,
                                                  MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kFinalNorm),
-                                                 ctx.params.rms_norm_eps,
+                                                 params.rms_norm_eps,
                                                  WeightDebugName(TransformerWeightRole::kFinalNorm, std::nullopt));
-    const RawWeightView& lm_head_weight = ctx.weights.lm_head.has_value()
-                                                  ? *ctx.weights.lm_head
-                                                  : ctx.weights.embed_tokens;
-    const GraphValueId logits = AddLinear(ctx.graph,
+    const RawWeightView& lm_head_weight = weights.lm_head.has_value()
+                                                  ? *weights.lm_head
+                                                  : weights.embed_tokens;
+    const GraphValueId logits = AddLinear(graph,
                                           final_hidden,
                                           lm_head_weight.shape[0],
                                           lm_head_weight.dtype,
                                           MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kLmHead),
                                           WeightDebugName(TransformerWeightRole::kLmHead, std::nullopt));
-    const GraphValueId output_tokens = aethermind::AddArgmax(ctx.graph,
+    const GraphValueId output_tokens = aethermind::AddArgmax(graph,
                                                              std::nullopt,
                                                              logits,
                                                              specs.token_ids,
                                                              -1,
                                                              "argmax");
-    ctx.graph.MarkOutput(output_tokens, "output_token_ids");
+    graph.MarkOutput(output_tokens, "output_token_ids");
 
-    AM_RETURN_IF_ERROR(ctx.graph.Validate());
+    AM_RETURN_IF_ERROR(graph.Validate());
     return graph;
 }
 

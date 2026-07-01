@@ -142,10 +142,11 @@ RoPEOutputs AddRoPE(ModelGraph& graph,
                     GraphValueId q,
                     GraphValueId k,
                     GraphValueId position_ids,
-                    TensorSpec q_output_spec,
-                    TensorSpec k_output_spec,
                     RoPEParams params,
                     std::string debug_name) {
+    TensorSpec q_output_spec = graph.GetValue(q).spec;
+    TensorSpec k_output_spec = graph.GetValue(k).spec;
+
     const auto node = graph.AddNode(
             OpType::kRoPE,
             decoder_layer_index,
@@ -199,9 +200,9 @@ GraphValueId AddAttention(ModelGraph& graph,
                           GraphValueId q,
                           GraphValueId k,
                           GraphValueId v,
-                          TensorSpec output_spec,
                           AttentionParams params,
                           std::string debug_name) {
+    TensorSpec output_spec = graph.GetValue(q).spec;
     const auto node = graph.AddNode(OpType::kAttention,
                                     decoder_layer_index,
                                     {q, k, v},
@@ -216,8 +217,8 @@ GraphValueId AddElementwiseAdd(ModelGraph& graph,
                                std::optional<uint32_t> decoder_layer_index,
                                GraphValueId lhs,
                                GraphValueId rhs,
-                               TensorSpec output_spec,
                                std::string debug_name) {
+    TensorSpec output_spec = graph.GetValue(lhs).spec;
     const auto node = graph.AddNode(OpType::kAdd,
                                     decoder_layer_index,
                                     {lhs, rhs},
@@ -232,8 +233,11 @@ GraphValueId AddSiluMul(ModelGraph& graph,
                         std::optional<uint32_t> decoder_layer_index,
                         GraphValueId gate,
                         GraphValueId up,
-                        TensorSpec output_spec,
                         std::string debug_name) {
+    TensorSpec output_spec = graph.GetValue(gate).spec;
+    AM_CHECK(output_spec == graph.GetValue(up).spec,
+             "SiluMul gate and up specs must match");
+
     const auto node = graph.AddNode(OpType::kSiluMul,
                                     decoder_layer_index,
                                     {gate, up},

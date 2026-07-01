@@ -72,15 +72,15 @@ StatusOr<InferenceResult> RmsNormOp::InferOutputShapes(std::span<const TensorSpe
 
     std::vector<ShapeConstraint> runtime_checks;
     if (inputs[0].shape[1] != inputs[1].shape[0]) {
-        runtime_checks.push_back(ShapeConstraint{
+        runtime_checks.push_back({
                 .condition = DimEqualConstraint{
-                        .lhs = DimLocator{
-                                .tensor_port = TensorPort{.direction = TensorPortType::kInput,
-                                                          .tensor_idx = 0},
+                        .lhs = {
+                                .tensor_port = {.direction = TensorPortType::kInput,
+                                                .tensor_idx = 0},
                                 .dim_index = 1,
                         },
-                        .rhs = DimLocator{
-                                .tensor_port = TensorPort{.direction = TensorPortType::kInput, .tensor_idx = 1},
+                        .rhs = {
+                                .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
                                 .dim_index = 0,
                         }},
                 .error_context = "RmsNorm hidden dimension must match weight length",

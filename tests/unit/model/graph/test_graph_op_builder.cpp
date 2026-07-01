@@ -17,7 +17,6 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ModelGraph graph;
     const TensorSpec token_spec = Spec(DataType::Int(64), {2});
     const TensorSpec hidden_spec = Spec(DataType::Float32(), {2, 4});
-    const TensorSpec intermediate_spec = Spec(DataType::Float32(), {2, 8});
     const TensorSpec logits_spec = Spec(DataType::Float32(), {2, 16});
     const TensorSpec cache_spec = Spec(DataType::Float32(), {2, 8, 2});
     const GraphValueId tokens = graph.AddInput(token_spec, "tokens");
@@ -57,13 +56,15 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
                                            q,
                                            k_cache,
                                            v_cache,
-                                           hidden_spec,
                                            AttentionParams{.num_attention_heads = 2,
                                                            .num_key_value_heads = 2,
                                                            .head_dim = 2},
                                            "attention");
-    const GraphValueId sum = AddElementwiseAdd(graph, 0, hidden, attn, hidden_spec, "add");
-    const GraphValueId act = AddSiluMul(graph, 0, sum, sum, intermediate_spec, "silu_mul");
+    EXPECT_EQ(graph.GetValue(attn).spec, graph.GetValue(q).spec);
+    const GraphValueId sum = AddElementwiseAdd(graph, 0, hidden, attn, "add");
+    EXPECT_EQ(graph.GetValue(sum).spec, graph.GetValue(hidden).spec);
+    const GraphValueId act = AddSiluMul(graph, 0, sum, sum, "silu_mul");
+    EXPECT_EQ(graph.GetValue(act).spec, graph.GetValue(sum).spec);
     const GraphValueId logits = AddLinear(graph,
                                           act,
                                           16,
@@ -120,7 +121,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     const GraphNode& logits_node = graph.GetNode(*graph.GetValue(logits).producer);
     ASSERT_EQ(logits_node.inputs.size(), 2U);
     const GraphValue& lm_head_weight = graph.GetValue(logits_node.inputs[1]);
-    EXPECT_EQ(lm_head_weight.spec, Spec(DataType::Float32(), {16, 8}));
+    EXPECT_EQ(lm_head_weight.spec, Spec(DataType::Float32(), {16, 4}));
     EXPECT_EQ(lm_head_weight.debug_name, "lm_head");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(lm_head_weight.payload));
     const WeightBinding& lm_head_binding = std::get<WeightValue>(lm_head_weight.payload).binding;
@@ -132,6 +133,15 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(graph.GetNode(GraphNodeId{.index = 0}).op_type, OpType::kEmbedding);
     EXPECT_EQ(graph.GetNode(GraphNodeId{.index = 5}).op_type, OpType::kSiluMul);
     EXPECT_TRUE(std::holds_alternative<ArgmaxParams>(graph.GetNode(GraphNodeId{.index = 7}).op_params));
+}
+
+TEST(GraphOpBuilder, AddSiluMulRequiresMatchingSpecs) {
+    ModelGraph graph;
+    const GraphValueId gate = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "gate");
+    const GraphValueId up = graph.AddInput(Spec(DataType::Float32(), {2, 8}), "up");
+
+    EXPECT_DEATH(static_cast<void>(AddSiluMul(graph, 0, gate, up, "bad_silu_mul")),
+                 "SiluMul gate and up specs must match");
 }
 
 TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
@@ -218,8 +228,6 @@ TEST(GraphOpBuilder, AddsMultiOutputOperatorHelpers) {
                                      q,
                                      k,
                                      position_ids,
-                                     hidden_spec,
-                                     hidden_spec,
                                      RoPEParams{.head_dim = 2,
                                                 .num_attention_heads = 2,
                                                 .num_key_value_heads = 2,

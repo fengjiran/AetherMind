@@ -12,6 +12,16 @@ TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
     return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
 }
 
+NodeOutputDesc HiddenDesc(const char* debug_name) {
+    return NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                          .payload = ActivationValue{},
+                          .debug_name = debug_name};
+}
+
+ReplacementOutput ReplacesHidden(GraphValueId value, const char* debug_name) {
+    return ReplacementOutput{.desc = HiddenDesc(debug_name), .replaces = value};
+}
+
 ModelGraph BuildTwoEmbeddingGraph() {
     ModelGraph graph;
     const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
@@ -110,7 +120,7 @@ TEST(GraphRewriteSession, RejectsInvalidRedirectInput) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(GraphRewriteSession, ReplaceNodeWithSingleReplacement) {
+TEST(GraphRewriteSession, ReplaceSubgraphWithSingleReplacement) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     // Graph layout:
     //   v0=tokens_a, v1=tokens_b, v2=weight
@@ -121,14 +131,15 @@ TEST(GraphRewriteSession, ReplaceNodeWithSingleReplacement) {
     GraphRewriteSession session(graph);
 
     // Replace n0 with a single Embedding node using different inputs
-    GraphNode replacement{
+    ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {GraphValueId{.index = 3}},// references old n0 output for spec/payload
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
             .op_params = EmbeddingParams{},
             .debug_name = "replacement",
     };
-    ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(replacement)}).ok());
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
 
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -139,7 +150,7 @@ TEST(GraphRewriteSession, ReplaceNodeWithSingleReplacement) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
-TEST(GraphRewriteSession, ReplaceNodeWithMultipleReplacements) {
+TEST(GraphRewriteSession, ReplaceSubgraphWithMultipleReplacements) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     // Graph layout:
     //   v0=tokens_a, v1=tokens_b, v2=weight
@@ -151,21 +162,22 @@ TEST(GraphRewriteSession, ReplaceNodeWithMultipleReplacements) {
 
     // Replace n0 with two independent Embedding nodes
     // Both reference v0 and v2 as inputs; the second one's output replaces v3
-    GraphNode r1{
+    ReplacementNode r1{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            .outputs = {GraphValueId{.index = 4}},// references old v4 for spec (intermediate)
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "hidden_b")},
             .op_params = EmbeddingParams{},
             .debug_name = "r1",
     };
-    GraphNode r2{
+    ReplacementNode r2{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {GraphValueId{.index = 3}},// final output replaces v3
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
             .op_params = EmbeddingParams{},
             .debug_name = "r2",
     };
-    ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(r1), std::move(r2)}).ok());
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(r1), std::move(r2)}).ok());
 
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -175,11 +187,12 @@ TEST(GraphRewriteSession, ReplaceNodeWithMultipleReplacements) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
-TEST(GraphRewriteSession, ReplaceNodeWithEmptyReplacementsActsAsRemove) {
+TEST(GraphRewriteSession, ReplaceSubgraphWithEmptyReplacementsActsAsRemove) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 1}, {}).ok());
+    const std::array old_nodes{GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {}).ok());
 
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -191,14 +204,15 @@ TEST(GraphRewriteSession, RemoveNodeOverridesPreviousReplacement) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    GraphNode replacement{
+    ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {GraphValueId{.index = 4}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "hidden_b")},
             .op_params = EmbeddingParams{},
             .debug_name = "replacement_should_be_cleared",
     };
-    ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 1}, {std::move(replacement)}).ok());
+    const std::array old_nodes{GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
     ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
 
     const StatusOr<ModelGraph> committed = session.Commit();
@@ -208,20 +222,21 @@ TEST(GraphRewriteSession, RemoveNodeOverridesPreviousReplacement) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
-TEST(GraphRewriteSession, ReplaceNodeOverridesPreviousRemove) {
+TEST(GraphRewriteSession, ReplaceSubgraphOverridesPreviousRemove) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
     ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
 
-    GraphNode replacement{
+    ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {GraphValueId{.index = 4}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "hidden_b")},
             .op_params = EmbeddingParams{},
             .debug_name = "replacement_after_remove",
     };
-    ASSERT_TRUE(session.ReplaceNode(GraphNodeId{.index = 1}, {std::move(replacement)}).ok());
+    const std::array old_nodes{GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
 
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -230,7 +245,7 @@ TEST(GraphRewriteSession, ReplaceNodeOverridesPreviousRemove) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
-TEST(GraphRewriteSession, ReplaceNodeWithExplicitOutputDesc) {
+TEST(GraphRewriteSession, ReplaceSubgraphWithExplicitOutputDesc) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
@@ -246,7 +261,8 @@ TEST(GraphRewriteSession, ReplaceNodeWithExplicitOutputDesc) {
             .op_params = EmbeddingParams{},
             .debug_name = "explicit_replacement",
     };
-    ASSERT_TRUE(session.ReplaceNodeWithOutputs(GraphNodeId{.index = 0}, {std::move(replacement)}).ok());
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
 
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -283,6 +299,36 @@ TEST(GraphRewriteSession, ReplaceSubgraphReplacesMultipleOldNodes) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
+TEST(GraphRewriteSession, RemoveNodeClearsOverlappingSubgraphRewrite) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ReplacementNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "subgraph_hidden"},
+                    .replaces = GraphValueId{.index = 3},
+            }},
+            .op_params = EmbeddingParams{},
+            .debug_name = "subgraph_replacement",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_EQ(committed->GetNodes().size(), 1U);
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).op_type, OpType::kEmbedding);
+    ASSERT_EQ(committed->GetOutputs().size(), 1U);
+    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).debug_name, "hidden_a");
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
 TEST(GraphRewriteSession, ApplySupportsReplaceSubgraphMutation) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
@@ -312,7 +358,207 @@ TEST(GraphRewriteSession, ApplySupportsReplaceSubgraphMutation) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
-TEST(GraphRewriteSession, ReplaceNodeWithOutputsRejectsInvalidMapping) {
+TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId mid = session.AllocateVirtualValue();
+
+    ReplacementNode first{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "virtual_hidden"},
+                    .replaces = mid,
+            }},
+            .op_params = EmbeddingParams{},
+            .debug_name = "virtual_producer",
+    };
+    ReplacementNode second{
+            .op_type = OpType::kAdd,
+            .inputs = {mid, mid},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "final_hidden"},
+                    .replaces = GraphValueId{.index = 3},
+            }},
+            .op_params = AddParams{},
+            .debug_name = "virtual_consumer",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(first), std::move(second)}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_EQ(committed->GetNodes().size(), 3U);
+    const GraphNode& producer = committed->GetNode(GraphNodeId{.index = 0});
+    const GraphNode& consumer = committed->GetNode(GraphNodeId{.index = 1});
+    ASSERT_EQ(producer.outputs.size(), 1U);
+    ASSERT_EQ(consumer.inputs.size(), 2U);
+    EXPECT_EQ(consumer.inputs[0], producer.outputs[0]);
+    EXPECT_EQ(consumer.inputs[1], producer.outputs[0]);
+    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).debug_name, "final_hidden");
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, CommitRejectsUndefinedVirtualValueInput) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId mid = session.AllocateVirtualValue();
+
+    ReplacementNode replacement{
+            .op_type = OpType::kAdd,
+            .inputs = {mid, mid},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "final_hidden"},
+                    .replaces = GraphValueId{.index = 3},
+            }},
+            .op_params = AddParams{},
+            .debug_name = "undefined_virtual_consumer",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_FALSE(committed.ok());
+    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, CommitRejectsDuplicateVirtualValueProducer) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId mid = session.AllocateVirtualValue();
+
+    ReplacementNode first{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "first_virtual"},
+                    .replaces = mid,
+            }},
+            .op_params = EmbeddingParams{},
+            .debug_name = "first_virtual_producer",
+    };
+    ReplacementNode second{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "second_virtual"},
+                    .replaces = mid,
+            }},
+            .op_params = EmbeddingParams{},
+            .debug_name = "second_virtual_producer",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(first), std::move(second)}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_FALSE(committed.ok());
+    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, CommitRejectsVirtualValueConsumedBeforeProducer) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId mid = session.AllocateVirtualValue();
+
+    ReplacementNode consumer{
+            .op_type = OpType::kAdd,
+            .inputs = {mid, mid},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "final_hidden"},
+                    .replaces = GraphValueId{.index = 3},
+            }},
+            .op_params = AddParams{},
+            .debug_name = "early_virtual_consumer",
+    };
+    ReplacementNode producer{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "virtual_hidden"},
+                    .replaces = mid,
+            }},
+            .op_params = EmbeddingParams{},
+            .debug_name = "late_virtual_producer",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(consumer), std::move(producer)}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_FALSE(committed.ok());
+    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, CommitRejectsVirtualValueAcrossRewriteEntries) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId mid = session.AllocateVirtualValue();
+
+    ReplacementNode producer{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "virtual_hidden"},
+                    .replaces = mid,
+            }},
+            .op_params = EmbeddingParams{},
+            .debug_name = "virtual_producer",
+    };
+    ReplacementNode consumer{
+            .op_type = OpType::kAdd,
+            .inputs = {mid, mid},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "final_hidden"},
+                    .replaces = GraphValueId{.index = 4},
+            }},
+            .op_params = AddParams{},
+            .debug_name = "cross_rewrite_consumer",
+    };
+    const std::array producer_old_nodes{GraphNodeId{.index = 0}};
+    const std::array consumer_old_nodes{GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session.ReplaceSubgraph(producer_old_nodes, {std::move(producer)}).ok());
+    ASSERT_TRUE(session.ReplaceSubgraph(consumer_old_nodes, {std::move(consumer)}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_FALSE(committed.ok());
+    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, ReplaceValueRejectsVirtualValues) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId mid = session.AllocateVirtualValue();
+
+    const Status replace_old = session.ReplaceValue(mid, GraphValueId{.index = 0});
+    const Status replace_new = session.ReplaceValue(GraphValueId{.index = 0}, mid);
+
+    EXPECT_EQ(replace_old.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(replace_new.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidMapping) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
@@ -328,23 +574,25 @@ TEST(GraphRewriteSession, ReplaceNodeWithOutputsRejectsInvalidMapping) {
             .op_params = EmbeddingParams{},
             .debug_name = "invalid_mapping",
     };
-    const Status status = session.ReplaceNodeWithOutputs(GraphNodeId{.index = 0}, {std::move(replacement)});
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(GraphRewriteSession, ReplaceNodeRejectsInvalidInputId) {
+TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidInputId) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    GraphNode replacement{
+    ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 999}},// invalid
-            .outputs = {GraphValueId{.index = 3}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
             .op_params = EmbeddingParams{},
             .debug_name = "invalid_replacement",
     };
-    const Status status = session.ReplaceNode(GraphNodeId{.index = 0}, {std::move(replacement)});
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -641,6 +889,112 @@ TEST(GraphRewriteSession, ReplaceValueAllowsNonCyclicChain) {
     EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 2});
     EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 1}), GraphValueId{.index = 2});
     EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 2}), GraphValueId{.index = 2});
+}
+
+TEST(GraphRewriteSession, RedirectInputAccumulatesMultipleInputChanges) {
+    // Build a graph with two weights so both inputs of an Embedding node
+    // can be independently redirected to valid payload types.
+    ModelGraph graph;
+    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
+    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
+    const GraphValueId weight_a = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
+                                                  WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                                .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                  "embed_a.weight");
+    const GraphValueId weight_b = graph.AddWeight(Spec(DataType::Float32(), {8, 4}),
+                                                  WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                                .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                  "embed_b.weight");
+    const AddedNode node = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens_a, weight_a},
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                            .payload = ActivationValue{},
+                            .debug_name = "hidden"}},
+            EmbeddingParams{});
+    graph.MarkOutput(node.outputs[0], "output");
+
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, tokens_b).ok());
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 1, weight_b).ok());
+
+    const StatusOr<GraphNodeView> view = session.GetNodeView(GraphNodeId{.index = 0});
+    ASSERT_TRUE(view.ok()) << view.status().ToString();
+    ASSERT_EQ(view->inputs.size(), 2U);
+    EXPECT_EQ(view->inputs[0], tokens_b);
+    EXPECT_EQ(view->inputs[1], weight_b);
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    const GraphNode& committed_node = committed->GetNode(GraphNodeId{.index = 0});
+    ASSERT_EQ(committed_node.inputs.size(), 2U);
+    EXPECT_TRUE(std::holds_alternative<ModelInputValue>(
+            committed->GetValue(committed_node.inputs[0]).payload));
+    EXPECT_TRUE(std::holds_alternative<WeightValue>(
+            committed->GetValue(committed_node.inputs[1]).payload));
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, RedirectInputSupersedesExistingNodeReplacement) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ReplacementNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
+            .op_params = EmbeddingParams{},
+            .debug_name = "arbitrary_replacement",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
+    ASSERT_FALSE(session.GetNodeView(GraphNodeId{.index = 0}).ok());
+
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1}).ok());
+
+    const StatusOr<GraphNodeView> view = session.GetNodeView(GraphNodeId{.index = 0});
+    ASSERT_TRUE(view.ok()) << view.status().ToString();
+    EXPECT_EQ(view->debug_name, "");
+    ASSERT_EQ(view->inputs.size(), 2U);
+    EXPECT_EQ(view->inputs[0], GraphValueId{.index = 1});
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    const GraphNode& committed_node = committed->GetNode(GraphNodeId{.index = 0});
+    EXPECT_EQ(committed_node.debug_name, "");
+    EXPECT_EQ(committed_node.inputs[0], committed->GetInputs()[1].value);
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, RedirectInputClearsOverlappingSubgraphRewrite) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ReplacementNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {ReplacementOutput{
+                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                                           .payload = ActivationValue{},
+                                           .debug_name = "subgraph_hidden"},
+                    .replaces = GraphValueId{.index = 3},
+            }},
+            .op_params = EmbeddingParams{},
+            .debug_name = "subgraph_replacement",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1}).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_EQ(committed->GetNodes().size(), 2U);
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).inputs[0], committed->GetInputs()[1].value);
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).debug_name, "");
+    EXPECT_TRUE(committed->Validate().ok());
 }
 
 }// namespace

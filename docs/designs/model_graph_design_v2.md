@@ -567,68 +567,103 @@ New ModelGraph snapshot
 `GraphRewriteSession` 是 `PassManager` 内部的受控 mutable overlay。Pass 可以返回 mutation list，也可以通过 session 的受控 API 表达局部修改，但不能直接写底层 vector。
 
 ```cpp
-struct ReplaceNodeMutation {
+struct ReplaceNodeCmd {
     GraphNodeId old_node{};
     std::vector<GraphNode> replacement_nodes{};
 };
 
-struct RemoveNodeMutation {
+struct RemoveNodeCmd {
     GraphNodeId node{};
 };
 
-struct RedirectInputMutation {
+struct RedirectInputCmd {
     GraphNodeId node{};
     size_t input_index = 0;
     GraphValueId new_value{};
 };
 
-struct ReplaceValueMutation {
+struct ReplaceValueCmd {
     GraphValueId old_value{};
     GraphValueId new_value{};
 };
 
-struct GraphMetadataPatch {
-    std::string key{};
-    std::string value{};
+struct ReplacementOutput {
+    NodeOutputDesc desc{};
+    std::optional<GraphValueId> replaces{};
 };
 
-struct MarkMetadataMutation {
-    GraphNodeId node{};
-    GraphMetadataPatch patch{};
+struct ReplacementNode {
+    OpType op_type = OpType::kUnknown;
+    std::optional<uint32_t> decoder_layer_index{};
+    std::vector<GraphValueId> inputs{};
+    std::vector<ReplacementOutput> outputs{};
+    ModelGraphAttrs attrs{};
+    OpParams op_params{};
+    std::string debug_name{};
 };
 
-using GraphMutation = std::variant<
-        ReplaceNodeMutation,
-        RemoveNodeMutation,
-        RedirectInputMutation,
-        ReplaceValueMutation,
-        MarkMetadataMutation>;
+struct ReplaceSubgraphCmd {
+    std::vector<GraphNodeId> old_nodes{};
+    std::vector<ReplacementNode> replacement_nodes{};
+};
+
+using GraphMutation = std::variant<ReplaceNodeCmd,
+                                   ReplaceSubgraphCmd,
+                                   RemoveNodeCmd,
+                                   RedirectInputCmd,
+                                   ReplaceValueCmd>;
 
 class GraphRewriteSession {
 public:
-    Status Apply(std::span<const GraphMutation> mutations);
+    explicit GraphRewriteSession(const ModelGraph& graph);
 
-    Status ReplaceNode(GraphNodeId node, std::vector<GraphNode> replacement_nodes);
-    Status RemoveNode(GraphNodeId node);
-    Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
-    Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
+    AM_NODISCARD Status Apply(std::span<const GraphMutation> mutations);
 
-    GraphValueId GetResolvedValue(GraphValueId value) const;
-    StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;
+    AM_NODISCARD Status RemoveNode(GraphNodeId node);
+    AM_NODISCARD Status ReplaceNode(GraphNodeId node, const std::vector<GraphNode>& replacement_nodes);
+    AM_NODISCARD Status ReplaceNodeWithOutputs(GraphNodeId node, const std::vector<ReplacementNode>& replacement_nodes);
+    AM_NODISCARD Status ReplaceSubgraph(std::span<const GraphNodeId> old_nodes, const std::vector<ReplacementNode>& replacement_nodes);
+    AM_NODISCARD Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
+    AM_NODISCARD Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
 
-    Status ValidateEdits() const;
-    StatusOr<ModelGraph> Commit() const;
+    AM_NODISCARD GraphValueId GetResolvedValue(GraphValueId value) const;
+    AM_NODISCARD StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;
+
+    AM_NODISCARD Status ValidateEdits() const;
+    AM_NODISCARD StatusOr<ModelGraph> Commit() const;
+
+private:
+    enum class NodeRewriteKind : std::uint8_t {
+        kKeep,
+        kRemove,
+    };
+
+    struct NodeRewriteEntry {
+        NodeRewriteKind kind = NodeRewriteKind::kKeep;
+        std::optional<std::size_t> subgraph_rewrite{};
+    };
+
+    struct SubgraphRewriteEntry {
+        std::vector<GraphNodeId> old_nodes{};
+        std::vector<ReplacementNode> replacements{};
+    };
+
+    const ModelGraph& graph_;
+    std::vector<NodeRewriteEntry> node_rewrites_{};
+    std::vector<SubgraphRewriteEntry> subgraph_rewrites_{};
+    std::vector<std::optional<GraphValueId>> value_replacements_{};
+    mutable std::vector<std::optional<GraphValueId>> resolved_value_cache_{};
+    std::vector<std::optional<std::vector<GraphValueId>>> input_overrides_{};
 };
 ```
 
-session 内部可以维护：
+session 内部维护：
 
-- append-only 新 nodes / values；
-- deleted nodes / values 的 tombstone；
-- value replacement map；
-- node input override；
-- 临时 consumers/use-list cache；
-- metadata patches。
+- `node_rewrites_`：每个 node 的 `NodeRewriteEntry`，标记 `kKeep` 或 `kRemove`，以及可选的子图重写索引；
+- `subgraph_rewrites_`：`SubgraphRewriteEntry` 列表，记录旧节点集合与 `ReplacementNode` 列表；
+- `value_replacements_`：value replacement map，支持链式替换；
+- `resolved_value_cache_`：`mutable` 路径压缩缓存，每次 `ReplaceValue()` 时失效；
+- `input_overrides_`：node input override。
 
 这些结构只在 rewrite transaction 内部存在。`Commit()` 后生成新的 immutable `ModelGraph`，临时 cache 不进入持久 graph。
 
@@ -649,20 +684,50 @@ replacement_map = {1 -> 2, 2 -> 3}
 
 任何后续 pass 查询 `Value 1` 的当前语义值时，必须得到最终结果 `Value 3`，不能只得到中间值 `Value 2`。因此 `GraphRewriteSession` 必须提供带路径压缩的 replacement resolution，或者使用并查集（Disjoint Set / Union-Find）维护 value alias 集合。
 
-伪代码：
+当前实现使用带路径压缩的 `mutable` 缓存：
 
 ```cpp
 GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
-    auto it = replacement_map_.find(value);
-    if (it == replacement_map_.end()) {
+    if (value.index >= value_replacements_.size()) {
         return value;
     }
 
-    GraphValueId resolved = GetResolvedValue(it->second);
-    // 实际实现可在非 const 查询或 mutable cache 中做路径压缩。
+    if (resolved_value_cache_[value.index].has_value()) {
+        return *resolved_value_cache_[value.index];
+    }
+
+    std::vector<uint32_t> path;
+    GraphValueId cur = value;
+    GraphValueId resolved = value;
+    for (size_t depth = 0; depth < value_replacements_.size(); ++depth) {
+        if (cur.index >= value_replacements_.size()) {
+            resolved = cur;
+            break;
+        }
+
+        if (resolved_value_cache_[cur.index].has_value()) {
+            resolved = *resolved_value_cache_[cur.index];
+            break;
+        }
+
+        path.push_back(cur.index);
+        const auto& next = value_replacements_[cur.index];
+        if (!next.has_value()) {
+            resolved = cur;
+            break;
+        }
+        cur = *next;
+        resolved = cur;
+    }
+
+    for (uint32_t value_index: path) {
+        resolved_value_cache_[value_index] = resolved;
+    }
     return resolved;
 }
 ```
+
+`resolved_value_cache_` 是 `mutable` 成员，允许在 `const` 查询时缓存路径压缩结果。每次 `ReplaceValue()` 调用会清空整个缓存，保证后续查询的正确性。
 
 如果允许在 session 内继续重写已被替换的 value，所有 mutation API 必须先调用 `GetResolvedValue()` 规范化输入，例如：
 
@@ -1301,8 +1366,9 @@ M3 验收：execution plan 构建不再依赖旧 `GraphNode.weights` / `GraphNod
 
 已交付：
 
-- `GraphRewriteSession`：含 `ReplaceNode` / `RemoveNode` / `RedirectInput` / `ReplaceValue` / `Apply` / `Commit`，支持不可变快照 + 事务式重写；`ReplaceValue` 内置环检测；
-- `GraphMutation`：typed variant（`ReplaceNodeCmd` / `RemoveNodeCmd` / `RedirectInputCmd` / `ReplaceValueCmd`），由 `Apply()` 批量提交；
+- `GraphRewriteSession`：含 `ReplaceNode` / `ReplaceNodeWithOutputs` / `ReplaceSubgraph` / `RemoveNode` / `RedirectInput` / `ReplaceValue` / `Apply` / `Commit`，支持不可变快照 + 事务式重写；`ReplaceValue` 内置环检测；`GetResolvedValue` 使用 `mutable` 路径压缩缓存；`Apply()` 内 `overloaded` visitor 在循环外构造，避免每次迭代重新构造；
+- `GraphRewriteSession` 内部状态：用 `NodeRewriteKind { kKeep, kRemove }` + `NodeRewriteEntry { kind, optional<size_t> subgraph_rewrite }` 替代了旧 `removed_nodes_` + `node_replacements_` 双向量；新增 `SubgraphRewriteEntry { old_nodes, replacements }` 作为 `ReplaceSubgraph` 的规范内部表示；`ReplaceNode` / `ReplaceNodeWithOutputs` 作为 `ReplaceSubgraph` 的便捷包装；
+- `GraphMutation`：typed variant（`ReplaceNodeCmd` / `ReplaceSubgraphCmd` / `RemoveNodeCmd` / `RedirectInputCmd` / `ReplaceValueCmd`），由 `Apply()` 批量提交；
 - `GraphPass` / `GraphPassManager`：含 `SetCheckpointEvery(N)` phase checkpoint，最后一个 pass 落在 checkpoint 边界时正确 materialize；`SetCheckpointEvery(0)` 禁用 checkpoint；`Run()` 避免初始图深拷贝；
 - graph dump：`DumpGraph` / `DumpOpParams`，覆盖全部 payload kind、OpParams variant、QuantizationSpec；
 - `OpParams` serialization / round-trip：`SerializeOpParams` / `ParseOpParams`，使用 `std::from_chars` 替代 `std::stod`；

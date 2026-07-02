@@ -17,24 +17,24 @@ ModelGraph BuildTwoEmbeddingGraph() {
     const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
     const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     const AddedNode embed_a = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_a, weight},
             {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                        .payload = ActivationValue{},
-                                        .debug_name = "hidden_a"}},
+                            .payload = ActivationValue{},
+                            .debug_name = "hidden_a"}},
             EmbeddingParams{});
     const AddedNode embed_b = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_b, weight},
             {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                        .payload = ActivationValue{},
-                                        .debug_name = "hidden_b"}},
+                            .payload = ActivationValue{},
+                            .debug_name = "hidden_b"}},
             EmbeddingParams{});
     (void) embed_b;
     graph.MarkOutput(embed_a.outputs[0], "output");
@@ -48,6 +48,17 @@ TEST(GraphRewriteSession, ResolvesChainedValueReplacement) {
     ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
     ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 1}, GraphValueId{.index = 2}).ok());
 
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 2});
+}
+
+TEST(GraphRewriteSession, ResolvedValueCacheInvalidatesAfterReplaceValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 1});
+
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 1}, GraphValueId{.index = 2}).ok());
     EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 2});
 }
 
@@ -250,8 +261,8 @@ ModelGraph BuildGraphWithState() {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     const GraphValueId k_cache = graph.AddState(
             Spec(DataType::Float32(), {2, 4, 8}),
@@ -263,8 +274,8 @@ ModelGraph BuildGraphWithState() {
             std::nullopt,
             {tokens, weight},
             {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                        .payload = ActivationValue{},
-                                        .debug_name = "hidden"}},
+                            .payload = ActivationValue{},
+                            .debug_name = "hidden"}},
             EmbeddingParams{});
     graph.MarkOutput(embed.outputs[0], "output");
     return graph;
@@ -295,16 +306,16 @@ TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     const AddedNode embed = graph.AddNode(
             OpType::kEmbedding,
             3U,// decoder_layer_index = 3
             {tokens, weight},
             {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                        .payload = ActivationValue{},
-                                        .debug_name = "hidden"}},
+                            .payload = ActivationValue{},
+                            .debug_name = "hidden"}},
             EmbeddingParams{});
     graph.MarkOutput(embed.outputs[0], "output");
 
@@ -364,8 +375,8 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
     auto inline_data = std::make_shared<const std::vector<std::byte>>(
             std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}});
@@ -378,8 +389,8 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
             std::nullopt,
             {tokens, weight},
             {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                        .payload = ActivationValue{},
-                                        .debug_name = "hidden"}},
+                            .payload = ActivationValue{},
+                            .debug_name = "hidden"}},
             EmbeddingParams{});
     graph.MarkOutput(embed.outputs[0], "output");
     (void) constant;

@@ -30,25 +30,27 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
     : graph_(graph),
       removed_nodes_(graph.GetNodes().size(), false),
       value_replacements_(graph.GetValues().size(), std::nullopt),
+      resolved_value_cache_(graph.GetValues().size(), std::nullopt),
       input_overrides_(graph.GetNodes().size(), std::nullopt),
       node_replacements_(graph.GetNodes().size(), std::nullopt) {}
 
 Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
+    auto visitor = overloaded{
+            [this](const ReplaceNodeCmd& replace) {
+                return ReplaceNode(replace.old_node, replace.replacement_nodes);
+            },
+            [this](const RemoveNodeCmd& remove) {
+                return RemoveNode(remove.node);
+            },
+            [this](const RedirectInputCmd& redirect) {
+                return RedirectInput(redirect.node, redirect.input_index, redirect.new_value);
+            },
+            [this](const ReplaceValueCmd& replace) {
+                return ReplaceValue(replace.old_value, replace.new_value);
+            },
+    };
+
     for (const GraphMutation& mutation: mutations) {
-        auto visitor = overloaded{
-                [&](const ReplaceNodeCmd& replace) {
-                    return ReplaceNode(replace.old_node, replace.replacement_nodes);
-                },
-                [&](const RemoveNodeCmd& remove) {
-                    return RemoveNode(remove.node);
-                },
-                [&](const RedirectInputCmd& redirect) {
-                    return RedirectInput(redirect.node, redirect.input_index, redirect.new_value);
-                },
-                [&](const ReplaceValueCmd& replace) {
-                    return ReplaceValue(replace.old_value, replace.new_value);
-                },
-        };
         AM_RETURN_IF_ERROR(std::visit(visitor, mutation));
     }
     return Status::Ok();
@@ -103,6 +105,7 @@ Status GraphRewriteSession::ReplaceValue(GraphValueId old_value, GraphValueId ne
     if (old_value == new_value) {
         return Status::Ok();
     }
+
     // Detect replacement cycle: if new_value's resolution chain already
     // reaches old_value, setting old_value -> new_value would close a cycle.
     // Without this check, GetResolvedValue would iterate the cycle up to
@@ -113,34 +116,63 @@ Status GraphRewriteSession::ReplaceValue(GraphValueId old_value, GraphValueId ne
         if (cur.index >= value_replacements_.size()) {
             break;
         }
-        const std::optional<GraphValueId>& next = value_replacements_[cur.index];
+
+        const auto& next = value_replacements_[cur.index];
         if (!next.has_value()) {
             break;
         }
+
         cur = *next;
         if (cur == old_value) {
             return Status::InvalidArgument(
                     "GraphRewriteSession::ReplaceValue would create a replacement cycle");
         }
     }
+
     value_replacements_[old_value.index] = new_value;
+    for (auto& cached_value: resolved_value_cache_) {
+        cached_value.reset();
+    }
     return Status::Ok();
 }
 
 GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
+    if (value.index >= value_replacements_.size()) {
+        return value;
+    }
+
+    if (resolved_value_cache_[value.index].has_value()) {
+        return *resolved_value_cache_[value.index];
+    }
+
+    std::vector<uint32_t> path;
     GraphValueId cur = value;
+    GraphValueId resolved = value;
     for (size_t depth = 0; depth < value_replacements_.size(); ++depth) {
         if (cur.index >= value_replacements_.size()) {
-            return cur;
+            resolved = cur;
+            break;
         }
 
-        const std::optional<GraphValueId>& next = value_replacements_[cur.index];
+        if (resolved_value_cache_[cur.index].has_value()) {
+            resolved = *resolved_value_cache_[cur.index];
+            break;
+        }
+
+        path.push_back(cur.index);
+        const auto& next = value_replacements_[cur.index];
         if (!next.has_value()) {
-            return cur;
+            resolved = cur;
+            break;
         }
         cur = *next;
+        resolved = cur;
     }
-    return cur;
+
+    for (uint32_t value_index: path) {
+        resolved_value_cache_[value_index] = resolved;
+    }
+    return resolved;
 }
 
 StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const {
@@ -194,15 +226,15 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
             graph_.GetValues().size(), std::nullopt);
 
     const std::span<const GraphValue> values = graph_.GetValues();
-    for (size_t i = 0; i < values.size(); ++i) {
-        const GraphValueId old_id{.index = static_cast<uint32_t>(i)};
+    for (uint32_t i = 0; i < values.size(); ++i) {
+        const GraphValueId old_id{.index = i};
         const GraphValue& value = values[i];
         if (value.producer.has_value()) {
             continue;
         }
 
         if (std::get_if<ModelInputValue>(&value.payload)) {
-            const std::optional<std::string> input_name = FindInputName(graph_, old_id);
+            const auto input_name = FindInputName(graph_, old_id);
             if (!input_name.has_value()) {
                 return Status::InvalidArgument(
                         "GraphRewriteSession::Commit model input name not found");

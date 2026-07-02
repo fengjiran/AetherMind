@@ -71,6 +71,7 @@ private:
     const ModelGraph& graph_;
     std::vector<bool> removed_nodes_{};
     std::vector<std::optional<GraphValueId>> value_replacements_{};
+    mutable std::vector<std::optional<GraphValueId>> resolved_value_cache_{};
     std::vector<std::optional<std::vector<GraphValueId>>> input_overrides_{};
     std::vector<std::optional<std::vector<GraphNode>>> node_replacements_{};
 };

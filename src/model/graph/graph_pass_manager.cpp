@@ -13,7 +13,7 @@ GraphPassManager& GraphPassManager::Add(std::unique_ptr<GraphPass> pass) {
     return *this;
 }
 
-GraphPassManager& GraphPassManager::SetCheckpointEvery(size_t pass_count) noexcept {
+GraphPassManager& GraphPassManager::SetCheckpointEvery(uint32_t pass_count) noexcept {
     ctx_.checkpoint_every = pass_count;
     return *this;
 }

@@ -52,8 +52,8 @@ public:
 
     AM_NODISCARD Status Apply(std::span<const GraphMutation> mutations);
 
-    AM_NODISCARD Status ReplaceNode(GraphNodeId node, const std::vector<GraphNode>& replacement_nodes);
     AM_NODISCARD Status RemoveNode(GraphNodeId node);
+    AM_NODISCARD Status ReplaceNode(GraphNodeId node, const std::vector<GraphNode>& replacement_nodes);
     AM_NODISCARD Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
     AM_NODISCARD Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
 

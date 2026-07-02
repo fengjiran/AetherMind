@@ -54,12 +54,15 @@ Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
     return Status::Ok();
 }
 
+Status GraphRewriteSession::RemoveNode(GraphNodeId node) {
+    AM_RETURN_IF_ERROR(CheckNodeId(node));
+    removed_nodes_[node.index] = true;
+    return Status::Ok();
+}
+
 Status GraphRewriteSession::ReplaceNode(GraphNodeId node,
                                         const std::vector<GraphNode>& replacement_nodes) {
     AM_RETURN_IF_ERROR(CheckNodeId(node));
-    if (replacement_nodes.empty()) {
-        return RemoveNode(node);
-    }
 
     // Validate: all input/output IDs must reference existing values in the original graph
     for (const GraphNode& replacement: replacement_nodes) {
@@ -73,12 +76,6 @@ Status GraphRewriteSession::ReplaceNode(GraphNodeId node,
 
     removed_nodes_[node.index] = true;
     node_replacements_[node.index] = replacement_nodes;
-    return Status::Ok();
-}
-
-Status GraphRewriteSession::RemoveNode(GraphNodeId node) {
-    AM_RETURN_IF_ERROR(CheckNodeId(node));
-    removed_nodes_[node.index] = true;
     return Status::Ok();
 }
 

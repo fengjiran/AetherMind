@@ -617,7 +617,7 @@ public:
     StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;
 
     Status ValidateEdits() const;
-    StatusOr<ModelGraph> Commit();
+    StatusOr<ModelGraph> Commit() const;
 };
 ```
 
@@ -718,6 +718,8 @@ final pre-lowering cleanup   → Commit()
 3. **Debug / CI validation**：可选地在每个 pass 后 full validate 或 dump 当前 session graph，用于调试 rewrite pass。
 
 release 默认不要求每个 pass 后 materialize + full validate。debug 模式可以打开更严格策略。
+
+**当前实现状态**：第 1 层由 `GraphRewriteSession` 的 controlled edit API（ID 校验、端口范围、value 存在性）实现；第 2 层由 `Commit()` 内调用 `committed.Validate()` 实现；第 3 层当前通过 `SetCheckpointEvery(1)` 达到类似效果，但代价是每 pass 都会 materialize 新图（比设计描述的"validate session without materialize"更重）。未来可增加 `ValidateSession()` 做无 materialization 的 full validate，从而真正分离"校验"与"物化"。`ValidateEdits()` 只做轻量校验（value id 有效、replacement 引用有效），不等价于 full `Validate()`。
 
 ### 10.5 Storage 与性能策略
 
@@ -946,9 +948,13 @@ public:
 3. pipeline 末尾避免对刚 checkpoint 过的图重复 commit；
 4. dump / instrumentation 只能增加可观测性，不能改变优化语义。
 
+**错误语义（all-or-nothing）**：任一 pass 失败时，`Run()` 只返回错误 `Status`，**不返回部分结果**。已 checkpoint 的中间快照不暴露给调用方，session 状态不可恢复。调用方收到错误时，输入 `ModelGraph` 本身不受影响，可安全重试或换用空 pipeline。
+
+**空 pipeline 行为**：当未注册任何 pass 时，`Run()` 返回输入图的有效副本（经 `Commit()` 生成），保证调用方始终拿到一个独立的 `ModelGraph`。
+
 ### 16.3 PassContext 扩展方向
 
-当前代码尚未引入 `PassContext`。如需集中管理优化级别、feature flags 和 dump 行为，应将 `PassContext` 作为 `GraphPassManager` 的增量配置层，而不是替代现有 checkpoint 机制。
+ `PassContext` 作为 `GraphPassManager` 的增量配置层，集中管理优化级别、feature flags 和 dump 行为，和 checkpoint 机制进行配合。
 
 建议目标形态：
 
@@ -981,21 +987,23 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 兼容策略：`SetCheckpointEvery()` 可保留为便捷 API，内部写入 `ctx_.checkpoint_every`；所有错误仍通过 `Status` 传播，不能改成 `bool`。
 
+**Fusion flags 使用约定**：`enable_qkv_fusion` / `enable_swiglu_fusion` / `enable_flash_attention_rewrite` / `enable_fused_add_rms_norm` 默认全 `true`（激进优化）。每个 fusion pass 在 `Run()` 入口自行检查对应 flag，若禁用则直接返回 `Status::Ok()` 跳过。约定模式：`if (!ctx.enable_qkv_fusion) { return Status::Ok(); }`。`opt_level` 用于控制 pass 是否注册到 pipeline（由 `GraphPassManager` 或上层决定），flag 用于控制已注册 pass 的运行时行为。
+
 ### 16.4 Pass 路线图
 
-当前仓库已有 pass framework 和 rewrite session，但 production optimization pass 仍按 use case 推进。推荐顺序如下。
+当前仓库已有 pass framework 和 rewrite session，但 production optimization pass 仍按 use case 推进。推荐顺序如下。各 pass 当前状态标注如下：`[已实现]` / `[未实现]` / `[规划中]`。
 
 #### Phase 1：基础清理
 
-- **`ConstantFoldingPass`**：仅折叠纯函数、compile-time constant 输入的安全子图；不得折叠 runtime input、state 或外部权重依赖。
-- **`DeadCodeEliminationPass`**：以 graph outputs、stateful update 和必要 side-effect 节点为 roots，通过 `BuildConsumerIndex()` 或等价机制删除不可达节点；DCE 后必须 commit 生成一致新图。
+- **`ConstantFoldingPass`** `[未实现]`：仅折叠纯函数、compile-time constant 输入的安全子图；不得折叠 runtime input、state 或外部权重依赖。
+- **`DeadCodeEliminationPass`** `[未实现]`：以 graph outputs、stateful update 和必要 side-effect 节点为 roots，通过 `BuildConsumerIndex()` 或等价机制删除不可达节点；DCE 后必须 commit 生成一致新图。
 
 #### Phase 2：LLM 语义融合
 
-- **`QkvFusionPass`**：匹配同一输入上的 Q/K/V 三个 `Linear`，验证 layer、dtype、shape 与 downstream consumer 后提升为 QKV 语义节点。
-- **`SwiGLUFusionPass`**：匹配 `gate -> silu -> mul(up)`，验证 shape/dtype 与中间 activation consumer 后合并为 `SiluMul` 或更高阶语义节点。
-- **`FlashAttentionRewritePass`**：将 attention softmax 子图提升为 `FlashAttention` 语义节点；是否使用具体 fused kernel 由 lowering / backend plan 决定。
-- **`FusedAddRmsNormPass`**：融合 residual add 与后续 RMSNorm，必须明确 residual 输入顺序、aliasing 语义、weight binding 与 lowering fallback。
+- **`QkvFusionPass`** `[规划中]`：匹配同一输入上的 Q/K/V 三个 `Linear`，验证 layer、dtype、shape 与 downstream consumer 后提升为 QKV 语义节点。
+- **`SwiGLUFusionPass`** `[规划中]`：匹配 `gate -> silu -> mul(up)`，验证 shape/dtype 与中间 activation consumer 后合并为 `SiluMul` 或更高阶语义节点。
+- **`FlashAttentionRewritePass`** `[规划中]`：将 attention softmax 子图提升为 `FlashAttention` 语义节点；是否使用具体 fused kernel 由 lowering / backend plan 决定。
+- **`FusedAddRmsNormPass`** `[规划中]`：融合 residual add 与后续 RMSNorm，必须明确 residual 输入顺序、aliasing 语义、weight binding 与 lowering fallback。
 
 每个真实 pass 至少需要覆盖匹配成功、匹配失败、安全跳过、非法输入四类测试；fusion 后的图必须通过 `Validate()`，并保持可 lowering。
 
@@ -1305,7 +1313,7 @@ M3 验收：execution plan 构建不再依赖旧 `GraphNode.weights` / `GraphNod
 延迟项（不阻塞 M4 验收，留待后续 milestone 或 use case 驱动）：
 
 - session 内 consumers / use-list 临时索引：当前 `ReplaceValue` 已有环检测，但缺少高效 consumer 反查索引；按需实现；
-- `PassContext`：当前 `GraphPassManager` 已有 checkpoint 机制，统一 opt level、feature flags、dump 配置的 context 层按需引入；
+- `PassContext` dump 配置：`PassContext` 已引入基础字段（opt_level、checkpoint_every、fusion flags），dump 配置字段（dump_after_checkpoint、dump_dir）待引入；
 - 完整图 serialization：当前仅 `OpParams` 序列化完成，图级序列化留待 use case 出现；
 - round-trip validation：依赖完整图序列化；
 - pattern matcher：待 graph rewrite 用例驱动；
@@ -1339,7 +1347,7 @@ ID / GraphValue 类型
 7. 不在 graph builder 中根据已有 kernel 覆盖率裁剪拓扑；
 8. 不因起步范围较小而过早实现完整 compiler framework；
 9. 不把 `GraphPass::Run()` 的错误通道降级为 `bool`；pass 发现非法图结构必须返回 `Status`；
-10. 不在 semantic pass 中绕过 `GraphRewriteSession::GetNodeView()` 直接解释原始 `ModelGraph` inputs；
+10. 不在 semantic pass 中绕过 `GraphRewriteSession::GetNodeView()` 直接解释原始 `ModelGraph` inputs（此规则由接口设计强制：`GraphPass::Run()` 只接收 `GraphRewriteSession&`，不接收 `const ModelGraph&`，pass 无法直接访问原图）；
 11. 不让 debug dump / instrumentation 改变 pass 匹配结果或 checkpoint 之外的 materialization 语义。
 
 ## 21. 总结

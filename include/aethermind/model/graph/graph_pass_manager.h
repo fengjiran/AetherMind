@@ -13,7 +13,7 @@ namespace aethermind {
 
 struct PassContext {
     uint32_t opt_level = 2;
-    size_t checkpoint_every = 0;
+    uint32_t checkpoint_every = 0;
 
     bool enable_qkv_fusion = true;
     bool enable_swiglu_fusion = true;
@@ -35,7 +35,7 @@ public:
     explicit GraphPassManager(PassContext ctx) noexcept;
 
     GraphPassManager& Add(std::unique_ptr<GraphPass> pass);
-    GraphPassManager& SetCheckpointEvery(size_t pass_count) noexcept;
+    GraphPassManager& SetCheckpointEvery(uint32_t pass_count) noexcept;
 
     AM_NODISCARD StatusOr<ModelGraph> Run(const ModelGraph& graph) const;
 

@@ -102,7 +102,7 @@ public:
 
 class ExpectCheckpointEveryPass final : public GraphPass {
 public:
-    explicit ExpectCheckpointEveryPass(size_t expected) noexcept
+    explicit ExpectCheckpointEveryPass(uint32_t expected) noexcept
         : expected_(expected) {}
 
     AM_NODISCARD std::string_view Name() const noexcept override {
@@ -117,7 +117,7 @@ public:
     }
 
 private:
-    size_t expected_ = 0;
+    uint32_t expected_ = 0;
 };
 
 TEST(GraphPassManager, EmptyPipelineReturnsValidGraph) {

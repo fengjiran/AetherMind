@@ -1066,7 +1066,7 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 建议参考的方向：
 
-1. **Visitor / Mutator 思想**：pass 可以提供类似 `GraphMutator` 的 helper，按拓扑序遍历 graph，识别可重写节点或子图，并产生 `GraphMutation`。但它不直接修改 `ModelGraph`，也不拥有 IR 存储。
+1. **遍历与 Mutation 收集**：pass 在 `GraphPass::Run` 内按拓扑序遍历 graph，识别可重写节点或子图，并产生 `GraphMutation`。遍历逻辑直接内联在 pass 中，不引入额外的 mutator 基类——per-node 遍历足够简单，手写循环比继承层次更清晰。子图构造可使用 `SubgraphBuilder` 封装 virtual value 分配和 `RewriteOutputBinding` 绑定。
 2. **Dataflow Pattern Matching**：可以实现 TVM DFPattern-inspired 的极简结构匹配器，用于匹配 `OpType`、输入输出连接、payload 类型和基础 attrs。复杂 shape / params predicate 应等 typed `OpParams` 落地后再扩展。
 3. **Semantic Pass 与 Lowering Pass 分层**：target-independent 的数学等价变换、canonicalize、dead value detection、fusion marking 属于 semantic pass；kernel dispatch、packed weight、workspace、buffer aliasing、device/resource binding 属于 lowering / execution planning。
 4. **显式 StateValue**：KV cache、decode state 等跨 step 状态通过显式 state input / output 表达，避免隐藏副作用。
@@ -1077,31 +1077,6 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 2. 不引入 TVM TIR / TensorIR 级别 kernel generation；AetherMind lowering 只做 kernel dispatch / fused kernel selection，不做运行时代码生成。
 3. 不引入完整 Relax/Relay type inference 系统；仅实现 LLM 推理所需的符号 shape、dtype、schema validation 与约束传播。
 4. 不实现完整 TVM DFPattern 语言；第一版只做保守的结构匹配。
-
-可选 helper 形态：
-
-```cpp
-class GraphMutator {
-public:
-    virtual ~GraphMutator() = default;
-
-    virtual std::optional<GraphMutation> MutateNode(
-            const GraphRewriteSession& session,
-            GraphNodeId node_id) {
-        return std::nullopt;
-    }
-
-    Status Run(GraphRewriteSession& session) {
-        std::vector<GraphMutation> mutations;
-        for (GraphNodeId node_id: session.TopologicalOrderView()) {
-            if (auto mutation = MutateNode(session, node_id)) {
-                mutations.push_back(std::move(*mutation));
-            }
-        }
-        return session.Apply(mutations);
-    }
-};
-```
 
 关键约束：pass 在 transaction 内读取节点时必须通过 `GraphRewriteSession` 的 virtual view，例如 `GetNodeView()`，以获得已解析 replacement、过滤 tombstone 后的最新视图；不能直接读取原始 `ModelGraph::GetNode()` 后自行解释 inputs。
 
@@ -1340,7 +1315,6 @@ M3 验收：execution plan 构建不再依赖旧 `GraphNode.weights` / `GraphNod
 
 - `GraphRewriteSession`；
 - `GraphMutation`；
-- `GraphMutator`；
 - session 内 consumers / use-list 临时索引；
 - graph dump；
 - serialization；

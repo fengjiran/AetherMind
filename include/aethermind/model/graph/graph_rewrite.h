@@ -6,7 +6,10 @@
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace aethermind {
 
@@ -101,6 +104,58 @@ private:
     std::vector<std::optional<std::size_t>> node_to_rewrite_{};
     std::vector<std::optional<GraphValueId>> value_replacements_{};
     mutable std::vector<std::optional<GraphValueId>> resolved_value_cache_{};
+};
+
+/// Convenience builder for constructing subgraph replacements without
+/// manually managing virtual value allocation, RewriteOutputBinding wiring,
+/// and ReplacementNode assembly.
+///
+/// Usage:
+///   SubgraphBuilder builder(session, {old_node1, old_node2});
+///   GraphValueId mid = builder.Emit(OpType::kSilu, {input}, spec, params);
+///   GraphValueId out = builder.Emit(OpType::kMul, {mid, other}, spec, params);
+///   builder.Yield(out, old_output_value);
+///   builder.Commit();
+///
+/// Thread-safety: not thread-safe. Each builder instance is intended for
+/// single-threaded use within one pass invocation.
+class SubgraphBuilder {
+public:
+    SubgraphBuilder(GraphRewriteSession& session, std::vector<GraphNodeId> old_nodes)
+        : session_(session), old_nodes_(std::move(old_nodes)) {}
+
+    /// Creates a new replacement node with a single activation output.
+    /// Allocates a virtual value internally, binds it as the node's output,
+    /// and returns the virtual value id for use as input to subsequent Emit
+    /// calls or as the internal_val argument to Yield.
+    ///
+    /// For nodes that need multiple outputs or non-activation payloads
+    /// (e.g. StateValue for KV cache updates), use the full
+    /// GraphRewriteSession::ReplaceSubgraph API directly.
+    GraphValueId Emit(OpType op_type,
+                      std::vector<GraphValueId> inputs,
+                      TensorSpec output_spec,
+                      OpParams op_params = std::monostate{},
+                      std::optional<uint32_t> decoder_layer_index = std::nullopt,
+                      std::string debug_name = {});
+
+    /// Marks an internal virtual value (returned by Emit) as the replacement
+    /// for an external graph value. After Commit, all consumers of
+    /// old_value_to_replace will consume the new node's output instead.
+    ///
+    /// Returns InvalidArgument if internal_val was not produced by any
+    /// prior Emit call.
+    Status Yield(GraphValueId internal_val, GraphValueId old_value_to_replace);
+
+    /// Submits the accumulated replacement nodes to the session as a single
+    /// ReplaceSubgraph mutation. On success, the builder is reset and can be
+    /// reused for further Emit/Yield/Commit cycles.
+    Status Commit();
+
+private:
+    GraphRewriteSession& session_;
+    std::vector<GraphNodeId> old_nodes_;
+    std::vector<ReplacementNode> new_nodes_;
 };
 
 }// namespace aethermind

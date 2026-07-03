@@ -1012,5 +1012,82 @@ TEST(GraphRewriteSession, RedirectInputClearsOverlappingSubgraphRewrite) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
+TEST(SubgraphBuilder, EmitsAndYieldsReplacementSubgraph) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const TensorSpec spec = Spec(DataType::Float32(), {1, 1, 4});
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+
+    const GraphValueId mid = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            spec,
+            EmbeddingParams{},
+            std::nullopt,
+            "embed_mid");
+    ASSERT_NE(mid.index, 0U);
+
+    ASSERT_TRUE(builder.Yield(mid, GraphValueId{.index = 3}).ok());
+
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_EQ(committed->GetNodes().size(), 2U);
+
+    const GraphNode& new_embed = committed->GetNode(GraphNodeId{.index = 0});
+    EXPECT_EQ(new_embed.op_type, OpType::kEmbedding);
+    ASSERT_EQ(new_embed.outputs.size(), 1U);
+    EXPECT_EQ(new_embed.inputs[0], committed->GetInputs()[1].value);
+    EXPECT_EQ(committed->GetOutputs()[0].value, new_embed.outputs[0]);
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(SubgraphBuilder, YieldRejectsUnknownInternalValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    const GraphValueId mid = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            Spec(DataType::Float32(), {1, 1, 4}),
+            EmbeddingParams{});
+
+    const GraphValueId unproduced = session.AllocateVirtualValue();
+    const Status status = builder.Yield(unproduced, GraphValueId{.index = 3});
+    EXPECT_FALSE(status.ok());
+
+    (void) mid;
+}
+
+TEST(SubgraphBuilder, BuilderReusableAfterCommit) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    const GraphValueId out1 = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            Spec(DataType::Float32(), {1, 1, 4}),
+            EmbeddingParams{});
+    ASSERT_TRUE(builder.Yield(out1, GraphValueId{.index = 3}).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const GraphValueId out2 = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            Spec(DataType::Float32(), {1, 1, 4}),
+            EmbeddingParams{});
+    ASSERT_TRUE(builder.Yield(out2, GraphValueId{.index = 3}).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_EQ(committed->GetNodes().size(), 2U);
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
 }// namespace
 }// namespace aethermind

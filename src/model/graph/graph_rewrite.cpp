@@ -585,4 +585,52 @@ void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
     }
 }
 
+GraphValueId SubgraphBuilder::Emit(OpType op_type,
+                                   std::vector<GraphValueId> inputs,
+                                   TensorSpec output_spec,
+                                   OpParams op_params,
+                                   std::optional<uint32_t> decoder_layer_index,
+                                   std::string debug_name) {
+    const GraphValueId virtual_id = session_.AllocateVirtualValue();
+
+    ReplacementNode node{
+            .op_type = op_type,
+            .decoder_layer_index = decoder_layer_index,
+            .inputs = std::move(inputs),
+            .op_params = std::move(op_params),
+            .debug_name = std::move(debug_name),
+    };
+    node.outputs.push_back(RewriteOutputBinding{
+            .desc = NodeOutputDesc{
+                    .spec = std::move(output_spec),
+                    .payload = ActivationValue{},
+            },
+            .replaces = virtual_id,
+    });
+
+    new_nodes_.push_back(std::move(node));
+    return virtual_id;
+}
+
+Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_to_replace) {
+    for (auto& node: new_nodes_) {
+        for (auto& out: node.outputs) {
+            if (out.replaces == internal_val) {
+                out.replaces = old_value_to_replace;
+                return Status::Ok();
+            }
+        }
+    }
+    return Status::InvalidArgument(
+            "SubgraphBuilder::Yield: internal_val was not produced by any Emit call");
+}
+
+Status SubgraphBuilder::Commit() {
+    Status status = session_.ReplaceSubgraph(old_nodes_, new_nodes_);
+    if (status.ok()) {
+        new_nodes_.clear();
+    }
+    return status;
+}
+
 }// namespace aethermind

@@ -64,7 +64,6 @@ struct GraphNodeView {
 class GraphRewriteSession {
 public:
     explicit GraphRewriteSession(const ModelGraph& graph);
-
     AM_NODISCARD GraphValueId AllocateVirtualValue();
     AM_NODISCARD Status Apply(std::span<const GraphMutation> mutations);
     AM_NODISCARD Status RemoveNode(GraphNodeId node);

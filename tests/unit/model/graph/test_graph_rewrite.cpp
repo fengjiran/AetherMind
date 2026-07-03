@@ -101,7 +101,9 @@ TEST(GraphRewriteSession, ReplaceValueAffectsCommit) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0},
+                                     GraphValueId{.index = 1})
+                        .ok());
     const StatusOr<ModelGraph> committed = session.Commit();
 
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -400,7 +402,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
             .op_params = AddParams{},
             .debug_name = "virtual_consumer",
     };
-    const std::array old_nodes{GraphNodeId{.index = 0}};
+    constexpr std::array old_nodes{GraphNodeId{.index = 0}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(first), std::move(second)}).ok());
 
     const StatusOr<ModelGraph> committed = session.Commit();

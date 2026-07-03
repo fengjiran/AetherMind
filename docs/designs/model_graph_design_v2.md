@@ -567,22 +567,22 @@ New ModelGraph snapshot
 `GraphRewriteSession` 是 `PassManager` 内部的受控 mutable overlay。Pass 可以返回 mutation list，也可以通过 session 的受控 API 表达局部修改，但不能直接写底层 vector。
 
 ```cpp
-struct RemoveNodeCmd {
+struct NodeRemoval {
     GraphNodeId node{};
 };
 
-struct RedirectInputCmd {
+struct InputRedirection {
     GraphNodeId node{};
     size_t input_index = 0;
     GraphValueId new_value{};
 };
 
-struct ReplaceValueCmd {
+struct ValueReplacement {
     GraphValueId old_value{};
     GraphValueId new_value{};
 };
 
-struct ReplacementOutput {
+struct RewriteOutputBinding {
     NodeOutputDesc desc{};
     std::optional<GraphValueId> replaces{};
 };
@@ -591,21 +591,21 @@ struct ReplacementNode {
     OpType op_type = OpType::kUnknown;
     std::optional<uint32_t> decoder_layer_index{};
     std::vector<GraphValueId> inputs{};
-    std::vector<ReplacementOutput> outputs{};
+    std::vector<RewriteOutputBinding> outputs{};
     ModelGraphAttrs attrs{};
     OpParams op_params{};
     std::string debug_name{};
 };
 
-struct ReplaceSubgraphCmd {
+struct SubgraphReplacement {
     std::vector<GraphNodeId> old_nodes{};
     std::vector<ReplacementNode> replacement_nodes{};
 };
 
-using GraphMutation = std::variant<ReplaceSubgraphCmd,
-                                   RemoveNodeCmd,
-                                   RedirectInputCmd,
-                                   ReplaceValueCmd>;
+using GraphMutation = std::variant<SubgraphReplacement,
+                                   NodeRemoval,
+                                   InputRedirection,
+                                   ValueReplacement>;
 
 class GraphRewriteSession {
 public:
@@ -646,6 +646,8 @@ private:
 session 内部维护：
 
 - `rewrites_`：`RewriteEntry` 列表，记录旧节点集合、`ReplacementNode` 列表、active 状态，以及是否暴露 node view；
+  - `active`：rewrite 是否仍然有效。`ReplaceSubgraph` 覆盖同一旧节点时会 `DeactivateRewrite` 旧 entry，使其在 `Commit` 时被跳过；
+  - `exposes_node_view`：该 rewrite 是否通过 `RedirectInput` 创建的 mirror `ReplacementNode` 暴露 node view。`RedirectInput` 需要在 `GetNodeView` 中返回修改了输入的节点视图，因此 mirror replacement 标记此字段为 `true`；普通 `ReplaceSubgraph` 产生的 replacement 不暴露原节点 view，此字段为 `false`。`GetNodeView` 仅对 `active && exposes_node_view && old_nodes.size()==1 && replacements.size()==1` 的 rewrite 返回 mirror 视图，否则返回 `NotFound`。
 - `node_to_rewrite_`：从旧 node 到当前 active rewrite 的索引，用于快速覆盖和失效旧 rewrite；
 - `virtual_value_count_`：session 级 virtual value 计数；`AllocateVirtualValue()` 分配高位 `GraphValueId`，仅用于同一个 `RewriteEntry` 内 replacement 子图的内部边；
 - `value_replacements_`：value replacement map，支持链式替换；
@@ -954,7 +956,7 @@ public:
 
     /// 所有图读取和 mutation 记录都通过 session 完成。
     /// 返回非 OK Status 时，GraphPassManager 必须立即终止 pipeline。
-    AM_NODISCARD virtual Status Run(GraphRewriteSession& session) = 0;
+    AM_NODISCARD virtual Status Run(GraphRewriteSession& session, const PassContext& ctx) = 0;
 };
 ```
 
@@ -1354,7 +1356,7 @@ M3 验收：execution plan 构建不再依赖旧 `GraphNode.weights` / `GraphNod
 
 - `GraphRewriteSession`：含 `AllocateVirtualValue` / `ReplaceSubgraph` / `RemoveNode` / `RedirectInput` / `ReplaceValue` / `Apply` / `Commit`，支持不可变快照 + 事务式重写；`ReplaceValue` 内置环检测；`GetResolvedValue` 使用 `mutable` 路径压缩缓存；`Apply()` 内 `overloaded` visitor 在循环外构造，避免每次迭代重新构造；
 - `GraphRewriteSession` 内部状态：用统一的 `RewriteEntry { old_nodes, replacements, active, exposes_node_view }` 表示 node/subgraph rewrite；`node_to_rewrite_` 指向 active rewrite；`RemoveNode` 是 `ReplaceSubgraph({node}, {})`；`RedirectInput` 通过 mirror `ReplacementNode` 暴露 node view；virtual value 仅允许在同一个 rewrite 内部作为 replacement 子图边；
-- `GraphMutation`：typed variant（`ReplaceSubgraphCmd` / `RemoveNodeCmd` / `RedirectInputCmd` / `ReplaceValueCmd`），由 `Apply()` 批量提交；
+- `GraphMutation`：typed variant（`SubgraphReplacement` / `NodeRemoval` / `InputRedirection` / `ValueReplacement`），由 `Apply()` 批量提交；
 - `GraphPass` / `GraphPassManager`：含 `SetCheckpointEvery(N)` phase checkpoint，最后一个 pass 落在 checkpoint 边界时正确 materialize；`SetCheckpointEvery(0)` 禁用 checkpoint；`Run()` 避免初始图深拷贝；
 - graph dump：`DumpGraph` / `DumpOpParams`，覆盖全部 payload kind、OpParams variant、QuantizationSpec；
 - `OpParams` serialization / round-trip：`SerializeOpParams` / `ParseOpParams`，使用 `std::from_chars` 替代 `std::stod`；

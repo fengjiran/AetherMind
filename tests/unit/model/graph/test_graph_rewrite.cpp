@@ -1,8 +1,7 @@
 #include "aethermind/model/graph/graph_rewrite.h"
 
-#include <gtest/gtest.h>
-
 #include <array>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace aethermind {
@@ -24,12 +23,15 @@ RewriteOutputBinding ReplacesHidden(GraphValueId value, const char* debug_name) 
 
 ModelGraph BuildTwoEmbeddingGraph() {
     ModelGraph graph;
-    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
-    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                                                "embed.weight");
+    const GraphValueId tokens_a = graph.AddInput(
+            Spec(DataType::Int(32), {1, 1}), "tokens_a");
+    const GraphValueId tokens_b = graph.AddInput(
+            Spec(DataType::Int(32), {1, 1}), "tokens_b");
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed.weight");
     const AddedNode embed_a = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
@@ -53,10 +55,15 @@ ModelGraph BuildTwoEmbeddingGraph() {
 
 TEST(GraphRewriteSession, ResolvesChainedValueReplacement) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
+    EXPECT_EQ(graph.GetValues().size(), 5);
     GraphRewriteSession session(graph);
 
-    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
-    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 1}, GraphValueId{.index = 2}).ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0},
+                                     GraphValueId{.index = 1})
+                        .ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 1},
+                                     GraphValueId{.index = 2})
+                        .ok());
 
     EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 2});
 }
@@ -65,10 +72,14 @@ TEST(GraphRewriteSession, ResolvedValueCacheInvalidatesAfterReplaceValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 1}).ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0},
+                                     GraphValueId{.index = 1})
+                        .ok());
     EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 1});
 
-    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 1}, GraphValueId{.index = 2}).ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 1},
+                                     GraphValueId{.index = 2})
+                        .ok());
     EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 0}), GraphValueId{.index = 2});
 }
 
@@ -76,7 +87,9 @@ TEST(GraphRewriteSession, RedirectInputIsVisibleInNodeView) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1}).ok());
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0,
+                                      GraphValueId{.index = 1})
+                        .ok());
 
     const StatusOr<GraphNodeView> view = session.GetNodeView(GraphNodeId{.index = 0});
     ASSERT_TRUE(view.ok()) << view.status().ToString();

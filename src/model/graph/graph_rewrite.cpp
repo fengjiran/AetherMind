@@ -268,7 +268,7 @@ GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
         resolved = cur;
     }
 
-    for (uint32_t value_index: path) {
+    for (auto value_index: path) {
         resolved_value_cache_[value_index] = resolved;
     }
     return resolved;
@@ -304,7 +304,7 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
         return view;
     }
 
-    const GraphNode& original = graph_.GetNode(node);
+    const auto& original = graph_.GetNode(node);
     GraphNodeView view{
             .node = node,
             .op_type = original.op_type,
@@ -316,7 +316,7 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
             .debug_name = original.debug_name,
     };
 
-    for (GraphValueId& input: view.inputs) {
+    for (auto& input: view.inputs) {
         input = GetResolvedValue(input);
     }
     return view;
@@ -393,8 +393,8 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
     AM_RETURN_IF_ERROR(order.status());
     std::vector<bool> emitted_rewrites(rewrites_.size(), false);
     for (GraphNodeId old_node_id: *order) {
-        const auto rewrite_index = node_to_rewrite_[old_node_id.index];
-        if (rewrite_index.has_value()) {
+        if (const auto rewrite_index = node_to_rewrite_[old_node_id.index];
+            rewrite_index.has_value()) {
             if (*rewrite_index >= rewrites_.size()) {
                 return Status::InvalidArgument(
                         "GraphRewriteSession::Commit rewrite index out of range");

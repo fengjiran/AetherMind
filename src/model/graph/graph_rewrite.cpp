@@ -65,7 +65,7 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
     rn.outputs.reserve(original.outputs.size());
     for (GraphValueId output: original.outputs) {
         const GraphValue& value = graph.GetValue(output);
-        rn.outputs.push_back(ReplacementOutput{
+        rn.outputs.push_back(RewriteOutputBinding{
                 .desc = MakeOutputDescFromValue(value),
                 .replaces = output,
         });
@@ -83,23 +83,24 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
 
 GraphValueId GraphRewriteSession::AllocateVirtualValue() {
     const std::size_t next_value_index = graph_.GetValues().size() + virtual_value_count_;
-    AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(), "Graph virtual value id space exhausted");
+    AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
+             "Graph virtual value id space exhausted");
     ++virtual_value_count_;
     return GraphValueId{.index = static_cast<uint32_t>(next_value_index)};
 }
 
 Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
     auto visitor = overloaded{
-            [this](const ReplaceSubgraphCmd& replace) {
+            [this](const SubgraphReplacement& replace) {
                 return ReplaceSubgraph(replace.old_nodes, replace.replacement_nodes);
             },
-            [this](const RemoveNodeCmd& remove) {
+            [this](const NodeRemoval& remove) {
                 return RemoveNode(remove.node);
             },
-            [this](const RedirectInputCmd& redirect) {
+            [this](const InputRedirection& redirect) {
                 return RedirectInput(redirect.node, redirect.input_index, redirect.new_value);
             },
-            [this](const ReplaceValueCmd& replace) {
+            [this](const ValueReplacement& replace) {
                 return ReplaceValue(replace.old_value, replace.new_value);
             },
     };
@@ -120,29 +121,30 @@ Status GraphRewriteSession::ReplaceSubgraph(
         std::span<const GraphNodeId> old_nodes,
         const std::vector<ReplacementNode>& replacement_nodes) {
     if (old_nodes.empty()) {
-        return Status::InvalidArgument("GraphRewriteSession::ReplaceSubgraph old node list is empty");
+        return Status::InvalidArgument(
+                "GraphRewriteSession::ReplaceSubgraph old node list is empty");
     }
 
     for (GraphNodeId old_node: old_nodes) {
         AM_RETURN_IF_ERROR(CheckNodeId(old_node));
     }
-    for (const ReplacementNode& replacement: replacement_nodes) {
+
+    for (const auto& replacement: replacement_nodes) {
         AM_RETURN_IF_ERROR(ValidateReplacementNode(replacement));
     }
 
     for (GraphNodeId old_node: old_nodes) {
-        const auto rewrite_index = node_to_rewrite_[old_node.index];
-        if (rewrite_index.has_value()) {
+        if (const auto rewrite_index = node_to_rewrite_[old_node.index];
+            rewrite_index.has_value()) {
             DeactivateRewrite(*rewrite_index);
         }
     }
 
-    RewriteEntry rewrite{
+    const std::size_t rewrite_index = rewrites_.size();
+    rewrites_.push_back({
             .old_nodes = std::vector<GraphNodeId>(old_nodes.begin(), old_nodes.end()),
             .replacements = replacement_nodes,
-    };
-    const std::size_t rewrite_index = rewrites_.size();
-    rewrites_.push_back(std::move(rewrite));
+    });
 
     for (GraphNodeId old_node: old_nodes) {
         node_to_rewrite_[old_node.index] = rewrite_index;
@@ -413,7 +415,7 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
                     std::vector<NodeOutputDesc> output_descs;
                     output_descs.reserve(replacement.outputs.size());
-                    for (const ReplacementOutput& output: replacement.outputs) {
+                    for (const RewriteOutputBinding& output: replacement.outputs) {
                         output_descs.push_back(output.desc);
                     }
 
@@ -500,11 +502,11 @@ Status GraphRewriteSession::CheckValueId(GraphValueId value) const {
 
 Status GraphRewriteSession::CheckValueIdAllowVirtual(GraphValueId value) const {
     if (IsVirtualValue(value)) {
-        const std::size_t virtual_index = GetVirtualIndex(value);
-        if (virtual_index < virtual_value_count_) {
+        if (GetVirtualIndex(value) < virtual_value_count_) {
             return Status::Ok();
         }
-        return Status::InvalidArgument("GraphRewriteSession: virtual value id out of range");
+        return Status::InvalidArgument(
+                "GraphRewriteSession: virtual value id out of range");
     }
     return CheckValueId(value);
 }
@@ -517,7 +519,8 @@ Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& repla
     for (GraphValueId input: replacement.inputs) {
         AM_RETURN_IF_ERROR(CheckValueIdAllowVirtual(input));
     }
-    for (const ReplacementOutput& output: replacement.outputs) {
+
+    for (const auto& output: replacement.outputs) {
         if (output.replaces.has_value()) {
             AM_RETURN_IF_ERROR(CheckValueIdAllowVirtual(*output.replaces));
         }
@@ -543,7 +546,7 @@ Status GraphRewriteSession::ValidateVirtualValues() const {
                     }
                 }
             }
-            for (const ReplacementOutput& output: replacement.outputs) {
+            for (const RewriteOutputBinding& output: replacement.outputs) {
                 if (!output.replaces.has_value() || !IsVirtualValue(*output.replaces)) {
                     continue;
                 }
@@ -567,7 +570,8 @@ void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
 
     rewrites_[rewrite_index].active = false;
     for (GraphNodeId old_node: rewrites_[rewrite_index].old_nodes) {
-        if (old_node.index < node_to_rewrite_.size() && node_to_rewrite_[old_node.index] == rewrite_index) {
+        if (old_node.index < node_to_rewrite_.size() &&
+            node_to_rewrite_[old_node.index] == rewrite_index) {
             node_to_rewrite_[old_node.index].reset();
         }
     }

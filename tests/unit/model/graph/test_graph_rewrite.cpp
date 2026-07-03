@@ -18,8 +18,8 @@ NodeOutputDesc HiddenDesc(const char* debug_name) {
                           .debug_name = debug_name};
 }
 
-ReplacementOutput ReplacesHidden(GraphValueId value, const char* debug_name) {
-    return ReplacementOutput{.desc = HiddenDesc(debug_name), .replaces = value};
+RewriteOutputBinding ReplacesHidden(GraphValueId value, const char* debug_name) {
+    return RewriteOutputBinding{.desc = HiddenDesc(debug_name), .replaces = value};
 }
 
 ModelGraph BuildTwoEmbeddingGraph() {
@@ -252,7 +252,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithExplicitOutputDesc) {
     ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "explicit_hidden"},
@@ -278,7 +278,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphReplacesMultipleOldNodes) {
     ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "subgraph_hidden"},
@@ -306,7 +306,7 @@ TEST(GraphRewriteSession, RemoveNodeClearsOverlappingSubgraphRewrite) {
     ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "subgraph_hidden"},
@@ -333,12 +333,12 @@ TEST(GraphRewriteSession, ApplySupportsReplaceSubgraphMutation) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ReplaceSubgraphCmd replace{
+    SubgraphReplacement replace{
             .old_nodes = {GraphNodeId{.index = 0}, GraphNodeId{.index = 1}},
             .replacement_nodes = {ReplacementNode{
                     .op_type = OpType::kEmbedding,
                     .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-                    .outputs = {ReplacementOutput{
+                    .outputs = {RewriteOutputBinding{
                             .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                                    .payload = ActivationValue{},
                                                    .debug_name = "applied_subgraph_hidden"},
@@ -366,7 +366,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
     ReplacementNode first{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "virtual_hidden"},
@@ -378,7 +378,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
     ReplacementNode second{
             .op_type = OpType::kAdd,
             .inputs = {mid, mid},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "final_hidden"},
@@ -412,7 +412,7 @@ TEST(GraphRewriteSession, CommitRejectsUndefinedVirtualValueInput) {
     ReplacementNode replacement{
             .op_type = OpType::kAdd,
             .inputs = {mid, mid},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "final_hidden"},
@@ -438,7 +438,7 @@ TEST(GraphRewriteSession, CommitRejectsDuplicateVirtualValueProducer) {
     ReplacementNode first{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "first_virtual"},
@@ -450,7 +450,7 @@ TEST(GraphRewriteSession, CommitRejectsDuplicateVirtualValueProducer) {
     ReplacementNode second{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "second_virtual"},
@@ -476,7 +476,7 @@ TEST(GraphRewriteSession, CommitRejectsVirtualValueConsumedBeforeProducer) {
     ReplacementNode consumer{
             .op_type = OpType::kAdd,
             .inputs = {mid, mid},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "final_hidden"},
@@ -488,7 +488,7 @@ TEST(GraphRewriteSession, CommitRejectsVirtualValueConsumedBeforeProducer) {
     ReplacementNode producer{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "virtual_hidden"},
@@ -514,7 +514,7 @@ TEST(GraphRewriteSession, CommitRejectsVirtualValueAcrossRewriteEntries) {
     ReplacementNode producer{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "virtual_hidden"},
@@ -526,7 +526,7 @@ TEST(GraphRewriteSession, CommitRejectsVirtualValueAcrossRewriteEntries) {
     ReplacementNode consumer{
             .op_type = OpType::kAdd,
             .inputs = {mid, mid},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "final_hidden"},
@@ -565,7 +565,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidMapping) {
     ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "explicit_hidden"},
@@ -608,8 +608,8 @@ TEST(GraphRewriteSession, ApplyBatchOfMixedMutations) {
     GraphRewriteSession session(graph);
 
     const std::array<GraphMutation, 2> mutations{
-            RemoveNodeCmd{.node = GraphNodeId{.index = 1}},
-            RedirectInputCmd{.node = GraphNodeId{.index = 0},
+            NodeRemoval{.node = GraphNodeId{.index = 1}},
+            InputRedirection{.node = GraphNodeId{.index = 0},
                              .input_index = 0,
                              .new_value = GraphValueId{.index = 1}},
     };
@@ -975,7 +975,7 @@ TEST(GraphRewriteSession, RedirectInputClearsOverlappingSubgraphRewrite) {
     ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            .outputs = {ReplacementOutput{
+            .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
                                            .payload = ActivationValue{},
                                            .debug_name = "subgraph_hidden"},

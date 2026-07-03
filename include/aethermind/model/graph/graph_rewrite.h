@@ -10,22 +10,22 @@
 
 namespace aethermind {
 
-struct RemoveNodeCmd {
+struct NodeRemoval {
     GraphNodeId node{};
 };
 
-struct RedirectInputCmd {
+struct InputRedirection {
     GraphNodeId node{};
     size_t input_index = 0;
     GraphValueId new_value{};
 };
 
-struct ReplaceValueCmd {
+struct ValueReplacement {
     GraphValueId old_value{};
     GraphValueId new_value{};
 };
 
-struct ReplacementOutput {
+struct RewriteOutputBinding {
     NodeOutputDesc desc{};
     std::optional<GraphValueId> replaces{};
 };
@@ -34,21 +34,21 @@ struct ReplacementNode {
     OpType op_type = OpType::kUnknown;
     std::optional<uint32_t> decoder_layer_index{};
     std::vector<GraphValueId> inputs{};
-    std::vector<ReplacementOutput> outputs{};
+    std::vector<RewriteOutputBinding> outputs{};
     ModelGraphAttrs attrs{};
     OpParams op_params{};
     std::string debug_name{};
 };
 
-struct ReplaceSubgraphCmd {
+struct SubgraphReplacement {
     std::vector<GraphNodeId> old_nodes{};
     std::vector<ReplacementNode> replacement_nodes{};
 };
 
-using GraphMutation = std::variant<ReplaceSubgraphCmd,
-                                   RemoveNodeCmd,
-                                   RedirectInputCmd,
-                                   ReplaceValueCmd>;
+using GraphMutation = std::variant<SubgraphReplacement,
+                                   NodeRemoval,
+                                   InputRedirection,
+                                   ValueReplacement>;
 
 struct GraphNodeView {
     GraphNodeId node{};
@@ -70,7 +70,8 @@ public:
     AM_NODISCARD Status Apply(std::span<const GraphMutation> mutations);
 
     AM_NODISCARD Status RemoveNode(GraphNodeId node);
-    AM_NODISCARD Status ReplaceSubgraph(std::span<const GraphNodeId> old_nodes, const std::vector<ReplacementNode>& replacement_nodes);
+    AM_NODISCARD Status ReplaceSubgraph(std::span<const GraphNodeId> old_nodes,
+                                        const std::vector<ReplacementNode>& replacement_nodes);
     AM_NODISCARD Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
     AM_NODISCARD Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
 

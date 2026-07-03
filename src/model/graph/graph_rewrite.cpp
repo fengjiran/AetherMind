@@ -62,6 +62,7 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
             .op_params = original.op_params,
             .debug_name = original.debug_name,
     };
+
     rn.outputs.reserve(original.outputs.size());
     for (GraphValueId output: original.outputs) {
         const GraphValue& value = graph.GetValue(output);
@@ -156,16 +157,18 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
                                           GraphValueId new_value) {
     AM_RETURN_IF_ERROR(CheckNodeId(node));
     AM_RETURN_IF_ERROR(CheckValueId(new_value));
-    const GraphNode& original = graph_.GetNode(node);
-    if (input_index >= original.inputs.size()) {
+    if (input_index >= graph_.GetNode(node).inputs.size()) {
         return Status::InvalidArgument(
                 "GraphRewriteSession::RedirectInput input index out of range");
     }
 
     const auto existing = node_to_rewrite_[node.index];
-    if (existing.has_value() && rewrites_[*existing].active && rewrites_[*existing].exposes_node_view) {
-        RewriteEntry& rewrite = rewrites_[*existing];
-        if (rewrite.old_nodes.size() == 1 && rewrite.old_nodes[0] == node && rewrite.replacements.size() == 1) {
+    if (existing.has_value() &&
+        rewrites_[*existing].active &&
+        rewrites_[*existing].exposes_node_view) {
+        if (RewriteEntry& rewrite = rewrites_[*existing];
+            rewrite.old_nodes.size() == 1 && rewrite.old_nodes[0] == node &&
+            rewrite.replacements.size() == 1) {
             ReplacementNode& replacement = rewrite.replacements[0];
             // RedirectInput-created rewrites mirror the original node shape;
             // this check defends that invariant before mutating accumulated redirects.
@@ -185,13 +188,12 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
     auto replacement = BuildMirrorReplacement(graph_, node);
     replacement.inputs[input_index] = new_value;
 
-    RewriteEntry rewrite{
+    const std::size_t idx = rewrites_.size();
+    rewrites_.push_back({
             .old_nodes = {node},
             .replacements = {std::move(replacement)},
             .exposes_node_view = true,
-    };
-    const std::size_t idx = rewrites_.size();
-    rewrites_.push_back(std::move(rewrite));
+    });
     node_to_rewrite_[node.index] = idx;
     return Status::Ok();
 }
@@ -275,11 +277,13 @@ GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
 StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const {
     AM_RETURN_IF_ERROR(CheckNodeId(node));
 
-    const auto rewrite_opt = node_to_rewrite_[node.index];
-    if (rewrite_opt.has_value()) {
+    if (const auto rewrite_opt = node_to_rewrite_[node.index]; rewrite_opt.has_value()) {
         const RewriteEntry& rewrite = rewrites_[*rewrite_opt];
-        if (!rewrite.active || !rewrite.exposes_node_view || rewrite.old_nodes.size() != 1 || rewrite.old_nodes[0] != node || rewrite.replacements.size() != 1) {
-            return Status::NotFound("GraphRewriteSession::GetNodeView node was removed or replaced");
+        if (!rewrite.active || !rewrite.exposes_node_view ||
+            rewrite.old_nodes.size() != 1 || rewrite.old_nodes[0] != node ||
+            rewrite.replacements.size() != 1) {
+            return Status::NotFound(
+                    "GraphRewriteSession::GetNodeView node was removed or replaced");
         }
         const GraphNode& original = graph_.GetNode(node);
         const ReplacementNode& replacement = rewrite.replacements[0];
@@ -325,11 +329,12 @@ Status GraphRewriteSession::ValidateEdits() const {
         }
     }
 
-    for (const RewriteEntry& rewrite: rewrites_) {
-        for (GraphNodeId old_node: rewrite.old_nodes) {
+    for (const auto& rewrite: rewrites_) {
+        for (auto old_node: rewrite.old_nodes) {
             AM_RETURN_IF_ERROR(CheckNodeId(old_node));
         }
-        for (const ReplacementNode& replacement: rewrite.replacements) {
+
+        for (const auto& replacement: rewrite.replacements) {
             AM_RETURN_IF_ERROR(ValidateReplacementNode(replacement));
         }
     }
@@ -529,27 +534,30 @@ Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& repla
 }
 
 Status GraphRewriteSession::ValidateVirtualValues() const {
-    std::vector<bool> globally_produced(virtual_value_count_, false);
+    std::vector globally_produced(virtual_value_count_, false);
 
-    for (const RewriteEntry& rewrite: rewrites_) {
+    for (const auto& rewrite: rewrites_) {
         if (!rewrite.active) {
             continue;
         }
-        std::vector<bool> locally_available(virtual_value_count_, false);
-        for (const ReplacementNode& replacement: rewrite.replacements) {
+
+        std::vector locally_available(virtual_value_count_, false);
+        for (const auto& replacement: rewrite.replacements) {
             for (GraphValueId input: replacement.inputs) {
                 if (IsVirtualValue(input)) {
-                    const std::size_t virtual_index = GetVirtualIndex(input);
-                    if (!locally_available[virtual_index]) {
+                    if (const std::size_t virtual_index = GetVirtualIndex(input);
+                        !locally_available[virtual_index]) {
                         return Status::InvalidArgument(
                                 "GraphRewriteSession: virtual value is consumed before being produced");
                     }
                 }
             }
-            for (const RewriteOutputBinding& output: replacement.outputs) {
+
+            for (const auto& output: replacement.outputs) {
                 if (!output.replaces.has_value() || !IsVirtualValue(*output.replaces)) {
                     continue;
                 }
+
                 const std::size_t virtual_index = GetVirtualIndex(*output.replaces);
                 if (globally_produced[virtual_index]) {
                     return Status::InvalidArgument(

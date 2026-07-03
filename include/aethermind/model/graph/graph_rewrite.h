@@ -66,18 +66,14 @@ public:
     explicit GraphRewriteSession(const ModelGraph& graph);
 
     AM_NODISCARD GraphValueId AllocateVirtualValue();
-
     AM_NODISCARD Status Apply(std::span<const GraphMutation> mutations);
-
     AM_NODISCARD Status RemoveNode(GraphNodeId node);
     AM_NODISCARD Status ReplaceSubgraph(std::span<const GraphNodeId> old_nodes,
                                         const std::vector<ReplacementNode>& replacement_nodes);
     AM_NODISCARD Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
     AM_NODISCARD Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
-
     AM_NODISCARD GraphValueId GetResolvedValue(GraphValueId value) const;
     AM_NODISCARD StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;
-
     AM_NODISCARD Status ValidateEdits() const;
     AM_NODISCARD StatusOr<ModelGraph> Commit() const;
 

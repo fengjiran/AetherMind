@@ -162,23 +162,21 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
                 "GraphRewriteSession::RedirectInput input index out of range");
     }
 
+    // IsNodeLive returns true both for untouched nodes and for nodes with a
+    // live single-node mirror rewrite. Only the latter can be mutated in place,
+    // so guard with has_value() to exclude the untouched-node case.
     const auto existing = node_to_rewrite_[node.index];
-    if (existing.has_value() &&
-        rewrites_[*existing].active &&
-        rewrites_[*existing].exposes_node_view) {
-        if (RewriteEntry& rewrite = rewrites_[*existing];
-            rewrite.old_nodes.size() == 1 && rewrite.old_nodes[0] == node &&
-            rewrite.replacements.size() == 1) {
-            ReplacementNode& replacement = rewrite.replacements[0];
-            // RedirectInput-created rewrites mirror the original node shape;
-            // this check defends that invariant before mutating accumulated redirects.
-            if (input_index >= replacement.inputs.size()) {
-                return Status::InvalidArgument(
-                        "GraphRewriteSession::RedirectInput replacement input index mismatch");
-            }
-            replacement.inputs[input_index] = new_value;
-            return Status::Ok();
+    if (existing.has_value() && IsNodeLive(node)) {
+        RewriteEntry& rewrite = rewrites_[*existing];
+        ReplacementNode& replacement = rewrite.replacements[0];
+        // This check defends the mirror-shape invariant before mutating
+        // accumulated redirects.
+        if (input_index >= replacement.inputs.size()) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession::RedirectInput replacement input index mismatch");
         }
+        replacement.inputs[input_index] = new_value;
+        return Status::Ok();
     }
 
     if (existing.has_value()) {
@@ -277,44 +275,34 @@ GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
 StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const {
     AM_RETURN_IF_ERROR(CheckNodeId(node));
 
+    const GraphNode& original = graph_.GetNode(node);
+    const ReplacementNode* replacement = nullptr;
+
     if (const auto rewrite_opt = node_to_rewrite_[node.index]; rewrite_opt.has_value()) {
         if (!IsNodeLive(node)) {
             return Status::NotFound(
                     "GraphRewriteSession::GetNodeView node was removed or replaced");
         }
-        const RewriteEntry& rewrite = rewrites_[*rewrite_opt];
-        const GraphNode& original = graph_.GetNode(node);
-        const ReplacementNode& replacement = rewrite.replacements[0];
-
-        GraphNodeView view{
-                .node = node,
-                .op_type = replacement.op_type,
-                .decoder_layer_index = replacement.decoder_layer_index,
-                .inputs = replacement.inputs,
-                .outputs = original.outputs,
-                .attrs = replacement.attrs,
-                .op_params = replacement.op_params,
-                .debug_name = replacement.debug_name,
-        };
-        for (GraphValueId& input: view.inputs) {
-            input = GetResolvedValue(input);
-        }
-        return view;
+        replacement = &rewrites_[*rewrite_opt].replacements[0];
     }
 
-    const auto& original = graph_.GetNode(node);
+    // Outputs always come from the original node: a RedirectInput mirror
+    // replacement only rewrites input wiring, not the produced values.
+    // The remaining fields come from the mirror replacement when present,
+    // otherwise from the original node.
     GraphNodeView view{
             .node = node,
-            .op_type = original.op_type,
-            .decoder_layer_index = original.decoder_layer_index,
-            .inputs = original.inputs,
+            .op_type = replacement ? replacement->op_type : original.op_type,
+            .decoder_layer_index = replacement ? replacement->decoder_layer_index
+                                               : original.decoder_layer_index,
+            .inputs = replacement ? replacement->inputs : original.inputs,
             .outputs = original.outputs,
-            .attrs = original.attrs,
-            .op_params = original.op_params,
-            .debug_name = original.debug_name,
+            .attrs = replacement ? replacement->attrs : original.attrs,
+            .op_params = replacement ? replacement->op_params : original.op_params,
+            .debug_name = replacement ? replacement->debug_name : original.debug_name,
     };
 
-    for (auto& input: view.inputs) {
+    for (GraphValueId& input: view.inputs) {
         input = GetResolvedValue(input);
     }
     return view;
@@ -324,10 +312,12 @@ bool GraphRewriteSession::IsNodeLive(GraphNodeId node) const noexcept {
     if (node.index >= node_to_rewrite_.size()) {
         return false;
     }
+
     const auto& rewrite_opt = node_to_rewrite_[node.index];
     if (!rewrite_opt.has_value()) {
         return true;
     }
+
     const RewriteEntry& rewrite = rewrites_[*rewrite_opt];
     return rewrite.active && rewrite.exposes_node_view &&
            rewrite.old_nodes.size() == 1 && rewrite.old_nodes[0] == node &&
@@ -380,25 +370,16 @@ Status GraphRewriteSession::ValidateEdits() const {
     return Status::Ok();
 }
 
-StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
-    AM_RETURN_IF_ERROR(ValidateEdits());
-
-    ModelGraph committed(graph_.GetConfig());
-    std::vector<std::optional<GraphValueId>> value_map(
-            graph_.GetValues().size(), std::nullopt);
-    std::vector<std::optional<GraphValueId>> virtual_value_map(
-            virtual_value_count_, std::nullopt);
-
+Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed, ValueMap& value_map) const {
     const std::span<const GraphValue> values = graph_.GetValues();
     for (uint32_t i = 0; i < values.size(); ++i) {
-        const GraphValueId old_id{.index = i};
         const GraphValue& value = values[i];
         if (value.producer.has_value()) {
             continue;
         }
 
         if (std::get_if<ModelInputValue>(&value.payload)) {
-            const auto input_name = FindInputName(graph_, old_id);
+            const auto input_name = FindInputName(graph_, {.index = i});
             if (!input_name.has_value()) {
                 return Status::InvalidArgument(
                         "GraphRewriteSession::Commit model input name not found");
@@ -426,10 +407,111 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
         committed.SetQuantization(*value_map[i], value.quantization);
     }
+    return Status::Ok();
+}
+
+Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
+                                        ModelGraph& committed,
+                                        ValueMap& value_map,
+                                        ValueMap& virtual_value_map) const {
+    for (const ReplacementNode& replacement: rewrite.replacements) {
+        std::vector<GraphValueId> new_inputs;
+        new_inputs.reserve(replacement.inputs.size());
+        for (GraphValueId old_input: replacement.inputs) {
+            const GraphValueId resolved_input = GetResolvedValue(old_input);
+            StatusOr<GraphValueId> mapped_input = MapCommittedValue(
+                    resolved_input, graph_.GetValues().size(), value_map, virtual_value_map);
+            AM_RETURN_IF_ERROR(mapped_input.status());
+            new_inputs.push_back(*mapped_input);
+        }
+
+        std::vector<NodeOutputDesc> output_descs;
+        output_descs.reserve(replacement.outputs.size());
+        for (const RewriteOutputBinding& output: replacement.outputs) {
+            output_descs.push_back(output.desc);
+        }
+
+        const AddedNode added = committed.AddNode(
+                replacement.op_type,
+                replacement.decoder_layer_index,
+                std::move(new_inputs),
+                std::move(output_descs),
+                replacement.op_params,
+                replacement.attrs,
+                replacement.debug_name);
+
+        for (size_t i = 0; i < replacement.outputs.size(); ++i) {
+            if (replacement.outputs[i].replaces.has_value()) {
+                const GraphValueId replaced = *replacement.outputs[i].replaces;
+                if (IsVirtualValue(replaced)) {
+                    virtual_value_map[GetVirtualIndex(replaced)] = added.outputs[i];
+                } else {
+                    value_map[replaced.index] = added.outputs[i];
+                }
+            }
+        }
+    }
+    return Status::Ok();
+}
+
+Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
+                                             ModelGraph& committed,
+                                             ValueMap& value_map) const {
+    StatusOr<GraphNodeView> view = GetNodeView(old_node);
+    AM_RETURN_IF_ERROR(view.status());
+
+    std::vector<GraphValueId> new_inputs;
+    new_inputs.reserve(view->inputs.size());
+    for (GraphValueId old_input: view->inputs) {
+        const GraphValueId resolved_input = GetResolvedValue(old_input);
+        StatusOr<GraphValueId> mapped_input = MapResolvedValue(resolved_input, value_map);
+        AM_RETURN_IF_ERROR(mapped_input.status());
+        new_inputs.push_back(*mapped_input);
+    }
+
+    std::vector<NodeOutputDesc> output_descs;
+    output_descs.reserve(view->outputs.size());
+    for (GraphValueId old_output: view->outputs) {
+        const GraphValue& old_value = graph_.GetValue(old_output);
+        output_descs.push_back(MakeOutputDescFromValue(old_value));
+    }
+
+    const AddedNode added = committed.AddNode(
+            view->op_type,
+            view->decoder_layer_index,
+            std::move(new_inputs),
+            std::move(output_descs),
+            view->op_params,
+            view->attrs,
+            view->debug_name);
+    for (size_t i = 0; i < view->outputs.size(); ++i) {
+        value_map[view->outputs[i].index] = added.outputs[i];
+    }
+    return Status::Ok();
+}
+
+Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed, const ValueMap& value_map) const {
+    for (const auto& output: graph_.GetOutputs()) {
+        const GraphValueId resolved_output = GetResolvedValue(output.value);
+        StatusOr<GraphValueId> mapped_output = MapResolvedValue(resolved_output, value_map);
+        AM_RETURN_IF_ERROR(mapped_output.status());
+        committed.MarkOutput(*mapped_output, output.name);
+    }
+    return Status::Ok();
+}
+
+StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
+    AM_RETURN_IF_ERROR(ValidateEdits());
+
+    ModelGraph committed(graph_.GetConfig());
+    ValueMap value_map(graph_.GetValues().size(), std::nullopt);
+    ValueMap virtual_value_map(virtual_value_count_, std::nullopt);
+
+    AM_RETURN_IF_ERROR(CopyExternalValues(committed, value_map));
 
     StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
     AM_RETURN_IF_ERROR(order.status());
-    std::vector<bool> emitted_rewrites(rewrites_.size(), false);
+    std::vector emitted_rewrites(rewrites_.size(), false);
     for (GraphNodeId old_node_id: *order) {
         if (const auto rewrite_index = node_to_rewrite_[old_node_id.index];
             rewrite_index.has_value()) {
@@ -437,7 +519,8 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
                 return Status::InvalidArgument(
                         "GraphRewriteSession::Commit rewrite index out of range");
             }
-            const RewriteEntry& rewrite = rewrites_[*rewrite_index];
+
+            const auto& rewrite = rewrites_[*rewrite_index];
             if (!rewrite.active) {
                 return Status::InvalidArgument(
                         "GraphRewriteSession::Commit inactive rewrite is still referenced");
@@ -445,86 +528,15 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
             if (!emitted_rewrites[*rewrite_index]) {
                 emitted_rewrites[*rewrite_index] = true;
-                for (const ReplacementNode& replacement: rewrite.replacements) {
-                    std::vector<GraphValueId> new_inputs;
-                    new_inputs.reserve(replacement.inputs.size());
-                    for (GraphValueId old_input: replacement.inputs) {
-                        const GraphValueId resolved_input = GetResolvedValue(old_input);
-                        StatusOr<GraphValueId> mapped_input = MapCommittedValue(
-                                resolved_input, graph_.GetValues().size(), value_map, virtual_value_map);
-                        AM_RETURN_IF_ERROR(mapped_input.status());
-                        new_inputs.push_back(*mapped_input);
-                    }
-
-                    std::vector<NodeOutputDesc> output_descs;
-                    output_descs.reserve(replacement.outputs.size());
-                    for (const RewriteOutputBinding& output: replacement.outputs) {
-                        output_descs.push_back(output.desc);
-                    }
-
-                    const AddedNode added = committed.AddNode(
-                            replacement.op_type,
-                            replacement.decoder_layer_index,
-                            std::move(new_inputs),
-                            std::move(output_descs),
-                            replacement.op_params,
-                            replacement.attrs,
-                            replacement.debug_name);
-
-                    for (size_t i = 0; i < replacement.outputs.size(); ++i) {
-                        if (replacement.outputs[i].replaces.has_value()) {
-                            const GraphValueId replaced = *replacement.outputs[i].replaces;
-                            if (IsVirtualValue(replaced)) {
-                                virtual_value_map[GetVirtualIndex(replaced)] = added.outputs[i];
-                            } else {
-                                value_map[replaced.index] = added.outputs[i];
-                            }
-                        }
-                    }
-                }
+                AM_RETURN_IF_ERROR(EmitRewrite(rewrite, committed, value_map, virtual_value_map));
             }
             continue;
         }
 
-        StatusOr<GraphNodeView> view = GetNodeView(old_node_id);
-        AM_RETURN_IF_ERROR(view.status());
-
-        std::vector<GraphValueId> new_inputs;
-        new_inputs.reserve(view->inputs.size());
-        for (GraphValueId old_input: view->inputs) {
-            const GraphValueId resolved_input = GetResolvedValue(old_input);
-            StatusOr<GraphValueId> mapped_input = MapResolvedValue(resolved_input, value_map);
-            AM_RETURN_IF_ERROR(mapped_input.status());
-            new_inputs.push_back(*mapped_input);
-        }
-
-        std::vector<NodeOutputDesc> output_descs;
-        output_descs.reserve(view->outputs.size());
-        for (GraphValueId old_output: view->outputs) {
-            const GraphValue& old_value = graph_.GetValue(old_output);
-            output_descs.push_back(MakeOutputDescFromValue(old_value));
-        }
-
-        const AddedNode added = committed.AddNode(
-                view->op_type,
-                view->decoder_layer_index,
-                std::move(new_inputs),
-                std::move(output_descs),
-                view->op_params,
-                view->attrs,
-                view->debug_name);
-        for (size_t i = 0; i < view->outputs.size(); ++i) {
-            value_map[view->outputs[i].index] = added.outputs[i];
-        }
+        AM_RETURN_IF_ERROR(EmitOriginalNode(old_node_id, committed, value_map));
     }
 
-    for (const auto& output: graph_.GetOutputs()) {
-        const GraphValueId resolved_output = GetResolvedValue(output.value);
-        StatusOr<GraphValueId> mapped_output = MapResolvedValue(resolved_output, value_map);
-        AM_RETURN_IF_ERROR(mapped_output.status());
-        committed.MarkOutput(*mapped_output, output.name);
-    }
-
+    AM_RETURN_IF_ERROR(MarkCommittedOutputs(committed, value_map));
     AM_RETURN_IF_ERROR(committed.Validate());
     return committed;
 }

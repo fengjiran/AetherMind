@@ -127,6 +127,7 @@ private:
         bool active = true;
         bool exposes_node_view = false;
     };
+    using ValueMap = std::vector<std::optional<GraphValueId>>;
 
     AM_NODISCARD Status CheckNodeId(GraphNodeId node) const;
     AM_NODISCARD Status CheckValueIdAllowVirtual(GraphValueId value) const;
@@ -136,6 +137,15 @@ private:
     }
     AM_NODISCARD Status ValidateReplacementNode(const ReplacementNode& replacement) const;
     AM_NODISCARD Status ValidateVirtualValues() const;
+    AM_NODISCARD Status CopyExternalValues(ModelGraph& committed, ValueMap& value_map) const;
+    AM_NODISCARD Status EmitRewrite(const RewriteEntry& rewrite,
+                                    ModelGraph& committed,
+                                    ValueMap& value_map,
+                                    ValueMap& virtual_value_map) const;
+    AM_NODISCARD Status EmitOriginalNode(GraphNodeId old_node,
+                                         ModelGraph& committed,
+                                         ValueMap& value_map) const;
+    AM_NODISCARD Status MarkCommittedOutputs(ModelGraph& committed, const ValueMap& value_map) const;
     void DeactivateRewrite(std::size_t rewrite_index);
 
     const ModelGraph& graph_;

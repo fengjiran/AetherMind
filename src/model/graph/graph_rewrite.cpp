@@ -278,13 +278,11 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
     AM_RETURN_IF_ERROR(CheckNodeId(node));
 
     if (const auto rewrite_opt = node_to_rewrite_[node.index]; rewrite_opt.has_value()) {
-        const RewriteEntry& rewrite = rewrites_[*rewrite_opt];
-        if (!rewrite.active || !rewrite.exposes_node_view ||
-            rewrite.old_nodes.size() != 1 || rewrite.old_nodes[0] != node ||
-            rewrite.replacements.size() != 1) {
+        if (!IsNodeLive(node)) {
             return Status::NotFound(
                     "GraphRewriteSession::GetNodeView node was removed or replaced");
         }
+        const RewriteEntry& rewrite = rewrites_[*rewrite_opt];
         const GraphNode& original = graph_.GetNode(node);
         const ReplacementNode& replacement = rewrite.replacements[0];
 
@@ -320,6 +318,46 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
         input = GetResolvedValue(input);
     }
     return view;
+}
+
+bool GraphRewriteSession::IsNodeLive(GraphNodeId node) const noexcept {
+    if (node.index >= node_to_rewrite_.size()) {
+        return false;
+    }
+    const auto& rewrite_opt = node_to_rewrite_[node.index];
+    if (!rewrite_opt.has_value()) {
+        return true;
+    }
+    const RewriteEntry& rewrite = rewrites_[*rewrite_opt];
+    return rewrite.active && rewrite.exposes_node_view &&
+           rewrite.old_nodes.size() == 1 && rewrite.old_nodes[0] == node &&
+           rewrite.replacements.size() == 1;
+}
+
+StatusOr<std::vector<GraphNodeId>> GraphRewriteSession::GetTopologicalOrder() const {
+    StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
+    AM_RETURN_IF_ERROR(order.status());
+
+    std::vector<GraphNodeId> live;
+    live.reserve(order->size());
+    for (GraphNodeId id: *order) {
+        if (IsNodeLive(id)) {
+            live.push_back(id);
+        }
+    }
+    return live;
+}
+
+std::vector<GraphNodeId> GraphRewriteSession::FindNodesByOpType(OpType op_type) const {
+    const std::vector<GraphNodeId> candidates = graph_.FindNodesByOpType(op_type);
+    std::vector<GraphNodeId> live;
+    live.reserve(candidates.size());
+    for (GraphNodeId id: candidates) {
+        if (IsNodeLive(id)) {
+            live.push_back(id);
+        }
+    }
+    return live;
 }
 
 Status GraphRewriteSession::ValidateEdits() const {
@@ -545,8 +583,7 @@ Status GraphRewriteSession::ValidateVirtualValues() const {
         for (const auto& replacement: rewrite.replacements) {
             for (GraphValueId input: replacement.inputs) {
                 if (IsVirtualValue(input)) {
-                    if (const std::size_t virtual_index = GetVirtualIndex(input);
-                        !locally_available[virtual_index]) {
+                    if (!locally_available[GetVirtualIndex(input)]) {
                         return Status::InvalidArgument(
                                 "GraphRewriteSession: virtual value is consumed before being produced");
                     }

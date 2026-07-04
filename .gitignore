@@ -135,6 +135,7 @@ dmypy.json
 .sisyphus/
 .models/
 .omo/
+.trae/
 .pkl_memoize_py3/
 cmake-build-debug/
 build-asan/

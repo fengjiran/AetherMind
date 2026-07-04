@@ -81,6 +81,37 @@ public:
     AM_NODISCARD Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
     AM_NODISCARD GraphValueId GetResolvedValue(GraphValueId value) const;
     AM_NODISCARD StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;
+
+    /// Returns true if `node` is currently observable in the session.
+    ///
+    /// A node is live when no rewrite has touched it, or when it has been
+    /// modified only via RedirectInput (which installs a mirror replacement
+    /// that still exposes the original node identity). Nodes removed via
+    /// RemoveNode or replaced via ReplaceSubgraph are not live.
+    ///
+    /// Out-of-range ids return false. This method is the single source of
+    /// truth for node liveness; GetNodeView and the enumeration APIs below
+    /// are defined in terms of it.
+    AM_NODISCARD bool IsNodeLive(GraphNodeId node) const noexcept;
+
+    /// Returns live node ids in topological order, following the original
+    /// graph's ordering. Filters out nodes that have been removed or replaced
+    /// in this session.
+    ///
+    /// Returns the underlying ModelGraph::TopologicalOrder error if the
+    /// original graph contains a cycle (the session does not introduce new
+    /// edges, so a cycle can only originate from the source graph).
+    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> GetTopologicalOrder() const;
+
+    /// Returns live node ids whose op_type matches `op_type`, in ascending
+    /// node-index order. Filters out nodes that have been removed or replaced
+    /// in this session.
+    ///
+    /// Note: this reflects the op_type of the *original* graph node, not the
+    /// op_type of any RedirectInput mirror replacement. RedirectInput only
+    /// changes input wiring, not the operator itself.
+    AM_NODISCARD std::vector<GraphNodeId> FindNodesByOpType(OpType op_type) const;
+
     AM_NODISCARD Status ValidateEdits() const;
     AM_NODISCARD StatusOr<ModelGraph> Commit() const;
 

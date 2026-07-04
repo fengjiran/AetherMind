@@ -623,6 +623,10 @@ public:
     AM_NODISCARD GraphValueId GetResolvedValue(GraphValueId value) const;
     AM_NODISCARD StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;
 
+    AM_NODISCARD bool IsNodeLive(GraphNodeId node) const noexcept;
+    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> GetTopologicalOrder() const;
+    AM_NODISCARD std::vector<GraphNodeId> FindNodesByOpType(OpType op_type) const;
+
     AM_NODISCARD Status ValidateEdits() const;
     AM_NODISCARD StatusOr<ModelGraph> Commit() const;
 
@@ -1326,6 +1330,7 @@ M3 验收：execution plan 构建不再依赖旧 `GraphNode.weights` / `GraphNod
 已交付：
 
 - `GraphRewriteSession`：含 `AllocateVirtualValue` / `ReplaceSubgraph` / `RemoveNode` / `RedirectInput` / `ReplaceValue` / `Apply` / `Commit`，支持不可变快照 + 事务式重写；`ReplaceValue` 内置环检测；`GetResolvedValue` 使用 `mutable` 路径压缩缓存；`Apply()` 内 `overloaded` visitor 在循环外构造，避免每次迭代重新构造；
+- `GraphRewriteSession` 节点枚举 API：`IsNodeLive` / `GetTopologicalOrder` / `FindNodesByOpType`，让 pass 可以独立发现节点而非依赖外部传入 id。`IsNodeLive` 是节点活跃度的单一真理源，`GetNodeView` 复用其判断以避免逻辑漂移；
 - `GraphRewriteSession` 内部状态：用统一的 `RewriteEntry { old_nodes, replacements, active, exposes_node_view }` 表示 node/subgraph rewrite；`node_to_rewrite_` 指向 active rewrite；`RemoveNode` 是 `ReplaceSubgraph({node}, {})`；`RedirectInput` 通过 mirror `ReplacementNode` 暴露 node view；virtual value 仅允许在同一个 rewrite 内部作为 replacement 子图边；
 - `GraphMutation`：typed variant（`SubgraphReplacement` / `NodeRemoval` / `InputRedirection` / `ValueReplacement`），由 `Apply()` 批量提交；
 - `GraphPass` / `GraphPassManager`：含 `SetCheckpointEvery(N)` phase checkpoint，最后一个 pass 落在 checkpoint 边界时正确 materialize；`SetCheckpointEvery(0)` 禁用 checkpoint；`Run()` 避免初始图深拷贝；

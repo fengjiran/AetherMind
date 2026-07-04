@@ -1,5 +1,6 @@
 #include "aethermind/model/graph/graph_rewrite.h"
 
+#include <algorithm>
 #include <array>
 #include <gtest/gtest.h>
 #include <vector>
@@ -1121,6 +1122,232 @@ TEST(SubgraphBuilder, BuilderReusableAfterCommit) {
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     ASSERT_EQ(committed->GetNodes().size(), 2U);
     EXPECT_TRUE(committed->Validate().ok());
+}
+
+// --- P0: Node enumeration API (IsNodeLive / GetTopologicalOrder /
+//         FindNodesByOpType). Passes must be able to discover nodes
+//         independently instead of relying on externally-supplied ids. ---
+
+// Graph layout for all tests below:
+//   v0=tokens_a, v1=tokens_b, v2=weight
+//   n0=Embedding(v0,v2) -> v3=hidden_a (graph output)
+//   n1=Embedding(v1,v2) -> v4=hidden_b
+
+ReplacementNode MakeReplacementEmbedding(GraphValueId replaces, const char* debug_name) {
+    return ReplacementNode{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {ReplacesHidden(replaces, debug_name)},
+            .op_params = EmbeddingParams{},
+            .debug_name = debug_name,
+    };
+}
+
+TEST(GraphRewriteSession, IsNodeLiveReturnsTrueForAllNodesOnCleanSession) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 0}));
+    EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 1}));
+}
+
+TEST(GraphRewriteSession, IsNodeLiveReturnsFalseForRemovedNode) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
+
+    EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 0}));
+    EXPECT_FALSE(session.IsNodeLive(GraphNodeId{.index = 1}));
+}
+
+TEST(GraphRewriteSession, IsNodeLiveReturnsTrueForRedirectedNode) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
+                        .ok());
+
+    // RedirectInput installs a mirror replacement that still exposes the
+    // original node identity, so the node remains live.
+    EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 0}));
+    EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 1}));
+}
+
+TEST(GraphRewriteSession, IsNodeLiveReturnsFalseForReplacedNode) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session
+                        .ReplaceSubgraph(old_nodes, {MakeReplacementEmbedding(GraphValueId{.index = 3},
+                                                                              "replacement")})
+                        .ok());
+
+    EXPECT_FALSE(session.IsNodeLive(GraphNodeId{.index = 0}));
+    EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 1}));
+}
+
+TEST(GraphRewriteSession, IsNodeLiveReturnsTrueForOverwrittenRemoval) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
+    EXPECT_FALSE(session.IsNodeLive(GraphNodeId{.index = 1}));
+
+    // RedirectInput deactivates the prior removal rewrite and installs a
+    // mirror replacement, making the node observable again.
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 1}, 0, GraphValueId{.index = 0})
+                        .ok());
+    EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 1}));
+}
+
+TEST(GraphRewriteSession, IsNodeLiveReturnsFalseForOutOfRangeId) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    EXPECT_FALSE(session.IsNodeLive(GraphNodeId{.index = 999}));
+}
+
+TEST(GraphRewriteSession, GetTopologicalOrderReturnsAllNodesOnCleanSession) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const StatusOr<std::vector<GraphNodeId>> expected = graph.TopologicalOrder();
+    ASSERT_TRUE(expected.ok()) << expected.status().ToString();
+
+    const StatusOr<std::vector<GraphNodeId>> order = session.GetTopologicalOrder();
+    ASSERT_TRUE(order.ok()) << order.status().ToString();
+    ASSERT_EQ(order->size(), expected->size());
+    for (size_t i = 0; i < order->size(); ++i) {
+        EXPECT_EQ((*order)[i], (*expected)[i]) << "Mismatch at index " << i;
+    }
+}
+
+TEST(GraphRewriteSession, GetTopologicalOrderExcludesRemovedNodes) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
+
+    const StatusOr<std::vector<GraphNodeId>> order = session.GetTopologicalOrder();
+    ASSERT_TRUE(order.ok()) << order.status().ToString();
+    ASSERT_EQ(order->size(), 1U);
+    EXPECT_EQ((*order)[0], GraphNodeId{.index = 0});
+}
+
+TEST(GraphRewriteSession, GetTopologicalOrderIncludesRedirectedNodes) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
+                        .ok());
+
+    const StatusOr<std::vector<GraphNodeId>> order = session.GetTopologicalOrder();
+    ASSERT_TRUE(order.ok()) << order.status().ToString();
+    ASSERT_EQ(order->size(), 2U);
+}
+
+TEST(GraphRewriteSession, GetTopologicalOrderExcludesReplacedNodes) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session
+                        .ReplaceSubgraph(old_nodes, {MakeReplacementEmbedding(GraphValueId{.index = 3},
+                                                                              "replacement")})
+                        .ok());
+
+    const StatusOr<std::vector<GraphNodeId>> order = session.GetTopologicalOrder();
+    ASSERT_TRUE(order.ok()) << order.status().ToString();
+    ASSERT_EQ(order->size(), 1U);
+    EXPECT_EQ((*order)[0], GraphNodeId{.index = 1});
+}
+
+TEST(GraphRewriteSession, FindNodesByOpTypeReturnsAllMatchesOnCleanSession) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphNodeId> found = session.FindNodesByOpType(OpType::kEmbedding);
+    ASSERT_EQ(found.size(), 2U);
+    EXPECT_EQ(found[0], GraphNodeId{.index = 0});
+    EXPECT_EQ(found[1], GraphNodeId{.index = 1});
+}
+
+TEST(GraphRewriteSession, FindNodesByOpTypeExcludesRemovedNodes) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 0}).ok());
+
+    const std::vector<GraphNodeId> found = session.FindNodesByOpType(OpType::kEmbedding);
+    ASSERT_EQ(found.size(), 1U);
+    EXPECT_EQ(found[0], GraphNodeId{.index = 1});
+}
+
+TEST(GraphRewriteSession, FindNodesByOpTypeExcludesReplacedNodes) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::array old_nodes{GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session
+                        .ReplaceSubgraph(old_nodes, {MakeReplacementEmbedding(GraphValueId{.index = 4},
+                                                                              "replacement")})
+                        .ok());
+
+    const std::vector<GraphNodeId> found = session.FindNodesByOpType(OpType::kEmbedding);
+    ASSERT_EQ(found.size(), 1U);
+    EXPECT_EQ(found[0], GraphNodeId{.index = 0});
+}
+
+TEST(GraphRewriteSession, FindNodesByOpTypeReturnsEmptyForNonExistentOpType) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphNodeId> found = session.FindNodesByOpType(OpType::kSoftmax);
+    EXPECT_TRUE(found.empty());
+}
+
+TEST(GraphRewriteSession, FindNodesByOpTypeIncludesRedirectedNodes) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
+                        .ok());
+
+    const std::vector<GraphNodeId> found = session.FindNodesByOpType(OpType::kEmbedding);
+    ASSERT_EQ(found.size(), 2U);
+    EXPECT_EQ(found[0], GraphNodeId{.index = 0});
+    EXPECT_EQ(found[1], GraphNodeId{.index = 1});
+}
+
+TEST(GraphRewriteSession, GetTopologicalOrderConsistentWithIsNodeLive) {
+    // After a mix of mutations (remove n0, redirect n1 input, replace value),
+    // every id in GetTopologicalOrder() must satisfy IsNodeLive==true, and
+    // every live id must appear in GetTopologicalOrder().
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 0}).ok());
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 1}, 0, GraphValueId{.index = 0})
+                        .ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 3}, GraphValueId{.index = 4}).ok());
+
+    const StatusOr<std::vector<GraphNodeId>> order = session.GetTopologicalOrder();
+    ASSERT_TRUE(order.ok()) << order.status().ToString();
+
+    for (GraphNodeId id: *order) {
+        EXPECT_TRUE(session.IsNodeLive(id))
+                << "TopologicalOrder contains non-live node " << id.index;
+    }
+
+    for (uint32_t i = 0; i < graph.GetNodes().size(); ++i) {
+        const GraphNodeId id{.index = i};
+        if (session.IsNodeLive(id)) {
+            EXPECT_NE(std::find(order->begin(), order->end(), id), order->end())
+                    << "Live node " << i << " missing from TopologicalOrder";
+        }
+    }
 }
 
 }// namespace

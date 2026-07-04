@@ -35,6 +35,7 @@ public:
     explicit GraphPassManager(PassContext ctx) noexcept;
 
     GraphPassManager& Add(std::unique_ptr<GraphPass> pass);
+    GraphPassManager& AddSequential(std::vector<std::unique_ptr<GraphPass>> passes);
     GraphPassManager& SetCheckpointEvery(uint32_t pass_count) noexcept;
 
     AM_NODISCARD StatusOr<ModelGraph> Run(const ModelGraph& graph) const;

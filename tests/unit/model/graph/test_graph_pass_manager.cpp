@@ -1,9 +1,9 @@
 #include "aethermind/model/graph/graph_pass_manager.h"
 
 #include <gtest/gtest.h>
-
 #include <memory>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace aethermind {
@@ -120,6 +120,14 @@ private:
     uint32_t expected_ = 0;
 };
 
+template<typename... Passes>
+std::vector<std::unique_ptr<GraphPass>> MakePasses(Passes&&... passes) {
+    std::vector<std::unique_ptr<GraphPass>> result;
+    result.reserve(sizeof...(passes));
+    (result.push_back(std::forward<Passes>(passes)), ...);
+    return result;
+}
+
 TEST(GraphPassManager, EmptyPipelineReturnsValidGraph) {
     const ModelGraph graph = BuildGraph();
     GraphPassManager pipeline;
@@ -146,8 +154,9 @@ TEST(GraphPassManager, RunsSinglePass) {
 TEST(GraphPassManager, StopsOnFirstError) {
     const ModelGraph graph = BuildGraph();
     GraphPassManager pipeline;
-    pipeline.Add(std::make_unique<FailingPass>())
-            .Add(std::make_unique<RedirectFirstNodeInputPass>());
+    pipeline.AddSequential(MakePasses(
+            std::make_unique<FailingPass>(),
+            std::make_unique<RedirectFirstNodeInputPass>()));
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
@@ -155,12 +164,42 @@ TEST(GraphPassManager, StopsOnFirstError) {
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(GraphPassManager, AddSequentialRunsPassesInOrder) {
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline;
+    pipeline.AddSequential(MakePasses(
+            std::make_unique<RedirectFirstNodeInputPass>(),
+            std::make_unique<RemoveUnusedSecondNodePass>()));
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->GetNodes().size(), 1U);
+    EXPECT_EQ(result->GetNode(GraphNodeId{.index = 0}).inputs[0], result->GetInputs()[1].value);
+    EXPECT_TRUE(result->Validate().ok());
+}
+
+TEST(GraphPassManager, AddSequentialSupportsChaining) {
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline;
+    pipeline.AddSequential(MakePasses(std::make_unique<RedirectFirstNodeInputPass>()))
+            .Add(std::make_unique<RemoveUnusedSecondNodePass>());
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->GetNodes().size(), 1U);
+    EXPECT_EQ(result->GetNode(GraphNodeId{.index = 0}).inputs[0], result->GetInputs()[1].value);
+    EXPECT_TRUE(result->Validate().ok());
+}
+
 TEST(GraphPassManager, CheckpointCommitsIntermediateSnapshot) {
     const ModelGraph graph = BuildGraph();
     GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(1)
-            .Add(std::make_unique<RedirectFirstNodeInputPass>())
-            .Add(std::make_unique<RemoveUnusedSecondNodePass>());
+            .AddSequential(MakePasses(
+                    std::make_unique<RedirectFirstNodeInputPass>(),
+                    std::make_unique<RemoveUnusedSecondNodePass>()));
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
@@ -176,8 +215,9 @@ TEST(GraphPassManager, DisabledCheckpointStillProducesCorrectResult) {
     const ModelGraph graph = BuildGraph();
     GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(0)// explicitly disable checkpointing
-            .Add(std::make_unique<RedirectFirstNodeInputPass>())
-            .Add(std::make_unique<RemoveUnusedSecondNodePass>());
+            .AddSequential(MakePasses(
+                    std::make_unique<RedirectFirstNodeInputPass>(),
+                    std::make_unique<RemoveUnusedSecondNodePass>()));
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
@@ -202,9 +242,10 @@ TEST(GraphPassManager, CheckpointOnLastPassProducesCorrectResult) {
     const ModelGraph graph = BuildGraph();
     GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(3)
-            .Add(std::make_unique<RedirectFirstNodeInputPass>())
-            .Add(std::make_unique<RemoveUnusedSecondNodePass>())
-            .Add(std::make_unique<NoopPass>());
+            .AddSequential(MakePasses(
+                    std::make_unique<RedirectFirstNodeInputPass>(),
+                    std::make_unique<RemoveUnusedSecondNodePass>(),
+                    std::make_unique<NoopPass>()));
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
@@ -224,9 +265,10 @@ TEST(GraphPassManager, CheckpointBoundaryNotOnLastPassStillCommitsTrailing) {
     const ModelGraph graph = BuildGraph();
     GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(2)
-            .Add(std::make_unique<RedirectFirstNodeInputPass>())
-            .Add(std::make_unique<RemoveUnusedSecondNodePass>())
-            .Add(std::make_unique<RedirectFirstNodeInputPass>());
+            .AddSequential(MakePasses(
+                    std::make_unique<RedirectFirstNodeInputPass>(),
+                    std::make_unique<RemoveUnusedSecondNodePass>(),
+                    std::make_unique<RedirectFirstNodeInputPass>()));
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
@@ -239,8 +281,9 @@ TEST(GraphPassManager, CheckpointBoundaryNotOnLastPassStillCommitsTrailing) {
 TEST(GraphPassManager, ConstructorUsesCheckpointFromContext) {
     const ModelGraph graph = BuildGraph();
     GraphPassManager pipeline(PassContext{.checkpoint_every = 1});
-    pipeline.Add(std::make_unique<RedirectFirstNodeInputPass>())
-            .Add(std::make_unique<RemoveUnusedSecondNodePass>());
+    pipeline.AddSequential(MakePasses(
+            std::make_unique<RedirectFirstNodeInputPass>(),
+            std::make_unique<RemoveUnusedSecondNodePass>()));
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
@@ -271,6 +314,19 @@ TEST(GraphPassManager, PassReceivesContext) {
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     const GraphNode& first_node = result->GetNode(GraphNodeId{.index = 0});
     EXPECT_EQ(first_node.inputs[0], result->GetInputs()[0].value);
+}
+
+TEST(GraphPassManager, RejectsNullPass) {
+    const ModelGraph graph = BuildGraph();
+    GraphPassManager pipeline;
+    pipeline.AddSequential(MakePasses(
+            std::make_unique<NoopPass>(),
+            std::unique_ptr<GraphPass>{nullptr}));
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
 }
 
 }// namespace

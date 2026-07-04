@@ -13,6 +13,13 @@ GraphPassManager& GraphPassManager::Add(std::unique_ptr<GraphPass> pass) {
     return *this;
 }
 
+GraphPassManager& GraphPassManager::AddSequential(std::vector<std::unique_ptr<GraphPass>> passes) {
+    for (std::unique_ptr<GraphPass>& pass: passes) {
+        Add(std::move(pass));
+    }
+    return *this;
+}
+
 GraphPassManager& GraphPassManager::SetCheckpointEvery(uint32_t pass_count) noexcept {
     ctx_.checkpoint_every = pass_count;
     return *this;

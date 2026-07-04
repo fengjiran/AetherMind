@@ -613,6 +613,12 @@ GraphValueId SubgraphBuilder::Emit(OpType op_type,
 }
 
 Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_to_replace) {
+    // Yield redirects an internal virtual value to replace an external real
+    // graph value. Reject virtual or out-of-range ids for old_value_to_replace
+    // early, so the error is attributed to the caller rather than surfacing
+    // later as a confusing ValidateVirtualValues or Commit failure.
+    AM_RETURN_IF_ERROR(session_.CheckValueId(old_value_to_replace));
+
     for (auto& node: new_nodes_) {
         for (auto& out: node.outputs) {
             if (out.replaces == internal_val) {

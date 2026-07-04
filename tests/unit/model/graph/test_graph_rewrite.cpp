@@ -226,7 +226,7 @@ TEST(GraphRewriteSession, RemoveNodeOverridesPreviousReplacement) {
             .op_params = EmbeddingParams{},
             .debug_name = "replacement_should_be_cleared",
     };
-    const std::array old_nodes{GraphNodeId{.index = 1}};
+    constexpr std::array old_nodes{GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
     ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
 
@@ -1060,6 +1060,40 @@ TEST(SubgraphBuilder, YieldRejectsUnknownInternalValue) {
     EXPECT_FALSE(status.ok());
 
     (void) mid;
+}
+
+TEST(SubgraphBuilder, YieldRejectsVirtualValueAsReplacementTarget) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    const GraphValueId mid = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            Spec(DataType::Float32(), {1, 1, 4}),
+            EmbeddingParams{});
+
+    const GraphValueId another_virtual = session.AllocateVirtualValue();
+    const Status status = builder.Yield(mid, another_virtual);
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(SubgraphBuilder, YieldRejectsOutOfRangeReplacementTarget) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    const GraphValueId mid = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            Spec(DataType::Float32(), {1, 1, 4}),
+            EmbeddingParams{});
+
+    const GraphValueId out_of_range{.index = 999};
+    const Status status = builder.Yield(mid, out_of_range);
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(SubgraphBuilder, BuilderReusableAfterCommit) {

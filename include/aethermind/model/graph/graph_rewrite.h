@@ -68,6 +68,11 @@ class GraphRewriteSession {
 public:
     explicit GraphRewriteSession(const ModelGraph& graph);
     AM_NODISCARD GraphValueId AllocateVirtualValue();
+
+    /// Applies a batch of mutations sequentially. Non-atomic: if mutation N
+    /// fails, mutations 0..N-1 remain applied to the session. The caller is
+    /// responsible for either committing the partial state or discarding the
+    /// session.
     AM_NODISCARD Status Apply(std::span<const GraphMutation> mutations);
     AM_NODISCARD Status RemoveNode(GraphNodeId node);
     AM_NODISCARD Status ReplaceSubgraph(std::span<const GraphNodeId> old_nodes,
@@ -79,6 +84,11 @@ public:
     AM_NODISCARD Status ValidateEdits() const;
     AM_NODISCARD StatusOr<ModelGraph> Commit() const;
 
+    /// Validates that `value` refers to a real (non-virtual) graph value.
+    /// Returns InvalidArgument if the id is out of range or refers to a
+    /// virtual value allocated by AllocateVirtualValue().
+    AM_NODISCARD Status CheckValueId(GraphValueId value) const;
+
 private:
     struct RewriteEntry {
         std::vector<GraphNodeId> old_nodes{};
@@ -88,7 +98,6 @@ private:
     };
 
     AM_NODISCARD Status CheckNodeId(GraphNodeId node) const;
-    AM_NODISCARD Status CheckValueId(GraphValueId value) const;
     AM_NODISCARD Status CheckValueIdAllowVirtual(GraphValueId value) const;
     AM_NODISCARD bool IsVirtualValue(GraphValueId value) const noexcept;
     AM_NODISCARD std::size_t GetVirtualIndex(GraphValueId virtual_id) const noexcept {

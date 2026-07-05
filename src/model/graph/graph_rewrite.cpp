@@ -563,6 +563,7 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
             view->op_params,
             view->attrs,
             view->debug_name);
+
     for (size_t i = 0; i < view->outputs.size(); ++i) {
         value_map[view->outputs[i].index] = added.outputs[i];
     }

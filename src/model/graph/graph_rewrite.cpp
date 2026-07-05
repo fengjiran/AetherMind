@@ -21,7 +21,8 @@ StatusOr<GraphValueId> MapResolvedValue(GraphValueId old_value,
                                         const std::vector<std::optional<GraphValueId>>& value_map) {
     if (old_value.index >= value_map.size() || !value_map[old_value.index].has_value()) {
         return Status::InvalidArgument(
-                "GraphRewriteSession: value cannot be mapped during commit");
+                "GraphRewriteSession: value " + std::to_string(old_value.index) +
+                " cannot be mapped during commit (producer removed or not yet emitted)");
     }
     return *value_map[old_value.index];
 }
@@ -38,7 +39,8 @@ StatusOr<GraphValueId> MapCommittedValue(
     const std::size_t virtual_index = value.index - real_value_count;
     if (virtual_index >= virtual_value_map.size() || !virtual_value_map[virtual_index].has_value()) {
         return Status::InvalidArgument(
-                "GraphRewriteSession: virtual value cannot be mapped during commit");
+                "GraphRewriteSession: virtual value " + std::to_string(value.index) +
+                " cannot be mapped during commit (not produced within its rewrite)");
     }
     return *virtual_value_map[virtual_index];
 }
@@ -417,8 +419,8 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
     for (const ReplacementNode& replacement: rewrite.replacements) {
         std::vector<GraphValueId> new_inputs;
         new_inputs.reserve(replacement.inputs.size());
-        for (GraphValueId old_input: replacement.inputs) {
-            const GraphValueId resolved_input = GetResolvedValue(old_input);
+        for (GraphValueId input: replacement.inputs) {
+            const GraphValueId resolved_input = GetResolvedValue(input);
             StatusOr<GraphValueId> mapped_input = MapCommittedValue(
                     resolved_input, graph_.GetValues().size(), value_map, virtual_value_map);
             AM_RETURN_IF_ERROR(mapped_input.status());
@@ -462,8 +464,8 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
 
     std::vector<GraphValueId> new_inputs;
     new_inputs.reserve(view->inputs.size());
-    for (GraphValueId old_input: view->inputs) {
-        const GraphValueId resolved_input = GetResolvedValue(old_input);
+    for (GraphValueId input: view->inputs) {
+        const GraphValueId resolved_input = GetResolvedValue(input);
         StatusOr<GraphValueId> mapped_input = MapResolvedValue(resolved_input, value_map);
         AM_RETURN_IF_ERROR(mapped_input.status());
         new_inputs.push_back(*mapped_input);

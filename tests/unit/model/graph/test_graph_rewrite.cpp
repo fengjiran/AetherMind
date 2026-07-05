@@ -1350,5 +1350,285 @@ TEST(GraphRewriteSession, GetTopologicalOrderConsistentWithIsNodeLive) {
     }
 }
 
+TEST(GraphRewriteSession, IsValueLiveReturnsTrueForAllValuesOnCleanSession) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // v0=tokens_a, v1=tokens_b, v2=weight (external); v3=hidden_a, v4=hidden_b (node-produced)
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 0}));
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 1}));
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 2}));
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 3}));
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 4}));
+}
+
+TEST(GraphRewriteSession, IsValueLiveReturnsFalseForOutOfRangeValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    EXPECT_FALSE(session.IsValueLive(GraphValueId{.index = 99}));
+}
+
+TEST(GraphRewriteSession, IsValueLiveReturnsFalseForVirtualValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId virtual_value = session.AllocateVirtualValue();
+    EXPECT_FALSE(session.IsValueLive(virtual_value));
+}
+
+TEST(GraphRewriteSession, IsValueLiveExcludesValuesFromRemovedNode) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // node 1 produces v4 (hidden_b)
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
+    // External values unaffected
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 0}));
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 1}));
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 2}));
+    // node 0 still live → v3 live
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 3}));
+    // node 1 removed → v4 dead
+    EXPECT_FALSE(session.IsValueLive(GraphValueId{.index = 4}));
+}
+
+TEST(GraphRewriteSession, IsValueLiveIncludesValuesReplacedBySubgraph) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // node 0 produces v3 (hidden_a); replace it with a subgraph replacement
+    // whose output `replaces` v3. v3 is still observable (graph output, mapped
+    // to the replacement output at Commit time).
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session
+                        .ReplaceSubgraph(old_nodes, {MakeReplacementEmbedding(GraphValueId{.index = 3},
+                                                                              "replacement")})
+                        .ok());
+    // node 0 replaced but replacement takes over v3 → v3 live
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 3}));
+    // node 1 still live → v4 live
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 4}));
+    // External values unaffected
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 0}));
+}
+
+TEST(GraphRewriteSession, IsValueLiveExcludesValuesNotReplacedBySubgraph) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // Replace both n0 and n1, but the replacement only takes over v3.
+    // v4 (produced by n1) has no replacement → dead.
+    const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session
+                        .ReplaceSubgraph(old_nodes, {MakeReplacementEmbedding(GraphValueId{.index = 3},
+                                                                              "replacement")})
+                        .ok());
+    // v3 taken over by replacement → live
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 3}));
+    // v4 not taken over, producer n1 replaced → dead
+    EXPECT_FALSE(session.IsValueLive(GraphValueId{.index = 4}));
+    // External values unaffected
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 0}));
+}
+
+TEST(GraphRewriteSession, IsValueLiveIncludesValuesFromRedirectedNode) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // RedirectInput keeps the node live (mirror replacement), so its outputs stay live
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
+                        .ok());
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 3}));
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 4}));
+}
+
+TEST(GraphRewriteSession, IsValueLiveUnaffectedByReplaceValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // ReplaceValue redirects consumers but does not remove the value
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 3}, GraphValueId{.index = 4}).ok());
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 3}));
+    EXPECT_TRUE(session.IsValueLive(GraphValueId{.index = 4}));
+}
+
+TEST(GraphRewriteSession, GetLiveValuesReturnsAllValuesOnCleanSession) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const std::vector<GraphValueId> live = session.GetLiveValues();
+    ASSERT_EQ(live.size(), 5U);
+    EXPECT_EQ(live[0], GraphValueId{.index = 0});
+    EXPECT_EQ(live[1], GraphValueId{.index = 1});
+    EXPECT_EQ(live[2], GraphValueId{.index = 2});
+    EXPECT_EQ(live[3], GraphValueId{.index = 3});
+    EXPECT_EQ(live[4], GraphValueId{.index = 4});
+}
+
+TEST(GraphRewriteSession, GetLiveValuesExcludesValuesFromRemovedNode) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
+    const std::vector<GraphValueId> live = session.GetLiveValues();
+    ASSERT_EQ(live.size(), 4U);
+    // v4 (hidden_b, produced by removed node 1) excluded
+    EXPECT_EQ(live[0], GraphValueId{.index = 0});
+    EXPECT_EQ(live[1], GraphValueId{.index = 1});
+    EXPECT_EQ(live[2], GraphValueId{.index = 2});
+    EXPECT_EQ(live[3], GraphValueId{.index = 3});
+}
+
+TEST(GraphRewriteSession, GetLiveValuesIncludesValuesReplacedBySubgraph) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    ASSERT_TRUE(session
+                        .ReplaceSubgraph(old_nodes, {MakeReplacementEmbedding(GraphValueId{.index = 3},
+                                                                              "replacement")})
+                        .ok());
+    const std::vector<GraphValueId> live = session.GetLiveValues();
+    // v3 is replaced by the replacement output → still live
+    ASSERT_EQ(live.size(), 5U);
+    EXPECT_EQ(live[0], GraphValueId{.index = 0});
+    EXPECT_EQ(live[1], GraphValueId{.index = 1});
+    EXPECT_EQ(live[2], GraphValueId{.index = 2});
+    EXPECT_EQ(live[3], GraphValueId{.index = 3});
+    EXPECT_EQ(live[4], GraphValueId{.index = 4});
+}
+
+TEST(GraphRewriteSession, GetLiveValuesExcludesValuesNotReplacedBySubgraph) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // Replace both n0 and n1, but the replacement only takes over v3.
+    const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session
+                        .ReplaceSubgraph(old_nodes, {MakeReplacementEmbedding(GraphValueId{.index = 3},
+                                                                              "replacement")})
+                        .ok());
+    const std::vector<GraphValueId> live = session.GetLiveValues();
+    // v4 (produced by replaced n1, no replacement takes over) excluded
+    ASSERT_EQ(live.size(), 4U);
+    EXPECT_EQ(live[0], GraphValueId{.index = 0});
+    EXPECT_EQ(live[1], GraphValueId{.index = 1});
+    EXPECT_EQ(live[2], GraphValueId{.index = 2});
+    EXPECT_EQ(live[3], GraphValueId{.index = 3});
+}
+
+TEST(GraphRewriteSession, GetLiveValuesConsistentWithIsValueLive) {
+    // After a mix of mutations (remove n0, redirect n1, replace value),
+    // every id in GetLiveValues() must satisfy IsValueLive==true, and
+    // every live id must appear in GetLiveValues().
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 0}).ok());
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 1}, 0, GraphValueId{.index = 0})
+                        .ok());
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 3}, GraphValueId{.index = 4}).ok());
+
+    const std::vector<GraphValueId> live = session.GetLiveValues();
+
+    for (GraphValueId id: live) {
+        EXPECT_TRUE(session.IsValueLive(id))
+                << "GetLiveValues contains non-live value " << id.index;
+    }
+
+    for (uint32_t i = 0; i < graph.GetValues().size(); ++i) {
+        const GraphValueId id{.index = i};
+        if (session.IsValueLive(id)) {
+            EXPECT_NE(std::find(live.begin(), live.end(), id), live.end())
+                    << "Live value " << i << " missing from GetLiveValues";
+        }
+    }
+}
+
+TEST(GraphRewriteSession, FindConsumersReturnsAllConsumersOnCleanSession) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // v2 (weight) is consumed by both n0 and n1
+    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_EQ(consumers.size(), 2U);
+    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
+    EXPECT_EQ(consumers[1], GraphNodeId{.index = 1});
+}
+
+TEST(GraphRewriteSession, FindConsumersReturnsSingleConsumer) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // v0 (tokens_a) is consumed only by n0
+    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 0});
+    ASSERT_EQ(consumers.size(), 1U);
+    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
+}
+
+TEST(GraphRewriteSession, FindConsumersReturnsEmptyForValueWithNoConsumers) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // v3 (hidden_a) is a graph output, no node consumes it
+    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 3});
+    EXPECT_TRUE(consumers.empty());
+}
+
+TEST(GraphRewriteSession, FindConsumersExcludesRemovedNodes) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
+    // v2 (weight) now consumed only by n0 (n1 removed)
+    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_EQ(consumers.size(), 1U);
+    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
+}
+
+TEST(GraphRewriteSession, FindConsumersExcludesReplacedNodes) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const std::array old_nodes{GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session
+                        .ReplaceSubgraph(old_nodes, {MakeReplacementEmbedding(GraphValueId{.index = 4},
+                                                                              "replacement")})
+                        .ok());
+    // v2 (weight) now consumed only by n0 (n1 replaced, not live)
+    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_EQ(consumers.size(), 1U);
+    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
+}
+
+TEST(GraphRewriteSession, FindConsumersReflectsRedirectInput) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // Redirect n0's input 0 from v0 to v1
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
+                        .ok());
+    // n0 no longer consumes v0
+    EXPECT_TRUE(session.FindConsumers(GraphValueId{.index = 0}).empty());
+    // n0 now consumes v1 (along with n1)
+    const std::vector<GraphNodeId> v1_consumers = session.FindConsumers(GraphValueId{.index = 1});
+    ASSERT_EQ(v1_consumers.size(), 2U);
+    EXPECT_EQ(v1_consumers[0], GraphNodeId{.index = 0});
+    EXPECT_EQ(v1_consumers[1], GraphNodeId{.index = 1});
+}
+
+TEST(GraphRewriteSession, FindConsumersResolvesReplaceValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    // Replace v2 (weight) with v0 (tokens_a): consumers of v2 now resolve to v0
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 2}, GraphValueId{.index = 0}).ok());
+    // FindConsumers(v0) should return both n0 and n1 (both originally consumed v2 → v0)
+    const std::vector<GraphNodeId> v0_consumers = session.FindConsumers(GraphValueId{.index = 0});
+    ASSERT_EQ(v0_consumers.size(), 2U);
+    EXPECT_EQ(v0_consumers[0], GraphNodeId{.index = 0});
+    EXPECT_EQ(v0_consumers[1], GraphNodeId{.index = 1});
+    // FindConsumers(v2) should return the same result (v2 resolves to v0)
+    const std::vector<GraphNodeId> v2_consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_EQ(v2_consumers.size(), 2U);
+    EXPECT_EQ(v2_consumers[0], GraphNodeId{.index = 0});
+    EXPECT_EQ(v2_consumers[1], GraphNodeId{.index = 1});
+}
+
+TEST(GraphRewriteSession, FindConsumersReturnsEmptyForVirtualValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId virtual_value = session.AllocateVirtualValue();
+    EXPECT_TRUE(session.FindConsumers(virtual_value).empty());
+}
+
+TEST(GraphRewriteSession, FindConsumersReturnsEmptyForOutOfRangeValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    EXPECT_TRUE(session.FindConsumers(GraphValueId{.index = 99}).empty());
+}
+
 }// namespace
 }// namespace aethermind

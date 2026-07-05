@@ -352,6 +352,83 @@ std::vector<GraphNodeId> GraphRewriteSession::FindNodesByOpType(OpType op_type) 
     return live;
 }
 
+bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
+    if (value.index >= graph_.GetValues().size()) {
+        return false;
+    }
+
+    const std::optional<GraphNodeId> producer = graph_.GetValue(value).producer;
+    if (!producer.has_value()) {
+        return true;
+    }
+
+    if (IsNodeLive(*producer)) {
+        return true;
+    }
+
+    // Producer removed/replaced, but an active rewrite may take over this value
+    // via a replacement output's `replaces` binding.
+    return IsValueReplacedByActiveRewrite(value);
+}
+
+bool GraphRewriteSession::IsValueReplacedByActiveRewrite(GraphValueId value) const noexcept {
+    for (const RewriteEntry& rewrite: rewrites_) {
+        if (!rewrite.active) {
+            continue;
+        }
+
+        for (const ReplacementNode& replacement: rewrite.replacements) {
+            for (const RewriteOutputBinding& output: replacement.outputs) {
+                if (output.replaces == value) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
+    const std::span<const GraphValue> values = graph_.GetValues();
+    std::vector<GraphValueId> live;
+    live.reserve(values.size());
+    for (uint32_t i = 0; i < values.size(); ++i) {
+        if (const GraphValueId id{.index = i}; IsValueLive(id)) {
+            live.push_back(id);
+        }
+    }
+    return live;
+}
+
+std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) const {
+    const GraphValueId resolved_value = GetResolvedValue(value);
+
+    const StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
+    if (!order.ok()) {
+        return {};
+    }
+
+    std::vector<GraphNodeId> consumers;
+    for (const GraphNodeId node_id: *order) {
+        if (!IsNodeLive(node_id)) {
+            continue;
+        }
+        const StatusOr<GraphNodeView> view = GetNodeView(node_id);
+        if (!view.ok()) {
+            continue;
+        }
+        // GetNodeView already resolves inputs via GetResolvedValue, so direct
+        // comparison with resolved_value is correct.
+        for (const GraphValueId input: view->inputs) {
+            if (input == resolved_value) {
+                consumers.push_back(node_id);
+                break;
+            }
+        }
+    }
+    return consumers;
+}
+
 Status GraphRewriteSession::ValidateEdits() const {
     for (const auto& replacement: value_replacements_) {
         if (replacement.has_value()) {

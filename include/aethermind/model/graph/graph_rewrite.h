@@ -112,6 +112,41 @@ public:
     /// changes input wiring, not the operator itself.
     AM_NODISCARD std::vector<GraphNodeId> FindNodesByOpType(OpType op_type) const;
 
+    /// Returns true if `value` is structurally present in the current session view.
+    ///
+    /// This is analogous to IsNodeLive(): it answers whether the value still exists
+    /// after session-local structural rewrites. It does not mean the value is
+    /// reachable from graph outputs or required by DCE. A structurally present value
+    /// may still be dead-code-elimination eligible if it has no live consumers and
+    /// is not a graph output / side effect root.
+    ///
+    /// A value is live when any of the following holds:
+    /// - It is an external value (input, weight, constant, state) with no producer.
+    /// - Its producer is a live node (e.g., untouched or only RedirectInput'd).
+    /// - An active rewrite's replacement output takes over the value via its
+    ///   `replaces` binding, even if the original producer was removed/replaced.
+    ///
+    /// ReplaceValue does not affect liveness: a replaced value still exists,
+    /// only its consumers are redirected.
+    AM_NODISCARD bool IsValueLive(GraphValueId value) const noexcept;
+
+    /// Returns all live value ids in ascending index order. Excludes values
+    /// produced by removed/replaced nodes that no replacement takes over, and
+    /// virtual values (they are rewrite-internal).
+    AM_NODISCARD std::vector<GraphValueId> GetLiveValues() const;
+
+    /// Returns live nodes that consume `value` (after resolution) as an input,
+    /// in topological order. A node appears at most once even if it consumes
+    /// the value on multiple input ports.
+    ///
+    /// Both `value` and each node's inputs are resolved via GetResolvedValue
+    /// before comparison, so ReplaceValue is accounted for: querying consumers
+    /// of a replaced value returns the same result as querying consumers of
+    /// its resolution target.
+    ///
+    /// Virtual values and out-of-range ids return an empty vector.
+    AM_NODISCARD std::vector<GraphNodeId> FindConsumers(GraphValueId value) const;
+
     AM_NODISCARD Status ValidateEdits() const;
     AM_NODISCARD StatusOr<ModelGraph> Commit() const;
 
@@ -132,6 +167,7 @@ private:
     AM_NODISCARD Status CheckNodeId(GraphNodeId node) const;
     AM_NODISCARD Status CheckValueIdAllowVirtual(GraphValueId value) const;
     AM_NODISCARD bool IsVirtualValue(GraphValueId value) const noexcept;
+    AM_NODISCARD bool IsValueReplacedByActiveRewrite(GraphValueId value) const noexcept;
     AM_NODISCARD std::size_t GetVirtualIndex(GraphValueId virtual_id) const noexcept {
         return virtual_id.index - graph_.GetValues().size();
     }

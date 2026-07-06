@@ -248,6 +248,40 @@ GraphValueId AddSiluMul(ModelGraph& graph,
     return OnlyOneOutput(node);
 }
 
+GraphValueId AddSilu(ModelGraph& graph,
+                     std::optional<uint32_t> decoder_layer_index,
+                     GraphValueId input,
+                     std::string debug_name) {
+    TensorSpec output_spec = graph.GetValue(input).spec;
+    const auto node = graph.AddNode(OpType::kSilu,
+                                    decoder_layer_index,
+                                    {input},
+                                    {ActivationOutput(std::move(output_spec))},
+                                    SiluParams{},
+                                    {},
+                                    std::move(debug_name));
+    return OnlyOneOutput(node);
+}
+
+GraphValueId AddElementwiseMul(ModelGraph& graph,
+                               std::optional<uint32_t> decoder_layer_index,
+                               GraphValueId lhs,
+                               GraphValueId rhs,
+                               std::string debug_name) {
+    TensorSpec output_spec = graph.GetValue(lhs).spec;
+    AM_CHECK(output_spec == graph.GetValue(rhs).spec,
+             "ElementwiseMul lhs and rhs specs must match");
+
+    const auto node = graph.AddNode(OpType::kElementwiseMul,
+                                    decoder_layer_index,
+                                    {lhs, rhs},
+                                    {ActivationOutput(std::move(output_spec))},
+                                    ElementwiseMulParams{},
+                                    {},
+                                    std::move(debug_name));
+    return OnlyOneOutput(node);
+}
+
 GraphValueId AddArgmax(ModelGraph& graph,
                        std::optional<uint32_t> decoder_layer_index,
                        GraphValueId input,

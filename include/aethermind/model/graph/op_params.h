@@ -37,7 +37,11 @@ struct SoftmaxParams {
 
 struct AddParams {};
 
+struct SiluParams {};
+
 struct SiluMulParams {};
+
+struct ElementwiseMulParams {};
 
 struct KVCacheUpdateParams {};
 
@@ -59,7 +63,9 @@ using OpParams = std::variant<std::monostate,
                               MatMulParams,
                               SoftmaxParams,
                               AddParams,
+                              SiluParams,
                               SiluMulParams,
+                              ElementwiseMulParams,
                               KVCacheUpdateParams,
                               AttentionParams,
                               ArgmaxParams>;

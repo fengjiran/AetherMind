@@ -139,7 +139,9 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
             [](const MatMulParams&) noexcept { return "MatMul"; },
             [](const SoftmaxParams&) noexcept { return "Softmax"; },
             [](const AddParams&) noexcept { return "Add"; },
+            [](const SiluParams&) noexcept { return "Silu"; },
             [](const SiluMulParams&) noexcept { return "SiluMul"; },
+            [](const ElementwiseMulParams&) noexcept { return "ElementwiseMul"; },
             [](const KVCacheUpdateParams&) noexcept { return "KVCacheUpdate"; },
             [](const AttentionParams&) noexcept { return "Attention"; },
             [](const ArgmaxParams&) noexcept { return "Argmax"; },
@@ -172,7 +174,9 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
             },
             [&](const SoftmaxParams& p) { os << "Softmax axis=" << p.axis; },
             [&](const AddParams&) { os << "Add"; },
+            [&](const SiluParams&) { os << "Silu"; },
             [&](const SiluMulParams&) { os << "SiluMul"; },
+            [&](const ElementwiseMulParams&) { os << "ElementwiseMul"; },
             [&](const KVCacheUpdateParams&) { os << "KVCacheUpdate"; },
             [&](const AttentionParams& p) {
                 os << "Attention num_attention_heads=" << p.num_attention_heads
@@ -259,9 +263,19 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
         return OpParams{AddParams{}};
     }
 
+    if (kind == "Silu") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
+        return OpParams{SiluParams{}};
+    }
+
     if (kind == "SiluMul") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{SiluMulParams{}};
+    }
+
+    if (kind == "ElementwiseMul") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
+        return OpParams{ElementwiseMulParams{}};
     }
 
     if (kind == "KVCacheUpdate") {

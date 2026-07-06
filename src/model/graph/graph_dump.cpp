@@ -243,8 +243,14 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
             [&](const AddParams&) {
                 DumpEmptyParams("AddParams", os);
             },
+            [&](const SiluParams&) {
+                DumpEmptyParams("SiluParams", os);
+            },
             [&](const SiluMulParams&) {
                 DumpEmptyParams("SiluMulParams", os);
+            },
+            [&](const ElementwiseMulParams&) {
+                DumpEmptyParams("ElementwiseMulParams", os);
             },
             [&](const KVCacheUpdateParams&) {
                 DumpEmptyParams("KVCacheUpdateParams", os);

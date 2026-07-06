@@ -98,6 +98,19 @@ AM_NODISCARD GraphValueId AddSiluMul(ModelGraph& graph,
                                      GraphValueId up,
                                      std::string debug_name = {});
 
+/// Builds a SiLU activation node.
+AM_NODISCARD GraphValueId AddSilu(ModelGraph& graph,
+                                  std::optional<uint32_t> decoder_layer_index,
+                                  GraphValueId input,
+                                  std::string debug_name = {});
+
+/// Builds an elementwise multiply node. lhs and rhs must have matching specs.
+AM_NODISCARD GraphValueId AddElementwiseMul(ModelGraph& graph,
+                                            std::optional<uint32_t> decoder_layer_index,
+                                            GraphValueId lhs,
+                                            GraphValueId rhs,
+                                            std::string debug_name = {});
+
 /// Builds an Argmax node selecting the index of the maximum value along `axis`.
 AM_NODISCARD GraphValueId AddArgmax(ModelGraph& graph,
                                     std::optional<uint32_t> decoder_layer_index,

@@ -39,7 +39,7 @@ StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
     return Status::InvalidArgument(not_found_message);
 }
 
-const std::array<OperatorSchema, 11> kOperatorSchemas{
+const std::array<OperatorSchema, 13> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kEmbedding,
                 .input_ports = {Input(0, "tokens", OperatorPortKind::kModelInput),
@@ -87,6 +87,17 @@ const std::array<OperatorSchema, 11> kOperatorSchemas{
                 .op_type = OpType::kSiluMul,
                 .input_ports = {Input(0, "gate", OperatorPortKind::kActivation),
                                 Input(1, "up", OperatorPortKind::kActivation)},
+                .output_ports = {Output(0, "output")},
+        },
+        OperatorSchema{
+                .op_type = OpType::kSilu,
+                .input_ports = {Input(0, "input", OperatorPortKind::kActivation)},
+                .output_ports = {Output(0, "output")},
+        },
+        OperatorSchema{
+                .op_type = OpType::kElementwiseMul,
+                .input_ports = {Input(0, "lhs", OperatorPortKind::kActivation),
+                                Input(1, "rhs", OperatorPortKind::kActivation)},
                 .output_ports = {Output(0, "output")},
         },
         OperatorSchema{

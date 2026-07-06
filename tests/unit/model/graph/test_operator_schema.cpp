@@ -8,7 +8,7 @@ namespace {
 TEST(OperatorSchema, ContainsAllM1Ops) {
     const auto schemas = GetOperatorSchemas();
 
-    ASSERT_EQ(schemas.size(), 11U);
+    ASSERT_EQ(schemas.size(), 13U);
     EXPECT_TRUE(GetOperatorSchema(OpType::kEmbedding).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kRmsNorm).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kLinear).ok());
@@ -16,7 +16,9 @@ TEST(OperatorSchema, ContainsAllM1Ops) {
     EXPECT_TRUE(GetOperatorSchema(OpType::kMatMul).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSoftmax).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kAdd).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kSilu).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSiluMul).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kElementwiseMul).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kKVCacheUpdate).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kAttention).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kArgmax).ok());
@@ -123,7 +125,9 @@ TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {
             ExpectedArity{.op_type = OpType::kMatMul, .inputs = 2, .outputs = 1},
             ExpectedArity{.op_type = OpType::kSoftmax, .inputs = 1, .outputs = 1},
             ExpectedArity{.op_type = OpType::kAdd, .inputs = 2, .outputs = 1},
+            ExpectedArity{.op_type = OpType::kSilu, .inputs = 1, .outputs = 1},
             ExpectedArity{.op_type = OpType::kSiluMul, .inputs = 2, .outputs = 1},
+            ExpectedArity{.op_type = OpType::kElementwiseMul, .inputs = 2, .outputs = 1},
             ExpectedArity{.op_type = OpType::kArgmax, .inputs = 1, .outputs = 1},
     };
 

@@ -178,6 +178,68 @@ TEST(ModelGraph, ValidateRejectsInvalidRmsNormEps) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
+TEST(ModelGraph, ValidateAcceptsSiluNodeWithSiluParams) {
+    ModelGraph graph;
+    const GraphValueId input = AddEmbeddingOutput(graph, "tokens");
+    const AddedNode node = graph.AddNode(
+            OpType::kSilu,
+            0U,
+            {input},
+            {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            SiluParams{});
+    graph.MarkOutput(node.outputs[0], "output");
+
+    const Status status = graph.Validate();
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelGraph, ValidateRejectsSiluNodeWithWrongParams) {
+    ModelGraph graph;
+    const GraphValueId input = AddEmbeddingOutput(graph, "tokens");
+    [[maybe_unused]] const AddedNode node = graph.AddNode(
+            OpType::kSilu,
+            0U,
+            {input},
+            {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            EmbeddingParams{});
+
+    const Status status = graph.Validate();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelGraph, ValidateAcceptsElementwiseMulNodeWithElementwiseMulParams) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddEmbeddingOutput(graph, "tokens_lhs");
+    const GraphValueId rhs = AddEmbeddingOutput(graph, "tokens_rhs");
+    const AddedNode node = graph.AddNode(
+            OpType::kElementwiseMul,
+            0U,
+            {lhs, rhs},
+            {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            ElementwiseMulParams{});
+    graph.MarkOutput(node.outputs[0], "output");
+
+    const Status status = graph.Validate();
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelGraph, ValidateRejectsElementwiseMulNodeWithWrongParams) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddEmbeddingOutput(graph, "tokens_lhs");
+    const GraphValueId rhs = AddEmbeddingOutput(graph, "tokens_rhs");
+    [[maybe_unused]] const AddedNode node = graph.AddNode(
+            OpType::kElementwiseMul,
+            0U,
+            {lhs, rhs},
+            {NodeOutputDesc{.spec = ActivationSpec(), .payload = ActivationValue{}}},
+            AddParams{});
+
+    const Status status = graph.Validate();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 TEST(ModelGraph, ValidateRejectsInvalidRoPEParams) {
     ModelGraph graph;
     const GraphValueId q = graph.AddInput(ActivationSpec(), "q");

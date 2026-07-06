@@ -144,6 +144,46 @@ TEST(GraphOpBuilder, AddSiluMulRequiresMatchingSpecs) {
                  "SiluMul gate and up specs must match");
 }
 
+TEST(GraphOpBuilder, AddSiluDerivesOutputSpecFromInput) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "input");
+
+    const GraphValueId output = AddSilu(graph, 0, input, "silu");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(input).spec);
+    ASSERT_TRUE(graph.GetValue(output).producer.has_value());
+    const GraphNode& node = graph.GetNode(*graph.GetValue(output).producer);
+    EXPECT_EQ(node.op_type, OpType::kSilu);
+    EXPECT_EQ(node.inputs.size(), 1U);
+    EXPECT_EQ(node.outputs.size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<SiluParams>(node.op_params));
+}
+
+TEST(GraphOpBuilder, AddElementwiseMulDerivesOutputSpecFromLhs) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "rhs");
+
+    const GraphValueId output = AddElementwiseMul(graph, 0, lhs, rhs, "mul");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
+    ASSERT_TRUE(graph.GetValue(output).producer.has_value());
+    const GraphNode& node = graph.GetNode(*graph.GetValue(output).producer);
+    EXPECT_EQ(node.op_type, OpType::kElementwiseMul);
+    EXPECT_EQ(node.inputs.size(), 2U);
+    EXPECT_EQ(node.outputs.size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<ElementwiseMulParams>(node.op_params));
+}
+
+TEST(GraphOpBuilder, AddElementwiseMulRequiresMatchingSpecs) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {2, 8}), "rhs");
+
+    EXPECT_DEATH(static_cast<void>(AddElementwiseMul(graph, 0, lhs, rhs, "bad_mul")),
+                 "ElementwiseMul lhs and rhs specs must match");
+}
+
 TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
     ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {4}), .debug_name = "input"}});
     const GraphValueId input{.index = 0};

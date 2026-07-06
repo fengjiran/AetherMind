@@ -261,8 +261,9 @@ Status ValidateOpParams(OpType op_type, const OpParams& params) {
         case OpType::kArgmax:
             return RequireParams<ArgmaxParams>(params, "Argmax node requires ArgmaxParams");
         case OpType::kSilu:
+            return RequireParams<SiluParams>(params, "Silu node requires SiluParams");
         case OpType::kElementwiseMul:
-            return Status::InvalidArgument("Op type is not registered for ModelGraph typed params");
+            return RequireParams<ElementwiseMulParams>(params, "ElementwiseMul node requires ElementwiseMulParams");
         case OpType::kUnknown:
             return Status::InvalidArgument("Unknown op type cannot have validated graph params");
     }

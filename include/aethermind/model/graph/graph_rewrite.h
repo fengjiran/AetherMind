@@ -130,6 +130,17 @@ public:
     /// only its consumers are redirected.
     AM_NODISCARD bool IsValueLive(GraphValueId value) const noexcept;
 
+    /// Returns the output descriptor represented by a real graph value.
+    ///
+    /// This is derived from the source graph value's spec, payload,
+    /// quantization, and debug name. Virtual values and out-of-range values
+    /// return InvalidArgument.
+    AM_NODISCARD StatusOr<NodeOutputDesc> GetValueOutputDesc(GraphValueId value) const;
+
+    /// Returns true when `value` is directly marked as a graph output in the
+    /// source graph. Out-of-range ids and virtual values return false.
+    AM_NODISCARD bool IsGraphOutput(GraphValueId value) const noexcept;
+
     /// Returns all live value ids in ascending index order. Excludes values
     /// produced by removed/replaced nodes that no replacement takes over, and
     /// virtual values (they are rewrite-internal).
@@ -198,8 +209,8 @@ private:
 ///
 /// Usage:
 ///   SubgraphBuilder builder(session, {old_node1, old_node2});
-///   GraphValueId mid = builder.Emit(OpType::kSilu, {input}, spec, params);
-///   GraphValueId out = builder.Emit(OpType::kMul, {mid, other}, spec, params);
+///   GraphValueId mid = builder.Emit(OpType::kSilu, {input}, output_desc, params);
+///   GraphValueId out = builder.Emit(OpType::kMul, {mid, other}, output_desc, params);
 ///   builder.Yield(out, old_output_value);
 ///   builder.Commit();
 ///
@@ -210,17 +221,17 @@ public:
     SubgraphBuilder(GraphRewriteSession& session, std::vector<GraphNodeId> old_nodes)
         : session_(session), old_nodes_(std::move(old_nodes)) {}
 
-    /// Creates a new replacement node with a single activation output.
+    /// Creates a new replacement node with a single output described by
+    /// `output_desc`.
     /// Allocates a virtual value internally, binds it as the node's output,
     /// and returns the virtual value id for use as input to subsequent Emit
     /// calls or as the internal_val argument to Yield.
     ///
-    /// For nodes that need multiple outputs or non-activation payloads
-    /// (e.g. StateValue for KV cache updates), use the full
+    /// For nodes that need multiple outputs, use the full
     /// GraphRewriteSession::ReplaceSubgraph API directly.
     GraphValueId Emit(OpType op_type,
                       std::vector<GraphValueId> inputs,
-                      TensorSpec output_spec,
+                      NodeOutputDesc output_desc,
                       OpParams op_params = std::monostate{},
                       std::optional<uint32_t> decoder_layer_index = std::nullopt,
                       std::string debug_name = {});

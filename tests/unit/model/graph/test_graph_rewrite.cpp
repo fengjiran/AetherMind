@@ -49,7 +49,7 @@ ModelGraph BuildTwoEmbeddingGraph() {
                             .payload = ActivationValue{},
                             .debug_name = "hidden_b"}},
             EmbeddingParams{});
-    (void) embed_b;
+    UNUSED(embed_b);
     graph.MarkOutput(embed_a.outputs[0], "output");
     return graph;
 }
@@ -864,6 +864,48 @@ TEST(GraphRewriteSession, CommitPreservesNodeOutputQuantization) {
     EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).quantization, quantization);
 }
 
+TEST(GraphRewriteSession, GetValueOutputDescReturnsFullValueDescriptor) {
+    ModelGraph graph = BuildTwoEmbeddingGraph();
+    const QuantizationSpec quantization{.kind = QuantizationKind::kInt8,
+                                        .group_size = 64,
+                                        .scale_dtype = DataType::Float32(),
+                                        .has_zero_point = false};
+    graph.SetQuantization(GraphValueId{.index = 3}, quantization);
+
+    GraphRewriteSession session(graph);
+    const StatusOr<NodeOutputDesc> desc = session.GetValueOutputDesc(GraphValueId{.index = 3});
+
+    ASSERT_TRUE(desc.ok()) << desc.status().ToString();
+    EXPECT_EQ(desc->spec, graph.GetValue(GraphValueId{.index = 3}).spec);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(desc->payload));
+    EXPECT_EQ(desc->quantization, quantization);
+    EXPECT_EQ(desc->debug_name, "hidden_a");
+}
+
+TEST(GraphRewriteSession, GetValueOutputDescRejectsInvalidValues) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId virtual_value = session.AllocateVirtualValue();
+
+    EXPECT_EQ(session.GetValueOutputDesc(virtual_value).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(session.GetValueOutputDesc(GraphValueId{.index = 999}).status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, IsGraphOutputReportsDirectGraphOutputsOnly) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    EXPECT_TRUE(session.IsGraphOutput(GraphValueId{.index = 3}));
+    EXPECT_FALSE(session.IsGraphOutput(GraphValueId{.index = 4}));
+
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 3}, GraphValueId{.index = 4}).ok());
+    EXPECT_TRUE(session.IsGraphOutput(GraphValueId{.index = 3}));
+    EXPECT_FALSE(session.IsGraphOutput(GraphValueId{.index = 4}));
+
+    EXPECT_FALSE(session.IsGraphOutput(session.AllocateVirtualValue()));
+    EXPECT_FALSE(session.IsGraphOutput(GraphValueId{.index = 999}));
+}
+
 // --- Issue G: ReplaceValue rejects cycles that would make GetResolvedValue
 // silently return an arbitrary value along the cycle ---
 
@@ -1017,13 +1059,12 @@ TEST(SubgraphBuilder, EmitsAndYieldsReplacementSubgraph) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    const TensorSpec spec = Spec(DataType::Float32(), {1, 1, 4});
     SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
 
     const GraphValueId mid = builder.Emit(
             OpType::kEmbedding,
             {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            spec,
+            HiddenDesc("embed_mid_output"),
             EmbeddingParams{},
             std::nullopt,
             "embed_mid");
@@ -1045,6 +1086,42 @@ TEST(SubgraphBuilder, EmitsAndYieldsReplacementSubgraph) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
+TEST(SubgraphBuilder, EmitAcceptsFullOutputDesc) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const QuantizationSpec quantization{.kind = QuantizationKind::kInt8,
+                                        .group_size = 64,
+                                        .scale_dtype = DataType::Float32(),
+                                        .has_zero_point = false};
+    NodeOutputDesc output_desc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
+                               .payload = ActivationValue{},
+                               .quantization = quantization,
+                               .debug_name = "builder_full_desc"};
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    const GraphValueId out = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            output_desc,
+            EmbeddingParams{},
+            std::nullopt,
+            "embed_full_desc");
+    ASSERT_TRUE(builder.Yield(out, GraphValueId{.index = 3}).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+    ASSERT_EQ(committed->GetOutputs().size(), 1U);
+
+    const GraphValue& output = committed->GetValue(committed->GetOutputs()[0].value);
+    EXPECT_EQ(output.spec, output_desc.spec);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(output.payload));
+    EXPECT_EQ(output.quantization, quantization);
+    EXPECT_EQ(output.debug_name, "builder_full_desc");
+}
+
 TEST(SubgraphBuilder, YieldRejectsUnknownInternalValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
@@ -1053,7 +1130,7 @@ TEST(SubgraphBuilder, YieldRejectsUnknownInternalValue) {
     const GraphValueId mid = builder.Emit(
             OpType::kEmbedding,
             {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            Spec(DataType::Float32(), {1, 1, 4}),
+            HiddenDesc("unknown_internal_output"),
             EmbeddingParams{});
 
     const GraphValueId unproduced = session.AllocateVirtualValue();
@@ -1071,7 +1148,7 @@ TEST(SubgraphBuilder, YieldRejectsVirtualValueAsReplacementTarget) {
     const GraphValueId mid = builder.Emit(
             OpType::kEmbedding,
             {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            Spec(DataType::Float32(), {1, 1, 4}),
+            HiddenDesc("virtual_target_output"),
             EmbeddingParams{});
 
     const GraphValueId another_virtual = session.AllocateVirtualValue();
@@ -1088,7 +1165,7 @@ TEST(SubgraphBuilder, YieldRejectsOutOfRangeReplacementTarget) {
     const GraphValueId mid = builder.Emit(
             OpType::kEmbedding,
             {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            Spec(DataType::Float32(), {1, 1, 4}),
+            HiddenDesc("out_of_range_target_output"),
             EmbeddingParams{});
 
     const GraphValueId out_of_range{.index = 999};
@@ -1105,7 +1182,7 @@ TEST(SubgraphBuilder, BuilderReusableAfterCommit) {
     const GraphValueId out1 = builder.Emit(
             OpType::kEmbedding,
             {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            Spec(DataType::Float32(), {1, 1, 4}),
+            HiddenDesc("first_reusable_output"),
             EmbeddingParams{});
     ASSERT_TRUE(builder.Yield(out1, GraphValueId{.index = 3}).ok());
     ASSERT_TRUE(builder.Commit().ok());
@@ -1113,7 +1190,7 @@ TEST(SubgraphBuilder, BuilderReusableAfterCommit) {
     const GraphValueId out2 = builder.Emit(
             OpType::kEmbedding,
             {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            Spec(DataType::Float32(), {1, 1, 4}),
+            HiddenDesc("second_reusable_output"),
             EmbeddingParams{});
     ASSERT_TRUE(builder.Yield(out2, GraphValueId{.index = 3}).ok());
     ASSERT_TRUE(builder.Commit().ok());

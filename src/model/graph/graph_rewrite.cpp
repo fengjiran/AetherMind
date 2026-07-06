@@ -1,6 +1,7 @@
 #include "aethermind/model/graph/graph_rewrite.h"
 #include "utils/variant_utils.h"
 
+#include <algorithm>
 #include <array>
 #include <limits>
 #include <variant>
@@ -371,6 +372,21 @@ bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
     return IsValueReplacedByActiveRewrite(value);
 }
 
+StatusOr<NodeOutputDesc> GraphRewriteSession::GetValueOutputDesc(GraphValueId value) const {
+    AM_RETURN_IF_ERROR(CheckValueId(value));
+    return MakeOutputDescFromValue(graph_.GetValue(value));
+}
+
+bool GraphRewriteSession::IsGraphOutput(GraphValueId value) const noexcept {
+    if (value.index >= graph_.GetValues().size()) {
+        return false;
+    }
+
+    return std::ranges::any_of(graph_.GetOutputs(), [&](const auto& output) {
+        return output.value == value;
+    });
+}
+
 bool GraphRewriteSession::IsValueReplacedByActiveRewrite(GraphValueId value) const noexcept {
     for (const RewriteEntry& rewrite: rewrites_) {
         if (!rewrite.active) {
@@ -716,7 +732,7 @@ void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
 
 GraphValueId SubgraphBuilder::Emit(OpType op_type,
                                    std::vector<GraphValueId> inputs,
-                                   TensorSpec output_spec,
+                                   NodeOutputDesc output_desc,
                                    OpParams op_params,
                                    std::optional<uint32_t> decoder_layer_index,
                                    std::string debug_name) {
@@ -729,11 +745,9 @@ GraphValueId SubgraphBuilder::Emit(OpType op_type,
             .op_params = std::move(op_params),
             .debug_name = std::move(debug_name),
     };
+
     node.outputs.push_back(RewriteOutputBinding{
-            .desc = NodeOutputDesc{
-                    .spec = std::move(output_spec),
-                    .payload = ActivationValue{},
-            },
+            .desc = std::move(output_desc),
             .replaces = virtual_id,
     });
 

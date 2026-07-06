@@ -1078,7 +1078,7 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 #### Phase 2：LLM 语义融合
 
 - **`QkvFusionPass`** `[规划中]`：匹配同一输入上的 Q/K/V 三个 `Linear`，验证 layer、dtype、shape 与 downstream consumer 后提升为 QKV 语义节点。
-- **`SwiGLUFusionPass`** `[规划中]`：匹配 `gate -> silu -> mul(up)`，验证 shape/dtype 与中间 activation consumer 后合并为 `SiluMul` 或更高阶语义节点。
+- **`SiluMulFusionPass`** `[已实现]`：匹配 `gate -> silu -> mul(up)`，支持 Mul 输入反向，检查 `silu_out` 单 consumer、非 graph output、`decoder_layer_index` 一致后合并为 `OpType::kSiluMul`。
 - **`FlashAttentionRewritePass`** `[规划中]`：将 attention softmax 子图提升为 `FlashAttention` 语义节点；是否使用具体 fused kernel 由 lowering / backend plan 决定。
 - **`FusedAddRmsNormPass`** `[规划中]`：融合 residual add 与后续 RMSNorm，必须明确 residual 输入顺序、aliasing 语义、weight binding 与 lowering fallback。
 

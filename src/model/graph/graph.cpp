@@ -344,14 +344,14 @@ AddedNode ModelGraph::AddNode(OpType op_type,
             .op_params = op_params,
             .debug_name = std::move(debug_name)});
 
-    return AddedNode{.node = node_id, .outputs = std::move(output_ids)};
+    return {.node = node_id, .outputs = std::move(output_ids)};
 }
 
 std::vector<GraphNodeId> ModelGraph::FindNodesByOpType(OpType op_type) const {
     std::vector<GraphNodeId> result;
     for (uint32_t i = 0; i < nodes_.size(); ++i) {
         if (nodes_[i].op_type == op_type) {
-            result.push_back(GraphNodeId{.index = i});
+            result.emplace_back(i);
         }
     }
     return result;

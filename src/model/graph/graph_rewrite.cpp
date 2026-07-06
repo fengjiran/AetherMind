@@ -147,7 +147,7 @@ Status GraphRewriteSession::ReplaceSubgraph(
 
     const std::size_t rewrite_index = rewrites_.size();
     rewrites_.push_back({
-            .old_nodes = std::vector<GraphNodeId>(old_nodes.begin(), old_nodes.end()),
+            .old_nodes = {old_nodes.begin(), old_nodes.end()},
             .replacements = replacement_nodes,
     });
 

@@ -183,6 +183,9 @@ private:
         return virtual_id.index - graph_.GetValues().size();
     }
     AM_NODISCARD Status ValidateReplacementNode(const ReplacementNode& replacement) const;
+    AM_NODISCARD Status ValidateReplacementTargets(
+            std::span<const GraphNodeId> old_nodes,
+            const std::vector<ReplacementNode>& replacement_nodes) const;
     AM_NODISCARD Status ValidateVirtualValues() const;
     AM_NODISCARD Status CopyExternalValues(ModelGraph& committed, ValueMap& value_map) const;
     AM_NODISCARD Status EmitRewrite(const RewriteEntry& rewrite,
@@ -222,19 +225,25 @@ public:
         : session_(session), old_nodes_(std::move(old_nodes)) {}
 
     /// Creates a new replacement node with a single output described by
-    /// `output_desc`.
-    /// Allocates a virtual value internally, binds it as the node's output,
-    /// and returns the virtual value id for use as input to subsequent Emit
-    /// calls or as the internal_val argument to Yield.
-    ///
-    /// For nodes that need multiple outputs, use the full
-    /// GraphRewriteSession::ReplaceSubgraph API directly.
+    /// `output_desc`. Allocates a virtual value internally, binds it as the
+    /// node's output, and returns the virtual value id for use as input to
+    /// subsequent Emit calls or as the internal_val argument to Yield.
     GraphValueId Emit(OpType op_type,
                       std::vector<GraphValueId> inputs,
                       NodeOutputDesc output_desc,
                       OpParams op_params = std::monostate{},
                       std::optional<uint32_t> decoder_layer_index = std::nullopt,
                       std::string debug_name = {});
+
+    /// Creates a new replacement node with one output per descriptor in
+    /// `output_descs`. Allocates one virtual value per output and returns the
+    /// virtual values in descriptor order.
+    std::vector<GraphValueId> Emit(OpType op_type,
+                                   std::vector<GraphValueId> inputs,
+                                   std::vector<NodeOutputDesc> output_descs,
+                                   OpParams op_params = std::monostate{},
+                                   std::optional<uint32_t> decoder_layer_index = std::nullopt,
+                                   std::string debug_name = {});
 
     /// Marks an internal virtual value (returned by Emit) as the replacement
     /// for an external graph value. After Commit, all consumers of

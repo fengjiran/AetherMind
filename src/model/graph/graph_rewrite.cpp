@@ -136,6 +136,7 @@ Status GraphRewriteSession::ReplaceSubgraph(
     for (const auto& replacement: replacement_nodes) {
         AM_RETURN_IF_ERROR(ValidateReplacementNode(replacement));
     }
+    AM_RETURN_IF_ERROR(ValidateReplacementTargets(old_nodes, replacement_nodes));
 
     for (GraphNodeId old_node: old_nodes) {
         if (const auto rewrite_index = node_to_rewrite_[old_node.index];
@@ -453,6 +454,10 @@ Status GraphRewriteSession::ValidateEdits() const {
     }
 
     for (const auto& rewrite: rewrites_) {
+        if (!rewrite.active) {
+            continue;
+        }
+
         for (auto old_node: rewrite.old_nodes) {
             AM_RETURN_IF_ERROR(CheckNodeId(old_node));
         }
@@ -460,6 +465,7 @@ Status GraphRewriteSession::ValidateEdits() const {
         for (const auto& replacement: rewrite.replacements) {
             AM_RETURN_IF_ERROR(ValidateReplacementNode(replacement));
         }
+        AM_RETURN_IF_ERROR(ValidateReplacementTargets(rewrite.old_nodes, rewrite.replacements));
     }
     AM_RETURN_IF_ERROR(ValidateVirtualValues());
     return Status::Ok();
@@ -539,8 +545,16 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
             if (replacement.outputs[i].replaces.has_value()) {
                 const GraphValueId replaced = *replacement.outputs[i].replaces;
                 if (IsVirtualValue(replaced)) {
+                    if (virtual_value_map[GetVirtualIndex(replaced)].has_value()) {
+                        return Status::InvalidArgument(
+                                "GraphRewriteSession::Commit replacement virtual value was already mapped");
+                    }
                     virtual_value_map[GetVirtualIndex(replaced)] = added.outputs[i];
                 } else {
+                    if (value_map[replaced.index].has_value()) {
+                        return Status::InvalidArgument(
+                                "GraphRewriteSession::Commit replacement value was already mapped");
+                    }
                     value_map[replaced.index] = added.outputs[i];
                 }
             }
@@ -581,6 +595,10 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
             view->debug_name);
 
     for (size_t i = 0; i < view->outputs.size(); ++i) {
+        if (value_map[view->outputs[i].index].has_value()) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession::Commit original node output was already mapped");
+        }
         value_map[view->outputs[i].index] = added.outputs[i];
     }
     return Status::Ok();
@@ -679,6 +697,42 @@ Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& repla
     return Status::Ok();
 }
 
+Status GraphRewriteSession::ValidateReplacementTargets(
+        std::span<const GraphNodeId> old_nodes,
+        const std::vector<ReplacementNode>& replacement_nodes) const {
+    std::vector<GraphValueId> replaceable_outputs;
+    for (GraphNodeId old_node: old_nodes) {
+        AM_RETURN_IF_ERROR(CheckNodeId(old_node));
+        const GraphNode& node = graph_.GetNode(old_node);
+        replaceable_outputs.insert(replaceable_outputs.end(),
+                                   node.outputs.begin(), node.outputs.end());
+    }
+
+    std::vector<GraphValueId> real_replacements;
+    for (const ReplacementNode& replacement: replacement_nodes) {
+        for (const RewriteOutputBinding& output: replacement.outputs) {
+            if (!output.replaces.has_value() || IsVirtualValue(*output.replaces)) {
+                continue;
+            }
+
+            const GraphValueId replaced = *output.replaces;
+            if (std::ranges::find(replaceable_outputs, replaced) == replaceable_outputs.end()) {
+                return Status::InvalidArgument(
+                        "GraphRewriteSession: replacement output target is "
+                        "not produced by replaced old_nodes");
+            }
+
+            if (std::ranges::find(real_replacements, replaced) != real_replacements.end()) {
+                return Status::InvalidArgument(
+                        "GraphRewriteSession: replacement output target is "
+                        "produced more than once");
+            }
+            real_replacements.push_back(replaced);
+        }
+    }
+    return Status::Ok();
+}
+
 Status GraphRewriteSession::ValidateVirtualValues() const {
     std::vector globally_produced(virtual_value_count_, false);
 
@@ -736,7 +790,26 @@ GraphValueId SubgraphBuilder::Emit(OpType op_type,
                                    OpParams op_params,
                                    std::optional<uint32_t> decoder_layer_index,
                                    std::string debug_name) {
-    const GraphValueId virtual_id = session_.AllocateVirtualValue();
+    std::vector<NodeOutputDesc> output_descs;
+    output_descs.push_back(std::move(output_desc));
+    std::vector<GraphValueId> outputs = Emit(op_type,
+                                             std::move(inputs),
+                                             std::move(output_descs),
+                                             std::move(op_params),
+                                             decoder_layer_index,
+                                             std::move(debug_name));
+    AM_CHECK(outputs.size() == 1, "SubgraphBuilder::Emit single-output wrapper expected one output");
+    return outputs[0];
+}
+
+std::vector<GraphValueId> SubgraphBuilder::Emit(OpType op_type,
+                                                std::vector<GraphValueId> inputs,
+                                                std::vector<NodeOutputDesc> output_descs,
+                                                OpParams op_params,
+                                                std::optional<uint32_t> decoder_layer_index,
+                                                std::string debug_name) {
+    std::vector<GraphValueId> virtual_ids;
+    virtual_ids.reserve(output_descs.size());
 
     ReplacementNode node{
             .op_type = op_type,
@@ -746,13 +819,18 @@ GraphValueId SubgraphBuilder::Emit(OpType op_type,
             .debug_name = std::move(debug_name),
     };
 
-    node.outputs.push_back(RewriteOutputBinding{
-            .desc = std::move(output_desc),
-            .replaces = virtual_id,
-    });
+    node.outputs.reserve(output_descs.size());
+    for (NodeOutputDesc& output_desc: output_descs) {
+        const GraphValueId virtual_id = session_.AllocateVirtualValue();
+        virtual_ids.push_back(virtual_id);
+        node.outputs.push_back(RewriteOutputBinding{
+                .desc = std::move(output_desc),
+                .replaces = virtual_id,
+        });
+    }
 
     new_nodes_.push_back(std::move(node));
-    return virtual_id;
+    return virtual_ids;
 }
 
 Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_to_replace) {

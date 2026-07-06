@@ -54,6 +54,48 @@ ModelGraph BuildTwoEmbeddingGraph() {
     return graph;
 }
 
+RoPEParams ValidRoPEParams() {
+    return RoPEParams{.head_dim = 4,
+                      .num_attention_heads = 1,
+                      .num_key_value_heads = 1,
+                      .max_position_embeddings = 128,
+                      .theta = 10000.0,
+                      .scaling_type = HfRopeScalingType::kNone};
+}
+
+ModelGraph BuildRoPEGraph() {
+    ModelGraph graph;
+    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
+    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
+    const GraphValueId position_ids = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "position_ids");
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed.weight");
+    const AddedNode q = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens_a, weight},
+            {HiddenDesc("q")},
+            EmbeddingParams{});
+    const AddedNode k = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens_b, weight},
+            {HiddenDesc("k")},
+            EmbeddingParams{});
+    const AddedNode rope = graph.AddNode(
+            OpType::kRoPE,
+            0U,
+            {q.outputs[0], k.outputs[0], position_ids},
+            {HiddenDesc("q_rope"), HiddenDesc("k_rope")},
+            ValidRoPEParams());
+    graph.MarkOutput(rope.outputs[0], "q_rope");
+    graph.MarkOutput(rope.outputs[1], "k_rope");
+    return graph;
+}
+
 TEST(GraphRewriteSession, ResolvesChainedValueReplacement) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     EXPECT_EQ(graph.GetValues().size(), 5);
@@ -177,11 +219,10 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithMultipleReplacements) {
     GraphRewriteSession session(graph);
 
     // Replace n0 with two independent Embedding nodes
-    // Both reference v0 and v2 as inputs; the second one's output replaces v3
     ReplacementNode r1{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "hidden_b")},
+            .outputs = {RewriteOutputBinding{.desc = HiddenDesc("unused_hidden")}},
             .op_params = EmbeddingParams{},
             .debug_name = "r1",
     };
@@ -201,6 +242,70 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithMultipleReplacements) {
     EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "r1");
     EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).debug_name, "r2");
     EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, ReplaceSubgraphRejectsReplacementOfExternalOutput) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ReplacementNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 2}, "weight_hijack")},
+            .op_params = EmbeddingParams{},
+            .debug_name = "invalid_external_replacement",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+
+    const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, ReplaceSubgraphRejectsReplacementOfNonOldNodeOutput) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ReplacementNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "future_hijack")},
+            .op_params = EmbeddingParams{},
+            .debug_name = "invalid_future_replacement",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+
+    const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, ReplaceSubgraphRejectsDuplicateRealReplacementTarget) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ReplacementNode first{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "first_hidden")},
+            .op_params = EmbeddingParams{},
+            .debug_name = "first_replacement",
+    };
+    ReplacementNode second{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "second_hidden")},
+            .op_params = EmbeddingParams{},
+            .debug_name = "second_replacement",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+
+    const Status status = session.ReplaceSubgraph(old_nodes, {std::move(first), std::move(second)});
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(GraphRewriteSession, ReplaceSubgraphWithEmptyReplacementsActsAsRemove) {
@@ -1120,6 +1225,109 @@ TEST(SubgraphBuilder, EmitAcceptsFullOutputDesc) {
     EXPECT_TRUE(std::holds_alternative<ActivationValue>(output.payload));
     EXPECT_EQ(output.quantization, quantization);
     EXPECT_EQ(output.debug_name, "builder_full_desc");
+}
+
+TEST(SubgraphBuilder, EmitReturnsVirtualValueForEachOutputDesc) {
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    const std::vector<GraphValueId> outputs = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_rewritten"), HiddenDesc("k_rope_rewritten")},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+
+    ASSERT_EQ(outputs.size(), 2U);
+    EXPECT_NE(outputs[0], outputs[1]);
+    EXPECT_GE(outputs[0].index, graph.GetValues().size());
+    EXPECT_GE(outputs[1].index, graph.GetValues().size());
+}
+
+TEST(SubgraphBuilder, EmitMultiOutputYieldsEachOutputToDistinctTarget) {
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+    const QuantizationSpec q_quantization{.kind = QuantizationKind::kInt8,
+                                          .group_size = 64,
+                                          .scale_dtype = DataType::Float32(),
+                                          .has_zero_point = false};
+    const QuantizationSpec k_quantization{.kind = QuantizationKind::kInt4,
+                                          .group_size = 32,
+                                          .scale_dtype = DataType::Float32(),
+                                          .has_zero_point = true};
+    NodeOutputDesc q_desc = HiddenDesc("q_rope_rewritten");
+    q_desc.quantization = q_quantization;
+    NodeOutputDesc k_desc = HiddenDesc("k_rope_rewritten");
+    k_desc.quantization = k_quantization;
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    const std::vector<GraphValueId> outputs = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{q_desc, k_desc},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+    ASSERT_EQ(outputs.size(), 2U);
+    ASSERT_TRUE(builder.Yield(outputs[0], rope.outputs[0]).ok());
+    ASSERT_TRUE(builder.Yield(outputs[1], rope.outputs[1]).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    const GraphNode& committed_rope = committed->GetNode(GraphNodeId{.index = 2});
+    EXPECT_EQ(committed_rope.op_type, OpType::kRoPE);
+    ASSERT_EQ(committed_rope.outputs.size(), 2U);
+    EXPECT_EQ(committed->GetOutputs()[0].value, committed_rope.outputs[0]);
+    EXPECT_EQ(committed->GetOutputs()[1].value, committed_rope.outputs[1]);
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).debug_name, "q_rope_rewritten");
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).quantization, q_quantization);
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).debug_name, "k_rope_rewritten");
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).quantization, k_quantization);
+}
+
+TEST(SubgraphBuilder, EmitMultiOutputFeedsSubsequentEmit) {
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    const std::vector<GraphValueId> rope_outputs = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_internal"), HiddenDesc("k_rope_forwarded")},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+    ASSERT_EQ(rope_outputs.size(), 2U);
+    const GraphValueId sum = builder.Emit(
+            OpType::kAdd,
+            {rope_outputs[0], rope_outputs[0]},
+            HiddenDesc("q_rope_summed"),
+            AddParams{});
+    ASSERT_TRUE(builder.Yield(sum, rope.outputs[0]).ok());
+    ASSERT_TRUE(builder.Yield(rope_outputs[1], rope.outputs[1]).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    ASSERT_EQ(committed->GetNodes().size(), 4U);
+    const GraphNode& committed_rope = committed->GetNode(GraphNodeId{.index = 2});
+    const GraphNode& committed_add = committed->GetNode(GraphNodeId{.index = 3});
+    ASSERT_EQ(committed_rope.outputs.size(), 2U);
+    ASSERT_EQ(committed_add.inputs.size(), 2U);
+    EXPECT_EQ(committed_add.inputs[0], committed_rope.outputs[0]);
+    EXPECT_EQ(committed_add.inputs[1], committed_rope.outputs[0]);
+    EXPECT_EQ(committed->GetOutputs()[0].value, committed_add.outputs[0]);
+    EXPECT_EQ(committed->GetOutputs()[1].value, committed_rope.outputs[1]);
 }
 
 TEST(SubgraphBuilder, YieldRejectsUnknownInternalValue) {

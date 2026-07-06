@@ -929,6 +929,114 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
     EXPECT_TRUE(found_constant);
 }
 
+TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    auto inline_data = std::make_shared<const std::vector<std::byte>>(
+            std::vector<std::byte>{std::byte{0x03}, std::byte{0x04}});
+
+    const GraphValueId constant = session.AddConstant(
+            Spec(DataType::Float32(), {1}),
+            ConstantBinding{.name = "folded.scalar", .inline_data = std::move(inline_data)},
+            "folded");
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+    ASSERT_EQ(constant.index, graph.GetValues().size());
+
+    bool found_constant = false;
+    for (const GraphValue& value: committed->GetValues()) {
+        if (const auto* c = std::get_if<ConstantValue>(&value.payload);
+            c != nullptr && c->binding.name == "folded.scalar") {
+            found_constant = true;
+            ASSERT_TRUE(c->binding.inline_data != nullptr);
+            EXPECT_EQ(c->binding.inline_data->size(), 2U);
+            EXPECT_EQ(value.debug_name, "folded");
+            EXPECT_FALSE(value.producer.has_value());
+        }
+    }
+    EXPECT_TRUE(found_constant);
+}
+
+TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const GraphValueId constant = session.AddConstant(
+            Spec(DataType::Float32(), {2}),
+            ConstantBinding{.name = "folded.vector"},
+            "folded_vector");
+    const GraphValueId virtual_value = session.AllocateVirtualValue();
+
+    EXPECT_EQ(virtual_value.index, constant.index + 1U);
+    EXPECT_TRUE(session.IsValueLive(constant));
+    EXPECT_FALSE(session.IsValueLive(virtual_value));
+    EXPECT_FALSE(session.IsGraphOutput(constant));
+    EXPECT_TRUE(session.CheckValueId(constant).ok());
+    EXPECT_EQ(session.CheckValueId(virtual_value).code(), StatusCode::kInvalidArgument);
+
+    const StatusOr<NodeOutputDesc> desc = session.GetValueOutputDesc(constant);
+    ASSERT_TRUE(desc.ok()) << desc.status().ToString();
+    EXPECT_EQ(desc->spec, Spec(DataType::Float32(), {2}));
+    const auto* constant_payload = std::get_if<ConstantValue>(&desc->payload);
+    ASSERT_NE(constant_payload, nullptr);
+    EXPECT_EQ(constant_payload->binding.name, "folded.vector");
+    EXPECT_EQ(desc->debug_name, "folded_vector");
+
+    const std::vector<GraphValueId> live = session.GetLiveValues();
+    EXPECT_NE(std::ranges::find(live, constant), live.end());
+    EXPECT_EQ(std::ranges::find(live, virtual_value), live.end());
+}
+
+TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId constant = session.AddConstant(
+            Spec(DataType::Float32(), {1, 1, 4}),
+            ConstantBinding{.name = "folded.hidden"},
+            "folded_hidden");
+
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 4}, constant).ok());
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 4}), constant);
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+    bool found_constant = false;
+    for (const GraphValue& value: committed->GetValues()) {
+        if (const auto* constant_payload = std::get_if<ConstantValue>(&value.payload);
+            constant_payload != nullptr && constant_payload->binding.name == "folded.hidden") {
+            found_constant = true;
+            EXPECT_EQ(value.debug_name, "folded_hidden");
+        }
+    }
+    EXPECT_TRUE(found_constant);
+}
+
+TEST(GraphRewriteSession, ReplaceSubgraphRejectsSessionConstantReplacementTarget) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId constant = session.AddConstant(
+            Spec(DataType::Float32(), {1}),
+            ConstantBinding{.name = "session.constant"},
+            "session_constant");
+    ReplacementNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {RewriteOutputBinding{.desc = HiddenDesc("replacement"),
+                                             .replaces = constant}},
+            .op_params = EmbeddingParams{},
+            .debug_name = "replacement",
+    };
+
+    const std::array old_nodes{GraphNodeId{.index = 0}};
+    const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 TEST(GraphRewriteSession, CommitPreservesExternalValueQuantization) {
     ModelGraph graph = BuildTwoEmbeddingGraph();
     const QuantizationSpec quantization{.kind = QuantizationKind::kInt4,
@@ -1813,7 +1921,7 @@ TEST(GraphRewriteSession, GetLiveValuesConsistentWithIsValueLive) {
     for (uint32_t i = 0; i < graph.GetValues().size(); ++i) {
         const GraphValueId id{.index = i};
         if (session.IsValueLive(id)) {
-            EXPECT_NE(std::find(live.begin(), live.end(), id), live.end())
+            EXPECT_NE(std::ranges::find(live, id), live.end())
                     << "Live value " << i << " missing from GetLiveValues";
         }
     }

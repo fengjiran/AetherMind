@@ -68,6 +68,9 @@ class GraphRewriteSession {
 public:
     explicit GraphRewriteSession(const ModelGraph& graph);
     AM_NODISCARD GraphValueId AllocateVirtualValue();
+    AM_NODISCARD GraphValueId AddConstant(TensorSpec spec,
+                                          ConstantBinding binding,
+                                          std::string debug_name = {});
 
     /// Applies a batch of mutations sequentially. Non-atomic: if mutation N
     /// fails, mutations 0..N-1 remain applied to the session. The caller is
@@ -183,22 +186,37 @@ public:
     AM_NODISCARD Status ValidateEdits() const;
     AM_NODISCARD StatusOr<ModelGraph> Commit() const;
 
-    /// Validates that `value` refers to a real (non-virtual) graph value.
-    /// Returns InvalidArgument if the id is out of range or refers to a
-    /// virtual value allocated by AllocateVirtualValue().
+    /// Validates that `value` refers to a source graph value or a session-added
+    /// constant. Returns InvalidArgument if the id is out of range or refers to
+    /// a virtual value allocated by AllocateVirtualValue().
     AM_NODISCARD Status CheckValueId(GraphValueId value) const;
 
 private:
+    friend class SubgraphBuilder;
+
     struct RewriteEntry {
         std::vector<GraphNodeId> old_nodes{};
         std::vector<ReplacementNode> replacements{};
         bool active = true;
         bool exposes_node_view = false;
     };
+    struct SessionConstant {
+        TensorSpec spec{};
+        ConstantBinding binding{};
+        std::string debug_name{};
+    };
     using ValueMap = std::vector<std::optional<GraphValueId>>;
+    struct CommitValueMaps {
+        ValueMap& source_values;
+        ValueMap& session_constants;
+        ValueMap& virtual_values;
+    };
 
     AM_NODISCARD Status CheckNodeId(GraphNodeId node) const;
+    AM_NODISCARD Status CheckSourceValueId(GraphValueId value) const;
     AM_NODISCARD Status CheckValueIdAllowVirtual(GraphValueId value) const;
+    AM_NODISCARD bool IsSessionValue(GraphValueId value) const noexcept;
+    AM_NODISCARD bool IsSessionConstant(GraphValueId value) const noexcept;
     AM_NODISCARD bool IsVirtualValue(GraphValueId value) const noexcept;
     AM_NODISCARD bool IsValueReplacedByActiveRewrite(GraphValueId value) const noexcept;
     AM_NODISCARD std::size_t GetVirtualIndex(GraphValueId virtual_id) const noexcept {
@@ -209,19 +227,25 @@ private:
             std::span<const GraphNodeId> old_nodes,
             const std::vector<ReplacementNode>& replacement_nodes) const;
     AM_NODISCARD Status ValidateVirtualValues() const;
-    AM_NODISCARD Status CopyExternalValues(ModelGraph& committed, ValueMap& value_map) const;
+    AM_NODISCARD NodeOutputDesc MakeOutputDescFromSessionConstant(GraphValueId value) const;
+    AM_NODISCARD StatusOr<GraphValueId> MapCommittedValue(
+            GraphValueId value,
+            const CommitValueMaps& maps) const;
+    AM_NODISCARD Status CopyExternalValues(ModelGraph& committed,
+                                           CommitValueMaps& maps) const;
     AM_NODISCARD Status EmitRewrite(const RewriteEntry& rewrite,
                                     ModelGraph& committed,
-                                    ValueMap& value_map,
-                                    ValueMap& virtual_value_map) const;
+                                    CommitValueMaps& maps) const;
     AM_NODISCARD Status EmitOriginalNode(GraphNodeId old_node,
                                          ModelGraph& committed,
-                                         ValueMap& value_map) const;
-    AM_NODISCARD Status MarkCommittedOutputs(ModelGraph& committed, const ValueMap& value_map) const;
+                                         CommitValueMaps& maps) const;
+    AM_NODISCARD Status MarkCommittedOutputs(ModelGraph& committed,
+                                             const CommitValueMaps& maps) const;
     void DeactivateRewrite(std::size_t rewrite_index);
 
     const ModelGraph& graph_;
     std::size_t virtual_value_count_ = 0;
+    std::vector<std::optional<SessionConstant>> session_constants_{};
     std::vector<RewriteEntry> rewrites_{};
     std::vector<std::optional<std::size_t>> node_to_rewrite_{};
     std::vector<std::optional<GraphValueId>> value_replacements_{};

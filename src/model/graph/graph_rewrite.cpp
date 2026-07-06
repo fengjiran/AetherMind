@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <utility>
 #include <variant>
 
 namespace aethermind {
@@ -26,24 +27,6 @@ StatusOr<GraphValueId> MapResolvedValue(GraphValueId old_value,
                 " cannot be mapped during commit (producer removed or not yet emitted)");
     }
     return *value_map[old_value.index];
-}
-
-StatusOr<GraphValueId> MapCommittedValue(
-        GraphValueId value,
-        std::size_t real_value_count,
-        const std::vector<std::optional<GraphValueId>>& value_map,
-        const std::vector<std::optional<GraphValueId>>& virtual_value_map) {
-    if (value.index < real_value_count) {
-        return MapResolvedValue(value, value_map);
-    }
-
-    const std::size_t virtual_index = value.index - real_value_count;
-    if (virtual_index >= virtual_value_map.size() || !virtual_value_map[virtual_index].has_value()) {
-        return Status::InvalidArgument(
-                "GraphRewriteSession: virtual value " + std::to_string(value.index) +
-                " cannot be mapped during commit (not produced within its rewrite)");
-    }
-    return *virtual_value_map[virtual_index];
 }
 
 NodeOutputDesc MakeOutputDescFromValue(const GraphValue& value) {
@@ -88,8 +71,22 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
 GraphValueId GraphRewriteSession::AllocateVirtualValue() {
     const std::size_t next_value_index = graph_.GetValues().size() + virtual_value_count_;
     AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
-             "Graph virtual value id space exhausted");
+              "Graph virtual value id space exhausted");
     ++virtual_value_count_;
+    session_constants_.emplace_back(std::nullopt);
+    return GraphValueId{.index = static_cast<uint32_t>(next_value_index)};
+}
+
+GraphValueId GraphRewriteSession::AddConstant(TensorSpec spec,
+                                              ConstantBinding binding,
+                                              std::string debug_name) {
+    const std::size_t next_value_index = graph_.GetValues().size() + virtual_value_count_;
+    AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
+             "Graph session constant value id space exhausted");
+    ++virtual_value_count_;
+    session_constants_.emplace_back(SessionConstant{.spec = std::move(spec),
+                                                    .binding = std::move(binding),
+                                                    .debug_name = std::move(debug_name)});
     return GraphValueId{.index = static_cast<uint32_t>(next_value_index)};
 }
 
@@ -201,7 +198,7 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
 }
 
 Status GraphRewriteSession::ReplaceValue(GraphValueId old_value, GraphValueId new_value) {
-    AM_RETURN_IF_ERROR(CheckValueId(old_value));
+    AM_RETURN_IF_ERROR(CheckSourceValueId(old_value));
     AM_RETURN_IF_ERROR(CheckValueId(new_value));
     if (old_value == new_value) {
         return Status::Ok();
@@ -355,6 +352,10 @@ std::vector<GraphNodeId> GraphRewriteSession::FindNodesByOpType(OpType op_type) 
 }
 
 bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
+    if (IsSessionConstant(value)) {
+        return true;
+    }
+
     if (value.index >= graph_.GetValues().size()) {
         return false;
     }
@@ -375,6 +376,9 @@ bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
 
 StatusOr<NodeOutputDesc> GraphRewriteSession::GetValueOutputDesc(GraphValueId value) const {
     AM_RETURN_IF_ERROR(CheckValueId(value));
+    if (IsSessionConstant(value)) {
+        return MakeOutputDescFromSessionConstant(value);
+    }
     return MakeOutputDescFromValue(graph_.GetValue(value));
 }
 
@@ -408,9 +412,15 @@ bool GraphRewriteSession::IsValueReplacedByActiveRewrite(GraphValueId value) con
 std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
     const std::span<const GraphValue> values = graph_.GetValues();
     std::vector<GraphValueId> live;
-    live.reserve(values.size());
+    live.reserve(values.size() + session_constants_.size());
     for (uint32_t i = 0; i < values.size(); ++i) {
         if (const GraphValueId id{.index = i}; IsValueLive(id)) {
+            live.push_back(id);
+        }
+    }
+    for (uint32_t i = 0; i < session_constants_.size(); ++i) {
+        const GraphValueId id{.index = static_cast<uint32_t>(values.size() + i)};
+        if (IsValueLive(id)) {
             live.push_back(id);
         }
     }
@@ -449,7 +459,6 @@ std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) 
 }
 
 bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
-    // Virtual values and out-of-range ids have no live consumers.
     if (IsVirtualValue(value)) {
         return false;
     }
@@ -505,7 +514,44 @@ Status GraphRewriteSession::ValidateEdits() const {
     return Status::Ok();
 }
 
-Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed, ValueMap& value_map) const {
+NodeOutputDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValueId value) const {
+    const SessionConstant& constant = *session_constants_[GetVirtualIndex(value)];
+    return NodeOutputDesc{.spec = constant.spec,
+                          .payload = ConstantValue{.binding = constant.binding},
+                          .debug_name = constant.debug_name};
+}
+
+StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
+        GraphValueId value,
+        const CommitValueMaps& maps) const {
+    if (value.index < graph_.GetValues().size()) {
+        return MapResolvedValue(value, maps.source_values);
+    }
+
+    const std::size_t session_index = GetVirtualIndex(value);
+    if (session_index >= virtual_value_count_) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession: session value id out of range during commit");
+    }
+
+    if (IsSessionConstant(value)) {
+        if (session_index >= maps.session_constants.size() || !maps.session_constants[session_index].has_value()) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession: session constant cannot be mapped during commit");
+        }
+        return *maps.session_constants[session_index];
+    }
+
+    if (session_index >= maps.virtual_values.size() || !maps.virtual_values[session_index].has_value()) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession: virtual value " + std::to_string(value.index) +
+                " cannot be mapped during commit (not produced within its rewrite)");
+    }
+    return *maps.virtual_values[session_index];
+}
+
+Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
+                                               CommitValueMaps& maps) const {
     const std::span<const GraphValue> values = graph_.GetValues();
     for (uint32_t i = 0; i < values.size(); ++i) {
         const GraphValue& value = values[i];
@@ -519,13 +565,13 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed, ValueMap& 
                 return Status::InvalidArgument(
                         "GraphRewriteSession::Commit model input name not found");
             }
-            value_map[i] = committed.AddInput(value.spec, *input_name);
+            maps.source_values[i] = committed.AddInput(value.spec, *input_name);
         } else if (const auto* weight = std::get_if<WeightValue>(&value.payload)) {
-            value_map[i] = committed.AddWeight(value.spec, weight->binding, value.debug_name);
+            maps.source_values[i] = committed.AddWeight(value.spec, weight->binding, value.debug_name);
         } else if (const auto* constant = std::get_if<ConstantValue>(&value.payload)) {
-            value_map[i] = committed.AddConstant(value.spec, constant->binding, value.debug_name);
+            maps.source_values[i] = committed.AddConstant(value.spec, constant->binding, value.debug_name);
         } else if (const auto* state = std::get_if<StateValue>(&value.payload)) {
-            value_map[i] = committed.AddState(value.spec, state->binding, value.debug_name);
+            maps.source_values[i] = committed.AddState(value.spec, state->binding, value.debug_name);
         } else if (std::holds_alternative<std::monostate>(value.payload)) {
             // External values must be input, weight, constant, or state.
             // A monostate payload indicates an uninitialized value: the source
@@ -540,22 +586,31 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed, ValueMap& 
                     "payload variant");
         }
 
-        committed.SetQuantization(*value_map[i], value.quantization);
+        committed.SetQuantization(*maps.source_values[i], value.quantization);
+    }
+
+    for (uint32_t i = 0; i < session_constants_.size(); ++i) {
+        if (!session_constants_[i].has_value()) {
+            continue;
+        }
+
+        const SessionConstant& constant = *session_constants_[i];
+        maps.session_constants[i] = committed.AddConstant(constant.spec,
+                                                          constant.binding,
+                                                          constant.debug_name);
     }
     return Status::Ok();
 }
 
 Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
-                                        ModelGraph& committed,
-                                        ValueMap& value_map,
-                                        ValueMap& virtual_value_map) const {
+                                         ModelGraph& committed,
+                                         CommitValueMaps& maps) const {
     for (const ReplacementNode& replacement: rewrite.replacements) {
         std::vector<GraphValueId> new_inputs;
         new_inputs.reserve(replacement.inputs.size());
         for (GraphValueId input: replacement.inputs) {
             const GraphValueId resolved_input = GetResolvedValue(input);
-            StatusOr<GraphValueId> mapped_input = MapCommittedValue(
-                    resolved_input, graph_.GetValues().size(), value_map, virtual_value_map);
+            StatusOr<GraphValueId> mapped_input = MapCommittedValue(resolved_input, maps);
             AM_RETURN_IF_ERROR(mapped_input.status());
             new_inputs.push_back(*mapped_input);
         }
@@ -579,17 +634,20 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
             if (replacement.outputs[i].replaces.has_value()) {
                 const GraphValueId replaced = *replacement.outputs[i].replaces;
                 if (IsVirtualValue(replaced)) {
-                    if (virtual_value_map[GetVirtualIndex(replaced)].has_value()) {
+                    if (maps.virtual_values[GetVirtualIndex(replaced)].has_value()) {
                         return Status::InvalidArgument(
                                 "GraphRewriteSession::Commit replacement virtual value was already mapped");
                     }
-                    virtual_value_map[GetVirtualIndex(replaced)] = added.outputs[i];
+                    maps.virtual_values[GetVirtualIndex(replaced)] = added.outputs[i];
+                } else if (IsSessionConstant(replaced)) {
+                    return Status::InvalidArgument(
+                            "GraphRewriteSession::Commit replacement cannot produce a session constant");
                 } else {
-                    if (value_map[replaced.index].has_value()) {
+                    if (maps.source_values[replaced.index].has_value()) {
                         return Status::InvalidArgument(
                                 "GraphRewriteSession::Commit replacement value was already mapped");
                     }
-                    value_map[replaced.index] = added.outputs[i];
+                    maps.source_values[replaced.index] = added.outputs[i];
                 }
             }
         }
@@ -598,8 +656,8 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
 }
 
 Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
-                                             ModelGraph& committed,
-                                             ValueMap& value_map) const {
+                                              ModelGraph& committed,
+                                              CommitValueMaps& maps) const {
     StatusOr<GraphNodeView> view = GetNodeView(old_node);
     AM_RETURN_IF_ERROR(view.status());
 
@@ -607,7 +665,7 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
     new_inputs.reserve(view->inputs.size());
     for (GraphValueId input: view->inputs) {
         const GraphValueId resolved_input = GetResolvedValue(input);
-        StatusOr<GraphValueId> mapped_input = MapResolvedValue(resolved_input, value_map);
+        StatusOr<GraphValueId> mapped_input = MapCommittedValue(resolved_input, maps);
         AM_RETURN_IF_ERROR(mapped_input.status());
         new_inputs.push_back(*mapped_input);
     }
@@ -629,19 +687,20 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
             view->debug_name);
 
     for (size_t i = 0; i < view->outputs.size(); ++i) {
-        if (value_map[view->outputs[i].index].has_value()) {
+        if (maps.source_values[view->outputs[i].index].has_value()) {
             return Status::InvalidArgument(
                     "GraphRewriteSession::Commit original node output was already mapped");
         }
-        value_map[view->outputs[i].index] = added.outputs[i];
+        maps.source_values[view->outputs[i].index] = added.outputs[i];
     }
     return Status::Ok();
 }
 
-Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed, const ValueMap& value_map) const {
+Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed,
+                                                 const CommitValueMaps& maps) const {
     for (const auto& output: graph_.GetOutputs()) {
         const GraphValueId resolved_output = GetResolvedValue(output.value);
-        StatusOr<GraphValueId> mapped_output = MapResolvedValue(resolved_output, value_map);
+        StatusOr<GraphValueId> mapped_output = MapCommittedValue(resolved_output, maps);
         AM_RETURN_IF_ERROR(mapped_output.status());
         committed.MarkOutput(*mapped_output, output.name);
     }
@@ -653,9 +712,13 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
     ModelGraph committed(graph_.GetConfig());
     ValueMap value_map(graph_.GetValues().size(), std::nullopt);
+    ValueMap session_constant_map(virtual_value_count_, std::nullopt);
     ValueMap virtual_value_map(virtual_value_count_, std::nullopt);
+    CommitValueMaps maps{.source_values = value_map,
+                         .session_constants = session_constant_map,
+                         .virtual_values = virtual_value_map};
 
-    AM_RETURN_IF_ERROR(CopyExternalValues(committed, value_map));
+    AM_RETURN_IF_ERROR(CopyExternalValues(committed, maps));
 
     StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
     AM_RETURN_IF_ERROR(order.status());
@@ -676,15 +739,15 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
             if (!emitted_rewrites[*rewrite_index]) {
                 emitted_rewrites[*rewrite_index] = true;
-                AM_RETURN_IF_ERROR(EmitRewrite(rewrite, committed, value_map, virtual_value_map));
+                AM_RETURN_IF_ERROR(EmitRewrite(rewrite, committed, maps));
             }
             continue;
         }
 
-        AM_RETURN_IF_ERROR(EmitOriginalNode(old_node_id, committed, value_map));
+        AM_RETURN_IF_ERROR(EmitOriginalNode(old_node_id, committed, maps));
     }
 
-    AM_RETURN_IF_ERROR(MarkCommittedOutputs(committed, value_map));
+    AM_RETURN_IF_ERROR(MarkCommittedOutputs(committed, maps));
     AM_RETURN_IF_ERROR(committed.Validate());
     return committed;
 }
@@ -697,6 +760,13 @@ Status GraphRewriteSession::CheckNodeId(GraphNodeId node) const {
 }
 
 Status GraphRewriteSession::CheckValueId(GraphValueId value) const {
+    if (value.index < graph_.GetValues().size() || IsSessionConstant(value)) {
+        return Status::Ok();
+    }
+    return Status::InvalidArgument("GraphRewriteSession: value id out of range");
+}
+
+Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
     if (value.index >= graph_.GetValues().size()) {
         return Status::InvalidArgument("GraphRewriteSession: value id out of range");
     }
@@ -704,18 +774,34 @@ Status GraphRewriteSession::CheckValueId(GraphValueId value) const {
 }
 
 Status GraphRewriteSession::CheckValueIdAllowVirtual(GraphValueId value) const {
-    if (IsVirtualValue(value)) {
+    if (value.index < graph_.GetValues().size() || IsSessionConstant(value)) {
+        return Status::Ok();
+    }
+    if (IsSessionValue(value)) {
         if (GetVirtualIndex(value) < virtual_value_count_) {
             return Status::Ok();
         }
         return Status::InvalidArgument(
                 "GraphRewriteSession: virtual value id out of range");
     }
-    return CheckValueId(value);
+    return Status::InvalidArgument("GraphRewriteSession: value id out of range");
+}
+
+bool GraphRewriteSession::IsSessionValue(GraphValueId value) const noexcept {
+    return value.index >= graph_.GetValues().size() &&
+           GetVirtualIndex(value) < virtual_value_count_;
+}
+
+bool GraphRewriteSession::IsSessionConstant(GraphValueId value) const noexcept {
+    if (!IsSessionValue(value)) {
+        return false;
+    }
+    const std::size_t session_index = GetVirtualIndex(value);
+    return session_index < session_constants_.size() && session_constants_[session_index].has_value();
 }
 
 bool GraphRewriteSession::IsVirtualValue(GraphValueId value) const noexcept {
-    return value.index >= graph_.GetValues().size();
+    return IsSessionValue(value) && !IsSessionConstant(value);
 }
 
 Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& replacement) const {
@@ -872,7 +958,7 @@ Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_
     // graph value. Reject virtual or out-of-range ids for old_value_to_replace
     // early, so the error is attributed to the caller rather than surfacing
     // later as a confusing ValidateVirtualValues or Commit failure.
-    AM_RETURN_IF_ERROR(session_.CheckValueId(old_value_to_replace));
+    AM_RETURN_IF_ERROR(session_.CheckSourceValueId(old_value_to_replace));
 
     for (auto& node: new_nodes_) {
         for (auto& out: node.outputs) {

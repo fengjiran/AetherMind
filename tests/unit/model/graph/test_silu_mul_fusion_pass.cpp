@@ -1,6 +1,5 @@
-#include "aethermind/model/graph/silu_mul_fusion_pass.h"
-
 #include "aethermind/model/graph/graph_op_builder.h"
+#include "aethermind/model/graph/silu_mul_fusion_pass.h"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -161,6 +160,110 @@ TEST(SiluMulFusionPass, SkipsMismatchedDecoderLayerIndex) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 1U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 1U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+}
+
+TEST(SiluMulFusionPass, SkipsWhenMulInputsBothSiluOutput) {
+    ModelGraph graph;
+    const GraphValueId gate = AddActivation(graph, "gate");
+    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
+    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, silu, "mul");
+    graph.MarkOutput(mul, "output");
+
+    const StatusOr<ModelGraph> result = RunSiluMulFusion(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 1U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 1U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+}
+
+TEST(SiluMulFusionPass, FusesMultipleSiluMulPairs) {
+    ModelGraph graph;
+    const GraphValueId gate_a = AddActivation(graph, "gate_a");
+    const GraphValueId up_a = AddActivation(graph, "up_a");
+    const GraphValueId silu_a = AddSilu(graph, 0U, gate_a, "silu_a");
+    const GraphValueId mul_a = AddElementwiseMul(graph, 0U, silu_a, up_a, "mul_a");
+
+    const GraphValueId gate_b = AddActivation(graph, "gate_b");
+    const GraphValueId up_b = AddActivation(graph, "up_b");
+    const GraphValueId silu_b = AddSilu(graph, 1U, gate_b, "silu_b");
+    const GraphValueId mul_b = AddElementwiseMul(graph, 1U, silu_b, up_b, "mul_b");
+
+    graph.MarkOutput(mul_a, "output_a");
+    graph.MarkOutput(mul_b, "output_b");
+
+    const StatusOr<ModelGraph> result = RunSiluMulFusion(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 2U);
+}
+
+TEST(SiluMulFusionPass, ReplaceValueOnGateInputResolvesAtCommit) {
+    ModelGraph graph;
+    const GraphValueId gate = AddActivation(graph, "gate");
+    const GraphValueId up = AddActivation(graph, "up");
+    const GraphValueId alt = AddActivation(graph, "alt");
+    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
+    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    graph.MarkOutput(mul, "output");
+
+    GraphRewriteSession session(graph);
+    ASSERT_TRUE(session.ReplaceValue(gate, alt).ok());
+
+    SiluMulFusionPass pass;
+    ASSERT_TRUE(pass.Run(session, {}).ok());
+
+    const StatusOr<ModelGraph> result = session.Commit();
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 1U);
+
+    const GraphNode& fused = OnlyNodeWithOp(*result, OpType::kSiluMul);
+    ASSERT_EQ(fused.inputs.size(), 2U);
+    EXPECT_EQ(result->GetValue(fused.inputs[0]).debug_name, "alt");
+    EXPECT_EQ(result->GetValue(fused.inputs[1]).debug_name, "up");
+}
+
+TEST(SiluMulFusionPass, ReplaceValueOnUpInputResolvesAtCommit) {
+    ModelGraph graph;
+    const GraphValueId gate = AddActivation(graph, "gate");
+    const GraphValueId up = AddActivation(graph, "up");
+    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
+    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    graph.MarkOutput(mul, "output");
+
+    GraphRewriteSession session(graph);
+    ASSERT_TRUE(session.ReplaceValue(up, gate).ok());
+
+    SiluMulFusionPass pass;
+    ASSERT_TRUE(pass.Run(session, {}).ok());
+
+    const StatusOr<ModelGraph> result = session.Commit();
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 1U);
+
+    const GraphNode& fused = OnlyNodeWithOp(*result, OpType::kSiluMul);
+    ASSERT_EQ(fused.inputs.size(), 2U);
+    EXPECT_EQ(result->GetValue(fused.inputs[0]).debug_name, "gate");
+    EXPECT_EQ(result->GetValue(fused.inputs[1]).debug_name, "gate");
+}
+
+TEST(SiluMulFusionPass, NoSiluNodesLeavesGraphUnchanged) {
+    ModelGraph graph;
+    const GraphValueId gate = AddActivation(graph, "gate");
+    graph.MarkOutput(gate, "output");
+
+    const StatusOr<ModelGraph> result = RunSiluMulFusion(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
 }
 
 }// namespace

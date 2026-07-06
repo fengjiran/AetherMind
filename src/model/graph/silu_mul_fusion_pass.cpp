@@ -1,36 +1,46 @@
 #include "aethermind/model/graph/silu_mul_fusion_pass.h"
-
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/op_type.h"
+
+#include <optional>
 
 namespace aethermind {
 namespace {
 
-Status TryFuseSilu(GraphRewriteSession& session, GraphNodeId silu_node) {
+struct SiluMulPattern {
+    GraphNodeId silu_node{};
+    GraphNodeId mul_node{};
+    GraphValueId gate{};
+    GraphValueId up{};
+    GraphValueId mul_out{};
+    std::optional<uint32_t> decoder_layer_index{};
+};
+
+StatusOr<std::optional<SiluMulPattern>> FindSiluMulPattern(GraphRewriteSession& session, GraphNodeId silu_node) {
     if (!session.IsNodeLive(silu_node)) {
-        return Status::Ok();
+        return std::optional<SiluMulPattern>{};
     }
 
     StatusOr<GraphNodeView> silu_view = session.GetNodeView(silu_node);
     AM_RETURN_IF_ERROR(silu_view.status());
     if (silu_view->op_type != OpType::kSilu || silu_view->inputs.size() != 1U ||
         silu_view->outputs.size() != 1U) {
-        return Status::Ok();
+        return std::optional<SiluMulPattern>{};
     }
 
     const GraphValueId silu_out = silu_view->outputs[0];
     if (!session.IsValueLive(silu_out) || session.IsGraphOutput(silu_out)) {
-        return Status::Ok();
+        return std::optional<SiluMulPattern>{};
     }
 
     const std::vector<GraphNodeId> consumers = session.FindConsumers(silu_out);
     if (consumers.size() != 1U) {
-        return Status::Ok();
+        return std::optional<SiluMulPattern>{};
     }
 
     const GraphNodeId mul_node = consumers[0];
     if (!session.IsNodeLive(mul_node)) {
-        return Status::Ok();
+        return std::optional<SiluMulPattern>{};
     }
 
     StatusOr<GraphNodeView> mul_view = session.GetNodeView(mul_node);
@@ -38,7 +48,7 @@ Status TryFuseSilu(GraphRewriteSession& session, GraphNodeId silu_node) {
     if (mul_view->op_type != OpType::kElementwiseMul || mul_view->inputs.size() != 2U ||
         mul_view->outputs.size() != 1U ||
         mul_view->decoder_layer_index != silu_view->decoder_layer_index) {
-        return Status::Ok();
+        return std::optional<SiluMulPattern>{};
     }
 
     const GraphValueId resolved_silu_out = session.GetResolvedValue(silu_out);
@@ -50,21 +60,42 @@ Status TryFuseSilu(GraphRewriteSession& session, GraphNodeId silu_node) {
     } else if (second_input == resolved_silu_out) {
         up = mul_view->inputs[0];
     } else {
+        return std::optional<SiluMulPattern>{};
+    }
+
+    if (session.GetResolvedValue(up) == resolved_silu_out) {
+        return std::optional<SiluMulPattern>{};
+    }
+
+    return std::optional<SiluMulPattern>{SiluMulPattern{
+            .silu_node = silu_node,
+            .mul_node = mul_node,
+            .gate = silu_view->inputs[0],
+            .up = up,
+            .mul_out = mul_view->outputs[0],
+            .decoder_layer_index = mul_view->decoder_layer_index,
+    }};
+}
+
+Status TryFuseSilu(GraphRewriteSession& session, GraphNodeId silu_node) {
+    StatusOr<std::optional<SiluMulPattern>> pattern_or = FindSiluMulPattern(session, silu_node);
+    AM_RETURN_IF_ERROR(pattern_or.status());
+    const std::optional<SiluMulPattern>& pattern = *pattern_or;
+    if (!pattern.has_value()) {
         return Status::Ok();
     }
 
-    const GraphValueId mul_out = mul_view->outputs[0];
-    StatusOr<NodeOutputDesc> output_desc = session.GetValueOutputDesc(mul_out);
+    StatusOr<NodeOutputDesc> output_desc = session.GetValueOutputDesc(pattern->mul_out);
     AM_RETURN_IF_ERROR(output_desc.status());
 
-    SubgraphBuilder builder(session, {silu_node, mul_node});
+    SubgraphBuilder builder(session, {pattern->silu_node, pattern->mul_node});
     const GraphValueId fused = builder.Emit(OpType::kSiluMul,
-                                            {silu_view->inputs[0], up},
+                                            {pattern->gate, pattern->up},
                                             *output_desc,
                                             SiluMulParams{},
-                                            mul_view->decoder_layer_index,
+                                            pattern->decoder_layer_index,
                                             "silu_mul_fused");
-    AM_RETURN_IF_ERROR(builder.Yield(fused, mul_out));
+    AM_RETURN_IF_ERROR(builder.Yield(fused, pattern->mul_out));
     return builder.Commit();
 }
 

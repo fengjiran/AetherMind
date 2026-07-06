@@ -146,17 +146,39 @@ public:
     /// virtual values (they are rewrite-internal).
     AM_NODISCARD std::vector<GraphValueId> GetLiveValues() const;
 
-    /// Returns live nodes that consume `value` (after resolution) as an input,
-    /// in topological order. A node appears at most once even if it consumes
-    /// the value on multiple input ports.
+    /// Returns live original graph nodes that consume `value` (after resolution)
+    /// as an input, in topological order. A node appears at most once even if
+    /// it consumes the value on multiple input ports.
     ///
     /// Both `value` and each node's inputs are resolved via GetResolvedValue
     /// before comparison, so ReplaceValue is accounted for: querying consumers
     /// of a replaced value returns the same result as querying consumers of
     /// its resolution target.
     ///
+    /// Note: this only returns live ORIGINAL graph nodes (untouched or
+    /// RedirectInput'd). Active replacement nodes from ReplaceSubgraph are NOT
+    /// included, because they don't have GraphNodeIds in the session's
+    /// original-graph id space. For DCE liveness checking, use
+    /// HasLiveConsumers() which accounts for both original and replacement
+    /// consumers.
+    ///
     /// Virtual values and out-of-range ids return an empty vector.
     AM_NODISCARD std::vector<GraphNodeId> FindConsumers(GraphValueId value) const;
+
+    /// Returns true if any live node or active replacement node consumes
+    /// `value` (after resolution) as an input.
+    ///
+    /// This is the correct consumer check for DCE: for a structurally live
+    /// value, DCE may treat it as dead only if HasLiveConsumers(v) is false AND
+    /// v is not a graph output. FindConsumers() alone is insufficient because
+    /// it excludes replacement node consumers.
+    ///
+    /// Both `value` and each consumer's inputs (original node inputs via
+    /// GetNodeView, replacement node inputs directly) are resolved via
+    /// GetResolvedValue before comparison, so ReplaceValue is accounted for.
+    ///
+    /// Virtual values and out-of-range ids return false.
+    AM_NODISCARD bool HasLiveConsumers(GraphValueId value) const;
 
     AM_NODISCARD Status ValidateEdits() const;
     AM_NODISCARD StatusOr<ModelGraph> Commit() const;

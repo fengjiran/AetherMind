@@ -430,10 +430,12 @@ std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) 
         if (!IsNodeLive(node_id)) {
             continue;
         }
+
         const StatusOr<GraphNodeView> view = GetNodeView(node_id);
         if (!view.ok()) {
             continue;
         }
+
         // GetNodeView already resolves inputs via GetResolvedValue, so direct
         // comparison with resolved_value is correct.
         for (const GraphValueId input: view->inputs) {
@@ -444,6 +446,38 @@ std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) 
         }
     }
     return consumers;
+}
+
+bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
+    // Virtual values and out-of-range ids have no live consumers.
+    if (IsVirtualValue(value)) {
+        return false;
+    }
+
+    // 1. Check live original node consumers. FindConsumers excludes replacement
+    //    nodes (they have no GraphNodeId), so a non-empty result short-circuits.
+    if (!FindConsumers(value).empty()) {
+        return true;
+    }
+
+    // 2. Scan active replacement node inputs. ReplaceSubgraph replacements are
+    //    not addressable via GraphNodeId, so FindConsumers skips them; DCE
+    //    must account for them here to avoid deleting a value still consumed
+    //    by a replacement.
+    const GraphValueId resolved_value = GetResolvedValue(value);
+    for (const RewriteEntry& rewrite: rewrites_) {
+        if (!rewrite.active) {
+            continue;
+        }
+        for (const ReplacementNode& replacement: rewrite.replacements) {
+            for (const GraphValueId input: replacement.inputs) {
+                if (GetResolvedValue(input) == resolved_value) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 Status GraphRewriteSession::ValidateEdits() const {

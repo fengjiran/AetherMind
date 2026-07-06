@@ -3,7 +3,6 @@
 
 #include "aethermind/model/graph/graph_rewrite.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string_view>
@@ -17,6 +16,7 @@ struct PassContext {
 
     bool enable_qkv_fusion = true;
     bool enable_swiglu_fusion = true;
+    bool enable_dce = true;
     bool enable_flash_attention_rewrite = true;
     bool enable_fused_add_rms_norm = true;
 };

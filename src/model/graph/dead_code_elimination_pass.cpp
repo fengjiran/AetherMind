@@ -8,7 +8,7 @@ namespace aethermind {
 namespace {
 
 bool IsDceRemovableOp(OpType op_type) {
-    const StatusOr<OperatorSchema> schema = GetOperatorSchema(op_type);
+    const auto schema = GetOperatorSchema(op_type);
     if (!schema.ok()) {
         return false;
     }

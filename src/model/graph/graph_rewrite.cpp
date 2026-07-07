@@ -163,8 +163,8 @@ Status GraphRewriteSession::ReplaceSubgraph(
             .replacements = replacement_nodes,
     });
 
-    for (GraphNodeId old_node: old_nodes) {
-        node_to_rewrite_[old_node.index] = rewrite_index;
+    for (auto [index]: old_nodes) {
+        node_to_rewrite_[index] = rewrite_index;
     }
     return Status::Ok();
 }

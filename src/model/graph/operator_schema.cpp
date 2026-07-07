@@ -5,11 +5,6 @@
 namespace aethermind {
 namespace {
 
-// Static registry defining the expected port layout and semantic traits for
-// every registered operator. Graph validation (graph.cpp) reads these schemas
-// to verify node arity, port kinds, and payload consistency at build time.
-// Add a new entry here when introducing a new OpType.
-
 OperatorInputPort Input(uint32_t index, std::string_view name, OperatorPortKind kind) {
     return {.index = index, .kind = kind, .name = std::string(name)};
 }
@@ -62,6 +57,10 @@ StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
     return Status::InvalidArgument(not_found_message);
 }
 
+// Static registry defining the expected port layout and semantic traits for
+// every registered operator. Graph validation (graph.cpp) reads these schemas
+// to verify node arity, port kinds, and payload consistency at build time.
+// Add a new entry here when introducing a new OpType.
 const std::array<OperatorSchema, 13> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kEmbedding,

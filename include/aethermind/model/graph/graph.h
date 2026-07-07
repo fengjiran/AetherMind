@@ -99,7 +99,7 @@ public:
 
     /// Designates a value as a graph output with a user-facing name.
     void MarkOutput(GraphValueId value, std::string name) {
-        outputs_.push_back(GraphOutput{.value = value, .name = std::move(name)});
+        outputs_.push_back({.value = value, .name = std::move(name)});
     }
 
     /// Attaches a semantic quantization scheme to a value. Applies to any

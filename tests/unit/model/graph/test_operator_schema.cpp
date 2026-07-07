@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+
 namespace aethermind {
 namespace {
 
@@ -152,6 +154,54 @@ TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {
             EXPECT_EQ(schema->output_ports[index].kind, OperatorPortKind::kActivation) << ToString(expected.op_type);
         }
     }
+}
+
+TEST(OperatorSchema, ElementwiseOpsAreCompileTimeEvaluable) {
+    constexpr std::array kEvaluableOps = {
+            OpType::kAdd,
+            OpType::kSilu,
+            OpType::kSiluMul,
+            OpType::kElementwiseMul,
+    };
+
+    for (const OpType op_type: kEvaluableOps) {
+        const StatusOr<OperatorSchema> schema = GetOperatorSchema(op_type);
+        ASSERT_TRUE(schema.ok()) << ToString(op_type);
+        EXPECT_TRUE(IsPureOperator(*schema)) << ToString(op_type);
+        EXPECT_TRUE(IsCompileTimeEvaluable(*schema)) << ToString(op_type);
+        EXPECT_FALSE(HasStatefulOutput(*schema)) << ToString(op_type);
+    }
+}
+
+TEST(OperatorSchema, RuntimeOnlyPureOpsAreNotCompileTimeEvaluable) {
+    constexpr std::array kRuntimeOnlyOps = {
+            OpType::kEmbedding,
+            OpType::kRmsNorm,
+            OpType::kLinear,
+            OpType::kRoPE,
+            OpType::kMatMul,
+            OpType::kSoftmax,
+            OpType::kArgmax,
+            OpType::kAttention,
+    };
+
+    for (const OpType op_type: kRuntimeOnlyOps) {
+        const StatusOr<OperatorSchema> schema = GetOperatorSchema(op_type);
+        ASSERT_TRUE(schema.ok()) << ToString(op_type);
+        EXPECT_TRUE(IsPureOperator(*schema)) << ToString(op_type);
+        EXPECT_FALSE(IsCompileTimeEvaluable(*schema)) << ToString(op_type);
+    }
+}
+
+TEST(OperatorSchema, KVCacheUpdateIsStatefulAndNotCompileTimeEvaluable) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kKVCacheUpdate);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    EXPECT_TRUE(schema->traits.has_side_effects);
+    EXPECT_FALSE(schema->traits.deterministic);
+    EXPECT_TRUE(HasStatefulOutput(*schema));
+    EXPECT_FALSE(IsPureOperator(*schema));
+    EXPECT_FALSE(IsCompileTimeEvaluable(*schema));
 }
 
 }// namespace

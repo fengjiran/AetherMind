@@ -182,7 +182,13 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
     // live single-node mirror rewrite. Only the latter can be mutated in place,
     // so guard with has_value() to exclude the untouched-node case.
     const auto existing = node_to_rewrite_[node.index];
-    if (existing.has_value() && IsNodeLive(node)) {
+    if (existing.has_value()) {
+        if (!IsNodeLive(node)) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession::RedirectInput cannot redirect a node "
+                    "that was removed or replaced by an active rewrite");
+        }
+
         RewriteEntry& rewrite = rewrites_[*existing];
         ReplacementNode& replacement = rewrite.replacements[0];
         // This check defends the mirror-shape invariant before mutating
@@ -193,10 +199,6 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
         }
         replacement.inputs[input_index] = new_value;
         return Status::Ok();
-    }
-
-    if (existing.has_value()) {
-        DeactivateRewrite(*existing);
     }
 
     auto replacement = BuildMirrorReplacement(graph_, node);

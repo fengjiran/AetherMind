@@ -1223,7 +1223,7 @@ TEST(GraphRewriteSession, RedirectInputAccumulatesMultipleInputChanges) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
-TEST(GraphRewriteSession, RedirectInputSupersedesExistingNodeReplacement) {
+TEST(GraphRewriteSession, RedirectInputRejectsExistingNodeReplacement) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
@@ -1238,23 +1238,20 @@ TEST(GraphRewriteSession, RedirectInputSupersedesExistingNodeReplacement) {
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
     ASSERT_FALSE(session.GetNodeView(GraphNodeId{.index = 0}).ok());
 
-    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1}).ok());
-
-    const StatusOr<GraphNodeView> view = session.GetNodeView(GraphNodeId{.index = 0});
-    ASSERT_TRUE(view.ok()) << view.status().ToString();
-    EXPECT_EQ(view->debug_name, "");
-    ASSERT_EQ(view->inputs.size(), 2U);
-    EXPECT_EQ(view->inputs[0], GraphValueId{.index = 1});
+    const Status status = session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1});
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    ASSERT_FALSE(session.GetNodeView(GraphNodeId{.index = 0}).ok());
 
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     const GraphNode& committed_node = committed->GetNode(GraphNodeId{.index = 0});
-    EXPECT_EQ(committed_node.debug_name, "");
-    EXPECT_EQ(committed_node.inputs[0], committed->GetInputs()[1].value);
+    EXPECT_EQ(committed_node.debug_name, "arbitrary_replacement");
+    EXPECT_EQ(committed_node.inputs[0], committed->GetInputs()[0].value);
     EXPECT_TRUE(committed->Validate().ok());
 }
 
-TEST(GraphRewriteSession, RedirectInputClearsOverlappingSubgraphRewrite) {
+TEST(GraphRewriteSession, RedirectInputRejectsOverlappingSubgraphRewrite) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
@@ -1272,14 +1269,14 @@ TEST(GraphRewriteSession, RedirectInputClearsOverlappingSubgraphRewrite) {
     };
     const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
-    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1}).ok());
+    const Status status = session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1});
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
-    ASSERT_EQ(committed->GetNodes().size(), 2U);
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "");
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).inputs[0], committed->GetInputs()[1].value);
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).debug_name, "");
+    ASSERT_EQ(committed->GetNodes().size(), 1U);
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "subgraph_replacement");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -1596,18 +1593,17 @@ TEST(GraphRewriteSession, IsNodeLiveReturnsFalseForReplacedNode) {
     EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 1}));
 }
 
-TEST(GraphRewriteSession, IsNodeLiveReturnsTrueForOverwrittenRemoval) {
+TEST(GraphRewriteSession, IsNodeLiveStaysFalseAfterRejectedRedirectOnRemovedNode) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
     ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
     EXPECT_FALSE(session.IsNodeLive(GraphNodeId{.index = 1}));
 
-    // RedirectInput deactivates the prior removal rewrite and installs a
-    // mirror replacement, making the node observable again.
-    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 1}, 0, GraphValueId{.index = 0})
-                        .ok());
-    EXPECT_TRUE(session.IsNodeLive(GraphNodeId{.index = 1}));
+    const Status status = session.RedirectInput(GraphNodeId{.index = 1}, 0, GraphValueId{.index = 0});
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_FALSE(session.IsNodeLive(GraphNodeId{.index = 1}));
 }
 
 TEST(GraphRewriteSession, IsNodeLiveReturnsFalseForOutOfRangeId) {

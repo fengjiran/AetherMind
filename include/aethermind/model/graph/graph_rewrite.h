@@ -172,10 +172,13 @@ public:
 
     /// Rewires one input of a live node to a different value.
     ///
-    /// If the node is part of a multi-node subgraph replacement, the entire
-    /// replacement is deactivated and the node gets a mirror replacement that
-    /// exposes its identity (see IsNodeLive). On a mirror-replaced node,
-    /// RedirectInput accumulates by mutating the existing replacement in place.
+    /// The new_value must be a source value or a session constant; virtual
+    /// values are not permitted (they are rewrite-internal and have no
+    /// committed-graph identity).
+    ///
+    /// Untouched nodes are represented by installing a mirror replacement.
+    /// Nodes that already have a mirror rewrite accumulate the new input
+    /// change. Returns InvalidArgument for nodes that are not live.
     AM_NODISCARD Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
 
     /// Redirects consumers of `old_value` to `new_value` after resolution.

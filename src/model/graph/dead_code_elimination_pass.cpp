@@ -12,13 +12,7 @@ bool IsDceRemovableOp(OpType op_type) {
     if (!schema.ok()) {
         return false;
     }
-
-    for (const OperatorOutputPort& output_port: schema->output_ports) {
-        if (output_port.kind == OperatorPortKind::kState) {
-            return false;
-        }
-    }
-    return true;
+    return !schema->traits.has_side_effects && !HasStatefulOutput(*schema);
 }
 
 bool AreAllOutputsDead(const GraphRewriteSession& session, const GraphNodeView& node) {
@@ -48,7 +42,7 @@ Status RemoveDeadNodesOnce(GraphRewriteSession& session, bool& changed) {
     return Status::Ok();
 }
 
-}
+}// namespace
 
 std::string_view DeadCodeEliminationPass::Name() const noexcept {
     return "DeadCodeEliminationPass";
@@ -67,4 +61,4 @@ Status DeadCodeEliminationPass::Run(GraphRewriteSession& session, const PassCont
     return Status::Ok();
 }
 
-}
+}// namespace aethermind

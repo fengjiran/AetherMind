@@ -11,6 +11,6 @@ public:
     AM_NODISCARD Status Run(GraphRewriteSession& session, const PassContext& ctx) override;
 };
 
-}
+}// namespace aethermind
 
 #endif

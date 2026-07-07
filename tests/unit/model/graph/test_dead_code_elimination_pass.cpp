@@ -9,11 +9,12 @@ namespace aethermind {
 namespace {
 
 TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
+    return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
 }
 
 GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {2}), std::string(debug_name) + ".tokens");
+    const GraphValueId tokens = graph.AddInput(
+            Spec(DataType::Int(32), {2}), std::string(debug_name) + ".tokens");
     return AddEmbedding(graph,
                         tokens,
                         16,
@@ -48,13 +49,13 @@ public:
 
         return session.ReplaceSubgraph(
                 std::vector<GraphNodeId>{add_node},
-                {ReplacementNode{.op_type = OpType::kSilu,
-                                 .decoder_layer_index = add_view->decoder_layer_index,
-                                 .inputs = {add_view->inputs[0]},
-                                 .outputs = {RewriteOutputBinding{.desc = *output_desc,
-                                                                  .replaces = add_view->outputs[0]}},
-                                 .op_params = SiluParams{},
-                                 .debug_name = "replacement_silu"}});
+                {{.op_type = OpType::kSilu,
+                  .decoder_layer_index = add_view->decoder_layer_index,
+                  .inputs = {add_view->inputs[0]},
+                  .outputs = {RewriteOutputBinding{.desc = *output_desc,
+                                                   .replaces = add_view->outputs[0]}},
+                  .op_params = SiluParams{},
+                  .debug_name = "replacement_silu"}});
     }
 };
 
@@ -99,7 +100,8 @@ TEST(DeadCodeEliminationPass, RemovesDeadChain) {
     const GraphValueId live = AddActivation(graph, "live");
     const GraphValueId dead_input = AddActivation(graph, "dead_input");
     const GraphValueId dead_silu = AddSilu(graph, 0U, dead_input, "dead_silu");
-    const GraphValueId dead_mul = AddElementwiseMul(graph, 0U, dead_silu, dead_input, "dead_mul");
+    const GraphValueId dead_mul = AddElementwiseMul(graph, 0U,
+                                                    dead_silu, dead_input, "dead_mul");
     UNUSED(dead_mul);
     graph.MarkOutput(live, "output");
 
@@ -143,7 +145,8 @@ TEST(DeadCodeEliminationPass, KeepsMultiOutputNodeWhenAnyOutputIsGraphOutput) {
     ModelGraph graph;
     const GraphValueId q = AddActivation(graph, "q");
     const GraphValueId k = AddActivation(graph, "k");
-    const GraphValueId position_ids = graph.AddInput(Spec(DataType::Int(32), {2}), "position_ids");
+    const GraphValueId position_ids = graph.AddInput(
+            Spec(DataType::Int(32), {2}), "position_ids");
     const RoPEOutputs rope = AddRoPE(graph,
                                      0U,
                                      q,
@@ -172,13 +175,18 @@ TEST(DeadCodeEliminationPass, KeepsStateOutputNodeWithoutConsumers) {
     const GraphValueId v_new = AddActivation(graph, "v_new");
     const GraphValueId k_cache = AddState(graph,
                                           Spec(DataType::Float32(), {2, 4}),
-                                          KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
+                                          KVCacheStateBinding{
+                                                  .decoder_layer_index = 0,
+                                                  .slot = KVCacheSlot::kKey},
                                           "k_cache");
     const GraphValueId v_cache = AddState(graph,
                                           Spec(DataType::Float32(), {2, 4}),
-                                          KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kValue},
+                                          KVCacheStateBinding{
+                                                  .decoder_layer_index = 0,
+                                                  .slot = KVCacheSlot::kValue},
                                           "v_cache");
-    const KVCachePair updated_cache = AddKVCacheUpdate(graph, 0U, k_new, v_new, k_cache, v_cache, "kv_update");
+    const KVCachePair updated_cache = AddKVCacheUpdate(
+            graph, 0U, k_new, v_new, k_cache, v_cache, "kv_update");
     UNUSED(updated_cache);
     graph.MarkOutput(live, "output");
 
@@ -193,7 +201,8 @@ TEST(DeadCodeEliminationPass, KeepsProducerConsumedOnlyByActiveReplacement) {
     ModelGraph graph;
     const GraphValueId lhs = AddActivation(graph, "lhs");
     const GraphValueId rhs = AddActivation(graph, "rhs");
-    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    const GraphValueId sum = AddElementwiseAdd(
+            graph, 0U, lhs, rhs, "sum");
     graph.MarkOutput(sum, "output");
 
     const StatusOr<ModelGraph> result = RunReplaceThenDce(graph);
@@ -221,5 +230,5 @@ TEST(DeadCodeEliminationPass, IsIdempotent) {
     EXPECT_EQ(second->GetValues().size(), first->GetValues().size());
 }
 
-}
-}
+}// namespace
+}// namespace aethermind

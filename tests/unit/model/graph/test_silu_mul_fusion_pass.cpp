@@ -9,13 +9,13 @@ namespace aethermind {
 namespace {
 
 TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
+    return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
 }
 
 NodeOutputDesc ActivationDesc(const char* debug_name) {
-    return NodeOutputDesc{.spec = Spec(DataType::Float32(), {2, 4}),
-                          .payload = ActivationValue{},
-                          .debug_name = debug_name};
+    return {.spec = Spec(DataType::Float32(), {2, 4}),
+            .payload = ActivationValue{},
+            .debug_name = debug_name};
 }
 
 GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {

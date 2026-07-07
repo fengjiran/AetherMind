@@ -163,8 +163,8 @@ Status GraphRewriteSession::ReplaceSubgraph(
             .replacements = replacement_nodes,
     });
 
-    for (auto [index]: old_nodes) {
-        node_to_rewrite_[index] = rewrite_index;
+    for (GraphNodeId old_node: old_nodes) {
+        node_to_rewrite_[old_node.index] = rewrite_index;
     }
     return Status::Ok();
 }
@@ -465,10 +465,12 @@ std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) 
             continue;
         }
 
+        // IsNodeLive(node_id) above guarantees GetNodeView succeeds: the only
+        // failure path is NotFound for non-live nodes, already filtered out.
+        // A failure here would indicate an IsNodeLive/GetNodeView invariant bug.
         const StatusOr<GraphNodeView> view = GetNodeView(node_id);
-        if (!view.ok()) {
-            continue;
-        }
+        AM_CHECK(view.ok(), "FindConsumers: GetNodeView failed on live node: {}",
+                 view.status().ToString());
 
         // GetNodeView already resolves inputs via GetResolvedValue, so direct
         // comparison with resolved_value is correct.
@@ -487,17 +489,36 @@ bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
         return false;
     }
 
-    // 1. Check live original node consumers. FindConsumers excludes replacement
-    //    nodes (they have no GraphNodeId), so a non-empty result short-circuits.
-    if (!FindConsumers(value).empty()) {
-        return true;
+    const GraphValueId resolved_value = GetResolvedValue(value);
+    const StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
+    if (!order.ok()) {
+        return false;
     }
 
-    // 2. Scan active replacement node inputs. ReplaceSubgraph replacements are
-    //    not addressable via GraphNodeId, so FindConsumers skips them; DCE
-    //    must account for them here to avoid deleting a value still consumed
-    //    by a replacement.
-    const GraphValueId resolved_value = GetResolvedValue(value);
+    // 1. Scan live original node inputs (short-circuit on first match).
+    //    GetNodeView resolves inputs via GetResolvedValue, so direct comparison
+    //    with resolved_value is correct. Unlike FindConsumers, this does not
+    //    allocate a vector and stops at the first consumer — important because
+    //    DCE calls this once per output per node per fixpoint iteration.
+    for (const GraphNodeId node_id: *order) {
+        if (!IsNodeLive(node_id)) {
+            continue;
+        }
+
+        const StatusOr<GraphNodeView> view = GetNodeView(node_id);
+        AM_CHECK(view.ok(), "HasLiveConsumers: GetNodeView failed on live node: {}",
+                 view.status().ToString());
+        for (const GraphValueId input: view->inputs) {
+            if (input == resolved_value) {
+                return true;
+            }
+        }
+    }
+
+    // 2. Scan active replacement node inputs (short-circuit on first match).
+    //    ReplaceSubgraph replacements are not addressable via GraphNodeId, so
+    //    the original-node scan above skips them; DCE must account for them
+    //    here to avoid deleting a value still consumed by a replacement.
     for (const RewriteEntry& rewrite: rewrites_) {
         if (!rewrite.active) {
             continue;
@@ -813,15 +834,12 @@ Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
 }
 
 Status GraphRewriteSession::CheckValueIdAllowVirtual(GraphValueId value) const {
-    if (value.index < graph_.GetValues().size() || IsSessionConstant(value)) {
+    // IsSessionValue() already bounds-checks the virtual index against
+    // virtual_value_count_, so any session value reaching the second clause
+    // is a valid virtual value — no extra range check needed.
+    if (value.index < graph_.GetValues().size() || IsSessionConstant(value) ||
+        IsSessionValue(value)) {
         return Status::Ok();
-    }
-    if (IsSessionValue(value)) {
-        if (GetVirtualIndex(value) < virtual_value_count_) {
-            return Status::Ok();
-        }
-        return Status::InvalidArgument(
-                "GraphRewriteSession: virtual value id out of range");
     }
     return Status::InvalidArgument("GraphRewriteSession: value id out of range");
 }

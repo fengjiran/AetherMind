@@ -10,6 +10,8 @@
 namespace aethermind {
 namespace {
 
+// Looks up the model input name associated with a value id. Returns nullopt
+// if the value is not a named model input.
 std::optional<std::string> FindInputName(const ModelGraph& graph, GraphValueId value) {
     for (const auto& input: graph.GetInputs()) {
         if (input.value == value) {
@@ -19,6 +21,8 @@ std::optional<std::string> FindInputName(const ModelGraph& graph, GraphValueId v
     return std::nullopt;
 }
 
+// Translates a source value id to its committed counterpart via the value_map.
+// Returns InvalidArgument if the value is unmapped (producer removed or not yet emitted).
 StatusOr<GraphValueId> MapResolvedValue(GraphValueId old_value,
                                         const std::vector<std::optional<GraphValueId>>& value_map) {
     if (old_value.index >= value_map.size() || !value_map[old_value.index].has_value()) {
@@ -29,6 +33,8 @@ StatusOr<GraphValueId> MapResolvedValue(GraphValueId old_value,
     return *value_map[old_value.index];
 }
 
+// Copies all fields from a GraphValue into a NodeOutputDesc for use in a
+// replacement node or committed graph node.
 NodeOutputDesc MakeOutputDescFromValue(const GraphValue& value) {
     return NodeOutputDesc{
             .spec = value.spec,
@@ -38,6 +44,9 @@ NodeOutputDesc MakeOutputDescFromValue(const GraphValue& value) {
     };
 }
 
+// Builds a replacement node that is an exact copy of a source graph node,
+// with each output binding taking over the original output's value identity.
+// Used by RedirectInput to create a mirror rewrite.
 ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node) {
     const GraphNode& original = graph.GetNode(node);
     ReplacementNode rn{
@@ -69,25 +78,31 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
       resolved_value_cache_(graph.GetValues().size(), std::nullopt) {}
 
 GraphValueId GraphRewriteSession::AllocateVirtualValue() {
+    // Virtual values occupy the id space starting at graph_.GetValues().size().
+    // session_constants_ grows in parallel: nullopt for virtual, SessionConstant for AddConstant.
     const std::size_t next_value_index = graph_.GetValues().size() + virtual_value_count_;
     AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
-              "Graph virtual value id space exhausted");
+             "Graph virtual value id space exhausted");
     ++virtual_value_count_;
     session_constants_.emplace_back(std::nullopt);
-    return GraphValueId{.index = static_cast<uint32_t>(next_value_index)};
+    return {.index = static_cast<uint32_t>(next_value_index)};
 }
 
 GraphValueId GraphRewriteSession::AddConstant(TensorSpec spec,
                                               ConstantBinding binding,
+                                              QuantizationSpec quantization,
                                               std::string debug_name) {
+    // Same id space as virtual values, but distinguished by a non-nullopt
+    // SessionConstant entry in session_constants_.
     const std::size_t next_value_index = graph_.GetValues().size() + virtual_value_count_;
     AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
              "Graph session constant value id space exhausted");
     ++virtual_value_count_;
     session_constants_.emplace_back(SessionConstant{.spec = std::move(spec),
                                                     .binding = std::move(binding),
+                                                    .quantization = quantization,
                                                     .debug_name = std::move(debug_name)});
-    return GraphValueId{.index = static_cast<uint32_t>(next_value_index)};
+    return {.index = static_cast<uint32_t>(next_value_index)};
 }
 
 Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
@@ -243,6 +258,9 @@ GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
         return *resolved_value_cache_[value.index];
     }
 
+    // Walk the replacement chain with path compression: record all visited
+    // values in `path`, and after finding the terminal, cache every intermediate
+    // to that terminal for O(1) future lookups.
     std::vector<uint32_t> path;
     GraphValueId cur = value;
     GraphValueId resolved = value;
@@ -310,6 +328,9 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
 }
 
 bool GraphRewriteSession::IsNodeLive(GraphNodeId node) const noexcept {
+    // No rewrite entry -> untouched node, therefore live.
+    // Mirror rewrite (RedirectInput) -> exposes original node identity, therefore live.
+    // Full subgraph replacement -> replaced/removed, therefore not live.
     if (node.index >= node_to_rewrite_.size()) {
         return false;
     }
@@ -326,6 +347,8 @@ bool GraphRewriteSession::IsNodeLive(GraphNodeId node) const noexcept {
 }
 
 StatusOr<std::vector<GraphNodeId>> GraphRewriteSession::GetTopologicalOrder() const {
+    // Filter the source graph's topological order to include only live nodes.
+    // The session does not introduce new edges, so the source ordering is still valid.
     StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
     AM_RETURN_IF_ERROR(order.status());
 
@@ -429,7 +452,6 @@ std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
 
 std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) const {
     const GraphValueId resolved_value = GetResolvedValue(value);
-
     const StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
     if (!order.ok()) {
         return {};
@@ -478,6 +500,7 @@ bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
         if (!rewrite.active) {
             continue;
         }
+
         for (const ReplacementNode& replacement: rewrite.replacements) {
             for (const GraphValueId input: replacement.inputs) {
                 if (GetResolvedValue(input) == resolved_value) {
@@ -518,6 +541,7 @@ NodeOutputDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValue
     const SessionConstant& constant = *session_constants_[GetVirtualIndex(value)];
     return NodeOutputDesc{.spec = constant.spec,
                           .payload = ConstantValue{.binding = constant.binding},
+                          .quantization = constant.quantization,
                           .debug_name = constant.debug_name};
 }
 
@@ -598,13 +622,17 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
         maps.session_constants[i] = committed.AddConstant(constant.spec,
                                                           constant.binding,
                                                           constant.debug_name);
+        committed.SetQuantization(*maps.session_constants[i], constant.quantization);
     }
     return Status::Ok();
 }
 
 Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
-                                         ModelGraph& committed,
-                                         CommitValueMaps& maps) const {
+                                        ModelGraph& committed,
+                                        CommitValueMaps& maps) const {
+    // For each replacement node, resolve and map inputs, add the node to
+    // the committed graph, then map each output through the replaces binding
+    // into the appropriate map (source_values, virtual_values, or error).
     for (const ReplacementNode& replacement: rewrite.replacements) {
         std::vector<GraphValueId> new_inputs;
         new_inputs.reserve(replacement.inputs.size());
@@ -656,8 +684,11 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
 }
 
 Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
-                                              ModelGraph& committed,
-                                              CommitValueMaps& maps) const {
+                                             ModelGraph& committed,
+                                             CommitValueMaps& maps) const {
+    // Emit a surviving original node (untouched or RedirectInput'd) into the
+    // committed graph. Uses GetNodeView to get the resolved input view and
+    // faithfully reproduces the node's outputs.
     StatusOr<GraphNodeView> view = GetNodeView(old_node);
     AM_RETURN_IF_ERROR(view.status());
 
@@ -698,6 +729,8 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
 
 Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed,
                                                  const CommitValueMaps& maps) const {
+    // Graph outputs are resolved through ReplaceValue chains before mapping
+    // into the committed graph's value space.
     for (const auto& output: graph_.GetOutputs()) {
         const GraphValueId resolved_output = GetResolvedValue(output.value);
         StatusOr<GraphValueId> mapped_output = MapCommittedValue(resolved_output, maps);
@@ -720,6 +753,10 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
     AM_RETURN_IF_ERROR(CopyExternalValues(committed, maps));
 
+    // Emit nodes in source topological order. When a node is the first in
+    // topological order among its rewrite's old_nodes, emit the entire rewrite
+    // (all replacement nodes) before continuing. Live, untouched nodes are
+    // emitted as-is via EmitOriginalNode.
     StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
     AM_RETURN_IF_ERROR(order.status());
     std::vector emitted_rewrites(rewrites_.size(), false);
@@ -796,8 +833,10 @@ bool GraphRewriteSession::IsSessionConstant(GraphValueId value) const noexcept {
     if (!IsSessionValue(value)) {
         return false;
     }
+
     const std::size_t session_index = GetVirtualIndex(value);
-    return session_index < session_constants_.size() && session_constants_[session_index].has_value();
+    return session_index < session_constants_.size() &&
+           session_constants_[session_index].has_value();
 }
 
 bool GraphRewriteSession::IsVirtualValue(GraphValueId value) const noexcept {
@@ -854,6 +893,10 @@ Status GraphRewriteSession::ValidateReplacementTargets(
 }
 
 Status GraphRewriteSession::ValidateVirtualValues() const {
+    // Two-level tracking: globally_produced prevents duplicate production of
+    // any virtual value across all rewrites. locally_available (per rewrite)
+    // ensures each virtual value is produced before it is consumed within the
+    // same rewrite group.
     std::vector globally_produced(virtual_value_count_, false);
 
     for (const auto& rewrite: rewrites_) {
@@ -891,6 +934,7 @@ Status GraphRewriteSession::ValidateVirtualValues() const {
 }
 
 void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
+    // Idempotent: no-op if the rewrite is already inactive or out of range.
     if (rewrite_index >= rewrites_.size() || !rewrites_[rewrite_index].active) {
         return;
     }
@@ -928,6 +972,9 @@ std::vector<GraphValueId> SubgraphBuilder::Emit(OpType op_type,
                                                 OpParams op_params,
                                                 std::optional<uint32_t> decoder_layer_index,
                                                 std::string debug_name) {
+    // Each output descriptor gets a freshly allocated virtual value; these
+    // virtual values are bound via RewriteOutputBinding::replaces and can
+    // be consumed by subsequent Emit calls or redirected by Yield.
     std::vector<GraphValueId> virtual_ids;
     virtual_ids.reserve(output_descs.size());
 
@@ -973,6 +1020,8 @@ Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_
 }
 
 Status SubgraphBuilder::Commit() {
+    // Submit accumulated replacement nodes; on success, clear internal state
+    // so the builder can be reused for another Emit/Yield/Commit cycle.
     Status status = session_.ReplaceSubgraph(old_nodes_, new_nodes_);
     if (status.ok()) {
         new_nodes_.clear();

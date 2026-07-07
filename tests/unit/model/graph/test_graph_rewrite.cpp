@@ -934,10 +934,15 @@ TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
     GraphRewriteSession session(graph);
     auto inline_data = std::make_shared<const std::vector<std::byte>>(
             std::vector<std::byte>{std::byte{0x03}, std::byte{0x04}});
+    const QuantizationSpec quantization{.kind = QuantizationKind::kInt8,
+                                        .group_size = 64,
+                                        .scale_dtype = DataType::Float32(),
+                                        .has_zero_point = false};
 
     const GraphValueId constant = session.AddConstant(
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.name = "folded.scalar", .inline_data = std::move(inline_data)},
+            quantization,
             "folded");
     const StatusOr<ModelGraph> committed = session.Commit();
 
@@ -953,6 +958,7 @@ TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
             ASSERT_TRUE(c->binding.inline_data != nullptr);
             EXPECT_EQ(c->binding.inline_data->size(), 2U);
             EXPECT_EQ(value.debug_name, "folded");
+            EXPECT_EQ(value.quantization, quantization);
             EXPECT_FALSE(value.producer.has_value());
         }
     }
@@ -962,10 +968,15 @@ TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
 TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
+    const QuantizationSpec quantization{.kind = QuantizationKind::kInt4,
+                                        .group_size = 32,
+                                        .scale_dtype = DataType::Float32(),
+                                        .has_zero_point = true};
 
     const GraphValueId constant = session.AddConstant(
             Spec(DataType::Float32(), {2}),
             ConstantBinding{.name = "folded.vector"},
+            quantization,
             "folded_vector");
     const GraphValueId virtual_value = session.AllocateVirtualValue();
 
@@ -982,6 +993,7 @@ TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
     const auto* constant_payload = std::get_if<ConstantValue>(&desc->payload);
     ASSERT_NE(constant_payload, nullptr);
     EXPECT_EQ(constant_payload->binding.name, "folded.vector");
+    EXPECT_EQ(desc->quantization, quantization);
     EXPECT_EQ(desc->debug_name, "folded_vector");
 
     const std::vector<GraphValueId> live = session.GetLiveValues();
@@ -995,6 +1007,7 @@ TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
     const GraphValueId constant = session.AddConstant(
             Spec(DataType::Float32(), {1, 1, 4}),
             ConstantBinding{.name = "folded.hidden"},
+            {},
             "folded_hidden");
 
     ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 4}, constant).ok());
@@ -1009,6 +1022,7 @@ TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
             constant_payload != nullptr && constant_payload->binding.name == "folded.hidden") {
             found_constant = true;
             EXPECT_EQ(value.debug_name, "folded_hidden");
+            EXPECT_EQ(value.quantization, QuantizationSpec{});
         }
     }
     EXPECT_TRUE(found_constant);
@@ -1020,6 +1034,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsSessionConstantReplacementTarget
     const GraphValueId constant = session.AddConstant(
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.name = "session.constant"},
+            {},
             "session_constant");
     ReplacementNode replacement{
             .op_type = OpType::kEmbedding,

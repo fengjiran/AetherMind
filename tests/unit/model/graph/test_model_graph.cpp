@@ -316,7 +316,7 @@ TEST(ModelGraph, PublicApiCreatesConstantValues) {
             std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}});
     const GraphValueId constant = graph.AddConstant(
             Spec(DataType::Float32(), {1}),
-            ConstantBinding{.name = "rope.sin_cos_table", .inline_data = std::move(inline_data)},
+            ConstantBinding{.inline_data = std::move(inline_data), .name = "rope.sin_cos_table"},
             "rope_table");
 
     ASSERT_EQ(graph.GetValues().size(), 1U);

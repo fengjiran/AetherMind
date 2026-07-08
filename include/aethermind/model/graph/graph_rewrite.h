@@ -25,6 +25,7 @@
 #include "aethermind/model/graph/graph.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -349,6 +350,14 @@ private:
         ValueMap& virtual_values;   // Virtual value -> committed output
     };
 
+    /// Cached consumer index for one mutation generation.
+    /// Keys are resolved value ids, so ReplaceValue aliases share consumers.
+    struct ConsumerCache {
+        std::uint64_t generation = 0;
+        std::vector<std::vector<GraphNodeId>> original_consumers{};
+        std::vector<uint32_t> replacement_consumer_counts{};
+    };
+
     // Returns InvalidArgument if node id is out of range.
     AM_NODISCARD Status CheckNodeId(GraphNodeId node) const;
     // Returns InvalidArgument if value is not a source graph value.
@@ -397,6 +406,10 @@ private:
                                              const CommitValueMaps& maps) const;
     // Marks a rewrite as inactive; clears node_to_rewrite_ entries.
     void DeactivateRewrite(std::size_t rewrite_index);
+    // Invalidates cached consumer indexes after a successful state mutation.
+    void InvalidateConsumerCache() noexcept;
+    // Builds or returns the consumer index for the current mutation generation.
+    AM_NODISCARD const ConsumerCache& EnsureConsumerCache() const;
 
     // Immutable source graph; must outlive the session.
     const ModelGraph& graph_;
@@ -413,9 +426,13 @@ private:
     // Maps each source value to its replacement target, or nullopt.
     // Sized to graph_.GetValues().size() at construction.
     std::vector<std::optional<GraphValueId>> value_replacements_{};
+    // Incremented after successful mutations that can change consumer queries.
+    std::uint64_t mutation_generation_ = 0;
     // Caches GetResolvedValue results for O(1) subsequent lookups.
     // Invalidated on each ReplaceValue. Mutable for logical const.
     mutable std::vector<std::optional<GraphValueId>> resolved_value_cache_{};
+    // Lazily built consumer index for FindConsumers/HasLiveConsumers.
+    mutable std::optional<ConsumerCache> consumer_cache_{};
 };
 
 /// Convenience builder for constructing subgraph replacements without

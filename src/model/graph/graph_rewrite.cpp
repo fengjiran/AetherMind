@@ -85,6 +85,7 @@ GraphValueId GraphRewriteSession::AllocateVirtualValue() {
              "Graph virtual value id space exhausted");
     ++virtual_value_count_;
     session_constants_.emplace_back(std::nullopt);
+    InvalidateConsumerCache();
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
 
@@ -102,6 +103,7 @@ GraphValueId GraphRewriteSession::AddConstant(TensorSpec spec,
                                                     .binding = std::move(binding),
                                                     .quantization = quantization,
                                                     .debug_name = std::move(debug_name)});
+    InvalidateConsumerCache();
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
 
@@ -133,9 +135,8 @@ Status GraphRewriteSession::RemoveNode(GraphNodeId node) {
     return ReplaceSubgraph(old_nodes, {});
 }
 
-Status GraphRewriteSession::ReplaceSubgraph(
-        std::span<const GraphNodeId> old_nodes,
-        const std::vector<ReplacementNode>& replacement_nodes) {
+Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nodes,
+                                            const std::vector<ReplacementNode>& replacement_nodes) {
     if (old_nodes.empty()) {
         return Status::InvalidArgument(
                 "GraphRewriteSession::ReplaceSubgraph old node list is empty");
@@ -166,6 +167,7 @@ Status GraphRewriteSession::ReplaceSubgraph(
     for (GraphNodeId old_node: old_nodes) {
         node_to_rewrite_[old_node.index] = rewrite_index;
     }
+    InvalidateConsumerCache();
     return Status::Ok();
 }
 
@@ -198,6 +200,7 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
                     "GraphRewriteSession::RedirectInput replacement input index mismatch");
         }
         replacement.inputs[input_index] = new_value;
+        InvalidateConsumerCache();
         return Status::Ok();
     }
 
@@ -211,6 +214,7 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
             .exposes_node_view = true,
     });
     node_to_rewrite_[node.index] = idx;
+    InvalidateConsumerCache();
     return Status::Ok();
 }
 
@@ -248,6 +252,7 @@ Status GraphRewriteSession::ReplaceValue(GraphValueId old_value, GraphValueId ne
     for (auto& cached_value: resolved_value_cache_) {
         cached_value.reset();
     }
+    InvalidateConsumerCache();
     return Status::Ok();
 }
 
@@ -453,84 +458,96 @@ std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
 }
 
 std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) const {
-    const GraphValueId resolved_value = GetResolvedValue(value);
-    const StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
-    AM_CHECK(order.ok(), "FindConsumers: TopologicalOrder failed: {}",
-             order.status().ToString());
-
-    std::vector<GraphNodeId> consumers;
-    for (const GraphNodeId node_id: *order) {
-        if (!IsNodeLive(node_id)) {
-            continue;
-        }
-
-        // IsNodeLive(node_id) above guarantees GetNodeView succeeds: the only
-        // failure path is NotFound for non-live nodes, already filtered out.
-        // A failure here would indicate an IsNodeLive/GetNodeView invariant bug.
-        const StatusOr<GraphNodeView> view = GetNodeView(node_id);
-        AM_CHECK(view.ok(), "FindConsumers: GetNodeView failed on live node: {}",
-                 view.status().ToString());
-
-        // GetNodeView already resolves inputs via GetResolvedValue, so direct
-        // comparison with resolved_value is correct.
-        for (const GraphValueId input: view->inputs) {
-            if (input == resolved_value) {
-                consumers.push_back(node_id);
-                break;
-            }
-        }
+    if (value.index >= graph_.GetValues().size() && !IsSessionValue(value)) {
+        return {};
     }
-    return consumers;
+
+    if (IsVirtualValue(value)) {
+        return {};
+    }
+
+    const GraphValueId resolved_value = GetResolvedValue(value);
+    const ConsumerCache& cache = EnsureConsumerCache();
+    if (resolved_value.index >= cache.original_consumers.size()) {
+        return {};
+    }
+    return cache.original_consumers[resolved_value.index];
 }
 
 bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
+    if (value.index >= graph_.GetValues().size() && !IsSessionValue(value)) {
+        return false;
+    }
+
     if (IsVirtualValue(value)) {
         return false;
     }
 
     const GraphValueId resolved_value = GetResolvedValue(value);
+    const ConsumerCache& cache = EnsureConsumerCache();
+    if (resolved_value.index >= cache.original_consumers.size()) {
+        return false;
+    }
+    return !cache.original_consumers[resolved_value.index].empty() ||
+           cache.replacement_consumer_counts[resolved_value.index] > 0;
+}
+
+const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCache() const {
+    if (consumer_cache_.has_value() && consumer_cache_->generation == mutation_generation_) {
+        return *consumer_cache_;
+    }
+
+    ConsumerCache cache;
+    cache.generation = mutation_generation_;
+    const std::size_t value_count = graph_.GetValues().size() + virtual_value_count_;
+    cache.original_consumers.resize(value_count);
+    cache.replacement_consumer_counts.resize(value_count, 0U);
+
     const StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
-    AM_CHECK(order.ok(), "HasLiveConsumers: TopologicalOrder failed: {}",
+    AM_CHECK(order.ok(), "EnsureConsumerCache: TopologicalOrder failed: {}",
              order.status().ToString());
 
-    // 1. Scan live original node inputs (short-circuit on first match).
-    //    GetNodeView resolves inputs via GetResolvedValue, so direct comparison
-    //    with resolved_value is correct. Unlike FindConsumers, this does not
-    //    allocate a vector and stops at the first consumer — important because
-    //    DCE calls this once per output per node per fixpoint iteration.
-    for (const GraphNodeId node_id: *order) {
+    for (const auto node_id: *order) {
         if (!IsNodeLive(node_id)) {
             continue;
         }
 
-        const StatusOr<GraphNodeView> view = GetNodeView(node_id);
-        AM_CHECK(view.ok(), "HasLiveConsumers: GetNodeView failed on live node: {}",
-                 view.status().ToString());
-        for (const GraphValueId input: view->inputs) {
-            if (input == resolved_value) {
-                return true;
+        const auto* inputs = &graph_.GetNode(node_id).inputs;
+        if (const auto rewrite_index = node_to_rewrite_[node_id.index];
+            rewrite_index.has_value()) {
+            inputs = &rewrites_[*rewrite_index].replacements[0].inputs;
+        }
+
+        std::vector<GraphValueId> consumed_values;
+        consumed_values.reserve(inputs->size());
+        for (const auto input: *inputs) {
+            const auto resolved_input = GetResolvedValue(input);
+            if (resolved_input.index >= value_count ||
+                std::ranges::find(consumed_values, resolved_input) != consumed_values.end()) {
+                continue;
             }
+            cache.original_consumers[resolved_input.index].push_back(node_id);
+            consumed_values.push_back(resolved_input);
         }
     }
 
-    // 2. Scan active replacement node inputs (short-circuit on first match).
-    //    ReplaceSubgraph replacements are not addressable via GraphNodeId, so
-    //    the original-node scan above skips them; DCE must account for them
-    //    here to avoid deleting a value still consumed by a replacement.
-    for (const RewriteEntry& rewrite: rewrites_) {
-        if (!rewrite.active) {
+    for (const auto& rewrite: rewrites_) {
+        if (!rewrite.active || rewrite.exposes_node_view) {
             continue;
         }
 
-        for (const ReplacementNode& replacement: rewrite.replacements) {
-            for (const GraphValueId input: replacement.inputs) {
-                if (GetResolvedValue(input) == resolved_value) {
-                    return true;
+        for (const auto& replacement: rewrite.replacements) {
+            for (const auto input: replacement.inputs) {
+                const GraphValueId resolved_input = GetResolvedValue(input);
+                if (resolved_input.index < value_count) {
+                    ++cache.replacement_consumer_counts[resolved_input.index];
                 }
             }
         }
     }
-    return false;
+
+    consumer_cache_ = std::move(cache);
+    return *consumer_cache_;
 }
 
 Status GraphRewriteSession::ValidateEdits() const {
@@ -964,6 +981,11 @@ void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
             node_to_rewrite_[old_node.index].reset();
         }
     }
+}
+
+void GraphRewriteSession::InvalidateConsumerCache() noexcept {
+    ++mutation_generation_;
+    consumer_cache_.reset();
 }
 
 GraphValueId SubgraphBuilder::Emit(OpType op_type,

@@ -2004,6 +2004,21 @@ TEST(GraphRewriteSession, FindConsumersReflectsRedirectInput) {
     EXPECT_EQ(v1_consumers[1], GraphNodeId{.index = 1});
 }
 
+TEST(GraphRewriteSession, FindConsumersCacheInvalidatesAfterRedirectInput) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_EQ(session.FindConsumers(GraphValueId{.index = 0}).size(), 1U);
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
+                        .ok());
+
+    EXPECT_TRUE(session.FindConsumers(GraphValueId{.index = 0}).empty());
+    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 1});
+    ASSERT_EQ(consumers.size(), 2U);
+    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
+    EXPECT_EQ(consumers[1], GraphNodeId{.index = 1});
+}
+
 TEST(GraphRewriteSession, FindConsumersResolvesReplaceValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
@@ -2083,6 +2098,18 @@ TEST(GraphRewriteSession, HasLiveConsumersReflectsRedirectInput) {
     EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 1}));
 }
 
+TEST(GraphRewriteSession, HasLiveConsumersCacheInvalidatesAfterReplaceValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 3}));
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 2}, GraphValueId{.index = 3}).ok());
+
+    EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 3}));
+    EXPECT_EQ(session.HasLiveConsumers(GraphValueId{.index = 2}),
+              session.HasLiveConsumers(GraphValueId{.index = 3}));
+}
+
 TEST(GraphRewriteSession, HasLiveConsumersResolvesReplaceValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
@@ -2136,6 +2163,25 @@ TEST(GraphRewriteSession, HasLiveConsumersFalseWhenReplacementDoesNotConsume) {
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
 
     // No live original node and no replacement consumes v2.
+    EXPECT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+}
+
+TEST(GraphRewriteSession, HasLiveConsumersCacheInvalidatesAfterReplaceSubgraph) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+
+    ReplacementNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "merged")},
+            .op_params = EmbeddingParams{},
+            .debug_name = "merged",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
+
     EXPECT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 2}));
 }
 

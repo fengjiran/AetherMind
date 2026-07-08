@@ -455,9 +455,8 @@ std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
 std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) const {
     const GraphValueId resolved_value = GetResolvedValue(value);
     const StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
-    if (!order.ok()) {
-        return {};
-    }
+    AM_CHECK(order.ok(), "FindConsumers: TopologicalOrder failed: {}",
+             order.status().ToString());
 
     std::vector<GraphNodeId> consumers;
     for (const GraphNodeId node_id: *order) {
@@ -491,9 +490,8 @@ bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
 
     const GraphValueId resolved_value = GetResolvedValue(value);
     const StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
-    if (!order.ok()) {
-        return false;
-    }
+    AM_CHECK(order.ok(), "HasLiveConsumers: TopologicalOrder failed: {}",
+             order.status().ToString());
 
     // 1. Scan live original node inputs (short-circuit on first match).
     //    GetNodeView resolves inputs via GetResolvedValue, so direct comparison

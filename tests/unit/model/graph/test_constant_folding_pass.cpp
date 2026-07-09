@@ -96,6 +96,24 @@ std::vector<T> ReadTypedConstant(const GraphValue& value) {
     return result;
 }
 
+std::vector<BFloat16> BFloat16Values(std::vector<uint16_t> bits) {
+    std::vector<BFloat16> values;
+    values.reserve(bits.size());
+    for (const uint16_t value: bits) {
+        values.emplace_back(value, BFloat16::from_bits());
+    }
+    return values;
+}
+
+std::vector<uint16_t> BFloat16Bits(const std::vector<BFloat16>& values) {
+    std::vector<uint16_t> bits;
+    bits.reserve(values.size());
+    for (const BFloat16 value: values) {
+        bits.push_back(value.x);
+    }
+    return bits;
+}
+
 template<typename T>
 struct FoldedAddCase {
     DataType dtype;
@@ -226,6 +244,31 @@ TEST(ConstantFoldingPass, FoldsAddInt32Constants) {
 
 TEST(ConstantFoldingPass, FoldsAddInt64Constants) {
     ExpectFoldedAdd<int64_t>({.dtype = DataType::Int(64), .values = {{{-3, 2, 7}, {5, -4, 8}, {2, -2, 15}}}});
+}
+
+TEST(ConstantFoldingPass, FoldsAddBFloat16Constants) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant(graph,
+                                              DataType::BFloat(16),
+                                              BFloat16Values({0x3F80U, 0x4000U}),
+                                              {2},
+                                              "lhs");
+    const GraphValueId rhs = AddTypedConstant(graph,
+                                              DataType::BFloat(16),
+                                              BFloat16Values({0x4040U, 0x4080U}),
+                                              {2},
+                                              "rhs");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_EQ(BFloat16Bits(ReadTypedConstant<BFloat16>(output)),
+              (std::vector<uint16_t>{0x4080U, 0x40C0U}));
 }
 
 TEST(ConstantFoldingPass, SkipsAddInt32Overflow) {

@@ -88,8 +88,11 @@ std::vector<int64_t> MakeContiguousStrides(std::span<const int64_t> shape) {
 namespace {
 
 bool IsFoldableAddDType(const DataType& dtype) {
-    return dtype == DataType::Float32() || dtype == DataType::Double() ||
-           dtype == DataType::Int(32) || dtype == DataType::Int(64);
+    return dtype == DataType::Float32() ||
+           dtype == DataType::Double() ||
+           dtype == DataType::BFloat(16) ||
+           dtype == DataType::Int(32) ||
+           dtype == DataType::Int(64);
 }
 
 bool ShapesEqual(std::span<const int64_t> lhs, std::span<const int64_t> rhs) {
@@ -181,6 +184,10 @@ Status EvaluateAddByDType(const DataType& dtype,
         return EvaluateAddTyped<double>(inputs, outputs, numel);
     }
 
+    if (dtype == DataType::BFloat(16)) {
+        return EvaluateAddTyped<BFloat16>(inputs, outputs, numel);
+    }
+
     if (dtype == DataType::Int(32)) {
         return EvaluateAddTyped<int32_t>(inputs, outputs, numel);
     }
@@ -240,6 +247,10 @@ Status EvaluateAddBroadcastByDType(const DataType& dtype,
         return EvaluateAddBroadcastTyped<double>(inputs, outputs);
     }
 
+    if (dtype == DataType::BFloat(16)) {
+        return EvaluateAddBroadcastTyped<BFloat16>(inputs, outputs);
+    }
+
     if (dtype == DataType::Int(32)) {
         return EvaluateAddBroadcastTyped<int32_t>(inputs, outputs);
     }
@@ -267,7 +278,7 @@ public:
         const TensorSpec& output = outputs[0].spec;
         if (!IsFoldableAddDType(lhs.dtype) || rhs.dtype != lhs.dtype || output.dtype != lhs.dtype) {
             return Status::Unimplemented(
-                    "Add constant evaluator only supports float32, float64, int32, and int64 tensors");
+                    "Add constant evaluator only supports float32, float64, bfloat16, int32, and int64 tensors");
         }
 
         auto lhs_shape = ExtractStaticShape(lhs);

@@ -28,6 +28,24 @@ std::vector<T> ValuesFromBytes(const std::vector<std::byte>& bytes) {
     return values;
 }
 
+std::vector<uint16_t> BFloat16Bits(const std::vector<BFloat16>& values) {
+    std::vector<uint16_t> bits;
+    bits.reserve(values.size());
+    for (const BFloat16 value: values) {
+        bits.push_back(value.x);
+    }
+    return bits;
+}
+
+std::vector<BFloat16> BFloat16Values(std::vector<uint16_t> bits) {
+    std::vector<BFloat16> values;
+    values.reserve(bits.size());
+    for (const uint16_t value: bits) {
+        values.emplace_back(value, BFloat16::from_bits());
+    }
+    return values;
+}
+
 template<typename T>
 void ExpectAddEvaluation(DataType dtype,
                          std::vector<T> lhs,
@@ -153,6 +171,26 @@ TEST(ConstEvaluator, PlansAddSupportedDTypesSameShape) {
         EXPECT_EQ(plan->outputs[0].spec, spec);
         EXPECT_EQ(plan->outputs[0].nbytes, 2U * static_cast<size_t>(dtype.nbytes()));
     }
+}
+
+TEST(ConstEvaluator, PlansAddBFloat16SameShape) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const TensorSpec spec = Spec(DataType::BFloat(16), {2});
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = spec, .payload = ConstantValue{}},
+            {.spec = spec, .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->outputs.size(), 1U);
+    EXPECT_EQ(plan->outputs[0].spec, spec);
+    EXPECT_EQ(plan->outputs[0].nbytes, 2U * sizeof(BFloat16));
 }
 
 TEST(ConstEvaluator, PlansAddBroadcastRowVector) {
@@ -299,6 +337,29 @@ TEST(ConstEvaluator, EvaluatesAddInt32) {
 
 TEST(ConstEvaluator, EvaluatesAddInt64) {
     ExpectAddEvaluation<int64_t>(DataType::Int(64), {-3, 2, 7}, {5, -4, 8}, {2, -2, 15});
+}
+
+TEST(ConstEvaluator, EvaluatesAddBFloat16) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{2};
+    const std::vector<int64_t> strides{1};
+    const std::vector<std::byte> lhs_bytes = BytesFromValues(BFloat16Values({0x3F80U, 0x4000U}));
+    const std::vector<std::byte> rhs_bytes = BytesFromValues(BFloat16Values({0x4040U, 0x4080U}));
+    std::vector<std::byte> output_bytes(2U * sizeof(BFloat16));
+    const std::vector<TensorView> inputs = {
+            TensorView(lhs_bytes.data(), DataType::BFloat(16), shape, strides),
+            TensorView(rhs_bytes.data(), DataType::BFloat(16), shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), DataType::BFloat(16), shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_EQ(BFloat16Bits(ValuesFromBytes<BFloat16>(output_bytes)),
+              (std::vector<uint16_t>{0x4080U, 0x40C0U}));
 }
 
 TEST(ConstEvaluator, EvaluatesAddBroadcastRowVector) {

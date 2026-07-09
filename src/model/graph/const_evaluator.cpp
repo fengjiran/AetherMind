@@ -124,12 +124,15 @@ Status EvaluateAddByDType(const DataType& dtype,
     if (dtype == DataType::Float32()) {
         return EvaluateAddTyped<float>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::Double()) {
         return EvaluateAddTyped<double>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::Int(32)) {
         return EvaluateAddTyped<int32_t>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::Int(64)) {
         return EvaluateAddTyped<int64_t>(inputs, outputs, numel);
     }
@@ -178,7 +181,7 @@ public:
         }
 
         ConstEvalPlan plan;
-        plan.outputs.push_back(PlannedConstOutput{
+        plan.outputs.push_back({
                 .spec = output,
                 .quantization = outputs[0].quantization,
                 .strides = MakeContiguousStrides(*shape),
@@ -188,10 +191,9 @@ public:
         return plan;
     }
 
-    AM_NODISCARD Status Evaluate(
-            std::span<const TensorView> inputs,
-            std::span<MutableTensorView> outputs,
-            const OpParams& params) const override {
+    AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
+                                 std::span<MutableTensorView> outputs,
+                                 const OpParams& params) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||
             !std::holds_alternative<AddParams>(params)) {
             return Status::InvalidArgument(
@@ -237,10 +239,10 @@ constexpr EvaluatorEntry kEvaluators[] = {
 }// namespace
 
 const ConstEvaluator* FindConstEvaluator(OpType op_type) noexcept {
-    const auto it = std::ranges::find_if(kEvaluators,
-                                         [op_type](const EvaluatorEntry& entry) {
-                                             return entry.op_type == op_type;
-                                         });
+    auto pred = [op_type](const EvaluatorEntry& entry) {
+        return entry.op_type == op_type;
+    };
+    const auto it = std::ranges::find_if(kEvaluators, pred);
     return it == std::end(kEvaluators) ? nullptr : it->evaluator;
 }
 

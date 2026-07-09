@@ -249,6 +249,20 @@ public:
     /// only its consumers are redirected.
     AM_NODISCARD bool IsValueLive(GraphValueId value) const noexcept;
 
+    /// Returns true if `value` resolves to a compile-time constant.
+    ///
+    /// Resolves through any ReplaceValue chain first, then checks both source
+    /// graph constants (ConstantValue payload) and session constants added
+    /// via AddConstant. Out-of-range and virtual values return false.
+    AM_NODISCARD bool IsConstant(GraphValueId value) const;
+
+    /// Returns true if all resolved inputs of `node` are compile-time constants.
+    ///
+    /// Uses GetNodeView internally so inputs reflect RedirectInput and
+    /// ReplaceValue resolution. Returns false if the node is not live.
+    /// Nodes with no inputs return true (vacuous).
+    AM_NODISCARD bool AreAllInputsConstant(GraphNodeId node) const;
+
     /// Returns the output descriptor represented by a real graph value.
     ///
     /// This is derived from the source graph value's spec, payload,

@@ -878,8 +878,40 @@ bool GraphRewriteSession::IsVirtualValue(GraphValueId value) const noexcept {
     return IsSessionValue(value) && !IsSessionConstant(value);
 }
 
+bool GraphRewriteSession::IsConstant(GraphValueId value) const {
+    const GraphValueId resolved = GetResolvedValue(value);
+
+    // Session constants (added via session.AddConstant).
+    if (IsSessionConstant(resolved)) {
+        return true;
+    }
+
+    if (resolved.index < graph_.GetValues().size()) {
+        const GraphValuePayload& payload = graph_.GetValue(resolved).payload;
+        return std::holds_alternative<ConstantValue>(payload) ||
+               std::holds_alternative<WeightValue>(payload);
+    }
+
+    // Virtual values / out-of-range → not constant.
+    return false;
+}
+
+bool GraphRewriteSession::AreAllInputsConstant(GraphNodeId node) const {
+    const auto view = GetNodeView(node);
+    if (!view.ok()) {
+        return false;
+    }
+
+    for (const GraphValueId input: view->inputs) {
+        if (!IsConstant(input)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& replacement) const {
-    for (GraphValueId input: replacement.inputs) {
+    for (auto input: replacement.inputs) {
         AM_RETURN_IF_ERROR(CheckValueIdAllowVirtual(input));
     }
 

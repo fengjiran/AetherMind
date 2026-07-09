@@ -72,7 +72,8 @@ bool SymbolicShape::IsStatic() const noexcept {
     if (!IsRanked()) {
         return false;
     }
-    return std::ranges::all_of(*symbolic_shape_, [](const ShapeSymbol& s) { return s.IsStatic(); });
+    return std::ranges::all_of(*symbolic_shape_,
+                               [](const ShapeSymbol& s) { return s.IsStatic(); });
 }
 
 SymbolicShape SymbolicShape::Join(const SymbolicShape& other) const {

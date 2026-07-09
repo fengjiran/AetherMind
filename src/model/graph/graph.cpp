@@ -37,7 +37,8 @@ bool PayloadMatchesPort(const GraphValuePayload& payload, OperatorPortKind kind)
         case OperatorPortKind::kModelInput:
             return std::holds_alternative<ModelInputValue>(payload);
         case OperatorPortKind::kActivation:
-            return std::holds_alternative<ActivationValue>(payload);
+            return std::holds_alternative<ActivationValue>(payload) ||
+                   std::holds_alternative<ConstantValue>(payload);
         case OperatorPortKind::kWeight:
             return std::holds_alternative<WeightValue>(payload);
         case OperatorPortKind::kConstant:
@@ -375,11 +376,13 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
         }
 
         const GraphValue& value = values_[output.value.index];
-        if (!std::holds_alternative<ActivationValue>(value.payload)) {
-            return Status::InvalidArgument("Graph output must be an activation value");
+        if (!std::holds_alternative<ActivationValue>(value.payload) &&
+            !std::holds_alternative<ConstantValue>(value.payload)) {
+            return Status::InvalidArgument(
+                    "Graph output must be an activation or constant value");
         }
 
-        if (!value.producer.has_value()) {
+        if (std::holds_alternative<ActivationValue>(value.payload) && !value.producer.has_value()) {
             return Status::InvalidArgument("Graph output must be produced by a node");
         }
     }
@@ -414,7 +417,8 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
 
                 if (!NodeListsOutput(nodes_[value.producer->index],
                                      GraphValueId{static_cast<uint32_t>(value_index)})) {
-                    return Status::InvalidArgument("State producer does not list produced value");
+                    return Status::InvalidArgument(
+                            "State producer does not list produced value");
                 }
             }
         } else if (std::holds_alternative<ConstantValue>(value.payload)) {
@@ -430,7 +434,8 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
             const WeightBinding& binding = std::get<WeightValue>(value.payload).binding;
             AM_RETURN_IF_ERROR(ValidateWeightBindingSelfConsistency(binding));
         } else if (value.producer.has_value()) {
-            return Status::InvalidArgument("External graph value must not have a producer");
+            return Status::InvalidArgument(
+                    "External graph value must not have a producer");
         }
     }
 
@@ -473,9 +478,9 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
             }
 
             if (schema.input_ports[input_index].kind == OperatorPortKind::kWeight) {
-                const WeightBinding& binding = std::get<WeightValue>(values_[input.index].payload).binding;
-                const std::optional<ParameterSlot> expected_slot = ExpectedWeightSlotForOp(node.op_type);
-                if (expected_slot.has_value() && binding.slot != *expected_slot) {
+                const auto& binding = std::get<WeightValue>(values_[input.index].payload).binding;
+                if (const auto& expected_slot = ExpectedWeightSlotForOp(node.op_type);
+                    expected_slot.has_value() && binding.slot != *expected_slot) {
                     return Status::InvalidArgument(
                             "Weight slot does not match the consuming operator");
                 }

@@ -1,6 +1,7 @@
 #ifndef AETHERMIND_MODEL_GRAPH_GRAPH_PASS_MANAGER_H
 #define AETHERMIND_MODEL_GRAPH_GRAPH_PASS_MANAGER_H
 
+#include "aethermind/model/graph/const_evaluator.h"
 #include "aethermind/model/graph/graph_rewrite.h"
 
 #include <cstdint>
@@ -17,8 +18,10 @@ struct PassContext {
     bool enable_qkv_fusion = true;
     bool enable_swiglu_fusion = true;
     bool enable_dce = true;
+    bool enable_constant_folding = true;
     bool enable_flash_attention_rewrite = true;
     bool enable_fused_add_rms_norm = true;
+    ConstEvalPolicy const_eval_policy{};
 };
 
 class GraphPass {

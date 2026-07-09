@@ -47,6 +47,8 @@ struct ConstEvalPolicy {
 };
 
 struct PlannedConstOutput {
+    // 输出 TensorSpec，shape 必须为 fully static（所有维度为非负整数），
+    // 否则 Pass 无法分配输出 buffer 或验证不变量。
     TensorSpec spec{};
     QuantizationSpec quantization{};
     std::vector<int64_t> strides{};
@@ -66,6 +68,8 @@ public:
     // 验证该 evaluator 是否接受当前节点的输入、输出、参数和成本预算。
     // 返回 Ok(plan) 表示可以折叠；返回 Unimplemented 表示不支持并应跳过；
     // 返回其他错误表示图或 pass 不变量异常，应向上传播。
+    // Plan 必须保证返回的 output spec.shape 为 fully static（所有维度为非负整数），
+    // 否则 Pass 无法分配输出 buffer（nbytes 和 rowsizes 无法确定）。
     AM_NODISCARD virtual StatusOr<ConstEvalPlan> Plan(
             std::span<const NodeOutputDesc> inputs,
             std::span<const NodeOutputDesc> outputs,
@@ -107,7 +111,7 @@ AM_NODISCARD const ConstEvaluator* FindConstEvaluator(OpType op_type) noexcept;
 6. 输出字节数、计算量和临时空间需求是否满足 `ConstEvalPolicy`。
 7. 数学域限制，例如除零、非法 axis、非法 reshape、溢出等。
 
-输入 payload 是否为 `ConstantValue` 且 `ConstantBinding::inline_data` 非空是**图级 precondition**，由 Pass 在调用 `Plan()` 前保证（见 §七 图级条件 item 4-5）。evaluator 不重复检查这一条件，只验证 dtype/shape/layout 等算子语义条件。
+输入 payload 为 `ConstantValue` 且 `ConstantBinding::inline_data` 的字节数与 `TensorSpec`（dtype × 静态 shape 元素数）一致是**图级 precondition**，由 Pass 在调用 `Plan()` 前保证（见 §七 图级条件 item 4-5）。`WeightValue` 虽然在推理期不可变，但不属于本 evaluator 的可折叠输入集合；权重折叠必须通过独立的权重数据解析契约提供可验证的实际字节数据，不能由 `WeightValue` 绑定本身隐式启用。evaluator 不重复检查这一条件，只验证 dtype/shape/layout 等算子语义条件。
 
 `Evaluate()` 不应重复推导复杂规则。它可以做轻量防御性检查，但主要假设 `Plan()` 已经完成验证。这样可以避免 Pass 复制算子语义，也避免 `Evaluate()` 在写输出 buffer 时才发现尺寸或 layout 不匹配。
 
@@ -159,7 +163,7 @@ public:
 
             auto input_descs = CollectInputDescs(session, node.inputs);
             AM_RETURN_IF_ERROR(input_descs.status());
-            if (!AllInputsAreInlineConstants(*input_descs)) {
+            if (!AllInputsAreInlineConstantValues(*input_descs)) {
                 continue;
             }
 
@@ -217,7 +221,7 @@ public:
 关键点：
 
 - Pass 不判断某个 op 是否支持 broadcast、某种 dtype 或多输出。这些全部交给 evaluator 的 `Plan()`。
-- Pass 不主动 `RemoveNode()`。折叠后，原输出通过 `ReplaceValue()` 重定向到新常量；无消费者的原节点由后续 DCE 统一清理。
+- Pass 不主动 `RemoveNode()`。折叠后，原输出通过 `ReplaceValue()` 重定向到新常量；无消费者的原节点由管线中的 DCE 统一清理。
 - Pass 只对 `Unimplemented` 降级跳过。其他错误表示图不变量或实现不变量异常，应向上传播。
 
 ---
@@ -345,7 +349,7 @@ const ConstEvaluator* FindConstEvaluator(OpType op_type) noexcept {
 }
 ```
 
-如果后续需要外部扩展 evaluator，应优先通过显式依赖注入或构造时传入只读表，而不是开放运行期全局注册接口。
+如果需要外部扩展 evaluator，应优先通过显式依赖注入或构造时传入只读表，而不是开放运行期全局注册接口。
 
 ---
 
@@ -358,11 +362,13 @@ const ConstEvaluator* FindConstEvaluator(OpType op_type) noexcept {
 1. `GetOperatorSchema(op_type)` 成功。
 2. `IsCompileTimeEvaluable(schema)` 为 true。
 3. 当前 session 中该节点 live，且可以取得 `GraphNodeView`。
-4. 所有输入 value 在当前 session 视图中可解析为 `ConstantValue`。
-5. 所有输入常量的 `ConstantBinding::inline_data` 非空。
+4. 所有输入 value 在当前 session 视图中可解析为 `ConstantValue`；`WeightValue` 不满足折叠条件，即使 `GraphRewriteSession::IsConstant()` 将权重视为推理期不变量。
+5. 所有输入常量的 `ConstantBinding::inline_data` 存在，且 `inline_data->size()` 与输入 `TensorSpec`（dtype × 静态 shape 元素数）一致。零元素 tensor 的预期字节数为 0，因此 `inline_data->size() == 0` 也合法，只要 dtype × numel == 0。
 6. 找得到对应 `ConstEvaluator`。
 
-算子语义条件由 `Plan()` 检查（假设图级条件已满足，即输入已是 `ConstantValue` 且 `inline_data` 非空）：
+`ConstantFoldingPass` 必须使用独立的 `AllInputsAreInlineConstantValues()` 检查，而不能直接使用 `GraphRewriteSession::AreAllInputsConstant()`。后者回答的是“输入是否推理期不变”，会把 `WeightValue` 也视为常量；前者回答的是“输入是否有 evaluator 可直接读取的内联常量字节”。
+
+算子语义条件由 `Plan()` 检查（假设图级条件已满足，即输入已是 `ConstantValue` 且 `inline_data` 字节数与 `TensorSpec` 一致）：
 
 1. 输入/输出数量和端口语义。
 2. dtype、shape、rank、broadcast、stride、layout。
@@ -415,7 +421,7 @@ AM_RETURN_IF_ERROR(eval);
 8. 对多输出算子，`Plan().outputs.size()` 必须与 graph node outputs 数量一致。
 9. `PlannedConstOutput::debug_name` 命名约定为 `"folded_" + outputs[i].debug_name`，确保折叠后的常量在 dump 中可追踪到来源。`Plan()` 从 `outputs[i].debug_name` 读取原始输出名并拼接前缀，不依赖 graph/node 上下文。
 10. 对 shape-only 算子，可以不做数值计算，但仍必须通过 plan 产生可物化常量输出。
-11. `Plan().outputs[i].spec` 必须与 graph 声明的第 i 个输出 `TensorSpec` 一致（dtype 和静态 shape）。evaluator 只能补充 strides/layout 元数据，不能改变语义 spec。这保证 `ReplaceValue` 重定向后下游消费者看到的 spec 不变。
+11. `Plan().outputs[i].spec` 必须与 graph 声明的第 i 个输出 `TensorSpec` 一致（dtype 匹配，shape 必须为 fully static 且元素数匹配）。evaluator 只能补充 strides/layout 元数据，不能改变语义 spec。这保证 `ReplaceValue` 重定向后下游消费者看到的 spec 不变，且 `AllocateOutputViews` 能根据 plan 计算出确定的输出字节数。
 
 ---
 

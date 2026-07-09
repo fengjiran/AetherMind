@@ -16,8 +16,10 @@ bool IsDceRemovableOp(OpType op_type) {
 }
 
 bool AreAllOutputsDead(const GraphRewriteSession& session, const GraphNodeView& node) {
-    for (GraphValueId output: node.outputs) {
-        if (session.IsGraphOutput(output) || session.HasLiveConsumers(output)) {
+    for (const auto output: node.outputs) {
+        const bool live_graph_output = session.IsGraphOutput(output) &&
+                                       session.GetResolvedValue(output) == output;
+        if (live_graph_output || session.HasLiveConsumers(output)) {
             return false;
         }
     }

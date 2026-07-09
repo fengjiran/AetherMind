@@ -85,6 +85,9 @@ StatusOr<bool> AllInputsAreInlineConstantValues(std::span<const NodeOutputDesc> 
 // the ConstantBinding inline_data heap — both must outlive the evaluator call.
 StatusOr<InputViews> BuildInputViews(std::span<const NodeOutputDesc> inputs) {
     InputViews result;
+    // reserve() on shapes/strides is critical: TensorView stores IntArrayView
+    // (span) pointing into these vectors. Without reserve, push_back reallocation
+    // would dangle spans already stored in result.views.
     result.views.reserve(inputs.size());
     result.metadata.shapes.reserve(inputs.size());
     result.metadata.strides.reserve(inputs.size());
@@ -115,6 +118,9 @@ StatusOr<InputViews> BuildInputViews(std::span<const NodeOutputDesc> inputs) {
 // ConstantBinding::inline_data without copying.
 StatusOr<OutputStorage> AllocateOutputViews(const ConstEvalPlan& plan) {
     OutputStorage result;
+    // reserve() on shapes/strides is critical: MutableTensorView stores
+    // IntArrayView (span) pointing into these vectors. Without reserve,
+    // push_back reallocation would dangle spans already stored in result.views.
     result.views.reserve(plan.outputs.size());
     result.buffers.reserve(plan.outputs.size());
     result.metadata.shapes.reserve(plan.outputs.size());

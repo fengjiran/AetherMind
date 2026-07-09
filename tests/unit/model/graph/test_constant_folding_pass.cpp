@@ -10,6 +10,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -49,13 +50,31 @@ GraphValueId AddTypedConstant(ModelGraph& graph,
 }
 
 GraphValueId AddFloatConstant(ModelGraph& graph,
-                              std::vector<float> values,
-                              std::vector<int64_t> shape,
-                              const std::string& name) {
+                               std::vector<float> values,
+                               std::vector<int64_t> shape,
+                               const std::string& name) {
     return graph.AddConstant(
             Spec(DataType::Float32(), std::move(shape)),
             ConstantBinding{.inline_data = InlineFloats(std::move(values)), .name = name},
             name);
+}
+
+GraphValueId AddFloatAddWithOutputShape(ModelGraph& graph,
+                                        GraphValueId lhs,
+                                        GraphValueId rhs,
+                                        std::vector<int64_t> output_shape,
+                                        std::string name) {
+    const auto node = graph.AddNode(
+            OpType::kAdd,
+            std::nullopt,
+            {lhs, rhs},
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), std::move(output_shape)),
+                            .payload = ActivationValue{}}},
+            AddParams{},
+            {},
+            std::move(name));
+    AM_CHECK(node.outputs.size() == 1U, "expected test Add node to have one output");
+    return node.outputs.front();
 }
 
 std::vector<float> ReadFloatConstant(const GraphValue& value) {
@@ -143,6 +162,58 @@ TEST(ConstantFoldingPass, FoldsAddOfTwoConstants) {
     ASSERT_EQ(values.size(), 2U);
     EXPECT_FLOAT_EQ(values[0], 4.0F);
     EXPECT_FLOAT_EQ(values[1], 6.0F);
+}
+
+TEST(ConstantFoldingPass, FoldsAddBroadcastRowVectorConstants) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddFloatConstant(graph,
+                                              {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F},
+                                              {2, 3},
+                                              "lhs");
+    const GraphValueId rhs = AddFloatConstant(graph, {10.0F, 20.0F, 30.0F}, {3}, "rhs");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 6U);
+    EXPECT_FLOAT_EQ(values[0], 11.0F);
+    EXPECT_FLOAT_EQ(values[1], 22.0F);
+    EXPECT_FLOAT_EQ(values[2], 33.0F);
+    EXPECT_FLOAT_EQ(values[3], 14.0F);
+    EXPECT_FLOAT_EQ(values[4], 25.0F);
+    EXPECT_FLOAT_EQ(values[5], 36.0F);
+}
+
+TEST(ConstantFoldingPass, FoldsAddBroadcastReversedInputConstants) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddFloatConstant(graph, {10.0F, 20.0F, 30.0F}, {3}, "lhs");
+    const GraphValueId rhs = AddFloatConstant(graph,
+                                              {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F},
+                                              {2, 3},
+                                              "rhs");
+    const GraphValueId sum = AddFloatAddWithOutputShape(graph, lhs, rhs, {2, 3}, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 6U);
+    EXPECT_FLOAT_EQ(values[0], 11.0F);
+    EXPECT_FLOAT_EQ(values[1], 22.0F);
+    EXPECT_FLOAT_EQ(values[2], 33.0F);
+    EXPECT_FLOAT_EQ(values[3], 14.0F);
+    EXPECT_FLOAT_EQ(values[4], 25.0F);
+    EXPECT_FLOAT_EQ(values[5], 36.0F);
 }
 
 TEST(ConstantFoldingPass, FoldsAddFloat64Constants) {

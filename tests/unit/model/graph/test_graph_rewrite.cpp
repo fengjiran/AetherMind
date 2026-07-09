@@ -897,7 +897,7 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
             std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}});
     const GraphValueId constant = graph.AddConstant(
             Spec(DataType::Float32(), {1}),
-            ConstantBinding{.name = "scalar.one", .inline_data = std::move(inline_data)},
+            ConstantBinding{.inline_data = std::move(inline_data), .name = "scalar.one"},
             "one");
     const AddedNode embed = graph.AddNode(
             OpType::kEmbedding,
@@ -941,7 +941,7 @@ TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
 
     const GraphValueId constant = session.AddConstant(
             Spec(DataType::Float32(), {1}),
-            ConstantBinding{.name = "folded.scalar", .inline_data = std::move(inline_data)},
+            ConstantBinding{.inline_data = std::move(inline_data), .name = "folded.scalar"},
             quantization,
             "folded");
     const StatusOr<ModelGraph> committed = session.Commit();

@@ -95,8 +95,8 @@ constexpr ParameterSlot SlotForTransformerRole(TransformerWeightRole role) noexc
 /// deep-copying the payload. Interning is transparent: callers that do not
 /// need inline data leave the pointer null.
 struct ConstantBinding {
-    std::string name{};
     std::shared_ptr<const std::vector<std::byte>> inline_data{};
+    std::string name{};
 
     AM_NODISCARD friend bool operator==(const ConstantBinding& lhs,
                                         const ConstantBinding& rhs) noexcept {

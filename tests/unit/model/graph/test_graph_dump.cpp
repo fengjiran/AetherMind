@@ -119,7 +119,7 @@ TEST(GraphDump, DumpsConstantValue) {
             std::vector<std::byte>{std::byte{0xAA}, std::byte{0xBB}});
     const GraphValueId constant = graph.AddConstant(
             Spec(DataType::Float32(), {4}),
-            ConstantBinding{.name = "rope.sin_cos_table", .inline_data = std::move(inline_data)},
+            ConstantBinding{.inline_data = std::move(inline_data), .name = "rope.sin_cos_table"},
             "rope_table");
     (void) constant;
 

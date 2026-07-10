@@ -72,7 +72,7 @@ bool SameStaticShape(const TensorSpec& lhs, const TensorSpec& rhs) {
     return lhs.shape == rhs.shape;
 }
 
-std::vector<int64_t> MakeContiguousStrides(std::span<const int64_t> shape) {
+StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape) {
     std::vector<int64_t> strides(shape.size());
     if (shape.empty()) {
         return strides;
@@ -80,7 +80,11 @@ std::vector<int64_t> MakeContiguousStrides(std::span<const int64_t> shape) {
 
     strides.back() = 1;
     for (size_t i = shape.size() - 1U; i > 0U; --i) {
-        strides[i - 1U] = strides[i] * shape[i];
+        int64_t product = 0;
+        if (CheckOverflowMul(strides[i], shape[i], &product)) {
+            return Status::ResourceExhausted("contiguous stride computation overflow");
+        }
+        strides[i - 1U] = product;
     }
     return strides;
 }
@@ -312,11 +316,20 @@ public:
                     "Add constant evaluator output byte budget exceeded");
         }
 
+        auto strides = MakeContiguousStrides(*shape);
+        if (!strides.ok()) {
+            if (strides.status().code() == StatusCode::kResourceExhausted) {
+                return Status::Unimplemented(
+                        "Add constant evaluator stride computation overflow");
+            }
+            return strides.status();
+        }
+
         ConstEvalPlan plan;
         plan.outputs.push_back({
                 .spec = output,
                 .quantization = outputs[0].quantization,
-                .strides = MakeContiguousStrides(*shape),
+                .strides = std::move(*strides),
                 .nbytes = *nbytes,
                 .debug_name = "folded_" + outputs[0].debug_name,
         });

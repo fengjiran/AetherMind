@@ -272,7 +272,7 @@ StatusOr<std::vector<int64_t>> ExtractStaticShape(const TensorSpec& spec) {
     return shape;
 }
 
-std::vector<int64_t> MakeContiguousStrides(std::span<const int64_t> shape) {
+StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape) {
     std::vector<int64_t> strides(shape.size());
     if (shape.empty()) {
         return strides;
@@ -280,13 +280,17 @@ std::vector<int64_t> MakeContiguousStrides(std::span<const int64_t> shape) {
 
     strides.back() = 1;
     for (size_t i = shape.size() - 1; i > 0; --i) {
-        strides[i - 1] = strides[i] * shape[i];
+        int64_t product = 0;
+        if (CheckOverflowMul(strides[i], shape[i], &product)) {
+            return Status::ResourceExhausted("contiguous stride computation overflow");
+        }
+        strides[i - 1] = product;
     }
     return strides;
 }
 ```
 
-是否要求静态 shape、是否接受非 contiguous layout、是否需要特殊 stride 语义由 evaluator 的 `Plan()` 决定。Pass 只根据 plan 分配可物化输出。
+`MakeContiguousStrides` 使用检查乘法 (checked multiplication) 拒绝其连续步幅计算会溢出 `int64_t` 的 shape（例如：前导维度为 0 但尾部维度极大的张量）。溢出返回 `Status::ResourceExhausted`；evaluator 和折叠 pass 中的调用方必须处理此情况。evaluator 将 `ResourceExhausted` 转换为 `Unimplemented`，使 pass 跳过该节点而不触发未定义行为。
 
 #### 3. 输出 buffer 生命周期
 

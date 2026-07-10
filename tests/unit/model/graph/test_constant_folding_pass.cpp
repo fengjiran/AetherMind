@@ -50,9 +50,9 @@ GraphValueId AddTypedConstant(ModelGraph& graph,
 }
 
 GraphValueId AddFloatConstant(ModelGraph& graph,
-                               std::vector<float> values,
-                               std::vector<int64_t> shape,
-                               const std::string& name) {
+                              std::vector<float> values,
+                              std::vector<int64_t> shape,
+                              const std::string& name) {
     return graph.AddConstant(
             Spec(DataType::Float32(), std::move(shape)),
             ConstantBinding{.inline_data = InlineFloats(std::move(values)), .name = name},
@@ -467,6 +467,31 @@ TEST(ConstantFoldingPass, FoldsAddOfEmptyTensors) {
     const auto* constant = std::get_if<ConstantValue>(&output.payload);
     ASSERT_TRUE(constant->binding.inline_data != nullptr);
     EXPECT_EQ(constant->binding.inline_data->size(), 0U);
+}
+
+// ── Zero-element tensor with extreme shape causing stride overflow ──
+// Regression: shape {0, 1LL<<62, 1LL<<62} has numel==0 (so CountBytes==0 and
+// all budget checks pass) but its contiguous stride computation overflows
+// int64_t. The pass must detect the overflow and skip folding without UB.
+
+TEST(ConstantFoldingPass, SkipsAddWhenContiguousStridesOverflow) {
+    constexpr int64_t kHuge = 1LL << 62;
+    const std::vector<int64_t> shape{0, kHuge, kHuge};
+
+    ModelGraph graph;
+    const GraphValueId lhs = AddFloatConstant(graph, {}, shape, "lhs");
+    const GraphValueId rhs = AddFloatConstant(graph, {}, shape, "rhs");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    // The Add node must NOT be folded because stride computation overflows.
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(
+            result->GetValue(result->GetOutputs()[0].value).payload));
 }
 
 // ── Single-element tensor (shape {1}) folding ──

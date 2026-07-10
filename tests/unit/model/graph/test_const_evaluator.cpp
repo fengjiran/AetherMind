@@ -10,6 +10,15 @@
 namespace aethermind {
 namespace {
 
+// Unwraps MakeContiguousStrides or fatally aborts the test.
+// Test shapes are crafted to avoid overflow; a failure here indicates
+// a bug in the test fixture, not the code under test.
+std::vector<int64_t> MakeContiguousStridesOrDie(std::span<const int64_t> shape) {
+    auto result = MakeContiguousStrides(shape);
+    AM_CHECK(result.ok(), "Test helper: MakeContiguousStrides failed: {}", result.status().ToString());
+    return std::move(*result);
+}
+
 TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
     return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
 }
@@ -90,9 +99,9 @@ void ExpectAddBroadcastEvaluation(DataType dtype,
                                   std::vector<int64_t> output_shape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<int64_t> lhs_strides = MakeContiguousStrides(lhs_shape);
-    const std::vector<int64_t> rhs_strides = MakeContiguousStrides(rhs_shape);
-    const std::vector<int64_t> output_strides = MakeContiguousStrides(output_shape);
+    const std::vector<int64_t> lhs_strides = MakeContiguousStridesOrDie(lhs_shape);
+    const std::vector<int64_t> rhs_strides = MakeContiguousStridesOrDie(rhs_shape);
+    const std::vector<int64_t> output_strides = MakeContiguousStridesOrDie(output_shape);
     const std::vector<std::byte> lhs_bytes = BytesFromValues(std::move(lhs));
     const std::vector<std::byte> rhs_bytes = BytesFromValues(std::move(rhs));
     std::vector<std::byte> output_bytes(expected.size() * sizeof(T));
@@ -429,9 +438,9 @@ TEST(ConstEvaluator, SkipsAddBroadcastInt32Overflow) {
     const std::vector<int64_t> lhs_shape{1};
     const std::vector<int64_t> rhs_shape{2};
     const std::vector<int64_t> output_shape{2};
-    const std::vector<int64_t> lhs_strides = MakeContiguousStrides(lhs_shape);
-    const std::vector<int64_t> rhs_strides = MakeContiguousStrides(rhs_shape);
-    const std::vector<int64_t> output_strides = MakeContiguousStrides(output_shape);
+    const std::vector<int64_t> lhs_strides = MakeContiguousStridesOrDie(lhs_shape);
+    const std::vector<int64_t> rhs_strides = MakeContiguousStridesOrDie(rhs_shape);
+    const std::vector<int64_t> output_strides = MakeContiguousStridesOrDie(output_shape);
     const std::vector<std::byte> lhs_bytes = BytesFromValues<int32_t>({std::numeric_limits<int32_t>::max()});
     const std::vector<std::byte> rhs_bytes = BytesFromValues<int32_t>({0, 1});
     std::vector<std::byte> output_bytes(2U * sizeof(int32_t));
@@ -467,6 +476,32 @@ TEST(ConstEvaluator, SkipsAddInt64Overflow) {
     const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
 
     EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+}
+
+// ── MakeContiguousStrides helper tests ──
+
+TEST(ConstEvaluator, MakeContiguousStridesEmpty) {
+    const auto result = MakeContiguousStrides(std::span<const int64_t>{});
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_TRUE(result->empty());
+}
+
+TEST(ConstEvaluator, MakeContiguousStridesZeroElement) {
+    const std::vector<int64_t> shape{0, 3};
+    const auto result = MakeContiguousStrides(shape);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->size(), 2U);
+    EXPECT_EQ((*result)[1], 1);
+    // strides[0] = 1 * 3 = 3 (no overflow since trailing dim is small)
+    EXPECT_EQ((*result)[0], 3);
+}
+
+TEST(ConstEvaluator, MakeContiguousStridesOverflow) {
+    constexpr int64_t kHuge = 1LL << 62;
+    const std::vector<int64_t> shape{0, kHuge, kHuge};
+    const auto result = MakeContiguousStrides(shape);
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
 }
 
 }// namespace

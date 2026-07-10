@@ -102,8 +102,9 @@ StatusOr<InputViews> BuildInputViews(std::span<const NodeOutputDesc> inputs) {
         auto shape = ExtractStaticShape(input.spec);
         AM_RETURN_IF_ERROR(shape.status());
         auto strides = MakeContiguousStrides(*shape);
+        AM_RETURN_IF_ERROR(strides.status());
         result.metadata.shapes.push_back(std::move(*shape));
-        result.metadata.strides.push_back(std::move(strides));
+        result.metadata.strides.push_back(std::move(*strides));
         result.views.emplace_back(constant->binding.inline_data->data(),
                                   input.spec.dtype,
                                   result.metadata.shapes.back(),
@@ -136,9 +137,14 @@ StatusOr<OutputStorage> AllocateOutputViews(const ConstEvalPlan& plan) {
                     "constant folding plan output byte size does not match spec");
         }
 
-        std::vector<int64_t> strides = output.strides.empty()
-                                               ? MakeContiguousStrides(*shape)
-                                               : output.strides;
+        std::vector<int64_t> strides;
+        if (output.strides.empty()) {
+            auto contiguous_strides = MakeContiguousStrides(*shape);
+            AM_RETURN_IF_ERROR(contiguous_strides.status());
+            strides = std::move(*contiguous_strides);
+        } else {
+            strides = output.strides;
+        }
         if (strides.size() != shape->size()) {
             return Status::Internal(
                     "constant folding plan output strides rank mismatch");

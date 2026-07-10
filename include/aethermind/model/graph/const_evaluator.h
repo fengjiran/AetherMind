@@ -117,7 +117,8 @@ AM_NODISCARD StatusOr<int64_t> CountElements(std::span<const int64_t> shape);
 AM_NODISCARD StatusOr<size_t> CountBytes(const TensorSpec& spec);
 
 /// Builds contiguous (row-major) strides from a static shape.
-AM_NODISCARD std::vector<int64_t> MakeContiguousStrides(std::span<const int64_t> shape);
+/// Returns ResourceExhausted when stride multiplication overflows int64_t.
+AM_NODISCARD StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape);
 
 /// Returns true when both specs have the same static shape.
 AM_NODISCARD bool SameStaticShape(const TensorSpec& lhs, const TensorSpec& rhs);

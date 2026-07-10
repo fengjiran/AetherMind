@@ -65,13 +65,6 @@ StatusOr<size_t> CountBytes(const TensorSpec& spec) {
     return element_count * element_bytes;
 }
 
-bool SameStaticShape(const TensorSpec& lhs, const TensorSpec& rhs) {
-    if (!lhs.shape.IsStatic() || !rhs.shape.IsStatic()) {
-        return false;
-    }
-    return lhs.shape == rhs.shape;
-}
-
 StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape) {
     std::vector<int64_t> strides(shape.size());
     if (shape.empty()) {

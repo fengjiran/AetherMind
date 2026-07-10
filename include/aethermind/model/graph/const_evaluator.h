@@ -119,10 +119,6 @@ AM_NODISCARD StatusOr<size_t> CountBytes(const TensorSpec& spec);
 /// Builds contiguous (row-major) strides from a static shape.
 /// Returns ResourceExhausted when stride multiplication overflows int64_t.
 AM_NODISCARD StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape);
-
-/// Returns true when both specs have the same static shape.
-AM_NODISCARD bool SameStaticShape(const TensorSpec& lhs, const TensorSpec& rhs);
-
 }// namespace aethermind
 
 #endif

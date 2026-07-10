@@ -494,6 +494,29 @@ TEST(ConstantFoldingPass, SkipsAddWhenContiguousStridesOverflow) {
             result->GetValue(result->GetOutputs()[0].value).payload));
 }
 
+// ── kNotFound semantics: the pass must skip unknown op types without error ──
+
+TEST(ConstantFoldingPass, SkipsUnknownOpTypeNode) {
+    ModelGraph graph;
+    const AddedNode node = graph.AddNode(
+            OpType::kUnknown,
+            std::nullopt,
+            {},
+            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1}),
+                            .payload = ActivationValue{}}},
+            std::monostate{},
+            {},
+            "unknown_op");
+    ASSERT_EQ(node.outputs.size(), 1U);
+
+    GraphRewriteSession session(graph);
+    ConstantFoldingPass pass;
+
+    const Status status = pass.Run(session, PassContext{});
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_EQ(session.GetResolvedValue(node.outputs[0]), node.outputs[0]);
+}
+
 // ── Single-element tensor (shape {1}) folding ──
 
 TEST(ConstantFoldingPass, FoldsAddOfSingleElementConstants) {

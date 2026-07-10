@@ -166,7 +166,7 @@ StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type) {
             return schema;
         }
     }
-    return Status::InvalidArgument("No ModelGraph operator schema registered for op");
+    return Status::NotFound("No ModelGraph operator schema registered for op");
 }
 
 std::span<const OperatorSchema> GetOperatorSchemas() noexcept {

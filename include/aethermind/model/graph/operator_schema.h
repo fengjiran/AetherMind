@@ -93,6 +93,9 @@ AM_NODISCARD bool HasStatefulOutput(const OperatorSchema& schema) noexcept;
 AM_NODISCARD bool IsPureOperator(const OperatorSchema& schema) noexcept;
 AM_NODISCARD bool IsCompileTimeEvaluable(const OperatorSchema& schema) noexcept;
 
+/// Looks up the schema for `op_type` from the static registry.
+/// Returns OK with the schema for a registered op, or kNotFound for an
+/// unregistered op type (e.g. OpType::kUnknown).
 AM_NODISCARD StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type);
 AM_NODISCARD std::span<const OperatorSchema> GetOperatorSchemas() noexcept;
 

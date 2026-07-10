@@ -181,11 +181,16 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
             continue;
         }
 
-        // Skip chain: each check that fails means "not foldable at this stage".
-        // Only failures that indicate a real bug propagate (e.g. schema lookup
-        // returning an error vs returning kNotFound).
-        if (auto schema = GetOperatorSchema(node->op_type);
-            !schema.ok() || !IsCompileTimeEvaluable(*schema)) {
+        // kNotFound means the op type is not registered — skip silently.
+        // Any other error (e.g. Internal) is a real bug and must propagate.
+        auto schema = GetOperatorSchema(node->op_type);
+        if (!schema.ok()) {
+            if (schema.status().code() == StatusCode::kNotFound) {
+                continue;
+            }
+            return schema.status();
+        }
+        if (!IsCompileTimeEvaluable(*schema)) {
             continue;
         }
 

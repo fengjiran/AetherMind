@@ -53,6 +53,7 @@ enum class StatusCode : uint8_t {
     kInternal,
     kUnavailable,
     kDataLoss,
+    kOverflow,
     kUnauthenticated
 };
 
@@ -73,6 +74,7 @@ static_assert(static_cast<uint8_t>(StatusCode::kInternal) == AM_STATUS_INTERNAL,
 static_assert(static_cast<uint8_t>(StatusCode::kUnavailable) == AM_STATUS_UNAVAILABLE, "Status code mismatch!");
 static_assert(static_cast<uint8_t>(StatusCode::kDataLoss) == AM_STATUS_DATA_LOSS, "Status code mismatch!");
 static_assert(static_cast<uint8_t>(StatusCode::kUnauthenticated) == AM_STATUS_UNAUTHENTICATED, "Status code mismatch!");
+static_assert(static_cast<uint8_t>(StatusCode::kOverflow) == AM_STATUS_OVERFLOW, "Status code mismatch!");
 
 /// Returns the human-readable name for a status code.
 ///
@@ -114,6 +116,8 @@ AM_NODISCARD constexpr std::string_view StatusCodeName(StatusCode code) noexcept
             return "DATA_LOSS";
         case StatusCode::kUnauthenticated:
             return "UNAUTHENTICATED";
+        case StatusCode::kOverflow:
+            return "OVERFLOW";
     }
     return "UNKNOWN";
 }
@@ -178,6 +182,10 @@ public:
 
     AM_NODISCARD static Status ResourceExhausted(std::string_view message) {
         return Status(StatusCode::kResourceExhausted, std::string(message));
+    }
+
+    AM_NODISCARD static Status Overflow(std::string_view message) {
+        return Status(StatusCode::kOverflow, std::string(message));
     }
 
     AM_NODISCARD bool ok() const noexcept {

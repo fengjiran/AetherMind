@@ -69,6 +69,7 @@ typedef enum am_status_code {
     AM_STATUS_INTERNAL,
     AM_STATUS_UNAVAILABLE,
     AM_STATUS_DATA_LOSS,
+    AM_STATUS_OVERFLOW,
     AM_STATUS_UNAUTHENTICATED
 } am_status_code;
 

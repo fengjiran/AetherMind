@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <span>
 #include <string>
 #include <type_traits>
@@ -41,11 +40,11 @@ StatusOr<int64_t> CountElements(std::span<const int64_t> shape) {
                     "static tensor dimensions must be non-negative");
         }
 
-        if (dim != 0 && numel > std::numeric_limits<int64_t>::max() / dim) {
-            return Status::ResourceExhausted(
-                    "tensor element count overflow");
+        int64_t product = 0;
+        if (CheckOverflowMul(numel, dim, &product)) {
+            return Status::Overflow("tensor element count overflow");
         }
-        numel *= dim;
+        numel = product;
     }
     return numel;
 }
@@ -59,10 +58,11 @@ StatusOr<size_t> CountBytes(const TensorSpec& spec) {
 
     const auto element_bytes = static_cast<size_t>(spec.dtype.nbytes());
     const auto element_count = static_cast<size_t>(*numel);
-    if (element_bytes != 0U && element_count > std::numeric_limits<size_t>::max() / element_bytes) {
-        return Status::ResourceExhausted("tensor byte size overflow");
+    size_t total_bytes = 0;
+    if (CheckOverflowMul(element_count, element_bytes, &total_bytes)) {
+        return Status::Overflow("tensor byte size overflow");
     }
-    return element_count * element_bytes;
+    return total_bytes;
 }
 
 StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape) {
@@ -75,7 +75,7 @@ StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> sh
     for (size_t i = shape.size() - 1U; i > 0U; --i) {
         int64_t product = 0;
         if (CheckOverflowMul(strides[i], shape[i], &product)) {
-            return Status::ResourceExhausted("contiguous stride computation overflow");
+            return Status::Overflow("contiguous stride computation overflow");
         }
         strides[i - 1U] = product;
     }
@@ -148,7 +148,7 @@ template<typename T>
 Status AddScalar(T lhs, T rhs, T& out) {
     if constexpr (std::is_integral_v<T>) {
         if (CheckOverflowAdd(lhs, rhs, &out)) {
-            return Status::Unimplemented("Add constant evaluator integer overflow");
+            return Status::Overflow("Add constant evaluator integer overflow");
         }
     } else {
         out = lhs + rhs;
@@ -310,13 +310,7 @@ public:
         }
 
         auto strides = MakeContiguousStrides(*shape);
-        if (!strides.ok()) {
-            if (strides.status().code() == StatusCode::kResourceExhausted) {
-                return Status::Unimplemented(
-                        "Add constant evaluator stride computation overflow");
-            }
-            return strides.status();
-        }
+        AM_RETURN_IF_ERROR(strides.status());
 
         ConstEvalPlan plan;
         plan.outputs.push_back({

@@ -129,7 +129,7 @@ AM_NODISCARD constexpr bool IsValidWorkspaceAlignment(size_t alignment) noexcept
 ///
 /// Overflow handling:
 /// - Checks `offset + alignment - 1` for overflow before masking.
-/// - Returns kOutOfRange status if overflow would occur.
+/// - Returns kOverflow status if overflow would occur.
 /// - In practice, workspace sizes (<100MB typical) never trigger this.
 AM_NODISCARD inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
                                                           size_t alignment) noexcept {
@@ -139,7 +139,7 @@ AM_NODISCARD inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
 
     size_t t = 0;
     if (CheckOverflowAdd(offset, alignment - 1, &t)) {
-        return Status::OutOfRange("Workspace offset alignment overflowed size_t");
+        return Status::Overflow("Workspace offset alignment overflowed size_t");
     }
 
     return t & ~(alignment - 1);
@@ -205,7 +205,7 @@ AM_NODISCARD inline StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
 
         size_t next_total = 0;
         if (CheckOverflowAdd(requirement.offset, requirement.bytes, &next_total)) {
-            return Status::OutOfRange(
+            return Status::Overflow(
                     "Workspace planning exceeded size_t capacity");
         }
 

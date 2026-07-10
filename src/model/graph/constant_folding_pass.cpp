@@ -211,11 +211,12 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
         AM_RETURN_IF_ERROR(output_descs.status());
 
         // Plan before allocation: validate feasibility and compute layout
-        // before spending memory on output buffers. Unimplemented means the
-        // evaluator cannot fold this node under the current constraints.
+        // before spending memory on output buffers. Unimplemented or Overflow
+        // means the evaluator cannot fold this node under the current constraints.
         auto plan = evaluator->Plan(
                 *input_descs, *output_descs, node->op_params, ctx.const_eval_policy);
-        if (plan.status().code() == StatusCode::kUnimplemented) {
+        if (plan.status().code() == StatusCode::kUnimplemented ||
+            plan.status().code() == StatusCode::kOverflow) {
             continue;
         }
         AM_RETURN_IF_ERROR(plan.status());
@@ -246,7 +247,8 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
         Status eval_status = evaluator->Evaluate(input_views->views,
                                                  output_storage->views,
                                                  node->op_params);
-        if (eval_status.code() == StatusCode::kUnimplemented) {
+        if (eval_status.code() == StatusCode::kUnimplemented ||
+            eval_status.code() == StatusCode::kOverflow) {
             continue;
         }
         AM_RETURN_IF_ERROR(eval_status);

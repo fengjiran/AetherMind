@@ -50,25 +50,25 @@ StatusOr<size_t> KVCacheLayout::Offset(size_t layer_idx,
 
     size_t offset = 0;
     if (CheckOverflowMul(layer_idx, layer_stride, &offset)) {
-        return Status::OutOfRange("KV layer offset overflowed size_t");
+        return Status::Overflow("KV layer offset overflowed size_t");
     }
 
     size_t head_offset = 0;
     if (CheckOverflowMul(kv_head_idx, head_stride, &head_offset) ||
         CheckOverflowAdd(offset, head_offset, &offset)) {
-        return Status::OutOfRange("KV head offset overflowed size_t");
+        return Status::Overflow("KV head offset overflowed size_t");
     }
 
     size_t token_offset = 0;
     if (CheckOverflowMul(seq_pos, token_stride, &token_offset) ||
         CheckOverflowAdd(offset, token_offset, &offset)) {
-        return Status::OutOfRange("KV token offset overflowed size_t");
+        return Status::Overflow("KV token offset overflowed size_t");
     }
 
     size_t dim_offset = 0;
     if (CheckOverflowMul(dim_idx, ElementBytes(), &dim_offset) ||
         CheckOverflowAdd(offset, dim_offset, &offset)) {
-        return Status::OutOfRange("KV dim offset overflowed size_t");
+        return Status::Overflow("KV dim offset overflowed size_t");
     }
 
     return offset;
@@ -78,7 +78,7 @@ StatusOr<size_t> KVCacheLayout::BytesPerPlane() const noexcept {
     AM_RETURN_IF_ERROR(Validate());
     size_t bytes = 0;
     if (CheckOverflowMul(num_layers, layer_stride, &bytes)) {
-        return Status::OutOfRange("KV bytes-per-plane overflowed size_t");
+        return Status::Overflow("KV bytes-per-plane overflowed size_t");
     }
     return bytes;
 }
@@ -158,7 +158,7 @@ Status KVCacheView::ValidateWrite(size_t layer_idx,
 
     size_t seq_end = 0;
     if (CheckOverflowAdd(seq_pos, token_count, &seq_end)) {
-        return Status::OutOfRange("KV write range overflowed size_t");
+        return Status::Overflow("KV write range overflowed size_t");
     }
 
     if (seq_end > slot_->capacity_tokens) {

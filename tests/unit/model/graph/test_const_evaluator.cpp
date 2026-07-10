@@ -429,7 +429,7 @@ TEST(ConstEvaluator, SkipsAddInt32Overflow) {
 
     const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
 }
 
 TEST(ConstEvaluator, SkipsAddBroadcastInt32Overflow) {
@@ -454,7 +454,7 @@ TEST(ConstEvaluator, SkipsAddBroadcastInt32Overflow) {
 
     const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
 }
 
 TEST(ConstEvaluator, SkipsAddInt64Overflow) {
@@ -475,7 +475,7 @@ TEST(ConstEvaluator, SkipsAddInt64Overflow) {
 
     const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
 }
 
 // ── MakeContiguousStrides helper tests ──
@@ -501,7 +501,7 @@ TEST(ConstEvaluator, MakeContiguousStridesOverflow) {
     const std::vector<int64_t> shape{0, kHuge, kHuge};
     const auto result = MakeContiguousStrides(shape);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
 }
 
 }// namespace

@@ -98,7 +98,7 @@ TEST(WorkspaceRequirementPlanning, DetectsOffsetOverflowDuringPlanning) {
     const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(layout.status().code(), StatusCode::kOverflow);
 }
 
 }// namespace

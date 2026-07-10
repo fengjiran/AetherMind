@@ -74,7 +74,7 @@ Status KVCacheManager::Init(size_t num_layers,
     if (CheckOverflowMul(layout_.head_dim_stride, element_bytes, &layout_.token_stride) ||
         CheckOverflowMul(layout_.max_tokens, layout_.token_stride, &layout_.head_stride) ||
         CheckOverflowMul(layout_.num_kv_heads, layout_.head_stride, &layout_.layer_stride)) {
-        return Status::OutOfRange("KV layout stride computation overflowed size_t");
+        return Status::Overflow("KV layout stride computation overflowed size_t");
     }
 
     AM_RETURN_IF_ERROR(layout_.Validate());
@@ -86,7 +86,7 @@ Status KVCacheManager::Init(size_t num_layers,
 
     size_t total_bytes = 0;
     if (CheckOverflowMul(bytes_per_plane.value(), size_t{2}, &total_bytes)) {
-        return Status::OutOfRange("KV total bytes overflowed size_t");
+        return Status::Overflow("KV total bytes overflowed size_t");
     }
 
     AM_RETURN_IF_ERROR(AllocateStorage(bytes_per_plane.value(), alignment));
@@ -107,7 +107,7 @@ StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
 
     size_t requested_tokens = 0;
     if (CheckOverflowAdd(prompt_len, max_new_tokens, &requested_tokens)) {
-        return Status::OutOfRange("KV session reservation overflowed size_t");
+        return Status::Overflow("KV session reservation overflowed size_t");
     }
     if (requested_tokens == 0) {
         return Status::InvalidArgument("KV session reservation must request at least one token");

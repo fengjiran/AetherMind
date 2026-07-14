@@ -11,32 +11,26 @@
 namespace aethermind {
 namespace {
 
-// Owns the shape and stride vectors that TensorView / MutableTensorView
-// borrow into. Bundled with the view container so they share a lifetime.
-struct BorrowedViewStorage {
+// Aggregates read-only TensorViews with their backing shape/strides.
+// Backing storage is declared first so it is destroyed after the borrowing views.
+struct InputViews {
     std::vector<std::vector<int64_t>> shapes{};
     std::vector<std::vector<int64_t>> strides{};
-};
-
-// Aggregates read-only TensorViews with their backing shape/strides.
-// The metadata must not outlive views that borrow into it.
-struct InputViews {
     std::vector<TensorView> views{};
-    BorrowedViewStorage metadata{};
 };
 
 // Aggregates mutable output views with the owning buffers.
 // `buffers` owns the byte storage; views borrow into both the buffers and
 // metadata. OutputStorage must outlive any use of its views.
 struct OutputStorage {
-    std::vector<MutableTensorView> views{};
     std::vector<std::shared_ptr<std::vector<std::byte>>> buffers{};
-    BorrowedViewStorage metadata{};
+    std::vector<std::vector<int64_t>> shapes{};
+    std::vector<std::vector<int64_t>> strides{};
+    std::vector<MutableTensorView> views{};
 };
 
-StatusOr<std::vector<NodeOutputDesc>> CollectValueDescs(
-        const GraphRewriteSession& session,
-        std::span<const GraphValueId> values) {
+StatusOr<std::vector<NodeOutputDesc>> CollectValueDescs(const GraphRewriteSession& session,
+                                                        std::span<const GraphValueId> values) {
     std::vector<NodeOutputDesc> descs;
     descs.reserve(values.size());
     for (const auto value: values) {
@@ -81,16 +75,17 @@ StatusOr<bool> AllInputsAreInlineConstantValues(std::span<const NodeOutputDesc> 
 }
 
 // Converts each input's ConstantValue::inline_data into a TensorView so the
-// evaluator can read the bytes. The views borrow into `result.metadata` and
-// the ConstantBinding inline_data heap — both must outlive the evaluator call.
+// evaluator can read the bytes. The views borrow into result.shapes,
+// result.strides, and the ConstantBinding inline_data heap; all backing
+// storage must outlive the evaluator call.
 StatusOr<InputViews> BuildInputViews(std::span<const NodeOutputDesc> inputs) {
     InputViews result;
     // reserve() on shapes/strides is critical: TensorView stores IntArrayView
     // (span) pointing into these vectors. Without reserve, push_back reallocation
     // would dangle spans already stored in result.views.
     result.views.reserve(inputs.size());
-    result.metadata.shapes.reserve(inputs.size());
-    result.metadata.strides.reserve(inputs.size());
+    result.shapes.reserve(inputs.size());
+    result.strides.reserve(inputs.size());
 
     for (const auto& input: inputs) {
         const auto* constant = std::get_if<ConstantValue>(&input.payload);
@@ -103,12 +98,12 @@ StatusOr<InputViews> BuildInputViews(std::span<const NodeOutputDesc> inputs) {
         AM_RETURN_IF_ERROR(shape.status());
         auto strides = MakeContiguousStrides(*shape);
         AM_RETURN_IF_ERROR(strides.status());
-        result.metadata.shapes.push_back(std::move(*shape));
-        result.metadata.strides.push_back(std::move(*strides));
+        result.shapes.push_back(std::move(*shape));
+        result.strides.push_back(std::move(*strides));
         result.views.emplace_back(constant->binding.inline_data->data(),
                                   input.spec.dtype,
-                                  result.metadata.shapes.back(),
-                                  result.metadata.strides.back());
+                                  result.shapes.back(),
+                                  result.strides.back());
     }
     return result;
 }
@@ -124,8 +119,8 @@ StatusOr<OutputStorage> AllocateOutputViews(const ConstEvalPlan& plan) {
     // push_back reallocation would dangle spans already stored in result.views.
     result.views.reserve(plan.outputs.size());
     result.buffers.reserve(plan.outputs.size());
-    result.metadata.shapes.reserve(plan.outputs.size());
-    result.metadata.strides.reserve(plan.outputs.size());
+    result.shapes.reserve(plan.outputs.size());
+    result.strides.reserve(plan.outputs.size());
 
     for (const auto& output: plan.outputs) {
         auto shape = ExtractStaticShape(output.spec);
@@ -151,12 +146,12 @@ StatusOr<OutputStorage> AllocateOutputViews(const ConstEvalPlan& plan) {
         }
 
         result.buffers.push_back(std::make_shared<std::vector<std::byte>>(output.nbytes));
-        result.metadata.shapes.push_back(std::move(*shape));
-        result.metadata.strides.push_back(std::move(strides));
+        result.shapes.push_back(std::move(*shape));
+        result.strides.push_back(std::move(strides));
         result.views.emplace_back(result.buffers.back()->data(),
                                   output.spec.dtype,
-                                  result.metadata.shapes.back(),
-                                  result.metadata.strides.back());
+                                  result.shapes.back(),
+                                  result.strides.back());
     }
     return result;
 }
@@ -185,11 +180,12 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
         // Any other error (e.g. Internal) is a real bug and must propagate.
         auto schema = GetOperatorSchema(node->op_type);
         if (!schema.ok()) {
-            if (schema.status().code() == StatusCode::kNotFound) {
+            if (schema.status() == StatusCode::kNotFound) {
                 continue;
             }
             return schema.status();
         }
+
         if (!IsCompileTimeEvaluable(*schema)) {
             continue;
         }
@@ -213,10 +209,12 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
         // Plan before allocation: validate feasibility and compute layout
         // before spending memory on output buffers. Unimplemented or Overflow
         // means the evaluator cannot fold this node under the current constraints.
-        auto plan = evaluator->Plan(
-                *input_descs, *output_descs, node->op_params, ctx.const_eval_policy);
-        if (plan.status().code() == StatusCode::kUnimplemented ||
-            plan.status().code() == StatusCode::kOverflow) {
+        auto plan = evaluator->Plan(*input_descs,
+                                    *output_descs,
+                                    node->op_params,
+                                    ctx.const_eval_policy);
+        if (plan.status() == StatusCode::kUnimplemented ||
+            plan.status() == StatusCode::kOverflow) {
             continue;
         }
         AM_RETURN_IF_ERROR(plan.status());

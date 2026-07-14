@@ -224,6 +224,7 @@ Status EvaluateUnaryStridedKernel(std::span<const TensorView> inputs,
 const ConstEvaluator& GetAddConstEvaluator() noexcept;
 const ConstEvaluator& GetMulConstEvaluator() noexcept;
 const ConstEvaluator& GetSiluConstEvaluator() noexcept;
+const ConstEvaluator& GetSiluMulConstEvaluator() noexcept;
 
 }// namespace aethermind::detail
 

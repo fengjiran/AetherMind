@@ -15,6 +15,7 @@ constexpr EvaluatorEntry kEvaluators[] = {
         {.op_type = OpType::kAdd, .accessor = &detail::GetAddConstEvaluator},
         {.op_type = OpType::kElementwiseMul, .accessor = &detail::GetMulConstEvaluator},
         {.op_type = OpType::kSilu, .accessor = &detail::GetSiluConstEvaluator},
+        {.op_type = OpType::kSiluMul, .accessor = &detail::GetSiluMulConstEvaluator},
 };
 
 }// namespace

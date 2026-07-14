@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -636,6 +637,94 @@ TEST(ConstantFoldingPass, DceRemovesFoldedMul) {
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     ASSERT_TRUE(result->Validate().ok());
     EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
+TEST(ConstantFoldingPass, FoldsSiluOfConstant) {
+    ModelGraph graph;
+    const GraphValueId input = AddFloatConstant(graph, {0.0F, 1.0F, 2.0F}, {3}, "input");
+    const GraphValueId act = AddSilu(graph, 0U, input, "act");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    ASSERT_EQ(result->GetOutputs().size(), 1U);
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 3U);
+    EXPECT_NEAR(values[0], 0.0F, 1e-5F);
+    EXPECT_NEAR(values[1], 0.7310586F, 1e-5F);
+    EXPECT_NEAR(values[2], 1.7615942F, 1e-5F);
+}
+
+TEST(ConstantFoldingPass, FoldsSiluBFloat16Constants) {
+    ModelGraph graph;
+    const GraphValueId input = AddTypedConstant(graph,
+                                                DataType::BFloat(16),
+                                                BFloat16Values({0x3F80U, 0x4000U, 0x4040U}),
+                                                {3},
+                                                "input");
+    const GraphValueId act = AddSilu(graph, 0U, input, "act");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    const std::vector<BFloat16> values = ReadTypedConstant<BFloat16>(output);
+    ASSERT_EQ(values.size(), 3U);
+    const std::vector<float> input_f = {1.0F, 2.0F, 3.0F};
+    std::vector<BFloat16> expected;
+    expected.reserve(3);
+    for (float x: input_f) {
+        float r;
+        if (x >= 0.0F) {
+            r = x / (1.0F + std::exp(-x));
+        } else {
+            r = x * std::exp(x) / (1.0F + std::exp(x));
+        }
+        expected.emplace_back(r);
+    }
+    EXPECT_EQ(BFloat16Bits(values), BFloat16Bits(expected));
+}
+
+TEST(ConstantFoldingPass, FoldsAddThenSiluChainedConstants) {
+    ModelGraph graph;
+    const GraphValueId a = AddFloatConstant(graph, {1.0F, 2.0F}, {2}, "a");
+    const GraphValueId b = AddFloatConstant(graph, {3.0F, 4.0F}, {2}, "b");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, a, b, "sum");
+    const GraphValueId act = AddSilu(graph, 0U, sum, "act");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+    const std::vector<float> values = ReadFloatConstant(result->GetValue(result->GetOutputs()[0].value));
+    ASSERT_EQ(values.size(), 2U);
+    EXPECT_NEAR(values[0], 3.928055F, 1e-5F);
+    EXPECT_NEAR(values[1], 5.985164F, 1e-5F);
+}
+
+TEST(ConstantFoldingPass, DceRemovesFoldedSilu) {
+    ModelGraph graph;
+    const GraphValueId input = AddFloatConstant(graph, {1.0F}, {1}, "input");
+    const GraphValueId act = AddSilu(graph, 0U, input, "act");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
     ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
 }
 

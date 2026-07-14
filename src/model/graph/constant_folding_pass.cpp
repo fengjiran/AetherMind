@@ -247,8 +247,8 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
         Status eval_status = evaluator->Evaluate(input_views->views,
                                                  output_storage->views,
                                                  node->op_params);
-        if (eval_status.code() == StatusCode::kUnimplemented ||
-            eval_status.code() == StatusCode::kOverflow) {
+        if (eval_status == StatusCode::kUnimplemented ||
+            eval_status == StatusCode::kOverflow) {
             continue;
         }
         AM_RETURN_IF_ERROR(eval_status);

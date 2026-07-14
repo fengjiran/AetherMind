@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/graph_rewrite.h"
+#include "test_graph_helpers.h"
 
 #include <algorithm>
 #include <array>
@@ -7,10 +8,6 @@
 
 namespace aethermind {
 namespace {
-
-TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
-}
 
 NodeOutputDesc HiddenDesc(const char* debug_name) {
     return NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),

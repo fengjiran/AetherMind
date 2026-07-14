@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/graph_dump.h"
+#include "test_graph_helpers.h"
 
 #include "aethermind/model/graph/graph_builder.h"
 
@@ -11,10 +12,6 @@
 
 namespace aethermind {
 namespace {
-
-TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
-}
 
 struct TestStorage : RawStorage {};
 

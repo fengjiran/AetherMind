@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/constant_folding_pass.h"
+#include "test_graph_helpers.h"
 
 #include "aethermind/model/graph/dead_code_elimination_pass.h"
 #include "aethermind/model/graph/graph_op_builder.h"
@@ -18,10 +19,6 @@
 
 namespace aethermind {
 namespace {
-
-TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
-}
 
 StatusOr<ModelGraph> RunConstantFolding(const ModelGraph& graph, PassContext ctx = {});
 

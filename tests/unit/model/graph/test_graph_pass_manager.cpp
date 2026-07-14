@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/graph_pass_manager.h"
+#include "test_graph_helpers.h"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -8,10 +9,6 @@
 
 namespace aethermind {
 namespace {
-
-TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
-}
 
 ModelGraph BuildGraph() {
     ModelGraph graph;

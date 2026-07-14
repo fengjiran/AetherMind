@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/const_evaluator.h"
+#include "test_graph_helpers.h"
 
 #include <cmath>
 #include <cstdint>
@@ -18,10 +19,6 @@ std::vector<int64_t> MakeContiguousStridesOrDie(std::span<const int64_t> shape) 
     auto result = MakeContiguousStrides(shape);
     AM_CHECK(result.ok(), "Test helper: MakeContiguousStrides failed: {}", result.status().ToString());
     return std::move(*result);
-}
-
-TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
 }
 
 template<typename T>

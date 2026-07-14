@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/graph.h"
+#include "test_graph_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -10,15 +11,6 @@
 
 namespace aethermind {
 namespace {
-
-TensorSpec Spec(DataType dtype, const std::vector<int64_t>& dims) {
-    std::vector<ShapeSymbol> symbols;
-    symbols.reserve(dims.size());
-    for (const int64_t dim: dims) {
-        symbols.push_back(ShapeSymbol::CreateFromValue(dim));
-    }
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(std::move(symbols))};
-}
 
 TensorSpec ActivationSpec() {
     return Spec(DataType::Float32(), {1, 8});

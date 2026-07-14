@@ -1,5 +1,6 @@
 #include "aethermind/model/graph/dead_code_elimination_pass.h"
 #include "aethermind/model/graph/graph_op_builder.h"
+#include "test_graph_helpers.h"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -7,10 +8,6 @@
 
 namespace aethermind {
 namespace {
-
-TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
-}
 
 GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {
     const GraphValueId tokens = graph.AddInput(

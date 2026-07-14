@@ -1,5 +1,6 @@
 #include "aethermind/model/graph/graph_op_builder.h"
 #include "aethermind/model/graph/silu_mul_fusion_pass.h"
+#include "test_graph_helpers.h"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -7,10 +8,6 @@
 
 namespace aethermind {
 namespace {
-
-TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
-}
 
 NodeOutputDesc ActivationDesc(const char* debug_name) {
     return {.spec = Spec(DataType::Float32(), {2, 4}),

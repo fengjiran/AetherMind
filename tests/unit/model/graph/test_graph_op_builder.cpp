@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/graph_op_builder.h"
+#include "test_graph_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -8,10 +9,6 @@
 
 namespace aethermind {
 namespace {
-
-TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
-}
 
 TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ModelGraph graph;

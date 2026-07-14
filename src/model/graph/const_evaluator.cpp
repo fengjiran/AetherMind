@@ -92,10 +92,6 @@ bool IsFoldableAddDType(const DataType& dtype) {
            dtype == DataType::Int(64);
 }
 
-bool ShapesEqual(std::span<const int64_t> lhs, std::span<const int64_t> rhs) {
-    return std::ranges::equal(lhs, rhs);
-}
-
 StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
                                                std::span<const int64_t> rhs_shape) {
     const size_t output_rank = std::max(lhs_shape.size(), rhs_shape.size());
@@ -201,8 +197,8 @@ Status EvaluateAddByDType(const DataType& dtype,
 }
 
 template<typename T>
-Status EvaluateAddBroadcastTyped(std::span<const TensorView> inputs,
-                                 std::span<MutableTensorView> outputs) {
+Status EvaluateAddStridedTyped(std::span<const TensorView> inputs,
+                               std::span<MutableTensorView> outputs) {
     auto lhs_effective_strides = BroadcastInputStrides(
             inputs[0].shape(),
             inputs[0].strides(),
@@ -245,23 +241,23 @@ Status EvaluateAddBroadcastByDType(const DataType& dtype,
                                    std::span<const TensorView> inputs,
                                    std::span<MutableTensorView> outputs) {
     if (dtype == DataType::Float32()) {
-        return EvaluateAddBroadcastTyped<float>(inputs, outputs);
+        return EvaluateAddStridedTyped<float>(inputs, outputs);
     }
 
     if (dtype == DataType::Double()) {
-        return EvaluateAddBroadcastTyped<double>(inputs, outputs);
+        return EvaluateAddStridedTyped<double>(inputs, outputs);
     }
 
     if (dtype == DataType::BFloat(16)) {
-        return EvaluateAddBroadcastTyped<BFloat16>(inputs, outputs);
+        return EvaluateAddStridedTyped<BFloat16>(inputs, outputs);
     }
 
     if (dtype == DataType::Int(32)) {
-        return EvaluateAddBroadcastTyped<int32_t>(inputs, outputs);
+        return EvaluateAddStridedTyped<int32_t>(inputs, outputs);
     }
 
     if (dtype == DataType::Int(64)) {
-        return EvaluateAddBroadcastTyped<int64_t>(inputs, outputs);
+        return EvaluateAddStridedTyped<int64_t>(inputs, outputs);
     }
     return Status::InvalidArgument("Add constant evaluator received unsupported dtype");
 }
@@ -349,7 +345,8 @@ public:
         }
 
         auto broadcast_shape = BroadcastShapes(inputs[0].shape(), inputs[1].shape());
-        if (!broadcast_shape.ok() || !ShapesEqual(*broadcast_shape, outputs[0].shape())) {
+        if (!broadcast_shape.ok() ||
+            !std::ranges::equal(*broadcast_shape, outputs[0].shape())) {
             return Status::InvalidArgument(
                     "Add constant evaluator received mismatched shapes");
         }

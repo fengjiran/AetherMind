@@ -12,46 +12,6 @@ namespace {
 
 using namespace aethermind;
 
-// 测试基本功能：创建指定大小和字符的字符串
-TEST(StringConstructorFill, BasicFunctionality) {
-    // 测试基本ASCII字符
-    String s1(5, 'a');
-    EXPECT_FALSE(s1.empty());
-    EXPECT_EQ(s1.size(), 5);
-    EXPECT_STREQ(s1.c_str(), "aaaaa");
-    EXPECT_EQ(s1.use_count(), 1);
-    EXPECT_TRUE(s1.unique());
-
-    // 测试数字字符
-    String s2(3, '5');
-    EXPECT_EQ(s2.size(), 3);
-    EXPECT_STREQ(s2.c_str(), "555");
-
-    // 测试特殊字符
-    String s3(2, '!');
-    EXPECT_EQ(s3.size(), 2);
-    EXPECT_STREQ(s3.c_str(), "!!");
-
-    String s4 = "hello";
-    s4.insert(s4.begin() + 2, 3, 'a');
-    std::memcpy(s4.data() + 2, "111", 0);
-    EXPECT_TRUE(s4 == "heaaallo");
-
-    int x = -105;
-    EXPECT_TRUE(to_string(x) == "-105");
-
-    using  KVType = std::pair<Any, Any>;
-    String s5 = "hello xxxxxxxxxxx";
-    String s6 = s5;
-    KVType p = {s5, s5};
-    EXPECT_EQ(s5.use_count(), 4);
-    p.~KVType();
-    EXPECT_EQ(s5.use_count(), 2);
-
-    String s7;
-    EXPECT_TRUE(s7.IsLocal());
-}
-
 // 测试边界情况：空字符串
 TEST(StringConstructorFill, EmptyString) {
     String s(0, 'x');

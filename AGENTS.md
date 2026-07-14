@@ -127,14 +127,27 @@ For implementation details, use `//`.
 See full comment rules:
 - `docs/guides/cpp_comment_guidelines.md`
 
-## 9. 额外 AI 指南
+## 9. 测试编写规范
+
+Tests use GoogleTest and live under `tests/unit/` (see §4 for run commands).
+
+- suite and test names use PascalCase; no `DISABLED_`, no commented-out `GTEST_SKIP()`
+- one behavior per test; prefer `EXPECT_*`, use `ASSERT_*` only when continuing would crash
+- death tests match `"Check failed"` (the `AM_CHECK` abort message) and guard debug-only checks with `#ifndef NDEBUG`
+- shared helpers go in `tests/unit/.../test_*_helpers.h` as `inline` functions, not in `include/`
+- reset global singletons in `TEST_F` `SetUp`/`TearDown`; seed RNGs explicitly
+
+See full test writing rules:
+- `docs/guides/test_writing_guidelines.md`
+
+## 10. 额外 AI 指南
 - `.cursorrules`：不存在
 - `.cursor/rules/`：不存在
 - `.github/copilot-instructions.md`：不存在
 - `ammalloc/AGENTS.md`：分配器子系统的 AI 上下文指南
 - `docs/products/aethermind_prd.md`：**Phase 1 产品需求与验收标准（必读）**
 
-## 10. Agent Memory System 执行约束
+## 11. Agent Memory System 执行约束
 
 使用记忆系统时必须遵守以下约束：
 
@@ -233,7 +246,7 @@ See full comment rules:
 - handoff 负责当前状态，memory/README 负责稳定规则；二者不能互相替代
 - 跨机器恢复时，必须先恢复上下文，再精准继续
 
-## 11. 推荐代理工作流
+## 12. 推荐代理工作流
 1. 修改前先阅读相关 `CMakeLists.txt` 和 `AGENTS.md`（若涉及架构/性能）。
 2. 进行最小化、风格一致的改动。
 3. 构建最小受影响目标（`--target <name>`）。

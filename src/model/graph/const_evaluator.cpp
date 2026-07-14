@@ -66,11 +66,11 @@ StatusOr<size_t> CountBytes(const TensorSpec& spec) {
 }
 
 StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape) {
-    std::vector<int64_t> strides(shape.size());
     if (shape.empty()) {
-        return strides;
+        return std::vector<int64_t>{};
     }
 
+    std::vector<int64_t> strides(shape.size());
     strides.back() = 1;
     for (size_t i = shape.size() - 1U; i > 0U; --i) {
         int64_t product = 0;
@@ -96,15 +96,19 @@ bool ShapesEqual(std::span<const int64_t> lhs, std::span<const int64_t> rhs) {
     return std::ranges::equal(lhs, rhs);
 }
 
-StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs,
-                                               std::span<const int64_t> rhs) {
-    const size_t output_rank = std::max(lhs.size(), rhs.size());
+StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
+                                               std::span<const int64_t> rhs_shape) {
+    const size_t output_rank = std::max(lhs_shape.size(), rhs_shape.size());
     std::vector<int64_t> output_shape(output_rank, 1);
-    const size_t lhs_axis_offset = output_rank - lhs.size();
-    const size_t rhs_axis_offset = output_rank - rhs.size();
+    const size_t lhs_axis_offset = output_rank - lhs_shape.size();
+    const size_t rhs_axis_offset = output_rank - rhs_shape.size();
     for (size_t output_axis = 0; output_axis < output_rank; ++output_axis) {
-        const int64_t lhs_dim = output_axis < lhs_axis_offset ? 1 : lhs[output_axis - lhs_axis_offset];
-        const int64_t rhs_dim = output_axis < rhs_axis_offset ? 1 : rhs[output_axis - rhs_axis_offset];
+        const int64_t lhs_dim = output_axis < lhs_axis_offset
+                                        ? 1
+                                        : lhs_shape[output_axis - lhs_axis_offset];
+        const int64_t rhs_dim = output_axis < rhs_axis_offset
+                                        ? 1
+                                        : rhs_shape[output_axis - rhs_axis_offset];
         if (lhs_dim < 0 || rhs_dim < 0) {
             return Status::InvalidArgument("broadcast dimensions must be non-negative");
         }
@@ -127,7 +131,7 @@ StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> in
         return Status::InvalidArgument("broadcast input metadata rank mismatch");
     }
 
-    std::vector<int64_t> effective_strides(output_shape.size(), 0);
+    std::vector<int64_t> effective_strides(output_shape.size());
     const size_t axis_offset = output_shape.size() - input_shape.size();
     for (size_t output_axis = axis_offset; output_axis < output_shape.size(); ++output_axis) {
         const size_t input_axis = output_axis - axis_offset;
@@ -138,7 +142,8 @@ StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> in
         } else if (input_dim == 1) {
             effective_strides[output_axis] = 0;
         } else {
-            return Status::InvalidArgument("input shape is not broadcast-compatible with output shape");
+            return Status::InvalidArgument(
+                    "input shape is not broadcast-compatible with output shape");
         }
     }
     return effective_strides;
@@ -198,24 +203,27 @@ Status EvaluateAddByDType(const DataType& dtype,
 template<typename T>
 Status EvaluateAddBroadcastTyped(std::span<const TensorView> inputs,
                                  std::span<MutableTensorView> outputs) {
-    auto lhs_effective_strides = BroadcastInputStrides(inputs[0].shape(),
-                                                       inputs[0].strides(),
-                                                       outputs[0].shape());
+    auto lhs_effective_strides = BroadcastInputStrides(
+            inputs[0].shape(),
+            inputs[0].strides(),
+            outputs[0].shape());
     AM_RETURN_IF_ERROR(lhs_effective_strides.status());
-    auto rhs_effective_strides = BroadcastInputStrides(inputs[1].shape(),
-                                                       inputs[1].strides(),
-                                                       outputs[0].shape());
+    auto rhs_effective_strides = BroadcastInputStrides(
+            inputs[1].shape(),
+            inputs[1].strides(),
+            outputs[0].shape());
     AM_RETURN_IF_ERROR(rhs_effective_strides.status());
 
     const auto* lhs = inputs[0].data<T>();
     const auto* rhs = inputs[1].data<T>();
     auto* out = outputs[0].data<T>();
     const auto output_shape = outputs[0].shape();
-    std::vector<int64_t> coordinates(output_shape.size(), 0);
+    std::vector<int64_t> coordinates(output_shape.size());
     int64_t lhs_offset = 0;
     int64_t rhs_offset = 0;
     for (int64_t output_index = 0; output_index < outputs[0].numel(); ++output_index) {
-        AM_RETURN_IF_ERROR(AddScalar(lhs[lhs_offset], rhs[rhs_offset], out[output_index]));
+        AM_RETURN_IF_ERROR(AddScalar(lhs[lhs_offset], rhs[rhs_offset],
+                                     out[output_index]));
         for (size_t remaining = output_shape.size(); remaining > 0U; --remaining) {
             const size_t axis = remaining - 1U;
             ++coordinates[axis];
@@ -275,7 +283,8 @@ public:
         const TensorSpec& output = outputs[0].spec;
         if (!IsFoldableAddDType(lhs.dtype) || rhs.dtype != lhs.dtype || output.dtype != lhs.dtype) {
             return Status::Unimplemented(
-                    "Add constant evaluator only supports float32, float64, bfloat16, int32, and int64 tensors");
+                    "Add constant evaluator only supports float32, float64, bfloat16, "
+                    "int32, and int64 tensors");
         }
 
         auto lhs_shape = ExtractStaticShape(lhs);
@@ -333,7 +342,8 @@ public:
         }
 
         const DataType dtype = inputs[0].dtype();
-        if (!IsFoldableAddDType(dtype) || inputs[1].dtype() != dtype || outputs[0].dtype() != dtype) {
+        if (!IsFoldableAddDType(dtype) || inputs[1].dtype() != dtype ||
+            outputs[0].dtype() != dtype) {
             return Status::InvalidArgument(
                     "Add constant evaluator received unsupported dtype");
         }

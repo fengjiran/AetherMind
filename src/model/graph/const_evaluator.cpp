@@ -4,6 +4,7 @@
 #include "aethermind/utils/overflow_check.h"
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -158,108 +159,127 @@ Status AddScalar(T lhs, T rhs, T& out) {
 }
 
 template<typename T>
-Status EvaluateAddTyped(std::span<const TensorView> inputs,
-                        std::span<MutableTensorView> outputs,
-                        int64_t numel) {
-    const auto* lhs = inputs[0].data<T>();
-    const auto* rhs = inputs[1].data<T>();
-    auto* out = outputs[0].data<T>();
-    for (int64_t i = 0; i < numel; ++i) {
-        AM_RETURN_IF_ERROR(AddScalar(lhs[i], rhs[i], out[i]));
+Status MultiplyScalar(T lhs, T rhs, T& out) {
+    if constexpr (std::is_integral_v<T>) {
+        if (CheckOverflowMul(lhs, rhs, &out)) {
+            return Status::Overflow("Mul constant evaluator integer overflow");
+        }
+    } else {
+        out = lhs * rhs;
     }
     return Status::Ok();
 }
 
-Status EvaluateAddByDType(const DataType& dtype,
-                          std::span<const TensorView> inputs,
-                          std::span<MutableTensorView> outputs,
-                          int64_t numel) {
-    if (dtype == DataType::Float32()) {
-        return EvaluateAddTyped<float>(inputs, outputs, numel);
+struct AddScalarOp {
+    template<typename T>
+    static Status Apply(T lhs, T rhs, T& out) {
+        return AddScalar(lhs, rhs, out);
     }
+};
 
-    if (dtype == DataType::Double()) {
-        return EvaluateAddTyped<double>(inputs, outputs, numel);
+struct MulScalarOp {
+    template<typename T>
+    static Status Apply(T lhs, T rhs, T& out) {
+        return MultiplyScalar(lhs, rhs, out);
     }
+};
 
-    if (dtype == DataType::BFloat(16)) {
-        return EvaluateAddTyped<BFloat16>(inputs, outputs, numel);
-    }
+template<typename Op, typename T>
+concept BinaryScalarOp = requires(T lhs, T rhs, T& out) {
+    { Op::template Apply<T>(lhs, rhs, out) } -> std::same_as<Status>;
+};
 
-    if (dtype == DataType::Int(32)) {
-        return EvaluateAddTyped<int32_t>(inputs, outputs, numel);
-    }
-
-    if (dtype == DataType::Int(64)) {
-        return EvaluateAddTyped<int64_t>(inputs, outputs, numel);
-    }
-    return Status::InvalidArgument("Add constant evaluator received unsupported dtype");
-}
-
-template<typename T>
-Status EvaluateAddStridedTyped(std::span<const TensorView> inputs,
-                               std::span<MutableTensorView> outputs) {
-    auto lhs_effective_strides = BroadcastInputStrides(
-            inputs[0].shape(),
-            inputs[0].strides(),
-            outputs[0].shape());
-    AM_RETURN_IF_ERROR(lhs_effective_strides.status());
-    auto rhs_effective_strides = BroadcastInputStrides(
-            inputs[1].shape(),
-            inputs[1].strides(),
-            outputs[0].shape());
-    AM_RETURN_IF_ERROR(rhs_effective_strides.status());
-
+template<typename Op, typename T>
+    requires BinaryScalarOp<Op, T>
+Status EvaluateBinaryFlatTyped(std::span<const TensorView> inputs,
+                               std::span<MutableTensorView> outputs,
+                               int64_t numel) {
     const auto* lhs = inputs[0].data<T>();
     const auto* rhs = inputs[1].data<T>();
     auto* out = outputs[0].data<T>();
-    const auto output_shape = outputs[0].shape();
-    std::vector<int64_t> coordinates(output_shape.size());
+    for (int64_t i = 0; i < numel; ++i) {
+        AM_RETURN_IF_ERROR(Op::template Apply<T>(lhs[i], rhs[i], out[i]));
+    }
+    return Status::Ok();
+}
+
+template<typename Op>
+Status EvaluateBinaryByDType(const DataType& dtype,
+                             std::span<const TensorView> inputs,
+                             std::span<MutableTensorView> outputs,
+                             int64_t numel) {
+    if (dtype == DataType::Float32()) {
+        return EvaluateBinaryFlatTyped<Op, float>(inputs, outputs, numel);
+    }
+    if (dtype == DataType::Double()) {
+        return EvaluateBinaryFlatTyped<Op, double>(inputs, outputs, numel);
+    }
+    if (dtype == DataType::BFloat(16)) {
+        return EvaluateBinaryFlatTyped<Op, BFloat16>(inputs, outputs, numel);
+    }
+    if (dtype == DataType::Int(32)) {
+        return EvaluateBinaryFlatTyped<Op, int32_t>(inputs, outputs, numel);
+    }
+    if (dtype == DataType::Int(64)) {
+        return EvaluateBinaryFlatTyped<Op, int64_t>(inputs, outputs, numel);
+    }
+    return Status::InvalidArgument("binary constant evaluator received unsupported dtype");
+}
+
+template<typename Op, typename T>
+    requires BinaryScalarOp<Op, T>
+Status EvaluateBinaryStridedKernel(std::span<const TensorView> inputs,
+                                   std::span<MutableTensorView> outputs,
+                                   std::span<const int64_t> lhs_strides,
+                                   std::span<const int64_t> rhs_strides) {
+    const auto* lhs = inputs[0].data<T>();
+    const auto* rhs = inputs[1].data<T>();
+    auto* out = outputs[0].data<T>();
+    const auto shape = outputs[0].shape();
+    std::vector<int64_t> coordinates(shape.size());
     int64_t lhs_offset = 0;
     int64_t rhs_offset = 0;
     for (int64_t output_index = 0; output_index < outputs[0].numel(); ++output_index) {
-        AM_RETURN_IF_ERROR(AddScalar(lhs[lhs_offset], rhs[rhs_offset],
-                                     out[output_index]));
-        for (size_t remaining = output_shape.size(); remaining > 0U; --remaining) {
+        AM_RETURN_IF_ERROR(Op::template Apply<T>(lhs[lhs_offset], rhs[rhs_offset],
+                                                 out[output_index]));
+        for (size_t remaining = shape.size(); remaining > 0U; --remaining) {
             const size_t axis = remaining - 1U;
             ++coordinates[axis];
-            lhs_offset += (*lhs_effective_strides)[axis];
-            rhs_offset += (*rhs_effective_strides)[axis];
-            if (coordinates[axis] < output_shape[axis]) {
+            lhs_offset += lhs_strides[axis];
+            rhs_offset += rhs_strides[axis];
+            if (coordinates[axis] < shape[axis]) {
                 break;
             }
-
             coordinates[axis] = 0;
-            lhs_offset -= (*lhs_effective_strides)[axis] * output_shape[axis];
-            rhs_offset -= (*rhs_effective_strides)[axis] * output_shape[axis];
+            lhs_offset -= lhs_strides[axis] * shape[axis];
+            rhs_offset -= rhs_strides[axis] * shape[axis];
         }
     }
     return Status::Ok();
 }
 
-Status EvaluateAddBroadcastByDType(const DataType& dtype,
-                                   std::span<const TensorView> inputs,
-                                   std::span<MutableTensorView> outputs) {
+template<typename Op>
+Status EvaluateBinaryStridedByDType(const DataType& dtype,
+                                    std::span<const TensorView> inputs,
+                                    std::span<MutableTensorView> outputs,
+                                    std::span<const int64_t> lhs_strides,
+                                    std::span<const int64_t> rhs_strides) {
     if (dtype == DataType::Float32()) {
-        return EvaluateAddStridedTyped<float>(inputs, outputs);
+        return EvaluateBinaryStridedKernel<Op, float>(inputs, outputs, lhs_strides, rhs_strides);
     }
-
     if (dtype == DataType::Double()) {
-        return EvaluateAddStridedTyped<double>(inputs, outputs);
+        return EvaluateBinaryStridedKernel<Op, double>(inputs, outputs, lhs_strides, rhs_strides);
     }
-
     if (dtype == DataType::BFloat(16)) {
-        return EvaluateAddStridedTyped<BFloat16>(inputs, outputs);
+        return EvaluateBinaryStridedKernel<Op, BFloat16>(inputs, outputs, lhs_strides, rhs_strides);
     }
-
     if (dtype == DataType::Int(32)) {
-        return EvaluateAddStridedTyped<int32_t>(inputs, outputs);
+        return EvaluateBinaryStridedKernel<Op, int32_t>(inputs, outputs, lhs_strides, rhs_strides);
     }
-
     if (dtype == DataType::Int(64)) {
-        return EvaluateAddStridedTyped<int64_t>(inputs, outputs);
+        return EvaluateBinaryStridedKernel<Op, int64_t>(inputs, outputs, lhs_strides, rhs_strides);
     }
-    return Status::InvalidArgument("Add constant evaluator received unsupported dtype");
+    return Status::InvalidArgument("binary constant evaluator received unsupported dtype");
 }
 
 class AddConstEvaluator final : public ConstEvaluator {
@@ -359,14 +379,132 @@ public:
         if (inputs[0].shape() == outputs[0].shape() &&
             inputs[1].shape() == outputs[0].shape() &&
             inputs[0].is_contiguous() && inputs[1].is_contiguous()) {
-            return EvaluateAddByDType(dtype, inputs, outputs, outputs[0].numel());
+            return EvaluateBinaryByDType<AddScalarOp>(dtype, inputs, outputs, outputs[0].numel());
         }
 
-        return EvaluateAddBroadcastByDType(dtype, inputs, outputs);
+        auto lhs_strides = BroadcastInputStrides(
+                inputs[0].shape(), inputs[0].strides(), outputs[0].shape());
+        AM_RETURN_IF_ERROR(lhs_strides.status());
+        auto rhs_strides = BroadcastInputStrides(
+                inputs[1].shape(), inputs[1].strides(), outputs[0].shape());
+        AM_RETURN_IF_ERROR(rhs_strides.status());
+        return EvaluateBinaryStridedByDType<AddScalarOp>(dtype, inputs, outputs,
+                                                         *lhs_strides, *rhs_strides);
     }
 };
 
 const AddConstEvaluator kAddEvaluator;
+
+bool IsFoldableMulDType(const DataType& dtype) {
+    return dtype == DataType::Float32() ||
+           dtype == DataType::Double() ||
+           dtype == DataType::BFloat(16) ||
+           dtype == DataType::Int(32) ||
+           dtype == DataType::Int(64);
+}
+
+class ElementwiseMulConstEvaluator final : public ConstEvaluator {
+public:
+    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const NodeOutputDesc> inputs,
+                                              std::span<const NodeOutputDesc> outputs,
+                                              const OpParams& params,
+                                              const ConstEvalPolicy& policy) const override {
+        if (inputs.size() != 2U || outputs.size() != 1U ||
+            !std::holds_alternative<ElementwiseMulParams>(params)) {
+            return Status::Unimplemented(
+                    "ElementwiseMul constant evaluator requires two inputs and one output");
+        }
+
+        const TensorSpec& lhs = inputs[0].spec;
+        const TensorSpec& rhs = inputs[1].spec;
+        const TensorSpec& output = outputs[0].spec;
+        if (!IsFoldableMulDType(lhs.dtype) || rhs.dtype != lhs.dtype || output.dtype != lhs.dtype) {
+            return Status::Unimplemented(
+                    "ElementwiseMul constant evaluator only supports float32, float64, bfloat16, "
+                    "int32, and int64 tensors");
+        }
+
+        auto lhs_shape = ExtractStaticShape(lhs);
+        AM_RETURN_IF_ERROR(lhs_shape.status());
+        auto rhs_shape = ExtractStaticShape(rhs);
+        AM_RETURN_IF_ERROR(rhs_shape.status());
+        auto shape = ExtractStaticShape(output);
+        AM_RETURN_IF_ERROR(shape.status());
+        if (lhs_shape->empty() || rhs_shape->empty() || shape->empty()) {
+            return Status::Unimplemented(
+                    "ElementwiseMul constant evaluator requires non-scalar tensor shapes");
+        }
+
+        if (*lhs_shape != *shape || *rhs_shape != *shape) {
+            return Status::Unimplemented(
+                    "ElementwiseMul constant evaluator requires identical static shapes for lhs, rhs, and output");
+        }
+
+        auto numel = CountElements(*shape);
+        AM_RETURN_IF_ERROR(numel.status());
+        if (static_cast<size_t>(*numel) > policy.max_compute_elements) {
+            return Status::Unimplemented(
+                    "ElementwiseMul constant evaluator compute budget exceeded");
+        }
+
+        auto nbytes = CountBytes(output);
+        AM_RETURN_IF_ERROR(nbytes.status());
+        if (*nbytes > policy.max_output_bytes) {
+            return Status::Unimplemented(
+                    "ElementwiseMul constant evaluator output byte budget exceeded");
+        }
+
+        auto strides = MakeContiguousStrides(*shape);
+        AM_RETURN_IF_ERROR(strides.status());
+
+        ConstEvalPlan plan;
+        plan.outputs.push_back({
+                .spec = output,
+                .quantization = outputs[0].quantization,
+                .strides = std::move(*strides),
+                .nbytes = *nbytes,
+                .debug_name = "folded_" + outputs[0].debug_name,
+        });
+        return plan;
+    }
+
+    AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
+                                 std::span<MutableTensorView> outputs,
+                                 const OpParams& params) const override {
+        if (inputs.size() != 2U || outputs.size() != 1U ||
+            !std::holds_alternative<ElementwiseMulParams>(params)) {
+            return Status::InvalidArgument(
+                    "ElementwiseMul constant evaluator received invalid view arity");
+        }
+
+        const DataType dtype = inputs[0].dtype();
+        if (!IsFoldableMulDType(dtype) || inputs[1].dtype() != dtype ||
+            outputs[0].dtype() != dtype) {
+            return Status::InvalidArgument(
+                    "ElementwiseMul constant evaluator received unsupported dtype");
+        }
+
+        if (inputs[0].shape() != outputs[0].shape() ||
+            inputs[1].shape() != outputs[0].shape()) {
+            return Status::InvalidArgument(
+                    "ElementwiseMul constant evaluator received mismatched shapes");
+        }
+
+        if (!outputs[0].is_contiguous()) {
+            return Status::InvalidArgument(
+                    "ElementwiseMul constant evaluator requires contiguous output tensor");
+        }
+
+        if (inputs[0].is_contiguous() && inputs[1].is_contiguous()) {
+            return EvaluateBinaryByDType<MulScalarOp>(dtype, inputs, outputs, outputs[0].numel());
+        }
+
+        return EvaluateBinaryStridedByDType<MulScalarOp>(dtype, inputs, outputs,
+                                                         inputs[0].strides(), inputs[1].strides());
+    }
+};
+
+const ElementwiseMulConstEvaluator kMulEvaluator;
 
 struct EvaluatorEntry {
     OpType op_type;
@@ -375,6 +513,7 @@ struct EvaluatorEntry {
 
 constexpr EvaluatorEntry kEvaluators[] = {
         {.op_type = OpType::kAdd, .evaluator = &kAddEvaluator},
+        {.op_type = OpType::kElementwiseMul, .evaluator = &kMulEvaluator},
 };
 
 }// namespace

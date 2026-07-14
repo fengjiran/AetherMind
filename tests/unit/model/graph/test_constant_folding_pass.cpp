@@ -538,5 +538,106 @@ TEST(ConstantFoldingPass, FoldsAddOfSingleElementConstants) {
     EXPECT_FLOAT_EQ(values[0], 4.0F);
 }
 
+// ── ElementwiseMul constant folding tests ──
+
+TEST(ConstantFoldingPass, FoldsMulOfTwoConstants) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddFloatConstant(graph, {2.0F, 3.0F}, {2}, "lhs");
+    const GraphValueId rhs = AddFloatConstant(graph, {4.0F, 5.0F}, {2}, "rhs");
+    const GraphValueId product = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
+    graph.MarkOutput(product, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    ASSERT_EQ(result->GetOutputs().size(), 1U);
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 2U);
+    EXPECT_FLOAT_EQ(values[0], 8.0F);
+    EXPECT_FLOAT_EQ(values[1], 15.0F);
+}
+
+TEST(ConstantFoldingPass, FoldsMulBFloat16Constants) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant(graph,
+                                              DataType::BFloat(16),
+                                              BFloat16Values({0x4000U, 0x4040U}),
+                                              {2},
+                                              "lhs");
+    const GraphValueId rhs = AddTypedConstant(graph,
+                                              DataType::BFloat(16),
+                                              BFloat16Values({0x4000U, 0x4000U}),
+                                              {2},
+                                              "rhs");
+    const GraphValueId product = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
+    graph.MarkOutput(product, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_EQ(BFloat16Bits(ReadTypedConstant<BFloat16>(output)),
+              (std::vector<uint16_t>{0x4080U, 0x40C0U}));
+}
+
+TEST(ConstantFoldingPass, SkipsMulInt32Overflow) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant<int32_t>(
+            graph, DataType::Int(32), {std::numeric_limits<int32_t>::max()}, {1}, "lhs");
+    const GraphValueId rhs = AddTypedConstant<int32_t>(graph, DataType::Int(32), {2}, {1}, "rhs");
+    const GraphValueId product = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
+    graph.MarkOutput(product, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
+TEST(ConstantFoldingPass, FoldsAddThenMulChainedConstants) {
+    ModelGraph graph;
+    const GraphValueId a = AddFloatConstant(graph, {1.0F, 2.0F}, {2}, "a");
+    const GraphValueId b = AddFloatConstant(graph, {3.0F, 4.0F}, {2}, "b");
+    const GraphValueId c = AddFloatConstant(graph, {2.0F, 3.0F}, {2}, "c");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, a, b, "sum");
+    const GraphValueId product = AddElementwiseMul(graph, 0U, sum, c, "product");
+    graph.MarkOutput(product, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+    const std::vector<float> values = ReadFloatConstant(result->GetValue(result->GetOutputs()[0].value));
+    ASSERT_EQ(values.size(), 2U);
+    // Expected: (1+3)*2=8, (2+4)*3=18
+    EXPECT_FLOAT_EQ(values[0], 8.0F);
+    EXPECT_FLOAT_EQ(values[1], 18.0F);
+}
+
+TEST(ConstantFoldingPass, DceRemovesFoldedMul) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddFloatConstant(graph, {2.0F}, {1}, "lhs");
+    const GraphValueId rhs = AddFloatConstant(graph, {3.0F}, {1}, "rhs");
+    const GraphValueId product = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
+    graph.MarkOutput(product, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
 }// namespace
 }// namespace aethermind

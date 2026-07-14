@@ -127,7 +127,7 @@ public:
         }
 
         if (inputs[0].is_contiguous() && inputs[1].is_contiguous()) {
-            return detail::EvaluateBinaryByDType<MulScalarOp>(dtype, inputs, outputs, outputs[0].numel());
+            return detail::EvaluateBinaryFlatByDType<MulScalarOp>(dtype, inputs, outputs, outputs[0].numel());
         }
 
         return detail::EvaluateBinaryStridedByDType<MulScalarOp>(dtype, inputs, outputs,

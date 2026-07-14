@@ -23,11 +23,12 @@ const ConstEvaluator* FindConstEvaluator(OpType op_type) noexcept {
     auto pred = [op_type](const EvaluatorEntry& entry) {
         return entry.op_type == op_type;
     };
+
     const auto it = std::ranges::find_if(kEvaluators, pred);
     if (it == std::end(kEvaluators)) {
         return nullptr;
     }
-    return &(it->accessor());
+    return &it->accessor();
 }
 
 }// namespace aethermind

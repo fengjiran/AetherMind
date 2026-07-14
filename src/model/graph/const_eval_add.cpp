@@ -66,8 +66,8 @@ public:
                     "Add constant evaluator requires non-scalar tensor shapes");
         }
 
-        auto broadcast_shape = detail::BroadcastShapes(*lhs_shape, *rhs_shape);
-        if (!broadcast_shape.ok() || *broadcast_shape != *shape) {
+        if (auto broadcast_shape = detail::BroadcastShapes(*lhs_shape, *rhs_shape);
+            !broadcast_shape.ok() || *broadcast_shape != *shape) {
             return Status::Unimplemented(
                     "Add constant evaluator requires broadcast-compatible static shapes matching output");
         }
@@ -109,39 +109,38 @@ public:
                     "Add constant evaluator received invalid view arity");
         }
 
-        const DataType dtype = inputs[0].dtype();
-        if (!IsFoldableAddDType(dtype) || inputs[1].dtype() != dtype ||
-            outputs[0].dtype() != dtype) {
+        const auto& lhs = inputs[0];
+        const auto& rhs = inputs[1];
+        const auto& out = outputs[0];
+
+        const DataType dtype = lhs.dtype();
+        if (!IsFoldableAddDType(dtype) || rhs.dtype() != dtype || out.dtype() != dtype) {
             return Status::InvalidArgument(
                     "Add constant evaluator received unsupported dtype");
         }
 
-        auto broadcast_shape = detail::BroadcastShapes(inputs[0].shape(), inputs[1].shape());
-        if (!broadcast_shape.ok() ||
-            !std::ranges::equal(*broadcast_shape, outputs[0].shape())) {
+        if (auto broadcast_shape = detail::BroadcastShapes(lhs.shape(), rhs.shape());
+            !broadcast_shape.ok() || !std::ranges::equal(*broadcast_shape, out.shape())) {
             return Status::InvalidArgument(
                     "Add constant evaluator received mismatched shapes");
         }
 
-        if (!outputs[0].is_contiguous()) {
+        if (!out.is_contiguous()) {
             return Status::InvalidArgument(
                     "Add constant evaluator requires contiguous output tensor");
         }
 
-        if (inputs[0].shape() == outputs[0].shape() &&
-            inputs[1].shape() == outputs[0].shape() &&
-            inputs[0].is_contiguous() && inputs[1].is_contiguous()) {
-            return detail::EvaluateBinaryByDType<AddScalarOp>(dtype, inputs, outputs, outputs[0].numel());
+        if (lhs.shape() == out.shape() && rhs.shape() == out.shape() && lhs.is_contiguous() && rhs.is_contiguous()) {
+            return detail::EvaluateBinaryFlatByDType<AddScalarOp>(dtype, inputs, outputs, out.numel());
         }
 
-        auto lhs_strides = detail::BroadcastInputStrides(
-                inputs[0].shape(), inputs[0].strides(), outputs[0].shape());
+        auto lhs_strides = detail::BroadcastInputStrides(lhs.shape(), lhs.strides(),
+                                                         out.shape());
         AM_RETURN_IF_ERROR(lhs_strides.status());
-        auto rhs_strides = detail::BroadcastInputStrides(
-                inputs[1].shape(), inputs[1].strides(), outputs[0].shape());
+        auto rhs_strides = detail::BroadcastInputStrides(rhs.shape(), rhs.strides(),
+                                                         out.shape());
         AM_RETURN_IF_ERROR(rhs_strides.status());
-        return detail::EvaluateBinaryStridedByDType<AddScalarOp>(dtype, inputs, outputs,
-                                                                 *lhs_strides, *rhs_strides);
+        return detail::EvaluateBinaryStridedByDType<AddScalarOp>(dtype, inputs, outputs, *lhs_strides, *rhs_strides);
     }
 };
 

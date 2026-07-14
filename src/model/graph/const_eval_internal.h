@@ -16,7 +16,6 @@
 namespace aethermind::detail {
 
 // ── Broadcast helpers (shared across evaluator implementations) ──
-
 inline StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
                                                       std::span<const int64_t> rhs_shape) {
     const size_t output_rank = std::max(lhs_shape.size(), rhs_shape.size());
@@ -71,7 +70,6 @@ inline StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int6
 }
 
 // ── Shared binary kernel templates ──
-
 template<typename Op, typename T>
 concept BinaryScalarOp = requires(T lhs, T rhs, T& out) {
     { Op::template Apply<T>(lhs, rhs, out) } -> std::same_as<Status>;
@@ -86,28 +84,32 @@ Status EvaluateBinaryFlatTyped(std::span<const TensorView> inputs,
     const auto* rhs = inputs[1].data<T>();
     auto* out = outputs[0].data<T>();
     for (int64_t i = 0; i < numel; ++i) {
-        AM_RETURN_IF_ERROR(Op::template Apply<T>(lhs[i], rhs[i], out[i]));
+        AM_RETURN_IF_ERROR(Op::Apply(lhs[i], rhs[i], out[i]));
     }
     return Status::Ok();
 }
 
 template<typename Op>
-Status EvaluateBinaryByDType(const DataType& dtype,
-                             std::span<const TensorView> inputs,
-                             std::span<MutableTensorView> outputs,
-                             int64_t numel) {
+Status EvaluateBinaryFlatByDType(const DataType& dtype,
+                                 std::span<const TensorView> inputs,
+                                 std::span<MutableTensorView> outputs,
+                                 int64_t numel) {
     if (dtype == DataType::Float32()) {
         return EvaluateBinaryFlatTyped<Op, float>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::Double()) {
         return EvaluateBinaryFlatTyped<Op, double>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::BFloat(16)) {
         return EvaluateBinaryFlatTyped<Op, BFloat16>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::Int(32)) {
         return EvaluateBinaryFlatTyped<Op, int32_t>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::Int(64)) {
         return EvaluateBinaryFlatTyped<Op, int64_t>(inputs, outputs, numel);
     }
@@ -128,8 +130,7 @@ Status EvaluateBinaryStridedKernel(std::span<const TensorView> inputs,
     int64_t lhs_offset = 0;
     int64_t rhs_offset = 0;
     for (int64_t output_index = 0; output_index < outputs[0].numel(); ++output_index) {
-        AM_RETURN_IF_ERROR(Op::template Apply<T>(lhs[lhs_offset], rhs[rhs_offset],
-                                                 out[output_index]));
+        AM_RETURN_IF_ERROR(Op::Apply(lhs[lhs_offset], rhs[rhs_offset], out[output_index]));
         for (size_t remaining = shape.size(); remaining > 0U; --remaining) {
             const size_t axis = remaining - 1U;
             ++coordinates[axis];
@@ -155,15 +156,19 @@ Status EvaluateBinaryStridedByDType(const DataType& dtype,
     if (dtype == DataType::Float32()) {
         return EvaluateBinaryStridedKernel<Op, float>(inputs, outputs, lhs_strides, rhs_strides);
     }
+
     if (dtype == DataType::Double()) {
         return EvaluateBinaryStridedKernel<Op, double>(inputs, outputs, lhs_strides, rhs_strides);
     }
+
     if (dtype == DataType::BFloat(16)) {
         return EvaluateBinaryStridedKernel<Op, BFloat16>(inputs, outputs, lhs_strides, rhs_strides);
     }
+
     if (dtype == DataType::Int(32)) {
         return EvaluateBinaryStridedKernel<Op, int32_t>(inputs, outputs, lhs_strides, rhs_strides);
     }
+
     if (dtype == DataType::Int(64)) {
         return EvaluateBinaryStridedKernel<Op, int64_t>(inputs, outputs, lhs_strides, rhs_strides);
     }
@@ -171,7 +176,6 @@ Status EvaluateBinaryStridedByDType(const DataType& dtype,
 }
 
 // ── Shared unary kernel templates ──
-
 template<typename Op, typename T>
 concept UnaryScalarOp = requires(T input, T& output) {
     { Op::template Apply<T>(input, output) } -> std::same_as<Status>;
@@ -185,7 +189,7 @@ Status EvaluateUnaryFlatTyped(std::span<const TensorView> inputs,
     const auto* in = inputs[0].data<T>();
     auto* out = outputs[0].data<T>();
     for (int64_t i = 0; i < numel; ++i) {
-        AM_RETURN_IF_ERROR(Op::template Apply<T>(in[i], out[i]));
+        AM_RETURN_IF_ERROR(Op::Apply(in[i], out[i]));
     }
     return Status::Ok();
 }
@@ -201,7 +205,7 @@ Status EvaluateUnaryStridedKernel(std::span<const TensorView> inputs,
     std::vector<int64_t> coordinates(shape.size());
     int64_t input_offset = 0;
     for (int64_t output_index = 0; output_index < outputs[0].numel(); ++output_index) {
-        AM_RETURN_IF_ERROR(Op::template Apply<T>(in[input_offset], out[output_index]));
+        AM_RETURN_IF_ERROR(Op::Apply(in[input_offset], out[output_index]));
         for (size_t remaining = shape.size(); remaining > 0U; --remaining) {
             const size_t axis = remaining - 1U;
             ++coordinates[axis];
@@ -217,7 +221,6 @@ Status EvaluateUnaryStridedKernel(std::span<const TensorView> inputs,
 }
 
 // ── Accessor declarations ──
-
 const ConstEvaluator& GetAddConstEvaluator() noexcept;
 const ConstEvaluator& GetMulConstEvaluator() noexcept;
 const ConstEvaluator& GetSiluConstEvaluator() noexcept;

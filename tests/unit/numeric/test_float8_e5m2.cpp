@@ -90,7 +90,7 @@ TEST(Float8E5M2Test, ConstructorAndBasicProperties) {
     EXPECT_FLOAT_EQ(result, 1.0f);
 }
 
-TEST(Float8E5M2Test, SpecialValues1) {
+TEST(Float8E5M2Test, ConstructorSpecialValues) {
     // 零值
     Float8_e5m2 zero(0.0f);
     EXPECT_EQ(zero.x, 0x00);

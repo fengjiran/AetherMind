@@ -127,7 +127,10 @@ void ExpectAddBroadcastEvaluation(DataType dtype,
 
 TEST(ConstEvaluator, FindsAddEvaluator) {
     EXPECT_NE(FindConstEvaluator(OpType::kAdd), nullptr);
-    EXPECT_EQ(FindConstEvaluator(OpType::kSiluMul), nullptr);
+}
+
+TEST(ConstEvaluator, FindsSiluMulEvaluator) {
+    EXPECT_NE(FindConstEvaluator(OpType::kSiluMul), nullptr);
 }
 
 TEST(ConstEvaluator, FindsSiluEvaluator) {

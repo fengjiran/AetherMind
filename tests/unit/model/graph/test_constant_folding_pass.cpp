@@ -725,5 +725,127 @@ TEST(ConstantFoldingPass, DceRemovesFoldedSilu) {
     ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
 }
 
+// ── SiluMul constant folding tests ──
+
+TEST(ConstantFoldingPass, FoldsSiluMulOfTwoConstants) {
+    ModelGraph graph;
+    const GraphValueId gate = AddFloatConstant(graph, {0.0F, 1.0F, 2.0F}, {3}, "gate");
+    const GraphValueId up = AddFloatConstant(graph, {1.0F, 2.0F, 3.0F}, {3}, "up");
+    const GraphValueId act = AddSiluMul(graph, 0U, gate, up, "silu_mul");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    ASSERT_EQ(result->GetOutputs().size(), 1U);
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 3U);
+    // silu(0)*1 = 0, silu(1)*2 ≈ 1.4621172, silu(2)*3 ≈ 5.2847826
+    EXPECT_NEAR(values[0], 0.0F, 1e-5F);
+    EXPECT_NEAR(values[1], 1.4621172F, 1e-5F);
+    EXPECT_NEAR(values[2], 5.2847826F, 1e-5F);
+}
+
+TEST(ConstantFoldingPass, FoldsSiluMulBFloat16Constants) {
+    ModelGraph graph;
+    const GraphValueId gate = AddTypedConstant(graph,
+                                                DataType::BFloat(16),
+                                                BFloat16Values({0x3F80U, 0x4000U, 0x4040U}),
+                                                {3},
+                                                "gate");
+    const GraphValueId up = AddTypedConstant(graph,
+                                              DataType::BFloat(16),
+                                              BFloat16Values({0x4000U, 0x4040U, 0x4080U}),
+                                              {3},
+                                              "up");
+    const GraphValueId act = AddSiluMul(graph, 0U, gate, up, "silu_mul");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    const std::vector<BFloat16> values = ReadTypedConstant<BFloat16>(output);
+    ASSERT_EQ(values.size(), 3U);
+
+    const std::vector<float> gate_f = {1.0F, 2.0F, 3.0F};
+    const std::vector<float> up_f = {2.0F, 3.0F, 4.0F};
+    std::vector<BFloat16> expected;
+    expected.reserve(3);
+    for (size_t i = 0; i < gate_f.size(); ++i) {
+        const float x = gate_f[i];
+        float silu;
+        if (x >= 0.0F) {
+            silu = x / (1.0F + std::exp(-x));
+        } else {
+            silu = x * std::exp(x) / (1.0F + std::exp(x));
+        }
+        expected.emplace_back(silu * up_f[i]);
+    }
+    EXPECT_EQ(BFloat16Bits(values), BFloat16Bits(expected));
+}
+
+TEST(ConstantFoldingPass, SkipsSiluMulInt32Inputs) {
+    ModelGraph graph;
+    const GraphValueId gate = AddTypedConstant<int32_t>(
+            graph, DataType::Int(32), {1, 2}, {2}, "gate");
+    const GraphValueId up = AddTypedConstant<int32_t>(
+            graph, DataType::Int(32), {3, 4}, {2}, "up");
+    const GraphValueId act = AddSiluMul(graph, 0U, gate, up, "silu_mul");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    // SiluMul only supports float dtypes; int32 inputs should not fold.
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(
+            result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
+TEST(ConstantFoldingPass, FoldsSiluMulThenAddChainedConstants) {
+    ModelGraph graph;
+    const GraphValueId gate = AddFloatConstant(graph, {1.0F, 2.0F}, {2}, "gate");
+    const GraphValueId up = AddFloatConstant(graph, {3.0F, 4.0F}, {2}, "up");
+    const GraphValueId bias = AddFloatConstant(graph, {0.5F, 0.5F}, {2}, "bias");
+    const GraphValueId silu_mul = AddSiluMul(graph, 0U, gate, up, "silu_mul");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, silu_mul, bias, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+    const std::vector<float> values = ReadFloatConstant(result->GetValue(result->GetOutputs()[0].value));
+    ASSERT_EQ(values.size(), 2U);
+    // silu(1)*3 + 0.5 ≈ 2.6931758, silu(2)*4 + 0.5 ≈ 7.5463768
+    EXPECT_NEAR(values[0], 2.6931758F, 1e-4F);
+    EXPECT_NEAR(values[1], 7.5463768F, 1e-4F);
+}
+
+TEST(ConstantFoldingPass, DceRemovesFoldedSiluMul) {
+    ModelGraph graph;
+    const GraphValueId gate = AddFloatConstant(graph, {1.0F}, {1}, "gate");
+    const GraphValueId up = AddFloatConstant(graph, {1.0F}, {1}, "up");
+    const GraphValueId act = AddSiluMul(graph, 0U, gate, up, "silu_mul");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
 }// namespace
 }// namespace aethermind

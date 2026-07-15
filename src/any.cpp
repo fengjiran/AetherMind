@@ -5,8 +5,6 @@
 #include "aethermind/base/tensor.h"
 #include "backtrace.h"
 #include "container/string.h"
-#include "type_system/tensor_type.h"
-#include "type_system/type.h"
 
 namespace aethermind {
 
@@ -124,39 +122,6 @@ bool Any::IsNewTensor() const noexcept {
 Tensor Any::ToNewTensor() const {
     AM_CHECK(IsNewTensor(), "Expected Tensor.");
     return cast<Tensor>();
-}
-
-SingletonOrSharedTypePtr<Type> Any::GetTypePtr() const noexcept {
-    if (!has_value()) {
-        return NoneType::Global();
-    }
-
-    if (IsBool()) {
-        return BoolType::Global();
-    }
-
-    if (IsInteger()) {
-        return IntType::Global();
-    }
-
-    if (IsFloatingPoint()) {
-        return FloatType::Global();
-    }
-
-    if (IsString()) {
-        return StringType::Global();
-    }
-
-    if (IsDevice()) {
-        return DeviceObjType::Global();
-    }
-
-    if (IsNewTensor()) {
-        return TensorType::Create(ToNewTensor());
-    }
-
-    AM_CHECK(false, "The type is unknown!");
-    AM_UNREACHABLE();
 }
 
 void Any::DebugPrint(std::ostream& os) const {

@@ -117,9 +117,6 @@ private:
     T value_;
 };
 
-template<typename>
-class SingletonOrSharedTypePtr;
-class Type;
 class Tensor;
 
 class Any {
@@ -341,8 +338,6 @@ public:
     }
 
     AM_NODISCARD std::type_index type() const;
-
-    AM_NODISCARD SingletonOrSharedTypePtr<Type> GetTypePtr() const noexcept;
 
     AM_NODISCARD bool IsNone() const noexcept {
         return !has_value();

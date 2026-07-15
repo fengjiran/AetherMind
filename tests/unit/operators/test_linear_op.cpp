@@ -44,6 +44,32 @@ TEST(LinearOp, AcceptsRank1Input) {
     EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
 }
 
+TEST(LinearOp, RejectsRankZeroInput) {
+    const LinearOp op{LinearOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
+    };
+
+    const Status status = op.CheckInputSpecs(inputs);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(LinearOp, RejectsRankZeroWeight) {
+    const LinearOp op{LinearOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+    };
+
+    const Status status = op.CheckInputSpecs(inputs);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 TEST(LinearOp, RejectsRank3Input) {
     const LinearOp op{LinearOp::Params{}};
     const TensorSpec inputs[2] = {
@@ -359,7 +385,7 @@ TEST(LinearOp, RunFailsWithWrongOutputCount) {
             TensorView(dummy, DataType::Float32(), input_shape, input_strides),
             TensorView(dummy, DataType::Float32(), weight_shape, weight_strides),
     };
-    step.outputs = {};  // No outputs; Linear requires 1.
+    step.outputs = {};// No outputs; Linear requires 1.
     bindings.SetStepTensorBinding(0, std::move(step));
 
     KernelContext kernel_ctx;

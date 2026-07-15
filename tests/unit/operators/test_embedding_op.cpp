@@ -48,6 +48,32 @@ TEST(EmbeddingOp, InfersOutputShapeFromTokenIdsAndWeight) {
     EXPECT_EQ(inference->outputs[0].shape[1].GetStaticValue(), 4096);
 }
 
+TEST(EmbeddingOp, RejectsRankZeroTokenIds) {
+    const EmbeddingOp op{EmbeddingOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Int(64), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
+    };
+
+    const Status status = op.CheckInputSpecs(inputs);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(EmbeddingOp, RejectsRankZeroWeight) {
+    const EmbeddingOp op{EmbeddingOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({2})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+    };
+
+    const Status status = op.CheckInputSpecs(inputs);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 TEST(EmbeddingOp, AcceptsUint32TokenIds) {
     const EmbeddingOp op{EmbeddingOp::Params{}};
     const TensorSpec inputs[2] = {
@@ -302,7 +328,7 @@ TEST(EmbeddingOp, RunFailsWithWrongOutputCount) {
             TensorView(dummy_tokens, DataType::Int(64), shape_1d, strides_1d),
             TensorView(dummy_weight, DataType::Float32(), shape_2d, strides_2d),
     };
-    step.outputs = {};  // No outputs; Embedding requires 1.
+    step.outputs = {};// No outputs; Embedding requires 1.
     bindings.SetStepTensorBinding(0, std::move(step));
 
     KernelContext kernel_ctx;

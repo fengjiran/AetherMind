@@ -28,11 +28,13 @@ struct RuntimeTensorStorage {
           strides(MakeStrides(shape)) {}
 
     AM_NODISCARD TensorView View() const {
-        return {nullptr, DataType::Float32(), shape, strides};
+        static const int dummy = 0;
+        return {&dummy, DataType::Float32(), shape, strides};
     }
 
     AM_NODISCARD MutableTensorView MutableView() {
-        return {nullptr, DataType::Float32(), shape, strides};
+        static int dummy = 0;
+        return {&dummy, DataType::Float32(), shape, strides};
     }
 };
 
@@ -129,14 +131,14 @@ TEST(ShapeConstraintEvaluator, EvaluatesRuntimeDimensionEquality) {
 
     std::vector<TensorView> matching_inputs{input.View(), matching_weight.View()};
     EXPECT_EQ(EvaluateShapeConstraint(constraint,
-                                     std::span<const TensorView>(matching_inputs),
-                                     std::span<const MutableTensorView>()),
+                                      std::span<const TensorView>(matching_inputs),
+                                      std::span<const MutableTensorView>()),
               ShapeConstraintEvaluationResult::kSatisfied);
 
     std::vector<TensorView> mismatching_inputs{input.View(), mismatching_weight.View()};
     EXPECT_EQ(EvaluateShapeConstraint(constraint,
-                                     std::span<const TensorView>(mismatching_inputs),
-                                     std::span<const MutableTensorView>()),
+                                      std::span<const TensorView>(mismatching_inputs),
+                                      std::span<const MutableTensorView>()),
               ShapeConstraintEvaluationResult::kViolated);
 }
 

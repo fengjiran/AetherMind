@@ -752,15 +752,15 @@ TEST(ConstantFoldingPass, FoldsSiluMulOfTwoConstants) {
 TEST(ConstantFoldingPass, FoldsSiluMulBFloat16Constants) {
     ModelGraph graph;
     const GraphValueId gate = AddTypedConstant(graph,
-                                                DataType::BFloat(16),
-                                                BFloat16Values({0x3F80U, 0x4000U, 0x4040U}),
-                                                {3},
-                                                "gate");
+                                               DataType::BFloat(16),
+                                               BFloat16Values({0x3F80U, 0x4000U, 0x4040U}),
+                                               {3},
+                                               "gate");
     const GraphValueId up = AddTypedConstant(graph,
-                                              DataType::BFloat(16),
-                                              BFloat16Values({0x4000U, 0x4040U, 0x4080U}),
-                                              {3},
-                                              "up");
+                                             DataType::BFloat(16),
+                                             BFloat16Values({0x4000U, 0x4040U, 0x4080U}),
+                                             {3},
+                                             "up");
     const GraphValueId act = AddSiluMul(graph, 0U, gate, up, "silu_mul");
     graph.MarkOutput(act, "output");
 
@@ -836,6 +836,310 @@ TEST(ConstantFoldingPass, DceRemovesFoldedSiluMul) {
     ModelGraph graph;
     const GraphValueId gate = AddFloatConstant(graph, {1.0F}, {1}, "gate");
     const GraphValueId up = AddFloatConstant(graph, {1.0F}, {1}, "up");
+    const GraphValueId act = AddSiluMul(graph, 0U, gate, up, "silu_mul");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
+// ── Rank-zero constant folding ──
+// These tests trace rank-0 inline bytes through HasInlineConstantBytes,
+// BuildInputViews, AllocateOutputViews, Evaluate, node replacement, and DCE.
+
+TEST(ConstantFoldingPass, FoldsRankZeroAdd) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant<float>(graph, DataType::Float32(), {3.0F}, {}, "lhs");
+    const GraphValueId rhs = AddTypedConstant<float>(graph, DataType::Float32(), {5.0F}, {}, "rhs");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    ASSERT_EQ(result->GetOutputs().size(), 1U);
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    // Verify rank-zero TensorSpec is preserved.
+    EXPECT_EQ(output.spec.shape.rank(), std::optional<size_t>{0});
+    EXPECT_TRUE(output.spec.IsRankZero());
+    const auto* constant = std::get_if<ConstantValue>(&output.payload);
+    ASSERT_TRUE(constant->binding.inline_data != nullptr);
+    EXPECT_EQ(constant->binding.inline_data->size(), static_cast<size_t>(output.spec.dtype.nbytes()));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 1U);
+    EXPECT_FLOAT_EQ(values[0], 8.0F);
+}
+
+TEST(ConstantFoldingPass, FoldsRankZeroAddInt32) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant<int32_t>(graph, DataType::Int(32), {7}, {}, "lhs");
+    const GraphValueId rhs = AddTypedConstant<int32_t>(graph, DataType::Int(32), {3}, {}, "rhs");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_TRUE(output.spec.IsRankZero());
+    const auto* constant = std::get_if<ConstantValue>(&output.payload);
+    EXPECT_EQ(constant->binding.inline_data->size(), static_cast<size_t>(DataType::Int(32).nbytes()));
+    const std::vector<int32_t> values = ReadTypedConstant<int32_t>(output);
+    ASSERT_EQ(values.size(), 1U);
+    EXPECT_EQ(values[0], 10);
+}
+
+TEST(ConstantFoldingPass, FoldsRankZeroAddBFloat16) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant(graph,
+                                              DataType::BFloat(16),
+                                              BFloat16Values({0x4000U}),// 2.0
+                                              {},
+                                              "lhs");
+    const GraphValueId rhs = AddTypedConstant(graph,
+                                              DataType::BFloat(16),
+                                              BFloat16Values({0x4080U}),// 4.0
+                                              {},
+                                              "rhs");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_TRUE(output.spec.IsRankZero());
+    EXPECT_EQ(BFloat16Bits(ReadTypedConstant<BFloat16>(output)),
+              (std::vector<uint16_t>{0x40C0U}));// 6.0
+}
+
+TEST(ConstantFoldingPass, FoldsRankZeroElementwiseMul) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant<float>(graph, DataType::Float32(), {4.0F}, {}, "lhs");
+    const GraphValueId rhs = AddTypedConstant<float>(graph, DataType::Float32(), {2.5F}, {}, "rhs");
+    const GraphValueId product = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
+    graph.MarkOutput(product, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_TRUE(output.spec.IsRankZero());
+    const auto* constant = std::get_if<ConstantValue>(&output.payload);
+    EXPECT_EQ(constant->binding.inline_data->size(), static_cast<size_t>(DataType::Float32().nbytes()));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 1U);
+    EXPECT_FLOAT_EQ(values[0], 10.0F);
+}
+
+TEST(ConstantFoldingPass, FoldsRankZeroSilu) {
+    ModelGraph graph;
+    const GraphValueId input = AddTypedConstant<float>(graph, DataType::Float32(), {1.0F}, {}, "input");
+    const GraphValueId act = AddSilu(graph, 0U, input, "act");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_TRUE(output.spec.IsRankZero());
+    const auto* constant = std::get_if<ConstantValue>(&output.payload);
+    EXPECT_EQ(constant->binding.inline_data->size(), static_cast<size_t>(DataType::Float32().nbytes()));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 1U);
+    // silu(1.0) ≈ 0.7310586
+    EXPECT_NEAR(values[0], 0.7310586F, 1e-5F);
+}
+
+TEST(ConstantFoldingPass, FoldsRankZeroSiluMul) {
+    ModelGraph graph;
+    const GraphValueId gate = AddTypedConstant<float>(graph, DataType::Float32(), {2.0F}, {}, "gate");
+    const GraphValueId up = AddTypedConstant<float>(graph, DataType::Float32(), {3.0F}, {}, "up");
+    const GraphValueId act = AddSiluMul(graph, 0U, gate, up, "silu_mul");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_TRUE(output.spec.IsRankZero());
+    const auto* constant = std::get_if<ConstantValue>(&output.payload);
+    EXPECT_EQ(constant->binding.inline_data->size(), static_cast<size_t>(DataType::Float32().nbytes()));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 1U);
+    // silu(2.0) * 3.0 ≈ 1.7615942 * 3.0 ≈ 5.2847826
+    EXPECT_NEAR(values[0], 5.2847826F, 1e-5F);
+}
+
+// ── Rank-zero chain folding ──
+
+TEST(ConstantFoldingPass, FoldsRankZeroAddThenSiluThenMulChained) {
+    ModelGraph graph;
+    const GraphValueId a = AddTypedConstant<float>(graph, DataType::Float32(), {1.0F}, {}, "a");
+    const GraphValueId b = AddTypedConstant<float>(graph, DataType::Float32(), {2.0F}, {}, "b");
+    const GraphValueId c = AddTypedConstant<float>(graph, DataType::Float32(), {3.0F}, {}, "c");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, a, b, "sum");
+    const GraphValueId act = AddSilu(graph, 0U, sum, "act");
+    const GraphValueId product = AddElementwiseMul(graph, 0U, act, c, "product");
+    graph.MarkOutput(product, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_TRUE(output.spec.IsRankZero());
+    const auto* constant = std::get_if<ConstantValue>(&output.payload);
+    EXPECT_EQ(constant->binding.inline_data->size(), static_cast<size_t>(DataType::Float32().nbytes()));
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 1U);
+    // sum = 1 + 2 = 3, silu(3) ≈ 2.8577224, * 3 ≈ 8.5731672
+    EXPECT_NEAR(values[0], 8.5731672F, 1e-5F);
+}
+
+// ── Rank-zero scalar-tensor broadcast folding ──
+
+TEST(ConstantFoldingPass, FoldsRankZeroScalarTensorAddBroadcast) {
+    ModelGraph graph;
+    // rank-0 scalar + rank-2 tensor → rank-2 output
+    const GraphValueId scalar = AddFloatConstant(graph, {2.0F}, {}, "scalar");
+    const GraphValueId tensor = AddFloatConstant(graph, {1.0F, 2.0F, 3.0F, 4.0F}, {2, 2}, "tensor");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, scalar, tensor, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    // Output must be rank-2, not rank-0.
+    EXPECT_EQ(output.spec.shape.rank(), std::optional<size_t>{2});
+    EXPECT_FALSE(output.spec.IsRankZero());
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 4U);
+    EXPECT_FLOAT_EQ(values[0], 3.0F);
+    EXPECT_FLOAT_EQ(values[1], 4.0F);
+    EXPECT_FLOAT_EQ(values[2], 5.0F);
+    EXPECT_FLOAT_EQ(values[3], 6.0F);
+}
+
+TEST(ConstantFoldingPass, FoldsRankZeroTensorScalarAddBroadcast) {
+    ModelGraph graph;
+    // rank-2 tensor + rank-0 scalar → rank-2 output
+    const GraphValueId tensor = AddFloatConstant(graph, {1.0F, 2.0F, 3.0F, 4.0F}, {2, 2}, "tensor");
+    const GraphValueId scalar = AddFloatConstant(graph, {10.0F}, {}, "scalar");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, tensor, scalar, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_EQ(output.spec.shape.rank(), std::optional<size_t>{2});
+    EXPECT_FALSE(output.spec.IsRankZero());
+    const std::vector<float> values = ReadFloatConstant(output);
+    ASSERT_EQ(values.size(), 4U);
+    EXPECT_FLOAT_EQ(values[0], 11.0F);
+    EXPECT_FLOAT_EQ(values[1], 12.0F);
+    EXPECT_FLOAT_EQ(values[2], 13.0F);
+    EXPECT_FLOAT_EQ(values[3], 14.0F);
+}
+
+// ── Rank-zero malformed inline data ──
+
+TEST(ConstantFoldingPass, SkipsRankZeroMalformedInlineBytes) {
+    ModelGraph graph;
+    // Rank-zero float spec expects 4 bytes, but we provide only 1 byte.
+    const auto bad_bytes = std::make_shared<const std::vector<std::byte>>(
+            std::vector<std::byte>{std::byte{0x01}});
+    const GraphValueId lhs = graph.AddConstant(
+            Spec(DataType::Float32(), {}),
+            ConstantBinding{.inline_data = bad_bytes, .name = "bad_lhs"},
+            "bad_lhs");
+    const GraphValueId rhs = AddTypedConstant<float>(graph, DataType::Float32(), {2.0F}, {}, "rhs");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    // Malformed bytes cause HasInlineConstantBytes to reject → skip fold, keep Add.
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(
+            result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
+// ── Rank-zero folding + DCE ──
+
+TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroAdd) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant<float>(graph, DataType::Float32(), {3.0F}, {}, "lhs");
+    const GraphValueId rhs = AddTypedConstant<float>(graph, DataType::Float32(), {7.0F}, {}, "rhs");
+    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    graph.MarkOutput(sum, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 0U);
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
+    EXPECT_TRUE(output.spec.IsRankZero());
+}
+
+TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroMul) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddTypedConstant<float>(graph, DataType::Float32(), {2.0F}, {}, "lhs");
+    const GraphValueId rhs = AddTypedConstant<float>(graph, DataType::Float32(), {3.0F}, {}, "rhs");
+    const GraphValueId product = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
+    graph.MarkOutput(product, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
+TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroSilu) {
+    ModelGraph graph;
+    const GraphValueId input = AddTypedConstant<float>(graph, DataType::Float32(), {0.5F}, {}, "input");
+    const GraphValueId act = AddSilu(graph, 0U, input, "act");
+    graph.MarkOutput(act, "output");
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
+TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroSiluMul) {
+    ModelGraph graph;
+    const GraphValueId gate = AddTypedConstant<float>(graph, DataType::Float32(), {1.0F}, {}, "gate");
+    const GraphValueId up = AddTypedConstant<float>(graph, DataType::Float32(), {2.0F}, {}, "up");
     const GraphValueId act = AddSiluMul(graph, 0U, gate, up, "silu_mul");
     graph.MarkOutput(act, "output");
 

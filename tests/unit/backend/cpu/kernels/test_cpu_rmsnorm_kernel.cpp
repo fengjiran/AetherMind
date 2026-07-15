@@ -380,31 +380,24 @@ TEST(CPUKernelRmsNorm, StridedTypedArgsMatchesReference) {
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsNullDataPointers) {
-    constexpr float kInput[4] = {1.0F, 2.0F, 3.0F, 4.0F};
-    constexpr float kWeight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-    float output[4] = {};
     constexpr int64_t kIoShape[2] = {1, 4};
     constexpr int64_t kIoStrides[2] = {4, 1};
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
-            .input_tensor = TensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
-            .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
-            .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
-    });
+    auto make_null_input_view = [&] {
+        return TensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides};
+    };
+    auto make_null_weight_view = [&] {
+        return TensorView{nullptr, DataType::Float32(), kWeightShape, kWeightStrides};
+    };
+    auto make_null_output_view = [&] {
+        return MutableTensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides};
+    };
 
-    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
-            .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
-            .weight_tensor = TensorView{nullptr, DataType::Float32(), kWeightShape, kWeightStrides},
-            .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
-    });
-
-    ExpectInvalidRmsNormEntry(cpu::CpuRmsNormParams{
-            .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
-            .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
-            .output_tensor = MutableTensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
-    });
+    EXPECT_DEATH(make_null_input_view(), "Check failed");
+    EXPECT_DEATH(make_null_weight_view(), "Check failed");
+    EXPECT_DEATH(make_null_output_view(), "Check failed");
 }
 
 TEST(CPUKernelRmsNormEntry, ScalarAcceptsStridedViews) {

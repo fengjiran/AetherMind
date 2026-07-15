@@ -2,6 +2,7 @@
 #include "aethermind/model/graph/graph_op_builder.h"
 #include "test_graph_helpers.h"
 
+#include <cstring>
 #include <gtest/gtest.h>
 #include <memory>
 #include <vector>
@@ -225,6 +226,72 @@ TEST(DeadCodeEliminationPass, IsIdempotent) {
     ASSERT_TRUE(second->Validate().ok());
     EXPECT_EQ(second->GetNodes().size(), first->GetNodes().size());
     EXPECT_EQ(second->GetValues().size(), first->GetValues().size());
+}
+
+// ── Rank-zero DCE: dead rank-0 arithmetic nodes must be removed ──
+
+namespace {
+
+std::shared_ptr<const std::vector<std::byte>> MakeBytes(std::vector<float> values) {
+    std::vector<std::byte> bytes(values.size() * sizeof(float));
+    std::memcpy(bytes.data(), values.data(), bytes.size());
+    return std::make_shared<const std::vector<std::byte>>(std::move(bytes));
+}
+
+GraphValueId AddRankZeroConstantFloat(ModelGraph& graph, float value, const std::string& name) {
+    return graph.AddConstant(
+            Spec(DataType::Float32(), {}),
+            ConstantBinding{.inline_data = MakeBytes({value}), .name = name},
+            name);
+}
+
+}// namespace
+
+TEST(DeadCodeEliminationPass, RemovesDeadRankZeroAdd) {
+    ModelGraph graph;
+    const GraphValueId live = AddActivation(graph, "live");
+    const GraphValueId lhs = AddRankZeroConstantFloat(graph, 1.0F, "lhs");
+    const GraphValueId rhs = AddRankZeroConstantFloat(graph, 2.0F, "rhs");
+    const GraphValueId dead_sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "dead_sum");
+    UNUSED(dead_sum);
+    graph.MarkOutput(live, "output");
+
+    const StatusOr<ModelGraph> result = RunDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 0U);
+}
+
+TEST(DeadCodeEliminationPass, RemovesDeadRankZeroSilu) {
+    ModelGraph graph;
+    const GraphValueId live = AddActivation(graph, "live");
+    const GraphValueId input = AddRankZeroConstantFloat(graph, 3.0F, "input");
+    const GraphValueId dead_act = AddSilu(graph, 0U, input, "dead_silu");
+    UNUSED(dead_act);
+    graph.MarkOutput(live, "output");
+
+    const StatusOr<ModelGraph> result = RunDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+}
+
+TEST(DeadCodeEliminationPass, RemovesDeadRankZeroSiluMul) {
+    ModelGraph graph;
+    const GraphValueId live = AddActivation(graph, "live");
+    const GraphValueId gate = AddRankZeroConstantFloat(graph, 1.0F, "gate");
+    const GraphValueId up = AddRankZeroConstantFloat(graph, 2.0F, "up");
+    const GraphValueId dead_act = AddSiluMul(graph, 0U, gate, up, "dead_silu_mul");
+    UNUSED(dead_act);
+    graph.MarkOutput(live, "output");
+
+    const StatusOr<ModelGraph> result = RunDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
 }
 
 }// namespace

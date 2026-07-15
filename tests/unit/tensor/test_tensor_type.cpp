@@ -1,6 +1,7 @@
 //
 // Created by richard on 10/22/25.
 //
+#include "aethermind/shape_inference/tensor_spec.h"
 #include "type_system/tensor_type.h"
 
 #include <gtest/gtest.h>
@@ -618,6 +619,72 @@ TEST(TensorTypeTest, EdgeCases) {
     } catch (const std::overflow_error&) {
         GTEST_SKIP() << "numel calculation overflowed";
     }
+}
+
+TEST(SymbolicShapeTest, RankZero) {
+    SymbolicShape unranked;
+    EXPECT_FALSE(unranked.IsRanked());
+    EXPECT_FALSE(unranked.IsRankZero());
+
+    SymbolicShape rank_zero(std::vector<ShapeSymbol>{});
+    EXPECT_TRUE(rank_zero.IsRanked());
+    EXPECT_EQ(rank_zero.rank().value(), 0);
+    EXPECT_TRUE(rank_zero.IsRankZero());
+
+    SymbolicShape rank_one({ShapeSymbol::CreateFromValue(1)});
+    EXPECT_TRUE(rank_one.IsRanked());
+    EXPECT_EQ(rank_one.rank().value(), 1);
+    EXPECT_FALSE(rank_one.IsRankZero());
+
+    SymbolicShape zero_dim({ShapeSymbol::CreateFromValue(0)});
+    EXPECT_TRUE(zero_dim.IsRanked());
+    EXPECT_EQ(zero_dim.rank().value(), 1);
+    EXPECT_FALSE(zero_dim.IsRankZero());
+}
+
+TEST(TensorSpecTest, RankZero) {
+    TensorSpec default_spec;
+    EXPECT_FALSE(default_spec.IsRankZero());
+
+    TensorSpec rank_zero_spec{DataType::Make<double>(), SymbolicShape(std::vector<ShapeSymbol>{})};
+    EXPECT_TRUE(rank_zero_spec.IsRankZero());
+
+    TensorSpec rank_one_spec{DataType::Make<double>(),
+                             SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(1)})};
+    EXPECT_FALSE(rank_one_spec.IsRankZero());
+
+    TensorSpec zero_dim_spec{DataType::Make<double>(),
+                             SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(0)})};
+    EXPECT_FALSE(zero_dim_spec.IsRankZero());
+
+    TensorSpec unranked_spec{DataType::Make<double>(), SymbolicShape()};
+    EXPECT_FALSE(unranked_spec.IsRankZero());
+}
+
+TEST(TensorTypeTest, RankZero) {
+    DataType dtype = DataType::Make<float>();
+    Device device(DeviceType::kCPU, 0);
+
+    const auto& default_type = TensorType::Get();
+    EXPECT_FALSE(default_type->ndim().has_value());
+    EXPECT_FALSE(default_type->IsRankZero());
+
+    auto scalar_type = TensorType::CreateContiguous(dtype, device, {});
+    EXPECT_TRUE(scalar_type->ndim().has_value());
+    EXPECT_EQ(scalar_type->ndim().value(), 0);
+    EXPECT_TRUE(scalar_type->numel().has_value());
+    EXPECT_EQ(scalar_type->numel().value(), 1);
+    EXPECT_TRUE(scalar_type->IsRankZero());
+
+    auto rank_one_type = TensorType::CreateContiguous(dtype, device, {1});
+    EXPECT_TRUE(rank_one_type->ndim().has_value());
+    EXPECT_EQ(rank_one_type->ndim().value(), 1);
+    EXPECT_FALSE(rank_one_type->IsRankZero());
+
+    auto zero_dim_type = TensorType::CreateContiguous(dtype, device, {0});
+    EXPECT_TRUE(zero_dim_type->ndim().has_value());
+    EXPECT_EQ(zero_dim_type->ndim().value(), 1);
+    EXPECT_FALSE(zero_dim_type->IsRankZero());
 }
 
 // 测试TensorType与其他类型的关系

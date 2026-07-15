@@ -263,21 +263,44 @@ TEST(ConstEvaluator, SkipsAddBroadcastOutputMismatch) {
     EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
 }
 
-TEST(ConstEvaluator, SkipsAddRankZeroScalarShape) {
+TEST(ConstEvaluator, PlansAddScalarBroadcastRankZeroLhs) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
+    const TensorSpec output = Spec(DataType::Float32(), {2});
     const std::vector<NodeOutputDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
     };
     const std::vector<NodeOutputDesc> outputs = {
-            {.spec = Spec(DataType::Float32(), {2}), .payload = ActivationValue{}},
+            {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
 
-    ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->outputs.size(), 1U);
+    EXPECT_EQ(plan->outputs[0].spec, output);
+    EXPECT_EQ(plan->outputs[0].nbytes, 2U * sizeof(float));
+}
+
+TEST(ConstEvaluator, PlansAddScalarBroadcastRankZeroRhs) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const TensorSpec output = Spec(DataType::Float32(), {2});
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
+            {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->outputs.size(), 1U);
+    EXPECT_EQ(plan->outputs[0].spec, output);
+    EXPECT_EQ(plan->outputs[0].nbytes, 2U * sizeof(float));
 }
 
 TEST(ConstEvaluator, SkipsAddUnsupportedDType) {
@@ -483,6 +506,177 @@ TEST(ConstEvaluator, SkipsAddInt64Overflow) {
     EXPECT_EQ(status.code(), StatusCode::kOverflow);
 }
 
+// ── Add rank-zero scalar tests ──
+
+TEST(ConstEvaluator, PlansAddRankZeroScalarPlusScalar) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const TensorSpec spec = Spec(DataType::Float32(), {});
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = spec, .payload = ConstantValue{}},
+            {.spec = spec, .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->outputs.size(), 1U);
+    EXPECT_EQ(plan->outputs[0].spec, spec);
+    EXPECT_EQ(plan->outputs[0].nbytes, static_cast<size_t>(DataType::Float32().nbytes()));
+    EXPECT_TRUE(plan->outputs[0].strides.empty());
+}
+
+template<typename T>
+void ExpectAddRankZeroEvaluation(DataType dtype, T lhs_value, T rhs_value, T expected_value) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{};
+    const std::vector<int64_t> strides{};
+    const std::vector<std::byte> lhs_bytes = BytesFromValues(std::vector<T>{lhs_value});
+    const std::vector<std::byte> rhs_bytes = BytesFromValues(std::vector<T>{rhs_value});
+    std::vector<std::byte> output_bytes(sizeof(T));
+    const std::vector<TensorView> inputs = {
+            TensorView(lhs_bytes.data(), dtype, shape, strides),
+            TensorView(rhs_bytes.data(), dtype, shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), dtype, shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<T> result = ValuesFromBytes<T>(output_bytes);
+    ASSERT_EQ(result.size(), 1U);
+    if constexpr (std::is_floating_point_v<T>) {
+        EXPECT_DOUBLE_EQ(static_cast<double>(result[0]), static_cast<double>(expected_value));
+    } else {
+        EXPECT_EQ(result[0], expected_value);
+    }
+}
+
+TEST(ConstEvaluator, EvaluatesAddRankZeroScalarFloat32) {
+    ExpectAddRankZeroEvaluation<float>(DataType::Float32(), 3.5F, 2.25F, 5.75F);
+}
+
+TEST(ConstEvaluator, EvaluatesAddRankZeroScalarBFloat16) {
+    ExpectAddRankZeroEvaluation<BFloat16>(
+            DataType::BFloat(16),
+            BFloat16(1.5F),
+            BFloat16(2.5F),
+            BFloat16(4.0F));
+}
+
+TEST(ConstEvaluator, EvaluatesAddRankZeroScalarInt32) {
+    ExpectAddRankZeroEvaluation<int32_t>(DataType::Int(32), -7, 15, 8);
+}
+
+// Add scalar broadcast Evaluate tests — rank-zero lhs/tensor rhs
+TEST(ConstEvaluator, EvaluatesAddScalarBroadcastRankZeroLhs) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> lhs_shape{};
+    const std::vector<int64_t> lhs_strides{};
+    const std::vector<int64_t> rhs_shape{3};
+    const std::vector<int64_t> rhs_strides{1};
+    const std::vector<int64_t> output_shape{3};
+    const std::vector<int64_t> output_strides = MakeContiguousStridesOrDie(output_shape);
+    const std::vector<std::byte> lhs_bytes = BytesFromValues<float>({2.0F});
+    const std::vector<std::byte> rhs_bytes = BytesFromValues<float>({10.0F, 20.0F, 30.0F});
+    std::vector<std::byte> output_bytes(3U * sizeof(float));
+    const std::vector<TensorView> inputs = {
+            TensorView(lhs_bytes.data(), DataType::Float32(), lhs_shape, lhs_strides),
+            TensorView(rhs_bytes.data(), DataType::Float32(), rhs_shape, rhs_strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), DataType::Float32(), output_shape, output_strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<float> result = ValuesFromBytes<float>(output_bytes);
+    ASSERT_EQ(result.size(), 3U);
+    EXPECT_FLOAT_EQ(result[0], 12.0F);
+    EXPECT_FLOAT_EQ(result[1], 22.0F);
+    EXPECT_FLOAT_EQ(result[2], 32.0F);
+}
+
+// Add scalar broadcast Evaluate — rank-zero rhs/tensor lhs
+TEST(ConstEvaluator, EvaluatesAddScalarBroadcastRankZeroRhs) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> lhs_shape{3};
+    const std::vector<int64_t> lhs_strides{1};
+    const std::vector<int64_t> rhs_shape{};
+    const std::vector<int64_t> rhs_strides{};
+    const std::vector<int64_t> output_shape{3};
+    const std::vector<int64_t> output_strides = MakeContiguousStridesOrDie(output_shape);
+    const std::vector<std::byte> lhs_bytes = BytesFromValues<float>({10.0F, 20.0F, 30.0F});
+    const std::vector<std::byte> rhs_bytes = BytesFromValues<float>({2.0F});
+    std::vector<std::byte> output_bytes(3U * sizeof(float));
+    const std::vector<TensorView> inputs = {
+            TensorView(lhs_bytes.data(), DataType::Float32(), lhs_shape, lhs_strides),
+            TensorView(rhs_bytes.data(), DataType::Float32(), rhs_shape, rhs_strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), DataType::Float32(), output_shape, output_strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<float> result = ValuesFromBytes<float>(output_bytes);
+    ASSERT_EQ(result.size(), 3U);
+    EXPECT_FLOAT_EQ(result[0], 12.0F);
+    EXPECT_FLOAT_EQ(result[1], 22.0F);
+    EXPECT_FLOAT_EQ(result[2], 32.0F);
+}
+
+// Add rank-zero adversarial — unsupported dtype
+TEST(ConstEvaluator, SkipsAddRankZeroUnsupportedDType) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const TensorSpec spec = Spec(DataType::Float(16), {});
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = spec, .payload = ConstantValue{}},
+            {.spec = spec, .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = spec, .payload = ActivationValue{}},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+}
+
+// Add rank-zero adversarial — integer overflow
+TEST(ConstEvaluator, SkipsAddRankZeroInt32Overflow) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{};
+    const std::vector<int64_t> strides{};
+    const std::vector<std::byte> lhs_bytes = BytesFromValues<int32_t>({std::numeric_limits<int32_t>::max()});
+    const std::vector<std::byte> rhs_bytes = BytesFromValues<int32_t>({1});
+    std::vector<std::byte> output_bytes(sizeof(int32_t));
+    const std::vector<TensorView> inputs = {
+            TensorView(lhs_bytes.data(), DataType::Int(32), shape, strides),
+            TensorView(rhs_bytes.data(), DataType::Int(32), shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), DataType::Int(32), shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
+
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+}
+
 // ── ElementwiseMul evaluator tests ──
 
 template<typename T>
@@ -646,7 +840,7 @@ TEST(ConstEvaluator, SkipsMulMismatchedShape) {
     EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
 }
 
-TEST(ConstEvaluator, SkipsMulRankZeroScalarShape) {
+TEST(ConstEvaluator, SkipsMulRankZeroScalarTensorMismatch) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
     const std::vector<NodeOutputDesc> inputs = {
@@ -816,6 +1010,93 @@ TEST(ConstEvaluator, SkipsMulInt64Overflow) {
     EXPECT_EQ(status.code(), StatusCode::kOverflow);
 }
 
+// ── ElementwiseMul rank-zero scalar tests ──
+
+TEST(ConstEvaluator, PlansMulRankZeroScalarPlusScalar) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
+    ASSERT_NE(evaluator, nullptr);
+    const TensorSpec spec = Spec(DataType::Float32(), {});
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = spec, .payload = ConstantValue{}},
+            {.spec = spec, .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->outputs.size(), 1U);
+    EXPECT_EQ(plan->outputs[0].spec, spec);
+    EXPECT_EQ(plan->outputs[0].nbytes, static_cast<size_t>(DataType::Float32().nbytes()));
+    EXPECT_TRUE(plan->outputs[0].strides.empty());
+}
+
+template<typename T>
+void ExpectMulRankZeroEvaluation(DataType dtype, T lhs_value, T rhs_value, T expected_value) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{};
+    const std::vector<int64_t> strides{};
+    const std::vector<std::byte> lhs_bytes = BytesFromValues(std::vector<T>{lhs_value});
+    const std::vector<std::byte> rhs_bytes = BytesFromValues(std::vector<T>{rhs_value});
+    std::vector<std::byte> output_bytes(sizeof(T));
+    const std::vector<TensorView> inputs = {
+            TensorView(lhs_bytes.data(), dtype, shape, strides),
+            TensorView(rhs_bytes.data(), dtype, shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), dtype, shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, ElementwiseMulParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<T> result = ValuesFromBytes<T>(output_bytes);
+    ASSERT_EQ(result.size(), 1U);
+    if constexpr (std::is_floating_point_v<T>) {
+        EXPECT_DOUBLE_EQ(static_cast<double>(result[0]), static_cast<double>(expected_value));
+    } else {
+        EXPECT_EQ(result[0], expected_value);
+    }
+}
+
+TEST(ConstEvaluator, EvaluatesMulRankZeroScalarFloat32) {
+    ExpectMulRankZeroEvaluation<float>(DataType::Float32(), 4.0F, 3.0F, 12.0F);
+}
+
+TEST(ConstEvaluator, EvaluatesMulRankZeroScalarBFloat16) {
+    ExpectMulRankZeroEvaluation<BFloat16>(
+            DataType::BFloat(16),
+            BFloat16(2.0F),
+            BFloat16(3.0F),
+            BFloat16(6.0F));
+}
+
+TEST(ConstEvaluator, EvaluatesMulRankZeroScalarInt32) {
+    ExpectMulRankZeroEvaluation<int32_t>(DataType::Int(32), -3, 5, -15);
+}
+
+// Mul rank-zero adversarial — unsupported dtype
+TEST(ConstEvaluator, SkipsMulRankZeroUnsupportedDType) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
+    ASSERT_NE(evaluator, nullptr);
+    const TensorSpec spec = Spec(DataType::Float(16), {});
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = spec, .payload = ConstantValue{}},
+            {.spec = spec, .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = spec, .payload = ActivationValue{}},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+}
+
 // ── MakeContiguousStrides helper tests ──
 
 TEST(ConstEvaluator, MakeContiguousStridesEmpty) {
@@ -962,7 +1243,7 @@ TEST(ConstEvaluator, SkipsSiluMismatchedShape) {
     EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
 }
 
-TEST(ConstEvaluator, SkipsSiluRankZeroScalarShape) {
+TEST(ConstEvaluator, SkipsSiluRankZeroInputOutputMismatch) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
     const std::vector<NodeOutputDesc> inputs = {
@@ -1118,6 +1399,182 @@ TEST(ConstEvaluator, EvaluatesSiluSpecialValues) {
     EXPECT_FALSE(std::signbit(result[3]));
     EXPECT_EQ(result[4], -0.0F);
     EXPECT_TRUE(std::signbit(result[4]));
+}
+
+// ── Silu rank-zero scalar tests ──
+
+TEST(ConstEvaluator, PlansSiluRankZero) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
+    ASSERT_NE(evaluator, nullptr);
+    const TensorSpec spec = Spec(DataType::Float32(), {});
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = spec, .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->outputs.size(), 1U);
+    EXPECT_EQ(plan->outputs[0].spec, spec);
+    EXPECT_EQ(plan->outputs[0].nbytes, static_cast<size_t>(DataType::Float32().nbytes()));
+    EXPECT_TRUE(plan->outputs[0].strides.empty());
+}
+
+template<typename T>
+void ExpectSiluRankZeroEvaluation(DataType dtype, T input_value, T expected_value) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{};
+    const std::vector<int64_t> strides{};
+    const std::vector<std::byte> input_bytes = BytesFromValues(std::vector<T>{input_value});
+    std::vector<std::byte> output_bytes(sizeof(T));
+    const std::vector<TensorView> inputs = {
+            TensorView(input_bytes.data(), dtype, shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), dtype, shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, SiluParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<T> result = ValuesFromBytes<T>(output_bytes);
+    ASSERT_EQ(result.size(), 1U);
+    if constexpr (std::is_same_v<T, float>) {
+        EXPECT_NEAR(result[0], expected_value, 1e-5F);
+    } else if constexpr (std::is_same_v<T, double>) {
+        EXPECT_NEAR(result[0], expected_value, 1e-12);
+    } else {
+        EXPECT_EQ(result[0], expected_value);
+    }
+}
+
+TEST(ConstEvaluator, EvaluatesSiluRankZeroFloat32) {
+    float x = 2.0F;
+    float expected;
+    if (x >= 0.0F) {
+        expected = x / (1.0F + std::exp(-x));
+    } else {
+        expected = x * std::exp(x) / (1.0F + std::exp(x));
+    }
+    ExpectSiluRankZeroEvaluation<float>(DataType::Float32(), x, expected);
+}
+
+TEST(ConstEvaluator, EvaluatesSiluRankZeroBFloat16) {
+    float x = 2.0F;
+    float expected;
+    if (x >= 0.0F) {
+        expected = x / (1.0F + std::exp(-x));
+    } else {
+        expected = x * std::exp(x) / (1.0F + std::exp(x));
+    }
+    ExpectSiluRankZeroEvaluation<BFloat16>(
+            DataType::BFloat(16),
+            BFloat16(2.0F),
+            BFloat16(expected));
+}
+
+// ── SiluMul rank-zero scalar tests ──
+
+TEST(ConstEvaluator, PlansSiluMulRankZero) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSiluMul);
+    ASSERT_NE(evaluator, nullptr);
+    const TensorSpec spec = Spec(DataType::Float32(), {});
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = spec, .payload = ConstantValue{}},
+            {.spec = spec, .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = spec, .payload = ActivationValue{}, .debug_name = "fused"},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, SiluMulParams{}, ConstEvalPolicy{});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->outputs.size(), 1U);
+    EXPECT_EQ(plan->outputs[0].spec, spec);
+    EXPECT_EQ(plan->outputs[0].nbytes, static_cast<size_t>(DataType::Float32().nbytes()));
+    EXPECT_TRUE(plan->outputs[0].strides.empty());
+}
+
+template<typename T>
+void ExpectSiluMulRankZeroEvaluation(DataType dtype, T gate_value, T up_value, T expected_value) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSiluMul);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{};
+    const std::vector<int64_t> strides{};
+    const std::vector<std::byte> gate_bytes = BytesFromValues(std::vector<T>{gate_value});
+    const std::vector<std::byte> up_bytes = BytesFromValues(std::vector<T>{up_value});
+    std::vector<std::byte> output_bytes(sizeof(T));
+    const std::vector<TensorView> inputs = {
+            TensorView(gate_bytes.data(), dtype, shape, strides),
+            TensorView(up_bytes.data(), dtype, shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), dtype, shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, SiluMulParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<T> result = ValuesFromBytes<T>(output_bytes);
+    ASSERT_EQ(result.size(), 1U);
+    if constexpr (std::is_same_v<T, float>) {
+        EXPECT_NEAR(result[0], expected_value, 1e-5F);
+    } else if constexpr (std::is_same_v<T, double>) {
+        EXPECT_NEAR(result[0], expected_value, 1e-12);
+    } else {
+        EXPECT_EQ(result[0], expected_value);
+    }
+}
+
+TEST(ConstEvaluator, EvaluatesSiluMulRankZeroFloat32) {
+    float x = 2.0F;
+    float silu;
+    if (x >= 0.0F) {
+        silu = x / (1.0F + std::exp(-x));
+    } else {
+        silu = x * std::exp(x) / (1.0F + std::exp(x));
+    }
+    float expected = silu * 3.0F;
+    ExpectSiluMulRankZeroEvaluation<float>(DataType::Float32(), x, 3.0F, expected);
+}
+
+TEST(ConstEvaluator, EvaluatesSiluMulRankZeroBFloat16) {
+    float x = 2.0F;
+    float silu;
+    if (x >= 0.0F) {
+        silu = x / (1.0F + std::exp(-x));
+    } else {
+        silu = x * std::exp(x) / (1.0F + std::exp(x));
+    }
+    float expected = silu * 3.0F;
+    ExpectSiluMulRankZeroEvaluation<BFloat16>(
+            DataType::BFloat(16),
+            BFloat16(2.0F),
+            BFloat16(3.0F),
+            BFloat16(expected));
+}
+
+// SiluMul rank-zero scalar-tensor mismatch — must still be rejected
+TEST(ConstEvaluator, SkipsSiluMulRankZeroScalarTensorMismatch) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSiluMul);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<NodeOutputDesc> inputs = {
+            {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
+            {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
+    };
+    const std::vector<NodeOutputDesc> outputs = {
+            {.spec = Spec(DataType::Float32(), {2}), .payload = ActivationValue{}},
+    };
+
+    const auto plan = evaluator->Plan(inputs, outputs, SiluMulParams{}, ConstEvalPolicy{});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
 }
 
 }// namespace

@@ -75,7 +75,8 @@ struct RuntimeTensorStorage {
           strides(MakeStrides(shape)) {}
 
     AM_NODISCARD TensorView View() const {
-        return {nullptr, DataType::Float32(), shape, strides};
+        static const int dummy = 0;
+        return {&dummy, DataType::Float32(), shape, strides};
     }
 };
 

@@ -100,6 +100,32 @@ TEST(RmsNormOp, RejectsStaticHiddenMismatch) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
+TEST(RmsNormOp, RejectsRankZeroInput) {
+    const RmsNormOp op{RmsNormOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+    };
+
+    const Status status = op.CheckInputSpecs(inputs);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(RmsNormOp, RejectsRankZeroWeight) {
+    const RmsNormOp op{RmsNormOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+    };
+
+    const Status status = op.CheckInputSpecs(inputs);
+
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 // ===== Prepare/Run tests =====
 
 struct StubKernelState {
@@ -299,7 +325,7 @@ TEST(RmsNormOp, RunFailsWithWrongOutputCount) {
             TensorView(dummy, DataType::Float32(), shape_2d, strides_2d),
             TensorView(dummy, DataType::Float32(), shape_1d, strides_1d),
     };
-    step.outputs = {};  // No outputs; RmsNorm requires 1.
+    step.outputs = {};// No outputs; RmsNorm requires 1.
     bindings.SetStepTensorBinding(0, std::move(step));
 
     KernelContext kernel_ctx;

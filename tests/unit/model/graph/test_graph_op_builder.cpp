@@ -341,5 +341,96 @@ TEST(GraphOpBuilder, AddInputAndAddStateRegisterExternalValues) {
     EXPECT_EQ(kv_binding.slot, KVCacheSlot::kKey);
 }
 
+TEST(GraphOpBuilder, AddElementwiseAddDerivesOutputSpecFromLhs) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
+    ASSERT_TRUE(graph.GetValue(output).producer.has_value());
+    const GraphNode& node = graph.GetNode(*graph.GetValue(output).producer);
+    EXPECT_EQ(node.op_type, OpType::kAdd);
+    EXPECT_EQ(node.inputs.size(), 2U);
+    EXPECT_EQ(node.outputs.size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<AddParams>(node.op_params));
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddPreservesBroadcastNonRankZeroBehavior) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {2, 1}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {1, 3}), "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
+    EXPECT_EQ(graph.GetValue(output).spec.shape.rank().value(), 2U);
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddRequiresMatchingDtype) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Int(32), {2, 4}), "rhs");
+
+    EXPECT_DEATH(static_cast<void>(AddElementwiseAdd(graph, 0, lhs, rhs, "bad_add")),
+                 "Check failed");
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddRankZeroScalarPlusScalarOutputsLhsRankZero) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {}), "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
+    EXPECT_TRUE(graph.GetValue(output).spec.IsRankZero());
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddRankZeroScalarPlusTensorOutputsRhsSpec) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {3, 4}), "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(rhs).spec);
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddRankZeroTensorPlusScalarOutputsLhsSpec) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {3, 4}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {}), "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddRankOneIsNotRankZero) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {1}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {3, 4}), "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
+    EXPECT_FALSE(graph.GetValue(output).spec.IsRankZero());
+    EXPECT_EQ(graph.GetValue(output).spec.shape.rank().value(), 1U);
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddZeroDimTensorIsNotRankZero) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {0}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {3, 4}), "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
+    EXPECT_FALSE(graph.GetValue(output).spec.IsRankZero());
+    EXPECT_EQ(graph.GetValue(output).spec.shape.rank().value(), 1U);
+}
+
 }// namespace
 }// namespace aethermind

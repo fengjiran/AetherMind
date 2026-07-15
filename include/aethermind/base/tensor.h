@@ -1,9 +1,9 @@
 #ifndef AETHERMIND_BASE_TENSOR_H
 #define AETHERMIND_BASE_TENSOR_H
 
+#include "aethermind/dtypes/data_type.h"
 #include "aethermind/memory/buffer.h"
 #include "container/array_view.h"
-#include "aethermind/dtypes/data_type.h"
 #include "device.h"
 #include "macros.h"
 #include "shape_and_stride.h"

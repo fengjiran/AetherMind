@@ -13,6 +13,9 @@ bool IsFoldableSiluDType(const DataType& dtype) {
            dtype == DataType::BFloat(16);
 }
 
+// Stable SiLU: sign-dependent formula prevents overflow at large |x|.
+// BFloat16 is promoted to float for intermediate computation and
+// rounded once on output to preserve accuracy in the wider type.
 struct SiluScalarOp {
     template<typename T>
     static Status Apply(T input, T& output) {
@@ -37,9 +40,11 @@ Status EvaluateSiluFlatByDType(const DataType& dtype,
     if (dtype == DataType::Float32()) {
         return detail::EvaluateUnaryFlatTyped<SiluScalarOp, float>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::Double()) {
         return detail::EvaluateUnaryFlatTyped<SiluScalarOp, double>(inputs, outputs, numel);
     }
+
     if (dtype == DataType::BFloat(16)) {
         return detail::EvaluateUnaryFlatTyped<SiluScalarOp, BFloat16>(inputs, outputs, numel);
     }
@@ -53,23 +58,28 @@ Status EvaluateSiluStridedByDType(const DataType& dtype,
     if (dtype == DataType::Float32()) {
         return detail::EvaluateUnaryStridedKernel<SiluScalarOp, float>(inputs, outputs, input_strides);
     }
+
     if (dtype == DataType::Double()) {
         return detail::EvaluateUnaryStridedKernel<SiluScalarOp, double>(inputs, outputs, input_strides);
     }
+
     if (dtype == DataType::BFloat(16)) {
         return detail::EvaluateUnaryStridedKernel<SiluScalarOp, BFloat16>(inputs, outputs, input_strides);
     }
     return Status::InvalidArgument("Silu constant evaluator received unsupported dtype");
 }
 
+// TU-local evaluator — registered via GetSiluConstEvaluator() accessor.
+// The registry holds a function pointer, not the concrete type.
 class SiluConstEvaluator final : public ConstEvaluator {
 public:
+    // Validates shapes, dtype, and budgets; produces a contiguous-output plan.
+    // SiLU is element-wise so the output is always dense and contiguous.
     AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const NodeOutputDesc> inputs,
                                               std::span<const NodeOutputDesc> outputs,
                                               const OpParams& params,
                                               const ConstEvalPolicy& policy) const override {
-        if (inputs.size() != 1U || outputs.size() != 1U ||
-            !std::holds_alternative<SiluParams>(params)) {
+        if (inputs.size() != 1U || outputs.size() != 1U || !std::holds_alternative<SiluParams>(params)) {
             return Status::Unimplemented(
                     "Silu constant evaluator requires one input and one output");
         }
@@ -83,19 +93,19 @@ public:
 
         auto input_shape = ExtractStaticShape(input);
         AM_RETURN_IF_ERROR(input_shape.status());
-        auto shape = ExtractStaticShape(output);
-        AM_RETURN_IF_ERROR(shape.status());
-        if (input_shape->empty() || shape->empty()) {
+        auto output_shape = ExtractStaticShape(output);
+        AM_RETURN_IF_ERROR(output_shape.status());
+        if (input_shape->empty() || output_shape->empty()) {
             return Status::Unimplemented(
                     "Silu constant evaluator requires non-scalar tensor shapes");
         }
 
-        if (*input_shape != *shape) {
+        if (*input_shape != *output_shape) {
             return Status::Unimplemented(
                     "Silu constant evaluator requires identical static shapes for input and output");
         }
 
-        auto numel = CountElements(*shape);
+        auto numel = CountElements(*output_shape);
         AM_RETURN_IF_ERROR(numel.status());
         if (static_cast<size_t>(*numel) > policy.max_compute_elements) {
             return Status::Unimplemented(
@@ -109,20 +119,22 @@ public:
                     "Silu constant evaluator output byte budget exceeded");
         }
 
-        auto strides = MakeContiguousStrides(*shape);
-        AM_RETURN_IF_ERROR(strides.status());
+        auto output_strides = MakeContiguousStrides(*output_shape);
+        AM_RETURN_IF_ERROR(output_strides.status());
 
         ConstEvalPlan plan;
         plan.outputs.push_back({
                 .spec = output,
                 .quantization = outputs[0].quantization,
-                .strides = std::move(*strides),
+                .strides = std::move(*output_strides),
                 .nbytes = *nbytes,
                 .debug_name = "folded_" + outputs[0].debug_name,
         });
         return plan;
     }
 
+    // Flat fast path for contiguous input; strided kernel for non-contiguous.
+    // The flat path avoids stride indirection and is measurably faster.
     AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
                                  std::span<MutableTensorView> outputs,
                                  const OpParams& params) const override {

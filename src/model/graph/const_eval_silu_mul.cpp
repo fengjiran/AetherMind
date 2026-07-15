@@ -33,8 +33,11 @@ struct SiluMulScalarOp {
     }
 };
 
+// TU-local evaluator — registered via GetSiluMulConstEvaluator() accessor.
 class SiluMulConstEvaluator final : public ConstEvaluator {
 public:
+    // Validates shapes, dtype match across gate/up/output, and budgets.
+    // Produces a contiguous-output plan (element-wise fusion is always dense).
     AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const NodeOutputDesc> inputs,
                                               std::span<const NodeOutputDesc> outputs,
                                               const OpParams& params,
@@ -58,19 +61,19 @@ public:
         AM_RETURN_IF_ERROR(gate_shape.status());
         auto up_shape = ExtractStaticShape(up);
         AM_RETURN_IF_ERROR(up_shape.status());
-        auto shape = ExtractStaticShape(output);
-        AM_RETURN_IF_ERROR(shape.status());
-        if (gate_shape->empty() || up_shape->empty() || shape->empty()) {
+        auto output_shape = ExtractStaticShape(output);
+        AM_RETURN_IF_ERROR(output_shape.status());
+        if (gate_shape->empty() || up_shape->empty() || output_shape->empty()) {
             return Status::Unimplemented(
                     "SiluMul constant evaluator requires non-scalar tensor shapes");
         }
 
-        if (*gate_shape != *shape || *up_shape != *shape) {
+        if (*gate_shape != *output_shape || *up_shape != *output_shape) {
             return Status::Unimplemented(
                     "SiluMul constant evaluator requires identical static shapes for gate, up, and output");
         }
 
-        auto numel = CountElements(*shape);
+        auto numel = CountElements(*output_shape);
         AM_RETURN_IF_ERROR(numel.status());
         if (static_cast<size_t>(*numel) > policy.max_compute_elements) {
             return Status::Unimplemented(
@@ -84,53 +87,56 @@ public:
                     "SiluMul constant evaluator output byte budget exceeded");
         }
 
-        auto strides = MakeContiguousStrides(*shape);
-        AM_RETURN_IF_ERROR(strides.status());
+        auto output_strides = MakeContiguousStrides(*output_shape);
+        AM_RETURN_IF_ERROR(output_strides.status());
 
         ConstEvalPlan plan;
         plan.outputs.push_back({
                 .spec = output,
                 .quantization = outputs[0].quantization,
-                .strides = std::move(*strides),
+                .strides = std::move(*output_strides),
                 .nbytes = *nbytes,
                 .debug_name = "folded_" + outputs[0].debug_name,
         });
         return plan;
     }
 
+    // Flat fast path when both inputs are contiguous; strided kernel otherwise.
     AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
                                  std::span<MutableTensorView> outputs,
                                  const OpParams& params) const override {
-        if (inputs.size() != 2U || outputs.size() != 1U ||
-            !std::holds_alternative<SiluMulParams>(params)) {
+        if (inputs.size() != 2U || outputs.size() != 1U || !std::holds_alternative<SiluMulParams>(params)) {
             return Status::InvalidArgument(
                     "SiluMul constant evaluator received invalid view arity");
         }
 
-        const DataType dtype = inputs[0].dtype();
-        if (!IsFoldableSiluMulDType(dtype) || inputs[1].dtype() != dtype ||
-            outputs[0].dtype() != dtype) {
+        const auto& gate = inputs[0];
+        const auto& up = inputs[1];
+        const auto& out = outputs[0];
+
+        const DataType dtype = gate.dtype();
+        if (!IsFoldableSiluMulDType(dtype) || up.dtype() != dtype || out.dtype() != dtype) {
             return Status::InvalidArgument(
                     "SiluMul constant evaluator received unsupported dtype");
         }
 
-        if (inputs[0].shape() != outputs[0].shape() ||
-            inputs[1].shape() != outputs[0].shape()) {
+        if (gate.shape() != out.shape() || up.shape() != out.shape()) {
             return Status::InvalidArgument(
                     "SiluMul constant evaluator received mismatched shapes");
         }
 
-        if (!outputs[0].is_contiguous()) {
+        if (!out.is_contiguous()) {
             return Status::InvalidArgument(
                     "SiluMul constant evaluator requires contiguous output tensor");
         }
 
-        if (inputs[0].is_contiguous() && inputs[1].is_contiguous()) {
-            return detail::EvaluateBinaryFlatByDType<SiluMulScalarOp>(dtype, inputs, outputs, outputs[0].numel());
+        if (gate.is_contiguous() && up.is_contiguous()) {
+            return detail::EvaluateBinaryFlatByDType<SiluMulScalarOp>(
+                    dtype, inputs, outputs, out.numel());
         }
 
-        return detail::EvaluateBinaryStridedByDType<SiluMulScalarOp>(dtype, inputs, outputs,
-                                                                     inputs[0].strides(), inputs[1].strides());
+        return detail::EvaluateBinaryStridedByDType<SiluMulScalarOp>(
+                dtype, inputs, outputs, gate.strides(), up.strides());
     }
 };
 

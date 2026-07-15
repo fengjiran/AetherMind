@@ -6,7 +6,7 @@
 #define AETHERMIND_SCALAR_H
 
 #include "aethermind/dtypes/data_type.h"
-#include "cast.h"
+#include "aethermind/dtypes/cast.h"
 
 namespace aethermind {
 
@@ -134,14 +134,14 @@ public:
         }
 
         if (is_signed_integral()) {
-            if (is_overflow<decltype(v.i), T>(v.i, true)) {
+            if (is_cast_overflow<decltype(v.i), T>(v.i, true)) {
                 return false;
             }
             return static_cast<T>(v.i) == x;
         }
 
         if (is_unsigned_integral()) {
-            if (is_overflow<decltype(v.u), T>(v.u, true)) {
+            if (is_cast_overflow<decltype(v.u), T>(v.u, true)) {
                 return false;
             }
             return static_cast<T>(v.u) == x;
@@ -166,7 +166,7 @@ public:
         }
 
         if (is_signed_integral()) {
-            if (is_overflow<decltype(v.i), T>(v.i, true)) {
+            if (is_cast_overflow<decltype(v.i), T>(v.i, true)) {
                 return false;
             }
 
@@ -174,7 +174,7 @@ public:
         }
 
         if (is_unsigned_integral()) {
-            if (is_overflow<decltype(v.u), T>(v.u, true)) {
+            if (is_cast_overflow<decltype(v.u), T>(v.u, true)) {
                 return false;
             }
 

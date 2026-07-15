@@ -3,8 +3,8 @@
 /// Provides constexpr sign/overflow predicates and the `cast` /
 /// `check_and_cast` families used by tensor dtype conversions.
 
-#ifndef AETHERMIND_CAST_H
-#define AETHERMIND_CAST_H
+#ifndef AETHERMIND_DTYPES_CAST_H
+#define AETHERMIND_DTYPES_CAST_H
 
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/complex.h"
@@ -118,7 +118,7 @@ constexpr bool less_than_lowest(const T& x) {
 /// bool converts to any target type without overflow.
 template<typename From, typename To,
          std::enable_if_t<std::is_same_v<From, bool>>* = nullptr>
-bool is_overflow(From, AM_MAYBE_UNUSED bool strict_unsigned = false) {
+bool is_cast_overflow(From, AM_MAYBE_UNUSED bool strict_unsigned = false) {
     return false;
 }
 
@@ -129,7 +129,7 @@ bool is_overflow(From, AM_MAYBE_UNUSED bool strict_unsigned = false) {
 /// @return true if the conversion would overflow
 template<typename From, typename To,
          std::enable_if_t<std::is_integral_v<From> && !std::is_same_v<From, bool>>* = nullptr>
-bool is_overflow(From src, bool strict_unsigned = false) {
+bool is_cast_overflow(From src, bool strict_unsigned = false) {
     using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
     if constexpr (!Limit::is_signed && std::numeric_limits<From>::is_signed) {
         if (!strict_unsigned) {
@@ -144,7 +144,7 @@ bool is_overflow(From src, bool strict_unsigned = false) {
 /// Checks whether a floating-point src overflows when cast to To.
 template<typename From, typename To,
          std::enable_if_t<std::is_floating_point_v<From>>* = nullptr>
-bool is_overflow(From src, AM_MAYBE_UNUSED bool strict_unsigned = false) {
+bool is_cast_overflow(From src, AM_MAYBE_UNUSED bool strict_unsigned = false) {
     using Limit = std::numeric_limits<typename scalar_value_type<To>::type>;
     if (Limit::has_infinity && std::isinf(static_cast<double>(src))) {
         return false;
@@ -158,7 +158,7 @@ bool is_overflow(From src, AM_MAYBE_UNUSED bool strict_unsigned = false) {
 
 /// Checks whether a complex src overflows when cast to To.
 template<typename From, typename To, std::enable_if_t<is_complex_v<From>>* = nullptr>
-bool is_overflow(From src, bool strict_unsigned = false) {
+bool is_cast_overflow(From src, bool strict_unsigned = false) {
     if (!is_complex_v<To> && src.imag() != 0) {
         return true;
     }
@@ -166,8 +166,8 @@ bool is_overflow(From src, bool strict_unsigned = false) {
     using from_type = From::value_type;
     using to_type = scalar_value_type<To>::type;
 
-    return is_overflow<from_type, to_type>(src.real(), strict_unsigned) ||
-           is_overflow<from_type, to_type>(src.imag(), strict_unsigned);
+    return is_cast_overflow<from_type, to_type>(src.real(), strict_unsigned) ||
+           is_cast_overflow<from_type, to_type>(src.imag(), strict_unsigned);
 }
 
 // True when casting complex->non-complex, so only the real part is used.
@@ -282,13 +282,12 @@ struct cast<complex<double>, complex<Half>> {
 /// @throws RuntimeError if the conversion would overflow
 template<typename From, typename To>
 To check_and_cast(From src, const char* name) {
-    if (!std::is_same_v<To, bool> && is_overflow<From, To>(src)) {
+    if (!std::is_same_v<To, bool> && is_cast_overflow<From, To>(src)) {
         AM_THROW(RuntimeError) << "Cannot convert the value to type " << name << " without overflow.";
     }
     return cast<From, To>::apply(src);
 }
 
-
 }// namespace aethermind
 
-#endif// AETHERMIND_CAST_H
+#endif// AETHERMIND_DTYPES_CAST_H

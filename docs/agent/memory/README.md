@@ -4,7 +4,7 @@ module: agent_memory
 parent: none
 depends_on: []
 adr_refs: []
-last_verified: 2026-03-18
+last_verified: 2026-07-15
 owner: team
 status: active
 ---
@@ -13,11 +13,11 @@ status: active
 
 > ⚠️ **警告：本文件为按需升级读取操作手册，新对话默认不要求完整读取。**
 > 
-> **默认启动路径**：`AGENTS.md → docs/agent/memory/project.md → active handoff`
+> **默认启动路径**：`AGENTS.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/<key>/<selected-active-handoff>.md`
 > 
 > **何时读取本文件**：仅在需要处理 memory/handoff 的目录规则、命名、frontmatter 契约、兼容默认值、写回规则、冲突处理时按需升级读取。
 >
-> 详见 `AGENTS.md` 第10节"Agent Memory System 执行约束"。
+> 详见 `AGENTS.md` 第12节"Agent Memory System 执行约束"。
 
 > 本文件是 Agent Memory System 的**按需升级读取操作手册**。
 > 默认启动契约、最小加载路径、Resume Gate 与确认闸门，统一以根目录 `AGENTS.md` 为准。
@@ -34,6 +34,11 @@ status: active
 - 需要处理 workstream 键、命名、兼容默认值或冲突合并
 - 需要判断 handoff 存储规则、状态流转或清理策略
 
+### Resume Gate 前的操作边界
+- 仅允许根目录 `AGENTS.md` 第12节列出的只读引导操作，包括解析 workstream、读取最小记忆、扫描候选 frontmatter 和读取唯一选中 handoff 正文。
+- 与恢复无关的代码扫描、构建、测试、编辑、写入及外部副作用操作，必须等待 Resume Gate 后的用户明确确认。
+- 第一轮请求中的“继续”只用于选择或恢复 workstream，不等于业务执行授权。
+
 ## 2. 记忆层级模型
 
 - 全局层：`docs/agent/memory/project.md`
@@ -44,6 +49,8 @@ status: active
   - 存放子模块级约束、实现边界、性能/并发细节
 - handoff 层：`docs/agent/handoff/workstreams/<workstream_key>/`
   - 只保存**当前状态增量**，不替代长期稳定事实
+
+> **项目级工作默认跳过模块/子模块记忆**：项目级默认启动路径为 `AGENTS.md → project.md → selected handoff`，不读取 `docs/agent/memory/modules/<module>/module.md` 或 `submodules/<submodule>.md`。仅当任务触及特定模块边界、所有权/生命周期、线程安全或性能约束时，可按需读取受影响的模块记忆，并在 Resume Gate 中记录。
 
 ## 3. Workstream 键与存储路径
 ### 模块级工作
@@ -135,11 +142,14 @@ closed_reason: null
 ### 读取规则
 
 恢复工作时：
-1. 只读取 `status: active` 的 handoff
-2. 在 active handoff 中按 `created_at` 降序排序
-3. `created_at` 相同时按文件名字典序 tie-break
-4. frontmatter 缺失或损坏的文件不参与恢复
-5. 若无 active handoff，则退化为“从 memory 开始”
+1. 扫描目录下所有候选 handoff 文件的 YAML frontmatter，仅收集元数据（不读取正文）
+2. 排除 frontmatter 缺失或损坏的无效候选
+3. 筛选 `status: active` 的有效条目
+4. 按 `created_at` 降序排序；若相同则按文件名字典序 tie-break
+5. 仅读取排序后第一个 handoff 的完整正文；同一 workstream 只读取一个 handoff 正文
+6. 若无 active handoff，则退化为"从 memory 开始"
+
+> 元数据扫描（frontmatter 读取）不计为加载多个 handoff 正文。已加载文件列表中仅包含选中的那一个 handoff。
 
 ### 状态流转
 

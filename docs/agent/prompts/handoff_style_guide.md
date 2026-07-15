@@ -1,8 +1,8 @@
 # Handoff 精简指南
 
 > **用途**：定义精简 handoff 的最佳实践，确保启动加载量控制在合理范围。
-> **目标**：单个 handoff ≤ 150 行或 ≤ 6,000 tokens。
-> **更新时间**：2026-03-19
+> **目标**：单个 handoff ≤ 6,000 tokens。
+> **更新时间**：2026-07-15
 
 ---
 
@@ -168,8 +168,7 @@ struct alignas(64) Span {
 ## 5. Token 预算指南
 
 ### 单个 Handoff 建议限制
-- **行数**：≤ 150 行
-- **Token数**：≤ 6,000 tokens（约 2,400 字符）
+- **Token数**：≤ 6,000 tokens（单一预算单位，以此为准）
 
 ### 超出预算时的处理
 1. **识别可回写内容**：设计决策、已验证事实
@@ -178,7 +177,7 @@ struct alignas(64) Span {
 
 ### 示例对比
 
-**精简前（242 行，~11,000 tokens）**：
+**精简前（~11,000 tokens）**：
 ```markdown
 ## 已完成工作
 1. 代码审查 (docs/reviews/code_review/20260315_page_cache_code_review.md)
@@ -189,7 +188,7 @@ struct alignas(64) Span {
    ...（详细展开）
 ```
 
-**精简后（80 行，~3,500 tokens）**：
+**精简后（~3,500 tokens）**：
 ```markdown
 ## 已完成工作
 - 代码审查：修复 P0 问题（PageMap::GetSpan 边界检查）→ 详见 docs/reviews/code_review/20260315_page_cache_code_review.md
@@ -211,7 +210,6 @@ struct alignas(64) Span {
 - [ ] 未完成事项具体可执行
 - [ ] 无详细代码片段
 - [ ] 无完整设计决策（已稳定部分已回写）
-- [ ] 行数 ≤ 150 行
 - [ ] Token数 ≤ 6,000
 
 ---
@@ -220,4 +218,4 @@ struct alignas(64) Span {
 
 - Handoff 模板：`docs/agent/prompts/handoff_template.md`
 - Memory 规范：`docs/agent/memory/README.md`
-- 启动契约：`AGENTS.md` 第10节
+- 启动契约：`AGENTS.md` 第12节

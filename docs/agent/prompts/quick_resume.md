@@ -2,7 +2,7 @@
 
 > **默认入口**：一句话恢复单一 workstream 的当前状态
 > **正式入口**：需要显式填写目标、回写项或跨模块信息时，使用 `new_session_template.md`
-> **启动契约**：默认启动路径、确认闸门与 Resume Gate 统一以 根目录`AGENTS.md` 为准
+> **启动契约**：默认启动路径、确认闸门与 Resume Gate 统一以根目录 `AGENTS.md` 第12节为准
 
 ## 适用范围
 
@@ -27,11 +27,12 @@
 
 ## 恢复流程
 
-1. 先按根目录 `AGENTS.md` 解析工作流类型
-2. 按根目录 `AGENTS.md` 的默认启动契约加载最小必要信息
+1. 按根目录 `AGENTS.md` 第12节解析工作流类型
+2. 执行根目录 `AGENTS.md` 第12节定义的默认启动与只读引导操作（读取 AGENTS.md、project.md，扫描候选 frontmatter，读取唯一选中 handoff 正文，按需升级读取 module.md/submodule.md）
 3. 若 handoff 不足或任务触及更深约束，再按需升级读取 `README.md` / `module.md` / `submodule.md`
-4. 输出：已加载文件、`resume_status`、下一步建议、阻塞点
-5. **必须等待用户明确说“继续”/“执行”/“是”后**，才能执行任何工具操作
+4. 输出 Resume Gate：已加载文件、`resume_status`、下一步建议、阻塞点
+5. **必须通过 Resume Gate 并等待用户明确确认后**，才能执行非恢复/业务工具操作
+6. 第一轮“继续”表示选择 workstream，不授权执行业务操作；只有在 Resume Gate 询问后用户说“继续”/“执行”/“是”时，才授权执行推荐操作
 
 ## 输出要求
 
@@ -48,7 +49,7 @@
 ## handoff 规则提醒
 
 - handoff 位于 `docs/agent/handoff/workstreams/<workstream_key>/`
-- 只读取 `status: active` 的 handoff
+- 扫描候选 frontmatter 后，只读取唯一选中的 `status: active` handoff 正文
 - `bootstrap_ready: true` 可用于低上下文恢复；缺失按 `false` 处理
 - `docs/agent/prompts/handoff_template.md` 只是模板，不是运行时状态
 

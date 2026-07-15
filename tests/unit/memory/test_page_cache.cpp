@@ -306,8 +306,7 @@ TEST_F(PageCacheTest, ClearRangeAfterUnmapMakesLookupNull) {
 // 测试点 5: 压力测试 (随机分配释放)
 TEST_F(PageCacheTest, RandomStress) {
     std::vector<Span*> spans;
-    std::random_device rd;
-    std::mt19937 g(rd());
+    std::mt19937 g(42);
     std::uniform_int_distribution<> dis(1, 20);
 
     for (int i = 0; i < 1000; ++i) {

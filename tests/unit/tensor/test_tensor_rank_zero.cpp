@@ -217,12 +217,12 @@ TEST(TensorRankZero, StrideOutOfBoundsDeath) {
 }
 
 // ── rank-0 slice/narrow rejection ─────────────────────────────────
-TEST(TensorRankZero, SliceRejectsRankZero) {
+TEST(TensorRankZero, SliceRejectsRankZeroDeath) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     EXPECT_DEATH(static_cast<void>(t.slice(0, 0, 1)), "Check failed");
 }
 
-TEST(TensorRankZero, NarrowRejectsRankZero) {
+TEST(TensorRankZero, NarrowRejectsRankZeroDeath) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     EXPECT_DEATH(static_cast<void>(t.narrow(0, 0, 1)), "Check failed");
 }

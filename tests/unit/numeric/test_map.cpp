@@ -145,11 +145,6 @@ TEST(BBlockTest, BoundaryCondition) {
     // 测试0槽位
     block.emplace(0, 1);
     EXPECT_EQ(*block.GetDataPtr(0), 1);
-
-    // 测试：CHECK宏触发断言（越界slot，此处用ASSERT_DEATH检测崩溃）
-    // ASSERT_DEATH(block.emplace(MagicConstantsV1::kEntriesPerBlock, 0), "");
-    // ASSERT_DEATH(block.destroy(MagicConstantsV1::kEntriesPerBlock), "");
-    // ASSERT_DEATH(block.GetDataPtr(MagicConstantsV1::kEntriesPerBlock), "");
 }
 
 // ========== 测试套件6：复杂类型测试（带堆内存，无内存泄漏/双重释放） ==========

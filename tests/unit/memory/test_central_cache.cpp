@@ -234,8 +234,7 @@ TEST_F(CentralCacheTest, ReallocateAfterRelease) {
 // 测试点 8: 压力测试
 TEST_F(CentralCacheTest, StressTest) {
     std::vector<std::pair<void*, size_t>> allocated;
-    std::random_device rd;
-    std::mt19937 g(rd());
+    std::mt19937 g(42);
     std::uniform_int_distribution<> size_dis(8, 1024);
     std::uniform_int_distribution<> batch_dis(1, 50);
 

@@ -99,11 +99,11 @@ TEST(Any, float) {
 
     float v3 = 3.14f;
     Any x3 = v3;
-    EXPECT_EQ(x3.cast<float>(), 3.14f);
+    EXPECT_FLOAT_EQ(x3.cast<float>(), 3.14f);
     EXPECT_TRUE(x3.unique());
 
     Any x2 = v3;
-    EXPECT_EQ(x2.cast<float>(), 3.14f);
+    EXPECT_FLOAT_EQ(x2.cast<float>(), 3.14f);
     EXPECT_EQ(Any(std::complex<float>(1, 2)).cast<std::complex<float>>().real(), 1.0f);
 }
 

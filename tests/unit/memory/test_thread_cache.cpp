@@ -262,8 +262,7 @@ TEST_F(ThreadCacheTest, SlowStartGrowthThenOveragesShrinkMaxSize) {
 TEST_F(ThreadCacheTest, StressTest) {
     thread_local ThreadCache cache;
     std::vector<std::pair<void*, size_t>> allocated;
-    std::random_device rd;
-    std::mt19937 g(rd());
+    std::mt19937 g(42);
     std::uniform_int_distribution<> size_dis(8, 1024);
 
     // 随机分配

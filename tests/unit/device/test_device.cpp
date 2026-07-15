@@ -2,9 +2,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(Device, DeviceTypeValidation) {
     EXPECT_TRUE(IsValidDeviceType(kCPU));

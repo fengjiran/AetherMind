@@ -8,9 +8,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 template<size_t N>
 TensorView MakeContiguousFloatTensorView(const float (&data)[N],

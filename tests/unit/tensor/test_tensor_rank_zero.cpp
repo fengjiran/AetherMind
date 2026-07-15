@@ -1,29 +1,25 @@
+#include "../test_utils/tensor_factory.h"
 #include "aethermind/base/tensor.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/memory/buffer.h"
 
-#include "../test_utils/tensor_factory.h"
-
 #include <array>
-#include <cstddef>
-#include <cstdint>
 #include <gtest/gtest.h>
 
+namespace {
 using namespace aethermind;
 using namespace aethermind::test_utils;
-
-namespace {
 
 // ── helpers ──────────────────────────────────────────────────────────
 
 // Returns a non-null IntArrayView with size 0, suitable for rank-0.
-inline IntArrayView EmptyIntArrayView() {
+IntArrayView EmptyIntArrayView() {
     static constexpr int64_t dummy = 0;
     return IntArrayView{&dummy, static_cast<size_t>(0)};
 }
 
 Tensor MakeRankZeroFloat32Tensor(size_t buffer_nbytes = 4) {
-    auto buffer = aethermind::test_utils::detail::MakeBuffer(buffer_nbytes);
+    auto buffer = test_utils::detail::MakeBuffer(buffer_nbytes);
     ShapeAndStride sas;
     sas.set_contiguous(IntArrayView{});
     return {std::move(buffer), 0, DataType::Float32(), sas};
@@ -32,14 +28,13 @@ Tensor MakeRankZeroFloat32Tensor(size_t buffer_nbytes = 4) {
 Tensor MakeShapeZeroTensor() {
     static constexpr std::array<int64_t, 1> kShape{0};
     static constexpr std::array<int64_t, 1> kStrides{1};
-    auto buffer = aethermind::test_utils::detail::MakeBuffer(0);
+    auto buffer = test_utils::detail::MakeBuffer(0);
     return {std::move(buffer), 0, DataType::Float32(),
             IntArrayView{kShape.data(), kShape.size()},
             IntArrayView{kStrides.data(), kStrides.size()}};
 }
 
 // ── characterization: existing non-rank-zero behavior ───────────────
-
 TEST(TensorRankZero, DefaultTensorIsNotRankZero) {
     Tensor t;
     EXPECT_FALSE(t.is_initialized());
@@ -49,7 +44,6 @@ TEST(TensorRankZero, VectorShapeOneIsNotRankZero) {
     Tensor t = MakeContiguousTensor({1});
     EXPECT_TRUE(t.is_initialized());
     EXPECT_EQ(t.rank(), 1);
-    EXPECT_NE(t.rank(), 0);
 }
 
 TEST(TensorRankZero, VectorShapeZeroIsNotRankZero) {
@@ -60,7 +54,6 @@ TEST(TensorRankZero, VectorShapeZeroIsNotRankZero) {
 }
 
 // ── rank-zero Tensor construction & metadata ────────────────────────
-
 TEST(TensorRankZero, ConstructWithFourByteFloat32Buffer) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     EXPECT_TRUE(t.is_initialized());
@@ -101,7 +94,6 @@ TEST(TensorRankZero, ShapeAndStridesAreEmpty) {
 }
 
 // ── is_rank_zero predicate ─────────────────────────────────────────
-
 TEST(TensorRankZero, IsRankZeroPredicate) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     EXPECT_TRUE(t.is_rank_zero());
@@ -123,7 +115,6 @@ TEST(TensorRankZero, VectorShapeZeroIsNotRankZeroViaPredicate) {
 }
 
 // ── immutable view borrow ──────────────────────────────────────────
-
 TEST(TensorViewRankZero, ImmutableViewBorrowsRankZeroTensor) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     // Write a value through mutable access to verify later
@@ -141,7 +132,6 @@ TEST(TensorViewRankZero, ImmutableViewBorrowsRankZeroTensor) {
 }
 
 // ── mutable view borrow / write-through ────────────────────────────
-
 TEST(MutableTensorViewRankZero, MutableViewWritesThroughTensorStorage) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
 
@@ -163,7 +153,6 @@ TEST(MutableTensorViewRankZero, MutableViewDefaultInvalid) {
 }
 
 // ── raw-part rank-0 views with null metadata pointers ───────────────
-
 TEST(TensorViewRankZero, RawPartsNullMetadataPointersRankZero) {
     float data = 7.0F;
     TensorView view(&data,
@@ -190,7 +179,6 @@ TEST(TensorViewRankZero, RankZeroNullDataDeath) {
 }
 
 // ── [0]-shape: zero elements, null data is legal ──────────────────
-
 TEST(TensorViewRankZero, ZeroShapeNullDataAccepted) {
     constexpr std::array<int64_t, 1> kShape{0};
     constexpr std::array<int64_t, 1> kStrides{1};
@@ -207,7 +195,6 @@ TEST(TensorViewRankZero, ZeroShapeNullDataAccepted) {
 }
 
 // ── default views are not rank-zero ────────────────────────────────
-
 TEST(TensorViewRankZero, DefaultViewIsNotRankZero) {
     TensorView view;
     EXPECT_FALSE(view.is_valid());
@@ -215,7 +202,6 @@ TEST(TensorViewRankZero, DefaultViewIsNotRankZero) {
 }
 
 // ── rank-0 dim/stride access death (DCHECK-based) ───────────────────
-
 TEST(TensorRankZero, DimOutOfBoundsDeath) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
 #ifndef NDEBUG
@@ -231,7 +217,6 @@ TEST(TensorRankZero, StrideOutOfBoundsDeath) {
 }
 
 // ── rank-0 slice/narrow rejection ─────────────────────────────────
-
 TEST(TensorRankZero, SliceRejectsRankZero) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     EXPECT_DEATH(static_cast<void>(t.slice(0, 0, 1)), "Check failed");
@@ -243,7 +228,6 @@ TEST(TensorRankZero, NarrowRejectsRankZero) {
 }
 
 // ── TensorView dim/stride rejection for rank-0 (DCHECK-based) ──────
-
 TEST(TensorViewRankZero, DimOutOfBoundsDeath) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     TensorView view = t.view();
@@ -263,7 +247,6 @@ TEST(TensorViewRankZero, StrideOutOfBoundsDeath) {
 }
 
 // ── MutableTensorView dim/stride rejection for rank-0 (DCHECK-based)
-
 TEST(MutableTensorViewRankZero, DimOutOfBoundsDeath) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     MutableTensorView view = t.mutable_view();
@@ -283,7 +266,6 @@ TEST(MutableTensorViewRankZero, StrideOutOfBoundsDeath) {
 }
 
 // ── alignment test for rank-0 raw view ─────────────────────────────
-
 TEST(TensorViewRankZero, ValidAlignmentPassedThrough) {
     alignas(64) float data = 1.0F;
     TensorView view(&data,
@@ -297,7 +279,6 @@ TEST(TensorViewRankZero, ValidAlignmentPassedThrough) {
 }
 
 // ── MutableTensorView rank-0 raw parts ────────────────────────────
-
 TEST(MutableTensorViewRankZero, RawPartsConstructionRankZero) {
     float storage = 0.0F;
     MutableTensorView view(&storage,
@@ -325,7 +306,6 @@ TEST(MutableTensorViewRankZero, RawPartsNullDataDeath) {
 }
 
 // ── mismatched shape/stride ranks reject ───────────────────────────
-
 TEST(TensorViewRankZero, MismatchedShapeStrideRanksDeath) {
     constexpr std::array<int64_t, 1> kShape{1};
     float data;
@@ -339,7 +319,6 @@ TEST(TensorViewRankZero, MismatchedShapeStrideRanksDeath) {
 }
 
 // ── logical nbytes / contiguous for rank-0 view ───────────────────
-
 TEST(TensorViewRankZero, LogicalNBytesMatchesItemsize) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     TensorView view = t.view();
@@ -348,7 +327,6 @@ TEST(TensorViewRankZero, LogicalNBytesMatchesItemsize) {
 }
 
 // ── non-rank-zero positive-element null-data rejection ─────────────
-
 TEST(TensorViewRankZero, NullDataShapeOneRejected) {
     constexpr std::array<int64_t, 1> kShape{1};
     constexpr std::array<int64_t, 1> kStrides{1};
@@ -390,7 +368,6 @@ TEST(MutableTensorViewRankZero, NullDataShapeTwoByThreeRejected) {
 }
 
 // ── zero-element shapes with null data accepted ────────────────────
-
 TEST(TensorViewRankZero, NullDataShapeTwoZeroThreeAccepted) {
     constexpr std::array<int64_t, 3> kShape{2, 0, 3};
     constexpr std::array<int64_t, 3> kStrides{3, 3, 1};

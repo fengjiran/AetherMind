@@ -6,9 +6,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 Status ScalarKernel(const KernelContext&) noexcept {
     return Status::Ok();

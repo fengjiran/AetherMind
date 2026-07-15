@@ -4,10 +4,9 @@
 #include <array>
 #include <gtest/gtest.h>
 
+namespace {
 using namespace aethermind;
 using namespace aethermind::test_utils;
-
-namespace {
 
 TEST(TensorView, BorrowsTensorMetadataAndData) {
     Tensor tensor = RandomUniformTensor({2, 3}, DataType::Float32(), -1.0, 1.0, 7);

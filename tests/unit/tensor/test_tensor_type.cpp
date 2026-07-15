@@ -6,9 +6,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // ShapeSymbol 测试组
 TEST(ShapeSymbolTest, BasicOperations) {
@@ -445,7 +444,6 @@ TEST(TensorTypeTest, WithMethods) {
     EXPECT_TRUE(with_device->device().has_value());
     EXPECT_EQ(with_device->device().value(), new_device);
 
-    // GTEST_SKIP();
     // 测试WithShape
     std::vector<int64_t> new_shape = {4, 5};
     auto with_shape = original->WithShape(new_shape);

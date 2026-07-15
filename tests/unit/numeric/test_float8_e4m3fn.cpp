@@ -7,10 +7,9 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
+namespace {
 using namespace aethermind;
 using namespace aethermind::detail;
-
-namespace {
 
 TEST(Float8E4M3FNToFloat32Test, ZeroValue) {
     EXPECT_EQ(0.0f, fp8e4m3fn_to_fp32_value(0x00));

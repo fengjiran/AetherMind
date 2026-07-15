@@ -1,13 +1,12 @@
-#include "aethermind/base/tensor.h"
 #include "../test_utils/tensor_assert.h"
 #include "../test_utils/tensor_random.h"
+#include "aethermind/base/tensor.h"
 
 #include <gtest/gtest.h>
 
+namespace {
 using namespace aethermind;
 using namespace aethermind::test_utils;
-
-namespace {
 
 TEST(TensorRandomNew, UniformTensorDeterministicWithSameSeed) {
     auto a = RandomUniformTensor({128}, DataType::Float32(), -1.0, 1.0, 42);

@@ -7,9 +7,8 @@
 
 #include <vector>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(ShapeInferenceIncludes, ExposePublicTypes) {
     ShapeConstraint constraint;

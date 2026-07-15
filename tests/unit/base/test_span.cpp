@@ -2,6 +2,8 @@
 #include "ammalloc/span.h"
 #include <gtest/gtest.h>
 
+namespace {
+
 using namespace aethermind;
 
 class SpanTest : public ::testing::Test {
@@ -59,3 +61,5 @@ TEST_F(SpanTest, DoubleFreeCorruption) {
     // Memory allocated via SystemAlloc.
     PageAllocator::SystemFree(ptr, page_num);
 }
+
+}// namespace

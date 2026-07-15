@@ -6,9 +6,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(CPUAllocator, BasicAllocation) {
     Device cpu_dev = Device::CPU();

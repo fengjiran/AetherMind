@@ -361,7 +361,6 @@ TEST(ToStringDataTypeValueTest, FixedLengthVectorTypes) {
 
 // 测试ToString函数对可缩放向量类型的转换
 TEST(ToStringDataTypeValueTest, ScalableVectorTypes) {
-    // GTEST_SKIP();
     // 创建可缩放向量类型
     DataType scalable_int = DataType::ScalableInt(32, 4);
     EXPECT_EQ(ToString(scalable_int), "Intxvscalex4");

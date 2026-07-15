@@ -7,9 +7,8 @@
 #include <set>
 #include <vector>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 std::vector<int64_t> MakeStrides(const std::vector<int64_t>& shape) {
     std::vector<int64_t> strides(shape.size(), 1);

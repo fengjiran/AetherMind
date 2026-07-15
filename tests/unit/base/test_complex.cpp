@@ -7,9 +7,8 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // 基本测试用例
 TEST(ComplexTest, DefaultConstructor) {

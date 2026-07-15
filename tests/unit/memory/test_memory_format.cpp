@@ -4,9 +4,8 @@
 #include "memory_format.h"
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // 测试MemoryFormat枚举值
 TEST(MemoryFormatTest, EnumValues) {

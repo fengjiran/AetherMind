@@ -180,10 +180,9 @@ void Tensor::validate() const {
 }
 
 // ── Scalar-Tensor bridge helpers ────────────────────────────────
-
 namespace {
 
-inline void WriteScalarToBuffer(const DataType& dtype, const Scalar& scalar, void* data) {
+void WriteScalarToBuffer(const DataType& dtype, const Scalar& scalar, void* data) {
 #define WRITE_DISPATCH(code, bits, lanes, cpp_type, name)      \
     if (dtype == DataType(code, bits, lanes)) {                \
         *static_cast<cpp_type*>(data) = scalar.to<cpp_type>(); \
@@ -196,7 +195,7 @@ inline void WriteScalarToBuffer(const DataType& dtype, const Scalar& scalar, voi
     AM_UNREACHABLE();
 }
 
-inline Scalar ReadScalarFromBuffer(const DataType& dtype, const void* data) {
+Scalar ReadScalarFromBuffer(const DataType& dtype, const void* data) {
 #define READ_DISPATCH(code, bits, lanes, cpp_type, name)    \
     if (dtype == DataType(code, bits, lanes)) {             \
         return Scalar(*static_cast<const cpp_type*>(data)); \

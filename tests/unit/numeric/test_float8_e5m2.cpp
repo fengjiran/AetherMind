@@ -7,10 +7,9 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
+namespace {
 using namespace aethermind;
 using namespace aethermind::detail;
-
-namespace {
 
 TEST(Float8E5M2Test, SpecialValues) {
     // Test zero values

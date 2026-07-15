@@ -6,9 +6,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // 基本类型测试
 TEST(TypeSystem, BasicTypeProperties) {

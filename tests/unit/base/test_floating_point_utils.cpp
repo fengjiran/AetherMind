@@ -7,9 +7,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind::detail;
-
 namespace {
+using namespace aethermind::detail;
 
 TEST(FloatingPointUtilsTest, Fp32FromBitsBasic) {
     // Test zero

@@ -11,9 +11,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // === Basic Construction Tests ===
 

@@ -2,9 +2,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(Operators_OpType, AllKnownTypesHaveStringRepresentation) {
     EXPECT_STREQ(ToString(OpType::kUnknown), "Unknown");

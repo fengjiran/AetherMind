@@ -10,9 +10,6 @@
 #include <gtest/gtest.h>
 #include <sstream>
 
-using namespace aethermind;
-using namespace aethermind::detail;
-
 namespace aethermind::detail {
 uint32_t fp16_to_fp32_bits_for_testing(uint16_t h);
 float fp16_to_fp32_value_for_testing(uint16_t h);
@@ -20,6 +17,8 @@ uint16_t fp16_from_fp32_value_for_testing(float f);
 }// namespace aethermind::detail
 
 namespace {
+using namespace aethermind;
+using namespace aethermind::detail;
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Zero) {
     EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x0000), 0x00000000);// +0
@@ -293,7 +292,7 @@ TEST(HalfFromFP32Test, NaN) {
 
 TEST(HalfFromFP32Test, NaNPayloadPreserved) {
     // Construct a quiet NaN with a deterministic payload in the top 10 mantissa bits.
-    constexpr uint32_t qnan_payload = 0x2AAU << 13;  // bits 22-13
+    constexpr uint32_t qnan_payload = 0x2AAU << 13;// bits 22-13
     constexpr uint32_t qnan_bits = 0x7FC00000U | qnan_payload;
     const float qnan = std::bit_cast<float>(qnan_bits);
     const uint16_t half_nan = fp16_from_fp32_value_for_testing(qnan);

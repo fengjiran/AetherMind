@@ -2,9 +2,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 class RegistryTestOperator final : public Operator {
 public:

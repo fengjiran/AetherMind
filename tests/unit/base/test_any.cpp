@@ -1,21 +1,20 @@
 //
 // Created by 赵丹 on 2025/8/15.
 //
+#include "../test_utils/tensor_factory.h"
+#include "../test_utils/tensor_random.h"
 #include "aethermind/base/tensor.h"
 #include "any.h"
 #include "container/array_view.h"
 #include "container/string.h"
 #include "device.h"
-#include "../test_utils/tensor_factory.h"
-#include "../test_utils/tensor_random.h"
 
 #include <gtest/gtest.h>
 #include <ranges>
 
+namespace {
 using namespace aethermind;
 using namespace aethermind::test_utils;
-
-namespace {
 
 TEST(Any, bool) {
     Any x0;
@@ -196,12 +195,12 @@ TEST(Any, new_tensor) {
     Tensor t = MakeContiguousTensor({3, 10}, DataType::Float32());
     Any x = t;
     EXPECT_TRUE(x.IsNewTensor());
-    
+
     Tensor t2 = x.ToNewTensor();
     EXPECT_EQ(t2.dtype(), t.dtype());
     EXPECT_TRUE(std::ranges::equal(t2.shape(), t.shape()));
     EXPECT_EQ(t2.numel(), t.numel());
-    
+
     {
         Any y = t2;
         EXPECT_TRUE(y.IsNewTensor());
@@ -211,9 +210,9 @@ TEST(Any, new_tensor) {
 TEST(Any, tensor_type_roundtrip) {
     Tensor new_tensor = RandomUniformTensor({5, 5}, DataType::Float32());
     Any any_new = new_tensor;
-    
+
     EXPECT_TRUE(any_new.IsNewTensor());
-    
+
     Tensor recovered_new = any_new.ToNewTensor();
     EXPECT_TRUE(recovered_new.is_initialized());
     EXPECT_TRUE(std::ranges::equal(recovered_new.shape(), new_tensor.shape()));

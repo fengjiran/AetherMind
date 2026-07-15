@@ -4,9 +4,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(KernelSelector, EqualityMatchesIdenticalSelectors) {
     const KernelSelector lhs{

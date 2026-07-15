@@ -5,9 +5,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // 测试ListType的基本功能
 TEST(ListTypeTest, BasicCreationAndProperties) {

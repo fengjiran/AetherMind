@@ -8,10 +8,9 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 
+namespace {
 using namespace aethermind;
 using namespace aethermind::test_utils;
-
-namespace {
 
 inline Allocator& GetCPUAllocator() {
     static CPUAllocatorProvider provider;

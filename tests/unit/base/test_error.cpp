@@ -5,9 +5,8 @@
 
 #include "error.h"
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(AM_THROW, BasicExceptionThrowing) {
     EXPECT_THROW({ AM_THROW(index_error) << "Test index out of bounds"; }, Error);

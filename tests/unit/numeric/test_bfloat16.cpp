@@ -7,10 +7,9 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
+namespace {
 using namespace aethermind;
 using namespace aethermind::detail;
-
-namespace {
 
 TEST(BFloat16Test, DefaultConstructor) {
     // 测试默认构造函数
@@ -429,7 +428,6 @@ TEST(BFloat16MathTest, Ceil) {
 
 // 测试cos函数
 TEST(BFloat16MathTest, Cos) {
-    // GTEST_SKIP();
     std::vector<float> test_values = {
             0.0f, M_PI, -M_PI, M_PI_4, -M_PI_4,
             M_PI * 0.25f, M_PI * 0.75f, M_PI * 1.25f, M_PI * 1.75f};
@@ -438,7 +436,6 @@ TEST(BFloat16MathTest, Cos) {
 
 // 测试sin函数
 TEST(BFloat16MathTest, Sin) {
-    // GTEST_SKIP();
     std::vector<float> test_values = {
             0.0f, M_PI_2, -M_PI_2, M_PI_4, -M_PI_4,
             M_PI * 0.25f, M_PI * 0.75f, M_PI * 1.25f, M_PI * 1.75f};

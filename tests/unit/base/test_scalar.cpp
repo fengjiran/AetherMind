@@ -6,9 +6,8 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // 测试bool类型特化版本的overflows函数
 TEST(CastOverflowsTest, BoolType) {
@@ -347,7 +346,6 @@ TEST(CastTest, SpecialFloatingPointValues) {
 }
 
 TEST(Scalar, init) {
-    // GTEST_SKIP();
     Scalar s1 = false;
     EXPECT_EQ(s1.toBool(), false);
     EXPECT_TRUE(s1.type() == DataType::Bool());

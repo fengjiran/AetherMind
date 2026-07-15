@@ -2,9 +2,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(SymbolConstraintSolver, AddsTransitiveSymbolEquality) {
     SymbolConstraintSolver solver;

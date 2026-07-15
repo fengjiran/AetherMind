@@ -12,7 +12,6 @@
 
 #include <bit>
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 
 namespace aethermind {
@@ -74,7 +73,7 @@ bool HasValidMetadata(const DataType& dtype,
 // the power-of-two alignment mask.
 bool HasValidAlignment(const void* data, size_t alignment) noexcept {
     if (alignment == 0) {
-        return true;  // unknown / unspecified
+        return true;// unknown / unspecified
     }
 
     if (!std::has_single_bit(alignment)) {
@@ -82,7 +81,7 @@ bool HasValidAlignment(const void* data, size_t alignment) noexcept {
     }
 
     // Null data is valid regardless of alignment — there is no address to
-        // check.  This covers zero-element views that have no backing storage.
+    // check. This covers zero-element views that have no backing storage.
     if (data == nullptr) {
         return true;
     }
@@ -182,7 +181,7 @@ bool IsContiguous(const IntArrayView shape, const IntArrayView strides) noexcept
 }// namespace
 
 // Constructs an immutable view borrowing data, dtype, and metadata from the
-// caller.  The caller is responsible for keeping the referenced storage alive
+// caller. The caller is responsible for keeping the referenced storage alive
 // for the lifetime of this view.
 TensorView::TensorView(const void* data,
                        const DataType dtype,
@@ -241,7 +240,7 @@ bool TensorView::is_contiguous() const noexcept {
 }
 
 // Constructs a mutable view borrowing data, dtype, and metadata from the
-// caller.  Lifetime responsibility remains with the caller.
+// caller. Lifetime responsibility remains with the caller.
 MutableTensorView::MutableTensorView(void* data,
                                      const DataType dtype,
                                      const IntArrayView shape,
@@ -293,6 +292,5 @@ bool MutableTensorView::is_contiguous() const noexcept {
     AM_DCHECK(is_valid(), "is_contiguous() requires a valid MutableTensorView.");
     return IsContiguous(shape_, strides_);
 }
-
 
 }// namespace aethermind

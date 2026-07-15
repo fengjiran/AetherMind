@@ -163,7 +163,6 @@ TEST_F(PageCacheTest, MergeLogic) {
 
 // 测试点 4: PageMap 映射一致性
 TEST_F(PageCacheTest, PageMapConsistency) {
-    // GTEST_SKIP();
     size_t pages = 4;
     Span* span = cache_.AllocSpan(pages);
 
@@ -306,7 +305,6 @@ TEST_F(PageCacheTest, ClearRangeAfterUnmapMakesLookupNull) {
 
 // 测试点 5: 压力测试 (随机分配释放)
 TEST_F(PageCacheTest, RandomStress) {
-    // GTEST_SKIP();
     std::vector<Span*> spans;
     std::random_device rd;
     std::mt19937 g(rd());

@@ -5,6 +5,8 @@
 #include "object_allocator.h"
 #include <gtest/gtest.h>
 
+namespace {
+
 using namespace aethermind;
 
 class NumberObj : public Object {};
@@ -15,8 +17,6 @@ public:
     IntObj() : value(0) {}
     explicit IntObj(int64_t value) : value(value) {}
 };
-
-namespace {
 
 TEST(object, ctors) {
     ObjectPtr<NumberObj> p1;

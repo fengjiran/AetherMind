@@ -2,9 +2,8 @@
 
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(Status, DefaultIsOk) {
     Status status;

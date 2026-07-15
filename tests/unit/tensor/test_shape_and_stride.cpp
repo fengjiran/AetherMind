@@ -1,13 +1,10 @@
 #include "aethermind/base/shape_and_stride.h"
 
 #include <gtest/gtest.h>
-
-#include <cstdint>
 #include <vector>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // ===== Baseline: default state =====
 TEST(ShapeAndStrideRankZero, DefaultRemainsUninitialized) {
@@ -47,7 +44,6 @@ TEST(ShapeAndStrideRankZero, VectorShapeZeroNumelZero) {
 }
 
 // ===== Rank-zero: explicit empty shape produces scalar metadata =====
-
 TEST(ShapeAndStrideRankZero, ExplicitEmptyShapeIsRankZero) {
     ShapeAndStride ss;
     ss.set_contiguous({});
@@ -80,7 +76,6 @@ TEST(ShapeAndStrideRankZero, ConstructorEmptyIsRankZero) {
 }
 
 // ===== Repeated set =====
-
 TEST(ShapeAndStrideRankZero, RepeatedSetToRankZero) {
     ShapeAndStride ss;
     ss.set_contiguous(IntArrayView(std::vector<int64_t>{3}));
@@ -115,27 +110,27 @@ TEST(ShapeAndStrideRankZero, RepeatedSetViaSetMethod) {
 }
 
 // ===== Death tests: invalid metadata =====
-
 TEST(ShapeAndStrideRankZero, MismatchedShapeStrideDeath) {
     ShapeAndStride ss;
-    EXPECT_DEATH(
-            ss.set(IntArrayView(std::vector<int64_t>{2, 3}),
-                   IntArrayView(std::vector<int64_t>{1})),
-            "Check failed");
+    EXPECT_DEATH(ss.set(IntArrayView(std::vector<int64_t>{2, 3}),
+                        IntArrayView(std::vector<int64_t>{1})),
+                 "Check failed");
 }
 
 TEST(ShapeAndStrideRankZero, NegativeDimensionsDeath) {
     ShapeAndStride ss;
-    EXPECT_DEATH(
-            ss.set_contiguous(IntArrayView(std::vector<int64_t>{-1})),
-            "Check failed");
+    EXPECT_DEATH(ss.set_contiguous(IntArrayView(std::vector<int64_t>{-1})),
+                 "Check failed");
 }
 
 TEST(ShapeAndStrideRankZero, NumelOverflowDeath) {
     ShapeAndStride ss;
     // Shape where each intermediate stride fits but the numel product overflows
     ss.set_contiguous(IntArrayView(std::vector<int64_t>{
-            int64_t(1) << 20, int64_t(1) << 20, int64_t(1) << 20, int64_t(1) << 20}));
+            static_cast<int64_t>(1) << 20,
+            static_cast<int64_t>(1) << 20,
+            static_cast<int64_t>(1) << 20,
+            static_cast<int64_t>(1) << 20}));
     EXPECT_DEATH(static_cast<void>(ss.numel()), "Check failed");
 }
 

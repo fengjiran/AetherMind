@@ -4,9 +4,8 @@
 #include "utils/qualified_name.h"
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 // 测试默认构造函数和基本功能
 TEST(QualifiedName, DefaultConstructor) {

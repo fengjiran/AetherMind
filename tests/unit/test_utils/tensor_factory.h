@@ -48,8 +48,10 @@ inline size_t ComputeRequiredBytes(IntArrayView shape,
 
     const auto touched_elems = static_cast<size_t>(max_offset) + 1;
     size_t span_bytes = 0;
-    AM_CHECK(!CheckOverflowMul(touched_elems, itemsize, &span_bytes), "ComputeRequiredBytes span overflow.");
-    AM_CHECK(!CheckOverflowAdd(required, span_bytes, &required), "ComputeRequiredBytes total overflow.");
+    AM_CHECK(!CheckOverflowMul(touched_elems, itemsize, &span_bytes),
+             "ComputeRequiredBytes span overflow.");
+    AM_CHECK(!CheckOverflowAdd(required, span_bytes, &required),
+             "ComputeRequiredBytes total overflow.");
     return required;
 }
 
@@ -82,7 +84,8 @@ inline Tensor MakeContiguousTensor(std::initializer_list<int64_t> shape,
                                    const DataType& dtype = DataType::Float32(),
                                    size_t byte_offset = 0) {
     std::vector<int64_t> vec_shape(shape);
-    return MakeContiguousTensor(IntArrayView{vec_shape.data(), vec_shape.size()}, dtype, byte_offset);
+    return MakeContiguousTensor(IntArrayView{vec_shape.data(), vec_shape.size()},
+                                dtype, byte_offset);
 }
 
 inline Tensor MakeTensor(IntArrayView shape,

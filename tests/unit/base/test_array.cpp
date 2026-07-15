@@ -4,9 +4,8 @@
 #include "container/array.h"
 #include <gtest/gtest.h>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 TEST(Array, init) {
     ObjectPtr<ArrayImpl> impl;

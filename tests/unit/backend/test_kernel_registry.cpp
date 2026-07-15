@@ -11,9 +11,8 @@
 #include <thread>
 #include <vector>
 
-using namespace aethermind;
-
 namespace {
+using namespace aethermind;
 
 Status FakeKernel(const KernelContext&) noexcept {
     return Status::Ok();

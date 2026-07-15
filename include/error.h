@@ -48,10 +48,10 @@ public:
     }
 
     /*!
-   * \brief Get the traceback in the order of most recent call last.
-   *
-   * \return The traceback of the error object.
-   */
+     * \brief Get the traceback in the order of most recent call last.
+     *
+     * \return The traceback of the error object.
+     */
     AM_NODISCARD String TracebackMostRecent() const {
         std::vector<int64_t> delimiter = {-1};
         for (size_t i = 0; i < traceback_.size(); ++i) {
@@ -109,4 +109,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_ERROR_H
+#endif// AETHERMIND_ERROR_H

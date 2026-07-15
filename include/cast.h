@@ -1,6 +1,7 @@
-//
-// Created by richard on 10/8/25.
-//
+/// Numeric type casting and overflow-checking utilities.
+///
+/// Provides constexpr sign/overflow predicates and the `cast` /
+/// `check_and_cast` families used by tensor dtype conversions.
 
 #ifndef AETHERMIND_CAST_H
 #define AETHERMIND_CAST_H
@@ -14,64 +15,62 @@
 
 namespace aethermind {
 
-// Returns false since we cannot have x < 0 if x is unsigned.
+// Unsigned case: never negative.
 template<typename T>
 constexpr bool is_negative(const T&, std::true_type) {
     return false;
 }
 
-// Returns true if a signed variable x < 0
+// Signed case: compare against zero.
 template<typename T>
 constexpr bool is_negative(const T& x, std::false_type) {
     return x < T(0);
 }
 
-/// Returns true if x < 0
-/// NOTE: Will fail on an unsigned custom type
-///       For the most part it's possible to fix this if
-///       the custom type has a constexpr constructor.
-///       However, notably, Half does not :-(
+/// Returns true if x < 0.
+///
+/// @note Fails for unsigned custom types that do not specialize
+///       std::is_unsigned; such types fall through to the signed path.
 template<typename T>
 constexpr bool is_negative(const T& x) {
     return is_negative(x, std::is_unsigned<T>());
 }
 
-// Returns true if a and b are not both negative
+/// Returns true when a and b have opposite signedness (exactly one is negative).
 template<typename T, typename U>
 constexpr bool signs_differ(const T& a, const U& b) {
     return is_negative(a) != is_negative(b);
 }
 
-// Returns the sign of an unsigned variable x as 0, 1
+// Unsigned case: 0 if zero, 1 otherwise.
 template<typename T>
 constexpr int signum(const T& x, std::true_type) {
     return T(0) < x;
 }
 
-// Returns the sign of a signed variable x as -1, 0, 1
+// Signed case: -1, 0, or 1.
 template<typename T>
 constexpr int signum(const T& x, std::false_type) {
     return (T(0) < x) - (x < T(0));
 }
 
-/// Returns the sign of x as -1, 0, 1
-/// NOTE: Will fail on an unsigned custom type
-///       For the most part it's possible to fix this if
-///       the custom type has a constexpr constructor.
-///       However, notably, Half does not :-(
+/// Returns the sign of x as -1, 0, or 1.
+///
+/// @note Fails for unsigned custom types that do not specialize
+///       std::is_unsigned; such types fall through to the signed path.
 template<typename T>
 constexpr int signum(const T& x) {
     return signum(x, std::is_unsigned<T>());
 }
 
-// Returns true if x is greater than the greatest value of the type Limit
+/// Returns true if x exceeds the maximum value representable by Limit.
 template<typename Limit, typename T>
 constexpr bool greater_than_max(const T& x) {
     constexpr bool can_overflow = std::numeric_limits<T>::digits > std::numeric_limits<Limit>::digits;
     return can_overflow && x > std::numeric_limits<Limit>::max();
 }
 
-// Returns true if x < lowest(Limit). Standard comparison
+// Both signed: standard comparison against lowest().
 template<typename Limit, typename T>
 constexpr bool less_than_lowest(
         const T& x,
@@ -80,8 +79,7 @@ constexpr bool less_than_lowest(
     return x < std::numeric_limits<Limit>::lowest();
 }
 
-/// Returns false since all the limit is signed and therefore includes
-/// negative values but x cannot be negative because it is unsigned
+// Limit is signed but x is unsigned: x cannot be below lowest.
 template<typename Limit, typename T>
 constexpr bool less_than_lowest(
         const T& /*x*/,
@@ -90,8 +88,7 @@ constexpr bool less_than_lowest(
     return false;
 }
 
-/// Returns true if x < 0, where 0 is constructed from T.
-/// Limit is not signed, so its lower value is zero
+// Limit is unsigned (lower bound is zero): compare against T(0).
 template<typename Limit, typename T>
 constexpr bool less_than_lowest(
         const T& x,
@@ -100,7 +97,7 @@ constexpr bool less_than_lowest(
     return x < T(0);
 }
 
-/// Returns false sign both types are unsigned
+// Both unsigned: x cannot be below zero.
 template<typename Limit, typename T>
 constexpr bool less_than_lowest(
         const T& /*x*/,
@@ -109,23 +106,27 @@ constexpr bool less_than_lowest(
     return false;
 }
 
-/// Returns true if x is less than the lowest value of type T
-/// NOTE: Will fail on an unsigned custom type
-///       For the most part it's possible to fix this if
-///       the custom type has a constexpr constructor.
-///       However, notably, c10::Half does not :
+/// Returns true if x is below the lowest value representable by Limit.
+///
+/// @note Fails for unsigned custom types that do not specialize
+///       std::is_unsigned; Half is a known counterexample.
 template<typename Limit, typename T>
 constexpr bool less_than_lowest(const T& x) {
     return less_than_lowest<Limit>(x, std::is_unsigned<Limit>(), std::is_unsigned<T>());
 }
 
-// bool can be converted to any type
+/// bool converts to any target type without overflow.
 template<typename From, typename To,
          std::enable_if_t<std::is_same_v<From, bool>>* = nullptr>
 bool is_overflow(From, AM_MAYBE_UNUSED bool strict_unsigned = false) {
     return false;
 }
 
+/// Checks whether src overflows when cast to To.
+///
+/// @param strict_unsigned when true, a negative src is rejected even for an
+///        unsigned To; otherwise only the magnitude is checked
+/// @return true if the conversion would overflow
 template<typename From, typename To,
          std::enable_if_t<std::is_integral_v<From> && !std::is_same_v<From, bool>>* = nullptr>
 bool is_overflow(From src, bool strict_unsigned = false) {
@@ -140,6 +141,7 @@ bool is_overflow(From src, bool strict_unsigned = false) {
     return greater_than_max<To>(src) || less_than_lowest<To>(src);
 }
 
+/// Checks whether a floating-point src overflows when cast to To.
 template<typename From, typename To,
          std::enable_if_t<std::is_floating_point_v<From>>* = nullptr>
 bool is_overflow(From src, AM_MAYBE_UNUSED bool strict_unsigned = false) {
@@ -154,6 +156,7 @@ bool is_overflow(From src, AM_MAYBE_UNUSED bool strict_unsigned = false) {
     return src < Limit::lowest() || src > Limit::max();
 }
 
+/// Checks whether a complex src overflows when cast to To.
 template<typename From, typename To, std::enable_if_t<is_complex_v<From>>* = nullptr>
 bool is_overflow(From src, bool strict_unsigned = false) {
     if (!is_complex_v<To> && src.imag() != 0) {
@@ -167,9 +170,11 @@ bool is_overflow(From src, bool strict_unsigned = false) {
            is_overflow<from_type, to_type>(src.imag(), strict_unsigned);
 }
 
+// True when casting complex->non-complex, so only the real part is used.
 template<typename From, typename To>
 constexpr static bool only_need_real = is_complex_v<From> && !is_complex_v<To>;
 
+// Identity when the real part is not needed.
 template<typename From, bool>
 struct maybe_real {
     static From apply(From src) {
@@ -177,6 +182,7 @@ struct maybe_real {
     }
 };
 
+// Extracts the real part for complex->non-complex casts.
 template<typename From>
 struct maybe_real<From, true> {
     static decltype(auto) apply(From src) {
@@ -184,6 +190,7 @@ struct maybe_real<From, true> {
     }
 };
 
+// Identity when the boolean reduction is not needed.
 template<typename From, bool>
 struct maybe_bool {
     static From apply(From src) {
@@ -191,6 +198,7 @@ struct maybe_bool {
     }
 };
 
+// Reduces a complex value to (real || imag) for complex->bool casts.
 template<typename From>
 struct maybe_bool<From, true> {
     static decltype(auto) apply(From src) {
@@ -198,6 +206,9 @@ struct maybe_bool<From, true> {
     }
 };
 
+/// Casts a value from From to To.
+///
+/// For complex->non-complex casts, only the real part is used.
 template<typename From, typename To>
 struct cast {
     static To apply(From src) {
@@ -216,6 +227,7 @@ struct cast<From, bool> {
     }
 };
 
+// Route through int64_t to avoid undefined wraparound on negative inputs.
 template<typename From>
 struct cast<From, uint8_t> {
     static uint8_t apply(From src) {
@@ -260,6 +272,14 @@ struct cast<complex<double>, complex<Half>> {
     }
 };
 
+/// Casts src to To, throwing on overflow.
+///
+/// @tparam From source type
+/// @tparam To target type
+/// @param src value to cast
+/// @param name type name used in the overflow error message
+/// @return the cast value
+/// @throws RuntimeError if the conversion would overflow
 template<typename From, typename To>
 To check_and_cast(From src, const char* name) {
     if (!std::is_same_v<To, bool> && is_overflow<From, To>(src)) {
@@ -271,4 +291,4 @@ To check_and_cast(From src, const char* name) {
 
 }// namespace aethermind
 
-#endif//AETHERMIND_CAST_H
+#endif// AETHERMIND_CAST_H

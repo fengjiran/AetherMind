@@ -15,6 +15,8 @@ bool IsFoldableAddDType(const DataType& dtype) {
            dtype == DataType::Int(64);
 }
 
+// Integer overflow is checked and reported as Status::Overflow before any
+// wrapping can occur. Float paths are unchecked (inf is valid in folded graphs).
 template<typename T>
 Status AddScalar(T lhs, T rhs, T& out) {
     if constexpr (std::is_integral_v<T>) {
@@ -34,8 +36,11 @@ struct AddScalarOp {
     }
 };
 
+// TU-local evaluator — registered via GetAddConstEvaluator() accessor.
 class AddConstEvaluator final : public ConstEvaluator {
 public:
+    // Validates shapes with broadcast compatibility, dtype match, and budgets.
+    // Produces a contiguous-output plan (broadcast result is always dense).
     AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const NodeOutputDesc> inputs,
                                               std::span<const NodeOutputDesc> outputs,
                                               const OpParams& params,
@@ -100,6 +105,8 @@ public:
         return plan;
     }
 
+    // Fast path when both inputs match output shape and are contiguous;
+    // otherwise uses broadcast-aware strided kernel.
     AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
                                  std::span<MutableTensorView> outputs,
                                  const OpParams& params) const override {

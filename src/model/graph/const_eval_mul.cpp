@@ -15,6 +15,8 @@ bool IsFoldableMulDType(const DataType& dtype) {
            dtype == DataType::Int(64);
 }
 
+// Integer overflow is checked and reported as Status::Overflow before any
+// wrapping can occur. Float paths are unchecked (inf is valid in folded graphs).
 template<typename T>
 Status MultiplyScalar(T lhs, T rhs, T& out) {
     if constexpr (std::is_integral_v<T>) {
@@ -34,8 +36,12 @@ struct MulScalarOp {
     }
 };
 
+// TU-local evaluator — registered via GetMulConstEvaluator() accessor.
 class ElementwiseMulConstEvaluator final : public ConstEvaluator {
 public:
+    // Validates shapes, dtype match, and budgets; requires identical shapes
+    // (no broadcast support for element-wise Mul).
+    // Produces a contiguous-output plan (element-wise op is always dense).
     AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const NodeOutputDesc> inputs,
                                               std::span<const NodeOutputDesc> outputs,
                                               const OpParams& params,
@@ -99,6 +105,7 @@ public:
         return plan;
     }
 
+    // Flat fast path when both inputs are contiguous; strided kernel otherwise.
     AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
                                  std::span<MutableTensorView> outputs,
                                  const OpParams& params) const override {

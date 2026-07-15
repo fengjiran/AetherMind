@@ -9,7 +9,7 @@
 namespace aethermind {
 
 // ── Shape/stride helpers (shared by const evaluator and folding pass) ──
-
+// Extracts a static shape vector from a TensorSpec, rejecting dynamic/rankless shapes.
 StatusOr<std::vector<int64_t>> ExtractStaticShape(const TensorSpec& spec) {
     if (!spec.shape.IsStatic()) {
         return Status::Unimplemented("requires static tensor shape");
@@ -27,6 +27,8 @@ StatusOr<std::vector<int64_t>> ExtractStaticShape(const TensorSpec& spec) {
     return shape;
 }
 
+// Product of shape dimensions with overflow protection against absurdly
+// large tensors (e.g. shapes with huge strides that would overflow int64_t).
 StatusOr<int64_t> CountElements(std::span<const int64_t> shape) {
     int64_t numel = 1;
     for (const int64_t dim: shape) {
@@ -44,6 +46,8 @@ StatusOr<int64_t> CountElements(std::span<const int64_t> shape) {
     return numel;
 }
 
+// Chains ExtractStaticShape → CountElements → element-byte multiply,
+// with overflow checks at each step.
 StatusOr<size_t> CountBytes(const TensorSpec& spec) {
     auto shape = ExtractStaticShape(spec);
     AM_RETURN_IF_ERROR(shape.status());
@@ -60,6 +64,9 @@ StatusOr<size_t> CountBytes(const TensorSpec& spec) {
     return total_bytes;
 }
 
+// Row-major (C-style) contiguous strides with overflow protection.
+// For an N-D shape [d0, d1, ..., d_{N-1}], produces strides
+// [d1*...*d_{N-1}, d2*...*d_{N-1}, ..., 1].
 StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape) {
     if (shape.empty()) {
         return std::vector<int64_t>{};

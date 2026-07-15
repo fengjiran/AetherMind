@@ -1,6 +1,10 @@
 #ifndef AETHERMIND_MODEL_GRAPH_CONST_EVAL_INTERNAL_H
 #define AETHERMIND_MODEL_GRAPH_CONST_EVAL_INTERNAL_H
 
+// Internal header shared by all const_eval_*.cpp TU-local implementations.
+// Contains broadcast helpers, scalar-op concepts, typed flat/strided kernels,
+// and accessor function declarations for the per-evaluator .cpp files.
+
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/dtypes/data_type.h"
@@ -44,6 +48,9 @@ inline StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> l
     return output_shape;
 }
 
+// Broadcast-aware stride expansion: sets stride to 0 for broadcast
+// dimensions (where input dim == 1 but output dim > 1), allowing the
+// strided kernel to reuse the same element by not advancing the offset.
 inline StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> input_shape,
                                                             std::span<const int64_t> input_strides,
                                                             std::span<const int64_t> output_shape) {
@@ -116,6 +123,10 @@ Status EvaluateBinaryFlatByDType(const DataType& dtype,
     return Status::InvalidArgument("binary constant evaluator received unsupported dtype");
 }
 
+// Strided iteration: walks the output in linear order and computes input
+// offsets via strides. An inner carry loop advances per-axis coordinates
+// and resets on dimension boundaries, enabling non-contiguous access without
+// materializing the full coordinate space.
 template<typename Op, typename T>
     requires BinaryScalarOp<Op, T>
 Status EvaluateBinaryStridedKernel(std::span<const TensorView> inputs,
@@ -194,6 +205,8 @@ Status EvaluateUnaryFlatTyped(std::span<const TensorView> inputs,
     return Status::Ok();
 }
 
+// Same carry-loop strided iteration as the binary variant, but for
+// single-input unary operations (e.g. Silu).
 template<typename Op, typename T>
     requires UnaryScalarOp<Op, T>
 Status EvaluateUnaryStridedKernel(std::span<const TensorView> inputs,

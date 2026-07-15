@@ -1,6 +1,9 @@
+// Backtrace collection and formatting implementation.
 //
-// Created by richard on 8/9/25.
-//
+// When USE_LIBBACKTRACE is enabled, provides full symbolicated backtraces via
+// libbacktrace + cxxabi demangling with frame filtering. Otherwise, provides
+// stub definitions for GetTracebackLimit/DetectBoundary and a minimal
+// single-frame traceback using only the caller-provided location.
 
 #include "traceback.h"
 #include "env.h"
@@ -29,27 +32,22 @@ int32_t GetTracebackLimit() {
     if (has_env("TRACEBACK_LIMIT")) {
         return std::stoi(get_env("TRACEBACK_LIMIT").value());
     }
-    return 512;
+    return kDefaultTracebackLimit;
 }
 
 bool DetectBoundary(AM_MAYBE_UNUSED const char* filename, const char* symbol) {
     if (symbol) {
-        // if (strncmp(symbol, "TVMFFIFunctionCall", 18) == 0) {
-        //     return true;
-        // }
-
-        // python ABI functions
+        // Python C ABI entry points.
         if (strncmp(symbol, "slot_tp_call", 12) == 0) {
             return true;
         }
 
-        if (strncmp(symbol, "object_is_not_callable", 11) == 0) {
+        if (strcmp(symbol, "object_is_not_callable") == 0) {
             return true;
         }
 
-        // Python interpreter stack frames
-        // we stop backtrace at the Python interpreter stack frames
-        // since these frame will be handled from by the python side.
+        // Python interpreter frames — stop here; the Python runtime
+        // reports these from its own side.
         if (strncmp(symbol, "_Py", 3) == 0 ||
             strncmp(symbol, "PyObject", 8) == 0) {
             return true;
@@ -59,7 +57,7 @@ bool DetectBoundary(AM_MAYBE_UNUSED const char* filename, const char* symbol) {
 }
 
 void TraceBackStorage::Append(const char* filename, int lineno, const char* func) {
-    // skip frames with empty filename
+    // Frames with no filename are only useful if they carry a symbol.
     if (!filename) {
         if (func) {
             if (strncmp(func, "0x0", 3) == 0) {
@@ -79,33 +77,42 @@ void TraceBackStorage::Append(const char* filename, int lineno, const char* func
     line_count_++;
 }
 
-void BacktraceCreateErrorCallback(void*, const char* msg, int) {
+// libbacktrace callback: invoked when backtrace_create_state fails.
+void BacktraceCreateErrorCallback(AM_MAYBE_UNUSED void* data, const char* msg, AM_MAYBE_UNUSED int errnum) {
     std::cerr << "Could not initialize backtrace state: " << msg << std::endl;
 }
 
+// Creates the process-wide libbacktrace state.
 backtrace_state* BacktraceCreate() {
     return backtrace_create_state(nullptr, 1,
                                   BacktraceCreateErrorCallback, nullptr);
 }
 
-static backtrace_state* _bt_state = BacktraceCreate();
+// Returns the process-wide backtrace state, initialized on first use.
+// Thread-safe per C++11 function-local static initialization rules.
+backtrace_state* GetBacktraceState() {
+    static backtrace_state* state = BacktraceCreate();
+    return state;
+}
 
-String DemangleName(String name) {
+// Demangles a C++ mangled name via abi::__cxa_demangle.
+// Returns the original name if demangling fails.
+std::string DemangleName(const char* name) {
     int status = 0;
-    size_t length = name.size();
-    char* demangled_name = abi::__cxa_demangle(name.c_str(), nullptr, &length, &status);
+    size_t length = std::strlen(name);
+    char* demangled_name = abi::__cxa_demangle(name, nullptr, &length, &status);
+    std::string result(name);
     if (demangled_name && status == 0 && length > 0) {
-        name = demangled_name;
+        result = demangled_name;
     }
     if (demangled_name) {
         std::free(demangled_name);
     }
-    return name;
+    return result;
 }
 
-/*!
- * \brief List frame patterns that should be excluded as they contain less information
- */
+// Returns true for low-information frames (implementation internals, test
+// harness) to exclude from the backtrace.
 bool ExcludeFrame(const char* filename, const char* symbol) {
     if (filename) {
         if (strstr(filename, "src/traceback.cpp")) {
@@ -124,8 +131,10 @@ bool ExcludeFrame(const char* filename, const char* symbol) {
             return true;
         }
 
-        // google test frames
-        if (strstr(symbol, "testing")) {
+        // google test frames: match the `testing::` namespace or the bare
+        // namespace name to avoid false positives on user symbols that happen
+        // to contain the substring "testing".
+        if (strstr(symbol, "testing::") || strcmp(symbol, "testing") == 0) {
             return true;
         }
 
@@ -137,12 +146,15 @@ bool ExcludeFrame(const char* filename, const char* symbol) {
     return false;
 }
 
-void BacktraceErrorCallback(void*, const char*, int) {
-    // do nothing
+// libbacktrace callback: invoked on per-frame errors. Intentionally no-op.
+void BacktraceErrorCallback(AM_MAYBE_UNUSED void* data, AM_MAYBE_UNUSED const char* msg, AM_MAYBE_UNUSED int errnum) {
 }
 
-void BacktraceSyminfoCallback(void* data, uintptr_t pc, const char* symname, uintptr_t, uintptr_t) {
-    auto str = static_cast<String*>(data);
+// libbacktrace callback: resolves a PC to a symbol name, writing the
+// result into the `std::string*` passed via `data`.
+void BacktraceSyminfoCallback(void* data, uintptr_t pc, const char* symname, AM_MAYBE_UNUSED uintptr_t symval, AM_MAYBE_UNUSED uintptr_t symsize) {
+    if (data == nullptr) { return; }
+    auto str = static_cast<std::string*>(data);
 
     if (symname != nullptr) {
         *str = DemangleName(symname);
@@ -153,14 +165,17 @@ void BacktraceSyminfoCallback(void* data, uintptr_t pc, const char* symname, uin
     }
 }
 
+// libbacktrace callback: invoked per stack frame.
+// Returns 1 to stop collection, 0 to continue.
 int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int lineno,
                           const char* symbol) {
+    if (data == nullptr) { return 0; }
     auto* backtrace_stk = static_cast<TraceBackStorage*>(data);
-    String symbol_str = "<unknown>";
+    std::string symbol_str = "<unknown>";
     if (symbol) {
         symbol_str = DemangleName(symbol);
     } else {
-        backtrace_syminfo(_bt_state, pc, BacktraceSyminfoCallback,
+        backtrace_syminfo(GetBacktraceState(), pc, BacktraceSyminfoCallback,
                           BacktraceErrorCallback, &symbol_str);
     }
     symbol = symbol_str.data();
@@ -190,15 +205,17 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
 
 #if BACKTRACE_ON_SEGFAULT
 void backtrace_handler(int sig) {
-    // Technically we shouldn't do any allocation in a signal handler, but
-    // Backtrace may allocate. What's the worst it could do? We're already
-    // crashing.
+    // WARNING: Signal handlers must only call async-signal-safe functions.
+    // `AetherMindTraceback` and `std::cerr <<` may allocate heap memory and
+    // use non-reentrant routines, which is technically undefined behavior.
+    // We accept this risk because the process is already crashing and
+    // diagnostic output is more valuable than strict conformance.
     const char* backtrace = AetherMindTraceback(nullptr, 0, nullptr, 1);
     std::cerr << "!!!!!!! AetherMind encountered a Segfault !!!!!!!\n"
               << backtrace << std::endl;
-    // Re-raise signal with default handler
+    // Re-raise signal with default handler. `= {}` zero-initializes the
+    // struct; no explicit memset needed.
     struct sigaction act = {};
-    std::memset(&act, 0, sizeof(struct sigaction));
     act.sa_flags = SA_RESETHAND;
     act.sa_handler = SIG_DFL;
     sigaction(sig, &act, nullptr);
@@ -206,8 +223,12 @@ void backtrace_handler(int sig) {
 }
 
 __attribute__((constructor)) void install_signal_handler() {
-    // this may override already installed signal handlers
-    std::signal(SIGSEGV, backtrace_handler);
+    // NOTE: This may override previously installed signal handlers.
+    struct sigaction act = {};
+    act.sa_flags = 0;
+    act.sa_handler = backtrace_handler;
+    sigemptyset(&act.sa_mask);
+    sigaction(SIGSEGV, &act, nullptr);
 }
 #endif
 
@@ -215,22 +236,21 @@ const char* AetherMindTraceback(AM_MAYBE_UNUSED const char* filename,
                                 AM_MAYBE_UNUSED int lineno,
                                 AM_MAYBE_UNUSED const char* func,
                                 int cross_aethermind_boundary) {
-    thread_local aethermind::String traceback_str;
+    thread_local std::string traceback_str;
     aethermind::TraceBackStorage traceback;
     traceback.stop_at_boundary_ = cross_aethermind_boundary == 0;
     if (filename != nullptr && func != nullptr) {
-        // need to skip AetherMindTraceback and the caller function
-        // which is already included in filename and func.
+        // Skip AetherMindTraceback and its caller — already captured above.
         traceback.skip_frame_count_ = 2;
         if (!aethermind::ExcludeFrame(filename, func)) {
             traceback.Append(filename, lineno, func);
         }
     }
 
-    if (aethermind::_bt_state != nullptr) {
+    if (aethermind::GetBacktraceState() != nullptr) {
         static std::mutex m;
         std::scoped_lock<std::mutex> lock(m);
-        backtrace_full(aethermind::_bt_state, 0, aethermind::BacktraceFullCallback,
+        backtrace_full(aethermind::GetBacktraceState(), 0, aethermind::BacktraceFullCallback,
                        aethermind::BacktraceErrorCallback, &traceback);
     }
 
@@ -242,13 +262,32 @@ const char* AetherMindTraceback(AM_MAYBE_UNUSED const char* filename,
 
 }// namespace aethermind
 
+// Stubs for declarations in traceback.h. The non-libbacktrace build does not
+// perform backtrace collection, so these are never exercised at runtime, but
+// must be defined to satisfy linkers for translation units that include
+// traceback.h (TraceBackStorage::max_frame_size_ references GetTracebackLimit).
+int32_t aethermind::GetTracebackLimit() {
+    return aethermind::kDefaultTracebackLimit;
+}
+
+bool aethermind::DetectBoundary(AM_MAYBE_UNUSED const char* filename,
+                                AM_MAYBE_UNUSED const char* symbol) {
+    return false;
+}
+
+// Minimal fallback: emits only the caller-provided frame without
+// symbolication. Used when USE_LIBBACKTRACE is not enabled.
 const char* AetherMindTraceback(const char* filename,
                                 int lineno,
                                 const char* func,
-                                int cross_aethermind_boundary) {
-    thread_local aethermind::String traceback_str;
+                                AM_MAYBE_UNUSED int cross_aethermind_boundary) {
+    thread_local std::string traceback_str;
     std::ostringstream traceback_stream;
-    traceback_stream << "  File \"" << filename << "\", line " << lineno << ", in " << func << '\n';
+    traceback_stream << "  File \"" << (filename ? filename : "<unknown>") << "\"";
+    if (lineno != 0) {
+        traceback_stream << ", line " << lineno;
+    }
+    traceback_stream << ", in " << (func ? func : "<unknown>") << '\n';
     traceback_str = traceback_stream.str();
     return traceback_str.c_str();
 }

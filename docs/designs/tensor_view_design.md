@@ -49,7 +49,7 @@ Phase 1 Operator Contract 面向：
 |--------|------|------|
 | `data pointer` | `void*` / `const void*` | 原始数据指针 |
 | `dtype` | `DataType` | 元素类型 |
-| `rank` | `int32_t` | 维度数（可从 shape 推导） |
+| `rank` | `int32_t` | 维度数（可从 shape 推导）。Rank-0 有效：rank=0, numel=1, non-null data |
 | `shape` | `IntArrayView` | 对外暴露为 view；内部元数据应安全持有 |
 | `stride` | `IntArrayView` | 对外暴露为 view；内部元数据应安全持有 |
 | `alignment` | `std::optional<size_t>` | 已知的最小数据对齐（字节）；未知时为空 |
@@ -195,6 +195,8 @@ TensorView view = t;  // ❌ 隐式转换（不允许）
 - 现有 `TensorImpl::data()` 在空 tensor 上可能返回 `nullptr`
 - 如果把 `defined()` 绑定到 `data() != nullptr`，零长度 slice 或空 tensor 派生 view 会被误判为 undefined
 
+**实现状态**: 实际实现使用 `is_valid()`（非 `defined()`），语义等价。空 shape（rank-1 `[0]` 等，numel==0）允许 null data。Rank-0（shape `[]`，numel==1）要求 non-null data。
+
 ```cpp
 TensorView undefined;                      // 默认构造：undefined
 TensorView empty_view = MakeEmptyView(...);// 已定义，但 numel()==0 且 data()==nullptr 可接受
@@ -202,6 +204,47 @@ TensorView empty_view = MakeEmptyView(...);// 已定义，但 numel()==0 且 dat
 bool defined() const noexcept;
 bool empty() const noexcept;
 ```
+
+### 5.7 Rank-0 (Scalar Tensor) 语义
+
+**决策**: Rank-0 是原生支持的张量秩，不引入新的类型。
+
+**语义约束**:
+- shape = `[]`，strides = `[]`，rank = 0，numel = 1，contiguous = true
+- non-null data 指针是必须的（区别于 numel == 0 的形状）
+- `is_rank_zero()` 返回 true 仅对 valid 且 rank == 0 的 view
+
+**区分正交状态**:
+
+| 状态 | rank | numel | data | contiguous |
+|------|------|-------|------|------------|
+| 默认/未初始化 | N/A | 0 | nullptr | false |
+| Rank-0 `[]` | 0 | 1 | non-null | true |
+| `[1]` | 1 | 1 | non-null | true |
+| `[0]` | 1 | 0 | nullptr (允许) | - |
+
+**与 host Scalar 的关系**:
+- host `Scalar`（`include/scalar.h`）是独立的 C++ 值类型，不代表 tensor 存储
+- `Tensor::FromScalar(s, allocator)` 创建 CPU rank-0 Tensor（显式，allocator 必须为 CPU）
+- `Tensor::item()` 和 `Tensor::set_item(s)` 要求 numel == 1（支持 rank-0 和 `[1]`）
+- 不提供隐式转换、TensorView item/store、或 C/Python API
+
+**支持的路径 vs 未实现（aspirational）**:
+
+已实现（Phase 1）:
+- Rank-0 Tensor/TensorView 存储和验证
+- 图形常量折叠中的 rank-0 算术（Add, ElementwiseMul, Silu, SiluMul）
+- Add 的 rank-0/rank-N 广播形状传播
+- CPU Scalar↔Tensor 显式桥接
+
+**未实现（aspirational — 不在 Phase 1 范围内）**:
+- 通用运行时 eager rank-0 算术核
+- C/Python API 暴露
+- HF safetensors 标量权重接受（HF 验证器拒绝空形状权重）
+- 内联标量存储（始终为 Buffer 支持）
+- 设备通用桥接（仅 CPU）
+- TensorView item/store 方法
+- 通用符号 broadcast 推断（仅 Add 支持 rank-0）
 
 ---
 
@@ -485,18 +528,38 @@ MutableTensorView bad(
 - 对 strided / padded / non-contiguous view，`logical_nbytes()` 不等于 backing storage 的物理跨度
 - 如后续确有需要，可再补充 `addressable_span_bytes()` 一类更精确的 API，但不在 M1 冻结
 
+### 9.5 rank-0 语义边界
+
+- 默认构造的 Tensor/TensorView 不是 rank-0（需要 `is_initialized()` / `is_valid()`）
+- rank-0 view 要求 non-null data（区别于零元素形状如 `[0]` 允许 null data）
+- 秩相关算子（Linear、RmsNorm、Embedding、slice/narrow）拒绝 rank-0 输入通过现有限额检查；不要在算子中添加 rank-0 支持
+- `Scalar` 和 rank-0 Tensor 是不同的：前者是 host C++ 值，后者是 storage-backed tensor
+- 桥接 API（FromScalar/item/set_item）仅支持 CPU，不要将其泛化到其他设备
+- HF 权重加载器拒绝空形状张量；这包含了 rank-0 标量权重 — 不要解除此限制
+
 ---
 
 ## 10. 待办事项
 
-M1 阶段需要完成：
+M1 阶段已完成:
+- [x] 实现 `include/aethermind/base/tensor_view.h`
+- [x] 实现 `src/base/tensor_view.cpp`
+- [x] 创建 rank-0 测试（`tests/unit/tensor/test_tensor_rank_zero.cpp`）和现有 `test_tensor_view.cpp`
+- [x] 默认/空 view、non-contiguous、slice、dtype mismatch、mutable write-through 测试
+- [x] 小 rank 元数据 inline 路径
+- [x] 与 Tensor 的转换接口测试
+- [x] Rank-0 Tensor/TensorView 语义
 
-- [ ] 实现 `include/aethermind/base/tensor_view.h`
-- [ ] 实现 `src/aethermind/base/tensor_view.cpp`（如有需要）
-- [ ] 创建 `tests/unit/test_tensor_view.cpp`
-- [ ] 补充默认/空 view、non-contiguous、slice、dtype mismatch、mutable write-through 测试
+**继续实现**:
 - [ ] 验证小 rank 元数据 inline 路径不引入额外堆分配
-- [ ] 与 Tensor 的转换接口测试
+- [ ] Slice/dim/stride 边界测试完善
+
+**Aspirational（不在 Phase 1 范围内 — 勿实现）**:
+- [ ] `TensorView::slice()` 和 `MutableTensorView::slice()` 方法（当前实现在 Tensor 层）
+- [ ] rank-0 通用 eager 算术核
+- [ ] C/Python API 暴露 Scalar↔Tensor
+- [ ] HF 标量权重支持
+- [ ] 设备通用桥接（当前仅 CPU）
 
 ---
 

@@ -7,6 +7,7 @@
 - 项目目标：分阶段构建大模型推理引擎
   - Phase 1（当前）：桌面/服务器 CPU 本地推理运行时，支持 Llama 家族模型，C/C++ API
   - Phase 2+：服务化/分布式推理引擎（见 docs/products/aethermind_prd.md 附录）
+  - 阶段边界：当前工作以 Phase 1 为界；除非用户明确要求，不要预先实现 Phase 2+ 的服务化/分布式能力。
 - 语言：C++20（`CMAKE_CXX_STANDARD 20`）
 - 构建系统：CMake >= 3.28
 - 核心库目标：`AetherMind`（shared）

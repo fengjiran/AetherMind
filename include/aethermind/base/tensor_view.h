@@ -14,8 +14,8 @@
 #ifndef AETHERMIND_TENSOR_VIEW_H
 #define AETHERMIND_TENSOR_VIEW_H
 
-#include "container/array_view.h"
 #include "aethermind/dtypes/data_type.h"
+#include "container/array_view.h"
 #include "macros.h"
 
 #include <cstddef>
@@ -27,6 +27,11 @@ class Tensor;
 
 /// Non-owning immutable tensor view.
 ///
+/// Rank-0 (scalar tensor): shape `[]`, strides `[]`, rank 0, numel 1,
+/// contiguous=true, non-null data required. Distinct from default
+/// (is_valid=false) and from `[0]` (rank 1, numel 0, null data allowed).
+/// is_rank_zero() returns true only for valid rank-0 views.
+///
 /// Lifetime:
 /// - `data_` must remain valid for the lifetime of this view.
 /// - `shape_` and `strides_` must refer to metadata owned elsewhere and remain
@@ -37,8 +42,9 @@ class Tensor;
 /// Semantics:
 /// - Strides are in elements, matching Tensor / ShapeAndStride semantics.
 /// - `alignment_ == 0` means alignment is unknown or unspecified.
-/// - `valid()` is intended to mirror a usable borrowed Tensor-like state rather
+/// - `is_valid()` is intended to mirror a usable borrowed Tensor-like state rather
 ///   than act as a loose metadata envelope.
+/// - No slice/narrow/dim/stride access on rank-0 (rank < 1 guards apply).
 class TensorView {
 public:
     TensorView() noexcept = default;
@@ -112,6 +118,10 @@ public:
 
     AM_NODISCARD bool is_contiguous() const noexcept;
 
+    AM_NODISCARD bool is_rank_zero() const noexcept {
+        return is_valid() && rank() == 0;
+    }
+
 private:
     const void* data_ = nullptr;
     DataType dtype_{};
@@ -121,6 +131,10 @@ private:
 };
 
 /// Non-owning mutable tensor view.
+///
+/// Rank-0 (scalar tensor): shape `[]`, strides `[]`, rank 0, numel 1,
+/// contiguous=true, non-null data required. is_rank_zero() returns true
+/// only for valid rank-0 views.
 ///
 /// Lifetime and metadata borrowing semantics match TensorView, but the data
 /// pointer is writable.
@@ -197,6 +211,10 @@ public:
     AM_NODISCARD size_t logical_nbytes() const noexcept;
 
     AM_NODISCARD bool is_contiguous() const noexcept;
+
+    AM_NODISCARD bool is_rank_zero() const noexcept {
+        return is_valid() && rank() == 0;
+    }
 
 private:
     void* data_ = nullptr;

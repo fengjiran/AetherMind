@@ -1,25 +1,40 @@
+// Shape and stride validation, assignment, and query implementation.
 //
-// Created by richard on 4/18/26.
+// ShapeAndStride is the canonical metadata descriptor owned by every Tensor.
+// This file implements the mutation and query methods: setting metadata from
+// caller-provided shape/strides, computing contiguous strides, counting
+// elements, checking contiguity, and computing the maximum flat offset for
+// buffer sizing.
 //
+// A default-constructed ShapeAndStride is uninitialized (is_initialized() is
+// false, numel() returns 0, is_contiguous() returns false).  After a
+// successful set() or set_contiguous() call the metadata is initialized;
+// an explicit empty shape (size 0) is a valid rank-0 state with numel = 1
+// and is_contiguous = true.
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/utils/overflow_check.h"
 
-#include <cstddef>
-#include <cstdint>
 #include <limits>
 
 namespace aethermind {
 
+// Copies validated shape and strides into internal storage.
+//
+// All validation completes before mutating state: rank match, rank bound,
+// and non-negative dimensions.  Once validation passes, the metadata is
+// marked initialized, the caller-provided values are copied, and any
+// trailing slots beyond the new rank are zeroed for deterministic access.
 void ShapeAndStride::set(IntArrayView shape, IntArrayView strides) {
     AM_CHECK(shape.size() == strides.size(), "shape/strides size mismatch");
     AM_CHECK(shape.size() <= static_cast<size_t>(kMaxRank), "rank exceeds kMaxRank");
 
-    auto new_size = static_cast<int32_t>(shape.size());
+    const auto new_size = static_cast<int32_t>(shape.size());
     for (int32_t i = 0; i < new_size; ++i) {
         AM_CHECK(shape[i] >= 0, "shape dimensions must be non-negative");
     }
 
     size_ = new_size;
+    initialized_ = true;
     std::ranges::copy(shape, shape_.begin());
     std::ranges::copy(strides, strides_.begin());
 
@@ -29,6 +44,12 @@ void ShapeAndStride::set(IntArrayView shape, IntArrayView strides) {
     }
 }
 
+// Accepts only shape and computes row-major contiguous strides.
+//
+// After validation (rank bound, non-negative dimensions), the metadata is
+// marked initialized.  Rank-0 (empty shape) is set as contiguous and returns
+// immediately. Otherwise, strides are computed backward from the innermost
+// dimension (stride 1) with overflow checking for each multiplication.
 void ShapeAndStride::set_contiguous(IntArrayView shape) {
     AM_CHECK(shape.size() <= static_cast<size_t>(kMaxRank), "rank exceeds kMaxRank");
     auto new_size = static_cast<int32_t>(shape.size());
@@ -37,7 +58,9 @@ void ShapeAndStride::set_contiguous(IntArrayView shape) {
     }
 
     size_ = new_size;
+    initialized_ = true;
     if (size_ == 0) {
+        // Rank-0: all slots zeroed, contiguous, single element.
         for (uint32_t i = 0; i < kMaxRank; ++i) {
             shape_[i] = 0;
             strides_[i] = 0;
@@ -59,9 +82,15 @@ void ShapeAndStride::set_contiguous(IntArrayView shape) {
     }
 }
 
+// Returns the total number of elements described by the stored shape.
+//
+// Uninitialized metadata returns 0.  Rank-0 (initialized, size 0) returns 1.
+// For non-empty shapes the product of dimensions is computed via
+// SafeMultiplyU64 with overflow detection; an overflow or result exceeding
+// the int64_t/size_t range triggers a fatal check.
 int64_t ShapeAndStride::numel() const noexcept {
     if (size_ == 0) {
-        return 0;
+        return initialized_ ? 1 : 0;
     }
 
     uint64_t numel = 0;
@@ -75,9 +104,17 @@ int64_t ShapeAndStride::numel() const noexcept {
     return static_cast<int64_t>(numel);
 }
 
+// Returns true when the stored strides describe row-major contiguous layout.
+//
+// Uninitialized metadata returns false.  Rank-0 (initialized, size 0) is
+// trivially contiguous.  For non-empty shapes, the function walks dimensions
+// from innermost outward, checking that each non-1 dimension's stride matches
+// the product of the dimensions inside it.  The stride product is guarded
+// against overflow since a valid contiguous layout must always produce a
+// stride that fits in int64_t when the corresponding shape dimension fits.
 bool ShapeAndStride::is_contiguous() const noexcept {
     if (size_ == 0) {
-        return false;
+        return initialized_;
     }
 
     int64_t expected_stride = 1;
@@ -98,6 +135,14 @@ bool ShapeAndStride::is_contiguous() const noexcept {
     return true;
 }
 
+// Returns the maximum flat byte offset reachable by valid element indices.
+//
+// Rank-0 and shapes containing at least one zero dimension return 0 (no
+// addressable storage beyond the base pointer).  The first pass validates
+// non-negative dimensions/offsets and short-circuits on zero-element axes.
+// The second pass computes sum((shape[i] - 1) * strides[i]) with per-term
+// overflow and cumulative addition guards.  Callers use this result to size
+// backing buffers and validate storage range.
 int64_t ShapeAndStride::max_element_offset() const {
     if (size_ == 0) {
         return 0;
@@ -122,6 +167,5 @@ int64_t ShapeAndStride::max_element_offset() const {
 
     return offset;
 }
-
 
 }// namespace aethermind

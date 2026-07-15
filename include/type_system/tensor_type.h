@@ -177,6 +177,10 @@ public:
         return is_inferred_;
     }
 
+    AM_NODISCARD bool IsRankZero() const {
+        return shape_.IsRankZero();
+    }
+
     bool requires_grad() const override {
         return requires_grad_ ? requires_grad_.value() : true;
     }

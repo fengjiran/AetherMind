@@ -13,6 +13,10 @@ struct TensorSpec {
     AM_NODISCARD bool operator==(const TensorSpec& other) const {
         return dtype == other.dtype && shape == other.shape;
     }
+
+    AM_NODISCARD bool IsRankZero() const {
+        return shape.IsRankZero();
+    }
 };
 
 }// namespace aethermind

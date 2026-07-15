@@ -1,8 +1,11 @@
 #include "aethermind/base/tensor.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/tensor_view.h"
+#include "aethermind/memory/allocator.h"
 #include "aethermind/utils/overflow_check.h"
 #include "container/array_view.h"
+#include "device.h"
+#include "scalar.h"
 #include "utils/logging.h"
 
 #include <array>
@@ -159,9 +162,10 @@ Tensor Tensor::slice(int32_t dim_idx, int64_t start, int64_t end, int64_t step) 
 
 void Tensor::validate() const {
     AM_CHECK(is_initialized(), "Tensor buffer is not initialized.");
+    AM_CHECK(shape_and_strides_.is_initialized(), "Tensor metadata is not initialized.");
     AM_CHECK(byte_offset_ <= buffer_.nbytes(), "Tensor byte_offset out of buffer range.");
     const auto r = shape_and_strides_.size();
-    AM_CHECK(r >= 1 && r <= ShapeAndStride::kMaxRank, "Invalid tensor rank.");
+    AM_CHECK(r >= 0 && r <= ShapeAndStride::kMaxRank, "Invalid tensor rank.");
     AM_CHECK(!dtype_.IsScalableVector(), "Tensor storage does not support scalable vector DataType.");
     AM_CHECK(itemsize() > 0, "Tensor dtype itemsize must be positive.");
 
@@ -173,6 +177,79 @@ void Tensor::validate() const {
     AM_CHECK(numel() >= 0);
     AM_CHECK(max_touched_element_offset() >= 0);
     AM_CHECK(storage_range_is_valid());
+}
+
+// ── Scalar-Tensor bridge helpers ────────────────────────────────
+
+namespace {
+
+inline void WriteScalarToBuffer(const DataType& dtype, const Scalar& scalar, void* data) {
+#define WRITE_DISPATCH(code, bits, lanes, cpp_type, name)      \
+    if (dtype == DataType(code, bits, lanes)) {                \
+        *static_cast<cpp_type*>(data) = scalar.to<cpp_type>(); \
+        return;                                                \
+    }
+    SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(WRITE_DISPATCH);
+#undef WRITE_DISPATCH
+
+    AM_THROW(RuntimeError) << "Unsupported dtype in WriteScalarToBuffer: " << dtype;
+    AM_UNREACHABLE();
+}
+
+inline Scalar ReadScalarFromBuffer(const DataType& dtype, const void* data) {
+#define READ_DISPATCH(code, bits, lanes, cpp_type, name)    \
+    if (dtype == DataType(code, bits, lanes)) {             \
+        return Scalar(*static_cast<const cpp_type*>(data)); \
+    }
+    SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(READ_DISPATCH);
+#undef READ_DISPATCH
+
+    AM_THROW(RuntimeError) << "Unsupported dtype in ReadScalarFromBuffer: " << dtype;
+    AM_UNREACHABLE();
+}
+
+}// namespace
+
+Tensor Tensor::FromScalar(const Scalar& scalar, Allocator& allocator) {
+    AM_CHECK(allocator.device().is_cpu(), "FromScalar requires a CPU allocator.");
+
+    const auto dtype = scalar.type();
+    const auto nbytes = static_cast<size_t>(dtype.nbytes());
+    AM_CHECK(nbytes > 0, "FromScalar: dtype itemsize must be positive.");
+
+    auto buffer = allocator.Allocate(nbytes);
+    AM_CHECK(buffer.is_initialized(), "FromScalar: buffer allocation failed.");
+    AM_CHECK(buffer.nbytes() >= nbytes, "FromScalar: allocated buffer too small.");
+
+    void* data = buffer.mutable_data();
+    AM_CHECK(data != nullptr, "FromScalar: buffer data pointer is null.");
+
+    WriteScalarToBuffer(dtype, scalar, data);
+
+    ShapeAndStride sas;
+    sas.set_contiguous(IntArrayView{});
+
+    return {std::move(buffer), 0, dtype, sas};
+}
+
+Scalar Tensor::item() const {
+    AM_CHECK(is_initialized(), "item() requires an initialized Tensor.");
+    AM_CHECK(device().is_cpu(), "item() requires a CPU Tensor.");
+    AM_CHECK(numel() == 1, "item() requires numel() == 1.");
+    AM_CHECK(data() != nullptr, "item() requires non-null data.");
+    AM_CHECK(dtype_.IsScalar(), "item() requires a scalar dtype.");
+
+    return ReadScalarFromBuffer(dtype_, data());
+}
+
+void Tensor::set_item(const Scalar& scalar) {
+    AM_CHECK(is_initialized(), "set_item() requires an initialized Tensor.");
+    AM_CHECK(device().is_cpu(), "set_item() requires a CPU Tensor.");
+    AM_CHECK(numel() == 1, "set_item() requires numel() == 1.");
+    AM_CHECK(mutable_data() != nullptr, "set_item() requires non-null data.");
+    AM_CHECK(dtype_.IsScalar(), "set_item() requires a scalar dtype.");
+
+    WriteScalarToBuffer(dtype_, scalar, mutable_data());
 }
 
 }// namespace aethermind

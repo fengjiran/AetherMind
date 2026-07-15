@@ -16,9 +16,25 @@
 
 namespace aethermind {
 
+class Allocator;
+class Scalar;
 class TensorView;
 class MutableTensorView;
 
+/// Owning dense tensor backed by a Buffer.
+///
+/// Rank-0 (scalar tensor): shape `[]`, strides `[]`, rank 0, numel 1,
+/// contiguous=true. Distinct from default-uninitialized (numel 0,
+/// !is_contiguous) and from `[0]` (rank 1, numel 0). Rank-0 participates
+/// in the existing constant evaluation and graph folding paths. Runtime
+/// operators (Linear, RmsNorm, Embedding, etc.) reject rank-0 through
+/// their existing rank guards; slice/narrow require rank >= 1.
+///
+/// The explicit Scalar bridge (FromScalar/item/set_item) is CPU-only and
+/// allocator-explicit. No implicit Scalar-to-Tensor conversion, inline
+/// storage, or general eager arithmetic is supported.
+///
+/// Shallow copy/move assignment shares the underlying Buffer.
 class Tensor {
 public:
     Tensor() noexcept = default;
@@ -149,6 +165,27 @@ public:
         AM_CHECK(length >= 0);
         return slice(dim_idx, start, start + length);
     }
+
+    AM_NODISCARD bool is_rank_zero() const noexcept {
+        return is_initialized() && rank() == 0;
+    }
+
+    // ── Scalar-Tensor bridge ─────────────────────────────────
+
+    /// Creates a rank-0 CPU Tensor from a Scalar value.
+    /// The allocator must be a CPU allocator.
+    /// The resulting Tensor owns its Buffer and has rank 0, numel 1.
+    static Tensor FromScalar(const Scalar& scalar, Allocator& allocator);
+
+    /// Extracts the single element as a Scalar.
+    /// Requires: initialized CPU Tensor, numel() == 1, non-null data,
+    /// and dtype().IsScalar().
+    AM_NODISCARD Scalar item() const;
+
+    /// Replaces the single element with a new value.
+    /// Requires: initialized CPU Tensor, numel() == 1, non-null data,
+    /// and dtype().IsScalar(). Converts via the checked Scalar::to<T>().
+    void set_item(const Scalar& scalar);
 
 private:
     Buffer buffer_;

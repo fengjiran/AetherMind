@@ -119,6 +119,10 @@ public:
         return !symbolic_shape_.has_value();
     }
 
+    AM_NODISCARD bool IsRankZero() const noexcept {
+        return IsRanked() && symbolic_shape_->empty();
+    }
+
     /// Returns rank or nullopt in case of unranked shape.
     AM_NODISCARD std::optional<size_t> rank() const noexcept;
 

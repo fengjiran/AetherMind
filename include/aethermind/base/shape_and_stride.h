@@ -1,7 +1,7 @@
 /// \file
 /// Owning tensor metadata container for shape and stride.
 ///
-/// Phase 1 design constraints:
+/// Design constraints:
 /// - Fixed max rank (kMaxRank = 8), fully inline storage, zero heap allocation.
 /// - Shape and stride are updated together to avoid transient inconsistency.
 /// - Strides are expressed in elements, not bytes.
@@ -28,12 +28,15 @@ namespace aethermind {
 /// - shape_[i] >= 0 for all i < size_
 /// - Unused slots (i >= size_) are zero-initialized
 /// - Strides are in elements, not bytes
+/// - initialized_ is true after any successful set/set_contiguous, including
+///   empty shape (rank-0)
 ///
 /// Thread-safety: Not thread-safe. External synchronization required if shared.
 ///
-/// Rank-0 is not a valid Tensor metadata state in Phase 1.
-/// A valid Tensor must have rank >= 1.
-/// numel() returns 0 when size_ == 0.
+/// Rank-0 is a valid explicit metadata state when initialized_ is true.
+/// Default-constructed (uninitialized) metadata returns numel=0 and
+/// is_contiguous=false. Explicit empty shape/set_contiguous({}) produces
+/// rank-0: numel=1, is_contiguous=true, max_element_offset=0.
 ///
 /// Warning: mutable_shape_data()/mutable_stride_data() expose raw mutable storage.
 /// Callers are responsible for preserving invariants when using these methods.
@@ -103,6 +106,13 @@ public:
         return strides_.data();
     }
 
+    /// Returns whether metadata has been explicitly initialized.
+    /// Default-constructed is false; every successful set/set_contiguous
+    /// call (including empty shape) sets it to true.
+    AM_NODISCARD bool is_initialized() const noexcept {
+        return initialized_;
+    }
+
     /// Returns the i-th dimension size.
     /// \pre 0 <= i < size()
     AM_NODISCARD int64_t dim(int32_t i) const noexcept {
@@ -131,6 +141,7 @@ public:
 
 private:
     int32_t size_ = 0;
+    bool initialized_ = false;
     std::array<int64_t, kMaxRank> shape_{};
     std::array<int64_t, kMaxRank> strides_{};
 };

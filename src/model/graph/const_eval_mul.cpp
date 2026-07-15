@@ -67,10 +67,6 @@ public:
         AM_RETURN_IF_ERROR(rhs_shape.status());
         auto shape = ExtractStaticShape(output);
         AM_RETURN_IF_ERROR(shape.status());
-        if (lhs_shape->empty() || rhs_shape->empty() || shape->empty()) {
-            return Status::Unimplemented(
-                    "ElementwiseMul constant evaluator requires non-scalar tensor shapes");
-        }
 
         if (*lhs_shape != *shape || *rhs_shape != *shape) {
             return Status::Unimplemented(

@@ -218,7 +218,11 @@ GraphValueId AddElementwiseAdd(ModelGraph& graph,
                                GraphValueId lhs,
                                GraphValueId rhs,
                                std::string debug_name) {
-    TensorSpec output_spec = graph.GetValue(lhs).spec;
+    const TensorSpec lhs_spec = graph.GetValue(lhs).spec;
+    const TensorSpec rhs_spec = graph.GetValue(rhs).spec;
+    AM_CHECK(lhs_spec.dtype == rhs_spec.dtype,
+             "Add requires matching dtypes for lhs and rhs operands");
+    TensorSpec output_spec = lhs_spec.IsRankZero() && !rhs_spec.IsRankZero() ? rhs_spec : lhs_spec;
     const auto node = graph.AddNode(OpType::kAdd,
                                     decoder_layer_index,
                                     {lhs, rhs},

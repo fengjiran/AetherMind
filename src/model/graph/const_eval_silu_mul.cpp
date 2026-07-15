@@ -63,10 +63,6 @@ public:
         AM_RETURN_IF_ERROR(up_shape.status());
         auto output_shape = ExtractStaticShape(output);
         AM_RETURN_IF_ERROR(output_shape.status());
-        if (gate_shape->empty() || up_shape->empty() || output_shape->empty()) {
-            return Status::Unimplemented(
-                    "SiluMul constant evaluator requires non-scalar tensor shapes");
-        }
 
         if (*gate_shape != *output_shape || *up_shape != *output_shape) {
             return Status::Unimplemented(

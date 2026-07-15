@@ -95,10 +95,6 @@ public:
         AM_RETURN_IF_ERROR(input_shape.status());
         auto output_shape = ExtractStaticShape(output);
         AM_RETURN_IF_ERROR(output_shape.status());
-        if (input_shape->empty() || output_shape->empty()) {
-            return Status::Unimplemented(
-                    "Silu constant evaluator requires non-scalar tensor shapes");
-        }
 
         if (*input_shape != *output_shape) {
             return Status::Unimplemented(

@@ -22,7 +22,7 @@
 Evaluator 使用“先规划、后执行”的契约。`Plan()` 是完整的可折叠性判定入口，`Evaluate()` 是纯数据计算入口。
 
 ```cpp
-// const_evaluator.h
+// optimization/const_evaluator.h
 #pragma once
 
 #include "aethermind/base/status.h"

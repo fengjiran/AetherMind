@@ -1071,16 +1071,42 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 **Fusion flags 使用约定**：`enable_qkv_fusion` / `enable_swiglu_fusion` / `enable_flash_attention_rewrite` / `enable_fused_add_rms_norm` 默认全 `true`（激进优化）。每个 fusion pass 在 `Run()` 入口自行检查对应 flag，若禁用则直接返回 `Status::Ok()` 跳过。约定模式：`if (!ctx.enable_qkv_fusion) { return Status::Ok(); }`。`opt_level` 用于控制 pass 是否注册到 pipeline（由 `GraphPassManager` 或上层决定），flag 用于控制已注册 pass 的运行时行为。
 
-### 16.4 Pass 路线图
+### 16.4 当前优化 Pass Pipeline
 
-当前仓库已有 pass framework 和 rewrite session，但 production optimization pass 仍按 use case 推进。推荐顺序如下。各 pass 当前状态标注如下：`[已实现]` / `[未实现]` / `[规划中]`。
+当前仓库已有 pass framework 和 rewrite session，production optimization pass 已通过 `OptimizeModelGraph` 和 `CompileModelGraph` 集成到默认 pipeline 中。各 pass 当前状态标注如下：`[已实现]` / `[未实现]` / `[规划中]`。
 
-#### Phase 1：基础清理
+#### 默认 Pipeline：优化级别与 Pass 选择
 
-- **`ConstantFoldingPass`** `[未实现]`：仅折叠纯函数、compile-time constant 输入的安全子图；不得折叠 runtime input、state 或外部权重依赖。
-- **`DeadCodeEliminationPass`** `[未实现]`：以 graph outputs、stateful update 和必要 side-effect 节点为 roots，通过 `BuildConsumerIndex()` 或等价机制删除不可达节点；DCE 后必须 commit 生成一致新图。
+`OptimizeModelGraph` 根据 `PassContext::opt_level` 确定性地选择 pass 管道，不由 feature flags 驱动（flags 仅控制已注册 pass 的运行时行为）：
 
-#### Phase 2：LLM 语义融合
+| 级别 | 注册的 Pass | 说明 |
+|---|---|---|
+| O0 | 无 | 输入图不经任何优化直接通过；`GraphPassManager` 生成输入图的合法副本 |
+| O1 | `ConstantFoldingPass` → `DeadCodeEliminationPass` | 基础清理：折叠纯常量子图，删除不可达节点；不进行语义融合 |
+| O2+ (默认) | `ConstantFoldingPass` → `SiluMulFusionPass` → `DeadCodeEliminationPass` | 完整优化：常量折叠 + SwiGLU fusion + 死代码消除 |
+
+默认优化级别为 O2（`PassContext::opt_level` 默认值为 2）。O3 及更大的级别（如 99）使用与 O2 相同的 pipeline。
+
+**Flag 与注册分离规则**：Pass 注册完全由 `opt_level` 决定，feature flags（`enable_constant_folding`、`enable_swiglu_fusion`、`enable_dce`）在 pipeline 构建时不参与判断。Flag 通过 `PassContext` 传入每个 pass 的 `Run()` 方法，由 pass 内部自行检查是否跳过执行。这保证了 pipeline 的可观测性和可预测性；禁用某 flag 时该 pass 仍在管道中，但行为上被视为跳过。
+
+#### 顺序约束
+
+ConstantFolding 必须优先于 SiluMulFusion，因为：
+
+1. CF 可能折叠 SiLU 节点（当其 gate 输入为内联常量时），将 SiLU 的输出替换为折叠后的常量值；这消除了融合模式中 SiLU 节点的依赖，但融合仍能通过替换链确定性地触发；
+2. 融合 pass 通过 `GraphRewriteSession::GetResolvedValue()` 解析 `ReplaceValue` 链，即使 CF 替换了 SiLU 的输出，融合仍能确定性地触发（解析到折叠后的常量值，将其识别为融合模式的 gate 输入）；
+3. DCE 在融合之后运行，会删除被 CF 替换的原始 producer 节点，以及被融合替换的 SiLU 和 ElementwiseMul 节点。
+
+最终优化图等价于无 checkpoint（`checkpoint_every=0`）的运行结果，即使设置了中间 checkpoint。
+
+#### Pass 实现状态
+
+##### Phase 1：基础清理（已实现）
+
+- **`ConstantFoldingPass`** `[已实现]`：仅折叠纯函数、compile-time constant 输入的安全子图；不得折叠 runtime input、state 或外部权重依赖。
+- **`DeadCodeEliminationPass`** `[已实现]`：以 graph outputs、stateful update 和必要 side-effect 节点为 roots，通过 `GraphRewriteSession::HasLiveConsumers()` 确定节点存活状态，删除不可达节点；DCE 后必须 commit 生成一致新图。DCE 会删除被 ConstantFolding 替换输出后的原始 producer 节点（这些节点的输出已被折叠为内联常量，不再需要原节点）。
+
+##### Phase 2：LLM 语义融合（部分实现）
 
 - **`QkvFusionPass`** `[规划中]`：匹配同一输入上的 Q/K/V 三个 `Linear`，验证 layer、dtype、shape 与 downstream consumer 后提升为 QKV 语义节点。
 - **`SiluMulFusionPass`** `[已实现]`：匹配 `gate -> silu -> mul(up)`，支持 Mul 输入反向，检查 `silu_out` 单 consumer、非 graph output、`decoder_layer_index` 一致后合并为 `OpType::kSiluMul`。
@@ -1108,6 +1134,76 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 4. 不实现完整 TVM DFPattern 语言；第一版只做保守的结构匹配。
 
 关键约束：pass 在 transaction 内读取节点时必须通过 `GraphRewriteSession` 的 virtual view，例如 `GetNodeView()`，以获得已解析 replacement、过滤 tombstone 后的最新视图；不能直接读取原始 `ModelGraph::GetNode()` 后自行解释 inputs。
+
+### 16.6 Graph Compiler API
+
+当前仓库提供了两个级别的显式图编译入口，以及对应的配置和产物类型。
+
+#### `OptimizeModelGraph`
+
+```cpp
+// include/aethermind/model/graph/compilation/graph_compiler.h
+AM_NODISCARD StatusOr<ModelGraph> OptimizeModelGraph(
+        const ModelGraph& graph,
+        PassContext context = {});
+```
+
+应用基于 `context.opt_level` 的确定性 pass pipeline（见 16.4 默认 pipeline 表），返回新 `ModelGraph`。源图永不修改。所有 `PassContext` 字段——feature flags、`checkpoint_every`、`const_eval_policy`——逐字转发给每个 pass。
+
+#### `GraphCompileConfig`
+
+```cpp
+struct GraphCompileConfig {
+    PassContext optimization{};       // 默认 O2
+    GraphLoweringConfig lowering{};  // 默认 CPU/scalar/plain/both
+};
+```
+
+组合优化和 lowering 两阶段的配置。
+
+#### `CompiledModelGraph`
+
+```cpp
+struct CompiledModelGraph {
+    ModelGraph optimized_graph{};  // 优化后的语义图
+    LoweredGraph lowered{};        // 降低后的可执行 artifact
+};
+```
+
+`optimized_graph` 必须比 `lowered` 存活更久，因为 `LoweredGraph` 中存储的 `GraphValueId` 引用（例如 standalone constant output、state alias 解析结果）指向 `ModelGraph` 的 value 表。
+
+#### `CompileModelGraph`
+
+```cpp
+AM_NODISCARD StatusOr<CompiledModelGraph> CompileModelGraph(
+        const ModelGraph& graph,
+        const GraphCompileConfig& config = {});
+```
+
+严格序列的优化+降低入口：
+
+1. `OptimizeModelGraph(graph, config.optimization)`；
+2. 若失败，立即返回错误 `Status`；
+3. `LowerModelGraph(optimized, config.lowering)`；
+4. 若失败，立即返回错误 `Status`；
+5. 将两个 artifact move 进 `CompiledModelGraph` 并返回。
+
+源图永不修改。优化失败不会退回未优化图。`GraphCompileConfig` 的默认构造使用 O2 优化和默认降低配置。
+
+#### 所有权设计
+
+`CompiledModelGraph` 拥有优化图和降低后的 artifact，确保 `GraphValueId` 在编译返回后仍然有效。具体来说：
+
+- 常量折叠产生 inline `ConstantValue`，其 `ConstantBinding` 通过 `shared_ptr` 内联数据；
+- DCE 移除原始 producer 后，graph output 转换为直接引用折叠后的常量 value；
+- `lowered.model_outputs` 中的 `GraphValueId` 与 `optimized_graph.GetOutputs()` 中的 ID 一致；
+- standalone constant graph output 在编译返回后仍可通过 `compiled.optimized_graph.GetValue(...)` 读取内联字节。
+
+#### 与现有 Builder / Lowering 的关系
+
+- `ModelGraphBuilder::BuildLlamaDense` 和 `LowerModelGraph` 的签名和行为不变；
+- `OptimizeModelGraph` 和 `CompileModelGraph` 是新增的显式入口，不对现有调用点产生隐式影响；
+- `optimized_graph` 和 `lowered` 的关系是 1:1 node 映射：每个优化图节点对应一个 lowering step 和一个 step binding。
 
 ## 17. Lowering
 

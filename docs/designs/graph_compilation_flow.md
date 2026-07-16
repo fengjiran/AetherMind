@@ -526,19 +526,85 @@ resolved_kernel_.fn(ctx)
 
 ## 6. 当前 Graph Compile 阶段边界
 
-当前代码已经落地的边界是：
+当前代码已经落地的边界包括语义图优化（pass pipeline）和完整的优化+降低组合入口。
+
+### 6.1 按阶段划分的编译流程
 
 ```text
-ModelInstance
-  → ModelGraphBuilder
-  → ModelGraph
+                              ┌──────────────────────┐
+                              │    ModelGraph         │
+                              │  (语义 DAG)            │
+                              └──────────┬───────────┘
+                                         │
+                                         ▼
+                              ┌──────────────────────┐
+                              │  OptimizeModelGraph   │
+                              │  O0/O1/O2+ pipeline   │
+                              └──────────┬───────────┘
+                                         │
+                                         ▼
+                              ┌──────────────────────┐
+                              │  optimized ModelGraph  │
+                              │  (ID table owned by    │
+                              │   CompiledModelGraph)  │
+                              └──────────┬───────────┘
+                                         │
+                                         ▼
+                              ┌──────────────────────┐
+                              │  LowerModelGraph      │
+                              └──────────┬───────────┘
+                                         │
+                                         ▼
+                              ┌──────────────────────┐
+                              │     LoweredGraph      │
+                              │  (ExecutionPlanNodeSpec│
+                              │   + bindings)         │
+                              └──────────────────────┘
+```
+
+### 6.2 规范组合 API
+
+`CompileModelGraph` 将优化和降低合并为一步，返回拥有完整生命周期的编译产物：
+
+```text
+ModelGraph
+  → CompileModelGraph(graph, GraphCompileConfig)
+      ├─ OptimizeModelGraph(graph, config.optimization)
+      │    └─ StatusOr<ModelGraph> optimized
+      ├─ LowerModelGraph(optimized, config.lowering)
+      │    └─ StatusOr<LoweredGraph> lowered
+      └─ CompiledModelGraph { optimized_graph, lowered }
+```
+
+`GraphCompileConfig` 统一管理两个阶段的配置：
+
+```text
+GraphCompileConfig {
+    PassContext optimization{};       // 默认 O2
+    GraphLoweringConfig lowering{};  // 默认 CPU/scalar/plain/both
+}
+```
+
+`OptimizeModelGraph` 按 `opt_level` 确定性地选择 pass pipeline（O0 无 pass，O1 ConstantFolding→DCE，O2+ ConstantFolding→SiluMulFusion→DCE）。特征 flag（`enable_constant_folding`、`enable_swiglu_fusion`、`enable_dce`）不参与 pass 注册，仅控制已注册 pass 的运行时行为。
+
+### 6.3 当前的显式降低入口
+
+语义图优化后，通过 lowering bridge 产生 `LoweredGraph`，其 `steps` 字段作为 `ExecutionPlanBuilder` 的输入：
+
+```text
+optimized ModelGraph
   → LowerModelGraph
-  → std::vector<ExecutionPlanNodeSpec>
-  → ExecutionPlanBuilder::Build
+  → LoweredGraph
+       ├─ steps (std::vector<ExecutionPlanNodeSpec>)
+       ├─ step_bindings (std::vector<LoweredStepBinding>)
+       ├─ model_inputs
+       ├─ model_outputs
+       └─ state_aliases
+  → ExecutionPlanBuilder::Build(steps)
   → ExecutionPlan
 ```
 
-执行计划构建本身仍只消费：
+执行计划构建本身仍只消费 `steps`：
 
 ```text
 std::vector<ExecutionPlanNodeSpec>
@@ -546,13 +612,13 @@ std::vector<ExecutionPlanNodeSpec>
   → ExecutionPlan
 ```
 
-仍待补齐的生产化部分包括：
+### 6.4 仍待补齐的生产化部分
 
-- 从 `ModelInstance` / HF config / resolved weights 自动生成并 lowering 到可执行 node specs 的生产入口
+- 从 `ModelInstance` / HF config / resolved weights 自动生成图结构并经过优化、降低到可执行 node specs 的完整生产入口
 - 更完整的 runtime tensor/state binding 接线
 - 更完整的 Llama layer 执行覆盖与后续优化 pass
 
-所以目前 `ExecutionPlanNodeSpec` 仍主要由测试或 lowering bridge 产出，完整的“模型加载后自动生成图结构、lowering 并构建可执行计划”的端到端生产入口还未完成。
+所以目前 `ExecutionPlanNodeSpec` 仍主要由测试或 lowering bridge 产出，完整的"模型加载后自动生成图结构、优化、lowering 并构建可执行计划"的端到端生产入口还未完成。
 
 ## 7. 当前最终编译产物
 
@@ -582,10 +648,26 @@ std::vector<ExecutionStep>
 
 ## 8. 总结
 
-当前代码库中的“图编译”准确说是：
+当前代码库中的“图编译”已经涵盖了三个层次：
+
+### 层次 A：显式的优化+编译组合入口（已实现）
 
 ```text
-ExecutionPlanNodeSpec 列表
+ModelGraph
+  → CompileModelGraph(graph, GraphCompileConfig)
+      ├─ OptimizeModelGraph(graph, config.optimization)
+      │    └─ StatusOr<ModelGraph> optimized
+      ├─ LowerModelGraph(optimized, config.lowering)
+      │    └─ StatusOr<LoweredGraph> lowered
+      └─ CompiledModelGraph { optimized_graph, lowered }
+```
+
+`CompileModelGraph` 是 Phase 1 中从语义图到可执行 artifact 的规范入口。优化 pipeline 由 `opt_level` 确定性地选择（O0 无 pass，O1 ConstantFolding→DCE，O2+ ConstantFolding→SiluMulFusion→DCE）。
+
+### 层次 B：LoweredGraph 到 ExecutionPlan 的构建（已实现）
+
+```text
+LoweredGraph.steps (std::vector<ExecutionPlanNodeSpec>)
   → workspace planning
   → operator creation
   → shape inference / runtime constraint extraction
@@ -594,13 +676,8 @@ ExecutionPlanNodeSpec 列表
   → immutable ExecutionPlan
 ```
 
-还不是：
+`ExecutionPlanBuilder` 不理解模型拓扑，它只消费已经准备好的 node specs。模型拓扑到 `ExecutionPlanNodeSpec` 的转换由 `LowerModelGraph` 负责。
 
-```text
-ModelGraph
-  → graph optimization
-  → lowering
-  → execution plan
-```
+### 层次 C：ModelInstance 到 ExecutionPlan 的生产管线（未完成）
 
-后者仍处于设计阶段。当前最关键的实现边界是：`ExecutionPlanBuilder` 不理解模型拓扑，它只消费已经准备好的 node specs；未来的 `ModelGraph` / lowering 模块才应该负责从模型语义生成这些 specs。
+`ModelInstance` / HF config / resolved weights → graph building → optimization → lowering → execution plan 的完整生产入口目前仍不完整。当前 `ExecutionPlanNodeSpec` 主要由 lowering bridge 或测试产出；从模型加载到自动执行计划生成的端到端流程还需要 `ModelInstance` 驱动的完整 graph builder → compile pipeline 衔接（见 §6.4）。

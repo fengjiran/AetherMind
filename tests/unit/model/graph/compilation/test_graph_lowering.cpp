@@ -387,5 +387,48 @@ TEST(GraphLowering, ResolveStateAliasesFailsOnOrphanAlias) {
     EXPECT_EQ(alias_plan.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(GraphLowering, WeightlessOpFallsBackWeightDTypeToActDType) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddActivation(graph, HiddenSpec(), "lhs");
+    const GraphValueId rhs = AddActivation(graph, HiddenSpec(), "rhs");
+    (void) graph.AddNode(
+            OpType::kAdd,
+            std::nullopt,
+            {lhs, rhs},
+            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            AddParams{});
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_EQ(lowered->steps.size(), 3U);
+    const auto& add_step = lowered->steps[2];
+    EXPECT_EQ(add_step.op_type, OpType::kAdd);
+    EXPECT_EQ(add_step.act_dtype, DataType::Float32());
+    EXPECT_EQ(add_step.weight_dtype, DataType::Float32());
+}
+
+TEST(GraphLowering, WeightedOpPreservesOriginalWeightDType) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {32, 8}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding});
+    (void) graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            EmbeddingParams{});
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_EQ(lowered->steps.size(), 1U);
+    EXPECT_EQ(lowered->steps[0].op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps[0].weight_dtype, DataType::Float32());
+}
+
 }// namespace
 }// namespace aethermind

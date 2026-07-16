@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/graph_op_builder.h"
+#include "aethermind/shape_inference/broadcast.h"
 
 #include <utility>
 #include <variant>
@@ -222,11 +223,12 @@ GraphValueId AddElementwiseAdd(ModelGraph& graph,
     const TensorSpec rhs_spec = graph.GetValue(rhs).spec;
     AM_CHECK(lhs_spec.dtype == rhs_spec.dtype,
              "Add requires matching dtypes for lhs and rhs operands");
-    TensorSpec output_spec = lhs_spec.IsRankZero() && !rhs_spec.IsRankZero() ? rhs_spec : lhs_spec;
+    auto inferred = InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
+    AM_CHECK(inferred.ok(), "Add broadcast shape inference failed");
     const auto node = graph.AddNode(OpType::kAdd,
                                     decoder_layer_index,
                                     {lhs, rhs},
-                                    {ActivationOutput(std::move(output_spec))},
+                                    {ActivationOutput(TensorSpec{.dtype = lhs_spec.dtype, .shape = std::move(inferred->output_shape)})},
                                     AddParams{},
                                     {},
                                     std::move(debug_name));

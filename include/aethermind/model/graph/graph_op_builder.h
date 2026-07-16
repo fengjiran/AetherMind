@@ -84,7 +84,11 @@ AM_NODISCARD GraphValueId AddAttention(ModelGraph& graph,
                                        AttentionParams params,
                                        std::string debug_name = {});
 
-/// Builds an elementwise Add node, typically used for residual connections.
+/// Builds an elementwise Add node with NumPy-style trailing broadcast.
+///
+/// Both operands must be ranked with matching dtypes. The output shape is
+/// inferred via right-aligned broadcast rules; incompatible static dimensions
+/// are a fatal check in the builder.
 AM_NODISCARD GraphValueId AddElementwiseAdd(ModelGraph& graph,
                                             std::optional<uint32_t> decoder_layer_index,
                                             GraphValueId lhs,

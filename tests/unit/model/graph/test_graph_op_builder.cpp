@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/graph_op_builder.h"
+#include "aethermind/shape_inference/shape_symbol.h"
 #include "test_graph_helpers.h"
 
 #include <gtest/gtest.h>
@@ -341,7 +342,7 @@ TEST(GraphOpBuilder, AddInputAndAddStateRegisterExternalValues) {
     EXPECT_EQ(kv_binding.slot, KVCacheSlot::kKey);
 }
 
-TEST(GraphOpBuilder, AddElementwiseAddDerivesOutputSpecFromLhs) {
+TEST(GraphOpBuilder, AddElementwiseAddSameShape) {
     ModelGraph graph;
     const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "lhs");
     const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {2, 4}), "rhs");
@@ -357,15 +358,19 @@ TEST(GraphOpBuilder, AddElementwiseAddDerivesOutputSpecFromLhs) {
     EXPECT_TRUE(std::holds_alternative<AddParams>(node.op_params));
 }
 
-TEST(GraphOpBuilder, AddElementwiseAddPreservesBroadcastNonRankZeroBehavior) {
+TEST(GraphOpBuilder, AddElementwiseAddBroadcast2x1Plus1x3Produces2x3) {
     ModelGraph graph;
     const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {2, 1}), "lhs");
     const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {1, 3}), "rhs");
 
     const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
 
-    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
-    EXPECT_EQ(graph.GetValue(output).spec.shape.rank().value(), 2U);
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_EQ(output_spec.shape.rank().value(), 2U);
+    const auto& dims = *output_spec.shape.shape();
+    ASSERT_EQ(dims.size(), 2U);
+    EXPECT_EQ(dims[0].GetStaticValue(), 2);
+    EXPECT_EQ(dims[1].GetStaticValue(), 3);
 }
 
 TEST(GraphOpBuilder, AddElementwiseAddRequiresMatchingDtype) {
@@ -377,7 +382,7 @@ TEST(GraphOpBuilder, AddElementwiseAddRequiresMatchingDtype) {
                  "Check failed");
 }
 
-TEST(GraphOpBuilder, AddElementwiseAddRankZeroScalarPlusScalarOutputsLhsRankZero) {
+TEST(GraphOpBuilder, AddElementwiseAddScalarPlusScalarOutputsScalar) {
     ModelGraph graph;
     const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {}), "lhs");
     const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {}), "rhs");
@@ -388,7 +393,7 @@ TEST(GraphOpBuilder, AddElementwiseAddRankZeroScalarPlusScalarOutputsLhsRankZero
     EXPECT_TRUE(graph.GetValue(output).spec.IsRankZero());
 }
 
-TEST(GraphOpBuilder, AddElementwiseAddRankZeroScalarPlusTensorOutputsRhsSpec) {
+TEST(GraphOpBuilder, AddElementwiseAddScalarPlusTensorProducesTensorShape) {
     ModelGraph graph;
     const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {}), "lhs");
     const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {3, 4}), "rhs");
@@ -398,7 +403,7 @@ TEST(GraphOpBuilder, AddElementwiseAddRankZeroScalarPlusTensorOutputsRhsSpec) {
     EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(rhs).spec);
 }
 
-TEST(GraphOpBuilder, AddElementwiseAddRankZeroTensorPlusScalarOutputsLhsSpec) {
+TEST(GraphOpBuilder, AddElementwiseAddTensorPlusScalarProducesTensorShape) {
     ModelGraph graph;
     const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {3, 4}), "lhs");
     const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {}), "rhs");
@@ -408,28 +413,95 @@ TEST(GraphOpBuilder, AddElementwiseAddRankZeroTensorPlusScalarOutputsLhsSpec) {
     EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
 }
 
-TEST(GraphOpBuilder, AddElementwiseAddRankOneIsNotRankZero) {
+TEST(GraphOpBuilder, AddElementwiseAddRankOnePlus3x4Produces3x4) {
     ModelGraph graph;
     const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {1}), "lhs");
     const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {3, 4}), "rhs");
 
     const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
 
-    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
-    EXPECT_FALSE(graph.GetValue(output).spec.IsRankZero());
-    EXPECT_EQ(graph.GetValue(output).spec.shape.rank().value(), 1U);
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_FALSE(output_spec.IsRankZero());
+    EXPECT_EQ(output_spec.shape.rank().value(), 2U);
+    const auto& dims = *output_spec.shape.shape();
+    ASSERT_EQ(dims.size(), 2U);
+    EXPECT_EQ(dims[0].GetStaticValue(), 3);
+    EXPECT_EQ(dims[1].GetStaticValue(), 4);
 }
 
-TEST(GraphOpBuilder, AddElementwiseAddZeroDimTensorIsNotRankZero) {
+TEST(GraphOpBuilder, AddElementwiseAddZeroDimCompatibleWithOne) {
     ModelGraph graph;
     const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {0}), "lhs");
-    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {3, 4}), "rhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {1}), "rhs");
 
     const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
 
-    EXPECT_EQ(graph.GetValue(output).spec, graph.GetValue(lhs).spec);
-    EXPECT_FALSE(graph.GetValue(output).spec.IsRankZero());
-    EXPECT_EQ(graph.GetValue(output).spec.shape.rank().value(), 1U);
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_FALSE(output_spec.IsRankZero());
+    EXPECT_EQ(output_spec.shape.rank().value(), 1U);
+    const auto& dims = *output_spec.shape.shape();
+    ASSERT_EQ(dims.size(), 1U);
+    EXPECT_EQ(dims[0].GetStaticValue(), 0);
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddIncompatibleStaticShapesDeath) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(Spec(DataType::Float32(), {2, 3}), "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {4, 5}), "rhs");
+
+    EXPECT_DEATH(static_cast<void>(AddElementwiseAdd(graph, 0, lhs, rhs, "bad_add")),
+                 "Check failed");
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddUnrankedShapeDeath) {
+    ModelGraph graph;
+    const GraphValueId lhs = graph.AddInput(TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape()}, "lhs");
+    const GraphValueId rhs = graph.AddInput(Spec(DataType::Float32(), {2, 3}), "rhs");
+
+    EXPECT_DEATH(static_cast<void>(AddElementwiseAdd(graph, 0, lhs, rhs, "bad_add")),
+                 "Check failed");
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddSameSymbolicDimensionPreserved) {
+    ModelGraph graph;
+    const auto sym = ShapeSymbol::Create();
+    const GraphValueId lhs = graph.AddInput(TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape({sym})}, "lhs");
+    const GraphValueId rhs = graph.AddInput(TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape({sym})}, "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_EQ(output_spec.shape.rank().value(), 1U);
+    EXPECT_EQ(output_spec.shape[0], sym);
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddDistinctSymbolsProduceUnknown) {
+    ModelGraph graph;
+    const auto sym1 = ShapeSymbol::Create();
+    const auto sym2 = ShapeSymbol::Create();
+    const GraphValueId lhs = graph.AddInput(TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape({sym1})}, "lhs");
+    const GraphValueId rhs = graph.AddInput(TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape({sym2})}, "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_EQ(output_spec.shape.rank().value(), 1U);
+    EXPECT_TRUE(output_spec.shape[0].IsUnknown());
+}
+
+TEST(GraphOpBuilder, AddElementwiseAddStaticNWithSymbolProducesN) {
+    ModelGraph graph;
+    const auto sym = ShapeSymbol::Create();
+    const auto s3 = ShapeSymbol::CreateFromValue(3);
+    const GraphValueId lhs = graph.AddInput(TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape({s3, sym})}, "lhs");
+    const GraphValueId rhs = graph.AddInput(TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape({s3, ShapeSymbol::CreateFromValue(4)})}, "rhs");
+
+    const GraphValueId output = AddElementwiseAdd(graph, 0, lhs, rhs, "add");
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_EQ(output_spec.shape.rank().value(), 2U);
+    EXPECT_EQ(output_spec.shape[0], s3);
+    EXPECT_EQ(output_spec.shape[1].GetStaticValue(), 4);
 }
 
 }// namespace

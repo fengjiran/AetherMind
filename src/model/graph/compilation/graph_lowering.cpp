@@ -153,7 +153,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         MaybeSetActivationDTypeFromOutputs(schema, node, values, act_dtype);
 
         step.act_dtype = act_dtype.value_or(DataType{});
-        step.weight_dtype = weight_dtype.value_or(DataType{});
+        step.weight_dtype = weight_dtype.value_or(step.act_dtype);
 
         AM_RETURN_IF_ERROR(AddKVCacheLoweringTimeAliases(schema, node, lowered));
         lowered.steps.push_back(std::move(step));

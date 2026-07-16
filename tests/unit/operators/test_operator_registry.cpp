@@ -63,19 +63,13 @@ private:
 
 }// namespace
 
-TEST(OperatorRegistry, RegisterAndCreateOperator) {
-    const Status registered = OperatorRegistry::Register(
+TEST(OperatorRegistry, CreateFromStaticallyRegisteredOperator) {
+    // SiluMulOp is registered via AM_REGISTER_OPERATOR in silu_mul_op.cpp.
+    const StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(
             OpType::kSiluMul,
-            OperatorRegistry::Descriptor{
-                    .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
-            });
-    ASSERT_TRUE(registered.ok()) << registered.ToString();
+            OpParams{SiluMulParams{}});
 
-    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(
-            OpType::kSiluMul,
-            OpParams{RegistryTestOperator::Params{.eps = 7.0F}});
-
-    ASSERT_TRUE(op.ok());
+    ASSERT_TRUE(op.ok()) << op.status().ToString();
     ASSERT_NE(op.value(), nullptr);
     EXPECT_EQ(op.value()->Type(), OpType::kSiluMul);
     EXPECT_STREQ(op.value()->Name(), ToString(OpType::kSiluMul));
@@ -84,14 +78,14 @@ TEST(OperatorRegistry, RegisterAndCreateOperator) {
 
 TEST(OperatorRegistry, RejectsDuplicateFactory) {
     const Status first = OperatorRegistry::Register(
-            OpType::kElementwiseMul,
+            OpType::kKVCacheUpdate,
             OperatorRegistry::Descriptor{
                     .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
             });
     ASSERT_TRUE(first.ok()) << first.ToString();
 
     const Status duplicate = OperatorRegistry::Register(
-            OpType::kElementwiseMul,
+            OpType::kKVCacheUpdate,
             OperatorRegistry::Descriptor{
                     .factory_ = [](const OpParams&) -> StatusOr<std::unique_ptr<Operator>> {
                         return Status::Internal("duplicate factory should not be used");
@@ -134,18 +128,15 @@ TEST(OperatorRegistry, CreateDefaultParamsReturnsRegisteredDefaults) {
     EXPECT_FLOAT_EQ(typed_params->eps, 123.0F);
 }
 
-TEST(OperatorRegistry, CreateDefaultParamsFailsForFactoryOnlyRegistration) {
-    const Status registered = OperatorRegistry::Register(
-            OpType::kMatMul,
-            OperatorRegistry::Descriptor{
-                    .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
-            });
-    ASSERT_TRUE(registered.ok()) << registered.ToString();
-
+TEST(OperatorRegistry, CreateDefaultParamsReturnsMatMulDefaults) {
+    // MatMulOp is registered via AM_REGISTER_OPERATOR in matmul_op.cpp, which
+    // installs both factory_ and make_default_params_. The default params
+    // must be MatMulParams{transpose_rhs = false}.
     const StatusOr<OpParams> params = OperatorRegistry::CreateDefaultParams(OpType::kMatMul);
-
-    ASSERT_FALSE(params.ok());
-    EXPECT_EQ(params.status().code(), StatusCode::kNotFound);
+    ASSERT_TRUE(params.ok()) << params.status().ToString();
+    const auto* typed_params = std::get_if<MatMulParams>(&params.value());
+    ASSERT_NE(typed_params, nullptr);
+    EXPECT_FALSE(typed_params->transpose_rhs);
 }
 
 TEST(OperatorRegistry, CreateDefaultParamsFailsForUnregisteredOperator) {
@@ -171,13 +162,13 @@ TEST(OperatorRegistry, CreateUnknownOperatorFails) {
 
 TEST(OperatorRegistry, WrongParamsTypeFails) {
     const Status registered = OperatorRegistry::Register(
-            OpType::kSilu,
+            OpType::kSoftmax,
             OperatorRegistry::Descriptor{
                     .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
             });
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
-    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kSilu, OpParams{ArgmaxParams{}});
+    StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(OpType::kSoftmax, OpParams{ArgmaxParams{}});
 
     ASSERT_FALSE(op.ok());
     EXPECT_EQ(op.status().code(), StatusCode::kInvalidArgument);

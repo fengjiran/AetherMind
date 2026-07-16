@@ -188,11 +188,11 @@ public:
 
     AM_NODISCARD KernelFunc ResolveKernel(OpType op_type, const KernelSelector&) const noexcept override {
         switch (op_type) {
-            case OpType::kSilu:
+            case OpType::kSoftmax:
                 return &FirstKernel;
             case OpType::kRoPE:
                 return &SecondKernel;
-            case OpType::kMatMul:
+            case OpType::kArgmax:
                 return &FailingKernel;
             case OpType::kAttention:
                 return &FirstKernel;
@@ -223,11 +223,11 @@ public:
 private:
     static const char* GetDebugName(OpType op_type) noexcept {
         switch (op_type) {
-            case OpType::kSilu:
+            case OpType::kSoftmax:
                 return "test::first_kernel";
             case OpType::kRoPE:
                 return "test::second_kernel";
-            case OpType::kMatMul:
+            case OpType::kArgmax:
                 return "test::failing_kernel";
             case OpType::kAttention:
                 return "test::runtime_constraint_kernel";
@@ -282,7 +282,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kSilu,
+            .op_type = OpType::kSoftmax,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -329,7 +329,7 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kMatMul,
+            .op_type = OpType::kArgmax,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -354,7 +354,7 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kSilu,
+            .op_type = OpType::kSoftmax,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),

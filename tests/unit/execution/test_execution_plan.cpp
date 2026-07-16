@@ -34,7 +34,7 @@ public:
             const KernelSelector&) const noexcept override {
         return ResolvedKernel{
                 .op_type = op_type,
-                .fn = op_type == OpType::kMatMul ? nullptr : &FakeKernel,
+                .fn = op_type == OpType::kArgmax ? nullptr : &FakeKernel,
                 .attrs = {},
                 .debug_name = "test::stub_kernel",
         };
@@ -67,7 +67,7 @@ TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kSilu,
+            .op_type = OpType::kSoftmax,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -90,7 +90,7 @@ TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
     const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(resolved.attrs.data());
     ASSERT_NE(stored_attrs, nullptr);
     EXPECT_NE(stored_attrs, &attrs);
-    EXPECT_EQ(step.op->Type(), OpType::kSilu);
+    EXPECT_EQ(step.op->Type(), OpType::kSoftmax);
     EXPECT_EQ(step.selector.device_type, DeviceType::kCPU);
     EXPECT_EQ(step.packed_weights, nullptr);
     EXPECT_EQ(step.workspace_requirement.bytes, 128U);
@@ -109,7 +109,7 @@ TEST(ExecutionPlan, BuildAllowsEmptyAttrs) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kSilu,
+            .op_type = OpType::kSoftmax,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -131,7 +131,7 @@ TEST(ExecutionPlan, BuildRejectsInvalidWorkspaceAlignment) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kSilu,
+            .op_type = OpType::kSoftmax,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -154,7 +154,7 @@ TEST(ExecutionPlan, BuildRejectsNullResolvedKernelFunction) {
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kMatMul,
+            .op_type = OpType::kArgmax,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
@@ -165,5 +165,5 @@ TEST(ExecutionPlan, BuildRejectsNullResolvedKernelFunction) {
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
-}  // namespace
-}  // namespace aethermind
+}// namespace
+}// namespace aethermind

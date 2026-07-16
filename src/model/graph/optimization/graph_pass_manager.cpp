@@ -1,3 +1,12 @@
+// GraphPassManager executes an ordered pass pipeline over a ModelGraph.
+//
+// The pipeline is checkpoint-aware: when checkpoint_every != 0, the session
+// is committed to an immutable ModelGraph snapshot every N passes. Each new
+// session borrows from the latest snapshot, so a later pass failure cannot
+// corrupt earlier results and the final return always owns a complete graph.
+// See model_graph_design_v2.md §10 and §16.4 for the contract and default
+// pipeline selection.
+
 #include "aethermind/model/graph/optimization/graph_pass_manager.h"
 
 #include <optional>

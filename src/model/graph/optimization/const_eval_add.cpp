@@ -1,7 +1,9 @@
 #include "aethermind/model/graph/op_params.h"
+#include "aethermind/shape_inference/broadcast.h"
 #include "aethermind/utils/overflow_check.h"
 #include "const_eval_internal.h"
 
+#include <algorithm>
 #include <type_traits>
 
 namespace aethermind {
@@ -67,7 +69,7 @@ public:
         auto shape = ExtractStaticShape(output);
         AM_RETURN_IF_ERROR(shape.status());
 
-        if (auto broadcast_shape = detail::BroadcastShapes(*lhs_shape, *rhs_shape);
+        if (auto broadcast_shape = BroadcastShapes(*lhs_shape, *rhs_shape);
             !broadcast_shape.ok() || *broadcast_shape != *shape) {
             return Status::Unimplemented(
                     "Add constant evaluator requires broadcast-compatible static shapes matching output");
@@ -122,7 +124,7 @@ public:
                     "Add constant evaluator received unsupported dtype");
         }
 
-        if (auto broadcast_shape = detail::BroadcastShapes(lhs.shape(), rhs.shape());
+        if (auto broadcast_shape = BroadcastShapes(lhs.shape(), rhs.shape());
             !broadcast_shape.ok() || !std::ranges::equal(*broadcast_shape, out.shape())) {
             return Status::InvalidArgument(
                     "Add constant evaluator received mismatched shapes");
@@ -137,11 +139,11 @@ public:
             return detail::EvaluateBinaryFlatByDType<AddScalarOp>(dtype, inputs, outputs, out.numel());
         }
 
-        auto lhs_strides = detail::BroadcastInputStrides(lhs.shape(), lhs.strides(),
-                                                         out.shape());
+        auto lhs_strides = BroadcastInputStrides(lhs.shape(), lhs.strides(),
+                                                 out.shape());
         AM_RETURN_IF_ERROR(lhs_strides.status());
-        auto rhs_strides = detail::BroadcastInputStrides(rhs.shape(), rhs.strides(),
-                                                         out.shape());
+        auto rhs_strides = BroadcastInputStrides(rhs.shape(), rhs.strides(),
+                                                 out.shape());
         AM_RETURN_IF_ERROR(rhs_strides.status());
         return detail::EvaluateBinaryStridedByDType<AddScalarOp>(dtype, inputs, outputs, *lhs_strides, *rhs_strides);
     }

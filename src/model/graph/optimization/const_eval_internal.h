@@ -2,15 +2,16 @@
 #define AETHERMIND_MODEL_GRAPH_OPTIMIZATION_CONST_EVAL_INTERNAL_H
 
 // Internal header shared by all const_eval_*.cpp TU-local implementations.
-// Contains broadcast helpers, scalar-op concepts, typed flat/strided kernels,
+// Contains scalar-op concepts, typed flat/strided kernels,
 // and accessor function declarations for the per-evaluator .cpp files.
+//
+// Broadcast helpers have been extracted to aethermind/shape_inference/broadcast.h.
 
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/model/graph/optimization/const_evaluator.h"
 
-#include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -18,63 +19,6 @@
 #include <vector>
 
 namespace aethermind::detail {
-
-// ── Broadcast helpers (shared across evaluator implementations) ──
-inline StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
-                                                      std::span<const int64_t> rhs_shape) {
-    const size_t output_rank = std::max(lhs_shape.size(), rhs_shape.size());
-    std::vector<int64_t> output_shape(output_rank, 1);
-    const size_t lhs_axis_offset = output_rank - lhs_shape.size();
-    const size_t rhs_axis_offset = output_rank - rhs_shape.size();
-    for (size_t output_axis = 0; output_axis < output_rank; ++output_axis) {
-        const int64_t lhs_dim = output_axis < lhs_axis_offset
-                                        ? 1
-                                        : lhs_shape[output_axis - lhs_axis_offset];
-        const int64_t rhs_dim = output_axis < rhs_axis_offset
-                                        ? 1
-                                        : rhs_shape[output_axis - rhs_axis_offset];
-        if (lhs_dim < 0 || rhs_dim < 0) {
-            return Status::InvalidArgument("broadcast dimensions must be non-negative");
-        }
-
-        if (lhs_dim == 1) {
-            output_shape[output_axis] = rhs_dim;
-        } else if (rhs_dim == 1 || lhs_dim == rhs_dim) {
-            output_shape[output_axis] = lhs_dim;
-        } else {
-            return Status::InvalidArgument("broadcast dimensions are incompatible");
-        }
-    }
-    return output_shape;
-}
-
-// Broadcast-aware stride expansion: sets stride to 0 for broadcast
-// dimensions (where input dim == 1 but output dim > 1), allowing the
-// strided kernel to reuse the same element by not advancing the offset.
-inline StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> input_shape,
-                                                            std::span<const int64_t> input_strides,
-                                                            std::span<const int64_t> output_shape) {
-    if (input_shape.size() != input_strides.size() || input_shape.size() > output_shape.size()) {
-        return Status::InvalidArgument("broadcast input metadata rank mismatch");
-    }
-
-    std::vector<int64_t> effective_strides(output_shape.size());
-    const size_t axis_offset = output_shape.size() - input_shape.size();
-    for (size_t output_axis = axis_offset; output_axis < output_shape.size(); ++output_axis) {
-        const size_t input_axis = output_axis - axis_offset;
-        const int64_t input_dim = input_shape[input_axis];
-        const int64_t output_dim = output_shape[output_axis];
-        if (input_dim == output_dim) {
-            effective_strides[output_axis] = input_strides[input_axis];
-        } else if (input_dim == 1) {
-            effective_strides[output_axis] = 0;
-        } else {
-            return Status::InvalidArgument(
-                    "input shape is not broadcast-compatible with output shape");
-        }
-    }
-    return effective_strides;
-}
 
 // ── Shared binary kernel templates ──
 template<typename Op, typename T>

@@ -12,7 +12,7 @@ public:
     explicit RegistryTestOperator(Params params) noexcept : params_(params) {}
 
     AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kAdd;
+        return OpType::kSiluMul;
     }
 
     AM_NODISCARD Status ValidateParams() const override {
@@ -65,20 +65,20 @@ private:
 
 TEST(OperatorRegistry, RegisterAndCreateOperator) {
     const Status registered = OperatorRegistry::Register(
-            OpType::kAdd,
+            OpType::kSiluMul,
             OperatorRegistry::Descriptor{
                     .factory_ = &OperatorRegistry::CreateTypedOperator<RegistryTestOperator>,
             });
     ASSERT_TRUE(registered.ok()) << registered.ToString();
 
     StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(
-            OpType::kAdd,
+            OpType::kSiluMul,
             OpParams{RegistryTestOperator::Params{.eps = 7.0F}});
 
     ASSERT_TRUE(op.ok());
     ASSERT_NE(op.value(), nullptr);
-    EXPECT_EQ(op.value()->Type(), OpType::kAdd);
-    EXPECT_STREQ(op.value()->Name(), ToString(OpType::kAdd));
+    EXPECT_EQ(op.value()->Type(), OpType::kSiluMul);
+    EXPECT_STREQ(op.value()->Name(), ToString(OpType::kSiluMul));
     EXPECT_TRUE(op.value()->ValidateParams().ok());
 }
 

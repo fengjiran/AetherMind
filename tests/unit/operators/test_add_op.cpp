@@ -220,6 +220,9 @@ namespace {
 struct StubKernelState {
     bool called = false;
     const void* kernel_params = nullptr;
+    bool lhs_valid = false;
+    bool rhs_valid = false;
+    bool output_valid = false;
 };
 
 StubKernelState g_stub_state{};
@@ -227,6 +230,13 @@ StubKernelState g_stub_state{};
 Status StubAddKernel(const KernelContext& ctx) noexcept {
     g_stub_state.called = true;
     g_stub_state.kernel_params = ctx.kernel_params;
+    // `ctx.kernel_params` points at the CpuAddParams owned by AddOp::Run's
+    // stack frame, valid only for the duration of this call. Validate here
+    // rather than after Run() returns, where the pointer would dangle.
+    const auto* params = static_cast<const CpuAddParams*>(ctx.kernel_params);
+    g_stub_state.lhs_valid = params->lhs_tensor.is_valid();
+    g_stub_state.rhs_valid = params->rhs_tensor.is_valid();
+    g_stub_state.output_valid = params->output_tensor.is_valid();
     return Status::Ok();
 }
 
@@ -421,9 +431,10 @@ TEST(AddOp, RunInvokesKernelAndReturnsOk) {
     EXPECT_NE(g_stub_state.kernel_params, nullptr);
 
     const auto* params = static_cast<const CpuAddParams*>(g_stub_state.kernel_params);
-    EXPECT_TRUE(params->lhs_tensor.is_valid());
-    EXPECT_TRUE(params->rhs_tensor.is_valid());
-    EXPECT_TRUE(params->output_tensor.is_valid());
+    EXPECT_TRUE(g_stub_state.lhs_valid);
+    EXPECT_TRUE(g_stub_state.rhs_valid);
+    EXPECT_TRUE(g_stub_state.output_valid);
+    (void)params;// captured only to confirm non-null above
 }
 
 // --- Registry ---

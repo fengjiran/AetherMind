@@ -1,8 +1,7 @@
 #include "aethermind/shape_inference/broadcast.h"
 
-#include <gtest/gtest.h>
-
 #include <cstdint>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace aethermind {

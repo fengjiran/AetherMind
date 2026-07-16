@@ -1,5 +1,4 @@
 #include "aethermind/operators/add_op.h"
-
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/cpu/kernels/cpu_add_kernel.h"
 #include "aethermind/backend/kernel_context.h"

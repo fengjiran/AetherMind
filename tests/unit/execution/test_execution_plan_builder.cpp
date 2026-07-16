@@ -6,7 +6,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/model/graph/graph_lowering.h"
+#include "aethermind/model/graph/compilation/graph_lowering.h"
 #include "aethermind/model/graph/graph.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/rmsnorm_op.h"

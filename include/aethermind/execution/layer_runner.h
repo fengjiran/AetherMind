@@ -4,7 +4,7 @@
 #include "aethermind/base/status.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/model/graph/state_alias_plan.h"
+#include "aethermind/model/graph/compilation/state_alias_plan.h"
 
 namespace aethermind {
 

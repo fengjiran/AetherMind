@@ -3,7 +3,7 @@
 
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
-#include "aethermind/model/graph/state_alias_plan.h"
+#include "aethermind/model/graph/compilation/state_alias_plan.h"
 #include "aethermind/operators/operator.h"
 #include "aethermind/runtime/workspace.h"
 

@@ -1,0 +1,72 @@
+#include "aethermind/model/graph/optimization/dead_code_elimination_pass.h"
+#include "aethermind/model/graph/operator_schema.h"
+
+#include <cstddef>
+#include <vector>
+
+namespace aethermind {
+namespace {
+
+bool IsDceRemovableOp(OpType op_type) {
+    const auto schema = GetOperatorSchema(op_type);
+    if (!schema.ok()) {
+        return false;
+    }
+    return !schema->traits.has_side_effects && !HasStatefulOutput(*schema);
+}
+
+bool AreAllOutputsDead(const GraphRewriteSession& session, const GraphNodeView& node) {
+    for (const auto output: node.outputs) {
+        // When an earlier pass (e.g. constant folding) replaced this output
+        // with a different value, the original output is dead from this
+        // producer's perspective. Consumers are now attached to the
+        // replacement value; this node is removable.
+        if (session.GetResolvedValue(output) != output) {
+            continue;
+        }
+
+        if (session.IsGraphOutput(output) || session.HasLiveConsumers(output)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+Status RemoveDeadNodesOnce(GraphRewriteSession& session, bool& changed) {
+    StatusOr<std::vector<GraphNodeId>> order = session.GetTopologicalOrder();
+    AM_RETURN_IF_ERROR(order.status());
+
+    for (std::size_t i = order->size(); i > 0U; --i) {
+        const GraphNodeId node_id = (*order)[i - 1U];
+        StatusOr<GraphNodeView> node = session.GetNodeView(node_id);
+        AM_RETURN_IF_ERROR(node.status());
+        if (!IsDceRemovableOp(node->op_type) || !AreAllOutputsDead(session, *node)) {
+            continue;
+        }
+
+        AM_RETURN_IF_ERROR(session.RemoveNode(node_id));
+        changed = true;
+    }
+    return Status::Ok();
+}
+
+}// namespace
+
+std::string_view DeadCodeEliminationPass::Name() const noexcept {
+    return "DeadCodeEliminationPass";
+}
+
+Status DeadCodeEliminationPass::Run(GraphRewriteSession& session, const PassContext& ctx) {
+    if (!ctx.enable_dce) {
+        return Status::Ok();
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        AM_RETURN_IF_ERROR(RemoveDeadNodesOnce(session, changed));
+    }
+    return Status::Ok();
+}
+
+}// namespace aethermind

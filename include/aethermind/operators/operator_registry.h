@@ -35,7 +35,7 @@ public:
 
     template<typename OpClass>
     static StatusOr<std::unique_ptr<Operator>> CreateTypedOperator(const OpParams& params) {
-        using Params = typename OpClass::Params;
+        using Params = OpClass::Params;
         const auto* typed_params = std::get_if<Params>(&params);
         if (typed_params == nullptr) {
             return Status::InvalidArgument("Wrong params type for operator");

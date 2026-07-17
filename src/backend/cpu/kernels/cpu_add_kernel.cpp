@@ -8,11 +8,20 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <type_traits>
 
 namespace aethermind {
 namespace {
 
 constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
+
+bool IsSupportedAddDType(const DataType& dtype) noexcept {
+    return dtype == DataType::Float32() ||
+           dtype == DataType::Double() ||
+           dtype == DataType::BFloat(16) ||
+           dtype == DataType::Int(32) ||
+           dtype == DataType::Int(64);
+}
 
 auto GetParams(const void* kernel_params) noexcept {
     return static_cast<const CpuAddParams*>(kernel_params);
@@ -104,6 +113,60 @@ StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
     return count;
 }
 
+template<typename T>
+Status AddScalar(T lhs, T rhs, T& output) noexcept {
+    if constexpr (std::is_integral_v<T>) {
+        if (CheckOverflowAdd(lhs, rhs, &output)) {
+            return Status::Overflow("CpuAddKernel integer overflow");
+        }
+    } else {
+        output = lhs + rhs;
+    }
+    return Status::Ok();
+}
+
+template<typename T>
+Status ExecuteTyped(const TensorView& lhs,
+                    const TensorView& rhs,
+                    const MutableTensorView& output,
+                    int64_t numel) noexcept {
+    const auto* const lhs_data = lhs.data<T>();
+    const auto* const rhs_data = rhs.data<T>();
+    auto* const output_data = output.data<T>();
+
+    if (output.rank() == 0) {
+        return AddScalar(lhs_data[0], rhs_data[0], output_data[0]);
+    }
+
+    const auto lhs_shape = lhs.shape();
+    const auto lhs_strides = lhs.strides();
+    const auto rhs_shape = rhs.shape();
+    const auto rhs_strides = rhs.strides();
+    const auto out_shape = output.shape();
+    const auto out_strides = output.strides();
+    const int32_t output_rank = output.rank();
+
+    std::array<int64_t, kMaxRank> coord{};
+    for (int64_t flat = 0; flat < numel; ++flat) {
+        int64_t remaining = flat;
+        for (int32_t axis = output_rank - 1; axis >= 0; --axis) {
+            coord[axis] = remaining % out_shape[axis];
+            remaining /= out_shape[axis];
+        }
+
+        const int64_t lhs_offset = MapCoordToOffset(lhs_shape, output_rank, lhs_strides, coord);
+        const int64_t rhs_offset = MapCoordToOffset(rhs_shape, output_rank, rhs_strides, coord);
+
+        int64_t out_offset = 0;
+        for (int32_t axis = 0; axis < output_rank; ++axis) {
+            out_offset += coord[axis] * out_strides[axis];
+        }
+
+        AM_RETURN_IF_ERROR(AddScalar(lhs_data[lhs_offset], rhs_data[rhs_offset], output_data[out_offset]));
+    }
+    return Status::Ok();
+}
+
 Status ValidateAndExecute(const CpuAddParams* params) noexcept {
     const TensorView& lhs = params->lhs_tensor;
     const TensorView& rhs = params->rhs_tensor;
@@ -119,14 +182,14 @@ Status ValidateAndExecute(const CpuAddParams* params) noexcept {
         return Status::InvalidArgument("CpuAddKernel requires a valid output MutableTensorView");
     }
 
-    if (lhs.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuAddKernel requires float32 lhs TensorView");
+    const DataType dtype = lhs.dtype();
+    if (rhs.dtype() != dtype || output.dtype() != dtype) {
+        return Status::InvalidArgument(
+                "CpuAddKernel requires matching lhs, rhs, and output dtypes");
     }
-    if (rhs.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuAddKernel requires float32 rhs TensorView");
-    }
-    if (output.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuAddKernel requires float32 output MutableTensorView");
+    if (!IsSupportedAddDType(dtype)) {
+        return Status::InvalidArgument(
+                "CpuAddKernel only supports float32, float64, bfloat16, int32, and int64 tensors");
     }
 
     const int32_t output_rank = output.rank();
@@ -170,42 +233,19 @@ Status ValidateAndExecute(const CpuAddParams* params) noexcept {
         if (!status.ok()) return status;
     }
 
-    const auto* const lhs_data = lhs.data<float>();
-    const auto* const rhs_data = rhs.data<float>();
-    auto* const output_data = output.data<float>();
-
-    const auto lhs_shape = lhs.shape();
-    const auto lhs_strides = lhs.strides();
-    const auto rhs_shape = rhs.shape();
-    const auto rhs_strides = rhs.strides();
-    const auto out_shape = output.shape();
-    const auto out_strides = output.strides();
-
-    if (output_rank == 0) {
-        output_data[0] = lhs_data[0] + rhs_data[0];
-        return Status::Ok();
+    if (dtype == DataType::Float32()) {
+        return ExecuteTyped<float>(lhs, rhs, output, numel);
     }
-
-    std::array<int64_t, kMaxRank> coord{};
-    for (int64_t flat = 0; flat < numel; ++flat) {
-        int64_t remaining = flat;
-        for (int32_t axis = output_rank - 1; axis >= 0; --axis) {
-            coord[axis] = remaining % out_shape[axis];
-            remaining /= out_shape[axis];
-        }
-
-        const int64_t lhs_offset = MapCoordToOffset(lhs_shape, output_rank, lhs_strides, coord);
-        const int64_t rhs_offset = MapCoordToOffset(rhs_shape, output_rank, rhs_strides, coord);
-
-        int64_t out_offset = 0;
-        for (int32_t axis = 0; axis < output_rank; ++axis) {
-            out_offset += coord[axis] * out_strides[axis];
-        }
-
-        output_data[out_offset] = lhs_data[lhs_offset] + rhs_data[rhs_offset];
+    if (dtype == DataType::Double()) {
+        return ExecuteTyped<double>(lhs, rhs, output, numel);
     }
-
-    return Status::Ok();
+    if (dtype == DataType::BFloat(16)) {
+        return ExecuteTyped<BFloat16>(lhs, rhs, output, numel);
+    }
+    if (dtype == DataType::Int(32)) {
+        return ExecuteTyped<int32_t>(lhs, rhs, output, numel);
+    }
+    return ExecuteTyped<int64_t>(lhs, rhs, output, numel);
 }
 
 }// namespace
@@ -233,6 +273,70 @@ AM_REGISTER_KERNEL(CpuAddFp32Scalar,
                            },
                            .kernel_func = &CpuAddKernel,
                            .name = "cpu::add_f32_scalar",
+                           .priority = 10,
+                   })
+
+AM_REGISTER_KERNEL(CpuAddFp64Scalar,
+                   KernelDescriptor{
+                           .op_type = OpType::kAdd,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .act_dtype = DataType::Double(),
+                                   .weight_dtype = DataType::Double(),
+                                   .weight_format = WeightFormat::kPlain,
+                                   .isa = IsaLevel::kScalar,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .kernel_func = &CpuAddKernel,
+                           .name = "cpu::add_f64_scalar",
+                           .priority = 10,
+                   })
+
+AM_REGISTER_KERNEL(CpuAddBf16Scalar,
+                   KernelDescriptor{
+                           .op_type = OpType::kAdd,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .act_dtype = DataType::BFloat(16),
+                                   .weight_dtype = DataType::BFloat(16),
+                                   .weight_format = WeightFormat::kPlain,
+                                   .isa = IsaLevel::kScalar,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .kernel_func = &CpuAddKernel,
+                           .name = "cpu::add_bf16_scalar",
+                           .priority = 10,
+                   })
+
+AM_REGISTER_KERNEL(CpuAddI32Scalar,
+                   KernelDescriptor{
+                           .op_type = OpType::kAdd,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .act_dtype = DataType::Int(32),
+                                   .weight_dtype = DataType::Int(32),
+                                   .weight_format = WeightFormat::kPlain,
+                                   .isa = IsaLevel::kScalar,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .kernel_func = &CpuAddKernel,
+                           .name = "cpu::add_i32_scalar",
+                           .priority = 10,
+                   })
+
+AM_REGISTER_KERNEL(CpuAddI64Scalar,
+                   KernelDescriptor{
+                           .op_type = OpType::kAdd,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .act_dtype = DataType::Int(64),
+                                   .weight_dtype = DataType::Int(64),
+                                   .weight_format = WeightFormat::kPlain,
+                                   .isa = IsaLevel::kScalar,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .kernel_func = &CpuAddKernel,
+                           .name = "cpu::add_i64_scalar",
                            .priority = 10,
                    })
 

@@ -10,6 +10,29 @@
 #include <string>
 
 namespace aethermind {
+namespace {
+
+bool IsSupportedAddDType(const DataType& dtype) noexcept {
+    return dtype == DataType::Float32() ||
+           dtype == DataType::Double() ||
+           dtype == DataType::BFloat(16) ||
+           dtype == DataType::Int(32) ||
+           dtype == DataType::Int(64);
+}
+
+Status ValidateAddDTypes(const TensorSpec& lhs, const TensorSpec& rhs) {
+    if (lhs.dtype != rhs.dtype) {
+        return Status::InvalidArgument("Add inputs must have matching dtypes");
+    }
+
+    if (!IsSupportedAddDType(lhs.dtype)) {
+        return Status::InvalidArgument(
+                "Add only supports float32, float64, bfloat16, int32, and int64 inputs");
+    }
+    return Status::Ok();
+}
+
+}// namespace
 
 Status AddOp::ValidateParams() const {
     return Status::Ok();
@@ -17,19 +40,18 @@ Status AddOp::ValidateParams() const {
 
 Status AddOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
     if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "Add expects exactly 2 inputs, got " + std::to_string(inputs.size()));
+        return Status::InvalidArgument("Add expects exactly 2 inputs, got " +
+                                       std::to_string(inputs.size()));
     }
 
     const auto& lhs_spec = inputs[0];
     const auto& rhs_spec = inputs[1];
 
-    if (lhs_spec.dtype != DataType::Float32() || rhs_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("Add only supports float32 inputs in Phase 1");
-    }
+    AM_RETURN_IF_ERROR(ValidateAddDTypes(lhs_spec, rhs_spec));
 
-    auto broadcast_result = InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
-    if (!broadcast_result.ok()) {
+    if (auto broadcast_result =
+                InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
+        !broadcast_result.ok()) {
         return broadcast_result.status();
     }
 
@@ -45,31 +67,30 @@ StatusOr<InferenceResult> AddOp::InferOutputShapes(std::span<const TensorSpec> i
     const auto& lhs_spec = inputs[0];
     const auto& rhs_spec = inputs[1];
 
-    if (lhs_spec.dtype != DataType::Float32() || rhs_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("Add only supports float32 inputs in Phase 1");
-    }
+    AM_RETURN_IF_ERROR(ValidateAddDTypes(lhs_spec, rhs_spec));
 
-    auto broadcast_result = InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
+    auto broadcast_result = InferBroadcastShape(
+            lhs_spec.shape, rhs_spec.shape);
     if (!broadcast_result.ok()) {
         return broadcast_result.status();
     }
 
     TensorSpec output_spec{
-            .dtype = DataType::Float32(),
+            .dtype = lhs_spec.dtype,
             .shape = broadcast_result->output_shape,
     };
 
     std::vector<ShapeConstraint> runtime_checks;
     for (const auto& deferred: broadcast_result->deferred_axes) {
-        runtime_checks.push_back(ShapeConstraint{
+        runtime_checks.push_back({
                 .condition = DimBroadcastableConstraint{
                         .lhs = DimLocator{
-                                .tensor_port = TensorPort{.direction = TensorPortType::kInput,
-                                                          .tensor_idx = 0},
+                                .tensor_port = {.direction = TensorPortType::kInput,
+                                                .tensor_idx = 0},
                                 .dim_index = deferred.lhs_axis,
                         },
                         .rhs = DimLocator{
-                                .tensor_port = TensorPort{.direction = TensorPortType::kInput, .tensor_idx = 1},
+                                .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
                                 .dim_index = deferred.rhs_axis,
                         },
                 },
@@ -88,9 +109,8 @@ Status AddOp::Prepare(OperatorContext& ctx) {
         return Status::InvalidArgument("Add Prepare requires OperatorContext.backend");
     }
 
-    const auto resolved = ctx.backend->ResolveKernelInfo(
-            OpType::kAdd,
-            ctx.selector);
+    const auto resolved = ctx.backend->ResolveKernelInfo(OpType::kAdd,
+                                                         ctx.selector);
 
     if (!resolved.ok()) {
         return resolved.status();
@@ -117,15 +137,13 @@ Status AddOp::Run(KernelContext& ctx,
 
     const auto* b = binding.value();
     if (b->inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "Add requires 2 input tensor bindings, got " +
-                std::to_string(b->inputs.size()));
+        return Status::InvalidArgument("Add requires 2 input tensor bindings, got " +
+                                       std::to_string(b->inputs.size()));
     }
 
     if (b->outputs.size() != 1) {
-        return Status::InvalidArgument(
-                "Add requires 1 output tensor binding, got " +
-                std::to_string(b->outputs.size()));
+        return Status::InvalidArgument("Add requires 1 output tensor binding, got " +
+                                       std::to_string(b->outputs.size()));
     }
 
     CpuAddParams params{

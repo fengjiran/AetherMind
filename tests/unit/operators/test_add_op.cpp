@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstring>
 #include <variant>
 
@@ -38,11 +39,42 @@ TEST(AddOp, RejectsWrongArity) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(AddOp, RejectsNonFloat32Input) {
+TEST(AddOp, AcceptsSupportedDTypes) {
+    const AddOp op{AddOp::Params{}};
+    const std::array supported_dtypes{
+            DataType::Float32(),
+            DataType::Double(),
+            DataType::BFloat(16),
+            DataType::Int(32),
+            DataType::Int(64),
+    };
+
+    for (const DataType& dtype: supported_dtypes) {
+        SCOPED_TRACE(ToString(dtype));
+        const TensorSpec inputs[2] = {
+                TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
+                TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
+        };
+        EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    }
+}
+
+TEST(AddOp, RejectsMismatchedInputDTypes) {
     const AddOp op{AddOp::Params{}};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+    };
+    const Status status = op.CheckInputSpecs(inputs);
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(AddOp, RejectsUnsupportedInputDType) {
+    const AddOp op{AddOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float(16), .shape = StaticShape({2, 3})},
+            TensorSpec{.dtype = DataType::Float(16), .shape = StaticShape({2, 3})},
     };
     const Status status = op.CheckInputSpecs(inputs);
     EXPECT_FALSE(status.ok());
@@ -118,15 +150,27 @@ TEST(AddOp, AcceptsZeroDimension) {
 
 // --- InferOutputShapes ---
 
-TEST(AddOp, InferOutputShapesRejectsNonFloat32) {
+TEST(AddOp, InfersSupportedOutputDTypes) {
     const AddOp op{AddOp::Params{}};
-    const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
+    const std::array supported_dtypes{
+            DataType::Float32(),
+            DataType::Double(),
+            DataType::BFloat(16),
+            DataType::Int(32),
+            DataType::Int(64),
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
-    EXPECT_FALSE(inference.ok());
-    EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
+
+    for (const DataType& dtype: supported_dtypes) {
+        SCOPED_TRACE(ToString(dtype));
+        const TensorSpec inputs[2] = {
+                TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
+                TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
+        };
+        const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+        ASSERT_TRUE(inference.ok()) << inference.status().ToString();
+        ASSERT_EQ(inference->outputs.size(), 1U);
+        EXPECT_EQ(inference->outputs[0].dtype, dtype);
+    }
 }
 
 TEST(AddOp, InfersSameShapeOutput) {
@@ -434,7 +478,7 @@ TEST(AddOp, RunInvokesKernelAndReturnsOk) {
     EXPECT_TRUE(g_stub_state.lhs_valid);
     EXPECT_TRUE(g_stub_state.rhs_valid);
     EXPECT_TRUE(g_stub_state.output_valid);
-    (void)params;// captured only to confirm non-null above
+    (void) params;// captured only to confirm non-null above
 }
 
 // --- Registry ---

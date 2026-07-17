@@ -13,11 +13,19 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <type_traits>
 
 namespace aethermind {
 namespace {
+
+SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
+    const std::vector<int64_t> shape(dims);
+    return SymbolicShape(IntArrayView{shape});
+}
 
 template<size_t DataN, size_t Rank>
 TensorView MakeFloatTensorView(const float (&data)[DataN],
@@ -31,6 +39,50 @@ MutableTensorView MakeMutableFloatTensorView(float (&data)[DataN],
                                              const int64_t (&shape)[Rank],
                                              const int64_t (&strides)[Rank]) {
     return MutableTensorView{data, DataType::Float32(), shape, strides};
+}
+
+template<typename T, size_t DataN, size_t Rank>
+TensorView MakeTensorView(const T (&data)[DataN],
+                          const int64_t (&shape)[Rank],
+                          const int64_t (&strides)[Rank]) {
+    return TensorView{data, DataType::Make<T>(), shape, strides};
+}
+
+template<typename T, size_t DataN, size_t Rank>
+MutableTensorView MakeMutableTensorView(T (&data)[DataN],
+                                        const int64_t (&shape)[Rank],
+                                        const int64_t (&strides)[Rank]) {
+    return MutableTensorView{data, DataType::Make<T>(), shape, strides};
+}
+
+template<typename T, size_t N>
+void RunSameShapeAddAndExpect(const T (&lhs)[N],
+                              const T (&rhs)[N],
+                              const T (&expected)[N]) {
+    T output[N]{};
+    const int64_t shape[1] = {static_cast<int64_t>(N)};
+    const int64_t strides[1] = {1};
+    CpuAddParams params{
+            .lhs_tensor = MakeTensorView(lhs, shape, strides),
+            .rhs_tensor = MakeTensorView(rhs, shape, strides),
+            .output_tensor = MakeMutableTensorView(output, shape, strides),
+    };
+    KernelContext ctx{.kernel_params = &params};
+
+    const Status status = CpuAddKernel(ctx);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    for (size_t i = 0; i < N; ++i) {
+        if constexpr (std::is_same_v<T, float>) {
+            EXPECT_FLOAT_EQ(output[i], expected[i]);
+        } else if constexpr (std::is_same_v<T, double>) {
+            EXPECT_DOUBLE_EQ(output[i], expected[i]);
+        } else if constexpr (std::is_same_v<T, BFloat16>) {
+            EXPECT_FLOAT_EQ(static_cast<float>(output[i]),
+                            static_cast<float>(expected[i]));
+        } else {
+            EXPECT_EQ(output[i], expected[i]);
+        }
+    }
 }
 
 // --- Direct kernel tests ---
@@ -52,7 +104,7 @@ TEST(CpuAddKernel, RejectsInvalidViews) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(CpuAddKernel, RejectsNonFloat32Lhs) {
+TEST(CpuAddKernel, RejectsMismatchedDTypes) {
     KernelContext ctx{};
     const int32_t lhs[6] = {1, 2, 3, 4, 5, 6};
     const float rhs[6] = {10, 20, 30, 40, 50, 60};
@@ -64,6 +116,25 @@ TEST(CpuAddKernel, RejectsNonFloat32Lhs) {
             .lhs_tensor = TensorView{lhs, DataType::Int(32), shape, strides},
             .rhs_tensor = MakeFloatTensorView(rhs, shape, strides),
             .output_tensor = MakeMutableFloatTensorView(out, shape, strides),
+    };
+    ctx.kernel_params = &params;
+    const Status status = CpuAddKernel(ctx);
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(CpuAddKernel, RejectsUnsupportedDType) {
+    KernelContext ctx{};
+    const Half lhs[1] = {Half{1.0F}};
+    const Half rhs[1] = {Half{2.0F}};
+    Half out[1]{};
+    const int64_t shape[1] = {1};
+    const int64_t strides[1] = {1};
+
+    CpuAddParams params{
+            .lhs_tensor = MakeTensorView(lhs, shape, strides),
+            .rhs_tensor = MakeTensorView(rhs, shape, strides),
+            .output_tensor = MakeMutableTensorView(out, shape, strides),
     };
     ctx.kernel_params = &params;
     const Status status = CpuAddKernel(ctx);
@@ -209,6 +280,51 @@ TEST(CpuAddKernel, SameShapeContiguous) {
     EXPECT_FLOAT_EQ(out[5], 66.0F);
 }
 
+TEST(CpuAddKernel, SupportsAllRegisteredDTypes) {
+    const float float_lhs[3] = {1.0F, 2.0F, 3.0F};
+    const float float_rhs[3] = {0.5F, 1.5F, 2.5F};
+    const float float_expected[3] = {1.5F, 3.5F, 5.5F};
+    RunSameShapeAddAndExpect(float_lhs, float_rhs, float_expected);
+
+    const double double_lhs[3] = {1.0, 2.0, 3.0};
+    const double double_rhs[3] = {0.25, 0.5, 0.75};
+    const double double_expected[3] = {1.25, 2.5, 3.75};
+    RunSameShapeAddAndExpect(double_lhs, double_rhs, double_expected);
+
+    const BFloat16 bfloat_lhs[3] = {BFloat16{1.0F}, BFloat16{2.0F}, BFloat16{3.0F}};
+    const BFloat16 bfloat_rhs[3] = {BFloat16{0.5F}, BFloat16{1.5F}, BFloat16{2.5F}};
+    const BFloat16 bfloat_expected[3] = {BFloat16{1.5F}, BFloat16{3.5F}, BFloat16{5.5F}};
+    RunSameShapeAddAndExpect(bfloat_lhs, bfloat_rhs, bfloat_expected);
+
+    const int32_t int32_lhs[3] = {1, -2, 3};
+    const int32_t int32_rhs[3] = {4, 5, -6};
+    const int32_t int32_expected[3] = {5, 3, -3};
+    RunSameShapeAddAndExpect(int32_lhs, int32_rhs, int32_expected);
+
+    const int64_t int64_lhs[3] = {1, -2, 3};
+    const int64_t int64_rhs[3] = {4, 5, -6};
+    const int64_t int64_expected[3] = {5, 3, -3};
+    RunSameShapeAddAndExpect(int64_lhs, int64_rhs, int64_expected);
+}
+
+TEST(CpuAddKernel, ReportsIntegerOverflow) {
+    const int32_t lhs[1] = {std::numeric_limits<int32_t>::max()};
+    const int32_t rhs[1] = {1};
+    int32_t output[1]{};
+    const int64_t shape[1] = {1};
+    const int64_t strides[1] = {1};
+    CpuAddParams params{
+            .lhs_tensor = MakeTensorView(lhs, shape, strides),
+            .rhs_tensor = MakeTensorView(rhs, shape, strides),
+            .output_tensor = MakeMutableTensorView(output, shape, strides),
+    };
+    KernelContext ctx{.kernel_params = &params};
+
+    const Status status = CpuAddKernel(ctx);
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+}
+
 TEST(CpuAddKernel, ScalarBroadcast) {
     KernelContext ctx{};
     const float lhs[6] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F};
@@ -320,18 +436,29 @@ TEST(CpuAddKernel, HandlesStridedOutput) {
 
 TEST(CpuAddKernel, ResolvesThroughCpuBackend) {
     CpuBackend backend;
-    const auto selector = KernelSelector{
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+    const std::array cases{
+            std::pair{DataType::Float32(), "cpu::add_f32_scalar"},
+            std::pair{DataType::Double(), "cpu::add_f64_scalar"},
+            std::pair{DataType::BFloat(16), "cpu::add_bf16_scalar"},
+            std::pair{DataType::Int(32), "cpu::add_i32_scalar"},
+            std::pair{DataType::Int(64), "cpu::add_i64_scalar"},
     };
-    const auto resolved = backend.ResolveKernelInfo(OpType::kAdd, selector);
-    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
-    EXPECT_NE(resolved.value().fn, nullptr);
-    EXPECT_STREQ(resolved.value().debug_name, "cpu::add_f32_scalar");
+
+    for (const auto& [dtype, expected_name]: cases) {
+        SCOPED_TRACE(ToString(dtype));
+        const auto selector = KernelSelector{
+                .device_type = DeviceType::kCPU,
+                .act_dtype = dtype,
+                .weight_dtype = dtype,
+                .weight_format = WeightFormat::kPlain,
+                .isa = IsaLevel::kScalar,
+                .phase = ExecPhase::kBoth,
+        };
+        const auto resolved = backend.ResolveKernelInfo(OpType::kAdd, selector);
+        ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+        EXPECT_NE(resolved.value().fn, nullptr);
+        EXPECT_STREQ(resolved.value().debug_name, expected_name);
+    }
 }
 
 // --- End-to-end test through LowerModelGraph / ExecutionPlanBuilder / Executor ---
@@ -479,6 +606,56 @@ TEST(CpuAddKernel, EndToEndThroughGraphLoweringAndExecutor) {
     EXPECT_FLOAT_EQ(add_out[1], 7.0F);
     EXPECT_FLOAT_EQ(add_out[2], 5.0F);
     EXPECT_FLOAT_EQ(add_out[3], 7.0F);
+}
+
+TEST(CpuAddKernel, Int64EndToEndThroughLoweredGraphAndExecutor) {
+    const TensorSpec lhs_spec{.dtype = DataType::Int(64), .shape = StaticShape({2, 1})};
+    const TensorSpec rhs_spec{.dtype = DataType::Int(64), .shape = StaticShape({1, 2})};
+    const TensorSpec output_spec{.dtype = DataType::Int(64), .shape = StaticShape({2, 2})};
+    LoweredGraph lowered;
+    lowered.steps.push_back(ExecutionPlanNodeSpec{
+            .op_type = OpType::kAdd,
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Int(64),
+            .weight_dtype = DataType::Int(64),
+            .weight_format = WeightFormat::kPlain,
+            .isa = IsaLevel::kScalar,
+            .phase = ExecPhase::kBoth,
+            .input_specs = {lhs_spec, rhs_spec},
+            .output_specs = {output_spec},
+            .op_params = OpParams(AddParams{}),
+    });
+
+    RuntimeContext runtime = RuntimeBuilder{}.Build();
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, lowered);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+
+    const int64_t lhs[2] = {10, 20};
+    const int64_t rhs[2] = {1, 2};
+    int64_t output[4]{};
+    const int64_t lhs_shape[2] = {2, 1};
+    const int64_t lhs_strides[2] = {1, 1};
+    const int64_t rhs_shape[2] = {1, 2};
+    const int64_t rhs_strides[2] = {2, 1};
+    const int64_t output_shape[2] = {2, 2};
+    const int64_t output_strides[2] = {2, 1};
+    RuntimeBindingContext bindings;
+    bindings.SetStepTensorBinding(0, StepTensorBinding{
+                                             .inputs = {
+                                                     MakeTensorView(lhs, lhs_shape, lhs_strides),
+                                                     MakeTensorView(rhs, rhs_shape, rhs_strides),
+                                             },
+                                             .outputs = {
+                                                     MakeMutableTensorView(output, output_shape, output_strides),
+                                             },
+                                     });
+
+    const Status status = Executor::Execute(*plan, bindings);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_EQ(output[0], 11);
+    EXPECT_EQ(output[1], 12);
+    EXPECT_EQ(output[2], 21);
+    EXPECT_EQ(output[3], 22);
 }
 
 // --- Runtime constraint integration test ---

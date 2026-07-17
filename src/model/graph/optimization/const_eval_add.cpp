@@ -1,4 +1,5 @@
 #include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/add_op.h"
 #include "aethermind/shape_inference/broadcast.h"
 #include "aethermind/utils/overflow_check.h"
 #include "const_eval_internal.h"
@@ -8,14 +9,6 @@
 
 namespace aethermind {
 namespace {
-
-bool IsFoldableAddDType(const DataType& dtype) {
-    return dtype == DataType::Float32() ||
-           dtype == DataType::Double() ||
-           dtype == DataType::BFloat(16) ||
-           dtype == DataType::Int(32) ||
-           dtype == DataType::Int(64);
-}
 
 // Integer overflow is checked and reported as Status::Overflow before any
 // wrapping can occur. Float paths are unchecked (inf is valid in folded graphs).
@@ -56,10 +49,9 @@ public:
         const TensorSpec& lhs = inputs[0].spec;
         const TensorSpec& rhs = inputs[1].spec;
         const TensorSpec& output = outputs[0].spec;
-        if (!IsFoldableAddDType(lhs.dtype) || rhs.dtype != lhs.dtype || output.dtype != lhs.dtype) {
+        if (!IsAddSupportedDType(lhs.dtype) || rhs.dtype != lhs.dtype || output.dtype != lhs.dtype) {
             return Status::Unimplemented(
-                    "Add constant evaluator only supports float32, float64, bfloat16, "
-                    "int32, and int64 tensors");
+                    MakeAddUnsupportedDTypeMessage("Add constant evaluator"));
         }
 
         auto lhs_shape = ExtractStaticShape(lhs);
@@ -119,9 +111,9 @@ public:
         const auto& out = outputs[0];
 
         const DataType dtype = lhs.dtype();
-        if (!IsFoldableAddDType(dtype) || rhs.dtype() != dtype || out.dtype() != dtype) {
+        if (!IsAddSupportedDType(dtype) || rhs.dtype() != dtype || out.dtype() != dtype) {
             return Status::InvalidArgument(
-                    "Add constant evaluator received unsupported dtype");
+                    MakeAddUnsupportedDTypeMessage("Add constant evaluator"));
         }
 
         if (auto broadcast_shape = BroadcastShapes(lhs.shape(), rhs.shape());

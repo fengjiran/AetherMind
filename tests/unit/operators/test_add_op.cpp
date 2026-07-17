@@ -41,15 +41,7 @@ TEST(AddOp, RejectsWrongArity) {
 
 TEST(AddOp, AcceptsSupportedDTypes) {
     const AddOp op{AddOp::Params{}};
-    const std::array supported_dtypes{
-            DataType::Float32(),
-            DataType::Double(),
-            DataType::BFloat(16),
-            DataType::Int(32),
-            DataType::Int(64),
-    };
-
-    for (const DataType& dtype: supported_dtypes) {
+    for (const DataType& dtype: kAddSupportedDTypes) {
         SCOPED_TRACE(ToString(dtype));
         const TensorSpec inputs[2] = {
                 TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
@@ -152,15 +144,7 @@ TEST(AddOp, AcceptsZeroDimension) {
 
 TEST(AddOp, InfersSupportedOutputDTypes) {
     const AddOp op{AddOp::Params{}};
-    const std::array supported_dtypes{
-            DataType::Float32(),
-            DataType::Double(),
-            DataType::BFloat(16),
-            DataType::Int(32),
-            DataType::Int(64),
-    };
-
-    for (const DataType& dtype: supported_dtypes) {
+    for (const DataType& dtype: kAddSupportedDTypes) {
         SCOPED_TRACE(ToString(dtype));
         const TensorSpec inputs[2] = {
                 TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},

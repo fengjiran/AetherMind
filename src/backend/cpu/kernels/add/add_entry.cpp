@@ -11,6 +11,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
+#include "aethermind/operators/add_op.h"
 #include "aethermind/utils/overflow_check.h"
 
 #include <cstdint>
@@ -21,14 +22,6 @@ namespace aethermind {
 namespace {
 
 constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
-
-bool IsSupportedAddDType(const DataType& dtype) noexcept {
-    return dtype == DataType::Float32() ||
-           dtype == DataType::Double() ||
-           dtype == DataType::BFloat(16) ||
-           dtype == DataType::Int(32) ||
-           dtype == DataType::Int(64);
-}
 
 auto GetParams(const void* kernel_params) noexcept {
     return static_cast<const CpuAddParams*>(kernel_params);
@@ -127,9 +120,9 @@ Status ValidateAndExecute(const CpuAddParams* params) noexcept {
         return Status::InvalidArgument(
                 "CpuAddKernel requires matching lhs, rhs, and output dtypes");
     }
-    if (!IsSupportedAddDType(dtype)) {
+    if (!IsAddSupportedDType(dtype)) {
         return Status::InvalidArgument(
-                "CpuAddKernel only supports float32, float64, bfloat16, int32, and int64 tensors");
+                MakeAddUnsupportedDTypeMessage("CpuAddKernel"));
     }
 
     const int32_t output_rank = output.rank();
@@ -188,6 +181,9 @@ Status CpuAddKernel(const KernelContext& ctx) noexcept {
     return ValidateAndExecute(params);
 }
 
+// The five AM_REGISTER_KERNEL blocks below must cover exactly the dtypes in
+// kAddSupportedDTypes; see the static_assert in test_cpu_add_kernel.cpp
+// ResolvesThroughCpuBackend for the compile-time check.
 AM_REGISTER_KERNEL(CpuAddFp32Scalar,
                    KernelDescriptor{
                            .op_type = OpType::kAdd,

@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/operators/add_op.h"
 #include "aethermind/backend/cpu/kernels/add/cpu_add_kernel.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_registry.h"
@@ -445,6 +446,8 @@ TEST(CpuAddKernel, ResolvesThroughCpuBackend) {
             std::pair{DataType::Int(32), "cpu::add_i32_scalar"},
             std::pair{DataType::Int(64), "cpu::add_i64_scalar"},
     };
+    static_assert(cases.size() == kAddSupportedDTypes.size(),
+                  "ResolvesThroughCpuBackend test cases must cover the same number of dtypes as kAddSupportedDTypes");
 
     for (const auto& [dtype, expected_name]: cases) {
         SCOPED_TRACE(ToString(dtype));

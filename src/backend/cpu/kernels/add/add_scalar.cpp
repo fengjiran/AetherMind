@@ -157,7 +157,11 @@ Status AddKernel_CPU_Scalar(const TensorView& lhs,
     if (dtype == DataType::Int(32)) {
         return ExecuteTyped<int32_t>(lhs, rhs, output, numel);
     }
-    return ExecuteTyped<int64_t>(lhs, rhs, output, numel);
+    if (dtype == DataType::Int(64)) {
+        return ExecuteTyped<int64_t>(lhs, rhs, output, numel);
+    }
+    return Status::InvalidArgument(
+            "CpuAddKernel scalar dispatch received unsupported dtype");
 }
 
 }// namespace aethermind::cpu::detail

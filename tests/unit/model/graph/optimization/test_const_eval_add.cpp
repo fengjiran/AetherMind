@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include "aethermind/operators/add_op.h"
+
 #include <cmath>
 #include <limits>
 #include <type_traits>
@@ -112,14 +114,7 @@ TEST(ConstEvaluator, PlansAddFloat32SameShape) {
 TEST(ConstEvaluator, PlansAddSupportedDTypesSameShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<DataType> dtypes = {
-            DataType::Float32(),
-            DataType::Double(),
-            DataType::Int(32),
-            DataType::Int(64),
-    };
-
-    for (const DataType dtype: dtypes) {
+    for (const DataType dtype: kAddSupportedDTypes) {
         const TensorSpec spec = Spec(dtype, {2});
         const std::vector<NodeOutputDesc> inputs = {
                 {.spec = spec, .payload = ConstantValue{}},
@@ -136,26 +131,6 @@ TEST(ConstEvaluator, PlansAddSupportedDTypesSameShape) {
         EXPECT_EQ(plan->outputs[0].spec, spec);
         EXPECT_EQ(plan->outputs[0].nbytes, 2U * static_cast<size_t>(dtype.nbytes()));
     }
-}
-
-TEST(ConstEvaluator, PlansAddBFloat16SameShape) {
-    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
-    ASSERT_NE(evaluator, nullptr);
-    const TensorSpec spec = Spec(DataType::BFloat(16), {2});
-    const std::vector<NodeOutputDesc> inputs = {
-            {.spec = spec, .payload = ConstantValue{}},
-            {.spec = spec, .payload = ConstantValue{}},
-    };
-    const std::vector<NodeOutputDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
-    };
-
-    const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
-
-    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    ASSERT_EQ(plan->outputs.size(), 1U);
-    EXPECT_EQ(plan->outputs[0].spec, spec);
-    EXPECT_EQ(plan->outputs[0].nbytes, 2U * sizeof(BFloat16));
 }
 
 TEST(ConstEvaluator, PlansAddBroadcastRowVector) {

@@ -12,22 +12,14 @@
 namespace aethermind {
 namespace {
 
-bool IsSupportedAddDType(const DataType& dtype) noexcept {
-    return dtype == DataType::Float32() ||
-           dtype == DataType::Double() ||
-           dtype == DataType::BFloat(16) ||
-           dtype == DataType::Int(32) ||
-           dtype == DataType::Int(64);
-}
-
 Status ValidateAddDTypes(const TensorSpec& lhs, const TensorSpec& rhs) {
     if (lhs.dtype != rhs.dtype) {
         return Status::InvalidArgument("Add inputs must have matching dtypes");
     }
 
-    if (!IsSupportedAddDType(lhs.dtype)) {
+    if (!IsAddSupportedDType(lhs.dtype)) {
         return Status::InvalidArgument(
-                "Add only supports float32, float64, bfloat16, int32, and int64 inputs");
+                MakeAddUnsupportedDTypeMessage("Add"));
     }
     return Status::Ok();
 }

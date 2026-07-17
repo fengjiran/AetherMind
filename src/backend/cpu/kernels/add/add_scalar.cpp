@@ -12,7 +12,6 @@
 // a fixed-size std::array on the stack, bounded by ShapeAndStride::kMaxRank.
 
 #include "add_internal.h"
-
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/utils/overflow_check.h"
 

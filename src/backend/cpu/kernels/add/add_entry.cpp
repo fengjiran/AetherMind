@@ -7,7 +7,6 @@
 // selectors (weight_dtype == act_dtype) lives here via AM_REGISTER_KERNEL.
 
 #include "add_internal.h"
-
 #include "aethermind/backend/cpu/kernels/add/cpu_add_kernel.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"

@@ -1,6 +1,7 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/kernels/cpu_add_kernel.h"
+#include "aethermind/backend/cpu/kernels/add/cpu_add_kernel.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_registry.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
@@ -17,6 +18,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string>
 #include <type_traits>
 
 namespace aethermind {
@@ -718,6 +720,66 @@ TEST(CpuAddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
     const Status status = Executor::Execute(*plan, bindings);
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+// TDD red-proof: after consolidation, the frozen registry must contain exactly
+// five canonical Add descriptors with weight_dtype == act_dtype and no
+// undefined-weight / v2 selector.
+TEST(CpuAddKernel, CanonicalAddRegistryHasExactlyFiveDescriptors) {
+    // Constructing a CpuBackend implicitly freezes the global registry.
+    CpuBackend backend;
+    auto& registry = KernelRegistry::Global();
+    auto result = registry.FindByOpType(OpType::kAdd);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const auto& descriptors = result.value();
+
+    EXPECT_EQ(descriptors.size(), 5U);
+
+    // Canonical descriptor names (order-independent).
+    const std::array<const char*, 5> canonical_names = {
+            "cpu::add_f32_scalar",
+            "cpu::add_f64_scalar",
+            "cpu::add_bf16_scalar",
+            "cpu::add_i32_scalar",
+            "cpu::add_i64_scalar",
+    };
+
+    for (const auto& name: canonical_names) {
+        bool found = false;
+        for (const auto* desc: descriptors) {
+            if (desc->name == name) {
+                // Each canonical selector must have weight_dtype == act_dtype.
+                EXPECT_EQ(desc->selector.weight_dtype, desc->selector.act_dtype)
+                        << "Descriptor \"" << name << "\" has weight_dtype != act_dtype";
+                found = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found) << "Missing canonical descriptor: " << name;
+    }
+
+    // No descriptor should have undefined weight_dtype.
+    for (const auto* desc: descriptors) {
+        EXPECT_NE(desc->selector.weight_dtype, DataType{})
+                << "Descriptor \"" << desc->name << "\" has undefined weight_dtype";
+    }
+}
+
+// TDD red-proof: resolving Add with Float32 activation and undefined
+// weight_dtype must return NotFound after consolidation.
+TEST(CpuAddKernel, ResolveAddWithUndefinedWeightDtypeReturnsNotFound) {
+    CpuBackend backend;
+    const auto selector = KernelSelector{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType{},
+            .weight_format = WeightFormat::kPlain,
+            .isa = IsaLevel::kScalar,
+            .phase = ExecPhase::kBoth,
+    };
+    const auto resolved = backend.ResolveKernelInfo(OpType::kAdd, selector);
+    EXPECT_FALSE(resolved.ok());
+    EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
 }
 
 }// namespace

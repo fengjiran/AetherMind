@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_BACKEND_CPU_KERNELS_CPU_ADD_KERNEL_H
-#define AETHERMIND_BACKEND_CPU_KERNELS_CPU_ADD_KERNEL_H
+#ifndef AETHERMIND_BACKEND_CPU_KERNELS_ADD_CPU_ADD_KERNEL_H
+#define AETHERMIND_BACKEND_CPU_KERNELS_ADD_CPU_ADD_KERNEL_H
 
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/tensor_view.h"

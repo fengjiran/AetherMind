@@ -1,9 +1,9 @@
 /// Internal declarations for the CPU Add kernel (directory-structured).
 ///
-/// Declares `CpuAddParams` (the kernel parameter struct) and the scalar
-/// execution entry point. Validation and kernel registration live in
-/// `add_entry.cpp`; the float32 scalar implementation lives in
-/// `add_fp32_scalar.cpp`.
+/// Declares the private scalar execution entry point. The public `CpuAddParams`
+/// type and `CpuAddKernel` declaration are in the public header. Validation and
+/// kernel registration live in `add_entry.cpp`; the scalar implementation lives
+/// in `add_scalar.cpp`.
 
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
@@ -11,31 +11,25 @@
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 
-namespace aethermind::cpu {
+#include <cstdint>
 
-/// Kernel parameters for the CPU Add operator.
-struct CpuAddParams {
-    TensorView lhs{};
-    TensorView rhs{};
-    MutableTensorView output{};
-};
+namespace aethermind::cpu::detail {
 
-/// Executes float32 element-wise add via scalar loops.
+/// Executes element-wise add via scalar loops for all supported dtypes.
 ///
 /// Selects between a flat loop (when lhs/rhs/output share the same shape and
-/// are all contiguous) and a stride-aware scalar loop (for general
-/// broadcasts). The output must be contiguous; this is enforced by the entry
-/// function before dispatch.
+/// are all contiguous) and a stride-aware scalar loop (for general broadcasts
+/// including non-contiguous output). Templates are TU-local in add_scalar.cpp.
 ///
-/// @param lhs    Validated Float32 lhs view.
-/// @param rhs    Validated Float32 rhs view.
-/// @param output Validated Float32 output view (must be contiguous).
+/// @param lhs    Validated input view.
+/// @param rhs    Validated input view.
+/// @param output Validated output view (may be non-contiguous).
 /// @param numel  Total element count of the output (must be > 0).
-Status AddKernel_CPU_FP32_Scalar(const TensorView& lhs,
-                                 const TensorView& rhs,
-                                 const MutableTensorView& output,
-                                 int64_t numel) noexcept;
+Status AddKernel_CPU_Scalar(const TensorView& lhs,
+                            const TensorView& rhs,
+                            const MutableTensorView& output,
+                            int64_t numel) noexcept;
 
-}// namespace aethermind::cpu
+}// namespace aethermind::cpu::detail
 
 #endif// AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H

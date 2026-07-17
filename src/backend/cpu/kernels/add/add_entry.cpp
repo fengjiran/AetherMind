@@ -1,13 +1,14 @@
 // Kernel entry for the CPU Add operator (directory-structured).
 //
 // Validates CpuAddParams (dtypes, shapes, broadcast compatibility, numel,
-// pointers, max offsets) without dynamic allocation, then dispatches to
-// cpu::detail::AddKernel_CPU_Scalar for execution across all five supported
-// same-dtype configurations. Kernel registration with five canonical
-// selectors (weight_dtype == act_dtype) lives here via AM_REGISTER_KERNEL.
+// pointers, max offsets) without dynamic allocation, then builds a flat
+// AddKernelArgs struct and dispatches to cpu::detail::AddKernel_Scalar.
+// Kernel registration with five canonical selectors
+// (weight_dtype == act_dtype) lives here via AM_REGISTER_KERNEL.
 
 #include "add_internal.h"
 #include "aethermind/backend/cpu/kernels/add/cpu_add_kernel.h"
+#include "aethermind/base/shape_and_stride.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
@@ -100,7 +101,7 @@ StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
     return count;
 }
 
-Status ValidateAndExecute(const CpuAddParams* params) noexcept {
+StatusOr<cpu::detail::AddKernelArgs> ValidateAndBuildArgs(const CpuAddParams* params) noexcept {
     const TensorView& lhs = params->lhs_tensor;
     const TensorView& rhs = params->rhs_tensor;
     const MutableTensorView& output = params->output_tensor;
@@ -144,7 +145,7 @@ Status ValidateAndExecute(const CpuAddParams* params) noexcept {
     if (!numel_or.ok()) return numel_or.status();
     const int64_t numel = numel_or.value();
     if (numel == 0) {
-        return Status::Ok();
+        return cpu::detail::AddKernelArgs{};
     }
 
     if (lhs.data() == nullptr) {
@@ -166,7 +167,35 @@ Status ValidateAndExecute(const CpuAddParams* params) noexcept {
         if (!status.ok()) return status;
     }
 
-    return cpu::detail::AddKernel_CPU_Scalar(lhs, rhs, output, numel);
+    cpu::detail::AddKernelArgs args{};
+    args.lhs_data = lhs.data();
+    args.rhs_data = rhs.data();
+    args.output_data = output.data();
+    args.dtype = dtype;
+    args.numel = numel;
+
+    // Determine flat-path eligibility.
+    args.is_flat = lhs.is_contiguous() && rhs.is_contiguous() && output.is_contiguous() &&
+                   lhs.shape() == output.shape() && rhs.shape() == output.shape();
+
+    // Populate broadcast / strided path metadata.
+    args.lhs_rank = lhs.rank();
+    args.rhs_rank = rhs.rank();
+    args.output_rank = output_rank;
+    for (int32_t i = 0; i < lhs.rank(); ++i) {
+        args.lhs_shape[i] = lhs.shape()[i];
+        args.lhs_strides[i] = lhs.strides()[i];
+    }
+    for (int32_t i = 0; i < rhs.rank(); ++i) {
+        args.rhs_shape[i] = rhs.shape()[i];
+        args.rhs_strides[i] = rhs.strides()[i];
+    }
+    for (int32_t i = 0; i < output_rank; ++i) {
+        args.output_shape[i] = output.shape()[i];
+        args.output_strides[i] = output.strides()[i];
+    }
+
+    return args;
 }
 
 }// namespace
@@ -178,7 +207,15 @@ Status CpuAddKernel(const KernelContext& ctx) noexcept {
                 "CpuAddKernel requires CpuAddParams in KernelContext.kernel_params");
     }
 
-    return ValidateAndExecute(params);
+    const auto args_or = ValidateAndBuildArgs(params);
+    if (!args_or.ok()) return args_or.status();
+
+    const auto& args = args_or.value();
+    if (args.numel == 0) {
+        return Status::Ok();
+    }
+
+    return cpu::detail::AddKernel_Scalar(args);
 }
 
 // The five AM_REGISTER_KERNEL blocks below must cover exactly the dtypes in

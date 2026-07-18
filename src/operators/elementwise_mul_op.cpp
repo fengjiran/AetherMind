@@ -1,6 +1,5 @@
 #include "aethermind/operators/elementwise_mul_op.h"
 #include "aethermind/backend/backend.h"
-#include "aethermind/backend/cpu/kernels/cpu_elementwise_mul_kernel.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_registry.h"
@@ -128,13 +127,7 @@ Status ElementwiseMulOp::Run(KernelContext& ctx,
                 std::to_string(b->outputs.size()));
     }
 
-    CpuElementwiseMulParams params{
-            .lhs_tensor = b->inputs[0],
-            .rhs_tensor = b->inputs[1],
-            .output_tensor = b->outputs[0],
-    };
-    ctx.kernel_params = &params;
-    return resolved_kernel_.fn(ctx);
+    return InvokeResolvedKernel(ctx, b->inputs, b->outputs);
 }
 
 AM_REGISTER_OPERATOR(OpType::kElementwiseMul, ElementwiseMulOp)

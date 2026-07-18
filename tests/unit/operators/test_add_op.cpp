@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstring>
+#include <new>
 #include <variant>
 
 namespace aethermind {
@@ -293,12 +294,28 @@ public:
     }
 };
 
+Status BuildStubAddParams(std::span<const TensorView> inputs,
+                             std::span<const MutableTensorView> outputs,
+                             void* params_buffer) noexcept {
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("Add requires 2 inputs and 1 output");
+    }
+    ::new (params_buffer) CpuAddParams{
+            .lhs_tensor = inputs[0],
+            .rhs_tensor = inputs[1],
+            .output_tensor = outputs[0],
+    };
+    return Status::Ok();
+}
+
 ResolvedKernel MakeStubKernel() {
     return ResolvedKernel{
             .op_type = OpType::kAdd,
             .fn = &StubAddKernel,
             .attrs = {},
             .debug_name = "test::stub_add",
+            .params_builder = &BuildStubAddParams,
+            .params_size = sizeof(CpuAddParams),
     };
 }
 

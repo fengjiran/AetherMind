@@ -1,7 +1,6 @@
 #include "aethermind/operators/embedding_op.h"
 
 #include "aethermind/backend/backend.h"
-#include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_registry.h"
@@ -132,13 +131,7 @@ Status EmbeddingOp::Run(KernelContext& ctx,
 
     // Phase 1 CPU-first: construct CPU-specific params directly. Phase 2 should
     // inject params construction via Backend to support multiple backends.
-    CpuEmbeddingParams params{
-            .token_ids_ = b->inputs[0],
-            .weight_ = b->inputs[1],
-            .output_ = b->outputs[0],
-    };
-    ctx.kernel_params = &params;
-    return resolved_kernel_.fn(ctx);
+    return InvokeResolvedKernel(ctx, b->inputs, b->outputs);
 }
 
 AM_REGISTER_OPERATOR(OpType::kEmbedding, EmbeddingOp)

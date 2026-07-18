@@ -3,7 +3,6 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_registry.h"
-#include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
 #include <span>
 #include <string>
@@ -140,15 +139,7 @@ Status RmsNormOp::Run(KernelContext& ctx,
                 std::to_string(b->outputs.size()));
     }
 
-    // Phase 1 CPU-first: construct CPU-specific params directly. Phase 2 should
-    // inject params construction via Backend to support multiple backends.
-    cpu::CpuRmsNormParams params{
-            .input_tensor = b->inputs[0],
-            .weight_tensor = b->inputs[1],
-            .output_tensor = b->outputs[0],
-    };
-    ctx.kernel_params = &params;
-    return resolved_kernel_.fn(ctx);
+    return InvokeResolvedKernel(ctx, b->inputs, b->outputs);
 }
 
 AM_REGISTER_OPERATOR(OpType::kRmsNorm, RmsNormOp)

@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <cstring>
 #include <variant>
+#include <new>
+#include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
 namespace aethermind {
 namespace {
@@ -168,12 +170,28 @@ public:
     }
 };
 
+Status BuildStubRmsNormParams(std::span<const TensorView> inputs,
+                                 std::span<const MutableTensorView> outputs,
+                                 void* params_buffer) noexcept {
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("RmsNorm requires 2 inputs and 1 output");
+    }
+    ::new (params_buffer) cpu::CpuRmsNormParams{
+            .input_tensor = inputs[0],
+            .weight_tensor = inputs[1],
+            .output_tensor = outputs[0],
+    };
+    return Status::Ok();
+}
+
 ResolvedKernel MakeStubKernel() {
     return ResolvedKernel{
             .op_type = OpType::kRmsNorm,
             .fn = &StubRmsNormKernel,
             .attrs = {},
             .debug_name = "test::stub_rmsnorm",
+            .params_builder = &BuildStubRmsNormParams,
+            .params_size = sizeof(cpu::CpuRmsNormParams),
     };
 }
 

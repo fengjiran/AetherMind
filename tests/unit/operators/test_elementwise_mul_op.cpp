@@ -8,6 +8,7 @@
 
 #include <cstring>
 #include <gtest/gtest.h>
+#include <new>
 #include <variant>
 
 namespace aethermind {
@@ -265,12 +266,28 @@ public:
     }
 };
 
+Status BuildStubElementwiseMulParams(std::span<const TensorView> inputs,
+                                          std::span<const MutableTensorView> outputs,
+                                          void* params_buffer) noexcept {
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("ElementwiseMul requires 2 inputs and 1 output");
+    }
+    ::new (params_buffer) CpuElementwiseMulParams{
+            .lhs_tensor = inputs[0],
+            .rhs_tensor = inputs[1],
+            .output_tensor = outputs[0],
+    };
+    return Status::Ok();
+}
+
 ResolvedKernel MakeStubKernel() {
     return ResolvedKernel{
             .op_type = OpType::kElementwiseMul,
             .fn = &StubElementwiseMulKernel,
             .attrs = {},
             .debug_name = "test::stub_elementwise_mul",
+            .params_builder = &BuildStubElementwiseMulParams,
+            .params_size = sizeof(CpuElementwiseMulParams),
     };
 }
 

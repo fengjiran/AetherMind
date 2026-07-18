@@ -15,10 +15,12 @@ Status LaunchAdd(const AddArgs& args) noexcept {
     if (!args.lhs_data || !args.rhs_data || !args.output_data) {
         return Status::InvalidArgument("LaunchAdd requires non-null data pointers");
     }
+
     if (!IsAddSupportedDType(args.dtype)) {
         return Status::InvalidArgument(
                 MakeAddUnsupportedDTypeMessage("LaunchAdd"));
     }
+
     if (args.numel <= 0) {
         return Status::InvalidArgument("LaunchAdd requires positive numel");
     }

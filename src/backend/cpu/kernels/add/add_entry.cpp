@@ -1,15 +1,14 @@
 // Kernel entry for the CPU Add operator (directory-structured).
 //
-// Validates CpuAddParams (dtypes, shapes, broadcast compatibility, numel,
+// Validates AddParams (dtypes, shapes, broadcast compatibility, numel,
 // pointers, max offsets) without dynamic allocation, then builds an
 // AddKernelArgs struct (carrying both flat-path and strided-path metadata)
 // and dispatches to cpu::detail::AddKernel_Scalar, which selects the path
 // based on args.is_flat. All five canonical selectors (weight_dtype ==
 // act_dtype, one per dtype in kAddSupportedDTypes) and the shared
-// params_builder (BuildCpuAddParams) are registered here via AM_REGISTER_KERNEL.
+// params_builder (BuildAddParams) are registered here via AM_REGISTER_KERNEL.
 
 #include "add_internal.h"
-#include "aethermind/backend/cpu/kernels/add/cpu_add_kernel.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
@@ -25,7 +24,7 @@ namespace {
 constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 
 auto GetParams(const void* kernel_params) noexcept {
-    return static_cast<const CpuAddParams*>(kernel_params);
+    return static_cast<const cpu::detail::AddParams*>(kernel_params);
 }
 
 // Inline broadcast-compatibility check:
@@ -48,9 +47,9 @@ bool ValidateBroadcastCompatible(std::span<const int64_t> lhs_shape,
         }
 
         // Broadcast rule: lhs==1 → rhs; rhs==1 or equal → lhs.
-        const int64_t expected = (lhs_dim == 1)                         ? rhs_dim
-                                 : (rhs_dim == 1 || lhs_dim == rhs_dim) ? lhs_dim
-                                                                        : int64_t{-1};
+        const int64_t expected = lhs_dim == 1                         ? rhs_dim
+                                 : rhs_dim == 1 || lhs_dim == rhs_dim ? lhs_dim
+                                                                      : -1;
         if (expected < 0 || out_dim != expected) {
             return false;
         }
@@ -62,20 +61,26 @@ Status ValidateMaxOffset(int32_t rank,
                          std::span<const int64_t> shape,
                          std::span<const int64_t> strides,
                          const char* name) noexcept {
-    if (rank == 0) return Status::Ok();
+    if (rank == 0) {
+        return Status::Ok();
+    }
 
     int64_t max_offset = 0;
     for (int32_t i = 0; i < rank; ++i) {
-        if (shape[i] == 0) return Status::Ok();
+        if (shape[i] == 0) {
+            return Status::Ok();
+        }
+
         int64_t contrib = 0;
         if (CheckOverflowMul(shape[i] - 1, strides[i], &contrib)) {
             return Status::InvalidArgument(
-                    std::string("CpuAddKernel ") + name + " offset overflow");
+                    std::string("AddKernel ") + name + " offset overflow");
         }
+
         int64_t new_max = 0;
         if (CheckOverflowAdd(max_offset, contrib, &new_max)) {
             return Status::InvalidArgument(
-                    std::string("CpuAddKernel ") + name + " offset overflow");
+                    std::string("AddKernel ") + name + " offset overflow");
         }
         max_offset = new_max;
     }
@@ -84,47 +89,48 @@ Status ValidateMaxOffset(int32_t rank,
 
 StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
                                      std::span<const int64_t> shape) noexcept {
-    if (rank == 0) return int64_t{1};
+    if (rank == 0) {
+        return 1;
+    }
 
     int64_t count = 1;
     for (int32_t i = 0; i < rank; ++i) {
         if (shape[i] == 0) {
-            return int64_t{0};
+            return 0;
         }
+
         int64_t next = 0;
         if (CheckOverflowMul(count, shape[i], &next)) {
-            return Status::InvalidArgument(
-                    "CpuAddKernel output element count overflow");
-        }
-        if (next < 0) {
-            return Status::InvalidArgument(
-                    "CpuAddKernel output element count exceeds int64_t");
+            return Status::InvalidArgument("AddKernel output element count overflow");
         }
         count = next;
     }
     return count;
 }
 
-StatusOr<cpu::detail::AddKernelArgs> ValidateAndBuildArgs(const CpuAddParams* params) noexcept {
+StatusOr<cpu::detail::AddKernelArgs> ValidateAndBuildArgs(const cpu::detail::AddParams* params) noexcept {
     const TensorView& lhs = params->lhs_tensor;
     const TensorView& rhs = params->rhs_tensor;
     const MutableTensorView& output = params->output_tensor;
 
     if (!lhs.is_valid()) {
-        return Status::InvalidArgument("CpuAddKernel requires a valid lhs TensorView");
+        return Status::InvalidArgument("AddKernel requires a valid lhs TensorView");
     }
+
     if (!rhs.is_valid()) {
-        return Status::InvalidArgument("CpuAddKernel requires a valid rhs TensorView");
+        return Status::InvalidArgument("AddKernel requires a valid rhs TensorView");
     }
+
     if (!output.is_valid()) {
-        return Status::InvalidArgument("CpuAddKernel requires a valid output MutableTensorView");
+        return Status::InvalidArgument("AddKernel requires a valid output MutableTensorView");
     }
 
     const DataType dtype = lhs.dtype();
     if (rhs.dtype() != dtype || output.dtype() != dtype) {
         return Status::InvalidArgument(
-                "CpuAddKernel requires matching lhs, rhs, and output dtypes");
+                "AddKernel requires matching lhs, rhs, and output dtypes");
     }
+
     if (!IsAddSupportedDType(dtype)) {
         return Status::InvalidArgument(
                 MakeAddUnsupportedDTypeMessage("CpuAddKernel"));
@@ -133,42 +139,55 @@ StatusOr<cpu::detail::AddKernelArgs> ValidateAndBuildArgs(const CpuAddParams* pa
     const int32_t output_rank = output.rank();
     const int32_t expected_rank = std::max(lhs.rank(), rhs.rank());
     if (output_rank != expected_rank) {
-        return Status::InvalidArgument(
-                "CpuAddKernel output rank must equal max(lhs rank, rhs rank)");
+        return Status::InvalidArgument("AddKernel output rank must equal max(lhs rank, rhs rank)");
     }
+
     if (output_rank > static_cast<int32_t>(kMaxRank)) {
-        return Status::InvalidArgument("CpuAddKernel output rank exceeds maximum supported rank");
+        return Status::InvalidArgument("AddKernel output rank exceeds maximum supported rank");
     }
 
     if (!ValidateBroadcastCompatible(lhs.shape(), rhs.shape(), output.shape())) {
         return Status::InvalidArgument(
-                "CpuAddKernel input shapes are not broadcast-compatible with output shape");
+                "AddKernel input shapes are not broadcast-compatible with output shape");
     }
 
     const auto numel_or = CheckedOutputNumel(output_rank, output.shape());
-    if (!numel_or.ok()) return numel_or.status();
+    if (!numel_or.ok()) {
+        return numel_or.status();
+    }
+
     const int64_t numel = numel_or.value();
     if (numel == 0) {
         return cpu::detail::AddKernelArgs{};
     }
 
     if (lhs.data() == nullptr) {
-        return Status::InvalidArgument("CpuAddKernel requires non-null lhs data");
+        return Status::InvalidArgument("AddKernel requires non-null lhs data");
     }
+
     if (rhs.data() == nullptr) {
-        return Status::InvalidArgument("CpuAddKernel requires non-null rhs data");
+        return Status::InvalidArgument("AddKernel requires non-null rhs data");
     }
+
     if (output.data() == nullptr) {
-        return Status::InvalidArgument("CpuAddKernel requires non-null output data");
+        return Status::InvalidArgument("AddKernel requires non-null output data");
     }
 
     {
         auto status = ValidateMaxOffset(lhs.rank(), lhs.shape(), lhs.strides(), "lhs");
-        if (!status.ok()) return status;
+        if (!status.ok()) {
+            return status;
+        }
+
         status = ValidateMaxOffset(rhs.rank(), rhs.shape(), rhs.strides(), "rhs");
-        if (!status.ok()) return status;
+        if (!status.ok()) {
+            return status;
+        }
+
         status = ValidateMaxOffset(output.rank(), output.shape(), output.strides(), "output");
-        if (!status.ok()) return status;
+        if (!status.ok()) {
+            return status;
+        }
     }
 
     cpu::detail::AddKernelArgs args{};
@@ -190,10 +209,12 @@ StatusOr<cpu::detail::AddKernelArgs> ValidateAndBuildArgs(const CpuAddParams* pa
         args.lhs_shape[i] = lhs.shape()[i];
         args.lhs_strides[i] = lhs.strides()[i];
     }
+
     for (int32_t i = 0; i < rhs.rank(); ++i) {
         args.rhs_shape[i] = rhs.shape()[i];
         args.rhs_strides[i] = rhs.strides()[i];
     }
+
     for (int32_t i = 0; i < output_rank; ++i) {
         args.output_shape[i] = output.shape()[i];
         args.output_strides[i] = output.strides()[i];
@@ -203,16 +224,17 @@ StatusOr<cpu::detail::AddKernelArgs> ValidateAndBuildArgs(const CpuAddParams* pa
 }
 
 // KernelParamsBuilder registered with every AM_REGISTER_KERNEL block below.
-// Placement-constructs CpuAddParams into the caller-owned, stack-allocated
+// Placement-constructs AddParams into the caller-owned, stack-allocated
 // `params_buffer` (capacity kMaxKernelParamsSize); the constructed object
-// must remain valid through the subsequent CpuAddKernel call.
-Status BuildCpuAddParams(std::span<const TensorView> inputs,
-                         std::span<const MutableTensorView> outputs,
-                         void* params_buffer) noexcept {
+// must remain valid through the subsequent AddKernel call.
+Status BuildAddParams(std::span<const TensorView> inputs,
+                      std::span<const MutableTensorView> outputs,
+                      void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("Add requires 2 inputs and 1 output");
     }
-    ::new (params_buffer) CpuAddParams{
+
+    ::new (params_buffer) cpu::detail::AddParams{
             .lhs_tensor = inputs[0],
             .rhs_tensor = inputs[1],
             .output_tensor = outputs[0],
@@ -223,25 +245,27 @@ Status BuildCpuAddParams(std::span<const TensorView> inputs,
 }// namespace
 
 // KernelFunc registered with every AM_REGISTER_KERNEL block below. Expects
-// ctx.kernel_params to point at a CpuAddParams populated either by
-// BuildCpuAddParams via Operator::InvokeResolvedKernel (production path) or
+// ctx.kernel_params to point at an AddParams populated either by
+// BuildAddParams via Operator::InvokeResolvedKernel (production path) or
 // directly by callers (tests).
-Status CpuAddKernel(const KernelContext& ctx) noexcept {
-    const CpuAddParams* params = GetParams(ctx.kernel_params);
+Status cpu::detail::AddKernel(const KernelContext& ctx) noexcept {
+    const AddParams* params = GetParams(ctx.kernel_params);
     if (params == nullptr) {
         return Status::InvalidArgument(
-                "CpuAddKernel requires CpuAddParams in KernelContext.kernel_params");
+                "AddKernel requires AddParams in KernelContext.kernel_params");
     }
 
     const auto args_or = ValidateAndBuildArgs(params);
-    if (!args_or.ok()) return args_or.status();
+    if (!args_or.ok()) {
+        return args_or.status();
+    }
 
     const auto& args = args_or.value();
     if (args.numel == 0) {
         return Status::Ok();
     }
 
-    return cpu::detail::AddKernel_Scalar(args);
+    return AddKernel_Scalar(args);
 }
 
 // The five AM_REGISTER_KERNEL blocks below must cover exactly the dtypes in
@@ -258,11 +282,11 @@ AM_REGISTER_KERNEL(CpuAddFp32Scalar,
                                    .isa = IsaLevel::kScalar,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &CpuAddKernel,
+                           .kernel_func = &cpu::detail::AddKernel,
                            .name = "cpu::add_f32_scalar",
                            .priority = 10,
-                           .params_builder = &BuildCpuAddParams,
-                           .params_size = sizeof(CpuAddParams),
+                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(cpu::detail::AddParams),
                    })
 
 AM_REGISTER_KERNEL(CpuAddFp64Scalar,
@@ -276,11 +300,11 @@ AM_REGISTER_KERNEL(CpuAddFp64Scalar,
                                    .isa = IsaLevel::kScalar,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &CpuAddKernel,
+                           .kernel_func = &cpu::detail::AddKernel,
                            .name = "cpu::add_f64_scalar",
                            .priority = 10,
-                           .params_builder = &BuildCpuAddParams,
-                           .params_size = sizeof(CpuAddParams),
+                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(cpu::detail::AddParams),
                    })
 
 AM_REGISTER_KERNEL(CpuAddBf16Scalar,
@@ -294,11 +318,11 @@ AM_REGISTER_KERNEL(CpuAddBf16Scalar,
                                    .isa = IsaLevel::kScalar,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &CpuAddKernel,
+                           .kernel_func = &cpu::detail::AddKernel,
                            .name = "cpu::add_bf16_scalar",
                            .priority = 10,
-                           .params_builder = &BuildCpuAddParams,
-                           .params_size = sizeof(CpuAddParams),
+                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(cpu::detail::AddParams),
                    })
 
 AM_REGISTER_KERNEL(CpuAddI32Scalar,
@@ -312,11 +336,11 @@ AM_REGISTER_KERNEL(CpuAddI32Scalar,
                                    .isa = IsaLevel::kScalar,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &CpuAddKernel,
+                           .kernel_func = &cpu::detail::AddKernel,
                            .name = "cpu::add_i32_scalar",
                            .priority = 10,
-                           .params_builder = &BuildCpuAddParams,
-                           .params_size = sizeof(CpuAddParams),
+                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(cpu::detail::AddParams),
                    })
 
 AM_REGISTER_KERNEL(CpuAddI64Scalar,
@@ -330,11 +354,11 @@ AM_REGISTER_KERNEL(CpuAddI64Scalar,
                                    .isa = IsaLevel::kScalar,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &CpuAddKernel,
+                           .kernel_func = &cpu::detail::AddKernel,
                            .name = "cpu::add_i64_scalar",
                            .priority = 10,
-                           .params_builder = &BuildCpuAddParams,
-                           .params_size = sizeof(CpuAddParams),
+                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(cpu::detail::AddParams),
                    })
 
 }// namespace aethermind

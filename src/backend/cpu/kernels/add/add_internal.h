@@ -1,24 +1,41 @@
-/// Internal declarations for the CPU Add kernel (directory-structured).
+/// Internal declarations for the CPU Add kernel.
 ///
-/// Declares the private scalar execution entry point. The public `CpuAddParams`
-/// type and `CpuAddKernel` declaration are in the public header. Validation and
-/// kernel registration live in `add_entry.cpp`; the scalar implementation lives
-/// in `add_scalar.cpp`.
+/// Declares the backend-internal kernel entry point (AddKernel), its params
+/// struct (AddParams), and the scalar implementation layer (AddKernelArgs +
+/// AddKernel_Scalar). Operator code never includes this header; the
+/// KernelParamsBuilder indirection keeps operators free of backend internals.
 
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
 
+#include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/dtypes/data_type.h"
 
 #include <array>
-#include <cstdint>
 
 namespace aethermind::cpu::detail {
 
 constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
+
+/// Backend-internal params struct for the CPU Add kernel.
+///
+/// Placement-constructed into a stack-allocated buffer by the
+/// KernelParamsBuilder registered with this kernel (BuildAddParams in
+/// add_entry.cpp) and consumed by the subsequent AddKernel call via
+/// KernelContext::kernel_params. Operator code never names this type
+/// directly; the builder indirection is what keeps operators free of
+/// backend headers.
+///
+/// Lifetime invariant: the TensorView storage referenced by these views
+/// must outlive the subsequent AddKernel call that reads them.
+struct AddParams {
+    TensorView lhs_tensor{};
+    TensorView rhs_tensor{};
+    MutableTensorView output_tensor{};
+};
 
 /// Pre-validated, type-erased kernel arguments for the Add implementation.
 ///
@@ -44,6 +61,14 @@ struct AddKernelArgs {
     std::array<int64_t, kMaxRank> output_shape{};
     std::array<int64_t, kMaxRank> output_strides{};
 };
+
+/// Kernel entry point registered via KernelDescriptor::kernel_func.
+///
+/// Reads an AddParams from ctx.kernel_params, validates dtypes/shapes/
+/// broadcast/numel/pointers without dynamic allocation, then dispatches to
+/// AddKernel_Scalar. noexcept: errors are reported only through the return
+/// value.
+Status AddKernel(const KernelContext& ctx) noexcept;
 
 /// Executes element-wise add via scalar loops for all supported dtypes.
 ///

@@ -1,5 +1,5 @@
 #include "aethermind/backend/backend.h"
-#include "aethermind/backend/cpu/kernels/add/cpu_add_kernel.h"
+#include "backend/cpu/kernels/add/add_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/add_op.h"
@@ -259,10 +259,10 @@ StubKernelState g_stub_state{};
 Status StubAddKernel(const KernelContext& ctx) noexcept {
     g_stub_state.called = true;
     g_stub_state.kernel_params = ctx.kernel_params;
-    // `ctx.kernel_params` points at the CpuAddParams owned by AddOp::Run's
+    // `ctx.kernel_params` points at the cpu::detail::AddParams owned by AddOp::Run's
     // stack frame, valid only for the duration of this call. Validate here
     // rather than after Run() returns, where the pointer would dangle.
-    const auto* params = static_cast<const CpuAddParams*>(ctx.kernel_params);
+    const auto* params = static_cast<const cpu::detail::AddParams*>(ctx.kernel_params);
     g_stub_state.lhs_valid = params->lhs_tensor.is_valid();
     g_stub_state.rhs_valid = params->rhs_tensor.is_valid();
     g_stub_state.output_valid = params->output_tensor.is_valid();
@@ -300,7 +300,7 @@ Status BuildStubAddParams(std::span<const TensorView> inputs,
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("Add requires 2 inputs and 1 output");
     }
-    ::new (params_buffer) CpuAddParams{
+    ::new (params_buffer) cpu::detail::AddParams{
             .lhs_tensor = inputs[0],
             .rhs_tensor = inputs[1],
             .output_tensor = outputs[0],
@@ -315,7 +315,7 @@ ResolvedKernel MakeStubKernel() {
             .attrs = {},
             .debug_name = "test::stub_add",
             .params_builder = &BuildStubAddParams,
-            .params_size = sizeof(CpuAddParams),
+            .params_size = sizeof(cpu::detail::AddParams),
     };
 }
 
@@ -475,7 +475,7 @@ TEST(AddOp, RunInvokesKernelAndReturnsOk) {
     EXPECT_TRUE(g_stub_state.called);
     EXPECT_NE(g_stub_state.kernel_params, nullptr);
 
-    const auto* params = static_cast<const CpuAddParams*>(g_stub_state.kernel_params);
+    const auto* params = static_cast<const cpu::detail::AddParams*>(g_stub_state.kernel_params);
     EXPECT_TRUE(g_stub_state.lhs_valid);
     EXPECT_TRUE(g_stub_state.rhs_valid);
     EXPECT_TRUE(g_stub_state.output_valid);

@@ -11,7 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <new>
-#include "aethermind/backend/cpu/kernels/cpu_embedding_kernel.h"
+#include "backend/cpu/kernels/embedding/embedding_internal.h"
 
 namespace aethermind {
 namespace {
@@ -181,10 +181,10 @@ Status BuildStubEmbeddingParams(std::span<const TensorView> inputs,
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("Embedding requires 2 inputs and 1 output");
     }
-    ::new (params_buffer) CpuEmbeddingParams{
-            .token_ids_ = inputs[0],
-            .weight_ = inputs[1],
-            .output_ = outputs[0],
+    ::new (params_buffer) cpu::detail::EmbeddingParams{
+            .token_ids = inputs[0],
+            .weight = inputs[1],
+            .output = outputs[0],
     };
     return Status::Ok();
 }
@@ -196,7 +196,7 @@ ResolvedKernel MakeStubKernel() {
             .attrs = {},
             .debug_name = "test::stub_embedding",
             .params_builder = &BuildStubEmbeddingParams,
-            .params_size = sizeof(CpuEmbeddingParams),
+            .params_size = sizeof(cpu::detail::EmbeddingParams),
     };
 }
 

@@ -236,7 +236,7 @@ Status BuildStubLinearParams(std::span<const TensorView> inputs,
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("Linear requires 2 inputs and 1 output");
     }
-    ::new (params_buffer) cpu::CpuLinearParams{
+    ::new (params_buffer) cpu::detail::LinearParams{
             .input_tensor = inputs[0],
             .weight_tensor = inputs[1],
             .output_tensor = outputs[0],
@@ -251,7 +251,7 @@ ResolvedKernel MakeStubKernel() {
             .attrs = {},
             .debug_name = "test::stub_linear",
             .params_builder = &BuildStubLinearParams,
-            .params_size = sizeof(cpu::CpuLinearParams),
+            .params_size = sizeof(cpu::detail::LinearParams),
     };
 }
 

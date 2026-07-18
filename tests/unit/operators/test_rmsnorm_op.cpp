@@ -176,7 +176,7 @@ Status BuildStubRmsNormParams(std::span<const TensorView> inputs,
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("RmsNorm requires 2 inputs and 1 output");
     }
-    ::new (params_buffer) cpu::CpuRmsNormParams{
+    ::new (params_buffer) cpu::detail::RmsNormParams{
             .input_tensor = inputs[0],
             .weight_tensor = inputs[1],
             .output_tensor = outputs[0],
@@ -191,7 +191,7 @@ ResolvedKernel MakeStubKernel() {
             .attrs = {},
             .debug_name = "test::stub_rmsnorm",
             .params_builder = &BuildStubRmsNormParams,
-            .params_size = sizeof(cpu::CpuRmsNormParams),
+            .params_size = sizeof(cpu::detail::RmsNormParams),
     };
 }
 

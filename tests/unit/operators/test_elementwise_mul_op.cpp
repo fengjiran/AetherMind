@@ -1,5 +1,5 @@
 #include "aethermind/backend/backend.h"
-#include "aethermind/backend/cpu/kernels/cpu_elementwise_mul_kernel.h"
+#include "backend/cpu/kernels/elementwise_mul/elementwise_mul_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/elementwise_mul_op.h"
@@ -230,11 +230,11 @@ StubKernelState g_stub_state{};
 Status StubElementwiseMulKernel(const KernelContext& ctx) noexcept {
     g_stub_state.called = true;
     g_stub_state.kernel_params = ctx.kernel_params;
-    // `ctx.kernel_params` points at the CpuElementwiseMulParams owned by
+    // `ctx.kernel_params` points at the cpu::detail::ElementwiseMulParams owned by
     // ElementwiseMulOp::Run's stack frame, valid only for the duration of
     // this call. Validate here rather than after Run() returns, where the
     // pointer would dangle.
-    const auto* params = static_cast<const CpuElementwiseMulParams*>(ctx.kernel_params);
+    const auto* params = static_cast<const cpu::detail::ElementwiseMulParams*>(ctx.kernel_params);
     g_stub_state.lhs_valid = params->lhs_tensor.is_valid();
     g_stub_state.rhs_valid = params->rhs_tensor.is_valid();
     g_stub_state.output_valid = params->output_tensor.is_valid();
@@ -272,7 +272,7 @@ Status BuildStubElementwiseMulParams(std::span<const TensorView> inputs,
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("ElementwiseMul requires 2 inputs and 1 output");
     }
-    ::new (params_buffer) CpuElementwiseMulParams{
+    ::new (params_buffer) cpu::detail::ElementwiseMulParams{
             .lhs_tensor = inputs[0],
             .rhs_tensor = inputs[1],
             .output_tensor = outputs[0],
@@ -287,7 +287,7 @@ ResolvedKernel MakeStubKernel() {
             .attrs = {},
             .debug_name = "test::stub_elementwise_mul",
             .params_builder = &BuildStubElementwiseMulParams,
-            .params_size = sizeof(CpuElementwiseMulParams),
+            .params_size = sizeof(cpu::detail::ElementwiseMulParams),
     };
 }
 
@@ -447,7 +447,7 @@ TEST(ElementwiseMulOp, RunInvokesKernelAndReturnsOk) {
     EXPECT_TRUE(g_stub_state.called);
     EXPECT_NE(g_stub_state.kernel_params, nullptr);
 
-    const auto* params = static_cast<const CpuElementwiseMulParams*>(g_stub_state.kernel_params);
+    const auto* params = static_cast<const cpu::detail::ElementwiseMulParams*>(g_stub_state.kernel_params);
     EXPECT_TRUE(g_stub_state.lhs_valid);
     EXPECT_TRUE(g_stub_state.rhs_valid);
     EXPECT_TRUE(g_stub_state.output_valid);

@@ -76,7 +76,7 @@ void BM_CPUKernel_RmsNormScalar(benchmark::State& state) {
 
     for (auto _: state) {
         constexpr float kEps = 1.0e-5F;
-        const aethermind::Status status = aethermind::cpu::RmsNormKernel_CPU_FP32_Scalar(aethermind::cpu::RmsNormFp32KernelArgs{
+        const aethermind::Status status = aethermind::cpu::detail::RmsNormKernel_CPU_FP32_Scalar(aethermind::cpu::detail::RmsNormFp32KernelArgs{
                 .input = input.data(),
                 .weight = weight.data(),
                 .output = output.data(),

@@ -26,13 +26,13 @@ MutableTensorView MakeContiguousMutableFloatTensorView(float (&data)[N],
 }
 
 template<size_t N>
-    requires requires(cpu::CpuRmsNormParams params, TensorView input_view, TensorView weight_view,
+    requires requires(cpu::detail::RmsNormParams params, TensorView input_view, TensorView weight_view,
                       MutableTensorView output_view) {
         params.input_tensor = input_view;
         params.weight_tensor = weight_view;
         params.output_tensor = output_view;
     }
-cpu::CpuRmsNormParams MakeCpuRmsNormParams(const float (&input)[N],
+cpu::detail::RmsNormParams MakeRmsNormParams(const float (&input)[N],
                                            const float (&weight)[N],
                                            float (&output)[N],
                                            const int64_t (&shape)[1],
@@ -41,7 +41,7 @@ cpu::CpuRmsNormParams MakeCpuRmsNormParams(const float (&input)[N],
     const TensorView weight_view = MakeContiguousFloatTensorView(weight, shape, strides);
     const MutableTensorView output_view = MakeContiguousMutableFloatTensorView(output, shape, strides);
 
-    return cpu::CpuRmsNormParams{
+    return cpu::detail::RmsNormParams{
             .input_tensor = input_view,
             .weight_tensor = weight_view,
             .output_tensor = output_view,
@@ -90,7 +90,7 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
     const int64_t io_strides[2] = {4, 1};
     const int64_t w_shape[1] = {4};
     const int64_t w_strides[1] = {1};
-    const cpu::CpuRmsNormParams params{
+    const cpu::detail::RmsNormParams params{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},

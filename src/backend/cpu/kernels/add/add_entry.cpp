@@ -133,7 +133,7 @@ StatusOr<cpu::detail::AddKernelArgs> ValidateAndBuildArgs(const cpu::detail::Add
 
     if (!IsAddSupportedDType(dtype)) {
         return Status::InvalidArgument(
-                MakeAddUnsupportedDTypeMessage("CpuAddKernel"));
+                MakeAddUnsupportedDTypeMessage("AddKernel"));
     }
 
     const int32_t output_rank = output.rank();

@@ -24,7 +24,15 @@ Status LaunchRmsNorm(const RmsNormArgs& args) noexcept {
         kernel_args.output_row_stride = args.output_row_stride;
         kernel_args.output_col_stride = args.output_col_stride;
         kernel_args.eps = args.eps;
-        return cpu::detail::RmsNormKernel_CPU_FP32_AVX2(kernel_args);
+        // Prefer AVX2 when the SDK contract permits it (unit column strides,
+        // matching the entry-level selector constraint in
+        // RmsNormKernelEntry_FP32_AVX2). Fall back to the scalar path for
+        // arbitrary column strides — the scalar micro-kernel handles any
+        // stride correctly.
+        if (args.input_col_stride == 1 && args.weight_stride == 1 && args.output_col_stride == 1) {
+            return cpu::detail::RmsNormKernel_CPU_FP32_AVX2(kernel_args);
+        }
+        return cpu::detail::RmsNormKernel_CPU_FP32_Scalar(kernel_args);
     }
 
     return Status::Unimplemented("Not implemented");

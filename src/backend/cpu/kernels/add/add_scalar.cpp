@@ -112,19 +112,22 @@ Status ExecuteTyped(const AddKernelArgs& args) noexcept {
 
 Status AddKernel_Scalar(const AddKernelArgs& args) noexcept {
     const DataType dtype = args.dtype;
-
     if (dtype == DataType::Float32()) {
         return ExecuteTyped<float>(args);
     }
+
     if (dtype == DataType::Double()) {
         return ExecuteTyped<double>(args);
     }
+
     if (dtype == DataType::BFloat(16)) {
         return ExecuteTyped<BFloat16>(args);
     }
+
     if (dtype == DataType::Int(32)) {
         return ExecuteTyped<int32_t>(args);
     }
+
     if (dtype == DataType::Int(64)) {
         return ExecuteTyped<int64_t>(args);
     }

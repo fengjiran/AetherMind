@@ -166,8 +166,11 @@ protected:
                                              std::span<const TensorView> inputs,
                                              std::span<const MutableTensorView> outputs) const noexcept {
         const ResolvedKernel& resolved = GetResolvedKernel();
+        // Declared at function scope so the buffer outlives the kernel call;
+        // previously it was scoped inside the if block, leaving
+        // ctx.kernel_params dangling when resolved.fn(ctx) ran below.
+        alignas(std::max_align_t) std::byte buffer[kMaxKernelParamsSize];
         if (resolved.params_builder != nullptr) {
-            alignas(std::max_align_t) std::byte buffer[kMaxKernelParamsSize];
             AM_RETURN_IF_ERROR(resolved.params_builder(inputs, outputs, buffer));
             ctx.kernel_params = buffer;
         }

@@ -1,9 +1,10 @@
 #ifndef AETHERMIND_OPERATORS_OPERATOR_H
 #define AETHERMIND_OPERATORS_OPERATOR_H
 
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/status.h"
-#include "aethermind/dtypes/data_type.h"
+#include "aethermind/base/tensor_view.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator_context.h"
 #include "aethermind/runtime/workspace.h"
@@ -12,6 +13,7 @@
 #include "aethermind/shape_inference/tensor_spec.h"
 #include "macros.h"
 
+#include <cstddef>
 #include <memory>
 #include <span>
 #include <vector>
@@ -33,17 +35,21 @@ struct InferenceResult {
 
 /// Abstract base class for all semantic-layer operators.
 ///
-/// An Operator encapsulates:
-/// - Shape inference
-/// - Workspace requirement estimation
-/// - Kernel resolution and preparation
-/// - Runtime execution dispatch
+/// Encapsulates param validation, shape inference, workspace estimation,
+/// kernel resolution, and runtime execution behind a uniform contract.
 ///
-/// Lifecycle: Construct → ValidateParams → Prepare → Run (repeated) → Destroy
+/// Lifecycle: Construct → ValidateParams() → Prepare() → Run() (repeated)
+/// → destruction. `Prepare()` resolves and caches the kernel; `Run()` may
+/// then be invoked multiple times. The destructor releases cached state
+/// and must not run concurrently with an in-flight `Run()`.
 ///
-/// Thread safety: Prepare and Run are NOT thread-safe by default.
-/// Each invocation should use its own Operator instance or external
-/// synchronization.
+/// Invariant: `Prepare()` must return Ok before `Run()` or
+/// `GetResolvedKernel()` may be called. `resolved_kernel_` is written only
+/// by `Prepare()` and read by `Run()` / `GetResolvedKernel()`.
+///
+/// Thread safety: instances are not thread-safe. Concurrent `Run()` calls
+/// on the same instance require external synchronization, or use one
+/// instance per thread.
 class Operator {
 public:
     virtual ~Operator() = default;
@@ -52,7 +58,7 @@ public:
     AM_NODISCARD virtual OpType Type() const noexcept = 0;
 
     /// Returns a human-readable name for diagnostics and logging.
-    /// Default implementation delegates to ToString(type()).
+    /// Default implementation delegates to `ToString(Type())`.
     AM_NODISCARD virtual const char* Name() const noexcept {
         return ToString(Type());
     }
@@ -77,9 +83,12 @@ public:
 
     /// Infers output shapes from input shapes without executing.
     ///
-    /// Used during graph construction and workspace planning.
+    /// Used during graph construction and workspace planning. May emit
+    /// deferred `ShapeConstraint`s in `InferenceResult::runtime_checks` for
+    /// conditions that cannot be proven until concrete runtime shapes are
+    /// known.
     ///
-    /// \return Inferred output specs and deferred runtime shape checks,
+    /// \return Inferred output specs (and any deferred runtime checks),
     ///         or a Status error if inference fails.
     AM_NODISCARD virtual StatusOr<InferenceResult> InferOutputShapes(
             std::span<const TensorSpec> inputs) const = 0;
@@ -117,7 +126,8 @@ public:
     /// Executes this operator on the given inputs and outputs.
     ///
     /// Called once per execution step. Must only be called after
-    /// successful Prepare().
+    /// successful Prepare(). Declared `noexcept`: implementations report
+    /// failures only through the returned `Status`, never by throwing.
     ///
     /// Implementations should:
     /// - Construct per-call kernel params from runtime bindings when needed
@@ -136,6 +146,33 @@ public:
     /// Returns the resolved kernel info for execution, debugging, and logging.
     /// Only valid after successful Prepare().
     AM_NODISCARD virtual const ResolvedKernel& GetResolvedKernel() const noexcept = 0;
+
+protected:
+    /// Shared kernel invocation path for subclasses.
+    ///
+    /// If `ResolvedKernel::params_builder` is set, stack-allocates an
+    /// aligned buffer of `kMaxKernelParamsSize` bytes, asks the builder to
+    /// placement-construct the backend-specific params struct into it,
+    /// points `ctx.kernel_params` at the buffer, then invokes the kernel
+    /// function. If `params_builder` is null, invokes the kernel directly
+    /// with whatever `ctx.kernel_params` the caller has already set.
+    ///
+    /// Lifetime: the stack buffer is local to this call. The kernel must
+    /// not retain pointers into it past return.
+    ///
+    /// Performance: stack allocation avoids per-call heap traffic on the
+    /// execution hot path. `kMaxKernelParamsSize` bounds the cost.
+    AM_NODISCARD Status InvokeResolvedKernel(KernelContext& ctx,
+                                             std::span<const TensorView> inputs,
+                                             std::span<const MutableTensorView> outputs) const noexcept {
+        const ResolvedKernel& resolved = GetResolvedKernel();
+        if (resolved.params_builder != nullptr) {
+            alignas(std::max_align_t) std::byte buffer[kMaxKernelParamsSize];
+            AM_RETURN_IF_ERROR(resolved.params_builder(inputs, outputs, buffer));
+            ctx.kernel_params = buffer;
+        }
+        return resolved.fn(ctx);
+    }
 };
 
 /// Shared pointer alias for operator lifetime management.

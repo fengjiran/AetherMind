@@ -47,6 +47,8 @@ StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
             .fn = (*descriptor)->kernel_func,
             .attrs = {},
             .debug_name = (*descriptor)->name.c_str(),
+            .params_builder = (*descriptor)->params_builder,
+            .params_size = (*descriptor)->params_size,
     };
 }
 

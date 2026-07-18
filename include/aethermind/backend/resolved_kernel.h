@@ -20,6 +20,9 @@ struct ResolvedKernel {
     // debug_name borrows backend-owned stable storage and must stay valid for
     // the lifetime of the frozen execution plan.
     const char* debug_name = nullptr;
+
+    KernelParamsBuilder params_builder = nullptr;
+    size_t params_size = 0;
 };
 
 }// namespace aethermind

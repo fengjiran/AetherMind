@@ -1,10 +1,8 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_CPU_RMSNORM_KERNEL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_CPU_RMSNORM_KERNEL_H
 
-#include "aethermind/backend/kernel_types.h"
+#include "aethermind/base/status.h"
 #include "aethermind/dtypes/data_type.h"
-
-#include <cstdint>
 
 namespace aethermind {
 

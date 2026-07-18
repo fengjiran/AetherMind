@@ -9,7 +9,7 @@
 #include <immintrin.h>
 #endif
 
-namespace aethermind::cpu {
+namespace aethermind::cpu::detail {
 
 #if defined(__AVX2__) && defined(__FMA__)
 AM_ALWAYS_INLINE void micro_kernel_fp32_avx2(float* __restrict__ output,
@@ -97,7 +97,7 @@ AM_ALWAYS_INLINE void micro_kernel_fp32_avx2(float* __restrict__ output,
 /// strides, unit column strides (input_col_stride_, weight_stride_,
 /// output_col_stride_ all equal 1), finite positive epsilon, and sufficient
 /// backing storage for every addressed element. Runtime validation belongs in
-/// CpuRmsNormKernelEntry.
+/// RmsNormKernelEntry.
 Status RmsNormKernel_CPU_FP32_AVX2(const RmsNormFp32KernelArgs& args) noexcept {
     if (constexpr int64_t kOmpParallelThreshold = 16; args.seq_len <= kOmpParallelThreshold) {
         for (int64_t i = 0; i < args.seq_len; ++i) {
@@ -121,4 +121,4 @@ Status RmsNormKernel_CPU_FP32_AVX2(const RmsNormFp32KernelArgs& args) noexcept {
     return Status::Ok();
 }
 
-}// namespace aethermind::cpu
+}// namespace aethermind::cpu::detail

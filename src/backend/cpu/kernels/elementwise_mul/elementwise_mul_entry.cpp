@@ -1,4 +1,4 @@
-#include "aethermind/backend/cpu/kernels/cpu_elementwise_mul_kernel.h"
+#include "elementwise_mul_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
@@ -15,7 +15,7 @@ namespace {
 constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 
 auto GetParams(const void* kernel_params) noexcept {
-    return static_cast<const CpuElementwiseMulParams*>(kernel_params);
+    return static_cast<const cpu::detail::ElementwiseMulParams*>(kernel_params);
 }
 
 bool ValidateBroadcastCompatible(std::span<const int64_t> lhs_shape,
@@ -69,12 +69,12 @@ Status ValidateMaxOffset(int32_t rank,
         int64_t contrib = 0;
         if (CheckOverflowMul(shape[i] - 1, strides[i], &contrib)) {
             return Status::InvalidArgument(
-                    std::string("CpuElementwiseMulKernel ") + name + " offset overflow");
+                    std::string("ElementwiseMulKernel ") + name + " offset overflow");
         }
         int64_t new_max = 0;
         if (CheckOverflowAdd(max_offset, contrib, &new_max)) {
             return Status::InvalidArgument(
-                    std::string("CpuElementwiseMulKernel ") + name + " offset overflow");
+                    std::string("ElementwiseMulKernel ") + name + " offset overflow");
         }
         max_offset = new_max;
     }
@@ -93,55 +93,55 @@ StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
         int64_t next = 0;
         if (CheckOverflowMul(count, shape[i], &next)) {
             return Status::InvalidArgument(
-                    "CpuElementwiseMulKernel output element count overflow");
+                    "ElementwiseMulKernel output element count overflow");
         }
         if (next < 0) {
             return Status::InvalidArgument(
-                    "CpuElementwiseMulKernel output element count exceeds int64_t");
+                    "ElementwiseMulKernel output element count exceeds int64_t");
         }
         count = next;
     }
     return count;
 }
 
-Status ValidateAndExecute(const CpuElementwiseMulParams* params) noexcept {
+Status ValidateAndExecute(const cpu::detail::ElementwiseMulParams* params) noexcept {
     const TensorView& lhs = params->lhs_tensor;
     const TensorView& rhs = params->rhs_tensor;
     const MutableTensorView& output = params->output_tensor;
 
     if (!lhs.is_valid()) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires a valid lhs TensorView");
+        return Status::InvalidArgument("ElementwiseMulKernel requires a valid lhs TensorView");
     }
     if (!rhs.is_valid()) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires a valid rhs TensorView");
+        return Status::InvalidArgument("ElementwiseMulKernel requires a valid rhs TensorView");
     }
     if (!output.is_valid()) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires a valid output MutableTensorView");
+        return Status::InvalidArgument("ElementwiseMulKernel requires a valid output MutableTensorView");
     }
 
     if (lhs.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires float32 lhs TensorView");
+        return Status::InvalidArgument("ElementwiseMulKernel requires float32 lhs TensorView");
     }
     if (rhs.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires float32 rhs TensorView");
+        return Status::InvalidArgument("ElementwiseMulKernel requires float32 rhs TensorView");
     }
     if (output.dtype() != DataType::Make<float>()) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires float32 output MutableTensorView");
+        return Status::InvalidArgument("ElementwiseMulKernel requires float32 output MutableTensorView");
     }
 
     const int32_t output_rank = output.rank();
     const int32_t expected_rank = std::max(lhs.rank(), rhs.rank());
     if (output_rank != expected_rank) {
         return Status::InvalidArgument(
-                "CpuElementwiseMulKernel output rank must equal max(lhs rank, rhs rank)");
+                "ElementwiseMulKernel output rank must equal max(lhs rank, rhs rank)");
     }
     if (output_rank > static_cast<int32_t>(kMaxRank)) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel output rank exceeds maximum supported rank");
+        return Status::InvalidArgument("ElementwiseMulKernel output rank exceeds maximum supported rank");
     }
 
     if (!ValidateBroadcastCompatible(lhs.shape(), rhs.shape(), output.shape())) {
         return Status::InvalidArgument(
-                "CpuElementwiseMulKernel input shapes are not broadcast-compatible with output shape");
+                "ElementwiseMulKernel input shapes are not broadcast-compatible with output shape");
     }
 
     const auto numel_or = CheckedOutputNumel(output_rank, output.shape());
@@ -152,13 +152,13 @@ Status ValidateAndExecute(const CpuElementwiseMulParams* params) noexcept {
     }
 
     if (lhs.data() == nullptr) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires non-null lhs data");
+        return Status::InvalidArgument("ElementwiseMulKernel requires non-null lhs data");
     }
     if (rhs.data() == nullptr) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires non-null rhs data");
+        return Status::InvalidArgument("ElementwiseMulKernel requires non-null rhs data");
     }
     if (output.data() == nullptr) {
-        return Status::InvalidArgument("CpuElementwiseMulKernel requires non-null output data");
+        return Status::InvalidArgument("ElementwiseMulKernel requires non-null output data");
     }
 
     {
@@ -210,23 +210,23 @@ Status ValidateAndExecute(const CpuElementwiseMulParams* params) noexcept {
 
 }// namespace
 
-Status CpuElementwiseMulKernel(const KernelContext& ctx) noexcept {
-    const CpuElementwiseMulParams* params = GetParams(ctx.kernel_params);
+Status cpu::detail::ElementwiseMulKernel(const KernelContext& ctx) noexcept {
+    const cpu::detail::ElementwiseMulParams* params = GetParams(ctx.kernel_params);
     if (params == nullptr) {
         return Status::InvalidArgument(
-                "CpuElementwiseMulKernel requires CpuElementwiseMulParams in KernelContext.kernel_params");
+                "ElementwiseMulKernel requires cpu::detail::ElementwiseMulParams in KernelContext.kernel_params");
     }
 
     return ValidateAndExecute(params);
 }
 
-Status BuildCpuElementwiseMulParams(std::span<const TensorView> inputs,
+Status BuildElementwiseMulParams(std::span<const TensorView> inputs,
                                         std::span<const MutableTensorView> outputs,
                                         void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("ElementwiseMul requires 2 inputs and 1 output");
     }
-    ::new (params_buffer) CpuElementwiseMulParams{
+    ::new (params_buffer) cpu::detail::ElementwiseMulParams{
             .lhs_tensor = inputs[0],
             .rhs_tensor = inputs[1],
             .output_tensor = outputs[0],
@@ -234,7 +234,7 @@ Status BuildCpuElementwiseMulParams(std::span<const TensorView> inputs,
     return Status::Ok();
 }
 
-AM_REGISTER_KERNEL(CpuElementwiseMulFp32Scalar,
+AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                    KernelDescriptor{
                            .op_type = OpType::kElementwiseMul,
                            .selector = KernelSelector{
@@ -245,11 +245,11 @@ AM_REGISTER_KERNEL(CpuElementwiseMulFp32Scalar,
                                    .isa = IsaLevel::kScalar,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &CpuElementwiseMulKernel,
+                           .kernel_func = &cpu::detail::ElementwiseMulKernel,
                            .name = "cpu::elementwise_mul_f32_scalar",
                            .priority = 10,
-                           .params_builder = &BuildCpuElementwiseMulParams,
-                           .params_size = sizeof(CpuElementwiseMulParams),
+                           .params_builder = &BuildElementwiseMulParams,
+                           .params_size = sizeof(cpu::detail::ElementwiseMulParams),
                    })
 
 }// namespace aethermind

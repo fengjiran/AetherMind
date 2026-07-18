@@ -4,11 +4,9 @@
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 
-namespace aethermind {
+namespace aethermind::cpu::detail {
 
-namespace cpu {
-
-struct CpuRmsNormParams {
+struct RmsNormParams {
     TensorView input_tensor{};
     TensorView weight_tensor{};
     MutableTensorView output_tensor{};
@@ -31,8 +29,6 @@ struct RmsNormFp32KernelArgs {
 Status RmsNormKernel_CPU_FP32_Scalar(const RmsNormFp32KernelArgs& args) noexcept;
 Status RmsNormKernel_CPU_FP32_AVX2(const RmsNormFp32KernelArgs& args) noexcept;
 
-}// namespace cpu
-
-}// namespace aethermind
+}// namespace aethermind::cpu::detail
 
 #endif// AETHERMIND_BACKEND_CPU_KERNELS_RMSNORM_CPU_RMSNORM_INTERNAL_H

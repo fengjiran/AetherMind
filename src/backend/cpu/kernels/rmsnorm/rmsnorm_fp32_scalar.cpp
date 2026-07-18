@@ -4,7 +4,7 @@
 
 #include <cmath>
 
-namespace aethermind::cpu {
+namespace aethermind::cpu::detail {
 namespace {
 
 AM_ALWAYS_INLINE void micro_kernel_fp32_scalar(float* __restrict__ output,
@@ -62,4 +62,4 @@ Status RmsNormKernel_CPU_FP32_Scalar(const RmsNormFp32KernelArgs& args) noexcept
     return Status::Ok();
 }
 
-}// namespace aethermind::cpu
+}// namespace aethermind::cpu::detail

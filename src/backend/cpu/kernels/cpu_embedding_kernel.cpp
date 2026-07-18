@@ -119,6 +119,20 @@ Status CpuEmbeddingKernel(const KernelContext& ctx) noexcept {
     return Status::Ok();
 }
 
+Status BuildCpuEmbeddingParams(std::span<const TensorView> inputs,
+                                   std::span<const MutableTensorView> outputs,
+                                   void* params_buffer) noexcept {
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("Embedding requires 2 inputs and 1 output");
+    }
+    ::new (params_buffer) CpuEmbeddingParams{
+            .token_ids_ = inputs[0],
+            .weight_ = inputs[1],
+            .output_ = outputs[0],
+    };
+    return Status::Ok();
+}
+
 AM_REGISTER_KERNEL(CpuEmbeddingFp32Scalar,
                    KernelDescriptor{
                            .op_type = OpType::kEmbedding,
@@ -133,6 +147,8 @@ AM_REGISTER_KERNEL(CpuEmbeddingFp32Scalar,
                            .kernel_func = &CpuEmbeddingKernel,
                            .name = "cpu::embedding_f32_scalar",
                            .priority = 10,
+                           .params_builder = &BuildCpuEmbeddingParams,
+                           .params_size = sizeof(CpuEmbeddingParams),
                    })
 
 }// namespace aethermind

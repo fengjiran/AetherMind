@@ -7,6 +7,8 @@
 
 #include <cmath>
 #include <cstring>
+#include <new>
+#include <span>
 
 namespace aethermind::cpu {
 
@@ -132,6 +134,20 @@ Status ValidateRmsNormEntry(const KernelContext& ctx, RmsNormFp32KernelArgs& arg
     };
     return Status::Ok();
 }
+Status BuildCpuRmsNormParams(std::span<const TensorView> inputs,
+                              std::span<const MutableTensorView> outputs,
+                              void* params_buffer) noexcept {
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("RmsNorm requires 2 inputs and 1 output");
+    }
+    ::new (params_buffer) CpuRmsNormParams{
+            .input_tensor = inputs[0],
+            .weight_tensor = inputs[1],
+            .output_tensor = outputs[0],
+    };
+    return Status::Ok();
+}
+
 }// namespace
 
 Status CpuRmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept {
@@ -167,6 +183,8 @@ AM_REGISTER_KERNEL(CpuRmsNormFp32Scalar,
                            .kernel_func = &CpuRmsNormKernelEntry_FP32_Scalar,
                            .name = "cpu::rmsnorm_f32_scalar",
                            .priority = 10,
+                           .params_builder = &BuildCpuRmsNormParams,
+                           .params_size = sizeof(CpuRmsNormParams),
                    });
 
 AM_REGISTER_KERNEL(CpuRmsNormFp32Avx2,
@@ -183,6 +201,8 @@ AM_REGISTER_KERNEL(CpuRmsNormFp32Avx2,
                            .kernel_func = &CpuRmsNormKernelEntry_FP32_AVX2,
                            .name = "cpu::rmsnorm_f32_avx2",
                            .priority = 20,
+                           .params_builder = &BuildCpuRmsNormParams,
+                           .params_size = sizeof(CpuRmsNormParams),
                    });
 
 }// namespace aethermind::cpu

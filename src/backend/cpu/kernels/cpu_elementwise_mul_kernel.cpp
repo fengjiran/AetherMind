@@ -220,6 +220,20 @@ Status CpuElementwiseMulKernel(const KernelContext& ctx) noexcept {
     return ValidateAndExecute(params);
 }
 
+Status BuildCpuElementwiseMulParams(std::span<const TensorView> inputs,
+                                        std::span<const MutableTensorView> outputs,
+                                        void* params_buffer) noexcept {
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("ElementwiseMul requires 2 inputs and 1 output");
+    }
+    ::new (params_buffer) CpuElementwiseMulParams{
+            .lhs_tensor = inputs[0],
+            .rhs_tensor = inputs[1],
+            .output_tensor = outputs[0],
+    };
+    return Status::Ok();
+}
+
 AM_REGISTER_KERNEL(CpuElementwiseMulFp32Scalar,
                    KernelDescriptor{
                            .op_type = OpType::kElementwiseMul,
@@ -234,6 +248,8 @@ AM_REGISTER_KERNEL(CpuElementwiseMulFp32Scalar,
                            .kernel_func = &CpuElementwiseMulKernel,
                            .name = "cpu::elementwise_mul_f32_scalar",
                            .priority = 10,
+                           .params_builder = &BuildCpuElementwiseMulParams,
+                           .params_size = sizeof(CpuElementwiseMulParams),
                    })
 
 }// namespace aethermind

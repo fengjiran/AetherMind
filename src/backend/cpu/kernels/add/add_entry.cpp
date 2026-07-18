@@ -1,21 +1,21 @@
 // Kernel entry for the CPU Add operator (directory-structured).
 //
 // Validates CpuAddParams (dtypes, shapes, broadcast compatibility, numel,
-// pointers, max offsets) without dynamic allocation, then builds a flat
-// AddKernelArgs struct and dispatches to cpu::detail::AddKernel_Scalar.
-// Kernel registration with five canonical selectors
-// (weight_dtype == act_dtype) lives here via AM_REGISTER_KERNEL.
+// pointers, max offsets) without dynamic allocation, then builds an
+// AddKernelArgs struct (carrying both flat-path and strided-path metadata)
+// and dispatches to cpu::detail::AddKernel_Scalar, which selects the path
+// based on args.is_flat. All five canonical selectors (weight_dtype ==
+// act_dtype, one per dtype in kAddSupportedDTypes) and the shared
+// params_builder (BuildCpuAddParams) are registered here via AM_REGISTER_KERNEL.
 
 #include "add_internal.h"
 #include "aethermind/backend/cpu/kernels/add/cpu_add_kernel.h"
-#include "aethermind/base/shape_and_stride.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/operators/add_op.h"
 #include "aethermind/utils/overflow_check.h"
 
-#include <cstdint>
 #include <span>
 #include <string>
 
@@ -43,13 +43,17 @@ bool ValidateBroadcastCompatible(std::span<const int64_t> lhs_shape,
         const int64_t lhs_dim = axis < lhs_offset ? 1 : lhs_shape[axis - lhs_offset];
         const int64_t rhs_dim = axis < rhs_offset ? 1 : rhs_shape[axis - rhs_offset];
 
-        if (lhs_dim < 0 || rhs_dim < 0) return false;
+        if (lhs_dim < 0 || rhs_dim < 0) {
+            return false;
+        }
 
         // Broadcast rule: lhs==1 → rhs; rhs==1 or equal → lhs.
         const int64_t expected = (lhs_dim == 1)                         ? rhs_dim
                                  : (rhs_dim == 1 || lhs_dim == rhs_dim) ? lhs_dim
                                                                         : int64_t{-1};
-        if (expected < 0 || out_dim != expected) return false;
+        if (expected < 0 || out_dim != expected) {
+            return false;
+        }
     }
     return true;
 }
@@ -198,8 +202,30 @@ StatusOr<cpu::detail::AddKernelArgs> ValidateAndBuildArgs(const CpuAddParams* pa
     return args;
 }
 
+// KernelParamsBuilder registered with every AM_REGISTER_KERNEL block below.
+// Placement-constructs CpuAddParams into the caller-owned, stack-allocated
+// `params_buffer` (capacity kMaxKernelParamsSize); the constructed object
+// must remain valid through the subsequent CpuAddKernel call.
+Status BuildCpuAddParams(std::span<const TensorView> inputs,
+                         std::span<const MutableTensorView> outputs,
+                         void* params_buffer) noexcept {
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("Add requires 2 inputs and 1 output");
+    }
+    ::new (params_buffer) CpuAddParams{
+            .lhs_tensor = inputs[0],
+            .rhs_tensor = inputs[1],
+            .output_tensor = outputs[0],
+    };
+    return Status::Ok();
+}
+
 }// namespace
 
+// KernelFunc registered with every AM_REGISTER_KERNEL block below. Expects
+// ctx.kernel_params to point at a CpuAddParams populated either by
+// BuildCpuAddParams via Operator::InvokeResolvedKernel (production path) or
+// directly by callers (tests).
 Status CpuAddKernel(const KernelContext& ctx) noexcept {
     const CpuAddParams* params = GetParams(ctx.kernel_params);
     if (params == nullptr) {
@@ -235,6 +261,8 @@ AM_REGISTER_KERNEL(CpuAddFp32Scalar,
                            .kernel_func = &CpuAddKernel,
                            .name = "cpu::add_f32_scalar",
                            .priority = 10,
+                           .params_builder = &BuildCpuAddParams,
+                           .params_size = sizeof(CpuAddParams),
                    })
 
 AM_REGISTER_KERNEL(CpuAddFp64Scalar,
@@ -251,6 +279,8 @@ AM_REGISTER_KERNEL(CpuAddFp64Scalar,
                            .kernel_func = &CpuAddKernel,
                            .name = "cpu::add_f64_scalar",
                            .priority = 10,
+                           .params_builder = &BuildCpuAddParams,
+                           .params_size = sizeof(CpuAddParams),
                    })
 
 AM_REGISTER_KERNEL(CpuAddBf16Scalar,
@@ -267,6 +297,8 @@ AM_REGISTER_KERNEL(CpuAddBf16Scalar,
                            .kernel_func = &CpuAddKernel,
                            .name = "cpu::add_bf16_scalar",
                            .priority = 10,
+                           .params_builder = &BuildCpuAddParams,
+                           .params_size = sizeof(CpuAddParams),
                    })
 
 AM_REGISTER_KERNEL(CpuAddI32Scalar,
@@ -283,6 +315,8 @@ AM_REGISTER_KERNEL(CpuAddI32Scalar,
                            .kernel_func = &CpuAddKernel,
                            .name = "cpu::add_i32_scalar",
                            .priority = 10,
+                           .params_builder = &BuildCpuAddParams,
+                           .params_size = sizeof(CpuAddParams),
                    })
 
 AM_REGISTER_KERNEL(CpuAddI64Scalar,
@@ -299,6 +333,8 @@ AM_REGISTER_KERNEL(CpuAddI64Scalar,
                            .kernel_func = &CpuAddKernel,
                            .name = "cpu::add_i64_scalar",
                            .priority = 10,
+                           .params_builder = &BuildCpuAddParams,
+                           .params_size = sizeof(CpuAddParams),
                    })
 
 }// namespace aethermind

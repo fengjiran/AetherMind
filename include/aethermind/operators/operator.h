@@ -10,6 +10,7 @@
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_symbol.h"
+#include "aethermind/operators/inference_result.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 #include "macros.h"
 
@@ -22,16 +23,6 @@ namespace aethermind {
 
 struct KernelContext;
 class RuntimeBindingContext;
-
-/// Result of operator-level shape inference.
-///
-/// `outputs` carries the inferred output tensor specs. `runtime_checks` carries
-/// shape constraints that cannot be fully proven until concrete runtime shapes
-/// are known.
-struct InferenceResult {
-    std::vector<TensorSpec> outputs{};
-    std::vector<ShapeConstraint> runtime_checks{};
-};
 
 /// Abstract base class for all semantic-layer operators.
 ///

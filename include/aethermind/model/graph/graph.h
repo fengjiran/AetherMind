@@ -71,17 +71,20 @@ public:
 
     /// Adds an operator node with the given input and output declarations.
     ///
-    /// Output declarations with a monostate payload are implicitly treated
-    /// as activation outputs. Returns the new node id and its output value ids.
-    /// The caller is responsible for ensuring that input value ids are valid
-    /// and that the node schema matches the operator's registered schema.
-    AM_NODISCARD AddedNode AddNode(OpType op_type,
-                                   std::optional<uint32_t> decoder_layer_index,
-                                   std::vector<GraphValueId> inputs,
-                                   std::vector<NodeOutputDesc> outputs_desc,
-                                   const OpParams& op_params = std::monostate{},
-                                   ModelGraphAttrs attrs = {},
-                                   std::string debug_name = {});
+    /// Validates inputs, schema, params, and output metadata, then calls
+    /// AnalyzeOperator to derive output TensorSpecs and runtime checks before
+    /// any observable mutation. Output payloads supplied as monostate are
+    /// normalized to ActivationValue.
+    ///
+    /// On success returns the new node id and its output value ids. On failure
+    /// returns an error Status; the graph is unchanged.
+    AM_NODISCARD StatusOr<AddedNode> AddNode(OpType op_type,
+                                             std::optional<uint32_t> decoder_layer_index,
+                                             std::vector<GraphValueId> inputs,
+                                             std::vector<NodeOutputDesc> outputs_desc,
+                                             const OpParams& op_params = std::monostate{},
+                                             ModelGraphAttrs attrs = {},
+                                             std::string debug_name = {});
 
     AM_NODISCARD const GraphNode& GetNode(GraphNodeId id) const {
         AM_CHECK(id.index < nodes_.size(), "Invalid GraphNodeId");

@@ -1,5 +1,4 @@
 #include "aethermind/model/graph/graph_op_builder.h"
-#include "aethermind/shape_inference/broadcast.h"
 
 #include <utility>
 #include <variant>
@@ -14,8 +13,8 @@ GraphValueId OnlyOneOutput(const AddedNode& added_node) {
     return added_node.outputs.front();
 }
 
-NodeOutputDesc ActivationOutput(TensorSpec spec) {
-    return NodeOutputDesc{.spec = std::move(spec), .payload = ActivationValue{}};
+NodeOutputDesc ActivationOutput() {
+    return NodeOutputDesc{.payload = ActivationValue{}};
 }
 
 }// namespace
@@ -57,18 +56,16 @@ GraphValueId AddLinear(ModelGraph& graph,
             binding,
             debug_name);
 
-    input_shape.back() = out_features_symbol;
-    const auto node = graph.AddNode(
+    auto node_or = graph.AddNode(
             OpType::kLinear,
             binding.decoder_layer_index,
             {input, weight},
-            {ActivationOutput(
-                    {.dtype = input_spec.dtype,
-                     .shape = SymbolicShape(std::move(input_shape))})},
+            {ActivationOutput()},
             LinearParams{},
             {},
             std::move(debug_name));
-    return OnlyOneOutput(node);
+    AM_CHECK(node_or.ok(), "AddNode for Linear failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 GraphValueId AddRmsNorm(ModelGraph& graph,
@@ -92,15 +89,16 @@ GraphValueId AddRmsNorm(ModelGraph& graph,
             binding,
             debug_name);
 
-    const auto node = graph.AddNode(
+    auto node_or = graph.AddNode(
             OpType::kRmsNorm,
             binding.decoder_layer_index,
             {input, weight},
-            {ActivationOutput(input_spec)},
+            {ActivationOutput()},
             RmsNormParams{.eps = eps},
             {},
             std::move(debug_name));
-    return OnlyOneOutput(node);
+    AM_CHECK(node_or.ok(), "AddNode for RmsNorm failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 GraphValueId AddEmbedding(ModelGraph& graph,
@@ -115,8 +113,6 @@ GraphValueId AddEmbedding(ModelGraph& graph,
 
     const TensorSpec token_spec = graph.GetValue(token_ids).spec;
     AM_CHECK(token_spec.shape.IsRanked(), "Embedding token_ids shape must be ranked");
-    std::vector<ShapeSymbol> output_shape = *token_spec.shape.shape();
-    output_shape.push_back(ShapeSymbol::CreateFromValue(embedding_dim));
 
     const GraphValueId weight = graph.AddWeight(
             {.dtype = weight_dtype,
@@ -125,17 +121,16 @@ GraphValueId AddEmbedding(ModelGraph& graph,
             binding,
             debug_name);
 
-    const auto node = graph.AddNode(
+    auto node_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {token_ids, weight},
-            {ActivationOutput(
-                    {.dtype = weight_dtype,
-                     .shape = SymbolicShape(std::move(output_shape))})},
+            {ActivationOutput()},
             EmbeddingParams{},
             {},
             std::move(debug_name));
-    return OnlyOneOutput(node);
+    AM_CHECK(node_or.ok(), "AddNode for Embedding failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 RoPEOutputs AddRoPE(ModelGraph& graph,
@@ -145,20 +140,18 @@ RoPEOutputs AddRoPE(ModelGraph& graph,
                     GraphValueId position_ids,
                     RoPEParams params,
                     std::string debug_name) {
-    TensorSpec q_output_spec = graph.GetValue(q).spec;
-    TensorSpec k_output_spec = graph.GetValue(k).spec;
-
-    const auto node = graph.AddNode(
+    auto node_or = graph.AddNode(
             OpType::kRoPE,
             decoder_layer_index,
             {q, k, position_ids},
-            {ActivationOutput(std::move(q_output_spec)),
-             ActivationOutput(std::move(k_output_spec))},
+            {ActivationOutput(),
+             ActivationOutput()},
             params,
             {},
             std::move(debug_name));
-    AM_CHECK(node.outputs.size() == 2U, "Expected RoPE helper to create exactly two outputs");
-    return RoPEOutputs{.q = node.outputs[0], .k = node.outputs[1]};
+    AM_CHECK(node_or.ok(), "AddNode for RoPE failed: {}", node_or.status().ToString());
+    AM_CHECK(node_or->outputs.size() == 2U, "Expected RoPE helper to create exactly two outputs");
+    return RoPEOutputs{.q = node_or->outputs[0], .k = node_or->outputs[1]};
 }
 
 KVCachePair AddKVCacheUpdate(ModelGraph& graph,
@@ -171,29 +164,26 @@ KVCachePair AddKVCacheUpdate(ModelGraph& graph,
     const GraphValue& k_cache_value = graph.GetValue(k_cache);
     const auto* k_cache_state = std::get_if<StateValue>(&k_cache_value.payload);
     AM_CHECK(k_cache_state != nullptr, "K cache input must be a StateValue");
-    TensorSpec k_output_spec = k_cache_value.spec;
     StateBinding k_binding = k_cache_state->binding;// NOLINT
 
     const GraphValue& v_cache_value = graph.GetValue(v_cache);
     const auto* v_cache_state = std::get_if<StateValue>(&v_cache_value.payload);
     AM_CHECK(v_cache_state != nullptr, "V cache input must be a StateValue");
-    TensorSpec v_output_spec = v_cache_value.spec;
     StateBinding v_binding = v_cache_state->binding;// NOLINT
 
-    const auto node = graph.AddNode(
+    auto node_or = graph.AddNode(
             OpType::kKVCacheUpdate,
             decoder_layer_index,
             {k_new, v_new, k_cache, v_cache},
-            {NodeOutputDesc{.spec = std::move(k_output_spec),
-                            .payload = StateValue{.binding = k_binding}},
-             NodeOutputDesc{.spec = std::move(v_output_spec),
-                            .payload = StateValue{.binding = v_binding}}},
+            {NodeOutputDesc{.payload = StateValue{.binding = k_binding}},
+             NodeOutputDesc{.payload = StateValue{.binding = v_binding}}},
             KVCacheUpdateParams{},
             {},
             std::move(debug_name));
-    AM_CHECK(node.outputs.size() == 2U,
+    AM_CHECK(node_or.ok(), "AddNode for KVCacheUpdate failed: {}", node_or.status().ToString());
+    AM_CHECK(node_or->outputs.size() == 2U,
              "Expected KV cache update helper to create exactly two outputs");
-    return KVCachePair{.k = node.outputs[0], .v = node.outputs[1]};
+    return KVCachePair{.k = node_or->outputs[0], .v = node_or->outputs[1]};
 }
 
 GraphValueId AddAttention(ModelGraph& graph,
@@ -203,15 +193,15 @@ GraphValueId AddAttention(ModelGraph& graph,
                           GraphValueId v,
                           AttentionParams params,
                           std::string debug_name) {
-    TensorSpec output_spec = graph.GetValue(q).spec;
-    const auto node = graph.AddNode(OpType::kAttention,
-                                    decoder_layer_index,
-                                    {q, k, v},
-                                    {ActivationOutput(std::move(output_spec))},
-                                    params,
-                                    {},
-                                    std::move(debug_name));
-    return OnlyOneOutput(node);
+    auto node_or = graph.AddNode(OpType::kAttention,
+                                 decoder_layer_index,
+                                 {q, k, v},
+                                 {ActivationOutput()},
+                                 params,
+                                 {},
+                                 std::move(debug_name));
+    AM_CHECK(node_or.ok(), "AddNode for Attention failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 GraphValueId AddElementwiseAdd(ModelGraph& graph,
@@ -223,16 +213,15 @@ GraphValueId AddElementwiseAdd(ModelGraph& graph,
     const TensorSpec rhs_spec = graph.GetValue(rhs).spec;
     AM_CHECK(lhs_spec.dtype == rhs_spec.dtype,
              "Add requires matching dtypes for lhs and rhs operands");
-    auto inferred = InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
-    AM_CHECK(inferred.ok(), "Add broadcast shape inference failed");
-    const auto node = graph.AddNode(OpType::kAdd,
-                                    decoder_layer_index,
-                                    {lhs, rhs},
-                                    {ActivationOutput(TensorSpec{.dtype = lhs_spec.dtype, .shape = std::move(inferred->output_shape)})},
-                                    AddParams{},
-                                    {},
-                                    std::move(debug_name));
-    return OnlyOneOutput(node);
+    auto node_or = graph.AddNode(OpType::kAdd,
+                                 decoder_layer_index,
+                                 {lhs, rhs},
+                                 {ActivationOutput()},
+                                 AddParams{},
+                                 {},
+                                 std::move(debug_name));
+    AM_CHECK(node_or.ok(), "AddNode for Add failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 GraphValueId AddSiluMul(ModelGraph& graph,
@@ -244,29 +233,30 @@ GraphValueId AddSiluMul(ModelGraph& graph,
     AM_CHECK(output_spec == graph.GetValue(up).spec,
              "SiluMul gate and up specs must match");
 
-    const auto node = graph.AddNode(OpType::kSiluMul,
-                                    decoder_layer_index,
-                                    {gate, up},
-                                    {ActivationOutput(std::move(output_spec))},
-                                    SiluMulParams{},
-                                    {},
-                                    std::move(debug_name));
-    return OnlyOneOutput(node);
+    auto node_or = graph.AddNode(OpType::kSiluMul,
+                                 decoder_layer_index,
+                                 {gate, up},
+                                 {ActivationOutput()},
+                                 SiluMulParams{},
+                                 {},
+                                 std::move(debug_name));
+    AM_CHECK(node_or.ok(), "AddNode for SiluMul failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 GraphValueId AddSilu(ModelGraph& graph,
                      std::optional<uint32_t> decoder_layer_index,
                      GraphValueId input,
                      std::string debug_name) {
-    TensorSpec output_spec = graph.GetValue(input).spec;
-    const auto node = graph.AddNode(OpType::kSilu,
-                                    decoder_layer_index,
-                                    {input},
-                                    {ActivationOutput(std::move(output_spec))},
-                                    SiluParams{},
-                                    {},
-                                    std::move(debug_name));
-    return OnlyOneOutput(node);
+    auto node_or = graph.AddNode(OpType::kSilu,
+                                 decoder_layer_index,
+                                 {input},
+                                 {ActivationOutput()},
+                                 SiluParams{},
+                                 {},
+                                 std::move(debug_name));
+    AM_CHECK(node_or.ok(), "AddNode for Silu failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 GraphValueId AddElementwiseMul(ModelGraph& graph,
@@ -278,14 +268,15 @@ GraphValueId AddElementwiseMul(ModelGraph& graph,
     AM_CHECK(output_spec == graph.GetValue(rhs).spec,
              "ElementwiseMul lhs and rhs specs must match");
 
-    const auto node = graph.AddNode(OpType::kElementwiseMul,
-                                    decoder_layer_index,
-                                    {lhs, rhs},
-                                    {ActivationOutput(std::move(output_spec))},
-                                    ElementwiseMulParams{},
-                                    {},
-                                    std::move(debug_name));
-    return OnlyOneOutput(node);
+    auto node_or = graph.AddNode(OpType::kElementwiseMul,
+                                 decoder_layer_index,
+                                 {lhs, rhs},
+                                 {ActivationOutput()},
+                                 ElementwiseMulParams{},
+                                 {},
+                                 std::move(debug_name));
+    AM_CHECK(node_or.ok(), "AddNode for ElementwiseMul failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 GraphValueId AddArgmax(ModelGraph& graph,
@@ -294,14 +285,16 @@ GraphValueId AddArgmax(ModelGraph& graph,
                        TensorSpec output_spec,
                        int64_t axis,
                        std::string debug_name) {
-    const auto node = graph.AddNode(OpType::kArgmax,
-                                    decoder_layer_index,
-                                    {input},
-                                    {ActivationOutput(std::move(output_spec))},
-                                    ArgmaxParams{.axis = axis},
-                                    {},
-                                    std::move(debug_name));
-    return OnlyOneOutput(node);
+    (void) output_spec;
+    auto node_or = graph.AddNode(OpType::kArgmax,
+                                 decoder_layer_index,
+                                 {input},
+                                 {ActivationOutput()},
+                                 ArgmaxParams{.axis = axis},
+                                 {},
+                                 std::move(debug_name));
+    AM_CHECK(node_or.ok(), "AddNode for Argmax failed: {}", node_or.status().ToString());
+    return OnlyOneOutput(*node_or);
 }
 
 }// namespace aethermind

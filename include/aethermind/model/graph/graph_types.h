@@ -10,6 +10,7 @@
 /// this lightweight header without pulling in the full graph API.
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/op_type.h"
+#include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 #include "macros.h"
 
@@ -214,12 +215,31 @@ struct GraphNode {
     ModelGraphAttrs attrs{};
     OpParams op_params{};
     std::string debug_name;
+    /// Runtime shape constraints derived by operator semantic analysis.
+    /// Written by ModelGraph::AddNode and verified by ValidateAndTopologicalOrder.
+    std::vector<ShapeConstraint> runtime_checks{};
 };
 
 /// Describes one output of a graph node being constructed via
-/// ModelGraph::AddNode. The caller specifies the spec, payload kind,
+/// ModelGraph::AddNode. The caller specifies the payload kind,
 /// optional quantization scheme, and debug name.
+///
+/// Output TensorSpecs are derived by operator semantic analysis
+/// (AnalyzeOperator) and stored on GraphValue. Runtime shape
+/// constraints are stored on GraphNode.runtime_checks.
 struct NodeOutputDesc {
+    GraphValuePayload payload{std::monostate{}};
+    QuantizationSpec quantization{};
+    std::string debug_name{};
+};
+
+/// Describes an existing graph value with its authoritative TensorSpec.
+///
+/// Returned by GraphRewriteSession::GetValueOutputDesc and consumed by
+/// ConstEvaluator::Plan — both need the TensorSpec to reason about shapes,
+/// dtypes, and byte counts. For new node construction (ModelGraph::AddNode),
+/// use NodeOutputDesc (spec is derived by the analyzer, not caller-supplied).
+struct GraphValueDesc {
     TensorSpec spec{};
     GraphValuePayload payload{std::monostate{}};
     QuantizationSpec quantization{};

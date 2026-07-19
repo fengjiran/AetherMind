@@ -2,8 +2,8 @@
 
 #include <gtest/gtest.h>
 
-namespace aethermind {
 namespace {
+using namespace aethermind;
 
 TEST(KernelContext, DefaultsAreNarrowAndNull) {
     KernelContext ctx;
@@ -40,5 +40,4 @@ TEST(KernelContext, CanCarryMinimalExecutionHandles) {
     EXPECT_EQ(ctx.attrs.size(), sizeof(attrs_storage));
 }
 
-}// namespace
-}// namespace aethermind
+}  // namespace

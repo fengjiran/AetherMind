@@ -15,8 +15,8 @@
 #include <new>
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
-namespace aethermind {
 namespace {
+using namespace aethermind;
 
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
@@ -379,5 +379,4 @@ TEST(RmsNormOp, RunInvokesKernelAndReturnsOk) {
     ASSERT_EQ(g_stub_state.attrs.size(), sizeof(float));
 }
 
-}// namespace
-}// namespace aethermind
+}  // namespace

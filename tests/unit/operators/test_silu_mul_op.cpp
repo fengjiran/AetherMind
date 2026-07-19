@@ -9,8 +9,8 @@
 
 #include <variant>
 
-namespace aethermind {
 namespace {
+using namespace aethermind;
 
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
@@ -445,5 +445,4 @@ TEST(SiluMulOp, CreateDefaultParamsFromRegistry) {
     EXPECT_TRUE(std::holds_alternative<SiluMulOp::Params>(params.value()));
 }
 
-}// namespace
-}// namespace aethermind
+}  // namespace

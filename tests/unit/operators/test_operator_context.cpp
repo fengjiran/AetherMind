@@ -4,8 +4,8 @@
 
 #include <gtest/gtest.h>
 
-namespace aethermind {
 namespace {
+using namespace aethermind;
 
 class TestWorkspaceArena final : public WorkspaceArena {
 public:
@@ -59,5 +59,4 @@ TEST(Operators_OperatorContext, CanCarryRuntimeDependenciesAndKernelSelector) {
     EXPECT_TRUE(ctx.enable_debug_check);
 }
 
-}// namespace
-}// namespace aethermind
+}  // namespace

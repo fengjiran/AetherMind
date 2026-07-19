@@ -7,16 +7,16 @@
 
 #include <gtest/gtest.h>
 
+#include "backend/cpu/kernels/linear/linear_internal.h"
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <new>
 #include <variant>
 #include <vector>
-#include <new>
-#include "backend/cpu/kernels/linear/linear_internal.h"
 
-namespace aethermind {
 namespace {
+using namespace aethermind;
 
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
@@ -231,8 +231,8 @@ public:
 };
 
 Status BuildStubLinearParams(std::span<const TensorView> inputs,
-                                 std::span<const MutableTensorView> outputs,
-                                 void* params_buffer) noexcept {
+                             std::span<const MutableTensorView> outputs,
+                             void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("Linear requires 2 inputs and 1 output");
     }
@@ -440,4 +440,3 @@ TEST(LinearOp, RunInvokesKernelAndReturnsOk) {
 }
 
 }// namespace
-}// namespace aethermind

@@ -13,8 +13,8 @@
 #include <new>
 #include "backend/cpu/kernels/embedding/embedding_internal.h"
 
-namespace aethermind {
 namespace {
+using namespace aethermind;
 
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
@@ -378,5 +378,4 @@ TEST(EmbeddingOp, RunInvokesKernelAndReturnsOk) {
     EXPECT_NE(g_stub_state.kernel_params, nullptr);
 }
 
-}// namespace
-}// namespace aethermind
+}  // namespace

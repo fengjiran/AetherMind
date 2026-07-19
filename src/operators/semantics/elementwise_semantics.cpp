@@ -18,13 +18,13 @@ StatusOr<InferenceResult> AnalyzeBroadcastBinary(const OpParams& /*params*/,
     }
     const TensorSpec& lhs_spec = inputs[0];
     const TensorSpec& rhs_spec = inputs[1];
-    if (lhs_spec.dtype != DataType::Float32()) {
+    if (lhs_spec.dtype != DataType::Float32() && lhs_spec.dtype != DataType::BFloat(16)) {
         return Status::InvalidArgument(
-                std::string(op_name) + " lhs must be float32");
+                std::string(op_name) + " lhs must be float32 or bfloat16");
     }
-    if (rhs_spec.dtype != DataType::Float32()) {
+    if (rhs_spec.dtype != DataType::Float32() && rhs_spec.dtype != DataType::BFloat(16)) {
         return Status::InvalidArgument(
-                std::string(op_name) + " rhs must be float32");
+                std::string(op_name) + " rhs must be float32 or bfloat16");
     }
     auto broadcast_result = InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
     if (!broadcast_result.ok()) {
@@ -76,8 +76,8 @@ StatusOr<InferenceResult> AnalyzeSilu(const OpParams& /*params*/,
     if (inputs.size() != 1) {
         return Status::InvalidArgument("Silu requires exactly 1 input");
     }
-    if (inputs[0].dtype != DataType::Float32()) {
-        return Status::InvalidArgument("Silu input must be float32");
+    if (inputs[0].dtype != DataType::Float32() && inputs[0].dtype != DataType::BFloat(16)) {
+        return Status::InvalidArgument("Silu input must be float32 or bfloat16");
     }
     InferenceResult result;
     result.outputs.push_back(inputs[0]);

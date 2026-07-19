@@ -42,8 +42,8 @@ public:
     // Validates shapes, dtype match, and budgets; requires identical shapes
     // (no broadcast support for element-wise Mul).
     // Produces a contiguous-output plan (element-wise op is always dense).
-    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const NodeOutputDesc> inputs,
-                                              std::span<const NodeOutputDesc> outputs,
+    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
+                                              std::span<const GraphValueDesc> outputs,
                                               const OpParams& params,
                                               const ConstEvalPolicy& policy) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||

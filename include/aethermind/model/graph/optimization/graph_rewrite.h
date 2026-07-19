@@ -263,12 +263,12 @@ public:
     /// Nodes with no inputs return true (vacuous).
     AM_NODISCARD bool AreAllInputsConstant(GraphNodeId node) const;
 
-    /// Returns the output descriptor represented by a real graph value.
+    /// Returns the spec-bearing descriptor for an existing graph value.
     ///
     /// This is derived from the source graph value's spec, payload,
     /// quantization, and debug name. Virtual values and out-of-range values
     /// return InvalidArgument.
-    AM_NODISCARD StatusOr<NodeOutputDesc> GetValueOutputDesc(GraphValueId value) const;
+    AM_NODISCARD StatusOr<GraphValueDesc> GetValueOutputDesc(GraphValueId value) const;
 
     /// Returns true when `value` is directly marked as a graph output in the
     /// source graph. Out-of-range ids and virtual values return false.
@@ -398,8 +398,8 @@ private:
             const std::vector<ReplacementNode>& replacement_nodes) const;
     // Validates virtual value ordering (no consumption before production).
     AM_NODISCARD Status ValidateVirtualValues() const;
-    // Builds a NodeOutputDesc from a session constant's metadata.
-    AM_NODISCARD NodeOutputDesc MakeOutputDescFromSessionConstant(GraphValueId value) const;
+    // Builds a GraphValueDesc from a session constant's metadata.
+    AM_NODISCARD GraphValueDesc MakeOutputDescFromSessionConstant(GraphValueId value) const;
     // Translates a value id from source/session space to committed graph space.
     AM_NODISCARD StatusOr<GraphValueId> MapCommittedValue(
             GraphValueId value,

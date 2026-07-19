@@ -38,8 +38,8 @@ class SiluMulConstEvaluator final : public ConstEvaluator {
 public:
     // Validates shapes, dtype match across gate/up/output, and budgets.
     // Produces a contiguous-output plan (element-wise fusion is always dense).
-    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const NodeOutputDesc> inputs,
-                                              std::span<const NodeOutputDesc> outputs,
+    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
+                                              std::span<const GraphValueDesc> outputs,
                                               const OpParams& params,
                                               const ConstEvalPolicy& policy) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||

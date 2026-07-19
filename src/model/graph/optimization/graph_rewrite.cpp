@@ -33,10 +33,10 @@ StatusOr<GraphValueId> MapResolvedValue(GraphValueId old_value,
     return *value_map[old_value.index];
 }
 
-// Copies all fields from a GraphValue into a NodeOutputDesc for use in a
-// replacement node or committed graph node.
-NodeOutputDesc MakeOutputDescFromValue(const GraphValue& value) {
-    return NodeOutputDesc{
+// Copies all fields from a GraphValue into a GraphValueDesc for use in
+// GetValueOutputDesc and other spec-bearing value queries.
+GraphValueDesc MakeOutputDescFromValue(const GraphValue& value) {
+    return GraphValueDesc{
             .spec = value.spec,
             .payload = value.payload,
             .quantization = value.quantization,
@@ -62,7 +62,11 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
     for (GraphValueId output: original.outputs) {
         const GraphValue& value = graph.GetValue(output);
         rn.outputs.push_back(RewriteOutputBinding{
-                .desc = MakeOutputDescFromValue(value),
+                .desc = NodeOutputDesc{
+                        .payload = value.payload,
+                        .quantization = value.quantization,
+                        .debug_name = value.debug_name,
+                },
                 .replaces = output,
         });
     }
@@ -404,7 +408,7 @@ bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
     return IsValueReplacedByActiveRewrite(value);
 }
 
-StatusOr<NodeOutputDesc> GraphRewriteSession::GetValueOutputDesc(GraphValueId value) const {
+StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputDesc(GraphValueId value) const {
     AM_RETURN_IF_ERROR(CheckValueId(value));
     if (IsSessionConstant(value)) {
         return MakeOutputDescFromSessionConstant(value);
@@ -575,9 +579,9 @@ Status GraphRewriteSession::ValidateEdits() const {
     return Status::Ok();
 }
 
-NodeOutputDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValueId value) const {
+GraphValueDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValueId value) const {
     const SessionConstant& constant = *session_constants_[GetVirtualIndex(value)];
-    return NodeOutputDesc{.spec = constant.spec,
+    return GraphValueDesc{.spec = constant.spec,
                           .payload = ConstantValue{.binding = constant.binding},
                           .quantization = constant.quantization,
                           .debug_name = constant.debug_name};
@@ -687,7 +691,7 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
             output_descs.push_back(output.desc);
         }
 
-        const AddedNode added = committed.AddNode(
+        const auto added_or = committed.AddNode(
                 replacement.op_type,
                 replacement.decoder_layer_index,
                 std::move(new_inputs),
@@ -695,6 +699,8 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
                 replacement.op_params,
                 replacement.attrs,
                 replacement.debug_name);
+        AM_RETURN_IF_ERROR(added_or.status());
+        const AddedNode& added = *added_or;
 
         for (size_t i = 0; i < replacement.outputs.size(); ++i) {
             if (replacement.outputs[i].replaces.has_value()) {
@@ -743,10 +749,14 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
     output_descs.reserve(view->outputs.size());
     for (GraphValueId old_output: view->outputs) {
         const GraphValue& old_value = graph_.GetValue(old_output);
-        output_descs.push_back(MakeOutputDescFromValue(old_value));
+        output_descs.push_back(NodeOutputDesc{
+                .payload = old_value.payload,
+                .quantization = old_value.quantization,
+                .debug_name = old_value.debug_name,
+        });
     }
 
-    const AddedNode added = committed.AddNode(
+    const auto added_or = committed.AddNode(
             view->op_type,
             view->decoder_layer_index,
             std::move(new_inputs),
@@ -754,6 +764,8 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
             view->op_params,
             view->attrs,
             view->debug_name);
+    AM_RETURN_IF_ERROR(added_or.status());
+    const AddedNode& added = *added_or;
 
     for (size_t i = 0; i < view->outputs.size(); ++i) {
         if (maps.source_values[view->outputs[i].index].has_value()) {

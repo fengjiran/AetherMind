@@ -71,8 +71,8 @@ public:
 
     /// Validates folding feasibility and describes the expected output layout.
     ///
-    /// @param inputs  Descriptors of the node's input values.
-    /// @param outputs Descriptors of the node's output values.
+    /// @param inputs  Descriptors of the node's input values (spec-bearing).
+    /// @param outputs Descriptors of the node's output values (spec-bearing).
     /// @param params  Operator-specific parameters.
     /// @param policy  Budget constraints for the folding decision.
     /// @return ConstEvalPlan with outputs populated, or Unimplemented when
@@ -80,8 +80,8 @@ public:
     /// @pre  All `inputs` must have ConstantValue payloads with inline_data.
     /// @post outputs.size() == outputs.size() from the caller.
     AM_NODISCARD virtual StatusOr<ConstEvalPlan> Plan(
-            std::span<const NodeOutputDesc> inputs,
-            std::span<const NodeOutputDesc> outputs,
+            std::span<const GraphValueDesc> inputs,
+            std::span<const GraphValueDesc> outputs,
             const OpParams& params,
             const ConstEvalPolicy& policy) const = 0;
 

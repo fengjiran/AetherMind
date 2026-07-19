@@ -29,9 +29,9 @@ struct OutputStorage {
     std::vector<MutableTensorView> views{};
 };
 
-StatusOr<std::vector<NodeOutputDesc>> CollectValueDescs(const GraphRewriteSession& session,
+StatusOr<std::vector<GraphValueDesc>> CollectValueDescs(const GraphRewriteSession& session,
                                                         std::span<const GraphValueId> values) {
-    std::vector<NodeOutputDesc> descs;
+    std::vector<GraphValueDesc> descs;
     descs.reserve(values.size());
     for (const auto value: values) {
         auto desc = session.GetValueOutputDesc(value);
@@ -44,7 +44,7 @@ StatusOr<std::vector<NodeOutputDesc>> CollectValueDescs(const GraphRewriteSessio
 // Returns true when the output desc carries a ConstantValue with inline_data
 // whose byte count matches the tensor spec. Dynamic shapes (Unimplemented
 // from CountBytes) are treated as "no" — they cannot be folded.
-StatusOr<bool> HasInlineConstantBytes(const NodeOutputDesc& desc) {
+StatusOr<bool> HasInlineConstantBytes(const GraphValueDesc& desc) {
     const auto* constant = std::get_if<ConstantValue>(&desc.payload);
     if (constant == nullptr || !constant->binding.inline_data) {
         return false;
@@ -63,8 +63,8 @@ StatusOr<bool> HasInlineConstantBytes(const NodeOutputDesc& desc) {
 // Iterates all inputs and returns false if any lacks inline constant data
 // with matching byte count. This is the gate that ensures only fully-materialised
 // constant subgraphs enter the evaluator.
-StatusOr<bool> AllInputsAreInlineConstantValues(std::span<const NodeOutputDesc> inputs) {
-    for (const NodeOutputDesc& input: inputs) {
+StatusOr<bool> AllInputsAreInlineConstantValues(std::span<const GraphValueDesc> inputs) {
+    for (const GraphValueDesc& input: inputs) {
         auto has_inline_bytes = HasInlineConstantBytes(input);
         AM_RETURN_IF_ERROR(has_inline_bytes.status());
         if (!*has_inline_bytes) {
@@ -78,7 +78,7 @@ StatusOr<bool> AllInputsAreInlineConstantValues(std::span<const NodeOutputDesc> 
 // evaluator can read the bytes. The views borrow into result.shapes,
 // result.strides, and the ConstantBinding inline_data heap; all backing
 // storage must outlive the evaluator call.
-StatusOr<InputViews> BuildInputViews(std::span<const NodeOutputDesc> inputs) {
+StatusOr<InputViews> BuildInputViews(std::span<const GraphValueDesc> inputs) {
     InputViews result;
     // reserve() on shapes/strides is critical: TensorView stores IntArrayView
     // (span) pointing into these vectors. Without reserve, push_back reallocation

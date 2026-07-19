@@ -10,8 +10,7 @@ namespace aethermind {
 namespace {
 
 NodeOutputDesc ActivationDesc(const char* debug_name) {
-    return {.spec = Spec(DataType::Float32(), {2, 4}),
-            .payload = ActivationValue{},
+    return {.payload = ActivationValue{},
             .debug_name = debug_name};
 }
 
@@ -22,13 +21,15 @@ GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {
             WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                           .semantic_role = TransformerWeightRole::kTokenEmbedding},
             std::string(debug_name) + ".weight");
-    const AddedNode node = graph.AddNode(OpType::kEmbedding,
-                                         std::nullopt,
-                                         {tokens, weight},
-                                         {ActivationDesc(debug_name)},
-                                         EmbeddingParams{},
-                                         {},
-                                         std::string(debug_name) + ".producer");
+    auto node_or = graph.AddNode(OpType::kEmbedding,
+                                 std::nullopt,
+                                 {tokens, weight},
+                                 {ActivationDesc(debug_name)},
+                                 EmbeddingParams{},
+                                 {},
+                                 std::string(debug_name) + ".producer");
+    AM_CHECK(node_or.ok(), "AddActivation AddNode failed");
+    const AddedNode& node = *node_or;
     return node.outputs[0];
 }
 

@@ -94,11 +94,11 @@ TEST(ConstEvaluator, PlansAddFloat32SameShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float32(), {2});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
     };
 
@@ -116,11 +116,11 @@ TEST(ConstEvaluator, PlansAddSupportedDTypesSameShape) {
     ASSERT_NE(evaluator, nullptr);
     for (const DataType dtype: kAddSupportedDTypes) {
         const TensorSpec spec = Spec(dtype, {2});
-        const std::vector<NodeOutputDesc> inputs = {
+        const std::vector<GraphValueDesc> inputs = {
                 {.spec = spec, .payload = ConstantValue{}},
                 {.spec = spec, .payload = ConstantValue{}},
         };
-        const std::vector<NodeOutputDesc> outputs = {
+        const std::vector<GraphValueDesc> outputs = {
                 {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
         };
 
@@ -137,11 +137,11 @@ TEST(ConstEvaluator, PlansAddBroadcastRowVector) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec output = Spec(DataType::Float32(), {2, 3});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = output, .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {3}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
     };
 
@@ -157,11 +157,11 @@ TEST(ConstEvaluator, PlansAddBroadcastBothInputs) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec output = Spec(DataType::Float32(), {2, 3});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {2, 1}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {1, 3}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
     };
 
@@ -175,11 +175,11 @@ TEST(ConstEvaluator, PlansAddBroadcastBothInputs) {
 TEST(ConstEvaluator, SkipsAddBroadcastOutputMismatch) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {2, 1}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {1, 3}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = Spec(DataType::Float32(), {2, 1}), .payload = ActivationValue{}},
     };
 
@@ -193,11 +193,11 @@ TEST(ConstEvaluator, PlansAddScalarBroadcastRankZeroLhs) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec output = Spec(DataType::Float32(), {2});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
     };
 
@@ -213,11 +213,11 @@ TEST(ConstEvaluator, PlansAddScalarBroadcastRankZeroRhs) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec output = Spec(DataType::Float32(), {2});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
     };
 
@@ -233,11 +233,11 @@ TEST(ConstEvaluator, SkipsAddUnsupportedDType) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float(16), {2});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
     };
 
@@ -250,11 +250,11 @@ TEST(ConstEvaluator, SkipsAddUnsupportedDType) {
 TEST(ConstEvaluator, SkipsAddMismatchedShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {3}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ActivationValue{}},
     };
 
@@ -438,11 +438,11 @@ TEST(ConstEvaluator, PlansAddRankZeroScalarPlusScalar) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float32(), {});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
     };
 
@@ -567,11 +567,11 @@ TEST(ConstEvaluator, SkipsAddRankZeroUnsupportedDType) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kAdd);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float(16), {});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}},
     };
 

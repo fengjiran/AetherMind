@@ -91,11 +91,11 @@ TEST(ConstEvaluator, PlansMulFloat32SameShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float32(), {2});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
     };
 
@@ -120,11 +120,11 @@ TEST(ConstEvaluator, PlansMulSupportedDTypesSameShape) {
 
     for (const DataType dtype: dtypes) {
         const TensorSpec spec = Spec(dtype, {2});
-        const std::vector<NodeOutputDesc> inputs = {
+        const std::vector<GraphValueDesc> inputs = {
                 {.spec = spec, .payload = ConstantValue{}},
                 {.spec = spec, .payload = ConstantValue{}},
         };
-        const std::vector<NodeOutputDesc> outputs = {
+        const std::vector<GraphValueDesc> outputs = {
                 {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
         };
 
@@ -141,11 +141,11 @@ TEST(ConstEvaluator, PlansMulBFloat16SameShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::BFloat(16), {2});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
     };
 
@@ -160,11 +160,11 @@ TEST(ConstEvaluator, PlansMulBFloat16SameShape) {
 TEST(ConstEvaluator, SkipsMulMismatchedShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {3}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ActivationValue{}},
     };
 
@@ -177,11 +177,11 @@ TEST(ConstEvaluator, SkipsMulMismatchedShape) {
 TEST(ConstEvaluator, SkipsMulRankZeroScalarTensorMismatch) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ActivationValue{}},
     };
 
@@ -195,11 +195,11 @@ TEST(ConstEvaluator, SkipsMulUnsupportedDType) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float(16), {2});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
     };
 
@@ -214,11 +214,11 @@ TEST(ConstEvaluator, PlansMulComputeBudgetExceeded) {
     ASSERT_NE(evaluator, nullptr);
     constexpr int64_t kExceed = int64_t{64U} * 1024 + 1;
     const TensorSpec spec = Spec(DataType::Float32(), {kExceed});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
     };
 
@@ -234,11 +234,11 @@ TEST(ConstEvaluator, PlansMulOutputByteBudgetExceeded) {
     // Float64 = 8 bytes, 8193 elements = 65544 bytes > 64K byte budget
     const std::vector<int64_t> shape{8193};
     const TensorSpec spec = Spec(DataType::Double(), shape);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
     };
 
@@ -350,11 +350,11 @@ TEST(ConstEvaluator, PlansMulRankZeroScalarPlusScalar) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float32(), {});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
     };
 
@@ -417,11 +417,11 @@ TEST(ConstEvaluator, SkipsMulRankZeroUnsupportedDType) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float(16), {});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}},
     };
 

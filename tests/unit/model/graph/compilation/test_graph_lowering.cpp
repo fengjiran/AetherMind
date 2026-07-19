@@ -47,13 +47,14 @@ StateBinding VStateBinding(uint32_t decoder_layer_index = 0U) {
 GraphValueId AddActivation(ModelGraph& graph, TensorSpec spec, std::string name) {
     const GraphValueId tokens = graph.AddInput(TokenSpec(), name + "_tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
-    return graph.AddNode(
-                        OpType::kEmbedding,
-                        std::nullopt,
-                        {tokens, weight},
-                        {NodeOutputDesc{.spec = std::move(spec), .payload = ActivationValue{}}},
-                        EmbeddingParams{})
-            .outputs[0];
+    auto embed_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
+            EmbeddingParams{});
+    AM_CHECK(embed_or.ok(), "AddActivation AddNode failed");
+    return embed_or->outputs[0];
 }
 
 HfModelConfig MakeLlamaConfig(int64_t num_layers) {
@@ -125,12 +126,14 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
-    const AddedNode embedding = graph.AddNode(
+    auto embedding_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             EmbeddingParams{});
+    ASSERT_TRUE(embedding_or.ok()) << embedding_or.status().ToString();
+    const AddedNode& embedding = *embedding_or;
     graph.MarkOutput(embedding.outputs[0], "hidden");
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
@@ -160,19 +163,23 @@ TEST(GraphLowering, PreservesTopologicalOrderAndRmsNormParams) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
     const GraphValueId embedding_weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding});
-    const AddedNode embedding = graph.AddNode(
+    auto embedding_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, embedding_weight},
-            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             EmbeddingParams{});
+    ASSERT_TRUE(embedding_or.ok()) << embedding_or.status().ToString();
+    const AddedNode& embedding = *embedding_or;
     const GraphValueId norm_weight = graph.AddWeight(WeightSpec(), WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kFinalNorm});
-    const AddedNode rms_norm = graph.AddNode(
+    auto rms_norm_or = graph.AddNode(
             OpType::kRmsNorm,
             std::nullopt,
             {embedding.outputs[0], norm_weight},
-            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             RmsNormParams{.eps = 2.5e-3F});
+    ASSERT_TRUE(rms_norm_or.ok()) << rms_norm_or.status().ToString();
+    const AddedNode& rms_norm = *rms_norm_or;
     graph.MarkOutput(rms_norm.outputs[0], "normed");
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
@@ -197,13 +204,15 @@ TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
     const GraphValueId v = AddActivation(graph, KVSpec(), "v");
     const GraphValueId k_state_in = graph.AddState(KVSpec(), KStateBinding(), "k_cache_in");
     const GraphValueId v_state_in = graph.AddState(KVSpec(), VStateBinding(), "v_cache_in");
-    const AddedNode update = graph.AddNode(
+    auto update_or = graph.AddNode(
             OpType::kKVCacheUpdate,
             0U,
             {k, v, k_state_in, v_state_in},
-            {NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
-             NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = VStateBinding()}}},
+            {NodeOutputDesc{.payload = StateValue{.binding = KStateBinding()}},
+             NodeOutputDesc{.payload = StateValue{.binding = VStateBinding()}}},
             KVCacheUpdateParams{});
+    ASSERT_TRUE(update_or.ok()) << update_or.status().ToString();
+    const AddedNode& update = *update_or;
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
@@ -229,12 +238,14 @@ TEST(GraphLowering, LowersAttentionStatePortsWithoutTensorSpecs) {
     const GraphValueId q = AddActivation(graph, HiddenSpec(), "q");
     const GraphValueId k_cache = graph.AddState(KVSpec(), KStateBinding(), "k_cache");
     const GraphValueId v_cache = graph.AddState(KVSpec(), VStateBinding(), "v_cache");
-    const AddedNode attention = graph.AddNode(
+    auto attention_or = graph.AddNode(
             OpType::kAttention,
             0U,
             {q, k_cache, v_cache},
-            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             AttentionParams{.num_attention_heads = 4, .num_key_value_heads = 2, .head_dim = 2});
+    ASSERT_TRUE(attention_or.ok()) << attention_or.status().ToString();
+    const AddedNode& attention = *attention_or;
     graph.MarkOutput(attention.outputs[0], "attention_output");
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
@@ -291,8 +302,8 @@ TEST(GraphLowering, ResolveStateAliasesConvertsLoweringTimeRecordsToRuntimePlan)
             OpType::kKVCacheUpdate,
             0U,
             {k, v, k_state_in, v_state_in},
-            {NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
-             NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = VStateBinding()}}},
+            {NodeOutputDesc{.payload = StateValue{.binding = KStateBinding()}},
+             NodeOutputDesc{.payload = StateValue{.binding = VStateBinding()}}},
             KVCacheUpdateParams{});
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
@@ -325,7 +336,7 @@ TEST(GraphLowering, ResolveStateAliasesReturnsEmptyRuntimePlanForGraphWithoutSta
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             EmbeddingParams{});
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
@@ -346,7 +357,7 @@ TEST(GraphLowering, StateAliasPlanForStepReturnsEmptySpanForUnknownStep) {
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             EmbeddingParams{});
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
@@ -369,8 +380,8 @@ TEST(GraphLowering, ResolveStateAliasesFailsOnOrphanAlias) {
             OpType::kKVCacheUpdate,
             0U,
             {k, v, k_state_in, v_state_in},
-            {NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
-             NodeOutputDesc{.spec = KVSpec(), .payload = StateValue{.binding = VStateBinding()}}},
+            {NodeOutputDesc{.payload = StateValue{.binding = KStateBinding()}},
+             NodeOutputDesc{.payload = StateValue{.binding = VStateBinding()}}},
             KVCacheUpdateParams{});
 
     StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
@@ -395,7 +406,7 @@ TEST(GraphLowering, WeightlessOpFallsBackWeightDTypeToActDType) {
             OpType::kAdd,
             std::nullopt,
             {lhs, rhs},
-            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             AddParams{});
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
@@ -419,7 +430,7 @@ TEST(GraphLowering, WeightedOpPreservesOriginalWeightDType) {
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {NodeOutputDesc{.spec = HiddenSpec(), .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             EmbeddingParams{});
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);

@@ -12,28 +12,30 @@ namespace {
 
 ModelGraph BuildGraph() {
     ModelGraph graph;
-    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
-    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
+    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_a");
+    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_b");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                 WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                                                               .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
-    const AddedNode embed_a = graph.AddNode(
+    auto embed_a_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_a, weight},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                            .payload = ActivationValue{},
+            {NodeOutputDesc{.payload = ActivationValue{},
                             .debug_name = "hidden_a"}},
             EmbeddingParams{});
-    const AddedNode embed_b = graph.AddNode(
+    AM_CHECK(embed_a_or.ok(), "BuildGraph embed_a AddNode failed: {}", embed_a_or.status().ToString());
+    const AddedNode& embed_a = *embed_a_or;
+    auto embed_b_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_b, weight},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                            .payload = ActivationValue{},
+            {NodeOutputDesc{.payload = ActivationValue{},
                             .debug_name = "hidden_b"}},
             EmbeddingParams{});
+    AM_CHECK(embed_b_or.ok(), "BuildGraph embed_b AddNode failed: {}", embed_b_or.status().ToString());
+    const AddedNode& embed_b = *embed_b_or;
     (void) embed_b;
     graph.MarkOutput(embed_a.outputs[0], "output");
     return graph;

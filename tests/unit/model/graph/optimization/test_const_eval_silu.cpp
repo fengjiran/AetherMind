@@ -53,10 +53,10 @@ TEST(ConstEvaluator, PlansSiluFloat32SameShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float32(), {3});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
     };
 
@@ -80,10 +80,10 @@ TEST(ConstEvaluator, PlansSiluSupportedDTypesSameShape) {
 
     for (const DataType dtype: dtypes) {
         const TensorSpec spec = Spec(dtype, {2});
-        const std::vector<NodeOutputDesc> inputs = {
+        const std::vector<GraphValueDesc> inputs = {
                 {.spec = spec, .payload = ConstantValue{}},
         };
-        const std::vector<NodeOutputDesc> outputs = {
+        const std::vector<GraphValueDesc> outputs = {
                 {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
         };
 
@@ -106,10 +106,10 @@ TEST(ConstEvaluator, SkipsSiluUnsupportedDType) {
 
     for (const DataType dtype: unsupported) {
         const TensorSpec spec = Spec(dtype, {2});
-        const std::vector<NodeOutputDesc> inputs = {
+        const std::vector<GraphValueDesc> inputs = {
                 {.spec = spec, .payload = ConstantValue{}},
         };
-        const std::vector<NodeOutputDesc> outputs = {
+        const std::vector<GraphValueDesc> outputs = {
                 {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
         };
 
@@ -123,10 +123,10 @@ TEST(ConstEvaluator, SkipsSiluUnsupportedDType) {
 TEST(ConstEvaluator, SkipsSiluMismatchedShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = Spec(DataType::Float32(), {3}), .payload = ActivationValue{}},
     };
 
@@ -139,10 +139,10 @@ TEST(ConstEvaluator, SkipsSiluMismatchedShape) {
 TEST(ConstEvaluator, SkipsSiluRankZeroInputOutputMismatch) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ActivationValue{}},
     };
 
@@ -157,10 +157,10 @@ TEST(ConstEvaluator, PlansSiluComputeBudgetExceeded) {
     ASSERT_NE(evaluator, nullptr);
     constexpr int64_t kExceed = int64_t{64U} * 1024 + 1;
     const TensorSpec spec = Spec(DataType::Float32(), {kExceed});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
     };
 
@@ -175,10 +175,10 @@ TEST(ConstEvaluator, PlansSiluOutputByteBudgetExceeded) {
     ASSERT_NE(evaluator, nullptr);
     const std::vector<int64_t> shape{8193};
     const TensorSpec spec = Spec(DataType::Double(), shape);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
     };
 
@@ -300,10 +300,10 @@ TEST(ConstEvaluator, PlansSiluRankZero) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float32(), {});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
     };
 

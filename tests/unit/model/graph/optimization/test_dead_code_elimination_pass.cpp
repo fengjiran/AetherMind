@@ -42,15 +42,18 @@ public:
 
         StatusOr<GraphNodeView> add_view = session.GetNodeView(add_node);
         AM_RETURN_IF_ERROR(add_view.status());
-        StatusOr<NodeOutputDesc> output_desc = session.GetValueOutputDesc(add_view->outputs[0]);
-        AM_RETURN_IF_ERROR(output_desc.status());
+        auto output_desc_or = session.GetValueOutputDesc(add_view->outputs[0]);
+        AM_RETURN_IF_ERROR(output_desc_or.status());
+        NodeOutputDesc output_desc{.payload = output_desc_or->payload,
+                                   .quantization = output_desc_or->quantization,
+                                   .debug_name = output_desc_or->debug_name};
 
         return session.ReplaceSubgraph(
                 std::vector<GraphNodeId>{add_node},
                 {{.op_type = OpType::kSilu,
                   .decoder_layer_index = add_view->decoder_layer_index,
                   .inputs = {add_view->inputs[0]},
-                  .outputs = {RewriteOutputBinding{.desc = *output_desc,
+                  .outputs = {RewriteOutputBinding{.desc = output_desc,
                                                    .replaces = add_view->outputs[0]}},
                   .op_params = SiluParams{},
                   .debug_name = "replacement_silu"}});
@@ -144,7 +147,7 @@ TEST(DeadCodeEliminationPass, KeepsMultiOutputNodeWhenAnyOutputIsGraphOutput) {
     const GraphValueId q = AddActivation(graph, "q");
     const GraphValueId k = AddActivation(graph, "k");
     const GraphValueId position_ids = graph.AddInput(
-            Spec(DataType::Int(32), {2}), "position_ids");
+            Spec(DataType::Int(64), {2}), "position_ids");
     const RoPEOutputs rope = AddRoPE(graph,
                                      0U,
                                      q,

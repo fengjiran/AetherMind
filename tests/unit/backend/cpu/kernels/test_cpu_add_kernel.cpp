@@ -1,6 +1,4 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/operators/add_op.h"
-#include "backend/cpu/kernels/add/add_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_registry.h"
 #include "aethermind/execution/execution_plan.h"
@@ -10,8 +8,10 @@
 #include "aethermind/model/graph/compilation/graph_lowering.h"
 #include "aethermind/model/graph/graph.h"
 #include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/add_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/broadcast.h"
+#include "backend/cpu/kernels/add/add_internal.h"
 
 #include <gtest/gtest.h>
 
@@ -483,16 +483,14 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
                                ShapeSymbol::CreateFromValue(1)})},
             WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                           .semantic_role = TransformerWeightRole::kTokenEmbedding});
-    const AddedNode emb_lhs = graph.AddNode(
+    auto emb_lhs_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {lhs_tokens, lhs_weight},
-            {NodeOutputDesc{.spec = TensorSpec{.dtype = DataType::Float32(),
-                                               .shape = SymbolicShape(std::vector<ShapeSymbol>{
-                                                       ShapeSymbol::CreateFromValue(2),
-                                                       ShapeSymbol::CreateFromValue(1)})},
-                            .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             EmbeddingParams{});
+    ASSERT_TRUE(emb_lhs_or.ok()) << emb_lhs_or.status().ToString();
+    const AddedNode& emb_lhs = *emb_lhs_or;
 
     const GraphValueId rhs_tokens = graph.AddInput(
             TensorSpec{.dtype = DataType::Int(64),
@@ -506,28 +504,23 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
                                ShapeSymbol::CreateFromValue(2)})},
             WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                           .semantic_role = TransformerWeightRole::kTokenEmbedding});
-    const AddedNode emb_rhs = graph.AddNode(
+    auto emb_rhs_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {rhs_tokens, rhs_weight},
-            {NodeOutputDesc{.spec = TensorSpec{.dtype = DataType::Float32(),
-                                               .shape = SymbolicShape(std::vector<ShapeSymbol>{
-                                                       ShapeSymbol::CreateFromValue(1),
-                                                       ShapeSymbol::CreateFromValue(2)})},
-                            .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             EmbeddingParams{});
+    ASSERT_TRUE(emb_rhs_or.ok()) << emb_rhs_or.status().ToString();
+    const AddedNode& emb_rhs = *emb_rhs_or;
 
-    const TensorSpec add_out_spec{
-            .dtype = DataType::Float32(),
-            .shape = SymbolicShape(std::vector<ShapeSymbol>{
-                    ShapeSymbol::CreateFromValue(2),
-                    ShapeSymbol::CreateFromValue(2)})};
-    const AddedNode add_node = graph.AddNode(
+    auto add_node_or = graph.AddNode(
             OpType::kAdd,
             std::nullopt,
             {emb_lhs.outputs[0], emb_rhs.outputs[0]},
-            {NodeOutputDesc{.spec = add_out_spec, .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             AddParams{});
+    ASSERT_TRUE(add_node_or.ok()) << add_node_or.status().ToString();
+    const AddedNode& add_node = *add_node_or;
     graph.MarkOutput(add_node.outputs[0], "out");
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);

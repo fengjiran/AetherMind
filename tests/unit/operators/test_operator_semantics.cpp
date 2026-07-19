@@ -245,6 +245,14 @@ TEST(OperatorSemanticsAnalyze, SiluFloat32Ok) {
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
+TEST(OperatorSemanticsAnalyze, SiluBFloat16Ok) {
+    auto input = MakeSpec(DataType::BFloat(16), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    auto result = AnalyzeOperator(OpType::kSilu, SiluParams{}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
+}
+
 TEST(OperatorSemanticsAnalyze, SiluWrongDtype) {
     auto input = MakeSpec(DataType::Int(32), {4, 256});
     std::vector<TensorSpec> inputs = {input};
@@ -260,6 +268,15 @@ TEST(OperatorSemanticsAnalyze, SiluMulFloat32Ok) {
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
 }
 
+TEST(OperatorSemanticsAnalyze, SiluMulBFloat16Ok) {
+    auto gate = MakeSpec(DataType::BFloat(16), {4, 256});
+    auto up = MakeSpec(DataType::BFloat(16), {4, 256});
+    std::vector<TensorSpec> inputs = {gate, up};
+    auto result = AnalyzeOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
+}
+
 TEST(OperatorSemanticsAnalyze, ElementwiseMulFloat32Ok) {
     auto lhs = MakeSpec(DataType::Float32(), {4, 256});
     auto rhs = MakeSpec(DataType::Float32(), {4, 256});
@@ -267,6 +284,15 @@ TEST(OperatorSemanticsAnalyze, ElementwiseMulFloat32Ok) {
     auto result = AnalyzeOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
+}
+
+TEST(OperatorSemanticsAnalyze, ElementwiseMulBFloat16Ok) {
+    auto lhs = MakeSpec(DataType::BFloat(16), {4, 256});
+    auto rhs = MakeSpec(DataType::BFloat(16), {4, 256});
+    std::vector<TensorSpec> inputs = {lhs, rhs};
+    auto result = AnalyzeOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
 }
 
 TEST(OperatorSemanticsAnalyze, SoftmaxFloat32Ok) {

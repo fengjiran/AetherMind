@@ -79,21 +79,22 @@ ResolvedModelWeights MakeWeights(const HfModelConfig& config) {
 
 TEST(GraphDump, DumpsMinimalGraph) {
     ModelGraph graph;
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 4}), "tokens");
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {4}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
                                                 WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                                                               .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "tok_embeddings.weight");
-    const AddedNode embedding = graph.AddNode(
+    auto embedding_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 4, 8}),
-                                        .payload = ActivationValue{},
-                                        .debug_name = "hidden"}},
+            {NodeOutputDesc{.payload = ActivationValue{},
+                            .debug_name = "hidden"}},
             EmbeddingParams{},
             {},
             "embedding");
+    ASSERT_TRUE(embedding_or.ok()) << embedding_or.status().ToString();
+    const AddedNode& embedding = *embedding_or;
     graph.MarkOutput(embedding.outputs[0], "hidden_out");
 
     std::ostringstream os;

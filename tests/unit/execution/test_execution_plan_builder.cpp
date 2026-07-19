@@ -426,12 +426,14 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphValidatesPreservedOutputSpecs) {
     const GraphValueId weight = graph.AddWeight(embedding_weight,
                                                 WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                                                               .semantic_role = TransformerWeightRole::kTokenEmbedding});
-    const AddedNode embedding = graph.AddNode(
+    auto embedding_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {token_ids, weight},
-            {NodeOutputDesc{.spec = hidden, .payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
             EmbeddingParams{});
+    ASSERT_TRUE(embedding_or.ok()) << embedding_or.status().ToString();
+    const AddedNode& embedding = *embedding_or;
     graph.MarkOutput(embedding.outputs[0], "hidden");
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);

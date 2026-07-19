@@ -10,8 +10,7 @@ namespace aethermind {
 namespace {
 
 NodeOutputDesc HiddenDesc(const char* debug_name) {
-    return NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                          .payload = ActivationValue{},
+    return NodeOutputDesc{.payload = ActivationValue{},
                           .debug_name = debug_name};
 }
 
@@ -22,30 +21,32 @@ RewriteOutputBinding ReplacesHidden(GraphValueId value, const char* debug_name) 
 ModelGraph BuildTwoEmbeddingGraph() {
     ModelGraph graph;
     const GraphValueId tokens_a = graph.AddInput(
-            Spec(DataType::Int(32), {1, 1}), "tokens_a");
+            Spec(DataType::Int(32), {1}), "tokens_a");
     const GraphValueId tokens_b = graph.AddInput(
-            Spec(DataType::Int(32), {1, 1}), "tokens_b");
+            Spec(DataType::Int(32), {1}), "tokens_b");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
             WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                           .semantic_role = TransformerWeightRole::kTokenEmbedding},
             "embed.weight");
-    const AddedNode embed_a = graph.AddNode(
+    auto embed_a_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_a, weight},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                            .payload = ActivationValue{},
+            {NodeOutputDesc{.payload = ActivationValue{},
                             .debug_name = "hidden_a"}},
             EmbeddingParams{});
-    const AddedNode embed_b = graph.AddNode(
+    AM_CHECK(embed_a_or.ok(), "BuildTwoEmbeddingGraph embed_a AddNode failed");
+    const AddedNode& embed_a = *embed_a_or;
+    auto embed_b_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_b, weight},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                            .payload = ActivationValue{},
+            {NodeOutputDesc{.payload = ActivationValue{},
                             .debug_name = "hidden_b"}},
             EmbeddingParams{});
+    AM_CHECK(embed_b_or.ok(), "BuildTwoEmbeddingGraph embed_b AddNode failed");
+    const AddedNode& embed_b = *embed_b_or;
     UNUSED(embed_b);
     graph.MarkOutput(embed_a.outputs[0], "output");
     return graph;
@@ -62,32 +63,38 @@ RoPEParams ValidRoPEParams() {
 
 ModelGraph BuildRoPEGraph() {
     ModelGraph graph;
-    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
-    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
-    const GraphValueId position_ids = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "position_ids");
+    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_a");
+    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_b");
+    const GraphValueId position_ids = graph.AddInput(Spec(DataType::Int(64), {1}), "position_ids");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
             WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                           .semantic_role = TransformerWeightRole::kTokenEmbedding},
             "embed.weight");
-    const AddedNode q = graph.AddNode(
+    auto q_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_a, weight},
             {HiddenDesc("q")},
             EmbeddingParams{});
-    const AddedNode k = graph.AddNode(
+    AM_CHECK(q_or.ok(), "BuildRoPEGraph q AddNode failed");
+    const AddedNode& q = *q_or;
+    auto k_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_b, weight},
             {HiddenDesc("k")},
             EmbeddingParams{});
-    const AddedNode rope = graph.AddNode(
+    AM_CHECK(k_or.ok(), "BuildRoPEGraph k AddNode failed");
+    const AddedNode& k = *k_or;
+    auto rope_or = graph.AddNode(
             OpType::kRoPE,
             0U,
             {q.outputs[0], k.outputs[0], position_ids},
             {HiddenDesc("q_rope"), HiddenDesc("k_rope")},
             ValidRoPEParams());
+    AM_CHECK(rope_or.ok(), "BuildRoPEGraph rope AddNode failed");
+    const AddedNode& rope = *rope_or;
     graph.MarkOutput(rope.outputs[0], "q_rope");
     graph.MarkOutput(rope.outputs[1], "k_rope");
     return graph;
@@ -371,8 +378,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithExplicitOutputDesc) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "explicit_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
@@ -397,8 +403,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphReplacesMultipleOldNodes) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "subgraph_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
@@ -425,8 +430,7 @@ TEST(GraphRewriteSession, RemoveNodeClearsOverlappingSubgraphRewrite) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "subgraph_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
@@ -457,8 +461,7 @@ TEST(GraphRewriteSession, ApplySupportsReplaceSubgraphMutation) {
                     .op_type = OpType::kEmbedding,
                     .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
                     .outputs = {RewriteOutputBinding{
-                            .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                                   .payload = ActivationValue{},
+                            .desc = NodeOutputDesc{.payload = ActivationValue{},
                                                    .debug_name = "applied_subgraph_hidden"},
                             .replaces = GraphValueId{.index = 3},
                     }},
@@ -485,8 +488,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "virtual_hidden"},
                     .replaces = mid,
             }},
@@ -497,8 +499,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
             .op_type = OpType::kAdd,
             .inputs = {mid, mid},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "final_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
@@ -531,8 +532,7 @@ TEST(GraphRewriteSession, CommitRejectsUndefinedVirtualValueInput) {
             .op_type = OpType::kAdd,
             .inputs = {mid, mid},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "final_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
@@ -557,8 +557,7 @@ TEST(GraphRewriteSession, CommitRejectsDuplicateVirtualValueProducer) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "first_virtual"},
                     .replaces = mid,
             }},
@@ -569,8 +568,7 @@ TEST(GraphRewriteSession, CommitRejectsDuplicateVirtualValueProducer) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "second_virtual"},
                     .replaces = mid,
             }},
@@ -595,8 +593,7 @@ TEST(GraphRewriteSession, CommitRejectsVirtualValueConsumedBeforeProducer) {
             .op_type = OpType::kAdd,
             .inputs = {mid, mid},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "final_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
@@ -607,8 +604,7 @@ TEST(GraphRewriteSession, CommitRejectsVirtualValueConsumedBeforeProducer) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "virtual_hidden"},
                     .replaces = mid,
             }},
@@ -633,8 +629,7 @@ TEST(GraphRewriteSession, CommitRejectsVirtualValueAcrossRewriteEntries) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "virtual_hidden"},
                     .replaces = mid,
             }},
@@ -645,8 +640,7 @@ TEST(GraphRewriteSession, CommitRejectsVirtualValueAcrossRewriteEntries) {
             .op_type = OpType::kAdd,
             .inputs = {mid, mid},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "final_hidden"},
                     .replaces = GraphValueId{.index = 4},
             }},
@@ -684,8 +678,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidMapping) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "explicit_hidden"},
                     .replaces = GraphValueId{.index = 999},
             }},
@@ -771,7 +764,7 @@ TEST(GraphRewriteSession, GetResolvedValueHandlesOutOfRangeId) {
 
 ModelGraph BuildGraphWithState() {
     ModelGraph graph;
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                 WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                                                               .semantic_role = TransformerWeightRole::kTokenEmbedding},
@@ -781,14 +774,15 @@ ModelGraph BuildGraphWithState() {
             KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
             "kv_cache.layer_0.k");
     (void) k_cache;
-    const AddedNode embed = graph.AddNode(
+    auto embed_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                            .payload = ActivationValue{},
+            {NodeOutputDesc{.payload = ActivationValue{},
                             .debug_name = "hidden"}},
             EmbeddingParams{});
+    AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
+    const AddedNode& embed = *embed_or;
     graph.MarkOutput(embed.outputs[0], "output");
     return graph;
 }
@@ -816,19 +810,20 @@ TEST(GraphRewriteSession, CommitsGraphWithStateValue) {
 
 TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
     ModelGraph graph;
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                 WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                                                               .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                 "embed.weight");
-    const AddedNode embed = graph.AddNode(
+    auto embed_or = graph.AddNode(
             OpType::kEmbedding,
             3U,// decoder_layer_index = 3
             {tokens, weight},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                            .payload = ActivationValue{},
+            {NodeOutputDesc{.payload = ActivationValue{},
                             .debug_name = "hidden"}},
             EmbeddingParams{});
+    AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
+    const AddedNode& embed = *embed_or;
     graph.MarkOutput(embed.outputs[0], "output");
 
     GraphRewriteSession session(graph);
@@ -885,7 +880,7 @@ TEST(GraphRewriteSession, RejectsMonostateExternalValueOnCommit) {
 
 TEST(GraphRewriteSession, CommitPreservesConstantValue) {
     ModelGraph graph;
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens");
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                 WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                                                               .semantic_role = TransformerWeightRole::kTokenEmbedding},
@@ -896,14 +891,15 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.inline_data = std::move(inline_data), .name = "scalar.one"},
             "one");
-    const AddedNode embed = graph.AddNode(
+    auto embed_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens, weight},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                            .payload = ActivationValue{},
+            {NodeOutputDesc{.payload = ActivationValue{},
                             .debug_name = "hidden"}},
             EmbeddingParams{});
+    AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
+    const AddedNode& embed = *embed_or;
     graph.MarkOutput(embed.outputs[0], "output");
     (void) constant;
 
@@ -984,7 +980,7 @@ TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
     EXPECT_TRUE(session.CheckValueId(constant).ok());
     EXPECT_EQ(session.CheckValueId(virtual_value).code(), StatusCode::kInvalidArgument);
 
-    const StatusOr<NodeOutputDesc> desc = session.GetValueOutputDesc(constant);
+    const StatusOr<GraphValueDesc> desc = session.GetValueOutputDesc(constant);
     ASSERT_TRUE(desc.ok()) << desc.status().ToString();
     EXPECT_EQ(desc->spec, Spec(DataType::Float32(), {2}));
     const auto* constant_payload = std::get_if<ConstantValue>(&desc->payload);
@@ -1098,7 +1094,7 @@ TEST(GraphRewriteSession, GetValueOutputDescReturnsFullValueDescriptor) {
     graph.SetQuantization(GraphValueId{.index = 3}, quantization);
 
     GraphRewriteSession session(graph);
-    const StatusOr<NodeOutputDesc> desc = session.GetValueOutputDesc(GraphValueId{.index = 3});
+    const StatusOr<GraphValueDesc> desc = session.GetValueOutputDesc(GraphValueId{.index = 3});
 
     ASSERT_TRUE(desc.ok()) << desc.status().ToString();
     EXPECT_EQ(desc->spec, graph.GetValue(GraphValueId{.index = 3}).spec);
@@ -1178,8 +1174,8 @@ TEST(GraphRewriteSession, RedirectInputAccumulatesMultipleInputChanges) {
     // Build a graph with two weights so both inputs of an Embedding node
     // can be independently redirected to valid payload types.
     ModelGraph graph;
-    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_a");
-    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1, 1}), "tokens_b");
+    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_a");
+    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_b");
     const GraphValueId weight_a = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
                                                   WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                                                                 .semantic_role = TransformerWeightRole::kTokenEmbedding},
@@ -1188,14 +1184,15 @@ TEST(GraphRewriteSession, RedirectInputAccumulatesMultipleInputChanges) {
                                                   WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
                                                                 .semantic_role = TransformerWeightRole::kTokenEmbedding},
                                                   "embed_b.weight");
-    const AddedNode node = graph.AddNode(
+    auto node_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
             {tokens_a, weight_a},
-            {NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                            .payload = ActivationValue{},
+            {NodeOutputDesc{.payload = ActivationValue{},
                             .debug_name = "hidden"}},
             EmbeddingParams{});
+    ASSERT_TRUE(node_or.ok()) << node_or.status().ToString();
+    const AddedNode& node = *node_or;
     graph.MarkOutput(node.outputs[0], "output");
 
     GraphRewriteSession session(graph);
@@ -1256,8 +1253,7 @@ TEST(GraphRewriteSession, RedirectInputRejectsOverlappingSubgraphRewrite) {
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
-                    .desc = NodeOutputDesc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                                           .payload = ActivationValue{},
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
                                            .debug_name = "subgraph_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
@@ -1316,8 +1312,7 @@ TEST(SubgraphBuilder, EmitAcceptsFullOutputDesc) {
                                         .group_size = 64,
                                         .scale_dtype = DataType::Float32(),
                                         .has_zero_point = false};
-    NodeOutputDesc output_desc{.spec = Spec(DataType::Float32(), {1, 1, 4}),
-                               .payload = ActivationValue{},
+    NodeOutputDesc output_desc{.payload = ActivationValue{},
                                .quantization = quantization,
                                .debug_name = "builder_full_desc"};
 
@@ -1338,7 +1333,6 @@ TEST(SubgraphBuilder, EmitAcceptsFullOutputDesc) {
     ASSERT_EQ(committed->GetOutputs().size(), 1U);
 
     const GraphValue& output = committed->GetValue(committed->GetOutputs()[0].value);
-    EXPECT_EQ(output.spec, output_desc.spec);
     EXPECT_TRUE(std::holds_alternative<ActivationValue>(output.payload));
     EXPECT_EQ(output.quantization, quantization);
     EXPECT_EQ(output.debug_name, "builder_full_desc");

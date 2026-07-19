@@ -21,11 +21,11 @@ TEST(ConstEvaluator, PlansSiluMulRankZero) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSiluMul);
     ASSERT_NE(evaluator, nullptr);
     const TensorSpec spec = Spec(DataType::Float32(), {});
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = spec, .payload = ActivationValue{}, .debug_name = "fused"},
     };
 
@@ -101,11 +101,11 @@ TEST(ConstEvaluator, EvaluatesSiluMulRankZeroBFloat16) {
 TEST(ConstEvaluator, SkipsSiluMulRankZeroScalarTensorMismatch) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSiluMul);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<NodeOutputDesc> inputs = {
+    const std::vector<GraphValueDesc> inputs = {
             {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
     };
-    const std::vector<NodeOutputDesc> outputs = {
+    const std::vector<GraphValueDesc> outputs = {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ActivationValue{}},
     };
 

@@ -2,103 +2,25 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/shape_inference/broadcast.h"
 
 #include <span>
 #include <string>
 
 namespace aethermind {
-namespace {
-
-// Shared dtype+match validation for Add inputs. Used by both CheckInputSpecs
-// and InferOutputShapes so the diagnostic stays consistent across plan
-// building and shape inference.
-Status ValidateAddDTypes(const TensorSpec& lhs, const TensorSpec& rhs) {
-    if (lhs.dtype != rhs.dtype) {
-        return Status::InvalidArgument("Add inputs must have matching dtypes");
-    }
-
-    if (!IsAddSupportedDType(lhs.dtype)) {
-        return Status::InvalidArgument(
-                MakeAddUnsupportedDTypeMessage("Add"));
-    }
-    return Status::Ok();
-}
-
-}// namespace
-
 Status AddOp::ValidateParams() const {
-    return Status::Ok();
+    return ValidateOperatorParams(Type(), params_);
 }
 
 Status AddOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument("Add expects exactly 2 inputs, got " +
-                                       std::to_string(inputs.size()));
-    }
-
-    const auto& lhs_spec = inputs[0];
-    const auto& rhs_spec = inputs[1];
-
-    AM_RETURN_IF_ERROR(ValidateAddDTypes(lhs_spec, rhs_spec));
-
-    if (auto broadcast_result =
-                InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
-        !broadcast_result.ok()) {
-        return broadcast_result.status();
-    }
-
-    return Status::Ok();
+    return AnalyzeOperator(Type(), params_, inputs).status();
 }
 
 StatusOr<InferenceResult> AddOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "Add expects exactly 2 shape inputs, got " + std::to_string(inputs.size()));
-    }
-
-    const auto& lhs_spec = inputs[0];
-    const auto& rhs_spec = inputs[1];
-
-    AM_RETURN_IF_ERROR(ValidateAddDTypes(lhs_spec, rhs_spec));
-
-    auto broadcast_result = InferBroadcastShape(
-            lhs_spec.shape, rhs_spec.shape);
-    if (!broadcast_result.ok()) {
-        return broadcast_result.status();
-    }
-
-    TensorSpec output_spec{
-            .dtype = lhs_spec.dtype,
-            .shape = broadcast_result->output_shape,
-    };
-
-    // Axes that could not be statically proven broadcastable are emitted as
-    // deferred DimBroadcastableConstraint checks; the executor enforces them
-    // once concrete runtime shapes are known.
-    std::vector<ShapeConstraint> runtime_checks;
-    for (const auto& deferred: broadcast_result->deferred_axes) {
-        runtime_checks.push_back({
-                .condition = DimBroadcastableConstraint{
-                        .lhs = DimLocator{
-                                .tensor_port = {.direction = TensorPortType::kInput,
-                                                .tensor_idx = 0},
-                                .dim_index = deferred.lhs_axis,
-                        },
-                        .rhs = DimLocator{
-                                .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
-                                .dim_index = deferred.rhs_axis,
-                        },
-                },
-                .error_context = "Add input dimensions are not broadcastable",
-        });
-    }
-
-    return InferenceResult{
-            .outputs = {std::move(output_spec)},
-            .runtime_checks = std::move(runtime_checks),
-    };
+    return AnalyzeOperator(Type(), params_, inputs);
 }
 
 Status AddOp::Prepare(OperatorContext& ctx) {

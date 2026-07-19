@@ -3,87 +3,23 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/operator_semantics.h"
 
 #include <string>
 
 namespace aethermind {
-namespace {
-
-bool IsSupportedTokenIdDType(const DataType& dtype) noexcept {
-    return dtype == DataType::Int(32) ||
-           dtype == DataType::Int(64) ||
-           dtype == DataType::UInt(32);
-}
-
-}// namespace
-
 Status EmbeddingOp::ValidateParams() const {
-    return Status::Ok();
+    return ValidateOperatorParams(Type(), params_);
 }
 
 Status EmbeddingOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "Embedding expects exactly 2 inputs, got " + std::to_string(inputs.size()));
-    }
-
-    const auto& token_ids = inputs[0];
-    const auto& weight = inputs[1];
-
-    if (!IsSupportedTokenIdDType(token_ids.dtype)) {
-        return Status::InvalidArgument("Embedding token ids must be int32, int64, or uint32");
-    }
-
-    if (weight.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("Embedding only supports float32 weights in Phase 1");
-    }
-
-    if (!HasRank(token_ids.shape, 1)) {
-        return Status::InvalidArgument("Embedding token ids must be rank-1");
-    }
-
-    if (!HasRank(weight.shape, 2)) {
-        return Status::InvalidArgument("Embedding weight must be rank-2");
-    }
-
-    if (!IsPositiveIfStatic(token_ids.shape[0]) ||
-        !IsPositiveIfStatic(weight.shape[0]) ||
-        !IsPositiveIfStatic(weight.shape[1])) {
-        return Status::InvalidArgument("Embedding token, vocab, and hidden sizes must be positive");
-    }
-    return Status::Ok();
+    return AnalyzeOperator(Type(), params_, inputs).status();
 }
 
 StatusOr<InferenceResult> EmbeddingOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "Embedding expects exactly 2 shape inputs, got " + std::to_string(inputs.size()));
-    }
-    const auto& token_ids = inputs[0];
-    const auto& weight = inputs[1];
-
-    if (!HasRank(token_ids.shape, 1)) {
-        return Status::InvalidArgument("Embedding token id shape must be rank-1");
-    }
-
-    if (!HasRank(weight.shape, 2)) {
-        return Status::InvalidArgument("Embedding weight shape must be rank-2");
-    }
-
-    if (!IsPositiveIfStatic(token_ids.shape[0]) ||
-        !IsPositiveIfStatic(weight.shape[0]) ||
-        !IsPositiveIfStatic(weight.shape[1])) {
-        return Status::InvalidArgument("Embedding token, vocab, and hidden sizes must be positive");
-    }
-
-    return InferenceResult{
-            .outputs = {TensorSpec{
-                    .dtype = weight.dtype,
-                    .shape = SymbolicShape(std::vector<ShapeSymbol>{token_ids.shape[0], weight.shape[1]}),
-            }},
-            .runtime_checks = {},
-    };
+    return AnalyzeOperator(Type(), params_, inputs);
 }
 
 Status EmbeddingOp::Prepare(OperatorContext& ctx) {

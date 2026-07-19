@@ -2,7 +2,9 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/shape_inference/broadcast.h"
 
 #include <span>
@@ -11,75 +13,15 @@
 namespace aethermind {
 
 Status SiluMulOp::ValidateParams() const {
-    return Status::Ok();
+    return ValidateOperatorParams(Type(), params_);
 }
 
 Status SiluMulOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "SiluMul expects exactly 2 inputs, got " + std::to_string(inputs.size()));
-    }
-
-    const auto& gate_spec = inputs[0];
-    const auto& up_spec = inputs[1];
-
-    if (gate_spec.dtype != DataType::Float32() || up_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("SiluMul only supports float32 inputs in Phase 1");
-    }
-
-    auto broadcast_result = InferBroadcastShape(gate_spec.shape, up_spec.shape);
-    if (!broadcast_result.ok()) {
-        return broadcast_result.status();
-    }
-
-    return Status::Ok();
+    return AnalyzeOperator(Type(), params_, inputs).status();
 }
 
 StatusOr<InferenceResult> SiluMulOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "SiluMul expects exactly 2 shape inputs, got " + std::to_string(inputs.size()));
-    }
-
-    const auto& gate_spec = inputs[0];
-    const auto& up_spec = inputs[1];
-
-    if (gate_spec.dtype != DataType::Float32() || up_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("SiluMul only supports float32 inputs in Phase 1");
-    }
-
-    auto broadcast_result = InferBroadcastShape(gate_spec.shape, up_spec.shape);
-    if (!broadcast_result.ok()) {
-        return broadcast_result.status();
-    }
-
-    TensorSpec output_spec{
-            .dtype = DataType::Float32(),
-            .shape = broadcast_result->output_shape,
-    };
-
-    std::vector<ShapeConstraint> runtime_checks;
-    for (const auto& deferred: broadcast_result->deferred_axes) {
-        runtime_checks.push_back(ShapeConstraint{
-                .condition = DimBroadcastableConstraint{
-                        .lhs = DimLocator{
-                                .tensor_port = TensorPort{.direction = TensorPortType::kInput,
-                                                          .tensor_idx = 0},
-                                .dim_index = deferred.lhs_axis,
-                        },
-                        .rhs = DimLocator{
-                                .tensor_port = TensorPort{.direction = TensorPortType::kInput, .tensor_idx = 1},
-                                .dim_index = deferred.rhs_axis,
-                        },
-                },
-                .error_context = "SiluMul input dimensions are not broadcastable",
-        });
-    }
-
-    return InferenceResult{
-            .outputs = {std::move(output_spec)},
-            .runtime_checks = std::move(runtime_checks),
-    };
+    return AnalyzeOperator(Type(), params_, inputs);
 }
 
 Status SiluMulOp::Prepare(OperatorContext& ctx) {

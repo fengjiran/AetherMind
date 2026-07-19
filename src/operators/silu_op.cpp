@@ -2,7 +2,9 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/operator_semantics.h"
 
 #include <span>
 #include <string>
@@ -10,44 +12,15 @@
 namespace aethermind {
 
 Status SiluOp::ValidateParams() const {
-    return Status::Ok();
+    return ValidateOperatorParams(Type(), params_);
 }
 
 Status SiluOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 1) {
-        return Status::InvalidArgument(
-                "Silu expects exactly 1 input, got " + std::to_string(inputs.size()));
-    }
-
-    const auto& input_spec = inputs[0];
-    if (input_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("Silu only supports float32 input in Phase 1");
-    }
-
-    return Status::Ok();
+    return AnalyzeOperator(Type(), params_, inputs).status();
 }
 
 StatusOr<InferenceResult> SiluOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 1) {
-        return Status::InvalidArgument(
-                "Silu expects exactly 1 shape input, got " + std::to_string(inputs.size()));
-    }
-
-    const auto& input_spec = inputs[0];
-    if (input_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("Silu only supports float32 input in Phase 1");
-    }
-
-    // SiLU is element-wise: output shape == input shape. No broadcasting,
-    // no deferred axes, no runtime shape checks.
-    TensorSpec output_spec{
-            .dtype = DataType::Float32(),
-            .shape = input_spec.shape,
-    };
-
-    return InferenceResult{
-            .outputs = {std::move(output_spec)},
-    };
+    return AnalyzeOperator(Type(), params_, inputs);
 }
 
 Status SiluOp::Prepare(OperatorContext& ctx) {

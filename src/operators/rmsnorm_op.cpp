@@ -2,94 +2,24 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/operator_semantics.h"
 
 #include <span>
 #include <string>
 
 namespace aethermind {
 Status RmsNormOp::ValidateParams() const {
-    if (params_.eps <= 0.0f) {
-        return Status::InvalidArgument(
-                "RmsNorm epsilon must be positive, got " + std::to_string(params_.eps));
-    }
-    return Status::Ok();
+    return ValidateOperatorParams(Type(), params_);
 }
 
 Status RmsNormOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "RmsNorm expects exactly 2 inputs, got " + std::to_string(inputs.size()));
-    }
-
-    const auto& input_spec = inputs[0];
-    const auto& weight_spec = inputs[1];
-
-    if (input_spec.dtype != DataType::Float32() || weight_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("RmsNorm only supports float32 inputs in Phase 1");
-    }
-
-    if (!HasRank(input_spec.shape, 2)) {
-        return Status::InvalidArgument("RmsNorm input must be rank-2 [seq_len, hidden]");
-    }
-
-    if (!HasRank(weight_spec.shape, 1)) {
-        return Status::InvalidArgument("RmsNorm weight must be rank-1");
-    }
-
-    const ShapeSymbol& hidden_size = input_spec.shape[1];
-    if (!IsPositiveIfStatic(hidden_size)) {
-        return Status::InvalidArgument("RmsNorm hidden size must be positive");
-    }
-
-    if (!UnifyShapeSymbol(hidden_size, weight_spec.shape[0]).ok()) {
-        return Status::InvalidArgument(
-                "RmsNorm weight length must equal input last dimension");
-    }
-    return Status::Ok();
+    return AnalyzeOperator(Type(), params_, inputs).status();
 }
 
 StatusOr<InferenceResult> RmsNormOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "RmsNorm expects exactly 2 shape inputs, got " + std::to_string(inputs.size()));
-    }
-
-    if (!HasRank(inputs[0].shape, 2)) {
-        return Status::InvalidArgument(
-                "RmsNorm input shape must be rank-2 [seq_len, hidden]");
-    }
-
-    if (!HasRank(inputs[1].shape, 1)) {
-        return Status::InvalidArgument("RmsNorm weight shape must be rank-1");
-    }
-
-    if (!IsPositiveIfStatic(inputs[0].shape[1]) || !IsPositiveIfStatic(inputs[1].shape[0])) {
-        return Status::InvalidArgument(
-                "RmsNorm hidden size and weight length must be positive");
-    }
-
-    std::vector<ShapeConstraint> runtime_checks;
-    if (inputs[0].shape[1] != inputs[1].shape[0]) {
-        runtime_checks.push_back({
-                .condition = DimEqualConstraint{
-                        .lhs = {
-                                .tensor_port = {.direction = TensorPortType::kInput,
-                                                .tensor_idx = 0},
-                                .dim_index = 1,
-                        },
-                        .rhs = {
-                                .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
-                                .dim_index = 0,
-                        }},
-                .error_context = "RmsNorm hidden dimension must match weight length",
-        });
-    }
-
-    return InferenceResult{
-            .outputs = {inputs[0]},
-            .runtime_checks = std::move(runtime_checks),
-    };
+    return AnalyzeOperator(Type(), params_, inputs);
 }
 
 Status RmsNormOp::Prepare(OperatorContext& ctx) {

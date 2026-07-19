@@ -123,6 +123,7 @@ Status EmbeddingOp::Run(KernelContext& ctx,
                 "Embedding requires 2 input tensor bindings, got " +
                 std::to_string(b->inputs.size()));
     }
+
     if (b->outputs.size() != 1) {
         return Status::InvalidArgument(
                 "Embedding requires 1 output tensor binding, got " +

@@ -11,6 +11,9 @@
 namespace aethermind {
 namespace {
 
+// Shared dtype+match validation for Add inputs. Used by both CheckInputSpecs
+// and InferOutputShapes so the diagnostic stays consistent across plan
+// building and shape inference.
 Status ValidateAddDTypes(const TensorSpec& lhs, const TensorSpec& rhs) {
     if (lhs.dtype != rhs.dtype) {
         return Status::InvalidArgument("Add inputs must have matching dtypes");
@@ -71,6 +74,9 @@ StatusOr<InferenceResult> AddOp::InferOutputShapes(std::span<const TensorSpec> i
             .shape = broadcast_result->output_shape,
     };
 
+    // Axes that could not be statically proven broadcastable are emitted as
+    // deferred DimBroadcastableConstraint checks; the executor enforces them
+    // once concrete runtime shapes are known.
     std::vector<ShapeConstraint> runtime_checks;
     for (const auto& deferred: broadcast_result->deferred_axes) {
         runtime_checks.push_back({
@@ -140,6 +146,8 @@ Status AddOp::Run(KernelContext& ctx,
     return InvokeResolvedKernel(ctx, b->inputs, b->outputs);
 }
 
+// Registers AddOp as the constructor for OpType::kAdd with the operator
+// factory so graph builders can instantiate it by type.
 AM_REGISTER_OPERATOR(OpType::kAdd, AddOp)
 
 }// namespace aethermind

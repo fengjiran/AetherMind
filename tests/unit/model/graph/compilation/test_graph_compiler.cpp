@@ -762,5 +762,162 @@ TEST(CompileModelGraph, LowersFullLlamaDenseGraph) {
               static_cast<size_t>(config.num_hidden_layers) * 2U);
 }
 
+// Sentinel pass: increments an external counter when Run() is invoked.
+// Used to prove that GraphPassManager rejects an invalid source graph
+// BEFORE any pass observes it (Task 5 acceptance: "pass sentinel 未被调用").
+
+// Common helper: builds a RmsNorm graph skeleton with the given input/output
+// TensorSpecs. Uses the test-only ModelGraph constructor to bypass AddNode
+// validation, so callers can inject forged/invalid specs that AddNode would
+// normally reject. RmsNorm input[0] = kActivation (accepts ConstantValue),
+// input[1] = kWeight (requires kScale slot), output[0] = kActivation.
+ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
+                                      const TensorSpec& weight_spec,
+                                      const TensorSpec& out_spec) {
+    std::vector<GraphValue> values;
+    values.push_back(GraphValue{
+            .payload = ConstantValue{},
+            .spec = act_in_spec,
+            .producer = std::nullopt,
+            .debug_name = "act_in",
+    });
+    values.push_back(GraphValue{
+            .payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale}},
+            .spec = weight_spec,
+            .producer = std::nullopt,
+            .debug_name = "weight_in",
+    });
+    values.push_back(GraphValue{
+            .payload = ActivationValue{},
+            .spec = out_spec,
+            .producer = GraphNodeId{.index = 0},
+            .debug_name = "act_out",
+    });
+
+    GraphNode node;
+    node.op_type = OpType::kRmsNorm;
+    node.inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 1}};
+    node.outputs = {GraphValueId{.index = 2}};
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+
+    return ModelGraph(HfModelConfig{}, {node}, values);
+}
+
+// Builds a structurally-valid but semantically-invalid graph: a RmsNorm node
+// whose activation input carries Float16 (AnalyzeRmsNorm requires Float32).
+ModelGraph BuildGraphWithWrongInputDtype() {
+    return BuildRmsNormGraphWithSpecs(
+            Spec(DataType::Float(16), {4, 8}),
+            Spec(DataType::Float32(), {8}),
+            Spec(DataType::Float32(), {4, 8}));
+}
+
+// Builds a graph with a forged output spec: AnalyzeRmsNorm would derive a
+// Float32 [4, 8] output, but the stored GraphValue carries Float16 to simulate
+// stale/forged metadata. ValidateAndTopologicalOrder must catch this.
+ModelGraph BuildGraphWithForgedOutputSpec() {
+    return BuildRmsNormGraphWithSpecs(
+            Spec(DataType::Float32(), {4, 8}),
+            Spec(DataType::Float32(), {8}),
+            Spec(DataType::Float(16), {4, 8}));
+}
+
+
+// ---- Task 5: precondition verification at compilation entry ----------------
+
+TEST(OptimizeModelGraph, RejectsWrongInputDtypeBeforeOptimization) {
+    // Bad dtype: AnalyzeRmsNorm requires Float32 activation input; the graph
+    // carries Float16. OptimizeModelGraph must propagate the semantic error
+    // from GraphPassManager::Run precondition, without fallback to unoptimized
+    // compilation.
+    const ModelGraph graph = BuildGraphWithWrongInputDtype();
+
+    PassContext ctx;
+    ctx.opt_level = 2;
+    const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
+}
+
+TEST(OptimizeModelGraph, RejectsForgedOutputSpecBeforeOptimization) {
+    // Forged output spec: AnalyzeRmsNorm derives Float32 output, but the
+    // stored GraphValue carries Float16. OptimizeModelGraph must propagate
+    // the semantic error from the precondition check, without fallback.
+    const ModelGraph graph = BuildGraphWithForgedOutputSpec();
+
+    PassContext ctx;
+    ctx.opt_level = 2;
+    const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
+}
+
+TEST(CompileModelGraph, RejectsWrongInputDtypeBeforeLowering) {
+    // Bad dtype at the compilation entry: OptimizeModelGraph precondition
+    // fires first (via GraphPassManager::Run). CompileModelGraph must
+    // propagate the error without entering lowering.
+    const ModelGraph graph = BuildGraphWithWrongInputDtype();
+
+    GraphCompileConfig config;
+    config.optimization.opt_level = 2;
+    const StatusOr<CompiledModelGraph> result = CompileModelGraph(graph, config);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
+}
+
+TEST(CompileModelGraph, RejectsForgedOutputSpecBeforeLowering) {
+    // Forged output spec at the compilation entry. CompileModelGraph must
+    // propagate the error without entering lowering.
+    const ModelGraph graph = BuildGraphWithForgedOutputSpec();
+
+    GraphCompileConfig config;
+    config.optimization.opt_level = 2;
+    const StatusOr<CompiledModelGraph> result = CompileModelGraph(graph, config);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
+}
+
+// O0/O1/O2 pipelines must each reject invalid graphs at the precondition.
+// Parameterized over opt_level to satisfy "O0、O1、O2 ... 均返回 semantically
+// valid graph" from the other direction: an invalid source never reaches any
+// pass regardless of opt_level.
+struct OptLevelParam {
+    uint32_t opt_level;
+    std::string name;
+};
+
+class OptLevelPreconditionTest : public testing::TestWithParam<OptLevelParam> {};
+
+TEST_P(OptLevelPreconditionTest, RejectsForgedOutputSpecAtAnyOptLevel) {
+    const ModelGraph graph = BuildGraphWithForgedOutputSpec();
+
+    PassContext ctx;
+    ctx.opt_level = GetParam().opt_level;
+    const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
+
+    ASSERT_FALSE(result.ok()) << "opt_level=" << GetParam().opt_level;
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        GraphCompilerPrecondition,
+        OptLevelPreconditionTest,
+        testing::Values(
+                OptLevelParam{0, "O0"},
+                OptLevelParam{1, "O1"},
+                OptLevelParam{2, "O2"},
+                OptLevelParam{3, "O3"}),
+        [](const testing::TestParamInfo<OptLevelParam>& info) {
+            return info.param.name;
+        });
 }// namespace
 }// namespace aethermind

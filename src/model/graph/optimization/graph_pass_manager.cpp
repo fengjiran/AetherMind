@@ -35,6 +35,17 @@ GraphPassManager& GraphPassManager::SetCheckpointEvery(uint32_t pass_count) noex
 }
 
 StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
+    // Precondition: the source graph must be semantically valid before any
+    // pass observes it. ValidateAndTopologicalOrder is the single semantic
+    // authority on ModelGraph (it invokes AnalyzeOperator per node); running
+    // passes on an unvalidated graph would let stale/forged metadata
+    // propagate into checkpoints. We discard the returned order here because
+    // passes navigate the graph via the session API; the validation is the
+    // side effect we want, not the topological order. Errors propagate
+    // verbatim so callers see node/op semantic context (matches Task 5
+    // acceptance: "Compile failure 保留 node/op semantic context").
+    AM_RETURN_IF_ERROR(graph.ValidateAndTopologicalOrder().status());
+
     // Reference the caller's graph directly to avoid an initial deep copy.
     // GraphRewriteSession only holds a const reference, so this is safe as
     // long as `graph` outlives the call. When a checkpoint fires, ownership

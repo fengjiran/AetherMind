@@ -328,5 +328,117 @@ TEST(GraphPassManager, RejectsNullPass) {
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
 }
 
+// Sentinel pass: increments an external counter when Run() is invoked.
+// Used to prove that GraphPassManager rejects an invalid source graph
+// BEFORE any pass observes it (Task 5 acceptance: "pass sentinel 未被调用").
+class CountingPass final : public GraphPass {
+public:
+    explicit CountingPass(int& counter) noexcept : counter_(&counter) {}
+
+    AM_NODISCARD std::string_view Name() const noexcept override {
+        return "Counting";
+    }
+
+    Status Run(GraphRewriteSession&, const PassContext&) override {
+        ++*counter_;
+        return Status::Ok();
+    }
+
+private:
+    int* counter_;
+};
+
+// Common helper: builds a RmsNorm graph skeleton with the given input/output
+// TensorSpecs. Uses the test-only ModelGraph constructor to bypass AddNode
+// validation, so callers can inject forged/invalid specs that AddNode would
+// normally reject. RmsNorm input[0] = kActivation (accepts ConstantValue),
+// input[1] = kWeight (requires kScale slot), output[0] = kActivation.
+ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
+                                      const TensorSpec& weight_spec,
+                                      const TensorSpec& out_spec) {
+    std::vector<GraphValue> values;
+    values.push_back(GraphValue{
+            .payload = ConstantValue{},
+            .spec = act_in_spec,
+            .producer = std::nullopt,
+            .debug_name = "act_in",
+    });
+    values.push_back(GraphValue{
+            .payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale}},
+            .spec = weight_spec,
+            .producer = std::nullopt,
+            .debug_name = "weight_in",
+    });
+    values.push_back(GraphValue{
+            .payload = ActivationValue{},
+            .spec = out_spec,
+            .producer = GraphNodeId{.index = 0},
+            .debug_name = "act_out",
+    });
+
+    GraphNode node;
+    node.op_type = OpType::kRmsNorm;
+    node.inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 1}};
+    node.outputs = {GraphValueId{.index = 2}};
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+
+    return ModelGraph(HfModelConfig{}, {node}, values);
+}
+
+// Builds a structurally-valid but semantically-invalid graph: a RmsNorm node
+// whose activation input carries Float16 (AnalyzeRmsNorm requires Float32).
+ModelGraph BuildGraphWithWrongInputDtype() {
+    return BuildRmsNormGraphWithSpecs(
+            Spec(DataType::Float(16), {4, 8}),
+            Spec(DataType::Float32(), {8}),
+            Spec(DataType::Float32(), {4, 8}));
+}
+
+// Builds a graph with a forged output spec: AnalyzeRmsNorm would derive a
+// Float32 [4, 8] output, but the stored GraphValue carries Float16 to simulate
+// stale/forged metadata. ValidateAndTopologicalOrder must catch this.
+ModelGraph BuildGraphWithForgedOutputSpec() {
+    return BuildRmsNormGraphWithSpecs(
+            Spec(DataType::Float32(), {4, 8}),
+            Spec(DataType::Float32(), {8}),
+            Spec(DataType::Float(16), {4, 8}));
+}
+
+
+TEST(GraphPassManager, RejectsWrongInputDtypeBeforeAnyPass) {
+    // Bad dtype: AnalyzeRmsNorm requires Float32 activation input; the graph
+    // carries Float16. The precondition check at the start of Run() must
+    // reject this BEFORE the sentinel CountingPass is invoked.
+    const ModelGraph graph = BuildGraphWithWrongInputDtype();
+    int pass_invocations = 0;
+    GraphPassManager pipeline;
+    pipeline.Add(std::make_unique<CountingPass>(pass_invocations));
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(pass_invocations, 0)
+            << "Precondition violation: pass ran on an unvalidated graph";
+    // Node/op semantic context preserved in the error message.
+    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
+}
+
+TEST(GraphPassManager, RejectsForgedOutputSpecBeforeAnyPass) {
+    // Forged output spec: AnalyzeRmsNorm derives Float32 output, but the
+    // stored GraphValue carries Float16. Precondition must catch this.
+    const ModelGraph graph = BuildGraphWithForgedOutputSpec();
+    int pass_invocations = 0;
+    GraphPassManager pipeline;
+    pipeline.Add(std::make_unique<CountingPass>(pass_invocations));
+
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(pass_invocations, 0)
+            << "Precondition violation: pass ran on an unvalidated graph";
+    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
+}
 }// namespace
 }// namespace aethermind

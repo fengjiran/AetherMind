@@ -122,17 +122,14 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(const OperatorSchema& sc
                                                         std::span<const TensorSpec> all_inputs) {
     if (schema.input_ports.size() != all_inputs.size()) {
         return Status::InvalidArgument(
-                "MakeCompactInputSpecs: input count mismatch, schema expects "
-                + std::to_string(schema.input_ports.size()) + " inputs but got "
-                + std::to_string(all_inputs.size()));
+                "MakeCompactInputSpecs: input count mismatch, schema expects " + std::to_string(schema.input_ports.size()) + " inputs but got " + std::to_string(all_inputs.size()));
     }
     std::vector<TensorSpec> compact;
     compact.reserve(all_inputs.size());
     for (const auto& port: schema.input_ports) {
         if (port.index >= all_inputs.size()) {
             return Status::InvalidArgument(
-                    "MakeCompactInputSpecs: port index " + std::to_string(port.index)
-                    + " out of bounds for " + std::to_string(all_inputs.size()) + " inputs");
+                    "MakeCompactInputSpecs: port index " + std::to_string(port.index) + " out of bounds for " + std::to_string(all_inputs.size()) + " inputs");
         }
         if (port.contributes_tensor_spec) {
             compact.push_back(all_inputs[port.index]);

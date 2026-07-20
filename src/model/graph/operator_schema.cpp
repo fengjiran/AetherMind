@@ -1,5 +1,6 @@
 #include "aethermind/model/graph/operator_schema.h"
 
+#include <algorithm>
 #include <array>
 
 namespace aethermind {
@@ -186,12 +187,16 @@ StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema, std::string
 }
 
 bool HasStatefulOutput(const OperatorSchema& schema) noexcept {
-    for (const OperatorOutputPort& output_port: schema.output_ports) {
-        if (output_port.kind == OperatorPortKind::kState) {
-            return true;
-        }
-    }
-    return false;
+    // for (const OperatorOutputPort& output_port: schema.output_ports) {
+    //     if (output_port.kind == OperatorPortKind::kState) {
+    //         return true;
+    //     }
+    // }
+    // return false;
+
+    return std::ranges::any_of(schema.output_ports, [&](const auto& port) {
+        return port.kind == OperatorPortKind::kState;
+    });
 }
 
 // A pure operator has no observable side effects and produces deterministic

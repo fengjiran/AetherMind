@@ -41,13 +41,13 @@ StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<c
         return Status::InvalidArgument("RmsNorm weight length must be positive");
     }
 
-    if (!UnifyShapeSymbol(hidden_size, weight_spec.shape[0]).ok()) {
+    if (!UnifyShapeSymbol(hidden_size, weight_len).ok()) {
         return Status::InvalidArgument(
                 "RmsNorm weight length must equal input last dimension");
     }
 
     std::vector<ShapeConstraint> runtime_checks;
-    if (hidden_size != weight_spec.shape[0]) {
+    if (hidden_size != weight_len) {
         runtime_checks.push_back({
                 .condition = DimEqualConstraint{
                         .lhs = {
@@ -72,7 +72,8 @@ StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<c
 StatusOr<InferenceResult> AnalyzeRoPE(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
     if (inputs.size() != 3) {
         return Status::InvalidArgument(
-                "RoPE expects exactly 3 inputs (q, k, position_ids), got " + std::to_string(inputs.size()));
+                "RoPE expects exactly 3 inputs (q, k, position_ids), got " +
+                std::to_string(inputs.size()));
     }
 
     const auto& q_spec = inputs[0];
@@ -94,8 +95,8 @@ StatusOr<InferenceResult> AnalyzeRoPE(const OpParams& /*params*/, std::span<cons
         if (q_spec.shape.rank() != k_spec.shape.rank()) {
             return Status::InvalidArgument("RoPE q and k must have the same rank");
         }
-        const auto rank = q_spec.shape.rank().value();
-        if (rank >= 1) {
+
+        if (const auto rank = q_spec.shape.rank().value(); rank >= 1) {
             for (size_t i = 0; i < rank - 1; ++i) {
                 if (q_spec.shape[i] != k_spec.shape[i]) {
                     return Status::InvalidArgument(

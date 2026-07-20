@@ -82,6 +82,26 @@ Phase 1 边界（本文档）
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
+│              图编译管道层 (Graph Pipeline Layer)                  │
+│  ┌───────────────────┐ ┌──────────────────┐ ┌────────────────┐ │
+│  │  ModelGraph Builder│ │  GraphRewrite   │ │  Compile &     │ │
+│  │  (GraphOpBuilder)  │ │  Session        │ │  Lower to      │ │
+│  │  + SemanticAnalyzer│ │  (Optimization)  │ │  LoweredGraph  │ │
+│  │  (ValidateOperator│ │  (Fusion/CSE)    │ │                │ │
+│  │   Params +         │ │                  │ │                │ │
+│  │   InferOutputShape)│ │                  │ │                │ │
+│  └───────────────────┘ └──────────────────┘ └────────────────┘ │
+│  ┌───────────────────┐                                         │
+│  │  ExecutionPlan    │                                         │
+│  │  Builder          │                                         │
+│  │  (Plan-Build-Time │                                         │
+│  │   Resolve via     │                                         │
+│  │   KernelRegistry) │                                         │
+│  └───────────────────┘                                         │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
 │                    运行时层 (Runtime Layer)                      │
 │  ┌────────────┐ ┌──────────────────────────────┐ ┌────────────┐│
 │  │   Model    │ │      执行器 (Executor)        │ │  KV Cache  ││
@@ -89,11 +109,11 @@ Phase 1 边界（本文档）
 │  │ (Weights/  │ │ │ Prefill  │    │  Decode  │ │ │ (Static    ││
 │  │  Metadata) │ │ └──────────┘    └──────────┘ │ │   Pool)    ││
 │  └────────────┘ └──────────────────────────────┘ └────────────┘│
-│  ┌────────────┐ ┌────────────┐                                 │
-│  │  Loader    │ │ Dispatch   │                                 │
-│  │Safetensors │ │ Table      │                                 │
-│  │(Repack)    │ │(Static)    │                                 │
-│  └────────────┘ └────────────┘                                 │
+│  ┌────────────┐                                                │
+│  │  Loader    │                                                │
+│  │Safetensors │                                                │
+│  │(Repack)    │                                                │
+│  └────────────┘                                                │
 └─────────────────────────────────────────────────────────────────┘
                                │
                                ▼
@@ -117,8 +137,10 @@ Phase 1 边界（本文档）
 
 **架构执行准则**：
 
-- 核心计算模型：Phase 1 以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个阶段。
-- 核心组件：Phase 1 架构由 `Runtime`（生命周期与资源管理）、`Executor`（同步执行流控）与 `KVCacheManager`（静态 KV 内存池管理）构成。
+- **前端语义分析**：算子输入验证、dtype/rank 校验、输出 shape 推导由集中式 `AnalyzeOperator` 统一完成，在 ModelGraph 构建期执行，消除执行层的 deferred 校验冗余。
+- **图编译管道**：`ModelGraph` 构建后经过 `GraphRewriteSession`（优化、融合）和 `CompileModelGraph`（编译、降级至 `LoweredGraph`），最终由 `ExecutionPlanBuilder` 在计划构建期完成 kernel resolve（通过 `KernelRegistry` 全局单例 + `AM_REGISTER_KERNEL` 静态注册），执行期仅消费 `ResolvedKernel` 函数指针，无运行时 dispatch 开销。
+- **核心计算模型**：Phase 1 以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个阶段。
+- **核心组件**：Phase 1 架构由 `Runtime`（生命周期与资源管理）、`Executor`（同步执行流控，消费已 resolve 的 `ExecutionPlan`）与 `KVCacheManager`（静态 KV 内存池管理）构成。
 - 无请求调度器：Phase 1 不引入 `Request Scheduler`，不承担请求排队、批处理、连续批处理或多会话仲裁职责。
 - 无虚函数开销：使用 C++20 Concepts + 静态分发
 - 无动态内存：稳态零分配（推理预热完成后，Decode 路径排除权重映射与 KV Cache 静态扩容外，无堆内存申请）

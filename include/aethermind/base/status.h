@@ -290,6 +290,37 @@ private:
             }                                                                   \
     } while (false)
 
+#define AM_ASSIGN_OR_RETURN_CONCAT_(a, b) a##b
+#define AM_ASSIGN_OR_RETURN_CONCAT(a, b) AM_ASSIGN_OR_RETURN_CONCAT_(a, b)
+
+/// Unwraps a StatusOr<T> into lhs, propagating the error on failure.
+///
+/// Evaluates expr exactly once. If the result is not OK, returns its status
+/// from the enclosing function. Otherwise, moves the value into lhs.
+///
+/// lhs may be a declaration (e.g. `auto x` or `const T x`) or an assignment
+/// target (an existing variable). Each invocation expands to a uniquely-named
+/// temporary via __COUNTER__, so multiple AM_ASSIGN_OR_RETURN calls may appear
+/// in the same scope.
+///
+/// Example:
+///   StatusOr<int> ParseInt(const std::string& s);
+///   StatusOr<size_t> Run(const std::string& s) {
+///     AM_ASSIGN_OR_RETURN(auto value, ParseInt(s));
+///     return static_cast<size_t>(value);
+///   }
+#define AM_ASSIGN_OR_RETURN(lhs, expr)                                     \
+    AM_ASSIGN_OR_RETURN_IMPL(                                              \
+            AM_ASSIGN_OR_RETURN_CONCAT(am_assign_or_result_, __COUNTER__), \
+            lhs, expr)
+
+#define AM_ASSIGN_OR_RETURN_IMPL(result_var, lhs, expr) \
+    auto result_var = (expr);                           \
+    if (!result_var.ok()) AM_UNLIKELY {                 \
+            return result_var.status();                 \
+        }                                               \
+    lhs = std::move(*result_var)
+
 /// Represents either a value of type T or an error Status.
 ///
 /// Used for operations that return a value on success. Never holds Status::Ok().

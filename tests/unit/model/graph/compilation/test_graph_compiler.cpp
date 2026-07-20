@@ -6,6 +6,13 @@
 
 #include <gtest/gtest.h>
 
+#include "aethermind/execution/execution_plan_builder.h"
+#include "aethermind/execution/executor.h"
+#include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/compilation/graph_lowering.h"
+#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/runtime/runtime_builder.h"
+#include "aethermind/shape_inference/shape_symbol.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -919,5 +926,148 @@ INSTANTIATE_TEST_SUITE_P(
         [](const testing::TestParamInfo<OptLevelParam>& info) {
             return info.param.name;
         });
+std::vector<int64_t> MakeStrides(const std::vector<int64_t>& shape) {
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+        strides[static_cast<size_t>(i)] = strides[static_cast<size_t>(i + 1)] * shape[static_cast<size_t>(i + 1)];
+    }
+    return strides;
+}
+
+struct RuntimeTensorStorage {
+    std::vector<int64_t> shape;
+    std::vector<int64_t> strides;
+    std::vector<float> storage;
+
+    explicit RuntimeTensorStorage(std::vector<int64_t> input_shape)
+        : shape(std::move(input_shape)),
+          strides(MakeStrides(shape)) {
+        size_t numel = 1;
+        for (const auto d: shape) {
+            numel *= static_cast<size_t>(std::max<int64_t>(d, 0));
+        }
+        storage.resize(numel, 0.0F);
+    }
+
+    AM_NODISCARD TensorView View() const {
+        return {storage.data(), DataType::Float32(), shape, strides};
+    }
+
+    AM_NODISCARD MutableTensorView MutableView() {
+        return {storage.data(), DataType::Float32(), shape, strides};
+    }
+};
+
+// ---- Task 8: graph -> rewrite -> lowering -> plan -> runtime integration --
+//
+// Symbolic-failure integration test: a graph with a deferred DimEqualConstraint
+// (concrete activation hidden != symbolic weight length) flows through
+// OptimizeModelGraph -> LowerModelGraph -> ExecutionPlanBuilder::Build ->
+// Executor::Execute. The runtime check survives every layer verbatim, and
+// supplying bindings that violate the constraint causes Executor::Execute to
+// fail BEFORE the kernel runs.
+
+TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure) {
+    // Build a graph with a deferred DimEqualConstraint: the activation hidden
+    // dim and the norm weight length are distinct symbolic dimensions, so
+    // AnalyzeRmsNorm emits a runtime check that cannot be resolved at compile
+    // time. The check must flow verbatim through OptimizeModelGraph ->
+    // LowerModelGraph -> ExecutionPlanBuilder -> Executor, and violating
+    // runtime bindings must be rejected BEFORE the kernel runs.
+    ModelGraph graph;
+    const ShapeSymbol seq = ShapeSymbol::Create();
+    const ShapeSymbol hidden = ShapeSymbol::Create();
+    const ShapeSymbol weight_dim = ShapeSymbol::Create();
+
+    const GraphValueId act = graph.AddConstant(
+            TensorSpec{.dtype = DataType::Float32(),
+                       .shape = SymbolicShape(std::vector<ShapeSymbol>{seq, hidden})},
+            ConstantBinding{.name = "act"},
+            "act");
+    const GraphValueId norm_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(),
+                       .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_dim})},
+            WeightBinding{.slot = ParameterSlot::kScale},
+            "norm_weight");
+
+    auto rms_or = graph.AddNode(
+            OpType::kRmsNorm,
+            std::nullopt,
+            {act, norm_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
+            OpParams{RmsNormParams{.eps = 1.0e-5F}},
+            {},
+            "rms");
+    ASSERT_TRUE(rms_or.ok()) << rms_or.status().ToString();
+    graph.MarkOutput(rms_or->outputs[0], "normed");
+
+    // Layer 0: the graph itself. AddNode must have invoked AnalyzeRmsNorm and
+    // stored the derived runtime check on the node.
+    const GraphNode& graph_node = graph.GetNode(rms_or->node);
+    ASSERT_EQ(graph_node.runtime_checks.size(), 1u)
+            << "AnalyzeRmsNorm must emit exactly one DimEqualConstraint for "
+               "distinct symbolic hidden vs weight length";
+    const auto graph_checks = graph_node.runtime_checks;
+
+    // Layer 1: OptimizeModelGraph (rewrite). Must not drop the runtime check.
+    PassContext opt_ctx;
+    opt_ctx.opt_level = 2;
+    const StatusOr<ModelGraph> optimized = OptimizeModelGraph(graph, opt_ctx);
+    ASSERT_TRUE(optimized.ok()) << optimized.status().ToString();
+    bool found_rms = false;
+    for (const GraphNode& node: optimized->GetNodes()) {
+        if (node.op_type == OpType::kRmsNorm) {
+            EXPECT_EQ(node.runtime_checks, graph_checks)
+                    << "OptimizeModelGraph must carry runtime_checks verbatim";
+            found_rms = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(found_rms) << "RmsNorm node must survive optimization";
+
+    // Layer 2: LowerModelGraph. Must carry runtime_checks into LoweredGraph.
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(*optimized);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    const ExecutionPlanNodeSpec* rms_step = nullptr;
+    for (const ExecutionPlanNodeSpec& step: lowered->steps) {
+        if (step.op_type == OpType::kRmsNorm) {
+            rms_step = &step;
+            break;
+        }
+    }
+    ASSERT_NE(rms_step, nullptr);
+    EXPECT_EQ(rms_step->runtime_checks, graph_checks)
+            << "LowerModelGraph must carry runtime_checks verbatim";
+
+    // Layer 3: ExecutionPlanBuilder::Build (trusted path). No re-inference.
+    RuntimeBuilder runtime_builder;
+    RuntimeContext runtime = runtime_builder.Build();
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, *lowered);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->size(), 1u)
+            << "Plan must contain exactly one step for the single-RmsNorm graph";
+    EXPECT_EQ(plan->steps().front().runtime_checks, graph_checks)
+            << "ExecutionPlanBuilder trusted path must carry runtime_checks verbatim";
+
+    // Layer 4: Executor::Execute with violating bindings. Must fail BEFORE
+    // the kernel runs. hidden=8 (act) vs weight_len=16 violates
+    // DimEqualConstraint(input[0].dim[1] == input[1].dim[0]).
+    RuntimeBindingContext bindings;
+    RuntimeTensorStorage act_storage{std::vector<int64_t>{2, 8}};
+    RuntimeTensorStorage weight_storage{std::vector<int64_t>{16}};
+    RuntimeTensorStorage out_storage{std::vector<int64_t>{2, 8}};
+    bindings.SetStepTensorBinding(
+            0,
+            StepTensorBinding{
+                    .inputs = {act_storage.View(), weight_storage.View()},
+                    .outputs = {out_storage.MutableView()},
+            });
+
+    const Status status = Executor::Execute(*plan, bindings);
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument)
+            << "Runtime must reject bindings violating the symbolic constraint";
+    EXPECT_NE(status.message().find("RmsNorm"), std::string::npos)
+            << "Failure message must preserve op semantic context";
+}
 }// namespace
 }// namespace aethermind

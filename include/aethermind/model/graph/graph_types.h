@@ -235,7 +235,7 @@ struct NodeOutputDesc {
 
 /// Describes an existing graph value with its authoritative TensorSpec.
 ///
-/// Returned by GraphRewriteSession::GetValueOutputDesc and consumed by
+/// Returned by GraphRewriteSession::GetValueOutputMetadata and consumed by
 /// ConstEvaluator::Plan — both need the TensorSpec to reason about shapes,
 /// dtypes, and byte counts. For new node construction (ModelGraph::AddNode),
 /// use NodeOutputDesc (spec is derived by the analyzer, not caller-supplied).

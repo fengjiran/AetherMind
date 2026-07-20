@@ -62,14 +62,16 @@ GraphValueId AddFloatConstant(ModelGraph& graph,
 GraphValueId AddLiveActivation(ModelGraph& graph, const char* name) {
     const GraphValueId tokens = graph.AddInput(
             Spec(DataType::Int(32), {2}), std::string(name) + ".tokens");
-    return AddEmbedding(graph,
-                        tokens,
-                        16,
-                        4,
-                        DataType::Float32(),
-                        WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                      .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                        name);
+    auto embedding_or = AddEmbedding(graph,
+                                     tokens,
+                                     16,
+                                     4,
+                                     DataType::Float32(),
+                                     WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                   .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                     name);
+    AM_CHECK(embedding_or.ok(), "AddEmbedding failed in test helper");
+    return *embedding_or;
 }
 
 ModelGraph BuildCompositeGraph() {
@@ -78,22 +80,30 @@ ModelGraph BuildCompositeGraph() {
     // (1) Foldable: two rank-0 float constants feeding an Add.
     const GraphValueId const_lhs = AddFloatConstant(graph, {2.0F}, {}, "const_lhs");
     const GraphValueId const_rhs = AddFloatConstant(graph, {3.0F}, {}, "const_rhs");
-    const GraphValueId foldable = AddElementwiseAdd(graph, 0U, const_lhs, const_rhs, "foldable_add");
+    auto foldable_or = AddElementwiseAdd(graph, 0U, const_lhs, const_rhs, "foldable_add");
+    AM_CHECK(foldable_or.ok(), "{}", foldable_or.status().ToString());
+    const GraphValueId foldable = *foldable_or;
 
     // (2) Live activation that merges with the foldable result.
     const GraphValueId live = AddLiveActivation(graph, "live");
 
     // Broadcast-add the rank-0 constant result into the [2,4] activation.
-    const GraphValueId merged = AddElementwiseAdd(graph, 0U, foldable, live, "merge");
+    auto merged_or = AddElementwiseAdd(graph, 0U, foldable, live, "merge");
+    AM_CHECK(merged_or.ok(), "{}", merged_or.status().ToString());
+    const GraphValueId merged = *merged_or;
 
     // (3) SiLU from the merged activation.
-    const GraphValueId silu = AddSilu(graph, 0U, merged, "silu");
+    auto silu_or = AddSilu(graph, 0U, merged, "silu");
+    AM_CHECK(silu_or.ok(), "{}", silu_or.status().ToString());
+    const GraphValueId silu = *silu_or;
 
     // (4) Second live activation for the multiply path.
     const GraphValueId up = AddLiveActivation(graph, "up");
 
     // (5) ElementwiseMul of silu(gate) * up → fusion pattern.
-    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    auto mul_or = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    AM_CHECK(mul_or.ok(), "{}", mul_or.status().ToString());
+    const GraphValueId mul = *mul_or;
 
     graph.MarkOutput(mul, "output");
 
@@ -465,9 +475,13 @@ ModelGraph BuildGraphWithConstantSiLUGate() {
     const GraphValueId const_gate = AddFloatConstant(
             graph, {0.5F, 0.5F, 0.5F, 0.5F, 0.5F, 0.5F, 0.5F, 0.5F},
             {2, 4}, "const_gate");
-    const GraphValueId silu_out = AddSilu(graph, 0U, const_gate, "silu_const");
+    auto silu_out_or = AddSilu(graph, 0U, const_gate, "silu_const");
+    AM_CHECK(silu_out_or.ok(), "{}", silu_out_or.status().ToString());
+    const GraphValueId silu_out = *silu_out_or;
 
-    const GraphValueId mul_out = AddElementwiseMul(graph, 0U, silu_out, up, "mul");
+    auto mul_out_or = AddElementwiseMul(graph, 0U, silu_out, up, "mul");
+    AM_CHECK(mul_out_or.ok(), "{}", mul_out_or.status().ToString());
+    const GraphValueId mul_out = *mul_out_or;
 
     graph.MarkOutput(mul_out, "output");
 
@@ -580,7 +594,9 @@ TEST(CompileModelGraph, PreservesStandaloneConstantGraphOutput) {
     ModelGraph graph;
     const GraphValueId lhs = AddFloatConstant(graph, {1.0F, 2.0F, 3.0F, 4.0F}, {4}, "lhs");
     const GraphValueId rhs = AddFloatConstant(graph, {5.0F, 6.0F, 7.0F, 8.0F}, {4}, "rhs");
-    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
+    const GraphValueId sum = *sum_or;
     graph.MarkOutput(sum, "output");
     ASSERT_TRUE(graph.Validate().ok());
 

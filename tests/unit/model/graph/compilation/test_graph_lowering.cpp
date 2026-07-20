@@ -2,7 +2,11 @@
 #include "aethermind/model/graph/compilation/graph_lowering.h"
 
 #include "aethermind/model/graph/graph_builder.h"
+#include "aethermind/model/graph/operator_schema.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/operators/rmsnorm_op.h"
+#include "aethermind/shape_inference/shape_constraint.h"
+#include "aethermind/shape_inference/shape_symbol.h"
 
 #include <gtest/gtest.h>
 
@@ -219,10 +223,18 @@ TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 3U);
     EXPECT_EQ(lowered->steps[2].op_type, OpType::kKVCacheUpdate);
-    ASSERT_EQ(lowered->steps[2].input_specs.size(), 2U);
+    // input_specs now carries the complete schema-port order (k, v, k_state, v_state).
+    ASSERT_EQ(lowered->steps[2].input_specs.size(), 4U);
     ASSERT_EQ(lowered->step_bindings[2].input_values.size(), 4U);
     EXPECT_EQ(lowered->step_bindings[2].input_values[2], k_state_in);
     EXPECT_EQ(lowered->step_bindings[2].input_values[3], v_state_in);
+    // Compact view excludes the two state ports (k_state, v_state).
+    const StatusOr<OperatorSchema> kvc_schema = GetOperatorSchema(OpType::kKVCacheUpdate);
+    ASSERT_TRUE(kvc_schema.ok()) << kvc_schema.status().ToString();
+    const StatusOr<std::vector<TensorSpec>> kvc_compact =
+            MakeCompactInputSpecs(*kvc_schema, lowered->steps[2].input_specs);
+    ASSERT_TRUE(kvc_compact.ok()) << kvc_compact.status().ToString();
+    EXPECT_EQ(kvc_compact->size(), 2U);
     ASSERT_EQ(lowered->steps[2].output_specs.size(), 2U);
     EXPECT_EQ(lowered->steps[2].output_specs[0], KVSpec());
     EXPECT_EQ(lowered->steps[2].output_specs[1], KVSpec());
@@ -253,8 +265,17 @@ TEST(GraphLowering, LowersAttentionStatePortsWithoutTensorSpecs) {
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 2U);
     EXPECT_EQ(lowered->steps[1].op_type, OpType::kAttention);
-    ASSERT_EQ(lowered->steps[1].input_specs.size(), 1U);
+    // input_specs now carries the complete schema-port order (q, k_cache, v_cache).
+    ASSERT_EQ(lowered->steps[1].input_specs.size(), 3U);
     EXPECT_EQ(lowered->steps[1].input_specs[0].dtype, DataType::Float32());
+    // Compact view excludes the two state ports (k_cache, v_cache).
+    const StatusOr<OperatorSchema> attn_schema = GetOperatorSchema(OpType::kAttention);
+    ASSERT_TRUE(attn_schema.ok()) << attn_schema.status().ToString();
+    const StatusOr<std::vector<TensorSpec>> attn_compact =
+            MakeCompactInputSpecs(*attn_schema, lowered->steps[1].input_specs);
+    ASSERT_TRUE(attn_compact.ok()) << attn_compact.status().ToString();
+    EXPECT_EQ(attn_compact->size(), 1U);
+    EXPECT_EQ((*attn_compact)[0].dtype, DataType::Float32());
     ASSERT_EQ(lowered->steps[1].output_specs.size(), 1U);
     EXPECT_EQ(lowered->steps[1].output_specs[0], HiddenSpec());
     ASSERT_EQ(lowered->step_bindings[1].input_values.size(), 3U);
@@ -439,6 +460,98 @@ TEST(GraphLowering, WeightedOpPreservesOriginalWeightDType) {
     ASSERT_EQ(lowered->steps.size(), 1U);
     EXPECT_EQ(lowered->steps[0].op_type, OpType::kEmbedding);
     EXPECT_EQ(lowered->steps[0].weight_dtype, DataType::Float32());
+}
+
+TEST(GraphLowering, CarriesRuntimeChecksFromGraphToLoweredNode) {
+    ModelGraph graph;
+    const ShapeSymbol weight_hidden = ShapeSymbol::Create();
+
+    // Embedding produces an ActivationValue (required by RmsNorm port 0).
+    // Use AddActivation helper so the embedding output has a concrete shape
+    // {1, 8}; the runtime check will come from the norm weight below.
+    const GraphValueId activation = AddActivation(graph, HiddenSpec(), "act");
+
+    // Norm weight has a symbolic hidden dim distinct from the activation's
+    // concrete hidden dim (8). RmsNorm analysis emits a DimEqualConstraint
+    // runtime check because static 8 != symbolic weight_hidden.
+    const GraphValueId norm_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(),
+                       .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_hidden})},
+            WeightBinding{.slot = ParameterSlot::kScale,
+                          .semantic_role = TransformerWeightRole::kFinalNorm});
+    auto rms_or = graph.AddNode(
+            OpType::kRmsNorm,
+            std::nullopt,
+            {activation, norm_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
+            RmsNormParams{.eps = 1.0e-5F});
+    ASSERT_TRUE(rms_or.ok()) << rms_or.status().ToString();
+    graph.MarkOutput(rms_or->outputs[0], "normed");
+
+    const GraphNode& graph_node = graph.GetNode(rms_or->node);
+    ASSERT_FALSE(graph_node.runtime_checks.empty())
+            << "RmsNorm with mismatched symbolic weight dim must produce runtime checks";
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_EQ(lowered->steps.size(), 2U);
+    EXPECT_EQ(lowered->steps[1].runtime_checks, graph_node.runtime_checks)
+            << "Lowered node must carry graph runtime_checks verbatim without re-inference";
+}
+
+TEST(GraphLowering, LowersCompleteInputSpecsInSchemaPortOrder) {
+    const HfModelConfig config = MakeLlamaConfig(2);
+    const ResolvedModelWeights weights = MakeWeights(config);
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(*graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+
+    for (size_t i = 0; i < lowered->steps.size(); ++i) {
+        const auto& step = lowered->steps[i];
+        const StatusOr<OperatorSchema> schema = GetOperatorSchema(step.op_type);
+        ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+        EXPECT_EQ(step.input_specs.size(), schema->input_ports.size())
+                << "step " << i << " input_specs must match schema port count";
+    }
+}
+
+TEST(GraphLowering, CompactInputSpecsOrderMatchesRuntimeBindings) {
+    ModelGraph graph;
+    const GraphValueId q = AddActivation(graph, HiddenSpec(), "q");
+    const GraphValueId k_cache = graph.AddState(KVSpec(), KStateBinding(), "k_cache");
+    const GraphValueId v_cache = graph.AddState(KVSpec(), VStateBinding(), "v_cache");
+    (void) graph.AddNode(
+            OpType::kAttention,
+            0U,
+            {q, k_cache, v_cache},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
+            AttentionParams{.num_attention_heads = 4, .num_key_value_heads = 2, .head_dim = 2});
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+
+    const auto& attn_step = lowered->steps[1];
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kAttention);
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+
+    const StatusOr<std::vector<TensorSpec>> compact =
+            MakeCompactInputSpecs(*schema, attn_step.input_specs);
+    ASSERT_TRUE(compact.ok()) << compact.status().ToString();
+
+    // Compact view keeps only contributing ports (q for Attention). Each
+    // compact entry must match the spec at the corresponding port index.
+    size_t compact_idx = 0;
+    for (const auto& port: schema->input_ports) {
+        if (!port.contributes_tensor_spec) {
+            continue;
+        }
+        ASSERT_LT(compact_idx, compact->size());
+        EXPECT_EQ((*compact)[compact_idx], attn_step.input_specs[port.index]);
+        ++compact_idx;
+    }
+    EXPECT_EQ(compact_idx, compact->size());
 }
 
 }// namespace

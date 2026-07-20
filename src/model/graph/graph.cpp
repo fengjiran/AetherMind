@@ -179,13 +179,12 @@ Status ValidateWeightBindingSelfConsistency(const WeightBinding& binding) {
 // covers KVCacheUpdate output state bindings (family, slot, layer).
 // output_state_bindings is one entry per output port; ports that are not
 // State ports should pass nullopt for position-based alignment.
-Status ValidateNodeStateBindings(
-        OpType op_type,
-        std::optional<uint32_t> decoder_layer_index,
-        const OperatorSchema& schema,
-        std::span<const GraphValue> values,
-        std::span<const GraphValueId> node_inputs,
-        std::span<const std::optional<StateBinding>> output_state_bindings) {
+Status ValidateNodeStateBindings(OpType op_type,
+                                 std::optional<uint32_t> decoder_layer_index,
+                                 const OperatorSchema& schema,
+                                 std::span<const GraphValue> values,
+                                 std::span<const GraphValueId> node_inputs,
+                                 std::span<const std::optional<StateBinding>> output_state_bindings) {
     if (op_type == OpType::kKVCacheUpdate) {
         auto port_or = FindInputPortIndex(schema, kv_cache_ports::kCacheIn);
         AM_RETURN_IF_ERROR(port_or.status());
@@ -298,34 +297,34 @@ ModelGraph::ModelGraph(HfModelConfig config, std::vector<GraphNode> nodes,
 
 GraphValueId ModelGraph::AddInput(TensorSpec spec, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back(GraphValue{.payload = ModelInputValue{},
-                                 .spec = std::move(spec),
-                                 .debug_name = name});
-    inputs_.push_back(GraphInput{.value = value_id, .name = std::move(name)});
+    values_.push_back({.payload = ModelInputValue{},
+                       .spec = std::move(spec),
+                       .debug_name = name});
+    inputs_.push_back({.value = value_id, .name = std::move(name)});
     return value_id;
 }
 
 GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::string debug_name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back(GraphValue{.payload = WeightValue{.binding = binding},
-                                 .spec = std::move(spec),
-                                 .debug_name = std::move(debug_name)});
+    values_.push_back({.payload = WeightValue{.binding = binding},
+                       .spec = std::move(spec),
+                       .debug_name = std::move(debug_name)});
     return value_id;
 }
 
 GraphValueId ModelGraph::AddConstant(TensorSpec spec, ConstantBinding binding, std::string debug_name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back(GraphValue{.payload = ConstantValue{.binding = std::move(binding)},
-                                 .spec = std::move(spec),
-                                 .debug_name = std::move(debug_name)});
+    values_.push_back({.payload = ConstantValue{.binding = std::move(binding)},
+                       .spec = std::move(spec),
+                       .debug_name = std::move(debug_name)});
     return value_id;
 }
 
 GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string debug_name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back(GraphValue{.payload = StateValue{.binding = binding},
-                                 .spec = std::move(spec),
-                                 .debug_name = std::move(debug_name)});
+    values_.push_back({.payload = StateValue{.binding = binding},
+                       .spec = std::move(spec),
+                       .debug_name = std::move(debug_name)});
     return value_id;
 }
 
@@ -338,8 +337,7 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                                         std::string debug_name) {
     const uint32_t node_idx = NextNodeIndex(nodes_);
     auto ctx = [&](const std::string& detail) {
-        return "node " + std::to_string(node_idx) + " (" +
-               std::string(ToString(op_type)) +
+        return "node " + std::to_string(node_idx) + " (" + ToString(op_type) +
                (debug_name.empty() ? "" : " " + debug_name) + "): " + detail;
     };
 
@@ -347,26 +345,25 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
         return Status::InvalidArgument(ctx("must use typed op params, not attrs"));
     }
 
+    if (auto status = ValidateOperatorParams(op_type, op_params); !status.ok()) {
+        return Status::InvalidArgument(ctx(status.message()));
+    }
+
     auto schema_or = GetOperatorSchema(op_type);
     if (!schema_or.ok()) {
         return Status::InvalidArgument(ctx(schema_or.status().message()));
     }
     const auto& schema = *schema_or;
-
-    {
-        auto status = ValidateOperatorParams(op_type, op_params);
-        if (!status.ok()) {
-            return Status::InvalidArgument(ctx(status.message()));
-        }
-    }
-
     if (inputs.size() != schema.input_ports.size()) {
-        return Status::InvalidArgument(ctx("input count " + std::to_string(inputs.size()) +
-                                           " != schema " + std::to_string(schema.input_ports.size())));
+        return Status::InvalidArgument(
+                ctx("input count " + std::to_string(inputs.size()) +
+                    " != schema " + std::to_string(schema.input_ports.size())));
     }
+
     if (outputs_desc.size() != schema.output_ports.size()) {
-        return Status::InvalidArgument(ctx("output count " + std::to_string(outputs_desc.size()) +
-                                           " != schema " + std::to_string(schema.output_ports.size())));
+        return Status::InvalidArgument(
+                ctx("output count " + std::to_string(outputs_desc.size()) +
+                    " != schema " + std::to_string(schema.output_ports.size())));
     }
 
     for (size_t i = 0; i < inputs.size(); ++i) {
@@ -376,21 +373,23 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                         (i < schema.input_ports.size() ? schema.input_ports[i].name : "<?>") +
                         " invalid value id"));
         }
+
         if (!PayloadMatchesPort(values_[inputs[i].index].payload, schema.input_ports[i].kind)) {
             return Status::InvalidArgument(
-                    ctx("input[" + std::to_string(i) + "] " + schema.input_ports[i].name +
-                        " payload kind mismatch"));
+                    ctx("input[" + std::to_string(i) + "] " +
+                        schema.input_ports[i].name + " payload kind mismatch"));
         }
     }
 
     for (size_t i = 0; i < outputs_desc.size(); ++i) {
-        auto normalized = std::holds_alternative<std::monostate>(outputs_desc[i].payload)
-                                  ? GraphValuePayload{ActivationValue{}}
-                                  : outputs_desc[i].payload;
+        auto normalized =
+                std::holds_alternative<std::monostate>(outputs_desc[i].payload)
+                        ? GraphValuePayload{ActivationValue{}}
+                        : outputs_desc[i].payload;
         if (!PayloadMatchesPort(normalized, schema.output_ports[i].kind)) {
             return Status::InvalidArgument(
-                    ctx("output[" + std::to_string(i) + "] " + schema.output_ports[i].name +
-                        " payload kind mismatch"));
+                    ctx("output[" + std::to_string(i) + "] " +
+                        schema.output_ports[i].name + " payload kind mismatch"));
         }
     }
 
@@ -399,22 +398,26 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
             const auto& binding = std::get<WeightValue>(values_[inputs[i].index].payload).binding;
             if (auto status = ValidateWeightBindingSelfConsistency(binding); !status.ok()) {
                 return Status::InvalidArgument(
-                        ctx("input[" + std::to_string(i) + "] " + schema.input_ports[i].name +
-                            " weight: " + status.message()));
+                        ctx("input[" + std::to_string(i) + "] " +
+                            schema.input_ports[i].name + " weight: " + status.message()));
             }
+
             if (auto exp = ExpectedWeightSlotForOp(op_type);
                 exp.has_value() && binding.slot != *exp) {
                 return Status::InvalidArgument(
-                        ctx("input[" + std::to_string(i) + "] " + schema.input_ports[i].name +
-                            " weight slot mismatch"));
+                        ctx("input[" + std::to_string(i) + "] " +
+                            schema.input_ports[i].name + " weight slot mismatch"));
             }
         }
+
         if (schema.input_ports[i].kind == OperatorPortKind::kState) {
-            const auto& binding = std::get<StateValue>(values_[inputs[i].index].payload).binding;
+            const auto& binding = std::get<StateValue>(
+                                          values_[inputs[i].index].payload)
+                                          .binding;
             if (auto status = ValidateStateBinding(binding); !status.ok()) {
                 return Status::InvalidArgument(
-                        ctx("input[" + std::to_string(i) + "] " + schema.input_ports[i].name +
-                            " state: " + status.message()));
+                        ctx("input[" + std::to_string(i) + "] " +
+                            schema.input_ports[i].name + " state: " + status.message()));
             }
         }
     }
@@ -428,11 +431,12 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
         output_bindings.reserve(outputs_desc.size());
         for (const auto& desc: outputs_desc) {
             if (const auto* sv = std::get_if<StateValue>(&desc.payload)) {
-                output_bindings.push_back(sv->binding);
+                output_bindings.emplace_back(sv->binding);
             } else {
-                output_bindings.push_back(std::nullopt);
+                output_bindings.emplace_back(std::nullopt);
             }
         }
+
         auto status = ValidateNodeStateBindings(
                 op_type, decoder_layer_index, schema, values_, inputs, output_bindings);
         if (!status.ok()) {
@@ -448,10 +452,10 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
 
     auto inference_or = AnalyzeOperator(op_type, op_params, all_input_specs);
     if (!inference_or.ok()) {
-        return Status::InvalidArgument(ctx("AnalyzeOperator: " + inference_or.status().message()));
+        return Status::InvalidArgument(ctx("AnalyzeOperator: " +
+                                           inference_or.status().message()));
     }
     const auto& inference = *inference_or;
-
     if (inference.outputs.size() != schema.output_ports.size()) {
         return Status::InvalidArgument(
                 ctx("AnalyzeOperator inferred " + std::to_string(inference.outputs.size()) +
@@ -475,7 +479,7 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
         auto payload = std::holds_alternative<std::monostate>(outputs_desc[i].payload)
                                ? GraphValuePayload{ActivationValue{}}
                                : outputs_desc[i].payload;
-        staged_values.push_back(GraphValue{
+        staged_values.push_back({
                 .payload = payload,
                 .spec = inference.outputs[i],
                 .producer = node_id,
@@ -490,7 +494,8 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
     for (auto& val: staged_values) {
         values_.push_back(std::move(val));
     }
-    nodes_.push_back(GraphNode{
+
+    nodes_.push_back({
             .op_type = op_type,
             .decoder_layer_index = decoder_layer_index,
             .inputs = std::move(inputs),

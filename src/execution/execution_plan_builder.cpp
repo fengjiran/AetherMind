@@ -2,9 +2,11 @@
 
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/model/graph/compilation/graph_lowering.h"
+#include "aethermind/model/graph/operator_schema.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/operator_semantics.h"
 
 #include <variant>
 
@@ -39,33 +41,113 @@ StatusOr<const void*> ResolvePackedWeightsForNode(const ModelInstance* model_ins
     return packed_weights->storage().data();
 }
 
-OpParams MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node) {
-    if (!std::holds_alternative<std::monostate>(node.op_params)) {
-        return node.op_params;
-    }
-
-    const auto default_params = OperatorRegistry::CreateDefaultParams(node.op_type);
-    if (default_params.ok()) {
-        return default_params.value();
-    }
-    return std::monostate{};
-}
-
 struct PreparedOperator {
     OperatorPtr op{};
-    InferenceResult inference{};
+    std::vector<TensorSpec> compact_input_specs{};
+    // Trusted path: copied verbatim from node.output_specs / node.runtime_checks.
+    // Untrusted path: copied from AnalyzeOperator's InferenceResult after
+    // strict-equality validation against caller-provided metadata.
+    std::vector<TensorSpec> output_specs{};
+    std::vector<ShapeConstraint> runtime_checks{};
 };
 
+// Validates caller-provided semantic metadata (op_params, output_specs,
+// runtime_checks) against the single semantic authority AnalyzeOperator.
+// Used by the untrusted raw ExecutionPlanNodeSpec adapter path.
+//
+// Rejects:
+// - monostate op_params (caller must provide typed params)
+// - ValidateOperatorParams failures
+// - AnalyzeOperator failures
+// - Any mismatch between caller metadata and inferred metadata (strict
+//   equality; empty caller fields are NOT treated as "infer for me").
+Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
+                              std::span<const TensorSpec> compact_input_specs,
+                              std::vector<TensorSpec>& outputs_out,
+                              std::vector<ShapeConstraint>& checks_out) {
+    if (std::holds_alternative<std::monostate>(node.op_params)) {
+        return Status::InvalidArgument(
+                "Untrusted ExecutionPlanNodeSpec adapter requires typed op_params; "
+                "monostate is not accepted");
+    }
+    AM_RETURN_IF_ERROR(ValidateOperatorParams(node.op_type, node.op_params));
+    auto analyzed = AnalyzeOperator(node.op_type, node.op_params, compact_input_specs);
+    if (!analyzed.ok()) {
+        return analyzed.status();
+    }
+    if (analyzed->outputs != node.output_specs) {
+        return Status::InvalidArgument(
+                "ExecutionPlanNodeSpec.output_specs does not match AnalyzeOperator");
+    }
+    if (analyzed->runtime_checks != node.runtime_checks) {
+        return Status::InvalidArgument(
+                "ExecutionPlanNodeSpec.runtime_checks does not match AnalyzeOperator");
+    }
+    outputs_out = std::move(analyzed->outputs);
+    checks_out = std::move(analyzed->runtime_checks);
+    return Status::Ok();
+}
+
 StatusOr<PreparedOperator> CreateAndPrepareOperator(Backend& backend,
-                                                    const ExecutionPlanNodeSpec& node) {
+                                                    const ExecutionPlanNodeSpec& node,
+                                                    bool trusted) {
+    // Untrusted path: reject monostate op_params early, before
+    // OperatorRegistry::Create returns a generic "Wrong params type"
+    // error. The explicit message makes the contract visible to callers.
+    if (!trusted && std::holds_alternative<std::monostate>(node.op_params)) {
+        return Status::InvalidArgument(
+                "Untrusted ExecutionPlanNodeSpec adapter requires typed op_params; "
+                "monostate is not accepted");
+    }
+
+    // Trusted path: Operator creation is attempted only to obtain an
+    // executable handle for kernel dispatch. Semantic validation was
+    // already performed during graph construction (ModelGraph::AddNode ->
+    // AnalyzeOperator) and carried through lowering; the trusted builder
+    // MUST NOT re-invoke ValidateParams / CheckInputSpecs / InferOutputShapes
+    // or AnalyzeOperator.
+    //
+    // Untrusted path: caller-authored ExecutionPlanNodeSpec is treated as
+    // potentially stale/forged. We re-invoke the semantic authority
+    // (ValidateOperatorParams + AnalyzeOperator) and require strict equality
+    // with caller-provided metadata before entering the common trusted
+    // builder tail.
+    //
     StatusOr<std::unique_ptr<Operator>> created = OperatorRegistry::Create(
-            node.op_type,
-            MakeOperatorParamsForNode(node));
+            node.op_type, node.op_params);
     if (!created.ok()) {
-        if (created.status().code() == StatusCode::kNotFound) {
-            return PreparedOperator{};
+        if (created.status().code() != StatusCode::kNotFound) {
+            return created.status();
         }
-        return created.status();
+        // Raw kernel fallback: Operator not registered. The ExecutionStep
+        // will wrap a FunctionOperator. Semantic validation is still
+        // required so FunctionOperator's no-op inference cannot bypass
+        // the single semantic authority.
+        PreparedOperator fallback;
+        fallback.compact_input_specs = node.input_specs;
+        if (trusted) {
+            // Trusted path: LoweredGraph already carried verbatim metadata
+            // from AnalyzeOperator during graph construction. Use it
+            // directly without re-invoking the semantic authority, so
+            // FunctionOperator-based ExecutionSteps stay consistent with
+            // the registered-Operator path. The contract is "create if
+            // registered, otherwise resolve raw fallback"; returning
+            // FailedPrecondition here would violate it.
+            fallback.output_specs = node.output_specs;
+            fallback.runtime_checks = node.runtime_checks;
+        } else {
+            // Untrusted raw fallback: validate caller metadata via
+            // AnalyzeOperator using the full input_specs as the compact view
+            // (no schema available to derive a compact subset because the
+            // Operator is not registered; AnalyzeOperator internally invokes
+            // GetOperatorSchema, which must succeed for the OpType).
+            std::vector<TensorSpec> outputs;
+            std::vector<ShapeConstraint> checks;
+            AM_RETURN_IF_ERROR(ValidateCallerMetadata(node, node.input_specs, outputs, checks));
+            fallback.output_specs = std::move(outputs);
+            fallback.runtime_checks = std::move(checks);
+        }
+        return fallback;
     }
 
     if (!node.attrs.empty()) {
@@ -74,21 +156,39 @@ StatusOr<PreparedOperator> CreateAndPrepareOperator(Backend& backend,
     }
 
     std::unique_ptr<Operator> op = std::move(created).value();
-    AM_RETURN_IF_ERROR(op->ValidateParams());
 
-    InferenceResult inference;
-    if (!node.input_specs.empty()) {
-        AM_RETURN_IF_ERROR(op->CheckInputSpecs(node.input_specs));
-        auto inferred = op->InferOutputShapes(node.input_specs);
-        if (!inferred.ok()) {
-            return inferred.status();
+    PreparedOperator prepared;
+
+    // Empty input_specs skips compact derivation (test fixtures that only
+    // exercise kernel resolution). Both paths handle this identically.
+    if (node.input_specs.empty()) {
+        if (trusted) {
+            prepared.output_specs = node.output_specs;
+            prepared.runtime_checks = node.runtime_checks;
+        } else {
+            std::vector<TensorSpec> empty_inputs;
+            AM_RETURN_IF_ERROR(ValidateCallerMetadata(node, empty_inputs,
+                                                      prepared.output_specs,
+                                                      prepared.runtime_checks));
         }
-        inference = std::move(inferred).value();
-    }
+    } else {
+        // Derive compact specs from the complete schema-port-ordered input_specs.
+        StatusOr<OperatorSchema> schema_or = GetOperatorSchema(node.op_type);
+        AM_RETURN_IF_ERROR(schema_or.status());
+        auto compact_or = MakeCompactInputSpecs(*schema_or, node.input_specs);
+        AM_RETURN_IF_ERROR(compact_or.status());
+        prepared.compact_input_specs = std::move(*compact_or);
 
-    if (!node.output_specs.empty() && inference.outputs != node.output_specs) {
-        return Status::InvalidArgument(
-                "Inferred output specs do not match ExecutionPlanNodeSpec.output_specs");
+        if (trusted) {
+            // Carry graph-derived metadata forward without re-inference.
+            prepared.output_specs = node.output_specs;
+            prepared.runtime_checks = node.runtime_checks;
+        } else {
+            // Untrusted: validate caller metadata against AnalyzeOperator.
+            AM_RETURN_IF_ERROR(ValidateCallerMetadata(node, prepared.compact_input_specs,
+                                                      prepared.output_specs,
+                                                      prepared.runtime_checks));
+        }
     }
 
     OperatorContext op_ctx{
@@ -98,18 +198,17 @@ StatusOr<PreparedOperator> CreateAndPrepareOperator(Backend& backend,
             .selector = MakeSelectorForNode(node),
     };
     AM_RETURN_IF_ERROR(op->Prepare(op_ctx));
+    prepared.op = OperatorPtr(std::move(op));
 
-    return PreparedOperator{
-            .op = OperatorPtr(std::move(op)),
-            .inference = std::move(inference),
-    };
+    return prepared;
 }
 
 StatusOr<ExecutionPlan> BuildExecutionPlan(
         RuntimeContext& runtime,
         const ModelInstance* model_instance,
         const std::vector<ExecutionPlanNodeSpec>& nodes,
-        StateAliasPlan state_alias_plan) {
+        StateAliasPlan state_alias_plan,
+        bool trusted) {
     std::vector<WorkspaceRequirement> workspace_requirements;
     workspace_requirements.reserve(nodes.size());
     for (const ExecutionPlanNodeSpec& node: nodes) {
@@ -132,7 +231,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(
             return backend.status();
         }
 
-        auto prepared_operator = CreateAndPrepareOperator(*backend.value(), node);
+        auto prepared_operator = CreateAndPrepareOperator(*backend.value(), node, trusted);
         if (!prepared_operator.ok()) {
             return prepared_operator.status();
         }
@@ -161,9 +260,9 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(
                 .op = std::move(op),
                 .packed_weights = packed_weights.value(),
                 .workspace_requirement = workspace_requirements[index],
-                .input_specs = node.input_specs,
-                .output_specs = std::move(prepared.inference.outputs),
-                .runtime_checks = std::move(prepared.inference.runtime_checks),
+                .input_specs = std::move(prepared.compact_input_specs),
+                .output_specs = std::move(prepared.output_specs),
+                .runtime_checks = std::move(prepared.runtime_checks),
                 .debug_name = nullptr,
         });
     }
@@ -194,14 +293,14 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::ResolveKernelForNode(
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, nullptr, nodes, StateAliasPlan{});
+    return BuildExecutionPlan(runtime, nullptr, nodes, StateAliasPlan{}, /*trusted=*/false);
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const ModelInstance& model_instance,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, &model_instance, nodes, StateAliasPlan{});
+    return BuildExecutionPlan(runtime, &model_instance, nodes, StateAliasPlan{}, /*trusted=*/false);
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
@@ -210,7 +309,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(lowered);
     AM_RETURN_IF_ERROR(alias_plan.status());
     return BuildExecutionPlan(runtime, nullptr, lowered.steps,
-                              std::move(alias_plan).value());
+                              std::move(alias_plan).value(), /*trusted=*/true);
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
@@ -220,7 +319,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(lowered);
     AM_RETURN_IF_ERROR(alias_plan.status());
     return BuildExecutionPlan(runtime, &model_instance, lowered.steps,
-                              std::move(alias_plan).value());
+                              std::move(alias_plan).value(), /*trusted=*/true);
 }
 
 }// namespace aethermind

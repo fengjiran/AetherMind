@@ -6,7 +6,9 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/buffer.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
@@ -16,6 +18,23 @@
 
 namespace aethermind {
 namespace {
+
+SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
+    const std::vector<int64_t> shape(dims);
+    return SymbolicShape(IntArrayView{shape});
+}
+
+StatusOr<InferenceResult> AnalyzeRmsNorm(float eps,
+                                         const SymbolicShape& act_shape,
+                                         const SymbolicShape& weight_shape) {
+    std::vector<TensorSpec> inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    return AnalyzeOperator(OpType::kRmsNorm,
+                           OpParams{RmsNormParams{.eps = eps}},
+                           inputs);
+}
 
 template<typename T>
 concept HasPublicAddStep = requires(T& t, const ExecutionStep& s) {
@@ -130,12 +149,22 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
                                    std::make_unique<ImmutableTestBackendFactory>());
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({1, 4});
+    const SymbolicShape weight_shape = StaticShape({4});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
@@ -155,6 +184,11 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
                                    std::make_unique<ImmutableTestBackendFactory>());
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({1, 4});
+    const SymbolicShape weight_shape = StaticShape({4});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
@@ -162,6 +196,11 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {.bytes = 64, .alignment = 32, .offset = 999},
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
@@ -169,6 +208,11 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .workspace_requirement = {.bytes = 128, .alignment = 64, .offset = 123},
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
@@ -210,6 +254,11 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
                                                           &packed_destroyed))
                         .ok());
 
+    const SymbolicShape act_shape = StaticShape({1, 4});
+    const SymbolicShape weight_shape = StaticShape({4});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
@@ -217,6 +266,11 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, model_instance, nodes);
@@ -245,12 +299,22 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
                                    std::make_unique<ImmutableTestBackendFactory>());
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({1, 4});
+    const SymbolicShape weight_shape = StaticShape({4});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
@@ -294,12 +358,22 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
                                    std::make_unique<ImmutableTestBackendFactory>());
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({1, 4});
+    const SymbolicShape weight_shape = StaticShape({4});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

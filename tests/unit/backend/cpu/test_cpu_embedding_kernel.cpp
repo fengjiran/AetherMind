@@ -1,17 +1,24 @@
-#include "backend/cpu/kernels/embedding/embedding_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/embedding_op.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "backend/cpu/kernels/embedding/embedding_internal.h"
 
 #include <gtest/gtest.h>
 
 namespace aethermind {
 namespace {
+
+SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
+    const std::vector<int64_t> shape(dims);
+    return SymbolicShape(IntArrayView{shape});
+}
 
 template<size_t N>
 TensorView MakeInt64TensorView(const int64_t (&data)[N],
@@ -35,14 +42,14 @@ MutableTensorView MakeMutableFloatTensorView(float (&data)[N],
 }
 
 cpu::detail::EmbeddingParams MakeEmbeddingParams(const int64_t (&token_ids)[3],
-                                          const float (&weight)[12],
-                                          float (&output)[9],
-                                          const int64_t (&token_shape)[1],
-                                          const int64_t (&token_strides)[1],
-                                          const int64_t (&weight_shape)[2],
-                                          const int64_t (&weight_strides)[2],
-                                          const int64_t (&output_shape)[2],
-                                          const int64_t (&output_strides)[2]) {
+                                                 const float (&weight)[12],
+                                                 float (&output)[9],
+                                                 const int64_t (&token_shape)[1],
+                                                 const int64_t (&token_strides)[1],
+                                                 const int64_t (&weight_shape)[2],
+                                                 const int64_t (&weight_strides)[2],
+                                                 const int64_t (&output_shape)[2],
+                                                 const int64_t (&output_strides)[2]) {
     return cpu::detail::EmbeddingParams{
             .token_ids = MakeInt64TensorView(token_ids, token_shape, token_strides),
             .weight = MakeFloatTensorView(weight, weight_shape, weight_strides),
@@ -97,8 +104,18 @@ TEST(EmbeddingKernel, ComputesExpectedRows) {
 TEST(EmbeddingKernel, ComputesExpectedRowsWithUint32Tokens) {
     const uint32_t token_ids[3] = {2, 0, 3};
     const float weight[12] = {
-            1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F,
-            7.0F, 8.0F, 9.0F, 10.0F, 11.0F, 12.0F,
+            1.0F,
+            2.0F,
+            3.0F,
+            4.0F,
+            5.0F,
+            6.0F,
+            7.0F,
+            8.0F,
+            9.0F,
+            10.0F,
+            11.0F,
+            12.0F,
     };
     float output[9] = {};
     const int64_t token_shape[1] = {3};
@@ -170,6 +187,17 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsThroughEmbeddingOperator) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape tokens_spec_shape = StaticShape({3});
+    const SymbolicShape weight_spec_shape = StaticShape({4, 3});
+    std::vector<TensorSpec> embedding_inputs = {
+            TensorSpec{.dtype = DataType::Int(64), .shape = tokens_spec_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_spec_shape},
+    };
+    const auto analyzed = AnalyzeOperator(OpType::kEmbedding,
+                                          OpParams{EmbeddingParams{}},
+                                          embedding_inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kEmbedding,
@@ -179,6 +207,9 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsThroughEmbeddingOperator) {
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
+            .input_specs = embedding_inputs,
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{EmbeddingOp::Params{}},
     });
 

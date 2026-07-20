@@ -9,6 +9,7 @@
 #include "aethermind/model/graph/graph.h"
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/add_op.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/broadcast.h"
 #include "backend/cpu/kernels/add/add_internal.h"
@@ -667,6 +668,13 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
     auto inferred = InferBroadcastShape(lhs_shape, rhs_shape);
     ASSERT_TRUE(inferred.ok());
 
+    std::vector<TensorSpec> add_inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = lhs_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = rhs_shape},
+    };
+    auto analyzed = AnalyzeOperator(OpType::kAdd, OpParams{AddParams{}}, add_inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     RuntimeBuilder runtime_builder;
     RuntimeContext runtime = runtime_builder.Build();
 
@@ -679,9 +687,9 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
-            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = lhs_shape},
-                            TensorSpec{.dtype = DataType::Float32(), .shape = rhs_shape}},
-            .output_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = inferred->output_shape}},
+            .input_specs = add_inputs,
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams(AddParams{}),
     });
 

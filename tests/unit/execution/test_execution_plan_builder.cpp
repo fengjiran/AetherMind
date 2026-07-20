@@ -9,6 +9,7 @@
 #include "aethermind/model/graph/compilation/graph_lowering.h"
 #include "aethermind/model/graph/graph.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
@@ -122,6 +123,38 @@ public:
     }
 };
 
+Status SoftmaxTestKernel(const KernelContext&) noexcept {
+    return Status::Ok();
+}
+
+class SoftmaxTestBackend final : public Backend {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    const BackendCapabilities& capabilities() const noexcept override { return caps_; }
+    KernelFunc ResolveKernel(OpType op_type, const KernelSelector&) const noexcept override {
+        return op_type == OpType::kSoftmax ? &SoftmaxTestKernel : nullptr;
+    }
+    StatusOr<ResolvedKernel> ResolveKernelInfo(OpType op_type,
+                                               const KernelSelector&) const noexcept override {
+        if (op_type != OpType::kSoftmax) {
+            return Status::NotFound("SoftmaxTestBackend only resolves kSoftmax");
+        }
+        return ResolvedKernel{.op_type = op_type, .fn = &SoftmaxTestKernel, .attrs = {}, .debug_name = "test::softmax_kernel"};
+    }
+    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
+
+private:
+    BackendCapabilities caps_{};
+};
+
+class SoftmaxTestBackendFactory final : public BackendFactory {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    std::unique_ptr<Backend> Create() const override {
+        return std::make_unique<SoftmaxTestBackend>();
+    }
+};
+
 ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {}) {
     return ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
@@ -138,6 +171,21 @@ ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {})
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
     return SymbolicShape(IntArrayView{shape});
+}
+
+// Helper: derive RmsNorm output_specs and runtime_checks via the semantic
+// authority AnalyzeOperator, so tests can fill caller-provided metadata
+// fields without duplicating inference logic.
+StatusOr<InferenceResult> AnalyzeRmsNorm(float eps,
+                                         const SymbolicShape& act_shape,
+                                         const SymbolicShape& weight_shape) {
+    std::vector<TensorSpec> inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    return AnalyzeOperator(OpType::kRmsNorm,
+                           OpParams{RmsNormParams{.eps = eps}},
+                           inputs);
 }
 
 TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
@@ -162,9 +210,20 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = AnalyzeRmsNorm(11.0F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
-    node.op_params = OpParams{RmsNormOp::Params{.eps = 11.0F}};
+    node.op_params = OpParams{RmsNormParams{.eps = 11.0F}};
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    node.output_specs = analyzed->outputs;
+    node.runtime_checks = analyzed->runtime_checks;
     nodes.push_back(node);
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
@@ -188,21 +247,26 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     EXPECT_STREQ(step_kernel.debug_name, "cpu::rmsnorm_f32_scalar");
 }
 
-TEST(ExecutionPlanBuilder, BuildStoresInferredOutputSpecsAndRuntimeChecks) {
+TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol input_hidden = ShapeSymbol::Create();
     const ShapeSymbol weight_hidden = ShapeSymbol::Create();
+    const SymbolicShape act_shape(std::vector<ShapeSymbol>{seq_len, input_hidden});
+    const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_hidden});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, input_hidden})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_hidden})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
-    node.output_specs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, input_hidden})},
-    };
+    node.output_specs = analyzed->outputs;
+    node.runtime_checks = analyzed->runtime_checks;
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
@@ -215,6 +279,10 @@ TEST(ExecutionPlanBuilder, BuildStoresInferredOutputSpecsAndRuntimeChecks) {
     ASSERT_EQ(step.output_specs.size(), 1U);
     EXPECT_EQ(step.output_specs[0].dtype, DataType::Float32());
     ASSERT_EQ(step.output_specs[0].shape.rank(), 2U);
+    // Spy: RmsNorm output shape echoes input[0] shape, so the inferred
+    // ShapeSymbol IDs in step.output_specs match the input ShapeSymbol IDs.
+    // This proves the untrusted path called AnalyzeOperator (which echoes
+    // input symbols) rather than skipping inference.
     EXPECT_EQ(step.output_specs[0].shape[0], seq_len);
     EXPECT_EQ(step.output_specs[0].shape[1], input_hidden);
 
@@ -233,14 +301,22 @@ TEST(ExecutionPlanBuilder, BuildRejectsMismatchedOutputSpecs) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
+    // Deliberately set output_specs to a wrong shape ([4,16] instead of [4,8]).
     node.output_specs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 16})},
     };
+    node.runtime_checks = analyzed->runtime_checks;
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
@@ -252,7 +328,10 @@ TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    // Semantically invalid: activation last dim (8) != weight length (16).
+    // AnalyzeRmsNorm will fail, and Build rejects with that error's code.
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16})},
@@ -262,6 +341,79 @@ TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
 
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
+    // Untrusted path must reject wrong dtype via AnalyzeOperator re-validation.
+    // RmsNorm only accepts Float32; supplying Float16 for input[0] must fail
+    // at the semantic authority layer (not at kernel resolution or Prepare).
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float(16), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    // Caller-provided output_specs/runtime_checks would be mismatched anyway;
+    // the dtype check fires first inside AnalyzeOperator.
+    node.output_specs = {
+            TensorSpec{.dtype = DataType::Float(16), .shape = act_shape},
+    };
+    node.runtime_checks = {};
+
+    const StatusOr<ExecutionPlan> plan =
+            ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    // The rejection must come from AnalyzeRmsNorm's dtype check, not from
+    // an output-spec mismatch or kernel resolution failure.
+    EXPECT_NE(plan.status().message().find("float32"), std::string::npos);
+}
+
+TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
+    // Untrusted path must reject caller-provided runtime_checks that differ
+    // from AnalyzeOperator-derived constraints. Using symbolic shapes for
+    // activation hidden dim and weight length forces AnalyzeRmsNorm to emit
+    // a DimEqualConstraint; supplying an empty runtime_checks vector must
+    // fail the strict-equality check in ValidateCallerMetadata.
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    const ShapeSymbol seq_len = ShapeSymbol::Create();
+    const ShapeSymbol input_hidden = ShapeSymbol::Create();
+    const ShapeSymbol weight_hidden = ShapeSymbol::Create();
+    const SymbolicShape act_shape(std::vector<ShapeSymbol>{seq_len, input_hidden});
+    const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_hidden});
+
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+    ASSERT_EQ(analyzed->runtime_checks.size(), 1U)
+            << "expected AnalyzeRmsNorm to emit a DimEqualConstraint for "
+               "symbolic-hidden != symbolic-weight-length";
+
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    node.output_specs = analyzed->outputs;
+    // Deliberately empty: caller omits the constraint AnalyzeOperator derived.
+    node.runtime_checks = {};
+
+    const StatusOr<ExecutionPlan> plan =
+            ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(plan.status().message().find("runtime_checks does not match"),
+              std::string::npos);
 }
 
 TEST(ExecutionPlanBuilder, BuildRejectsRawAttrsForRegisteredOperator) {
@@ -283,31 +435,37 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
-            .workspace_requirement = {.bytes = 32, .alignment = 16, .offset = 999},
-    });
-    nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
-            .workspace_requirement = {.bytes = 8, .alignment = 64, .offset = 123},
-    });
+    for (const auto& req: {WorkspaceRequirement{.bytes = 32, .alignment = 16, .offset = 999},
+                           WorkspaceRequirement{.bytes = 8, .alignment = 64, .offset = 123}}) {
+        ExecutionPlanNodeSpec node{
+                .op_type = OpType::kRmsNorm,
+                .device_type = DeviceType::kCPU,
+                .act_dtype = DataType::Float32(),
+                .weight_dtype = DataType::Float32(),
+                .weight_format = WeightFormat::kPlain,
+                .isa = IsaLevel::kScalar,
+                .phase = ExecPhase::kBoth,
+                .workspace_requirement = req,
+        };
+        node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+        node.input_specs = {
+                TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+                TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+        };
+        node.output_specs = analyzed->outputs;
+        node.runtime_checks = analyzed->runtime_checks;
+        nodes.push_back(std::move(node));
+    }
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
 
-    ASSERT_TRUE(plan.ok());
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 2U);
     EXPECT_EQ(plan->steps()[0].workspace_requirement.offset, 0U);
     EXPECT_EQ(plan->steps()[1].workspace_requirement.offset, 64U);
@@ -334,8 +492,13 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
                                                           MakeTestBuffer(128)))
                         .ok());
 
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(ExecutionPlanNodeSpec{
+    ExecutionPlanNodeSpec node{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
@@ -343,11 +506,19 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
-    });
+    };
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    node.output_specs = analyzed->outputs;
+    node.runtime_checks = analyzed->runtime_checks;
+    nodes.push_back(std::move(node));
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, model_instance, nodes);
 
-    ASSERT_TRUE(plan.ok());
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
     ASSERT_NE(plan->steps().front().packed_weights, nullptr);
     EXPECT_EQ(plan->steps().front().packed_weights,
@@ -358,8 +529,13 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutModelInstanceSidec
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(ExecutionPlanNodeSpec{
+    ExecutionPlanNodeSpec node{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
@@ -367,7 +543,15 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutModelInstanceSidec
             .weight_format = WeightFormat::kPacked,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
-    });
+    };
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    node.output_specs = analyzed->outputs;
+    node.runtime_checks = analyzed->runtime_checks;
+    nodes.push_back(std::move(node));
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
 
@@ -394,8 +578,21 @@ TEST(ExecutionPlanBuilder, ResolveKernelForNodeRejectsUnknownOpType) {
 TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
     // Construct a LoweredGraph manually with a valid RmsNorm step and one
     // lowering-time alias record, avoiding any dependency on KVCacheUpdate kernels.
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     LoweredGraph lowered;
-    lowered.steps.push_back(MakeRmsNormNodeSpec());
+    ExecutionPlanNodeSpec step = MakeRmsNormNodeSpec();
+    step.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    step.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    step.output_specs = analyzed->outputs;
+    step.runtime_checks = analyzed->runtime_checks;
+    lowered.steps.push_back(std::move(step));
     lowered.step_bindings.push_back(LoweredStepBinding{
             .node = GraphNodeId{.index = 0},
             .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
@@ -417,52 +614,93 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
     EXPECT_FALSE(plan->state_alias_plan().empty());
 }
 
-TEST(ExecutionPlanBuilder, BuildFromLoweredGraphValidatesPreservedOutputSpecs) {
-    ModelGraph graph;
-    const TensorSpec tokens{.dtype = DataType::Int(64), .shape = StaticShape({4})};
-    const TensorSpec embedding_weight{.dtype = DataType::Float32(), .shape = StaticShape({32, 8})};
-    const TensorSpec hidden{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})};
-    const GraphValueId token_ids = graph.AddInput(tokens, "token_ids");
-    const GraphValueId weight = graph.AddWeight(embedding_weight,
-                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding});
-    auto embedding_or = graph.AddNode(
-            OpType::kEmbedding,
-            std::nullopt,
-            {token_ids, weight},
-            {NodeOutputDesc{.payload = ActivationValue{}}},
-            EmbeddingParams{});
-    ASSERT_TRUE(embedding_or.ok()) << embedding_or.status().ToString();
-    const AddedNode& embedding = *embedding_or;
-    graph.MarkOutput(embedding.outputs[0], "hidden");
+TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesTrustedMetadata) {
+    // Spy-based proof that the trusted path does NOT re-invoke AnalyzeOperator.
+    //
+    // Strategy: use ShapeSymbol::Create() to mint unique symbolic dims for
+    // the input. AnalyzeRmsNorm echoes input[0] in its output_specs. We then
+    // overwrite the lowered output_specs with a shape containing a fresh
+    // "spy" symbol that is NOT present in input_specs. If the trusted path
+    // carries lowered metadata verbatim, the spy symbol survives into the
+    // plan. If the trusted path re-invoked AnalyzeOperator, the output would
+    // echo input[0] (no spy symbol), and the assertion would fail.
+    //
+    // This satisfies the plan's requirement: "spy/fixture 证明 trusted path
+    // 不调用 semantic analyzer", with no production-global mutable hook.
+    const ShapeSymbol seq_len = ShapeSymbol::Create();
+    const ShapeSymbol input_hidden = ShapeSymbol::Create();
+    const ShapeSymbol weight_hidden = ShapeSymbol::Create();
+    const ShapeSymbol spy_symbol = ShapeSymbol::Create();
+    const SymbolicShape act_shape(std::vector<ShapeSymbol>{seq_len, input_hidden});
+    const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_hidden});
+    const SymbolicShape spy_shape(std::vector<ShapeSymbol>{seq_len, spy_symbol});
 
-    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
-    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 1U);
-    ASSERT_EQ(lowered->steps[0].output_specs.size(), 1U);
-    EXPECT_EQ(lowered->steps[0].output_specs[0], hidden);
+    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+    // Sanity: AnalyzeRmsNorm echoes input[0] (act_shape), not spy_shape.
+    ASSERT_EQ(analyzed->outputs[0].shape, act_shape);
+
+    LoweredGraph lowered;
+    ExecutionPlanNodeSpec step = MakeRmsNormNodeSpec();
+    step.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    step.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    // Inject the spy shape into lowered output_specs. The trusted path must
+    // carry this verbatim; a re-analysis would have produced act_shape.
+    TensorSpec spy_output = analyzed->outputs[0];
+    spy_output.shape = spy_shape;
+    step.output_specs = {spy_output};
+    step.runtime_checks = analyzed->runtime_checks;
+    lowered.steps.push_back(std::move(step));
+    lowered.step_bindings.push_back(LoweredStepBinding{
+            .node = GraphNodeId{.index = 0},
+            .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
+            .output_values = {GraphValueId{.index = 2}},
+    });
 
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, *lowered);
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, lowered);
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->steps().size(), 1U);
-    ASSERT_EQ(plan->steps()[0].input_specs.size(), 2U);
-    EXPECT_EQ(plan->steps()[0].input_specs[0], tokens);
-    EXPECT_EQ(plan->steps()[0].input_specs[1], embedding_weight);
     ASSERT_EQ(plan->steps()[0].output_specs.size(), 1U);
-    EXPECT_EQ(plan->steps()[0].output_specs[0], hidden);
+    ASSERT_EQ(plan->steps()[0].output_specs[0].shape.rank(), 2U);
+
+    // Spy assertion: the plan's output shape[1] is the spy symbol, NOT
+    // input_hidden (which AnalyzeOperator would have echoed). This proves
+    // the trusted path carried lowered metadata verbatim and did not
+    // re-invoke the semantic analyzer.
+    EXPECT_EQ(plan->steps()[0].output_specs[0].shape[1].value(), spy_symbol.value())
+            << "Trusted path appears to have re-invoked AnalyzeOperator: "
+               "output symbol matches input_hidden instead of the spy symbol";
+    EXPECT_NE(plan->steps()[0].output_specs[0].shape[1].value(), input_hidden.value());
+
+    // Trusted path: runtime_checks carried forward verbatim.
+    EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].runtime_checks);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = AnalyzeRmsNorm(11.0F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
-    node.op_params = OpParams{RmsNormOp::Params{.eps = 11.0F}};
+    node.op_params = OpParams{RmsNormParams{.eps = 11.0F}};
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    node.output_specs = analyzed->outputs;
+    node.runtime_checks = analyzed->runtime_checks;
     nodes.push_back(node);
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(
@@ -498,6 +736,124 @@ TEST(ExecutionPlanBuilder, BuildFromEmptyLoweredGraphHasEmptyStateAliasPlan) {
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     EXPECT_TRUE(plan->state_alias_plan().empty());
+}
+
+TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMissingTypedParams) {
+    RuntimeBuilder builder;
+    RuntimeContext runtime = builder.Build();
+
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    // Intentionally leave op_params as monostate.
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+
+    const StatusOr<ExecutionPlan> plan =
+            ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(plan.status().message().find("monostate"), std::string::npos);
+}
+
+TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesRawFallbackForUnregisteredOpType) {
+    // kSoftmax has a schema but no registered Operator factory. The trusted
+    // LoweredGraph path contract is "create Operator if registered, otherwise
+    // resolve raw fallback"; an unregistered OpType must NOT be rejected with
+    // FailedPrecondition. The lowered metadata (output_specs, runtime_checks)
+    // is carried forward verbatim without re-invoking AnalyzeOperator.
+    // Use SoftmaxTestBackend so the Softmax kernel can be resolved.
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<SoftmaxTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    std::vector<TensorSpec> inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+    };
+    const auto analyzed = AnalyzeOperator(OpType::kSoftmax,
+                                          OpParams{SoftmaxParams{.axis = -1}},
+                                          inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
+    LoweredGraph lowered;
+    ExecutionPlanNodeSpec step{
+            .op_type = OpType::kSoftmax,
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .isa = IsaLevel::kScalar,
+            .phase = ExecPhase::kBoth,
+    };
+    step.op_params = OpParams{SoftmaxParams{.axis = -1}};
+    step.input_specs = inputs;
+    step.output_specs = analyzed->outputs;
+    step.runtime_checks = analyzed->runtime_checks;
+    lowered.steps.push_back(std::move(step));
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, lowered);
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->steps().size(), 1U);
+    // Trusted raw fallback: lowered metadata carried forward verbatim.
+    EXPECT_EQ(plan->steps()[0].output_specs, lowered.steps[0].output_specs);
+    EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].runtime_checks);
+}
+
+TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
+    // kSoftmax has a schema but no registered Operator factory, so Build
+    // falls back to the FunctionOperator raw-kernel path. The untrusted path
+    // still validates caller metadata via AnalyzeOperator (no no-op bypass).
+    // Asserting step.output_specs is non-empty proves AnalyzeOperator was
+    // called rather than FunctionOperator::InferOutputShapes (which returns
+    // an empty InferenceResult).
+    // Use SoftmaxTestBackend so the Softmax kernel can be resolved (CpuBackend
+    // does not register a Softmax kernel).
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<SoftmaxTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    std::vector<TensorSpec> inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+    };
+    const auto analyzed = AnalyzeOperator(OpType::kSoftmax,
+                                          OpParams{SoftmaxParams{.axis = -1}},
+                                          inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
+    ExecutionPlanNodeSpec node{
+            .op_type = OpType::kSoftmax,
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .isa = IsaLevel::kScalar,
+            .phase = ExecPhase::kBoth,
+    };
+    node.op_params = OpParams{SoftmaxParams{.axis = -1}};
+    node.input_specs = inputs;
+    node.output_specs = analyzed->outputs;
+    node.runtime_checks = analyzed->runtime_checks;
+
+    const StatusOr<ExecutionPlan> plan =
+            ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->size(), 1U);
+    const auto& step = plan->steps().front();
+    // output_specs is non-empty: AnalyzeSoftmax echoed the input spec.
+    // FunctionOperator::InferOutputShapes would have returned empty outputs.
+    ASSERT_EQ(step.output_specs.size(), 1U);
+    EXPECT_EQ(step.output_specs[0], analyzed->outputs[0]);
+    EXPECT_EQ(step.runtime_checks, analyzed->runtime_checks);
 }
 
 }// namespace

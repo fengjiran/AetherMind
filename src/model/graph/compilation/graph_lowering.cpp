@@ -125,9 +125,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
             const GraphValue& value = values[value_id.index];
             binding.input_values.push_back(value_id);
             MaybeSetSelectorDTypes(port, value.spec, act_dtype, weight_dtype);
-            if (port.contributes_tensor_spec) {
-                step.input_specs.push_back(value.spec);
-            }
+            step.input_specs.push_back(value.spec);
             // Record ConstantValue payloads so backend lowering can resolve
             // inline data or named external constants without revisiting the
             // graph. Other payload kinds (weight/state/input/activation) are
@@ -150,6 +148,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
             binding.output_values.push_back(value_id);
             step.output_specs.push_back(values[value_id.index].spec);
         }
+        step.runtime_checks = node.runtime_checks;
         MaybeSetActivationDTypeFromOutputs(schema, node, values, act_dtype);
 
         step.act_dtype = act_dtype.value_or(DataType{});

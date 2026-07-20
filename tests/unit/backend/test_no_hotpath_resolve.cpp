@@ -1,11 +1,13 @@
-#include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "aethermind/runtime/workspace.h"
 
 #include <gtest/gtest.h>
 
@@ -13,6 +15,11 @@
 
 namespace aethermind {
 namespace {
+
+SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
+    const std::vector<int64_t> shape(dims);
+    return SymbolicShape(IntArrayView{shape});
+}
 
 class ResolveCounters {
 public:
@@ -121,6 +128,17 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
                                    std::make_unique<CountingBackendFactory>(counters));
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({1, 2});
+    const SymbolicShape weight_shape = StaticShape({2});
+    std::vector<TensorSpec> rmsnorm_inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    const auto analyzed = AnalyzeOperator(OpType::kRmsNorm,
+                                          OpParams{RmsNormParams{.eps = 1.0e-5F}},
+                                          rmsnorm_inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
@@ -130,6 +148,10 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
+            .input_specs = rmsnorm_inputs,
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

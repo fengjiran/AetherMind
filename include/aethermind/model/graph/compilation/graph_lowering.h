@@ -31,7 +31,7 @@ struct LoweredConstantBinding {
 
 /// Records the graph values bound to one lowered execution step. The order of
 /// each vector follows the operator schema port order, including state ports
-/// that do not contribute tensor specs to ExecutionPlanNodeSpec::input_specs.
+/// that do not contribute to compact runtime tensor specs.
 /// `constant_bindings` captures ConstantValue payloads encountered on input
 /// ports so backend lowering can resolve them without revisiting the graph.
 struct LoweredStepBinding {

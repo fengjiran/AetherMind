@@ -8,6 +8,7 @@
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_context.h"
+#include "aethermind/shape_inference/shape_constraint.h"
 
 #include <cstddef>
 #include <vector>
@@ -25,8 +26,15 @@ struct ExecutionPlanNodeSpec {
     IsaLevel isa = IsaLevel::kScalar;
     ExecPhase phase = ExecPhase::kBoth;
     WorkspaceRequirement workspace_requirement{};
+    /// Complete schema-port-ordered input specs, including state ports that
+    /// do not contribute to runtime tensor bindings. Use MakeCompactInputSpecs
+    /// to derive the compact contributing-only view consumed by Operator
+    /// shape inference and ExecutionStep::input_specs.
     std::vector<TensorSpec> input_specs{};
     std::vector<TensorSpec> output_specs{};
+    /// Deferred runtime shape constraints derived during graph construction
+    /// and carried through lowering without re-inference.
+    std::vector<ShapeConstraint> runtime_checks{};
     std::vector<std::byte> attrs{};
     OpParams op_params{};
 };

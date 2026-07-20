@@ -6,7 +6,9 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/function_operator.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
@@ -19,6 +21,11 @@
 namespace aethermind {
 
 namespace {
+
+SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
+    const std::vector<int64_t> shape(dims);
+    return SymbolicShape(IntArrayView{shape});
+}
 
 KernelFunc ResolveAvx2RmsNormEntry() {
     CpuBackend backend;
@@ -127,6 +134,17 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({1, 4});
+    const SymbolicShape weight_shape = StaticShape({4});
+    std::vector<TensorSpec> rmsnorm_inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    const auto analyzed = AnalyzeOperator(OpType::kRmsNorm,
+                                          OpParams{RmsNormParams{.eps = 1.0e-5F}},
+                                          rmsnorm_inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
@@ -136,6 +154,9 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
+            .input_specs = rmsnorm_inputs,
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{RmsNormOp::Params{.eps = 1.0e-5F}},
     });
 
@@ -176,6 +197,17 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRmsNormFailsWithoutTensorBinding) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape act_shape = StaticShape({1, 4});
+    const SymbolicShape weight_shape = StaticShape({4});
+    std::vector<TensorSpec> rmsnorm_inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    const auto analyzed = AnalyzeOperator(OpType::kRmsNorm,
+                                          OpParams{RmsNormParams{.eps = 1.0e-5F}},
+                                          rmsnorm_inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
@@ -185,6 +217,9 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRmsNormFailsWithoutTensorBinding) {
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
+            .input_specs = rmsnorm_inputs,
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{RmsNormOp::Params{.eps = 1.0e-5F}},
     });
 

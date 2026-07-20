@@ -3,6 +3,8 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
+#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
@@ -10,6 +12,11 @@
 
 namespace aethermind {
 namespace {
+
+SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
+    const std::vector<int64_t> shape(dims);
+    return SymbolicShape(IntArrayView{shape});
+}
 
 struct TestAttrs {
     int epsilon;
@@ -65,6 +72,15 @@ TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
     TestAttrs attrs{.epsilon = 7, .axis = 3};
     const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
 
+    const SymbolicShape softmax_shape = StaticShape({2, 3});
+    std::vector<TensorSpec> softmax_inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = softmax_shape},
+    };
+    const auto analyzed = AnalyzeOperator(OpType::kSoftmax,
+                                          OpParams{SoftmaxParams{.axis = -1}},
+                                          softmax_inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kSoftmax,
@@ -75,7 +91,11 @@ TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
                     .bytes = 128,
                     .alignment = 64,
             },
+            .input_specs = softmax_inputs,
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
             .attrs = std::vector<std::byte>(attrs_bytes.begin(), attrs_bytes.end()),
+            .op_params = OpParams{SoftmaxParams{.axis = -1}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
@@ -107,13 +127,26 @@ TEST(ExecutionPlan, BuildAllowsEmptyAttrs) {
                                    std::make_unique<StubTestBackendFactory>());
     RuntimeContext runtime = builder.Build();
 
+    const SymbolicShape softmax_shape = StaticShape({2, 3});
+    std::vector<TensorSpec> softmax_inputs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = softmax_shape},
+    };
+    const auto analyzed = AnalyzeOperator(OpType::kSoftmax,
+                                          OpParams{SoftmaxParams{.axis = -1}},
+                                          softmax_inputs);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kSoftmax,
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
+            .input_specs = softmax_inputs,
+            .output_specs = analyzed->outputs,
+            .runtime_checks = analyzed->runtime_checks,
             .attrs = {},
+            .op_params = OpParams{SoftmaxParams{.axis = -1}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

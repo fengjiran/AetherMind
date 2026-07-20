@@ -34,7 +34,7 @@ StatusOr<std::vector<GraphValueDesc>> CollectValueDescs(const GraphRewriteSessio
     std::vector<GraphValueDesc> descs;
     descs.reserve(values.size());
     for (const auto value: values) {
-        auto desc = session.GetValueOutputDesc(value);
+        auto desc = session.GetValueOutputMetadata(value);
         AM_RETURN_IF_ERROR(desc.status());
         descs.push_back(std::move(*desc));
     }

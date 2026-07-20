@@ -13,14 +13,16 @@ namespace {
 GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {
     const GraphValueId tokens = graph.AddInput(
             Spec(DataType::Int(32), {2}), std::string(debug_name) + ".tokens");
-    return AddEmbedding(graph,
-                        tokens,
-                        16,
-                        4,
-                        DataType::Float32(),
-                        WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                      .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                        debug_name);
+    auto embedding_or = AddEmbedding(graph,
+                                     tokens,
+                                     16,
+                                     4,
+                                     DataType::Float32(),
+                                     WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                                                   .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                     debug_name);
+    AM_CHECK(embedding_or.ok(), "AddEmbedding failed in test helper");
+    return *embedding_or;
 }
 
 StatusOr<ModelGraph> RunDce(const ModelGraph& graph, PassContext ctx = {}) {
@@ -42,7 +44,7 @@ public:
 
         StatusOr<GraphNodeView> add_view = session.GetNodeView(add_node);
         AM_RETURN_IF_ERROR(add_view.status());
-        auto output_desc_or = session.GetValueOutputDesc(add_view->outputs[0]);
+        auto output_desc_or = session.GetValueOutputMetadata(add_view->outputs[0]);
         AM_RETURN_IF_ERROR(output_desc_or.status());
         NodeOutputDesc output_desc{.payload = output_desc_or->payload,
                                    .quantization = output_desc_or->quantization,
@@ -100,9 +102,13 @@ TEST(DeadCodeEliminationPass, RemovesDeadChain) {
     ModelGraph graph;
     const GraphValueId live = AddActivation(graph, "live");
     const GraphValueId dead_input = AddActivation(graph, "dead_input");
-    const GraphValueId dead_silu = AddSilu(graph, 0U, dead_input, "dead_silu");
-    const GraphValueId dead_mul = AddElementwiseMul(graph, 0U,
-                                                    dead_silu, dead_input, "dead_mul");
+    auto dead_silu_or = AddSilu(graph, 0U, dead_input, "dead_silu");
+    ASSERT_TRUE(dead_silu_or.ok()) << dead_silu_or.status().ToString();
+    const GraphValueId dead_silu = *dead_silu_or;
+    auto dead_mul_or = AddElementwiseMul(graph, 0U,
+                                         dead_silu, dead_input, "dead_mul");
+    ASSERT_TRUE(dead_mul_or.ok()) << dead_mul_or.status().ToString();
+    const GraphValueId dead_mul = *dead_mul_or;
     UNUSED(dead_mul);
     graph.MarkOutput(live, "output");
 
@@ -131,7 +137,9 @@ TEST(DeadCodeEliminationPass, KeepsProducerWithLiveConsumer) {
     ModelGraph graph;
     const GraphValueId lhs = AddActivation(graph, "lhs");
     const GraphValueId rhs = AddActivation(graph, "rhs");
-    const GraphValueId sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
+    const GraphValueId sum = *sum_or;
     graph.MarkOutput(sum, "output");
 
     const StatusOr<ModelGraph> result = RunDce(graph);
@@ -148,18 +156,20 @@ TEST(DeadCodeEliminationPass, KeepsMultiOutputNodeWhenAnyOutputIsGraphOutput) {
     const GraphValueId k = AddActivation(graph, "k");
     const GraphValueId position_ids = graph.AddInput(
             Spec(DataType::Int(64), {2}), "position_ids");
-    const RoPEOutputs rope = AddRoPE(graph,
-                                     0U,
-                                     q,
-                                     k,
-                                     position_ids,
-                                     RoPEParams{.head_dim = 4,
-                                                .num_attention_heads = 1,
-                                                .num_key_value_heads = 1,
-                                                .max_position_embeddings = 128,
-                                                .theta = 10000.0,
-                                                .scaling_type = HfRopeScalingType::kNone},
-                                     "rope");
+    auto rope_or = AddRoPE(graph,
+                           0U,
+                           q,
+                           k,
+                           position_ids,
+                           RoPEParams{.head_dim = 4,
+                                      .num_attention_heads = 1,
+                                      .num_key_value_heads = 1,
+                                      .max_position_embeddings = 128,
+                                      .theta = 10000.0,
+                                      .scaling_type = HfRopeScalingType::kNone},
+                           "rope");
+    ASSERT_TRUE(rope_or.ok()) << rope_or.status().ToString();
+    const RoPEOutputs rope = *rope_or;
     graph.MarkOutput(rope.q, "q_rope");
 
     const StatusOr<ModelGraph> result = RunDce(graph);
@@ -186,8 +196,10 @@ TEST(DeadCodeEliminationPass, KeepsStateOutputNodeWithoutConsumers) {
                                                   .decoder_layer_index = 0,
                                                   .slot = KVCacheSlot::kValue},
                                           "v_cache");
-    const KVCachePair updated_cache = AddKVCacheUpdate(
+    auto updated_cache_or = AddKVCacheUpdate(
             graph, 0U, k_new, v_new, k_cache, v_cache, "kv_update");
+    ASSERT_TRUE(updated_cache_or.ok()) << updated_cache_or.status().ToString();
+    const KVCachePair updated_cache = *updated_cache_or;
     UNUSED(updated_cache);
     graph.MarkOutput(live, "output");
 
@@ -202,8 +214,10 @@ TEST(DeadCodeEliminationPass, KeepsProducerConsumedOnlyByActiveReplacement) {
     ModelGraph graph;
     const GraphValueId lhs = AddActivation(graph, "lhs");
     const GraphValueId rhs = AddActivation(graph, "rhs");
-    const GraphValueId sum = AddElementwiseAdd(
+    auto sum_or = AddElementwiseAdd(
             graph, 0U, lhs, rhs, "sum");
+    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
+    const GraphValueId sum = *sum_or;
     graph.MarkOutput(sum, "output");
 
     const StatusOr<ModelGraph> result = RunReplaceThenDce(graph);
@@ -255,7 +269,9 @@ TEST(DeadCodeEliminationPass, RemovesDeadRankZeroAdd) {
     const GraphValueId live = AddActivation(graph, "live");
     const GraphValueId lhs = AddRankZeroConstantFloat(graph, 1.0F, "lhs");
     const GraphValueId rhs = AddRankZeroConstantFloat(graph, 2.0F, "rhs");
-    const GraphValueId dead_sum = AddElementwiseAdd(graph, 0U, lhs, rhs, "dead_sum");
+    auto dead_sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "dead_sum");
+    ASSERT_TRUE(dead_sum_or.ok()) << dead_sum_or.status().ToString();
+    const GraphValueId dead_sum = *dead_sum_or;
     UNUSED(dead_sum);
     graph.MarkOutput(live, "output");
 
@@ -270,7 +286,9 @@ TEST(DeadCodeEliminationPass, RemovesDeadRankZeroSilu) {
     ModelGraph graph;
     const GraphValueId live = AddActivation(graph, "live");
     const GraphValueId input = AddRankZeroConstantFloat(graph, 3.0F, "input");
-    const GraphValueId dead_act = AddSilu(graph, 0U, input, "dead_silu");
+    auto dead_act_or = AddSilu(graph, 0U, input, "dead_silu");
+    ASSERT_TRUE(dead_act_or.ok()) << dead_act_or.status().ToString();
+    const GraphValueId dead_act = *dead_act_or;
     UNUSED(dead_act);
     graph.MarkOutput(live, "output");
 
@@ -286,7 +304,9 @@ TEST(DeadCodeEliminationPass, RemovesDeadRankZeroSiluMul) {
     const GraphValueId live = AddActivation(graph, "live");
     const GraphValueId gate = AddRankZeroConstantFloat(graph, 1.0F, "gate");
     const GraphValueId up = AddRankZeroConstantFloat(graph, 2.0F, "up");
-    const GraphValueId dead_act = AddSiluMul(graph, 0U, gate, up, "dead_silu_mul");
+    auto dead_act_or = AddSiluMul(graph, 0U, gate, up, "dead_silu_mul");
+    ASSERT_TRUE(dead_act_or.ok()) << dead_act_or.status().ToString();
+    const GraphValueId dead_act = *dead_act_or;
     UNUSED(dead_act);
     graph.MarkOutput(live, "output");
 

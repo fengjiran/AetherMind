@@ -1,4 +1,7 @@
 #include "aethermind/model/graph/optimization/graph_rewrite.h"
+#include "aethermind/dtypes/data_type.h"
+#include "aethermind/model/graph/operator_schema.h"
+#include "aethermind/operators/operator_semantics.h"
 #include "utils/variant_utils.h"
 
 #include <algorithm>
@@ -34,7 +37,7 @@ StatusOr<GraphValueId> MapResolvedValue(GraphValueId old_value,
 }
 
 // Copies all fields from a GraphValue into a GraphValueDesc for use in
-// GetValueOutputDesc and other spec-bearing value queries.
+// GetValueOutputMetadata and other spec-bearing value queries.
 GraphValueDesc MakeOutputDescFromValue(const GraphValue& value) {
     return GraphValueDesc{
             .spec = value.spec,
@@ -154,6 +157,18 @@ Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nod
         AM_RETURN_IF_ERROR(ValidateReplacementNode(replacement));
     }
     AM_RETURN_IF_ERROR(ValidateReplacementTargets(old_nodes, replacement_nodes));
+
+    // Early failure: replay AnalyzeOperator over the replacement nodes before
+    // mutating any session state. This catches undefined virtual inputs,
+    // duplicate virtual producers, dtype mismatches, and other semantic
+    // violations at Apply time rather than deferring them to Commit. The
+    // scratch map is local to this replacement group; virtual values from
+    // other rewrites are intentionally absent and will be rejected here.
+    {
+        std::vector<std::optional<TensorSpec>> virtual_specs(virtual_value_count_,
+                                                             std::nullopt);
+        AM_RETURN_IF_ERROR(ValidateReplacementSemantics(replacement_nodes, virtual_specs));
+    }
 
     for (GraphNodeId old_node: old_nodes) {
         if (const auto rewrite_index = node_to_rewrite_[old_node.index];
@@ -408,7 +423,7 @@ bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
     return IsValueReplacedByActiveRewrite(value);
 }
 
-StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputDesc(GraphValueId value) const {
+StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputMetadata(GraphValueId value) const {
     AM_RETURN_IF_ERROR(CheckValueId(value));
     if (IsSessionConstant(value)) {
         return MakeOutputDescFromSessionConstant(value);
@@ -576,6 +591,19 @@ Status GraphRewriteSession::ValidateEdits() const {
         AM_RETURN_IF_ERROR(ValidateReplacementTargets(rewrite.old_nodes, rewrite.replacements));
     }
     AM_RETURN_IF_ERROR(ValidateVirtualValues());
+
+    // Semantic replay: validate each active rewrite by replaying AnalyzeOperator
+    // over its replacement nodes. Virtual value specs are derived per-rewrite
+    // (ValidateVirtualValues ensures virtual values don't cross rewrite
+    // boundaries, so a fresh scratch map per rewrite is correct).
+    for (const auto& rewrite: rewrites_) {
+        if (!rewrite.active) {
+            continue;
+        }
+        std::vector<std::optional<TensorSpec>> virtual_specs(virtual_value_count_,
+                                                             std::nullopt);
+        AM_RETURN_IF_ERROR(ValidateReplacementSemantics(rewrite.replacements, virtual_specs));
+    }
     return Status::Ok();
 }
 
@@ -1012,6 +1040,167 @@ Status GraphRewriteSession::ValidateVirtualValues() const {
     return Status::Ok();
 }
 
+StatusOr<TensorSpec> GraphRewriteSession::ResolveValueSpec(
+        GraphValueId value,
+        const std::vector<std::optional<TensorSpec>>& virtual_specs) const {
+    // Source graph value: read spec directly from the source graph.
+    if (value.index < graph_.GetValues().size()) {
+        return graph_.GetValue(value).spec;
+    }
+
+    // Out-of-range check (defense in depth; ValidateReplacementNode should
+    // have already rejected invalid ids via CheckValueIdAllowVirtual).
+    if (!IsSessionValue(value)) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession::ResolveValueSpec: value id " +
+                std::to_string(value.index) + " out of range");
+    }
+
+    // Session constant: spec is stored in session_constants_.
+    if (IsSessionConstant(value)) {
+        return session_constants_[GetVirtualIndex(value)]->spec;
+    }
+
+    // Virtual value: must have an inferred spec in the caller's scratch map.
+    // A virtual value without an inferred spec has not been produced by any
+    // analyzed replacement, so its dtype/shape are unknown.
+    const std::size_t idx = GetVirtualIndex(value);
+    if (idx >= virtual_specs.size() || !virtual_specs[idx].has_value()) {
+        return Status::NotFound(
+                "GraphRewriteSession: virtual value " + std::to_string(value.index) +
+                " has no inferred spec (not produced by any analyzed replacement)");
+    }
+    return *virtual_specs[idx];
+}
+
+Status GraphRewriteSession::ValidateReplacementSemantics(
+        const std::vector<ReplacementNode>& replacements,
+        std::vector<std::optional<TensorSpec>>& virtual_specs_out) const {
+    // Replay AnalyzeOperator over replacement nodes in submission order,
+    // deriving virtual specs into virtual_specs_out and verifying that each
+    // output binding's replaces target has a compatible dtype.
+    for (std::size_t i = 0; i < replacements.size(); ++i) {
+        const ReplacementNode& replacement = replacements[i];
+        const std::string debug_ctx =
+                "replacement[" + std::to_string(i) + "]" +
+                (replacement.debug_name.empty() ? "" : (" '" + replacement.debug_name + "'"));
+
+        // 1. Schema lookup: confirms op_type is registered and gives us the
+        //    expected input/output port counts.
+        AM_ASSIGN_OR_RETURN(const OperatorSchema schema,
+                            GetOperatorSchema(replacement.op_type));
+
+        // 2. Parameter validation: ensures OpParams holds the right alternative.
+        AM_RETURN_IF_ERROR(ValidateOperatorParams(replacement.op_type, replacement.op_params));
+
+        // 3. Input count must match schema.
+        if (replacement.inputs.size() != schema.input_ports.size()) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession: " + debug_ctx + " input count " +
+                    std::to_string(replacement.inputs.size()) +
+                    " does not match schema expected " +
+                    std::to_string(schema.input_ports.size()));
+        }
+
+        // 4. Output count must match schema.
+        if (replacement.outputs.size() != schema.output_ports.size()) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession: " + debug_ctx + " output count " +
+                    std::to_string(replacement.outputs.size()) +
+                    " does not match schema expected " +
+                    std::to_string(schema.output_ports.size()));
+        }
+
+        // 5. Resolve input specs. Virtual inputs must already be in the scratch
+        //    map (i.e. produced by an earlier replacement within this replay).
+        //    ReplaceValue chains are resolved first so that aliased values map
+        //    to the terminal spec.
+        std::vector<TensorSpec> input_specs;
+        input_specs.reserve(replacement.inputs.size());
+        for (std::size_t j = 0; j < replacement.inputs.size(); ++j) {
+            const GraphValueId resolved = GetResolvedValue(replacement.inputs[j]);
+            AM_ASSIGN_OR_RETURN(
+                    TensorSpec spec,
+                    ResolveValueSpec(resolved, virtual_specs_out));
+            input_specs.push_back(std::move(spec));
+        }
+
+        // 6. Replay AnalyzeOperator to derive inferred output specs and
+        //    runtime shape constraints. Failures here indicate incompatible
+        //    input dtypes/shapes for this operator.
+        AM_ASSIGN_OR_RETURN(InferenceResult inferred,
+                            AnalyzeOperator(replacement.op_type,
+                                            replacement.op_params,
+                                            input_specs));
+
+        // 7. AnalyzeOperator must produce exactly one output spec per binding.
+        if (inferred.outputs.size() != replacement.outputs.size()) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession: " + debug_ctx + " inferred " +
+                    std::to_string(inferred.outputs.size()) +
+                    " outputs but binding has " +
+                    std::to_string(replacement.outputs.size()));
+        }
+
+        // 8. For each output binding, either populate the scratch map (virtual
+        //    target) or verify dtype compatibility (source/session constant
+        //    target). Shape compatibility is deferred to committed.Validate().
+        for (std::size_t j = 0; j < replacement.outputs.size(); ++j) {
+            const RewriteOutputBinding& binding = replacement.outputs[j];
+            const TensorSpec& inferred_spec = inferred.outputs[j];
+
+            if (!binding.replaces.has_value()) {
+                continue;
+            }
+
+            const GraphValueId replaced = *binding.replaces;
+
+            if (IsVirtualValue(replaced)) {
+                const std::size_t vidx = GetVirtualIndex(replaced);
+                if (vidx >= virtual_specs_out.size()) {
+                    return Status::InvalidArgument(
+                            "GraphRewriteSession: " + debug_ctx + " output " +
+                            std::to_string(j) + " replaces out-of-range virtual value " +
+                            std::to_string(replaced.index));
+                }
+                if (virtual_specs_out[vidx].has_value()) {
+                    return Status::InvalidArgument(
+                            "GraphRewriteSession: " + debug_ctx + " output " +
+                            std::to_string(j) + " replaces virtual value " +
+                            std::to_string(replaced.index) +
+                            " which is already produced by another replacement");
+                }
+                virtual_specs_out[vidx] = inferred_spec;
+                continue;
+            }
+
+            // Source value or session constant target: dtype must match.
+            TensorSpec target_spec;
+            if (replaced.index < graph_.GetValues().size()) {
+                target_spec = graph_.GetValue(replaced).spec;
+            } else if (IsSessionConstant(replaced)) {
+                target_spec = session_constants_[GetVirtualIndex(replaced)]->spec;
+            } else {
+                return Status::InvalidArgument(
+                        "GraphRewriteSession: " + debug_ctx + " output " +
+                        std::to_string(j) + " replaces invalid value " +
+                        std::to_string(replaced.index));
+            }
+
+            if (inferred_spec.dtype != target_spec.dtype) {
+                return Status::InvalidArgument(
+                        "GraphRewriteSession: " + debug_ctx + " output " +
+                        std::to_string(j) + " inferred dtype " +
+                        ToString(inferred_spec.dtype) +
+                        " is incompatible with replaces target value " +
+                        std::to_string(replaced.index) + " dtype " +
+                        ToString(target_spec.dtype));
+            }
+        }
+    }
+    return Status::Ok();
+}
+
 void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
     // Idempotent: no-op if the rewrite is already inactive or out of range.
     if (rewrite_index >= rewrites_.size() || !rewrites_[rewrite_index].active) {
@@ -1032,30 +1221,30 @@ void GraphRewriteSession::InvalidateConsumerCache() noexcept {
     consumer_cache_.reset();
 }
 
-GraphValueId SubgraphBuilder::Emit(OpType op_type,
-                                   std::vector<GraphValueId> inputs,
-                                   NodeOutputDesc output_desc,
-                                   OpParams op_params,
-                                   std::optional<uint32_t> decoder_layer_index,
-                                   std::string debug_name) {
+StatusOr<GraphValueId> SubgraphBuilder::Emit(OpType op_type,
+                                             std::vector<GraphValueId> inputs,
+                                             NodeOutputDesc output_desc,
+                                             OpParams op_params,
+                                             std::optional<uint32_t> decoder_layer_index,
+                                             std::string debug_name) {
     std::vector<NodeOutputDesc> output_descs;
     output_descs.push_back(std::move(output_desc));
-    std::vector<GraphValueId> outputs = Emit(op_type,
-                                             std::move(inputs),
-                                             std::move(output_descs),
-                                             std::move(op_params),
-                                             decoder_layer_index,
-                                             std::move(debug_name));
+    AM_ASSIGN_OR_RETURN(std::vector<GraphValueId> outputs, Emit(op_type,
+                                                                std::move(inputs),
+                                                                std::move(output_descs),
+                                                                std::move(op_params),
+                                                                decoder_layer_index,
+                                                                std::move(debug_name)));
     AM_CHECK(outputs.size() == 1, "SubgraphBuilder::Emit single-output wrapper expected one output");
     return outputs[0];
 }
 
-std::vector<GraphValueId> SubgraphBuilder::Emit(OpType op_type,
-                                                std::vector<GraphValueId> inputs,
-                                                std::vector<NodeOutputDesc> output_descs,
-                                                OpParams op_params,
-                                                std::optional<uint32_t> decoder_layer_index,
-                                                std::string debug_name) {
+StatusOr<std::vector<GraphValueId>> SubgraphBuilder::Emit(OpType op_type,
+                                                          std::vector<GraphValueId> inputs,
+                                                          std::vector<NodeOutputDesc> output_descs,
+                                                          OpParams op_params,
+                                                          std::optional<uint32_t> decoder_layer_index,
+                                                          std::string debug_name) {
     // Each output descriptor gets a freshly allocated virtual value; these
     // virtual values are bound via RewriteOutputBinding::replaces and can
     // be consumed by subsequent Emit calls or redirected by Yield.

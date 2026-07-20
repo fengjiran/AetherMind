@@ -85,20 +85,20 @@ Status TryFuseSilu(GraphRewriteSession& session, GraphNodeId silu_node) {
         return Status::Ok();
     }
 
-    StatusOr<GraphValueDesc> output_desc = session.GetValueOutputDesc(pattern->mul_out);
+    StatusOr<GraphValueDesc> output_desc = session.GetValueOutputMetadata(pattern->mul_out);
     AM_RETURN_IF_ERROR(output_desc.status());
 
     SubgraphBuilder builder(session, {pattern->silu_node, pattern->mul_node});
-    const GraphValueId fused = builder.Emit(OpType::kSiluMul,
-                                            {pattern->gate, pattern->up},
-                                            NodeOutputDesc{
-                                                    .payload = output_desc->payload,
-                                                    .quantization = output_desc->quantization,
-                                                    .debug_name = output_desc->debug_name,
-                                            },
-                                            SiluMulParams{},
-                                            pattern->decoder_layer_index,
-                                            "silu_mul_fused");
+    AM_ASSIGN_OR_RETURN(const GraphValueId fused, builder.Emit(OpType::kSiluMul,
+                                                               {pattern->gate, pattern->up},
+                                                               NodeOutputDesc{
+                                                                       .payload = output_desc->payload,
+                                                                       .quantization = output_desc->quantization,
+                                                                       .debug_name = output_desc->debug_name,
+                                                               },
+                                                               SiluMulParams{},
+                                                               pattern->decoder_layer_index,
+                                                               "silu_mul_fused"));
     AM_RETURN_IF_ERROR(builder.Yield(fused, pattern->mul_out));
     return builder.Commit();
 }

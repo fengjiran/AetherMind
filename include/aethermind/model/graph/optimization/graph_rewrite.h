@@ -268,7 +268,7 @@ public:
     /// This is derived from the source graph value's spec, payload,
     /// quantization, and debug name. Virtual values and out-of-range values
     /// return InvalidArgument.
-    AM_NODISCARD StatusOr<GraphValueDesc> GetValueOutputDesc(GraphValueId value) const;
+    AM_NODISCARD StatusOr<GraphValueDesc> GetValueOutputMetadata(GraphValueId value) const;
 
     /// Returns true when `value` is directly marked as a graph output in the
     /// source graph. Out-of-range ids and virtual values return false.
@@ -398,6 +398,20 @@ private:
             const std::vector<ReplacementNode>& replacement_nodes) const;
     // Validates virtual value ordering (no consumption before production).
     AM_NODISCARD Status ValidateVirtualValues() const;
+    // Resolves the TensorSpec of a value id known to the session.
+    // Source values are read from graph_; session constants from session_constants_;
+    // virtual values must have an inferred spec in virtual_specs (caller-provided
+    // scratch map). Returns NotFound for virtual values with no inferred spec.
+    AM_NODISCARD StatusOr<TensorSpec> ResolveValueSpec(
+            GraphValueId value,
+            const std::vector<std::optional<TensorSpec>>& virtual_specs) const;
+    // Replays AnalyzeOperator over replacement nodes in order, verifying input
+    // availability, output count, replaces target dtype compatibility, and
+    // deriving virtual specs into virtual_specs_out. Used by ValidateEdits and
+    // ReplaceSubgraph to catch semantic violations before Commit.
+    AM_NODISCARD Status ValidateReplacementSemantics(
+            const std::vector<ReplacementNode>& replacements,
+            std::vector<std::optional<TensorSpec>>& virtual_specs_out) const;
     // Builds a GraphValueDesc from a session constant's metadata.
     AM_NODISCARD GraphValueDesc MakeOutputDescFromSessionConstant(GraphValueId value) const;
     // Translates a value id from source/session space to committed graph space.
@@ -460,8 +474,10 @@ private:
 ///
 /// Usage:
 ///   SubgraphBuilder builder(session, {old_node1, old_node2});
-///   GraphValueId mid = builder.Emit(OpType::kSilu, {input}, output_desc, params);
-///   GraphValueId out = builder.Emit(OpType::kMul, {mid, other}, output_desc, params);
+///   AM_ASSIGN_OR_RETURN(GraphValueId mid,
+///                        builder.Emit(OpType::kSilu, {input}, output_desc, params));
+///   AM_ASSIGN_OR_RETURN(GraphValueId out,
+///                        builder.Emit(OpType::kMul, {mid, other}, output_desc, params));
 ///   builder.Yield(out, old_output_value);
 ///   builder.Commit();
 ///
@@ -478,22 +494,22 @@ public:
     /// `output_desc`. Allocates a virtual value internally, binds it as the
     /// node's output, and returns the virtual value id for use as input to
     /// subsequent Emit calls or as the internal_val argument to Yield.
-    GraphValueId Emit(OpType op_type,
-                      std::vector<GraphValueId> inputs,
-                      NodeOutputDesc output_desc,
-                      OpParams op_params = std::monostate{},
-                      std::optional<uint32_t> decoder_layer_index = std::nullopt,
-                      std::string debug_name = {});
+    AM_NODISCARD StatusOr<GraphValueId> Emit(OpType op_type,
+                                             std::vector<GraphValueId> inputs,
+                                             NodeOutputDesc output_desc,
+                                             OpParams op_params = std::monostate{},
+                                             std::optional<uint32_t> decoder_layer_index = std::nullopt,
+                                             std::string debug_name = {});
 
     /// Creates a new replacement node with one output per descriptor in
     /// `output_descs`. Allocates one virtual value per output and returns the
     /// virtual values in descriptor order.
-    std::vector<GraphValueId> Emit(OpType op_type,
-                                   std::vector<GraphValueId> inputs,
-                                   std::vector<NodeOutputDesc> output_descs,
-                                   OpParams op_params = std::monostate{},
-                                   std::optional<uint32_t> decoder_layer_index = std::nullopt,
-                                   std::string debug_name = {});
+    AM_NODISCARD StatusOr<std::vector<GraphValueId>> Emit(OpType op_type,
+                                                          std::vector<GraphValueId> inputs,
+                                                          std::vector<NodeOutputDesc> output_descs,
+                                                          OpParams op_params = std::monostate{},
+                                                          std::optional<uint32_t> decoder_layer_index = std::nullopt,
+                                                          std::string debug_name = {});
 
     /// Marks an internal virtual value (returned by Emit) as the replacement
     /// for an external graph value. After Commit, all consumers of

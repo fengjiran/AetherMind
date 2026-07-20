@@ -37,10 +37,14 @@ ModelGraph BuildSiluMulPattern(bool reversed_mul_inputs = false) {
     ModelGraph graph;
     const GraphValueId gate = AddActivation(graph, "gate");
     const GraphValueId up = AddActivation(graph, "up");
-    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
-    const GraphValueId output = reversed_mul_inputs
-                                        ? AddElementwiseMul(graph, 0U, up, silu, "mul")
-                                        : AddElementwiseMul(graph, 0U, silu, up, "mul");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    AM_CHECK(silu_or.ok(), "{}", silu_or.status().ToString());
+    const GraphValueId silu = *silu_or;
+    auto output_or = reversed_mul_inputs
+                             ? AddElementwiseMul(graph, 0U, up, silu, "mul")
+                             : AddElementwiseMul(graph, 0U, silu, up, "mul");
+    AM_CHECK(output_or.ok(), "{}", output_or.status().ToString());
+    const GraphValueId output = *output_or;
     graph.MarkOutput(output, "output");
     return graph;
 }
@@ -113,9 +117,15 @@ TEST(SiluMulFusionPass, SkipsSiluOutputWithMultipleConsumers) {
     const GraphValueId gate = AddActivation(graph, "gate");
     const GraphValueId up = AddActivation(graph, "up");
     const GraphValueId residual = AddActivation(graph, "residual");
-    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
-    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, up, "mul");
-    const GraphValueId add = AddElementwiseAdd(graph, 0U, silu, residual, "add");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    ASSERT_TRUE(silu_or.ok()) << silu_or.status().ToString();
+    const GraphValueId silu = *silu_or;
+    auto mul_or = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    ASSERT_TRUE(mul_or.ok()) << mul_or.status().ToString();
+    const GraphValueId mul = *mul_or;
+    auto add_or = AddElementwiseAdd(graph, 0U, silu, residual, "add");
+    ASSERT_TRUE(add_or.ok()) << add_or.status().ToString();
+    const GraphValueId add = *add_or;
     graph.MarkOutput(mul, "mul_output");
     graph.MarkOutput(add, "add_output");
 
@@ -131,8 +141,12 @@ TEST(SiluMulFusionPass, SkipsGraphOutputSiluIntermediate) {
     ModelGraph graph;
     const GraphValueId gate = AddActivation(graph, "gate");
     const GraphValueId up = AddActivation(graph, "up");
-    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
-    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    ASSERT_TRUE(silu_or.ok()) << silu_or.status().ToString();
+    const GraphValueId silu = *silu_or;
+    auto mul_or = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    ASSERT_TRUE(mul_or.ok()) << mul_or.status().ToString();
+    const GraphValueId mul = *mul_or;
     graph.MarkOutput(silu, "silu_output");
     graph.MarkOutput(mul, "mul_output");
 
@@ -148,8 +162,12 @@ TEST(SiluMulFusionPass, SkipsMismatchedDecoderLayerIndex) {
     ModelGraph graph;
     const GraphValueId gate = AddActivation(graph, "gate");
     const GraphValueId up = AddActivation(graph, "up");
-    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
-    const GraphValueId mul = AddElementwiseMul(graph, 1U, silu, up, "mul");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    ASSERT_TRUE(silu_or.ok()) << silu_or.status().ToString();
+    const GraphValueId silu = *silu_or;
+    auto mul_or = AddElementwiseMul(graph, 1U, silu, up, "mul");
+    ASSERT_TRUE(mul_or.ok()) << mul_or.status().ToString();
+    const GraphValueId mul = *mul_or;
     graph.MarkOutput(mul, "output");
 
     const StatusOr<ModelGraph> result = RunSiluMulFusion(graph);
@@ -163,8 +181,12 @@ TEST(SiluMulFusionPass, SkipsMismatchedDecoderLayerIndex) {
 TEST(SiluMulFusionPass, SkipsWhenMulInputsBothSiluOutput) {
     ModelGraph graph;
     const GraphValueId gate = AddActivation(graph, "gate");
-    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
-    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, silu, "mul");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    ASSERT_TRUE(silu_or.ok()) << silu_or.status().ToString();
+    const GraphValueId silu = *silu_or;
+    auto mul_or = AddElementwiseMul(graph, 0U, silu, silu, "mul");
+    ASSERT_TRUE(mul_or.ok()) << mul_or.status().ToString();
+    const GraphValueId mul = *mul_or;
     graph.MarkOutput(mul, "output");
 
     const StatusOr<ModelGraph> result = RunSiluMulFusion(graph);
@@ -180,13 +202,21 @@ TEST(SiluMulFusionPass, FusesMultipleSiluMulPairs) {
     ModelGraph graph;
     const GraphValueId gate_a = AddActivation(graph, "gate_a");
     const GraphValueId up_a = AddActivation(graph, "up_a");
-    const GraphValueId silu_a = AddSilu(graph, 0U, gate_a, "silu_a");
-    const GraphValueId mul_a = AddElementwiseMul(graph, 0U, silu_a, up_a, "mul_a");
+    auto silu_a_or = AddSilu(graph, 0U, gate_a, "silu_a");
+    ASSERT_TRUE(silu_a_or.ok()) << silu_a_or.status().ToString();
+    const GraphValueId silu_a = *silu_a_or;
+    auto mul_a_or = AddElementwiseMul(graph, 0U, silu_a, up_a, "mul_a");
+    ASSERT_TRUE(mul_a_or.ok()) << mul_a_or.status().ToString();
+    const GraphValueId mul_a = *mul_a_or;
 
     const GraphValueId gate_b = AddActivation(graph, "gate_b");
     const GraphValueId up_b = AddActivation(graph, "up_b");
-    const GraphValueId silu_b = AddSilu(graph, 1U, gate_b, "silu_b");
-    const GraphValueId mul_b = AddElementwiseMul(graph, 1U, silu_b, up_b, "mul_b");
+    auto silu_b_or = AddSilu(graph, 1U, gate_b, "silu_b");
+    ASSERT_TRUE(silu_b_or.ok()) << silu_b_or.status().ToString();
+    const GraphValueId silu_b = *silu_b_or;
+    auto mul_b_or = AddElementwiseMul(graph, 1U, silu_b, up_b, "mul_b");
+    ASSERT_TRUE(mul_b_or.ok()) << mul_b_or.status().ToString();
+    const GraphValueId mul_b = *mul_b_or;
 
     graph.MarkOutput(mul_a, "output_a");
     graph.MarkOutput(mul_b, "output_b");
@@ -205,8 +235,12 @@ TEST(SiluMulFusionPass, ReplaceValueOnGateInputResolvesAtCommit) {
     const GraphValueId gate = AddActivation(graph, "gate");
     const GraphValueId up = AddActivation(graph, "up");
     const GraphValueId alt = AddActivation(graph, "alt");
-    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
-    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    ASSERT_TRUE(silu_or.ok()) << silu_or.status().ToString();
+    const GraphValueId silu = *silu_or;
+    auto mul_or = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    ASSERT_TRUE(mul_or.ok()) << mul_or.status().ToString();
+    const GraphValueId mul = *mul_or;
     graph.MarkOutput(mul, "output");
 
     GraphRewriteSession session(graph);
@@ -230,8 +264,12 @@ TEST(SiluMulFusionPass, ReplaceValueOnUpInputResolvesAtCommit) {
     ModelGraph graph;
     const GraphValueId gate = AddActivation(graph, "gate");
     const GraphValueId up = AddActivation(graph, "up");
-    const GraphValueId silu = AddSilu(graph, 0U, gate, "silu");
-    const GraphValueId mul = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    ASSERT_TRUE(silu_or.ok()) << silu_or.status().ToString();
+    const GraphValueId silu = *silu_or;
+    auto mul_or = AddElementwiseMul(graph, 0U, silu, up, "mul");
+    ASSERT_TRUE(mul_or.ok()) << mul_or.status().ToString();
+    const GraphValueId mul = *mul_or;
     graph.MarkOutput(mul, "output");
 
     GraphRewriteSession session(graph);

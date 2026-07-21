@@ -112,7 +112,7 @@ ModelGraph BuildCompositeGraph() {
     AM_CHECK(mul_or.ok(), "{}", mul_or.status().ToString());
     const GraphValueId mul = *mul_or;
 
-    graph.MarkOutput(mul, "output");
+    graph.MarkOutput(mul);
 
     // (6) Dead node: an activation with no consumer and not a graph output.
     AddLiveActivation(graph, "dead");
@@ -490,7 +490,7 @@ ModelGraph BuildGraphWithConstantSiLUGate() {
     AM_CHECK(mul_out_or.ok(), "{}", mul_out_or.status().ToString());
     const GraphValueId mul_out = *mul_out_or;
 
-    graph.MarkOutput(mul_out, "output");
+    graph.MarkOutput(mul_out);
 
     return graph;
 }
@@ -604,7 +604,7 @@ TEST(CompileModelGraph, PreservesStandaloneConstantGraphOutput) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
     ASSERT_TRUE(graph.Validate().ok());
 
     GraphCompileConfig config;
@@ -999,7 +999,7 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
             {},
             "rms");
     ASSERT_TRUE(rms_or.ok()) << rms_or.status().ToString();
-    graph.MarkOutput(rms_or->outputs[0], "normed");
+    graph.MarkOutput(rms_or->outputs[0]);
 
     // Layer 0: the graph itself. AddNode must have invoked AnalyzeRmsNorm and
     // stored the derived runtime check on the node.

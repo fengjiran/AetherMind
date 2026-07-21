@@ -815,7 +815,7 @@ Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed,
         const GraphValueId resolved_output = GetResolvedValue(output.value);
         StatusOr<GraphValueId> mapped_output = MapCommittedValue(resolved_output, maps);
         AM_RETURN_IF_ERROR(mapped_output.status());
-        committed.MarkOutput(*mapped_output, output.name);
+        committed.MarkOutput(*mapped_output);
     }
     return Status::Ok();
 }

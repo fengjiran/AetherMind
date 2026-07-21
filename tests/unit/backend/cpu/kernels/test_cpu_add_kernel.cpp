@@ -518,11 +518,11 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
             OpType::kAdd,
             std::nullopt,
             {emb_lhs.outputs[0], emb_rhs.outputs[0]},
-            {NodeOutputDesc{.payload = ActivationValue{}}},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "out"}},
             AddParams{});
     ASSERT_TRUE(add_node_or.ok()) << add_node_or.status().ToString();
     const AddedNode& add_node = *add_node_or;
-    graph.MarkOutput(add_node.outputs[0], "out");
+    graph.MarkOutput(add_node.outputs[0]);
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();

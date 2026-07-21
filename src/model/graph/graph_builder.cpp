@@ -352,7 +352,7 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                                                                     logits,
                                                                     -1,
                                                                     "argmax"));
-    graph.MarkOutput(output_tokens, "output_token_ids");
+    graph.MarkOutput(output_tokens);
 
     AM_RETURN_IF_ERROR(graph.Validate());
     return graph;

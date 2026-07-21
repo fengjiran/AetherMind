@@ -73,7 +73,7 @@ TEST(DeadCodeEliminationPass, RemovesUnusedNode) {
     ModelGraph graph;
     const GraphValueId live = AddActivation(graph, "live");
     AddActivation(graph, "dead");
-    graph.MarkOutput(live, "output");
+    graph.MarkOutput(live);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 
@@ -87,7 +87,7 @@ TEST(DeadCodeEliminationPass, SkipsWhenDisabled) {
     ModelGraph graph;
     const GraphValueId live = AddActivation(graph, "live");
     AddActivation(graph, "dead");
-    graph.MarkOutput(live, "output");
+    graph.MarkOutput(live);
     PassContext ctx;
     ctx.enable_dce = false;
 
@@ -110,7 +110,7 @@ TEST(DeadCodeEliminationPass, RemovesDeadChain) {
     ASSERT_TRUE(dead_mul_or.ok()) << dead_mul_or.status().ToString();
     const GraphValueId dead_mul = *dead_mul_or;
     UNUSED(dead_mul);
-    graph.MarkOutput(live, "output");
+    graph.MarkOutput(live);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 
@@ -124,7 +124,7 @@ TEST(DeadCodeEliminationPass, RemovesDeadChain) {
 TEST(DeadCodeEliminationPass, KeepsGraphOutputProducer) {
     ModelGraph graph;
     const GraphValueId hidden = AddActivation(graph, "hidden");
-    graph.MarkOutput(hidden, "output");
+    graph.MarkOutput(hidden);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 
@@ -140,7 +140,7 @@ TEST(DeadCodeEliminationPass, KeepsProducerWithLiveConsumer) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 
@@ -170,7 +170,7 @@ TEST(DeadCodeEliminationPass, KeepsMultiOutputNodeWhenAnyOutputIsGraphOutput) {
                            "rope");
     ASSERT_TRUE(rope_or.ok()) << rope_or.status().ToString();
     const RoPEOutputs rope = *rope_or;
-    graph.MarkOutput(rope.q, "q_rope");
+    graph.MarkOutput(rope.q);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 
@@ -201,7 +201,7 @@ TEST(DeadCodeEliminationPass, KeepsStateOutputNodeWithoutConsumers) {
     ASSERT_TRUE(updated_cache_or.ok()) << updated_cache_or.status().ToString();
     const KVCachePair updated_cache = *updated_cache_or;
     UNUSED(updated_cache);
-    graph.MarkOutput(live, "output");
+    graph.MarkOutput(live);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 
@@ -218,7 +218,7 @@ TEST(DeadCodeEliminationPass, KeepsProducerConsumedOnlyByActiveReplacement) {
             graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunReplaceThenDce(graph);
 
@@ -233,7 +233,7 @@ TEST(DeadCodeEliminationPass, IsIdempotent) {
     ModelGraph graph;
     const GraphValueId live = AddActivation(graph, "live");
     AddActivation(graph, "dead");
-    graph.MarkOutput(live, "output");
+    graph.MarkOutput(live);
 
     const StatusOr<ModelGraph> first = RunDce(graph);
     ASSERT_TRUE(first.ok()) << first.status().ToString();
@@ -273,7 +273,7 @@ TEST(DeadCodeEliminationPass, RemovesDeadRankZeroAdd) {
     ASSERT_TRUE(dead_sum_or.ok()) << dead_sum_or.status().ToString();
     const GraphValueId dead_sum = *dead_sum_or;
     UNUSED(dead_sum);
-    graph.MarkOutput(live, "output");
+    graph.MarkOutput(live);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 
@@ -290,7 +290,7 @@ TEST(DeadCodeEliminationPass, RemovesDeadRankZeroSilu) {
     ASSERT_TRUE(dead_act_or.ok()) << dead_act_or.status().ToString();
     const GraphValueId dead_act = *dead_act_or;
     UNUSED(dead_act);
-    graph.MarkOutput(live, "output");
+    graph.MarkOutput(live);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 
@@ -308,7 +308,7 @@ TEST(DeadCodeEliminationPass, RemovesDeadRankZeroSiluMul) {
     ASSERT_TRUE(dead_act_or.ok()) << dead_act_or.status().ToString();
     const GraphValueId dead_act = *dead_act_or;
     UNUSED(dead_act);
-    graph.MarkOutput(live, "output");
+    graph.MarkOutput(live);
 
     const StatusOr<ModelGraph> result = RunDce(graph);
 

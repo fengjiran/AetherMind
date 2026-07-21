@@ -317,10 +317,14 @@ StatusOr<GraphValueId> AddArgmax(ModelGraph& graph,
                                  GraphValueId input,
                                  int64_t axis,
                                  std::string name) {
+    // Build output desc first to avoid use-after-move: name would otherwise be
+    // captured by reference in NodeOutputDesc while std::move(name) is also a
+    // sibling argument to AddNode (unspecified evaluation order).
+    NodeOutputDesc output_desc{.payload = ActivationValue{}, .name = name};
     AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kArgmax,
                                                       decoder_layer_index,
                                                       {input},
-                                                      {ActivationOutput()},
+                                                      {std::move(output_desc)},
                                                       ArgmaxParams{.axis = axis},
                                                       {},
                                                       std::move(name)));

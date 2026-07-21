@@ -281,7 +281,7 @@ void DumpGraph(const ModelGraph& graph, std::ostream& os) {
     for (const auto& output: graph.GetOutputs()) {
         os << "  ";
         DumpGraphValueId(output.value, os);
-        os << ", name=" << output.name << '\n';
+        os << ", name=" << graph.GetValue(output.value).name << '\n';
     }
 
     os << "values:\n";

@@ -37,7 +37,7 @@ ModelGraph BuildGraph() {
     AM_CHECK(embed_b_or.ok(), "BuildGraph embed_b AddNode failed: {}", embed_b_or.status().ToString());
     const AddedNode& embed_b = *embed_b_or;
     (void) embed_b;
-    graph.MarkOutput(embed_a.outputs[0], "output");
+    graph.MarkOutput(embed_a.outputs[0]);
     return graph;
 }
 

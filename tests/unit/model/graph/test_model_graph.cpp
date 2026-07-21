@@ -88,7 +88,7 @@ ModelGraph BuildValidEmbeddingGraph() {
                                             {tokens, weight},
                                             {NodeOutputDesc{.payload = ActivationValue{}}},
                                             EmbeddingParams{});
-    graph.MarkOutput(embedding.outputs[0], "hidden");
+    graph.MarkOutput(embedding.outputs[0]);
     return graph;
 }
 
@@ -119,17 +119,17 @@ TEST(ModelGraph, PublicApiCreatesInputsWeightsNodesAndOutputs) {
                                        OpType::kRmsNorm,
                                        0U,
                                        {hidden, weight},
-                                       {NodeOutputDesc{.payload = ActivationValue{}, .name = "normed"}},
+                                       {NodeOutputDesc{.payload = ActivationValue{}, .name = "normed_output"}},
                                        RmsNormParams{},
                                        "rms_norm_0");
-    graph.MarkOutput(node.outputs[0], "normed_output");
+    graph.MarkOutput(node.outputs[0]);
 
     ASSERT_EQ(graph.GetInputs().size(), 1U);
     EXPECT_EQ(graph.GetInputs()[0].value, tokens);
     EXPECT_EQ(graph.GetValue(graph.GetInputs()[0].value).name, "token_ids");
     ASSERT_EQ(graph.GetOutputs().size(), 1U);
     EXPECT_EQ(graph.GetOutputs()[0].value, node.outputs[0]);
-    EXPECT_EQ(graph.GetOutputs()[0].name, "normed_output");
+    EXPECT_EQ(graph.GetValue(graph.GetOutputs()[0].value).name, "normed_output");
     ASSERT_EQ(graph.GetNodes().size(), 2U);
     EXPECT_EQ(graph.GetNode(node.node).op_type, OpType::kRmsNorm);
     EXPECT_EQ(graph.GetNode(node.node).name, "rms_norm_0");
@@ -217,7 +217,7 @@ TEST(ModelGraph, ValidateAcceptsSiluNodeWithSiluParams) {
                                        {input},
                                        {NodeOutputDesc{.payload = ActivationValue{}}},
                                        SiluParams{});
-    graph.MarkOutput(node.outputs[0], "output");
+    graph.MarkOutput(node.outputs[0]);
 
     const Status status = graph.Validate();
     EXPECT_TRUE(status.ok()) << status.ToString();
@@ -247,7 +247,7 @@ TEST(ModelGraph, ValidateAcceptsElementwiseMulNodeWithElementwiseMulParams) {
                                        {lhs, rhs},
                                        {NodeOutputDesc{.payload = ActivationValue{}}},
                                        ElementwiseMulParams{});
-    graph.MarkOutput(node.outputs[0], "output");
+    graph.MarkOutput(node.outputs[0]);
 
     const Status status = graph.Validate();
     EXPECT_TRUE(status.ok()) << status.ToString();
@@ -393,7 +393,7 @@ TEST(ModelGraph, ValidateAcceptsExternalConstantValue) {
                                             {tokens, weight},
                                             {NodeOutputDesc{.payload = ActivationValue{}}},
                                             EmbeddingParams{});
-    graph.MarkOutput(embedding.outputs[0], "hidden");
+    graph.MarkOutput(embedding.outputs[0]);
 
     EXPECT_TRUE(graph.Validate().ok());
 }
@@ -632,7 +632,7 @@ TEST(ModelGraph, ValidateRejectsInvalidKvCacheStateBindingSlot) {
 TEST(ModelGraph, ValidateRejectsStateValueAsGraphOutput) {
     ModelGraph graph;
     const GraphValueId state = graph.AddState(ActivationSpec(), KvStateBinding(), "kv_cache");
-    graph.MarkOutput(state, "bad_state_output");
+    graph.MarkOutput(state);
 
     const Status status = graph.Validate();
 
@@ -725,7 +725,7 @@ TEST(ModelGraph, ValidateRejectsOutputOnExternalValue) {
                        {NodeOutputDesc{.payload = ActivationValue{}, .name = ""}},
                        RmsNormParams{});
     const GraphValueId external = graph.AddInput(ActivationSpec(), "external");
-    graph.MarkOutput(external, "bad_output");
+    graph.MarkOutput(external);
 
     const Status status = graph.Validate();
 
@@ -803,7 +803,7 @@ TEST(ModelGraph, ValidateAcceptsMonostateSemanticRoleForGenericGraph) {
                                             OpType::kEmbedding, std::nullopt, {tokens, weight},
                                             {NodeOutputDesc{.payload = ActivationValue{}}},
                                             EmbeddingParams{});
-    graph.MarkOutput(embedding.outputs[0], "hidden");
+    graph.MarkOutput(embedding.outputs[0]);
 
     const Status status = graph.Validate();
 

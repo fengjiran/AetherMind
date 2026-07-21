@@ -137,7 +137,7 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
     EXPECT_EQ(graph->GetValue(graph->GetInputs()[0].value).name, "token_ids");
     EXPECT_EQ(graph->GetValue(graph->GetInputs()[1].value).name, "position_ids");
     ASSERT_EQ(graph->GetOutputs().size(), 1U);
-    EXPECT_EQ(graph->GetOutputs()[0].name, "output_token_ids");
+    EXPECT_EQ(graph->GetValue(graph->GetOutputs()[0].value).name, "argmax");
     EXPECT_TRUE(graph->Validate().ok());
     const StatusOr<std::vector<GraphNodeId>> order = graph->TopologicalOrder();
     ASSERT_TRUE(order.ok()) << order.status().ToString();

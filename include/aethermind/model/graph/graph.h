@@ -11,9 +11,7 @@
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/graph/graph_types.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -100,9 +98,11 @@ public:
         return config_;
     }
 
-    /// Designates a value as a graph output with a user-facing name.
-    void MarkOutput(GraphValueId value, std::string name) {
-        outputs_.push_back({.value = value, .name = std::move(name)});
+    /// Designates a value as a graph output. The user-facing port name is the
+    /// referenced GraphValue::name; callers must set it via AddNode/AddInput/
+    /// AddWeight/AddConstant/AddState before invoking MarkOutput.
+    void MarkOutput(GraphValueId value) {
+        outputs_.push_back({.value = value});
     }
 
     /// Attaches a semantic quantization scheme to a value. Applies to any

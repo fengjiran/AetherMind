@@ -87,7 +87,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     auto output_or = AddArgmax(graph, std::nullopt, logits, -1, "argmax");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
-    graph.MarkOutput(output, "output");
+    graph.MarkOutput(output);
 
     const Status validation = graph.Validate();
     ASSERT_TRUE(validation.ok()) << validation.ToString();

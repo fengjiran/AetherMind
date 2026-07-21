@@ -138,7 +138,7 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
             EmbeddingParams{});
     ASSERT_TRUE(embedding_or.ok()) << embedding_or.status().ToString();
     const AddedNode& embedding = *embedding_or;
-    graph.MarkOutput(embedding.outputs[0], "hidden");
+    graph.MarkOutput(embedding.outputs[0]);
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
@@ -184,7 +184,7 @@ TEST(GraphLowering, PreservesTopologicalOrderAndRmsNormParams) {
             RmsNormParams{.eps = 2.5e-3F});
     ASSERT_TRUE(rms_norm_or.ok()) << rms_norm_or.status().ToString();
     const AddedNode& rms_norm = *rms_norm_or;
-    graph.MarkOutput(rms_norm.outputs[0], "normed");
+    graph.MarkOutput(rms_norm.outputs[0]);
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
@@ -258,7 +258,7 @@ TEST(GraphLowering, LowersAttentionStatePortsWithoutTensorSpecs) {
             AttentionParams{.num_attention_heads = 4, .num_key_value_heads = 2, .head_dim = 2});
     ASSERT_TRUE(attention_or.ok()) << attention_or.status().ToString();
     const AddedNode& attention = *attention_or;
-    graph.MarkOutput(attention.outputs[0], "attention_output");
+    graph.MarkOutput(attention.outputs[0]);
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
@@ -486,7 +486,7 @@ TEST(GraphLowering, CarriesRuntimeChecksFromGraphToLoweredNode) {
             {NodeOutputDesc{.payload = ActivationValue{}}},
             RmsNormParams{.eps = 1.0e-5F});
     ASSERT_TRUE(rms_or.ok()) << rms_or.status().ToString();
-    graph.MarkOutput(rms_or->outputs[0], "normed");
+    graph.MarkOutput(rms_or->outputs[0]);
 
     const GraphNode& graph_node = graph.GetNode(rms_or->node);
     ASSERT_FALSE(graph_node.runtime_checks.empty())

@@ -131,7 +131,7 @@ void ExpectFoldedAdd(FoldedAddCase<T> test_case) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -170,7 +170,7 @@ TEST(ConstantFoldingPass, FoldsAddOfTwoConstants) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -195,7 +195,7 @@ TEST(ConstantFoldingPass, FoldsAddBroadcastRowVectorConstants) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -221,7 +221,7 @@ TEST(ConstantFoldingPass, FoldsAddBroadcastReversedInputConstants) {
                                               {2, 3},
                                               "rhs");
     const GraphValueId sum = AddFloatAddWithOutputShape(graph, lhs, rhs, {2, 3}, "sum");
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -266,7 +266,7 @@ TEST(ConstantFoldingPass, FoldsAddBFloat16Constants) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -286,7 +286,7 @@ TEST(ConstantFoldingPass, SkipsAddInt32Overflow) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -304,7 +304,7 @@ TEST(ConstantFoldingPass, SkipsAddInt64Overflow) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -321,7 +321,7 @@ TEST(ConstantFoldingPass, SkipsWhenDisabled) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
     PassContext ctx;
     ctx.enable_constant_folding = false;
 
@@ -341,7 +341,7 @@ TEST(ConstantFoldingPass, SkipsMissingInlineData) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -363,7 +363,7 @@ TEST(ConstantFoldingPass, SkipsInlineDataByteMismatch) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -411,7 +411,7 @@ TEST(ConstantFoldingPass, DceRemovesFoldedAdd) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -434,7 +434,7 @@ TEST(ConstantFoldingPass, FoldsChainedAddOfConstants) {
     auto d_or = AddElementwiseAdd(graph, 0U, a, e, "d");
     ASSERT_TRUE(d_or.ok()) << d_or.status().ToString();
     const GraphValueId d = *d_or;
-    graph.MarkOutput(d, "output");
+    graph.MarkOutput(d);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -495,8 +495,8 @@ TEST(ConstantFoldingPass, SkipsNonFoldableNodeAndContinuesToFoldable) {
                         .producer = GraphNodeId{1},
                         .name = "non_foldable_sum"}});
 
-    graph.MarkOutput(GraphValueId{2}, "output1");
-    graph.MarkOutput(GraphValueId{5}, "output2");
+    graph.MarkOutput(GraphValueId{2});
+    graph.MarkOutput(GraphValueId{5});
 
     GraphRewriteSession session(graph);
     ConstantFoldingPass pass;
@@ -519,7 +519,7 @@ TEST(ConstantFoldingPass, FoldsAddOfEmptyTensors) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -548,7 +548,7 @@ TEST(ConstantFoldingPass, SkipsAddWhenContiguousStridesOverflow) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -594,7 +594,7 @@ TEST(ConstantFoldingPass, FoldsAddOfSingleElementConstants) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -617,7 +617,7 @@ TEST(ConstantFoldingPass, FoldsMulOfTwoConstants) {
     auto product_or = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
     ASSERT_TRUE(product_or.ok()) << product_or.status().ToString();
     const GraphValueId product = *product_or;
-    graph.MarkOutput(product, "output");
+    graph.MarkOutput(product);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -647,7 +647,7 @@ TEST(ConstantFoldingPass, FoldsMulBFloat16Constants) {
     auto product_or = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
     ASSERT_TRUE(product_or.ok()) << product_or.status().ToString();
     const GraphValueId product = *product_or;
-    graph.MarkOutput(product, "output");
+    graph.MarkOutput(product);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -667,7 +667,7 @@ TEST(ConstantFoldingPass, SkipsAddInt32OverflowWithLargerRhs) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -688,7 +688,7 @@ TEST(ConstantFoldingPass, FoldsAddThenMulChainedConstants) {
     auto product_or = AddElementwiseMul(graph, 0U, sum, c, "product");
     ASSERT_TRUE(product_or.ok()) << product_or.status().ToString();
     const GraphValueId product = *product_or;
-    graph.MarkOutput(product, "output");
+    graph.MarkOutput(product);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -711,7 +711,7 @@ TEST(ConstantFoldingPass, DceRemovesFoldedMul) {
     auto product_or = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
     ASSERT_TRUE(product_or.ok()) << product_or.status().ToString();
     const GraphValueId product = *product_or;
-    graph.MarkOutput(product, "output");
+    graph.MarkOutput(product);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -727,7 +727,7 @@ TEST(ConstantFoldingPass, FoldsSiluOfConstant) {
     auto act_or = AddSilu(graph, 0U, input, "act");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -753,7 +753,7 @@ TEST(ConstantFoldingPass, FoldsSiluBFloat16Constants) {
     auto act_or = AddSilu(graph, 0U, input, "act");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -788,7 +788,7 @@ TEST(ConstantFoldingPass, FoldsAddThenSiluChainedConstants) {
     auto act_or = AddSilu(graph, 0U, sum, "act");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -809,7 +809,7 @@ TEST(ConstantFoldingPass, DceRemovesFoldedSilu) {
     auto act_or = AddSilu(graph, 0U, input, "act");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -828,7 +828,7 @@ TEST(ConstantFoldingPass, FoldsSiluMulOfTwoConstants) {
     auto act_or = AddSiluMul(graph, 0U, gate, up, "silu_mul");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -860,7 +860,7 @@ TEST(ConstantFoldingPass, FoldsSiluMulBFloat16Constants) {
     auto act_or = AddSiluMul(graph, 0U, gate, up, "silu_mul");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -901,7 +901,7 @@ TEST(ConstantFoldingPass, RejectsSiluMulInt32Inputs) {
             GraphNode{.op_type = OpType::kSiluMul, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = SiluMulParams{}, .name = "silu_mul"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
-    graph.MarkOutput(GraphValueId{2}, "output");
+    graph.MarkOutput(GraphValueId{2});
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -923,7 +923,7 @@ TEST(ConstantFoldingPass, FoldsSiluMulThenAddChainedConstants) {
     auto sum_or = AddElementwiseAdd(graph, 0U, silu_mul, bias, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -946,7 +946,7 @@ TEST(ConstantFoldingPass, DceRemovesFoldedSiluMul) {
     auto act_or = AddSiluMul(graph, 0U, gate, up, "silu_mul");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -967,7 +967,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroAdd) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -994,7 +994,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroAddInt32) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -1024,7 +1024,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroAddBFloat16) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -1043,7 +1043,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroElementwiseMul) {
     auto product_or = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
     ASSERT_TRUE(product_or.ok()) << product_or.status().ToString();
     const GraphValueId product = *product_or;
-    graph.MarkOutput(product, "output");
+    graph.MarkOutput(product);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -1064,7 +1064,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroSilu) {
     auto act_or = AddSilu(graph, 0U, input, "act");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -1087,7 +1087,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroSiluMul) {
     auto act_or = AddSiluMul(graph, 0U, gate, up, "silu_mul");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -1119,7 +1119,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroAddThenSiluThenMulChained) {
     auto product_or = AddElementwiseMul(graph, 0U, act, c, "product");
     ASSERT_TRUE(product_or.ok()) << product_or.status().ToString();
     const GraphValueId product = *product_or;
-    graph.MarkOutput(product, "output");
+    graph.MarkOutput(product);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -1149,7 +1149,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroScalarTensorAddBroadcast) {
     auto sum_or = AddElementwiseAdd(graph, 0U, scalar, tensor, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -1176,7 +1176,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroTensorScalarAddBroadcast) {
     auto sum_or = AddElementwiseAdd(graph, 0U, tensor, scalar, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -1209,7 +1209,7 @@ TEST(ConstantFoldingPass, SkipsRankZeroMalformedInlineBytes) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFolding(graph);
 
@@ -1230,7 +1230,7 @@ TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroAdd) {
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
     ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
     const GraphValueId sum = *sum_or;
-    graph.MarkOutput(sum, "output");
+    graph.MarkOutput(sum);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -1249,7 +1249,7 @@ TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroMul) {
     auto product_or = AddElementwiseMul(graph, 0U, lhs, rhs, "product");
     ASSERT_TRUE(product_or.ok()) << product_or.status().ToString();
     const GraphValueId product = *product_or;
-    graph.MarkOutput(product, "output");
+    graph.MarkOutput(product);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -1265,7 +1265,7 @@ TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroSilu) {
     auto act_or = AddSilu(graph, 0U, input, "act");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 
@@ -1282,7 +1282,7 @@ TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroSiluMul) {
     auto act_or = AddSiluMul(graph, 0U, gate, up, "silu_mul");
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
-    graph.MarkOutput(act, "output");
+    graph.MarkOutput(act);
 
     const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
 

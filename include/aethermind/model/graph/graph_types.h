@@ -275,9 +275,10 @@ struct GraphInput {
 };
 
 /// Output port binding: a named value leaves the graph to the runtime.
+/// Output port binding: a value exported by the graph. The port name is the
+/// referenced GraphValue::name; this struct only carries the value id.
 struct GraphOutput {
     GraphValueId value{};
-    std::string name{};
 };
 
 }// namespace aethermind

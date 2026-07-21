@@ -48,7 +48,7 @@ ModelGraph BuildTwoEmbeddingGraph() {
     AM_CHECK(embed_b_or.ok(), "BuildTwoEmbeddingGraph embed_b AddNode failed");
     const AddedNode& embed_b = *embed_b_or;
     UNUSED(embed_b);
-    graph.MarkOutput(embed_a.outputs[0], "output");
+    graph.MarkOutput(embed_a.outputs[0]);
     return graph;
 }
 
@@ -95,8 +95,8 @@ ModelGraph BuildRoPEGraph() {
             ValidRoPEParams());
     AM_CHECK(rope_or.ok(), "BuildRoPEGraph rope AddNode failed");
     const AddedNode& rope = *rope_or;
-    graph.MarkOutput(rope.outputs[0], "q_rope");
-    graph.MarkOutput(rope.outputs[1], "k_rope");
+    graph.MarkOutput(rope.outputs[0]);
+    graph.MarkOutput(rope.outputs[1]);
     return graph;
 }
 
@@ -786,7 +786,7 @@ ModelGraph BuildGraphWithState() {
             EmbeddingParams{});
     AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
     const AddedNode& embed = *embed_or;
-    graph.MarkOutput(embed.outputs[0], "output");
+    graph.MarkOutput(embed.outputs[0]);
     return graph;
 }
 
@@ -827,7 +827,7 @@ TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
             EmbeddingParams{});
     AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
     const AddedNode& embed = *embed_or;
-    graph.MarkOutput(embed.outputs[0], "output");
+    graph.MarkOutput(embed.outputs[0]);
 
     GraphRewriteSession session(graph);
     const StatusOr<ModelGraph> committed = session.Commit();
@@ -903,7 +903,7 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
             EmbeddingParams{});
     AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
     const AddedNode& embed = *embed_or;
-    graph.MarkOutput(embed.outputs[0], "output");
+    graph.MarkOutput(embed.outputs[0]);
     (void) constant;
 
     GraphRewriteSession session(graph);
@@ -1196,7 +1196,7 @@ TEST(GraphRewriteSession, RedirectInputAccumulatesMultipleInputChanges) {
             EmbeddingParams{});
     ASSERT_TRUE(node_or.ok()) << node_or.status().ToString();
     const AddedNode& node = *node_or;
-    graph.MarkOutput(node.outputs[0], "output");
+    graph.MarkOutput(node.outputs[0]);
 
     GraphRewriteSession session(graph);
 

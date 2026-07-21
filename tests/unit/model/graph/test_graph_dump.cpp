@@ -95,7 +95,7 @@ TEST(GraphDump, DumpsMinimalGraph) {
             "embedding");
     ASSERT_TRUE(embedding_or.ok()) << embedding_or.status().ToString();
     const AddedNode& embedding = *embedding_or;
-    graph.MarkOutput(embedding.outputs[0], "hidden_out");
+    graph.MarkOutput(embedding.outputs[0]);
 
     std::ostringstream os;
     DumpGraph(graph, os);

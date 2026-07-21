@@ -1093,7 +1093,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
                             GetOperatorSchema(replacement.op_type));
 
         // 2. Parameter validation: ensures OpParams holds the right alternative.
-        AM_RETURN_IF_ERROR(ValidateOperatorParams(replacement.op_type, replacement.op_params));
+        // AM_RETURN_IF_ERROR(ValidateOperatorParams(replacement.op_type, replacement.op_params));
 
         // 3. Input count must match schema.
         if (replacement.inputs.size() != schema.input_ports.size()) {

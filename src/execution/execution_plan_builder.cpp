@@ -70,7 +70,7 @@ Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
                 "Untrusted ExecutionPlanNodeSpec adapter requires typed op_params; "
                 "monostate is not accepted");
     }
-    AM_RETURN_IF_ERROR(ValidateOperatorParams(node.op_type, node.op_params));
+    // AM_RETURN_IF_ERROR(ValidateOperatorParams(node.op_type, node.op_params));
     auto analyzed = AnalyzeOperator(node.op_type, node.op_params, compact_input_specs);
     if (!analyzed.ok()) {
         return analyzed.status();

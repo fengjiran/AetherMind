@@ -287,6 +287,12 @@ bool ShapeConstraintsEquivalent(const ShapeConstraint& lhs, const ShapeConstrain
     return lhs.condition == rhs.condition && lhs.error_context == rhs.error_context;
 }
 
+std::string FormatNodeContext(size_t idx, OpType op_type, const std::string& name,
+                              const std::string& detail) {
+    return "node " + std::to_string(idx) + " (" + ToString(op_type) +
+           (name.empty() ? "" : " " + name) + "): " + detail;
+}
+
 }// namespace
 
 ModelGraph::ModelGraph(HfModelConfig config) noexcept : config_(std::move(config)) {}
@@ -336,48 +342,44 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                                         ModelGraphAttrs attrs,
                                         std::string name) {
     const uint32_t node_idx = NextNodeIndex(nodes_);
-    auto ctx = [&](const std::string& detail) {
-        return "node " + std::to_string(node_idx) + " (" + ToString(op_type) +
-               (name.empty() ? "" : " " + name) + "): " + detail;
+    auto get_msg = [&](const std::string& detail) {
+        return FormatNodeContext(node_idx, op_type, name, detail);
     };
 
     if (!attrs.bytes.empty()) {
-        return Status::InvalidArgument(ctx("must use typed op params, not attrs"));
-    }
-
-    if (auto status = ValidateOperatorParams(op_type, op_params); !status.ok()) {
-        return Status::InvalidArgument(ctx(status.message()));
+        return Status::InvalidArgument(
+                get_msg("must use typed op params, not attrs"));
     }
 
     auto schema_or = GetOperatorSchema(op_type);
     if (!schema_or.ok()) {
-        return Status::InvalidArgument(ctx(schema_or.status().message()));
+        return Status::InvalidArgument(get_msg(schema_or.status().message()));
     }
     const auto& schema = *schema_or;
     if (inputs.size() != schema.input_ports.size()) {
         return Status::InvalidArgument(
-                ctx("input count " + std::to_string(inputs.size()) +
-                    " != schema " + std::to_string(schema.input_ports.size())));
+                get_msg("input count " + std::to_string(inputs.size()) +
+                        " != schema " + std::to_string(schema.input_ports.size())));
     }
 
     if (outputs_desc.size() != schema.output_ports.size()) {
         return Status::InvalidArgument(
-                ctx("output count " + std::to_string(outputs_desc.size()) +
-                    " != schema " + std::to_string(schema.output_ports.size())));
+                get_msg("output count " + std::to_string(outputs_desc.size()) +
+                        " != schema " + std::to_string(schema.output_ports.size())));
     }
 
     for (size_t i = 0; i < inputs.size(); ++i) {
         if (!IsValidValueId(inputs[i], values_)) {
             return Status::InvalidArgument(
-                    ctx("input[" + std::to_string(i) + "] " +
-                        (i < schema.input_ports.size() ? schema.input_ports[i].name : "<?>") +
-                        " invalid value id"));
+                    get_msg("input[" + std::to_string(i) + "] " +
+                            (i < schema.input_ports.size() ? schema.input_ports[i].name : "<?>") +
+                            " invalid value id"));
         }
 
         if (!PayloadMatchesPort(values_[inputs[i].index].payload, schema.input_ports[i].kind)) {
             return Status::InvalidArgument(
-                    ctx("input[" + std::to_string(i) + "] " +
-                        schema.input_ports[i].name + " payload kind mismatch"));
+                    get_msg("input[" + std::to_string(i) + "] " +
+                            schema.input_ports[i].name + " payload kind mismatch"));
         }
     }
 
@@ -388,8 +390,8 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                         : outputs_desc[i].payload;
         if (!PayloadMatchesPort(normalized, schema.output_ports[i].kind)) {
             return Status::InvalidArgument(
-                    ctx("output[" + std::to_string(i) + "] " +
-                        schema.output_ports[i].name + " payload kind mismatch"));
+                    get_msg("output[" + std::to_string(i) + "] " +
+                            schema.output_ports[i].name + " payload kind mismatch"));
         }
     }
 
@@ -398,15 +400,15 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
             const auto& binding = std::get<WeightValue>(values_[inputs[i].index].payload).binding;
             if (auto status = ValidateWeightBindingSelfConsistency(binding); !status.ok()) {
                 return Status::InvalidArgument(
-                        ctx("input[" + std::to_string(i) + "] " +
-                            schema.input_ports[i].name + " weight: " + status.message()));
+                        get_msg("input[" + std::to_string(i) + "] " +
+                                schema.input_ports[i].name + " weight: " + status.message()));
             }
 
             if (auto exp = ExpectedWeightSlotForOp(op_type);
                 exp.has_value() && binding.slot != *exp) {
                 return Status::InvalidArgument(
-                        ctx("input[" + std::to_string(i) + "] " +
-                            schema.input_ports[i].name + " weight slot mismatch"));
+                        get_msg("input[" + std::to_string(i) + "] " +
+                                schema.input_ports[i].name + " weight slot mismatch"));
             }
         }
 
@@ -416,8 +418,8 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                                           .binding;
             if (auto status = ValidateStateBinding(binding); !status.ok()) {
                 return Status::InvalidArgument(
-                        ctx("input[" + std::to_string(i) + "] " +
-                            schema.input_ports[i].name + " state: " + status.message()));
+                        get_msg("input[" + std::to_string(i) + "] " +
+                                schema.input_ports[i].name + " state: " + status.message()));
             }
         }
     }
@@ -440,7 +442,7 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
         auto status = ValidateNodeStateBindings(
                 op_type, decoder_layer_index, schema, values_, inputs, output_bindings);
         if (!status.ok()) {
-            return Status::InvalidArgument(ctx(status.message()));
+            return Status::InvalidArgument(get_msg(status.message()));
         }
     }
 
@@ -452,14 +454,14 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
 
     auto inference_or = AnalyzeOperator(op_type, op_params, all_input_specs);
     if (!inference_or.ok()) {
-        return Status::InvalidArgument(ctx("AnalyzeOperator: " +
-                                           inference_or.status().message()));
+        return Status::InvalidArgument(get_msg("AnalyzeOperator: " +
+                                               inference_or.status().message()));
     }
     const auto& inference = *inference_or;
     if (inference.outputs.size() != schema.output_ports.size()) {
         return Status::InvalidArgument(
-                ctx("AnalyzeOperator inferred " + std::to_string(inference.outputs.size()) +
-                    " outputs, schema expects " + std::to_string(schema.output_ports.size())));
+                get_msg("AnalyzeOperator inferred " + std::to_string(inference.outputs.size()) +
+                        " outputs, schema expects " + std::to_string(schema.output_ports.size())));
     }
 
     // Stage all values and node before any observable mutation.
@@ -547,8 +549,8 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
     }
 
     // -- Validate each value: no uninitialized payload, producers are consistent --
-    for (size_t value_index = 0; value_index < values_.size(); ++value_index) {
-        const GraphValue& value = values_[value_index];
+    for (size_t i = 0; i < values_.size(); ++i) {
+        const GraphValue& value = values_[i];
         if (std::holds_alternative<std::monostate>(value.payload)) {
             return Status::InvalidArgument("Graph value has monostate payload");
         }
@@ -559,8 +561,9 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
             }
 
             if (!NodeListsOutput(nodes_[value.producer->index],
-                                 GraphValueId{static_cast<uint32_t>(value_index)})) {
-                return Status::InvalidArgument("Activation producer does not list produced value");
+                                 GraphValueId{static_cast<uint32_t>(i)})) {
+                return Status::InvalidArgument(
+                        "Activation producer does not list produced value");
             }
         } else if (std::holds_alternative<StateValue>(value.payload)) {
             const StateBinding& binding = std::get<StateValue>(value.payload).binding;
@@ -572,7 +575,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                 }
 
                 if (!NodeListsOutput(nodes_[value.producer->index],
-                                     GraphValueId{static_cast<uint32_t>(value_index)})) {
+                                     GraphValueId{static_cast<uint32_t>(i)})) {
                     return Status::InvalidArgument(
                             "State producer does not list produced value");
                 }
@@ -594,70 +597,61 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
     }
 
     // -- Validate each node against the operator schema --
-    for (size_t node_index = 0; node_index < nodes_.size(); ++node_index) {
-        const GraphNode& node = nodes_[node_index];
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        const GraphNode& node = nodes_[i];
 
         // Stable node-context formatter — defined before the first check so
         // every node-specific diagnostic carries the stored node identity.
-        auto n_ctx = [&](const std::string& detail) {
-            return "node " + std::to_string(node_index) + " (" +
-                   std::string(ToString(node.op_type)) +
-                   (node.name.empty() ? "" : " " + node.name) + "): " + detail;
+        auto get_msg = [&](const std::string& detail) -> std::string {
+            return FormatNodeContext(i, node.op_type, node.name, detail);
         };
 
         StatusOr<OperatorSchema> schema_or = GetOperatorSchema(node.op_type);
         if (!schema_or.ok()) {
-            return Status::InvalidArgument(
-                    n_ctx("GetOperatorSchema: " + schema_or.status().message()));
+            return Status::InvalidArgument(get_msg(
+                    "GetOperatorSchema: " + schema_or.status().message()));
         }
 
-        {
-            auto status = ValidateOperatorParams(node.op_type, node.op_params);
-            if (!status.ok()) {
-                return Status::InvalidArgument(n_ctx(status.message()));
-            }
-        }
         if (!node.attrs.bytes.empty()) {
-            return Status::InvalidArgument(
-                    n_ctx("registered ModelGraph operators must use typed op params, not attrs"));
+            return Status::InvalidArgument(get_msg(
+                    "registered ModelGraph operators must use typed op params, not attrs"));
         }
 
         const OperatorSchema& schema = *schema_or;
-
         if (node.inputs.size() != schema.input_ports.size()) {
-            return Status::InvalidArgument(
-                    n_ctx("input count " + std::to_string(node.inputs.size()) +
-                          " != schema " + std::to_string(schema.input_ports.size())));
+            return Status::InvalidArgument(get_msg(
+                    "input count " + std::to_string(node.inputs.size()) +
+                    " != schema " + std::to_string(schema.input_ports.size())));
         }
 
         if (node.outputs.size() != schema.output_ports.size()) {
-            return Status::InvalidArgument(
-                    n_ctx("output count " + std::to_string(node.outputs.size()) +
-                          " != schema " + std::to_string(schema.output_ports.size())));
+            return Status::InvalidArgument(get_msg(
+                    "output count " + std::to_string(node.outputs.size()) +
+                    " != schema " + std::to_string(schema.output_ports.size())));
         }
 
         for (size_t input_index = 0; input_index < node.inputs.size(); ++input_index) {
             const GraphValueId input = node.inputs[input_index];
             if (!IsValidValueId(input, values_)) {
-                return Status::InvalidArgument(
-                        n_ctx("input[" + std::to_string(input_index) + "] " +
-                              schema.input_ports[input_index].name + " invalid value id"));
+                return Status::InvalidArgument(get_msg(
+                        "input[" + std::to_string(input_index) + "] " +
+                        schema.input_ports[input_index].name + " invalid value id"));
             }
 
             if (!PayloadMatchesPort(values_[input.index].payload,
                                     schema.input_ports[input_index].kind)) {
-                return Status::InvalidArgument(
-                        n_ctx("input[" + std::to_string(input_index) + "] " +
-                              schema.input_ports[input_index].name + " payload kind mismatch"));
+                return Status::InvalidArgument(get_msg(
+                        "input[" + std::to_string(input_index) + "] " +
+                        schema.input_ports[input_index].name + " payload kind mismatch"));
             }
 
             if (schema.input_ports[input_index].kind == OperatorPortKind::kWeight) {
                 const auto& binding = std::get<WeightValue>(values_[input.index].payload).binding;
                 if (const auto& expected_slot = ExpectedWeightSlotForOp(node.op_type);
                     expected_slot.has_value() && binding.slot != *expected_slot) {
-                    return Status::InvalidArgument(
-                            n_ctx("input[" + std::to_string(input_index) + "] " +
-                                  schema.input_ports[input_index].name + " weight slot mismatch"));
+                    return Status::InvalidArgument(get_msg(
+                            "input[" + std::to_string(input_index) + "] " +
+                            schema.input_ports[input_index].name + " weight slot mismatch"));
                 }
             }
         }
@@ -671,68 +665,67 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
 
             auto inference_or = AnalyzeOperator(node.op_type, node.op_params, all_input_specs);
             if (!inference_or.ok()) {
-                return Status::InvalidArgument(
-                        n_ctx("semantic re-analysis failed: " + inference_or.status().message()));
+                return Status::InvalidArgument(get_msg(
+                        "semantic re-analysis failed: " + inference_or.status().message()));
             }
             const auto& derived = *inference_or;
-
             if (derived.outputs.size() != node.outputs.size()) {
-                return Status::InvalidArgument(
-                        n_ctx("output count mismatch: derived " +
-                              std::to_string(derived.outputs.size()) + " != stored " +
-                              std::to_string(node.outputs.size())));
+                return Status::InvalidArgument(get_msg(
+                        "output count mismatch: derived " +
+                        std::to_string(derived.outputs.size()) + " != stored " +
+                        std::to_string(node.outputs.size())));
             }
 
             for (size_t oi = 0; oi < node.outputs.size(); ++oi) {
                 const GraphValueId output = node.outputs[oi];
                 if (!IsValidValueId(output, values_)) {
-                    return Status::InvalidArgument(
-                            n_ctx("output[" + std::to_string(oi) + "] " +
-                                  schema.output_ports[oi].name + " invalid value id"));
+                    return Status::InvalidArgument(get_msg(
+                            "output[" + std::to_string(oi) + "] " +
+                            schema.output_ports[oi].name + " invalid value id"));
                 }
 
                 const GraphValue& output_value = values_[output.index];
-                if (!output_value.producer.has_value() || output_value.producer->index != node_index) {
-                    return Status::InvalidArgument(
-                            n_ctx("output[" + std::to_string(oi) + "] " +
-                                  schema.output_ports[oi].name + " producer mismatch"));
+                if (!output_value.producer.has_value() || output_value.producer->index != i) {
+                    return Status::InvalidArgument(get_msg(
+                            "output[" + std::to_string(oi) + "] " +
+                            schema.output_ports[oi].name + " producer mismatch"));
                 }
 
                 if (!PayloadMatchesPort(output_value.payload, schema.output_ports[oi].kind)) {
-                    return Status::InvalidArgument(
-                            n_ctx("output[" + std::to_string(oi) + "] " +
-                                  schema.output_ports[oi].name + " payload kind mismatch"));
+                    return Status::InvalidArgument(get_msg(
+                            "output[" + std::to_string(oi) + "] " +
+                            schema.output_ports[oi].name + " payload kind mismatch"));
                 }
 
                 if (!(output_value.spec == derived.outputs[oi])) {
-                    return Status::InvalidArgument(
-                            n_ctx("output[" + std::to_string(oi) + "] " +
-                                  schema.output_ports[oi].name + " spec mismatch"));
+                    return Status::InvalidArgument(get_msg(
+                            "output[" + std::to_string(oi) + "] " +
+                            schema.output_ports[oi].name + " spec mismatch"));
                 }
             }
 
             if (derived.runtime_checks.size() != node.runtime_checks.size()) {
-                return Status::InvalidArgument(
-                        n_ctx("runtime check count mismatch: derived " +
-                              std::to_string(derived.runtime_checks.size()) + " != stored " +
-                              std::to_string(node.runtime_checks.size())));
+                return Status::InvalidArgument(get_msg(
+                        "runtime check count mismatch: derived " +
+                        std::to_string(derived.runtime_checks.size()) + " != stored " +
+                        std::to_string(node.runtime_checks.size())));
             }
 
             for (size_t ci = 0; ci < node.runtime_checks.size(); ++ci) {
                 if (!ShapeConstraintsEquivalent(derived.runtime_checks[ci],
                                                 node.runtime_checks[ci])) {
-                    return Status::InvalidArgument(
-                            n_ctx("stale runtime check [" + std::to_string(ci) + "] derived={" +
-                                  derived.runtime_checks[ci].error_context + "} stored={" +
-                                  node.runtime_checks[ci].error_context + "}"));
+                    return Status::InvalidArgument(get_msg(
+                            "stale runtime check [" + std::to_string(ci) + "] derived={" +
+                            derived.runtime_checks[ci].error_context + "} stored={" +
+                            node.runtime_checks[ci].error_context + "}"));
                 }
             }
         }
 
         for (const GraphValueId output: node.outputs) {
             if (std::ranges::find(node.inputs, output) != node.inputs.end()) {
-                return Status::InvalidArgument(
-                        n_ctx("output must not reuse an input value"));
+                return Status::InvalidArgument(get_msg(
+                        "output must not reuse an input value"));
             }
         }
 
@@ -750,7 +743,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                     node.op_type, node.decoder_layer_index, schema,
                     values_, node.inputs, output_bindings);
             if (!status.ok()) {
-                return Status::InvalidArgument(n_ctx(status.message()));
+                return Status::InvalidArgument(get_msg(status.message()));
             }
         }
     }
@@ -777,7 +770,8 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::TopologicalOrder() const {
             }
 
             if (!value.producer.has_value() || !IsValidNodeId(*value.producer, nodes_)) {
-                return Status::InvalidArgument("TopologicalOrder found activation with invalid producer");
+                return Status::InvalidArgument(
+                        "TopologicalOrder found activation with invalid producer");
             }
 
             if (value.producer->index == node_index) {

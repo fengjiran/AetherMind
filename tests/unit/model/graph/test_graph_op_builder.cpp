@@ -97,7 +97,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ASSERT_EQ(embedding_node.inputs.size(), 2U);
     const GraphValue& embedding_weight = graph.GetValue(embedding_node.inputs[1]);
     EXPECT_EQ(embedding_weight.spec, Spec(DataType::Float32(), {16, 4}));
-    EXPECT_EQ(embedding_weight.debug_name, "embedding");
+    EXPECT_EQ(embedding_weight.name, "embedding");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(embedding_weight.payload));
     const WeightBinding& embedding_binding = std::get<WeightValue>(embedding_weight.payload).binding;
     EXPECT_EQ(embedding_binding.slot, ParameterSlot::kEmbeddingTable);
@@ -110,7 +110,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ASSERT_EQ(norm_node.inputs.size(), 2U);
     const GraphValue& norm_weight = graph.GetValue(norm_node.inputs[1]);
     EXPECT_EQ(norm_weight.spec, Spec(DataType::Float32(), {4}));
-    EXPECT_EQ(norm_weight.debug_name, "norm");
+    EXPECT_EQ(norm_weight.name, "norm");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(norm_weight.payload));
     const WeightBinding& norm_binding = std::get<WeightValue>(norm_weight.payload).binding;
     EXPECT_EQ(norm_binding.slot, ParameterSlot::kScale);
@@ -123,7 +123,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ASSERT_EQ(q_node.inputs.size(), 2U);
     const GraphValue& q_weight = graph.GetValue(q_node.inputs[1]);
     EXPECT_EQ(q_weight.spec, Spec(DataType::Float32(), {4, 4}));
-    EXPECT_EQ(q_weight.debug_name, "q_proj");
+    EXPECT_EQ(q_weight.name, "q_proj");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(q_weight.payload));
     const WeightBinding& q_binding = std::get<WeightValue>(q_weight.payload).binding;
     EXPECT_EQ(q_binding.slot, ParameterSlot::kKernel);
@@ -136,7 +136,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ASSERT_EQ(logits_node.inputs.size(), 2U);
     const GraphValue& lm_head_weight = graph.GetValue(logits_node.inputs[1]);
     EXPECT_EQ(lm_head_weight.spec, Spec(DataType::Float32(), {16, 4}));
-    EXPECT_EQ(lm_head_weight.debug_name, "lm_head");
+    EXPECT_EQ(lm_head_weight.name, "lm_head");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(lm_head_weight.payload));
     const WeightBinding& lm_head_binding = std::get<WeightValue>(lm_head_weight.payload).binding;
     EXPECT_EQ(lm_head_binding.slot, ParameterSlot::kKernel);
@@ -201,7 +201,7 @@ TEST(GraphOpBuilder, AddElementwiseMulRequiresMatchingSpecs) {
 }
 
 TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
-    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {4}), .debug_name = "input"}});
+    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {4}), .name = "input"}});
     const GraphValueId input{.index = 0};
 
     auto output_or = AddLinear(graph,
@@ -221,11 +221,11 @@ TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
     ASSERT_EQ(linear_node.inputs.size(), 2U);
     const GraphValue& weight = graph.GetValue(linear_node.inputs[1]);
     EXPECT_EQ(weight.spec, Spec(DataType::Float32(), {8, 4}));
-    EXPECT_EQ(weight.debug_name, "linear");
+    EXPECT_EQ(weight.name, "linear");
 }
 
 TEST(GraphOpBuilder, AddLinearRejectsRankThreeInput) {
-    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {2, 3, 4}), .debug_name = "input"}});
+    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {2, 3, 4}), .name = "input"}});
     const GraphValueId input{.index = 0};
     EXPECT_FALSE(AddLinear(graph,
                            input,
@@ -238,7 +238,7 @@ TEST(GraphOpBuilder, AddLinearRejectsRankThreeInput) {
 }
 
 TEST(GraphOpBuilder, AddRmsNormRejectsRankThreeInput) {
-    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {2, 3, 4}), .debug_name = "input"}});
+    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {2, 3, 4}), .name = "input"}});
     const GraphValueId input{.index = 0};
     EXPECT_FALSE(AddRmsNorm(graph,
                             input,

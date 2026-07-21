@@ -204,7 +204,7 @@ struct GraphValue {
     TensorSpec spec{};
     std::optional<GraphNodeId> producer{};
     QuantizationSpec quantization{};
-    std::string debug_name;
+    std::string name;
 };
 
 struct GraphNode {
@@ -214,10 +214,11 @@ struct GraphNode {
     std::vector<GraphValueId> outputs{};
     ModelGraphAttrs attrs{};
     OpParams op_params{};
-    std::string debug_name;
+
     /// Runtime shape constraints derived by operator semantic analysis.
     /// Written by ModelGraph::AddNode and verified by ValidateAndTopologicalOrder.
     std::vector<ShapeConstraint> runtime_checks{};
+    std::string name;
 };
 
 /// Describes one output of a graph node being constructed via
@@ -230,7 +231,7 @@ struct GraphNode {
 struct NodeOutputDesc {
     GraphValuePayload payload{std::monostate{}};
     QuantizationSpec quantization{};
-    std::string debug_name{};
+    std::string name{};
 };
 
 /// Describes an existing graph value with its authoritative TensorSpec.
@@ -243,7 +244,7 @@ struct GraphValueDesc {
     TensorSpec spec{};
     GraphValuePayload payload{std::monostate{}};
     QuantizationSpec quantization{};
-    std::string debug_name{};
+    std::string name{};
 };
 
 /// Result of ModelGraph::AddNode: the assigned node id and its output value ids.

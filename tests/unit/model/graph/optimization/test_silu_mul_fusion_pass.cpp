@@ -11,7 +11,7 @@ namespace {
 
 NodeOutputDesc ActivationDesc(const char* debug_name) {
     return {.payload = ActivationValue{},
-            .debug_name = debug_name};
+            .name = debug_name};
 }
 
 GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {
@@ -78,8 +78,8 @@ TEST(SiluMulFusionPass, FusesSiluMulPattern) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
     const GraphNode& fused = OnlyNodeWithOp(*result, OpType::kSiluMul);
     ASSERT_EQ(fused.inputs.size(), 2U);
-    EXPECT_EQ(result->GetValue(fused.inputs[0]).debug_name, "gate");
-    EXPECT_EQ(result->GetValue(fused.inputs[1]).debug_name, "up");
+    EXPECT_EQ(result->GetValue(fused.inputs[0]).name, "gate");
+    EXPECT_EQ(result->GetValue(fused.inputs[1]).name, "up");
     ASSERT_EQ(fused.outputs.size(), 1U);
     ASSERT_EQ(result->GetOutputs().size(), 1U);
     EXPECT_EQ(result->GetOutputs()[0].value, fused.outputs[0]);
@@ -95,8 +95,8 @@ TEST(SiluMulFusionPass, FusesReversedMulInputs) {
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     const GraphNode& fused = OnlyNodeWithOp(*result, OpType::kSiluMul);
     ASSERT_EQ(fused.inputs.size(), 2U);
-    EXPECT_EQ(result->GetValue(fused.inputs[0]).debug_name, "gate");
-    EXPECT_EQ(result->GetValue(fused.inputs[1]).debug_name, "up");
+    EXPECT_EQ(result->GetValue(fused.inputs[0]).name, "gate");
+    EXPECT_EQ(result->GetValue(fused.inputs[1]).name, "up");
 }
 
 TEST(SiluMulFusionPass, SkipsWhenFusionDisabled) {
@@ -256,8 +256,8 @@ TEST(SiluMulFusionPass, ReplaceValueOnGateInputResolvesAtCommit) {
 
     const GraphNode& fused = OnlyNodeWithOp(*result, OpType::kSiluMul);
     ASSERT_EQ(fused.inputs.size(), 2U);
-    EXPECT_EQ(result->GetValue(fused.inputs[0]).debug_name, "alt");
-    EXPECT_EQ(result->GetValue(fused.inputs[1]).debug_name, "up");
+    EXPECT_EQ(result->GetValue(fused.inputs[0]).name, "alt");
+    EXPECT_EQ(result->GetValue(fused.inputs[1]).name, "up");
 }
 
 TEST(SiluMulFusionPass, ReplaceValueOnUpInputResolvesAtCommit) {
@@ -285,8 +285,8 @@ TEST(SiluMulFusionPass, ReplaceValueOnUpInputResolvesAtCommit) {
 
     const GraphNode& fused = OnlyNodeWithOp(*result, OpType::kSiluMul);
     ASSERT_EQ(fused.inputs.size(), 2U);
-    EXPECT_EQ(result->GetValue(fused.inputs[0]).debug_name, "gate");
-    EXPECT_EQ(result->GetValue(fused.inputs[1]).debug_name, "gate");
+    EXPECT_EQ(result->GetValue(fused.inputs[0]).name, "gate");
+    EXPECT_EQ(result->GetValue(fused.inputs[1]).name, "gate");
 }
 
 TEST(SiluMulFusionPass, NoSiluNodesLeavesGraphUnchanged) {

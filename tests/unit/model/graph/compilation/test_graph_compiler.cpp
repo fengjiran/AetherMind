@@ -141,7 +141,7 @@ TEST(DefaultGraphPassPipeline, OptLevelZeroPreservesGraph) {
     EXPECT_EQ(result->GetNodes().size(), graph.GetNodes().size());
     bool dead_node_found = false;
     for (const GraphNode& node: result->GetNodes()) {
-        if (node.debug_name.find("dead") != std::string::npos) {
+        if (node.name.find("dead") != std::string::npos) {
             dead_node_found = true;
             break;
         }
@@ -187,7 +187,7 @@ TEST(DefaultGraphPassPipeline, OptLevelOneFoldsAndRemovesDeadButNotSiluMul) {
 
     // Dead "dead" node must be gone.
     for (const GraphNode& node: result->GetNodes()) {
-        EXPECT_TRUE(node.debug_name.find("dead") == std::string::npos);
+        EXPECT_TRUE(node.name.find("dead") == std::string::npos);
     }
 
     // SiLU and ElementwiseMul remain separate (O1 does not fuse).
@@ -213,7 +213,7 @@ void ExpectFullOptimization(const StatusOr<ModelGraph>& result,
 
     // No dead "dead" node survives.
     for (const GraphNode& node: result->GetNodes()) {
-        EXPECT_TRUE(node.debug_name.find("dead") == std::string::npos);
+        EXPECT_TRUE(node.name.find("dead") == std::string::npos);
     }
 }
 
@@ -272,7 +272,7 @@ TEST(DefaultGraphPassPipeline, InputGraphIsUnchanged) {
     ModelGraph graph = BuildCompositeGraph();
     ASSERT_TRUE(graph.Validate().ok());
 
-    const std::string before = graph.GetNodes()[0].debug_name;
+    const std::string before = graph.GetNodes()[0].name;
     const size_t node_count_before = graph.GetNodes().size();
 
     PassContext ctx;
@@ -282,7 +282,7 @@ TEST(DefaultGraphPassPipeline, InputGraphIsUnchanged) {
 
     // Source graph must be identical after the call.
     EXPECT_EQ(graph.GetNodes().size(), node_count_before);
-    EXPECT_EQ(graph.GetNodes()[0].debug_name, before);
+    EXPECT_EQ(graph.GetNodes()[0].name, before);
 }
 
 // ---- Strengthened immutability: DumpGraph before/after + value counts ------
@@ -337,7 +337,7 @@ TEST(OptimizeModelGraph, DisablingConstantFoldingPreservesFoldableAtO2) {
 
     // DCE still ran.
     for (const GraphNode& node: result->GetNodes()) {
-        EXPECT_TRUE(node.debug_name.find("dead") == std::string::npos);
+        EXPECT_TRUE(node.name.find("dead") == std::string::npos);
     }
 }
 
@@ -367,7 +367,7 @@ TEST(OptimizeModelGraph, DisablingSwigluFusionPreservesSiluMulAtO2) {
 
     // DCE ran.
     for (const GraphNode& node: result->GetNodes()) {
-        EXPECT_TRUE(node.debug_name.find("dead") == std::string::npos);
+        EXPECT_TRUE(node.name.find("dead") == std::string::npos);
     }
 }
 
@@ -386,7 +386,7 @@ TEST(OptimizeModelGraph, DisablingDcePreservesDeadNodeAtO2) {
     // Dead node survives (DCE did not run).
     bool dead_found = false;
     for (const GraphNode& node: result->GetNodes()) {
-        if (node.debug_name.find("dead") != std::string::npos) {
+        if (node.name.find("dead") != std::string::npos) {
             dead_found = true;
             break;
         }
@@ -786,19 +786,19 @@ ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
             .payload = ConstantValue{},
             .spec = act_in_spec,
             .producer = std::nullopt,
-            .debug_name = "act_in",
+            .name = "act_in",
     });
     values.push_back(GraphValue{
             .payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale}},
             .spec = weight_spec,
             .producer = std::nullopt,
-            .debug_name = "weight_in",
+            .name = "weight_in",
     });
     values.push_back(GraphValue{
             .payload = ActivationValue{},
             .spec = out_spec,
             .producer = GraphNodeId{.index = 0},
-            .debug_name = "act_out",
+            .name = "act_out",
     });
 
     GraphNode node;

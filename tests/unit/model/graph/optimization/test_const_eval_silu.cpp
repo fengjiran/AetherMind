@@ -57,7 +57,7 @@ TEST(ConstEvaluator, PlansSiluFloat32SameShape) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "act"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
@@ -84,7 +84,7 @@ TEST(ConstEvaluator, PlansSiluSupportedDTypesSameShape) {
                 {.spec = spec, .payload = ConstantValue{}},
         };
         const std::vector<GraphValueDesc> outputs = {
-                {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
+                {.spec = spec, .payload = ActivationValue{}, .name = "act"},
         };
 
         const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
@@ -110,7 +110,7 @@ TEST(ConstEvaluator, SkipsSiluUnsupportedDType) {
                 {.spec = spec, .payload = ConstantValue{}},
         };
         const std::vector<GraphValueDesc> outputs = {
-                {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
+                {.spec = spec, .payload = ActivationValue{}, .name = "act"},
         };
 
         const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
@@ -161,7 +161,7 @@ TEST(ConstEvaluator, PlansSiluComputeBudgetExceeded) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "act"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
@@ -179,7 +179,7 @@ TEST(ConstEvaluator, PlansSiluOutputByteBudgetExceeded) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "act"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
@@ -304,7 +304,7 @@ TEST(ConstEvaluator, PlansSiluRankZero) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "act"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "act"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});

@@ -110,7 +110,7 @@ TEST(ModelGraph, PublicApiCreatesInputsWeightsNodesAndOutputs) {
                                            OpType::kEmbedding,
                                            std::nullopt,
                                            {tokens, emb_weight},
-                                           {NodeOutputDesc{.payload = ActivationValue{}, .debug_name = "hidden"}},
+                                           {NodeOutputDesc{.payload = ActivationValue{}, .name = "hidden"}},
                                            EmbeddingParams{},
                                            "embedding");
     const GraphValueId hidden = emb_node.outputs[0];
@@ -119,7 +119,7 @@ TEST(ModelGraph, PublicApiCreatesInputsWeightsNodesAndOutputs) {
                                        OpType::kRmsNorm,
                                        0U,
                                        {hidden, weight},
-                                       {NodeOutputDesc{.payload = ActivationValue{}, .debug_name = "normed"}},
+                                       {NodeOutputDesc{.payload = ActivationValue{}, .name = "normed"}},
                                        RmsNormParams{},
                                        "rms_norm_0");
     graph.MarkOutput(node.outputs[0], "normed_output");
@@ -132,7 +132,7 @@ TEST(ModelGraph, PublicApiCreatesInputsWeightsNodesAndOutputs) {
     EXPECT_EQ(graph.GetOutputs()[0].name, "normed_output");
     ASSERT_EQ(graph.GetNodes().size(), 2U);
     EXPECT_EQ(graph.GetNode(node.node).op_type, OpType::kRmsNorm);
-    EXPECT_EQ(graph.GetNode(node.node).debug_name, "rms_norm_0");
+    EXPECT_EQ(graph.GetNode(node.node).name, "rms_norm_0");
     ASSERT_GE(graph.GetValues().size(), 4U);
     EXPECT_TRUE(std::holds_alternative<ModelInputValue>(graph.GetValue(tokens).payload));
     EXPECT_TRUE(std::holds_alternative<WeightValue>(graph.GetValue(weight).payload));
@@ -298,7 +298,7 @@ TEST(ModelGraph, ValidateRejectsMonostatePayload) {
 }
 
 TEST(ModelGraph, ValidateRejectsActivationWithoutProducer) {
-    ModelGraph graph({}, {}, {GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .debug_name = ""}});
+    ModelGraph graph({}, {}, {GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .name = ""}});
 
     const Status status = graph.Validate();
 
@@ -308,7 +308,7 @@ TEST(ModelGraph, ValidateRejectsActivationWithoutProducer) {
 
 TEST(ModelGraph, ValidateRejectsExternalValueWithProducer) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .producer = GraphNodeId{0}, .debug_name = ""},
+            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .producer = GraphNodeId{0}, .name = ""},
     };
     ModelGraph graph({}, {}, std::move(values));
 
@@ -354,7 +354,7 @@ TEST(ModelGraph, PublicApiCreatesConstantValues) {
     ASSERT_TRUE(binding.inline_data != nullptr);
     EXPECT_EQ(binding.inline_data->size(), 3U);
     EXPECT_FALSE(value.producer.has_value());
-    EXPECT_EQ(value.debug_name, "rope_table");
+    EXPECT_EQ(value.name, "rope_table");
 }
 
 TEST(ModelGraph, SetQuantizationAttachesSchemeToValue) {
@@ -604,7 +604,7 @@ TEST(ModelGraph, ValidateRejectsAttentionWithWrongCacheLayer) {
 
 TEST(ModelGraph, ValidateRejectsStateValueWithInvalidProducer) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = StateValue{.binding = KvStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = ""},
+            GraphValue{.payload = StateValue{.binding = KvStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = ""},
     };
     ModelGraph graph({}, {}, std::move(values));
 
@@ -661,17 +661,17 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithActivationOutput) {
 
 TEST(ModelGraph, ValidateRejectsNodeOutputReusingInputValue) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .debug_name = ""},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding}}, .spec = Spec(DataType::Float32(), {32, 8}), .debug_name = ""},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = ""},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{1}, .debug_name = ""},
-            GraphValue{.payload = StateValue{.binding = KStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{2}, .debug_name = ""},
-            GraphValue{.payload = StateValue{.binding = VStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{2}, .debug_name = ""},
+            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .name = ""},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding}}, .spec = Spec(DataType::Float32(), {32, 8}), .name = ""},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = ""},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{1}, .name = ""},
+            GraphValue{.payload = StateValue{.binding = KStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{2}, .name = ""},
+            GraphValue{.payload = StateValue{.binding = VStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{2}, .name = ""},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = EmbeddingParams{}, .debug_name = ""},
-            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{3}}, .op_params = EmbeddingParams{}, .debug_name = ""},
-            GraphNode{.op_type = OpType::kKVCacheUpdate, .inputs = {GraphValueId{2}, GraphValueId{3}, GraphValueId{4}, GraphValueId{5}}, .outputs = {GraphValueId{4}, GraphValueId{5}}, .op_params = KVCacheUpdateParams{}, .debug_name = ""},
+            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = EmbeddingParams{}, .name = ""},
+            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{3}}, .op_params = EmbeddingParams{}, .name = ""},
+            GraphNode{.op_type = OpType::kKVCacheUpdate, .inputs = {GraphValueId{2}, GraphValueId{3}, GraphValueId{4}, GraphValueId{5}}, .outputs = {GraphValueId{4}, GraphValueId{5}}, .op_params = KVCacheUpdateParams{}, .name = ""},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -683,12 +683,12 @@ TEST(ModelGraph, ValidateRejectsNodeOutputReusingInputValue) {
 
 TEST(ModelGraph, ValidateRejectsSchemaPortKindMismatch) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .debug_name = ""},
-            GraphValue{.payload = ActivationValue{}, .spec = WeightSpec(), .producer = GraphNodeId{0}, .debug_name = ""},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = ""},
+            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .name = ""},
+            GraphValue{.payload = ActivationValue{}, .spec = WeightSpec(), .producer = GraphNodeId{0}, .name = ""},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = ""},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .debug_name = ""},
+            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .name = ""},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -700,11 +700,11 @@ TEST(ModelGraph, ValidateRejectsSchemaPortKindMismatch) {
 
 TEST(ModelGraph, ValidateRejectsSchemaArityMismatch) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .debug_name = ""},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = ""},
+            GraphValue{.payload = ModelInputValue{}, .spec = TokenSpec(), .name = ""},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = ""},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}}, .outputs = {GraphValueId{1}}, .debug_name = ""},
+            GraphNode{.op_type = OpType::kEmbedding, .inputs = {GraphValueId{0}}, .outputs = {GraphValueId{1}}, .name = ""},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -722,7 +722,7 @@ TEST(ModelGraph, ValidateRejectsOutputOnExternalValue) {
                        OpType::kRmsNorm,
                        0U,
                        {activation, weight},
-                       {NodeOutputDesc{.payload = ActivationValue{}, .debug_name = ""}},
+                       {NodeOutputDesc{.payload = ActivationValue{}, .name = ""}},
                        RmsNormParams{});
     const GraphValueId external = graph.AddInput(ActivationSpec(), "external");
     graph.MarkOutput(external, "bad_output");
@@ -817,19 +817,19 @@ TEST(ModelGraph, BuildConsumerIndexMapsConsumers) {
                                           OpType::kSoftmax,
                                           std::nullopt,
                                           {input},
-                                          {NodeOutputDesc{.payload = ActivationValue{}, .debug_name = ""}},
+                                          {NodeOutputDesc{.payload = ActivationValue{}, .name = ""}},
                                           SoftmaxParams{});
     const AddedNode argmax = MustAddNode(graph,
                                          OpType::kArgmax,
                                          std::nullopt,
                                          {softmax.outputs[0]},
-                                         {NodeOutputDesc{.payload = ActivationValue{}, .debug_name = ""}},
+                                         {NodeOutputDesc{.payload = ActivationValue{}, .name = ""}},
                                          ArgmaxParams{.axis = -1});
     const AddedNode another = MustAddNode(graph,
                                           OpType::kSoftmax,
                                           std::nullopt,
                                           {softmax.outputs[0]},
-                                          {NodeOutputDesc{.payload = ActivationValue{}, .debug_name = ""}},
+                                          {NodeOutputDesc{.payload = ActivationValue{}, .name = ""}},
                                           SoftmaxParams{});
 
     const StatusOr<std::vector<std::vector<GraphNodeId>>> index = BuildConsumerIndex(graph);
@@ -858,13 +858,13 @@ TEST(ModelGraph, TopologicalOrderReturnsStableProducerBeforeConsumerOrder) {
                                           OpType::kSoftmax,
                                           std::nullopt,
                                           {input},
-                                          {NodeOutputDesc{.payload = ActivationValue{}, .debug_name = ""}},
+                                          {NodeOutputDesc{.payload = ActivationValue{}, .name = ""}},
                                           SoftmaxParams{});
     const AddedNode argmax = MustAddNode(graph,
                                          OpType::kArgmax,
                                          std::nullopt,
                                          {softmax.outputs[0]},
-                                         {NodeOutputDesc{.payload = ActivationValue{}, .debug_name = ""}},
+                                         {NodeOutputDesc{.payload = ActivationValue{}, .name = ""}},
                                          ArgmaxParams{.axis = -1});
 
     const StatusOr<std::vector<GraphNodeId>> order = graph.TopologicalOrder();
@@ -877,12 +877,12 @@ TEST(ModelGraph, TopologicalOrderReturnsStableProducerBeforeConsumerOrder) {
 
 TEST(ModelGraph, TopologicalOrderRejectsActivationCycle) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = ""},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{1}, .debug_name = ""},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = ""},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{1}, .name = ""},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kSoftmax, .inputs = {GraphValueId{1}}, .outputs = {GraphValueId{0}}, .debug_name = ""},
-            GraphNode{.op_type = OpType::kSoftmax, .inputs = {GraphValueId{0}}, .outputs = {GraphValueId{1}}, .debug_name = ""},
+            GraphNode{.op_type = OpType::kSoftmax, .inputs = {GraphValueId{1}}, .outputs = {GraphValueId{0}}, .name = ""},
+            GraphNode{.op_type = OpType::kSoftmax, .inputs = {GraphValueId{0}}, .outputs = {GraphValueId{1}}, .name = ""},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -961,7 +961,7 @@ TEST(ModelGraphSemanticValidation, OutputPreservesNonsemanticMetadata) {
             {NodeOutputDesc{
                     .payload = ActivationValue{},
                     .quantization = QuantizationSpec{.kind = QuantizationKind::kInt8, .group_size = 32},
-                    .debug_name = "named_output",
+                    .name = "named_output",
             }},
             RmsNormParams{});
 
@@ -969,7 +969,7 @@ TEST(ModelGraphSemanticValidation, OutputPreservesNonsemanticMetadata) {
     const GraphValue& out_value = graph.GetValue((*result).outputs[0]);
     EXPECT_EQ(out_value.quantization.kind, QuantizationKind::kInt8);
     EXPECT_EQ(out_value.quantization.group_size, 32U);
-    EXPECT_EQ(out_value.debug_name, "named_output");
+    EXPECT_EQ(out_value.name, "named_output");
 }
 
 TEST(ModelGraphSemanticValidation, AddNodeRejectsInvalidInputId) {
@@ -1074,17 +1074,17 @@ TEST(ModelGraphSemanticValidation, AddNodePreservesDebugName) {
             "rms_norm");
 
     ASSERT_TRUE(result.ok()) << result.status().ToString();
-    EXPECT_EQ(graph.GetNode((*result).node).debug_name, "rms_norm");
+    EXPECT_EQ(graph.GetNode((*result).node).name, "rms_norm");
 }
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsForgedOutputSpec) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .debug_name = "input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .debug_name = "weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {999, 999}), .producer = GraphNodeId{0}, .debug_name = "forged"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .name = "input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .name = "weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {999, 999}), .producer = GraphNodeId{0}, .name = "forged"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .debug_name = "bad"},
+            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .name = "bad"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1116,12 +1116,19 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStaleRuntimeCheckCondition) {
     tampered_checks[0].condition = RankEqualConstraint{.port = {TensorPortType::kInput, 0}, .target_rank = 99};
 
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = sym_input_spec, .debug_name = "input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = sym_weight_spec, .debug_name = "weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = sym_input_spec, .producer = GraphNodeId{0}, .debug_name = "out"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = sym_input_spec, .name = "input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = sym_weight_spec, .name = "weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = sym_input_spec, .producer = GraphNodeId{0}, .name = "out"},
     };
+
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .debug_name = "bad", .runtime_checks = std::move(tampered_checks)},
+            GraphNode{.op_type = OpType::kRmsNorm,
+                      .decoder_layer_index = 0U,
+                      .inputs = {GraphValueId{0}, GraphValueId{1}},
+                      .outputs = {GraphValueId{2}},
+                      .op_params = RmsNormParams{},
+                      .runtime_checks = std::move(tampered_checks),
+                      .name = "bad"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1154,13 +1161,18 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsSameConditionWithStaleErrorCon
     tampered_checks[0].error_context = "stale_context";
 
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = sym_input_spec, .debug_name = "input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = sym_weight_spec, .debug_name = "weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = sym_input_spec, .producer = GraphNodeId{0}, .debug_name = "out"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = sym_input_spec, .name = "input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = sym_weight_spec, .name = "weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = sym_input_spec, .producer = GraphNodeId{0}, .name = "out"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .debug_name = "mismatch_ctx", .runtime_checks = std::move(tampered_checks)},
-    };
+            GraphNode{.op_type = OpType::kRmsNorm,
+                      .decoder_layer_index = 0U,
+                      .inputs = {GraphValueId{0}, GraphValueId{1}},
+                      .outputs = {GraphValueId{2}},
+                      .op_params = RmsNormParams{},
+                      .runtime_checks = std::move(tampered_checks),
+                      .name = "mismatch_ctx"}};
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
     const Status status = graph.Validate();
@@ -1173,13 +1185,13 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsSameConditionWithStaleErrorCon
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsStoredOutputCountMismatch) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .debug_name = "input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .debug_name = "weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = "out0"},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = "out1_extra"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .name = "input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .name = "weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = "out0"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = "out1_extra"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}, GraphValueId{3}}, .op_params = RmsNormParams{}, .debug_name = "bad"},
+            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}, GraphValueId{3}}, .op_params = RmsNormParams{}, .name = "bad"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1249,12 +1261,12 @@ TEST(ModelGraphSemanticValidation, AddNodeErrorIncludesOutputPortName) {
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithWrongParams) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .debug_name = "input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .debug_name = "weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = "out"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .name = "input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .name = "weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = "out"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = EmbeddingParams{}, .debug_name = "my_rms"},
+            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = EmbeddingParams{}, .name = "my_rms"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1269,12 +1281,12 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithWrongParams) {
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithInputPayloadMismatch) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding}}, .spec = ActivationSpec(), .debug_name = "bad_input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .debug_name = "weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = "out"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kEmbeddingTable, .semantic_role = TransformerWeightRole::kTokenEmbedding}}, .spec = ActivationSpec(), .name = "bad_input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .name = "weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = "out"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .debug_name = "bad_rms"},
+            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .name = "bad_rms"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1291,12 +1303,12 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithInputPayloadMism
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithWeightSlotMismatch) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .debug_name = "input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kKernel, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kAttentionK}}, .spec = WeightSpec(), .debug_name = "bad_weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = "out"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .name = "input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kKernel, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kAttentionK}}, .spec = WeightSpec(), .name = "bad_weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = "out"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .debug_name = "slot_mismatch"},
+            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .name = "slot_mismatch"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1313,15 +1325,15 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithWeightSlotMismat
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithOutputPayloadMismatch) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .debug_name = "k"},
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .debug_name = "v"},
-            GraphValue{.payload = StateValue{.binding = KStateBinding()}, .spec = ActivationSpec(), .debug_name = "k_cache_in"},
-            GraphValue{.payload = StateValue{.binding = VStateBinding()}, .spec = ActivationSpec(), .debug_name = "v_cache_in"},
-            GraphValue{.payload = StateValue{.binding = KStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = "k_cache_out"},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = "bad_v_out"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .name = "k"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .name = "v"},
+            GraphValue{.payload = StateValue{.binding = KStateBinding()}, .spec = ActivationSpec(), .name = "k_cache_in"},
+            GraphValue{.payload = StateValue{.binding = VStateBinding()}, .spec = ActivationSpec(), .name = "v_cache_in"},
+            GraphValue{.payload = StateValue{.binding = KStateBinding()}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = "k_cache_out"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = "bad_v_out"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kKVCacheUpdate, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}, GraphValueId{2}, GraphValueId{3}}, .outputs = {GraphValueId{4}, GraphValueId{5}}, .op_params = KVCacheUpdateParams{}, .debug_name = "kv_update"},
+            GraphNode{.op_type = OpType::kKVCacheUpdate, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}, GraphValueId{2}, GraphValueId{3}}, .outputs = {GraphValueId{4}, GraphValueId{5}}, .op_params = KVCacheUpdateParams{}, .name = "kv_update"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1337,11 +1349,11 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithOutputPayloadMis
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithArityMismatch) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .debug_name = "input"},
-            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .debug_name = "out"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .name = "input"},
+            GraphValue{.payload = ActivationValue{}, .spec = ActivationSpec(), .producer = GraphNodeId{0}, .name = "out"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}}, .outputs = {GraphValueId{1}}, .op_params = RmsNormParams{}, .debug_name = "arity_mismatch"},
+            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}}, .outputs = {GraphValueId{1}}, .op_params = RmsNormParams{}, .name = "arity_mismatch"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1356,12 +1368,12 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithArityMismatch) {
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithOutputSpecMismatch) {
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .debug_name = "input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .debug_name = "weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {999, 999}), .producer = GraphNodeId{0}, .debug_name = "forged"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .name = "input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .name = "weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {999, 999}), .producer = GraphNodeId{0}, .name = "forged"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .debug_name = "bad_spec"},
+            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .name = "bad_spec"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 
@@ -1463,12 +1475,18 @@ TEST(ModelGraphSemanticValidation, RawConstructorAcceptsExactDerivedMetadata) {
 
     // Replicate via the test constructor with exact derived metadata.
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .debug_name = "input"},
-            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .debug_name = "weight"},
-            GraphValue{.payload = ActivationValue{}, .spec = gold_value.spec, .producer = GraphNodeId{0}, .debug_name = "out"},
+            GraphValue{.payload = ConstantValue{ConstantBinding{}}, .spec = ActivationSpec(), .name = "input"},
+            GraphValue{.payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale, .decoder_layer_index = 0U, .semantic_role = TransformerWeightRole::kInputNorm}}, .spec = WeightSpec(), .name = "weight"},
+            GraphValue{.payload = ActivationValue{}, .spec = gold_value.spec, .producer = GraphNodeId{0}, .name = "out"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kRmsNorm, .decoder_layer_index = 0U, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = RmsNormParams{}, .debug_name = "rms_norm", .runtime_checks = gold_node.runtime_checks},
+            GraphNode{.op_type = OpType::kRmsNorm,
+                      .decoder_layer_index = 0U,
+                      .inputs = {GraphValueId{0}, GraphValueId{1}},
+                      .outputs = {GraphValueId{2}},
+                      .op_params = RmsNormParams{},
+                      .runtime_checks = gold_node.runtime_checks,
+                      .name = "rms_norm"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
 

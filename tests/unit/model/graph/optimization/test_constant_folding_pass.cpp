@@ -383,17 +383,17 @@ TEST(ConstantFoldingPass, SkipsWeightInputInSession) {
                        .inputs = {GraphValueId{0}, GraphValueId{1}},
                        .outputs = {GraphValueId{2}},
                        .op_params = AddParams{},
-                       .debug_name = "sum"}},
+                       .name = "sum"}},
             {GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.inline_data = std::move(inline_data), .name = "lhs"}},
                         .spec = Spec(DataType::Float32(), {1}),
-                        .debug_name = "lhs"},
+                        .name = "lhs"},
              GraphValue{.payload = ModelInputValue{},
                         .spec = Spec(DataType::Float32(), {1}),
-                        .debug_name = "input"},
+                        .name = "input"},
              GraphValue{.payload = ActivationValue{},
                         .spec = Spec(DataType::Float32(), {1}),
                         .producer = GraphNodeId{0},
-                        .debug_name = "sum"}});
+                        .name = "sum"}});
     const GraphValueId sum{2};
     GraphRewriteSession session(graph);
     ConstantFoldingPass pass;
@@ -468,32 +468,32 @@ TEST(ConstantFoldingPass, SkipsNonFoldableNodeAndContinuesToFoldable) {
                        .inputs = {GraphValueId{0}, GraphValueId{1}},
                        .outputs = {GraphValueId{2}},
                        .op_params = AddParams{},
-                       .debug_name = "foldable_sum"},
+                       .name = "foldable_sum"},
              GraphNode{.op_type = OpType::kAdd,
                        .inputs = {GraphValueId{3}, GraphValueId{4}},
                        .outputs = {GraphValueId{5}},
                        .op_params = AddParams{},
-                       .debug_name = "non_foldable_sum"}},
+                       .name = "non_foldable_sum"}},
             {GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.inline_data = std::move(const_a_data), .name = "const_a"}},
                         .spec = Spec(DataType::Float32(), {2}),
-                        .debug_name = "const_a"},
+                        .name = "const_a"},
              GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.inline_data = std::move(const_b_data), .name = "const_b"}},
                         .spec = Spec(DataType::Float32(), {2}),
-                        .debug_name = "const_b"},
+                        .name = "const_b"},
              GraphValue{.payload = ActivationValue{},
                         .spec = Spec(DataType::Float32(), {2}),
                         .producer = GraphNodeId{0},
-                        .debug_name = "foldable_sum"},
+                        .name = "foldable_sum"},
              GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.inline_data = std::move(const_c_data), .name = "const_c"}},
                         .spec = Spec(DataType::Float32(), {2}),
-                        .debug_name = "const_c"},
+                        .name = "const_c"},
              GraphValue{.payload = ModelInputValue{},
                         .spec = Spec(DataType::Float32(), {2}),
-                        .debug_name = "input"},
+                        .name = "input"},
              GraphValue{.payload = ActivationValue{},
                         .spec = Spec(DataType::Float32(), {2}),
                         .producer = GraphNodeId{1},
-                        .debug_name = "non_foldable_sum"}});
+                        .name = "non_foldable_sum"}});
 
     graph.MarkOutput(GraphValueId{2}, "output1");
     graph.MarkOutput(GraphValueId{5}, "output2");
@@ -571,11 +571,11 @@ TEST(ConstantFoldingPass, SkipsUnknownOpTypeNode) {
                        .inputs = {},
                        .outputs = {GraphValueId{0}},
                        .op_params = std::monostate{},
-                       .debug_name = "unknown_op"}},
+                       .name = "unknown_op"}},
             {GraphValue{.payload = ActivationValue{},
                         .spec = Spec(DataType::Float32(), {1}),
                         .producer = GraphNodeId{0},
-                        .debug_name = "unknown_op_out"}});
+                        .name = "unknown_op_out"}});
 
     GraphRewriteSession session(graph);
     ConstantFoldingPass pass;
@@ -893,12 +893,12 @@ TEST(ConstantFoldingPass, RejectsSiluMulInt32Inputs) {
     // through AddNode. Constant folding must still handle such pre-existing
     // graphs gracefully.
     std::vector<GraphValue> values = {
-            GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.inline_data = InlineValues<int32_t>({1, 2})}}, .spec = {DataType::Int(32), SymbolicShape({ShapeSymbol::CreateFromValue(2)})}, .debug_name = "gate"},
-            GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.inline_data = InlineValues<int32_t>({3, 4})}}, .spec = {DataType::Int(32), SymbolicShape({ShapeSymbol::CreateFromValue(2)})}, .debug_name = "up"},
-            GraphValue{.payload = ActivationValue{}, .spec = {DataType::Int(32), SymbolicShape({ShapeSymbol::CreateFromValue(2)})}, .producer = GraphNodeId{0}, .debug_name = "silu_mul"},
+            GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.inline_data = InlineValues<int32_t>({1, 2})}}, .spec = {DataType::Int(32), SymbolicShape({ShapeSymbol::CreateFromValue(2)})}, .name = "gate"},
+            GraphValue{.payload = ConstantValue{.binding = ConstantBinding{.inline_data = InlineValues<int32_t>({3, 4})}}, .spec = {DataType::Int(32), SymbolicShape({ShapeSymbol::CreateFromValue(2)})}, .name = "up"},
+            GraphValue{.payload = ActivationValue{}, .spec = {DataType::Int(32), SymbolicShape({ShapeSymbol::CreateFromValue(2)})}, .producer = GraphNodeId{0}, .name = "silu_mul"},
     };
     std::vector<GraphNode> nodes = {
-            GraphNode{.op_type = OpType::kSiluMul, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = SiluMulParams{}, .debug_name = "silu_mul"},
+            GraphNode{.op_type = OpType::kSiluMul, .inputs = {GraphValueId{0}, GraphValueId{1}}, .outputs = {GraphValueId{2}}, .op_params = SiluMulParams{}, .name = "silu_mul"},
     };
     ModelGraph graph({}, std::move(nodes), std::move(values));
     graph.MarkOutput(GraphValueId{2}, "output");

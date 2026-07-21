@@ -26,7 +26,7 @@ TEST(ConstEvaluator, PlansSiluMulRankZero) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "fused"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "fused"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, SiluMulParams{}, ConstEvalPolicy{});

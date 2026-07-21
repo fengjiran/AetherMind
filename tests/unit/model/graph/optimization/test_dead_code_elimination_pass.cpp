@@ -48,7 +48,7 @@ public:
         AM_RETURN_IF_ERROR(output_desc_or.status());
         NodeOutputDesc output_desc{.payload = output_desc_or->payload,
                                    .quantization = output_desc_or->quantization,
-                                   .debug_name = output_desc_or->debug_name};
+                                   .name = output_desc_or->name};
 
         return session.ReplaceSubgraph(
                 std::vector<GraphNodeId>{add_node},
@@ -80,7 +80,7 @@ TEST(DeadCodeEliminationPass, RemovesUnusedNode) {
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     ASSERT_TRUE(result->Validate().ok());
     EXPECT_EQ(result->GetNodes().size(), 1U);
-    EXPECT_EQ(result->GetNodes()[0].debug_name, "live");
+    EXPECT_EQ(result->GetNodes()[0].name, "live");
 }
 
 TEST(DeadCodeEliminationPass, SkipsWhenDisabled) {

@@ -299,32 +299,32 @@ GraphValueId ModelGraph::AddInput(TensorSpec spec, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back({.payload = ModelInputValue{},
                        .spec = std::move(spec),
-                       .debug_name = name});
+                       .name = name});
     inputs_.push_back({.value = value_id, .name = std::move(name)});
     return value_id;
 }
 
-GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::string debug_name) {
+GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back({.payload = WeightValue{.binding = binding},
                        .spec = std::move(spec),
-                       .debug_name = std::move(debug_name)});
+                       .name = std::move(name)});
     return value_id;
 }
 
-GraphValueId ModelGraph::AddConstant(TensorSpec spec, ConstantBinding binding, std::string debug_name) {
+GraphValueId ModelGraph::AddConstant(TensorSpec spec, ConstantBinding binding, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back({.payload = ConstantValue{.binding = std::move(binding)},
                        .spec = std::move(spec),
-                       .debug_name = std::move(debug_name)});
+                       .name = std::move(name)});
     return value_id;
 }
 
-GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string debug_name) {
+GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back({.payload = StateValue{.binding = binding},
                        .spec = std::move(spec),
-                       .debug_name = std::move(debug_name)});
+                       .name = std::move(name)});
     return value_id;
 }
 
@@ -334,11 +334,11 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                                         std::vector<NodeOutputDesc> outputs_desc,
                                         const OpParams& op_params,
                                         ModelGraphAttrs attrs,
-                                        std::string debug_name) {
+                                        std::string name) {
     const uint32_t node_idx = NextNodeIndex(nodes_);
     auto ctx = [&](const std::string& detail) {
         return "node " + std::to_string(node_idx) + " (" + ToString(op_type) +
-               (debug_name.empty() ? "" : " " + debug_name) + "): " + detail;
+               (name.empty() ? "" : " " + name) + "): " + detail;
     };
 
     if (!attrs.bytes.empty()) {
@@ -484,7 +484,7 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                 .spec = inference.outputs[i],
                 .producer = node_id,
                 .quantization = outputs_desc[i].quantization,
-                .debug_name = std::move(outputs_desc[i].debug_name),
+                .name = std::move(outputs_desc[i].name),
         });
     }
 
@@ -495,16 +495,14 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
         values_.push_back(std::move(val));
     }
 
-    nodes_.push_back({
-            .op_type = op_type,
-            .decoder_layer_index = decoder_layer_index,
-            .inputs = std::move(inputs),
-            .outputs = output_ids,
-            .attrs = std::move(attrs),
-            .op_params = op_params,
-            .debug_name = std::move(debug_name),
-            .runtime_checks = inference.runtime_checks,
-    });
+    nodes_.push_back({.op_type = op_type,
+                      .decoder_layer_index = decoder_layer_index,
+                      .inputs = std::move(inputs),
+                      .outputs = output_ids,
+                      .attrs = std::move(attrs),
+                      .op_params = op_params,
+                      .runtime_checks = inference.runtime_checks,
+                      .name = std::move(name)});
 
     return AddedNode{.node = node_id, .outputs = std::move(output_ids)};
 }
@@ -604,7 +602,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
         auto n_ctx = [&](const std::string& detail) {
             return "node " + std::to_string(node_index) + " (" +
                    std::string(ToString(node.op_type)) +
-                   (node.debug_name.empty() ? "" : " " + node.debug_name) + "): " + detail;
+                   (node.name.empty() ? "" : " " + node.name) + "): " + detail;
         };
 
         StatusOr<OperatorSchema> schema_or = GetOperatorSchema(node.op_type);

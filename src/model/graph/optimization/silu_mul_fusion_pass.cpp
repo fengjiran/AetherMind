@@ -94,7 +94,7 @@ Status TryFuseSilu(GraphRewriteSession& session, GraphNodeId silu_node) {
                                                                NodeOutputDesc{
                                                                        .payload = output_desc->payload,
                                                                        .quantization = output_desc->quantization,
-                                                                       .debug_name = output_desc->debug_name,
+                                                                       .name = output_desc->name,
                                                                },
                                                                SiluMulParams{},
                                                                pattern->decoder_layer_index,

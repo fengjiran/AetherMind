@@ -89,7 +89,7 @@ TEST(GraphDump, DumpsMinimalGraph) {
             std::nullopt,
             {tokens, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden"}},
+                            .name = "hidden"}},
             EmbeddingParams{},
             {},
             "embedding");

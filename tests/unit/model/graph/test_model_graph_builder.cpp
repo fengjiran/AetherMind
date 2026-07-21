@@ -98,7 +98,7 @@ const KVCacheStateBinding& KVCacheBindingForValue(const ModelGraph& graph, Graph
 
 const GraphNode* FindNodeByDebugName(const ModelGraph& graph, std::string_view debug_name) {
     for (const GraphNode& node: graph.GetNodes()) {
-        if (std::string_view(node.debug_name) == debug_name) {
+        if (std::string_view(node.name) == debug_name) {
             return &node;
         }
     }
@@ -558,8 +558,8 @@ TEST(ModelGraphBuilder, AssignsLayerScopedKvCacheStateDebugNames) {
     const auto nodes = graph->GetNodes();
     const GraphNode& kv_cache_update = nodes[6];
     ASSERT_EQ(kv_cache_update.inputs.size(), 4U);
-    EXPECT_EQ(graph->GetValue(kv_cache_update.inputs[2]).debug_name, "layers.0.self_attn.k_cache");
-    EXPECT_EQ(graph->GetValue(kv_cache_update.inputs[3]).debug_name, "layers.0.self_attn.v_cache");
+    EXPECT_EQ(graph->GetValue(kv_cache_update.inputs[2]).name, "layers.0.self_attn.k_cache");
+    EXPECT_EQ(graph->GetValue(kv_cache_update.inputs[3]).name, "layers.0.self_attn.v_cache");
 }
 
 TEST(ModelGraphBuilder, TracesMlpResidualDataflow) {
@@ -586,18 +586,18 @@ TEST(ModelGraphBuilder, AssignsPyTorchStyleWeightDebugNames) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
 
-    EXPECT_EQ(graph->GetValue(nodes[0].inputs[1]).debug_name, "embed_tokens");
-    EXPECT_EQ(graph->GetValue(nodes[1].inputs[1]).debug_name, "layers.0.input_layernorm");
-    EXPECT_EQ(graph->GetValue(nodes[2].inputs[1]).debug_name, "layers.0.self_attn.q_proj");
-    EXPECT_EQ(graph->GetValue(nodes[3].inputs[1]).debug_name, "layers.0.self_attn.k_proj");
-    EXPECT_EQ(graph->GetValue(nodes[4].inputs[1]).debug_name, "layers.0.self_attn.v_proj");
-    EXPECT_EQ(graph->GetValue(nodes[8].inputs[1]).debug_name, "layers.0.self_attn.o_proj");
-    EXPECT_EQ(graph->GetValue(nodes[10].inputs[1]).debug_name, "layers.0.post_attention_layernorm");
-    EXPECT_EQ(graph->GetValue(nodes[11].inputs[1]).debug_name, "layers.0.mlp.gate_proj");
-    EXPECT_EQ(graph->GetValue(nodes[12].inputs[1]).debug_name, "layers.0.mlp.up_proj");
-    EXPECT_EQ(graph->GetValue(nodes[14].inputs[1]).debug_name, "layers.0.mlp.down_proj");
-    EXPECT_EQ(graph->GetValue(nodes[16].inputs[1]).debug_name, "norm");
-    EXPECT_EQ(graph->GetValue(nodes[17].inputs[1]).debug_name, "lm_head");
+    EXPECT_EQ(graph->GetValue(nodes[0].inputs[1]).name, "embed_tokens");
+    EXPECT_EQ(graph->GetValue(nodes[1].inputs[1]).name, "layers.0.input_layernorm");
+    EXPECT_EQ(graph->GetValue(nodes[2].inputs[1]).name, "layers.0.self_attn.q_proj");
+    EXPECT_EQ(graph->GetValue(nodes[3].inputs[1]).name, "layers.0.self_attn.k_proj");
+    EXPECT_EQ(graph->GetValue(nodes[4].inputs[1]).name, "layers.0.self_attn.v_proj");
+    EXPECT_EQ(graph->GetValue(nodes[8].inputs[1]).name, "layers.0.self_attn.o_proj");
+    EXPECT_EQ(graph->GetValue(nodes[10].inputs[1]).name, "layers.0.post_attention_layernorm");
+    EXPECT_EQ(graph->GetValue(nodes[11].inputs[1]).name, "layers.0.mlp.gate_proj");
+    EXPECT_EQ(graph->GetValue(nodes[12].inputs[1]).name, "layers.0.mlp.up_proj");
+    EXPECT_EQ(graph->GetValue(nodes[14].inputs[1]).name, "layers.0.mlp.down_proj");
+    EXPECT_EQ(graph->GetValue(nodes[16].inputs[1]).name, "norm");
+    EXPECT_EQ(graph->GetValue(nodes[17].inputs[1]).name, "lm_head");
 }
 
 }// namespace

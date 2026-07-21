@@ -96,7 +96,7 @@ TEST(ConstEvaluator, PlansMulFloat32SameShape) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "product"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
@@ -125,7 +125,7 @@ TEST(ConstEvaluator, PlansMulSupportedDTypesSameShape) {
                 {.spec = spec, .payload = ConstantValue{}},
         };
         const std::vector<GraphValueDesc> outputs = {
-                {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
+                {.spec = spec, .payload = ActivationValue{}, .name = "product"},
         };
 
         const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
@@ -146,7 +146,7 @@ TEST(ConstEvaluator, PlansMulBFloat16SameShape) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "product"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
@@ -200,7 +200,7 @@ TEST(ConstEvaluator, SkipsMulUnsupportedDType) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "product"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
@@ -219,7 +219,7 @@ TEST(ConstEvaluator, PlansMulComputeBudgetExceeded) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "product"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
@@ -239,7 +239,7 @@ TEST(ConstEvaluator, PlansMulOutputByteBudgetExceeded) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "product"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
@@ -355,7 +355,7 @@ TEST(ConstEvaluator, PlansMulRankZeroScalarPlusScalar) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "product"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "product"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});

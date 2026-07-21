@@ -99,7 +99,7 @@ TEST(ConstEvaluator, PlansAddFloat32SameShape) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "sum"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
@@ -121,7 +121,7 @@ TEST(ConstEvaluator, PlansAddSupportedDTypesSameShape) {
                 {.spec = spec, .payload = ConstantValue{}},
         };
         const std::vector<GraphValueDesc> outputs = {
-                {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
+                {.spec = spec, .payload = ActivationValue{}, .name = "sum"},
         };
 
         const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
@@ -142,7 +142,7 @@ TEST(ConstEvaluator, PlansAddBroadcastRowVector) {
             {.spec = Spec(DataType::Float32(), {3}), .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
+            {.spec = output, .payload = ActivationValue{}, .name = "sum"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
@@ -162,7 +162,7 @@ TEST(ConstEvaluator, PlansAddBroadcastBothInputs) {
             {.spec = Spec(DataType::Float32(), {1, 3}), .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
+            {.spec = output, .payload = ActivationValue{}, .name = "sum"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
@@ -198,7 +198,7 @@ TEST(ConstEvaluator, PlansAddScalarBroadcastRankZeroLhs) {
             {.spec = Spec(DataType::Float32(), {2}), .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
+            {.spec = output, .payload = ActivationValue{}, .name = "sum"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
@@ -218,7 +218,7 @@ TEST(ConstEvaluator, PlansAddScalarBroadcastRankZeroRhs) {
             {.spec = Spec(DataType::Float32(), {}), .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = output, .payload = ActivationValue{}, .debug_name = "sum"},
+            {.spec = output, .payload = ActivationValue{}, .name = "sum"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
@@ -238,7 +238,7 @@ TEST(ConstEvaluator, SkipsAddUnsupportedDType) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "sum"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
@@ -443,7 +443,7 @@ TEST(ConstEvaluator, PlansAddRankZeroScalarPlusScalar) {
             {.spec = spec, .payload = ConstantValue{}},
     };
     const std::vector<GraphValueDesc> outputs = {
-            {.spec = spec, .payload = ActivationValue{}, .debug_name = "sum"},
+            {.spec = spec, .payload = ActivationValue{}, .name = "sum"},
     };
 
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});

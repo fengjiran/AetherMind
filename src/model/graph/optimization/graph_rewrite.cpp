@@ -43,7 +43,7 @@ GraphValueDesc MakeOutputDescFromValue(const GraphValue& value) {
             .spec = value.spec,
             .payload = value.payload,
             .quantization = value.quantization,
-            .debug_name = value.debug_name,
+            .name = value.name,
     };
 }
 
@@ -58,7 +58,7 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
             .inputs = original.inputs,
             .attrs = original.attrs,
             .op_params = original.op_params,
-            .debug_name = original.debug_name,
+            .debug_name = original.name,
     };
 
     rn.outputs.reserve(original.outputs.size());
@@ -68,7 +68,7 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
                 .desc = NodeOutputDesc{
                         .payload = value.payload,
                         .quantization = value.quantization,
-                        .debug_name = value.debug_name,
+                        .name = value.name,
                 },
                 .replaces = output,
         });
@@ -344,7 +344,7 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
             .outputs = original.outputs,
             .attrs = replacement ? replacement->attrs : original.attrs,
             .op_params = replacement ? replacement->op_params : original.op_params,
-            .debug_name = replacement ? replacement->debug_name : original.debug_name,
+            .debug_name = replacement ? replacement->debug_name : original.name,
     };
 
     for (GraphValueId& input: view.inputs) {
@@ -612,7 +612,7 @@ GraphValueDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValue
     return GraphValueDesc{.spec = constant.spec,
                           .payload = ConstantValue{.binding = constant.binding},
                           .quantization = constant.quantization,
-                          .debug_name = constant.debug_name};
+                          .name = constant.debug_name};
 }
 
 StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
@@ -661,11 +661,11 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
             }
             maps.source_values[i] = committed.AddInput(value.spec, *input_name);
         } else if (const auto* weight = std::get_if<WeightValue>(&value.payload)) {
-            maps.source_values[i] = committed.AddWeight(value.spec, weight->binding, value.debug_name);
+            maps.source_values[i] = committed.AddWeight(value.spec, weight->binding, value.name);
         } else if (const auto* constant = std::get_if<ConstantValue>(&value.payload)) {
-            maps.source_values[i] = committed.AddConstant(value.spec, constant->binding, value.debug_name);
+            maps.source_values[i] = committed.AddConstant(value.spec, constant->binding, value.name);
         } else if (const auto* state = std::get_if<StateValue>(&value.payload)) {
-            maps.source_values[i] = committed.AddState(value.spec, state->binding, value.debug_name);
+            maps.source_values[i] = committed.AddState(value.spec, state->binding, value.name);
         } else if (std::holds_alternative<std::monostate>(value.payload)) {
             // External values must be input, weight, constant, or state.
             // A monostate payload indicates an uninitialized value: the source
@@ -780,7 +780,7 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
         output_descs.push_back(NodeOutputDesc{
                 .payload = old_value.payload,
                 .quantization = old_value.quantization,
-                .debug_name = old_value.debug_name,
+                .name = old_value.name,
         });
     }
 

@@ -298,8 +298,8 @@ void DumpGraph(const ModelGraph& graph, std::ostream& os) {
         } else {
             os << "<none>";
         }
-        if (!value.debug_name.empty()) {
-            os << ", debug_name=" << value.debug_name;
+        if (!value.name.empty()) {
+            os << ", debug_name=" << value.name;
         }
         if (value.quantization.kind != QuantizationKind::kNone) {
             os << ", quant=" << QuantizationKindName(value.quantization.kind)
@@ -325,8 +325,8 @@ void DumpGraph(const ModelGraph& graph, std::ostream& os) {
         if (!node.attrs.bytes.empty()) {
             os << ", attrs=" << node.attrs.bytes.size() << "B";
         }
-        if (!node.debug_name.empty()) {
-            os << ", debug_name=" << node.debug_name;
+        if (!node.name.empty()) {
+            os << ", debug_name=" << node.name;
         }
         os << '\n';
     }

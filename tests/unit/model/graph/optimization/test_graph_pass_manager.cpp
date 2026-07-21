@@ -23,7 +23,7 @@ ModelGraph BuildGraph() {
             std::nullopt,
             {tokens_a, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden_a"}},
+                            .name = "hidden_a"}},
             EmbeddingParams{});
     AM_CHECK(embed_a_or.ok(), "BuildGraph embed_a AddNode failed: {}", embed_a_or.status().ToString());
     const AddedNode& embed_a = *embed_a_or;
@@ -32,7 +32,7 @@ ModelGraph BuildGraph() {
             std::nullopt,
             {tokens_b, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden_b"}},
+                            .name = "hidden_b"}},
             EmbeddingParams{});
     AM_CHECK(embed_b_or.ok(), "BuildGraph embed_b AddNode failed: {}", embed_b_or.status().ToString());
     const AddedNode& embed_b = *embed_b_or;
@@ -361,19 +361,19 @@ ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
             .payload = ConstantValue{},
             .spec = act_in_spec,
             .producer = std::nullopt,
-            .debug_name = "act_in",
+            .name = "act_in",
     });
     values.push_back(GraphValue{
             .payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale}},
             .spec = weight_spec,
             .producer = std::nullopt,
-            .debug_name = "weight_in",
+            .name = "weight_in",
     });
     values.push_back(GraphValue{
             .payload = ActivationValue{},
             .spec = out_spec,
             .producer = GraphNodeId{.index = 0},
-            .debug_name = "act_out",
+            .name = "act_out",
     });
 
     GraphNode node;

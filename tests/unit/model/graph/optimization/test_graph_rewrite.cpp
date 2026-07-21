@@ -11,7 +11,7 @@ namespace {
 
 NodeOutputDesc HiddenDesc(const char* debug_name) {
     return NodeOutputDesc{.payload = ActivationValue{},
-                          .debug_name = debug_name};
+                          .name = debug_name};
 }
 
 RewriteOutputBinding ReplacesHidden(GraphValueId value, const char* debug_name) {
@@ -34,7 +34,7 @@ ModelGraph BuildTwoEmbeddingGraph() {
             std::nullopt,
             {tokens_a, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden_a"}},
+                            .name = "hidden_a"}},
             EmbeddingParams{});
     AM_CHECK(embed_a_or.ok(), "BuildTwoEmbeddingGraph embed_a AddNode failed");
     const AddedNode& embed_a = *embed_a_or;
@@ -43,7 +43,7 @@ ModelGraph BuildTwoEmbeddingGraph() {
             std::nullopt,
             {tokens_b, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden_b"}},
+                            .name = "hidden_b"}},
             EmbeddingParams{});
     AM_CHECK(embed_b_or.ok(), "BuildTwoEmbeddingGraph embed_b AddNode failed");
     const AddedNode& embed_b = *embed_b_or;
@@ -243,8 +243,8 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithMultipleReplacements) {
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     EXPECT_EQ(committed->GetNodes().size(), 3U);// r1 + r2 + n1
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "r1");
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).debug_name, "r2");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).name, "r1");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).name, "r2");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -343,7 +343,7 @@ TEST(GraphRewriteSession, RemoveNodeOverridesPreviousReplacement) {
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     ASSERT_EQ(committed->GetNodes().size(), 1U);
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).name, "");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -366,7 +366,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphOverridesPreviousRemove) {
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     ASSERT_EQ(committed->GetNodes().size(), 2U);
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).debug_name, "replacement_after_remove");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).name, "replacement_after_remove");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -379,7 +379,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithExplicitOutputDesc) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "explicit_hidden"},
+                                           .name = "explicit_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = EmbeddingParams{},
@@ -391,7 +391,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithExplicitOutputDesc) {
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     ASSERT_EQ(committed->GetOutputs().size(), 1U);
-    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).debug_name, "explicit_hidden");
+    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).name, "explicit_hidden");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -404,7 +404,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphReplacesMultipleOldNodes) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "subgraph_hidden"},
+                                           .name = "subgraph_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = EmbeddingParams{},
@@ -416,9 +416,9 @@ TEST(GraphRewriteSession, ReplaceSubgraphReplacesMultipleOldNodes) {
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     ASSERT_EQ(committed->GetNodes().size(), 1U);
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "subgraph_replacement");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).name, "subgraph_replacement");
     ASSERT_EQ(committed->GetOutputs().size(), 1U);
-    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).debug_name, "subgraph_hidden");
+    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).name, "subgraph_hidden");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -431,7 +431,7 @@ TEST(GraphRewriteSession, RemoveNodeClearsOverlappingSubgraphRewrite) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "subgraph_hidden"},
+                                           .name = "subgraph_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = EmbeddingParams{},
@@ -447,7 +447,7 @@ TEST(GraphRewriteSession, RemoveNodeClearsOverlappingSubgraphRewrite) {
     ASSERT_EQ(committed->GetNodes().size(), 1U);
     EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).op_type, OpType::kEmbedding);
     ASSERT_EQ(committed->GetOutputs().size(), 1U);
-    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).debug_name, "hidden_a");
+    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).name, "hidden_a");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -462,7 +462,7 @@ TEST(GraphRewriteSession, ApplySupportsReplaceSubgraphMutation) {
                     .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
                     .outputs = {RewriteOutputBinding{
                             .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                                   .debug_name = "applied_subgraph_hidden"},
+                                                   .name = "applied_subgraph_hidden"},
                             .replaces = GraphValueId{.index = 3},
                     }},
                     .op_params = EmbeddingParams{},
@@ -475,7 +475,7 @@ TEST(GraphRewriteSession, ApplySupportsReplaceSubgraphMutation) {
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     ASSERT_EQ(committed->GetNodes().size(), 1U);
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "applied_subgraph_replacement");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).name, "applied_subgraph_replacement");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -489,7 +489,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "virtual_hidden"},
+                                           .name = "virtual_hidden"},
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
@@ -500,7 +500,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
             .inputs = {mid, mid},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "final_hidden"},
+                                           .name = "final_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = AddParams{},
@@ -519,7 +519,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
     ASSERT_EQ(consumer.inputs.size(), 2U);
     EXPECT_EQ(consumer.inputs[0], producer.outputs[0]);
     EXPECT_EQ(consumer.inputs[1], producer.outputs[0]);
-    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).debug_name, "final_hidden");
+    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).name, "final_hidden");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -537,7 +537,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsUndefinedVirtualValueInput) {
             .inputs = {mid, mid},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "final_hidden"},
+                                           .name = "final_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = AddParams{},
@@ -562,7 +562,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsDuplicateVirtualValueProducer) {
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "first_virtual"},
+                                           .name = "first_virtual"},
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
@@ -573,7 +573,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsDuplicateVirtualValueProducer) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "second_virtual"},
+                                           .name = "second_virtual"},
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
@@ -599,7 +599,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsVirtualValueConsumedBeforeProduc
             .inputs = {mid, mid},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "final_hidden"},
+                                           .name = "final_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = AddParams{},
@@ -610,7 +610,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsVirtualValueConsumedBeforeProduc
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "virtual_hidden"},
+                                           .name = "virtual_hidden"},
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
@@ -636,7 +636,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsVirtualValueAcrossRewriteEntries
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "virtual_hidden"},
+                                           .name = "virtual_hidden"},
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
@@ -647,7 +647,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsVirtualValueAcrossRewriteEntries
             .inputs = {mid, mid},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "final_hidden"},
+                                           .name = "final_hidden"},
                     .replaces = GraphValueId{.index = 4},
             }},
             .op_params = AddParams{},
@@ -682,7 +682,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidMapping) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "explicit_hidden"},
+                                           .name = "explicit_hidden"},
                     .replaces = GraphValueId{.index = 999},
             }},
             .op_params = EmbeddingParams{},
@@ -782,7 +782,7 @@ ModelGraph BuildGraphWithState() {
             std::nullopt,
             {tokens, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden"}},
+                            .name = "hidden"}},
             EmbeddingParams{});
     AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
     const AddedNode& embed = *embed_or;
@@ -823,7 +823,7 @@ TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
             3U,// decoder_layer_index = 3
             {tokens, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden"}},
+                            .name = "hidden"}},
             EmbeddingParams{});
     AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
     const AddedNode& embed = *embed_or;
@@ -867,7 +867,7 @@ TEST(GraphRewriteSession, RejectsMonostateExternalValueOnCommit) {
                      std::vector<GraphValue>{
                              GraphValue{.payload = std::monostate{},
                                         .spec = Spec(DataType::Float32(), {1}),
-                                        .debug_name = "invalid"},
+                                        .name = "invalid"},
                      });
 
     GraphRewriteSession session(graph);
@@ -899,7 +899,7 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
             std::nullopt,
             {tokens, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden"}},
+                            .name = "hidden"}},
             EmbeddingParams{});
     AM_CHECK(embed_or.ok(), "BuildGraphWithState embed AddNode failed");
     const AddedNode& embed = *embed_or;
@@ -919,7 +919,7 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
             EXPECT_EQ(c->binding.name, "scalar.one");
             ASSERT_TRUE(c->binding.inline_data != nullptr);
             EXPECT_EQ(c->binding.inline_data->size(), 2U);
-            EXPECT_EQ(value.debug_name, "one");
+            EXPECT_EQ(value.name, "one");
         }
     }
     EXPECT_TRUE(found_constant);
@@ -953,7 +953,7 @@ TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
             found_constant = true;
             ASSERT_TRUE(c->binding.inline_data != nullptr);
             EXPECT_EQ(c->binding.inline_data->size(), 2U);
-            EXPECT_EQ(value.debug_name, "folded");
+            EXPECT_EQ(value.name, "folded");
             EXPECT_EQ(value.quantization, quantization);
             EXPECT_FALSE(value.producer.has_value());
         }
@@ -990,7 +990,7 @@ TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
     ASSERT_NE(constant_payload, nullptr);
     EXPECT_EQ(constant_payload->binding.name, "folded.vector");
     EXPECT_EQ(desc->quantization, quantization);
-    EXPECT_EQ(desc->debug_name, "folded_vector");
+    EXPECT_EQ(desc->name, "folded_vector");
 
     const std::vector<GraphValueId> live = session.GetLiveValues();
     EXPECT_NE(std::ranges::find(live, constant), live.end());
@@ -1017,7 +1017,7 @@ TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
         if (const auto* constant_payload = std::get_if<ConstantValue>(&value.payload);
             constant_payload != nullptr && constant_payload->binding.name == "folded.hidden") {
             found_constant = true;
-            EXPECT_EQ(value.debug_name, "folded_hidden");
+            EXPECT_EQ(value.name, "folded_hidden");
             EXPECT_EQ(value.quantization, QuantizationSpec{});
         }
     }
@@ -1103,7 +1103,7 @@ TEST(GraphRewriteSession, GetValueOutputMetadataReturnsFullValueDescriptor) {
     EXPECT_EQ(desc->spec, graph.GetValue(GraphValueId{.index = 3}).spec);
     EXPECT_TRUE(std::holds_alternative<ActivationValue>(desc->payload));
     EXPECT_EQ(desc->quantization, quantization);
-    EXPECT_EQ(desc->debug_name, "hidden_a");
+    EXPECT_EQ(desc->name, "hidden_a");
 }
 
 TEST(GraphRewriteSession, GetValueOutputMetadataRejectsInvalidValues) {
@@ -1192,7 +1192,7 @@ TEST(GraphRewriteSession, RedirectInputAccumulatesMultipleInputChanges) {
             std::nullopt,
             {tokens_a, weight_a},
             {NodeOutputDesc{.payload = ActivationValue{},
-                            .debug_name = "hidden"}},
+                            .name = "hidden"}},
             EmbeddingParams{});
     ASSERT_TRUE(node_or.ok()) << node_or.status().ToString();
     const AddedNode& node = *node_or;
@@ -1243,7 +1243,7 @@ TEST(GraphRewriteSession, RedirectInputRejectsExistingNodeReplacement) {
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     const GraphNode& committed_node = committed->GetNode(GraphNodeId{.index = 0});
-    EXPECT_EQ(committed_node.debug_name, "arbitrary_replacement");
+    EXPECT_EQ(committed_node.name, "arbitrary_replacement");
     EXPECT_EQ(committed_node.inputs[0], committed->GetInputs()[0].value);
     EXPECT_TRUE(committed->Validate().ok());
 }
@@ -1257,7 +1257,7 @@ TEST(GraphRewriteSession, RedirectInputRejectsOverlappingSubgraphRewrite) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "subgraph_hidden"},
+                                           .name = "subgraph_hidden"},
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = EmbeddingParams{},
@@ -1272,7 +1272,7 @@ TEST(GraphRewriteSession, RedirectInputRejectsOverlappingSubgraphRewrite) {
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     ASSERT_EQ(committed->GetNodes().size(), 1U);
-    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).debug_name, "subgraph_replacement");
+    EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).name, "subgraph_replacement");
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -1319,7 +1319,7 @@ TEST(SubgraphBuilder, EmitAcceptsFullOutputDesc) {
                                         .has_zero_point = false};
     NodeOutputDesc output_desc{.payload = ActivationValue{},
                                .quantization = quantization,
-                               .debug_name = "builder_full_desc"};
+                               .name = "builder_full_desc"};
 
     SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
     auto out_or = builder.Emit(
@@ -1342,7 +1342,7 @@ TEST(SubgraphBuilder, EmitAcceptsFullOutputDesc) {
     const GraphValue& output = committed->GetValue(committed->GetOutputs()[0].value);
     EXPECT_TRUE(std::holds_alternative<ActivationValue>(output.payload));
     EXPECT_EQ(output.quantization, quantization);
-    EXPECT_EQ(output.debug_name, "builder_full_desc");
+    EXPECT_EQ(output.name, "builder_full_desc");
 }
 
 TEST(SubgraphBuilder, EmitReturnsVirtualValueForEachOutputDesc) {
@@ -1408,9 +1408,9 @@ TEST(SubgraphBuilder, EmitMultiOutputYieldsEachOutputToDistinctTarget) {
     ASSERT_EQ(committed_rope.outputs.size(), 2U);
     EXPECT_EQ(committed->GetOutputs()[0].value, committed_rope.outputs[0]);
     EXPECT_EQ(committed->GetOutputs()[1].value, committed_rope.outputs[1]);
-    EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).debug_name, "q_rope_rewritten");
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).name, "q_rope_rewritten");
     EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).quantization, q_quantization);
-    EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).debug_name, "k_rope_rewritten");
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).name, "k_rope_rewritten");
     EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).quantization, k_quantization);
 }
 
@@ -2298,7 +2298,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsYieldSpecMismatch) {
             .inputs = {GraphValueId{.index = 4}},
             .outputs = {RewriteOutputBinding{
                     .desc = NodeOutputDesc{.payload = ActivationValue{},
-                                           .debug_name = "argmax_output"},
+                                           .name = "argmax_output"},
                     // v3 (Float32 hidden_a) is the replaces target; Argmax
                     // infers Int64 output - dtype mismatch.
                     .replaces = GraphValueId{.index = 3},

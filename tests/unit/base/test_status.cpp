@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <type_traits>
+
 namespace {
 using namespace aethermind;
 
@@ -97,17 +99,61 @@ TEST(StatusOr, MoveOutValueViaRvalueDereference) {
     EXPECT_EQ(*moved, 13);
 }
 
-TEST(StatusOr, RvalueArrowAccessesContainedValue) {
-    struct Box {
-        int value;
-    };
-
-    StatusOr<Box> result(Box{17});
-    EXPECT_EQ(std::move(result)->value, 17);
-}
+// Rvalue operator->() is deleted by design: it would export a pointer into
+// a temporary StatusOr, producing a dangling pointer. Use operator* (which
+// returns a T&& rvalue, safe for immediate move) instead.
+// See static_assert block at end of file for the compile-time contract.
 
 TEST(StatusOr, RejectsOkStatusInErrorCtor) {
     EXPECT_THROW(UNUSED(StatusOr<int>(Status::Ok())), std::invalid_argument);
 }
+
+StatusOr<int> GetValueOrError(bool fail) {
+    if (fail) {
+        return Status::Internal("test error from StatusOr");
+    }
+    return 42;
+}
+
+Status ProcessStatusOrResult(bool fail) {
+    AM_RETURN_IF_ERROR(GetValueOrError(fail));
+    return Status::Ok();
+}
+
+TEST(StatusMacros, PropagatesErrorFromStatusOrToStatus) {
+    Status success_status = ProcessStatusOrResult(/*fail=*/false);
+    EXPECT_TRUE(success_status.ok());
+    EXPECT_EQ(success_status.code(), StatusCode::kOk);
+
+    Status error_status = ProcessStatusOrResult(/*fail=*/true);
+    EXPECT_FALSE(error_status.ok());
+    EXPECT_EQ(error_status.code(), StatusCode::kInternal);
+    EXPECT_EQ(error_status.message(), "test error from StatusOr");
+}
+
+// Compile-time contract: borrowing accessors are blocked on rvalues to prevent
+// dangling references/pointers into temporaries.
+#define AM_DEFINE_ACCESSOR_TRAIT(TraitName, Expr)    \
+    template<typename T, typename = void>            \
+    struct TraitName : std::false_type {};           \
+    template<typename T>                             \
+    struct TraitName<T, std::void_t<decltype(Expr)>> \
+        : std::true_type {}
+AM_DEFINE_ACCESSOR_TRAIT(RvalueMessage, std::declval<T&&>().message());
+AM_DEFINE_ACCESSOR_TRAIT(RvalueGetIfOk, std::declval<T&&>().get_if_ok());
+AM_DEFINE_ACCESSOR_TRAIT(RvalueArrow, std::declval<T&&>().operator->());
+AM_DEFINE_ACCESSOR_TRAIT(LvalueMessage, std::declval<T&>().message());
+AM_DEFINE_ACCESSOR_TRAIT(ConstLvalueMessage, std::declval<const T&>().message());
+AM_DEFINE_ACCESSOR_TRAIT(LvalueGetIfOk, std::declval<T&>().get_if_ok());
+AM_DEFINE_ACCESSOR_TRAIT(ConstLvalueGetIfOk, std::declval<const T&>().get_if_ok());
+#undef AM_DEFINE_ACCESSOR_TRAIT
+
+static_assert(!RvalueMessage<Status>::value, "rvalue Status::message() must be rejected");
+static_assert(!RvalueGetIfOk<StatusOr<int>>::value, "rvalue StatusOr::get_if_ok() must be rejected");
+static_assert(!RvalueArrow<StatusOr<int>>::value, "rvalue StatusOr::operator->() must be rejected");
+static_assert(LvalueMessage<Status>::value, "lvalue Status::message() must be accepted");
+static_assert(ConstLvalueMessage<Status>::value, "const lvalue Status::message() must be accepted");
+static_assert(LvalueGetIfOk<StatusOr<int>>::value, "lvalue StatusOr::get_if_ok() must be accepted");
+static_assert(ConstLvalueGetIfOk<StatusOr<int>>::value, "const lvalue StatusOr::get_if_ok() must be accepted");
 
 }// namespace

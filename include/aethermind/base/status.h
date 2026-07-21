@@ -222,9 +222,17 @@ public:
     ///
     /// Empty string when the status is OK. Content is meaningful only when
     /// `!ok()`.
-    AM_NODISCARD const std::string& message() const noexcept {
+    ///
+    /// Ref-qualified on lvalue `*this` to prevent binding the returned reference
+    /// to a temporary: `const std::string& s = MakeStatus().message();` would
+    /// dangle. Rvalue Status must be materialized first.
+    AM_NODISCARD const std::string& message() & noexcept {
         return message_;
     }
+    AM_NODISCARD const std::string& message() const& noexcept {
+        return message_;
+    }
+    AM_NODISCARD const std::string& message() && noexcept = delete;
 
     /// Returns a new Status with a different message, preserving the code.
     ///
@@ -286,47 +294,66 @@ private:
     std::string message_;
 };
 
+template<typename T>
+class StatusOr;
+
+namespace detail {
+
+inline Status ExtractStatus(Status&& status) noexcept;
+
+template<typename T>
+Status ExtractStatus(StatusOr<T>&& result) noexcept;
+
+}// namespace detail
+
 /// Evaluates expr and returns its status if not OK.
 ///
 /// Compatible with both Status and StatusOr<T> return types.
 /// The expression is evaluated exactly once.
 ///
-/// Example:
-///   StatusOr<int> ParseInt(const std::string& s);
-///   Status Run() {
-///     AM_RETURN_IF_ERROR(ParseInt("42"));  // Returns StatusOr<int>, converted to Status on error
+/// Example (Status-returning function consuming a StatusOr<int> expression):
+///   StatusOr<int> FetchValue();
+///   Status Process() {
+///     AM_RETURN_IF_ERROR(FetchValue());
 ///     return Status::Ok();
 ///   }
-#define AM_RETURN_IF_ERROR(expr)                   \
-    do {                                           \
-        auto am_status_result_ = (expr);           \
-        if (!am_status_result_.ok()) AM_UNLIKELY { \
-                return am_status_result_;          \
-            }                                      \
+///
+#define AM_RETURN_IF_ERROR(expr)                                                          \
+    do {                                                                                  \
+        auto am_status_result_ = (expr);                                                  \
+        if (!am_status_result_.ok()) AM_UNLIKELY {                                        \
+                return ::aethermind::detail::ExtractStatus(std::move(am_status_result_)); \
+            }                                                                             \
     } while (false)
 
 /// Evaluates expr and returns an augmented error status if not OK.
 ///
-/// @warning Only use in functions returning Status. For StatusOr<T> return types,
-///          this macro will fail to compile because Status cannot implicitly convert
-///          to StatusOr<T>. Use AM_RETURN_IF_ERROR and construct error separately.
+/// The returned Status preserves the original error code; only the message
+/// is replaced with "<msg>: <original message>".
 ///
-/// @param expr Expression returning Status or StatusOr<T>.
-/// @param msg  Prefix message to prepend to the original error message.
+/// @warning Only use in functions returning Status. If the enclosing function
+///          returns StatusOr<T>, this macro will fail to compile because
+///          Status cannot implicitly convert to StatusOr<T>. Use
+///          AM_RETURN_IF_ERROR and construct the StatusOr error separately.
+///
+/// @param expr Expression returning Status.
+/// @param msg  Prefix prepended to the original error message (joined by ": ").
 ///
 /// Example:
 ///   Status LoadModel(const std::string& path) {
 ///     AM_RETURN_IF_ERROR_WITH_MSG(OpenFile(path), "Failed to load model");
-///     // On error, returns: Status(INTERNAL, "Failed to load model: file not found")
+///     // If OpenFile returned Status(NOT_FOUND, "file not found"), returns:
+///     //   Status(NOT_FOUND, "Failed to load model: file not found")
 ///     return Status::Ok();
 ///   }
-#define AM_RETURN_IF_ERROR_WITH_MSG(expr, msg)                                  \
-    do {                                                                        \
-        auto am_status_result_ = (expr);                                        \
-        if (!am_status_result_.ok()) AM_UNLIKELY {                              \
-                return am_status_result_.WithMessage(                           \
-                        std::string(msg) + ": " + am_status_result_.message()); \
-            }                                                                   \
+#define AM_RETURN_IF_ERROR_WITH_MSG(expr, msg)                                \
+    do {                                                                      \
+        auto am_status_result_ = (expr);                                      \
+        if (!am_status_result_.ok()) AM_UNLIKELY {                            \
+                const std::string am_orig_msg_ = am_status_result_.message(); \
+                return std::move(am_status_result_)                           \
+                        .WithMessage(std::string(msg) + ": " + am_orig_msg_); \
+            }                                                                 \
     } while (false)
 
 #define AM_ASSIGN_OR_RETURN_CONCAT_(a, b) a##b
@@ -424,13 +451,20 @@ public:
         return std::holds_alternative<T>(storage_);
     }
 
-    AM_NODISCARD const T* get_if_ok() const noexcept {
+    /// Returns a pointer to the held value, or nullptr on error.
+    ///
+    /// Ref-qualified on lvalue `*this` to prevent exporting a pointer into a
+    /// temporary: `const T* p = StatusOr<T>(v).get_if_ok();` would dangle.
+    AM_NODISCARD const T* get_if_ok() const& noexcept {
         return ok() ? &std::get<T>(storage_) : nullptr;
     }
 
-    AM_NODISCARD T* get_if_ok() noexcept {
+    AM_NODISCARD T* get_if_ok() & noexcept {
         return ok() ? &std::get<T>(storage_) : nullptr;
     }
+
+    AM_NODISCARD const T* get_if_ok() const&& noexcept = delete;
+    AM_NODISCARD T* get_if_ok() && noexcept = delete;
 
     AM_NODISCARD const Status& status() const& noexcept {
         static const Status kOkStatus = Status::Ok();
@@ -517,13 +551,8 @@ public:
         return &std::get<T>(storage_);
     }
 
-    AM_NODISCARD const T* operator->() const&& noexcept {
-        return &std::get<T>(storage_);
-    }
-
-    AM_NODISCARD T* operator->() && noexcept {
-        return &std::get<T>(storage_);
-    }
+    AM_NODISCARD const T* operator->() const&& noexcept = delete;
+    AM_NODISCARD T* operator->() && noexcept = delete;
 
     /// Returns true if the held status code matches.
     ///
@@ -541,6 +570,19 @@ private:
     // Invariant: never holds Status::Ok(). Error Status is always non-OK.
     std::variant<T, Status> storage_;
 };
+
+namespace detail {
+
+inline Status ExtractStatus(Status&& status) noexcept {
+    return std::move(status);
+}
+
+template<typename T>
+Status ExtractStatus(StatusOr<T>&& result) noexcept {
+    return std::move(result).status();
+}
+
+}// namespace detail
 
 }// namespace aethermind
 

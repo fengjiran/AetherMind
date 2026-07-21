@@ -126,7 +126,7 @@ TEST(ModelGraph, PublicApiCreatesInputsWeightsNodesAndOutputs) {
 
     ASSERT_EQ(graph.GetInputs().size(), 1U);
     EXPECT_EQ(graph.GetInputs()[0].value, tokens);
-    EXPECT_EQ(graph.GetInputs()[0].name, "token_ids");
+    EXPECT_EQ(graph.GetValue(graph.GetInputs()[0].value).name, "token_ids");
     ASSERT_EQ(graph.GetOutputs().size(), 1U);
     EXPECT_EQ(graph.GetOutputs()[0].value, node.outputs[0]);
     EXPECT_EQ(graph.GetOutputs()[0].name, "normed_output");

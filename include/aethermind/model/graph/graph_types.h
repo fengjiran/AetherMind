@@ -267,10 +267,11 @@ struct KVCachePair {
     GraphValueId v{};
 };
 
-/// Input port binding: a named value that enters the graph from outside.
+/// Input port binding: a value that enters the graph from outside. The
+/// debug name lives on the referenced GraphValue; this struct only carries
+/// the value id so that GetInputs() can enumerate the model input ports.
 struct GraphInput {
     GraphValueId value{};
-    std::string name{};
 };
 
 /// Output port binding: a named value leaves the graph to the runtime.

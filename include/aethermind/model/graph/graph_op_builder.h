@@ -13,13 +13,13 @@ namespace aethermind {
 /// Registers an external input tensor and returns its value id.
 AM_NODISCARD GraphValueId AddInput(ModelGraph& graph,
                                    TensorSpec spec,
-                                   std::string debug_name = {});
+                                   std::string name = {});
 
 /// Registers a persistent state tensor and returns its value id.
 AM_NODISCARD GraphValueId AddState(ModelGraph& graph,
                                    TensorSpec spec,
                                    StateBinding binding,
-                                   std::string debug_name = {});
+                                   std::string name = {});
 
 /// Builds a Linear (matmul, no bias) node and registers its weight tensor
 /// internally. The weight is created with shape [out_features, in_features]
@@ -32,7 +32,7 @@ AM_NODISCARD StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
                                               int64_t out_features,
                                               DataType weight_dtype,
                                               WeightBinding binding,
-                                              std::string debug_name = {});
+                                              std::string name = {});
 
 /// Builds an RmsNorm node and registers its scale weight tensor internally.
 /// The weight is created with shape [in_features] and dtype `weight_dtype`,
@@ -43,7 +43,7 @@ AM_NODISCARD StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
                                                DataType weight_dtype,
                                                WeightBinding binding,
                                                float eps,
-                                               std::string debug_name = {});
+                                               std::string name = {});
 
 /// Builds an Embedding lookup node and registers its embedding table internally.
 /// The weight is created with shape [vocab_size, embedding_dim] and dtype
@@ -54,7 +54,7 @@ AM_NODISCARD StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
                                                  int64_t embedding_dim,
                                                  DataType weight_dtype,
                                                  WeightBinding binding,
-                                                 std::string debug_name = {});
+                                                 std::string name = {});
 
 /// Builds a RoPE node applying rotary position embeddings to Q and K,
 /// returning both rotated outputs.
@@ -64,7 +64,7 @@ AM_NODISCARD StatusOr<RoPEOutputs> AddRoPE(ModelGraph& graph,
                                            GraphValueId k,
                                            GraphValueId position_ids,
                                            RoPEParams params,
-                                           std::string debug_name = {});
+                                           std::string name = {});
 
 /// Builds a KVCacheUpdate node appending new K/V tensors to the persistent
 /// cache, returning the updated cache state values.
@@ -74,7 +74,7 @@ AM_NODISCARD StatusOr<KVCachePair> AddKVCacheUpdate(ModelGraph& graph,
                                                     GraphValueId v_new,
                                                     GraphValueId k_cache,
                                                     GraphValueId v_cache,
-                                                    std::string debug_name = {});
+                                                    std::string name = {});
 
 /// Builds an Attention node computing scaled dot-product attention over Q, K, V.
 AM_NODISCARD StatusOr<GraphValueId> AddAttention(ModelGraph& graph,
@@ -83,7 +83,7 @@ AM_NODISCARD StatusOr<GraphValueId> AddAttention(ModelGraph& graph,
                                                  GraphValueId k,
                                                  GraphValueId v,
                                                  AttentionParams params,
-                                                 std::string debug_name = {});
+                                                 std::string name = {});
 
 /// Builds an elementwise Add node with NumPy-style trailing broadcast.
 ///
@@ -94,27 +94,27 @@ AM_NODISCARD StatusOr<GraphValueId> AddElementwiseAdd(ModelGraph& graph,
                                                       std::optional<uint32_t> decoder_layer_index,
                                                       GraphValueId lhs,
                                                       GraphValueId rhs,
-                                                      std::string debug_name = {});
+                                                      std::string name = {});
 
 /// Builds a SiLU-mul node computing silu(gate) * up.
 AM_NODISCARD StatusOr<GraphValueId> AddSiluMul(ModelGraph& graph,
                                                std::optional<uint32_t> decoder_layer_index,
                                                GraphValueId gate,
                                                GraphValueId up,
-                                               std::string debug_name = {});
+                                               std::string name = {});
 
 /// Builds a SiLU activation node.
 AM_NODISCARD StatusOr<GraphValueId> AddSilu(ModelGraph& graph,
                                             std::optional<uint32_t> decoder_layer_index,
                                             GraphValueId input,
-                                            std::string debug_name = {});
+                                            std::string name = {});
 
 /// Builds an elementwise multiply node. lhs and rhs must have matching specs.
 AM_NODISCARD StatusOr<GraphValueId> AddElementwiseMul(ModelGraph& graph,
                                                       std::optional<uint32_t> decoder_layer_index,
                                                       GraphValueId lhs,
                                                       GraphValueId rhs,
-                                                      std::string debug_name = {});
+                                                      std::string name = {});
 
 /// Builds an Argmax node selecting the index of the maximum value along `axis`.
 /// Output dtype (int64) and reduced shape are derived by operator semantic
@@ -123,7 +123,7 @@ AM_NODISCARD StatusOr<GraphValueId> AddArgmax(ModelGraph& graph,
                                               std::optional<uint32_t> decoder_layer_index,
                                               GraphValueId input,
                                               int64_t axis,
-                                              std::string debug_name = {});
+                                              std::string name = {});
 
 }// namespace aethermind
 

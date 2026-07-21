@@ -134,8 +134,8 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     ASSERT_EQ(graph->GetNodes().size(), 1U + 2U * 15U + 3U);
     ASSERT_EQ(graph->GetInputs().size(), 2U);
-    EXPECT_EQ(graph->GetInputs()[0].name, "token_ids");
-    EXPECT_EQ(graph->GetInputs()[1].name, "position_ids");
+    EXPECT_EQ(graph->GetValue(graph->GetInputs()[0].value).name, "token_ids");
+    EXPECT_EQ(graph->GetValue(graph->GetInputs()[1].value).name, "position_ids");
     ASSERT_EQ(graph->GetOutputs().size(), 1U);
     EXPECT_EQ(graph->GetOutputs()[0].name, "output_token_ids");
     EXPECT_TRUE(graph->Validate().ok());

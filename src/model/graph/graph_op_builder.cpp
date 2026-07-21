@@ -23,15 +23,15 @@ NodeOutputDesc ActivationOutput() {
 
 }// namespace
 
-GraphValueId AddInput(ModelGraph& graph, TensorSpec spec, std::string debug_name) {
-    return graph.AddInput(std::move(spec), std::move(debug_name));
+GraphValueId AddInput(ModelGraph& graph, TensorSpec spec, std::string name) {
+    return graph.AddInput(std::move(spec), std::move(name));
 }
 
 GraphValueId AddState(ModelGraph& graph,
                       TensorSpec spec,
                       StateBinding binding,
-                      std::string debug_name) {
-    return graph.AddState(std::move(spec), binding, std::move(debug_name));
+                      std::string name) {
+    return graph.AddState(std::move(spec), binding, std::move(name));
 }
 
 StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
@@ -39,7 +39,7 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
                                  int64_t out_features,
                                  DataType weight_dtype,
                                  WeightBinding binding,
-                                 std::string debug_name) {
+                                 std::string name) {
     if (out_features <= 0) {
         return Status::InvalidArgument("Linear out_features must be positive");
     }
@@ -68,7 +68,7 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
             {.dtype = weight_dtype,
              .shape = {out_features_symbol, in_features_symbol}},
             binding,
-            debug_name);
+            name);
 
     AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
                                                 OpType::kLinear,
@@ -77,7 +77,7 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
                                                 {ActivationOutput()},
                                                 LinearParams{},
                                                 {},
-                                                std::move(debug_name)));
+                                                std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -86,7 +86,7 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
                                   DataType weight_dtype,
                                   WeightBinding binding,
                                   float eps,
-                                  std::string debug_name) {
+                                  std::string name) {
     const TensorSpec input_spec = graph.GetValue(input).spec;
     if (!input_spec.shape.IsRanked()) {
         return Status::InvalidArgument("RmsNorm input shape must be ranked");
@@ -108,7 +108,7 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
             {.dtype = weight_dtype,
              .shape = {in_features_symbol}},
             binding,
-            debug_name);
+            name);
 
     AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
                                                 OpType::kRmsNorm,
@@ -117,7 +117,7 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
                                                 {ActivationOutput()},
                                                 RmsNormParams{.eps = eps},
                                                 {},
-                                                std::move(debug_name)));
+                                                std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -127,7 +127,7 @@ StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
                                     int64_t embedding_dim,
                                     DataType weight_dtype,
                                     WeightBinding binding,
-                                    std::string debug_name) {
+                                    std::string name) {
     if (vocab_size <= 0) {
         return Status::InvalidArgument("Embedding vocab_size must be positive");
     }
@@ -145,7 +145,7 @@ StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
              .shape = {ShapeSymbol::CreateFromValue(vocab_size),
                        ShapeSymbol::CreateFromValue(embedding_dim)}},
             binding,
-            debug_name);
+            name);
 
     AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
                                                 OpType::kEmbedding,
@@ -154,7 +154,7 @@ StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
                                                 {ActivationOutput()},
                                                 EmbeddingParams{},
                                                 {},
-                                                std::move(debug_name)));
+                                                std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -164,7 +164,7 @@ StatusOr<RoPEOutputs> AddRoPE(ModelGraph& graph,
                               GraphValueId k,
                               GraphValueId position_ids,
                               RoPEParams params,
-                              std::string debug_name) {
+                              std::string name) {
     AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
                                                 OpType::kRoPE,
                                                 decoder_layer_index,
@@ -173,7 +173,7 @@ StatusOr<RoPEOutputs> AddRoPE(ModelGraph& graph,
                                                  ActivationOutput()},
                                                 params,
                                                 {},
-                                                std::move(debug_name)));
+                                                std::move(name)));
     if (node.outputs.size() != 2U) {
         return Status::InvalidArgument(
                 "Expected RoPE helper to create exactly two outputs, got " +
@@ -188,7 +188,7 @@ StatusOr<KVCachePair> AddKVCacheUpdate(ModelGraph& graph,
                                        GraphValueId v_new,
                                        GraphValueId k_cache,
                                        GraphValueId v_cache,
-                                       std::string debug_name) {
+                                       std::string name) {
     const GraphValue& k_cache_value = graph.GetValue(k_cache);
     const auto* k_cache_state = std::get_if<StateValue>(&k_cache_value.payload);
     if (k_cache_state == nullptr) {
@@ -211,7 +211,7 @@ StatusOr<KVCachePair> AddKVCacheUpdate(ModelGraph& graph,
                                                  NodeOutputDesc{.payload = StateValue{.binding = v_binding}}},
                                                 KVCacheUpdateParams{},
                                                 {},
-                                                std::move(debug_name)));
+                                                std::move(name)));
     if (node.outputs.size() != 2U) {
         return Status::InvalidArgument(
                 "Expected KV cache update helper to create exactly two outputs, got " +
@@ -226,14 +226,14 @@ StatusOr<GraphValueId> AddAttention(ModelGraph& graph,
                                     GraphValueId k,
                                     GraphValueId v,
                                     AttentionParams params,
-                                    std::string debug_name) {
+                                    std::string name) {
     AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kAttention,
                                                       decoder_layer_index,
                                                       {q, k, v},
                                                       {ActivationOutput()},
                                                       params,
                                                       {},
-                                                      std::move(debug_name)));
+                                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -241,7 +241,7 @@ StatusOr<GraphValueId> AddElementwiseAdd(ModelGraph& graph,
                                          std::optional<uint32_t> decoder_layer_index,
                                          GraphValueId lhs,
                                          GraphValueId rhs,
-                                         std::string debug_name) {
+                                         std::string name) {
     const TensorSpec lhs_spec = graph.GetValue(lhs).spec;
     const TensorSpec rhs_spec = graph.GetValue(rhs).spec;
     if (lhs_spec.dtype != rhs_spec.dtype) {
@@ -254,7 +254,7 @@ StatusOr<GraphValueId> AddElementwiseAdd(ModelGraph& graph,
                                                       {ActivationOutput()},
                                                       AddParams{},
                                                       {},
-                                                      std::move(debug_name)));
+                                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -262,7 +262,7 @@ StatusOr<GraphValueId> AddSiluMul(ModelGraph& graph,
                                   std::optional<uint32_t> decoder_layer_index,
                                   GraphValueId gate,
                                   GraphValueId up,
-                                  std::string debug_name) {
+                                  std::string name) {
     const TensorSpec gate_spec = graph.GetValue(gate).spec;
     if (gate_spec != graph.GetValue(up).spec) {
         return Status::InvalidArgument("SiluMul gate and up specs must match");
@@ -274,21 +274,21 @@ StatusOr<GraphValueId> AddSiluMul(ModelGraph& graph,
                                                       {ActivationOutput()},
                                                       SiluMulParams{},
                                                       {},
-                                                      std::move(debug_name)));
+                                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
 StatusOr<GraphValueId> AddSilu(ModelGraph& graph,
                                std::optional<uint32_t> decoder_layer_index,
                                GraphValueId input,
-                               std::string debug_name) {
+                               std::string name) {
     AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kSilu,
                                                       decoder_layer_index,
                                                       {input},
                                                       {ActivationOutput()},
                                                       SiluParams{},
                                                       {},
-                                                      std::move(debug_name)));
+                                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -296,7 +296,7 @@ StatusOr<GraphValueId> AddElementwiseMul(ModelGraph& graph,
                                          std::optional<uint32_t> decoder_layer_index,
                                          GraphValueId lhs,
                                          GraphValueId rhs,
-                                         std::string debug_name) {
+                                         std::string name) {
     const TensorSpec lhs_spec = graph.GetValue(lhs).spec;
     if (lhs_spec != graph.GetValue(rhs).spec) {
         return Status::InvalidArgument("ElementwiseMul lhs and rhs specs must match");
@@ -308,7 +308,7 @@ StatusOr<GraphValueId> AddElementwiseMul(ModelGraph& graph,
                                                       {ActivationOutput()},
                                                       ElementwiseMulParams{},
                                                       {},
-                                                      std::move(debug_name)));
+                                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -316,14 +316,14 @@ StatusOr<GraphValueId> AddArgmax(ModelGraph& graph,
                                  std::optional<uint32_t> decoder_layer_index,
                                  GraphValueId input,
                                  int64_t axis,
-                                 std::string debug_name) {
+                                 std::string name) {
     AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kArgmax,
                                                       decoder_layer_index,
                                                       {input},
                                                       {ActivationOutput()},
                                                       ArgmaxParams{.axis = axis},
                                                       {},
-                                                      std::move(debug_name)));
+                                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 

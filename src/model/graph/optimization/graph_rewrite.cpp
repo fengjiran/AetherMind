@@ -14,11 +14,13 @@ namespace aethermind {
 namespace {
 
 // Looks up the model input name associated with a value id. Returns nullopt
-// if the value is not a named model input.
+// if the value is not registered as a graph input. The name itself lives on
+// GraphValue::name; this helper only enforces the invariant that a
+// ModelInputValue-payload value has a corresponding entry in inputs_.
 std::optional<std::string> FindInputName(const ModelGraph& graph, GraphValueId value) {
     for (const auto& input: graph.GetInputs()) {
         if (input.value == value) {
-            return input.name;
+            return graph.GetValue(value).name;
         }
     }
     return std::nullopt;

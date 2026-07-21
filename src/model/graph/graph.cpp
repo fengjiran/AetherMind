@@ -299,8 +299,8 @@ GraphValueId ModelGraph::AddInput(TensorSpec spec, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
     values_.push_back({.payload = ModelInputValue{},
                        .spec = std::move(spec),
-                       .name = name});
-    inputs_.push_back({.value = value_id, .name = std::move(name)});
+                       .name = std::move(name)});
+    inputs_.push_back({.value = value_id});
     return value_id;
 }
 

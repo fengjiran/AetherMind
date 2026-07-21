@@ -339,7 +339,7 @@ TEST(GraphOpBuilder, AddInputAndAddStateRegisterExternalValues) {
     const GraphValueId k_cache = AddState(graph, cache_spec, k_binding, "k_cache");
 
     ASSERT_EQ(graph.GetInputs().size(), 1U);
-    EXPECT_EQ(graph.GetInputs().front().name, "tokens");
+    EXPECT_EQ(graph.GetValue(graph.GetInputs().front().value).name, "tokens");
     EXPECT_EQ(graph.GetInputs().front().value, tokens);
     EXPECT_TRUE(std::holds_alternative<StateValue>(graph.GetValue(k_cache).payload));
     const auto& state = std::get<StateValue>(graph.GetValue(k_cache).payload);

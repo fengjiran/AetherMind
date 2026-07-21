@@ -731,9 +731,9 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
             output_bindings.reserve(node.outputs.size());
             for (const GraphValueId ov: node.outputs) {
                 if (const auto* sv = std::get_if<StateValue>(&values_[ov.index].payload)) {
-                    output_bindings.push_back(sv->binding);
+                    output_bindings.emplace_back(sv->binding);
                 } else {
-                    output_bindings.push_back(std::nullopt);
+                    output_bindings.emplace_back(std::nullopt);
                 }
             }
             auto status = ValidateNodeStateBindings(

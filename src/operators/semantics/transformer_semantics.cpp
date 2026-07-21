@@ -18,9 +18,8 @@ StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<c
 
     const auto& input_spec = inputs[0];
     const auto& weight_spec = inputs[1];
-
     if (input_spec.dtype != DataType::Float32() || weight_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("RmsNorm only supports float32 inputs in Phase 1");
+        return Status::InvalidArgument("RmsNorm only supports float32 inputs.");
     }
 
     if (!HasRank(input_spec.shape, 2)) {

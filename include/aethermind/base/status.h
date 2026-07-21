@@ -35,7 +35,9 @@ namespace aethermind {
 
 /// Status codes for operation results, aligned with gRPC status codes.
 ///
-/// Maps to am_status_code for C ABI compatibility via ToAMStatusCode()/FromAMStatusCode().
+/// Invariant: numeric values map 1:1 to am_status_code (C ABI). The mapping
+/// is verified by static_asserts below the enum definition, so adding a new
+/// code requires extending both this enum and c_api.h in lockstep.
 enum class StatusCode : uint8_t {
     kOk = 0,
     kCancelled,
@@ -119,6 +121,8 @@ AM_NODISCARD constexpr std::string_view StatusCodeName(StatusCode code) noexcept
         case StatusCode::kOverflow:
             return "OVERFLOW";
     }
+    // Defensive return for compilers that cannot prove the switch is exhaustive.
+    // Unreachable for any value within the StatusCode enum.
     return "UNKNOWN";
 }
 
@@ -145,10 +149,14 @@ AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) noexcept
 /// Represents the result of an operation that may fail.
 ///
 /// Modeled after absl::Status and gRPC status. Default-constructed Status is OK.
-/// Thread-compatible (const methods are thread-safe).
+/// Thread-compatible (const methods are thread-safe); non-const mutation is not.
+///
+/// Invariant: when code_ == kOk, message_ is empty. Construction is restricted
+/// to the public factories and the private code+message ctor below; the
+/// factories enforce the invariant by only attaching messages to non-OK codes.
 ///
 /// @note Use StatusOr<T> for operations that return a value on success.
-class Status {
+class AM_NODISCARD Status {
 public:
     /// Creates an OK status.
     Status() noexcept : code_(StatusCode::kOk) {}
@@ -157,47 +165,75 @@ public:
     ///
     /// Named factory equivalent to default construction. Idiomatic in return
     /// statements: `return Status::Ok();`.
-    AM_NODISCARD static Status Ok() noexcept {
+    static Status Ok() noexcept {
         return {};
     }
 
-    AM_NODISCARD static Status InvalidArgument(std::string_view message) {
+    static Status Cancelled(std::string_view message) {
+        return Status(StatusCode::kCancelled, std::string(message));
+    }
+
+    static Status Unknown(std::string_view message) {
+        return Status(StatusCode::kUnknown, std::string(message));
+    }
+
+    static Status DeadlineExceeded(std::string_view message) {
+        return Status(StatusCode::kDeadlineExceeded, std::string(message));
+    }
+
+    static Status Aborted(std::string_view message) {
+        return Status(StatusCode::kAborted, std::string(message));
+    }
+
+    static Status Unavailable(std::string_view message) {
+        return Status(StatusCode::kUnavailable, std::string(message));
+    }
+
+    static Status DataLoss(std::string_view message) {
+        return Status(StatusCode::kDataLoss, std::string(message));
+    }
+
+    static Status Unauthenticated(std::string_view message) {
+        return Status(StatusCode::kUnauthenticated, std::string(message));
+    }
+
+    static Status InvalidArgument(std::string_view message) {
         return Status(StatusCode::kInvalidArgument, std::string(message));
     }
 
-    AM_NODISCARD static Status NotFound(std::string_view message) {
+    static Status NotFound(std::string_view message) {
         return Status(StatusCode::kNotFound, std::string(message));
     }
 
-    AM_NODISCARD static Status Internal(std::string_view message) {
+    static Status Internal(std::string_view message) {
         return Status(StatusCode::kInternal, std::string(message));
     }
 
-    AM_NODISCARD static Status PermissionDenied(std::string_view message) {
+    static Status PermissionDenied(std::string_view message) {
         return Status(StatusCode::kPermissionDenied, std::string(message));
     }
 
-    AM_NODISCARD static Status AlreadyExists(std::string_view message) {
+    static Status AlreadyExists(std::string_view message) {
         return Status(StatusCode::kAlreadyExists, std::string(message));
     }
 
-    AM_NODISCARD static Status OutOfRange(std::string_view message) {
+    static Status OutOfRange(std::string_view message) {
         return Status(StatusCode::kOutOfRange, std::string(message));
     }
 
-    AM_NODISCARD static Status FailedPrecondition(std::string_view message) {
+    static Status FailedPrecondition(std::string_view message) {
         return Status(StatusCode::kFailedPrecondition, std::string(message));
     }
 
-    AM_NODISCARD static Status Unimplemented(std::string_view message) {
+    static Status Unimplemented(std::string_view message) {
         return Status(StatusCode::kUnimplemented, std::string(message));
     }
 
-    AM_NODISCARD static Status ResourceExhausted(std::string_view message) {
+    static Status ResourceExhausted(std::string_view message) {
         return Status(StatusCode::kResourceExhausted, std::string(message));
     }
 
-    AM_NODISCARD static Status Overflow(std::string_view message) {
+    static Status Overflow(std::string_view message) {
         return Status(StatusCode::kOverflow, std::string(message));
     }
 
@@ -232,6 +268,7 @@ public:
     AM_NODISCARD const std::string& message() const& noexcept {
         return message_;
     }
+    AM_NODISCARD const std::string& message() const&& noexcept = delete;
     AM_NODISCARD const std::string& message() && noexcept = delete;
 
     /// Returns a new Status with a different message, preserving the code.
@@ -239,7 +276,7 @@ public:
     /// Does not mutate this Status. Returns Ok() when the current status is OK,
     /// regardless of the provided message — attaching a message to success has
     /// no semantic value.
-    AM_NODISCARD Status WithMessage(std::string message) const noexcept {
+    Status WithMessage(std::string message) const noexcept {
         if (ok()) {
             return Ok();
         }
@@ -285,12 +322,14 @@ public:
     }
 
 private:
+    // Private so callers must use the factories above. The factories are the
+    // only public path to a non-OK Status and keep code/message consistent.
     explicit Status(StatusCode code, std::string message) noexcept
         : code_(code), message_(std::move(message)) {}
 
-    // kOk iff message_ is semantically empty (no message attached to success).
+    // Invariant: empty iff code_ == kOk (see class comment).
     StatusCode code_;
-    // Meaningful only when code_ != kOk. Empty when constructed via default ctor.
+    // Invariant: non-empty only when code_ != kOk.
     std::string message_;
 };
 
@@ -308,7 +347,10 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 
 /// Evaluates expr and returns its status if not OK.
 ///
-/// Compatible with both Status and StatusOr<T> return types.
+/// @param expr Expression returning Status or StatusOr<T>. The extracted
+///             status is returned from the enclosing function, whose return
+///             type must be convertible from Status (Status or StatusOr<U>).
+///
 /// The expression is evaluated exactly once.
 ///
 /// Example (Status-returning function consuming a StatusOr<int> expression):
@@ -392,6 +434,16 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 /// Used for operations that return a value on success. Never holds Status::Ok().
 /// Template type T must not be a reference type or Status.
 ///
+/// Invariant: storage_ holds either T (ok state) or a non-OK Status (error
+/// state), never Status::Ok(). The error constructors enforce this by throwing
+/// std::invalid_argument on an OK Status input.
+///
+/// Access semantics: borrowing accessors (get_if_ok, operator->, operator*,
+/// value const&) are ref-qualified on lvalue *this to prevent exporting
+/// references/pointers into temporaries; rvalue overloads are deleted. Move
+/// accessors (value &&, operator* &&, status &&) transfer ownership and are
+/// safe on rvalues.
+///
 /// @tparam T The value type returned on success. Must be move-constructible.
 ///
 /// Example:
@@ -399,7 +451,7 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 ///   auto result = ParseInt("42");
 ///   if (result.ok()) { use(*result); } else { handle(result.status()); }
 template<typename T>
-class StatusOr {
+class AM_NODISCARD StatusOr {
 public:
     /// Static assertions ensure T is a valid type for StatusOr.
     static_assert(!std::is_reference_v<T>, "StatusOr<T&> is not supported");
@@ -416,13 +468,13 @@ public:
                 (!std::same_as<std::decay_t<U>, StatusOr>) &&
                 std::convertible_to<U, T>
     StatusOr(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>)
-        : storage_(std::in_place_type<T>, std::forward<U>(value)) {}// NOLINT
+        : storage_(std::in_place_type<T>, std::forward<U>(value)) {}// NOLINT(google-explicit-constructor)
 
     /// Constructs a StatusOr by constructing T in-place from the given arguments.
     ///
     /// @tparam Args Constructor argument types for T.
     template<typename... Args>
-    StatusOr(std::in_place_t, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)// NOLINT
+    StatusOr(std::in_place_t, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)// NOLINT(google-explicit-constructor)
         : storage_(std::in_place_type<T>, std::forward<Args>(args)...) {}
 
     /// Constructs from an error status. Throws std::invalid_argument if status.ok().
@@ -434,16 +486,22 @@ public:
         }
     }
 
-    StatusOr(Status&& status) : storage_(std::move(status)) {// NOLINT
+    StatusOr(Status&& status) : storage_(std::move(status)) {// NOLINT(google-explicit-constructor)
         if (std::get<Status>(storage_).ok()) {
             throw std::invalid_argument("StatusOr error constructor requires non-OK status");
         }
     }
 
     StatusOr(const StatusOr&) = default;
+    // noexcept is backed by the is_nothrow_move_constructible_v<T> static_assert.
     StatusOr(StatusOr&&) noexcept = default;
     StatusOr& operator=(const StatusOr&) = default;
-    StatusOr& operator=(StatusOr&&) noexcept = default;
+    // noexcept is intentionally omitted: the template constrains only T's move
+    // ctor, not its move assignment. Letting the compiler derive noexcept from
+    // std::variant<T, Status>::operator=(variant&&) keeps the contract honest —
+    // if T's move assignment can throw, StatusOr's move assignment can throw
+    // too, instead of calling std::terminate().
+    StatusOr& operator=(StatusOr&&) = default;
     ~StatusOr() = default;
 
     /// Returns true if this StatusOr holds a value (not an error).
@@ -466,7 +524,10 @@ public:
     AM_NODISCARD const T* get_if_ok() const&& noexcept = delete;
     AM_NODISCARD T* get_if_ok() && noexcept = delete;
 
-    AM_NODISCARD const Status& status() const& noexcept {
+    const Status& status() const& noexcept {
+        // Shared static OK instance avoids per-call construction while keeping
+        // the return-by-reference contract. Safe because Status::Ok() is
+        // thread-compatible and immutable.
         static const Status kOkStatus = Status::Ok();
         if (ok()) {
             return kOkStatus;
@@ -474,7 +535,9 @@ public:
         return std::get<Status>(storage_);
     }
 
-    AM_NODISCARD Status status() && noexcept {
+    const Status& status() const&& noexcept = delete;
+
+    Status status() && noexcept {
         if (ok()) {
             return Status::Ok();
         }
@@ -487,21 +550,26 @@ public:
     /// @note Prefer operator* or get_if_ok() for non-throwing access.
     AM_NODISCARD const T& value() const& {
         if (!ok()) {
-            throw std::logic_error("Attempted to access value() on error StatusOr: " + status().ToString());
+            throw std::logic_error("Attempted to access value() on error StatusOr: " +
+                                   status().ToString());
         }
         return std::get<T>(storage_);
     }
 
+    AM_NODISCARD const T& value() const&& = delete;
+
     AM_NODISCARD T& value() & {
         if (!ok()) {
-            throw std::logic_error("Attempted to access value() on error StatusOr: " + status().ToString());
+            throw std::logic_error("Attempted to access value() on error StatusOr: " +
+                                   status().ToString());
         }
         return std::get<T>(storage_);
     }
 
     AM_NODISCARD T&& value() && {
         if (!ok()) {
-            throw std::logic_error("Attempted to access value() on error StatusOr: " + status().ToString());
+            throw std::logic_error("Attempted to access value() on error StatusOr: " +
+                                   status().ToString());
         }
         return std::move(std::get<T>(storage_));
     }
@@ -527,32 +595,30 @@ public:
         return T(std::forward<U>(fallback));
     }
 
-    AM_NODISCARD const T& operator*() const& noexcept {
+    AM_NODISCARD const T& operator*() const& {
         return std::get<T>(storage_);
     }
 
-    AM_NODISCARD T& operator*() & noexcept {
+    AM_NODISCARD T& operator*() & {
         return std::get<T>(storage_);
     }
 
-    AM_NODISCARD const T&& operator*() const&& noexcept {
+    AM_NODISCARD const T&& operator*() const&& = delete;
+
+    AM_NODISCARD T&& operator*() && {
         return std::move(std::get<T>(storage_));
     }
 
-    AM_NODISCARD T&& operator*() && noexcept {
-        return std::move(std::get<T>(storage_));
-    }
-
-    AM_NODISCARD const T* operator->() const& noexcept {
+    AM_NODISCARD const T* operator->() const& {
         return &std::get<T>(storage_);
     }
 
-    AM_NODISCARD T* operator->() & noexcept {
+    AM_NODISCARD T* operator->() & {
         return &std::get<T>(storage_);
     }
 
-    AM_NODISCARD const T* operator->() const&& noexcept = delete;
-    AM_NODISCARD T* operator->() && noexcept = delete;
+    AM_NODISCARD const T* operator->() const&& = delete;
+    AM_NODISCARD T* operator->() && = delete;
 
     /// Returns true if the held status code matches.
     ///
@@ -570,6 +636,19 @@ private:
     // Invariant: never holds Status::Ok(). Error Status is always non-OK.
     std::variant<T, Status> storage_;
 };
+
+// Compile-time contract: StatusOr<T>'s move-assignment noexcept tracks
+// T's move-assignment noexcept (via std::variant). The contract must not be
+// stronger than what T provides, or a throwing T move-assignment would call
+// std::terminate() instead of propagating the exception.
+template<typename T>
+constexpr bool kStatusOrMoveAssignTracksT =
+        noexcept(std::declval<StatusOr<T>&>() = std::declval<StatusOr<T>&&>()) ==
+        noexcept(std::declval<T&>() = std::declval<T&&>());
+static_assert(kStatusOrMoveAssignTracksT<int>,
+              "StatusOr move-assign noexcept must track T's move-assignment noexcept");
+static_assert(kStatusOrMoveAssignTracksT<std::string>,
+              "StatusOr move-assign noexcept must track T's move-assignment noexcept");
 
 namespace detail {
 

@@ -122,10 +122,19 @@ AM_NODISCARD constexpr std::string_view StatusCodeName(StatusCode code) noexcept
     return "UNKNOWN";
 }
 
+/// Converts a StatusCode to its C ABI equivalent.
+///
+/// The conversion is a direct numerical cast. Every StatusCode value maps to a
+/// valid am_status_code, verified by static_assert at the enum definition.
 AM_NODISCARD constexpr am_status_code ToAMStatusCode(StatusCode code) noexcept {
     return static_cast<am_status_code>(code);
 }
 
+/// Converts a C ABI status code back to StatusCode.
+///
+/// Out-of-range values (outside [AM_STATUS_OK, AM_STATUS_UNAUTHENTICATED]) are
+/// mapped to StatusCode::kUnknown. This prevents undefined behavior from
+/// casting an invalid integer to the StatusCode enum.
 AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) noexcept {
     if (code < AM_STATUS_OK || code > AM_STATUS_UNAUTHENTICATED) {
         return StatusCode::kUnknown;
@@ -144,6 +153,10 @@ public:
     /// Creates an OK status.
     Status() noexcept : code_(StatusCode::kOk) {}
 
+    /// Returns an OK status.
+    ///
+    /// Named factory equivalent to default construction. Idiomatic in return
+    /// statements: `return Status::Ok();`.
     AM_NODISCARD static Status Ok() noexcept {
         return {};
     }
@@ -188,22 +201,36 @@ public:
         return Status(StatusCode::kOverflow, std::string(message));
     }
 
+    /// Returns true if the status code is kOk.
     AM_NODISCARD bool ok() const noexcept {
         return code_ == StatusCode::kOk;
     }
 
+    /// Returns true if the status is OK.
+    ///
+    /// Same as ok(). Enables idiomatic checks: `if (status) { ... }`.
     AM_NODISCARD explicit operator bool() const noexcept {
         return ok();
     }
 
+    /// Returns the status code.
     AM_NODISCARD StatusCode code() const noexcept {
         return code_;
     }
 
+    /// Returns the error message.
+    ///
+    /// Empty string when the status is OK. Content is meaningful only when
+    /// `!ok()`.
     AM_NODISCARD const std::string& message() const noexcept {
         return message_;
     }
 
+    /// Returns a new Status with a different message, preserving the code.
+    ///
+    /// Does not mutate this Status. Returns Ok() when the current status is OK,
+    /// regardless of the provided message — attaching a message to success has
+    /// no semantic value.
     AM_NODISCARD Status WithMessage(std::string message) const noexcept {
         if (ok()) {
             return Ok();
@@ -211,6 +238,10 @@ public:
         return Status(code_, std::move(message));
     }
 
+    /// Returns a human-readable string like "NOT_FOUND: file not found".
+    ///
+    /// Format: "STATUS_CODE_NAME" for OK or empty-message errors, or
+    /// "STATUS_CODE_NAME: message" when a message is present.
     AM_NODISCARD std::string ToString() const {
         if (ok()) {
             return std::string(StatusCodeName(StatusCode::kOk));
@@ -223,18 +254,24 @@ public:
         return std::string(StatusCodeName(code_)) + ": " + message_;
     }
 
+    /// Returns true if both code and message are equal.
     AM_NODISCARD bool operator==(const Status& other) const {
         return code_ == other.code_ && message_ == other.message_;
     }
 
+    /// Returns true if code or message differ.
     AM_NODISCARD bool operator!=(const Status& other) const {
         return !(*this == other);
     }
 
+    /// Compares the status code directly.
+    ///
+    /// Enables idiomatic checks: `if (status == StatusCode::kNotFound)`.
     AM_NODISCARD bool operator==(StatusCode code) const noexcept {
         return code_ == code;
     }
 
+    /// Negated StatusCode comparison.
     AM_NODISCARD bool operator!=(StatusCode code) const noexcept {
         return code_ != code;
     }
@@ -243,7 +280,9 @@ private:
     explicit Status(StatusCode code, std::string message) noexcept
         : code_(code), message_(std::move(message)) {}
 
+    // kOk iff message_ is semantically empty (no message attached to success).
     StatusCode code_;
+    // Meaningful only when code_ != kOk. Empty when constructed via default ctor.
     std::string message_;
 };
 
@@ -341,6 +380,10 @@ public:
     static_assert(std::is_nothrow_move_constructible_v<T>,
                   "StatusOr<T> requires T to be nothrow move-constructible for noexcept guarantee");
 
+    /// Constructs a StatusOr holding a valid value from a compatible type.
+    ///
+    /// @tparam U Must be convertible to T and must not be Status or StatusOr,
+    ///           preventing accidental hijacking of the error constructor.
     template<typename U = T>
         requires(!std::same_as<std::decay_t<U>, Status>) &&
                 (!std::same_as<std::decay_t<U>, StatusOr>) &&
@@ -348,7 +391,9 @@ public:
     StatusOr(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>)
         : storage_(std::in_place_type<T>, std::forward<U>(value)) {}// NOLINT
 
-    // inplace ctor
+    /// Constructs a StatusOr by constructing T in-place from the given arguments.
+    ///
+    /// @tparam Args Constructor argument types for T.
     template<typename... Args>
     StatusOr(std::in_place_t, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)// NOLINT
         : storage_(std::in_place_type<T>, std::forward<Args>(args)...) {}
@@ -374,6 +419,7 @@ public:
     StatusOr& operator=(StatusOr&&) noexcept = default;
     ~StatusOr() = default;
 
+    /// Returns true if this StatusOr holds a value (not an error).
     AM_NODISCARD bool ok() const noexcept {
         return std::holds_alternative<T>(storage_);
     }
@@ -479,15 +525,20 @@ public:
         return &std::get<T>(storage_);
     }
 
+    /// Returns true if the held status code matches.
+    ///
+    /// Enables idiomatic checks: `if (result == StatusCode::kNotFound)`.
     AM_NODISCARD bool operator==(StatusCode code) const noexcept {
         return status().code() == code;
     }
 
+    /// Returns true if the held status code does not match.
     AM_NODISCARD bool operator!=(StatusCode code) const noexcept {
         return status().code() != code;
     }
 
 private:
+    // Invariant: never holds Status::Ok(). Error Status is always non-OK.
     std::variant<T, Status> storage_;
 };
 

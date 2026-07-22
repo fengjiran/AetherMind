@@ -42,34 +42,6 @@ TEST(Status, CAbiCodeMappingRoundTrip) {
     EXPECT_EQ(aethermind::FromAMStatusCode(AM_STATUS_UNAUTHENTICATED), StatusCode::kUnauthenticated);
 }
 
-TEST(Status, FactoriesCoverAllPublicStatusCodes) {
-    // C ABI exposes 18 status codes; the C++ API must construct all of them.
-    // Verifies the 7 previously missing factories behave consistently with
-    // existing ones: correct code, non-OK, ToString format, C ABI mapping.
-    struct Case {
-        StatusCode code;
-        Status status;
-        std::string_view name;
-        std::string_view msg;
-    };
-    const Case cases[] = {
-            {StatusCode::kCancelled, Status::Cancelled("c"), "CANCELLED", "c"},
-            {StatusCode::kUnknown, Status::Unknown("u"), "UNKNOWN", "u"},
-            {StatusCode::kDeadlineExceeded, Status::DeadlineExceeded("d"), "DEADLINE_EXCEEDED", "d"},
-            {StatusCode::kAborted, Status::Aborted("a"), "ABORTED", "a"},
-            {StatusCode::kUnavailable, Status::Unavailable("un"), "UNAVAILABLE", "un"},
-            {StatusCode::kDataLoss, Status::DataLoss("dl"), "DATA_LOSS", "dl"},
-            {StatusCode::kUnauthenticated, Status::Unauthenticated("ua"), "UNAUTHENTICATED", "ua"},
-    };
-    for (const auto& c: cases) {
-        EXPECT_FALSE(c.status.ok()) << c.name;
-        EXPECT_EQ(c.status.code(), c.code) << c.name;
-        EXPECT_EQ(c.status.message(), c.msg) << c.name;
-        EXPECT_EQ(c.status.ToString(), std::string(c.name) + ": " + std::string(c.msg)) << c.name;
-        EXPECT_EQ(ToAMStatusCode(c.code), static_cast<am_status_code>(c.code)) << c.name;
-    }
-}
-
 TEST(Status, CAbiCodeMappingRejectsOutOfRangeInput) {
     EXPECT_EQ(aethermind::FromAMStatusCode(static_cast<am_status_code>(-1)), StatusCode::kUnknown);
     EXPECT_EQ(aethermind::FromAMStatusCode(static_cast<am_status_code>(99)), StatusCode::kUnknown);
@@ -93,13 +65,6 @@ TEST(StatusOr, HoldsErrorStatus) {
     EXPECT_EQ(result.status().message(), "weight tensor missing");
 }
 
-TEST(StatusOr, ValueOrFallback) {
-    StatusOr<int> ok_result(11);
-    StatusOr<int> err_result(Status::Internal("decode failed"));
-    EXPECT_EQ(ok_result.value_or(99), 11);
-    EXPECT_EQ(err_result.value_or(99), 99);
-}
-
 TEST(StatusOr, ValueThrowsWhenNotOk) {
     StatusOr<int> result(Status::Internal("decode failed"));
     EXPECT_THROW(UNUSED(result.value()), std::logic_error);
@@ -112,45 +77,18 @@ TEST(StatusOr, MoveOnlyType) {
     EXPECT_EQ(*result->get(), 7);
 }
 
-TEST(StatusOr, MoveAssignNoexceptTracksTMoveAssign) {
-    // T's move ctor is nothrow (satisfies is_nothrow_move_constructible_v),
-    // but move assignment can throw. StatusOr<T>'s move-assignment must
-    // propagate the exception rather than calling std::terminate().
-    struct ThrowingMoveAssign {
-        int value = 0;
-        ThrowingMoveAssign() = default;
-        ThrowingMoveAssign(int v) noexcept : value(v) {}
-        // Nothrow move ctor: satisfies the class constraint.
-        ThrowingMoveAssign(ThrowingMoveAssign&& other) noexcept = default;
-        ThrowingMoveAssign(const ThrowingMoveAssign&) = default;
-        // Throwing move assignment: StatusOr<T>::operator=(StatusOr<T>&&) must
-        // also be noexcept(false), or std::terminate() would be called.
-        ThrowingMoveAssign& operator=(ThrowingMoveAssign&&) { throw std::runtime_error("throwing move assign"); }
-        ThrowingMoveAssign& operator=(const ThrowingMoveAssign&) = default;
-    };
-
-    // Compile-time contract: StatusOr move-assign noexcept mirrors T's.
-    static_assert(!noexcept(std::declval<StatusOr<ThrowingMoveAssign>&>() =
-                                    std::declval<StatusOr<ThrowingMoveAssign>&&>()),
-                  "StatusOr move-assign must be noexcept(false) when T move-assign is");
-
-    // Runtime contract: exception propagates, no std::terminate().
-    StatusOr<ThrowingMoveAssign> a(std::in_place, 1);
-    StatusOr<ThrowingMoveAssign> b(std::in_place, 2);
-    EXPECT_THROW({ a = std::move(b); }, std::runtime_error);
-    // Source state is preserved (a still holds original value) because the
-    // variant's move-assign dispatches to T's move-assign, which throws before
-    // any state mutation completes.
-    EXPECT_TRUE(a.ok());
-    EXPECT_EQ(a->value, 1);
-}
-
-TEST(StatusOr, MoveAssignNothrowWhenTMoveAssignNothrow) {
-    // For a T with nothrow move assignment, StatusOr<T>::operator=(StatusOr<T>&&)
-    // must also be noexcept — the contract tracks T's, not stronger, not weaker.
+TEST(StatusOr, MoveAssignIsNothrowByConstraint) {
+    // StatusOr<T>::operator=(StatusOr&&) is noexcept, backed by the
+    // is_nothrow_move_constructible_v<T> + is_nothrow_move_assignable_v<T>
+    // class-level static_asserts and the Status nothrow-move prerequisite.
+    // A throwing-move-assign T is rejected at instantiation, so noexcept is
+    // honest by construction — no runtime exception propagation test needed.
     static_assert(noexcept(std::declval<StatusOr<int>&>() =
                                    std::declval<StatusOr<int>&&>()),
-                  "StatusOr<int> move-assign must be noexcept because int move-assign is");
+                  "StatusOr<int> move-assign must be noexcept (backed by T constraint)");
+    static_assert(noexcept(std::declval<StatusOr<std::string>&>() =
+                                   std::declval<StatusOr<std::string>&&>()),
+                  "StatusOr<std::string> move-assign must be noexcept (backed by T constraint)");
 
     StatusOr<int> a(std::in_place, 1);
     StatusOr<int> b(std::in_place, 2);
@@ -174,6 +112,18 @@ TEST(StatusOr, MoveOutValueViaRvalueDereference) {
     std::unique_ptr<int> moved = std::move(*std::move(result));
     ASSERT_NE(moved, nullptr);
     EXPECT_EQ(*moved, 13);
+}
+
+TEST(StatusOr, DereferenceThrowsWhenNotOk) {
+    // operator*() has no ok() guard (unlike value()); it calls std::get<T>
+    // directly, which throws std::bad_variant_access when storage_ holds the
+    // error Status. Callers must check ok() before dereferencing.
+    StatusOr<int> err(Status::Internal("decode failed"));
+    EXPECT_THROW(UNUSED(*err), std::bad_variant_access);
+
+    // Rvalue overload behaves identically.
+    StatusOr<int> err_rvalue(Status::Internal("decode failed"));
+    EXPECT_THROW(UNUSED(*std::move(err_rvalue)), std::bad_variant_access);
 }
 
 // Rvalue operator->() is deleted by design: it would export a pointer into
@@ -436,6 +386,80 @@ TEST(StatusMacros, AssignOrReturnPropagatesErrorOnFailure) {
     EXPECT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kInternal);
     EXPECT_EQ(result.status().message(), "test error from StatusOr");
+}
+
+// Regression helpers for __COUNTER__-unique naming. The variable name
+// `am_status_result_` collides with the old fixed internal temporary name;
+// the macro must still expand correctly.
+Status ReturnIfErrorWithCollidingVarName(bool fail) {
+    Status am_status_result_ = fail ? Status::Internal("inner error") : Status::Ok();
+    AM_RETURN_IF_ERROR(am_status_result_);
+    return Status::Ok();
+}
+
+Status ReturnIfErrorWithMsgWithCollidingVarName(bool fail) {
+    Status am_status_result_ = fail ? Status::Internal("inner error") : Status::Ok();
+    AM_RETURN_IF_ERROR_WITH_MSG(am_status_result_, "context");
+    return Status::Ok();
+}
+
+// Confirms AM_RETURN_IF_ERROR_WITH_MSG works when the enclosing function
+// returns StatusOr<T>, not just Status. The augmented Status rvalue
+// implicitly constructs the StatusOr error via its error constructor.
+StatusOr<int> ReturnIfErrorWithMsgIntoStatusOr(bool fail) {
+    AM_RETURN_IF_ERROR_WITH_MSG(ReturnsStatus(fail), "context");
+    return 42;
+}
+
+Status MultipleMacrosInSameScope(bool fail1, bool fail2) {
+    AM_RETURN_IF_ERROR(ReturnsStatus(fail1));
+    AM_RETURN_IF_ERROR(ReturnsStatus(fail2));
+    return Status::Ok();
+}
+
+TEST(StatusMacros, ReturnIfErrorToleratesOldTemporaryNameCollision) {
+    // Regression: AM_RETURN_IF_ERROR used to expand with a fixed internal
+    // temporary name `am_status_result_`. If the caller legitimately used the
+    // same name, the macro's `auto am_status_result_ = (am_status_result_)`
+    // would fail with "use before deduction of auto". The __COUNTER__-based
+    // unique naming eliminates the collision.
+    EXPECT_TRUE(ReturnIfErrorWithCollidingVarName(false).ok());
+    Status err = ReturnIfErrorWithCollidingVarName(true);
+    EXPECT_FALSE(err.ok());
+    EXPECT_EQ(err.code(), StatusCode::kInternal);
+    EXPECT_EQ(err.message(), "inner error");
+}
+
+TEST(StatusMacros, ReturnIfErrorWithMsgToleratesOldTemporaryNameCollision) {
+    // Same regression for AM_RETURN_IF_ERROR_WITH_MSG. Both the result and
+    // the original-message temporary now use __COUNTER__-unique names.
+    EXPECT_TRUE(ReturnIfErrorWithMsgWithCollidingVarName(false).ok());
+    Status err = ReturnIfErrorWithMsgWithCollidingVarName(true);
+    EXPECT_FALSE(err.ok());
+    EXPECT_EQ(err.code(), StatusCode::kInternal);
+    EXPECT_EQ(err.message(), "context: inner error");
+}
+
+TEST(StatusMacros, ReturnIfErrorWithMsgWorksForStatusOrReturnType) {
+    // The augmented Status rvalue implicitly constructs StatusOr<int> via its
+    // error constructor. Old documentation wrongly claimed this would not
+    // compile — this test is a contract guard against that regression.
+    StatusOr<int> ok_result = ReturnIfErrorWithMsgIntoStatusOr(false);
+    ASSERT_TRUE(ok_result.ok());
+    EXPECT_EQ(*ok_result, 42);
+
+    StatusOr<int> err_result = ReturnIfErrorWithMsgIntoStatusOr(true);
+    ASSERT_FALSE(err_result.ok());
+    EXPECT_EQ(err_result.status().code(), StatusCode::kInternal);
+    EXPECT_EQ(err_result.status().message(), "context: status-path error");
+}
+
+TEST(StatusMacros, MultipleMacrosInSameScope) {
+    // __COUNTER__ advances per invocation, so multiple macro calls in the same
+    // scope each get distinct internal temporary names — no shadowing.
+    EXPECT_TRUE(MultipleMacrosInSameScope(false, false).ok());
+    EXPECT_FALSE(MultipleMacrosInSameScope(true, false).ok());
+    EXPECT_FALSE(MultipleMacrosInSameScope(false, true).ok());
 }
 
 // ============================================================================

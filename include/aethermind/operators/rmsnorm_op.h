@@ -18,10 +18,49 @@
 #ifndef AETHERMIND_OPERATORS_RMS_NORM_OP_H
 #define AETHERMIND_OPERATORS_RMS_NORM_OP_H
 
+#include "aethermind/dtypes/data_type.h"
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator.h"
 
+#include <array>
+#include <ranges>
+#include <string>
+#include <string_view>
+
 namespace aethermind {
+
+/// Single source of truth for the dtype set supported by the RmsNorm operator.
+/// All RmsNorm-related validation (semantic analysis in AnalyzeRmsNorm, future
+/// CPU kernel dispatch) must reference these definitions instead of maintaining
+/// private copies. The semantic layer accepts mixed-precision (input and weight
+/// may differ, each independently drawn from this set); the Phase 1 CPU kernel
+/// currently implements only Float32.
+inline const std::array<DataType, 5> kRmsNormSupportedDTypes = {
+        DataType::Float32(),
+        DataType::Float(16),
+        DataType::BFloat(16),
+        DataType::Float8E4M3FN(),
+        DataType::Float8E5M2(),
+};
+
+/// Returns true if `dtype` is in `kRmsNormSupportedDTypes`. Used by
+/// operator-level validation to keep the dtype check in one place. Backend
+/// kernel dispatch must reference this same set when adding new dtype paths.
+inline bool IsRmsNormSupportedDType(const DataType& dtype) noexcept {
+    return std::ranges::any_of(kRmsNormSupportedDTypes, [&](const DataType& supported) {
+        return dtype == supported;
+    });
+}
+
+/// Builds a consistent "unsupported dtype" error message for RmsNorm-related
+/// validation points. `context` is the caller name (e.g. "RmsNorm",
+/// "CpuRmsNormKernel") prepended to a fixed list of supported dtypes, so every
+/// validation site reports the same set.
+inline std::string MakeRmsNormUnsupportedDTypeMessage(std::string_view context) {
+    std::string msg{context};
+    msg += " only supports float32, float16, bfloat16, float8_e4m3fn, and float8_e5m2 tensors";
+    return msg;
+}
 
 /// Shape-preserving RMS normalization operator.
 ///

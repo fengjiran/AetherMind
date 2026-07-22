@@ -1,4 +1,5 @@
 #include "aethermind/dtypes/data_type.h"
+#include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_symbol.h"
 #include "aethermind/shape_inference/tensor_spec.h"
@@ -10,12 +11,6 @@
 
 namespace aethermind::detail {
 
-namespace {
-AM_NODISCARD bool IsRmsNormSupportedDType(const DataType& dtype) noexcept {
-    return dtype.IsFloat32() || dtype.IsFloat16() || dtype.IsBFloat16() || dtype.IsFloat8();
-}
-}// namespace
-
 StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
@@ -25,12 +20,11 @@ StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<c
     const auto& input_spec = inputs[0];
     const auto& weight_spec = inputs[1];
     if (!IsRmsNormSupportedDType(input_spec.dtype)) {
-        return Status::InvalidArgument(
-                "RmsNorm input dtype not supported: " + ToString(input_spec.dtype));
+        return Status::InvalidArgument(MakeRmsNormUnsupportedDTypeMessage("RmsNorm input"));
     }
+
     if (!IsRmsNormSupportedDType(weight_spec.dtype)) {
-        return Status::InvalidArgument(
-                "RmsNorm weight dtype not supported: " + ToString(weight_spec.dtype));
+        return Status::InvalidArgument(MakeRmsNormUnsupportedDTypeMessage("RmsNorm weight"));
     }
 
     if (!HasRank(input_spec.shape, 2)) {

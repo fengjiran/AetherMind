@@ -36,7 +36,7 @@ AM_NODISCARD StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
 
 /// Builds an RmsNorm node and registers its scale weight tensor internally.
 /// The weight is created with shape [in_features] and dtype `weight_dtype`,
-/// bound via `binding`, and named `debug_name + ".weight"`. The node's
+/// bound via `binding`, and named `name + ".weight"`. The node's
 /// decoder_layer_index is sourced from `binding.decoder_layer_index`.
 AM_NODISCARD StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
                                                GraphValueId input,

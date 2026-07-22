@@ -50,6 +50,7 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
     if (!input_spec.shape.IsRanked()) {
         return Status::InvalidArgument("Linear input shape must be ranked");
     }
+
     const std::vector<ShapeSymbol> input_shape = *input_spec.shape.shape();
     if (input_shape.empty()) {
         return Status::InvalidArgument("Linear input rank must be at least 1");
@@ -59,6 +60,7 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
     if (!in_features_symbol.IsStatic()) {
         return Status::InvalidArgument("Linear input last dimension must be static");
     }
+
     if (in_features_symbol.GetStaticValue() <= 0) {
         return Status::InvalidArgument("Linear input last dimension must be positive");
     }
@@ -70,14 +72,15 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
             binding,
             name);
 
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
-                                                OpType::kLinear,
-                                                binding.decoder_layer_index,
-                                                {input, weight},
-                                                {ActivationOutput()},
-                                                LinearParams{},
-                                                {},
-                                                std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(
+                                OpType::kLinear,
+                                binding.decoder_layer_index,
+                                {input, weight},
+                                {ActivationOutput()},
+                                LinearParams{},
+                                {},
+                                std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -91,6 +94,7 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
     if (!input_spec.shape.IsRanked()) {
         return Status::InvalidArgument("RmsNorm input shape must be ranked");
     }
+
     const std::vector<ShapeSymbol> input_shape = *input_spec.shape.shape();
     if (input_shape.empty()) {
         return Status::InvalidArgument("RmsNorm input rank must be at least 1");
@@ -100,6 +104,7 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
     if (!in_features_symbol.IsStatic()) {
         return Status::InvalidArgument("RmsNorm input last dimension must be static");
     }
+
     if (in_features_symbol.GetStaticValue() <= 0) {
         return Status::InvalidArgument("RmsNorm input last dimension must be positive");
     }
@@ -110,14 +115,15 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
             binding,
             name);
 
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
-                                                OpType::kRmsNorm,
-                                                binding.decoder_layer_index,
-                                                {input, weight},
-                                                {ActivationOutput()},
-                                                RmsNormParams{.eps = eps},
-                                                {},
-                                                std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(
+                                OpType::kRmsNorm,
+                                binding.decoder_layer_index,
+                                {input, weight},
+                                {ActivationOutput()},
+                                RmsNormParams{.eps = eps},
+                                {},
+                                std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -131,6 +137,7 @@ StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
     if (vocab_size <= 0) {
         return Status::InvalidArgument("Embedding vocab_size must be positive");
     }
+
     if (embedding_dim <= 0) {
         return Status::InvalidArgument("Embedding embedding_dim must be positive");
     }
@@ -147,14 +154,15 @@ StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
             binding,
             name);
 
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
-                                                OpType::kEmbedding,
-                                                std::nullopt,
-                                                {token_ids, weight},
-                                                {ActivationOutput()},
-                                                EmbeddingParams{},
-                                                {},
-                                                std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(
+                                OpType::kEmbedding,
+                                std::nullopt,
+                                {token_ids, weight},
+                                {ActivationOutput()},
+                                EmbeddingParams{},
+                                {},
+                                std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -165,15 +173,15 @@ StatusOr<RoPEOutputs> AddRoPE(ModelGraph& graph,
                               GraphValueId position_ids,
                               RoPEParams params,
                               std::string name) {
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
-                                                OpType::kRoPE,
-                                                decoder_layer_index,
-                                                {q, k, position_ids},
-                                                {ActivationOutput(),
-                                                 ActivationOutput()},
-                                                params,
-                                                {},
-                                                std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kRoPE,
+                                      decoder_layer_index,
+                                      {q, k, position_ids},
+                                      {ActivationOutput(),
+                                       ActivationOutput()},
+                                      params,
+                                      {},
+                                      std::move(name)));
     if (node.outputs.size() != 2U) {
         return Status::InvalidArgument(
                 "Expected RoPE helper to create exactly two outputs, got " +
@@ -203,15 +211,16 @@ StatusOr<KVCachePair> AddKVCacheUpdate(ModelGraph& graph,
     }
     StateBinding v_binding = v_cache_state->binding;// NOLINT
 
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(
-                                                OpType::kKVCacheUpdate,
-                                                decoder_layer_index,
-                                                {k_new, v_new, k_cache, v_cache},
-                                                {NodeOutputDesc{.payload = StateValue{.binding = k_binding}},
-                                                 NodeOutputDesc{.payload = StateValue{.binding = v_binding}}},
-                                                KVCacheUpdateParams{},
-                                                {},
-                                                std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(
+                                OpType::kKVCacheUpdate,
+                                decoder_layer_index,
+                                {k_new, v_new, k_cache, v_cache},
+                                {{.payload = StateValue{.binding = k_binding}},
+                                 {.payload = StateValue{.binding = v_binding}}},
+                                KVCacheUpdateParams{},
+                                {},
+                                std::move(name)));
     if (node.outputs.size() != 2U) {
         return Status::InvalidArgument(
                 "Expected KV cache update helper to create exactly two outputs, got " +
@@ -227,13 +236,14 @@ StatusOr<GraphValueId> AddAttention(ModelGraph& graph,
                                     GraphValueId v,
                                     AttentionParams params,
                                     std::string name) {
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kAttention,
-                                                      decoder_layer_index,
-                                                      {q, k, v},
-                                                      {ActivationOutput()},
-                                                      params,
-                                                      {},
-                                                      std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kAttention,
+                                      decoder_layer_index,
+                                      {q, k, v},
+                                      {ActivationOutput()},
+                                      params,
+                                      {},
+                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -248,13 +258,14 @@ StatusOr<GraphValueId> AddElementwiseAdd(ModelGraph& graph,
         return Status::InvalidArgument(
                 "Add requires matching dtypes for lhs and rhs operands");
     }
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kAdd,
-                                                      decoder_layer_index,
-                                                      {lhs, rhs},
-                                                      {ActivationOutput()},
-                                                      AddParams{},
-                                                      {},
-                                                      std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kAdd,
+                                      decoder_layer_index,
+                                      {lhs, rhs},
+                                      {ActivationOutput()},
+                                      AddParams{},
+                                      {},
+                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -268,13 +279,14 @@ StatusOr<GraphValueId> AddSiluMul(ModelGraph& graph,
         return Status::InvalidArgument("SiluMul gate and up specs must match");
     }
 
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kSiluMul,
-                                                      decoder_layer_index,
-                                                      {gate, up},
-                                                      {ActivationOutput()},
-                                                      SiluMulParams{},
-                                                      {},
-                                                      std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kSiluMul,
+                                      decoder_layer_index,
+                                      {gate, up},
+                                      {ActivationOutput()},
+                                      SiluMulParams{},
+                                      {},
+                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -282,13 +294,14 @@ StatusOr<GraphValueId> AddSilu(ModelGraph& graph,
                                std::optional<uint32_t> decoder_layer_index,
                                GraphValueId input,
                                std::string name) {
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kSilu,
-                                                      decoder_layer_index,
-                                                      {input},
-                                                      {ActivationOutput()},
-                                                      SiluParams{},
-                                                      {},
-                                                      std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kSilu,
+                                      decoder_layer_index,
+                                      {input},
+                                      {ActivationOutput()},
+                                      SiluParams{},
+                                      {},
+                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -302,13 +315,14 @@ StatusOr<GraphValueId> AddElementwiseMul(ModelGraph& graph,
         return Status::InvalidArgument("ElementwiseMul lhs and rhs specs must match");
     }
 
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kElementwiseMul,
-                                                      decoder_layer_index,
-                                                      {lhs, rhs},
-                                                      {ActivationOutput()},
-                                                      ElementwiseMulParams{},
-                                                      {},
-                                                      std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kElementwiseMul,
+                                      decoder_layer_index,
+                                      {lhs, rhs},
+                                      {ActivationOutput()},
+                                      ElementwiseMulParams{},
+                                      {},
+                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -321,13 +335,14 @@ StatusOr<GraphValueId> AddArgmax(ModelGraph& graph,
     // captured by reference in NodeOutputDesc while std::move(name) is also a
     // sibling argument to AddNode (unspecified evaluation order).
     NodeOutputDesc output_desc{.payload = ActivationValue{}, .name = name};
-    AM_ASSIGN_OR_RETURN(AddedNode node, graph.AddNode(OpType::kArgmax,
-                                                      decoder_layer_index,
-                                                      {input},
-                                                      {std::move(output_desc)},
-                                                      ArgmaxParams{.axis = axis},
-                                                      {},
-                                                      std::move(name)));
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kArgmax,
+                                      decoder_layer_index,
+                                      {input},
+                                      {std::move(output_desc)},
+                                      ArgmaxParams{.axis = axis},
+                                      {},
+                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 

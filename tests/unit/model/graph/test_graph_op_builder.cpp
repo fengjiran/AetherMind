@@ -3,7 +3,6 @@
 #include "test_graph_helpers.h"
 
 #include <gtest/gtest.h>
-
 #include <optional>
 #include <variant>
 #include <vector>
@@ -18,52 +17,58 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     const TensorSpec logits_spec = Spec(DataType::Float32(), {2, 16});
     const TensorSpec cache_spec = Spec(DataType::Float32(), {2, 8, 2});
     const GraphValueId tokens = graph.AddInput(token_spec, "tokens");
-    const GraphValueId k_cache = graph.AddState(cache_spec,
-                                                KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
-                                                "k_cache");
-    const GraphValueId v_cache = graph.AddState(cache_spec,
-                                                KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kValue},
-                                                "v_cache");
+    const GraphValueId k_cache = graph.AddState(
+            cache_spec,
+            KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
+            "k_cache");
+    const GraphValueId v_cache = graph.AddState(
+            cache_spec,
+            KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kValue},
+            "v_cache");
 
-    auto hidden_or = AddEmbedding(graph,
-                                  tokens,
-                                  16,
-                                  4,
-                                  DataType::Float32(),
-                                  WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                                  "embedding");
+    auto hidden_or = AddEmbedding(
+            graph,
+            tokens,
+            16,
+            4,
+            DataType::Float32(),
+            {.slot = ParameterSlot::kEmbeddingTable,
+             .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embedding");
     ASSERT_TRUE(hidden_or.ok()) << hidden_or.status().ToString();
     const GraphValueId hidden = *hidden_or;
-    auto normed_or = AddRmsNorm(graph,
-                                hidden,
-                                DataType::Float32(),
-                                WeightBinding{.slot = ParameterSlot::kScale,
-                                              .decoder_layer_index = 0,
-                                              .semantic_role = TransformerWeightRole::kInputNorm},
-                                1.0e-5F,
-                                "norm");
+    auto normed_or = AddRmsNorm(
+            graph,
+            hidden,
+            DataType::Float32(),
+            {.slot = ParameterSlot::kScale,
+             .decoder_layer_index = 0,
+             .semantic_role = TransformerWeightRole::kInputNorm},
+            1.0e-5F,
+            "norm");
     ASSERT_TRUE(normed_or.ok()) << normed_or.status().ToString();
     const GraphValueId normed = *normed_or;
-    auto q_or = AddLinear(graph,
-                          normed,
-                          4,
-                          DataType::Float32(),
-                          WeightBinding{.slot = ParameterSlot::kKernel,
-                                        .decoder_layer_index = 0,
-                                        .semantic_role = TransformerWeightRole::kAttentionQ},
-                          "q_proj");
+    auto q_or = AddLinear(
+            graph,
+            normed,
+            4,
+            DataType::Float32(),
+            {.slot = ParameterSlot::kKernel,
+             .decoder_layer_index = 0,
+             .semantic_role = TransformerWeightRole::kAttentionQ},
+            "q_proj");
     ASSERT_TRUE(q_or.ok()) << q_or.status().ToString();
     const GraphValueId q = *q_or;
-    auto attn_or = AddAttention(graph,
-                                0,
-                                q,
-                                k_cache,
-                                v_cache,
-                                AttentionParams{.num_attention_heads = 2,
-                                                .num_key_value_heads = 2,
-                                                .head_dim = 2},
-                                "attention");
+    auto attn_or = AddAttention(
+            graph,
+            0,
+            q,
+            k_cache,
+            v_cache,
+            AttentionParams{.num_attention_heads = 2,
+                            .num_key_value_heads = 2,
+                            .head_dim = 2},
+            "attention");
     ASSERT_TRUE(attn_or.ok()) << attn_or.status().ToString();
     const GraphValueId attn = *attn_or;
     EXPECT_EQ(graph.GetValue(attn).spec, graph.GetValue(q).spec);
@@ -75,13 +80,14 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ASSERT_TRUE(act_or.ok()) << act_or.status().ToString();
     const GraphValueId act = *act_or;
     EXPECT_EQ(graph.GetValue(act).spec, graph.GetValue(sum).spec);
-    auto logits_or = AddLinear(graph,
-                               act,
-                               16,
-                               DataType::Float32(),
-                               WeightBinding{.slot = ParameterSlot::kKernel,
-                                             .semantic_role = TransformerWeightRole::kLmHead},
-                               "lm_head");
+    auto logits_or = AddLinear(
+            graph,
+            act,
+            16,
+            DataType::Float32(),
+            {.slot = ParameterSlot::kKernel,
+             .semantic_role = TransformerWeightRole::kLmHead},
+            "lm_head");
     ASSERT_TRUE(logits_or.ok()) << logits_or.status().ToString();
     const GraphValueId logits = *logits_or;
     auto output_or = AddArgmax(graph, std::nullopt, logits, -1, "argmax");
@@ -151,15 +157,18 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
 
 TEST(GraphOpBuilder, AddSiluMulRequiresMatchingSpecs) {
     ModelGraph graph;
-    const GraphValueId gate = graph.AddConstant(Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "gate");
-    const GraphValueId up = graph.AddConstant(Spec(DataType::Float32(), {2, 8}), ConstantBinding{}, "up");
+    const GraphValueId gate = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "gate");
+    const GraphValueId up = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 8}), ConstantBinding{}, "up");
 
     EXPECT_FALSE(AddSiluMul(graph, 0, gate, up, "bad_silu_mul").ok());
 }
 
 TEST(GraphOpBuilder, AddSiluDerivesOutputSpecFromInput) {
     ModelGraph graph;
-    const GraphValueId input = graph.AddConstant(Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "input");
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "input");
 
     auto output_or = AddSilu(graph, 0, input, "silu");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
@@ -176,8 +185,10 @@ TEST(GraphOpBuilder, AddSiluDerivesOutputSpecFromInput) {
 
 TEST(GraphOpBuilder, AddElementwiseMulDerivesOutputSpecFromLhs) {
     ModelGraph graph;
-    const GraphValueId lhs = graph.AddConstant(Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "lhs");
-    const GraphValueId rhs = graph.AddConstant(Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "rhs");
+    const GraphValueId lhs = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "lhs");
+    const GraphValueId rhs = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "rhs");
 
     auto output_or = AddElementwiseMul(graph, 0, lhs, rhs, "mul");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();

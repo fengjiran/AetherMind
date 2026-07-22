@@ -11,7 +11,7 @@ namespace aethermind {
 // Builds a fully-static TensorSpec from a dtype and concrete dims.
 // Shared by graph test files to avoid duplicating the helper.
 inline TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
-    return TensorSpec{.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
+    return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
 }
 
 }// namespace aethermind

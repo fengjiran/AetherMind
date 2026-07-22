@@ -50,7 +50,8 @@ Status ValidateRoPEParams(const OpParams& params) {
 Status ValidateOperatorParams(OpType op_type, const OpParams& params) {
     switch (op_type) {
         case OpType::kEmbedding:
-            return RequireParams<EmbeddingParams>(params, "Embedding node requires EmbeddingParams");
+            return RequireParams<EmbeddingParams>(
+                    params, "Embedding node requires EmbeddingParams");
         case OpType::kRmsNorm:
             return ValidateRmsNormParams(params);
         case OpType::kLinear:
@@ -66,15 +67,18 @@ Status ValidateOperatorParams(OpType op_type, const OpParams& params) {
         case OpType::kSiluMul:
             return RequireParams<SiluMulParams>(params, "SiluMul node requires SiluMulParams");
         case OpType::kKVCacheUpdate:
-            return RequireParams<KVCacheUpdateParams>(params, "KVCacheUpdate node requires KVCacheUpdateParams");
+            return RequireParams<KVCacheUpdateParams>(
+                    params, "KVCacheUpdate node requires KVCacheUpdateParams");
         case OpType::kAttention:
-            return RequireParams<AttentionParams>(params, "Attention node requires AttentionParams");
+            return RequireParams<AttentionParams>(
+                    params, "Attention node requires AttentionParams");
         case OpType::kArgmax:
             return RequireParams<ArgmaxParams>(params, "Argmax node requires ArgmaxParams");
         case OpType::kSilu:
             return RequireParams<SiluParams>(params, "Silu node requires SiluParams");
         case OpType::kElementwiseMul:
-            return RequireParams<ElementwiseMulParams>(params, "ElementwiseMul node requires ElementwiseMulParams");
+            return RequireParams<ElementwiseMulParams>(
+                    params, "ElementwiseMul node requires ElementwiseMulParams");
         case OpType::kUnknown:
             return Status::InvalidArgument("Unknown op type cannot have validated graph params");
     }

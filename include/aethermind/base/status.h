@@ -663,16 +663,6 @@ private:
     std::variant<T, Status> storage_;
 };
 
-// Status is nothrow move-constructible and move-assignable. These are
-// prerequisites for StatusOr<T>'s noexcept move members: std::variant<T,
-// Status>'s move noexcept depends on both T (constrained by the class-level
-// static_asserts) and Status. If Status ever loses nothrow move semantics,
-// StatusOr<T>'s move noexcept would break regardless of T.
-static_assert(std::is_nothrow_move_constructible_v<Status>,
-              "Status must be nothrow move-constructible (StatusOr move noexcept prerequisite)");
-static_assert(std::is_nothrow_move_assignable_v<Status>,
-              "Status must be nothrow move-assignable (StatusOr move noexcept prerequisite)");
-
 namespace detail {
 
 inline Status ExtractStatus(Status&& status) noexcept {

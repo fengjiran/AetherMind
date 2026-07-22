@@ -58,7 +58,7 @@ inline bool IsRmsNormSupportedDType(const DataType& dtype) noexcept {
 /// validation site reports the same set.
 inline std::string MakeRmsNormUnsupportedDTypeMessage(std::string_view context) {
     std::string msg{context};
-    msg += " only supports float32, float16, bfloat16, float8_e4m3fn, and float8_e5m2 tensors";
+    msg += " only supports float32, float16, bfloat16, float8_e4m3fn, and float8_e5m2 dtypes";
     return msg;
 }
 

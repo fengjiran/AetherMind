@@ -221,9 +221,8 @@ Status ValidateNodeStateBindings(OpType op_type,
 
         const StateBinding& v_in_binding =
                 std::get<StateValue>(values[node_inputs[v_in_idx].index].payload).binding;
-        AM_RETURN_IF_ERROR(RequireStateSlot(
-                v_in_binding, KVCacheSlot::kValue,
-                "KVCacheUpdate V state input must use slot v"));
+        AM_RETURN_IF_ERROR(RequireStateSlot(v_in_binding, KVCacheSlot::kValue,
+                                            "KVCacheUpdate V state input must use slot v"));
         AM_RETURN_IF_ERROR(RequireStateLayerMatchesNode(
                 v_in_binding, decoder_layer_index,
                 "KVCacheUpdate V state layer must match the node layer"));
@@ -293,6 +292,86 @@ std::string FormatNodeContext(size_t idx, OpType op_type, const std::string& nam
            (name.empty() ? "" : " " + name) + "): " + detail;
 }
 
+// Validates payload/producer self-consistency of a single stored GraphValue.
+// `value_index` is the value's position in ModelGraph::values_ (used in
+// producer<->output round-trip checks).
+Status ValidateValueSelfConsistency(const GraphValue& value,
+                                    size_t value_index,
+                                    std::span<const GraphNode> nodes) {
+    if (std::holds_alternative<std::monostate>(value.payload)) {
+        return Status::InvalidArgument("Graph value has monostate payload");
+    }
+
+    if (std::holds_alternative<ActivationValue>(value.payload)) {
+        if (!value.producer.has_value() || !IsValidNodeId(*value.producer, nodes)) {
+            return Status::InvalidArgument("Activation value has no valid producer");
+        }
+
+        if (!NodeListsOutput(nodes[value.producer->index],
+                             GraphValueId{static_cast<uint32_t>(value_index)})) {
+            return Status::InvalidArgument(
+                    "Activation producer does not list produced value");
+        }
+        return Status::Ok();
+    }
+
+    if (std::holds_alternative<StateValue>(value.payload)) {
+        const StateBinding& binding = std::get<StateValue>(value.payload).binding;
+        AM_RETURN_IF_ERROR(ValidateStateBinding(binding));
+
+        if (value.producer.has_value()) {
+            if (!IsValidNodeId(*value.producer, nodes)) {
+                return Status::InvalidArgument("State value has an invalid producer");
+            }
+
+            if (!NodeListsOutput(nodes[value.producer->index],
+                                 GraphValueId{static_cast<uint32_t>(value_index)})) {
+                return Status::InvalidArgument("State producer does not list produced value");
+            }
+        }
+        return Status::Ok();
+    }
+
+    if (std::holds_alternative<ConstantValue>(value.payload)) {
+        if (value.producer.has_value()) {
+            return Status::InvalidArgument("Constant value must not have a producer");
+        }
+        return Status::Ok();
+    }
+
+    if (std::holds_alternative<WeightValue>(value.payload)) {
+        if (value.producer.has_value()) {
+            return Status::InvalidArgument("Weight value must not have a producer");
+        }
+        const WeightBinding& binding = std::get<WeightValue>(value.payload).binding;
+        return ValidateWeightBindingSelfConsistency(binding);
+    }
+
+    // ModelInputValue (or any payload not handled above): must not carry a producer.
+    if (value.producer.has_value()) {
+        return Status::InvalidArgument("External graph value must not have a producer");
+    }
+    return Status::Ok();
+}
+
+// Validates operator-specific state-binding invariants for nodes that
+// carry state I/O (currently KVCacheUpdate and Attention). For other
+// op types this is a no-op. Caller is responsible for collecting
+// `output_state_bindings` (one entry per output port; nullopt for non-state ports).
+Status ValidateStateBindingsForNode(
+        OpType op_type,
+        std::optional<uint32_t> decoder_layer_index,
+        const OperatorSchema& schema,
+        std::span<const GraphValue> values,
+        std::span<const GraphValueId> node_inputs,
+        std::span<const std::optional<StateBinding>> output_state_bindings) {
+    if (op_type != OpType::kKVCacheUpdate && op_type != OpType::kAttention) {
+        return Status::Ok();
+    }
+    return ValidateNodeStateBindings(op_type, decoder_layer_index, schema,
+                                     values, node_inputs, output_state_bindings);
+}
+
 }// namespace
 
 ModelGraph::ModelGraph(HfModelConfig config) noexcept : config_(std::move(config)) {}
@@ -354,6 +433,7 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
     if (!schema_or.ok()) {
         return Status::InvalidArgument(get_msg(schema_or.status().message()));
     }
+
     const auto& schema = *schema_or;
     if (inputs.size() != schema.input_ports.size()) {
         return Status::InvalidArgument(get_msg(
@@ -394,6 +474,7 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
         }
     }
 
+    const auto expected_weight_slot = ExpectedWeightSlotForOp(op_type);
     for (size_t i = 0; i < inputs.size(); ++i) {
         if (schema.input_ports[i].kind == OperatorPortKind::kWeight) {
             const auto& binding = std::get<WeightValue>(values_[inputs[i].index].payload).binding;
@@ -403,8 +484,7 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                         schema.input_ports[i].name + " weight: " + status.message()));
             }
 
-            if (auto exp = ExpectedWeightSlotForOp(op_type);
-                exp.has_value() && binding.slot != *exp) {
+            if (expected_weight_slot.has_value() && binding.slot != *expected_weight_slot) {
                 return Status::InvalidArgument(get_msg(
                         "input[" + std::to_string(i) + "] " +
                         schema.input_ports[i].name + " weight slot mismatch"));
@@ -438,9 +518,9 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
             }
         }
 
-        auto status = ValidateNodeStateBindings(
-                op_type, decoder_layer_index, schema, values_, inputs, output_bindings);
-        if (!status.ok()) {
+        if (auto status = ValidateStateBindingsForNode(op_type, decoder_layer_index, schema,
+                                                       values_, inputs, output_bindings);
+            !status.ok()) {
             return Status::InvalidArgument(get_msg(status.message()));
         }
     }
@@ -549,51 +629,11 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
 
     // -- Validate each value: no uninitialized payload, producers are consistent --
     for (size_t i = 0; i < values_.size(); ++i) {
-        const GraphValue& value = values_[i];
-        if (std::holds_alternative<std::monostate>(value.payload)) {
-            return Status::InvalidArgument("Graph value has monostate payload");
-        }
-
-        if (std::holds_alternative<ActivationValue>(value.payload)) {
-            if (!value.producer.has_value() || !IsValidNodeId(*value.producer, nodes_)) {
-                return Status::InvalidArgument("Activation value has no valid producer");
-            }
-
-            if (!NodeListsOutput(nodes_[value.producer->index],
-                                 GraphValueId{static_cast<uint32_t>(i)})) {
-                return Status::InvalidArgument(
-                        "Activation producer does not list produced value");
-            }
-        } else if (std::holds_alternative<StateValue>(value.payload)) {
-            const StateBinding& binding = std::get<StateValue>(value.payload).binding;
-            AM_RETURN_IF_ERROR(ValidateStateBinding(binding));
-
-            if (value.producer.has_value()) {
-                if (!IsValidNodeId(*value.producer, nodes_)) {
-                    return Status::InvalidArgument("State value has an invalid producer");
-                }
-
-                if (!NodeListsOutput(nodes_[value.producer->index],
-                                     GraphValueId{static_cast<uint32_t>(i)})) {
-                    return Status::InvalidArgument("State producer does not list produced value");
-                }
-            }
-        } else if (std::holds_alternative<ConstantValue>(value.payload)) {
-            if (value.producer.has_value()) {
-                return Status::InvalidArgument("Constant value must not have a producer");
-            }
-        } else if (std::holds_alternative<WeightValue>(value.payload)) {
-            if (value.producer.has_value()) {
-                return Status::InvalidArgument("Weight value must not have a producer");
-            }
-            const WeightBinding& binding = std::get<WeightValue>(value.payload).binding;
-            AM_RETURN_IF_ERROR(ValidateWeightBindingSelfConsistency(binding));
-        } else if (value.producer.has_value()) {
-            return Status::InvalidArgument("External graph value must not have a producer");
-        }
+        AM_RETURN_IF_ERROR(ValidateValueSelfConsistency(values_[i], i, nodes_));
     }
 
     // -- Validate each node against the operator schema --
+    std::vector<TensorSpec> all_input_specs;
     for (size_t i = 0; i < nodes_.size(); ++i) {
         const GraphNode& node = nodes_[i];
 
@@ -627,6 +667,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                     " != schema " + std::to_string(schema.output_ports.size())));
         }
 
+        const auto expected_weight_slot = ExpectedWeightSlotForOp(node.op_type);
         for (size_t input_index = 0; input_index < node.inputs.size(); ++input_index) {
             const GraphValueId input = node.inputs[input_index];
             if (!IsValidValueId(input, values_)) {
@@ -644,8 +685,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
 
             if (schema.input_ports[input_index].kind == OperatorPortKind::kWeight) {
                 const auto& binding = std::get<WeightValue>(values_[input.index].payload).binding;
-                if (const auto& expected_slot = ExpectedWeightSlotForOp(node.op_type);
-                    expected_slot.has_value() && binding.slot != *expected_slot) {
+                if (expected_weight_slot.has_value() && binding.slot != *expected_weight_slot) {
                     return Status::InvalidArgument(get_msg(
                             "input[" + std::to_string(input_index) + "] " +
                             schema.input_ports[input_index].name + " weight slot mismatch"));
@@ -654,7 +694,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
         }
 
         {
-            std::vector<TensorSpec> all_input_specs;
+            all_input_specs.clear();
             all_input_specs.reserve(node.inputs.size());
             for (const auto& id: node.inputs) {
                 all_input_specs.push_back(values_[id.index].spec);
@@ -665,6 +705,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                 return Status::InvalidArgument(get_msg(
                         "semantic re-analysis failed: " + inference_or.status().message()));
             }
+
             const auto& derived = *inference_or;
             if (derived.outputs.size() != node.outputs.size()) {
                 return Status::InvalidArgument(get_msg(
@@ -726,7 +767,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
             }
         }
 
-        if (node.op_type == OpType::kKVCacheUpdate || node.op_type == OpType::kAttention) {
+        {
             std::vector<std::optional<StateBinding>> output_bindings;
             output_bindings.reserve(node.outputs.size());
             for (const GraphValueId ov: node.outputs) {
@@ -736,10 +777,11 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                     output_bindings.emplace_back(std::nullopt);
                 }
             }
-            auto status = ValidateNodeStateBindings(
-                    node.op_type, node.decoder_layer_index, schema,
-                    values_, node.inputs, output_bindings);
-            if (!status.ok()) {
+
+            if (auto status = ValidateStateBindingsForNode(
+                        node.op_type, node.decoder_layer_index, schema,
+                        values_, node.inputs, output_bindings);
+                !status.ok()) {
                 return Status::InvalidArgument(get_msg(status.message()));
             }
         }

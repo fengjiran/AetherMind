@@ -340,9 +340,9 @@ private:
     explicit Status(StatusCode code, std::string message) noexcept
         : code_(code), message_(std::move(message)) {}
 
-    // Invariant: empty iff code_ == kOk (see class comment).
+    // Invariant: code_ == kOk implies message_.empty() (not conversely —
+    // error statuses may carry an empty message).
     StatusCode code_;
-    // Invariant: non-empty only when code_ != kOk.
     std::string message_;
 };
 
@@ -373,12 +373,15 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 ///     return Status::Ok();
 ///   }
 ///
-#define AM_RETURN_IF_ERROR(expr)                                                          \
-    do {                                                                                  \
-        auto am_status_result_ = (expr);                                                  \
-        if (!am_status_result_.ok()) AM_UNLIKELY {                                        \
-                return ::aethermind::detail::ExtractStatus(std::move(am_status_result_)); \
-            }                                                                             \
+#define AM_RETURN_IF_ERROR(expr) \
+    AM_RETURN_IF_ERROR_IMPL(AM_STR_CONCAT(am_status_result_, __COUNTER__), expr)
+
+#define AM_RETURN_IF_ERROR_IMPL(result_var, expr)                                  \
+    do {                                                                           \
+        auto result_var = (expr);                                                  \
+        if (!result_var.ok()) AM_UNLIKELY {                                        \
+                return ::aethermind::detail::ExtractStatus(std::move(result_var)); \
+            }                                                                      \
     } while (false)
 
 /// Evaluates expr and returns an augmented error status if not OK.
@@ -386,13 +389,13 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 /// The returned Status preserves the original error code; only the message
 /// is replaced with "<msg>: <original message>".
 ///
-/// @warning Only use in functions returning Status. If the enclosing function
-///          returns StatusOr<T>, this macro will fail to compile because
-///          Status cannot implicitly convert to StatusOr<T>. Use
-///          AM_RETURN_IF_ERROR and construct the StatusOr error separately.
-///
-/// @param expr Expression returning Status.
+/// @param expr Expression returning Status. The macro calls .message() and
+///             .WithMessage() on the result, so StatusOr<T> is not accepted.
 /// @param msg  Prefix prepended to the original error message (joined by ": ").
+///
+/// The enclosing function's return type must be constructible from Status
+/// (i.e., Status or StatusOr<U>). When returning StatusOr<U>, the augmented
+/// Status rvalue implicitly constructs the error via StatusOr's error ctor.
 ///
 /// Example:
 ///   Status LoadModel(const std::string& path) {
@@ -401,14 +404,25 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 ///     //   Status(NOT_FOUND, "Failed to load model: file not found")
 ///     return Status::Ok();
 ///   }
-#define AM_RETURN_IF_ERROR_WITH_MSG(expr, msg)                                \
-    do {                                                                      \
-        auto am_status_result_ = (expr);                                      \
-        if (!am_status_result_.ok()) AM_UNLIKELY {                            \
-                const std::string am_orig_msg_ = am_status_result_.message(); \
-                return std::move(am_status_result_)                           \
-                        .WithMessage(std::string(msg) + ": " + am_orig_msg_); \
-            }                                                                 \
+///
+///   StatusOr<Model> LoadModelOr(const std::string& path) {
+///     AM_RETURN_IF_ERROR_WITH_MSG(OpenFile(path), "Failed to load model");
+///     return Model{...};
+///   }
+#define AM_RETURN_IF_ERROR_WITH_MSG(expr, msg)             \
+    AM_RETURN_IF_ERROR_WITH_MSG_IMPL(                      \
+            AM_STR_CONCAT(am_status_result_, __COUNTER__), \
+            AM_STR_CONCAT(am_orig_msg_, __COUNTER__),      \
+            expr, msg)
+
+#define AM_RETURN_IF_ERROR_WITH_MSG_IMPL(result_var, msg_var, expr, msg) \
+    do {                                                                 \
+        auto result_var = (expr);                                        \
+        if (!result_var.ok()) AM_UNLIKELY {                              \
+                const std::string msg_var = result_var.message();        \
+                return std::move(result_var)                             \
+                        .WithMessage(std::string(msg) + ": " + msg_var); \
+            }                                                            \
     } while (false)
 
 /// Unwraps a StatusOr<T> into lhs, propagating the error on failure.
@@ -451,8 +465,11 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 /// Access semantics: borrowing accessors (get_if_ok, operator->, operator*,
 /// value const&) are ref-qualified on lvalue *this to prevent exporting
 /// references/pointers into temporaries; rvalue overloads are deleted. Move
-/// accessors (value &&, operator* &&, status &&) transfer ownership and are
-/// safe on rvalues.
+/// Move accessors on rvalues: status && returns Status by value (full
+/// ownership transfer). value && and operator* && return T&& — a reference
+/// into the temporary storage, safe only for immediate move-construction
+/// (e.g. auto x = std::move(result).value()). Binding the result to a
+/// named reference extends it beyond the temporary lifetime and dangles.
 ///
 /// @tparam T The value type returned on success. Must be move-constructible.
 ///
@@ -468,6 +485,8 @@ public:
     static_assert(!std::is_same_v<std::remove_cv_t<T>, Status>, "StatusOr<Status> is not supported");
     static_assert(std::is_nothrow_move_constructible_v<T>,
                   "StatusOr<T> requires T to be nothrow move-constructible for noexcept guarantee");
+    static_assert(std::is_nothrow_move_assignable_v<T>,
+                  "StatusOr<T> requires T to be nothrow move-assignable for noexcept guarantee");
 
     /// Constructs a StatusOr holding a valid value from a compatible type.
     ///
@@ -506,12 +525,10 @@ public:
     // noexcept is backed by the is_nothrow_move_constructible_v<T> static_assert.
     StatusOr(StatusOr&&) noexcept = default;
     StatusOr& operator=(const StatusOr&) = default;
-    // noexcept is intentionally omitted: the template constrains only T's move
-    // ctor, not its move assignment. Letting the compiler derive noexcept from
-    // std::variant<T, Status>::operator=(variant&&) keeps the contract honest —
-    // if T's move assignment can throw, StatusOr's move assignment can throw
-    // too, instead of calling std::terminate().
-    StatusOr& operator=(StatusOr&&) = default;
+    // noexcept is backed by the is_nothrow_move_constructible_v<T> and
+    // is_nothrow_move_assignable_v<T> static_asserts above, plus the
+    // Status-level nothrow-move prerequisite below.
+    StatusOr& operator=(StatusOr&&) noexcept = default;
     ~StatusOr() = default;
 
     /// Returns true if this StatusOr holds a value (not an error).
@@ -557,7 +574,6 @@ public:
     /// Returns a const reference to the value. Throws if !ok().
     ///
     /// @throws std::logic_error if this StatusOr holds an error.
-    /// @note Prefer operator* or get_if_ok() for non-throwing access.
     AM_NODISCARD const T& value() const& {
         if (!ok()) {
             throw std::logic_error("Attempted to access value() on error StatusOr: " +
@@ -648,37 +664,14 @@ private:
 };
 
 // Status is nothrow move-constructible and move-assignable. These are
-// prerequisites for the StatusOr move-contract tracking below — if Status
-// ever loses nothrow move semantics, StatusOr<T>'s move noexcept would no
-// longer track T alone.
+// prerequisites for StatusOr<T>'s noexcept move members: std::variant<T,
+// Status>'s move noexcept depends on both T (constrained by the class-level
+// static_asserts) and Status. If Status ever loses nothrow move semantics,
+// StatusOr<T>'s move noexcept would break regardless of T.
 static_assert(std::is_nothrow_move_constructible_v<Status>,
-              "Status must be nothrow move-constructible (StatusOr move-contract prerequisite)");
+              "Status must be nothrow move-constructible (StatusOr move noexcept prerequisite)");
 static_assert(std::is_nothrow_move_assignable_v<Status>,
-              "Status must be nothrow move-assignable (StatusOr move-contract prerequisite)");
-
-// Compile-time contract: StatusOr<T>'s move-ctor noexcept tracks T's move-ctor
-// noexcept (via std::variant). Mirrors kStatusOrMoveAssignTracksT below.
-template<typename T>
-constexpr bool kStatusOrMoveCtorTracksT =
-        std::is_nothrow_move_constructible_v<StatusOr<T>> ==
-        std::is_nothrow_move_constructible_v<T>;
-static_assert(kStatusOrMoveCtorTracksT<int>,
-              "StatusOr move-ctor noexcept must track T's move-ctor noexcept");
-static_assert(kStatusOrMoveCtorTracksT<std::string>,
-              "StatusOr move-ctor noexcept must track T's move-ctor noexcept");
-
-// Compile-time contract: StatusOr<T>'s move-assignment noexcept tracks
-// T's move-assignment noexcept (via std::variant). The contract must not be
-// stronger than what T provides, or a throwing T move-assignment would call
-// std::terminate() instead of propagating the exception.
-template<typename T>
-constexpr bool kStatusOrMoveAssignTracksT =
-        std::is_nothrow_assignable_v<StatusOr<T>&, StatusOr<T>&&> ==
-        std::is_nothrow_assignable_v<T&, T&&>;
-static_assert(kStatusOrMoveAssignTracksT<int>,
-              "StatusOr move-assign noexcept must track T's move-assignment noexcept");
-static_assert(kStatusOrMoveAssignTracksT<std::string>,
-              "StatusOr move-assign noexcept must track T's move-assignment noexcept");
+              "Status must be nothrow move-assignable (StatusOr move noexcept prerequisite)");
 
 namespace detail {
 

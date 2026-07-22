@@ -10,6 +10,12 @@
 
 namespace aethermind::detail {
 
+namespace {
+AM_NODISCARD bool IsRmsNormSupportedDType(const DataType& dtype) noexcept {
+    return dtype.IsFloat32() || dtype.IsFloat16() || dtype.IsBFloat16() || dtype.IsFloat8();
+}
+}// namespace
+
 StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
@@ -18,8 +24,13 @@ StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<c
 
     const auto& input_spec = inputs[0];
     const auto& weight_spec = inputs[1];
-    if (input_spec.dtype != DataType::Float32() || weight_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("RmsNorm only supports float32 inputs.");
+    if (!IsRmsNormSupportedDType(input_spec.dtype)) {
+        return Status::InvalidArgument(
+                "RmsNorm input dtype not supported: " + ToString(input_spec.dtype));
+    }
+    if (!IsRmsNormSupportedDType(weight_spec.dtype)) {
+        return Status::InvalidArgument(
+                "RmsNorm weight dtype not supported: " + ToString(weight_spec.dtype));
     }
 
     if (!HasRank(input_spec.shape, 2)) {
@@ -28,6 +39,11 @@ StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<c
 
     if (!HasRank(weight_spec.shape, 1)) {
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
+    }
+
+    const ShapeSymbol& seq_len = input_spec.shape[0];
+    if (!IsPositiveIfStatic(seq_len)) {
+        return Status::InvalidArgument("RmsNorm seq_len must be positive");
     }
 
     const ShapeSymbol& hidden_size = input_spec.shape[1];

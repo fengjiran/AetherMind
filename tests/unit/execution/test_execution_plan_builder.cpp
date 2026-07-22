@@ -345,8 +345,8 @@ TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
     // Untrusted path must reject wrong dtype via AnalyzeOperator re-validation.
-    // RmsNorm only accepts Float32; supplying Float16 for input[0] must fail
-    // at the semantic authority layer (not at kernel resolution or Prepare).
+    // RmsNorm only accepts floating-point dtypes; supplying Int32 for input[0]
+    // must fail at the semantic authority layer (not at kernel resolution or Prepare).
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
@@ -356,13 +356,13 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
     node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {
-            TensorSpec{.dtype = DataType::Float(16), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Int(32), .shape = act_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
     // Caller-provided output_specs/runtime_checks would be mismatched anyway;
     // the dtype check fires first inside AnalyzeOperator.
     node.output_specs = {
-            TensorSpec{.dtype = DataType::Float(16), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Int(32), .shape = act_shape},
     };
     node.runtime_checks = {};
 
@@ -373,7 +373,8 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
     // The rejection must come from AnalyzeRmsNorm's dtype check, not from
     // an output-spec mismatch or kernel resolution failure.
-    EXPECT_NE(plan.status().message().find("float32"), std::string::npos);
+    EXPECT_NE(plan.status().message().find("RmsNorm"), std::string::npos);
+    EXPECT_NE(plan.status().message().find("dtype"), std::string::npos);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {

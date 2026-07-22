@@ -386,10 +386,10 @@ ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
 }
 
 // Builds a structurally-valid but semantically-invalid graph: a RmsNorm node
-// whose activation input carries Float16 (AnalyzeRmsNorm requires Float32).
+// whose activation input carries Int32 (AnalyzeRmsNorm only accepts floating-point).
 ModelGraph BuildGraphWithWrongInputDtype() {
     return BuildRmsNormGraphWithSpecs(
-            Spec(DataType::Float(16), {4, 8}),
+            Spec(DataType::Int(32), {4, 8}),
             Spec(DataType::Float32(), {8}),
             Spec(DataType::Float32(), {4, 8}));
 }
@@ -406,7 +406,7 @@ ModelGraph BuildGraphWithForgedOutputSpec() {
 
 
 TEST(GraphPassManager, RejectsWrongInputDtypeBeforeAnyPass) {
-    // Bad dtype: AnalyzeRmsNorm requires Float32 activation input; the graph
+    // Bad dtype: AnalyzeRmsNorm only accepts floating-point; the graph
     // carries Float16. The precondition check at the start of Run() must
     // reject this BEFORE the sentinel CountingPass is invoked.
     const ModelGraph graph = BuildGraphWithWrongInputDtype();

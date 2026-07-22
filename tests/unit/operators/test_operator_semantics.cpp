@@ -169,6 +169,49 @@ TEST(OperatorSemanticsAnalyze, RmsNormWrongRank) {
     EXPECT_FALSE(AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
 }
 
+TEST(OperatorSemanticsAnalyze, RmsNormFloat16Ok) {
+    auto input = MakeSpec(DataType::Float(16), {4, 256});
+    auto weight = MakeSpec(DataType::Float(16), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
+}
+
+TEST(OperatorSemanticsAnalyze, RmsNormBFloat16Ok) {
+    auto input = MakeSpec(DataType::BFloat(16), {4, 256});
+    auto weight = MakeSpec(DataType::BFloat(16), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
+}
+
+TEST(OperatorSemanticsAnalyze, RmsNormFloat8Ok) {
+    auto input = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
+    auto weight = MakeSpec(DataType::Float8E4M3FN(), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float8E4M3FN());
+}
+
+TEST(OperatorSemanticsAnalyze, RmsNormMixedDTypeOk) {
+    auto input = MakeSpec(DataType::Float(16), {4, 256});
+    auto weight = MakeSpec(DataType::BFloat(16), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
+}
+
+TEST(OperatorSemanticsAnalyze, RmsNormWrongDtype) {
+    auto input = MakeSpec(DataType::Int(32), {4, 256});
+    auto weight = MakeSpec(DataType::Float32(), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    EXPECT_FALSE(AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
+}
+
 TEST(OperatorSemanticsAnalyze, EmbeddingInt32Ok) {
     auto tokens = MakeSpec(DataType::Int(32), {10});
     auto weight = MakeSpec(DataType::Float32(), {32000, 256});

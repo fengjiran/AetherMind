@@ -811,10 +811,10 @@ ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
 }
 
 // Builds a structurally-valid but semantically-invalid graph: a RmsNorm node
-// whose activation input carries Float16 (AnalyzeRmsNorm requires Float32).
+// whose activation input carries Int32 (AnalyzeRmsNorm only accepts floating-point).
 ModelGraph BuildGraphWithWrongInputDtype() {
     return BuildRmsNormGraphWithSpecs(
-            Spec(DataType::Float(16), {4, 8}),
+            Spec(DataType::Int(32), {4, 8}),
             Spec(DataType::Float32(), {8}),
             Spec(DataType::Float32(), {4, 8}));
 }
@@ -833,7 +833,7 @@ ModelGraph BuildGraphWithForgedOutputSpec() {
 // ---- Task 5: precondition verification at compilation entry ----------------
 
 TEST(OptimizeModelGraph, RejectsWrongInputDtypeBeforeOptimization) {
-    // Bad dtype: AnalyzeRmsNorm requires Float32 activation input; the graph
+    // Bad dtype: AnalyzeRmsNorm only accepts floating-point; the graph
     // carries Float16. OptimizeModelGraph must propagate the semantic error
     // from GraphPassManager::Run precondition, without fallback to unoptimized
     // compilation.

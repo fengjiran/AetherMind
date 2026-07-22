@@ -265,11 +265,24 @@ public:
     AM_NODISCARD const std::string& message() & noexcept {
         return message_;
     }
+
     AM_NODISCARD const std::string& message() const& noexcept {
         return message_;
     }
-    AM_NODISCARD const std::string& message() const&& noexcept = delete;
+
+    // Deleted to prevent exporting a reference into a temporary. Calling
+    // message() on a rvalue Status would bind the returned const std::string&
+    // to the temporary's internal member, producing a dangling reference once
+    // the temporary is destroyed at the end of the full expression.
+    //
+    // Both const&& and non-const && are rejected:
+    //  - A const rvalue cannot be moved from, so any reference returned from
+    //    it would dangle (const&& would bind to const& if not deleted).
+    //  - A non-const rvalue should be consumed via move semantics rather than
+    //    borrowed; callers materializing the Status into an lvalue first can
+    //    still use the lvalue overloads above.
     AM_NODISCARD const std::string& message() && noexcept = delete;
+    AM_NODISCARD const std::string& message() const&& noexcept = delete;
 
     /// Returns a new Status with a different message, preserving the code.
     ///
@@ -521,7 +534,7 @@ public:
     AM_NODISCARD const T* get_if_ok() const&& noexcept = delete;
     AM_NODISCARD T* get_if_ok() && noexcept = delete;
 
-    const Status& status() const& noexcept {
+    AM_NODISCARD const Status& status() const& noexcept {
         // Shared static OK instance avoids per-call construction while keeping
         // the return-by-reference contract. Safe because Status::Ok() is
         // thread-compatible and immutable.
@@ -532,7 +545,7 @@ public:
         return std::get<Status>(storage_);
     }
 
-    const Status& status() const&& noexcept = delete;
+    AM_NODISCARD const Status& status() const&& noexcept = delete;
 
     Status status() && noexcept {
         if (ok()) {
@@ -634,14 +647,34 @@ private:
     std::variant<T, Status> storage_;
 };
 
+// Status is nothrow move-constructible and move-assignable. These are
+// prerequisites for the StatusOr move-contract tracking below — if Status
+// ever loses nothrow move semantics, StatusOr<T>'s move noexcept would no
+// longer track T alone.
+static_assert(std::is_nothrow_move_constructible_v<Status>,
+              "Status must be nothrow move-constructible (StatusOr move-contract prerequisite)");
+static_assert(std::is_nothrow_move_assignable_v<Status>,
+              "Status must be nothrow move-assignable (StatusOr move-contract prerequisite)");
+
+// Compile-time contract: StatusOr<T>'s move-ctor noexcept tracks T's move-ctor
+// noexcept (via std::variant). Mirrors kStatusOrMoveAssignTracksT below.
+template<typename T>
+constexpr bool kStatusOrMoveCtorTracksT =
+        std::is_nothrow_move_constructible_v<StatusOr<T>> ==
+        std::is_nothrow_move_constructible_v<T>;
+static_assert(kStatusOrMoveCtorTracksT<int>,
+              "StatusOr move-ctor noexcept must track T's move-ctor noexcept");
+static_assert(kStatusOrMoveCtorTracksT<std::string>,
+              "StatusOr move-ctor noexcept must track T's move-ctor noexcept");
+
 // Compile-time contract: StatusOr<T>'s move-assignment noexcept tracks
 // T's move-assignment noexcept (via std::variant). The contract must not be
 // stronger than what T provides, or a throwing T move-assignment would call
 // std::terminate() instead of propagating the exception.
 template<typename T>
 constexpr bool kStatusOrMoveAssignTracksT =
-        noexcept(std::declval<StatusOr<T>&>() = std::declval<StatusOr<T>&&>()) ==
-        noexcept(std::declval<T&>() = std::declval<T&&>());
+        std::is_nothrow_assignable_v<StatusOr<T>&, StatusOr<T>&&> ==
+        std::is_nothrow_assignable_v<T&, T&&>;
 static_assert(kStatusOrMoveAssignTracksT<int>,
               "StatusOr move-assign noexcept must track T's move-assignment noexcept");
 static_assert(kStatusOrMoveAssignTracksT<std::string>,

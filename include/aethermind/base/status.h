@@ -398,9 +398,6 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
             }                                                                 \
     } while (false)
 
-#define AM_ASSIGN_OR_RETURN_CONCAT_(a, b) a##b
-#define AM_ASSIGN_OR_RETURN_CONCAT(a, b) AM_ASSIGN_OR_RETURN_CONCAT_(a, b)
-
 /// Unwraps a StatusOr<T> into lhs, propagating the error on failure.
 ///
 /// Evaluates expr exactly once. If the result is not OK, returns its status
@@ -417,9 +414,9 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 ///     AM_ASSIGN_OR_RETURN(auto value, ParseInt(s));
 ///     return static_cast<size_t>(value);
 ///   }
-#define AM_ASSIGN_OR_RETURN(lhs, expr)                                     \
-    AM_ASSIGN_OR_RETURN_IMPL(                                              \
-            AM_ASSIGN_OR_RETURN_CONCAT(am_assign_or_result_, __COUNTER__), \
+#define AM_ASSIGN_OR_RETURN(lhs, expr)                        \
+    AM_ASSIGN_OR_RETURN_IMPL(                                 \
+            AM_STR_CONCAT(am_assign_or_result_, __COUNTER__), \
             lhs, expr)
 
 #define AM_ASSIGN_OR_RETURN_IMPL(result_var, lhs, expr) \

@@ -376,9 +376,9 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
         }
 
         if (!PayloadMatchesPort(values_[inputs[i].index].payload, schema.input_ports[i].kind)) {
-            return Status::InvalidArgument(
-                    get_msg("input[" + std::to_string(i) + "] " +
-                            schema.input_ports[i].name + " payload kind mismatch"));
+            return Status::InvalidArgument(get_msg(
+                    "input[" + std::to_string(i) + "] " +
+                    schema.input_ports[i].name + " payload kind mismatch"));
         }
     }
 

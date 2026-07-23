@@ -4,6 +4,7 @@
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/linear_op.h"
 #include "aethermind/operators/operator_context.h"
+#include "aethermind/operators/operator_inference.h"
 
 #include <gtest/gtest.h>
 
@@ -23,7 +24,7 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-// ===== ValidateParams / CheckInputSpecs / InferOutputShapes tests =====
+// ===== Validation / Inference tests =====
 
 TEST(LinearOp, ValidatesStaticInputContract) {
     const LinearOp op{LinearOp::Params{}};
@@ -32,8 +33,7 @@ TEST(LinearOp, ValidatesStaticInputContract) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
     };
 
-    EXPECT_TRUE(op.ValidateParams().ok());
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status().ok());
 }
 
 TEST(LinearOp, AcceptsRank1Input) {
@@ -43,7 +43,7 @@ TEST(LinearOp, AcceptsRank1Input) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
     };
 
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status().ok());
 }
 
 TEST(LinearOp, RejectsRankZeroInput) {
@@ -53,7 +53,7 @@ TEST(LinearOp, RejectsRankZeroInput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -66,7 +66,7 @@ TEST(LinearOp, RejectsRankZeroWeight) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -79,7 +79,7 @@ TEST(LinearOp, RejectsRank3Input) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -92,7 +92,7 @@ TEST(LinearOp, RejectsWeightRank1) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -105,7 +105,7 @@ TEST(LinearOp, RejectsStaticKMismatch) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 16})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -118,7 +118,7 @@ TEST(LinearOp, InfersOutputShapeFromWeight) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({11008, 4096})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -136,7 +136,7 @@ TEST(LinearOp, InfersRank1OutputShape) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({11008, 4096})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -158,7 +158,7 @@ TEST(LinearOp, EmitsRuntimeCheckForDistinctSymbolicK) {
                        .shape = SymbolicShape(std::vector<ShapeSymbol>{out_features, weight_k})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     ASSERT_EQ(inference->runtime_checks.size(), 1U);
@@ -185,7 +185,7 @@ TEST(LinearOp, AcceptsSharedSymbolicK) {
                        .shape = SymbolicShape(std::vector<ShapeSymbol>{out_features, k})},
     };
 
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status().ok());
 }
 
 // ===== Prepare/Run tests =====

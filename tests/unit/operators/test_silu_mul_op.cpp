@@ -2,6 +2,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_context.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 #include "aethermind/operators/silu_mul_op.h"
 
@@ -17,11 +18,15 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-// --- Validation / CheckInputSpecs ---
+// --- Validation ---
 
-TEST(SiluMulOp, ValidateParamsReturnsOk) {
+TEST(SiluMulOp, InferOperatorAcceptsValidParams) {
     const SiluMulOp op{SiluMulOp::Params{}};
-    EXPECT_TRUE(op.ValidateParams().ok());
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(SiluMulOp, RejectsWrongArity) {
@@ -31,7 +36,7 @@ TEST(SiluMulOp, RejectsWrongArity) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(std::span(inputs));
+    const Status status = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -42,7 +47,7 @@ TEST(SiluMulOp, RejectsNonFloat32Input) {
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -53,7 +58,7 @@ TEST(SiluMulOp, RejectsStaticIncompatibleBroadcast) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -64,7 +69,7 @@ TEST(SiluMulOp, RejectsUnrankedInput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape{}},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -75,7 +80,7 @@ TEST(SiluMulOp, AcceptsSameShape) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(SiluMulOp, AcceptsBroadcastShape) {
@@ -84,7 +89,7 @@ TEST(SiluMulOp, AcceptsBroadcastShape) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 1})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(SiluMulOp, AcceptsDifferentRankBroadcast) {
@@ -93,7 +98,7 @@ TEST(SiluMulOp, AcceptsDifferentRankBroadcast) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(SiluMulOp, AcceptsRankZeroInput) {
@@ -102,7 +107,7 @@ TEST(SiluMulOp, AcceptsRankZeroInput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(SiluMulOp, AcceptsZeroDimension) {
@@ -111,18 +116,18 @@ TEST(SiluMulOp, AcceptsZeroDimension) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs).status().ok());
 }
 
-// --- InferOutputShapes ---
+// --- Inference ---
 
-TEST(SiluMulOp, InferOutputShapesRejectsNonFloat32) {
+TEST(SiluMulOp, InferOperatorRejectsNonFloat32) {
     const SiluMulOp op{SiluMulOp::Params{}};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs);
     EXPECT_FALSE(inference.ok());
     EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
 }
@@ -133,7 +138,7 @@ TEST(SiluMulOp, InfersSameShapeOutput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -149,7 +154,7 @@ TEST(SiluMulOp, InfersBroadcastOutputShape) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 1})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -164,7 +169,7 @@ TEST(SiluMulOp, InfersRankZeroOutput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -177,7 +182,7 @@ TEST(SiluMulOp, InfersDifferentRankBroadcast) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -196,7 +201,7 @@ TEST(SiluMulOp, EmitsDeferredDimBroadcastableConstraints) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{up_dim0})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluMulOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     ASSERT_EQ(inference->runtime_checks.size(), 1U);
@@ -445,4 +450,4 @@ TEST(SiluMulOp, CreateDefaultParamsFromRegistry) {
     EXPECT_TRUE(std::holds_alternative<SiluMulOp::Params>(params.value()));
 }
 
-}  // namespace
+}// namespace

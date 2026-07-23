@@ -2,6 +2,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_context.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 #include "aethermind/operators/silu_op.h"
 
@@ -17,11 +18,14 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-// --- Validation / CheckInputSpecs ---
+// --- Validation ---
 
-TEST(SiluOp, ValidateParamsReturnsOk) {
+TEST(SiluOp, InferOperatorAcceptsValidParams) {
     const SiluOp op{SiluOp::Params{}};
-    EXPECT_TRUE(op.ValidateParams().ok());
+    const TensorSpec inputs[1] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status().ok());
 }
 
 TEST(SiluOp, RejectsWrongArity) {
@@ -30,7 +34,7 @@ TEST(SiluOp, RejectsWrongArity) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(std::span(inputs));
+    const Status status = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -40,7 +44,7 @@ TEST(SiluOp, RejectsNonFloat32Input) {
     const TensorSpec inputs[1] = {
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -50,7 +54,7 @@ TEST(SiluOp, AcceptsArbitraryShape) {
     const TensorSpec inputs[1] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8, 16})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status().ok());
 }
 
 TEST(SiluOp, AcceptsRankZeroInput) {
@@ -58,7 +62,7 @@ TEST(SiluOp, AcceptsRankZeroInput) {
     const TensorSpec inputs[1] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status().ok());
 }
 
 TEST(SiluOp, AcceptsZeroDimension) {
@@ -66,28 +70,28 @@ TEST(SiluOp, AcceptsZeroDimension) {
     const TensorSpec inputs[1] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status().ok());
 }
 
-// --- InferOutputShapes ---
+// --- Inference ---
 
-TEST(SiluOp, InferOutputShapesRejectsWrongArity) {
+TEST(SiluOp, InferOperatorRejectsWrongArity) {
     const SiluOp op{SiluOp::Params{}};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
     EXPECT_FALSE(inference.ok());
     EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(SiluOp, InferOutputShapesRejectsNonFloat32) {
+TEST(SiluOp, InferOperatorRejectsNonFloat32) {
     const SiluOp op{SiluOp::Params{}};
     const TensorSpec inputs[1] = {
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
     EXPECT_FALSE(inference.ok());
     EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
 }
@@ -97,7 +101,7 @@ TEST(SiluOp, InfersIdenticalOutputShape) {
     const TensorSpec inputs[1] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -112,7 +116,7 @@ TEST(SiluOp, InfersRankZeroOutput) {
     const TensorSpec inputs[1] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -127,7 +131,7 @@ TEST(SiluOp, InfersSymbolicOutputShape) {
             TensorSpec{.dtype = DataType::Float32(),
                        .shape = SymbolicShape(std::vector<ShapeSymbol>{dim0, dim1})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -373,4 +377,4 @@ TEST(SiluOp, CreateDefaultParamsFromRegistry) {
     EXPECT_TRUE(std::holds_alternative<SiluOp::Params>(params.value()));
 }
 
-}  // namespace
+}// namespace

@@ -1,10 +1,11 @@
 #include "aethermind/backend/backend.h"
-#include "backend/cpu/kernels/elementwise_mul/elementwise_mul_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/elementwise_mul_op.h"
 #include "aethermind/operators/operator_context.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
+#include "backend/cpu/kernels/elementwise_mul/elementwise_mul_internal.h"
 
 #include <cstring>
 #include <gtest/gtest.h>
@@ -19,11 +20,15 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-// --- Validation / CheckInputSpecs ---
+// --- Validation ---
 
-TEST(ElementwiseMulOp, ValidateParamsReturnsOk) {
+TEST(ElementwiseMulOp, InferOperatorAcceptsValidParams) {
     const ElementwiseMulOp op{ElementwiseMulOp::Params{}};
-    EXPECT_TRUE(op.ValidateParams().ok());
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(ElementwiseMulOp, RejectsWrongArity) {
@@ -33,7 +38,7 @@ TEST(ElementwiseMulOp, RejectsWrongArity) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(std::span(inputs));
+    const Status status = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -44,7 +49,7 @@ TEST(ElementwiseMulOp, RejectsNonFloat32Input) {
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -55,7 +60,7 @@ TEST(ElementwiseMulOp, RejectsStaticIncompatibleBroadcast) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -66,7 +71,7 @@ TEST(ElementwiseMulOp, RejectsUnrankedInput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape{}},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -77,7 +82,7 @@ TEST(ElementwiseMulOp, AcceptsSameShape) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(ElementwiseMulOp, AcceptsBroadcastShape) {
@@ -86,7 +91,7 @@ TEST(ElementwiseMulOp, AcceptsBroadcastShape) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 1})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(ElementwiseMulOp, AcceptsDifferentRankBroadcast) {
@@ -95,7 +100,7 @@ TEST(ElementwiseMulOp, AcceptsDifferentRankBroadcast) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(ElementwiseMulOp, AcceptsRankZeroInput) {
@@ -104,7 +109,7 @@ TEST(ElementwiseMulOp, AcceptsRankZeroInput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status().ok());
 }
 
 TEST(ElementwiseMulOp, AcceptsZeroDimension) {
@@ -113,18 +118,18 @@ TEST(ElementwiseMulOp, AcceptsZeroDimension) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs).status().ok());
 }
 
-// --- InferOutputShapes ---
+// --- Inference ---
 
-TEST(ElementwiseMulOp, InferOutputShapesRejectsNonFloat32) {
+TEST(ElementwiseMulOp, InferOperatorRejectsNonFloat32) {
     const ElementwiseMulOp op{ElementwiseMulOp::Params{}};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs);
     EXPECT_FALSE(inference.ok());
     EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
 }
@@ -135,7 +140,7 @@ TEST(ElementwiseMulOp, InfersSameShapeOutput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok());
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -151,7 +156,7 @@ TEST(ElementwiseMulOp, InfersBroadcastOutputShape) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 1})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok());
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -166,7 +171,7 @@ TEST(ElementwiseMulOp, InfersRankZeroOutput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok());
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -179,7 +184,7 @@ TEST(ElementwiseMulOp, InfersDifferentRankBroadcast) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs);
     ASSERT_TRUE(inference.ok());
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -198,7 +203,7 @@ TEST(ElementwiseMulOp, EmitsDeferredDimBroadcastableConstraints) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{rhs_dim0})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{ElementwiseMulOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     ASSERT_EQ(inference->runtime_checks.size(), 1U);
@@ -267,8 +272,8 @@ public:
 };
 
 Status BuildStubElementwiseMulParams(std::span<const TensorView> inputs,
-                                          std::span<const MutableTensorView> outputs,
-                                          void* params_buffer) noexcept {
+                                     std::span<const MutableTensorView> outputs,
+                                     void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("ElementwiseMul requires 2 inputs and 1 output");
     }
@@ -480,4 +485,4 @@ TEST(ElementwiseMulOp, CreateDefaultParamsFromRegistry) {
     EXPECT_TRUE(std::holds_alternative<ElementwiseMulOp::Params>(params.value()));
 }
 
-}  // namespace
+}// namespace

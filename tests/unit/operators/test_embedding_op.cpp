@@ -4,14 +4,15 @@
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/embedding_op.h"
 #include "aethermind/operators/operator_context.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 
 #include <gtest/gtest.h>
 
+#include "backend/cpu/kernels/embedding/embedding_internal.h"
 #include <array>
 #include <cstdint>
 #include <new>
-#include "backend/cpu/kernels/embedding/embedding_internal.h"
 
 namespace {
 using namespace aethermind;
@@ -28,8 +29,7 @@ TEST(EmbeddingOp, ValidatesInputContract) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
     };
 
-    EXPECT_TRUE(op.ValidateParams().ok());
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status().ok());
 }
 
 TEST(EmbeddingOp, InfersOutputShapeFromTokenIdsAndWeight) {
@@ -39,7 +39,7 @@ TEST(EmbeddingOp, InfersOutputShapeFromTokenIdsAndWeight) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -57,7 +57,7 @@ TEST(EmbeddingOp, RejectsRankZeroTokenIds) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -70,7 +70,7 @@ TEST(EmbeddingOp, RejectsRankZeroWeight) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -83,8 +83,7 @@ TEST(EmbeddingOp, AcceptsUint32TokenIds) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
     };
 
-    EXPECT_TRUE(op.ValidateParams().ok());
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status().ok());
 }
 
 TEST(EmbeddingOp, InfersOutputShapeWithUint32Tokens) {
@@ -94,7 +93,7 @@ TEST(EmbeddingOp, InfersOutputShapeWithUint32Tokens) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -114,7 +113,7 @@ TEST(EmbeddingOp, PreservesSymbolicTokenAndHiddenDims) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create(), hidden_size})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -176,8 +175,8 @@ public:
 };
 
 Status BuildStubEmbeddingParams(std::span<const TensorView> inputs,
-                                    std::span<const MutableTensorView> outputs,
-                                    void* params_buffer) noexcept {
+                                std::span<const MutableTensorView> outputs,
+                                void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("Embedding requires 2 inputs and 1 output");
     }
@@ -378,4 +377,4 @@ TEST(EmbeddingOp, RunInvokesKernelAndReturnsOk) {
     EXPECT_NE(g_stub_state.kernel_params, nullptr);
 }
 
-}  // namespace
+}// namespace

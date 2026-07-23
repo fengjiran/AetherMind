@@ -812,7 +812,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
     // falls back to the FunctionOperator raw-kernel path. The untrusted path
     // still validates caller metadata via InferOperator (no no-op bypass).
     // Asserting step.output_specs is non-empty proves InferOperator was
-    // called rather than FunctionOperator::InferOutputShapes (which returns
+    // called rather than FunctionOperator (which returns
     // an empty InferenceResult).
     // Use SoftmaxTestBackend so the Softmax kernel can be resolved (CpuBackend
     // does not register a Softmax kernel).
@@ -851,7 +851,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
     ASSERT_EQ(plan->size(), 1U);
     const auto& step = plan->steps().front();
     // output_specs is non-empty: InferSoftmax echoed the input spec.
-    // FunctionOperator::InferOutputShapes would have returned empty outputs.
+    // FunctionOperator would have returned empty outputs.
     ASSERT_EQ(step.output_specs.size(), 1U);
     EXPECT_EQ(step.output_specs[0], analyzed->outputs[0]);
     EXPECT_EQ(step.runtime_checks, analyzed->runtime_checks);

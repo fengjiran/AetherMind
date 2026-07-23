@@ -3,17 +3,18 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_context.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/rmsnorm_op.h"
 
 #include <gtest/gtest.h>
 
+#include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <variant>
 #include <new>
-#include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
+#include <variant>
 
 namespace {
 using namespace aethermind;
@@ -24,14 +25,13 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
 }
 
 TEST(RmsNormOp, ValidatesStaticInputContract) {
-    const RmsNormOp op{RmsNormOp::Params{}};
+    const RmsNormOp op{RmsNormOp::Params{1e-5f}};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
     };
 
-    EXPECT_TRUE(op.ValidateParams().ok());
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{RmsNormOp::Params{1e-5f}}, inputs).status().ok());
 }
 
 TEST(RmsNormOp, PreservesInputShapeAsOutputShape) {
@@ -41,7 +41,7 @@ TEST(RmsNormOp, PreservesInputShapeAsOutputShape) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -62,7 +62,7 @@ TEST(RmsNormOp, EmitsRuntimeCheckForDistinctSymbolicHiddenDimension) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_hidden})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     ASSERT_EQ(inference->runtime_checks.size(), 1U);
@@ -86,7 +86,7 @@ TEST(RmsNormOp, AcceptsSharedSymbolicHiddenDimension) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{hidden_size})},
     };
 
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status().ok());
 }
 
 TEST(RmsNormOp, RejectsStaticHiddenMismatch) {
@@ -96,7 +96,7 @@ TEST(RmsNormOp, RejectsStaticHiddenMismatch) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -109,7 +109,7 @@ TEST(RmsNormOp, RejectsRankZeroInput) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -122,7 +122,7 @@ TEST(RmsNormOp, RejectsRankZeroWeight) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
 
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -171,8 +171,8 @@ public:
 };
 
 Status BuildStubRmsNormParams(std::span<const TensorView> inputs,
-                                 std::span<const MutableTensorView> outputs,
-                                 void* params_buffer) noexcept {
+                              std::span<const MutableTensorView> outputs,
+                              void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("RmsNorm requires 2 inputs and 1 output");
     }
@@ -379,4 +379,4 @@ TEST(RmsNormOp, RunInvokesKernelAndReturnsOk) {
     ASSERT_EQ(g_stub_state.attrs.size(), sizeof(float));
 }
 
-}  // namespace
+}// namespace

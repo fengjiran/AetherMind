@@ -25,85 +25,185 @@ TensorSpec MakeSpec(DataType dtype, const std::vector<int64_t>& dims) {
     return {dtype, SymbolicShape(symbols)};
 }
 
+// --- Parameter validation through InferOperator ---
+
 TEST(OperatorSemanticsValidate, AddValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kAdd, AddParams{}).ok());
+    auto lhs = MakeSpec(DataType::Float32(), {2, 3});
+    auto rhs = MakeSpec(DataType::Float32(), {2, 3});
+    std::vector<TensorSpec> inputs = {lhs, rhs};
+    EXPECT_TRUE(InferOperator(OpType::kAdd, AddParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, RmsNormValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kRmsNorm, RmsNormParams{1e-5f}).ok());
+    auto input = MakeSpec(DataType::Float32(), {4, 256});
+    auto weight = MakeSpec(DataType::Float32(), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    EXPECT_TRUE(InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, RmsNormInvalidEps) {
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kRmsNorm, RmsNormParams{0.0f}).ok());
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kRmsNorm, RmsNormParams{-1.0f}).ok());
+    auto input = MakeSpec(DataType::Float32(), {4, 256});
+    auto weight = MakeSpec(DataType::Float32(), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    EXPECT_FALSE(InferOperator(OpType::kRmsNorm, RmsNormParams{0.0f}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRmsNorm, RmsNormParams{-1.0f}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, RmsNormNaN) {
     RmsNormParams p;
     p.eps = std::numeric_limits<float>::quiet_NaN();
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kRmsNorm, p).ok());
+    auto input = MakeSpec(DataType::Float32(), {4, 256});
+    auto weight = MakeSpec(DataType::Float32(), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    EXPECT_FALSE(InferOperator(OpType::kRmsNorm, p, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, RoPEValidParams) {
     RoPEParams p{64, 32, 8, 2048};
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kRoPE, p).ok());
+    auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
+    auto k = MakeSpec(DataType::Float32(), {1, 128, 8 * 64});
+    auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
+    std::vector<TensorSpec> inputs = {q, k, pos};
+    EXPECT_TRUE(InferOperator(OpType::kRoPE, p, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, RoPEInvalidParams) {
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kRoPE, RoPEParams{0, 32, 8, 2048}).ok());
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kRoPE, RoPEParams{64, 0, 8, 2048}).ok());
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kRoPE, RoPEParams{64, 32, 0, 2048}).ok());
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kRoPE, RoPEParams{64, 32, 8, 0}).ok());
+    auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
+    auto k = MakeSpec(DataType::Float32(), {1, 128, 8 * 64});
+    auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
+    std::vector<TensorSpec> inputs = {q, k, pos};
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, RoPEParams{0, 32, 8, 2048}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, RoPEParams{64, 0, 8, 2048}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, RoPEParams{64, 32, 0, 2048}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, RoPEParams{64, 32, 8, 0}, inputs).ok());
 }
 
-TEST(OperatorSemanticsValidate, WrongVariantType) {
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kAdd, RmsNormParams{}).ok());
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kRmsNorm, AddParams{}).ok());
+TEST(OperatorSemanticsValidate, RoPEInvalidTheta) {
+    auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
+    auto k = MakeSpec(DataType::Float32(), {1, 128, 8 * 64});
+    auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
+    std::vector<TensorSpec> inputs = {q, k, pos};
+    RoPEParams p{64, 32, 8, 2048};
+    p.theta = 0.0;
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, inputs).ok());
+    p.theta = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, inputs).ok());
+}
+
+// Wrong variant must be rejected BEFORE input arity checks (parameter-before-input precedence).
+TEST(OperatorSemanticsValidate, WrongVariantPrecedesInputValidationForEveryOp) {
+    struct TestCase {
+        OpType op_type;
+        OpParams wrong_params;
+        const char* expected_message;
+    };
+    const TestCase cases[] = {
+            {OpType::kEmbedding, AddParams{}, "Embedding node requires EmbeddingParams"},
+            {OpType::kRmsNorm, AddParams{}, "RmsNorm node requires RmsNormParams"},
+            {OpType::kLinear, AddParams{}, "Linear node requires LinearParams"},
+            {OpType::kRoPE, AddParams{}, "RoPE node requires RoPEParams"},
+            {OpType::kMatMul, AddParams{}, "MatMul node requires MatMulParams"},
+            {OpType::kSoftmax, AddParams{}, "Softmax node requires SoftmaxParams"},
+            {OpType::kAdd, RmsNormParams{}, "Add node requires AddParams"},
+            {OpType::kSiluMul, AddParams{}, "SiluMul node requires SiluMulParams"},
+            {OpType::kKVCacheUpdate, AddParams{}, "KVCacheUpdate node requires KVCacheUpdateParams"},
+            {OpType::kAttention, AddParams{}, "Attention node requires AttentionParams"},
+            {OpType::kArgmax, AddParams{}, "Argmax node requires ArgmaxParams"},
+            {OpType::kSilu, AddParams{}, "Silu node requires SiluParams"},
+            {OpType::kElementwiseMul, AddParams{}, "ElementwiseMul node requires ElementwiseMulParams"},
+    };
+
+    const std::vector<TensorSpec> empty_inputs;
+    for (const auto& test_case: cases) {
+        SCOPED_TRACE(ToString(test_case.op_type));
+        const auto result = InferOperator(
+                test_case.op_type, test_case.wrong_params, empty_inputs);
+        ASSERT_FALSE(result.ok());
+        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(result.status().message(), test_case.expected_message);
+    }
 }
 
 TEST(OperatorSemanticsValidate, UnknownOpType) {
-    EXPECT_FALSE(ValidateOperatorParams(OpType::kUnknown, AddParams{}).ok());
+    auto input = MakeSpec(DataType::Float32(), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    const auto result = InferOperator(OpType::kUnknown, AddParams{}, inputs);
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().message(),
+              "Unknown op type cannot have validated graph params");
 }
 
 TEST(OperatorSemanticsValidate, EmbeddingValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kEmbedding, EmbeddingParams{}).ok());
+    auto tokens = MakeSpec(DataType::Int(32), {10});
+    auto weight = MakeSpec(DataType::Float32(), {32000, 256});
+    std::vector<TensorSpec> inputs = {tokens, weight};
+    EXPECT_TRUE(InferOperator(OpType::kEmbedding, EmbeddingParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, LinearValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kLinear, LinearParams{}).ok());
+    auto input = MakeSpec(DataType::Float32(), {4, 256});
+    auto weight = MakeSpec(DataType::Float32(), {512, 256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    EXPECT_TRUE(InferOperator(OpType::kLinear, LinearParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, MatMulValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kMatMul, MatMulParams{}).ok());
+    auto lhs = MakeSpec(DataType::Float32(), {2, 3});
+    auto rhs = MakeSpec(DataType::Float32(), {3, 4});
+    std::vector<TensorSpec> inputs = {lhs, rhs};
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, MatMulParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, SoftmaxValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kSoftmax, SoftmaxParams{}).ok());
+    auto input = MakeSpec(DataType::Float32(), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    EXPECT_TRUE(InferOperator(OpType::kSoftmax, SoftmaxParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, SiluValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kSilu, SiluParams{}).ok());
+    auto input = MakeSpec(DataType::Float32(), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    EXPECT_TRUE(InferOperator(OpType::kSilu, SiluParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, SiluMulValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kSiluMul, SiluMulParams{}).ok());
+    auto gate = MakeSpec(DataType::Float32(), {4, 256});
+    auto up = MakeSpec(DataType::Float32(), {4, 256});
+    std::vector<TensorSpec> inputs = {gate, up};
+    EXPECT_TRUE(InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, ElementwiseMulValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kElementwiseMul, ElementwiseMulParams{}).ok());
+    auto lhs = MakeSpec(DataType::Float32(), {4, 256});
+    auto rhs = MakeSpec(DataType::Float32(), {4, 256});
+    std::vector<TensorSpec> inputs = {lhs, rhs};
+    EXPECT_TRUE(InferOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, KVCacheUpdateValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kKVCacheUpdate, KVCacheUpdateParams{}).ok());
+    auto k = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
+    auto v = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
+    auto kCacheIn = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
+    auto vCacheIn = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
+    std::vector<TensorSpec> inputs = {k, v, kCacheIn, vCacheIn};
+    EXPECT_TRUE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, AttentionValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kAttention, AttentionParams{32, 8, 64}).ok());
+    auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
+    auto kCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
+    auto vCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
+    std::vector<TensorSpec> inputs = {q, kCache, vCache};
+    EXPECT_TRUE(InferOperator(OpType::kAttention, AttentionParams{32, 8, 64}, inputs).ok());
 }
 
 TEST(OperatorSemanticsValidate, ArgmaxValidParams) {
-    EXPECT_TRUE(ValidateOperatorParams(OpType::kArgmax, ArgmaxParams{}).ok());
+    auto input = MakeSpec(DataType::Float32(), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    EXPECT_TRUE(InferOperator(OpType::kArgmax, ArgmaxParams{}, inputs).ok());
 }
+
+// --- Inference tests (existing, unchanged except validation is now embedded) ---
 
 TEST(OperatorSemanticsInfer, AddFloat32Ok) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});

@@ -15,28 +15,6 @@ public:
         return OpType::kSiluMul;
     }
 
-    AM_NODISCARD Status ValidateParams() const override {
-        if (params_.eps <= 0.0F) {
-            return Status::InvalidArgument("RegistryTestOperator eps must be positive");
-        }
-        return Status::Ok();
-    }
-
-    AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec> inputs) const override {
-        if (!inputs.empty()) {
-            return Status::InvalidArgument("RegistryTestOperator expects no inputs");
-        }
-        return Status::Ok();
-    }
-
-    AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
-            std::span<const TensorSpec> inputs) const override {
-        if (!inputs.empty()) {
-            return Status::InvalidArgument("RegistryTestOperator expects no shape inputs");
-        }
-        return InferenceResult{};
-    }
-
     AM_NODISCARD Status Prepare(OperatorContext& ctx) override {
         if (ctx.backend == nullptr) {
             return Status::InvalidArgument("RegistryTestOperator backend is null");
@@ -73,7 +51,6 @@ TEST(OperatorRegistry, CreateFromStaticallyRegisteredOperator) {
     ASSERT_NE(op.value(), nullptr);
     EXPECT_EQ(op.value()->Type(), OpType::kSiluMul);
     EXPECT_STREQ(op.value()->Name(), ToString(OpType::kSiluMul));
-    EXPECT_TRUE(op.value()->ValidateParams().ok());
 }
 
 TEST(OperatorRegistry, RejectsDuplicateFactory) {

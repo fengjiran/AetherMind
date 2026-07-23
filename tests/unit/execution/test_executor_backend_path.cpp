@@ -103,31 +103,6 @@ public:
         return OpType::kAttention;
     }
 
-    AM_NODISCARD Status ValidateParams() const override {
-        return Status::Ok();
-    }
-
-    AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec>) const override {
-        return Status::Ok();
-    }
-
-    AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
-            std::span<const TensorSpec>) const override {
-        return InferenceResult{
-                .outputs = {},
-                .runtime_checks = {ShapeConstraint{
-                        .condition = DimEqualConstraint{
-                                .lhs = DimLocator{.tensor_port = {.direction = TensorPortType::kInput,
-                                                                  .tensor_idx = 0},
-                                                  .dim_index = 1},
-                                .rhs = DimLocator{.tensor_port = {.direction = TensorPortType::kInput,
-                                                                  .tensor_idx = 1},
-                                                  .dim_index = 0}},
-                        .error_context = "runtime hidden size mismatch",
-                }},
-        };
-    }
-
     AM_NODISCARD Status Prepare(OperatorContext& ctx) override {
         if (ctx.backend == nullptr) {
             return Status::InvalidArgument("RuntimeConstraintTestOperator backend is null");

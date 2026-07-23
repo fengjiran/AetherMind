@@ -1,11 +1,12 @@
 #include "aethermind/backend/backend.h"
-#include "backend/cpu/kernels/add/add_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/add_op.h"
 #include "aethermind/operators/operator_context.h"
 #include "aethermind/operators/operator_registry.h"
+#include "backend/cpu/kernels/add/add_internal.h"
 
+#include "aethermind/operators/operator_inference.h"
 #include <gtest/gtest.h>
 
 #include <array>
@@ -21,137 +22,154 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-// --- Validation / CheckInputSpecs ---
+// --- Validation ---
 
-TEST(AddOp, ValidateParamsReturnsOk) {
-    const AddOp op{AddOp::Params{}};
-    EXPECT_TRUE(op.ValidateParams().ok());
+TEST(AddOp, InferOperatorAcceptsValidParams) {
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{op_params}, inputs).status().ok());
 }
 
 TEST(AddOp, RejectsWrongArity) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[3] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(std::span(inputs));
+    const Status status = InferOperator(op.Type(), OpParams{op_params}, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddOp, AcceptsSupportedDTypes) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     for (const DataType& dtype: kAddSupportedDTypes) {
         SCOPED_TRACE(ToString(dtype));
         const TensorSpec inputs[2] = {
                 TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
                 TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
         };
-        EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+        EXPECT_TRUE(InferOperator(op.Type(), OpParams{op_params}, inputs).status().ok());
     }
 }
 
 TEST(AddOp, RejectsMismatchedInputDTypes) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{op_params}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddOp, RejectsUnsupportedInputDType) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float(16), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float(16), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{op_params}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddOp, RejectsStaticIncompatibleBroadcast) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{op_params}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddOp, RejectsUnrankedInput) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape{}},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    const Status status = op.CheckInputSpecs(inputs);
+    const Status status = InferOperator(op.Type(), OpParams{op_params}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddOp, AcceptsSameShape) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{op_params}, inputs).status().ok());
 }
 
 TEST(AddOp, AcceptsBroadcastShape) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 1})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{op_params}, inputs).status().ok());
 }
 
 TEST(AddOp, AcceptsDifferentRankBroadcast) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{op_params}, inputs).status().ok());
 }
 
 TEST(AddOp, AcceptsRankZeroInput) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{op_params}, inputs).status().ok());
 }
 
 TEST(AddOp, AcceptsZeroDimension) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
     };
-    EXPECT_TRUE(op.CheckInputSpecs(inputs).ok());
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{op_params}, inputs).status().ok());
 }
 
-// --- InferOutputShapes ---
+// --- Inference ---
 
 TEST(AddOp, InfersSupportedOutputDTypes) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     for (const DataType& dtype: kAddSupportedDTypes) {
         SCOPED_TRACE(ToString(dtype));
         const TensorSpec inputs[2] = {
                 TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
                 TensorSpec{.dtype = dtype, .shape = StaticShape({2, 3})},
         };
-        const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+        const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{op_params}, inputs);
         ASSERT_TRUE(inference.ok()) << inference.status().ToString();
         ASSERT_EQ(inference->outputs.size(), 1U);
         EXPECT_EQ(inference->outputs[0].dtype, dtype);
@@ -159,12 +177,13 @@ TEST(AddOp, InfersSupportedOutputDTypes) {
 }
 
 TEST(AddOp, InfersSameShapeOutput) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{op_params}, inputs);
     ASSERT_TRUE(inference.ok());
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -175,12 +194,13 @@ TEST(AddOp, InfersSameShapeOutput) {
 }
 
 TEST(AddOp, InfersBroadcastOutputShape) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 1})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{op_params}, inputs);
     ASSERT_TRUE(inference.ok());
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -190,12 +210,13 @@ TEST(AddOp, InfersBroadcastOutputShape) {
 }
 
 TEST(AddOp, InfersRankZeroOutput) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{op_params}, inputs);
     ASSERT_TRUE(inference.ok());
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -203,12 +224,13 @@ TEST(AddOp, InfersRankZeroOutput) {
 }
 
 TEST(AddOp, InfersDifferentRankBroadcast) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const TensorSpec inputs[2] = {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3})},
     };
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{op_params}, inputs);
     ASSERT_TRUE(inference.ok());
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -218,7 +240,8 @@ TEST(AddOp, InfersDifferentRankBroadcast) {
 }
 
 TEST(AddOp, EmitsDeferredDimBroadcastableConstraints) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     const ShapeSymbol lhs_dim0 = ShapeSymbol::Create();
     const ShapeSymbol lhs_dim1 = ShapeSymbol::Create();
     const ShapeSymbol rhs_dim0 = ShapeSymbol::Create();
@@ -227,7 +250,7 @@ TEST(AddOp, EmitsDeferredDimBroadcastableConstraints) {
             TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{rhs_dim0})},
     };
 
-    const StatusOr<InferenceResult> inference = op.InferOutputShapes(inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{op_params}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     ASSERT_EQ(inference->runtime_checks.size(), 1U);
@@ -295,8 +318,8 @@ public:
 };
 
 Status BuildStubAddParams(std::span<const TensorView> inputs,
-                             std::span<const MutableTensorView> outputs,
-                             void* params_buffer) noexcept {
+                          std::span<const MutableTensorView> outputs,
+                          void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("Add requires 2 inputs and 1 output");
     }
@@ -322,7 +345,8 @@ ResolvedKernel MakeStubKernel() {
 }// namespace
 
 TEST(AddOp, PrepareFailsWithNullBackend) {
-    AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    AddOp op{op_params};
     OperatorContext ctx{};
     ctx.backend = nullptr;
     const Status status = op.Prepare(ctx);
@@ -335,7 +359,8 @@ TEST(AddOp, PrepareSucceedsWithFakeBackend) {
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
 
-    AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    AddOp op{op_params};
     OperatorContext ctx{.backend = &backend};
 
     const Status status = op.Prepare(ctx);
@@ -349,7 +374,8 @@ TEST(AddOp, PrepareFailsWhenKernelResolveFails) {
     FakeBackend backend;
     backend.resolve_result = Status::NotFound("test: kernel not found");
 
-    AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    AddOp op{op_params};
     OperatorContext ctx{.backend = &backend};
 
     const Status status = op.Prepare(ctx);
@@ -366,7 +392,8 @@ TEST(AddOp, PrepareFailsWithNullKernelFn) {
             .debug_name = "test::null_fn",
     };
 
-    AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    AddOp op{op_params};
     OperatorContext ctx{.backend = &backend};
 
     const Status status = op.Prepare(ctx);
@@ -377,7 +404,8 @@ TEST(AddOp, PrepareFailsWithNullKernelFn) {
 // --- Run ---
 
 TEST(AddOp, RunFailsBeforePrepare) {
-    const AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    const AddOp op{op_params};
     KernelContext ctx{};
     RuntimeBindingContext bindings;
     const Status status = op.Run(ctx, bindings, 0);
@@ -390,7 +418,8 @@ TEST(AddOp, RunFailsWithWrongInputCount) {
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
 
-    AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    AddOp op{op_params};
     OperatorContext op_ctx{.backend = &backend};
     ASSERT_TRUE(op.Prepare(op_ctx).ok());
 
@@ -420,7 +449,8 @@ TEST(AddOp, RunFailsWithWrongOutputCount) {
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
 
-    AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    AddOp op{op_params};
     OperatorContext op_ctx{.backend = &backend};
     ASSERT_TRUE(op.Prepare(op_ctx).ok());
 
@@ -448,7 +478,8 @@ TEST(AddOp, RunInvokesKernelAndReturnsOk) {
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
 
-    AddOp op{AddOp::Params{}};
+    AddOp::Params op_params{};
+    AddOp op{op_params};
     OperatorContext op_ctx{.backend = &backend};
     ASSERT_TRUE(op.Prepare(op_ctx).ok());
 
@@ -508,4 +539,4 @@ TEST(AddOp, CreateDefaultParamsFromRegistry) {
     EXPECT_TRUE(std::holds_alternative<AddOp::Params>(params.value()));
 }
 
-}  // namespace
+}// namespace

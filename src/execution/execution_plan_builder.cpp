@@ -4,8 +4,8 @@
 #include "aethermind/model/graph/operator_schema.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/function_operator.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/operator_semantics.h"
 
 namespace aethermind {
 namespace {

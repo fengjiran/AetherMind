@@ -8,7 +8,7 @@
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/model/model_instance.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
@@ -25,15 +25,15 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
 }
 
 StatusOr<InferenceResult> InferRmsNorm(float eps,
-                                         const SymbolicShape& act_shape,
-                                         const SymbolicShape& weight_shape) {
+                                       const SymbolicShape& act_shape,
+                                       const SymbolicShape& weight_shape) {
     std::vector<TensorSpec> inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
     return InferOperator(OpType::kRmsNorm,
-                           OpParams{RmsNormParams{.eps = eps}},
-                           inputs);
+                         OpParams{RmsNormParams{.eps = eps}},
+                         inputs);
 }
 
 template<typename T>

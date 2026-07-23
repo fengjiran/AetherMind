@@ -2,9 +2,8 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/operator_semantics.h"
 
 #include <span>
 #include <string>
@@ -73,5 +72,78 @@ Status RmsNormOp::Run(KernelContext& ctx,
 }
 
 AM_REGISTER_OPERATOR(OpType::kRmsNorm, RmsNormOp)
+
+
+namespace detail {
+
+StatusOr<InferenceResult> InferRmsNorm(const OpParams& /*params*/,
+                                       std::span<const TensorSpec> inputs) {
+    if (inputs.size() != 2) {
+        return Status::InvalidArgument(
+                "RmsNorm expects exactly 2 inputs, got " + std::to_string(inputs.size()));
+    }
+
+    const auto& input_spec = inputs[0];
+    const auto& weight_spec = inputs[1];
+    if (!IsRmsNormSupportedDType(input_spec.dtype)) {
+        return Status::InvalidArgument(MakeRmsNormUnsupportedDTypeMessage("RmsNorm input"));
+    }
+
+    if (!IsRmsNormSupportedDType(weight_spec.dtype)) {
+        return Status::InvalidArgument(MakeRmsNormUnsupportedDTypeMessage("RmsNorm weight"));
+    }
+
+    if (!HasRank(input_spec.shape, 2)) {
+        return Status::InvalidArgument("RmsNorm input must be rank-2 [seq_len, hidden]");
+    }
+
+    if (!HasRank(weight_spec.shape, 1)) {
+        return Status::InvalidArgument("RmsNorm weight must be rank-1");
+    }
+
+    const ShapeSymbol& seq_len = input_spec.shape[0];
+    if (!IsPositiveIfStatic(seq_len)) {
+        return Status::InvalidArgument("RmsNorm seq_len must be positive");
+    }
+
+    const ShapeSymbol& hidden_size = input_spec.shape[1];
+    if (!IsPositiveIfStatic(hidden_size)) {
+        return Status::InvalidArgument("RmsNorm hidden size must be positive");
+    }
+
+    const ShapeSymbol& weight_len = weight_spec.shape[0];
+    if (!IsPositiveIfStatic(weight_len)) {
+        return Status::InvalidArgument("RmsNorm weight length must be positive");
+    }
+
+    if (!UnifyShapeSymbol(hidden_size, weight_len).ok()) {
+        return Status::InvalidArgument(
+                "RmsNorm weight length must equal input last dimension");
+    }
+
+    std::vector<ShapeConstraint> runtime_checks;
+    if (hidden_size != weight_len) {
+        runtime_checks.push_back({
+                .condition = DimEqualConstraint{
+                        .lhs = {
+                                .tensor_port = {.direction = TensorPortType::kInput,
+                                                .tensor_idx = 0},
+                                .dim_index = 1,
+                        },
+                        .rhs = {
+                                .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
+                                .dim_index = 0,
+                        }},
+                .error_context = "RmsNorm hidden dimension must match weight length",
+        });
+    }
+
+    return InferenceResult{
+            .outputs = {input_spec},
+            .runtime_checks = std::move(runtime_checks),
+    };
+}
+
+}// namespace detail
 
 }// namespace aethermind

@@ -1,9 +1,12 @@
-﻿#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/model/graph/operator_schema.h"
-#include "semantics/operator_semantics_internal.h"
+#include "aethermind/operators/inference_result.h"
+#include "aethermind/shape_inference/broadcast.h"
 
 #include <cmath>
+#include <span>
+#include <string>
 
 namespace aethermind {
 namespace {
@@ -55,17 +58,22 @@ Status ValidateOperatorParams(OpType op_type, const OpParams& params) {
         case OpType::kRmsNorm:
             return ValidateRmsNormParams(params);
         case OpType::kLinear:
-            return RequireParams<LinearParams>(params, "Linear node requires LinearParams");
+            return RequireParams<LinearParams>(
+                    params, "Linear node requires LinearParams");
         case OpType::kRoPE:
             return ValidateRoPEParams(params);
         case OpType::kMatMul:
-            return RequireParams<MatMulParams>(params, "MatMul node requires MatMulParams");
+            return RequireParams<MatMulParams>(
+                    params, "MatMul node requires MatMulParams");
         case OpType::kSoftmax:
-            return RequireParams<SoftmaxParams>(params, "Softmax node requires SoftmaxParams");
+            return RequireParams<SoftmaxParams>(
+                    params, "Softmax node requires SoftmaxParams");
         case OpType::kAdd:
-            return RequireParams<AddParams>(params, "Add node requires AddParams");
+            return RequireParams<AddParams>(
+                    params, "Add node requires AddParams");
         case OpType::kSiluMul:
-            return RequireParams<SiluMulParams>(params, "SiluMul node requires SiluMulParams");
+            return RequireParams<SiluMulParams>(
+                    params, "SiluMul node requires SiluMulParams");
         case OpType::kKVCacheUpdate:
             return RequireParams<KVCacheUpdateParams>(
                     params, "KVCacheUpdate node requires KVCacheUpdateParams");
@@ -73,14 +81,17 @@ Status ValidateOperatorParams(OpType op_type, const OpParams& params) {
             return RequireParams<AttentionParams>(
                     params, "Attention node requires AttentionParams");
         case OpType::kArgmax:
-            return RequireParams<ArgmaxParams>(params, "Argmax node requires ArgmaxParams");
+            return RequireParams<ArgmaxParams>(
+                    params, "Argmax node requires ArgmaxParams");
         case OpType::kSilu:
-            return RequireParams<SiluParams>(params, "Silu node requires SiluParams");
+            return RequireParams<SiluParams>(
+                    params, "Silu node requires SiluParams");
         case OpType::kElementwiseMul:
             return RequireParams<ElementwiseMulParams>(
                     params, "ElementwiseMul node requires ElementwiseMulParams");
         case OpType::kUnknown:
-            return Status::InvalidArgument("Unknown op type cannot have validated graph params");
+            return Status::InvalidArgument(
+                    "Unknown op type cannot have validated graph params");
     }
     return Status::InvalidArgument("Unknown op type");
 }
@@ -126,14 +137,18 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(const OperatorSchema& sc
                                                         std::span<const TensorSpec> all_inputs) {
     if (schema.input_ports.size() != all_inputs.size()) {
         return Status::InvalidArgument(
-                "MakeCompactInputSpecs: input count mismatch, schema expects " + std::to_string(schema.input_ports.size()) + " inputs but got " + std::to_string(all_inputs.size()));
+                "MakeCompactInputSpecs: input count mismatch, schema expects " +
+                std::to_string(schema.input_ports.size()) + " inputs but got " +
+                std::to_string(all_inputs.size()));
     }
     std::vector<TensorSpec> compact;
     compact.reserve(all_inputs.size());
     for (const auto& port: schema.input_ports) {
         if (port.index >= all_inputs.size()) {
             return Status::InvalidArgument(
-                    "MakeCompactInputSpecs: port index " + std::to_string(port.index) + " out of bounds for " + std::to_string(all_inputs.size()) + " inputs");
+                    "MakeCompactInputSpecs: port index " +
+                    std::to_string(port.index) + " out of bounds for " +
+                    std::to_string(all_inputs.size()) + " inputs");
         }
         if (port.contributes_tensor_spec) {
             compact.push_back(all_inputs[port.index]);
@@ -141,5 +156,46 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(const OperatorSchema& sc
     }
     return compact;
 }
+
+namespace detail {
+
+StatusOr<InferenceResult> InferBroadcastBinary(const OpParams& /*params*/,
+                                               std::span<const TensorSpec> inputs,
+                                               std::string_view op_name) {
+    if (inputs.size() != 2) {
+        return Status::InvalidArgument(
+                std::string(op_name) + " requires exactly 2 inputs");
+    }
+    const TensorSpec& lhs_spec = inputs[0];
+    const TensorSpec& rhs_spec = inputs[1];
+    if (lhs_spec.dtype != DataType::Float32() && lhs_spec.dtype != DataType::BFloat(16)) {
+        return Status::InvalidArgument(
+                std::string(op_name) + " lhs must be float32 or bfloat16");
+    }
+    if (rhs_spec.dtype != DataType::Float32() && rhs_spec.dtype != DataType::BFloat(16)) {
+        return Status::InvalidArgument(
+                std::string(op_name) + " rhs must be float32 or bfloat16");
+    }
+    auto broadcast_result = InferBroadcastShape(
+            lhs_spec.shape, rhs_spec.shape);
+    if (!broadcast_result.ok()) {
+        return broadcast_result.status();
+    }
+
+    InferenceResult result;
+    result.outputs.push_back({lhs_spec.dtype, broadcast_result->output_shape});
+    for (const auto& deferred: broadcast_result->deferred_axes) {
+        result.runtime_checks.push_back(
+                {DimBroadcastableConstraint{
+                         {{TensorPortType::kInput, 0},
+                          deferred.lhs_axis},
+                         {{TensorPortType::kInput, 1},
+                          deferred.rhs_axis}},
+                 std::string(op_name) + " dimensions must be broadcastable"});
+    }
+    return result;
+}
+
+}// namespace detail
 
 }// namespace aethermind

@@ -1,7 +1,7 @@
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/model/graph/operator_schema.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 
 #include <cmath>

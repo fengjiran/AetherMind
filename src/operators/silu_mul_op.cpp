@@ -3,12 +3,9 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/shape_inference/broadcast.h"
-
-#include <span>
-#include <string>
 
 namespace aethermind {
 
@@ -76,5 +73,15 @@ Status SiluMulOp::Run(KernelContext& ctx,
 }
 
 AM_REGISTER_OPERATOR(OpType::kSiluMul, SiluMulOp)
+
+
+namespace detail {
+
+StatusOr<InferenceResult> InferSiluMul(const OpParams& /*params*/,
+                                       std::span<const TensorSpec> inputs) {
+    return InferBroadcastBinary(/*params=*/{}, inputs, "SiluMul");
+}
+
+}// namespace detail
 
 }// namespace aethermind

@@ -10,7 +10,7 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/model/graph/compilation/graph_lowering.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/shape_symbol.h"
 #include <cstdint>

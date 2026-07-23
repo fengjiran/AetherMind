@@ -4,8 +4,10 @@
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/operator_semantics.h"
 
+#include "aethermind/dtypes/data_type.h"
+#include "aethermind/operators/operator_inference.h"
+#include "aethermind/shape_inference/tensor_spec.h"
 #include <span>
 #include <string>
 
@@ -75,5 +77,23 @@ Status SiluOp::Run(KernelContext& ctx,
 }
 
 AM_REGISTER_OPERATOR(OpType::kSilu, SiluOp)
+
+
+namespace detail {
+
+StatusOr<InferenceResult> InferSilu(const OpParams& /*params*/,
+                                    std::span<const TensorSpec> inputs) {
+    if (inputs.size() != 1) {
+        return Status::InvalidArgument("Silu requires exactly 1 input");
+    }
+    if (inputs[0].dtype != DataType::Float32() && inputs[0].dtype != DataType::BFloat(16)) {
+        return Status::InvalidArgument("Silu input must be float32 or bfloat16");
+    }
+    InferenceResult result;
+    result.outputs.push_back(inputs[0]);
+    return result;
+}
+
+}// namespace detail
 
 }// namespace aethermind

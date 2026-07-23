@@ -4,7 +4,7 @@
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/model/graph/op_params.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
@@ -77,8 +77,8 @@ TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
             TensorSpec{.dtype = DataType::Float32(), .shape = softmax_shape},
     };
     const auto analyzed = InferOperator(OpType::kSoftmax,
-                                          OpParams{SoftmaxParams{.axis = -1}},
-                                          softmax_inputs);
+                                        OpParams{SoftmaxParams{.axis = -1}},
+                                        softmax_inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -132,8 +132,8 @@ TEST(ExecutionPlan, BuildAllowsEmptyAttrs) {
             TensorSpec{.dtype = DataType::Float32(), .shape = softmax_shape},
     };
     const auto analyzed = InferOperator(OpType::kSoftmax,
-                                          OpParams{SoftmaxParams{.axis = -1}},
-                                          softmax_inputs);
+                                        OpParams{SoftmaxParams{.axis = -1}},
+                                        softmax_inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;

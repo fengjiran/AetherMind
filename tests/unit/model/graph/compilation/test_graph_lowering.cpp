@@ -3,7 +3,7 @@
 
 #include "aethermind/model/graph/graph_builder.h"
 #include "aethermind/model/graph/operator_schema.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_symbol.h"

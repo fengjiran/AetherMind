@@ -1,7 +1,7 @@
 #include "aethermind/model/graph/graph.h"
 #include "aethermind/model/graph/operator_schema.h"
 #include "aethermind/operators/op_type.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "utils/logging.h"
 
 #include <algorithm>

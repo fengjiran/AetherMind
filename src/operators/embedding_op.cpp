@@ -5,8 +5,11 @@
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/operator_semantics.h"
 
+#include "aethermind/dtypes/data_type.h"
+#include "aethermind/operators/operator_inference.h"
+#include "aethermind/shape_inference/shape_symbol.h"
+#include "aethermind/shape_inference/tensor_spec.h"
 #include <string>
 
 namespace aethermind {
@@ -72,5 +75,53 @@ Status EmbeddingOp::Run(KernelContext& ctx,
 }
 
 AM_REGISTER_OPERATOR(OpType::kEmbedding, EmbeddingOp)
+
+
+namespace detail {
+
+namespace {
+
+bool IsSupportedTokenIdDType(const DataType& dtype) {
+    return dtype == DataType::Int(32) || dtype == DataType::Int(64) || dtype == DataType::UInt(32);
+}
+
+}// namespace
+
+StatusOr<InferenceResult> InferEmbedding(const OpParams& /*params*/,
+                                         std::span<const TensorSpec> inputs) {
+    if (inputs.size() != 2) {
+        return Status::InvalidArgument("Embedding requires exactly 2 inputs");
+    }
+    const TensorSpec& token_spec = inputs[0];
+    const TensorSpec& weight_spec = inputs[1];
+    if (!IsSupportedTokenIdDType(token_spec.dtype)) {
+        return Status::InvalidArgument("Embedding token_ids must be int32, int64, or uint32");
+    }
+    if (weight_spec.dtype != DataType::Float32()) {
+        return Status::InvalidArgument("Embedding weight must be float32");
+    }
+    if (!HasRank(token_spec.shape, 1)) {
+        return Status::InvalidArgument("Embedding token_ids must be rank 1");
+    }
+    if (!HasRank(weight_spec.shape, 2)) {
+        return Status::InvalidArgument("Embedding weight must be rank 2");
+    }
+    const auto& tokens_shape = token_spec.shape;
+    const auto& weight_shape = weight_spec.shape;
+    if (tokens_shape[0].IsStatic() && tokens_shape[0].GetStaticValue() <= 0) {
+        return Status::InvalidArgument("Embedding token_ids dimension must be positive");
+    }
+    if (weight_shape[0].IsStatic() && weight_shape[0].GetStaticValue() <= 0) {
+        return Status::InvalidArgument("Embedding weight dimension 0 must be positive");
+    }
+    if (weight_shape[1].IsStatic() && weight_shape[1].GetStaticValue() <= 0) {
+        return Status::InvalidArgument("Embedding weight dimension 1 must be positive");
+    }
+    InferenceResult result;
+    result.outputs.push_back({weight_spec.dtype, SymbolicShape({tokens_shape[0], weight_shape[1]})});
+    return result;
+}
+
+}// namespace detail
 
 }// namespace aethermind

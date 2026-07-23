@@ -9,7 +9,7 @@
 #include "aethermind/model/graph/compilation/graph_lowering.h"
 #include "aethermind/model/graph/graph.h"
 #include "aethermind/model/model_instance.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
@@ -177,15 +177,15 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
 // authority InferOperator, so tests can fill caller-provided metadata
 // fields without duplicating inference logic.
 StatusOr<InferenceResult> InferRmsNorm(float eps,
-                                         const SymbolicShape& act_shape,
-                                         const SymbolicShape& weight_shape) {
+                                       const SymbolicShape& act_shape,
+                                       const SymbolicShape& weight_shape) {
     std::vector<TensorSpec> inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
     return InferOperator(OpType::kRmsNorm,
-                           OpParams{RmsNormParams{.eps = eps}},
-                           inputs);
+                         OpParams{RmsNormParams{.eps = eps}},
+                         inputs);
 }
 
 TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
@@ -778,8 +778,8 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesRawFallbackForUnregister
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
     };
     const auto analyzed = InferOperator(OpType::kSoftmax,
-                                          OpParams{SoftmaxParams{.axis = -1}},
-                                          inputs);
+                                        OpParams{SoftmaxParams{.axis = -1}},
+                                        inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     LoweredGraph lowered;
@@ -826,8 +826,8 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
     };
     const auto analyzed = InferOperator(OpType::kSoftmax,
-                                          OpParams{SoftmaxParams{.axis = -1}},
-                                          inputs);
+                                        OpParams{SoftmaxParams{.axis = -1}},
+                                        inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     ExecutionPlanNodeSpec node{

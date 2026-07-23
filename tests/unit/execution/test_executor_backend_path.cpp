@@ -9,8 +9,8 @@
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
@@ -169,15 +169,15 @@ const bool kRuntimeConstraintTestOperatorRegistered = OperatorRegistry::Register
 
 // Helper: derive RmsNorm output_specs and runtime_checks via InferOperator.
 StatusOr<InferenceResult> InferRmsNorm(float eps,
-                                         const SymbolicShape& act_shape,
-                                         const SymbolicShape& weight_shape) {
+                                       const SymbolicShape& act_shape,
+                                       const SymbolicShape& weight_shape) {
     std::vector<TensorSpec> inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
     return InferOperator(OpType::kRmsNorm,
-                           OpParams{RmsNormParams{.eps = eps}},
-                           inputs);
+                         OpParams{RmsNormParams{.eps = eps}},
+                         inputs);
 }
 
 class ExecutorPackedWeights final : public PackedWeights {

@@ -3,8 +3,8 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/operator_semantics.h"
 #include "aethermind/shape_inference/broadcast.h"
 
 #include <span>
@@ -20,13 +20,15 @@ Status ElementwiseMulOp::CheckInputSpecs(std::span<const TensorSpec> inputs) con
     return InferOperator(Type(), params_, inputs).status();
 }
 
-StatusOr<InferenceResult> ElementwiseMulOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
+StatusOr<InferenceResult> ElementwiseMulOp::InferOutputShapes(
+        std::span<const TensorSpec> inputs) const {
     return InferOperator(Type(), params_, inputs);
 }
 
 Status ElementwiseMulOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
-        return Status::InvalidArgument("ElementwiseMul Prepare requires OperatorContext.backend");
+        return Status::InvalidArgument(
+                "ElementwiseMul Prepare requires OperatorContext.backend");
     }
 
     const auto resolved = ctx.backend->ResolveKernelInfo(
@@ -73,5 +75,15 @@ Status ElementwiseMulOp::Run(KernelContext& ctx,
 }
 
 AM_REGISTER_OPERATOR(OpType::kElementwiseMul, ElementwiseMulOp)
+
+
+namespace detail {
+
+StatusOr<InferenceResult> InferElementwiseMul(const OpParams& /*params*/,
+                                              std::span<const TensorSpec> inputs) {
+    return InferBroadcastBinary(/*params=*/{}, inputs, "ElementwiseMul");
+}
+
+}// namespace detail
 
 }// namespace aethermind

@@ -1,7 +1,7 @@
 #include "aethermind/model/graph/optimization/graph_rewrite.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/model/graph/operator_schema.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "utils/variant_utils.h"
 
 #include <algorithm>
@@ -1132,8 +1132,8 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
         //    input dtypes/shapes for this operator.
         AM_ASSIGN_OR_RETURN(InferenceResult inferred,
                             InferOperator(replacement.op_type,
-                                            replacement.op_params,
-                                            input_specs));
+                                          replacement.op_params,
+                                          input_specs));
 
         // 7. InferOperator must produce exactly one output spec per binding.
         if (inferred.outputs.size() != replacement.outputs.size()) {

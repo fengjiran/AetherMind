@@ -1,5 +1,18 @@
-#ifndef AETHERMIND_OPERATORS_OPERATOR_SEMANTICS_H
-#define AETHERMIND_OPERATORS_OPERATOR_SEMANTICS_H
+/// Operator semantic layer: validation, shape inference, and input filtering.
+///
+/// This header is the single public entry point for operator-level semantic
+/// analysis used during graph construction and workspace planning. It exposes
+/// three categories of API:
+///
+///   * ValidateOperatorParams    - parameter validation per OpType
+///   * InferOperator             - shape inference dispatch (entry point)
+///   * MakeCompactInputSpecs    - input filtering by schema port flags
+///
+/// The Infer* free functions in the aethermind::detail namespace are not part
+/// of the public API; InferOperator dispatches to the Infer* function matching
+/// the OpType.
+#ifndef AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H
+#define AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H
 
 #include "aethermind/base/status.h"
 #include "aethermind/model/graph/op_params.h"
@@ -9,6 +22,7 @@
 #include "macros.h"
 
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace aethermind {
@@ -42,8 +56,8 @@ AM_NODISCARD Status ValidateOperatorParams(OpType op_type, const OpParams& param
 ///         the inference failure (e.g., kInvalidArgument for incompatible
 ///         input ranks, kUnimplemented for unsupported op types).
 AM_NODISCARD StatusOr<InferenceResult> InferOperator(OpType op_type,
-                                                       const OpParams& params,
-                                                       std::span<const TensorSpec> inputs);
+                                                     const OpParams& params,
+                                                     std::span<const TensorSpec> inputs);
 
 /// Extracts the subset of input specs that contribute to tensor spec inference.
 ///
@@ -66,6 +80,31 @@ AM_NODISCARD StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(
         const OperatorSchema& schema,
         std::span<const TensorSpec> all_inputs);
 
+namespace detail {
+
+StatusOr<InferenceResult> InferEmbedding(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferRmsNorm(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferLinear(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferMatMul(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferRoPE(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferAttention(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferSoftmax(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferArgmax(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferAdd(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferSilu(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferSiluMul(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferElementwiseMul(const OpParams& params, std::span<const TensorSpec> inputs);
+
+// Shared broadcast-binary inference helper used by SiluMul and ElementwiseMul
+// (ops whose semantics are elementwise binary with broadcast). Defined in
+// operator_inference.cpp alongside the dispatch hub.
+StatusOr<InferenceResult> InferBroadcastBinary(const OpParams& params,
+                                               std::span<const TensorSpec> inputs,
+                                               std::string_view op_name);
+
+}// namespace detail
+
 }// namespace aethermind
 
-#endif
+#endif// AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H

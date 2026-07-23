@@ -5,7 +5,6 @@
 // resolved dimensions; InferBroadcastShape handles unresolved symbolic or
 // unknown dimensions and emits deferred-axis records. All tiers use
 // right-aligned NumPy-style broadcasting.
-
 #include "aethermind/shape_inference/broadcast.h"
 
 #include <algorithm>

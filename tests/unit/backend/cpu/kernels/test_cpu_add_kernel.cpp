@@ -9,7 +9,7 @@
 #include "aethermind/model/graph/graph.h"
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/add_op.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/broadcast.h"
 #include "backend/cpu/kernels/add/add_internal.h"

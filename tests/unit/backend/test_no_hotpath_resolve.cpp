@@ -5,7 +5,7 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/model/graph/op_params.h"
-#include "aethermind/operators/operator_semantics.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/workspace.h"
 
@@ -135,8 +135,8 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
     const auto analyzed = InferOperator(OpType::kRmsNorm,
-                                          OpParams{RmsNormParams{.eps = 1.0e-5F}},
-                                          rmsnorm_inputs);
+                                        OpParams{RmsNormParams{.eps = 1.0e-5F}},
+                                        rmsnorm_inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;

@@ -527,7 +527,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsUndefinedVirtualValueInput) {
     // Phase B: ReplaceSubgraph must fail at apply time when a virtual value is
     // consumed but never produced by any replacement in the same group. The
     // scratch map has no inferred spec for `mid`, so ResolveValueSpec returns
-    // NotFound before AnalyzeOperator is even called.
+    // NotFound before InferOperator is even called.
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     const GraphValueId mid = session.AllocateVirtualValue();
@@ -2248,7 +2248,7 @@ TEST(SubgraphBuilder, CommitRejectsWrongDtypeChain) {
     // incompatible with the slot dtype of a subsequent Emit's input. Here the
     // first Emit produces a Float32 hidden (Embedding output), and the second
     // Emit feeds that Float32 into the Int32 tokens slot of another Embedding.
-    // AnalyzeOperator rejects this when ReplaceSubgraph replays the chain.
+    // InferOperator rejects this when ReplaceSubgraph replays the chain.
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     SubgraphBuilder builder(session, {GraphNodeId{.index = 0}, GraphNodeId{.index = 1}});
@@ -2317,7 +2317,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsRedirectInducedDtypeMismatch) {
     // input to a value whose dtype is incompatible with the operator's slot
     // expectation. Here ReplaceValue(v2 -> v0) redirects the Float32 weight to
     // the Int32 tokens value; the Embedding weight slot then receives an Int32
-    // spec, which AnalyzeOperator rejects.
+    // spec, which InferOperator rejects.
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 

@@ -531,15 +531,15 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
         all_input_specs.push_back(values_[id.index].spec);
     }
 
-    auto inference_or = AnalyzeOperator(op_type, op_params, all_input_specs);
+    auto inference_or = InferOperator(op_type, op_params, all_input_specs);
     if (!inference_or.ok()) {
-        return Status::InvalidArgument(get_msg("AnalyzeOperator: " +
+        return Status::InvalidArgument(get_msg("InferOperator: " +
                                                inference_or.status().message()));
     }
     const auto& inference = *inference_or;
     if (inference.outputs.size() != schema.output_ports.size()) {
         return Status::InvalidArgument(get_msg(
-                "AnalyzeOperator inferred " + std::to_string(inference.outputs.size()) +
+                "InferOperator inferred " + std::to_string(inference.outputs.size()) +
                 " outputs, schema expects " + std::to_string(schema.output_ports.size())));
     }
 
@@ -602,6 +602,38 @@ Status ModelGraph::Validate() const {
     return ValidateAndTopologicalOrder().status();
 }
 
+// Validates the graph as a whole and returns a topological order of the nodes.
+// Acts as the trust-but-verify gate for stored graph metadata: every node is
+// re-analyzed with InferOperator and the derived specs / runtime_checks must
+// be strictly equal to the stored ones (stale detection).
+//
+// Triggered from three sites:
+//   - ModelGraph::Validate() (public API, discards the order)
+//   - GraphPassManager::Run (precondition before optimization)
+//   - LowerModelGraph (precondition before lowering)
+//
+// Three passes:
+//   Pass 1 - Value self-consistency:
+//     * graph inputs/outputs reference valid value ids
+//     * graph outputs are Activation/Constant with a producer
+//     * per-value ValidateValueSelfConsistency (payload<->producer
+//       agreement; weight/constant have no producer; weight binding
+//       self-consistency)
+//
+//   Pass 2 - Per-node replay and stale detection:
+//     * schema lookup, attrs rejection, arity, payload-kind match
+//       (mirrors AddNode for stored data)
+//     * ExpectedWeightSlotForOp (once per node) and weight slot match
+//     * replay InferOperator; derived.outputs must equal stored
+//       node.outputs specs, and derived.runtime_checks must equal stored
+//       node.runtime_checks (ShapeConstraintsEquivalent)
+//     * outputs must not reuse input values
+//     * ValidateStateBindingsForNode for state I/O invariants
+//
+//   Pass 3 - Acyclicity:
+//     * Kahn algorithm over activation and produced-state edges
+//       (weight/input edges are excluded - they are not data-flow
+//       dependencies that can form cycles)
 StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() const {
     // -- Validate graph inputs and outputs --
     for (const auto& input: inputs_) {

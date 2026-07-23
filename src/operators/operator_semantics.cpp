@@ -85,37 +85,37 @@ Status ValidateOperatorParams(OpType op_type, const OpParams& params) {
     return Status::InvalidArgument("Unknown op type");
 }
 
-StatusOr<InferenceResult> AnalyzeOperator(OpType op_type,
-                                          const OpParams& params,
-                                          std::span<const TensorSpec> inputs) {
+StatusOr<InferenceResult> InferOperator(OpType op_type,
+                                        const OpParams& params,
+                                        std::span<const TensorSpec> inputs) {
     AM_RETURN_IF_ERROR(ValidateOperatorParams(op_type, params));
     switch (op_type) {
         case OpType::kEmbedding:
-            return detail::AnalyzeEmbedding(params, inputs);
+            return detail::InferEmbedding(params, inputs);
         case OpType::kRmsNorm:
-            return detail::AnalyzeRmsNorm(params, inputs);
+            return detail::InferRmsNorm(params, inputs);
         case OpType::kLinear:
-            return detail::AnalyzeLinear(params, inputs);
+            return detail::InferLinear(params, inputs);
         case OpType::kRoPE:
-            return detail::AnalyzeRoPE(params, inputs);
+            return detail::InferRoPE(params, inputs);
         case OpType::kMatMul:
-            return detail::AnalyzeMatMul(params, inputs);
+            return detail::InferMatMul(params, inputs);
         case OpType::kSoftmax:
-            return detail::AnalyzeSoftmax(params, inputs);
+            return detail::InferSoftmax(params, inputs);
         case OpType::kAdd:
-            return detail::AnalyzeAdd(params, inputs);
+            return detail::InferAdd(params, inputs);
         case OpType::kSiluMul:
-            return detail::AnalyzeSiluMul(params, inputs);
+            return detail::InferSiluMul(params, inputs);
         case OpType::kKVCacheUpdate:
-            return detail::AnalyzeKVCacheUpdate(params, inputs);
+            return detail::InferKVCacheUpdate(params, inputs);
         case OpType::kAttention:
-            return detail::AnalyzeAttention(params, inputs);
+            return detail::InferAttention(params, inputs);
         case OpType::kArgmax:
-            return detail::AnalyzeArgmax(params, inputs);
+            return detail::InferArgmax(params, inputs);
         case OpType::kSilu:
-            return detail::AnalyzeSilu(params, inputs);
+            return detail::InferSilu(params, inputs);
         case OpType::kElementwiseMul:
-            return detail::AnalyzeElementwiseMul(params, inputs);
+            return detail::InferElementwiseMul(params, inputs);
         case OpType::kUnknown:
             return Status::InvalidArgument("Unknown op type cannot be analyzed");
     }

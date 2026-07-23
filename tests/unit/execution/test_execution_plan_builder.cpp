@@ -174,16 +174,16 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
 }
 
 // Helper: derive RmsNorm output_specs and runtime_checks via the semantic
-// authority AnalyzeOperator, so tests can fill caller-provided metadata
+// authority InferOperator, so tests can fill caller-provided metadata
 // fields without duplicating inference logic.
-StatusOr<InferenceResult> AnalyzeRmsNorm(float eps,
+StatusOr<InferenceResult> InferRmsNorm(float eps,
                                          const SymbolicShape& act_shape,
                                          const SymbolicShape& weight_shape) {
     std::vector<TensorSpec> inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
-    return AnalyzeOperator(OpType::kRmsNorm,
+    return InferOperator(OpType::kRmsNorm,
                            OpParams{RmsNormParams{.eps = eps}},
                            inputs);
 }
@@ -212,7 +212,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
-    const auto analyzed = AnalyzeRmsNorm(11.0F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(11.0F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -256,7 +256,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {
     const ShapeSymbol weight_hidden = ShapeSymbol::Create();
     const SymbolicShape act_shape(std::vector<ShapeSymbol>{seq_len, input_hidden});
     const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_hidden});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
@@ -281,7 +281,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {
     ASSERT_EQ(step.output_specs[0].shape.rank(), 2U);
     // Spy: RmsNorm output shape echoes input[0] shape, so the inferred
     // ShapeSymbol IDs in step.output_specs match the input ShapeSymbol IDs.
-    // This proves the untrusted path called AnalyzeOperator (which echoes
+    // This proves the untrusted path called InferOperator (which echoes
     // input symbols) rather than skipping inference.
     EXPECT_EQ(step.output_specs[0].shape[0], seq_len);
     EXPECT_EQ(step.output_specs[0].shape[1], input_hidden);
@@ -303,7 +303,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsMismatchedOutputSpecs) {
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
@@ -329,7 +329,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
     RuntimeContext runtime = builder.Build();
 
     // Semantically invalid: activation last dim (8) != weight length (16).
-    // AnalyzeRmsNorm will fail, and Build rejects with that error's code.
+    // InferRmsNorm will fail, and Build rejects with that error's code.
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
     node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {
@@ -344,7 +344,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
 }
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
-    // Untrusted path must reject wrong dtype via AnalyzeOperator re-validation.
+    // Untrusted path must reject wrong dtype via InferOperator re-validation.
     // RmsNorm only accepts floating-point dtypes; supplying Int32 for input[0]
     // must fail at the semantic authority layer (not at kernel resolution or Prepare).
     RuntimeBuilder builder;
@@ -360,7 +360,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
     // Caller-provided output_specs/runtime_checks would be mismatched anyway;
-    // the dtype check fires first inside AnalyzeOperator.
+    // the dtype check fires first inside InferOperator.
     node.output_specs = {
             TensorSpec{.dtype = DataType::Int(32), .shape = act_shape},
     };
@@ -371,7 +371,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
 
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
-    // The rejection must come from AnalyzeRmsNorm's dtype check, not from
+    // The rejection must come from InferRmsNorm's dtype check, not from
     // an output-spec mismatch or kernel resolution failure.
     EXPECT_NE(plan.status().message().find("RmsNorm"), std::string::npos);
     EXPECT_NE(plan.status().message().find("dtype"), std::string::npos);
@@ -379,8 +379,8 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
     // Untrusted path must reject caller-provided runtime_checks that differ
-    // from AnalyzeOperator-derived constraints. Using symbolic shapes for
-    // activation hidden dim and weight length forces AnalyzeRmsNorm to emit
+    // from InferOperator-derived constraints. Using symbolic shapes for
+    // activation hidden dim and weight length forces InferRmsNorm to emit
     // a DimEqualConstraint; supplying an empty runtime_checks vector must
     // fail the strict-equality check in ValidateCallerMetadata.
     RuntimeBuilder builder;
@@ -392,10 +392,10 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
     const SymbolicShape act_shape(std::vector<ShapeSymbol>{seq_len, input_hidden});
     const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_hidden});
 
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
     ASSERT_EQ(analyzed->runtime_checks.size(), 1U)
-            << "expected AnalyzeRmsNorm to emit a DimEqualConstraint for "
+            << "expected InferRmsNorm to emit a DimEqualConstraint for "
                "symbolic-hidden != symbolic-weight-length";
 
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
@@ -405,7 +405,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
     node.output_specs = analyzed->outputs;
-    // Deliberately empty: caller omits the constraint AnalyzeOperator derived.
+    // Deliberately empty: caller omits the constraint InferOperator derived.
     node.runtime_checks = {};
 
     const StatusOr<ExecutionPlan> plan =
@@ -438,7 +438,7 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -495,7 +495,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -532,7 +532,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutModelInstanceSidec
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -581,7 +581,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
     // lowering-time alias record, avoiding any dependency on KVCacheUpdate kernels.
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     LoweredGraph lowered;
@@ -616,14 +616,14 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
 }
 
 TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesTrustedMetadata) {
-    // Spy-based proof that the trusted path does NOT re-invoke AnalyzeOperator.
+    // Spy-based proof that the trusted path does NOT re-invoke InferOperator.
     //
     // Strategy: use ShapeSymbol::Create() to mint unique symbolic dims for
-    // the input. AnalyzeRmsNorm echoes input[0] in its output_specs. We then
+    // the input. InferRmsNorm echoes input[0] in its output_specs. We then
     // overwrite the lowered output_specs with a shape containing a fresh
     // "spy" symbol that is NOT present in input_specs. If the trusted path
     // carries lowered metadata verbatim, the spy symbol survives into the
-    // plan. If the trusted path re-invoked AnalyzeOperator, the output would
+    // plan. If the trusted path re-invoked InferOperator, the output would
     // echo input[0] (no spy symbol), and the assertion would fail.
     //
     // This satisfies the plan's requirement: "spy/fixture 证明 trusted path
@@ -636,9 +636,9 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesTrustedMetadata) {
     const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_hidden});
     const SymbolicShape spy_shape(std::vector<ShapeSymbol>{seq_len, spy_symbol});
 
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-    // Sanity: AnalyzeRmsNorm echoes input[0] (act_shape), not spy_shape.
+    // Sanity: InferRmsNorm echoes input[0] (act_shape), not spy_shape.
     ASSERT_EQ(analyzed->outputs[0].shape, act_shape);
 
     LoweredGraph lowered;
@@ -672,11 +672,11 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesTrustedMetadata) {
     ASSERT_EQ(plan->steps()[0].output_specs[0].shape.rank(), 2U);
 
     // Spy assertion: the plan's output shape[1] is the spy symbol, NOT
-    // input_hidden (which AnalyzeOperator would have echoed). This proves
+    // input_hidden (which InferOperator would have echoed). This proves
     // the trusted path carried lowered metadata verbatim and did not
     // re-invoke the semantic analyzer.
     EXPECT_EQ(plan->steps()[0].output_specs[0].shape[1].value(), spy_symbol.value())
-            << "Trusted path appears to have re-invoked AnalyzeOperator: "
+            << "Trusted path appears to have re-invoked InferOperator: "
                "output symbol matches input_hidden instead of the spy symbol";
     EXPECT_NE(plan->steps()[0].output_specs[0].shape[1].value(), input_hidden.value());
 
@@ -690,7 +690,7 @@ TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
-    const auto analyzed = AnalyzeRmsNorm(11.0F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(11.0F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -766,7 +766,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesRawFallbackForUnregister
     // LoweredGraph path contract is "create Operator if registered, otherwise
     // resolve raw fallback"; an unregistered OpType must NOT be rejected with
     // FailedPrecondition. The lowered metadata (output_specs, runtime_checks)
-    // is carried forward verbatim without re-invoking AnalyzeOperator.
+    // is carried forward verbatim without re-invoking InferOperator.
     // Use SoftmaxTestBackend so the Softmax kernel can be resolved.
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
@@ -777,7 +777,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesRawFallbackForUnregister
     std::vector<TensorSpec> inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
     };
-    const auto analyzed = AnalyzeOperator(OpType::kSoftmax,
+    const auto analyzed = InferOperator(OpType::kSoftmax,
                                           OpParams{SoftmaxParams{.axis = -1}},
                                           inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
@@ -810,8 +810,8 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesRawFallbackForUnregister
 TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
     // kSoftmax has a schema but no registered Operator factory, so Build
     // falls back to the FunctionOperator raw-kernel path. The untrusted path
-    // still validates caller metadata via AnalyzeOperator (no no-op bypass).
-    // Asserting step.output_specs is non-empty proves AnalyzeOperator was
+    // still validates caller metadata via InferOperator (no no-op bypass).
+    // Asserting step.output_specs is non-empty proves InferOperator was
     // called rather than FunctionOperator::InferOutputShapes (which returns
     // an empty InferenceResult).
     // Use SoftmaxTestBackend so the Softmax kernel can be resolved (CpuBackend
@@ -825,7 +825,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
     std::vector<TensorSpec> inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
     };
-    const auto analyzed = AnalyzeOperator(OpType::kSoftmax,
+    const auto analyzed = InferOperator(OpType::kSoftmax,
                                           OpParams{SoftmaxParams{.axis = -1}},
                                           inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
@@ -850,7 +850,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
     const auto& step = plan->steps().front();
-    // output_specs is non-empty: AnalyzeSoftmax echoed the input spec.
+    // output_specs is non-empty: InferSoftmax echoed the input spec.
     // FunctionOperator::InferOutputShapes would have returned empty outputs.
     ASSERT_EQ(step.output_specs.size(), 1U);
     EXPECT_EQ(step.output_specs[0], analyzed->outputs[0]);

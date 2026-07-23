@@ -1,6 +1,6 @@
 /// Internal analysis function declarations for operator semantics.
 ///
-/// Each OpType has a corresponding Analyze* function that performs
+/// Each OpType has a corresponding Infer* function that performs
 /// operator-specific shape inference. These are declared in the
 /// aethermind::detail namespace and are not part of the public API.
 
@@ -16,19 +16,19 @@
 
 namespace aethermind::detail {
 
-StatusOr<InferenceResult> AnalyzeEmbedding(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeLinear(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeMatMul(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeRoPE(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeAttention(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeKVCacheUpdate(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeSoftmax(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeArgmax(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeAdd(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeSilu(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeSiluMul(const OpParams& params, std::span<const TensorSpec> inputs);
-StatusOr<InferenceResult> AnalyzeElementwiseMul(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferEmbedding(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferRmsNorm(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferLinear(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferMatMul(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferRoPE(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferAttention(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferSoftmax(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferArgmax(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferAdd(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferSilu(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferSiluMul(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferElementwiseMul(const OpParams& params, std::span<const TensorSpec> inputs);
 
 }// namespace aethermind::detail
 

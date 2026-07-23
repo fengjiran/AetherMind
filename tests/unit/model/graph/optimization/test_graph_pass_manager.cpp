@@ -386,7 +386,7 @@ ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
 }
 
 // Builds a structurally-valid but semantically-invalid graph: a RmsNorm node
-// whose activation input carries Int32 (AnalyzeRmsNorm only accepts floating-point).
+// whose activation input carries Int32 (InferRmsNorm only accepts floating-point).
 ModelGraph BuildGraphWithWrongInputDtype() {
     return BuildRmsNormGraphWithSpecs(
             Spec(DataType::Int(32), {4, 8}),
@@ -394,7 +394,7 @@ ModelGraph BuildGraphWithWrongInputDtype() {
             Spec(DataType::Float32(), {4, 8}));
 }
 
-// Builds a graph with a forged output spec: AnalyzeRmsNorm would derive a
+// Builds a graph with a forged output spec: InferRmsNorm would derive a
 // Float32 [4, 8] output, but the stored GraphValue carries Float16 to simulate
 // stale/forged metadata. ValidateAndTopologicalOrder must catch this.
 ModelGraph BuildGraphWithForgedOutputSpec() {
@@ -406,7 +406,7 @@ ModelGraph BuildGraphWithForgedOutputSpec() {
 
 
 TEST(GraphPassManager, RejectsWrongInputDtypeBeforeAnyPass) {
-    // Bad dtype: AnalyzeRmsNorm only accepts floating-point; the graph
+    // Bad dtype: InferRmsNorm only accepts floating-point; the graph
     // carries Float16. The precondition check at the start of Run() must
     // reject this BEFORE the sentinel CountingPass is invoked.
     const ModelGraph graph = BuildGraphWithWrongInputDtype();
@@ -425,7 +425,7 @@ TEST(GraphPassManager, RejectsWrongInputDtypeBeforeAnyPass) {
 }
 
 TEST(GraphPassManager, RejectsForgedOutputSpecBeforeAnyPass) {
-    // Forged output spec: AnalyzeRmsNorm derives Float32 output, but the
+    // Forged output spec: InferRmsNorm derives Float32 output, but the
     // stored GraphValue carries Float16. Precondition must catch this.
     const ModelGraph graph = BuildGraphWithForgedOutputSpec();
     int pass_invocations = 0;

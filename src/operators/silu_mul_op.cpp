@@ -17,11 +17,11 @@ Status SiluMulOp::ValidateParams() const {
 }
 
 Status SiluMulOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return AnalyzeOperator(Type(), params_, inputs).status();
+    return InferOperator(Type(), params_, inputs).status();
 }
 
 StatusOr<InferenceResult> SiluMulOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return AnalyzeOperator(Type(), params_, inputs);
+    return InferOperator(Type(), params_, inputs);
 }
 
 Status SiluMulOp::Prepare(OperatorContext& ctx) {

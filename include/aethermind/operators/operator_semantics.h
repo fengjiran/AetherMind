@@ -41,7 +41,7 @@ AM_NODISCARD Status ValidateOperatorParams(OpType op_type, const OpParams& param
 ///         deferred runtime checks. On failure, an error Status describing
 ///         the inference failure (e.g., kInvalidArgument for incompatible
 ///         input ranks, kUnimplemented for unsupported op types).
-AM_NODISCARD StatusOr<InferenceResult> AnalyzeOperator(OpType op_type,
+AM_NODISCARD StatusOr<InferenceResult> InferOperator(OpType op_type,
                                                        const OpParams& params,
                                                        std::span<const TensorSpec> inputs);
 

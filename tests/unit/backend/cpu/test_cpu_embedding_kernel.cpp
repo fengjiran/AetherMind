@@ -193,7 +193,7 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsThroughEmbeddingOperator) {
             TensorSpec{.dtype = DataType::Int(64), .shape = tokens_spec_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_spec_shape},
     };
-    const auto analyzed = AnalyzeOperator(OpType::kEmbedding,
+    const auto analyzed = InferOperator(OpType::kEmbedding,
                                           OpParams{EmbeddingParams{}},
                                           embedding_inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();

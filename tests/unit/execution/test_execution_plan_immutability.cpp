@@ -24,14 +24,14 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-StatusOr<InferenceResult> AnalyzeRmsNorm(float eps,
+StatusOr<InferenceResult> InferRmsNorm(float eps,
                                          const SymbolicShape& act_shape,
                                          const SymbolicShape& weight_shape) {
     std::vector<TensorSpec> inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
-    return AnalyzeOperator(OpType::kRmsNorm,
+    return InferOperator(OpType::kRmsNorm,
                            OpParams{RmsNormParams{.eps = eps}},
                            inputs);
 }
@@ -151,7 +151,7 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -186,7 +186,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -256,7 +256,7 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -301,7 +301,7 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
@@ -360,7 +360,7 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;

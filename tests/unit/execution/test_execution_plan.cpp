@@ -76,7 +76,7 @@ TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
     std::vector<TensorSpec> softmax_inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = softmax_shape},
     };
-    const auto analyzed = AnalyzeOperator(OpType::kSoftmax,
+    const auto analyzed = InferOperator(OpType::kSoftmax,
                                           OpParams{SoftmaxParams{.axis = -1}},
                                           softmax_inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
@@ -131,7 +131,7 @@ TEST(ExecutionPlan, BuildAllowsEmptyAttrs) {
     std::vector<TensorSpec> softmax_inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = softmax_shape},
     };
-    const auto analyzed = AnalyzeOperator(OpType::kSoftmax,
+    const auto analyzed = InferOperator(OpType::kSoftmax,
                                           OpParams{SoftmaxParams{.axis = -1}},
                                           softmax_inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();

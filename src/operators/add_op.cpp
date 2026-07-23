@@ -16,11 +16,11 @@ Status AddOp::ValidateParams() const {
 }
 
 Status AddOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return AnalyzeOperator(Type(), params_, inputs).status();
+    return InferOperator(Type(), params_, inputs).status();
 }
 
 StatusOr<InferenceResult> AddOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return AnalyzeOperator(Type(), params_, inputs);
+    return InferOperator(Type(), params_, inputs);
 }
 
 Status AddOp::Prepare(OperatorContext& ctx) {

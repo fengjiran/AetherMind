@@ -105,419 +105,419 @@ TEST(OperatorSemanticsValidate, ArgmaxValidParams) {
     EXPECT_TRUE(ValidateOperatorParams(OpType::kArgmax, ArgmaxParams{}).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, AddFloat32Ok) {
+TEST(OperatorSemanticsInfer, AddFloat32Ok) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});
     auto rhs = MakeSpec(DataType::Float32(), {2, 3});
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    auto result = AnalyzeOperator(OpType::kAdd, AddParams{}, inputs);
+    auto result = InferOperator(OpType::kAdd, AddParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs.size(), 1);
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
-TEST(OperatorSemanticsAnalyze, AddBroadcast) {
+TEST(OperatorSemanticsInfer, AddBroadcast) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});
     auto rhs = MakeSpec(DataType::Float32(), {3});
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    auto result = AnalyzeOperator(OpType::kAdd, AddParams{}, inputs);
+    auto result = InferOperator(OpType::kAdd, AddParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
-TEST(OperatorSemanticsAnalyze, AddDtypeMismatch) {
+TEST(OperatorSemanticsInfer, AddDtypeMismatch) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});
     auto rhs = MakeSpec(DataType::Double(), {2, 3});
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kAdd, AddParams{}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kAdd, AddParams{}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, AddWrongVariant) {
+TEST(OperatorSemanticsInfer, AddWrongVariant) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});
     auto rhs = MakeSpec(DataType::Float32(), {2, 3});
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kAdd, RmsNormParams{}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kAdd, RmsNormParams{}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, AddWrongInputCount) {
+TEST(OperatorSemanticsInfer, AddWrongInputCount) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});
     std::vector<TensorSpec> inputs = {lhs};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kAdd, AddParams{}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kAdd, AddParams{}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RmsNormFloat32Ok) {
+TEST(OperatorSemanticsInfer, RmsNormFloat32Ok) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     auto weight = MakeSpec(DataType::Float32(), {256});
     std::vector<TensorSpec> inputs = {input, weight};
-    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    auto result = InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs.size(), 1);
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
 }
 
-TEST(OperatorSemanticsAnalyze, RmsNormInvalidEps) {
+TEST(OperatorSemanticsInfer, RmsNormInvalidEps) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     auto weight = MakeSpec(DataType::Float32(), {256});
     std::vector<TensorSpec> inputs = {input, weight};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{0.0f}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRmsNorm, RmsNormParams{0.0f}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RmsNormWrongRank) {
+TEST(OperatorSemanticsInfer, RmsNormWrongRank) {
     auto input = MakeSpec(DataType::Float32(), {4});
     auto weight = MakeSpec(DataType::Float32(), {256});
     std::vector<TensorSpec> inputs = {input, weight};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RmsNormFloat16Ok) {
+TEST(OperatorSemanticsInfer, RmsNormFloat16Ok) {
     auto input = MakeSpec(DataType::Float(16), {4, 256});
     auto weight = MakeSpec(DataType::Float(16), {256});
     std::vector<TensorSpec> inputs = {input, weight};
-    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    auto result = InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
 }
 
-TEST(OperatorSemanticsAnalyze, RmsNormBFloat16Ok) {
+TEST(OperatorSemanticsInfer, RmsNormBFloat16Ok) {
     auto input = MakeSpec(DataType::BFloat(16), {4, 256});
     auto weight = MakeSpec(DataType::BFloat(16), {256});
     std::vector<TensorSpec> inputs = {input, weight};
-    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    auto result = InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
 }
 
-TEST(OperatorSemanticsAnalyze, RmsNormFloat8Ok) {
+TEST(OperatorSemanticsInfer, RmsNormFloat8Ok) {
     auto input = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
     auto weight = MakeSpec(DataType::Float8E4M3FN(), {256});
     std::vector<TensorSpec> inputs = {input, weight};
-    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    auto result = InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float8E4M3FN());
 }
 
-TEST(OperatorSemanticsAnalyze, RmsNormMixedDTypeOk) {
+TEST(OperatorSemanticsInfer, RmsNormMixedDTypeOk) {
     auto input = MakeSpec(DataType::Float(16), {4, 256});
     auto weight = MakeSpec(DataType::BFloat(16), {256});
     std::vector<TensorSpec> inputs = {input, weight};
-    auto result = AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    auto result = InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
 }
 
-TEST(OperatorSemanticsAnalyze, RmsNormWrongDtype) {
+TEST(OperatorSemanticsInfer, RmsNormWrongDtype) {
     auto input = MakeSpec(DataType::Int(32), {4, 256});
     auto weight = MakeSpec(DataType::Float32(), {256});
     std::vector<TensorSpec> inputs = {input, weight};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, EmbeddingInt32Ok) {
+TEST(OperatorSemanticsInfer, EmbeddingInt32Ok) {
     auto tokens = MakeSpec(DataType::Int(32), {10});
     auto weight = MakeSpec(DataType::Float32(), {32000, 256});
     std::vector<TensorSpec> inputs = {tokens, weight};
-    auto result = AnalyzeOperator(OpType::kEmbedding, EmbeddingParams{}, inputs);
+    auto result = InferOperator(OpType::kEmbedding, EmbeddingParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
 }
 
-TEST(OperatorSemanticsAnalyze, EmbeddingWrongWeightDtype) {
+TEST(OperatorSemanticsInfer, EmbeddingWrongWeightDtype) {
     auto tokens = MakeSpec(DataType::Int(32), {10});
     auto weight = MakeSpec(DataType::Int(64), {32000, 256});
     std::vector<TensorSpec> inputs = {tokens, weight};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kEmbedding, EmbeddingParams{}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kEmbedding, EmbeddingParams{}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, LinearRank2Ok) {
+TEST(OperatorSemanticsInfer, LinearRank2Ok) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     auto weight = MakeSpec(DataType::Float32(), {512, 256});
     std::vector<TensorSpec> inputs = {input, weight};
-    auto result = AnalyzeOperator(OpType::kLinear, LinearParams{}, inputs);
+    auto result = InferOperator(OpType::kLinear, LinearParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
-TEST(OperatorSemanticsAnalyze, LinearRank1Ok) {
+TEST(OperatorSemanticsInfer, LinearRank1Ok) {
     auto input = MakeSpec(DataType::Float32(), {256});
     auto weight = MakeSpec(DataType::Float32(), {512, 256});
     std::vector<TensorSpec> inputs = {input, weight};
-    auto result = AnalyzeOperator(OpType::kLinear, LinearParams{}, inputs);
+    auto result = InferOperator(OpType::kLinear, LinearParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 1);
 }
 
-TEST(OperatorSemanticsAnalyze, LinearInFeaturesMismatch) {
+TEST(OperatorSemanticsInfer, LinearInFeaturesMismatch) {
     auto input = MakeSpec(DataType::Float32(), {4, 128});
     auto weight = MakeSpec(DataType::Float32(), {512, 256});
     std::vector<TensorSpec> inputs = {input, weight};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kLinear, LinearParams{}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kLinear, LinearParams{}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, MatMulRank2Ok) {
+TEST(OperatorSemanticsInfer, MatMulRank2Ok) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});
     auto rhs = MakeSpec(DataType::Float32(), {3, 4});
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    auto result = AnalyzeOperator(OpType::kMatMul, MatMulParams{}, inputs);
+    auto result = InferOperator(OpType::kMatMul, MatMulParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
-TEST(OperatorSemanticsAnalyze, MatMulInnerMismatch) {
+TEST(OperatorSemanticsInfer, MatMulInnerMismatch) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});
     auto rhs = MakeSpec(DataType::Float32(), {5, 4});
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kMatMul, MatMulParams{}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kMatMul, MatMulParams{}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, MatMulTransposeRhs) {
+TEST(OperatorSemanticsInfer, MatMulTransposeRhs) {
     auto lhs = MakeSpec(DataType::Float32(), {2, 3});
     auto rhs = MakeSpec(DataType::Float32(), {4, 3});
     MatMulParams p{true};
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    auto result = AnalyzeOperator(OpType::kMatMul, p, inputs);
+    auto result = InferOperator(OpType::kMatMul, p, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
-TEST(OperatorSemanticsAnalyze, SiluFloat32Ok) {
+TEST(OperatorSemanticsInfer, SiluFloat32Ok) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> inputs = {input};
-    auto result = AnalyzeOperator(OpType::kSilu, SiluParams{}, inputs);
+    auto result = InferOperator(OpType::kSilu, SiluParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
-TEST(OperatorSemanticsAnalyze, SiluBFloat16Ok) {
+TEST(OperatorSemanticsInfer, SiluBFloat16Ok) {
     auto input = MakeSpec(DataType::BFloat(16), {4, 256});
     std::vector<TensorSpec> inputs = {input};
-    auto result = AnalyzeOperator(OpType::kSilu, SiluParams{}, inputs);
+    auto result = InferOperator(OpType::kSilu, SiluParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
 }
 
-TEST(OperatorSemanticsAnalyze, SiluWrongDtype) {
+TEST(OperatorSemanticsInfer, SiluWrongDtype) {
     auto input = MakeSpec(DataType::Int(32), {4, 256});
     std::vector<TensorSpec> inputs = {input};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kSilu, SiluParams{}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kSilu, SiluParams{}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, SiluMulFloat32Ok) {
+TEST(OperatorSemanticsInfer, SiluMulFloat32Ok) {
     auto gate = MakeSpec(DataType::Float32(), {4, 256});
     auto up = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> inputs = {gate, up};
-    auto result = AnalyzeOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
+    auto result = InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
 }
 
-TEST(OperatorSemanticsAnalyze, SiluMulBFloat16Ok) {
+TEST(OperatorSemanticsInfer, SiluMulBFloat16Ok) {
     auto gate = MakeSpec(DataType::BFloat(16), {4, 256});
     auto up = MakeSpec(DataType::BFloat(16), {4, 256});
     std::vector<TensorSpec> inputs = {gate, up};
-    auto result = AnalyzeOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
+    auto result = InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
 }
 
-TEST(OperatorSemanticsAnalyze, ElementwiseMulFloat32Ok) {
+TEST(OperatorSemanticsInfer, ElementwiseMulFloat32Ok) {
     auto lhs = MakeSpec(DataType::Float32(), {4, 256});
     auto rhs = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    auto result = AnalyzeOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs);
+    auto result = InferOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
 }
 
-TEST(OperatorSemanticsAnalyze, ElementwiseMulBFloat16Ok) {
+TEST(OperatorSemanticsInfer, ElementwiseMulBFloat16Ok) {
     auto lhs = MakeSpec(DataType::BFloat(16), {4, 256});
     auto rhs = MakeSpec(DataType::BFloat(16), {4, 256});
     std::vector<TensorSpec> inputs = {lhs, rhs};
-    auto result = AnalyzeOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs);
+    auto result = InferOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
 }
 
-TEST(OperatorSemanticsAnalyze, SoftmaxFloat32Ok) {
+TEST(OperatorSemanticsInfer, SoftmaxFloat32Ok) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> inputs = {input};
-    auto result = AnalyzeOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs);
+    auto result = InferOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
-TEST(OperatorSemanticsAnalyze, SoftmaxAxisOutOfRange) {
+TEST(OperatorSemanticsInfer, SoftmaxAxisOutOfRange) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> inputs = {input};
-    EXPECT_TRUE(AnalyzeOperator(OpType::kSoftmax, SoftmaxParams{5}, inputs).ok());
+    EXPECT_TRUE(InferOperator(OpType::kSoftmax, SoftmaxParams{5}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, SoftmaxUnrankedSkipsAxisCheck) {
+TEST(OperatorSemanticsInfer, SoftmaxUnrankedSkipsAxisCheck) {
     auto input = MakeSpec(DataType::Float32());
     std::vector<TensorSpec> inputs = {input};
-    auto result = AnalyzeOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs);
+    auto result = InferOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_FALSE(result->outputs[0].shape.IsRanked());
 }
 
-TEST(OperatorSemanticsAnalyze, ArgmaxFloat32Ok) {
+TEST(OperatorSemanticsInfer, ArgmaxFloat32Ok) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> inputs = {input};
-    auto result = AnalyzeOperator(OpType::kArgmax, ArgmaxParams{-1}, inputs);
+    auto result = InferOperator(OpType::kArgmax, ArgmaxParams{-1}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Int(64));
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 1);
 }
 
-TEST(OperatorSemanticsAnalyze, ArgmaxAxisOutOfRange) {
+TEST(OperatorSemanticsInfer, ArgmaxAxisOutOfRange) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> inputs = {input};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kArgmax, ArgmaxParams{5}, inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kArgmax, ArgmaxParams{5}, inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RoPEFloat32Ok) {
+TEST(OperatorSemanticsInfer, RoPEFloat32Ok) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
     auto k = MakeSpec(DataType::Float32(), {1, 128, 8 * 64});
     auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
     RoPEParams p{64, 32, 8, 2048};
     std::vector<TensorSpec> rope_inputs = {q, k, pos};
-    auto result = AnalyzeOperator(OpType::kRoPE, p, rope_inputs);
+    auto result = InferOperator(OpType::kRoPE, p, rope_inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs.size(), 2);
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
     EXPECT_EQ(result->outputs[1].dtype, DataType::Float32());
 }
 
-TEST(OperatorSemanticsAnalyze, RoPEGQACompatible) {
+TEST(OperatorSemanticsInfer, RoPEGQACompatible) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 2048});
     auto k = MakeSpec(DataType::Float32(), {1, 128, 512});
     auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
     RoPEParams p{64, 32, 8, 2048};
     std::vector<TensorSpec> rope_inputs = {q, k, pos};
-    auto result = AnalyzeOperator(OpType::kRoPE, p, rope_inputs);
+    auto result = InferOperator(OpType::kRoPE, p, rope_inputs);
     ASSERT_TRUE(result.ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RoPEQLastDimMismatch) {
+TEST(OperatorSemanticsInfer, RoPEQLastDimMismatch) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 100});
     auto k = MakeSpec(DataType::Float32(), {1, 128, 8 * 64});
     auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
     RoPEParams p{64, 32, 8, 2048};
     std::vector<TensorSpec> rope_inputs = {q, k, pos};
-    EXPECT_TRUE(AnalyzeOperator(OpType::kRoPE, p, rope_inputs).ok());
+    EXPECT_TRUE(InferOperator(OpType::kRoPE, p, rope_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RoPEKLastDimMismatch) {
+TEST(OperatorSemanticsInfer, RoPEKLastDimMismatch) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
     auto k = MakeSpec(DataType::Float32(), {1, 128, 100});
     auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
     RoPEParams p{64, 32, 8, 2048};
     std::vector<TensorSpec> rope_inputs = {q, k, pos};
-    EXPECT_TRUE(AnalyzeOperator(OpType::kRoPE, p, rope_inputs).ok());
+    EXPECT_TRUE(InferOperator(OpType::kRoPE, p, rope_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RoPERankMismatch) {
+TEST(OperatorSemanticsInfer, RoPERankMismatch) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
     auto k = MakeSpec(DataType::Float32(), {128, 8 * 64});
     auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
     RoPEParams p{64, 32, 8, 2048};
     std::vector<TensorSpec> rope_inputs = {q, k, pos};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kRoPE, p, rope_inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, rope_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RoPEBatchDimMismatch) {
+TEST(OperatorSemanticsInfer, RoPEBatchDimMismatch) {
     auto q = MakeSpec(DataType::Float32(), {2, 128, 32 * 64});
     auto k = MakeSpec(DataType::Float32(), {1, 128, 8 * 64});
     auto pos = MakeSpec(DataType::Int(64), std::vector<int64_t>{128});
     RoPEParams p{64, 32, 8, 2048};
     std::vector<TensorSpec> rope_inputs = {q, k, pos};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kRoPE, p, rope_inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, rope_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, RoPEWrongPositionIdsDtype) {
+TEST(OperatorSemanticsInfer, RoPEWrongPositionIdsDtype) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
     auto k = MakeSpec(DataType::Float32(), {1, 128, 8 * 64});
     auto pos = MakeSpec(DataType::Float32(), std::vector<int64_t>{128});
     RoPEParams p{64, 32, 8, 2048};
     std::vector<TensorSpec> rope_inputs = {q, k, pos};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kRoPE, p, rope_inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, rope_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, AttentionFloat32Ok) {
+TEST(OperatorSemanticsInfer, AttentionFloat32Ok) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
     auto kCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     auto vCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     AttentionParams p{32, 8, 64};
     std::vector<TensorSpec> attn_inputs = {q, kCache, vCache};
-    auto result = AnalyzeOperator(OpType::kAttention, p, attn_inputs);
+    auto result = InferOperator(OpType::kAttention, p, attn_inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs.size(), 1);
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
 }
 
-TEST(OperatorSemanticsAnalyze, AttentionQLastDimMismatch) {
+TEST(OperatorSemanticsInfer, AttentionQLastDimMismatch) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 100});
     auto kCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     auto vCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     AttentionParams p{32, 8, 64};
     std::vector<TensorSpec> attn_inputs = {q, kCache, vCache};
-    EXPECT_TRUE(AnalyzeOperator(OpType::kAttention, p, attn_inputs).ok());
+    EXPECT_TRUE(InferOperator(OpType::kAttention, p, attn_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, AttentionWrongCacheDtype) {
+TEST(OperatorSemanticsInfer, AttentionWrongCacheDtype) {
     auto q = MakeSpec(DataType::Float32(), {1, 128, 32 * 64});
     auto kCache = MakeSpec(DataType::Double(), {1, 8, 1024, 64});
     auto vCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     AttentionParams p{32, 8, 64};
     std::vector<TensorSpec> attn_inputs = {q, kCache, vCache};
-    EXPECT_TRUE(AnalyzeOperator(OpType::kAttention, p, attn_inputs).ok());
+    EXPECT_TRUE(InferOperator(OpType::kAttention, p, attn_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, KVCacheUpdateFloat32Ok) {
+TEST(OperatorSemanticsInfer, KVCacheUpdateFloat32Ok) {
     auto k = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
     auto v = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
     auto kCacheIn = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     auto vCacheIn = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     std::vector<TensorSpec> kv_inputs = {k, v, kCacheIn, vCacheIn};
-    auto result = AnalyzeOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, kv_inputs);
+    auto result = InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, kv_inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs.size(), 2);
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
     EXPECT_EQ(result->outputs[1].dtype, DataType::Float32());
 }
 
-TEST(OperatorSemanticsAnalyze, KVCacheUpdateDtypeMismatch) {
+TEST(OperatorSemanticsInfer, KVCacheUpdateDtypeMismatch) {
     auto k = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
     auto v = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
     auto kCacheIn = MakeSpec(DataType::Double(), {1, 8, 1024, 64});
     auto vCacheIn = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     std::vector<TensorSpec> kv_inputs = {k, v, kCacheIn, vCacheIn};
-    EXPECT_TRUE(AnalyzeOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, kv_inputs).ok());
+    EXPECT_TRUE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, kv_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, KVCacheUpdateShapeMismatch) {
+TEST(OperatorSemanticsInfer, KVCacheUpdateShapeMismatch) {
     auto k = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
     auto v = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
     auto kCacheIn = MakeSpec(DataType::Float32(), {1, 4, 1024, 64});
     auto vCacheIn = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     std::vector<TensorSpec> kv_inputs = {k, v, kCacheIn, vCacheIn};
-    EXPECT_TRUE(AnalyzeOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, kv_inputs).ok());
+    EXPECT_TRUE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, kv_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, KVCacheUpdateRankMismatch) {
+TEST(OperatorSemanticsInfer, KVCacheUpdateRankMismatch) {
     auto k = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
     auto v = MakeSpec(DataType::Float32(), {1, 8, 1, 64});
     auto kCacheIn = MakeSpec(DataType::Float32(), {1, 8, 1024});
     auto vCacheIn = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     std::vector<TensorSpec> kv_inputs = {k, v, kCacheIn, vCacheIn};
-    EXPECT_TRUE(AnalyzeOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, kv_inputs).ok());
+    EXPECT_TRUE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, kv_inputs).ok());
 }
 
-TEST(OperatorSemanticsAnalyze, UnknownOpType) {
+TEST(OperatorSemanticsInfer, UnknownOpType) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> unknown_inputs = {input};
-    EXPECT_FALSE(AnalyzeOperator(OpType::kUnknown, AddParams{}, unknown_inputs).ok());
+    EXPECT_FALSE(InferOperator(OpType::kUnknown, AddParams{}, unknown_inputs).ok());
 }
 
 TEST(OperatorSemanticsMakeCompact, AllContributing) {

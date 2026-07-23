@@ -811,7 +811,7 @@ ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
 }
 
 // Builds a structurally-valid but semantically-invalid graph: a RmsNorm node
-// whose activation input carries Int32 (AnalyzeRmsNorm only accepts floating-point).
+// whose activation input carries Int32 (InferRmsNorm only accepts floating-point).
 ModelGraph BuildGraphWithWrongInputDtype() {
     return BuildRmsNormGraphWithSpecs(
             Spec(DataType::Int(32), {4, 8}),
@@ -819,7 +819,7 @@ ModelGraph BuildGraphWithWrongInputDtype() {
             Spec(DataType::Float32(), {4, 8}));
 }
 
-// Builds a graph with a forged output spec: AnalyzeRmsNorm would derive a
+// Builds a graph with a forged output spec: InferRmsNorm would derive a
 // Float32 [4, 8] output, but the stored GraphValue carries Float16 to simulate
 // stale/forged metadata. ValidateAndTopologicalOrder must catch this.
 ModelGraph BuildGraphWithForgedOutputSpec() {
@@ -833,7 +833,7 @@ ModelGraph BuildGraphWithForgedOutputSpec() {
 // ---- Task 5: precondition verification at compilation entry ----------------
 
 TEST(OptimizeModelGraph, RejectsWrongInputDtypeBeforeOptimization) {
-    // Bad dtype: AnalyzeRmsNorm only accepts floating-point; the graph
+    // Bad dtype: InferRmsNorm only accepts floating-point; the graph
     // carries Float16. OptimizeModelGraph must propagate the semantic error
     // from GraphPassManager::Run precondition, without fallback to unoptimized
     // compilation.
@@ -849,7 +849,7 @@ TEST(OptimizeModelGraph, RejectsWrongInputDtypeBeforeOptimization) {
 }
 
 TEST(OptimizeModelGraph, RejectsForgedOutputSpecBeforeOptimization) {
-    // Forged output spec: AnalyzeRmsNorm derives Float32 output, but the
+    // Forged output spec: InferRmsNorm derives Float32 output, but the
     // stored GraphValue carries Float16. OptimizeModelGraph must propagate
     // the semantic error from the precondition check, without fallback.
     const ModelGraph graph = BuildGraphWithForgedOutputSpec();
@@ -970,7 +970,7 @@ struct RuntimeTensorStorage {
 TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure) {
     // Build a graph with a deferred DimEqualConstraint: the activation hidden
     // dim and the norm weight length are distinct symbolic dimensions, so
-    // AnalyzeRmsNorm emits a runtime check that cannot be resolved at compile
+    // InferRmsNorm emits a runtime check that cannot be resolved at compile
     // time. The check must flow verbatim through OptimizeModelGraph ->
     // LowerModelGraph -> ExecutionPlanBuilder -> Executor, and violating
     // runtime bindings must be rejected BEFORE the kernel runs.
@@ -1001,11 +1001,11 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     ASSERT_TRUE(rms_or.ok()) << rms_or.status().ToString();
     graph.MarkOutput(rms_or->outputs[0]);
 
-    // Layer 0: the graph itself. AddNode must have invoked AnalyzeRmsNorm and
+    // Layer 0: the graph itself. AddNode must have invoked InferRmsNorm and
     // stored the derived runtime check on the node.
     const GraphNode& graph_node = graph.GetNode(rms_or->node);
     ASSERT_EQ(graph_node.runtime_checks.size(), 1u)
-            << "AnalyzeRmsNorm must emit exactly one DimEqualConstraint for "
+            << "InferRmsNorm must emit exactly one DimEqualConstraint for "
                "distinct symbolic hidden vs weight length";
     const auto graph_checks = graph_node.runtime_checks;
 

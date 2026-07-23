@@ -11,7 +11,8 @@
 
 namespace aethermind::detail {
 
-StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
+StatusOr<InferenceResult> InferRmsNorm(const OpParams& /*params*/,
+                                         std::span<const TensorSpec> inputs) {
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
                 "RmsNorm expects exactly 2 inputs, got " + std::to_string(inputs.size()));
@@ -78,7 +79,7 @@ StatusOr<InferenceResult> AnalyzeRmsNorm(const OpParams& /*params*/, std::span<c
     };
 }
 
-StatusOr<InferenceResult> AnalyzeRoPE(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
+StatusOr<InferenceResult> InferRoPE(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
     if (inputs.size() != 3) {
         return Status::InvalidArgument(
                 "RoPE expects exactly 3 inputs (q, k, position_ids), got " +
@@ -120,7 +121,7 @@ StatusOr<InferenceResult> AnalyzeRoPE(const OpParams& /*params*/, std::span<cons
     };
 }
 
-StatusOr<InferenceResult> AnalyzeAttention(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
+StatusOr<InferenceResult> InferAttention(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
     if (inputs.size() != 3) {
         return Status::InvalidArgument(
                 "Attention expects exactly 3 inputs (q, kCache, vCache), got " + std::to_string(inputs.size()));
@@ -137,7 +138,7 @@ StatusOr<InferenceResult> AnalyzeAttention(const OpParams& /*params*/, std::span
     };
 }
 
-StatusOr<InferenceResult> AnalyzeKVCacheUpdate(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
+StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
     if (inputs.size() != 4) {
         return Status::InvalidArgument(
                 "KVCacheUpdate expects exactly 4 inputs (k, v, kCacheIn, vCacheIn), got " + std::to_string(inputs.size()));

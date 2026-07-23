@@ -405,7 +405,7 @@ private:
     AM_NODISCARD StatusOr<TensorSpec> ResolveValueSpec(
             GraphValueId value,
             const std::vector<std::optional<TensorSpec>>& virtual_specs) const;
-    // Replays AnalyzeOperator over replacement nodes in order, verifying input
+    // Replays InferOperator over replacement nodes in order, verifying input
     // availability, output count, replaces target dtype compatibility, and
     // deriving virtual specs into virtual_specs_out. Used by ValidateEdits and
     // ReplaceSubgraph to catch semantic violations before Commit.

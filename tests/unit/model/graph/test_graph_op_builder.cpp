@@ -90,7 +90,8 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
             "lm_head");
     ASSERT_TRUE(logits_or.ok()) << logits_or.status().ToString();
     const GraphValueId logits = *logits_or;
-    auto output_or = AddArgmax(graph, std::nullopt, logits, -1, "argmax");
+    auto output_or = AddArgmax(graph, std::nullopt,
+                               logits, -1, "argmax");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
     graph.MarkOutput(output);
@@ -109,7 +110,8 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(embedding_binding.slot, ParameterSlot::kEmbeddingTable);
     EXPECT_FALSE(embedding_binding.decoder_layer_index.has_value());
     ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(embedding_binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(embedding_binding.semantic_role), TransformerWeightRole::kTokenEmbedding);
+    EXPECT_EQ(std::get<TransformerWeightRole>(embedding_binding.semantic_role),
+              TransformerWeightRole::kTokenEmbedding);
 
     ASSERT_TRUE(graph.GetValue(normed).producer.has_value());
     const GraphNode& norm_node = graph.GetNode(*graph.GetValue(normed).producer);
@@ -122,7 +124,8 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(norm_binding.slot, ParameterSlot::kScale);
     EXPECT_EQ(norm_binding.decoder_layer_index, std::optional<uint32_t>{0});
     ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(norm_binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(norm_binding.semantic_role), TransformerWeightRole::kInputNorm);
+    EXPECT_EQ(std::get<TransformerWeightRole>(norm_binding.semantic_role),
+              TransformerWeightRole::kInputNorm);
 
     ASSERT_TRUE(graph.GetValue(q).producer.has_value());
     const GraphNode& q_node = graph.GetNode(*graph.GetValue(q).producer);
@@ -135,7 +138,8 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(q_binding.slot, ParameterSlot::kKernel);
     EXPECT_EQ(q_binding.decoder_layer_index, std::optional<uint32_t>{0});
     ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(q_binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(q_binding.semantic_role), TransformerWeightRole::kAttentionQ);
+    EXPECT_EQ(std::get<TransformerWeightRole>(q_binding.semantic_role),
+              TransformerWeightRole::kAttentionQ);
 
     ASSERT_TRUE(graph.GetValue(logits).producer.has_value());
     const GraphNode& logits_node = graph.GetNode(*graph.GetValue(logits).producer);
@@ -148,7 +152,8 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(lm_head_binding.slot, ParameterSlot::kKernel);
     EXPECT_FALSE(lm_head_binding.decoder_layer_index.has_value());
     ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(lm_head_binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(lm_head_binding.semantic_role), TransformerWeightRole::kLmHead);
+    EXPECT_EQ(std::get<TransformerWeightRole>(lm_head_binding.semantic_role),
+              TransformerWeightRole::kLmHead);
 
     EXPECT_EQ(graph.GetNode(GraphNodeId{.index = 0}).op_type, OpType::kEmbedding);
     EXPECT_EQ(graph.GetNode(GraphNodeId{.index = 5}).op_type, OpType::kSiluMul);
@@ -205,23 +210,29 @@ TEST(GraphOpBuilder, AddElementwiseMulDerivesOutputSpecFromLhs) {
 
 TEST(GraphOpBuilder, AddElementwiseMulRequiresMatchingSpecs) {
     ModelGraph graph;
-    const GraphValueId lhs = graph.AddConstant(Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "lhs");
-    const GraphValueId rhs = graph.AddConstant(Spec(DataType::Float32(), {2, 8}), ConstantBinding{}, "rhs");
+    const GraphValueId lhs = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 4}), ConstantBinding{}, "lhs");
+    const GraphValueId rhs = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 8}), ConstantBinding{}, "rhs");
 
     EXPECT_FALSE(AddElementwiseMul(graph, 0, lhs, rhs, "bad_mul").ok());
 }
 
 TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
-    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {4}), .name = "input"}});
-    const GraphValueId input{.index = 0};
+    ModelGraph graph(HfModelConfig{}, {},
+                     {GraphValue{.payload = ActivationValue{},
+                                 .spec = Spec(DataType::Float32(), {4}),
+                                 .name = "input"}});
+    constexpr GraphValueId input{.index = 0};
 
-    auto output_or = AddLinear(graph,
-                               input,
-                               8,
-                               DataType::Float32(),
-                               WeightBinding{.slot = ParameterSlot::kKernel,
-                                             .semantic_role = TransformerWeightRole::kLmHead},
-                               "linear");
+    auto output_or = AddLinear(
+            graph,
+            input,
+            8,
+            DataType::Float32(),
+            {.slot = ParameterSlot::kKernel,
+             .semantic_role = TransformerWeightRole::kLmHead},
+            "linear");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
 
@@ -236,29 +247,115 @@ TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
 }
 
 TEST(GraphOpBuilder, AddLinearRejectsRankThreeInput) {
-    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {2, 3, 4}), .name = "input"}});
-    const GraphValueId input{.index = 0};
+    ModelGraph graph(HfModelConfig{}, {},
+                     {GraphValue{.payload = ActivationValue{},
+                                 .spec = Spec(DataType::Float32(), {2, 3, 4}),
+                                 .name = "input"}});
+    constexpr GraphValueId input{.index = 0};
     EXPECT_FALSE(AddLinear(graph,
                            input,
                            8,
                            DataType::Float32(),
-                           WeightBinding{.slot = ParameterSlot::kKernel,
-                                         .semantic_role = TransformerWeightRole::kLmHead},
+                           {.slot = ParameterSlot::kKernel,
+                            .semantic_role = TransformerWeightRole::kLmHead},
                            "linear")
                          .ok());
 }
 
 TEST(GraphOpBuilder, AddRmsNormRejectsRankThreeInput) {
-    ModelGraph graph(HfModelConfig{}, {}, {GraphValue{.payload = ActivationValue{}, .spec = Spec(DataType::Float32(), {2, 3, 4}), .name = "input"}});
+    ModelGraph graph(HfModelConfig{}, {},
+                     {GraphValue{.payload = ActivationValue{},
+                                 .spec = Spec(DataType::Float32(), {2, 3, 4}),
+                                 .name = "input"}});
     const GraphValueId input{.index = 0};
     EXPECT_FALSE(AddRmsNorm(graph,
                             input,
                             DataType::Float32(),
-                            WeightBinding{.slot = ParameterSlot::kScale,
-                                          .semantic_role = TransformerWeightRole::kFinalNorm},
+                            {.slot = ParameterSlot::kScale,
+                             .semantic_role = TransformerWeightRole::kFinalNorm},
                             1.0e-5F,
                             "norm")
                          .ok());
+}
+
+TEST(GraphOpBuilder, AddRmsNormAcceptsUnknownHiddenDim) {
+    ModelGraph graph(HfModelConfig{}, {},
+                     {GraphValue{.payload = ActivationValue{},
+                                 .spec = TensorSpec{.dtype = DataType::Float32(),
+                                                    .shape = SymbolicShape({2, ShapeSymbol::Unknown()})},
+                                 .name = "input"}});
+    const GraphValueId input{.index = 0};
+    auto result = AddRmsNorm(graph,
+                             input,
+                             DataType::Float32(),
+                             {.slot = ParameterSlot::kScale,
+                              .semantic_role = TransformerWeightRole::kFinalNorm},
+                             1.0e-5F,
+                             "norm");
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+}
+
+TEST(GraphOpBuilder, AddRmsNormAcceptsSymbolicHiddenDim) {
+    const ShapeSymbol hidden_sym = ShapeSymbol::Create();
+    ModelGraph graph(HfModelConfig{}, {},
+                     {GraphValue{.payload = ActivationValue{},
+                                 .spec = TensorSpec{.dtype = DataType::Float32(),
+                                                    .shape = SymbolicShape({2, hidden_sym})},
+                                 .name = "input"}});
+    const GraphValueId input{.index = 0};
+    auto result = AddRmsNorm(graph,
+                             input,
+                             DataType::Float32(),
+                             {.slot = ParameterSlot::kScale,
+                              .semantic_role = TransformerWeightRole::kFinalNorm},
+                             1.0e-5F,
+                             "norm");
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const auto values = graph.GetValues();
+    ASSERT_EQ(values.size(), 3u);
+    EXPECT_EQ(values[1].spec.shape.shape()->back(), hidden_sym);
+}
+
+TEST(GraphOpBuilder, AddLinearAcceptsUnknownHiddenDim) {
+    ModelGraph graph(HfModelConfig{}, {},
+                     {GraphValue{.payload = ActivationValue{},
+                                 .spec = TensorSpec{.dtype = DataType::Float32(),
+                                                    .shape = SymbolicShape({2, ShapeSymbol::Unknown()})},
+                                 .name = "input"}});
+    const GraphValueId input{.index = 0};
+    auto result = AddLinear(graph,
+                            input,
+                            8,
+                            DataType::Float32(),
+                            {.slot = ParameterSlot::kKernel,
+                             .semantic_role = TransformerWeightRole::kLmHead},
+                            "linear");
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+}
+
+TEST(GraphOpBuilder, AddLinearAcceptsSymbolicHiddenDim) {
+    const ShapeSymbol hidden_sym = ShapeSymbol::Create();
+    ModelGraph graph(HfModelConfig{}, {},
+                     {GraphValue{.payload = ActivationValue{},
+                                 .spec = TensorSpec{.dtype = DataType::Float32(),
+                                                    .shape = SymbolicShape({2, hidden_sym})},
+                                 .name = "input"}});
+    const GraphValueId input{.index = 0};
+    auto result = AddLinear(graph,
+                            input,
+                            8,
+                            DataType::Float32(),
+                            {.slot = ParameterSlot::kKernel,
+                             .semantic_role = TransformerWeightRole::kLmHead},
+                            "linear");
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    // Weight spec reuses the symbolic hidden dim; verify the weight GraphValue
+    // carries a 2D shape whose second dim equals the input symbolic dim.
+    const auto values = graph.GetValues();
+    ASSERT_EQ(values.size(), 3u);
+    const auto weight_shape = *values[1].spec.shape.shape();
+    ASSERT_EQ(weight_shape.size(), 2u);
+    EXPECT_EQ(weight_shape[1], hidden_sym);
 }
 
 TEST(GraphOpBuilder, AddsMultiOutputOperatorHelpers) {

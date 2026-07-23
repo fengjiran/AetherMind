@@ -9,7 +9,7 @@ namespace aethermind {
 namespace detail {
 namespace {
 
-StatusOr<InferenceResult> AnalyzeBroadcastBinary(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferBroadcastBinary(const OpParams& /*params*/,
                                                  std::span<const TensorSpec> inputs,
                                                  const char* op_name) {
     if (inputs.size() != 2) {
@@ -43,7 +43,7 @@ StatusOr<InferenceResult> AnalyzeBroadcastBinary(const OpParams& /*params*/,
 
 }// namespace
 
-StatusOr<InferenceResult> AnalyzeAdd(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferAdd(const OpParams& /*params*/,
                                      std::span<const TensorSpec> inputs) {
     if (inputs.size() != 2) {
         return Status::InvalidArgument("Add requires exactly 2 inputs");
@@ -71,7 +71,7 @@ StatusOr<InferenceResult> AnalyzeAdd(const OpParams& /*params*/,
     return result;
 }
 
-StatusOr<InferenceResult> AnalyzeSilu(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferSilu(const OpParams& /*params*/,
                                       std::span<const TensorSpec> inputs) {
     if (inputs.size() != 1) {
         return Status::InvalidArgument("Silu requires exactly 1 input");
@@ -84,17 +84,17 @@ StatusOr<InferenceResult> AnalyzeSilu(const OpParams& /*params*/,
     return result;
 }
 
-StatusOr<InferenceResult> AnalyzeSiluMul(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferSiluMul(const OpParams& /*params*/,
                                          std::span<const TensorSpec> inputs) {
-    return AnalyzeBroadcastBinary(/*params=*/{}, inputs, "SiluMul");
+    return InferBroadcastBinary(/*params=*/{}, inputs, "SiluMul");
 }
 
-StatusOr<InferenceResult> AnalyzeElementwiseMul(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferElementwiseMul(const OpParams& /*params*/,
                                                 std::span<const TensorSpec> inputs) {
-    return AnalyzeBroadcastBinary(/*params=*/{}, inputs, "ElementwiseMul");
+    return InferBroadcastBinary(/*params=*/{}, inputs, "ElementwiseMul");
 }
 
-StatusOr<InferenceResult> AnalyzeSoftmax(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferSoftmax(const OpParams& /*params*/,
                                          std::span<const TensorSpec> inputs) {
     if (inputs.size() != 1) {
         return Status::InvalidArgument("Softmax requires exactly 1 input");
@@ -107,7 +107,7 @@ StatusOr<InferenceResult> AnalyzeSoftmax(const OpParams& /*params*/,
     return result;
 }
 
-StatusOr<InferenceResult> AnalyzeArgmax(const OpParams& params,
+StatusOr<InferenceResult> InferArgmax(const OpParams& params,
                                         std::span<const TensorSpec> inputs) {
     if (inputs.size() != 1) {
         return Status::InvalidArgument("Argmax requires exactly 1 input");

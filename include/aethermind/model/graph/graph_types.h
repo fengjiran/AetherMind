@@ -226,7 +226,7 @@ struct GraphNode {
 /// optional quantization scheme, and debug name.
 ///
 /// Output TensorSpecs are derived by operator semantic analysis
-/// (AnalyzeOperator) and stored on GraphValue. Runtime shape
+/// (InferOperator) and stored on GraphValue. Runtime shape
 /// constraints are stored on GraphNode.runtime_checks.
 struct NodeOutputDesc {
     GraphValuePayload payload{std::monostate{}};

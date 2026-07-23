@@ -70,7 +70,7 @@ public:
     /// Adds an operator node with the given input and output declarations.
     ///
     /// Validates inputs, schema, params, and output metadata, then calls
-    /// AnalyzeOperator to derive output TensorSpecs and runtime checks before
+    /// InferOperator to derive output TensorSpecs and runtime checks before
     /// any observable mutation. Output payloads supplied as monostate are
     /// normalized to ActivationValue.
     ///

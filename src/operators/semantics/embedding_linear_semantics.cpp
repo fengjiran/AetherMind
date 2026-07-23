@@ -15,7 +15,7 @@ bool IsSupportedTokenIdDType(const DataType& dtype) {
 
 }// namespace
 
-StatusOr<InferenceResult> AnalyzeEmbedding(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferEmbedding(const OpParams& /*params*/,
                                            std::span<const TensorSpec> inputs) {
     if (inputs.size() != 2) {
         return Status::InvalidArgument("Embedding requires exactly 2 inputs");
@@ -50,7 +50,7 @@ StatusOr<InferenceResult> AnalyzeEmbedding(const OpParams& /*params*/,
     return result;
 }
 
-StatusOr<InferenceResult> AnalyzeLinear(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferLinear(const OpParams& /*params*/,
                                         std::span<const TensorSpec> inputs) {
     if (inputs.size() != 2) {
         return Status::InvalidArgument("Linear requires exactly 2 inputs");
@@ -133,7 +133,7 @@ SymbolicShape MakeBatchShape(const SymbolicShape& shape, size_t rank) {
 
 }// namespace
 
-StatusOr<InferenceResult> AnalyzeMatMul(const OpParams& params,
+StatusOr<InferenceResult> InferMatMul(const OpParams& params,
                                         std::span<const TensorSpec> inputs) {
     if (inputs.size() != 2) {
         return Status::InvalidArgument("MatMul requires exactly 2 inputs");

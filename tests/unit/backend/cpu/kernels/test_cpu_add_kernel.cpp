@@ -672,7 +672,7 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
             TensorSpec{.dtype = DataType::Float32(), .shape = lhs_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = rhs_shape},
     };
-    auto analyzed = AnalyzeOperator(OpType::kAdd, OpParams{AddParams{}}, add_inputs);
+    auto analyzed = InferOperator(OpType::kAdd, OpParams{AddParams{}}, add_inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     RuntimeBuilder runtime_builder;

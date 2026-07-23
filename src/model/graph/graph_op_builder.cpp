@@ -18,7 +18,7 @@ StatusOr<GraphValueId> OnlyOneOutput(const AddedNode& added_node) {
 }
 
 NodeOutputDesc ActivationOutput() {
-    return NodeOutputDesc{.payload = ActivationValue{}};
+    return {.payload = ActivationValue{}};
 }
 
 }// namespace
@@ -56,13 +56,14 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
         return Status::InvalidArgument("Linear input rank must be at least 1");
     }
 
+    // The in_features dimension may be dynamic (unknown or a named symbol); the
+    // weight spec reuses the same ShapeSymbol so the input<->weight hidden
+    // equality is tracked symbolically. InferLinear emits a DimEqualConstraint
+    // runtime check when the equality cannot be proven statically.
     const ShapeSymbol in_features_symbol = input_shape.back();
-    if (!in_features_symbol.IsStatic()) {
-        return Status::InvalidArgument("Linear input last dimension must be static");
-    }
-
-    if (in_features_symbol.GetStaticValue() <= 0) {
-        return Status::InvalidArgument("Linear input last dimension must be positive");
+    if (!IsPositiveIfStatic(in_features_symbol)) {
+        return Status::InvalidArgument(
+                "Linear input last dimension must be positive if static");
     }
 
     const ShapeSymbol out_features_symbol = ShapeSymbol::CreateFromValue(out_features);
@@ -73,14 +74,13 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
             name);
 
     AM_ASSIGN_OR_RETURN(AddedNode node,
-                        graph.AddNode(
-                                OpType::kLinear,
-                                binding.decoder_layer_index,
-                                {input, weight},
-                                {ActivationOutput()},
-                                LinearParams{},
-                                {},
-                                std::move(name)));
+                        graph.AddNode(OpType::kLinear,
+                                      binding.decoder_layer_index,
+                                      {input, weight},
+                                      {ActivationOutput()},
+                                      LinearParams{},
+                                      {},
+                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 
@@ -100,13 +100,14 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
         return Status::InvalidArgument("RmsNorm input rank must be at least 1");
     }
 
+    // The in_features dimension may be dynamic (unknown or a named symbol); the
+    // weight spec reuses the same ShapeSymbol so the input<->weight hidden
+    // equality is tracked symbolically. InferRmsNorm emits a DimEqualConstraint
+    // runtime check when the equality cannot be proven statically.
     const ShapeSymbol in_features_symbol = input_shape.back();
-    if (!in_features_symbol.IsStatic()) {
-        return Status::InvalidArgument("RmsNorm input last dimension must be static");
-    }
-
-    if (in_features_symbol.GetStaticValue() <= 0) {
-        return Status::InvalidArgument("RmsNorm input last dimension must be positive");
+    if (!IsPositiveIfStatic(in_features_symbol)) {
+        return Status::InvalidArgument(
+                "RmsNorm input last dimension must be positive if static");
     }
 
     const GraphValueId weight = graph.AddWeight(
@@ -116,14 +117,13 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
             name);
 
     AM_ASSIGN_OR_RETURN(AddedNode node,
-                        graph.AddNode(
-                                OpType::kRmsNorm,
-                                binding.decoder_layer_index,
-                                {input, weight},
-                                {ActivationOutput()},
-                                RmsNormParams{.eps = eps},
-                                {},
-                                std::move(name)));
+                        graph.AddNode(OpType::kRmsNorm,
+                                      binding.decoder_layer_index,
+                                      {input, weight},
+                                      {ActivationOutput()},
+                                      RmsNormParams{.eps = eps},
+                                      {},
+                                      std::move(name)));
     return OnlyOneOutput(node);
 }
 

@@ -160,7 +160,7 @@ Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nod
     }
     AM_RETURN_IF_ERROR(ValidateReplacementTargets(old_nodes, replacement_nodes));
 
-    // Early failure: replay AnalyzeOperator over the replacement nodes before
+    // Early failure: replay InferOperator over the replacement nodes before
     // mutating any session state. This catches undefined virtual inputs,
     // duplicate virtual producers, dtype mismatches, and other semantic
     // violations at Apply time rather than deferring them to Commit. The
@@ -594,7 +594,7 @@ Status GraphRewriteSession::ValidateEdits() const {
     }
     AM_RETURN_IF_ERROR(ValidateVirtualValues());
 
-    // Semantic replay: validate each active rewrite by replaying AnalyzeOperator
+    // Semantic replay: validate each active rewrite by replaying InferOperator
     // over its replacement nodes. Virtual value specs are derived per-rewrite
     // (ValidateVirtualValues ensures virtual values don't cross rewrite
     // boundaries, so a fresh scratch map per rewrite is correct).
@@ -1078,7 +1078,7 @@ StatusOr<TensorSpec> GraphRewriteSession::ResolveValueSpec(
 Status GraphRewriteSession::ValidateReplacementSemantics(
         const std::vector<ReplacementNode>& replacements,
         std::vector<std::optional<TensorSpec>>& virtual_specs_out) const {
-    // Replay AnalyzeOperator over replacement nodes in submission order,
+    // Replay InferOperator over replacement nodes in submission order,
     // deriving virtual specs into virtual_specs_out and verifying that each
     // output binding's replaces target has a compatible dtype.
     for (std::size_t i = 0; i < replacements.size(); ++i) {
@@ -1127,15 +1127,15 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
             input_specs.push_back(std::move(spec));
         }
 
-        // 6. Replay AnalyzeOperator to derive inferred output specs and
+        // 6. Replay InferOperator to derive inferred output specs and
         //    runtime shape constraints. Failures here indicate incompatible
         //    input dtypes/shapes for this operator.
         AM_ASSIGN_OR_RETURN(InferenceResult inferred,
-                            AnalyzeOperator(replacement.op_type,
+                            InferOperator(replacement.op_type,
                                             replacement.op_params,
                                             input_specs));
 
-        // 7. AnalyzeOperator must produce exactly one output spec per binding.
+        // 7. InferOperator must produce exactly one output spec per binding.
         if (inferred.outputs.size() != replacement.outputs.size()) {
             return Status::InvalidArgument(
                     "GraphRewriteSession: " + debug_ctx + " inferred " +

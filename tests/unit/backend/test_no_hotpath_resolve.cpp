@@ -134,7 +134,7 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
-    const auto analyzed = AnalyzeOperator(OpType::kRmsNorm,
+    const auto analyzed = InferOperator(OpType::kRmsNorm,
                                           OpParams{RmsNormParams{.eps = 1.0e-5F}},
                                           rmsnorm_inputs);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();

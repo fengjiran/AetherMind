@@ -167,15 +167,15 @@ const bool kRuntimeConstraintTestOperatorRegistered = OperatorRegistry::Register
         },
         "RuntimeConstraintTestOperator");
 
-// Helper: derive RmsNorm output_specs and runtime_checks via AnalyzeOperator.
-StatusOr<InferenceResult> AnalyzeRmsNorm(float eps,
+// Helper: derive RmsNorm output_specs and runtime_checks via InferOperator.
+StatusOr<InferenceResult> InferRmsNorm(float eps,
                                          const SymbolicShape& act_shape,
                                          const SymbolicShape& weight_shape) {
     std::vector<TensorSpec> inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
             TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
     };
-    return AnalyzeOperator(OpType::kRmsNorm,
+    return InferOperator(OpType::kRmsNorm,
                            OpParams{RmsNormParams{.eps = eps}},
                            inputs);
 }
@@ -224,7 +224,7 @@ public:
                 return &FirstKernel;
             case OpType::kRmsNorm:
                 // Used by the runtime shape-constraint tests: RmsNorm produces a
-                // DimEqualConstraint via AnalyzeOperator that Executor::Execute
+                // DimEqualConstraint via InferOperator that Executor::Execute
                 // checks before dispatching the kernel.
                 return &FirstKernel;
             default:
@@ -314,16 +314,16 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
                         .ok());
 
     // kSoftmax: schema-only op (no registered factory) -> raw FunctionOperator
-    // fallback. AnalyzeSoftmax expects 1 float32 input and echoes it.
+    // fallback. InferSoftmax expects 1 float32 input and echoes it.
     const SymbolicShape softmax_in_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{4, 8}});
     std::vector<TensorSpec> softmax_inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = softmax_in_shape},
     };
-    const auto softmax_analyzed = AnalyzeOperator(
+    const auto softmax_analyzed = InferOperator(
             OpType::kSoftmax, OpParams{SoftmaxParams{.axis = -1}}, softmax_inputs);
     ASSERT_TRUE(softmax_analyzed.ok()) << softmax_analyzed.status().ToString();
 
-    // kRoPE: schema-only op -> raw FunctionOperator fallback. AnalyzeRoPE
+    // kRoPE: schema-only op -> raw FunctionOperator fallback. InferRoPE
     // expects 3 inputs (q float32, k float32, position_ids int64) with
     // matching q/k batch dimensions.
     const SymbolicShape rope_q_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{2, 8}});
@@ -341,7 +341,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
             .max_position_embeddings = 128,
             .theta = 10000.0,
     };
-    const auto rope_analyzed = AnalyzeOperator(
+    const auto rope_analyzed = InferOperator(
             OpType::kRoPE, OpParams{rope_params}, rope_inputs);
     ASSERT_TRUE(rope_analyzed.ok()) << rope_analyzed.status().ToString();
 
@@ -397,13 +397,13 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
     CpuWorkspaceArena arena(workspace, sizeof(workspace));
     RuntimeBindingContext bindings(&arena);
 
-    // kArgmax: schema-only op -> raw FunctionOperator fallback. AnalyzeArgmax
+    // kArgmax: schema-only op -> raw FunctionOperator fallback. InferArgmax
     // expects 1 float32 input and ArgmaxParams.
     const SymbolicShape argmax_in_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{4, 8}});
     std::vector<TensorSpec> argmax_inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = argmax_in_shape},
     };
-    const auto argmax_analyzed = AnalyzeOperator(
+    const auto argmax_analyzed = InferOperator(
             OpType::kArgmax, OpParams{ArgmaxParams{.axis = -1}}, argmax_inputs);
     ASSERT_TRUE(argmax_analyzed.ok()) << argmax_analyzed.status().ToString();
 
@@ -437,7 +437,7 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
     std::vector<TensorSpec> softmax_inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = softmax_in_shape},
     };
-    const auto softmax_analyzed = AnalyzeOperator(
+    const auto softmax_analyzed = InferOperator(
             OpType::kSoftmax, OpParams{SoftmaxParams{.axis = -1}}, softmax_inputs);
     ASSERT_TRUE(softmax_analyzed.ok()) << softmax_analyzed.status().ToString();
 
@@ -464,11 +464,11 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
 }
 
 TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun) {
-    // Production AnalyzeAttention returns no runtime_checks (it only echoes q),
+    // Production InferAttention returns no runtime_checks (it only echoes q),
     // and the kAttention schema's compact input view is just [q] (state ports
     // do not contribute). That makes it impossible to drive a runtime
-    // constraint through AnalyzeOperator(kAttention, ...) from the untrusted
-    // raw-node path. Switch to kRmsNorm: AnalyzeRmsNorm produces exactly the
+    // constraint through InferOperator(kAttention, ...) from the untrusted
+    // raw-node path. Switch to kRmsNorm: InferRmsNorm produces exactly the
     // DimEqualConstraint(input[0].dim[1] == input[1].dim[0]) the original
     // kAttention test intended, when hidden and weight_len are distinct
     // symbolic dimensions.
@@ -482,7 +482,7 @@ TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun)
     const ShapeSymbol weight_dim = ShapeSymbol::Create();
     const SymbolicShape act_shape(std::vector<ShapeSymbol>{seq, hidden});
     const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_dim});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
     ASSERT_EQ(analyzed->runtime_checks.size(), 1U);
 
@@ -534,7 +534,7 @@ TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
     const ShapeSymbol weight_dim = ShapeSymbol::Create();
     const SymbolicShape act_shape(std::vector<ShapeSymbol>{seq, hidden});
     const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_dim});
-    const auto analyzed = AnalyzeRmsNorm(1.0e-5F, act_shape, weight_shape);
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     ExecutionPlanNodeSpec node{

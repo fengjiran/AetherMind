@@ -30,7 +30,7 @@
 namespace aethermind {
 
 /// Single source of truth for the dtype set supported by the RmsNorm operator.
-/// All RmsNorm-related validation (semantic analysis in AnalyzeRmsNorm, future
+/// All RmsNorm-related validation (semantic analysis in InferRmsNorm, future
 /// CPU kernel dispatch) must reference these definitions instead of maintaining
 /// private copies. The semantic layer accepts mixed-precision (input and weight
 /// may differ, each independently drawn from this set); the Phase 1 CPU kernel

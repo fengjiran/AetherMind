@@ -17,11 +17,11 @@ Status MatMulOp::ValidateParams() const {
 }
 
 Status MatMulOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return AnalyzeOperator(Type(), params_, inputs).status();
+    return InferOperator(Type(), params_, inputs).status();
 }
 
 StatusOr<InferenceResult> MatMulOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return AnalyzeOperator(Type(), params_, inputs);
+    return InferOperator(Type(), params_, inputs);
 }
 
 Status MatMulOp::Prepare(OperatorContext& ctx) {

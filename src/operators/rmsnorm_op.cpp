@@ -5,9 +5,6 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 
-#include <span>
-#include <string>
-
 namespace aethermind {
 Status RmsNormOp::ValidateParams() const {
     return ValidateOperatorParams(Type(), params_);
@@ -85,50 +82,45 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& /*params*/,
 
     const auto& input_spec = inputs[0];
     const auto& weight_spec = inputs[1];
-    if (!IsRmsNormSupportedDType(input_spec.dtype)) {
-        return Status::InvalidArgument(MakeRmsNormUnsupportedDTypeMessage("RmsNorm input"));
+    const auto input_rank = input_spec.shape.rank();
+    if (!input_rank.has_value() || *input_rank < 1) {
+        return Status::InvalidArgument("RmsNorm input must have rank >= 1");
     }
 
-    if (!IsRmsNormSupportedDType(weight_spec.dtype)) {
-        return Status::InvalidArgument(MakeRmsNormUnsupportedDTypeMessage("RmsNorm weight"));
-    }
-
-    if (!HasRank(input_spec.shape, 2)) {
-        return Status::InvalidArgument("RmsNorm input must be rank-2 [seq_len, hidden]");
+    // Batch dimensions must be positive when statically known.
+    for (const auto dim: input_spec.shape) {
+        if (!IsPositiveIfStatic(dim)) {
+            return Status::InvalidArgument(
+                    "RmsNorm input dimension must be positive when statically known.");
+        }
     }
 
     if (!HasRank(weight_spec.shape, 1)) {
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
     }
 
-    const ShapeSymbol& seq_len = input_spec.shape[0];
-    if (!IsPositiveIfStatic(seq_len)) {
-        return Status::InvalidArgument("RmsNorm seq_len must be positive");
-    }
-
-    const ShapeSymbol& hidden_size = input_spec.shape[1];
-    if (!IsPositiveIfStatic(hidden_size)) {
-        return Status::InvalidArgument("RmsNorm hidden size must be positive");
-    }
-
+    const size_t rank = *input_rank;
+    const ShapeSymbol& hidden_size = input_spec.shape[rank - 1];
     const ShapeSymbol& weight_len = weight_spec.shape[0];
     if (!IsPositiveIfStatic(weight_len)) {
-        return Status::InvalidArgument("RmsNorm weight length must be positive");
-    }
-
-    if (!UnifyShapeSymbol(hidden_size, weight_len).ok()) {
         return Status::InvalidArgument(
-                "RmsNorm weight length must equal input last dimension");
+                "RmsNorm weight length must be positive when statically known.");
     }
 
     std::vector<ShapeConstraint> runtime_checks;
+    // Symbols differ — fail-fast if statically known, otherwise defer to runtime.
     if (hidden_size != weight_len) {
+        if (hidden_size.IsStatic() && weight_len.IsStatic()) {
+            return Status::InvalidArgument(
+                    "RmsNorm weight length must equal input last dimension");
+        }
+
         runtime_checks.push_back({
                 .condition = DimEqualConstraint{
                         .lhs = {
                                 .tensor_port = {.direction = TensorPortType::kInput,
                                                 .tensor_idx = 0},
-                                .dim_index = 1,
+                                .dim_index = rank - 1,
                         },
                         .rhs = {
                                 .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
@@ -136,6 +128,16 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& /*params*/,
                         }},
                 .error_context = "RmsNorm hidden dimension must match weight length",
         });
+    }
+
+    if (!IsRmsNormSupportedDType(input_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeRmsNormUnsupportedDTypeMessage("RmsNorm input"));
+    }
+
+    if (!IsRmsNormSupportedDType(weight_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeRmsNormUnsupportedDTypeMessage("RmsNorm weight"));
     }
 
     return InferenceResult{

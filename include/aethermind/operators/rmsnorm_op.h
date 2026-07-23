@@ -47,9 +47,10 @@ inline const std::array<DataType, 5> kRmsNormSupportedDTypes = {
 /// operator-level validation to keep the dtype check in one place. Backend
 /// kernel dispatch must reference this same set when adding new dtype paths.
 inline bool IsRmsNormSupportedDType(const DataType& dtype) noexcept {
-    return std::ranges::any_of(kRmsNormSupportedDTypes, [&](const DataType& supported) {
-        return dtype == supported;
-    });
+    return std::ranges::any_of(kRmsNormSupportedDTypes,
+                               [&](const DataType& supported) {
+                                   return dtype == supported;
+                               });
 }
 
 /// Builds a consistent "unsupported dtype" error message for RmsNorm-related

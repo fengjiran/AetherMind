@@ -413,6 +413,31 @@ GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::st
     return value_id;
 }
 
+// Adds a node to the graph, validating the node in isolation before any
+// mutation. This is the sole trusted entry point for graph construction;
+// every node stored in the graph has already passed the checks below.
+//
+// Whole-graph invariants (producer<->output round-trip, acyclicity, no stale
+// stored metadata) are NOT checked here; they are the responsibility of
+// ValidateAndTopologicalOrder.
+//
+// Validation flow (all checks complete before any mutation, so a failed
+// AddNode leaves the graph unchanged):
+//   1. Schema lookup and attrs rejection (typed op_params only).
+//   2. Input/output arity vs schema.
+//   3. Input value-id validity and payload-kind match (PayloadMatchesPort).
+//   4. Output payload normalization (monostate -> ActivationValue) and
+//      payload-kind match.
+//   5. Weight binding self-consistency and slot match against
+//      ExpectedWeightSlotForOp (computed once per node, outside the input loop).
+//   6. Per-input state binding validity (ValidateStateBinding).
+//   7. Op-specific state-binding invariants for KVCacheUpdate/Attention
+//      (ValidateStateBindingsForNode).
+//   8. InferOperator (which internally calls ValidateOperatorParams) to
+//      derive output specs and runtime_checks.
+//   9. Staging: prepare output GraphValues and the GraphNode without
+//      touching values_/nodes_.
+//  10. Commit: reserve then batch-push staged values and the node.
 StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                                         std::optional<uint32_t> decoder_layer_index,
                                         std::vector<GraphValueId> inputs,
@@ -732,7 +757,7 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                 all_input_specs.push_back(values_[id.index].spec);
             }
 
-            auto inference_or = AnalyzeOperator(node.op_type, node.op_params, all_input_specs);
+            auto inference_or = InferOperator(node.op_type, node.op_params, all_input_specs);
             if (!inference_or.ok()) {
                 return Status::InvalidArgument(get_msg(
                         "semantic re-analysis failed: " + inference_or.status().message()));

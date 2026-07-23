@@ -262,20 +262,20 @@ TEST(GraphOpBuilder, AddLinearRejectsRankThreeInput) {
                          .ok());
 }
 
-TEST(GraphOpBuilder, AddRmsNormRejectsRankThreeInput) {
+TEST(GraphOpBuilder, AddRmsNormAcceptsRankThreeInput) {
     ModelGraph graph(HfModelConfig{}, {},
                      {GraphValue{.payload = ActivationValue{},
                                  .spec = Spec(DataType::Float32(), {2, 3, 4}),
                                  .name = "input"}});
     const GraphValueId input{.index = 0};
-    EXPECT_FALSE(AddRmsNorm(graph,
-                            input,
-                            DataType::Float32(),
-                            {.slot = ParameterSlot::kScale,
-                             .semantic_role = TransformerWeightRole::kFinalNorm},
-                            1.0e-5F,
-                            "norm")
-                         .ok());
+    EXPECT_TRUE(AddRmsNorm(graph,
+                           input,
+                           DataType::Float32(),
+                           {.slot = ParameterSlot::kScale,
+                            .semantic_role = TransformerWeightRole::kFinalNorm},
+                           1.0e-5F,
+                           "norm")
+                        .ok());
 }
 
 TEST(GraphOpBuilder, AddRmsNormAcceptsUnknownHiddenDim) {

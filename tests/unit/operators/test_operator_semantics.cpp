@@ -162,11 +162,29 @@ TEST(OperatorSemanticsInfer, RmsNormInvalidEps) {
     EXPECT_FALSE(InferOperator(OpType::kRmsNorm, RmsNormParams{0.0f}, inputs).ok());
 }
 
-TEST(OperatorSemanticsInfer, RmsNormWrongRank) {
-    auto input = MakeSpec(DataType::Float32(), {4});
+TEST(OperatorSemanticsInfer, RmsNormRejectsRankZero) {
+    auto input = MakeSpec(DataType::Float32(), {});
     auto weight = MakeSpec(DataType::Float32(), {256});
     std::vector<TensorSpec> inputs = {input, weight};
     EXPECT_FALSE(InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
+}
+
+TEST(OperatorSemanticsInfer, RmsNormRank1Ok) {
+    auto input = MakeSpec(DataType::Float32(), {256});
+    auto weight = MakeSpec(DataType::Float32(), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    auto result = InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].shape, input.shape);
+}
+
+TEST(OperatorSemanticsInfer, RmsNormRank3Ok) {
+    auto input = MakeSpec(DataType::Float32(), {2, 4, 256});
+    auto weight = MakeSpec(DataType::Float32(), {256});
+    std::vector<TensorSpec> inputs = {input, weight};
+    auto result = InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->outputs[0].shape, input.shape);
 }
 
 TEST(OperatorSemanticsInfer, RmsNormFloat16Ok) {

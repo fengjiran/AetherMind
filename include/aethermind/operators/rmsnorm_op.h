@@ -1,17 +1,17 @@
 // Semantic-layer operator for Root-Mean-Square Layer Normalization.
 //
-// Inputs (per CheckInputSpecs / InferOutputShapes):
+// Inputs (per InferOperator):
 //   - inputs[0]:  rank-2 activations, shape [seq_len, hidden], float32
 //   - inputs[1]:  rank-1 learned weight, shape [hidden], float32
 // Output: same shape and dtype as inputs[0] (RmsNorm is shape-preserving).
 //
 // Phase 1 supports only float32; the float32 check is enforced in
-// CheckInputSpecs. The `eps` parameter (RmsNormParams.eps) is serialized
+// InferOperator. The `eps` parameter (RmsNormParams.eps) is serialized
 // as raw bytes into the resolved kernel's attrs during Prepare() and read
 // back by the backend kernel.
 //
 // Lifecycle and thread-safety follow the Operator base class contract:
-// Construct -> ValidateParams() -> Prepare() -> Run() (repeated).
+// Construct -> Prepare() -> Run() (repeated).
 // Instances are not thread-safe; concurrent Run() requires external
 // synchronization or one instance per thread.
 
@@ -85,11 +85,6 @@ public:
     AM_NODISCARD const char* Name() const noexcept override {
         return "RmsNorm";
     }
-
-    AM_NODISCARD Status ValidateParams() const override;
-    AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec> inputs) const override;
-    AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
-            std::span<const TensorSpec> inputs) const override;
 
     // RmsNorm needs no operator-level workspace: any per-row RMS
     // accumulator is owned by the backend kernel.

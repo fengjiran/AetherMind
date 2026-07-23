@@ -1,6 +1,6 @@
 // Semantic-layer operator for elementwise addition with NumPy-style broadcasting.
 //
-// Inputs (per CheckInputSpecs / InferOutputShapes):
+// Inputs (per InferOperator):
 //   - inputs[0]: lhs tensor, any rank
 //   - inputs[1]: rhs tensor, any rank (must be broadcast-compatible with lhs)
 // Both inputs must share a dtype from kAddSupportedDTypes
@@ -9,7 +9,7 @@
 // that depend on runtime shapes are emitted via InferenceResult::runtime_checks.
 //
 // Lifecycle and thread-safety follow the Operator base class contract:
-// Construct -> ValidateParams() -> Prepare() -> Run() (repeated).
+// Construct -> Prepare() -> Run() (repeated).
 // Instances are not thread-safe; concurrent Run() requires external
 // synchronization or one instance per thread.
 
@@ -77,11 +77,6 @@ public:
     AM_NODISCARD const char* Name() const noexcept override {
         return "Add";
     }
-
-    AM_NODISCARD Status ValidateParams() const override;
-    AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec> inputs) const override;
-    AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
-            std::span<const TensorSpec> inputs) const override;
 
     AM_NODISCARD Status Prepare(OperatorContext& ctx) override;
 

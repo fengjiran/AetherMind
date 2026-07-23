@@ -54,8 +54,7 @@ struct PreparedOperator {
 //
 // Rejects:
 // - monostate op_params (caller must provide typed params)
-// - ValidateOperatorParams failures
-// - InferOperator failures
+// - InferOperator failures (including variant and parameter validation)
 // - Any mismatch between caller metadata and inferred metadata (strict
 //   equality; empty caller fields are NOT treated as "infer for me").
 Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
@@ -67,7 +66,6 @@ Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
                 "Untrusted ExecutionPlanNodeSpec adapter requires typed op_params; "
                 "monostate is not accepted");
     }
-    // AM_RETURN_IF_ERROR(ValidateOperatorParams(node.op_type, node.op_params));
     auto analyzed = InferOperator(
             node.op_type, node.op_params, compact_input_specs);
     if (!analyzed.ok()) {
@@ -104,12 +102,10 @@ StatusOr<PreparedOperator> CreateAndPrepareOperator(Backend& backend,
     // executable handle for kernel dispatch. Semantic validation was
     // already performed during graph construction (ModelGraph::AddNode ->
     // InferOperator) and carried through lowering; the trusted builder
-    // MUST NOT re-invoke ValidateParams / CheckInputSpecs / InferOutputShapes
-    // or InferOperator.
+    // MUST NOT re-invoke InferOperator.
     //
     // Untrusted path: caller-authored ExecutionPlanNodeSpec is treated as
-    // potentially stale/forged. We re-invoke the semantic authority
-    // (ValidateOperatorParams + InferOperator) and require strict equality
+    // potentially stale/forged. We re-invoke InferOperator and require strict equality
     // with caller-provided metadata before entering the common trusted
     // builder tail.
     //

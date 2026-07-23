@@ -9,18 +9,6 @@
 
 namespace aethermind {
 
-Status SiluMulOp::ValidateParams() const {
-    return ValidateOperatorParams(Type(), params_);
-}
-
-Status SiluMulOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs).status();
-}
-
-StatusOr<InferenceResult> SiluMulOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs);
-}
-
 Status SiluMulOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("SiluMul Prepare requires OperatorContext.backend");
@@ -77,8 +65,11 @@ AM_REGISTER_OPERATOR(OpType::kSiluMul, SiluMulOp)
 
 namespace detail {
 
-StatusOr<InferenceResult> InferSiluMul(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferSiluMul(const OpParams& params,
                                        std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<SiluMulParams>(params)) {
+        return Status::InvalidArgument("SiluMul node requires SiluMulParams");
+    }
     return InferBroadcastBinary(/*params=*/{}, inputs, "SiluMul");
 }
 

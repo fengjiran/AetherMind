@@ -25,11 +25,6 @@ public:
         return "Linear";
     }
 
-    AM_NODISCARD Status ValidateParams() const override;
-    AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec> inputs) const override;
-    AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
-            std::span<const TensorSpec> inputs) const override;
-
     AM_NODISCARD WorkspaceRequirement ComputeWorkspaceRequirement(
             std::span<const TensorSpec> inputs) const noexcept override {
         UNUSED(inputs);

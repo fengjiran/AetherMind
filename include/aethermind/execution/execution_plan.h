@@ -6,6 +6,7 @@
 #include "aethermind/model/graph/compilation/state_alias_plan.h"
 #include "aethermind/operators/operator.h"
 #include "aethermind/runtime/workspace.h"
+#include "aethermind/shape_inference/shape_constraint.h"
 
 #include <cstddef>
 #include <vector>

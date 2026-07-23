@@ -12,19 +12,6 @@
 
 namespace aethermind {
 
-Status ElementwiseMulOp::ValidateParams() const {
-    return ValidateOperatorParams(Type(), params_);
-}
-
-Status ElementwiseMulOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs).status();
-}
-
-StatusOr<InferenceResult> ElementwiseMulOp::InferOutputShapes(
-        std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs);
-}
-
 Status ElementwiseMulOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument(
@@ -79,8 +66,11 @@ AM_REGISTER_OPERATOR(OpType::kElementwiseMul, ElementwiseMulOp)
 
 namespace detail {
 
-StatusOr<InferenceResult> InferElementwiseMul(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferElementwiseMul(const OpParams& params,
                                               std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<ElementwiseMulParams>(params)) {
+        return Status::InvalidArgument("ElementwiseMul node requires ElementwiseMulParams");
+    }
     return InferBroadcastBinary(/*params=*/{}, inputs, "ElementwiseMul");
 }
 

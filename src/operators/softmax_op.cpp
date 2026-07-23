@@ -7,8 +7,11 @@
 
 namespace aethermind::detail {
 
-StatusOr<InferenceResult> InferSoftmax(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferSoftmax(const OpParams& params,
                                        std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<SoftmaxParams>(params)) {
+        return Status::InvalidArgument("Softmax node requires SoftmaxParams");
+    }
     if (inputs.size() != 1) {
         return Status::InvalidArgument("Softmax requires exactly 1 input");
     }

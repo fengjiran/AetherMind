@@ -3,21 +3,8 @@
 
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/resolved_kernel.h"
-#include "aethermind/base/status.h"
-#include "aethermind/base/tensor_view.h"
-#include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator_context.h"
-#include "aethermind/runtime/workspace.h"
-#include "aethermind/shape_inference/shape_constraint.h"
-#include "aethermind/shape_inference/shape_symbol.h"
-#include "aethermind/operators/inference_result.h"
 #include "aethermind/shape_inference/tensor_spec.h"
-#include "macros.h"
-
-#include <cstddef>
-#include <memory>
-#include <span>
-#include <vector>
 
 namespace aethermind {
 
@@ -26,11 +13,13 @@ class RuntimeBindingContext;
 
 /// Abstract base class for all semantic-layer operators.
 ///
-/// Encapsulates param validation, shape inference, workspace estimation,
-/// kernel resolution, and runtime execution behind a uniform contract.
+/// Encapsulates kernel resolution and runtime execution behind a uniform
+/// contract. Parameter validation and shape inference are performed via the
+/// free function InferOperator in operator_inference.h, not through virtual
+/// methods on this class.
 ///
-/// Lifecycle: Construct → ValidateParams() → Prepare() → Run() (repeated)
-/// → destruction. `Prepare()` resolves and caches the kernel; `Run()` may
+/// Lifecycle: Construct → Prepare() → Run() (repeated) → destruction.
+/// `Prepare()` resolves and caches the kernel; `Run()` may
 /// then be invoked multiple times. The destructor releases cached state
 /// and must not run concurrently with an in-flight `Run()`.
 ///
@@ -54,36 +43,6 @@ public:
         return ToString(Type());
     }
 
-    /// Validates the operator's internal configuration.
-    ///
-    /// Called after construction and parameter assignment, before Prepare().
-    /// Implementations should verify that all required parameters are set
-    /// and consistent (e.g., epsilon > 0 for RmsNorm, hidden_size > 0).
-    ///
-    /// Returns Ok if valid; otherwise returns a Status describing the error.
-    AM_NODISCARD virtual Status ValidateParams() const = 0;
-
-    /// Validates that input TensorSpecs are compatible with this operator.
-    ///
-    /// Called during plan building. Checks dtype constraints,
-    /// rank and dimension consistency — anything computable from
-    /// TensorSpec alone. Data/contiguity/null checks happen in the kernel.
-    ///
-    /// Returns Ok if compatible; otherwise returns a descriptive error Status.
-    AM_NODISCARD virtual Status CheckInputSpecs(std::span<const TensorSpec> inputs) const = 0;
-
-    /// Infers output shapes from input shapes without executing.
-    ///
-    /// Used during graph construction and workspace planning. May emit
-    /// deferred `ShapeConstraint`s in `InferenceResult::runtime_checks` for
-    /// conditions that cannot be proven until concrete runtime shapes are
-    /// known.
-    ///
-    /// \return Inferred output specs (and any deferred runtime checks),
-    ///         or a Status error if inference fails.
-    AM_NODISCARD virtual StatusOr<InferenceResult> InferOutputShapes(
-            std::span<const TensorSpec> inputs) const = 0;
-
     /// Computes the workspace requirement for this operator.
     ///
     /// Called during execution plan building. The result is stored in the
@@ -104,8 +63,7 @@ public:
     /// Implementations should:
     /// - Resolve the kernel from OperatorContext::backend
     /// - Cache the resolved KernelFunc and attrs
-    /// - Validate the resolved kernel matches expectations
-    /// - ValidateParams() must have returned Ok before Prepare() is called
+    /// - InferOperator() must have returned Ok before Prepare() is called
     ///
     /// After successful Prepare(), the operator is ready for repeated Run() calls.
     ///

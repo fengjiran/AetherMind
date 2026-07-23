@@ -13,18 +13,6 @@
 #include <string>
 
 namespace aethermind {
-Status EmbeddingOp::ValidateParams() const {
-    return ValidateOperatorParams(Type(), params_);
-}
-
-Status EmbeddingOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs).status();
-}
-
-StatusOr<InferenceResult> EmbeddingOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs);
-}
-
 Status EmbeddingOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("Embedding Prepare requires OperatorContext.backend");
@@ -87,8 +75,11 @@ bool IsSupportedTokenIdDType(const DataType& dtype) {
 
 }// namespace
 
-StatusOr<InferenceResult> InferEmbedding(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
                                          std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<EmbeddingParams>(params)) {
+        return Status::InvalidArgument("Embedding node requires EmbeddingParams");
+    }
     if (inputs.size() != 2) {
         return Status::InvalidArgument("Embedding requires exactly 2 inputs");
     }

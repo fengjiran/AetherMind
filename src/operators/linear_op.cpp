@@ -16,18 +16,6 @@
 
 namespace aethermind {
 
-Status LinearOp::ValidateParams() const {
-    return ValidateOperatorParams(Type(), params_);
-}
-
-Status LinearOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs).status();
-}
-
-StatusOr<InferenceResult> LinearOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs);
-}
-
 Status LinearOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("Linear Prepare requires OperatorContext.backend");
@@ -82,8 +70,11 @@ AM_REGISTER_OPERATOR(OpType::kLinear, LinearOp)
 
 namespace detail {
 
-StatusOr<InferenceResult> InferLinear(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferLinear(const OpParams& params,
                                       std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<LinearParams>(params)) {
+        return Status::InvalidArgument("Linear node requires LinearParams");
+    }
     if (inputs.size() != 2) {
         return Status::InvalidArgument("Linear requires exactly 2 inputs");
     }

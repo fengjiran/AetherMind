@@ -32,11 +32,6 @@ public:
         return "SiluMul";
     }
 
-    AM_NODISCARD Status ValidateParams() const override;
-    AM_NODISCARD Status CheckInputSpecs(std::span<const TensorSpec> inputs) const override;
-    AM_NODISCARD StatusOr<InferenceResult> InferOutputShapes(
-            std::span<const TensorSpec> inputs) const override;
-
     AM_NODISCARD Status Prepare(OperatorContext& ctx) override;
 
     AM_NODISCARD Status Run(KernelContext& ctx,

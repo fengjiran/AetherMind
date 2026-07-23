@@ -1092,8 +1092,8 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
         AM_ASSIGN_OR_RETURN(const OperatorSchema schema,
                             GetOperatorSchema(replacement.op_type));
 
-        // 2. Parameter validation: ensures OpParams holds the right alternative.
-        // AM_RETURN_IF_ERROR(ValidateOperatorParams(replacement.op_type, replacement.op_params));
+        // 2. Parameter validation is deferred to the InferOperator replay in
+        //    step 6, after the replacement input specs have been resolved.
 
         // 3. Input count must match schema.
         if (replacement.inputs.size() != schema.input_ports.size()) {

@@ -16,18 +16,6 @@
 #include <vector>
 
 namespace aethermind {
-Status MatMulOp::ValidateParams() const {
-    return ValidateOperatorParams(Type(), params_);
-}
-
-Status MatMulOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs).status();
-}
-
-StatusOr<InferenceResult> MatMulOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs);
-}
-
 Status MatMulOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("MatMul Prepare requires OperatorContext.backend");
@@ -110,12 +98,12 @@ SymbolicShape MakeBatchShape(const SymbolicShape& shape, size_t rank) {
 
 StatusOr<InferenceResult> InferMatMul(const OpParams& params,
                                       std::span<const TensorSpec> inputs) {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument("MatMul requires exactly 2 inputs");
-    }
     const auto* typed = std::get_if<MatMulParams>(&params);
     if (typed == nullptr) {
-        return Status::InvalidArgument("MatMul requires MatMulParams");
+        return Status::InvalidArgument("MatMul node requires MatMulParams");
+    }
+    if (inputs.size() != 2) {
+        return Status::InvalidArgument("MatMul requires exactly 2 inputs");
     }
     const TensorSpec& lhs_spec = inputs[0];
     const TensorSpec& rhs_spec = inputs[1];

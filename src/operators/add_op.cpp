@@ -13,18 +13,6 @@
 #include <string>
 
 namespace aethermind {
-Status AddOp::ValidateParams() const {
-    return ValidateOperatorParams(Type(), params_);
-}
-
-Status AddOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs).status();
-}
-
-StatusOr<InferenceResult> AddOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs);
-}
-
 Status AddOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("Add Prepare requires OperatorContext.backend");
@@ -77,8 +65,11 @@ AM_REGISTER_OPERATOR(OpType::kAdd, AddOp)
 
 namespace detail {
 
-StatusOr<InferenceResult> InferAdd(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferAdd(const OpParams& params,
                                    std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<AddParams>(params)) {
+        return Status::InvalidArgument("Add node requires AddParams");
+    }
     if (inputs.size() != 2) {
         return Status::InvalidArgument("Add requires exactly 2 inputs");
     }

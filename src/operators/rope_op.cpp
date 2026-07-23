@@ -2,12 +2,24 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 
+#include <cmath>
 #include <span>
 #include <string>
 
 namespace aethermind::detail {
 
-StatusOr<InferenceResult> InferRoPE(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
+StatusOr<InferenceResult> InferRoPE(const OpParams& params, std::span<const TensorSpec> inputs) {
+    const auto* typed = std::get_if<RoPEParams>(&params);
+    if (typed == nullptr) {
+        return Status::InvalidArgument("RoPE node requires RoPEParams");
+    }
+    if (typed->head_dim <= 0 || typed->num_attention_heads <= 0 ||
+        typed->num_key_value_heads <= 0 || typed->max_position_embeddings <= 0) {
+        return Status::InvalidArgument("RoPEParams dimensions must be positive");
+    }
+    if (!std::isfinite(typed->theta) || typed->theta <= 0.0) {
+        return Status::InvalidArgument("RoPEParams theta must be finite and positive");
+    }
     if (inputs.size() != 3) {
         return Status::InvalidArgument(
                 "RoPE expects exactly 3 inputs (q, k, position_ids), got " +

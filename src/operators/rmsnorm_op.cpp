@@ -5,19 +5,9 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 
+#include <cmath>
+
 namespace aethermind {
-Status RmsNormOp::ValidateParams() const {
-    return ValidateOperatorParams(Type(), params_);
-}
-
-Status RmsNormOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs).status();
-}
-
-StatusOr<InferenceResult> RmsNormOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs);
-}
-
 Status RmsNormOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("RmsNorm Prepare requires OperatorContext.backend");
@@ -73,8 +63,17 @@ AM_REGISTER_OPERATOR(OpType::kRmsNorm, RmsNormOp)
 
 namespace detail {
 
-StatusOr<InferenceResult> InferRmsNorm(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
                                        std::span<const TensorSpec> inputs) {
+    const auto* typed = std::get_if<RmsNormParams>(&params);
+    if (typed == nullptr) {
+        return Status::InvalidArgument("RmsNorm node requires RmsNormParams");
+    }
+
+    if (!std::isfinite(typed->eps) || typed->eps <= 0.0F) {
+        return Status::InvalidArgument("RmsNormParams eps must be finite and positive");
+    }
+
     if (inputs.size() != 2) {
         return Status::InvalidArgument(
                 "RmsNorm expects exactly 2 inputs, got " + std::to_string(inputs.size()));

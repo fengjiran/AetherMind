@@ -7,7 +7,10 @@
 
 namespace aethermind::detail {
 
-StatusOr<InferenceResult> InferAttention(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
+StatusOr<InferenceResult> InferAttention(const OpParams& params, std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<AttentionParams>(params)) {
+        return Status::InvalidArgument("Attention node requires AttentionParams");
+    }
     if (inputs.size() != 3) {
         return Status::InvalidArgument(
                 "Attention expects exactly 3 inputs (q, kCache, vCache), got " + std::to_string(inputs.size()));

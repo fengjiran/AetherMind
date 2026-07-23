@@ -433,8 +433,7 @@ GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::st
 //   6. Per-input state binding validity (ValidateStateBinding).
 //   7. Op-specific state-binding invariants for KVCacheUpdate/Attention
 //      (ValidateStateBindingsForNode).
-//   8. InferOperator (which internally calls ValidateOperatorParams) to
-//      derive output specs and runtime_checks.
+//   8. InferOperator to derive output specs and runtime_checks.
 //   9. Staging: prepare output GraphValues and the GraphNode without
 //      touching values_/nodes_.
 //  10. Commit: reserve then batch-push staged values and the node.

@@ -7,7 +7,10 @@
 
 namespace aethermind::detail {
 
-StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& /*params*/, std::span<const TensorSpec> inputs) {
+StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& params, std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<KVCacheUpdateParams>(params)) {
+        return Status::InvalidArgument("KVCacheUpdate node requires KVCacheUpdateParams");
+    }
     if (inputs.size() != 4) {
         return Status::InvalidArgument(
                 "KVCacheUpdate expects exactly 4 inputs (k, v, kCacheIn, vCacheIn), got " + std::to_string(inputs.size()));

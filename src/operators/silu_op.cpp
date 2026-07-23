@@ -13,18 +13,6 @@
 
 namespace aethermind {
 
-Status SiluOp::ValidateParams() const {
-    return ValidateOperatorParams(Type(), params_);
-}
-
-Status SiluOp::CheckInputSpecs(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs).status();
-}
-
-StatusOr<InferenceResult> SiluOp::InferOutputShapes(std::span<const TensorSpec> inputs) const {
-    return InferOperator(Type(), params_, inputs);
-}
-
 Status SiluOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
         return Status::InvalidArgument("Silu Prepare requires OperatorContext.backend");
@@ -81,8 +69,11 @@ AM_REGISTER_OPERATOR(OpType::kSilu, SiluOp)
 
 namespace detail {
 
-StatusOr<InferenceResult> InferSilu(const OpParams& /*params*/,
+StatusOr<InferenceResult> InferSilu(const OpParams& params,
                                     std::span<const TensorSpec> inputs) {
+    if (!std::holds_alternative<SiluParams>(params)) {
+        return Status::InvalidArgument("Silu node requires SiluParams");
+    }
     if (inputs.size() != 1) {
         return Status::InvalidArgument("Silu requires exactly 1 input");
     }

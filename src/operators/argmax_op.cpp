@@ -11,12 +11,12 @@ namespace aethermind::detail {
 
 StatusOr<InferenceResult> InferArgmax(const OpParams& params,
                                       std::span<const TensorSpec> inputs) {
-    if (inputs.size() != 1) {
-        return Status::InvalidArgument("Argmax requires exactly 1 input");
-    }
     const auto* typed = std::get_if<ArgmaxParams>(&params);
     if (typed == nullptr) {
-        return Status::InvalidArgument("Argmax requires ArgmaxParams");
+        return Status::InvalidArgument("Argmax node requires ArgmaxParams");
+    }
+    if (inputs.size() != 1) {
+        return Status::InvalidArgument("Argmax requires exactly 1 input");
     }
     if (inputs[0].dtype != DataType::Float32()) {
         return Status::InvalidArgument("Argmax input must be float32");

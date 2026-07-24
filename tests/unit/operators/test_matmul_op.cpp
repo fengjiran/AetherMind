@@ -165,6 +165,46 @@ TEST(MatMulOp, AcceptsTransposeRhs) {
     EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs).status().ok());
 }
 
+TEST(MatMulOp, AcceptsZeroMDim) {
+    // M=0 yields an empty output [0, N]; valid NumPy-style MatMul.
+    const MatMulOp op{MatMulOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+}
+
+TEST(MatMulOp, AcceptsZeroNDim) {
+    // N=0 yields an empty output [M, 0]; valid NumPy-style MatMul.
+    const MatMulOp op{MatMulOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 0})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+}
+
+TEST(MatMulOp, AcceptsZeroKDim) {
+    // K=0 yields a zero-valued output [M, N]; valid NumPy-style MatMul.
+    const MatMulOp op{MatMulOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 0})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 4})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+}
+
+TEST(MatMulOp, AcceptsZeroBatchDim) {
+    // batch=0 yields an empty output [0, M, N]; valid NumPy-style MatMul.
+    const MatMulOp op{MatMulOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 2, 3})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3, 4})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+}
+
 // --- Inference ---
 
 TEST(MatMulOp, InferOperatorRejectsNonFloat32) {

@@ -127,23 +127,12 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
     const ShapeSymbol& lhs_inner_dim = lhs_spec.shape[*lhs_rank - 1];
     const ShapeSymbol& rhs_inner_dim = rhs_spec.shape[rhs_axes.inner];
 
-    if (!IsPositiveIfStatic(lhs_inner_dim)) {
-        return Status::InvalidArgument("MatMul lhs inner dimension must be positive");
-    }
-
-    if (!IsPositiveIfStatic(rhs_inner_dim)) {
-        return Status::InvalidArgument("MatMul rhs inner dimension must be positive");
-    }
-
+    // Zero-valued M/N/K and batch dimensions are intentionally allowed,
+    // matching NumPy/PyTorch semantics (M=0/N=0 -> empty output, K=0 ->
+    // zero-valued output). Model-weight positivity is enforced at the
+    // GraphOpBuilder layer, not by this generic operator.
     const ShapeSymbol& lhs_outer = lhs_spec.shape[*lhs_rank - 2];
     const ShapeSymbol& rhs_outer = rhs_spec.shape[rhs_axes.outer];
-    if (!IsPositiveIfStatic(lhs_outer)) {
-        return Status::InvalidArgument("MatMul lhs outer dimension must be positive");
-    }
-
-    if (!IsPositiveIfStatic(rhs_outer)) {
-        return Status::InvalidArgument("MatMul rhs outer dimension must be positive");
-    }
 
     auto lhs_batch = MakeBatchShape(lhs_spec.shape, *lhs_rank);
     auto rhs_batch = MakeBatchShape(rhs_spec.shape, *rhs_rank);
@@ -156,14 +145,14 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
     output_shape.push_back(lhs_outer);
     output_shape.push_back(rhs_outer);
 
-    InferenceResult result;
-    result.outputs.emplace_back(lhs_spec.dtype, SymbolicShape(output_shape));
+    InferenceResult res;
+    res.outputs.emplace_back(lhs_spec.dtype, SymbolicShape(output_shape));
     if (!AreProvablyEqual(lhs_inner_dim, rhs_inner_dim)) {
         if (lhs_inner_dim.IsStatic() && rhs_inner_dim.IsStatic()) {
             return Status::InvalidArgument("MatMul inner dimensions must be equal");
         }
 
-        result.runtime_checks.emplace_back(
+        res.runtime_checks.emplace_back(
                 DimEqualConstraint{
                         .lhs = {.tensor_port = {.direction = TensorPortType::kInput,
                                                 .tensor_idx = 0},
@@ -174,9 +163,8 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
                 "MatMul inner dimensions must be equal");
     }
 
-
     for (const auto& deferred: broadcast_result->deferred_axes) {
-        result.runtime_checks.emplace_back(
+        res.runtime_checks.emplace_back(
                 DimBroadcastableConstraint{
                         .lhs = {.tensor_port = {TensorPortType::kInput, 0},
                                 .dim_index = deferred.lhs_axis},
@@ -184,7 +172,7 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
                                 .dim_index = deferred.rhs_axis}},
                 "MatMul batch dimensions must be broadcastable");
     }
-    return result;
+    return res;
 }
 
 }// namespace detail

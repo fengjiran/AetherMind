@@ -2,17 +2,9 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/model/graph/op_params.h"
-#include "aethermind/operators/operator_registry.h"
-
-#include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/operator_inference.h"
+#include "aethermind/operators/operator_registry.h"
 #include "aethermind/shape_inference/shape_constraint.h"
-#include "aethermind/shape_inference/shape_symbol.h"
-#include "aethermind/shape_inference/tensor_spec.h"
-#include <span>
-#include <string>
-#include <vector>
 
 namespace aethermind {
 
@@ -75,9 +67,11 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
     if (!std::holds_alternative<LinearParams>(params)) {
         return Status::InvalidArgument("Linear node requires LinearParams");
     }
+
     if (inputs.size() != 2) {
         return Status::InvalidArgument("Linear requires exactly 2 inputs");
     }
+
     const TensorSpec& input_spec = inputs[0];
     const TensorSpec& weight_spec = inputs[1];
     if (input_spec.dtype != DataType::Float32()) {

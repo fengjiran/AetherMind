@@ -5,8 +5,6 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 
-#include <cmath>
-
 namespace aethermind {
 Status RmsNormOp::Prepare(OperatorContext& ctx) {
     if (ctx.backend == nullptr) {
@@ -63,6 +61,20 @@ AM_REGISTER_OPERATOR(OpType::kRmsNorm, RmsNormOp)
 
 namespace detail {
 
+// Shape inference and constraint analysis for the RmsNorm operator.
+//
+// Steps:
+//   1. Validate OpParams variant type and eps scalar.
+//   2. Validate input count, input rank (>=1), and batch dimension positivity.
+//   3. Validate weight rank (=1) and positive length.
+//   4. Reconcile hidden_size (input last dim) with weight_len: fail-fast on
+//      static hard conflict; otherwise emit a DimEqualConstraint deferred to
+//      runtime and verified by the Executor.
+//   5. Validate input/weight dtypes against the supported dtype set. Mixed
+//      input/weight dtypes are allowed; the kernel converts the weight to the
+//      input dtype at runtime (HuggingFace LlamaRMSNorm convention).
+//   6. Build InferenceResult: the output spec mirrors the input spec
+//      (RmsNorm is shape-preserving), plus any deferred runtime checks.
 StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
                                        std::span<const TensorSpec> inputs) {
     const auto* typed = std::get_if<RmsNormParams>(&params);
@@ -106,8 +118,9 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
                 "RmsNorm weight length must be positive when statically known.");
     }
 
+    // Static mismatch is unrecoverable; dynamic/symbolic mismatches are deferred
+    // to the Executor via a DimEqualConstraint.
     std::vector<ShapeConstraint> runtime_checks;
-    // Symbols differ — fail-fast if statically known, otherwise defer to runtime.
     if (hidden_size != weight_len) {
         if (hidden_size.IsStatic() && weight_len.IsStatic()) {
             return Status::InvalidArgument(
@@ -129,6 +142,8 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
         });
     }
 
+    // Mixed input/weight dtypes are allowed; the kernel converts the weight to
+    // the input dtype at runtime (HuggingFace LlamaRMSNorm convention).
     if (!IsRmsNormSupportedDType(input_spec.dtype)) {
         return Status::InvalidArgument(
                 MakeRmsNormUnsupportedDTypeMessage("RmsNorm input"));

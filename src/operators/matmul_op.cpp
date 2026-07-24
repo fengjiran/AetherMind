@@ -2,18 +2,9 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 #include "aethermind/shape_inference/broadcast.h"
-
-#include "aethermind/dtypes/data_type.h"
-#include "aethermind/operators/operator_inference.h"
-#include "aethermind/shape_inference/shape_constraint.h"
-#include "aethermind/shape_inference/shape_symbol.h"
-#include "aethermind/shape_inference/tensor_spec.h"
-#include <span>
-#include <string>
-#include <vector>
 
 namespace aethermind {
 Status MatMulOp::Prepare(OperatorContext& ctx) {
@@ -109,28 +100,30 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
 
     const TensorSpec& lhs_spec = inputs[0];
     const TensorSpec& rhs_spec = inputs[1];
-    if (lhs_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("MatMul lhs must be float32");
+    if (!IsMatMulSupportedDType(lhs_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeMatMulUnsupportedDTypeMessage("MatMul lhs"));
     }
-    if (rhs_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("MatMul rhs must be float32");
+
+    if (!IsMatMulSupportedDType(rhs_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeMatMulUnsupportedDTypeMessage("MatMul rhs"));
     }
-    if (!lhs_spec.shape.IsRanked()) {
-        return Status::InvalidArgument("MatMul lhs must be ranked");
-    }
-    if (!rhs_spec.shape.IsRanked()) {
-        return Status::InvalidArgument("MatMul rhs must be ranked");
-    }
-    const auto lhs_rank = lhs_spec.shape.rank().value();
-    const auto rhs_rank = rhs_spec.shape.rank().value();
-    if (lhs_rank < 2) {
+
+    const auto& lhs_shape = lhs_spec.shape;
+    const auto& rhs_shape = rhs_spec.shape;
+    const auto lhs_rank = lhs_shape.rank();
+    const auto rhs_rank = rhs_shape.rank();
+    if (!lhs_rank.has_value() || *lhs_rank < 2) {
         return Status::InvalidArgument("MatMul lhs must have rank >= 2");
     }
-    if (rhs_rank < 2) {
+
+    if (!rhs_rank.has_value() || *rhs_rank < 2) {
         return Status::InvalidArgument("MatMul rhs must have rank >= 2");
     }
-    const RhsAxes rhs_axes = ResolveRhsAxes(*typed, rhs_rank);
-    const ShapeSymbol& lhs_inner = lhs_spec.shape[lhs_rank - 1];
+
+    const RhsAxes rhs_axes = ResolveRhsAxes(*typed, *rhs_rank);
+    const ShapeSymbol& lhs_inner = lhs_spec.shape[*lhs_rank - 1];
     const ShapeSymbol& rhs_inner = rhs_spec.shape[rhs_axes.inner];
     if (lhs_inner.IsStatic() && lhs_inner.GetStaticValue() <= 0) {
         return Status::InvalidArgument("MatMul lhs inner dimension must be positive");
@@ -142,7 +135,7 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
         lhs_inner.GetStaticValue() != rhs_inner.GetStaticValue()) {
         return Status::InvalidArgument("MatMul inner dimensions must be equal");
     }
-    const ShapeSymbol& lhs_outer = lhs_spec.shape[lhs_rank - 2];
+    const ShapeSymbol& lhs_outer = lhs_spec.shape[*lhs_rank - 2];
     const ShapeSymbol& rhs_outer = rhs_spec.shape[rhs_axes.outer];
     if (lhs_outer.IsStatic() && lhs_outer.GetStaticValue() <= 0) {
         return Status::InvalidArgument("MatMul lhs outer dimension must be positive");
@@ -150,8 +143,8 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
     if (rhs_outer.IsStatic() && rhs_outer.GetStaticValue() <= 0) {
         return Status::InvalidArgument("MatMul rhs outer dimension must be positive");
     }
-    auto lhs_batch = MakeBatchShape(lhs_spec.shape, lhs_rank);
-    auto rhs_batch = MakeBatchShape(rhs_spec.shape, rhs_rank);
+    auto lhs_batch = MakeBatchShape(lhs_spec.shape, *lhs_rank);
+    auto rhs_batch = MakeBatchShape(rhs_spec.shape, *rhs_rank);
     auto broadcast_result = InferBroadcastShape(lhs_batch, rhs_batch);
     if (!broadcast_result.ok()) {
         return broadcast_result.status();
@@ -164,7 +157,7 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
     if (!lhs_inner.IsStatic() || !rhs_inner.IsStatic()) {
         if (lhs_inner != rhs_inner) {
             result.runtime_checks.push_back(ShapeConstraint{
-                    DimEqualConstraint{{{TensorPortType::kInput, 0}, lhs_rank - 1},
+                    DimEqualConstraint{{{TensorPortType::kInput, 0}, *lhs_rank - 1},
                                        {{TensorPortType::kInput, 1}, rhs_axes.inner}},
                     "MatMul inner dimensions must be equal"});
         }

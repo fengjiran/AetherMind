@@ -65,12 +65,14 @@ namespace detail {
 //
 // Steps:
 //   1. Validate OpParams variant type and eps scalar.
-//   2. Validate input count, input rank (>=1), and batch dimension positivity.
+//   2. Validate input count and input rank (>=1). Leading batch/sequence
+//      dims may be zero; only the last (hidden) dim must be positive
+//      (zero-length reduction is undefined).
 //   3. Validate weight rank (=1) and positive length.
 //   4. Reconcile hidden_size (input last dim) with weight_len: fail-fast on
 //      static hard conflict; otherwise emit a DimEqualConstraint deferred to
 //      runtime and verified by the Executor.
-//   5. Validate input/weight dtypes against the supported dtype set. Mixed
+//   5. Validate input/weight dtypes against the supported dtype set.  Mixed
 //      input/weight dtypes are allowed; the kernel converts the weight to the
 //      input dtype at runtime (HuggingFace LlamaRMSNorm convention).
 //   6. Build InferenceResult: the output spec mirrors the input spec
@@ -111,29 +113,44 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
         return Status::InvalidArgument("RmsNorm input must have rank >= 1");
     }
 
-    // Batch dimensions must be positive when statically known.
-    for (const auto dim: input_spec.shape) {
-        if (!IsPositiveIfStatic(dim)) {
+    // Only the last (hidden) dimension must be positive: zero-length reduction
+    // has no valid definition. Leading batch/sequence dimensions may be zero.
+    const size_t rank = *input_rank;
+    InferenceResult res;
+    const ShapeSymbol& hidden_size = input_spec.shape[rank - 1];
+    if (hidden_size.IsStatic()) {
+        if (hidden_size.GetStaticValue() <= 0) {
             return Status::InvalidArgument(
-                    "RmsNorm input dimension must be positive when statically known.");
+                    "RmsNorm input last dimension must be positive when statically known.");
         }
+    } else {
+        res.runtime_checks.emplace_back(
+                DimPositiveConstraint{.dim = {.tensor_port = {.direction = TensorPortType::kInput,
+                                                              .tensor_idx = 0},
+                                              .dim_index = rank - 1}},
+                "RmsNorm input last dimension must be positive");
     }
 
     if (!HasRank(weight_spec.shape, 1)) {
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
     }
 
-    const size_t rank = *input_rank;
-    const ShapeSymbol& hidden_size = input_spec.shape[rank - 1];
     const ShapeSymbol& weight_len = weight_spec.shape[0];
-    if (!IsPositiveIfStatic(weight_len)) {
-        return Status::InvalidArgument(
-                "RmsNorm weight length must be positive when statically known.");
+    if (weight_len.IsStatic()) {
+        if (weight_len.GetStaticValue() <= 0) {
+            return Status::InvalidArgument(
+                    "RmsNorm weight length must be positive when statically known.");
+        }
+    } else {
+        res.runtime_checks.emplace_back(
+                DimPositiveConstraint{.dim = {.tensor_port = {.direction = TensorPortType::kInput,
+                                                              .tensor_idx = 1},
+                                              .dim_index = 0}},
+                "RmsNorm weight length must be positive");
     }
 
     // Static mismatch is unrecoverable; dynamic/symbolic mismatches are deferred
     // to the Executor via a DimEqualConstraint.
-    InferenceResult res;
     if (!AreProvablyEqual(hidden_size, weight_len)) {
         if (hidden_size.IsStatic() && weight_len.IsStatic()) {
             return Status::InvalidArgument(

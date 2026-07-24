@@ -188,6 +188,36 @@ TEST(LinearOp, AcceptsSharedSymbolicK) {
     EXPECT_TRUE(InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status().ok());
 }
 
+TEST(LinearOp, AcceptsZeroBatchDim) {
+    // Zero batch yields empty output [0, out]; valid NumPy/PyTorch MatMul semantics.
+    const LinearOp op{LinearOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 8})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status().ok());
+}
+
+TEST(LinearOp, AcceptsZeroInFeatures) {
+    // Zero in_features (K=0) yields zero-valued output; valid NumPy/PyTorch MatMul.
+    const LinearOp op{LinearOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 0})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 0})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status().ok());
+}
+
+TEST(LinearOp, AcceptsZeroOutFeatures) {
+    // Zero out_features yields empty output; valid NumPy/PyTorch MatMul.
+    const LinearOp op{LinearOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 8})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{LinearOp::Params{}}, inputs).status().ok());
+}
+
 // ===== Prepare/Run tests =====
 
 struct StubKernelState {

@@ -68,8 +68,9 @@ namespace detail {
 // Steps:
 //   1. Validate OpParams variant type (must be EmbeddingParams).
 //   2. Validate input count (exactly 2: token_ids and weight).
-//   3. Validate input_ids rank (>= 1) and batch dimension positivity.
-//   4. Validate weight rank (= 2) and dimension positivity.
+//   3. Validate input_ids rank (>= 1). Zero-valued token counts are allowed
+//      (empty output); model-weight positivity is enforced at GraphOpBuilder.
+//   4. Validate weight rank (= 2) and dimension positivity (vocab/hidden).
 //   5. Validate token_ids dtype (int32, int64, or uint32).
 //   6. Validate weight dtype (float32, float16, or bfloat16).
 //   7. Build InferenceResult: output shape = input_ids_shape + [weight_shape[1]],
@@ -95,22 +96,28 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
     }
     const size_t input_rank = *input_rank_opt;
 
-    // Batch dimensions must be positive when statically known.
-    for (const auto dim: input_ids_shape) {
-        if (!IsPositiveIfStatic(dim)) {
-            return Status::InvalidArgument(
-                    "Embedding token_ids dimension must be positive when statically known.");
-        }
-    }
-
     if (!HasRank(weight_shape, 2)) {
         return Status::InvalidArgument("Embedding weight must be rank 2");
     }
 
-    for (const auto dim: weight_shape) {
-        if (!IsPositiveIfStatic(dim)) {
-            return Status::InvalidArgument(
-                    "Embedding weight dimension must be positive when statically known.");
+    InferenceResult res;
+    // Weight dimensions (vocab_size, hidden_size) must be positive. Static
+    // violations are rejected here; symbolic dims emit a runtime constraint.
+    for (size_t i = 0; i < *weight_shape.rank(); ++i) {
+        const ShapeSymbol& dim = weight_shape[i];
+        if (dim.IsStatic()) {
+            if (dim.GetStaticValue() <= 0) {
+                return Status::InvalidArgument(
+                        "Embedding weight dimension must be positive when statically known.");
+            }
+        } else {
+            res.runtime_checks.emplace_back(
+                    DimPositiveConstraint{
+                            .dim = {
+                                    .tensor_port = {.direction = TensorPortType::kInput,
+                                                    .tensor_idx = 1},
+                                    .dim_index = i}},
+                    "Embedding weight dimension must be positive");
         }
     }
 
@@ -133,9 +140,8 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
     }
     output_shape.push_back(weight_shape[1]);
 
-    InferenceResult res;
     res.outputs.emplace_back(weight_spec.dtype,
-                                SymbolicShape(std::move(output_shape)));
+                             SymbolicShape(std::move(output_shape)));
     return res;
 }
 

@@ -116,7 +116,8 @@ TEST(EmbeddingOp, PreservesSymbolicTokenAndHiddenDims) {
     const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    EXPECT_TRUE(inference->runtime_checks.empty());
+    // Symbolic weight dims (vocab, hidden) emit DimPositiveConstraint for runtime validation.
+    ASSERT_EQ(inference->runtime_checks.size(), 2U);
     ASSERT_EQ(inference->outputs.size(), 1U);
     ASSERT_EQ(inference->outputs[0].shape.rank(), 2U);
     EXPECT_EQ(inference->outputs[0].shape[0], token_count);
@@ -160,12 +161,53 @@ TEST(EmbeddingOp, InfersOutputShapeForRank2SymbolicTokens) {
     const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    EXPECT_TRUE(inference->runtime_checks.empty());
+    // Symbolic weight dims (vocab, hidden) emit DimPositiveConstraint for runtime validation.
+    ASSERT_EQ(inference->runtime_checks.size(), 2U);
     ASSERT_EQ(inference->outputs.size(), 1U);
     ASSERT_EQ(inference->outputs[0].shape.rank(), 3U);
     EXPECT_EQ(inference->outputs[0].shape[0], batch);
     EXPECT_EQ(inference->outputs[0].shape[1], seq);
     EXPECT_EQ(inference->outputs[0].shape[2], hidden);
+}
+
+TEST(EmbeddingOp, AcceptsZeroTokenCount) {
+    // Zero token count yields empty output [0, hidden]; valid NumPy-style embedding.
+    const EmbeddingOp op{EmbeddingOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({0})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
+    };
+    EXPECT_TRUE(InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status().ok());
+}
+
+TEST(EmbeddingOp, EmitsPositiveConstraintForSymbolicWeightDims) {
+    // Symbolic weight dims must emit DimPositiveConstraint for runtime validation.
+    const EmbeddingOp op{EmbeddingOp::Params{}};
+    const ShapeSymbol vocab = ShapeSymbol::Create();
+    const ShapeSymbol hidden = ShapeSymbol::Create();
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({3})},
+            TensorSpec{.dtype = DataType::Float32(),
+                       .shape = SymbolicShape(std::vector<ShapeSymbol>{vocab, hidden})},
+    };
+    const auto result = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_EQ(result->runtime_checks.size(), 2U);
+
+    // Verify DimPositiveConstraint locators without relying on ordering.
+    bool found_vocab = false;
+    bool found_hidden = false;
+    for (const auto& check: result->runtime_checks) {
+        const auto* pos = std::get_if<DimPositiveConstraint>(&check.condition);
+        if (pos == nullptr) continue;
+        if (pos->dim.tensor_port.tensor_idx == 1U && pos->dim.dim_index == 0U) {
+            found_vocab = true;
+        } else if (pos->dim.tensor_port.tensor_idx == 1U && pos->dim.dim_index == 1U) {
+            found_hidden = true;
+        }
+    }
+    EXPECT_TRUE(found_vocab) << "missing DimPositiveConstraint for weight vocab_size (input[1] dim[0])";
+    EXPECT_TRUE(found_hidden) << "missing DimPositiveConstraint for weight hidden_size (input[1] dim[1])";
 }
 
 TEST(EmbeddingOp, RegistryCreatesDefaultEmbeddingOperator) {

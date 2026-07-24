@@ -71,14 +71,17 @@ namespace detail {
 //     are batch dimensions; the last is in_features).  Weight must be rank 2
 //     (matrix).  There is no upper bound on input rank — batched Linear simply
 //     broadcasts over all leading dimensions.
-//  4. Dimension positivity: all statically-known dimensions must be positive.
-//  5. Dtype support: activation and weight dtypes are validated separately
+//  4. Dtype support: activation and weight dtypes are validated separately
 //     because supported quantization schemes (e.g. INT4 weight, FP32 activation)
 //     differ between the two.
-//  6. Dimension compatibility: input last-dim must equal weight inner-dim
+//  5. Dimension compatibility: input last-dim must equal weight inner-dim
 //     (in_features == weight_in).  When both are static and mismatch the
 //     graph is invalid (hard error).  When at least one is dynamic a runtime
 //     check is emitted instead.
+//
+// Zero-valued dimensions are intentionally allowed, matching NumPy/PyTorch
+// semantics (Linear is semantically equivalent to MatMul). Model-weight
+// positivity is enforced at the GraphOpBuilder layer.
 //
 // Output shape: input's leading dims + [weight_out].  E.g. [b1, b2, in] →
 // [b1, b2, out]; [in] → [out].
@@ -101,22 +104,8 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
         return Status::InvalidArgument("Linear input must have rank >= 1");
     }
 
-    for (const auto dim: input_shape) {
-        if (!IsPositiveIfStatic(dim)) {
-            return Status::InvalidArgument(
-                    "Linear input dimension must be positive when statically known.");
-        }
-    }
-
     if (!HasRank(weight_shape, 2)) {
         return Status::InvalidArgument("Linear weight must be rank 2");
-    }
-
-    for (const auto dim: weight_shape) {
-        if (!IsPositiveIfStatic(dim)) {
-            return Status::InvalidArgument(
-                    "Linear weight dimension must be positive when statically known.");
-        }
     }
 
     if (!IsLinearSupportedActivationDType(input_spec.dtype)) {

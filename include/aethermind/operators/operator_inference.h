@@ -78,13 +78,6 @@ StatusOr<InferenceResult> InferSilu(const OpParams& params, std::span<const Tens
 StatusOr<InferenceResult> InferSiluMul(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferElementwiseMul(const OpParams& params, std::span<const TensorSpec> inputs);
 
-// Shared broadcast-binary inference helper used by SiluMul and ElementwiseMul
-// (ops whose semantics are elementwise binary with broadcast). Defined in
-// operator_inference.cpp alongside the dispatch hub.
-StatusOr<InferenceResult> InferBroadcastBinary(const OpParams& params,
-                                               std::span<const TensorSpec> inputs,
-                                               std::string_view op_name);
-
 }// namespace detail
 
 }// namespace aethermind

@@ -70,7 +70,35 @@ StatusOr<InferenceResult> InferSiluMul(const OpParams& params,
     if (!std::holds_alternative<SiluMulParams>(params)) {
         return Status::InvalidArgument("SiluMul node requires SiluMulParams");
     }
-    return InferBroadcastBinary(/*params=*/{}, inputs, "SiluMul");
+    if (inputs.size() != 2) {
+        return Status::InvalidArgument("SiluMul requires exactly 2 inputs");
+    }
+    const TensorSpec& lhs_spec = inputs[0];
+    const TensorSpec& rhs_spec = inputs[1];
+    if (lhs_spec.dtype != DataType::Float32() && lhs_spec.dtype != DataType::BFloat(16)) {
+        return Status::InvalidArgument("SiluMul lhs must be float32 or bfloat16");
+    }
+    if (rhs_spec.dtype != DataType::Float32() && rhs_spec.dtype != DataType::BFloat(16)) {
+        return Status::InvalidArgument("SiluMul rhs must be float32 or bfloat16");
+    }
+    auto broadcast_result = InferBroadcastShape(
+            lhs_spec.shape, rhs_spec.shape);
+    if (!broadcast_result.ok()) {
+        return broadcast_result.status();
+    }
+
+    InferenceResult result;
+    result.outputs.push_back({lhs_spec.dtype, broadcast_result->output_shape});
+    for (const auto& deferred: broadcast_result->deferred_axes) {
+        result.runtime_checks.push_back(
+                {DimBroadcastableConstraint{
+                         {{TensorPortType::kInput, 0},
+                          deferred.lhs_axis},
+                         {{TensorPortType::kInput, 1},
+                          deferred.rhs_axis}},
+                 "SiluMul dimensions must be broadcastable"});
+    }
+    return result;
 }
 
 }// namespace detail

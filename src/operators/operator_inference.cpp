@@ -63,52 +63,11 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(const OperatorSchema& sc
                     std::to_string(port.index) + " out of bounds for " +
                     std::to_string(all_inputs.size()) + " inputs");
         }
+
         if (port.contributes_tensor_spec) {
             compact.push_back(all_inputs[port.index]);
         }
     }
     return compact;
 }
-
-namespace detail {
-
-StatusOr<InferenceResult> InferBroadcastBinary(const OpParams& /*params*/,
-                                               std::span<const TensorSpec> inputs,
-                                               std::string_view op_name) {
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                std::string(op_name) + " requires exactly 2 inputs");
-    }
-    const TensorSpec& lhs_spec = inputs[0];
-    const TensorSpec& rhs_spec = inputs[1];
-    if (lhs_spec.dtype != DataType::Float32() && lhs_spec.dtype != DataType::BFloat(16)) {
-        return Status::InvalidArgument(
-                std::string(op_name) + " lhs must be float32 or bfloat16");
-    }
-    if (rhs_spec.dtype != DataType::Float32() && rhs_spec.dtype != DataType::BFloat(16)) {
-        return Status::InvalidArgument(
-                std::string(op_name) + " rhs must be float32 or bfloat16");
-    }
-    auto broadcast_result = InferBroadcastShape(
-            lhs_spec.shape, rhs_spec.shape);
-    if (!broadcast_result.ok()) {
-        return broadcast_result.status();
-    }
-
-    InferenceResult result;
-    result.outputs.push_back({lhs_spec.dtype, broadcast_result->output_shape});
-    for (const auto& deferred: broadcast_result->deferred_axes) {
-        result.runtime_checks.push_back(
-                {DimBroadcastableConstraint{
-                         {{TensorPortType::kInput, 0},
-                          deferred.lhs_axis},
-                         {{TensorPortType::kInput, 1},
-                          deferred.rhs_axis}},
-                 std::string(op_name) + " dimensions must be broadcastable"});
-    }
-    return result;
-}
-
-}// namespace detail
-
 }// namespace aethermind

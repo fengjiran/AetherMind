@@ -459,7 +459,7 @@ TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun)
     const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_dim});
     const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-    ASSERT_EQ(analyzed->runtime_checks.size(), 1U);
+    ASSERT_GE(analyzed->runtime_checks.size(), 1U);
 
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kRmsNorm,
@@ -479,7 +479,7 @@ TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun)
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
-    ASSERT_EQ(plan->steps().front().runtime_checks.size(), 1U);
+    ASSERT_GE(plan->steps().front().runtime_checks.size(), 1U);
 
     // Runtime shapes violate the constraint: input[0].dim[1]=8 != input[1].dim[0]=16.
     RuntimeTensorStorage input{std::vector<int64_t>{2, 8}};

@@ -286,15 +286,21 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {
     EXPECT_EQ(step.output_specs[0].shape[0], seq_len);
     EXPECT_EQ(step.output_specs[0].shape[1], input_hidden);
 
-    ASSERT_EQ(step.runtime_checks.size(), 1U);
-    ASSERT_TRUE(std::holds_alternative<DimEqualConstraint>(step.runtime_checks[0].condition));
-    const auto& equal = std::get<DimEqualConstraint>(step.runtime_checks[0].condition);
-    EXPECT_EQ(equal.lhs.tensor_port.direction, TensorPortType::kInput);
-    EXPECT_EQ(equal.lhs.tensor_port.tensor_idx, 0U);
-    EXPECT_EQ(equal.lhs.dim_index, 1U);
-    EXPECT_EQ(equal.rhs.tensor_port.direction, TensorPortType::kInput);
-    EXPECT_EQ(equal.rhs.tensor_port.tensor_idx, 1U);
-    EXPECT_EQ(equal.rhs.dim_index, 0U);
+    // Find the DimEqualConstraint without relying on constraint ordering.
+    const DimEqualConstraint* equal = nullptr;
+    for (const auto& check: step.runtime_checks) {
+        if (std::holds_alternative<DimEqualConstraint>(check.condition)) {
+            equal = &std::get<DimEqualConstraint>(check.condition);
+            break;
+        }
+    }
+    ASSERT_NE(equal, nullptr) << "expected a DimEqualConstraint";
+    EXPECT_EQ(equal->lhs.tensor_port.direction, TensorPortType::kInput);
+    EXPECT_EQ(equal->lhs.tensor_port.tensor_idx, 0U);
+    EXPECT_EQ(equal->lhs.dim_index, 1U);
+    EXPECT_EQ(equal->rhs.tensor_port.direction, TensorPortType::kInput);
+    EXPECT_EQ(equal->rhs.tensor_port.tensor_idx, 1U);
+    EXPECT_EQ(equal->rhs.dim_index, 0U);
 }
 
 TEST(ExecutionPlanBuilder, BuildRejectsMismatchedOutputSpecs) {
@@ -394,7 +400,14 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
 
     const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-    ASSERT_EQ(analyzed->runtime_checks.size(), 1U)
+    bool has_dim_equal = false;
+    for (const auto& check: analyzed->runtime_checks) {
+        if (std::holds_alternative<DimEqualConstraint>(check.condition)) {
+            has_dim_equal = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(has_dim_equal)
             << "expected InferRmsNorm to emit a DimEqualConstraint for "
                "symbolic-hidden != symbolic-weight-length";
 

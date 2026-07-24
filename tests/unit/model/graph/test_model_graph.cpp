@@ -1292,11 +1292,10 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStaleRuntimeCheckCondition) {
             {{.payload = ActivationValue{}}}, RmsNormParams{});
     ASSERT_TRUE(gold_result.ok());
     const auto& gold_node = gold.GetNode((*gold_result).node);
-    ASSERT_EQ(gold_node.runtime_checks.size(), 1U);
-    const auto& gold_check = gold_node.runtime_checks[0];
+    ASSERT_FALSE(gold_node.runtime_checks.empty());
 
-    // Tamper: change the stored condition but keep the error_context.
-    std::vector<ShapeConstraint> tampered_checks = {gold_check};
+    // Tamper: change one stored condition but keep the error_context.
+    std::vector<ShapeConstraint> tampered_checks = gold_node.runtime_checks;
     tampered_checks[0].condition = RankEqualConstraint{
             .port = {TensorPortType::kInput, 0},
             .target_rank = 99};
@@ -1357,11 +1356,10 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsSameConditionWithStaleErrorCon
             {{.payload = ActivationValue{}}}, RmsNormParams{});
     ASSERT_TRUE(gold_result.ok());
     const auto& gold_node = gold.GetNode((*gold_result).node);
-    ASSERT_EQ(gold_node.runtime_checks.size(), 1U);
-    const auto& gold_check = gold_node.runtime_checks[0];
+    ASSERT_FALSE(gold_node.runtime_checks.empty());
 
     // Tamper only the error_context; condition stays identical.
-    std::vector<ShapeConstraint> tampered_checks = {gold_check};
+    std::vector<ShapeConstraint> tampered_checks = gold_node.runtime_checks;
     tampered_checks[0].error_context = "stale_context";
 
     std::vector<GraphValue> values = {

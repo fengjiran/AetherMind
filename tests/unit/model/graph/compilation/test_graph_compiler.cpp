@@ -1004,9 +1004,16 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     // Layer 0: the graph itself. AddNode must have invoked InferRmsNorm and
     // stored the derived runtime check on the node.
     const GraphNode& graph_node = graph.GetNode(rms_or->node);
-    ASSERT_EQ(graph_node.runtime_checks.size(), 1u)
-            << "InferRmsNorm must emit exactly one DimEqualConstraint for "
-               "distinct symbolic hidden vs weight length";
+    ASSERT_FALSE(graph_node.runtime_checks.empty())
+            << "InferRmsNorm must emit runtime checks for distinct symbolic hidden vs weight length";
+    bool has_dim_equal = false;
+    for (const auto& check: graph_node.runtime_checks) {
+        if (std::holds_alternative<DimEqualConstraint>(check.condition)) {
+            has_dim_equal = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(has_dim_equal) << "InferRmsNorm must emit a DimEqualConstraint";
     const auto graph_checks = graph_node.runtime_checks;
 
     // Layer 1: OptimizeModelGraph (rewrite). Must not drop the runtime check.

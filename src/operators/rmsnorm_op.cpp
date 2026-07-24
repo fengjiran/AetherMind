@@ -93,6 +93,19 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
 
     const auto& input_spec = inputs[0];
     const auto& weight_spec = inputs[1];
+
+    // Mixed input/weight dtypes are allowed; the kernel converts the weight to
+    // the input dtype at runtime (HuggingFace LlamaRMSNorm convention).
+    if (!IsRmsNormSupportedDType(input_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeRmsNormUnsupportedDTypeMessage("RmsNorm input"));
+    }
+
+    if (!IsRmsNormSupportedDType(weight_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeRmsNormUnsupportedDTypeMessage("RmsNorm weight"));
+    }
+
     const auto input_rank = input_spec.shape.rank();
     if (!input_rank.has_value() || *input_rank < 1) {
         return Status::InvalidArgument("RmsNorm input must have rank >= 1");
@@ -120,44 +133,26 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
 
     // Static mismatch is unrecoverable; dynamic/symbolic mismatches are deferred
     // to the Executor via a DimEqualConstraint.
-    std::vector<ShapeConstraint> runtime_checks;
+    InferenceResult res;
     if (!AreProvablyEqual(hidden_size, weight_len)) {
         if (hidden_size.IsStatic() && weight_len.IsStatic()) {
             return Status::InvalidArgument(
                     "RmsNorm weight length must equal input last dimension");
         }
 
-        runtime_checks.push_back({
-                .condition = DimEqualConstraint{
-                        .lhs = {
-                                .tensor_port = {.direction = TensorPortType::kInput,
+        res.runtime_checks.emplace_back(
+                DimEqualConstraint{
+                        .lhs = {.tensor_port = {.direction = TensorPortType::kInput,
                                                 .tensor_idx = 0},
-                                .dim_index = rank - 1,
-                        },
-                        .rhs = {
-                                .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
-                                .dim_index = 0,
-                        }},
-                .error_context = "RmsNorm hidden dimension must match weight length",
-        });
+                                .dim_index = rank - 1},
+                        .rhs = {.tensor_port = {.direction = TensorPortType::kInput,
+                                                .tensor_idx = 1},
+                                .dim_index = 0}},
+                "RmsNorm hidden dimension must match weight length");
     }
 
-    // Mixed input/weight dtypes are allowed; the kernel converts the weight to
-    // the input dtype at runtime (HuggingFace LlamaRMSNorm convention).
-    if (!IsRmsNormSupportedDType(input_spec.dtype)) {
-        return Status::InvalidArgument(
-                MakeRmsNormUnsupportedDTypeMessage("RmsNorm input"));
-    }
-
-    if (!IsRmsNormSupportedDType(weight_spec.dtype)) {
-        return Status::InvalidArgument(
-                MakeRmsNormUnsupportedDTypeMessage("RmsNorm weight"));
-    }
-
-    return InferenceResult{
-            .outputs = {input_spec},
-            .runtime_checks = std::move(runtime_checks),
-    };
+    res.outputs.emplace_back(input_spec);
+    return res;
 }
 
 }// namespace detail

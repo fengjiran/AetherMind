@@ -134,14 +134,15 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
     // Dynamic mismatch → defer to a runtime dimension-equality check.
     const ShapeSymbol& in_features = input_shape[*input_rank - 1];
     const ShapeSymbol& weight_in = weight_shape[1];
-    std::vector<ShapeConstraint> runtime_checks;
+
+    InferenceResult res;
     if (!AreProvablyEqual(in_features, weight_in)) {
         if (in_features.IsStatic() && weight_in.IsStatic()) {
             return Status::InvalidArgument(
                     "Linear weight length must equal input last dimension");
         }
 
-        runtime_checks.emplace_back(
+        res.runtime_checks.emplace_back(
                 DimEqualConstraint{
                         .lhs = {.tensor_port = {.direction = TensorPortType::kInput,
                                                 .tensor_idx = 0},
@@ -161,11 +162,9 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
     }
     output_shape.push_back(weight_shape[0]);
 
-    InferenceResult result;
-    result.outputs.push_back({input_spec.dtype, SymbolicShape(std::move(output_shape))});
-    result.runtime_checks = std::move(runtime_checks);
+    res.outputs.emplace_back(input_spec.dtype, SymbolicShape(std::move(output_shape)));
 
-    return result;
+    return res;
 }
 
 }// namespace detail

@@ -120,7 +120,7 @@ AM_NODISCARD StatusOr<SymbolicBroadcastResult> InferBroadcastShape(const Symboli
         // NOT proven identical, so they fall through to the deferred path.
         // Static zero dimensions also match here (0 == 0), which is the
         // correct NumPy broadcast result for equal-zero axes.
-        if (lhs_dim == rhs_dim && !lhs_dim.IsUnknown()) {
+        if (AreProvablyEqual(lhs_dim, rhs_dim)) {
             output_shape[output_axis] = lhs_dim;
             continue;
         }

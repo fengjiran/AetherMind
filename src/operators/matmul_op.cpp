@@ -70,27 +70,28 @@ struct RhsAxes {
     size_t outer;
 };
 
-RhsAxes ResolveRhsAxes(const MatMulParams& params, size_t rhs_rank) {
-    if (params.transpose_rhs) {
-        return {rhs_rank - 1, rhs_rank - 2};
+RhsAxes ResolveRhsAxes(bool transpose_rhs, size_t rhs_rank) {
+    if (transpose_rhs) {
+        return {.inner = rhs_rank - 1, .outer = rhs_rank - 2};
     }
-    return {rhs_rank - 2, rhs_rank - 1};
+    return {.inner = rhs_rank - 2, .outer = rhs_rank - 1};
 }
+
 
 SymbolicShape MakeBatchShape(const SymbolicShape& shape, size_t rank) {
     std::vector<ShapeSymbol> batch_dims;
     for (size_t i = 0; i < rank - 2; ++i) {
         batch_dims.push_back(shape[i]);
     }
-    return SymbolicShape(batch_dims);
+    return SymbolicShape(std::move(batch_dims));
 }
 
 }// namespace
 
 StatusOr<InferenceResult> InferMatMul(const OpParams& params,
                                       std::span<const TensorSpec> inputs) {
-    const auto* typed = std::get_if<MatMulParams>(&params);
-    if (typed == nullptr) {
+    const auto* matmul_params = std::get_if<MatMulParams>(&params);
+    if (matmul_params == nullptr) {
         return Status::InvalidArgument("MatMul node requires MatMulParams");
     }
 
@@ -122,51 +123,66 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
         return Status::InvalidArgument("MatMul rhs must have rank >= 2");
     }
 
-    const RhsAxes rhs_axes = ResolveRhsAxes(*typed, *rhs_rank);
-    const ShapeSymbol& lhs_inner = lhs_spec.shape[*lhs_rank - 1];
-    const ShapeSymbol& rhs_inner = rhs_spec.shape[rhs_axes.inner];
-    if (lhs_inner.IsStatic() && lhs_inner.GetStaticValue() <= 0) {
+    const RhsAxes rhs_axes = ResolveRhsAxes(matmul_params->transpose_rhs, *rhs_rank);
+    const ShapeSymbol& lhs_inner_dim = lhs_spec.shape[*lhs_rank - 1];
+    const ShapeSymbol& rhs_inner_dim = rhs_spec.shape[rhs_axes.inner];
+
+    if (!IsPositiveIfStatic(lhs_inner_dim)) {
         return Status::InvalidArgument("MatMul lhs inner dimension must be positive");
     }
-    if (rhs_inner.IsStatic() && rhs_inner.GetStaticValue() <= 0) {
+
+    if (!IsPositiveIfStatic(rhs_inner_dim)) {
         return Status::InvalidArgument("MatMul rhs inner dimension must be positive");
     }
-    if (lhs_inner.IsStatic() && rhs_inner.IsStatic() &&
-        lhs_inner.GetStaticValue() != rhs_inner.GetStaticValue()) {
-        return Status::InvalidArgument("MatMul inner dimensions must be equal");
-    }
+
     const ShapeSymbol& lhs_outer = lhs_spec.shape[*lhs_rank - 2];
     const ShapeSymbol& rhs_outer = rhs_spec.shape[rhs_axes.outer];
-    if (lhs_outer.IsStatic() && lhs_outer.GetStaticValue() <= 0) {
+    if (!IsPositiveIfStatic(lhs_outer)) {
         return Status::InvalidArgument("MatMul lhs outer dimension must be positive");
     }
-    if (rhs_outer.IsStatic() && rhs_outer.GetStaticValue() <= 0) {
+
+    if (!IsPositiveIfStatic(rhs_outer)) {
         return Status::InvalidArgument("MatMul rhs outer dimension must be positive");
     }
+
     auto lhs_batch = MakeBatchShape(lhs_spec.shape, *lhs_rank);
     auto rhs_batch = MakeBatchShape(rhs_spec.shape, *rhs_rank);
     auto broadcast_result = InferBroadcastShape(lhs_batch, rhs_batch);
     if (!broadcast_result.ok()) {
         return broadcast_result.status();
     }
-    std::vector<ShapeSymbol> output_dims = broadcast_result->output_shape.shape().value();
-    output_dims.push_back(lhs_outer);
-    output_dims.push_back(rhs_outer);
+
+    std::vector<ShapeSymbol> output_shape = broadcast_result->output_shape.shape().value();
+    output_shape.push_back(lhs_outer);
+    output_shape.push_back(rhs_outer);
+
     InferenceResult result;
-    result.outputs.push_back({lhs_spec.dtype, SymbolicShape(output_dims)});
-    if (!lhs_inner.IsStatic() || !rhs_inner.IsStatic()) {
-        if (lhs_inner != rhs_inner) {
-            result.runtime_checks.push_back(ShapeConstraint{
-                    DimEqualConstraint{{{TensorPortType::kInput, 0}, *lhs_rank - 1},
-                                       {{TensorPortType::kInput, 1}, rhs_axes.inner}},
-                    "MatMul inner dimensions must be equal"});
+    result.outputs.emplace_back(lhs_spec.dtype, SymbolicShape(output_shape));
+    if (!AreProvablyEqual(lhs_inner_dim, rhs_inner_dim)) {
+        if (lhs_inner_dim.IsStatic() && rhs_inner_dim.IsStatic()) {
+            return Status::InvalidArgument("MatMul inner dimensions must be equal");
         }
+
+        result.runtime_checks.emplace_back(
+                DimEqualConstraint{
+                        .lhs = {.tensor_port = {.direction = TensorPortType::kInput,
+                                                .tensor_idx = 0},
+                                .dim_index = *lhs_rank - 1},
+                        .rhs = {.tensor_port = {.direction = TensorPortType::kInput,
+                                                .tensor_idx = 1},
+                                .dim_index = rhs_axes.inner}},
+                "MatMul inner dimensions must be equal");
     }
+
+
     for (const auto& deferred: broadcast_result->deferred_axes) {
-        result.runtime_checks.push_back(ShapeConstraint{
-                DimBroadcastableConstraint{{{TensorPortType::kInput, 0}, deferred.lhs_axis},
-                                           {{TensorPortType::kInput, 1}, deferred.rhs_axis}},
-                "MatMul batch dimensions must be broadcastable"});
+        result.runtime_checks.emplace_back(
+                DimBroadcastableConstraint{
+                        .lhs = {.tensor_port = {TensorPortType::kInput, 0},
+                                .dim_index = deferred.lhs_axis},
+                        .rhs = {.tensor_port = {TensorPortType::kInput, 1},
+                                .dim_index = deferred.rhs_axis}},
+                "MatMul batch dimensions must be broadcastable");
     }
     return result;
 }

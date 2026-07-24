@@ -176,6 +176,11 @@ AM_NODISCARD inline bool IsPositiveIfStatic(const ShapeSymbol& dim) {
     return !dim.IsStatic() || dim.GetStaticValue() > 0;
 }
 
+AM_NODISCARD inline bool AreProvablyEqual(const ShapeSymbol& lhs,
+                                          const ShapeSymbol& rhs) noexcept {
+    return !lhs.IsUnknown() && !rhs.IsUnknown() && lhs == rhs;
+}
+
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
 
 }// namespace aethermind

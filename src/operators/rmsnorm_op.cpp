@@ -121,7 +121,7 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
     // Static mismatch is unrecoverable; dynamic/symbolic mismatches are deferred
     // to the Executor via a DimEqualConstraint.
     std::vector<ShapeConstraint> runtime_checks;
-    if (hidden_size != weight_len) {
+    if (!AreProvablyEqual(hidden_size, weight_len)) {
         if (hidden_size.IsStatic() && weight_len.IsStatic()) {
             return Status::InvalidArgument(
                     "RmsNorm weight length must equal input last dimension");

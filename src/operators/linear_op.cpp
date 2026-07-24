@@ -135,25 +135,21 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
     const ShapeSymbol& in_features = input_shape[*input_rank - 1];
     const ShapeSymbol& weight_in = weight_shape[1];
     std::vector<ShapeConstraint> runtime_checks;
-    if (in_features != weight_in) {
+    if (!AreProvablyEqual(in_features, weight_in)) {
         if (in_features.IsStatic() && weight_in.IsStatic()) {
             return Status::InvalidArgument(
                     "Linear weight length must equal input last dimension");
         }
 
-        runtime_checks.push_back({
-                .condition = DimEqualConstraint{
-                        .lhs = {
-                                .tensor_port = {.direction = TensorPortType::kInput,
+        runtime_checks.emplace_back(
+                DimEqualConstraint{
+                        .lhs = {.tensor_port = {.direction = TensorPortType::kInput,
                                                 .tensor_idx = 0},
-                                .dim_index = *input_rank - 1,
-                        },
-                        .rhs = {
-                                .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
-                                .dim_index = 1,
-                        }},
-                .error_context = "Linear input last dimension must match weight input dimension",
-        });
+                                .dim_index = *input_rank - 1},
+                        .rhs = {.tensor_port = {.direction = TensorPortType::kInput,
+                                                .tensor_idx = 1},
+                                .dim_index = 1}},
+                "Linear input last dimension must match weight input dimension");
     }
 
     // Output shape = input's leading dims (all except last) + [weight_out].

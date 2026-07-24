@@ -62,6 +62,26 @@ AM_REGISTER_OPERATOR(OpType::kLinear, LinearOp)
 
 namespace detail {
 
+// Validates the Linear operator semantics at graph-build time and infers the output shape.
+//
+// Validation steps (in order):
+//  1. Parameter type: params must hold LinearParams (no extra attributes).
+//  2. Input count: exactly 2 — [activation, weight].
+//  3. Input rank: activation must be rank >= 1 (all dimensions except the last
+//     are batch dimensions; the last is in_features).  Weight must be rank 2
+//     (matrix).  There is no upper bound on input rank — batched Linear simply
+//     broadcasts over all leading dimensions.
+//  4. Dimension positivity: all statically-known dimensions must be positive.
+//  5. Dtype support: activation and weight dtypes are validated separately
+//     because supported quantization schemes (e.g. INT4 weight, FP32 activation)
+//     differ between the two.
+//  6. Dimension compatibility: input last-dim must equal weight inner-dim
+//     (in_features == weight_in).  When both are static and mismatch the
+//     graph is invalid (hard error).  When at least one is dynamic a runtime
+//     check is emitted instead.
+//
+// Output shape: input's leading dims + [weight_out].  E.g. [b1, b2, in] →
+// [b1, b2, out]; [in] → [out].
 StatusOr<InferenceResult> InferLinear(const OpParams& params,
                                       std::span<const TensorSpec> inputs) {
     if (!std::holds_alternative<LinearParams>(params)) {
@@ -74,55 +94,81 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
 
     const TensorSpec& input_spec = inputs[0];
     const TensorSpec& weight_spec = inputs[1];
-    if (input_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("Linear input must be float32");
-    }
-    if (weight_spec.dtype != DataType::Float32()) {
-        return Status::InvalidArgument("Linear weight must be float32");
-    }
-    if (!input_spec.shape.IsRanked()) {
-        return Status::InvalidArgument("Linear input must be ranked");
-    }
-    if (!HasRank(weight_spec.shape, 2)) {
-        return Status::InvalidArgument("Linear weight must be rank 2");
-    }
     const auto& input_shape = input_spec.shape;
     const auto& weight_shape = weight_spec.shape;
-    const auto input_rank = input_shape.rank().value();
-    if (input_rank != 1 && input_rank != 2) {
-        return Status::InvalidArgument("Linear input must be rank 1 or 2");
+    const auto input_rank = input_shape.rank();
+    if (!input_rank.has_value() || *input_rank < 1) {
+        return Status::InvalidArgument("Linear input must have rank >= 1");
     }
-    const ShapeSymbol& in_features = input_shape[input_rank - 1];
+
+    for (const auto dim: input_shape) {
+        if (!IsPositiveIfStatic(dim)) {
+            return Status::InvalidArgument(
+                    "Linear input dimension must be positive when statically known.");
+        }
+    }
+
+    if (!HasRank(weight_shape, 2)) {
+        return Status::InvalidArgument("Linear weight must be rank 2");
+    }
+
+    for (const auto dim: weight_shape) {
+        if (!IsPositiveIfStatic(dim)) {
+            return Status::InvalidArgument(
+                    "Linear weight dimension must be positive when statically known.");
+        }
+    }
+
+    if (!IsLinearSupportedActivationDType(input_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeLinearUnsupportedActivationDTypeMessage("Linear"));
+    }
+
+    if (!IsLinearSupportedWeightDType(weight_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeLinearUnsupportedWeightDTypeMessage("Linear"));
+    }
+
+    // in_features (input_last_dim) must equal weight_in (weight[1]).
+    // Static mismatch → graph is structurally invalid.
+    // Dynamic mismatch → defer to a runtime dimension-equality check.
+    const ShapeSymbol& in_features = input_shape[*input_rank - 1];
     const ShapeSymbol& weight_in = weight_shape[1];
-    if (in_features.IsStatic() && in_features.GetStaticValue() <= 0) {
-        return Status::InvalidArgument("Linear input last dimension must be positive");
-    }
-    if (weight_shape[0].IsStatic() && weight_shape[0].GetStaticValue() <= 0) {
-        return Status::InvalidArgument("Linear weight output dimension must be positive");
-    }
-    if (weight_in.IsStatic() && weight_in.GetStaticValue() <= 0) {
-        return Status::InvalidArgument("Linear weight input dimension must be positive");
-    }
-    if (in_features.IsStatic() && weight_in.IsStatic() &&
-        in_features.GetStaticValue() != weight_in.GetStaticValue()) {
-        return Status::InvalidArgument("Linear input last dimension must match weight input dimension");
-    }
-    auto unified = UnifyShapeSymbol(in_features, weight_in);
-    if (!unified.ok()) {
-        return unified.status();
-    }
-    InferenceResult result;
-    if (input_rank == 1) {
-        result.outputs.push_back({input_spec.dtype, SymbolicShape({weight_shape[0]})});
-    } else {
-        result.outputs.push_back({input_spec.dtype, SymbolicShape({input_shape[0], weight_shape[0]})});
-    }
+    std::vector<ShapeConstraint> runtime_checks;
     if (in_features != weight_in) {
-        result.runtime_checks.push_back(ShapeConstraint{
-                DimEqualConstraint{{{TensorPortType::kInput, 0}, static_cast<size_t>(input_rank - 1)},
-                                   {{TensorPortType::kInput, 1}, 1}},
-                "Linear input last dimension must match weight input dimension"});
+        if (in_features.IsStatic() && weight_in.IsStatic()) {
+            return Status::InvalidArgument(
+                    "Linear weight length must equal input last dimension");
+        }
+
+        runtime_checks.push_back({
+                .condition = DimEqualConstraint{
+                        .lhs = {
+                                .tensor_port = {.direction = TensorPortType::kInput,
+                                                .tensor_idx = 0},
+                                .dim_index = *input_rank - 1,
+                        },
+                        .rhs = {
+                                .tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
+                                .dim_index = 1,
+                        }},
+                .error_context = "Linear input last dimension must match weight input dimension",
+        });
     }
+
+    // Output shape = input's leading dims (all except last) + [weight_out].
+    // E.g. [b1, b2, in] → [b1, b2, out];  [in] → [out].
+    std::vector<ShapeSymbol> output_shape;
+    output_shape.reserve(*input_rank);
+    for (size_t i = 0; i < *input_rank - 1; ++i) {
+        output_shape.push_back(input_shape[i]);
+    }
+    output_shape.push_back(weight_shape[0]);
+
+    InferenceResult result;
+    result.outputs.push_back({input_spec.dtype, SymbolicShape(std::move(output_shape))});
+    result.runtime_checks = std::move(runtime_checks);
+
     return result;
 }
 

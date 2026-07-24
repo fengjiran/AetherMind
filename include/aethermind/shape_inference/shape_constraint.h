@@ -84,12 +84,22 @@ struct RankAtLeastConstraint {
     auto operator<=>(const RankAtLeastConstraint&) const noexcept = default;
 };
 
+/// Constrains a single dimension to be strictly positive (> 0).
+/// Used for dimensions where zero is semantically invalid (e.g., reduction
+/// axes in RmsNorm, vocab/hidden sizes in Embedding).
+struct DimPositiveConstraint {
+    DimLocator dim;
+
+    auto operator<=>(const DimPositiveConstraint&) const noexcept = default;
+};
+
 using ConstraintVariant = std::variant<
         DimEqualConstraint,
         DimBroadcastableConstraint,
         VolumeEqualConstraint,
         RankEqualConstraint,
-        RankAtLeastConstraint>;
+        RankAtLeastConstraint,
+        DimPositiveConstraint>;
 
 /// The unified shape constraint object emitted by AOT inference.
 ///

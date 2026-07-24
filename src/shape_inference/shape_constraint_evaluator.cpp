@@ -121,6 +121,15 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicDimBroadcastable(
     return ShapeConstraintEvaluationResult::kDeferred;
 }
 
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicDimPositive(
+        const ShapeSymbol dim) noexcept {
+    if (!dim.IsStatic()) {
+        return ShapeConstraintEvaluationResult::kDeferred;
+    }
+    return dim.GetStaticValue() > 0 ? ShapeConstraintEvaluationResult::kSatisfied
+                                    : ShapeConstraintEvaluationResult::kViolated;
+}
+
 AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicDimEqualConstraint(
         const DimEqualConstraint& constraint,
         const std::span<const SymbolicShape> inputs,
@@ -145,6 +154,17 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicBroadcastableConstr
         return ShapeConstraintEvaluationResult::kDeferred;
     }
     return EvaluateSymbolicDimBroadcastable(*lhs, *rhs);
+}
+
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicDimPositiveConstraint(
+        const DimPositiveConstraint& constraint,
+        const std::span<const SymbolicShape> inputs,
+        const std::span<const SymbolicShape> outputs) {
+    const auto dim = ResolveSymbolicDim(constraint.dim, inputs, outputs);
+    if (!dim) {
+        return ShapeConstraintEvaluationResult::kDeferred;
+    }
+    return EvaluateSymbolicDimPositive(*dim);
 }
 
 AM_NODISCARD bool HaveIdenticalSymbolicDims(const std::span<const DimLocator> lhs_dims,
@@ -247,6 +267,11 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeBroadcastable(const 
                                               : ShapeConstraintEvaluationResult::kViolated;
 }
 
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimPositive(const int64_t dim) noexcept {
+    return dim > 0 ? ShapeConstraintEvaluationResult::kSatisfied
+                   : ShapeConstraintEvaluationResult::kViolated;
+}
+
 AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimEqualConstraint(
         const DimEqualConstraint& constraint,
         const std::span<const TensorView> inputs,
@@ -263,6 +288,14 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeBroadcastableConstra
     const int64_t lhs = ResolveRuntimeDim(constraint.lhs, inputs, outputs);
     const int64_t rhs = ResolveRuntimeDim(constraint.rhs, inputs, outputs);
     return EvaluateRuntimeBroadcastable(lhs, rhs);
+}
+
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimPositiveConstraint(
+        const DimPositiveConstraint& constraint,
+        const std::span<const TensorView> inputs,
+        const std::span<const MutableTensorView> outputs) {
+    const int64_t dim = ResolveRuntimeDim(constraint.dim, inputs, outputs);
+    return EvaluateRuntimeDimPositive(dim);
 }
 
 AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeVolumeConstraint(
@@ -324,6 +357,9 @@ ShapeConstraintEvaluationResult EvaluateShapeConstraint(const ShapeConstraint& c
             [&](const RankAtLeastConstraint& rank_at_least) {
                 return EvaluateSymbolicRankAtLeastConstraint(rank_at_least, inputs, outputs);
             },
+            [&](const DimPositiveConstraint& dim_positive) {
+                return EvaluateSymbolicDimPositiveConstraint(dim_positive, inputs, outputs);
+            },
     };
     return std::visit(visitor, constraint.condition);
 }
@@ -346,6 +382,9 @@ ShapeConstraintEvaluationResult EvaluateShapeConstraint(const ShapeConstraint& c
             },
             [&](const RankAtLeastConstraint& rank_at_least) {
                 return EvaluateRuntimeRankAtLeastConstraint(rank_at_least, inputs, outputs);
+            },
+            [&](const DimPositiveConstraint& dim_positive) {
+                return EvaluateRuntimeDimPositiveConstraint(dim_positive, inputs, outputs);
             },
     };
     return std::visit(visitor, constraint.condition);

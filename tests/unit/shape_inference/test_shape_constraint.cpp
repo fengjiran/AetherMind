@@ -114,6 +114,13 @@ TEST(ShapeConstraint, RankConstraintsStorePortAndRank) {
     EXPECT_EQ(rank_at_least.min_rank, 1U);
 }
 
+TEST(ShapeConstraint, DimPositiveConstraintStoresLocator) {
+    DimPositiveConstraint constraint{.dim = InputDim(1, 0)};
+    EXPECT_EQ(constraint.dim.tensor_port.direction, TensorPortType::kInput);
+    EXPECT_EQ(constraint.dim.tensor_port.tensor_idx, 1U);
+    EXPECT_EQ(constraint.dim.dim_index, 0U);
+}
+
 TEST(ShapeConstraint, EvaluationResultSupportsDeferredState) {
     EXPECT_NE(ShapeConstraintEvaluationResult::kDeferred, ShapeConstraintEvaluationResult::kSatisfied);
     EXPECT_NE(ShapeConstraintEvaluationResult::kDeferred, ShapeConstraintEvaluationResult::kViolated);
@@ -223,6 +230,40 @@ TEST(ShapeConstraintEvaluator, SatisfiesIdenticalSymbolicVolumeDimensions) {
               ShapeConstraintEvaluationResult::kSatisfied);
     EXPECT_EQ(EvaluateShapeConstraint(permuted_volume, std::span<const SymbolicShape>(inputs), std::span<const SymbolicShape>()),
               ShapeConstraintEvaluationResult::kDeferred);
+}
+
+TEST(ShapeConstraintEvaluator, EvaluatesSymbolicAndRuntimeDimPositive) {
+    // Symbolic evaluation: static positive → satisfied, static zero → violated, symbolic → deferred.
+    const ShapeConstraint positive_constraint{
+            .condition = DimPositiveConstraint{.dim = InputDim(0, 0)},
+            .error_context = "must be positive",
+    };
+    std::vector<SymbolicShape> symbolic_positive{SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(8)})};
+    EXPECT_EQ(EvaluateShapeConstraint(positive_constraint, std::span<const SymbolicShape>(symbolic_positive), std::span<const SymbolicShape>()),
+              ShapeConstraintEvaluationResult::kSatisfied);
+
+    std::vector<SymbolicShape> symbolic_zero{SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(0)})};
+    EXPECT_EQ(EvaluateShapeConstraint(positive_constraint, std::span<const SymbolicShape>(symbolic_zero), std::span<const SymbolicShape>()),
+              ShapeConstraintEvaluationResult::kViolated);
+
+    std::vector<SymbolicShape> symbolic_deferred{SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create()})};
+    EXPECT_EQ(EvaluateShapeConstraint(positive_constraint, std::span<const SymbolicShape>(symbolic_deferred), std::span<const SymbolicShape>()),
+              ShapeConstraintEvaluationResult::kDeferred);
+
+    // Runtime evaluation: positive → satisfied, zero → violated.
+    RuntimeTensorStorage runtime_positive{std::vector<int64_t>{8}};
+    std::vector<TensorView> positive_inputs{runtime_positive.View()};
+    EXPECT_EQ(EvaluateShapeConstraint(positive_constraint,
+                                      std::span<const TensorView>(positive_inputs),
+                                      std::span<const MutableTensorView>()),
+              ShapeConstraintEvaluationResult::kSatisfied);
+
+    RuntimeTensorStorage runtime_zero{std::vector<int64_t>{0}};
+    std::vector<TensorView> zero_inputs{runtime_zero.View()};
+    EXPECT_EQ(EvaluateShapeConstraint(positive_constraint,
+                                      std::span<const TensorView>(zero_inputs),
+                                      std::span<const MutableTensorView>()),
+              ShapeConstraintEvaluationResult::kViolated);
 }
 
 TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsReturnsConstraintContext) {

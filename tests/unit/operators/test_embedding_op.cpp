@@ -123,6 +123,51 @@ TEST(EmbeddingOp, PreservesSymbolicTokenAndHiddenDims) {
     EXPECT_EQ(inference->outputs[0].shape[1], hidden_size);
 }
 
+TEST(EmbeddingOp, InfersOutputShapeForRank2Tokens) {
+    // Rank-2 token_ids [batch, seq] must produce [batch, seq, hidden],
+    // preserving all input axes (PyTorch nn.Embedding semantics).
+    const EmbeddingOp op{EmbeddingOp::Params{}};
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({2, 5})},
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
+    };
+
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+
+    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
+    EXPECT_TRUE(inference->runtime_checks.empty());
+    ASSERT_EQ(inference->outputs.size(), 1U);
+    EXPECT_EQ(inference->outputs[0].dtype, DataType::Float32());
+    ASSERT_EQ(inference->outputs[0].shape.rank(), 3U);
+    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 2);
+    EXPECT_EQ(inference->outputs[0].shape[1].GetStaticValue(), 5);
+    EXPECT_EQ(inference->outputs[0].shape[2].GetStaticValue(), 4096);
+}
+
+TEST(EmbeddingOp, InfersOutputShapeForRank2SymbolicTokens) {
+    // Symbolic rank-2 token_ids must preserve both symbolic axes in output.
+    const EmbeddingOp op{EmbeddingOp::Params{}};
+    const ShapeSymbol batch = ShapeSymbol::Create();
+    const ShapeSymbol seq = ShapeSymbol::Create();
+    const ShapeSymbol hidden = ShapeSymbol::Create();
+    const TensorSpec inputs[2] = {
+            TensorSpec{.dtype = DataType::Int(64),
+                       .shape = SymbolicShape(std::vector<ShapeSymbol>{batch, seq})},
+            TensorSpec{.dtype = DataType::Float32(),
+                       .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create(), hidden})},
+    };
+
+    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+
+    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
+    EXPECT_TRUE(inference->runtime_checks.empty());
+    ASSERT_EQ(inference->outputs.size(), 1U);
+    ASSERT_EQ(inference->outputs[0].shape.rank(), 3U);
+    EXPECT_EQ(inference->outputs[0].shape[0], batch);
+    EXPECT_EQ(inference->outputs[0].shape[1], seq);
+    EXPECT_EQ(inference->outputs[0].shape[2], hidden);
+}
+
 TEST(EmbeddingOp, RegistryCreatesDefaultEmbeddingOperator) {
     StatusOr<std::unique_ptr<Operator>> op = OperatorRegistry::Create(
             OpType::kEmbedding,

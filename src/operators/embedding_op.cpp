@@ -72,7 +72,7 @@ namespace detail {
 //   4. Validate weight rank (= 2) and dimension positivity.
 //   5. Validate token_ids dtype (int32, int64, or uint32).
 //   6. Validate weight dtype (float32, float16, or bfloat16).
-//   7. Build InferenceResult: output shape = [input_ids_shape[0], weight_shape[1]],
+//   7. Build InferenceResult: output shape = input_ids_shape + [weight_shape[1]],
 //      output dtype follows weight dtype.
 //
 StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
@@ -89,10 +89,11 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
     const TensorSpec& weight_spec = inputs[1];
     const auto& input_ids_shape = input_ids_spec.shape;
     const auto& weight_shape = weight_spec.shape;
-    if (const auto input_rank = input_ids_shape.rank();
-        !input_rank.has_value() || *input_rank < 1) {
+    const auto input_rank_opt = input_ids_shape.rank();
+    if (!input_rank_opt.has_value() || *input_rank_opt < 1) {
         return Status::InvalidArgument("Embedding input must have rank >= 1");
     }
+    const size_t input_rank = *input_rank_opt;
 
     // Batch dimensions must be positive when statically known.
     for (const auto dim: input_ids_shape) {
@@ -123,11 +124,19 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
                 MakeEmbeddingUnsupportedWeightDTypeMessage("Embedding"));
     }
 
-    InferenceResult result;
-    result.outputs.push_back(
-            {.dtype = weight_spec.dtype,
-             .shape = {input_ids_shape[0], weight_shape[1]}});
-    return result;
+    // Output shape preserves all input_ids axes and appends the hidden axis,
+    // matching PyTorch nn.Embedding / NumPy fancy indexing semantics.
+    std::vector<ShapeSymbol> output_shape;
+    output_shape.reserve(input_rank + 1);
+    for (size_t i = 0; i < input_rank; ++i) {
+        output_shape.push_back(input_ids_shape[i]);
+    }
+    output_shape.push_back(weight_shape[1]);
+
+    InferenceResult res;
+    res.outputs.emplace_back(weight_spec.dtype,
+                                SymbolicShape(std::move(output_shape)));
+    return res;
 }
 
 }// namespace detail

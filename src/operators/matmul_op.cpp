@@ -102,9 +102,11 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
     if (typed == nullptr) {
         return Status::InvalidArgument("MatMul node requires MatMulParams");
     }
+
     if (inputs.size() != 2) {
         return Status::InvalidArgument("MatMul requires exactly 2 inputs");
     }
+
     const TensorSpec& lhs_spec = inputs[0];
     const TensorSpec& rhs_spec = inputs[1];
     if (lhs_spec.dtype != DataType::Float32()) {

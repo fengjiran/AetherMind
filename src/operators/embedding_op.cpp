@@ -62,6 +62,19 @@ AM_REGISTER_OPERATOR(OpType::kEmbedding, EmbeddingOp)
 
 namespace detail {
 
+//
+// Validates and infers output shape for the Embedding operator.
+//
+// Steps:
+//   1. Validate OpParams variant type (must be EmbeddingParams).
+//   2. Validate input count (exactly 2: token_ids and weight).
+//   3. Validate input_ids rank (>= 1) and batch dimension positivity.
+//   4. Validate weight rank (= 2) and dimension positivity.
+//   5. Validate token_ids dtype (int32, int64, or uint32).
+//   6. Validate weight dtype (float32, float16, or bfloat16).
+//   7. Build InferenceResult: output shape = [input_ids_shape[0], weight_shape[1]],
+//      output dtype follows weight dtype.
+//
 StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
                                          std::span<const TensorSpec> inputs) {
     if (!std::holds_alternative<EmbeddingParams>(params)) {
@@ -76,8 +89,8 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
     const TensorSpec& weight_spec = inputs[1];
     const auto& input_ids_shape = input_ids_spec.shape;
     const auto& weight_shape = weight_spec.shape;
-    const auto input_rank = input_ids_shape.rank();
-    if (!input_rank.has_value() || *input_rank < 1) {
+    if (const auto input_rank = input_ids_shape.rank();
+        !input_rank.has_value() || *input_rank < 1) {
         return Status::InvalidArgument("Embedding input must have rank >= 1");
     }
 
@@ -110,9 +123,10 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
                 MakeEmbeddingUnsupportedWeightDTypeMessage("Embedding"));
     }
 
-
     InferenceResult result;
-    result.outputs.push_back({weight_spec.dtype, SymbolicShape({input_ids_shape[0], weight_shape[1]})});
+    result.outputs.push_back(
+            {.dtype = weight_spec.dtype,
+             .shape = {input_ids_shape[0], weight_shape[1]}});
     return result;
 }
 

@@ -79,8 +79,8 @@ Status ValidateRmsNormEntry(const KernelContext& ctx, RmsNormFp32KernelArgs& arg
 
     const int64_t seq_len = input.dim(0);
     const int64_t hidden_size = input.dim(1);
-    if (seq_len <= 0) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires positive seq_len");
+    if (seq_len < 0) {
+        return Status::InvalidArgument("RmsNormKernelEntry requires non-negative seq_len");
     }
 
     if (hidden_size <= 0) {
@@ -95,28 +95,36 @@ Status ValidateRmsNormEntry(const KernelContext& ctx, RmsNormFp32KernelArgs& arg
         return Status::InvalidArgument("RmsNormKernelEntry requires output shape to match input shape");
     }
 
-    if (input.data() == nullptr) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires non-null input data pointer");
-    }
+    // Empty batch: no rows to normalize, nothing to write. Null data and zero
+    // strides are permitted for zero-element tensors (see TensorView [0]
+    // semantics); skip non-null/positive-stride guards but still populate args
+    // so entry functions can detect the empty case via args.seq_len == 0.
+    const bool empty_batch = (seq_len == 0);
 
-    if (weight.data() == nullptr) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires non-null weight data pointer");
-    }
+    if (!empty_batch) {
+        if (input.data() == nullptr) {
+            return Status::InvalidArgument("RmsNormKernelEntry requires non-null input data pointer");
+        }
 
-    if (output.data() == nullptr) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires non-null output data pointer");
-    }
+        if (weight.data() == nullptr) {
+            return Status::InvalidArgument("RmsNormKernelEntry requires non-null weight data pointer");
+        }
 
-    if (input.stride(0) <= 0 || input.stride(1) <= 0) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires positive input strides");
-    }
+        if (output.data() == nullptr) {
+            return Status::InvalidArgument("RmsNormKernelEntry requires non-null output data pointer");
+        }
 
-    if (weight.stride(0) <= 0) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires positive weight stride");
-    }
+        if (input.stride(0) <= 0 || input.stride(1) <= 0) {
+            return Status::InvalidArgument("RmsNormKernelEntry requires positive input strides");
+        }
 
-    if (output.stride(0) <= 0 || output.stride(1) <= 0) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires positive output strides");
+        if (weight.stride(0) <= 0) {
+            return Status::InvalidArgument("RmsNormKernelEntry requires positive weight stride");
+        }
+
+        if (output.stride(0) <= 0 || output.stride(1) <= 0) {
+            return Status::InvalidArgument("RmsNormKernelEntry requires positive output strides");
+        }
     }
 
     args = RmsNormFp32KernelArgs{
@@ -156,6 +164,11 @@ Status RmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept {
         return status;
     }
 
+    // Empty batch: validation succeeded but no rows to process; skip kernel call.
+    if (args.seq_len == 0) {
+        return Status::Ok();
+    }
+
     if (!HasUnitColumnStrides(args)) {
         return Status::InvalidArgument("RmsNormKernelEntry AVX2 requires unit column strides");
     }
@@ -166,6 +179,11 @@ Status RmsNormKernelEntry_FP32_Scalar(const KernelContext& ctx) noexcept {
     RmsNormFp32KernelArgs args;
     if (const Status status = ValidateRmsNormEntry(ctx, args); !status.ok()) {
         return status;
+    }
+
+    // Empty batch: validation succeeded but no rows to process; skip kernel call.
+    if (args.seq_len == 0) {
+        return Status::Ok();
     }
     return RmsNormKernel_CPU_FP32_Scalar(args);
 }

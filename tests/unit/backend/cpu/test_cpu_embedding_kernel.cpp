@@ -147,6 +147,31 @@ TEST(EmbeddingKernel, ComputesExpectedRowsWithUint32Tokens) {
     EXPECT_FLOAT_EQ(output[8], 12.0F);
 }
 
+TEST(EmbeddingKernel, AcceptsZeroTokenCount) {
+    // Empty token list with null data on zero-element tensors: kernel must
+    // succeed without accessing any pointers (TensorView [0] null-data
+    // semantics). Weight retains valid data (non-zero numel requires it).
+    const float weight[12] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F, 9.0F, 10.0F, 11.0F, 12.0F};
+    const int64_t token_shape[1] = {0};
+    const int64_t token_strides[1] = {1};
+    const int64_t weight_shape[2] = {4, 3};
+    const int64_t weight_strides[2] = {3, 1};
+    const int64_t output_shape[2] = {0, 3};
+    const int64_t output_strides[2] = {3, 1};
+    const cpu::detail::EmbeddingParams params{
+            .token_ids = TensorView{nullptr, DataType::Int(64), token_shape, token_strides},
+            .weight = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output = MutableTensorView{nullptr, DataType::Float32(), output_shape, output_strides},
+    };
+
+    const Status status = cpu::detail::EmbeddingKernel(KernelContext{
+            .workspace_binding = {},
+            .kernel_params = &params,
+    });
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
 TEST(EmbeddingKernel, RejectsOutOfRangeTokenId) {
     const int64_t token_ids[3] = {2, 4, 0};
     const float weight[12] = {

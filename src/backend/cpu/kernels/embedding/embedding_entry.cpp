@@ -1,7 +1,7 @@
-#include "embedding_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/utils/overflow_check.h"
+#include "embedding_internal.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -72,11 +72,17 @@ Status cpu::detail::EmbeddingKernel(const KernelContext& ctx) noexcept {
     const int64_t token_count = token_ids.numel();
     const int64_t vocab_size = weight.dim(0);
     const int64_t hidden_size = weight.dim(1);
-    if (token_count <= 0 || vocab_size <= 0 || hidden_size <= 0) {
-        return Status::InvalidArgument("EmbeddingKernel requires positive token, vocab, and hidden sizes");
+    if (vocab_size <= 0 || hidden_size <= 0) {
+        return Status::InvalidArgument("EmbeddingKernel requires positive vocab and hidden sizes");
     }
     if (output.dim(0) != token_count || output.dim(1) != hidden_size) {
         return Status::InvalidArgument("EmbeddingKernel output shape must be [token_count, hidden_size]");
+    }
+
+    // Empty output: no token ids to gather, nothing to write. Null data is
+    // permitted for zero-element tensors (see TensorView [0] semantics).
+    if (token_count == 0) {
+        return Status::Ok();
     }
 
     // Null data guard: is_valid() does not reject nullptr data_ with positive shapes.
@@ -120,8 +126,8 @@ Status cpu::detail::EmbeddingKernel(const KernelContext& ctx) noexcept {
 }
 
 Status BuildEmbeddingParams(std::span<const TensorView> inputs,
-                                   std::span<const MutableTensorView> outputs,
-                                   void* params_buffer) noexcept {
+                            std::span<const MutableTensorView> outputs,
+                            void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("Embedding requires 2 inputs and 1 output");
     }

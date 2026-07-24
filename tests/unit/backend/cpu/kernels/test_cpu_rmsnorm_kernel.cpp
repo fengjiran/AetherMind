@@ -541,6 +541,25 @@ TEST(CPUKernelRmsNormEntry, RejectsNonFloat32Dtypes) {
     });
 }
 
+TEST(CPUKernelRmsNormEntry, AcceptsZeroSeqLen) {
+    // Empty batch with null data on zero-element tensors: kernel must
+    // succeed without accessing any pointers (TensorView [0] null-data
+    // semantics). Weight retains valid data (non-zero numel requires it).
+    constexpr float kWeight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+    constexpr int64_t kIoShape[2] = {0, 4};
+    constexpr int64_t kIoStrides[2] = {4, 1};
+    constexpr int64_t kWeightShape[1] = {4};
+    constexpr int64_t kWeightStrides[1] = {1};
+
+    const Status status = RunRmsNormEntry(cpu::detail::RmsNormParams{
+            .input_tensor = TensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
+            .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
+            .output_tensor = MutableTensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
+    });
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
 TEST(CPUKernelRmsNormEntry, RejectsZeroHiddenSize) {
     constexpr float kInput[1] = {0.0F};
     constexpr float kWeight[1] = {1.0F};

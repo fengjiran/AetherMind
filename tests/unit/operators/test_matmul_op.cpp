@@ -113,7 +113,7 @@ TEST(MatMulOp, RejectsStaticInnerMismatchWithTransposeRhs) {
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},// K=3
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 5})},// K=5 -> mismatch
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status();
+    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }

@@ -246,20 +246,24 @@ TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
     EXPECT_EQ(weight.name, "linear");
 }
 
-TEST(GraphOpBuilder, AddLinearRejectsRankThreeInput) {
+TEST(GraphOpBuilder, AddLinearAcceptsRankThreeInput) {
     ModelGraph graph(HfModelConfig{}, {},
                      {GraphValue{.payload = ActivationValue{},
                                  .spec = Spec(DataType::Float32(), {2, 3, 4}),
                                  .name = "input"}});
     constexpr GraphValueId input{.index = 0};
-    EXPECT_FALSE(AddLinear(graph,
-                           input,
-                           8,
-                           DataType::Float32(),
-                           {.slot = ParameterSlot::kKernel,
-                            .semantic_role = TransformerWeightRole::kLmHead},
-                           "linear")
-                         .ok());
+    auto output_or = AddLinear(graph,
+                               input,
+                               8,
+                               DataType::Float32(),
+                               {.slot = ParameterSlot::kKernel,
+                                .semantic_role = TransformerWeightRole::kLmHead},
+                               "linear");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+    // Output shape preserves the two batch dims and replaces in_features (4)
+    // with out_features (8).
+    EXPECT_EQ(graph.GetValue(output).spec, Spec(DataType::Float32(), {2, 3, 8}));
 }
 
 TEST(GraphOpBuilder, AddRmsNormAcceptsRankThreeInput) {

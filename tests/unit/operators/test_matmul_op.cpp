@@ -8,8 +8,6 @@
 
 #include <gtest/gtest.h>
 
-#include <variant>
-
 namespace {
 using namespace aethermind;
 
@@ -21,88 +19,88 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
 // --- Validation ---
 
 TEST(MatMulOp, InferOperatorAcceptsValidParams) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
 
 TEST(MatMulOp, RejectsWrongArity) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[3] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, std::span(inputs)).status();
+    const Status status = InferOperator(OpType::kMatMul, params, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, RejectsNonFloat32Input) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, RejectsUnrankedLhs) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape{}},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Float32(), .shape = SymbolicShape{}},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, RejectsUnrankedRhs) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape{}},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = SymbolicShape{}},
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, RejectsRank1Lhs) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, RejectsRank1Rhs) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3})},
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, RejectsStaticInnerMismatch) {
-    const MatMulOp op{MatMulOp::Params{}};// transpose_rhs=false
+    constexpr MatMulParams params;// transpose_rhs=false
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 5})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 5})},
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -110,121 +108,126 @@ TEST(MatMulOp, RejectsStaticInnerMismatch) {
 TEST(MatMulOp, RejectsStaticInnerMismatchWithTransposeRhs) {
     const MatMulOp op{MatMulOp::Params{.transpose_rhs = true}};// rhs layout [..., N, K]
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},// K=3
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 5})},// K=5 -> mismatch
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},// K=3
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 5})},// K=5 -> mismatch
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs).status();
+    const Status status = InferOperator(op.Type(),
+                                        OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs)
+                                  .status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, RejectsStaticIncompatibleBatch) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3, 5})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 3, 5})},
     };
-    const Status status = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, AcceptsRank2Inputs) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
 
 TEST(MatMulOp, AcceptsBatchedMatMul) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({5, 2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({5, 3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({5, 2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({5, 3, 4})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
 
 TEST(MatMulOp, AcceptsBroadcastBatch) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3, 5})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({1, 2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 3, 5})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
 
 TEST(MatMulOp, AcceptsTransposeRhs) {
     const MatMulOp op{MatMulOp::Params{.transpose_rhs = true}};
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3})},// [N, K] = [4, 3]
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 3})},// [N, K] = [4, 3]
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(op.Type(),
+                              OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs)
+                        .status()
+                        .ok());
 }
 
 TEST(MatMulOp, AcceptsZeroMDim) {
     // M=0 yields an empty output [0, N]; valid NumPy-style MatMul.
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
 
 TEST(MatMulOp, AcceptsZeroNDim) {
     // N=0 yields an empty output [M, 0]; valid NumPy-style MatMul.
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 0})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 0})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
 
 TEST(MatMulOp, AcceptsZeroKDim) {
     // K=0 yields a zero-valued output [M, N]; valid NumPy-style MatMul.
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 0})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 0})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({0, 4})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
 
 TEST(MatMulOp, AcceptsZeroBatchDim) {
     // batch=0 yields an empty output [0, M, N]; valid NumPy-style MatMul.
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({0, 2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({0, 3, 4})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
 
 // --- Inference ---
 
 TEST(MatMulOp, InferOperatorRejectsNonFloat32) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Int(32), .shape = StaticShape({3, 4})},
     };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     EXPECT_FALSE(inference.ok());
     EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulOp, InfersRank2Output) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 4})},
     };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -237,10 +240,12 @@ TEST(MatMulOp, InfersRank2Output) {
 TEST(MatMulOp, InfersRank2OutputWithTransposeRhs) {
     const MatMulOp op{MatMulOp::Params{.transpose_rhs = true}};
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},// [M, K]
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3})},// [N, K]
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},// [M, K]
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 3})},// [N, K]
     };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(
+            op.Type(),
+            OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -250,12 +255,12 @@ TEST(MatMulOp, InfersRank2OutputWithTransposeRhs) {
 }
 
 TEST(MatMulOp, InfersBatchedOutput) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({5, 2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({5, 3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({5, 2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({5, 3, 4})},
     };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -266,12 +271,12 @@ TEST(MatMulOp, InfersBatchedOutput) {
 }
 
 TEST(MatMulOp, InfersBroadcastBatchOutput) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3, 5})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({1, 2, 3})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 3, 5})},
     };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -283,12 +288,12 @@ TEST(MatMulOp, InfersBroadcastBatchOutput) {
 
 TEST(MatMulOp, InfersDifferentRankBatchBroadcast) {
     // lhs batch [2], rhs batch [] -> output batch [2]
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3, 4})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 5})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({2, 3, 4})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 5})},
     };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -299,17 +304,17 @@ TEST(MatMulOp, InfersDifferentRankBatchBroadcast) {
 }
 
 TEST(MatMulOp, EmitsInnerDimEqualConstraintForSymbolicInner) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const ShapeSymbol lhs_inner = ShapeSymbol::Create();
     const ShapeSymbol rhs_inner = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(2), lhs_inner})},
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{rhs_inner, ShapeSymbol::CreateFromValue(4)})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(2), lhs_inner})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{rhs_inner, ShapeSymbol::CreateFromValue(4)})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     ASSERT_EQ(inference->runtime_checks.size(), 1U);
@@ -329,13 +334,14 @@ TEST(MatMulOp, EmitsInnerDimEqualConstraintForTransposeRhs) {
     const ShapeSymbol lhs_inner = ShapeSymbol::Create();
     const ShapeSymbol rhs_inner = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(2), lhs_inner})},
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(4), rhs_inner})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(2), lhs_inner})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(4), rhs_inner})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(
+            op.Type(), OpParams{MatMulOp::Params{.transpose_rhs = true}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     ASSERT_EQ(inference->runtime_checks.size(), 1U);
@@ -348,17 +354,19 @@ TEST(MatMulOp, EmitsInnerDimEqualConstraintForTransposeRhs) {
 }
 
 TEST(MatMulOp, EmitsBatchBroadcastableConstraintForSymbolicBatch) {
-    const MatMulOp op{MatMulOp::Params{}};
+    constexpr MatMulParams params;
     const ShapeSymbol lhs_batch = ShapeSymbol::Create();
     const ShapeSymbol rhs_batch = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{lhs_batch, ShapeSymbol::CreateFromValue(2), ShapeSymbol::CreateFromValue(3)})},
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{rhs_batch, ShapeSymbol::CreateFromValue(3), ShapeSymbol::CreateFromValue(4)})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{
+                     lhs_batch, ShapeSymbol::CreateFromValue(2), ShapeSymbol::CreateFromValue(3)})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{
+                     rhs_batch, ShapeSymbol::CreateFromValue(3), ShapeSymbol::CreateFromValue(4)})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{MatMulOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     // Inner dims are static 3 == 3, so only the batch dim emits a constraint.

@@ -5,16 +5,10 @@
 #include "aethermind/operators/operator_context.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/rmsnorm_op.h"
-
-#include <gtest/gtest.h>
-
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
-#include <array>
-#include <cstddef>
-#include <cstdint>
+
 #include <cstring>
-#include <new>
-#include <variant>
+#include <gtest/gtest.h>
 
 namespace {
 using namespace aethermind;
@@ -25,23 +19,23 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
 }
 
 TEST(RmsNormOp, ValidatesStaticInputContract) {
-    const RmsNormOp op{RmsNormOp::Params{1e-5f}};
+    constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({8})},
     };
 
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{RmsNormOp::Params{1e-5f}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kRmsNorm, params, inputs).status().ok());
 }
 
 TEST(RmsNormOp, PreservesInputShapeAsOutputShape) {
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({8})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kRmsNorm, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -53,16 +47,18 @@ TEST(RmsNormOp, PreservesInputShapeAsOutputShape) {
 }
 
 TEST(RmsNormOp, EmitsRuntimeCheckForDistinctSymbolicHiddenDimension) {
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol input_hidden = ShapeSymbol::Create();
     const ShapeSymbol weight_hidden = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, input_hidden})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_hidden})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, input_hidden})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_hidden})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kRmsNorm, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     // 1 DimPositiveConstraint (input hidden) + 1 DimEqualConstraint (hidden == weight_len).
@@ -81,51 +77,57 @@ TEST(RmsNormOp, EmitsRuntimeCheckForDistinctSymbolicHiddenDimension) {
 }
 
 TEST(RmsNormOp, AcceptsSharedSymbolicHiddenDimension) {
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol hidden_size = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, hidden_size})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{hidden_size})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, hidden_size})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{hidden_size})},
     };
 
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kRmsNorm, params, inputs).status().ok());
 }
 
 TEST(RmsNormOp, RejectsStaticHiddenMismatch) {
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({16})},
     };
 
-    const Status status = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(RmsNormOp, RejectsRankZeroInput) {
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            {.dtype = DataType::Float32(),
+             .shape = StaticShape({8})},
     };
 
-    const Status status = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(RmsNormOp, RejectsRankZeroWeight) {
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            {.dtype = DataType::Float32(),
+             .shape = StaticShape({4, 8})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
 
-    const Status status = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -134,22 +136,22 @@ TEST(RmsNormOp, RejectsRankZeroWeight) {
 TEST(RmsNormOp, AcceptsZeroBatchDim) {
     // Zero leading batch/sequence dim is valid (empty output); only the last
     // (hidden) dim must be positive (zero-length reduction is undefined).
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 8})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({0, 8})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({8})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kRmsNorm, params, inputs).status().ok());
 }
 
 TEST(RmsNormOp, RejectsZeroHiddenDim) {
     // Zero hidden dim must still be rejected: zero-length reduction is undefined.
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 0})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({4, 0})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({0})},
     };
-    const Status status = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -158,15 +160,15 @@ TEST(RmsNormOp, EmitsPositiveConstraintForSymbolicHidden) {
     // Same symbol for hidden and weight_len: AreProvablyEqual → no DimEqualConstraint.
     // Only 1 DimPositiveConstraint for input hidden (input[0] dim[1]).
     // Weight length positivity is enforced transitively.
-    const RmsNormOp op{RmsNormOp::Params{}};
+    constexpr RmsNormParams params;
     const ShapeSymbol hidden = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(4), hidden})},
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{hidden})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(4), hidden})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{hidden})},
     };
-    const auto result = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs);
+    const auto result = InferOperator(OpType::kRmsNorm, params, inputs);
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     ASSERT_EQ(result->runtime_checks.size(), 1U);
 

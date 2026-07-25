@@ -1,18 +1,13 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/embedding_op.h"
 #include "aethermind/operators/operator_context.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
+#include "backend/cpu/kernels/embedding/embedding_internal.h"
 
 #include <gtest/gtest.h>
-
-#include "backend/cpu/kernels/embedding/embedding_internal.h"
-#include <array>
-#include <cstdint>
-#include <new>
 
 namespace {
 using namespace aethermind;
@@ -23,23 +18,23 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
 }
 
 TEST(EmbeddingOp, ValidatesInputContract) {
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({2})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
+            {.dtype = DataType::Int(64), .shape = StaticShape({2})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
     };
 
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kEmbedding, params, inputs).status().ok());
 }
 
 TEST(EmbeddingOp, InfersOutputShapeFromTokenIdsAndWeight) {
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({5})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
+            {.dtype = DataType::Int(64), .shape = StaticShape({5})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kEmbedding, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -51,49 +46,49 @@ TEST(EmbeddingOp, InfersOutputShapeFromTokenIdsAndWeight) {
 }
 
 TEST(EmbeddingOp, RejectsRankZeroTokenIds) {
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
+            {.dtype = DataType::Int(64), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
     };
 
-    const Status status = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kEmbedding, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(EmbeddingOp, RejectsRankZeroWeight) {
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({2})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            {.dtype = DataType::Int(64), .shape = StaticShape({2})},
+            {.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
     };
 
-    const Status status = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status();
+    const Status status = InferOperator(OpType::kEmbedding, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(EmbeddingOp, AcceptsUint32TokenIds) {
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::UInt(32), .shape = StaticShape({2})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
+            {.dtype = DataType::UInt(32), .shape = StaticShape({2})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({3, 2})},
     };
 
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kEmbedding, params, inputs).status().ok());
 }
 
 TEST(EmbeddingOp, InfersOutputShapeWithUint32Tokens) {
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::UInt(32), .shape = StaticShape({5})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
+            {.dtype = DataType::UInt(32), .shape = StaticShape({5})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kEmbedding, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -105,15 +100,17 @@ TEST(EmbeddingOp, InfersOutputShapeWithUint32Tokens) {
 }
 
 TEST(EmbeddingOp, PreservesSymbolicTokenAndHiddenDims) {
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const ShapeSymbol token_count = ShapeSymbol::Create();
     const ShapeSymbol hidden_size = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64), .shape = SymbolicShape(std::vector<ShapeSymbol>{token_count})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create(), hidden_size})},
+            {.dtype = DataType::Int(64),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{token_count})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create(), hidden_size})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kEmbedding, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     // Symbolic weight dims (vocab, hidden) emit DimPositiveConstraint for runtime validation.
@@ -127,13 +124,13 @@ TEST(EmbeddingOp, PreservesSymbolicTokenAndHiddenDims) {
 TEST(EmbeddingOp, InfersOutputShapeForRank2Tokens) {
     // Rank-2 token_ids [batch, seq] must produce [batch, seq, hidden],
     // preserving all input axes (PyTorch nn.Embedding semantics).
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({2, 5})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
+            {.dtype = DataType::Int(64), .shape = StaticShape({2, 5})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kEmbedding, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
@@ -147,18 +144,18 @@ TEST(EmbeddingOp, InfersOutputShapeForRank2Tokens) {
 
 TEST(EmbeddingOp, InfersOutputShapeForRank2SymbolicTokens) {
     // Symbolic rank-2 token_ids must preserve both symbolic axes in output.
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const ShapeSymbol batch = ShapeSymbol::Create();
     const ShapeSymbol seq = ShapeSymbol::Create();
     const ShapeSymbol hidden = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{batch, seq})},
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create(), hidden})},
+            {.dtype = DataType::Int(64),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{batch, seq})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::Create(), hidden})},
     };
 
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(OpType::kEmbedding, params, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     // Symbolic weight dims (vocab, hidden) emit DimPositiveConstraint for runtime validation.
@@ -172,25 +169,25 @@ TEST(EmbeddingOp, InfersOutputShapeForRank2SymbolicTokens) {
 
 TEST(EmbeddingOp, AcceptsZeroTokenCount) {
     // Zero token count yields empty output [0, hidden]; valid NumPy-style embedding.
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({0})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
+            {.dtype = DataType::Int(64), .shape = StaticShape({0})},
+            {.dtype = DataType::Float32(), .shape = StaticShape({32000, 4096})},
     };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs).status().ok());
+    EXPECT_TRUE(InferOperator(OpType::kEmbedding, params, inputs).status().ok());
 }
 
 TEST(EmbeddingOp, EmitsPositiveConstraintForSymbolicWeightDims) {
     // Symbolic weight dims must emit DimPositiveConstraint for runtime validation.
-    const EmbeddingOp op{EmbeddingOp::Params{}};
+    constexpr EmbeddingParams params;
     const ShapeSymbol vocab = ShapeSymbol::Create();
     const ShapeSymbol hidden = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({3})},
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{vocab, hidden})},
+            {.dtype = DataType::Int(64), .shape = StaticShape({3})},
+            {.dtype = DataType::Float32(),
+             .shape = SymbolicShape(std::vector<ShapeSymbol>{vocab, hidden})},
     };
-    const auto result = InferOperator(op.Type(), OpParams{EmbeddingOp::Params{}}, inputs);
+    const auto result = InferOperator(OpType::kEmbedding, params, inputs);
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     ASSERT_EQ(result->runtime_checks.size(), 2U);
 

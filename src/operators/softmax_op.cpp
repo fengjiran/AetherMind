@@ -12,9 +12,8 @@ StatusOr<InferenceResult> InferSoftmax(const OpParams& params,
     if (!std::holds_alternative<SoftmaxParams>(params)) {
         return Status::InvalidArgument("Softmax node requires SoftmaxParams");
     }
-    if (inputs.size() != 1) {
-        return Status::InvalidArgument("Softmax requires exactly 1 input");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kSoftmax, inputs));
+
     if (inputs[0].dtype != DataType::Float32()) {
         return Status::InvalidArgument("Softmax input must be float32");
     }

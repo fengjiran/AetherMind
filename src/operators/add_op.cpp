@@ -70,9 +70,8 @@ StatusOr<InferenceResult> InferAdd(const OpParams& params,
     if (!std::holds_alternative<AddParams>(params)) {
         return Status::InvalidArgument("Add node requires AddParams");
     }
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument("Add requires exactly 2 inputs");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kAdd, inputs));
+
     const TensorSpec& lhs_spec = inputs[0];
     const TensorSpec& rhs_spec = inputs[1];
     if (lhs_spec.dtype != rhs_spec.dtype) {

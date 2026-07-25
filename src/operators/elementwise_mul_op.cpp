@@ -71,9 +71,8 @@ StatusOr<InferenceResult> InferElementwiseMul(const OpParams& params,
     if (!std::holds_alternative<ElementwiseMulParams>(params)) {
         return Status::InvalidArgument("ElementwiseMul node requires ElementwiseMulParams");
     }
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument("ElementwiseMul requires exactly 2 inputs");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kElementwiseMul, inputs));
+
     const TensorSpec& lhs_spec = inputs[0];
     const TensorSpec& rhs_spec = inputs[1];
     if (lhs_spec.dtype != DataType::Float32() && lhs_spec.dtype != DataType::BFloat(16)) {

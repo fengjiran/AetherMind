@@ -41,6 +41,15 @@ AM_NODISCARD StatusOr<InferenceResult> InferOperator(OpType op_type,
                                                      const OpParams& params,
                                                      std::span<const TensorSpec> inputs);
 
+/// Validates that the number of input specs matches the operator schema's
+/// expected input port count.
+///
+/// Uses GetOperatorSchema() to look up the schema for op_type and checks
+/// that inputs.size() matches schema.input_ports.size(). This provides a
+/// uniform input-count check across all detail::Infer* functions.
+Status ValidateInferenceInputCount(OpType op_type,
+                                   std::span<const TensorSpec> inputs);
+
 /// Extracts the subset of input specs that contribute to tensor spec inference.
 ///
 /// Filters all_inputs according to the contributes_tensor_spec flag on each

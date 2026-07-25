@@ -15,9 +15,8 @@ StatusOr<InferenceResult> InferArgmax(const OpParams& params,
     if (typed == nullptr) {
         return Status::InvalidArgument("Argmax node requires ArgmaxParams");
     }
-    if (inputs.size() != 1) {
-        return Status::InvalidArgument("Argmax requires exactly 1 input");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kArgmax, inputs));
+
     if (inputs[0].dtype != DataType::Float32()) {
         return Status::InvalidArgument("Argmax input must be float32");
     }

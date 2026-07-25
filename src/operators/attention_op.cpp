@@ -11,10 +11,7 @@ StatusOr<InferenceResult> InferAttention(const OpParams& params, std::span<const
     if (!std::holds_alternative<AttentionParams>(params)) {
         return Status::InvalidArgument("Attention node requires AttentionParams");
     }
-    if (inputs.size() != 3) {
-        return Status::InvalidArgument(
-                "Attention expects exactly 3 inputs (q, kCache, vCache), got " + std::to_string(inputs.size()));
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kAttention, inputs));
 
     const auto& q_spec = inputs[0];
 

@@ -88,6 +88,20 @@ SymbolicShape MakeBatchShape(const SymbolicShape& shape, size_t rank) {
 
 }// namespace
 
+// Shape inference and constraint analysis for the MatMul operator.
+//
+// Steps:
+//   1. Validate OpParams variant type (must be MatMulParams).
+//   2. Validate input count via ValidateInferenceInputCount (exactly 2:
+//      lhs and rhs, checked against the operator schema).
+//   3. Validate dtypes: both lhs and rhs must be supported.
+//   4. Validate ranks: both lhs and rhs must have rank >= 2.
+//   5. Resolve rhs inner/outer axes based on transpose_rhs.
+//   6. Compute broadcast of lhs and rhs batch shapes.
+//   7. Build output shape: [broadcast_batch..., lhs_outer_dim, rhs_outer_dim].
+//   8. Emit deferred runtime checks: inner-dim equality constraint, batch
+//      broadcastability constraints.
+//   9. Return InferenceResult with output spec and runtime checks.
 StatusOr<InferenceResult> InferMatMul(const OpParams& params,
                                       std::span<const TensorSpec> inputs) {
     const auto* matmul_params = std::get_if<MatMulParams>(&params);
@@ -95,9 +109,7 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
         return Status::InvalidArgument("MatMul node requires MatMulParams");
     }
 
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument("MatMul requires exactly 2 inputs");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kMatMul, inputs));
 
     const TensorSpec& lhs_spec = inputs[0];
     const TensorSpec& rhs_spec = inputs[1];

@@ -91,9 +91,7 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
         return Status::InvalidArgument("Linear node requires LinearParams");
     }
 
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument("Linear requires exactly 2 inputs");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kLinear, inputs));
 
     const TensorSpec& input_spec = inputs[0];
     const TensorSpec& weight_spec = inputs[1];

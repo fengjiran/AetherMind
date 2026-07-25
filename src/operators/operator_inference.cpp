@@ -7,10 +7,10 @@ namespace aethermind {
 StatusOr<InferenceResult> InferOperator(OpType op_type,
                                         const OpParams& params,
                                         std::span<const TensorSpec> inputs) {
-    // Variant and parameter validation is performed at the beginning of each
-    // detail::Infer* function dispatched below — there is no separate
-    // pre-validation step. kUnknown and any out-of-range op_type are rejected
-    // directly here.
+    // Variant/parameter validation and input count validation are performed at
+    // the beginning of each detail::Infer* function dispatched below. Variant
+    // validation precedes input count validation so that a wrong OpParams
+    // variant is reported before any structural input check.
     switch (op_type) {
         case OpType::kEmbedding:
             return detail::InferEmbedding(params, inputs);
@@ -69,5 +69,19 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(const OperatorSchema& sc
         }
     }
     return compact;
+}
+
+Status ValidateInferenceInputCount(OpType op_type,
+                                   std::span<const TensorSpec> inputs) {
+    auto schema = GetOperatorSchema(op_type);
+    AM_RETURN_IF_ERROR(schema.status());
+
+    if (inputs.size() != schema->input_ports.size()) {
+        return Status::InvalidArgument(
+                std::string(ToString(op_type)) + " expects exactly " +
+                std::to_string(schema->input_ports.size()) + " inputs, got " +
+                std::to_string(inputs.size()));
+    }
+    return Status::Ok();
 }
 }// namespace aethermind

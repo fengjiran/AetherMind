@@ -11,10 +11,7 @@ StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& params, std::span<c
     if (!std::holds_alternative<KVCacheUpdateParams>(params)) {
         return Status::InvalidArgument("KVCacheUpdate node requires KVCacheUpdateParams");
     }
-    if (inputs.size() != 4) {
-        return Status::InvalidArgument(
-                "KVCacheUpdate expects exactly 4 inputs (k, v, kCacheIn, vCacheIn), got " + std::to_string(inputs.size()));
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kKVCacheUpdate, inputs));
 
     const auto& k_spec = inputs[0];
     const auto& v_spec = inputs[1];

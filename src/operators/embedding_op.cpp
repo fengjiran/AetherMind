@@ -67,7 +67,8 @@ namespace detail {
 //
 // Steps:
 //   1. Validate OpParams variant type (must be EmbeddingParams).
-//   2. Validate input count (exactly 2: token_ids and weight).
+//   2. Validate input count via ValidateInferenceInputCount (exactly 2:
+//      token_ids and weight, checked against the operator schema).
 //   3. Validate input_ids rank (>= 1). Zero-valued token counts are allowed
 //      (empty output); model-weight positivity is enforced at GraphOpBuilder.
 //   4. Validate weight rank (= 2) and dimension positivity (vocab/hidden).
@@ -82,9 +83,7 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
         return Status::InvalidArgument("Embedding node requires EmbeddingParams");
     }
 
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument("Embedding requires exactly 2 inputs");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kEmbedding, inputs));
 
     const TensorSpec& input_ids_spec = inputs[0];
     const TensorSpec& weight_spec = inputs[1];

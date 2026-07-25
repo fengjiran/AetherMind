@@ -20,11 +20,7 @@ StatusOr<InferenceResult> InferRoPE(const OpParams& params, std::span<const Tens
     if (!std::isfinite(typed->theta) || typed->theta <= 0.0) {
         return Status::InvalidArgument("RoPEParams theta must be finite and positive");
     }
-    if (inputs.size() != 3) {
-        return Status::InvalidArgument(
-                "RoPE expects exactly 3 inputs (q, k, position_ids), got " +
-                std::to_string(inputs.size()));
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kRoPE, inputs));
 
     const auto& q_spec = inputs[0];
     const auto& k_spec = inputs[1];

@@ -74,9 +74,8 @@ StatusOr<InferenceResult> InferSilu(const OpParams& params,
     if (!std::holds_alternative<SiluParams>(params)) {
         return Status::InvalidArgument("Silu node requires SiluParams");
     }
-    if (inputs.size() != 1) {
-        return Status::InvalidArgument("Silu requires exactly 1 input");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kSilu, inputs));
+
     if (inputs[0].dtype != DataType::Float32() && inputs[0].dtype != DataType::BFloat(16)) {
         return Status::InvalidArgument("Silu input must be float32 or bfloat16");
     }

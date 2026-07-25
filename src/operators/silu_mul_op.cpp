@@ -70,9 +70,8 @@ StatusOr<InferenceResult> InferSiluMul(const OpParams& params,
     if (!std::holds_alternative<SiluMulParams>(params)) {
         return Status::InvalidArgument("SiluMul node requires SiluMulParams");
     }
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument("SiluMul requires exactly 2 inputs");
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kSiluMul, inputs));
+
     const TensorSpec& lhs_spec = inputs[0];
     const TensorSpec& rhs_spec = inputs[1];
     if (lhs_spec.dtype != DataType::Float32() && lhs_spec.dtype != DataType::BFloat(16)) {

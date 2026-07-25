@@ -69,11 +69,12 @@ namespace detail {
 //   1. Validate OpParams variant type (must be EmbeddingParams).
 //   2. Validate input count via ValidateInferenceInputCount (exactly 2:
 //      token_ids and weight, checked against the operator schema).
-//   3. Validate input_ids rank (>= 1). Zero-valued token counts are allowed
+//   3. Validate token_ids dtype (int32, int64, or uint32).
+//   4. Validate weight dtype (float32, float16, or bfloat16).
+//   5. Validate input_ids rank (>= 1). Zero-valued token counts are allowed
 //      (empty output); model-weight positivity is enforced at GraphOpBuilder.
-//   4. Validate weight rank (= 2) and dimension positivity (vocab/hidden).
-//   5. Validate token_ids dtype (int32, int64, or uint32).
-//   6. Validate weight dtype (float32, float16, or bfloat16).
+//   6. Validate weight rank (= 2) and dimension positivity (vocab/hidden);
+//      symbolic dims emit a DimPositiveConstraint deferred to runtime.
 //   7. Build InferenceResult: output shape = input_ids_shape + [weight_shape[1]],
 //      output dtype follows weight dtype.
 //
@@ -89,6 +90,17 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
     const TensorSpec& weight_spec = inputs[1];
     const auto& input_ids_shape = input_ids_spec.shape;
     const auto& weight_shape = weight_spec.shape;
+
+    if (!IsSupportedTokenIdDType(input_ids_spec.dtype)) {
+        return Status::InvalidArgument(
+                "Embedding token_ids must be int32, int64, or uint32");
+    }
+
+    if (!IsEmbeddingSupportedWeightDType(weight_spec.dtype)) {
+        return Status::InvalidArgument(
+                MakeEmbeddingUnsupportedWeightDTypeMessage("Embedding"));
+    }
+
     const auto input_rank_opt = input_ids_shape.rank();
     if (!input_rank_opt.has_value() || *input_rank_opt < 1) {
         return Status::InvalidArgument("Embedding input must have rank >= 1");
@@ -103,8 +115,7 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
     // Weight dimensions (vocab_size, hidden_size) must be positive. Static
     // violations are rejected here; symbolic dims emit a runtime constraint.
     for (size_t i = 0; i < *weight_shape.rank(); ++i) {
-        const ShapeSymbol& dim = weight_shape[i];
-        if (dim.IsStatic()) {
+        if (const ShapeSymbol& dim = weight_shape[i]; dim.IsStatic()) {
             if (dim.GetStaticValue() <= 0) {
                 return Status::InvalidArgument(
                         "Embedding weight dimension must be positive when statically known.");
@@ -112,22 +123,11 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
         } else {
             res.runtime_checks.emplace_back(
                     DimPositiveConstraint{
-                            .dim = {
-                                    .tensor_port = {.direction = TensorPortType::kInput,
-                                                    .tensor_idx = 1},
-                                    .dim_index = i}},
+                            {.tensor_port = {.direction = TensorPortType::kInput,
+                                             .tensor_idx = 1},
+                             .dim_index = i}},
                     "Embedding weight dimension must be positive");
         }
-    }
-
-    if (!IsSupportedTokenIdDType(input_ids_spec.dtype)) {
-        return Status::InvalidArgument(
-                "Embedding token_ids must be int32, int64, or uint32");
-    }
-
-    if (!IsEmbeddingSupportedWeightDType(weight_spec.dtype)) {
-        return Status::InvalidArgument(
-                MakeEmbeddingUnsupportedWeightDTypeMessage("Embedding"));
     }
 
     // Output shape preserves all input_ids axes and appends the hidden axis,

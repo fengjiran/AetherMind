@@ -120,6 +120,7 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
     // Static mismatch → graph is structurally invalid.
     // Dynamic mismatch → defer to a runtime dimension-equality check.
     const ShapeSymbol& in_features = input_shape[*input_rank - 1];
+    const ShapeSymbol& out_features = weight_shape[0];
     const ShapeSymbol& weight_in = weight_shape[1];
 
     InferenceResult res;
@@ -147,7 +148,7 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
     for (size_t i = 0; i < *input_rank - 1; ++i) {
         output_shape.push_back(input_shape[i]);
     }
-    output_shape.push_back(weight_shape[0]);
+    output_shape.push_back(out_features);
 
     res.outputs.emplace_back(input_spec.dtype, SymbolicShape(std::move(output_shape)));
 

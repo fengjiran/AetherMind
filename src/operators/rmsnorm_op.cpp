@@ -124,9 +124,10 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
         }
     } else {
         res.runtime_checks.emplace_back(
-                DimPositiveConstraint{.dim = {.tensor_port = {.direction = TensorPortType::kInput,
-                                                              .tensor_idx = 0},
-                                              .dim_index = rank - 1}},
+                DimPositiveConstraint{
+                        {.tensor_port = {.direction = TensorPortType::kInput,
+                                         .tensor_idx = 0},
+                         .dim_index = rank - 1}},
                 "RmsNorm input last dimension must be positive");
     }
 
@@ -134,15 +135,14 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
         return Status::InvalidArgument("RmsNorm weight must be rank-1");
     }
 
-    const ShapeSymbol& weight_len = weight_spec.shape[0];
-
     // Weight length positivity is enforced transitively: hidden_size > 0
     // (checked above) + hidden_size == weight_len (DimEqualConstraint below)
     // ⇒ weight_len > 0. No separate DimPositiveConstraint needed.
     //
     // Static mismatch is unrecoverable; dynamic/symbolic mismatches are deferred
     // to the Executor via a DimEqualConstraint.
-    if (!AreProvablyEqual(hidden_size, weight_len)) {
+    if (const ShapeSymbol& weight_len = weight_spec.shape[0];
+        !AreProvablyEqual(hidden_size, weight_len)) {
         if (hidden_size.IsStatic() && weight_len.IsStatic()) {
             return Status::InvalidArgument(
                     "RmsNorm weight length must equal input last dimension");

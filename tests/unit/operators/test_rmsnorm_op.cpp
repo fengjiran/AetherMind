@@ -65,11 +65,11 @@ TEST(RmsNormOp, EmitsRuntimeCheckForDistinctSymbolicHiddenDimension) {
     const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs);
 
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    // 2 DimPositiveConstraints (input hidden, weight_len) + 1 DimEqualConstraint (hidden == weight_len).
-    ASSERT_EQ(inference->runtime_checks.size(), 3U);
+    // 1 DimPositiveConstraint (input hidden) + 1 DimEqualConstraint (hidden == weight_len).
+    // Weight length positivity is enforced transitively via hidden_size > 0 + hidden == weight_len.
+    ASSERT_EQ(inference->runtime_checks.size(), 2U);
     EXPECT_TRUE(std::holds_alternative<DimPositiveConstraint>(inference->runtime_checks[0].condition));
-    EXPECT_TRUE(std::holds_alternative<DimPositiveConstraint>(inference->runtime_checks[1].condition));
-    const ShapeConstraint& constraint = inference->runtime_checks[2];
+    const ShapeConstraint& constraint = inference->runtime_checks[1];
     ASSERT_TRUE(std::holds_alternative<DimEqualConstraint>(constraint.condition));
     const auto& equal = std::get<DimEqualConstraint>(constraint.condition);
     EXPECT_EQ(equal.lhs.tensor_port.direction, TensorPortType::kInput);
@@ -154,9 +154,10 @@ TEST(RmsNormOp, RejectsZeroHiddenDim) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(RmsNormOp, EmitsPositiveConstraintForSymbolicHiddenAndWeight) {
+TEST(RmsNormOp, EmitsPositiveConstraintForSymbolicHidden) {
     // Same symbol for hidden and weight_len: AreProvablyEqual → no DimEqualConstraint.
-    // Both symbolic → 2 DimPositiveConstraints (input[0] dim[1] and input[1] dim[0]).
+    // Only 1 DimPositiveConstraint for input hidden (input[0] dim[1]).
+    // Weight length positivity is enforced transitively.
     const RmsNormOp op{RmsNormOp::Params{}};
     const ShapeSymbol hidden = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
@@ -167,22 +168,13 @@ TEST(RmsNormOp, EmitsPositiveConstraintForSymbolicHiddenAndWeight) {
     };
     const auto result = InferOperator(op.Type(), OpParams{RmsNormOp::Params{}}, inputs);
     ASSERT_TRUE(result.ok()) << result.status().ToString();
-    ASSERT_EQ(result->runtime_checks.size(), 2U);
+    ASSERT_EQ(result->runtime_checks.size(), 1U);
 
-    // Verify DimPositiveConstraint locators without relying on ordering.
-    bool found_input_hidden = false;
-    bool found_weight_len = false;
-    for (const auto& check: result->runtime_checks) {
-        const auto* pos = std::get_if<DimPositiveConstraint>(&check.condition);
-        if (pos == nullptr) continue;
-        if (pos->dim.tensor_port.tensor_idx == 0U && pos->dim.dim_index == 1U) {
-            found_input_hidden = true;
-        } else if (pos->dim.tensor_port.tensor_idx == 1U && pos->dim.dim_index == 0U) {
-            found_weight_len = true;
-        }
-    }
-    EXPECT_TRUE(found_input_hidden) << "missing DimPositiveConstraint for input hidden (input[0] dim[1])";
-    EXPECT_TRUE(found_weight_len) << "missing DimPositiveConstraint for weight_len (input[1] dim[0])";
+    const auto& check = result->runtime_checks[0];
+    const auto* pos = std::get_if<DimPositiveConstraint>(&check.condition);
+    ASSERT_NE(pos, nullptr);
+    EXPECT_EQ(pos->dim.tensor_port.tensor_idx, 0U);
+    EXPECT_EQ(pos->dim.dim_index, 1U);
 }
 
 // ===== Prepare/Run tests =====

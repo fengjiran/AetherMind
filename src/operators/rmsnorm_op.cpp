@@ -65,17 +65,19 @@ namespace detail {
 //
 // Steps:
 //   1. Validate OpParams variant type and eps scalar.
-//   2. Validate input count and input rank (>=1). Leading batch/sequence
-//      dims may be zero; only the last (hidden) dim must be positive
-//      (zero-length reduction is undefined).
-//   3. Validate weight rank (=1) and positive length.
-//   4. Reconcile hidden_size (input last dim) with weight_len: fail-fast on
+//   2. Validate input count via ValidateInferenceInputCount (exactly 2:
+//      input and weight, checked against the operator schema).
+//   3. Validate input rank (>=1). Leading batch/sequence dims may be
+//      zero; only the last (hidden) dim must be positive (zero-length
+//      reduction is undefined).
+//   4. Validate weight rank (=1) and positive length.
+//   5. Reconcile hidden_size (input last dim) with weight_len: fail-fast on
 //      static hard conflict; otherwise emit a DimEqualConstraint deferred to
 //      runtime and verified by the Executor.
-//   5. Validate input/weight dtypes against the supported dtype set.  Mixed
+//   6. Validate input/weight dtypes against the supported dtype set.  Mixed
 //      input/weight dtypes are allowed; the kernel converts the weight to the
 //      input dtype at runtime (HuggingFace LlamaRMSNorm convention).
-//   6. Build InferenceResult: the output spec mirrors the input spec
+//   7. Build InferenceResult: the output spec mirrors the input spec
 //      (RmsNorm is shape-preserving), plus any deferred runtime checks.
 StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
                                        std::span<const TensorSpec> inputs) {
@@ -88,10 +90,7 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
         return Status::InvalidArgument("RmsNormParams eps must be finite and positive");
     }
 
-    if (inputs.size() != 2) {
-        return Status::InvalidArgument(
-                "RmsNorm expects exactly 2 inputs, got " + std::to_string(inputs.size()));
-    }
+    AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kRmsNorm, inputs));
 
     const auto& input_spec = inputs[0];
     const auto& weight_spec = inputs[1];
@@ -136,19 +135,11 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
     }
 
     const ShapeSymbol& weight_len = weight_spec.shape[0];
-    if (weight_len.IsStatic()) {
-        if (weight_len.GetStaticValue() <= 0) {
-            return Status::InvalidArgument(
-                    "RmsNorm weight length must be positive when statically known.");
-        }
-    } else {
-        res.runtime_checks.emplace_back(
-                DimPositiveConstraint{.dim = {.tensor_port = {.direction = TensorPortType::kInput,
-                                                              .tensor_idx = 1},
-                                              .dim_index = 0}},
-                "RmsNorm weight length must be positive");
-    }
 
+    // Weight length positivity is enforced transitively: hidden_size > 0
+    // (checked above) + hidden_size == weight_len (DimEqualConstraint below)
+    // ⇒ weight_len > 0. No separate DimPositiveConstraint needed.
+    //
     // Static mismatch is unrecoverable; dynamic/symbolic mismatches are deferred
     // to the Executor via a DimEqualConstraint.
     if (!AreProvablyEqual(hidden_size, weight_len)) {

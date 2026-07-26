@@ -61,7 +61,7 @@ ExecutionPlan / ExecutionStep
 
 ### 3.1 属于 ModelGraph
 
-- 语义算子：`Embedding`、`RMSNorm`、`Linear`、`RoPE`、`MatMul`、`Softmax`、`Add`、`SiluMul`、`Argmax` 等；
+- 语义算子：`Embedding`、`RMSNorm`、`Linear`、`RoPE`、`MatMul`、`Softmax`、`Add`、`SiluMul`、`Argmax`、`Reshape` 等；
 - 数据流 use-def：node inputs / outputs、producer，以及按需从 node inputs 派生的 consumers 索引；
 - 逻辑 tensor/value 类型：dtype、rank、symbolic shape、dynamic shape 约束；
 - value role：model input、activation、weight、constant、state / resource；
@@ -427,7 +427,8 @@ using OpParams = std::variant<
         SoftmaxParams,
         AddParams,
         SiluMulParams,
-        ArgmaxParams>;
+        ArgmaxParams,
+        ReshapeParams>;
 ```
 
 收益：
@@ -913,6 +914,31 @@ KV cache state 建模规则：
 13. 对 state token，如需表达跨 step 状态更新，应通过显式 state input/output 建模，不能制造隐式环；state update node 的 state input / state output 必须符合 operator schema；KV cache state binding 必须使用 `KVCacheStateBinding`，K/V 槽位必须分别匹配 `KVCacheSlot::kKey` / `KVCacheSlot::kValue`，且 `decoder_layer_index` 必须与对应 decoder layer node 一致。
 
 注：payload 与 binding 的一致性由 `GraphValuePayload` variant 类型在编译期保证，无需额外的运行时一致性校验。
+
+### 13.1 Reshape 语义与执行边界
+
+`Reshape` 是 ModelGraph 中的语义算子：保留 dtype 和 row-major 逻辑线性元素顺序，仅改变逻辑 shape。数学定义等价于 row-major logical flatten 后再 row-major logical unflatten 到目标 shape；输出体积必须等于输入体积，元素值与 dtype 不变。
+
+**目标 shape 强类型**：不使用 ONNX `0/-1` 哨兵语义，避免多个动态输入维度无法表达以及 importer 约定泄漏到核心 IR。目标维度由 `ReshapeDim` variant 表达：
+
+- `ReshapeLiteralDim{int64_t value}`：非负字面维度（如 `32`）；
+- `ReshapeInputDim{uint32_t axis}`：对输入轴的引用（如 `@0` 复用输入第 0 轴的 `ShapeSymbol`），`axis` 为 canonical 非负索引；
+- `ReshapeInferDim`：推断标记（如 `*`），由 `InferReshape` 解析。
+
+`ReshapeParams{std::vector<ReshapeDim> target_shape}` 中 `target_shape.size()` 即输出 rank；空 vector 表示 rank zero（标量，体积 1）。
+
+**边界规则**（由 `InferReshape` 强制，而非类型系统）：
+
+- 字面值非负；
+- `ReshapeInputDim.axis` 必须 < 输入 rank；
+- 至多一个 `ReshapeInferDim`；
+- 输入必须 ranked（unranked 拒绝）；
+- infer 标记静态可解当且仅当输入维度与所有非 infer 输出维度均静态：商必须可整除且 fit `int64_t`；非 infer 乘积为零时拒绝（零体积歧义）；不可静态解析时 emit `ShapeSymbol::Unknown()` 并附一条 deferred `VolumeEqualConstraint`；
+- 始终 emit 一条 `VolumeEqualConstraint` 覆盖输入和输出全维度：证伪立即拒绝，证真省略，待定持久化为 deferred runtime check。
+
+**dtype / quantization 保留**：`AddReshape` helper 将输入的 `QuantizationSpec` 复制到输出 value descriptor；dtype 不限制为算术子集。
+
+**当前能力边界（语义专用）**：图可以构造、推断、校验、dump、rewrite Reshape，但**不存在可执行 lowering**——没有 `ReshapeOp` 类、`AM_REGISTER_OPERATOR`、kernel、`AM_REGISTER_KERNEL`、alias / view legality、materialization、stride propagation、workspace 或 constant evaluator。语义合法性与判定与未来 view / materialization 的物理合法性是两件事。
 
 ## 14. Shape 与动态维度
 

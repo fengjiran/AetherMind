@@ -1,7 +1,6 @@
 #include "aethermind/model/graph/op_params_serde.h"
 
 #include <gtest/gtest.h>
-
 #include <sstream>
 #include <string>
 #include <vector>
@@ -45,6 +44,15 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
             KVCacheUpdateParams{},
             AttentionParams{.num_attention_heads = 4, .num_key_value_heads = 2, .head_dim = 8},
             ArgmaxParams{.axis = -1},
+            ReshapeParams{.target_shape = {}},
+            ReshapeParams{.target_shape = {ReshapeLiteralDim{2},
+                                           ReshapeLiteralDim{3}}},
+            ReshapeParams{.target_shape = {ReshapeInputDim{0},
+                                           ReshapeInputDim{1},
+                                           ReshapeLiteralDim{32},
+                                           ReshapeInferDim{}}},
+            ReshapeParams{.target_shape = {ReshapeLiteralDim{0},
+                                           ReshapeInferDim{}}},
     };
 
     for (const OpParams& param: params) {
@@ -74,6 +82,90 @@ TEST(OpParamsSerde, RejectsUnexpectedField) {
 
     ASSERT_FALSE(parsed.ok());
     EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(OpParamsSerde, ReshapeKindName) {
+    EXPECT_STREQ(OpParamsKindName(OpParams{ReshapeParams{}}), "Reshape");
+}
+
+TEST(OpParamsSerde, ReshapeRoundTripsCanonicalForms) {
+    // Rank zero: empty brackets.
+    {
+        const OpParams params{ReshapeParams{.target_shape = {}}};
+        const std::string serialized = SerializeToString(params);
+        EXPECT_EQ(serialized, "Reshape shape=[]");
+        const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), serialized);
+    }
+    // Static literal dims.
+    {
+        const OpParams params{ReshapeParams{.target_shape = {ReshapeLiteralDim{2}, ReshapeLiteralDim{3}}}};
+        const std::string serialized = SerializeToString(params);
+        EXPECT_EQ(serialized, "Reshape shape=[2,3]");
+        const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), serialized);
+    }
+    // Mixed: input-axis references, literal, and infer marker.
+    {
+        const OpParams params{ReshapeParams{.target_shape = {ReshapeInputDim{0}, ReshapeInputDim{1}, ReshapeLiteralDim{32}, ReshapeInferDim{}}}};
+        const std::string serialized = SerializeToString(params);
+        EXPECT_EQ(serialized, "Reshape shape=[@0,@1,32,*]");
+        const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), serialized);
+    }
+    // Zero-volume literal + infer.
+    {
+        const OpParams params{ReshapeParams{.target_shape = {ReshapeLiteralDim{0}, ReshapeInferDim{}}}};
+        const std::string serialized = SerializeToString(params);
+        EXPECT_EQ(serialized, "Reshape shape=[0,*]");
+        const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), serialized);
+    }
+}
+
+TEST(OpParamsSerde, ReshapeRejectsMalformedShapes) {
+    const std::vector<std::string> malformed{
+            // Missing field.
+            "Reshape",
+            // Extra field.
+            "Reshape shape=[2,3] extra=1",
+            // Missing brackets.
+            "Reshape shape=2,3",
+            // Leading comma.
+            "Reshape shape=[,2,3]",
+            // Trailing comma.
+            "Reshape shape=[2,3,]",
+            // Consecutive commas.
+            "Reshape shape=[2,,3]",
+            // Empty token between commas.
+            "Reshape shape=[2,3,]",
+            // Signed/negative literal.
+            "Reshape shape=[-1]",
+            // @ without unsigned digits.
+            "Reshape shape=[@]",
+            // @axis overflow uint32.
+            "Reshape shape=[@4294967296]",
+            // Unknown token syntax (letter).
+            "Reshape shape=[abc]",
+            // Whitespace inside brackets.
+            "Reshape shape=[1, 2]",
+            // Malformed brackets (unclosed).
+            "Reshape shape=[2,3",
+            // Malformed brackets (mismatched).
+            "Reshape shape=[2,3}",
+    };
+
+    for (const std::string& text: malformed) {
+        const StatusOr<OpParams> parsed = ParseOpParams(text);
+        EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
+        if (!parsed.ok()) {
+            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << "Text: " << text;
+        }
+    }
 }
 
 }// namespace

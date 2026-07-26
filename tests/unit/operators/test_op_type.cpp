@@ -19,6 +19,7 @@ TEST(Operators_OpType, AllKnownTypesHaveStringRepresentation) {
     EXPECT_STREQ(ToString(OpType::kAdd), "Add");
     EXPECT_STREQ(ToString(OpType::kSoftmax), "Softmax");
     EXPECT_STREQ(ToString(OpType::kArgmax), "Argmax");
+    EXPECT_STREQ(ToString(OpType::kReshape), "Reshape");
 }
 
 TEST(Operators_OpType, InvalidValueReturnsUnknown) {

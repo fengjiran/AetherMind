@@ -159,7 +159,7 @@ public:
 
     /// @brief Strict shape unification for operator inputs (e.g., Add, MatMul).
     /// Fails with a Status if the shapes are mathematically incompatible.
-    AM_NODISCARD StatusOr<SymbolicShape> Unify(const SymbolicShape& other) const;
+    StatusOr<SymbolicShape> Unify(const SymbolicShape& other) const;
 
     auto operator<=>(const SymbolicShape&) const noexcept = default;
 

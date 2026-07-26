@@ -102,8 +102,8 @@ bool HasAnyElement(const IntArrayView shape) noexcept {
         return true;
     }
 
-    for (size_t i = 0; i < shape.size(); ++i) {
-        if (shape[i] == 0) {
+    for (long i : shape) {
+        if (i == 0) {
             return false;
         }
     }

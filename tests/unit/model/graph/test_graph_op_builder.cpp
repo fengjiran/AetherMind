@@ -646,10 +646,10 @@ TEST(GraphOpBuilder, AddReshapeDerivesStaticOutputSpec) {
     const GraphValueId input = graph.AddConstant(
             Spec(DataType::Float32(), {2, 3, 4}), ConstantBinding{}, "input");
 
-    ReshapeParams params;
-    params.target_shape = {ReshapeInputDim{0}, ReshapeInferDim{}, ReshapeLiteralDim{2}};
+    std::vector<ReshapeDim> target_shape{
+            ReshapeInputDim{0}, ReshapeInferDim{}, ReshapeLiteralDim{2}};
 
-    auto output_or = AddReshape(graph, std::nullopt, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
 
@@ -674,6 +674,9 @@ TEST(GraphOpBuilder, AddReshapeDerivesStaticOutputSpec) {
     EXPECT_EQ(node.runtime_checks.size(), 0U);
     // Decoder layer index defaults to nullopt.
     EXPECT_FALSE(node.decoder_layer_index.has_value());
+
+    // The output value carries the caller-supplied name.
+    EXPECT_EQ(graph.GetValue(output).name, "reshape");
 }
 
 TEST(GraphOpBuilder, AddReshapePreservesInputQuantizationSpec) {
@@ -687,10 +690,9 @@ TEST(GraphOpBuilder, AddReshapePreservesInputQuantizationSpec) {
             .has_zero_point = true};
     graph.SetQuantization(input, quantization);
 
-    ReshapeParams params;
-    params.target_shape = {ReshapeLiteralDim{6}};
+    std::vector<ReshapeDim> target_shape{ReshapeLiteralDim{6}};
 
-    auto output_or = AddReshape(graph, std::nullopt, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
 
@@ -703,10 +705,9 @@ TEST(GraphOpBuilder, AddReshapePropagatesDecoderLayerIndex) {
     const GraphValueId input = graph.AddConstant(
             Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
 
-    ReshapeParams params;
-    params.target_shape = {ReshapeLiteralDim{6}};
+    std::vector<ReshapeDim> target_shape{ReshapeLiteralDim{6}};
 
-    auto output_or = AddReshape(graph, std::optional<uint32_t>{7}, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::optional<uint32_t>{7}, input, target_shape, "reshape");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
 
     ASSERT_TRUE(graph.GetValue(*output_or).producer.has_value());
@@ -722,10 +723,9 @@ TEST(GraphOpBuilder, AddReshapeWithSymbolicInputEmitsDeferredCheck) {
                        .shape = SymbolicShape({sym, ShapeSymbol::Create()})},
             ConstantBinding{}, "input");
 
-    ReshapeParams params;
-    params.target_shape = {ReshapeLiteralDim{2}, ReshapeInferDim{}};
+    std::vector<ReshapeDim> target_shape{ReshapeLiteralDim{2}, ReshapeInferDim{}};
 
-    auto output_or = AddReshape(graph, std::nullopt, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
 
@@ -741,6 +741,11 @@ TEST(GraphOpBuilder, AddReshapeWithSymbolicInputEmitsDeferredCheck) {
     const GraphNode& node = graph.GetNode(*graph.GetValue(output).producer);
     ASSERT_EQ(node.runtime_checks.size(), 1U);
     EXPECT_TRUE(std::holds_alternative<VolumeEqualConstraint>(node.runtime_checks[0].condition));
+
+    // The symbolic-infer graph must still pass full graph validation: the
+    // deferred VolumeEqualConstraint is persisted, not a static failure.
+    const Status validation = graph.Validate();
+    ASSERT_TRUE(validation.ok()) << validation.ToString();
 }
 
 TEST(GraphOpBuilder, AddReshapeFailureLeavesGraphUnchanged) {
@@ -749,16 +754,55 @@ TEST(GraphOpBuilder, AddReshapeFailureLeavesGraphUnchanged) {
             Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
 
     // Volume mismatch: [2,3] volume 6 cannot become [5,2] volume 10.
-    ReshapeParams params;
-    params.target_shape = {ReshapeLiteralDim{5}, ReshapeLiteralDim{2}};
+    std::vector<ReshapeDim> target_shape{ReshapeLiteralDim{5}, ReshapeLiteralDim{2}};
 
     const size_t nodes_before = graph.GetNodes().size();
     const size_t values_before = graph.GetValues().size();
 
-    auto output_or = AddReshape(graph, std::nullopt, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_FALSE(output_or.ok());
 
     // On failure the graph must not be modified: no new node, no new value.
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
+TEST(GraphOpBuilder, AddReshapeFailureDuplicateInferAtomicallyAborts) {
+    // Two infer markers violate the parameter-only invariant "at most one
+    // infer". The graph must remain unchanged after the failed call.
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+
+    std::vector<ReshapeDim> target_shape{ReshapeInferDim{}, ReshapeInferDim{}};
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
+    ASSERT_FALSE(output_or.ok());
+    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
+TEST(GraphOpBuilder, AddReshapeFailureOutOfRangeInputAxisAtomicallyAborts) {
+    // Input rank is 2; axis=2 is out of range. The graph must remain
+    // unchanged after the failed call.
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+
+    std::vector<ReshapeDim> target_shape{ReshapeInputDim{2}};
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
+    ASSERT_FALSE(output_or.ok());
+    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);
 }
@@ -769,10 +813,9 @@ TEST(GraphOpBuilder, AddReshapeFailureErrorContainsOpContext) {
             Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
 
     // Volume mismatch error message should include the op context (Reshape).
-    ReshapeParams params;
-    params.target_shape = {ReshapeLiteralDim{5}, ReshapeLiteralDim{2}};
+    std::vector<ReshapeDim> target_shape{ReshapeLiteralDim{5}, ReshapeLiteralDim{2}};
 
-    auto output_or = AddReshape(graph, std::nullopt, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_FALSE(output_or.ok());
     EXPECT_NE(output_or.status().message().find("Reshape"), std::string::npos);
 }
@@ -782,10 +825,9 @@ TEST(GraphOpBuilder, AddReshapeRankZeroSuccess) {
     const GraphValueId input = graph.AddConstant(
             Spec(DataType::Float32(), {1}), ConstantBinding{}, "input");
 
-    ReshapeParams params;
-    params.target_shape = {};
+    std::vector<ReshapeDim> target_shape;
 
-    auto output_or = AddReshape(graph, std::nullopt, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
 
@@ -797,10 +839,9 @@ TEST(GraphOpBuilder, AddReshapePreservesInputDtype) {
     const GraphValueId input = graph.AddConstant(
             Spec(DataType::Int(32), {2, 3}), ConstantBinding{}, "input");
 
-    ReshapeParams params;
-    params.target_shape = {ReshapeLiteralDim{6}};
+    std::vector<ReshapeDim> target_shape{ReshapeLiteralDim{6}};
 
-    auto output_or = AddReshape(graph, std::nullopt, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     EXPECT_EQ(graph.GetValue(*output_or).spec.dtype, DataType::Int(32));
 }
@@ -813,10 +854,9 @@ TEST(GraphOpBuilder, AddReshapeDoesNotInferOutputSpecFromCaller) {
     const GraphValueId input = graph.AddConstant(
             Spec(DataType::Float32(), {2, 3, 4}), ConstantBinding{}, "input");
 
-    ReshapeParams params;
-    params.target_shape = {ReshapeLiteralDim{2}, ReshapeLiteralDim{12}};
+    std::vector<ReshapeDim> target_shape{ReshapeLiteralDim{2}, ReshapeLiteralDim{12}};
 
-    auto output_or = AddReshape(graph, std::nullopt, input, params, "reshape");
+    auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
 

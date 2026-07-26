@@ -153,6 +153,10 @@ TEST(OpParamsSerde, ReshapeRejectsMalformedShapes) {
             "Reshape shape=[abc]",
             // Whitespace inside brackets.
             "Reshape shape=[1, 2]",
+            // Duplicate shape field (exactly one shape field required).
+            "Reshape shape=[2] shape=[3]",
+            // Duplicate shape field with different value.
+            "Reshape shape=[2,3] shape=[4,5]",
             // Malformed brackets (unclosed).
             "Reshape shape=[2,3",
             // Malformed brackets (mismatched).

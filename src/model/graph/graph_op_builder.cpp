@@ -349,7 +349,7 @@ StatusOr<GraphValueId> AddArgmax(ModelGraph& graph,
 StatusOr<GraphValueId> AddReshape(ModelGraph& graph,
                                   std::optional<uint32_t> decoder_layer_index,
                                   GraphValueId input,
-                                  ReshapeParams params,
+                                  std::vector<ReshapeDim> target_shape,
                                   std::string name) {
     // Snapshot input quantization BEFORE graph mutation — AddNode may
     // reallocate the graph's value storage and invalidate references into it.
@@ -366,7 +366,7 @@ StatusOr<GraphValueId> AddReshape(ModelGraph& graph,
                                       decoder_layer_index,
                                       {input},
                                       {std::move(output_desc)},
-                                      params,
+                                      ReshapeParams{.target_shape = std::move(target_shape)},
                                       {},
                                       std::move(name)));
     return OnlyOneOutput(node);

@@ -67,16 +67,20 @@ StatusOr<bool> ParseBool(const FieldMap& fields, std::string_view name) {
     return Status::InvalidArgument("ParseOpParams: invalid bool field");
 }
 
-FieldMap ParseFields(std::istringstream& input) {
+StatusOr<FieldMap> ParseFields(std::istringstream& input) {
     FieldMap fields;
     std::string token;
     while (input >> token) {
         const size_t pos = token.find('=');
-        if (pos == std::string::npos) {
-            fields.emplace(std::move(token), std::string{});
-            continue;
+        std::string name = (pos == std::string::npos) ? std::move(token) : token.substr(0, pos);
+        std::string value = (pos == std::string::npos) ? std::string{} : token.substr(pos + 1);
+        // Reject duplicate field names — every op requires each field at most
+        // once. unordered_map::emplace would silently drop the second occurrence
+        // and mask the malformed input.
+        if (fields.find(name) != fields.end()) {
+            return Status::InvalidArgument("ParseOpParams: duplicate field '" + name + "'");
         }
-        fields.emplace(token.substr(0, pos), token.substr(pos + 1));
+        fields.emplace(std::move(name), std::move(value));
     }
     return fields;
 }
@@ -312,7 +316,9 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
     if (!(input >> kind)) {
         return Status::InvalidArgument("ParseOpParams: empty input");
     }
-    FieldMap fields = ParseFields(input);
+    StatusOr<FieldMap> fields_or = ParseFields(input);
+    AM_RETURN_IF_ERROR(fields_or.status());
+    const FieldMap& fields = *fields_or;
 
     if (kind == "monostate") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));

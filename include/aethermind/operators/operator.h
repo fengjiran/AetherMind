@@ -70,7 +70,7 @@ public:
     /// \param ctx  Runtime context providing backend, workspace, and
     ///             kernel selector for resolution.
     /// \return Ok on success; Status error if kernel resolution fails.
-    AM_NODISCARD virtual Status Prepare(OperatorContext& ctx) = 0;
+    virtual Status Prepare(OperatorContext& ctx) = 0;
 
     /// Executes this operator on the given inputs and outputs.
     ///
@@ -88,9 +88,9 @@ public:
     /// \param step_index   Index of the current execution step in the plan,
     ///                     used to retrieve per-step tensor bindings.
     /// \return Ok on success; Status error if execution fails.
-    AM_NODISCARD virtual Status Run(KernelContext& ctx,
-                                    const RuntimeBindingContext& bindings,
-                                    size_t step_index) const noexcept = 0;
+    virtual Status Run(KernelContext& ctx,
+                       const RuntimeBindingContext& bindings,
+                       size_t step_index) const noexcept = 0;
 
     /// Returns the resolved kernel info for execution, debugging, and logging.
     /// Only valid after successful Prepare().

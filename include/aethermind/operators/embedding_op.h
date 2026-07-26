@@ -73,7 +73,7 @@ public:
         return "Embedding";
     }
 
-    AM_NODISCARD Status Prepare(OperatorContext& ctx) override;
+    Status Prepare(OperatorContext& ctx) override;
 
     AM_NODISCARD Status Run(KernelContext& ctx,
                             const RuntimeBindingContext& bindings,

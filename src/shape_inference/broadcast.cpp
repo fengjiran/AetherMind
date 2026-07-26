@@ -12,8 +12,8 @@
 
 namespace aethermind {
 
-AM_NODISCARD StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
-                                                            std::span<const int64_t> rhs_shape) {
+StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
+                                               std::span<const int64_t> rhs_shape) {
     const size_t output_rank = std::max(lhs_shape.size(), rhs_shape.size());
     std::vector<int64_t> output_shape(output_rank, 1);
     // Right-align the inputs by padding leading axes with 1. The offset maps a
@@ -42,9 +42,9 @@ AM_NODISCARD StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int6
     return output_shape;
 }
 
-AM_NODISCARD StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> input_shape,
-                                                                  std::span<const int64_t> input_strides,
-                                                                  std::span<const int64_t> output_shape) {
+StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> input_shape,
+                                                     std::span<const int64_t> input_strides,
+                                                     std::span<const int64_t> output_shape) {
     if (input_shape.size() != input_strides.size() || input_shape.size() > output_shape.size()) {
         return Status::InvalidArgument("broadcast input metadata rank mismatch");
     }
@@ -78,8 +78,8 @@ AM_NODISCARD StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<cons
     return effective_strides;
 }
 
-AM_NODISCARD StatusOr<SymbolicBroadcastResult> InferBroadcastShape(const SymbolicShape& lhs,
-                                                                   const SymbolicShape& rhs) {
+StatusOr<SymbolicBroadcastResult> InferBroadcastShape(const SymbolicShape& lhs,
+                                                      const SymbolicShape& rhs) {
     if (lhs.IsUnranked() || rhs.IsUnranked()) {
         return Status::InvalidArgument(
                 "symbolic broadcast requires both shapes to be ranked");

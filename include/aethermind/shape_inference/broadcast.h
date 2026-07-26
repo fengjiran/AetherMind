@@ -27,8 +27,8 @@ namespace aethermind {
 /// rules: dimensions must be equal, or one of them must be 1. All
 /// dimensions must be non-negative. Rank-0 shapes (empty span) are
 /// supported and broadcast as a scalar.
-AM_NODISCARD StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
-                                                            std::span<const int64_t> rhs_shape);
+StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
+                                               std::span<const int64_t> rhs_shape);
 
 /// Expands strides for a broadcast input to match the output rank.
 ///
@@ -36,9 +36,9 @@ AM_NODISCARD StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int6
 /// rank) receive stride 0 so the strided kernel can reuse the single
 /// element without advancing the offset. Input shape and stride vectors
 /// must have equal rank and must not exceed the output rank.
-AM_NODISCARD StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> input_shape,
-                                                                  std::span<const int64_t> input_strides,
-                                                                  std::span<const int64_t> output_shape);
+StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> input_shape,
+                                                     std::span<const int64_t> input_strides,
+                                                     std::span<const int64_t> output_shape);
 
 /// Describes a single output axis produced by broadcasting two non-identical,
 /// non-trivial input dimensions.
@@ -85,8 +85,8 @@ struct SymbolicBroadcastResult {
 ///   deferred.
 ///
 /// No fresh symbols are created; ambiguous dimensions degrade to Unknown().
-AM_NODISCARD StatusOr<SymbolicBroadcastResult> InferBroadcastShape(const SymbolicShape& lhs,
-                                                                   const SymbolicShape& rhs);
+StatusOr<SymbolicBroadcastResult> InferBroadcastShape(const SymbolicShape& lhs,
+                                                      const SymbolicShape& rhs);
 
 }// namespace aethermind
 

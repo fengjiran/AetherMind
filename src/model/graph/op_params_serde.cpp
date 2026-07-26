@@ -1,14 +1,6 @@
 #include "aethermind/model/graph/op_params_serde.h"
 #include "utils/variant_utils.h"
 
-#include <charconv>
-#include <ostream>
-#include <sstream>
-#include <string>
-#include <string_view>
-#include <unordered_map>
-#include <variant>
-
 namespace aethermind {
 namespace {
 
@@ -127,7 +119,127 @@ Status EnsureNoExtraFields(const FieldMap& fields, size_t expected_count) {
     return Status::Ok();
 }
 
+// Parses a single Reshape target-dimension token into a ReshapeDim variant.
+// Tokens are: a non-negative decimal literal (`32`), `@N` with N an unsigned
+// decimal that fits uint32_t (`@0`, `@4294967295`), or `*` (infer).
+// Returns InvalidArgument for empty tokens, signed/negative literals,
+// `@` without digits, axis overflow, or any unknown syntax.
+StatusOr<ReshapeDim> ParseReshapeDimToken(std::string_view token) {
+    if (token.empty()) {
+        return Status::InvalidArgument("ParseOpParams: empty Reshape dim token");
+    }
+
+    if (token.size() == 1 && token[0] == '*') {
+        return ReshapeDim{ReshapeInferDim{}};
+    }
+
+    if (token[0] == '@') {
+        const std::string_view digits = token.substr(1);
+        if (digits.empty()) {
+            return Status::InvalidArgument(
+                    "ParseOpParams: Reshape axis reference without digits");
+        }
+        // Reject leading zeros except for the canonical "0" form, and reject
+        // any non-digit character to keep numeric spelling strict.
+        for (char c: digits) {
+            if (c < '0' || c > '9') {
+                return Status::InvalidArgument(
+                        "ParseOpParams: non-digit in Reshape axis reference");
+            }
+        }
+        // Parse as uint64_t first to detect overflow beyond uint32_t range.
+        uint64_t axis_value = 0;
+        const auto result = std::from_chars(
+                digits.data(), digits.data() + digits.size(), axis_value);
+        if (result.ec != std::errc{} || result.ptr != digits.data() + digits.size()) {
+            return Status::InvalidArgument("ParseOpParams: invalid Reshape axis reference");
+        }
+
+        if (axis_value > std::numeric_limits<uint32_t>::max()) {
+            return Status::InvalidArgument("ParseOpParams: Reshape axis reference overflow");
+        }
+        return ReshapeDim{ReshapeInputDim{.axis = static_cast<uint32_t>(axis_value)}};
+    }
+
+    // Literal: must be a non-negative decimal. Reject any leading sign or
+    // non-digit character so signed/negative forms fail explicitly.
+    for (char c: token) {
+        if (c < '0' || c > '9') {
+            return Status::InvalidArgument("ParseOpParams: invalid Reshape literal dim");
+        }
+    }
+    int64_t literal_value = 0;
+    const auto result = std::from_chars(token.data(), token.data() + token.size(), literal_value);
+    if (result.ec != std::errc{} || result.ptr != token.data() + token.size()) {
+        return Status::InvalidArgument("ParseOpParams: invalid Reshape literal dim");
+    }
+    return ReshapeDim{ReshapeLiteralDim{.value = literal_value}};
+}
+
+// Parses the canonical `shape=[...]` field value into a vector of ReshapeDim.
+// Rejects missing brackets, mismatched brackets, leading/trailing/consecutive
+// commas, empty tokens, and any malformed dim token. An empty interior `[]`
+// is valid and yields an empty vector (rank zero).
+StatusOr<std::vector<ReshapeDim>> ParseReshapeShape(std::string_view value) {
+    if (value.size() < 2 || value.front() != '[' || value.back() != ']') {
+        return Status::InvalidArgument("ParseOpParams: Reshape shape must be bracketed");
+    }
+
+    const std::string_view interior = value.substr(1, value.size() - 2);
+    std::vector<ReshapeDim> shape;
+    if (interior.empty()) {
+        return shape;
+    }
+
+    shape.reserve(std::count(interior.begin(), interior.end(), ',') + 1);
+    std::string_view::size_type start = 0;
+    while (true) {
+        const auto end = interior.find(',', start);
+        const std::string_view token = interior.substr(
+                start,
+                end == std::string_view::npos ? std::string_view::npos : end - start);
+        if (token.empty()) {
+            return Status::InvalidArgument("ParseOpParams: empty Reshape dim token");
+        }
+
+        StatusOr<ReshapeDim> dim = ParseReshapeDimToken(token);
+        AM_RETURN_IF_ERROR(dim.status());
+        shape.push_back(*std::move(dim));
+        if (end == std::string_view::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return shape;
+}
+
 }// namespace
+
+// Serializes a Reshape target_shape to its canonical textual form, e.g.
+// `[@0,@1,32,*]`. Tokens are joined with commas and no interior whitespace.
+// Literal dims emit their decimal value, input-axis references emit `@N`
+// with N an unsigned decimal, and the infer marker emits `*`. An empty
+// vector emits `[]` (rank zero).
+// Exposed in op_params_serde.h so DumpOpParams in graph_dump.cpp shares the
+// canonical spelling instead of duplicating the format.
+void SerializeReshapeShape(const std::vector<ReshapeDim>& target_shape, std::ostream& os) {
+    os << '[';
+    bool first = true;
+    for (const ReshapeDim& dim: target_shape) {
+        if (!first) {
+            os << ',';
+        }
+
+        first = false;
+        std::visit(overloaded{
+                           [&](const ReshapeLiteralDim& d) { os << d.value; },
+                           [&](const ReshapeInputDim& d) { os << '@' << d.axis; },
+                           [&](const ReshapeInferDim) { os << '*'; },
+                   },
+                   dim);
+    }
+    os << ']';
+}
 
 const char* OpParamsKindName(const OpParams& params) noexcept {
     auto visitor = overloaded{
@@ -145,6 +257,7 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
             [](const KVCacheUpdateParams&) noexcept { return "KVCacheUpdate"; },
             [](const AttentionParams&) noexcept { return "Attention"; },
             [](const ArgmaxParams&) noexcept { return "Argmax"; },
+            [](const ReshapeParams&) noexcept { return "Reshape"; },
     };
     return std::visit(visitor, params);
 }
@@ -184,6 +297,10 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                    << " head_dim=" << p.head_dim;
             },
             [&](const ArgmaxParams& p) { os << "Argmax axis=" << p.axis; },
+            [&](const ReshapeParams& p) {
+                os << "Reshape shape=";
+                SerializeReshapeShape(p.target_shape, os);
+            },
     };
     std::visit(visitor, params);
     return Status::Ok();
@@ -301,6 +418,17 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
         StatusOr<int64_t> axis = ParseInt64(fields, "axis");
         AM_RETURN_IF_ERROR(axis.status());
         return OpParams{ArgmaxParams{.axis = *axis}};
+    }
+
+    if (kind == "Reshape") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
+        const auto it = fields.find("shape");
+        if (it == fields.end()) {
+            return Status::InvalidArgument("ParseOpParams: missing shape field");
+        }
+        StatusOr<std::vector<ReshapeDim>> target_shape = ParseReshapeShape(it->second);
+        AM_RETURN_IF_ERROR(target_shape.status());
+        return OpParams{ReshapeParams{.target_shape = std::move(*target_shape)}};
     }
 
     return Status::InvalidArgument("ParseOpParams: unknown parameter kind");

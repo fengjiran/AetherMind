@@ -4,6 +4,7 @@
 #include "aethermind/base/status.h"
 #include "aethermind/model/graph/graph.h"
 #include "aethermind/model/graph/graph_types.h"
+#include "aethermind/model/graph/op_params.h"
 
 #include <optional>
 #include <string>
@@ -124,6 +125,17 @@ AM_NODISCARD StatusOr<GraphValueId> AddArgmax(ModelGraph& graph,
                                               GraphValueId input,
                                               int64_t axis,
                                               std::string name = {});
+
+/// Builds a semantic Reshape node. The output shape is derived entirely by
+/// InferReshape from `params` and the input spec; the caller must not supply
+/// an output spec. The input's QuantizationSpec is copied to the output value
+/// so model-level quantization (e.g. int8 activations) survives reshaping.
+/// On failure the graph is left unchanged.
+AM_NODISCARD StatusOr<GraphValueId> AddReshape(ModelGraph& graph,
+                                               std::optional<uint32_t> decoder_layer_index,
+                                               GraphValueId input,
+                                               ReshapeParams params,
+                                               std::string name = {});
 
 }// namespace aethermind
 

@@ -1,5 +1,6 @@
 #include "aethermind/model/graph/graph_dump.h"
 #include "aethermind/dtypes/data_type.h"
+#include "aethermind/model/graph/op_params_serde.h"
 #include "utils/variant_utils.h"
 
 #include <ostream>
@@ -262,6 +263,11 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
             },
             [&](const ArgmaxParams& p) {
                 os << "ArgmaxParams{axis=" << p.axis << '}';
+            },
+            [&](const ReshapeParams& p) {
+                os << "ReshapeParams{target_shape=";
+                SerializeReshapeShape(p.target_shape, os);
+                os << '}';
             },
     };
     std::visit(visitor, params);

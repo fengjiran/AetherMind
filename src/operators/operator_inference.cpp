@@ -38,6 +38,8 @@ StatusOr<InferenceResult> InferOperator(OpType op_type,
             return detail::InferSilu(params, inputs);
         case OpType::kElementwiseMul:
             return detail::InferElementwiseMul(params, inputs);
+        case OpType::kReshape:
+            return detail::InferReshape(params, inputs);
         case OpType::kUnknown:
             return Status::InvalidArgument(
                     "Unknown op type cannot have validated graph params");

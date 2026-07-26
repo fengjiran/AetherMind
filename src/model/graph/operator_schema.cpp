@@ -62,7 +62,7 @@ StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
 // every registered operator. Graph validation (graph.cpp) reads these schemas
 // to verify node arity, port kinds, and payload consistency at build time.
 // Add a new entry here when introducing a new OpType.
-const std::array<OperatorSchema, 13> kOperatorSchemas{
+const std::array<OperatorSchema, 14> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kEmbedding,
                 .input_ports = {Input(0, "tokens", OperatorPortKind::kModelInput),
@@ -155,6 +155,16 @@ const std::array<OperatorSchema, 13> kOperatorSchemas{
                                 Input(1, kv_cache_ports::kCache, OperatorPortKind::kState, false),
                                 Input(2, kv_cache_ports::vCache, OperatorPortKind::kState, false)},
                 .output_ports = {Output(0, "output")},
+                .traits = RuntimeOnly(),
+        },
+        OperatorSchema{
+                .op_type = OpType::kReshape,
+                .input_ports = {Input(0, "input", OperatorPortKind::kActivation)},
+                .output_ports = {Output(0, "output")},
+                // Semantic-only: pure and deterministic (so DCE-removable),
+                // but not advertised as compile-time evaluable (no constant
+                // evaluator exists; ReshapeParams is not yet a constant-foldable
+                // surface).
                 .traits = RuntimeOnly(),
         },
 };

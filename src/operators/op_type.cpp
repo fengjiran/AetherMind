@@ -34,6 +34,8 @@ const char* ToString(OpType op_type) noexcept {
             return "Softmax";
         case OpType::kArgmax:
             return "Argmax";
+        case OpType::kReshape:
+            return "Reshape";
         default:
             return "Unknown";
     }

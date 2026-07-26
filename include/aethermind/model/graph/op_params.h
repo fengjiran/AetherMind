@@ -3,9 +3,10 @@
 
 #include "aethermind/model/formats/hf/hf_model_config.h"
 
-#include <cstdint>
-#include <optional>
-#include <variant>
+// #include <cstdint>
+// #include <optional>
+// #include <variant>
+// #include <vector>
 
 namespace aethermind {
 
@@ -55,6 +56,55 @@ struct ArgmaxParams {
     int64_t axis = -1;
 };
 
+// Reshape target-shape dimensions.
+//
+// Reshape preserves dtype and the row-major logical linear order of elements
+// while changing only the logical shape; the output volume must equal the
+// input volume. Target dimensions are strongly typed instead of overloading
+// integer sentinels (e.g. ONNX 0/-1) so that multiple dynamic input
+// dimensions remain expressible and importer-specific conventions do not
+// leak into the core IR.
+//
+// Invariants enforced by InferReshape (not by the type system):
+//   - literal values are non-negative
+//   - input-axis references are canonical non-negative indexes < input rank
+//   - at most one ReshapeInferDim is present
+//   - an empty target_shape vector means rank zero
+
+// Non-negative literal target dimension (e.g. 32 in shape [2,32]).
+struct ReshapeLiteralDim {
+    int64_t value = 0;
+    friend bool operator==(const ReshapeLiteralDim&, const ReshapeLiteralDim&) = default;
+};
+
+// Reference to an input axis (e.g. @0 in shape [@0,32]).
+// `axis` is a canonical non-negative index into the input tensor's rank.
+struct ReshapeInputDim {
+    uint32_t axis = 0;
+    friend bool operator==(const ReshapeInputDim&, const ReshapeInputDim&) = default;
+};
+
+// Inferred target dimension (e.g. * in shape [2,*,32]).
+// Resolved by InferReshape: statically when unique, otherwise Unknown.
+struct ReshapeInferDim {
+    friend bool operator==(const ReshapeInferDim&, const ReshapeInferDim&) = default;
+};
+
+// Strong variant over the three target-dimension alternatives.
+using ReshapeDim = std::variant<ReshapeLiteralDim, ReshapeInputDim, ReshapeInferDim>;
+
+// Semantic parameters for OpType::kReshape.
+//
+// target_shape.size() is the output rank; an empty vector means rank zero.
+// At-most-one-infer, non-negative literals, and in-range input-axis
+// references are operator-semantic invariants enforced by InferReshape; serde
+// deliberately accepts multiple infer markers so the operator-semantic check
+// remains the single authority (consistent with existing serde behavior).
+struct ReshapeParams {
+    std::vector<ReshapeDim> target_shape{};
+    friend bool operator==(const ReshapeParams&, const ReshapeParams&) = default;
+};
+
 using OpParams = std::variant<std::monostate,
                               EmbeddingParams,
                               RmsNormParams,
@@ -68,7 +118,8 @@ using OpParams = std::variant<std::monostate,
                               ElementwiseMulParams,
                               KVCacheUpdateParams,
                               AttentionParams,
-                              ArgmaxParams>;
+                              ArgmaxParams,
+                              ReshapeParams>;
 
 }// namespace aethermind
 

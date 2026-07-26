@@ -1,3 +1,5 @@
+#include <optional>
+
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/shape_inference/shape_constraint.h"
@@ -20,6 +22,7 @@ VolumeEqualConstraint MakeVolumeEqualConstraint(const SymbolicShape& input_shape
         locator.dim_index = i;
         constraint.lhs_dims.push_back(locator);
     }
+
     constraint.rhs_dims.reserve(*output_shape.rank());
     for (size_t i = 0; i < *output_shape.rank(); ++i) {
         DimLocator locator;
@@ -36,11 +39,70 @@ VolumeEqualConstraint MakeVolumeEqualConstraint(const SymbolicShape& input_shape
 Status MultiplyStaticDims(const SymbolicShape& shape, uint64_t* product) {
     for (size_t i = 0; i < *shape.rank(); ++i) {
         const ShapeSymbol& dim = shape[i];
-        const uint64_t value = static_cast<uint64_t>(dim.GetStaticValue());
-        if (CheckOverflowMul(*product, value, product)) {
+        if (const auto value = static_cast<uint64_t>(dim.GetStaticValue());
+            CheckOverflowMul(*product, value, product)) {
             return Status::Overflow("Reshape volume product overflows");
         }
     }
+    return Status::Ok();
+}
+
+// Returns true if every dim in shape is static, excluding skip_index.
+bool AllDimsStaticExcept(const SymbolicShape& shape, size_t skip_index) {
+    for (size_t i = 0; i < *shape.rank(); ++i) {
+        if (i == skip_index) {
+            continue;
+        }
+        if (!shape[i].IsStatic()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Attempts to statically resolve the infer dimension in output_shape.
+// On success, replaces output_shape[infer_index] with the computed quotient.
+// If not all required dims are static, leaves Unknown() intact and returns Ok.
+Status TryResolveInferDim(const SymbolicShape& input_shape,
+                          SymbolicShape& output_shape,
+                          size_t infer_index) {
+    if (!input_shape.IsStatic() || !AllDimsStaticExcept(output_shape, infer_index)) {
+        return Status::Ok();
+    }
+
+    uint64_t input_volume = 1;
+    AM_RETURN_IF_ERROR(MultiplyStaticDims(input_shape, &input_volume));
+
+    uint64_t non_infer_product = 1;
+    for (size_t i = 0; i < *output_shape.rank(); ++i) {
+        if (i == infer_index) {
+            continue;
+        }
+        if (const auto value = static_cast<uint64_t>(output_shape[i].GetStaticValue());
+            CheckOverflowMul(non_infer_product, value, &non_infer_product)) {
+            return Status::Overflow("Reshape non-infer product overflows");
+        }
+    }
+
+    if (non_infer_product == 0) {
+        // Zero-volume ambiguity: input volume zero is ambiguous and
+        // non-zero is impossible. Reject.
+        return Status::InvalidArgument(
+                "Reshape infer marker is ambiguous for zero-volume shapes");
+    }
+
+    if (input_volume % non_infer_product != 0) {
+        return Status::InvalidArgument(
+                "Reshape volume not divisible by non-infer product");
+    }
+
+    const uint64_t quotient = input_volume / non_infer_product;
+    if (quotient > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        return Status::Overflow("Reshape infer quotient overflows int64_t");
+    }
+    // Replace Unknown at infer_index with the static quotient. Zero is
+    // a valid static quotient.
+    output_shape[infer_index] = ShapeSymbol::CreateFromValue(static_cast<int64_t>(quotient));
     return Status::Ok();
 }
 
@@ -81,17 +143,17 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
     size_t infer_count = 0;
     for (const auto& dim: reshape_params->target_shape) {
         auto visitor = overloaded{
-                [&](const ReshapeLiteralDim& d) -> Status {
+                [&](const ReshapeLiteralDim& d) {
                     if (d.value < 0) {
                         return Status::InvalidArgument(
                                 "Reshape literal dim must be non-negative");
                     }
                     return Status::Ok();
                 },
-                [&](const ReshapeInputDim&) -> Status {
+                [&](const ReshapeInputDim&) {
                     return Status::Ok();
                 },
-                [&](const ReshapeInferDim) -> Status {
+                [&](const ReshapeInferDim) {
                     ++infer_count;
                     return Status::Ok();
                 },
@@ -126,7 +188,7 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
     // alongside the output construction.
     std::vector<ShapeSymbol> output_dims;
     output_dims.reserve(reshape_params->target_shape.size());
-    size_t infer_index = static_cast<size_t>(-1);
+    std::optional<size_t> infer_index;
     for (size_t i = 0; i < reshape_params->target_shape.size(); ++i) {
         const auto& dim = reshape_params->target_shape[i];
         auto visitor = overloaded{
@@ -148,66 +210,14 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
     SymbolicShape output_shape(std::move(output_dims));
 
     // Static infer resolution (only when exactly one infer marker present).
-    if (infer_count == 1) {
-        // Require every input dim and every non-infer output dim to be static.
-        const bool all_input_static = input.shape.IsStatic();
-        const bool all_output_non_infer_static = [&] {
-            for (size_t i = 0; i < *output_shape.rank(); ++i) {
-                if (i == infer_index) {
-                    continue;
-                }
-                if (!output_shape[i].IsStatic()) {
-                    return false;
-                }
-            }
-            return true;
-        }();
-
-        if (all_input_static && all_output_non_infer_static) {
-            uint64_t input_volume = 1;
-            Status input_status = MultiplyStaticDims(input.shape, &input_volume);
-            if (!input_status.ok()) {
-                return input_status;
-            }
-            uint64_t non_infer_product = 1;
-            for (size_t i = 0; i < *output_shape.rank(); ++i) {
-                if (i == infer_index) {
-                    continue;
-                }
-                const uint64_t value = static_cast<uint64_t>(output_shape[i].GetStaticValue());
-                if (CheckOverflowMul(non_infer_product, value, &non_infer_product)) {
-                    return Status::Overflow("Reshape non-infer product overflows");
-                }
-            }
-
-            if (non_infer_product == 0) {
-                // Zero-volume ambiguity: input volume zero is ambiguous and
-                // non-zero is impossible. Reject.
-                return Status::InvalidArgument(
-                        "Reshape infer marker is ambiguous for zero-volume shapes");
-            }
-            if (input_volume % non_infer_product != 0) {
-                return Status::InvalidArgument(
-                        "Reshape volume not divisible by non-infer product");
-            }
-            const uint64_t quotient = input_volume / non_infer_product;
-            if (quotient > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-                return Status::Overflow("Reshape infer quotient overflows int64_t");
-            }
-            // Replace Unknown at infer_index with the static quotient. zero is
-            // a valid static quotient.
-            output_shape[infer_index] = ShapeSymbol::CreateFromValue(
-                    static_cast<int64_t>(quotient));
-        }
-        // Otherwise leave Unknown() at infer_index and rely on the deferred
-        // VolumeEqualConstraint.
+    if (infer_index.has_value()) {
+        AM_RETURN_IF_ERROR(TryResolveInferDim(input.shape, output_shape, *infer_index));
     }
 
     // Construct one VolumeEqualConstraint covering every input dim (lhs) and
     // every output dim (rhs). Empty lists represent scalar volume 1.
-    VolumeEqualConstraint volume_constraint = MakeVolumeEqualConstraint(input.shape, output_shape);
     ShapeConstraint constraint{
-            .condition = volume_constraint,
+            .condition = MakeVolumeEqualConstraint(input.shape, output_shape),
             .error_context = "Reshape volume mismatch",
     };
 

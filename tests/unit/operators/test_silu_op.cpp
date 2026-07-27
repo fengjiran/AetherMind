@@ -8,8 +8,6 @@
 
 #include <gtest/gtest.h>
 
-#include <variant>
-
 namespace {
 using namespace aethermind;
 

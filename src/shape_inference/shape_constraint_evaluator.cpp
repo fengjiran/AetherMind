@@ -40,15 +40,14 @@ AM_NODISCARD std::optional<ShapeSymbol> ResolveSymbolicDim(
         const std::span<const SymbolicShape> inputs,
         const std::span<const SymbolicShape> outputs) {
     const auto* shape = ResolveShape(locator.tensor_port, inputs, outputs);
-
     const auto rank = shape->rank();
     if (!rank.has_value()) {
-        return std::optional<ShapeSymbol>{};
+        return std::nullopt;
     }
 
     AM_CHECK(locator.dim_index < *rank,
              "Shape constraint references missing dimension %zu", locator.dim_index);
-    return std::optional<ShapeSymbol>{(*shape)[locator.dim_index]};
+    return (*shape)[locator.dim_index];
 }
 
 AM_NODISCARD int64_t ResolveRuntimeDim(
@@ -194,18 +193,19 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicVolumeConstraint(
 
     // Compute volume from static dims. If any dim is symbolic or overflow
     // occurs, defer to runtime evaluation.
-    auto compute_volume = [&](const std::span<const DimLocator> dims,
+    auto compute_volume = [&](const std::span<const DimLocator> locators,
                               uint64_t& product,
                               bool& deferred) {
-        for (const DimLocator& locator: dims) {
-            const auto dim = ResolveSymbolicDim(locator, inputs, outputs);
+        for (const auto& loc: locators) {
+            const auto dim = ResolveSymbolicDim(loc, inputs, outputs);
 
             if (!dim || !dim->IsStatic()) {
                 deferred = true;
                 return;
             }
 
-            if (CheckOverflowMul(product, static_cast<uint64_t>(dim->GetStaticValue()), &product)) {
+            if (CheckOverflowMul(product, static_cast<uint64_t>(dim->GetStaticValue()),
+                                 &product)) {
                 deferred = true;
                 return;
             }

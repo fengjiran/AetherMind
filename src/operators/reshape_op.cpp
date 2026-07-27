@@ -77,6 +77,7 @@ Status TryResolveInferDim(const SymbolicShape& input_shape,
         if (i == infer_index) {
             continue;
         }
+
         if (const auto value = static_cast<uint64_t>(output_shape[i].GetStaticValue());
             CheckOverflowMul(non_infer_product, value, &non_infer_product)) {
             return Status::Overflow("Reshape non-infer product overflows");
@@ -227,7 +228,7 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
             constraint, input_shapes, output_shapes);
 
     InferenceResult result;
-    result.outputs.push_back({input.dtype, output_shape});
+    result.outputs.emplace_back(input.dtype, output_shape);
 
     switch (eval_result) {
         case ShapeConstraintEvaluationResult::kViolated:
@@ -245,7 +246,7 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
             }
             // Persist exactly one deferred runtime check for runtime
             // enforcement.
-            result.runtime_checks.push_back(std::move(constraint));
+            result.runtime_checks.emplace_back(std::move(constraint));
             break;
     }
     return result;

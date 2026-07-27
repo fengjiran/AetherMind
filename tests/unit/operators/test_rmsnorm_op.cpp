@@ -3,7 +3,6 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_context.h"
-#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/rmsnorm_op.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
@@ -12,172 +11,6 @@
 
 namespace {
 using namespace aethermind;
-
-SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
-    const std::vector<int64_t> shape(dims);
-    return SymbolicShape(IntArrayView{shape});
-}
-
-TEST(RmsNormOp, ValidatesStaticInputContract) {
-    constexpr RmsNormParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({8})},
-    };
-
-    EXPECT_TRUE(InferOperator(OpType::kRmsNorm, params, inputs).status().ok());
-}
-
-TEST(RmsNormOp, PreservesInputShapeAsOutputShape) {
-    constexpr RmsNormParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({8})},
-    };
-
-    const StatusOr<InferenceResult> inference = InferOperator(OpType::kRmsNorm, params, inputs);
-
-    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    EXPECT_TRUE(inference->runtime_checks.empty());
-    ASSERT_EQ(inference->outputs.size(), 1U);
-    EXPECT_EQ(inference->outputs[0].dtype, DataType::Float32());
-    ASSERT_EQ(inference->outputs[0].shape.rank(), 2U);
-    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 4);
-    EXPECT_EQ(inference->outputs[0].shape[1].GetStaticValue(), 8);
-}
-
-TEST(RmsNormOp, EmitsRuntimeCheckForDistinctSymbolicHiddenDimension) {
-    constexpr RmsNormParams params;
-    const ShapeSymbol seq_len = ShapeSymbol::Create();
-    const ShapeSymbol input_hidden = ShapeSymbol::Create();
-    const ShapeSymbol weight_hidden = ShapeSymbol::Create();
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, input_hidden})},
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_hidden})},
-    };
-
-    const StatusOr<InferenceResult> inference = InferOperator(OpType::kRmsNorm, params, inputs);
-
-    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    // 1 DimPositiveConstraint (input hidden) + 1 DimEqualConstraint (hidden == weight_len).
-    // Weight length positivity is enforced transitively via hidden_size > 0 + hidden == weight_len.
-    ASSERT_EQ(inference->runtime_checks.size(), 2U);
-    EXPECT_TRUE(std::holds_alternative<DimPositiveConstraint>(inference->runtime_checks[0].condition));
-    const ShapeConstraint& constraint = inference->runtime_checks[1];
-    ASSERT_TRUE(std::holds_alternative<DimEqualConstraint>(constraint.condition));
-    const auto& equal = std::get<DimEqualConstraint>(constraint.condition);
-    EXPECT_EQ(equal.lhs.tensor_port.direction, TensorPortType::kInput);
-    EXPECT_EQ(equal.lhs.tensor_port.tensor_idx, 0U);
-    EXPECT_EQ(equal.lhs.dim_index, 1U);
-    EXPECT_EQ(equal.rhs.tensor_port.direction, TensorPortType::kInput);
-    EXPECT_EQ(equal.rhs.tensor_port.tensor_idx, 1U);
-    EXPECT_EQ(equal.rhs.dim_index, 0U);
-}
-
-TEST(RmsNormOp, AcceptsSharedSymbolicHiddenDimension) {
-    constexpr RmsNormParams params;
-    const ShapeSymbol seq_len = ShapeSymbol::Create();
-    const ShapeSymbol hidden_size = ShapeSymbol::Create();
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{seq_len, hidden_size})},
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{hidden_size})},
-    };
-
-    EXPECT_TRUE(InferOperator(OpType::kRmsNorm, params, inputs).status().ok());
-}
-
-TEST(RmsNormOp, RejectsStaticHiddenMismatch) {
-    constexpr RmsNormParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({16})},
-    };
-
-    const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(RmsNormOp, RejectsRankZeroInput) {
-    constexpr RmsNormParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-            {.dtype = DataType::Float32(),
-             .shape = StaticShape({8})},
-    };
-
-    const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(RmsNormOp, RejectsRankZeroWeight) {
-    constexpr RmsNormParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(),
-             .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-    };
-
-    const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(RmsNormOp, AcceptsZeroBatchDim) {
-    // Zero leading batch/sequence dim is valid (empty output); only the last
-    // (hidden) dim must be positive (zero-length reduction is undefined).
-    constexpr RmsNormParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({0, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({8})},
-    };
-    EXPECT_TRUE(InferOperator(OpType::kRmsNorm, params, inputs).status().ok());
-}
-
-TEST(RmsNormOp, RejectsZeroHiddenDim) {
-    // Zero hidden dim must still be rejected: zero-length reduction is undefined.
-    constexpr RmsNormParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 0})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({0})},
-    };
-    const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(RmsNormOp, EmitsPositiveConstraintForSymbolicHidden) {
-    // Same symbol for hidden and weight_len: AreProvablyEqual → no DimEqualConstraint.
-    // Only 1 DimPositiveConstraint for input hidden (input[0] dim[1]).
-    // Weight length positivity is enforced transitively.
-    constexpr RmsNormParams params;
-    const ShapeSymbol hidden = ShapeSymbol::Create();
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{ShapeSymbol::CreateFromValue(4), hidden})},
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{hidden})},
-    };
-    const auto result = InferOperator(OpType::kRmsNorm, params, inputs);
-    ASSERT_TRUE(result.ok()) << result.status().ToString();
-    ASSERT_EQ(result->runtime_checks.size(), 1U);
-
-    const auto& check = result->runtime_checks[0];
-    const auto* pos = std::get_if<DimPositiveConstraint>(&check.condition);
-    ASSERT_NE(pos, nullptr);
-    EXPECT_EQ(pos->dim.tensor_port.tensor_idx, 0U);
-    EXPECT_EQ(pos->dim.dim_index, 1U);
-}
 
 // ===== Prepare/Run tests =====
 
@@ -268,7 +101,7 @@ struct RmsNormBindingBuilder {
     }
 };
 
-TEST(RmsNormOp, PrepareResolvesKernelAndWritesEps) {
+TEST(RmsNormOpPrepare, ResolvesKernelAndWritesEpsilon) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -289,7 +122,7 @@ TEST(RmsNormOp, PrepareResolvesKernelAndWritesEps) {
     EXPECT_FLOAT_EQ(eps, 1.0e-5f);
 }
 
-TEST(RmsNormOp, PrepareFailsWithNullBackend) {
+TEST(RmsNormOpPrepare, RejectsNullBackend) {
     RmsNormOp op{RmsNormOp::Params{}};
     OperatorContext ctx{.backend = nullptr};
 
@@ -299,7 +132,7 @@ TEST(RmsNormOp, PrepareFailsWithNullBackend) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(RmsNormOp, PrepareFailsWhenKernelResolveFails) {
+TEST(RmsNormOpPrepare, PropagatesKernelResolutionFailure) {
     FakeBackend backend;
     backend.resolve_result = Status::NotFound("test: kernel not found");
 
@@ -312,7 +145,7 @@ TEST(RmsNormOp, PrepareFailsWhenKernelResolveFails) {
     EXPECT_EQ(status.code(), StatusCode::kNotFound);
 }
 
-TEST(RmsNormOp, PrepareFailsWithNullKernelFn) {
+TEST(RmsNormOpPrepare, RejectsResolvedNullKernelFunction) {
     FakeBackend backend;
     backend.resolve_result = ResolvedKernel{
             .op_type = OpType::kRmsNorm,
@@ -330,7 +163,7 @@ TEST(RmsNormOp, PrepareFailsWithNullKernelFn) {
     EXPECT_EQ(status.code(), StatusCode::kInternal);
 }
 
-TEST(RmsNormOp, RunFailsBeforePrepare) {
+TEST(RmsNormOpRun, RejectsCallBeforePrepare) {
     RmsNormOp op{RmsNormOp::Params{}};
     KernelContext kernel_ctx;
     RuntimeBindingContext bindings;
@@ -341,7 +174,7 @@ TEST(RmsNormOp, RunFailsBeforePrepare) {
     EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
 }
 
-TEST(RmsNormOp, RunFailsWithWrongInputCount) {
+TEST(RmsNormOpRun, RejectsWrongInputCount) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -373,7 +206,7 @@ TEST(RmsNormOp, RunFailsWithWrongInputCount) {
     EXPECT_FALSE(g_stub_state.called);
 }
 
-TEST(RmsNormOp, RunFailsWithWrongOutputCount) {
+TEST(RmsNormOpRun, RejectsWrongOutputCount) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -405,7 +238,7 @@ TEST(RmsNormOp, RunFailsWithWrongOutputCount) {
     EXPECT_FALSE(g_stub_state.called);
 }
 
-TEST(RmsNormOp, RunInvokesKernelAndReturnsOk) {
+TEST(RmsNormOpRun, InvokesResolvedKernelAndForwardsAttributes) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();

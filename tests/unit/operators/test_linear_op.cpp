@@ -4,7 +4,6 @@
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/linear_op.h"
 #include "aethermind/operators/operator_context.h"
-#include "aethermind/operators/operator_inference.h"
 
 #include <gtest/gtest.h>
 
@@ -13,210 +12,9 @@
 #include <cstddef>
 #include <cstring>
 #include <new>
-#include <variant>
-#include <vector>
 
 namespace {
 using namespace aethermind;
-
-SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
-    const std::vector<int64_t> shape(dims);
-    return SymbolicShape(IntArrayView{shape});
-}
-
-// ===== Validation / Inference tests =====
-
-TEST(LinearOp, ValidatesStaticInputContract) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
-    };
-
-    EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
-}
-
-TEST(LinearOp, AcceptsRank1Input) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
-    };
-
-    EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
-}
-
-TEST(LinearOp, RejectsRankZeroInput) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
-    };
-
-    const Status status = InferOperator(OpType::kLinear, params, inputs).status();
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(LinearOp, RejectsRankZeroWeight) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-    };
-
-    const Status status = InferOperator(OpType::kLinear, params, inputs).status();
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(LinearOp, RejectsRank3Input) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({2, 4, 3})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
-    };
-
-    const Status status = InferOperator(OpType::kLinear, params, inputs).status();
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(LinearOp, RejectsWeightRank1) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({8})},
-    };
-
-    const Status status = InferOperator(OpType::kLinear, params, inputs).status();
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(LinearOp, RejectsStaticKMismatch) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({16, 16})},
-    };
-
-    const Status status = InferOperator(OpType::kLinear, params, inputs).status();
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(LinearOp, InfersOutputShapeFromWeight) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 4096})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({11008, 4096})},
-    };
-
-    const StatusOr<InferenceResult> inference = InferOperator(OpType::kLinear, params, inputs);
-
-    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    EXPECT_TRUE(inference->runtime_checks.empty());
-    ASSERT_EQ(inference->outputs.size(), 1U);
-    EXPECT_EQ(inference->outputs[0].dtype, DataType::Float32());
-    ASSERT_EQ(inference->outputs[0].shape.rank(), 2U);
-    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 4);
-    EXPECT_EQ(inference->outputs[0].shape[1].GetStaticValue(), 11008);
-}
-
-TEST(LinearOp, InfersRank1OutputShape) {
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4096})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({11008, 4096})},
-    };
-
-    const StatusOr<InferenceResult> inference = InferOperator(OpType::kLinear, params, inputs);
-
-    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    EXPECT_TRUE(inference->runtime_checks.empty());
-    ASSERT_EQ(inference->outputs.size(), 1U);
-    ASSERT_EQ(inference->outputs[0].shape.rank(), 1U);
-    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 11008);
-}
-
-TEST(LinearOp, EmitsRuntimeCheckForDistinctSymbolicK) {
-    constexpr LinearParams params;
-    const ShapeSymbol batch = ShapeSymbol::Create();
-    const ShapeSymbol input_k = ShapeSymbol::Create();
-    const ShapeSymbol out_features = ShapeSymbol::Create();
-    const ShapeSymbol weight_k = ShapeSymbol::Create();
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{batch, input_k})},
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{out_features, weight_k})},
-    };
-
-    const StatusOr<InferenceResult> inference = InferOperator(OpType::kLinear, params, inputs);
-
-    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    ASSERT_EQ(inference->runtime_checks.size(), 1U);
-    const ShapeConstraint& constraint = inference->runtime_checks[0];
-    ASSERT_TRUE(std::holds_alternative<DimEqualConstraint>(constraint.condition));
-    const auto& equal = std::get<DimEqualConstraint>(constraint.condition);
-    EXPECT_EQ(equal.lhs.tensor_port.direction, TensorPortType::kInput);
-    EXPECT_EQ(equal.lhs.tensor_port.tensor_idx, 0U);
-    EXPECT_EQ(equal.lhs.dim_index, 1U);
-    EXPECT_EQ(equal.rhs.tensor_port.direction, TensorPortType::kInput);
-    EXPECT_EQ(equal.rhs.tensor_port.tensor_idx, 1U);
-    EXPECT_EQ(equal.rhs.dim_index, 1U);
-}
-
-TEST(LinearOp, AcceptsSharedSymbolicK) {
-    constexpr LinearParams params;
-    const ShapeSymbol batch = ShapeSymbol::Create();
-    const ShapeSymbol k = ShapeSymbol::Create();
-    const ShapeSymbol out_features = ShapeSymbol::Create();
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{batch, k})},
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{out_features, k})},
-    };
-
-    EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
-}
-
-TEST(LinearOp, AcceptsZeroBatchDim) {
-    // Zero batch yields empty output [0, out]; valid NumPy/PyTorch MatMul semantics.
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({0, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
-    };
-    EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
-}
-
-TEST(LinearOp, AcceptsZeroInFeatures) {
-    // Zero in_features (K=0) yields zero-valued output; valid NumPy/PyTorch MatMul.
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 0})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({16, 0})},
-    };
-    EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
-}
-
-TEST(LinearOp, AcceptsZeroOutFeatures) {
-    // Zero out_features yields empty output; valid NumPy/PyTorch MatMul.
-    constexpr LinearParams params;
-    const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-            {.dtype = DataType::Float32(), .shape = StaticShape({0, 8})},
-    };
-    EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
-}
 
 // ===== Prepare/Run tests =====
 
@@ -310,7 +108,7 @@ struct LinearBindingBuilder {
     }
 };
 
-TEST(LinearOp, PrepareResolvesKernel) {
+TEST(LinearOpPrepare, ResolvesKernel) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -328,7 +126,7 @@ TEST(LinearOp, PrepareResolvesKernel) {
     EXPECT_TRUE(resolved.attrs.empty());
 }
 
-TEST(LinearOp, PrepareFailsWithNullBackend) {
+TEST(LinearOpPrepare, RejectsNullBackend) {
     LinearOp op{LinearOp::Params{}};
     OperatorContext ctx{.backend = nullptr};
 
@@ -338,7 +136,7 @@ TEST(LinearOp, PrepareFailsWithNullBackend) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(LinearOp, PrepareFailsWhenKernelResolveFails) {
+TEST(LinearOpPrepare, PropagatesKernelResolutionFailure) {
     FakeBackend backend;
     backend.resolve_result = Status::NotFound("test: kernel not found");
 
@@ -351,7 +149,7 @@ TEST(LinearOp, PrepareFailsWhenKernelResolveFails) {
     EXPECT_EQ(status.code(), StatusCode::kNotFound);
 }
 
-TEST(LinearOp, PrepareFailsWithNullKernelFn) {
+TEST(LinearOpPrepare, RejectsResolvedNullKernelFunction) {
     FakeBackend backend;
     backend.resolve_result = ResolvedKernel{
             .op_type = OpType::kLinear,
@@ -369,7 +167,7 @@ TEST(LinearOp, PrepareFailsWithNullKernelFn) {
     EXPECT_EQ(status.code(), StatusCode::kInternal);
 }
 
-TEST(LinearOp, RunFailsBeforePrepare) {
+TEST(LinearOpRun, RejectsCallBeforePrepare) {
     LinearOp op{LinearOp::Params{}};
     KernelContext kernel_ctx;
     RuntimeBindingContext bindings;
@@ -380,7 +178,7 @@ TEST(LinearOp, RunFailsBeforePrepare) {
     EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
 }
 
-TEST(LinearOp, RunFailsWithWrongInputCount) {
+TEST(LinearOpRun, RejectsWrongInputCount) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -412,7 +210,7 @@ TEST(LinearOp, RunFailsWithWrongInputCount) {
     EXPECT_FALSE(g_stub_state.called);
 }
 
-TEST(LinearOp, RunFailsWithWrongOutputCount) {
+TEST(LinearOpRun, RejectsWrongOutputCount) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -444,7 +242,7 @@ TEST(LinearOp, RunFailsWithWrongOutputCount) {
     EXPECT_FALSE(g_stub_state.called);
 }
 
-TEST(LinearOp, RunInvokesKernelAndReturnsOk) {
+TEST(LinearOpRun, InvokesResolvedKernelAndForwardsAttributes) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();

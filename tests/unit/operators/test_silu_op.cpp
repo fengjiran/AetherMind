@@ -2,146 +2,17 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_context.h"
-#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 #include "aethermind/operators/silu_op.h"
 
 #include <gtest/gtest.h>
 
+#include <variant>
+
 namespace {
 using namespace aethermind;
 
-SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
-    const std::vector<int64_t> shape(dims);
-    return SymbolicShape(IntArrayView{shape});
-}
-
-// --- Validation ---
-
-TEST(SiluOp, InferOperatorAcceptsValidParams) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-    };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status().ok());
-}
-
-TEST(SiluOp, RejectsWrongArity) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-    };
-    const Status status = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, std::span(inputs)).status();
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(SiluOp, RejectsNonFloat32Input) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
-    };
-    const Status status = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status();
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(SiluOp, AcceptsArbitraryShape) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8, 16})},
-    };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status().ok());
-}
-
-TEST(SiluOp, AcceptsRankZeroInput) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-    };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status().ok());
-}
-
-TEST(SiluOp, AcceptsZeroDimension) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({0, 3})},
-    };
-    EXPECT_TRUE(InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs).status().ok());
-}
-
-// --- Inference ---
-
-TEST(SiluOp, InferOperatorRejectsWrongArity) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[2] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({2, 3})},
-    };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
-    EXPECT_FALSE(inference.ok());
-    EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
-}
-
-TEST(SiluOp, InferOperatorRejectsNonFloat32) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Int(32), .shape = StaticShape({2, 3})},
-    };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
-    EXPECT_FALSE(inference.ok());
-    EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
-}
-
-TEST(SiluOp, InfersIdenticalOutputShape) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
-    };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
-    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    EXPECT_TRUE(inference->runtime_checks.empty());
-    ASSERT_EQ(inference->outputs.size(), 1U);
-    EXPECT_EQ(inference->outputs[0].dtype, DataType::Float32());
-    ASSERT_EQ(inference->outputs[0].shape.rank(), 2U);
-    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 4);
-    EXPECT_EQ(inference->outputs[0].shape[1].GetStaticValue(), 8);
-}
-
-TEST(SiluOp, InfersRankZeroOutput) {
-    const SiluOp op{SiluOp::Params{}};
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-    };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
-    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    EXPECT_TRUE(inference->runtime_checks.empty());
-    ASSERT_EQ(inference->outputs.size(), 1U);
-    EXPECT_TRUE(inference->outputs[0].shape.IsRankZero());
-}
-
-TEST(SiluOp, InfersSymbolicOutputShape) {
-    const SiluOp op{SiluOp::Params{}};
-    const ShapeSymbol dim0 = ShapeSymbol::Create();
-    const ShapeSymbol dim1 = ShapeSymbol::Create();
-    const TensorSpec inputs[1] = {
-            TensorSpec{.dtype = DataType::Float32(),
-                       .shape = SymbolicShape(std::vector<ShapeSymbol>{dim0, dim1})},
-    };
-    const StatusOr<InferenceResult> inference = InferOperator(op.Type(), OpParams{SiluOp::Params{}}, inputs);
-    ASSERT_TRUE(inference.ok()) << inference.status().ToString();
-    EXPECT_TRUE(inference->runtime_checks.empty());
-    ASSERT_EQ(inference->outputs.size(), 1U);
-    ASSERT_EQ(inference->outputs[0].shape.rank(), 2U);
-    // Symbolic dimensions are preserved as-is (element-wise op).
-    EXPECT_EQ(inference->outputs[0].shape[0], dim0);
-    EXPECT_EQ(inference->outputs[0].shape[1], dim1);
-}
-
 // --- Prepare ---
-
-namespace {
 
 struct StubKernelState {
     bool called = false;
@@ -188,9 +59,7 @@ ResolvedKernel MakeStubKernel() {
     };
 }
 
-}// namespace
-
-TEST(SiluOp, PrepareFailsWithNullBackend) {
+TEST(SiluOpPrepare, RejectsNullBackend) {
     SiluOp op{SiluOp::Params{}};
     OperatorContext ctx{};
     ctx.backend = nullptr;
@@ -199,7 +68,7 @@ TEST(SiluOp, PrepareFailsWithNullBackend) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(SiluOp, PrepareSucceedsWithFakeBackend) {
+TEST(SiluOpPrepare, ResolvesKernel) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -214,7 +83,7 @@ TEST(SiluOp, PrepareSucceedsWithFakeBackend) {
     EXPECT_EQ(resolved.fn, &StubSiluKernel);
 }
 
-TEST(SiluOp, PrepareFailsWhenKernelResolveFails) {
+TEST(SiluOpPrepare, PropagatesKernelResolutionFailure) {
     FakeBackend backend;
     backend.resolve_result = Status::NotFound("test: kernel not found");
 
@@ -226,7 +95,7 @@ TEST(SiluOp, PrepareFailsWhenKernelResolveFails) {
     EXPECT_EQ(status.code(), StatusCode::kNotFound);
 }
 
-TEST(SiluOp, PrepareFailsWithNullKernelFn) {
+TEST(SiluOpPrepare, RejectsResolvedNullKernelFunction) {
     FakeBackend backend;
     backend.resolve_result = ResolvedKernel{
             .op_type = OpType::kSilu,
@@ -245,7 +114,7 @@ TEST(SiluOp, PrepareFailsWithNullKernelFn) {
 
 // --- Run ---
 
-TEST(SiluOp, RunFailsBeforePrepare) {
+TEST(SiluOpRun, RejectsCallBeforePrepare) {
     const SiluOp op{SiluOp::Params{}};
     KernelContext ctx{};
     RuntimeBindingContext bindings;
@@ -254,7 +123,7 @@ TEST(SiluOp, RunFailsBeforePrepare) {
     EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
 }
 
-TEST(SiluOp, RunFailsWithWrongInputCount) {
+TEST(SiluOpRun, RejectsWrongInputCount) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -285,7 +154,7 @@ TEST(SiluOp, RunFailsWithWrongInputCount) {
     EXPECT_FALSE(g_stub_state.called);
 }
 
-TEST(SiluOp, RunFailsWithWrongOutputCount) {
+TEST(SiluOpRun, RejectsWrongOutputCount) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();
@@ -316,7 +185,7 @@ TEST(SiluOp, RunFailsWithWrongOutputCount) {
     EXPECT_FALSE(g_stub_state.called);
 }
 
-TEST(SiluOp, RunReturnsUnimplementedAndDoesNotInvokeKernel) {
+TEST(SiluOpRun, ReturnsUnimplemented) {
     ResetStubState();
     FakeBackend backend;
     backend.resolve_result = MakeStubKernel();

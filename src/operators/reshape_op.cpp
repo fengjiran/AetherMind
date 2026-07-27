@@ -1,5 +1,3 @@
-#include <optional>
-
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/shape_inference/shape_constraint.h"
@@ -53,6 +51,7 @@ bool AllDimsStaticExcept(const SymbolicShape& shape, size_t skip_index) {
         if (i == skip_index) {
             continue;
         }
+
         if (!shape[i].IsStatic()) {
             return false;
         }

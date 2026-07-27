@@ -3,8 +3,6 @@
 #include "utils/logging.h"
 #include "utils/variant_utils.h"
 
-#include <optional>
-
 namespace aethermind {
 namespace {
 

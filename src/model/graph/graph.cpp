@@ -1,16 +1,7 @@
 #include "aethermind/model/graph/graph.h"
-#include "aethermind/model/graph/operator_schema.h"
-#include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator_inference.h"
-#include "utils/logging.h"
 
-#include <algorithm>
-#include <cstdint>
 #include <deque>
-#include <limits>
-#include <optional>
-#include <string>
-#include <utility>
 
 namespace aethermind {
 namespace {
@@ -382,34 +373,31 @@ ModelGraph::ModelGraph(HfModelConfig config, std::vector<GraphNode> nodes,
 
 GraphValueId ModelGraph::AddInput(TensorSpec spec, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back({.payload = ModelInputValue{},
-                       .spec = std::move(spec),
-                       .name = std::move(name)});
-    inputs_.push_back({.value = value_id});
+    values_.emplace_back(ModelInputValue{}, std::move(spec),
+                         std::nullopt, QuantizationSpec{}, std::move(name));
+    inputs_.emplace_back(value_id);
     return value_id;
 }
 
 GraphValueId ModelGraph::AddWeight(TensorSpec spec, WeightBinding binding, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back({.payload = WeightValue{.binding = binding},
-                       .spec = std::move(spec),
-                       .name = std::move(name)});
+    values_.emplace_back(WeightValue{.binding = binding}, std::move(spec),
+                         std::nullopt, QuantizationSpec{}, std::move(name));
+
     return value_id;
 }
 
 GraphValueId ModelGraph::AddConstant(TensorSpec spec, ConstantBinding binding, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back({.payload = ConstantValue{.binding = std::move(binding)},
-                       .spec = std::move(spec),
-                       .name = std::move(name)});
+    values_.emplace_back(ConstantValue{.binding = std::move(binding)}, std::move(spec),
+                         std::nullopt, QuantizationSpec{}, std::move(name));
     return value_id;
 }
 
 GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::string name) {
     GraphValueId value_id{NextValueIndex(values_)};
-    values_.push_back({.payload = StateValue{.binding = binding},
-                       .spec = std::move(spec),
-                       .name = std::move(name)});
+    values_.emplace_back(StateValue{.binding = binding}, std::move(spec),
+                         std::nullopt, QuantizationSpec{}, std::move(name));
     return value_id;
 }
 
@@ -450,7 +438,8 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
     };
 
     if (!attrs.bytes.empty()) {
-        return Status::InvalidArgument(get_msg("must use typed op params, not attrs"));
+        return Status::InvalidArgument(get_msg(
+                "must use typed op params, not attrs"));
     }
 
     auto schema_or = GetOperatorSchema(op_type);
@@ -552,7 +541,7 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
     std::vector<TensorSpec> all_input_specs;
     all_input_specs.reserve(inputs.size());
     for (const auto& id: inputs) {
-        all_input_specs.push_back(values_[id.index].spec);
+        all_input_specs.emplace_back(values_[id.index].spec);
     }
 
     auto inference_or = InferOperator(op_type, op_params, all_input_specs);

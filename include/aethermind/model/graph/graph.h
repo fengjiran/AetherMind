@@ -76,13 +76,13 @@ public:
     ///
     /// On success returns the new node id and its output value ids. On failure
     /// returns an error Status; the graph is unchanged.
-    AM_NODISCARD StatusOr<AddedNode> AddNode(OpType op_type,
-                                             std::optional<uint32_t> decoder_layer_index,
-                                             std::vector<GraphValueId> inputs,
-                                             std::vector<NodeOutputDesc> outputs_desc,
-                                             const OpParams& op_params = std::monostate{},
-                                             ModelGraphAttrs attrs = {},
-                                             std::string name = {});
+    StatusOr<AddedNode> AddNode(OpType op_type,
+                                std::optional<uint32_t> decoder_layer_index,
+                                std::vector<GraphValueId> inputs,
+                                std::vector<NodeOutputDesc> outputs_desc,
+                                const OpParams& op_params = std::monostate{},
+                                ModelGraphAttrs attrs = {},
+                                std::string name = {});
 
     AM_NODISCARD const GraphNode& GetNode(GraphNodeId id) const {
         AM_CHECK(id.index < nodes_.size(), "Invalid GraphNodeId");
@@ -121,18 +121,18 @@ public:
 
     /// Checks graph invariants: valid value ids, schema compliance,
     /// producer consistency, and acyclicity.
-    AM_NODISCARD Status Validate() const;
+    Status Validate() const;
 
     /// Returns nodes in topological order following activation edges and
     /// produced state edges.
     /// Returns an error if the graph contains a cycle.
-    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> TopologicalOrder() const;
+    StatusOr<std::vector<GraphNodeId>> TopologicalOrder() const;
 
     /// Combines Validate() and TopologicalOrder() into a single pass.
     /// Performs full semantic validation and returns the topological order
     /// on success, avoiding the redundant traversal that results from
     /// calling Validate() followed by TopologicalOrder().
-    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> ValidateAndTopologicalOrder() const;
+    StatusOr<std::vector<GraphNodeId>> ValidateAndTopologicalOrder() const;
 
 private:
     HfModelConfig config_{};
@@ -143,7 +143,7 @@ private:
 };
 
 /// Builds a reverse mapping from each value to the nodes that consume it.
-AM_NODISCARD StatusOr<std::vector<std::vector<GraphNodeId>>> BuildConsumerIndex(const ModelGraph& graph);
+StatusOr<std::vector<std::vector<GraphNodeId>>> BuildConsumerIndex(const ModelGraph& graph);
 
 /// Returns the consumers of a value from a pre-built consumer index.
 AM_NODISCARD std::span<const GraphNodeId> GetConsumers(

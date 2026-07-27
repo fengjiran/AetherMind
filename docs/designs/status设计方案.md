@@ -22,8 +22,6 @@
 5. **兼容 C ABI**：错误码需要稳定映射到 `am_status_code`。
 6. **避免异常成为正常控制流**：尤其是 kernel 和逐 token 执行路径。
 
-`Status` 表达“成功或错误”，`StatusOr<T>` 表达“成功值或错误”，共同形成统一错误契约。
-
 ### 1.2 与其他方案的取舍
 
 | 方案 | 优点 | 主要问题 | AetherMind 取舍 |
@@ -63,6 +61,7 @@ StatusOr<T>
 - 成功时需要返回值：返回 `StatusOr<T>`。
 - 业务错误通过 `Status` 传播。
 - `StatusOr` API 误用目前通过异常暴露。
+- `Status` 表达“成功或错误”，`StatusOr<T>` 表达“成功值或错误”，共同形成统一错误契约。
 
 ## 3. StatusCode 设计
 

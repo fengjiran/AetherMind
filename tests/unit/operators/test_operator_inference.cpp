@@ -31,6 +31,8 @@ TEST(OperatorSemanticsValidate, WrongVariantPrecedesInputValidationForEveryOp) {
             {OpType::kSilu, AddParams{}, "Silu node requires SiluParams"},
             {OpType::kElementwiseMul, AddParams{}, "ElementwiseMul node requires ElementwiseMulParams"},
             {OpType::kReshape, AddParams{}, "Reshape node requires ReshapeParams"},
+            {OpType::kPermute, AddParams{}, "Permute node requires PermuteParams"},
+            {OpType::kReorder, AddParams{}, "Reorder node requires ReorderParams"},
     };
 
     const std::vector<TensorSpec> empty_inputs;

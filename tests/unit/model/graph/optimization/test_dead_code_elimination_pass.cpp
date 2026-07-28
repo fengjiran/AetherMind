@@ -317,5 +317,38 @@ TEST(DeadCodeEliminationPass, RemovesDeadRankZeroSiluMul) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
 }
 
+TEST(DeadCodeEliminationPass, LiveReorderSurvivesDCE) {
+    // A Reorder whose output is a graph output must survive DCE.
+    ModelGraph graph;
+    const GraphValueId input = AddActivation(graph, "input");
+    auto reorder_or = AddReorder(graph, std::nullopt, input, "reorder");
+    ASSERT_TRUE(reorder_or.ok()) << reorder_or.status().ToString();
+    graph.MarkOutput(*reorder_or);
+
+    const StatusOr<ModelGraph> result = RunDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kReorder).size(), 1U);
+}
+
+TEST(DeadCodeEliminationPass, DeadReorderIsRemoved) {
+    // A Reorder whose output is unused must be removed by DCE.
+    ModelGraph graph;
+    const GraphValueId live = AddActivation(graph, "live");
+    const GraphValueId input = AddActivation(graph, "input");
+    auto reorder_or = AddReorder(graph, std::nullopt, input, "dead_reorder");
+    ASSERT_TRUE(reorder_or.ok()) << reorder_or.status().ToString();
+    const GraphValueId dead = *reorder_or;
+    UNUSED(dead);
+    graph.MarkOutput(live);
+
+    const StatusOr<ModelGraph> result = RunDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kReorder).size(), 0U);
+}
+
 }// namespace
 }// namespace aethermind

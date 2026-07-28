@@ -21,6 +21,7 @@ TEST(Operators_OpType, AllKnownTypesHaveStringRepresentation) {
     EXPECT_STREQ(ToString(OpType::kArgmax), "Argmax");
     EXPECT_STREQ(ToString(OpType::kReshape), "Reshape");
     EXPECT_STREQ(ToString(OpType::kPermute), "Permute");
+    EXPECT_STREQ(ToString(OpType::kReorder), "Reorder");
 }
 
 TEST(Operators_OpType, InvalidValueReturnsUnknown) {

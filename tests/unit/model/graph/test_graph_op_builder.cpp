@@ -1148,5 +1148,175 @@ TEST(GraphOpBuilder, AddPermuteRejectsFabricatedInputValueIdWithoutAborting) {
     EXPECT_EQ(graph.GetValues().size(), values_before);
 }
 
+// --- AddReorder ---
+
+TEST(GraphOpBuilder, AddReorderPreservesStaticSpec) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {4, 256}), ConstantBinding{}, "input");
+
+    auto output_or = AddReorder(graph, std::nullopt, input, "reorder");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_EQ(output_spec.dtype, DataType::Float32());
+    EXPECT_EQ(output_spec.shape, graph.GetValue(input).spec.shape);
+
+    ASSERT_TRUE(graph.GetValue(output).producer.has_value());
+    const GraphNode& node = graph.GetNode(*graph.GetValue(output).producer);
+    EXPECT_EQ(node.op_type, OpType::kReorder);
+    EXPECT_EQ(node.inputs.size(), 1U);
+    EXPECT_EQ(node.outputs.size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<ReorderParams>(node.op_params));
+    EXPECT_EQ(node.runtime_checks.size(), 0U);
+    EXPECT_FALSE(node.decoder_layer_index.has_value());
+    EXPECT_EQ(graph.GetValue(output).name, "reorder");
+}
+
+TEST(GraphOpBuilder, AddReorderSymbolicShapePreservesIdentity) {
+    ModelGraph graph;
+    const ShapeSymbol sym_a = ShapeSymbol::Create();
+    const ShapeSymbol sym_b = ShapeSymbol::Create();
+    const GraphValueId input = graph.AddConstant(
+            TensorSpec{.dtype = DataType::Float32(),
+                       .shape = SymbolicShape({sym_a, sym_b})},
+            ConstantBinding{}, "input");
+
+    auto output_or = AddReorder(graph, std::nullopt, input, "reorder");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    ASSERT_EQ(output_spec.shape.rank().value(), 2U);
+    EXPECT_EQ(output_spec.shape[0], sym_a);
+    EXPECT_EQ(output_spec.shape[1], sym_b);
+
+    const Status validation = graph.Validate();
+    ASSERT_TRUE(validation.ok()) << validation.ToString();
+}
+
+TEST(GraphOpBuilder, AddReorderUnrankedInput) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            TensorSpec{.dtype = DataType::Float32(),
+                       .shape = SymbolicShape(std::nullopt)},
+            ConstantBinding{}, "input");
+
+    auto output_or = AddReorder(graph, std::nullopt, input, "reorder");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    EXPECT_FALSE(graph.GetValue(output).spec.shape.IsRanked());
+}
+
+TEST(GraphOpBuilder, AddReorderRankZeroScalar) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {}), ConstantBinding{}, "input");
+
+    auto output_or = AddReorder(graph, std::nullopt, input, "reorder");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    EXPECT_TRUE(graph.GetValue(output).spec.shape.IsRankZero());
+}
+
+TEST(GraphOpBuilder, AddReorderPreservesInputQuantizationSpec) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+    const QuantizationSpec quantization{
+            .kind = QuantizationKind::kInt8,
+            .group_size = 32,
+            .scale_dtype = DataType::Float32(),
+            .has_zero_point = true};
+    graph.SetQuantization(input, quantization);
+
+    auto output_or = AddReorder(graph, std::nullopt, input, "reorder");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    EXPECT_EQ(graph.GetValue(output).quantization, quantization);
+}
+
+TEST(GraphOpBuilder, AddReorderPropagatesDecoderLayerIndex) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+
+    auto output_or = AddReorder(graph, std::optional<uint32_t>{3}, input, "reorder");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+
+    ASSERT_TRUE(graph.GetValue(*output_or).producer.has_value());
+    const GraphNode& node = graph.GetNode(*graph.GetValue(*output_or).producer);
+    EXPECT_EQ(node.decoder_layer_index, std::optional<uint32_t>{3});
+}
+
+TEST(GraphOpBuilder, AddReorderRejectsFabricatedInputValueIdWithoutAborting) {
+    ModelGraph graph;
+    const GraphValueId fabricated{.index = 99999};
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    auto output_or = AddReorder(graph, std::nullopt, fabricated, "reorder");
+    ASSERT_FALSE(output_or.ok());
+    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
+TEST(GraphOpBuilder, AddNodeReorderWrongParamsAtomicallyAborts) {
+    // Direct AddNode with wrong params variant must fail and leave graph unchanged.
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    NodeOutputDesc output_desc{.payload = ActivationValue{}, .name = "out"};
+    auto result = graph.AddNode(OpType::kReorder,
+                                std::nullopt,
+                                {input},
+                                {std::move(output_desc)},
+                                AddParams{},// wrong variant
+                                {},
+                                "bad_reorder");
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
+TEST(GraphOpBuilder, AddNodeReorderWrongArityAtomicallyAborts) {
+    // Direct AddNode with two inputs for a one-input op must fail atomically.
+    ModelGraph graph;
+    const GraphValueId input0 = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input0");
+    const GraphValueId input1 = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input1");
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    NodeOutputDesc output_desc{.payload = ActivationValue{}, .name = "out"};
+    auto result = graph.AddNode(OpType::kReorder,
+                                std::nullopt,
+                                {input0, input1},
+                                {std::move(output_desc)},
+                                ReorderParams{},
+                                {},
+                                "bad_reorder");
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
 }// namespace
 }// namespace aethermind

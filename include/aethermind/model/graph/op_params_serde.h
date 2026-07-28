@@ -20,6 +20,12 @@ AM_NODISCARD StatusOr<OpParams> ParseOpParams(std::string_view text);
 // by SerializeOpParams and DumpOpParams without duplication.
 void SerializeReshapeShape(const std::vector<ReshapeDim>& target_shape, std::ostream& os);
 
+// Serializes a Permute permutation to its canonical textual form, e.g.
+// `[2,0,1]`. Tokens are unsigned decimals joined with commas and no interior
+// whitespace. An empty vector emits `[]` (rank zero). Exposed so serde and
+// dump share the canonical spelling without duplication.
+void SerializePermutation(const std::vector<uint32_t>& permutation, std::ostream& os);
+
 }// namespace aethermind
 
 #endif

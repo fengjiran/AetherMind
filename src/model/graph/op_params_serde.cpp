@@ -77,7 +77,7 @@ StatusOr<FieldMap> ParseFields(std::istringstream& input) {
         // Reject duplicate field names — every op requires each field at most
         // once. unordered_map::emplace would silently drop the second occurrence
         // and mask the malformed input.
-        if (fields.find(name) != fields.end()) {
+        if (fields.contains(name)) {
             return Status::InvalidArgument("ParseOpParams: duplicate field '" + name + "'");
         }
         fields.emplace(std::move(name), std::move(value));
@@ -98,7 +98,8 @@ StatusOr<HfRopeScalingType> ParseRopeScalingField(const FieldMap& fields) {
     return scaling_type;
 }
 
-StatusOr<std::optional<double>> ParseOptionalDouble(const FieldMap& fields, std::string_view name) {
+StatusOr<std::optional<double>> ParseOptionalDouble(const FieldMap& fields,
+                                                    std::string_view name) {
     const auto it = fields.find(std::string(name));
     if (it == fields.end()) {
         return Status::InvalidArgument("ParseOpParams: missing optional double field");
@@ -151,6 +152,7 @@ StatusOr<ReshapeDim> ParseReshapeDimToken(std::string_view token) {
                         "ParseOpParams: non-digit in Reshape axis reference");
             }
         }
+
         // Parse as uint64_t first to detect overflow beyond uint32_t range.
         uint64_t axis_value = 0;
         const auto result = std::from_chars(
@@ -160,7 +162,8 @@ StatusOr<ReshapeDim> ParseReshapeDimToken(std::string_view token) {
         }
 
         if (axis_value > std::numeric_limits<uint32_t>::max()) {
-            return Status::InvalidArgument("ParseOpParams: Reshape axis reference overflow");
+            return Status::InvalidArgument(
+                    "ParseOpParams: Reshape axis reference overflow");
         }
         return ReshapeDim{ReshapeInputDim{.axis = static_cast<uint32_t>(axis_value)}};
     }
@@ -172,8 +175,11 @@ StatusOr<ReshapeDim> ParseReshapeDimToken(std::string_view token) {
             return Status::InvalidArgument("ParseOpParams: invalid Reshape literal dim");
         }
     }
+
     int64_t literal_value = 0;
-    const auto result = std::from_chars(token.data(), token.data() + token.size(), literal_value);
+    const auto result = std::from_chars(token.data(),
+                                        token.data() + token.size(),
+                                        literal_value);
     if (result.ec != std::errc{} || result.ptr != token.data() + token.size()) {
         return Status::InvalidArgument("ParseOpParams: invalid Reshape literal dim");
     }
@@ -217,6 +223,84 @@ StatusOr<std::vector<ReshapeDim>> ParseReshapeShape(std::string_view value) {
     return shape;
 }
 
+// Parses a single Permute axis token. Tokens must be a canonical unsigned
+// decimal that fits uint32_t: exactly "0" or a non-zero-leading sequence of
+// digits. Rejects empty tokens, signs, non-digits, leading zeros (except
+// "0" itself), and values above uint32_t::max().
+StatusOr<uint32_t> ParsePermuteAxisToken(std::string_view token) {
+    if (token.empty()) {
+        return Status::InvalidArgument("ParseOpParams: empty Permute axis token");
+    }
+
+    for (char c: token) {
+        if (c < '0' || c > '9') {
+            return Status::InvalidArgument(
+                    "ParseOpParams: non-digit in Permute axis");
+        }
+    }
+
+    // Reject non-canonical leading zeros except for the single digit "0".
+    if (token.size() > 1 && token[0] == '0') {
+        return Status::InvalidArgument(
+                "ParseOpParams: non-canonical leading zero in Permute axis");
+    }
+
+    // Parse as uint64_t first to detect overflow beyond uint32_t range.
+    uint64_t axis_value = 0;
+    const auto result = std::from_chars(
+            token.data(), token.data() + token.size(), axis_value);
+    if (result.ec != std::errc{} || result.ptr != token.data() + token.size()) {
+        return Status::InvalidArgument("ParseOpParams: invalid Permute axis");
+    }
+
+    if (axis_value > std::numeric_limits<uint32_t>::max()) {
+        return Status::InvalidArgument("ParseOpParams: Permute axis overflow");
+    }
+    return static_cast<uint32_t>(axis_value);
+}
+
+// Parses the canonical `permutation=[...]` field value into a vector of
+// uint32_t axis indexes. Rejects missing brackets, mismatched brackets,
+// leading/trailing/consecutive commas, empty tokens, signed/negative
+// values, non-digits, non-canonical leading zeros, and values above
+// uint32_t::max(). An empty interior `[]` is valid and yields an empty
+// vector (rank zero). Repeated axes (e.g. `[0,0]`) parse successfully;
+// bijection semantics are owned by InferPermute, not serde.
+StatusOr<std::vector<uint32_t>> ParsePermutation(std::string_view value) {
+    if (value.size() < 2 || value.front() != '[' || value.back() != ']') {
+        return Status::InvalidArgument(
+                "ParseOpParams: Permute permutation must be bracketed");
+    }
+
+    const std::string_view interior = value.substr(1, value.size() - 2);
+    std::vector<uint32_t> permutation;
+    if (interior.empty()) {
+        return permutation;
+    }
+
+    permutation.reserve(std::count(interior.begin(), interior.end(), ',') + 1);
+    std::string_view::size_type start = 0;
+    while (true) {
+        const auto end = interior.find(',', start);
+        const std::string_view token = interior.substr(
+                start,
+                end == std::string_view::npos ? std::string_view::npos : end - start);
+        if (token.empty()) {
+            return Status::InvalidArgument(
+                    "ParseOpParams: empty Permute axis token");
+        }
+
+        StatusOr<uint32_t> axis = ParsePermuteAxisToken(token);
+        AM_RETURN_IF_ERROR(axis.status());
+        permutation.push_back(*axis);
+        if (end == std::string_view::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return permutation;
+}
+
 }// namespace
 
 // Serializes a Reshape target_shape to its canonical textual form, e.g.
@@ -235,12 +319,28 @@ void SerializeReshapeShape(const std::vector<ReshapeDim>& target_shape, std::ost
         }
 
         first = false;
-        std::visit(overloaded{
-                           [&](const ReshapeLiteralDim& d) { os << d.value; },
-                           [&](const ReshapeInputDim& d) { os << '@' << d.axis; },
-                           [&](const ReshapeInferDim) { os << '*'; },
-                   },
-                   dim);
+        auto visitor = overloaded{
+                [&](const ReshapeLiteralDim& d) { os << d.value; },
+                [&](const ReshapeInputDim& d) { os << '@' << d.axis; },
+                [&](const ReshapeInferDim) { os << '*'; },
+        };
+        std::visit(visitor, dim);
+    }
+    os << ']';
+}
+
+// Serializes a Permute permutation to its canonical textual form, e.g.
+// `[2,0,1]`. Tokens are unsigned decimals joined with commas and no interior
+// whitespace. An empty vector emits `[]` (rank zero).
+void SerializePermutation(const std::vector<uint32_t>& permutation, std::ostream& os) {
+    os << '[';
+    bool first = true;
+    for (uint32_t axis: permutation) {
+        if (!first) {
+            os << ',';
+        }
+        first = false;
+        os << axis;
     }
     os << ']';
 }
@@ -262,6 +362,7 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
             [](const AttentionParams&) noexcept { return "Attention"; },
             [](const ArgmaxParams&) noexcept { return "Argmax"; },
             [](const ReshapeParams&) noexcept { return "Reshape"; },
+            [](const PermuteParams&) noexcept { return "Permute"; },
     };
     return std::visit(visitor, params);
 }
@@ -304,6 +405,10 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
             [&](const ReshapeParams& p) {
                 os << "Reshape shape=";
                 SerializeReshapeShape(p.target_shape, os);
+            },
+            [&](const PermuteParams& p) {
+                os << "Permute permutation=";
+                SerializePermutation(p.permutation, os);
             },
     };
     std::visit(visitor, params);
@@ -435,6 +540,18 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
         StatusOr<std::vector<ReshapeDim>> target_shape = ParseReshapeShape(it->second);
         AM_RETURN_IF_ERROR(target_shape.status());
         return OpParams{ReshapeParams{.target_shape = std::move(*target_shape)}};
+    }
+
+    if (kind == "Permute") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
+        const auto it = fields.find("permutation");
+        if (it == fields.end()) {
+            return Status::InvalidArgument(
+                    "ParseOpParams: missing permutation field");
+        }
+        StatusOr<std::vector<uint32_t>> permutation = ParsePermutation(it->second);
+        AM_RETURN_IF_ERROR(permutation.status());
+        return OpParams{PermuteParams{.permutation = std::move(*permutation)}};
     }
 
     return Status::InvalidArgument("ParseOpParams: unknown parameter kind");

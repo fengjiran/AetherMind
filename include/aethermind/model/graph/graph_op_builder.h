@@ -137,6 +137,17 @@ StatusOr<GraphValueId> AddReshape(ModelGraph& graph,
                                   std::vector<ReshapeDim> target_shape,
                                   std::string name = {});
 
+/// Builds a semantic Permute node. The output shape is derived entirely by
+/// InferPermute from `permutation` and the input spec; the caller must not
+/// supply an output spec. The input's QuantizationSpec is copied to the
+/// output value so model-level quantization (e.g. int8 activations) survives
+/// axis permutation. On failure the graph is left unchanged.
+StatusOr<GraphValueId> AddPermute(ModelGraph& graph,
+                                  std::optional<uint32_t> decoder_layer_index,
+                                  GraphValueId input,
+                                  std::vector<uint32_t> permutation,
+                                  std::string name = {});
+
 }// namespace aethermind
 
 #endif

@@ -269,6 +269,11 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
                 SerializeReshapeShape(p.target_shape, os);
                 os << '}';
             },
+            [&](const PermuteParams& p) {
+                os << "PermuteParams{permutation=";
+                SerializePermutation(p.permutation, os);
+                os << '}';
+            },
     };
     std::visit(visitor, params);
 }

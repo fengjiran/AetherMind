@@ -372,4 +372,30 @@ StatusOr<GraphValueId> AddReshape(ModelGraph& graph,
     return OnlyOneOutput(node);
 }
 
+StatusOr<GraphValueId> AddPermute(ModelGraph& graph,
+                                  std::optional<uint32_t> decoder_layer_index,
+                                  GraphValueId input,
+                                  std::vector<uint32_t> permutation,
+                                  std::string name) {
+    // Snapshot input quantization BEFORE graph mutation — AddNode may
+    // reallocate the graph's value storage and invalidate references into it.
+    const QuantizationSpec input_quantization = graph.GetValue(input).quantization;
+    // Build output desc first to avoid use-after-move: name would otherwise be
+    // captured by reference in NodeOutputDesc while std::move(name) is also a
+    // sibling argument to AddNode (unspecified evaluation order).
+    NodeOutputDesc output_desc{
+            .payload = ActivationValue{},
+            .quantization = input_quantization,
+            .name = name};
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kPermute,
+                                      decoder_layer_index,
+                                      {input},
+                                      {std::move(output_desc)},
+                                      PermuteParams{.permutation = std::move(permutation)},
+                                      {},
+                                      std::move(name)));
+    return OnlyOneOutput(node);
+}
+
 }// namespace aethermind

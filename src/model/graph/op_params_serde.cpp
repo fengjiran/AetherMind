@@ -363,6 +363,7 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
             [](const ArgmaxParams&) noexcept { return "Argmax"; },
             [](const ReshapeParams&) noexcept { return "Reshape"; },
             [](const PermuteParams&) noexcept { return "Permute"; },
+            [](const ReorderParams&) noexcept { return "Reorder"; },
     };
     return std::visit(visitor, params);
 }
@@ -410,6 +411,7 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                 os << "Permute permutation=";
                 SerializePermutation(p.permutation, os);
             },
+            [&](const ReorderParams&) { os << "Reorder"; },
     };
     std::visit(visitor, params);
     return Status::Ok();
@@ -552,6 +554,11 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
         StatusOr<std::vector<uint32_t>> permutation = ParsePermutation(it->second);
         AM_RETURN_IF_ERROR(permutation.status());
         return OpParams{PermuteParams{.permutation = std::move(*permutation)}};
+    }
+
+    if (kind == "Reorder") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
+        return OpParams{ReorderParams{}};
     }
 
     return Status::InvalidArgument("ParseOpParams: unknown parameter kind");

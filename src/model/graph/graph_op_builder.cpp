@@ -416,4 +416,30 @@ StatusOr<GraphValueId> AddPermute(ModelGraph& graph,
     return OnlyOneOutput(node);
 }
 
+StatusOr<GraphValueId> AddReorder(ModelGraph& graph,
+                                  std::optional<uint32_t> decoder_layer_index,
+                                  GraphValueId input,
+                                  std::string name) {
+    const std::span<const GraphValue> values = graph.GetValues();
+    if (input.index >= values.size()) {
+        return Status::InvalidArgument(
+                "AddReorder: input GraphValueId is out of range");
+    }
+
+    const QuantizationSpec input_quantization = graph.GetValue(input).quantization;
+    NodeOutputDesc output_desc{
+            .payload = ActivationValue{},
+            .quantization = input_quantization,
+            .name = name};
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kReorder,
+                                      decoder_layer_index,
+                                      {input},
+                                      {std::move(output_desc)},
+                                      ReorderParams{},
+                                      {},
+                                      std::move(name)));
+    return OnlyOneOutput(node);
+}
+
 }// namespace aethermind

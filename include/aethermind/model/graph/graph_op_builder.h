@@ -148,6 +148,16 @@ StatusOr<GraphValueId> AddPermute(ModelGraph& graph,
                                   std::vector<uint32_t> permutation,
                                   std::string name = {});
 
+/// Builds a semantic Reorder node. The output TensorSpec is an exact copy of
+/// the input (dtype, shape, symbol identity); the operator records a fixed
+/// physical destination intent — canonical row-major contiguous storage —
+/// without exposing a target-format field. The input's QuantizationSpec is
+/// copied to the output value. On failure the graph is left unchanged.
+StatusOr<GraphValueId> AddReorder(ModelGraph& graph,
+                                  std::optional<uint32_t> decoder_layer_index,
+                                  GraphValueId input,
+                                  std::string name = {});
+
 }// namespace aethermind
 
 #endif

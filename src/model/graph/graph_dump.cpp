@@ -274,6 +274,9 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
                 SerializePermutation(p.permutation, os);
                 os << '}';
             },
+            [&](const ReorderParams&) {
+                DumpEmptyParams("ReorderParams", os);
+            },
     };
     std::visit(visitor, params);
 }

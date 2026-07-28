@@ -174,4 +174,56 @@ TEST(PermuteInference, EmitsNoConstraints) {
     EXPECT_TRUE(result->runtime_checks.empty());
 }
 
+TEST(PermuteInference, RepeatedInferenceProducesIdenticalOutputAndChecks) {
+    // Plan acceptance criterion (line 99): "repeated inference producing
+    // identical output/check data". --gtest_repeat=100 is NOT equivalent:
+    // it re-runs the same assertions, but does not directly compare two
+    // separate InferenceResult objects. This test calls InferOperator twice
+    // with the same inputs and params, then directly compares outputs
+    // (TensorSpec::operator==) and runtime_checks (both must be empty).
+    PermuteParams params;
+    params.permutation = {2, 0, 1};
+
+    // Static-shape case: two invocations must produce identical TensorSpec.
+    {
+        const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2, 3, 4})};
+        const auto result1 = InferOperator(OpType::kPermute, params, inputs);
+        const auto result2 = InferOperator(OpType::kPermute, params, inputs);
+        ASSERT_TRUE(result1.ok()) << result1.status().ToString();
+        ASSERT_TRUE(result2.ok()) << result2.status().ToString();
+
+        ASSERT_EQ(result1->outputs.size(), result2->outputs.size());
+        ASSERT_EQ(result1->outputs.size(), 1U);
+        // Direct TensorSpec comparison: dtype + SymbolicShape (which compares
+        // the underlying ShapeSymbol vector via operator<=>).
+        EXPECT_EQ(result1->outputs[0], result2->outputs[0]);
+
+        ASSERT_EQ(result1->runtime_checks.size(), result2->runtime_checks.size());
+        EXPECT_EQ(result1->runtime_checks.size(), 0U);
+    }
+
+    // Symbolic-shape case: two invocations with the SAME symbolic input must
+    // produce outputs whose ShapeSymbols are the same identity (same object),
+    // not just structurally equal. This verifies that InferPermute copies
+    // input.shape[permutation[j]] by reference, not by value.
+    {
+        const std::vector<TensorSpec> inputs = {MakeSymbolicSpec(DataType::Float32(), 3)};
+        const auto result1 = InferOperator(OpType::kPermute, params, inputs);
+        const auto result2 = InferOperator(OpType::kPermute, params, inputs);
+        ASSERT_TRUE(result1.ok()) << result1.status().ToString();
+        ASSERT_TRUE(result2.ok()) << result2.status().ToString();
+
+        ASSERT_EQ(result1->outputs.size(), 1U);
+        ASSERT_EQ(result2->outputs.size(), 1U);
+        // Symbol identity: output[j] from both invocations must be the same
+        // ShapeSymbol object (operator== on ShapeSymbol compares identity).
+        EXPECT_EQ(result1->outputs[0].shape[0], result2->outputs[0].shape[0]);
+        EXPECT_EQ(result1->outputs[0].shape[1], result2->outputs[0].shape[1]);
+        EXPECT_EQ(result1->outputs[0].shape[2], result2->outputs[0].shape[2]);
+
+        EXPECT_EQ(result1->runtime_checks.size(), 0U);
+        EXPECT_EQ(result2->runtime_checks.size(), 0U);
+    }
+}
+
 }// namespace

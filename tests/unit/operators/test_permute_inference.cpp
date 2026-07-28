@@ -1,21 +1,11 @@
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_inference.h"
-#include "test_operator_semantics_helpers.h"
+#include "test_operator_inference_helpers.h"
 
 #include <gtest/gtest.h>
 
 namespace {
 using namespace aethermind;
-
-// Builds a TensorSpec with the given dtype, rank, and fresh symbolic dims.
-TensorSpec MakeSymbolicSpec(DataType dtype, size_t rank) {
-    std::vector<ShapeSymbol> symbols;
-    symbols.reserve(rank);
-    for (size_t i = 0; i < rank; ++i) {
-        symbols.push_back(ShapeSymbol::Create());
-    }
-    return {dtype, SymbolicShape(symbols)};
-}
 
 // --- Permute validation precedence ---
 

@@ -1,6 +1,6 @@
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_inference.h"
-#include "test_operator_semantics_helpers.h"
+#include "test_operator_inference_helpers.h"
 
 #include <gtest/gtest.h>
 #include <vector>

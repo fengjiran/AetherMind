@@ -134,7 +134,7 @@ Phase 1 不引入完整深度学习框架式 Tensor 系统，但必须冻结最�
 - Argmax
 
 
-> **实现状态更新 (v3.0)**：算子输入验证、dtype/rank 校验和输出 shape 推导已从前端迁移到集中式语义分析层（InferOperator），位于 include/aethermind/operators/operator_inference.h。Variant 校验和参数范围验证（如 RmsNorm eps、RoPE dimensions/theta）在对应的 detail::Infer* 函数开头执行，InferOperator 是唯一的公共入口。本契约文档继续冻结 kernel 执行签名，而前端语义分析（包括全部 13 个 Phase-1 OpType）由独立的语义分析器负责。
+> **实现状态更新 (v3.0)**：算子输入验证、dtype/rank 校验和输出 shape 推导已从前端迁移到集中式语义分析层（InferOperator），位于 include/aethermind/operators/operator_inference.h。Variant 校验和参数范围验证（如 RmsNorm eps、RoPE dimensions/theta）在对应的 detail::Infer* 函数开头执行，InferOperator 是唯一的公共入口。本契约文档继续冻结 kernel 执行签名，而前端语义分析（覆盖当前已定义的全部 Phase-1 OpType）由独立的语义分析器负责；OpType 数量随 Phase-1 演进持续增长，本契约以 OpType 集合本身为权威，不再以任何固定计数为准。
 
 ### 5.3 每个算子至少应明确
 

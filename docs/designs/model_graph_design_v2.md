@@ -61,7 +61,7 @@ ExecutionPlan / ExecutionStep
 
 ### 3.1 属于 ModelGraph
 
-- 语义算子：`Embedding`、`RMSNorm`、`Linear`、`RoPE`、`MatMul`、`Softmax`、`Add`、`SiluMul`、`Argmax`、`Reshape` 等；
+- 语义算子：`Embedding`、`RMSNorm`、`Linear`、`RoPE`、`MatMul`、`Softmax`、`Add`、`SiluMul`、`Argmax`、`Reshape`、`Permute` 等；
 - 数据流 use-def：node inputs / outputs、producer，以及按需从 node inputs 派生的 consumers 索引；
 - 逻辑 tensor/value 类型：dtype、rank、symbolic shape、dynamic shape 约束；
 - value role：model input、activation、weight、constant、state / resource；
@@ -939,6 +939,52 @@ KV cache state 建模规则：
 **dtype / quantization 保留**：`AddReshape` helper 将输入的 `QuantizationSpec` 复制到输出 value descriptor；dtype 不限制为算术子集。
 
 **当前能力边界（语义专用）**：图可以构造、推断、校验、dump、rewrite Reshape，但**不存在可执行 lowering**——没有 `ReshapeOp` 类、`AM_REGISTER_OPERATOR`、kernel、`AM_REGISTER_KERNEL`、alias / view legality、materialization、stride propagation、workspace 或 constant evaluator。语义合法性与判定与未来 view / materialization 的物理合法性是两件事。
+
+### 13.2 Permute 语义与执行边界
+
+`Permute` 是 ModelGraph 中的语义算子：按显式 `permutation` 重排输入张量的轴顺序，保留 dtype、轴数量与每个轴的 `ShapeSymbol` 身份，但**不保留 row-major 逻辑线性元素顺序**（这与 `Reshape` 不同：`Reshape` 保留 row-major linear order，而 `Permute` 通常会改变它）。等价于 NumPy `numpy.transpose`、PyTorch `torch.permute`、ONNX `Transpose`（无 `perm` 默认反转轴的语义在这里不适用——AetherMind 强制要求显式 `permutation`）。
+
+**强类型参数**：`PermuteParams{std::vector<uint32_t> permutation}`。
+
+- `permutation[j]` 是**输出轴 `j` 对应的输入轴索引**（零基、非负、canonical）。
+- `permutation.size()` 即输出 rank；空 vector 表示 rank zero（标量上的恒等）。
+- 不使用 ONNX 反转默认、不使用负轴归一化、不使用 importer 特定约定；轴索引必须显式、canonical、非负。
+
+**形状方程**（由 `InferPermute` 强制）：
+
+```
+output.shape[j] = input.shape[permutation[j]]   对 0 <= j < permutation.size()
+```
+
+例：`input.shape = [2,3,4]`，`permutation = [2,0,1]` ⇒ `output.shape = [input.shape[2], input.shape[0], input.shape[1]] = [4,2,3]`。
+
+**坐标方程**（语义参考，不进入 IR）：
+
+对于输出坐标 `o = (o_0, ..., o_{r-1})`，对应的输入坐标 `i` 满足 `i[permutation[j]] = o_j` 对所有 `0 <= j < r`。
+
+**双射规则**（由 `InferPermute` 强制，而非类型系统）：
+
+- `permutation` 必须是 `[0, input_rank)` 上的**完整双射**：每个输入轴恰好出现一次。
+- 重复轴（如 `[0,0]`）非法——与 `Reshape` 不同，`Reshape` 允许同一输入轴多次出现在 `target_shape`，但 `Permute` 必须是双射。
+- 缺失轴非法。
+- `permutation.size()` 必须 == 输入 rank。
+- `permutation[k]` 必须 < 输入 rank。
+- 输入必须 ranked（unranked 拒绝）。
+- 验证优先级：先 `PermuteParams` 变体检查，再扫描重复轴（即使 arity 也错时重复轴优先报告），再 arity/rank/长度/范围检查。
+
+**恒等与边界情形**：
+
+- rank zero（`permutation = []`）合法，是标量上的恒等。
+- rank one（`permutation = [0]`）合法，是恒等。
+- 任意 `permutation = [0,1,...,r-1]` 是恒等。
+- 静态 `[2,3,4]` 与 `[2,0,1]` 产生 `[4,2,3]`。
+- 符号维度 `[A,B,C]` 与 `[2,0,1]` 产生 `[C,A,B]`，且输出第 0 轴的 `ShapeSymbol` 与输入第 2 轴的 `ShapeSymbol` 是同一对象（身份保留），用于后续约束求解。
+
+**dtype / quantization 保留**：`AddPermute` helper 将输入的 `QuantizationSpec` 复制到输出 value descriptor；dtype 不限制为算术子集；输出 dtype == 输入 dtype。`runtime_checks` 向量为空（语义静态完整可判定，无需 deferred 约束）。
+
+**不 emit 约束**：`InferPermute` 不构造 `VolumeEqualConstraint` 或任何 `ShapeConstraint`——双射性保证输入输出体积自动相等，无需运行时检查；也不构造 unknown symbol、不修改 solver 状态。
+
+**当前能力边界（语义专用）**：图可以构造、推断、校验、dump `Permute`，但**不存在可执行 lowering**——没有 `PermuteOp` 类、`AM_REGISTER_OPERATOR`、kernel、`AM_REGISTER_KERNEL`、alias / view legality、materialization、stride propagation、workspace、constant evaluator 或 importer 默认行为。语义合法性与未来物理 view / materialization 合法性是两件事：未来若添加 `PermuteOp`，仍须独立验证 stride / contiguity / alias 合法性，本节语义契约不构成对物理执行的承诺。
 
 ## 14. Shape 与动态维度
 

@@ -536,6 +536,9 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateAcrossDecoderLayerStateFamilies) {
     const GraphValueId layer0_v_cache = graph.AddState(
             ActivationSpec(), VStateBinding(0U), "layer0_v_cache");
 
+    const size_t node_count_before = graph.GetNodes().size();
+    const size_t value_count_before = graph.GetValues().size();
+
     const auto result = TryAddNode(
             graph,
             OpType::kKVCacheUpdate,
@@ -547,6 +550,8 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateAcrossDecoderLayerStateFamilies) {
 
     EXPECT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.GetNodes().size(), node_count_before);
+    EXPECT_EQ(graph.GetValues().size(), value_count_before);
 }
 
 TEST(ModelGraph, ValidateRejectsKVCacheUpdateKStateFamilyMismatch) {
@@ -1204,6 +1209,9 @@ TEST(ModelGraphSemanticValidation, AddNodeRejectsBadDtype) {
              .decoder_layer_index = 0U,
              .semantic_role = TransformerWeightRole::kInputNorm});
 
+    const size_t node_count_before = graph.GetNodes().size();
+    const size_t value_count_before = graph.GetValues().size();
+
     const auto result = graph.AddNode(
             OpType::kRmsNorm,
             0U,
@@ -1215,6 +1223,8 @@ TEST(ModelGraphSemanticValidation, AddNodeRejectsBadDtype) {
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
     const std::string msg = result.status().ToString();
     EXPECT_NE(msg.find("RmsNorm"), std::string::npos);
+    EXPECT_EQ(graph.GetNodes().size(), node_count_before);
+    EXPECT_EQ(graph.GetValues().size(), value_count_before);
 }
 
 TEST(ModelGraphSemanticValidation, AddNodePreservesDebugName) {
@@ -1434,6 +1444,9 @@ TEST(ModelGraphSemanticValidation, AddNodeErrorsContainOpContext) {
             {.slot = ParameterSlot::kScale,
              .semantic_role = TransformerWeightRole::kInputNorm});
 
+    const size_t node_count_before = graph.GetNodes().size();
+    const size_t value_count_before = graph.GetValues().size();
+
     const auto result = graph.AddNode(
             OpType::kRmsNorm,
             0U,
@@ -1445,6 +1458,8 @@ TEST(ModelGraphSemanticValidation, AddNodeErrorsContainOpContext) {
     const std::string msg = result.status().ToString();
     EXPECT_NE(msg.find("RmsNorm"), std::string::npos);
     EXPECT_NE(msg.find("node 0"), std::string::npos);
+    EXPECT_EQ(graph.GetNodes().size(), node_count_before);
+    EXPECT_EQ(graph.GetValues().size(), value_count_before);
 }
 
 TEST(ModelGraphSemanticValidation, AddNodeErrorIncludesInputPortName) {
@@ -1457,6 +1472,9 @@ TEST(ModelGraphSemanticValidation, AddNodeErrorIncludesInputPortName) {
              .decoder_layer_index = 0U,
              .semantic_role = TransformerWeightRole::kAttentionK});
 
+    const size_t node_count_before = graph.GetNodes().size();
+    const size_t value_count_before = graph.GetValues().size();
+
     const auto result = graph.AddNode(
             OpType::kRmsNorm,
             0U,
@@ -1467,6 +1485,8 @@ TEST(ModelGraphSemanticValidation, AddNodeErrorIncludesInputPortName) {
     const std::string msg = result.status().ToString();
     EXPECT_NE(msg.find("input[1]"), std::string::npos);
     EXPECT_NE(msg.find("weight slot mismatch"), std::string::npos);
+    EXPECT_EQ(graph.GetNodes().size(), node_count_before);
+    EXPECT_EQ(graph.GetValues().size(), value_count_before);
 }
 
 TEST(ModelGraphSemanticValidation, AddNodeErrorIncludesOutputPortName) {

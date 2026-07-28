@@ -2,6 +2,7 @@
 #include "aethermind/operators/operator_inference.h"
 
 #include <deque>
+#include <type_traits>
 
 namespace aethermind {
 namespace {
@@ -45,7 +46,7 @@ const KVCacheStateBinding* AsKVCacheBinding(const StateBinding& binding) noexcep
     return std::get_if<KVCacheStateBinding>(&binding);
 }
 
-Status ValidateStateBinding(const StateBinding& binding) {
+Status ValidateStateBindingSelfConsistency(const StateBinding& binding) {
     if (const auto* kv_cache = AsKVCacheBinding(binding); kv_cache != nullptr) {
         switch (kv_cache->slot) {
             case KVCacheSlot::kKey:
@@ -70,7 +71,8 @@ bool SameStateCollection(const StateBinding& lhs, const StateBinding& rhs) {
     return lhs_kv_cache->decoder_layer_index == rhs_kv_cache->decoder_layer_index;
 }
 
-Status RequireStateCollection(const StateBinding& lhs, const StateBinding& rhs, const char* message) {
+Status RequireStateCollection(const StateBinding& lhs, const StateBinding& rhs,
+                              const char* message) {
     if (!SameStateCollection(lhs, rhs)) {
         return Status::InvalidArgument(message);
     }
@@ -170,12 +172,13 @@ Status ValidateWeightBindingSelfConsistency(const WeightBinding& binding) {
 // covers KVCacheUpdate output state bindings (family, slot, layer).
 // output_state_bindings is one entry per output port; ports that are not
 // State ports should pass nullopt for position-based alignment.
-Status ValidateNodeStateBindings(OpType op_type,
-                                 std::optional<uint32_t> decoder_layer_index,
-                                 const OperatorSchema& schema,
-                                 std::span<const GraphValue> values,
-                                 std::span<const GraphValueId> node_inputs,
-                                 std::span<const std::optional<StateBinding>> output_state_bindings) {
+Status ValidateStateBindingsForNode(
+        OpType op_type,
+        std::optional<uint32_t> decoder_layer_index,
+        const OperatorSchema& schema,
+        std::span<const GraphValue> values,
+        std::span<const GraphValueId> node_inputs,
+        std::span<const std::optional<StateBinding>> output_state_bindings) {
     if (op_type == OpType::kKVCacheUpdate) {
         auto port_or = FindInputPortIndex(schema, kv_cache_ports::kCacheIn);
         AM_RETURN_IF_ERROR(port_or.status());
@@ -308,7 +311,7 @@ Status ValidateValueSelfConsistency(const GraphValue& value,
 
     if (std::holds_alternative<StateValue>(value.payload)) {
         const StateBinding& binding = std::get<StateValue>(value.payload).binding;
-        AM_RETURN_IF_ERROR(ValidateStateBinding(binding));
+        AM_RETURN_IF_ERROR(ValidateStateBindingSelfConsistency(binding));
 
         if (value.producer.has_value()) {
             if (!IsValidNodeId(*value.producer, nodes)) {
@@ -345,23 +348,204 @@ Status ValidateValueSelfConsistency(const GraphValue& value,
     return Status::Ok();
 }
 
-// Validates operator-specific state-binding invariants for nodes that
-// carry state I/O (currently KVCacheUpdate and Attention). For other
-// op types this is a no-op. Caller is responsible for collecting
-// `output_state_bindings` (one entry per output port; nullopt for non-state ports).
-Status ValidateStateBindingsForNode(
-        OpType op_type,
-        std::optional<uint32_t> decoder_layer_index,
-        const OperatorSchema& schema,
-        std::span<const GraphValue> values,
-        std::span<const GraphValueId> node_inputs,
-        std::span<const std::optional<StateBinding>> output_state_bindings) {
-    if (op_type != OpType::kKVCacheUpdate && op_type != OpType::kAttention) {
-        return Status::Ok();
+// Validates port-level invariants for ModelGraph::AddNode:
+//   1. Input arity vs schema.input_ports.
+//   2. Output arity vs schema.output_ports.
+//   3. Per-input value-id validity and payload-kind match (PayloadMatchesPort).
+//   4. Per-output payload normalization (monostate -> ActivationValue) and
+//      payload-kind match.
+// Returns a detail-only Status (no node-N prefix); AddNode wraps it once.
+Status ValidateAddNodePorts(const OperatorSchema& schema,
+                            std::span<const GraphValue> values,
+                            std::span<const GraphValueId> inputs,
+                            std::span<const NodeOutputDesc> outputs_desc) {
+    if (inputs.size() != schema.input_ports.size()) {
+        return Status::InvalidArgument(
+                "input count " + std::to_string(inputs.size()) +
+                " != schema " + std::to_string(schema.input_ports.size()));
     }
-    return ValidateNodeStateBindings(op_type, decoder_layer_index, schema,
-                                     values, node_inputs, output_state_bindings);
+
+    if (outputs_desc.size() != schema.output_ports.size()) {
+        return Status::InvalidArgument(
+                "output count " + std::to_string(outputs_desc.size()) +
+                " != schema " + std::to_string(schema.output_ports.size()));
+    }
+
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        if (!IsValidValueId(inputs[i], values)) {
+            return Status::InvalidArgument(
+                    "input[" + std::to_string(i) + "] " +
+                    (i < schema.input_ports.size() ? schema.input_ports[i].name : "<?>") +
+                    " invalid value id");
+        }
+
+        if (!PayloadMatchesPort(values[inputs[i].index].payload, schema.input_ports[i].kind)) {
+            return Status::InvalidArgument(
+                    "input[" + std::to_string(i) + "] " +
+                    schema.input_ports[i].name + " payload kind mismatch");
+        }
+    }
+
+    for (size_t i = 0; i < outputs_desc.size(); ++i) {
+        auto normalized =
+                std::holds_alternative<std::monostate>(outputs_desc[i].payload)
+                        ? GraphValuePayload{ActivationValue{}}
+                        : outputs_desc[i].payload;
+        if (!PayloadMatchesPort(normalized, schema.output_ports[i].kind)) {
+            return Status::InvalidArgument(
+                    "output[" + std::to_string(i) + "] " +
+                    schema.output_ports[i].name + " payload kind mismatch");
+        }
+    }
+    return Status::Ok();
 }
+
+// Validates weight/state binding invariants for ModelGraph::AddNode:
+//   1. Weight binding self-consistency and slot match against
+//      ExpectedWeightSlotForOp (computed once per node, outside the input loop).
+//   2. Per-input state binding validity (ValidateStateBinding).
+//   3. Op-specific state-binding invariants for KVCacheUpdate/Attention
+//      (ValidateNodeStateBindings). Output state bindings are extracted
+//      from outputs_desc before the call.
+// Returns a detail-only Status (no node-N prefix); AddNode wraps it once.
+Status ValidateAddNodeBindings(OpType op_type,
+                               std::optional<uint32_t> decoder_layer_index,
+                               const OperatorSchema& schema,
+                               std::span<const GraphValue> values,
+                               std::span<const GraphValueId> inputs,
+                               std::span<const NodeOutputDesc> outputs_desc) {
+    const auto expected_weight_slot = ExpectedWeightSlotForOp(op_type);
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        if (schema.input_ports[i].kind == OperatorPortKind::kWeight) {
+            const auto& binding = std::get<WeightValue>(values[inputs[i].index].payload).binding;
+            if (auto status = ValidateWeightBindingSelfConsistency(binding); !status.ok()) {
+                return Status::InvalidArgument(
+                        "input[" + std::to_string(i) + "] " +
+                        schema.input_ports[i].name + " weight: " + status.message());
+            }
+
+            if (expected_weight_slot.has_value() && binding.slot != *expected_weight_slot) {
+                return Status::InvalidArgument(
+                        "input[" + std::to_string(i) + "] " +
+                        schema.input_ports[i].name + " weight slot mismatch");
+            }
+        }
+
+        if (schema.input_ports[i].kind == OperatorPortKind::kState) {
+            const auto& binding =
+                    std::get<StateValue>(values[inputs[i].index].payload).binding;
+            if (auto status = ValidateStateBindingSelfConsistency(binding); !status.ok()) {
+                return Status::InvalidArgument(
+                        "input[" + std::to_string(i) + "] " +
+                        schema.input_ports[i].name + " state: " + status.message());
+            }
+        }
+    }
+
+    // Validate state-binding consistency for ops with state I/O
+    // (KVCacheUpdate / Attention slot/family/layer rules).
+    // Output state bindings are extracted from outputs_desc before
+    // output values are materialized.
+    std::vector<std::optional<StateBinding>> output_bindings;
+    output_bindings.reserve(outputs_desc.size());
+    for (const auto& desc: outputs_desc) {
+        if (const auto* sv = std::get_if<StateValue>(&desc.payload)) {
+            output_bindings.emplace_back(sv->binding);
+        } else {
+            output_bindings.emplace_back(std::nullopt);
+        }
+    }
+    return ValidateStateBindingsForNode(op_type, decoder_layer_index, schema,
+                                        values, inputs, output_bindings);
+}
+
+// Runs operator semantic inference for ModelGraph::AddNode:
+//   1. Collect authoritative input specs from values[id.index].spec.
+//   2. Call InferOperator.
+//   3. Verify inferred output count matches schema.output_ports.size().
+// Returns the owned InferenceResult by value. On failure, returns a
+// detail-only Status whose message begins with "InferOperator: " (no node-N
+// prefix); AddNode wraps it once with get_msg.
+StatusOr<InferenceResult> InferAddNodeOutputs(OpType op_type,
+                                              const OpParams& op_params,
+                                              const OperatorSchema& schema,
+                                              std::span<const GraphValue> values,
+                                              std::span<const GraphValueId> inputs) {
+    std::vector<TensorSpec> all_input_specs;
+    all_input_specs.reserve(inputs.size());
+    for (const auto& id: inputs) {
+        all_input_specs.emplace_back(values[id.index].spec);
+    }
+
+    auto inference_or = InferOperator(op_type, op_params, all_input_specs);
+    if (!inference_or.ok()) {
+        return Status::InvalidArgument("InferOperator: " +
+                                       inference_or.status().message());
+    }
+
+    auto& inference = *inference_or;
+    if (inference.outputs.size() != schema.output_ports.size()) {
+        return Status::InvalidArgument(
+                "InferOperator inferred " + std::to_string(inference.outputs.size()) +
+                " outputs, schema expects " + std::to_string(schema.output_ports.size()));
+    }
+    return std::move(inference);
+}
+
+// Staged outputs for a single AddNode call, prepared without touching
+// values_/nodes_. The commit step (reserve + nothrow move) consumes these.
+struct StagedNodeOutputs {
+    std::vector<GraphValueId> output_ids;
+    std::vector<GraphValue> values;
+};
+
+// Prepares output value ids and staged GraphValue objects for AddNode
+// without mutating values_/nodes_. Performs:
+//   1. Output id arithmetic (base_value_idx + i) with AM_CHECK on overflow.
+//   2. monostate -> ActivationValue payload normalization.
+//   3. Copies inferred spec, producer (node_id), quantization from outputs_desc.
+//   4. Moves outputs_desc[i].name into the staged value.
+// node_id, base_value_idx, and inferred_outputs are pre-computed by the caller
+// so this function touches only local storage.
+StagedNodeOutputs StageAddNodeOutputs(
+        GraphNodeId node_id,
+        uint32_t base_value_idx,
+        std::vector<NodeOutputDesc> outputs_desc,
+        std::span<const TensorSpec> inferred_outputs) {
+    StagedNodeOutputs result;
+
+    result.output_ids.reserve(outputs_desc.size());
+    for (size_t i = 0; i < outputs_desc.size(); ++i) {
+        uint64_t idx64 = static_cast<uint64_t>(base_value_idx) + i;
+        AM_CHECK(idx64 < std::numeric_limits<uint32_t>::max(),
+                 "Graph value id space exhausted");
+        result.output_ids.push_back(GraphValueId{static_cast<uint32_t>(idx64)});
+    }
+
+    result.values.reserve(outputs_desc.size());
+    for (size_t i = 0; i < outputs_desc.size(); ++i) {
+        auto payload =
+                std::holds_alternative<std::monostate>(outputs_desc[i].payload)
+                        ? GraphValuePayload{ActivationValue{}}
+                        : outputs_desc[i].payload;
+        result.values.emplace_back(std::move(payload),
+                                   inferred_outputs[i],
+                                   node_id,
+                                   outputs_desc[i].quantization,
+                                   std::move(outputs_desc[i].name));
+    }
+    return result;
+}
+
+// Commit safety: AddNode relies on nothrow move to guarantee that the final
+// reserve + push_back sequence cannot leave the graph partially committed
+// if a move constructor throws.
+static_assert(std::is_nothrow_move_constructible_v<GraphValue>);
+static_assert(std::is_nothrow_move_assignable_v<GraphValue>);
+static_assert(std::is_nothrow_move_constructible_v<GraphNode>);
+static_assert(std::is_nothrow_move_assignable_v<GraphNode>);
+static_assert(std::is_nothrow_move_constructible_v<AddedNode>);
+static_assert(std::is_nothrow_move_assignable_v<AddedNode>);
 
 }// namespace
 
@@ -409,22 +593,26 @@ GraphValueId ModelGraph::AddState(TensorSpec spec, StateBinding binding, std::st
 // stored metadata) are NOT checked here; they are the responsibility of
 // ValidateAndTopologicalOrder.
 //
-// Validation flow (all checks complete before any mutation, so a failed
-// AddNode leaves the graph unchanged):
+// Orchestration flow. Each phase completes before the next begins, and no
+// values_/nodes_ mutation occurs until the final commit. A returned-Status
+// failure at any validation or inference phase therefore leaves the graph
+// unchanged. The commit phase preconstructs the complete GraphNode and
+// AddedNode locally, then reserves both containers and commits only through
+// compiler-enforced nothrow moves (see static_asserts above), giving the
+// commit a logical no-throw exception guarantee.
+//
 //   1. Schema lookup and attrs rejection (typed op_params only).
-//   2. Input/output arity vs schema.
-//   3. Input value-id validity and payload-kind match (PayloadMatchesPort).
-//   4. Output payload normalization (monostate -> ActivationValue) and
-//      payload-kind match.
-//   5. Weight binding self-consistency and slot match against
-//      ExpectedWeightSlotForOp (computed once per node, outside the input loop).
-//   6. Per-input state binding validity (ValidateStateBinding).
-//   7. Op-specific state-binding invariants for KVCacheUpdate/Attention
-//      (ValidateStateBindingsForNode).
-//   8. InferOperator to derive output specs and runtime_checks.
-//   9. Staging: prepare output GraphValues and the GraphNode without
+//   2. ValidateAddNodePorts: input/output arity, input value-id validity,
+//      payload-kind match, output payload normalization/match.
+//   3. ValidateAddNodeBindings: weight self-consistency/slot, state binding
+//      validity, and op-specific state-binding invariants
+//      (ValidateNodeStateBindings).
+//   4. InferAddNodeOutputs: InferOperator to derive output specs and
+//      runtime_checks.
+//   5. StageAddNodeOutputs: prepare output GraphValues and value ids without
 //      touching values_/nodes_.
-//  10. Commit: reserve then batch-push staged values and the node.
+//   6. Preconstruct local GraphNode and AddedNode, then reserve + nothrow
+//      move commit into values_/nodes_.
 StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
                                         std::optional<uint32_t> decoder_layer_index,
                                         std::vector<GraphValueId> inputs,
@@ -448,157 +636,56 @@ StatusOr<AddedNode> ModelGraph::AddNode(OpType op_type,
     }
 
     const auto& schema = *schema_or;
-    if (inputs.size() != schema.input_ports.size()) {
-        return Status::InvalidArgument(get_msg(
-                "input count " + std::to_string(inputs.size()) +
-                " != schema " + std::to_string(schema.input_ports.size())));
+    if (auto status = ValidateAddNodePorts(schema, values_, inputs, outputs_desc);
+        !status.ok()) {
+        return Status::InvalidArgument(get_msg(status.message()));
     }
 
-    if (outputs_desc.size() != schema.output_ports.size()) {
-        return Status::InvalidArgument(get_msg(
-                "output count " + std::to_string(outputs_desc.size()) +
-                " != schema " + std::to_string(schema.output_ports.size())));
+    if (auto status = ValidateAddNodeBindings(op_type, decoder_layer_index, schema,
+                                              values_, inputs, outputs_desc);
+        !status.ok()) {
+        return Status::InvalidArgument(get_msg(status.message()));
     }
 
-    for (size_t i = 0; i < inputs.size(); ++i) {
-        if (!IsValidValueId(inputs[i], values_)) {
-            return Status::InvalidArgument(get_msg(
-                    "input[" + std::to_string(i) + "] " +
-                    (i < schema.input_ports.size() ? schema.input_ports[i].name : "<?>") +
-                    " invalid value id"));
-        }
-
-        if (!PayloadMatchesPort(values_[inputs[i].index].payload, schema.input_ports[i].kind)) {
-            return Status::InvalidArgument(get_msg(
-                    "input[" + std::to_string(i) + "] " +
-                    schema.input_ports[i].name + " payload kind mismatch"));
-        }
-    }
-
-    for (size_t i = 0; i < outputs_desc.size(); ++i) {
-        auto normalized =
-                std::holds_alternative<std::monostate>(outputs_desc[i].payload)
-                        ? GraphValuePayload{ActivationValue{}}
-                        : outputs_desc[i].payload;
-        if (!PayloadMatchesPort(normalized, schema.output_ports[i].kind)) {
-            return Status::InvalidArgument(get_msg(
-                    "output[" + std::to_string(i) + "] " +
-                    schema.output_ports[i].name + " payload kind mismatch"));
-        }
-    }
-
-    const auto expected_weight_slot = ExpectedWeightSlotForOp(op_type);
-    for (size_t i = 0; i < inputs.size(); ++i) {
-        if (schema.input_ports[i].kind == OperatorPortKind::kWeight) {
-            const auto& binding = std::get<WeightValue>(values_[inputs[i].index].payload).binding;
-            if (auto status = ValidateWeightBindingSelfConsistency(binding); !status.ok()) {
-                return Status::InvalidArgument(get_msg(
-                        "input[" + std::to_string(i) + "] " +
-                        schema.input_ports[i].name + " weight: " + status.message()));
-            }
-
-            if (expected_weight_slot.has_value() && binding.slot != *expected_weight_slot) {
-                return Status::InvalidArgument(get_msg(
-                        "input[" + std::to_string(i) + "] " +
-                        schema.input_ports[i].name + " weight slot mismatch"));
-            }
-        }
-
-        if (schema.input_ports[i].kind == OperatorPortKind::kState) {
-            const auto& binding = std::get<StateValue>(
-                                          values_[inputs[i].index].payload)
-                                          .binding;
-            if (auto status = ValidateStateBinding(binding); !status.ok()) {
-                return Status::InvalidArgument(get_msg(
-                        "input[" + std::to_string(i) + "] " +
-                        schema.input_ports[i].name + " state: " + status.message()));
-            }
-        }
-    }
-
-    // Validate state-binding consistency for ops with state I/O
-    // (KVCacheUpdate / Attention slot/family/layer rules).
-    // Output state bindings are extracted from outputs_desc before
-    // output values are materialized.
-    {
-        std::vector<std::optional<StateBinding>> output_bindings;
-        output_bindings.reserve(outputs_desc.size());
-        for (const auto& desc: outputs_desc) {
-            if (const auto* sv = std::get_if<StateValue>(&desc.payload)) {
-                output_bindings.emplace_back(sv->binding);
-            } else {
-                output_bindings.emplace_back(std::nullopt);
-            }
-        }
-
-        if (auto status = ValidateStateBindingsForNode(op_type, decoder_layer_index, schema,
-                                                       values_, inputs, output_bindings);
-            !status.ok()) {
-            return Status::InvalidArgument(get_msg(status.message()));
-        }
-    }
-
-    std::vector<TensorSpec> all_input_specs;
-    all_input_specs.reserve(inputs.size());
-    for (const auto& id: inputs) {
-        all_input_specs.emplace_back(values_[id.index].spec);
-    }
-
-    auto inference_or = InferOperator(op_type, op_params, all_input_specs);
+    auto inference_or = InferAddNodeOutputs(op_type, op_params, schema, values_, inputs);
     if (!inference_or.ok()) {
-        return Status::InvalidArgument(get_msg("InferOperator: " +
-                                               inference_or.status().message()));
+        return Status::InvalidArgument(get_msg(inference_or.status().message()));
     }
-    const auto& inference = *inference_or;
-    if (inference.outputs.size() != schema.output_ports.size()) {
-        return Status::InvalidArgument(get_msg(
-                "InferOperator inferred " + std::to_string(inference.outputs.size()) +
-                " outputs, schema expects " + std::to_string(schema.output_ports.size())));
-    }
+    auto& inference = *inference_or;
 
-    // Stage all values and node before any observable mutation.
-    uint32_t base_value_idx = NextValueIndex(values_);
-    std::vector<GraphValueId> output_ids;
-    output_ids.reserve(outputs_desc.size());
-    for (size_t i = 0; i < outputs_desc.size(); ++i) {
-        uint64_t idx64 = static_cast<uint64_t>(base_value_idx) + i;
-        AM_CHECK(idx64 < std::numeric_limits<uint32_t>::max(), "Graph value id space exhausted");
-        output_ids.push_back(GraphValueId{static_cast<uint32_t>(idx64)});
-    }
+    // Stage output values and ids without touching values_/nodes_.
+    const uint32_t base_value_idx = NextValueIndex(values_);
+    auto staged = StageAddNodeOutputs(GraphNodeId{node_idx}, base_value_idx,
+                                      std::move(outputs_desc), inference.outputs);
 
-    GraphNodeId node_id{node_idx};
-    std::vector<GraphValue> staged_values;
-    staged_values.reserve(outputs_desc.size());
-    for (size_t i = 0; i < outputs_desc.size(); ++i) {
-        auto payload = std::holds_alternative<std::monostate>(outputs_desc[i].payload)
-                               ? GraphValuePayload{ActivationValue{}}
-                               : outputs_desc[i].payload;
-        staged_values.push_back({
-                .payload = payload,
-                .spec = inference.outputs[i],
-                .producer = node_id,
-                .quantization = outputs_desc[i].quantization,
-                .name = std::move(outputs_desc[i].name),
-        });
-    }
+    // Preconstruct the complete local GraphNode before any member mutation.
+    // inputs/attrs/name are moved in; op_params is copied from the const ref;
+    // output_ids is copied (AddedNode still needs it); runtime_checks is moved
+    // after staging has consumed inference.outputs.
+    GraphNode node{.op_type = op_type,
+                   .decoder_layer_index = decoder_layer_index,
+                   .inputs = std::move(inputs),
+                   .outputs = staged.output_ids,
+                   .attrs = std::move(attrs),
+                   .op_params = op_params,
+                   .runtime_checks = std::move(inference.runtime_checks),
+                   .name = std::move(name)};
 
-    values_.reserve(values_.size() + staged_values.size());
+    // Preconstruct the local AddedNode by moving staged.output_ids.
+    AddedNode result{.node = GraphNodeId{node_idx}, .outputs = std::move(staged.output_ids)};
+
+    // Commit: reserve both containers, then move staged values and the node.
+    // All moves are nothrow (enforced by static_asserts above), so the commit
+    // cannot leave the graph partially committed.
+    values_.reserve(values_.size() + staged.values.size());
     nodes_.reserve(nodes_.size() + 1);
 
-    for (auto& val: staged_values) {
+    for (auto& val: staged.values) {
         values_.push_back(std::move(val));
     }
+    nodes_.push_back(std::move(node));
 
-    nodes_.push_back({.op_type = op_type,
-                      .decoder_layer_index = decoder_layer_index,
-                      .inputs = std::move(inputs),
-                      .outputs = output_ids,
-                      .attrs = std::move(attrs),
-                      .op_params = op_params,
-                      .runtime_checks = inference.runtime_checks,
-                      .name = std::move(name)});
-
-    return AddedNode{.node = node_id, .outputs = std::move(output_ids)};
+    return result;
 }
 
 std::vector<GraphNodeId> ModelGraph::FindNodesByOpType(OpType op_type) const {
@@ -641,7 +728,7 @@ Status ModelGraph::Validate() const {
 //       node.outputs specs, and derived.runtime_checks must equal stored
 //       node.runtime_checks (ShapeConstraintsEquivalent)
 //     * outputs must not reuse input values
-//     * ValidateStateBindingsForNode for state I/O invariants
+//     * ValidateNodeStateBindings for state I/O invariants
 //
 //   Pass 3 - Acyclicity:
 //     * Kahn algorithm over activation and produced-state edges

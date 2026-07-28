@@ -184,16 +184,20 @@ std::span<const OperatorSchema> GetOperatorSchemas() noexcept {
     return kOperatorSchemas;
 }
 
-StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema, std::string_view name) noexcept {
-    return FindPortIndex<OperatorInputPort>(schema.input_ports,
-                                            name,
-                                            "Operator schema input port not found");
+StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema,
+                                      std::string_view name) noexcept {
+    return FindPortIndex<OperatorInputPort>(
+            schema.input_ports,
+            name,
+            "Operator schema input port not found");
 }
 
-StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema, std::string_view name) noexcept {
-    return FindPortIndex<OperatorOutputPort>(schema.output_ports,
-                                             name,
-                                             "Operator schema output port not found");
+StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema,
+                                       std::string_view name) noexcept {
+    return FindPortIndex<OperatorOutputPort>(
+            schema.output_ports,
+            name,
+            "Operator schema output port not found");
 }
 
 bool HasStatefulOutput(const OperatorSchema& schema) noexcept {

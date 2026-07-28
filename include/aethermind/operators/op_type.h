@@ -32,6 +32,7 @@ enum class OpType : uint16_t {
     kSoftmax,
     kArgmax,
     kReshape,
+    kPermute,
 };
 
 /// Returns a human-readable name for the given operator type.

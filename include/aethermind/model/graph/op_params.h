@@ -3,10 +3,8 @@
 
 #include "aethermind/model/formats/hf/hf_model_config.h"
 
-// #include <cstdint>
-// #include <optional>
-// #include <variant>
-// #include <vector>
+#include <cstdint>
+#include <vector>
 
 namespace aethermind {
 
@@ -105,6 +103,22 @@ struct ReshapeParams {
     friend bool operator==(const ReshapeParams&, const ReshapeParams&) = default;
 };
 
+// Semantic parameters for OpType::kPermute.
+//
+// permutation[j] is the input axis index that maps to output axis j. The
+// permutation must be a complete zero-based bijection over [0, input_rank):
+// every input axis appears exactly once. An empty permutation means rank
+// zero (identity over a scalar). Output dtype follows input dtype.
+//
+// Invariants enforced by InferPermute (not by the type system):
+//   - permutation values are canonical non-negative axis indexes < input_rank
+//   - the permutation is a bijection (no repeated axes, no missing axes)
+//   - permutation.size() == input rank
+struct PermuteParams {
+    std::vector<uint32_t> permutation{};
+    friend bool operator==(const PermuteParams&, const PermuteParams&) = default;
+};
+
 using OpParams = std::variant<std::monostate,
                               EmbeddingParams,
                               RmsNormParams,
@@ -119,7 +133,8 @@ using OpParams = std::variant<std::monostate,
                               KVCacheUpdateParams,
                               AttentionParams,
                               ArgmaxParams,
-                              ReshapeParams>;
+                              ReshapeParams,
+                              PermuteParams>;
 
 }// namespace aethermind
 

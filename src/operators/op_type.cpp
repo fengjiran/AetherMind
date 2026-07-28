@@ -36,6 +36,8 @@ const char* ToString(OpType op_type) noexcept {
             return "Argmax";
         case OpType::kReshape:
             return "Reshape";
+        case OpType::kPermute:
+            return "Permute";
         default:
             return "Unknown";
     }

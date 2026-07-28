@@ -61,7 +61,7 @@ ExecutionPlan / ExecutionStep
 
 ### 3.1 属于 ModelGraph
 
-- 语义算子：`Embedding`、`RMSNorm`、`Linear`、`RoPE`、`MatMul`、`Softmax`、`Add`、`SiluMul`、`Argmax`、`Reshape`、`Permute` 等；
+- 语义算子：`Embedding`、`RMSNorm`、`Linear`、`RoPE`、`MatMul`、`Softmax`、`Add`、`SiluMul`、`Argmax`、`Reshape`、`Permute`、`Reorder` 等；
 - 数据流 use-def：node inputs / outputs、producer，以及按需从 node inputs 派生的 consumers 索引；
 - 逻辑 tensor/value 类型：dtype、rank、symbolic shape、dynamic shape 约束；
 - value role：model input、activation、weight、constant、state / resource；
@@ -985,6 +985,48 @@ output.shape[j] = input.shape[permutation[j]]   对 0 <= j < permutation.size()
 **不 emit 约束**：`InferPermute` 不构造 `VolumeEqualConstraint` 或任何 `ShapeConstraint`——双射性保证输入输出体积自动相等，无需运行时检查；也不构造 unknown symbol、不修改 solver 状态。
 
 **当前能力边界（语义专用）**：图可以构造、推断、校验、dump `Permute`，但**不存在可执行 lowering**——没有 `PermuteOp` 类、`AM_REGISTER_OPERATOR`、kernel、`AM_REGISTER_KERNEL`、alias / view legality、materialization、stride propagation、workspace、constant evaluator 或 importer 默认行为。语义合法性与未来物理 view / materialization 合法性是两件事：未来若添加 `PermuteOp`，仍须独立验证 stride / contiguity / alias 合法性，本节语义契约不构成对物理执行的承诺。
+
+### 13.3 Reorder 语义与执行边界
+
+`Reorder` 是 ModelGraph 中的语义算子：逻辑上完全保持张量不变（dtype、shape、`ShapeSymbol` 身份、所有坐标值），但记录一个固定的物理目标意图——**canonical row-major contiguous 存储**。等价语义参考：oneDNN `Reorder`（`https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_reorder.html`）和 PyTorch `Tensor.contiguous()`（`https://docs.pytorch.org/docs/stable/generated/torch.Tensor.contiguous.html`）。
+
+**强类型参数**：`ReorderParams{}`——空类型化参数对象，区分 Reorder 与逻辑 Permute 和 dtype 转换。无字段，因为目标始终是 canonical contiguous。
+
+**坐标方程**（由 `InferReorder` 强制）：
+
+```
+Y[i_0, ..., i_(r-1)] = X[i_0, ..., i_(r-1)]   对所有合法坐标元组
+```
+
+即输出与输入在每个逻辑坐标上完全相等。`Y.dtype == X.dtype`，`Y.shape == X.shape`（精确 `ShapeSymbol` 身份，不仅是静态值相等）。
+
+**与 Permute / Reshape / Cast 的区别**：
+
+| 算子 | 逻辑变化 | 物理意图 |
+|------|----------|----------|
+| `Permute` | 改变轴顺序（shape 变化） | 无固定目标 |
+| `Reshape` | 改变形状（保留 row-major linear order） | 无固定目标 |
+| `Cast`/量化转换 | 改变 dtype | 无固定目标 |
+| `Reorder` | **无逻辑变化** | canonical row-major contiguous |
+
+例：`Permute` 可能将 `[2,3,4]` 变为 `[4,2,3]`；随后的 `Reorder` 保持 `[4,2,3]` 不变，仅标记存储必须 canonical 化。
+
+**接受的输入状态**：
+
+- ranked 静态形状（如 `[4, 256]`）
+- ranked 符号形状（如 `[A, B]`，`ShapeSymbol` 身份保留）
+- unranked（输出同样 unranked）
+- rank zero（标量）
+- 含零维度的形状（如 `[0, 3]`）
+- 任意 dtype（不限于浮点子集）
+
+**推断行为**：`InferReorder` 直接复制 `inputs[0]` 为唯一输出——不检查 rank、不检查维度值、不检查 dtype、不检查 stride/layout、不构造新 `SymbolicShape`、不 emit 约束、不填充 `runtime_checks`。验证优先级：先 `ReorderParams` 变体检查，再 arity 检查。
+
+**dtype / quantization 保留**：`AddReorder` helper 将输入的 `QuantizationSpec` 复制到输出 value descriptor；输出 dtype == 输入 dtype。`runtime_checks` 向量为空。
+
+**DCE 行为**：Reorder 是 pure、deterministic、`RuntimeOnly()` schema——未使用的 Reorder 节点可被 DCE 安全移除；但**不存在代数恒等消除**——即使输出 `TensorSpec` 等于输入，只要输出是活的（graph output 或有下游消费者），DCE 不会移除它。Reorder 是 materialization/layout-intent 边界，不是普通 identity。
+
+**当前能力边界（语义专用）**：图可以构造、推断、校验、dump `Reorder`，但**不存在可执行 lowering**——没有 `ReorderOp` 类、`AM_REGISTER_OPERATOR`、kernel、`AM_REGISTER_KERNEL`、materialization、allocation、workspace、constant evaluator、target-format 字段、channels-last/blocked/opaque 布局支持或 importer 默认行为。未来 lowering 可能复用已经 canonical 的输入（零拷贝）或另行 materialize；本节语义契约不承诺执行时一定拷贝、一定分配新存储、一定 alias、或一定零拷贝。`TensorSpec` 有意不暴露物理变化；`OpType::kReorder` 本身携带 lowering 需求。
 
 ## 14. Shape 与动态维度
 

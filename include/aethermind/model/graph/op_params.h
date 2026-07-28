@@ -119,6 +119,21 @@ struct PermuteParams {
     friend bool operator==(const PermuteParams&, const PermuteParams&) = default;
 };
 
+// Semantic parameters for OpType::kReorder.
+//
+// Reorder preserves the logical tensor exactly: dtype, shape (with exact
+// ShapeSymbol identity), and every coordinate value Y[i] == X[i] remain
+// unchanged. The operator records a fixed physical destination intent —
+// canonical row-major contiguous storage — without exposing a target-format
+// field or inspecting input strides during semantic inference.
+//
+// This is an empty typed parameter object that distinguishes Reorder from
+// logical Permute and dtype conversion. No fields are needed because the
+// destination is always canonical contiguous.
+struct ReorderParams {
+    friend bool operator==(const ReorderParams&, const ReorderParams&) = default;
+};
+
 using OpParams = std::variant<std::monostate,
                               EmbeddingParams,
                               RmsNormParams,
@@ -134,7 +149,8 @@ using OpParams = std::variant<std::monostate,
                               AttentionParams,
                               ArgmaxParams,
                               ReshapeParams,
-                              PermuteParams>;
+                              PermuteParams,
+                              ReorderParams>;
 
 }// namespace aethermind
 

@@ -42,6 +42,8 @@ StatusOr<InferenceResult> InferOperator(OpType op_type,
             return detail::InferReshape(params, inputs);
         case OpType::kPermute:
             return detail::InferPermute(params, inputs);
+        case OpType::kReorder:
+            return detail::InferReorder(params, inputs);
         case OpType::kUnknown:
             return Status::InvalidArgument(
                     "Unknown op type cannot have validated graph params");

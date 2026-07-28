@@ -88,6 +88,7 @@ StatusOr<InferenceResult> InferSiluMul(const OpParams& params, std::span<const T
 StatusOr<InferenceResult> InferElementwiseMul(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferReshape(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferPermute(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferReorder(const OpParams& params, std::span<const TensorSpec> inputs);
 
 }// namespace detail
 

@@ -38,6 +38,8 @@ const char* ToString(OpType op_type) noexcept {
             return "Reshape";
         case OpType::kPermute:
             return "Permute";
+        case OpType::kReorder:
+            return "Reorder";
         default:
             return "Unknown";
     }

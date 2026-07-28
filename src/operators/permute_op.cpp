@@ -40,9 +40,8 @@ StatusOr<InferenceResult> InferPermute(const OpParams& params,
     // after the arity check (they depend on input shape).
     {
         std::vector<uint32_t> sorted = permute_params->permutation;
-        std::sort(sorted.begin(), sorted.end());
-        const auto it = std::adjacent_find(sorted.begin(), sorted.end());
-        if (it != sorted.end()) {
+        std::ranges::sort(sorted);
+        if (std::ranges::adjacent_find(sorted) != sorted.end()) {
             return Status::InvalidArgument(
                     "Permute permutation must be a bijection: duplicate axis");
         }

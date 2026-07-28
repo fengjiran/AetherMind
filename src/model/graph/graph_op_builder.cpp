@@ -351,6 +351,15 @@ StatusOr<GraphValueId> AddReshape(ModelGraph& graph,
                                   GraphValueId input,
                                   std::vector<ReshapeDim> target_shape,
                                   std::string name) {
+    // Bounds-check input BEFORE calling GetValue (which uses AM_CHECK and
+    // would abort the process on a fabricated GraphValueId). AddNode would
+    // also reject this, but we must not reach GetValue first.
+    const std::span<const GraphValue> values = graph.GetValues();
+    if (input.index >= values.size()) {
+        return Status::InvalidArgument(
+                "AddReshape: input GraphValueId is out of range");
+    }
+
     // Snapshot input quantization BEFORE graph mutation — AddNode may
     // reallocate the graph's value storage and invalidate references into it.
     const QuantizationSpec input_quantization = graph.GetValue(input).quantization;
@@ -377,6 +386,15 @@ StatusOr<GraphValueId> AddPermute(ModelGraph& graph,
                                   GraphValueId input,
                                   std::vector<uint32_t> permutation,
                                   std::string name) {
+    // Bounds-check input BEFORE calling GetValue (which uses AM_CHECK and
+    // would abort the process on a fabricated GraphValueId). AddNode would
+    // also reject this, but we must not reach GetValue first.
+    const std::span<const GraphValue> values = graph.GetValues();
+    if (input.index >= values.size()) {
+        return Status::InvalidArgument(
+                "AddPermute: input GraphValueId is out of range");
+    }
+
     // Snapshot input quantization BEFORE graph mutation — AddNode may
     // reallocate the graph's value storage and invalidate references into it.
     const QuantizationSpec input_quantization = graph.GetValue(input).quantization;

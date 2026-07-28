@@ -897,6 +897,18 @@ TEST(GraphOpBuilder, AddPermuteDerivesStaticOutputSpec) {
     EXPECT_EQ(node.inputs.size(), 1U);
     EXPECT_EQ(node.outputs.size(), 1U);
     EXPECT_TRUE(std::holds_alternative<PermuteParams>(node.op_params));
+    // Verify the stored permutation exactly matches the caller-supplied
+    // vector — not just that the variant holds PermuteParams. This guards
+    // against silent data loss if AddPermute or AddNode ever drops or
+    // reorders the permutation.
+    {
+        const auto& stored = std::get<PermuteParams>(node.op_params);
+        ASSERT_EQ(stored.permutation.size(), permutation.size());
+        for (size_t i = 0; i < permutation.size(); ++i) {
+            EXPECT_EQ(stored.permutation[i], permutation[i])
+                    << "permutation mismatch at index " << i;
+        }
+    }
     // Bijection guarantees volume equality; no deferred runtime check needed.
     EXPECT_EQ(node.runtime_checks.size(), 0U);
     // Decoder layer index defaults to nullopt.
@@ -1090,6 +1102,50 @@ TEST(GraphOpBuilder, AddPermuteDoesNotInferOutputSpecFromCaller) {
     EXPECT_EQ(output_spec.shape[0].GetStaticValue(), 3);
     EXPECT_EQ(output_spec.shape[1].GetStaticValue(), 4);
     EXPECT_EQ(output_spec.shape[2].GetStaticValue(), 2);
+}
+
+TEST(GraphOpBuilder, AddReshapeRejectsFabricatedInputValueIdWithoutAborting) {
+    // A fabricated GraphValueId (index out of range) must return
+    // Status::InvalidArgument, NOT trigger AM_CHECK and abort the process.
+    // AddReshape must bounds-check input before calling GetValue (which
+    // uses AM_CHECK).
+    ModelGraph graph;
+    const GraphValueId fabricated{.index = 99999};
+
+    std::vector<ReshapeDim> target_shape{ReshapeLiteralDim{2}, ReshapeLiteralDim{12}};
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    auto output_or = AddReshape(graph, std::nullopt, fabricated, target_shape, "reshape");
+    ASSERT_FALSE(output_or.ok());
+    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+
+    // Graph unchanged.
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
+TEST(GraphOpBuilder, AddPermuteRejectsFabricatedInputValueIdWithoutAborting) {
+    // A fabricated GraphValueId (index out of range) must return
+    // Status::InvalidArgument, NOT trigger AM_CHECK and abort the process.
+    // AddPermute must bounds-check input before calling GetValue (which
+    // uses AM_CHECK).
+    ModelGraph graph;
+    const GraphValueId fabricated{.index = 99999};
+
+    std::vector<uint32_t> permutation{1, 0};
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    auto output_or = AddPermute(graph, std::nullopt, fabricated, permutation, "permute");
+    ASSERT_FALSE(output_or.ok());
+    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+
+    // Graph unchanged.
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
 }
 
 }// namespace

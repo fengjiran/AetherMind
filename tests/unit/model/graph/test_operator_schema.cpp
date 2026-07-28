@@ -10,7 +10,7 @@ namespace {
 TEST(OperatorSchema, ContainsAllM1Ops) {
     const auto schemas = GetOperatorSchemas();
 
-    ASSERT_EQ(schemas.size(), 14U);
+    ASSERT_EQ(schemas.size(), 15U);
     EXPECT_TRUE(GetOperatorSchema(OpType::kEmbedding).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kRmsNorm).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kLinear).ok());
@@ -25,6 +25,7 @@ TEST(OperatorSchema, ContainsAllM1Ops) {
     EXPECT_TRUE(GetOperatorSchema(OpType::kAttention).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kArgmax).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kReshape).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kPermute).ok());
 }
 
 TEST(OperatorSchema, RejectsUnknownOpType) {
@@ -133,6 +134,7 @@ TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {
             ExpectedArity{.op_type = OpType::kElementwiseMul, .inputs = 2, .outputs = 1},
             ExpectedArity{.op_type = OpType::kArgmax, .inputs = 1, .outputs = 1},
             ExpectedArity{.op_type = OpType::kReshape, .inputs = 1, .outputs = 1},
+            ExpectedArity{.op_type = OpType::kPermute, .inputs = 1, .outputs = 1},
     };
 
     for (const ExpectedArity expected: kExpected) {
@@ -186,6 +188,7 @@ TEST(OperatorSchema, RuntimeOnlyPureOpsAreNotCompileTimeEvaluable) {
             OpType::kArgmax,
             OpType::kAttention,
             OpType::kReshape,
+            OpType::kPermute,
     };
 
     for (const OpType op_type: kRuntimeOnlyOps) {
@@ -209,6 +212,24 @@ TEST(OperatorSchema, KVCacheUpdateIsStatefulAndNotCompileTimeEvaluable) {
 
 TEST(OperatorSchema, ReshapeSchemaUsesActivationInputAndOutput) {
     const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kReshape);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    ASSERT_EQ(schema->input_ports.size(), 1U);
+    EXPECT_EQ(schema->input_ports[0].name, "input");
+    EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
+    EXPECT_TRUE(schema->input_ports[0].contributes_tensor_spec);
+    ASSERT_EQ(schema->output_ports.size(), 1U);
+    EXPECT_EQ(schema->output_ports[0].name, "output");
+    EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kActivation);
+    // Semantic-only: pure and deterministic, but not advertised as
+    // compile-time evaluable (no constant evaluator exists).
+    EXPECT_TRUE(IsPureOperator(*schema));
+    EXPECT_FALSE(IsCompileTimeEvaluable(*schema));
+    EXPECT_FALSE(HasStatefulOutput(*schema));
+}
+
+TEST(OperatorSchema, PermuteSchemaUsesActivationInputAndOutput) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kPermute);
 
     ASSERT_TRUE(schema.ok()) << schema.status().ToString();
     ASSERT_EQ(schema->input_ports.size(), 1U);

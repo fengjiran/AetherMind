@@ -867,5 +867,230 @@ TEST(GraphOpBuilder, AddReshapeDoesNotInferOutputSpecFromCaller) {
     EXPECT_EQ(output_spec.shape[1].GetStaticValue(), 12);
 }
 
+// --- AddPermute ---
+
+TEST(GraphOpBuilder, AddPermuteDerivesStaticOutputSpec) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3, 4}), ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{2, 0, 1};
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    // [2,3,4] with [2,0,1] => [4,2,3]
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_EQ(output_spec.dtype, DataType::Float32());
+    ASSERT_EQ(output_spec.shape.rank().value(), 3U);
+    ASSERT_TRUE(output_spec.shape[0].IsStatic());
+    ASSERT_TRUE(output_spec.shape[1].IsStatic());
+    ASSERT_TRUE(output_spec.shape[2].IsStatic());
+    EXPECT_EQ(output_spec.shape[0].GetStaticValue(), 4);
+    EXPECT_EQ(output_spec.shape[1].GetStaticValue(), 2);
+    EXPECT_EQ(output_spec.shape[2].GetStaticValue(), 3);
+
+    ASSERT_TRUE(graph.GetValue(output).producer.has_value());
+    const GraphNode& node = graph.GetNode(*graph.GetValue(output).producer);
+    EXPECT_EQ(node.op_type, OpType::kPermute);
+    EXPECT_EQ(node.inputs.size(), 1U);
+    EXPECT_EQ(node.outputs.size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<PermuteParams>(node.op_params));
+    // Bijection guarantees volume equality; no deferred runtime check needed.
+    EXPECT_EQ(node.runtime_checks.size(), 0U);
+    // Decoder layer index defaults to nullopt.
+    EXPECT_FALSE(node.decoder_layer_index.has_value());
+
+    // The output value carries the caller-supplied name.
+    EXPECT_EQ(graph.GetValue(output).name, "permute");
+}
+
+TEST(GraphOpBuilder, AddPermuteRankZeroIsIdentity) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {}), ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{};
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_EQ(output_spec.dtype, DataType::Float32());
+    EXPECT_TRUE(output_spec.shape.IsRankZero());
+}
+
+TEST(GraphOpBuilder, AddPermuteIdentityPermutationPreservesShape) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3, 4}), ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{0, 1, 2};
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    ASSERT_EQ(output_spec.shape.rank().value(), 3U);
+    EXPECT_EQ(output_spec.shape[0].GetStaticValue(), 2);
+    EXPECT_EQ(output_spec.shape[1].GetStaticValue(), 3);
+    EXPECT_EQ(output_spec.shape[2].GetStaticValue(), 4);
+}
+
+TEST(GraphOpBuilder, AddPermutePreservesInputQuantizationSpec) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+    const QuantizationSpec quantization{
+            .kind = QuantizationKind::kInt8,
+            .group_size = 32,
+            .scale_dtype = DataType::Float32(),
+            .has_zero_point = true};
+    graph.SetQuantization(input, quantization);
+
+    std::vector<uint32_t> permutation{1, 0};
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    // The output value inherits the input's QuantizationSpec exactly.
+    EXPECT_EQ(graph.GetValue(output).quantization, quantization);
+}
+
+TEST(GraphOpBuilder, AddPermutePropagatesDecoderLayerIndex) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{1, 0};
+
+    auto output_or = AddPermute(graph, std::optional<uint32_t>{7}, input, permutation, "permute");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+
+    ASSERT_TRUE(graph.GetValue(*output_or).producer.has_value());
+    const GraphNode& node = graph.GetNode(*graph.GetValue(*output_or).producer);
+    EXPECT_EQ(node.decoder_layer_index, std::optional<uint32_t>{7});
+}
+
+TEST(GraphOpBuilder, AddPermuteSymbolicShapePreservesIdentity) {
+    // Symbolic [A,B,C] with [2,0,1] => [C,A,B] where output dim j is the
+    // same ShapeSymbol object as input dim permutation[j].
+    ModelGraph graph;
+    const ShapeSymbol sym_a = ShapeSymbol::Create();
+    const ShapeSymbol sym_b = ShapeSymbol::Create();
+    const ShapeSymbol sym_c = ShapeSymbol::Create();
+    const GraphValueId input = graph.AddConstant(
+            TensorSpec{.dtype = DataType::Float32(),
+                       .shape = SymbolicShape({sym_a, sym_b, sym_c})},
+            ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{2, 0, 1};
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    ASSERT_EQ(output_spec.shape.rank().value(), 3U);
+    // Symbol identity preservation.
+    EXPECT_EQ(output_spec.shape[0], sym_c);
+    EXPECT_EQ(output_spec.shape[1], sym_a);
+    EXPECT_EQ(output_spec.shape[2], sym_b);
+
+    ASSERT_TRUE(graph.GetValue(output).producer.has_value());
+    const GraphNode& node = graph.GetNode(*graph.GetValue(output).producer);
+    // Bijection guarantees volume equality; no deferred runtime check needed.
+    EXPECT_EQ(node.runtime_checks.size(), 0U);
+
+    // The symbolic graph must still pass full graph validation.
+    const Status validation = graph.Validate();
+    ASSERT_TRUE(validation.ok()) << validation.ToString();
+}
+
+TEST(GraphOpBuilder, AddPermuteFailureDuplicateAxesAtomicallyAborts) {
+    // Permutation [0,0] violates the bijection invariant (duplicate axis).
+    // The graph must remain unchanged after the failed call.
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{0, 0};
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_FALSE(output_or.ok());
+    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
+TEST(GraphOpBuilder, AddPermuteFailureLengthMismatchAtomicallyAborts) {
+    // Input rank is 2; permutation has length 3.
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3}), ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{2, 0, 1};
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_FALSE(output_or.ok());
+    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
+TEST(GraphOpBuilder, AddPermuteFailureOutOfRangeAxisAtomicallyAborts) {
+    // Input rank is 3; permutation references axis 3.
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3, 4}), ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{2, 0, 3};
+
+    const size_t nodes_before = graph.GetNodes().size();
+    const size_t values_before = graph.GetValues().size();
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_FALSE(output_or.ok());
+    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+
+    EXPECT_EQ(graph.GetNodes().size(), nodes_before);
+    EXPECT_EQ(graph.GetValues().size(), values_before);
+}
+
+TEST(GraphOpBuilder, AddPermuteDoesNotInferOutputSpecFromCaller) {
+    // Caller does not supply an output spec; output spec is derived entirely
+    // by InferPermute. Verifies by checking output shape matches permutation
+    // result, not the input shape.
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            Spec(DataType::Float32(), {2, 3, 4}), ConstantBinding{}, "input");
+
+    std::vector<uint32_t> permutation{1, 2, 0};
+
+    auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
+    ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
+    const GraphValueId output = *output_or;
+
+    const TensorSpec output_spec = graph.GetValue(output).spec;
+    EXPECT_NE(output_spec.shape, graph.GetValue(input).spec.shape);
+    ASSERT_EQ(output_spec.shape.rank().value(), 3U);
+    // [2,3,4] with [1,2,0] => [3,4,2]
+    EXPECT_EQ(output_spec.shape[0].GetStaticValue(), 3);
+    EXPECT_EQ(output_spec.shape[1].GetStaticValue(), 4);
+    EXPECT_EQ(output_spec.shape[2].GetStaticValue(), 2);
+}
+
 }// namespace
 }// namespace aethermind

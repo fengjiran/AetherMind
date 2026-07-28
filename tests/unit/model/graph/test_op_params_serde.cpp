@@ -1,9 +1,6 @@
 #include "aethermind/model/graph/op_params_serde.h"
 
 #include <gtest/gtest.h>
-#include <sstream>
-#include <string>
-#include <vector>
 
 namespace aethermind {
 namespace {
@@ -53,6 +50,10 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
                                            ReshapeInferDim{}}},
             ReshapeParams{.target_shape = {ReshapeLiteralDim{0},
                                            ReshapeInferDim{}}},
+            PermuteParams{.permutation = {}},
+            PermuteParams{.permutation = {0}},
+            PermuteParams{.permutation = {2, 0, 1}},
+            PermuteParams{.permutation = {0, 0}},
     };
 
     for (const OpParams& param: params) {
@@ -100,7 +101,9 @@ TEST(OpParamsSerde, ReshapeRoundTripsCanonicalForms) {
     }
     // Static literal dims.
     {
-        const OpParams params{ReshapeParams{.target_shape = {ReshapeLiteralDim{2}, ReshapeLiteralDim{3}}}};
+        const OpParams params{ReshapeParams{
+                .target_shape = {
+                        ReshapeLiteralDim{2}, ReshapeLiteralDim{3}}}};
         const std::string serialized = SerializeToString(params);
         EXPECT_EQ(serialized, "Reshape shape=[2,3]");
         const StatusOr<OpParams> parsed = ParseOpParams(serialized);
@@ -109,7 +112,11 @@ TEST(OpParamsSerde, ReshapeRoundTripsCanonicalForms) {
     }
     // Mixed: input-axis references, literal, and infer marker.
     {
-        const OpParams params{ReshapeParams{.target_shape = {ReshapeInputDim{0}, ReshapeInputDim{1}, ReshapeLiteralDim{32}, ReshapeInferDim{}}}};
+        const OpParams params{ReshapeParams{
+                .target_shape = {ReshapeInputDim{0},
+                                 ReshapeInputDim{1},
+                                 ReshapeLiteralDim{32},
+                                 ReshapeInferDim{}}}};
         const std::string serialized = SerializeToString(params);
         EXPECT_EQ(serialized, "Reshape shape=[@0,@1,32,*]");
         const StatusOr<OpParams> parsed = ParseOpParams(serialized);
@@ -118,7 +125,8 @@ TEST(OpParamsSerde, ReshapeRoundTripsCanonicalForms) {
     }
     // Zero-volume literal + infer.
     {
-        const OpParams params{ReshapeParams{.target_shape = {ReshapeLiteralDim{0}, ReshapeInferDim{}}}};
+        const OpParams params{ReshapeParams{
+                .target_shape = {ReshapeLiteralDim{0}, ReshapeInferDim{}}}};
         const std::string serialized = SerializeToString(params);
         EXPECT_EQ(serialized, "Reshape shape=[0,*]");
         const StatusOr<OpParams> parsed = ParseOpParams(serialized);
@@ -168,6 +176,96 @@ TEST(OpParamsSerde, ReshapeRejectsMalformedShapes) {
         EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
         if (!parsed.ok()) {
             EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << "Text: " << text;
+        }
+    }
+}
+
+TEST(OpParamsSerde, PermuteKindName) {
+    EXPECT_STREQ(OpParamsKindName(OpParams{PermuteParams{}}), "Permute");
+}
+
+TEST(OpParamsSerde, PermuteRoundTripsCanonicalForms) {
+    // Rank zero: empty brackets.
+    {
+        const OpParams params{PermuteParams{.permutation = {}}};
+        const std::string serialized = SerializeToString(params);
+        EXPECT_EQ(serialized, "Permute permutation=[]");
+        const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), serialized);
+    }
+    // Rank one identity.
+    {
+        const OpParams params{PermuteParams{.permutation = {0}}};
+        const std::string serialized = SerializeToString(params);
+        EXPECT_EQ(serialized, "Permute permutation=[0]");
+        const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), serialized);
+    }
+    // Static non-trivial permutation.
+    {
+        const OpParams params{PermuteParams{.permutation = {2, 0, 1}}};
+        const std::string serialized = SerializeToString(params);
+        EXPECT_EQ(serialized, "Permute permutation=[2,0,1]");
+        const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), serialized);
+    }
+    // Repeated axes parse successfully; bijection is left for semantic
+    // validation in InferPermute, not for serde.
+    {
+        const OpParams params{PermuteParams{.permutation = {0, 0}}};
+        const std::string serialized = SerializeToString(params);
+        EXPECT_EQ(serialized, "Permute permutation=[0,0]");
+        const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), serialized);
+    }
+}
+
+TEST(OpParamsSerde, PermuteRejectsMalformedPermutations) {
+    const std::vector<std::string> malformed{
+            // Missing field.
+            "Permute",
+            // Extra field.
+            "Permute permutation=[2,0,1] extra=1",
+            // Unbracketed form.
+            "Permute permutation=2,0,1",
+            // Missing brackets entirely.
+            "Permute permutation=201",
+            // Leading comma.
+            "Permute permutation=[,2,0,1]",
+            // Trailing comma.
+            "Permute permutation=[2,0,1,]",
+            // Consecutive commas (empty token).
+            "Permute permutation=[2,,1]",
+            // Signed/negative axis.
+            "Permute permutation=[-1,0]",
+            // Non-digit token.
+            "Permute permutation=[abc]",
+            // Whitespace inside brackets.
+            "Permute permutation=[1, 0]",
+            // Leading zero (non-canonical) except for "0" itself.
+            "Permute permutation=[01,0]",
+            // Value above uint32_t::max().
+            "Permute permutation=[4294967296]",
+            // Duplicate permutation field.
+            "Permute permutation=[2] permutation=[3]",
+            // Malformed brackets (unclosed).
+            "Permute permutation=[2,0,1",
+            // Malformed brackets (mismatched).
+            "Permute permutation=[2,0,1}",
+            // Empty token list with whitespace only.
+            "Permute permutation=[ ]",
+    };
+
+    for (const std::string& text: malformed) {
+        const StatusOr<OpParams> parsed = ParseOpParams(text);
+        EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
+        if (!parsed.ok()) {
+            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument)
+                    << "Text: " << text;
         }
     }
 }

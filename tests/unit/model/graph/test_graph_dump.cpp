@@ -229,6 +229,7 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
             AttentionParams{.num_attention_heads = 4, .num_key_value_heads = 2, .head_dim = 8},
             ArgmaxParams{.axis = -1},
             ReshapeParams{.target_shape = {ReshapeInputDim{0}, ReshapeInputDim{1}, ReshapeLiteralDim{32}, ReshapeInferDim{}}},
+            PermuteParams{.permutation = {2, 0, 1}},
     };
 
     std::ostringstream os;
@@ -246,6 +247,7 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
     EXPECT_NE(dump.find("AttentionParams{num_attention_heads=4"), std::string::npos);
     EXPECT_NE(dump.find("ArgmaxParams{axis=-1}"), std::string::npos);
     EXPECT_NE(dump.find("ReshapeParams{target_shape=[@0,@1,32,*]}"), std::string::npos);
+    EXPECT_NE(dump.find("PermuteParams{permutation=[2,0,1]}"), std::string::npos);
 }
 
 }// namespace

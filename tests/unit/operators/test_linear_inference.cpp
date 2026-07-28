@@ -1,11 +1,8 @@
-#include "test_operator_semantics_helpers.h"
-
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_inference.h"
+#include "test_operator_semantics_helpers.h"
 
 #include <gtest/gtest.h>
-#include <variant>
-#include <vector>
 
 namespace {
 using namespace aethermind;
@@ -15,8 +12,8 @@ using namespace aethermind;
 TEST(LinearInference, ValidatesStaticInputContract) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {16, 8}).shape},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {16, 8}),
     };
 
     EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
@@ -25,8 +22,8 @@ TEST(LinearInference, ValidatesStaticInputContract) {
 TEST(LinearInference, AcceptsRank1Input) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {16, 8}).shape},
+            MakeSpec(DataType::Float32(), {8}),
+            MakeSpec(DataType::Float32(), {16, 8}),
     };
 
     EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
@@ -35,8 +32,8 @@ TEST(LinearInference, AcceptsRank1Input) {
 TEST(LinearInference, RejectsRankZeroInput) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {16, 8}).shape},
+            MakeSpec(DataType::Float32(), {}),
+            MakeSpec(DataType::Float32(), {16, 8}),
     };
 
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
@@ -48,8 +45,8 @@ TEST(LinearInference, RejectsRankZeroInput) {
 TEST(LinearInference, RejectsRankZeroWeight) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {}),
     };
 
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
@@ -61,8 +58,8 @@ TEST(LinearInference, RejectsRankZeroWeight) {
 TEST(LinearInference, RejectsRank3Input) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 4, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {16, 8}).shape},
+            MakeSpec(DataType::Float32(), {2, 4, 3}),
+            MakeSpec(DataType::Float32(), {16, 8}),
     };
 
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
@@ -74,8 +71,8 @@ TEST(LinearInference, RejectsRank3Input) {
 TEST(LinearInference, RejectsWeightRank1) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {8}).shape},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {8}),
     };
 
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
@@ -87,8 +84,8 @@ TEST(LinearInference, RejectsWeightRank1) {
 TEST(LinearInference, RejectsStaticKMismatch) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {16, 16}).shape},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {16, 16}),
     };
 
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
@@ -102,8 +99,8 @@ TEST(LinearInference, RejectsStaticKMismatch) {
 TEST(LinearInference, InfersOutputShapeFromWeight) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 4096}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {11008, 4096}).shape},
+            MakeSpec(DataType::Float32(), {4, 4096}),
+            MakeSpec(DataType::Float32(), {11008, 4096}),
     };
 
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kLinear, params, inputs);
@@ -120,8 +117,8 @@ TEST(LinearInference, InfersOutputShapeFromWeight) {
 TEST(LinearInference, InfersRank1OutputShape) {
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4096}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {11008, 4096}).shape},
+            MakeSpec(DataType::Float32(), {4096}),
+            MakeSpec(DataType::Float32(), {11008, 4096}),
     };
 
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kLinear, params, inputs);
@@ -180,8 +177,8 @@ TEST(LinearInference, AcceptsZeroBatchDim) {
     // Zero batch yields empty output [0, out]; valid NumPy/PyTorch MatMul semantics.
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {0, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {16, 8}).shape},
+            MakeSpec(DataType::Float32(), {0, 8}),
+            MakeSpec(DataType::Float32(), {16, 8}),
     };
     EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
 }
@@ -190,8 +187,8 @@ TEST(LinearInference, AcceptsZeroInFeatures) {
     // Zero in_features (K=0) yields zero-valued output; valid NumPy/PyTorch MatMul.
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 0}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {16, 0}).shape},
+            MakeSpec(DataType::Float32(), {4, 0}),
+            MakeSpec(DataType::Float32(), {16, 0}),
     };
     EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
 }
@@ -200,8 +197,8 @@ TEST(LinearInference, AcceptsZeroOutFeatures) {
     // Zero out_features yields empty output; valid NumPy/PyTorch MatMul.
     constexpr LinearParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {0, 8}).shape},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {0, 8}),
     };
     EXPECT_TRUE(InferOperator(OpType::kLinear, params, inputs).status().ok());
 }

@@ -1,11 +1,8 @@
-#include "test_operator_semantics_helpers.h"
-
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_inference.h"
+#include "test_operator_semantics_helpers.h"
 
 #include <gtest/gtest.h>
-#include <variant>
-#include <vector>
 
 namespace {
 using namespace aethermind;
@@ -15,8 +12,8 @@ using namespace aethermind;
 TEST(MatMulInference, InferOperatorAcceptsValidParams) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32(), {3, 4}),
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -24,9 +21,9 @@ TEST(MatMulInference, InferOperatorAcceptsValidParams) {
 TEST(MatMulInference, RejectsWrongArity) {
     constexpr MatMulParams params;
     const TensorSpec inputs[3] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32(), {3, 4}),
+            MakeSpec(DataType::Float32(), {3, 4}),
     };
     const Status status = InferOperator(OpType::kMatMul, params, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
@@ -36,8 +33,8 @@ TEST(MatMulInference, RejectsWrongArity) {
 TEST(MatMulInference, RejectsNonFloat32Input) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Int(32), .shape = MakeSpec(DataType::Int(32), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
+            MakeSpec(DataType::Int(32), {2, 3}),
+            MakeSpec(DataType::Float32(), {3, 4}),
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -47,8 +44,8 @@ TEST(MatMulInference, RejectsNonFloat32Input) {
 TEST(MatMulInference, RejectsUnrankedLhs) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = SymbolicShape{}},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
+            MakeSpec(DataType::Float32()),
+            MakeSpec(DataType::Float32(), {3, 4}),
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -58,8 +55,8 @@ TEST(MatMulInference, RejectsUnrankedLhs) {
 TEST(MatMulInference, RejectsUnrankedRhs) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = SymbolicShape{}},
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32()),
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -69,8 +66,8 @@ TEST(MatMulInference, RejectsUnrankedRhs) {
 TEST(MatMulInference, RejectsRank1Lhs) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
+            MakeSpec(DataType::Float32(), {3}),
+            MakeSpec(DataType::Float32(), {3, 4}),
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -80,8 +77,8 @@ TEST(MatMulInference, RejectsRank1Lhs) {
 TEST(MatMulInference, RejectsRank1Rhs) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3}).shape},
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32(), {3}),
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -91,8 +88,8 @@ TEST(MatMulInference, RejectsRank1Rhs) {
 TEST(MatMulInference, RejectsStaticInnerMismatch) {
     constexpr MatMulParams params;// transpose_rhs=false
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 5}).shape},
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32(), {4, 5}),
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -102,8 +99,8 @@ TEST(MatMulInference, RejectsStaticInnerMismatch) {
 TEST(MatMulInference, RejectsStaticInnerMismatchWithTransposeRhs) {
     const MatMulParams params{.transpose_rhs = true};// rhs layout [..., N, K]
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},// K=3
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 5}).shape},// K=5 -> mismatch
+            MakeSpec(DataType::Float32(), {2, 3}),// K=3
+            MakeSpec(DataType::Float32(), {4, 5}),// K=5 -> mismatch
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -113,8 +110,8 @@ TEST(MatMulInference, RejectsStaticInnerMismatchWithTransposeRhs) {
 TEST(MatMulInference, RejectsStaticIncompatibleBatch) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 3, 5}).shape},
+            MakeSpec(DataType::Float32(), {2, 2, 3}),
+            MakeSpec(DataType::Float32(), {4, 3, 5}),
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -124,8 +121,8 @@ TEST(MatMulInference, RejectsStaticIncompatibleBatch) {
 TEST(MatMulInference, AcceptsRank2Inputs) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32(), {3, 4}),
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -133,8 +130,8 @@ TEST(MatMulInference, AcceptsRank2Inputs) {
 TEST(MatMulInference, AcceptsBatchedMatMul) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {5, 2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {5, 3, 4}).shape},
+            MakeSpec(DataType::Float32(), {5, 2, 3}),
+            MakeSpec(DataType::Float32(), {5, 3, 4}),
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -142,8 +139,8 @@ TEST(MatMulInference, AcceptsBatchedMatMul) {
 TEST(MatMulInference, AcceptsBroadcastBatch) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {1, 2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 3, 5}).shape},
+            MakeSpec(DataType::Float32(), {1, 2, 3}),
+            MakeSpec(DataType::Float32(), {4, 3, 5}),
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -151,8 +148,8 @@ TEST(MatMulInference, AcceptsBroadcastBatch) {
 TEST(MatMulInference, AcceptsTransposeRhs) {
     const MatMulParams params{.transpose_rhs = true};
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 3}).shape},// [N, K] = [4, 3]
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32(), {4, 3}),// [N, K] = [4, 3]
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -161,8 +158,8 @@ TEST(MatMulInference, AcceptsZeroMDim) {
     // M=0 yields an empty output [0, N]; valid NumPy-style MatMul.
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {0, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
+            MakeSpec(DataType::Float32(), {0, 3}),
+            MakeSpec(DataType::Float32(), {3, 4}),
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -171,8 +168,8 @@ TEST(MatMulInference, AcceptsZeroNDim) {
     // N=0 yields an empty output [M, 0]; valid NumPy-style MatMul.
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 0}).shape},
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32(), {3, 0}),
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -181,8 +178,8 @@ TEST(MatMulInference, AcceptsZeroKDim) {
     // K=0 yields a zero-valued output [M, N]; valid NumPy-style MatMul.
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 0}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {0, 4}).shape},
+            MakeSpec(DataType::Float32(), {2, 0}),
+            MakeSpec(DataType::Float32(), {0, 4}),
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -191,8 +188,8 @@ TEST(MatMulInference, AcceptsZeroBatchDim) {
     // batch=0 yields an empty output [0, M, N]; valid NumPy-style MatMul.
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {0, 2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {0, 3, 4}).shape},
+            MakeSpec(DataType::Float32(), {0, 2, 3}),
+            MakeSpec(DataType::Float32(), {0, 3, 4}),
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -202,8 +199,8 @@ TEST(MatMulInference, AcceptsZeroBatchDim) {
 TEST(MatMulInference, InferOperatorRejectsNonFloat32) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Int(32), .shape = MakeSpec(DataType::Int(32), {2, 3}).shape},
-            {.dtype = DataType::Int(32), .shape = MakeSpec(DataType::Int(32), {3, 4}).shape},
+            MakeSpec(DataType::Int(32), {2, 3}),
+            MakeSpec(DataType::Int(32), {3, 4}),
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     EXPECT_FALSE(inference.ok());
@@ -213,8 +210,8 @@ TEST(MatMulInference, InferOperatorRejectsNonFloat32) {
 TEST(MatMulInference, InfersRank2Output) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 4}).shape},
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float32(), {3, 4}),
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
@@ -229,8 +226,8 @@ TEST(MatMulInference, InfersRank2Output) {
 TEST(MatMulInference, InfersRank2OutputWithTransposeRhs) {
     const MatMulParams params{.transpose_rhs = true};
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3}).shape},// [M, K]
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 3}).shape},// [N, K]
+            MakeSpec(DataType::Float32(), {2, 3}),// [M, K]
+            MakeSpec(DataType::Float32(), {4, 3}),// [N, K]
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
@@ -244,8 +241,8 @@ TEST(MatMulInference, InfersRank2OutputWithTransposeRhs) {
 TEST(MatMulInference, InfersBatchedOutput) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {5, 2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {5, 3, 4}).shape},
+            MakeSpec(DataType::Float32(), {5, 2, 3}),
+            MakeSpec(DataType::Float32(), {5, 3, 4}),
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
@@ -260,8 +257,8 @@ TEST(MatMulInference, InfersBatchedOutput) {
 TEST(MatMulInference, InfersBroadcastBatchOutput) {
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {1, 2, 3}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 3, 5}).shape},
+            MakeSpec(DataType::Float32(), {1, 2, 3}),
+            MakeSpec(DataType::Float32(), {4, 3, 5}),
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
@@ -277,8 +274,8 @@ TEST(MatMulInference, InfersDifferentRankBatchBroadcast) {
     // lhs batch [2], rhs batch [] -> output batch [2]
     constexpr MatMulParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {2, 3, 4}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 5}).shape},
+            MakeSpec(DataType::Float32(), {2, 3, 4}),
+            MakeSpec(DataType::Float32(), {4, 5}),
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();

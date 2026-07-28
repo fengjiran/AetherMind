@@ -3,9 +3,6 @@
 #include "test_operator_semantics_helpers.h"
 
 #include <gtest/gtest.h>
-#include <limits>
-#include <variant>
-#include <vector>
 
 namespace {
 using namespace aethermind;
@@ -13,8 +10,8 @@ using namespace aethermind;
 TEST(RmsNormInference, AcceptsValidStaticInputContract) {
     constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {8}).shape},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {8}),
     };
 
     EXPECT_TRUE(InferOperator(OpType::kRmsNorm, params, inputs).status().ok());
@@ -23,8 +20,8 @@ TEST(RmsNormInference, AcceptsValidStaticInputContract) {
 TEST(RmsNormInference, InfersStaticOutputContract) {
     constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {8}).shape},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {8}),
     };
 
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kRmsNorm, params, inputs);
@@ -84,8 +81,8 @@ TEST(RmsNormInference, AcceptsSharedSymbolicHiddenDimension) {
 TEST(RmsNormInference, RejectsStaticHiddenMismatch) {
     constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {16}).shape},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {16}),
     };
 
     const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
@@ -97,10 +94,8 @@ TEST(RmsNormInference, RejectsStaticHiddenMismatch) {
 TEST(RmsNormInference, RejectsRankZeroInput) {
     constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
-            {.dtype = DataType::Float32(),
-             .shape = MakeSpec(DataType::Float32(), {8}).shape},
+            MakeSpec(DataType::Float32(), {}),
+            MakeSpec(DataType::Float32(), {8}),
     };
 
     const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
@@ -112,9 +107,8 @@ TEST(RmsNormInference, RejectsRankZeroInput) {
 TEST(RmsNormInference, RejectsRankZeroWeight) {
     constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 8}).shape},
-            {.dtype = DataType::Float32(),
-             .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {}),
     };
 
     const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
@@ -128,8 +122,8 @@ TEST(RmsNormInference, AcceptsZeroBatchDimension) {
     // (hidden) dim must be positive (zero-length reduction is undefined).
     constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {0, 8}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {8}).shape},
+            MakeSpec(DataType::Float32(), {0, 8}),
+            MakeSpec(DataType::Float32(), {8}),
     };
     EXPECT_TRUE(InferOperator(OpType::kRmsNorm, params, inputs).status().ok());
 }
@@ -138,8 +132,8 @@ TEST(RmsNormInference, RejectsZeroHiddenDimension) {
     // Zero hidden dim must still be rejected: zero-length reduction is undefined.
     constexpr RmsNormParams params;
     const TensorSpec inputs[2] = {
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {4, 0}).shape},
-            {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {0}).shape},
+            MakeSpec(DataType::Float32(), {4, 0}),
+            MakeSpec(DataType::Float32(), {0}),
     };
     const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
     EXPECT_FALSE(status.ok());

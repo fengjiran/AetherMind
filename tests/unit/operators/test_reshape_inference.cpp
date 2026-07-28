@@ -1,10 +1,8 @@
-#include "test_operator_semantics_helpers.h"
-
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_inference.h"
+#include "test_operator_semantics_helpers.h"
 
 #include <gtest/gtest.h>
-#include <vector>
 
 namespace {
 using namespace aethermind;
@@ -47,7 +45,7 @@ TEST(ReshapeInference, RejectsDuplicateInferBeforeInputChecks) {
     // input-count validation.
     ReshapeParams params;
     params.target_shape = {ReshapeInferDim{}, ReshapeInferDim{}};
-    const std::vector<TensorSpec> empty_inputs;
+    constexpr std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kReshape, params, empty_inputs);
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
@@ -57,7 +55,7 @@ TEST(ReshapeInference, RejectsWrongInputCount) {
     // Parameter-only invariants are valid; arity check fires next.
     ReshapeParams params;
     params.target_shape = {ReshapeLiteralDim{2}, ReshapeLiteralDim{3}};
-    const std::vector<TensorSpec> empty_inputs;
+    constexpr std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kReshape, params, empty_inputs);
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
@@ -108,7 +106,8 @@ TEST(ReshapeInference, RejectsStaticOverflow) {
     params.target_shape = {ReshapeLiteralDim{2}};
     // Single dim of int64_t max would not overflow; need product overflow.
     // Use two large static dims whose product overflows uint64_t.
-    params.target_shape = {ReshapeLiteralDim{0x7FFFFFFFFFFFFFFFLL}, ReshapeLiteralDim{0x7FFFFFFFFFFFFFFFLL}};
+    params.target_shape = {ReshapeLiteralDim{0x7FFFFFFFFFFFFFFFLL},
+                           ReshapeLiteralDim{0x7FFFFFFFFFFFFFFFLL}};
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2, 3})};
     const auto result = InferOperator(OpType::kReshape, params, inputs);
     ASSERT_FALSE(result.ok());
@@ -208,7 +207,8 @@ TEST(ReshapeInference, SymbolicInferProducesUnknownAndDeferredCheck) {
     EXPECT_TRUE(result->outputs[0].shape[1].IsUnknown());
     // Exactly one deferred runtime check persisted.
     ASSERT_EQ(result->runtime_checks.size(), 1U);
-    const auto* vol = std::get_if<VolumeEqualConstraint>(&result->runtime_checks[0].condition);
+    const auto* vol = std::get_if<VolumeEqualConstraint>(
+            &result->runtime_checks[0].condition);
     ASSERT_NE(vol, nullptr);
 }
 

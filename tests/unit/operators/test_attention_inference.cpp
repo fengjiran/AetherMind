@@ -1,10 +1,8 @@
-#include "test_operator_semantics_helpers.h"
-
 #include "aethermind/model/graph/op_params.h"
 #include "aethermind/operators/operator_inference.h"
+#include "test_operator_semantics_helpers.h"
 
 #include <gtest/gtest.h>
-#include <vector>
 
 namespace {
 using namespace aethermind;
@@ -14,8 +12,9 @@ TEST(AttentionInference, AcceptsValidParams) {
     auto kCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     auto vCache = MakeSpec(DataType::Float32(), {1, 8, 1024, 64});
     std::vector<TensorSpec> inputs = {q, kCache, vCache};
-    EXPECT_TRUE(InferOperator(OpType::kAttention,
-                              AttentionParams{32, 8, 64}, inputs)
+    EXPECT_TRUE(InferOperator(
+                        OpType::kAttention,
+                        AttentionParams{32, 8, 64}, inputs)
                         .ok());
 }
 

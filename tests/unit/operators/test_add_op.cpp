@@ -8,11 +8,6 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
-#include <cstring>
-#include <new>
-#include <variant>
-
 namespace {
 using namespace aethermind;
 

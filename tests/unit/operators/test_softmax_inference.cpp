@@ -36,4 +36,33 @@ TEST(SoftmaxInference, UnrankedSkipsAxisCheck) {
     EXPECT_FALSE(result->outputs[0].shape.IsRanked());
 }
 
+TEST(SoftmaxInference, AcceptsFloat16) {
+    auto input = MakeSpec(DataType::Float(16), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    auto result = InferOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
+}
+
+TEST(SoftmaxInference, AcceptsBFloat16) {
+    auto input = MakeSpec(DataType::BFloat(16), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    auto result = InferOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
+}
+
+TEST(SoftmaxInference, RejectsInt32Input) {
+    auto input = MakeSpec(DataType::Int(32), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    EXPECT_FALSE(InferOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs).ok());
+}
+
+TEST(SoftmaxInference, RejectsFloat8E4M3FN) {
+    // FP8 is intentionally not supported by Softmax (precision concerns).
+    auto input = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    EXPECT_FALSE(InferOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs).ok());
+}
+
 }// namespace

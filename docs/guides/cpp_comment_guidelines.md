@@ -34,28 +34,52 @@ Scope and precedence:
 
 #### Public API comments
 
-Use documentation comments for non-trivial public APIs in header files.
+Use Doxygen documentation comments for non-trivial public APIs in header
+files. Comments must use the `///` marker and structured Doxygen tags so
+the documentation can be extracted by Doxygen without ambiguity.
 
-Preferred styles:
+Comment form:
 
-- `///`
+- Use `///` for all documentation comment lines.
+- Do not mix `/** ... */` block comments with `///` in the same API.
+- Place the comment block immediately before the declaration it documents.
+
+Mandatory tags:
+
+- `@brief` — one-line summary. Always required for public API.
+- `@param` — one per function parameter, required when the function has
+  parameters. Omit for zero-argument functions.
+- `@return` — required when the function returns a non-void value. Omit
+  for `void` functions and constructors.
+- `@throws` — required when the function may throw. Omit when the function
+  is `noexcept` or reports errors via return value/status only.
+- `@tparam` — one per template parameter, required when the template
+  parameter has a non-trivial contract. Omit for trivial template
+  parameters whose meaning is obvious from the name.
+
+Optional tags (use when relevant):
+
+- `@pre`, `@post`, `@note`, `@warning`, `@see`, `@deprecated`
+
+Do not force every API to fill every optional tag. Document what is
+necessary for correct use and maintenance.
 
 Example:
 
 ```cpp
-/// Parses a configuration file and returns the loaded options.
+/// @brief Parses a configuration file and returns the loaded options.
 ///
-/// @brief Short description.
-/// @tparam T Template parameter description.
 /// @param path Path to the configuration file.
 /// @return Parsed configuration object.
 /// @throws std::runtime_error if the file cannot be read or parsed.
-/// @pre Precondition description.
-/// @post Postcondition description.
-/// @note Additional notes.
-/// @warning Important warnings.
-/// @see Related symbols.
-/// @deprecated Mark as deprecated with migration path.
+/// @pre `path` is a valid filesystem path.
+Config parse_config(const std::string& path);
+```
+
+Non-example (plain prose without tags, not acceptable for public API):
+
+```cpp
+// Returns the parsed config. Throws on read failure.
 Config parse_config(const std::string& path);
 ```
 
@@ -178,10 +202,14 @@ Format:
 ------
 ### 1.6 Tool Integration
 
-Recommended tools for comment formatting:
-- **clang-format**: Configure `CommentPragmas` for special markers
-- **clang-tidy**: Enable `bugprone-suspicious-missing-comma` and related checks
-- **doxygen**: Configure `EXTRACT_ALL`, `JAVADOC_AUTOBRIEF` for API docs
+Tools used by this repository for comment formatting and validation:
+
+- **clang-format**: Configure `CommentPragmas` for special markers.
+- **clang-tidy**: Enable `bugprone-suspicious-missing-comma` and related checks.
+- **doxygen**: Public API documentation must be Doxygen-extractable.
+  Recommended configuration: `EXTRACT_ALL=NO`, `EXTRACT_PRIVATE=NO`,
+  `JAVADOC_AUTOBRIEF=NO` (use explicit `@brief` tags), `QT_AUTOBRIEF=NO`.
+  Explicit `@brief` tags are mandatory; do not rely on auto-brief extraction.
 
 ---
 
@@ -310,7 +338,7 @@ Examples:
 
 ### 2.3 Public API Documentation Standard
 
-Use documentation comments for:
+Use Doxygen documentation comments (`///`) for:
 
 - public classes
 - public structs
@@ -318,29 +346,40 @@ Use documentation comments for:
 - non-trivial public functions and methods
 - protected extension points with non-obvious contracts
 
-A public API comment should cover the relevant subset of these questions:
+Mandatory Doxygen tags (see §1.2):
 
-- what does it do
-- what are the preconditions
-- what are the postconditions
-- who owns the returned object or referenced memory
-- is it thread-safe
-- can it block
-- can it throw; if not, how are errors reported
-- are there complexity or performance guarantees
+- `@brief` — always required.
+- `@param` — required for each parameter when the function has parameters.
+- `@return` — required when the function returns a non-void value.
+- `@throws` — required when the function may throw.
+- `@tparam` — required for non-trivial template parameters.
 
-Do **not** force every API to fill every possible tag.
+Optional tags: `@pre`, `@post`, `@note`, `@warning`, `@see`, `@deprecated`.
 
-Document what is necessary for correct use and maintenance.
+A public API comment should additionally cover the relevant subset of these
+questions in the tag body or a follow-up paragraph:
+
+- what does it do (covered by `@brief`)
+- what are the preconditions (`@pre`)
+- what are the postconditions (`@post`)
+- who owns the returned object or referenced memory (`@return` body or `@note`)
+- is it thread-safe (`@note`)
+- can it block (`@note`)
+- can it throw; if not, how are errors reported (`@throws` or `@note`)
+- are there complexity or performance guarantees (`@note`)
+
+Do **not** force every API to fill every optional tag. Document what is
+necessary for correct use and maintenance.
 
 Example:
 
 ```cpp
-/// Inserts a value if the key is not already present.
+/// @brief Inserts a value if the key is not already present.
 ///
-/// Returns true if insertion occurred, false if the key already existed.
-/// This method is not thread-safe.
-/// Average complexity is O(1).
+/// @param key Key to insert. Ownership is transferred.
+/// @param value Value associated with the key.
+/// @return True if insertion occurred, false if the key already existed.
+/// @note This method is not thread-safe. Average complexity is O(1).
 bool insert(std::string key, Value value);
 ```
 
@@ -374,7 +413,7 @@ A class comment should describe the relevant subset of:
 Example:
 
 ```cpp
-/// Thread-safe bounded queue for producer-consumer workloads.
+/// @brief Thread-safe bounded queue for producer-consumer workloads.
 ///
 /// Multiple producers and consumers are supported.
 /// `push` blocks when the queue is full.
@@ -442,10 +481,16 @@ Document template assumptions explicitly when they are non-trivial.
 Examples:
 
 ```cpp
-/// `Fn` must be invocable as `bool(const T&)`.
+/// @brief Filters elements of `input` for which `fn` returns true.
+///
+/// @tparam T Element type. Must be nothrow-move-constructible for the
+///           strong exception guarantee.
+/// @tparam Fn Filter predicate. Must be invocable as `bool(const T&)`.
+/// @param input Source vector to filter.
+/// @param fn Predicate invoked per element.
+/// @return Vector containing elements for which `fn` returned true.
 template <class T, class Fn>
 std::vector<T> filter(const std::vector<T>& input, Fn&& fn);
-// Requires `T` to be nothrow-move-constructible for the strong guarantee.
 ```
 
 Avoid turning template comments into generic textbook explanations.

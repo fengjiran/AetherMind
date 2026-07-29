@@ -16,6 +16,12 @@ TensorSpec ActivationSpec() {
     return Spec(DataType::Float32(), {1, 8});
 }
 
+// Rank-3 cache spec [kv_heads, cache_len, head_dim] where
+// kv_heads * head_dim == 8 to match k/v activation last dim.
+TensorSpec CacheSpec() {
+    return Spec(DataType::Float32(), {1, 1, 8});
+}
+
 TensorSpec TokenSpec() {
     return Spec(DataType::Int(64), {1});
 }
@@ -496,11 +502,11 @@ TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
                                    LinearParams{})
                                    .outputs.front();
     const GraphValueId k_cache_in = graph.AddState(
-            ActivationSpec(),
+            CacheSpec(),
             KStateBinding(0U),
             "k_cache_in");
     const GraphValueId v_cache_in = graph.AddState(
-            ActivationSpec(),
+            CacheSpec(),
             VStateBinding(0U),
             "v_cache_in");
 
@@ -1623,17 +1629,17 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStoredNodeWithOutputPayloadMis
             {.payload = ConstantValue{{}}, .spec = ActivationSpec(), .name = "k"},
             {.payload = ConstantValue{{}}, .spec = ActivationSpec(), .name = "v"},
             {.payload = StateValue{.binding = KStateBinding()},
-             .spec = ActivationSpec(),
+             .spec = CacheSpec(),
              .name = "k_cache_in"},
             {.payload = StateValue{.binding = VStateBinding()},
-             .spec = ActivationSpec(),
+             .spec = CacheSpec(),
              .name = "v_cache_in"},
             {.payload = StateValue{.binding = KStateBinding()},
-             .spec = ActivationSpec(),
+             .spec = CacheSpec(),
              .producer = GraphNodeId{0},
              .name = "k_cache_out"},
             {.payload = ActivationValue{},
-             .spec = ActivationSpec(),
+             .spec = CacheSpec(),
              .producer = GraphNodeId{0},
              .name = "bad_v_out"},
     };
@@ -1781,8 +1787,8 @@ TEST(ModelGraphSemanticValidation, KVCacheUpdateOutputHasStatePayloadAndDerivedS
     ModelGraph graph;
     const GraphValueId k = AddEmbeddingOutput(graph, "tokens_k");
     const GraphValueId v = AddEmbeddingOutput(graph, "tokens_v");
-    const GraphValueId k_in = graph.AddState(ActivationSpec(), KStateBinding(), "k_in");
-    const GraphValueId v_in = graph.AddState(ActivationSpec(), VStateBinding(), "v_in");
+    const GraphValueId k_in = graph.AddState(CacheSpec(), KStateBinding(), "k_in");
+    const GraphValueId v_in = graph.AddState(CacheSpec(), VStateBinding(), "v_in");
 
     const auto result = graph.AddNode(
             OpType::kKVCacheUpdate,

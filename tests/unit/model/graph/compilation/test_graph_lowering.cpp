@@ -35,7 +35,7 @@ TensorSpec WeightSpec() {
 }
 
 TensorSpec KVSpec() {
-    return Spec(DataType::Float32(), {1, 2, 2});
+    return Spec(DataType::Float32(), {1, 2, 8});
 }
 
 StateBinding KStateBinding(uint32_t decoder_layer_index = 0U) {

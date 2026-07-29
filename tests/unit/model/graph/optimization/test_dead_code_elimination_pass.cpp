@@ -185,13 +185,13 @@ TEST(DeadCodeEliminationPass, KeepsStateOutputNodeWithoutConsumers) {
     const GraphValueId k_new = AddActivation(graph, "k_new");
     const GraphValueId v_new = AddActivation(graph, "v_new");
     const GraphValueId k_cache = AddState(graph,
-                                          Spec(DataType::Float32(), {2, 4}),
+                                          Spec(DataType::Float32(), {1, 1, 4}),
                                           KVCacheStateBinding{
                                                   .decoder_layer_index = 0,
                                                   .slot = KVCacheSlot::kKey},
                                           "k_cache");
     const GraphValueId v_cache = AddState(graph,
-                                          Spec(DataType::Float32(), {2, 4}),
+                                          Spec(DataType::Float32(), {1, 1, 4}),
                                           KVCacheStateBinding{
                                                   .decoder_layer_index = 0,
                                                   .slot = KVCacheSlot::kValue},

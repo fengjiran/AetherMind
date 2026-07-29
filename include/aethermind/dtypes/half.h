@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// Software IEEE 754 half-precision (binary16) floating-point type.
 ///
 /// Provides `Half` — a C++ type wrapping a 16-bit binary16 bit pattern — and
@@ -42,7 +42,7 @@
 
 namespace aethermind {
 
-/// IEEE 754 half-precision (binary16) floating-point value.
+/// @brief IEEE 754 half-precision (binary16) floating-point value.
 ///
 /// Wraps a 16-bit binary16 bit pattern. Arithmetic and comparisons go through
 /// implicit conversion to `float`, so results follow IEEE 754 binary32 rounding
@@ -174,7 +174,7 @@ AM_NODISCARD bool operator==(T&& lhs, U&& rhs) {
 
 }// namespace aethermind
 
-/// std::numeric_limits specialization for IEEE 754 binary16.
+/// @brief std::numeric_limits specialization for IEEE 754 binary16.
 ///
 /// Bit constants follow the binary16 format (1 sign | 5 exponent | 10 mantissa,
 /// bias 15). `is_iec559` is false: `fp16_from_fp32_value` flushes subnormals to

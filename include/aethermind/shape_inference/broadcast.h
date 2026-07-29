@@ -21,27 +21,31 @@
 
 namespace aethermind {
 
-/// Computes the output shape for broadcasting two concrete shapes.
+/// @brief Computes the output shape for broadcasting two concrete shapes.
 ///
 /// Right-aligns the shapes and applies standard NumPy-style broadcasting
-/// rules: dimensions must be equal, or one of them must be 1. All
-/// dimensions must be non-negative. Rank-0 shapes (empty span) are
-/// supported and broadcast as a scalar.
+/// rules: dimensions must be equal, or one of them must be 1. Rank-0 shapes
+/// (empty span) are supported and broadcast as a scalar.
+/// @param lhs_shape Left-hand side concrete shape (all dims non-negative).
+/// @param rhs_shape Right-hand side concrete shape (all dims non-negative).
+/// @return The broadcast output shape, or kInvalidArgument on incompatible dims.
 StatusOr<std::vector<int64_t>> BroadcastShapes(std::span<const int64_t> lhs_shape,
                                                std::span<const int64_t> rhs_shape);
 
-/// Expands strides for a broadcast input to match the output rank.
+/// @brief Expands strides for a broadcast input to match the output rank.
 ///
-/// Leading broadcast axes (where the input rank is lower than the output
-/// rank) receive stride 0 so the strided kernel can reuse the single
-/// element without advancing the offset. Input shape and stride vectors
-/// must have equal rank and must not exceed the output rank.
+/// Leading broadcast axes (where input rank < output rank) receive stride 0
+/// so the strided kernel reuses the single element without advancing offset.
+/// @param input_shape  Shape of the input tensor.
+/// @param input_strides Strides of the input tensor (same rank as input_shape).
+/// @param output_shape The broadcast output shape (rank >= input rank).
+/// @return Expanded strides matching output_shape rank, or kInvalidArgument.
 StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> input_shape,
                                                      std::span<const int64_t> input_strides,
                                                      std::span<const int64_t> output_shape);
 
-/// Describes a single output axis produced by broadcasting two non-identical,
-/// non-trivial input dimensions.
+/// @brief Describes a single output axis produced by broadcasting two
+///        non-identical, non-trivial input dimensions.
 ///
 /// lhs_axis and rhs_axis are indices into the original (not right-aligned)
 /// input shapes. A deferred axis signals that the broadcast dimension
@@ -56,7 +60,7 @@ struct DeferredBroadcastAxis {
     bool operator!=(const DeferredBroadcastAxis&) const noexcept = default;
 };
 
-/// Result of symbolic broadcast shape inference.
+/// @brief Result of symbolic broadcast shape inference.
 struct SymbolicBroadcastResult {
     /// The broadcast output shape. May contain Unknown() symbols where
     /// the static value could not be resolved.
@@ -69,22 +73,22 @@ struct SymbolicBroadcastResult {
     bool operator!=(const SymbolicBroadcastResult&) const noexcept = default;
 };
 
-/// Performs broadcast shape inference for two symbolic shapes.
+/// @brief Performs broadcast shape inference for two symbolic shapes.
 ///
 /// Rules (deterministic, right-aligned):
 /// - Reject unranked shapes.
 /// - Identical dimensions are preserved as-is.
 /// - A static 1 dimension yields the other dimension.
 /// - Incompatible distinct static dimensions produce an error.
-/// - A static N != 1 paired with an unresolved (symbolic or unknown)
-///   dimension yields N and records a deferred axis.
-/// - Distinct non-static dimensions (both symbolic and unequal, or one
-///   symbolic and one unknown that are not equal) yield
-///   ShapeSymbol::Unknown() and record a deferred axis.
-/// - Missing leading axes (rank expansion) are implicit 1 and never
-///   deferred.
+/// - A static N != 1 paired with an unresolved dimension yields N and
+///   records a deferred axis.
+/// - Distinct non-static dimensions yield Unknown() and record a deferred axis.
+/// - Missing leading axes (rank expansion) are implicit 1 and never deferred.
 ///
 /// No fresh symbols are created; ambiguous dimensions degrade to Unknown().
+/// @param lhs Left-hand side symbolic shape (must be ranked).
+/// @param rhs Right-hand side symbolic shape (must be ranked).
+/// @return Broadcast result with output shape and deferred axes, or error.
 StatusOr<SymbolicBroadcastResult> InferBroadcastShape(const SymbolicShape& lhs,
                                                       const SymbolicShape& rhs);
 

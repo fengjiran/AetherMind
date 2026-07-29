@@ -1,7 +1,8 @@
-// Defines tensor element data type metadata and its validated C++ wrapper.
-//
-// This header keeps the DLPack-style `bits`/`lanes` layout visible for interop while
-// `DataType` centralizes validation and byte-size semantics used by tensor storage.
+/// @file
+/// Tensor element data type metadata and its validated C++ wrapper.
+///
+/// This header keeps the DLPack-style `bits`/`lanes` layout visible for interop while
+/// `DataType` centralizes validation and byte-size semantics used by tensor storage.
 
 #ifndef AETHERMIND_DTYPES_DATA_TYPE_H
 #define AETHERMIND_DTYPES_DATA_TYPE_H
@@ -21,6 +22,7 @@
 
 namespace aethermind {
 
+/// @brief DLPack-compatible type code enumeration for tensor element types.
 enum class DLDataTypeCode : uint8_t {
     kInt = 0,
     kUInt = 1,
@@ -48,7 +50,7 @@ enum class DLDataTypeCode : uint8_t {
     Undefined,
 };
 
-/// Raw tensor element type metadata.
+/// @brief Raw tensor element type metadata.
 ///
 /// `bits` is the width of one lane. `lanes` is encoded as an unsigned field for ABI and
 /// interop compatibility, but values are interpreted through `int16_t`: non-negative values are
@@ -62,7 +64,7 @@ struct DLDataType {
     uint16_t lanes;
 };
 
-/// Validated value type for one complete tensor element type.
+/// @brief Validated value type for one complete tensor element type.
 ///
 /// `DataType` preserves the DLPack-style model where `bits` describes one lane and `lanes` is part
 /// of the type. For example, `Float(32, 4)` is one 4-lane tensor element, not four independent
@@ -75,16 +77,16 @@ class DataType {
 public:
     DataType() noexcept : dtype_({DLDataTypeCode::Undefined, 0, 0}) {}
 
-    // DataType(const DataType& other) noexcept = default;
-    //
-    // DataType(DataType&& other) noexcept = default;
-
+    /// @brief Constructs from a raw DLDataType, validating code/bits/lanes.
+    /// @param dtype Raw DLPack type descriptor.
     explicit DataType(DLDataType dtype);
 
+    /// @brief Constructs from individual fields with validation.
+    /// @param code        Type code.
+    /// @param bits        Bit width per lane.
+    /// @param lanes       Lane count (or vscale factor if is_scalable).
+    /// @param is_scalable True if lanes encodes a scalable-vector vscale factor.
     DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable = false);
-
-    // DataType& operator=(const DataType&) = default;
-    // DataType& operator=(DataType&&) noexcept = default;
 
     operator DLDataType() const {// NOLINT
         return dtype_;
@@ -98,6 +100,8 @@ public:
         return dtype_.bits;
     }
 
+    /// @brief Returns the lane count for fixed-length vectors.
+    /// @pre Not a scalable vector.
     AM_NODISCARD int lanes() const {
         int lanes_as_int = static_cast<int16_t>(dtype_.lanes);
         AM_CHECK(lanes_as_int >= 0, "Can't fetch the lanes of a scalable vector at compile time.");
@@ -108,6 +112,8 @@ public:
         return dtype_.lanes;
     }
 
+    /// @brief Returns the total byte size of the element (bits * lanes / 8, rounded up).
+    /// @pre Not a scalable vector.
     AM_NODISCARD int nbytes() const {
         AM_CHECK(!IsScalableVector(), "Scalable vector DataType has runtime-dependent byte size.");
         return (bits() * lanes() + 7) / 8;
@@ -396,9 +402,11 @@ public:
         return {DLDataTypeCode::kComplex, 128, lanes};
     }
 
+    /// @brief Creates a DataType matching the C++ scalar type T.
     template<typename T>
     static DataType Make();
 
+    /// @brief Returns true if this type matches the C++ scalar type T.
     template<typename T>
     AM_NODISCARD bool Match() const {
         return *this == Make<T>();
@@ -437,6 +445,7 @@ private:
     DLDataType dtype_{};
 };
 
+/// @brief Returns a human-readable string representation of the data type.
 AM_NODISCARD std::string ToString(const DataType& dtype);
 
 std::ostream& operator<<(std::ostream& os, const DataType& dtype);
@@ -461,15 +470,6 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
     f(DLDataTypeCode::kComplex, 32, 1, complex<Half>, ComplexHalf);        \
     f(DLDataTypeCode::kComplex, 64, 1, complex<float>, ComplexFloat);      \
     f(DLDataTypeCode::kComplex, 128, 1, complex<double>, ComplexDouble);
-// f(DLDataTypeCode::kFloat8_e3m4, 8, 1, Float8_e3m4, Float8_e3m4);                      \
-// f(DLDataTypeCode::kFloat8_e4m3, 8, 1, Float8_e4m3, Float8_e4m3);                      \
-// f(DLDataTypeCode::kFloat8_e4m3b11fnuz, 8, 1, Float8_e4m3b11fnuz, Float8_e4m3b11fnuz); \
-//  f(DLDataTypeCode::kFloat8_e4m3fnuz, 8, 1, Float8_e4m3fnuz,Float8_e4m3fnuz);    \
-//  f(DLDataTypeCode::kFloat8_e5m2fnuz, 8, 1, Float8_e5m2fnuz,Float8_e5m2fnuz);    \
-//  f(DLDataTypeCode::kFloat8_e8m0fnu, 8, 1, Float8_e8m0fnu,Float8_e8m0fnu);     \
-//  f(DLDataTypeCode::kFloat6_e2m3fn, 6, 1, Float6_e2m3fn,Float6_e2m3fn);      \
-//  f(DLDataTypeCode::kFloat6_e3m2fn, 6, 1, Float6_e3m2fn,Float6_e3m2fn);      \
-//  f(DLDataTypeCode::kFloat4_e2m1fn, 4, 1, Float4_e2m1fn,Float4_e2m1fn)
 
 
 }// namespace aethermind

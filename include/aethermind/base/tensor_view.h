@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// Non-owning borrowed tensor metadata and data view.
 ///
 /// TensorView is the hot-path counterpart to Tensor:
@@ -25,7 +25,7 @@ namespace aethermind {
 
 class Tensor;
 
-/// Non-owning immutable tensor view.
+/// @brief Non-owning immutable tensor view.
 ///
 /// Rank-0 (scalar tensor): shape `[]`, strides `[]`, rank 0, numel 1,
 /// contiguous=true, non-null data required. Distinct from default
@@ -42,24 +42,27 @@ class Tensor;
 /// Semantics:
 /// - Strides are in elements, matching Tensor / ShapeAndStride semantics.
 /// - `alignment_ == 0` means alignment is unknown or unspecified.
-/// - `is_valid()` is intended to mirror a usable borrowed Tensor-like state rather
-///   than act as a loose metadata envelope.
 /// - No slice/narrow/dim/stride access on rank-0 (rank < 1 guards apply).
 class TensorView {
 public:
     TensorView() noexcept = default;
 
-    /// Construct from borrowed raw parts.
-    ///
-    /// \pre `shape.size() == strides.size()`
-    /// \pre Borrowed data and metadata must outlive this view.
+    /// @brief Constructs from borrowed raw parts.
+    /// @param data      Pointer to the tensor data (borrowed, not owned).
+    /// @param dtype     Element data type.
+    /// @param shape     Shape array (borrowed, must outlive this view).
+    /// @param strides   Stride array in elements (borrowed, must outlive this view).
+    /// @param alignment Data alignment in bytes (0 = unspecified).
+    /// @pre shape.size() == strides.size().
+    /// @pre Borrowed data and metadata must outlive this view.
     TensorView(const void* data,
                DataType dtype,
                IntArrayView shape,
                IntArrayView strides,
                size_t alignment = 0) noexcept;
 
-    /// Construct by borrowing metadata and data from an existing Tensor.
+    /// @brief Constructs by borrowing metadata and data from an existing Tensor.
+    /// @param tensor The tensor to borrow from (must outlive this view).
     explicit TensorView(const Tensor& tensor) noexcept;
 
     AM_NODISCARD bool is_valid() const noexcept;
@@ -130,7 +133,7 @@ private:
     size_t alignment_ = 0;
 };
 
-/// Non-owning mutable tensor view.
+/// @brief Non-owning mutable tensor view.
 ///
 /// Rank-0 (scalar tensor): shape `[]`, strides `[]`, rank 0, numel 1,
 /// contiguous=true, non-null data required. is_rank_zero() returns true
@@ -142,18 +145,22 @@ class MutableTensorView {
 public:
     MutableTensorView() noexcept = default;
 
-    /// Construct from borrowed raw parts.
-    ///
-    /// \pre `shape.size() == strides.size()`
-    /// \pre Borrowed data and metadata must outlive this view.
+    /// @brief Constructs from borrowed raw parts.
+    /// @param data      Writable pointer to the tensor data (borrowed, not owned).
+    /// @param dtype     Element data type.
+    /// @param shape     Shape array (borrowed, must outlive this view).
+    /// @param strides   Stride array in elements (borrowed, must outlive this view).
+    /// @param alignment Data alignment in bytes (0 = unspecified).
+    /// @pre shape.size() == strides.size().
+    /// @pre Borrowed data and metadata must outlive this view.
     MutableTensorView(void* data,
                       DataType dtype,
                       IntArrayView shape,
                       IntArrayView strides,
                       size_t alignment = 0) noexcept;
 
-    /// Construct by borrowing metadata and writable data from an existing
-    /// Tensor.
+    /// @brief Constructs by borrowing metadata and writable data from a Tensor.
+    /// @param tensor The tensor to borrow from (must outlive this view).
     explicit MutableTensorView(Tensor& tensor) noexcept;
 
     AM_NODISCARD bool is_valid() const noexcept;

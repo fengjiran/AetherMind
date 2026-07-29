@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// 8-bit floating-point type with 5 exponent bits and 2 mantissa bits (E5M2).
 ///
 /// Bit layout: `s eeeee mm` (1 sign | 5 exponent | 2 mantissa, bias 15).
@@ -39,7 +39,7 @@ uint8_t fp8e5m2_from_fp32_value(float f);
 
 }// namespace detail
 
-/// E5M2 8-bit floating-point value.
+/// @brief E5M2 8-bit floating-point value.
 ///
 /// Stores the raw 8-bit E5M2 bit pattern in `x`. The format is
 /// 1 sign | 5 exponent | 2 mantissa (bias 15), which shares the exponent
@@ -134,7 +134,7 @@ Float8_e5m2 operator/(int64_t lhs, Float8_e5m2 rhs);
 
 namespace std {
 
-/// std::numeric_limits specialization for E5M2.
+/// @brief std::numeric_limits specialization for E5M2.
 ///
 /// Bit constants follow the E5M2 format (1 sign | 5 exponent | 2 mantissa,
 /// bias 15). `is_iec559` is false — E5M2 is not an IEEE 754 standard format.

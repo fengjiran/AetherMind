@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// 8-bit floating-point type with 4 exponent bits and 3 mantissa bits (E4M3FN).
 ///
 /// Bit layout: `s eeee mmm` (1 sign | 4 exponent | 3 mantissa, bias 7).
@@ -207,7 +207,7 @@ inline uint8_t fp8e4m3fn_from_fp32_value_bk(float f) {
 
 }// namespace detail
 
-/// E4M3FN 8-bit floating-point value.
+/// @brief E4M3FN 8-bit floating-point value.
 ///
 /// Stores the raw 8-bit E4M3FN bit pattern in `x`. The format is
 /// 1 sign | 4 exponent | 3 mantissa (bias 7). Unlike standard IEEE 754,
@@ -301,7 +301,7 @@ Float8_e4m3fn operator/(int64_t lhs, Float8_e4m3fn rhs);
 
 namespace std {
 
-/// std::numeric_limits specialization for E4M3FN.
+/// @brief std::numeric_limits specialization for E4M3FN.
 ///
 /// Bit constants follow the E4M3FN format (1 sign | 4 exponent | 3 mantissa,
 /// bias 7). Several traits diverge from the IEEE 754 norm:

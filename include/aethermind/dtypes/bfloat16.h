@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// Brain floating-point (bfloat16) type.
 ///
 /// Provides `BFloat16` — a C++ type wrapping a 16-bit bfloat16 bit pattern —
@@ -36,7 +36,7 @@ uint16_t bf16_from_fp32_value(float);
 
 }// namespace detail
 
-/// Brain floating-point (bfloat16) value.
+/// @brief Brain floating-point (bfloat16) value.
 ///
 /// Stores the raw 16-bit bfloat16 bit pattern in `x`. The format is
 /// 1 sign | 8 exponent | 7 mantissa, which shares the exponent range of
@@ -124,7 +124,7 @@ BFloat16 operator/(int64_t lhs, BFloat16 rhs);
 bool operator>(BFloat16& lhs, BFloat16& rhs);
 bool operator<(BFloat16& lhs, BFloat16& rhs);
 
-/// Trait identifying reduced-precision floating-point types (`Half`,
+/// @brief Trait identifying reduced-precision floating-point types (`Half`,
 /// `BFloat16`). Used to gate `std::` math overloads that route through
 /// `float` for these types.
 template<typename T>
@@ -143,7 +143,7 @@ constexpr bool is_reduced_floating_point_v = is_reduced_floating_point<T>::value
 
 namespace std {
 
-/// std::numeric_limits specialization for bfloat16.
+/// @brief std::numeric_limits specialization for bfloat16.
 ///
 /// Bit constants follow the bfloat16 format (1 sign | 8 exponent | 7 mantissa,
 /// bias 127). `is_iec559` is false because bfloat16 is not an IEEE 754

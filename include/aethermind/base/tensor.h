@@ -21,7 +21,7 @@ class Scalar;
 class TensorView;
 class MutableTensorView;
 
-/// Owning dense tensor backed by a Buffer.
+/// @brief Owning dense tensor backed by a Buffer.
 ///
 /// Rank-0 (scalar tensor): shape `[]`, strides `[]`, rank 0, numel 1,
 /// contiguous=true. Distinct from default-uninitialized (numel 0,
@@ -33,8 +33,7 @@ class MutableTensorView;
 /// The explicit Scalar bridge (FromScalar/item/set_item) is CPU-only and
 /// allocator-explicit. No implicit Scalar-to-Tensor conversion, inline
 /// storage, or general eager arithmetic is supported.
-///
-/// Shallow copy/move assignment shares the underlying Buffer.
+/// @note Shallow copy/move assignment shares the underlying Buffer.
 class Tensor {
 public:
     Tensor() noexcept = default;
@@ -172,19 +171,21 @@ public:
 
     // ── Scalar-Tensor bridge ─────────────────────────────────
 
-    /// Creates a rank-0 CPU Tensor from a Scalar value.
-    /// The allocator must be a CPU allocator.
-    /// The resulting Tensor owns its Buffer and has rank 0, numel 1.
+    /// @brief Creates a rank-0 CPU Tensor from a Scalar value.
+    /// @param scalar    The scalar value to wrap.
+    /// @param allocator A CPU allocator used to allocate the backing buffer.
+    /// @return A rank-0 Tensor owning its Buffer with numel 1.
+    /// @pre allocator.device().is_cpu().
     static Tensor FromScalar(const Scalar& scalar, Allocator& allocator);
 
-    /// Extracts the single element as a Scalar.
-    /// Requires: initialized CPU Tensor, numel() == 1, non-null data,
-    /// and dtype().IsScalar().
+    /// @brief Extracts the single element as a Scalar.
+    /// @return The scalar value stored in this tensor.
+    /// @pre Initialized CPU Tensor, numel() == 1, non-null data, dtype().IsScalar().
     AM_NODISCARD Scalar item() const;
 
-    /// Replaces the single element with a new value.
-    /// Requires: initialized CPU Tensor, numel() == 1, non-null data,
-    /// and dtype().IsScalar(). Converts via the checked Scalar::to<T>().
+    /// @brief Replaces the single element with a new value.
+    /// @param scalar The new scalar value to write.
+    /// @pre Initialized CPU Tensor, numel() == 1, non-null data, dtype().IsScalar().
     void set_item(const Scalar& scalar);
 
 private:

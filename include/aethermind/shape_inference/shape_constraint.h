@@ -9,7 +9,7 @@
 
 namespace aethermind {
 
-/// Identifies whether a port is an input or an output of an operator.
+/// @brief Identifies whether a port is an input or an output of an operator.
 ///
 /// 'Port' is the standard graph theory term for node interfaces.
 enum class TensorPortType : std::uint8_t {
@@ -17,17 +17,17 @@ enum class TensorPortType : std::uint8_t {
     kOutput
 };
 
-/// Result of evaluating a shape constraint against currently known shape facts.
+/// @brief Result of evaluating a shape constraint against known shape facts.
 ///
-/// Evaluators should return kDeferred when a constraint is neither proven nor
-/// disproven because rank or dimension values are still symbolic or runtime-only.
+/// Evaluators return kDeferred when a constraint is neither proven nor
+/// disproven because rank or dimension values are still symbolic/runtime-only.
 enum class ShapeConstraintEvaluationResult : std::uint8_t {
     kSatisfied,
     kViolated,
     kDeferred
 };
 
-/// Uniquely identifies a specific input or output port of an operator.
+/// @brief Uniquely identifies a specific input or output port of an operator.
 struct TensorPort {
     TensorPortType direction{TensorPortType::kInput};
     size_t tensor_idx{0};
@@ -35,7 +35,7 @@ struct TensorPort {
     auto operator<=>(const TensorPort&) const noexcept = default;
 };
 
-/// Locates a specific dimension within a specific tensor port.
+/// @brief Locates a specific dimension within a specific tensor port.
 struct DimLocator {
     TensorPort tensor_port{};
     size_t dim_index{0};
@@ -43,7 +43,7 @@ struct DimLocator {
     auto operator<=>(const DimLocator&) const noexcept = default;
 };
 
-/// Constrains two specific dimensions to be exactly equal.
+/// @brief Constrains two specific dimensions to be exactly equal.
 struct DimEqualConstraint {
     DimLocator lhs;
     DimLocator rhs;
@@ -51,7 +51,7 @@ struct DimEqualConstraint {
     auto operator<=>(const DimEqualConstraint&) const noexcept = default;
 };
 
-/// Constrains two dimensions to be broadcastable (a == b || a == 1 || b == 1).
+/// @brief Constrains two dimensions to be broadcastable (a == b || a == 1 || b == 1).
 struct DimBroadcastableConstraint {
     DimLocator lhs;
     DimLocator rhs;
@@ -59,7 +59,8 @@ struct DimBroadcastableConstraint {
     auto operator<=>(const DimBroadcastableConstraint&) const noexcept = default;
 };
 
-/// Constrains the product of two sets of dimensions to be equal (e.g., Reshape).
+/// @brief Constrains the product of two sets of dimensions to be equal (e.g., Reshape).
+///
 /// An empty dimension list represents scalar volume 1.
 struct VolumeEqualConstraint {
     std::vector<DimLocator> lhs_dims;
@@ -68,7 +69,7 @@ struct VolumeEqualConstraint {
     auto operator<=>(const VolumeEqualConstraint&) const = default;
 };
 
-/// Constrains the rank of a tensor to an exact value.
+/// @brief Constrains the rank of a tensor to an exact value.
 struct RankEqualConstraint {
     TensorPort port;
     size_t target_rank;
@@ -76,7 +77,7 @@ struct RankEqualConstraint {
     auto operator<=>(const RankEqualConstraint&) const noexcept = default;
 };
 
-/// Constrains the rank of a tensor to a minimum value.
+/// @brief Constrains the rank of a tensor to a minimum value.
 struct RankAtLeastConstraint {
     TensorPort port;
     size_t min_rank;
@@ -84,7 +85,8 @@ struct RankAtLeastConstraint {
     auto operator<=>(const RankAtLeastConstraint&) const noexcept = default;
 };
 
-/// Constrains a single dimension to be strictly positive (> 0).
+/// @brief Constrains a single dimension to be strictly positive (> 0).
+///
 /// Used for dimensions where zero is semantically invalid (e.g., reduction
 /// axes in RmsNorm, vocab/hidden sizes in Embedding).
 struct DimPositiveConstraint {
@@ -101,7 +103,7 @@ using ConstraintVariant = std::variant<
         RankAtLeastConstraint,
         DimPositiveConstraint>;
 
-/// The unified shape constraint object emitted by AOT inference.
+/// @brief The unified shape constraint object emitted by AOT inference.
 ///
 /// ShapeConstraint is a data-only contract. Evaluation is performed by a
 /// separate checker that returns ShapeConstraintEvaluationResult: satisfied,

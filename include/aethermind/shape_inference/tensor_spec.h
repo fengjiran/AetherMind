@@ -6,6 +6,7 @@
 
 namespace aethermind {
 
+/// @brief Lightweight descriptor pairing a tensor's dtype with its symbolic shape.
 struct TensorSpec {
     DataType dtype{};
     SymbolicShape shape{};

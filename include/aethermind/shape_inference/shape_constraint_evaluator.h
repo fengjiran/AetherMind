@@ -10,22 +10,35 @@
 
 namespace aethermind {
 
-/// Evaluates a shape constraint against symbolic tensor shapes.
+/// @brief Evaluates a shape constraint against symbolic tensor shapes.
 ///
 /// Returns kDeferred when the current symbolic facts cannot prove or disprove
 /// the constraint.
+/// @param constraint The shape constraint to evaluate.
+/// @param inputs     Symbolic shapes of operator inputs.
+/// @param outputs    Symbolic shapes of operator outputs.
+/// @return kSatisfied, kViolated, or kDeferred.
 AM_NODISCARD ShapeConstraintEvaluationResult EvaluateShapeConstraint(
         const ShapeConstraint& constraint,
         std::span<const SymbolicShape> inputs,
         std::span<const SymbolicShape> outputs);
 
-/// Evaluates a shape constraint against concrete runtime tensor views.
+/// @brief Evaluates a shape constraint against concrete runtime tensor views.
+/// @param constraint The shape constraint to evaluate.
+/// @param inputs     Concrete runtime input tensor views.
+/// @param outputs    Concrete runtime output tensor views.
+/// @return kSatisfied or kViolated (never kDeferred at runtime).
 AM_NODISCARD ShapeConstraintEvaluationResult EvaluateShapeConstraint(
         const ShapeConstraint& constraint,
         std::span<const TensorView> inputs,
         std::span<const MutableTensorView> outputs);
 
-/// Validates all concrete runtime constraints and converts violations to Status.
+/// @brief Validates all concrete runtime constraints and converts violations to Status.
+/// @param constraints The set of shape constraints to validate.
+/// @param inputs      Concrete runtime input tensor views.
+/// @param outputs     Concrete runtime output tensor views.
+/// @return OkStatus if all constraints are satisfied; kInvalidArgument on
+///         violation; kInternal if evaluation unexpectedly returns kDeferred.
 AM_NODISCARD Status ValidateShapeConstraints(
         std::span<const ShapeConstraint> constraints,
         std::span<const TensorView> inputs,

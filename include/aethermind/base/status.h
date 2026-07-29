@@ -33,7 +33,7 @@
 
 namespace aethermind {
 
-/// Status codes for operation results, aligned with gRPC status codes.
+/// @brief Status codes for operation results, aligned with gRPC status codes.
 ///
 /// Invariant: numeric values map 1:1 to am_status_code (C ABI). The mapping
 /// is verified by static_asserts below the enum definition, so adding a new
@@ -78,10 +78,12 @@ static_assert(static_cast<uint8_t>(StatusCode::kDataLoss) == AM_STATUS_DATA_LOSS
 static_assert(static_cast<uint8_t>(StatusCode::kUnauthenticated) == AM_STATUS_UNAUTHENTICATED, "Status code mismatch!");
 static_assert(static_cast<uint8_t>(StatusCode::kOverflow) == AM_STATUS_OVERFLOW, "Status code mismatch!");
 
-/// Returns the human-readable name for a status code.
+/// @brief Returns the human-readable name for a status code.
 ///
 /// For example, StatusCode::kNotFound returns "NOT_FOUND".
 /// Guaranteed to return a valid string_view for all defined StatusCode values.
+/// @param code The status code to name.
+/// @return Upper-case snake_case name (e.g. "NOT_FOUND").
 AM_NODISCARD constexpr std::string_view StatusCodeName(StatusCode code) noexcept {
     switch (code) {
         case StatusCode::kOk:
@@ -126,19 +128,23 @@ AM_NODISCARD constexpr std::string_view StatusCodeName(StatusCode code) noexcept
     return "UNKNOWN";
 }
 
-/// Converts a StatusCode to its C ABI equivalent.
+/// @brief Converts a StatusCode to its C ABI equivalent.
 ///
 /// The conversion is a direct numerical cast. Every StatusCode value maps to a
 /// valid am_status_code, verified by static_assert at the enum definition.
+/// @param code The internal status code.
+/// @return The corresponding am_status_code for the C ABI.
 AM_NODISCARD constexpr am_status_code ToAMStatusCode(StatusCode code) noexcept {
     return static_cast<am_status_code>(code);
 }
 
-/// Converts a C ABI status code back to StatusCode.
+/// @brief Converts a C ABI status code back to StatusCode.
 ///
 /// Out-of-range values (outside [AM_STATUS_OK, AM_STATUS_UNAUTHENTICATED]) are
 /// mapped to StatusCode::kUnknown. This prevents undefined behavior from
 /// casting an invalid integer to the StatusCode enum.
+/// @param code The C ABI status code.
+/// @return The corresponding StatusCode, or kUnknown for out-of-range values.
 AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) noexcept {
     if (code < AM_STATUS_OK || code > AM_STATUS_UNAUTHENTICATED) {
         return StatusCode::kUnknown;
@@ -146,7 +152,7 @@ AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) noexcept
     return static_cast<StatusCode>(code);
 }
 
-/// Represents the result of an operation that may fail.
+/// @brief Represents the result of an operation that may fail.
 ///
 /// Modeled after absl::Status and gRPC status. Default-constructed Status is OK.
 /// Thread-compatible (const methods are thread-safe); non-const mutation is not.
@@ -154,20 +160,24 @@ AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) noexcept
 /// Invariant: when code_ == kOk, message_ is empty. Construction is restricted
 /// to the public factories and the private code+message ctor below; the
 /// factories enforce the invariant by only attaching messages to non-OK codes.
-///
 /// @note Use StatusOr<T> for operations that return a value on success.
 class AM_NODISCARD Status {
 public:
-    /// Creates an OK status.
+    /// @brief Creates an OK status.
     Status() noexcept : code_(StatusCode::kOk) {}
 
-    /// Returns an OK status.
+    /// @brief Returns an OK status.
     ///
     /// Named factory equivalent to default construction. Idiomatic in return
     /// statements: `return Status::Ok();`.
+    /// @return An OK Status instance.
     static Status Ok() noexcept {
         return {};
     }
+
+    // ── Error factories ──────────────────────────────────────────────
+    // Each factory creates a non-OK Status with the corresponding code
+    // and the caller-supplied message.
 
     static Status Cancelled(std::string_view message) {
         return Status(StatusCode::kCancelled, std::string(message));
@@ -237,24 +247,25 @@ public:
         return Status(StatusCode::kOverflow, std::string(message));
     }
 
-    /// Returns true if the status code is kOk.
+    /// @brief Returns true if the status code is kOk.
+    /// @return True on success.
     AM_NODISCARD bool ok() const noexcept {
         return code_ == StatusCode::kOk;
     }
 
-    /// Returns true if the status is OK.
-    ///
-    /// Same as ok(). Enables idiomatic checks: `if (status) { ... }`.
+    /// @brief Enables idiomatic boolean checks: `if (status) { ... }`.
+    /// @return Same as ok().
     AM_NODISCARD explicit operator bool() const noexcept {
         return ok();
     }
 
-    /// Returns the status code.
+    /// @brief Returns the status code.
+    /// @return The StatusCode for this status.
     AM_NODISCARD StatusCode code() const noexcept {
         return code_;
     }
 
-    /// Returns the error message.
+    /// @brief Returns the error message.
     ///
     /// Empty string when the status is OK. Content is meaningful only when
     /// `!ok()`.
@@ -262,6 +273,7 @@ public:
     /// Ref-qualified on lvalue `*this` to prevent binding the returned reference
     /// to a temporary: `const std::string& s = MakeStatus().message();` would
     /// dangle. Rvalue Status must be materialized first.
+    /// @return The error message (empty for OK status).
     AM_NODISCARD const std::string& message() & noexcept {
         return message_;
     }
@@ -284,11 +296,13 @@ public:
     AM_NODISCARD const std::string& message() && noexcept = delete;
     AM_NODISCARD const std::string& message() const&& noexcept = delete;
 
-    /// Returns a new Status with a different message, preserving the code.
+    /// @brief Returns a new Status with a different message, preserving the code.
     ///
     /// Does not mutate this Status. Returns Ok() when the current status is OK,
     /// regardless of the provided message — attaching a message to success has
     /// no semantic value.
+    /// @param message The replacement error message.
+    /// @return A new Status with the same code and the given message.
     Status WithMessage(std::string message) const noexcept {
         if (ok()) {
             return Ok();
@@ -296,10 +310,11 @@ public:
         return Status(code_, std::move(message));
     }
 
-    /// Returns a human-readable string like "NOT_FOUND: file not found".
+    /// @brief Returns a human-readable string like "NOT_FOUND: file not found".
     ///
     /// Format: "STATUS_CODE_NAME" for OK or empty-message errors, or
     /// "STATUS_CODE_NAME: message" when a message is present.
+    /// @return The formatted string representation.
     AM_NODISCARD std::string ToString() const {
         if (ok()) {
             return std::string(StatusCodeName(StatusCode::kOk));
@@ -322,14 +337,18 @@ public:
         return !(*this == other);
     }
 
-    /// Compares the status code directly.
+    /// @brief Compares the status code directly.
     ///
     /// Enables idiomatic checks: `if (status == StatusCode::kNotFound)`.
+    /// @param code The code to compare against.
+    /// @return True if this status has the given code.
     AM_NODISCARD bool operator==(StatusCode code) const noexcept {
         return code_ == code;
     }
 
-    /// Negated StatusCode comparison.
+    /// @brief Negated StatusCode comparison.
+    /// @param code The code to compare against.
+    /// @return True if this status does not have the given code.
     AM_NODISCARD bool operator!=(StatusCode code) const noexcept {
         return code_ != code;
     }
@@ -453,7 +472,7 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
         }                                               \
     lhs = std::move(*result_var)
 
-/// Represents either a value of type T or an error Status.
+/// @brief Represents either a value of type T or an error Status.
 ///
 /// Used for operations that return a value on success. Never holds Status::Ok().
 /// Template type T must not be a reference type or Status.
@@ -464,19 +483,12 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 ///
 /// Access semantics: borrowing accessors (get_if_ok, operator->, operator*,
 /// value const&) are ref-qualified on lvalue *this to prevent exporting
-/// references/pointers into temporaries; rvalue overloads are deleted. Move
-/// Move accessors on rvalues: status && returns Status by value (full
-/// ownership transfer). value && and operator* && return T&& — a reference
+/// references/pointers into temporaries; rvalue overloads are deleted.
+/// Move accessors on rvalues: status&& returns Status by value (full
+/// ownership transfer). value&& and operator*&& return T&& — a reference
 /// into the temporary storage, safe only for immediate move-construction
-/// (e.g. auto x = std::move(result).value()). Binding the result to a
-/// named reference extends it beyond the temporary lifetime and dangles.
-///
-/// @tparam T The value type returned on success. Must be move-constructible.
-///
-/// Example:
-///   StatusOr<int> ParseInt(const std::string& s);
-///   auto result = ParseInt("42");
-///   if (result.ok()) { use(*result); } else { handle(result.status()); }
+/// (e.g. auto x = std::move(result).value()).
+/// @tparam T The value type returned on success. Must be nothrow move-constructible.
 template<typename T>
 class AM_NODISCARD StatusOr {
 public:
@@ -488,10 +500,10 @@ public:
     static_assert(std::is_nothrow_move_assignable_v<T>,
                   "StatusOr<T> requires T to be nothrow move-assignable for noexcept guarantee");
 
-    /// Constructs a StatusOr holding a valid value from a compatible type.
-    ///
+    /// @brief Constructs a StatusOr holding a valid value from a compatible type.
     /// @tparam U Must be convertible to T and must not be Status or StatusOr,
     ///           preventing accidental hijacking of the error constructor.
+    /// @param value The value to store.
     template<typename U = T>
         requires(!std::same_as<std::decay_t<U>, Status>) &&
                 (!std::same_as<std::decay_t<U>, StatusOr>) &&
@@ -499,16 +511,16 @@ public:
     StatusOr(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>)
         : storage_(std::in_place_type<T>, std::forward<U>(value)) {}// NOLINT(google-explicit-constructor)
 
-    /// Constructs a StatusOr by constructing T in-place from the given arguments.
-    ///
+    /// @brief Constructs a StatusOr by constructing T in-place.
     /// @tparam Args Constructor argument types for T.
+    /// @param args Arguments forwarded to T's constructor.
     template<typename... Args>
     StatusOr(std::in_place_t, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)// NOLINT(google-explicit-constructor)
         : storage_(std::in_place_type<T>, std::forward<Args>(args)...) {}
 
-    /// Constructs from an error status. Throws std::invalid_argument if status.ok().
-    ///
-    /// @throws std::invalid_argument if status is OK (prevents accidentally wrapping success as error).
+    /// @brief Constructs from an error status.
+    /// @param status A non-OK error status.
+    /// @throws std::invalid_argument if status is OK.
     StatusOr(const Status& status) : storage_(status) {
         if (status.ok()) {
             throw std::invalid_argument("StatusOr error constructor requires non-OK status");
@@ -531,15 +543,17 @@ public:
     StatusOr& operator=(StatusOr&&) noexcept = default;
     ~StatusOr() = default;
 
-    /// Returns true if this StatusOr holds a value (not an error).
+    /// @brief Returns true if this StatusOr holds a value (not an error).
+    /// @return True if a value is present.
     AM_NODISCARD bool ok() const noexcept {
         return std::holds_alternative<T>(storage_);
     }
 
-    /// Returns a pointer to the held value, or nullptr on error.
+    /// @brief Returns a pointer to the held value, or nullptr on error.
     ///
     /// Ref-qualified on lvalue `*this` to prevent exporting a pointer into a
     /// temporary: `const T* p = StatusOr<T>(v).get_if_ok();` would dangle.
+    /// @return Pointer to the value, or nullptr if this holds an error.
     AM_NODISCARD const T* get_if_ok() const& noexcept {
         return ok() ? &std::get<T>(storage_) : nullptr;
     }
@@ -571,8 +585,8 @@ public:
         return std::move(std::get<Status>(storage_));
     }
 
-    /// Returns a const reference to the value. Throws if !ok().
-    ///
+    /// @brief Returns a const reference to the value.
+    /// @return The held value.
     /// @throws std::logic_error if this StatusOr holds an error.
     AM_NODISCARD const T& value() const& {
         if (!ok()) {
@@ -600,8 +614,7 @@ public:
         return std::move(std::get<T>(storage_));
     }
 
-    /// Returns the value if ok(), otherwise returns fallback.
-    ///
+    /// @brief Returns the value if ok(), otherwise returns fallback.
     /// @tparam U Type convertible to T.
     /// @param fallback Value to return if this StatusOr holds an error.
     /// @return The contained value or fallback.
@@ -646,14 +659,18 @@ public:
     AM_NODISCARD const T* operator->() const&& = delete;
     AM_NODISCARD T* operator->() && = delete;
 
-    /// Returns true if the held status code matches.
+    /// @brief Compares the held status code.
     ///
     /// Enables idiomatic checks: `if (result == StatusCode::kNotFound)`.
+    /// @param code The code to compare against.
+    /// @return True if the held status has the given code.
     AM_NODISCARD bool operator==(StatusCode code) const noexcept {
         return status().code() == code;
     }
 
-    /// Returns true if the held status code does not match.
+    /// @brief Negated StatusCode comparison.
+    /// @param code The code to compare against.
+    /// @return True if the held status does not have the given code.
     AM_NODISCARD bool operator!=(StatusCode code) const noexcept {
         return status().code() != code;
     }

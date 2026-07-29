@@ -1,5 +1,5 @@
-/// \file
-/// \brief Constexpr-friendly complex number type with custom scalar support.
+/// @file
+/// @brief Constexpr-friendly complex number type with custom scalar support.
 ///
 /// AetherMind ships its own `complex<T>` instead of relying on `std::complex<T>`
 /// for two reasons:
@@ -25,7 +25,7 @@
 
 namespace aethermind {
 
-/// \brief Constexpr complex number with arbitrary scalar `T`.
+/// @brief Constexpr complex number with arbitrary scalar `T`.
 ///
 /// All non-conversion operations are `constexpr`, allowing `complex<T>` values
 /// to participate in compile-time evaluation. Memory layout is `{real, imag}`
@@ -356,13 +356,13 @@ constexpr bool operator!=(const T& lhs, const complex<T>& rhs) {
     return !(lhs == rhs);
 }
 
-/// \brief Builds a complex number from polar form `r * exp(i*theta)`.
+/// @brief Builds a complex number from polar form `r * exp(i*theta)`.
 template<typename T>
 complex<T> polar(const T& r, const T& theta = T()) {
     return complex<T>(r * std::cos(theta), r * std::sin(theta));
 }
 
-/// \brief Partial specialization for half-precision complex numbers.
+/// @brief Partial specialization for half-precision complex numbers.
 ///
 /// `complex<Half>` is intentionally a thin storage type: it provides only
 /// `+=`, `-=`, `*=` plus round-trip conversions to and from `complex<float>`.
@@ -422,7 +422,7 @@ std::ostream& operator<<(std::ostream& os, const complex<T>& val) {
     return os;
 }
 
-/// \brief Type trait: `true` if `T` is either `std::complex` or `aethermind::complex`.
+/// @brief Type trait: `true` if `T` is either `std::complex` or `aethermind::complex`.
 template<typename T>
 struct is_complex : std::false_type {};
 
@@ -435,7 +435,7 @@ struct is_complex<complex<T>> : std::true_type {};
 template<typename T>
 constexpr static bool is_complex_v = is_complex<T>::value;
 
-/// \brief Extracts the underlying scalar type of a (possibly complex) `T`.
+/// @brief Extracts the underlying scalar type of a (possibly complex) `T`.
 ///
 /// Identity for non-complex types; yields the element type for both
 /// `std::complex<U>` and `aethermind::complex<U>`. Used by generic numeric
@@ -456,7 +456,7 @@ struct scalar_value_type<complex<T>> {
     using type = T;
 };
 
-/// \brief Complex-valued math functions.
+/// @brief Complex-valued math functions.
 ///
 /// Each entry routes through the corresponding `std::` overload on
 /// `std::complex<T>` so the implementation stays consistent with the standard
@@ -619,7 +619,7 @@ constexpr aethermind::complex<T> conj(const aethermind::complex<T>& x) {
 template<typename T>
 class numeric_limits<aethermind::complex<T>> : public numeric_limits<T> {};
 
-/// \brief A complex number is NaN if either component is NaN.
+/// @brief A complex number is NaN if either component is NaN.
 ///
 /// Matches the convention used by `std::norm` / `std::abs(std::complex)`,
 /// which treat `(NaN, finite)` and `(finite, NaN)` as NaN.

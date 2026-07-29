@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// Bit-preserving casts between `float` and `uint32_t`.
 ///
 /// Used by the half-precision and bfloat16 code paths to manipulate IEEE 754
@@ -14,7 +14,7 @@
 
 namespace aethermind::detail {
 
-/// Reinterprets a 32-bit unsigned integer as an IEEE 754 binary32 `float`.
+/// @brief Reinterprets a 32-bit unsigned integer as an IEEE 754 binary32 `float`.
 /// The bit pattern is preserved verbatim; no rounding or normalization occurs.
 inline float fp32_from_bits(uint32_t value) {
 #if defined(__OPENCL_VERSION__)
@@ -26,7 +26,7 @@ inline float fp32_from_bits(uint32_t value) {
 #endif
 }
 
-/// Reinterprets an IEEE 754 binary32 `float` as a 32-bit unsigned integer.
+/// @brief Reinterprets an IEEE 754 binary32 `float` as a 32-bit unsigned integer.
 /// The bit pattern is preserved verbatim; NaN payloads and signaling bits are
 /// not canonicalized.
 inline uint32_t fp32_to_bits(float value) {

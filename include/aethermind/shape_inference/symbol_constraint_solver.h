@@ -12,49 +12,57 @@
 
 namespace aethermind {
 
-/// Plan-time symbolic equality solver using union-find.
+/// @brief Plan-time symbolic equality solver using union-find.
 ///
 /// Maintains equality classes among ShapeSymbol instances and propagates
 /// static dimension bindings through those classes. Unknown(-1) symbols
 /// are silently ignored — they do not participate in any equality class.
 ///
-/// This solver is designed for the graph compilation phase (plan time),
-/// not for runtime. It proves equality facts that allow the builder to
-/// eliminate redundant runtime shape checks.
-///
-/// Not thread-safe. All methods must be called from a single thread.
+/// Designed for the graph compilation phase (plan time), not for runtime.
+/// Proves equality facts that allow the builder to eliminate redundant
+/// runtime shape checks.
+/// @note Not thread-safe. All methods must be called from a single thread.
 class SymbolConstraintSolver {
 public:
-    /// Records that two symbols must be equal.
+    /// @brief Records that two symbols must be equal.
     ///
     /// Static-static mismatches return InvalidArgument. Unknown symbols
     /// are silently accepted but do not create any binding. Symbolic
     /// symbols are merged via union-find with rank-based union.
+    /// @param lhs First symbol.
+    /// @param rhs Second symbol.
+    /// @return OkStatus on success; kInvalidArgument on static conflict.
     AM_NODISCARD Status AddEqual(ShapeSymbol lhs, ShapeSymbol rhs);
 
-    /// Binds a symbolic dimension to a known static value.
+    /// @brief Binds a symbolic dimension to a known static value.
     ///
     /// If the symbol is already bound to a different static value,
     /// returns InvalidArgument. Unknown symbols are silently accepted.
+    /// @param symbol       The symbolic dimension to bind.
+    /// @param static_value The non-negative static value to bind.
+    /// @return OkStatus on success; kInvalidArgument on conflict.
     AM_NODISCARD Status AddEqual(ShapeSymbol symbol, int64_t static_value);
 
-    /// Evaluates whether two symbols are provably equal given the
-    /// constraints added so far.
+    /// @brief Evaluates whether two symbols are provably equal.
     ///
-    /// Returns kSatisfied when equality is proven, kViolated when a
-    /// static conflict is detected, and kDeferred when the current
-    /// facts are insufficient to decide.
+    /// @param lhs First symbol.
+    /// @param rhs Second symbol.
+    /// @return kSatisfied when equality is proven, kViolated on static
+    ///         conflict, kDeferred when facts are insufficient to decide.
     AM_NODISCARD ShapeConstraintEvaluationResult EvaluateEqual(ShapeSymbol lhs,
                                                                ShapeSymbol rhs) const;
 
-    /// Convenience: true iff EvaluateEqual returns kSatisfied.
+    /// @brief Convenience check: true iff EvaluateEqual returns kSatisfied.
+    /// @param lhs First symbol.
+    /// @param rhs Second symbol.
+    /// @return True if equality is proven.
     AM_NODISCARD bool AreEqual(ShapeSymbol lhs, ShapeSymbol rhs) const;
 
-    /// Returns the static dimension value bound to this symbol, if any.
+    /// @brief Returns the static dimension value bound to a symbol, if any.
     ///
-    /// Follows union-find roots to find propagated bindings. Returns
-    /// nullopt for unknown symbols and symbolic symbols without a
-    /// static binding.
+    /// Follows union-find roots to find propagated bindings.
+    /// @param symbol The symbol to query.
+    /// @return The static binding, or nullopt for unknown/unbound symbols.
     AM_NODISCARD std::optional<int64_t> GetStaticBinding(ShapeSymbol symbol) const;
 
 private:

@@ -1,3 +1,4 @@
+/// @file
 /// Numeric type casting and overflow-checking utilities.
 ///
 /// Provides constexpr sign/overflow predicates and the `cast` /
@@ -27,7 +28,7 @@ constexpr bool is_negative(const T& x, std::false_type) {
     return x < T(0);
 }
 
-/// Returns true if x < 0.
+/// @brief Returns true if x < 0.
 ///
 /// @note Fails for unsigned custom types that do not specialize
 ///       std::is_unsigned; such types fall through to the signed path.
@@ -36,7 +37,7 @@ constexpr bool is_negative(const T& x) {
     return is_negative(x, std::is_unsigned<T>());
 }
 
-/// Returns true when a and b have opposite signedness (exactly one is negative).
+/// @brief Returns true when a and b have opposite signedness (exactly one is negative).
 template<typename T, typename U>
 constexpr bool signs_differ(const T& a, const U& b) {
     return is_negative(a) != is_negative(b);
@@ -54,7 +55,7 @@ constexpr int signum(const T& x, std::false_type) {
     return (T(0) < x) - (x < T(0));
 }
 
-/// Returns the sign of x as -1, 0, or 1.
+/// @brief Returns the sign of x as -1, 0, or 1.
 ///
 /// @note Fails for unsigned custom types that do not specialize
 ///       std::is_unsigned; such types fall through to the signed path.
@@ -63,7 +64,7 @@ constexpr int signum(const T& x) {
     return signum(x, std::is_unsigned<T>());
 }
 
-/// Returns true if x exceeds the maximum value representable by Limit.
+/// @brief Returns true if x exceeds the maximum value representable by Limit.
 template<typename Limit, typename T>
 constexpr bool greater_than_max(const T& x) {
     constexpr bool can_overflow = std::numeric_limits<T>::digits > std::numeric_limits<Limit>::digits;
@@ -106,7 +107,7 @@ constexpr bool less_than_lowest(
     return false;
 }
 
-/// Returns true if x is below the lowest value representable by Limit.
+/// @brief Returns true if x is below the lowest value representable by Limit.
 ///
 /// @note Fails for unsigned custom types that do not specialize
 ///       std::is_unsigned; Half is a known counterexample.
@@ -115,14 +116,14 @@ constexpr bool less_than_lowest(const T& x) {
     return less_than_lowest<Limit>(x, std::is_unsigned<Limit>(), std::is_unsigned<T>());
 }
 
-/// bool converts to any target type without overflow.
+/// @brief Checks whether src overflows when cast to To (bool source: never overflows).
 template<typename From, typename To,
          std::enable_if_t<std::is_same_v<From, bool>>* = nullptr>
 bool is_cast_overflow(From, AM_MAYBE_UNUSED bool strict_unsigned = false) {
     return false;
 }
 
-/// Checks whether src overflows when cast to To.
+/// @brief Checks whether src overflows when cast to To.
 ///
 /// @param strict_unsigned when true, a negative src is rejected even for an
 ///        unsigned To; otherwise only the magnitude is checked
@@ -141,7 +142,7 @@ bool is_cast_overflow(From src, bool strict_unsigned = false) {
     return greater_than_max<To>(src) || less_than_lowest<To>(src);
 }
 
-/// Checks whether a floating-point src overflows when cast to To.
+/// @brief Checks whether a floating-point src overflows when cast to To.
 template<typename From, typename To,
          std::enable_if_t<std::is_floating_point_v<From>>* = nullptr>
 bool is_cast_overflow(From src, AM_MAYBE_UNUSED bool strict_unsigned = false) {
@@ -156,7 +157,7 @@ bool is_cast_overflow(From src, AM_MAYBE_UNUSED bool strict_unsigned = false) {
     return src < Limit::lowest() || src > Limit::max();
 }
 
-/// Checks whether a complex src overflows when cast to To.
+/// @brief Checks whether a complex src overflows when cast to To.
 template<typename From, typename To, std::enable_if_t<is_complex_v<From>>* = nullptr>
 bool is_cast_overflow(From src, bool strict_unsigned = false) {
     if (!is_complex_v<To> && src.imag() != 0) {
@@ -206,7 +207,7 @@ struct maybe_bool<From, true> {
     }
 };
 
-/// Casts a value from From to To.
+/// @brief Casts a value from From to To.
 ///
 /// For complex->non-complex casts, only the real part is used.
 template<typename From, typename To>
@@ -272,7 +273,7 @@ struct cast<complex<double>, complex<Half>> {
     }
 };
 
-/// Casts src to To, throwing on overflow.
+/// @brief Casts src to To, throwing on overflow.
 ///
 /// @tparam From source type
 /// @tparam To target type

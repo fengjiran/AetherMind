@@ -12,16 +12,12 @@
 namespace aethermind {
 
 /// Single source of truth for the dtype set supported by the KVCacheUpdate
-/// operator's k/v activation inputs. All KVCacheUpdate-related validation
-/// (semantic analysis in InferKVCacheUpdate, future CPU kernel dispatch) must
-/// reference these definitions instead of maintaining private copies. The
-/// Phase 1 CPU kernel currently implements only Float32; the semantic layer
-/// accepts the full set below.
-///
-/// Note: only the k/v activation inputs (ports 0 and 1) are validated against
-/// this set. The cache-in state ports (ports 2 and 3) are passed through to
-/// the cache-out outputs verbatim, so their dtype is unconstrained at the
-/// semantic layer and is determined by the runtime KV cache configuration.
+/// operator. All four tensor inputs (k, v, k_cache_in, v_cache_in) must share
+/// the same dtype from this set. Mixed dtypes between activations and cache
+/// are rejected: an implicit conversion strategy is not declared by the
+/// operator params and no kernel contract exists for it. If mixed cache dtype
+/// becomes a real requirement, add an explicit conversion policy instead of
+/// silently accepting arbitrary combinations.
 inline const std::array<DataType, 3> kKVCacheUpdateSupportedDTypes = {
         DataType::Float32(),
         DataType::Float(16),

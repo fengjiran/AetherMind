@@ -1,7 +1,3 @@
-//
-// Created by richard on 5/12/26.
-//
-
 #include "aethermind/base/mmap_file.h"
 #include "utils/logging.h"
 

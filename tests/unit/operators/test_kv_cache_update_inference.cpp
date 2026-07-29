@@ -140,7 +140,8 @@ TEST(KVCacheUpdateInference, RejectsZeroNumKVHeads) {
 }
 
 TEST(KVCacheUpdateInference, RejectsZeroHeadDim) {
-    auto inputs = MakeConsistentInputs(DataType::Float32(), 1, 8, 1024, /*head_dim=*/0);
+    auto inputs = MakeConsistentInputs(
+            DataType::Float32(), 1, 8, 1024, /*head_dim=*/0);
     EXPECT_FALSE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
 }
 

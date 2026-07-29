@@ -162,14 +162,11 @@ StatusOr<ShapeSymbol> UnifyShapeSymbol(const ShapeSymbol& a, const ShapeSymbol& 
     }
 
     // 5. Symbolic collision: both are symbolic but distinct (e.g. S2 vs S3).
-    // TODO(Future): Introduce SymbolConstraintSolver to record a == b
-    // as an equality constraint.
-    //
-    // Without a solver, the safest behaviour is to degrade to Unknown.
-    // This signals that the engine can no longer track the equality
-    // precisely at compile time and will rely on runtime checks.
-    // (Returning a or b would preserve the local link but is misleading
-    // under strict semantics.)
+    // Without solver integration at this level, the safest behaviour is to
+    // degrade to Unknown. This signals that the engine can no longer track
+    // the equality precisely at compile time and will rely on runtime checks.
+    // NOTE: SymbolConstraintSolver exists for call sites that need explicit
+    // equality tracking; UnifyShapeSymbol intentionally avoids coupling to it.
     return ShapeSymbol::Unknown();
 }
 

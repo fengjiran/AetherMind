@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// Implementation of `BFloat16` and bfloat16 ↔ binary32 conversion.
 
 #include "aethermind/dtypes/bfloat16.h"

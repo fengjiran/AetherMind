@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// Implementation of `Float8_e4m3fn` and E4M3FN ↔ binary32 conversion.
 
 #include "aethermind/dtypes/float8_e4m3fn.h"

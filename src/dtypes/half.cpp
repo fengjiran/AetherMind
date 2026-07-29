@@ -1,4 +1,4 @@
-/// \file
+/// @file
 /// Software IEEE 754 half-precision conversion implementations.
 ///
 /// Contains the portable integer bit-manipulation paths for binary16 ↔ binary32

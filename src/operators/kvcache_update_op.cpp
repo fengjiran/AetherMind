@@ -1,6 +1,5 @@
 #include "aethermind/operators/kvcache_update_op.h"
 #include "aethermind/operators/operator_inference.h"
-#include "aethermind/shape_inference/shape_symbol.h"
 
 namespace aethermind::detail {
 
@@ -38,11 +37,12 @@ Status ValidateKVCacheUpdateDTypes(std::span<const TensorSpec> inputs) {
 }
 
 // Validates rank and shape contracts:
-//   k, v             : rank 2, shape [T, Hkv*D]
-//   k_cache, v_cache : rank 3, shape [Hkv, C, D]
+//   k, v             : rank 2, shape [seq_len, hidden]
+//   k_cache, v_cache : rank 3, shape [kv_heads, cache_len, head_dim]
 //   k.shape == v.shape; k_cache.shape == v_cache.shape
-//   k.shape[1] == cache.shape[0] * cache.shape[2]  (when statically provable)
-//   T > 0, Hkv > 0, D > 0 (when static); C static-zero rejected.
+//   hidden == kv_heads * head_dim  (when statically provable)
+//   seq_len > 0, kv_heads > 0, head_dim > 0 (when static);
+//   cache_len static-zero rejected.
 Status ValidateKVCacheUpdateShapes(std::span<const TensorSpec> inputs) {
     const SymbolicShape& k_shape = inputs[0].shape;
     const SymbolicShape& v_shape = inputs[1].shape;
@@ -51,22 +51,22 @@ Status ValidateKVCacheUpdateShapes(std::span<const TensorSpec> inputs) {
 
     if (!HasRank(k_shape, 2)) {
         return Status::InvalidArgument(
-                "KVCacheUpdate k must be rank 2 [T, Hkv*D]");
+                "KVCacheUpdate k must be rank 2 [seq_len, hidden]");
     }
 
     if (!HasRank(v_shape, 2)) {
         return Status::InvalidArgument(
-                "KVCacheUpdate v must be rank 2 [T, Hkv*D]");
+                "KVCacheUpdate v must be rank 2 [seq_len, hidden]");
     }
 
     if (!HasRank(k_cache_shape, 3)) {
         return Status::InvalidArgument(
-                "KVCacheUpdate k_cache_in must be rank 3 [Hkv, C, D]");
+                "KVCacheUpdate k_cache_in must be rank 3 [kv_heads, cache_len, head_dim]");
     }
 
     if (!HasRank(v_cache_shape, 3)) {
         return Status::InvalidArgument(
-                "KVCacheUpdate v_cache_in must be rank 3 [Hkv, C, D]");
+                "KVCacheUpdate v_cache_in must be rank 3 [kv_heads, cache_len, head_dim]");
     }
 
     const ShapeSymbol& k_t = k_shape[0];

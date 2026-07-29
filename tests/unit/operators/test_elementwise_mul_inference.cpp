@@ -216,4 +216,29 @@ TEST(ElementwiseMulInference, AcceptsBFloat16) {
     EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
 }
 
+TEST(ElementwiseMulInference, AcceptsFloat16) {
+    auto lhs = MakeSpec(DataType::Float(16), {4, 256});
+    auto rhs = MakeSpec(DataType::Float(16), {4, 256});
+    std::vector<TensorSpec> inputs = {lhs, rhs};
+    auto result = InferOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
+}
+
+TEST(ElementwiseMulInference, RejectsInt32Input) {
+    auto lhs = MakeSpec(DataType::Int(32), {4, 256});
+    auto rhs = MakeSpec(DataType::Float32(), {4, 256});
+    std::vector<TensorSpec> inputs = {lhs, rhs};
+    EXPECT_FALSE(InferOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs).ok());
+}
+
+TEST(ElementwiseMulInference, RejectsFloat8E4M3FN) {
+    // FP8 is intentionally not supported by ElementwiseMul (precision concerns
+    // for the multiplication result).
+    auto lhs = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
+    auto rhs = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
+    std::vector<TensorSpec> inputs = {lhs, rhs};
+    EXPECT_FALSE(InferOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs).ok());
+}
+
 }// namespace

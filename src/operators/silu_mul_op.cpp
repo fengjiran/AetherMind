@@ -72,30 +72,37 @@ StatusOr<InferenceResult> InferSiluMul(const OpParams& params,
     }
     AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kSiluMul, inputs));
 
-    const TensorSpec& lhs_spec = inputs[0];
-    const TensorSpec& rhs_spec = inputs[1];
-    if (lhs_spec.dtype != DataType::Float32() && lhs_spec.dtype != DataType::BFloat(16)) {
-        return Status::InvalidArgument("SiluMul lhs must be float32 or bfloat16");
+    const TensorSpec& gate = inputs[0];
+    const TensorSpec& up = inputs[1];
+
+    // Mixed lhs/rhs dtypes are allowed; the kernel converts the rhs to the lhs
+    // dtype at runtime (output dtype follows lhs).
+    if (gate.dtype != up.dtype) {
+        return Status::InvalidArgument(
+                "SiLUMul currently requires gate and up to use the same dtype");
     }
-    if (rhs_spec.dtype != DataType::Float32() && rhs_spec.dtype != DataType::BFloat(16)) {
-        return Status::InvalidArgument("SiluMul rhs must be float32 or bfloat16");
+
+    if (!IsSiluMulSupportedDType(gate.dtype)) {
+        return Status::InvalidArgument(
+                MakeSiluMulUnsupportedDTypeMessage("SiluMul lhs"));
     }
+
     auto broadcast_result = InferBroadcastShape(
-            lhs_spec.shape, rhs_spec.shape);
+            gate.shape, up.shape);
     if (!broadcast_result.ok()) {
         return broadcast_result.status();
     }
 
     InferenceResult result;
-    result.outputs.push_back({lhs_spec.dtype, broadcast_result->output_shape});
+    result.outputs.emplace_back(gate.dtype, std::move(broadcast_result->output_shape));
     for (const auto& deferred: broadcast_result->deferred_axes) {
-        result.runtime_checks.push_back(
-                {DimBroadcastableConstraint{
-                         {{TensorPortType::kInput, 0},
-                          deferred.lhs_axis},
-                         {{TensorPortType::kInput, 1},
-                          deferred.rhs_axis}},
-                 "SiluMul dimensions must be broadcastable"});
+        result.runtime_checks.emplace_back(
+                DimBroadcastableConstraint{
+                        {{TensorPortType::kInput, 0},
+                         deferred.lhs_axis},
+                        {{TensorPortType::kInput, 1},
+                         deferred.rhs_axis}},
+                "SiluMul dimensions must be broadcastable");
     }
     return result;
 }

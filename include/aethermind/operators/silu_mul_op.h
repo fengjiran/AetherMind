@@ -6,6 +6,40 @@
 
 namespace aethermind {
 
+/// Single source of truth for the dtype set supported by the SiluMul operator.
+/// All SiluMul-related validation (semantic analysis in InferSiluMul, future
+/// CPU kernel dispatch) must reference these definitions instead of maintaining
+/// private copies. The semantic layer accepts mixed-precision (lhs/gate and
+/// rhs/up may differ, each independently drawn from this set); the Phase 1 CPU
+/// kernel currently implements only Float32.
+inline const std::array<DataType, 5> kSiluMulSupportedDTypes = {
+        DataType::Float32(),
+        DataType::Float(16),
+        DataType::BFloat(16),
+        DataType::Float8E4M3FN(),
+        DataType::Float8E5M2(),
+};
+
+/// Returns true if `dtype` is in `kSiluMulSupportedDTypes`. Used by
+/// operator-level validation to keep the dtype check in one place. Backend
+/// kernel dispatch must reference this same set when adding new dtype paths.
+inline bool IsSiluMulSupportedDType(const DataType& dtype) noexcept {
+    return std::ranges::any_of(kSiluMulSupportedDTypes,
+                               [&](const DataType& supported) {
+                                   return dtype == supported;
+                               });
+}
+
+/// Builds a consistent "unsupported dtype" error message for SiluMul-related
+/// validation points. `context` is the caller name (e.g. "SiluMul lhs",
+/// "CpuSiluMulKernel") prepended to a fixed list of supported dtypes, so every
+/// validation site reports the same set.
+inline std::string MakeSiluMulUnsupportedDTypeMessage(std::string_view context) {
+    std::string msg{context};
+    msg += " only supports float32, float16, bfloat16, float8_e4m3fn, and float8_e5m2 dtypes";
+    return msg;
+}
+
 /// Fused SiLU-multiplication operator.
 ///
 /// Computes `output = silu(gate) * up` where `silu(x) = x / (1 + exp(-x))`.
@@ -13,7 +47,8 @@ namespace aethermind {
 ///
 /// Phase 1 scope:
 /// - Binary element-wise operation with broadcasting.
-/// - float32 only.
+/// - Supports float32, float16, bfloat16, float8_e4m3fn, and float8_e5m2
+///   (see kSiluMulSupportedDTypes); the CPU kernel currently implements Float32.
 ///
 /// Kernel execution is not yet wired; Run() returns Unimplemented after
 /// binding validation. A CPU kernel can be added later without changing the

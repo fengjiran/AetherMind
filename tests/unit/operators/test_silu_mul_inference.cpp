@@ -212,8 +212,53 @@ TEST(SiluMulInference, AcceptsBFloat16) {
     auto up = MakeSpec(DataType::BFloat(16), {4, 256});
     std::vector<TensorSpec> inputs = {gate, up};
     auto result = InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
-    ASSERT_TRUE(result.ok());
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
     EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
+}
+
+TEST(SiluMulInference, AcceptsFloat16) {
+    auto gate = MakeSpec(DataType::Float(16), {4, 256});
+    auto up = MakeSpec(DataType::Float(16), {4, 256});
+    std::vector<TensorSpec> inputs = {gate, up};
+    auto result = InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
+}
+
+TEST(SiluMulInference, AcceptsFloat8E4M3FN) {
+    auto gate = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
+    auto up = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
+    std::vector<TensorSpec> inputs = {gate, up};
+    auto result = InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float8E4M3FN());
+}
+
+TEST(SiluMulInference, AcceptsFloat8E5M2) {
+    auto gate = MakeSpec(DataType::Float8E5M2(), {4, 256});
+    auto up = MakeSpec(DataType::Float8E5M2(), {4, 256});
+    std::vector<TensorSpec> inputs = {gate, up};
+    auto result = InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float8E5M2());
+}
+
+TEST(SiluMulInference, RejectsMixedDTypes) {
+    // Mixed-precision path is not yet implemented in Phase 1.
+    auto gate = MakeSpec(DataType::Float32(), {4, 256});
+    auto up = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
+    std::vector<TensorSpec> inputs = {gate, up};
+    auto result = InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
+    EXPECT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(result.status().message().find("same dtype"), std::string::npos);
+}
+
+TEST(SiluMulInference, RejectsInt32Input) {
+    auto gate = MakeSpec(DataType::Int(32), {4, 256});
+    auto up = MakeSpec(DataType::Float32(), {4, 256});
+    std::vector<TensorSpec> inputs = {gate, up};
+    EXPECT_FALSE(InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs).ok());
 }
 
 }// namespace

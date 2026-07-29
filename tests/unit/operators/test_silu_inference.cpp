@@ -21,7 +21,9 @@ TEST(SiluInference, RejectsWrongArity) {
             MakeSpec(DataType::Float32(), {2, 3}),
             MakeSpec(DataType::Float32(), {2, 3}),
     };
-    const Status status = InferOperator(OpType::kSilu, OpParams{SiluParams{}}, std::span(inputs)).status();
+    const Status status = InferOperator(
+                                  OpType::kSilu, OpParams{SiluParams{}}, std::span(inputs))
+                                  .status();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -81,7 +83,8 @@ TEST(SiluInference, InfersIdenticalOutputShape) {
     const TensorSpec inputs[1] = {
             MakeSpec(DataType::Float32(), {4, 8}),
     };
-    const StatusOr<InferenceResult> inference = InferOperator(OpType::kSilu, OpParams{SiluParams{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(
+            OpType::kSilu, OpParams{SiluParams{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -95,7 +98,8 @@ TEST(SiluInference, InfersRankZeroOutput) {
     const TensorSpec inputs[1] = {
             MakeSpec(DataType::Float32(), {}),
     };
-    const StatusOr<InferenceResult> inference = InferOperator(OpType::kSilu, OpParams{SiluParams{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(
+            OpType::kSilu, OpParams{SiluParams{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -109,7 +113,8 @@ TEST(SiluInference, InfersSymbolicOutputShape) {
             TensorSpec{.dtype = DataType::Float32(),
                        .shape = SymbolicShape(std::vector<ShapeSymbol>{dim0, dim1})},
     };
-    const StatusOr<InferenceResult> inference = InferOperator(OpType::kSilu, OpParams{SiluParams{}}, inputs);
+    const StatusOr<InferenceResult> inference = InferOperator(
+            OpType::kSilu, OpParams{SiluParams{}}, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
@@ -148,6 +153,30 @@ TEST(SiluInference, RejectsInt32Input) {
     auto input = MakeSpec(DataType::Int(32), {4, 256});
     std::vector<TensorSpec> inputs = {input};
     EXPECT_FALSE(InferOperator(OpType::kSilu, SiluParams{}, inputs).ok());
+}
+
+TEST(SiluInference, AcceptsFloat16) {
+    auto input = MakeSpec(DataType::Float(16), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    auto result = InferOperator(OpType::kSilu, SiluParams{}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
+}
+
+TEST(SiluInference, AcceptsFloat8E4M3FN) {
+    auto input = MakeSpec(DataType::Float8E4M3FN(), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    auto result = InferOperator(OpType::kSilu, SiluParams{}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float8E4M3FN());
+}
+
+TEST(SiluInference, AcceptsFloat8E5M2) {
+    auto input = MakeSpec(DataType::Float8E5M2(), {4, 256});
+    std::vector<TensorSpec> inputs = {input};
+    auto result = InferOperator(OpType::kSilu, SiluParams{}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float8E5M2());
 }
 
 }// namespace

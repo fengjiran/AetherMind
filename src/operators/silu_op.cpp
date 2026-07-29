@@ -3,13 +3,8 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/model/graph/op_params.h"
-#include "aethermind/operators/operator_registry.h"
-
-#include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/operator_inference.h"
-#include "aethermind/shape_inference/tensor_spec.h"
-#include <span>
-#include <string>
+#include "aethermind/operators/operator_registry.h"
 
 namespace aethermind {
 
@@ -74,11 +69,13 @@ StatusOr<InferenceResult> InferSilu(const OpParams& params,
     if (!std::holds_alternative<SiluParams>(params)) {
         return Status::InvalidArgument("Silu node requires SiluParams");
     }
+
     AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kSilu, inputs));
 
-    if (inputs[0].dtype != DataType::Float32() && inputs[0].dtype != DataType::BFloat(16)) {
-        return Status::InvalidArgument("Silu input must be float32 or bfloat16");
+    if (!IsSiluSupportedDType(inputs[0].dtype)) {
+        return Status::InvalidArgument(MakeSiluUnsupportedDTypeMessage("Silu input"));
     }
+
     InferenceResult result;
     result.outputs.push_back(inputs[0]);
     return result;

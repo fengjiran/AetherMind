@@ -2,15 +2,9 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 #include "aethermind/shape_inference/broadcast.h"
-
-#include "aethermind/operators/operator_inference.h"
-#include "aethermind/shape_inference/shape_constraint.h"
-#include "aethermind/shape_inference/tensor_spec.h"
-#include <span>
-#include <string>
 
 namespace aethermind {
 Status AddOp::Prepare(OperatorContext& ctx) {
@@ -65,6 +59,23 @@ AM_REGISTER_OPERATOR(OpType::kAdd, AddOp)
 
 namespace detail {
 
+// Shape inference and constraint analysis for the Add operator.
+//
+// Validation order (parameter-before-input precedence):
+//   1. Validate OpParams variant type (must be AddParams).
+//   2. Validate input count via ValidateInferenceInputCount (exactly 2:
+//      lhs and rhs, checked against the operator schema).
+//   3. Validate dtype homogeneity: lhs and rhs must share the same dtype.
+//   4. Validate dtype support: the shared dtype must belong to the
+//      Add-supported set (float32, float64, bfloat16, int32, int64).
+//
+// Inference algorithm:
+//   - Compute the output shape via InferBroadcastShape (NumPy-style
+//     right-aligned broadcasting over lhs and rhs symbolic shapes).
+//   - Output dtype equals the (validated-equal) input dtype.
+//   - For each broadcast axis pair that cannot be proven compatible
+//     statically, emit a deferred DimBroadcastableConstraint verified
+//     at runtime by the Executor.
 StatusOr<InferenceResult> InferAdd(const OpParams& params,
                                    std::span<const TensorSpec> inputs) {
     if (!std::holds_alternative<AddParams>(params)) {
@@ -77,20 +88,27 @@ StatusOr<InferenceResult> InferAdd(const OpParams& params,
     if (lhs_spec.dtype != rhs_spec.dtype) {
         return Status::InvalidArgument("Add inputs must have the same dtype");
     }
+
     if (!IsAddSupportedDType(lhs_spec.dtype)) {
         return Status::InvalidArgument(MakeAddUnsupportedDTypeMessage("Add"));
     }
-    auto broadcast_result = InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
+
+    auto broadcast_result =
+            InferBroadcastShape(lhs_spec.shape, rhs_spec.shape);
     if (!broadcast_result.ok()) {
         return broadcast_result.status();
     }
+
     InferenceResult result;
-    result.outputs.push_back({lhs_spec.dtype, broadcast_result->output_shape});
+    result.outputs.emplace_back(lhs_spec.dtype, broadcast_result->output_shape);
     for (const auto& deferred: broadcast_result->deferred_axes) {
-        result.runtime_checks.push_back(ShapeConstraint{
-                DimBroadcastableConstraint{{{TensorPortType::kInput, 0}, deferred.lhs_axis},
-                                           {{TensorPortType::kInput, 1}, deferred.rhs_axis}},
-                "Add dimensions must be broadcastable"});
+        result.runtime_checks.emplace_back(
+                DimBroadcastableConstraint{
+                        {{TensorPortType::kInput, 0},
+                         deferred.lhs_axis},
+                        {{TensorPortType::kInput, 1},
+                         deferred.rhs_axis}},
+                "Add dimensions must be broadcastable");
     }
     return result;
 }

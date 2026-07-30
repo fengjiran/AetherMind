@@ -1755,7 +1755,7 @@ TEST(ModelGraphSemanticValidation, DerivedOutputSpecIsExactAndNotUserSupplied) {
 TEST(ModelGraphSemanticValidation, RoPENodeHasDistinctOutputIds) {
     ModelGraph graph;
     const GraphValueId q = graph.AddConstant(ActivationSpec(), ConstantBinding{}, "q");
-    const GraphValueId k = graph.AddConstant(ActivationSpec(), ConstantBinding{}, "k");
+    const GraphValueId k = graph.AddConstant(Spec(DataType::Float32(), {1, 4}), ConstantBinding{}, "k");
     const GraphValueId position_ids = graph.AddInput(TokenSpec(), "position_ids");
 
     const auto result = graph.AddNode(
@@ -1764,7 +1764,7 @@ TEST(ModelGraphSemanticValidation, RoPENodeHasDistinctOutputIds) {
             {q, k, position_ids},
             {{.payload = ActivationValue{}},
              {.payload = ActivationValue{}}},
-            RoPEParams{.head_dim = 64,
+            RoPEParams{.head_dim = 2,
                        .num_attention_heads = 4,
                        .num_key_value_heads = 2,
                        .max_position_embeddings = 128});

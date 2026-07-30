@@ -499,6 +499,45 @@ TEST(GraphLowering, CarriesRuntimeChecksFromGraphToLoweredNode) {
             << "Lowered node must carry graph runtime_checks verbatim without re-inference";
 }
 
+TEST(GraphLowering, CarriesRoPERuntimeChecksFromLlamaGraph) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+
+    // Locate the RoPE node in the canonical Llama dense graph. With one
+    // decoder layer, nodes[5] is the RoPE operator (Embedding, RmsNorm,
+    // q_proj, k_proj, v_proj, RoPE, ...).
+    const auto& nodes = graph->GetNodes();
+    ASSERT_GT(nodes.size(), 5U);
+    ASSERT_EQ(nodes[5].op_type, OpType::kRoPE);
+    const GraphNode& rope_node = nodes[5];
+
+    // Canonical shared-symbol case: q/k/position_ids share one symbolic
+    // seq_len, so RoPE emits exactly one DimPositiveConstraint for input 0
+    // dim 0 and no equality checks.
+    ASSERT_EQ(rope_node.runtime_checks.size(), 1U);
+    ASSERT_TRUE(std::holds_alternative<DimPositiveConstraint>(
+            rope_node.runtime_checks[0].condition));
+    const auto& dim_pos = std::get<DimPositiveConstraint>(
+            rope_node.runtime_checks[0].condition);
+    EXPECT_EQ(dim_pos.dim.tensor_port.direction, TensorPortType::kInput);
+    EXPECT_EQ(dim_pos.dim.tensor_port.tensor_idx, 0U);
+    EXPECT_EQ(dim_pos.dim.dim_index, 0U);
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(*graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_EQ(lowered->steps.size(), nodes.size());
+
+    // Lowered step index matches graph node index 1:1 (verified by
+    // LowersFullLlamaDenseGraph). The RoPE step must carry the graph
+    // node's runtime_checks verbatim without re-inference.
+    const auto& rope_step = lowered->steps[5];
+    EXPECT_EQ(rope_step.op_type, OpType::kRoPE);
+    EXPECT_EQ(rope_step.runtime_checks, rope_node.runtime_checks)
+            << "Lowered RoPE step must carry graph runtime_checks verbatim";
+}
+
 TEST(GraphLowering, LowersCompleteInputSpecsInSchemaPortOrder) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);

@@ -1,5 +1,7 @@
 #include "aethermind/model/graph/graph_builder.h"
 
+#include "aethermind/shape_inference/shape_constraint.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -320,10 +322,47 @@ TEST(ModelGraphBuilder, TracesRopeDualOutputDataflow) {
     ASSERT_EQ(GetConsumers(*index, rope.outputs[1]).size(), 1U);
     EXPECT_EQ(GetConsumers(*index, rope.outputs[1])[0], GraphNodeId{6});
 
+    // RoPE rank-2 q/k contract, rank-1 position_ids, and shared symbolic
+    // seq_len across all three inputs. q/k static widths equal the frozen
+    // parameter products.
+    const TensorSpec& q_input = graph->GetValue(rope.inputs[0]).spec;
+    const TensorSpec& k_input = graph->GetValue(rope.inputs[1]).spec;
+    const TensorSpec& position_input = graph->GetValue(rope.inputs[2]).spec;
+    ASSERT_EQ(q_input.shape.rank(), 2U);
+    ASSERT_EQ(k_input.shape.rank(), 2U);
+    ASSERT_EQ(position_input.shape.rank(), 1U);
+    ASSERT_TRUE(q_input.shape[0].IsSymbolic());
+    ASSERT_TRUE(k_input.shape[0].IsSymbolic());
+    ASSERT_TRUE(position_input.shape[0].IsSymbolic());
+    EXPECT_EQ(q_input.shape[0], k_input.shape[0]);
+    EXPECT_EQ(q_input.shape[0], position_input.shape[0]);
+    EXPECT_EQ(q_input.shape[1].GetStaticValue(),
+              config.num_attention_heads * config.head_dim);
+    EXPECT_EQ(k_input.shape[1].GetStaticValue(),
+              config.num_key_value_heads * config.head_dim);
+
+    // q/k outputs preserve their respective input TensorSpecs.
     const TensorSpec& q_rope = graph->GetValue(rope.outputs[0]).spec;
     const TensorSpec& k_rope = graph->GetValue(rope.outputs[1]).spec;
+    EXPECT_EQ(q_rope.dtype, q_input.dtype);
+    EXPECT_EQ(q_rope.shape, q_input.shape);
+    EXPECT_EQ(k_rope.dtype, k_input.dtype);
+    EXPECT_EQ(k_rope.shape, k_input.shape);
     EXPECT_EQ(q_rope.shape[1].GetStaticValue(), config.hidden_size);
-    EXPECT_EQ(k_rope.shape[1].GetStaticValue(), config.num_key_value_heads * config.head_dim);
+    EXPECT_EQ(k_rope.shape[1].GetStaticValue(),
+              config.num_key_value_heads * config.head_dim);
+
+    // Canonical shared-symbol case: q/k/position_ids share one symbolic
+    // seq_len, so RoPE emits exactly one DimPositiveConstraint for input 0
+    // dim 0 and no equality checks.
+    ASSERT_EQ(rope.runtime_checks.size(), 1U);
+    ASSERT_TRUE(std::holds_alternative<DimPositiveConstraint>(
+            rope.runtime_checks[0].condition));
+    const auto& dim_pos = std::get<DimPositiveConstraint>(
+            rope.runtime_checks[0].condition);
+    EXPECT_EQ(dim_pos.dim.tensor_port.direction, TensorPortType::kInput);
+    EXPECT_EQ(dim_pos.dim.tensor_port.tensor_idx, 0U);
+    EXPECT_EQ(dim_pos.dim.dim_index, 0U);
 }
 
 TEST(ModelGraphBuilder, TracesKvCacheStateDataflow) {

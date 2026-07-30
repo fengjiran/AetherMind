@@ -299,8 +299,8 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     ASSERT_TRUE(softmax_analyzed.ok()) << softmax_analyzed.status().ToString();
 
     // kRoPE: schema-only op -> raw FunctionOperator fallback. InferRoPE
-    // expects 3 inputs (q float32, k float32, position_ids int64) with
-    // matching q/k batch dimensions.
+    // expects q/k rank-2 float32 [seq_len, hidden], position_ids rank-1
+    // int64 [seq_len]; hidden widths must equal num_*_heads * head_dim.
     const SymbolicShape rope_q_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{2, 8}});
     const SymbolicShape rope_k_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{2, 8}});
     const SymbolicShape rope_pos_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{2}});
@@ -310,7 +310,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
             TensorSpec{.dtype = DataType::Int(64), .shape = rope_pos_shape},
     };
     const RoPEParams rope_params{
-            .head_dim = 8,
+            .head_dim = 2,
             .num_attention_heads = 4,
             .num_key_value_heads = 4,
             .max_position_embeddings = 128,

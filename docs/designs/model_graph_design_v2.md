@@ -882,7 +882,7 @@ Add(v_post_attn, v_mlp_out) → v_hidden_out
 ```text
 RoPE(v_q, v_k, position_ids) → v_q_rope, v_k_rope
 KVCacheUpdate(v_k_rope, v_v, state_k_cache_in, state_v_cache_in) → state_k_cache_out, state_v_cache_out
-Attention(v_q_rope, state_k_cache_out, state_v_cache_out, mask_or_metadata) → v_attn
+Attention(v_q_rope, state_k_cache_out, state_v_cache_out) → v_attn
 ```
 
 这使 prefill / decode / paged attention 的状态语义在 graph 中可见，但具体 cache layout、page table、device buffer 仍留给 lowering / runtime。
@@ -894,6 +894,42 @@ KV cache state 建模规则：
 3. state edge 只表达语义依赖顺序，不描述 cache layout、page table、device buffer、paged cache handle；
 4. `ResourceValue` 不用于早期 KV cache 建模；paged cache handle、外部分配 buffer、backend resource 属于 lowering / runtime，等有实际 runtime resource use case 后再进入 ModelGraph；
 5. validation 应检查 state update node 的 state input / state output 端口符合 operator schema，不能通过普通 activation edge 隐式表达跨 step 状态。
+
+### 12.1 Attention 语义与执行边界
+
+Phase-1 Attention 算子在 graph 层面表达以下语义契约，物理 layout、page table、device buffer 归 lowering / runtime。
+
+**逻辑签名（Phase 1）：**
+
+| 端口 | 种类 | Rank | Shape | 约束 |
+|------|------|------|-------|------|
+| q (input 0) | Activation | 2 | `[seq_len, hidden]` | `hidden = num_attention_heads * head_dim` |
+| k_cache (input 1) | State | 3 | `[num_key_value_heads, cache_len, head_dim]` | `contributes_tensor_spec = false` |
+| v_cache (input 2) | State | 3 | `[num_key_value_heads, cache_len, head_dim]` | `contributes_tensor_spec = false` |
+| output (output 0) | Activation | 2 | `[seq_len, hidden]` | 与 q spec 一致 |
+
+**Dtype 契约：** q、k_cache、v_cache 三者 dtype 必须一致，取值 ∈ {Float32, Float16, BFloat16}。输出 dtype 跟随 q。禁止隐式类型转换。
+
+**参数校验：**
+- `num_attention_heads`、`num_key_value_heads`、`head_dim` 均为正
+- `num_attention_heads % num_key_value_heads == 0`（GQA 约束）
+- `num_attention_heads * head_dim` 不溢出 `int64_t`
+
+**静态等式校验：**
+- `q.shape[1]`（hidden）、`k_cache.shape[0]`（kv_heads）、`k_cache.shape[2]`（head_dim）在 Phase 1 必须**静态**；symbolic 维度拒绝
+- `q.shape[1] == num_attention_heads * head_dim`
+- `k_cache.shape[0] == num_key_value_heads`
+- `k_cache.shape[2] == head_dim`
+- `k_cache.shape == v_cache.shape`（逐维 `AreProvablyEqual`）
+
+**Symbolic 维度处理：**
+- `q.shape[0]`（seq_len）为 symbolic 时，推迟到 runtime；语义层仅发 `DimPositiveConstraint`（input port 0, dim 0）。
+- `cache_len` 为 symbolic 时，仅当 k_cache 与 v_cache 共享可证相等 symbol 时接受，不发 State-port check。
+- 静态零 seq_len / cache_len 拒绝。
+
+**`cache_len` vs runtime `active_len` 边界：** graph 层面的 `cache_len` 是逻辑容量上限（对应 `KVCacheView` 的 `max_tokens`），不等于 runtime 的 `current_pos`（已提交的历史长度）。`CommitUntil(new_pos)` 推进 active frontier，prefill 写 `[0, prompt_len)`，decode 写 `[current_pos, current_pos+1)`，history 读取 `[seq_begin, seq_end)`。graph 语义层不校验 `cache_len == seq_len`。
+
+**不属于 graph 语义层：** batch 维度、attention mask、sliding window、PagedAttention、continuous batching、物理 KV layout、kernel dispatch。
 
 ## 13. Validation 规则
 
@@ -1035,13 +1071,12 @@ Y[i_0, ..., i_(r-1)] = X[i_0, ..., i_(r-1)]   对所有合法坐标元组
 建议模型：
 
 ```text
-ModelGraph:       token_ids [batch, seq_len]
-                  hidden    [batch, seq_len, hidden_size]
-                  kv_cache  [batch, kv_len, num_kv_heads, head_dim]
+ModelGraph:       token_ids [seq_len]
+                  hidden    [seq_len, hidden_size]
+                  kv_cache  [num_kv_heads, cache_len, head_dim]
 
-Runtime ShapeEnv: batch = 1
-                  seq_len = prompt length 或 1
-                  kv_len = previous length + current length
+Runtime ShapeEnv: seq_len = prompt length 或 1
+                  cache_len = previous length + current length
 ```
 
 `ModelGraph` 负责表达 `batch`、`seq_len`、`kv_len` 等符号及约束；runtime / execution context 负责给这些符号绑定具体值。

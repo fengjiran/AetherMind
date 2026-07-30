@@ -16,13 +16,50 @@ struct RmsNormParams {
 
 struct LinearParams {};
 
+/// @brief Semantic parameters for OpType::kRoPE (Rotary Position Embedding).
+///
+/// Captures the model-level RoPE configuration derived from the HuggingFace
+/// config. InferRoPE validates the graph-time contract against these
+/// parameters and input TensorSpecs; it does not inspect position tensor
+/// contents or execute the rotation.
+///
+/// @pre Graph-time invariants enforced by InferRoPE:
+///      - scalar params: `head_dim` positive and even; `num_attention_heads`,
+///        `num_key_value_heads`, `max_position_embeddings` positive; `theta`
+///        finite and positive; `num_attention_heads * head_dim` and
+///        `num_key_value_heads * head_dim` do not overflow int64_t
+///      - scaling tuple: `scaling_type == kNone` requires `scaling_factor`
+///        absent (standard RoPE); `scaling_type == kLinear` requires a
+///        present finite `scaling_factor > 0` (factor 1.0 is accepted
+///        without normalization); all other HfRopeScalingType values are
+///        rejected as unrepresentable
+///      - input shapes: q and k rank 2 with widths equal to
+///        `num_attention_heads * head_dim` and `num_key_value_heads * head_dim`
+///        respectively when static (symbolic widths remain legal);
+///        position_ids rank 1, Int64, with seq_len reconciled to q/k
+///      - input dtypes: q and k share a dtype from {Float32, Float16, BFloat16}
+///
+/// @post Outputs preserve q and k input TensorSpecs verbatim (dtype + shape).
+///       Runtime shape constraints emitted on the InferenceResult are at most
+///       one DimPositiveConstraint for symbolic q seq_len (input 0, dim 0)
+///       followed by up to two DimEqualConstraint checks reconciling q/k and
+///       q/position sequence dims.
+///
+/// @note Execution boundary: this struct and InferRoPE do NOT inspect position
+///       tensor contents. A future executable RoPE path must validate
+///       non-negative position IDs, any effective-position bounds defined by
+///       the scaling contract, and symbolic q/k widths against params before
+///       computation. Loader `allow_rope_scaling` remains a separate policy;
+///       semantic acceptance does not imply current end-to-end kernel support.
 struct RoPEParams {
     int64_t head_dim = 0;
     int64_t num_attention_heads = 0;
     int64_t num_key_value_heads = 0;
     int64_t max_position_embeddings = 0;
     double theta = 10000.0;
+    // Present iff scaling_type == kLinear; ignored when scaling_type == kNone.
     std::optional<double> scaling_factor{};
+    // Only kNone and kLinear are representable; all other values are rejected.
     HfRopeScalingType scaling_type = HfRopeScalingType::kNone;
 };
 

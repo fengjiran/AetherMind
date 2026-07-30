@@ -439,14 +439,12 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
 }
 
 TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun) {
-    // Production InferAttention returns no runtime_checks (it only echoes q),
-    // and the kAttention schema's compact input view is just [q] (state ports
-    // do not contribute). That makes it impossible to drive a runtime
-    // constraint through InferOperator(kAttention, ...) from the untrusted
-    // raw-node path. Switch to kRmsNorm: InferRmsNorm produces exactly the
-    // DimEqualConstraint(input[0].dim[1] == input[1].dim[0]) the original
-    // kAttention test intended, when hidden and weight_len are distinct
-    // symbolic dimensions.
+    // InferAttention now emits a DimPositiveConstraint for symbolic seq_len,
+    // but its q.hidden / cache.kv_heads / cache.head_dim must be static in
+    // Phase 1, limiting the constraint variants it can produce. Switch to
+    // kRmsNorm: InferRmsNorm produces exactly the DimEqualConstraint
+    // (input[0].dim[1] == input[1].dim[0]) the original kAttention test
+    // intended, when hidden and weight_len are distinct symbolic dimensions.
     RuntimeContext runtime = MakeRuntime();
     RuntimeBindingContext bindings;
     std::vector<int> execution_order;

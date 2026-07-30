@@ -255,7 +255,7 @@ TEST(GraphLowering, LowersAttentionStatePortsWithoutTensorSpecs) {
             0U,
             {q, k_cache, v_cache},
             {NodeOutputDesc{.payload = ActivationValue{}}},
-            AttentionParams{.num_attention_heads = 4, .num_key_value_heads = 2, .head_dim = 2});
+            AttentionParams{.num_attention_heads = 1, .num_key_value_heads = 1, .head_dim = 8});
     ASSERT_TRUE(attention_or.ok()) << attention_or.status().ToString();
     const AddedNode& attention = *attention_or;
     graph.MarkOutput(attention.outputs[0]);
@@ -527,7 +527,7 @@ TEST(GraphLowering, CompactInputSpecsOrderMatchesRuntimeBindings) {
             0U,
             {q, k_cache, v_cache},
             {NodeOutputDesc{.payload = ActivationValue{}}},
-            AttentionParams{.num_attention_heads = 4, .num_key_value_heads = 2, .head_dim = 2});
+            AttentionParams{.num_attention_heads = 1, .num_key_value_heads = 1, .head_dim = 8});
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();

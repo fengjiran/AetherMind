@@ -652,9 +652,9 @@ TEST(ModelGraph, ValidateRejectsAttentionWithSwappedKeyValueStateSlots) {
     ModelGraph graph;
     const GraphValueId q = AddEmbeddingOutput(graph, "tokens_q");
     const GraphValueId wrong_k_cache = graph.AddState(
-            ActivationSpec(), VStateBinding(0U), "wrong_k_cache");
+            CacheSpec(), VStateBinding(0U), "wrong_k_cache");
     const GraphValueId wrong_v_cache = graph.AddState(
-            ActivationSpec(), KStateBinding(0U), "wrong_v_cache");
+            CacheSpec(), KStateBinding(0U), "wrong_v_cache");
 
     const auto result = TryAddNode(
             graph,
@@ -662,7 +662,7 @@ TEST(ModelGraph, ValidateRejectsAttentionWithSwappedKeyValueStateSlots) {
             0U,
             {q, wrong_k_cache, wrong_v_cache},
             {{.payload = ActivationValue{}}},
-            AttentionParams{});
+            AttentionParams{1, 1, 8});
 
     EXPECT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
@@ -672,9 +672,9 @@ TEST(ModelGraph, ValidateRejectsAttentionWithWrongCacheLayer) {
     ModelGraph graph;
     const GraphValueId q = AddEmbeddingOutput(graph, "tokens_q");
     const GraphValueId k_cache = graph.AddState(
-            ActivationSpec(), KStateBinding(1U), "k_cache");
+            CacheSpec(), KStateBinding(1U), "k_cache");
     const GraphValueId v_cache = graph.AddState(
-            ActivationSpec(), VStateBinding(1U), "v_cache");
+            CacheSpec(), VStateBinding(1U), "v_cache");
 
     const auto result = TryAddNode(
             graph,
@@ -682,7 +682,7 @@ TEST(ModelGraph, ValidateRejectsAttentionWithWrongCacheLayer) {
             0U,
             {q, k_cache, v_cache},
             {{.payload = ActivationValue{}}},
-            AttentionParams{});
+            AttentionParams{1, 1, 8});
 
     EXPECT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);

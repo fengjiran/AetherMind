@@ -931,6 +931,49 @@ Phase-1 Attention 算子在 graph 层面表达以下语义契约，物理 layout
 
 **不属于 graph 语义层：** batch 维度、attention mask、sliding window、PagedAttention、continuous batching、物理 KV layout、kernel dispatch。
 
+### 12.2 RoPE 语义与执行边界
+
+Phase-1 RoPE 算子在 graph 层面表达以下语义契约（rank-2、无 batch 轴）。sin/cos table 生成、数值计算、kernel dispatch 归 lowering / runtime。
+
+**逻辑签名（Phase 1）：**
+
+| 端口 | 种类 | Rank | Shape | 约束 |
+|------|------|------|-------|------|
+| q (input 0) | Activation | 2 | `[seq_len, num_attention_heads * head_dim]` | `q[1] == num_attention_heads * head_dim`（静态时） |
+| k (input 1) | Activation | 2 | `[seq_len, num_key_value_heads * head_dim]` | `k[1] == num_key_value_heads * head_dim`（静态时） |
+| position_ids (input 2) | ModelInput | 1 | `[seq_len]` | dtype 必须为 Int64 |
+| q_rope (output 0) | Activation | 2 | 与 q spec 完全一致 | 输出保持输入 TensorSpec |
+| k_rope (output 1) | Activation | 2 | 与 k spec 完全一致 | 输出保持输入 TensorSpec |
+
+**Dtype 契约：** q、k dtype 必须一致，取值 ∈ {Float32, Float16, BFloat16}。position_ids 必须为 Int64。输出 dtype 分别跟随 q、k。禁止隐式类型转换。
+
+**参数校验：**
+- `head_dim`、`num_attention_heads`、`num_key_value_heads`、`max_position_embeddings` 均为正
+- `head_dim` 必须为偶数
+- `theta` 有限且为正
+- `num_attention_heads * head_dim`、`num_key_value_heads * head_dim` 独立进行溢出检查
+
+**Scaling 契约：**
+- `scaling_type == kNone`：标准 RoPE，`scaling_factor` 必须缺席
+- `scaling_type == kLinear`：`scaling_factor` 必须存在、有限且 `> 0`；`1.0` 合法且不做归一化改写
+- 其余 `HfRopeScalingType`（Dynamic NTK、YaRN、Llama3、LongRope、Su、Unknown）因当前 `RoPEParams` 无法表达而被拒绝（capability-oriented 诊断），并非 Phase-1 策略性 blanket 拒绝
+
+**静态等式校验（仅静态维度）：**
+- `q.shape[1] == num_attention_heads * head_dim`（静态时强制；symbolic 宽度合法，不发 product 约束）
+- `k.shape[1] == num_key_value_heads * head_dim`（同上）
+- 不添加 `num_attention_heads % num_key_value_heads == 0` 的 GQA 约束（该约束归 Attention）
+
+**Symbolic 维度处理与 runtime checks：**
+- q、k、position_ids 的 seq_len 三方协调：`AreProvablyEqual` 时不发约束；双方均静态且不等则拒绝；否则发 `DimEqualConstraint`
+- symbolic q seq_len 先发一个 `DimPositiveConstraint`（input 0, dim 0），随后发未决的 q/k、q/position 等式检查（确定性顺序）
+- 最大 check 集合：1 个 positivity + 2 个 equality；全静态合法输入不发任何 check
+- 静态 q seq_len `<= 0` 拒绝
+
+**执行边界（不属于 graph 语义层）：**
+- 本语义层**不**检查 position tensor 内容。未来 executable RoPE path 必须校验非负 position ID、scaling 契约定义的 effective-position 上界、以及 symbolic q/k 宽度与 params 的一致性后才能计算
+- 不声称 `position_ids < max_position_embeddings`——该 coordinate/bound 策略未在本语义任务中冻结
+- Loader `allow_rope_scaling` 仍是独立策略；语义接受不等于当前 end-to-end kernel 支持
+- sin/cos table 属于派生常量（可从 `RoPEParams` 完全确定），应在 lowering 阶段生成
 ## 13. Validation 规则
 
 `Validate()` 至少检查：

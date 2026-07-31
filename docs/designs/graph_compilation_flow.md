@@ -17,21 +17,27 @@ ExecutionPlanBuilder::Build(RuntimeContext& runtime,
 
 ```cpp
 struct ExecutionPlanNodeSpec {
-    OpType op_type;
-    DeviceType device_type;
-    DataType activation_dtype;
-    DataType weight_dtype;
-    WeightFormat weight_format;
-    IsaLevel isa;
-    ExecPhase phase;
-    WorkspaceRequirement workspace_requirement;
-    std::vector<TensorSpec> input_specs;
-    std::span<const std::byte> attrs;
-    OpParams op_params;
+    OpType op_type = OpType::kUnknown;
+    DeviceType device_type = DeviceType::kCPU;
+    DataType act_dtype{};                  // renamed from activation_dtype
+    DataType weight_dtype{};
+    WeightFormat weight_format = WeightFormat::kPlain;
+    IsaLevel isa = IsaLevel::kScalar;
+    ExecPhase phase = ExecPhase::kBoth;
+    WorkspaceRequirement workspace_requirement{};
+    // Schema-port-ordered input specs, including state ports that do not
+    // contribute to runtime tensor bindings.
+    std::vector<TensorSpec> input_specs{};
+    std::vector<TensorSpec> output_specs{}; // added: output specs for deferred shape checks
+    // Deferred runtime shape constraints (derived during graph construction,
+    // carried through lowering without re-inference).
+    std::vector<ShapeConstraint> runtime_checks{};
+    std::vector<std::byte> attrs{};         // changed from std::span<const std::byte>
+    OpParams op_params{};
 };
 ```
 
-也就是说，`ExecutionPlanBuilder` 的直接输入是已经线性化好的 node spec 列表；`ModelGraph` 通过 `LowerModelGraph()` 先转换为 `LoweredGraph::steps`，再进入该构建流程。
+也就是说，`ExecutionPlanBuilder` 的直接输入可以是已经线性化好的 node spec 列表；同时也接受 `LoweredGraph`（包含 steps、step_bindings、inputs/outputs、state_aliases）。`ModelGraph` 通过 `LowerModelGraph()` 先转换为 `LoweredGraph`，再由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 执行 state alias resolution 并构建计划。
 
 ## 2. 当前完整流程图
 
@@ -56,17 +62,19 @@ for each node:
         │
         ├─ runtime.GetBackend(node.device_type)
         │
-        ├─ CreateAndPrepareOperator(backend, node)
+        ├─ ResolveKernelForNode(backend, node)
         │      ├─ OperatorRegistry::Create(...)
-        │      ├─ op->ValidateParams()
-        │      ├─ if input_specs non-empty:
-        │      │      ├─ op->CheckInputSpecs(input_specs)
-        │      │      └─ op->InferOutputShapes(input_specs)
         │      └─ op->Prepare(OperatorContext{backend, selector})
         │
-        ├─ 如果没有注册 Operator:
-        │      ├─ ResolveKernelForNode(backend, node)
-        │      └─ FunctionOperator(...)
+        │   // NOTE: Operator semantic validation and output shape inference are
+        │   // run exactly once per node at graph-build/lowering time via the
+        │   // typed `Infer*` free functions under `src/operators/*_op.cpp`
+        │   // (e.g. `InferRoPE`, `InferRmsNorm`, `InferSiluMul`). Each Infer
+        │   // function validates params, dtypes and shapes, emits deferred
+        │   // ShapeConstraints into node.runtime_checks, and returns the
+        │   // output TensorSpecs. ExecutionPlanBuilder does not re-run
+        │   // validation/inference; it only binds kernels, resolves packed
+        │   // weights, and defers runtime shape checks.
         │
         ├─ ResolvePackedWeightsForNode(model_instance?, node)
         │
@@ -599,18 +607,37 @@ optimized ModelGraph
        ├─ step_bindings (std::vector<LoweredStepBinding>)
        ├─ model_inputs
        ├─ model_outputs
-       └─ state_aliases
-  → ExecutionPlanBuilder::Build(steps)
+       ├─ state_aliases
+  → ExecutionPlanBuilder::Build(runtime, lowered)   // consumes full LoweredGraph
+  →   ├─ ResolveStateAliases(lowered)              // validates + converts KV cache aliases
+  →   └─ BuildExecutionPlan(runtime, model?, steps, alias_plan, trusted=true)
   → ExecutionPlan
 ```
 
-执行计划构建本身仍只消费 `steps`：
+执行计划构建的主要入口接受完整 `LoweredGraph`（含 steps、step_bindings、inputs/outputs、state_aliases），而非仅消费 steps：
 
 ```text
-std::vector<ExecutionPlanNodeSpec>
-  → ExecutionPlanBuilder::Build
-  → ExecutionPlan
+LoweredGraph
+  ├─ steps           (std::vector<ExecutionPlanNodeSpec>)
+  ├─ step_bindings   (std::vector<LoweredStepBinding>)
+  ├─ model_inputs    (std::vector<GraphInput>)
+  ├─ model_outputs   (std::vector<GraphOutput>)
+  └─ state_aliases   (std::vector<StateAlias>)
+      │
+      ▼
+ExecutionPlanBuilder::Build(RuntimeContext&, LoweredGraph const&)
+      │
+      ├─ ResolveStateAliases(lowered)
+      │     └─ validates alias pairs → returns StateAliasPlan
+      │
+      ▼
+BuildExecutionPlan(runtime, model?, steps, alias_plan, trusted=true)
+      │
+      ▼
+ExecutionPlan{... steps ..., state_alias_plan{...}}
 ```
+
+保留的 `Build(runtime, vector<ExecutionPlanNodeSpec>)` 重载仅用于测试/手工构造场景，内部构造空 StateAliasPlan（无 KV cache alias 支持）。
 
 ### 6.4 仍待补齐的生产化部分
 

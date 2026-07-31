@@ -87,7 +87,7 @@ tests/unit/operators/
 #ifndef AETHERMIND_OPERATORS_ROPE_OP_H
 #define AETHERMIND_OPERATORS_ROPE_OP_H
 
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator.h"
 
 namespace aethermind {
@@ -868,7 +868,7 @@ for each step:
 ### 9.1 图构建（ModelGraphBuilder 已有，无需新增代码）
 
 ```cpp
-// src/model/graph/model_graph_builder.cpp 中已存在：
+// src/model/model_graph_builder.cpp 中已存在：
 // RoPEParams 由 MakeRoPEParams(config, head_dim) 从 HfModelConfig 构造
 graph.AddNode(GraphNode{
         .op_type = OpType::kRoPE,

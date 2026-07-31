@@ -433,8 +433,8 @@ flowchart TB
 | 路径 | 对应模块 |
 |------|----------|
 | [`include/aethermind/model/model_loader.h`](../../../include/aethermind/model/model_loader.h) / [`src/model/model_loader.cpp`](../../../src/model/model_loader.cpp) | `ModelLoader::Load` |
-| [`include/aethermind/model/graph/graph_builder.h`](../../../include/aethermind/model/graph/graph_builder.h) / [`src/model/graph/graph_builder.cpp`](../../../src/model/graph/graph_builder.cpp) | `ModelGraphBuilder::BuildLlamaDense` |
-| [`src/model/graph/compilation/graph_compiler.cpp`](../../../src/model/graph/compilation/graph_compiler.cpp) | `CompileModelGraph`, `OptimizeModelGraph` |
+| [`include/aethermind/model/model_graph_builder.h`](../../../include/aethermind/model/model_graph_builder.h) / [`src/model/model_graph_builder.cpp`](../../../src/model/model_graph_builder.cpp) | `ModelGraphBuilder::BuildLlamaDense` |
+| [`include/aethermind/graph/compilation/graph_compiler.h`](../../../include/aethermind/graph/compilation/graph_compiler.h) / [`src/graph/compilation/graph_compiler.cpp`](../../../src/graph/compilation/graph_compiler.cpp) | `CompileModelGraph`, `OptimizeModelGraph` |
 | [`include/aethermind/execution/execution_plan_builder.h`](../../../include/aethermind/execution/execution_plan_builder.h) / [`src/execution/execution_plan_builder.cpp`](../../../src/execution/execution_plan_builder.cpp) | `ExecutionPlanBuilder::Build` |
 | [`include/aethermind/execution/executor.h`](../../../include/aethermind/execution/executor.h) / [`src/execution/executor.cpp`](../../../src/execution/executor.cpp) | `Executor::Execute` |
 | [`include/aethermind/execution/layer_runner.h`](../../../include/aethermind/execution/layer_runner.h) / [`src/execution/layer_runner.cpp`](../../../src/execution/layer_runner.cpp) | `LayerRunner::Run` |

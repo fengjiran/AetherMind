@@ -1334,7 +1334,7 @@ ConstantFolding 必须优先于 SiluMulFusion，因为：
 #### `OptimizeModelGraph`
 
 ```cpp
-// include/aethermind/model/graph/compilation/graph_compiler.h
+// include/aethermind/graph/compilation/graph_compiler.h
 AM_NODISCARD StatusOr<ModelGraph> OptimizeModelGraph(
         const ModelGraph& graph,
         PassContext context = {});
@@ -1574,10 +1574,10 @@ Milestone 1 只完成当前 ordered graph skeleton 到最小 use-def DAG 的结�
 
 先确认直接依赖旧 `ModelGraph` 的代码点：
 
-- `include/aethermind/model/graph/model_graph.h`；
-- `src/model/graph/model_graph.cpp`；
-- `src/model/graph/model_graph_builder.cpp`；
-- `tests/unit/model/graph/test_model_graph_builder.cpp`；
+- `include/aethermind/graph/graph.h`（v1 时代为 `model/graph/model_graph.h`）；
+- `src/graph/graph.cpp`（v1 时代为 `model/graph/model_graph.cpp`）；
+- `src/model/model_graph_builder.cpp`（v1 时代为 `model/graph/model_graph_builder.cpp`）；
+- `tests/unit/model/test_model_graph_builder.cpp`（v1 时代为 `model/graph/test_model_graph_builder.cpp`）；
 - 任何遍历 `GraphNode.inputs` / `GraphNode.outputs` / `GraphNode.weights` / `GraphNode.workspace_requirement` 的 execution plan 代码。
 
 产出旧字段到新字段的迁移表：

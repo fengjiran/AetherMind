@@ -27,7 +27,7 @@ Evaluator 使用“先规划、后执行”的契约。`Plan()` 是完整的可�
 
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
-#include "aethermind/model/graph/graph_types.h"
+#include "aethermind/graph/graph_types.h"
 
 #include <cstddef>
 #include <memory>

@@ -114,6 +114,32 @@ Add a file-level comment to non-trivial public headers and source files whose ro
 
 Do not force heavy file headers on trivial files.
 
+Placement relative to the include guard:
+
+1. Copyright/license header (if any) goes **before** the include guard, using `//`.
+2. The file-level Doxygen comment (`/// @file ...`) goes **after** the
+   include guard (`#ifndef`/`#define`) and **before** the first `#include`.
+3. Entity-level documentation follows includes.
+
+Example:
+
+```cpp
+// Copyright 2026 The AetherMind Authors
+// SPDX-License-Identifier: Apache-2.0
+
+#ifndef AETHERMIND_MODULE_FILE_H
+#define AETHERMIND_MODULE_FILE_H
+
+/// @file file.h
+/// @brief One-line summary of the module.
+///
+/// Optional longer description.
+#include "..."
+
+namespace aethermind { ... }
+#endif
+```
+
 #### Class and struct comments
 
 Document classes or structs when their role, lifecycle, invariants, or synchronization model are non-trivial.
@@ -397,6 +423,16 @@ A file-level comment may describe:
 - important dependencies
 
 Add file-level comments only when they improve understanding.
+
+Mandatory tags:
+
+- `@file` — always required, so Doxygen associates the block with the file.
+  With `JAVADOC_AUTOBRIEF=NO` / `QT_AUTOBRIEF=NO` (see §1.6), auto-detection
+  does not apply; without `@file` the block is treated as the first entity's
+  documentation instead.
+- `@brief` — one-line summary, always required.
+
+Optional tags: `@note`, `@warning`, `@see`.
 
 ------
 

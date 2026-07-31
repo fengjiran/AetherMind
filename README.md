@@ -66,10 +66,10 @@ AetherMind/
 │   ├── base/                # Tensor, status, mmap, shape/stride
 │   ├── dtypes/              # half, bfloat16, float8, complex
 │   ├── shape_inference/     # Symbolic shape & constraint solver
-│   ├── model/               # Model loader, instance, weights
-│   │   ├── graph/           # Graph IR, passes, const evaluator
+│   ├── model/               # Model loader, instance, weights, ModelGraphBuilder
 │   │   └── formats/hf/      # HuggingFace safetensors/config
-│   ├── operators/           # Operator registry & definitions
+│   ├── graph/               # Graph IR, optimization passes, const evaluator, lowering (top-level module)
+│   ├── operators/           # Operator registry, schema, op_params, inference
 │   ├── backend/             # Kernel selector/registry, CPU backend
 │   │   └── cpu/kernels/     # RMSNorm (AVX2), embedding, dot product
 │   ├── execution/           # Executor, execution plan, KV cache

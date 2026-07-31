@@ -38,8 +38,13 @@ Place tests under `tests/unit/` mirroring the source layout:
 
 | Source path                         | Test path                              |
 | ----------------------------------- | -------------------------------------- |
-| `include/aethermind/model/graph/`   | `tests/unit/model/graph/`              |
+| `include/aethermind/graph/`         | `tests/unit/graph/`                    |
+| `src/graph/`                        | `tests/unit/graph/`                    |
+| `include/aethermind/model/`         | `tests/unit/model/`                    |
+| `src/model/`                        | `tests/unit/model/`                    |
 | `src/operators/`                    | `tests/unit/operators/`                |
+| `include/aethermind/execution/`     | `tests/unit/execution/`                |
+| `src/execution/`                    | `tests/unit/execution/`                |
 | `src/backend/cpu/kernels/`          | `tests/unit/backend/cpu/kernels/`      |
 | `ammalloc/src/`                     | `tests/unit/memory/`                   |
 | `src/container/`                    | `tests/unit/tensor/`                   |
@@ -65,7 +70,7 @@ Group includes with blank lines, project headers first or gtest first (both styl
 Preferred style for new files:
 
 ```cpp
-#include "aethermind/model/graph/graph.h"   // project headers
+#include "aethermind/graph/graph.h"          // project headers
 #include "test_graph_helpers.h"
 
 #include <gtest/gtest.h>                    // third-party
@@ -296,9 +301,9 @@ std::uint8_t EncodedSmallProbe(Policy::SizeType size) noexcept {
 When 3+ test files need the same builder, extract it into a header next to the tests (not into the public `include/` tree). Mark the function `inline` and document why it exists.
 
 ```cpp
-// tests/unit/model/graph/test_graph_helpers.h
-#ifndef AETHERMIND_MODEL_GRAPH_TEST_GRAPH_HELPERS_H
-#define AETHERMIND_MODEL_GRAPH_TEST_GRAPH_HELPERS_H
+// tests/unit/graph/test_graph_helpers.h
+#ifndef AETHERMIND_GRAPH_TEST_GRAPH_HELPERS_H
+#define AETHERMIND_GRAPH_TEST_GRAPH_HELPERS_H
 
 #include "aethermind/shape_inference/tensor_spec.h"
 

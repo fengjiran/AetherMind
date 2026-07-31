@@ -68,7 +68,7 @@ LayerRunner::RunStep (runtime)
 
 **Step 1: 新增编译期约束求解 pass**
 
-在 `src/model/graph/compilation/` 下新增 `shape_constraint_resolution.cpp`（或作为 lowering 内部步骤）：
+在 `src/graph/compilation/` 下新增 `shape_constraint_resolution.cpp`（或作为 lowering 内部步骤）：
 
 ```cpp
 // 伪代码
@@ -135,7 +135,7 @@ ModelGraph
 ## 测试策略
 
 - 单元测试：`tests/unit/shape_inference/test_symbol_constraint_solver.cpp`（已存在）
-- 集成测试：在 `tests/unit/model/graph/compilation/test_graph_lowering.cpp` 中增加用例，验证：
+- 集成测试：在 `tests/unit/graph/compilation/test_graph_lowering.cpp` 中增加用例，验证：
   - 两个相同 static dim 的 DimEqualConstraint 被消除
   - 静态冲突在 lowering 阶段报错
   - 无法证明的约束仍保留到 runtime

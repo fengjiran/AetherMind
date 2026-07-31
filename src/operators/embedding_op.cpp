@@ -2,7 +2,7 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
 

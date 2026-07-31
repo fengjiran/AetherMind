@@ -23,7 +23,7 @@ RoPEParams MakeStandardParams() {
             .max_position_embeddings = kMaxPositionEmbeddings,
             .theta = 10000.0,
             .scaling_factor = std::nullopt,
-            .scaling_type = HfRopeScalingType::kNone,
+            .scaling_type = RoPEScalingType::kNone,
     };
 }
 
@@ -198,38 +198,38 @@ TEST(RoPEInference, RejectsMisplacedFactorOnStandardScaling) {
 
 TEST(RoPEInference, AcceptsLinearScaling) {
     auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kLinear;
+    p.scaling_type = RoPEScalingType::kLinear;
     p.scaling_factor = 2.0;
     EXPECT_TRUE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }
 
 TEST(RoPEInference, AcceptsLinearScalingFactorOne) {
     auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kLinear;
+    p.scaling_type = RoPEScalingType::kLinear;
     p.scaling_factor = 1.0;
     auto result = InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32()));
     ASSERT_TRUE(result.ok());
-    EXPECT_EQ(p.scaling_type, HfRopeScalingType::kLinear);
+    EXPECT_EQ(p.scaling_type, RoPEScalingType::kLinear);
     EXPECT_TRUE(p.scaling_factor.has_value());
     EXPECT_EQ(*p.scaling_factor, 1.0);
 }
 
 TEST(RoPEInference, AcceptsLinearScalingFactorBelowOne) {
     auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kLinear;
+    p.scaling_type = RoPEScalingType::kLinear;
     p.scaling_factor = 0.5;
     EXPECT_TRUE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }
 TEST(RoPEInference, RejectsLinearScalingMissingFactor) {
     auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kLinear;
+    p.scaling_type = RoPEScalingType::kLinear;
     p.scaling_factor = std::nullopt;
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }
 
 TEST(RoPEInference, RejectsLinearScalingNonFiniteFactor) {
     auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kLinear;
+    p.scaling_type = RoPEScalingType::kLinear;
     p.scaling_factor = std::numeric_limits<double>::infinity();
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
     p.scaling_factor = std::numeric_limits<double>::quiet_NaN();
@@ -238,54 +238,18 @@ TEST(RoPEInference, RejectsLinearScalingNonFiniteFactor) {
 
 TEST(RoPEInference, RejectsLinearScalingNonPositiveFactor) {
     auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kLinear;
+    p.scaling_type = RoPEScalingType::kLinear;
     p.scaling_factor = 0.0;
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
     p.scaling_factor = -1.0;
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }
 
-TEST(RoPEInference, RejectsDynamicNtkScaling) {
-    auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kDynamicNtk;
-    p.scaling_factor = 2.0;
-    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
-}
-
-TEST(RoPEInference, RejectsYarnScaling) {
-    auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kYarn;
-    p.scaling_factor = 2.0;
-    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
-}
-
-TEST(RoPEInference, RejectsLlama3Scaling) {
-    auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kLlama3;
-    p.scaling_factor = 2.0;
-    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
-}
-
-TEST(RoPEInference, RejectsLongRopeScaling) {
-    auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kLongRope;
-    p.scaling_factor = 2.0;
-    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
-}
-
-TEST(RoPEInference, RejectsSuScaling) {
-    auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kSu;
-    p.scaling_factor = 2.0;
-    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
-}
-
-TEST(RoPEInference, RejectsUnknownScalingType) {
-    auto p = MakeStandardParams();
-    p.scaling_type = HfRopeScalingType::kUnknown;
-    p.scaling_factor = 2.0;
-    EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
-}
+// HF-only RoPE scaling variants (kDynamicNtk, kYarn, kLlama3, kLongRope,
+// kSu, kUnknown) are not representable on the semantic RoPEScalingType
+// surface. Rejection of these variants is exercised at the model frontend
+// boundary in tests/unit/model/test_model_graph_builder.cpp
+// (ModelGraphBuilder.RejectsUnsupportedRoPE*).
 
 // --- Output preservation ---
 

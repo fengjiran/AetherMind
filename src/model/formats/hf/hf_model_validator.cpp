@@ -37,22 +37,6 @@ bool HasUnsupportedNamedDTypeHint(const HfModelConfig& config) {
            IsUnknownDType(config.weight_dtype_hint);
 }
 
-bool IsSupportedRopeScalingType(HfRopeScalingType type) noexcept {
-    switch (type) {
-        case HfRopeScalingType::kLinear:
-        case HfRopeScalingType::kDynamicNtk:
-        case HfRopeScalingType::kYarn:
-        case HfRopeScalingType::kLlama3:
-        case HfRopeScalingType::kLongRope:
-        case HfRopeScalingType::kSu:
-            return true;
-        case HfRopeScalingType::kNone:
-        case HfRopeScalingType::kUnknown:
-            return false;
-    }
-    return false;
-}
-
 bool IsSupportedActivation(std::string_view act) {
     constexpr std::string_view kSupported[] = {
             "silu",
@@ -585,11 +569,10 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
                     "Model config field 'rope.scaling_type' must be provided when RoPE scaling is configured");
         }
 
-        if (!IsSupportedRopeScalingType(config.rope.scaling_type)) {
-            return Status::InvalidArgument(
-                    std::string("Unsupported RoPE scaling type in model config: ") +
-                    std::string(ToString(config.rope.scaling_type)));
-        }
+        // Scaling type value validation is deferred to ModelGraphBuilder::MakeRoPEParams,
+        // which is the single authority for HF→semantic RoPE conversion and rejection.
+        // Unsupported variants (kDynamicNtk/kYarn/kLlama3/kLongRope/kSu/kUnknown) are
+        // rejected there with a representability error before graph mutation.
 
         if (!config.rope.scaling_factor.has_value()) {
             return Status::InvalidArgument(

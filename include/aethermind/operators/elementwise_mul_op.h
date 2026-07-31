@@ -8,7 +8,7 @@
 #include <string_view>
 
 #include "aethermind/dtypes/data_type.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator.h"
 
 namespace aethermind {

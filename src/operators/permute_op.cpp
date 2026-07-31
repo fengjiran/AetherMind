@@ -1,4 +1,4 @@
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 
 #include <algorithm>

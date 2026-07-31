@@ -49,17 +49,18 @@ Status ValidateRoPEParams(const RoPEParams& p) {
 }
 
 // Validates the RoPE scaling tuple. kNone requires an absent factor; kLinear
-// requires a present finite factor > 0. Every other scaling type is rejected
-// as unrepresentable by the current RoPEParams surface.
+// requires a present finite factor > 0. The RoPEScalingType enum is exhaustive
+// over the representable surface; HF-only variants are filtered by the model
+// frontend before RoPEParams is constructed, so no `default` branch is needed.
 Status ValidateRoPEScaling(const RoPEParams& p) {
     switch (p.scaling_type) {
-        case HfRopeScalingType::kNone:
+        case RoPEScalingType::kNone:
             if (p.scaling_factor.has_value()) {
                 return Status::InvalidArgument(
                         "RoPE scaling_type kNone must not carry a scaling_factor");
             }
             return Status::Ok();
-        case HfRopeScalingType::kLinear:
+        case RoPEScalingType::kLinear:
             if (!p.scaling_factor.has_value()) {
                 return Status::InvalidArgument(
                         "RoPE scaling_type kLinear requires a finite positive "
@@ -74,12 +75,8 @@ Status ValidateRoPEScaling(const RoPEParams& p) {
                         "RoPE scaling_type kLinear scaling_factor must be positive");
             }
             return Status::Ok();
-        default:
-            return Status::InvalidArgument("RoPE scaling_type '" +
-                                           std::string(ToString(p.scaling_type)) +
-                                           "' is not representable by the current RoPEParams; "
-                                           "only kNone and kLinear are supported");
     }
+    AM_UNREACHABLE();
 }
 
 // Validates that q and k share the same dtype from the supported set and that

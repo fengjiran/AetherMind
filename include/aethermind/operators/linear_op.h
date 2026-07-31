@@ -2,7 +2,7 @@
 #define AETHERMIND_OPERATORS_LINEAR_OP_H
 
 #include "aethermind/dtypes/data_type.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator.h"
 
 #include <array>

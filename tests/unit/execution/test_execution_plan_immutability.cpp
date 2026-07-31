@@ -6,8 +6,8 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/model/graph/op_params.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 

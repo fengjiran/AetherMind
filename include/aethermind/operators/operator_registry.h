@@ -2,7 +2,7 @@
 #define AETHERMIND_OPERATORS_OPERATOR_REGISTRY_H
 
 #include "aethermind/base/status.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/operators/operator.h"
 

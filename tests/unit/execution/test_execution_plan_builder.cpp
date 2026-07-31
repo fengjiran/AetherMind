@@ -5,9 +5,9 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
+#include "aethermind/graph/compilation/graph_lowering.h"
+#include "aethermind/graph/graph.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/model/graph/compilation/graph_lowering.h"
-#include "aethermind/model/graph/graph.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/rmsnorm_op.h"
@@ -726,17 +726,7 @@ TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {
 }
 
 TEST(ExecutionPlanBuilder, BuildFromEmptyLoweredGraphHasEmptyStateAliasPlan) {
-    const ModelGraph graph(
-            HfModelConfig{.model_type = "llama",
-                          .hidden_size = 8,
-                          .num_hidden_layers = 1,
-                          .num_attention_heads = 4,
-                          .num_key_value_heads = 2,
-                          .vocab_size = 32,
-                          .max_position_embeddings = 128,
-                          .head_dim = 2,
-                          .rms_norm_eps = 1.0e-5,
-                          .hidden_act = "silu"});
+    const ModelGraph graph;
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();

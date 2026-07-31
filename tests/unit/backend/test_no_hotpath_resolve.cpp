@@ -4,7 +4,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/workspace.h"

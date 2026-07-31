@@ -3,7 +3,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
-#include "aethermind/model/graph/op_params.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 

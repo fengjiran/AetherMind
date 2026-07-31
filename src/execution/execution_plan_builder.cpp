@@ -1,11 +1,11 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/backend/packed_weights.h"
-#include "aethermind/model/graph/compilation/graph_lowering.h"
-#include "aethermind/model/graph/operator_schema.h"
+#include "aethermind/graph/compilation/graph_lowering.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
+#include "aethermind/operators/operator_schema.h"
 
 namespace aethermind {
 namespace {

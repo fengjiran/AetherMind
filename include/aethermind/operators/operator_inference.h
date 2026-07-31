@@ -15,9 +15,9 @@
 #ifndef AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H
 #define AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H
 
-#include "aethermind/model/graph/op_params.h"
-#include "aethermind/model/graph/operator_schema.h"
 #include "aethermind/operators/inference_result.h"
+#include "aethermind/operators/op_params.h"
+#include "aethermind/operators/operator_schema.h"
 
 namespace aethermind {
 

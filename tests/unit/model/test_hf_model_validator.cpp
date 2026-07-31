@@ -364,7 +364,7 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedRopeScalingTypeWhenAllowed) {
+TEST(ModelLoader_HfModelValidatorTest, DefersRopeScalingTypeValueValidationToBuilder) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;
     config.rope.scaling_type = HfRopeScalingType::kUnknown;
@@ -373,8 +373,11 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedRopeScalingTypeWhenAllo
 
     const Status status = HfModelValidator::ValidateConfig(config, options);
 
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    // HfModelValidator no longer rejects scaling_type values; the semantic
+    // conversion/rejection authority is MakeRoPEParams in ModelGraphBuilder.
+    // kUnknown passes structural validation here and is rejected later by
+    // MakeRoPEParams with a "not representable on the semantic graph surface" error.
+    EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {

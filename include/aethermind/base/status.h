@@ -1,25 +1,23 @@
-// Copyright 2026 The AetherMind Authors
-// SPDX-License-Identifier: Apache-2.0
-//
-// Status and StatusOr for error handling in Phase 1 runtime.
-//
-// This module provides a contract/result error model similar to absl::Status
-// and gRPC status codes. It is the primary error handling mechanism for the
-// inference runtime, replacing exception-heavy paths with explicit status checks.
-//
-// Key components:
-// - StatusCode: Enum of error codes aligned with gRPC and am_status_code (C ABI)
-// - Status: Lightweight error container (code + message)
-// - StatusOr<T>: Union of value or error, for functions that may fail
-//
-// Thread safety: const methods are thread-safe. StatusOr is not thread-safe
-// for concurrent mutation.
-//
-// Dependencies: c_api.h for am_status_code, macros.h for AM_NODISCARD
-
 #ifndef AETHERMIND_AETHERMIND_BASE_STATUS_H
 #define AETHERMIND_AETHERMIND_BASE_STATUS_H
 
+/// @file status.h
+/// @brief Status and StatusOr for error handling in Phase 1 runtime.
+///
+/// This module provides a contract/result error model similar to absl::Status
+/// and gRPC status codes. It is the primary error handling mechanism for the
+/// inference runtime, replacing exception-heavy paths with explicit status
+/// checks.
+///
+/// Key components:
+/// - StatusCode: Enum of error codes aligned with gRPC and am_status_code (C ABI)
+/// - Status: Lightweight error container (code + message)
+/// - StatusOr<T>: Union of value or error, for functions that may fail
+///
+/// Thread safety: const methods are thread-safe. StatusOr is not thread-safe
+/// for concurrent mutation.
+///
+/// Dependencies: c_api.h for am_status_code, macros.h for AM_NODISCARD
 #include "c_api.h"
 #include "macros.h"
 
@@ -327,12 +325,16 @@ public:
         return std::string(StatusCodeName(code_)) + ": " + message_;
     }
 
-    /// Returns true if both code and message are equal.
+    /// @brief Returns true if both code and message are equal.
+    /// @param other The Status to compare against.
+    /// @return True if code and message both match.
     AM_NODISCARD bool operator==(const Status& other) const {
         return code_ == other.code_ && message_ == other.message_;
     }
 
-    /// Returns true if code or message differ.
+    /// @brief Returns true if code or message differ.
+    /// @param other The Status to compare against.
+    /// @return True if code or message differ.
     AM_NODISCARD bool operator!=(const Status& other) const {
         return !(*this == other);
     }
@@ -377,7 +379,7 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
 
 }// namespace detail
 
-/// Evaluates expr and returns its status if not OK.
+/// @brief Evaluates expr and returns its status if not OK.
 ///
 /// @param expr Expression returning Status or StatusOr<T>. The extracted
 ///             status is returned from the enclosing function, whose return
@@ -403,7 +405,7 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
             }                                                                      \
     } while (false)
 
-/// Evaluates expr and returns an augmented error status if not OK.
+/// @brief Evaluates expr and returns an augmented error status if not OK.
 ///
 /// The returned Status preserves the original error code; only the message
 /// is replaced with "<msg>: <original message>".
@@ -444,7 +446,7 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept;
             }                                                            \
     } while (false)
 
-/// Unwraps a StatusOr<T> into lhs, propagating the error on failure.
+/// @brief Unwraps a StatusOr<T> into lhs, propagating the error on failure.
 ///
 /// Evaluates expr exactly once. If the result is not OK, returns its status
 /// from the enclosing function. Otherwise, moves the value into lhs.
@@ -527,6 +529,9 @@ public:
         }
     }
 
+    /// @brief Constructs from a moved error status.
+    /// @param status A non-OK error status.
+    /// @throws std::invalid_argument if status is OK.
     StatusOr(Status&& status) : storage_(std::move(status)) {// NOLINT(google-explicit-constructor)
         if (std::get<Status>(storage_).ok()) {
             throw std::invalid_argument("StatusOr error constructor requires non-OK status");
@@ -565,6 +570,8 @@ public:
     AM_NODISCARD const T* get_if_ok() const&& noexcept = delete;
     AM_NODISCARD T* get_if_ok() && noexcept = delete;
 
+    /// @brief Returns the held Status, or a shared OK Status if this holds a value.
+    /// @return Const reference to the held Status, or a static OK instance.
     AM_NODISCARD const Status& status() const& noexcept {
         // Shared static OK instance avoids per-call construction while keeping
         // the return-by-reference contract. Safe because Status::Ok() is
@@ -578,6 +585,8 @@ public:
 
     AM_NODISCARD const Status& status() const&& noexcept = delete;
 
+    /// @brief Returns the held Status by value, moving out of this StatusOr.
+    /// @return The held Status, or Status::Ok() if this holds a value.
     Status status() && noexcept {
         if (ok()) {
             return Status::Ok();

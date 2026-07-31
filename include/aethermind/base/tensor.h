@@ -1,6 +1,8 @@
 #ifndef AETHERMIND_BASE_TENSOR_H
 #define AETHERMIND_BASE_TENSOR_H
 
+/// @file tensor.h
+/// @brief Owning dense tensor backed by a Buffer.
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/memory/buffer.h"
 #include "container/array_view.h"
@@ -38,6 +40,12 @@ class Tensor {
 public:
     Tensor() noexcept = default;
 
+    /// @brief Constructs a Tensor from a Buffer and explicit shape/strides.
+    /// @param buffer            Owning buffer (moved into this Tensor).
+    /// @param byte_offset       Byte offset into the buffer where data begins.
+    /// @param dtype             Element data type.
+    /// @param shape_and_strides Shape and stride metadata (strides in elements).
+    /// @throws AM_CHECK failure if metadata validation fails.
     Tensor(Buffer buffer, size_t byte_offset, const DataType& dtype,
            const ShapeAndStride& shape_and_strides)
         : buffer_(std::move(buffer)), byte_offset_(byte_offset), dtype_(dtype),
@@ -45,6 +53,13 @@ public:
         validate();
     }
 
+    /// @brief Constructs a Tensor from a Buffer and separate shape/strides views.
+    /// @param buffer      Owning buffer (moved into this Tensor).
+    /// @param byte_offset Byte offset into the buffer where data begins.
+    /// @param dtype       Element data type.
+    /// @param shape       Dimension sizes (all non-negative).
+    /// @param strides     Stride values in elements.
+    /// @throws AM_CHECK failure if metadata validation fails.
     Tensor(Buffer buffer, size_t byte_offset, const DataType& dtype,
            IntArrayView shape, IntArrayView strides)
         : buffer_(std::move(buffer)), byte_offset_(byte_offset), dtype_(dtype),
@@ -140,26 +155,61 @@ public:
         return base + byte_offset_;
     }
 
+    /// @brief Returns an immutable borrowed view over this Tensor's data.
+    /// @return TensorView valid only while this Tensor is alive and unmodified.
     AM_NODISCARD TensorView view() const noexcept;
 
+    /// @brief Returns a mutable borrowed view over this Tensor's data.
+    /// @return MutableTensorView valid only while this Tensor is alive and unmodified.
     AM_NODISCARD MutableTensorView mutable_view() noexcept;
 
+    /// @brief Returns the maximum element offset reachable via the strides.
+    /// @return Offset in elements from the data pointer.
     AM_NODISCARD int64_t max_touched_element_offset() const noexcept {
         return shape_and_strides_.max_element_offset();
     }
 
+    /// @brief Returns the byte size of the logical tensor (numel * itemsize).
+    /// @return Byte count; 0 for an uninitialized Tensor.
+    /// @throws AM_CHECK failure on overflow.
     AM_NODISCARD size_t logical_nbytes() const noexcept;
 
+    /// @brief Returns the byte span from the data pointer through the last touched element.
+    /// @return Byte count covering the addressed storage range; 0 if uninitialized or numel == 0.
+    /// @throws AM_CHECK failure on overflow.
     AM_NODISCARD size_t max_touched_span_bytes() const noexcept;
 
+    /// @brief Checks whether the addressed storage range fits within the backing Buffer.
+    /// @return True if the buffer can hold the addressed range; false otherwise.
     AM_NODISCARD bool storage_range_is_valid() const noexcept;
 
+    /// @brief Returns a Tensor sharing storage with a strided slice along one dimension.
+    /// @param dim_idx Dimension to slice (0-based; negative wraps from the end).
+    /// @param start   Start index (inclusive).
+    /// @param end     End index (exclusive).
+    /// @param step    Step between selected indices (must be > 0).
+    /// @return A Tensor sharing this Tensor's Buffer with adjusted offset/strides.
+    /// @pre rank() >= 1.
+    /// @throws AM_CHECK failure on an uninitialized tensor, invalid dim, or step <= 0.
     AM_NODISCARD Tensor slice(int32_t dim_idx, int64_t start, int64_t end, int64_t step) const noexcept;
 
+    /// @brief Convenience overload of slice() with step = 1.
+    /// @param dim_idx Dimension to slice (0-based; negative wraps from the end).
+    /// @param start   Start index (inclusive).
+    /// @param end     End index (exclusive).
+    /// @return A Tensor sharing this Tensor's Buffer with adjusted offset/strides.
+    /// @pre rank() >= 1.
     AM_NODISCARD Tensor slice(int32_t dim_idx, int64_t start, int64_t end) const noexcept {
         return slice(dim_idx, start, end, 1);
     }
 
+    /// @brief Returns a Tensor sharing storage with a sub-range along one dimension.
+    /// @param dim_idx Dimension to narrow (0-based).
+    /// @param start   Start index (inclusive).
+    /// @param length  Number of elements to keep (must be >= 0).
+    /// @return A Tensor sharing this Tensor's Buffer with adjusted offset/strides.
+    /// @pre rank() >= 1.
+    /// @throws AM_CHECK failure if length < 0.
     AM_NODISCARD Tensor narrow(int32_t dim_idx, int64_t start, int64_t length) const noexcept {
         AM_CHECK(length >= 0);
         return slice(dim_idx, start, start + length);

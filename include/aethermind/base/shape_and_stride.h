@@ -1,5 +1,8 @@
-/// @file
-/// Owning tensor metadata container for shape and stride.
+#ifndef AETHERMIND_BASE_SHAPE_AND_STRIDE_H
+#define AETHERMIND_BASE_SHAPE_AND_STRIDE_H
+
+/// @file shape_and_stride.h
+/// @brief Owning tensor metadata container for shape and stride.
 ///
 /// Design constraints:
 /// - Fixed max rank (kMaxRank = 8), fully inline storage, zero heap allocation.
@@ -8,10 +11,6 @@
 ///
 /// This container is intended for owning Tensor metadata. For hot-path TensorView,
 /// consider a non-owning view type instead.
-
-#ifndef AETHERMIND_BASE_SHAPE_AND_STRIDE_H
-#define AETHERMIND_BASE_SHAPE_AND_STRIDE_H
-
 #include "container/array_view.h"
 #include "macros.h"
 #include "utils/logging.h"
@@ -87,12 +86,14 @@ public:
         return {strides_.data(), static_cast<size_t>(size_)};
     }
 
-    /// Returns a pointer to the shape data (const).
+    /// @brief Returns a pointer to the const shape data.
+    /// @return Pointer to the internal shape storage.
     AM_NODISCARD const int64_t* shape_data() const noexcept {
         return shape_.data();
     }
 
-    /// Returns a pointer to the stride data (const).
+    /// @brief Returns a pointer to the const stride data.
+    /// @return Pointer to the internal stride storage.
     AM_NODISCARD const int64_t* stride_data() const noexcept {
         return strides_.data();
     }
@@ -145,8 +146,12 @@ public:
     /// @return True if contiguous; dimensions with shape[i] == 1 are ignored.
     AM_NODISCARD bool is_contiguous() const noexcept;
 
+    /// @brief Returns the maximum element offset reachable via the strides.
+    /// @return Offset in elements from the data pointer; 0 for rank-0.
+    /// @throws AM_CHECK failure on negative shape/stride or offset overflow.
     AM_NODISCARD int64_t max_element_offset() const;
 
+    /// @brief Maximum supported tensor rank.
     static constexpr uint32_t kMaxRank = 8;
 
 private:

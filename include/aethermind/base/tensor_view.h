@@ -1,5 +1,8 @@
-/// @file
-/// Non-owning borrowed tensor metadata and data view.
+#ifndef AETHERMIND_TENSOR_VIEW_H
+#define AETHERMIND_TENSOR_VIEW_H
+
+/// @file tensor_view.h
+/// @brief Non-owning borrowed tensor metadata and data view.
 ///
 /// TensorView is the hot-path counterpart to Tensor:
 /// - Tensor owns Buffer + ShapeAndStride
@@ -10,10 +13,6 @@
 /// - Shape and strides are expressed in elements, not bytes
 /// - No metadata-transforming helpers (slice/narrow/contiguous construction)
 /// - Lifetime must be managed by the caller
-
-#ifndef AETHERMIND_TENSOR_VIEW_H
-#define AETHERMIND_TENSOR_VIEW_H
-
 #include "aethermind/dtypes/data_type.h"
 #include "container/array_view.h"
 #include "macros.h"
@@ -65,6 +64,10 @@ public:
     /// @param tensor The tensor to borrow from (must outlive this view).
     explicit TensorView(const Tensor& tensor) noexcept;
 
+    /// @brief Returns whether this view references valid data and metadata.
+    /// @return False for a default-constructed view; true when dtype/shape/strides
+    ///         are consistent, alignment matches, and data is non-null when the
+    ///         shape has any elements.
     AM_NODISCARD bool is_valid() const noexcept;
 
     explicit operator bool() const noexcept {
@@ -111,14 +114,23 @@ public:
         return strides_[i];
     }
 
+    /// @brief Returns the total number of elements (product of shape).
+    /// @return Element count; 1 for rank-0.
+    /// @pre is_valid().
     AM_NODISCARD int64_t numel() const noexcept;
 
     AM_NODISCARD size_t itemsize() const noexcept {
         return static_cast<size_t>(dtype_.nbytes());
     }
 
+    /// @brief Returns the byte size of the logical view (numel * itemsize).
+    /// @return Byte count.
+    /// @pre is_valid().
     AM_NODISCARD size_t logical_nbytes() const noexcept;
 
+    /// @brief Returns whether strides represent a contiguous row-major layout.
+    /// @return True if contiguous; dimensions with shape[i] == 1 are ignored.
+    /// @pre is_valid().
     AM_NODISCARD bool is_contiguous() const noexcept;
 
     AM_NODISCARD bool is_rank_zero() const noexcept {
@@ -163,6 +175,10 @@ public:
     /// @param tensor The tensor to borrow from (must outlive this view).
     explicit MutableTensorView(Tensor& tensor) noexcept;
 
+    /// @brief Returns whether this view references valid data and metadata.
+    /// @return False for a default-constructed view; true when dtype/shape/strides
+    ///         are consistent, alignment matches, and data is non-null when the
+    ///         shape has any elements.
     AM_NODISCARD bool is_valid() const noexcept;
 
     explicit operator bool() const noexcept {
@@ -209,14 +225,23 @@ public:
         return strides_[i];
     }
 
+    /// @brief Returns the total number of elements (product of shape).
+    /// @return Element count; 1 for rank-0.
+    /// @pre is_valid().
     AM_NODISCARD int64_t numel() const noexcept;
 
     AM_NODISCARD size_t itemsize() const noexcept {
         return static_cast<size_t>(dtype_.nbytes());
     }
 
+    /// @brief Returns the byte size of the logical view (numel * itemsize).
+    /// @return Byte count.
+    /// @pre is_valid().
     AM_NODISCARD size_t logical_nbytes() const noexcept;
 
+    /// @brief Returns whether strides represent a contiguous row-major layout.
+    /// @return True if contiguous; dimensions with shape[i] == 1 are ignored.
+    /// @pre is_valid().
     AM_NODISCARD bool is_contiguous() const noexcept;
 
     AM_NODISCARD bool is_rank_zero() const noexcept {

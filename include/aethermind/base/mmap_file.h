@@ -1,9 +1,8 @@
-/// @file
-/// Read-only memory-mapped file wrapper with POSIX madvise support.
-
 #ifndef AETHERMIND_BASE_MMAP_FILE_H
 #define AETHERMIND_BASE_MMAP_FILE_H
 
+/// @file mmap_file.h
+/// @brief Read-only memory-mapped file wrapper with POSIX madvise support.
 #include "aethermind/base/status.h"
 
 #include <cstddef>

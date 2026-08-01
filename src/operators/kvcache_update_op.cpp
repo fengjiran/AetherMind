@@ -41,8 +41,12 @@ Status ValidateKVCacheUpdateDTypes(std::span<const TensorSpec> inputs) {
 //   k_cache, v_cache : rank 3, shape [kv_heads, cache_len, head_dim]
 //   k.shape == v.shape; k_cache.shape == v_cache.shape
 //   hidden == kv_heads * head_dim  (when statically provable)
-//   seq_len > 0, kv_heads > 0, head_dim > 0 (when static);
-//   cache_len static-zero rejected.
+//   seq_len > 0, hidden > 0, kv_heads > 0, head_dim > 0 (when static);
+//   cache_len static-zero rejected; static seq_len > cache_len rejected.
+//   The latter is the graph-level necessary part of the capacity contract
+//   (seq_len <= cache_len); the runtime sufficient part
+//   (current_pos + seq_len <= capacity) lives in KVCacheView::ValidateWrite
+//   and is not expressible in the graph.
 Status ValidateKVCacheUpdateShapes(std::span<const TensorSpec> inputs) {
     const SymbolicShape& k_shape = inputs[0].shape;
     const SymbolicShape& v_shape = inputs[1].shape;
@@ -84,6 +88,11 @@ Status ValidateKVCacheUpdateShapes(std::span<const TensorSpec> inputs) {
                 "KVCacheUpdate k sequence length T must be positive when static");
     }
 
+    if (k_last.IsStatic() && k_last.GetStaticValue() <= 0) {
+        return Status::InvalidArgument(
+                "KVCacheUpdate k last dim must be positive when static");
+    }
+
     const ShapeSymbol& kv_heads = k_cache_shape[0];
     const ShapeSymbol& cache_len = k_cache_shape[1];
     const ShapeSymbol& head_dim = k_cache_shape[2];
@@ -105,9 +114,16 @@ Status ValidateKVCacheUpdateShapes(std::span<const TensorSpec> inputs) {
                 "KVCacheUpdate cache head_dim must be positive when static");
     }
 
-    if (cache_len.IsStatic() && cache_len.GetStaticValue() == 0) {
+    if (cache_len.IsStatic() && cache_len.GetStaticValue() <= 0) {
         return Status::InvalidArgument(
-                "KVCacheUpdate cache capacity must not be statically zero");
+                "KVCacheUpdate cache capacity must be positive when static");
+    }
+
+    if (k_t.IsStatic() && cache_len.IsStatic() &&
+        k_t.GetStaticValue() > cache_len.GetStaticValue()) {
+        return Status::InvalidArgument(
+                "KVCacheUpdate k sequence length T must not exceed cache capacity "
+                "when both are static");
     }
 
     if (kv_heads.IsStatic() && head_dim.IsStatic()) {

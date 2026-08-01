@@ -150,6 +150,28 @@ TEST(KVCacheUpdateInference, RejectsZeroCacheCapacity) {
     EXPECT_FALSE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
 }
 
+TEST(KVCacheUpdateInference, RejectsSequenceLengthExceedingCacheCapacity) {
+    // Static T > static cache_len violates the graph-level capacity contract
+    // (seq_len <= cache_len); prefill beyond capacity fails at build time.
+    auto inputs = MakeConsistentInputs(DataType::Float32(), /*t=*/2048, 8, /*cache_len=*/1024);
+    EXPECT_FALSE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
+}
+
+TEST(KVCacheUpdateInference, RejectsZeroKLastDimWithSymbolicCache) {
+    // Zero hidden dim must be rejected even when kv_heads/head_dim are
+    // symbolic (the static hidden == kv_heads*head_dim check cannot fire).
+    auto inputs = MakeConsistentInputs(DataType::Float32());
+    inputs[0] = MakeSpec(DataType::Float32(), {1, 0});
+    inputs[1] = MakeSpec(DataType::Float32(), {1, 0});
+    const ShapeSymbol sym_heads = ShapeSymbol::Create();
+    const ShapeSymbol sym_dim = ShapeSymbol::Create();
+    const SymbolicShape sym_cache_shape{sym_heads, ShapeSymbol::CreateFromValue(1024),
+                                        sym_dim};
+    inputs[2] = {DataType::Float32(), sym_cache_shape};
+    inputs[3] = {DataType::Float32(), sym_cache_shape};
+    EXPECT_FALSE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
+}
+
 // --- Symbolic axis acceptance ---
 
 TEST(KVCacheUpdateInference, AcceptsSymbolicCacheLen) {
@@ -166,6 +188,17 @@ TEST(KVCacheUpdateInference, AcceptsSymbolicCacheLen) {
 TEST(KVCacheUpdateInference, AcceptsSymbolicSequenceLength) {
     // T is symbolic (deferred to runtime); must still pass.
     auto inputs = MakeConsistentInputs(DataType::Float32());
+    const ShapeSymbol sym_t = ShapeSymbol::Create();
+    const SymbolicShape kv_shape{sym_t, ShapeSymbol::CreateFromValue(512)};
+    inputs[0] = {DataType::Float32(), kv_shape};
+    inputs[1] = {DataType::Float32(), kv_shape};
+    EXPECT_TRUE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
+}
+
+TEST(KVCacheUpdateInference, AcceptsSymbolicSequenceLengthWithStaticCache) {
+    // Symbolic T cannot be proven <= cache_len at graph time; acceptance is
+    // deferred to the runtime capacity check (KVCacheView::ValidateWrite).
+    auto inputs = MakeConsistentInputs(DataType::Float32(), /*t=*/1024, 8, /*cache_len=*/512);
     const ShapeSymbol sym_t = ShapeSymbol::Create();
     const SymbolicShape kv_shape{sym_t, ShapeSymbol::CreateFromValue(512)};
     inputs[0] = {DataType::Float32(), kv_shape};

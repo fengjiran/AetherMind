@@ -79,6 +79,17 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params, std::span<const Te
 StatusOr<InferenceResult> InferMatMul(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferRoPE(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferAttention(const OpParams& params, std::span<const TensorSpec> inputs);
+/// @brief Infers KVCacheUpdate outputs (k_cache/v_cache forwarded verbatim).
+///
+/// Capacity contract, two layers:
+///   * Graph level (necessary part): seq_len <= cache_len. Rejected statically
+///     when both dims are static; deferred to the runtime when symbolic.
+///   * Runtime level (sufficient part): current_pos + seq_len <= capacity,
+///     enforced by KVCacheView::ValidateWrite. current_pos is session state
+///     and never appears in the graph, so the graph cannot express the full
+///     bound.
+/// No deferred runtime checks are emitted: cache ports do not contribute to
+/// tensor spec inference and capacity bounds are owned by the runtime layout.
 StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferSoftmax(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferArgmax(const OpParams& params, std::span<const TensorSpec> inputs);

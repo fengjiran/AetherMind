@@ -1,5 +1,4 @@
 #include "aethermind/graph/graph_dump.h"
-#include "aethermind/dtypes/data_type.h"
 #include "aethermind/graph/op_params_serde.h"
 #include "utils/variant_utils.h"
 

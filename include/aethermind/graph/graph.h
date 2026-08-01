@@ -41,7 +41,6 @@ public:
     ModelGraph(std::vector<GraphNode> nodes,
                std::vector<GraphValue> values) noexcept;
 
-
     /// @brief Returns all operator nodes owned by the graph.
     ///
     /// @return Span over internal node storage; valid until the next
@@ -202,7 +201,7 @@ public:
     ///
     /// @return Topologically ordered node ids on success, or an error
     ///         Status if the graph contains a cycle.
-    StatusOr<std::vector<GraphNodeId>> TopologicalOrder() const;
+    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> TopologicalOrder() const;
 
     /// @brief Combines Validate() and TopologicalOrder() into a single pass.
     ///
@@ -212,7 +211,7 @@ public:
     ///
     /// @return Topologically ordered node ids on success, or an error
     ///         Status if validation fails or the graph contains a cycle.
-    StatusOr<std::vector<GraphNodeId>> ValidateAndTopologicalOrder() const;
+    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> ValidateAndTopologicalOrder() const;
 
 private:
     std::vector<GraphNode> nodes_{};

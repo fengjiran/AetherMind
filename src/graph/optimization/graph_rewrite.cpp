@@ -1,7 +1,5 @@
 #include "aethermind/graph/optimization/graph_rewrite.h"
-#include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/operator_inference.h"
-#include "aethermind/operators/operator_schema.h"
 #include "utils/variant_utils.h"
 
 #include <algorithm>
@@ -60,7 +58,7 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
             .inputs = original.inputs,
             .attrs = original.attrs,
             .op_params = original.op_params,
-            .debug_name = original.name,
+            .name = original.name,
     };
 
     rn.outputs.reserve(original.outputs.size());
@@ -111,7 +109,7 @@ GraphValueId GraphRewriteSession::AddConstant(TensorSpec spec,
     session_constants_.emplace_back(SessionConstant{.spec = std::move(spec),
                                                     .binding = std::move(binding),
                                                     .quantization = quantization,
-                                                    .debug_name = std::move(debug_name)});
+                                                    .name = std::move(debug_name)});
     InvalidateConsumerCache();
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
@@ -346,7 +344,7 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
             .outputs = original.outputs,
             .attrs = replacement ? replacement->attrs : original.attrs,
             .op_params = replacement ? replacement->op_params : original.op_params,
-            .debug_name = replacement ? replacement->debug_name : original.name,
+            .name = replacement ? replacement->name : original.name,
     };
 
     for (GraphValueId& input: view.inputs) {
@@ -614,7 +612,7 @@ GraphValueDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValue
     return GraphValueDesc{.spec = constant.spec,
                           .payload = ConstantValue{.binding = constant.binding},
                           .quantization = constant.quantization,
-                          .name = constant.debug_name};
+                          .name = constant.name};
 }
 
 StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
@@ -693,7 +691,7 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
         const SessionConstant& constant = *session_constants_[i];
         maps.session_constants[i] = committed.AddConstant(constant.spec,
                                                           constant.binding,
-                                                          constant.debug_name);
+                                                          constant.name);
         committed.SetQuantization(*maps.session_constants[i], constant.quantization);
     }
     return Status::Ok();
@@ -728,7 +726,7 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
                 std::move(output_descs),
                 replacement.op_params,
                 replacement.attrs,
-                replacement.debug_name);
+                replacement.name);
         AM_RETURN_IF_ERROR(added_or.status());
         const AddedNode& added = *added_or;
 
@@ -793,7 +791,7 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
             std::move(output_descs),
             view->op_params,
             view->attrs,
-            view->debug_name);
+            view->name);
     AM_RETURN_IF_ERROR(added_or.status());
     const AddedNode& added = *added_or;
 
@@ -1085,7 +1083,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
         const ReplacementNode& replacement = replacements[i];
         const std::string debug_ctx =
                 "replacement[" + std::to_string(i) + "]" +
-                (replacement.debug_name.empty() ? "" : (" '" + replacement.debug_name + "'"));
+                (replacement.name.empty() ? "" : (" '" + replacement.name + "'"));
 
         // 1. Schema lookup: confirms op_type is registered and gives us the
         //    expected input/output port counts.
@@ -1258,7 +1256,7 @@ StatusOr<std::vector<GraphValueId>> SubgraphBuilder::Emit(OpType op_type,
             .decoder_layer_index = decoder_layer_index,
             .inputs = std::move(inputs),
             .op_params = std::move(op_params),
-            .debug_name = std::move(debug_name),
+            .name = std::move(debug_name),
     };
 
     node.outputs.reserve(output_descs.size());

@@ -198,7 +198,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithSingleReplacement) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
             .op_params = EmbeddingParams{},
-            .debug_name = "replacement",
+            .name = "replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -228,14 +228,14 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithMultipleReplacements) {
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {RewriteOutputBinding{.desc = HiddenDesc("unused_hidden")}},
             .op_params = EmbeddingParams{},
-            .debug_name = "r1",
+            .name = "r1",
     };
     ReplacementNode r2{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
             .op_params = EmbeddingParams{},
-            .debug_name = "r2",
+            .name = "r2",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(r1), std::move(r2)}).ok());
@@ -257,7 +257,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsReplacementOfExternalOutput) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 2}, "weight_hijack")},
             .op_params = EmbeddingParams{},
-            .debug_name = "invalid_external_replacement",
+            .name = "invalid_external_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
 
@@ -276,7 +276,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsReplacementOfNonOldNodeOutput) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "future_hijack")},
             .op_params = EmbeddingParams{},
-            .debug_name = "invalid_future_replacement",
+            .name = "invalid_future_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
 
@@ -295,14 +295,14 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsDuplicateRealReplacementTarget) 
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "first_hidden")},
             .op_params = EmbeddingParams{},
-            .debug_name = "first_replacement",
+            .name = "first_replacement",
     };
     ReplacementNode second{
             .op_type = OpType::kEmbedding,
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "second_hidden")},
             .op_params = EmbeddingParams{},
-            .debug_name = "second_replacement",
+            .name = "second_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
 
@@ -334,7 +334,7 @@ TEST(GraphRewriteSession, RemoveNodeOverridesPreviousReplacement) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "hidden_b")},
             .op_params = EmbeddingParams{},
-            .debug_name = "replacement_should_be_cleared",
+            .name = "replacement_should_be_cleared",
     };
     constexpr std::array old_nodes{GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -358,7 +358,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphOverridesPreviousRemove) {
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "hidden_b")},
             .op_params = EmbeddingParams{},
-            .debug_name = "replacement_after_remove",
+            .name = "replacement_after_remove",
     };
     const std::array old_nodes{GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -383,7 +383,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithExplicitOutputDesc) {
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "explicit_replacement",
+            .name = "explicit_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -408,7 +408,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphReplacesMultipleOldNodes) {
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "subgraph_replacement",
+            .name = "subgraph_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -435,7 +435,7 @@ TEST(GraphRewriteSession, RemoveNodeClearsOverlappingSubgraphRewrite) {
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "subgraph_replacement",
+            .name = "subgraph_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -466,7 +466,7 @@ TEST(GraphRewriteSession, ApplySupportsReplaceSubgraphMutation) {
                             .replaces = GraphValueId{.index = 3},
                     }},
                     .op_params = EmbeddingParams{},
-                    .debug_name = "applied_subgraph_replacement",
+                    .name = "applied_subgraph_replacement",
             }},
     };
     const std::array<GraphMutation, 1> mutations{std::move(replace)};
@@ -493,7 +493,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "virtual_producer",
+            .name = "virtual_producer",
     };
     ReplacementNode second{
             .op_type = OpType::kAdd,
@@ -504,7 +504,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphSupportsVirtualInternalEdge) {
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = AddParams{},
-            .debug_name = "virtual_consumer",
+            .name = "virtual_consumer",
     };
     constexpr std::array old_nodes{GraphNodeId{.index = 0}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(first), std::move(second)}).ok());
@@ -541,7 +541,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsUndefinedVirtualValueInput) {
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = AddParams{},
-            .debug_name = "undefined_virtual_consumer",
+            .name = "undefined_virtual_consumer",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
@@ -566,7 +566,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsDuplicateVirtualValueProducer) {
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "first_virtual_producer",
+            .name = "first_virtual_producer",
     };
     ReplacementNode second{
             .op_type = OpType::kEmbedding,
@@ -577,7 +577,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsDuplicateVirtualValueProducer) {
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "second_virtual_producer",
+            .name = "second_virtual_producer",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(first), std::move(second)});
@@ -603,7 +603,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsVirtualValueConsumedBeforeProduc
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = AddParams{},
-            .debug_name = "early_virtual_consumer",
+            .name = "early_virtual_consumer",
     };
     ReplacementNode producer{
             .op_type = OpType::kEmbedding,
@@ -614,7 +614,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsVirtualValueConsumedBeforeProduc
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "late_virtual_producer",
+            .name = "late_virtual_producer",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(consumer), std::move(producer)});
@@ -640,7 +640,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsVirtualValueAcrossRewriteEntries
                     .replaces = mid,
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "virtual_producer",
+            .name = "virtual_producer",
     };
     ReplacementNode consumer{
             .op_type = OpType::kAdd,
@@ -651,7 +651,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsVirtualValueAcrossRewriteEntries
                     .replaces = GraphValueId{.index = 4},
             }},
             .op_params = AddParams{},
-            .debug_name = "cross_rewrite_consumer",
+            .name = "cross_rewrite_consumer",
     };
     const std::array producer_old_nodes{GraphNodeId{.index = 0}};
     const std::array consumer_old_nodes{GraphNodeId{.index = 1}};
@@ -686,7 +686,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidMapping) {
                     .replaces = GraphValueId{.index = 999},
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "invalid_mapping",
+            .name = "invalid_mapping",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
@@ -703,7 +703,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidInputId) {
             .inputs = {GraphValueId{.index = 999}},// invalid
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
             .op_params = EmbeddingParams{},
-            .debug_name = "invalid_replacement",
+            .name = "invalid_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
@@ -1037,7 +1037,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsSessionConstantReplacementTarget
             .outputs = {RewriteOutputBinding{.desc = HiddenDesc("replacement"),
                                              .replaces = constant}},
             .op_params = EmbeddingParams{},
-            .debug_name = "replacement",
+            .name = "replacement",
     };
 
     const std::array old_nodes{GraphNodeId{.index = 0}};
@@ -1228,7 +1228,7 @@ TEST(GraphRewriteSession, RedirectInputRejectsExistingNodeReplacement) {
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
             .op_params = EmbeddingParams{},
-            .debug_name = "arbitrary_replacement",
+            .name = "arbitrary_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -1260,7 +1260,7 @@ TEST(GraphRewriteSession, RedirectInputRejectsOverlappingSubgraphRewrite) {
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = EmbeddingParams{},
-            .debug_name = "subgraph_replacement",
+            .name = "subgraph_replacement",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -1559,7 +1559,7 @@ ReplacementNode MakeReplacementEmbedding(GraphValueId replaces, const char* debu
             .inputs = {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(replaces, debug_name)},
             .op_params = EmbeddingParams{},
-            .debug_name = debug_name,
+            .name = debug_name,
     };
 }
 
@@ -2151,7 +2151,7 @@ TEST(GraphRewriteSession, HasLiveConsumersTrueWhenOnlyReplacementConsumes) {
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "merged")},
             .op_params = EmbeddingParams{},
-            .debug_name = "merged",
+            .name = "merged",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -2180,7 +2180,7 @@ TEST(GraphRewriteSession, HasLiveConsumersFalseWhenReplacementDoesNotConsume) {
             .inputs = {GraphValueId{.index = 0}, alt_weight},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "merged")},
             .op_params = EmbeddingParams{},
-            .debug_name = "merged",
+            .name = "merged",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -2207,7 +2207,7 @@ TEST(GraphRewriteSession, HasLiveConsumersCacheInvalidatesAfterReplaceSubgraph) 
             .inputs = {GraphValueId{.index = 0}, alt_weight},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "merged")},
             .op_params = EmbeddingParams{},
-            .debug_name = "merged",
+            .name = "merged",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -2229,7 +2229,7 @@ TEST(GraphRewriteSession, HasLiveConsumersTrueForUpstreamValueConsumedByReplacem
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "r")},
             .op_params = EmbeddingParams{},
-            .debug_name = "r",
+            .name = "r",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
@@ -2303,7 +2303,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsYieldSpecMismatch) {
                     .replaces = GraphValueId{.index = 3},
             }},
             .op_params = ArgmaxParams{.axis = -1},
-            .debug_name = "argmax_replacing_hidden",
+            .name = "argmax_replacing_hidden",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
@@ -2331,7 +2331,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsRedirectInducedDtypeMismatch) {
             .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "redirected_hidden")},
             .op_params = EmbeddingParams{},
-            .debug_name = "redirected_embed",
+            .name = "redirected_embed",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
@@ -2354,7 +2354,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsUndefinedVirtualInputAtApplyTime
             .inputs = {GraphValueId{.index = 0}, mid},
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "bad_hidden")},
             .op_params = EmbeddingParams{},
-            .debug_name = "undefined_virtual_weight",
+            .name = "undefined_virtual_weight",
     };
     const std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});

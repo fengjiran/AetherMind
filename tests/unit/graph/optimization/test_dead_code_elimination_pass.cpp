@@ -58,7 +58,7 @@ public:
                   .outputs = {RewriteOutputBinding{.desc = output_desc,
                                                    .replaces = add_view->outputs[0]}},
                   .op_params = SiluParams{},
-                  .debug_name = "replacement_silu"}});
+                  .name = "replacement_silu"}});
     }
 };
 

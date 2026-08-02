@@ -76,7 +76,7 @@ struct ReplacementNode {
     std::vector<RewriteOutputBinding> outputs{};
     ModelGraphAttrs attrs{};
     OpParams op_params{};
-    std::string debug_name{};
+    std::string name{};
 };
 
 /// @brief Replaces a set of source graph nodes with new replacement nodes.
@@ -107,7 +107,7 @@ struct GraphNodeView {
     std::vector<GraphValueId> outputs{};
     ModelGraphAttrs attrs{};
     OpParams op_params{};
-    std::string debug_name{};
+    std::string name{};
 };
 
 /// @brief Records pending rewrites over an immutable source ModelGraph and
@@ -163,11 +163,11 @@ public:
     /// state or discarding the session.
     /// @param mutations Mutations to apply, in order.
     /// @return Status::Ok() on success, or the first error encountered.
-    AM_NODISCARD Status Apply(std::span<const GraphMutation> mutations);
+    Status Apply(std::span<const GraphMutation> mutations);
     /// @brief Removes a live node. Equivalent to ReplaceSubgraph({node}, {}).
     /// @param node Node to remove; must be live per IsNodeLive.
     /// @return Status::Ok() on success, or the first error encountered.
-    AM_NODISCARD Status RemoveNode(GraphNodeId node);
+    Status RemoveNode(GraphNodeId node);
 
     /// @brief Replaces a set of source nodes with replacement nodes.
     ///
@@ -183,8 +183,8 @@ public:
     /// @param old_nodes Source graph nodes to replace; at least one is required.
     /// @param replacement_nodes New nodes to emit; empty acts as removal.
     /// @return Status::Ok() on success, or the first error encountered.
-    AM_NODISCARD Status ReplaceSubgraph(std::span<const GraphNodeId> old_nodes,
-                                        const std::vector<ReplacementNode>& replacement_nodes);
+    Status ReplaceSubgraph(std::span<const GraphNodeId> old_nodes,
+                           const std::vector<ReplacementNode>& replacement_nodes);
 
     /// @brief Rewires one input of a live node to a different value.
     ///
@@ -199,7 +199,7 @@ public:
     /// @param input_index 0-based input port index to rewire.
     /// @param new_value Replacement value; must be a source value or session constant.
     /// @return Status::Ok() on success, or InvalidArgument if the node is not live.
-    AM_NODISCARD Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
+    Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
 
     /// @brief Redirects consumers of `old_value` to `new_value` after resolution.
     ///
@@ -209,7 +209,7 @@ public:
     /// @param old_value Source graph value whose consumers are redirected.
     /// @param new_value Resolution target; source value or session constant.
     /// @return Status::Ok() on success, or the first error encountered.
-    AM_NODISCARD Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
+    Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
 
     /// @brief Walks the replacement chain from `value` to its terminal.
     ///
@@ -224,7 +224,7 @@ public:
     /// GetResolvedValue. Outputs are the original graph value ids.
     /// @param node Node id to snapshot.
     /// @return GraphNodeView reflecting resolved inputs, or NotFound if not live.
-    AM_NODISCARD StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;
+    StatusOr<GraphNodeView> GetNodeView(GraphNodeId node) const;
 
     /// @brief Returns true if `node` is currently observable in the session.
     ///
@@ -404,7 +404,7 @@ private:
         TensorSpec spec{};
         ConstantBinding binding{};
         QuantizationSpec quantization{};
-        std::string debug_name{};
+        std::string name{};
     };
 
     /// Temporary mapping tables used during Commit() to translate value ids
@@ -425,11 +425,11 @@ private:
     };
 
     // Returns InvalidArgument if node id is out of range.
-    AM_NODISCARD Status CheckNodeId(GraphNodeId node) const;
+    Status CheckNodeId(GraphNodeId node) const;
     // Returns InvalidArgument if value is not a source graph value.
-    AM_NODISCARD Status CheckSourceValueId(GraphValueId value) const;
+    Status CheckSourceValueId(GraphValueId value) const;
     // Returns InvalidArgument for out-of-range ids; accepts virtual values.
-    AM_NODISCARD Status CheckValueIdAllowVirtual(GraphValueId value) const;
+    Status CheckValueIdAllowVirtual(GraphValueId value) const;
     // True when value is in the session id space (index >= source range).
     AM_NODISCARD bool IsSessionValue(GraphValueId value) const noexcept;
     // True when value is a session constant (session value + has SessionConstant metadata).
@@ -443,47 +443,47 @@ private:
         return virtual_id.index - graph_.GetValues().size();
     }
     // Validates that replacement node inputs/outputs reference valid ids.
-    AM_NODISCARD Status ValidateReplacementNode(const ReplacementNode& replacement) const;
+    Status ValidateReplacementNode(const ReplacementNode& replacement) const;
     // Validates that replacement targets belong to old_nodes and are not duplicated.
-    AM_NODISCARD Status ValidateReplacementTargets(
+    Status ValidateReplacementTargets(
             std::span<const GraphNodeId> old_nodes,
             const std::vector<ReplacementNode>& replacement_nodes) const;
     // Validates virtual value ordering (no consumption before production).
-    AM_NODISCARD Status ValidateVirtualValues() const;
+    Status ValidateVirtualValues() const;
     // Resolves the TensorSpec of a value id known to the session.
     // Source values are read from graph_; session constants from session_constants_;
     // virtual values must have an inferred spec in virtual_specs (caller-provided
     // scratch map). Returns NotFound for virtual values with no inferred spec.
-    AM_NODISCARD StatusOr<TensorSpec> ResolveValueSpec(
+    StatusOr<TensorSpec> ResolveValueSpec(
             GraphValueId value,
             const std::vector<std::optional<TensorSpec>>& virtual_specs) const;
     // Replays InferOperator over replacement nodes in order, verifying input
     // availability, output count, replaces target dtype compatibility, and
     // deriving virtual specs into virtual_specs_out. Used by ValidateEdits and
     // ReplaceSubgraph to catch semantic violations before Commit.
-    AM_NODISCARD Status ValidateReplacementSemantics(
+    Status ValidateReplacementSemantics(
             const std::vector<ReplacementNode>& replacements,
             std::vector<std::optional<TensorSpec>>& virtual_specs_out) const;
     // Builds a GraphValueDesc from a session constant's metadata.
     AM_NODISCARD GraphValueDesc MakeOutputDescFromSessionConstant(GraphValueId value) const;
     // Translates a value id from source/session space to committed graph space.
-    AM_NODISCARD StatusOr<GraphValueId> MapCommittedValue(
+    StatusOr<GraphValueId> MapCommittedValue(
             GraphValueId value,
             const CommitValueMaps& maps) const;
     // Copies source external values and session constants into committed graph.
-    AM_NODISCARD Status CopyExternalValues(ModelGraph& committed,
-                                           CommitValueMaps& maps) const;
+    Status CopyExternalValues(ModelGraph& committed,
+                              CommitValueMaps& maps) const;
     // Emits all replacement nodes in a rewrite entry into the committed graph.
-    AM_NODISCARD Status EmitRewrite(const RewriteEntry& rewrite,
-                                    ModelGraph& committed,
-                                    CommitValueMaps& maps) const;
+    Status EmitRewrite(const RewriteEntry& rewrite,
+                       ModelGraph& committed,
+                       CommitValueMaps& maps) const;
     // Emits a single surviving original node into the committed graph.
-    AM_NODISCARD Status EmitOriginalNode(GraphNodeId old_node,
-                                         ModelGraph& committed,
-                                         CommitValueMaps& maps) const;
+    Status EmitOriginalNode(GraphNodeId old_node,
+                            ModelGraph& committed,
+                            CommitValueMaps& maps) const;
     // Maps graph output values through resolution into committed graph.
-    AM_NODISCARD Status MarkCommittedOutputs(ModelGraph& committed,
-                                             const CommitValueMaps& maps) const;
+    Status MarkCommittedOutputs(ModelGraph& committed,
+                                const CommitValueMaps& maps) const;
     // Marks a rewrite as inactive; clears node_to_rewrite_ entries.
     void DeactivateRewrite(std::size_t rewrite_index);
     // Invalidates cached consumer indexes after a successful state mutation.
@@ -553,12 +553,13 @@ public:
     /// @param decoder_layer_index Optional decoder layer index tag.
     /// @param debug_name Optional debug name for the new node.
     /// @return Virtual value id bound to the new node's output.
-    AM_NODISCARD StatusOr<GraphValueId> Emit(OpType op_type,
-                                             std::vector<GraphValueId> inputs,
-                                             NodeOutputDesc output_desc,
-                                             OpParams op_params = std::monostate{},
-                                             std::optional<uint32_t> decoder_layer_index = std::nullopt,
-                                             std::string debug_name = {});
+    StatusOr<GraphValueId> Emit(
+            OpType op_type,
+            std::vector<GraphValueId> inputs,
+            NodeOutputDesc output_desc,
+            OpParams op_params = std::monostate{},
+            std::optional<uint32_t> decoder_layer_index = std::nullopt,
+            std::string debug_name = {});
 
     /// @brief Creates a new replacement node with one output per descriptor in
     /// `output_descs`. Allocates one virtual value per output and returns the
@@ -570,12 +571,13 @@ public:
     /// @param decoder_layer_index Optional decoder layer index tag.
     /// @param debug_name Optional debug name for the new node.
     /// @return Virtual value ids bound to the new node's outputs, in descriptor order.
-    AM_NODISCARD StatusOr<std::vector<GraphValueId>> Emit(OpType op_type,
-                                                          std::vector<GraphValueId> inputs,
-                                                          std::vector<NodeOutputDesc> output_descs,
-                                                          OpParams op_params = std::monostate{},
-                                                          std::optional<uint32_t> decoder_layer_index = std::nullopt,
-                                                          std::string debug_name = {});
+    StatusOr<std::vector<GraphValueId>> Emit(
+            OpType op_type,
+            std::vector<GraphValueId> inputs,
+            std::vector<NodeOutputDesc> output_descs,
+            OpParams op_params = std::monostate{},
+            std::optional<uint32_t> decoder_layer_index = std::nullopt,
+            std::string debug_name = {});
 
     /// @brief Marks an internal virtual value (returned by Emit) as the replacement
     /// for an external graph value. After Commit, all consumers of

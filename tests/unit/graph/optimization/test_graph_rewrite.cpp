@@ -673,6 +673,66 @@ TEST(GraphRewriteSession, ReplaceValueRejectsVirtualValues) {
     EXPECT_EQ(replace_new.code(), StatusCode::kInvalidArgument);
 }
 
+TEST(GraphRewriteSession, RemoveNodeRejectsOutOfRangeSourceNode) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const Status status = session.RemoveNode(GraphNodeId{.index = 2});
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status.message(), "GraphRewriteSession: source node id out of range");
+}
+
+TEST(GraphRewriteSession, ReplaceValueRejectsSessionConstantAsSourceValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId constant = session.AddConstant(
+            Spec(DataType::Float32(), {1}),
+            ConstantBinding{.name = "session.constant"},
+            {},
+            "session_constant");
+
+    const Status status = session.ReplaceValue(constant, GraphValueId{.index = 0});
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status.message(), "GraphRewriteSession: expected source value id, got session constant");
+}
+
+TEST(GraphRewriteSession, ReplaceValueRejectsSessionVirtualAsSourceValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId virtual_value = session.AllocateVirtualValue();
+
+    const Status status = session.ReplaceValue(virtual_value, GraphValueId{.index = 0});
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status.message(), "GraphRewriteSession: expected source value id, got session virtual value");
+}
+
+TEST(SubgraphBuilder, YieldRejectsSessionConstantAsReplacementTarget) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    auto mid_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("constant_target_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
+    const GraphValueId mid = std::move(*mid_or);
+
+    const GraphValueId constant = session.AddConstant(
+            Spec(DataType::Float32(), {1}),
+            ConstantBinding{.name = "session.constant"},
+            {},
+            "session_constant");
+    const Status status = builder.Yield(mid, constant);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status.message(), "GraphRewriteSession: expected source value id, got session constant");
+}
+
 TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidMapping) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
@@ -979,8 +1039,12 @@ TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
     EXPECT_TRUE(session.IsValueLive(constant));
     EXPECT_FALSE(session.IsValueLive(virtual_value));
     EXPECT_FALSE(session.IsGraphOutput(constant));
-    EXPECT_TRUE(session.CheckValueId(constant).ok());
-    EXPECT_EQ(session.CheckValueId(virtual_value).code(), StatusCode::kInvalidArgument);
+
+    const StatusOr<GraphValueDesc> virtual_desc = session.GetValueOutputMetadata(virtual_value);
+    ASSERT_FALSE(virtual_desc.ok());
+    EXPECT_EQ(virtual_desc.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(virtual_desc.status().message(),
+              "GraphRewriteSession: virtual value is not allowed in this operation");
 
     const StatusOr<GraphValueDesc> desc = session.GetValueOutputMetadata(constant);
     ASSERT_TRUE(desc.ok()) << desc.status().ToString();
@@ -1112,6 +1176,18 @@ TEST(GraphRewriteSession, GetValueOutputMetadataRejectsInvalidValues) {
 
     EXPECT_EQ(session.GetValueOutputMetadata(virtual_value).status().code(), StatusCode::kInvalidArgument);
     EXPECT_EQ(session.GetValueOutputMetadata(GraphValueId{.index = 999}).status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(GraphRewriteSession, GetValueOutputMetadataRejectsFirstInvalidIdWithExactMessage) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const StatusOr<GraphValueDesc> desc = session.GetValueOutputMetadata(
+            GraphValueId{.index = static_cast<uint32_t>(graph.GetValues().size())});
+
+    ASSERT_FALSE(desc.ok());
+    EXPECT_EQ(desc.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(desc.status().message(), "GraphRewriteSession: value id out of range");
 }
 
 TEST(GraphRewriteSession, IsGraphOutputReportsDirectGraphOutputsOnly) {

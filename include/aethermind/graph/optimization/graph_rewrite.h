@@ -149,12 +149,12 @@ public:
     /// @param spec Tensor spec for the constant value.
     /// @param binding Constant binding payload backing the value.
     /// @param quantization Quantization metadata for the constant.
-    /// @param debug_name Debug name used as the AddConstant tag.
+    /// @param name Debug name used as the AddConstant tag.
     /// @return Session value id (index >= source graph values).
     AM_NODISCARD GraphValueId AddConstant(TensorSpec spec,
                                           ConstantBinding binding,
                                           QuantizationSpec quantization,
-                                          std::string debug_name);
+                                          std::string name);
 
     /// @brief Applies a batch of mutations sequentially.
     ///
@@ -248,7 +248,7 @@ public:
     ///         ModelGraph::TopologicalOrder error if the original graph contains
     ///         a cycle (the session does not introduce new edges, so a cycle can
     ///         only originate from the source graph).
-    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> GetTopologicalOrder() const;
+    StatusOr<std::vector<GraphNodeId>> GetTopologicalOrder() const;
 
     /// @brief Returns live node ids whose op_type matches `op_type`, in ascending
     /// node-index order. Filters out nodes that have been removed or replaced
@@ -367,7 +367,7 @@ public:
     /// replacement node inputs/outputs are valid, virtual values satisfy
     /// ordering constraints within and across rewrites.
     /// @return Status::Ok() if consistent, or the first validation error.
-    AM_NODISCARD Status ValidateEdits() const;
+    Status ValidateEdits() const;
 
     /// @brief Materializes the session state into a new ModelGraph.
     ///
@@ -375,14 +375,14 @@ public:
     /// and surviving original nodes) -> MarkCommittedOutputs -> Validate.
     /// Returns InvalidArgument if the result would be invalid.
     /// @return New ModelGraph owning the materialized result, or the first error.
-    AM_NODISCARD StatusOr<ModelGraph> Commit() const;
+    StatusOr<ModelGraph> Commit() const;
 
     /// @brief Validates that `value` refers to a source graph value or a session-added
     /// constant. Returns InvalidArgument if the id is out of range or refers to
     /// a virtual value allocated by AllocateVirtualValue().
     /// @param value Value id to validate.
     /// @return Status::Ok() if valid, or InvalidArgument for out-of-range/virtual ids.
-    AM_NODISCARD Status CheckValueId(GraphValueId value) const;
+    Status CheckValueId(GraphValueId value) const;
 
 private:
     friend class SubgraphBuilder;

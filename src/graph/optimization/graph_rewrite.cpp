@@ -99,7 +99,7 @@ GraphValueId GraphRewriteSession::AllocateVirtualValue() {
 GraphValueId GraphRewriteSession::AddConstant(TensorSpec spec,
                                               ConstantBinding binding,
                                               QuantizationSpec quantization,
-                                              std::string debug_name) {
+                                              std::string name) {
     // Same id space as virtual values, but distinguished by a non-nullopt
     // SessionConstant entry in session_constants_.
     const std::size_t next_value_index = graph_.GetValues().size() + virtual_value_count_;
@@ -109,7 +109,7 @@ GraphValueId GraphRewriteSession::AddConstant(TensorSpec spec,
     session_constants_.emplace_back(SessionConstant{.spec = std::move(spec),
                                                     .binding = std::move(binding),
                                                     .quantization = quantization,
-                                                    .name = std::move(debug_name)});
+                                                    .name = std::move(name)});
     InvalidateConsumerCache();
     return {.index = static_cast<uint32_t>(next_value_index)};
 }

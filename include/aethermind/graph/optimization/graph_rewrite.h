@@ -11,7 +11,7 @@
 ///
 /// The session manages three value id spaces:
 ///   - source values from the original graph (index < graph_.GetValues().size())
-///   - session constants added via AddConstant (index >= source range)
+///   - session constants added via AddSessionConstant (index >= source range)
 ///   - virtual values for internal edges within a SubgraphReplacement
 ///     (index >= source range, not a session constant)
 ///
@@ -115,7 +115,7 @@ struct GraphNodeView {
 ///
 /// The session tracks three categories of value ids:
 ///   - source values: original graph values, index < graph_.GetValues().size()
-///   - session constants: added via AddConstant(), index >= source range
+///   - session constants: added via AddSessionConstant(), index >= source range
 ///   - virtual values: internal edges within a subgraph replacement,
 ///     index >= source range, not a session constant
 ///
@@ -143,18 +143,20 @@ public:
     /// @return Newly allocated virtual value id.
     AM_NODISCARD GraphValueId AllocateVirtualValue();
 
-    /// @brief Adds a new constant value scoped to this session.
+    /// @brief Adds a new session constant value scoped to this session.
     ///
-    /// The constant is materialized in the committed graph during Commit().
+    /// The constant is allocated in the session-local id space
+    /// (ValueKind::kSessionConstant) and materialized in the committed graph
+    /// during Commit().
     /// @param spec Tensor spec for the constant value.
     /// @param binding Constant binding payload backing the value.
     /// @param quantization Quantization metadata for the constant.
-    /// @param name Debug name used as the AddConstant tag.
-    /// @return Session value id (index >= source graph values).
-    AM_NODISCARD GraphValueId AddConstant(TensorSpec spec,
-                                          ConstantBinding binding,
-                                          QuantizationSpec quantization,
-                                          std::string name);
+    /// @param name Debug name used as the AddSessionConstant tag.
+    /// @return Session-local constant value id (index >= source graph values).
+    AM_NODISCARD GraphValueId AddSessionConstant(TensorSpec spec,
+                                                 ConstantBinding binding,
+                                                 QuantizationSpec quantization,
+                                                 std::string name);
 
     /// @brief Applies a batch of mutations sequentially.
     ///
@@ -285,7 +287,7 @@ public:
     ///
     /// Resolves through any ReplaceValue chain first, then checks both source
     /// graph constants (ConstantValue payload) and session constants added
-    /// via AddConstant. Out-of-range and virtual values return false.
+    /// via AddSessionConstant. Out-of-range and virtual values return false.
     /// @param value Value id to test.
     /// @return True if the value resolves to a compile-time constant; false otherwise.
     AM_NODISCARD bool IsConstant(GraphValueId value) const;
@@ -392,7 +394,7 @@ private:
         bool exposes_node_view = false;
     };
 
-    /// Metadata for a session-local constant added via AddConstant.
+    /// Metadata for a session-local constant added via AddSessionConstant.
     struct SessionConstant {
         TensorSpec spec{};
         ConstantBinding binding{};

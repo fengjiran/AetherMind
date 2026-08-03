@@ -11,7 +11,7 @@
 1. **编译期与运行期解耦**：Evaluator 不复用运行时 Kernel，不依赖 CUDA Context、线程池、Backend、Allocator 或执行计划。它只依赖 IR 元数据、常量字节数据和纯 C++ 参考实现。
 2. **Plan 与 Evaluate 分离**：`Plan()` 负责验证输入/输出数量、dtype、shape、layout、broadcast、参数语义和成本预算；`Evaluate()` 只执行 `Plan()` 已经接受的情况。
 3. **Pass 与算子语义解耦**：`ConstantFoldingPass` 不知道某个算子支持哪些 dtype、broadcast 或多输出规则。Pass 只收集图信息、构造 view、分配输出 buffer、注册常量和重定向 value。
-4. **无状态与无所有权**：Evaluator 不持有输入/输出 view，不保存 graph/session 指针，不管理常量生命周期。所有内存由 Pass 分配，并通过 `GraphRewriteSession::AddConstant()` 移交给图重写系统。
+4. **无状态与无所有权**：Evaluator 不持有输入/输出 view，不保存 graph/session 指针，不管理常量生命周期。所有内存由 Pass 分配，并通过 `GraphRewriteSession::AddSessionConstant()` 移交给图重写系统。
 5. **优雅降级**：不支持的 op、dtype、shape、layout、参数组合返回 `Status::Unimplemented`，Pass 跳过该节点并保留原图。图结构不变量破坏、buffer 尺寸不一致等应返回错误并中止 pass。
 6. **确定性优先**：只有 schema 表示 deterministic、无副作用且可编译期求值的节点才允许进入 Evaluator。浮点 reference kernel 需要定义清楚舍入、近似函数和容差预期。
 
@@ -203,7 +203,7 @@ public:
                         .inline_data = std::move(output_storage->buffers[i]),
                 };
 
-                GraphValueId folded = session.AddConstant(
+                GraphValueId folded = session.AddSessionConstant(
                         out.spec,
                         std::move(binding),
                         out.quantization,

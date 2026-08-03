@@ -86,7 +86,7 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
 
 GraphValueId GraphRewriteSession::AllocateVirtualValue() {
     // Virtual values occupy the id space starting at graph_.GetValues().size().
-    // session_value_metadata_ grows in parallel: nullopt for virtual, SessionConstant for AddConstant.
+    // session_value_metadata_ grows in parallel: nullopt for virtual, SessionConstant for AddSessionConstant.
     const std::size_t next_value_index = graph_.GetValues().size() + session_value_metadata_.size();
     AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
              "Graph virtual value id space exhausted");
@@ -95,10 +95,10 @@ GraphValueId GraphRewriteSession::AllocateVirtualValue() {
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
 
-GraphValueId GraphRewriteSession::AddConstant(TensorSpec spec,
-                                              ConstantBinding binding,
-                                              QuantizationSpec quantization,
-                                              std::string name) {
+GraphValueId GraphRewriteSession::AddSessionConstant(TensorSpec spec,
+                                                     ConstantBinding binding,
+                                                     QuantizationSpec quantization,
+                                                     std::string name) {
     // Same id space as virtual values, but distinguished by a non-nullopt
     // SessionConstant entry in session_value_metadata_.
     const std::size_t next_value_index = graph_.GetValues().size() + session_value_metadata_.size();
@@ -877,6 +877,7 @@ Status GraphRewriteSession::CheckNonVirtualValueId(GraphValueId value) const {
     if (kind == ValueKind::kSource || kind == ValueKind::kSessionConstant) {
         return Status::Ok();
     }
+
     if (kind == ValueKind::kSessionVirtual) {
         return Status::InvalidArgument(
                 "GraphRewriteSession: virtual value is not allowed in this operation");
@@ -889,10 +890,12 @@ Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
     if (kind == ValueKind::kSource) {
         return Status::Ok();
     }
+
     if (kind == ValueKind::kSessionConstant) {
         return Status::InvalidArgument(
                 "GraphRewriteSession: expected source value id, got session constant");
     }
+
     if (kind == ValueKind::kSessionVirtual) {
         return Status::InvalidArgument(
                 "GraphRewriteSession: expected source value id, got session virtual value");
@@ -939,7 +942,7 @@ bool GraphRewriteSession::IsSessionVirtualValue(GraphValueId value) const noexce
 bool GraphRewriteSession::IsConstant(GraphValueId value) const {
     const GraphValueId resolved = GetResolvedValue(value);
 
-    // Session constants (added via session.AddConstant).
+    // Session constants (added via session.AddSessionConstant).
     if (IsSessionConstant(resolved)) {
         return true;
     }
@@ -960,12 +963,9 @@ bool GraphRewriteSession::AreAllInputsConstant(GraphNodeId node) const {
         return false;
     }
 
-    for (const GraphValueId input: view->inputs) {
-        if (!IsConstant(input)) {
-            return false;
-        }
-    }
-    return true;
+    return std::ranges::all_of(view->inputs, [&](const auto& input) {
+        return IsConstant(input);
+    });
 }
 
 Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& replacement) const {

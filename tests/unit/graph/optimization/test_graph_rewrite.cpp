@@ -686,7 +686,7 @@ TEST(GraphRewriteSession, RemoveNodeRejectsOutOfRangeSourceNode) {
 TEST(GraphRewriteSession, ReplaceValueRejectsSessionConstantAsSourceValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
-    const GraphValueId constant = session.AddConstant(
+    const GraphValueId constant = session.AddSessionConstant(
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.name = "session.constant"},
             {},
@@ -722,7 +722,7 @@ TEST(SubgraphBuilder, YieldRejectsSessionConstantAsReplacementTarget) {
     ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
     const GraphValueId mid = std::move(*mid_or);
 
-    const GraphValueId constant = session.AddConstant(
+    const GraphValueId constant = session.AddSessionConstant(
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.name = "session.constant"},
             {},
@@ -984,7 +984,7 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
     EXPECT_TRUE(found_constant);
 }
 
-TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
+TEST(GraphRewriteSession, AddSessionConstantCommitsSessionConstantValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     auto inline_data = std::make_shared<const std::vector<std::byte>>(
@@ -994,7 +994,7 @@ TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
                                         .scale_dtype = DataType::Float32(),
                                         .has_zero_point = false};
 
-    const GraphValueId constant = session.AddConstant(
+    const GraphValueId constant = session.AddSessionConstant(
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.inline_data = std::move(inline_data), .name = "folded.scalar"},
             quantization,
@@ -1020,7 +1020,7 @@ TEST(GraphRewriteSession, AddConstantCommitsSessionConstantValue) {
     EXPECT_TRUE(found_constant);
 }
 
-TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
+TEST(GraphRewriteSession, AddSessionConstantSupportsValueQueries) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     const QuantizationSpec quantization{.kind = QuantizationKind::kInt4,
@@ -1028,7 +1028,7 @@ TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
                                         .scale_dtype = DataType::Float32(),
                                         .has_zero_point = true};
 
-    const GraphValueId constant = session.AddConstant(
+    const GraphValueId constant = session.AddSessionConstant(
             Spec(DataType::Float32(), {2}),
             ConstantBinding{.name = "folded.vector"},
             quantization,
@@ -1063,7 +1063,7 @@ TEST(GraphRewriteSession, AddConstantSupportsValueQueries) {
 TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
-    const GraphValueId constant = session.AddConstant(
+    const GraphValueId constant = session.AddSessionConstant(
             Spec(DataType::Float32(), {1, 1, 4}),
             ConstantBinding{.name = "folded.hidden"},
             {},
@@ -1090,7 +1090,7 @@ TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
 TEST(GraphRewriteSession, ReplaceSubgraphRejectsSessionConstantReplacementTarget) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
-    const GraphValueId constant = session.AddConstant(
+    const GraphValueId constant = session.AddSessionConstant(
             Spec(DataType::Float32(), {1}),
             ConstantBinding{.name = "session.constant"},
             {},
@@ -2244,7 +2244,7 @@ TEST(GraphRewriteSession, HasLiveConsumersFalseWhenReplacementDoesNotConsume) {
 
     // alt_weight is a session constant of Float32[16,4] (same spec as v2) so
     // the merged Embedding has a valid dtype chain without consuming v2.
-    const GraphValueId alt_weight = session.AddConstant(
+    const GraphValueId alt_weight = session.AddSessionConstant(
             Spec(DataType::Float32(), {16, 4}),
             ConstantBinding{.name = "alt.weight"},
             QuantizationSpec{},
@@ -2272,7 +2272,7 @@ TEST(GraphRewriteSession, HasLiveConsumersCacheInvalidatesAfterReplaceSubgraph) 
     ASSERT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 2}));
 
     // alt_weight supplies a valid Float32 weight slot without consuming v2.
-    const GraphValueId alt_weight = session.AddConstant(
+    const GraphValueId alt_weight = session.AddSessionConstant(
             Spec(DataType::Float32(), {16, 4}),
             ConstantBinding{.name = "alt.weight"},
             QuantizationSpec{},

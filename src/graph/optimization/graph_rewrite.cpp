@@ -86,12 +86,11 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
 
 GraphValueId GraphRewriteSession::AllocateVirtualValue() {
     // Virtual values occupy the id space starting at graph_.GetValues().size().
-    // session_constants_ grows in parallel: nullopt for virtual, SessionConstant for AddConstant.
-    const std::size_t next_value_index = graph_.GetValues().size() + virtual_value_count_;
+    // session_value_metadata_ grows in parallel: nullopt for virtual, SessionConstant for AddConstant.
+    const std::size_t next_value_index = graph_.GetValues().size() + session_value_metadata_.size();
     AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
              "Graph virtual value id space exhausted");
-    ++virtual_value_count_;
-    session_constants_.emplace_back(std::nullopt);
+    session_value_metadata_.emplace_back(std::nullopt);
     InvalidateConsumerCache();
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
@@ -101,15 +100,14 @@ GraphValueId GraphRewriteSession::AddConstant(TensorSpec spec,
                                               QuantizationSpec quantization,
                                               std::string name) {
     // Same id space as virtual values, but distinguished by a non-nullopt
-    // SessionConstant entry in session_constants_.
-    const std::size_t next_value_index = graph_.GetValues().size() + virtual_value_count_;
+    // SessionConstant entry in session_value_metadata_.
+    const std::size_t next_value_index = graph_.GetValues().size() + session_value_metadata_.size();
     AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
              "Graph session constant value id space exhausted");
-    ++virtual_value_count_;
-    session_constants_.emplace_back(SessionConstant{.spec = std::move(spec),
-                                                    .binding = std::move(binding),
-                                                    .quantization = quantization,
-                                                    .name = std::move(name)});
+    session_value_metadata_.emplace_back(SessionConstant{.spec = std::move(spec),
+                                                         .binding = std::move(binding),
+                                                         .quantization = quantization,
+                                                         .name = std::move(name)});
     InvalidateConsumerCache();
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
@@ -137,7 +135,7 @@ Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
 }
 
 Status GraphRewriteSession::RemoveNode(GraphNodeId node) {
-    AM_RETURN_IF_ERROR(CheckNodeId(node));
+    AM_RETURN_IF_ERROR(CheckSourceNodeId(node));
     const std::array old_nodes{node};
     return ReplaceSubgraph(old_nodes, {});
 }
@@ -150,7 +148,7 @@ Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nod
     }
 
     for (GraphNodeId old_node: old_nodes) {
-        AM_RETURN_IF_ERROR(CheckNodeId(old_node));
+        AM_RETURN_IF_ERROR(CheckSourceNodeId(old_node));
     }
 
     for (const auto& replacement: replacement_nodes) {
@@ -165,7 +163,7 @@ Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nod
     // scratch map is local to this replacement group; virtual values from
     // other rewrites are intentionally absent and will be rejected here.
     {
-        std::vector<std::optional<TensorSpec>> virtual_specs(virtual_value_count_,
+        std::vector<std::optional<TensorSpec>> virtual_specs(session_value_metadata_.size(),
                                                              std::nullopt);
         AM_RETURN_IF_ERROR(ValidateReplacementSemantics(replacement_nodes, virtual_specs));
     }
@@ -192,8 +190,8 @@ Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nod
 
 Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
                                           GraphValueId new_value) {
-    AM_RETURN_IF_ERROR(CheckNodeId(node));
-    AM_RETURN_IF_ERROR(CheckValueId(new_value));
+    AM_RETURN_IF_ERROR(CheckSourceNodeId(node));
+    AM_RETURN_IF_ERROR(CheckNonVirtualValueId(new_value));
     if (input_index >= graph_.GetNode(node).inputs.size()) {
         return Status::InvalidArgument(
                 "GraphRewriteSession::RedirectInput input index out of range");
@@ -239,7 +237,7 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
 
 Status GraphRewriteSession::ReplaceValue(GraphValueId old_value, GraphValueId new_value) {
     AM_RETURN_IF_ERROR(CheckSourceValueId(old_value));
-    AM_RETURN_IF_ERROR(CheckValueId(new_value));
+    AM_RETURN_IF_ERROR(CheckNonVirtualValueId(new_value));
     if (old_value == new_value) {
         return Status::Ok();
     }
@@ -318,7 +316,7 @@ GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
 }
 
 StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const {
-    AM_RETURN_IF_ERROR(CheckNodeId(node));
+    AM_RETURN_IF_ERROR(CheckSourceNodeId(node));
 
     const GraphNode& original = graph_.GetNode(node);
     const ReplacementNode* replacement = nullptr;
@@ -424,7 +422,7 @@ bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
 }
 
 StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputMetadata(GraphValueId value) const {
-    AM_RETURN_IF_ERROR(CheckValueId(value));
+    AM_RETURN_IF_ERROR(CheckNonVirtualValueId(value));
     if (IsSessionConstant(value)) {
         return MakeOutputDescFromSessionConstant(value);
     }
@@ -461,13 +459,13 @@ bool GraphRewriteSession::IsValueReplacedByActiveRewrite(GraphValueId value) con
 std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
     const std::span<const GraphValue> values = graph_.GetValues();
     std::vector<GraphValueId> live;
-    live.reserve(values.size() + session_constants_.size());
+    live.reserve(values.size() + session_value_metadata_.size());
     for (uint32_t i = 0; i < values.size(); ++i) {
         if (const GraphValueId id{.index = i}; IsValueLive(id)) {
             live.push_back(id);
         }
     }
-    for (uint32_t i = 0; i < session_constants_.size(); ++i) {
+    for (uint32_t i = 0; i < session_value_metadata_.size(); ++i) {
         const GraphValueId id{.index = static_cast<uint32_t>(values.size() + i)};
         if (IsValueLive(id)) {
             live.push_back(id);
@@ -477,11 +475,11 @@ std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
 }
 
 std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) const {
-    if (value.index >= graph_.GetValues().size() && !IsSessionValue(value)) {
+    if (value.index >= graph_.GetValues().size() && !IsSessionLocalValue(value)) {
         return {};
     }
 
-    if (IsVirtualValue(value)) {
+    if (IsSessionVirtualValue(value)) {
         return {};
     }
 
@@ -494,11 +492,11 @@ std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) 
 }
 
 bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
-    if (value.index >= graph_.GetValues().size() && !IsSessionValue(value)) {
+    if (value.index >= graph_.GetValues().size() && !IsSessionLocalValue(value)) {
         return false;
     }
 
-    if (IsVirtualValue(value)) {
+    if (IsSessionVirtualValue(value)) {
         return false;
     }
 
@@ -518,7 +516,7 @@ const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCac
 
     ConsumerCache cache;
     cache.generation = mutation_generation_;
-    const std::size_t value_count = graph_.GetValues().size() + virtual_value_count_;
+    const std::size_t value_count = graph_.GetValues().size() + session_value_metadata_.size();
     cache.original_consumers.resize(value_count);
     cache.replacement_consumer_counts.resize(value_count, 0U);
 
@@ -572,7 +570,7 @@ const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCac
 Status GraphRewriteSession::ValidateEdits() const {
     for (const auto& replacement: value_replacements_) {
         if (replacement.has_value()) {
-            AM_RETURN_IF_ERROR(CheckValueId(*replacement));
+            AM_RETURN_IF_ERROR(CheckNonVirtualValueId(*replacement));
         }
     }
 
@@ -582,7 +580,7 @@ Status GraphRewriteSession::ValidateEdits() const {
         }
 
         for (auto old_node: rewrite.old_nodes) {
-            AM_RETURN_IF_ERROR(CheckNodeId(old_node));
+            AM_RETURN_IF_ERROR(CheckSourceNodeId(old_node));
         }
 
         for (const auto& replacement: rewrite.replacements) {
@@ -600,7 +598,7 @@ Status GraphRewriteSession::ValidateEdits() const {
         if (!rewrite.active) {
             continue;
         }
-        std::vector<std::optional<TensorSpec>> virtual_specs(virtual_value_count_,
+        std::vector<std::optional<TensorSpec>> virtual_specs(session_value_metadata_.size(),
                                                              std::nullopt);
         AM_RETURN_IF_ERROR(ValidateReplacementSemantics(rewrite.replacements, virtual_specs));
     }
@@ -608,7 +606,7 @@ Status GraphRewriteSession::ValidateEdits() const {
 }
 
 GraphValueDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValueId value) const {
-    const SessionConstant& constant = *session_constants_[GetVirtualIndex(value)];
+    const SessionConstant& constant = *session_value_metadata_[GetSessionValueIndex(value)];
     return GraphValueDesc{.spec = constant.spec,
                           .payload = ConstantValue{.binding = constant.binding},
                           .quantization = constant.quantization,
@@ -622,8 +620,8 @@ StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
         return MapResolvedValue(value, maps.source_values);
     }
 
-    const std::size_t session_index = GetVirtualIndex(value);
-    if (session_index >= virtual_value_count_) {
+    const std::size_t session_index = GetSessionValueIndex(value);
+    if (session_index >= session_value_metadata_.size()) {
         return Status::InvalidArgument(
                 "GraphRewriteSession: session value id out of range during commit");
     }
@@ -683,12 +681,12 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
         committed.SetQuantization(*maps.source_values[i], value.quantization);
     }
 
-    for (uint32_t i = 0; i < session_constants_.size(); ++i) {
-        if (!session_constants_[i].has_value()) {
+    for (uint32_t i = 0; i < session_value_metadata_.size(); ++i) {
+        if (!session_value_metadata_[i].has_value()) {
             continue;
         }
 
-        const SessionConstant& constant = *session_constants_[i];
+        const SessionConstant& constant = *session_value_metadata_[i];
         maps.session_constants[i] = committed.AddConstant(constant.spec,
                                                           constant.binding,
                                                           constant.name);
@@ -733,12 +731,12 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
         for (size_t i = 0; i < replacement.outputs.size(); ++i) {
             if (replacement.outputs[i].replaces.has_value()) {
                 const GraphValueId replaced = *replacement.outputs[i].replaces;
-                if (IsVirtualValue(replaced)) {
-                    if (maps.virtual_values[GetVirtualIndex(replaced)].has_value()) {
+                if (IsSessionVirtualValue(replaced)) {
+                    if (maps.virtual_values[GetSessionValueIndex(replaced)].has_value()) {
                         return Status::InvalidArgument(
                                 "GraphRewriteSession::Commit replacement virtual value was already mapped");
                     }
-                    maps.virtual_values[GetVirtualIndex(replaced)] = added.outputs[i];
+                    maps.virtual_values[GetSessionValueIndex(replaced)] = added.outputs[i];
                 } else if (IsSessionConstant(replaced)) {
                     return Status::InvalidArgument(
                             "GraphRewriteSession::Commit replacement cannot produce a session constant");
@@ -823,8 +821,8 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
     ModelGraph committed;
     ValueMap value_map(graph_.GetValues().size(), std::nullopt);
-    ValueMap session_constant_map(virtual_value_count_, std::nullopt);
-    ValueMap virtual_value_map(virtual_value_count_, std::nullopt);
+    ValueMap session_constant_map(session_value_metadata_.size(), std::nullopt);
+    ValueMap virtual_value_map(session_value_metadata_.size(), std::nullopt);
     CommitValueMaps maps{.source_values = value_map,
                          .session_constants = session_constant_map,
                          .virtual_values = virtual_value_map};
@@ -867,55 +865,75 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
     return committed;
 }
 
-Status GraphRewriteSession::CheckNodeId(GraphNodeId node) const {
+Status GraphRewriteSession::CheckSourceNodeId(GraphNodeId node) const {
     if (node.index >= graph_.GetNodes().size()) {
-        return Status::InvalidArgument("GraphRewriteSession: node id out of range");
+        return Status::InvalidArgument("GraphRewriteSession: source node id out of range");
     }
     return Status::Ok();
 }
 
-Status GraphRewriteSession::CheckValueId(GraphValueId value) const {
-    if (value.index < graph_.GetValues().size() || IsSessionConstant(value)) {
+Status GraphRewriteSession::CheckNonVirtualValueId(GraphValueId value) const {
+    const ValueKind kind = ClassifyValue(value);
+    if (kind == ValueKind::kSource || kind == ValueKind::kSessionConstant) {
         return Status::Ok();
+    }
+    if (kind == ValueKind::kSessionVirtual) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession: virtual value is not allowed in this operation");
     }
     return Status::InvalidArgument("GraphRewriteSession: value id out of range");
 }
 
 Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
-    if (value.index >= graph_.GetValues().size()) {
-        return Status::InvalidArgument("GraphRewriteSession: value id out of range");
+    const ValueKind kind = ClassifyValue(value);
+    if (kind == ValueKind::kSource) {
+        return Status::Ok();
     }
-    return Status::Ok();
+    if (kind == ValueKind::kSessionConstant) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession: expected source value id, got session constant");
+    }
+    if (kind == ValueKind::kSessionVirtual) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession: expected source value id, got session virtual value");
+    }
+    return Status::InvalidArgument("GraphRewriteSession: value id out of range");
 }
 
-Status GraphRewriteSession::CheckValueIdAllowVirtual(GraphValueId value) const {
-    // IsSessionValue() already bounds-checks the virtual index against
-    // virtual_value_count_, so any session value reaching the second clause
-    // is a valid virtual value — no extra range check needed.
-    if (value.index < graph_.GetValues().size() || IsSessionConstant(value) ||
-        IsSessionValue(value)) {
+Status GraphRewriteSession::CheckKnownValueId(GraphValueId value) const {
+    if (ClassifyValue(value) != ValueKind::kInvalid) {
         return Status::Ok();
     }
     return Status::InvalidArgument("GraphRewriteSession: value id out of range");
 }
 
-bool GraphRewriteSession::IsSessionValue(GraphValueId value) const noexcept {
-    return value.index >= graph_.GetValues().size() &&
-           GetVirtualIndex(value) < virtual_value_count_;
+GraphRewriteSession::ValueKind GraphRewriteSession::ClassifyValue(
+        GraphValueId value) const noexcept {
+    if (value.index < graph_.GetValues().size()) {
+        return ValueKind::kSource;
+    }
+
+    const std::size_t session_index = GetSessionValueIndex(value);
+    if (session_index >= session_value_metadata_.size()) {
+        return ValueKind::kInvalid;
+    }
+
+    return session_value_metadata_[session_index].has_value()
+                   ? ValueKind::kSessionConstant
+                   : ValueKind::kSessionVirtual;
+}
+
+bool GraphRewriteSession::IsSessionLocalValue(GraphValueId value) const noexcept {
+    const ValueKind kind = ClassifyValue(value);
+    return kind == ValueKind::kSessionConstant || kind == ValueKind::kSessionVirtual;
 }
 
 bool GraphRewriteSession::IsSessionConstant(GraphValueId value) const noexcept {
-    if (!IsSessionValue(value)) {
-        return false;
-    }
-
-    const std::size_t session_index = GetVirtualIndex(value);
-    return session_index < session_constants_.size() &&
-           session_constants_[session_index].has_value();
+    return ClassifyValue(value) == ValueKind::kSessionConstant;
 }
 
-bool GraphRewriteSession::IsVirtualValue(GraphValueId value) const noexcept {
-    return IsSessionValue(value) && !IsSessionConstant(value);
+bool GraphRewriteSession::IsSessionVirtualValue(GraphValueId value) const noexcept {
+    return ClassifyValue(value) == ValueKind::kSessionVirtual;
 }
 
 bool GraphRewriteSession::IsConstant(GraphValueId value) const {
@@ -952,12 +970,12 @@ bool GraphRewriteSession::AreAllInputsConstant(GraphNodeId node) const {
 
 Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& replacement) const {
     for (auto input: replacement.inputs) {
-        AM_RETURN_IF_ERROR(CheckValueIdAllowVirtual(input));
+        AM_RETURN_IF_ERROR(CheckKnownValueId(input));
     }
 
     for (const auto& output: replacement.outputs) {
         if (output.replaces.has_value()) {
-            AM_RETURN_IF_ERROR(CheckValueIdAllowVirtual(*output.replaces));
+            AM_RETURN_IF_ERROR(CheckKnownValueId(*output.replaces));
         }
     }
     return Status::Ok();
@@ -968,7 +986,7 @@ Status GraphRewriteSession::ValidateReplacementTargets(
         const std::vector<ReplacementNode>& replacement_nodes) const {
     std::vector<GraphValueId> replaceable_outputs;
     for (GraphNodeId old_node: old_nodes) {
-        AM_RETURN_IF_ERROR(CheckNodeId(old_node));
+        AM_RETURN_IF_ERROR(CheckSourceNodeId(old_node));
         const GraphNode& node = graph_.GetNode(old_node);
         replaceable_outputs.insert(replaceable_outputs.end(),
                                    node.outputs.begin(), node.outputs.end());
@@ -977,7 +995,7 @@ Status GraphRewriteSession::ValidateReplacementTargets(
     std::vector<GraphValueId> real_replacements;
     for (const ReplacementNode& replacement: replacement_nodes) {
         for (const RewriteOutputBinding& output: replacement.outputs) {
-            if (!output.replaces.has_value() || IsVirtualValue(*output.replaces)) {
+            if (!output.replaces.has_value() || IsSessionVirtualValue(*output.replaces)) {
                 continue;
             }
 
@@ -1004,18 +1022,18 @@ Status GraphRewriteSession::ValidateVirtualValues() const {
     // any virtual value across all rewrites. locally_available (per rewrite)
     // ensures each virtual value is produced before it is consumed within the
     // same rewrite group.
-    std::vector globally_produced(virtual_value_count_, false);
+    std::vector globally_produced(session_value_metadata_.size(), false);
 
     for (const auto& rewrite: rewrites_) {
         if (!rewrite.active) {
             continue;
         }
 
-        std::vector locally_available(virtual_value_count_, false);
+        std::vector locally_available(session_value_metadata_.size(), false);
         for (const auto& replacement: rewrite.replacements) {
             for (GraphValueId input: replacement.inputs) {
-                if (IsVirtualValue(input)) {
-                    if (!locally_available[GetVirtualIndex(input)]) {
+                if (IsSessionVirtualValue(input)) {
+                    if (!locally_available[GetSessionValueIndex(input)]) {
                         return Status::InvalidArgument(
                                 "GraphRewriteSession: virtual value is consumed before being produced");
                     }
@@ -1023,11 +1041,11 @@ Status GraphRewriteSession::ValidateVirtualValues() const {
             }
 
             for (const auto& output: replacement.outputs) {
-                if (!output.replaces.has_value() || !IsVirtualValue(*output.replaces)) {
+                if (!output.replaces.has_value() || !IsSessionVirtualValue(*output.replaces)) {
                     continue;
                 }
 
-                const std::size_t virtual_index = GetVirtualIndex(*output.replaces);
+                const std::size_t virtual_index = GetSessionValueIndex(*output.replaces);
                 if (globally_produced[virtual_index]) {
                     return Status::InvalidArgument(
                             "GraphRewriteSession: virtual value produced more than once");
@@ -1049,22 +1067,22 @@ StatusOr<TensorSpec> GraphRewriteSession::ResolveValueSpec(
     }
 
     // Out-of-range check (defense in depth; ValidateReplacementNode should
-    // have already rejected invalid ids via CheckValueIdAllowVirtual).
-    if (!IsSessionValue(value)) {
+    // have already rejected invalid ids via CheckKnownValueId).
+    if (!IsSessionLocalValue(value)) {
         return Status::InvalidArgument(
                 "GraphRewriteSession::ResolveValueSpec: value id " +
                 std::to_string(value.index) + " out of range");
     }
 
-    // Session constant: spec is stored in session_constants_.
+    // Session constant: spec is stored in session_value_metadata_.
     if (IsSessionConstant(value)) {
-        return session_constants_[GetVirtualIndex(value)]->spec;
+        return session_value_metadata_[GetSessionValueIndex(value)]->spec;
     }
 
     // Virtual value: must have an inferred spec in the caller's scratch map.
     // A virtual value without an inferred spec has not been produced by any
     // analyzed replacement, so its dtype/shape are unknown.
-    const std::size_t idx = GetVirtualIndex(value);
+    const std::size_t idx = GetSessionValueIndex(value);
     if (idx >= virtual_specs.size() || !virtual_specs[idx].has_value()) {
         return Status::NotFound(
                 "GraphRewriteSession: virtual value " + std::to_string(value.index) +
@@ -1155,8 +1173,8 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
 
             const GraphValueId replaced = *binding.replaces;
 
-            if (IsVirtualValue(replaced)) {
-                const std::size_t vidx = GetVirtualIndex(replaced);
+            if (IsSessionVirtualValue(replaced)) {
+                const std::size_t vidx = GetSessionValueIndex(replaced);
                 if (vidx >= virtual_specs_out.size()) {
                     return Status::InvalidArgument(
                             "GraphRewriteSession: " + debug_ctx + " output " +
@@ -1179,7 +1197,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
             if (replaced.index < graph_.GetValues().size()) {
                 target_spec = graph_.GetValue(replaced).spec;
             } else if (IsSessionConstant(replaced)) {
-                target_spec = session_constants_[GetVirtualIndex(replaced)]->spec;
+                target_spec = session_value_metadata_[GetSessionValueIndex(replaced)]->spec;
             } else {
                 return Status::InvalidArgument(
                         "GraphRewriteSession: " + debug_ctx + " output " +

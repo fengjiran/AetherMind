@@ -645,7 +645,7 @@ private:
     };
 
     const ModelGraph& graph_;
-    std::size_t virtual_value_count_ = 0;
+    std::vector<std::optional<SessionConstant>> session_value_metadata_{};
     std::vector<RewriteEntry> rewrites_{};
     std::vector<std::optional<std::size_t>> node_to_rewrite_{};
     std::vector<std::optional<GraphValueId>> value_replacements_{};
@@ -659,7 +659,7 @@ session 内部维护：
   - `active`：rewrite 是否仍然有效。`ReplaceSubgraph` 覆盖同一旧节点时会 `DeactivateRewrite` 旧 entry，使其在 `Commit` 时被跳过；
   - `exposes_node_view`：该 rewrite 是否通过 `RedirectInput` 创建的 mirror `ReplacementNode` 暴露 node view。`RedirectInput` 需要在 `GetNodeView` 中返回修改了输入的节点视图，因此 mirror replacement 标记此字段为 `true`；普通 `ReplaceSubgraph` 产生的 replacement 不暴露原节点 view，此字段为 `false`。`GetNodeView` 仅对 `active && exposes_node_view && old_nodes.size()==1 && replacements.size()==1` 的 rewrite 返回 mirror 视图，否则返回 `NotFound`。
 - `node_to_rewrite_`：从旧 node 到当前 active rewrite 的索引，用于快速覆盖和失效旧 rewrite；
-- `virtual_value_count_`：session 级 virtual value 计数；`AllocateVirtualValue()` 分配高位 `GraphValueId`，仅用于同一个 `RewriteEntry` 内 replacement 子图的内部边；
+- `session_value_metadata_`：session-local value 元数据及唯一计数来源；有值项表示 session constant，`nullopt` 表示 virtual value；`AllocateVirtualValue()` 分配的 virtual value 仅用于同一个 `RewriteEntry` 内 replacement 子图的内部边；
 - `value_replacements_`：value replacement map，支持链式替换；
 - `resolved_value_cache_`：`mutable` 路径压缩缓存，每次 `ReplaceValue()` 时失效。
 

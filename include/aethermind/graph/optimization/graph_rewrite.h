@@ -377,13 +377,6 @@ public:
     /// @return New ModelGraph owning the materialized result, or the first error.
     StatusOr<ModelGraph> Commit() const;
 
-    /// @brief Validates that `value` refers to a source graph value or a session-added
-    /// constant. Returns InvalidArgument if the id is out of range or refers to
-    /// a virtual value allocated by AllocateVirtualValue().
-    /// @param value Value id to validate.
-    /// @return Status::Ok() if valid, or InvalidArgument for out-of-range/virtual ids.
-    Status CheckValueId(GraphValueId value) const;
-
 private:
     friend class SubgraphBuilder;
 
@@ -407,6 +400,13 @@ private:
         std::string name{};
     };
 
+    enum class ValueKind : std::uint8_t {
+        kSource,
+        kSessionConstant,
+        kSessionVirtual,
+        kInvalid,
+    };
+
     /// Temporary mapping tables used during Commit() to translate value ids
     /// from source/session spaces into the committed graph's id space.
     using ValueMap = std::vector<std::optional<GraphValueId>>;
@@ -424,23 +424,37 @@ private:
         std::vector<uint32_t> replacement_consumer_counts{};
     };
 
-    // Returns InvalidArgument if node id is out of range.
-    Status CheckNodeId(GraphNodeId node) const;
-    // Returns InvalidArgument if value is not a source graph value.
+    // Validates that node is a source graph node id (ids below graph_.GetNodes().size()).
+    // Returns InvalidArgument for out-of-range node ids.
+    Status CheckSourceNodeId(GraphNodeId node) const;
+    // Validates that value is a source graph value id (ValueKind::kSource only).
+    // Returns InvalidArgument for session-local or invalid value ids.
     Status CheckSourceValueId(GraphValueId value) const;
-    // Returns InvalidArgument for out-of-range ids; accepts virtual values.
-    Status CheckValueIdAllowVirtual(GraphValueId value) const;
-    // True when value is in the session id space (index >= source range).
-    AM_NODISCARD bool IsSessionValue(GraphValueId value) const noexcept;
-    // True when value is a session constant (session value + has SessionConstant metadata).
+    // Validates that value is a source or session constant value id
+    // (ValueKind::kSource | ValueKind::kSessionConstant).
+    // Returns InvalidArgument for session virtual or invalid value ids.
+    Status CheckNonVirtualValueId(GraphValueId value) const;
+    // Validates that value is an allocated, known value id (every kind except
+    // ValueKind::kInvalid). Does not validate virtual production/order; that
+    // remains the responsibility of ValidateVirtualValues().
+    Status CheckKnownValueId(GraphValueId value) const;
+    // Classifies a value id into the session's value-kind space:
+    // kSource for ids below the source graph value range, kSessionConstant or
+    // kSessionVirtual for ids in the session-local range (distinguished by the
+    // presence of SessionConstant metadata), and kInvalid for ids beyond the
+    // session-local range (never allocated by the session).
+    AM_NODISCARD ValueKind ClassifyValue(GraphValueId value) const noexcept;
+    // True when value is in the allocated session-local id space.
+    AM_NODISCARD bool IsSessionLocalValue(GraphValueId value) const noexcept;
+    // True when value is a session constant (session-local + SessionConstant metadata).
     AM_NODISCARD bool IsSessionConstant(GraphValueId value) const noexcept;
-    // True when value is a virtual value (session value, not a session constant).
-    AM_NODISCARD bool IsVirtualValue(GraphValueId value) const noexcept;
+    // True when value is a session virtual value (session-local, not a session constant).
+    AM_NODISCARD bool IsSessionVirtualValue(GraphValueId value) const noexcept;
     // True when any active rewrite's replacement output takes over this value.
     AM_NODISCARD bool IsValueReplacedByActiveRewrite(GraphValueId value) const noexcept;
     // Returns the 0-based index into the session value space.
-    AM_NODISCARD std::size_t GetVirtualIndex(GraphValueId virtual_id) const noexcept {
-        return virtual_id.index - graph_.GetValues().size();
+    AM_NODISCARD std::size_t GetSessionValueIndex(GraphValueId session_value) const noexcept {
+        return session_value.index - graph_.GetValues().size();
     }
     // Validates that replacement node inputs/outputs reference valid ids.
     Status ValidateReplacementNode(const ReplacementNode& replacement) const;
@@ -451,7 +465,7 @@ private:
     // Validates virtual value ordering (no consumption before production).
     Status ValidateVirtualValues() const;
     // Resolves the TensorSpec of a value id known to the session.
-    // Source values are read from graph_; session constants from session_constants_;
+    // Source values are read from graph_; session constants from session_value_metadata_;
     // virtual values must have an inferred spec in virtual_specs (caller-provided
     // scratch map). Returns NotFound for virtual values with no inferred spec.
     StatusOr<TensorSpec> ResolveValueSpec(
@@ -493,11 +507,10 @@ private:
 
     // Immutable source graph; must outlive the session.
     const ModelGraph& graph_;
-    // Total count of allocated session values (constants + virtual).
-    std::size_t virtual_value_count_ = 0;
-    // Per-session-value metadata: has_value = session constant, nullopt = virtual.
+    // Per-session-value metadata and authoritative count:
+    // has_value = session constant, nullopt = virtual.
     // Index i corresponds to session value at graph_.GetValues().size() + i.
-    std::vector<std::optional<SessionConstant>> session_constants_{};
+    std::vector<std::optional<SessionConstant>> session_value_metadata_{};
     // Active and deactivated rewrites, in submission order.
     std::vector<RewriteEntry> rewrites_{};
     // Maps each source node to the rewrite that covers it, or nullopt.

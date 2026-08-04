@@ -6,16 +6,16 @@
 #include <gtest/gtest.h>
 #include <vector>
 
-namespace aethermind {
 namespace {
+using namespace aethermind;
 
-NodeOutputDesc HiddenDesc(const char* debug_name) {
+NodeOutputDesc HiddenDesc(const char* name) {
     return NodeOutputDesc{.payload = ActivationValue{},
-                          .name = debug_name};
+                          .name = name};
 }
 
-RewriteOutputBinding ReplacesHidden(GraphValueId value, const char* debug_name) {
-    return RewriteOutputBinding{.desc = HiddenDesc(debug_name), .replaces = value};
+RewriteOutputBinding ReplacesHidden(GraphValueId value, const char* name) {
+    return RewriteOutputBinding{.desc = HiddenDesc(name), .replaces = value};
 }
 
 ModelGraph BuildTwoEmbeddingGraph() {
@@ -63,9 +63,12 @@ RoPEParams ValidRoPEParams() {
 
 ModelGraph BuildRoPEGraph() {
     ModelGraph graph;
-    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_a");
-    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_b");
-    const GraphValueId position_ids = graph.AddInput(Spec(DataType::Int(64), {1}), "position_ids");
+    const GraphValueId tokens_a = graph.AddInput(
+            Spec(DataType::Int(32), {1}), "tokens_a");
+    const GraphValueId tokens_b = graph.AddInput(
+            Spec(DataType::Int(32), {1}), "tokens_b");
+    const GraphValueId position_ids = graph.AddInput(
+            Spec(DataType::Int(64), {1}), "position_ids");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
             WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
@@ -2439,4 +2442,3 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsUndefinedVirtualInputAtApplyTime
 }
 
 }// namespace
-}// namespace aethermind

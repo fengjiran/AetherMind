@@ -242,14 +242,18 @@ public:
     /// @return True if the node is live; false for removed/replaced or out-of-range ids.
     AM_NODISCARD bool IsNodeLive(GraphNodeId node) const noexcept;
 
-    /// @brief Returns live node ids in topological order, following the original
-    /// graph's ordering. Filters out nodes that have been removed or replaced
-    /// in this session.
+    /// @brief Returns live node ids in the source graph's topological order,
+    /// filtered by liveness. Filters out nodes that have been removed or
+    /// replaced in this session.
     ///
-    /// @return Live node ids in topological order, or the underlying
-    ///         ModelGraph::TopologicalOrder error if the original graph contains
-    ///         a cycle (the session does not introduce new edges, so a cycle can
-    ///         only originate from the source graph).
+    /// @return Live node ids in source-graph topological order, or the
+    ///         underlying ModelGraph::TopologicalOrder error if the original
+    ///         graph contains a cycle. RemoveNode and ReplaceSubgraph do not
+    ///         introduce cross-node edges, so the source ordering remains valid
+    ///         for those mutations. RedirectInput, however, can rewire a node's
+    ///         input to a value produced by a later node, creating a back-edge
+    ///         that violates this ordering; such cases are not detected here and
+    ///         surface as a Commit failure ("producer not yet emitted").
     StatusOr<std::vector<GraphNodeId>> GetTopologicalOrder() const;
 
     /// @brief Returns live node ids whose op_type matches `op_type`, in ascending

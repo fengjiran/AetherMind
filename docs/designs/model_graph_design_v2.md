@@ -727,13 +727,15 @@ GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
 
 `resolved_value_cache_` 是 `mutable` 成员，允许在 `const` 查询时缓存路径压缩结果。每次 `ReplaceValue()` 调用会清空整个缓存，保证后续查询的正确性。
 
-如果允许在 session 内继续重写已被替换的 value，所有 mutation API 必须先调用 `GetResolvedValue()` 规范化输入，例如：
+如果允许在 session 内继续重写已被替换的 value，各 mutation API 的输入处理规则如下：
 
 ```text
-RedirectInput(node, port, old_value) 先解析 old_value 的最终 replacement；
-ReplaceValue(old_value, new_value) 先解析 old_value 与 new_value；
+RedirectInput(node, port, new_value) 存储原始 new_value，由 GetResolvedValue 在查询/Commit 时统一解析；
+ReplaceValue(old_value, new_value) 不解析 old_value（作为 value_replacements_ 的键直接写入，覆盖语义），仅遍历 new_value 解析链做环检测；new_value 的链式解析由 GetResolvedValue 在查询时处理；
 ValidateEdits() / Commit() 只能基于 resolved value view 判断 use-def。
 ```
+
+`ReplaceValue` 采用消费者重定向语义（非别名合并）：直接写 `value_replacements_[old_value] = new_value`，覆盖该键的旧值。**不能**先解析 old_value 再写入其 terminal——那会把 terminal 的消费者错误重定向。例如 `ReplaceValue(A, B)` 后 `ReplaceValue(A, C)`，正确结果是 A→C 且 B 的消费者不变；若先解析 old 得到 B 再写 `value_replacements_[B] = C`，则 B 的消费者被错误改为 C。调用方若需链式重定向（A 和 B 的消费者都读 C），应调用 `ReplaceValue(B, C)`，由 `GetResolvedValue` 的链式遍历处理。
 
 Pass 在 session 期间不允许直接读取原始 `ModelGraph::GetNode()` 后自行解释 inputs。它们必须通过 session 的 wrapper API 读取 virtual view，例如 `GetNodeView(GraphNodeId)`。这个 view 需要：
 

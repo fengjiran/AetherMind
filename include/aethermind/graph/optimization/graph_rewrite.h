@@ -488,11 +488,11 @@ private:
             const CommitValueMaps& maps) const;
     // Copies source external values and session constants into committed graph.
     Status CopyExternalValues(ModelGraph& committed,
-                              CommitValueMaps& maps) const;
+                              const CommitValueMaps& maps) const;
     // Emits all replacement nodes in a rewrite entry into the committed graph.
     Status EmitRewrite(const RewriteEntry& rewrite,
                        ModelGraph& committed,
-                       CommitValueMaps& maps) const;
+                       const CommitValueMaps& maps) const;
     // Emits a single surviving original node into the committed graph.
     Status EmitOriginalNode(GraphNodeId old_node,
                             ModelGraph& committed,

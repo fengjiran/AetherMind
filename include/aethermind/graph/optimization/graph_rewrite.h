@@ -500,7 +500,7 @@ private:
     // Emits a single surviving original node into the committed graph.
     Status EmitOriginalNode(GraphNodeId old_node,
                             ModelGraph& committed,
-                            CommitValueMaps& maps) const;
+                            const CommitValueMaps& maps) const;
     // Maps graph output values through resolution into committed graph.
     Status MarkCommittedOutputs(ModelGraph& committed,
                                 const CommitValueMaps& maps) const;

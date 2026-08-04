@@ -208,21 +208,19 @@ Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nod
         AM_RETURN_IF_ERROR(ValidateReplacementSemantics(replacement_nodes, virtual_specs));
     }
 
-    for (GraphNodeId old_node: old_nodes) {
-        if (const auto rewrite_index = node_to_rewrite_[old_node.index];
+    for (const auto [index]: old_nodes) {
+        if (const auto rewrite_index = node_to_rewrite_[index];
             rewrite_index.has_value()) {
             DeactivateRewrite(*rewrite_index);
         }
     }
 
     const std::size_t rewrite_index = rewrites_.size();
-    rewrites_.push_back({
-            .old_nodes = {old_nodes.begin(), old_nodes.end()},
-            .replacements = replacement_nodes,
-    });
+    rewrites_.emplace_back(std::vector<GraphNodeId>{old_nodes.begin(), old_nodes.end()},
+                           replacement_nodes, true, false);
 
-    for (GraphNodeId old_node: old_nodes) {
-        node_to_rewrite_[old_node.index] = rewrite_index;
+    for (const auto [index]: old_nodes) {
+        node_to_rewrite_[index] = rewrite_index;
     }
     InvalidateConsumerCache();
     return Status::Ok();
@@ -766,10 +764,10 @@ Status GraphRewriteSession::ValidateEdits() const {
 
 GraphValueDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValueId value) const {
     const SessionConstant& constant = *session_value_metadata_[GetSessionValueIndex(value)];
-    return GraphValueDesc{.spec = constant.spec,
-                          .payload = ConstantValue{.binding = constant.binding},
-                          .quantization = constant.quantization,
-                          .name = constant.name};
+    return {.spec = constant.spec,
+            .payload = ConstantValue{.binding = constant.binding},
+            .quantization = constant.quantization,
+            .name = constant.name};
 }
 
 // Translates a value id from source/session space to committed graph space.
@@ -947,7 +945,7 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
 //      already-mapped outputs.
 Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
                                              ModelGraph& committed,
-                                             CommitValueMaps& maps) const {
+                                             const CommitValueMaps& maps) const {
     // Emit a surviving original node (untouched or RedirectInput'd) into the
     // committed graph. Uses GetNodeView to get the resolved input view and
     // faithfully reproduces the node's outputs.
@@ -956,18 +954,18 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
 
     std::vector<GraphValueId> new_inputs;
     new_inputs.reserve(view->inputs.size());
-    for (GraphValueId input: view->inputs) {
-        const GraphValueId resolved_input = GetResolvedValue(input);
-        StatusOr<GraphValueId> mapped_input = MapCommittedValue(resolved_input, maps);
+    for (const auto input: view->inputs) {
+        const auto resolved_input = GetResolvedValue(input);
+        auto mapped_input = MapCommittedValue(resolved_input, maps);
         AM_RETURN_IF_ERROR(mapped_input.status());
         new_inputs.push_back(*mapped_input);
     }
 
     std::vector<NodeOutputDesc> output_descs;
     output_descs.reserve(view->outputs.size());
-    for (GraphValueId old_output: view->outputs) {
-        const GraphValue& old_value = graph_.GetValue(old_output);
-        output_descs.push_back(NodeOutputDesc{
+    for (const auto old_output: view->outputs) {
+        const auto& old_value = graph_.GetValue(old_output);
+        output_descs.push_back({
                 .payload = old_value.payload,
                 .quantization = old_value.quantization,
                 .name = old_value.name,
@@ -1524,7 +1522,7 @@ void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
     }
 
     rewrites_[rewrite_index].active = false;
-    for (GraphNodeId old_node: rewrites_[rewrite_index].old_nodes) {
+    for (const auto old_node: rewrites_[rewrite_index].old_nodes) {
         if (old_node.index < node_to_rewrite_.size() &&
             node_to_rewrite_[old_node.index] == rewrite_index) {
             node_to_rewrite_[old_node.index].reset();

@@ -64,26 +64,39 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
     rn.outputs.reserve(original.outputs.size());
     for (GraphValueId output: original.outputs) {
         const GraphValue& value = graph.GetValue(output);
-        rn.outputs.push_back(RewriteOutputBinding{
-                .desc = NodeOutputDesc{
+        rn.outputs.emplace_back(
+                NodeOutputDesc{
                         .payload = value.payload,
                         .quantization = value.quantization,
                         .name = value.name,
                 },
-                .replaces = output,
-        });
+                output);
     }
     return rn;
 }
 
 }// namespace
 
+// Constructs a session over a source graph.
+//
+// Steps:
+//   1. Size node_to_rewrite_ to the source node count.
+//   2. Size value_replacements_ and resolved_value_cache_ to the source value
+//      count, so every source id is in range for the tracking tables.
 GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
     : graph_(graph),
       node_to_rewrite_(graph.GetNodes().size(), std::nullopt),
       value_replacements_(graph.GetValues().size(), std::nullopt),
       resolved_value_cache_(graph.GetValues().size(), std::nullopt) {}
 
+// Allocates a virtual value id for internal use within a subgraph replacement.
+// Virtual values serve as edges between replacement nodes and are not
+// persisted in the committed graph.
+//
+// Steps:
+//   1. Take the next id in the session-local space.
+//   2. Append a nullopt (virtual) entry to session_value_metadata_.
+//   3. Invalidate the consumer cache and return the new id.
 GraphValueId GraphRewriteSession::AllocateVirtualValue() {
     // Virtual values occupy the id space starting at graph_.GetValues().size().
     // session_value_metadata_ grows in parallel: nullopt for virtual, SessionConstant for AddSessionConstant.
@@ -95,6 +108,13 @@ GraphValueId GraphRewriteSession::AllocateVirtualValue() {
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
 
+// Adds a new session constant value scoped to this session.
+//
+// Steps:
+//   1. Take the next session-local id.
+//   2. Record spec, binding, quantization, and name in session_value_metadata_
+//      (its presence distinguishes the id from a virtual value).
+//   3. Invalidate the consumer cache and return the new id.
 GraphValueId GraphRewriteSession::AddSessionConstant(TensorSpec spec,
                                                      ConstantBinding binding,
                                                      QuantizationSpec quantization,
@@ -112,6 +132,15 @@ GraphValueId GraphRewriteSession::AddSessionConstant(TensorSpec spec,
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
 
+// Applies a batch of mutations sequentially; non-atomic: if mutation N fails,
+// mutations 0..N-1 remain applied to the session.
+//
+// Steps:
+//   1. Visit each mutation in order, dispatching by variant type:
+//      SubgraphReplacement -> ReplaceSubgraph, NodeRemoval -> RemoveNode,
+//      InputRedirection -> RedirectInput, ValueReplacement -> ReplaceValue.
+//   2. Return the first error encountered, or Status::Ok() when all mutations
+//      succeed.
 Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
     auto visitor = overloaded{
             [this](const SubgraphReplacement& replace) {
@@ -134,21 +163,32 @@ Status GraphRewriteSession::Apply(std::span<const GraphMutation> mutations) {
     return Status::Ok();
 }
 
+// Removes a live node. Equivalent to ReplaceSubgraph({node}, {}).
+//
+// Steps:
+//   1. Validate the node id against the source graph.
+//   2. Delegate to ReplaceSubgraph with an empty replacement list, which
+//      deactivates any rewrite covering the node and records the removal.
 Status GraphRewriteSession::RemoveNode(GraphNodeId node) {
     AM_RETURN_IF_ERROR(CheckSourceNodeId(node));
     const std::array old_nodes{node};
     return ReplaceSubgraph(old_nodes, {});
 }
 
+// Replaces a set of source nodes with replacement nodes.
+//
+// Steps:
+//   1. Validate replacement node ids and targets, then replay InferOperator
+//      over the replacements (semantic check) before any state mutation.
+//   2. Deactivate every existing rewrite that overlaps the old_nodes.
+//   3. Append a new RewriteEntry and map each old_node to it in
+//      node_to_rewrite_.
+//   4. Invalidate the consumer cache.
 Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nodes,
                                             const std::vector<ReplacementNode>& replacement_nodes) {
     if (old_nodes.empty()) {
         return Status::InvalidArgument(
                 "GraphRewriteSession::ReplaceSubgraph old node list is empty");
-    }
-
-    for (GraphNodeId old_node: old_nodes) {
-        AM_RETURN_IF_ERROR(CheckSourceNodeId(old_node));
     }
 
     for (const auto& replacement: replacement_nodes) {
@@ -188,6 +228,17 @@ Status GraphRewriteSession::ReplaceSubgraph(std::span<const GraphNodeId> old_nod
     return Status::Ok();
 }
 
+// Rewires one input of a live node to a different value.
+//
+// Steps:
+//   1. Validate the node id, the non-virtual new_value, and the input index
+//      range.
+//   2. If the node already has a rewrite entry: mutate that replacement's
+//      input in place (rejecting non-live nodes).
+//   3. Otherwise: build a mirror replacement of the original node, apply the
+//      input change, and append a rewrite with exposes_node_view set so the
+//      original node identity stays live.
+//   4. Invalidate the consumer cache.
 Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
                                           GraphValueId new_value) {
     AM_RETURN_IF_ERROR(CheckSourceNodeId(node));
@@ -200,8 +251,7 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
     // IsNodeLive returns true both for untouched nodes and for nodes with a
     // live single-node mirror rewrite. Only the latter can be mutated in place,
     // so guard with has_value() to exclude the untouched-node case.
-    const auto existing = node_to_rewrite_[node.index];
-    if (existing.has_value()) {
+    if (const auto existing = node_to_rewrite_[node.index]; existing.has_value()) {
         if (!IsNodeLive(node)) {
             return Status::InvalidArgument(
                     "GraphRewriteSession::RedirectInput cannot redirect a node "
@@ -223,18 +273,25 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
 
     auto replacement = BuildMirrorReplacement(graph_, node);
     replacement.inputs[input_index] = new_value;
-
     const std::size_t idx = rewrites_.size();
-    rewrites_.push_back({
-            .old_nodes = {node},
-            .replacements = {std::move(replacement)},
-            .exposes_node_view = true,
-    });
+    rewrites_.emplace_back(std::vector<GraphNodeId>{node},
+                           std::vector<ReplacementNode>{std::move(replacement)},
+                           true,
+                           true);
     node_to_rewrite_[node.index] = idx;
     InvalidateConsumerCache();
     return Status::Ok();
 }
 
+// Redirects consumers of `old_value` to `new_value` after resolution.
+//
+// Steps:
+//   1. Validate that old_value is a source value and new_value is non-virtual;
+//      early-out when both ids are equal.
+//   2. Walk new_value's replacement chain and reject the edit if it reaches
+//      old_value (would close a cycle).
+//   3. Record value_replacements_[old_value] = new_value.
+//   4. Clear the resolved value cache and invalidate the consumer cache.
 Status GraphRewriteSession::ReplaceValue(GraphValueId old_value, GraphValueId new_value) {
     AM_RETURN_IF_ERROR(CheckSourceValueId(old_value));
     AM_RETURN_IF_ERROR(CheckNonVirtualValueId(new_value));
@@ -273,6 +330,17 @@ Status GraphRewriteSession::ReplaceValue(GraphValueId old_value, GraphValueId ne
     return Status::Ok();
 }
 
+// Walks the replacement chain from `value` to its terminal, with path
+// compression: all values along the resolution path are cached to the
+// terminal for O(1) subsequent lookups.
+//
+// Steps:
+//   1. Return the cached terminal when present; out-of-range ids return
+//      identity.
+//   2. Walk value_replacements_ from `value`, recording the visited path,
+//      until a terminal value or a cached entry is reached.
+//   3. Cache every value on the path to the terminal (path compression) and
+//      return the terminal.
 GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
     if (value.index >= value_replacements_.size()) {
         return value;
@@ -315,6 +383,16 @@ GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
     return resolved;
 }
 
+// Returns a snapshot of a live node with inputs resolved through
+// GetResolvedValue; outputs are the original graph value ids.
+//
+// Steps:
+//   1. Validate the node id and locate the covering rewrite via
+//      node_to_rewrite_; reject non-live nodes.
+//   2. Assemble the view from the RedirectInput mirror replacement when
+//      present, otherwise from the original node; outputs always come from
+//      the original node.
+//   3. Resolve every input through GetResolvedValue.
 StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const {
     AM_RETURN_IF_ERROR(CheckSourceNodeId(node));
 
@@ -351,6 +429,14 @@ StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const
     return view;
 }
 
+// Returns true if `node` is currently observable in the session.
+//
+// Steps:
+//   1. Out-of-range ids are not live.
+//   2. Ids without a rewrite entry are live (untouched nodes).
+//   3. A rewrite entry is live only when it is active, exposes a node view,
+//      covers exactly this single node, and has exactly one replacement (a
+//      RedirectInput mirror).
 bool GraphRewriteSession::IsNodeLive(GraphNodeId node) const noexcept {
     // No rewrite entry -> untouched node, therefore live.
     // Mirror rewrite (RedirectInput) -> exposes original node identity, therefore live.
@@ -370,6 +456,12 @@ bool GraphRewriteSession::IsNodeLive(GraphNodeId node) const noexcept {
            rewrite.replacements.size() == 1;
 }
 
+// Returns live node ids in topological order, following the original graph's
+// ordering.
+//
+// Steps:
+//   1. Obtain the source graph's topological order.
+//   2. Filter it with IsNodeLive, preserving the source ordering.
 StatusOr<std::vector<GraphNodeId>> GraphRewriteSession::GetTopologicalOrder() const {
     // Filter the source graph's topological order to include only live nodes.
     // The session does not introduce new edges, so the source ordering is still valid.
@@ -386,6 +478,12 @@ StatusOr<std::vector<GraphNodeId>> GraphRewriteSession::GetTopologicalOrder() co
     return live;
 }
 
+// Returns live node ids whose op_type matches `op_type`, in ascending
+// node-index order.
+//
+// Steps:
+//   1. Query the source graph for nodes with matching op_types.
+//   2. Filter the result with IsNodeLive.
 std::vector<GraphNodeId> GraphRewriteSession::FindNodesByOpType(OpType op_type) const {
     const std::vector<GraphNodeId> candidates = graph_.FindNodesByOpType(op_type);
     std::vector<GraphNodeId> live;
@@ -398,6 +496,15 @@ std::vector<GraphNodeId> GraphRewriteSession::FindNodesByOpType(OpType op_type) 
     return live;
 }
 
+// Returns true if `value` is structurally present in the current session view.
+//
+// Steps:
+//   1. Session constants are live.
+//   2. Out-of-range ids are not live.
+//   3. Source values without a producer (external values) are live.
+//   4. Values produced by a live node are live.
+//   5. Otherwise: live only when an active rewrite takes over the value via a
+//      replacement output's `replaces` binding.
 bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
     if (IsSessionConstant(value)) {
         return true;
@@ -421,6 +528,12 @@ bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
     return IsValueReplacedByActiveRewrite(value);
 }
 
+// Returns the spec-bearing descriptor for an existing graph value.
+//
+// Steps:
+//   1. Reject virtual and out-of-range ids.
+//   2. Build the descriptor from the session constant's metadata for session
+//      constants, otherwise from the source graph value.
 StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputMetadata(GraphValueId value) const {
     AM_RETURN_IF_ERROR(CheckNonVirtualValueId(value));
     if (IsSessionConstant(value)) {
@@ -429,6 +542,12 @@ StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputMetadata(GraphValueI
     return MakeOutputDescFromValue(graph_.GetValue(value));
 }
 
+// Returns true when `value` is directly marked as a graph output in the
+// source graph.
+//
+// Steps:
+//   1. Reject out-of-range ids.
+//   2. Linearly scan the source graph's output list for `value`.
 bool GraphRewriteSession::IsGraphOutput(GraphValueId value) const noexcept {
     if (value.index >= graph_.GetValues().size()) {
         return false;
@@ -439,6 +558,11 @@ bool GraphRewriteSession::IsGraphOutput(GraphValueId value) const noexcept {
     });
 }
 
+// True when any active rewrite's replacement output takes over this value.
+//
+// Steps:
+//   1. Iterate over active rewrites and their replacement node outputs.
+//   2. Return true when an output's `replaces` binding equals `value`.
 bool GraphRewriteSession::IsValueReplacedByActiveRewrite(GraphValueId value) const noexcept {
     for (const RewriteEntry& rewrite: rewrites_) {
         if (!rewrite.active) {
@@ -456,6 +580,11 @@ bool GraphRewriteSession::IsValueReplacedByActiveRewrite(GraphValueId value) con
     return false;
 }
 
+// Returns all live value ids in ascending index order.
+//
+// Steps:
+//   1. Iterate source graph values, appending ids that satisfy IsValueLive.
+//   2. Iterate session-local values, appending ids that satisfy IsValueLive.
 std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
     const std::span<const GraphValue> values = graph_.GetValues();
     std::vector<GraphValueId> live;
@@ -474,6 +603,14 @@ std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
     return live;
 }
 
+// Returns live original graph nodes that consume `value` (after resolution)
+// as an input, in topological order.
+//
+// Steps:
+//   1. Reject virtual values and unknown ids.
+//   2. Resolve `value` through any ReplaceValue chain.
+//   3. Return the cached consumer bucket for the resolved id (built by
+//      EnsureConsumerCache).
 std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) const {
     if (value.index >= graph_.GetValues().size() && !IsSessionLocalValue(value)) {
         return {};
@@ -491,6 +628,14 @@ std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) 
     return cache.original_consumers[resolved_value.index];
 }
 
+// Returns true if any live node or active replacement node consumes `value`
+// (after resolution) as an input.
+//
+// Steps:
+//   1. Reject virtual values and unknown ids.
+//   2. Resolve `value` through any ReplaceValue chain.
+//   3. Consult the consumer cache: true when the resolved value has any live
+//      original consumer or a positive replacement consumer count.
 bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
     if (value.index >= graph_.GetValues().size() && !IsSessionLocalValue(value)) {
         return false;
@@ -509,6 +654,16 @@ bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
            cache.replacement_consumer_counts[resolved_value.index] > 0;
 }
 
+// Builds or returns the consumer index for the current mutation generation.
+//
+// Steps:
+//   1. Return the cached index when its generation matches
+//      mutation_generation_.
+//   2. Otherwise rebuild: live nodes in topological order (inputs resolved via
+//      GetResolvedValue, mirror inputs for RedirectInput'd nodes) populate
+//      original_consumers.
+//   3. Count active non-mirror replacement inputs into
+//      replacement_consumer_counts.
 const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCache() const {
     if (consumer_cache_.has_value() && consumer_cache_->generation == mutation_generation_) {
         return *consumer_cache_;
@@ -567,6 +722,14 @@ const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCac
     return *consumer_cache_;
 }
 
+// Validates the session's internal consistency without materializing.
+//
+// Steps:
+//   1. Validate every installed ReplaceValue target as non-virtual.
+//   2. For each active rewrite, run ValidateReplacementNode and
+//      ValidateReplacementTargets.
+//   3. Run ValidateVirtualValues.
+//   4. Replay ValidateReplacementSemantics per active rewrite.
 Status GraphRewriteSession::ValidateEdits() const {
     for (const auto& replacement: value_replacements_) {
         if (replacement.has_value()) {
@@ -577,10 +740,6 @@ Status GraphRewriteSession::ValidateEdits() const {
     for (const auto& rewrite: rewrites_) {
         if (!rewrite.active) {
             continue;
-        }
-
-        for (auto old_node: rewrite.old_nodes) {
-            AM_RETURN_IF_ERROR(CheckSourceNodeId(old_node));
         }
 
         for (const auto& replacement: rewrite.replacements) {
@@ -613,6 +772,13 @@ GraphValueDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValue
                           .name = constant.name};
 }
 
+// Translates a value id from source/session space to committed graph space.
+//
+// Steps:
+//   1. Source values: map through source_values.
+//   2. Session constants: map through session_constants.
+//   3. Virtual values: map through virtual_values.
+//   4. Unmapped or out-of-range ids yield InvalidArgument.
 StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
         GraphValueId value,
         const CommitValueMaps& maps) const {
@@ -642,6 +808,14 @@ StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
     return *maps.virtual_values[session_index];
 }
 
+// Copies source external values and session constants into the committed
+// graph.
+//
+// Steps:
+//   1. Add each producer-less source value as input, weight, constant, or
+//      state per its payload (monostate/unsupported payloads error).
+//   2. Apply quantization to each added value.
+//   3. Add every session constant via committed.AddConstant.
 Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
                                                CommitValueMaps& maps) const {
     const std::span<const GraphValue> values = graph_.GetValues();
@@ -695,6 +869,14 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
     return Status::Ok();
 }
 
+// Emits all replacement nodes in a rewrite entry into the committed graph.
+//
+// Steps (per replacement node):
+//   1. Resolve and map its inputs into the committed value space.
+//   2. Add the node to the committed graph.
+//   3. Map each output's `replaces` target into the appropriate value map
+//      (virtual or source); session-constant targets and double mappings are
+//      rejected.
 Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
                                         ModelGraph& committed,
                                         CommitValueMaps& maps) const {
@@ -753,6 +935,14 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
     return Status::Ok();
 }
 
+// Emits a single surviving original node into the committed graph.
+//
+// Steps:
+//   1. Snapshot the node via GetNodeView.
+//   2. Resolve and map its inputs into the committed value space.
+//   3. Add the node to the committed graph.
+//   4. Map each original output value into source_values, rejecting
+//      already-mapped outputs.
 Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
                                              ModelGraph& committed,
                                              CommitValueMaps& maps) const {
@@ -803,6 +993,13 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
     return Status::Ok();
 }
 
+// Maps graph output values through resolution into the committed graph.
+//
+// Steps:
+//   1. For each source graph output, resolve it through any ReplaceValue
+//      chain.
+//   2. Map it into the committed value space and mark it via
+//      committed.MarkOutput.
 Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed,
                                                  const CommitValueMaps& maps) const {
     // Graph outputs are resolved through ReplaceValue chains before mapping
@@ -816,6 +1013,15 @@ Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed,
     return Status::Ok();
 }
 
+// Materializes the session state into a new ModelGraph.
+//
+// Steps:
+//   1. Validate the session with ValidateEdits().
+//   2. Copy external values and session constants (CopyExternalValues).
+//   3. Traverse the source graph in topological order, emitting each rewrite
+//      at its first old_node and emitting surviving original nodes.
+//   4. Mark the committed graph outputs (MarkCommittedOutputs) and validate
+//      the result.
 StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
     AM_RETURN_IF_ERROR(ValidateEdits());
 
@@ -865,6 +1071,11 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
     return committed;
 }
 
+// Returns Ok when `node` is a valid source graph node id.
+//
+// Steps:
+//   1. Compare the id against the source graph node count.
+//   2. Out-of-range ids yield InvalidArgument.
 Status GraphRewriteSession::CheckSourceNodeId(GraphNodeId node) const {
     if (node.index >= graph_.GetNodes().size()) {
         return Status::InvalidArgument("GraphRewriteSession: source node id out of range");
@@ -872,6 +1083,13 @@ Status GraphRewriteSession::CheckSourceNodeId(GraphNodeId node) const {
     return Status::Ok();
 }
 
+// Rejects value ids that are not addressable source/session values.
+//
+// Steps:
+//   1. Classify the value id.
+//   2. kSource and kSessionConstant ids pass.
+//   3. kSessionVirtual ids fail with a virtual-value diagnostic; anything
+//      unbounded fails with an out-of-range diagnostic.
 Status GraphRewriteSession::CheckNonVirtualValueId(GraphValueId value) const {
     const ValueKind kind = ClassifyValue(value);
     if (kind == ValueKind::kSource || kind == ValueKind::kSessionConstant) {
@@ -885,6 +1103,13 @@ Status GraphRewriteSession::CheckNonVirtualValueId(GraphValueId value) const {
     return Status::InvalidArgument("GraphRewriteSession: value id out of range");
 }
 
+// Requires the value id to name a value from the source graph.
+//
+// Steps:
+//   1. Classify the value id.
+//   2. kSource ids pass.
+//   3. kSessionConstant and kSessionVirtual ids fail with a kind-specific
+//      diagnostic; unbounded ids fail with out-of-range.
 Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
     const ValueKind kind = ClassifyValue(value);
     if (kind == ValueKind::kSource) {
@@ -903,6 +1128,12 @@ Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
     return Status::InvalidArgument("GraphRewriteSession: value id out of range");
 }
 
+// Returns Ok for any value id the session knows (source, session constant,
+// or session virtual).
+//
+// Steps:
+//   1. Classify the value id.
+//   2. Any kind other than kInvalid passes; kInvalid yields out-of-range.
 Status GraphRewriteSession::CheckKnownValueId(GraphValueId value) const {
     if (ClassifyValue(value) != ValueKind::kInvalid) {
         return Status::Ok();
@@ -910,6 +1141,13 @@ Status GraphRewriteSession::CheckKnownValueId(GraphValueId value) const {
     return Status::InvalidArgument("GraphRewriteSession: value id out of range");
 }
 
+// Classifies a value id into the session's value-kind space.
+//
+// Steps:
+//   1. Ids below the source graph value range are kSource.
+//   2. Ids in the session-local range are kSessionConstant when
+//      session_value_metadata_ holds a constant, otherwise kSessionVirtual.
+//   3. Ids beyond the session-local range are kInvalid (never allocated).
 GraphRewriteSession::ValueKind GraphRewriteSession::ClassifyValue(
         GraphValueId value) const noexcept {
     if (value.index < graph_.GetValues().size()) {
@@ -939,6 +1177,13 @@ bool GraphRewriteSession::IsSessionVirtualValue(GraphValueId value) const noexce
     return ClassifyValue(value) == ValueKind::kSessionVirtual;
 }
 
+// Returns true if `value` resolves to a compile-time constant.
+//
+// Steps:
+//   1. Resolve the value through any ReplaceValue chain to its terminal.
+//   2. Return true for session constants and for source values carrying a
+//      ConstantValue or WeightValue payload; virtual and out-of-range values
+//      return false.
 bool GraphRewriteSession::IsConstant(GraphValueId value) const {
     const GraphValueId resolved = GetResolvedValue(value);
 
@@ -957,6 +1202,12 @@ bool GraphRewriteSession::IsConstant(GraphValueId value) const {
     return false;
 }
 
+// Returns true if all resolved inputs of `node` are compile-time constants.
+//
+// Steps:
+//   1. Snapshot the node via GetNodeView; a non-live node fails the status
+//      check and yields false.
+//   2. Apply IsConstant to every resolved input; no inputs is vacuously true.
 bool GraphRewriteSession::AreAllInputsConstant(GraphNodeId node) const {
     const auto view = GetNodeView(node);
     if (!view.ok()) {
@@ -968,7 +1219,14 @@ bool GraphRewriteSession::AreAllInputsConstant(GraphNodeId node) const {
     });
 }
 
-Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& replacement) const {
+// Validates that every reference inside a replacement node points to a
+// known value id.
+//
+// Steps:
+//   1. Check each replacement input via CheckKnownValueId.
+//   2. Check each `replaces` binding (when present) via CheckKnownValueId.
+Status GraphRewriteSession::ValidateReplacementNode(
+        const ReplacementNode& replacement) const {
     for (auto input: replacement.inputs) {
         AM_RETURN_IF_ERROR(CheckKnownValueId(input));
     }
@@ -981,6 +1239,14 @@ Status GraphRewriteSession::ValidateReplacementNode(const ReplacementNode& repla
     return Status::Ok();
 }
 
+// Validates that replacement targets belong to old_nodes and are not
+// duplicated.
+//
+// Steps:
+//   1. Collect the outputs of every old_node.
+//   2. For each replacement output's `replaces` target (virtual targets
+//      excluded), reject targets not produced by the old_nodes or produced
+//      more than once.
 Status GraphRewriteSession::ValidateReplacementTargets(
         std::span<const GraphNodeId> old_nodes,
         const std::vector<ReplacementNode>& replacement_nodes) const {
@@ -993,8 +1259,8 @@ Status GraphRewriteSession::ValidateReplacementTargets(
     }
 
     std::vector<GraphValueId> real_replacements;
-    for (const ReplacementNode& replacement: replacement_nodes) {
-        for (const RewriteOutputBinding& output: replacement.outputs) {
+    for (const auto& replacement: replacement_nodes) {
+        for (const auto& output: replacement.outputs) {
             if (!output.replaces.has_value() || IsSessionVirtualValue(*output.replaces)) {
                 continue;
             }
@@ -1017,6 +1283,13 @@ Status GraphRewriteSession::ValidateReplacementTargets(
     return Status::Ok();
 }
 
+// Validates virtual value ordering (no consumption before production).
+//
+// Steps:
+//   1. Track virtual values produced by any active rewrite (global set);
+//      reject duplicate production of the same virtual value.
+//   2. Per rewrite, track virtual values available so far; reject virtual
+//      inputs consumed before being produced within the group.
 Status GraphRewriteSession::ValidateVirtualValues() const {
     // Two-level tracking: globally_produced prevents duplicate production of
     // any virtual value across all rewrites. locally_available (per rewrite)
@@ -1058,6 +1331,13 @@ Status GraphRewriteSession::ValidateVirtualValues() const {
     return Status::Ok();
 }
 
+// Resolves the TensorSpec of a value id known to the session.
+//
+// Steps:
+//   1. Source values: return the spec stored in graph_.
+//   2. Session constants: return the spec stored in session_value_metadata_.
+//   3. Virtual values: return the inferred spec in virtual_specs
+//      (caller-provided scratch map), or NotFound when absent.
 StatusOr<TensorSpec> GraphRewriteSession::ResolveValueSpec(
         GraphValueId value,
         const std::vector<std::optional<TensorSpec>>& virtual_specs) const {
@@ -1091,27 +1371,35 @@ StatusOr<TensorSpec> GraphRewriteSession::ResolveValueSpec(
     return *virtual_specs[idx];
 }
 
+// Replays InferOperator over replacement nodes in order, verifying input
+// availability, output count, replaces target dtype compatibility, and
+// deriving virtual specs into virtual_specs_out.
+//
+// Steps (per replacement):
+//   1. Look up the operator schema.
+//   2. Check input count against the schema.
+//   3. Check output count against the schema.
+//   4. Resolve input specs (through ReplaceValue chains).
+//   5. Replay InferOperator to derive output specs.
+//   6. Check that the inferred output count matches the binding count.
+//   7. Per output binding: populate the virtual spec scratch map or verify
+//      dtype compatibility with the replaced target.
 Status GraphRewriteSession::ValidateReplacementSemantics(
         const std::vector<ReplacementNode>& replacements,
         std::vector<std::optional<TensorSpec>>& virtual_specs_out) const {
-    // Replay InferOperator over replacement nodes in submission order,
-    // deriving virtual specs into virtual_specs_out and verifying that each
-    // output binding's replaces target has a compatible dtype.
     for (std::size_t i = 0; i < replacements.size(); ++i) {
-        const ReplacementNode& replacement = replacements[i];
+        const auto& replacement = replacements[i];
         const std::string debug_ctx =
                 "replacement[" + std::to_string(i) + "]" +
-                (replacement.name.empty() ? "" : (" '" + replacement.name + "'"));
+                (replacement.name.empty() ? "" : " '" + replacement.name + "'");
 
         // 1. Schema lookup: confirms op_type is registered and gives us the
-        //    expected input/output port counts.
+        //    expected input/output port counts. Parameter (variant) validation
+        //    happens later inside the InferOperator replay.
         AM_ASSIGN_OR_RETURN(const OperatorSchema schema,
                             GetOperatorSchema(replacement.op_type));
 
-        // 2. Parameter validation is deferred to the InferOperator replay in
-        //    step 6, after the replacement input specs have been resolved.
-
-        // 3. Input count must match schema.
+        // 2. Input count must match schema.
         if (replacement.inputs.size() != schema.input_ports.size()) {
             return Status::InvalidArgument(
                     "GraphRewriteSession: " + debug_ctx + " input count " +
@@ -1120,7 +1408,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
                     std::to_string(schema.input_ports.size()));
         }
 
-        // 4. Output count must match schema.
+        // 3. Output count must match schema.
         if (replacement.outputs.size() != schema.output_ports.size()) {
             return Status::InvalidArgument(
                     "GraphRewriteSession: " + debug_ctx + " output count " +
@@ -1129,7 +1417,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
                     std::to_string(schema.output_ports.size()));
         }
 
-        // 5. Resolve input specs. Virtual inputs must already be in the scratch
+        // 4. Resolve input specs. Virtual inputs must already be in the scratch
         //    map (i.e. produced by an earlier replacement within this replay).
         //    ReplaceValue chains are resolved first so that aliased values map
         //    to the terminal spec.
@@ -1137,21 +1425,20 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
         input_specs.reserve(replacement.inputs.size());
         for (std::size_t j = 0; j < replacement.inputs.size(); ++j) {
             const GraphValueId resolved = GetResolvedValue(replacement.inputs[j]);
-            AM_ASSIGN_OR_RETURN(
-                    TensorSpec spec,
-                    ResolveValueSpec(resolved, virtual_specs_out));
+            AM_ASSIGN_OR_RETURN(TensorSpec spec,
+                                ResolveValueSpec(resolved, virtual_specs_out));
             input_specs.push_back(std::move(spec));
         }
 
-        // 6. Replay InferOperator to derive inferred output specs and
-        //    runtime shape constraints. Failures here indicate incompatible
-        //    input dtypes/shapes for this operator.
+        // 5. Replay InferOperator to derive the inferred output specs.
+        //    Failures here indicate incompatible input dtypes/shapes for this
+        //    operator.
         AM_ASSIGN_OR_RETURN(InferenceResult inferred,
                             InferOperator(replacement.op_type,
                                           replacement.op_params,
                                           input_specs));
 
-        // 7. InferOperator must produce exactly one output spec per binding.
+        // 6. InferOperator must produce exactly one output spec per binding.
         if (inferred.outputs.size() != replacement.outputs.size()) {
             return Status::InvalidArgument(
                     "GraphRewriteSession: " + debug_ctx + " inferred " +
@@ -1160,7 +1447,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
                     std::to_string(replacement.outputs.size()));
         }
 
-        // 8. For each output binding, either populate the scratch map (virtual
+        // 7. For each output binding, either populate the scratch map (virtual
         //    target) or verify dtype compatibility (source/session constant
         //    target). Shape compatibility is deferred to committed.Validate().
         for (std::size_t j = 0; j < replacement.outputs.size(); ++j) {
@@ -1181,6 +1468,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
                             std::to_string(j) + " replaces out-of-range virtual value " +
                             std::to_string(replaced.index));
                 }
+
                 if (virtual_specs_out[vidx].has_value()) {
                     return Status::InvalidArgument(
                             "GraphRewriteSession: " + debug_ctx + " output " +
@@ -1219,6 +1507,14 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
     return Status::Ok();
 }
 
+// Marks a rewrite as inactive; clears node_to_rewrite_ entries.
+//
+// Steps:
+//   1. No-op (idempotent) when the rewrite is already inactive or out of
+//      range.
+//   2. Set active = false.
+//   3. Reset the node_to_rewrite_ entry of each old_node that still points at
+//      this rewrite.
 void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
     // Idempotent: no-op if the rewrite is already inactive or out of range.
     if (rewrite_index >= rewrites_.size() || !rewrites_[rewrite_index].active) {
@@ -1234,6 +1530,11 @@ void GraphRewriteSession::DeactivateRewrite(std::size_t rewrite_index) {
     }
 }
 
+// Marks the consumer index stale after any structural mutation.
+//
+// Steps:
+//   1. Bump mutation_generation_.
+//   2. Drop the cached consumer index so the next touch rebuilds it.
 void GraphRewriteSession::InvalidateConsumerCache() noexcept {
     ++mutation_generation_;
     consumer_cache_.reset();
@@ -1247,22 +1548,24 @@ StatusOr<GraphValueId> SubgraphBuilder::Emit(OpType op_type,
                                              std::string debug_name) {
     std::vector<NodeOutputDesc> output_descs;
     output_descs.push_back(std::move(output_desc));
-    AM_ASSIGN_OR_RETURN(std::vector<GraphValueId> outputs, Emit(op_type,
-                                                                std::move(inputs),
-                                                                std::move(output_descs),
-                                                                std::move(op_params),
-                                                                decoder_layer_index,
-                                                                std::move(debug_name)));
+    AM_ASSIGN_OR_RETURN(std::vector<GraphValueId> outputs,
+                        Emit(op_type,
+                             std::move(inputs),
+                             std::move(output_descs),
+                             std::move(op_params),
+                             decoder_layer_index,
+                             std::move(debug_name)));
     AM_CHECK(outputs.size() == 1, "SubgraphBuilder::Emit single-output wrapper expected one output");
     return outputs[0];
 }
 
-StatusOr<std::vector<GraphValueId>> SubgraphBuilder::Emit(OpType op_type,
-                                                          std::vector<GraphValueId> inputs,
-                                                          std::vector<NodeOutputDesc> output_descs,
-                                                          OpParams op_params,
-                                                          std::optional<uint32_t> decoder_layer_index,
-                                                          std::string debug_name) {
+StatusOr<std::vector<GraphValueId>> SubgraphBuilder::Emit(
+        OpType op_type,
+        std::vector<GraphValueId> inputs,
+        std::vector<NodeOutputDesc> output_descs,
+        OpParams op_params,
+        std::optional<uint32_t> decoder_layer_index,
+        std::string debug_name) {
     // Each output descriptor gets a freshly allocated virtual value; these
     // virtual values are bound via RewriteOutputBinding::replaces and can
     // be consumed by subsequent Emit calls or redirected by Yield.

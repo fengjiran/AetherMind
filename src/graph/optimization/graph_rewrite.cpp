@@ -1004,9 +1004,9 @@ Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed,
                                                  const CommitValueMaps& maps) const {
     // Graph outputs are resolved through ReplaceValue chains before mapping
     // into the committed graph's value space.
-    for (const auto& output: graph_.GetOutputs()) {
-        const GraphValueId resolved_output = GetResolvedValue(output.value);
-        StatusOr<GraphValueId> mapped_output = MapCommittedValue(resolved_output, maps);
+    for (const auto& [value]: graph_.GetOutputs()) {
+        const auto resolved_output = GetResolvedValue(value);
+        auto mapped_output = MapCommittedValue(resolved_output, maps);
         AM_RETURN_IF_ERROR(mapped_output.status());
         committed.MarkOutput(*mapped_output);
     }
@@ -1078,7 +1078,8 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 //   2. Out-of-range ids yield InvalidArgument.
 Status GraphRewriteSession::CheckSourceNodeId(GraphNodeId node) const {
     if (node.index >= graph_.GetNodes().size()) {
-        return Status::InvalidArgument("GraphRewriteSession: source node id out of range");
+        return Status::InvalidArgument(
+                "GraphRewriteSession: source node id out of range");
     }
     return Status::Ok();
 }
@@ -1251,21 +1252,21 @@ Status GraphRewriteSession::ValidateReplacementTargets(
         std::span<const GraphNodeId> old_nodes,
         const std::vector<ReplacementNode>& replacement_nodes) const {
     std::vector<GraphValueId> replaceable_outputs;
-    for (GraphNodeId old_node: old_nodes) {
+    for (const auto old_node: old_nodes) {
         AM_RETURN_IF_ERROR(CheckSourceNodeId(old_node));
-        const GraphNode& node = graph_.GetNode(old_node);
+        const auto& node = graph_.GetNode(old_node);
         replaceable_outputs.insert(replaceable_outputs.end(),
                                    node.outputs.begin(), node.outputs.end());
     }
 
     std::vector<GraphValueId> real_replacements;
     for (const auto& replacement: replacement_nodes) {
-        for (const auto& output: replacement.outputs) {
-            if (!output.replaces.has_value() || IsSessionVirtualValue(*output.replaces)) {
+        for (const auto& [_, replaces]: replacement.outputs) {
+            if (!replaces.has_value() || IsSessionVirtualValue(*replaces)) {
                 continue;
             }
 
-            const GraphValueId replaced = *output.replaces;
+            const GraphValueId replaced = *replaces;
             if (std::ranges::find(replaceable_outputs, replaced) == replaceable_outputs.end()) {
                 return Status::InvalidArgument(
                         "GraphRewriteSession: replacement output target is "

@@ -183,6 +183,41 @@ TEST(GraphRewriteSession, RejectsInvalidRedirectInput) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
+TEST(GraphRewriteSession, RedirectInputRejectsDtypeMismatch) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    // Node 0 input 0 is Int32 tokens_a; value 2 is the Float32 embedding
+    // weight. A dtype-changing redirect must fail at the call site instead of
+    // deferring to the InferOperator replay during ValidateEdits/Commit.
+    const Status status = session.RedirectInput(
+            GraphNodeId{.index = 0}, 0, GraphValueId{.index = 2});
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("dtype mismatch"), std::string::npos);
+    EXPECT_NE(status.message().find("input 0"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, RedirectInputRejectsDtypeMismatchForSessionConstant) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    auto inline_data = std::make_shared<const std::vector<std::byte>>(
+            std::vector<std::byte>{std::byte{0x03}});
+    const GraphValueId constant = session.AddSessionConstant(
+            Spec(DataType::Float32(), {1}),
+            ConstantBinding{.inline_data = std::move(inline_data), .name = "folded.scalar"},
+            QuantizationSpec{},
+            "folded");
+
+    const Status status = session.RedirectInput(
+            GraphNodeId{.index = 0}, 0, constant);
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("dtype mismatch"), std::string::npos);
+}
+
 TEST(GraphRewriteSession, ReplaceSubgraphWithSingleReplacement) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     // Graph layout:

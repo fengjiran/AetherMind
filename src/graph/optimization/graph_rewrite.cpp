@@ -246,6 +246,30 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
                 "GraphRewriteSession::RedirectInput input index out of range");
     }
 
+    // The redirected value must keep the slot's dtype: the node's op is fixed,
+    // so a dtype-changing redirect would only fail later in the InferOperator
+    // replay during ValidateEdits/Commit. Reject it here with exact slot
+    // context. Shape compatibility is deliberately deferred to
+    // committed.Validate().
+    const GraphValueId old_value = graph_.GetNode(node).inputs[input_index];
+    const TensorSpec old_spec = graph_.GetValue(old_value).spec;
+    const StatusOr<TensorSpec> new_spec_or = ResolveValueSpec(GetResolvedValue(new_value), {});
+    if (!new_spec_or.ok()) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession::RedirectInput new value " +
+                std::to_string(new_value.index) +
+                " resolves to a session virtual value, which cannot feed a node input");
+    }
+
+    if (new_spec_or->dtype != old_spec.dtype) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession::RedirectInput input dtype mismatch: node '" +
+                graph_.GetNode(node).name + "' input " + std::to_string(input_index) +
+                " expects " + ToString(old_spec.dtype) + " but new value " +
+                std::to_string(new_value.index) + " is " +
+                ToString(new_spec_or->dtype));
+    }
+
     // IsNodeLive returns true both for untouched nodes and for nodes with a
     // live single-node mirror rewrite. Only the latter can be mutated in place,
     // so guard with has_value() to exclude the untouched-node case.

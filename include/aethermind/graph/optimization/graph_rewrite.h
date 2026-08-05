@@ -208,7 +208,9 @@ public:
     ///
     /// The old_value must be a source graph value. The new_value may be a source
     /// value or a session constant. Virtual values are not permitted.
-    /// Detects and rejects replacement cycles.
+    /// Detects and rejects replacement cycles. The installation itself does not
+    /// compare specs; ValidateEdits/Commit reject replacements whose resolved
+    /// terminal changes the replaced value's dtype or shape identity.
     /// @param old_value Source graph value whose consumers are redirected.
     /// @param new_value Resolution target; source value or session constant.
     /// @return Status::Ok() on success, or the first error encountered.
@@ -375,7 +377,8 @@ public:
 
     /// @brief Validates the session's internal consistency without materializing.
     ///
-    /// Checks: replacement targets are valid, old_node ids are in range,
+    /// Checks: replacement targets are valid, value replacements preserve the
+    /// replaced value's dtype and shape identity, old_node ids are in range,
     /// replacement node inputs/outputs are valid, virtual values satisfy
     /// ordering constraints within and across rewrites, and every active
     /// rewrite's replacement inputs are available at its commit emission point

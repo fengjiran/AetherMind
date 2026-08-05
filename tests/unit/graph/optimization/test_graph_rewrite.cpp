@@ -249,6 +249,201 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithSingleReplacement) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
+TEST(GraphRewriteSession, ReplaceSubgraphRejectsOutputShapeMismatch) {
+    // Build an Embedding fed by weight_a (hidden dim 4). A replacement fed by
+    // weight_b (hidden dim 8) infers an output shape incompatible with the
+    // replaced value's, which must be rejected at Apply time instead of
+    // silently changing the value's shape (and consumer semantics).
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
+    const GraphValueId weight_a = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed_a.weight");
+    const GraphValueId weight_b = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 8}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed_b.weight");
+    auto node_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight_a},
+            {NodeOutputDesc{.payload = ActivationValue{},
+                            .name = "hidden"}},
+            EmbeddingParams{});
+    ASSERT_TRUE(node_or.ok()) << node_or.status().ToString();
+    const AddedNode& node = *node_or;
+    graph.MarkOutput(node.outputs[0]);
+
+    GraphRewriteSession session(graph);
+    ReplacementNode replacement{
+            .op_type = OpType::kEmbedding,
+            .inputs = {tokens, weight_b},
+            .outputs = {RewriteOutputBinding{
+                    .desc = NodeOutputDesc{.payload = ActivationValue{},
+                                           .name = "hidden"},
+                    .replaces = node.outputs[0]}},
+            .op_params = EmbeddingParams{},
+            .name = "shape-mismatched-replacement",
+    };
+    constexpr std::array old_nodes{GraphNodeId{.index = 0}};
+
+    const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("shape"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, RedirectInputRejectsOutputShapeChangeAtCommit) {
+    // RedirectInput checks dtype at the call site, but the inferred output
+    // shape of the mirror replacement (Embedding fed by weight_b with hidden
+    // dim 8) conflicts with the produced value's original shape (hidden dim
+    // 4). Commit/ValidateEdits must reject it.
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
+    const GraphValueId weight_a = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed_a.weight");
+    const GraphValueId weight_b = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 8}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed_b.weight");
+    auto node_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight_a},
+            {NodeOutputDesc{.name = "hidden"}},
+            EmbeddingParams{});
+    ASSERT_TRUE(node_or.ok()) << node_or.status().ToString();
+    const AddedNode& node = *node_or;
+    graph.MarkOutput(node.outputs[0]);
+
+    GraphRewriteSession session(graph);
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 1, weight_b).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_FALSE(committed.ok());
+    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(committed.status().message().find("shape"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, ReplaceValueRejectsShapeMismatchAtCommit) {
+    // ReplaceValue defers spec comparison to ValidateEdits/Commit: the
+    // resolved terminal must preserve the replaced value's shape identity,
+    // otherwise graph outputs and consumers silently observe a new shape.
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
+    const GraphValueId weight_a = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed_a.weight");
+    const GraphValueId weight_b = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 8}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed_b.weight");
+    auto node_a_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight_a},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "hidden_a"}},
+            EmbeddingParams{});
+    ASSERT_TRUE(node_a_or.ok()) << node_a_or.status().ToString();
+    auto node_b_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight_b},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "hidden_b"}},
+            EmbeddingParams{});
+    ASSERT_TRUE(node_b_or.ok()) << node_b_or.status().ToString();
+    graph.MarkOutput(node_a_or->outputs[0]);
+
+    GraphRewriteSession session(graph);
+    // hidden_a is [1,4], hidden_b is [1,8]: same dtype, different shape.
+    ASSERT_TRUE(session.ReplaceValue(node_a_or->outputs[0], node_b_or->outputs[0]).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_FALSE(committed.ok());
+    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(committed.status().message().find("shape"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, ReplaceValueRejectsDtypeMismatchAtValidateEdits) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed.weight");
+    auto node_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "hidden"}},
+            EmbeddingParams{});
+    ASSERT_TRUE(node_or.ok()) << node_or.status().ToString();
+    graph.MarkOutput(node_or->outputs[0]);
+
+    GraphRewriteSession session(graph);
+    // hidden is Float32, tokens is Int32.
+    ASSERT_TRUE(session.ReplaceValue(node_or->outputs[0], tokens).ok());
+
+    const Status status = session.ValidateEdits();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("dtype"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, ReplaceValueCommitsWhenSpecPreserved) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
+    const GraphValueId weight_a = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed_a.weight");
+    const GraphValueId weight_b = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed_b.weight");
+    auto node_a_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight_a},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "hidden_a"}},
+            EmbeddingParams{});
+    ASSERT_TRUE(node_a_or.ok()) << node_a_or.status().ToString();
+    auto node_b_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight_b},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "hidden_b"}},
+            EmbeddingParams{});
+    ASSERT_TRUE(node_b_or.ok()) << node_b_or.status().ToString();
+    graph.MarkOutput(node_a_or->outputs[0]);
+
+    GraphRewriteSession session(graph);
+    // Both hiddens share the [1,4] Float32 spec, so the replacement is legal.
+    ASSERT_TRUE(session.ReplaceValue(node_a_or->outputs[0], node_b_or->outputs[0]).ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_EQ(committed->GetOutputs().size(), 1);
+    // The committed graph output is hidden_b (second emitted node's output).
+    EXPECT_EQ(committed->GetOutputs()[0].value,
+              committed->GetNodes()[1].outputs[0]);
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
 TEST(GraphRewriteSession, ReplaceSubgraphWithMultipleReplacements) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     // Graph layout:
@@ -944,8 +1139,10 @@ TEST(GraphRewriteSession, ValidateEditsSucceedsAfterValidMutations) {
     ASSERT_TRUE(session.RedirectInput(
                                GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
                         .ok());
+    // v0 and v1 share the Int32[1] spec, so the replacement preserves the
+    // replaced value's dtype and shape identity.
     ASSERT_TRUE(session.ReplaceValue(
-                               GraphValueId{.index = 0}, GraphValueId{.index = 2})
+                               GraphValueId{.index = 0}, GraphValueId{.index = 1})
                         .ok());
 
     EXPECT_TRUE(session.ValidateEdits().ok());
@@ -1312,8 +1509,10 @@ TEST(GraphRewriteSession, AddSessionConstantSupportsValueQueries) {
 TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
+    // The constant must match v4's (hidden_b) spec: ValidateEdits rejects
+    // replacements that change the replaced value's dtype or shape identity.
     const GraphValueId constant = session.AddSessionConstant(
-            Spec(DataType::Float32(), {1, 1, 4}),
+            Spec(DataType::Float32(), {1, 4}),
             ConstantBinding{.name = "folded.hidden"},
             {},
             "folded_hidden");

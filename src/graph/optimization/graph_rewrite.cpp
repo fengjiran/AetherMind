@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <sstream>
 #include <utility>
 #include <variant>
 
@@ -249,8 +250,10 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
     // The redirected value must keep the slot's dtype: the node's op is fixed,
     // so a dtype-changing redirect would only fail later in the InferOperator
     // replay during ValidateEdits/Commit. Reject it here with exact slot
-    // context. Shape compatibility is deliberately deferred to
-    // committed.Validate().
+    // context. Shape compatibility of the redirected node's outputs is
+    // enforced by the ValidateReplacementSemantics replay (SymbolicShape::
+    // Unify against the produced value's original spec) during
+    // ValidateEdits/Commit.
     const GraphValueId old_value = graph_.GetNode(node).inputs[input_index];
     const TensorSpec old_spec = graph_.GetValue(old_value).spec;
     const StatusOr<TensorSpec> new_spec_or = ResolveValueSpec(GetResolvedValue(new_value), {});
@@ -750,15 +753,47 @@ StatusOr<const GraphRewriteSession::ConsumerCache*> GraphRewriteSession::EnsureC
 // Validates the session's internal consistency without materializing.
 //
 // Steps:
-//   1. Validate every installed ReplaceValue target as non-virtual.
+//   1. Validate every installed ReplaceValue target as non-virtual and verify
+//      that the resolved terminal preserves the replaced value's dtype and
+//      shape identity.
 //   2. For each active rewrite, run ValidateReplacementNode and
 //      ValidateReplacementTargets.
 //   3. Run ValidateVirtualValues.
 //   4. Replay ValidateReplacementSemantics per active rewrite.
 Status GraphRewriteSession::ValidateEdits() const {
-    for (const auto& replacement: value_replacements_) {
-        if (replacement.has_value()) {
-            AM_RETURN_IF_ERROR(CheckNonVirtualValueId(*replacement));
+    for (std::size_t i = 0; i < value_replacements_.size(); ++i) {
+        if (!value_replacements_[i].has_value()) {
+            continue;
+        }
+        AM_RETURN_IF_ERROR(CheckNonVirtualValueId(*value_replacements_[i]));
+
+        // Consumers and graph outputs resolve through the replacement chain,
+        // and nothing downstream re-compares against the original spec: a
+        // dtype/shape-changing ReplaceValue would otherwise silently alter
+        // consumer semantics or the model's output interface.
+        const GraphValueId old_value{.index = static_cast<uint32_t>(i)};
+        const GraphValueId resolved = GetResolvedValue(old_value);
+        const TensorSpec old_spec = graph_.GetValue(old_value).spec;
+        AM_ASSIGN_OR_RETURN(const TensorSpec new_spec,
+                            ResolveValueSpec(resolved, {}));
+
+        if (new_spec.dtype != old_spec.dtype) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession::ReplaceValue value " +
+                    std::to_string(old_value.index) + " dtype " +
+                    ToString(old_spec.dtype) + " cannot be replaced by value " +
+                    std::to_string(resolved.index) + " dtype " +
+                    ToString(new_spec.dtype));
+        }
+
+        const auto unify_or = old_spec.shape.Unify(new_spec.shape);
+        if (!unify_or.ok()) {
+            std::ostringstream msg;
+            msg << "GraphRewriteSession::ReplaceValue value " << old_value.index
+                << " shape " << old_spec.shape << " cannot be replaced by value "
+                << resolved.index << " shape " << new_spec.shape << ": "
+                << unify_or.status().message();
+            return Status::InvalidArgument(msg.str());
         }
     }
 
@@ -1457,9 +1492,9 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
         //    to the terminal spec.
         std::vector<TensorSpec> input_specs;
         input_specs.reserve(replacement.inputs.size());
-        for (std::size_t j = 0; j < replacement.inputs.size(); ++j) {
-            const GraphValueId resolved = GetResolvedValue(replacement.inputs[j]);
-            AM_ASSIGN_OR_RETURN(TensorSpec spec,
+        for (auto input: replacement.inputs) {
+            const auto resolved = GetResolvedValue(input);
+            AM_ASSIGN_OR_RETURN(auto spec,
                                 ResolveValueSpec(resolved, virtual_specs_out));
             input_specs.push_back(std::move(spec));
         }
@@ -1467,7 +1502,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
         // 5. Replay InferOperator to derive the inferred output specs.
         //    Failures here indicate incompatible input dtypes/shapes for this
         //    operator.
-        AM_ASSIGN_OR_RETURN(InferenceResult inferred,
+        AM_ASSIGN_OR_RETURN(auto inferred,
                             InferOperator(replacement.op_type,
                                           replacement.op_params,
                                           input_specs));
@@ -1482,20 +1517,26 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
         }
 
         // 7. For each output binding, either populate the scratch map (virtual
-        //    target) or verify dtype compatibility (source/session constant
-        //    target). Shape compatibility is deferred to committed.Validate().
+        //    target) or verify dtype/shape compatibility with the replaced
+        //    value (source/session constant target). Shape compatibility is
+        //    enforced here via SymbolicShape::Unify — rank and static dims
+        //    must agree while fresh symbolic dims from re-inference are
+        //    tolerated. It cannot be deferred to committed.Validate(): the
+        //    committed graph re-derives the output spec from the replacement's
+        //    inputs, so the replaced value's original shape no longer exists
+        //    there for comparison.
         for (std::size_t j = 0; j < replacement.outputs.size(); ++j) {
-            const RewriteOutputBinding& binding = replacement.outputs[j];
-            const TensorSpec& inferred_spec = inferred.outputs[j];
+            const auto& binding = replacement.outputs[j];
+            const auto& inferred_spec = inferred.outputs[j];
 
             if (!binding.replaces.has_value()) {
                 continue;
             }
 
-            const GraphValueId replaced = *binding.replaces;
+            const auto replaced = *binding.replaces;
 
             if (IsSessionVirtualValue(replaced)) {
-                const std::size_t vidx = GetSessionValueIndex(replaced);
+                const auto vidx = GetSessionValueIndex(replaced);
                 if (vidx >= virtual_specs_out.size()) {
                     return Status::InvalidArgument(
                             "GraphRewriteSession: " + debug_ctx + " output " +
@@ -1535,6 +1576,20 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
                         " is incompatible with replaces target value " +
                         std::to_string(replaced.index) + " dtype " +
                         ToString(target_spec.dtype));
+            }
+
+            // Shape compatibility: the replaced value's shape identity (rank
+            // and static dims) must be preserved, otherwise downstream
+            // consumers silently observe a different shape and the model's
+            // output interface or broadcasting semantics change.
+            if (auto unify_or = target_spec.shape.Unify(inferred_spec.shape); !unify_or.ok()) {
+                std::ostringstream msg;
+                msg << "GraphRewriteSession: " << debug_ctx << " output "
+                    << j << " inferred shape " << inferred_spec.shape
+                    << " is incompatible with replaces target value "
+                    << replaced.index << " shape " << target_spec.shape
+                    << ": " << unify_or.status().message();
+                return Status::InvalidArgument(msg.str());
             }
         }
     }

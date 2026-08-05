@@ -1774,6 +1774,15 @@ StatusOr<std::vector<GraphValueId>> SubgraphBuilder::Emit(
         OpParams op_params,
         std::optional<uint32_t> decoder_layer_index,
         std::string name) {
+    // Normalize inputs: a virtual id that has already been Yielded to a
+    // source value is replaced by that source value, so consumers emitted
+    // after the Yield still reference the value the subgraph produces.
+    for (auto& input: inputs) {
+        if (const auto it = aliases_.find(input); it != aliases_.end()) {
+            input = it->second;
+        }
+    }
+
     // Each output descriptor gets a freshly allocated virtual value; these
     // virtual values are bound via RewriteOutputBinding::replaces and can
     // be consumed by subsequent Emit calls or redirected by Yield.
@@ -1809,9 +1818,25 @@ Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_
     // later as a confusing ValidateVirtualValues or Commit failure.
     AM_RETURN_IF_ERROR(session_.CheckSourceValueId(old_value_to_replace));
 
+    // Reject re-yield: the binding was already redirected, so honoring a
+    // second Yield would silently drop the original target (and the lookup
+    // below would misreport the value as never emitted).
+    if (const auto it = aliases_.find(internal_val); it != aliases_.end()) {
+        return Status::InvalidArgument(
+                "SubgraphBuilder::Yield: internal value " +
+                std::to_string(internal_val.index) +
+                " has already been yielded to value " +
+                std::to_string(it->second.index));
+    }
+
     for (auto& node: new_nodes_) {
         for (auto& out: node.outputs) {
             if (out.replaces == internal_val) {
+                // Record the alias and redirect every pending consumer that
+                // still references the virtual id to the replacement target,
+                // so the internal edge survives the binding change.
+                aliases_.emplace(internal_val, old_value_to_replace);
+                NormalizeInputs(internal_val, old_value_to_replace);
                 out.replaces = old_value_to_replace;
                 return Status::Ok();
             }
@@ -1821,12 +1846,35 @@ Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_
             "SubgraphBuilder::Yield: internal_val was not produced by any Emit call");
 }
 
+// Redirects every pending replacement input referencing `from` to `to`.
+//
+// Steps:
+//   1. Walk all accumulated replacement nodes.
+//   2. Replace each input equal to `from` with `to`.
+void SubgraphBuilder::NormalizeInputs(GraphValueId from, GraphValueId to) noexcept {
+    for (auto& node: new_nodes_) {
+        for (auto& input: node.inputs) {
+            if (input == from) {
+                input = to;
+            }
+        }
+    }
+}
+
 Status SubgraphBuilder::Commit() {
+    // Final normalization pass (defense in depth): Emit already normalizes
+    // new inputs and Yield rewrites existing ones; this covers any input
+    // that still references a yielded virtual id.
+    for (const auto& [virtual_id, source_id]: aliases_) {
+        NormalizeInputs(virtual_id, source_id);
+    }
+
     // Submit accumulated replacement nodes; on success, clear internal state
     // so the builder can be reused for another Emit/Yield/Commit cycle.
     Status status = session_.ReplaceSubgraph(old_nodes_, new_nodes_);
     if (status.ok()) {
         new_nodes_.clear();
+        aliases_.clear();
     }
     return status;
 }

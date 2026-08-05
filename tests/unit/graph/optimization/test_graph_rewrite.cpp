@@ -2669,6 +2669,159 @@ TEST(SubgraphBuilder, EmitMultiOutputFeedsSubsequentEmit) {
     EXPECT_EQ(committed->GetOutputs()[1].value, committed_rope.outputs[1]);
 }
 
+TEST(SubgraphBuilder, YieldRedirectsConsumedVirtualValueToReplacementTarget) {
+    // The same output is both consumed by a later Emit and Yielded: Yield
+    // must redirect the pending consumer to the replacement target, so the
+    // virtual edge survives the binding change.
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    auto rope_outputs_or = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_internal"),
+                                        HiddenDesc("k_rope_internal")},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+    ASSERT_TRUE(rope_outputs_or.ok()) << rope_outputs_or.status().ToString();
+    const std::vector<GraphValueId> rope_outputs = std::move(*rope_outputs_or);
+    ASSERT_EQ(rope_outputs.size(), 2U);
+
+    // Consumer emitted before the Yield references the virtual id.
+    auto sum_or = builder.Emit(
+            OpType::kAdd,
+            {rope_outputs[0], rope_outputs[0]},
+            HiddenDesc("q_rope_summed"),
+            AddParams{});
+    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
+    const GraphValueId sum = std::move(*sum_or);
+
+    ASSERT_TRUE(builder.Yield(rope_outputs[0], rope.outputs[0]).ok());
+    ASSERT_TRUE(builder.Yield(sum, rope.outputs[1]).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    ASSERT_EQ(committed->GetNodes().size(), 4U);
+    const GraphNode& committed_rope = committed->GetNode(GraphNodeId{.index = 2});
+    const GraphNode& committed_add = committed->GetNode(GraphNodeId{.index = 3});
+    ASSERT_EQ(committed_add.inputs.size(), 2U);
+    EXPECT_EQ(committed_add.inputs[0], committed_rope.outputs[0]);
+    EXPECT_EQ(committed_add.inputs[1], committed_rope.outputs[0]);
+    // Graph output 0 (old rope.outputs[0]) is replaced by the rewritten rope
+    // output 0; graph output 1 (old rope.outputs[1]) by the summed value.
+    EXPECT_EQ(committed->GetOutputs()[0].value, committed_rope.outputs[0]);
+    EXPECT_EQ(committed->GetOutputs()[1].value, committed_add.outputs[0]);
+}
+
+TEST(SubgraphBuilder, YieldThenEmitConsumesReplacementTarget) {
+    // A consumer emitted after the Yield still references the virtual id;
+    // Emit must normalize it to the replacement target.
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    auto rope_outputs_or = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_internal"),
+                                        HiddenDesc("k_rope_internal")},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+    ASSERT_TRUE(rope_outputs_or.ok()) << rope_outputs_or.status().ToString();
+    const std::vector<GraphValueId> rope_outputs = std::move(*rope_outputs_or);
+    ASSERT_EQ(rope_outputs.size(), 2U);
+
+    // Yield first; the subsequent Emit consumes rope_outputs[0] (yielded)
+    // and rope_outputs[1] (still virtual).
+    ASSERT_TRUE(builder.Yield(rope_outputs[0], rope.outputs[0]).ok());
+    auto sum_or = builder.Emit(
+            OpType::kAdd,
+            {rope_outputs[0], rope_outputs[1]},
+            HiddenDesc("q_rope_summed"),
+            AddParams{});
+    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
+    const GraphValueId sum = std::move(*sum_or);
+    ASSERT_TRUE(builder.Yield(sum, rope.outputs[1]).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    const GraphNode& committed_rope = committed->GetNode(GraphNodeId{.index = 2});
+    const GraphNode& committed_add = committed->GetNode(GraphNodeId{.index = 3});
+    ASSERT_EQ(committed_add.inputs.size(), 2U);
+    EXPECT_EQ(committed_add.inputs[0], committed_rope.outputs[0]);
+    EXPECT_EQ(committed_add.inputs[1], committed_rope.outputs[1]);
+}
+
+TEST(SubgraphBuilder, YieldSameVirtualValueTwiceRejected) {
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    auto outputs_or = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_a"), HiddenDesc("k_rope_a")},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+    ASSERT_TRUE(outputs_or.ok()) << outputs_or.status().ToString();
+    const std::vector<GraphValueId> outputs = std::move(*outputs_or);
+    ASSERT_EQ(outputs.size(), 2U);
+
+    ASSERT_TRUE(builder.Yield(outputs[0], rope.outputs[0]).ok());
+    // Second Yield of the same internal value must be rejected even though
+    // the target is a valid source value.
+    const Status second = builder.Yield(outputs[0], rope.outputs[1]);
+    EXPECT_FALSE(second.ok());
+    EXPECT_EQ(second.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(SubgraphBuilder, YieldAliasClearedAfterCommit) {
+    // The builder is reusable after Commit: a stale virtual id from the
+    // previous cycle must be reported as unknown, not as a duplicate yield.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    GraphValueId first_cycle_output{};
+    {
+        SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+        auto out_or = builder.Emit(
+                OpType::kEmbedding,
+                {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+                HiddenDesc("first_cycle_output"),
+                EmbeddingParams{});
+        ASSERT_TRUE(out_or.ok()) << out_or.status().ToString();
+        first_cycle_output = *out_or;
+        ASSERT_TRUE(builder.Yield(first_cycle_output, GraphValueId{.index = 3}).ok());
+        ASSERT_TRUE(builder.Commit().ok());
+    }
+
+    SubgraphBuilder builder2(session, {GraphNodeId{.index = 1}});
+    auto out2_or = builder2.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("second_cycle_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(out2_or.ok()) << out2_or.status().ToString();
+
+    const Status stale = builder2.Yield(first_cycle_output, GraphValueId{.index = 4});
+    EXPECT_FALSE(stale.ok());
+    EXPECT_EQ(stale.message(),
+              "SubgraphBuilder::Yield: internal_val was not produced by any Emit call");
+}
+
 TEST(SubgraphBuilder, YieldRejectsUnknownInternalValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);

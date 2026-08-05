@@ -29,6 +29,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -571,8 +572,12 @@ private:
 ///
 /// Emit allocates virtual values for internal edges and returns their ids.
 /// Yield redirects a virtual value (returned by Emit) to replace a real
-/// source graph value. Commit submits the accumulated replacement nodes
-/// to the session as a single ReplaceSubgraph mutation.
+/// source graph value. Yield also redirects every pending consumer that
+/// still references the virtual value, and later Emit calls normalize such
+/// references automatically, so a yielded value stays usable both as an
+/// input to new nodes and as a replacement target. Commit submits the
+/// accumulated replacement nodes to the session as a single
+/// ReplaceSubgraph mutation.
 ///
 /// Usage:
 ///   SubgraphBuilder builder(session, {old_node1, old_node2});
@@ -633,11 +638,16 @@ public:
     /// for an external graph value. After Commit, all consumers of
     /// old_value_to_replace will consume the new node's output instead.
     ///
+    /// Redirects every pending replacement input that still references
+    /// internal_val to old_value_to_replace, and records the alias so that
+    /// later Emit calls normalize inputs referencing internal_val as well.
+    ///
     /// Returns InvalidArgument if internal_val was not produced by any
-    /// prior Emit call.
+    /// prior Emit call, or if it was already yielded.
     /// @param internal_val Virtual value id returned by a prior Emit call.
     /// @param old_value_to_replace External graph value to take over.
-    /// @return Status::Ok() on success, or InvalidArgument if internal_val is unknown.
+    /// @return Status::Ok() on success, or InvalidArgument if internal_val is
+    ///         unknown or already yielded.
     Status Yield(GraphValueId internal_val, GraphValueId old_value_to_replace);
 
     /// @brief Submits the accumulated replacement nodes to the session as a single
@@ -650,6 +660,26 @@ private:
     GraphRewriteSession& session_;
     std::vector<GraphNodeId> old_nodes_;
     std::vector<ReplacementNode> new_nodes_;
+
+    /// @brief Hash functor for GraphValueId keys (no std::hash specialization
+    ///        exists for GraphValueId).
+    struct ValueIdHash {
+        std::size_t operator()(GraphValueId id) const noexcept {
+            return std::hash<uint32_t>{}(id.index);
+        }
+    };
+
+    /// @brief Yields recorded so far: virtual value id -> replacement target
+    ///        (always a source value id, enforced by Yield). Emit normalizes
+    ///        new inputs through this map, Yield rewrites existing inputs via
+    ///        NormalizeInputs, and Commit clears the map on success so the
+    ///        builder can be reused.
+    std::unordered_map<GraphValueId, GraphValueId, ValueIdHash> aliases_;
+
+    /// @brief Redirects every pending replacement input referencing `from` to
+    ///        `to`. Used by Yield for immediate redirection and by Commit as
+    ///        a final normalization pass.
+    void NormalizeInputs(GraphValueId from, GraphValueId to) noexcept;
 };
 
 }// namespace aethermind

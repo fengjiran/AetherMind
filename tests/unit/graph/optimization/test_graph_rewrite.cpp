@@ -1036,6 +1036,98 @@ TEST(GraphRewriteSession, ValidateEditsRejectsInputProducedByLaterRewrite) {
     ASSERT_FALSE(committed.ok());
 }
 
+TEST(GraphRewriteSession, ValidateEditsRejectsInputFromRemovedNode) {
+    // RemoveNode(n0) installs a rewrite with no replacements, so v3 (n0's
+    // output) is never emitted during Commit. A later rewrite consuming v3
+    // would pass a pure emission-point check (n0 emits before n1) but fail in
+    // Commit with an unmappable input; ValidateEdits must reject it.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 0}).ok());
+
+    const std::vector<GraphNodeId> old_nodes{GraphNodeId{.index = 1}};
+    const std::vector<ReplacementNode> replacements{{
+            .op_type = OpType::kAdd,
+            .inputs = {GraphValueId{.index = 3}, GraphValueId{.index = 3}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "add_out")},
+            .op_params = AddParams{},
+            .name = "add_uses_removed_output",
+    }};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, replacements).ok());
+
+    const Status status = session.ValidateEdits();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("never produced"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, ValidateEditsAcceptsInputProducedByEarlierReplacementInSameRewrite) {
+    // One rewrite covers both n0 and n1. The first replacement rebinds v3
+    // (n0's old output); the second consumes v3. EmitRewrite emits
+    // replacements in array order, so the input is mappable even though its
+    // source producer (n0) is inside the same rewrite. ValidateEdits must
+    // accept and Commit must succeed.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphNodeId> old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
+    const std::vector<ReplacementNode> replacements{
+            {
+                    .op_type = OpType::kEmbedding,
+                    .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+                    .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "produce_v3")},
+                    .op_params = EmbeddingParams{},
+                    .name = "producer",
+            },
+            {
+                    .op_type = OpType::kAdd,
+                    .inputs = {GraphValueId{.index = 3}, GraphValueId{.index = 3}},
+                    .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "consume_v3")},
+                    .op_params = AddParams{},
+                    .name = "consumer",
+            },
+    };
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, replacements).ok());
+    EXPECT_TRUE(session.ValidateEdits().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, ValidateEditsRejectsInputFromLaterReplacementInSameRewrite) {
+    // Same group, but the consumer precedes the producer: replacement[0]
+    // consumes v3 before replacement[1] (which rebinds v3) is emitted. The
+    // input cannot be mapped during EmitRewrite; ValidateEdits must reject.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphNodeId> old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
+    const std::vector<ReplacementNode> replacements{
+            {
+                    .op_type = OpType::kAdd,
+                    .inputs = {GraphValueId{.index = 3}, GraphValueId{.index = 3}},
+                    .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "consume_v3")},
+                    .op_params = AddParams{},
+                    .name = "consumer",
+            },
+            {
+                    .op_type = OpType::kEmbedding,
+                    .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+                    .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "produce_v3")},
+                    .op_params = EmbeddingParams{},
+                    .name = "producer",
+            },
+    };
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, replacements).ok());
+
+    const Status status = session.ValidateEdits();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("earlier replacement"), std::string::npos);
+}
+
 // --- Issue H: Commit() rejects monostate external value with specific error ---
 
 TEST(GraphRewriteSession, RejectsMonostateExternalValueOnCommit) {

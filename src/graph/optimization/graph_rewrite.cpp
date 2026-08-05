@@ -1535,18 +1535,54 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
 //   2. Source values without a producer (inputs, weights, constants, states)
 //      are pre-mapped by CopyExternalValues; always available.
 //   3. Source value with producer p:
-//      - p replaced by an active rewrite R_p: available iff R_p's emission
-//        point (min topo position over its old_nodes) is before this
-//        rewrite's emission point.
 //      - p untouched: available iff p's topo position is before this
 //        rewrite's emission point.
-//      Otherwise InvalidArgument. A producer inside this rewrite's own
-//      old_nodes is rejected too: its emission point equals this rewrite's,
-//      so the input could never be mapped (matches Commit behavior).
+//      - p covered by an active rewrite R_p that binds the value as a
+//        replacement output: available iff R_p's emission point (min topo
+//        position over its old_nodes) is before this rewrite's emission
+//        point. A covering rewrite that never binds the value (e.g.
+//        RemoveNode installs a rewrite with no replacements) means the
+//        value is never emitted; rejected unconditionally.
+//      - p inside this rewrite: available iff an earlier replacement in the
+//        same group binds the value (EmitRewrite emits replacements in
+//        array order); a later or self binding cannot be seen yet.
+//      Otherwise InvalidArgument.
 Status GraphRewriteSession::ValidateReplacementInputAvailability() const {
     if (rewrites_.empty()) {
         return Status::Ok();
     }
+
+    // True when any replacement in `rewrite` binds `value` as a replaces
+    // output target (EmitRewrite maps exactly those values into the
+    // committed graph).
+    const auto rewrite_binds_value = [](const RewriteEntry& rewrite, GraphValueId value) {
+        return std::ranges::any_of(
+                rewrite.replacements,
+                [value](const ReplacementNode& replacement) {
+                    return std::ranges::any_of(
+                            replacement.outputs,
+                            [value](const RewriteOutputBinding& output) {
+                                return output.replaces.has_value() &&
+                                       *output.replaces == value;
+                            });
+                });
+    };
+    // True when a replacement at index < prefix in `rewrite` binds `value`.
+    const auto rewrite_prefix_binds_value = [](const RewriteEntry& rewrite,
+                                               std::size_t prefix,
+                                               GraphValueId value) {
+        return std::ranges::any_of(
+                rewrite.replacements.begin(),
+                rewrite.replacements.begin() + static_cast<std::ptrdiff_t>(prefix),
+                [value](const ReplacementNode& replacement) {
+                    return std::ranges::any_of(
+                            replacement.outputs,
+                            [value](const RewriteOutputBinding& output) {
+                                return output.replaces.has_value() &&
+                                       *output.replaces == value;
+                            });
+                });
+    };
 
     // Source topological positions; emission points are min positions over a
     // rewrite's old_nodes. A cyclic source graph is a graph-level error, not a
@@ -1593,25 +1629,61 @@ Status GraphRewriteSession::ValidateReplacementInputAvailability() const {
                     continue;
                 }
 
-                std::size_t producer_emission = 0;
-                std::string producer_desc;
-                if (const auto rewrite_index = node_to_rewrite_[producer->index];
-                    rewrite_index.has_value() && *rewrite_index < rewrites_.size() &&
-                    rewrites_[*rewrite_index].active) {
-                    producer_emission = emission_point[*rewrite_index];
-                    producer_desc = "rewrite " + std::to_string(*rewrite_index);
-                } else {
-                    producer_emission = position[producer->index];
-                    producer_desc = "node " + std::to_string(producer->index);
+                const auto rewrite_index = node_to_rewrite_[producer->index];
+                const bool producer_rewritten =
+                        rewrite_index.has_value() && *rewrite_index < rewrites_.size() &&
+                        rewrites_[*rewrite_index].active;
+
+                if (!producer_rewritten) {
+                    // p untouched: live node, emitted at its own position.
+                    if (position[producer->index] >= emission_point[i]) {
+                        return Status::InvalidArgument(
+                                "GraphRewriteSession: rewrite " + std::to_string(i) +
+                                " " + debug_ctx + " input value " +
+                                std::to_string(resolved.index) + " is produced by node " +
+                                std::to_string(producer->index) +
+                                " which is not emitted before this rewrite's commit "
+                                "emission point");
+                    }
+                    continue;
                 }
 
-                if (producer_emission >= emission_point[i]) {
+                const RewriteEntry& producer_rewrite = rewrites_[*rewrite_index];
+                if (!rewrite_binds_value(producer_rewrite, resolved)) {
+                    // The covering rewrite never emits this value (e.g. a
+                    // RemoveNode rewrite has no replacements), so Commit can
+                    // never map the input; reject regardless of emission
+                    // points.
                     return Status::InvalidArgument(
-                            "GraphRewriteSession: rewrite " + std::to_string(i) +
-                            " " + debug_ctx + " input value " +
-                            std::to_string(resolved.index) + " is produced by " +
-                            producer_desc + " which is not emitted before this "
-                                            "rewrite's commit emission point");
+                            "GraphRewriteSession: rewrite " + std::to_string(i) + " " +
+                            debug_ctx + " input value " + std::to_string(resolved.index) +
+                            " is never produced during commit: its producer node " +
+                            std::to_string(producer->index) + " is covered by rewrite " +
+                            std::to_string(*rewrite_index) + " which does not bind this value");
+                }
+
+                if (*rewrite_index == i) {
+                    // Producer inside this rewrite: the input is available
+                    // only when an earlier replacement in the same group
+                    // binds the value (EmitRewrite emits replacements in
+                    // array order), matching Commit behavior.
+                    if (!rewrite_prefix_binds_value(producer_rewrite, r, resolved)) {
+                        return Status::InvalidArgument(
+                                "GraphRewriteSession: rewrite " + std::to_string(i) + " " +
+                                debug_ctx + " input value " + std::to_string(resolved.index) +
+                                " is produced within the same rewrite but not by an "
+                                "earlier replacement, so it cannot be mapped during commit");
+                    }
+                    continue;
+                }
+
+                if (emission_point[*rewrite_index] >= emission_point[i]) {
+                    return Status::InvalidArgument(
+                            "GraphRewriteSession: rewrite " + std::to_string(i) + " " +
+                            debug_ctx + " input value " + std::to_string(resolved.index) +
+                            " is produced by rewrite " + std::to_string(*rewrite_index) +
+                            " which is not emitted before this rewrite's commit "
+                            "emission point");
                 }
             }
         }

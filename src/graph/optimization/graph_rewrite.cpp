@@ -1747,12 +1747,13 @@ void GraphRewriteSession::InvalidateConsumerCache() noexcept {
     consumer_cache_.reset();
 }
 
-StatusOr<GraphValueId> SubgraphBuilder::Emit(OpType op_type,
-                                             std::vector<GraphValueId> inputs,
-                                             NodeOutputDesc output_desc,
-                                             OpParams op_params,
-                                             std::optional<uint32_t> decoder_layer_index,
-                                             std::string debug_name) {
+StatusOr<GraphValueId> SubgraphBuilder::Emit(
+        OpType op_type,
+        std::vector<GraphValueId> inputs,
+        NodeOutputDesc output_desc,
+        OpParams op_params,
+        std::optional<uint32_t> decoder_layer_index,
+        std::string name) {
     std::vector<NodeOutputDesc> output_descs;
     output_descs.push_back(std::move(output_desc));
     AM_ASSIGN_OR_RETURN(std::vector<GraphValueId> outputs,
@@ -1761,7 +1762,7 @@ StatusOr<GraphValueId> SubgraphBuilder::Emit(OpType op_type,
                              std::move(output_descs),
                              std::move(op_params),
                              decoder_layer_index,
-                             std::move(debug_name)));
+                             std::move(name)));
     AM_CHECK(outputs.size() == 1, "SubgraphBuilder::Emit single-output wrapper expected one output");
     return outputs[0];
 }
@@ -1772,7 +1773,7 @@ StatusOr<std::vector<GraphValueId>> SubgraphBuilder::Emit(
         std::vector<NodeOutputDesc> output_descs,
         OpParams op_params,
         std::optional<uint32_t> decoder_layer_index,
-        std::string debug_name) {
+        std::string name) {
     // Each output descriptor gets a freshly allocated virtual value; these
     // virtual values are bound via RewriteOutputBinding::replaces and can
     // be consumed by subsequent Emit calls or redirected by Yield.
@@ -1784,16 +1785,16 @@ StatusOr<std::vector<GraphValueId>> SubgraphBuilder::Emit(
             .decoder_layer_index = decoder_layer_index,
             .inputs = std::move(inputs),
             .op_params = std::move(op_params),
-            .name = std::move(debug_name),
+            .name = std::move(name),
     };
 
     node.outputs.reserve(output_descs.size());
-    for (NodeOutputDesc& output_desc: output_descs) {
-        const GraphValueId virtual_id = session_.AllocateVirtualValue();
-        virtual_ids.push_back(virtual_id);
-        node.outputs.push_back(RewriteOutputBinding{
-                .desc = std::move(output_desc),
-                .replaces = virtual_id,
+    for (auto& desc: output_descs) {
+        const auto id = session_.AllocateVirtualValue();
+        virtual_ids.push_back(id);
+        node.outputs.push_back({
+                .desc = std::move(desc),
+                .replaces = id,
         });
     }
 

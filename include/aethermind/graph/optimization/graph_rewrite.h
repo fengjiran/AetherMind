@@ -601,7 +601,7 @@ public:
     /// @param output_desc Descriptor for the single output.
     /// @param op_params Operator-specific parameters.
     /// @param decoder_layer_index Optional decoder layer index tag.
-    /// @param debug_name Optional debug name for the new node.
+    /// @param name Optional debug name for the new node.
     /// @return Virtual value id bound to the new node's output.
     StatusOr<GraphValueId> Emit(
             OpType op_type,
@@ -609,7 +609,7 @@ public:
             NodeOutputDesc output_desc,
             OpParams op_params = std::monostate{},
             std::optional<uint32_t> decoder_layer_index = std::nullopt,
-            std::string debug_name = {});
+            std::string name = {});
 
     /// @brief Creates a new replacement node with one output per descriptor in
     /// `output_descs`. Allocates one virtual value per output and returns the
@@ -619,7 +619,7 @@ public:
     /// @param output_descs Descriptors for each output.
     /// @param op_params Operator-specific parameters.
     /// @param decoder_layer_index Optional decoder layer index tag.
-    /// @param debug_name Optional debug name for the new node.
+    /// @param name Optional debug name for the new node.
     /// @return Virtual value ids bound to the new node's outputs, in descriptor order.
     StatusOr<std::vector<GraphValueId>> Emit(
             OpType op_type,
@@ -627,7 +627,7 @@ public:
             std::vector<NodeOutputDesc> output_descs,
             OpParams op_params = std::monostate{},
             std::optional<uint32_t> decoder_layer_index = std::nullopt,
-            std::string debug_name = {});
+            std::string name = {});
 
     /// @brief Marks an internal virtual value (returned by Emit) as the replacement
     /// for an external graph value. After Commit, all consumers of

@@ -725,30 +725,6 @@ TEST(GraphRewriteSession, ReplaceValueRejectsSessionVirtualAsSourceValue) {
               "GraphRewriteSession: expected source value id, got session virtual value");
 }
 
-TEST(SubgraphBuilder, YieldRejectsSessionConstantAsReplacementTarget) {
-    const ModelGraph graph = BuildTwoEmbeddingGraph();
-    GraphRewriteSession session(graph);
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
-    auto mid_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            HiddenDesc("constant_target_output"),
-            EmbeddingParams{});
-    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
-    const GraphValueId mid = std::move(*mid_or);
-
-    const GraphValueId constant = session.AddSessionConstant(
-            Spec(DataType::Float32(), {1}),
-            ConstantBinding{.name = "session.constant"},
-            {},
-            "session_constant");
-    const Status status = builder.Yield(mid, constant);
-
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(status.message(), "GraphRewriteSession: expected source value id, got session constant");
-}
-
 TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidMapping) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
@@ -781,7 +757,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidInputId) {
             .op_params = EmbeddingParams{},
             .name = "invalid_replacement",
     };
-    const std::array old_nodes{GraphNodeId{.index = 0}};
+    constexpr std::array old_nodes{GraphNodeId{.index = 0}};
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
@@ -843,11 +819,13 @@ TEST(GraphRewriteSession, GetResolvedValueHandlesOutOfRangeId) {
 
 ModelGraph BuildGraphWithState() {
     ModelGraph graph;
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                                                "embed.weight");
+    const GraphValueId tokens = graph.AddInput(
+            Spec(DataType::Int(32), {1}), "tokens");
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed.weight");
     const GraphValueId k_cache = graph.AddState(
             Spec(DataType::Float32(), {2, 4, 8}),
             KVCacheStateBinding{.decoder_layer_index = 0, .slot = KVCacheSlot::kKey},
@@ -889,11 +867,13 @@ TEST(GraphRewriteSession, CommitsGraphWithStateValue) {
 
 TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
     ModelGraph graph;
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                                                "embed.weight");
+    const GraphValueId tokens = graph.AddInput(
+            Spec(DataType::Int(32), {1}), "tokens");
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed.weight");
     auto embed_or = graph.AddNode(
             OpType::kEmbedding,
             3U,// decoder_layer_index = 3
@@ -926,8 +906,12 @@ TEST(GraphRewriteSession, ValidateEditsSucceedsAfterValidMutations) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1}).ok());
-    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 0}, GraphValueId{.index = 2}).ok());
+    ASSERT_TRUE(session.RedirectInput(
+                               GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
+                        .ok());
+    ASSERT_TRUE(session.ReplaceValue(
+                               GraphValueId{.index = 0}, GraphValueId{.index = 2})
+                        .ok());
 
     EXPECT_TRUE(session.ValidateEdits().ok());
 }
@@ -958,11 +942,13 @@ TEST(GraphRewriteSession, RejectsMonostateExternalValueOnCommit) {
 
 TEST(GraphRewriteSession, CommitPreservesConstantValue) {
     ModelGraph graph;
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                                                "embed.weight");
+    const GraphValueId tokens = graph.AddInput(
+            Spec(DataType::Int(32), {1}), "tokens");
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
+                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            "embed.weight");
     auto inline_data = std::make_shared<const std::vector<std::byte>>(
             std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}});
     const GraphValueId constant = graph.AddConstant(
@@ -1364,275 +1350,6 @@ TEST(GraphRewriteSession, RedirectInputRejectsOverlappingSubgraphRewrite) {
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
     ASSERT_EQ(committed->GetNodes().size(), 1U);
     EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).name, "subgraph_replacement");
-    EXPECT_TRUE(committed->Validate().ok());
-}
-
-TEST(SubgraphBuilder, EmitsAndYieldsReplacementSubgraph) {
-    const ModelGraph graph = BuildTwoEmbeddingGraph();
-    GraphRewriteSession session(graph);
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
-
-    auto mid_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            HiddenDesc("embed_mid_output"),
-            EmbeddingParams{},
-            std::nullopt,
-            "embed_mid");
-    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
-    const GraphValueId mid = std::move(*mid_or);
-    ASSERT_NE(mid.index, 0U);
-
-    ASSERT_TRUE(builder.Yield(mid, GraphValueId{.index = 3}).ok());
-
-    ASSERT_TRUE(builder.Commit().ok());
-
-    const StatusOr<ModelGraph> committed = session.Commit();
-    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
-    ASSERT_EQ(committed->GetNodes().size(), 2U);
-
-    const GraphNode& new_embed = committed->GetNode(GraphNodeId{.index = 0});
-    EXPECT_EQ(new_embed.op_type, OpType::kEmbedding);
-    ASSERT_EQ(new_embed.outputs.size(), 1U);
-    EXPECT_EQ(new_embed.inputs[0], committed->GetInputs()[1].value);
-    EXPECT_EQ(committed->GetOutputs()[0].value, new_embed.outputs[0]);
-    EXPECT_TRUE(committed->Validate().ok());
-}
-
-TEST(SubgraphBuilder, EmitAcceptsFullOutputDesc) {
-    const ModelGraph graph = BuildTwoEmbeddingGraph();
-    GraphRewriteSession session(graph);
-
-    const QuantizationSpec quantization{.kind = QuantizationKind::kInt8,
-                                        .group_size = 64,
-                                        .scale_dtype = DataType::Float32(),
-                                        .has_zero_point = false};
-    NodeOutputDesc output_desc{.payload = ActivationValue{},
-                               .quantization = quantization,
-                               .name = "builder_full_desc"};
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
-    auto out_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            output_desc,
-            EmbeddingParams{},
-            std::nullopt,
-            "embed_full_desc");
-    ASSERT_TRUE(out_or.ok()) << out_or.status().ToString();
-    const GraphValueId out = std::move(*out_or);
-    ASSERT_TRUE(builder.Yield(out, GraphValueId{.index = 3}).ok());
-    ASSERT_TRUE(builder.Commit().ok());
-
-    const StatusOr<ModelGraph> committed = session.Commit();
-    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
-    ASSERT_TRUE(committed->Validate().ok());
-    ASSERT_EQ(committed->GetOutputs().size(), 1U);
-
-    const GraphValue& output = committed->GetValue(committed->GetOutputs()[0].value);
-    EXPECT_TRUE(std::holds_alternative<ActivationValue>(output.payload));
-    EXPECT_EQ(output.quantization, quantization);
-    EXPECT_EQ(output.name, "builder_full_desc");
-}
-
-TEST(SubgraphBuilder, EmitReturnsVirtualValueForEachOutputDesc) {
-    const ModelGraph graph = BuildRoPEGraph();
-    GraphRewriteSession session(graph);
-    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
-    auto outputs_or = builder.Emit(
-            OpType::kRoPE,
-            rope.inputs,
-            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_rewritten"), HiddenDesc("k_rope_rewritten")},
-            ValidRoPEParams(),
-            0U,
-            "rope_rewritten");
-    ASSERT_TRUE(outputs_or.ok()) << outputs_or.status().ToString();
-    const std::vector<GraphValueId> outputs = std::move(*outputs_or);
-
-    ASSERT_EQ(outputs.size(), 2U);
-    EXPECT_NE(outputs[0], outputs[1]);
-    EXPECT_GE(outputs[0].index, graph.GetValues().size());
-    EXPECT_GE(outputs[1].index, graph.GetValues().size());
-}
-
-TEST(SubgraphBuilder, EmitMultiOutputYieldsEachOutputToDistinctTarget) {
-    const ModelGraph graph = BuildRoPEGraph();
-    GraphRewriteSession session(graph);
-    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
-    const QuantizationSpec q_quantization{.kind = QuantizationKind::kInt8,
-                                          .group_size = 64,
-                                          .scale_dtype = DataType::Float32(),
-                                          .has_zero_point = false};
-    const QuantizationSpec k_quantization{.kind = QuantizationKind::kInt4,
-                                          .group_size = 32,
-                                          .scale_dtype = DataType::Float32(),
-                                          .has_zero_point = true};
-    NodeOutputDesc q_desc = HiddenDesc("q_rope_rewritten");
-    q_desc.quantization = q_quantization;
-    NodeOutputDesc k_desc = HiddenDesc("k_rope_rewritten");
-    k_desc.quantization = k_quantization;
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
-    auto outputs_or = builder.Emit(
-            OpType::kRoPE,
-            rope.inputs,
-            std::vector<NodeOutputDesc>{q_desc, k_desc},
-            ValidRoPEParams(),
-            0U,
-            "rope_rewritten");
-    ASSERT_TRUE(outputs_or.ok()) << outputs_or.status().ToString();
-    const std::vector<GraphValueId> outputs = std::move(*outputs_or);
-    ASSERT_EQ(outputs.size(), 2U);
-    ASSERT_TRUE(builder.Yield(outputs[0], rope.outputs[0]).ok());
-    ASSERT_TRUE(builder.Yield(outputs[1], rope.outputs[1]).ok());
-    ASSERT_TRUE(builder.Commit().ok());
-
-    const StatusOr<ModelGraph> committed = session.Commit();
-    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
-    ASSERT_TRUE(committed->Validate().ok());
-
-    const GraphNode& committed_rope = committed->GetNode(GraphNodeId{.index = 2});
-    EXPECT_EQ(committed_rope.op_type, OpType::kRoPE);
-    ASSERT_EQ(committed_rope.outputs.size(), 2U);
-    EXPECT_EQ(committed->GetOutputs()[0].value, committed_rope.outputs[0]);
-    EXPECT_EQ(committed->GetOutputs()[1].value, committed_rope.outputs[1]);
-    EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).name, "q_rope_rewritten");
-    EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).quantization, q_quantization);
-    EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).name, "k_rope_rewritten");
-    EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).quantization, k_quantization);
-}
-
-TEST(SubgraphBuilder, EmitMultiOutputFeedsSubsequentEmit) {
-    const ModelGraph graph = BuildRoPEGraph();
-    GraphRewriteSession session(graph);
-    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
-    auto rope_outputs_or = builder.Emit(
-            OpType::kRoPE,
-            rope.inputs,
-            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_internal"), HiddenDesc("k_rope_forwarded")},
-            ValidRoPEParams(),
-            0U,
-            "rope_rewritten");
-    ASSERT_TRUE(rope_outputs_or.ok()) << rope_outputs_or.status().ToString();
-    const std::vector<GraphValueId> rope_outputs = std::move(*rope_outputs_or);
-    ASSERT_EQ(rope_outputs.size(), 2U);
-    auto sum_or = builder.Emit(
-            OpType::kAdd,
-            {rope_outputs[0], rope_outputs[0]},
-            HiddenDesc("q_rope_summed"),
-            AddParams{});
-    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
-    const GraphValueId sum = std::move(*sum_or);
-    ASSERT_TRUE(builder.Yield(sum, rope.outputs[0]).ok());
-    ASSERT_TRUE(builder.Yield(rope_outputs[1], rope.outputs[1]).ok());
-    ASSERT_TRUE(builder.Commit().ok());
-
-    const StatusOr<ModelGraph> committed = session.Commit();
-    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
-    ASSERT_TRUE(committed->Validate().ok());
-
-    ASSERT_EQ(committed->GetNodes().size(), 4U);
-    const GraphNode& committed_rope = committed->GetNode(GraphNodeId{.index = 2});
-    const GraphNode& committed_add = committed->GetNode(GraphNodeId{.index = 3});
-    ASSERT_EQ(committed_rope.outputs.size(), 2U);
-    ASSERT_EQ(committed_add.inputs.size(), 2U);
-    EXPECT_EQ(committed_add.inputs[0], committed_rope.outputs[0]);
-    EXPECT_EQ(committed_add.inputs[1], committed_rope.outputs[0]);
-    EXPECT_EQ(committed->GetOutputs()[0].value, committed_add.outputs[0]);
-    EXPECT_EQ(committed->GetOutputs()[1].value, committed_rope.outputs[1]);
-}
-
-TEST(SubgraphBuilder, YieldRejectsUnknownInternalValue) {
-    const ModelGraph graph = BuildTwoEmbeddingGraph();
-    GraphRewriteSession session(graph);
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
-    auto mid_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            HiddenDesc("unknown_internal_output"),
-            EmbeddingParams{});
-    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
-    const GraphValueId mid = std::move(*mid_or);
-
-    const GraphValueId unproduced = session.AllocateVirtualValue();
-    const Status status = builder.Yield(unproduced, GraphValueId{.index = 3});
-    EXPECT_FALSE(status.ok());
-
-    (void) mid;
-}
-
-TEST(SubgraphBuilder, YieldRejectsVirtualValueAsReplacementTarget) {
-    const ModelGraph graph = BuildTwoEmbeddingGraph();
-    GraphRewriteSession session(graph);
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
-    auto mid_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            HiddenDesc("virtual_target_output"),
-            EmbeddingParams{});
-    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
-    const GraphValueId mid = std::move(*mid_or);
-
-    const GraphValueId another_virtual = session.AllocateVirtualValue();
-    const Status status = builder.Yield(mid, another_virtual);
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(SubgraphBuilder, YieldRejectsOutOfRangeReplacementTarget) {
-    const ModelGraph graph = BuildTwoEmbeddingGraph();
-    GraphRewriteSession session(graph);
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
-    auto mid_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            HiddenDesc("out_of_range_target_output"),
-            EmbeddingParams{});
-    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
-    const GraphValueId mid = std::move(*mid_or);
-
-    const GraphValueId out_of_range{.index = 999};
-    const Status status = builder.Yield(mid, out_of_range);
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
-TEST(SubgraphBuilder, BuilderReusableAfterCommit) {
-    const ModelGraph graph = BuildTwoEmbeddingGraph();
-    GraphRewriteSession session(graph);
-
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
-    auto out1_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            HiddenDesc("first_reusable_output"),
-            EmbeddingParams{});
-    ASSERT_TRUE(out1_or.ok()) << out1_or.status().ToString();
-    const GraphValueId out1 = std::move(*out1_or);
-    ASSERT_TRUE(builder.Yield(out1, GraphValueId{.index = 3}).ok());
-    ASSERT_TRUE(builder.Commit().ok());
-
-    auto out2_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
-            HiddenDesc("second_reusable_output"),
-            EmbeddingParams{});
-    ASSERT_TRUE(out2_or.ok()) << out2_or.status().ToString();
-    const GraphValueId out2 = std::move(*out2_or);
-    ASSERT_TRUE(builder.Yield(out2, GraphValueId{.index = 3}).ok());
-    ASSERT_TRUE(builder.Commit().ok());
-
-    const StatusOr<ModelGraph> committed = session.Commit();
-    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
-    ASSERT_EQ(committed->GetNodes().size(), 2U);
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -2334,46 +2051,6 @@ TEST(GraphRewriteSession, HasLiveConsumersTrueForUpstreamValueConsumedByReplacem
 }
 
 
-TEST(SubgraphBuilder, CommitRejectsWrongDtypeChain) {
-    // Phase B: builder.Commit() must fail when an Emit's output dtype is
-    // incompatible with the slot dtype of a subsequent Emit's input. Here the
-    // first Emit produces a Float32 hidden (Embedding output), and the second
-    // Emit feeds that Float32 into the Int32 tokens slot of another Embedding.
-    // InferOperator rejects this when ReplaceSubgraph replays the chain.
-    const ModelGraph graph = BuildTwoEmbeddingGraph();
-    GraphRewriteSession session(graph);
-    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}, GraphNodeId{.index = 1}});
-
-    auto first_or = builder.Emit(
-            OpType::kEmbedding,
-            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
-            HiddenDesc("first_hidden"),
-            EmbeddingParams{},
-            std::nullopt,
-            "first_embed");
-    ASSERT_TRUE(first_or.ok()) << first_or.status().ToString();
-    const GraphValueId first_hidden = *first_or;
-
-    auto second_or = builder.Emit(
-            OpType::kEmbedding,
-            // first_hidden is Float32 (Embedding output) but the tokens slot
-            // requires Int32/Int64/UInt32 - dtype chain violation.
-            {first_hidden, GraphValueId{.index = 2}},
-            HiddenDesc("second_hidden"),
-            EmbeddingParams{},
-            std::nullopt,
-            "second_embed");
-    // Emit itself does not validate dtype chains; it just accumulates the node.
-    ASSERT_TRUE(second_or.ok()) << second_or.status().ToString();
-    const GraphValueId second_hidden = *second_or;
-
-    ASSERT_TRUE(builder.Yield(second_hidden, GraphValueId{.index = 3}).ok());
-
-    const Status commit_status = builder.Commit();
-    ASSERT_FALSE(commit_status.ok()) << commit_status.ToString();
-    EXPECT_EQ(commit_status.code(), StatusCode::kInvalidArgument);
-}
-
 TEST(GraphRewriteSession, ReplaceSubgraphRejectsYieldSpecMismatch) {
     // Phase B: ReplaceSubgraph must fail when a replacement's inferred output
     // dtype does not match the dtype of the value it replaces (yield target).
@@ -2452,6 +2129,341 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsUndefinedVirtualInputAtApplyTime
     const Status status = session.ReplaceSubgraph(old_nodes, {std::move(replacement)});
     ASSERT_FALSE(status.ok()) << status.ToString();
     EXPECT_EQ(status.code(), StatusCode::kNotFound);
+}
+
+// --- SubgraphBuilder suite ---
+
+TEST(SubgraphBuilder, YieldRejectsSessionConstantAsReplacementTarget) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    auto mid_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("constant_target_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
+    const GraphValueId mid = std::move(*mid_or);
+
+    const GraphValueId constant = session.AddSessionConstant(
+            Spec(DataType::Float32(), {1}),
+            ConstantBinding{.name = "session.constant"},
+            {},
+            "session_constant");
+    const Status status = builder.Yield(mid, constant);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status.message(), "GraphRewriteSession: expected source value id, got session constant");
+}
+
+TEST(SubgraphBuilder, EmitsAndYieldsReplacementSubgraph) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+
+    auto mid_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            HiddenDesc("embed_mid_output"),
+            EmbeddingParams{},
+            std::nullopt,
+            "embed_mid");
+    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
+    const GraphValueId mid = std::move(*mid_or);
+    ASSERT_NE(mid.index, 0U);
+
+    ASSERT_TRUE(builder.Yield(mid, GraphValueId{.index = 3}).ok());
+
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_EQ(committed->GetNodes().size(), 2U);
+
+    const GraphNode& new_embed = committed->GetNode(GraphNodeId{.index = 0});
+    EXPECT_EQ(new_embed.op_type, OpType::kEmbedding);
+    ASSERT_EQ(new_embed.outputs.size(), 1U);
+    EXPECT_EQ(new_embed.inputs[0], committed->GetInputs()[1].value);
+    EXPECT_EQ(committed->GetOutputs()[0].value, new_embed.outputs[0]);
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(SubgraphBuilder, EmitAcceptsFullOutputDesc) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const QuantizationSpec quantization{.kind = QuantizationKind::kInt8,
+                                        .group_size = 64,
+                                        .scale_dtype = DataType::Float32(),
+                                        .has_zero_point = false};
+    NodeOutputDesc output_desc{.payload = ActivationValue{},
+                               .quantization = quantization,
+                               .name = "builder_full_desc"};
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    auto out_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            output_desc,
+            EmbeddingParams{},
+            std::nullopt,
+            "embed_full_desc");
+    ASSERT_TRUE(out_or.ok()) << out_or.status().ToString();
+    const GraphValueId out = std::move(*out_or);
+    ASSERT_TRUE(builder.Yield(out, GraphValueId{.index = 3}).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+    ASSERT_EQ(committed->GetOutputs().size(), 1U);
+
+    const GraphValue& output = committed->GetValue(committed->GetOutputs()[0].value);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(output.payload));
+    EXPECT_EQ(output.quantization, quantization);
+    EXPECT_EQ(output.name, "builder_full_desc");
+}
+
+TEST(SubgraphBuilder, EmitReturnsVirtualValueForEachOutputDesc) {
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    auto outputs_or = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_rewritten"), HiddenDesc("k_rope_rewritten")},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+    ASSERT_TRUE(outputs_or.ok()) << outputs_or.status().ToString();
+    const std::vector<GraphValueId> outputs = std::move(*outputs_or);
+
+    ASSERT_EQ(outputs.size(), 2U);
+    EXPECT_NE(outputs[0], outputs[1]);
+    EXPECT_GE(outputs[0].index, graph.GetValues().size());
+    EXPECT_GE(outputs[1].index, graph.GetValues().size());
+}
+
+TEST(SubgraphBuilder, EmitMultiOutputYieldsEachOutputToDistinctTarget) {
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+    const QuantizationSpec q_quantization{.kind = QuantizationKind::kInt8,
+                                          .group_size = 64,
+                                          .scale_dtype = DataType::Float32(),
+                                          .has_zero_point = false};
+    const QuantizationSpec k_quantization{.kind = QuantizationKind::kInt4,
+                                          .group_size = 32,
+                                          .scale_dtype = DataType::Float32(),
+                                          .has_zero_point = true};
+    NodeOutputDesc q_desc = HiddenDesc("q_rope_rewritten");
+    q_desc.quantization = q_quantization;
+    NodeOutputDesc k_desc = HiddenDesc("k_rope_rewritten");
+    k_desc.quantization = k_quantization;
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    auto outputs_or = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{q_desc, k_desc},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+    ASSERT_TRUE(outputs_or.ok()) << outputs_or.status().ToString();
+    const std::vector<GraphValueId> outputs = std::move(*outputs_or);
+    ASSERT_EQ(outputs.size(), 2U);
+    ASSERT_TRUE(builder.Yield(outputs[0], rope.outputs[0]).ok());
+    ASSERT_TRUE(builder.Yield(outputs[1], rope.outputs[1]).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    const GraphNode& committed_rope = committed->GetNode(GraphNodeId{.index = 2});
+    EXPECT_EQ(committed_rope.op_type, OpType::kRoPE);
+    ASSERT_EQ(committed_rope.outputs.size(), 2U);
+    EXPECT_EQ(committed->GetOutputs()[0].value, committed_rope.outputs[0]);
+    EXPECT_EQ(committed->GetOutputs()[1].value, committed_rope.outputs[1]);
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).name, "q_rope_rewritten");
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[0]).quantization, q_quantization);
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).name, "k_rope_rewritten");
+    EXPECT_EQ(committed->GetValue(committed_rope.outputs[1]).quantization, k_quantization);
+}
+
+TEST(SubgraphBuilder, EmitMultiOutputFeedsSubsequentEmit) {
+    const ModelGraph graph = BuildRoPEGraph();
+    GraphRewriteSession session(graph);
+    const GraphNode& rope = graph.GetNode(GraphNodeId{.index = 2});
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 2}});
+    auto rope_outputs_or = builder.Emit(
+            OpType::kRoPE,
+            rope.inputs,
+            std::vector<NodeOutputDesc>{HiddenDesc("q_rope_internal"), HiddenDesc("k_rope_forwarded")},
+            ValidRoPEParams(),
+            0U,
+            "rope_rewritten");
+    ASSERT_TRUE(rope_outputs_or.ok()) << rope_outputs_or.status().ToString();
+    const std::vector<GraphValueId> rope_outputs = std::move(*rope_outputs_or);
+    ASSERT_EQ(rope_outputs.size(), 2U);
+    auto sum_or = builder.Emit(
+            OpType::kAdd,
+            {rope_outputs[0], rope_outputs[0]},
+            HiddenDesc("q_rope_summed"),
+            AddParams{});
+    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
+    const GraphValueId sum = std::move(*sum_or);
+    ASSERT_TRUE(builder.Yield(sum, rope.outputs[0]).ok());
+    ASSERT_TRUE(builder.Yield(rope_outputs[1], rope.outputs[1]).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    ASSERT_EQ(committed->GetNodes().size(), 4U);
+    const GraphNode& committed_rope = committed->GetNode(GraphNodeId{.index = 2});
+    const GraphNode& committed_add = committed->GetNode(GraphNodeId{.index = 3});
+    ASSERT_EQ(committed_rope.outputs.size(), 2U);
+    ASSERT_EQ(committed_add.inputs.size(), 2U);
+    EXPECT_EQ(committed_add.inputs[0], committed_rope.outputs[0]);
+    EXPECT_EQ(committed_add.inputs[1], committed_rope.outputs[0]);
+    EXPECT_EQ(committed->GetOutputs()[0].value, committed_add.outputs[0]);
+    EXPECT_EQ(committed->GetOutputs()[1].value, committed_rope.outputs[1]);
+}
+
+TEST(SubgraphBuilder, YieldRejectsUnknownInternalValue) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    auto mid_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("unknown_internal_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
+    const GraphValueId mid = std::move(*mid_or);
+
+    const GraphValueId unproduced = session.AllocateVirtualValue();
+    const Status status = builder.Yield(unproduced, GraphValueId{.index = 3});
+    EXPECT_FALSE(status.ok());
+
+    (void) mid;
+}
+
+TEST(SubgraphBuilder, YieldRejectsVirtualValueAsReplacementTarget) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    auto mid_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("virtual_target_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
+    const GraphValueId mid = std::move(*mid_or);
+
+    const GraphValueId another_virtual = session.AllocateVirtualValue();
+    const Status status = builder.Yield(mid, another_virtual);
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(SubgraphBuilder, YieldRejectsOutOfRangeReplacementTarget) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    auto mid_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("out_of_range_target_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
+    const GraphValueId mid = std::move(*mid_or);
+
+    const GraphValueId out_of_range{.index = 999};
+    const Status status = builder.Yield(mid, out_of_range);
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(SubgraphBuilder, BuilderReusableAfterCommit) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    auto out1_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("first_reusable_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(out1_or.ok()) << out1_or.status().ToString();
+    const GraphValueId out1 = std::move(*out1_or);
+    ASSERT_TRUE(builder.Yield(out1, GraphValueId{.index = 3}).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    auto out2_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 1}, GraphValueId{.index = 2}},
+            HiddenDesc("second_reusable_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(out2_or.ok()) << out2_or.status().ToString();
+    const GraphValueId out2 = std::move(*out2_or);
+    ASSERT_TRUE(builder.Yield(out2, GraphValueId{.index = 3}).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_EQ(committed->GetNodes().size(), 2U);
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
+TEST(SubgraphBuilder, CommitRejectsWrongDtypeChain) {
+    // Phase B: builder.Commit() must fail when an Emit's output dtype is
+    // incompatible with the slot dtype of a subsequent Emit's input. Here the
+    // first Emit produces a Float32 hidden (Embedding output), and the second
+    // Emit feeds that Float32 into the Int32 tokens slot of another Embedding.
+    // InferOperator rejects this when ReplaceSubgraph replays the chain.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}, GraphNodeId{.index = 1}});
+
+    auto first_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("first_hidden"),
+            EmbeddingParams{},
+            std::nullopt,
+            "first_embed");
+    ASSERT_TRUE(first_or.ok()) << first_or.status().ToString();
+    const GraphValueId first_hidden = *first_or;
+
+    auto second_or = builder.Emit(
+            OpType::kEmbedding,
+            // first_hidden is Float32 (Embedding output) but the tokens slot
+            // requires Int32/Int64/UInt32 - dtype chain violation.
+            {first_hidden, GraphValueId{.index = 2}},
+            HiddenDesc("second_hidden"),
+            EmbeddingParams{},
+            std::nullopt,
+            "second_embed");
+    // Emit itself does not validate dtype chains; it just accumulates the node.
+    ASSERT_TRUE(second_or.ok()) << second_or.status().ToString();
+    const GraphValueId second_hidden = *second_or;
+
+    ASSERT_TRUE(builder.Yield(second_hidden, GraphValueId{.index = 3}).ok());
+
+    const Status commit_status = builder.Commit();
+    ASSERT_FALSE(commit_status.ok()) << commit_status.ToString();
+    EXPECT_EQ(commit_status.code(), StatusCode::kInvalidArgument);
 }
 
 }// namespace

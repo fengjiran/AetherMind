@@ -1946,13 +1946,18 @@ Status SubgraphBuilder::Commit() {
     }
 
     // Submit accumulated replacement nodes; on success, clear internal state
-    // so the builder can be reused for another Emit/Yield/Commit cycle.
+    // so the builder can be reused for another Emit/Yield/Commit cycle. On
+    // failure the state is kept for diagnosis; Reset() clears it explicitly.
     Status status = session_.ReplaceSubgraph(old_nodes_, new_nodes_);
     if (status.ok()) {
-        new_nodes_.clear();
-        aliases_.clear();
+        Reset();
     }
     return status;
+}
+
+void SubgraphBuilder::Reset() noexcept {
+    new_nodes_.clear();
+    aliases_.clear();
 }
 
 }// namespace aethermind

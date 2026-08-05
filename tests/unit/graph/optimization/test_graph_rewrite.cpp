@@ -3173,4 +3173,60 @@ TEST(SubgraphBuilder, CommitRejectsWrongDtypeChain) {
     EXPECT_EQ(commit_status.code(), StatusCode::kInvalidArgument);
 }
 
+TEST(SubgraphBuilder, ResetAfterFailedCommitRetriesCleanly) {
+    // A failed Commit leaves new_nodes_/aliases_ in place for diagnosis;
+    // Reset() drops them so a corrected Emit/Yield cycle can be retried on
+    // the same old_nodes without recreating the builder. If the failed state
+    // were not cleared, the retried Commit would still contain the invalid
+    // chain and fail again.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}, GraphNodeId{.index = 1}});
+
+    // Intentionally invalid chain: Float32 hidden fed into the Int32 tokens
+    // slot of a second Embedding (same failure as CommitRejectsWrongDtypeChain).
+    auto first_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("bad_first_hidden"),
+            EmbeddingParams{},
+            std::nullopt,
+            "bad_first_embed");
+    ASSERT_TRUE(first_or.ok()) << first_or.status().ToString();
+    const GraphValueId bad_first_hidden = *first_or;
+    auto second_or = builder.Emit(
+            OpType::kEmbedding,
+            {bad_first_hidden, GraphValueId{.index = 2}},
+            HiddenDesc("bad_second_hidden"),
+            EmbeddingParams{},
+            std::nullopt,
+            "bad_second_embed");
+    ASSERT_TRUE(second_or.ok()) << second_or.status().ToString();
+    ASSERT_TRUE(builder.Yield(*second_or, GraphValueId{.index = 3}).ok());
+
+    const Status failed = builder.Commit();
+    ASSERT_FALSE(failed.ok()) << failed.ToString();
+    EXPECT_EQ(failed.code(), StatusCode::kInvalidArgument);
+
+    builder.Reset();
+
+    // Rebuild a correct single-node replacement on the same old_nodes.
+    auto good_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("good_hidden"),
+            EmbeddingParams{},
+            std::nullopt,
+            "good_embed");
+    ASSERT_TRUE(good_or.ok()) << good_or.status().ToString();
+    ASSERT_TRUE(builder.Yield(*good_or, GraphValueId{.index = 3}).ok());
+    ASSERT_TRUE(builder.Commit().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    // Both original nodes are replaced by the single rebuilt node.
+    ASSERT_EQ(committed->GetNodes().size(), 1U);
+    EXPECT_TRUE(committed->Validate().ok());
+}
+
 }// namespace

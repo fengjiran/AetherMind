@@ -655,9 +655,20 @@ public:
     ///         produced by any node in old_nodes.
     Status Yield(GraphValueId internal_val, GraphValueId old_value_to_replace);
 
+    /// @brief Discards all pending Emit/Yield state, restoring the builder to
+    /// its construction-time state while keeping the same old_nodes.
+    ///
+    /// Commit leaves new_nodes_/aliases_ in place on failure so the failure
+    /// can be diagnosed. Reset() drops that state, allowing a corrected
+    /// Emit/Yield/Commit cycle to be retried on the same replacement target
+    /// set without recreating the builder. The session is unaffected: any
+    /// prior successful Commit's effects remain committed.
+    void Reset() noexcept;
+
     /// @brief Submits the accumulated replacement nodes to the session as a single
     /// ReplaceSubgraph mutation. On success, the builder is reset and can be
-    /// reused for further Emit/Yield/Commit cycles.
+    /// reused for further Emit/Yield/Commit cycles. On failure, pending state is
+    /// retained for diagnosis; call Reset() to clear it before retrying.
     /// @return Status::Ok() on success, or the first error from the underlying mutation.
     Status Commit();
 

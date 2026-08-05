@@ -3079,6 +3079,29 @@ TEST(SubgraphBuilder, YieldRejectsOutOfRangeReplacementTarget) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
+TEST(SubgraphBuilder, YieldRejectsTargetNotProducedByOldNodes) {
+    // hidden_b (v4) is a valid source value but produced by n1, which is
+    // not part of old_nodes_ {n0}. Yielding to it must be rejected at the
+    // call site; Commit's ValidateReplacementTargets would otherwise fail
+    // only after the alias binding and input rewrites are already applied.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    SubgraphBuilder builder(session, {GraphNodeId{.index = 0}});
+    auto mid_or = builder.Emit(
+            OpType::kEmbedding,
+            {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            HiddenDesc("foreign_target_output"),
+            EmbeddingParams{});
+    ASSERT_TRUE(mid_or.ok()) << mid_or.status().ToString();
+    const GraphValueId mid = std::move(*mid_or);
+
+    const Status status = builder.Yield(mid, GraphValueId{.index = 4});
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("not produced"), std::string::npos);
+}
+
 TEST(SubgraphBuilder, BuilderReusableAfterCommit) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);

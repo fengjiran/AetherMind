@@ -1873,6 +1873,27 @@ Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_
     // later as a confusing ValidateVirtualValues or Commit failure.
     AM_RETURN_IF_ERROR(session_.CheckSourceValueId(old_value_to_replace));
 
+    // The replacement target must be produced by one of the old_nodes.
+    // Yielding to a valid source value from a different node would only fail
+    // later in Commit's ValidateReplacementTargets, after the alias binding
+    // and input rewrites are already applied.
+    bool produced_by_old_nodes = false;
+    for (const auto old_node: old_nodes_) {
+        AM_RETURN_IF_ERROR(session_.CheckSourceNodeId(old_node));
+        const auto& node = session_.graph_.GetNode(old_node);
+        if (std::ranges::find(node.outputs, old_value_to_replace) !=
+            node.outputs.end()) {
+            produced_by_old_nodes = true;
+            break;
+        }
+    }
+    if (!produced_by_old_nodes) {
+        return Status::InvalidArgument(
+                "SubgraphBuilder::Yield: replacement target value " +
+                std::to_string(old_value_to_replace.index) +
+                " is not produced by any old_node");
+    }
+
     // Reject re-yield: the binding was already redirected, so honoring a
     // second Yield would silently drop the original target (and the lookup
     // below would misreport the value as never emitted).

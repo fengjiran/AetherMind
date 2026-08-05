@@ -15,7 +15,7 @@ bool IsDceRemovableOp(OpType op_type) {
     return !schema->traits.has_side_effects && !HasStatefulOutput(*schema);
 }
 
-bool AreAllOutputsDead(const GraphRewriteSession& session, const GraphNodeView& node) {
+StatusOr<bool> AreAllOutputsDead(const GraphRewriteSession& session, const GraphNodeView& node) {
     for (const auto output: node.outputs) {
         // When an earlier pass (e.g. constant folding) replaced this output
         // with a different value, the original output is dead from this
@@ -25,7 +25,14 @@ bool AreAllOutputsDead(const GraphRewriteSession& session, const GraphNodeView& 
             continue;
         }
 
-        if (session.IsGraphOutput(output) || session.HasLiveConsumers(output)) {
+        if (session.IsGraphOutput(output)) {
+            return false;
+        }
+        // HasLiveConsumers returns InvalidArgument if the source graph
+        // contains a cycle; propagate it so the failure is reported instead
+        // of silently keeping or dropping the node.
+        AM_ASSIGN_OR_RETURN(bool has_consumers, session.HasLiveConsumers(output));
+        if (has_consumers) {
             return false;
         }
     }
@@ -40,7 +47,8 @@ Status RemoveDeadNodesOnce(GraphRewriteSession& session, bool& changed) {
         const GraphNodeId node_id = (*order)[i - 1U];
         StatusOr<GraphNodeView> node = session.GetNodeView(node_id);
         AM_RETURN_IF_ERROR(node.status());
-        if (!IsDceRemovableOp(node->op_type) || !AreAllOutputsDead(session, *node)) {
+        AM_ASSIGN_OR_RETURN(bool all_outputs_dead, AreAllOutputsDead(session, *node));
+        if (!IsDceRemovableOp(node->op_type) || !all_outputs_dead) {
             continue;
         }
 

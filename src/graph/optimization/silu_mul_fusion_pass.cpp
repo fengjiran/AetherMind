@@ -33,7 +33,12 @@ StatusOr<std::optional<SiluMulPattern>> FindSiluMulPattern(GraphRewriteSession& 
         return std::optional<SiluMulPattern>{};
     }
 
-    const std::vector<GraphNodeId> consumers = session.FindConsumers(silu_out);
+    // FindConsumers can fail when the source graph contains a cycle; the
+    // fusion pass runs on the unmodified graph, so treat that as "no pattern"
+    // only after reporting the error to the caller.
+    StatusOr<std::vector<GraphNodeId>> consumers_or = session.FindConsumers(silu_out);
+    AM_RETURN_IF_ERROR(consumers_or.status());
+    const auto& consumers = *consumers_or;
     if (consumers.size() != 1U) {
         return std::optional<SiluMulPattern>{};
     }

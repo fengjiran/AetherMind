@@ -1766,27 +1766,30 @@ TEST(GraphRewriteSession, FindConsumersReturnsAllConsumersOnCleanSession) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     // v2 (weight) is consumed by both n0 and n1
-    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 2});
-    ASSERT_EQ(consumers.size(), 2U);
-    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
-    EXPECT_EQ(consumers[1], GraphNodeId{.index = 1});
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    ASSERT_EQ(consumers->size(), 2U);
+    EXPECT_EQ((*consumers)[0], GraphNodeId{.index = 0});
+    EXPECT_EQ((*consumers)[1], GraphNodeId{.index = 1});
 }
 
 TEST(GraphRewriteSession, FindConsumersReturnsSingleConsumer) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     // v0 (tokens_a) is consumed only by n0
-    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 0});
-    ASSERT_EQ(consumers.size(), 1U);
-    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    ASSERT_EQ(consumers->size(), 1U);
+    EXPECT_EQ((*consumers)[0], GraphNodeId{.index = 0});
 }
 
 TEST(GraphRewriteSession, FindConsumersReturnsEmptyForValueWithNoConsumers) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     // v3 (hidden_a) is a graph output, no node consumes it
-    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 3});
-    EXPECT_TRUE(consumers.empty());
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 3});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    EXPECT_TRUE(consumers->empty());
 }
 
 TEST(GraphRewriteSession, FindConsumersExcludesRemovedNodes) {
@@ -1794,9 +1797,10 @@ TEST(GraphRewriteSession, FindConsumersExcludesRemovedNodes) {
     GraphRewriteSession session(graph);
     ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
     // v2 (weight) now consumed only by n0 (n1 removed)
-    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 2});
-    ASSERT_EQ(consumers.size(), 1U);
-    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    ASSERT_EQ(consumers->size(), 1U);
+    EXPECT_EQ((*consumers)[0], GraphNodeId{.index = 0});
 }
 
 TEST(GraphRewriteSession, FindConsumersExcludesReplacedNodes) {
@@ -1808,9 +1812,10 @@ TEST(GraphRewriteSession, FindConsumersExcludesReplacedNodes) {
                                                                               "replacement")})
                         .ok());
     // v2 (weight) now consumed only by n0 (n1 replaced, not live)
-    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 2});
-    ASSERT_EQ(consumers.size(), 1U);
-    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    ASSERT_EQ(consumers->size(), 1U);
+    EXPECT_EQ((*consumers)[0], GraphNodeId{.index = 0});
 }
 
 TEST(GraphRewriteSession, FindConsumersReflectsRedirectInput) {
@@ -1820,27 +1825,35 @@ TEST(GraphRewriteSession, FindConsumersReflectsRedirectInput) {
     ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
                         .ok());
     // n0 no longer consumes v0
-    EXPECT_TRUE(session.FindConsumers(GraphValueId{.index = 0}).empty());
+    const StatusOr<std::vector<GraphNodeId>> consumers_v0 = session.FindConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(consumers_v0.ok()) << consumers_v0.status().ToString();
+    EXPECT_TRUE(consumers_v0->empty());
     // n0 now consumes v1 (along with n1)
-    const std::vector<GraphNodeId> v1_consumers = session.FindConsumers(GraphValueId{.index = 1});
-    ASSERT_EQ(v1_consumers.size(), 2U);
-    EXPECT_EQ(v1_consumers[0], GraphNodeId{.index = 0});
-    EXPECT_EQ(v1_consumers[1], GraphNodeId{.index = 1});
+    const StatusOr<std::vector<GraphNodeId>> v1_consumers = session.FindConsumers(GraphValueId{.index = 1});
+    ASSERT_TRUE(v1_consumers.ok()) << v1_consumers.status().ToString();
+    ASSERT_EQ(v1_consumers->size(), 2U);
+    EXPECT_EQ((*v1_consumers)[0], GraphNodeId{.index = 0});
+    EXPECT_EQ((*v1_consumers)[1], GraphNodeId{.index = 1});
 }
 
 TEST(GraphRewriteSession, FindConsumersCacheInvalidatesAfterRedirectInput) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_EQ(session.FindConsumers(GraphValueId{.index = 0}).size(), 1U);
+    const StatusOr<std::vector<GraphNodeId>> consumers_v0 = session.FindConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(consumers_v0.ok()) << consumers_v0.status().ToString();
+    ASSERT_EQ(consumers_v0->size(), 1U);
     ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
                         .ok());
 
-    EXPECT_TRUE(session.FindConsumers(GraphValueId{.index = 0}).empty());
-    const std::vector<GraphNodeId> consumers = session.FindConsumers(GraphValueId{.index = 1});
-    ASSERT_EQ(consumers.size(), 2U);
-    EXPECT_EQ(consumers[0], GraphNodeId{.index = 0});
-    EXPECT_EQ(consumers[1], GraphNodeId{.index = 1});
+    const StatusOr<std::vector<GraphNodeId>> consumers_v0_after = session.FindConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(consumers_v0_after.ok()) << consumers_v0_after.status().ToString();
+    EXPECT_TRUE(consumers_v0_after->empty());
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 1});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    ASSERT_EQ(consumers->size(), 2U);
+    EXPECT_EQ((*consumers)[0], GraphNodeId{.index = 0});
+    EXPECT_EQ((*consumers)[1], GraphNodeId{.index = 1});
 }
 
 TEST(GraphRewriteSession, FindConsumersResolvesReplaceValue) {
@@ -1849,55 +1862,97 @@ TEST(GraphRewriteSession, FindConsumersResolvesReplaceValue) {
     // Replace v2 (weight) with v0 (tokens_a): consumers of v2 now resolve to v0
     ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 2}, GraphValueId{.index = 0}).ok());
     // FindConsumers(v0) should return both n0 and n1 (both originally consumed v2 → v0)
-    const std::vector<GraphNodeId> v0_consumers = session.FindConsumers(GraphValueId{.index = 0});
-    ASSERT_EQ(v0_consumers.size(), 2U);
-    EXPECT_EQ(v0_consumers[0], GraphNodeId{.index = 0});
-    EXPECT_EQ(v0_consumers[1], GraphNodeId{.index = 1});
+    const StatusOr<std::vector<GraphNodeId>> v0_consumers = session.FindConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(v0_consumers.ok()) << v0_consumers.status().ToString();
+    ASSERT_EQ(v0_consumers->size(), 2U);
+    EXPECT_EQ((*v0_consumers)[0], GraphNodeId{.index = 0});
+    EXPECT_EQ((*v0_consumers)[1], GraphNodeId{.index = 1});
     // FindConsumers(v2) should return the same result (v2 resolves to v0)
-    const std::vector<GraphNodeId> v2_consumers = session.FindConsumers(GraphValueId{.index = 2});
-    ASSERT_EQ(v2_consumers.size(), 2U);
-    EXPECT_EQ(v2_consumers[0], GraphNodeId{.index = 0});
-    EXPECT_EQ(v2_consumers[1], GraphNodeId{.index = 1});
+    const StatusOr<std::vector<GraphNodeId>> v2_consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(v2_consumers.ok()) << v2_consumers.status().ToString();
+    ASSERT_EQ(v2_consumers->size(), 2U);
+    EXPECT_EQ((*v2_consumers)[0], GraphNodeId{.index = 0});
+    EXPECT_EQ((*v2_consumers)[1], GraphNodeId{.index = 1});
 }
 
 TEST(GraphRewriteSession, FindConsumersReturnsEmptyForVirtualValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     const GraphValueId virtual_value = session.AllocateVirtualValue();
-    EXPECT_TRUE(session.FindConsumers(virtual_value).empty());
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(virtual_value);
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    EXPECT_TRUE(consumers->empty());
 }
 
 TEST(GraphRewriteSession, FindConsumersReturnsEmptyForOutOfRangeValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
-    EXPECT_TRUE(session.FindConsumers(GraphValueId{.index = 99}).empty());
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 99});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    EXPECT_TRUE(consumers->empty());
+}
+
+TEST(GraphRewriteSession, FindConsumersPropagatesCycleError) {
+    // Source graph with a cycle (n0 <-> n1 via Softmax). FindConsumers must
+    // report the underlying TopologicalOrder error instead of aborting.
+    std::vector<GraphValue> values = {
+            // v0 produced by n0, v1 produced by n1: n0 <-> n1 cycle.
+            {.payload = ActivationValue{},
+             .spec = Spec(DataType::Float32(), {4}),
+             .producer = GraphNodeId{.index = 0},
+             .name = "v0"},
+            {.payload = ActivationValue{},
+             .spec = Spec(DataType::Float32(), {4}),
+             .producer = GraphNodeId{.index = 1},
+             .name = "v1"},
+    };
+    std::vector<GraphNode> nodes = {
+            {.op_type = OpType::kSoftmax, .inputs = {GraphValueId{.index = 1}}, .outputs = {GraphValueId{.index = 0}}, .name = "n0"},
+            {.op_type = OpType::kSoftmax, .inputs = {GraphValueId{.index = 0}}, .outputs = {GraphValueId{.index = 1}}, .name = "n1"},
+    };
+    const ModelGraph graph(std::move(nodes), std::move(values));
+    GraphRewriteSession session(graph);
+
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 0});
+
+    ASSERT_FALSE(consumers.ok());
+    EXPECT_EQ(consumers.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(consumers.status().message().find("cycle"), std::string::npos);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersReturnsTrueForConsumedValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     // v2 (weight) is consumed by both n0 and n1
-    EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+    const StatusOr<bool> has_consumers = session.HasLiveConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
+    EXPECT_TRUE(*has_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersReturnsFalseForValueWithNoConsumers) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     // v3 (hidden_a) is a graph output, no node consumes it
-    EXPECT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 3}));
+    const StatusOr<bool> has_consumers = session.HasLiveConsumers(GraphValueId{.index = 3});
+    ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
+    EXPECT_FALSE(*has_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersReturnsFalseForVirtualValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
     const GraphValueId virtual_value = session.AllocateVirtualValue();
-    EXPECT_FALSE(session.HasLiveConsumers(virtual_value));
+    const StatusOr<bool> has_consumers = session.HasLiveConsumers(virtual_value);
+    ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
+    EXPECT_FALSE(*has_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersReturnsFalseForOutOfRangeValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
-    EXPECT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 99}));
+    const StatusOr<bool> has_consumers = session.HasLiveConsumers(GraphValueId{.index = 99});
+    ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
+    EXPECT_FALSE(*has_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersExcludesRemovedNodes) {
@@ -1905,9 +1960,13 @@ TEST(GraphRewriteSession, HasLiveConsumersExcludesRemovedNodes) {
     GraphRewriteSession session(graph);
     ASSERT_TRUE(session.RemoveNode(GraphNodeId{.index = 1}).ok());
     // v1 (tokens_b) was only consumed by n1; after removing n1, no live consumer
-    EXPECT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 1}));
+    const StatusOr<bool> has_v1_consumers = session.HasLiveConsumers(GraphValueId{.index = 1});
+    ASSERT_TRUE(has_v1_consumers.ok()) << has_v1_consumers.status().ToString();
+    EXPECT_FALSE(*has_v1_consumers);
     // v2 (weight) still consumed by n0
-    EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+    const StatusOr<bool> has_v2_consumers = session.HasLiveConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(has_v2_consumers.ok()) << has_v2_consumers.status().ToString();
+    EXPECT_TRUE(*has_v2_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersReflectsRedirectInput) {
@@ -1917,21 +1976,30 @@ TEST(GraphRewriteSession, HasLiveConsumersReflectsRedirectInput) {
     ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1})
                         .ok());
     // v0 (tokens_a) no longer consumed by any live node
-    EXPECT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 0}));
+    const StatusOr<bool> has_v0_consumers = session.HasLiveConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(has_v0_consumers.ok()) << has_v0_consumers.status().ToString();
+    EXPECT_FALSE(*has_v0_consumers);
     // v1 (tokens_b) now consumed by both n0 and n1
-    EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 1}));
+    const StatusOr<bool> has_v1_consumers = session.HasLiveConsumers(GraphValueId{.index = 1});
+    ASSERT_TRUE(has_v1_consumers.ok()) << has_v1_consumers.status().ToString();
+    EXPECT_TRUE(*has_v1_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersCacheInvalidatesAfterReplaceValue) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 3}));
+    const StatusOr<bool> before = session.HasLiveConsumers(GraphValueId{.index = 3});
+    ASSERT_TRUE(before.ok()) << before.status().ToString();
+    ASSERT_FALSE(*before);
     ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 2}, GraphValueId{.index = 3}).ok());
 
-    EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 3}));
-    EXPECT_EQ(session.HasLiveConsumers(GraphValueId{.index = 2}),
-              session.HasLiveConsumers(GraphValueId{.index = 3}));
+    const StatusOr<bool> after_v3 = session.HasLiveConsumers(GraphValueId{.index = 3});
+    ASSERT_TRUE(after_v3.ok()) << after_v3.status().ToString();
+    EXPECT_TRUE(*after_v3);
+    const StatusOr<bool> after_v2 = session.HasLiveConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(after_v2.ok()) << after_v2.status().ToString();
+    EXPECT_EQ(*after_v2, *after_v3);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersResolvesReplaceValue) {
@@ -1940,9 +2008,12 @@ TEST(GraphRewriteSession, HasLiveConsumersResolvesReplaceValue) {
     // Replace v2 (weight) with v0 (tokens_a)
     ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 2}, GraphValueId{.index = 0}).ok());
     // HasLiveConsumers(v2) should match HasLiveConsumers(v0): both resolve to v0
-    EXPECT_EQ(session.HasLiveConsumers(GraphValueId{.index = 2}),
-              session.HasLiveConsumers(GraphValueId{.index = 0}));
-    EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+    const StatusOr<bool> v2_consumers = session.HasLiveConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(v2_consumers.ok()) << v2_consumers.status().ToString();
+    const StatusOr<bool> v0_consumers = session.HasLiveConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(v0_consumers.ok()) << v0_consumers.status().ToString();
+    EXPECT_EQ(*v2_consumers, *v0_consumers);
+    EXPECT_TRUE(*v2_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersTrueWhenOnlyReplacementConsumes) {
@@ -1966,9 +2037,13 @@ TEST(GraphRewriteSession, HasLiveConsumersTrueWhenOnlyReplacementConsumes) {
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
 
     // FindConsumers returns empty: no live original node consumes v2.
-    EXPECT_TRUE(session.FindConsumers(GraphValueId{.index = 2}).empty());
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    EXPECT_TRUE(consumers->empty());
     // HasLiveConsumers returns true: the replacement node consumes v2.
-    EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+    const StatusOr<bool> has_consumers = session.HasLiveConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
+    EXPECT_TRUE(*has_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersFalseWhenReplacementDoesNotConsume) {
@@ -1995,14 +2070,18 @@ TEST(GraphRewriteSession, HasLiveConsumersFalseWhenReplacementDoesNotConsume) {
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
 
     // No live original node and no replacement consumes v2.
-    EXPECT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+    const StatusOr<bool> has_consumers = session.HasLiveConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
+    EXPECT_FALSE(*has_consumers);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersCacheInvalidatesAfterReplaceSubgraph) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
 
-    ASSERT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+    const StatusOr<bool> before = session.HasLiveConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(before.ok()) << before.status().ToString();
+    ASSERT_TRUE(*before);
 
     // alt_weight supplies a valid Float32 weight slot without consuming v2.
     const GraphValueId alt_weight = session.AddSessionConstant(
@@ -2021,7 +2100,9 @@ TEST(GraphRewriteSession, HasLiveConsumersCacheInvalidatesAfterReplaceSubgraph) 
     const std::array old_nodes{GraphNodeId{.index = 0}, GraphNodeId{.index = 1}};
     ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
 
-    EXPECT_FALSE(session.HasLiveConsumers(GraphValueId{.index = 2}));
+    const StatusOr<bool> after = session.HasLiveConsumers(GraphValueId{.index = 2});
+    ASSERT_TRUE(after.ok()) << after.status().ToString();
+    EXPECT_FALSE(*after);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersTrueForUpstreamValueConsumedByReplacement) {
@@ -2046,8 +2127,12 @@ TEST(GraphRewriteSession, HasLiveConsumersTrueForUpstreamValueConsumedByReplacem
 
     // v0 (tokens_a): FindConsumers empty (n0 replaced, n1 never consumed v0),
     // but HasLiveConsumers true (replacement r consumes v0).
-    EXPECT_TRUE(session.FindConsumers(GraphValueId{.index = 0}).empty());
-    EXPECT_TRUE(session.HasLiveConsumers(GraphValueId{.index = 0}));
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    EXPECT_TRUE(consumers->empty());
+    const StatusOr<bool> has_consumers = session.HasLiveConsumers(GraphValueId{.index = 0});
+    ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
+    EXPECT_TRUE(*has_consumers);
 }
 
 

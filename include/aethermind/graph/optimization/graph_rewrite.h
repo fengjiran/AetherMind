@@ -346,8 +346,11 @@ public:
     /// Virtual values and out-of-range ids return an empty vector.
     /// @param value Value id whose consumers are queried.
     /// @return Consuming live original node ids in topological order (empty for
-    ///         virtual/out-of-range ids).
-    AM_NODISCARD std::vector<GraphNodeId> FindConsumers(GraphValueId value) const;
+    ///         virtual/out-of-range ids), or the underlying
+    ///         ModelGraph::TopologicalOrder error if the source graph contains
+    ///         a cycle (the session does not introduce new edges, so a cycle
+    ///         can only originate from the source graph).
+    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> FindConsumers(GraphValueId value) const;
 
     /// @brief Returns true if any live node or active replacement node consumes
     /// `value` (after resolution) as an input.
@@ -364,8 +367,10 @@ public:
     /// Virtual values and out-of-range ids return false.
     /// @param value Value id whose consumers are checked.
     /// @return True if any live node or active replacement node consumes the value;
-    ///         false for virtual/out-of-range ids or no consumers.
-    AM_NODISCARD bool HasLiveConsumers(GraphValueId value) const;
+    ///         false for virtual/out-of-range ids or no consumers, or the
+    ///         underlying ModelGraph::TopologicalOrder error if the source
+    ///         graph contains a cycle (see FindConsumers).
+    AM_NODISCARD StatusOr<bool> HasLiveConsumers(GraphValueId value) const;
 
     /// @brief Validates the session's internal consistency without materializing.
     ///
@@ -509,7 +514,11 @@ private:
     // Invalidates cached consumer indexes after a successful state mutation.
     void InvalidateConsumerCache() noexcept;
     // Builds or returns the consumer index for the current mutation generation.
-    AM_NODISCARD const ConsumerCache& EnsureConsumerCache() const;
+    // Returns InvalidArgument if the source graph contains a cycle (the session
+    // does not introduce new edges, so a cycle can only originate from the
+    // source graph). The returned pointer is valid only until the next
+    // mutation invalidates the cache.
+    AM_NODISCARD StatusOr<const ConsumerCache*> EnsureConsumerCache() const;
 
     // Immutable source graph; must outlive the session.
     const ModelGraph& graph_;

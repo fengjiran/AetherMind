@@ -609,21 +609,21 @@ std::vector<GraphValueId> GraphRewriteSession::GetLiveValues() const {
 //   2. Resolve `value` through any ReplaceValue chain.
 //   3. Return the cached consumer bucket for the resolved id (built by
 //      EnsureConsumerCache).
-std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) const {
+StatusOr<std::vector<GraphNodeId>> GraphRewriteSession::FindConsumers(GraphValueId value) const {
     if (value.index >= graph_.GetValues().size() && !IsSessionLocalValue(value)) {
-        return {};
+        return std::vector<GraphNodeId>{};
     }
 
     if (IsSessionVirtualValue(value)) {
-        return {};
+        return std::vector<GraphNodeId>{};
     }
 
     const GraphValueId resolved_value = GetResolvedValue(value);
-    const ConsumerCache& cache = EnsureConsumerCache();
-    if (resolved_value.index >= cache.original_consumers.size()) {
-        return {};
+    AM_ASSIGN_OR_RETURN(const ConsumerCache* cache, EnsureConsumerCache());
+    if (resolved_value.index >= cache->original_consumers.size()) {
+        return std::vector<GraphNodeId>{};
     }
-    return cache.original_consumers[resolved_value.index];
+    return cache->original_consumers[resolved_value.index];
 }
 
 // Returns true if any live node or active replacement node consumes `value`
@@ -634,7 +634,7 @@ std::vector<GraphNodeId> GraphRewriteSession::FindConsumers(GraphValueId value) 
 //   2. Resolve `value` through any ReplaceValue chain.
 //   3. Consult the consumer cache: true when the resolved value has any live
 //      original consumer or a positive replacement consumer count.
-bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
+StatusOr<bool> GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
     if (value.index >= graph_.GetValues().size() && !IsSessionLocalValue(value)) {
         return false;
     }
@@ -644,12 +644,12 @@ bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
     }
 
     const GraphValueId resolved_value = GetResolvedValue(value);
-    const ConsumerCache& cache = EnsureConsumerCache();
-    if (resolved_value.index >= cache.original_consumers.size()) {
+    AM_ASSIGN_OR_RETURN(const ConsumerCache* cache, EnsureConsumerCache());
+    if (resolved_value.index >= cache->original_consumers.size()) {
         return false;
     }
-    return !cache.original_consumers[resolved_value.index].empty() ||
-           cache.replacement_consumer_counts[resolved_value.index] > 0;
+    return !cache->original_consumers[resolved_value.index].empty() ||
+           cache->replacement_consumer_counts[resolved_value.index] > 0;
 }
 
 // Builds or returns the consumer index for the current mutation generation.
@@ -662,9 +662,13 @@ bool GraphRewriteSession::HasLiveConsumers(GraphValueId value) const {
 //      original_consumers.
 //   3. Count active non-mirror replacement inputs into
 //      replacement_consumer_counts.
-const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCache() const {
+//
+// Returns InvalidArgument if the source graph contains a cycle; the session
+// does not introduce new edges, so a cycle can only originate from the source
+// graph. On failure the previous cache (if any) is left intact.
+StatusOr<const GraphRewriteSession::ConsumerCache*> GraphRewriteSession::EnsureConsumerCache() const {
     if (consumer_cache_.has_value() && consumer_cache_->generation == mutation_generation_) {
-        return *consumer_cache_;
+        return &*consumer_cache_;
     }
 
     ConsumerCache cache;
@@ -674,8 +678,7 @@ const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCac
     cache.replacement_consumer_counts.resize(value_count, 0U);
 
     const StatusOr<std::vector<GraphNodeId>> order = graph_.TopologicalOrder();
-    AM_CHECK(order.ok(), "EnsureConsumerCache: TopologicalOrder failed: {}",
-             order.status().ToString());
+    AM_RETURN_IF_ERROR(order.status());
 
     for (const auto node_id: *order) {
         if (!IsNodeLive(node_id)) {
@@ -717,7 +720,7 @@ const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCac
     }
 
     consumer_cache_ = std::move(cache);
-    return *consumer_cache_;
+    return &*consumer_cache_;
 }
 
 // Validates the session's internal consistency without materializing.

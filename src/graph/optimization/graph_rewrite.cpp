@@ -1880,13 +1880,13 @@ Status SubgraphBuilder::Yield(GraphValueId internal_val, GraphValueId old_value_
     bool produced_by_old_nodes = false;
     for (const auto old_node: old_nodes_) {
         AM_RETURN_IF_ERROR(session_.CheckSourceNodeId(old_node));
-        const auto& node = session_.graph_.GetNode(old_node);
-        if (std::ranges::find(node.outputs, old_value_to_replace) !=
-            node.outputs.end()) {
+        if (const auto& node = session_.graph_.GetNode(old_node);
+            std::ranges::find(node.outputs, old_value_to_replace) != node.outputs.end()) {
             produced_by_old_nodes = true;
             break;
         }
     }
+
     if (!produced_by_old_nodes) {
         return Status::InvalidArgument(
                 "SubgraphBuilder::Yield: replacement target value " +

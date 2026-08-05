@@ -646,11 +646,13 @@ public:
     /// later Emit calls normalize inputs referencing internal_val as well.
     ///
     /// Returns InvalidArgument if internal_val was not produced by any
-    /// prior Emit call, or if it was already yielded.
+    /// prior Emit call, if it was already yielded, or if
+    /// old_value_to_replace is not produced by any node in old_nodes.
     /// @param internal_val Virtual value id returned by a prior Emit call.
     /// @param old_value_to_replace External graph value to take over.
     /// @return Status::Ok() on success, or InvalidArgument if internal_val is
-    ///         unknown or already yielded.
+    ///         unknown or already yielded, or if old_value_to_replace is not
+    ///         produced by any node in old_nodes.
     Status Yield(GraphValueId internal_val, GraphValueId old_value_to_replace);
 
     /// @brief Submits the accumulated replacement nodes to the session as a single

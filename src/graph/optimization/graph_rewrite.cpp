@@ -963,8 +963,7 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
     std::vector<GraphValueId> new_inputs;
     new_inputs.reserve(view->inputs.size());
     for (const auto input: view->inputs) {
-        const auto resolved_input = GetResolvedValue(input);
-        auto mapped_input = MapCommittedValue(resolved_input, maps);
+        auto mapped_input = MapCommittedValue(input, maps);
         AM_RETURN_IF_ERROR(mapped_input.status());
         new_inputs.push_back(*mapped_input);
     }

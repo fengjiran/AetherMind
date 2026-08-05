@@ -762,6 +762,11 @@ Status GraphRewriteSession::ValidateEdits() const {
                                                              std::nullopt);
         AM_RETURN_IF_ERROR(ValidateReplacementSemantics(rewrite.replacements, virtual_specs));
     }
+
+    // Emission-order availability: every replacement input must be produced
+    // before its rewrite's commit emission point. Without this, Commit would
+    // fail with an unmappable-input error after ValidateEdits already passed.
+    AM_RETURN_IF_ERROR(ValidateReplacementInputAvailability());
     return Status::Ok();
 }
 
@@ -1376,8 +1381,10 @@ StatusOr<TensorSpec> GraphRewriteSession::ResolveValueSpec(
 }
 
 // Replays InferOperator over replacement nodes in order, verifying input
-// availability, output count, replaces target dtype compatibility, and
-// deriving virtual specs into virtual_specs_out.
+// spec availability (dtype/shape resolvability), output count, replaces
+// target dtype compatibility, and deriving virtual specs into
+// virtual_specs_out. Emission-order availability of source value inputs is
+// NOT checked here; ValidateReplacementInputAvailability handles that.
 //
 // Steps (per replacement):
 //   1. Look up the operator schema.
@@ -1505,6 +1512,107 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
                         " is incompatible with replaces target value " +
                         std::to_string(replaced.index) + " dtype " +
                         ToString(target_spec.dtype));
+            }
+        }
+    }
+    return Status::Ok();
+}
+
+// Validates that every active rewrite's replacement inputs are available at
+// the rewrite's commit emission point.
+//
+// Commit emits each rewrite when the first old_node appears in source
+// topological order (see Commit). A replacement input referencing a value
+// whose producer emits later would fail to map during commit
+// ("value X cannot be mapped during commit"). This check rejects such
+// rewrites in ValidateEdits, so a passing ValidateEdits guarantees Commit
+// cannot fail on unmappable replacement inputs.
+//
+// Rules (per replacement input, resolved through ReplaceValue chains):
+//   1. Session constants and virtual values are always available: constants
+//      are pre-mapped by CopyExternalValues; virtual values are produced
+//      within the rewrite and validated by ValidateReplacementSemantics.
+//   2. Source values without a producer (inputs, weights, constants, states)
+//      are pre-mapped by CopyExternalValues; always available.
+//   3. Source value with producer p:
+//      - p replaced by an active rewrite R_p: available iff R_p's emission
+//        point (min topo position over its old_nodes) is before this
+//        rewrite's emission point.
+//      - p untouched: available iff p's topo position is before this
+//        rewrite's emission point.
+//      Otherwise InvalidArgument. A producer inside this rewrite's own
+//      old_nodes is rejected too: its emission point equals this rewrite's,
+//      so the input could never be mapped (matches Commit behavior).
+Status GraphRewriteSession::ValidateReplacementInputAvailability() const {
+    if (rewrites_.empty()) {
+        return Status::Ok();
+    }
+
+    // Source topological positions; emission points are min positions over a
+    // rewrite's old_nodes. A cyclic source graph is a graph-level error, not a
+    // session invariant, so propagate it rather than asserting.
+    AM_ASSIGN_OR_RETURN(const std::vector<GraphNodeId> order, graph_.TopologicalOrder());
+    std::vector<std::size_t> position(graph_.GetNodes().size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        position[order[i].index] = i;
+    }
+
+    std::vector<std::size_t> emission_point(rewrites_.size());
+    for (std::size_t i = 0; i < rewrites_.size(); ++i) {
+        std::size_t earliest = std::numeric_limits<std::size_t>::max();
+        for (const GraphNodeId old_node: rewrites_[i].old_nodes) {
+            earliest = std::min(earliest, position[old_node.index]);
+        }
+        emission_point[i] = earliest;
+    }
+
+    for (std::size_t i = 0; i < rewrites_.size(); ++i) {
+        const RewriteEntry& rewrite = rewrites_[i];
+        if (!rewrite.active) {
+            continue;
+        }
+
+        for (std::size_t r = 0; r < rewrite.replacements.size(); ++r) {
+            const auto& replacement = rewrite.replacements[r];
+            const std::string debug_ctx =
+                    "replacement[" + std::to_string(r) + "]" +
+                    (replacement.name.empty() ? "" : " '" + replacement.name + "'");
+
+            for (const GraphValueId input: replacement.inputs) {
+                const GraphValueId resolved = GetResolvedValue(input);
+                if (resolved.index >= graph_.GetValues().size()) {
+                    // Session constant or virtual value: always available.
+                    continue;
+                }
+
+                const std::optional<GraphNodeId> producer =
+                        graph_.GetValue(resolved).producer;
+                if (!producer.has_value()) {
+                    // Input/weight/constant/state: pre-mapped by
+                    // CopyExternalValues before emission starts.
+                    continue;
+                }
+
+                std::size_t producer_emission = 0;
+                std::string producer_desc;
+                if (const auto rewrite_index = node_to_rewrite_[producer->index];
+                    rewrite_index.has_value() && *rewrite_index < rewrites_.size() &&
+                    rewrites_[*rewrite_index].active) {
+                    producer_emission = emission_point[*rewrite_index];
+                    producer_desc = "rewrite " + std::to_string(*rewrite_index);
+                } else {
+                    producer_emission = position[producer->index];
+                    producer_desc = "node " + std::to_string(producer->index);
+                }
+
+                if (producer_emission >= emission_point[i]) {
+                    return Status::InvalidArgument(
+                            "GraphRewriteSession: rewrite " + std::to_string(i) +
+                            " " + debug_ctx + " input value " +
+                            std::to_string(resolved.index) + " is produced by " +
+                            producer_desc + " which is not emitted before this "
+                                            "rewrite's commit emission point");
+                }
             }
         }
     }

@@ -916,6 +916,126 @@ TEST(GraphRewriteSession, ValidateEditsSucceedsAfterValidMutations) {
     EXPECT_TRUE(session.ValidateEdits().ok());
 }
 
+TEST(GraphRewriteSession, ValidateEditsRejectsInputProducedAfterRewritePoint) {
+    // BuildTwoEmbeddingGraph: node 0 (embed_a) produces value 3, node 1
+    // (embed_b) produces value 4; topological order is [0, 1]. Replacing node 0
+    // with Add(v4, v4) introduces an input whose producer (node 1) is emitted
+    // after the rewrite's emission point, so Commit would fail to map it.
+    // ValidateEdits must reject this instead of passing.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphNodeId> old_nodes{GraphNodeId{.index = 0}};
+    const std::vector<ReplacementNode> replacements{{
+            .op_type = OpType::kAdd,
+            .inputs = {GraphValueId{.index = 4}, GraphValueId{.index = 4}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "add_out")},
+            .op_params = AddParams{},
+            .name = "add_forward_ref",
+    }};
+    // Apply-time stays permissive: ordering is only known once all rewrites
+    // are submitted, so ReplaceSubgraph accepts and ValidateEdits rejects.
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, replacements).ok());
+
+    const Status status = session.ValidateEdits();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("not emitted before"), std::string::npos);
+}
+
+TEST(GraphRewriteSession, ValidateEditsAcceptsInputProducedBeforeRewritePoint) {
+    // Replacing node 1 with Add(v3, v3) is fine: value 3 is produced by node 0
+    // which emits before the rewrite's emission point.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphNodeId> old_nodes{GraphNodeId{.index = 1}};
+    const std::vector<ReplacementNode> replacements{{
+            .op_type = OpType::kAdd,
+            .inputs = {GraphValueId{.index = 3}, GraphValueId{.index = 3}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "add_out")},
+            .op_params = AddParams{},
+            .name = "add_backward_ref",
+    }};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, replacements).ok());
+    EXPECT_TRUE(session.ValidateEdits().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, ValidateEditsAcceptsInputProducedByEarlierRewrite) {
+    // R1 replaces node 0 with an embedding mirror (producer-less inputs),
+    // taking over value 3. R2 replaces node 1 with Add(v3, v3), consuming the
+    // value produced by R1, which emits earlier. Both must validate and commit.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphNodeId> old_nodes_r1{GraphNodeId{.index = 0}};
+    const std::vector<ReplacementNode> replacements_r1{{
+            .op_type = OpType::kEmbedding,
+            .inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 2}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "embed_a_mirror")},
+            .op_params = EmbeddingParams{},
+            .name = "r1",
+    }};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes_r1, replacements_r1).ok());
+
+    const std::vector<GraphNodeId> old_nodes_r2{GraphNodeId{.index = 1}};
+    const std::vector<ReplacementNode> replacements_r2{{
+            .op_type = OpType::kAdd,
+            .inputs = {GraphValueId{.index = 3}, GraphValueId{.index = 3}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "add_out")},
+            .op_params = AddParams{},
+            .name = "r2",
+    }};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes_r2, replacements_r2).ok());
+    EXPECT_TRUE(session.ValidateEdits().ok());
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+}
+
+TEST(GraphRewriteSession, ValidateEditsRejectsInputProducedByLaterRewrite) {
+    // R1 replaces node 0 with Add(v4, v4); value 4 is produced by node 1,
+    // which R2 replaces. R2 emits at topo position 1, after R1's emission
+    // point 0, so R1's input can never be mapped during commit. ValidateEdits
+    // must reject R1 even though R2 itself is valid.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphNodeId> old_nodes_r1{GraphNodeId{.index = 0}};
+    const std::vector<ReplacementNode> replacements_r1{{
+            .op_type = OpType::kAdd,
+            .inputs = {GraphValueId{.index = 4}, GraphValueId{.index = 4}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "add_out")},
+            .op_params = AddParams{},
+            .name = "r1",
+    }};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes_r1, replacements_r1).ok());
+
+    const std::vector<GraphNodeId> old_nodes_r2{GraphNodeId{.index = 1}};
+    const std::vector<ReplacementNode> replacements_r2{{
+            .op_type = OpType::kAdd,
+            .inputs = {GraphValueId{.index = 3}, GraphValueId{.index = 3}},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "add_out")},
+            .op_params = AddParams{},
+            .name = "r2",
+    }};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes_r2, replacements_r2).ok());
+
+    const Status status = session.ValidateEdits();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("not emitted before"), std::string::npos);
+
+    // Commit must also fail: ValidateEdits is its first gate.
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_FALSE(committed.ok());
+}
+
 // --- Issue H: Commit() rejects monostate external value with specific error ---
 
 TEST(GraphRewriteSession, RejectsMonostateExternalValueOnCommit) {

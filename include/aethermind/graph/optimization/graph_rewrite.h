@@ -376,7 +376,11 @@ public:
     ///
     /// Checks: replacement targets are valid, old_node ids are in range,
     /// replacement node inputs/outputs are valid, virtual values satisfy
-    /// ordering constraints within and across rewrites.
+    /// ordering constraints within and across rewrites, and every active
+    /// rewrite's replacement inputs are available at its commit emission point
+    /// (source-value inputs must be produced by a node or rewrite that emits
+    /// earlier, or be producer-less). When this returns Ok, Commit() will not
+    /// fail on unmappable replacement inputs.
     /// @return Status::Ok() if consistent, or the first validation error.
     Status ValidateEdits() const;
 
@@ -384,6 +388,8 @@ public:
     ///
     /// Steps: CopyExternalValues -> topological traversal (emitting rewrites
     /// and surviving original nodes) -> MarkCommittedOutputs -> Validate.
+    /// Runs ValidateEdits first; emission-order violations (a replacement
+    /// input produced after its rewrite's emission point) are rejected there.
     /// Returns InvalidArgument if the result would be invalid.
     /// @return New ModelGraph owning the materialized result, or the first error.
     StatusOr<ModelGraph> Commit() const;
@@ -483,12 +489,28 @@ private:
             GraphValueId value,
             const std::vector<std::optional<TensorSpec>>& virtual_specs) const;
     // Replays InferOperator over replacement nodes in order, verifying input
-    // availability, output count, replaces target dtype compatibility, and
-    // deriving virtual specs into virtual_specs_out. Used by ValidateEdits and
-    // ReplaceSubgraph to catch semantic violations before Commit.
+    // spec availability (dtype/shape resolvability), output count, replaces
+    // target dtype compatibility, and deriving virtual specs into
+    // virtual_specs_out. Emission-order availability of source value inputs is
+    // NOT checked here; ValidateReplacementInputAvailability handles that.
+    // Used by ValidateEdits and ReplaceSubgraph to catch semantic violations
+    // before Commit.
     Status ValidateReplacementSemantics(
             const std::vector<ReplacementNode>& replacements,
             std::vector<std::optional<TensorSpec>>& virtual_specs_out) const;
+    // Validates that every active rewrite's replacement inputs are available at
+    // the rewrite's commit emission point. Commit emits each rewrite when the
+    // first old_node appears in source topological order; a replacement input
+    // referencing a value whose producer is emitted later would fail to map
+    // during commit. Session constants, virtual values, and producer-less
+    // source values (inputs/weights/constants/states) are always available.
+    // A producer covered by a rewrite must have that rewrite bind the value as
+    // a replacement output (otherwise the value is never emitted, e.g. a
+    // RemoveNode rewrite); a producer inside the consuming rewrite itself must
+    // be bound by an earlier replacement in the same group. Returns
+    // InvalidArgument when a source-value input is produced by a node or
+    // rewrite that emits at or after the consuming rewrite's emission point.
+    Status ValidateReplacementInputAvailability() const;
     // Builds a GraphValueDesc from a session constant's metadata.
     AM_NODISCARD GraphValueDesc MakeOutputDescFromSessionConstant(GraphValueId value) const;
     // Translates a value id from source/session space to committed graph space.

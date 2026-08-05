@@ -708,7 +708,7 @@ const GraphRewriteSession::ConsumerCache& GraphRewriteSession::EnsureConsumerCac
 
         for (const auto& replacement: rewrite.replacements) {
             for (const auto input: replacement.inputs) {
-                const GraphValueId resolved_input = GetResolvedValue(input);
+                const auto resolved_input = GetResolvedValue(input);
                 if (resolved_input.index < value_count) {
                     ++cache.replacement_consumer_counts[resolved_input.index];
                 }

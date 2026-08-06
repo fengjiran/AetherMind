@@ -37,7 +37,7 @@ public:
         return "ReplaceAddWithSiluPass";
     }
 
-    AM_NODISCARD Status Run(GraphRewriteSession& session, const PassContext&) override {
+    AM_NODISCARD Status Run(GraphRewriteSession& session, const PassContext&) const noexcept override {
         const std::vector<GraphNodeId> add_nodes = session.FindNodesByOpType(OpType::kAdd);
         AM_CHECK(add_nodes.size() == 1U, "Expected exactly one Add node");
         const GraphNodeId add_node = add_nodes[0];

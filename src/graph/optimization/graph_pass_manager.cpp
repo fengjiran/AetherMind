@@ -9,15 +9,15 @@
 
 #include "aethermind/graph/optimization/graph_pass_manager.h"
 
-#include <optional>
-#include <utility>
-
 namespace aethermind {
 
 GraphPassManager::GraphPassManager(PassContext ctx) noexcept
     : ctx_(ctx) {}
 
 GraphPassManager& GraphPassManager::Add(std::unique_ptr<GraphPass> pass) {
+    // Fail fast at the call site: a null pass is a programming error, not a
+    // runtime condition. Index is the insertion position (current size).
+    AM_CHECK(pass != nullptr, "GraphPassManager: pass #{} cannot be null", passes_.size());
     passes_.push_back(std::move(pass));
     return *this;
 }
@@ -44,8 +44,10 @@ StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
     // passes on an unvalidated graph would let stale/forged metadata
     // propagate into checkpoints. We discard the returned order here because
     // passes navigate the graph via the session API; the validation is the
-    // side effect we want, not the topological order. Errors propagate
-    // verbatim so callers see node/op semantic context.
+    // side effect we want, not the topological order. Pass failures are
+    // prefixed with the failing pass name/ordinal before propagating, so
+    // callers see both the pipeline stage and the node/op semantic context
+    // from the underlying error.
     AM_RETURN_IF_ERROR(graph.Validate());
 
     // Reference the caller's graph directly to avoid an initial deep copy.
@@ -60,10 +62,9 @@ StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
     // the trailing return can skip a redundant Commit on an unchanged session.
     bool last_was_checkpoint = false;
     for (size_t i = 0; i < passes_.size(); ++i) {
-        if (passes_[i] == nullptr) {
-            return Status::InvalidArgument("GraphPassManager: pass cannot be null");
-        }
-        AM_RETURN_IF_ERROR(passes_[i]->Run(*session, ctx_));
+        AM_RETURN_IF_ERROR_WITH_MSG(passes_[i]->Run(*session, ctx_),
+                                    std::format("pass '{}' [#{}] failed",
+                                                passes_[i]->Name(), i));
 
         // Materialize at phase checkpoints per SetCheckpointEvery(N).
         // Includes the last pass when it lands on a checkpoint boundary,
@@ -72,7 +73,9 @@ StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
         // any accumulated mutations from non-checkpoint passes.
         if (ctx_.checkpoint_every != 0 && (i + 1) % ctx_.checkpoint_every == 0) {
             auto checkpoint = session->Commit();
-            AM_RETURN_IF_ERROR(checkpoint.status());
+            AM_RETURN_IF_ERROR_WITH_MSG(checkpoint.status(),
+                                        std::format("checkpoint after pass '{}' [#{}] failed",
+                                                    passes_[i]->Name(), i));
             checkpointed = std::move(checkpoint).value();
             session = std::make_unique<GraphRewriteSession>(*checkpointed);
             last_was_checkpoint = true;

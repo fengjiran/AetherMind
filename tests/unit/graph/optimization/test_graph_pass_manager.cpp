@@ -2,13 +2,9 @@
 #include "aethermind/graph/optimization/graph_pass_manager.h"
 
 #include <gtest/gtest.h>
-#include <memory>
-#include <string_view>
-#include <utility>
-#include <vector>
 
-namespace aethermind {
 namespace {
+using namespace aethermind;
 
 ModelGraph BuildGraph() {
     ModelGraph graph;
@@ -47,7 +43,7 @@ public:
         return "RedirectFirstNodeInput";
     }
 
-    Status Run(GraphRewriteSession& session, const PassContext&) override {
+    Status Run(GraphRewriteSession& session, const PassContext&) const noexcept override {
         return session.RedirectInput(GraphNodeId{.index = 0}, 0, GraphValueId{.index = 1});
     }
 };
@@ -58,7 +54,7 @@ public:
         return "RemoveUnusedSecondNode";
     }
 
-    Status Run(GraphRewriteSession& session, const PassContext&) override {
+    Status Run(GraphRewriteSession& session, const PassContext&) const noexcept override {
         return session.RemoveNode(GraphNodeId{.index = 1});
     }
 };
@@ -69,7 +65,7 @@ public:
         return "Failing";
     }
 
-    Status Run(GraphRewriteSession&, const PassContext&) override {
+    Status Run(GraphRewriteSession&, const PassContext&) const noexcept override {
         return Status::InvalidArgument("intentional failure");
     }
 };
@@ -80,7 +76,7 @@ public:
         return "Noop";
     }
 
-    Status Run(GraphRewriteSession&, const PassContext&) override {
+    Status Run(GraphRewriteSession&, const PassContext&) const noexcept override {
         return Status::Ok();
     }
 };
@@ -91,7 +87,7 @@ public:
         return "ContextAware";
     }
 
-    Status Run(GraphRewriteSession& session, const PassContext& ctx) override {
+    Status Run(GraphRewriteSession& session, const PassContext& ctx) const noexcept override {
         if (!ctx.enable_qkv_fusion) {
             return Status::Ok();
         }
@@ -108,7 +104,7 @@ public:
         return "ExpectCheckpointEvery";
     }
 
-    Status Run(GraphRewriteSession&, const PassContext& ctx) override {
+    Status Run(GraphRewriteSession&, const PassContext& ctx) const noexcept override {
         if (ctx.checkpoint_every != expected_) {
             return Status::InvalidArgument("unexpected checkpoint_every");
         }
@@ -315,17 +311,16 @@ TEST(GraphPassManager, PassReceivesContext) {
     EXPECT_EQ(first_node.inputs[0], result->GetInputs()[0].value);
 }
 
-TEST(GraphPassManager, RejectsNullPass) {
-    const ModelGraph graph = BuildGraph();
+// Null passes are rejected at the Add() call site (fail-fast), never
+// deferred to Run(). The "Check failed" message is the AM_CHECK abort
+// line (see AGENTS.md death-test convention).
+TEST(GraphPassManager, RejectsNullPassDeath) {
     GraphPassManager pipeline;
-    pipeline.AddSequential(MakePasses(
-            std::make_unique<NoopPass>(),
-            std::unique_ptr<GraphPass>{nullptr}));
-
-    const StatusOr<ModelGraph> result = pipeline.Run(graph);
-
-    ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_DEATH(
+            pipeline.AddSequential(MakePasses(
+                    std::make_unique<NoopPass>(),
+                    std::unique_ptr<GraphPass>{nullptr})),
+            "Check failed");
 }
 
 // Sentinel pass: increments an external counter when Run() is invoked.
@@ -339,7 +334,7 @@ public:
         return "Counting";
     }
 
-    Status Run(GraphRewriteSession&, const PassContext&) override {
+    Status Run(GraphRewriteSession&, const PassContext&) const noexcept override {
         ++*counter_;
         return Status::Ok();
     }
@@ -441,4 +436,3 @@ TEST(GraphPassManager, RejectsForgedOutputSpecBeforeAnyPass) {
     EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
 }
 }// namespace
-}// namespace aethermind

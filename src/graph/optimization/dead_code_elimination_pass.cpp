@@ -64,7 +64,7 @@ std::string_view DeadCodeEliminationPass::Name() const noexcept {
     return "DeadCodeEliminationPass";
 }
 
-Status DeadCodeEliminationPass::Run(GraphRewriteSession& session, const PassContext& ctx) {
+Status DeadCodeEliminationPass::Run(GraphRewriteSession& session, const PassContext& ctx) const noexcept {
     if (!ctx.enable_dce) {
         return Status::Ok();
     }

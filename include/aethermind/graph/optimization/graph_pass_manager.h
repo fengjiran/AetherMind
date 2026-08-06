@@ -64,22 +64,28 @@ public:
     /// @param session Mutable rewrite session bound to the current graph
     ///                snapshot. Passes must use this view, not the raw graph.
     /// @param ctx     Pass configuration; the pass should honor its own flag.
-    /// @return Status::Ok() on success, or the first error encountered.
-    ///         Returning Status::Ok() without mutating is valid (skip/no-op).
-    virtual Status Run(GraphRewriteSession& session, const PassContext& ctx) = 0;
+    /// @return Ok on success; Status error if the pass fails.
+    ///
+    /// Declared `const noexcept`: passes are stateless (see class doc) and
+    /// report failures only through the returned `Status`, never by throwing.
+    /// Internal allocation failures (e.g. bad_alloc) terminate instead of
+    /// propagating, matching the Operator::Run execution contract.
+    virtual Status Run(GraphRewriteSession& session, const PassContext& ctx) const noexcept = 0;
 };
 
 /// @brief Runs an ordered sequence of optimization passes over a ModelGraph.
 ///
-/// The manager is immutable after construction: Add/AddSequential only
-/// return a reference to *this for fluent building and never alter a
-/// manager that has already been used. Run() never modifies the caller's
-/// graph; it returns a new ModelGraph (or a checkpointed snapshot) that
-/// owns all folded constants and rewritten nodes.
+/// Builder methods (Add/AddSequential/SetCheckpointEvery) configure the
+/// pipeline and must be called before the first Run(); mutating the
+/// manager after Run() has been called is undefined behavior and is not
+/// detected. Run() never modifies the caller's graph; it returns a new
+/// ModelGraph (or a checkpointed snapshot) that owns all folded constants
+/// and rewritten nodes.
 ///
-/// Thread-safety: a constructed manager is safe to call Run() on from
-/// multiple threads concurrently, provided each call receives a distinct
-/// source graph. The manager holds no mutable state across Run() calls.
+/// Thread-safety: once construction is complete (no further mutation), a
+/// manager is safe to call Run() on from multiple threads concurrently,
+/// provided each call receives a distinct source graph. The manager holds
+/// no mutable state across Run() calls.
 class GraphPassManager {
 public:
     GraphPassManager() = default;
@@ -87,6 +93,8 @@ public:
 
     /// @brief Appends a pass to the pipeline. Takes ownership of `pass`.
     /// @param pass Pass instance to append; ownership is transferred.
+    ///        Must not be null: a null pass is a programming error and
+    ///        aborts at the call site (AM_CHECK), never deferred to Run().
     /// @return *this for fluent chaining.
     GraphPassManager& Add(std::unique_ptr<GraphPass> pass);
 
@@ -95,7 +103,7 @@ public:
     /// @return *this for fluent chaining.
     GraphPassManager& AddSequential(std::vector<std::unique_ptr<GraphPass>> passes);
 
-    /// @brief Overrides `ctx_.checkpoint_every` for the next Run() call.
+    /// @brief Overrides `ctx_.checkpoint_every` for all subsequent Run() calls.
     /// @param pass_count Snapshot frequency in passes (0 disables checkpointing).
     /// @return *this for fluent chaining.
     GraphPassManager& SetCheckpointEvery(uint32_t pass_count) noexcept;

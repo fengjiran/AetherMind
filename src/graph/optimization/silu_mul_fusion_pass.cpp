@@ -114,7 +114,7 @@ std::string_view SiluMulFusionPass::Name() const noexcept {
     return "SiluMulFusionPass";
 }
 
-Status SiluMulFusionPass::Run(GraphRewriteSession& session, const PassContext& ctx) {
+Status SiluMulFusionPass::Run(GraphRewriteSession& session, const PassContext& ctx) const noexcept {
     if (!ctx.enable_swiglu_fusion) {
         return Status::Ok();
     }

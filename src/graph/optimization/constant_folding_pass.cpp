@@ -162,7 +162,7 @@ std::string_view ConstantFoldingPass::Name() const noexcept {
     return "ConstantFoldingPass";
 }
 
-Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext& ctx) {
+Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext& ctx) const noexcept {
     if (!ctx.enable_constant_folding) {
         return Status::Ok();
     }

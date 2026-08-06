@@ -1,4 +1,5 @@
-#pragma once
+#ifndef AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_CONST_EVAL_HELPERS_H_
+#define AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_CONST_EVAL_HELPERS_H_
 
 #include "aethermind/graph/optimization/const_evaluator.h"
 
@@ -7,8 +8,7 @@
 #include <span>
 #include <vector>
 
-namespace aethermind {
-namespace test_utils {
+namespace aethermind::test_utils {
 
 // Unwraps MakeContiguousStrides or fatally aborts the test.
 // Test shapes are crafted to avoid overflow; a failure here indicates
@@ -20,14 +20,14 @@ inline std::vector<int64_t> MakeContiguousStridesOrDie(std::span<const int64_t> 
 }
 
 template<typename T>
-inline std::vector<std::byte> BytesFromValues(std::vector<T> values) {
+std::vector<std::byte> BytesFromValues(std::vector<T> values) {
     std::vector<std::byte> bytes(values.size() * sizeof(T));
     std::memcpy(bytes.data(), values.data(), bytes.size());
     return bytes;
 }
 
 template<typename T>
-inline std::vector<T> ValuesFromBytes(const std::vector<std::byte>& bytes) {
+std::vector<T> ValuesFromBytes(const std::vector<std::byte>& bytes) {
     std::vector<T> values(bytes.size() / sizeof(T));
     std::memcpy(values.data(), bytes.data(), bytes.size());
     return values;
@@ -51,5 +51,6 @@ inline std::vector<BFloat16> BFloat16Values(std::vector<uint16_t> bits) {
     return values;
 }
 
-}// namespace test_utils
-}// namespace aethermind
+}// namespace aethermind::test_utils
+
+#endif// AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_CONST_EVAL_HELPERS_H_

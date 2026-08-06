@@ -23,6 +23,9 @@ GraphPassManager& GraphPassManager::Add(std::unique_ptr<GraphPass> pass) {
 }
 
 GraphPassManager& GraphPassManager::AddSequential(std::vector<std::unique_ptr<GraphPass>> passes) {
+    // Reserve exact incoming size so the Add() loop never reallocs. Safe
+    // from aliasing: `passes` is a by-value parameter, not `passes_`.
+    passes_.reserve(passes_.size() + passes.size());
     for (std::unique_ptr<GraphPass>& pass: passes) {
         Add(std::move(pass));
     }
@@ -42,8 +45,7 @@ StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
     // propagate into checkpoints. We discard the returned order here because
     // passes navigate the graph via the session API; the validation is the
     // side effect we want, not the topological order. Errors propagate
-    // verbatim so callers see node/op semantic context (matches Task 5
-    // acceptance: "Compile failure 保留 node/op semantic context").
+    // verbatim so callers see node/op semantic context.
     AM_RETURN_IF_ERROR(graph.Validate());
 
     // Reference the caller's graph directly to avoid an initial deep copy.
@@ -68,8 +70,8 @@ StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
         // matching the immutable-snapshot + phase-checkpoint contract in
         // model_graph_design_v2.md §10. The trailing return below handles
         // any accumulated mutations from non-checkpoint passes.
-        if (ctx_.checkpoint_every != 0 && ((i + 1) % ctx_.checkpoint_every == 0)) {
-            StatusOr<ModelGraph> checkpoint = session->Commit();
+        if (ctx_.checkpoint_every != 0 && (i + 1) % ctx_.checkpoint_every == 0) {
+            auto checkpoint = session->Commit();
             AM_RETURN_IF_ERROR(checkpoint.status());
             checkpointed = std::move(checkpoint).value();
             session = std::make_unique<GraphRewriteSession>(*checkpointed);
@@ -80,12 +82,9 @@ StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
     }
 
     // If the last pass was a checkpoint, `checkpointed` already holds the
-    // final snapshot and another Commit would only deep-copy it. Otherwise
+    // final snapshot and another Commit would only deep-copy it. Otherwise,
     // commit the accumulated changes from trailing non-checkpoint passes.
-    if (last_was_checkpoint) {
-        return std::move(*checkpointed);
-    }
-    return session->Commit();
+    return last_was_checkpoint ? std::move(*checkpointed) : session->Commit();
 }
 
 }// namespace aethermind

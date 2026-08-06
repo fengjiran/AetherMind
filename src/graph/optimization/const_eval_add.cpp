@@ -34,8 +34,9 @@ struct AddScalarOp {
 // TU-local evaluator — registered via GetAddConstEvaluator() accessor.
 class AddConstEvaluator final : public ConstEvaluator {
 public:
-    // Validates shapes with broadcast compatibility, dtype match, and budgets.
-    // Produces a contiguous-output plan (broadcast result is always dense).
+    // Validates shapes with broadcast compatibility and dtype match.
+    // Produces a contiguous-output plan (broadcast result is always dense)
+    // and an elementwise cost estimate for the pass's budget enforcement.
     AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
                                               std::span<const GraphValueDesc> outputs,
                                               const OpParams& params,
@@ -69,27 +70,19 @@ public:
 
         auto numel = CountElements(*shape);
         AM_RETURN_IF_ERROR(numel.status());
-        if (static_cast<size_t>(*numel) > policy.max_compute_elements) {
-            return Status::Unimplemented(
-                    "Add constant evaluator compute budget exceeded");
-        }
-
-        auto nbytes = CountBytes(output);
-        AM_RETURN_IF_ERROR(nbytes.status());
-        if (*nbytes > policy.max_output_bytes) {
-            return Status::Unimplemented(
-                    "Add constant evaluator output byte budget exceeded");
-        }
+        auto cost = detail::EstimateElementwiseCost(output, *numel);
+        AM_RETURN_IF_ERROR(cost.status());
 
         auto strides = MakeContiguousStrides(*shape);
         AM_RETURN_IF_ERROR(strides.status());
 
         ConstEvalPlan plan;
+        plan.cost = *cost;
         plan.outputs.push_back({
                 .spec = output,
                 .quantization = outputs[0].quantization,
                 .strides = std::move(*strides),
-                .nbytes = *nbytes,
+                .nbytes = cost->output_bytes,
                 .debug_name = "folded_" + outputs[0].name,
         });
         return plan;

@@ -73,7 +73,7 @@ Status EvaluateSiluStridedByDType(const DataType& dtype,
 // The registry holds a function pointer, not the concrete type.
 class SiluConstEvaluator final : public ConstEvaluator {
 public:
-    // Validates shapes, dtype, and budgets; produces a contiguous-output plan.
+    // Validates shapes and dtype; produces a contiguous-output plan and cost estimate.
     // SiLU is element-wise so the output is always dense and contiguous.
     AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
                                               std::span<const GraphValueDesc> outputs,
@@ -103,27 +103,19 @@ public:
 
         auto numel = CountElements(*output_shape);
         AM_RETURN_IF_ERROR(numel.status());
-        if (static_cast<size_t>(*numel) > policy.max_compute_elements) {
-            return Status::Unimplemented(
-                    "Silu constant evaluator compute budget exceeded");
-        }
-
-        auto nbytes = CountBytes(output);
-        AM_RETURN_IF_ERROR(nbytes.status());
-        if (*nbytes > policy.max_output_bytes) {
-            return Status::Unimplemented(
-                    "Silu constant evaluator output byte budget exceeded");
-        }
+        auto cost = detail::EstimateElementwiseCost(output, *numel);
+        AM_RETURN_IF_ERROR(cost.status());
 
         auto output_strides = MakeContiguousStrides(*output_shape);
         AM_RETURN_IF_ERROR(output_strides.status());
 
         ConstEvalPlan plan;
+        plan.cost = *cost;
         plan.outputs.push_back({
                 .spec = output,
                 .quantization = outputs[0].quantization,
                 .strides = std::move(*output_strides),
-                .nbytes = *nbytes,
+                .nbytes = cost->output_bytes,
                 .debug_name = "folded_" + outputs[0].name,
         });
         return plan;

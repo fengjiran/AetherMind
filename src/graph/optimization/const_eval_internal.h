@@ -183,6 +183,12 @@ const ConstEvaluator& GetMulConstEvaluator() noexcept;
 const ConstEvaluator& GetSiluConstEvaluator() noexcept;
 const ConstEvaluator& GetSiluMulConstEvaluator() noexcept;
 
+// ── Cost estimation ──
+// Default cost for elementwise ops: one scalar op per element; output bytes
+// derived from the spec. The folding pass enforces budgets against the
+// reported cost, so estimates must be conservative upper bounds.
+StatusOr<FoldingCost> EstimateElementwiseCost(const TensorSpec& output_spec, int64_t numel);
+
 }// namespace aethermind::detail
 
 #endif

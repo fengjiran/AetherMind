@@ -20,15 +20,29 @@
 
 namespace aethermind {
 
-/// @brief Budget limits that control whether a constant-folding opportunity should
-/// be materialized. Applied during Plan() — if an op exceeds the budget the
-/// evaluator returns Unimplemented and the pass skips the node.
+/// @brief Budget limits that control whether a constant-folding opportunity
+/// should be materialized. Enforced centrally by the folding pass against the
+/// cost reported in ConstEvalPlan -- evaluators never compare against the
+/// policy themselves; they only estimate cost.
 struct ConstEvalPolicy {
     /// @brief Maximum total output bytes allowed for a single folded node.
     size_t max_output_bytes = size_t{64U} * 1024U;
-    /// @brief Maximum scalar element operations allowed for a single folded node.
-    ///        Complex evaluators may use this to estimate computation cost.
-    size_t max_compute_elements = size_t{64U} * 1024U;
+    /// @brief Maximum estimated scalar operations allowed for a single folded
+    ///        node. Evaluators report an upper-bound estimate in FoldingCost.
+    size_t max_compute_ops = size_t{64U} * 1024U;
+};
+
+/// @brief Upper-bound cost estimate of folding one node, reported by the
+/// evaluator in ConstEvalPlan and enforced centrally by the folding pass.
+///
+/// Estimates must be conservative (upper bounds, not averages) and pure
+/// functions of the node's specs and params -- no hardware or timing data.
+struct FoldingCost {
+    /// @brief Estimated number of scalar arithmetic operations.
+    uint64_t compute_ops = 0;
+    /// @brief Total bytes materialized and retained by the folded outputs.
+    ///        Must equal the sum of PlannedConstOutput::nbytes.
+    size_t output_bytes = 0;
 };
 
 /// @brief Description of one planned constant output produced by ConstEvaluator::Plan().
@@ -52,19 +66,24 @@ struct PlannedConstOutput {
 };
 
 /// @brief Result of ConstEvaluator::Plan(). Contains one PlannedConstOutput per
-/// graph output port.
+/// graph output port and the cost estimate the pass enforces budgets against.
 struct ConstEvalPlan {
     std::vector<PlannedConstOutput> outputs{};
+    /// @brief Upper-bound cost of folding this node. Must be filled by Plan().
+    FoldingCost cost{};
 };
 
 /// @brief Abstract interface for compile-time constant evaluation of an operator.
 ///
-/// The contract is two-phase: Plan() validates feasibility and describes
-/// the expected output layout; Evaluate() writes the actual bytes.
+/// The contract is two-phase: Plan() validates feasibility, describes the
+/// expected output layout, and reports an upper-bound cost estimate;
+/// Evaluate() writes the actual bytes.
 ///
-/// Plan() must check all preconditions (dtype, shape, params, budget) and
-/// return Unimplemented when the op cannot be folded. It must NOT allocate
-/// output memory — that is the pass's responsibility.
+/// Plan() must check all preconditions (dtype, shape, params) and
+/// return Unimplemented when the op cannot be folded. Budget enforcement is
+/// NOT Plan()'s responsibility -- it only estimates cost, and the pass
+/// enforces the policy centrally via CheckFoldingBudget(). Plan() must NOT
+/// allocate output memory -- that is the pass's responsibility.
 ///
 /// Evaluate() must be stateless: it reads input TensorViews, writes into
 /// output MutableTensorViews, and returns. It must not hold references to
@@ -76,16 +95,19 @@ class ConstEvaluator {
 public:
     virtual ~ConstEvaluator() = default;
 
-    /// @brief Validates folding feasibility and describes the expected output layout.
+    /// @brief Validates folding feasibility, describes the expected output
+    /// layout, and reports an upper-bound cost estimate.
     ///
     /// @param inputs  Descriptors of the node's input values (spec-bearing).
     /// @param outputs Descriptors of the node's output values (spec-bearing).
     /// @param params  Operator-specific parameters.
-    /// @param policy  Budget constraints for the folding decision.
-    /// @return ConstEvalPlan with outputs populated, or Unimplemented when
-    ///         the op cannot be folded under the given constraints.
+    /// @param policy  Budget limits associated with the folding request;
+    ///                enforcement is centralized in the pass.
+    /// @return ConstEvalPlan with outputs and cost populated, or Unimplemented
+    ///         when the op cannot be folded.
     /// @pre  All `inputs` must have ConstantValue payloads with inline_data.
-    /// @post outputs.size() == outputs.size() from the caller.
+    /// @post outputs.size() == outputs.size() from the caller;
+    ///       cost.output_bytes equals the sum of the outputs' nbytes.
     AM_NODISCARD virtual StatusOr<ConstEvalPlan> Plan(
             std::span<const GraphValueDesc> inputs,
             std::span<const GraphValueDesc> outputs,
@@ -120,24 +142,31 @@ AM_NODISCARD const ConstEvaluator* FindConstEvaluator(OpType op_type) noexcept;
 /// @param spec Tensor spec to inspect.
 /// @return Static shape as a vector of dimensions, or Unimplemented if the
 ///         shape is dynamic or unranked.
-AM_NODISCARD StatusOr<std::vector<int64_t>> ExtractStaticShape(const TensorSpec& spec);
+StatusOr<std::vector<int64_t>> ExtractStaticShape(const TensorSpec& spec);
 
 /// @brief Counts the total number of elements implied by a static shape.
 /// @param shape Static shape to size.
 /// @return Total element count, or kOverflow on int64_t overflow.
-AM_NODISCARD StatusOr<int64_t> CountElements(std::span<const int64_t> shape);
+StatusOr<int64_t> CountElements(std::span<const int64_t> shape);
 
 /// @brief Computes the byte size of a tensor given its spec (requires static shape).
 /// @param spec Tensor spec describing dtype and shape.
 /// @return Total byte size, or Unimplemented if the shape is dynamic/unranked,
 ///         or kOverflow on size multiplication overflow.
-AM_NODISCARD StatusOr<size_t> CountBytes(const TensorSpec& spec);
+StatusOr<size_t> CountBytes(const TensorSpec& spec);
 
 /// @brief Builds contiguous (row-major) strides from a static shape.
 /// @param shape Static shape to derive strides for.
 /// @return Row-major strides, or kOverflow when stride multiplication
 ///         overflows int64_t.
-AM_NODISCARD StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape);
+StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape);
+
+/// @brief Enforces the folding budget against a plan's reported cost.
+/// @param cost   Cost estimate reported by an evaluator's Plan().
+/// @param policy Budget limits to enforce.
+/// @return Ok() when within budget, or Unimplemented when any limit is exceeded.
+Status CheckFoldingBudget(const FoldingCost& cost,
+                          const ConstEvalPolicy& policy) noexcept;
 }// namespace aethermind
 
 #endif

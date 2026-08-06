@@ -1,5 +1,6 @@
 #include "aethermind/graph/optimization/const_evaluator.h"
 #include "aethermind/utils/overflow_check.h"
+#include "const_eval_internal.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -82,6 +83,33 @@ StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> sh
         strides[i - 1U] = product;
     }
     return strides;
+}
+
+// ── Cost estimation & budget enforcement ──
+
+StatusOr<FoldingCost> detail::EstimateElementwiseCost(const TensorSpec& output_spec, int64_t numel) {
+    if (numel < 0) {
+        return Status::InvalidArgument(
+                "elementwise cost requires a non-negative element count");
+    }
+
+    auto nbytes = CountBytes(output_spec);
+    AM_RETURN_IF_ERROR(nbytes.status());
+    return FoldingCost{
+            .compute_ops = static_cast<uint64_t>(numel),
+            .output_bytes = *nbytes,
+    };
+}
+
+Status CheckFoldingBudget(const FoldingCost& cost, const ConstEvalPolicy& policy) noexcept {
+    if (cost.output_bytes > policy.max_output_bytes) {
+        return Status::Unimplemented("constant folding output byte budget exceeded");
+    }
+
+    if (cost.compute_ops > policy.max_compute_ops) {
+        return Status::Unimplemented("constant folding compute budget exceeded");
+    }
+    return Status::Ok();
 }
 
 }// namespace aethermind

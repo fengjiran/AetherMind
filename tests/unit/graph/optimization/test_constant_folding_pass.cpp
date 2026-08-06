@@ -290,6 +290,44 @@ TEST(ConstantFoldingPass, SkipsWhenDisabled) {
     EXPECT_TRUE(std::holds_alternative<ActivationValue>(result->GetValue(result->GetOutputs()[0].value).payload));
 }
 
+TEST(ConstantFoldingPass, SkipsAddWhenComputeBudgetExceeded) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddFloatConstant(graph, {1.0F}, {1}, "lhs");
+    const GraphValueId rhs = AddFloatConstant(graph, {2.0F}, {1}, "rhs");
+    auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
+    const GraphValueId sum = *sum_or;
+    graph.MarkOutput(sum);
+    PassContext ctx;
+    ctx.const_eval_policy.max_compute_ops = 0U;
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph, ctx);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
+TEST(ConstantFoldingPass, SkipsAddWhenOutputByteBudgetExceeded) {
+    ModelGraph graph;
+    const GraphValueId lhs = AddFloatConstant(graph, {1.0F}, {1}, "lhs");
+    const GraphValueId rhs = AddFloatConstant(graph, {2.0F}, {1}, "rhs");
+    auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
+    ASSERT_TRUE(sum_or.ok()) << sum_or.status().ToString();
+    const GraphValueId sum = *sum_or;
+    graph.MarkOutput(sum);
+    PassContext ctx;
+    ctx.const_eval_policy.max_output_bytes = 0U;
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph, ctx);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(result->GetValue(result->GetOutputs()[0].value).payload));
+}
+
 TEST(ConstantFoldingPass, SkipsMissingInlineData) {
     ModelGraph graph;
     const GraphValueId lhs = graph.AddConstant(

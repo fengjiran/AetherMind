@@ -152,7 +152,7 @@ TEST(ConstEvaluator, SkipsSiluRankZeroInputOutputMismatch) {
     EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
 }
 
-TEST(ConstEvaluator, PlansSiluComputeBudgetExceeded) {
+TEST(ConstEvaluator, PlansSiluCostOverComputeBudget) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
     constexpr int64_t kExceed = int64_t{64U} * 1024 + 1;
@@ -166,11 +166,13 @@ TEST(ConstEvaluator, PlansSiluComputeBudgetExceeded) {
 
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
 
-    ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_EQ(plan->cost.compute_ops, static_cast<uint64_t>(kExceed));
+    EXPECT_EQ(plan->cost.output_bytes, static_cast<size_t>(kExceed) * sizeof(float));
+    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
 }
 
-TEST(ConstEvaluator, PlansSiluOutputByteBudgetExceeded) {
+TEST(ConstEvaluator, PlansSiluCostOverOutputByteBudget) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
     const std::vector<int64_t> shape{8193};
@@ -184,8 +186,10 @@ TEST(ConstEvaluator, PlansSiluOutputByteBudgetExceeded) {
 
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
 
-    ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_EQ(plan->cost.compute_ops, 8193U);
+    EXPECT_EQ(plan->cost.output_bytes, 65544U);
+    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, EvaluatesSiluFloat32) {

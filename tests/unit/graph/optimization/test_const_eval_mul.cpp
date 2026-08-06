@@ -209,7 +209,7 @@ TEST(ConstEvaluator, SkipsMulUnsupportedDType) {
     EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
 }
 
-TEST(ConstEvaluator, PlansMulComputeBudgetExceeded) {
+TEST(ConstEvaluator, PlansMulCostOverComputeBudget) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
     constexpr int64_t kExceed = int64_t{64U} * 1024 + 1;
@@ -224,11 +224,13 @@ TEST(ConstEvaluator, PlansMulComputeBudgetExceeded) {
 
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
 
-    ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_EQ(plan->cost.compute_ops, static_cast<uint64_t>(kExceed));
+    EXPECT_EQ(plan->cost.output_bytes, static_cast<size_t>(kExceed) * sizeof(float));
+    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
 }
 
-TEST(ConstEvaluator, PlansMulOutputByteBudgetExceeded) {
+TEST(ConstEvaluator, PlansMulCostOverOutputByteBudget) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
     // Float64 = 8 bytes, 8193 elements = 65544 bytes > 64K byte budget
@@ -244,8 +246,10 @@ TEST(ConstEvaluator, PlansMulOutputByteBudgetExceeded) {
 
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
 
-    ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_EQ(plan->cost.compute_ops, 8193U);
+    EXPECT_EQ(plan->cost.output_bytes, 65544U);
+    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, EvaluatesMulFloat32) {

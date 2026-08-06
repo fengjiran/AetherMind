@@ -3,6 +3,7 @@
 #include "aethermind/operators/operator_schema.h"
 
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <span>
 #include <variant>
@@ -234,6 +235,24 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
                 return Status::Internal("constant folding plan output spec mismatch");
             }
         }
+
+        size_t total_output_bytes = 0;
+        for (const auto& output: plan->outputs) {
+            if (output.nbytes > std::numeric_limits<size_t>::max() - total_output_bytes) {
+                total_output_bytes = std::numeric_limits<size_t>::max();
+            } else {
+                total_output_bytes += output.nbytes;
+            }
+        }
+        if (plan->cost.output_bytes != total_output_bytes) {
+            return Status::Internal("constant folding plan cost output byte size mismatch");
+        }
+
+        Status budget = CheckFoldingBudget(plan->cost, ctx.const_eval_policy);
+        if (budget == StatusCode::kUnimplemented) {
+            continue;
+        }
+        AM_RETURN_IF_ERROR(budget);
 
         auto input_views = BuildInputViews(*input_descs);
         AM_RETURN_IF_ERROR(input_views.status());

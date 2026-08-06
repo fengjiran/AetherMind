@@ -37,19 +37,20 @@ public:
     // Validates shapes with broadcast compatibility and dtype match.
     // Produces a contiguous-output plan (broadcast result is always dense)
     // and an elementwise cost estimate for the pass's budget enforcement.
-    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
-                                              std::span<const GraphValueDesc> outputs,
-                                              const OpParams& params,
-                                              const ConstEvalPolicy& policy) const override {
+    StatusOr<ConstEvalPlan> Plan(
+            std::span<const GraphValueDesc> inputs,
+            std::span<const GraphValueDesc> outputs,
+            const OpParams& params,
+            AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||
             !std::holds_alternative<AddParams>(params)) {
             return Status::Unimplemented(
                     "Add constant evaluator requires two inputs and one output");
         }
 
-        const TensorSpec& lhs = inputs[0].spec;
-        const TensorSpec& rhs = inputs[1].spec;
-        const TensorSpec& output = outputs[0].spec;
+        const auto& lhs = inputs[0].spec;
+        const auto& rhs = inputs[1].spec;
+        const auto& output = outputs[0].spec;
         if (!IsAddSupportedDType(lhs.dtype) || rhs.dtype != lhs.dtype || output.dtype != lhs.dtype) {
             return Status::Unimplemented(
                     MakeAddUnsupportedDTypeMessage("Add constant evaluator"));
@@ -70,7 +71,7 @@ public:
 
         auto numel = CountElements(*shape);
         AM_RETURN_IF_ERROR(numel.status());
-        auto cost = detail::EstimateElementwiseCost(output, *numel);
+        auto cost = EstimateCost(output, *numel, detail::kAddOpsPerElement);
         AM_RETURN_IF_ERROR(cost.status());
 
         auto strides = MakeContiguousStrides(*shape);
@@ -90,9 +91,9 @@ public:
 
     // Fast path when both inputs match output shape and are contiguous;
     // otherwise uses broadcast-aware strided kernel.
-    AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
-                                 std::span<MutableTensorView> outputs,
-                                 const OpParams& params) const override {
+    Status Evaluate(std::span<const TensorView> inputs,
+                    std::span<MutableTensorView> outputs,
+                    const OpParams& params) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||
             !std::holds_alternative<AddParams>(params)) {
             return Status::InvalidArgument(

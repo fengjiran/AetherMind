@@ -46,7 +46,7 @@ public:
     AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
                                               std::span<const GraphValueDesc> outputs,
                                               const OpParams& params,
-                                              const ConstEvalPolicy& policy) const override {
+                                              AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||
             !std::holds_alternative<ElementwiseMulParams>(params)) {
             return Status::Unimplemented(
@@ -76,7 +76,7 @@ public:
 
         auto numel = CountElements(*shape);
         AM_RETURN_IF_ERROR(numel.status());
-        auto cost = detail::EstimateElementwiseCost(output, *numel);
+        auto cost = EstimateCost(output, *numel, detail::kMulOpsPerElement);
         AM_RETURN_IF_ERROR(cost.status());
 
         auto strides = MakeContiguousStrides(*shape);

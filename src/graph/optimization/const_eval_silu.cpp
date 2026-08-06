@@ -78,7 +78,7 @@ public:
     AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
                                               std::span<const GraphValueDesc> outputs,
                                               const OpParams& params,
-                                              const ConstEvalPolicy& policy) const override {
+                                              AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
         if (inputs.size() != 1U || outputs.size() != 1U || !std::holds_alternative<SiluParams>(params)) {
             return Status::Unimplemented(
                     "Silu constant evaluator requires one input and one output");
@@ -103,7 +103,7 @@ public:
 
         auto numel = CountElements(*output_shape);
         AM_RETURN_IF_ERROR(numel.status());
-        auto cost = detail::EstimateElementwiseCost(output, *numel);
+        auto cost = EstimateCost(output, *numel, detail::kSiluOpsPerElement);
         AM_RETURN_IF_ERROR(cost.status());
 
         auto output_strides = MakeContiguousStrides(*output_shape);

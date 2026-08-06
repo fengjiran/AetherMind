@@ -1,3 +1,4 @@
+#include "../test_graph_helpers.h"
 #include "test_const_eval_helpers.h"
 
 #include <gtest/gtest.h>
@@ -61,6 +62,43 @@ TEST(ConstEvaluator, FoldingBudgetRejectsOutputBytesOverLimit) {
     };
 
     EXPECT_EQ(CheckFoldingBudget(cost, policy).code(), StatusCode::kUnimplemented);
+}
+
+// ── EstimateCost (generalized traversal × per-element cost) ──
+
+TEST(ConstEvaluator, EstimateCostBasic) {
+    const TensorSpec spec = Spec(DataType::Float32(), {100});
+    const auto result = EstimateCost(spec, 100, 3U);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->compute_ops, 300U);
+    EXPECT_EQ(result->output_bytes, 400U);
+}
+
+TEST(ConstEvaluator, EstimateCostZeroTraversal) {
+    const TensorSpec spec = Spec(DataType::Float32(), {0});
+    const auto result = EstimateCost(spec, 0, 3U);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->compute_ops, 0U);
+    EXPECT_EQ(result->output_bytes, 0U);
+}
+
+TEST(ConstEvaluator, EstimateCostRejectsNegativeTraversal) {
+    const TensorSpec spec = Spec(DataType::Float32(), {1});
+    const auto result = EstimateCost(spec, -1, 1U);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ConstEvaluator, EstimateCostOverflow) {
+    // 2^62 × 64 = 2^68 overflows uint64_t.
+    const TensorSpec spec = Spec(DataType::Float32(), {1});
+    const auto result = EstimateCost(spec, int64_t{1} << 62, 64U);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
 }
 
 }// namespace

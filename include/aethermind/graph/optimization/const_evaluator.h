@@ -108,11 +108,11 @@ public:
     /// @pre  All `inputs` must have ConstantValue payloads with inline_data.
     /// @post outputs.size() == outputs.size() from the caller;
     ///       cost.output_bytes equals the sum of the outputs' nbytes.
-    AM_NODISCARD virtual StatusOr<ConstEvalPlan> Plan(
+    virtual StatusOr<ConstEvalPlan> Plan(
             std::span<const GraphValueDesc> inputs,
             std::span<const GraphValueDesc> outputs,
             const OpParams& params,
-            const ConstEvalPolicy& policy) const = 0;
+            AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const = 0;
 
     /// @brief Writes the folded output bytes for a previously planned operation.
     ///
@@ -124,9 +124,9 @@ public:
     ///       the corresponding descriptors from Plan().
     /// @post Output buffers contain the folded result.
     /// @note Do not save pointers to the views or their data.
-    AM_NODISCARD virtual Status Evaluate(std::span<const TensorView> inputs,
-                                         std::span<MutableTensorView> outputs,
-                                         const OpParams& params) const = 0;
+    virtual Status Evaluate(std::span<const TensorView> inputs,
+                            std::span<MutableTensorView> outputs,
+                            const OpParams& params) const = 0;
 };
 
 /// @brief Returns the ConstEvaluator registered for `op_type`, or nullptr if
@@ -160,6 +160,23 @@ StatusOr<size_t> CountBytes(const TensorSpec& spec);
 /// @return Row-major strides, or kOverflow when stride multiplication
 ///         overflows int64_t.
 StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> shape);
+
+/// @brief Estimates the folding cost from the output spec and traversal amount.
+///
+/// compute_ops = traversal_numel × ops_per_element; output_bytes is derived
+/// from the output spec alone. traversal_numel is the number of input elements
+/// the evaluator actually traverses: for elementwise ops it equals the output
+/// numel (a strided broadcast kernel still walks the output numel once); for
+/// reduction ops it is the reduction traversal count over the inputs.
+///
+/// @param spec             Output tensor spec; determines output_bytes.
+/// @param traversal_numel  Traversed input element count (must be >= 0).
+/// @param ops_per_element  Conservative upper bound of scalar ops per element.
+/// @return Upper-bound cost, or kInvalidArgument for negative traversal_numel,
+///         or kOverflow when traversal_numel × ops_per_element overflows.
+AM_NODISCARD StatusOr<FoldingCost> EstimateCost(const TensorSpec& spec,
+                                                int64_t traversal_numel,
+                                                uint64_t ops_per_element);
 
 /// @brief Enforces the folding budget against a plan's reported cost.
 /// @param cost   Cost estimate reported by an evaluator's Plan().

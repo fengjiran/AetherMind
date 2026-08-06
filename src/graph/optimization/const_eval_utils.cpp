@@ -87,18 +87,24 @@ StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> sh
 
 // ── Cost estimation & budget enforcement ──
 
-StatusOr<FoldingCost> detail::EstimateElementwiseCost(const TensorSpec& output_spec, int64_t numel) {
-    if (numel < 0) {
+StatusOr<FoldingCost> EstimateCost(const TensorSpec& output_spec,
+                                   int64_t traversal_numel,
+                                   uint64_t ops_per_element) {
+    if (traversal_numel < 0) {
         return Status::InvalidArgument(
-                "elementwise cost requires a non-negative element count");
+                "constant folding cost requires a non-negative traversal element count");
     }
 
     auto nbytes = CountBytes(output_spec);
     AM_RETURN_IF_ERROR(nbytes.status());
-    return FoldingCost{
-            .compute_ops = static_cast<uint64_t>(numel),
-            .output_bytes = *nbytes,
-    };
+
+    // Overflow-protected multiply, same pattern as CountElements.
+    uint64_t compute_ops = 0;
+    if (CheckOverflowMul(static_cast<uint64_t>(traversal_numel),
+                         ops_per_element, &compute_ops)) {
+        return Status::Overflow("constant folding compute op count overflow");
+    }
+    return FoldingCost{.compute_ops = compute_ops, .output_bytes = *nbytes};
 }
 
 Status CheckFoldingBudget(const FoldingCost& cost, const ConstEvalPolicy& policy) noexcept {

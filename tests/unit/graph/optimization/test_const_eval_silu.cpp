@@ -155,8 +155,11 @@ TEST(ConstEvaluator, SkipsSiluRankZeroInputOutputMismatch) {
 TEST(ConstEvaluator, PlansSiluCostOverComputeBudget) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
-    constexpr int64_t kExceed = int64_t{64U} * 1024 + 1;
-    const TensorSpec spec = Spec(DataType::Float32(), {kExceed});
+    // bf16: 32768 elements × 2 bytes = 65536 == max_output_bytes (byte gate
+    // passes, strict >), compute = 3 × 32768 = 98304 > 64K (compute gate
+    // fails) — isolates the compute budget independently of the byte budget.
+    const std::vector<int64_t> shape{32768};
+    const TensorSpec spec = Spec(DataType::BFloat(16), shape);
     const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
     };
@@ -167,8 +170,8 @@ TEST(ConstEvaluator, PlansSiluCostOverComputeBudget) {
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    EXPECT_EQ(plan->cost.compute_ops, static_cast<uint64_t>(kExceed));
-    EXPECT_EQ(plan->cost.output_bytes, static_cast<size_t>(kExceed) * sizeof(float));
+    EXPECT_EQ(plan->cost.compute_ops, 3U * 32768U);
+    EXPECT_EQ(plan->cost.output_bytes, 65536U);
     EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
 }
 
@@ -187,7 +190,7 @@ TEST(ConstEvaluator, PlansSiluCostOverOutputByteBudget) {
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    EXPECT_EQ(plan->cost.compute_ops, 8193U);
+    EXPECT_EQ(plan->cost.compute_ops, 3U * 8193U);
     EXPECT_EQ(plan->cost.output_bytes, 65544U);
     EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
 }

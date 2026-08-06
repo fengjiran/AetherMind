@@ -1,4 +1,4 @@
-#include "../test_graph_helpers.h"
+#include "../optimization/test_optimization_helpers.h"
 #include "aethermind/graph/compilation/graph_compiler.h"
 #include "aethermind/graph/graph_dump.h"
 #include "aethermind/graph/graph_op_builder.h"
@@ -10,7 +10,6 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/graph/compilation/graph_lowering.h"
-#include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/shape_symbol.h"
 #include <cstdint>
@@ -21,6 +20,8 @@
 
 namespace aethermind {
 namespace {
+
+using namespace test_utils;
 
 // ---- Composite test-graph builder ------------------------------------------
 //
@@ -50,37 +51,6 @@ namespace {
 //                               graph output
 //
 
-std::shared_ptr<const std::vector<std::byte>> InlineFloats(std::vector<float> values) {
-    std::vector<std::byte> bytes(values.size() * sizeof(float));
-    std::memcpy(bytes.data(), values.data(), bytes.size());
-    return std::make_shared<const std::vector<std::byte>>(std::move(bytes));
-}
-
-GraphValueId AddFloatConstant(ModelGraph& graph,
-                              std::vector<float> values,
-                              std::vector<int64_t> shape,
-                              const std::string& name) {
-    return graph.AddConstant(
-            Spec(DataType::Float32(), std::move(shape)),
-            ConstantBinding{.inline_data = InlineFloats(std::move(values)), .name = name},
-            name);
-}
-
-GraphValueId AddLiveActivation(ModelGraph& graph, const char* name) {
-    const GraphValueId tokens = graph.AddInput(
-            Spec(DataType::Int(32), {2}), std::string(name) + ".tokens");
-    auto embedding_or = AddEmbedding(graph,
-                                     tokens,
-                                     16,
-                                     4,
-                                     DataType::Float32(),
-                                     WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                   .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                                     name);
-    AM_CHECK(embedding_or.ok(), "AddEmbedding failed in test helper");
-    return *embedding_or;
-}
-
 ModelGraph BuildCompositeGraph() {
     ModelGraph graph;
 
@@ -92,7 +62,7 @@ ModelGraph BuildCompositeGraph() {
     const GraphValueId foldable = *foldable_or;
 
     // (2) Live activation that merges with the foldable result.
-    const GraphValueId live = AddLiveActivation(graph, "live");
+    const GraphValueId live = AddActivation(graph, "live");
 
     // Broadcast-add the rank-0 constant result into the [2,4] activation.
     auto merged_or = AddElementwiseAdd(graph, 0U, foldable, live, "merge");
@@ -105,7 +75,7 @@ ModelGraph BuildCompositeGraph() {
     const GraphValueId silu = *silu_or;
 
     // (4) Second live activation for the multiply path.
-    const GraphValueId up = AddLiveActivation(graph, "up");
+    const GraphValueId up = AddActivation(graph, "up");
 
     // (5) ElementwiseMul of silu(gate) * up → fusion pattern.
     auto mul_or = AddElementwiseMul(graph, 0U, silu, up, "mul");
@@ -115,7 +85,7 @@ ModelGraph BuildCompositeGraph() {
     graph.MarkOutput(mul);
 
     // (6) Dead node: an activation with no consumer and not a graph output.
-    AddLiveActivation(graph, "dead");
+    AddActivation(graph, "dead");
 
     return graph;
 }
@@ -477,7 +447,7 @@ ModelGraph BuildGraphWithConstantSiLUGate() {
     // Up path first: ensures the Embedding producer appears before the SiLU
     // node in topological order, so the fusion rewrite (emitted when the first
     // old node — SiLU — is processed) can map the up input immediately.
-    const GraphValueId up = AddLiveActivation(graph, "up");
+    const GraphValueId up = AddActivation(graph, "up");
 
     const GraphValueId const_gate = AddFloatConstant(
             graph, {0.5F, 0.5F, 0.5F, 0.5F, 0.5F, 0.5F, 0.5F, 0.5F},
@@ -586,16 +556,6 @@ TEST(CompileModelGraph, DefaultConstructionCompiles) {
 }
 
 // ---- Ownership: standalone constant graph output ---------------------------
-
-std::vector<float> ReadFloatConstant(const GraphValue& value) {
-    const auto* constant = std::get_if<ConstantValue>(&value.payload);
-    AM_CHECK(constant != nullptr, "expected constant value");
-    AM_CHECK(constant->binding.inline_data != nullptr, "expected inline data");
-    std::vector<float> result(constant->binding.inline_data->size() / sizeof(float));
-    std::memcpy(result.data(), constant->binding.inline_data->data(),
-                constant->binding.inline_data->size());
-    return result;
-}
 
 TEST(CompileModelGraph, PreservesStandaloneConstantGraphOutput) {
     ModelGraph graph;
@@ -772,63 +732,6 @@ TEST(CompileModelGraph, LowersFullLlamaDenseGraph) {
 // Sentinel pass: increments an external counter when Run() is invoked.
 // Used to prove that GraphPassManager rejects an invalid source graph
 // BEFORE any pass observes it (Task 5 acceptance: "pass sentinel 未被调用").
-
-// Common helper: builds a RmsNorm graph skeleton with the given input/output
-// TensorSpecs. Uses the test-only ModelGraph constructor to bypass AddNode
-// validation, so callers can inject forged/invalid specs that AddNode would
-// normally reject. RmsNorm input[0] = kActivation (accepts ConstantValue),
-// input[1] = kWeight (requires kScale slot), output[0] = kActivation.
-ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
-                                      const TensorSpec& weight_spec,
-                                      const TensorSpec& out_spec) {
-    std::vector<GraphValue> values;
-    values.push_back(GraphValue{
-            .payload = ConstantValue{},
-            .spec = act_in_spec,
-            .producer = std::nullopt,
-            .name = "act_in",
-    });
-    values.push_back(GraphValue{
-            .payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale}},
-            .spec = weight_spec,
-            .producer = std::nullopt,
-            .name = "weight_in",
-    });
-    values.push_back(GraphValue{
-            .payload = ActivationValue{},
-            .spec = out_spec,
-            .producer = GraphNodeId{.index = 0},
-            .name = "act_out",
-    });
-
-    GraphNode node;
-    node.op_type = OpType::kRmsNorm;
-    node.inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 1}};
-    node.outputs = {GraphValueId{.index = 2}};
-    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
-
-    return ModelGraph({node}, values);
-}
-
-// Builds a structurally-valid but semantically-invalid graph: a RmsNorm node
-// whose activation input carries Int32 (InferRmsNorm only accepts floating-point).
-ModelGraph BuildGraphWithWrongInputDtype() {
-    return BuildRmsNormGraphWithSpecs(
-            Spec(DataType::Int(32), {4, 8}),
-            Spec(DataType::Float32(), {8}),
-            Spec(DataType::Float32(), {4, 8}));
-}
-
-// Builds a graph with a forged output spec: InferRmsNorm would derive a
-// Float32 [4, 8] output, but the stored GraphValue carries Float16 to simulate
-// stale/forged metadata. ValidateAndTopologicalOrder must catch this.
-ModelGraph BuildGraphWithForgedOutputSpec() {
-    return BuildRmsNormGraphWithSpecs(
-            Spec(DataType::Float32(), {4, 8}),
-            Spec(DataType::Float32(), {8}),
-            Spec(DataType::Float(16), {4, 8}));
-}
-
 
 // ---- Task 5: precondition verification at compilation entry ----------------
 

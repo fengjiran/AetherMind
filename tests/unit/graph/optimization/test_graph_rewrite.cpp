@@ -1,10 +1,11 @@
-#include "../test_graph_helpers.h"
 #include "aethermind/graph/optimization/graph_rewrite.h"
+#include "test_optimization_helpers.h"
 
 #include <gtest/gtest.h>
 
 namespace {
 using namespace aethermind;
+using namespace aethermind::test_utils;
 
 NodeOutputDesc HiddenDesc(const char* name) {
     return {.payload = ActivationValue{},
@@ -13,40 +14,6 @@ NodeOutputDesc HiddenDesc(const char* name) {
 
 RewriteOutputBinding ReplacesHidden(GraphValueId value, const char* name) {
     return {.desc = HiddenDesc(name), .replaces = value};
-}
-
-ModelGraph BuildTwoEmbeddingGraph() {
-    ModelGraph graph;
-    const GraphValueId tokens_a = graph.AddInput(
-            Spec(DataType::Int(32), {1}), "tokens_a");
-    const GraphValueId tokens_b = graph.AddInput(
-            Spec(DataType::Int(32), {1}), "tokens_b");
-    const GraphValueId weight = graph.AddWeight(
-            Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
-            "embed.weight");
-    auto embed_a_or = graph.AddNode(
-            OpType::kEmbedding,
-            std::nullopt,
-            {tokens_a, weight},
-            {NodeOutputDesc{.payload = ActivationValue{},
-                            .name = "hidden_a"}},
-            EmbeddingParams{});
-    AM_CHECK(embed_a_or.ok(), "BuildTwoEmbeddingGraph embed_a AddNode failed");
-    const AddedNode& embed_a = *embed_a_or;
-    auto embed_b_or = graph.AddNode(
-            OpType::kEmbedding,
-            std::nullopt,
-            {tokens_b, weight},
-            {NodeOutputDesc{.payload = ActivationValue{},
-                            .name = "hidden_b"}},
-            EmbeddingParams{});
-    AM_CHECK(embed_b_or.ok(), "BuildTwoEmbeddingGraph embed_b AddNode failed");
-    const AddedNode& embed_b = *embed_b_or;
-    UNUSED(embed_b);
-    graph.MarkOutput(embed_a.outputs[0]);
-    return graph;
 }
 
 RoPEParams ValidRoPEParams() {

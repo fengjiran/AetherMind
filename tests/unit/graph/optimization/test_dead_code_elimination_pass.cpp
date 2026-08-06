@@ -1,6 +1,6 @@
-#include "../test_graph_helpers.h"
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
+#include "test_optimization_helpers.h"
 
 #include <cstring>
 #include <gtest/gtest.h>
@@ -10,20 +10,7 @@
 namespace aethermind {
 namespace {
 
-GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {
-    const GraphValueId tokens = graph.AddInput(
-            Spec(DataType::Int(32), {2}), std::string(debug_name) + ".tokens");
-    auto embedding_or = AddEmbedding(graph,
-                                     tokens,
-                                     16,
-                                     4,
-                                     DataType::Float32(),
-                                     WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                   .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                                     debug_name);
-    AM_CHECK(embedding_or.ok(), "AddEmbedding failed in test helper");
-    return *embedding_or;
-}
+using namespace test_utils;
 
 StatusOr<ModelGraph> RunDce(const ModelGraph& graph, PassContext ctx = {}) {
     GraphPassManager pipeline(ctx);
@@ -249,16 +236,10 @@ TEST(DeadCodeEliminationPass, IsIdempotent) {
 
 namespace {
 
-std::shared_ptr<const std::vector<std::byte>> MakeBytes(std::vector<float> values) {
-    std::vector<std::byte> bytes(values.size() * sizeof(float));
-    std::memcpy(bytes.data(), values.data(), bytes.size());
-    return std::make_shared<const std::vector<std::byte>>(std::move(bytes));
-}
-
 GraphValueId AddRankZeroConstantFloat(ModelGraph& graph, float value, const std::string& name) {
     return graph.AddConstant(
             Spec(DataType::Float32(), {}),
-            ConstantBinding{.inline_data = MakeBytes({value}), .name = name},
+            ConstantBinding{.inline_data = InlineFloats({value}), .name = name},
             name);
 }
 

@@ -1,41 +1,11 @@
-#include "../test_graph_helpers.h"
 #include "aethermind/graph/optimization/graph_pass_manager.h"
+#include "test_optimization_helpers.h"
 
 #include <gtest/gtest.h>
 
 namespace {
 using namespace aethermind;
-
-ModelGraph BuildGraph() {
-    ModelGraph graph;
-    const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_a");
-    const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_b");
-    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
-                                                "embed.weight");
-    auto embed_a_or = graph.AddNode(
-            OpType::kEmbedding,
-            std::nullopt,
-            {tokens_a, weight},
-            {NodeOutputDesc{.payload = ActivationValue{},
-                            .name = "hidden_a"}},
-            EmbeddingParams{});
-    AM_CHECK(embed_a_or.ok(), "BuildGraph embed_a AddNode failed: {}", embed_a_or.status().ToString());
-    const AddedNode& embed_a = *embed_a_or;
-    auto embed_b_or = graph.AddNode(
-            OpType::kEmbedding,
-            std::nullopt,
-            {tokens_b, weight},
-            {NodeOutputDesc{.payload = ActivationValue{},
-                            .name = "hidden_b"}},
-            EmbeddingParams{});
-    AM_CHECK(embed_b_or.ok(), "BuildGraph embed_b AddNode failed: {}", embed_b_or.status().ToString());
-    const AddedNode& embed_b = *embed_b_or;
-    (void) embed_b;
-    graph.MarkOutput(embed_a.outputs[0]);
-    return graph;
-}
+using namespace aethermind::test_utils;
 
 class RedirectFirstNodeInputPass final : public GraphPass {
 public:
@@ -124,7 +94,7 @@ std::vector<std::unique_ptr<GraphPass>> MakePasses(Passes&&... passes) {
 }
 
 TEST(GraphPassManager, EmptyPipelineReturnsValidGraph) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
 
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
@@ -135,7 +105,7 @@ TEST(GraphPassManager, EmptyPipelineReturnsValidGraph) {
 }
 
 TEST(GraphPassManager, RunsSinglePass) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
     pipeline.Add(std::make_unique<RedirectFirstNodeInputPass>());
 
@@ -147,7 +117,7 @@ TEST(GraphPassManager, RunsSinglePass) {
 }
 
 TEST(GraphPassManager, StopsOnFirstError) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
     pipeline.AddSequential(MakePasses(
             std::make_unique<FailingPass>(),
@@ -160,7 +130,7 @@ TEST(GraphPassManager, StopsOnFirstError) {
 }
 
 TEST(GraphPassManager, AddSequentialRunsPassesInOrder) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
     pipeline.AddSequential(MakePasses(
             std::make_unique<RedirectFirstNodeInputPass>(),
@@ -175,7 +145,7 @@ TEST(GraphPassManager, AddSequentialRunsPassesInOrder) {
 }
 
 TEST(GraphPassManager, AddSequentialSupportsChaining) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
     pipeline.AddSequential(MakePasses(std::make_unique<RedirectFirstNodeInputPass>()))
             .Add(std::make_unique<RemoveUnusedSecondNodePass>());
@@ -189,7 +159,7 @@ TEST(GraphPassManager, AddSequentialSupportsChaining) {
 }
 
 TEST(GraphPassManager, CheckpointCommitsIntermediateSnapshot) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(1)
             .AddSequential(MakePasses(
@@ -207,7 +177,7 @@ TEST(GraphPassManager, CheckpointCommitsIntermediateSnapshot) {
 // --- Issue P: SetCheckpointEvery(0) disables checkpointing ---
 
 TEST(GraphPassManager, DisabledCheckpointStillProducesCorrectResult) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(0)// explicitly disable checkpointing
             .AddSequential(MakePasses(
@@ -234,7 +204,7 @@ TEST(GraphPassManager, CheckpointOnLastPassProducesCorrectResult) {
     // After pass 3, (i+1) % 3 == 0 lands on a checkpoint boundary AND pass 3
     // is the last pass. The pipeline must still materialize the snapshot
     // without relying on a redundant trailing Commit on the unchanged session.
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(3)
             .AddSequential(MakePasses(
@@ -257,7 +227,7 @@ TEST(GraphPassManager, CheckpointBoundaryNotOnLastPassStillCommitsTrailing) {
     //   pass 3 -> RedirectFirstNodeInput (trailing non-checkpoint pass)
     // Pass 3's mutation must be committed by the trailing Commit() call,
     // since (3 % 2) != 0 means pass 3 is not a checkpoint boundary.
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
     pipeline.SetCheckpointEvery(2)
             .AddSequential(MakePasses(
@@ -274,7 +244,7 @@ TEST(GraphPassManager, CheckpointBoundaryNotOnLastPassStillCommitsTrailing) {
 }
 
 TEST(GraphPassManager, ConstructorUsesCheckpointFromContext) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline(PassContext{.checkpoint_every = 1});
     pipeline.AddSequential(MakePasses(
             std::make_unique<RedirectFirstNodeInputPass>(),
@@ -289,7 +259,7 @@ TEST(GraphPassManager, ConstructorUsesCheckpointFromContext) {
 }
 
 TEST(GraphPassManager, SetCheckpointEveryOverridesContext) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline(PassContext{.checkpoint_every = 3});
     pipeline.SetCheckpointEvery(1)
             .Add(std::make_unique<ExpectCheckpointEveryPass>(1));
@@ -300,7 +270,7 @@ TEST(GraphPassManager, SetCheckpointEveryOverridesContext) {
 }
 
 TEST(GraphPassManager, PassReceivesContext) {
-    const ModelGraph graph = BuildGraph();
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline(PassContext{.enable_qkv_fusion = false});
     pipeline.Add(std::make_unique<ContextAwarePass>());
 
@@ -342,63 +312,6 @@ public:
 private:
     int* counter_;
 };
-
-// Common helper: builds a RmsNorm graph skeleton with the given input/output
-// TensorSpecs. Uses the test-only ModelGraph constructor to bypass AddNode
-// validation, so callers can inject forged/invalid specs that AddNode would
-// normally reject. RmsNorm input[0] = kActivation (accepts ConstantValue),
-// input[1] = kWeight (requires kScale slot), output[0] = kActivation.
-ModelGraph BuildRmsNormGraphWithSpecs(const TensorSpec& act_in_spec,
-                                      const TensorSpec& weight_spec,
-                                      const TensorSpec& out_spec) {
-    std::vector<GraphValue> values;
-    values.push_back(GraphValue{
-            .payload = ConstantValue{},
-            .spec = act_in_spec,
-            .producer = std::nullopt,
-            .name = "act_in",
-    });
-    values.push_back(GraphValue{
-            .payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale}},
-            .spec = weight_spec,
-            .producer = std::nullopt,
-            .name = "weight_in",
-    });
-    values.push_back(GraphValue{
-            .payload = ActivationValue{},
-            .spec = out_spec,
-            .producer = GraphNodeId{.index = 0},
-            .name = "act_out",
-    });
-
-    GraphNode node;
-    node.op_type = OpType::kRmsNorm;
-    node.inputs = {GraphValueId{.index = 0}, GraphValueId{.index = 1}};
-    node.outputs = {GraphValueId{.index = 2}};
-    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
-
-    return ModelGraph({node}, values);
-}
-
-// Builds a structurally-valid but semantically-invalid graph: a RmsNorm node
-// whose activation input carries Int32 (InferRmsNorm only accepts floating-point).
-ModelGraph BuildGraphWithWrongInputDtype() {
-    return BuildRmsNormGraphWithSpecs(
-            Spec(DataType::Int(32), {4, 8}),
-            Spec(DataType::Float32(), {8}),
-            Spec(DataType::Float32(), {4, 8}));
-}
-
-// Builds a graph with a forged output spec: InferRmsNorm would derive a
-// Float32 [4, 8] output, but the stored GraphValue carries Float16 to simulate
-// stale/forged metadata. ValidateAndTopologicalOrder must catch this.
-ModelGraph BuildGraphWithForgedOutputSpec() {
-    return BuildRmsNormGraphWithSpecs(
-            Spec(DataType::Float32(), {4, 8}),
-            Spec(DataType::Float32(), {8}),
-            Spec(DataType::Float(16), {4, 8}));
-}
-
 
 TEST(GraphPassManager, RejectsWrongInputDtypeBeforeAnyPass) {
     // Bad dtype: InferRmsNorm only accepts floating-point; the graph

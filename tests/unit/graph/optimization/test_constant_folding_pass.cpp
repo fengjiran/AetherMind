@@ -1,5 +1,6 @@
-#include "../test_graph_helpers.h"
 #include "aethermind/graph/optimization/constant_folding_pass.h"
+#include "test_const_eval_helpers.h"
+#include "test_optimization_helpers.h"
 
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
@@ -20,20 +21,9 @@
 namespace aethermind {
 namespace {
 
+using namespace test_utils;
+
 StatusOr<ModelGraph> RunConstantFolding(const ModelGraph& graph, PassContext ctx = {});
-
-std::shared_ptr<const std::vector<std::byte>> InlineFloats(std::vector<float> values) {
-    std::vector<std::byte> bytes(values.size() * sizeof(float));
-    std::memcpy(bytes.data(), values.data(), bytes.size());
-    return std::make_shared<const std::vector<std::byte>>(std::move(bytes));
-}
-
-template<typename T>
-std::shared_ptr<const std::vector<std::byte>> InlineValues(std::vector<T> values) {
-    std::vector<std::byte> bytes(values.size() * sizeof(T));
-    std::memcpy(bytes.data(), values.data(), bytes.size());
-    return std::make_shared<const std::vector<std::byte>>(std::move(bytes));
-}
 
 template<typename T>
 GraphValueId AddTypedConstant(ModelGraph& graph,
@@ -44,16 +34,6 @@ GraphValueId AddTypedConstant(ModelGraph& graph,
     return graph.AddConstant(
             Spec(dtype, std::move(shape)),
             ConstantBinding{.inline_data = InlineValues(std::move(values)), .name = name},
-            name);
-}
-
-GraphValueId AddFloatConstant(ModelGraph& graph,
-                              std::vector<float> values,
-                              std::vector<int64_t> shape,
-                              const std::string& name) {
-    return graph.AddConstant(
-            Spec(DataType::Float32(), std::move(shape)),
-            ConstantBinding{.inline_data = InlineFloats(std::move(values)), .name = name},
             name);
 }
 
@@ -74,43 +54,6 @@ GraphValueId AddFloatAddWithOutputShape(ModelGraph& graph,
     const auto& node = *node_or;
     AM_CHECK(node.outputs.size() == 1U, "expected test Add node to have one output");
     return node.outputs.front();
-}
-
-std::vector<float> ReadFloatConstant(const GraphValue& value) {
-    const auto* constant = std::get_if<ConstantValue>(&value.payload);
-    AM_CHECK(constant != nullptr, "expected constant value");
-    AM_CHECK(constant->binding.inline_data != nullptr, "expected inline data");
-    std::vector<float> result(constant->binding.inline_data->size() / sizeof(float));
-    std::memcpy(result.data(), constant->binding.inline_data->data(), constant->binding.inline_data->size());
-    return result;
-}
-
-template<typename T>
-std::vector<T> ReadTypedConstant(const GraphValue& value) {
-    const auto* constant = std::get_if<ConstantValue>(&value.payload);
-    AM_CHECK(constant != nullptr, "expected constant value");
-    AM_CHECK(constant->binding.inline_data != nullptr, "expected inline data");
-    std::vector<T> result(constant->binding.inline_data->size() / sizeof(T));
-    std::memcpy(result.data(), constant->binding.inline_data->data(), constant->binding.inline_data->size());
-    return result;
-}
-
-std::vector<BFloat16> BFloat16Values(std::vector<uint16_t> bits) {
-    std::vector<BFloat16> values;
-    values.reserve(bits.size());
-    for (const uint16_t value: bits) {
-        values.emplace_back(value, BFloat16::from_bits());
-    }
-    return values;
-}
-
-std::vector<uint16_t> BFloat16Bits(const std::vector<BFloat16>& values) {
-    std::vector<uint16_t> bits;
-    bits.reserve(values.size());
-    for (const BFloat16 value: values) {
-        bits.push_back(value.x);
-    }
-    return bits;
 }
 
 template<typename T>

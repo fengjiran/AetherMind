@@ -1,6 +1,6 @@
-#include "../test_graph_helpers.h"
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/graph/optimization/silu_mul_fusion_pass.h"
+#include "test_optimization_helpers.h"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -9,29 +9,7 @@
 namespace aethermind {
 namespace {
 
-NodeOutputDesc ActivationDesc(const char* debug_name) {
-    return {.payload = ActivationValue{},
-            .name = debug_name};
-}
-
-GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {
-    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {2}), std::string(debug_name) + ".tokens");
-    const GraphValueId weight = graph.AddWeight(
-            Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
-            std::string(debug_name) + ".weight");
-    auto node_or = graph.AddNode(OpType::kEmbedding,
-                                 std::nullopt,
-                                 {tokens, weight},
-                                 {ActivationDesc(debug_name)},
-                                 EmbeddingParams{},
-                                 {},
-                                 std::string(debug_name) + ".producer");
-    AM_CHECK(node_or.ok(), "AddActivation AddNode failed");
-    const AddedNode& node = *node_or;
-    return node.outputs[0];
-}
+using namespace test_utils;
 
 ModelGraph BuildSiluMulPattern(bool reversed_mul_inputs = false) {
     ModelGraph graph;

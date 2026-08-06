@@ -52,7 +52,7 @@ StatusOr<bool> HasInlineConstantBytes(const GraphValueDesc& desc) {
 
     auto expected_bytes = CountBytes(desc.spec);
     if (!expected_bytes.ok()) {
-        if (expected_bytes.status().code() == StatusCode::kUnimplemented) {
+        if (expected_bytes.status() == StatusCode::kUnimplemented) {
             return false;
         }
         return expected_bytes.status();
@@ -64,7 +64,7 @@ StatusOr<bool> HasInlineConstantBytes(const GraphValueDesc& desc) {
 // with matching byte count. This is the gate that ensures only fully-materialised
 // constant subgraphs enter the evaluator.
 StatusOr<bool> AllInputsAreInlineConstantValues(std::span<const GraphValueDesc> inputs) {
-    for (const GraphValueDesc& input: inputs) {
+    for (const auto& input: inputs) {
         auto has_inline_bytes = HasInlineConstantBytes(input);
         AM_RETURN_IF_ERROR(has_inline_bytes.status());
         if (!*has_inline_bytes) {
@@ -169,8 +169,8 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
 
     auto order = session.GetTopologicalOrder();
     AM_RETURN_IF_ERROR(order.status());
-    for (const auto node_id: *order) {
-        auto node = session.GetNodeView(node_id);
+    for (const auto id: *order) {
+        auto node = session.GetNodeView(id);
         if (!node.ok()) {
             // Node was removed during a prior rewrite — skip stale id.
             continue;

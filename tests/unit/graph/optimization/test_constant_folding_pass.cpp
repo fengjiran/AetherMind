@@ -1,26 +1,16 @@
+#include "aethermind/graph/graph_op_builder.h"
+#include "aethermind/graph/optimization/const_evaluator.h"
 #include "aethermind/graph/optimization/constant_folding_pass.h"
+#include "aethermind/graph/optimization/dead_code_elimination_pass.h"
+#include "aethermind/operators/operator_schema.h"
 #include "test_const_eval_helpers.h"
 #include "test_optimization_helpers.h"
 
-#include "aethermind/graph/graph_op_builder.h"
-#include "aethermind/graph/optimization/dead_code_elimination_pass.h"
-
 #include <gtest/gtest.h>
 
-#include <array>
-#include <cmath>
-#include <cstdint>
-#include <cstring>
-#include <limits>
-#include <memory>
-#include <optional>
-#include <string>
-#include <type_traits>
-#include <vector>
-
-namespace aethermind {
 namespace {
 
+using namespace aethermind;
 using namespace test_utils;
 
 StatusOr<ModelGraph> RunConstantFolding(const ModelGraph& graph, PassContext ctx = {});
@@ -104,6 +94,30 @@ StatusOr<ModelGraph> RunConstantFoldingThenDce(const ModelGraph& graph) {
     pipeline.Add(std::make_unique<ConstantFoldingPass>());
     pipeline.Add(std::make_unique<DeadCodeEliminationPass>());
     return pipeline.Run(graph);
+}
+
+// ── Registry consistency guard ──
+// Every op marked compile-time-evaluable in its schema must have a registered
+// ConstEvaluator. A missing entry in the manual kEvaluators[] table
+// (const_evaluator.cpp) is otherwise silent: FindConstEvaluator returns
+// nullptr and the pass skips the op without any compile error or warning.
+
+TEST(ConstantFoldingPass, EveryCompileTimeEvaluableOpHasRegisteredConstEvaluator) {
+    const auto schemas = GetOperatorSchemas();
+
+    size_t evaluable_count = 0;
+    for (const auto& schema: schemas) {
+        if (!IsCompileTimeEvaluable(schema)) {
+            continue;
+        }
+        ++evaluable_count;
+        EXPECT_NE(FindConstEvaluator(schema.op_type), nullptr)
+                << "OpType " << ToString(schema.op_type)
+                << " is marked compile-time evaluable but has no registered ConstEvaluator";
+    }
+
+    // Guard against vacuous pass: at least one op must carry the trait.
+    EXPECT_GT(evaluable_count, 0U);
 }
 
 TEST(ConstantFoldingPass, FoldsAddOfTwoConstants) {
@@ -1233,4 +1247,3 @@ TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroSiluMul) {
 }
 
 }// namespace
-}// namespace aethermind

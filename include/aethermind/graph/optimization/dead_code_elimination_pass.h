@@ -17,7 +17,7 @@ namespace aethermind {
 class DeadCodeEliminationPass final : public GraphPass {
 public:
     AM_NODISCARD std::string_view Name() const noexcept override;
-    AM_NODISCARD Status Run(GraphRewriteSession& session, const PassContext& ctx) override;
+    Status Run(GraphRewriteSession& session, const PassContext& ctx) override;
 };
 
 }// namespace aethermind

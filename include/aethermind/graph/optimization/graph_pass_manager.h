@@ -66,7 +66,7 @@ public:
     /// @param ctx     Pass configuration; the pass should honor its own flag.
     /// @return Status::Ok() on success, or the first error encountered.
     ///         Returning Status::Ok() without mutating is valid (skip/no-op).
-    AM_NODISCARD virtual Status Run(GraphRewriteSession& session, const PassContext& ctx) = 0;
+    virtual Status Run(GraphRewriteSession& session, const PassContext& ctx) = 0;
 };
 
 /// @brief Runs an ordered sequence of optimization passes over a ModelGraph.

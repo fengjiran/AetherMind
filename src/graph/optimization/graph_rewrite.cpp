@@ -37,15 +37,10 @@ StatusOr<GraphValueId> MapResolvedValue(GraphValueId old_value,
     return *value_map[old_value.index];
 }
 
-// Copies all fields from a GraphValue into a GraphValueDesc for use in
-// GetValueOutputMetadata and other spec-bearing value queries.
-GraphValueDesc MakeOutputDescFromValue(const GraphValue& value) {
-    return GraphValueDesc{
-            .spec = value.spec,
-            .payload = value.payload,
+NodeOutputDesc MakeNodeOutputDesc(const GraphValue& value) {
+    return {.payload = value.payload,
             .quantization = value.quantization,
-            .name = value.name,
-    };
+            .name = value.name};
 }
 
 // Builds a replacement node that is an exact copy of a source graph node,
@@ -65,13 +60,7 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
     rn.outputs.reserve(original.outputs.size());
     for (GraphValueId output: original.outputs) {
         const GraphValue& value = graph.GetValue(output);
-        rn.outputs.emplace_back(
-                NodeOutputDesc{
-                        .payload = value.payload,
-                        .quantization = value.quantization,
-                        .name = value.name,
-                },
-                output);
+        rn.outputs.emplace_back(MakeNodeOutputDesc(value), output);
     }
     return rn;
 }
@@ -420,11 +409,11 @@ GraphValueId GraphRewriteSession::GetResolvedValue(GraphValueId value) const {
 //   3. Resolve every input through GetResolvedValue.
 StatusOr<GraphNodeView> GraphRewriteSession::GetNodeView(GraphNodeId node) const {
     AM_RETURN_IF_ERROR(CheckSourceNodeId(node));
-
     const GraphNode& original = graph_.GetNode(node);
     const ReplacementNode* replacement = nullptr;
 
-    if (const auto rewrite_opt = node_to_rewrite_[node.index]; rewrite_opt.has_value()) {
+    if (const auto rewrite_opt = node_to_rewrite_[node.index];
+        rewrite_opt.has_value()) {
         if (!IsNodeLive(node)) {
             return Status::NotFound(
                     "GraphRewriteSession::GetNodeView node was removed or replaced");
@@ -564,7 +553,11 @@ StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputMetadata(GraphValueI
     if (IsSessionConstant(value)) {
         return MakeOutputDescFromSessionConstant(value);
     }
-    return MakeOutputDescFromValue(graph_.GetValue(value));
+    const GraphValue& graph_value = graph_.GetValue(value);
+    return GraphValueDesc{.spec = graph_value.spec,
+                          .payload = graph_value.payload,
+                          .quantization = graph_value.quantization,
+                          .name = graph_value.name};
 }
 
 // Returns true when `value` is directly marked as a graph output in the
@@ -1031,11 +1024,7 @@ Status GraphRewriteSession::EmitOriginalNode(GraphNodeId old_node,
     output_descs.reserve(view->outputs.size());
     for (const auto old_output: view->outputs) {
         const auto& old_value = graph_.GetValue(old_output);
-        output_descs.push_back({
-                .payload = old_value.payload,
-                .quantization = old_value.quantization,
-                .name = old_value.name,
-        });
+        output_descs.push_back(MakeNodeOutputDesc(old_value));
     }
 
     const auto added_or = committed.AddNode(

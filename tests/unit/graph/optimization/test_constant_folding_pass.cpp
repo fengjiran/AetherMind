@@ -444,6 +444,72 @@ TEST(ConstantFoldingPass, FoldsChainedAddOfConstants) {
     EXPECT_FLOAT_EQ(values[1], 12.0F);
 }
 
+TEST(ConstantFoldingPass, PreservesIntermediateFoldedConstantWithLiveConsumer) {
+    ModelGraph graph;
+    const GraphValueId b = AddFloatConstant(graph, {1.0F, 2.0F}, {2}, "b");
+    const GraphValueId c = AddFloatConstant(graph, {3.0F, 4.0F}, {2}, "c");
+    const GraphValueId e = AddFloatConstant(graph, {5.0F, 6.0F}, {2}, "e");
+    auto a_or = AddElementwiseAdd(graph, 0U, b, c, "a");
+    ASSERT_TRUE(a_or.ok()) << a_or.status().ToString();
+    const GraphValueId a = *a_or;
+    auto d_or = AddElementwiseAdd(graph, 0U, a, e, "d");
+    ASSERT_TRUE(d_or.ok()) << d_or.status().ToString();
+    graph.MarkOutput(*d_or);
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 2U);
+
+    size_t constant_count = 0;
+    for (const GraphValue& value: result->GetValues()) {
+        if (std::holds_alternative<ConstantValue>(value.payload)) {
+            ++constant_count;
+        }
+    }
+    // A' remains live because the surviving second Add consumes it.
+    EXPECT_EQ(constant_count, 5U);
+}
+
+// ── Dead intermediate folded constant cleanup ──
+// Regression: chain folding A = Add(B, C), D = Add(A, E) + DCE must leave
+// only the live graph values {b, c, e, folded D}. The intermediate folded
+// constant for A has no consumer after both Add nodes are removed, so
+// GraphRewriteSession::CopyExternalValues must not copy it into the
+// committed graph (it would otherwise linger as dead data).
+
+TEST(ConstantFoldingPass, DropsUnreferencedIntermediateFoldedConstant) {
+    ModelGraph graph;
+    const GraphValueId b = AddFloatConstant(graph, {1.0F, 2.0F}, {2}, "b");
+    const GraphValueId c = AddFloatConstant(graph, {3.0F, 4.0F}, {2}, "c");
+    const GraphValueId e = AddFloatConstant(graph, {5.0F, 6.0F}, {2}, "e");
+    auto a_or = AddElementwiseAdd(graph, 0U, b, c, "a");
+    ASSERT_TRUE(a_or.ok()) << a_or.status().ToString();
+    const GraphValueId a = *a_or;
+    auto d_or_add = AddElementwiseAdd(graph, 0U, a, e, "d");
+    ASSERT_TRUE(d_or_add.ok()) << d_or_add.status().ToString();
+    const GraphValueId d = *d_or_add;
+    graph.MarkOutput(d);
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    // Committed graph holds exactly the four live constants: b, c, e, D'.
+    // The dead intermediate constants (folded A) must be dropped.
+    EXPECT_EQ(result->GetNodes().size(), 0U);
+    ASSERT_EQ(result->GetValues().size(), 4U);
+    for (const auto& value: result->GetValues()) {
+        EXPECT_TRUE(std::holds_alternative<ConstantValue>(value.payload));
+    }
+    // Value sanity: (1+3+5, 2+4+6) = (9, 12)
+    const std::vector<float> values = ReadFloatConstant(result->GetValue(result->GetOutputs()[0].value));
+    ASSERT_EQ(values.size(), 2U);
+    EXPECT_FLOAT_EQ(values[0], 9.0F);
+    EXPECT_FLOAT_EQ(values[1], 12.0F);
+}
+
 // ── Multi-node graph: foldable Add + non-foldable Add (non-constant input).
 // The non-foldable node must not abort the pass; the foldable one must be folded.
 // Runs directly on session (like SkipsWeightInputInSession) to avoid schema

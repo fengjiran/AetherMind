@@ -147,8 +147,9 @@ public:
     /// @brief Adds a new session constant value scoped to this session.
     ///
     /// The constant is allocated in the session-local id space
-    /// (ValueKind::kSessionConstant) and materialized in the committed graph
-    /// during Commit().
+    /// (ValueKind::kSessionConstant). Commit() materializes it only when the
+    /// final committed graph references it through a live consumer or a graph
+    /// output resolved by ReplaceValue; otherwise it is discarded.
     /// @param spec Tensor spec for the constant value.
     /// @param binding Constant binding payload backing the value.
     /// @param quantization Quantization metadata for the constant.
@@ -390,8 +391,9 @@ public:
 
     /// @brief Materializes the session state into a new ModelGraph.
     ///
-    /// Steps: CopyExternalValues -> topological traversal (emitting rewrites
-    /// and surviving original nodes) -> MarkCommittedOutputs -> Validate.
+    /// Steps: CopyExternalValues (including pruning unreferenced session
+    /// constants) -> topological traversal (emitting rewrites and surviving
+    /// original nodes) -> MarkCommittedOutputs -> Validate.
     /// Runs ValidateEdits first; emission-order violations (a replacement
     /// input produced after its rewrite's emission point) are rejected there.
     /// Returns InvalidArgument if the result would be invalid.

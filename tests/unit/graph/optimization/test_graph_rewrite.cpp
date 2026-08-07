@@ -1407,11 +1407,16 @@ TEST(GraphRewriteSession, AddSessionConstantCommitsSessionConstantValue) {
                                         .scale_dtype = DataType::Float32(),
                                         .has_zero_point = false};
 
+    // The constant must match the spec of the value it replaces (v3 = hidden_a,
+    // the graph output): ValidateEdits rejects dtype/shape-changing
+    // replacements. Replacing the graph output makes the constant reachable:
+    // CopyExternalValues discovers it through the resolved graph output.
     const GraphValueId constant = session.AddSessionConstant(
-            Spec(DataType::Float32(), {1}),
+            Spec(DataType::Float32(), {1, 4}),
             ConstantBinding{.inline_data = std::move(inline_data), .name = "folded.scalar"},
             quantization,
             "folded");
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 3}, constant).ok());
     const StatusOr<ModelGraph> committed = session.Commit();
 
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -1431,6 +1436,8 @@ TEST(GraphRewriteSession, AddSessionConstantCommitsSessionConstantValue) {
         }
     }
     EXPECT_TRUE(found_constant);
+    // The committed graph output resolves to the copied constant.
+    EXPECT_EQ(committed->GetValue(committed->GetOutputs()[0].value).name, "folded");
 }
 
 TEST(GraphRewriteSession, AddSessionConstantSupportsValueQueries) {
@@ -1476,16 +1483,18 @@ TEST(GraphRewriteSession, AddSessionConstantSupportsValueQueries) {
 TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphRewriteSession session(graph);
-    // The constant must match v4's (hidden_b) spec: ValidateEdits rejects
-    // replacements that change the replaced value's dtype or shape identity.
+    // The constant must match v3's (hidden_a, the graph output) spec:
+    // ValidateEdits rejects replacements that change the replaced value's
+    // dtype or shape identity. Replacing the graph output keeps the constant
+    // reachable, so CopyExternalValues commits it.
     const GraphValueId constant = session.AddSessionConstant(
             Spec(DataType::Float32(), {1, 4}),
             ConstantBinding{.name = "folded.hidden"},
             {},
             "folded_hidden");
 
-    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 4}, constant).ok());
-    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 4}), constant);
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 3}, constant).ok());
+    EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 3}), constant);
     const StatusOr<ModelGraph> committed = session.Commit();
 
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
@@ -2457,6 +2466,44 @@ TEST(GraphRewriteSession, HasLiveConsumersTrueWhenOnlyReplacementConsumes) {
     const StatusOr<bool> has_consumers = session.HasLiveConsumers(GraphValueId{.index = 2});
     ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
     EXPECT_TRUE(*has_consumers);
+}
+
+TEST(GraphRewriteSession, ReplacementConsumerMaterializesSessionConstantOnCommit) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const GraphValueId constant = session.AddSessionConstant(
+            Spec(DataType::Float32(), {1, 4}),
+            ConstantBinding{.name = "replacement.input"},
+            QuantizationSpec{},
+            "replacement_constant");
+
+    ReplacementNode replacement{
+            .op_type = OpType::kAdd,
+            .inputs = {constant, constant},
+            .outputs = {ReplacesHidden(GraphValueId{.index = 4}, "hidden_b")},
+            .op_params = AddParams{},
+            .name = "replacement_add",
+    };
+    const std::array old_nodes{GraphNodeId{.index = 1}};
+    ASSERT_TRUE(session.ReplaceSubgraph(old_nodes, {std::move(replacement)}).ok());
+
+    const StatusOr<bool> has_consumers = session.HasLiveConsumers(constant);
+    ASSERT_TRUE(has_consumers.ok()) << has_consumers.status().ToString();
+    EXPECT_TRUE(*has_consumers);
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+    bool found_constant = false;
+    for (const GraphValue& value: committed->GetValues()) {
+        if (const auto* payload = std::get_if<ConstantValue>(&value.payload);
+            payload != nullptr && payload->binding.name == "replacement.input") {
+            found_constant = true;
+            EXPECT_EQ(value.name, "replacement_constant");
+        }
+    }
+    EXPECT_TRUE(found_constant);
 }
 
 TEST(GraphRewriteSession, HasLiveConsumersFalseWhenReplacementDoesNotConsume) {

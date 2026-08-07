@@ -481,12 +481,15 @@ TEST(OptimizeModelGraph, ConstantGateRuntimeUpDeterministicFusionAtO2) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 1U);
 
-    // CF folded the SiLU: more constants than the original gate constant alone.
+    // CF folded the SiLU, but the fused SiluMul consumes the original gate
+    // constant directly. The intermediate SiLU result (folded session constant)
+    // is dead after fusion and must NOT leak into the optimized graph: only
+    // the gate constant survives.
     size_t constant_count = 0;
     for (const GraphValue& value: result->GetValues()) {
         if (std::holds_alternative<ConstantValue>(value.payload)) ++constant_count;
     }
-    EXPECT_GT(constant_count, 1U);
+    EXPECT_EQ(constant_count, 1U);
 
     // The runtime up activation survives (Embedding node present).
     EXPECT_GE(result->FindNodesByOpType(OpType::kEmbedding).size(), 1U);

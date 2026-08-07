@@ -868,14 +868,28 @@ StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
     return *maps.virtual_values[session_index];
 }
 
-// Copies source external values and session constants into the committed
-// graph.
+// Copies source external values and reachable session constants into the
+// committed graph.
 //
 // Steps:
 //   1. Add each producer-less source value as input, weight, constant, or
 //      state per its payload (monostate/unsupported payloads error).
 //   2. Apply quantization to each added value.
-//   3. Add every session constant via committed.AddConstant.
+//   3. Add every session constant referenced by the committed graph via
+//      committed.AddConstant; unreferenced session constants are dropped.
+//
+// Reachability: a session constant is copied only when the final committed
+// graph references it — i.e. it is consumed by a live original node or an
+// active replacement input (HasLiveConsumers), or a graph output resolves
+// to it through a ReplaceValue chain (MarkCommittedOutputs). A session
+// constant created by a pass but left without consumers afterwards (e.g. the
+// intermediate folded constant in a chain A = B + C, D = A + E when both
+// Add nodes are folded and then DCE'd) is dead data and must not leak into
+// the committed graph. This pruning criterion must remain consistent with
+// MarkCommittedOutputs: every session constant that can be mapped as a graph
+// output must be copied. Consumer-based pruning also relies on
+// EnsureConsumerCache indexing resolved replacement inputs, including session
+// values.
 Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
                                                const CommitValueMaps& maps) const {
     const std::span<const GraphValue> values = graph_.GetValues();
@@ -915,8 +929,32 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
         committed.SetQuantization(*maps.source_values[i], value.quantization);
     }
 
+    // Collect session constant ids that the final committed graph will
+    // reference. Session constants are in the id range [values.size(), ...);
+    // the consumer index includes them, so HasLiveConsumers is usable here.
+    std::vector<uint8_t> referenced(session_value_metadata_.size(), 0U);
+    for (const auto& output: graph_.GetOutputs()) {
+        if (const auto resolved_output = GetResolvedValue(output.value);
+            IsSessionConstant(resolved_output)) {
+            referenced[GetSessionValueIndex(resolved_output)] = 1U;
+        }
+    }
+
     for (uint32_t i = 0; i < session_value_metadata_.size(); ++i) {
-        if (!session_value_metadata_[i].has_value()) {
+        if (referenced[i] != 0U || !session_value_metadata_[i].has_value()) {
+            continue;
+        }
+
+        const GraphValueId session_id{.index = static_cast<uint32_t>(values.size() + i)};
+        AM_ASSIGN_OR_RETURN(bool referenced_by_consumers, HasLiveConsumers(session_id));
+        if (!referenced_by_consumers) {
+            continue;
+        }
+        referenced[i] = 1U;
+    }
+
+    for (uint32_t i = 0; i < session_value_metadata_.size(); ++i) {
+        if (referenced[i] == 0U) {
             continue;
         }
 

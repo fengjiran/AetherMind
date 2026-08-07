@@ -8,7 +8,7 @@
 // helpers below so the common case stays branch-light and lock-free.
 #include "ammalloc/thread_cache.h"
 
-namespace aethermind {
+namespace ammalloc {
 
 void ThreadCache::ReleaseAll() {
     for (size_t i = 0; i < SizeClass::kNumSizeClasses; ++i) {
@@ -95,4 +95,4 @@ void ThreadCache::DeallocateSlowPath(FreeList& list, size_t aligned_size) noexce
     }
 }
 
-}// namespace aethermind
+}// namespace ammalloc

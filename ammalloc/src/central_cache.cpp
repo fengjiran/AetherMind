@@ -7,7 +7,7 @@
 #include "ammalloc/spin_lock.h"
 #include <spdlog/spdlog.h>
 
-namespace aethermind {
+namespace ammalloc {
 
 size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t aligned_size) {
     AMMALLOC_DCHECK(batch_num <= SizeClass::kMaxBatchSize);
@@ -307,4 +307,4 @@ Span* CentralCache::GetOneSpan(Bucket& bucket, size_t aligned_size, std::unique_
     return span;
 }
 
-}// namespace aethermind
+}// namespace ammalloc

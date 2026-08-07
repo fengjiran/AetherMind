@@ -7,7 +7,7 @@
 #include <cctype>
 #include <cstdlib>
 
-namespace aethermind {
+namespace ammalloc {
 
 void RuntimeConfig::InitFromEnv() {
     if (const char* env = std::getenv("AM_TC_SIZE")) {
@@ -29,4 +29,4 @@ void RuntimeConfig::InitFromEnv() {
     }
 }
 
-}// namespace aethermind
+}// namespace ammalloc

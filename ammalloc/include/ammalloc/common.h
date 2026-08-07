@@ -2,8 +2,8 @@
 // Created by richard on 2/6/26.
 //
 
-#ifndef AETHERMIND_MALLOC_COMMON_H
-#define AETHERMIND_MALLOC_COMMON_H
+#ifndef AMMALLOC_COMMON_H
+#define AMMALLOC_COMMON_H
 
 #include "ammalloc/attributes.h"
 #include "ammalloc/config.h"
@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <immintrin.h>
 
-namespace aethermind {
+namespace ammalloc {
 namespace details {
 
 /**
@@ -115,6 +115,6 @@ bool ParseBool(const char* str);
 
 }// namespace details
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif// AETHERMIND_MALLOC_COMMON_H
+#endif// AMMALLOC_COMMON_H

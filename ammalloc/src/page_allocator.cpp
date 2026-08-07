@@ -17,11 +17,11 @@
 namespace {
 
 bool IsPageAligned(const void* ptr) noexcept {
-    return (reinterpret_cast<uintptr_t>(ptr) & (aethermind::SystemConfig::PAGE_SIZE - 1)) == 0;
+    return (reinterpret_cast<uintptr_t>(ptr) & (ammalloc::SystemConfig::PAGE_SIZE - 1)) == 0;
 }
 
 bool IsHugePageAligned(const void* ptr) noexcept {
-    return (reinterpret_cast<uintptr_t>(ptr) & (aethermind::SystemConfig::HUGE_PAGE_SIZE - 1)) == 0;
+    return (reinterpret_cast<uintptr_t>(ptr) & (ammalloc::SystemConfig::HUGE_PAGE_SIZE - 1)) == 0;
 }
 
 // Zero-allocation lock-free dual-stack cache for 2MB huge pages.
@@ -71,8 +71,8 @@ public:
 
     void ReleaseAllForTesting() {
         while (void* ptr = Get()) {
-            if (munmap(ptr, aethermind::SystemConfig::HUGE_PAGE_SIZE) != 0) {
-                aethermind::PageAllocator::RecordMunmapFailure();
+            if (munmap(ptr, ammalloc::SystemConfig::HUGE_PAGE_SIZE) != 0) {
+                ammalloc::PageAllocator::RecordMunmapFailure();
                 spdlog::error("munmap failed in HugePageCache::ReleaseAll: ptr={}, errno={}",
                               ptr, errno);
             }
@@ -86,15 +86,15 @@ private:
     };
 
     static constexpr uint16_t kInvalid = 0xFFFF;
-    static constexpr size_t kCapacity = aethermind::PageConfig::HUGE_PAGE_CACHE_SIZE;
+    static constexpr size_t kCapacity = ammalloc::PageConfig::HUGE_PAGE_CACHE_SIZE;
     static_assert(kCapacity > 0 && kCapacity < kInvalid);
     static_assert(std::atomic<uint64_t>::is_always_lock_free);
 
     static constexpr uint64_t kIndexMask = 0xFFFFull;
     static constexpr uint64_t kTagMask = (1ull << 48) - 1;
 
-    alignas(aethermind::SystemConfig::CACHE_LINE_SIZE) std::atomic<uint64_t> free_head_{0};
-    alignas(aethermind::SystemConfig::CACHE_LINE_SIZE) std::atomic<uint64_t> used_head_{0};
+    alignas(ammalloc::SystemConfig::CACHE_LINE_SIZE) std::atomic<uint64_t> free_head_{0};
+    alignas(ammalloc::SystemConfig::CACHE_LINE_SIZE) std::atomic<uint64_t> used_head_{0};
     Slot slots_[kCapacity]{};
 
     static constexpr uint64_t Pack(uint16_t index, uint64_t tag) noexcept {
@@ -156,7 +156,7 @@ private:
 
 }// namespace
 
-namespace aethermind {
+namespace ammalloc {
 
 #ifdef AMMALLOC_TEST
 std::atomic<bool> g_mock_huge_alloc_fail{false};
@@ -516,4 +516,4 @@ void PageAllocator::ReleaseHugePageCache() {
     HugePageCache::GetInstance().ReleaseAllForTesting();
 }
 
-}// namespace aethermind
+}// namespace ammalloc

@@ -14,8 +14,8 @@
 /// - PageMap::GetSpan is lock-free; SetSpan/ClearRange require PageCache lock.
 ///
 /// Dependencies: page_allocator.h, span.h
-#ifndef AETHERMIND_MALLOC_PAGE_CACHE_H
-#define AETHERMIND_MALLOC_PAGE_CACHE_H
+#ifndef AMMALLOC_PAGE_CACHE_H
+#define AMMALLOC_PAGE_CACHE_H
 
 #define USE_PAGECACHE_SHARD
 
@@ -26,7 +26,7 @@
 
 #include <mutex>
 
-namespace aethermind {
+namespace ammalloc {
 
 uint64_t GetCurrentTimeMs();
 
@@ -368,6 +368,6 @@ private:
 #endif
 
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif// AETHERMIND_MALLOC_PAGE_CACHE_H
+#endif// AMMALLOC_PAGE_CACHE_H

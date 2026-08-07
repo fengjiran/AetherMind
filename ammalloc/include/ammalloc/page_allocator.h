@@ -14,8 +14,8 @@
 ///
 /// @see PageCache, am_malloc, am_free
 
-#ifndef AETHERMIND_MALLOC_PAGE_ALLOCATOR_H
-#define AETHERMIND_MALLOC_PAGE_ALLOCATOR_H
+#ifndef AMMALLOC_PAGE_ALLOCATOR_H
+#define AMMALLOC_PAGE_ALLOCATOR_H
 
 #include "ammalloc/config.h"
 
@@ -23,7 +23,7 @@
 #include <cstddef>
 #include <mutex>
 
-namespace aethermind {
+namespace ammalloc {
 
 #ifdef AMMALLOC_TEST
 extern std::atomic<bool> g_mock_huge_alloc_fail;
@@ -224,6 +224,6 @@ private:
     std::mutex mutex_;
 };
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif// AETHERMIND_MALLOC_PAGE_ALLOCATOR_H
+#endif// AMMALLOC_PAGE_ALLOCATOR_H

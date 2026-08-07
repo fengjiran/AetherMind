@@ -2,14 +2,14 @@
 // Created by richard on 3/2/26.
 //
 
-#ifndef AETHERMIND_AMMALLOC_PAGE_HEAP_SCAVENGER_H
-#define AETHERMIND_AMMALLOC_PAGE_HEAP_SCAVENGER_H
+#ifndef AMMALLOC_PAGE_HEAP_SCAVENGER_H
+#define AMMALLOC_PAGE_HEAP_SCAVENGER_H
 
 #include <condition_variable>
 #include <stop_token>
 #include <thread>
 
-namespace aethermind {
+namespace ammalloc {
 
 class PageHeapScavenger {
 public:
@@ -41,6 +41,6 @@ private:
     static constexpr uint64_t kIdleThresholdMs = 10000;
 };
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif//AETHERMIND_AMMALLOC_PAGE_HEAP_SCAVENGER_H
+#endif// AMMALLOC_PAGE_HEAP_SCAVENGER_H

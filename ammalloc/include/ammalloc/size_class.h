@@ -19,8 +19,8 @@
 //                do not affect ABI.
 //
 
-#ifndef AETHERMIND_AMMALLOC_SIZE_CLASS_H
-#define AETHERMIND_AMMALLOC_SIZE_CLASS_H
+#ifndef AMMALLOC_SIZE_CLASS_H
+#define AMMALLOC_SIZE_CLASS_H
 
 #include "ammalloc/assert.h"
 #include "ammalloc/config.h"
@@ -30,7 +30,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace aethermind {
+namespace ammalloc {
 
 namespace details {
 
@@ -458,6 +458,6 @@ static_assert(details::ValidateSizeNotLessThanInputSampled(), "Size(Index(s)) mu
 static_assert(details::ValidateIndexIdempotentSampled(), "Index(Size(Index(s))) must equal Index(s) at boundaries");
 static_assert(details::ValidateSizeMonotonic(), "Size(idx) must be strictly increasing");
 static_assert(details::ValidateRoundUpMonotonicSampled(), "RoundUp(s) must be non-decreasing at class boundaries");
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif// AETHERMIND_AMMALLOC_SIZE_CLASS_H
+#endif// AMMALLOC_SIZE_CLASS_H

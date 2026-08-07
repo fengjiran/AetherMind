@@ -19,8 +19,8 @@
   - `ammalloc/include/ammalloc/`
   - `ammalloc/src/`
 - **公共 API 入口点**：
-  - `void* aethermind::am_malloc(size_t size)`
-  - `void aethermind::am_free(void* ptr)`
+  - `void* ammalloc::am_malloc(size_t size)`
+  - `void ammalloc::am_free(void* ptr)`
 
 下面是详细的目录结构：
 

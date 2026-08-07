@@ -1,11 +1,11 @@
-#ifndef AETHERMIND_MALLOC_SPAN_H
-#define AETHERMIND_MALLOC_SPAN_H
+#ifndef AMMALLOC_SPAN_H
+#define AMMALLOC_SPAN_H
 
 #include "ammalloc/assert.h"
 #include "ammalloc/common.h"
 #include "ammalloc/config.h"
 
-namespace aethermind {
+namespace ammalloc {
 
 /// Continuous page range metadata for ammalloc.
 ///
@@ -39,8 +39,8 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) Span {
     uint32_t scan_cursor{0};// Bitmap search optimization
 
     // Calculated data offset (avoids storing full pointer).
-    uint32_t obj_offset{0};// Offset from page base to first object
-    uint32_t owner_shard_id{0};   // Cache line alignment
+    uint32_t obj_offset{0};    // Offset from page base to first object
+    uint32_t owner_shard_id{0};// Cache line alignment
 
     // Cold data: used by background scavenger thread.
     uint64_t last_used_time_ms{0};
@@ -174,6 +174,6 @@ private:
 };
 
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif// AETHERMIND_MALLOC_SPAN_H
+#endif// AMMALLOC_SPAN_H

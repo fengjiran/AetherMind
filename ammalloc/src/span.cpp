@@ -1,7 +1,7 @@
 #include "ammalloc/span.h"
 #include "ammalloc/size_class.h"
 
-namespace aethermind {
+namespace ammalloc {
 
 void Span::Init(size_t aligned_object_size) {
     AMMALLOC_DCHECK(aligned_object_size > 0 && aligned_object_size <= std::numeric_limits<uint32_t>::max());
@@ -95,4 +95,4 @@ void Span::FreeObject(void* ptr) {
     scan_cursor = std::min(scan_cursor, bitmap_idx);
 }
 
-}// namespace aethermind
+}// namespace ammalloc

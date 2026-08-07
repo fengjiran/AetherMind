@@ -2,15 +2,15 @@
 // Created by richard on 2/6/26.
 //
 
-#ifndef AETHERMIND_AMMALLOC_CONFIG_H
-#define AETHERMIND_AMMALLOC_CONFIG_H
+#ifndef AMMALLOC_CONFIG_H
+#define AMMALLOC_CONFIG_H
 
 #include "ammalloc/attributes.h"
 
 #include <cstddef>
 #include <new>
 
-namespace aethermind {
+namespace ammalloc {
 
 // ===========================================================================
 // 1. 系统与硬件架构配置 (System & Architecture)
@@ -104,6 +104,6 @@ private:
     bool enable_scavenger_ = true;
 };
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif// AETHERMIND_AMMALLOC_CONFIG_H
+#endif// AMMALLOC_CONFIG_H

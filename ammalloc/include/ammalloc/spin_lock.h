@@ -2,8 +2,8 @@
 // Created by richard on 2/24/26.
 //
 
-#ifndef AETHERMIND_MALLOC_SPIN_LOCK_H
-#define AETHERMIND_MALLOC_SPIN_LOCK_H
+#ifndef AMMALLOC_SPIN_LOCK_H
+#define AMMALLOC_SPIN_LOCK_H
 
 #include "ammalloc/attributes.h"
 #include "ammalloc/common.h"
@@ -11,7 +11,7 @@
 #include <atomic>
 #include <thread>
 
-namespace aethermind {
+namespace ammalloc {
 
 /**
  * @brief 高性能用户态自旋锁 (TTAS 架构)
@@ -71,6 +71,6 @@ private:
     std::atomic<bool> locked_{false};
 };
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif//AETHERMIND_MALLOC_SPIN_LOCK_H
+#endif// AMMALLOC_SPIN_LOCK_H

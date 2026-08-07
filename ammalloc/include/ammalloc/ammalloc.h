@@ -2,17 +2,17 @@
 // Created by richard on 2/6/26.
 //
 
-#ifndef AETHERMIND_MALLOC_AMMALLOC_H
-#define AETHERMIND_MALLOC_AMMALLOC_H
+#ifndef AMMALLOC_AMMALLOC_H
+#define AMMALLOC_AMMALLOC_H
 
 #include <cstddef>
 
-namespace aethermind {
+namespace ammalloc {
 
 void* am_malloc(size_t original_size);
 
 void am_free(void* ptr);
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif//AETHERMIND_MALLOC_AMMALLOC_H
+#endif// AMMALLOC_AMMALLOC_H

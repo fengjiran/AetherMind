@@ -13,13 +13,13 @@
 // - Its FreeLists are not synchronized and must never be shared across threads.
 // - Cross-thread balancing happens only through CentralCache slow paths.
 
-#ifndef AETHERMIND_AMMALLOC_THREAD_CACHE_H
-#define AETHERMIND_AMMALLOC_THREAD_CACHE_H
+#ifndef AMMALLOC_THREAD_CACHE_H
+#define AMMALLOC_THREAD_CACHE_H
 
 #include "ammalloc/assert.h"
 #include "ammalloc/central_cache.h"
 
-namespace aethermind {
+namespace ammalloc {
 
 /// Per-thread cache for thread-cacheable size classes.
 ///
@@ -135,6 +135,6 @@ private:
     /// `max_size`, preventing long-lived threads from pinning burst-era quotas.
     AM_NOINLINE static void DeallocateSlowPath(FreeList& list, size_t aligned_size) noexcept;
 };
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif// AETHERMIND_AMMALLOC_THREAD_CACHE_H
+#endif// AMMALLOC_THREAD_CACHE_H

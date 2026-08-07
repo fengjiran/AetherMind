@@ -2,8 +2,8 @@
 // Created by richard on 2/17/26.
 //
 
-#ifndef AETHERMIND_MALLOC_CENTRAL_CACHE_H
-#define AETHERMIND_MALLOC_CENTRAL_CACHE_H
+#ifndef AMMALLOC_CENTRAL_CACHE_H
+#define AMMALLOC_CENTRAL_CACHE_H
 
 #include "ammalloc/size_class.h"
 #include "ammalloc/span.h"
@@ -11,7 +11,7 @@
 
 #include <mutex>
 
-namespace aethermind {
+namespace ammalloc {
 
 struct FreeBlock {
     FreeBlock* next;
@@ -222,6 +222,6 @@ private:
 };
 
 
-}// namespace aethermind
+}// namespace ammalloc
 
-#endif// AETHERMIND_MALLOC_CENTRAL_CACHE_H
+#endif// AMMALLOC_CENTRAL_CACHE_H

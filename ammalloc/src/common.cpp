@@ -9,7 +9,7 @@
 #include <limits>
 #include <string_view>
 
-namespace aethermind {
+namespace ammalloc {
 namespace details {
 
 size_t ParseSize(const char* str) {
@@ -112,4 +112,4 @@ bool ParseBool(const char* str) {
 }
 
 }// namespace details
-}// namespace aethermind
+}// namespace ammalloc

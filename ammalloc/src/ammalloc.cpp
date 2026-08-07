@@ -13,7 +13,7 @@
 
 namespace {
 
-using namespace aethermind;
+using namespace ammalloc;
 
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((tls_model("initial-exec")))
@@ -145,7 +145,7 @@ AM_NOINLINE void am_free_slow_path(void* ptr, Span* span, size_t aligned_size) {
 
 }// namespace
 
-namespace aethermind {
+namespace ammalloc {
 
 void* am_malloc(size_t original_size) {
     // TLS variable is read only once.
@@ -181,4 +181,4 @@ void am_free(void* ptr) {
     tc->Deallocate(ptr, aligned_size);
 }
 
-}// namespace aethermind
+}// namespace ammalloc

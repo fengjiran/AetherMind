@@ -6,7 +6,7 @@
 
 #include <limits>
 
-namespace aethermind {
+namespace ammalloc {
 
 uint64_t GetCurrentTimeMs() {
     auto now = std::chrono::steady_clock::now();
@@ -600,4 +600,4 @@ void PageCache::Reset() {
 #endif
 
 
-}// namespace aethermind
+}// namespace ammalloc

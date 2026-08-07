@@ -8,7 +8,7 @@
 #include <spdlog/spdlog.h>
 #include <sys/mman.h>
 
-namespace aethermind {
+namespace ammalloc {
 
 void PageHeapScavenger::Start() {
     // Ensure it won't be started twice
@@ -137,4 +137,4 @@ void PageHeapScavenger::ScavengeOnePass() {
     }
 }
 
-}// namespace aethermind
+}// namespace ammalloc

@@ -38,10 +38,10 @@ class SiluMulConstEvaluator final : public ConstEvaluator {
 public:
     // Validates shapes and dtype match across gate/up/output.
     // Produces a contiguous-output plan and cost estimate.
-    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
-                                              std::span<const GraphValueDesc> outputs,
-                                              const OpParams& params,
-                                              AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
+    StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
+                                 std::span<const GraphValueDesc> outputs,
+                                 const OpParams& params,
+                                 AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||
             !std::holds_alternative<SiluMulParams>(params)) {
             return Status::Unimplemented(
@@ -90,9 +90,9 @@ public:
     }
 
     // Flat fast path when both inputs are contiguous; strided kernel otherwise.
-    AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
-                                 std::span<MutableTensorView> outputs,
-                                 const OpParams& params) const override {
+    Status Evaluate(std::span<const TensorView> inputs,
+                    std::span<MutableTensorView> outputs,
+                    const OpParams& params) const override {
         if (inputs.size() != 2U || outputs.size() != 1U || !std::holds_alternative<SiluMulParams>(params)) {
             return Status::InvalidArgument(
                     "SiluMul constant evaluator received invalid view arity");

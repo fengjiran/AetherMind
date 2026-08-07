@@ -60,23 +60,28 @@ Status EvaluateSiluStridedByDType(const DataType& dtype,
                                   std::span<MutableTensorView> outputs,
                                   std::span<const int64_t> input_strides) {
     if (dtype == DataType::Float32()) {
-        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, float>(inputs, outputs, input_strides);
+        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, float>(
+                inputs, outputs, input_strides);
     }
 
     if (dtype == DataType::Float(16)) {
-        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Half>(inputs, outputs, input_strides);
+        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Half>(
+                inputs, outputs, input_strides);
     }
 
     if (dtype == DataType::BFloat(16)) {
-        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, BFloat16>(inputs, outputs, input_strides);
+        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, BFloat16>(
+                inputs, outputs, input_strides);
     }
 
     if (dtype == DataType::Float8E4M3FN()) {
-        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Float8_e4m3fn>(inputs, outputs, input_strides);
+        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Float8_e4m3fn>(
+                inputs, outputs, input_strides);
     }
 
     if (dtype == DataType::Float8E5M2()) {
-        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Float8_e5m2>(inputs, outputs, input_strides);
+        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Float8_e5m2>(
+                inputs, outputs, input_strides);
     }
     return Status::InvalidArgument("Silu constant evaluator received unsupported dtype");
 }
@@ -87,11 +92,12 @@ class SiluConstEvaluator final : public ConstEvaluator {
 public:
     // Validates shapes and dtype; produces a contiguous-output plan and cost estimate.
     // SiLU is element-wise so the output is always dense and contiguous.
-    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
-                                              std::span<const GraphValueDesc> outputs,
-                                              const OpParams& params,
-                                              AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
-        if (inputs.size() != 1U || outputs.size() != 1U || !std::holds_alternative<SiluParams>(params)) {
+    StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
+                                 std::span<const GraphValueDesc> outputs,
+                                 const OpParams& params,
+                                 AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
+        if (inputs.size() != 1U || outputs.size() != 1U ||
+            !std::holds_alternative<SiluParams>(params)) {
             return Status::Unimplemented(
                     "Silu constant evaluator requires one input and one output");
         }
@@ -110,7 +116,8 @@ public:
 
         if (*input_shape != *output_shape) {
             return Status::Unimplemented(
-                    "Silu constant evaluator requires identical static shapes for input and output");
+                    "Silu constant evaluator requires identical "
+                    "static shapes for input and output");
         }
 
         auto numel = CountElements(*output_shape);
@@ -135,9 +142,9 @@ public:
 
     // Flat fast path for contiguous input; strided kernel for non-contiguous.
     // The flat path avoids stride indirection and is measurably faster.
-    AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
-                                 std::span<MutableTensorView> outputs,
-                                 const OpParams& params) const override {
+    Status Evaluate(std::span<const TensorView> inputs,
+                    std::span<MutableTensorView> outputs,
+                    const OpParams& params) const override {
         if (inputs.size() != 1U || outputs.size() != 1U ||
             !std::holds_alternative<SiluParams>(params)) {
             return Status::InvalidArgument(

@@ -1350,4 +1350,39 @@ TEST(ConstantFoldingPass, DceRemovesFoldedRankZeroSiluMul) {
     ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(result->GetOutputs()[0].value).payload));
 }
 
+// A constant whose static shape overflows int64 numel (e.g. {2^62, 2^62}
+// elements) must be treated as "not foldable" rather than aborting the pass:
+// the Plan phase already treats kOverflow as a per-node skip.
+
+TEST(ConstantFoldingPass, SkipsOverflowShapeConstantInput) {
+    ModelGraph graph;
+    const std::vector<int64_t> huge_shape{int64_t{1} << 62, int64_t{1} << 62};
+    const GraphValueId huge_a = graph.AddConstant(
+            Spec(DataType::Float32(), huge_shape),
+            ConstantBinding{.inline_data = InlineFloats({1.0F}), .name = "huge_a"},
+            "huge_a");
+    const GraphValueId huge_b = graph.AddConstant(
+            Spec(DataType::Float32(), huge_shape),
+            ConstantBinding{.inline_data = InlineFloats({2.0F}), .name = "huge_b"},
+            "huge_b");
+    auto add_or = graph.AddNode(
+            OpType::kAdd,
+            std::nullopt,
+            {huge_a, huge_b},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "huge_add"}},
+            AddParams{},
+            {},
+            "huge_add");
+    ASSERT_TRUE(add_or.ok()) << add_or.status().ToString();
+    graph.MarkOutput(add_or->outputs[0]);
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    // The overflow node is preserved: the pass skipped it instead of
+    // propagating the byte-count overflow and failing the whole graph.
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 1U);
+}
+
 }// namespace

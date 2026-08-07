@@ -36,8 +36,9 @@ StatusOr<std::vector<GraphValueDesc>> CollectValueDescs(const GraphRewriteSessio
 }
 
 // Returns true when the output desc carries a ConstantValue with inline_data
-// whose byte count matches the tensor spec. Dynamic shapes (Unimplemented
-// from CountBytes) are treated as "no" — they cannot be folded.
+// whose byte count matches the tensor spec. Unfoldable specs are treated as
+// "no" — dynamic shapes (Unimplemented from CountBytes) and byte counts that
+// overflow int64 (Overflow) cannot be folded and must not abort the pass.
 StatusOr<bool> HasInlineConstantBytes(const GraphValueDesc& desc) {
     const auto* constant = std::get_if<ConstantValue>(&desc.payload);
     if (constant == nullptr || !constant->binding.inline_data) {
@@ -46,7 +47,8 @@ StatusOr<bool> HasInlineConstantBytes(const GraphValueDesc& desc) {
 
     auto expected_bytes = CountBytes(desc.spec);
     if (!expected_bytes.ok()) {
-        if (expected_bytes.status() == StatusCode::kUnimplemented) {
+        if (expected_bytes.status() == StatusCode::kUnimplemented ||
+            expected_bytes.status() == StatusCode::kOverflow) {
             return false;
         }
         return expected_bytes.status();

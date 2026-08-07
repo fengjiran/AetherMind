@@ -1,9 +1,12 @@
-//
-// Created by richard on 1/12/26.
-//
-
 #ifndef AETHERMIND_XXH3_H
 #define AETHERMIND_XXH3_H
+
+/// @file
+/// @brief `consteval` XXH3 64-bit hashing utilities.
+///
+/// This header contains a C++20 constexpr implementation of the XXH3 64-bit
+/// variant. The bundled implementation retains the upstream license notices
+/// below.
 
 /*
 BSD 2-Clause License
@@ -52,6 +55,8 @@ Copyright (C) 2012-2020 Yann Collet
 namespace aethermind {
 namespace xxh3 {
 
+/// @brief Constrains a type to one-byte integral or `std::byte` values.
+/// @tparam T Candidate byte type.
 template<typename T>
 concept ByteType = (std::is_integral_v<T> && sizeof(T) == 1)
 #if defined __cpp_lib_byte && __cpp_lib_byte >= 201603
@@ -59,17 +64,21 @@ concept ByteType = (std::is_integral_v<T> && sizeof(T) == 1)
 #endif
         ;
 
+/// @brief Constrains a type to a pointer to byte-like values.
+/// @tparam T Candidate pointer type.
 template<typename T>
 concept BytePtrType = requires(T ptr) {
     requires std::is_pointer_v<T>;
     requires ByteType<std::remove_cvref_t<decltype(*ptr)>>;
 };
 
+/// @brief Constrains a type whose `std::data` points to byte-like values.
+/// @tparam T Candidate contiguous byte container type.
 template<typename T>
 concept BytesType = requires(const T& bytes) {
     { std::data(bytes) };
     requires BytePtrType<decltype(std::data(bytes))>;
-    // -> std::convertible_to is not supported widely enough
+    // Use an explicit cast because std::convertible_to is not widely supported.
     { static_cast<size_t>(std::size(bytes)) };
 };
 
@@ -299,8 +308,15 @@ constexpr size_t bytes_size(T (&)[N]) noexcept {
     return (N ? N - 1 : 0);
 }
 
-/// Basic interfaces
+/// @name Pointer-based XXH3 interfaces
+/// @{
 
+/// @brief Computes an XXH3 64-bit hash with the default secret.
+/// @tparam T Byte-like input element type.
+/// @param input Pointer to the input bytes.
+/// @param len Number of input bytes.
+/// @return The compile-time XXH3 64-bit hash.
+/// @pre `input` points to at least `len` readable bytes when `len` is non-zero.
 template<ByteType T>
 consteval uint64_t XXH3_64bits_const(const T* input, size_t len) noexcept {
     return XXH3_64bits_internal(
@@ -311,6 +327,17 @@ consteval uint64_t XXH3_64bits_const(const T* input, size_t len) noexcept {
             });
 }
 
+/// @brief Computes an XXH3 64-bit hash with a caller-provided secret.
+/// @tparam T Byte-like input element type.
+/// @tparam S Byte-like secret element type.
+/// @param input Pointer to the input bytes.
+/// @param len Number of input bytes.
+/// @param secret Pointer to the secret bytes.
+/// @param secretSize Number of bytes in `secret`.
+/// @return The compile-time XXH3 64-bit hash.
+/// @pre `input` points to at least `len` readable bytes when `len` is non-zero.
+/// @pre `secret` points to at least `secretSize` readable bytes.
+/// @pre `secretSize` is at least `SECRET_SIZE_MIN`.
 template<ByteType T, ByteType S>
 consteval uint64_t XXH3_64bits_withSecret_const(const T* input, size_t len,
                                                 const S* secret,
@@ -323,6 +350,13 @@ consteval uint64_t XXH3_64bits_withSecret_const(const T* input, size_t len,
             });
 }
 
+/// @brief Computes an XXH3 64-bit hash with a caller-provided seed.
+/// @tparam T Byte-like input element type.
+/// @param input Pointer to the input bytes.
+/// @param len Number of input bytes.
+/// @param seed Seed mixed into the hash computation.
+/// @return The compile-time XXH3 64-bit hash.
+/// @pre `input` points to at least `len` readable bytes when `len` is non-zero.
 template<ByteType T>
 consteval uint64_t XXH3_64bits_withSeed_const(const T* input, size_t len,
                                               uint64_t seed) noexcept {
@@ -340,13 +374,27 @@ consteval uint64_t XXH3_64bits_withSeed_const(const T* input, size_t len,
             });
 }
 
-/// Convenient interfaces
+/// @}
 
+/// @name Contiguous-byte-container interfaces
+/// @{
+
+/// @brief Computes an XXH3 64-bit hash for a byte container.
+/// @tparam Bytes Type satisfying `BytesType`.
+/// @param input Input container whose byte range is hashed.
+/// @return The compile-time XXH3 64-bit hash.
 template<BytesType Bytes>
 consteval uint64_t XXH3_64bits_const(const Bytes& input) noexcept {
     return XXH3_64bits_const(std::data(input), bytes_size(input));
 }
 
+/// @brief Computes an XXH3 64-bit hash using a caller-provided secret container.
+/// @tparam Bytes Input container type satisfying `BytesType`.
+/// @tparam Secret Secret container type satisfying `BytesType`.
+/// @param input Input container whose byte range is hashed.
+/// @param secret Secret container used by the hash.
+/// @return The compile-time XXH3 64-bit hash.
+/// @pre `secret` contains at least `SECRET_SIZE_MIN` bytes.
 template<BytesType Bytes, BytesType Secret>
 consteval uint64_t XXH3_64bits_withSecret_const(const Bytes& input,
                                                 const Secret& secret) noexcept {
@@ -354,14 +402,21 @@ consteval uint64_t XXH3_64bits_withSecret_const(const Bytes& input,
                                         std::data(secret), bytes_size(secret));
 }
 
+/// @brief Computes an XXH3 64-bit hash for a byte container and seed.
+/// @tparam Bytes Type satisfying `BytesType`.
+/// @param input Input container whose byte range is hashed.
+/// @param seed Seed mixed into the hash computation.
+/// @return The compile-time XXH3 64-bit hash.
 template<BytesType Bytes>
 consteval uint64_t XXH3_64bits_withSeed_const(const Bytes& input,
                                               uint64_t seed) noexcept {
     return XXH3_64bits_withSeed_const(std::data(input), bytes_size(input), seed);
 }
 
+/// @}
+
 }// namespace xxh3
 
 }// namespace aethermind
 
-#endif//AETHERMIND_XXH3_H
+#endif// AETHERMIND_XXH3_H

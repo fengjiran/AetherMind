@@ -1,9 +1,12 @@
-//
-// Created by richard on 10/30/25.
-//
-
 #ifndef AETHERMIND_UTILS_HASH_H
 #define AETHERMIND_UTILS_HASH_H
+
+/// @file
+/// @brief Hash mixing and composite hashing utilities.
+///
+/// The AetherMind hash functor dispatches to user-provided `T::hash`, enum
+/// underlying values, or `std::hash`, and provides consistent support for
+/// common aggregate types.
 
 #include "container/string.h"
 #include "utils/xxh3.h"
@@ -18,6 +21,9 @@
 
 namespace aethermind {
 
+/// @brief Applies a 32-bit integer mixing function.
+/// @param key Value to mix.
+/// @return The mixed 32-bit value.
 inline uint32_t twang_mix32(uint32_t key) noexcept {
     key = ~key + (key << 15);// key = (key << 15) - key - 1;
     key = key ^ (key >> 12);
@@ -28,6 +34,9 @@ inline uint32_t twang_mix32(uint32_t key) noexcept {
     return key;
 }
 
+/// @brief Applies a 64-bit integer mixing function.
+/// @param key Value to mix.
+/// @return The mixed 64-bit value.
 inline uint64_t twang_mix64(uint64_t key) noexcept {
     key = (~key) + (key << 21);// key *= (1 << 21) - 1; key -= 1;
     key = key ^ (key >> 24);
@@ -39,6 +48,11 @@ inline uint64_t twang_mix64(uint64_t key) noexcept {
     return key;
 }
 
+/// @brief Combines one hash value into an existing seed.
+/// @tparam T Type convertible to `size_t`.
+/// @param seed Existing combined hash seed.
+/// @param hash_value Hash value to incorporate.
+/// @return The updated combined hash value.
 #ifdef CPP20
 template<typename T>
     requires std::convertible_to<T, size_t>
@@ -89,11 +103,9 @@ size_t simple_get_hash(const T& v);
 template<typename T, typename V>
 using type_if_not_enum = std::enable_if_t<!std::is_enum_v<T>, V>;
 
-// Use SFINAE to dispatch to std::hash if possible, cast enum types to int
-// automatically, and fall back to T::hash otherwise. NOTE: C++14 added support
-// for hashing enum types to the standard, and some compilers implement it even
-// when C++14 flags aren't specified. This is why we have to disable this
-// overload if T is an enum type (and use the one below in this case).
+// Use SFINAE to dispatch to std::hash when possible, cast enum types to their
+// underlying type, and fall back to T::hash otherwise. Enum dispatch remains
+// separate because some compilers provide enum hashing as an extension.
 template<typename T>
 auto dispatch_hash(const T& o) -> decltype(std::hash<T>()(o), type_if_not_enum<T, size_t>()) {
     return std::hash<T>()(o);
@@ -114,9 +126,13 @@ auto dispatch_hash(const T& o) -> decltype(T::hash(o), size_t()) {
 
 }// namespace details
 
-// Hasher struct
+/// @brief Computes hashes using AetherMind's type-specific dispatch rules.
+/// @tparam T Type to hash.
 template<typename T>
 struct hash {
+    /// @brief Hashes one value.
+    /// @param v Value to hash.
+    /// @return The computed hash value.
     size_t operator()(const T& v) const {
         return details::dispatch_hash(v);
     }
@@ -150,9 +166,13 @@ struct hash<long long> {
     }
 };
 
-// Specialization for std::tuple
+/// @brief Hashes a `std::tuple` by combining each element in order.
+/// @tparam Types Tuple element types.
 template<typename... Types>
 struct hash<std::tuple<Types...>> {
+    /// @brief Hashes the tuple elements in order.
+    /// @param t Tuple to hash.
+    /// @return The combined tuple hash.
     size_t operator()(const std::tuple<Types...>& t) const {
         size_t seed = 0;
         auto func = [&seed](auto&&... x) {
@@ -163,17 +183,27 @@ struct hash<std::tuple<Types...>> {
     }
 };
 
+/// @brief Hashes a pair by combining its first and second elements.
+/// @tparam T1 First element type.
+/// @tparam T2 Second element type.
 template<typename T1, typename T2>
 struct hash<std::pair<T1, T2>> {
+    /// @brief Hashes both pair elements in order.
+    /// @param pair Pair to hash.
+    /// @return The combined pair hash.
     size_t operator()(const std::pair<T1, T2>& pair) const {
         std::tuple<T1, T2> tuple = std::make_tuple(pair.first, pair.second);
         return details::simple_get_hash(tuple);
     }
 };
 
-// Specialization for std::vector
+/// @brief Hashes a vector by combining its elements in order.
+/// @tparam T Vector element type.
 template<typename T>
 struct hash<std::vector<T>> {
+    /// @brief Hashes all vector elements in sequence.
+    /// @param v Vector to hash.
+    /// @return The combined vector hash.
     size_t operator()(const std::vector<T>& v) const {
         size_t seed = 0;
         for (const auto& elem: v) {
@@ -197,27 +227,33 @@ inline size_t FibonacciHash(size_t hash_value, uint32_t fib_shift) {
 
 }// namespace details
 
-// Use this function to actually hash multiple things in one line.
-// Dispatches to aethermind::hash, so it can hash containers.
-// Example:
-//
-// static size_t hash(const MyStruct& s) {
-//   return get_hash(s.member1, s.member2, s.member3);
-// }
+/// @brief Hashes multiple values as one composite key.
+///
+/// Each argument is dispatched through `aethermind::hash`, so supported
+/// aggregate and container types can be combined without custom boilerplate.
+///
+/// @tparam Types Types of the values to combine.
+/// @param args Values to hash in order.
+/// @return The combined hash value.
 template<typename... Types>
 size_t get_hash(const Types&... args) {
     return hash<decltype(std::tie(args...))>()(std::tie(args...));
 }
 
-// Specialization for aethermind::complex
+/// @brief Hashes a standard complex number from its real and imaginary parts.
+/// @tparam T Complex component type.
 template<typename T>
 struct hash<std::complex<T>> {
+    /// @brief Hashes the real and imaginary components in order.
+    /// @param c Complex value to hash.
+    /// @return The combined complex-value hash.
     size_t operator()(const std::complex<T>& c) const {
         return get_hash(c.real(), c.imag());
     }
 };
 }// namespace aethermind
 
+/// @brief Standard-library hash specializations backed by `aethermind::hash`.
 namespace std {
 
 template<typename... Types>
@@ -250,4 +286,4 @@ struct hash<std::complex<T>> {
 
 }// namespace std
 
-#endif//AETHERMIND_UTILS_HASH_H
+#endif// AETHERMIND_UTILS_HASH_H

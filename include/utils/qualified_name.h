@@ -1,25 +1,32 @@
-//
-// Created by richard on 10/31/25.
-//
-
 #ifndef AETHERMIND_UTILS_QUALIFIED_NAME_H
 #define AETHERMIND_UTILS_QUALIFIED_NAME_H
+
+/// @file
+/// @brief Representation and decomposition of dotted qualified names.
 
 #include "container/array_view.h"
 #include "container/string.h"
 
 namespace aethermind {
 
-// Represents a name of the form "foo.bar.baz"
+/// @brief Represents a name composed of dot-separated non-empty components.
+///
+/// The class caches the complete name, its prefix, and its final component.
+/// Constructed names are immutable through this interface, so returned
+/// references remain valid while the object is alive and is not assigned to.
 class QualifiedName {
 public:
+    /// @brief Creates an empty qualified name.
     QualifiedName() = default;
 
-    // `name` can be a dotted string, like "foo.bar.baz", or just a bare name.
+    /// @brief Parses a dotted or bare name into components.
+    /// @param name Non-empty dotted name, such as `foo.bar.baz`, or a bare name.
+    /// @note Every component must be non-empty. Invalid input triggers
+    ///       `AM_CHECK` and terminates the process.
     QualifiedName(const String& name) {// NOLINT
         AM_CHECK(!name.empty());
 
-        // split the string into atoms
+        // Split the name into components so all cached views share one form.
         size_t start = 0;
         size_t pos = name.find(delimiter_, start);
         while (pos != String::npos) {
@@ -36,8 +43,15 @@ public:
         CacheAccessors();
     }
 
+    /// @brief Parses a null-terminated dotted or bare name.
+    /// @param name Non-empty name accepted by the `String` constructor.
+    /// @note Every component must be non-empty. Invalid input triggers
+    ///       `AM_CHECK` and terminates the process.
     QualifiedName(const char* name) : QualifiedName(String(name)) {}// NOLINT
 
+    /// @brief Constructs a qualified name from individual components.
+    /// @param atoms Non-empty components. Components must not contain `.`.
+    /// @note Invalid components trigger `AM_CHECK` and terminate the process.
     explicit QualifiedName(std::vector<String> atoms) : atoms_(std::move(atoms)) {
         for (const auto& atom: atoms_) {
             AM_CHECK(!atom.empty(), "atom cannot be empty");
@@ -46,7 +60,10 @@ public:
         CacheAccessors();
     }
 
-    // name must be a bare name(not dots)
+    /// @brief Appends one component to an existing qualified name.
+    /// @param prefix Existing prefix; it may be empty.
+    /// @param name Non-empty component that must not contain `.`.
+    /// @note Invalid input triggers `AM_CHECK` and terminates the process.
     explicit QualifiedName(const QualifiedName& prefix, String name) {
         AM_CHECK(!name.empty());
         AM_CHECK(name.find(delimiter_) == String::npos);
@@ -55,8 +72,10 @@ public:
         CacheAccessors();
     }
 
-    // Is `this` a prefix of `other`?
-    // For example, "foo.bar" is a prefix of "foo.bar.baz"
+    /// @brief Checks whether this name is a component-wise prefix of another.
+    /// @param other Name to compare with.
+    /// @return True when every component in this name matches the corresponding
+    ///         leading component of `other`.
     AM_NODISCARD bool IsPrefixOf(const QualifiedName& other) const {
         if (atoms_.size() > other.atoms_.size()) {
             return false;
@@ -70,29 +89,42 @@ public:
         return true;
     }
 
-    // The fully qualified name, like "foo.bar.baz"
+    /// @brief Returns the complete dotted name.
+    /// @return A reference to the cached complete name.
     AM_NODISCARD const String& GetQualifiedName() const {
         return qualified_name_;
     }
 
-    // The leading qualifier, like "foo.bar"
+    /// @brief Returns the dotted prefix without the final component.
+    /// @return A reference to the cached prefix, or an empty string for a
+    ///         single-component name.
     AM_NODISCARD const String& GetPrefix() const {
         return prefix_;
     }
 
-    // The base name, like "baz"
+    /// @brief Returns the final component of the name.
+    /// @return A reference to the cached final component, or an empty string for
+    ///         an empty qualified name.
     AM_NODISCARD const String& GetName() const {
         return name_;
     }
 
+    /// @brief Returns the individual name components in order.
+    /// @return A reference to the cached component vector.
     AM_NODISCARD const std::vector<String>& GetAtoms() const {
         return atoms_;
     }
 
+    /// @brief Compares two qualified names by their complete dotted form.
+    /// @param other Name to compare with.
+    /// @return True when both complete names are equal.
     bool operator==(const QualifiedName& other) const {
         return qualified_name_ == other.qualified_name_;
     }
 
+    /// @brief Checks whether two qualified names differ.
+    /// @param other Name to compare with.
+    /// @return True when the complete names are different.
     bool operator!=(const QualifiedName& other) const {
         return !operator==(other);
     }
@@ -128,13 +160,13 @@ private:
         }
     }
 
-    // default delimiter
+    // The delimiter is part of the serialized qualified-name representation.
     static constexpr char delimiter_ = '.';
 
-    // The actual list of names, like "{foo, bar, baz}"
+    // Components in their original order.
     std::vector<String> atoms_;
 
-    // Cached accessors, derived from `atoms_`.
+    // Cached strings derived from `atoms_`.
     String qualified_name_;
     String name_;
     String prefix_;
@@ -142,7 +174,7 @@ private:
 
 }// namespace aethermind
 
-// hash function
+/// @brief Provides a standard-library hash for `aethermind::QualifiedName`.
 namespace std {
 template<>
 struct hash<aethermind::QualifiedName> {
@@ -152,4 +184,4 @@ struct hash<aethermind::QualifiedName> {
 };
 }// namespace std
 
-#endif//AETHERMIND_UTILS_QUALIFIED_NAME_H
+#endif// AETHERMIND_UTILS_QUALIFIED_NAME_H

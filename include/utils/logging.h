@@ -1,13 +1,12 @@
-// Assertion macros and abort helpers for AetherMind.
-//
-// AM_CHECK / AM_DCHECK express runtime and debug-only invariants. On
-// failure they print a "Check failed: ..." line to stderr (with file,
-// line, column, and an optional formatted message) and call std::abort().
-// The "Check failed" prefix is a stable contract: death tests match it
-// to detect the abort, so do not reword it.
-
 #ifndef AETHERMIND_UTILS_LOGGING_H
 #define AETHERMIND_UTILS_LOGGING_H
+
+/// @file
+/// @brief Assertion macros and abort helpers for AetherMind.
+///
+/// `AM_CHECK` and `AM_DCHECK` express runtime and debug-only invariants.
+/// Failed checks write a stable `Check failed: ...` prefix to standard error
+/// before terminating the process. Death tests depend on that prefix.
 
 #include <format>
 #include <iostream>
@@ -17,9 +16,11 @@
 
 namespace aethermind {
 
-// Abort helper invoked by AM_CHECK when `condition` fails. Not intended
-// for direct use; call AM_CHECK so the source location is captured
-// automatically. Writes the failure line to stderr and aborts.
+/// @brief Reports a failed check at a captured source location and aborts.
+/// @param condition Text of the failed condition.
+/// @param loc Source location of the check expression.
+/// @note This helper is intended for use through `AM_CHECK`, which captures the
+///       call-site location automatically.
 inline void HandleCheckFailed(std::string_view condition,
                               std::source_location loc) {
     std::cerr << std::format("Check failed: ({}) at {}:{}:{}\n",
@@ -27,9 +28,14 @@ inline void HandleCheckFailed(std::string_view condition,
     std::abort();
 }
 
-// Abort helper variant that appends a formatted message to the failure
-// line. Same abort semantics as the overload above; `fmt` and `args`
-// are forwarded to std::format.
+/// @brief Reports a failed check with a formatted message and aborts.
+/// @tparam Args Types of the format arguments.
+/// @param condition Text of the failed condition.
+/// @param loc Source location of the check expression.
+/// @param fmt Format string passed to `std::format`.
+/// @param args Arguments consumed by `fmt`.
+/// @throws std::format_error if formatting fails before the process is aborted.
+/// @note This helper is intended for use through `AM_CHECK`.
 template<typename... Args>
 void HandleCheckFailed(std::string_view condition,
                        std::source_location loc,
@@ -42,15 +48,12 @@ void HandleCheckFailed(std::string_view condition,
     std::abort();
 }
 
-// Evaluates `condition` exactly once; on false, writes the failure line
-// to stderr and aborts. Always live in every build — use AM_DCHECK for
-// debug-only checks.
-//
-// Trailing variadic args, if present, are forwarded as a std::format
-// message:
-//   AM_CHECK(i < size, "index {} out of range {}", i, size);
-//
-// The "Check failed" prefix in the output is matched by death tests.
+/// @brief Evaluates an invariant and aborts when it is false.
+/// @param condition Expression evaluated exactly once.
+/// @param ... Optional `std::format` string and arguments for the failure
+///             message.
+/// @note This macro is active in every build. The `Check failed` output prefix
+///       is part of the death-test contract.
 #define AM_CHECK(condition, ...)                                                                       \
     do {                                                                                               \
         if (!(condition)) [[unlikely]] {                                                               \
@@ -58,18 +61,14 @@ void HandleCheckFailed(std::string_view condition,
         }                                                                                              \
     } while (false)
 
-// Debug-only variant of AM_CHECK: equivalent to AM_CHECK in debug builds,
-// a no-op in release builds.
-//
-// Release-build hazard: in NDEBUG builds neither `condition` nor the
-// trailing format args are evaluated — do not place side-effectful
-// expressions in either position; they will silently stop running in
-// release builds.
-//
-// The `while (false) if (...) ... else` skeleton (rather than a plain
-// `while (false);`) leaves a dangling else so a caller may optionally
-// attach an else-branch that runs only in debug builds:
-//   AM_DCHECK(x > 0) else { /* debug-only fallback */ }
+/// @brief Evaluates a debug-only invariant and aborts when it is false.
+/// @param condition Expression evaluated once in debug builds.
+/// @param ... Optional format string and arguments, evaluated only in debug
+///             builds.
+/// @note In `NDEBUG` builds, neither the condition nor the trailing arguments
+///       are evaluated. Do not place required side effects in either position.
+/// @note The macro preserves a dangling `else` so callers may attach a branch
+///       that exists only in debug builds.
 #ifdef NDEBUG
 #define AM_RELEASE
 #define AM_DCHECK(condition, ...)                     \

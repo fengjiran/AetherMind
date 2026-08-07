@@ -1,43 +1,39 @@
-/// \file
-/// Memory debugging utilities.
+#ifndef AETHERMIND_UTILS_MEMORY_UTILS_H
+#define AETHERMIND_UTILS_MEMORY_UTILS_H
+
+/// @file
+/// @brief Utilities for filling memory with recognizable debug patterns.
 ///
 /// Provides functions for detecting uninitialized memory access patterns
 /// by filling memory with distinctive junk values.
-
-#ifndef AETHERMIND_UTILS_MEMORY_UTILS_H
-#define AETHERMIND_UTILS_MEMORY_UTILS_H
 
 #include <cstddef>
 #include <cstdint>
 
 namespace aethermind {
 
-/// Fills a memory region with a junk pattern for debugging uninitialized access.
+/// @brief Fills a memory region with a recognizable pattern.
 ///
-/// The pattern is chosen to be:
-/// - NaN when interpreted as float32 or float64
-/// - Large integer values that cause visible bugs when used
+/// The pattern is a NaN for floating-point interpretations and a large value
+/// for integer interpretations, making accidental reads easier to diagnose.
 ///
-/// This helps catch bugs where code reads from uninitialized memory,
-/// as the junk values are unlikely to be valid data.
-///
-/// \param data Pointer to the memory region to fill. Must not be null.
-/// \param nbytes Number of bytes to fill. Must be > 0.
-///
-/// \note This function is intended for debugging purposes only.
-///       Production code should not rely on junk-filling behavior.
+/// @param data Destination memory. If `data` is null, the function does nothing;
+///             otherwise it must point to at least `nbytes` writable bytes.
+/// @param nbytes Number of bytes to fill. A zero length is a no-op.
+/// @note This function is intended for debugging only. Production behavior
+///       must not depend on the fill pattern.
 void FillMemoryJunk(void* data, size_t nbytes);
 
-/// Returns the 32-bit junk pattern value.
-/// \return The pattern used by FillMemoryJunk for testing.
+/// @brief Returns the 32-bit pattern used by `FillMemoryJunk`.
+/// @return The recognizable 32-bit debug pattern.
 constexpr int32_t GetJunkPattern32() noexcept {
     return 0x7fedbeef;
 }
 
-/// Returns the 64-bit junk pattern value.
-/// \return The pattern used by FillMemoryJunk for testing.
+/// @brief Returns the 64-bit pattern used by `FillMemoryJunk`.
+/// @return The 32-bit pattern repeated in both halves of a 64-bit value.
 constexpr int64_t GetJunkPattern64() noexcept {
-    // 32-bit pattern repeated twice
+    // Repeat the 32-bit pattern in both halves.
     return static_cast<int64_t>(GetJunkPattern32()) << 32 | GetJunkPattern32();
 }
 

@@ -11,7 +11,7 @@
 #include <thread>
 #include <vector>
 
-namespace aethermind {
+namespace ammalloc {
 
 class CentralCacheTest : public ::testing::Test {
 protected:
@@ -29,10 +29,10 @@ protected:
     }
 };
 
-}// namespace aethermind
+}// namespace ammalloc
 
 namespace {
-using namespace aethermind;
+using namespace ammalloc;
 
 // 测试点 1: 基本的 FetchRange 操作
 TEST_F(CentralCacheTest, BasicFetchRange) {

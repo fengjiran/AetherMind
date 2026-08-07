@@ -9,7 +9,7 @@
 #ifdef PAGE_ALLOCATOR_BENCHMARK
 namespace {
 
-using namespace aethermind;
+using namespace ammalloc;
 
 constexpr size_t kHugePageNum = SystemConfig::HUGE_PAGE_SIZE / SystemConfig::PAGE_SIZE;
 constexpr size_t kNearHugeThresholdPageNum = (SystemConfig::HUGE_PAGE_SIZE >> 1) / SystemConfig::PAGE_SIZE;

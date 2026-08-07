@@ -12,7 +12,7 @@
 #include <thread>
 
 namespace {
-using namespace aethermind;
+using namespace ammalloc;
 
 class PageAllocatorTest : public ::testing::Test {
 public:

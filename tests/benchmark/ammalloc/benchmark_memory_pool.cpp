@@ -14,7 +14,7 @@
 
 namespace {
 
-using namespace aethermind;
+using namespace ammalloc;
 
 using alloc_func_type = void* (*) (size_t);
 using free_func_type = void (*)(void*);

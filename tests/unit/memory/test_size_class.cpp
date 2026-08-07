@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 namespace {
-using namespace aethermind;
+using namespace ammalloc;
 
 // Helper to access private members for testing if needed,
 // but SizeClass interface is mostly static public.

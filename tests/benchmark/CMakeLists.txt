@@ -9,9 +9,11 @@ target_include_directories(${BENCHMARK_TARGET}
         PRIVATE
         #        ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/ammalloc/include
 )
 
 target_link_libraries(${BENCHMARK_TARGET} PRIVATE
         ${PROJECT_NAME}
+        ammalloc
         benchmark::benchmark_main
 )

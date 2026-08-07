@@ -8,7 +8,7 @@
 
 namespace {
 
-using namespace aethermind;
+using namespace ammalloc;
 
 AM_ALWAYS_INLINE uint64_t NextRand(uint64_t& state) {
     state ^= state >> 12;

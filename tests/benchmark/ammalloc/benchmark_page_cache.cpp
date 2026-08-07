@@ -4,7 +4,7 @@
 
 namespace {
 
-using namespace aethermind;
+using namespace ammalloc;
 
 constexpr size_t kWarmSpanPages = PageConfig::MAX_PAGE_NUM;
 
@@ -250,4 +250,4 @@ BENCHMARK(BM_PageCache_AllocRelease_MixedBuckets_Contention)
         ->Threads(16)
         ->UseRealTime();
 
-}
+}// namespace

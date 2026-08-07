@@ -4,7 +4,7 @@
 
 namespace {
 
-using namespace aethermind;
+using namespace ammalloc;
 
 class SpanTest : public ::testing::Test {
 protected:

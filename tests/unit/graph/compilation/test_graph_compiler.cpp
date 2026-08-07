@@ -438,8 +438,9 @@ TEST(OptimizeModelGraph, CheckpointEveryOneMatchesNoCheckpointAtO2) {
 }
 
 // ---- Ordering: CF before fusion with constant gate + runtime up -----------
-// CF folds SiLU(const_gate); SiluMulFusion resolves through ReplaceValue chains
-// and fuses the SiLU → Mul pattern deterministically; DCE removes dead nodes.
+// CF folds SiLU(const_gate) into a constant. Fusion must then skip the
+// pattern (the silu output is already replaced), leaving a plain Mul on the
+// folded constant; DCE removes the now-dead SiLU node.
 
 ModelGraph BuildGraphWithConstantSiLUGate() {
     ModelGraph graph;
@@ -465,7 +466,7 @@ ModelGraph BuildGraphWithConstantSiLUGate() {
     return graph;
 }
 
-TEST(OptimizeModelGraph, ConstantGateRuntimeUpDeterministicFusionAtO2) {
+TEST(OptimizeModelGraph, ConstantGateRuntimeUpSkipsFusionAfterFoldAtO2) {
     ModelGraph graph = BuildGraphWithConstantSiLUGate();
     ASSERT_TRUE(graph.Validate().ok());
 
@@ -476,20 +477,20 @@ TEST(OptimizeModelGraph, ConstantGateRuntimeUpDeterministicFusionAtO2) {
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     ASSERT_TRUE(result->Validate().ok());
 
-    // Fusion fired deterministically: SiLU + Mul replaced by single kSiluMul.
+    // Fusion skipped: silu(const_gate) was already folded, so the fused
+    // kernel must not be reintroduced.
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
-    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
-    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 1U);
+    // A single plain Mul consumes the folded constant.
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 1U);
 
-    // CF folded the SiLU, but the fused SiluMul consumes the original gate
-    // constant directly. The intermediate SiLU result (folded session constant)
-    // is dead after fusion and must NOT leak into the optimized graph: only
-    // the gate constant survives.
+    // The folded silu constant survives (Mul still consumes it): const_gate
+    // plus the folded constant.
     size_t constant_count = 0;
     for (const GraphValue& value: result->GetValues()) {
         if (std::holds_alternative<ConstantValue>(value.payload)) ++constant_count;
     }
-    EXPECT_EQ(constant_count, 1U);
+    EXPECT_EQ(constant_count, 2U);
 
     // The runtime up activation survives (Embedding node present).
     EXPECT_GE(result->FindNodesByOpType(OpType::kEmbedding).size(), 1U);

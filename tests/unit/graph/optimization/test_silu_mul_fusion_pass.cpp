@@ -1,4 +1,6 @@
 #include "aethermind/graph/graph_op_builder.h"
+#include "aethermind/graph/optimization/constant_folding_pass.h"
+#include "aethermind/graph/optimization/dead_code_elimination_pass.h"
 #include "aethermind/graph/optimization/silu_mul_fusion_pass.h"
 #include "test_optimization_helpers.h"
 
@@ -278,6 +280,55 @@ TEST(SiluMulFusionPass, NoSiluNodesLeavesGraphUnchanged) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
+}
+
+// Full O2 pipeline (CF -> Fusion -> DCE) on Silu(constant) * up. Constant
+// folding collapses silu(gate) into a folded constant C, so the fusion pass
+// must NOT rebuild the silu computation as a fused kernel: the ideal result
+// is a plain Mul(C, up) with no runtime silu. If fusion fires anyway, the
+// fused kernel takes the raw constant gate as input, re-evaluating silu at
+// runtime, and C becomes a dead constant.
+
+TEST(SiluMulFusionPass, DoesNotReintroduceFoldedSiluAsFusedKernel) {
+    ModelGraph graph;
+    // Match the Float32[2,4] spec of AddActivation's Embedding output so the
+    // Mul schema validation passes.
+    const GraphValueId gate = AddFloatConstant(
+            graph, {0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F}, {2, 4}, "gate");
+    const GraphValueId up = AddActivation(graph, "up");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    ASSERT_TRUE(silu_or.ok()) << silu_or.status().ToString();
+    auto mul_or = AddElementwiseMul(graph, 0U, *silu_or, up, "mul");
+    ASSERT_TRUE(mul_or.ok()) << mul_or.status().ToString();
+    graph.MarkOutput(*mul_or);
+
+    PassContext ctx;
+    GraphPassManager pipeline(ctx);
+    pipeline.Add(std::make_unique<ConstantFoldingPass>());
+    pipeline.Add(std::make_unique<SiluMulFusionPass>());
+    pipeline.Add(std::make_unique<DeadCodeEliminationPass>());
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    // No fused kernel: silu is already folded away.
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+    // A single Mul consumes the folded constant.
+    const std::vector<GraphNodeId> muls = result->FindNodesByOpType(OpType::kElementwiseMul);
+    ASSERT_EQ(muls.size(), 1U);
+    const GraphNode& mul = result->GetNode(muls[0]);
+    ASSERT_TRUE(std::holds_alternative<ConstantValue>(result->GetValue(mul.inputs[0]).payload));
+    // Values: gate, up.tokens, up.weight, up, folded C, mul output. The
+    // folded constant survives commit because Mul still consumes it.
+    EXPECT_EQ(result->GetValues().size(), 6U);
+    size_t constant_count = 0;
+    for (const auto& value: result->GetValues()) {
+        if (std::holds_alternative<ConstantValue>(value.payload)) {
+            ++constant_count;
+        }
+    }
+    EXPECT_EQ(constant_count, 2U);
 }
 
 }// namespace

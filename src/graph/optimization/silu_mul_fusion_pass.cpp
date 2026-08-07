@@ -33,6 +33,15 @@ StatusOr<std::optional<SiluMulPattern>> FindSiluMulPattern(GraphRewriteSession& 
         return std::optional<SiluMulPattern>{};
     }
 
+    // An earlier pass (e.g. constant folding) may have replaced silu_out with
+    // another value. The silu computation no longer exists at runtime, so
+    // fusing it back would re-introduce the eliminated work as a fused kernel
+    // and orphan the replacement value (e.g. a folded constant). Skip: the
+    // plain Mul on the replacement is already optimal.
+    if (session.GetResolvedValue(silu_out) != silu_out) {
+        return std::optional<SiluMulPattern>{};
+    }
+
     // FindConsumers can fail when the source graph contains a cycle; the
     // fusion pass runs on the unmodified graph, so treat that as "no pattern"
     // only after reporting the error to the caller.

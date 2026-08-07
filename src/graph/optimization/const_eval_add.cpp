@@ -79,13 +79,11 @@ public:
 
         ConstEvalPlan plan;
         plan.cost = *cost;
-        plan.outputs.push_back({
-                .spec = output,
-                .quantization = outputs[0].quantization,
-                .strides = std::move(*strides),
-                .nbytes = cost->output_bytes,
-                .debug_name = "folded_" + outputs[0].name,
-        });
+        plan.outputs.push_back({.spec = output,
+                                .quantization = outputs[0].quantization,
+                                .strides = std::move(*strides),
+                                .nbytes = cost->output_bytes,
+                                .name = "folded_" + outputs[0].name});
         return plan;
     }
 

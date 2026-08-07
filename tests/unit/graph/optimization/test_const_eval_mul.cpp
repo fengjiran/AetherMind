@@ -105,7 +105,7 @@ TEST(ConstEvaluator, PlansMulFloat32SameShape) {
     ASSERT_EQ(plan->outputs.size(), 1U);
     EXPECT_EQ(plan->outputs[0].spec, spec);
     EXPECT_EQ(plan->outputs[0].nbytes, 2U * sizeof(float));
-    EXPECT_EQ(plan->outputs[0].debug_name, "folded_product");
+    EXPECT_EQ(plan->outputs[0].name, "folded_product");
 }
 
 TEST(ConstEvaluator, PlansMulSupportedDTypesSameShape) {

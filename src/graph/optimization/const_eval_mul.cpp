@@ -89,7 +89,7 @@ public:
                 .quantization = outputs[0].quantization,
                 .strides = std::move(*strides),
                 .nbytes = cost->output_bytes,
-                .debug_name = "folded_" + outputs[0].name,
+                .name = "folded_" + outputs[0].name,
         });
         return plan;
     }

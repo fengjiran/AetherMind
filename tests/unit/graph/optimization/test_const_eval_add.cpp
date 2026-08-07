@@ -108,7 +108,7 @@ TEST(ConstEvaluator, PlansAddFloat32SameShape) {
     ASSERT_EQ(plan->outputs.size(), 1U);
     EXPECT_EQ(plan->outputs[0].spec, spec);
     EXPECT_EQ(plan->outputs[0].nbytes, 2U * sizeof(float));
-    EXPECT_EQ(plan->outputs[0].debug_name, "folded_sum");
+    EXPECT_EQ(plan->outputs[0].name, "folded_sum");
 }
 
 TEST(ConstEvaluator, PlansAddSupportedDTypesSameShape) {

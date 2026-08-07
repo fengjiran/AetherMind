@@ -29,7 +29,7 @@ struct ConstEvalPolicy {
     size_t max_output_bytes = size_t{64U} * 1024U;
     /// @brief Maximum estimated scalar operations allowed for a single folded
     ///        node. Evaluators report an upper-bound estimate in FoldingCost.
-    size_t max_compute_ops = size_t{64U} * 1024U;
+    uint64_t max_compute_ops = uint64_t{64U} * 1024U;
 };
 
 /// @brief Upper-bound cost estimate of folding one node, reported by the
@@ -62,7 +62,7 @@ struct PlannedConstOutput {
     /// @brief Debug name, convention: "folded_" + original output debug_name.
     ///        Set by the evaluator during Plan(); used by the pass as the
     ///        ConstantBinding name and AddConstant debug tag.
-    std::string debug_name{};
+    std::string name{};
 };
 
 /// @brief Result of ConstEvaluator::Plan(). Contains one PlannedConstOutput per

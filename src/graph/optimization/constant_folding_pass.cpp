@@ -276,12 +276,12 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
             const auto& plan_output = plan->outputs[i];
             ConstantBinding binding{
                     .inline_data = std::move(output_storage->buffers[i]),
-                    .name = plan_output.debug_name,
+                    .name = plan_output.name,
             };
             const auto folded = session.AddSessionConstant(plan_output.spec,
                                                            std::move(binding),
                                                            plan_output.quantization,
-                                                           plan_output.debug_name);
+                                                           plan_output.name);
             AM_RETURN_IF_ERROR(session.ReplaceValue(node->outputs[i], folded));
         }
     }

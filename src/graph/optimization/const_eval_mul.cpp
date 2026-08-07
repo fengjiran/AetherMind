@@ -1,19 +1,10 @@
+#include "aethermind/operators/elementwise_mul_op.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/utils/overflow_check.h"
 #include "const_eval_internal.h"
 
-#include <type_traits>
-
 namespace aethermind {
 namespace {
-
-bool IsFoldableMulDType(const DataType& dtype) {
-    return dtype == DataType::Float32() ||
-           dtype == DataType::Double() ||
-           dtype == DataType::BFloat(16) ||
-           dtype == DataType::Int(32) ||
-           dtype == DataType::Int(64);
-}
 
 // Integer overflow is checked and reported as Status::Overflow before any
 // wrapping can occur. Float paths are unchecked (inf is valid in folded graphs).
@@ -56,10 +47,11 @@ public:
         const TensorSpec& lhs = inputs[0].spec;
         const TensorSpec& rhs = inputs[1].spec;
         const TensorSpec& output = outputs[0].spec;
-        if (!IsFoldableMulDType(lhs.dtype) || rhs.dtype != lhs.dtype || output.dtype != lhs.dtype) {
+        if (!IsElementwiseMulSupportedDType(lhs.dtype) || rhs.dtype != lhs.dtype ||
+            output.dtype != lhs.dtype) {
             return Status::Unimplemented(
-                    "ElementwiseMul constant evaluator only supports float32, float64, bfloat16, "
-                    "int32, and int64 tensors");
+                    MakeElementwiseMulUnsupportedDTypeMessage(
+                            "ElementwiseMul constant evaluator"));
         }
 
         auto lhs_shape = ExtractStaticShape(lhs);
@@ -71,7 +63,8 @@ public:
 
         if (*lhs_shape != *shape || *rhs_shape != *shape) {
             return Status::Unimplemented(
-                    "ElementwiseMul constant evaluator requires identical static shapes for lhs, rhs, and output");
+                    "ElementwiseMul constant evaluator requires identical "
+                    "static shapes for lhs, rhs, and output");
         }
 
         auto numel = CountElements(*shape);
@@ -105,10 +98,11 @@ public:
         }
 
         const DataType dtype = inputs[0].dtype();
-        if (!IsFoldableMulDType(dtype) || inputs[1].dtype() != dtype ||
+        if (!IsElementwiseMulSupportedDType(dtype) || inputs[1].dtype() != dtype ||
             outputs[0].dtype() != dtype) {
             return Status::InvalidArgument(
-                    "ElementwiseMul constant evaluator received unsupported dtype");
+                    MakeElementwiseMulUnsupportedDTypeMessage(
+                            "ElementwiseMul constant evaluator"));
         }
 
         if (inputs[0].shape() != outputs[0].shape() ||

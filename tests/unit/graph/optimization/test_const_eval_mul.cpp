@@ -3,7 +3,6 @@
 
 #include <gtest/gtest.h>
 
-#include <limits>
 #include <type_traits>
 
 namespace aethermind {
@@ -111,11 +110,13 @@ TEST(ConstEvaluator, PlansMulFloat32SameShape) {
 TEST(ConstEvaluator, PlansMulSupportedDTypesSameShape) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
+    // Mirrors kElementwiseMulSupportedDTypes (elementwise_mul_op.h): the
+    // evaluator's foldable set must match the operator's single source of
+    // truth exactly.
     const std::vector<DataType> dtypes = {
             DataType::Float32(),
-            DataType::Double(),
-            DataType::Int(32),
-            DataType::Int(64),
+            DataType::Float(16),
+            DataType::BFloat(16),
     };
 
     for (const DataType dtype: dtypes) {
@@ -194,7 +195,7 @@ TEST(ConstEvaluator, SkipsMulRankZeroScalarTensorMismatch) {
 TEST(ConstEvaluator, SkipsMulUnsupportedDType) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
-    const TensorSpec spec = Spec(DataType::Float(16), {2});
+    const TensorSpec spec = Spec(DataType::Float8E4M3FN(), {2});
     const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
@@ -233,9 +234,9 @@ TEST(ConstEvaluator, PlansMulCostOverComputeBudget) {
 TEST(ConstEvaluator, PlansMulCostOverOutputByteBudget) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
-    // Float64 = 8 bytes, 8193 elements = 65544 bytes > 64K byte budget
-    const std::vector<int64_t> shape{8193};
-    const TensorSpec spec = Spec(DataType::Double(), shape);
+    // BFloat16 = 2 bytes, 32772 elements = 65544 bytes > 64K byte budget
+    const std::vector<int64_t> shape{32772};
+    const TensorSpec spec = Spec(DataType::BFloat(16), shape);
     const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},
@@ -247,7 +248,7 @@ TEST(ConstEvaluator, PlansMulCostOverOutputByteBudget) {
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    EXPECT_EQ(plan->cost.compute_ops, 8193U);
+    EXPECT_EQ(plan->cost.compute_ops, 32772U);
     EXPECT_EQ(plan->cost.output_bytes, 65544U);
     EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
 }
@@ -256,16 +257,11 @@ TEST(ConstEvaluator, EvaluatesMulFloat32) {
     ExpectMulEvaluation<float>(DataType::Float32(), {2.0F, 3.0F}, {4.0F, 5.0F}, {8.0F, 15.0F});
 }
 
-TEST(ConstEvaluator, EvaluatesMulFloat64) {
-    ExpectMulEvaluation<double>(DataType::Double(), {2.25, 3.5}, {4.0, 2.0}, {9.0, 7.0});
-}
-
-TEST(ConstEvaluator, EvaluatesMulInt32) {
-    ExpectMulEvaluation<int32_t>(DataType::Int(32), {-3, 2, 7}, {5, -4, 8}, {-15, -8, 56});
-}
-
-TEST(ConstEvaluator, EvaluatesMulInt64) {
-    ExpectMulEvaluation<int64_t>(DataType::Int(64), {-3, 2, 7}, {5, -4, 8}, {-15, -8, 56});
+TEST(ConstEvaluator, EvaluatesMulFloat16) {
+    ExpectMulEvaluation<Half>(DataType::Float(16),
+                              {Half(2.0F), Half(3.0F)},
+                              {Half(4.0F), Half(5.0F)},
+                              {Half(8.0F), Half(15.0F)});
 }
 
 TEST(ConstEvaluator, EvaluatesMulBFloat16) {
@@ -304,48 +300,6 @@ TEST(ConstEvaluator, EvaluatesMulNonContiguousSameShape) {
                                       {3.0F, 30.0F, 40.0F, 4.0F, 50.0F, 60.0F},
                                       noncontig_strides,
                                       {3.0F, 300.0F, 8.0F, 1500.0F});
-}
-
-TEST(ConstEvaluator, SkipsMulInt32Overflow) {
-    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
-    ASSERT_NE(evaluator, nullptr);
-    const std::vector<int64_t> shape{1};
-    const std::vector<int64_t> strides{1};
-    const std::vector<std::byte> lhs_bytes = BytesFromValues<int32_t>({std::numeric_limits<int32_t>::max()});
-    const std::vector<std::byte> rhs_bytes = BytesFromValues<int32_t>({2});
-    std::vector<std::byte> output_bytes(sizeof(int32_t));
-    const std::vector<TensorView> inputs = {
-            TensorView(lhs_bytes.data(), DataType::Int(32), shape, strides),
-            TensorView(rhs_bytes.data(), DataType::Int(32), shape, strides),
-    };
-    std::vector<MutableTensorView> outputs = {
-            MutableTensorView(output_bytes.data(), DataType::Int(32), shape, strides),
-    };
-
-    const Status status = evaluator->Evaluate(inputs, outputs, ElementwiseMulParams{});
-
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
-}
-
-TEST(ConstEvaluator, SkipsMulInt64Overflow) {
-    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
-    ASSERT_NE(evaluator, nullptr);
-    const std::vector<int64_t> shape{1};
-    const std::vector<int64_t> strides{1};
-    const std::vector<std::byte> lhs_bytes = BytesFromValues<int64_t>({std::numeric_limits<int64_t>::max()});
-    const std::vector<std::byte> rhs_bytes = BytesFromValues<int64_t>({2});
-    std::vector<std::byte> output_bytes(sizeof(int64_t));
-    const std::vector<TensorView> inputs = {
-            TensorView(lhs_bytes.data(), DataType::Int(64), shape, strides),
-            TensorView(rhs_bytes.data(), DataType::Int(64), shape, strides),
-    };
-    std::vector<MutableTensorView> outputs = {
-            MutableTensorView(output_bytes.data(), DataType::Int(64), shape, strides),
-    };
-
-    const Status status = evaluator->Evaluate(inputs, outputs, ElementwiseMulParams{});
-
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
 }
 
 // ── ElementwiseMul rank-zero scalar tests ──
@@ -412,15 +366,15 @@ TEST(ConstEvaluator, EvaluatesMulRankZeroScalarBFloat16) {
             BFloat16(6.0F));
 }
 
-TEST(ConstEvaluator, EvaluatesMulRankZeroScalarInt32) {
-    ExpectMulRankZeroEvaluation<int32_t>(DataType::Int(32), -3, 5, -15);
+TEST(ConstEvaluator, EvaluatesMulRankZeroScalarFloat16) {
+    ExpectMulRankZeroEvaluation<Half>(DataType::Float(16), Half(2.0F), Half(3.0F), Half(6.0F));
 }
 
 // Mul rank-zero adversarial — unsupported dtype
 TEST(ConstEvaluator, SkipsMulRankZeroUnsupportedDType) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kElementwiseMul);
     ASSERT_NE(evaluator, nullptr);
-    const TensorSpec spec = Spec(DataType::Float(16), {});
+    const TensorSpec spec = Spec(DataType::Float8E4M3FN(), {});
     const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
             {.spec = spec, .payload = ConstantValue{}},

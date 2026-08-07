@@ -9,7 +9,9 @@
 
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
+#include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/data_type.h"
+#include "aethermind/dtypes/half.h"
 #include "aethermind/graph/optimization/const_evaluator.h"
 
 #include <concepts>
@@ -55,6 +57,10 @@ Status EvaluateBinaryFlatByDType(const DataType& dtype,
 
     if (dtype == DataType::BFloat(16)) {
         return EvaluateBinaryFlatTyped<Op, BFloat16>(inputs, outputs, numel);
+    }
+
+    if (dtype == DataType::Float(16)) {
+        return EvaluateBinaryFlatTyped<Op, Half>(inputs, outputs, numel);
     }
 
     if (dtype == DataType::Int(32)) {
@@ -118,6 +124,10 @@ Status EvaluateBinaryStridedByDType(const DataType& dtype,
 
     if (dtype == DataType::BFloat(16)) {
         return EvaluateBinaryStridedKernel<Op, BFloat16>(inputs, outputs, lhs_strides, rhs_strides);
+    }
+
+    if (dtype == DataType::Float(16)) {
+        return EvaluateBinaryStridedKernel<Op, Half>(inputs, outputs, lhs_strides, rhs_strides);
     }
 
     if (dtype == DataType::Int(32)) {

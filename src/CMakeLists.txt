@@ -13,9 +13,10 @@ target_include_directories(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME}
+        PRIVATE
         ammalloc
-        #        Threads::Threads
-        #        spdlog::spdlog
+        PUBLIC
+        spdlog::spdlog
 )
 
 if (USE_LIBBACKTRACE)
@@ -31,7 +32,7 @@ endif ()
 if (USE_LIBBACKTRACE)
     message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 1")
     target_include_directories(${PROJECT_NAME} PRIVATE ${BACKTRACE_PATH})
-    target_link_libraries(${PROJECT_NAME} libbacktrace)
+    target_link_libraries(${PROJECT_NAME} PRIVATE libbacktrace)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_LIBBACKTRACE=1)
 else ()
     message(STATUS "Setting C++ macro USE_LIBBACKTRACE - 0")

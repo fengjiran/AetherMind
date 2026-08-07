@@ -16,6 +16,7 @@ target_include_directories(${TEST_TARGET}
 
 target_link_libraries(${TEST_TARGET} PRIVATE
         ${PROJECT_NAME}
+        ammalloc
         GTest::gtest_main
 )
 

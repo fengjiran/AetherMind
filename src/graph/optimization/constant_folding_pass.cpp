@@ -2,13 +2,6 @@
 #include "aethermind/graph/optimization/const_evaluator.h"
 #include "aethermind/operators/operator_schema.h"
 
-#include <cstddef>
-#include <limits>
-#include <memory>
-#include <span>
-#include <variant>
-#include <vector>
-
 namespace aethermind {
 namespace {
 
@@ -84,9 +77,9 @@ StatusOr<InputViews> BuildInputViews(std::span<const GraphValueDesc> inputs) {
     // reserve() on shapes/strides is critical: TensorView stores IntArrayView
     // (span) pointing into these vectors. Without reserve, push_back reallocation
     // would dangle spans already stored in result.views.
-    result.views.reserve(inputs.size());
     result.shapes.reserve(inputs.size());
     result.strides.reserve(inputs.size());
+    result.views.reserve(inputs.size());
 
     for (const auto& input: inputs) {
         const auto* constant = std::get_if<ConstantValue>(&input.payload);
@@ -244,6 +237,7 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
                 total_output_bytes += output.nbytes;
             }
         }
+
         if (plan->cost.output_bytes != total_output_bytes) {
             return Status::Internal("constant folding plan cost output byte size mismatch");
         }

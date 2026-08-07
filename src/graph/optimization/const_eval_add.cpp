@@ -108,7 +108,8 @@ public:
                     MakeAddUnsupportedDTypeMessage("Add constant evaluator"));
         }
 
-        if (auto broadcast_shape = BroadcastShapes(lhs.shape(), rhs.shape());
+        if (auto broadcast_shape =
+                    BroadcastShapes(lhs.shape(), rhs.shape());
             !broadcast_shape.ok() || !std::ranges::equal(*broadcast_shape, out.shape())) {
             return Status::InvalidArgument(
                     "Add constant evaluator received mismatched shapes");
@@ -119,17 +120,23 @@ public:
                     "Add constant evaluator requires contiguous output tensor");
         }
 
-        if (lhs.shape() == out.shape() && rhs.shape() == out.shape() && lhs.is_contiguous() && rhs.is_contiguous()) {
+        if (lhs.shape() == out.shape() &&
+            rhs.shape() == out.shape() &&
+            lhs.is_contiguous() &&
+            rhs.is_contiguous()) {
             return detail::EvaluateBinaryFlatByDType<AddScalarOp>(dtype, inputs, outputs, out.numel());
         }
 
-        auto lhs_strides = BroadcastInputStrides(lhs.shape(), lhs.strides(),
-                                                 out.shape());
+        auto lhs_strides =
+                BroadcastInputStrides(lhs.shape(), lhs.strides(),
+                                      out.shape());
         AM_RETURN_IF_ERROR(lhs_strides.status());
-        auto rhs_strides = BroadcastInputStrides(rhs.shape(), rhs.strides(),
-                                                 out.shape());
+        auto rhs_strides =
+                BroadcastInputStrides(rhs.shape(), rhs.strides(),
+                                      out.shape());
         AM_RETURN_IF_ERROR(rhs_strides.status());
-        return detail::EvaluateBinaryStridedByDType<AddScalarOp>(dtype, inputs, outputs, *lhs_strides, *rhs_strides);
+        return detail::EvaluateBinaryStridedByDType<AddScalarOp>(
+                dtype, inputs, outputs, *lhs_strides, *rhs_strides);
     }
 };
 

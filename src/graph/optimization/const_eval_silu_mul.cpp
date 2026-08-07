@@ -1,37 +1,94 @@
+#include "aethermind/dtypes/float8_e4m3fn.h"
+#include "aethermind/dtypes/float8_e5m2.h"
 #include "aethermind/operators/op_params.h"
+#include "aethermind/operators/silu_mul_op.h"
 #include "const_eval_internal.h"
 
 #include <cmath>
-#include <type_traits>
 
 namespace aethermind {
 namespace {
 
-bool IsFoldableSiluMulDType(const DataType& dtype) {
-    return dtype == DataType::Float32() ||
-           dtype == DataType::Double() ||
-           dtype == DataType::BFloat(16);
-}
-
 // Computes output = silu(gate) * up where silu(x) = x / (1 + exp(-x)).
-// The branch on x >= 0 mirrors SiluScalarOp to avoid exp overflow for
-// large negative inputs.
+// The branch on g >= 0 mirrors SiluScalarOp to avoid exp overflow for
+// large negative inputs. Half, bfloat16 and fp8 inputs are promoted to
+// float for intermediate computation and rounded once on output to
+// preserve accuracy in the wider type (matching the arithmetic model
+// of their dtype headers).
 struct SiluMulScalarOp {
     template<typename T>
     static Status Apply(T gate, T up, T& out) {
-        using ComputeType = std::conditional_t<std::is_same_v<T, BFloat16>, float, T>;
-        const auto x = static_cast<ComputeType>(gate);
-        ComputeType silu;
-        if (x >= ComputeType{0}) {
-            silu = x / (ComputeType{1} + std::exp(-x));
+        const auto g = static_cast<float>(gate);
+        const auto u = static_cast<float>(up);
+        float silu;
+        if (g >= 0.0F) {
+            silu = g / (1.0F + std::exp(-g));
         } else {
-            const ComputeType exp_x = std::exp(x);
-            silu = x * exp_x / (ComputeType{1} + exp_x);
+            const float exp_g = std::exp(g);
+            silu = g * exp_g / (1.0F + exp_g);
         }
-        out = static_cast<T>(silu * static_cast<ComputeType>(up));
+        out = static_cast<T>(silu * u);
         return Status::Ok();
     }
 };
+
+Status EvaluateSiluMulFlatByDType(const DataType& dtype,
+                                  std::span<const TensorView> inputs,
+                                  std::span<MutableTensorView> outputs,
+                                  int64_t numel) {
+    if (dtype == DataType::Float32()) {
+        return detail::EvaluateBinaryFlatTyped<SiluMulScalarOp, float>(inputs, outputs, numel);
+    }
+
+    if (dtype == DataType::Float(16)) {
+        return detail::EvaluateBinaryFlatTyped<SiluMulScalarOp, Half>(inputs, outputs, numel);
+    }
+
+    if (dtype == DataType::BFloat(16)) {
+        return detail::EvaluateBinaryFlatTyped<SiluMulScalarOp, BFloat16>(inputs, outputs, numel);
+    }
+
+    if (dtype == DataType::Float8E4M3FN()) {
+        return detail::EvaluateBinaryFlatTyped<SiluMulScalarOp, Float8_e4m3fn>(inputs, outputs, numel);
+    }
+
+    if (dtype == DataType::Float8E5M2()) {
+        return detail::EvaluateBinaryFlatTyped<SiluMulScalarOp, Float8_e5m2>(inputs, outputs, numel);
+    }
+    return Status::InvalidArgument("SiluMul constant evaluator received unsupported dtype");
+}
+
+Status EvaluateSiluMulStridedByDType(const DataType& dtype,
+                                     std::span<const TensorView> inputs,
+                                     std::span<MutableTensorView> outputs,
+                                     std::span<const int64_t> gate_strides,
+                                     std::span<const int64_t> up_strides) {
+    if (dtype == DataType::Float32()) {
+        return detail::EvaluateBinaryStridedKernel<SiluMulScalarOp, float>(
+                inputs, outputs, gate_strides, up_strides);
+    }
+
+    if (dtype == DataType::Float(16)) {
+        return detail::EvaluateBinaryStridedKernel<SiluMulScalarOp, Half>(
+                inputs, outputs, gate_strides, up_strides);
+    }
+
+    if (dtype == DataType::BFloat(16)) {
+        return detail::EvaluateBinaryStridedKernel<SiluMulScalarOp, BFloat16>(
+                inputs, outputs, gate_strides, up_strides);
+    }
+
+    if (dtype == DataType::Float8E4M3FN()) {
+        return detail::EvaluateBinaryStridedKernel<SiluMulScalarOp, Float8_e4m3fn>(
+                inputs, outputs, gate_strides, up_strides);
+    }
+
+    if (dtype == DataType::Float8E5M2()) {
+        return detail::EvaluateBinaryStridedKernel<SiluMulScalarOp, Float8_e5m2>(
+                inputs, outputs, gate_strides, up_strides);
+    }
+    return Status::InvalidArgument("SiluMul constant evaluator received unsupported dtype");
+}
 
 // TU-local evaluator — registered via GetSiluMulConstEvaluator() accessor.
 class SiluMulConstEvaluator final : public ConstEvaluator {
@@ -51,10 +108,10 @@ public:
         const TensorSpec& gate = inputs[0].spec;
         const TensorSpec& up = inputs[1].spec;
         const TensorSpec& output = outputs[0].spec;
-        if (!IsFoldableSiluMulDType(gate.dtype) || up.dtype != gate.dtype ||
+        if (!IsSiluMulSupportedDType(gate.dtype) || up.dtype != gate.dtype ||
             output.dtype != gate.dtype) {
             return Status::Unimplemented(
-                    "SiluMul constant evaluator only supports float32, float64, and bfloat16 tensors");
+                    MakeSiluMulUnsupportedDTypeMessage("SiluMul constant evaluator"));
         }
 
         auto gate_shape = ExtractStaticShape(gate);
@@ -103,9 +160,9 @@ public:
         const auto& out = outputs[0];
 
         const DataType dtype = gate.dtype();
-        if (!IsFoldableSiluMulDType(dtype) || up.dtype() != dtype || out.dtype() != dtype) {
+        if (!IsSiluMulSupportedDType(dtype) || up.dtype() != dtype || out.dtype() != dtype) {
             return Status::InvalidArgument(
-                    "SiluMul constant evaluator received unsupported dtype");
+                    MakeSiluMulUnsupportedDTypeMessage("SiluMul constant evaluator"));
         }
 
         if (gate.shape() != out.shape() || up.shape() != out.shape()) {
@@ -119,11 +176,10 @@ public:
         }
 
         if (gate.is_contiguous() && up.is_contiguous()) {
-            return detail::EvaluateBinaryFlatByDType<SiluMulScalarOp>(
-                    dtype, inputs, outputs, out.numel());
+            return EvaluateSiluMulFlatByDType(dtype, inputs, outputs, out.numel());
         }
 
-        return detail::EvaluateBinaryStridedByDType<SiluMulScalarOp>(
+        return EvaluateSiluMulStridedByDType(
                 dtype, inputs, outputs, gate.strides(), up.strides());
     }
 };

@@ -1,32 +1,28 @@
+#include "aethermind/dtypes/float8_e4m3fn.h"
+#include "aethermind/dtypes/float8_e5m2.h"
 #include "aethermind/operators/op_params.h"
+#include "aethermind/operators/silu_op.h"
 #include "const_eval_internal.h"
 
 #include <cmath>
-#include <type_traits>
 
 namespace aethermind {
 namespace {
 
-bool IsFoldableSiluDType(const DataType& dtype) {
-    return dtype == DataType::Float32() ||
-           dtype == DataType::Double() ||
-           dtype == DataType::BFloat(16);
-}
-
 // Stable SiLU: sign-dependent formula prevents overflow at large |x|.
-// BFloat16 is promoted to float for intermediate computation and
-// rounded once on output to preserve accuracy in the wider type.
+// Half, bfloat16 and fp8 inputs are promoted to float for intermediate
+// computation and rounded once on output to preserve accuracy in the
+// wider type (matching the arithmetic model of their dtype headers).
 struct SiluScalarOp {
     template<typename T>
     static Status Apply(T input, T& output) {
-        using ComputeType = std::conditional_t<std::is_same_v<T, BFloat16>, float, T>;
-        const auto x = static_cast<ComputeType>(input);
-        ComputeType result;
-        if (x >= ComputeType{0}) {
-            result = x / (ComputeType{1} + std::exp(-x));
+        const auto x = static_cast<float>(input);
+        float result;
+        if (x >= 0.0F) {
+            result = x / (1.0F + std::exp(-x));
         } else {
-            const ComputeType exp_x = std::exp(x);
-            result = x * exp_x / (ComputeType{1} + exp_x);
+            const float exp_x = std::exp(x);
+            result = x * exp_x / (1.0F + exp_x);
         }
         output = static_cast<T>(result);
         return Status::Ok();
@@ -41,12 +37,20 @@ Status EvaluateSiluFlatByDType(const DataType& dtype,
         return detail::EvaluateUnaryFlatTyped<SiluScalarOp, float>(inputs, outputs, numel);
     }
 
-    if (dtype == DataType::Double()) {
-        return detail::EvaluateUnaryFlatTyped<SiluScalarOp, double>(inputs, outputs, numel);
+    if (dtype == DataType::Float(16)) {
+        return detail::EvaluateUnaryFlatTyped<SiluScalarOp, Half>(inputs, outputs, numel);
     }
 
     if (dtype == DataType::BFloat(16)) {
         return detail::EvaluateUnaryFlatTyped<SiluScalarOp, BFloat16>(inputs, outputs, numel);
+    }
+
+    if (dtype == DataType::Float8E4M3FN()) {
+        return detail::EvaluateUnaryFlatTyped<SiluScalarOp, Float8_e4m3fn>(inputs, outputs, numel);
+    }
+
+    if (dtype == DataType::Float8E5M2()) {
+        return detail::EvaluateUnaryFlatTyped<SiluScalarOp, Float8_e5m2>(inputs, outputs, numel);
     }
     return Status::InvalidArgument("Silu constant evaluator received unsupported dtype");
 }
@@ -59,12 +63,20 @@ Status EvaluateSiluStridedByDType(const DataType& dtype,
         return detail::EvaluateUnaryStridedKernel<SiluScalarOp, float>(inputs, outputs, input_strides);
     }
 
-    if (dtype == DataType::Double()) {
-        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, double>(inputs, outputs, input_strides);
+    if (dtype == DataType::Float(16)) {
+        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Half>(inputs, outputs, input_strides);
     }
 
     if (dtype == DataType::BFloat(16)) {
         return detail::EvaluateUnaryStridedKernel<SiluScalarOp, BFloat16>(inputs, outputs, input_strides);
+    }
+
+    if (dtype == DataType::Float8E4M3FN()) {
+        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Float8_e4m3fn>(inputs, outputs, input_strides);
+    }
+
+    if (dtype == DataType::Float8E5M2()) {
+        return detail::EvaluateUnaryStridedKernel<SiluScalarOp, Float8_e5m2>(inputs, outputs, input_strides);
     }
     return Status::InvalidArgument("Silu constant evaluator received unsupported dtype");
 }
@@ -86,9 +98,9 @@ public:
 
         const TensorSpec& input = inputs[0].spec;
         const TensorSpec& output = outputs[0].spec;
-        if (!IsFoldableSiluDType(input.dtype) || output.dtype != input.dtype) {
+        if (!IsSiluSupportedDType(input.dtype) || output.dtype != input.dtype) {
             return Status::Unimplemented(
-                    "Silu constant evaluator only supports float32, float64, and bfloat16 tensors");
+                    MakeSiluUnsupportedDTypeMessage("Silu constant evaluator"));
         }
 
         auto input_shape = ExtractStaticShape(input);
@@ -133,9 +145,9 @@ public:
         }
 
         const DataType dtype = inputs[0].dtype();
-        if (!IsFoldableSiluDType(dtype) || outputs[0].dtype() != dtype) {
+        if (!IsSiluSupportedDType(dtype) || outputs[0].dtype() != dtype) {
             return Status::InvalidArgument(
-                    "Silu constant evaluator received unsupported dtype");
+                    MakeSiluUnsupportedDTypeMessage("Silu constant evaluator"));
         }
 
         if (inputs[0].shape() != outputs[0].shape()) {

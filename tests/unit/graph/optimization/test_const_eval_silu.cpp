@@ -3,13 +3,9 @@
 
 #include <gtest/gtest.h>
 
-#include <cmath>
-#include <limits>
-#include <type_traits>
-
-namespace aethermind {
 namespace {
 
+using namespace aethermind;
 using namespace test_utils;
 
 TEST(ConstEvaluator, FindsSiluEvaluator) {
@@ -41,8 +37,6 @@ void ExpectSiluEvaluation(DataType dtype,
     for (size_t i = 0; i < expected.size(); ++i) {
         if constexpr (std::is_same_v<T, float>) {
             EXPECT_NEAR(result[i], expected[i], 1e-5F);
-        } else if constexpr (std::is_same_v<T, double>) {
-            EXPECT_NEAR(result[i], expected[i], 1e-12);
         } else {
             EXPECT_EQ(result[i], expected[i]);
         }
@@ -74,8 +68,10 @@ TEST(ConstEvaluator, PlansSiluSupportedDTypesSameShape) {
     ASSERT_NE(evaluator, nullptr);
     const std::vector<DataType> dtypes = {
             DataType::Float32(),
-            DataType::Double(),
+            DataType::Float(16),
             DataType::BFloat(16),
+            DataType::Float8E4M3FN(),
+            DataType::Float8E5M2(),
     };
 
     for (const DataType dtype: dtypes) {
@@ -100,7 +96,7 @@ TEST(ConstEvaluator, SkipsSiluUnsupportedDType) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
     const std::vector<DataType> unsupported = {
-            DataType::Float(16),
+            DataType::Double(),
             DataType::Int(32),
     };
 
@@ -178,8 +174,11 @@ TEST(ConstEvaluator, PlansSiluCostOverComputeBudget) {
 TEST(ConstEvaluator, PlansSiluCostOverOutputByteBudget) {
     const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
     ASSERT_NE(evaluator, nullptr);
-    const std::vector<int64_t> shape{8193};
-    const TensorSpec spec = Spec(DataType::Double(), shape);
+    // f32: 16385 elements × 4 bytes = 65540 > 65536 (byte gate fails);
+    // compute = 3 × 16385 = 49155 < 65536 (compute gate passes) — isolates
+    // the byte budget independently of the compute budget.
+    const std::vector<int64_t> shape{16385};
+    const TensorSpec spec = Spec(DataType::Float32(), shape);
     const std::vector<GraphValueDesc> inputs = {
             {.spec = spec, .payload = ConstantValue{}},
     };
@@ -190,8 +189,8 @@ TEST(ConstEvaluator, PlansSiluCostOverOutputByteBudget) {
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    EXPECT_EQ(plan->cost.compute_ops, 3U * 8193U);
-    EXPECT_EQ(plan->cost.output_bytes, 65544U);
+    EXPECT_EQ(plan->cost.compute_ops, 3U * 16385U);
+    EXPECT_EQ(plan->cost.output_bytes, 65540U);
     EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
 }
 
@@ -205,12 +204,107 @@ TEST(ConstEvaluator, EvaluatesSiluFloat32) {
                                  -0.23840584F});
 }
 
-TEST(ConstEvaluator, EvaluatesSiluFloat64) {
-    ExpectSiluEvaluation<double>(DataType::Double(),
-                                 {0.0, 1.5, -0.5},
-                                 {0.0,
-                                  1.22636171429,
-                                  -0.188770334399});
+TEST(ConstEvaluator, EvaluatesSiluFloat16) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{3};
+    const std::vector<int64_t> strides{1};
+    const std::vector<std::byte> input_bytes =
+            BytesFromValues(std::vector<Half>{Half(1.0F), Half(2.0F), Half(3.0F)});
+    std::vector<std::byte> output_bytes(3U * sizeof(Half));
+    const std::vector<TensorView> inputs = {
+            TensorView(input_bytes.data(), DataType::Float(16), shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), DataType::Float(16), shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, SiluParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<Half> result = ValuesFromBytes<Half>(output_bytes);
+    ASSERT_EQ(result.size(), 3U);
+    std::vector<Half> expected;
+    for (float x: {1.0F, 2.0F, 3.0F}) {
+        float r;
+        if (x >= 0.0F) {
+            r = x / (1.0F + std::exp(-x));
+        } else {
+            r = x * std::exp(x) / (1.0F + std::exp(x));
+        }
+        expected.emplace_back(r);
+    }
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(result[i], expected[i]);
+    }
+}
+
+TEST(ConstEvaluator, EvaluatesSiluFloat8E4M3FN) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{3};
+    const std::vector<int64_t> strides{1};
+    const std::vector<std::byte> input_bytes =
+            BytesFromValues(std::vector<Float8_e4m3fn>{Float8_e4m3fn(1.0F), Float8_e4m3fn(2.0F), Float8_e4m3fn(3.0F)});
+    std::vector<std::byte> output_bytes(3U * sizeof(Float8_e4m3fn));
+    const std::vector<TensorView> inputs = {
+            TensorView(input_bytes.data(), DataType::Float8E4M3FN(), shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), DataType::Float8E4M3FN(), shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, SiluParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<Float8_e4m3fn> result = ValuesFromBytes<Float8_e4m3fn>(output_bytes);
+    ASSERT_EQ(result.size(), 3U);
+    const std::vector<float> input_f = {1.0F, 2.0F, 3.0F};
+    for (size_t i = 0; i < 3U; ++i) {
+        // fp8 promotes the input to float for computation, so the expected
+        // value follows the same round-trip through float.
+        const float x = static_cast<float>(Float8_e4m3fn(input_f[i]));
+        float r;
+        if (x >= 0.0F) {
+            r = x / (1.0F + std::exp(-x));
+        } else {
+            r = x * std::exp(x) / (1.0F + std::exp(x));
+        }
+        EXPECT_EQ(static_cast<float>(result[i]), static_cast<float>(Float8_e4m3fn(r)));
+    }
+}
+
+TEST(ConstEvaluator, EvaluatesSiluFloat8E5M2) {
+    const ConstEvaluator* evaluator = FindConstEvaluator(OpType::kSilu);
+    ASSERT_NE(evaluator, nullptr);
+    const std::vector<int64_t> shape{3};
+    const std::vector<int64_t> strides{1};
+    const std::vector<std::byte> input_bytes =
+            BytesFromValues(std::vector<Float8_e5m2>{Float8_e5m2(1.0F), Float8_e5m2(2.0F), Float8_e5m2(3.0F)});
+    std::vector<std::byte> output_bytes(3U * sizeof(Float8_e5m2));
+    const std::vector<TensorView> inputs = {
+            TensorView(input_bytes.data(), DataType::Float8E5M2(), shape, strides),
+    };
+    std::vector<MutableTensorView> outputs = {
+            MutableTensorView(output_bytes.data(), DataType::Float8E5M2(), shape, strides),
+    };
+
+    const Status status = evaluator->Evaluate(inputs, outputs, SiluParams{});
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    const std::vector<Float8_e5m2> result = ValuesFromBytes<Float8_e5m2>(output_bytes);
+    ASSERT_EQ(result.size(), 3U);
+    const std::vector<float> input_f = {1.0F, 2.0F, 3.0F};
+    for (size_t i = 0; i < 3U; ++i) {
+        const float x = static_cast<float>(Float8_e5m2(input_f[i]));
+        float r;
+        if (x >= 0.0F) {
+            r = x / (1.0F + std::exp(-x));
+        } else {
+            r = x * std::exp(x) / (1.0F + std::exp(x));
+        }
+        EXPECT_EQ(static_cast<float>(result[i]), static_cast<float>(Float8_e5m2(r)));
+    }
 }
 
 TEST(ConstEvaluator, EvaluatesSiluBFloat16) {
@@ -345,8 +439,6 @@ void ExpectSiluRankZeroEvaluation(DataType dtype, T input_value, T expected_valu
     ASSERT_EQ(result.size(), 1U);
     if constexpr (std::is_same_v<T, float>) {
         EXPECT_NEAR(result[0], expected_value, 1e-5F);
-    } else if constexpr (std::is_same_v<T, double>) {
-        EXPECT_NEAR(result[0], expected_value, 1e-12);
     } else {
         EXPECT_EQ(result[0], expected_value);
     }
@@ -378,4 +470,3 @@ TEST(ConstEvaluator, EvaluatesSiluRankZeroBFloat16) {
 }
 
 }// namespace
-}// namespace aethermind

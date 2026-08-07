@@ -232,12 +232,23 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
         }
 
         size_t total_output_bytes = 0;
+        bool total_bytes_overflow = false;
         for (const auto& output: plan->outputs) {
             if (output.nbytes > std::numeric_limits<size_t>::max() - total_output_bytes) {
-                total_output_bytes = std::numeric_limits<size_t>::max();
-            } else {
-                total_output_bytes += output.nbytes;
+                total_bytes_overflow = true;
+                break;
             }
+            total_output_bytes += output.nbytes;
+        }
+
+        if (total_bytes_overflow) {
+            // The aggregated output size cannot be represented in size_t, so
+            // the folded result cannot be materialized. Skip the node rather
+            // than failing the whole pass — equivalent to Plan-phase kOverflow
+            // handling. Unreachable today (every evaluator emits one output and
+            // its byte count already passed CountBytes in Plan), but a future
+            // multi-output evaluator would otherwise abort on a skippable node.
+            continue;
         }
 
         if (plan->cost.output_bytes != total_output_bytes) {

@@ -43,10 +43,10 @@ public:
     // (no broadcast support for element-wise Mul).
     // Produces a contiguous-output plan (element-wise op is always dense)
     // and an elementwise cost estimate for the pass's budget enforcement.
-    AM_NODISCARD StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
-                                              std::span<const GraphValueDesc> outputs,
-                                              const OpParams& params,
-                                              AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
+    StatusOr<ConstEvalPlan> Plan(std::span<const GraphValueDesc> inputs,
+                                 std::span<const GraphValueDesc> outputs,
+                                 const OpParams& params,
+                                 AM_MAYBE_UNUSED const ConstEvalPolicy& policy) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||
             !std::holds_alternative<ElementwiseMulParams>(params)) {
             return Status::Unimplemented(
@@ -95,9 +95,9 @@ public:
     }
 
     // Flat fast path when both inputs are contiguous; strided kernel otherwise.
-    AM_NODISCARD Status Evaluate(std::span<const TensorView> inputs,
-                                 std::span<MutableTensorView> outputs,
-                                 const OpParams& params) const override {
+    Status Evaluate(std::span<const TensorView> inputs,
+                    std::span<MutableTensorView> outputs,
+                    const OpParams& params) const override {
         if (inputs.size() != 2U || outputs.size() != 1U ||
             !std::holds_alternative<ElementwiseMulParams>(params)) {
             return Status::InvalidArgument(
@@ -123,11 +123,12 @@ public:
         }
 
         if (inputs[0].is_contiguous() && inputs[1].is_contiguous()) {
-            return detail::EvaluateBinaryFlatByDType<MulScalarOp>(dtype, inputs, outputs, outputs[0].numel());
+            return detail::EvaluateBinaryFlatByDType<MulScalarOp>(
+                    dtype, inputs, outputs, outputs[0].numel());
         }
 
-        return detail::EvaluateBinaryStridedByDType<MulScalarOp>(dtype, inputs, outputs,
-                                                                 inputs[0].strides(), inputs[1].strides());
+        return detail::EvaluateBinaryStridedByDType<MulScalarOp>(
+                dtype, inputs, outputs, inputs[0].strides(), inputs[1].strides());
     }
 };
 

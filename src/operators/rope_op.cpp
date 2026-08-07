@@ -1,6 +1,6 @@
 #include "aethermind/operators/rope_op.h"
 #include "aethermind/operators/operator_inference.h"
-#include "aethermind/utils/overflow_check.h"
+#include "utils/overflow_check.h"
 
 namespace aethermind::detail {
 

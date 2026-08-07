@@ -8,7 +8,7 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/tensor.h"
-#include "aethermind/utils/overflow_check.h"
+#include "utils/overflow_check.h"
 
 #include <bit>
 #include <cstddef>

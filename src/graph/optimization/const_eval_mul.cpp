@@ -1,7 +1,7 @@
 #include "aethermind/operators/elementwise_mul_op.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/utils/overflow_check.h"
 #include "const_eval_internal.h"
+#include "utils/overflow_check.h"
 
 namespace aethermind {
 namespace {

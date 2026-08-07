@@ -10,7 +10,7 @@
 // The coordinate buffer is bounded by ShapeAndStride::kMaxRank.
 
 #include "add_internal.h"
-#include "aethermind/utils/overflow_check.h"
+#include "utils/overflow_check.h"
 
 #include <array>
 #include <cstdint>

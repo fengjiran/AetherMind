@@ -1,7 +1,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
-#include "aethermind/utils/overflow_check.h"
 #include "embedding_internal.h"
+#include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <cstdint>

@@ -1,5 +1,5 @@
 #include "aethermind/model/formats/hf/hf_model_validator.h"
-#include "aethermind/utils/overflow_check.h"
+#include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <array>

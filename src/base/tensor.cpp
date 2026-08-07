@@ -2,11 +2,11 @@
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/memory/allocator.h"
-#include "aethermind/utils/overflow_check.h"
 #include "container/array_view.h"
 #include "device.h"
 #include "scalar.h"
 #include "utils/logging.h"
+#include "utils/overflow_check.h"
 
 #include <array>
 #include <cstddef>

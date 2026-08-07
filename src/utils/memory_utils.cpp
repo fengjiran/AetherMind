@@ -1,7 +1,7 @@
 /// \file
 /// Implementation of memory debugging utilities.
 
-#include "aethermind/utils/memory_utils.h"
+#include "utils/memory_utils.h"
 
 #include <cstring>
 

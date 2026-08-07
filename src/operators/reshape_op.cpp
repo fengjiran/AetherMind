@@ -2,7 +2,7 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
-#include "aethermind/utils/overflow_check.h"
+#include "utils/overflow_check.h"
 #include "utils/variant_utils.h"
 
 namespace aethermind::detail {

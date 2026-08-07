@@ -3,9 +3,9 @@
 
 #include "aethermind/base/tensor.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/utils/overflow_check.h"
 #include "container/array_view.h"
 #include "utils/logging.h"
+#include "utils/overflow_check.h"
 
 #include <array>
 #include <cstddef>

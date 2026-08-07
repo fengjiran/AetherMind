@@ -2,7 +2,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
-#include "aethermind/utils/overflow_check.h"
+#include "utils/overflow_check.h"
 
 #include <array>
 #include <cstdint>

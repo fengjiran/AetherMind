@@ -12,7 +12,7 @@
 // an explicit empty shape (size 0) is a valid rank-0 state with numel = 1
 // and is_contiguous = true.
 #include "aethermind/base/shape_and_stride.h"
-#include "aethermind/utils/overflow_check.h"
+#include "utils/overflow_check.h"
 
 #include <limits>
 

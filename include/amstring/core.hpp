@@ -6,7 +6,6 @@
 #ifndef AETHERMIND_AMSTRING_CORE_HPP
 #define AETHERMIND_AMSTRING_CORE_HPP
 
-#include "aethermind/utils/overflow_check.h"
 #include "allocator_support.hpp"
 #include "char_algorithms.hpp"
 #include "config.hpp"
@@ -14,6 +13,7 @@
 #include "growth_policy.hpp"
 #include "layout_policy.hpp"
 #include "macros.h"
+#include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <cstddef>

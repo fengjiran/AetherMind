@@ -1,6 +1,6 @@
 #include "aethermind/graph/optimization/const_evaluator.h"
-#include "aethermind/utils/overflow_check.h"
 #include "const_eval_internal.h"
+#include "utils/overflow_check.h"
 
 #include <cstddef>
 #include <cstdint>

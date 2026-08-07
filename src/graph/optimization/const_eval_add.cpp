@@ -1,8 +1,8 @@
 #include "aethermind/operators/add_op.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/shape_inference/broadcast.h"
-#include "aethermind/utils/overflow_check.h"
 #include "const_eval_internal.h"
+#include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <type_traits>

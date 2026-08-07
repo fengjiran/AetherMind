@@ -3,9 +3,9 @@
 //
 
 #include "aethermind/memory/cpu_allocator.h"
-#include "aethermind/utils/memory_utils.h"
 #include "alignment.h"
 #include "env.h"
+#include "utils/memory_utils.h"
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <sys/mman.h>

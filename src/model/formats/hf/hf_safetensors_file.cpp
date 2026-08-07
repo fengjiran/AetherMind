@@ -2,8 +2,8 @@
 #include "aethermind/base/mmap_file.h"
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 #include "aethermind/model/formats/hf/hf_utils.h"
-#include "aethermind/utils/overflow_check.h"
 #include "utils/logging.h"
+#include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <cstddef>

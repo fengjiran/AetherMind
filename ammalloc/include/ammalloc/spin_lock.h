@@ -41,7 +41,7 @@ public:
 
             // 3. 退避策略 (Backoff)
             // 提示 CPU 当前处于自旋等待状态，优化流水线并降低功耗
-            details::CPUPause();
+            detail::CPUPause();
             ++spin_cnt;
 
             // 4. 深度退避 (Yield)

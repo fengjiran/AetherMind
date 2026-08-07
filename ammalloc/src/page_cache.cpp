@@ -185,7 +185,7 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
 
             Span* span = nullptr;
             try {
-                span = span_pool_.New(details::PtrToPageId(ptr), static_cast<uint32_t>(page_num));
+                span = span_pool_.New(detail::PtrToPageId(ptr), static_cast<uint32_t>(page_num));
             } catch (const std::bad_alloc&) {
                 PageAllocator::SystemFree(ptr, page_num);
                 return nullptr;
@@ -261,7 +261,7 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
 
         Span* span = nullptr;
         try {
-            span = span_pool_.New(details::PtrToPageId(ptr), static_cast<uint32_t>(alloc_page_nums));
+            span = span_pool_.New(detail::PtrToPageId(ptr), static_cast<uint32_t>(alloc_page_nums));
         } catch (const std::bad_alloc&) {
             PageAllocator::SystemFree(ptr, alloc_page_nums);
             return nullptr;
@@ -419,7 +419,7 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
 
             Span* span = nullptr;
             try {
-                span = span_pool_.New(details::PtrToPageId(ptr), page_num);
+                span = span_pool_.New(detail::PtrToPageId(ptr), page_num);
             } catch (const std::bad_alloc&) {
                 PageAllocator::SystemFree(ptr, page_num);
                 return nullptr;

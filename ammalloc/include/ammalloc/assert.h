@@ -22,7 +22,7 @@
 #include <string_view>
 #include <utility>
 
-namespace ammalloc::ammalloc_detail {
+namespace ammalloc::detail {
 
 // Abort helper invoked by AMMALLOC_CHECK when `condition` fails. Not intended
 // for direct use; call AMMALLOC_CHECK so the source location is captured
@@ -48,7 +48,7 @@ void HandleCheckFailed(std::string_view condition,
     std::abort();
 }
 
-}// namespace ammalloc::ammalloc_detail
+}// namespace ammalloc::detail
 
 // Evaluates `condition` exactly once; on false, writes the failure line
 // to stderr and aborts. Always live in every build — use AMMALLOC_DCHECK for
@@ -62,7 +62,7 @@ void HandleCheckFailed(std::string_view condition,
 #define AMMALLOC_CHECK(condition, ...)                                                       \
     do {                                                                                     \
         if (!(condition)) [[unlikely]] {                                                     \
-            ::ammalloc::ammalloc_detail::HandleCheckFailed(                                  \
+            ::ammalloc::detail::HandleCheckFailed(                                           \
                     #condition, std::source_location::current() __VA_OPT__(, ) __VA_ARGS__); \
         }                                                                                    \
     } while (false)

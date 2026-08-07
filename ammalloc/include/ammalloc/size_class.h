@@ -32,7 +32,7 @@
 
 namespace ammalloc {
 
-namespace details {
+namespace detail {
 
 static constexpr size_t CalculateIndex(size_t original_size) noexcept {
     if (original_size == 0) {
@@ -84,29 +84,29 @@ static constexpr size_t CalculateSize(size_t idx) noexcept {
     return base_size + (step_idx + 1) * step_size;
 }
 
-}// namespace details
+}// namespace detail
 
 // Validate Small Object Boundaries
-static_assert(details::CalculateSize(0) == 8);
-static_assert(details::CalculateSize(15) == 128);
+static_assert(detail::CalculateSize(0) == 8);
+static_assert(detail::CalculateSize(15) == 128);
 
 // Validate Large Object Group 0 (Range: 129-256)
 // Step size = (256-128)/4 = 32
-static_assert(details::CalculateSize(16) == 160);// 128 + 32
-static_assert(details::CalculateSize(17) == 192);// 160 + 32
-static_assert(details::CalculateSize(19) == 256);// Last bucket of group 0
+static_assert(detail::CalculateSize(16) == 160);// 128 + 32
+static_assert(detail::CalculateSize(17) == 192);// 160 + 32
+static_assert(detail::CalculateSize(19) == 256);// Last bucket of group 0
 
 // Validate Large Object Group 1 (Range: 257-512)
 // Step size = (512-256)/4 = 64
-static_assert(details::CalculateSize(20) == 320);// 256 + 64
+static_assert(detail::CalculateSize(20) == 320);// 256 + 64
 
 // Validate Inverse Property (Index -> Size -> Index)
-static_assert(details::CalculateIndex(1) == 0);
-static_assert(details::CalculateIndex(8) == 0);
-static_assert(details::CalculateIndex(9) == 1);
-static_assert(details::CalculateIndex(128) == 15);
-static_assert(details::CalculateIndex(129) == 16);// Falls into 160-byte bucket
-static_assert(details::CalculateIndex(160) == 16);
+static_assert(detail::CalculateIndex(1) == 0);
+static_assert(detail::CalculateIndex(8) == 0);
+static_assert(detail::CalculateIndex(9) == 1);
+static_assert(detail::CalculateIndex(128) == 15);
+static_assert(detail::CalculateIndex(129) == 16);// Falls into 160-byte bucket
+static_assert(detail::CalculateIndex(160) == 16);
 
 /// Static utility class for managing size classes and alignment policies.
 ///
@@ -159,7 +159,7 @@ public:
         // clang-format on
 
         // Slow path: Mathematical calculation for large objects
-        return details::CalculateIndex(original_size);
+        return detail::CalculateIndex(original_size);
     }
 
     /// Reconstructs the bucket size for a given size class index.
@@ -283,7 +283,7 @@ public:
 
     /// The total number of size classes (buckets) available.
     /// Calculated at compile-time to size the arrays in ThreadCache/CentralCache.
-    static constexpr size_t kNumSizeClasses = details::CalculateIndex(SizeConfig::MAX_TC_SIZE) + 1;
+    static constexpr size_t kNumSizeClasses = detail::CalculateIndex(SizeConfig::MAX_TC_SIZE) + 1;
 
     static constexpr size_t kMaxBatchSize = 512;
 
@@ -305,7 +305,7 @@ private:
     static constexpr auto small_index_table_ = []() consteval {
         std::array<uint8_t, SizeConfig::kSmallSizeThreshold + 1> small_index_table{};
         for (size_t sz = 0; sz <= SizeConfig::kSmallSizeThreshold; ++sz) {
-            small_index_table[sz] = static_cast<uint8_t>(details::CalculateIndex(sz));
+            small_index_table[sz] = static_cast<uint8_t>(detail::CalculateIndex(sz));
         }
         return small_index_table;
     }();
@@ -315,7 +315,7 @@ private:
     static constexpr auto size_table_ = []() consteval {
         std::array<uint32_t, kNumSizeClasses> size_table{};
         for (size_t idx = 0; idx < kNumSizeClasses; ++idx) {
-            size_table[idx] = static_cast<uint32_t>(details::CalculateSize(idx));
+            size_table[idx] = static_cast<uint32_t>(detail::CalculateSize(idx));
         }
         return size_table;
     }();
@@ -384,7 +384,7 @@ static_assert(SizeClass::Size(SizeClass::kNumSizeClasses - 1) == SizeConfig::MAX
 // Uses sampling strategy to avoid constexpr step limit (32K iterations exceeds limit)
 // ===========================================================================
 
-namespace details {
+namespace detail {
 
 // Sample key boundaries: each size class boundary + 1
 consteval bool ValidateIndexInRangeSampled() {
@@ -451,13 +451,13 @@ consteval bool ValidateRoundUpMonotonicSampled() {
     return true;
 }
 
-}// namespace details
+}// namespace detail
 
-static_assert(details::ValidateIndexInRangeSampled(), "Index(s) must map to valid class at boundaries");
-static_assert(details::ValidateSizeNotLessThanInputSampled(), "Size(Index(s)) must be >= s at class boundaries");
-static_assert(details::ValidateIndexIdempotentSampled(), "Index(Size(Index(s))) must equal Index(s) at boundaries");
-static_assert(details::ValidateSizeMonotonic(), "Size(idx) must be strictly increasing");
-static_assert(details::ValidateRoundUpMonotonicSampled(), "RoundUp(s) must be non-decreasing at class boundaries");
+static_assert(detail::ValidateIndexInRangeSampled(), "Index(s) must map to valid class at boundaries");
+static_assert(detail::ValidateSizeNotLessThanInputSampled(), "Size(Index(s)) must be >= s at class boundaries");
+static_assert(detail::ValidateIndexIdempotentSampled(), "Index(Size(Index(s))) must equal Index(s) at boundaries");
+static_assert(detail::ValidateSizeMonotonic(), "Size(idx) must be strictly increasing");
+static_assert(detail::ValidateRoundUpMonotonicSampled(), "RoundUp(s) must be non-decreasing at class boundaries");
 }// namespace ammalloc
 
 #endif// AMMALLOC_SIZE_CLASS_H

@@ -7,7 +7,7 @@ void Span::Init(size_t aligned_object_size) {
     AMMALLOC_DCHECK(aligned_object_size > 0 && aligned_object_size <= std::numeric_limits<uint32_t>::max());
     aligned_obj_size = static_cast<uint32_t>(aligned_object_size);
     size_class_idx = SizeClass::Index(aligned_obj_size);
-    void* start_ptr = details::PageIDToPtr(start_page_idx);
+    void* start_ptr = detail::PageIDToPtr(start_page_idx);
     const size_t total_bytes = page_num << SystemConfig::PAGE_SHIFT;
 
     // Estimate bitmap + data layout:

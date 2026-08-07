@@ -13,7 +13,7 @@
 #include <immintrin.h>
 
 namespace ammalloc {
-namespace details {
+namespace detail {
 
 /**
  * @brief Aligns 'size' up to the specified 'align'.
@@ -113,7 +113,7 @@ size_t ParseSize(const char* str);
  */
 bool ParseBool(const char* str);
 
-}// namespace details
+}// namespace detail
 
 }// namespace ammalloc
 

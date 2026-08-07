@@ -102,7 +102,7 @@ AM_NOINLINE void* am_malloc_slow_path(size_t original_size) {
     EnsureScavengerStarted();
 
     if (original_size > SizeConfig::MAX_TC_SIZE) {
-        const auto aligned_size = details::AlignUp(original_size, SystemConfig::PAGE_SIZE);
+        const auto aligned_size = detail::AlignUp(original_size, SystemConfig::PAGE_SIZE);
         const size_t page_num = aligned_size >> SystemConfig::PAGE_SHIFT;
         const auto* span = PageCache::GetInstance().AllocSpan(page_num);
         if (!span) {

@@ -10,7 +10,7 @@
 #include <string_view>
 
 namespace ammalloc {
-namespace details {
+namespace detail {
 
 size_t ParseSize(const char* str) {
     if (!str || *str == '\0') {
@@ -111,5 +111,5 @@ bool ParseBool(const char* str) {
     return false;
 }
 
-}// namespace details
+}// namespace detail
 }// namespace ammalloc

@@ -15,114 +15,114 @@ using namespace ammalloc;
 
 TEST(ConfigTest, ParseSize) {
     // 基础测试
-    EXPECT_EQ(details::ParseSize("100"), 100);
-    EXPECT_EQ(details::ParseSize("1024"), 1024);
+    EXPECT_EQ(detail::ParseSize("100"), 100);
+    EXPECT_EQ(detail::ParseSize("1024"), 1024);
 
     // 单位测试 (大小写不敏感)
-    EXPECT_EQ(details::ParseSize("1k"), 1024);
-    EXPECT_EQ(details::ParseSize("1K"), 1024);
-    EXPECT_EQ(details::ParseSize("1kb"), 1024);// 'b' 被忽略，只看首字母
-    EXPECT_EQ(details::ParseSize("1M"), 1024 * 1024);
-    EXPECT_EQ(details::ParseSize("2G"), 2ULL * 1024 * 1024 * 1024);
+    EXPECT_EQ(detail::ParseSize("1k"), 1024);
+    EXPECT_EQ(detail::ParseSize("1K"), 1024);
+    EXPECT_EQ(detail::ParseSize("1kb"), 1024);// 'b' 被忽略，只看首字母
+    EXPECT_EQ(detail::ParseSize("1M"), 1024 * 1024);
+    EXPECT_EQ(detail::ParseSize("2G"), 2ULL * 1024 * 1024 * 1024);
 
     // 空格测试
-    EXPECT_EQ(details::ParseSize("  64"), 64);
-    EXPECT_EQ(details::ParseSize("64 KB"), 64 * 1024);
-    EXPECT_EQ(details::ParseSize("  10  mb  "), 10 * 1024 * 1024);
+    EXPECT_EQ(detail::ParseSize("  64"), 64);
+    EXPECT_EQ(detail::ParseSize("64 KB"), 64 * 1024);
+    EXPECT_EQ(detail::ParseSize("  10  mb  "), 10 * 1024 * 1024);
 
     // 边界与异常测试
-    EXPECT_EQ(details::ParseSize(nullptr), 0);
-    EXPECT_EQ(details::ParseSize(""), 0);
-    EXPECT_EQ(details::ParseSize("abc"), 0); // 无效数字
-    EXPECT_EQ(details::ParseSize("10x"), 10);// 未知单位，当作 Bytes
+    EXPECT_EQ(detail::ParseSize(nullptr), 0);
+    EXPECT_EQ(detail::ParseSize(""), 0);
+    EXPECT_EQ(detail::ParseSize("abc"), 0); // 无效数字
+    EXPECT_EQ(detail::ParseSize("10x"), 10);// 未知单位，当作 Bytes
 
     // 溢出测试 (64位系统下)
     // 1. 正常边界测试
     // 10000 TB = 10 PB，远未溢出
-    EXPECT_EQ(details::ParseSize("10000 TB"), 10000ULL * 1024 * 1024 * 1024 * 1024);
+    EXPECT_EQ(detail::ParseSize("10000 TB"), 10000ULL * 1024 * 1024 * 1024 * 1024);
 
     // 2. 真正的溢出测试
     // 需要超过 16777216 TB (即 16 EB)
     // 这里使用 2000万 TB (20 EB)，肯定溢出
-    EXPECT_EQ(details::ParseSize("20000000 TB"), std::numeric_limits<size_t>::max());
+    EXPECT_EQ(detail::ParseSize("20000000 TB"), std::numeric_limits<size_t>::max());
 }
 
 TEST(ConfigUtilsTest, ParseBool) {
     // 1. 基础 Truthy 测试
-    EXPECT_TRUE(details::ParseBool("1"));
-    EXPECT_TRUE(details::ParseBool("true"));
-    EXPECT_TRUE(details::ParseBool("on"));
-    EXPECT_TRUE(details::ParseBool("yes"));
+    EXPECT_TRUE(detail::ParseBool("1"));
+    EXPECT_TRUE(detail::ParseBool("true"));
+    EXPECT_TRUE(detail::ParseBool("on"));
+    EXPECT_TRUE(detail::ParseBool("yes"));
 
     // 2. 大小写混合测试
-    EXPECT_TRUE(details::ParseBool("True"));
-    EXPECT_TRUE(details::ParseBool("TRUE"));
-    EXPECT_TRUE(details::ParseBool("On"));
-    EXPECT_TRUE(details::ParseBool("Yes"));
-    EXPECT_TRUE(details::ParseBool("tRuE"));
+    EXPECT_TRUE(detail::ParseBool("True"));
+    EXPECT_TRUE(detail::ParseBool("TRUE"));
+    EXPECT_TRUE(detail::ParseBool("On"));
+    EXPECT_TRUE(detail::ParseBool("Yes"));
+    EXPECT_TRUE(detail::ParseBool("tRuE"));
 
     // 3. 空格测试
-    EXPECT_TRUE(details::ParseBool(" 1 "));
-    EXPECT_TRUE(details::ParseBool("  true"));
-    EXPECT_TRUE(details::ParseBool("on  "));
+    EXPECT_TRUE(detail::ParseBool(" 1 "));
+    EXPECT_TRUE(detail::ParseBool("  true"));
+    EXPECT_TRUE(detail::ParseBool("on  "));
 
     // 4. Falsy 测试
-    EXPECT_FALSE(details::ParseBool("0"));
-    EXPECT_FALSE(details::ParseBool("false"));
-    EXPECT_FALSE(details::ParseBool("off"));
-    EXPECT_FALSE(details::ParseBool("no"));
-    EXPECT_FALSE(details::ParseBool("random_string"));
-    EXPECT_FALSE(details::ParseBool(""));
-    EXPECT_FALSE(details::ParseBool(nullptr));
+    EXPECT_FALSE(detail::ParseBool("0"));
+    EXPECT_FALSE(detail::ParseBool("false"));
+    EXPECT_FALSE(detail::ParseBool("off"));
+    EXPECT_FALSE(detail::ParseBool("no"));
+    EXPECT_FALSE(detail::ParseBool("random_string"));
+    EXPECT_FALSE(detail::ParseBool(""));
+    EXPECT_FALSE(detail::ParseBool(nullptr));
 
     // 5. 边界干扰测试
-    EXPECT_FALSE(details::ParseBool("true_value"));// 前缀匹配不应算作 true
-    EXPECT_FALSE(details::ParseBool("10"));        // 包含1但不完全是1
+    EXPECT_FALSE(detail::ParseBool("true_value"));// 前缀匹配不应算作 true
+    EXPECT_FALSE(detail::ParseBool("10"));        // 包含1但不完全是1
 }
 
 TEST(ConfigTest, LegacyParserTests) {
     // Keep original parser tests to ensure no regression
-    EXPECT_EQ(details::ParseSize("100"), 100);
-    EXPECT_EQ(details::ParseSize("1k"), 1024);
-    EXPECT_EQ(details::ParseSize("1M"), 1024 * 1024);
-    EXPECT_TRUE(details::ParseBool("true"));
-    EXPECT_FALSE(details::ParseBool("false"));
+    EXPECT_EQ(detail::ParseSize("100"), 100);
+    EXPECT_EQ(detail::ParseSize("1k"), 1024);
+    EXPECT_EQ(detail::ParseSize("1M"), 1024 * 1024);
+    EXPECT_TRUE(detail::ParseBool("true"));
+    EXPECT_FALSE(detail::ParseBool("false"));
 }
 
 TEST(CommonUtilsTest, AlignUp) {
     // 1. Power of two alignment (Fast path)
-    EXPECT_EQ(details::AlignUp(1, 8), 8);
-    EXPECT_EQ(details::AlignUp(7, 8), 8);
-    EXPECT_EQ(details::AlignUp(8, 8), 8);
-    EXPECT_EQ(details::AlignUp(9, 8), 16);
+    EXPECT_EQ(detail::AlignUp(1, 8), 8);
+    EXPECT_EQ(detail::AlignUp(7, 8), 8);
+    EXPECT_EQ(detail::AlignUp(8, 8), 8);
+    EXPECT_EQ(detail::AlignUp(9, 8), 16);
 
-    EXPECT_EQ(details::AlignUp(4095, 4096), 4096);
-    EXPECT_EQ(details::AlignUp(4096, 4096), 4096);
-    EXPECT_EQ(details::AlignUp(4097, 4096), 8192);
+    EXPECT_EQ(detail::AlignUp(4095, 4096), 4096);
+    EXPECT_EQ(detail::AlignUp(4096, 4096), 4096);
+    EXPECT_EQ(detail::AlignUp(4097, 4096), 8192);
 
     // 2. Non-power of two alignment (Slow path fallback)
-    EXPECT_EQ(details::AlignUp(1, 7), 7);
-    EXPECT_EQ(details::AlignUp(6, 7), 7);
-    EXPECT_EQ(details::AlignUp(7, 7), 7);
-    EXPECT_EQ(details::AlignUp(8, 7), 14);
+    EXPECT_EQ(detail::AlignUp(1, 7), 7);
+    EXPECT_EQ(detail::AlignUp(6, 7), 7);
+    EXPECT_EQ(detail::AlignUp(7, 7), 7);
+    EXPECT_EQ(detail::AlignUp(8, 7), 14);
 
     // 3. Edge cases
-    EXPECT_EQ(details::AlignUp(0, 8), 8);// Special handling in impl
+    EXPECT_EQ(detail::AlignUp(0, 8), 8);// Special handling in impl
 }
 
 TEST(CommonUtilsTest, PtrToPageId) {
     if constexpr (SystemConfig::PAGE_SIZE == 4096) {
         void* ptr1 = reinterpret_cast<void*>(0x0);
-        EXPECT_EQ(details::PtrToPageId(ptr1), 0);
+        EXPECT_EQ(detail::PtrToPageId(ptr1), 0);
 
         void* ptr2 = reinterpret_cast<void*>(0xFFF);// 4095
-        EXPECT_EQ(details::PtrToPageId(ptr2), 0);
+        EXPECT_EQ(detail::PtrToPageId(ptr2), 0);
 
         void* ptr3 = reinterpret_cast<void*>(0x1000);// 4096
-        EXPECT_EQ(details::PtrToPageId(ptr3), 1);
+        EXPECT_EQ(detail::PtrToPageId(ptr3), 1);
 
         // Inverse check
-        EXPECT_EQ(details::PageIDToPtr(1), ptr3);
+        EXPECT_EQ(detail::PageIDToPtr(1), ptr3);
     }
 }
 

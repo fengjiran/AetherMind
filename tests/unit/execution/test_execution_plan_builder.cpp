@@ -1,4 +1,4 @@
-#include "../../include/aethermind/execution/execution_plan_builder.h"
+#include "aethermind/execution/execution_plan_builder.h"
 
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"

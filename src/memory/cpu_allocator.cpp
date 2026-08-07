@@ -7,6 +7,8 @@
 #include "env.h"
 #include "utils/memory_utils.h"
 
+#include <spdlog/spdlog.h>
+
 #if defined(__linux__) || defined(__APPLE__)
 #include <sys/mman.h>
 #include <unistd.h>

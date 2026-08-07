@@ -5,8 +5,9 @@
 #include <gtest/gtest.h>
 #include <string>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 constexpr size_t kMaxTestTensors = 64;
 const std::array<std::byte, kMaxTestTensors> kTensorMarkers{};
@@ -140,4 +141,3 @@ TEST(ModelLoader_HfWeightResolverTest, TreatsLmHeadAsOptional) {
 }
 
 }// namespace
-}// namespace aethermind

@@ -9,8 +9,9 @@
 #include <string>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 namespace fs = std::filesystem;
 
 fs::path TestModelDir() {
@@ -152,4 +153,3 @@ TEST(ModelLoader_HfRealModelIntegrationTest, ResolvesAndValidatesResolvedModelWe
 }
 
 }// namespace
-}// namespace aethermind

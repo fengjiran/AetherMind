@@ -7,8 +7,9 @@
 #include <memory>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 using namespace test_utils;
 
@@ -332,4 +333,3 @@ TEST(DeadCodeEliminationPass, DeadReorderIsRemoved) {
 }
 
 }// namespace
-}// namespace aethermind

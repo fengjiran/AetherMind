@@ -4,8 +4,9 @@
 
 #include <array>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 TEST(OperatorSchema, ContainsAllM1Ops) {
     const auto schemas = GetOperatorSchemas();
@@ -268,4 +269,3 @@ TEST(OperatorSchema, ReorderSchemaUsesActivationInputAndOutput) {
 }
 
 }// namespace
-}// namespace aethermind

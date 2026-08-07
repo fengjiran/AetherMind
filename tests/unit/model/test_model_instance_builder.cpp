@@ -9,8 +9,9 @@
 #include <string>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 struct TestStorage : RawStorage {
     explicit TestStorage(size_t nbytes) : data(nbytes) {}
@@ -186,4 +187,3 @@ TEST(ModelLoader_ModelInstanceBuilderTest, ResolvedWeightsIntegratedCorrectly) {
 }
 
 }// namespace
-}// namespace aethermind

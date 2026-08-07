@@ -2,8 +2,9 @@
 
 #include <gtest/gtest.h>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 TEST(CpuCapabilities, DefaultValues) {
     CpuCapabilities caps;
@@ -20,4 +21,3 @@ TEST(CpuCapabilities, ExplicitInitialization) {
 }
 
 }// namespace
-}// namespace aethermind

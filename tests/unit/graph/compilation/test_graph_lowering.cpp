@@ -17,8 +17,9 @@
 #include <utility>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 struct TestStorage : RawStorage {};
 
@@ -594,4 +595,3 @@ TEST(GraphLowering, CompactInputSpecsOrderMatchesRuntimeBindings) {
 }
 
 }// namespace
-}// namespace aethermind

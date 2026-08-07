@@ -7,8 +7,9 @@
 #include <string_view>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 TEST(ModelLoader_HfDirectoryReaderTest, InspectSingleFileDirectory) {
     TempDirectory temp_dir;
@@ -376,4 +377,3 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardSymlinkEscape) {
 }
 
 }// namespace
-}// namespace aethermind

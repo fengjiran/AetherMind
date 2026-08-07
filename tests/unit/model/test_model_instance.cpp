@@ -12,8 +12,9 @@
 #include <cstdlib>
 #include <memory>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 void FreeTestBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
@@ -80,10 +81,10 @@ TEST(ModelLoader_ModelInstance, StoresPackedWeightsInBackendSidecar) {
     const KernelSelector selector = MakePackedCpuSelector();
 
     ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<CountingPackedWeights>(
-                                          OpType::kLinear,
-                                          selector,
-                                          MakeTestBuffer(256),
-                                          nullptr))
+                                                          OpType::kLinear,
+                                                          selector,
+                                                          MakeTestBuffer(256),
+                                                          nullptr))
                         .ok());
 
     const PackedWeights* found = model_instance.FindPackedWeights(OpType::kLinear, selector);
@@ -103,10 +104,10 @@ TEST(ModelLoader_ModelInstance, PackedWeightsRemainAliveWhileModelInstanceLives)
         (void) backend;
 
         ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<CountingPackedWeights>(
-                                              OpType::kLinear,
-                                              selector,
-                                              MakeTestBuffer(128),
-                                              &destroyed))
+                                                              OpType::kLinear,
+                                                              selector,
+                                                              MakeTestBuffer(128),
+                                                              &destroyed))
                             .ok());
     }
 
@@ -123,10 +124,10 @@ TEST(ModelLoader_ModelInstance, DestroyingModelInstanceReleasesPackedWeights) {
     {
         ModelInstance model_instance;
         ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<CountingPackedWeights>(
-                                              OpType::kLinear,
-                                              selector,
-                                              MakeTestBuffer(64),
-                                              &destroyed))
+                                                              OpType::kLinear,
+                                                              selector,
+                                                              MakeTestBuffer(64),
+                                                              &destroyed))
                             .ok());
         EXPECT_FALSE(destroyed);
     }
@@ -135,4 +136,3 @@ TEST(ModelLoader_ModelInstance, DestroyingModelInstanceReleasesPackedWeights) {
 }
 
 }// namespace
-}// namespace aethermind

@@ -11,8 +11,9 @@
 #include <string>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 struct TestStorage : RawStorage {};
 
@@ -252,4 +253,3 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
 }
 
 }// namespace
-}// namespace aethermind

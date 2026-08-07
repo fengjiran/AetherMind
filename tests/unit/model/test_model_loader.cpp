@@ -15,8 +15,9 @@
 #include <string_view>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 std::string MakeMinimalLlamaConfigJson() {
     return R"({
@@ -278,4 +279,3 @@ TEST(ModelLoader_PipelineTest, RejectsIncompleteWeightSet) {
 }
 
 }// namespace
-}// namespace aethermind

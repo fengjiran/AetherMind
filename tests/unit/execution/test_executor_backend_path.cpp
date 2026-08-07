@@ -21,8 +21,9 @@
 #include <memory>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 std::vector<int>* g_execution_order = nullptr;
 int* g_constraint_operator_runs = nullptr;
@@ -545,4 +546,3 @@ TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
 }
 
 }// namespace
-}// namespace aethermind

@@ -2,8 +2,9 @@
 
 #include <gtest/gtest.h>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 std::string SerializeToString(const OpParams& params) {
     std::ostringstream os;
@@ -271,4 +272,3 @@ TEST(OpParamsSerde, PermuteRejectsMalformedPermutations) {
 }
 
 }// namespace
-}// namespace aethermind

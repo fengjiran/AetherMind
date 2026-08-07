@@ -3,8 +3,9 @@
 
 #include <gtest/gtest.h>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 class RecordingWorkspaceArena final : public WorkspaceArena {
 public:
@@ -197,4 +198,3 @@ TEST(RuntimeBindingContext, SequenceStateCanTrackSessionExecutionProgress) {
 }
 
 }// namespace
-}// namespace aethermind

@@ -10,8 +10,9 @@
 #include <string>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 class TempDirectory {
 public:
@@ -889,4 +890,3 @@ TEST(MemoryMappedFile, MmapPointerIsPageAligned) {
 }
 
 }// namespace
-}// namespace aethermind

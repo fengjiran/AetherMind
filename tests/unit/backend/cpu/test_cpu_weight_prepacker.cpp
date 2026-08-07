@@ -10,9 +10,9 @@
 #include <cstdlib>
 #include <gtest/gtest.h>
 
-namespace aethermind {
-
 namespace {
+
+using namespace aethermind;
 
 void FreeTestBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
@@ -93,4 +93,3 @@ TEST(CpuWeightPrepacker, PackAcceptsLogicalWeightTensorView) {
 }
 
 }// namespace
-}// namespace aethermind

@@ -21,8 +21,9 @@
 #include <variant>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 struct TestAttrs {
     int epsilon;
@@ -861,4 +862,3 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
 }
 
 }// namespace
-}// namespace aethermind

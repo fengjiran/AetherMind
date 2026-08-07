@@ -6,8 +6,9 @@
 #include <string>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 struct TestStorage : RawStorage {
     std::vector<std::byte> data;
@@ -1308,4 +1309,3 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsEmbedTokensDTypeMatchWithLinear) {
 }
 
 }// namespace
-}// namespace aethermind

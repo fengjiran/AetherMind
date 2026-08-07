@@ -5,8 +5,9 @@
 
 #include <type_traits>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 using namespace test_utils;
 
@@ -390,4 +391,3 @@ TEST(ConstEvaluator, SkipsMulRankZeroUnsupportedDType) {
 }
 
 }// namespace
-}// namespace aethermind

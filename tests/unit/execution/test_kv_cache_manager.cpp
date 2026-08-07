@@ -2,8 +2,9 @@
 
 #include <gtest/gtest.h>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 DataType MakeKVType() {
     return DataType(DLDataTypeCode::kFloat, 16, 1);
@@ -120,4 +121,3 @@ TEST(KVCacheManager, ReserveRejectsRequestsBeyondPhysicalCapacity) {
 }
 
 }// namespace
-}// namespace aethermind

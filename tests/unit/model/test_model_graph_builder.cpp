@@ -10,8 +10,9 @@
 #include <string_view>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 struct TestStorage : RawStorage {};
 
@@ -751,4 +752,3 @@ TEST(ModelGraphBuilder, RejectsUnsupportedRoPEUnknownScaling) {
 }
 
 }// namespace
-}// namespace aethermind

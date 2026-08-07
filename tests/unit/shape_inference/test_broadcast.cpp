@@ -4,8 +4,9 @@
 #include <gtest/gtest.h>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 // Helper: shorthand for SymbolicShape construction.
 SymbolicShape Sym(std::initializer_list<ShapeSymbol> dims) {
@@ -478,4 +479,3 @@ TEST(BroadcastRoundTrip, ConcreteBroadcastThenStrides) {
 }
 
 }// namespace
-}// namespace aethermind

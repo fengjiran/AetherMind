@@ -10,8 +10,9 @@
 #include <gtest/gtest.h>
 #include <span>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
@@ -199,4 +200,3 @@ TEST(ExecutionPlan, BuildRejectsNullResolvedKernelFunction) {
 }
 
 }// namespace
-}// namespace aethermind

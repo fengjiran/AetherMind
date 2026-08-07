@@ -9,8 +9,9 @@
 #include <utility>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 TensorSpec ActivationSpec() {
     return Spec(DataType::Float32(), {1, 8});
@@ -1859,4 +1860,3 @@ TEST(ModelGraphSemanticValidation, RawConstructorAcceptsExactDerivedMetadata) {
 }
 
 }// namespace
-}// namespace aethermind

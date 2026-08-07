@@ -12,8 +12,9 @@
 #include <cstdlib>
 #include <memory>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 void FreeTestBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
@@ -128,10 +129,10 @@ TEST(BackendSidecarOwnership, StoreRejectsDuplicatePackedWeightEntries) {
     const KernelSelector selector = MakePackedCpuSelector();
 
     ASSERT_TRUE(sidecar.Store(std::make_unique<CountingPackedWeights>(
-                                    OpType::kLinear,
-                                    selector,
-                                    MakeTestBuffer(64),
-                                    nullptr))
+                                      OpType::kLinear,
+                                      selector,
+                                      MakeTestBuffer(64),
+                                      nullptr))
                         .ok());
 
     const Status duplicate_status = sidecar.Store(std::make_unique<CountingPackedWeights>(
@@ -145,4 +146,3 @@ TEST(BackendSidecarOwnership, StoreRejectsDuplicatePackedWeightEntries) {
 }
 
 }// namespace
-}// namespace aethermind

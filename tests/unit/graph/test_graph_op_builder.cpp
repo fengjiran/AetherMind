@@ -7,8 +7,9 @@
 #include <variant>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     ModelGraph graph;
@@ -1319,4 +1320,3 @@ TEST(GraphOpBuilder, AddNodeReorderWrongArityAtomicallyAborts) {
 }
 
 }// namespace
-}// namespace aethermind

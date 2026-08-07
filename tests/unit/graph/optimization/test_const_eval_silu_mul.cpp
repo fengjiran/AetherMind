@@ -6,8 +6,9 @@
 #include <limits>
 #include <type_traits>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 using namespace test_utils;
 
@@ -116,4 +117,3 @@ TEST(ConstEvaluator, SkipsSiluMulRankZeroScalarTensorMismatch) {
 }
 
 }// namespace
-}// namespace aethermind

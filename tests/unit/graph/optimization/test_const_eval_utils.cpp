@@ -3,8 +3,9 @@
 
 #include <gtest/gtest.h>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 using namespace test_utils;
 
@@ -102,4 +103,3 @@ TEST(ConstEvaluator, EstimateCostOverflow) {
 }
 
 }// namespace
-}// namespace aethermind

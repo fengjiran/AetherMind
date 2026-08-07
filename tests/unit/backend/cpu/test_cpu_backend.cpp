@@ -1,12 +1,13 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/dtypes/data_type.h"
+#include "aethermind/runtime/runtime_builder.h"
 #include "device.h"
 
 #include <gtest/gtest.h>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth) {
     return KernelSelector{
@@ -60,4 +61,3 @@ TEST(CpuBackend, RuntimeBuilderDefaultProvidesCpuBackend) {
 }
 
 }// namespace
-}// namespace aethermind

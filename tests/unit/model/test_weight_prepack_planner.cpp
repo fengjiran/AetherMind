@@ -9,8 +9,9 @@
 #include <memory>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 struct TestStorage : RawStorage {
     explicit TestStorage(size_t nbytes) : data(nbytes) {}
@@ -91,7 +92,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsEnumeratesAllLinearWeigh
     EXPECT_EQ(requests->size(), 14);
 
     // All requests should be kLinear with the expected packed selector.
-    for (const auto& req : *requests) {
+    for (const auto& req: *requests) {
         EXPECT_EQ(req.op_type, OpType::kLinear);
         EXPECT_EQ(req.selector, MakeExpectedSelector());
     }
@@ -110,7 +111,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsExcludesNormsAndEmbeddin
             MakeLlamaConfig(1), index, backend, registry);
 
     ASSERT_TRUE(requests.ok());
-    for (const auto& req : *requests) {
+    for (const auto& req: *requests) {
         EXPECT_NE(req.raw_weight.data, index.embed_tokens.data);
         EXPECT_NE(req.raw_weight.data, index.final_norm.data);
         EXPECT_NE(req.raw_weight.data, index.layers[0].norm.input_rmsnorm.data);
@@ -136,7 +137,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsIncludesLmHeadWhenPresen
     EXPECT_EQ(requests->size(), 8);
 
     bool found_lm_head = false;
-    for (const auto& req : *requests) {
+    for (const auto& req: *requests) {
         if (req.raw_weight.data == index.lm_head->data) {
             found_lm_head = true;
             break;
@@ -148,7 +149,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsIncludesLmHeadWhenPresen
 TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) {
     auto storage = std::make_shared<TestStorage>(256);
     // Fill with zeros so Pack can safely memcpy.
-    for (auto& b : storage->data) b = std::byte{0};
+    for (auto& b: storage->data) b = std::byte{0};
 
     ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
@@ -178,7 +179,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) 
 
 TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
     auto storage = std::make_shared<TestStorage>(256);
-    for (auto& b : storage->data) b = std::byte{0};
+    for (auto& b: storage->data) b = std::byte{0};
 
     ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
@@ -210,7 +211,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelector
 
 TEST(ModelLoader_WeightPrepackPlannerTest, RawViewsStillAccessibleAfterPrepack) {
     auto storage = std::make_shared<TestStorage>(256);
-    for (auto& b : storage->data) b = std::byte{0};
+    for (auto& b: storage->data) b = std::byte{0};
 
     ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
@@ -236,5 +237,4 @@ TEST(ModelLoader_WeightPrepackPlannerTest, RawViewsStillAccessibleAfterPrepack) 
     EXPECT_TRUE(resolved_weights.layers[0].norm.input_rmsnorm.IsValid());
 }
 
-}  // namespace
-}  // namespace aethermind
+}// namespace

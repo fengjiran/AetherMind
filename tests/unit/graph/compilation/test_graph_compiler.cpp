@@ -18,8 +18,9 @@
 #include <sstream>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 using namespace test_utils;
 
@@ -984,4 +985,3 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
             << "Failure message must preserve op semantic context";
 }
 }// namespace
-}// namespace aethermind

@@ -18,9 +18,9 @@
 #include <gtest/gtest.h>
 #include <vector>
 
-namespace aethermind {
-
 namespace {
+
+using namespace aethermind;
 
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
@@ -61,7 +61,6 @@ void ExpectInvalidRmsNormEntry(const cpu::detail::RmsNormParams& params) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
 }
 
-}// namespace
 
 TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
     constexpr float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
@@ -629,4 +628,4 @@ TEST(CPUKernelRmsNormEntry, RejectsInvalidEpsilon) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
 }
 
-}// namespace aethermind
+}// namespace

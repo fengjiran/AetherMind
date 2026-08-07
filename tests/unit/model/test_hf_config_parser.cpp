@@ -10,8 +10,9 @@
 #include <string_view>
 #include <vector>
 
-namespace aethermind {
 namespace {
+
+using namespace aethermind;
 
 class TempDirectory {
 public:
@@ -440,4 +441,3 @@ TEST(ModelLoader_HfConfigTest, SkipsUnknownFloatingJsonValue) {
 }
 
 }// namespace
-}// namespace aethermind

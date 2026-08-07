@@ -174,9 +174,9 @@ StatusOr<std::vector<int64_t>> MakeContiguousStrides(std::span<const int64_t> sh
 /// @param ops_per_element  Conservative upper bound of scalar ops per element.
 /// @return Upper-bound cost, or kInvalidArgument for negative traversal_numel,
 ///         or kOverflow when traversal_numel × ops_per_element overflows.
-AM_NODISCARD StatusOr<FoldingCost> EstimateCost(const TensorSpec& spec,
-                                                int64_t traversal_numel,
-                                                uint64_t ops_per_element);
+StatusOr<FoldingCost> EstimateCost(const TensorSpec& spec,
+                                   int64_t traversal_numel,
+                                   uint64_t ops_per_element);
 
 /// @brief Enforces the folding budget against a plan's reported cost.
 /// @param cost   Cost estimate reported by an evaluator's Plan().

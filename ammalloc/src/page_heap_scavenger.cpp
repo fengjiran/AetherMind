@@ -5,6 +5,7 @@
 #include "ammalloc/page_heap_scavenger.h"
 #include "ammalloc/page_cache.h"
 
+#include <spdlog/spdlog.h>
 #include <sys/mman.h>
 
 namespace aethermind {

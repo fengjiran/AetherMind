@@ -19,9 +19,10 @@
 
 #define USE_PAGECACHE_SHARD
 
+#include "ammalloc/assert.h"
+#include "ammalloc/attributes.h"
 #include "ammalloc/page_allocator.h"
 #include "ammalloc/span.h"
-#include "macros.h"
 
 #include <mutex>
 
@@ -118,7 +119,7 @@ public:
     PageCacheShard& operator=(const PageCacheShard&) = delete;
 
     AM_NODISCARD bool IsBucketEmpty(size_t bucket_idx) const noexcept {
-        AM_DCHECK(bucket_idx < span_lists_.size());
+        AMMALLOC_DCHECK(bucket_idx < span_lists_.size());
         return span_lists_[bucket_idx].empty();
     }
 
@@ -189,7 +190,7 @@ public:
 
     AM_NODISCARD bool IsBucketEmpty(size_t shard_id,
                                     size_t bucket_idx) const noexcept {
-        AM_DCHECK(shard_id < active_shard_count_);
+        AMMALLOC_DCHECK(shard_id < active_shard_count_);
         return GetShard(shard_id).IsBucketEmpty(bucket_idx);
     }
 
@@ -206,12 +207,12 @@ public:
     }
 
     AM_NODISCARD std::mutex& GetMutex() noexcept {
-        AM_DCHECK(active_shard_count_ == 1);
+        AMMALLOC_DCHECK(active_shard_count_ == 1);
         return GetShard(0).GetMutex();
     }
 
     AM_NODISCARD const std::mutex& GetMutex() const noexcept {
-        AM_DCHECK(active_shard_count_ == 1);
+        AMMALLOC_DCHECK(active_shard_count_ == 1);
         return GetShard(0).GetMutex();
     }
 
@@ -228,8 +229,8 @@ public:
     ///
     /// @pre Must be called only in quiescent state before concurrent use.
     void SetActiveShardCountForTest(uint16_t shard_count) noexcept {
-        AM_DCHECK(shard_count >= 1);
-        AM_DCHECK(shard_count <= kMaxShardCount);
+        AMMALLOC_DCHECK(shard_count >= 1);
+        AMMALLOC_DCHECK(shard_count <= kMaxShardCount);
         active_shard_count_ = shard_count;
     }
 #endif
@@ -261,24 +262,24 @@ private:
     }
 
     AM_NODISCARD PageCacheShard& GetShard(uint16_t shard_id) noexcept {
-        AM_DCHECK(shard_id < active_shard_count_);
+        AMMALLOC_DCHECK(shard_id < active_shard_count_);
         return shards_[shard_id];
     }
 
     AM_NODISCARD const PageCacheShard& GetShard(uint16_t shard_id) const noexcept {
-        AM_DCHECK(shard_id < active_shard_count_);
+        AMMALLOC_DCHECK(shard_id < active_shard_count_);
         return shards_[shard_id];
     }
 
     AM_NODISCARD PageCacheShard& OwnerShard(Span* span) noexcept {
-        AM_DCHECK(span != nullptr);
-        AM_DCHECK(span->owner_shard_id < active_shard_count_);
+        AMMALLOC_DCHECK(span != nullptr);
+        AMMALLOC_DCHECK(span->owner_shard_id < active_shard_count_);
         return shards_[span->owner_shard_id];
     }
 
     AM_NODISCARD const PageCacheShard& OwnerShard(const Span* span) const noexcept {
-        AM_DCHECK(span != nullptr);
-        AM_DCHECK(span->owner_shard_id < active_shard_count_);
+        AMMALLOC_DCHECK(span != nullptr);
+        AMMALLOC_DCHECK(span->owner_shard_id < active_shard_count_);
         return shards_[span->owner_shard_id];
     }
 };
@@ -335,7 +336,7 @@ public:
     void Reset();
 
     AM_NODISCARD bool IsBucketEmpty(size_t bucket_idx) const noexcept {
-        AM_DCHECK(bucket_idx < span_lists_.size());
+        AMMALLOC_DCHECK(bucket_idx < span_lists_.size());
         return span_lists_[bucket_idx].empty();
     }
 

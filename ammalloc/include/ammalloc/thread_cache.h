@@ -16,6 +16,7 @@
 #ifndef AETHERMIND_AMMALLOC_THREAD_CACHE_H
 #define AETHERMIND_AMMALLOC_THREAD_CACHE_H
 
+#include "ammalloc/assert.h"
 #include "ammalloc/central_cache.h"
 
 namespace aethermind {
@@ -54,9 +55,9 @@ public:
     /// @pre `aligned_size <= SizeConfig::MAX_TC_SIZE`
     /// @note The fast path is a single FreeList pop with no locking.
     AM_NODISCARD AM_ALWAYS_INLINE void* Allocate(size_t aligned_size) noexcept {
-        AM_DCHECK(aligned_size > 0);
-        AM_DCHECK(aligned_size <= SizeConfig::MAX_TC_SIZE);
-        AM_DCHECK(aligned_size == SizeClass::RoundUp(aligned_size));
+        AMMALLOC_DCHECK(aligned_size > 0);
+        AMMALLOC_DCHECK(aligned_size <= SizeConfig::MAX_TC_SIZE);
+        AMMALLOC_DCHECK(aligned_size == SizeClass::RoundUp(aligned_size));
         size_t idx = SizeClass::Index(aligned_size);
         auto& list = free_lists_[idx];
 
@@ -81,8 +82,8 @@ public:
     /// @note The fast path is a single FreeList push. Slow path is entered only
     ///       when local occupancy reaches the current per-class limit.
     void AM_ALWAYS_INLINE Deallocate(void* ptr, size_t aligned_size) {
-        AM_DCHECK(ptr != nullptr);
-        AM_DCHECK(aligned_size <= SizeConfig::MAX_TC_SIZE);
+        AMMALLOC_DCHECK(ptr != nullptr);
+        AMMALLOC_DCHECK(aligned_size <= SizeConfig::MAX_TC_SIZE);
 
         size_t idx = SizeClass::Index(aligned_size);
         auto& list = free_lists_[idx];
@@ -106,13 +107,13 @@ public:
 
     /// Test-only introspection hook for a FreeList's current high-water limit.
     AM_NODISCARD size_t GetMaxSizeForTest(size_t idx) const noexcept {
-        AM_DCHECK(idx < free_lists_.size());
+        AMMALLOC_DCHECK(idx < free_lists_.size());
         return free_lists_[idx].max_size();
     }
 
     /// Test-only introspection hook for the accumulated overage counter.
     AM_NODISCARD size_t GetOveragesForTest(size_t idx) const noexcept {
-        AM_DCHECK(idx < free_lists_.size());
+        AMMALLOC_DCHECK(idx < free_lists_.size());
         return free_lists_[idx].overages();
     }
 

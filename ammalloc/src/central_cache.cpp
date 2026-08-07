@@ -2,13 +2,15 @@
 // Created by richard on 2/17/26.
 //
 #include "ammalloc/central_cache.h"
+#include "ammalloc/assert.h"
 #include "ammalloc/page_cache.h"
 #include "ammalloc/spin_lock.h"
+#include <spdlog/spdlog.h>
 
 namespace aethermind {
 
 size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t aligned_size) {
-    AM_DCHECK(batch_num <= SizeClass::kMaxBatchSize);
+    AMMALLOC_DCHECK(batch_num <= SizeClass::kMaxBatchSize);
     auto idx = SizeClass::Index(aligned_size);
     auto& bucket = buckets_[idx];
 

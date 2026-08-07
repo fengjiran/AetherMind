@@ -22,8 +22,8 @@
 #ifndef AETHERMIND_AMMALLOC_SIZE_CLASS_H
 #define AETHERMIND_AMMALLOC_SIZE_CLASS_H
 
+#include "ammalloc/assert.h"
 #include "ammalloc/config.h"
-#include "utils/logging.h"
 
 #include <array>
 #include <bit>
@@ -200,7 +200,7 @@ public:
     /// Debug/assertion version of Size() with bounds checking.
     ///
     /// This is a debugging/contract checking interface. If idx is out of range,
-    /// it triggers AM_CHECK(false) which aborts the process. The returned 0
+    /// it triggers AMMALLOC_CHECK(false) which aborts the process. The returned 0
     /// is unreachable in practice.
     ///
     /// @param idx The size class index.
@@ -208,7 +208,7 @@ public:
     AM_ALWAYS_INLINE static size_t SafeSize(size_t idx) noexcept {
         // clang-format off
         if (idx >= kNumSizeClasses) AM_UNLIKELY {
-            AM_CHECK(false, "SizeClass::Size index {} out of range [0, {})", idx, kNumSizeClasses);
+            AMMALLOC_CHECK(false, "SizeClass::Size index {} out of range [0, {})", idx, kNumSizeClasses);
             return 0;
         }
         // clang-format on

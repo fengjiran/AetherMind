@@ -1,9 +1,9 @@
 #ifndef AETHERMIND_MALLOC_SPAN_H
 #define AETHERMIND_MALLOC_SPAN_H
 
+#include "ammalloc/assert.h"
 #include "ammalloc/common.h"
 #include "ammalloc/config.h"
-#include "utils/logging.h"
 
 namespace aethermind {
 
@@ -129,7 +129,7 @@ public:
     /// @pre Caller must hold the bucket lock.
     /// @pre pos != nullptr, span != nullptr
     static void insert(Span* pos, Span* span) noexcept {
-        AM_DCHECK(pos != nullptr && span != nullptr);
+        AMMALLOC_DCHECK(pos != nullptr && span != nullptr);
         span->next = pos;
         span->prev = pos->prev;
         span->prev->next = span;
@@ -146,7 +146,7 @@ public:
     /// @pre Caller must hold the bucket lock.
     /// @return Next node in list.
     Span* erase(Span* span) noexcept {
-        AM_DCHECK(span != nullptr && span != &head_);
+        AMMALLOC_DCHECK(span != nullptr && span != &head_);
         auto* prev = span->prev;
         auto* next = span->next;
         prev->next = next;

@@ -9,6 +9,7 @@
 #include "ammalloc/page_heap_scavenger.h"
 #include "ammalloc/thread_cache.h"
 #include <atomic>
+#include <spdlog/spdlog.h>
 
 namespace {
 

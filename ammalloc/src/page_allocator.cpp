@@ -6,11 +6,12 @@
 /// 3. Cache released 2MB huge pages to reduce future mmap overhead.
 
 #include "ammalloc/page_allocator.h"
+#include "ammalloc/assert.h"
 #include "ammalloc/config.h"
-#include "utils/logging.h"
 
 #include <cstdint>
 #include <limits>
+#include <spdlog/spdlog.h>
 #include <sys/mman.h>
 
 namespace {
@@ -197,8 +198,8 @@ bool PageAllocator::SafeMunmap(void* ptr, size_t size) {
         return true;
     }
 
-    AM_DCHECK(IsPageAligned(ptr));
-    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+    AMMALLOC_DCHECK(IsPageAligned(ptr));
+    AMMALLOC_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
 
     // clang-format off
     if (munmap(ptr, size) == 0) AM_LIKELY {
@@ -215,13 +216,13 @@ bool PageAllocator::SafeMunmap(void* ptr, size_t size) {
 }
 
 void* PageAllocator::AllocWithRetry(size_t size, int flags) {
-    AM_DCHECK(size > 0);
-    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+    AMMALLOC_DCHECK(size > 0);
+    AMMALLOC_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
 
     for (size_t i = 0; i < PageConfig::MAX_ALLOC_RETRIES; ++i) {
         if (void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, -1, 0);
             ptr != MAP_FAILED) {
-            AM_DCHECK(IsPageAligned(ptr));
+            AMMALLOC_DCHECK(IsPageAligned(ptr));
             return ptr;
         }
 
@@ -244,10 +245,10 @@ void* PageAllocator::AllocWithRetry(size_t size, int flags) {
 }
 
 void PageAllocator::ApplyHugePageHint(void* ptr, size_t size) {
-    AM_DCHECK(ptr != nullptr);
-    AM_DCHECK(IsPageAligned(ptr));
-    AM_DCHECK(size > 0);
-    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+    AMMALLOC_DCHECK(ptr != nullptr);
+    AMMALLOC_DCHECK(IsPageAligned(ptr));
+    AMMALLOC_DCHECK(size > 0);
+    AMMALLOC_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
 
     // Best-effort THP hint. Failure is expected on systems/configurations
     // without THP support, so keep it quiet.
@@ -267,8 +268,8 @@ void PageAllocator::ApplyHugePageHint(void* ptr, size_t size) {
 }
 
 void* PageAllocator::AllocNormalPage(size_t size) {
-    AM_DCHECK(size > 0);
-    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+    AMMALLOC_DCHECK(size > 0);
+    AMMALLOC_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
 
     stats_.normal_alloc_count.fetch_add(1, std::memory_order_relaxed);
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
@@ -289,8 +290,8 @@ void* PageAllocator::AllocNormalPage(size_t size) {
 }
 
 void* PageAllocator::AllocHugePageWithTrim(size_t size) {
-    AM_DCHECK(size > 0);
-    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+    AMMALLOC_DCHECK(size > 0);
+    AMMALLOC_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
 
     // Overflow guard: size + HUGE_PAGE_SIZE must not wrap
     // clang-format off
@@ -312,9 +313,9 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
     const auto raw_addr = reinterpret_cast<uintptr_t>(raw_ptr);
     const uintptr_t aligned_addr = (raw_addr + SystemConfig::HUGE_PAGE_SIZE - 1) &
                                    ~(SystemConfig::HUGE_PAGE_SIZE - 1);
-    AM_DCHECK((aligned_addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0);
-    AM_DCHECK(aligned_addr >= raw_addr);
-    AM_DCHECK(aligned_addr + size <= raw_addr + alloc_size);
+    AMMALLOC_DCHECK((aligned_addr & (SystemConfig::HUGE_PAGE_SIZE - 1)) == 0);
+    AMMALLOC_DCHECK(aligned_addr >= raw_addr);
+    AMMALLOC_DCHECK(aligned_addr + size <= raw_addr + alloc_size);
 
     const size_t head_gap = aligned_addr - raw_addr;
     const size_t tail_gap = alloc_size - head_gap - size;
@@ -376,9 +377,9 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
         tail_mapped = false;
     }
 
-    AM_DCHECK(!head_mapped);
-    AM_DCHECK(body_mapped);
-    AM_DCHECK(!tail_mapped);
+    AMMALLOC_DCHECK(!head_mapped);
+    AMMALLOC_DCHECK(body_mapped);
+    AMMALLOC_DCHECK(!tail_mapped);
 
     stats_.huge_align_waste_bytes.fetch_add(head_gap + tail_gap, std::memory_order_relaxed);
     ApplyHugePageHint(body_ptr, size);
@@ -392,8 +393,8 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
 // 2) If misaligned, unmap it and retry with over-allocation + trimming.
 // This avoids extra VMA operations on the fast-success path.
 void* PageAllocator::AllocHugePage(size_t size) {
-    AM_DCHECK(size > 0);
-    AM_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
+    AMMALLOC_DCHECK(size > 0);
+    AMMALLOC_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
 
     stats_.huge_alloc_count.fetch_add(1, std::memory_order_relaxed);
 

@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_AMMALLOC_CONFIG_H
 #define AETHERMIND_AMMALLOC_CONFIG_H
 
-#include "macros.h"
+#include "ammalloc/attributes.h"
 
 #include <cstddef>
 #include <new>

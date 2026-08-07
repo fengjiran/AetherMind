@@ -5,10 +5,11 @@
 #ifndef AETHERMIND_MALLOC_COMMON_H
 #define AETHERMIND_MALLOC_COMMON_H
 
+#include "ammalloc/attributes.h"
 #include "ammalloc/config.h"
-#include "macros.h"
-#include "utils/logging.h"
 
+#include <bit>
+#include <cstdint>
 #include <immintrin.h>
 
 namespace aethermind {

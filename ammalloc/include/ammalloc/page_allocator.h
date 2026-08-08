@@ -1,21 +1,12 @@
-/// Page-level OS allocator and object pool for the ammalloc subsystem.
-///
-/// This header defines:
-/// - PageAllocator: OS memory mapping facade (mmap/munmap/madvise) with huge-page support
-/// - ObjectPool: Thread-safe pool for fixed-size objects backed by PageAllocator pages
-///
-/// Thread-safety:
-/// - All public methods are thread-safe.
-/// - Huge-page cache uses internal lock-free synchronization.
-///
-/// Constraints:
-/// - Core allocation paths avoid recursive malloc (no heap-allocating containers).
-/// - Allocation failures return nullptr; no exceptions thrown (except ObjectPool::New).
-///
-/// @see PageCache, am_malloc, am_free
-
 #ifndef AMMALLOC_PAGE_ALLOCATOR_H
 #define AMMALLOC_PAGE_ALLOCATOR_H
+
+/// @file
+/// @brief Page-level OS allocation and fixed-size metadata pooling.
+///
+/// `PageAllocator` wraps `mmap`, `munmap`, and `madvise`, including an internal
+/// lock-free cache for standard 2 MiB mappings. `ObjectPool` uses those pages to
+/// recycle fixed-size metadata without recursively entering `am_malloc`.
 
 #include "ammalloc/config.h"
 
@@ -35,14 +26,15 @@ extern std::atomic<bool> g_mock_huge_alloc_fail;
 #define PAGEALLOCATOR_FRIEND_TEST
 #endif
 
+/// @brief Best-effort allocator telemetry stored in relaxed atomics.
+/// @note Counters provide observation rather than a mutually consistent snapshot.
 struct PageAllocatorStats {
-    // Statistics are best-effort telemetry only; all updates use relaxed atomics.
-    // normal page
+    // Normal-page allocation counters.
     std::atomic<size_t> normal_alloc_count{0};
     std::atomic<size_t> normal_alloc_success{0};
     std::atomic<size_t> normal_alloc_bytes{0};
 
-    // huge page
+    // Huge-page allocation and cache counters.
     std::atomic<size_t> huge_alloc_count{0};
     std::atomic<size_t> huge_alloc_success{0};
     std::atomic<size_t> huge_alloc_bytes{0};
@@ -63,46 +55,40 @@ struct PageAllocatorStats {
     std::atomic<size_t> madvise_failed_count{0};
 };
 
-/// Page-level OS allocator used by PageCache/ObjectPool backends.
+/// @brief Provides thread-safe page mappings for PageCache and ObjectPool.
 ///
-/// Thread-safety:
-/// - Public methods are thread-safe.
-/// - Huge-page cache is internally synchronized with a mutex.
-///
-/// Notes:
-/// - Calls can block in kernel (`mmap`/`munmap`/`madvise`).
-/// - Returns `nullptr` on allocation failure; does not throw.
+/// Allocation and release may block in kernel calls. Exact 2 MiB mappings can
+/// be retained in a fixed-capacity, lock-free dual-stack cache; other mappings
+/// return directly to the operating system.
 class PageAllocator {
 public:
+    /// @brief Returns the live telemetry counters.
+    /// @return Read-only reference to process-wide atomic counters.
     static const PageAllocatorStats& GetStats() {
         return stats_;
     }
 
-    /// Allocates `page_num` pages and returns a page-aligned pointer.
-    /// Returns nullptr on invalid input or system allocation failure.
+    /// @brief Allocates a page-aligned mapping containing `page_num` pages.
+    /// @param page_num Number of system pages to allocate.
+    /// @return Page-aligned mapping, or null for invalid input or allocation failure.
     static void* SystemAlloc(size_t page_num);
 
-    /// Frees a mapping previously returned by `SystemAlloc`.
-    /// `ptr == nullptr` or `page_num == 0` is treated as a no-op.
-    ///
-    /// HugePageCache eligibility (temporary heuristic):
-    /// - Current strategy: `size == HUGE_PAGE_SIZE && IsHugePageAligned(ptr)`
-    /// - This is a fragile heuristic that cannot distinguish allocation source.
-    /// - Long-term: introduce source tagging (FreeFlags) or carry metadata from Span.
-    /// - See: docs/designs/ammalloc/ammalloc_todo_list.md P3 "实现 Page 来源标记机制"
-    ///
-    /// Thread-safety: Safe for concurrent calls from multiple threads.
+    /// @brief Releases or caches a mapping returned by `SystemAlloc`.
+    /// @param ptr Mapping base address; null is accepted as a no-op.
+    /// @param page_num Original mapping length in system pages; zero is a no-op.
+    /// @note An aligned mapping of exactly `HUGE_PAGE_SIZE` bytes is eligible for
+    ///       the internal cache after successful `MADV_DONTNEED`.
     static void SystemFree(void* ptr, size_t page_num);
 
-    /// Resets all statistics counters to zero.
+    /// @brief Resets all telemetry counters to zero.
     static void ResetStats();
 
-    /// Releases all cached huge pages.
-    /// Intended for tests and controlled teardown paths.
+    /// @brief Unmaps all standard huge pages currently held by the cache.
+    /// @note Intended for tests and controlled teardown after concurrent use stops.
     static void ReleaseHugePageCache();
 
-    /// Records a munmap failure in statistics.
-    /// Used internally by HugePageCache during cache release.
+    /// @brief Records one `munmap` failure in telemetry.
+    /// @note Used internally by HugePageCache during controlled cache release.
     static void RecordMunmapFailure() {
         stats_.munmap_failed_count.fetch_add(1, std::memory_order_relaxed);
     }
@@ -120,18 +106,26 @@ private:
     PAGEALLOCATOR_FRIEND_TEST;
 };
 
-/// Thread-safe object pool backed by `PageAllocator` pages.
+/// @brief Owns and recycles fixed-size objects in PageAllocator-backed chunks.
 ///
 /// The pool owns all allocated chunks until `ReleaseMemory()` or destruction.
 /// `New()` constructs `T` in-place and `Delete()` destroys `T` then recycles storage.
+/// All mutation is serialized by an internal mutex.
+///
+/// @tparam T Object type; its storage must hold an intrusive free-list pointer.
+/// @tparam CHUNK_SIZE Target number of bytes requested for each new chunk.
 template<typename T, size_t CHUNK_SIZE = 64 * 1024>
     requires(sizeof(T) >= sizeof(void*))
 class ObjectPool {
 public:
     ObjectPool() = default;
 
-    /// Allocates storage for one object and default-constructs `T` in-place.
-    /// Throws `std::bad_alloc` if the underlying page allocation fails.
+    /// @brief Constructs one object in pooled storage.
+    /// @tparam Args Constructor argument types.
+    /// @param args Arguments forwarded to the `T` constructor.
+    /// @return Pointer to the constructed object owned by the caller until `Delete`.
+    /// @throws std::bad_alloc if the underlying page allocation fails.
+    /// @throws Any exception propagated by the selected `T` constructor.
     template<typename... Args>
         requires std::is_constructible_v<T, Args...>
     T* New(Args&&... args) {
@@ -173,7 +167,9 @@ public:
         return new (obj) T(std::forward<Args>(args)...);
     }
 
-    /// Destroys `obj` and returns its storage to the pool free list.
+    /// @brief Destroys an object and returns its storage to the pool.
+    /// @param obj Live object previously returned by this pool.
+    /// @pre `obj` is non-null and has not already been deleted.
     void Delete(T* obj) {
         std::lock_guard<std::mutex> lock(mutex_);
         obj->~T();
@@ -182,8 +178,8 @@ public:
         free_list_ = header;
     }
 
-    /// Releases all chunks owned by this pool.
-    /// Callers must ensure no outstanding objects are used afterwards.
+    /// @brief Releases every chunk owned by the pool.
+    /// @pre No outstanding object is accessed during or after this call.
     void ReleaseMemory() {
         std::lock_guard<std::mutex> lock(mutex_);
         auto* cur = chunk_list_;

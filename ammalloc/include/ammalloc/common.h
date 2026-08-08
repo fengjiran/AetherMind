@@ -1,9 +1,8 @@
-//
-// Created by richard on 2/6/26.
-//
-
 #ifndef AMMALLOC_COMMON_H
 #define AMMALLOC_COMMON_H
+
+/// @file
+/// @brief Low-level address, alignment, CPU, and configuration parsing helpers.
 
 #include "ammalloc/attributes.h"
 #include "ammalloc/config.h"
@@ -15,55 +14,42 @@
 namespace ammalloc {
 namespace detail {
 
-/**
- * @brief Aligns 'size' up to the specified 'align'.
- * @return The smallest multiple of 'align' that is greater than or equal to 'size'.
- */
+/// @brief Rounds a size up to a requested alignment.
+/// @param size Size in bytes. Zero maps to one alignment unit.
+/// @param align Alignment in bytes.
+/// @return Smallest multiple of `align` greater than or equal to `size`.
+/// @pre `align` is greater than zero.
 AM_NODISCARD constexpr size_t AlignUp(size_t size,
                                       size_t align = SystemConfig::ALIGNMENT) noexcept {
     // clang-format off
     if (size == 0) AM_UNLIKELY {
         return align;
     }
-    // Optimization for power-of-two alignments (the most common case)
+    // Power-of-two alignment is the allocator's common path.
     if (std::has_single_bit(align)) AM_LIKELY {
         return (size + align - 1) & ~(align - 1);
     }
     // clang-format on
-    // Fallback for non-power-of-two alignments
     return (size + align - 1) / align * align;
 }
 
-/**
- * @brief Maps a raw memory pointer to its global page index.
- *
- * This function calculates the page number by dividing the memory address
- * by the system page size. It is a critical path component for PageMap
- * and Span lookups.
- *
- * @param ptr The raw pointer to be converted.
- * @return The corresponding page number (address >> shift).
- *
- * @note Performance:
- * - Constant-time O(1) complexity.
- * - Uses `if constexpr` to eliminate division overhead at compile-time.
- * - If PAGE_SIZE is a power of two, this lowers to a single bitwise SHR instruction.
- */
+/// @brief Maps an address to its global page index.
+/// @param ptr Address to convert; null maps to page index zero.
+/// @return Page index containing `ptr`.
+/// @note This hot-path operation is O(1) and uses a shift for power-of-two pages.
 AM_NODISCARD inline size_t PtrToPageId(void* ptr) noexcept {
-    // 1. Cast pointer to integer. Note: This limits 'true' constexpr usage
-    // but enables massive runtime inlining optimizations.
     const auto addr = reinterpret_cast<uintptr_t>(ptr);
-    // 2. Static dispatch for page size alignment.
     if constexpr (std::has_single_bit(SystemConfig::PAGE_SIZE)) {
-        // Optimization: Address / 2^n -> Address >> n
         constexpr size_t shift = std::countr_zero(SystemConfig::PAGE_SIZE);
         return addr >> shift;
     } else {
-        // Fallback for non-standard page sizes.
         return addr / SystemConfig::PAGE_SIZE;
     }
 }
 
+/// @brief Converts a global page index to its page-base address.
+/// @param page_idx Page index to convert.
+/// @return Address at the beginning of the page.
 AM_NODISCARD inline void* PageIDToPtr(size_t page_idx) noexcept {
     if constexpr (std::has_single_bit(SystemConfig::PAGE_SIZE)) {
         constexpr size_t shift = std::countr_zero(SystemConfig::PAGE_SIZE);
@@ -73,44 +59,29 @@ AM_NODISCARD inline void* PageIDToPtr(size_t page_idx) noexcept {
     }
 }
 
+/// @brief Issues an architecture-appropriate pause hint while spinning.
 inline void CPUPause() noexcept {
 #if defined(__x86_64__) || defined(_M_X64)
-    // x86 环境：_mm_pause 是最稳妥的，由编译器映射为 PAUSE 指令
     _mm_pause();
 #elif defined(__aarch64__) || defined(_M_ARM64)
-    // ARM 环境：使用 ISB 或 YIELD
     __asm__ volatile("yield" ::: "memory");
 #else
-    // 其他架构：简单的空操作，防止编译器把循环优化掉
+    // Preserve a compiler-visible wait point on unsupported architectures.
     std::atomic_signal_fence(std::memory_order_seq_cst);
 #endif
 }
 
-/**
- * @brief 解析带单位的内存大小字符串
- *
- * 支持格式示例：
- * - "1024"      -> 1024
- * - "64KB"      -> 64 * 1024
- * - "16 M"      -> 16 * 1024 * 1024 (允许空格)
- * - "1gb"       -> 1 * 1024 * 1024 * 1024 (忽略大小写)
- *
- * @param str 环境变量字符串
- * @return size_t 解析后的字节数。解析失败返回 0。
- */
+/// @brief Parses a byte count with an optional binary unit suffix.
+/// @param str Null-terminated value such as `1024`, `64KB`, or `16 M`.
+/// @return Parsed byte count, zero for null or non-numeric input, or
+///         `SIZE_MAX` when applying the suffix would overflow.
+/// @note Unit matching is case-insensitive and recognizes B, K, M, G, and T.
 size_t ParseSize(const char* str);
 
-/**
- * @brief 解析环境变量中的布尔值
- *
- * 支持的 Truthy 值 (不区分大小写，忽略首尾空格):
- * - "1"
- * - "true"
- * - "on"
- * - "yes"
- *
- * 其他所有值均返回 false。
- */
+/// @brief Parses a case-insensitive Boolean configuration value.
+/// @param str Null-terminated value to parse.
+/// @return True for `1`, `true`, `on`, or `yes` after trimming whitespace;
+///         false for null and all other values.
 bool ParseBool(const char* str);
 
 }// namespace detail

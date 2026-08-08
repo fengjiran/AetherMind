@@ -1,9 +1,8 @@
-//
-// Created by richard on 3/2/26.
-//
-
 #ifndef AMMALLOC_PAGE_HEAP_SCAVENGER_H
 #define AMMALLOC_PAGE_HEAP_SCAVENGER_H
+
+/// @file
+/// @brief Background reclamation of physical pages from idle PageCache spans.
 
 #include <condition_variable>
 #include <stop_token>
@@ -11,8 +10,15 @@
 
 namespace ammalloc {
 
+/// @brief Runs periodic `MADV_DONTNEED` reclamation for idle free spans.
+///
+/// The singleton owns one `std::jthread`. Each pass temporarily removes an idle
+/// span under its PageCache shard lock, performs `madvise` without that lock,
+/// and then returns the span to its owner shard.
 class PageHeapScavenger {
 public:
+    /// @brief Returns the process-wide scavenger instance.
+    /// @return Reference to the singleton stored without allocator recursion.
     static PageHeapScavenger& GetInstance() {
         alignas(alignof(PageHeapScavenger)) static char storage[sizeof(PageHeapScavenger)];
         static PageHeapScavenger* instance = new (storage) PageHeapScavenger();
@@ -22,7 +28,13 @@ public:
     PageHeapScavenger(const PageHeapScavenger&) = delete;
     PageHeapScavenger& operator=(const PageHeapScavenger&) = delete;
 
+    /// @brief Starts the background thread if it is not already running.
+    /// @throws std::system_error if the operating system cannot create the thread.
+    /// @note Calls to `Start` and `Stop` must be externally serialized.
     void Start();
+
+    /// @brief Requests shutdown and joins the background thread.
+    /// @note Calls to `Start` and `Stop` must be externally serialized.
     void Stop();
 
 private:
@@ -35,9 +47,9 @@ private:
     std::condition_variable_any cv_;
     std::mutex mutex_;
 
-    // Clean-up interval
+    /// Delay between scavenging passes.
     static constexpr uint64_t kScavengeIntervalMs = 1000;
-    // Idle threshold
+    /// Minimum idle time before a committed free span is reclaimed.
     static constexpr uint64_t kIdleThresholdMs = 10000;
 };
 

@@ -1,26 +1,12 @@
-//
-// ammalloc/size_class.h
-//
-// Size Class grading system.
-//
-// Responsible for mapping arbitrary memory requests to fixed-size buckets,
-// controlling internal fragmentation to ~12.5%-25% depending on kStepShift.
-// Uses TCMalloc-style size classing:
-//   - Small objects: Table lookup O(1)
-//   - Large objects: Bitwise operations O(1)
-//
-// Primary exports:
-//   - SizeClass::Index() - Size -> Index
-//   - SizeClass::Size() - Index -> Size
-//   - SizeClass::RoundUp() - Round up to bucket size
-//
-// Thread Safety: All methods are pure functions, thread-safe.
-// ABI Stability: Bucket sizes and counts are compile-time constants,
-//                do not affect ABI.
-//
-
 #ifndef AMMALLOC_SIZE_CLASS_H
 #define AMMALLOC_SIZE_CLASS_H
+
+/// @file
+/// @brief Constant-time mapping between allocation sizes and fixed-size buckets.
+///
+/// Small sizes use compile-time lookup tables; larger ThreadCache sizes use a
+/// fixed number of bit operations. The class contains no mutable runtime state
+/// and is safe for concurrent use.
 
 #include "ammalloc/assert.h"
 #include "ammalloc/config.h"
@@ -49,11 +35,7 @@ static constexpr size_t CalculateIndex(size_t original_size) noexcept {
     }
     // clang-format on
 
-    // Stepped Mapping for objects > 128B:
-    // 1. msb: Find the power of 2 group (e.g., 129-256B falls into the 2^7 group).
-    // 2. group_idx: Normalize msb so that the first group starts at index 0.
-    // 3. base_idx: Calculate the starting index of the group.
-    // 4. group_offset: Subdivide each power-of-2 group into 2^kStepShift steps.
+    // Subdivide each power-of-two interval into `kStepsPerGroup` buckets.
     int msb = std::bit_width(original_size - 1) - 1;
     int group_idx = msb - 7;
     size_t base_idx = 16 + (group_idx << SizeConfig::kStepShift);
@@ -64,23 +46,19 @@ static constexpr size_t CalculateIndex(size_t original_size) noexcept {
 }
 
 static constexpr size_t CalculateSize(size_t idx) noexcept {
-    // Fast path for small objects (0-128 bytes): Maps index 0..15 back to 8..128
+    // Indices 0..15 map directly to the 8-byte ladder through 128 bytes.
     // clang-format off
     if (idx < 16) AM_LIKELY {
         return (idx + 1) << 3;
     }
     // clang-format on
 
-    // Decoding logarithmic stepped index
     size_t relative_idx = idx - 16;
-    // Identify the binary group (2^7, 2^8, ...) and the step within it
     size_t group_idx = relative_idx >> SizeConfig::kStepShift;
     size_t step_idx = relative_idx & (SizeConfig::kStepsPerGroup - 1);
-    // Reconstruct size components using 64-bit safe shifts
     size_t msb = group_idx + 7;
     size_t base_size = 1ULL << msb;
     size_t step_size = 1ULL << (msb - SizeConfig::kStepShift);
-    // Return the upper bound of the current size class ladder
     return base_size + (step_idx + 1) * step_size;
 }
 
@@ -108,20 +86,17 @@ static_assert(detail::CalculateIndex(128) == 15);
 static_assert(detail::CalculateIndex(129) == 16);// Falls into 160-byte bucket
 static_assert(detail::CalculateIndex(160) == 16);
 
-/// Static utility class for managing size classes and alignment policies.
+/// @brief Maps request sizes to bucket geometry and batch-transfer policies.
 ///
-/// This class encapsulates all logic related to:
-/// 1. Mapping user requested sizes to specific bucket indices (Size Classes).
-/// 2. Determining the alignment/capacity of specific buckets.
-/// 3. Calculating batch movement strategies between different layers of the memory pool.
-///
-/// The alignment strategy follows the Google TCMalloc algorithm:
+/// The size ladder follows a TCMalloc-style stepped strategy:
 /// - [1, 128] bytes: 8-byte alignment.
-/// - [129, ...] bytes: Exponentially increasing alignment granularity to keep
-///   internal fragmentation low (~12.5%-25% depending on kStepShift).
+/// - [129, MAX_TC_SIZE] bytes: four buckets per power-of-two interval.
+///
+/// Batch and page-transfer results are also indexed by size class so requests
+/// in the same bucket share one policy. All tables are generated at compile time.
 class SizeClass {
 public:
-    /// Maps a requested memory size to its corresponding size class index.
+    /// @brief Maps a requested size to its size-class index.
     ///
     /// This function implements a hybrid mapping strategy to balance memory overhead
     /// and lookup speed:
@@ -135,8 +110,9 @@ public:
     /// - `Index(0)` returns 0 (maps to the minimum 8-byte size class).
     /// - This design allows mapping interfaces (Index, RoundUp) to handle size=0 gracefully,
     ///   while strategy interfaces (CalculateBatchSize, GetMovePageNum) treat 0 as invalid input.
-    /// - Rationale: `am_malloc(0)` must return a valid pointer (C standard), so the mapping
-    ///   layer accommodates it; batch/page calculations don't make sense for zero-sized objects.
+    /// - ammalloc intentionally serves `am_malloc(0)` from its minimum size class;
+    ///   this is a project policy rather than a requirement that every allocator
+    ///   return non-null for a zero-size request.
     ///
     /// @param original_size The requested allocation size in bytes.
     /// @return The zero-based index of the size class, or std::numeric_limits<size_t>::max()
@@ -162,14 +138,14 @@ public:
         return detail::CalculateIndex(original_size);
     }
 
-    /// Reconstructs the bucket size for a given size class index.
+    /// @brief Returns the object size represented by a size-class index.
     ///
     /// This function decodes the logical index back into the actual byte size
     /// of the memory block. It satisfies:
     /// - `Index(Size(idx)) == idx` for all valid indices
     /// - `Size(Index(s)) >= s` for all valid sizes (not strict equality)
     ///
-    /// Thus Size is a left-inverse of Index, but not a strict bijection
+    /// Thus Size is a right-inverse of Index, but not a strict bijection
     /// because Index maps multiple sizes to the same class (e.g., 129→16, 160→16).
     ///
     /// ### Mathematical Inverse Model
@@ -191,13 +167,12 @@ public:
     ///
     /// @param idx The size class index to be decoded.
     /// @return The maximum byte size of the objects stored in this size class's FreeList.
+    /// @pre `idx < kNumSizeClasses`.
     AM_ALWAYS_INLINE static constexpr size_t Size(size_t idx) noexcept {
-        // O(1) table lookup for all size classes
-        // Caller must ensure idx < kNumSizeClasses
         return size_table_[idx];
     }
 
-    /// Debug/assertion version of Size() with bounds checking.
+    /// @brief Returns a bucket size after enforcing index bounds.
     ///
     /// This is a debugging/contract checking interface. If idx is out of range,
     /// it triggers AMMALLOC_CHECK(false) which aborts the process. The returned 0
@@ -215,7 +190,7 @@ public:
         return size_table_[idx];
     }
 
-    /// Rounds up the requested size to the nearest size class boundary.
+    /// @brief Rounds a request up to its size-class boundary.
     ///
     /// Behavior:
     /// - For `size <= MAX_TC_SIZE`: Returns the smallest size class >= size.
@@ -238,11 +213,7 @@ public:
         return size_table_[idx];
     }
 
-    // -----------------------------------------------------------------------
-    // Batch Movement Strategies
-    // -----------------------------------------------------------------------
-
-    /// Calculates the batch size for moving objects between ThreadCache and CentralCache.
+    /// @brief Calculates the batch size for ThreadCache/CentralCache transfers.
     ///
     /// This strategy balances lock contention and memory usage.
     /// The policy is defined per size class, not per raw request size: requests
@@ -263,7 +234,7 @@ public:
         return BatchByIndex(Index(aligned_size));
     }
 
-    /// Calculates the number of pages CentralCache should request from PageCache.
+    /// @brief Calculates the Span page count used to refill a size class.
     ///
     /// This strategy determines the size of the Span (in pages) allocated by CentralCache.
     /// The policy is defined per size class, not per raw request size: requests
@@ -281,10 +252,10 @@ public:
 
     SizeClass() = delete;
 
-    /// The total number of size classes (buckets) available.
-    /// Calculated at compile-time to size the arrays in ThreadCache/CentralCache.
+    /// Number of size classes used to size ThreadCache and CentralCache arrays.
     static constexpr size_t kNumSizeClasses = detail::CalculateIndex(SizeConfig::MAX_TC_SIZE) + 1;
 
+    /// Maximum object count transferred in one batch.
     static constexpr size_t kMaxBatchSize = 512;
 
 private:
@@ -296,12 +267,7 @@ private:
         return move_page_table_[idx];
     }
 
-    // -----------------------------------------------------------------------
-    // Compile-time Lookup Tables (IILE)
-    // -----------------------------------------------------------------------
-
-    // Table for O(1) Index lookup (Size -> Index)
-    // Only covers small objects up to kSmallSizeThreshold
+    // Small-size lookup table avoids bit arithmetic on the hottest size range.
     static constexpr auto small_index_table_ = []() consteval {
         std::array<uint8_t, SizeConfig::kSmallSizeThreshold + 1> small_index_table{};
         for (size_t sz = 0; sz <= SizeConfig::kSmallSizeThreshold; ++sz) {
@@ -310,8 +276,7 @@ private:
         return small_index_table;
     }();
 
-    // Table for O(1) Size lookup (Index -> Size)
-    // Covers ALL indices
+    // Full inverse table keeps every Index-to-Size lookup constant-time.
     static constexpr auto size_table_ = []() consteval {
         std::array<uint32_t, kNumSizeClasses> size_table{};
         for (size_t idx = 0; idx < kNumSizeClasses; ++idx) {
@@ -363,7 +328,6 @@ static_assert(SizeClass::Size(15) == 128);
 static_assert(SizeClass::Size(16) == 160);
 static_assert(SizeClass::Size(19) == 256);
 static_assert(SizeClass::Size(20) == 320);
-// Round-trip check
 static_assert(SizeClass::Index(SizeClass::Size(20)) == 20);
 static_assert(SizeClass::Index(129) == 16);
 static_assert(SizeClass::Index(150) == 16);
@@ -379,38 +343,28 @@ static_assert(std::has_single_bit(SizeConfig::MAX_TC_SIZE),
               "MAX_TC_SIZE must be a power of two to ensure it lands on a size class boundary");
 static_assert(SizeClass::Size(SizeClass::kNumSizeClasses - 1) == SizeConfig::MAX_TC_SIZE);
 
-// ===========================================================================
-// Compile-time validation for SizeClass invariants
-// Uses sampling strategy to avoid constexpr step limit (32K iterations exceeds limit)
-// ===========================================================================
+// Sample class boundaries because validating all 32K sizes exceeds common
+// compiler constexpr step limits.
 
 namespace detail {
 
-// Sample key boundaries: each size class boundary + 1
 consteval bool ValidateIndexInRangeSampled() {
     for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
         size_t class_size = SizeClass::Size(idx);
-        // Test the class boundary and the value just before it
         if (idx > 0) {
             size_t prev_class = SizeClass::Size(idx - 1);
-            // Value at previous class boundary
             if (SizeClass::Index(prev_class) != idx - 1) return false;
-            // Value just inside this class
             if (SizeClass::Index(prev_class + 1) != idx) return false;
         }
-        // Value at this class boundary
         if (SizeClass::Index(class_size) != idx) return false;
     }
     return true;
 }
 
 consteval bool ValidateSizeNotLessThanInputSampled() {
-    // Test at each class boundary
     for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
         size_t class_size = SizeClass::Size(idx);
-        // At boundary: Size(Index(s)) == s
         if (SizeClass::Size(SizeClass::Index(class_size)) != class_size) return false;
-        // Just inside class: Size(Index(s)) > s
         if (idx > 0) {
             size_t prev_class = SizeClass::Size(idx - 1);
             size_t mid = (prev_class + class_size) / 2;
@@ -423,7 +377,6 @@ consteval bool ValidateSizeNotLessThanInputSampled() {
 consteval bool ValidateIndexIdempotentSampled() {
     for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
         size_t class_size = SizeClass::Size(idx);
-        // Index(Size(Index(s))) == Index(s) at boundaries
         if (SizeClass::Index(SizeClass::Size(SizeClass::Index(class_size))) != SizeClass::Index(class_size)) {
             return false;
         }
@@ -431,7 +384,6 @@ consteval bool ValidateIndexIdempotentSampled() {
     return true;
 }
 
-// Full validation: only 48 indices, fits within constexpr limit
 consteval bool ValidateSizeMonotonic() {
     for (size_t idx = 1; idx < SizeClass::kNumSizeClasses; ++idx) {
         if (SizeClass::Size(idx) <= SizeClass::Size(idx - 1)) return false;
@@ -440,7 +392,6 @@ consteval bool ValidateSizeMonotonic() {
 }
 
 consteval bool ValidateRoundUpMonotonicSampled() {
-    // Test at each class boundary
     size_t prev = SizeClass::RoundUp(1);
     for (size_t idx = 0; idx < SizeClass::kNumSizeClasses; ++idx) {
         size_t class_size = SizeClass::Size(idx);

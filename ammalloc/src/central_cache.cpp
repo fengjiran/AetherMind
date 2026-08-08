@@ -1,6 +1,3 @@
-//
-// Created by richard on 2/17/26.
-//
 #include "ammalloc/central_cache.h"
 #include "ammalloc/assert.h"
 #include "ammalloc/page_cache.h"
@@ -17,7 +14,7 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t a
     void* local_ptrs[SizeClass::kMaxBatchSize];
     size_t fetched = 0;
 
-    // 1. Fast Path: Extract from TransferCache (SpinLock)
+    // Probe the O(1) TransferCache before taking the SpanList mutex.
     bucket.transfer_cache_lock.lock();
     size_t grab_count = std::min(batch_num, bucket.transfer_cache_count);
     for (size_t i = 0; i < grab_count; ++i) {
@@ -31,7 +28,6 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t a
     for (size_t i = fetched; i > 0; --i) {
         void* obj = local_ptrs[i - 1];
         auto* node = static_cast<FreeBlock*>(obj);
-        // Build a temporary linked list (LIFO / Head Insert)
         if (!head) {
             tail = obj;
         }
@@ -39,43 +35,37 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t a
         head = node;
     }
 
-    // 2. Slow Path: Extract from SpanList (Mutex + Bitmap Operations) + Prefetching
     if (fetched < batch_num) {
         size_t need_for_thread = batch_num - fetched;
-        // 【核心】：预取目标，额外多拿一整个 batch 放进 TransferCache 中备用
-        // 这样下个线程来就能直接命中 Fast Path
-        // TODO: Future Optimization - Dynamically adjust prefetch_target based on TransferCache's remaining capacity
-        // e.g., prefetch_target = std::min(batch_num, bucket.transfer_cache_capacity - bucket.transfer_cache_count);
+        // Prefetch one additional batch to amortize the SpanList lock for the
+        // next requester.
+        // TODO(ammalloc): Bound prefetching by the observed TransferCache capacity.
         size_t prefetch_target = batch_num;
         size_t total_to_extract = need_for_thread + prefetch_target;
-        // 用于暂存预取指针的栈数组
         void* prefetch_ptrs[SizeClass::kMaxBatchSize];
         size_t actual_prefetched = 0;
         size_t total_extracted = 0;
 
         std::unique_lock<std::mutex> lock(bucket.span_list_lock);
         while (total_extracted < total_to_extract) {
-            // Refill SpanList if empty or current head span is fully utilized.
             if (bucket.span_list.empty() ||
                 bucket.span_list.begin()->use_count >= bucket.span_list.begin()->capacity) {
                 if (!GetOneSpan(bucket, aligned_size, lock)) {
-                    break;// OOM
+                    break;
                 }
             }
 
             auto* span = bucket.span_list.begin();
             while (total_extracted < total_to_extract) {
-                void* obj = span->AllocObject();// Heavy bitmap scanning
+                void* obj = span->AllocObject();
                 if (!obj) {
-                    // Span is full. Move it to the back (LRU strategy).
+                    // Keep full Spans behind candidates that still have free bits.
                     bucket.span_list.erase(span);
                     bucket.span_list.push_back(span);
                     break;
                 }
 
-                // dispatch
                 if (total_extracted < need_for_thread) {
-                    // 前半部分：直接交给请求的线程
                     auto* node = static_cast<FreeBlock*>(obj);
                     if (!head) {
                         tail = obj;
@@ -84,46 +74,39 @@ size_t CentralCache::FetchRange(FreeList& block_list, size_t batch_num, size_t a
                     head = node;
                     ++fetched;
                 } else {
-                    // 后半部分：暂存起来，准备塞入 TransferCache
                     prefetch_ptrs[actual_prefetched++] = obj;
                 }
                 ++total_extracted;
             }
         }
-        // 【关键】释放重量级 Mutex
+        // Publish prefetched pointers only after leaving the Span bitmap lock domain.
         lock.unlock();
 
-        // 3. 将预取的对象推入 TransferCache
         if (actual_prefetched > 0) {
             size_t successfully_pushed = 0;
             bucket.transfer_cache_lock.lock();
-            // 只要 TransferCache 还有空间，就塞进去
             while (successfully_pushed < actual_prefetched &&
                    bucket.transfer_cache_count < bucket.transfer_cache_capacity) {
                 bucket.transfer_cache[bucket.transfer_cache_count++] = prefetch_ptrs[successfully_pushed++];
             }
             bucket.transfer_cache_lock.unlock();
 
-            // 4. 并发极端情况兜底 (Fallback)
-            // 如果在我们拿 Mutex 期间，有别的线程把 TransferCache 还满了
-            // 导致我们预取的指针没塞完，需要把多余的安全退回去
+            // Another thread may fill TransferCache while this thread scans
+            // SpanList. Return any excess through the normal ownership path.
             if (successfully_pushed < actual_prefetched) {
                 void* leftover_head = nullptr;
 
-                // 串成链表
                 for (size_t i = successfully_pushed; i < actual_prefetched; ++i) {
                     auto* node = static_cast<FreeBlock*>(prefetch_ptrs[i]);
                     node->next = static_cast<FreeBlock*>(leftover_head);
                     leftover_head = prefetch_ptrs[i];
                 }
 
-                // 复用成熟的还款逻辑，它会处理好一切
                 ReleaseListToSpans(leftover_head, aligned_size);
             }
         }
     }
 
-    // 5. Deliver the constructed list to ThreadCache
     if (fetched > 0) {
         block_list.push_range(head, tail, fetched);
     }
@@ -143,7 +126,7 @@ void CentralCache::ReleaseListToSpans(void* start, size_t aligned_size) {
             cur = static_cast<FreeBlock*>(cur)->next;
         }
 
-        // 1. Fast Path: Push into TransferCache (SpinLock)
+        // Absorb the batch without touching Span metadata when capacity permits.
         size_t pushed = 0;
         bucket.transfer_cache_lock.lock();
         while (pushed < local_count && bucket.transfer_cache_count < bucket.transfer_cache_capacity) {
@@ -151,48 +134,38 @@ void CentralCache::ReleaseListToSpans(void* start, size_t aligned_size) {
         }
         bucket.transfer_cache_lock.unlock();
 
-        // 2. Slow Path: Return to SpanList (Mutex + PageMap Lookups)
         if (pushed < local_count) {
             std::unique_lock<std::mutex> lock(bucket.span_list_lock);
             for (size_t i = pushed; i < local_count; ++i) {
                 void* obj = local_ptrs[i];
-                // Heavy operations: Radix Tree lookup and Bitmap modification
                 auto* span = PageMap::GetSpan(obj);
                 if (!span) {
                     continue;
                 }
 
                 span->FreeObject(obj);
-                // If a full span becomes non-full, move it to the front.
-                // This allows FetchRange to immediately find this available slot.
+                // Make a newly non-full Span the next allocation candidate.
                 if (span->use_count == span->capacity - 1) {
                     bucket.span_list.erase(span);
                     bucket.span_list.push_front(span);
                 }
 
-                // If the span becomes completely empty, return it to PageCache for coalescing.
                 if (span->use_count == 0) {
                     bucket.span_list.erase(span);
-                    // CRITICAL: Unlock bucket lock before calling PageCache to avoid deadlocks.
-                    // Lock Order: PageCache_Lock > Bucket_Lock (if held together).
-                    // Here we break the hold.
+                    // Never enter PageCache while holding a CentralCache bucket
+                    // mutex; doing so would invert the allocator lock order.
                     lock.unlock();
                     PageCache::GetInstance().ReleaseSpan(span);
-                    // Re-acquire lock to continue processing the list.
                     lock.lock();
                 }
             }
         }
-
-    }// end while(cur)
+    }
 }
 
 void CentralCache::Reset() noexcept {
     for (size_t i = 0; i < kNumSizeClasses; ++i) {
         auto& bucket = buckets_[i];
-        // ===================================================================
-        // 1. 清空 TransferCache (Fast Path 缓存)
-        // ===================================================================
         void* head = nullptr;
         bucket.transfer_cache_lock.lock();
         for (size_t j = 0; j < bucket.transfer_cache_count; ++j) {
@@ -203,14 +176,11 @@ void CentralCache::Reset() noexcept {
         bucket.transfer_cache_count = 0;
         bucket.transfer_cache_lock.unlock();
 
-        // ===================================================================
-        // 2. 将对象还给 Span，并清空 SpanList
-        // ===================================================================
         Span* span_list_head = nullptr;
         {
             std::lock_guard<std::mutex> lock(bucket.span_list_lock);
 
-            // A. 恢复 Span 的使用计数 (将刚才从 TransferCache 拿出的对象还回去)
+            // Restore bitmap ownership for every object detached from TransferCache.
             void* cur = head;
             while (cur) {
                 void* next = static_cast<FreeBlock*>(cur)->next;
@@ -220,18 +190,15 @@ void CentralCache::Reset() noexcept {
                 cur = next;
             }
 
-            // B. 掏空 SpanList
             while (!bucket.span_list.empty()) {
                 auto* span = bucket.span_list.pop_front();
-                // 利用 Span 自身的 next 指针串成临时链表，避免使用 std::vector
+                // Reuse intrusive links so reset cannot recurse through an STL allocation.
                 span->next = span_list_head;
                 span_list_head = span;
             }
-        }// 解锁 span_lock
+        }
 
-        // ===================================================================
-        // 3. 将所有 Span 归还给 PageCache
-        // ===================================================================
+        // Release bucket locking before entering PageCache.
         while (span_list_head) {
             auto* next_span = span_list_head->next;
             PageCache::GetInstance().ReleaseSpan(span_list_head);
@@ -239,12 +206,8 @@ void CentralCache::Reset() noexcept {
         }
     }
 
-    // ===================================================================
-    // 4. 彻底释放 TransferCache 占用的底层物理内存
-    // ===================================================================
-    // buckets_[0].tc_objects 指向的是 InitTransferCaches 时申请的连续大块内存的起始位置
+    // Bucket zero retains the base of the one contiguous TransferCache mapping.
     if (buckets_[0].transfer_cache) {
-        // 重新计算当时申请的页数
         size_t total_ptrs = 0;
         for (size_t i = 0; i < kNumSizeClasses; ++i) {
             size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));
@@ -254,7 +217,7 @@ void CentralCache::Reset() noexcept {
         size_t page_num = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
         PageAllocator::SystemFree(buckets_[0].transfer_cache, page_num);
 
-        // 重置所有桶的指针，防止 UAF
+        // Invalidate every borrowed slice after releasing the shared mapping.
         for (size_t i = 0; i < kNumSizeClasses; ++i) {
             auto& bucket = buckets_[i];
             bucket.transfer_cache = nullptr;
@@ -265,16 +228,13 @@ void CentralCache::Reset() noexcept {
 }
 
 void CentralCache::InitTransferCache() {
-    // 1. Calculate the total number of pointers needed across all buckets.
     size_t total_ptrs = 0;
     for (size_t i = 0; i < kNumSizeClasses; ++i) {
         size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));
-        // Strategy: TransferCache capacity is 8x the batch size to provide a high-water mark buffer.
         total_ptrs += kCapScale * batch_num;
     }
 
-    // 2. Request a single, large contiguous block from the system allocator.
-    // This avoids calling am_malloc during initialization (preventing infinite recursion).
+    // One PageAllocator mapping avoids recursive am_malloc entry and per-bucket VMAs.
     size_t total_bytes = total_ptrs * sizeof(void*);
     size_t page_num = (total_bytes + SystemConfig::PAGE_SIZE - 1) >> SystemConfig::PAGE_SHIFT;
     void* p = PageAllocator::SystemAlloc(page_num);
@@ -283,7 +243,6 @@ void CentralCache::InitTransferCache() {
         std::abort();
     }
 
-    // 3. Partition the allocated memory among the buckets.
     auto** cur_ptr = static_cast<void**>(p);
     for (size_t i = 0; i < kNumSizeClasses; ++i) {
         size_t batch_num = SizeClass::CalculateBatchSize(SizeClass::Size(i));

@@ -1,46 +1,44 @@
 #ifndef AMMALLOC_SPAN_H
 #define AMMALLOC_SPAN_H
 
+/// @file
+/// @brief Span metadata, bitmap allocation, and intrusive Span lists.
+
 #include "ammalloc/assert.h"
 #include "ammalloc/common.h"
 #include "ammalloc/config.h"
 
 namespace ammalloc {
 
-/// Continuous page range metadata for ammalloc.
+/// @brief Describes one contiguous page range and its object-allocation state.
 ///
-/// A Span represents a contiguous range of system pages allocated from the OS.
-/// It is used by PageCache for coarse-grained memory management and by
-/// CentralCache for fine-grained object allocation.
-///
-/// Memory layout is cache-line aligned (64B) to prevent false sharing
-/// between threads accessing different fields.
-///
-/// Thread-safety: Individual fields are not thread-safe. Concurrent access
-/// must be protected by the appropriate cache lock (PageCache::mutex_ or
-/// CentralCache bucket locks).
+/// PageCache owns Span metadata and uses it for page-level splitting and
+/// coalescing. CentralCache borrows active Spans and uses the in-page bitmap for
+/// object allocation. The structure occupies one cache line. Fields are not
+/// atomic; callers must hold the owning PageCache shard lock or CentralCache
+/// bucket lock required by the current state.
 struct alignas(SystemConfig::CACHE_LINE_SIZE) Span {
     // Intrusive linked list pointers for PageCache/SpanList.
     Span* next{nullptr};
     Span* prev{nullptr};
 
     // Page-level addressing info.
-    uint64_t start_page_idx{0};// Supports sentinel values (e.g., max)
+    uint64_t start_page_idx{0};
     uint32_t page_num{0};
 
     // Packed status flags. Use IsUsed/SetUsed/IsCommitted/SetCommitted.
     uint16_t flags{0};
-    uint16_t size_class_idx{0};// Index into CentralCache bucket array
+    uint16_t size_class_idx{0};// Index into the CentralCache bucket array.
 
     // Object allocation metadata (valid when used by CentralCache).
     uint32_t aligned_obj_size{0};
-    uint32_t capacity{0};   // Maximum objects storable in this span
-    uint32_t use_count{0};  // Currently allocated objects
-    uint32_t scan_cursor{0};// Bitmap search optimization
+    uint32_t capacity{0};   // Maximum objects stored in this Span.
+    uint32_t use_count{0};  // Objects currently allocated from this Span.
+    uint32_t scan_cursor{0};// First bitmap word that may contain a free bit.
 
     // Calculated data offset (avoids storing full pointer).
-    uint32_t obj_offset{0};    // Offset from page base to first object
-    uint32_t owner_shard_id{0};// Cache line alignment
+    uint32_t obj_offset{0};    // Offset from the page base to the first object.
+    uint32_t owner_shard_id{0};// PageCache shard that owns this metadata.
 
     // Cold data: used by background scavenger thread.
     uint64_t last_used_time_ms{0};
@@ -54,65 +52,81 @@ struct alignas(SystemConfig::CACHE_LINE_SIZE) Span {
     Span(uint64_t start_page_idx_, uint32_t page_num_) noexcept
         : start_page_idx(start_page_idx_), page_num(page_num_) {}
 
+    /// @brief Reports whether the Span is assigned to an active allocation path.
+    /// @return True when the used flag is set.
     AM_NODISCARD AM_ALWAYS_INLINE bool IsUsed() const noexcept {
         return flags & kUsedMask;
     }
 
+    /// @brief Reports whether the virtual range has committed physical backing.
+    /// @return True when the committed flag is set.
     AM_NODISCARD AM_ALWAYS_INLINE bool IsCommitted() const noexcept {
         return flags & kCommittedMask;
     }
 
+    /// @brief Updates the used flag.
+    /// @param used New flag value.
     AM_ALWAYS_INLINE void SetUsed(bool used) noexcept {
         flags = (flags & ~kUsedMask) | (used ? kUsedMask : 0);
     }
 
+    /// @brief Updates the committed flag.
+    /// @param committed New flag value.
     AM_ALWAYS_INLINE void SetCommitted(bool committed) noexcept {
         flags = (flags & ~kCommittedMask) | (committed ? kCommittedMask : 0);
     }
 
-    // Bitmap and data address are calculated from page base to save space.
+    // Derive bitmap and data addresses to keep Span within one cache line.
+    /// @brief Returns the base address of the represented page range.
+    /// @return Page-aligned base address.
     AM_NODISCARD AM_ALWAYS_INLINE void* GetPageBaseAddr() const noexcept {
         return reinterpret_cast<void*>(start_page_idx << SystemConfig::PAGE_SHIFT);
     }
 
+    /// @brief Returns the bitmap stored at the beginning of the page range.
+    /// @return Pointer to the first bitmap word.
     AM_NODISCARD AM_ALWAYS_INLINE uint64_t* GetBitmap() const noexcept {
         return static_cast<uint64_t*>(GetPageBaseAddr());
     }
 
+    /// @brief Returns the number of bitmap words required by `capacity` objects.
+    /// @return Bitmap length in 64-bit words.
     AM_NODISCARD AM_ALWAYS_INLINE size_t GetBitmapNum() const noexcept {
         return (capacity + 63) >> 6;
     }
 
+    /// @brief Returns the first object slot after bitmap and alignment padding.
+    /// @return Pointer to the object-data region.
     AM_NODISCARD AM_ALWAYS_INLINE void* GetDataBasePtr() const noexcept {
         return static_cast<char*>(GetPageBaseAddr()) + obj_offset;
     }
 
-    /// Initialize span for object allocation with the given size.
+    /// @brief Initializes bitmap and size-class metadata for object allocation.
+    /// @param aligned_object_size Valid size-class-aligned object size.
+    /// @pre The Span is exclusively owned by the calling CentralCache bucket.
     void Init(size_t aligned_object_size);
 
-    /// Allocate an object from this span.
-    /// @return nullptr if span is full.
+    /// @brief Allocates one object by clearing a free bitmap bit.
+    /// @return Object pointer, or null when the Span is full.
+    /// @pre The corresponding CentralCache bucket lock is held.
     void* AllocObject();
 
-    /// Release an object back to this span.
-    /// @pre Must be called with the CentralCache bucket lock held.
+    /// @brief Returns one object to the Span bitmap.
+    /// @param ptr Object slot previously allocated from this Span.
+    /// @pre The corresponding CentralCache bucket lock is held.
     void FreeObject(void* ptr);
 };
 static_assert(sizeof(Span) == SystemConfig::CACHE_LINE_SIZE, "Span must be exactly 64 bytes");
 static_assert(alignof(Span) == SystemConfig::CACHE_LINE_SIZE, "Span alignment mismatch");
 
-/// Intrusive doubly linked list of Spans using a circular sentinel.
+/// @brief Maintains an allocation-free doubly linked list with a circular sentinel.
 ///
-/// Thread-safety: Not thread-safe. External synchronization required.
-/// CentralCache uses SpanList with its own bucket lock.
-///
-/// Design notes:
-/// - Circular sentinel eliminates null checks in insert/erase
-/// - Cache-line aligned to prevent false sharing with adjacent data
-/// - Lifetime managed by PageCache (erase does not delete)
+/// SpanList never owns or deletes Span metadata. PageCache owns each node, and
+/// callers provide the shard or bucket lock appropriate to the list. The inline
+/// sentinel removes null branches from insertion and removal.
 class alignas(SystemConfig::CACHE_LINE_SIZE) SpanList {
 public:
-    /// Creates empty list with circular sentinel.
+    /// @brief Constructs an empty circular list.
     SpanList() noexcept {
         head_.next = &head_;
         head_.prev = &head_;
@@ -121,13 +135,21 @@ public:
     SpanList(const SpanList&) = delete;
     SpanList& operator=(const SpanList&) = delete;
 
+    /// @brief Returns the first node.
+    /// @return First Span, or `end()` when empty.
     AM_NODISCARD Span* begin() noexcept { return head_.next; }
+    /// @brief Returns the circular sentinel.
+    /// @return End sentinel; it is not an allocatable Span.
     AM_NODISCARD Span* end() noexcept { return &head_; }
+    /// @brief Reports whether the list has no nodes.
+    /// @return True when `begin() == end()`.
     AM_NODISCARD bool empty() const noexcept { return head_.next == &head_; }
 
-    /// Inserts span before pos.
-    /// @pre Caller must hold the bucket lock.
-    /// @pre pos != nullptr, span != nullptr
+    /// @brief Inserts a Span immediately before a list position.
+    /// @param pos Existing node or sentinel that follows the insertion point.
+    /// @param span Unlinked Span to insert.
+    /// @pre The lock protecting this list is held.
+    /// @pre `pos` and `span` are non-null, and `span` is not already linked.
     static void insert(Span* pos, Span* span) noexcept {
         AMMALLOC_DCHECK(pos != nullptr && span != nullptr);
         span->next = pos;
@@ -136,15 +158,18 @@ public:
         pos->prev = span;
     }
 
-    /// LIFO insert at front (improves cache locality).
+    /// @brief Inserts a Span at the front of the list.
+    /// @param span Unlinked Span to insert.
     void push_front(Span* span) noexcept { insert(begin(), span); }
 
-    /// LIFO insert at back.
+    /// @brief Inserts a Span at the back of the list.
+    /// @param span Unlinked Span to insert.
     void push_back(Span* span) noexcept { insert(end(), span); }
 
-    /// Removes span from list. Does NOT delete the Span.
-    /// @pre Caller must hold the bucket lock.
-    /// @return Next node in list.
+    /// @brief Unlinks a Span without destroying its metadata.
+    /// @param span Linked Span to remove.
+    /// @return Node following the removed Span, possibly `end()`.
+    /// @pre The lock protecting this list is held.
     Span* erase(Span* span) noexcept {
         AMMALLOC_DCHECK(span != nullptr && span != &head_);
         auto* prev = span->prev;
@@ -156,7 +181,8 @@ public:
         return next;
     }
 
-    /// Removes first span. Returns nullptr if empty.
+    /// @brief Removes the first Span without destroying its metadata.
+    /// @return Removed Span, or null when the list is empty.
     Span* pop_front() noexcept {
         // clang-format off
         if (empty()) AM_UNLIKELY {
@@ -169,7 +195,7 @@ public:
     }
 
 private:
-    // Sentinel node stored inline to ensure cache line locality.
+    /// Inline sentinel that also anchors the circular links.
     Span head_;
 };
 

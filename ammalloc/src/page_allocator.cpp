@@ -1,9 +1,6 @@
-/// Implementation of PageAllocator and internal HugePageCache.
-///
-/// Optimistic huge-page allocation strategy:
-/// 1. Try exact-size mmap first; accept if already huge-page aligned.
-/// 2. If misaligned, unmap and retry with over-allocation + trimming.
-/// 3. Cache released 2MB huge pages to reduce future mmap overhead.
+// PageAllocator uses optimistic huge-page alignment: try an exact mapping first,
+// then over-allocate and trim only after a misaligned result. Released 2 MiB
+// mappings may remain in the internal lock-free cache for reuse.
 
 #include "ammalloc/page_allocator.h"
 #include "ammalloc/assert.h"
@@ -36,8 +33,7 @@ bool IsHugePageAligned(const void* ptr) noexcept {
 class HugePageCache {
 public:
     static HugePageCache& GetInstance() {
-        // Use static storage + placement new to avoid singleton destruction order issues
-        // and prevent recursive allocator calls during initialization.
+        // Static storage avoids both allocator recursion and destruction-order hazards.
         alignas(alignof(HugePageCache)) static char storage[sizeof(HugePageCache)];
         static auto* instance = new (storage) HugePageCache();
         return *instance;
@@ -293,7 +289,7 @@ void* PageAllocator::AllocHugePageWithTrim(size_t size) {
     AMMALLOC_DCHECK(size > 0);
     AMMALLOC_DCHECK((size & (SystemConfig::PAGE_SIZE - 1)) == 0);
 
-    // Overflow guard: size + HUGE_PAGE_SIZE must not wrap
+    // Reject sizes whose alignment over-allocation would wrap.
     // clang-format off
     if (size > (std::numeric_limits<size_t>::max() - SystemConfig::HUGE_PAGE_SIZE)) AM_UNLIKELY {
         stats_.huge_alloc_failed_count.fetch_add(1, std::memory_order_relaxed);
@@ -431,7 +427,7 @@ void* PageAllocator::SystemAlloc(size_t page_num) {
         return nullptr;
     }
 
-    // Overflow guard: ensure page_num << PAGE_SHIFT doesn't wrap
+    // Reject page counts whose byte-size conversion would wrap.
     if (page_num > (std::numeric_limits<size_t>::max() >> SystemConfig::PAGE_SHIFT)) AM_UNLIKELY {
         spdlog::error("SystemAlloc page_num overflow: {}", page_num);
         return nullptr;
@@ -479,7 +475,7 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
         return;
     }
 
-    // Overflow guard
+    // Reject page counts whose byte-size conversion would wrap.
     // clang-format off
     if (page_num > (std::numeric_limits<size_t>::max() >> SystemConfig::PAGE_SHIFT)) AM_UNLIKELY {
         spdlog::error("SystemFree page_num overflow: {}", page_num);
@@ -498,9 +494,7 @@ void PageAllocator::SystemFree(void* ptr, size_t page_num) {
             stats_.madvise_failed_count.fetch_add(1, std::memory_order_relaxed);
             spdlog::debug("madvise MADV_DONTNEED failed in SystemFree: ptr={}, size={}, errno={}",
                           ptr, size, err);
-            // madvise failure means physical pages are not released. Do not cache
-            // this VMA as Get() could return a mapping with stale physical pages,
-            // potentially causing SIGBUS on access
+            // Do not cache a mapping whose physical backing could not be discarded.
             SafeMunmap(ptr, size);
             return;
         }

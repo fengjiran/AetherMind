@@ -1,7 +1,3 @@
-//
-// Created by richard on 2/21/26.
-//
-
 #include "ammalloc/ammalloc.h"
 #include "ammalloc/config.h"
 #include "ammalloc/page_allocator.h"
@@ -62,7 +58,7 @@ struct ThreadCacheCleaner {
 
 thread_local ThreadCacheCleaner tc_cleaner;
 
-// Minimal, safe and lock-free background scavenger thread starter
+// Keep scavenger startup off the allocation fast path after the first attempt.
 void EnsureScavengerStarted() noexcept {
     if (!RuntimeConfig::GetInstance().EnableScavenger()) {
         return;
@@ -70,7 +66,6 @@ void EnsureScavengerStarted() noexcept {
 
     static std::atomic<bool> started{false};
 
-    // Most cases are fast path, just check if the thread is already started
     // clang-format off
     if (!started.load(std::memory_order_acquire)) AM_UNLIKELY {
         bool expected = false;
@@ -79,11 +74,8 @@ void EnsureScavengerStarted() noexcept {
             try {
                 PageHeapScavenger::GetInstance().Start();
             } catch (const std::exception& e) {
-                // If thread creation fails (e.g., system resources exhausted),
-                // log the error and swallow the exception.
-                // At this point 'started' remains true, so no retries will be attempted.
-                // The memory pool can still function without a background scavenger thread,
-                // but it will just won't proactively reduce RSS.
+                // Allocation remains functional without proactive RSS reclamation.
+                // Keep `started` set so failure cannot create retry storms.
                 spdlog::warn("Failed to start PageHeapScavenger: {}. Continuing without background GC.", e.what());
             } catch (...) {
                 spdlog::error("Unknown exception while starting PageHeapScavenger.");
@@ -94,11 +86,8 @@ void EnsureScavengerStarted() noexcept {
 }
 
 AM_NOINLINE void* am_malloc_slow_path(size_t original_size) {
-    // Note: Thread creation may take a few milliseconds.
-    // This is acceptable because:
-    // 1. It's on the slow path (already paying for mmap/munmap)
-    // 2. It only happens once per process lifetime
-    // 3. The alternative (early thread creation) impacts process startup time
+    // Defer scavenger thread creation until allocation is already on a slow path,
+    // avoiding process-startup cost when ammalloc is never used.
     EnsureScavengerStarted();
 
     if (original_size > SizeConfig::MAX_TC_SIZE) {
@@ -123,7 +112,7 @@ AM_NOINLINE void* am_malloc_slow_path(size_t original_size) {
 }
 
 AM_NOINLINE void am_free_slow_path(void* ptr, Span* span, size_t aligned_size) {
-    // If the size is 0, it means the span is allocated from the system(big object).
+    // Large-object Spans do not carry an object size and return directly to PageCache.
     if (aligned_size == 0) {
         PageCache::GetInstance().ReleaseSpan(span);
         return;
@@ -148,7 +137,7 @@ AM_NOINLINE void am_free_slow_path(void* ptr, Span* span, size_t aligned_size) {
 namespace ammalloc {
 
 void* am_malloc(size_t original_size) {
-    // TLS variable is read only once.
+    // Read TLS once so the hot path performs a single TLS lookup.
     auto* tc = pTLSThreadCache;
     // clang-format off
     if (original_size > SizeConfig::MAX_TC_SIZE || tc == nullptr) AM_UNLIKELY {

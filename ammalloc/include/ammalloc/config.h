@@ -1,9 +1,8 @@
-//
-// Created by richard on 2/6/26.
-//
-
 #ifndef AMMALLOC_CONFIG_H
 #define AMMALLOC_CONFIG_H
+
+/// @file
+/// @brief Compile-time allocator constants and environment-derived runtime options.
 
 #include "ammalloc/attributes.h"
 
@@ -12,21 +11,13 @@
 
 namespace ammalloc {
 
-// ===========================================================================
-// 1. 系统与硬件架构配置 (System & Architecture)
-// ===========================================================================
+/// @brief System page, address-space, cache-line, and alignment constants.
 struct SystemConfig {
-    // page size (default: 4KB)
     constexpr static size_t PAGE_SIZE = 4096;
-    // page shift
     constexpr static size_t PAGE_SHIFT = 12;
-    // huge page size(2MB)
     constexpr static size_t HUGE_PAGE_SIZE = 2 * 1024 * 1024;
-    // cache line size
     constexpr static size_t CACHE_LINE_SIZE = 64;
-    // bitmap bits
     constexpr static size_t BITMAP_BITS = 64;
-    // alignment
     constexpr static size_t ALIGNMENT = 16;
 
 #ifdef AM_USE_57BIT_VA
@@ -38,24 +29,17 @@ struct SystemConfig {
     constexpr static size_t PAGE_ID_BITS = VA_BITS - PAGE_SHIFT;
 };
 
-// ===========================================================================
-// 2. 尺寸分级与前端配置 (Size Class & Frontend)
-// ===========================================================================
+/// @brief Size-class geometry and ThreadCache limits.
 struct SizeConfig {
-    // max thread cache size(32KB)
     constexpr static size_t MAX_TC_SIZE = 32 * 1024;
-    // For size class index
     constexpr static int kStepsPerGroup = 4;
     constexpr static int kStepShift = 2;
     constexpr static size_t kSmallSizeThreshold = 1024;
 };
 
-// ===========================================================================
-// 3. 页缓存与后端配置 (Page Cache & Backend)
-// ===========================================================================
+/// @brief PageCache, radix-tree, retry, and huge-page-cache limits.
 struct PageConfig {
-    // Maximum number of consecutive pages managed by Page Cache
-    // (to avoid excessively large Spans)
+    /// Largest span retained in PageCache buckets; larger spans return to the OS.
     constexpr static size_t MAX_PAGE_NUM = 128;
     constexpr static size_t RADIX_NODE_BITS = 9;
     constexpr static size_t RADIX_NODE_SIZE = 1 << RADIX_NODE_BITS;
@@ -66,27 +50,35 @@ struct PageConfig {
     static constexpr size_t HUGE_PAGE_CACHE_SIZE = 16;
 };
 
+/// @brief Process-wide runtime settings initialized from environment variables.
+///
+/// Construction uses static storage and placement new so configuration lookup
+/// cannot recurse into the allocator. Values are immutable after initialization.
 class RuntimeConfig {
 public:
+    /// @brief Returns the process-wide runtime configuration.
+    /// @return Reference to the lazily initialized singleton.
     static RuntimeConfig& GetInstance() {
-        // Static storage (BSS segment), no malloc call
+        // Static storage avoids recursive allocation during initialization.
         alignas(alignof(RuntimeConfig)) static char storage[sizeof(RuntimeConfig)];
         static auto* instance = new (storage) RuntimeConfig();
         return *instance;
     }
 
+    /// @brief Returns the configured ThreadCache size limit.
+    /// @return Maximum ThreadCache allocation size in bytes.
     AM_NODISCARD size_t MaxTCSize() const {
         return max_tc_size_;
     }
 
+    /// @brief Reports whether eager mapping population is enabled.
+    /// @return True when `AM_USE_MAP_POPULATE` parsed as enabled.
     AM_NODISCARD bool UseMapPopulate() const {
         return use_map_populate_;
     }
 
-    // AM_NODISCARD size_t HugePageCacheSize() const {
-    //     return huge_page_cache_size_;
-    // }
-
+    /// @brief Reports whether the background page scavenger is enabled.
+    /// @return True unless `AM_ENABLE_SCAVENGER` disables it.
     AM_NODISCARD bool EnableScavenger() const {
         return enable_scavenger_;
     }
@@ -99,8 +91,7 @@ private:
     void InitFromEnv();
 
     size_t max_tc_size_ = SizeConfig::MAX_TC_SIZE;
-    // size_t huge_page_cache_size_ = 16;
-    bool use_map_populate_ = false;// default: Lazy Allocation
+    bool use_map_populate_ = false;
     bool enable_scavenger_ = true;
 };
 

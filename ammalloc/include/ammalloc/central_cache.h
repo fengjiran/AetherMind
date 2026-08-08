@@ -1,9 +1,8 @@
-//
-// Created by richard on 2/17/26.
-//
-
 #ifndef AMMALLOC_CENTRAL_CACHE_H
 #define AMMALLOC_CENTRAL_CACHE_H
+
+/// @file
+/// @brief Shared object cache between per-thread caches and PageCache.
 
 #include "ammalloc/size_class.h"
 #include "ammalloc/span.h"
@@ -13,42 +12,50 @@
 
 namespace ammalloc {
 
+/// @brief Intrusive link stored in the body of a free object.
 struct FreeBlock {
     FreeBlock* next;
 };
 
-/// Intrusive LIFO cache used by ThreadCache and CentralCache transfer paths.
+/// @brief Stores free objects in an allocation-free intrusive LIFO chain.
 ///
 /// FreeList stores reclaimed objects by linking through the freed object body
 /// itself, so push/pop do not allocate metadata and remain constant-time.
 /// Besides the object chain, the list also carries per-class quota state used
 /// by ThreadCache slow-start and overages-based decay.
 ///
-/// Thread-safety:
-/// - FreeList itself is not synchronized.
-/// - ThreadCache-owned instances are mutated only by the owning thread.
-/// - CentralCache uses external locks before mutating shared lists.
+/// @note FreeList is not thread-safe. ThreadCache instances are thread-confined;
+///       shared uses require external synchronization.
 class FreeList {
 public:
+    /// @brief Constructs an empty list with an initial quota of one object.
     constexpr FreeList() noexcept
         : head_(nullptr), size_(0), max_size_(1), overages_(0) {}
 
     FreeList(const FreeList&) = delete;
     FreeList& operator=(const FreeList&) = delete;
 
+    /// @brief Reports whether the list contains no objects.
+    /// @return True when the intrusive chain is empty.
     AM_NODISCARD bool empty() const noexcept {
         return head_ == nullptr;
     }
 
+    /// @brief Returns the number of objects in the list.
+    /// @return Current object count.
     AM_NODISCARD size_t size() const noexcept {
         return size_;
     }
 
+    /// @brief Removes all objects without modifying their embedded links.
     void clear() noexcept {
         head_ = nullptr;
         size_ = 0;
     }
 
+    /// @brief Pushes one object onto the front of the list.
+    /// @param ptr Object whose first pointer-sized bytes may store an intrusive link;
+    ///        null is ignored.
     void push(void* ptr) noexcept {
         if (!ptr) AM_UNLIKELY return;
 
@@ -58,6 +65,11 @@ public:
         ++size_;
     }
 
+    /// @brief Prepends an existing intrusive chain to the list.
+    /// @param begin First object in the chain.
+    /// @param end Last object in the chain.
+    /// @param count Number of objects in the chain.
+    /// @pre A non-empty chain is well formed and `end` is reachable from `begin`.
     void push_range(void* begin, void* end, size_t count) noexcept {
         if (!begin || !end || count == 0) {
             return;
@@ -68,6 +80,8 @@ public:
         size_ += count;
     }
 
+    /// @brief Removes the most recently pushed object.
+    /// @return Removed object, or null when the list is empty.
     AM_NODISCARD void* pop() noexcept {
         if (empty()) AM_UNLIKELY return nullptr;
 
@@ -79,18 +93,26 @@ public:
         return block;
     }
 
+    /// @brief Returns the current ThreadCache high-water limit.
+    /// @return Configured maximum local object count.
     AM_NODISCARD size_t max_size() const noexcept {
         return max_size_;
     }
 
+    /// @brief Replaces the ThreadCache high-water limit.
+    /// @param n New object-count limit.
     void set_max_size(size_t n) noexcept {
         max_size_ = n;
     }
 
+    /// @brief Returns the consecutive overflow-trim count.
+    /// @return Number of overage events since the last reset.
     AM_NODISCARD size_t overages() const noexcept {
         return overages_;
     }
 
+    /// @brief Replaces the consecutive overflow-trim count.
+    /// @param n New overage count.
     void set_overages(size_t n) noexcept {
         overages_ = n;
     }
@@ -116,108 +138,82 @@ private:
     uint32_t overages_;
 };
 
-/**
- * @brief Central resource manager connecting ThreadCache and PageCache.
- *
- * CentralCache acts as a global hub that balances memory resources among multiple threads.
- * It implements a highly optimized two-tier caching strategy per Size Class to minimize
- * lock contention and maximize throughput during batch operations.
- *
- * ### Two-Tier Bucket Architecture:
- * 1. **Transfer Cache (Fast Path)**: A lock-free/spin-locked array of pointers. It acts as a
- *    buffer to quickly absorb released objects and serve allocation requests without touching
- *    complex metadata (like Bitmaps or PageMaps).
- * 2. **Span List (Slow Path)**: A mutex-locked doubly linked list of Spans. It is only accessed
- *    when the Transfer Cache is exhausted or full, handling the actual slicing of Spans and
- *    interacting with the global PageCache.
- */
+/// @brief Balances small objects between ThreadCache and PageCache.
+///
+/// Each size class has a two-tier bucket. A `SpinLock` protects the O(1)
+/// TransferCache pointer array, while a separate `std::mutex` protects SpanList
+/// traversal and bitmap operations. Calls into PageCache occur without holding
+/// the bucket mutex to preserve the allocator lock order.
 class CentralCache {
-    /**
-     * @brief Manages objects of a specific Size Class.
-     * @note Aligned to the cache line size (e.g., 64 bytes) to completely eliminate
-     *       False Sharing between threads accessing different buckets concurrently.
-     */
+    /// @brief Stores the shared state for one size class.
+    /// @note Cache-line alignment isolates locks used by adjacent buckets.
     struct alignas(SystemConfig::CACHE_LINE_SIZE) Bucket {
-        // --- Tier 1: Transfer Cache (Fast Path) ---
-        /// Lightweight spinlock protecting the pointer array.
+        /// Spin lock protecting `transfer_cache` and its count.
         SpinLock transfer_cache_lock;
-        /// Current number of cached object pointers.
+        /// Number of valid pointers currently stored in `transfer_cache`.
         size_t transfer_cache_count{0};
-        /// Dynamic capacity, usually configured as 8x the batch size.
+        /// Fixed capacity assigned during CentralCache initialization.
         size_t transfer_cache_capacity{0};
-        /// Pointer to a dynamically allocated array of object pointers.
+        /// Borrowed slice of the contiguous TransferCache backing allocation.
         void** transfer_cache{nullptr};
 
-        // --- Tier 2: Span List (Slow Path) ---
-        /// Heavyweight mutex protecting the Span list and bitmap operations.
+        /// Mutex protecting `span_list` and Span bitmap operations.
         std::mutex span_list_lock;
-        /// Pure, lock-free doubly linked list of Spans.
+        /// Allocation-free intrusive list of borrowed Span metadata.
         SpanList span_list;
     };
 
 public:
-    /**
-     * @brief Singleton Accessor.
-     */
+    /// @brief Returns the process-wide CentralCache.
+    /// @return Reference to the singleton instance.
     static CentralCache& GetInstance() {
         static CentralCache instance;
         return instance;
     }
 
-    // Disable copy/move to enforce singleton pattern.
     CentralCache(const CentralCache&) = delete;
     CentralCache& operator=(const CentralCache&) = delete;
 
-    /**
-     * @brief Fetches a batch of objects to refill a ThreadCache.
-     *
-     * Prioritizes fetching from the fast TransferCache. If insufficient, falls back
-     * to slicing objects from the SpanList.
-     *
-     * @param block_list Output parameter. The fetched objects are pushed into this FreeList.
-     * @param batch_num The desired number of objects to fetch.
-     * @param aligned_size The aligned size (used to determine the bucket index).
-     * @return size_t The actual number of objects fetched (may be less than batch_num if OOM).
-     */
+    /// @brief Fetches a batch of objects to refill a ThreadCache.
+    /// @param block_list Destination list that receives fetched objects.
+    /// @param batch_num Maximum number of objects to fetch.
+    /// @param aligned_size Size-class-aligned object size used to select the bucket.
+    /// @return Number of fetched objects, which may be smaller on allocation failure.
+    /// @pre `batch_num <= SizeClass::kMaxBatchSize`.
+    /// @pre `aligned_size` identifies a valid ThreadCache size class.
     size_t FetchRange(FreeList& block_list, size_t batch_num, size_t aligned_size);
 
-    /**
-     * @brief Returns a batch of objects from a ThreadCache back to the CentralCache.
-     *
-     * Prioritizes pushing objects into the fast TransferCache. Any overflow is
-     * returned to their respective Spans, potentially triggering a release to PageCache.
-     *
-     * @param start Head of the linked list of objects to release.
-     * @param aligned_size Size of the objects (must match the bucket).
-     */
+    /// @brief Returns an intrusive object chain to the matching shared bucket.
+    /// @param start Head of a non-empty chain of objects from one size class.
+    /// @param aligned_size Size-class-aligned object size shared by every object.
+    /// @pre Each object belongs to an ammalloc Span for `aligned_size`.
     void ReleaseListToSpans(void* start, size_t aligned_size);
 
+    /// @brief Releases cached objects, spans, and TransferCache backing storage.
+    /// @note Intended for tests or controlled teardown after concurrent use stops.
     void Reset() noexcept;
 
 private:
-    /**
-     * @brief Private constructor. Initializes the dynamic TransferCache arrays.
-     */
     CentralCache() {
         InitTransferCache();
     }
 
-    /**
-     * @brief Allocates a contiguous block of memory from the OS to back all TransferCaches.
-     * @note Bypasses the standard am_malloc to prevent initialization deadlocks.
-     */
+    /// @brief Allocates and partitions contiguous backing storage for all TransferCaches.
+    /// @note Uses PageAllocator directly to prevent recursive `am_malloc` entry.
     void InitTransferCache();
 
-    /**
-     * @brief Refills the SpanList by requesting a new Span from PageCache.
-     * @warning Must be called with the `span_lock` HELD. Will temporarily release it
-     *          to prevent deadlocks with the global PageCache lock.
-     */
+    /// @brief Obtains and initializes a Span for one bucket.
+    /// @param bucket Bucket that receives the Span.
+    /// @param aligned_size Object size used to initialize Span metadata.
+    /// @param lock Held lock for `bucket.span_list_lock`; temporarily released
+    ///        while entering PageCache and reacquired before insertion.
+    /// @return Borrowed Span owned by PageCache, or null on allocation failure.
+    /// @pre `lock` owns `bucket.span_list_lock`.
     static Span* GetOneSpan(Bucket& bucket, size_t aligned_size, std::unique_lock<std::mutex>& lock);
 
     constexpr static size_t kNumSizeClasses = SizeClass::Index(SizeConfig::MAX_TC_SIZE) + 1;
     constexpr static size_t kCapScale = 8;
-    /// Array of Buckets (The Hash Table).
+    /// One independently synchronized bucket per size class.
     std::array<Bucket, kNumSizeClasses> buckets_{};
 };
 

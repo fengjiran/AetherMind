@@ -1,7 +1,3 @@
-//
-// Created by richard on 3/2/26.
-//
-
 #include "ammalloc/page_heap_scavenger.h"
 #include "ammalloc/page_cache.h"
 
@@ -11,9 +7,7 @@
 namespace ammalloc {
 
 void PageHeapScavenger::Start() {
-    // Ensure it won't be started twice
     if (!scavenge_thread_.joinable()) {
-        // std::jthread automatically passes the internal stop_token to the bound function
         scavenge_thread_ = std::jthread([this](std::stop_token stoken) {
             ScavengeLoop(stoken);
         });
@@ -23,9 +17,8 @@ void PageHeapScavenger::Start() {
 
 void PageHeapScavenger::Stop() {
     if (scavenge_thread_.joinable()) {
-        // Send stop signal, this will wake up the thread waiting in cv_.wait_for
         scavenge_thread_.request_stop();
-        // Explicitly wait for the thread to stop, although jthread destructor will also join
+        // Join here so Stop establishes a clear quiescent-state boundary.
         scavenge_thread_.join();
         spdlog::debug("PageHeapScavenger thread stopped.");
     }
@@ -34,13 +27,8 @@ void PageHeapScavenger::Stop() {
 void PageHeapScavenger::ScavengeLoop(std::stop_token stoken) {
     std::unique_lock<std::mutex> lock(mutex_);
 
-    // Keep running until stop signal is received
     while (!stoken.stop_requested()) {
-        // [Core Optimization]: Interruptible sleep
-        // Use condition_variable_any together with stop_token.
-        // If request_stop() is called during sleep, this wait_for
-        // will wake up immediately and return true.
-        // If it wakes up due to normal timeout, it returns false.
+        // The stop-aware wait avoids delaying shutdown for a full scan interval.
         bool stop_requested = cv_.wait_for(lock, stoken,
                                            std::chrono::milliseconds(kScavengeIntervalMs),
                                            [&stoken] { return stoken.stop_requested(); });
@@ -48,12 +36,10 @@ void PageHeapScavenger::ScavengeLoop(std::stop_token stoken) {
             break;
         }
 
-        // Sleep end, ready to work.
-        // Unlock first to prevent blocking other threads using cv_
+        // Do not hold the wait mutex during a potentially long scan.
         lock.unlock();
         ScavengeOnePass();
 
-        // After working, lock again to sleep again in the next round
         lock.lock();
     }
 }
@@ -86,7 +72,7 @@ void PageHeapScavenger::ScavengeOnePass() {
 
                 if (now - cur->last_used_time_ms >= kIdleThresholdMs) {
                     span_list.erase(cur);
-                    // Mark as "in use" to prevent ReleaseSpan from merging
+                    // Reserve the detached Span so release/coalescing cannot claim it.
                     cur->SetUsed(true);
 
                     if (!head) {
@@ -100,9 +86,9 @@ void PageHeapScavenger::ScavengeOnePass() {
                 }
                 cur = next;
             }
-        }// PageCache Unlock
+        }
 
-        // Perform time-consuming madvise outside the lock
+        // Keep the system call outside the PageCache lock.
         auto* cur = head;
         while (cur) {
             void* start_ptr = cur->GetPageBaseAddr();
@@ -117,13 +103,11 @@ void PageHeapScavenger::ScavengeOnePass() {
             cur = cur->next;
         }
 
-        // Once again lock to put back to PageCache
         if (head) {
             std::lock_guard<std::mutex> lock(page_cache.GetMutex());
             cur = head;
             while (cur) {
                 auto* next = cur->next;
-                // Mark as unused to allow merging
                 cur->SetUsed(false);
                 cur->last_used_time_ms = GetCurrentTimeMs();
                 span_list.push_back(cur);

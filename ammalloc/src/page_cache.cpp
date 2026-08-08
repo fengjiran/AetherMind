@@ -1,7 +1,3 @@
-//
-// Created by richard on 2/7/26.
-//
-
 #include "ammalloc/page_cache.h"
 
 #include <limits>
@@ -22,7 +18,6 @@ Span* PageMap::GetSpan(size_t page_id) {
         return nullptr;
     }
 
-    // Calculate Radix Tree indices
     const size_t i0 = page_id >> (PageConfig::RADIX_NODE_BITS * 3);
     if (i0 >= PageConfig::RADIX_ROOT_SIZE) AM_UNLIKELY {
         return nullptr;
@@ -36,22 +31,18 @@ Span* PageMap::GetSpan(size_t page_id) {
         return nullptr;
     }
 
-    // Traverse Level 1
     auto* p2 = static_cast<RadixNode*>(p1->children[i1].load(std::memory_order_acquire));
     if (!p2) AM_UNLIKELY {
         return nullptr;
     }
 
-    // Traverse Level 2
     auto* p3 = static_cast<RadixNode*>(p2->children[i2].load(std::memory_order_acquire));
     if (!p3) AM_UNLIKELY {
         return nullptr;
     }
 
-    // Fetch Level 3 (Leaf)
-    // Note: On weak memory models (ARM), an acquire fence might be technically required here
-    // to ensure the content of the returned Span is visible. However, on x86-64,
-    // data dependency usually suffices.
+    // The acquire leaf load observes Span metadata published before SetSpan's
+    // release store on weak and strong memory models.
     return static_cast<Span*>(p3->children[i3].load(std::memory_order_acquire));
     // clang-format on
 }
@@ -70,9 +61,8 @@ void PageMap::SetSpan(Span* span) {
     auto start = span->start_page_idx;
     const auto end = start + span->page_num;
 
-    // batch fill the leaf nodes
     while (start < end) {
-        // Step 1: Ensure Level 2 Node exists
+        // Lazily allocate radix nodes only on the PageMap write path.
         const size_t i0 = start >> (PageConfig::RADIX_NODE_BITS * 3);
         const size_t i1 = (start >> (PageConfig::RADIX_NODE_BITS * 2)) & PageConfig::RADIX_MASK;
         const size_t i2 = (start >> PageConfig::RADIX_NODE_BITS) & PageConfig::RADIX_MASK;
@@ -92,7 +82,6 @@ void PageMap::SetSpan(Span* span) {
             p1->children[i1].store(p2, std::memory_order_release);
         }
 
-        // Step 2: Ensure Level 3 Node exists
         auto* p3 = static_cast<RadixNode*>(p2->children[i2].load(std::memory_order_relaxed));
         if (!p3) {
             p3 = radix_node_pool_.New();
@@ -100,7 +89,6 @@ void PageMap::SetSpan(Span* span) {
             p2->children[i2].store(p3, std::memory_order_release);
         }
 
-        // Step 3. Set the Leaf.
         size_t cnt = std::min(end - start, PageConfig::RADIX_NODE_SIZE - i3);
         for (size_t k = 0; k < cnt; ++k) {
             p3->children[i3 + k].store(span, std::memory_order_release);
@@ -175,8 +163,7 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
     }
 
     while (true) {
-        // 1. Oversized Allocation:
-        // Requests larger than the max bucket (>128 pages) go directly to the OS.
+        // Oversized Spans bypass page-count buckets but retain pooled metadata.
         if (page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
             void* ptr = PageAllocator::SystemAlloc(page_num);
             if (!ptr) {
@@ -194,14 +181,11 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
             span->SetCommitted(true);
             span->owner_shard_id = 0;
 
-            // Register relationship in Radix Tree.
             PageMap::SetSpan(span);
             return span;
         }
         // clang-format on
 
-        // 2. Exact Match:
-        // Check if there is a free span in the bucket corresponding exactly to page_num.
         AMMALLOC_DCHECK(page_num >= 1 && page_num <= PageConfig::MAX_PAGE_NUM);
         if (!span_lists_[page_num].empty()) {
             auto* span = span_lists_[page_num].pop_front();
@@ -210,24 +194,21 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
             return span;
         }
 
-        // 3. Splitting (Best Fit / First Fit):
-        // Iterate through larger buckets to find a span we can split.
+        // Split the first available larger bucket when no exact match exists.
         for (size_t i = page_num + 1; i <= PageConfig::MAX_PAGE_NUM; ++i) {
             if (span_lists_[i].empty()) {
                 continue;
             }
 
-            // Found a larger span.
             auto* big_span = span_lists_[i].pop_front();
             AMMALLOC_DCHECK(big_span != nullptr);
             AMMALLOC_DCHECK(big_span->page_num == i);
             AMMALLOC_DCHECK(!big_span->IsUsed());
-            // Create a new span for the requested `page_num` (Head Split).
             Span* small_span = nullptr;
             try {
                 small_span = span_pool_.New(big_span->start_page_idx, static_cast<uint32_t>(page_num));
             } catch (const std::bad_alloc&) {
-                // Rollback: Return the big span to the list.
+                // Preserve the original free Span if metadata allocation fails.
                 span_lists_[i].push_front(big_span);
                 return nullptr;
             }
@@ -235,24 +216,19 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
             small_span->SetCommitted(true);
             small_span->owner_shard_id = big_span->owner_shard_id;
 
-            // Adjust the remaining part of the big span (Tail).
             big_span->start_page_idx += page_num;
             big_span->page_num -= static_cast<uint32_t>(page_num);
             big_span->SetUsed(false);
             big_span->SetCommitted(true);
             big_span->last_used_time_ms = GetCurrentTimeMs();
-            // Return the remainder to the appropriate free list.
             span_lists_[big_span->page_num].push_front(big_span);
 
-            // Register both parts in the PageMap.
             PageMap::SetSpan(small_span);
             PageMap::SetSpan(big_span);
             return small_span;
         }
 
-        // 4. System Refill:
-        // If no suitable spans exist in cache, allocate a large block (128 pages) from OS.
-        // We request the MAX_PAGE_NUM to maximize cache efficiency.
+        // Refill at the largest cacheable Span size to amortize system allocation.
         size_t alloc_page_nums = PageConfig::MAX_PAGE_NUM;
         void* ptr = PageAllocator::SystemAlloc(alloc_page_nums);
         if (!ptr) {
@@ -270,19 +246,14 @@ Span* PageCacheShard::AllocSpanLocked(size_t page_num) {
         span->SetCommitted(true);
         span->last_used_time_ms = GetCurrentTimeMs();
         span->owner_shard_id = 0;
-        // Insert the new large span into the last bucket.
         span_lists_[alloc_page_nums].push_front(span);
         PageMap::SetSpan(span);
-        // Continue the loop:
-        // The next iteration will jump to step 3 (Splitting), finding the
-        // 128-page span we just added, splitting it, and returning the result.
     }
 }
 
 void PageCacheShard::ReleaseSpanLocked(Span* span) noexcept {
     AMMALLOC_DCHECK(span != nullptr);
-    // 1. Direct Return: If the Span is larger than the cache can manage (>128 pages),
-    // return it directly to the OS (PageAllocator).
+    // Oversized Spans are never retained in page-count buckets.
     // clang-format off
     if (span->page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
         auto* ptr = span->GetPageBaseAddr();
@@ -293,58 +264,39 @@ void PageCacheShard::ReleaseSpanLocked(Span* span) noexcept {
     }
     // clang-format on
 
-    // 2. Merge Left within the same owner shard only.
+    // Coalescing never crosses an owner-shard boundary.
     while (true) {
         if (span->start_page_idx == 0) {
             break;
         }
         size_t left_id = span->start_page_idx - 1;
-        // Retrieve the Span managing the left page from the global PageMap.
         auto* left_span = PageMap::GetSpan(left_id);
-        // Stop merging if:
-        // - Left page doesn't exist (not managed by us).
-        // - Left span is currently in use (in CentralCache).
-        // - Left span is not the same owner shard
-        // - Merged size would exceed the maximum bucket size.
         if (!left_span || left_span->IsUsed() ||
             left_span->owner_shard_id != span->owner_shard_id ||
             span->page_num + left_span->page_num > PageConfig::MAX_PAGE_NUM) {
             break;
         }
 
-        // Perform merge: Remove left_span from its list, absorb it into 'span'.
         span_lists_[left_span->page_num].erase(left_span);
-        span->start_page_idx = left_span->start_page_idx;// Update start to left
-        span->page_num += left_span->page_num;           // Increase size
-        // Corrupt metadata to safely detect dangling pointer access
-        // left_span->start_page_idx = std::numeric_limits<size_t>::max();
-        // left_span->page_num = 0;
-        // left_span->SetUsed(true);
-        span_pool_.Delete(left_span);// Destroy metadata
+        span->start_page_idx = left_span->start_page_idx;
+        span->page_num += left_span->page_num;
+        span_pool_.Delete(left_span);
     }
 
-    // 3. Merge Right: Check the page ID immediately following this span.
     while (true) {
         size_t right_id = span->start_page_idx + span->page_num;
         auto* right_span = PageMap::GetSpan(right_id);
-        // Similar stop conditions as Merge Left.
         if (!right_span || right_span->IsUsed() ||
             right_span->owner_shard_id != span->owner_shard_id ||
             span->page_num + right_span->page_num > PageConfig::MAX_PAGE_NUM) {
             break;
         }
 
-        // Perform merge: Remove right_span, absorb it.
         span_lists_[right_span->page_num].erase(right_span);
-        span->page_num += right_span->page_num;// Start index stays same, size increases
-        // Corrupt metadata to safely detect dangling pointer access
-        // right_span->start_page_idx = std::numeric_limits<size_t>::max();
-        // right_span->page_num = 0;
-        // right_span->SetUsed(true);
+        span->page_num += right_span->page_num;
         span_pool_.Delete(right_span);
     }
 
-    // 4. Insert back: Mark as unused and push to the appropriate bucket.
     span->SetUsed(false);
     span->SetCommitted(true);
     span->aligned_obj_size = 0;
@@ -354,8 +306,7 @@ void PageCacheShard::ReleaseSpanLocked(Span* span) noexcept {
     span->last_used_time_ms = GetCurrentTimeMs();
 
     span_lists_[span->page_num].push_front(span);
-    // Update PageMap: Map ALL pages in this coalesced span to the span pointer.
-    // This ensures subsequent merge operations can find this span via any of its pages.
+    // Rewrite every mapping because coalescing invalidated neighbor metadata.
     PageMap::SetSpan(span);
 }
 
@@ -392,7 +343,6 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
 }
 
 void PageCache::Reset() {
-    // Test-only / quiescent-state reset.
     for (uint16_t i = 0; i < active_shard_count_; ++i) {
         auto& shard = shards_[i];
         std::lock_guard<std::mutex> lock(shard.GetMutex());
@@ -408,8 +358,7 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
     }
 
     while (true) {
-        // 1. Oversized Allocation:
-        // Requests larger than the max bucket (>128 pages) go directly to the OS.
+        // Oversized Spans bypass page-count buckets but retain pooled metadata.
         // clang-format off
         if (page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
             void* ptr = PageAllocator::SystemAlloc(page_num);
@@ -428,14 +377,11 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
             span->SetCommitted(true);
             span->owner_shard_id = 0;
 
-            // Register relationship in Radix Tree.
             PageMap::SetSpan(span);
             return span;
         }
         // clang-format on
 
-        // 2. Exact Match:
-        // Check if there is a free span in the bucket corresponding exactly to page_num.
         AMMALLOC_DCHECK(page_num >= 1 && page_num <= PageConfig::MAX_PAGE_NUM);
         if (!span_lists_[page_num].empty()) {
             auto* span = span_lists_[page_num].pop_front();
@@ -444,44 +390,36 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
             return span;
         }
 
-        // 3. Splitting (Best Fit / First Fit):
-        // Iterate through larger buckets to find a span we can split.
+        // Split the first available larger bucket when no exact match exists.
         for (size_t i = page_num + 1; i <= PageConfig::MAX_PAGE_NUM; ++i) {
             if (span_lists_[i].empty()) {
                 continue;
             }
 
-            // Found a larger span.
             auto* big_span = span_lists_[i].pop_front();
-            // Create a new span for the requested `page_num` (Head Split).
             Span* small_span = nullptr;
             try {
                 small_span = span_pool_.New(big_span->start_page_idx, page_num);
             } catch (const std::bad_alloc&) {
-                // Rollback: Return the big span to the list.
+                // Preserve the original free Span if metadata allocation fails.
                 span_lists_[i].push_front(big_span);
                 return nullptr;
             }
             small_span->SetUsed(true);
             small_span->SetCommitted(true);
 
-            // Adjust the remaining part of the big span (Tail).
             big_span->start_page_idx += page_num;
             big_span->page_num -= page_num;
             big_span->SetUsed(false);
             big_span->last_used_time_ms = GetCurrentTimeMs();
-            // Return the remainder to the appropriate free list.
             span_lists_[big_span->page_num].push_front(big_span);
 
-            // Register both parts in the PageMap.
             PageMap::SetSpan(small_span);
             PageMap::SetSpan(big_span);
             return small_span;
         }
 
-        // 4. System Refill:
-        // If no suitable spans exist in cache, allocate a large block (128 pages) from OS.
-        // We request the MAX_PAGE_NUM to maximize cache efficiency.
+        // Refill at the largest cacheable Span size to amortize system allocation.
         size_t alloc_page_nums = PageConfig::MAX_PAGE_NUM;
         void* ptr = PageAllocator::SystemAlloc(alloc_page_nums);
         if (!ptr) {
@@ -499,20 +437,15 @@ Span* PageCache::AllocSpanLocked(size_t page_num) {
         span->SetUsed(false);
         span->SetCommitted(true);
         span->last_used_time_ms = GetCurrentTimeMs();
-        // Insert the new large span into the last bucket.
         span_lists_[alloc_page_nums].push_front(span);
         PageMap::SetSpan(span);
-        // Continue the loop:
-        // The next iteration will jump to step 3 (Splitting), finding the
-        // 128-page span we just added, splitting it, and returning the result.
     }
 }
 
 void PageCache::ReleaseSpan(Span* span) noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    // 1. Direct Return: If the Span is larger than the cache can manage (>128 pages),
-    // return it directly to the OS (PageAllocator).
+    // Oversized Spans are never retained in page-count buckets.
     // clang-format off
     if (span->page_num > PageConfig::MAX_PAGE_NUM) AM_UNLIKELY {
         auto* ptr = span->GetPageBaseAddr();
@@ -523,62 +456,50 @@ void PageCache::ReleaseSpan(Span* span) noexcept {
     }
     // clang-format on
 
-    // 2. Merge Left: Check the previous page ID.
     while (true) {
         if (span->start_page_idx == 0) {
             break;
         }
         size_t left_id = span->start_page_idx - 1;
-        // Retrieve the Span managing the left page from the global PageMap.
         auto* left_span = PageMap::GetSpan(left_id);
-        // Stop merging if:
-        // - Left page doesn't exist (not managed by us).
-        // - Left span is currently in use (in CentralCache).
-        // - Merged size would exceed the maximum bucket size.
         if (!left_span || left_span->IsUsed() ||
             span->page_num + left_span->page_num > PageConfig::MAX_PAGE_NUM) {
             break;
         }
 
-        // Perform merge: Remove left_span from its list, absorb it into 'span'.
         span_lists_[left_span->page_num].erase(left_span);
-        span->start_page_idx = left_span->start_page_idx;// Update start to left
-        span->page_num += left_span->page_num;           // Increase size
-        // Corrupt metadata to safely detect dangling pointer access
+        span->start_page_idx = left_span->start_page_idx;
+        span->page_num += left_span->page_num;
+        // Poison metadata before recycling it so debug checks catch stale use.
         left_span->start_page_idx = std::numeric_limits<size_t>::max();
         left_span->page_num = 0;
         left_span->SetUsed(true);
-        span_pool_.Delete(left_span);// Destroy metadata
+        span_pool_.Delete(left_span);
     }
 
-    // 3. Merge Right: Check the page ID immediately following this span.
     while (true) {
         size_t right_id = span->start_page_idx + span->page_num;
         auto* right_span = PageMap::GetSpan(right_id);
-        // Similar stop conditions as Merge Left.
         if (!right_span || right_span->IsUsed() ||
             span->page_num + right_span->page_num > PageConfig::MAX_PAGE_NUM) {
             break;
         }
 
-        // Perform merge: Remove right_span, absorb it.
         span_lists_[right_span->page_num].erase(right_span);
-        span->page_num += right_span->page_num;// Start index stays same, size increases
-        // Corrupt metadata to safely detect dangling pointer access
+        span->page_num += right_span->page_num;
+        // Poison metadata before recycling it so debug checks catch stale use.
         right_span->start_page_idx = std::numeric_limits<size_t>::max();
         right_span->page_num = 0;
         right_span->SetUsed(true);
         span_pool_.Delete(right_span);
     }
 
-    // 4. Insert back: Mark as unused and push to the appropriate bucket.
     span->SetUsed(false);
     span->obj_size = 0;
     span->last_used_time_ms = GetCurrentTimeMs();
     span->SetCommitted(true);
     span_lists_[span->page_num].push_front(span);
-    // Update PageMap: Map ALL pages in this coalesced span to the span pointer.
-    // This ensures subsequent merge operations can find this span via any of its pages.
+    // Rewrite every mapping because coalescing invalidated neighbor metadata.
     PageMap::SetSpan(span);
 }
 

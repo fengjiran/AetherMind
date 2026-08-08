@@ -221,13 +221,6 @@ StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema,
 }
 
 bool HasStatefulOutput(const OperatorSchema& schema) noexcept {
-    // for (const OperatorOutputPort& output_port: schema.output_ports) {
-    //     if (output_port.kind == OperatorPortKind::kState) {
-    //         return true;
-    //     }
-    // }
-    // return false;
-
     return std::ranges::any_of(schema.output_ports, [&](const auto& port) {
         return port.kind == OperatorPortKind::kState;
     });

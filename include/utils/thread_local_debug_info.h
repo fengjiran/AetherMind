@@ -52,8 +52,9 @@ public:
     /// @brief Finds the nearest value of a given category in the current stack.
     /// @param kind Category to find.
     /// @return A borrowed pointer to the nearest matching value, or null if no
-    ///         value of that category is active. The pointer is valid only
-    ///         while the corresponding shared ownership remains alive.
+    ///         value of that category is active. Changing the current stack may
+    ///         invalidate the pointer unless a node captured with `current()`
+    ///         or other shared ownership keeps the payload alive.
     static DebugInfoBase* get(DebugInfoKind kind);
 
     /// @brief Returns the current stack node for this thread.

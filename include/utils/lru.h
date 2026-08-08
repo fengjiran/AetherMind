@@ -16,15 +16,16 @@ namespace aethermind {
 /// When the capacity is full, insertion evicts the least recently used entry.
 /// Lookup and insertion are average O(1) operations.
 ///
-/// @tparam Key Hashable key type with equality comparison.
-/// @tparam Value Value type that is copy-constructible and assignable.
+/// @tparam Key Copy-constructible key type with hashing and equality comparison.
+/// @tparam Value Value type that is copy-constructible and copy-assignable.
 /// @note This class is not thread-safe. Synchronize access externally when a
 ///       cache is shared between threads.
 template<typename Key, typename Value>
 class LRUCache {
 public:
     /// @brief Creates an empty cache with a fixed capacity.
-    /// @param cap Maximum number of entries. Must be greater than zero.
+    /// @param cap Maximum number of entries.
+    /// @pre `cap` is greater than zero.
     explicit LRUCache(size_t cap) : cap_(cap) {}
 
     /// @brief Looks up a key and marks a hit as the most recently used entry.

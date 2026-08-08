@@ -4,9 +4,9 @@
 /// @file
 /// @brief Checked integer arithmetic and range-product utilities.
 ///
-/// Provides checked arithmetic operations that detect overflow before it occurs.
-/// Uses compiler builtins when available (GCC/Clang), otherwise falls back to
-/// portable implementations.
+/// Provides checked arithmetic operations that report overflow without relying
+/// on undefined signed-overflow behavior. Uses compiler builtins when available
+/// (GCC/Clang), otherwise falls back to portable implementations.
 
 #include "utils/logging.h"
 

@@ -67,8 +67,9 @@ void HandleCheckFailed(std::string_view condition,
 ///             builds.
 /// @note In `NDEBUG` builds, neither the condition nor the trailing arguments
 ///       are evaluated. Do not place required side effects in either position.
-/// @note The macro preserves a dangling `else` so callers may attach a branch
-///       that exists only in debug builds.
+/// @note The release expansion consumes its internal dangling `else` when the
+///       invocation ends with a semicolon, so it remains safe inside an outer
+///       `if`/`else` statement.
 #ifdef NDEBUG
 #define AM_RELEASE
 #define AM_DCHECK(condition, ...)                     \

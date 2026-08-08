@@ -14,8 +14,9 @@ namespace aethermind {
 
 /// @brief Fills a memory region with a recognizable pattern.
 ///
-/// The pattern is a NaN for floating-point interpretations and a large value
-/// for integer interpretations, making accidental reads easier to diagnose.
+/// The 32-bit word is a NaN when interpreted as IEEE 754 binary32. Repeating
+/// that word produces conspicuous 64-bit integer and floating-point values,
+/// making accidental reads easier to diagnose.
 ///
 /// @param data Destination memory. If `data` is null, the function does nothing;
 ///             otherwise it must point to at least `nbytes` writable bytes.

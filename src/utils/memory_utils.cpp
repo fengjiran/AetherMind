@@ -1,6 +1,3 @@
-/// \file
-/// Implementation of memory debugging utilities.
-
 #include "utils/memory_utils.h"
 
 #include <cstring>
@@ -14,7 +11,6 @@ void FillMemoryJunk(void* data, size_t nbytes) {
 
     constexpr int64_t kJunkPattern = GetJunkPattern64();
 
-    // Fill in 64-bit chunks for efficiency
     const size_t int64_count = nbytes / sizeof(int64_t);
     const size_t remaining_bytes = nbytes % sizeof(int64_t);
 
@@ -23,7 +19,6 @@ void FillMemoryJunk(void* data, size_t nbytes) {
         data_i64[i] = kJunkPattern;
     }
 
-    // Fill remaining bytes
     if (remaining_bytes > 0) {
         memcpy(data_i64 + int64_count, &kJunkPattern, remaining_bytes);
     }

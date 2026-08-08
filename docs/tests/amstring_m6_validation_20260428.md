@@ -69,7 +69,7 @@ cmake --build build-asan-ubsan --target aethermind_unit_tests -j
 - sanitizer run still reports **pre-existing non-amstring leaks** from old runtime/registry static initialization paths, including stacks through:
   - `src/function.cpp`
   - `src/container/string.cpp`
-  - `include/object_allocator.h`
+  - `include/aethermind/base/object_allocator.h`
   - `include/utils/qualified_name.h`
 
 ### Current assessment

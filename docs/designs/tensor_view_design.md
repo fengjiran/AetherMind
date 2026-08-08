@@ -224,7 +224,7 @@ bool empty() const noexcept;
 | `[0]` | 1 | 0 | nullptr (允许) | - |
 
 **与 host Scalar 的关系**:
-- host `Scalar`（`include/scalar.h`）是独立的 C++ 值类型，不代表 tensor 存储
+- host `Scalar`（`include/aethermind/base/scalar.h`）是独立的 C++ 值类型，不代表 tensor 存储
 - `Tensor::FromScalar(s, allocator)` 创建 CPU rank-0 Tensor（显式，allocator 必须为 CPU）
 - `Tensor::item()` 和 `Tensor::set_item(s)` 要求 numel == 1（支持 rank-0 和 `[1]`）
 - 不提供隐式转换、TensorView item/store、或 C/Python API

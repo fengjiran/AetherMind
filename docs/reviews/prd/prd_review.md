@@ -10,7 +10,7 @@
 - 把产品分成 嵌入式 -> 服务化 -> 分布式 -> Agentic 四阶段，本身是一个好的叙事框架
 不合理或不够稳的地方
 - docs/products/aethermind_prd.md:33 直接承诺 “C ABI 从 Phase 1 到 Phase 4 保持稳定” 太激进；当前 include/c_api.h:16 还是很薄的底层对象接口，不足以支撑这种长期稳定性承诺
-- docs/products/aethermind_prd.md:304 写“使用 #pragma once”，但仓库当前规范和绝大多数头文件实际都用 include guards，见 AGENTS.md:93、include/c_api.h:5、include/device.h:5
+- docs/products/aethermind_prd.md:304 写“使用 #pragma once”，但仓库当前规范和绝大多数头文件实际都用 include guards，见 AGENTS.md:93、include/c_api.h:5、include/aethermind/base/device.h:5
 - docs/products/aethermind_prd.md:302 把 std::expected 放进工程规范，但当前仓库和构建依赖里并没有一个明确的 backport 策略，这会误导实现
 - docs/products/aethermind_prd.md:284 到 docs/products/aethermind_prd.md:287 的 Phase 1 指标写得过满，尤其 7B INT4, 4-core CPU, <=4GB, >=10 tok/s 组合太紧；单看权重接近可行，但加上 KV cache、workspace、runtime 开销后，这个总内存目标很容易失真
 - docs/products/aethermind_prd.md:292 的 “8x A100 上 7B 模型 TTFT < 50ms” 不仅偏乐观，还缺少 batch、prompt length、cache hit 定义、并发条件和编译/内核配置，难以验证

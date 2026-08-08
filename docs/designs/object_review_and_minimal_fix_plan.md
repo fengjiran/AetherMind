@@ -5,9 +5,9 @@ version: v0.1
 date: 2026-03-26
 author: OpenCode / Sisyphus
 source_files:
-  - include/object.h
-  - src/object.cpp
-  - include/object_allocator.h
+  - include/aethermind/base/object.h
+  - src/base/object.cpp
+  - include/aethermind/base/object_allocator.h
   - include/c_api.h
   - tests/unit/test_object.cpp
 ---
@@ -24,9 +24,9 @@ source_files:
 
 本次审查聚焦 `Object/ObjectPtr/WeakObjectPtr` 的生命周期管理、并发引用计数与 C API 边界一致性：
 
-- `include/object.h`
-- `src/object.cpp`
-- `include/object_allocator.h`
+- `include/aethermind/base/object.h`
+- `src/base/object.cpp`
+- `include/aethermind/base/object_allocator.h`
 - `include/c_api.h`
 - `tests/unit/test_object.cpp`
 
@@ -51,26 +51,26 @@ source_files:
 ## 3.1 P0 - Correctness 风险
 
 1. `ObjectPtr(std::unique_ptr<T>)` 走 raw 接管路径，与 `make_object()` 初始化不变量不一致  
-   - 相关位置：`include/object.h`（`271`, `504-509`）
+   - 相关位置：`include/aethermind/base/object.h`（`271`, `504-509`）
 
 2. `ObjectPtr::reclaim(nullptr)` 可制造“逻辑 defined 但内部空指针”状态  
-   - 相关位置：`include/object.h`（`466-468`, `395-397`, `376-381`）
+   - 相关位置：`include/aethermind/base/object.h`（`466-468`, `395-397`, `376-381`）
 
 3. `ObjectPtr == nullptr` 与 sentinel 设计冲突（空对象并非真实 `nullptr`）  
-   - 相关位置：`include/object.h`（`255-262`, `737-745`）
+   - 相关位置：`include/aethermind/base/object.h`（`255-262`, `737-745`）
 
 ## 3.2 P1 - API 健壮性风险
 
 1. `release()` 对外暴露 sentinel 指针，不利于跨边界安全使用  
-   - 相关位置：`include/object.h`（`454-458`）
+   - 相关位置：`include/aethermind/base/object.h`（`454-458`）
 
 2. `ObjectPtr(T*, DoNotIncRefCountTag)` 暴露过宽，外部可绕过不变量  
-   - 相关位置：`include/object.h`（`276`）
+   - 相关位置：`include/aethermind/base/object.h`（`276`）
 
 ## 3.3 P2 - 维护与性能项
 
 1. `TryPromoteWeakPtr()` 成功 CAS 使用 `ACQ_REL`，可评估收敛为 `ACQUIRE`（微优化）  
-   - 相关位置：`src/object.cpp`（`54-67`）
+   - 相关位置：`src/base/object.cpp`（`54-67`）
 
 2. `ObjectHandle` 与 `ObjectHeader` 的文档边界需更明确（opaque handle）  
    - 相关位置：`include/c_api.h`（`14-40`）
@@ -81,7 +81,7 @@ source_files:
 
 以下清单遵循“先保正确性、尽量不改调用方 API”的原则。
 
-## A. `include/object.h`
+## A. `include/aethermind/base/object.h`
 
 ### A1. `ObjectPtr(std::unique_ptr<T>)`
 
@@ -113,7 +113,7 @@ source_files:
 - **目的**：防止外部越过所有权不变量
 - **侵入性**：中
 
-## B. `src/object.cpp`
+## B. `src/base/object.cpp`
 
 ### B1. `Object::DecRef()` / `Object::DecWeakRef()`
 

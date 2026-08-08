@@ -1,4 +1,4 @@
-#include "aethermind/graph/op_params_serde.h"
+#include "aethermind/operators/op_params_serde.h"
 #include "utils/variant_utils.h"
 
 #include <algorithm>

@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_GRAPH_OP_PARAMS_SERDE_H
-#define AETHERMIND_GRAPH_OP_PARAMS_SERDE_H
+#ifndef AETHERMIND_OPERATORS_OP_PARAMS_SERDE_H
+#define AETHERMIND_OPERATORS_OP_PARAMS_SERDE_H
 
 /// @file op_params_serde.h
 /// @brief Canonical serialization and parsing of OpParams variants.
@@ -57,4 +57,4 @@ void SerializePermutation(const std::vector<uint32_t>& permutation, std::ostream
 
 }// namespace aethermind
 
-#endif
+#endif// AETHERMIND_OPERATORS_OP_PARAMS_SERDE_H

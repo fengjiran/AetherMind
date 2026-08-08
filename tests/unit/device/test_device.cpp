@@ -1,4 +1,4 @@
-#include "device.h"
+#include "aethermind/base/device.h"
 
 #include <gtest/gtest.h>
 

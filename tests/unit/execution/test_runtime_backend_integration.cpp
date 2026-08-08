@@ -7,7 +7,7 @@
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/runtime_context.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 #include <gtest/gtest.h>
 
 namespace {

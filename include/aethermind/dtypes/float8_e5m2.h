@@ -14,7 +14,7 @@
 #ifndef AETHERMIND_DTYPES_FLOAT8_E5M2_H
 #define AETHERMIND_DTYPES_FLOAT8_E5M2_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <cstdint>
 #include <limits>

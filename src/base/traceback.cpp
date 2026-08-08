@@ -5,9 +5,9 @@
 // stub definitions for GetTracebackLimit/DetectBoundary and a minimal
 // single-frame traceback using only the caller-provided location.
 
-#include "traceback.h"
-#include "env.h"
-#include "error.h"
+#include "aethermind/base/traceback.h"
+#include "aethermind/base/env.h"
+#include "aethermind/base/error.h"
 
 #if USE_LIBBACKTRACE
 
@@ -115,7 +115,7 @@ std::string DemangleName(const char* name) {
 // harness) to exclude from the backtrace.
 bool ExcludeFrame(const char* filename, const char* symbol) {
     if (filename) {
-        if (strstr(filename, "src/traceback.cpp")) {
+        if (strstr(filename, "src/base/traceback.cpp")) {
             return true;
         }
 

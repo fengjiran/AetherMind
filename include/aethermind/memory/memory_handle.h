@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_MEMORY_HANDLE_H
 #define AETHERMIND_MEMORY_HANDLE_H
 
-#include "device.h"
+#include "aethermind/base/device.h"
 
 namespace aethermind {
 

@@ -11,8 +11,8 @@
 #include "aethermind/dtypes/complex.h"
 #include "aethermind/dtypes/float8_e4m3fn.h"
 #include "aethermind/dtypes/float8_e5m2.h"
-#include "error.h"
-#include "macros.h"
+#include "aethermind/base/error.h"
+#include "aethermind/base/macros.h"
 
 namespace aethermind {
 

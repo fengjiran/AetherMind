@@ -2,7 +2,7 @@
 #define AETHERMIND_RUNTIME_RUNTIME_BUILDER_H
 
 #include "aethermind/execution/kv_cache_manager.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 #include "runtime_context.h"
 #include "runtime_options.h"
 

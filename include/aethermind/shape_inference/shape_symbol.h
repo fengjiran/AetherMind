@@ -3,7 +3,7 @@
 
 #include "aethermind/base/status.h"
 #include "container/array_view.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <atomic>

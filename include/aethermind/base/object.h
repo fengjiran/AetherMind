@@ -5,11 +5,11 @@
 /// represented by a per-type sentinel so callers should use handle-level APIs
 /// such as `defined()` or `get_or_null()` instead of raw pointer null checks.
 
-#ifndef AETHERMIND_OBJECT_H
-#define AETHERMIND_OBJECT_H
+#ifndef AETHERMIND_BASE_OBJECT_H
+#define AETHERMIND_BASE_OBJECT_H
 
+#include "aethermind/base/macros.h"
 #include "c_api.h"
-#include "macros.h"
 #include "utils/logging.h"
 
 namespace aethermind {
@@ -644,4 +644,4 @@ struct hash<aethermind::WeakObjectPtr<T>> {
 };
 }// namespace std
 
-#endif// AETHERMIND_OBJECT_H
+#endif// AETHERMIND_BASE_OBJECT_H

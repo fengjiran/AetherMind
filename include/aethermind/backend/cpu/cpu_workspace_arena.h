@@ -2,7 +2,7 @@
 #define AETHERMIND_BACKEND_CPU_CPU_WORKSPACE_ARENA_H
 
 #include "aethermind/execution/workspace_arena.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <cstddef>
 

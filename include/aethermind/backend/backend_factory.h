@@ -2,8 +2,8 @@
 #define AETHERMIND_BACKEND_BACKEND_FACTORY_H
 
 #include "aethermind/backend/backend_fwd.h"
-#include "device.h"
-#include "macros.h"
+#include "aethermind/base/device.h"
+#include "aethermind/base/macros.h"
 
 #include <memory>
 

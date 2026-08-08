@@ -2,12 +2,12 @@
 // Created by richard on 11/25/25.
 //
 
-#ifndef AETHERMIND_OBJECT_ALLOCATOR_H
-#define AETHERMIND_OBJECT_ALLOCATOR_H
+#ifndef AETHERMIND_BASE_OBJECT_ALLOCATOR_H
+#define AETHERMIND_BASE_OBJECT_ALLOCATOR_H
 
 // #define AETHERMIND_ALLOCATOR_DEBUG
 
-#include "object.h"
+#include "aethermind/base/object.h"
 
 #include <mutex>
 #include <unordered_map>
@@ -188,4 +188,4 @@ ObjectPtr<T> make_array_object(size_t num_elems, Args&&... args) {
 
 }// namespace aethermind
 
-#endif// AETHERMIND_OBJECT_ALLOCATOR_H
+#endif// AETHERMIND_BASE_OBJECT_ALLOCATOR_H

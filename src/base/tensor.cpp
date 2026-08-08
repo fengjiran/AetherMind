@@ -3,8 +3,8 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/memory/allocator.h"
 #include "container/array_view.h"
-#include "device.h"
-#include "scalar.h"
+#include "aethermind/base/device.h"
+#include "aethermind/base/scalar.h"
 #include "utils/logging.h"
 #include "utils/overflow_check.h"
 

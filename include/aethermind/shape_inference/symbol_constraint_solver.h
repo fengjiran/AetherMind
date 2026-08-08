@@ -4,7 +4,7 @@
 #include "aethermind/base/status.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_symbol.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <cstdint>
 #include <optional>

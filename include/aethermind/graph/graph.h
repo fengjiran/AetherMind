@@ -11,7 +11,7 @@
 
 #include "aethermind/base/status.h"
 #include "aethermind/graph/graph_types.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <cstdint>

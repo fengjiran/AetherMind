@@ -5,7 +5,7 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/kv_cache_view.h"
 #include "aethermind/runtime/workspace.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "workspace_arena.h"
 
 #include <array>

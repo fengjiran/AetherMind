@@ -12,7 +12,7 @@
 /// This container is intended for owning Tensor metadata. For hot-path TensorView,
 /// consider a non-owning view type instead.
 #include "container/array_view.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <algorithm>

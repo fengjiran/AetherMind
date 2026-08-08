@@ -5,7 +5,7 @@
 #include "aethermind/backend/kernel_registry.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/model/model_instance.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <vector>
 

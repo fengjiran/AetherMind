@@ -6,8 +6,8 @@
 #define AETHERMIND_CONTAINER_MAP_V1_H
 
 #include "any_utils.h"
-#include "error.h"
-#include "object.h"
+#include "aethermind/base/error.h"
+#include "aethermind/base/object.h"
 #include "utils/hash.h"
 
 #include <concepts>

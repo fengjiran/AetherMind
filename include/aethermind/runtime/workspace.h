@@ -21,7 +21,7 @@
 #define AETHERMIND_RUNTIME_WORKSPACE_TYPES_H
 
 #include "aethermind/base/status.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>

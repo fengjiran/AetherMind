@@ -8,7 +8,7 @@
 
 #include "config.hpp"
 #include "invariant.hpp"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <cstddef>

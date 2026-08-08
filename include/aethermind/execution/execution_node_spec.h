@@ -8,7 +8,7 @@
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/tensor_spec.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 
 #include <cstddef>
 #include <vector>

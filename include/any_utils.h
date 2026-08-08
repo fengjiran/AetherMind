@@ -6,8 +6,8 @@
 #define AETHERMIND_ANY_UTILS_H
 
 #include "aethermind/dtypes/data_type.h"
-#include "device.h"
-#include "object.h"
+#include "aethermind/base/device.h"
+#include "aethermind/base/object.h"
 
 #include <cxxabi.h>
 #include <map>

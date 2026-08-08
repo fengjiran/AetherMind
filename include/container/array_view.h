@@ -15,7 +15,7 @@
 #ifndef AETHERMIND_ARRAY_REF_H
 #define AETHERMIND_ARRAY_REF_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/hash.h"
 
 #include <cstddef>

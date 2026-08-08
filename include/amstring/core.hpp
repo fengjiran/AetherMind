@@ -9,10 +9,10 @@
 #include "allocator_support.hpp"
 #include "char_algorithms.hpp"
 #include "config.hpp"
-#include "error.h"
+#include "aethermind/base/error.h"
 #include "growth_policy.hpp"
 #include "layout_policy.hpp"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>

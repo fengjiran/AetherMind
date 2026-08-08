@@ -4,10 +4,10 @@
 #ifndef AETHERMIND_MEMORY_BUFFER_H
 #define AETHERMIND_MEMORY_BUFFER_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "memory_handle.h"
-#include "object.h"
-#include "object_allocator.h"
+#include "aethermind/base/object.h"
+#include "aethermind/base/object_allocator.h"
 
 #include <cstddef>
 #include <cstdint>

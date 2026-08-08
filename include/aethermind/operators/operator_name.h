@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_OPERATOR_NAME_H
 #define AETHERMIND_OPERATOR_NAME_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/hash.h"
 
 #include <optional>

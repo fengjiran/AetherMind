@@ -1,14 +1,14 @@
 /// Traceback collection and formatting utilities.
 ///
 /// Declares `TraceBackStorage`, `GetTracebackLimit()`, and `DetectBoundary()`
-/// used by the backtrace implementation in `src/traceback.cpp`. When
-/// `USE_LIBBACKTRACE` is not enabled, `src/traceback.cpp` provides stub
+/// used by the backtrace implementation in `src/base/traceback.cpp`. When
+/// `USE_LIBBACKTRACE` is not enabled, `src/base/traceback.cpp` provides stub
 /// definitions so that translation units including this header still link.
 
-#ifndef AETHERMIND_TRACEBACK_H
-#define AETHERMIND_TRACEBACK_H
+#ifndef AETHERMIND_BASE_TRACEBACK_H
+#define AETHERMIND_BASE_TRACEBACK_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <sstream>
 #include <string>
@@ -38,7 +38,7 @@ bool DetectBoundary(const char* filename, const char* symbol);
 /// Accumulates backtrace frames into a formatted string.
 ///
 /// Populated by the libbacktrace full callback (`BacktraceFullCallback` in
-/// `src/traceback.cpp`) via `Append()`. Not thread-safe; each call to
+/// `src/base/traceback.cpp`) via `Append()`. Not thread-safe; each call to
 /// `AetherMindTraceback` creates a local instance, and concurrent calls are
 /// serialized by an internal mutex.
 struct TraceBackStorage {
@@ -71,4 +71,4 @@ struct TraceBackStorage {
 
 }// namespace aethermind
 
-#endif// AETHERMIND_TRACEBACK_H
+#endif// AETHERMIND_BASE_TRACEBACK_H

@@ -2,11 +2,11 @@
 // Created by richard on 10/4/25.
 //
 
-#ifndef AETHERMIND_SCALAR_H
-#define AETHERMIND_SCALAR_H
+#ifndef AETHERMIND_BASE_SCALAR_H
+#define AETHERMIND_BASE_SCALAR_H
 
-#include "aethermind/dtypes/data_type.h"
 #include "aethermind/dtypes/cast.h"
+#include "aethermind/dtypes/data_type.h"
 
 namespace aethermind {
 
@@ -21,28 +21,28 @@ public:
     Scalar() : Scalar(static_cast<int64_t>(0)) {}
 
     // integral ctors
-    Scalar(int8_t val);  //NOLINT
-    Scalar(int16_t val); //NOLINT
-    Scalar(int32_t val); //NOLINT
-    Scalar(int64_t val); //NOLINT
-    Scalar(bool val);    //NOLINT
-    Scalar(uint8_t val); //NOLINT
-    Scalar(uint16_t val);//NOLINT
-    Scalar(uint32_t val);//NOLINT
-    Scalar(uint64_t val);//NOLINT
+    Scalar(int8_t val);  // NOLINT
+    Scalar(int16_t val); // NOLINT
+    Scalar(int32_t val); // NOLINT
+    Scalar(int64_t val); // NOLINT
+    Scalar(bool val);    // NOLINT
+    Scalar(uint8_t val); // NOLINT
+    Scalar(uint16_t val);// NOLINT
+    Scalar(uint32_t val);// NOLINT
+    Scalar(uint64_t val);// NOLINT
 
     // floating point ctors
-    Scalar(double val);       //NOLINT
-    Scalar(float val);        //NOLINT
-    Scalar(Half val);         //NOLINT
-    Scalar(BFloat16 val);     //NOLINT
-    Scalar(Float8_e4m3fn val);//NOLINT
-    Scalar(Float8_e5m2 val);  //NOLINT
+    Scalar(double val);       // NOLINT
+    Scalar(float val);        // NOLINT
+    Scalar(Half val);         // NOLINT
+    Scalar(BFloat16 val);     // NOLINT
+    Scalar(Float8_e4m3fn val);// NOLINT
+    Scalar(Float8_e5m2 val);  // NOLINT
 
     // complex ctors
-    Scalar(complex<Half> val);  //NOLINT
-    Scalar(complex<float> val); //NOLINT
-    Scalar(complex<double> val);//NOLINT
+    Scalar(complex<Half> val);  // NOLINT
+    Scalar(complex<float> val); // NOLINT
+    Scalar(complex<double> val);// NOLINT
 
     Scalar(const Scalar& other) = default;
 
@@ -233,4 +233,4 @@ bool operator==(T lhs, const Scalar& rhs) {
 
 }// namespace aethermind
 
-#endif//AETHERMIND_SCALAR_H
+#endif// AETHERMIND_BASE_SCALAR_H

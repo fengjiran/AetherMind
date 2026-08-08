@@ -6,8 +6,8 @@
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/memory/buffer.h"
 #include "container/array_view.h"
-#include "device.h"
-#include "macros.h"
+#include "aethermind/base/device.h"
+#include "aethermind/base/macros.h"
 #include "shape_and_stride.h"
 #include "utils/logging.h"
 

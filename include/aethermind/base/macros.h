@@ -2,8 +2,8 @@
 // Created by 赵丹 on 25-7-16.
 //
 
-#ifndef AETHERMIND_MACROS_H
-#define AETHERMIND_MACROS_H
+#ifndef AETHERMIND_BASE_MACROS_H
+#define AETHERMIND_BASE_MACROS_H
 
 #if __cplusplus >= 202002L
 #define CPP20
@@ -150,4 +150,4 @@
     static void FuncName()
 
 #define DEFINE_STATIC_FUNCTION() DEFINE_STATIC_FUNCTION_(AM_STR_CONCAT(_static_func_tid_, __COUNTER__))
-#endif// AETHERMIND_MACROS_H
+#endif// AETHERMIND_BASE_MACROS_H

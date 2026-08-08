@@ -11,8 +11,8 @@
 //
 // Thread-safety: Device is immutable and thread-safe after construction.
 
-#ifndef AETHERMIND_DEVICE_H
-#define AETHERMIND_DEVICE_H
+#ifndef AETHERMIND_BASE_DEVICE_H
+#define AETHERMIND_BASE_DEVICE_H
 
 #include "aethermind/base/status.h"
 #include "container/string.h"
@@ -175,4 +175,4 @@ struct hash<aethermind::Device> {
 
 }// namespace std
 
-#endif// AETHERMIND_DEVICE_H
+#endif// AETHERMIND_BASE_DEVICE_H

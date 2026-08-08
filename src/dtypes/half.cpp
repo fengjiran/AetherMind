@@ -6,7 +6,7 @@
 /// intrinsics at the call site.
 #include "aethermind/dtypes/half.h"
 #include "aethermind/dtypes/detail/floating_point_bits.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 namespace aethermind {
 namespace {

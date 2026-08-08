@@ -9,7 +9,7 @@
 #ifndef AETHERMIND_DTYPES_HALF_H
 #define AETHERMIND_DTYPES_HALF_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <compare>
 #include <cstdint>

@@ -4,7 +4,7 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/base/status.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 
 #include <memory>
 #include <unordered_map>

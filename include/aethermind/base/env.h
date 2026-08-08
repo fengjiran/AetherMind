@@ -2,8 +2,8 @@
 // Created by richard on 6/25/25.
 //
 
-#ifndef AETHERMIND_ENV_H
-#define AETHERMIND_ENV_H
+#ifndef AETHERMIND_BASE_ENV_H
+#define AETHERMIND_BASE_ENV_H
 
 #include "container/string.h"
 
@@ -40,4 +40,4 @@ private:
 
 }// namespace aethermind
 
-#endif//AETHERMIND_ENV_H
+#endif// AETHERMIND_BASE_ENV_H

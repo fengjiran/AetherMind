@@ -5,7 +5,7 @@
 #include "aethermind/model/model_instance.h"
 #include "aethermind/model/model_instance_builder.h"
 #include "aethermind/model/weight_prepack_planner.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 namespace aethermind {
 

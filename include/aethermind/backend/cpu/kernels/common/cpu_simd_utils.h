@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_CPU_SIMD_UTILS_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_CPU_SIMD_UTILS_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #if defined(__AVX2__)
 #include <immintrin.h>

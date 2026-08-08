@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_MODEL_TEST_UTILS_H
 #define AETHERMIND_MODEL_TEST_UTILS_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <array>
 #include <chrono>

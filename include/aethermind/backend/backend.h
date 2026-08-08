@@ -7,7 +7,7 @@
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/operators/op_type.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 namespace aethermind {
 

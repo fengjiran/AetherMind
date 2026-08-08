@@ -15,7 +15,7 @@
 #define AETHERMIND_MEMORY_ALLOCATOR_H
 
 #include "buffer.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 #include "utils/thread_local_debug_info.h"
 
 #include <memory>

@@ -4,11 +4,11 @@
 /// traceback, and the `AM_THROW` / `AM_THROW_SILENT` macros that build and
 /// throw `Error` via `ErrorBuilder`.
 
-#ifndef AETHERMIND_ERROR_H
-#define AETHERMIND_ERROR_H
+#ifndef AETHERMIND_BASE_ERROR_H
+#define AETHERMIND_BASE_ERROR_H
 
+#include "aethermind/base/traceback.h"
 #include "c_api.h"
-#include "traceback.h"
 
 #include <exception>
 #include <iostream>
@@ -171,4 +171,4 @@ private:
 
 }// namespace aethermind
 
-#endif// AETHERMIND_ERROR_H
+#endif// AETHERMIND_BASE_ERROR_H

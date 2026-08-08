@@ -2,8 +2,8 @@
 //
 // This file contains the non-inline ownership transitions that must coordinate
 // destruction order, storage release, and weak-to-strong promotion races.
-#include "object.h"
-#include "object_allocator.h"
+#include "aethermind/base/object.h"
+#include "aethermind/base/object_allocator.h"
 
 namespace aethermind {
 

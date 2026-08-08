@@ -3,7 +3,7 @@
 
 #include "aethermind/dtypes/bfloat16.h"
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 namespace aethermind {
 namespace detail {

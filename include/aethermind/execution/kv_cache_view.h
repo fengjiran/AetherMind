@@ -4,7 +4,7 @@
 #include "aethermind/base/status.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/dtypes/data_type.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 namespace aethermind {
 

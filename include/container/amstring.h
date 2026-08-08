@@ -2,7 +2,7 @@
 #define AETHERMIND_CONTAINER_AMSTRING_H
 
 #include "any_utils.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <bit>

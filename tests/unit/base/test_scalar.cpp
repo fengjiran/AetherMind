@@ -1,7 +1,7 @@
 //
 // Created by richard on 10/8/25.
 //
-#include "scalar.h"
+#include "aethermind/base/scalar.h"
 
 #include <cstdint>
 #include <gtest/gtest.h>

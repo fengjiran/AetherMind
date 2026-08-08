@@ -1,7 +1,7 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/runtime/runtime_builder.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 
 #include <gtest/gtest.h>
 

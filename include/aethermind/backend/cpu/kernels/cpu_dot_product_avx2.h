@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_CPU_DOT_PRODUCT_AVX2_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_CPU_DOT_PRODUCT_AVX2_H
 
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <cstddef>
 

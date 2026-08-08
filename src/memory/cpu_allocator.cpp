@@ -4,7 +4,7 @@
 
 #include "aethermind/memory/cpu_allocator.h"
 #include "alignment.h"
-#include "env.h"
+#include "aethermind/base/env.h"
 #include "utils/memory_utils.h"
 
 #include <spdlog/spdlog.h>

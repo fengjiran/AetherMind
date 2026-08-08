@@ -17,7 +17,7 @@
 #define AETHERMIND_DTYPES_FLOAT8_E4M3FN_H
 
 #include "aethermind/dtypes/detail/floating_point_bits.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <climits>
 #include <cmath>

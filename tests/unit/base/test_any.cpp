@@ -7,7 +7,7 @@
 #include "any.h"
 #include "container/array_view.h"
 #include "container/string.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 
 #include <gtest/gtest.h>
 #include <ranges>

@@ -2,7 +2,7 @@
 // Created by richard on 10/4/25.
 //
 
-#include "scalar.h"
+#include "aethermind/base/scalar.h"
 
 namespace aethermind {
 

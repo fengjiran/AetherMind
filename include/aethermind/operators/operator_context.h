@@ -3,7 +3,7 @@
 
 #include "aethermind/backend/backend_fwd.h"
 #include "aethermind/backend/kernel_selector.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 namespace aethermind {
 

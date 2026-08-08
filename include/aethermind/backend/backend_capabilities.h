@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_BACKEND_BACKEND_CAPABILITIES_H
 #define AETHERMIND_BACKEND_BACKEND_CAPABILITIES_H
 
-#include "device.h"
+#include "aethermind/base/device.h"
 
 namespace aethermind {
 

@@ -4,7 +4,7 @@
 #include "aethermind/backend/stream.h"
 #include "aethermind/execution/workspace_arena.h"
 #include "aethermind/runtime/workspace.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 
 #include <cstddef>
 #include <span>

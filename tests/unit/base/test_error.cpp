@@ -3,7 +3,7 @@
 //
 #include <gtest/gtest.h>
 
-#include "error.h"
+#include "aethermind/base/error.h"
 
 namespace {
 using namespace aethermind;

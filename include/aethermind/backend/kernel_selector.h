@@ -2,7 +2,7 @@
 #define AETHERMIND_BACKEND_KERNEL_SELECTOR_H
 
 #include "aethermind/dtypes/data_type.h"
-#include "device.h"
+#include "aethermind/base/device.h"
 #include "utils/hash.h"
 
 #include <cstdint>

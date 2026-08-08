@@ -19,7 +19,7 @@
 ///
 /// Dependencies: c_api.h for am_status_code, macros.h for AM_NODISCARD
 #include "c_api.h"
-#include "macros.h"
+#include "aethermind/base/macros.h"
 
 #include <concepts>
 #include <stdexcept>

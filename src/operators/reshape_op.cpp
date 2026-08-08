@@ -108,29 +108,6 @@ Status TryResolveInferDim(const SymbolicShape& input_shape,
 
 }// namespace
 
-// Reshape semantic inference.
-//
-// Validation order (per plan, parameter-before-input precedence):
-//   1. require ReshapeParams variant
-//   2. parameter-only invariants: literal values non-negative, at most one
-//      infer marker
-//   3. require exactly one input
-//   4. require ranked input
-//   5. validate every ReshapeInputDim.axis against input rank
-//
-// Inference algorithm:
-//   - Build output dims in target order: literal -> CreateFromValue;
-//     input reference -> copy exact input ShapeSymbol (identity preserved);
-//     infer -> Unknown() unless statically resolvable.
-//   - For one infer marker, statically resolve when every input dim and every
-//     non-infer output dim is static. Compute products with checked uint64_t
-//     arithmetic; return Status::Overflow on overflow. Non-infer product == 0
-//     is rejected (zero-volume ambiguity). Otherwise, require exact
-//     divisibility, require quotient to fit int64_t, emit static quotient.
-//   - If static resolution impossible, emit ShapeSymbol::Unknown().
-//   - Construct one VolumeEqualConstraint covering every input dim and every
-//     output dim. Evaluate symbolically: kViolated -> reject;
-//     kSatisfied -> omit; kDeferred -> persist exactly one deferred check.
 StatusOr<InferenceResult> InferReshape(const OpParams& params,
                                        std::span<const TensorSpec> inputs) {
     const auto* reshape_params = std::get_if<ReshapeParams>(&params);
@@ -174,7 +151,6 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
     }
     const size_t input_rank = *input.shape.rank();
 
-    // Validate input-axis references against input rank.
     for (const auto& dim: reshape_params->target_shape) {
         if (const auto* ref = std::get_if<ReshapeInputDim>(&dim);
             ref != nullptr && static_cast<size_t>(ref->axis) >= input_rank) {
@@ -183,9 +159,6 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
         }
     }
 
-    // Build output dims in target order. Static input dims and all non-infer
-    // output dims must be known for static infer resolution; we record them
-    // alongside the output construction.
     std::vector<ShapeSymbol> output_dims;
     output_dims.reserve(reshape_params->target_shape.size());
     std::optional<size_t> infer_index;
@@ -209,7 +182,6 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
     }
     SymbolicShape output_shape(std::move(output_dims));
 
-    // Static infer resolution (only when exactly one infer marker present).
     if (infer_index.has_value()) {
         AM_RETURN_IF_ERROR(TryResolveInferDim(input.shape, output_shape, *infer_index));
     }
@@ -221,7 +193,6 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
             .error_context = "Reshape volume mismatch",
     };
 
-    // Evaluate the constraint symbolically against the current shapes.
     const std::array<SymbolicShape, 1> input_shapes{input.shape};
     const std::array<SymbolicShape, 1> output_shapes{output_shape};
     const ShapeConstraintEvaluationResult eval_result = EvaluateShapeConstraint(
@@ -244,8 +215,6 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
             if (input.shape.IsStatic() && output_shape.IsStatic()) {
                 return Status::Overflow("Reshape volume product overflows");
             }
-            // Persist exactly one deferred runtime check for runtime
-            // enforcement.
             result.runtime_checks.emplace_back(std::move(constraint));
             break;
     }

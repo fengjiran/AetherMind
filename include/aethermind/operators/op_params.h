@@ -31,8 +31,8 @@ struct LinearParams {};
 /// longrope, su, unknown) are rejected by `ModelGraphBuilder::BuildLlamaDense`
 /// before any graph mutation, so they can never reach `RoPEParams`.
 enum class RoPEScalingType : uint8_t {
-    kNone = 0,// Standard RoPE; scaling_factor must be absent.
-    kLinear,  // Linear scaling; requires a finite positive scaling_factor.
+    kNone = 0,///< Standard RoPE; `scaling_factor` must be absent.
+    kLinear,  ///< Linear scaling; requires a finite positive `scaling_factor`.
 };
 
 /// @brief Returns the canonical string name of a RoPE scaling type.
@@ -78,7 +78,7 @@ inline std::string_view ToString(RoPEScalingType scaling_type) noexcept {
 ///       q/position sequence dims.
 ///
 /// @note Execution boundary: this struct and InferRoPE do NOT inspect position
-///       tensor contents. A future executable RoPE path must validate
+///       tensor contents. Executable RoPE paths must validate
 ///       non-negative position IDs, any effective-position bounds defined by
 ///       the scaling contract, and symbolic q/k widths against params before
 ///       computation. Loader `allow_rope_scaling` remains a separate policy;
@@ -91,10 +91,9 @@ struct RoPEParams {
     int64_t num_key_value_heads = 0;
     int64_t max_position_embeddings = 0;
     double theta = 10000.0;
-    // Present iff scaling_type == kLinear; ignored when scaling_type == kNone.
+    /// @brief Linear scaling factor, present exactly when `scaling_type == kLinear`.
     std::optional<double> scaling_factor{};
-    // Only kNone and kLinear are representable; the model frontend rejects
-    // all HF-only variants before constructing RoPEParams.
+    /// @brief Format-agnostic scaling strategy accepted by semantic inference.
     RoPEScalingType scaling_type = RoPEScalingType::kNone;
 };
 

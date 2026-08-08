@@ -61,24 +61,6 @@ AM_REGISTER_OPERATOR(OpType::kRmsNorm, RmsNormOp)
 
 namespace detail {
 
-// Shape inference and constraint analysis for the RmsNorm operator.
-//
-// Steps:
-//   1. Validate OpParams variant type and eps scalar.
-//   2. Validate input count via ValidateInferenceInputCount (exactly 2:
-//      input and weight, checked against the operator schema).
-//   3. Validate input rank (>=1). Leading batch/sequence dims may be
-//      zero; only the last (hidden) dim must be positive (zero-length
-//      reduction is undefined).
-//   4. Validate weight rank (=1) and positive length.
-//   5. Reconcile hidden_size (input last dim) with weight_len: fail-fast on
-//      static hard conflict; otherwise emit a DimEqualConstraint deferred to
-//      runtime and verified by the Executor.
-//   6. Validate input/weight dtypes against the supported dtype set.  Mixed
-//      input/weight dtypes are allowed; the kernel converts the weight to the
-//      input dtype at runtime (HuggingFace LlamaRMSNorm convention).
-//   7. Build InferenceResult: the output spec mirrors the input spec
-//      (RmsNorm is shape-preserving), plus any deferred runtime checks.
 StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
                                        std::span<const TensorSpec> inputs) {
     const auto* typed = std::get_if<RmsNormParams>(&params);
@@ -95,8 +77,8 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
     const auto& input_spec = inputs[0];
     const auto& weight_spec = inputs[1];
 
-    // Mixed input/weight dtypes are allowed; the kernel converts the weight to
-    // the input dtype at runtime (HuggingFace LlamaRMSNorm convention).
+    // Input and weight dtypes are independent semantic inputs; conversion is a
+    // backend execution concern.
     if (!IsRmsNormSupportedDType(input_spec.dtype)) {
         return Status::InvalidArgument(
                 MakeRmsNormUnsupportedDTypeMessage("RmsNorm input"));

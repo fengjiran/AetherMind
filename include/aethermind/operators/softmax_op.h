@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_OPERATORS_SOFTMAX_OP_H
 #define AETHERMIND_OPERATORS_SOFTMAX_OP_H
 
+/// @file softmax_op.h
+/// @brief Shared dtype contract for Softmax semantic inference.
+
 #include "aethermind/dtypes/data_type.h"
 
 #include <algorithm>
@@ -10,20 +13,20 @@
 
 namespace aethermind {
 
-/// Single source of truth for the dtype set supported by the Softmax operator.
-/// All Softmax-related validation (semantic analysis in InferSoftmax, future
-/// CPU kernel dispatch) must reference these definitions instead of maintaining
-/// private copies. The Phase 1 CPU kernel currently implements only Float32;
-/// the semantic layer accepts the full set below.
+/// @brief Dtypes accepted by Softmax semantic inference.
+///
+/// All Softmax validation sites must reference this set instead of maintaining
+/// private copies.
 inline const std::array<DataType, 3> kSoftmaxSupportedDTypes = {
         DataType::Float32(),
         DataType::Float(16),
         DataType::BFloat(16),
 };
 
-/// Returns true if `dtype` is in `kSoftmaxSupportedDTypes`. Used by operator-
-/// level validation to keep the dtype check in one place. Backend kernel
-/// dispatch must reference this same set when adding new dtype paths.
+/// @brief Checks whether Softmax semantic inference accepts a dtype.
+///
+/// @param dtype Data type to check.
+/// @return True if `dtype` is in `kSoftmaxSupportedDTypes`.
 inline bool IsSoftmaxSupportedDType(const DataType& dtype) noexcept {
     return std::ranges::any_of(kSoftmaxSupportedDTypes,
                                [&](const DataType& supported) {
@@ -31,10 +34,10 @@ inline bool IsSoftmaxSupportedDType(const DataType& dtype) noexcept {
                                });
 }
 
-/// Builds a consistent "unsupported dtype" error message for Softmax-related
-/// validation points. `context` is the caller name (e.g. "Softmax",
-/// "CpuSoftmaxKernel") prepended to a fixed list of supported dtypes, so every
-/// validation site reports the same set.
+/// @brief Builds a consistent unsupported-dtype message for Softmax.
+///
+/// @param context Caller name prepended to the supported-dtype description.
+/// @return Error message containing `context` and the accepted dtype set.
 inline std::string MakeSoftmaxUnsupportedDTypeMessage(std::string_view context) {
     std::string msg{context};
     msg += " only supports float32, float16, and bfloat16 dtypes";

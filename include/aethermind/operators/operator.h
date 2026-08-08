@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_OPERATORS_OPERATOR_H
 #define AETHERMIND_OPERATORS_OPERATOR_H
 
+/// @file operator.h
+/// @brief Runtime interface shared by executable operator implementations.
+
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/operators/operator_context.h"
@@ -11,93 +14,89 @@ namespace aethermind {
 struct KernelContext;
 class RuntimeBindingContext;
 
-/// Abstract base class for all semantic-layer operators.
+/// @brief Abstract base class for executable semantic operators.
 ///
 /// Encapsulates kernel resolution and runtime execution behind a uniform
 /// contract. Parameter validation and shape inference are performed via the
 /// free function InferOperator in operator_inference.h, not through virtual
 /// methods on this class.
 ///
-/// Lifecycle: Construct → Prepare() → Run() (repeated) → destruction.
+/// Lifecycle: construct, call `Prepare()` once, call `Run()` repeatedly, then
+/// destroy after all in-flight calls have completed.
 /// `Prepare()` resolves and caches the kernel; `Run()` may
 /// then be invoked multiple times. The destructor releases cached state
 /// and must not run concurrently with an in-flight `Run()`.
 ///
-/// Invariant: `Prepare()` must return Ok before `Run()` or
+/// @pre `Prepare()` must return Ok before `Run()` or
 /// `GetResolvedKernel()` may be called. `resolved_kernel_` is written only
 /// by `Prepare()` and read by `Run()` / `GetResolvedKernel()`.
 ///
-/// Thread safety: instances are not thread-safe. Concurrent `Run()` calls
-/// on the same instance require external synchronization, or use one
-/// instance per thread.
+/// @note Instances are not thread-safe. Concurrent calls on one instance
+///       require external synchronization.
 class Operator {
 public:
     virtual ~Operator() = default;
 
-    /// Returns the OpType enum for this operator.
+    /// @brief Returns the type used for operator and kernel dispatch.
+    ///
+    /// @return Operator type associated with this instance.
     AM_NODISCARD virtual OpType Type() const noexcept = 0;
 
-    /// Returns a human-readable name for diagnostics and logging.
-    /// Default implementation delegates to `ToString(Type())`.
+    /// @brief Returns a human-readable name for diagnostics and logging.
+    ///
+    /// @return Null-terminated name whose lifetime is static.
+    /// @note The default implementation delegates to `ToString(Type())`.
     AM_NODISCARD virtual const char* Name() const noexcept {
         return ToString(Type());
     }
 
-    /// Computes the workspace requirement for this operator.
+    /// @brief Computes the scratch-workspace requirement for this operator.
     ///
     /// Called during execution plan building. The result is stored in the
     /// ExecutionStep and used for unified workspace planning.
     ///
-    /// Default returns zero-byte requirement (no scratch space needed).
+    /// The default implementation returns a zero-byte requirement.
     ///
-    /// \param inputs  Input tensor shapes (for size-dependent estimation).
+    /// @param inputs Input tensor specifications used for size-dependent estimates.
+    /// @return Workspace size and alignment required by one invocation.
     AM_NODISCARD virtual WorkspaceRequirement ComputeWorkspaceRequirement(
             std::span<const TensorSpec> inputs) const noexcept {
         UNUSED(inputs);
         return {};
     }
 
-    /// Prepares this operator for execution using the provided context.
+    /// @brief Resolves and caches the kernel used by subsequent invocations.
     ///
     /// Called once during plan building, BEFORE any Run() calls.
-    /// Implementations should:
-    /// - Resolve the kernel from OperatorContext::backend
-    /// - Cache the resolved KernelFunc and attrs
-    /// - InferOperator() must have returned Ok before Prepare() is called
-    ///
-    /// After successful Prepare(), the operator is ready for repeated Run() calls.
-    ///
-    /// \param ctx  Runtime context providing backend, workspace, and
-    ///             kernel selector for resolution.
-    /// \return Ok on success; Status error if kernel resolution fails.
+    /// @param ctx Runtime dependencies and kernel-selection criteria.
+    /// @return Ok on success, or an error status when kernel resolution fails.
+    /// @pre Semantic inference for this operator has succeeded.
+    /// @post On success, `Run()` and `GetResolvedKernel()` may be called.
     virtual Status Prepare(OperatorContext& ctx) = 0;
 
-    /// Executes this operator on the given inputs and outputs.
+    /// @brief Executes one prepared operator step using runtime tensor bindings.
     ///
     /// Called once per execution step. Must only be called after
     /// successful Prepare(). Declared `noexcept`: implementations report
     /// failures only through the returned `Status`, never by throwing.
     ///
-    /// Implementations should:
-    /// - Construct per-call kernel params from runtime bindings when needed
-    /// - Invoke the cached KernelFunc with inputs, outputs, and workspace
-    ///
-    /// \param ctx          Mutable kernel context. Operators may set
-    ///                     ctx.kernel_params before invoking the kernel.
-    /// \param bindings     Per-step runtime tensor bindings.
-    /// \param step_index   Index of the current execution step in the plan,
-    ///                     used to retrieve per-step tensor bindings.
-    /// \return Ok on success; Status error if execution fails.
+    /// @param ctx Mutable context passed to the resolved kernel.
+    /// @param bindings Runtime tensor bindings for all execution steps.
+    /// @param step_index Step whose input and output bindings are used.
+    /// @return Ok on success, or an error status for binding or kernel failure.
+    /// @pre `Prepare()` has completed successfully.
     virtual Status Run(KernelContext& ctx,
                        const RuntimeBindingContext& bindings,
                        size_t step_index) const noexcept = 0;
 
-    /// Returns the resolved kernel info for execution, debugging, and logging.
-    /// Only valid after successful Prepare().
+    /// @brief Returns the kernel metadata cached by `Prepare()`.
+    ///
+    /// @return Borrowed reference valid for the lifetime of this operator.
+    /// @pre `Prepare()` has completed successfully.
     AM_NODISCARD virtual const ResolvedKernel& GetResolvedKernel() const noexcept = 0;
 
 protected:
-    /// Shared kernel invocation path for subclasses.
+    /// @brief Invokes the resolved kernel with optional per-call parameters.
     ///
     /// If `ResolvedKernel::params_builder` is set, stack-allocates an
     /// aligned buffer of `kMaxKernelParamsSize` bytes, asks the builder to
@@ -106,18 +105,19 @@ protected:
     /// function. If `params_builder` is null, invokes the kernel directly
     /// with whatever `ctx.kernel_params` the caller has already set.
     ///
-    /// Lifetime: the stack buffer is local to this call. The kernel must
-    /// not retain pointers into it past return.
-    ///
-    /// Performance: stack allocation avoids per-call heap traffic on the
-    /// execution hot path. `kMaxKernelParamsSize` bounds the cost.
+    /// @param ctx Mutable context passed to the resolved kernel.
+    /// @param inputs Borrowed input tensor views valid for this call.
+    /// @param outputs Borrowed output tensor views valid for this call.
+    /// @return Status returned by parameter construction or kernel execution.
+    /// @pre `GetResolvedKernel()` returns a non-null kernel function.
+    /// @note Parameter storage is stack-backed to avoid heap traffic. Kernels
+    ///       must not retain `ctx.kernel_params` after returning.
     AM_NODISCARD Status InvokeResolvedKernel(KernelContext& ctx,
                                              std::span<const TensorView> inputs,
                                              std::span<const MutableTensorView> outputs) const noexcept {
         const ResolvedKernel& resolved = GetResolvedKernel();
-        // Declared at function scope so the buffer outlives the kernel call;
-        // previously it was scoped inside the if block, leaving
-        // ctx.kernel_params dangling when resolved.fn(ctx) ran below.
+        // Keep parameter storage alive through the kernel call; the builder
+        // publishes a borrowed pointer to this buffer through `ctx`.
         alignas(std::max_align_t) std::byte buffer[kMaxKernelParamsSize];
         if (resolved.params_builder != nullptr) {
             AM_RETURN_IF_ERROR(resolved.params_builder(inputs, outputs, buffer));
@@ -127,7 +127,7 @@ protected:
     }
 };
 
-/// Shared pointer alias for operator lifetime management.
+/// @brief Shared immutable ownership of an operator instance.
 using OperatorPtr = std::shared_ptr<const Operator>;
 
 }// namespace aethermind

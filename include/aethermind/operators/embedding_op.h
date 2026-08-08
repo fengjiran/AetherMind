@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_OPERATORS_EMBEDDING_OP_H
 #define AETHERMIND_OPERATORS_EMBEDDING_OP_H
 
+/// @file embedding_op.h
+/// @brief Embedding lookup semantics and executable operator declaration.
+
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator.h"
@@ -10,18 +13,20 @@
 
 namespace aethermind {
 
-/// Single source of truth for the dtype set supported by the Embedding
-/// operator's token_ids input. All Embedding-related validation (semantic
-/// analysis in InferEmbedding, future CPU kernel dispatch) must reference these
-/// definitions instead of maintaining private copies.
+/// @brief Integer dtypes accepted for Embedding token IDs.
+///
+/// All Embedding token-ID validation sites must reference this set instead of
+/// maintaining private copies.
 inline const std::array<DataType, 3> kEmbeddingSupportedTokenIdDTypes = {
         DataType::Int(32),
         DataType::Int(64),
         DataType::UInt(32),
 };
 
-/// Returns true if `dtype` is a valid token_ids dtype (int32, int64, uint32).
-/// Used by operator-level validation to keep the dtype check in one place.
+/// @brief Checks whether Embedding accepts a token-ID dtype.
+///
+/// @param dtype Data type to check.
+/// @return True if `dtype` is in `kEmbeddingSupportedTokenIdDTypes`.
 inline bool IsSupportedTokenIdDType(const DataType& dtype) noexcept {
     return std::ranges::any_of(kEmbeddingSupportedTokenIdDTypes,
                                [&](const DataType& supported) {
@@ -29,19 +34,19 @@ inline bool IsSupportedTokenIdDType(const DataType& dtype) noexcept {
                                });
 }
 
-/// Single source of truth for the dtype set supported by the Embedding
-/// operator's weight input. The semantic layer accepts these dtypes; the
-/// Phase 1 CPU kernel currently implements only Float32. Output dtype
-/// follows weight dtype.
+/// @brief Floating-point dtypes accepted for Embedding weights.
+///
+/// Output dtype follows the weight dtype.
 inline const std::array<DataType, 3> kEmbeddingSupportedWeightDTypes = {
         DataType::Float32(),
         DataType::Float(16),
         DataType::BFloat(16),
 };
 
-/// Returns true if `dtype` is a valid Embedding weight dtype
-/// (float32, float16, bfloat16). Backend kernel dispatch must reference this
-/// same set when adding new dtype paths.
+/// @brief Checks whether Embedding accepts a weight dtype.
+///
+/// @param dtype Data type to check.
+/// @return True if `dtype` is in `kEmbeddingSupportedWeightDTypes`.
 inline bool IsEmbeddingSupportedWeightDType(const DataType& dtype) noexcept {
     return std::ranges::any_of(kEmbeddingSupportedWeightDTypes,
                                [&](const DataType& supported) {
@@ -49,16 +54,17 @@ inline bool IsEmbeddingSupportedWeightDType(const DataType& dtype) noexcept {
                                });
 }
 
-/// Builds a consistent "unsupported weight dtype" error message for
-/// Embedding-related validation points. `context` is the caller name
-/// (e.g. "Embedding", "CpuEmbeddingKernel") prepended to a fixed list of
-/// supported weight dtypes, so every validation site reports the same set.
+/// @brief Builds a consistent unsupported-weight-dtype message for Embedding.
+///
+/// @param context Caller name prepended to the supported-dtype description.
+/// @return Error message containing `context` and the accepted weight dtypes.
 inline std::string MakeEmbeddingUnsupportedWeightDTypeMessage(std::string_view context) {
     std::string msg{context};
     msg += " weight only supports float32, float16, and bfloat16 dtypes";
     return msg;
 }
 
+/// @brief Embedding lookup operator whose output dtype follows the weight dtype.
 class EmbeddingOp final : public Operator {
 public:
     using Params = EmbeddingParams;

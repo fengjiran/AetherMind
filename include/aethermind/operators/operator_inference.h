@@ -1,19 +1,12 @@
-/// Operator semantic layer: shape inference and input filtering.
-///
-/// This header is the single public entry point for operator-level semantic
-/// analysis used during graph construction and workspace planning. It exposes
-/// two categories of API:
-///
-///   * InferOperator             - shape inference dispatch (entry point)
-///   * MakeCompactInputSpecs    - input filtering by schema port flags
-///
-/// InferOperator validates the OpParams variant and parameter ranges at the
-/// beginning of each dispatched detail::Infer* function, before any input
-/// checks. The Infer* free functions in the aethermind::detail namespace are
-/// not part of the public API; InferOperator dispatches to the Infer* function
-/// matching the OpType.
 #ifndef AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H
 #define AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H
+
+/// @file operator_inference.h
+/// @brief Public dispatch and schema helpers for operator semantic inference.
+///
+/// `InferOperator()` is the public dispatch entry point. Operator-specific
+/// functions in `aethermind::detail` are implementation details shared across
+/// translation units.
 
 #include "aethermind/operators/inference_result.h"
 #include "aethermind/operators/op_params.h"
@@ -23,15 +16,9 @@ namespace aethermind {
 
 /// @brief Performs shape inference and constraint analysis for an operator.
 ///
-/// Given the operator type, its parameters, and the input tensor specs,
-/// computes the inferred output tensor specs and any deferred runtime shape
-/// constraints that cannot be fully proven without concrete runtime shapes.
-/// This is the primary entry point for operator-level semantic analysis used
-/// during graph construction and workspace planning.
-///
-/// @param op_type  The operator type to infer.
-/// @param params   The operator parameters (variant dispatched by op_type).
-/// @param inputs   The input tensor specs for the operator.
+/// @param op_type Operator type to infer.
+/// @param params Typed parameter variant associated with `op_type`.
+/// @param inputs Input tensor specifications in schema port order.
 /// @return On success, an InferenceResult with inferred output specs and
 ///         deferred runtime checks. On failure, an error Status describing
 ///         the inference failure (e.g., kInvalidArgument for incompatible
@@ -42,31 +29,26 @@ AM_NODISCARD StatusOr<InferenceResult> InferOperator(OpType op_type,
 
 /// @brief Validates that the input count matches the operator schema.
 ///
-/// Uses GetOperatorSchema() to look up the schema for op_type and checks
-/// that inputs.size() matches schema.input_ports.size(). This provides a
-/// uniform input-count check across all detail::Infer* functions.
-///
-/// @param op_type  The operator type whose schema defines the expected port count.
-/// @param inputs   The input tensor specs to validate.
+/// @param op_type Operator type whose schema defines the expected port count.
+/// @param inputs Input tensor specifications to validate.
 /// @return OkStatus on success; kInvalidArgument if the count mismatches.
 Status ValidateInferenceInputCount(OpType op_type,
                                    std::span<const TensorSpec> inputs);
 
 /// @brief Extracts the subset of input specs that contribute to tensor spec inference.
 ///
-/// Filters all_inputs according to the contributes_tensor_spec flag on each
+/// Filters `all_inputs` according to the `contributes_tensor_spec` flag on each
 /// port in the operator schema. Ports with contributes_tensor_spec == false
 /// (e.g., state inputs whose layout is determined by the operator itself) are
 /// excluded from the result.
 ///
-/// @param schema      The operator schema defining the port layout.
-/// @param all_inputs  All input tensor specs for the operator, indexed by port
-///                    position.
+/// @param schema Operator schema defining port order and participation.
+/// @param all_inputs Input tensor specifications indexed by schema port.
 /// @return On success, a compacted vector containing only the input specs of
 ///         ports that contribute to tensor spec inference (may be empty).
 ///         On failure (input count mismatch or out-of-range port index),
 ///         an error Status.
-/// @pre all_inputs.size() == schema.input_ports.size().
+/// @pre `all_inputs.size() == schema.input_ports.size()`.
 AM_NODISCARD StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(
         const OperatorSchema& schema,
         std::span<const TensorSpec> all_inputs);

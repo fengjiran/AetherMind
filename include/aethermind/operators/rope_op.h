@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_OPERATORS_ROPE_OP_H
 #define AETHERMIND_OPERATORS_ROPE_OP_H
 
+/// @file rope_op.h
+/// @brief Shared dtype contract for rotary-position-embedding inference.
+
 #include "aethermind/dtypes/data_type.h"
 
 #include <algorithm>

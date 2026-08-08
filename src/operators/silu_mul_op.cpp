@@ -75,8 +75,7 @@ StatusOr<InferenceResult> InferSiluMul(const OpParams& params,
     const TensorSpec& gate = inputs[0];
     const TensorSpec& up = inputs[1];
 
-    // Mixed lhs/rhs dtypes are allowed; the kernel converts the rhs to the lhs
-    // dtype at runtime (output dtype follows lhs).
+    // No implicit conversion policy is declared for the fused operation.
     if (gate.dtype != up.dtype) {
         return Status::InvalidArgument(
                 "SiLUMul currently requires gate and up to use the same dtype");

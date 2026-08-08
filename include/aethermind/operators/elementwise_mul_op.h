@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_OPERATORS_ELEMENTWISE_MUL_OP_H
 #define AETHERMIND_OPERATORS_ELEMENTWISE_MUL_OP_H
 
+/// @file elementwise_mul_op.h
+/// @brief Elementwise multiplication semantics and operator declaration.
+
 #include <algorithm>
 #include <array>
 #include <ranges>
@@ -13,21 +16,20 @@
 
 namespace aethermind {
 
-/// Single source of truth for the dtype set supported by the ElementwiseMul
-/// operator. All ElementwiseMul-related validation (semantic analysis in
-/// InferElementwiseMul, CPU kernel dispatch) must reference these definitions
-/// instead of maintaining private copies. The Phase 1 CPU kernel currently
-/// implements only Float32 and BFloat16; the semantic layer accepts the full
-/// set below.
+/// @brief Dtypes accepted by ElementwiseMul semantic inference.
+///
+/// All ElementwiseMul validation sites must reference this set instead of
+/// maintaining private copies.
 inline const std::array<DataType, 3> kElementwiseMulSupportedDTypes = {
         DataType::Float32(),
         DataType::Float(16),
         DataType::BFloat(16),
 };
 
-/// Returns true if `dtype` is in `kElementwiseMulSupportedDTypes`. Used by
-/// operator-level validation to keep the dtype check in one place. Backend
-/// kernel dispatch must reference this same set when adding new dtype paths.
+/// @brief Checks whether ElementwiseMul semantic inference accepts a dtype.
+///
+/// @param dtype Data type to check.
+/// @return True if `dtype` is in `kElementwiseMulSupportedDTypes`.
 inline bool IsElementwiseMulSupportedDType(const DataType& dtype) noexcept {
     return std::ranges::any_of(kElementwiseMulSupportedDTypes,
                                [&](const DataType& supported) {
@@ -35,11 +37,10 @@ inline bool IsElementwiseMulSupportedDType(const DataType& dtype) noexcept {
                                });
 }
 
-/// Builds a consistent "unsupported dtype" error message for
-/// ElementwiseMul-related validation points. `context` is the caller name
-/// (e.g. "ElementwiseMul lhs", "CpuElementwiseMulKernel rhs") prepended to a
-/// fixed list of supported dtypes, so every validation site reports the same
-/// set.
+/// @brief Builds a consistent unsupported-dtype message for ElementwiseMul.
+///
+/// @param context Caller name prepended to the supported-dtype description.
+/// @return Error message containing `context` and the accepted dtype set.
 inline std::string MakeElementwiseMulUnsupportedDTypeMessage(
         std::string_view context) {
     std::string msg{context};
@@ -47,6 +48,7 @@ inline std::string MakeElementwiseMulUnsupportedDTypeMessage(
     return msg;
 }
 
+/// @brief Elementwise multiplication operator with NumPy-style broadcasting.
 class ElementwiseMulOp final : public Operator {
 public:
     using Params = ElementwiseMulParams;

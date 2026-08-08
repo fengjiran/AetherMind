@@ -52,8 +52,6 @@ Status EmbeddingOp::Run(KernelContext& ctx,
                 std::to_string(b->outputs.size()));
     }
 
-    // Phase 1 CPU-first: construct CPU-specific params directly. Phase 2 should
-    // inject params construction via Backend to support multiple backends.
     return InvokeResolvedKernel(ctx, b->inputs, b->outputs);
 }
 
@@ -62,22 +60,8 @@ AM_REGISTER_OPERATOR(OpType::kEmbedding, EmbeddingOp)
 
 namespace detail {
 
-//
-// Validates and infers output shape for the Embedding operator.
-//
-// Steps:
-//   1. Validate OpParams variant type (must be EmbeddingParams).
-//   2. Validate input count via ValidateInferenceInputCount (exactly 2:
-//      token_ids and weight, checked against the operator schema).
-//   3. Validate token_ids dtype (int32, int64, or uint32).
-//   4. Validate weight dtype (float32, float16, or bfloat16).
-//   5. Validate input_ids rank (>= 1). Zero-valued token counts are allowed
-//      (empty output); model-weight positivity is enforced at GraphOpBuilder.
-//   6. Validate weight rank (= 2) and dimension positivity (vocab/hidden);
-//      symbolic dims emit a DimPositiveConstraint deferred to runtime.
-//   7. Build InferenceResult: output shape = input_ids_shape + [weight_shape[1]],
-//      output dtype follows weight dtype.
-//
+// Model-weight dimensions must be positive, while zero token dimensions are
+// valid and produce empty outputs. Symbolic weight bounds are deferred.
 StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
                                          std::span<const TensorSpec> inputs) {
     if (!std::holds_alternative<EmbeddingParams>(params)) {

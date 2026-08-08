@@ -25,7 +25,6 @@ Status LinearOp::Prepare(OperatorContext& ctx) {
     if (resolved_kernel_.fn == nullptr) {
         return Status::Internal("Linear Prepare resolved a kernel with null fn");
     }
-    // LinearParams is empty; no attrs to write.
     return Status::Ok();
 }
 
@@ -62,29 +61,9 @@ AM_REGISTER_OPERATOR(OpType::kLinear, LinearOp)
 
 namespace detail {
 
-// Validates the Linear operator semantics at graph-build time and infers the output shape.
-//
-// Validation steps (in order):
-//  1. Parameter type: params must hold LinearParams (no extra attributes).
-//  2. Input count: exactly 2 — [activation, weight].
-//  3. Input rank: activation must be rank >= 1 (all dimensions except the last
-//     are batch dimensions; the last is in_features).  Weight must be rank 2
-//     (matrix).  There is no upper bound on input rank — batched Linear simply
-//     broadcasts over all leading dimensions.
-//  4. Dtype support: activation and weight dtypes are validated separately
-//     because supported quantization schemes (e.g. INT4 weight, FP32 activation)
-//     differ between the two.
-//  5. Dimension compatibility: input last-dim must equal weight inner-dim
-//     (in_features == weight_in).  When both are static and mismatch the
-//     graph is invalid (hard error).  When at least one is dynamic a runtime
-//     check is emitted instead.
-//
 // Zero-valued dimensions are intentionally allowed, matching NumPy/PyTorch
 // semantics (Linear is semantically equivalent to MatMul). Model-weight
 // positivity is enforced at the GraphOpBuilder layer.
-//
-// Output shape: input's leading dims + [weight_out].  E.g. [b1, b2, in] →
-// [b1, b2, out]; [in] → [out].
 StatusOr<InferenceResult> InferLinear(const OpParams& params,
                                       std::span<const TensorSpec> inputs) {
     if (!std::holds_alternative<LinearParams>(params)) {
@@ -116,9 +95,8 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
                 MakeLinearUnsupportedWeightDTypeMessage("Linear"));
     }
 
-    // in_features (input_last_dim) must equal weight_in (weight[1]).
-    // Static mismatch → graph is structurally invalid.
-    // Dynamic mismatch → defer to a runtime dimension-equality check.
+    // Reject proven incompatibility now; preserve symbolic compatibility as a
+    // runtime equality check.
     const ShapeSymbol& in_features = input_shape[*input_rank - 1];
     const ShapeSymbol& out_features = weight_shape[0];
     const ShapeSymbol& weight_in = weight_shape[1];
@@ -141,8 +119,6 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
                 "Linear input last dimension must match weight input dimension");
     }
 
-    // Output shape = input's leading dims (all except last) + [weight_out].
-    // E.g. [b1, b2, in] → [b1, b2, out];  [in] → [out].
     std::vector<ShapeSymbol> output_shape;
     output_shape.reserve(*input_rank);
     for (size_t i = 0; i < *input_rank - 1; ++i) {

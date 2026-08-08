@@ -1,16 +1,25 @@
 #ifndef AETHERMIND_OPERATORS_FUNCTION_OPERATOR_H
 #define AETHERMIND_OPERATORS_FUNCTION_OPERATOR_H
 
+/// @file function_operator.h
+/// @brief Adapter that exposes a raw kernel function through `Operator`.
+
 #include "aethermind/operators/operator.h"
 
 namespace aethermind {
 
-/// Lightweight Operator adapter that wraps a raw KernelFunc.
+/// @brief Lightweight operator adapter around a raw `KernelFunc`.
 ///
 /// Used when a raw kernel function needs to participate in the Operator
 /// execution path (e.g., tests, builder fallback for unregistered operators).
 class FunctionOperator final : public Operator {
 public:
+    /// @brief Creates an adapter with immutable kernel metadata.
+    ///
+    /// @param op_type Operator type reported by the adapter.
+    /// @param fn Non-owning kernel function pointer invoked by `Run()`.
+    /// @param attrs Attributes copied into the resolved-kernel record.
+    /// @param debug_name Optional static diagnostic name; not owned.
     FunctionOperator(OpType op_type,
                      KernelFunc fn,
                      std::span<const std::byte> attrs = {},

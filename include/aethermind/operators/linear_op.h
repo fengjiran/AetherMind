@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_OPERATORS_LINEAR_OP_H
 #define AETHERMIND_OPERATORS_LINEAR_OP_H
 
+/// @file linear_op.h
+/// @brief Linear-transformation semantics and executable operator declaration.
+
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator.h"
@@ -10,11 +13,10 @@
 
 namespace aethermind {
 
-/// Single source of truth for the dtype set supported by the Linear operator's
-/// activation input. All Linear-related validation (semantic analysis in
-/// InferLinear, future CPU kernel dispatch) must reference these definitions
-/// instead of maintaining private copies. The semantic layer accepts these
-/// dtypes; the Phase 1 CPU kernel currently implements only Float32.
+/// @brief Dtypes accepted for a Linear activation input.
+///
+/// All Linear activation validation sites must reference this set instead of
+/// maintaining private copies.
 inline const std::array<DataType, 5> kLinearSupportedActivationDTypes = {
         DataType::Float32(),
         DataType::Float(16),
@@ -23,9 +25,10 @@ inline const std::array<DataType, 5> kLinearSupportedActivationDTypes = {
         DataType::Float8E5M2(),
 };
 
-/// Returns true if `dtype` is a valid Linear activation dtype
-/// (float32, float16, bfloat16, float8_e4m3fn, float8_e5m2). Backend kernel
-/// dispatch must reference this same set when adding new dtype paths.
+/// @brief Checks whether Linear accepts an activation dtype.
+///
+/// @param dtype Data type to check.
+/// @return True if `dtype` is in `kLinearSupportedActivationDTypes`.
 inline bool IsLinearSupportedActivationDType(const DataType& dtype) noexcept {
     return std::ranges::any_of(kLinearSupportedActivationDTypes,
                                [&](const DataType& supported) {
@@ -33,10 +36,10 @@ inline bool IsLinearSupportedActivationDType(const DataType& dtype) noexcept {
                                });
 }
 
-/// Single source of truth for the dtype set supported by the Linear operator's
-/// weight input. The semantic layer accepts these dtypes (including quantized
-/// int8/int4); the Phase 1 CPU kernel currently implements only Float32.
-/// Output dtype follows activation dtype.
+/// @brief Dtypes accepted for a Linear weight input.
+///
+/// Quantized int8 and int4 weights are valid semantic inputs. Output dtype
+/// follows the activation dtype.
 inline const std::array<DataType, 7> kLinearSupportedWeightDTypes = {
         DataType::Float32(),
         DataType::Float(16),
@@ -47,10 +50,10 @@ inline const std::array<DataType, 7> kLinearSupportedWeightDTypes = {
         DataType::Int(4),
 };
 
-/// Returns true if `dtype` is a valid Linear weight dtype
-/// (float32, float16, bfloat16, float8_e4m3fn, float8_e5m2, int8, int4).
-/// Backend kernel dispatch must reference this same set when adding new dtype
-/// paths.
+/// @brief Checks whether Linear accepts a weight dtype.
+///
+/// @param dtype Data type to check.
+/// @return True if `dtype` is in `kLinearSupportedWeightDTypes`.
 inline bool IsLinearSupportedWeightDType(const DataType& dtype) noexcept {
     return std::ranges::any_of(kLinearSupportedWeightDTypes,
                                [&](const DataType& supported) {
@@ -58,10 +61,10 @@ inline bool IsLinearSupportedWeightDType(const DataType& dtype) noexcept {
                                });
 }
 
-/// Builds a consistent "unsupported activation dtype" error message for
-/// Linear-related validation points. `context` is the caller name
-/// (e.g. "Linear", "CpuLinearKernel") prepended to a fixed list of supported
-/// activation dtypes, so every validation site reports the same set.
+/// @brief Builds a consistent unsupported-activation-dtype message for Linear.
+///
+/// @param context Caller name prepended to the supported-dtype description.
+/// @return Error message containing `context` and the accepted activation dtypes.
 inline std::string MakeLinearUnsupportedActivationDTypeMessage(std::string_view context) {
     std::string msg{context};
     msg += " activation only supports float32, float16, bfloat16, "
@@ -69,10 +72,10 @@ inline std::string MakeLinearUnsupportedActivationDTypeMessage(std::string_view 
     return msg;
 }
 
-/// Builds a consistent "unsupported weight dtype" error message for
-/// Linear-related validation points. `context` is the caller name
-/// (e.g. "Linear", "CpuLinearKernel") prepended to a fixed list of supported
-/// weight dtypes, so every validation site reports the same set.
+/// @brief Builds a consistent unsupported-weight-dtype message for Linear.
+///
+/// @param context Caller name prepended to the supported-dtype description.
+/// @return Error message containing `context` and the accepted weight dtypes.
 inline std::string MakeLinearUnsupportedWeightDTypeMessage(std::string_view context) {
     std::string msg{context};
     msg += " weight only supports float32, float16, bfloat16, "
@@ -81,10 +84,10 @@ inline std::string MakeLinearUnsupportedWeightDTypeMessage(std::string_view cont
 }
 
 
-/// Semantic operator for linear transformation: output = input @ weight.T
+/// @brief Semantic operator for `output = input @ weight.T`.
 ///
 /// Weight shape convention: [out_features, in_features] (PyTorch/HF row-major).
-/// Input shape: [..., in_features] (rank 1 or 2 in Phase 1).
+/// Input shape: [..., in_features] with rank at least one.
 /// Output shape: [..., out_features] (same rank as input).
 class LinearOp final : public Operator {
 public:

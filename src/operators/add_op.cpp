@@ -52,30 +52,13 @@ Status AddOp::Run(KernelContext& ctx,
     return InvokeResolvedKernel(ctx, b->inputs, b->outputs);
 }
 
-// Registers AddOp as the constructor for OpType::kAdd with the operator
-// factory so graph builders can instantiate it by type.
 AM_REGISTER_OPERATOR(OpType::kAdd, AddOp)
 
 
 namespace detail {
 
-// Shape inference and constraint analysis for the Add operator.
-//
-// Validation order (parameter-before-input precedence):
-//   1. Validate OpParams variant type (must be AddParams).
-//   2. Validate input count via ValidateInferenceInputCount (exactly 2:
-//      lhs and rhs, checked against the operator schema).
-//   3. Validate dtype homogeneity: lhs and rhs must share the same dtype.
-//   4. Validate dtype support: the shared dtype must belong to the
-//      Add-supported set (float32, float64, bfloat16, int32, int64).
-//
-// Inference algorithm:
-//   - Compute the output shape via InferBroadcastShape (NumPy-style
-//     right-aligned broadcasting over lhs and rhs symbolic shapes).
-//   - Output dtype equals the (validated-equal) input dtype.
-//   - For each broadcast axis pair that cannot be proven compatible
-//     statically, emit a deferred DimBroadcastableConstraint verified
-//     at runtime by the Executor.
+// Validate parameters before input structure so inference failures have stable
+// precedence. Symbolic broadcast compatibility is deferred to runtime.
 StatusOr<InferenceResult> InferAdd(const OpParams& params,
                                    std::span<const TensorSpec> inputs) {
     if (!std::holds_alternative<AddParams>(params)) {

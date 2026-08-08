@@ -1,6 +1,12 @@
 #ifndef AETHERMIND_OPERATORS_OPERATOR_SCHEMA_H
 #define AETHERMIND_OPERATORS_OPERATOR_SCHEMA_H
 
+/// @file operator_schema.h
+/// @brief Semantic ABI for operator port order, value roles, and traits.
+///
+/// Port indexes and names are part of the graph/operator contract and must
+/// remain synchronized with inference and model graph construction.
+
 #include "aethermind/base/status.h"
 #include "aethermind/operators/op_type.h"
 
@@ -12,7 +18,9 @@
 
 namespace aethermind {
 
-/// Classifies the role of an operator port. Used by schema validation to
+/// @brief Classifies the semantic role of an operator port.
+///
+/// Used by schema validation to
 /// distinguish value kinds that have different producer/spec rules.
 enum class OperatorPortKind : uint8_t {
     kModelInput,///< Provided by the model entry point (e.g. token ids, position ids).
@@ -22,12 +30,14 @@ enum class OperatorPortKind : uint8_t {
     kState,     ///< Persistent state carried across steps (e.g. KV cache).
 };
 
-/// Describes an input port of an operator. Each port identifies a position
+/// @brief Describes one input position in an operator's semantic ABI.
+///
+/// Each port identifies a position
 /// in the operator's input list and its expected value kind.
 struct OperatorInputPort {
     uint32_t index = 0;
     OperatorPortKind kind = OperatorPortKind::kActivation;
-    /// Controls whether this port participates in output tensor spec inference.
+    /// @brief Controls whether this port participates in output tensor-spec inference.
     /// Ports with contributes_tensor_spec = false (e.g. state inputs whose
     /// layout is determined by the operator itself, not propagated) are
     /// excluded from spec derivation.
@@ -35,7 +45,9 @@ struct OperatorInputPort {
     std::string name{};
 };
 
-/// Describes an output port of an operator. Each port identifies one of the
+/// @brief Describes one output position in an operator's semantic ABI.
+///
+/// Each port identifies one of the
 /// output values produced by the operator and its value kind.
 struct OperatorOutputPort {
     uint32_t index = 0;
@@ -43,22 +55,26 @@ struct OperatorOutputPort {
     std::string name{};
 };
 
-/// Structural and semantic properties of an operator that are independent
+/// @brief Structural properties used by graph optimization and validation.
+///
+/// These properties are independent
 /// of the specific op type. These traits guide pass scheduling, value
 /// liveness analysis, and compile-time evaluation.
 struct OperatorTraits {
-    /// True if the operator modifies persistent state (e.g. KV cache update).
+    /// @brief Whether the operator modifies persistent state.
     bool has_side_effects = true;
-    /// True if repeated invocation with identical inputs produces identical
+    /// @brief Whether identical inputs always produce identical outputs.
+    ///
     /// outputs. Non-deterministic operators (e.g. dropout) are excluded from
     /// some fusion and CSE passes.
     bool deterministic = false;
-    /// True if the operator can be constant-folded during graph lowering.
+    /// @brief Whether graph lowering may evaluate the operator at compile time.
     /// Requires has_side_effects = false and deterministic = true.
     bool compile_time_evaluable = false;
 };
 
-/// Associates an OpType with its expected port layout and semantic traits.
+/// @brief Associates an operator type with its port layout and semantic traits.
+///
 /// Schemas are defined statically in operator_schema.cpp and used by graph
 /// validation (graph.cpp) to verify node structure at build time.
 struct OperatorSchema {
@@ -68,7 +84,7 @@ struct OperatorSchema {
     OperatorTraits traits{};
 };
 
-/// Port name constants for KV cache operators.
+/// @brief Port-name constants shared by KV-cache schemas and validation.
 /// Schema definitions in operator_schema.cpp and validation logic in
 /// model_graph.cpp both reference these constants so that the port name
 /// contract is enforced at compile time.
@@ -81,22 +97,49 @@ inline constexpr std::string_view kCache = "k_cache";
 inline constexpr std::string_view vCache = "v_cache";
 }// namespace kv_cache_ports
 
-/// Finds the index of an input port by name. Returns kInvalidArgument if not found.
+/// @brief Finds an input port index by name.
+///
+/// @param schema Schema whose input ports are searched.
+/// @param name Exact port name to find.
+/// @return Port index, or `kInvalidArgument` when no input port matches.
 AM_NODISCARD StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema,
                                                    std::string_view name) noexcept;
 
-/// Finds the index of an output port by name. Returns kInvalidArgument if not found.
+/// @brief Finds an output port index by name.
+///
+/// @param schema Schema whose output ports are searched.
+/// @param name Exact port name to find.
+/// @return Port index, or `kInvalidArgument` when no output port matches.
 AM_NODISCARD StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema,
                                                     std::string_view name) noexcept;
 
+/// @brief Tests whether a schema exposes at least one state output.
+///
+/// @param schema Schema to inspect.
+/// @return True when an output port has kind `kState`.
 AM_NODISCARD bool HasStatefulOutput(const OperatorSchema& schema) noexcept;
+/// @brief Tests whether an operator is deterministic and side-effect free.
+///
+/// @param schema Schema to inspect.
+/// @return True when the schema describes a pure operator.
 AM_NODISCARD bool IsPureOperator(const OperatorSchema& schema) noexcept;
+/// @brief Tests whether graph lowering may evaluate an operator at compile time.
+///
+/// @param schema Schema to inspect.
+/// @return True when the operator is pure and marked compile-time evaluable.
 AM_NODISCARD bool IsCompileTimeEvaluable(const OperatorSchema& schema) noexcept;
 
-/// Looks up the schema for `op_type` from the static registry.
+/// @brief Looks up an operator schema in the static registry.
+///
 /// Returns OK with the schema for a registered op, or kNotFound for an
 /// unregistered op type (e.g. OpType::kUnknown).
+///
+/// @param op_type Operator type to look up.
+/// @return Registered schema, or `kNotFound` when the type is unknown.
 AM_NODISCARD StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type);
+/// @brief Returns all schemas in semantic ABI order.
+///
+/// @return Borrowed view backed by immutable static storage.
 AM_NODISCARD std::span<const OperatorSchema> GetOperatorSchemas() noexcept;
 
 }// namespace aethermind

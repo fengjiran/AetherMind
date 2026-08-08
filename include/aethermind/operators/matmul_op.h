@@ -1,18 +1,19 @@
 #ifndef AETHERMIND_OPERATORS_MATMUL_OP_H
 #define AETHERMIND_OPERATORS_MATMUL_OP_H
 
+/// @file matmul_op.h
+/// @brief Batched matrix-multiplication semantics and operator declaration.
+
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator.h"
 
 namespace aethermind {
 
-/// Single source of truth for the dtype set supported by the MatMul
-/// operator's lhs and rhs inputs. All MatMul-related validation (semantic
-/// analysis in InferMatMul, future CPU kernel dispatch) must reference these
-/// definitions instead of maintaining private copies. The semantic layer
-/// accepts these dtypes; the Phase 1 CPU kernel currently implements only
-/// Float32. Output dtype follows lhs dtype.
+/// @brief Dtypes accepted independently for MatMul inputs.
+///
+/// All MatMul validation sites must reference this set instead of maintaining
+/// private copies. Output dtype follows the lhs dtype.
 inline const std::array<DataType, 6> kMatMulSupportedDTypes = {
         DataType::Float32(),
         DataType::Float(16),
@@ -22,9 +23,10 @@ inline const std::array<DataType, 6> kMatMulSupportedDTypes = {
         DataType::Int(8),
 };
 
-/// Returns true if `dtype` is a valid MatMul dtype
-/// (float32, float16, bfloat16, float8_e4m3fn, float8_e5m2, int8). Backend
-/// kernel dispatch must reference this same set when adding new dtype paths.
+/// @brief Checks whether MatMul semantic inference accepts a dtype.
+///
+/// @param dtype Data type to check.
+/// @return True if `dtype` is in `kMatMulSupportedDTypes`.
 inline bool IsMatMulSupportedDType(const DataType& dtype) noexcept {
     return std::ranges::any_of(kMatMulSupportedDTypes,
                                [&](const DataType& supported) {
@@ -32,10 +34,10 @@ inline bool IsMatMulSupportedDType(const DataType& dtype) noexcept {
                                });
 }
 
-/// Builds a consistent "unsupported dtype" error message for MatMul-related
-/// validation points. `context` is the caller name (e.g. "MatMul",
-/// "CpuMatMulKernel") prepended to a fixed list of supported dtypes, so every
-/// validation site reports the same set.
+/// @brief Builds a consistent unsupported-dtype message for MatMul.
+///
+/// @param context Caller name prepended to the supported-dtype description.
+/// @return Error message containing `context` and the accepted dtype set.
 inline std::string MakeMatMulUnsupportedDTypeMessage(std::string_view context) {
     std::string msg{context};
     msg += " only supports float32, float16, bfloat16, "
@@ -43,7 +45,7 @@ inline std::string MakeMatMulUnsupportedDTypeMessage(std::string_view context) {
     return msg;
 }
 
-/// Semantic operator for batched matrix multiplication.
+/// @brief Semantic operator for batched matrix multiplication.
 ///
 /// Computes `output = lhs @ effective_rhs` where:
 /// - `effective_rhs = rhs` when `transpose_rhs == false` (rhs shape [..., K, N])
@@ -53,12 +55,6 @@ inline std::string MakeMatMulUnsupportedDTypeMessage(std::string_view context) {
 /// leading axes are batch axes broadcast according to NumPy semantics.
 /// Output shape: `broadcast(lhs_batch, rhs_batch) + [M, N]` where
 /// `M = lhs.shape[-2]` and `N = effective_rhs.shape[-1]`.
-///
-/// Phase 1 scope:
-/// - Semantic layer accepts float32, float16, bfloat16, float8_e4m3fn,
-///   float8_e5m2, and int8 dtypes (output dtype follows lhs dtype).
-/// - CPU kernel currently implements float32 only.
-/// - Supports transpose_rhs for PyTorch/HF-style weight storage.
 ///
 /// Kernel execution is not yet wired; Run() returns Unimplemented after
 /// binding validation. A CPU kernel can be added later without changing the

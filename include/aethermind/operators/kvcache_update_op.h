@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_OPERATORS_KVCACHE_UPDATE_OP_H
 #define AETHERMIND_OPERATORS_KVCACHE_UPDATE_OP_H
 
+/// @file kvcache_update_op.h
+/// @brief Shared dtype contract for KV-cache update inference.
+
 #include "aethermind/dtypes/data_type.h"
 
 #include <algorithm>

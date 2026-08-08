@@ -1,20 +1,8 @@
-// Semantic-layer operator for elementwise addition with NumPy-style broadcasting.
-//
-// Inputs (per InferOperator):
-//   - inputs[0]: lhs tensor, any rank
-//   - inputs[1]: rhs tensor, any rank (must be broadcast-compatible with lhs)
-// Both inputs must share a dtype from kAddSupportedDTypes
-// (float32, float64, bfloat16, int32, int64). The output shape is the
-// broadcast of the two input shapes; deferred broadcastability checks
-// that depend on runtime shapes are emitted via InferenceResult::runtime_checks.
-//
-// Lifecycle and thread-safety follow the Operator base class contract:
-// Construct -> Prepare() -> Run() (repeated).
-// Instances are not thread-safe; concurrent Run() requires external
-// synchronization or one instance per thread.
-
 #ifndef AETHERMIND_OPERATORS_ADD_OP_H
 #define AETHERMIND_OPERATORS_ADD_OP_H
+
+/// @file add_op.h
+/// @brief Elementwise addition semantics and executable operator declaration.
 
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
@@ -26,7 +14,8 @@
 
 namespace aethermind {
 
-/// Single source of truth for the dtype set supported by the Add operator.
+/// @brief Dtypes accepted by Add semantic inference.
+///
 /// All Add-related validation (op params, CPU kernel dispatch, constant
 /// folding) must reference these definitions instead of maintaining private
 /// copies. Add kernel registrations (see add_entry.cpp) statically assert
@@ -39,25 +28,31 @@ inline const std::array<DataType, 5> kAddSupportedDTypes = {
         DataType::Int(64),
 };
 
-/// Returns true if `dtype` is in `kAddSupportedDTypes`. Used by operator-level
-/// validation and backend kernel dispatch to keep the dtype check in one place.
+/// @brief Checks whether Add semantic inference accepts a dtype.
+///
+/// @param dtype Data type to check.
+/// @return True if `dtype` is in `kAddSupportedDTypes`.
 inline bool IsAddSupportedDType(const DataType& dtype) noexcept {
     return std::ranges::any_of(kAddSupportedDTypes, [&](const DataType& supported) {
         return dtype == supported;
     });
 }
 
-/// Builds a consistent "unsupported dtype" error message for Add-related
+/// @brief Builds a consistent unsupported-dtype message for Add.
+///
 /// validation points. `context` is the caller name (e.g. "Add", "CpuAddKernel",
 /// "LaunchAdd") prepended to a fixed list of supported dtypes, so every
 /// validation site reports the same set.
+///
+/// @param context Caller name prepended to the supported-dtype description.
+/// @return Error message containing `context` and the accepted dtype set.
 inline std::string MakeAddUnsupportedDTypeMessage(std::string_view context) {
     std::string msg{context};
     msg += " only supports float32, float64, bfloat16, int32, and int64 tensors";
     return msg;
 }
 
-/// Elementwise Add operator with NumPy-style broadcasting.
+/// @brief Elementwise Add operator with NumPy-style broadcasting.
 ///
 /// Validates that both inputs share a dtype from `kAddSupportedDTypes` and
 /// are broadcast-compatible; infers the broadcast output shape. On Prepare(),
@@ -89,7 +84,6 @@ public:
 
 private:
     Params params_{};
-    // Written only by Prepare(); read by Run() and GetResolvedKernel().
     ResolvedKernel resolved_kernel_{};
 };
 

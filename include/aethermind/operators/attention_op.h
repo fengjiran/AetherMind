@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_OPERATORS_ATTENTION_OP_H
 #define AETHERMIND_OPERATORS_ATTENTION_OP_H
 
+/// @file attention_op.h
+/// @brief Shared dtype contract for Attention semantic inference.
+
 #include "aethermind/dtypes/data_type.h"
 
 #include <algorithm>

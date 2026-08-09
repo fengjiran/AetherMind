@@ -1,5 +1,5 @@
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
-#include "aethermind/operators/operator_schema.h"
+#include "op_removability_internal.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -7,14 +7,6 @@
 
 namespace aethermind {
 namespace {
-
-bool IsDceRemovableOp(OpType op_type) {
-    const auto schema = GetOperatorSchema(op_type);
-    if (!schema.ok()) {
-        return false;
-    }
-    return !schema->traits.has_side_effects && !HasStatefulOutput(*schema);
-}
 
 StatusOr<bool> AreAllOutputsDead(const GraphRewriteSession& session,
                                  const GraphNodeView& node,
@@ -63,7 +55,7 @@ Status RemoveDeadNodesOnce(GraphRewriteSession& session,
         AM_RETURN_IF_ERROR(node.status());
         AM_ASSIGN_OR_RETURN(bool all_outputs_dead,
                             AreAllOutputsDead(session, *node, output_terminals));
-        if (!IsDceRemovableOp(node->op_type) || !all_outputs_dead) {
+        if (!detail::IsDceRemovableOp(node->op_type) || !all_outputs_dead) {
             continue;
         }
 
@@ -93,6 +85,7 @@ Status DeadCodeEliminationPass::Run(GraphRewriteSession& session, const PassCont
         changed = false;
         AM_RETURN_IF_ERROR(RemoveDeadNodesOnce(session, output_terminals, changed));
     }
+    session.RequestCommitPruning();
     return Status::Ok();
 }
 

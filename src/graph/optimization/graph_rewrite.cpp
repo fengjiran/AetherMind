@@ -1,5 +1,6 @@
 #include "aethermind/graph/optimization/graph_rewrite.h"
 #include "aethermind/operators/operator_inference.h"
+#include "op_removability_internal.h"
 #include "utils/variant_utils.h"
 
 #include <algorithm>
@@ -78,6 +79,10 @@ GraphRewriteSession::GraphRewriteSession(const ModelGraph& graph)
       node_to_rewrite_(graph.GetNodes().size(), std::nullopt),
       value_replacements_(graph.GetValues().size(), std::nullopt),
       resolved_value_cache_(graph.GetValues().size(), std::nullopt) {}
+
+void GraphRewriteSession::RequestCommitPruning() noexcept {
+    commit_pruning_requested_ = true;
+}
 
 // Allocates a virtual value id for internal use within a subgraph replacement.
 // Virtual values serve as edges between replacement nodes and are not
@@ -881,6 +886,218 @@ StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
     return *maps.virtual_values[session_index];
 }
 
+// Computes the reverse-reachability closure of the graph outputs over the
+// mixed source/replacement graph: a node is retained when some graph output
+// reaches it through value producers, and producers consumed only by
+// unretained nodes are dropped along with them.
+//
+// Steps:
+//   1. Index: map each value id to its producer. Active replacements take
+//      precedence over source-graph producers for the values they replace.
+//   2. Resolve: classify a resolved value into four producer kinds
+//      (replacement / live source / external / unavailable).
+//   3. Seed: retain the producer of every graph output, every replacement
+//      that must survive by classification (mirror views, non-DCE-removable
+//      ops), and every live source node outside DCE-removability.
+//   4. Propagate: drain the worklist; for each retained node, retain the
+//      producers of its inputs.
+//   5. Return the retained masks. An unavailable producer aborts with
+//      InvalidArgument instead of silently dropping a retained consumer.
+StatusOr<GraphRewriteSession::RetainedNodes> GraphRewriteSession::ComputeRetainedNodes() const {
+    struct ProducerRef {
+        std::size_t rewrite_index = 0;
+        std::size_t replacement_index = 0;
+    };
+
+    enum class ProducerKind : std::uint8_t {
+        kReplacement,
+        kLiveSource,
+        kExternal,
+        kUnavailable,
+    };
+
+    struct ResolvedProducer {
+        ProducerKind kind = ProducerKind::kExternal;
+        ProducerRef replacement{};
+        GraphNodeId source_node{};
+    };
+
+    enum class WorkItemKind : std::uint8_t {
+        kReplacement,
+        kSource,
+    };
+
+    struct WorkItem {
+        WorkItemKind kind = WorkItemKind::kSource;
+        ProducerRef replacement{};
+        GraphNodeId source_node{};
+    };
+
+    const std::size_t source_value_count = graph_.GetValues().size();
+    const std::size_t value_count = source_value_count + session_value_metadata_.size();
+    std::vector<std::optional<ProducerRef>> replacement_producers(value_count, std::nullopt);
+    std::vector<std::optional<GraphNodeId>> source_producers(source_value_count, std::nullopt);
+
+    // Step 1: index each value id to its producer. Replacements take
+    // precedence over source-graph producers for the values they replace.
+    for (std::size_t i = 0; i < source_value_count; ++i) {
+        source_producers[i] = graph_.GetValues()[i].producer;
+    }
+
+    for (std::size_t i = 0; i < rewrites_.size(); ++i) {
+        const auto& rewrite = rewrites_[i];
+        if (!rewrite.active) {
+            continue;
+        }
+
+        for (std::size_t j = 0; j < rewrite.replacements.size(); ++j) {
+            for (const auto& output: rewrite.replacements[j].outputs) {
+                if (output.replaces.has_value()) {
+                    replacement_producers[output.replaces->index] =
+                            ProducerRef{.rewrite_index = i, .replacement_index = j};
+                }
+            }
+        }
+    }
+
+    const auto resolve_producer = [&](GraphValueId resolved) -> ResolvedProducer {
+        if (resolved.index < replacement_producers.size() &&
+            replacement_producers[resolved.index].has_value()) {
+            return {.kind = ProducerKind::kReplacement,
+                    .replacement = *replacement_producers[resolved.index]};
+        }
+
+        if (resolved.index >= source_producers.size()) {
+            return {.kind = ProducerKind::kExternal};
+        }
+
+        const std::optional<GraphNodeId> producer = source_producers[resolved.index];
+        if (!producer.has_value()) {
+            return {.kind = ProducerKind::kExternal};
+        }
+
+        if (IsNodeLive(*producer)) {
+            return {.kind = ProducerKind::kLiveSource,
+                    .source_node = *producer};
+        }
+        return {.kind = ProducerKind::kUnavailable,
+                .source_node = *producer};
+    };
+
+    RetainedNodes retained;
+    retained.replacement_mask.resize(rewrites_.size());
+    for (std::size_t rewrite_index = 0; rewrite_index < rewrites_.size(); ++rewrite_index) {
+        retained.replacement_mask[rewrite_index].resize(
+                rewrites_[rewrite_index].replacements.size(), 0U);
+    }
+    retained.source_node_mask.resize(graph_.GetNodes().size(), 0U);
+
+    std::vector<WorkItem> worklist;
+    worklist.reserve(graph_.GetNodes().size());
+    const auto retain_replacement = [&](ProducerRef producer) {
+        uint8_t& retained_flag = retained.replacement_mask[producer.rewrite_index]
+                                                          [producer.replacement_index];
+        if (retained_flag == 0U) {
+            retained_flag = 1U;
+            worklist.push_back(WorkItem{.kind = WorkItemKind::kReplacement,
+                                        .replacement = producer});
+        }
+    };
+
+    const auto retain_source = [&](GraphNodeId producer) {
+        uint8_t& retained_flag = retained.source_node_mask[producer.index];
+        if (retained_flag == 0U) {
+            retained_flag = 1U;
+            worklist.push_back(WorkItem{.kind = WorkItemKind::kSource,
+                                        .source_node = producer});
+        }
+    };
+
+    const auto retain_value_producer = [&](GraphValueId value,
+                                           const std::string& consumer) -> Status {
+        const GraphValueId resolved = GetResolvedValue(value);
+        const ResolvedProducer producer = resolve_producer(resolved);
+        switch (producer.kind) {
+            case ProducerKind::kReplacement:
+                retain_replacement(producer.replacement);
+                return Status::Ok();
+            case ProducerKind::kLiveSource:
+                retain_source(producer.source_node);
+                return Status::Ok();
+            case ProducerKind::kExternal:
+                return Status::Ok();
+            case ProducerKind::kUnavailable:
+                return Status::InvalidArgument(
+                        "GraphRewriteSession::Commit value " +
+                        std::to_string(resolved.index) + " has producer node " +
+                        std::to_string(producer.source_node.index) +
+                        " which is unavailable during commit but is referenced by " +
+                        consumer);
+        }
+        return Status::InvalidArgument(
+                "GraphRewriteSession::Commit encountered an unknown producer kind");
+    };
+
+    // Step 3: seed the worklist from graph outputs and mandatory survivors
+    // (mirror views and non-DCE-removable replacements; live source nodes
+    // outside DCE-removability).
+    for (const auto& output: graph_.GetOutputs()) {
+        AM_RETURN_IF_ERROR(retain_value_producer(output.value, "a graph output"));
+    }
+
+    for (std::size_t rewrite_index = 0; rewrite_index < rewrites_.size(); ++rewrite_index) {
+        const RewriteEntry& rewrite = rewrites_[rewrite_index];
+        if (!rewrite.active) {
+            continue;
+        }
+        for (std::size_t replacement_index = 0;
+             replacement_index < rewrite.replacements.size();
+             ++replacement_index) {
+            const ReplacementNode& replacement = rewrite.replacements[replacement_index];
+            if (rewrite.exposes_node_view ||
+                !detail::IsDceRemovableOp(replacement.op_type)) {
+                retain_replacement(ProducerRef{.rewrite_index = rewrite_index,
+                                               .replacement_index = replacement_index});
+            }
+        }
+    }
+    for (std::size_t node_index = 0; node_index < graph_.GetNodes().size(); ++node_index) {
+        const GraphNodeId node{.index = static_cast<uint32_t>(node_index)};
+        if (IsNodeLive(node) &&
+            !detail::IsDceRemovableOp(graph_.GetNodes()[node_index].op_type)) {
+            retain_source(node);
+        }
+    }
+
+    // Step 4: propagate retention through the inputs of every retained node
+    // until the worklist drains (closure under producer reachability).
+    // Index traversal is required: retain_value_producer appends to
+    // `worklist` while iterating, and range-for caches an end iterator that
+    // would miss appended items (or dangle on reallocation).
+    for (std::size_t cursor = 0; cursor < worklist.size(); ++cursor) {
+        const WorkItem item = worklist[cursor];
+        if (item.kind == WorkItemKind::kReplacement) {
+            const ReplacementNode& replacement =
+                    rewrites_[item.replacement.rewrite_index]
+                            .replacements[item.replacement.replacement_index];
+            const std::string consumer =
+                    "replacement[" + std::to_string(item.replacement.replacement_index) +
+                    "] in rewrite " + std::to_string(item.replacement.rewrite_index);
+            for (const GraphValueId input: replacement.inputs) {
+                AM_RETURN_IF_ERROR(retain_value_producer(input, consumer));
+            }
+            continue;
+        }
+
+        AM_ASSIGN_OR_RETURN(const GraphNodeView node, GetNodeView(item.source_node));
+        const std::string consumer = "source node " + std::to_string(item.source_node.index);
+        for (const GraphValueId input: node.inputs) {
+            AM_RETURN_IF_ERROR(retain_value_producer(input, consumer));
+        }
+    }
+    return retained;
+}
+
 // Copies source external values and reachable session constants into the
 // committed graph.
 //
@@ -891,20 +1108,13 @@ StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
 //   3. Add every session constant referenced by the committed graph via
 //      committed.AddConstant; unreferenced session constants are dropped.
 //
-// Reachability: a session constant is copied only when the final committed
-// graph references it — i.e. it is consumed by a live original node or an
-// active replacement input (HasLiveConsumers), or a graph output resolves
-// to it through a ReplaceValue chain (MarkCommittedOutputs). A session
-// constant created by a pass but left without consumers afterwards (e.g. the
-// intermediate folded constant in a chain A = B + C, D = A + E when both
-// Add nodes are folded and then DCE'd) is dead data and must not leak into
-// the committed graph. This pruning criterion must remain consistent with
-// MarkCommittedOutputs: every session constant that can be mapped as a graph
-// output must be copied. Consumer-based pruning also relies on
-// EnsureConsumerCache indexing resolved replacement inputs, including session
-// values.
+// Reachability: a session constant is copied only when a retained source or
+// replacement node consumes it, or a graph output resolves to it through a
+// ReplaceValue chain. Using the same retained masks as node emission keeps
+// constant pruning aligned with mixed-graph pruning.
 Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
-                                               const CommitValueMaps& maps) const {
+                                               const CommitValueMaps& maps,
+                                               const RetainedNodes& retained) const {
     const std::span<const GraphValue> values = graph_.GetValues();
     for (uint32_t i = 0; i < values.size(); ++i) {
         const GraphValue& value = values[i];
@@ -942,9 +1152,6 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
         committed.SetQuantization(*maps.source_values[i], value.quantization);
     }
 
-    // Collect session constant ids that the final committed graph will
-    // reference. Session constants are in the id range [values.size(), ...);
-    // the consumer index includes them, so HasLiveConsumers is usable here.
     std::vector<uint8_t> referenced(session_value_metadata_.size(), 0U);
     for (const auto& output: graph_.GetOutputs()) {
         if (const auto resolved_output = GetResolvedValue(output.value);
@@ -953,17 +1160,34 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
         }
     }
 
-    for (uint32_t i = 0; i < session_value_metadata_.size(); ++i) {
-        if (referenced[i] != 0U || !session_value_metadata_[i].has_value()) {
+    const auto mark_session_constant = [&](GraphValueId input) {
+        const GraphValueId resolved = GetResolvedValue(input);
+        if (IsSessionConstant(resolved)) {
+            referenced[GetSessionValueIndex(resolved)] = 1U;
+        }
+    };
+    for (std::size_t rewrite_index = 0; rewrite_index < rewrites_.size(); ++rewrite_index) {
+        const RewriteEntry& rewrite = rewrites_[rewrite_index];
+        for (std::size_t replacement_index = 0;
+             replacement_index < rewrite.replacements.size();
+             ++replacement_index) {
+            if (retained.replacement_mask[rewrite_index][replacement_index] == 0U) {
+                continue;
+            }
+            for (const GraphValueId input: rewrite.replacements[replacement_index].inputs) {
+                mark_session_constant(input);
+            }
+        }
+    }
+    for (std::size_t node_index = 0; node_index < retained.source_node_mask.size(); ++node_index) {
+        if (retained.source_node_mask[node_index] == 0U) {
             continue;
         }
-
-        const GraphValueId session_id{.index = static_cast<uint32_t>(values.size() + i)};
-        AM_ASSIGN_OR_RETURN(bool referenced_by_consumers, HasLiveConsumers(session_id));
-        if (!referenced_by_consumers) {
-            continue;
+        AM_ASSIGN_OR_RETURN(const GraphNodeView node,
+                            GetNodeView(GraphNodeId{.index = static_cast<uint32_t>(node_index)}));
+        for (const GraphValueId input: node.inputs) {
+            mark_session_constant(input);
         }
-        referenced[i] = 1U;
     }
 
     for (uint32_t i = 0; i < session_value_metadata_.size(); ++i) {
@@ -989,12 +1213,23 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
 //      (virtual or source); session-constant targets and double mappings are
 //      rejected.
 Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
+                                        std::span<const uint8_t> retained_mask,
                                         ModelGraph& committed,
                                         const CommitValueMaps& maps) const {
     // For each replacement node, resolve and map inputs, add the node to
     // the committed graph, then map each output through the replaces binding
     // into the appropriate map (source_values, virtual_values, or error).
-    for (const auto& replacement: rewrite.replacements) {
+    if (retained_mask.size() != rewrite.replacements.size()) {
+        return Status::InvalidArgument(
+                "GraphRewriteSession::Commit retained replacement mask size mismatch");
+    }
+    for (std::size_t replacement_index = 0;
+         replacement_index < rewrite.replacements.size();
+         ++replacement_index) {
+        if (retained_mask[replacement_index] == 0U) {
+            continue;
+        }
+        const ReplacementNode& replacement = rewrite.replacements[replacement_index];
         std::vector<GraphValueId> new_inputs;
         new_inputs.reserve(replacement.inputs.size());
         for (const auto input: replacement.inputs) {
@@ -1128,8 +1363,25 @@ Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed,
 //      at its first old_node and emitting surviving original nodes.
 //   4. Mark the committed graph outputs (MarkCommittedOutputs) and validate
 //      the result.
-StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
+StatusOr<ModelGraph> GraphRewriteSession::Commit(const CommitOptions& options) const {
     AM_RETURN_IF_ERROR(ValidateEdits());
+
+    RetainedNodes retained;
+    if (options.force_prune_unreachable || commit_pruning_requested_) {
+        AM_ASSIGN_OR_RETURN(retained, ComputeRetainedNodes());
+    } else {
+        retained.replacement_mask.resize(rewrites_.size());
+        for (std::size_t rewrite_index = 0; rewrite_index < rewrites_.size(); ++rewrite_index) {
+            retained.replacement_mask[rewrite_index].resize(
+                    rewrites_[rewrite_index].replacements.size(),
+                    rewrites_[rewrite_index].active ? 1U : 0U);
+        }
+        retained.source_node_mask.resize(graph_.GetNodes().size(), 0U);
+        for (std::size_t node_index = 0; node_index < graph_.GetNodes().size(); ++node_index) {
+            retained.source_node_mask[node_index] =
+                    IsNodeLive(GraphNodeId{.index = static_cast<uint32_t>(node_index)}) ? 1U : 0U;
+        }
+    }
 
     ModelGraph committed;
     ValueMap value_map(graph_.GetValues().size(), std::nullopt);
@@ -1139,7 +1391,7 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
                          .session_constants = session_constant_map,
                          .virtual_values = virtual_value_map};
 
-    AM_RETURN_IF_ERROR(CopyExternalValues(committed, maps));
+    AM_RETURN_IF_ERROR(CopyExternalValues(committed, maps, retained));
 
     // Emit nodes in source topological order. When a node is the first in
     // topological order among its rewrite's old_nodes, emit the entire rewrite
@@ -1164,11 +1416,17 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit() const {
 
             if (!emitted_rewrites[*rewrite_index]) {
                 emitted_rewrites[*rewrite_index] = true;
-                AM_RETURN_IF_ERROR(EmitRewrite(rewrite, committed, maps));
+                AM_RETURN_IF_ERROR(EmitRewrite(rewrite,
+                                               retained.replacement_mask[*rewrite_index],
+                                               committed,
+                                               maps));
             }
             continue;
         }
 
+        if (retained.source_node_mask[old_node_id.index] == 0U) {
+            continue;
+        }
         AM_RETURN_IF_ERROR(EmitOriginalNode(old_node_id, committed, maps));
     }
 

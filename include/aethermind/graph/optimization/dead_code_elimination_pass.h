@@ -8,12 +8,13 @@
 
 namespace aethermind {
 
-/// @brief Removes graph nodes whose outputs have no live consumers and are
-/// not graph outputs or side-effect roots.
+/// @brief Removes DCE-removable graph nodes whose outputs are dead.
 ///
-/// Uses GraphRewriteSession liveness queries (IsValueLive, HasLiveConsumers,
-/// IsGraphOutput) to decide eligibility, then drops dead nodes via
-/// RemoveNode. Side-effecting operators are preserved unconditionally.
+/// Resolves graph-output terminals once, then repeatedly removes nodes whose
+/// unreplaced outputs are neither terminals nor consumed by a live node.
+/// After a successful enabled run, requests Commit-time mixed-graph pruning
+/// to remove unreachable replacement residue. When `enable_dce` is false,
+/// the pass makes no changes and does not request Commit-time pruning.
 class DeadCodeEliminationPass final : public GraphPass {
 public:
     AM_NODISCARD std::string_view Name() const noexcept override;

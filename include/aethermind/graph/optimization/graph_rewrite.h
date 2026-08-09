@@ -111,6 +111,23 @@ struct GraphNodeView {
     std::string name{};
 };
 
+/// @brief Controls optional behavior when materializing a rewrite session.
+///
+/// Commit-time pruning removes unreachable residue from the mixed
+/// source/replacement graph: replacement nodes and surviving source nodes
+/// that no path from a graph output (after resolution) can reach are
+/// omitted from the committed graph. Pruning runs either on an explicit
+/// request (see RequestCommitPruning) or when `force_prune_unreachable` is
+/// set. DCE and Commit pruning are complementary: DeadCodeEliminationPass
+/// deletes dead source nodes from the session state during the run, while
+/// Commit pruning is the fallback that drops unreachable residual rewrites
+/// and their source producers when the whole graph is materialized.
+struct CommitOptions {
+    /// Force pruning even without a session request. Additive only: passing
+    /// false cannot disable a RequestCommitPruning() request.
+    bool force_prune_unreachable = false;
+};
+
 /// @brief Records pending rewrites over an immutable source ModelGraph and
 /// materializes the result on Commit().
 ///
@@ -148,8 +165,10 @@ public:
     ///
     /// The constant is allocated in the session-local id space
     /// (ValueKind::kSessionConstant). Commit() materializes it only when the
-    /// final committed graph references it through a live consumer or a graph
-    /// output resolved by ReplaceValue; otherwise it is discarded.
+    /// final committed graph references it through a retained consumer — a
+    /// live source node or a retained replacement after pruning — or a graph
+    /// output resolved by ReplaceValue; otherwise it is discarded (see
+    /// CopyExternalValues for the lockstep pruning alignment).
     /// @param spec Tensor spec for the constant value.
     /// @param binding Constant binding payload backing the value.
     /// @param quantization Quantization metadata for the constant.
@@ -317,7 +336,7 @@ public:
     /// return InvalidArgument.
     /// @param value Value id to describe.
     /// @return GraphValueDesc for the value, or InvalidArgument for virtual/out-of-range ids.
-    AM_NODISCARD StatusOr<GraphValueDesc> GetValueOutputMetadata(GraphValueId value) const;
+    StatusOr<GraphValueDesc> GetValueOutputMetadata(GraphValueId value) const;
 
     /// @brief Returns true when `value` is directly marked as a graph output in the
     /// source graph. Out-of-range ids and virtual values return false.
@@ -365,7 +384,7 @@ public:
     ///         ModelGraph::TopologicalOrder error if the source graph contains
     ///         a cycle (the session does not introduce new edges, so a cycle
     ///         can only originate from the source graph).
-    AM_NODISCARD StatusOr<std::vector<GraphNodeId>> FindConsumers(GraphValueId value) const;
+    StatusOr<std::vector<GraphNodeId>> FindConsumers(GraphValueId value) const;
 
     /// @brief Returns true if any live node or active replacement node consumes
     /// `value` (after resolution) as an input.
@@ -385,7 +404,7 @@ public:
     ///         false for virtual/out-of-range ids or no consumers, or the
     ///         underlying ModelGraph::TopologicalOrder error if the source
     ///         graph contains a cycle (see FindConsumers).
-    AM_NODISCARD StatusOr<bool> HasLiveConsumers(GraphValueId value) const;
+    StatusOr<bool> HasLiveConsumers(GraphValueId value) const;
 
     /// @brief Validates the session's internal consistency without materializing.
     ///
@@ -400,16 +419,38 @@ public:
     /// @return Status::Ok() if consistent, or the first validation error.
     Status ValidateEdits() const;
 
+    /// @brief Requests pruning of unreachable nodes at Commit time.
+    ///
+    /// This is a passive request, not a mode switch: it takes effect only on
+    /// Commit() and only when the session actually has unreachable residue.
+    /// DeadCodeEliminationPass issues it after its fixed-point loop has fully
+    /// executed with its enabled flag set (an enable=false pass never issues
+    /// the request). The request stays valid for the current session's
+    /// lifetime and is never consumed by Commit(); repeated Commit() calls
+    /// are stable. Checkpoint snapshots create a new session that does not
+    /// inherit the request, so pruning never fires before DCE has run.
+    void RequestCommitPruning() noexcept;
+
     /// @brief Materializes the session state into a new ModelGraph.
     ///
-    /// Steps: CopyExternalValues (including pruning unreferenced session
-    /// constants) -> topological traversal (emitting rewrites and surviving
-    /// original nodes) -> MarkCommittedOutputs -> Validate.
+    /// By default the session is materialized faithfully: every active
+    /// rewrite and every live source node is emitted. When the session
+    /// carries a pruning request (see RequestCommitPruning) or
+    /// `options.force_prune_unreachable` is set, Commit first computes the
+    /// reverse-reachability closure of graph outputs through the mixed
+    /// source/replacement graph, then emits only retained replacement and
+    /// source nodes; unretained session constants are dropped in lockstep
+    /// (see AddSessionConstant and CopyExternalValues).
+    ///
+    /// Steps: CopyExternalValues -> topological traversal (emitting rewrites
+    /// and surviving original nodes, skipping unretained ones) ->
+    /// MarkCommittedOutputs -> Validate.
     /// Runs ValidateEdits first; emission-order violations (a replacement
     /// input produced after its rewrite's emission point) are rejected there.
     /// Returns InvalidArgument if the result would be invalid.
+    /// @param options Optional commit behavior; see CommitOptions.
     /// @return New ModelGraph owning the materialized result, or the first error.
-    StatusOr<ModelGraph> Commit() const;
+    StatusOr<ModelGraph> Commit(const CommitOptions& options = {}) const;
 
 private:
     friend class SubgraphBuilder;
@@ -448,6 +489,11 @@ private:
         ValueMap& source_values;    // Source value -> committed value
         ValueMap& session_constants;// Session constant -> committed constant
         ValueMap& virtual_values;   // Virtual value -> committed output
+    };
+
+    struct RetainedNodes {
+        std::vector<std::vector<uint8_t>> replacement_mask{};
+        std::vector<uint8_t> source_node_mask{};
     };
 
     /// Cached consumer index for one mutation generation.
@@ -534,11 +580,18 @@ private:
     StatusOr<GraphValueId> MapCommittedValue(
             GraphValueId value,
             const CommitValueMaps& maps) const;
-    // Copies source external values and session constants into committed graph.
+    // Computes the mixed source/replacement reverse-reachability closure used
+    // by Commit pruning.
+    StatusOr<RetainedNodes> ComputeRetainedNodes() const;
+    // Copies source external values and session constants into the committed
+    // graph; session constants referenced only by unretained nodes/outputs
+    // are dropped in lockstep with node pruning (aligned with AddSessionConstant).
     Status CopyExternalValues(ModelGraph& committed,
-                              const CommitValueMaps& maps) const;
+                              const CommitValueMaps& maps,
+                              const RetainedNodes& retained) const;
     // Emits all replacement nodes in a rewrite entry into the committed graph.
     Status EmitRewrite(const RewriteEntry& rewrite,
+                       std::span<const uint8_t> retained_mask,
                        ModelGraph& committed,
                        const CommitValueMaps& maps) const;
     // Emits a single surviving original node into the committed graph.
@@ -557,7 +610,7 @@ private:
     // does not introduce new edges, so a cycle can only originate from the
     // source graph). The returned pointer is valid only until the next
     // mutation invalidates the cache.
-    AM_NODISCARD StatusOr<const ConsumerCache*> EnsureConsumerCache() const;
+    StatusOr<const ConsumerCache*> EnsureConsumerCache() const;
 
     // Immutable source graph; must outlive the session.
     const ModelGraph& graph_;
@@ -580,6 +633,7 @@ private:
     mutable std::vector<std::optional<GraphValueId>> resolved_value_cache_{};
     // Lazily built consumer index for FindConsumers/HasLiveConsumers.
     mutable std::optional<ConsumerCache> consumer_cache_{};
+    bool commit_pruning_requested_ = false;
 };
 
 /// @brief Convenience builder for constructing subgraph replacements without

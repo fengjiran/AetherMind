@@ -2,15 +2,11 @@
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
 #include "test_optimization_helpers.h"
 
-#include <cstring>
 #include <gtest/gtest.h>
-#include <memory>
-#include <vector>
 
 namespace {
 
 using namespace aethermind;
-
 using namespace test_utils;
 
 StatusOr<ModelGraph> RunDce(const ModelGraph& graph, PassContext ctx = {}) {
@@ -50,9 +46,100 @@ public:
     }
 };
 
+// Mimics a future value-replacement pass (CSE, algebraic simplification):
+// replaces the directly-marked graph output (an Embedding output) with the
+// output of an unrelated, consumer-less Silu node. At commit time the graph
+// output resolves through the replacement chain to the Silu output.
+class ReplaceGraphOutputWithSiluOutputPass final : public GraphPass {
+public:
+    AM_NODISCARD std::string_view Name() const noexcept override {
+        return "ReplaceGraphOutputWithSiluOutputPass";
+    }
+
+    AM_NODISCARD Status Run(GraphRewriteSession& session, const PassContext&) const noexcept override {
+        const std::vector<GraphNodeId> embedding_nodes = session.FindNodesByOpType(OpType::kEmbedding);
+        const std::vector<GraphNodeId> silu_nodes = session.FindNodesByOpType(OpType::kSilu);
+        if (silu_nodes.size() != 1U) {
+            return Status::InvalidArgument("expected exactly one Silu node");
+        }
+        StatusOr<GraphNodeView> silu_view = session.GetNodeView(silu_nodes[0]);
+        AM_RETURN_IF_ERROR(silu_view.status());
+
+        bool found_marked_output = false;
+        GraphValueId marked_output{};
+        for (const GraphNodeId embedding_id: embedding_nodes) {
+            StatusOr<GraphNodeView> embedding_view = session.GetNodeView(embedding_id);
+            AM_RETURN_IF_ERROR(embedding_view.status());
+            if (session.IsGraphOutput(embedding_view->outputs[0])) {
+                marked_output = embedding_view->outputs[0];
+                found_marked_output = true;
+                break;
+            }
+        }
+        if (!found_marked_output) {
+            return Status::InvalidArgument("expected an Embedding node serving the graph output");
+        }
+        return session.ReplaceValue(marked_output, silu_view->outputs[0]);
+    }
+};
+
+StatusOr<ModelGraph> RunReplaceOutputThenDce(const ModelGraph& graph) {
+    GraphPassManager pipeline;
+    pipeline.Add(std::make_unique<ReplaceGraphOutputWithSiluOutputPass>());
+    pipeline.Add(std::make_unique<DeadCodeEliminationPass>());
+    return pipeline.Run(graph);
+}
+
 StatusOr<ModelGraph> RunReplaceThenDce(const ModelGraph& graph) {
     GraphPassManager pipeline;
     pipeline.Add(std::make_unique<ReplaceAddWithSiluPass>());
+    pipeline.Add(std::make_unique<DeadCodeEliminationPass>());
+    return pipeline.Run(graph);
+}
+
+// Builds a two-hop replacement chain on the marked graph output:
+// marked Embedding output -> Silu output -> Reorder output, so the terminal
+// is the Reorder output and the Silu is an intermediate producer.
+class ReplaceGraphOutputWithChainPass final : public GraphPass {
+public:
+    AM_NODISCARD std::string_view Name() const noexcept override {
+        return "ReplaceGraphOutputWithChainPass";
+    }
+
+    AM_NODISCARD Status Run(GraphRewriteSession& session, const PassContext&) const noexcept override {
+        const std::vector<GraphNodeId> embedding_nodes = session.FindNodesByOpType(OpType::kEmbedding);
+        const std::vector<GraphNodeId> silu_nodes = session.FindNodesByOpType(OpType::kSilu);
+        const std::vector<GraphNodeId> reorder_nodes = session.FindNodesByOpType(OpType::kReorder);
+        if (silu_nodes.size() != 1U || reorder_nodes.size() != 1U) {
+            return Status::InvalidArgument("expected exactly one Silu and one Reorder node");
+        }
+        StatusOr<GraphNodeView> silu_view = session.GetNodeView(silu_nodes[0]);
+        AM_RETURN_IF_ERROR(silu_view.status());
+        StatusOr<GraphNodeView> reorder_view = session.GetNodeView(reorder_nodes[0]);
+        AM_RETURN_IF_ERROR(reorder_view.status());
+
+        bool found_marked_output = false;
+        GraphValueId marked_output{};
+        for (const GraphNodeId embedding_id: embedding_nodes) {
+            StatusOr<GraphNodeView> embedding_view = session.GetNodeView(embedding_id);
+            AM_RETURN_IF_ERROR(embedding_view.status());
+            if (session.IsGraphOutput(embedding_view->outputs[0])) {
+                marked_output = embedding_view->outputs[0];
+                found_marked_output = true;
+                break;
+            }
+        }
+        if (!found_marked_output) {
+            return Status::InvalidArgument("expected an Embedding node serving the graph output");
+        }
+        AM_RETURN_IF_ERROR(session.ReplaceValue(marked_output, silu_view->outputs[0]));
+        return session.ReplaceValue(silu_view->outputs[0], reorder_view->outputs[0]);
+    }
+};
+
+StatusOr<ModelGraph> RunReplaceChainThenDce(const ModelGraph& graph) {
+    GraphPassManager pipeline;
+    pipeline.Add(std::make_unique<ReplaceGraphOutputWithChainPass>());
     pipeline.Add(std::make_unique<DeadCodeEliminationPass>());
     return pipeline.Run(graph);
 }
@@ -215,6 +302,58 @@ TEST(DeadCodeEliminationPass, KeepsProducerConsumedOnlyByActiveReplacement) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kEmbedding).size(), 1U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 0U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 1U);
+}
+
+TEST(DeadCodeEliminationPass, KeepsTerminalProducerOfReplacedGraphOutput) {
+    // Regression test: a pass replaces the directly-marked graph output (a)
+    // with the output of a consumer-less, unmarked node (b_silu). Commit
+    // resolves the graph output to b's output terminal (MarkCommittedOutputs),
+    // so the b producer must survive DCE. Removing it previously failed the
+    // whole pipeline with an unmappable output ("producer removed or not yet
+    // emitted").
+    ModelGraph graph;
+    const GraphValueId a_out = AddActivation(graph, "a");
+    const GraphValueId b_input = AddActivation(graph, "b_input");
+    auto b_silu_or = AddSilu(graph, 0U, b_input, "b_silu");
+    ASSERT_TRUE(b_silu_or.ok()) << b_silu_or.status().ToString();
+    graph.MarkOutput(a_out);
+
+    const StatusOr<ModelGraph> result = RunReplaceOutputThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    const std::vector<GraphNodeId> silu_nodes = result->FindNodesByOpType(OpType::kSilu);
+    ASSERT_EQ(silu_nodes.size(), 1U);
+    const GraphNode& silu_node = result->GetNode(silu_nodes[0]);
+    ASSERT_EQ(result->GetOutputs().size(), 1U);
+    EXPECT_EQ(result->GetOutputs()[0].value, silu_node.outputs[0]);
+}
+
+TEST(DeadCodeEliminationPass, KeepsTerminalProducerOfReplacedGraphOutputChain) {
+    // Chain variant: marked graph output resolves through two replacement
+    // hops (a -> silu -> reorder). The intermediate Silu producer and the
+    // original Embedding producer must be removed, while the terminal
+    // Reorder producer must survive and carry the committed graph output.
+    ModelGraph graph;
+    const GraphValueId a_out = AddActivation(graph, "a");
+    const GraphValueId b_input = AddActivation(graph, "b_input");
+    auto b_silu_or = AddSilu(graph, 0U, b_input, "b_silu");
+    ASSERT_TRUE(b_silu_or.ok()) << b_silu_or.status().ToString();
+    const GraphValueId c_input = AddActivation(graph, "c_input");
+    auto c_reorder_or = AddReorder(graph, std::nullopt, c_input, "c_reorder");
+    ASSERT_TRUE(c_reorder_or.ok()) << c_reorder_or.status().ToString();
+    graph.MarkOutput(a_out);
+
+    const StatusOr<ModelGraph> result = RunReplaceChainThenDce(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+    const std::vector<GraphNodeId> reorder_nodes = result->FindNodesByOpType(OpType::kReorder);
+    ASSERT_EQ(reorder_nodes.size(), 1U);
+    const GraphNode& reorder_node = result->GetNode(reorder_nodes[0]);
+    ASSERT_EQ(result->GetOutputs().size(), 1U);
+    EXPECT_EQ(result->GetOutputs()[0].value, reorder_node.outputs[0]);
 }
 
 TEST(DeadCodeEliminationPass, IsIdempotent) {

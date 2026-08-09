@@ -139,6 +139,40 @@ TEST(SiluMulFusionPass, SkipsGraphOutputSiluIntermediate) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
 }
 
+TEST(SiluMulFusionPass, SkipsFullyDeadSiluMulChain) {
+    // mul_out is neither a graph output nor consumed by any node. Fusing
+    // would produce a rewrite replacement node that DeadCodeEliminationPass
+    // cannot traverse (source-graph nodes only), leaking an orphan fused
+    // kernel into the committed graph; the chain must stay unfused so DCE
+    // can remove the plain Silu and Mul.
+    ModelGraph graph;
+    const GraphValueId gate = AddActivation(graph, "gate");
+    const GraphValueId up = AddActivation(graph, "up");
+    auto silu_or = AddSilu(graph, 0U, gate, "silu");
+    ASSERT_TRUE(silu_or.ok()) << silu_or.status().ToString();
+    auto mul_or = AddElementwiseMul(graph, 0U, *silu_or, up, "mul");
+    ASSERT_TRUE(mul_or.ok()) << mul_or.status().ToString();
+    graph.MarkOutput(up);
+
+    const StatusOr<ModelGraph> fused = RunSiluMulFusion(graph);
+
+    ASSERT_TRUE(fused.ok()) << fused.status().ToString();
+    EXPECT_EQ(fused->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+    EXPECT_EQ(fused->FindNodesByOpType(OpType::kSilu).size(), 1U);
+    EXPECT_EQ(fused->FindNodesByOpType(OpType::kElementwiseMul).size(), 1U);
+
+    // With DCE behind fusion the fully-dead chain disappears entirely.
+    GraphPassManager pipeline;
+    pipeline.Add(std::make_unique<SiluMulFusionPass>());
+    pipeline.Add(std::make_unique<DeadCodeEliminationPass>());
+    const StatusOr<ModelGraph> result = pipeline.Run(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kSilu).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kElementwiseMul).size(), 0U);
+}
+
 TEST(SiluMulFusionPass, SkipsMismatchedDecoderLayerIndex) {
     ModelGraph graph;
     const GraphValueId gate = AddActivation(graph, "gate");

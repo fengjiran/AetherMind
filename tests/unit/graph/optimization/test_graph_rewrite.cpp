@@ -1672,6 +1672,30 @@ TEST(GraphRewriteSession, ReplaceValueAllowsNonCyclicChain) {
     EXPECT_EQ(session.GetResolvedValue(GraphValueId{.index = 2}), GraphValueId{.index = 2});
 }
 
+TEST(GraphRewriteSession, GetResolvedGraphOutputsReturnsIdentityForUnreplacedOutput) {
+    // BuildTwoEmbeddingGraph marks v3 (hidden_a) as the graph output.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+
+    const std::vector<GraphValueId> terminals = session.GetResolvedGraphOutputs();
+
+    ASSERT_EQ(terminals.size(), 1U);
+    EXPECT_EQ(terminals[0], GraphValueId{.index = 3});
+}
+
+TEST(GraphRewriteSession, GetResolvedGraphOutputsResolvesReplacementChain) {
+    // Replacing the graph output v3 with v4 moves the terminal to v4, matching
+    // the resolution Commit's MarkCommittedOutputs performs.
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    ASSERT_TRUE(session.ReplaceValue(GraphValueId{.index = 3}, GraphValueId{.index = 4}).ok());
+
+    const std::vector<GraphValueId> terminals = session.GetResolvedGraphOutputs();
+
+    ASSERT_EQ(terminals.size(), 1U);
+    EXPECT_EQ(terminals[0], GraphValueId{.index = 4});
+}
+
 TEST(GraphRewriteSession, RedirectInputAccumulatesMultipleInputChanges) {
     // Build a graph with two weights so both inputs of an Embedding node
     // can be independently redirected to valid payload types.

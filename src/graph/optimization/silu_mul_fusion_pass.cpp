@@ -2,8 +2,6 @@
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/op_type.h"
 
-#include <optional>
-
 namespace aethermind {
 namespace {
 
@@ -65,6 +63,26 @@ StatusOr<std::optional<SiluMulPattern>> FindSiluMulPattern(GraphRewriteSession& 
         return std::optional<SiluMulPattern>{};
     }
 
+    const GraphValueId mul_out = mul_view->outputs[0];
+    // A replacement from an earlier pass (e.g. constant folding) means the
+    // Mul no longer exists at runtime; fusing it back would re-introduce the
+    // eliminated work and conflict with the replacement binding.
+    if (session.GetResolvedValue(mul_out) != mul_out) {
+        return std::optional<SiluMulPattern>{};
+    }
+
+    // A fully-dead chain (Mul output unreferenced and not a graph output)
+    // must not be fused: the fused node is a rewrite replacement, invisible
+    // to DeadCodeEliminationPass (which only traverses source-graph nodes),
+    // so it would leak an orphan fused kernel into the committed graph.
+    if (!session.IsGraphOutput(mul_out)) {
+        StatusOr<bool> has_consumers_or = session.HasLiveConsumers(mul_out);
+        AM_RETURN_IF_ERROR(has_consumers_or.status());
+        if (!*has_consumers_or) {
+            return std::optional<SiluMulPattern>{};
+        }
+    }
+
     const GraphValueId resolved_silu_out = session.GetResolvedValue(silu_out);
     const GraphValueId first_input = session.GetResolvedValue(mul_view->inputs[0]);
     const GraphValueId second_input = session.GetResolvedValue(mul_view->inputs[1]);
@@ -86,7 +104,7 @@ StatusOr<std::optional<SiluMulPattern>> FindSiluMulPattern(GraphRewriteSession& 
             .mul_node = mul_node,
             .gate = silu_view->inputs[0],
             .up = up,
-            .mul_out = mul_view->outputs[0],
+            .mul_out = mul_out,
             .decoder_layer_index = mul_view->decoder_layer_index,
     }};
 }
@@ -103,16 +121,17 @@ Status TryFuseSilu(GraphRewriteSession& session, GraphNodeId silu_node) {
     AM_RETURN_IF_ERROR(output_desc.status());
 
     SubgraphBuilder builder(session, {pattern->silu_node, pattern->mul_node});
-    AM_ASSIGN_OR_RETURN(const GraphValueId fused, builder.Emit(OpType::kSiluMul,
-                                                               {pattern->gate, pattern->up},
-                                                               NodeOutputDesc{
-                                                                       .payload = output_desc->payload,
-                                                                       .quantization = output_desc->quantization,
-                                                                       .name = output_desc->name,
-                                                               },
-                                                               SiluMulParams{},
-                                                               pattern->decoder_layer_index,
-                                                               "silu_mul_fused"));
+    AM_ASSIGN_OR_RETURN(const GraphValueId fused,
+                        builder.Emit(OpType::kSiluMul,
+                                     {pattern->gate, pattern->up},
+                                     NodeOutputDesc{
+                                             .payload = output_desc->payload,
+                                             .quantization = output_desc->quantization,
+                                             .name = output_desc->name,
+                                     },
+                                     SiluMulParams{},
+                                     pattern->decoder_layer_index,
+                                     "silu_mul_fused"));
     AM_RETURN_IF_ERROR(builder.Yield(fused, pattern->mul_out));
     return builder.Commit();
 }

@@ -325,6 +325,17 @@ public:
     /// @return True if the value is a graph output; false for out-of-range/virtual ids.
     AM_NODISCARD bool IsGraphOutput(GraphValueId value) const noexcept;
 
+    /// @brief Returns each graph output resolved to the terminal of its
+    /// replacement chain (unreplaced outputs resolve to themselves).
+    ///
+    /// Commit marks exactly these terminals in the committed graph
+    /// (MarkCommittedOutputs), so this is the authoritative set of values
+    /// that must remain mapped at commit time. Passes that make liveness
+    /// decisions (e.g. DeadCodeEliminationPass) must keep the producers of
+    /// these terminals alive.
+    /// @return Resolved terminal value id per source graph output, in output order.
+    AM_NODISCARD std::vector<GraphValueId> GetResolvedGraphOutputs() const;
+
     /// @brief Returns all live value ids in ascending index order. Excludes values
     /// produced by removed/replaced nodes that no replacement takes over, and
     /// virtual values (they are rewrite-internal).

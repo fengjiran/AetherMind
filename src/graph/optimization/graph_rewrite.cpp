@@ -576,6 +576,19 @@ bool GraphRewriteSession::IsGraphOutput(GraphValueId value) const noexcept {
     });
 }
 
+// Resolves every graph output to the terminal of its replacement chain.
+// MarkCommittedOutputs consumes exactly this resolution during Commit, so
+// the returned terminals are the values that must be emitted and marked.
+std::vector<GraphValueId> GraphRewriteSession::GetResolvedGraphOutputs() const {
+    const std::span<const GraphOutput> outputs = graph_.GetOutputs();
+    std::vector<GraphValueId> terminals;
+    terminals.reserve(outputs.size());
+    for (const auto& output: outputs) {
+        terminals.push_back(GetResolvedValue(output.value));
+    }
+    return terminals;
+}
+
 // True when any active rewrite's replacement output takes over this value.
 //
 // Steps:

@@ -27,7 +27,7 @@ Options:
   --release                 Shortcut for --build-type Release
   --relwithdebinfo          Shortcut for --build-type RelWithDebInfo
   --minsizerel              Shortcut for --build-type MinSizeRel
-  --target <name>           Build target: all | AetherMind | ammalloc |
+  --target <name>           Build target: all | AetherMind |
                             aethermind_unit_tests | aethermind_benchmark
                             (default: all)
   --skip-tests              Configure with BUILD_TESTS=OFF

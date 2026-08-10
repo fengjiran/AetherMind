@@ -56,7 +56,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog google_benchmark)
 
-add_subdirectory(ammalloc)
 add_subdirectory(src)
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")

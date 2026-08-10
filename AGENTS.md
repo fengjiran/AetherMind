@@ -11,15 +11,12 @@
 - 语言：C++20（`CMAKE_CXX_STANDARD 20`）
 - 构建系统：CMake >= 3.28
 - 核心库目标：`AetherMind`（shared）
-- 内存池目标：`ammalloc`（static）
 - 单元测试目标：`aethermind_unit_tests`（GoogleTest，系统安装）
 - 性能基准目标：`aethermind_benchmark`（Google Benchmark，FetchContent）
 
 ## 2. 目录结构
 - `include/`：核心公共头文件
 - `src/`：核心实现
-- `ammalloc/include/ammalloc/`：内存池公共/内部头文件
-- `ammalloc/src/`：内存池实现
 - `tests/unit/`：gtest 单元测试
 - `tests/benchmark/`：benchmark 性能基准测试
 - `cmake/`：CMake 辅助模块
@@ -37,7 +34,6 @@
 | **model** | `include/aethermind/model/` | `src/model/` | 模型加载与前端适配：HfModelConfig/HfDirectoryReader/HfModelValidator、ResolvedModelWeights、ModelInstance / ModelInstanceBuilder、WeightPrepackPlanner、ModelLoader、**ModelGraphBuilder**（HF → semantic graph 唯一转换权威；`BuildLlamaDense` 路径显式拒绝 HF-only RoPE scaling types，none/linear 映射到 `RoPEScalingType`）。**生产 loader wiring 不越界**：ModelLoader 不直接调用 graph 编译/构建。 |
 | **shape_inference** | `include/aethermind/shape_inference/` | `src/shape_inference/` | TensorSpec、ShapeSymbol、ShapeConstraint、InferenceResult 等通用形状推导基础设施。 |
 | **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelSelector、KernelRegistry、ExecutionStep 运行时执行。不得依赖 Graph IR 或 OperatorSchema 的语义细节。 |
-| **ammalloc** | `ammalloc/include/ammalloc/` | `ammalloc/src/` | 内存池独立静态库（`ammalloc STATIC`）。 |
 
 **跨模块依赖规则**：
 - operators → shape_inference（+ dtypes/base 基础库）
@@ -60,7 +56,6 @@ cmake --build build -j
 
 # 按目标构建（推荐）
 cmake --build build --target AetherMind -j
-cmake --build build --target ammalloc -j
 cmake --build build --target aethermind_unit_tests -j
 cmake --build build --target aethermind_benchmark -j
 
@@ -100,18 +95,18 @@ cmake --build build-tsan --target aethermind_unit_tests -j
 ## 6. Lint / 格式化
 代码格式以根目录 `.clang-format` 为准（基于 LLVM，缩进 4 空格，ColumnLimit 0）。
 ```bash
-# 格式检查（仅收集工作树改动文件，范围：include/ src/ ammalloc/ tests/）
+# 格式检查（仅收集工作树改动文件，范围：include/ src/ tests/）
 {
   git diff --cached --name-only --diff-filter=d
   git diff --name-only --diff-filter=d
   git ls-files --others --exclude-standard
-} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|ammalloc/|tests/)' | sort -u | xargs -r clang-format -n --Werror
+} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|tests/)' | sort -u | xargs -r clang-format -n --Werror
 # 自动格式化（同上收集逻辑，写入模式）
 {
   git diff --cached --name-only --diff-filter=d
   git diff --name-only --diff-filter=d
   git ls-files --others --exclude-standard
-} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|ammalloc/|tests/)' | sort -u | xargs -r clang-format -i
+} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|tests/)' | sort -u | xargs -r clang-format -i
 ```
 若本地可用，可基于 `build/compile_commands.json` 运行 `clang-tidy`。
 
@@ -172,7 +167,6 @@ See full test writing rules:
 - `.cursorrules`：不存在
 - `.cursor/rules/`：不存在
 - `.github/copilot-instructions.md`：不存在
-- `ammalloc/AGENTS.md`：分配器子系统的 AI 上下文指南
 - `docs/products/aethermind_prd.md`：**Phase 1 产品需求与验收标准**（产品范围、公开 API、架构或验收标准相关工作时必读）
 
 ## 11. 指令优先级与作用域
@@ -182,7 +176,7 @@ See full test writing rules:
 1. **用户当前明确指令**：最高优先级，覆盖一切与之冲突的静态文档。
 2. **已验证的仓库事实**（代码行为、CMake 配置、已实现的接口等）：次高优先级。
 3. **根目录 AGENTS.md**：仓库级默认规则，对整个仓库生效。
-4. **嵌套 AGENTS.md**（如 `ammalloc/AGENTS.md`）：在其所在目录子树内添加局部规则与约束；与根 AGENTS.md 冲突时以根 AGENTS.md 为准，除非用户明确指示使用嵌套规则。
+4. **嵌套 AGENTS.md**：在其所在目录子树内添加局部规则与约束；与根 AGENTS.md 冲突时以根 AGENTS.md 为准，除非用户明确指示使用嵌套规则。
 
 嵌套 AGENTS.md 中的审批门（如生成代码前需先审核）仅在其所在目录子树内生效，不影响同仓库其他模块。
 

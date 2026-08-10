@@ -26,8 +26,8 @@ constexpr size_t kGrowthFactorDenominator = 2;
 constexpr size_t kLargeGrowthFactorDenominator = 4;
 
 // Large string policy defaults
-// These constants intentionally mirror the allocator page granularity while
-// keeping amstring independent from the ammalloc public headers.
+// These constants intentionally mirror the allocator page granularity (4 KiB)
+// while keeping amstring free of any allocator header dependency.
 constexpr size_t kLargeThresholdBytes = 4096;
 constexpr size_t kPageSizeBytes = 4096;
 

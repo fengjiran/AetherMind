@@ -29,7 +29,6 @@ Future phases (GPU offloading, serving, distributed execution) are direction-onl
 - **Graph IR**: A model-graph intermediate representation with optimization passes (constant folding, dead-code elimination, SiLU-Mul fusion).
 - **Operator layer**: Reference and SIMD-optimized kernels (RMSNorm with AVX2, embedding lookup, dot product) with static dispatch.
 - **Execution engine**: Synchronous Prefill/Decode executor with a static KV-cache manager and per-layer runner.
-- **`ammalloc` allocator**: A high-concurrency user-space memory allocator (ThreadCache → CentralCache → PageCache → PageAllocator) for nanosecond-latency allocations.
 - **Engineering rigor**: TSAN/ASAN-friendly, deterministic CPU reference kernels, GoogleTest unit suite, and Google Benchmark targets.
 
 ## Architecture
@@ -52,7 +51,7 @@ Future phases (GPU offloading, serving, distributed execution) are direction-onl
                                │
 ┌─────────────────────────────────────────────────────────────────┐
 │                HAL — CPU Backend (x86_64 / ARM64)                 │
-│  ammalloc · Thread Pool · CPU Feature Detection                  │
+│  Thread Pool · CPU Feature Detection                             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -76,9 +75,6 @@ AetherMind/
 │   ├── runtime/             # Runtime context, builder, workspace
 │   └── memory/              # Allocator abstractions (CPU/CUDA/CANN)
 ├── src/                     # Implementation (mirrors include/)
-├── ammalloc/                # High-performance memory allocator subsystem
-│   ├── include/ammalloc/    # ThreadCache, CentralCache, PageCache
-│   └── src/                 # Allocator implementation
 ├── tests/
 │   ├── unit/                # GoogleTest unit tests
 │   └── benchmark/           # Google Benchmark targets
@@ -118,7 +114,6 @@ cmake --build build -j
 
 # Build a specific target (recommended for faster iteration)
 cmake --build build --target AetherMind -j            # Core shared library
-cmake --build build --target ammalloc -j               # Allocator static library
 cmake --build build --target aethermind_unit_tests -j  # Unit tests
 cmake --build build --target aethermind_benchmark -j  # Benchmarks
 ```
@@ -182,14 +177,14 @@ Code formatting is governed by [`.clang-format`](.clang-format) (LLVM-based, 4-s
   git diff --cached --name-only --diff-filter=d
   git diff --name-only --diff-filter=d
   git ls-files --others --exclude-standard
-} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|ammalloc/|tests/)' | sort -u | xargs -r clang-format -n --Werror
+} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|tests/)' | sort -u | xargs -r clang-format -n --Werror
 
 # Auto-format
 {
   git diff --cached --name-only --diff-filter=d
   git diff --name-only --diff-filter=d
   git ls-files --others --exclude-standard
-} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|ammalloc/|tests/)' | sort -u | xargs -r clang-format -i
+} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|tests/)' | sort -u | xargs -r clang-format -i
 ```
 
 If `build/compile_commands.json` is available, `clang-tidy` can be run against it.
@@ -200,11 +195,10 @@ AetherMind follows a disciplined development workflow. Before contributing:
 
 1. Read [AGENTS.md](AGENTS.md) — the repository-wide engineering guide covering build, test, coding style, and review conventions.
 2. Read the [PRD](docs/products/aethermind_prd.md) for Phase 1 scope and acceptance criteria.
-3. For allocator work, also read [ammalloc/AGENTS.md](ammalloc/AGENTS.md) for module-specific constraints.
-4. Make minimal, style-consistent changes; build the narrowest affected target first.
-5. Run focused tests (`--gtest_filter=Suite.Case`) before widening scope.
-6. For performance-sensitive changes, run the focused benchmark target.
-7. Format changed files with `clang-format` before submitting.
+3. Make minimal, style-consistent changes; build the narrowest affected target first.
+4. Run focused tests (`--gtest_filter=Suite.Case`) before widening scope.
+5. For performance-sensitive changes, run the focused benchmark target.
+6. Format changed files with `clang-format` before submitting.
 
 Key guidelines:
 

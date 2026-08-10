@@ -118,7 +118,6 @@ AM_NODISCARD constexpr bool IsValidWorkspaceAlignment(size_t alignment) noexcept
 /// Aligns an offset up to the specified alignment boundary.
 ///
 /// Uses the classic bit-twiddling formula: `(offset + align - 1) & ~(align - 1)`.
-/// This matches ammalloc's AlignUp pattern for consistency across the codebase.
 ///
 /// \param offset Current offset (typically end of previous allocation).
 /// \param alignment Target alignment (must be non-zero power of two).

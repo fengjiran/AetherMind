@@ -960,18 +960,19 @@ StatusOr<GraphRewriteSession::RetainedNodes> GraphRewriteSession::ComputeRetaine
         }
     }
 
-    const auto resolve_producer = [&](GraphValueId resolved) -> ResolvedProducer {
-        if (resolved.index < replacement_producers.size() &&
-            replacement_producers[resolved.index].has_value()) {
+    auto resolve_producer = [&](GraphValueId resolved) -> ResolvedProducer {
+        auto idx = resolved.index;
+        if (idx < replacement_producers.size() &&
+            replacement_producers[idx].has_value()) {
             return {.kind = ProducerKind::kReplacement,
-                    .replacement = *replacement_producers[resolved.index]};
+                    .replacement = *replacement_producers[idx]};
         }
 
-        if (resolved.index >= source_producers.size()) {
+        if (idx >= source_producers.size()) {
             return {.kind = ProducerKind::kExternal};
         }
 
-        const std::optional<GraphNodeId> producer = source_producers[resolved.index];
+        const std::optional<GraphNodeId> producer = source_producers[idx];
         if (!producer.has_value()) {
             return {.kind = ProducerKind::kExternal};
         }
@@ -986,17 +987,17 @@ StatusOr<GraphRewriteSession::RetainedNodes> GraphRewriteSession::ComputeRetaine
 
     RetainedNodes retained;
     retained.replacement_mask.resize(rewrites_.size());
-    for (std::size_t rewrite_index = 0; rewrite_index < rewrites_.size(); ++rewrite_index) {
-        retained.replacement_mask[rewrite_index].resize(
-                rewrites_[rewrite_index].replacements.size(), 0U);
+    for (std::size_t i = 0; i < rewrites_.size(); ++i) {
+        retained.replacement_mask[i].resize(
+                rewrites_[i].replacements.size(), 0U);
     }
     retained.source_node_mask.resize(graph_.GetNodes().size(), 0U);
 
     std::vector<WorkItem> worklist;
     worklist.reserve(graph_.GetNodes().size());
-    const auto retain_replacement = [&](ProducerRef producer) {
-        uint8_t& retained_flag = retained.replacement_mask[producer.rewrite_index]
-                                                          [producer.replacement_index];
+    auto retain_replacement = [&](ProducerRef producer) {
+        auto& retained_flag = retained.replacement_mask[producer.rewrite_index]
+                                                       [producer.replacement_index];
         if (retained_flag == 0U) {
             retained_flag = 1U;
             worklist.push_back(WorkItem{.kind = WorkItemKind::kReplacement,
@@ -1004,8 +1005,8 @@ StatusOr<GraphRewriteSession::RetainedNodes> GraphRewriteSession::ComputeRetaine
         }
     };
 
-    const auto retain_source = [&](GraphNodeId producer) {
-        uint8_t& retained_flag = retained.source_node_mask[producer.index];
+    auto retain_source = [&](GraphNodeId producer) {
+        auto& retained_flag = retained.source_node_mask[producer.index];
         if (retained_flag == 0U) {
             retained_flag = 1U;
             worklist.push_back(WorkItem{.kind = WorkItemKind::kSource,
@@ -1013,8 +1014,8 @@ StatusOr<GraphRewriteSession::RetainedNodes> GraphRewriteSession::ComputeRetaine
         }
     };
 
-    const auto retain_value_producer = [&](GraphValueId value,
-                                           const std::string& consumer) -> Status {
+    auto retain_value_producer = [&](GraphValueId value,
+                                     const std::string& consumer) -> Status {
         const GraphValueId resolved = GetResolvedValue(value);
         const ResolvedProducer producer = resolve_producer(resolved);
         switch (producer.kind) {
@@ -1045,26 +1046,23 @@ StatusOr<GraphRewriteSession::RetainedNodes> GraphRewriteSession::ComputeRetaine
         AM_RETURN_IF_ERROR(retain_value_producer(output.value, "a graph output"));
     }
 
-    for (std::size_t rewrite_index = 0; rewrite_index < rewrites_.size(); ++rewrite_index) {
-        const RewriteEntry& rewrite = rewrites_[rewrite_index];
+    for (std::size_t i = 0; i < rewrites_.size(); ++i) {
+        const RewriteEntry& rewrite = rewrites_[i];
         if (!rewrite.active) {
             continue;
         }
-        for (std::size_t replacement_index = 0;
-             replacement_index < rewrite.replacements.size();
-             ++replacement_index) {
-            const ReplacementNode& replacement = rewrite.replacements[replacement_index];
-            if (rewrite.exposes_node_view ||
-                !detail::IsDceRemovableOp(replacement.op_type)) {
-                retain_replacement(ProducerRef{.rewrite_index = rewrite_index,
-                                               .replacement_index = replacement_index});
+
+        for (std::size_t j = 0; j < rewrite.replacements.size(); ++j) {
+            if (const auto& replacement = rewrite.replacements[j];
+                rewrite.exposes_node_view || !detail::IsDceRemovableOp(replacement.op_type)) {
+                retain_replacement(ProducerRef{.rewrite_index = i, .replacement_index = j});
             }
         }
     }
-    for (std::size_t node_index = 0; node_index < graph_.GetNodes().size(); ++node_index) {
-        const GraphNodeId node{.index = static_cast<uint32_t>(node_index)};
-        if (IsNodeLive(node) &&
-            !detail::IsDceRemovableOp(graph_.GetNodes()[node_index].op_type)) {
+
+    for (std::size_t i = 0; i < graph_.GetNodes().size(); ++i) {
+        if (const GraphNodeId node{.index = static_cast<uint32_t>(i)};
+            IsNodeLive(node) && !detail::IsDceRemovableOp(graph_.GetNodes()[i].op_type)) {
             retain_source(node);
         }
     }
@@ -1160,31 +1158,33 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
         }
     }
 
-    const auto mark_session_constant = [&](GraphValueId input) {
-        const GraphValueId resolved = GetResolvedValue(input);
-        if (IsSessionConstant(resolved)) {
+    auto mark_session_constant = [&](GraphValueId input) {
+        if (const GraphValueId resolved = GetResolvedValue(input);
+            IsSessionConstant(resolved)) {
             referenced[GetSessionValueIndex(resolved)] = 1U;
         }
     };
-    for (std::size_t rewrite_index = 0; rewrite_index < rewrites_.size(); ++rewrite_index) {
-        const RewriteEntry& rewrite = rewrites_[rewrite_index];
-        for (std::size_t replacement_index = 0;
-             replacement_index < rewrite.replacements.size();
-             ++replacement_index) {
-            if (retained.replacement_mask[rewrite_index][replacement_index] == 0U) {
+
+    for (std::size_t i = 0; i < rewrites_.size(); ++i) {
+        const RewriteEntry& rewrite = rewrites_[i];
+        for (std::size_t j = 0; j < rewrite.replacements.size(); ++j) {
+            if (retained.replacement_mask[i][j] == 0U) {
                 continue;
             }
-            for (const GraphValueId input: rewrite.replacements[replacement_index].inputs) {
+
+            for (const GraphValueId input: rewrite.replacements[j].inputs) {
                 mark_session_constant(input);
             }
         }
     }
-    for (std::size_t node_index = 0; node_index < retained.source_node_mask.size(); ++node_index) {
-        if (retained.source_node_mask[node_index] == 0U) {
+
+    for (std::size_t i = 0; i < retained.source_node_mask.size(); ++i) {
+        if (retained.source_node_mask[i] == 0U) {
             continue;
         }
+
         AM_ASSIGN_OR_RETURN(const GraphNodeView node,
-                            GetNodeView(GraphNodeId{.index = static_cast<uint32_t>(node_index)}));
+                            GetNodeView(GraphNodeId{.index = static_cast<uint32_t>(i)}));
         for (const GraphValueId input: node.inputs) {
             mark_session_constant(input);
         }
@@ -1223,13 +1223,13 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
         return Status::InvalidArgument(
                 "GraphRewriteSession::Commit retained replacement mask size mismatch");
     }
-    for (std::size_t replacement_index = 0;
-         replacement_index < rewrite.replacements.size();
-         ++replacement_index) {
-        if (retained_mask[replacement_index] == 0U) {
+
+    for (std::size_t i = 0; i < rewrite.replacements.size(); ++i) {
+        if (retained_mask[i] == 0U) {
             continue;
         }
-        const ReplacementNode& replacement = rewrite.replacements[replacement_index];
+
+        const ReplacementNode& replacement = rewrite.replacements[i];
         std::vector<GraphValueId> new_inputs;
         new_inputs.reserve(replacement.inputs.size());
         for (const auto input: replacement.inputs) {
@@ -1256,15 +1256,15 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
         AM_RETURN_IF_ERROR(added_or.status());
         const AddedNode& added = *added_or;
 
-        for (size_t i = 0; i < replacement.outputs.size(); ++i) {
-            if (replacement.outputs[i].replaces.has_value()) {
-                if (const GraphValueId replaced = *replacement.outputs[i].replaces;
+        for (size_t j = 0; j < replacement.outputs.size(); ++j) {
+            if (replacement.outputs[j].replaces.has_value()) {
+                if (const GraphValueId replaced = *replacement.outputs[j].replaces;
                     IsSessionVirtualValue(replaced)) {
                     if (maps.virtual_values[GetSessionValueIndex(replaced)].has_value()) {
                         return Status::InvalidArgument(
                                 "GraphRewriteSession::Commit replacement virtual value was already mapped");
                     }
-                    maps.virtual_values[GetSessionValueIndex(replaced)] = added.outputs[i];
+                    maps.virtual_values[GetSessionValueIndex(replaced)] = added.outputs[j];
                 } else if (IsSessionConstant(replaced)) {
                     return Status::InvalidArgument(
                             "GraphRewriteSession::Commit replacement cannot produce a session constant");
@@ -1273,7 +1273,7 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
                         return Status::InvalidArgument(
                                 "GraphRewriteSession::Commit replacement value was already mapped");
                     }
-                    maps.source_values[replaced.index] = added.outputs[i];
+                    maps.source_values[replaced.index] = added.outputs[j];
                 }
             }
         }
@@ -1371,15 +1371,16 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit(const CommitOptions& options) c
         AM_ASSIGN_OR_RETURN(retained, ComputeRetainedNodes());
     } else {
         retained.replacement_mask.resize(rewrites_.size());
-        for (std::size_t rewrite_index = 0; rewrite_index < rewrites_.size(); ++rewrite_index) {
-            retained.replacement_mask[rewrite_index].resize(
-                    rewrites_[rewrite_index].replacements.size(),
-                    rewrites_[rewrite_index].active ? 1U : 0U);
+        for (std::size_t i = 0; i < rewrites_.size(); ++i) {
+            retained.replacement_mask[i].resize(
+                    rewrites_[i].replacements.size(),
+                    rewrites_[i].active ? 1U : 0U);
         }
+
         retained.source_node_mask.resize(graph_.GetNodes().size(), 0U);
-        for (std::size_t node_index = 0; node_index < graph_.GetNodes().size(); ++node_index) {
-            retained.source_node_mask[node_index] =
-                    IsNodeLive(GraphNodeId{.index = static_cast<uint32_t>(node_index)}) ? 1U : 0U;
+        for (std::size_t i = 0; i < graph_.GetNodes().size(); ++i) {
+            retained.source_node_mask[i] =
+                    IsNodeLive(GraphNodeId{.index = static_cast<uint32_t>(i)}) ? 1U : 0U;
         }
     }
 

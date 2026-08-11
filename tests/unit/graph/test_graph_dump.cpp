@@ -232,6 +232,11 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
             ArgmaxParams{.axis = -1},
             ReshapeParams{.target_shape = {ReshapeInputDim{0}, ReshapeInputDim{1}, ReshapeLiteralDim{32}, ReshapeInferDim{}}},
             PermuteParams{.permutation = {2, 0, 1}},
+            QkvLinearParams{.q_out_features = 16,
+                            .k_out_features = 8,
+                            .v_out_features = 8,
+                            .has_bias = true},
+            FusedAddRmsNormParams{.eps = 1.0e-5F},
     };
 
     std::ostringstream os;
@@ -250,6 +255,9 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
     EXPECT_NE(dump.find("ArgmaxParams{axis=-1}"), std::string::npos);
     EXPECT_NE(dump.find("ReshapeParams{target_shape=[@0,@1,32,*]}"), std::string::npos);
     EXPECT_NE(dump.find("PermuteParams{permutation=[2,0,1]}"), std::string::npos);
+    EXPECT_NE(dump.find("QkvLinearParams{q_out_features=16, k_out_features=8, v_out_features=8, has_bias=true}"),
+              std::string::npos);
+    EXPECT_NE(dump.find("FusedAddRmsNormParams{eps=1e-05}"), std::string::npos);
 }
 
 }// namespace

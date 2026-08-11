@@ -377,6 +377,8 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
             [](const ReshapeParams&) noexcept { return "Reshape"; },
             [](const PermuteParams&) noexcept { return "Permute"; },
             [](const ReorderParams&) noexcept { return "Reorder"; },
+            [](const QkvLinearParams&) noexcept { return "QkvLinear"; },
+            [](const FusedAddRmsNormParams&) noexcept { return "FusedAddRmsNorm"; },
     };
     return std::visit(visitor, params);
 }
@@ -425,6 +427,15 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                 SerializePermutation(p.permutation, os);
             },
             [&](const ReorderParams&) { os << "Reorder"; },
+            [&](const QkvLinearParams& p) {
+                os << "QkvLinear q_out_features=" << p.q_out_features
+                   << " k_out_features=" << p.k_out_features
+                   << " v_out_features=" << p.v_out_features
+                   << " has_bias=" << (p.has_bias ? "true" : "false");
+            },
+            [&](const FusedAddRmsNormParams& p) {
+                os << "FusedAddRmsNorm eps=" << p.eps;
+            },
     };
     std::visit(visitor, params);
     return Status::Ok();
@@ -572,6 +583,29 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
     if (kind == "Reorder") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{ReorderParams{}};
+    }
+
+    if (kind == "QkvLinear") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 4));
+        StatusOr<int64_t> q_out_features = ParseInt64(fields, "q_out_features");
+        AM_RETURN_IF_ERROR(q_out_features.status());
+        StatusOr<int64_t> k_out_features = ParseInt64(fields, "k_out_features");
+        AM_RETURN_IF_ERROR(k_out_features.status());
+        StatusOr<int64_t> v_out_features = ParseInt64(fields, "v_out_features");
+        AM_RETURN_IF_ERROR(v_out_features.status());
+        StatusOr<bool> has_bias = ParseBool(fields, "has_bias");
+        AM_RETURN_IF_ERROR(has_bias.status());
+        return OpParams{QkvLinearParams{.q_out_features = *q_out_features,
+                                        .k_out_features = *k_out_features,
+                                        .v_out_features = *v_out_features,
+                                        .has_bias = *has_bias}};
+    }
+
+    if (kind == "FusedAddRmsNorm") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
+        StatusOr<float> eps = ParseFloat(fields, "eps");
+        AM_RETURN_IF_ERROR(eps.status());
+        return OpParams{FusedAddRmsNormParams{.eps = *eps}};
     }
 
     return Status::InvalidArgument("ParseOpParams: unknown parameter kind");

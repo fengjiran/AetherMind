@@ -11,14 +11,16 @@ using namespace aethermind;
 TEST(OperatorSchema, ContainsAllM1Ops) {
     const auto schemas = GetOperatorSchemas();
 
-    ASSERT_EQ(schemas.size(), 16U);
+    ASSERT_EQ(schemas.size(), 18U);
     EXPECT_TRUE(GetOperatorSchema(OpType::kEmbedding).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kRmsNorm).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kLinear).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kQkvLinear).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kRoPE).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kMatMul).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSoftmax).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kAdd).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kFusedAddRmsNorm).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSilu).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSiluMul).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kElementwiseMul).ok());
@@ -75,6 +77,41 @@ TEST(OperatorSchema, WeightedUnaryOpsUseActivationAndWeight) {
         ASSERT_EQ(schema->output_ports.size(), 1U) << ToString(op_type);
         EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kActivation) << ToString(op_type);
     }
+}
+
+TEST(OperatorSchema, QkvLinearSchemaUsesPackedWeightInput) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kQkvLinear);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    ASSERT_EQ(schema->input_ports.size(), 2U);
+    EXPECT_EQ(schema->input_ports[0].name, "input");
+    EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
+    EXPECT_EQ(schema->input_ports[1].name, "qkv_weight");
+    EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kWeight);
+    ASSERT_EQ(schema->output_ports.size(), 3U);
+    EXPECT_EQ(schema->output_ports[0].name, "q");
+    EXPECT_EQ(schema->output_ports[1].name, "k");
+    EXPECT_EQ(schema->output_ports[2].name, "v");
+    EXPECT_TRUE(IsPureOperator(*schema));
+    EXPECT_FALSE(IsCompileTimeEvaluable(*schema));
+}
+
+TEST(OperatorSchema, FusedAddRmsNormSchemaPreservesResidualInputOrder) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kFusedAddRmsNorm);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    ASSERT_EQ(schema->input_ports.size(), 3U);
+    EXPECT_EQ(schema->input_ports[0].name, "residual");
+    EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
+    EXPECT_EQ(schema->input_ports[1].name, "norm_input");
+    EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kActivation);
+    EXPECT_EQ(schema->input_ports[2].name, "weight");
+    EXPECT_EQ(schema->input_ports[2].kind, OperatorPortKind::kWeight);
+    ASSERT_EQ(schema->output_ports.size(), 1U);
+    EXPECT_EQ(schema->output_ports[0].name, "output");
+    EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kActivation);
+    EXPECT_TRUE(IsPureOperator(*schema));
+    EXPECT_FALSE(IsCompileTimeEvaluable(*schema));
 }
 
 TEST(OperatorSchema, KVCacheUpdateSchemaUsesStateInputAndOutput) {
@@ -185,11 +222,13 @@ TEST(OperatorSchema, RuntimeOnlyPureOpsAreNotCompileTimeEvaluable) {
             OpType::kEmbedding,
             OpType::kRmsNorm,
             OpType::kLinear,
+            OpType::kQkvLinear,
             OpType::kRoPE,
             OpType::kMatMul,
             OpType::kSoftmax,
             OpType::kArgmax,
             OpType::kAttention,
+            OpType::kFusedAddRmsNorm,
             OpType::kReshape,
             OpType::kPermute,
             OpType::kReorder,

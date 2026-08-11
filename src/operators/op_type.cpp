@@ -14,6 +14,8 @@ const char* ToString(OpType op_type) noexcept {
             return "RmsNorm";
         case OpType::kLinear:
             return "Linear";
+        case OpType::kQkvLinear:
+            return "QkvLinear";
         case OpType::kMatMul:
             return "MatMul";
         case OpType::kRoPE:
@@ -30,6 +32,8 @@ const char* ToString(OpType op_type) noexcept {
             return "KVCacheUpdate";
         case OpType::kAdd:
             return "Add";
+        case OpType::kFusedAddRmsNorm:
+            return "FusedAddRmsNorm";
         case OpType::kSoftmax:
             return "Softmax";
         case OpType::kArgmax:

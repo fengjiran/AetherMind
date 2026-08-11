@@ -205,6 +205,27 @@ struct ReorderParams {
     friend bool operator==(const ReorderParams&, const ReorderParams&) = default;
 };
 
+/// @brief Semantic parameters for a fused Q/K/V linear projection.
+///
+/// `has_bias=false` means no Q/K/V bias inputs; `true` means exactly Q/K/V
+/// bias inputs in that order; partial bias cannot be represented. Weight
+/// dtype is not parameter state; future inference requires the three weight
+/// TensorSpec dtypes to match.
+struct QkvLinearParams {
+    int64_t q_out_features = 0;
+    int64_t k_out_features = 0;
+    int64_t v_out_features = 0;
+    bool has_bias = false;
+};
+
+/// @brief Semantic parameters for fused add + RMS normalization.
+///
+/// Future input order is `[residual, norm_input, weight]` with semantics
+/// `RmsNorm(residual + norm_input, weight, eps)`.
+struct FusedAddRmsNormParams {
+    float eps = 1.0e-5F;
+};
+
 /// @brief Typed variant over all per-operator parameter structs.
 using OpParams = std::variant<std::monostate,
                               EmbeddingParams,
@@ -222,7 +243,9 @@ using OpParams = std::variant<std::monostate,
                               ArgmaxParams,
                               ReshapeParams,
                               PermuteParams,
-                              ReorderParams>;
+                              ReorderParams,
+                              QkvLinearParams,
+                              FusedAddRmsNormParams>;
 
 }// namespace aethermind
 

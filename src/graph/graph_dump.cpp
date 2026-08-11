@@ -276,6 +276,15 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
             [&](const ReorderParams&) {
                 DumpEmptyParams("ReorderParams", os);
             },
+            [&](const QkvLinearParams& p) {
+                os << "QkvLinearParams{q_out_features=" << p.q_out_features
+                   << ", k_out_features=" << p.k_out_features
+                   << ", v_out_features=" << p.v_out_features
+                   << ", has_bias=" << (p.has_bias ? "true" : "false") << '}';
+            },
+            [&](const FusedAddRmsNormParams& p) {
+                os << "FusedAddRmsNormParams{eps=" << p.eps << '}';
+            },
     };
     std::visit(visitor, params);
 }

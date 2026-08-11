@@ -62,7 +62,7 @@ StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
 // every registered operator. Graph validation (graph.cpp) reads these schemas
 // to verify node arity, port kinds, and payload consistency at build time.
 // Add a new entry here when introducing a new OpType.
-const std::array<OperatorSchema, 16> kOperatorSchemas{
+const std::array<OperatorSchema, 18> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kEmbedding,
                 .input_ports = {Input(0, "tokens", OperatorPortKind::kModelInput),
@@ -82,6 +82,17 @@ const std::array<OperatorSchema, 16> kOperatorSchemas{
                 .input_ports = {Input(0, "input", OperatorPortKind::kActivation),
                                 Input(1, "weight", OperatorPortKind::kWeight)},
                 .output_ports = {Output(0, "output")},
+                .traits = RuntimeOnly(),
+        },
+        OperatorSchema{
+                .op_type = OpType::kQkvLinear,
+                .input_ports = {Input(0, "input", OperatorPortKind::kActivation),
+                                Input(1, "qkv_weight", OperatorPortKind::kWeight)},
+                .output_ports = {Output(0, "q"),
+                                 Output(1, "k"),
+                                 Output(2, "v")},
+                // Fused runtime projection: pure and deterministic, but not
+                // compile-time evaluable (no fused constant evaluator exists).
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
@@ -112,6 +123,16 @@ const std::array<OperatorSchema, 16> kOperatorSchemas{
                                 Input(1, "rhs", OperatorPortKind::kActivation)},
                 .output_ports = {Output(0, "output")},
                 .traits = CompileTimeEvaluable(),
+        },
+        OperatorSchema{
+                .op_type = OpType::kFusedAddRmsNorm,
+                .input_ports = {Input(0, "residual", OperatorPortKind::kActivation),
+                                Input(1, "norm_input", OperatorPortKind::kActivation),
+                                Input(2, "weight", OperatorPortKind::kWeight)},
+                .output_ports = {Output(0, "output")},
+                // Fused residual-add + RMSNorm: follows the stricter trait of
+                // RmsNorm (RuntimeOnly) rather than Add (CompileTimeEvaluable).
+                .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kSiluMul,

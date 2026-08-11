@@ -55,6 +55,15 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
             PermuteParams{.permutation = {0}},
             PermuteParams{.permutation = {2, 0, 1}},
             PermuteParams{.permutation = {0, 0}},
+            QkvLinearParams{.q_out_features = 4096,
+                            .k_out_features = 1024,
+                            .v_out_features = 1024,
+                            .has_bias = true},
+            QkvLinearParams{.q_out_features = 8,
+                            .k_out_features = 4,
+                            .v_out_features = 4,
+                            .has_bias = false},
+            FusedAddRmsNormParams{.eps = 1.0e-6F},
     };
 
     for (const OpParams& param: params) {
@@ -170,6 +179,75 @@ TEST(OpParamsSerde, ReshapeRejectsMalformedShapes) {
             "Reshape shape=[2,3",
             // Malformed brackets (mismatched).
             "Reshape shape=[2,3}",
+    };
+
+    for (const std::string& text: malformed) {
+        const StatusOr<OpParams> parsed = ParseOpParams(text);
+        EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
+        if (!parsed.ok()) {
+            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << "Text: " << text;
+        }
+    }
+}
+
+TEST(OpParamsSerde, QkvLinearKindName) {
+    EXPECT_STREQ(OpParamsKindName(OpParams{QkvLinearParams{}}), "QkvLinear");
+    EXPECT_STREQ(OpParamsKindName(OpParams{FusedAddRmsNormParams{}}), "FusedAddRmsNorm");
+}
+
+TEST(OpParamsSerde, QkvLinearRoundTripsCanonicalForm) {
+    const OpParams params{QkvLinearParams{.q_out_features = 4096,
+                                          .k_out_features = 1024,
+                                          .v_out_features = 1024,
+                                          .has_bias = true}};
+    const std::string serialized = SerializeToString(params);
+    EXPECT_EQ(serialized,
+              "QkvLinear q_out_features=4096 k_out_features=1024 v_out_features=1024 has_bias=true");
+    const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+    ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+    EXPECT_EQ(SerializeToString(*parsed), serialized);
+}
+
+TEST(OpParamsSerde, QkvLinearRejectsMalformedFields) {
+    const std::vector<std::string> malformed{
+            // Missing field.
+            "QkvLinear q_out_features=1 k_out_features=1 v_out_features=1",
+            // Invalid boolean.
+            "QkvLinear q_out_features=1 k_out_features=1 v_out_features=1 has_bias=yes",
+            // Non-integer width.
+            "QkvLinear q_out_features=abc k_out_features=1 v_out_features=1 has_bias=false",
+            // Extra field.
+            "QkvLinear q_out_features=1 k_out_features=1 v_out_features=1 has_bias=false extra=1",
+            // Duplicate field.
+            "QkvLinear q_out_features=1 q_out_features=2 k_out_features=1 v_out_features=1 has_bias=false",
+    };
+
+    for (const std::string& text: malformed) {
+        const StatusOr<OpParams> parsed = ParseOpParams(text);
+        EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
+        if (!parsed.ok()) {
+            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << "Text: " << text;
+        }
+    }
+}
+
+TEST(OpParamsSerde, FusedAddRmsNormRoundTripsCanonicalForm) {
+    const OpParams params{FusedAddRmsNormParams{.eps = 1.0e-5F}};
+    const std::string serialized = SerializeToString(params);
+    EXPECT_EQ(serialized, "FusedAddRmsNorm eps=1e-05");
+    const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+    ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+    EXPECT_EQ(SerializeToString(*parsed), serialized);
+}
+
+TEST(OpParamsSerde, FusedAddRmsNormRejectsMalformedFields) {
+    const std::vector<std::string> malformed{
+            // Missing field.
+            "FusedAddRmsNorm",
+            // Non-float eps.
+            "FusedAddRmsNorm eps=abc",
+            // Extra field.
+            "FusedAddRmsNorm eps=1e-05 extra=1",
     };
 
     for (const std::string& text: malformed) {

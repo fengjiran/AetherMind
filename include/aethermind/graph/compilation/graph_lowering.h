@@ -8,11 +8,11 @@
 /// binding vectors and unresolved state alias records. Backend-specific kernel
 /// selection happens later; this stage only translates semantic IR.
 #include "aethermind/backend/kernel_selector.h"
+#include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/execution/execution_node_spec.h"
 #include "aethermind/execution/state_alias_plan.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/base/macros.h"
 
 #include <vector>
 
@@ -84,7 +84,7 @@ struct LoweredGraph {
 /// @param config Backend-independent lowering knobs.
 /// @return LoweredGraph on success, or an error status describing the first
 /// lowering failure.
-AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
+StatusOr<LoweredGraph> LowerModelGraph(
         const ModelGraph& graph,
         const GraphLoweringConfig& config = {});
 
@@ -101,7 +101,7 @@ AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
 /// @param lowered LoweredGraph whose state aliases should be resolved.
 /// @return StateAliasPlan on success, or an error status if an alias references
 /// a GraphValueId that cannot be found in any step binding.
-AM_NODISCARD StatusOr<StateAliasPlan> ResolveStateAliases(
+StatusOr<StateAliasPlan> ResolveStateAliases(
         const LoweredGraph& lowered);
 
 }// namespace aethermind

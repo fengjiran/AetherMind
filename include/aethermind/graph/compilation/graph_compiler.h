@@ -42,7 +42,7 @@ struct CompiledModelGraph {
 /// const_eval_policy are forwarded to every pass unchanged.
 /// @return Optimized ModelGraph on success, or an error status describing the
 /// first pass failure.
-AM_NODISCARD StatusOr<ModelGraph> OptimizeModelGraph(
+StatusOr<ModelGraph> OptimizeModelGraph(
         const ModelGraph& graph,
         PassContext context = {});
 
@@ -63,7 +63,7 @@ AM_NODISCARD StatusOr<ModelGraph> OptimizeModelGraph(
 /// @note The optimized graph is retained so that GraphValueIds in
 /// LoweredGraph::step_bindings remain meaningful; standalone constant graph
 /// outputs stay accessible through optimized_graph.
-AM_NODISCARD StatusOr<CompiledModelGraph> CompileModelGraph(
+StatusOr<CompiledModelGraph> CompileModelGraph(
         const ModelGraph& graph,
         const GraphCompileConfig& config = {});
 

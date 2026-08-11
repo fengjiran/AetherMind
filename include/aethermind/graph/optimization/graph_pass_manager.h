@@ -41,7 +41,6 @@ struct PassContext {
     bool enable_swiglu_fusion = true;
     bool enable_dce = true;
     bool enable_constant_folding = true;
-    bool enable_flash_attention_rewrite = true;
     bool enable_fused_add_rms_norm = true;
     ConstEvalPolicy const_eval_policy{};
 };

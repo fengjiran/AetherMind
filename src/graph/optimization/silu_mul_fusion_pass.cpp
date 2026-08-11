@@ -14,7 +14,8 @@ struct SiluMulPattern {
     std::optional<uint32_t> decoder_layer_index{};
 };
 
-StatusOr<std::optional<SiluMulPattern>> FindSiluMulPattern(GraphRewriteSession& session, GraphNodeId silu_node) {
+StatusOr<std::optional<SiluMulPattern>> FindSiluMulPattern(GraphRewriteSession& session,
+                                                           GraphNodeId silu_node) {
     if (!session.IsNodeLive(silu_node)) {
         return std::optional<SiluMulPattern>{};
     }
@@ -99,7 +100,7 @@ StatusOr<std::optional<SiluMulPattern>> FindSiluMulPattern(GraphRewriteSession& 
         return std::optional<SiluMulPattern>{};
     }
 
-    return std::optional<SiluMulPattern>{SiluMulPattern{
+    return std::optional{SiluMulPattern{
             .silu_node = silu_node,
             .mul_node = mul_node,
             .gate = silu_view->inputs[0],

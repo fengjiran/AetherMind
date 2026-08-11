@@ -63,7 +63,7 @@ AetherMind 的图编译功能负责将 Hugging Face 格式的模型文件转换�
 
 | 模块 | 设计文档 | 状态 |
 |------|---------|------|
-| ModelGraph | `docs/designs/model_graph_design_v2.md` | ✅ 已实现 |
+| ModelGraph | `docs/designs/model_graph_design.md` | ✅ 已实现 |
 | ModelGraphBuilder | 同上 | ✅ 已实现 |
 | LowerModelGraph | `include/aethermind/model/graph/compilation/graph_lowering.h` | ✅ 已实现 bridge |
 | 模型加载后自动编译入口 | 待设计/集成 | ❌ 未实现 |

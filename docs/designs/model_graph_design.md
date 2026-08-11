@@ -1249,7 +1249,6 @@ struct PassContext {
 
     bool enable_qkv_fusion = true;
     bool enable_swiglu_fusion = true;
-    bool enable_flash_attention_rewrite = true;
     bool enable_fused_add_rms_norm = true;
 };
 ```
@@ -1263,7 +1262,7 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 兼容策略：`SetCheckpointEvery()` 保留为便捷 API，内部写入 `ctx_.checkpoint_every`；所有错误仍通过 `Status` 传播，不能改成 `bool`。
 
-**Fusion flags 使用约定**：`enable_qkv_fusion` / `enable_swiglu_fusion` / `enable_flash_attention_rewrite` / `enable_fused_add_rms_norm` 默认全 `true`（激进优化）。每个 fusion pass 在 `Run()` 入口自行检查对应 flag，若禁用则直接返回 `Status::Ok()` 跳过。约定模式：`if (!ctx.enable_qkv_fusion) { return Status::Ok(); }`。`opt_level` 用于控制 pass 是否注册到 pipeline（由 `GraphPassManager` 或上层决定），flag 用于控制已注册 pass 的运行时行为。
+**Fusion flags 使用约定**：`enable_qkv_fusion` / `enable_swiglu_fusion` / `enable_fused_add_rms_norm` 默认全 `true`（激进优化）。每个 fusion pass 在 `Run()` 入口自行检查对应 flag，若禁用则直接返回 `Status::Ok()` 跳过。约定模式：`if (!ctx.enable_qkv_fusion) { return Status::Ok(); }`。`opt_level` 用于控制 pass 是否注册到 pipeline（由 `GraphPassManager` 或上层决定），flag 用于控制已注册 pass 的运行时行为。
 
 ### 16.4 当前优化 Pass Pipeline
 
@@ -1304,7 +1303,7 @@ ConstantFolding 必须优先于 SiluMulFusion，因为：
 
 - **`QkvFusionPass`** `[规划中]`：匹配同一输入上的 Q/K/V 三个 `Linear`，验证 layer、dtype、shape 与 downstream consumer 后提升为 QKV 语义节点。
 - **`SiluMulFusionPass`** `[已实现]`：匹配 `gate -> silu -> mul(up)`，支持 Mul 输入反向，检查 `silu_out` 单 consumer、非 graph output、`decoder_layer_index` 一致后合并为 `OpType::kSiluMul`。若 `silu_out` / `mul_out` 已被前置 pass（如 CF）替换（`GetResolvedValue` 解析后与自身不同），跳过融合——重新融合会以 fused kernel 形式重新引入已消除的 silu 计算，并使折叠常量成为死值。
-- **`FlashAttentionRewritePass`** `[规划中]`：将 attention softmax 子图提升为 `FlashAttention` 语义节点；是否使用具体 fused kernel 由 lowering / backend plan 决定。
+- **Attention 不参与语义层 fusion**：attention 在语义层始终是 `kAttention` 单节点，causal masking 与 softmax 属于 attention 语义自身，不作子图提升；是否使用 fused / FlashAttention-like kernel 由 lowering / backend plan 决定。
 - **`FusedAddRmsNormPass`** `[规划中]`：融合 residual add 与后续 RMSNorm，必须明确 residual 输入顺序、aliasing 语义、weight binding 与 lowering fallback。
 
 每个真实 pass 至少需要覆盖匹配成功、匹配失败、安全跳过、非法输入四类测试；fusion 后的图必须通过 `Validate()`，并保持可 lowering。

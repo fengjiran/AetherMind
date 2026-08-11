@@ -2,7 +2,7 @@
 
 > 状态：提案，待评审
 > 范围：Phase 1（CPU 本地推理运行时，图编译与执行管线）
-> 关联文档：[AGENTS.md](../../AGENTS.md)、[aethermind_prd.md](../products/aethermind_prd.md)、[model_graph_design_v2.md](model_graph_design_v2.md)、[graph_compilation_flow.md](graph_compilation_flow.md)、[kv_cache_design.md](kv_cache_design.md)
+> 关联文档：[AGENTS.md](../../AGENTS.md)、[aethermind_prd.md](../products/aethermind_prd.md)、[model_graph_design.md](model_graph_design.md)、[graph_compilation_flow.md](graph_compilation_flow.md)、[kv_cache_design.md](kv_cache_design.md)
 
 ## 1. 文档定位
 
@@ -137,7 +137,7 @@ Commit 的顺序是：`ValidateEdits`、计算保留集（含 DCE 语义）、�
 
 ### 4.10 确定性语义
 
-校验与优化必须是确定性的：同一输入图、同一管线、同一配置，产出相同校验结果与相同优化结果。现状支撑：Kahn 序稳定、别名按 step_index 排序、pass 无状态（[graph_pass_manager.h](../../include/aethermind/graph/optimization/graph_pass_manager.h:54)）、快照不可变（[model_graph_design_v2.md](model_graph_design_v2.md) §10.1 Immutable Snapshot Contract）。任何新校验器不得依赖未定义的遍历顺序。
+校验与优化必须是确定性的：同一输入图、同一管线、同一配置，产出相同校验结果与相同优化结果。现状支撑：Kahn 序稳定、别名按 step_index 排序、pass 无状态（[graph_pass_manager.h](../../include/aethermind/graph/optimization/graph_pass_manager.h:54)）、快照不可变（[model_graph_design.md](model_graph_design.md) §10.1 Immutable Snapshot Contract）。任何新校验器不得依赖未定义的遍历顺序。
 
 ## 5. 语义不变量
 
@@ -393,6 +393,6 @@ struct ValidationReport {
 
 - [AGENTS.md](../../AGENTS.md)：模块所有权、跨模块依赖规则、构建测试规范。
 - [aethermind_prd.md](../products/aethermind_prd.md)：Phase 1 产品范围与验收标准。
-- [model_graph_design_v2.md](model_graph_design_v2.md)：ModelGraph 设计、§10 快照与 checkpoint 契约、§13 Validation 规则、§16 pass 管线、§17.1 状态缓冲别名。
+- [model_graph_design.md](model_graph_design.md)：ModelGraph 设计、§10 快照与 checkpoint 契约、§13 Validation 规则、§16 pass 管线、§17.1 状态缓冲别名。
 - [graph_compilation_flow.md](graph_compilation_flow.md)：按当前代码事实梳理的图编译 lowering 与计划构建流程。评审版（图编译功能完整实现流程，含已实现/待生产化边界）见 [graph_compilation_flow.md](../../reviews/graph_compilation_flow.md)。
 - [kv_cache_design.md](kv_cache_design.md)：KV cache 静态分配模型、Manager/View 职责与布局契约。

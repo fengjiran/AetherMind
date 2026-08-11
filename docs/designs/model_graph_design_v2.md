@@ -1287,9 +1287,9 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 ConstantFolding 必须优先于 SiluMulFusion，因为：
 
-1. CF 可能折叠 SiLU 节点（当其 gate 输入为内联常量时），将 SiLU 的输出替换为折叠后的常量值；这消除了融合模式中 SiLU 节点的依赖，但融合仍能通过替换链确定性地触发；
-2. 融合 pass 通过 `GraphRewriteSession::GetResolvedValue()` 解析 `ReplaceValue` 链，即使 CF 替换了 SiLU 的输出，融合仍能确定性地触发（解析到折叠后的常量值，将其识别为融合模式的 gate 输入）；
-3. DCE 在融合之后运行，会删除被 CF 替换的原始 producer 节点，以及被融合替换的 SiLU 和 ElementwiseMul 节点。
+1. CF 可能折叠 SiLU 节点（当其 gate 输入为内联常量时，`silu(gate)` 是纯常量计算，可被常量求值器整体折叠），将 SiLU 的输出替换为折叠后的常量值；此后该 SiLU 计算在运行时已不存在；
+2. 融合 pass 必须在入口识别这一情况并**跳过融合**：`FindSiluMulPattern` 检查 `session.GetResolvedValue(silu_out) != silu_out`（`mul_out` 同样检查），若输出已被前置 pass 替换，融合不会通过替换链"重新触发"——重新融合会把已消除的 silu 计算以 fused kernel 形式重新引入运行时，并使折叠后的常量成为死值（其 replacement binding 被孤立）。跳过是正确的语义选择：剩余的普通 `Mul(常量, up)` 已是最优；
+3. DCE 在融合之后运行：在 CF 已折叠 SiLU 的路径上，DCE 删除输出被替换的原始 SiLU producer 节点；在常规融合路径上，DCE 删除被融合替换的 SiLU 和 ElementwiseMul 节点。
 
 最终优化图等价于无 checkpoint（`checkpoint_every=0`）的运行结果，即使设置了中间 checkpoint。
 
@@ -1303,7 +1303,7 @@ ConstantFolding 必须优先于 SiluMulFusion，因为：
 ##### Phase 2：LLM 语义融合（部分实现）
 
 - **`QkvFusionPass`** `[规划中]`：匹配同一输入上的 Q/K/V 三个 `Linear`，验证 layer、dtype、shape 与 downstream consumer 后提升为 QKV 语义节点。
-- **`SiluMulFusionPass`** `[已实现]`：匹配 `gate -> silu -> mul(up)`，支持 Mul 输入反向，检查 `silu_out` 单 consumer、非 graph output、`decoder_layer_index` 一致后合并为 `OpType::kSiluMul`。
+- **`SiluMulFusionPass`** `[已实现]`：匹配 `gate -> silu -> mul(up)`，支持 Mul 输入反向，检查 `silu_out` 单 consumer、非 graph output、`decoder_layer_index` 一致后合并为 `OpType::kSiluMul`。若 `silu_out` / `mul_out` 已被前置 pass（如 CF）替换（`GetResolvedValue` 解析后与自身不同），跳过融合——重新融合会以 fused kernel 形式重新引入已消除的 silu 计算，并使折叠常量成为死值。
 - **`FlashAttentionRewritePass`** `[规划中]`：将 attention softmax 子图提升为 `FlashAttention` 语义节点；是否使用具体 fused kernel 由 lowering / backend plan 决定。
 - **`FusedAddRmsNormPass`** `[规划中]`：融合 residual add 与后续 RMSNorm，必须明确 residual 输入顺序、aliasing 语义、weight binding 与 lowering fallback。
 

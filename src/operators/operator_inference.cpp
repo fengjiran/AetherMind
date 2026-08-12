@@ -18,6 +18,8 @@ StatusOr<InferenceResult> InferOperator(OpType op_type,
             return detail::InferRmsNorm(params, inputs);
         case OpType::kLinear:
             return detail::InferLinear(params, inputs);
+        case OpType::kQkvLinear:
+            return detail::InferQkvLinear(params, inputs);
         case OpType::kRoPE:
             return detail::InferRoPE(params, inputs);
         case OpType::kMatMul:

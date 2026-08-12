@@ -23,9 +23,9 @@ namespace aethermind {
 ///         deferred runtime checks. On failure, an error Status describing
 ///         the inference failure (e.g., kInvalidArgument for incompatible
 ///         input ranks, kUnimplemented for unsupported op types).
-AM_NODISCARD StatusOr<InferenceResult> InferOperator(OpType op_type,
-                                                     const OpParams& params,
-                                                     std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferOperator(OpType op_type,
+                                        const OpParams& params,
+                                        std::span<const TensorSpec> inputs);
 
 /// @brief Validates that the input count matches the operator schema.
 ///
@@ -49,7 +49,7 @@ Status ValidateInferenceInputCount(OpType op_type,
 ///         On failure (input count mismatch or out-of-range port index),
 ///         an error Status.
 /// @pre `all_inputs.size() == schema.input_ports.size()`.
-AM_NODISCARD StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(
+StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(
         const OperatorSchema& schema,
         std::span<const TensorSpec> all_inputs);
 

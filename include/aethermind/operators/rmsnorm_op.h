@@ -74,11 +74,11 @@ public:
         return {};
     }
 
-    AM_NODISCARD Status Prepare(OperatorContext& ctx) override;
+    Status Prepare(OperatorContext& ctx) override;
 
-    AM_NODISCARD Status Run(KernelContext& ctx,
-                            const RuntimeBindingContext& bindings,
-                            size_t step_index) const noexcept override;
+    Status Run(KernelContext& ctx,
+               const RuntimeBindingContext& bindings,
+               size_t step_index) const noexcept override;
 
     AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
         return resolved_kernel_;

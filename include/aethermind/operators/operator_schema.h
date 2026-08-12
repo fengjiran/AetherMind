@@ -102,16 +102,16 @@ inline constexpr std::string_view vCache = "v_cache";
 /// @param schema Schema whose input ports are searched.
 /// @param name Exact port name to find.
 /// @return Port index, or `kInvalidArgument` when no input port matches.
-AM_NODISCARD StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema,
-                                                   std::string_view name) noexcept;
+StatusOr<uint32_t> FindInputPortIndex(const OperatorSchema& schema,
+                                      std::string_view name) noexcept;
 
 /// @brief Finds an output port index by name.
 ///
 /// @param schema Schema whose output ports are searched.
 /// @param name Exact port name to find.
 /// @return Port index, or `kInvalidArgument` when no output port matches.
-AM_NODISCARD StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema,
-                                                    std::string_view name) noexcept;
+StatusOr<uint32_t> FindOutputPortIndex(const OperatorSchema& schema,
+                                       std::string_view name) noexcept;
 
 /// @brief Tests whether a schema exposes at least one state output.
 ///
@@ -136,7 +136,7 @@ AM_NODISCARD bool IsCompileTimeEvaluable(const OperatorSchema& schema) noexcept;
 ///
 /// @param op_type Operator type to look up.
 /// @return Registered schema, or `kNotFound` when the type is unknown.
-AM_NODISCARD StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type);
+StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type);
 /// @brief Returns all schemas in semantic ABI order.
 ///
 /// @return Borrowed view backed by immutable static storage.

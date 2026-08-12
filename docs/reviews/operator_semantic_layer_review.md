@@ -27,8 +27,8 @@ Operator 语义层是 AetherMind 算子系统的 **中间层**，向上承接 `E
 | 组件 | 文件 | 职责 |
 |------|------|------|
 | `Operator`（基类） | `include/aethermind/operators/operator.h` | 定义算子生命周期接口 |
-| `RmsNormOp` | `include/aethermind/operators/rmsnorm_op.h` / `src/operators/rmsnorm_op.cpp` | RMS 归一化算子 |
-| `EmbeddingOp` | `include/aethermind/operators/embedding_op.h` / `src/operators/embedding_op.cpp` | 嵌入查找算子 |
+| `RmsNormOp` | `include/aethermind/operators/ops/rmsnorm_op.h` / `src/operators/ops/rmsnorm_op.cpp` | RMS 归一化算子 |
+| `EmbeddingOp` | `include/aethermind/operators/ops/embedding_op.h` / `src/operators/ops/embedding_op.cpp` | 嵌入查找算子 |
 | `FunctionOperator` | `include/aethermind/operators/function_operator.h` | Raw KernelFunc 的轻量适配器 |
 | `OperatorRegistry` | `include/aethermind/operators/operator_registry.h` / `src/operators/operator_registry.cpp` | 算子工厂注册表 |
 | `OperatorContext` | `include/aethermind/operators/operator_context.h` | Prepare 阶段上下文 |

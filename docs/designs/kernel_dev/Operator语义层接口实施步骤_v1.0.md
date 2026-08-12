@@ -246,12 +246,12 @@ bench/operators/
 include/aethermind/operators/op_type.h
 include/aethermind/operators/operator_context.h
 include/aethermind/operators/workspace_requirement.h
-include/aethermind/operators/rmsnorm_op.h
+include/aethermind/operators/ops/rmsnorm_op.h
 
 src/operators/op_type.cc
-src/operators/rmsnorm_op.cc
+src/operators/ops/rmsnorm_op.cpp
 
-tests/operators/rmsnorm_op_test.cc
+tests/unit/operators/ops/test_rmsnorm_op.cpp
 bench/operators/rmsnorm_bench.cc
 ```
 
@@ -808,8 +808,8 @@ using RmsNormKernelFn = Status (*)(
 ### 13.1 文件
 
 ```text
-include/aethermind/operators/rmsnorm_op.h
-src/operators/rmsnorm_op.cc
+include/aethermind/operators/ops/rmsnorm_op.h
+src/operators/ops/rmsnorm_op.cpp
 ```
 
 ### 13.2 参数定义
@@ -1140,7 +1140,7 @@ NotFound
 ### 16.1 文件
 
 ```text
-tests/operators/rmsnorm_op_test.cc
+tests/unit/operators/ops/test_rmsnorm_op.cpp
 ```
 
 ### 16.2 测试类型
@@ -1781,9 +1781,9 @@ KernelDescriptor 可由 Operator 构造，并支持 ToString。
 ### Commit 4：RMSNormOp 头文件与 Validate
 
 ```text
-include/aethermind/operators/rmsnorm_op.h
-src/operators/rmsnorm_op.cc
-tests/operators/rmsnorm_op_test.cc
+include/aethermind/operators/ops/rmsnorm_op.h
+src/operators/ops/rmsnorm_op.cpp
+tests/unit/operators/ops/test_rmsnorm_op.cpp
 ```
 
 目标：
@@ -1833,9 +1833,9 @@ bench/operators/rmsnorm_bench.cc
 ### Commit 8：复制到 LinearOp
 
 ```text
-include/aethermind/operators/linear_op.h
-src/operators/linear_op.cc
-tests/operators/linear_op_test.cc
+include/aethermind/operators/ops/linear_op.h
+src/operators/ops/linear_op.cpp
+tests/unit/operators/ops/test_linear_op.cpp
 bench/operators/linear_bench.cc
 ```
 
@@ -1998,9 +1998,9 @@ src/operators/op_type.cc
 include/aethermind/operators/workspace_requirement.h
 include/aethermind/operators/operator_context.h
 
-include/aethermind/operators/rmsnorm_op.h
-src/operators/rmsnorm_op.cc
-tests/operators/rmsnorm_op_test.cc
+include/aethermind/operators/ops/rmsnorm_op.h
+src/operators/ops/rmsnorm_op.cpp
+tests/unit/operators/ops/test_rmsnorm_op.cpp
 ```
 
 第一轮不要急于实现 Linear 和 Attention。先确保 RMSNorm 的完整闭环质量足够高。

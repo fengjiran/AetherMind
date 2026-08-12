@@ -56,7 +56,7 @@ AetherMind 的图编译功能负责将 Hugging Face 格式的模型文件转换�
 | WeightPrepackPlanner | `src/model/weight_prepack_planner.cpp` | ✅ 已实现 |
 | ExecutionPlanBuilder | `src/execution/execution_plan_builder.cpp` | ✅ 已实现 |
 | Executor / LayerRunner | `src/execution/executor.cpp`, `layer_runner.cpp` | ✅ 已实现 |
-| Operator 体系 | `src/operators/rmsnorm_op.cpp`, `embedding_op.cpp` | ✅ 已实现 |
+| Operator 体系 | `src/operators/ops/rmsnorm_op.cpp`, `src/operators/ops/embedding_op.cpp` | ✅ 已实现 |
 | Kernel 体系 | `src/backend/cpu/kernels/rmsnorm/` | ✅ 已实现 |
 
 ### 2.2 仍待生产化模块

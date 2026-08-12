@@ -626,7 +626,7 @@ AddWeightedNode(graph, OpType::kLinear, LinearParams{},
 ### 9.2 单元测试（参照 RmsNormOp 测试模式）
 
 ```cpp
-// tests/unit/operators/test_linear_op.cpp
+// tests/unit/operators/ops/test_linear_op.cpp
 
 // 1. Validate + CheckInputSpecs
 TEST(LinearOp, ValidatesInputContract) {
@@ -693,9 +693,9 @@ Executor::Execute(plan, bindings);
 | 2 | `src/backend/cpu/kernels/linear/linear_internal.h` | `LinearFp32KernelArgs` + 声明 | 步骤 1 |
 | 3 | `src/backend/cpu/kernels/linear/linear_fp32_scalar.cpp` | Reference triple-loop | 步骤 2 |
 | 4 | `src/backend/cpu/kernels/linear/linear_entry.cpp` | Entry + `AM_REGISTER_KERNEL` | 步骤 1,3 |
-| 5 | `include/aethermind/operators/linear_op.h` | `LinearOp` 类声明 | 无 |
-| 6 | `src/operators/linear_op.cpp` | 实现 + `AM_REGISTER_OPERATOR` | 步骤 1,5 |
-| 7 | `tests/unit/operators/test_linear_op.cpp` | 单元测试（Validate/Infer/Prepare/Run） | 步骤 5,6 |
+| 5 | `include/aethermind/operators/ops/linear_op.h` | `LinearOp` 类声明 | 无 |
+| 6 | `src/operators/ops/linear_op.cpp` | 实现 + `AM_REGISTER_OPERATOR` | 步骤 1,5 |
+| 7 | `tests/unit/operators/ops/test_linear_op.cpp` | 单元测试（Validate/Infer/Prepare/Run） | 步骤 5,6 |
 | 8 | `tests/unit/backend/cpu/test_cpu_resolve_kernel.cpp` | 更新 `MissingKeyReturnsNullptr` 测试 | 步骤 4 |
 
 ---

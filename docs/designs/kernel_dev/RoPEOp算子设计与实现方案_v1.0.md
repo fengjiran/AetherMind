@@ -889,7 +889,7 @@ graph.AddNode(GraphNode{
 ### 9.2 单元测试（参照 LinearOp 测试模式）
 
 ```cpp
-// tests/unit/operators/test_rope_op.cpp
+// tests/unit/operators/ops/test_rope_op.cpp
 
 // 1. ValidateParams
 TEST(RoPEOp, RejectsOddHeadDim) {
@@ -985,9 +985,9 @@ Executor::Execute(plan, bindings);
 | 2 | `src/backend/cpu/kernels/rope/rope_internal.h` | `RoPEFp32KernelArgs` + 声明 | 步骤 1 |
 | 3 | `src/backend/cpu/kernels/rope/rope_fp32_scalar.cpp` | Reference 旋转实现 | 步骤 2 |
 | 4 | `src/backend/cpu/kernels/rope/rope_entry.cpp` | Entry + `AM_REGISTER_KERNEL` | 步骤 1,3 |
-| 5 | `include/aethermind/operators/rope_op.h` | `RoPEOp` 类声明 | 无 |
-| 6 | `src/operators/rope_op.cpp` | 实现 + `AM_REGISTER_OPERATOR` | 步骤 1,5 |
-| 7 | `tests/unit/operators/test_rope_op.cpp` | 单元测试（Validate/Infer/Prepare/Run） | 步骤 5,6 |
+| 5 | `include/aethermind/operators/ops/rope_op.h` | `RoPEOp` 类声明 | 无 |
+| 6 | `src/operators/ops/rope_op.cpp` | 实现 + `AM_REGISTER_OPERATOR` | 步骤 1,5 |
+| 7 | `tests/unit/operators/ops/test_rope_op.cpp` | 单元测试（Validate/Infer/Prepare/Run） | 步骤 5,6 |
 
 **注**：步骤 1-4 为 kernel 实现，步骤 5-6 为语义层实现。若先实现语义层（暂不实现 kernel，参照 LinearOp 当前状态），可仅执行步骤 1,5,6,7，kernel 部分后续补全。
 

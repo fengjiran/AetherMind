@@ -75,13 +75,6 @@ std::string WeightDebugName(TransformerWeightRole role, std::optional<uint32_t> 
     AM_UNREACHABLE();
 }
 
-WeightBinding MakeTransformerWeightBinding(std::optional<uint32_t> layer,
-                                           TransformerWeightRole role) {
-    return {.slot = SlotForTransformerRole(role),
-            .decoder_layer_index = layer,
-            .semantic_role = role};
-}
-
 struct AttentionBlockInput {
     GraphValueId hidden;
     GraphValueId position_ids;

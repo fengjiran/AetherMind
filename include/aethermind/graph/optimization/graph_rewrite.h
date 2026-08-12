@@ -11,9 +11,10 @@
 ///
 /// The session manages three value id spaces:
 ///   - source values from the original graph (index < graph_.GetValues().size())
-///   - session constants added via AddSessionConstant (index >= source range)
+///   - session external values added via AddSessionConstant/AddSessionWeight
+///     (index >= source range)
 ///   - virtual values for internal edges within a SubgraphReplacement
-///     (index >= source range, not a session constant)
+///     (index >= source range, not a session external value)
 ///
 /// @section Ownership
 /// The session borrows a const ModelGraph& — the caller must keep the source
@@ -67,7 +68,7 @@ struct RewriteOutputBinding {
 
 /// @brief Describes a node to be inserted by ReplaceSubgraph.
 ///
-/// Inputs may reference source values, session constants, or virtual values
+/// Inputs may reference source values, session external values, or virtual values
 /// allocated within the same replacement group. Each output specifies which
 /// existing value it replaces (see RewriteOutputBinding).
 struct ReplacementNode {
@@ -133,9 +134,10 @@ struct CommitOptions {
 ///
 /// The session tracks three categories of value ids:
 ///   - source values: original graph values, index < graph_.GetValues().size()
-///   - session constants: added via AddSessionConstant(), index >= source range
+///   - session external values: constants or weights added through
+///     AddSessionConstant()/AddSessionWeight(), index >= source range
 ///   - virtual values: internal edges within a subgraph replacement,
-///     index >= source range, not a session constant
+///     index >= source range, not a session external value
 ///
 /// Node liveness (IsNodeLive): a node is live when untouched or when only
 /// modified via RedirectInput (which installs a mirror replacement). Nodes
@@ -164,7 +166,7 @@ public:
     /// @brief Adds a new session constant value scoped to this session.
     ///
     /// The constant is allocated in the session-local id space
-    /// (ValueKind::kSessionConstant). Commit() materializes it only when the
+    /// (ValueKind::kSessionExternal). Commit() materializes it only when the
     /// final committed graph references it through a retained consumer — a
     /// live source node or a retained replacement after pruning — or a graph
     /// output resolved by ReplaceValue; otherwise it is discarded (see
@@ -178,6 +180,22 @@ public:
                                                  ConstantBinding binding,
                                                  QuantizationSpec quantization,
                                                  std::string name);
+
+    /// @brief Adds a new session weight value scoped to this session.
+    ///
+    /// The weight is materialized by Commit() only when retained consumers or
+    /// a resolved graph output reference it. It may use a direct or composite
+    /// WeightBinding recipe; normal graph validation still checks the recipe
+    /// against its eventual operator consumer.
+    /// @param spec Tensor spec for the logical weight value.
+    /// @param binding Weight binding recipe backing the value.
+    /// @param quantization Quantization metadata for the weight.
+    /// @param name Debug name used as the AddSessionWeight tag.
+    /// @return Session-local weight value id (index >= source graph values).
+    AM_NODISCARD GraphValueId AddSessionWeight(TensorSpec spec,
+                                               WeightBinding binding,
+                                               QuantizationSpec quantization,
+                                               std::string name);
 
     /// @brief Applies a batch of mutations sequentially.
     ///
@@ -198,7 +216,7 @@ public:
     /// order they appear in the vector when the first old_node is encountered
     /// in topological order during Commit(). Their inputs must resolve to values
     /// that are available at that point (external values, already-emitted live
-    /// nodes, session constants, or virtual values produced by earlier
+    /// nodes, session external values, or virtual values produced by earlier
     /// replacements within the same rewrite).
     ///
     /// Deactivates any existing rewrite that covers any of the old_nodes.
@@ -211,7 +229,7 @@ public:
 
     /// @brief Rewires one input of a live node to a different value.
     ///
-    /// The new_value must be a source value or a session constant; virtual
+    /// The new_value must be a source value or a session external value; virtual
     /// values are not permitted (they are rewrite-internal and have no
     /// committed-graph identity).
     ///
@@ -220,19 +238,19 @@ public:
     /// change. Returns InvalidArgument for nodes that are not live.
     /// @param node Live node whose input is rewired.
     /// @param input_index 0-based input port index to rewire.
-    /// @param new_value Replacement value; must be a source value or session constant.
+    /// @param new_value Replacement value; must be a source value or session external value.
     /// @return Status::Ok() on success, or InvalidArgument if the node is not live.
     Status RedirectInput(GraphNodeId node, size_t input_index, GraphValueId new_value);
 
     /// @brief Redirects consumers of `old_value` to `new_value` after resolution.
     ///
     /// The old_value must be a source graph value. The new_value may be a source
-    /// value or a session constant. Virtual values are not permitted.
+    /// value or a session external value. Virtual values are not permitted.
     /// Detects and rejects replacement cycles. The installation itself does not
     /// compare specs; ValidateEdits/Commit reject replacements whose resolved
     /// terminal changes the replaced value's dtype or shape identity.
     /// @param old_value Source graph value whose consumers are redirected.
-    /// @param new_value Resolution target; source value or session constant.
+    /// @param new_value Resolution target; source value or session external value.
     /// @return Status::Ok() on success, or the first error encountered.
     Status ReplaceValue(GraphValueId old_value, GraphValueId new_value);
 
@@ -313,8 +331,8 @@ public:
     /// @brief Returns true if `value` resolves to a compile-time constant.
     ///
     /// Resolves through any ReplaceValue chain first, then checks both source
-    /// graph constants (ConstantValue payload) and session constants added
-    /// via AddSessionConstant. Out-of-range and virtual values return false.
+    /// graph constants and weights plus session external values. Out-of-range
+    /// and virtual values return false.
     /// @param value Value id to test.
     /// @return True if the value resolves to a compile-time constant; false otherwise.
     AM_NODISCARD bool IsConstant(GraphValueId value) const;
@@ -439,8 +457,8 @@ public:
     /// `options.force_prune_unreachable` is set, Commit first computes the
     /// reverse-reachability closure of graph outputs through the mixed
     /// source/replacement graph, then emits only retained replacement and
-    /// source nodes; unretained session constants are dropped in lockstep
-    /// (see AddSessionConstant and CopyExternalValues).
+    /// source nodes; unretained session external values are dropped in lockstep
+    /// (see AddSessionConstant, AddSessionWeight, and CopyExternalValues).
     ///
     /// Steps: CopyExternalValues -> topological traversal (emitting rewrites
     /// and surviving original nodes, skipping unretained ones) ->
@@ -467,17 +485,17 @@ private:
         bool exposes_node_view = false;
     };
 
-    /// Metadata for a session-local constant added via AddSessionConstant.
-    struct SessionConstant {
+    /// Metadata for a session-local constant or weight.
+    struct SessionExternalValue {
         TensorSpec spec{};
-        ConstantBinding binding{};
+        GraphValuePayload payload{std::monostate{}};
         QuantizationSpec quantization{};
         std::string name{};
     };
 
     enum class ValueKind : std::uint8_t {
         kSource,
-        kSessionConstant,
+        kSessionExternal,
         kSessionVirtual,
         kInvalid,
     };
@@ -486,9 +504,9 @@ private:
     /// from source/session spaces into the committed graph's id space.
     using ValueMap = std::vector<std::optional<GraphValueId>>;
     struct CommitValueMaps {
-        ValueMap& source_values;    // Source value -> committed value
-        ValueMap& session_constants;// Session constant -> committed constant
-        ValueMap& virtual_values;   // Virtual value -> committed output
+        ValueMap& source_values;          // Source value -> committed value
+        ValueMap& session_external_values;// Session external -> committed value
+        ValueMap& virtual_values;         // Virtual value -> committed output
     };
 
     struct RetainedNodes {
@@ -510,8 +528,8 @@ private:
     // Validates that value is a source graph value id (ValueKind::kSource only).
     // Returns InvalidArgument for session-local or invalid value ids.
     Status CheckSourceValueId(GraphValueId value) const;
-    // Validates that value is a source or session constant value id
-    // (ValueKind::kSource | ValueKind::kSessionConstant).
+    // Validates that value is a source or session external value id
+    // (ValueKind::kSource | ValueKind::kSessionExternal).
     // Returns InvalidArgument for session virtual or invalid value ids.
     Status CheckNonVirtualValueId(GraphValueId value) const;
     // Validates that value is an allocated, known value id (every kind except
@@ -519,16 +537,16 @@ private:
     // remains the responsibility of ValidateVirtualValues().
     Status CheckKnownValueId(GraphValueId value) const;
     // Classifies a value id into the session's value-kind space:
-    // kSource for ids below the source graph value range, kSessionConstant or
+    // kSource for ids below the source graph value range, kSessionExternal or
     // kSessionVirtual for ids in the session-local range (distinguished by the
-    // presence of SessionConstant metadata), and kInvalid for ids beyond the
+    // presence of SessionExternalValue metadata), and kInvalid for ids beyond the
     // session-local range (never allocated by the session).
     AM_NODISCARD ValueKind ClassifyValue(GraphValueId value) const noexcept;
     // True when value is in the allocated session-local id space.
     AM_NODISCARD bool IsSessionLocalValue(GraphValueId value) const noexcept;
-    // True when value is a session constant (session-local + SessionConstant metadata).
-    AM_NODISCARD bool IsSessionConstant(GraphValueId value) const noexcept;
-    // True when value is a session virtual value (session-local, not a session constant).
+    // True when value is a session external (session-local + payload metadata).
+    AM_NODISCARD bool IsSessionExternalValue(GraphValueId value) const noexcept;
+    // True when value is a session virtual value (session-local, not an external value).
     AM_NODISCARD bool IsSessionVirtualValue(GraphValueId value) const noexcept;
     // True when any active rewrite's replacement output takes over this value.
     AM_NODISCARD bool IsValueReplacedByActiveRewrite(GraphValueId value) const noexcept;
@@ -545,7 +563,7 @@ private:
     // Validates virtual value ordering (no consumption before production).
     Status ValidateVirtualValues() const;
     // Resolves the TensorSpec of a value id known to the session.
-    // Source values are read from graph_; session constants from session_value_metadata_;
+    // Source values are read from graph_; session external values from session_value_metadata_;
     // virtual values must have an inferred spec in virtual_specs (caller-provided
     // scratch map). Returns NotFound for virtual values with no inferred spec.
     StatusOr<TensorSpec> ResolveValueSpec(
@@ -565,7 +583,7 @@ private:
     // the rewrite's commit emission point. Commit emits each rewrite when the
     // first old_node appears in source topological order; a replacement input
     // referencing a value whose producer is emitted later would fail to map
-    // during commit. Session constants, virtual values, and producer-less
+    // during commit. Session external values, virtual values, and producer-less
     // source values (inputs/weights/constants/states) are always available.
     // A producer covered by a rewrite must have that rewrite bind the value as
     // a replacement output (otherwise the value is never emitted, e.g. a
@@ -574,8 +592,8 @@ private:
     // InvalidArgument when a source-value input is produced by a node or
     // rewrite that emits at or after the consuming rewrite's emission point.
     Status ValidateReplacementInputAvailability() const;
-    // Builds a GraphValueDesc from a session constant's metadata.
-    AM_NODISCARD GraphValueDesc MakeOutputDescFromSessionConstant(GraphValueId value) const;
+    // Builds a GraphValueDesc from a session external value's metadata.
+    AM_NODISCARD GraphValueDesc MakeOutputDescFromSessionExternalValue(GraphValueId value) const;
     // Translates a value id from source/session space to committed graph space.
     StatusOr<GraphValueId> MapCommittedValue(
             GraphValueId value,
@@ -583,9 +601,9 @@ private:
     // Computes the mixed source/replacement reverse-reachability closure used
     // by Commit pruning.
     StatusOr<RetainedNodes> ComputeRetainedNodes() const;
-    // Copies source external values and session constants into the committed
-    // graph; session constants referenced only by unretained nodes/outputs
-    // are dropped in lockstep with node pruning (aligned with AddSessionConstant).
+    // Copies source external values and session-local external values into the
+    // committed graph; session values referenced only by unretained
+    // nodes/outputs are dropped in lockstep with node pruning.
     Status CopyExternalValues(ModelGraph& committed,
                               const CommitValueMaps& maps,
                               const RetainedNodes& retained) const;
@@ -615,9 +633,9 @@ private:
     // Immutable source graph; must outlive the session.
     const ModelGraph& graph_;
     // Per-session-value metadata and authoritative count:
-    // has_value = session constant, nullopt = virtual.
+    // has_value = session external value, nullopt = virtual.
     // Index i corresponds to session value at graph_.GetValues().size() + i.
-    std::vector<std::optional<SessionConstant>> session_value_metadata_{};
+    std::vector<std::optional<SessionExternalValue>> session_value_metadata_{};
     // Active and deactivated rewrites, in submission order.
     std::vector<RewriteEntry> rewrites_{};
     // Maps each source node to the rewrite that covers it, or nullopt.

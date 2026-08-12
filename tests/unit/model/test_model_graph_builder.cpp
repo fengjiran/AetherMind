@@ -115,9 +115,8 @@ void ExpectWeightBinding(const ModelGraph& graph,
                          TransformerWeightRole role,
                          std::optional<uint32_t> layer_index) {
     const WeightBinding& binding = WeightBindingAt(graph, node, 1);
-    EXPECT_EQ(binding.slot, slot);
-    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(binding.semantic_role), role);
+    EXPECT_EQ(GetParameterSlot(binding), slot);
+    EXPECT_EQ(TryGetTransformerWeightRole(binding), role);
     EXPECT_EQ(binding.decoder_layer_index, layer_index);
 }
 
@@ -198,9 +197,9 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     const auto nodes = graph->GetNodes();
 
     const WeightBinding& token_embedding = WeightBindingAt(*graph, nodes[0], 1);
-    EXPECT_EQ(token_embedding.slot, ParameterSlot::kEmbeddingTable);
-    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(token_embedding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(token_embedding.semantic_role), TransformerWeightRole::kTokenEmbedding);
+    EXPECT_EQ(GetParameterSlot(token_embedding), ParameterSlot::kEmbeddingTable);
+    EXPECT_EQ(TryGetTransformerWeightRole(token_embedding),
+              TransformerWeightRole::kTokenEmbedding);
     EXPECT_FALSE(token_embedding.decoder_layer_index.has_value());
     EXPECT_TRUE(nodes[0].attrs.bytes.empty());
     EXPECT_NE(std::get_if<EmbeddingParams>(&nodes[0].op_params), nullptr);
@@ -222,16 +221,14 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
 
     const GraphNode& final_norm = nodes[16];
     const WeightBinding& final_norm_weight = WeightBindingAt(*graph, final_norm, 1);
-    EXPECT_EQ(final_norm_weight.slot, ParameterSlot::kScale);
-    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(final_norm_weight.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(final_norm_weight.semantic_role), TransformerWeightRole::kFinalNorm);
+    EXPECT_EQ(GetParameterSlot(final_norm_weight), ParameterSlot::kScale);
+    EXPECT_EQ(TryGetTransformerWeightRole(final_norm_weight), TransformerWeightRole::kFinalNorm);
     EXPECT_FALSE(final_norm_weight.decoder_layer_index.has_value());
 
     const GraphNode& lm_head = nodes[17];
     const WeightBinding& lm_head_weight = WeightBindingAt(*graph, lm_head, 1);
-    EXPECT_EQ(lm_head_weight.slot, ParameterSlot::kKernel);
-    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(lm_head_weight.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(lm_head_weight.semantic_role), TransformerWeightRole::kLmHead);
+    EXPECT_EQ(GetParameterSlot(lm_head_weight), ParameterSlot::kKernel);
+    EXPECT_EQ(TryGetTransformerWeightRole(lm_head_weight), TransformerWeightRole::kLmHead);
     EXPECT_FALSE(lm_head_weight.decoder_layer_index.has_value());
 }
 

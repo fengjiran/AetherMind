@@ -31,8 +31,7 @@ inline ModelGraph BuildTwoEmbeddingGraph() {
             Spec(DataType::Int(32), {1}), "tokens_b");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed.weight");
     auto embed_a_or = graph.AddNode(
             OpType::kEmbedding,
@@ -66,8 +65,7 @@ inline GraphValueId AddActivation(ModelGraph& graph, const char* debug_name) {
             Spec(DataType::Int(32), {2}), std::string(debug_name) + ".tokens");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             std::string(debug_name) + ".weight");
     auto node_or = graph.AddNode(OpType::kEmbedding,
                                  std::nullopt,
@@ -149,7 +147,7 @@ inline ModelGraph BuildRmsNormGraphWithSpecs(const RmsNormGraphSpecs& specs) {
             .name = "act_in",
     });
     values.push_back(GraphValue{
-            .payload = WeightValue{.binding = WeightBinding{.slot = ParameterSlot::kScale}},
+            .payload = WeightValue{.binding = MakeDirectWeightBinding(ParameterSlot::kScale)},
             .spec = specs.weight,
             .producer = std::nullopt,
             .name = "weight_in",

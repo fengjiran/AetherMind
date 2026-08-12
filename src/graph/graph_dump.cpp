@@ -34,8 +34,20 @@ void DumpTensorSpec(const TensorSpec& spec, std::ostream& os) {
 }
 
 void DumpWeightBinding(const WeightBinding& binding, std::ostream& os) {
-    os << "slot=" << ToString(binding.slot)
-       << ", semantic=" << ToString(binding.semantic_role);
+    auto visitor = overloaded{
+            [&](const DirectWeightBinding& direct) {
+                os << "direct(slot=" << ToString(direct.slot)
+                   << ", semantic=" << ToString(direct.semantic_role) << ')';
+            },
+            [&](const QkvWeightBinding&) {
+                os << "qkv_kernel";
+            },
+            [&](const GateUpWeightBinding&) {
+                os << "gate_up_kernel";
+            },
+    };
+    std::visit(visitor, binding.spec);
+
     if (binding.decoder_layer_index.has_value()) {
         os << ", layer=" << *binding.decoder_layer_index;
     } else {

@@ -895,7 +895,7 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     const GraphValueId norm_weight = graph.AddWeight(
             TensorSpec{.dtype = DataType::Float32(),
                        .shape = SymbolicShape(std::vector<ShapeSymbol>{weight_dim})},
-            WeightBinding{.slot = ParameterSlot::kScale},
+            MakeDirectWeightBinding(ParameterSlot::kScale),
             "norm_weight");
 
     auto rms_or = graph.AddNode(

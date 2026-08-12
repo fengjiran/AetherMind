@@ -83,8 +83,7 @@ TEST(GraphDump, DumpsMinimalGraph) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {4}), "tokens");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
-                                                WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                              .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
                                                 "tok_embeddings.weight");
     auto embedding_or = graph.AddNode(
             OpType::kEmbedding,
@@ -106,7 +105,7 @@ TEST(GraphDump, DumpsMinimalGraph) {
     EXPECT_NE(dump.find("ModelGraph"), std::string::npos);
     EXPECT_NE(dump.find("op=Embedding"), std::string::npos);
     EXPECT_NE(dump.find("kind=weight"), std::string::npos);
-    EXPECT_NE(dump.find("slot=EmbeddingTable, semantic=TokenEmbedding"), std::string::npos);
+    EXPECT_NE(dump.find("direct(slot=EmbeddingTable, semantic=TokenEmbedding)"), std::string::npos);
     EXPECT_NE(dump.find("EmbeddingParams{}"), std::string::npos);
     EXPECT_NE(dump.find("debug_name=embedding"), std::string::npos);
 }
@@ -136,8 +135,7 @@ TEST(GraphDump, DumpsQuantizationWhenSet) {
     ModelGraph graph;
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed.weight");
     graph.SetQuantization(weight, QuantizationSpec{
                                           .kind = QuantizationKind::kInt4,

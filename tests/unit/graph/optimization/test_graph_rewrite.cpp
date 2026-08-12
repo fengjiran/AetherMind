@@ -35,8 +35,7 @@ ModelGraph BuildRoPEGraph() {
             Spec(DataType::Int(64), {1}), "position_ids");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed.weight");
     auto q_or = graph.AddNode(
             OpType::kEmbedding,
@@ -225,13 +224,11 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsOutputShapeMismatch) {
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight_a = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed_a.weight");
     const GraphValueId weight_b = graph.AddWeight(
             Spec(DataType::Float32(), {16, 8}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed_b.weight");
     auto node_or = graph.AddNode(
             OpType::kEmbedding,
@@ -273,13 +270,11 @@ TEST(GraphRewriteSession, RedirectInputRejectsOutputShapeChangeAtCommit) {
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight_a = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed_a.weight");
     const GraphValueId weight_b = graph.AddWeight(
             Spec(DataType::Float32(), {16, 8}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed_b.weight");
     auto node_or = graph.AddNode(
             OpType::kEmbedding,
@@ -308,13 +303,11 @@ TEST(GraphRewriteSession, ReplaceValueRejectsShapeMismatchAtCommit) {
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight_a = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed_a.weight");
     const GraphValueId weight_b = graph.AddWeight(
             Spec(DataType::Float32(), {16, 8}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed_b.weight");
     auto node_a_or = graph.AddNode(
             OpType::kEmbedding,
@@ -347,8 +340,7 @@ TEST(GraphRewriteSession, ReplaceValueRejectsDtypeMismatchAtValidateEdits) {
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed.weight");
     auto node_or = graph.AddNode(
             OpType::kEmbedding,
@@ -374,13 +366,11 @@ TEST(GraphRewriteSession, ReplaceValueCommitsWhenSpecPreserved) {
     const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight_a = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed_a.weight");
     const GraphValueId weight_b = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed_b.weight");
     auto node_a_or = graph.AddNode(
             OpType::kEmbedding,
@@ -1020,8 +1010,7 @@ ModelGraph BuildGraphWithState() {
             Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed.weight");
     const GraphValueId k_cache = graph.AddState(
             Spec(DataType::Float32(), {2, 4, 8}),
@@ -1068,8 +1057,7 @@ TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
             Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed.weight");
     auto embed_or = graph.AddNode(
             OpType::kEmbedding,
@@ -1357,8 +1345,7 @@ TEST(GraphRewriteSession, CommitPreservesConstantValue) {
             Spec(DataType::Int(32), {1}), "tokens");
     const GraphValueId weight = graph.AddWeight(
             Spec(DataType::Float32(), {16, 4}),
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embed.weight");
     auto inline_data = std::make_shared<const std::vector<std::byte>>(
             std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}});
@@ -1478,6 +1465,77 @@ TEST(GraphRewriteSession, AddSessionConstantSupportsValueQueries) {
     const std::vector<GraphValueId> live = session.GetLiveValues();
     EXPECT_NE(std::ranges::find(live, constant), live.end());
     EXPECT_EQ(std::ranges::find(live, virtual_value), live.end());
+}
+
+TEST(GraphRewriteSession, AddSessionWeightCommitsWeightValueAndSupportsQueries) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    const QuantizationSpec quantization{.kind = QuantizationKind::kInt8,
+                                        .group_size = 64,
+                                        .scale_dtype = DataType::Float32(),
+                                        .has_zero_point = false};
+    const GraphValueId weight = session.AddSessionWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            MakeTransformerWeightBinding(std::nullopt,
+                                         TransformerWeightRole::kTokenEmbedding),
+            quantization,
+            "replacement_embedding_weight");
+
+    ASSERT_TRUE(session.RedirectInput(GraphNodeId{.index = 0}, 1, weight).ok());
+    EXPECT_TRUE(session.IsValueLive(weight));
+    EXPECT_TRUE(session.IsConstant(weight));
+    ASSERT_TRUE(session.HasLiveConsumers(weight).ok());
+    EXPECT_TRUE(*session.HasLiveConsumers(weight));
+    const StatusOr<std::vector<GraphNodeId>> consumers = session.FindConsumers(weight);
+    ASSERT_TRUE(consumers.ok()) << consumers.status().ToString();
+    ASSERT_EQ(consumers->size(), 1U);
+    EXPECT_EQ(consumers->front(), GraphNodeId{.index = 0});
+
+    const StatusOr<GraphValueDesc> desc = session.GetValueOutputMetadata(weight);
+    ASSERT_TRUE(desc.ok()) << desc.status().ToString();
+    const auto* payload = std::get_if<WeightValue>(&desc->payload);
+    ASSERT_NE(payload, nullptr);
+    EXPECT_EQ(TryGetTransformerWeightRole(payload->binding),
+              TransformerWeightRole::kTokenEmbedding);
+    EXPECT_EQ(desc->quantization, quantization);
+    EXPECT_EQ(desc->name, "replacement_embedding_weight");
+
+    const StatusOr<ModelGraph> committed = session.Commit();
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    bool found_weight = false;
+    for (const GraphValue& value: committed->GetValues()) {
+        if (const auto* committed_weight = std::get_if<WeightValue>(&value.payload);
+            committed_weight != nullptr && value.name == "replacement_embedding_weight") {
+            found_weight = true;
+            EXPECT_EQ(TryGetTransformerWeightRole(committed_weight->binding),
+                      TransformerWeightRole::kTokenEmbedding);
+            EXPECT_EQ(value.quantization, quantization);
+            EXPECT_FALSE(value.producer.has_value());
+        }
+    }
+    EXPECT_TRUE(found_weight);
+}
+
+TEST(GraphRewriteSession, CommitPruningDropsUnreferencedSessionWeight) {
+    const ModelGraph graph = BuildTwoEmbeddingGraph();
+    GraphRewriteSession session(graph);
+    UNUSED(session.AddSessionWeight(
+            Spec(DataType::Float32(), {16, 4}),
+            MakeTransformerWeightBinding(std::nullopt,
+                                         TransformerWeightRole::kTokenEmbedding),
+            {},
+            "unused_session_weight"));
+
+    const StatusOr<ModelGraph> committed = session.Commit(
+            CommitOptions{.force_prune_unreachable = true});
+    ASSERT_TRUE(committed.ok()) << committed.status().ToString();
+    ASSERT_TRUE(committed->Validate().ok());
+
+    for (const GraphValue& value: committed->GetValues()) {
+        EXPECT_NE(value.name, "unused_session_weight");
+    }
 }
 
 TEST(GraphRewriteSession, ReplaceValueCanResolveToSessionConstant) {
@@ -1703,12 +1761,10 @@ TEST(GraphRewriteSession, RedirectInputAccumulatesMultipleInputChanges) {
     const GraphValueId tokens_a = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_a");
     const GraphValueId tokens_b = graph.AddInput(Spec(DataType::Int(32), {1}), "tokens_b");
     const GraphValueId weight_a = graph.AddWeight(Spec(DataType::Float32(), {16, 4}),
-                                                  WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                                .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                  MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
                                                   "embed_a.weight");
     const GraphValueId weight_b = graph.AddWeight(Spec(DataType::Float32(), {8, 4}),
-                                                  WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                                                                .semantic_role = TransformerWeightRole::kTokenEmbedding},
+                                                  MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
                                                   "embed_b.weight");
     auto node_or = graph.AddNode(
             OpType::kEmbedding,

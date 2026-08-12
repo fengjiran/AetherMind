@@ -483,8 +483,7 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
                        .shape = SymbolicShape(std::vector<ShapeSymbol>{
                                ShapeSymbol::CreateFromValue(1),
                                ShapeSymbol::CreateFromValue(1)})},
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding});
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding));
     auto emb_lhs_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,
@@ -504,8 +503,7 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
                        .shape = SymbolicShape(std::vector<ShapeSymbol>{
                                ShapeSymbol::CreateFromValue(1),
                                ShapeSymbol::CreateFromValue(2)})},
-            WeightBinding{.slot = ParameterSlot::kEmbeddingTable,
-                          .semantic_role = TransformerWeightRole::kTokenEmbedding});
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding));
     auto emb_rhs_or = graph.AddNode(
             OpType::kEmbedding,
             std::nullopt,

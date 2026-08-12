@@ -94,7 +94,8 @@ void GraphRewriteSession::RequestCommitPruning() noexcept {
 //   3. Invalidate the consumer cache and return the new id.
 GraphValueId GraphRewriteSession::AllocateVirtualValue() {
     // Virtual values occupy the id space starting at graph_.GetValues().size().
-    // session_value_metadata_ grows in parallel: nullopt for virtual, SessionConstant for AddSessionConstant.
+    // session_value_metadata_ grows in parallel: nullopt for virtual and a
+    // SessionExternalValue for AddSessionConstant/AddSessionWeight.
     const std::size_t next_value_index = graph_.GetValues().size() + session_value_metadata_.size();
     AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
              "Graph virtual value id space exhausted");
@@ -107,7 +108,7 @@ GraphValueId GraphRewriteSession::AllocateVirtualValue() {
 //
 // Steps:
 //   1. Take the next session-local id.
-//   2. Record spec, binding, quantization, and name in session_value_metadata_
+//   2. Record spec, payload, quantization, and name in session_value_metadata_
 //      (its presence distinguishes the id from a virtual value).
 //   3. Invalidate the consumer cache and return the new id.
 GraphValueId GraphRewriteSession::AddSessionConstant(TensorSpec spec,
@@ -115,14 +116,31 @@ GraphValueId GraphRewriteSession::AddSessionConstant(TensorSpec spec,
                                                      QuantizationSpec quantization,
                                                      std::string name) {
     // Same id space as virtual values, but distinguished by a non-nullopt
-    // SessionConstant entry in session_value_metadata_.
+    // SessionExternalValue entry in session_value_metadata_.
     const std::size_t next_value_index = graph_.GetValues().size() + session_value_metadata_.size();
     AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
              "Graph session constant value id space exhausted");
-    session_value_metadata_.emplace_back(SessionConstant{.spec = std::move(spec),
-                                                         .binding = std::move(binding),
-                                                         .quantization = quantization,
-                                                         .name = std::move(name)});
+    session_value_metadata_.emplace_back(SessionExternalValue{
+            .spec = std::move(spec),
+            .payload = ConstantValue{.binding = std::move(binding)},
+            .quantization = quantization,
+            .name = std::move(name)});
+    InvalidateConsumerCache();
+    return {.index = static_cast<uint32_t>(next_value_index)};
+}
+
+GraphValueId GraphRewriteSession::AddSessionWeight(TensorSpec spec,
+                                                   WeightBinding binding,
+                                                   QuantizationSpec quantization,
+                                                   std::string name) {
+    const std::size_t next_value_index = graph_.GetValues().size() + session_value_metadata_.size();
+    AM_CHECK(next_value_index < std::numeric_limits<uint32_t>::max(),
+             "Graph session weight value id space exhausted");
+    session_value_metadata_.emplace_back(SessionExternalValue{
+            .spec = std::move(spec),
+            .payload = WeightValue{.binding = std::move(binding)},
+            .quantization = quantization,
+            .name = std::move(name)});
     InvalidateConsumerCache();
     return {.index = static_cast<uint32_t>(next_value_index)};
 }
@@ -519,14 +537,14 @@ std::vector<GraphNodeId> GraphRewriteSession::FindNodesByOpType(OpType op_type) 
 // Returns true if `value` is structurally present in the current session view.
 //
 // Steps:
-//   1. Session constants are live.
+//   1. Session external values are live.
 //   2. Out-of-range ids are not live.
 //   3. Source values without a producer (external values) are live.
 //   4. Values produced by a live node are live.
 //   5. Otherwise: live only when an active rewrite takes over the value via a
 //      replacement output's `replaces` binding.
 bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
-    if (IsSessionConstant(value)) {
+    if (IsSessionExternalValue(value)) {
         return true;
     }
 
@@ -552,12 +570,12 @@ bool GraphRewriteSession::IsValueLive(GraphValueId value) const noexcept {
 //
 // Steps:
 //   1. Reject virtual and out-of-range ids.
-//   2. Build the descriptor from the session constant's metadata for session
-//      constants, otherwise from the source graph value.
+//   2. Build the descriptor from session external metadata for session values,
+//      otherwise from the source graph value.
 StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputMetadata(GraphValueId value) const {
     AM_RETURN_IF_ERROR(CheckNonVirtualValueId(value));
-    if (IsSessionConstant(value)) {
-        return MakeOutputDescFromSessionConstant(value);
+    if (IsSessionExternalValue(value)) {
+        return MakeOutputDescFromSessionExternalValue(value);
     }
 
     const GraphValue& graph_value = graph_.GetValue(value);
@@ -842,19 +860,19 @@ Status GraphRewriteSession::ValidateEdits() const {
     return Status::Ok();
 }
 
-GraphValueDesc GraphRewriteSession::MakeOutputDescFromSessionConstant(GraphValueId value) const {
-    const SessionConstant& constant = *session_value_metadata_[GetSessionValueIndex(value)];
-    return {.spec = constant.spec,
-            .payload = ConstantValue{.binding = constant.binding},
-            .quantization = constant.quantization,
-            .name = constant.name};
+GraphValueDesc GraphRewriteSession::MakeOutputDescFromSessionExternalValue(GraphValueId value) const {
+    const SessionExternalValue& external = *session_value_metadata_[GetSessionValueIndex(value)];
+    return {.spec = external.spec,
+            .payload = external.payload,
+            .quantization = external.quantization,
+            .name = external.name};
 }
 
 // Translates a value id from source/session space to committed graph space.
 //
 // Steps:
 //   1. Source values: map through source_values.
-//   2. Session constants: map through session_constants.
+//   2. Session external values: map through session_external_values.
 //   3. Virtual values: map through virtual_values.
 //   4. Unmapped or out-of-range ids yield InvalidArgument.
 StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
@@ -870,13 +888,13 @@ StatusOr<GraphValueId> GraphRewriteSession::MapCommittedValue(
                 "GraphRewriteSession: session value id out of range during commit");
     }
 
-    if (IsSessionConstant(value)) {
-        if (session_index >= maps.session_constants.size() ||
-            !maps.session_constants[session_index].has_value()) {
+    if (IsSessionExternalValue(value)) {
+        if (session_index >= maps.session_external_values.size() ||
+            !maps.session_external_values[session_index].has_value()) {
             return Status::InvalidArgument(
-                    "GraphRewriteSession: session constant cannot be mapped during commit");
+                    "GraphRewriteSession: session external value cannot be mapped during commit");
         }
-        return *maps.session_constants[session_index];
+        return *maps.session_external_values[session_index];
     }
 
     if (session_index >= maps.virtual_values.size() ||
@@ -1098,17 +1116,17 @@ StatusOr<GraphRewriteSession::RetainedNodes> GraphRewriteSession::ComputeRetaine
     return retained;
 }
 
-// Copies source external values and reachable session constants into the
+// Copies source external values and reachable session external values into the
 // committed graph.
 //
 // Steps:
 //   1. Add each producer-less source value as input, weight, constant, or
 //      state per its payload (monostate/unsupported payloads error).
 //   2. Apply quantization to each added value.
-//   3. Add every session constant referenced by the committed graph via
-//      committed.AddConstant; unreferenced session constants are dropped.
+//   3. Add every session external value referenced by the committed graph;
+//      unreferenced session external values are dropped.
 //
-// Reachability: a session constant is copied only when a retained source or
+// Reachability: a session external value is copied only when a retained source or
 // replacement node consumes it, or a graph output resolves to it through a
 // ReplaceValue chain. Using the same retained masks as node emission keeps
 // constant pruning aligned with mixed-graph pruning.
@@ -1155,14 +1173,14 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
     std::vector<uint8_t> referenced(session_value_metadata_.size(), 0U);
     for (const auto& output: graph_.GetOutputs()) {
         if (const auto resolved_output = GetResolvedValue(output.value);
-            IsSessionConstant(resolved_output)) {
+            IsSessionExternalValue(resolved_output)) {
             referenced[GetSessionValueIndex(resolved_output)] = 1U;
         }
     }
 
-    auto mark_session_constant = [&](GraphValueId input) {
+    auto mark_session_external_value = [&](GraphValueId input) {
         if (const GraphValueId resolved = GetResolvedValue(input);
-            IsSessionConstant(resolved)) {
+            IsSessionExternalValue(resolved)) {
             referenced[GetSessionValueIndex(resolved)] = 1U;
         }
     };
@@ -1175,7 +1193,7 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
             }
 
             for (const GraphValueId input: rewrite.replacements[j].inputs) {
-                mark_session_constant(input);
+                mark_session_external_value(input);
             }
         }
     }
@@ -1188,7 +1206,7 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
         AM_ASSIGN_OR_RETURN(const GraphNodeView node,
                             GetNodeView(GraphNodeId{.index = static_cast<uint32_t>(i)}));
         for (const GraphValueId input: node.inputs) {
-            mark_session_constant(input);
+            mark_session_external_value(input);
         }
     }
 
@@ -1197,11 +1215,18 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
             continue;
         }
 
-        const SessionConstant& constant = *session_value_metadata_[i];
-        maps.session_constants[i] = committed.AddConstant(constant.spec,
-                                                          constant.binding,
-                                                          constant.name);
-        committed.SetQuantization(*maps.session_constants[i], constant.quantization);
+        const SessionExternalValue& external = *session_value_metadata_[i];
+        if (const auto* constant = std::get_if<ConstantValue>(&external.payload)) {
+            maps.session_external_values[i] = committed.AddConstant(
+                    external.spec, constant->binding, external.name);
+        } else if (const auto* weight = std::get_if<WeightValue>(&external.payload)) {
+            maps.session_external_values[i] = committed.AddWeight(
+                    external.spec, weight->binding, external.name);
+        } else {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession::Commit session external value has unsupported payload");
+        }
+        committed.SetQuantization(*maps.session_external_values[i], external.quantization);
     }
     return Status::Ok();
 }
@@ -1267,9 +1292,9 @@ Status GraphRewriteSession::EmitRewrite(const RewriteEntry& rewrite,
                                 "GraphRewriteSession::Commit replacement virtual value was already mapped");
                     }
                     maps.virtual_values[GetSessionValueIndex(replaced)] = added.outputs[j];
-                } else if (IsSessionConstant(replaced)) {
+                } else if (IsSessionExternalValue(replaced)) {
                     return Status::InvalidArgument(
-                            "GraphRewriteSession::Commit replacement cannot produce a session constant");
+                            "GraphRewriteSession::Commit replacement cannot produce a session external value");
                 } else {
                     if (maps.source_values[replaced.index].has_value()) {
                         return Status::InvalidArgument(
@@ -1360,7 +1385,7 @@ Status GraphRewriteSession::MarkCommittedOutputs(ModelGraph& committed,
 //
 // Steps:
 //   1. Validate the session with ValidateEdits().
-//   2. Copy external values and session constants (CopyExternalValues).
+//   2. Copy external values and session external values (CopyExternalValues).
 //   3. Traverse the source graph in topological order, emitting each rewrite
 //      at its first old_node and emitting surviving original nodes.
 //   4. Mark the committed graph outputs (MarkCommittedOutputs) and validate
@@ -1388,10 +1413,10 @@ StatusOr<ModelGraph> GraphRewriteSession::Commit(const CommitOptions& options) c
 
     ModelGraph committed;
     ValueMap value_map(graph_.GetValues().size(), std::nullopt);
-    ValueMap session_constant_map(session_value_metadata_.size(), std::nullopt);
+    ValueMap session_external_value_map(session_value_metadata_.size(), std::nullopt);
     ValueMap virtual_value_map(session_value_metadata_.size(), std::nullopt);
     CommitValueMaps maps{.source_values = value_map,
-                         .session_constants = session_constant_map,
+                         .session_external_values = session_external_value_map,
                          .virtual_values = virtual_value_map};
 
     AM_RETURN_IF_ERROR(CopyExternalValues(committed, maps, retained));
@@ -1455,12 +1480,12 @@ Status GraphRewriteSession::CheckSourceNodeId(GraphNodeId node) const {
 //
 // Steps:
 //   1. Classify the value id.
-//   2. kSource and kSessionConstant ids pass.
+//   2. kSource and kSessionExternal ids pass.
 //   3. kSessionVirtual ids fail with a virtual-value diagnostic; anything
 //      unbounded fails with an out-of-range diagnostic.
 Status GraphRewriteSession::CheckNonVirtualValueId(GraphValueId value) const {
     const ValueKind kind = ClassifyValue(value);
-    if (kind == ValueKind::kSource || kind == ValueKind::kSessionConstant) {
+    if (kind == ValueKind::kSource || kind == ValueKind::kSessionExternal) {
         return Status::Ok();
     }
 
@@ -1476,7 +1501,7 @@ Status GraphRewriteSession::CheckNonVirtualValueId(GraphValueId value) const {
 // Steps:
 //   1. Classify the value id.
 //   2. kSource ids pass.
-//   3. kSessionConstant and kSessionVirtual ids fail with a kind-specific
+//   3. kSessionExternal and kSessionVirtual ids fail with a kind-specific
 //      diagnostic; unbounded ids fail with out-of-range.
 Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
     const ValueKind kind = ClassifyValue(value);
@@ -1484,9 +1509,19 @@ Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
         return Status::Ok();
     }
 
-    if (kind == ValueKind::kSessionConstant) {
+    if (kind == ValueKind::kSessionExternal) {
+        const GraphValuePayload& payload =
+                session_value_metadata_[GetSessionValueIndex(value)]->payload;
+        if (std::holds_alternative<ConstantValue>(payload)) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession: expected source value id, got session constant");
+        }
+        if (std::holds_alternative<WeightValue>(payload)) {
+            return Status::InvalidArgument(
+                    "GraphRewriteSession: expected source value id, got session weight");
+        }
         return Status::InvalidArgument(
-                "GraphRewriteSession: expected source value id, got session constant");
+                "GraphRewriteSession: expected source value id, got session external value");
     }
 
     if (kind == ValueKind::kSessionVirtual) {
@@ -1496,7 +1531,7 @@ Status GraphRewriteSession::CheckSourceValueId(GraphValueId value) const {
     return Status::InvalidArgument("GraphRewriteSession: value id out of range");
 }
 
-// Returns Ok for any value id the session knows (source, session constant,
+// Returns Ok for any value id the session knows (source, session external,
 // or session virtual).
 //
 // Steps:
@@ -1513,8 +1548,8 @@ Status GraphRewriteSession::CheckKnownValueId(GraphValueId value) const {
 //
 // Steps:
 //   1. Ids below the source graph value range are kSource.
-//   2. Ids in the session-local range are kSessionConstant when
-//      session_value_metadata_ holds a constant, otherwise kSessionVirtual.
+//   2. Ids in the session-local range are kSessionExternal when
+//      session_value_metadata_ holds an external value, otherwise kSessionVirtual.
 //   3. Ids beyond the session-local range are kInvalid (never allocated).
 GraphRewriteSession::ValueKind GraphRewriteSession::ClassifyValue(
         GraphValueId value) const noexcept {
@@ -1528,17 +1563,17 @@ GraphRewriteSession::ValueKind GraphRewriteSession::ClassifyValue(
     }
 
     return session_value_metadata_[session_index].has_value()
-                   ? ValueKind::kSessionConstant
+                   ? ValueKind::kSessionExternal
                    : ValueKind::kSessionVirtual;
 }
 
 bool GraphRewriteSession::IsSessionLocalValue(GraphValueId value) const noexcept {
     const ValueKind kind = ClassifyValue(value);
-    return kind == ValueKind::kSessionConstant || kind == ValueKind::kSessionVirtual;
+    return kind == ValueKind::kSessionExternal || kind == ValueKind::kSessionVirtual;
 }
 
-bool GraphRewriteSession::IsSessionConstant(GraphValueId value) const noexcept {
-    return ClassifyValue(value) == ValueKind::kSessionConstant;
+bool GraphRewriteSession::IsSessionExternalValue(GraphValueId value) const noexcept {
+    return ClassifyValue(value) == ValueKind::kSessionExternal;
 }
 
 bool GraphRewriteSession::IsSessionVirtualValue(GraphValueId value) const noexcept {
@@ -1549,14 +1584,14 @@ bool GraphRewriteSession::IsSessionVirtualValue(GraphValueId value) const noexce
 //
 // Steps:
 //   1. Resolve the value through any ReplaceValue chain to its terminal.
-//   2. Return true for session constants and for source values carrying a
-//      ConstantValue or WeightValue payload; virtual and out-of-range values
+//   2. Return true for session external values and for source values carrying
+//      a ConstantValue or WeightValue payload; virtual and out-of-range values
 //      return false.
 bool GraphRewriteSession::IsConstant(GraphValueId value) const {
     const GraphValueId resolved = GetResolvedValue(value);
 
-    // Session constants (added via session.AddSessionConstant).
-    if (IsSessionConstant(resolved)) {
+    // Session external values (added via AddSessionConstant/AddSessionWeight).
+    if (IsSessionExternalValue(resolved)) {
         return true;
     }
 
@@ -1703,7 +1738,7 @@ Status GraphRewriteSession::ValidateVirtualValues() const {
 //
 // Steps:
 //   1. Source values: return the spec stored in graph_.
-//   2. Session constants: return the spec stored in session_value_metadata_.
+//   2. Session external values: return the spec stored in session_value_metadata_.
 //   3. Virtual values: return the inferred spec in virtual_specs
 //      (caller-provided scratch map), or NotFound when absent.
 StatusOr<TensorSpec> GraphRewriteSession::ResolveValueSpec(
@@ -1722,8 +1757,8 @@ StatusOr<TensorSpec> GraphRewriteSession::ResolveValueSpec(
                 std::to_string(value.index) + " out of range");
     }
 
-    // Session constant: spec is stored in session_value_metadata_.
-    if (IsSessionConstant(value)) {
+    // Session external value: spec is stored in session_value_metadata_.
+    if (IsSessionExternalValue(value)) {
         return session_value_metadata_[GetSessionValueIndex(value)]->spec;
     }
 
@@ -1819,7 +1854,7 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
 
         // 7. For each output binding, either populate the scratch map (virtual
         //    target) or verify dtype/shape compatibility with the replaced
-        //    value (source/session constant target). Shape compatibility is
+        //    value (source/session external target). Shape compatibility is
         //    enforced here via SymbolicShape::Unify — rank and static dims
         //    must agree while fresh symbolic dims from re-inference are
         //    tolerated. It cannot be deferred to committed.Validate(): the
@@ -1856,11 +1891,11 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
                 continue;
             }
 
-            // Source value or session constant target: dtype must match.
+            // Source value or session external target: dtype must match.
             TensorSpec target_spec;
             if (replaced.index < graph_.GetValues().size()) {
                 target_spec = graph_.GetValue(replaced).spec;
-            } else if (IsSessionConstant(replaced)) {
+            } else if (IsSessionExternalValue(replaced)) {
                 target_spec = session_value_metadata_[GetSessionValueIndex(replaced)]->spec;
             } else {
                 return Status::InvalidArgument(
@@ -1908,12 +1943,12 @@ Status GraphRewriteSession::ValidateReplacementSemantics(
 // cannot fail on unmappable replacement inputs.
 //
 // Rules (per replacement input, resolved through ReplaceValue chains):
-//   1. Session constants and virtual values are always available: constants
-//      are pre-mapped by CopyExternalValues; virtual values are produced
-//      within the rewrite and validated by ValidateReplacementSemantics.
-//   2. Source values without a producer (inputs, weights, constants, states)
+//   1. Session external values are pre-mapped by CopyExternalValues.
+//   2. Virtual values are produced within the rewrite and validated by
+//      ValidateReplacementSemantics.
+//   3. Source values without a producer (inputs, weights, constants, states)
 //      are pre-mapped by CopyExternalValues; always available.
-//   3. Source value with producer p:
+//   4. Source value with producer p:
 //      - p untouched: available iff p's topo position is before this
 //        rewrite's emission point.
 //      - p covered by an active rewrite R_p that binds the value as a
@@ -1996,7 +2031,7 @@ Status GraphRewriteSession::ValidateReplacementInputAvailability() const {
             for (const GraphValueId input: replacement.inputs) {
                 const GraphValueId resolved = GetResolvedValue(input);
                 if (resolved.index >= graph_.GetValues().size()) {
-                    // Session constant or virtual value: always available.
+                    // Session external or virtual value: always available.
                     continue;
                 }
 

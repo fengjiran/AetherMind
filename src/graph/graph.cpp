@@ -2,7 +2,6 @@
 #include "aethermind/operators/operator_inference.h"
 
 #include <deque>
-#include <type_traits>
 
 namespace aethermind {
 namespace {
@@ -108,8 +107,10 @@ std::optional<ParameterSlot> ExpectedWeightSlotForOp(OpType op_type) noexcept {
         case OpType::kEmbedding:
             return ParameterSlot::kEmbeddingTable;
         case OpType::kRmsNorm:
+        case OpType::kAddRmsNorm:
             return ParameterSlot::kScale;
         case OpType::kLinear:
+        case OpType::kQkvLinear:
             return ParameterSlot::kKernel;
         default:
             return std::nullopt;
@@ -139,29 +140,85 @@ bool TransformerRoleRequiresLayer(TransformerWeightRole role) noexcept {
     return true;
 }
 
-// Validates WeightBinding self-consistency: slot vs semantic_role pairing,
-// and semantic_role vs decoder_layer_index constraints. When semantic_role is
-// monostate (generic computation graph), only the slot field is trusted as-is.
+// Validates a logical weight recipe independently of an operator consumer.
+// Direct bindings validate their semantic role, while fixed composite recipes
+// require a decoder-layer scope and derive their kernel slot from the recipe.
 Status ValidateWeightBindingSelfConsistency(const WeightBinding& binding) {
-    if (std::holds_alternative<std::monostate>(binding.semantic_role)) {
+    auto visitor = overloaded{
+            [&](const DirectWeightBinding& direct) -> Status {
+                if (std::holds_alternative<std::monostate>(direct.semantic_role)) {
+                    return Status::Ok();
+                }
+
+                const auto role = std::get<TransformerWeightRole>(direct.semantic_role);
+                if (direct.slot != SlotForTransformerRole(role)) {
+                    return Status::InvalidArgument(
+                            "direct weight slot does not match the semantic role");
+                }
+
+                const bool requires_layer = TransformerRoleRequiresLayer(role);
+                if (requires_layer && !binding.decoder_layer_index.has_value()) {
+                    return Status::InvalidArgument(
+                            "direct weight semantic role requires decoder_layer_index");
+                }
+
+                if (!requires_layer && binding.decoder_layer_index.has_value()) {
+                    return Status::InvalidArgument(
+                            "direct weight semantic role must not carry decoder_layer_index");
+                }
+                return Status::Ok();
+            },
+            [&](const QkvWeightBinding&) -> Status {
+                if (!binding.decoder_layer_index.has_value()) {
+                    return Status::InvalidArgument(
+                            "composite weight binding requires decoder_layer_index");
+                }
+                return Status::Ok();
+            },
+            [&](const GateUpWeightBinding&) -> Status {
+                if (!binding.decoder_layer_index.has_value()) {
+                    return Status::InvalidArgument(
+                            "composite weight binding requires decoder_layer_index");
+                }
+                return Status::Ok();
+            },
+    };
+    return std::visit(visitor, binding.spec);
+}
+
+Status ValidateWeightBindingForOp(OpType op_type, const WeightBinding& binding) {
+    switch (op_type) {
+        case OpType::kEmbedding:
+        case OpType::kRmsNorm:
+        case OpType::kAddRmsNorm:
+        case OpType::kLinear:
+            if (!std::holds_alternative<DirectWeightBinding>(binding.spec)) {
+                return Status::InvalidArgument(
+                        "operator requires a direct weight binding");
+            }
+            return Status::Ok();
+        case OpType::kQkvLinear:
+            if (!std::holds_alternative<QkvWeightBinding>(binding.spec)) {
+                return Status::InvalidArgument(
+                        "QkvLinear requires a QkvWeightBinding");
+            }
+            return Status::Ok();
+        default:
+            return Status::Ok();
+    }
+}
+
+Status ValidateWeightBindingLayerForNode(
+        const WeightBinding& binding,
+        std::optional<uint32_t> node_decoder_layer_index) {
+    if (!binding.decoder_layer_index.has_value()) {
         return Status::Ok();
     }
 
-    const auto role = std::get<TransformerWeightRole>(binding.semantic_role);
-    if (binding.slot != SlotForTransformerRole(role)) {
+    if (!node_decoder_layer_index.has_value() ||
+        *binding.decoder_layer_index != *node_decoder_layer_index) {
         return Status::InvalidArgument(
-                "WeightBinding slot does not match the semantic_role");
-    }
-
-    const bool requires_layer = TransformerRoleRequiresLayer(role);
-    if (requires_layer && !binding.decoder_layer_index.has_value()) {
-        return Status::InvalidArgument(
-                "WeightBinding semantic_role requires decoder_layer_index");
-    }
-
-    if (!requires_layer && binding.decoder_layer_index.has_value()) {
-        return Status::InvalidArgument(
-                "WeightBinding semantic_role must not carry decoder_layer_index");
+                "weight decoder_layer_index must match the consuming node layer");
     }
     return Status::Ok();
 }
@@ -202,7 +259,8 @@ Status ValidateStateBindingsForNode(
                 k_in_binding, decoder_layer_index,
                 "KVCacheUpdate K state layer must match the node layer"));
 
-        if (k_out_idx < output_state_bindings.size() && output_state_bindings[k_out_idx].has_value()) {
+        if (k_out_idx < output_state_bindings.size() &&
+            output_state_bindings[k_out_idx].has_value()) {
             const StateBinding& k_out_binding = *output_state_bindings[k_out_idx];
             AM_RETURN_IF_ERROR(RequireStateSlot(
                     k_out_binding, KVCacheSlot::kKey,
@@ -224,7 +282,8 @@ Status ValidateStateBindingsForNode(
                 k_in_binding, v_in_binding,
                 "KVCacheUpdate K and V state inputs must share a state collection"));
 
-        if (v_out_idx < output_state_bindings.size() && output_state_bindings[v_out_idx].has_value()) {
+        if (v_out_idx < output_state_bindings.size() &&
+            output_state_bindings[v_out_idx].has_value()) {
             const StateBinding& v_out_binding = *output_state_bindings[v_out_idx];
             AM_RETURN_IF_ERROR(RequireStateSlot(
                     v_out_binding, KVCacheSlot::kValue,
@@ -401,8 +460,9 @@ Status ValidateAddNodePorts(const OperatorSchema& schema,
 }
 
 // Validates weight/state binding invariants for ModelGraph::AddNode:
-//   1. Weight binding self-consistency and slot match against
-//      ExpectedWeightSlotForOp (computed once per node, outside the input loop).
+//   1. Weight binding self-consistency, operator recipe compatibility, and
+//      slot match against ExpectedWeightSlotForOp (computed once per node,
+//      outside the input loop).
 //   2. Per-input state binding validity (ValidateStateBinding).
 //   3. Op-specific state-binding invariants for KVCacheUpdate/Attention
 //      (ValidateNodeStateBindings). Output state bindings are extracted
@@ -424,7 +484,21 @@ Status ValidateAddNodeBindings(OpType op_type,
                         schema.input_ports[i].name + " weight: " + status.message());
             }
 
-            if (expected_weight_slot.has_value() && binding.slot != *expected_weight_slot) {
+            if (auto status = ValidateWeightBindingForOp(op_type, binding); !status.ok()) {
+                return Status::InvalidArgument(
+                        "input[" + std::to_string(i) + "] " +
+                        schema.input_ports[i].name + " weight: " + status.message());
+            }
+
+            if (auto status = ValidateWeightBindingLayerForNode(binding, decoder_layer_index);
+                !status.ok()) {
+                return Status::InvalidArgument(
+                        "input[" + std::to_string(i) + "] " +
+                        schema.input_ports[i].name + " weight: " + status.message());
+            }
+
+            if (expected_weight_slot.has_value() &&
+                GetParameterSlot(binding) != *expected_weight_slot) {
                 return Status::InvalidArgument(
                         "input[" + std::to_string(i) + "] " +
                         schema.input_ports[i].name + " weight slot mismatch");
@@ -815,7 +889,28 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
 
             if (schema.input_ports[input_index].kind == OperatorPortKind::kWeight) {
                 const auto& binding = std::get<WeightValue>(values_[input.index].payload).binding;
-                if (expected_weight_slot.has_value() && binding.slot != *expected_weight_slot) {
+                if (auto status = ValidateWeightBindingSelfConsistency(binding); !status.ok()) {
+                    return Status::InvalidArgument(get_msg(
+                            "input[" + std::to_string(input_index) + "] " +
+                            schema.input_ports[input_index].name + " weight: " + status.message()));
+                }
+
+                if (auto status = ValidateWeightBindingForOp(node.op_type, binding); !status.ok()) {
+                    return Status::InvalidArgument(get_msg(
+                            "input[" + std::to_string(input_index) + "] " +
+                            schema.input_ports[input_index].name + " weight: " + status.message()));
+                }
+
+                if (auto status = ValidateWeightBindingLayerForNode(
+                            binding, node.decoder_layer_index);
+                    !status.ok()) {
+                    return Status::InvalidArgument(get_msg(
+                            "input[" + std::to_string(input_index) + "] " +
+                            schema.input_ports[input_index].name + " weight: " + status.message()));
+                }
+
+                if (expected_weight_slot.has_value() &&
+                    GetParameterSlot(binding) != *expected_weight_slot) {
                     return Status::InvalidArgument(get_msg(
                             "input[" + std::to_string(input_index) + "] " +
                             schema.input_ports[input_index].name + " weight slot mismatch"));

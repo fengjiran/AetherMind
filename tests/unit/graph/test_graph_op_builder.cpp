@@ -33,8 +33,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
             16,
             4,
             DataType::Float32(),
-            {.slot = ParameterSlot::kEmbeddingTable,
-             .semantic_role = TransformerWeightRole::kTokenEmbedding},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
             "embedding");
     ASSERT_TRUE(hidden_or.ok()) << hidden_or.status().ToString();
     const GraphValueId hidden = *hidden_or;
@@ -42,9 +41,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
             graph,
             hidden,
             DataType::Float32(),
-            {.slot = ParameterSlot::kScale,
-             .decoder_layer_index = 0,
-             .semantic_role = TransformerWeightRole::kInputNorm},
+            MakeTransformerWeightBinding(0, TransformerWeightRole::kInputNorm),
             1.0e-5F,
             "norm");
     ASSERT_TRUE(normed_or.ok()) << normed_or.status().ToString();
@@ -54,9 +51,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
             normed,
             4,
             DataType::Float32(),
-            {.slot = ParameterSlot::kKernel,
-             .decoder_layer_index = 0,
-             .semantic_role = TransformerWeightRole::kAttentionQ},
+            MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
             "q_proj");
     ASSERT_TRUE(q_or.ok()) << q_or.status().ToString();
     const GraphValueId q = *q_or;
@@ -86,8 +81,7 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
             act,
             16,
             DataType::Float32(),
-            {.slot = ParameterSlot::kKernel,
-             .semantic_role = TransformerWeightRole::kLmHead},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kLmHead),
             "lm_head");
     ASSERT_TRUE(logits_or.ok()) << logits_or.status().ToString();
     const GraphValueId logits = *logits_or;
@@ -108,10 +102,9 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(embedding_weight.name, "embedding");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(embedding_weight.payload));
     const WeightBinding& embedding_binding = std::get<WeightValue>(embedding_weight.payload).binding;
-    EXPECT_EQ(embedding_binding.slot, ParameterSlot::kEmbeddingTable);
+    EXPECT_EQ(GetParameterSlot(embedding_binding), ParameterSlot::kEmbeddingTable);
     EXPECT_FALSE(embedding_binding.decoder_layer_index.has_value());
-    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(embedding_binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(embedding_binding.semantic_role),
+    EXPECT_EQ(TryGetTransformerWeightRole(embedding_binding),
               TransformerWeightRole::kTokenEmbedding);
 
     ASSERT_TRUE(graph.GetValue(normed).producer.has_value());
@@ -122,11 +115,9 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(norm_weight.name, "norm");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(norm_weight.payload));
     const WeightBinding& norm_binding = std::get<WeightValue>(norm_weight.payload).binding;
-    EXPECT_EQ(norm_binding.slot, ParameterSlot::kScale);
+    EXPECT_EQ(GetParameterSlot(norm_binding), ParameterSlot::kScale);
     EXPECT_EQ(norm_binding.decoder_layer_index, std::optional<uint32_t>{0});
-    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(norm_binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(norm_binding.semantic_role),
-              TransformerWeightRole::kInputNorm);
+    EXPECT_EQ(TryGetTransformerWeightRole(norm_binding), TransformerWeightRole::kInputNorm);
 
     ASSERT_TRUE(graph.GetValue(q).producer.has_value());
     const GraphNode& q_node = graph.GetNode(*graph.GetValue(q).producer);
@@ -136,11 +127,9 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(q_weight.name, "q_proj");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(q_weight.payload));
     const WeightBinding& q_binding = std::get<WeightValue>(q_weight.payload).binding;
-    EXPECT_EQ(q_binding.slot, ParameterSlot::kKernel);
+    EXPECT_EQ(GetParameterSlot(q_binding), ParameterSlot::kKernel);
     EXPECT_EQ(q_binding.decoder_layer_index, std::optional<uint32_t>{0});
-    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(q_binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(q_binding.semantic_role),
-              TransformerWeightRole::kAttentionQ);
+    EXPECT_EQ(TryGetTransformerWeightRole(q_binding), TransformerWeightRole::kAttentionQ);
 
     ASSERT_TRUE(graph.GetValue(logits).producer.has_value());
     const GraphNode& logits_node = graph.GetNode(*graph.GetValue(logits).producer);
@@ -150,11 +139,9 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_EQ(lm_head_weight.name, "lm_head");
     ASSERT_TRUE(std::holds_alternative<WeightValue>(lm_head_weight.payload));
     const WeightBinding& lm_head_binding = std::get<WeightValue>(lm_head_weight.payload).binding;
-    EXPECT_EQ(lm_head_binding.slot, ParameterSlot::kKernel);
+    EXPECT_EQ(GetParameterSlot(lm_head_binding), ParameterSlot::kKernel);
     EXPECT_FALSE(lm_head_binding.decoder_layer_index.has_value());
-    ASSERT_TRUE(std::holds_alternative<TransformerWeightRole>(lm_head_binding.semantic_role));
-    EXPECT_EQ(std::get<TransformerWeightRole>(lm_head_binding.semantic_role),
-              TransformerWeightRole::kLmHead);
+    EXPECT_EQ(TryGetTransformerWeightRole(lm_head_binding), TransformerWeightRole::kLmHead);
 
     EXPECT_EQ(graph.GetNode(GraphNodeId{.index = 0}).op_type, OpType::kEmbedding);
     EXPECT_EQ(graph.GetNode(GraphNodeId{.index = 5}).op_type, OpType::kSiluMul);
@@ -231,8 +218,7 @@ TEST(GraphOpBuilder, AddLinearDerivesSpecsForRankOneInput) {
             input,
             8,
             DataType::Float32(),
-            {.slot = ParameterSlot::kKernel,
-             .semantic_role = TransformerWeightRole::kLmHead},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kLmHead),
             "linear");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
@@ -257,8 +243,7 @@ TEST(GraphOpBuilder, AddLinearAcceptsRankThreeInput) {
                                input,
                                8,
                                DataType::Float32(),
-                               {.slot = ParameterSlot::kKernel,
-                                .semantic_role = TransformerWeightRole::kLmHead},
+                               MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kLmHead),
                                "linear");
     ASSERT_TRUE(output_or.ok()) << output_or.status().ToString();
     const GraphValueId output = *output_or;
@@ -276,8 +261,7 @@ TEST(GraphOpBuilder, AddRmsNormAcceptsRankThreeInput) {
     EXPECT_TRUE(AddRmsNorm(graph,
                            input,
                            DataType::Float32(),
-                           {.slot = ParameterSlot::kScale,
-                            .semantic_role = TransformerWeightRole::kFinalNorm},
+                           MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kFinalNorm),
                            1.0e-5F,
                            "norm")
                         .ok());
@@ -293,8 +277,7 @@ TEST(GraphOpBuilder, AddRmsNormAcceptsUnknownHiddenDim) {
     auto result = AddRmsNorm(graph,
                              input,
                              DataType::Float32(),
-                             {.slot = ParameterSlot::kScale,
-                              .semantic_role = TransformerWeightRole::kFinalNorm},
+                             MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kFinalNorm),
                              1.0e-5F,
                              "norm");
     ASSERT_TRUE(result.ok()) << result.status().ToString();
@@ -311,8 +294,7 @@ TEST(GraphOpBuilder, AddRmsNormAcceptsSymbolicHiddenDim) {
     auto result = AddRmsNorm(graph,
                              input,
                              DataType::Float32(),
-                             {.slot = ParameterSlot::kScale,
-                              .semantic_role = TransformerWeightRole::kFinalNorm},
+                             MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kFinalNorm),
                              1.0e-5F,
                              "norm");
     ASSERT_TRUE(result.ok()) << result.status().ToString();
@@ -332,8 +314,7 @@ TEST(GraphOpBuilder, AddLinearAcceptsUnknownHiddenDim) {
                             input,
                             8,
                             DataType::Float32(),
-                            {.slot = ParameterSlot::kKernel,
-                             .semantic_role = TransformerWeightRole::kLmHead},
+                            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kLmHead),
                             "linear");
     ASSERT_TRUE(result.ok()) << result.status().ToString();
 }
@@ -350,8 +331,7 @@ TEST(GraphOpBuilder, AddLinearAcceptsSymbolicHiddenDim) {
                             input,
                             8,
                             DataType::Float32(),
-                            {.slot = ParameterSlot::kKernel,
-                             .semantic_role = TransformerWeightRole::kLmHead},
+                            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kLmHead),
                             "linear");
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     // Weight spec reuses the symbolic hidden dim; verify the weight GraphValue

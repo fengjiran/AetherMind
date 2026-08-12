@@ -13,6 +13,7 @@
 #include "aethermind/operators/op_type.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/tensor_spec.h"
+#include "utils/variant_utils.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -53,20 +54,10 @@ enum class TransformerWeightRole : uint8_t {
 /// @brief Either no role or a TransformerWeightRole.
 using ModelSemanticRole = std::variant<std::monostate, TransformerWeightRole>;
 
-/// @brief Logical binding metadata for a weight value.
-struct WeightBinding {
-    ParameterSlot slot = ParameterSlot::kKernel;
-    std::optional<uint32_t> decoder_layer_index{};
-    ModelSemanticRole semantic_role{};
-
-    AM_NODISCARD friend bool operator==(const WeightBinding& lhs,
-                                        const WeightBinding& rhs) noexcept = default;
-};
-
 /// @brief Returns the ParameterSlot implied by a TransformerWeightRole.
 ///
 /// This is the single source of truth for the slot↔role mapping;
-/// WeightBinding construction and Validate() both rely on it, so callers
+/// direct-weight binding construction and Validate() both rely on it, so callers
 /// building a TransformerWeightRole binding need not (and should not)
 /// specify the slot separately.
 ///
@@ -92,6 +83,134 @@ constexpr ParameterSlot SlotForTransformerRole(TransformerWeightRole role) noexc
             return ParameterSlot::kKernel;
     }
     return ParameterSlot::kKernel;
+}
+
+/// @brief Binding metadata for one directly-addressable model weight.
+///
+/// `semantic_role` is optional for generic graphs. When it holds a
+/// TransformerWeightRole, its slot and layer scope are validated against the
+/// Transformer role contract.
+struct DirectWeightBinding {
+    ParameterSlot slot = ParameterSlot::kKernel;
+    ModelSemanticRole semantic_role{};
+
+    AM_NODISCARD friend bool operator==(
+            const DirectWeightBinding& lhs,
+            const DirectWeightBinding& rhs) noexcept = default;
+};
+
+/// @brief Logical QKV kernel recipe.
+///
+/// The recipe is fixed to concat(AttentionQ, AttentionK, AttentionV, axis=0)
+/// in Q, K, V order. Tensor shape belongs to TensorSpec and split boundaries
+/// belong to QkvLinearParams, so neither is duplicated here.
+struct QkvWeightBinding {
+    AM_NODISCARD friend constexpr bool operator==(
+            const QkvWeightBinding&,
+            const QkvWeightBinding&) noexcept = default;
+};
+
+/// @brief Logical Gate-Up kernel recipe.
+///
+/// The recipe is fixed to concat(MlpGate, MlpUp, axis=0) in Gate, Up order.
+/// Tensor shape belongs to TensorSpec and split boundaries belong to the
+/// consuming operator parameters.
+struct GateUpWeightBinding {
+    AM_NODISCARD friend constexpr bool operator==(
+            const GateUpWeightBinding&,
+            const GateUpWeightBinding&) noexcept = default;
+};
+
+/// @brief Variant over direct and fixed-composite logical weight recipes.
+using WeightBindingSpec = std::variant<DirectWeightBinding,
+                                       QkvWeightBinding,
+                                       GateUpWeightBinding>;
+
+/// @brief Logical binding metadata for a weight value.
+///
+/// Tensor dtype and shape belong to GraphValue::spec. Composite recipes do
+/// not duplicate dimensions or backend packing information.
+struct WeightBinding {
+    std::optional<uint32_t> decoder_layer_index{};
+    WeightBindingSpec spec{DirectWeightBinding{}};
+
+    AM_NODISCARD friend bool operator==(const WeightBinding& lhs,
+                                        const WeightBinding& rhs) noexcept = default;
+};
+
+/// @brief Creates a generic or semantically-tagged direct-weight binding.
+AM_NODISCARD constexpr WeightBinding MakeDirectWeightBinding(
+        ParameterSlot slot,
+        ModelSemanticRole semantic_role = {},
+        std::optional<uint32_t> decoder_layer_index = std::nullopt) noexcept {
+    return {.decoder_layer_index = decoder_layer_index,
+            .spec = DirectWeightBinding{.slot = slot,
+                                        .semantic_role = semantic_role}};
+}
+
+/// @brief Creates a direct Transformer weight binding with its canonical slot.
+AM_NODISCARD constexpr WeightBinding MakeTransformerWeightBinding(
+        std::optional<uint32_t> decoder_layer_index,
+        TransformerWeightRole role) noexcept {
+    return MakeDirectWeightBinding(
+            SlotForTransformerRole(role), ModelSemanticRole{role}, decoder_layer_index);
+}
+
+/// @brief Creates the fixed Q, K, V kernel recipe for one decoder layer.
+AM_NODISCARD constexpr WeightBinding MakeQkvWeightBinding(
+        uint32_t decoder_layer_index) noexcept {
+    return {.decoder_layer_index = decoder_layer_index,
+            .spec = QkvWeightBinding{}};
+}
+
+/// @brief Creates the fixed Gate, Up kernel recipe for one decoder layer.
+AM_NODISCARD constexpr WeightBinding MakeGateUpWeightBinding(
+        uint32_t decoder_layer_index) noexcept {
+    return {.decoder_layer_index = decoder_layer_index,
+            .spec = GateUpWeightBinding{}};
+}
+
+/// @brief Returns the parameter slot implied by a logical weight recipe.
+AM_NODISCARD constexpr ParameterSlot GetParameterSlot(
+        const WeightBinding& binding) noexcept {
+    auto visitor = overloaded{
+            [](const DirectWeightBinding& direct) constexpr noexcept {
+                return direct.slot;
+            },
+            [](const QkvWeightBinding&) constexpr noexcept {
+                return ParameterSlot::kKernel;
+            },
+            [](const GateUpWeightBinding&) constexpr noexcept {
+                return ParameterSlot::kKernel;
+            },
+    };
+    return std::visit(visitor, binding.spec);
+}
+
+/// @brief Returns the direct binding, or null when `binding` is composite.
+AM_NODISCARD constexpr const DirectWeightBinding* TryGetDirectWeightBinding(
+        const WeightBinding& binding) noexcept {
+    return std::get_if<DirectWeightBinding>(&binding.spec);
+}
+
+/// @brief Returns the Transformer role of a direct binding when present.
+AM_NODISCARD constexpr std::optional<TransformerWeightRole>
+TryGetTransformerWeightRole(const WeightBinding& binding) noexcept {
+    const DirectWeightBinding* direct = TryGetDirectWeightBinding(binding);
+    if (direct == nullptr) {
+        return std::nullopt;
+    }
+
+    if (const auto* role = std::get_if<TransformerWeightRole>(&direct->semantic_role)) {
+        return *role;
+    }
+    return std::nullopt;
+}
+
+/// @brief Returns true when `binding` describes a fixed composite recipe.
+AM_NODISCARD constexpr bool IsCompositeWeightBinding(
+        const WeightBinding& binding) noexcept {
+    return !std::holds_alternative<DirectWeightBinding>(binding.spec);
 }
 
 /// @brief Compile-time constant binding: carries a small inline payload or
@@ -133,8 +252,9 @@ struct QuantizationSpec {
     DataType scale_dtype{};
     bool has_zero_point = false;
 
-    AM_NODISCARD friend bool operator==(const QuantizationSpec& lhs,
-                                        const QuantizationSpec& rhs) noexcept = default;
+    AM_NODISCARD friend bool operator==(
+            const QuantizationSpec& lhs,
+            const QuantizationSpec& rhs) noexcept = default;
 };
 
 enum class KVCacheSlot : uint8_t {
@@ -146,18 +266,21 @@ struct KVCacheStateBinding {
     uint32_t decoder_layer_index = 0;
     KVCacheSlot slot = KVCacheSlot::kKey;
 
-    AM_NODISCARD friend constexpr bool operator==(const KVCacheStateBinding& lhs,
-                                                  const KVCacheStateBinding& rhs) noexcept = default;
+    AM_NODISCARD friend constexpr bool operator==(
+            const KVCacheStateBinding& lhs,
+            const KVCacheStateBinding& rhs) noexcept = default;
 };
 
 struct DecodeStateBinding {
-    AM_NODISCARD friend constexpr bool operator==(const DecodeStateBinding& lhs,
-                                                  const DecodeStateBinding& rhs) noexcept = default;
+    AM_NODISCARD friend constexpr bool operator==(
+            const DecodeStateBinding& lhs,
+            const DecodeStateBinding& rhs) noexcept = default;
 };
 
 struct StreamingStateBinding {
-    AM_NODISCARD friend constexpr bool operator==(const StreamingStateBinding& lhs,
-                                                  const StreamingStateBinding& rhs) noexcept = default;
+    AM_NODISCARD friend constexpr bool operator==(
+            const StreamingStateBinding& lhs,
+            const StreamingStateBinding& rhs) noexcept = default;
 };
 
 /// @brief Variant over all persistent state binding kinds.
@@ -173,13 +296,15 @@ struct ModelGraphAttrs {
 struct GraphNodeId {
     uint32_t index = 0;
 
-    AM_NODISCARD friend constexpr bool operator==(GraphNodeId lhs, GraphNodeId rhs) noexcept = default;
+    AM_NODISCARD friend constexpr bool operator==(
+            GraphNodeId lhs, GraphNodeId rhs) noexcept = default;
 };
 
 struct GraphValueId {
     uint32_t index = 0;
 
-    AM_NODISCARD friend constexpr bool operator==(GraphValueId lhs, GraphValueId rhs) noexcept = default;
+    AM_NODISCARD friend constexpr bool operator==(
+            GraphValueId lhs, GraphValueId rhs) noexcept = default;
 };
 
 /// @brief Payload tag for values that enter the graph as external inputs

@@ -32,8 +32,8 @@ const char* ToString(OpType op_type) noexcept {
             return "KVCacheUpdate";
         case OpType::kAdd:
             return "Add";
-        case OpType::kFusedAddRmsNorm:
-            return "FusedAddRmsNorm";
+        case OpType::kAddRmsNorm:
+            return "AddRmsNorm";
         case OpType::kSoftmax:
             return "Softmax";
         case OpType::kArgmax:

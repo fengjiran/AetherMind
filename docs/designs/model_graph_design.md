@@ -1304,7 +1304,7 @@ ConstantFolding 必须优先于 SiluMulFusion，因为：
 - **`QkvFusionPass`** `[规划中]`：匹配同一输入上的 Q/K/V 三个 `Linear`，验证 layer、dtype、shape 与 downstream consumer 后提升为 QKV 语义节点。
 - **`SiluMulFusionPass`** `[已实现]`：匹配 `gate -> silu -> mul(up)`，支持 Mul 输入反向，检查 `silu_out` 单 consumer、非 graph output、`decoder_layer_index` 一致后合并为 `OpType::kSiluMul`。若 `silu_out` / `mul_out` 已被前置 pass（如 CF）替换（`GetResolvedValue` 解析后与自身不同），跳过融合——重新融合会以 fused kernel 形式重新引入已消除的 silu 计算，并使折叠常量成为死值。
 - **Attention 不参与语义层 fusion**：attention 在语义层始终是 `kAttention` 单节点，causal masking 与 softmax 属于 attention 语义自身，不作子图提升；是否使用 fused / FlashAttention-like kernel 由 lowering / backend plan 决定。
-- **`FusedAddRmsNormPass`** `[规划中]`：融合 residual add 与后续 RMSNorm，必须明确 residual 输入顺序、aliasing 语义、weight binding 与 lowering fallback。
+- **`AddRmsNormPass`** `[规划中]`：融合 residual add 与后续 RMSNorm 为 `OpType::kAddRmsNorm`（输入 `[input, residual, weight]`，输出 `output` 与 `new_residual`），必须明确 residual 输入顺序、`new_residual` aliasing 语义、weight binding 与 lowering fallback。
 
 每个真实 pass 至少需要覆盖匹配成功、匹配失败、安全跳过、非法输入四类测试；fusion 后的图必须通过 `Validate()`，并保持可 lowering。
 

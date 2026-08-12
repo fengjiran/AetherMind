@@ -125,13 +125,16 @@ const std::array<OperatorSchema, 18> kOperatorSchemas{
                 .traits = CompileTimeEvaluable(),
         },
         OperatorSchema{
-                .op_type = OpType::kFusedAddRmsNorm,
-                .input_ports = {Input(0, "residual", OperatorPortKind::kActivation),
-                                Input(1, "norm_input", OperatorPortKind::kActivation),
+                .op_type = OpType::kAddRmsNorm,
+                .input_ports = {Input(0, "input", OperatorPortKind::kActivation),
+                                Input(1, "residual", OperatorPortKind::kActivation),
                                 Input(2, "weight", OperatorPortKind::kWeight)},
-                .output_ports = {Output(0, "output")},
-                // Fused residual-add + RMSNorm: follows the stricter trait of
-                // RmsNorm (RuntimeOnly) rather than Add (CompileTimeEvaluable).
+                .output_ports = {Output(0, "output"),
+                                 Output(1, "new_residual")},
+                // Fused add + RMSNorm: output = RmsNorm(input + residual, weight);
+                // new_residual = input + residual feeds the next block's residual.
+                // Follows the stricter trait of RmsNorm (RuntimeOnly) rather than
+                // Add (CompileTimeEvaluable).
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{

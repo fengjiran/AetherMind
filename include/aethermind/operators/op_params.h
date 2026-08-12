@@ -220,9 +220,10 @@ struct QkvLinearParams {
 
 /// @brief Semantic parameters for fused add + RMS normalization.
 ///
-/// Future input order is `[residual, norm_input, weight]` with semantics
-/// `RmsNorm(residual + norm_input, weight, eps)`.
-struct FusedAddRmsNormParams {
+/// Input order is `[input, residual, weight]` with semantics
+/// `output = RmsNorm(input + residual, weight, eps)`; the second output
+/// `new_residual` carries `input + residual` for the next block.
+struct AddRmsNormParams {
     float eps = 1.0e-5F;
 };
 
@@ -245,7 +246,7 @@ using OpParams = std::variant<std::monostate,
                               PermuteParams,
                               ReorderParams,
                               QkvLinearParams,
-                              FusedAddRmsNormParams>;
+                              AddRmsNormParams>;
 
 }// namespace aethermind
 

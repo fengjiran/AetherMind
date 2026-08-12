@@ -236,7 +236,7 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
                             .k_out_features = 8,
                             .v_out_features = 8,
                             .has_bias = true},
-            FusedAddRmsNormParams{.eps = 1.0e-5F},
+            AddRmsNormParams{.eps = 1.0e-5F},
     };
 
     std::ostringstream os;
@@ -257,7 +257,7 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
     EXPECT_NE(dump.find("PermuteParams{permutation=[2,0,1]}"), std::string::npos);
     EXPECT_NE(dump.find("QkvLinearParams{q_out_features=16, k_out_features=8, v_out_features=8, has_bias=true}"),
               std::string::npos);
-    EXPECT_NE(dump.find("FusedAddRmsNormParams{eps=1e-05}"), std::string::npos);
+    EXPECT_NE(dump.find("AddRmsNormParams{eps=1e-05}"), std::string::npos);
 }
 
 }// namespace

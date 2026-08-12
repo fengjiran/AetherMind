@@ -20,7 +20,7 @@ TEST(OperatorSchema, ContainsAllM1Ops) {
     EXPECT_TRUE(GetOperatorSchema(OpType::kMatMul).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSoftmax).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kAdd).ok());
-    EXPECT_TRUE(GetOperatorSchema(OpType::kFusedAddRmsNorm).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kAddRmsNorm).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSilu).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSiluMul).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kElementwiseMul).ok());
@@ -96,20 +96,22 @@ TEST(OperatorSchema, QkvLinearSchemaUsesPackedWeightInput) {
     EXPECT_FALSE(IsCompileTimeEvaluable(*schema));
 }
 
-TEST(OperatorSchema, FusedAddRmsNormSchemaPreservesResidualInputOrder) {
-    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kFusedAddRmsNorm);
+TEST(OperatorSchema, AddRmsNormSchemaUsesInputResidualWeightAndDualOutputs) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kAddRmsNorm);
 
     ASSERT_TRUE(schema.ok()) << schema.status().ToString();
     ASSERT_EQ(schema->input_ports.size(), 3U);
-    EXPECT_EQ(schema->input_ports[0].name, "residual");
+    EXPECT_EQ(schema->input_ports[0].name, "input");
     EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
-    EXPECT_EQ(schema->input_ports[1].name, "norm_input");
+    EXPECT_EQ(schema->input_ports[1].name, "residual");
     EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kActivation);
     EXPECT_EQ(schema->input_ports[2].name, "weight");
     EXPECT_EQ(schema->input_ports[2].kind, OperatorPortKind::kWeight);
-    ASSERT_EQ(schema->output_ports.size(), 1U);
+    ASSERT_EQ(schema->output_ports.size(), 2U);
     EXPECT_EQ(schema->output_ports[0].name, "output");
     EXPECT_EQ(schema->output_ports[0].kind, OperatorPortKind::kActivation);
+    EXPECT_EQ(schema->output_ports[1].name, "new_residual");
+    EXPECT_EQ(schema->output_ports[1].kind, OperatorPortKind::kActivation);
     EXPECT_TRUE(IsPureOperator(*schema));
     EXPECT_FALSE(IsCompileTimeEvaluable(*schema));
 }
@@ -228,7 +230,7 @@ TEST(OperatorSchema, RuntimeOnlyPureOpsAreNotCompileTimeEvaluable) {
             OpType::kSoftmax,
             OpType::kArgmax,
             OpType::kAttention,
-            OpType::kFusedAddRmsNorm,
+            OpType::kAddRmsNorm,
             OpType::kReshape,
             OpType::kPermute,
             OpType::kReorder,

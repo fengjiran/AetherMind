@@ -378,7 +378,7 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
             [](const PermuteParams&) noexcept { return "Permute"; },
             [](const ReorderParams&) noexcept { return "Reorder"; },
             [](const QkvLinearParams&) noexcept { return "QkvLinear"; },
-            [](const FusedAddRmsNormParams&) noexcept { return "FusedAddRmsNorm"; },
+            [](const AddRmsNormParams&) noexcept { return "AddRmsNorm"; },
     };
     return std::visit(visitor, params);
 }
@@ -433,8 +433,8 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                    << " v_out_features=" << p.v_out_features
                    << " has_bias=" << (p.has_bias ? "true" : "false");
             },
-            [&](const FusedAddRmsNormParams& p) {
-                os << "FusedAddRmsNorm eps=" << p.eps;
+            [&](const AddRmsNormParams& p) {
+                os << "AddRmsNorm eps=" << p.eps;
             },
     };
     std::visit(visitor, params);
@@ -601,11 +601,11 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
                                         .has_bias = *has_bias}};
     }
 
-    if (kind == "FusedAddRmsNorm") {
+    if (kind == "AddRmsNorm") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
         StatusOr<float> eps = ParseFloat(fields, "eps");
         AM_RETURN_IF_ERROR(eps.status());
-        return OpParams{FusedAddRmsNormParams{.eps = *eps}};
+        return OpParams{AddRmsNormParams{.eps = *eps}};
     }
 
     return Status::InvalidArgument("ParseOpParams: unknown parameter kind");

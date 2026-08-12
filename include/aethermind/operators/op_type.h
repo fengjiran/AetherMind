@@ -33,7 +33,7 @@ enum class OpType : uint16_t {
     kElementwiseMul,
     kKVCacheUpdate,
     kAdd,
-    kFusedAddRmsNorm,
+    kAddRmsNorm,
     kSoftmax,
     kArgmax,
     kReshape,

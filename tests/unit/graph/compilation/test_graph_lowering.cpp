@@ -4,7 +4,7 @@
 #include "aethermind/model/model_graph_builder.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
-#include "aethermind/operators/rmsnorm_op.h"
+#include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_symbol.h"
 

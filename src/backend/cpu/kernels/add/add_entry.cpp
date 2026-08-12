@@ -12,7 +12,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
-#include "aethermind/operators/add_op.h"
+#include "aethermind/operators/ops/add_op.h"
 #include "utils/overflow_check.h"
 
 #include <span>

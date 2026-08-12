@@ -4,9 +4,9 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/operators/embedding_op.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
+#include "aethermind/operators/ops/embedding_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/embedding/embedding_internal.h"
 

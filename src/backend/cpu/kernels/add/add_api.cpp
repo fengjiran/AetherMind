@@ -7,7 +7,7 @@
 
 #include "add_internal.h"
 #include "aethermind/backend/cpu/kernels/add/cpu_add_kernel.h"
-#include "aethermind/operators/add_op.h"
+#include "aethermind/operators/ops/add_op.h"
 
 namespace aethermind {
 

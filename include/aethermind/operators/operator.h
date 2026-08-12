@@ -112,9 +112,9 @@ protected:
     /// @pre `GetResolvedKernel()` returns a non-null kernel function.
     /// @note Parameter storage is stack-backed to avoid heap traffic. Kernels
     ///       must not retain `ctx.kernel_params` after returning.
-    AM_NODISCARD Status InvokeResolvedKernel(KernelContext& ctx,
-                                             std::span<const TensorView> inputs,
-                                             std::span<const MutableTensorView> outputs) const noexcept {
+    Status InvokeResolvedKernel(KernelContext& ctx,
+                                std::span<const TensorView> inputs,
+                                std::span<const MutableTensorView> outputs) const noexcept {
         const ResolvedKernel& resolved = GetResolvedKernel();
         // Keep parameter storage alive through the kernel call; the builder
         // publishes a borrowed pointer to this buffer through `ctx`.

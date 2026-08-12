@@ -9,7 +9,7 @@
 #include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
-#include "aethermind/operators/rmsnorm_op.h"
+#include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 

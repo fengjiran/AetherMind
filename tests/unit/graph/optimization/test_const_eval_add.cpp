@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include "aethermind/operators/add_op.h"
+#include "aethermind/operators/ops/add_op.h"
 
 #include <cmath>
 #include <limits>

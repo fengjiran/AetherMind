@@ -11,7 +11,7 @@
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/rmsnorm_op.h"
+#include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>

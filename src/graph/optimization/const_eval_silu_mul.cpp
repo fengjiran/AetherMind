@@ -1,7 +1,7 @@
 #include "aethermind/dtypes/float8_e4m3fn.h"
 #include "aethermind/dtypes/float8_e5m2.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/operators/silu_mul_op.h"
+#include "aethermind/operators/ops/silu_mul_op.h"
 #include "const_eval_internal.h"
 
 #include <cmath>

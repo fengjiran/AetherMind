@@ -250,7 +250,8 @@ Status GraphRewriteSession::RedirectInput(GraphNodeId node, size_t input_index,
     // ValidateEdits/Commit.
     const GraphValueId old_value = graph_.GetNode(node).inputs[input_index];
     const TensorSpec old_spec = graph_.GetValue(old_value).spec;
-    const StatusOr<TensorSpec> new_spec_or = ResolveValueSpec(GetResolvedValue(new_value), {});
+    const StatusOr<TensorSpec> new_spec_or = ResolveValueSpec(
+            GetResolvedValue(new_value), {});
     if (!new_spec_or.ok()) {
         return Status::InvalidArgument(
                 "GraphRewriteSession::RedirectInput new value " +
@@ -558,6 +559,7 @@ StatusOr<GraphValueDesc> GraphRewriteSession::GetValueOutputMetadata(GraphValueI
     if (IsSessionConstant(value)) {
         return MakeOutputDescFromSessionConstant(value);
     }
+
     const GraphValue& graph_value = graph_.GetValue(value);
     return GraphValueDesc{.spec = graph_value.spec,
                           .payload = graph_value.payload,

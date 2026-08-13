@@ -129,19 +129,18 @@ TEST(BackendRegistry, OverrideFactoryAfterInstantiationClearsCachedInstance) {
     registry.RegisterFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU, &count1));
     auto res1 = registry.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(res1.ok());
-    Backend* b1 = res1.value();
     EXPECT_EQ(count1, 1);
 
-    // 2. Override with factory B.
-    // According to production code, SetFactory clears the cached backend for that DeviceType.
+    // 2. Override with factory B. SetFactory must clear the cached backend
+    // so the next GetBackend() re-creates from the new factory.
     registry.SetFactory(DeviceType::kCPU, std::make_unique<FakeBackendFactory>(DeviceType::kCPU, &count2));
 
-    // 3. Assert subsequent GetBackend() returns a NEW instance from factory B.
+    // 3. Factory B is invoked only if the cached instance was cleared, so
+    // count2 == 1 is the behavioral proof. Pointer inequality is not a valid
+    // check here: the freed instance's address is typically reused by the
+    // allocator, so equal raw pointers do not mean the instance was cached.
     auto res2 = registry.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(res2.ok());
-    Backend* b2 = res2.value();
-
-    EXPECT_NE(b1, b2);
     EXPECT_EQ(count2, 1);
 }
 

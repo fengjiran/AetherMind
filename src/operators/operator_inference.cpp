@@ -16,6 +16,8 @@ StatusOr<InferenceResult> InferOperator(OpType op_type,
             return detail::InferEmbedding(params, inputs);
         case OpType::kRmsNorm:
             return detail::InferRmsNorm(params, inputs);
+        case OpType::kAddRmsNorm:
+            return detail::InferAddRmsNorm(params, inputs);
         case OpType::kLinear:
             return detail::InferLinear(params, inputs);
         case OpType::kQkvLinear:

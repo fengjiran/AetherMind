@@ -57,6 +57,7 @@ namespace detail {
 
 StatusOr<InferenceResult> InferEmbedding(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferRmsNorm(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferAddRmsNorm(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferLinear(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferQkvLinear(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferMatMul(const OpParams& params, std::span<const TensorSpec> inputs);

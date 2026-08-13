@@ -64,10 +64,6 @@ public:
         return OpType::kRmsNorm;
     }
 
-    AM_NODISCARD const char* Name() const noexcept override {
-        return "RmsNorm";
-    }
-
     AM_NODISCARD WorkspaceRequirement ComputeWorkspaceRequirement(
             std::span<const TensorSpec> inputs) const noexcept override {
         UNUSED(inputs);

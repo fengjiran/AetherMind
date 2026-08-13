@@ -33,10 +33,6 @@ public:
         return OpType::kQkvLinear;
     }
 
-    AM_NODISCARD const char* Name() const noexcept override {
-        return "QkvLinear";
-    }
-
     AM_NODISCARD WorkspaceRequirement ComputeWorkspaceRequirement(
             std::span<const TensorSpec> inputs) const noexcept override {
         UNUSED(inputs);

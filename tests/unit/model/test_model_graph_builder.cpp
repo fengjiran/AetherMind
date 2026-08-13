@@ -1,6 +1,8 @@
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/model_graph_builder.h"
 
+#include "aethermind/graph/compilation/graph_lowering.h"
+#include "aethermind/graph/optimization/add_rmsnorm_fusion_pass.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 
 #include <gtest/gtest.h>
@@ -185,6 +187,34 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
     EXPECT_FALSE(nodes[tail].decoder_layer_index.has_value());
     EXPECT_FALSE(nodes[tail + 1].decoder_layer_index.has_value());
     EXPECT_FALSE(nodes[tail + 2].decoder_layer_index.has_value());
+}
+
+TEST(ModelGraphBuilder, AddRmsNormFusionCoversMultiLayerResidualAndFinalNormPaths) {
+    const HfModelConfig config = MakeLlamaConfig(2);
+    const ResolvedModelWeights weights = MakeWeights(config);
+    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+
+    GraphPassManager pipeline;
+    pipeline.Add(std::make_unique<AddRmsNormFusionPass>());
+    const StatusOr<ModelGraph> fused = pipeline.Run(*graph);
+
+    ASSERT_TRUE(fused.ok()) << fused.status().ToString();
+    ASSERT_TRUE(fused->Validate().ok());
+    EXPECT_TRUE(fused->FindNodesByOpType(OpType::kAdd).empty());
+    // The first decoder input norm has no preceding residual Add. Every
+    // subsequent Add->RmsNorm pair, including the final norm, is fused.
+    EXPECT_EQ(fused->FindNodesByOpType(OpType::kRmsNorm).size(), 1U);
+    const std::vector<GraphNodeId> add_rms_norm = fused->FindNodesByOpType(OpType::kAddRmsNorm);
+    ASSERT_EQ(add_rms_norm.size(), 4U);
+    EXPECT_EQ(fused->GetNode(add_rms_norm[0]).decoder_layer_index, 0U);
+    EXPECT_EQ(fused->GetNode(add_rms_norm[1]).decoder_layer_index, 1U);
+    EXPECT_EQ(fused->GetNode(add_rms_norm[2]).decoder_layer_index, 1U);
+    EXPECT_FALSE(fused->GetNode(add_rms_norm[3]).decoder_layer_index.has_value());
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(*fused);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    EXPECT_EQ(lowered->steps.size(), fused->GetNodes().size());
 }
 
 TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {

@@ -1,4 +1,5 @@
 #include "aethermind/operators/op_params_serde.h"
+#include "utils/parse_number.h"
 #include "utils/variant_utils.h"
 
 #include <algorithm>
@@ -38,9 +39,7 @@ StatusOr<float> ParseFloat(const FieldMap& fields, std::string_view name) {
     }
 
     float value = 0.0F;
-    const std::string& text = it->second;
-    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
+    if (!utils::ParseFloat(it->second, value)) {
         return Status::InvalidArgument("ParseOpParams: invalid float field");
     }
     return value;
@@ -53,9 +52,7 @@ StatusOr<double> ParseDouble(const FieldMap& fields, std::string_view name) {
     }
 
     double value = 0.0;
-    const std::string& text = it->second;
-    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
+    if (!utils::ParseDouble(it->second, value)) {
         return Status::InvalidArgument("ParseOpParams: invalid double field");
     }
     return value;
@@ -122,9 +119,7 @@ StatusOr<std::optional<double>> ParseOptionalDouble(const FieldMap& fields,
         return std::optional<double>{};
     }
     double value = 0.0;
-    const std::string& text = it->second;
-    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
+    if (!utils::ParseDouble(it->second, value)) {
         return Status::InvalidArgument("ParseOpParams: invalid optional double field");
     }
     return std::optional<double>{value};

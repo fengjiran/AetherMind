@@ -103,8 +103,12 @@ Status ValidateWeightViewIntegrity(const RawWeightView& view, std::string_view w
                                        "' has dtype with zero byte size");
     }
 
+    // numel is uint64_t; byte accounting lives in the size_t domain. Every
+    // supported target is 64-bit where both have identical range, so the cast
+    // is lossless (a 32-bit port would need a range guard here).
+    const auto numel_size = static_cast<size_t>(numel);
     size_t expected_bytes = 0;
-    if (CheckOverflowMul(numel, itemsize, &expected_bytes)) {
+    if (CheckOverflowMul(numel_size, itemsize, &expected_bytes)) {
         return Status::InvalidArgument(std::string("Weight '") + std::string(weight_name) +
                                        "' byte size overflows size_t");
     }

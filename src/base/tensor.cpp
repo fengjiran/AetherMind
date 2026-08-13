@@ -1,10 +1,10 @@
 #include "aethermind/base/tensor.h"
+#include "aethermind/base/device.h"
+#include "aethermind/base/scalar.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/memory/allocator.h"
 #include "container/array_view.h"
-#include "aethermind/base/device.h"
-#include "aethermind/base/scalar.h"
 #include "utils/logging.h"
 #include "utils/overflow_check.h"
 
@@ -144,7 +144,8 @@ Tensor Tensor::slice(int32_t dim_idx, int64_t start, int64_t end, int64_t step) 
                  "slice element offset exceeds size_t range.");
 
         size_t byte_delta = 0;
-        AM_CHECK(!CheckOverflowMul(elem_delta, itemsize(), &byte_delta),
+        // elem_delta is bounded by size_t::max() above, so the cast is lossless.
+        AM_CHECK(!CheckOverflowMul(static_cast<size_t>(elem_delta), itemsize(), &byte_delta),
                  "slice byte offset overflow.");
 
         size_t updated_offset = 0;

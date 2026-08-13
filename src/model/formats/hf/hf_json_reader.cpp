@@ -1,4 +1,5 @@
 #include "aethermind/model/formats/hf/hf_json_reader.h"
+#include "utils/parse_number.h"
 
 #include <cctype>
 #include <charconv>
@@ -180,8 +181,7 @@ StatusOr<double> HfJsonReader::ParseDouble() {
 
     double value = 0.0;
     const auto token = input_.substr(start, position_ - start);
-    if (const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
-        ec != std::errc{} || ptr != token.data() + token.size()) {
+    if (!utils::ParseDouble(token, value)) {
         return Status::InvalidArgument("Invalid floating point value");
     }
     return value;

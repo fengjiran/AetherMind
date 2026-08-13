@@ -145,7 +145,7 @@ bool TransformerRoleRequiresLayer(TransformerWeightRole role) noexcept {
 // require a decoder-layer scope and derive their kernel slot from the recipe.
 Status ValidateWeightBindingSelfConsistency(const WeightBinding& binding) {
     auto visitor = overloaded{
-            [&](const DirectWeightBinding& direct) -> Status {
+            [&](const DirectWeightBinding& direct) {
                 if (std::holds_alternative<std::monostate>(direct.semantic_role)) {
                     return Status::Ok();
                 }
@@ -168,14 +168,14 @@ Status ValidateWeightBindingSelfConsistency(const WeightBinding& binding) {
                 }
                 return Status::Ok();
             },
-            [&](const QkvWeightBinding&) -> Status {
+            [&](const QkvWeightBinding&) {
                 if (!binding.decoder_layer_index.has_value()) {
                     return Status::InvalidArgument(
                             "composite weight binding requires decoder_layer_index");
                 }
                 return Status::Ok();
             },
-            [&](const GateUpWeightBinding&) -> Status {
+            [&](const GateUpWeightBinding&) {
                 if (!binding.decoder_layer_index.has_value()) {
                     return Status::InvalidArgument(
                             "composite weight binding requires decoder_layer_index");

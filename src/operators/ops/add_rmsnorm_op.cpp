@@ -1,5 +1,4 @@
 #include "aethermind/operators/ops/add_rmsnorm_op.h"
-
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/runtime_binding_context.h"

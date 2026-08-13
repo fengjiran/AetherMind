@@ -19,19 +19,17 @@ struct AddRmsNormPattern {
     GraphValueId add_output{};
     GraphValueId rmsnorm_output{};
     AddRmsNormParams params{};
-    std::optional<uint32_t> decoder_layer_index{};
     GraphValueDesc rmsnorm_output_desc{};
     GraphValueDesc residual_output_desc{};
+    std::optional<uint32_t> decoder_layer_index{};
 };
 
 using AddProducerIndex = std::unordered_map<uint32_t, GraphNodeId>;
 
 NodeOutputDesc MakeOutputDesc(const GraphValueDesc& desc) {
-    return NodeOutputDesc{
-            .payload = desc.payload,
+    return {.payload = desc.payload,
             .quantization = desc.quantization,
-            .name = desc.name,
-    };
+            .name = desc.name};
 }
 
 bool IsActivationOutput(const GraphValueDesc& desc) noexcept {
@@ -189,10 +187,9 @@ StatusOr<std::optional<AddRmsNormPattern>> FindAddRmsNormPattern(
             .add_output = add_output,
             .rmsnorm_output = rmsnorm_output,
             .params = fused_params,
-            .decoder_layer_index = rmsnorm_view->decoder_layer_index,
             .rmsnorm_output_desc = std::move(*rmsnorm_output_desc),
             .residual_output_desc = std::move(*add_output_desc),
-    }};
+            .decoder_layer_index = rmsnorm_view->decoder_layer_index}};
 }
 
 Status TryFuseAddRmsNorm(GraphRewriteSession& session,

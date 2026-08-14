@@ -1276,11 +1276,11 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 |---|---|---|
 | O0 | 无 | 输入图不经任何优化直接通过；`GraphPassManager` 生成输入图的合法副本 |
 | O1 | `ConstantFoldingPass` → `DeadCodeEliminationPass` | 基础清理：折叠纯常量子图，删除不可达节点；不进行语义融合 |
-| O2+ (默认) | `ConstantFoldingPass` → `QkvLinearFusionPass` → `SiluMulFusionPass` → `DeadCodeEliminationPass` | 完整优化：常量折叠 + QKV 投影融合 + SwiGLU fusion + 死代码消除 |
+| O2+ (默认) | `ConstantFoldingPass` → `QkvLinearFusionPass` → `SiluMulFusionPass` → `AddRmsNormFusionPass` → `DeadCodeEliminationPass` | 完整优化：常量折叠 + QKV 投影融合 + SwiGLU fusion + Add-RMSNorm 融合 + 死代码消除 |
 
 默认优化级别为 O2（`PassContext::opt_level` 默认值为 2）。O3 及更大的级别（如 99）使用与 O2 相同的 pipeline。
 
-**Flag 与注册分离规则**：Pass 注册完全由 `opt_level` 决定，feature flags（`enable_constant_folding`、`enable_qkv_fusion`、`enable_swiglu_fusion`、`enable_dce`）在 pipeline 构建时不参与判断。Flag 通过 `PassContext` 传入每个 pass 的 `Run()` 方法，由 pass 内部自行检查是否跳过执行。这保证了 pipeline 的可观测性和可预测性；禁用某 flag 时该 pass 仍在管道中，但行为上被视为跳过。
+**Flag 与注册分离规则**：Pass 注册完全由 `opt_level` 决定，feature flags（`enable_constant_folding`、`enable_qkv_fusion`、`enable_swiglu_fusion`、`enable_fused_add_rms_norm`、`enable_dce`）在 pipeline 构建时不参与判断。Flag 通过 `PassContext` 传入每个 pass 的 `Run()` 方法，由 pass 内部自行检查是否跳过执行。这保证了 pipeline 的可观测性和可预测性；禁用某 flag 时该 pass 仍在管道中，但行为上被视为跳过。
 
 #### 顺序约束
 
@@ -1310,7 +1310,7 @@ ConstantFolding 必须优先于 SiluMulFusion，因为：
 - **`QkvLinearFusionPass`** `[已实现]`：以权重 `TransformerWeightRole`（`kAttentionQ`/`kAttentionK`/`kAttentionV`）为锚，匹配同一输入、同一 `decoder_layer_index` 的 Q/K/V 三个 `Linear`。校验节点 live、输出未被前置 pass 替换（`GetResolvedValue` 解析后与自身不同则跳过）、输出有 live consumer 或为 graph output、权重 dtype 与 `QuantizationSpec` 一致、in_features 可证相等后，通过 `AddSessionWeight` 创建 `QkvWeightBinding` 复合配方权重（spec `[q_out+k_out+v_out, in_features]`，语义为 concat(Q, K, V, axis=0)，split 边界由 `QkvLinearParams` 记录），并以 `SubgraphBuilder` 替换为单个 `OpType::kQkvLinear` 节点（三输出 q/k/v 依次接管原值）。任一条件不满足即跳过（安全保守）；同组重复角色使组 `ambiguous`，整组跳过。融合后的图保持可 lowering（`LowerModelGraph` 为 schema 驱动，对 `kQkvLinear` 无需特判）。
 - **`SiluMulFusionPass`** `[已实现]`：匹配 `gate -> silu -> mul(up)`，支持 Mul 输入反向，检查 `silu_out` 单 consumer、非 graph output、`decoder_layer_index` 一致后合并为 `OpType::kSiluMul`。若 `silu_out` / `mul_out` 已被前置 pass（如 CF）替换（`GetResolvedValue` 解析后与自身不同），跳过融合——重新融合会以 fused kernel 形式重新引入已消除的 silu 计算，并使折叠常量成为死值。
 - **Attention 不参与语义层 fusion**：attention 在语义层始终是 `kAttention` 单节点，causal masking 与 softmax 属于 attention 语义自身，不作子图提升；是否使用 fused / FlashAttention-like kernel 由 lowering / backend plan 决定。
-- **`AddRmsNormFusionPass`** `[已实现，独立 pass]`：以 `RmsNorm` 为锚，将 exact-shape residual `Add` 与后续 `RmsNorm` 融合为 `OpType::kAddRmsNorm`。输入固定为 `[branch_input, residual, weight]`，双输出 `output` / `new_residual` 分别接管原 RMSNorm / Add value identity，因此同时覆盖层内 `post_attention_add → post_attention_norm`、层间 `mlp_add(i) → input_norm(i+1)` 和末层 `mlp_add(last) → final_norm`；fused node 继承 RMSNorm 的 `decoder_layer_index`。broadcast Add、输出已被替换、dead chain 或同一 Add 输出被多个 RMSNorm 消费时保守跳过。`new_residual` 是普通 activation value，不建立 graph-level alias 或 must-alias 约束。当前 pass 未注册到默认 O2 pipeline；`AddRmsNormOp` 已实现通用 Operator dispatch，但 backend kernel 尚未实现，因而默认编译路径不得生成该 fused op。
+- **`AddRmsNormFusionPass`** `[已实现，已注册 O2]`：以 `RmsNorm` 为锚，将 exact-shape residual `Add` 与后续 `RmsNorm` 融合为 `OpType::kAddRmsNorm`。输入固定为 `[branch_input, residual, weight]`，双输出 `output` / `new_residual` 分别接管原 RMSNorm / Add value identity，因此同时覆盖层内 `post_attention_add → post_attention_norm`、层间 `mlp_add(i) → input_norm(i+1)` 和末层 `mlp_add(last) → final_norm`；fused node 继承 RMSNorm 的 `decoder_layer_index`。broadcast Add、输出已被替换、dead chain 或同一 Add 输出被多个 RMSNorm 消费时保守跳过。`new_residual` 是普通 activation value，不建立 graph-level alias 或 must-alias 约束。注册位置：默认 O2 pipeline 中 `SiluMulFusionPass` 之后、`DeadCodeEliminationPass` 之前（与 QKV/SiluMul 模式不相交，无功能依赖；DCE 收尾原则不变）。**⚠️ 运行时 gate**：`AddRmsNormOp` 已实现通用 Operator dispatch，但 backend kernel 尚未实现——默认编译路径当前会生成该 fused op，编译/lowering 成功，但运行时 `Prepare`（`ResolveKernelInfo(kAddRmsNorm)` 无注册 kernel）会失败。kernel 落地（含 `WeightPrepackPlanner`/`FindPackedWeights` 的 `kAddRmsNorm` prepack 键）之前，fused 图不可端到端执行。
 
 每个真实 pass 至少需要覆盖匹配成功、匹配失败、安全跳过、非法输入四类测试；fusion 后的图必须通过 `Validate()`，并保持可 lowering。
 

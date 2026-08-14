@@ -28,13 +28,13 @@ AM_NODISCARD const char* OpParamsKindName(const OpParams& params) noexcept;
 /// @param params Operator parameters to serialize.
 /// @param os Output stream to write to.
 /// @return Status::Ok on success, or an error status if writing fails.
-AM_NODISCARD Status SerializeOpParams(const OpParams& params, std::ostream& os);
+Status SerializeOpParams(const OpParams& params, std::ostream& os);
 
 /// @brief Parses an OpParams variant from its canonical textual form.
 ///
 /// @param text Canonical textual form as produced by SerializeOpParams.
 /// @return Parsed OpParams, or an error status on malformed input.
-AM_NODISCARD StatusOr<OpParams> ParseOpParams(std::string_view text);
+StatusOr<OpParams> ParseOpParams(std::string_view text);
 
 /// @brief Serializes a Reshape target_shape to its canonical textual form.
 ///

@@ -16,9 +16,13 @@ namespace aethermind {
 /// value identity allows its other consumers, graph outputs, and later layer
 /// norms to remain valid without introducing an activation alias contract.
 ///
-/// This pass is intentionally standalone. It is not registered in the default
-/// O2 pipeline because backend support for AddRmsNorm is an explicit runtime
-/// integration decision.
+/// Registered in the default O2 pipeline (after SiluMulFusionPass, before
+/// DeadCodeEliminationPass). NOTE: runtime execution of the fused op requires
+/// an AddRmsNorm backend kernel, which is not implemented yet; the default
+/// pipeline emits the fused op regardless, so end-to-end execution of a fused
+/// graph is unsupported until the kernel lands (see
+/// docs/designs/model_graph_design.md §16.4). The `enable_fused_add_rms_norm`
+/// PassContext flag (default true) gates the pass at runtime.
 class AddRmsNormFusionPass final : public GraphPass {
 public:
     AM_NODISCARD std::string_view Name() const noexcept override;

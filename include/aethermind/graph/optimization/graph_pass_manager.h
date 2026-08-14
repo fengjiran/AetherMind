@@ -32,7 +32,8 @@ namespace aethermind {
 /// in model_graph_design_v2.md §10.
 struct PassContext {
     /// @brief Optimization level. 0 = no passes, 1 = ConstantFolding→DCE,
-    ///        2+ (default) = ConstantFolding→SiluMulFusion→DCE.
+    ///        2+ (default) = ConstantFolding→QkvLinearFusion→SiluMulFusion→
+    ///        AddRmsNormFusion→DCE.
     uint32_t opt_level = 2;
     /// @brief Materialize a graph snapshot every N passes (0 = never).
     uint32_t checkpoint_every = 0;

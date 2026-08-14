@@ -1,27 +1,20 @@
 #include "../optimization/test_optimization_helpers.h"
-#include "aethermind/graph/compilation/graph_compiler.h"
-#include "aethermind/graph/graph_dump.h"
-#include "aethermind/graph/graph_op_builder.h"
-#include "aethermind/model/model_graph_builder.h"
-
-#include <gtest/gtest.h>
-
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/graph/compilation/graph_compiler.h"
 #include "aethermind/graph/compilation/graph_lowering.h"
+#include "aethermind/graph/graph_dump.h"
+#include "aethermind/graph/graph_op_builder.h"
+#include "aethermind/model/model_graph_builder.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/shape_symbol.h"
-#include <cstdint>
-#include <cstring>
-#include <memory>
-#include <sstream>
-#include <vector>
+
+#include <gtest/gtest.h>
 
 namespace {
 
 using namespace aethermind;
-
 using namespace test_utils;
 
 // ---- Composite test-graph builder ------------------------------------------
@@ -88,6 +81,38 @@ ModelGraph BuildCompositeGraph() {
     // (6) Dead node: an activation with no consumer and not a graph output.
     AddActivation(graph, "dead");
 
+    return graph;
+}
+
+// Builds a minimal Add->RmsNorm pair matching the AddRmsNormFusionPass
+// pattern: two live activations merged by an exact-shape Add whose output is
+// normalized by an RmsNorm that is a graph output. The Add output has the
+// RmsNorm as its unique consumer.
+//
+//   residual ──┐
+//               Add("pair.add") ──→ RmsNorm("pair.rmsnorm") ──→ graph output
+//   input   ───┘
+ModelGraph BuildAddRmsNormGraph() {
+    ModelGraph graph;
+    const GraphValueId residual = AddActivation(graph, "pair.residual");
+    const GraphValueId input = AddActivation(graph, "pair.input");
+    const StatusOr<GraphValueId> sum = AddElementwiseAdd(graph, 0U, residual, input, "pair.add");
+    AM_CHECK(sum.ok(), "{}", sum.status().ToString());
+
+    const GraphValueId weight = graph.AddWeight(
+            Spec(DataType::Float32(), {4}),
+            MakeDirectWeightBinding(ParameterSlot::kScale),
+            "pair.rmsnorm.weight");
+    const StatusOr<AddedNode> rmsnorm = graph.AddNode(
+            OpType::kRmsNorm,
+            0U,
+            {*sum, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "pair.rmsnorm"}},
+            RmsNormParams{.eps = 2.0e-5F},
+            {},
+            "pair.rmsnorm");
+    AM_CHECK(rmsnorm.ok(), "{}", rmsnorm.status().ToString());
+    graph.MarkOutput(rmsnorm->outputs[0]);
     return graph;
 }
 
@@ -167,7 +192,7 @@ TEST(DefaultGraphPassPipeline, OptLevelOneFoldsAndRemovesDeadButNotSiluMul) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kSiluMul).size(), 0U);
 }
 
-// ---- O2: ConstantFolding → SiluMulFusion → DCE ---------------------------
+// ---- O2: ConstantFolding → QkvLinearFusion → SiluMulFusion → AddRmsNormFusion → DCE ----
 
 void ExpectFullOptimization(const StatusOr<ModelGraph>& result,
                             size_t original_node_count) {
@@ -222,6 +247,24 @@ TEST(DefaultGraphPassPipeline, OptLevelNinetyNineMatchesOptLevelTwo) {
     const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
 
     ExpectFullOptimization(result, original);
+}
+
+TEST(DefaultGraphPassPipeline, OptLevelTwoAddsAddRmsNormFusion) {
+    ModelGraph graph = BuildAddRmsNormGraph();
+    ASSERT_TRUE(graph.Validate().ok());
+
+    PassContext ctx;
+    ctx.opt_level = 2;
+    const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+
+    // The Add->RmsNorm pair is fused into a single AddRmsNorm node whose dual
+    // outputs take over both original value identities.
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAddRmsNorm).size(), 1U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kRmsNorm).size(), 0U);
 }
 
 // ---- Default opt_level is 2 ------------------------------------------------
@@ -340,6 +383,24 @@ TEST(OptimizeModelGraph, DisablingSwigluFusionPreservesSiluMulAtO2) {
     for (const GraphNode& node: result->GetNodes()) {
         EXPECT_TRUE(node.name.find("dead") == std::string::npos);
     }
+}
+
+TEST(OptimizeModelGraph, DisablingFusedAddRmsNormPreservesAddAtO2) {
+    ModelGraph graph = BuildAddRmsNormGraph();
+    ASSERT_TRUE(graph.Validate().ok());
+
+    PassContext ctx;
+    ctx.opt_level = 2;
+    ctx.enable_fused_add_rms_norm = false;
+    const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+
+    // Add and RmsNorm remain separate (fusion did not run).
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAddRmsNorm).size(), 0U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 1U);
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kRmsNorm).size(), 1U);
 }
 
 TEST(OptimizeModelGraph, DisablingDcePreservesDeadNodeAtO2) {

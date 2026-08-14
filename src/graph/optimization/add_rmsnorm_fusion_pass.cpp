@@ -36,19 +36,19 @@ bool IsActivationOutput(const GraphValueDesc& desc) noexcept {
     return std::holds_alternative<ActivationValue>(desc.payload);
 }
 
-StatusOr<bool> HasObservableUse(GraphRewriteSession& session, GraphValueId value) {
+StatusOr<bool> HasObservableUse(const GraphRewriteSession& session, GraphValueId value) {
     if (session.IsGraphOutput(value)) {
         return true;
     }
     return session.HasLiveConsumers(value);
 }
 
-StatusOr<AddProducerIndex> BuildAddProducerIndex(GraphRewriteSession& session) {
+StatusOr<AddProducerIndex> BuildAddProducerIndex(const GraphRewriteSession& session) {
     AddProducerIndex producers;
-    const std::vector<GraphNodeId> add_nodes = session.FindNodesByOpType(OpType::kAdd);
+    const auto add_nodes = session.FindNodesByOpType(OpType::kAdd);
     producers.reserve(add_nodes.size());
-    for (const GraphNodeId add_node: add_nodes) {
-        const StatusOr<GraphNodeView> add_view = session.GetNodeView(add_node);
+    for (const auto add_node: add_nodes) {
+        const auto add_view = session.GetNodeView(add_node);
         AM_RETURN_IF_ERROR(add_view.status());
         if (add_view->outputs.size() == 1U) {
             producers.emplace(add_view->outputs[0].index, add_node);
@@ -57,15 +57,15 @@ StatusOr<AddProducerIndex> BuildAddProducerIndex(GraphRewriteSession& session) {
     return producers;
 }
 
-StatusOr<bool> HasUniqueRmsNormConsumer(GraphRewriteSession& session,
+StatusOr<bool> HasUniqueRmsNormConsumer(const GraphRewriteSession& session,
                                         GraphValueId add_output,
                                         GraphNodeId expected_consumer) {
-    AM_ASSIGN_OR_RETURN(const std::vector<GraphNodeId> consumers,
+    AM_ASSIGN_OR_RETURN(const auto consumers,
                         session.FindConsumers(add_output));
     size_t rmsnorm_consumers = 0;
     bool found_expected = false;
-    for (const GraphNodeId consumer: consumers) {
-        const StatusOr<GraphNodeView> view = session.GetNodeView(consumer);
+    for (const auto consumer: consumers) {
+        const auto view = session.GetNodeView(consumer);
         AM_RETURN_IF_ERROR(view.status());
         if (view->op_type != OpType::kRmsNorm || view->inputs.empty() ||
             view->inputs[0] != add_output) {
@@ -78,14 +78,14 @@ StatusOr<bool> HasUniqueRmsNormConsumer(GraphRewriteSession& session,
 }
 
 StatusOr<std::optional<AddRmsNormPattern>> FindAddRmsNormPattern(
-        GraphRewriteSession& session,
+        const GraphRewriteSession& session,
         const AddProducerIndex& add_producers,
         GraphNodeId rmsnorm_node) {
     if (!session.IsNodeLive(rmsnorm_node)) {
         return std::optional<AddRmsNormPattern>{};
     }
 
-    const StatusOr<GraphNodeView> rmsnorm_view = session.GetNodeView(rmsnorm_node);
+    const auto rmsnorm_view = session.GetNodeView(rmsnorm_node);
     AM_RETURN_IF_ERROR(rmsnorm_view.status());
     if (rmsnorm_view->op_type != OpType::kRmsNorm ||
         rmsnorm_view->inputs.size() != 2U ||
@@ -117,7 +117,7 @@ StatusOr<std::optional<AddRmsNormPattern>> FindAddRmsNormPattern(
     }
 
     const GraphNodeId add_node = producer->second;
-    const StatusOr<GraphNodeView> add_view = session.GetNodeView(add_node);
+    const auto add_view = session.GetNodeView(add_node);
     AM_RETURN_IF_ERROR(add_view.status());
     if (add_view->op_type != OpType::kAdd ||
         add_view->inputs.size() != 2U ||
@@ -163,6 +163,7 @@ StatusOr<std::optional<AddRmsNormPattern>> FindAddRmsNormPattern(
             residual_desc->spec,
             weight_desc->spec,
     };
+
     const StatusOr<InferenceResult> inferred = InferOperator(
             OpType::kAddRmsNorm,
             fused_params,
@@ -195,8 +196,7 @@ StatusOr<std::optional<AddRmsNormPattern>> FindAddRmsNormPattern(
 Status TryFuseAddRmsNorm(GraphRewriteSession& session,
                          const AddProducerIndex& add_producers,
                          GraphNodeId rmsnorm_node) {
-    const StatusOr<std::optional<AddRmsNormPattern>> pattern_or =
-            FindAddRmsNormPattern(session, add_producers, rmsnorm_node);
+    const auto pattern_or = FindAddRmsNormPattern(session, add_producers, rmsnorm_node);
     AM_RETURN_IF_ERROR(pattern_or.status());
     if (!pattern_or->has_value()) {
         return Status::Ok();
@@ -205,7 +205,7 @@ Status TryFuseAddRmsNorm(GraphRewriteSession& session,
     const AddRmsNormPattern& pattern = **pattern_or;
     SubgraphBuilder builder(session, {pattern.add_node, pattern.rmsnorm_node});
     AM_ASSIGN_OR_RETURN(
-            const std::vector<GraphValueId> fused_outputs,
+            const auto fused_outputs,
             builder.Emit(OpType::kAddRmsNorm,
                          {pattern.input, pattern.residual, pattern.weight},
                          {MakeOutputDesc(pattern.rmsnorm_output_desc),
@@ -230,10 +230,10 @@ Status AddRmsNormFusionPass::Run(GraphRewriteSession& session,
         return Status::Ok();
     }
 
-    AM_ASSIGN_OR_RETURN(const AddProducerIndex add_producers,
+    AM_ASSIGN_OR_RETURN(const auto add_producers,
                         BuildAddProducerIndex(session));
-    const std::vector<GraphNodeId> rmsnorm_nodes = session.FindNodesByOpType(OpType::kRmsNorm);
-    for (const GraphNodeId rmsnorm_node: rmsnorm_nodes) {
+    const auto rmsnorm_nodes = session.FindNodesByOpType(OpType::kRmsNorm);
+    for (const auto rmsnorm_node: rmsnorm_nodes) {
         AM_RETURN_IF_ERROR(TryFuseAddRmsNorm(session, add_producers, rmsnorm_node));
     }
     return Status::Ok();

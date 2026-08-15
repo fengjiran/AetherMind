@@ -218,6 +218,16 @@ struct QkvLinearParams {
     bool has_bias = false;
 };
 
+/// @brief Semantic parameters for a fused MLP gate/up linear projection.
+///
+/// Packed weight rows are ordered Gate, then Up. `has_bias=true` would require
+/// two bias inputs, which the current two-input schema does not represent.
+struct GateUpLinearParams {
+    int64_t gate_out_features = 0;
+    int64_t up_out_features = 0;
+    bool has_bias = false;
+};
+
 /// @brief Semantic parameters for fused add + RMS normalization.
 ///
 /// Input order is `[input, residual, weight]` with semantics
@@ -246,7 +256,8 @@ using OpParams = std::variant<std::monostate,
                               PermuteParams,
                               ReorderParams,
                               QkvLinearParams,
-                              AddRmsNormParams>;
+                              AddRmsNormParams,
+                              GateUpLinearParams>;
 
 }// namespace aethermind
 

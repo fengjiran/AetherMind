@@ -294,6 +294,11 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
                    << ", v_out_features=" << p.v_out_features
                    << ", has_bias=" << (p.has_bias ? "true" : "false") << '}';
             },
+            [&](const GateUpLinearParams& p) {
+                os << "GateUpLinearParams{gate_out_features=" << p.gate_out_features
+                   << ", up_out_features=" << p.up_out_features
+                   << ", has_bias=" << (p.has_bias ? "true" : "false") << '}';
+            },
             [&](const AddRmsNormParams& p) {
                 os << "AddRmsNormParams{eps=" << p.eps << '}';
             },

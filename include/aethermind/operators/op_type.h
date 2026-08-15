@@ -19,7 +19,7 @@ namespace aethermind {
 /// for constructing execution steps.
 ///
 /// `kUnknown` is reserved as an invalid sentinel.
-enum class OpType : uint16_t {
+enum class OpType : uint8_t {
     kUnknown = 0,
     kEmbedding,
     kRmsNorm,
@@ -39,12 +39,13 @@ enum class OpType : uint16_t {
     kReshape,
     kPermute,
     kReorder,
+    kGateUpLinear,
 };
 
 /// @brief Returns a human-readable name for an operator type.
 ///
 /// Returns "Unknown" for `kUnknown` and for any out-of-range value
-/// (the function is safe to call with arbitrary uint16_t casts).
+/// (the function is safe to call with arbitrary uint8_t casts).
 ///
 /// @param op_type Operator type to format.
 /// @return Null-terminated static string naming the operator type.
@@ -55,7 +56,7 @@ AM_NODISCARD const char* ToString(OpType op_type) noexcept;
 template<>
 struct std::hash<aethermind::OpType> {
     size_t operator()(aethermind::OpType op) const noexcept {
-        return std::hash<uint16_t>{}(static_cast<uint16_t>(op));
+        return std::hash<uint8_t>{}(static_cast<uint8_t>(op));
     }
 };
 

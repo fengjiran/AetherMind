@@ -11,6 +11,7 @@ TEST(Operators_OpType, AllKnownTypesHaveStringRepresentation) {
     EXPECT_STREQ(ToString(OpType::kRmsNorm), "RmsNorm");
     EXPECT_STREQ(ToString(OpType::kLinear), "Linear");
     EXPECT_STREQ(ToString(OpType::kQkvLinear), "QkvLinear");
+    EXPECT_STREQ(ToString(OpType::kGateUpLinear), "GateUpLinear");
     EXPECT_STREQ(ToString(OpType::kMatMul), "MatMul");
     EXPECT_STREQ(ToString(OpType::kRoPE), "RoPE");
     EXPECT_STREQ(ToString(OpType::kAttention), "Attention");

@@ -373,6 +373,7 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
             [](const PermuteParams&) noexcept { return "Permute"; },
             [](const ReorderParams&) noexcept { return "Reorder"; },
             [](const QkvLinearParams&) noexcept { return "QkvLinear"; },
+            [](const GateUpLinearParams&) noexcept { return "GateUpLinear"; },
             [](const AddRmsNormParams&) noexcept { return "AddRmsNorm"; },
     };
     return std::visit(visitor, params);
@@ -426,6 +427,11 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                 os << "QkvLinear q_out_features=" << p.q_out_features
                    << " k_out_features=" << p.k_out_features
                    << " v_out_features=" << p.v_out_features
+                   << " has_bias=" << (p.has_bias ? "true" : "false");
+            },
+            [&](const GateUpLinearParams& p) {
+                os << "GateUpLinear gate_out_features=" << p.gate_out_features
+                   << " up_out_features=" << p.up_out_features
                    << " has_bias=" << (p.has_bias ? "true" : "false");
             },
             [&](const AddRmsNormParams& p) {
@@ -594,6 +600,19 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
                                         .k_out_features = *k_out_features,
                                         .v_out_features = *v_out_features,
                                         .has_bias = *has_bias}};
+    }
+
+    if (kind == "GateUpLinear") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 3));
+        StatusOr<int64_t> gate_out_features = ParseInt64(fields, "gate_out_features");
+        AM_RETURN_IF_ERROR(gate_out_features.status());
+        StatusOr<int64_t> up_out_features = ParseInt64(fields, "up_out_features");
+        AM_RETURN_IF_ERROR(up_out_features.status());
+        StatusOr<bool> has_bias = ParseBool(fields, "has_bias");
+        AM_RETURN_IF_ERROR(has_bias.status());
+        return OpParams{GateUpLinearParams{.gate_out_features = *gate_out_features,
+                                           .up_out_features = *up_out_features,
+                                           .has_bias = *has_bias}};
     }
 
     if (kind == "AddRmsNorm") {

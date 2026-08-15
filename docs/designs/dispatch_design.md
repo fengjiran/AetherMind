@@ -72,7 +72,7 @@ Executor direct call
 `OpType` 用于表达算子语义。
 
 ```cpp
-enum class OpType : uint16_t {
+enum class OpType : uint8_t {
     kEmbedding,
     kLinear,
     kMatMul,

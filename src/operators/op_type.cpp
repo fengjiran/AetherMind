@@ -4,7 +4,7 @@ namespace aethermind {
 
 const char* ToString(OpType op_type) noexcept {
     // The default case handles kUnknown and any out-of-range values
-    // produced by static_cast<OpType>(arbitrary_uint16_t).
+    // produced by static_cast<OpType>(arbitrary_uint8_t).
     switch (op_type) {
         case OpType::kUnknown:
             return "Unknown";
@@ -16,6 +16,8 @@ const char* ToString(OpType op_type) noexcept {
             return "Linear";
         case OpType::kQkvLinear:
             return "QkvLinear";
+        case OpType::kGateUpLinear:
+            return "GateUpLinear";
         case OpType::kMatMul:
             return "MatMul";
         case OpType::kRoPE:

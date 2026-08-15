@@ -11,11 +11,12 @@ using namespace aethermind;
 TEST(OperatorSchema, ContainsAllM1Ops) {
     const auto schemas = GetOperatorSchemas();
 
-    ASSERT_EQ(schemas.size(), 18U);
+    ASSERT_EQ(schemas.size(), 19U);
     EXPECT_TRUE(GetOperatorSchema(OpType::kEmbedding).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kRmsNorm).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kLinear).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kQkvLinear).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kGateUpLinear).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kRoPE).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kMatMul).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kSoftmax).ok());
@@ -92,6 +93,22 @@ TEST(OperatorSchema, QkvLinearSchemaUsesPackedWeightInput) {
     EXPECT_EQ(schema->output_ports[0].name, "q");
     EXPECT_EQ(schema->output_ports[1].name, "k");
     EXPECT_EQ(schema->output_ports[2].name, "v");
+    EXPECT_TRUE(IsPureOperator(*schema));
+    EXPECT_FALSE(IsCompileTimeEvaluable(*schema));
+}
+
+TEST(OperatorSchema, GateUpLinearSchemaUsesOrderedPackedWeightAndOutputs) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kGateUpLinear);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    ASSERT_EQ(schema->input_ports.size(), 2U);
+    EXPECT_EQ(schema->input_ports[0].name, "input");
+    EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation);
+    EXPECT_EQ(schema->input_ports[1].name, "gate_up_weight");
+    EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kWeight);
+    ASSERT_EQ(schema->output_ports.size(), 2U);
+    EXPECT_EQ(schema->output_ports[0].name, "gate");
+    EXPECT_EQ(schema->output_ports[1].name, "up");
     EXPECT_TRUE(IsPureOperator(*schema));
     EXPECT_FALSE(IsCompileTimeEvaluable(*schema));
 }
@@ -225,6 +242,7 @@ TEST(OperatorSchema, RuntimeOnlyPureOpsAreNotCompileTimeEvaluable) {
             OpType::kRmsNorm,
             OpType::kLinear,
             OpType::kQkvLinear,
+            OpType::kGateUpLinear,
             OpType::kRoPE,
             OpType::kMatMul,
             OpType::kSoftmax,

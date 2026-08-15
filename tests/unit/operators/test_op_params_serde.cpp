@@ -63,6 +63,9 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
                             .k_out_features = 4,
                             .v_out_features = 4,
                             .has_bias = false},
+            GateUpLinearParams{.gate_out_features = 4096,
+                               .up_out_features = 4096,
+                               .has_bias = false},
             AddRmsNormParams{.eps = 1.0e-6F},
     };
 
@@ -193,6 +196,19 @@ TEST(OpParamsSerde, ReshapeRejectsMalformedShapes) {
 TEST(OpParamsSerde, QkvLinearKindName) {
     EXPECT_STREQ(OpParamsKindName(OpParams{QkvLinearParams{}}), "QkvLinear");
     EXPECT_STREQ(OpParamsKindName(OpParams{AddRmsNormParams{}}), "AddRmsNorm");
+}
+
+TEST(OpParamsSerde, GateUpLinearRoundTripsCanonicalForm) {
+    const OpParams params{GateUpLinearParams{.gate_out_features = 4096,
+                                             .up_out_features = 2048,
+                                             .has_bias = true}};
+    const std::string serialized = SerializeToString(params);
+
+    EXPECT_EQ(serialized,
+              "GateUpLinear gate_out_features=4096 up_out_features=2048 has_bias=true");
+    const StatusOr<OpParams> parsed = ParseOpParams(serialized);
+    ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+    EXPECT_EQ(SerializeToString(*parsed), serialized);
 }
 
 TEST(OpParamsSerde, QkvLinearRoundTripsCanonicalForm) {

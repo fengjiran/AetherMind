@@ -349,10 +349,14 @@ TEST(GateUpLinearFusionPass, HonorsFlagRunsAtO2AndRemainsIdempotentAfterDce) {
     ASSERT_TRUE(swiglu.ok());
     graph.MarkOutput(*swiglu);
 
-    const StatusOr<ModelGraph> default_result = OptimizeModelGraph(graph);
-    ASSERT_TRUE(default_result.ok()) << default_result.status().ToString();
-    EXPECT_TRUE(default_result->FindNodesByOpType(OpType::kGateUpLinear).empty());
-    EXPECT_EQ(default_result->FindNodesByOpType(OpType::kLinear).size(), 2U);
+    // The flag gates the pass at runtime: disabled context leaves the
+    // gate/up Linear pair unfused even at O2.
+    PassContext disabled_context{.enable_gate_up_fusion = false};
+    const StatusOr<ModelGraph> disabled_result =
+            OptimizeModelGraph(graph, disabled_context);
+    ASSERT_TRUE(disabled_result.ok()) << disabled_result.status().ToString();
+    EXPECT_TRUE(disabled_result->FindNodesByOpType(OpType::kGateUpLinear).empty());
+    EXPECT_EQ(disabled_result->FindNodesByOpType(OpType::kLinear).size(), 2U);
 
     const StatusOr<ModelGraph> fused = RunGateUpFusion(graph, true);
     ASSERT_TRUE(fused.ok()) << fused.status().ToString();
@@ -380,8 +384,8 @@ TEST(GateUpLinearFusionPass, HonorsFlagRunsAtO2AndRemainsIdempotentAfterDce) {
     ASSERT_TRUE(rerun.ok()) << rerun.status().ToString();
     EXPECT_EQ(rerun->FindNodesByOpType(OpType::kGateUpLinear).size(), 1U);
 
-    PassContext enabled_context{.enable_gate_up_fusion = true};
-    const StatusOr<ModelGraph> o2_result = OptimizeModelGraph(graph, enabled_context);
+    // The default O2 pipeline fuses gate/up (flag defaults to true).
+    const StatusOr<ModelGraph> o2_result = OptimizeModelGraph(graph);
     ASSERT_TRUE(o2_result.ok()) << o2_result.status().ToString();
     EXPECT_EQ(o2_result->FindNodesByOpType(OpType::kGateUpLinear).size(), 1U);
 }

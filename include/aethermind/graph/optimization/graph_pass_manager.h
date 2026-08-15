@@ -39,8 +39,7 @@ struct PassContext {
     uint32_t checkpoint_every = 0;
 
     bool enable_qkv_fusion = true;
-    /// Disabled until a backend supplies GateUpLinear kernel support.
-    bool enable_gate_up_fusion = false;
+    bool enable_gate_up_fusion = true;
     bool enable_swiglu_fusion = true;
     bool enable_dce = true;
     bool enable_constant_folding = true;

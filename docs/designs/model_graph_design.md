@@ -1262,7 +1262,7 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 兼容策略：`SetCheckpointEvery()` 保留为便捷 API，内部写入 `ctx_.checkpoint_every`；所有错误仍通过 `Status` 传播，不能改成 `bool`。
 
-**Fusion flags 使用约定**：`enable_qkv_fusion` / `enable_swiglu_fusion` / `enable_fused_add_rms_norm` 默认全 `true`（激进优化）。每个 fusion pass 在 `Run()` 入口自行检查对应 flag，若禁用则直接返回 `Status::Ok()` 跳过。约定模式：`if (!ctx.enable_qkv_fusion) { return Status::Ok(); }`。`opt_level` 用于控制 pass 是否注册到 pipeline（由 `GraphPassManager` 或上层决定），flag 用于控制已注册 pass 的运行时行为。
+**Fusion flags 使用约定**：`enable_qkv_fusion` / `enable_gate_up_fusion` / `enable_swiglu_fusion` / `enable_fused_add_rms_norm` 默认全 `true`（激进优化）。每个 fusion pass 在 `Run()` 入口自行检查对应 flag，若禁用则直接返回 `Status::Ok()` 跳过。约定模式：`if (!ctx.enable_qkv_fusion) { return Status::Ok(); }`。`opt_level` 用于控制 pass 是否注册到 pipeline（由 `GraphPassManager` 或上层决定），flag 用于控制已注册 pass 的运行时行为。
 
 ### 16.4 当前优化 Pass Pipeline
 
@@ -1280,7 +1280,7 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 默认优化级别为 O2（`PassContext::opt_level` 默认值为 2）。O3 及更大的级别（如 99）使用与 O2 相同的 pipeline。
 
-**Flag 与注册分离规则**：Pass 注册完全由 `opt_level` 决定，feature flags（`enable_constant_folding`、`enable_qkv_fusion`、`enable_swiglu_fusion`、`enable_fused_add_rms_norm`、`enable_dce`）在 pipeline 构建时不参与判断。Flag 通过 `PassContext` 传入每个 pass 的 `Run()` 方法，由 pass 内部自行检查是否跳过执行。这保证了 pipeline 的可观测性和可预测性；禁用某 flag 时该 pass 仍在管道中，但行为上被视为跳过。
+**Flag 与注册分离规则**：Pass 注册完全由 `opt_level` 决定，feature flags（`enable_constant_folding`、`enable_qkv_fusion`、`enable_gate_up_fusion`、`enable_swiglu_fusion`、`enable_fused_add_rms_norm`、`enable_dce`）在 pipeline 构建时不参与判断。Flag 通过 `PassContext` 传入每个 pass 的 `Run()` 方法，由 pass 内部自行检查是否跳过执行。这保证了 pipeline 的可观测性和可预测性；禁用某 flag 时该 pass 仍在管道中，但行为上被视为跳过。
 
 #### 顺序约束
 

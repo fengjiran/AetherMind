@@ -111,6 +111,7 @@ std::optional<ParameterSlot> ExpectedWeightSlotForOp(OpType op_type) noexcept {
             return ParameterSlot::kScale;
         case OpType::kLinear:
         case OpType::kQkvLinear:
+        case OpType::kGateUpLinear:
             return ParameterSlot::kKernel;
         default:
             return std::nullopt;
@@ -201,6 +202,12 @@ Status ValidateWeightBindingForOp(OpType op_type, const WeightBinding& binding) 
             if (!std::holds_alternative<QkvWeightBinding>(binding.spec)) {
                 return Status::InvalidArgument(
                         "QkvLinear requires a QkvWeightBinding");
+            }
+            return Status::Ok();
+        case OpType::kGateUpLinear:
+            if (!std::holds_alternative<GateUpWeightBinding>(binding.spec)) {
+                return Status::InvalidArgument(
+                        "GateUpLinear requires a GateUpWeightBinding");
             }
             return Status::Ok();
         default:

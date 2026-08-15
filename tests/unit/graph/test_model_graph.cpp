@@ -950,6 +950,37 @@ TEST(ModelGraph, QkvLinearAcceptsLayerScopedQkvWeightBinding) {
     EXPECT_TRUE(graph.Validate().ok());
 }
 
+TEST(ModelGraph, GateUpLinearRequiresLayerScopedGateUpWeightBinding) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            ActivationSpec(), ConstantBinding{}, "input");
+    const GraphValueId direct_weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 8}),
+            MakeTransformerWeightBinding(0U, TransformerWeightRole::kMlpGate));
+
+    const auto rejected = TryAddNode(
+            graph,
+            OpType::kGateUpLinear,
+            0U,
+            {input, direct_weight},
+            {{.payload = ActivationValue{}}, {.payload = ActivationValue{}}},
+            GateUpLinearParams{.gate_out_features = 8, .up_out_features = 8});
+    ASSERT_FALSE(rejected.ok());
+    EXPECT_NE(rejected.status().message().find("GateUpWeightBinding"), std::string::npos);
+
+    const GraphValueId fused_weight = graph.AddWeight(
+            Spec(DataType::Float32(), {16, 8}), MakeGateUpWeightBinding(0U));
+    const auto accepted = TryAddNode(
+            graph,
+            OpType::kGateUpLinear,
+            0U,
+            {input, fused_weight},
+            {{.payload = ActivationValue{}}, {.payload = ActivationValue{}}},
+            GateUpLinearParams{.gate_out_features = 8, .up_out_features = 8});
+    ASSERT_TRUE(accepted.ok()) << accepted.status().ToString();
+    EXPECT_TRUE(graph.Validate().ok());
+}
+
 TEST(ModelGraph, QkvLinearRejectsWeightLayerMismatchingNodeAtAddNode) {
     ModelGraph graph;
     const GraphValueId input = graph.AddConstant(

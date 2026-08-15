@@ -32,13 +32,15 @@ namespace aethermind {
 /// in model_graph_design_v2.md §10.
 struct PassContext {
     /// @brief Optimization level. 0 = no passes, 1 = ConstantFolding→DCE,
-    ///        2+ (default) = ConstantFolding→QkvLinearFusion→SiluMulFusion→
+    ///        2+ (default) = ConstantFolding→QkvLinearFusion→GateUpLinearFusion→SiluMulFusion→
     ///        AddRmsNormFusion→DCE.
     uint32_t opt_level = 2;
     /// @brief Materialize a graph snapshot every N passes (0 = never).
     uint32_t checkpoint_every = 0;
 
     bool enable_qkv_fusion = true;
+    /// Disabled until a backend supplies GateUpLinear kernel support.
+    bool enable_gate_up_fusion = false;
     bool enable_swiglu_fusion = true;
     bool enable_dce = true;
     bool enable_constant_folding = true;

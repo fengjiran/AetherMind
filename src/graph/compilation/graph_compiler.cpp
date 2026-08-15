@@ -3,6 +3,7 @@
 #include "aethermind/graph/optimization/add_rmsnorm_fusion_pass.h"
 #include "aethermind/graph/optimization/constant_folding_pass.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
+#include "aethermind/graph/optimization/gate_up_linear_fusion_pass.h"
 #include "aethermind/graph/optimization/qkv_linear_fusion_pass.h"
 #include "aethermind/graph/optimization/silu_mul_fusion_pass.h"
 
@@ -25,6 +26,7 @@ GraphPassManager BuildDefaultOptPipeline(PassContext ctx) {
         default:
             pipeline.Add(std::make_unique<ConstantFoldingPass>());
             pipeline.Add(std::make_unique<QkvLinearFusionPass>());
+            pipeline.Add(std::make_unique<GateUpLinearFusionPass>());
             pipeline.Add(std::make_unique<SiluMulFusionPass>());
             pipeline.Add(std::make_unique<AddRmsNormFusionPass>());
             pipeline.Add(std::make_unique<DeadCodeEliminationPass>());

@@ -13,7 +13,8 @@ namespace aethermind {
 
 /// @brief Configuration for the full graph compilation pipeline.
 ///
-/// @note Defaults: optimization at O2 (ConstantFolding → SiluMulFusion → DCE),
+/// @note Defaults: optimization at O2 (ConstantFolding → QkvLinearFusion →
+/// GateUpLinearFusion → SiluMulFusion → AddRmsNormFusion → DCE),
 /// lowering at CPU/scalar/plain/both.
 struct GraphCompileConfig {
     PassContext optimization{};
@@ -35,7 +36,8 @@ struct CompiledModelGraph {
 /// Pass selection is deterministic and driven solely by opt_level:
 ///   O0 — no passes
 ///   O1 — ConstantFoldingPass → DeadCodeEliminationPass
-///   O2+ — ConstantFoldingPass → SiluMulFusionPass → DeadCodeEliminationPass
+///   O2+ — ConstantFoldingPass → QkvLinearFusionPass → GateUpLinearFusionPass
+///         → SiluMulFusionPass → AddRmsNormFusionPass → DeadCodeEliminationPass
 ///
 /// @param graph Source semantic graph. Never mutated.
 /// @param context Optimization context. Feature flags, checkpoint_every, and

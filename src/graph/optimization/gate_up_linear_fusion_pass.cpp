@@ -78,8 +78,9 @@ bool HasConsistentLinearMetadata(const GraphNodeView& node,
     }
 
     const std::array<TensorSpec, 2> inputs{input.spec, weight.spec};
-    const StatusOr<InferenceResult> inferred = InferOperator(
-            OpType::kLinear, node.op_params, std::span<const TensorSpec>{inputs});
+    const auto inferred = InferOperator(
+            OpType::kLinear, node.op_params,
+            std::span<const TensorSpec>{inputs});
     return inferred.ok() && inferred->outputs.size() == 1U &&
            inferred->outputs[0] == output.spec;
 }
@@ -118,11 +119,11 @@ StatusOr<std::optional<LinearProjectionCandidate>> FindLinearProjectionCandidate
         return std::optional<LinearProjectionCandidate>{};
     }
 
-    const auto input_desc = session.GetValueOutputMetadata(input);
+    auto input_desc = session.GetValueOutputMetadata(input);
     AM_RETURN_IF_ERROR(input_desc.status());
-    const auto weight_desc = session.GetValueOutputMetadata(weight);
+    auto weight_desc = session.GetValueOutputMetadata(weight);
     AM_RETURN_IF_ERROR(weight_desc.status());
-    const auto output_desc = session.GetValueOutputMetadata(output);
+    auto output_desc = session.GetValueOutputMetadata(output);
     AM_RETURN_IF_ERROR(output_desc.status());
 
     if (!std::holds_alternative<ActivationValue>(input_desc->payload)) {
@@ -156,8 +157,8 @@ StatusOr<std::optional<LinearProjectionCandidate>> FindLinearProjectionCandidate
             .output = output,
             .decoder_layer_index = *node->decoder_layer_index,
             .role = *role,
-            .input_spec = input_desc->spec,
-            .weight_spec = weight_desc->spec,
+            .input_spec = std::move(input_desc->spec),
+            .weight_spec = std::move(weight_desc->spec),
             .output_desc = std::move(*output_desc),
             .weight_quantization = weight_desc->quantization,
             .output_features = output_features.GetStaticValue(),

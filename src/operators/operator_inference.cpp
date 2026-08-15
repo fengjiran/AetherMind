@@ -1,6 +1,5 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/shape_inference/broadcast.h"
 
 namespace aethermind {
 
@@ -22,6 +21,8 @@ StatusOr<InferenceResult> InferOperator(OpType op_type,
             return detail::InferLinear(params, inputs);
         case OpType::kQkvLinear:
             return detail::InferQkvLinear(params, inputs);
+        case OpType::kGateUpLinear:
+            return detail::InferGateUpLinear(params, inputs);
         case OpType::kRoPE:
             return detail::InferRoPE(params, inputs);
         case OpType::kMatMul:

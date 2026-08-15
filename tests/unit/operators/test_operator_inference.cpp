@@ -21,6 +21,7 @@ TEST(OperatorSemanticsValidate, WrongVariantPrecedesInputValidationForEveryOp) {
             {OpType::kRmsNorm, AddParams{}, "RmsNorm node requires RmsNormParams"},
             {OpType::kLinear, AddParams{}, "Linear node requires LinearParams"},
             {OpType::kQkvLinear, AddParams{}, "QkvLinear node requires QkvLinearParams"},
+            {OpType::kGateUpLinear, AddParams{}, "GateUpLinear node requires GateUpLinearParams"},
             {OpType::kRoPE, AddParams{}, "RoPE node requires RoPEParams"},
             {OpType::kMatMul, AddParams{}, "MatMul node requires MatMulParams"},
             {OpType::kSoftmax, AddParams{}, "Softmax node requires SoftmaxParams"},

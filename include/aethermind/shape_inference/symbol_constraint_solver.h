@@ -1,10 +1,10 @@
 #ifndef AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H
 #define AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H
 
+#include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_symbol.h"
-#include "aethermind/base/macros.h"
 
 #include <cstdint>
 #include <optional>
@@ -32,7 +32,7 @@ public:
     /// @param lhs First symbol.
     /// @param rhs Second symbol.
     /// @return OkStatus on success; kInvalidArgument on static conflict.
-    AM_NODISCARD Status AddEqual(ShapeSymbol lhs, ShapeSymbol rhs);
+    Status AddEqual(ShapeSymbol lhs, ShapeSymbol rhs);
 
     /// @brief Binds a symbolic dimension to a known static value.
     ///
@@ -41,7 +41,7 @@ public:
     /// @param symbol       The symbolic dimension to bind.
     /// @param static_value The non-negative static value to bind.
     /// @return OkStatus on success; kInvalidArgument on conflict.
-    AM_NODISCARD Status AddEqual(ShapeSymbol symbol, int64_t static_value);
+    Status AddEqual(ShapeSymbol symbol, int64_t static_value);
 
     /// @brief Evaluates whether two symbols are provably equal.
     ///
@@ -82,7 +82,7 @@ private:
     AM_NODISCARD std::optional<int64_t> StaticBindingForRoot(int64_t root) const;
 
     // Binds a root to a static value, rejecting conflicts.
-    AM_NODISCARD Status BindRoot(int64_t root, int64_t static_value);
+    Status BindRoot(int64_t root, int64_t static_value);
 
     // Maps symbol value to dense vector index: -2 → 0, -3 → 1, ...
     // Inverse of ShapeSymbol::Create() which generates -2, -3, ...

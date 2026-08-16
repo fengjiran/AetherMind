@@ -5,12 +5,14 @@
 namespace aethermind {
 namespace {
 
-AM_NODISCARD Status StaticConflict(int64_t lhs, int64_t rhs) {
-    return Status::InvalidArgument("Symbol constraint static dimension conflict: " +
-                                   std::to_string(lhs) + " vs " + std::to_string(rhs));
+Status StaticConflict(int64_t lhs, int64_t rhs) {
+    return Status::InvalidArgument(
+            "Symbol constraint static dimension conflict: " +
+            std::to_string(lhs) + " vs " + std::to_string(rhs));
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult CompareStaticValues(int64_t lhs, int64_t rhs) noexcept {
+AM_NODISCARD ShapeConstraintEvaluationResult CompareStaticValues(
+        int64_t lhs, int64_t rhs) noexcept {
     return lhs == rhs ? ShapeConstraintEvaluationResult::kSatisfied
                       : ShapeConstraintEvaluationResult::kViolated;
 }
@@ -77,7 +79,8 @@ Status SymbolConstraintSolver::AddEqual(ShapeSymbol lhs, ShapeSymbol rhs) {
 
 Status SymbolConstraintSolver::AddEqual(ShapeSymbol symbol, int64_t static_value) {
     if (static_value < 0) {
-        return Status::InvalidArgument("Symbol constraint static value must be non-negative");
+        return Status::InvalidArgument(
+                "Symbol constraint static value must be non-negative");
     }
 
     if (symbol.IsStatic()) {
@@ -95,8 +98,9 @@ Status SymbolConstraintSolver::AddEqual(ShapeSymbol symbol, int64_t static_value
     return BindRoot(FindRoot(symbol.value()), static_value);
 }
 
-ShapeConstraintEvaluationResult SymbolConstraintSolver::EvaluateEqual(ShapeSymbol lhs,
-                                                                      ShapeSymbol rhs) const {
+ShapeConstraintEvaluationResult SymbolConstraintSolver::EvaluateEqual(
+        ShapeSymbol lhs,
+        ShapeSymbol rhs) const {
     if (lhs.IsStatic() && rhs.IsStatic()) {
         return CompareStaticValues(lhs.GetStaticValue(), rhs.GetStaticValue());
     }

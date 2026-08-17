@@ -138,13 +138,13 @@ Phase 1 边界（本文档）
 **架构执行准则**：
 
 - **前端语义分析**：算子输入验证、dtype/rank 校验、输出 shape 推导由 per-op 类型化自由函数 `Infer*`（位于 `src/operators/*_op.cpp`，如 `InferRoPE`、`InferSiluMul`、`InferRmsNorm`）统一完成，在图构建/lowering 阶段对每个节点只跑一次，产出 output_specs + deferred ShapeConstraints 写入 ExecutionPlanNodeSpec.runtime_checks，执行期不再重复推理。
-- **图编译管道**：`ModelGraph`（位于 `include/aethermind/graph/graph.h`，不含任何 HF 类型）构建后经过 `GraphRewriteSession`（优化、融合）和 `CompileModelGraph`（编译、降级至 `LoweredGraph`，含 steps/step_bindings/state_aliases），最终由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 在计划构建期执行 `ResolveStateAliases` + kernel resolve（通过 `KernelRegistry` 全局单例 + `AM_REGISTER_KERNEL` 静态注册），执行期仅消费 `ResolvedKernel` 函数指针，无运行时 dispatch 开销。
+- **图编译管道**：`ModelGraph`（位于 `include/aethermind/graph/graph.h`，不含任何 HF 类型）构建后经过 `OptimizeModelGraph`（优化、融合，`include/aethermind/graph/optimization/optimize_model_graph.h`）与 `LowerModelGraph`（降级至 `LoweredGraph`，含 steps/step_bindings/state_aliases，`include/aethermind/graph/lowering/graph_lowering.h`）两个显式阶段，最终由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 在计划构建期执行 `ResolveStateAliases` + kernel resolve（通过 `KernelRegistry` 全局单例 + `AM_REGISTER_KERNEL` 静态注册），执行期仅消费 `ResolvedKernel` 函数指针，无运行时 dispatch 开销。
 - **核心计算模型**：Phase 1 以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个阶段。
 - **核心组件**：Phase 1 架构由 `Runtime`（生命周期与资源管理）、`Executor`（同步执行流控，消费已 resolve 的 `ExecutionPlan`）与 `KVCacheManager`（静态 KV 内存池管理）构成。
 - **模块所有权（源码目录-职责冻结）**：
-  - **`graph/`（顶层）**：通用 Graph IR、GraphOpBuilder、优化 passes、lowering、CompiledModelGraph、诊断 dump — 设备/ISA 独立，不允许包含 Backend/Kernel/Workspace。
+  - **`graph/`（顶层）**：通用 Graph IR、GraphOpBuilder、优化 passes、lowering（`OptimizeModelGraph`/`LowerModelGraph`，产物为 `LoweredGraph`）、诊断 dump — 设备/ISA 独立，不允许包含 Backend/Kernel/Workspace。
   - **`operators/`（顶层）**：OpType、OperatorSchema、OpParams（typed variant）、`Infer*` 自由函数、OpParams serde — 语义层，不允许包含执行/图容器细节。
-  - **`execution/`（顶层）**：ExecutionPlan、ExecutionPlanNodeSpec、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 不依赖 graph compilation；唯一 adapter edge 为 `execution_plan_builder.cpp` 内部 include `graph/compilation/graph_lowering.h`。
+  - **`execution/`（顶层）**：ExecutionPlan、ExecutionPlanNodeSpec、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 不依赖 graph compilation；唯一 adapter edge 为 `execution_plan_builder.cpp` 内部 include `graph/lowering/graph_lowering.h`。
   - **`model/`**：HF 加载/校验、ModelInstance、WeightPrepackPlanner、**ModelGraphBuilder**（前端→语义图的唯一转换权威；HF-only RoPE scaling 在 `BuildLlamaDense` 路径显式拒绝，仅 kNone/kLinear 映射到 `RoPEScalingType`）。
   - 构建目标保持单一 `AetherMind` shared（`src/**` 由 GLOB_RECURSE 收集），无 graph/operators 专用 target。
 - 无请求调度器：Phase 1 不引入 `Request Scheduler`，不承担请求排队、批处理、连续批处理或多会话仲裁职责。

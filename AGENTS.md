@@ -28,9 +28,9 @@
 
 | 模块 | Public header 根目录 | 实现根目录 | 职责与不可越界规则 |
 | --- | --- | --- | --- |
-| **graph** | `include/aethermind/graph/` | `src/graph/` | 通用 Graph IR、nodes/values/specs、GraphOpBuilder、优化 passes（GraphRewriteSession/ConstantFolding/DCE/SiluMulFusion/ConstEvaluator/GraphPassManager）、编译 lowering（LowerModelGraph → LoweredGraph）、CompiledModelGraph、诊断 dump。**后端/设备/ISA 独立**：不得出现 Backend/Kernel/Workspace/DeviceType 执行层细节；StateAlias 仅以 must-alias 约束表达。 |
+| **graph** | `include/aethermind/graph/` | `src/graph/` | 通用 Graph IR、nodes/values/specs、GraphOpBuilder、优化 passes（GraphRewriteSession/ConstantFolding/DCE/SiluMulFusion/ConstEvaluator/GraphPassManager）、显式优化入口 `OptimizeModelGraph`、lowering（`LowerModelGraph` → `LoweredGraph`）、诊断 dump。**后端/设备/ISA 独立**：不得出现 Backend/Kernel/Workspace/DeviceType 执行层细节；StateAlias 仅以 must-alias 约束表达。 |
 | **operators** | `include/aethermind/operators/` | `src/operators/` | 算子语义契约层：OpType 枚举、OperatorSchema（端口名顺序为语义 ABI）、OpParams（typed variant，禁止 std::any）、`Infer*` 自由函数（参数验证 + dtype 验证 + shape 推导 + deferred ShapeConstraints）、OpParams 序列化/反序列化。**不含执行层细节**：不得引用 ModelGraph/LoweredGraph/Backend/Kernel。 |
-| **execution** | `include/aethermind/execution/` | `src/execution/` | 执行数据契约层：ExecutionPlan、ExecutionPlanNodeSpec（含 act_dtype、output_specs、runtime_checks）、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。**Public headers 不得依赖 graph compilation**；唯一 adapter edge 是 `execution_plan_builder.cpp` 内部 include `graph/compilation/graph_lowering.h`。ExecutionPlanBuilder 的主要入口为 `Build(RuntimeContext, LoweredGraph)`，包含 ResolveStateAliases。 |
+| **execution** | `include/aethermind/execution/` | `src/execution/` | 执行数据契约层：ExecutionPlan、ExecutionPlanNodeSpec（含 act_dtype、output_specs、runtime_checks）、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。**Public headers 不得依赖 graph lowering**；唯一 adapter edge 是 `execution_plan_builder.cpp` 内部 include `graph/lowering/graph_lowering.h`。ExecutionPlanBuilder 的主要入口为 `Build(RuntimeContext, LoweredGraph)`，包含 ResolveStateAliases。 |
 | **model** | `include/aethermind/model/` | `src/model/` | 模型加载与前端适配：HfModelConfig/HfDirectoryReader/HfModelValidator、ResolvedModelWeights、ModelInstance / ModelInstanceBuilder、WeightPrepackPlanner、ModelLoader、**ModelGraphBuilder**（HF → semantic graph 唯一转换权威；`BuildLlamaDense` 路径显式拒绝 HF-only RoPE scaling types，none/linear 映射到 `RoPEScalingType`）。**生产 loader wiring 不越界**：ModelLoader 不直接调用 graph 编译/构建。 |
 | **shape_inference** | `include/aethermind/shape_inference/` | `src/shape_inference/` | TensorSpec、ShapeSymbol、ShapeConstraint、InferenceResult 等通用形状推导基础设施。 |
 | **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelSelector、KernelRegistry、ExecutionStep 运行时执行。不得依赖 Graph IR 或 OperatorSchema 的语义细节。 |
@@ -38,7 +38,7 @@
 **跨模块依赖规则**：
 - operators → shape_inference（+ dtypes/base 基础库）
 - graph → operators + shape_inference
-- execution → operators + shape_inference（public headers）；execution_plan_builder.cpp 内部 → graph/compilation（唯一 adapter edge）
+- execution → operators + shape_inference（public headers）；execution_plan_builder.cpp 内部 → graph/lowering（唯一 adapter edge）
 - model → graph + operators + execution + formats/hf
 - backend/kernels → operators（仅 OpParams/OpType），不得反向依赖 graph/model
 

@@ -1267,7 +1267,7 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 ### 16.4 当前优化 Pass Pipeline
 
-当前仓库已有 pass framework 和 rewrite session，production optimization pass 已通过 `OptimizeModelGraph` 和 `CompileModelGraph` 集成到默认 pipeline 中。各 pass 当前状态标注如下：`[已实现]` / `[未实现]` / `[规划中]`。
+当前仓库已有 pass framework 和 rewrite session，production optimization pass 已通过 `OptimizeModelGraph` 集成到默认 pipeline 中。各 pass 当前状态标注如下：`[已实现]` / `[未实现]` / `[规划中]`。
 
 #### 默认 Pipeline：优化级别与 Pass 选择
 
@@ -1337,12 +1337,12 @@ ConstantFolding 必须优先于 SiluMulFusion，因为：
 
 ### 16.6 Graph Compiler API
 
-当前仓库提供了两个级别的显式图编译入口，以及对应的配置和产物类型。
+当前仓库提供两个显式的图编译阶段入口，由调用方直接串联（不再有组合器函数或聚合配置类型）：
 
 #### `OptimizeModelGraph`
 
 ```cpp
-// include/aethermind/graph/compilation/graph_compiler.h
+// include/aethermind/graph/optimization/optimize_model_graph.h
 AM_NODISCARD StatusOr<ModelGraph> OptimizeModelGraph(
         const ModelGraph& graph,
         PassContext context = {});
@@ -1350,60 +1350,33 @@ AM_NODISCARD StatusOr<ModelGraph> OptimizeModelGraph(
 
 应用基于 `context.opt_level` 的确定性 pass pipeline（见 16.4 默认 pipeline 表），返回新 `ModelGraph`。源图永不修改。所有 `PassContext` 字段——feature flags、`checkpoint_every`、`const_eval_policy`——逐字转发给每个 pass。
 
-#### `GraphCompileConfig`
+#### 两阶段组合调用
 
 ```cpp
-struct GraphCompileConfig {
-    PassContext optimization{};       // 默认 O2
-    GraphLoweringConfig lowering{};  // 默认 CPU/scalar/plain/both
-};
-```
-
-组合优化和 lowering 两阶段的配置。
-
-#### `CompiledModelGraph`
-
-```cpp
-struct CompiledModelGraph {
-    ModelGraph optimized_graph{};  // 优化后的语义图
-    LoweredGraph lowered{};        // 降低后的可执行 artifact
-};
-```
-
-`optimized_graph` 必须比 `lowered` 存活更久，因为 `LoweredGraph` 中存储的 `GraphValueId` 引用（例如 standalone constant output、state alias 解析结果）指向 `ModelGraph` 的 value 表。
-
-#### `CompileModelGraph`
-
-```cpp
-AM_NODISCARD StatusOr<CompiledModelGraph> CompileModelGraph(
+// include/aethermind/graph/lowering/graph_lowering.h
+AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
         const ModelGraph& graph,
-        const GraphCompileConfig& config = {});
+        const GraphLoweringConfig& config = {});
 ```
 
-严格序列的优化+降低入口：
-
-1. `OptimizeModelGraph(graph, config.optimization)`；
-2. 若失败，立即返回错误 `Status`；
-3. `LowerModelGraph(optimized, config.lowering)`；
-4. 若失败，立即返回错误 `Status`；
-5. 将两个 artifact move 进 `CompiledModelGraph` 并返回。
-
-源图永不修改。优化失败不会退回未优化图。`GraphCompileConfig` 的默认构造使用 O2 优化和默认降低配置。
+调用方依次执行 `OptimizeModelGraph(graph, opt_ctx)` → `LowerModelGraph(optimized, lower_cfg)`，各阶段失败即返回错误 `Status`。两个阶段的配置分别由 `PassContext` 与 `GraphLoweringConfig` 独立提供（默认 O2 优化、CPU/scalar/plain/both 低化）。
 
 #### 所有权设计
 
-`CompiledModelGraph` 拥有优化图和降低后的 artifact，确保 `GraphValueId` 在编译返回后仍然有效。具体来说：
+返回的 `LoweredGraph` 自身已自包含，不依赖任何源图存活：
 
-- 常量折叠产生 inline `ConstantValue`，其 `ConstantBinding` 通过 `shared_ptr` 内联数据；
-- DCE 移除原始 producer 后，graph output 转换为直接引用折叠后的常量 value；
-- `lowered.model_outputs` 中的 `GraphValueId` 与 `optimized_graph.GetOutputs()` 中的 ID 一致；
-- standalone constant graph output 在编译返回后仍可通过 `compiled.optimized_graph.GetValue(...)` 读取内联字节。
+- 常量折叠产生 inline `ConstantValue`，`LoweredConstantBinding` 复制 `ConstantBinding`（`shared_ptr` 内联数据，共享所有权）；
+- 所有 `TensorSpec`、`ShapeConstraint`、`runtime_checks`、dtype 在 lowering 时值拷贝；
+- `lowered.model_outputs` 中的 `GraphValueId` 与调用方持有的优化图 `GetOutputs()` 中的 ID 一致（需要语义回查时，由调用方自行持有优化图）；
+- standalone constant graph output 的内联字节通过 `LoweredConstantBinding` 自含，编译返回后无需回读图。
+
+> 注：早期设计曾有 `CompiledModelGraph { optimized_graph, lowered }` 包装、`CompileModelGraph` 组合器与 `GraphCompileConfig` 聚合配置；随实现演进（执行路径不读图、数据值拷贝/共享所有权、组合逻辑仅为顺序调用），三者均已移除，收敛为两个显式阶段函数。
 
 #### 与现有 Builder / Lowering 的关系
 
 - `ModelGraphBuilder::BuildLlamaDense` 和 `LowerModelGraph` 的签名和行为不变；
-- `OptimizeModelGraph` 和 `CompileModelGraph` 是新增的显式入口，不对现有调用点产生隐式影响；
-- `optimized_graph` 和 `lowered` 的关系是 1:1 node 映射：每个优化图节点对应一个 lowering step 和一个 step binding。
+- `OptimizeModelGraph` 是显式优化入口，不对现有调用点产生隐式影响；
+- 优化图与 `LoweredGraph` 的关系是 1:1 node 映射：每个优化图节点对应一个 lowering step 和一个 step binding（优化图由调用方自行持有）。
 
 ## 17. Lowering
 

@@ -429,8 +429,8 @@ ValidateShapeConstraints(...)
                                          ▼
                               ┌──────────────────────┐
                               │  optimized ModelGraph  │
-                              │  (ID table owned by    │
-                              │   CompiledModelGraph)  │
+                              │  (caller-owned，诊断/   │
+                              │   验证场景自行持有)     │
                               └──────────┬───────────┘
                                          │
                                          ▼
@@ -446,26 +446,27 @@ ValidateShapeConstraints(...)
                               └──────────────────────┘
 ```
 
-### 6.2 规范组合 API
+### 6.2 规范组合调用
 
-`CompileModelGraph` 将优化和降低合并为一步，返回拥有完整生命周期的编译产物：
+优化与降低是两个显式阶段，由调用方直接串联（不再有组合器函数或聚合配置类型）：
 
 ```text
 ModelGraph
-  → CompileModelGraph(graph, GraphCompileConfig)
-      ├─ OptimizeModelGraph(graph, config.optimization)
-      │    └─ StatusOr<ModelGraph> optimized
-      ├─ LowerModelGraph(optimized, config.lowering)
-      │    └─ StatusOr<LoweredGraph> lowered
-      └─ CompiledModelGraph { optimized_graph, lowered }
+  → OptimizeModelGraph(graph, PassContext)      // 默认 opt_level = 2
+  │    └─ StatusOr<ModelGraph> optimized
+  → LowerModelGraph(optimized, GraphLoweringConfig)
+       └─ StatusOr<LoweredGraph> lowered（优化图 caller-owned）
 ```
 
-`GraphCompileConfig` 统一管理两个阶段的配置：
+两个阶段的配置分别由 `PassContext` 与 `GraphLoweringConfig` 独立提供（默认 O2 优化、CPU/scalar/plain/both 低化）：
 
 ```text
-GraphCompileConfig {
-    PassContext optimization{};       // 默认 O2
-    GraphLoweringConfig lowering{};  // 默认 CPU/scalar/plain/both
+PassContext {
+    opt_level = 2;               // 默认 O2
+    // + feature flags、checkpoint_every、const_eval_policy（逐字转发给每个 pass）
+}
+GraphLoweringConfig {
+    device_type / isa / weight_format / phase  // 默认 CPU/scalar/plain/both
 }
 ```
 
@@ -553,19 +554,17 @@ std::vector<ExecutionStep>
 
 当前代码库中的“图编译”已经涵盖了三个层次：
 
-### 层次 A：显式的优化+编译组合入口（已实现）
+### 层次 A：显式的优化 + 降低阶段入口（已实现）
 
 ```text
 ModelGraph
-  → CompileModelGraph(graph, GraphCompileConfig)
-      ├─ OptimizeModelGraph(graph, config.optimization)
-      │    └─ StatusOr<ModelGraph> optimized
-      ├─ LowerModelGraph(optimized, config.lowering)
-      │    └─ StatusOr<LoweredGraph> lowered
-      └─ CompiledModelGraph { optimized_graph, lowered }
+  → OptimizeModelGraph(graph, PassContext)
+  │    └─ StatusOr<ModelGraph> optimized
+  → LowerModelGraph(optimized, GraphLoweringConfig)
+       └─ StatusOr<LoweredGraph> lowered（优化图 caller-owned）
 ```
 
-`CompileModelGraph` 是 Phase 1 中从语义图到可执行 artifact 的规范入口。优化 pipeline 由 `opt_level` 确定性地选择（O0 无 pass，O1 ConstantFolding→DCE，O2+ ConstantFolding→SiluMulFusion→DCE）。
+`OptimizeModelGraph` + `LowerModelGraph` 是 Phase 1 中从语义图到可执行 artifact 的两个规范入口。优化 pipeline 由 `opt_level` 确定性地选择（O0 无 pass，O1 ConstantFolding→DCE，O2+ ConstantFolding→SiluMulFusion→DCE）。
 
 ### 层次 B：LoweredGraph 到 ExecutionPlan 的构建（已实现）
 

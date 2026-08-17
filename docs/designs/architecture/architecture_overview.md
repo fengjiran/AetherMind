@@ -26,7 +26,7 @@ flowchart TB
     subgraph L3["3. 计算图语义层<br/>图构建、优化与执行计划编译"]
         direction LR
         MGB["ModelGraphBuilder::BuildLlamaDense<br/>(已实现)"]
-        COMP["CompileModelGraph / LowerModelGraph<br/>(已实现)"]
+        COMP["OptimizeModelGraph / LowerModelGraph<br/>(已实现)"]
         EPB["ExecutionPlanBuilder<br/>(已实现: Build)"]
     end
 
@@ -134,9 +134,9 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | 维度 | 说明 |
 |------|------|
 | **责任** | 基于已解析的模型配置与权重语义构建 Llama dense 语义图；执行图优化 passes（常量折叠、SiLU-Mul 融合、死代码消除）；lowering 为算子级 node spec；构建不可变的 `ExecutionPlan` |
-| **当前模块** | `ModelGraphBuilder`、`CompileModelGraph` / `OptimizeModelGraph` / `LowerModelGraph`、`ExecutionPlanBuilder` |
+| **当前模块** | `ModelGraphBuilder`、`OptimizeModelGraph` / `LowerModelGraph`、`ExecutionPlanBuilder` |
 | **主要输入** | `ModelInstance` 中的模型配置与 resolved weights |
-| **主要中间产物** | `ModelInstance`（config + resolved weights + packed weights，由 `ModelLoader::Load` 产生，caller-owned） → `ModelGraph`（语义 DAG） → `CompiledModelGraph`（optimized graph + `LoweredGraph`） → `ExecutionPlan`（不可变 step 序列） |
+| **主要中间产物** | `ModelInstance`（config + resolved weights + packed weights，由 `ModelLoader::Load` 产生，caller-owned） → `ModelGraph`（语义 DAG） → `LoweredGraph`（编译产物即低化产物；优化图 caller-owned） → `ExecutionPlan`（不可变 step 序列） |
 | **主要输出** | `ExecutionPlan`（已 resolve kernel fn + packed weight ptr + workspace requirement） |
 | **目标缺口** | `ModelInstance` → graph building → compile pipeline → `ExecutionPlan` 的完整生产级端到端连接尚未闭环。当前节点规格主要由 lowering bridge 或测试手工构造 |
 | **禁止责任泄漏** | 不得承担执行期资源绑定（如 workspace 地址绑定是调度控制层的职责）；不得承担运行时算子调度；不得处理 Token IDs |
@@ -155,7 +155,7 @@ flowchart LR
 
     D -->|"当前已实现"| E["ModelGraph<br/>(语义 DAG)"]
 
-    subgraph CG["CompileModelGraph (当前已实现)"]
+    subgraph CG["优化 + 降低两阶段入口 (当前已实现)"]
         direction LR
         F["OptimizeModelGraph<br/>(O0/O1/O2+ passes)"] --> G["optimized ModelGraph"]
         G --> H["LowerModelGraph"]
@@ -383,7 +383,7 @@ flowchart TB
 |------|-------------|----------|
 | **模型加载** | HF 目录 → caller-owned `ModelInstance` | `ModelLoader::Load` 返回 `unique_ptr<ModelInstance>`；含 config、resolved weights、prepacked weights |
 | **图构建** | `ModelInstance` → `ModelGraph`（语义 DAG） | `ModelGraphBuilder::BuildLlamaDense` 构建 dense decoder 的算子 DAG |
-| **图编译** | `ModelGraph` → `CompiledModelGraph { optimized_graph, lowered }` | `CompileModelGraph` 统一封装 optimize + lower；其中 `LoweredGraph` 包含 `ExecutionPlanNodeSpec[]` |
+| **图编译** | `ModelGraph` → `LoweredGraph`（优化图由调用方持有） | 两阶段显式入口 `OptimizeModelGraph` → `LowerModelGraph` 直接产出 `LoweredGraph`（包含 `ExecutionPlanNodeSpec[]`） |
 | **计划构建** | `LoweredGraph` → 不可变 `ExecutionPlan` | `ExecutionPlanBuilder` 向硬件层发起 kernel resolve，绑定 packed weight 指针，冻结 workspace requirement |
 | **执行** | `ExecutionPlan` → tensor/KV 状态 | `Executor::Execute` → `LayerRunner::Run` 按步执行；每步经 workspace 绑定、shape 校验后调用算子。Token IDs 由目标 Generate 循环经 Argmax 处理后产生 |
 
@@ -395,7 +395,7 @@ flowchart TB
 |------|----------------|---------------------|----------------|
 | **API** | `c_api.h` 中的对象 refcount、错误处理与 traceback 原语 | `Session::Generate` 完整方法、`am_session_generate` C ABI 函数 | HTTP/gRPC 服务、tokenizer、异步/流式 API |
 | **模型加载** | `ModelLoader::Load`（HF 配置验证、权重加载 resolve、`ModelInstance` 创建、权重预打包） | 闭环的 ModelInstance → Generate 管线 | MoE、encoder-decoder、sliding window attention |
-| **图编译** | `ModelGraphBuilder::BuildLlamaDense`、`CompileModelGraph`（optimize + lower）、`LoweredGraph` | 生产级 ModelInstance → ExecutionPlan 自动入口（当前测试/手工构造 node spec 为主） | - |
+| **图编译** | `ModelGraphBuilder::BuildLlamaDense`、`OptimizeModelGraph` + `LowerModelGraph`、`LoweredGraph` | 生产级 ModelInstance → ExecutionPlan 自动入口（当前测试/手工构造 node spec 为主） | - |
 | **计划构建** | `ExecutionPlanBuilder::Build`（kernel resolve + packed weight bind + workspace plan） | - | - |
 | **执行引擎** | `Executor::Execute` → `LayerRunner::Run`（单一 plan 按步执行） | PrefillPath / DecodePath 状态机、Generate 编排 | Continuous batching、request scheduling |
 | **KV Cache** | `KVCacheManager`（静态预分配 Init + ReserveForSession）、`KVCacheView`（逻辑读写） | 接入 Generate 的完整 Prefill/Decode KV 读写流 | PagedAttention、动态扩容 |
@@ -434,7 +434,7 @@ flowchart TB
 |------|----------|
 | [`include/aethermind/model/model_loader.h`](../../../include/aethermind/model/model_loader.h) / [`src/model/model_loader.cpp`](../../../src/model/model_loader.cpp) | `ModelLoader::Load` |
 | [`include/aethermind/model/model_graph_builder.h`](../../../include/aethermind/model/model_graph_builder.h) / [`src/model/model_graph_builder.cpp`](../../../src/model/model_graph_builder.cpp) | `ModelGraphBuilder::BuildLlamaDense` |
-| [`include/aethermind/graph/compilation/graph_compiler.h`](../../../include/aethermind/graph/compilation/graph_compiler.h) / [`src/graph/compilation/graph_compiler.cpp`](../../../src/graph/compilation/graph_compiler.cpp) | `CompileModelGraph`, `OptimizeModelGraph` |
+| [`include/aethermind/graph/optimization/optimize_model_graph.h`](../../../include/aethermind/graph/optimization/optimize_model_graph.h) / [`src/graph/optimization/optimize_model_graph.cpp`](../../../src/graph/optimization/optimize_model_graph.cpp) | `OptimizeModelGraph` |
 | [`include/aethermind/execution/execution_plan_builder.h`](../../../include/aethermind/execution/execution_plan_builder.h) / [`src/execution/execution_plan_builder.cpp`](../../../src/execution/execution_plan_builder.cpp) | `ExecutionPlanBuilder::Build` |
 | [`include/aethermind/execution/executor.h`](../../../include/aethermind/execution/executor.h) / [`src/execution/executor.cpp`](../../../src/execution/executor.cpp) | `Executor::Execute` |
 | [`include/aethermind/execution/layer_runner.h`](../../../include/aethermind/execution/layer_runner.h) / [`src/execution/layer_runner.cpp`](../../../src/execution/layer_runner.cpp) | `LayerRunner::Run` |

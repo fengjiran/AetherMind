@@ -18,11 +18,19 @@ StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionStep> steps,
 }
 
 Status ExecutionPlan::AddStep(ExecutionStep step) {
-    if (step.op == nullptr) {
-        return Status::InvalidArgument("Execution step operator cannot be null");
+    if (step.kernel.op_type == OpType::kUnknown) {
+        return Status::InvalidArgument("Execution step kernel op_type cannot be kUnknown");
     }
-    if (step.op->GetResolvedKernel().fn == nullptr) {
-        return Status::InvalidArgument("Execution step operator resolved kernel function cannot be null");
+    if (step.kernel.fn == nullptr) {
+        return Status::InvalidArgument("Execution step kernel function cannot be null");
+    }
+    if (step.kernel.params_builder == nullptr && step.kernel.params_size != 0) {
+        return Status::InvalidArgument(
+                "Execution step kernel params_size must be zero without a params builder");
+    }
+    if (step.kernel.params_builder != nullptr &&
+        (step.kernel.params_size == 0 || step.kernel.params_size > kMaxKernelParamsSize)) {
+        return Status::InvalidArgument("Execution step kernel params_size is outside the supported range");
     }
     if (!IsValidWorkspaceAlignment(step.workspace_requirement.alignment)) {
         return Status::InvalidArgument("Execution step workspace alignment must be a non-zero power of two");

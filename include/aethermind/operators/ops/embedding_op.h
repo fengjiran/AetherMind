@@ -2,14 +2,16 @@
 #define AETHERMIND_OPERATORS_OPS_EMBEDDING_OP_H
 
 /// @file embedding_op.h
-/// @brief Embedding lookup semantics and executable operator declaration.
+/// @brief Embedding lookup semantic contract.
 
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/operators/operator.h"
 
+#include <algorithm>
 #include <array>
+#include <ranges>
 #include <string>
+#include <string_view>
 
 namespace aethermind {
 
@@ -63,32 +65,6 @@ inline std::string MakeEmbeddingUnsupportedWeightDTypeMessage(std::string_view c
     msg += " weight only supports float32, float16, and bfloat16 dtypes";
     return msg;
 }
-
-/// @brief Embedding lookup operator whose output dtype follows the weight dtype.
-class EmbeddingOp final : public Operator {
-public:
-    using Params = EmbeddingParams;
-
-    explicit EmbeddingOp(Params params) noexcept : params_(params) {}
-
-    AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kEmbedding;
-    }
-
-    Status Prepare(OperatorContext& ctx) override;
-
-    Status Run(KernelContext& ctx,
-               const RuntimeBindingContext& bindings,
-               size_t step_index) const noexcept override;
-
-    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
-        return resolved_kernel_;
-    }
-
-private:
-    Params params_{};
-    ResolvedKernel resolved_kernel_{};
-};
 
 }// namespace aethermind
 

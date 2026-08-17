@@ -22,26 +22,18 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-class ResolveCounters {
+class PrepareCounters {
 public:
-    void IncrementResolveKernelCalls() noexcept {
-        ++resolve_kernel_calls_;
-    }
-
-    void IncrementResolveKernelInfoCalls() noexcept {
-        ++resolve_kernel_info_calls_;
+    void IncrementPrepareCalls() noexcept {
+        ++prepare_calls_;
     }
 
     void IncrementKernelInvocations() noexcept {
         ++kernel_invocations_;
     }
 
-    AM_NODISCARD int resolve_kernel_calls() const noexcept {
-        return resolve_kernel_calls_;
-    }
-
-    AM_NODISCARD int resolve_kernel_info_calls() const noexcept {
-        return resolve_kernel_info_calls_;
+    AM_NODISCARD int prepare_calls() const noexcept {
+        return prepare_calls_;
     }
 
     AM_NODISCARD int kernel_invocations() const noexcept {
@@ -49,23 +41,22 @@ public:
     }
 
 private:
-    int resolve_kernel_calls_ = 0;
-    int resolve_kernel_info_calls_ = 0;
+    int prepare_calls_ = 0;
     int kernel_invocations_ = 0;
 };
 
-ResolveCounters* g_resolve_counters = nullptr;
+PrepareCounters* g_prepare_counters = nullptr;
 
 Status CountingKernel(const KernelContext&) noexcept {
-    if (g_resolve_counters != nullptr) {
-        g_resolve_counters->IncrementKernelInvocations();
+    if (g_prepare_counters != nullptr) {
+        g_prepare_counters->IncrementKernelInvocations();
     }
     return Status::Ok();
 }
 
 class CountingBackend final : public Backend {
 public:
-    explicit CountingBackend(std::shared_ptr<ResolveCounters> counters)
+    explicit CountingBackend(std::shared_ptr<PrepareCounters> counters)
         : counters_(std::move(counters)) {}
 
     DeviceType device_type() const noexcept override {
@@ -76,16 +67,11 @@ public:
         return capabilities_;
     }
 
-    KernelFunc ResolveKernel(OpType,
-                             const KernelSelector&) const noexcept override {
-        counters_->IncrementResolveKernelCalls();
-        return &CountingKernel;
-    }
-
-    StatusOr<ResolvedKernel> ResolveKernelInfo(
+    StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
-            const KernelSelector&) const noexcept override {
-        counters_->IncrementResolveKernelInfoCalls();
+            const KernelSelector&,
+            const OpParams&) const override {
+        counters_->IncrementPrepareCalls();
         return ResolvedKernel{
                 .op_type = op_type,
                 .fn = &CountingKernel,
@@ -99,13 +85,13 @@ public:
     }
 
 private:
-    std::shared_ptr<ResolveCounters> counters_;
+    std::shared_ptr<PrepareCounters> counters_;
     BackendCapabilities capabilities_{};
 };
 
 class CountingBackendFactory final : public BackendFactory {
 public:
-    explicit CountingBackendFactory(std::shared_ptr<ResolveCounters> counters)
+    explicit CountingBackendFactory(std::shared_ptr<PrepareCounters> counters)
         : counters_(std::move(counters)) {}
 
     DeviceType device_type() const noexcept override {
@@ -117,12 +103,12 @@ public:
     }
 
 private:
-    std::shared_ptr<ResolveCounters> counters_;
+    std::shared_ptr<PrepareCounters> counters_;
 };
 
-TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
-    auto counters = std::make_shared<ResolveCounters>();
-    g_resolve_counters = counters.get();
+TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
+    auto counters = std::make_shared<PrepareCounters>();
+    g_prepare_counters = counters.get();
 
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
@@ -157,11 +143,10 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
     ASSERT_TRUE(plan.ok());
-    EXPECT_EQ(counters->resolve_kernel_info_calls(), 1);
-    EXPECT_EQ(counters->resolve_kernel_calls(), 0);
+    EXPECT_EQ(counters->prepare_calls(), 1);
     EXPECT_EQ(counters->kernel_invocations(), 0);
 
-    // Create dummy tensor data for RmsNormOp::Run (CountingKernel ignores data).
+    // Create dummy tensor data; CountingKernel ignores it.
     float dummy_data[4]{};
     const std::array<int64_t, 2> shape_2d{1, 2};
     const std::array<int64_t, 2> strides_2d{2, 1};
@@ -181,10 +166,9 @@ TEST(NoHotpathResolve, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
 
     const Status status = Executor::Execute(*plan, bindings);
 
-    g_resolve_counters = nullptr;
+    g_prepare_counters = nullptr;
     ASSERT_TRUE(status.ok());
-    EXPECT_EQ(counters->resolve_kernel_info_calls(), 1);
-    EXPECT_EQ(counters->resolve_kernel_calls(), 0);
+    EXPECT_EQ(counters->prepare_calls(), 1);
     EXPECT_EQ(counters->kernel_invocations(), 1);
 }
 

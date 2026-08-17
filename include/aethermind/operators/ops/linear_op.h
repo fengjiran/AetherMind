@@ -2,14 +2,16 @@
 #define AETHERMIND_OPERATORS_OPS_LINEAR_OP_H
 
 /// @file linear_op.h
-/// @brief Linear-transformation semantics and executable operator declaration.
+/// @brief Linear-transformation semantic contract.
 
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/operators/operator.h"
 
+#include <algorithm>
 #include <array>
+#include <ranges>
 #include <string>
+#include <string_view>
 
 namespace aethermind {
 
@@ -83,42 +85,6 @@ inline std::string MakeLinearUnsupportedWeightDTypeMessage(std::string_view cont
     return msg;
 }
 
-
-/// @brief Semantic operator for `output = input @ weight.T`.
-///
-/// Weight shape convention: [out_features, in_features] (PyTorch/HF row-major).
-/// Input shape: [..., in_features] with rank at least one.
-/// Output shape: [..., out_features] (same rank as input).
-class LinearOp final : public Operator {
-public:
-    using Params = LinearParams;
-
-    explicit LinearOp(Params params) noexcept : params_(params) {}
-
-    AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kLinear;
-    }
-
-    AM_NODISCARD WorkspaceRequirement ComputeWorkspaceRequirement(
-            std::span<const TensorSpec> inputs) const noexcept override {
-        UNUSED(inputs);
-        return {};
-    }
-
-    Status Prepare(OperatorContext& ctx) override;
-
-    Status Run(KernelContext& ctx,
-               const RuntimeBindingContext& bindings,
-               size_t step_index) const noexcept override;
-
-    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
-        return resolved_kernel_;
-    }
-
-private:
-    Params params_{};
-    ResolvedKernel resolved_kernel_{};
-};
 
 }// namespace aethermind
 

@@ -461,7 +461,8 @@ TEST(AddKernel, ResolvesThroughCpuBackend) {
                 .isa = IsaLevel::kScalar,
                 .phase = ExecPhase::kBoth,
         };
-        const auto resolved = backend.ResolveKernelInfo(OpType::kAdd, selector);
+        const auto resolved = backend.PrepareKernel(
+                OpType::kAdd, selector, OpParams{AddParams{}});
         ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
         EXPECT_NE(resolved.value().fn, nullptr);
         EXPECT_STREQ(resolved.value().debug_name, expected_name);
@@ -780,7 +781,8 @@ TEST(AddKernel, ResolveAddWithUndefinedWeightDtypeReturnsNotFound) {
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
     };
-    const auto resolved = backend.ResolveKernelInfo(OpType::kAdd, selector);
+    const auto resolved = backend.PrepareKernel(
+            OpType::kAdd, selector, OpParams{AddParams{}});
     EXPECT_FALSE(resolved.ok());
     EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
 }

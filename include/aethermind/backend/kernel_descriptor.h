@@ -18,6 +18,7 @@ struct KernelDescriptor {
 
     KernelParamsBuilder params_builder = nullptr;
     size_t params_size = 0;
+    KernelMetadataBuilder metadata_builder = nullptr;
 };
 
 AM_NODISCARD inline bool IsValidKernelDescriptor(const KernelDescriptor& desc) noexcept {
@@ -51,6 +52,10 @@ AM_NODISCARD inline Status ValidateKernelDescriptor(const KernelDescriptor& desc
         if (descriptor.params_size > kMaxKernelParamsSize) {
             return Status::InvalidArgument("params_size exceeds kMaxKernelParamsSize");
         }
+    }
+
+    if (descriptor.params_builder == nullptr && descriptor.params_size != 0) {
+        return Status::InvalidArgument("params_size must be zero when params_builder is null");
     }
 
     return Status::Ok();

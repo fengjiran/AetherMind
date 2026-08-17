@@ -1,5 +1,6 @@
 #include "aethermind/execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/execution/kernel_invoker.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
 
@@ -8,14 +9,13 @@ namespace {
 
 KernelContext BuildKernelContext(const ExecutionStep& step,
                                  RuntimeBindingContext& bindings) noexcept {
-    const ResolvedKernel& resolved = step.op->GetResolvedKernel();
     return KernelContext{
             .device_type = step.selector.device_type,
             .stream = nullptr,
             .workspace = bindings.GetWorkspaceArena(),
             .packed_weights = step.packed_weights,
             .kernel_params = nullptr,
-            .attrs = resolved.attrs,
+            .attrs = step.kernel.attrs,
     };
 }
 
@@ -38,10 +38,6 @@ Status LayerRunner::RunStep(size_t step_index,
                             const ExecutionStep& step,
                             RuntimeBindingContext& bindings,
                             const StateAliasPlan& alias_plan) noexcept {
-    if (step.op == nullptr) {
-        return Status::InvalidArgument("Execution step operator cannot be null");
-    }
-
     AM_RETURN_IF_ERROR(ValidateStateAliasesForStep(
             step_index, step, alias_plan, bindings));
 
@@ -53,17 +49,23 @@ Status LayerRunner::RunStep(size_t step_index,
     KernelContext ctx = BuildKernelContext(step, bindings);
     ctx.workspace_binding = workspace_binding.value();
 
+    const auto tensor_binding = bindings.GetStepTensorBinding(step_index);
+    if (!tensor_binding.ok()) {
+        return tensor_binding.status();
+    }
+    if ((*tensor_binding)->inputs.size() != step.input_specs.size() ||
+        (*tensor_binding)->outputs.size() != step.output_specs.size()) {
+        return Status::InvalidArgument("Runtime tensor binding arity does not match ExecutionStep specs");
+    }
     if (!step.runtime_checks.empty()) {
-        const auto tensor_binding = bindings.GetStepTensorBinding(step_index);
-        if (!tensor_binding.ok()) {
-            return tensor_binding.status();
-        }
         AM_RETURN_IF_ERROR(ValidateShapeConstraints(step.runtime_checks,
                                                     (*tensor_binding)->inputs,
                                                     (*tensor_binding)->outputs));
     }
 
-    return step.op->Run(ctx, bindings, step_index);
+    return InvokeKernel(step.kernel, ctx,
+                        (*tensor_binding)->inputs,
+                        (*tensor_binding)->outputs);
 }
 
 Status LayerRunner::ValidateStateAliasesForStep(

@@ -109,7 +109,6 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                 .weight_format = config.weight_format,
                 .isa = config.isa,
                 .phase = config.phase,
-                .attrs = node.attrs.bytes,
                 .op_params = node.op_params,
         };
 

@@ -3,6 +3,7 @@
 //
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
+#include "aethermind/operators/op_params.h"
 #include "rmsnorm_internal.h"
 
 #include <cmath>
@@ -158,6 +159,20 @@ Status BuildRmsNormParams(std::span<const TensorView> inputs,
     return Status::Ok();
 }
 
+Status BuildRmsNormMetadata(const OpParams& params,
+                            std::vector<std::byte>& attrs) {
+    const auto* rmsnorm_params = std::get_if<::aethermind::RmsNormParams>(&params);
+    if (rmsnorm_params == nullptr) {
+        return Status::InvalidArgument("RmsNorm kernel requires RmsNormParams");
+    }
+    if (!std::isfinite(rmsnorm_params->eps) || rmsnorm_params->eps <= 0.0F) {
+        return Status::InvalidArgument("RmsNorm kernel requires finite positive epsilon");
+    }
+    const auto eps_bytes = std::as_bytes(std::span{&rmsnorm_params->eps, size_t{1}});
+    attrs.assign(eps_bytes.begin(), eps_bytes.end());
+    return Status::Ok();
+}
+
 Status RmsNormKernelEntry_FP32_AVX2(const KernelContext& ctx) noexcept {
     RmsNormFp32KernelArgs args;
     if (const Status status = ValidateRmsNormEntry(ctx, args); !status.ok()) {
@@ -206,6 +221,7 @@ AM_REGISTER_KERNEL(RmsNormFp32Scalar,
                            .priority = 10,
                            .params_builder = &BuildRmsNormParams,
                            .params_size = sizeof(RmsNormParams),
+                           .metadata_builder = &BuildRmsNormMetadata,
                    });
 
 AM_REGISTER_KERNEL(RmsNormFp32Avx2,
@@ -224,6 +240,7 @@ AM_REGISTER_KERNEL(RmsNormFp32Avx2,
                            .priority = 20,
                            .params_builder = &BuildRmsNormParams,
                            .params_size = sizeof(RmsNormParams),
+                           .metadata_builder = &BuildRmsNormMetadata,
                    });
 
 }// namespace aethermind::cpu::detail

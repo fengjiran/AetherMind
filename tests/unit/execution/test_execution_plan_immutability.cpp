@@ -109,14 +109,10 @@ public:
         return capabilities_;
     }
 
-    KernelFunc ResolveKernel(OpType,
-                             const KernelSelector&) const noexcept override {
-        return &ImmutableKernel;
-    }
-
-    StatusOr<ResolvedKernel> ResolveKernelInfo(
+    StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
-            const KernelSelector&) const noexcept override {
+            const KernelSelector&,
+            const OpParams&) const override {
         return ResolvedKernel{
                 .op_type = op_type,
                 .fn = &ImmutableKernel,
@@ -174,9 +170,8 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
 
     const std::vector<ExecutionStep>& steps = plan->steps();
     EXPECT_EQ(steps.size(), 1U);
-    EXPECT_EQ(steps.front().op->Type(), OpType::kRmsNorm);
-    ASSERT_NE(steps.front().op, nullptr);
-    EXPECT_NE(steps.front().op->GetResolvedKernel().fn, nullptr);
+    EXPECT_EQ(steps.front().kernel.op_type, OpType::kRmsNorm);
+    EXPECT_NE(steps.front().kernel.fn, nullptr);
 }
 
 TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
@@ -322,9 +317,8 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     ASSERT_TRUE(plan.ok());
 
     const size_t original_size = plan->size();
-    const OpType original_op_type = plan->steps().front().op->Type();
-    ASSERT_NE(plan->steps().front().op, nullptr);
-    const KernelFunc original_fn = plan->steps().front().op->GetResolvedKernel().fn;
+    const OpType original_op_type = plan->steps().front().kernel.op_type;
+    const KernelFunc original_fn = plan->steps().front().kernel.fn;
 
     float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
@@ -349,8 +343,8 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     ASSERT_TRUE(status.ok());
 
     EXPECT_EQ(plan->size(), original_size);
-    EXPECT_EQ(plan->steps().front().op->Type(), original_op_type);
-    EXPECT_EQ(plan->steps().front().op->GetResolvedKernel().fn, original_fn);
+    EXPECT_EQ(plan->steps().front().kernel.op_type, original_op_type);
+    EXPECT_EQ(plan->steps().front().kernel.fn, original_fn);
 }
 
 TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {

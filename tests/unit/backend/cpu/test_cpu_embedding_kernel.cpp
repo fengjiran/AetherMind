@@ -209,7 +209,7 @@ TEST(EmbeddingKernel, RejectsOutOfRangeTokenId) {
     EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
 }
 
-TEST(EmbeddingKernel, ExecutionPlanBuilderRunsThroughEmbeddingOperator) {
+TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
@@ -236,14 +236,13 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsThroughEmbeddingOperator) {
             .input_specs = embedding_inputs,
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
-            .op_params = OpParams{EmbeddingOp::Params{}},
+            .op_params = OpParams{EmbeddingParams{}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
-    ASSERT_NE(plan->steps().front().op, nullptr);
-    EXPECT_EQ(plan->steps().front().op->Type(), OpType::kEmbedding);
+    EXPECT_EQ(plan->steps().front().kernel.op_type, OpType::kEmbedding);
 
     const int64_t token_ids[3] = {1, 3, 0};
     const float weight[12] = {

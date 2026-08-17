@@ -6,8 +6,8 @@
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/backend/resolved_kernel.h"
-#include "aethermind/operators/op_type.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/operators/op_params.h"
 
 namespace aethermind {
 
@@ -17,12 +17,16 @@ public:
     AM_NODISCARD virtual DeviceType device_type() const noexcept = 0;
     AM_NODISCARD virtual const BackendCapabilities& capabilities() const noexcept = 0;
 
-    AM_NODISCARD virtual KernelFunc ResolveKernel(OpType op_type,
-                                                  const KernelSelector& selector) const noexcept = 0;
-
-    AM_NODISCARD virtual StatusOr<ResolvedKernel> ResolveKernelInfo(
+    /// Resolves a kernel and freezes metadata derived from typed semantic
+    /// parameters into the returned value.
+    ///
+    /// This is the sole planning-time kernel-resolution entry point. The
+    /// returned ResolvedKernel is later owned by an ExecutionStep and invoked
+    /// without another backend lookup.
+    AM_NODISCARD virtual StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
-            const KernelSelector& selector) const noexcept = 0;
+            const KernelSelector& selector,
+            const OpParams& params) const = 0;
 
     AM_NODISCARD virtual const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept = 0;
 };

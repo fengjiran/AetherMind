@@ -14,9 +14,9 @@ namespace aethermind {
 /// @brief Type tag for operator dispatch and kernel resolution.
 ///
 /// Each operator in the execution graph is identified by its OpType.
-/// The type is used by OperatorRegistry for factory lookup, by
-/// KernelRegistry for kernel selection, and by ExecutionPlanBuilder
-/// for constructing execution steps.
+/// The type is used by OperatorSchema for semantic validation, by
+/// KernelRegistry for kernel selection, and by ExecutionPlanBuilder for
+/// constructing execution steps.
 ///
 /// `kUnknown` is reserved as an invalid sentinel.
 enum class OpType : uint8_t {

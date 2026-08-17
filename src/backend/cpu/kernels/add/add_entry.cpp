@@ -245,9 +245,8 @@ Status BuildAddParams(std::span<const TensorView> inputs,
 }// namespace
 
 // KernelFunc registered with every AM_REGISTER_KERNEL block below. Expects
-// ctx.kernel_params to point at an AddParams populated either by
-// BuildAddParams via Operator::InvokeResolvedKernel (production path) or
-// directly by callers (tests).
+// ctx.kernel_params to point at an AddParams populated by the generic kernel
+// invoker (production path) or directly by callers (tests).
 Status cpu::detail::AddKernel(const KernelContext& ctx) noexcept {
     const AddParams* params = GetParams(ctx.kernel_params);
     if (params == nullptr) {

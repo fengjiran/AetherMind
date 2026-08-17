@@ -2,10 +2,15 @@
 #define AETHERMIND_OPERATORS_OPS_RMS_NORM_OP_H
 
 /// @file rmsnorm_op.h
-/// @brief RMS normalization semantics and executable operator declaration.
+/// @brief RMS normalization semantic contract.
 
-#include "aethermind/operators/op_params.h"
-#include "aethermind/operators/operator.h"
+#include "aethermind/dtypes/data_type.h"
+
+#include <algorithm>
+#include <array>
+#include <ranges>
+#include <string>
+#include <string_view>
 
 namespace aethermind {
 
@@ -42,50 +47,6 @@ inline std::string MakeRmsNormUnsupportedDTypeMessage(std::string_view context) 
     msg += " only supports float32, float16, bfloat16, float8_e4m3fn, and float8_e5m2 dtypes";
     return msg;
 }
-
-/// @brief Shape-preserving RMS normalization operator.
-///
-/// Semantic inference accepts an input of rank at least one and a rank-one
-/// weight whose length matches the input's final dimension. Input and weight
-/// dtypes are validated independently against `kRmsNormSupportedDTypes`.
-/// On `Prepare()`, the operator
-/// resolves the backend kernel and stores `eps` as raw bytes in
-/// `resolved_kernel_.attrs`; on Run(), dispatches to that kernel via
-/// `Operator::InvokeResolvedKernel`. No operator-level workspace is
-/// required — scratch (e.g. the per-row RMS accumulator) is owned by the
-/// backend kernel itself.
-class RmsNormOp final : public Operator {
-public:
-    using Params = RmsNormParams;
-
-    explicit RmsNormOp(Params params) noexcept : params_(params) {}
-
-    AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kRmsNorm;
-    }
-
-    AM_NODISCARD WorkspaceRequirement ComputeWorkspaceRequirement(
-            std::span<const TensorSpec> inputs) const noexcept override {
-        UNUSED(inputs);
-        return {};
-    }
-
-    Status Prepare(OperatorContext& ctx) override;
-
-    Status Run(KernelContext& ctx,
-               const RuntimeBindingContext& bindings,
-               size_t step_index) const noexcept override;
-
-    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
-        return resolved_kernel_;
-    }
-
-private:
-    Params params_{};
-    // `attrs` carries the raw-byte serialization of params_.eps for the
-    // backend kernel to read at execution time.
-    ResolvedKernel resolved_kernel_{};
-};
 
 }// namespace aethermind
 

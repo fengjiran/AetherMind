@@ -1,202 +1,134 @@
-#include "aethermind/backend/backend.h"
-#include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/execution_plan.h"
-#include "aethermind/execution/execution_plan_builder.h"
-#include "aethermind/operators/op_params.h"
-#include "aethermind/operators/operator_inference.h"
-#include "aethermind/runtime/runtime_builder.h"
+#include "aethermind/execution/kernel_invoker.h"
 
 #include <gtest/gtest.h>
+
 #include <span>
 
 namespace {
 
 using namespace aethermind;
 
-SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
-    const std::vector<int64_t> shape(dims);
-    return SymbolicShape(IntArrayView{shape});
-}
-
-struct TestAttrs {
-    int epsilon;
-    int axis;
-};
-
 Status FakeKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 
-class StubTestBackend final : public Backend {
-public:
-    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    const BackendCapabilities& capabilities() const noexcept override { return caps_; }
+int g_kernel_invocations = 0;
+int g_built_param = 0;
 
-    KernelFunc ResolveKernel(OpType, const KernelSelector&) const noexcept override {
-        return &FakeKernel;
+Status CaptureBuiltParamKernel(const KernelContext& context) noexcept {
+    ++g_kernel_invocations;
+    if (context.kernel_params == nullptr) {
+        return Status::FailedPrecondition("Expected params from the builder");
     }
+    g_built_param = *static_cast<const int*>(context.kernel_params);
+    return Status::Ok();
+}
 
-    StatusOr<ResolvedKernel> ResolveKernelInfo(
-            OpType op_type,
-            const KernelSelector&) const noexcept override {
-        return ResolvedKernel{
-                .op_type = op_type,
-                .fn = op_type == OpType::kArgmax ? nullptr : &FakeKernel,
-                .attrs = {},
-                .debug_name = "test::stub_kernel",
-        };
-    }
+Status BuildKernelParam(std::span<const TensorView>,
+                        std::span<const MutableTensorView>,
+                        void* params_buffer) noexcept {
+    *static_cast<int*>(params_buffer) = 17;
+    return Status::Ok();
+}
 
-    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
-        return nullptr;
-    }
+Status FailToBuildKernelParam(std::span<const TensorView>,
+                              std::span<const MutableTensorView>,
+                              void*) noexcept {
+    return Status::InvalidArgument("test params builder failure");
+}
 
-private:
-    BackendCapabilities caps_{};
-};
-
-class StubTestBackendFactory final : public BackendFactory {
-public:
-    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    std::unique_ptr<Backend> Create() const override {
-        return std::make_unique<StubTestBackend>();
-    }
-};
-
-TEST(ExecutionPlan, BuildFreezesOperatorResolvedAttrs) {
-    RuntimeBuilder builder;
-    builder.RegisterBackendFactory(DeviceType::kCPU,
-                                   std::make_unique<StubTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
-
-    TestAttrs attrs{.epsilon = 7, .axis = 3};
-    const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
-
-    const SymbolicShape softmax_shape = StaticShape({2, 3});
-    std::vector<TensorSpec> softmax_inputs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = softmax_shape},
-    };
-    const auto analyzed = InferOperator(OpType::kSoftmax,
-                                        OpParams{SoftmaxParams{.axis = -1}},
-                                        softmax_inputs);
-    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-
-    std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(ExecutionPlanNodeSpec{
+TEST(ExecutionPlan, StoresResolvedKernelByValue) {
+    ResolvedKernel kernel{
             .op_type = OpType::kSoftmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .workspace_requirement = {
-                    .bytes = 128,
-                    .alignment = 64,
+            .fn = &FakeKernel,
+            .attrs = {std::byte{7}},
+            .debug_name = "test::fake_kernel",
+    };
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
+            ExecutionStep{
+                    .selector = KernelSelector{.device_type = DeviceType::kCPU},
+                    .kernel = kernel,
+                    .workspace_requirement = {.bytes = 128, .alignment = 64},
             },
-            .input_specs = softmax_inputs,
-            .output_specs = analyzed->outputs,
-            .runtime_checks = analyzed->runtime_checks,
-            .attrs = std::vector<std::byte>(attrs_bytes.begin(), attrs_bytes.end()),
-            .op_params = OpParams{SoftmaxParams{.axis = -1}},
     });
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
-    ASSERT_TRUE(plan.ok());
-
-    attrs.epsilon = 99;
-
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
-    const auto& step = plan->steps().front();
-    const ResolvedKernel resolved = step.op->GetResolvedKernel();
-    ASSERT_EQ(resolved.attrs.size(), sizeof(TestAttrs));
-    const auto* stored_attrs = reinterpret_cast<const TestAttrs*>(resolved.attrs.data());
-    ASSERT_NE(stored_attrs, nullptr);
-    EXPECT_NE(stored_attrs, &attrs);
-    EXPECT_EQ(step.op->Type(), OpType::kSoftmax);
-    EXPECT_EQ(step.selector.device_type, DeviceType::kCPU);
-    EXPECT_EQ(step.packed_weights, nullptr);
+    const ExecutionStep& step = plan->steps().front();
+    EXPECT_EQ(step.kernel.op_type, OpType::kSoftmax);
+    EXPECT_EQ(step.kernel.fn, &FakeKernel);
+    EXPECT_EQ(step.kernel.attrs, kernel.attrs);
+    EXPECT_NE(step.kernel.attrs.data(), kernel.attrs.data());
+    EXPECT_STREQ(step.kernel.debug_name, "test::fake_kernel");
     EXPECT_EQ(step.workspace_requirement.bytes, 128U);
-    EXPECT_EQ(step.workspace_requirement.alignment, 64U);
-    EXPECT_EQ(step.workspace_requirement.offset, 0U);
-    EXPECT_EQ(stored_attrs->epsilon, 7);
-    EXPECT_EQ(stored_attrs->axis, 3);
-    EXPECT_STREQ(resolved.debug_name, "test::stub_kernel");
 }
 
-TEST(ExecutionPlan, BuildAllowsEmptyAttrs) {
-    RuntimeBuilder builder;
-    builder.RegisterBackendFactory(DeviceType::kCPU,
-                                   std::make_unique<StubTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+TEST(ExecutionPlan, RejectsInvalidResolvedKernel) {
+    EXPECT_EQ(ExecutionPlan::Create({ExecutionStep{}}).status().code(),
+              StatusCode::kInvalidArgument);
 
-    const SymbolicShape softmax_shape = StaticShape({2, 3});
-    std::vector<TensorSpec> softmax_inputs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = softmax_shape},
-    };
-    const auto analyzed = InferOperator(OpType::kSoftmax,
-                                        OpParams{SoftmaxParams{.axis = -1}},
-                                        softmax_inputs);
-    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-
-    std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kSoftmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .input_specs = softmax_inputs,
-            .output_specs = analyzed->outputs,
-            .runtime_checks = analyzed->runtime_checks,
-            .attrs = {},
-            .op_params = OpParams{SoftmaxParams{.axis = -1}},
-    });
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
-    ASSERT_TRUE(plan.ok());
-    ASSERT_EQ(plan->size(), 1U);
-    EXPECT_TRUE(plan->steps().front().op->GetResolvedKernel().attrs.empty());
-    EXPECT_EQ(plan->steps().front().packed_weights, nullptr);
+    EXPECT_EQ(ExecutionPlan::Create({ExecutionStep{
+                                            .kernel = ResolvedKernel{
+                                                    .op_type = OpType::kSoftmax,
+                                                    .fn = &FakeKernel,
+                                                    .params_size = 1,
+                                            },
+                                    }})
+                      .status()
+                      .code(),
+              StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutionPlan, BuildRejectsInvalidWorkspaceAlignment) {
-    RuntimeBuilder builder;
-    builder.RegisterBackendFactory(DeviceType::kCPU,
-                                   std::make_unique<StubTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
-
-    std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kSoftmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .workspace_requirement = {
-                    .bytes = 64,
-                    .alignment = 24,
+TEST(KernelInvoker, BuildsParamsOnlyForTheKernelCall) {
+    g_kernel_invocations = 0;
+    g_built_param = 0;
+    KernelContext context{};
+    const Status status = InvokeKernel(
+            ResolvedKernel{
+                    .op_type = OpType::kAdd,
+                    .fn = &CaptureBuiltParamKernel,
+                    .params_builder = &BuildKernelParam,
+                    .params_size = sizeof(int),
             },
-    });
+            context, {}, {});
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
-    EXPECT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_EQ(g_kernel_invocations, 1);
+    EXPECT_EQ(g_built_param, 17);
 }
 
-TEST(ExecutionPlan, BuildRejectsNullResolvedKernelFunction) {
-    RuntimeBuilder builder;
-    builder.RegisterBackendFactory(DeviceType::kCPU,
-                                   std::make_unique<StubTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+TEST(KernelInvoker, PropagatesBuilderFailureWithoutCallingKernel) {
+    g_kernel_invocations = 0;
+    KernelContext context{};
+    const Status status = InvokeKernel(
+            ResolvedKernel{
+                    .op_type = OpType::kAdd,
+                    .fn = &CaptureBuiltParamKernel,
+                    .params_builder = &FailToBuildKernelParam,
+                    .params_size = sizeof(int),
+            },
+            context, {}, {});
 
-    std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kArgmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-    });
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(g_kernel_invocations, 0);
+}
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
-    EXPECT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+TEST(KernelInvoker, RejectsNullFunctionAndInvalidParamsContract) {
+    KernelContext context{};
+    EXPECT_EQ(InvokeKernel(ResolvedKernel{.op_type = OpType::kAdd}, context, {}, {})
+                      .code(),
+              StatusCode::kFailedPrecondition);
+    EXPECT_EQ(InvokeKernel(ResolvedKernel{
+                                   .op_type = OpType::kAdd,
+                                   .fn = &FakeKernel,
+                                   .params_size = 1,
+                           },
+                           context, {}, {})
+                      .code(),
+              StatusCode::kFailedPrecondition);
 }
 
 }// namespace

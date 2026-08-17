@@ -2,7 +2,7 @@
 #define AETHERMIND_OPERATORS_OPS_ELEMENTWISE_MUL_OP_H
 
 /// @file elementwise_mul_op.h
-/// @brief Elementwise multiplication semantics and operator declaration.
+/// @brief Elementwise multiplication semantic contract.
 
 #include <algorithm>
 #include <array>
@@ -12,7 +12,6 @@
 
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/operators/operator.h"
 
 namespace aethermind {
 
@@ -47,32 +46,6 @@ inline std::string MakeElementwiseMulUnsupportedDTypeMessage(
     msg += " only supports float32, float16, and bfloat16 dtypes";
     return msg;
 }
-
-/// @brief Elementwise multiplication operator with NumPy-style broadcasting.
-class ElementwiseMulOp final : public Operator {
-public:
-    using Params = ElementwiseMulParams;
-
-    explicit ElementwiseMulOp(Params params) noexcept : params_(params) {}
-
-    AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kElementwiseMul;
-    }
-
-    Status Prepare(OperatorContext& ctx) override;
-
-    Status Run(KernelContext& ctx,
-               const RuntimeBindingContext& bindings,
-               size_t step_index) const noexcept override;
-
-    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
-        return resolved_kernel_;
-    }
-
-private:
-    Params params_{};
-    ResolvedKernel resolved_kernel_{};
-};
 
 }// namespace aethermind
 

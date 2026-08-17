@@ -17,24 +17,12 @@ const BackendCapabilities& CpuBackend::capabilities() const noexcept {
     return capabilities_.base;
 }
 
-KernelFunc CpuBackend::ResolveKernel(OpType op_type,
-                                     const KernelSelector& selector) const noexcept {
-    if (selector.device_type != DeviceType::kCPU) {
-        return nullptr;
-    }
-
-    const StatusOr<const KernelDescriptor*> descriptor = KernelRegistry::Global().Resolve(op_type, selector);
-    if (!descriptor.ok()) {
-        return nullptr;
-    }
-    return (*descriptor)->kernel_func;
-}
-
-StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
+StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(
         OpType op_type,
-        const KernelSelector& selector) const noexcept {
+        const KernelSelector& selector,
+        const OpParams& params) const {
     if (selector.device_type != DeviceType::kCPU) {
-        return Status::InvalidArgument("CpuBackend cannot resolve non-CPU kernel selector");
+        return Status::InvalidArgument("CpuBackend cannot prepare non-CPU kernel selector");
     }
 
     const StatusOr<const KernelDescriptor*> descriptor = KernelRegistry::Global().Resolve(op_type, selector);
@@ -42,7 +30,7 @@ StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
         return descriptor.status();
     }
 
-    return ResolvedKernel{
+    ResolvedKernel resolved{
             .op_type = op_type,
             .fn = (*descriptor)->kernel_func,
             .attrs = {},
@@ -50,6 +38,10 @@ StatusOr<ResolvedKernel> CpuBackend::ResolveKernelInfo(
             .params_builder = (*descriptor)->params_builder,
             .params_size = (*descriptor)->params_size,
     };
+    if ((*descriptor)->metadata_builder != nullptr) {
+        AM_RETURN_IF_ERROR((*descriptor)->metadata_builder(params, resolved.attrs));
+    }
+    return resolved;
 }
 
 const KernelRegistry* CpuBackend::TryGetKernelRegistryForDebug() const noexcept {

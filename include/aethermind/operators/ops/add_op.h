@@ -2,11 +2,10 @@
 #define AETHERMIND_OPERATORS_OPS_ADD_OP_H
 
 /// @file add_op.h
-/// @brief Elementwise addition semantics and executable operator declaration.
+/// @brief Elementwise addition semantic contract.
 
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/operators/operator.h"
 
 #include <algorithm>
 #include <array>
@@ -51,37 +50,6 @@ inline std::string MakeAddUnsupportedDTypeMessage(std::string_view context) {
     msg += " only supports float32, float64, bfloat16, int32, and int64 tensors";
     return msg;
 }
-
-/// @brief Elementwise Add operator with NumPy-style broadcasting.
-///
-/// Validates that both inputs share a dtype from `kAddSupportedDTypes` and
-/// are broadcast-compatible; infers the broadcast output shape. On Prepare(),
-/// resolves the backend kernel; on Run(), dispatches to it via
-/// `Operator::InvokeResolvedKernel`.
-class AddOp final : public Operator {
-public:
-    using Params = AddParams;
-
-    explicit AddOp(Params params) noexcept : params_(params) {}
-
-    AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kAdd;
-    }
-
-    Status Prepare(OperatorContext& ctx) override;
-
-    Status Run(KernelContext& ctx,
-               const RuntimeBindingContext& bindings,
-               size_t step_index) const noexcept override;
-
-    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
-        return resolved_kernel_;
-    }
-
-private:
-    Params params_{};
-    ResolvedKernel resolved_kernel_{};
-};
 
 }// namespace aethermind
 

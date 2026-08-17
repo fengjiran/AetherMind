@@ -15,9 +15,9 @@ struct LoweredGraph;
 
 class ExecutionPlanBuilder {
 public:
-    AM_NODISCARD static StatusOr<ResolvedKernel> ResolveKernelForNode(
+    AM_NODISCARD static StatusOr<ResolvedKernel> PrepareKernelForNode(
             const Backend& backend,
-            const ExecutionPlanNodeSpec& node) noexcept;
+            const ExecutionPlanNodeSpec& node);
 
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,

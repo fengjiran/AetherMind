@@ -2,11 +2,12 @@
 #define AETHERMIND_BACKEND_EXECUTION_PLAN_H
 
 #include "aethermind/backend/kernel_selector.h"
+#include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/status.h"
 #include "aethermind/execution/state_alias_plan.h"
-#include "aethermind/operators/operator.h"
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/shape_inference/shape_constraint.h"
+#include "aethermind/shape_inference/tensor_spec.h"
 
 #include <cstddef>
 #include <vector>
@@ -15,13 +16,12 @@ namespace aethermind {
 
 struct ExecutionStep {
     KernelSelector selector{};
-    OperatorPtr op{};
+    ResolvedKernel kernel{};
     const void* packed_weights = nullptr;
     WorkspaceRequirement workspace_requirement{};
     std::vector<TensorSpec> input_specs{};
     std::vector<TensorSpec> output_specs{};
     std::vector<ShapeConstraint> runtime_checks{};
-    const char* debug_name = nullptr;
 };
 
 class ExecutionPlan {

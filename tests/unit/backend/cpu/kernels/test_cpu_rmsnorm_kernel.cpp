@@ -6,7 +6,6 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/operators/function_operator.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/ops/rmsnorm_op.h"
@@ -27,28 +26,30 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-KernelFunc ResolveAvx2RmsNormEntry() {
+StatusOr<ResolvedKernel> PrepareAvx2RmsNormKernel(float epsilon) {
     CpuBackend backend;
-    return backend.ResolveKernel(OpType::kRmsNorm,
-                                 KernelSelector{
-                                         .device_type = DeviceType::kCPU,
-                                         .act_dtype = DataType::Float32(),
-                                         .weight_dtype = DataType::Float32(),
-                                         .weight_format = WeightFormat::kPlain,
-                                         .isa = IsaLevel::kAVX2,
-                                         .phase = ExecPhase::kBoth,
-                                 });
+    return backend.PrepareKernel(
+            OpType::kRmsNorm,
+            KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .isa = IsaLevel::kAVX2,
+                    .phase = ExecPhase::kBoth,
+            },
+            OpParams{RmsNormParams{.eps = epsilon}});
 }
 
 Status RunRmsNormEntry(const cpu::detail::RmsNormParams& params, float epsilon) noexcept {
-    const KernelFunc fn = ResolveAvx2RmsNormEntry();
-    if (fn == nullptr) {
-        return Status::NotFound("AVX2 RMSNorm kernel entry is not registered");
+    const StatusOr<ResolvedKernel> resolved = PrepareAvx2RmsNormKernel(epsilon);
+    if (!resolved.ok()) {
+        return resolved.status();
     }
 
-    return fn(KernelContext{
+    return resolved->fn(KernelContext{
             .kernel_params = &params,
-            .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
+            .attrs = resolved->attrs,
     });
 }
 
@@ -88,9 +89,9 @@ TEST(CPUKernelRmsNorm, ComputesExpectedValues) {
     EXPECT_NEAR(output[3], 1.460593, 1e-5);
 }
 
-TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesWithKernelParams) {
+TEST(CPUKernelRmsNorm, CpuBackendPreparedKernelExecutesWithKernelParams) {
     CpuBackend backend;
-    const StatusOr<ResolvedKernel> resolved = backend.ResolveKernelInfo(
+    const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
             OpType::kRmsNorm,
             KernelSelector{
                     .device_type = DeviceType::kCPU,
@@ -99,7 +100,8 @@ TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesWithKernelParams) {
                     .weight_format = WeightFormat::kPlain,
                     .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
-            });
+            },
+            OpParams{RmsNormParams{.eps = 1.0e-5F}});
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
 
     constexpr float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
@@ -114,12 +116,9 @@ TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesWithKernelParams) {
             .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
     };
-    const float epsilon = 1.0e-5F;
-    const auto attrs_bytes = std::as_bytes(std::span{&epsilon, size_t{1}});
-
     const Status status = resolved->fn(KernelContext{
             .kernel_params = &params,
-            .attrs = attrs_bytes,
+            .attrs = resolved->attrs,
     });
 
     ASSERT_TRUE(status.ok()) << status.ToString();
@@ -129,7 +128,7 @@ TEST(CPUKernelRmsNorm, CpuBackendResolvedKernelExecutesWithKernelParams) {
     EXPECT_NEAR(output[3], 2.921186, 1e-5);
 }
 
-TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
+TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsResolvedKernel) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 
@@ -156,13 +155,13 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsThroughRmsNormOperator) {
             .input_specs = rmsnorm_inputs,
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
-            .op_params = OpParams{RmsNormOp::Params{.eps = 1.0e-5F}},
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
-    ASSERT_NE(plan->steps().front().op, nullptr);
+    EXPECT_EQ(plan->steps().front().kernel.op_type, OpType::kRmsNorm);
 
     constexpr float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     constexpr float weight[4] = {1.0F, 0.5F, 1.5F, 2.0F};
@@ -219,7 +218,7 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRmsNormFailsWithoutTensorBinding) {
             .input_specs = rmsnorm_inputs,
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
-            .op_params = OpParams{RmsNormOp::Params{.eps = 1.0e-5F}},
+            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);

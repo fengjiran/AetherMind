@@ -1,52 +1,14 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/tensor_view.h"
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/operators/op_params.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
-
-#include "aethermind/dtypes/data_type.h"
 
 #include <gtest/gtest.h>
 
 namespace {
+
 using namespace aethermind;
-
-template<size_t N>
-TensorView MakeContiguousFloatTensorView(const float (&data)[N],
-                                         const int64_t (&shape)[1],
-                                         const int64_t (&strides)[1]) {
-    return TensorView{data, DataType::Float32(), shape, strides};
-}
-
-template<size_t N>
-MutableTensorView MakeContiguousMutableFloatTensorView(float (&data)[N],
-                                                       const int64_t (&shape)[1],
-                                                       const int64_t (&strides)[1]) {
-    return MutableTensorView{data, DataType::Float32(), shape, strides};
-}
-
-template<size_t N>
-    requires requires(cpu::detail::RmsNormParams params, TensorView input_view, TensorView weight_view,
-                      MutableTensorView output_view) {
-        params.input_tensor = input_view;
-        params.weight_tensor = weight_view;
-        params.output_tensor = output_view;
-    }
-cpu::detail::RmsNormParams MakeRmsNormParams(const float (&input)[N],
-                                           const float (&weight)[N],
-                                           float (&output)[N],
-                                           const int64_t (&shape)[1],
-                                           const int64_t (&strides)[1]) {
-    const TensorView input_view = MakeContiguousFloatTensorView(input, shape, strides);
-    const TensorView weight_view = MakeContiguousFloatTensorView(weight, shape, strides);
-    const MutableTensorView output_view = MakeContiguousMutableFloatTensorView(output, shape, strides);
-
-    return cpu::detail::RmsNormParams{
-            .input_tensor = input_view,
-            .weight_tensor = weight_view,
-            .output_tensor = output_view,
-    };
-}
 
 KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth,
                                IsaLevel isa = IsaLevel::kScalar) {
@@ -60,28 +22,48 @@ KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth,
     };
 }
 
-TEST(CpuResolveKernel, RegisteredKeyReturnsKernel) {
+TEST(CpuPrepareKernel, RegisteredKeyReturnsPreparedKernel) {
     CpuBackend backend;
 
-    EXPECT_NE(backend.ResolveKernel(OpType::kRmsNorm, MakeCpuSelector()), nullptr);
+    const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
+            OpType::kRmsNorm, MakeCpuSelector(), OpParams{RmsNormParams{.eps = 1.0e-5F}});
+
+    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+    EXPECT_NE(resolved->fn, nullptr);
+    EXPECT_EQ(resolved->op_type, OpType::kRmsNorm);
+    EXPECT_EQ(resolved->attrs.size(), sizeof(float));
 }
 
-TEST(CpuResolveKernel, MissingKeyReturnsNullptr) {
+TEST(CpuPrepareKernel, MissingKeyReturnsNotFound) {
     CpuBackend backend;
 
-    EXPECT_EQ(backend.ResolveKernel(OpType::kLinear, MakeCpuSelector()), nullptr);
+    const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
+            OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
+
+    EXPECT_FALSE(resolved.ok());
+    EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
 }
 
-TEST(CpuResolveKernel, DebugRegistryIsExposedForInspection) {
+TEST(CpuPrepareKernel, RejectsInvalidKernelMetadata) {
+    CpuBackend backend;
+
+    const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
+            OpType::kRmsNorm, MakeCpuSelector(), OpParams{RmsNormParams{.eps = 0.0F}});
+
+    EXPECT_FALSE(resolved.ok());
+    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(CpuPrepareKernel, DebugRegistryIsExposedForInspection) {
     CpuBackend backend;
     EXPECT_NE(backend.TryGetKernelRegistryForDebug(), nullptr);
 }
 
-TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
+TEST(CpuPrepareKernel, PreparedKernelCanBeInvoked) {
     CpuBackend backend;
-
-    const KernelFunc fn = backend.ResolveKernel(OpType::kRmsNorm, MakeCpuSelector());
-    ASSERT_NE(fn, nullptr);
+    const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
+            OpType::kRmsNorm, MakeCpuSelector(), OpParams{RmsNormParams{.eps = 1.0e-5F}});
+    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
 
     const float input[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     const float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
@@ -95,12 +77,11 @@ TEST(CpuResolveKernel, RegisteredKernelCanBeInvoked) {
             .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
     };
-    const float epsilon = 1.0e-5F;
 
-    const Status status = fn(KernelContext{
+    const Status status = resolved->fn(KernelContext{
             .workspace_binding = {},
             .kernel_params = &params,
-            .attrs = std::as_bytes(std::span{&epsilon, size_t{1}}),
+            .attrs = resolved->attrs,
     });
     EXPECT_TRUE(status.ok()) << status.ToString();
     EXPECT_NEAR(output[0], 0.365148, 1e-5);

@@ -2,10 +2,15 @@
 #define AETHERMIND_OPERATORS_OPS_SILU_MUL_OP_H
 
 /// @file silu_mul_op.h
-/// @brief Fused SiLU-multiply semantics and executable operator declaration.
+/// @brief Fused SiLU-multiply semantic contract.
 
-#include "aethermind/operators/op_params.h"
-#include "aethermind/operators/operator.h"
+#include "aethermind/dtypes/data_type.h"
+
+#include <algorithm>
+#include <array>
+#include <ranges>
+#include <string>
+#include <string_view>
 
 namespace aethermind {
 
@@ -41,39 +46,6 @@ inline std::string MakeSiluMulUnsupportedDTypeMessage(std::string_view context) 
     msg += " only supports float32, float16, bfloat16, float8_e4m3fn, and float8_e5m2 dtypes";
     return msg;
 }
-
-/// @brief Fused SiLU-multiplication operator.
-///
-/// Computes `output = silu(gate) * up` where `silu(x) = x / (1 + exp(-x))`.
-/// Inputs `gate` and `up` are broadcast according to NumPy semantics.
-///
-/// Kernel execution is not yet wired; Run() returns Unimplemented after
-/// binding validation. A CPU kernel can be added later without changing the
-/// semantic-layer contract.
-class SiluMulOp final : public Operator {
-public:
-    using Params = SiluMulParams;
-
-    explicit SiluMulOp(Params params) noexcept : params_(params) {}
-
-    AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kSiluMul;
-    }
-
-    Status Prepare(OperatorContext& ctx) override;
-
-    Status Run(KernelContext& ctx,
-               const RuntimeBindingContext& bindings,
-               size_t step_index) const noexcept override;
-
-    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
-        return resolved_kernel_;
-    }
-
-private:
-    Params params_{};
-    ResolvedKernel resolved_kernel_{};
-};
 
 }// namespace aethermind
 

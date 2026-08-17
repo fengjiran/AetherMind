@@ -1,64 +1,8 @@
-#include "aethermind/operators/ops/gate_up_linear_op.h"
-#include "aethermind/backend/backend.h"
-#include "aethermind/backend/kernel_context.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_inference.h"
-#include "aethermind/operators/operator_registry.h"
 #include "aethermind/operators/ops/linear_op.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 
 namespace aethermind {
-
-Status GateUpLinearOp::Prepare(OperatorContext& ctx) {
-    if (ctx.backend == nullptr) {
-        return Status::InvalidArgument(
-                "GateUpLinear Prepare requires OperatorContext.backend");
-    }
-
-    const auto resolved = ctx.backend->ResolveKernelInfo(
-            OpType::kGateUpLinear, ctx.selector);
-    if (!resolved.ok()) {
-        return resolved.status();
-    }
-
-    resolved_kernel_ = resolved.value();
-    if (resolved_kernel_.fn == nullptr) {
-        return Status::Internal(
-                "GateUpLinear Prepare resolved a kernel with null fn");
-    }
-    return Status::Ok();
-}
-
-Status GateUpLinearOp::Run(KernelContext& ctx,
-                           const RuntimeBindingContext& bindings,
-                           size_t step_index) const noexcept {
-    if (resolved_kernel_.fn == nullptr) {
-        return Status::FailedPrecondition(
-                "GateUpLinear Run called before Prepare");
-    }
-
-    const auto binding = bindings.GetStepTensorBinding(step_index);
-    if (!binding.ok()) {
-        return binding.status();
-    }
-
-    const auto* b = binding.value();
-    if (b->inputs.size() != 2U) {
-        return Status::InvalidArgument(
-                "GateUpLinear requires 2 input tensor bindings, got " +
-                std::to_string(b->inputs.size()));
-    }
-
-    if (b->outputs.size() != 2U) {
-        return Status::InvalidArgument(
-                "GateUpLinear requires 2 output tensor bindings, got " +
-                std::to_string(b->outputs.size()));
-    }
-
-    return InvokeResolvedKernel(ctx, b->inputs, b->outputs);
-}
-
-AM_REGISTER_OPERATOR(OpType::kGateUpLinear, GateUpLinearOp)
 
 namespace detail {
 

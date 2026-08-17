@@ -70,7 +70,7 @@ public:
     /// Declared `const noexcept`: passes are stateless (see class doc) and
     /// report failures only through the returned `Status`, never by throwing.
     /// Internal allocation failures (e.g. bad_alloc) terminate instead of
-    /// propagating, matching the Operator::Run execution contract.
+    /// propagating, matching the kernel execution contract.
     virtual Status Run(GraphRewriteSession& session, const PassContext& ctx) const noexcept = 0;
 };
 

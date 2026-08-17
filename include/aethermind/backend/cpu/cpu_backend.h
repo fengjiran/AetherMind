@@ -17,13 +17,10 @@ public:
 
     AM_NODISCARD const BackendCapabilities& capabilities() const noexcept override;
 
-    AM_NODISCARD KernelFunc ResolveKernel(
+    AM_NODISCARD StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
-            const KernelSelector& selector) const noexcept override;
-
-    AM_NODISCARD StatusOr<ResolvedKernel> ResolveKernelInfo(
-            OpType op_type,
-            const KernelSelector& selector) const noexcept override;
+            const KernelSelector& selector,
+            const OpParams& params) const override;
 
     AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override;
 

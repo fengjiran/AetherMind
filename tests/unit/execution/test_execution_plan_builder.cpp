@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <span>
 #include <variant>
@@ -24,10 +25,6 @@
 namespace {
 
 using namespace aethermind;
-
-struct TestAttrs {
-    int epsilon;
-};
 
 void FreeTestBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
@@ -83,17 +80,10 @@ public:
         return capabilities_;
     }
 
-    KernelFunc ResolveKernel(OpType,
-                             const KernelSelector& selector) const noexcept override {
-        if (selector.weight_format != WeightFormat::kPacked) {
-            return nullptr;
-        }
-        return &PackedTestKernel;
-    }
-
-    StatusOr<ResolvedKernel> ResolveKernelInfo(
+    StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
-            const KernelSelector& selector) const noexcept override {
+            const KernelSelector& selector,
+            const OpParams&) const override {
         if (selector.weight_format != WeightFormat::kPacked) {
             return Status::NotFound("Packed test backend only resolves packed selectors");
         }
@@ -132,11 +122,9 @@ class SoftmaxTestBackend final : public Backend {
 public:
     DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
     const BackendCapabilities& capabilities() const noexcept override { return caps_; }
-    KernelFunc ResolveKernel(OpType op_type, const KernelSelector&) const noexcept override {
-        return op_type == OpType::kSoftmax ? &SoftmaxTestKernel : nullptr;
-    }
-    StatusOr<ResolvedKernel> ResolveKernelInfo(OpType op_type,
-                                               const KernelSelector&) const noexcept override {
+    StatusOr<ResolvedKernel> PrepareKernel(OpType op_type,
+                                           const KernelSelector&,
+                                           const OpParams&) const override {
         if (op_type != OpType::kSoftmax) {
             return Status::NotFound("SoftmaxTestBackend only resolves kSoftmax");
         }
@@ -156,7 +144,7 @@ public:
     }
 };
 
-ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {}) {
+ExecutionPlanNodeSpec MakeRmsNormNodeSpec() {
     return ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
             .device_type = DeviceType::kCPU,
@@ -165,7 +153,6 @@ ExecutionPlanNodeSpec MakeRmsNormNodeSpec(std::span<const std::byte> attrs = {})
             .weight_format = WeightFormat::kPlain,
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
-            .attrs = std::vector<std::byte>(attrs.begin(), attrs.end()),
     };
 }
 
@@ -189,21 +176,21 @@ StatusOr<InferenceResult> InferRmsNorm(float eps,
                          inputs);
 }
 
-TEST(ExecutionPlanBuilder, ResolveKernelForNodeUsesOpTypeDirectly) {
+TEST(ExecutionPlanBuilder, PrepareKernelForNodeBuildsTypedMetadata) {
     CpuBackend backend;
-    TestAttrs attrs{.epsilon = 42};
-    const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = OpParams{RmsNormParams{.eps = 42.0F}};
 
     const StatusOr<ResolvedKernel> resolved =
-            ExecutionPlanBuilder::ResolveKernelForNode(backend,
-                                                       MakeRmsNormNodeSpec(attrs_bytes));
+            ExecutionPlanBuilder::PrepareKernelForNode(backend, node);
 
     ASSERT_TRUE(resolved.ok());
     EXPECT_EQ(resolved->op_type, OpType::kRmsNorm);
     ASSERT_NE(resolved->fn, nullptr);
-    EXPECT_NE(resolved->attrs.data(), attrs_bytes.data());
-    EXPECT_EQ(resolved->attrs.size(), sizeof(attrs));
-    EXPECT_EQ(resolved->attrs, std::vector<std::byte>(attrs_bytes.begin(), attrs_bytes.end()));
+    ASSERT_EQ(resolved->attrs.size(), sizeof(float));
+    float epsilon = 0.0F;
+    std::memcpy(&epsilon, resolved->attrs.data(), sizeof(epsilon));
+    EXPECT_FLOAT_EQ(epsilon, 42.0F);
     EXPECT_STREQ(resolved->debug_name, "cpu::rmsnorm_f32_scalar");
 }
 
@@ -232,19 +219,17 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     ASSERT_EQ(plan->size(), 1U);
 
     const auto& step = plan->steps().front();
-    ASSERT_NE(step.op, nullptr);
-    const ResolvedKernel step_kernel = step.op->GetResolvedKernel();
+    const ResolvedKernel& step_kernel = step.kernel;
     ASSERT_EQ(step_kernel.attrs.size(), sizeof(float));
-    const auto* stored_epsilon = reinterpret_cast<const float*>(step_kernel.attrs.data());
-    ASSERT_NE(stored_epsilon, nullptr);
-    EXPECT_EQ(step.op->Type(), OpType::kRmsNorm);
+    float stored_epsilon = 0.0F;
+    std::memcpy(&stored_epsilon, step_kernel.attrs.data(), sizeof(stored_epsilon));
+    EXPECT_EQ(step.kernel.op_type, OpType::kRmsNorm);
     EXPECT_EQ(step.selector.device_type, DeviceType::kCPU);
     EXPECT_EQ(step.packed_weights, nullptr);
     EXPECT_EQ(step.workspace_requirement.bytes, 0U);
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
     EXPECT_EQ(step.workspace_requirement.offset, 0U);
-    EXPECT_FLOAT_EQ(*stored_epsilon, 11.0F);
-    EXPECT_EQ(step.debug_name, nullptr);
+    EXPECT_FLOAT_EQ(stored_epsilon, 11.0F);
     EXPECT_STREQ(step_kernel.debug_name, "cpu::rmsnorm_f32_scalar");
 }
 
@@ -431,14 +416,12 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
               std::string::npos);
 }
 
-TEST(ExecutionPlanBuilder, BuildRejectsRawAttrsForRegisteredOperator) {
+TEST(ExecutionPlanBuilder, BuildRejectsMissingTypedParams) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
-    TestAttrs attrs{.epsilon = 11};
-    const auto attrs_bytes = std::as_bytes(std::span{&attrs, size_t{1}});
 
     std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(MakeRmsNormNodeSpec(attrs_bytes));
+    nodes.push_back(MakeRmsNormNodeSpec());
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
 
@@ -574,11 +557,11 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutModelInstanceSidec
     EXPECT_EQ(plan.status().code(), StatusCode::kNotFound);
 }
 
-TEST(ExecutionPlanBuilder, ResolveKernelForNodeRejectsUnknownOpType) {
+TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsUnknownOpType) {
     CpuBackend backend;
 
     const StatusOr<ResolvedKernel> resolved =
-            ExecutionPlanBuilder::ResolveKernelForNode(backend,
+            ExecutionPlanBuilder::PrepareKernelForNode(backend,
                                                        ExecutionPlanNodeSpec{
                                                                .op_type = OpType::kUnknown,
                                                                .device_type = DeviceType::kCPU,
@@ -762,15 +745,13 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMissingTypedParams) {
 
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(plan.status().message().find("monostate"), std::string::npos);
+    EXPECT_NE(plan.status().message().find("typed op_params"), std::string::npos);
 }
 
-TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesRawFallbackForUnregisteredOpType) {
-    // kSoftmax has a schema but no registered Operator factory. The trusted
-    // LoweredGraph path contract is "create Operator if registered, otherwise
-    // resolve raw fallback"; an unregistered OpType must NOT be rejected with
-    // FailedPrecondition. The lowered metadata (output_specs, runtime_checks)
-    // is carried forward verbatim without re-invoking InferOperator.
+TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesSchemaOnlyOpType) {
+    // kSoftmax has semantic schema/inference but no CPU implementation. The
+    // trusted LoweredGraph path resolves the backend kernel directly and
+    // carries lowering-time metadata forward without re-invoking inference.
     // Use SoftmaxTestBackend so the Softmax kernel can be resolved.
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
@@ -806,18 +787,14 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesRawFallbackForUnregister
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->steps().size(), 1U);
-    // Trusted raw fallback: lowered metadata carried forward verbatim.
+    // Trusted lowering metadata is carried forward verbatim.
     EXPECT_EQ(plan->steps()[0].output_specs, lowered.steps[0].output_specs);
     EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].runtime_checks);
 }
 
-TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
-    // kSoftmax has a schema but no registered Operator factory, so Build
-    // falls back to the FunctionOperator raw-kernel path. The untrusted path
-    // still validates caller metadata via InferOperator (no no-op bypass).
-    // Asserting step.output_specs is non-empty proves InferOperator was
-    // called rather than FunctionOperator (which returns
-    // an empty InferenceResult).
+TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {
+    // The untrusted path validates caller metadata via InferOperator before
+    // resolving a schema-only OpType directly through the backend.
     // Use SoftmaxTestBackend so the Softmax kernel can be resolved (CpuBackend
     // does not register a Softmax kernel).
     RuntimeBuilder builder;
@@ -854,8 +831,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesFunctionOperatorMetadata) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
     const auto& step = plan->steps().front();
-    // output_specs is non-empty: InferSoftmax echoed the input spec.
-    // FunctionOperator would have returned empty outputs.
+    // InferSoftmax echoed the input spec.
     ASSERT_EQ(step.output_specs.size(), 1U);
     EXPECT_EQ(step.output_specs[0], analyzed->outputs[0]);
     EXPECT_EQ(step.runtime_checks, analyzed->runtime_checks);

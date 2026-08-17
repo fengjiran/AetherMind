@@ -2,11 +2,16 @@
 #define AETHERMIND_OPERATORS_OPS_MATMUL_OP_H
 
 /// @file matmul_op.h
-/// @brief Batched matrix-multiplication semantics and operator declaration.
+/// @brief Batched matrix-multiplication semantic contract.
 
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/operators/operator.h"
+
+#include <algorithm>
+#include <array>
+#include <ranges>
+#include <string>
+#include <string_view>
 
 namespace aethermind {
 
@@ -56,34 +61,6 @@ inline std::string MakeMatMulUnsupportedDTypeMessage(std::string_view context) {
 /// Output shape: `broadcast(lhs_batch, rhs_batch) + [M, N]` where
 /// `M = lhs.shape[-2]` and `N = effective_rhs.shape[-1]`.
 ///
-/// Kernel execution is not yet wired; Run() returns Unimplemented after
-/// binding validation. A CPU kernel can be added later without changing the
-/// semantic-layer contract.
-class MatMulOp final : public Operator {
-public:
-    using Params = MatMulParams;
-
-    explicit MatMulOp(Params params) noexcept : params_(params) {}
-
-    AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kMatMul;
-    }
-
-    Status Prepare(OperatorContext& ctx) override;
-
-    Status Run(KernelContext& ctx,
-               const RuntimeBindingContext& bindings,
-               size_t step_index) const noexcept override;
-
-    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
-        return resolved_kernel_;
-    }
-
-private:
-    Params params_{};
-    ResolvedKernel resolved_kernel_{};
-};
-
 }// namespace aethermind
 
 #endif// AETHERMIND_OPERATORS_OPS_MATMUL_OP_H

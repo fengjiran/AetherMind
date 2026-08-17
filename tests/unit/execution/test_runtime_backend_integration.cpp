@@ -1,13 +1,13 @@
-#include "aethermind/runtime/workspace.h"
 #include "aethermind/backend/backend.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_invocation.h"
 #include "aethermind/backend/kernel_selector.h"
-#include "aethermind/backend/kernel_context.h"
+#include "aethermind/base/device.h"
 #include "aethermind/execution/kv_cache_manager.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/runtime_context.h"
-#include "aethermind/base/device.h"
+#include "aethermind/runtime/workspace.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -79,23 +79,11 @@ public:
         static BackendCapabilities caps;
         return caps;
     }
-    KernelFunc ResolveKernel(OpType, const KernelSelector&) const noexcept override { return nullptr; }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
-    StatusOr<ResolvedKernel> ResolveKernelInfo(OpType op_type, const KernelSelector& selector) const noexcept override {
-        const KernelFunc fn = ResolveKernel(op_type, selector);
-        if (fn == nullptr) {
-            return Status::NotFound(
-                    "No matching kernel registered: op_type=" +
-                    std::string(ToString(op_type)) +
-                    ", selector=" + ToString(selector));
-        }
-
-        return ResolvedKernel{
-                .op_type = op_type,
-                .fn = fn,
-                .attrs = {},
-                .debug_name = nullptr,
-        };
+    StatusOr<ResolvedKernel> PrepareKernel(OpType,
+                                           const KernelSelector&,
+                                           const OpParams&) const override {
+        return Status::NotFound("MockBackend has no kernels");
     }
 };
 

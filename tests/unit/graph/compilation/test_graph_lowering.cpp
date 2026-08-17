@@ -193,7 +193,7 @@ TEST(GraphLowering, PreservesTopologicalOrderAndRmsNormParams) {
     ASSERT_EQ(lowered->steps.size(), 2U);
     EXPECT_EQ(lowered->steps[0].op_type, OpType::kEmbedding);
     EXPECT_EQ(lowered->steps[1].op_type, OpType::kRmsNorm);
-    const auto* params = std::get_if<RmsNormOp::Params>(&lowered->steps[1].op_params);
+    const auto* params = std::get_if<RmsNormParams>(&lowered->steps[1].op_params);
     ASSERT_NE(params, nullptr);
     EXPECT_FLOAT_EQ(params->eps, 2.5e-3F);
     ASSERT_EQ(lowered->step_bindings[1].input_values.size(), 2U);

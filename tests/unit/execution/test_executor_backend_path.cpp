@@ -9,9 +9,8 @@
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/model_instance.h"
+#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
-#include "aethermind/operators/operator_registry.h"
-#include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
@@ -26,7 +25,6 @@ namespace {
 using namespace aethermind;
 
 std::vector<int>* g_execution_order = nullptr;
-int* g_constraint_operator_runs = nullptr;
 KernelContext g_last_kernel_context{};
 
 Status FirstKernel(const KernelContext& ctx) noexcept {
@@ -94,55 +92,6 @@ struct RuntimeTensorStorage {
     }
 };
 
-class RuntimeConstraintTestOperator final : public Operator {
-public:
-    using Params = AttentionParams;
-
-    explicit RuntimeConstraintTestOperator(Params) noexcept {}
-
-    AM_NODISCARD OpType Type() const noexcept override {
-        return OpType::kAttention;
-    }
-
-    AM_NODISCARD Status Prepare(OperatorContext& ctx) override {
-        if (ctx.backend == nullptr) {
-            return Status::InvalidArgument("RuntimeConstraintTestOperator backend is null");
-        }
-        const auto resolved = ctx.backend->ResolveKernelInfo(Type(), ctx.selector);
-        if (!resolved.ok()) {
-            return resolved.status();
-        }
-        resolved_ = resolved.value();
-        return Status::Ok();
-    }
-
-    AM_NODISCARD Status Run(KernelContext&,
-                            const RuntimeBindingContext&,
-                            size_t) const noexcept override {
-        if (g_constraint_operator_runs != nullptr) {
-            ++(*g_constraint_operator_runs);
-        }
-        return Status::Ok();
-    }
-
-    AM_NODISCARD const ResolvedKernel& GetResolvedKernel() const noexcept override {
-        return resolved_;
-    }
-
-private:
-    ResolvedKernel resolved_{};
-};
-
-const bool kRuntimeConstraintTestOperatorRegistered = OperatorRegistry::RegisterOrAbort(
-        OpType::kAttention,
-        OperatorRegistry::Descriptor{
-                .factory_ = &OperatorRegistry::CreateTypedOperator<RuntimeConstraintTestOperator>,
-                .make_default_params_ = []() -> StatusOr<OpParams> {
-                    return OpParams{RuntimeConstraintTestOperator::Params{}};
-                },
-        },
-        "RuntimeConstraintTestOperator");
-
 // Helper: derive RmsNorm output_specs and runtime_checks via InferOperator.
 StatusOr<InferenceResult> InferRmsNorm(float eps,
                                        const SymbolicShape& act_shape,
@@ -188,32 +137,28 @@ public:
     AM_NODISCARD DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
     AM_NODISCARD const BackendCapabilities& capabilities() const noexcept override { return caps_; }
 
-    AM_NODISCARD KernelFunc ResolveKernel(OpType op_type, const KernelSelector&) const noexcept override {
+    AM_NODISCARD StatusOr<ResolvedKernel> PrepareKernel(
+            OpType op_type,
+            const KernelSelector&,
+            const OpParams&) const override {
+        KernelFunc fn = nullptr;
         switch (op_type) {
             case OpType::kSoftmax:
-                return &FirstKernel;
-            case OpType::kRoPE:
-                return &SecondKernel;
-            case OpType::kArgmax:
-                return &FailingKernel;
             case OpType::kAttention:
-                return &FirstKernel;
             case OpType::kRmsNorm:
-                // Used by the runtime shape-constraint tests: RmsNorm produces a
-                // DimEqualConstraint via InferOperator that Executor::Execute
-                // checks before dispatching the kernel.
-                return &FirstKernel;
+                fn = &FirstKernel;
+                break;
+            case OpType::kRoPE:
+                fn = &SecondKernel;
+                break;
+            case OpType::kArgmax:
+                fn = &FailingKernel;
+                break;
             default:
-                return nullptr;
+                break;
         }
-    }
-
-    AM_NODISCARD StatusOr<ResolvedKernel> ResolveKernelInfo(
-            OpType op_type,
-            const KernelSelector&) const noexcept override {
-        KernelFunc fn = ResolveKernel(op_type, KernelSelector{});
         if (fn == nullptr) {
-            return Status::NotFound("ExecutorTestBackend does not resolve this op type");
+            return Status::NotFound("ExecutorTestBackend does not prepare this op type");
         }
         return ResolvedKernel{
                 .op_type = op_type,
@@ -289,8 +234,8 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
                                                           std::move(packed_storage)))
                         .ok());
 
-    // kSoftmax: schema-only op (no registered factory) -> raw FunctionOperator
-    // fallback. InferSoftmax expects 1 float32 input and echoes it.
+    // kSoftmax is schema-only in this test backend. InferSoftmax expects one
+    // float32 input and echoes it.
     const SymbolicShape softmax_in_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{4, 8}});
     std::vector<TensorSpec> softmax_inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = softmax_in_shape},
@@ -299,7 +244,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
             OpType::kSoftmax, OpParams{SoftmaxParams{.axis = -1}}, softmax_inputs);
     ASSERT_TRUE(softmax_analyzed.ok()) << softmax_analyzed.status().ToString();
 
-    // kRoPE: schema-only op -> raw FunctionOperator fallback. InferRoPE
+    // kRoPE is also resolved directly from the test backend. InferRoPE
     // expects q/k rank-2 float32 [seq_len, hidden], position_ids rank-1
     // int64 [seq_len]; hidden widths must equal num_*_heads * head_dim.
     const SymbolicShape rope_q_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{2, 8}});
@@ -352,6 +297,14 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, model_instance, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 2U);
+    bindings.SetStepTensorBinding(0, StepTensorBinding{
+                                             .inputs = {TensorView{}},
+                                             .outputs = {MutableTensorView{}},
+                                     });
+    bindings.SetStepTensorBinding(1, StepTensorBinding{
+                                             .inputs = {TensorView{}, TensorView{}, TensorView{}},
+                                             .outputs = {MutableTensorView{}, MutableTensorView{}},
+                                     });
 
     const Status status = Executor::Execute(*plan, bindings);
 
@@ -373,8 +326,8 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
     CpuWorkspaceArena arena(workspace, sizeof(workspace));
     RuntimeBindingContext bindings(&arena);
 
-    // kArgmax: schema-only op -> raw FunctionOperator fallback. InferArgmax
-    // expects 1 float32 input and ArgmaxParams.
+    // kArgmax is resolved directly from the test backend. InferArgmax expects
+    // one float32 input and ArgmaxParams.
     const SymbolicShape argmax_in_shape = SymbolicShape(IntArrayView{std::vector<int64_t>{4, 8}});
     std::vector<TensorSpec> argmax_inputs = {
             TensorSpec{.dtype = DataType::Float32(), .shape = argmax_in_shape},
@@ -399,6 +352,10 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
+    bindings.SetStepTensorBinding(0, StepTensorBinding{
+                                             .inputs = {TensorView{}},
+                                             .outputs = {MutableTensorView{}},
+                                     });
 
     const Status status = Executor::Execute(*plan, bindings);
 

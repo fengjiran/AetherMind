@@ -1,7 +1,8 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/dtypes/data_type.h"
-#include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/base/device.h"
+#include "aethermind/dtypes/data_type.h"
+#include "aethermind/operators/op_params.h"
+#include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
 
@@ -31,9 +32,12 @@ TEST(CpuBackend, CapabilitiesExposeCPUType) {
     EXPECT_EQ(caps.device_type, DeviceType::kCPU);
 }
 
-TEST(CpuBackend, ResolveKernelReturnsNullptr) {
+TEST(CpuBackend, PrepareKernelRejectsMissingDescriptor) {
     CpuBackend backend;
-    EXPECT_EQ(backend.ResolveKernel(OpType::kLinear, MakeCpuSelector()), nullptr);
+    const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
+            OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
+    EXPECT_FALSE(resolved.ok());
+    EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
 }
 
 TEST(CpuBackend, TryGetKernelRegistryForDebugReturnsRegistry) {

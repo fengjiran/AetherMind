@@ -1,7 +1,7 @@
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/model_graph_builder.h"
 
-#include "aethermind/graph/compilation/graph_lowering.h"
+#include "aethermind/graph/lowering/graph_lowering.h"
 #include "aethermind/graph/optimization/add_rmsnorm_fusion_pass.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 

@@ -1,4 +1,4 @@
-#include "aethermind/graph/compilation/graph_lowering.h"
+#include "aethermind/graph/lowering/graph_lowering.h"
 #include "aethermind/operators/operator_schema.h"
 #include "utils/variant_utils.h"
 

@@ -1,7 +1,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 
 #include "aethermind/backend/packed_weights.h"
-#include "aethermind/graph/compilation/graph_lowering.h"
+#include "aethermind/graph/lowering/graph_lowering.h"
 #include "aethermind/model/model_instance.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"

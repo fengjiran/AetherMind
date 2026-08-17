@@ -1,5 +1,4 @@
-#include "aethermind/graph/compilation/graph_compiler.h"
-#include "aethermind/graph/compilation/graph_lowering.h"
+#include "aethermind/graph/optimization/optimize_model_graph.h"
 #include "aethermind/graph/optimization/add_rmsnorm_fusion_pass.h"
 #include "aethermind/graph/optimization/constant_folding_pass.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
@@ -40,26 +39,7 @@ GraphPassManager BuildDefaultOptPipeline(PassContext ctx) {
 
 StatusOr<ModelGraph> OptimizeModelGraph(const ModelGraph& graph,
                                         PassContext context) {
-    GraphPassManager pipeline = BuildDefaultOptPipeline(context);
-    return pipeline.Run(graph);
-}
-
-StatusOr<CompiledModelGraph> CompileModelGraph(const ModelGraph& graph,
-                                               const GraphCompileConfig& config) {
-    StatusOr<ModelGraph> optimized = OptimizeModelGraph(graph, config.optimization);
-    if (!optimized.ok()) {
-        return optimized.status();
-    }
-
-    StatusOr<LoweredGraph> lowered = LowerModelGraph(*optimized, config.lowering);
-    if (!lowered.ok()) {
-        return lowered.status();
-    }
-
-    CompiledModelGraph result;
-    result.optimized_graph = std::move(*optimized);
-    result.lowered = std::move(*lowered);
-    return result;
+    return BuildDefaultOptPipeline(context).Run(graph);
 }
 
 }// namespace aethermind

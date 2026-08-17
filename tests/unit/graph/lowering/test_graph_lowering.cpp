@@ -1,5 +1,5 @@
 #include "../test_graph_helpers.h"
-#include "aethermind/graph/compilation/graph_lowering.h"
+#include "aethermind/graph/lowering/graph_lowering.h"
 
 #include "aethermind/model/model_graph_builder.h"
 #include "aethermind/operators/operator_inference.h"
@@ -162,6 +162,37 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
     EXPECT_EQ(lowered->model_inputs[0], tokens);
     ASSERT_EQ(lowered->model_outputs.size(), 1U);
     EXPECT_EQ(lowered->model_outputs[0], embedding.outputs[0]);
+}
+
+TEST(GraphLowering, AppliesCustomConfigToSteps) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}), MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding));
+    auto embedding_or = graph.AddNode(
+            OpType::kEmbedding,
+            std::nullopt,
+            {tokens, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}},
+            EmbeddingParams{});
+    ASSERT_TRUE(embedding_or.ok()) << embedding_or.status().ToString();
+    graph.MarkOutput((*embedding_or).outputs[0]);
+
+    GraphLoweringConfig config;
+    config.device_type = DeviceType::kCUDA;
+    config.isa = IsaLevel::kAVX2;
+    config.weight_format = WeightFormat::kPacked;
+    config.phase = ExecPhase::kPrefill;
+
+    const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph, config);
+
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_EQ(lowered->steps.size(), 1U);
+    for (const ExecutionPlanNodeSpec& step: lowered->steps) {
+        EXPECT_EQ(step.device_type, DeviceType::kCUDA);
+        EXPECT_EQ(step.isa, IsaLevel::kAVX2);
+        EXPECT_EQ(step.weight_format, WeightFormat::kPacked);
+        EXPECT_EQ(step.phase, ExecPhase::kPrefill);
+    }
 }
 
 TEST(GraphLowering, PreservesTopologicalOrderAndRmsNormParams) {

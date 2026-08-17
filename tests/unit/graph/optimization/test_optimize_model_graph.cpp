@@ -1,14 +1,13 @@
-#include "../optimization/test_optimization_helpers.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/graph/compilation/graph_compiler.h"
-#include "aethermind/graph/compilation/graph_lowering.h"
 #include "aethermind/graph/graph_dump.h"
 #include "aethermind/graph/graph_op_builder.h"
+#include "aethermind/graph/lowering/graph_lowering.h"
+#include "aethermind/graph/optimization/optimize_model_graph.h"
 #include "aethermind/model/model_graph_builder.h"
 #include "aethermind/runtime/runtime_builder.h"
-#include "aethermind/shape_inference/shape_symbol.h"
+#include "test_optimization_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -558,72 +557,22 @@ TEST(OptimizeModelGraph, ConstantGateRuntimeUpSkipsFusionAfterFoldAtO2) {
     EXPECT_GE(result->FindNodesByOpType(OpType::kEmbedding).size(), 1U);
 }
 
-// ---- CompileModelGraph: strict Optimize → Lower sequencing -----------------
+// ---- OptimizeModelGraph: default context behavior --------------------------
 
-TEST(CompileModelGraph, DefaultConfigUsesOptLevelTwo) {
+TEST(OptimizeModelGraph, DefaultContextUsesOptLevelTwo) {
     ModelGraph graph = BuildCompositeGraph();
     ASSERT_TRUE(graph.Validate().ok());
 
-    // Default config: optimization at O2, lowering at defaults.
-    GraphCompileConfig config;
-    const StatusOr<CompiledModelGraph> result = CompileModelGraph(graph, config);
-
-    ASSERT_TRUE(result.ok()) << result.status().ToString();
-    ASSERT_TRUE(result->optimized_graph.Validate().ok());
-
-    // O2 default pipeline: SiLU+Mul fused, dead nodes removed.
-    EXPECT_EQ(result->optimized_graph.FindNodesByOpType(OpType::kSiluMul).size(), 1U);
-    EXPECT_GT(result->lowered.steps.size(), 0U);
-}
-
-TEST(CompileModelGraph, CustomLoweringConfigPropagatesToSteps) {
-    ModelGraph graph = BuildCompositeGraph();
-    ASSERT_TRUE(graph.Validate().ok());
-
-    GraphCompileConfig config;
-    config.lowering.device_type = DeviceType::kCUDA;
-    config.lowering.isa = IsaLevel::kAVX2;
-    config.lowering.weight_format = WeightFormat::kPacked;
-    config.lowering.phase = ExecPhase::kPrefill;
-
-    const StatusOr<CompiledModelGraph> result = CompileModelGraph(graph, config);
-
-    ASSERT_TRUE(result.ok()) << result.status().ToString();
-    ASSERT_GT(result->lowered.steps.size(), 0U);
-
-    for (const ExecutionPlanNodeSpec& step: result->lowered.steps) {
-        EXPECT_EQ(step.device_type, DeviceType::kCUDA);
-        EXPECT_EQ(step.isa, IsaLevel::kAVX2);
-        EXPECT_EQ(step.weight_format, WeightFormat::kPacked);
-        EXPECT_EQ(step.phase, ExecPhase::kPrefill);
-    }
-}
-
-TEST(CompileModelGraph, RejectsInvalidGraph) {
-    // Invalid graph: a dangling GraphValue with no producer and no payload
-    // that is not a valid model input. LowerModelGraph rejects this.
-    ModelGraph invalid({}, {GraphValue{}});
-
-    GraphCompileConfig config;
-    const StatusOr<CompiledModelGraph> result = CompileModelGraph(invalid, config);
-
-    EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
-}
-
-TEST(CompileModelGraph, DefaultConstructionCompiles) {
-    // Prove default-constructed configs are valid and the types satisfy
-    // nothrow-move requirements for StatusOr.
-    GraphCompileConfig config;
-    EXPECT_EQ(config.optimization.opt_level, 2U);
-
-    CompiledModelGraph compiled;
-    EXPECT_EQ(compiled.lowered.steps.size(), 0U);
+    // Default PassContext: O2 pipeline (SiLU+Mul fused, dead nodes removed).
+    const StatusOr<ModelGraph> optimized = OptimizeModelGraph(graph);
+    ASSERT_TRUE(optimized.ok()) << optimized.status().ToString();
+    ASSERT_TRUE(optimized->Validate().ok());
+    EXPECT_EQ(optimized->FindNodesByOpType(OpType::kSiluMul).size(), 1U);
 }
 
 // ---- Ownership: standalone constant graph output ---------------------------
 
-TEST(CompileModelGraph, PreservesStandaloneConstantGraphOutput) {
+TEST(OptimizeModelGraph, PreservesStandaloneConstantGraphOutput) {
     ModelGraph graph;
     const GraphValueId lhs = AddFloatConstant(graph, {1.0F, 2.0F, 3.0F, 4.0F}, {4}, "lhs");
     const GraphValueId rhs = AddFloatConstant(graph, {5.0F, 6.0F, 7.0F, 8.0F}, {4}, "rhs");
@@ -633,17 +582,23 @@ TEST(CompileModelGraph, PreservesStandaloneConstantGraphOutput) {
     graph.MarkOutput(sum);
     ASSERT_TRUE(graph.Validate().ok());
 
-    GraphCompileConfig config;
-    config.optimization.opt_level = 2;
-    const StatusOr<CompiledModelGraph> compiled = CompileModelGraph(graph, config);
+    PassContext opt_ctx;
+    opt_ctx.opt_level = 2;
 
-    ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
-    ASSERT_TRUE(compiled->optimized_graph.Validate().ok());
+    // Optimize and lower as separate stages; the caller owns the optimized
+    // graph so the standalone constant output stays inspectable.
+    const StatusOr<ModelGraph> optimized_or = OptimizeModelGraph(graph, opt_ctx);
+    ASSERT_TRUE(optimized_or.ok()) << optimized_or.status().ToString();
+    const ModelGraph& optimized = *optimized_or;
+
+    const StatusOr<LoweredGraph> lowered_or = LowerModelGraph(optimized, GraphLoweringConfig{});
+    ASSERT_TRUE(lowered_or.ok()) << lowered_or.status().ToString();
+    const LoweredGraph& lowered = *lowered_or;
 
     // The optimized graph output is a ConstantValue after CF+DCE.
-    ASSERT_EQ(compiled->optimized_graph.GetOutputs().size(), 1U);
-    const GraphValue& output = compiled->optimized_graph.GetValue(
-            compiled->optimized_graph.GetOutputs()[0].value);
+    ASSERT_EQ(optimized.GetOutputs().size(), 1U);
+    const GraphValue& output = optimized.GetValue(
+            optimized.GetOutputs()[0].value);
     ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
 
     // Inline bytes are readable and equal the expected folded sum.
@@ -655,12 +610,12 @@ TEST(CompileModelGraph, PreservesStandaloneConstantGraphOutput) {
     EXPECT_FLOAT_EQ(values[3], 12.0F);
 
     // No Add producer survives after DCE fixed the replaced-output liveness.
-    EXPECT_EQ(compiled->optimized_graph.FindNodesByOpType(OpType::kAdd).size(), 0U);
+    EXPECT_EQ(optimized.FindNodesByOpType(OpType::kAdd).size(), 0U);
 
     // The lowered model_output references the same output value id.
-    ASSERT_EQ(compiled->lowered.model_outputs.size(), 1U);
-    EXPECT_EQ(compiled->lowered.model_outputs[0],
-              compiled->optimized_graph.GetOutputs()[0].value);
+    ASSERT_EQ(lowered.model_outputs.size(), 1U);
+    EXPECT_EQ(lowered.model_outputs[0],
+              optimized.GetOutputs()[0].value);
 }
 
 // ---- Full Llama dense graph compilation -----------------------------------
@@ -736,7 +691,7 @@ ResolvedModelWeights MakeLlamaWeights(const HfModelConfig& config) {
 
 }// namespace
 
-TEST(CompileModelGraph, LowersFullLlamaDenseGraph) {
+TEST(OptimizeModelGraph, LowersFullLlamaDenseGraph) {
     const HfModelConfig config = MakeLlamaConfig2Layer();
     const ResolvedModelWeights weights = MakeLlamaWeights(config);
     const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
@@ -749,11 +704,21 @@ TEST(CompileModelGraph, LowersFullLlamaDenseGraph) {
     const size_t node_count_before = graph->GetNodes().size();
     const size_t value_count_before = graph->GetValues().size();
 
-    GraphCompileConfig compile_config;
-    compile_config.optimization.opt_level = 2;
-    const StatusOr<CompiledModelGraph> compiled = CompileModelGraph(*graph, compile_config);
+    PassContext opt_ctx;
+    opt_ctx.opt_level = 2;
 
-    ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
+    // Optimize and lower as separate stages (the optimized graph is
+    // caller-owned).
+    const StatusOr<ModelGraph> optimized_or =
+            OptimizeModelGraph(*graph, opt_ctx);
+    ASSERT_TRUE(optimized_or.ok()) << optimized_or.status().ToString();
+    const ModelGraph& optimized = *optimized_or;
+    ASSERT_TRUE(optimized.Validate().ok());
+
+    const StatusOr<LoweredGraph> lowered_or =
+            LowerModelGraph(optimized, GraphLoweringConfig{});
+    ASSERT_TRUE(lowered_or.ok()) << lowered_or.status().ToString();
+    const LoweredGraph& lowered = *lowered_or;
 
     // Source graph unchanged.
     std::ostringstream after_dump;
@@ -762,34 +727,31 @@ TEST(CompileModelGraph, LowersFullLlamaDenseGraph) {
     EXPECT_EQ(graph->GetNodes().size(), node_count_before);
     EXPECT_EQ(graph->GetValues().size(), value_count_before);
 
-    // Optimized graph validates.
-    ASSERT_TRUE(compiled->optimized_graph.Validate().ok());
-
     // Step and binding counts match (contract: 1:1 with optimized graph nodes).
-    EXPECT_EQ(compiled->lowered.steps.size(), compiled->optimized_graph.GetNodes().size());
-    EXPECT_EQ(compiled->lowered.step_bindings.size(), compiled->optimized_graph.GetNodes().size());
+    EXPECT_EQ(lowered.steps.size(), optimized.GetNodes().size());
+    EXPECT_EQ(lowered.step_bindings.size(), optimized.GetNodes().size());
 
     // First step is Embedding, last step is Argmax.
-    ASSERT_GT(compiled->lowered.steps.size(), 0U);
-    EXPECT_EQ(compiled->lowered.steps.front().op_type, OpType::kEmbedding);
-    EXPECT_EQ(compiled->lowered.steps.back().op_type, OpType::kArgmax);
+    ASSERT_GT(lowered.steps.size(), 0U);
+    EXPECT_EQ(lowered.steps.front().op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered.steps.back().op_type, OpType::kArgmax);
 
     // Model inputs/outputs match.
-    EXPECT_EQ(compiled->lowered.model_inputs.size(), graph->GetInputs().size());
-    EXPECT_EQ(compiled->lowered.model_outputs.size(), graph->GetOutputs().size());
+    EXPECT_EQ(lowered.model_inputs.size(), graph->GetInputs().size());
+    EXPECT_EQ(lowered.model_outputs.size(), graph->GetOutputs().size());
 
     // State aliases: 2 per layer (K and V cache for each decoder layer).
-    EXPECT_EQ(compiled->lowered.state_aliases.size(),
+    EXPECT_EQ(lowered.state_aliases.size(),
               static_cast<size_t>(config.num_hidden_layers) * 2U);
 
     // Output spec count matches binding output count per step.
-    for (size_t i = 0; i < compiled->lowered.steps.size(); ++i) {
-        EXPECT_EQ(compiled->lowered.steps[i].output_specs.size(),
-                  compiled->lowered.step_bindings[i].output_values.size());
+    for (size_t i = 0; i < lowered.steps.size(); ++i) {
+        EXPECT_EQ(lowered.steps[i].output_specs.size(),
+                  lowered.step_bindings[i].output_values.size());
     }
 
     // ResolveStateAliases succeeds and returns expected count.
-    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(compiled->lowered);
+    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(lowered);
     ASSERT_TRUE(alias_plan.ok()) << alias_plan.status().ToString();
     EXPECT_EQ(alias_plan->size(),
               static_cast<size_t>(config.num_hidden_layers) * 2U);
@@ -826,35 +788,6 @@ TEST(OptimizeModelGraph, RejectsForgedOutputSpecBeforeOptimization) {
     PassContext ctx;
     ctx.opt_level = 2;
     const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
-
-    ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
-}
-
-TEST(CompileModelGraph, RejectsWrongInputDtypeBeforeLowering) {
-    // Bad dtype at the compilation entry: OptimizeModelGraph precondition
-    // fires first (via GraphPassManager::Run). CompileModelGraph must
-    // propagate the error without entering lowering.
-    const ModelGraph graph = BuildGraphWithWrongInputDtype();
-
-    GraphCompileConfig config;
-    config.optimization.opt_level = 2;
-    const StatusOr<CompiledModelGraph> result = CompileModelGraph(graph, config);
-
-    ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
-}
-
-TEST(CompileModelGraph, RejectsForgedOutputSpecBeforeLowering) {
-    // Forged output spec at the compilation entry. CompileModelGraph must
-    // propagate the error without entering lowering.
-    const ModelGraph graph = BuildGraphWithForgedOutputSpec();
-
-    GraphCompileConfig config;
-    config.optimization.opt_level = 2;
-    const StatusOr<CompiledModelGraph> result = CompileModelGraph(graph, config);
 
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);

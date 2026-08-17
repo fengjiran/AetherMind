@@ -1,7 +1,8 @@
-#include "aethermind/graph/compilation/graph_compiler.h"
 #include "aethermind/graph/graph_op_builder.h"
+#include "aethermind/graph/lowering/graph_lowering.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
 #include "aethermind/graph/optimization/gate_up_linear_fusion_pass.h"
+#include "aethermind/graph/optimization/optimize_model_graph.h"
 #include "test_optimization_helpers.h"
 
 #include <gtest/gtest.h>

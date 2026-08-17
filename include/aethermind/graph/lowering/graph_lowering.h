@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_GRAPH_COMPILATION_GRAPH_LOWERING_H
-#define AETHERMIND_GRAPH_COMPILATION_GRAPH_LOWERING_H
+#ifndef AETHERMIND_GRAPH_LOWERING_GRAPH_LOWERING_H
+#define AETHERMIND_GRAPH_LOWERING_GRAPH_LOWERING_H
 
 /// @file graph_lowering.h
 /// @brief Backend-independent lowering from semantic ModelGraph to execution-plan artifacts.
@@ -8,13 +8,9 @@
 /// binding vectors and unresolved state alias records. Backend-specific kernel
 /// selection happens later; this stage only translates semantic IR.
 #include "aethermind/backend/kernel_selector.h"
-#include "aethermind/base/macros.h"
-#include "aethermind/base/status.h"
 #include "aethermind/execution/execution_node_spec.h"
 #include "aethermind/execution/state_alias_plan.h"
 #include "aethermind/graph/graph.h"
-
-#include <vector>
 
 namespace aethermind {
 

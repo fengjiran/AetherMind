@@ -44,7 +44,7 @@ Phase 1 的 Operator Contract 面向：
 | --- | --- | --- |
 | **operators（语义契约层）** | `include/aethermind/operators/` + `src/operators/` | **本契约的所有者**。负责 OpType 枚举、OperatorSchema（端口名与顺序是语义 ABI）、OpParams typed variant、`Infer*` 自由函数、OpParams serde。不得引用 Graph IR、ModelGraph、LoweredGraph、Backend 或 Kernel。 |
 | **graph（图 IR 与编译层）** | `include/aethermind/graph/` + `src/graph/` | **operators 的消费者**。在图构建期通过 `Infer*` 自由函数进行算子语义验证与 shape 推导，output_specs + deferred ShapeConstraints 写入 ExecutionPlanNodeSpec.runtime_checks。设备/ISA 独立，不允许包含 Backend/Kernel。 |
-| **execution（执行数据契约层）** | `include/aethermind/execution/` + `src/execution/` | **operators 的消费者**。通过 ExecutionPlanNodeSpec.op_params（OpParams typed variant）传递算子参数，通过 OperatorRegistry 解析 kernel。Public headers 不依赖 graph compilation；唯一 adapter edge 为 `execution_plan_builder.cpp` include `graph/compilation/graph_lowering.h`。 |
+| **execution（执行数据契约层）** | `include/aethermind/execution/` + `src/execution/` | **operators 的消费者**。通过 ExecutionPlanNodeSpec.op_params（OpParams typed variant）传递算子参数，并在计划期调用 Backend::PrepareKernel，将完整 ResolvedKernel 按值写入 ExecutionStep。Public headers 不依赖 graph compilation；唯一 adapter edge 为 `execution_plan_builder.cpp` include `graph/compilation/graph_lowering.h`。 |
 | **model（前端适配层）** | `include/aethermind/model/` + `src/model/` | **ModelGraphBuilder 是前端→语义图的唯一转换权威**。HF-only RoPE scaling types（DynamicNtk/Yarn/Llama3/LongRope/Su/Unknown）在 `BuildLlamaDense` 路径通过 `MakeRoPEParams` 返回 StatusOr 显式拒绝，仅 kNone/kLinear 映射到 `RoPEScalingType`。 |
 | **backend / kernels（执行层）** | `include/aethermind/backend/` + `src/backend/` + ISA-specific kernels | **operators 的执行者**。仅通过 OpParams/OpType 访问算子语义，不得反向依赖 graph/model。kernel 选择通过 KernelSelector::Select，注册通过 `AM_REGISTER_KERNEL`。 |
 

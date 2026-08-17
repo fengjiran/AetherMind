@@ -286,10 +286,11 @@ struct GraphNode {
     std::vector<GraphValueId> outputs{};
 
     // Typed operator parameters. The active execution path carries the same
-    // OpParams variant into ExecutionPlanNodeSpec and OperatorRegistry.
+    // OpParams variant into ExecutionPlanNodeSpec and Backend::PrepareKernel.
     OpParams op_params{};
 
-    // Extension metadata only. Registered operators should prefer op_params.
+    // Extension metadata only. Execution planning derives kernel metadata from
+    // op_params and does not consume graph attrs as raw kernel bytes.
     ModelGraphAttrs attrs{};
 };
 ```
@@ -1019,7 +1020,7 @@ Phase-1 RoPE 算子在 graph 层面表达以下语义契约（rank-2、无 batch
 
 **dtype / quantization 保留**：`AddReshape` helper 将输入的 `QuantizationSpec` 复制到输出 value descriptor；dtype 不限制为算术子集。
 
-**当前能力边界（语义专用）**：图可以构造、推断、校验、dump、rewrite Reshape，但**不存在可执行 lowering**——没有 `ReshapeOp` 类、`AM_REGISTER_OPERATOR`、kernel、`AM_REGISTER_KERNEL`、alias / view legality、materialization、stride propagation、workspace 或 constant evaluator。语义合法性与判定与未来 view / materialization 的物理合法性是两件事。
+**当前能力边界（语义专用）**：图可以构造、推断、校验、dump、rewrite Reshape，但**不存在可执行 lowering**——没有匹配的 kernel descriptor、alias / view legality、materialization、stride propagation、workspace 或 constant evaluator。语义合法性与判定与未来 view / materialization 的物理合法性是两件事。
 
 ### 13.2 Permute 语义与执行边界
 
@@ -1065,7 +1066,7 @@ output.shape[j] = input.shape[permutation[j]]   对 0 <= j < permutation.size()
 
 **不 emit 约束**：`InferPermute` 不构造 `VolumeEqualConstraint` 或任何 `ShapeConstraint`——双射性保证输入输出体积自动相等，无需运行时检查；也不构造 unknown symbol、不修改 solver 状态。
 
-**当前能力边界（语义专用）**：图可以构造、推断、校验、dump `Permute`，但**不存在可执行 lowering**——没有 `PermuteOp` 类、`AM_REGISTER_OPERATOR`、kernel、`AM_REGISTER_KERNEL`、alias / view legality、materialization、stride propagation、workspace、constant evaluator 或 importer 默认行为。语义合法性与未来物理 view / materialization 合法性是两件事：未来若添加 `PermuteOp`，仍须独立验证 stride / contiguity / alias 合法性，本节语义契约不构成对物理执行的承诺。
+**当前能力边界（语义专用）**：图可以构造、推断、校验、dump `Permute`，但**不存在可执行 lowering**——没有匹配的 kernel descriptor、alias / view legality、materialization、stride propagation、workspace、constant evaluator 或 importer 默认行为。语义合法性与未来物理 view / materialization 合法性是两件事：未来若添加对应 kernel，仍须独立验证 stride / contiguity / alias 合法性，本节语义契约不构成对物理执行的承诺。
 
 ### 13.3 Reorder 语义与执行边界
 
@@ -1107,7 +1108,7 @@ Y[i_0, ..., i_(r-1)] = X[i_0, ..., i_(r-1)]   对所有合法坐标元组
 
 **DCE 行为**：Reorder 是 pure、deterministic、`RuntimeOnly()` schema——未使用的 Reorder 节点可被 DCE 安全移除；但**不存在代数恒等消除**——即使输出 `TensorSpec` 等于输入，只要输出是活的（graph output 或有下游消费者），DCE 不会移除它。Reorder 是 materialization/layout-intent 边界，不是普通 identity。
 
-**当前能力边界（语义专用）**：图可以构造、推断、校验、dump `Reorder`，但**不存在可执行 lowering**——没有 `ReorderOp` 类、`AM_REGISTER_OPERATOR`、kernel、`AM_REGISTER_KERNEL`、materialization、allocation、workspace、constant evaluator、target-format 字段、channels-last/blocked/opaque 布局支持或 importer 默认行为。未来 lowering 可能复用已经 canonical 的输入（零拷贝）或另行 materialize；本节语义契约不承诺执行时一定拷贝、一定分配新存储、一定 alias、或一定零拷贝。`TensorSpec` 有意不暴露物理变化；`OpType::kReorder` 本身携带 lowering 需求。
+**当前能力边界（语义专用）**：图可以构造、推断、校验、dump `Reorder`，但**不存在可执行 lowering**——没有匹配的 kernel descriptor、materialization、allocation、workspace、constant evaluator、target-format 字段、channels-last/blocked/opaque 布局支持或 importer 默认行为。未来 lowering 可能复用已经 canonical 的输入（零拷贝）或另行 materialize；本节语义契约不承诺执行时一定拷贝、一定分配新存储、一定 alias、或一定零拷贝。`TensorSpec` 有意不暴露物理变化；`OpType::kReorder` 本身携带 lowering 需求。
 
 ## 14. Shape 与动态维度
 

@@ -119,7 +119,7 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | **目标缺口** | `PrefillPath`/`DecodePath` 类未实现；`Executor::Generate` 完整状态机未实现；当前 `Executor::Execute` 为单计划一次性执行，不具备跨步骤状态管理和 Prefill/Decode 阶段区分能力 |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
 
-> 当前 `Executor::Execute` 的实现是单一 plan 遍历执行：调用 `LayerRunner::Run` 按序执行每个 `ExecutionStep`，每步经 workspace 绑定、KernelContext 构造、shape 约束校验后调用 `step.op->Run`（当前 `Operator::Run` 为虚函数调用，但 `Prepare()` 阶段已将 `ResolvedKernel::fn` 缓存，执行路径避免 registry 查找）。整个 Generate 状态机（PrepareSession → Prefill → Decode loop → Argmax/stop）属于 Phase 1 目标。
+> 当前 `Executor::Execute` 的实现是单一 plan 遍历执行：调用 `LayerRunner::Run` 按序执行每个 `ExecutionStep`，每步经 workspace 绑定、KernelContext 构造、shape 约束校验后由通用 kernel invoker 调用按值冻结的 `step.kernel.fn`。整个 Generate 状态机（PrepareSession → Prefill → Decode loop → Argmax/stop）属于 Phase 1 目标。
 
 ---
 
@@ -187,13 +187,13 @@ flowchart LR
 | 维度 | 说明 |
 |------|------|
 | **责任** | 暴露 kernel resolve 能力（供 `ExecutionPlanBuilder` 在 plan-build-time 调用）；注册与选择后端 kernel；在工作空间绑定和 shape 校验后执行逐步骤算子调用；提供 workspace 复用与 KV cache 物理访问契约 |
-| **当前模块** | `LayerRunner`、`CpuBackend`、`KernelRegistry`（全局 singleton + `AM_REGISTER_KERNEL` 静态注册）、各算子 Op（`RmsNormOp` 等，`Operator::Run` 当前为虚函数，`Prepare()` 阶段缓存 `ResolvedKernel::fn`）、`WorkspaceArena`、`ammalloc` |
+| **当前模块** | `LayerRunner`、`KernelInvoker`、`CpuBackend`、`KernelRegistry`（全局 singleton + `AM_REGISTER_KERNEL` 静态注册）、`WorkspaceArena`、`ammalloc` |
 | **主要输入** | `ExecutionPlan`（已 resolve 的 `ExecutionStep` 序列）、`RuntimeBindingContext`（workspace base、KV view 等动态绑定） |
 | **主要输出** | 各 step 计算结果的 tensor 写入（workspace + KV cache 位置）；Token IDs 仅在目标 Generate 循环经 Argmax 处理后产生 |
 | **目标缺口** | CPU backend/kernel dispatch 已通过 plan-build-time resolve 就位；更完整的 Llama layer 算子覆盖和 SIMD 优化 kernel 仍在推进 |
-| **禁止责任泄漏** | 不得感知模型拓扑、不得承担请求编排、不得在热路径做 registry/hash/string lookup（当前 `Operator::Run` 虽为虚函数，但已避免热路径 registry 查找）、不得将宽对象（`RuntimeContext*`）下放给 kernel |
+| **禁止责任泄漏** | 不得感知模型拓扑、不得承担请求编排、不得在热路径做 registry/hash/string lookup 或对象虚调用、不得将宽对象（`RuntimeContext*`）下放给 kernel |
 
-> kernel resolve 能力由硬件执行层暴露（通过 `Backend::ResolveKernel` 接口），但 resolve 的发起方是计算图语义层的 `ExecutionPlanBuilder`——这是典型的层边界适配模式：能力由下层提供，决策由上层做出。
+> kernel prepare 能力由硬件执行层通过 `Backend::PrepareKernel` 暴露，但 prepare 的发起方是执行数据契约层的 `ExecutionPlanBuilder`；它将 selector 与 typed OpParams 交给 backend，并将返回的 `ResolvedKernel` 冻结在计划中。
 
 ### 执行阶段调用序列
 
@@ -369,7 +369,7 @@ flowchart TB
 | 关注点 | 收益 |
 |--------|------|
 | **可测试性** | 每层可独立测试：`ExecutionPlanBuilder` 不依赖 `Executor`；`LayerRunner` 不依赖模型加载；Kernel 函数不依赖 Runtime 上下文 |
-| **热路径效率** | kernel 执行通过 plan-build-time resolve 的 `ResolvedKernel::fn` 函数指针完成（`Operator::Run` 当前为虚函数包装，但已避免热路径 registry 查找）；`LayerRunner` 的步骤遍历循环体轻量，无层间抽象开销 |
+| **热路径效率** | kernel 执行通过 plan-build-time prepare 的 `ResolvedKernel::fn` 函数指针完成；`LayerRunner` 经通用 invoker 构造短生命周期 kernel params 后直接调用，不发生 backend 查找或对象虚调用 |
 | **可替换性** | 后端感知的差异通过 `KernelSelector`、Backend 与 `KernelRegistry` 收敛在计划构建和硬件执行边界，避免向 API 泄漏；这只是隔离能力，不代表 Phase 1 支持非 CPU 后端 |
 | **演进边界** | 后续阶段若引入批处理、PagedAttention 或非 CPU 后端，需要重新评估相应层内模块；四层边界用于局部化变化，不构成兼容性或交付承诺 |
 

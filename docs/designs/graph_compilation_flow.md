@@ -28,11 +28,10 @@ struct ExecutionPlanNodeSpec {
     // Schema-port-ordered input specs, including state ports that do not
     // contribute to runtime tensor bindings.
     std::vector<TensorSpec> input_specs{};
-    std::vector<TensorSpec> output_specs{}; // added: output specs for deferred shape checks
+    std::vector<TensorSpec> output_specs{};
     // Deferred runtime shape constraints (derived during graph construction,
     // carried through lowering without re-inference).
     std::vector<ShapeConstraint> runtime_checks{};
-    std::vector<std::byte> attrs{};         // changed from std::span<const std::byte>
     OpParams op_params{};
 };
 ```
@@ -62,19 +61,16 @@ for each node:
         │
         ├─ runtime.GetBackend(node.device_type)
         │
-        ├─ ResolveKernelForNode(backend, node)
-        │      ├─ OperatorRegistry::Create(...)
-        │      └─ op->Prepare(OperatorContext{backend, selector})
+        ├─ PrepareNodeMetadata(node, trusted)
+        │      ├─ schema -> MakeCompactInputSpecs(...)
+        │      └─ raw node: InferOperator(...) 严格核对 metadata
         │
-        │   // NOTE: Operator semantic validation and output shape inference are
-        │   // run exactly once per node at graph-build/lowering time via the
-        │   // typed `Infer*` free functions under `src/operators/*_op.cpp`
-        │   // (e.g. `InferRoPE`, `InferRmsNorm`, `InferSiluMul`). Each Infer
-        │   // function validates params, dtypes and shapes, emits deferred
-        │   // ShapeConstraints into node.runtime_checks, and returns the
-        │   // output TensorSpecs. ExecutionPlanBuilder does not re-run
-        │   // validation/inference; it only binds kernels, resolves packed
-        │   // weights, and defers runtime shape checks.
+        ├─ backend.PrepareKernel(node.op_type, selector, node.op_params)
+        │      └─ 返回按值持有的 ResolvedKernel
+        │
+        │   // NOTE: trusted LoweredGraph metadata is copied verbatim because
+        │   // graph construction already called InferOperator. Untrusted raw
+        │   // node specs are re-inferred and must match exactly.
         │
         ├─ ResolvePackedWeightsForNode(model_instance?, node)
         │
@@ -145,7 +141,7 @@ PlanWorkspaceRequirements(std::span(workspace_requirements))
 for (size_t index = 0; index < nodes.size(); ++index)
 ```
 
-每个 node 依次执行 backend 获取、operator 创建、kernel prepare、packed weight 绑定、step 写入。
+每个 node 依次执行 backend 获取、语义 metadata 准备、kernel prepare、packed weight 绑定、step 写入。
 
 ### C. Backend 获取
 
@@ -192,129 +188,31 @@ KernelSelector{
 
 这个 selector 是 backend/kernel registry 选择内核的关键输入。
 
-### E. Operator 创建与准备
+### E. 语义 metadata 准备
+
+`PrepareNodeMetadata(node, trusted)` 始终根据 `OperatorSchema` 调用
+`MakeCompactInputSpecs`，因此 state/resource port 不会进入 runtime tensor
+binding，也不会进入 `InferOperator` 的 compact 输入。
+
+- `trusted == true`（`LoweredGraph`）：graph construction 已执行
+  `InferOperator`，builder 直接保留 lowered 的 `output_specs` 与
+  `runtime_checks`，不会创建第二个语义权威。
+- `trusted == false`（直接 node spec）：`op_params` 必须不是
+  `std::monostate`；builder 调用 `InferOperator`，并要求调用方提供的
+  `output_specs` 和 `runtime_checks` 精确匹配推导结果。
+
+### F. Kernel prepare
 
 ```cpp
-CreateAndPrepareOperator(Backend& backend,
-                         const ExecutionPlanNodeSpec& node)
+backend.PrepareKernel(node.op_type, MakeSelectorForNode(node), node.op_params)
 ```
 
-返回：
+这是唯一的 plan-time kernel resolution API。backend 选择 descriptor，并将
+由 `OpParams` 派生的不可变 metadata 写入返回的 `ResolvedKernel::attrs`。
+例如 RmsNorm 的 epsilon 在此阶段冻结；运行期不再读取 `OpParams`，也不再
+进行 backend 或 registry lookup。
 
-```cpp
-StatusOr<PreparedOperator>
-```
-
-其中：
-
-```cpp
-struct PreparedOperator {
-    OperatorPtr op;
-    InferenceResult inference;
-};
-```
-
-内部流程：
-
-```text
-CreateAndPrepareOperator
-  ├─ OperatorRegistry::Create(node.op_type, MakeOperatorParamsForNode(node))
-  ├─ 如果 NotFound:
-  │     └─ 返回空 PreparedOperator，用 raw kernel fallback
-  ├─ 如果 node.attrs 非空:
-  │     └─ 对注册 Operator 报错
-  ├─ op->ValidateParams()
-  ├─ 如果 node.input_specs 非空:
-  │     ├─ op->CheckInputSpecs(node.input_specs)
-  │     └─ op->InferOutputShapes(node.input_specs)
-  ├─ 构造 OperatorContext
-  └─ op->Prepare(op_ctx)
-```
-
-这里的关键点是：`input_specs` 为空时，不做 shape 检查和 shape inference。这就是当前架构支持“shape 信息不完整/暂不可得”的方式之一。
-
-### F. 参数来源
-
-```cpp
-MakeOperatorParamsForNode(const ExecutionPlanNodeSpec& node)
-```
-
-规则：
-
-1. 如果 `node.op_params` 不是 `std::monostate`：
-
-```cpp
-return node.op_params;
-```
-
-2. 否则：
-
-```cpp
-OperatorRegistry::CreateDefaultParams(node.op_type)
-```
-
-3. 如果没有默认参数：
-
-```cpp
-return OpParams{};
-```
-
-因此注册算子一般从 `op_params` 或默认参数构造。
-
-### G. 注册 Operator 路径
-
-以 `RmsNormOp` 为例：
-
-```cpp
-AM_REGISTER_OPERATOR(OpType::kRmsNorm, RmsNormOp)
-```
-
-注册后，builder 会走：
-
-```text
-OperatorRegistry::Create
-  → RmsNormOp(params)
-  → ValidateParams
-  → CheckInputSpecs
-  → InferOutputShapes
-  → Prepare
-```
-
-`Prepare()` 内部会做 kernel resolution：
-
-```cpp
-ctx.backend->ResolveKernelInfo(OpType::kRmsNorm, ctx.selector)
-```
-
-成功后保存到 operator 内部的 `resolved_kernel_`。
-
-### H. Raw Kernel fallback 路径
-
-如果 `OperatorRegistry::Create(...)` 返回 `kNotFound`，builder 走 fallback：
-
-```cpp
-ResolveKernelForNode(*backend.value(), node)
-```
-
-内部：
-
-```cpp
-backend.ResolveKernelInfo(node.op_type, selector)
-```
-
-然后构造：
-
-```cpp
-FunctionOperator(
-    resolved->op_type,
-    resolved->fn,
-    std::span<const std::byte>(resolved->attrs),
-    resolved->debug_name)
-```
-
-这个路径不会做完整 operator-level shape inference，只是把 raw `KernelFunc` 包装进统一执行接口。
-
-### I. Packed weight 绑定
+### G. Packed weight 绑定
 
 ```cpp
 ResolvePackedWeightsForNode(const ModelInstance* model_instance,
@@ -359,19 +257,19 @@ packed_weights->storage().data()
 ExecutionStep::packed_weights
 ```
 
-### J. 生成最终 step
+### H. 生成最终 step
 
 每个 node 最终变成一个：
 
 ```cpp
 ExecutionStep{
     .selector = MakeSelectorForNode(node),
-    .op = std::move(op),
-    .packed_weights = packed_weights.value(),
+    .kernel = std::move(kernel),
+    .packed_weights = *packed_weights,
     .workspace_requirement = workspace_requirements[index],
-    .output_specs = std::move(prepared.inference.outputs),
-    .runtime_checks = std::move(prepared.inference.runtime_checks),
-    .debug_name = nullptr,
+    .input_specs = std::move(metadata.compact_input_specs),
+    .output_specs = std::move(metadata.output_specs),
+    .runtime_checks = std::move(metadata.runtime_checks),
 }
 ```
 
@@ -383,8 +281,9 @@ plan.AddStep(...)
 
 `ExecutionPlan::AddStep` 会验证：
 
-- `step.op != nullptr`
-- `step.op->GetResolvedKernel().fn != nullptr`
+- `step.kernel.op_type != OpType::kUnknown`
+- `step.kernel.fn != nullptr`
+- kernel params builder/size 契约合法
 - workspace alignment 合法
 
 成功后 push 到内部：
@@ -415,7 +314,7 @@ struct InferenceResult {
 };
 ```
 
-例如 `RmsNormOp::InferOutputShapes(...)`：
+例如 `InferRmsNorm(...)`：
 
 - 输出 shape 直接继承 input activation shape；
 - 如果 input hidden symbol 和 weight hidden symbol 不是同一个 symbol，就生成：
@@ -440,7 +339,7 @@ LayerRunner::RunStep(...)
 所以当前设计是：
 
 ```text
-编译期能证明的 shape 关系 → CheckInputSpecs / InferOutputShapes 处理
+编译期能证明的 shape 关系 → InferOperator 处理
 编译期无法证明但运行期可验证的关系 → runtime_checks
 运行期真实 TensorView 出现后 → ValidateShapeConstraints
 ```
@@ -492,7 +391,7 @@ KernelContext{
     .device_type = step.selector.device_type,
     .workspace = bindings.GetWorkspaceArena(),
     .packed_weights = step.packed_weights,
-    .attrs = resolved.attrs,
+    .attrs = step.kernel.attrs,
 }
 ```
 
@@ -502,35 +401,12 @@ KernelContext{
 ValidateShapeConstraints(...)
 ```
 
-4. 调用 operator：
+4. 从 `RuntimeBindingContext` 取得当前 step 的 tensor binding，校验 compact
+   input/output arity。
 
-```cpp
-step.op->Run(ctx, bindings, step_index)
-```
-
-例如 `RmsNormOp::Run` 会：
-
-```cpp
-bindings.GetStepTensorBinding(step_index)
-```
-
-然后构造：
-
-```cpp
-cpu::CpuRmsNormParams
-```
-
-设置：
-
-```cpp
-ctx.kernel_params = &params;
-```
-
-最后调用：
-
-```cpp
-resolved_kernel_.fn(ctx)
-```
+5. 由通用 `InvokeKernel(step.kernel, ctx, inputs, outputs)` 执行：若 descriptor
+   注册了 params builder，它在栈上构造 backend-specific params 并临时写入
+   `ctx.kernel_params`，然后调用冻结的 `step.kernel.fn`。
 
 ## 6. 当前 Graph Compile 阶段边界
 

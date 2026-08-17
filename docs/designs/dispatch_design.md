@@ -303,14 +303,14 @@ AM_REGISTER_KERNEL(g_rmsnorm_avx2_registration, {
 
 1. **消除重复注册**：不同 Backend（CPU/CUDA）通过同一设备选择器 `KernelSelector` 区分，per-backend registry 会导致 descriptor 重复注册，且跨 backend resolve 需要额外桥接。
 2. **简化 kernel 添加流程**：kernel 作者只需在 .cpp 文件中添加 `AM_REGISTER_KERNEL` 一行，无需修改任何 Backend 代码。
-3. **与现有 `AM_REGISTER_OPERATOR` 模式一致**：引擎已有静态注册的先例。
+3. **统一注册语义**：kernel descriptor 是执行层唯一的静态注册入口，不再维护平行的算子工厂注册表。
 4. **线程安全**：通过 `std::mutex` 保护，`Freeze()` 后 registry 进入只读态，后续 `Resolve` 为 lock-free 读。
 
 ### 代价与风险
 
 * 失去了 per-backend registry 的模块隔离（CUDA kernel 不会注册到 CPU 路径；实际通过 `KernelSelector.device` 硬匹配过滤）；
 * 依赖静态初始化顺序（function-local static 无顺序问题，但 `AM_REGISTER_KERNEL` 与 `CpuBackend` 构造之间的时序需要保证 `Freeze` 不提前执行）；
-* 当前未使用 `__attribute__((used))`，存在被链接器 GC 的风险（与 `AM_REGISTER_OPERATOR` 同一风险等级）。
+* 当前未使用 `__attribute__((used))`，存在被链接器 GC 的风险。
 
 # 8. 匹配规则
 

@@ -3,9 +3,9 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_registry.h"
-#include "aethermind/base/tensor_view.h"
-#include "aethermind/model/model_instance.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/base/tensor_view.h"
+#include "aethermind/model/backend_sidecar.h"
 
 #include <vector>
 
@@ -66,7 +66,7 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> WeightPrepackPlanner::Build
     return requests;
 }
 
-Status WeightPrepackPlanner::PrepackAndStore(ModelInstance& model_instance,
+Status WeightPrepackPlanner::PrepackAndStore(BackendSidecar& sidecar,
                                              const std::vector<Request>& requests) {
     CpuWeightPrepacker prepacker;
 
@@ -76,9 +76,9 @@ Status WeightPrepackPlanner::PrepackAndStore(ModelInstance& model_instance,
     };
     std::vector<PackKey> stored;
 
-    for (const auto& req : requests) {
+    for (const auto& req: requests) {
         bool duplicate = false;
-        for (const auto& key : stored) {
+        for (const auto& key: stored) {
             if (key.op_type == req.op_type && key.selector == req.selector) {
                 duplicate = true;
                 break;
@@ -108,7 +108,7 @@ Status WeightPrepackPlanner::PrepackAndStore(ModelInstance& model_instance,
             return packed.status();
         }
 
-        AM_RETURN_IF_ERROR(model_instance.StorePackedWeights(std::move(*packed)));
+        AM_RETURN_IF_ERROR(sidecar.Store(std::move(*packed)));
         stored.push_back({req.op_type, req.selector});
     }
 

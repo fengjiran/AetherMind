@@ -1,8 +1,8 @@
 #include "aethermind/model/weight_prepack_planner.h"
 
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/model/model_instance.h"
-#include "aethermind/model/model_instance_builder.h"
+#include "aethermind/model/backend_sidecar.h"
+#include "aethermind/model/loaded_model.h"
 
 #include <cstddef>
 #include <gtest/gtest.h>
@@ -73,7 +73,7 @@ KernelSelector MakeExpectedSelector() {
     };
 }
 
-TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsEnumeratesAllLinearWeightsPerLayer) {
+TEST(WeightPrepackPlanner, BuildRequestsEnumeratesAllLinearWeightsPerLayer) {
     auto storage = std::make_shared<TestStorage>(256);
 
     ResolvedModelWeights index;
@@ -98,7 +98,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsEnumeratesAllLinearWeigh
     }
 }
 
-TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsExcludesNormsAndEmbeddings) {
+TEST(WeightPrepackPlanner, BuildRequestsExcludesNormsAndEmbeddings) {
     auto storage = std::make_shared<TestStorage>(256);
     ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
@@ -119,7 +119,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsExcludesNormsAndEmbeddin
     }
 }
 
-TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsIncludesLmHeadWhenPresent) {
+TEST(WeightPrepackPlanner, BuildRequestsIncludesLmHeadWhenPresent) {
     auto storage = std::make_shared<TestStorage>(256);
     ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
@@ -146,7 +146,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, BuildRequestsIncludesLmHeadWhenPresen
     EXPECT_TRUE(found_lm_head);
 }
 
-TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) {
+TEST(WeightPrepackPlanner, PrepackAndStoreMakesWeightsFindable) {
     auto storage = std::make_shared<TestStorage>(256);
     // Fill with zeros so Pack can safely memcpy.
     for (auto& b: storage->data) b = std::byte{0};
@@ -156,20 +156,20 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) 
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
     index.layers.push_back(MakeTestLayer(storage, 16));
 
-    auto model = ModelInstanceBuilder::Create(MakeLlamaConfig(1), std::move(index));
-    ASSERT_TRUE(model.ok());
+    LoadedModel loaded_model(MakeLlamaConfig(1), std::move(index));
+    BackendSidecar packed_weight_sidecar;
 
     CpuBackend backend;
     KernelRegistry registry;
     auto requests = WeightPrepackPlanner::BuildRequests(
-            (*model)->GetConfig(), (*model)->GetResolvedWeights(), backend, registry);
+            loaded_model.GetConfig(), loaded_model.GetResolvedWeights(), backend, registry);
     ASSERT_TRUE(requests.ok());
 
-    Status status = WeightPrepackPlanner::PrepackAndStore(**model, *requests);
+    Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_sidecar, *requests);
     ASSERT_TRUE(status.ok());
 
     const KernelSelector expected_selector = MakeExpectedSelector();
-    const PackedWeights* found = (*model)->FindPackedWeights(
+    const PackedWeights* found = packed_weight_sidecar.Find(
             OpType::kLinear, expected_selector);
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->op_type(), OpType::kLinear);
@@ -177,7 +177,7 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreMakesWeightsFindable) 
     EXPECT_TRUE(found->storage().is_initialized());
 }
 
-TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
+TEST(WeightPrepackPlanner, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -188,28 +188,28 @@ TEST(ModelLoader_WeightPrepackPlannerTest, PrepackAndStoreSkipsDuplicateSelector
     index.layers.push_back(MakeTestLayer(storage, 16));
     index.layers.push_back(MakeTestLayer(storage, 100));
 
-    auto model = ModelInstanceBuilder::Create(MakeLlamaConfig(2), std::move(index));
-    ASSERT_TRUE(model.ok());
+    LoadedModel loaded_model(MakeLlamaConfig(2), std::move(index));
+    BackendSidecar packed_weight_sidecar;
 
     CpuBackend backend;
     KernelRegistry registry;
     auto requests = WeightPrepackPlanner::BuildRequests(
-            (*model)->GetConfig(), (*model)->GetResolvedWeights(), backend, registry);
+            loaded_model.GetConfig(), loaded_model.GetResolvedWeights(), backend, registry);
     ASSERT_TRUE(requests.ok());
     EXPECT_EQ(requests->size(), 14);
 
     // PrepackAndStore should succeed — duplicates are skipped, not rejected.
-    Status status = WeightPrepackPlanner::PrepackAndStore(**model, *requests);
+    Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_sidecar, *requests);
     ASSERT_TRUE(status.ok());
 
     // Only the first unique (op_type, selector) pair is stored.
     const KernelSelector expected_selector = MakeExpectedSelector();
-    const PackedWeights* found = (*model)->FindPackedWeights(
+    const PackedWeights* found = packed_weight_sidecar.Find(
             OpType::kLinear, expected_selector);
     ASSERT_NE(found, nullptr);
 }
 
-TEST(ModelLoader_WeightPrepackPlannerTest, RawViewsStillAccessibleAfterPrepack) {
+TEST(WeightPrepackPlanner, RawViewsRemainAccessibleAfterPrepack) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -218,18 +218,18 @@ TEST(ModelLoader_WeightPrepackPlannerTest, RawViewsStillAccessibleAfterPrepack) 
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
     index.layers.push_back(MakeTestLayer(storage, 16));
 
-    auto model = ModelInstanceBuilder::Create(MakeLlamaConfig(1), std::move(index));
-    ASSERT_TRUE(model.ok());
+    LoadedModel loaded_model(MakeLlamaConfig(1), std::move(index));
+    BackendSidecar packed_weight_sidecar;
 
     CpuBackend backend;
     KernelRegistry registry;
     auto requests = WeightPrepackPlanner::BuildRequests(
-            (*model)->GetConfig(), (*model)->GetResolvedWeights(), backend, registry);
+            loaded_model.GetConfig(), loaded_model.GetResolvedWeights(), backend, registry);
     ASSERT_TRUE(requests.ok());
 
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(**model, *requests).ok());
+    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_sidecar, *requests).ok());
 
-    const auto& resolved_weights = (*model)->GetResolvedWeights();
+    const auto& resolved_weights = loaded_model.GetResolvedWeights();
     EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());
     EXPECT_TRUE(resolved_weights.final_norm.IsValid());
     EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());

@@ -125,7 +125,7 @@ TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesLoadedModelBoundar
                          MakeCompleteTensorHeader(1),
                          raw_bytes);
 
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
+    const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_TRUE(model.ok()) << model.status().message();
     ASSERT_NE(*model, nullptr);
@@ -174,7 +174,7 @@ TEST(ModelLoader_PipelineTest, ValidShardedDirectoryReachesLoadedModelBoundary) 
                          MakeTensorHeaderForNames(second_shard_names),
                          ZeroFloatBytes(second_shard_names.size()));
 
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
+    const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_TRUE(model.ok()) << model.status().message();
     ASSERT_NE(*model, nullptr);
@@ -209,7 +209,7 @@ TEST(ModelLoader_PipelineTest, AllowsStructurallyValidRopeScalingForModelCompile
                          MakeCompleteTensorHeader(1),
                          raw_bytes);
 
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
+    const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     EXPECT_EQ((*model)->GetConfig().rope.scaling_type, HfRopeScalingType::kLinear);
@@ -232,7 +232,7 @@ TEST(ModelLoader_PipelineTest, RejectsUnsupportedModelFamily) {
     })");
     WriteTextFile(temp_dir.path() / "model.safetensors", "dummy");
 
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
+    const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
@@ -244,7 +244,7 @@ TEST(ModelLoader_PipelineTest, PropagatesSafetensorsArtifactError) {
     const auto prefix = EncodeLittleEndianU64(1024);
     WriteRawFile(temp_dir.path() / "model.safetensors", prefix);
 
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
+    const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
@@ -258,7 +258,7 @@ TEST(ModelLoader_PipelineTest, RejectsIncompleteWeightSet) {
                          R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
                          raw_bytes);
 
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
+    const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);

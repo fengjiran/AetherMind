@@ -33,9 +33,9 @@ bool IsGateUpRecipe(const WeightBindingSpec& binding) {
     return std::holds_alternative<GateUpWeightBinding>(binding);
 }
 
-TEST(ModelCompiler, LoadAndLowerTinyLlamaAtO2) {
-    const auto lowered = ModelCompiler::LoadAndLowerModel(
-            ModelLoadOptions{.model_dir = TestModelDir()});
+TEST(ModelCompiler, LoadAndCompileTinyLlamaAtO2) {
+    const auto lowered = ModelCompiler::LoadAndCompile(
+            TestModelDir());
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_NE(lowered->loaded_model, nullptr);
@@ -58,31 +58,31 @@ TEST(ModelCompiler, LoadAndLowerTinyLlamaAtO2) {
 }
 
 TEST(ModelCompiler, SupportsO0AndO2) {
-    ModelLoweringOptions o0;
+    ModelCompileOptions o0;
     o0.optimization.opt_level = 0;
 
-    const auto unoptimized = ModelCompiler::LoadAndLowerModel(
-            ModelLoadOptions{.model_dir = TestModelDir()}, o0);
+    const auto unoptimized = ModelCompiler::LoadAndCompile(
+            TestModelDir(), o0);
     ASSERT_TRUE(unoptimized.ok()) << unoptimized.status().ToString();
     EXPECT_FALSE(HasWeightRecipe(unoptimized->graph, &IsQkvRecipe));
     EXPECT_FALSE(HasWeightRecipe(unoptimized->graph, &IsGateUpRecipe));
     EXPECT_EQ(unoptimized->graph.steps.size(), 34U);
 
-    const auto optimized = ModelCompiler::LoadAndLowerModel(
-            ModelLoadOptions{.model_dir = TestModelDir()});
+    const auto optimized = ModelCompiler::LoadAndCompile(
+            TestModelDir());
     ASSERT_TRUE(optimized.ok()) << optimized.status().ToString();
     EXPECT_LT(optimized->graph.steps.size(), unoptimized->graph.steps.size());
 }
 
 TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
-    ModelLoweringOptions options;
+    ModelCompileOptions options;
     options.lowering.device_type = DeviceType::kCUDA;
     options.lowering.isa = IsaLevel::kAVX2;
     options.lowering.weight_format = WeightFormat::kPacked;
     options.lowering.phase = ExecPhase::kPrefill;
 
-    const auto lowered = ModelCompiler::LoadAndLowerModel(
-            ModelLoadOptions{.model_dir = TestModelDir()}, options);
+    const auto lowered = ModelCompiler::LoadAndCompile(
+            TestModelDir(), options);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
 
     for (const ExecutionPlanNodeSpec& step: lowered->graph.steps) {
@@ -94,7 +94,7 @@ TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
 }
 
 TEST(ModelCompiler, SupportsLinearRopeScalingAndRejectsUnsupportedSemanticVariants) {
-    const auto loaded = ModelLoader::Load(ModelLoadOptions{.model_dir = TestModelDir()});
+    const auto loaded = ModelLoader::Load(TestModelDir());
     ASSERT_TRUE(loaded.ok()) << loaded.status().ToString();
 
     HfModelConfig linear_config = (*loaded)->GetConfig();
@@ -103,9 +103,9 @@ TEST(ModelCompiler, SupportsLinearRopeScalingAndRejectsUnsupportedSemanticVarian
     auto linear_model = std::make_unique<LoadedModel>(
             std::move(linear_config), (*loaded)->GetResolvedWeights());
 
-    ModelLoweringOptions o0;
+    ModelCompileOptions o0;
     o0.optimization.opt_level = 0;
-    const auto linear = ModelCompiler::BuildLoweredModel(std::move(linear_model), o0);
+    const auto linear = ModelCompiler::Compile(std::move(linear_model), o0);
     ASSERT_TRUE(linear.ok()) << linear.status().ToString();
 
     HfModelConfig unsupported_config = (*loaded)->GetConfig();
@@ -114,7 +114,7 @@ TEST(ModelCompiler, SupportsLinearRopeScalingAndRejectsUnsupportedSemanticVarian
     auto unsupported_model = std::make_unique<LoadedModel>(
             std::move(unsupported_config), (*loaded)->GetResolvedWeights());
 
-    const auto unsupported = ModelCompiler::BuildLoweredModel(std::move(unsupported_model), o0);
+    const auto unsupported = ModelCompiler::Compile(std::move(unsupported_model), o0);
     ASSERT_FALSE(unsupported.ok());
     EXPECT_EQ(unsupported.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(unsupported.status().message().find("Model graph construction failed"),
@@ -123,7 +123,7 @@ TEST(ModelCompiler, SupportsLinearRopeScalingAndRejectsUnsupportedSemanticVarian
 }
 
 TEST(ModelCompiler, RejectsNullLoadedModel) {
-    const auto lowered = ModelCompiler::BuildLoweredModel(nullptr);
+    const auto lowered = ModelCompiler::Compile(nullptr);
 
     ASSERT_FALSE(lowered.ok());
     EXPECT_EQ(lowered.status().code(), StatusCode::kInvalidArgument);

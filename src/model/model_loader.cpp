@@ -9,8 +9,9 @@
 
 namespace aethermind {
 
-StatusOr<std::unique_ptr<LoadedModel>> ModelLoader::Load(const ModelLoadOptions& options) {
-    auto reader = HfDirectoryReader::Open(options.model_dir);
+StatusOr<std::unique_ptr<LoadedModel>> ModelLoader::Load(
+        const std::filesystem::path& model_dir) {
+    auto reader = HfDirectoryReader::Open(model_dir);
     if (!reader.ok()) {
         return reader.status();
     }

@@ -17,11 +17,11 @@ Status AddStageContext(const Status& status, std::string_view stage) {
 
 }// namespace
 
-StatusOr<LoweredModel> ModelCompiler::BuildLoweredModel(
+StatusOr<LoweredModelArtifact> ModelCompiler::Compile(
         std::unique_ptr<LoadedModel> model,
-        const ModelLoweringOptions& options) {
+        const ModelCompileOptions& options) {
     if (model == nullptr) {
-        return Status::InvalidArgument("ModelCompiler::BuildLoweredModel requires a LoadedModel");
+        return Status::InvalidArgument("ModelCompiler::Compile requires a LoadedModel");
     }
 
     auto graph = ModelGraphBuilder::BuildLlamaDense(
@@ -40,20 +40,20 @@ StatusOr<LoweredModel> ModelCompiler::BuildLoweredModel(
         return AddStageContext(lowered.status(), "Model graph lowering failed");
     }
 
-    return LoweredModel{
+    return LoweredModelArtifact{
             .loaded_model = std::move(model),
             .graph = std::move(*lowered),
     };
 }
 
-StatusOr<LoweredModel> ModelCompiler::LoadAndLowerModel(
-        const ModelLoadOptions& load_options,
-        const ModelLoweringOptions& lowering_options) {
-    auto model = ModelLoader::Load(load_options);
+StatusOr<LoweredModelArtifact> ModelCompiler::LoadAndCompile(
+        const std::filesystem::path& model_dir,
+        const ModelCompileOptions& compile_options) {
+    auto model = ModelLoader::Load(model_dir);
     if (!model.ok()) {
         return AddStageContext(model.status(), "Model loading failed");
     }
-    return BuildLoweredModel(std::move(*model), lowering_options);
+    return Compile(std::move(*model), compile_options);
 }
 
 }// namespace aethermind

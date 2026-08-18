@@ -1,15 +1,8 @@
 #include "aethermind/model/formats/hf/hf_safetensors_file.h"
 
-#include <array>
-#include <chrono>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
-#include <span>
-#include <string>
-#include <string_view>
-#include <vector>
 
 namespace {
 
@@ -19,11 +12,11 @@ class TempDirectory {
 public:
     TempDirectory() {
         static size_t counter = 0;
-        const auto unique_id = std::to_string(
-                                       std::chrono::steady_clock::now().time_since_epoch().count()) +
-                               "_" + std::to_string(counter++);
-        path_ = std::filesystem::temp_directory_path() /
-                ("aethermind_hf_safetensors_" + unique_id);
+        const auto unique_id =
+                std::to_string(
+                        std::chrono::steady_clock::now().time_since_epoch().count()) +
+                "_" + std::to_string(counter++);
+        path_ = std::filesystem::temp_directory_path() / ("aethermind_hf_safetensors_" + unique_id);
         std::filesystem::create_directories(path_);
     }
 
@@ -71,9 +64,8 @@ float ReadFloat(const std::byte* data) {
     return value;
 }
 
-void WriteRawFile(
-        const std::filesystem::path& path,
-        std::span<const std::byte> bytes) {
+void WriteRawFile(const std::filesystem::path& path,
+                  std::span<const std::byte> bytes) {
     std::ofstream stream(path, std::ios::binary);
     ASSERT_TRUE(stream.is_open()) << path.string();
     if (!bytes.empty()) {
@@ -82,10 +74,9 @@ void WriteRawFile(
     }
 }
 
-std::filesystem::path WriteSafetensorsFile(
-        const std::filesystem::path& directory,
-        std::string_view header_json,
-        std::span<const std::byte> raw_bytes) {
+std::filesystem::path WriteSafetensorsFile(const std::filesystem::path& directory,
+                                           std::string_view header_json,
+                                           std::span<const std::byte> raw_bytes) {
     const auto path = directory / "model.safetensors";
     const auto prefix = EncodeLittleEndianU64(header_json.size());
     const auto header_bytes = ToBytes(header_json);
@@ -269,6 +260,40 @@ TEST(ModelLoader_HfSafetensorsFileTest, KeepsMappedViewAliveAfterFileIsRemoved) 
     ASSERT_TRUE(view.IsValid());
     EXPECT_FLOAT_EQ(ReadFloat(view.data), 7.0f);
     EXPECT_FLOAT_EQ(ReadFloat(view.data + sizeof(float)), 8.0f);
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsShapeNumelOverflow) {
+    TempDirectory temp_dir;
+    const auto path = WriteSafetensorsFile(
+            temp_dir.Path(),
+            R"({"t":{"dtype":"F32","shape":[4294967296,4294967296],"data_offsets":[0,0]}})",
+            {});
+
+    const auto file = HfSafetensorsFile::Open(path);
+
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kOutOfRange);
+    EXPECT_NE(file.status().message().find("Integer overflow while computing safetensors shape"),
+              std::string::npos);
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsHeaderExceedingMaxSize) {
+    TempDirectory temp_dir;
+    const auto path = temp_dir.Path() / "oversized.safetensors";
+    constexpr uint64_t kMaxHeaderSize = 16ULL * 1024 * 1024;
+    auto prefix = EncodeLittleEndianU64(kMaxHeaderSize + 1);
+    auto bytes = ToBytes(std::string_view("{}"));
+    std::vector<std::byte> file_bytes;
+    file_bytes.insert(file_bytes.end(), prefix.begin(), prefix.end());
+    file_bytes.insert(file_bytes.end(), bytes.begin(), bytes.end());
+    WriteRawFile(path, file_bytes);
+
+    const auto file = HfSafetensorsFile::Open(path);
+
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(file.status().message().find("header exceeds maximum size"),
+              std::string::npos);
 }
 
 }// namespace

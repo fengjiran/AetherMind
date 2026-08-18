@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_MODEL_FORMATS_HF_HF_JSON_READER_H
 #define AETHERMIND_MODEL_FORMATS_HF_HF_JSON_READER_H
 
+/// @file hf_json_reader.h
+/// @brief Zero-copy sequential JSON parser primitives for HF metadata files.
+
 #include "aethermind/base/status.h"
 
 #include <cstdint>
@@ -11,6 +14,11 @@
 namespace aethermind {
 namespace hf {
 
+/// @brief Zero-copy, sequential JSON parser over a borrowed string view.
+///
+/// The parser walks the input with a single position cursor and never copies
+/// it; parsed scalars are returned by value. Expected format errors surface
+/// as Status/StatusOr failures instead of exceptions.
 class HfJsonReader {
 public:
     explicit HfJsonReader(std::string_view input) noexcept;
@@ -33,9 +41,12 @@ public:
     StatusOr<std::vector<int64_t>> ParseInt64Array();
     Status SkipValue();
 
+    /// Depth cap for nested values during SkipValue, bounding stack usage on
+    /// adversarial inputs.
     static constexpr uint32_t kMaxSkipDepth = 32;
 
 protected:
+    /// Remaining input and cursor; subclasses may read but not rewind.
     std::string_view input_;
     size_t position_ = 0;
 

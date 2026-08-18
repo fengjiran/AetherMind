@@ -90,7 +90,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
 
     const std::span<const GraphValue> values = graph.GetValues();
     lowered.values.reserve(values.size());
-    for (const GraphValue& value: values) {
+    for (const auto& value: values) {
         lowered.values.push_back(LoweredValueDesc{
                 .spec = value.spec,
                 .payload = value.payload,
@@ -107,11 +107,11 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         lowered.model_outputs.push_back(output.value);
     }
 
-    for (const GraphNodeId node_id: *order_or) {
-        const GraphNode& node = graph.GetNode(node_id);
-        StatusOr<OperatorSchema> schema_or = GetOperatorSchema(node.op_type);
+    for (const auto node_id: *order_or) {
+        const auto& node = graph.GetNode(node_id);
+        auto schema_or = GetOperatorSchema(node.op_type);
         AM_RETURN_IF_ERROR(schema_or.status());
-        const OperatorSchema& schema = *schema_or;
+        const auto& schema = *schema_or;
 
         ExecutionPlanNodeSpec step{
                 .op_type = node.op_type,
@@ -139,17 +139,14 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
             // inline data or named external constants without revisiting the
             // graph. Other payload kinds (weight/state/input/activation) are
             // resolved through their bindings at execution-planning time.
-            std::visit(overloaded{
-                               [&](const ConstantValue& cv) {
-                                   binding.constant_bindings.push_back(
-                                           LoweredConstantBinding{
-                                                   .input_port = port.index,
-                                                   .binding = cv.binding,
-                                           });
-                               },
-                               [](const auto&) {},
-                       },
-                       value.payload);
+            auto visitor = overloaded{
+                    [&](const ConstantValue& cv) {
+                        binding.constant_bindings.push_back(
+                                {.input_port = port.index,
+                                 .binding = cv.binding});
+                    },
+                    [](const auto&) {}};
+            std::visit(visitor, value.payload);
         }
 
         for (const auto& port: schema.output_ports) {
@@ -185,11 +182,10 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
                     std::ranges::find(binding.output_values, alias.output);
 
             if (input_it != binding.input_values.end() && output_it != binding.output_values.end()) {
-                plan.aliases.push_back(ResolvedStateAlias{
-                        .step_index = s,
-                        .input_port = static_cast<uint32_t>(input_it - binding.input_values.begin()),
-                        .output_port = static_cast<uint32_t>(output_it - binding.output_values.begin()),
-                });
+                plan.aliases.push_back(
+                        {.step_index = s,
+                         .input_port = static_cast<uint32_t>(input_it - binding.input_values.begin()),
+                         .output_port = static_cast<uint32_t>(output_it - binding.output_values.begin())});
                 found = true;
                 break;
             }

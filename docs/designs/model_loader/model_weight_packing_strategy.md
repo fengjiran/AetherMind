@@ -1,5 +1,7 @@
 # 模型权重打包策略设计文档
 
+> **历史设计说明**：本文件记录了早期加载期预打包和旧 sidecar wrapper 方案。当前 `ModelLoader` 不执行 prepack；兼容性存储使用 `PackedWeightStore`，正式生产路径仍待 graph-driven weight materialization 实现。请以 `AGENTS.md`、PRD 和 `docs/designs/graph_compilation_flow.md` 为准。
+
 ## 1. 概述
 
 本文档描述 AetherMind 推理引擎的模型权重打包策略，包括打包时机、多后端支持和内存优化方案。

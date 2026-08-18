@@ -1,6 +1,6 @@
 # 当前图编译流程实现梳理
 
-本文按当前代码事实梳理 AetherMind 中图编译相关实现。当前仓库已经具备 `LoadedModel -> ModelGraph -> optimized ModelGraph -> LoweredModel` 的 frontend compilation 主流程，以及 `LoweredGraph -> ExecutionPlan` 的计划构建流程；二者之间的 graph-driven weight materialization、完整 kernel 覆盖和生产 ExecutionPlan 串联仍未完成。
+本文按当前代码事实梳理 AetherMind 中图编译相关实现。当前仓库已经具备 `LoadedModel -> ModelGraph -> optimized ModelGraph -> LoweredModelArtifact` 的模型编译主流程，以及 `LoweredGraph -> ExecutionPlan` 的计划构建流程；二者之间的 graph-driven weight materialization、完整 kernel 覆盖和生产 ExecutionPlan 串联仍未完成。
 
 ## 1. 当前实际入口
 
@@ -9,7 +9,7 @@ ExecutionPlanBuilder::Build(RuntimeContext& runtime,
                             const std::vector<ExecutionPlanNodeSpec>& nodes)
 
 ExecutionPlanBuilder::Build(RuntimeContext& runtime,
-                            const ModelInstance& model_instance,
+                            const PackedWeightStore& packed_weight_store,
                             const std::vector<ExecutionPlanNodeSpec>& nodes)
 ```
 
@@ -50,7 +50,7 @@ std::vector<ExecutionPlanNodeSpec>
 ExecutionPlanBuilder::Build(...)
         │
         ▼
-BuildExecutionPlan(runtime, model_instance?, nodes)
+BuildExecutionPlan(runtime, packed_weight_store?, nodes)
         │
         ├─ 收集 workspace_requirement
         │
@@ -72,7 +72,7 @@ for each node:
         │   // graph construction already called InferOperator. Untrusted raw
         │   // node specs are re-inferred and must match exactly.
         │
-        ├─ ResolvePackedWeightsForNode(model_instance?, node)
+        ├─ ResolvePackedWeightsForNode(packed_weight_store?, node)
         │
         └─ plan.AddStep(ExecutionStep{...})
         │
@@ -97,13 +97,13 @@ BuildExecutionPlan(runtime, nullptr, nodes)
 另一个重载：
 
 ```cpp
-ExecutionPlanBuilder::Build(runtime, model_instance, nodes)
+ExecutionPlanBuilder::Build(runtime, packed_weight_store, nodes)
 ```
 
 调用：
 
 ```cpp
-BuildExecutionPlan(runtime, &model_instance, nodes)
+BuildExecutionPlan(runtime, &packed_weight_store, nodes)
 ```
 
 第二个重载用于支持 packed weight 查找。
@@ -215,7 +215,7 @@ backend.PrepareKernel(node.op_type, MakeSelectorForNode(node), node.op_params)
 ### G. Packed weight 绑定
 
 ```cpp
-ResolvePackedWeightsForNode(const ModelInstance* model_instance,
+ResolvePackedWeightsForNode(const PackedWeightStore* packed_weight_store,
                             const ExecutionPlanNodeSpec& node)
 ```
 
@@ -233,16 +233,16 @@ node.weight_format != WeightFormat::kPacked
 nullptr
 ```
 
-2. 如果需要 packed weight 但没有 `ModelInstance`：
+2. 如果需要 packed weight 但没有 `PackedWeightStore`：
 
 ```cpp
-Status::NotFound("Packed-weight node requires a ModelInstance sidecar")
+Status::NotFound("Packed-weight node requires a PackedWeightStore")
 ```
 
 3. 否则：
 
 ```cpp
-model_instance->FindPackedWeights(node.op_type, selector)
+packed_weight_store->Find(node.op_type, selector)
 ```
 
 成功后返回：
@@ -448,7 +448,7 @@ ValidateShapeConstraints(...)
 
 ### 6.2 规范组合调用
 
-优化与降低仍是两个显式阶段；`ModelCompiler` 用 `ModelLoweringOptions` 为生产 frontend 提供唯一的组合入口，诊断/测试场景可继续直接串联：
+优化与降低仍是两个显式阶段；`ModelCompiler` 用 `ModelCompileOptions` 为生产模型编译提供唯一的组合入口，诊断/测试场景可继续直接串联：
 
 ```text
 ModelGraph
@@ -522,7 +522,7 @@ ExecutionPlan{... steps ..., state_alias_plan{...}}
 
 - graph-driven weight materialization/prepack，并以具体 `WeightBinding` 识别 artifact
 - 更完整的 runtime tensor/state binding 接线
-- 完整的 Llama layer kernel 覆盖与 `LoweredModel → ExecutionPlan` 编排
+- 完整的 Llama layer kernel 覆盖与 `LoweredModelArtifact → ExecutionPlan` 编排
 
 因此“模型加载后自动生成图结构、优化、lowering”已经可用；“模型加载后构建正确、可执行的 ExecutionPlan”仍未完成。
 
@@ -582,10 +582,10 @@ LoweredGraph.steps (std::vector<ExecutionPlanNodeSpec>)
 
 `ExecutionPlanBuilder` 不理解模型拓扑，它只消费已经准备好的 node specs。模型拓扑到 `ExecutionPlanNodeSpec` 的转换由 `LowerModelGraph` 负责。
 
-### 层次 C：LoadedModel 到 LoweredModel 的 frontend production pipeline（已实现）
+### 层次 C：LoadedModel 到 LoweredModelArtifact 的生产模型编译管线（已实现）
 
-`ModelLoader::Load` 生成 `LoadedModel`，`ModelCompiler::BuildLoweredModel` 串联 `ModelGraphBuilder::BuildLlamaDense`、`OptimizeModelGraph` 与 `LowerModelGraph`，并以 `LoweredModel` 将 loaded raw-weight ownership 与 lowering artifact 一起返回。`ModelCompiler::LoadAndLowerModel` 是对应的一站式薄 facade。该阶段不调用 backend、prepack 或 `ExecutionPlanBuilder`。
+`ModelLoader::Load` 生成 `LoadedModel`，`ModelCompiler::Compile` 串联 `ModelGraphBuilder::BuildLlamaDense`、`OptimizeModelGraph` 与 `LowerModelGraph`，并以 `LoweredModelArtifact` 将 loaded raw-weight ownership 与 lowering artifact 一起返回。`ModelCompiler::LoadAndCompile` 是对应的一站式薄 facade。该阶段不调用 backend、prepack 或 `ExecutionPlanBuilder`。
 
-### 层次 D：LoweredModel 到 ExecutionPlan 的生产管线（未完成）
+### 层次 D：LoweredModelArtifact 到 ExecutionPlan 的生产管线（未完成）
 
 正确的 production plan 仍需要从 optimized graph 的具体 `WeightBinding` 生成独立 weight artifact，并在完整 kernel 覆盖后执行 plan-time kernel resolution（见 §6.4）。

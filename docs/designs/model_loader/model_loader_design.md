@@ -1,6 +1,6 @@
 # ModelLoader 与权重预打包设计文档
 
-> **历史设计说明（已被当前实现取代）**：`ModelLoader` 现仅进行 HF I/O、validation 与 logical weight resolution，并返回 `LoadedModel`；它不创建 `ModelInstance`、不调用 `WeightPrepackPlanner`。当前 frontend 主流程由 `ModelCompiler` 产生 `LoweredModel`。本文后续关于加载期 prepack 和 `ModelInstanceBuilder` 的描述仅保留为历史背景，不得作为实现依据。
+> **历史设计说明（已被当前实现取代）**：`ModelLoader` 现仅进行 HF I/O、validation 与 logical weight resolution，并返回 `LoadedModel`；它不调用 `WeightPrepackPlanner`。当前模型编译主流程由 `ModelCompiler::Compile` 产生 `LoweredModelArtifact`。本文后续关于加载期 prepack、旧 sidecar 和旧 builder 的描述仅保留为历史背景，不得作为实现依据。
 
 ## 1. 文档目标
 
@@ -308,7 +308,6 @@ StatusOr<std::unique_ptr<ModelInstance>>
 
 ```text
 aethermind/model/
-├── model_load_options.h
 ├── model_loader.h/.cpp
 ├── model_validator.h/.cpp
 ├── resolved_tensor_index.h/.cpp
@@ -488,7 +487,7 @@ ModelInstance lifetime > ExecutionPlan execution lifetime
 
 ```cpp
 StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
-    const ModelLoadOptions& options,
+    const std::filesystem::path& model_dir,
     const Backend& backend,
     const KernelRegistry& registry);
 ```
@@ -523,11 +522,11 @@ Validator 校验
 
 ```cpp
 StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(
-    const ModelLoadOptions& options,
+    const std::filesystem::path& model_dir,
     const Backend& backend,
     const KernelRegistry& registry) {
 
-    AM_ASSIGN_OR_RETURN(auto reader, ModelArtifactReader::Create(options));
+    AM_ASSIGN_OR_RETURN(auto reader, ModelArtifactReader::Create(model_dir));
 
     AM_ASSIGN_OR_RETURN(ModelConfig config, reader->ReadConfig());
     AM_RETURN_IF_ERROR(ModelValidator::ValidateConfig(config));

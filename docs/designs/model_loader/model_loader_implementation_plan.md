@@ -1,7 +1,7 @@
 ---
 ModelLoader / Weight Prepack 实施批次方案
 
-> **历史实施计划（已过时）**：当前 `ModelLoader::Load` 返回 `LoadedModel` 并且不执行 prepack；frontend compilation 已由 `ModelCompiler::BuildLoweredModel` / `LoadAndLowerModel` 完成。本文关于 `ModelInstanceBuilder`、加载期 prepack 和旧 `Load` 签名的内容不可作为当前实现依据。
+> **历史实施计划（已过时）**：当前 `ModelLoader::Load` 返回 `LoadedModel` 并且不执行 prepack；模型编译已由 `ModelCompiler::Compile` / `LoadAndCompile` 完成。本文关于旧 builder、加载期 prepack 和旧 `Load` 签名的内容不可作为当前实现依据。
 总体原则
 按你这份设计文档和当前代码现状，最合理的推进方式是：
 1. 先打通最窄闭环
@@ -21,7 +21,6 @@ Batch 0：接口骨架与目录落位
 先把 loader 子系统的文件骨架和命名落下来，但不急着一次性填满逻辑。
 建议新增文件
 include/aethermind/model/
-  model_load_options.h
   model_loader.h
   model_validator.h
   resolved_tensor_index.h
@@ -70,13 +69,10 @@ Batch 1：HF 单文件 Reader 最小闭环
 - 基础 safetensors 文件打开
 - tensor 表建立
 建议实现内容
-1. ModelLoadOptions
-建议最小字段先只放：
-- std::filesystem::path model_dir
-必要时后续再补：
-- strict validation 开关
-- 是否要求 prepack
-- backend hint
+1. 加载入口签名
+当前 `ModelLoader::Load` 直接接收 `std::filesystem::path model_dir`。
+若后续需要 strict validation 开关、是否要求 prepack、backend hint 等选项，
+届时再引入 ModelLoadOptions 结构体（字段集合明确后再定型）。
 2. HfDirectoryReader
 职责：
 - 校验目录存在
@@ -414,7 +410,7 @@ P2：测试覆盖弱点
 - ValidateResolvedModel 缺少 dtype 一致性、tied embedding shape/dtype mismatch 的测试。
 - sharded lifetime 只间接覆盖，建议补多 storage backing 的 ModelInstance 生命周期测试。
 P2 / 未来项：文档提到但当前可视为未实现或延期
-- ModelLoadOptions 只有 model_dir，还没有 strict validation、prepack toggle、backend hint。
+- ModelLoadOptions 结构未引入：`ModelLoader::Load` 直接接收 `model_dir`（path）。strict validation、prepack toggle、backend hint 需求落地时再引入 options 结构。
 - lazy packing / alternative selector 支持未实现。
 - prepack 后释放 raw backing 的内存优化未实现。
 - 量化权重支持未实现；validator 当前默认拒绝 quantized tensors。

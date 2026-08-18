@@ -1,6 +1,6 @@
 # HfModelValidator 设计方案
 
-> **当前接线说明**：`ModelLoader` 使用 `allow_rope_scaling=true` 只验证 RoPE scaling 的结构合法性；HF scaling type 到 semantic `RoPEScalingType` 的映射及 unsupported type rejection 由 `ModelGraphBuilder::BuildLlamaDense` 独占。本文后续提及 `ModelInstanceBuilder` 的内容是历史背景。
+> **当前接线说明**：`ModelLoader` 使用 `allow_rope_scaling=true` 只验证 RoPE scaling 的结构合法性；HF scaling type 到 semantic `RoPEScalingType` 的映射及 unsupported type rejection 由 `ModelGraphBuilder::BuildLlamaDense` 独占。本文后续提及旧 builder 的内容是历史背景。
 
 版本：v1.0  
 适用范围：AetherMind Phase 1 ModelLoader / Hugging Face 本地模型目录 / safetensors 权重加载  

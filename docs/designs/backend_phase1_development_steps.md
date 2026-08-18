@@ -1,5 +1,7 @@
 # AetherMind Backend Phase 1 开发步骤文档
 
+> **历史开发步骤**：本文件记录早期 backend 接线方案。当前 packed-weight 兼容存储为 `PackedWeightStore`，并不由 `ModelLoader` 创建；现行边界以 `AGENTS.md`、PRD 和 `docs/designs/graph_compilation_flow.md` 为准。
+
 **版本**: v1.0  
 **日期**: 2026-04-13  
 **作者**: AetherMind Team

@@ -1,5 +1,7 @@
 # Step A4 实施方案：基于虚函数的 Operator 语义层
 
+> **历史实施方案**：本文使用的旧模型 wrapper 参数已被 `PackedWeightStore` 取代。当前执行计划构建接口以 `include/aethermind/execution/execution_plan_builder.h` 为准。
+
 > **关联文档**：[Operator语义层接口实施步骤_v1.0.md](./Operator语义层接口实施步骤_v1.0.md) Step A4
 > **版本**：v1.0
 > **状态**：Approved for implementation

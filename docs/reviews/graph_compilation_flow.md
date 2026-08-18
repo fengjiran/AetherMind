@@ -1,6 +1,6 @@
 # AetherMind 图编译功能完整实现流程
 
-> **历史审查快照（已过时）**：当前 `ModelLoader` 返回 `LoadedModel`，`ModelCompiler` 已完成 `LoadedModel → ModelGraph → OptimizeModelGraph → LowerModelGraph → LoweredModel`。本文的 `ModelInstanceBuilder`、加载期 prepack 与旧 `ModelLoader::Load(options, backend, registry)` 说明不可作为当前实现依据；ExecutionPlan 集成缺口仍以当前 `docs/designs/graph_compilation_flow.md` 为准。
+> **历史审查快照（已过时）**：当前 `ModelLoader` 返回 `LoadedModel`，`ModelCompiler` 已完成 `LoadedModel → ModelGraph → OptimizeModelGraph → LowerModelGraph → LoweredModelArtifact`。本文的旧 builder、加载期 prepack 与旧 `ModelLoader::Load(options, backend, registry)` 说明不可作为当前实现依据；ExecutionPlan 集成缺口仍以当前 `docs/designs/graph_compilation_flow.md` 为准。
 
 > **文档版本**：v1.0
 > **更新日期**：2026-05-30

@@ -114,7 +114,7 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 |------|------|
 | **责任** | 管理 Runtime 资源（Allocator、Backend、KVCacheManager）的装配；维护执行期间上下文绑定；协调 Prefill→Decode→Finish 状态机；驱动 KV Cache 与 Workspace 的绑定与释放 |
 | **当前模块** | `RuntimeBuilder`、`RuntimeContext`、`Executor`、`KVCacheManager`、`RuntimeBindingContext`、`ModelLoader` |
-| **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 legacy `ModelInstance` packed-weight sidecar）、Prompt Token 序列、`GenerationConfig` |
+| **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightStore`）、Prompt Token 序列、`GenerationConfig` |
 | **主要输出** | 执行步骤结果（tensor 写入 workspace / KV cache 位置）；Token IDs 需由目标 Generate 循环在 Argmax/stop handling 后产生 |
 | **目标缺口** | `PrefillPath`/`DecodePath` 类未实现；`Executor::Generate` 完整状态机未实现；当前 `Executor::Execute` 为单计划一次性执行，不具备跨步骤状态管理和 Prefill/Decode 阶段区分能力 |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
@@ -136,9 +136,9 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | **责任** | 基于已解析的模型配置与权重语义构建 Llama dense 语义图；执行图优化 passes（常量折叠、SiLU-Mul 融合、死代码消除）；lowering 为算子级 node spec；构建不可变的 `ExecutionPlan` |
 | **当前模块** | `ModelGraphBuilder`、`OptimizeModelGraph` / `LowerModelGraph`、`ExecutionPlanBuilder` |
 | **主要输入** | `LoadedModel` 中的模型配置与 resolved weights |
-| **主要中间产物** | `LoadedModel`（config + resolved weights/backing storage，由 `ModelLoader::Load` 产生） → `ModelGraph`（语义 DAG） → `LoweredModel`（owns `LoadedModel` + self-contained `LoweredGraph`） → `ExecutionPlan`（不可变 step 序列） |
+| **主要中间产物** | `LoadedModel`（config + resolved weights/backing storage，由 `ModelLoader::Load` 产生） → `ModelGraph`（语义 DAG） → `LoweredModelArtifact`（owns `LoadedModel` + self-contained `LoweredGraph`） → `ExecutionPlan`（不可变 step 序列） |
 | **主要输出** | `ExecutionPlan`（已 resolve kernel fn + packed weight ptr + workspace requirement） |
-| **目标缺口** | `LoadedModel → ModelGraph → optimized graph → LoweredModel` 已闭环；从具体 `WeightBinding` 物化 weight artifact、补齐 kernel 并构建正确 `ExecutionPlan` 尚未闭环。 |
+| **目标缺口** | `LoadedModel → ModelGraph → optimized graph → LoweredModelArtifact` 已闭环；从具体 `WeightBinding` 物化 weight artifact、补齐 kernel 并构建正确 `ExecutionPlan` 尚未闭环。 |
 | **禁止责任泄漏** | 不得承担执行期资源绑定（如 workspace 地址绑定是调度控制层的职责）；不得承担运行时算子调度；不得处理 Token IDs |
 
 > `ExecutionPlanBuilder` 是一个层边界适配器：它消费计算图语义层产出的 `LoweredGraph`（节点规格列表），然后向硬件执行层的 Backend 发起 kernel resolve 请求，将结果冻结为 `ExecutionPlan`。计划构建本身由计算图语义层发起，kernel resolve 能力由硬件执行层暴露。
@@ -165,7 +165,7 @@ flowchart LR
     E --> F
     C --> J["ModelCompiler"]
     J --> D
-    I --> K["LoweredModel<br/>(owns LoadedModel + LoweredGraph)"]
+    I --> K["LoweredModelArtifact<br/>(owns LoadedModel + LoweredGraph)"]
     I -->|"ExecutionPlanBuilder::Build<br/>(层边界适配器, 已实现)"| J["ExecutionPlan<br/>ExecutionStep[]<br/>(kernel fn resolved,<br/>packed weight ptr bound,<br/>workspace req frozen)"]
 
     J -.->|"Phase 1 目标/未闭环<br/>接入目标 Generate 管线"| K["Session::Generate"]
@@ -262,8 +262,8 @@ flowchart LR
 
     subgraph ART["不可变产物 (Immutable Artifacts)"]
         direction LR
-        B1["HF 模型目录"] -->|"Computation<br/>(图编译)"| B2["ModelInstance<br/>(caller-owned)"]
-        B2 -->|"Phase 1 目标/未闭环<br/>(graph build + compile 编排)"| B3["ExecutionPlan<br/>(movable 值)"]
+        B1["HF 模型目录"] -->|"Load + Compile"| B2["LoweredModelArtifact<br/>(caller-owned)"]
+        B2 -->|"Phase 1 目标/未闭环<br/>(weight materialization + plan build)"| B3["ExecutionPlan<br/>(movable 值)"]
         B3 -->|"读取"| A3
     end
 
@@ -272,7 +272,7 @@ flowchart LR
         C1["WorkspaceArena<br/>(可复用 buffer)"] -->|"Bind + Borrow"| A4
         C2["KVCacheManager<br/>(静态 KV 存储)"] -->|"Bind + Borrow"| A4
         C3["KVCacheView<br/>(逻辑访问视图)"] -->|"Bind + Borrow"| A4
-        C4["ModelInstance<br/>packed weights"] -->|"只读引用 (ptr)"| A4
+        C4["PackedWeightStore<br/>packed weights"] -->|"只读引用 (ptr)"| A4
     end
 
     A4 -->|"写入"| C2
@@ -296,15 +296,15 @@ flowchart LR
 | 箭头样式 | 含义 | 示例 |
 |----------|------|------|
 | 蓝色实线 | 控制流 — 同步函数调用/参数传递 | App → API → Executor → LayerRunner |
-| 绿色虚线 | 计算 — 产物产生过程（一次性编译） | HF 目录 → `ModelInstance` → `ExecutionPlan` |
+| 绿色虚线 | 计算 — 产物产生过程（一次性编译） | HF 目录 → `LoweredModelArtifact` → `ExecutionPlan` |
 | 橙色点线 | 运行期绑定/借用 — 不拥有生命周期 | workspace binding、KV view 绑定、packed weight 指针引用 |
 
 ### 所有权与生命周期宏观规则
 
 | 类别 | 生命周期 | 可变性 | 持有者 |
 |------|----------|--------|--------|
-| `LoadedModel` (config + resolved raw weights) | 模型生命周期（长） | 构造后只读 | `LoweredModel` 按值持有其 `unique_ptr`，负责 RawWeightView backing storage |
-| `ModelInstance` (legacy packed-weight sidecar) | 过渡性 backend artifact 生命周期 | 准备阶段可写，执行阶段按只读使用 | 调用方持有；不由 `ModelLoader` 创建 |
+| `LoadedModel` (config + resolved raw weights) | 模型生命周期（长） | 构造后只读 | `LoweredModelArtifact` 按值持有其 `unique_ptr`，负责 RawWeightView backing storage |
+| `PackedWeightStore` (legacy packed-weight store) | 过渡性 backend artifact 生命周期 | 准备阶段可写，执行阶段按只读使用 | 调用方持有；不由 `ModelLoader` 创建 |
 | `ExecutionPlan`（`ExecutionStep[]`） | 模型生命周期（长） | 构建后不可变 | Movable 值对象，由调用方/模型管理方持有；模型级生命周期所有权是目标架构关切 |
 | `RuntimeContext`（AllocatorRegistry + BackendRegistry + KVCacheManager） | Runtime 生命周期（长） | 装配后基本不可变 | 调用方持有 `RuntimeBuilder::Build()` 返回的值对象 |
 | Workspace arena | Session 生命周期（中） | 可变（reset 后复用） | 调用方或后端资源对象持有；`RuntimeBindingContext` 仅借用指针 |
@@ -361,7 +361,7 @@ flowchart TB
 2. **调度控制层不可见 API 服务层细节**。`Executor` 不知道调用方是 C ABI 还是 C++ API。
 3. **计算图语义层不可见调度控制层**。`ModelGraphBuilder` 不知道 `Executor` 如何执行它的产物。
 4. **硬件执行层不可见 API 服务层与调度控制层的高层抽象**。Kernel 函数不允许持有 `RuntimeContext*`、`SessionState*` 等宽对象指针。
-5. **不可变产物的所有权由上游持有**：当前 `ModelInstance` 与 `ExecutionPlan` 由调用方或模型管理侧持有，硬件执行层只消费引用。
+5. **不可变产物的所有权由上游持有**：当前 `LoweredModelArtifact`、`PackedWeightStore` 与 `ExecutionPlan` 由调用方或模型管理侧持有，硬件执行层只消费引用。
 
 **软规则（设计原则）**：
 
@@ -387,7 +387,7 @@ flowchart TB
 |------|-------------|----------|
 | **模型加载** | HF 目录 → `LoadedModel` | `ModelLoader::Load` 返回 `unique_ptr<LoadedModel>`；含 config、resolved weights 和 backing storage，不含 packed weights |
 | **图构建** | `LoadedModel` → `ModelGraph`（语义 DAG） | `ModelGraphBuilder::BuildLlamaDense` 构建 dense decoder 的算子 DAG |
-| **图编译** | `LoadedModel` → `LoweredModel` | `ModelCompiler` 串联 `BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph`；`LoweredGraph` 保留 `ExecutionPlanNodeSpec[]` 和 dense value metadata |
+| **图编译** | `LoadedModel` → `LoweredModelArtifact` | `ModelCompiler` 串联 `BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph`；`LoweredGraph` 保留 `ExecutionPlanNodeSpec[]` 和 dense value metadata |
 | **计划构建** | `LoweredGraph` → 不可变 `ExecutionPlan` | `ExecutionPlanBuilder` 向硬件层发起 kernel resolve，绑定 packed weight 指针，冻结 workspace requirement |
 | **执行** | `ExecutionPlan` → tensor/KV 状态 | `Executor::Execute` → `LayerRunner::Run` 按步执行；每步经 workspace 绑定、shape 校验后调用算子。Token IDs 由目标 Generate 循环经 Argmax 处理后产生 |
 
@@ -399,7 +399,7 @@ flowchart TB
 |------|----------------|---------------------|----------------|
 | **API** | `c_api.h` 中的对象 refcount、错误处理与 traceback 原语 | `Session::Generate` 完整方法、`am_session_generate` C ABI 函数 | HTTP/gRPC 服务、tokenizer、异步/流式 API |
 | **模型加载** | `ModelLoader::Load`（HF 配置验证、权重加载 resolve、`LoadedModel` 创建） | graph-driven weight materialization 后的 Generate 管线 | MoE、encoder-decoder、sliding window attention |
-| **图编译** | `ModelCompiler`、`ModelGraphBuilder::BuildLlamaDense`、`OptimizeModelGraph` + `LowerModelGraph`、`LoweredModel` | production `LoweredModel → ExecutionPlan` 自动入口（weight artifact identity + kernel 覆盖） | - |
+| **图编译** | `ModelCompiler`、`ModelGraphBuilder::BuildLlamaDense`、`OptimizeModelGraph` + `LowerModelGraph`、`LoweredModelArtifact` | production `LoweredModelArtifact → ExecutionPlan` 自动入口（weight artifact identity + kernel 覆盖） | - |
 | **计划构建** | `ExecutionPlanBuilder::Build`（kernel resolve + packed weight bind + workspace plan） | - | - |
 | **执行引擎** | `Executor::Execute` → `LayerRunner::Run`（单一 plan 按步执行） | PrefillPath / DecodePath 状态机、Generate 编排 | Continuous batching、request scheduling |
 | **KV Cache** | `KVCacheManager`（静态预分配 Init + ReserveForSession）、`KVCacheView`（逻辑读写） | 接入 Generate 的完整 Prefill/Decode KV 读写流 | PagedAttention、动态扩容 |
@@ -444,7 +444,8 @@ flowchart TB
 | [`include/aethermind/execution/layer_runner.h`](../../../include/aethermind/execution/layer_runner.h) / [`src/execution/layer_runner.cpp`](../../../src/execution/layer_runner.cpp) | `LayerRunner::Run` |
 | [`include/aethermind/runtime/runtime_builder.h`](../../../include/aethermind/runtime/runtime_builder.h) / [`src/runtime/runtime_builder.cpp`](../../../src/runtime/runtime_builder.cpp) | `RuntimeBuilder::Build` |
 | [`include/aethermind/execution/kv_cache_manager.h`](../../../include/aethermind/execution/kv_cache_manager.h) / [`src/execution/kv_cache_manager.cpp`](../../../src/execution/kv_cache_manager.cpp) | `KVCacheManager` |
-| [`include/aethermind/model/model_instance.h`](../../../include/aethermind/model/model_instance.h) / [`src/model/model_instance.cpp`](../../../src/model/model_instance.cpp) | `ModelInstance` |
+| [`include/aethermind/model/model_compiler.h`](../../../include/aethermind/model/model_compiler.h) / [`src/model/model_compiler.cpp`](../../../src/model/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
+| [`include/aethermind/model/packed_weight_store.h`](../../../include/aethermind/model/packed_weight_store.h) / [`src/model/packed_weight_store.cpp`](../../../src/model/packed_weight_store.cpp) | `PackedWeightStore` |
 | [`include/aethermind/runtime/runtime_context.h`](../../../include/aethermind/runtime/runtime_context.h) | `RuntimeContext` |
 
 ### 关键设计文档

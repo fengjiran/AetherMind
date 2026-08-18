@@ -1,6 +1,6 @@
 # ModelGraph 数据结构设计全面审核报告
 
-> **历史审查快照（部分结论已过时）**：`LoadedModel` 现在持有 config 与 resolved raw weights；`ModelInstance` 仅保留 packed-weight sidecar 兼容职责。因此本文对 `ModelInstance::GetConfig()`、`GetResolvedWeights()` 和加载期 prepack 的讨论不可作为当前实现依据。
+> **历史审查快照（部分结论已过时）**：`LoadedModel` 现在持有 config 与 resolved raw weights；旧的 packed-weight sidecar wrapper 已被 `PackedWeightStore` 取代。因此本文对旧 wrapper accessors 和加载期 prepack 的讨论不可作为当前实现依据。
 
 ## 一、审核范围
 

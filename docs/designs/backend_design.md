@@ -110,18 +110,18 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 | ----------------------- | ---------------------------------- | ------------------------ | --------------------------------------------------------- |
 | `BackendFactory`        | `BackendRegistry`                  | 随 `RuntimeContext` 销毁 | 按 `DeviceType` 注册                                      |
 | `Backend`               | `BackendRegistry`                  | 随 `RuntimeContext` 销毁 | 延迟实例化并缓存，表示设备族执行能力                      |
-| `ExecutionPlan`         | `ModelInstance`                    | 模型实例级、只读         | 保存解析后的 `OpExec` 与静态执行元数据                    |
-| `PackedWeights`         | `ModelInstance` 的 backend sidecar | 与模型实例一致           | 由 Backend 定义格式并构建，但不由 Backend 持有            |
+| `ExecutionPlan`         | 调用方/模型管理侧                  | 模型级、只读             | 保存解析后的 `OpExec` 与静态执行元数据                    |
+| `PackedWeights`         | `PackedWeightStore`                | 与模型级 artifact 一致   | 由 Backend 定义格式并构建，但不由 Backend 持有            |
 | `RuntimeBindingContext` | `Session` / `Request`              | 会话级                   | 保存 workspace base、KV views、临时输出缓冲等动态绑定信息 |
 | `OpKernelContext`       | 执行栈帧                           | 短生命周期               | 单次调用的窄执行上下文                                    |
 
 #### 5.1.1 所有权约束
 
 - `Backend` 表示设备族执行能力，不拥有模型权重数据本身。
-- `PackedWeights` 必须由 `ModelInstance` 的 backend sidecar 持有，禁止写成 “`Backend` 或 `ModelInstance` 二选一”。
+- `PackedWeights` 必须由 `PackedWeightStore` 持有，禁止写成 “`Backend` 或 store 二选一”。
 - `ExecutionPlan` 是只读的静态执行计划，不承载 request/session 相关的动态地址绑定。
 - 与某次运行相关的动态地址、KV 视图、workspace base 等信息，统一放入 `RuntimeBindingContext`。
-- Phase 1 默认 `ExecutionPlan` 为 `ModelInstance` 级不可变计划；若未来出现 request-specific specialization，也只能在其上派生轻量 binding 或 session 级附加对象，不得回写主计划。
+- Phase 1 默认 `ExecutionPlan` 为模型级不可变计划；若未来出现 request-specific specialization，也只能在其上派生轻量 binding 或 session 级附加对象，不得回写主计划。
 
 ---
 
@@ -176,7 +176,7 @@ using KernelFn = Status (*)(const KernelInvocation&,
 
 struct OpExec {
     KernelFn fn = nullptr;
-    const void* packed_params = nullptr;          // 指向 ModelInstance sidecar 中的 packed 数据
+    const void* packed_params = nullptr;          // 指向 PackedWeightStore 中的 packed 数据
     WorkspaceRequirement workspace_req{};         // 规划期冻结的信息，而非具体地址
     OpKind op_kind{};                             // 调试与 tracing 用
 };
@@ -194,7 +194,7 @@ public:
 
 ### 7.4 ExecutionPlan 推荐归属口径
 
-Phase 1 推荐将 `ExecutionPlan` 视为 **`ModelInstance` 级不可变计划**。
+Phase 1 推荐将 `ExecutionPlan` 视为**模型级不可变计划**。
 其与 session/request 相关的动态绑定信息，例如 workspace base、KV views、临时输出缓冲等，不放入 `ExecutionPlan`，而由 `RuntimeBindingContext` 单独持有。
 
 
@@ -260,7 +260,7 @@ Phase 1 CPU Backend 需实现以下关键组件以支持高性能推理：
 - **CpuCapabilities / CpuIsaDetector**：负责检测 AVX2、AVX512、AMX 等指令集支持，并生成 capability 视图。
 - **CpuThreadPool**：专为推理优化的线程池，由 `CpuExecutionResources` 持有并通过 `opaque_backend_resources` 暴露给 CPU kernels。
 - **CpuWeightPrepacker**：负责将逻辑权重转换为符合 CPU 指令集与缓存友好布局的 packed 格式。
-- **PackedWeights**：预打包权重的存储实体，**由 `ModelInstance` 的 backend sidecar 持有**；CPU backend 只定义 packed 格式与构建逻辑。
+- **PackedWeights**：预打包权重的存储实体，**由 `PackedWeightStore` 持有**；CPU backend 只定义 packed 格式与构建逻辑。
 - **CpuWorkspaceArena**：实现基于预分配 buffer 的切片借用与按 offset 绑定逻辑。
 
 ---
@@ -343,7 +343,7 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 
 - `ExecutionPlanBuilder` 是唯一的 kernel resolve 发起方。
 - `Executor` 不做 kernel resolve，不直接访问 `KernelRegistry`。
-- `PackedWeights` 由 `ModelInstance` 的 backend sidecar 持有。
+- `PackedWeights` 由 `PackedWeightStore` 持有。
 - `ExecutionPlan` 只保存静态执行信息；workspace、KV view、临时输出缓冲等动态绑定信息由 `RuntimeBindingContext` 持有。
 - `Workspace` 采用 arena 借用语义；计划期冻结 requirement/offset，执行期完成地址绑定。
 - `OpKernelContext` 不直接暴露后端专属类型；后端专属执行资源通过 `opaque_backend_resources` 下传。

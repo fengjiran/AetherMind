@@ -1,5 +1,7 @@
 # AetherMind Backend Phase 1 Implementation Checklist
 
+> **历史实现清单**：本文件的旧 sidecar、旧模型 wrapper 和相应路径已被 `PackedWeightStore` 取代。当前模型加载和编译边界以 `AGENTS.md`、PRD 和 `docs/designs/graph_compilation_flow.md` 为准。
+
 **版本**: v1.0  
 **日期**: 2026-04-13  
 **作者**: AetherMind Team
